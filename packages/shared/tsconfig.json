@@ -1,0 +1,14 @@
+{
+    "extends": "../../tsconfig.base",
+    "compilerOptions": {
+        "rootDir": "src",
+        "outDir": "lib",
+        "baseUrl": "../../../",
+        "paths": {
+            "koishi": ["node_modules/koishi"]
+        }
+    },
+    "include": [
+        "src"
+    ]
+}

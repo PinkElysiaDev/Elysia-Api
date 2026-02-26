@@ -1,0 +1,21 @@
+- id: bc0pa1
+  name: yakumo
+  config:
+    pipeline:
+      build:
+        - esbuild
+        - tsc
+      clean:
+        - tsc --clean
+- id: wxc6xn
+  name: yakumo-esbuild
+- id: a502x9
+  name: yakumo-tsc
+- id: h7qb72
+  name: yakumo/publish
+- id: mml1qk
+  name: yakumo/version
+- id: enr17d
+  name: yakumo/upgrade
+- id: mr3n7g
+  name: yakumo/run

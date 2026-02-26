@@ -1,24 +1,14 @@
 {
-  "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "lib",
-    "target": "es2022",
-    "module": "esnext",
-    "declaration": true,
-    "emitDeclarationOnly": true,
-    "composite": true,
-    "incremental": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "moduleResolution": "bundler",
-    "jsx": "react-jsx",
-    "jsxImportSource": "@satorijs/element",
-    "types": [
-      "node",
-      "yml-register/types"
-    ]
-  },
-  "include": [
-    "src"
-  ]
+    "extends": "./tsconfig.base",
+    "compilerOptions": {
+        "baseUrl": ".",
+        "paths": {
+            "koishi-plugin-elysia-api-aggregator": ["packages/aggregator/src"],
+            "koishi-plugin-elysia-api-aggregator/*": ["packages/aggregator/src/*"],
+            "koishi-plugin-elysia-api-orchestrator": ["packages/orchestrator/src"],
+            "koishi-plugin-elysia-api-orchestrator/*": ["packages/orchestrator/src/*"],
+            "@elysia-api/shared": ["packages/shared/src"],
+            "@elysia-api/shared/*": ["packages/shared/src/*"]
+        }
+    }
 }

@@ -1,0 +1,49 @@
+{
+  "name": "koishi-plugin-elysia-api-orchestrator",
+  "description": "Inspired by New-API, the Elysia-API model orchestrator plugin manages API gateways and allows users to define custom model groups. This plugin depends on the model aggregator plugin.",
+  "version": "0.1.1",
+  "main": "lib/index.cjs",
+  "module": "lib/index.mjs",
+  "typings": "lib/index.d.ts",
+  "files": [
+    "lib",
+    "dist",
+    "assets/bin/*"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "require": "./lib/index.cjs",
+      "import": "./lib/index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "license": "MIT",
+  "scripts": {
+    "build": "atsc -b"
+  },
+  "keywords": [
+    "chatbot",
+    "koishi",
+    "plugin",
+    "elysia-api",
+    "ai",
+    "llm"
+  ],
+  "peerDependencies": {
+    "koishi": "^4.18.9",
+    "koishi-plugin-elysia-api-aggregator": "*"
+  },
+  "koishi": {
+    "description": {
+      "zh": "借鉴自 New-API 的 Elysia-API 模型编排插件，用于管理 API 网关；允许用户自定义模型组。本插件依赖于模型聚合插件工作。",
+      "en": "Inspired by New-API, the Elysia-API model orchestrator plugin manages API gateways and allows users to define custom model groups. This plugin depends on the model aggregator plugin."
+    },
+    "service": {
+      "required": [
+        "elysia-api-aggregator"
+      ]
+    }
+  }
+}
