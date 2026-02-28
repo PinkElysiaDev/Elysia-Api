@@ -14,6 +14,9 @@ type Config struct {
 	Tokens           []AccessToken      `json:"tokens"`
 	Groups           []ModelGroupConfig `json:"modelGroups"`
 	HeartbeatTimeout int                `json:"heartbeatTimeout,omitempty"` // 心跳超时时间（秒）
+	HTTPTimeout      int                `json:"httpTimeout,omitempty"`      // HTTP 请求超时时间（秒），0 为不限制
+	DebugMode        bool               `json:"debugMode,omitempty"`        // 调试模式
+	VerboseLog       bool               `json:"verboseLog,omitempty"`       // 详细日志模式
 	mu               sync.RWMutex
 	path             string
 }
@@ -96,6 +99,9 @@ func (c *Config) Reload() error {
 	c.Tokens = newCfg.Tokens
 	c.Groups = newCfg.Groups
 	c.HeartbeatTimeout = newCfg.HeartbeatTimeout
+	c.HTTPTimeout = newCfg.HTTPTimeout
+	c.DebugMode = newCfg.DebugMode
+	c.VerboseLog = newCfg.VerboseLog
 	c.mu.Unlock()
 
 	return nil

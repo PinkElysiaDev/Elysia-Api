@@ -184,7 +184,7 @@ export function apply(ctx: Context, config: Config) {
 
   // CLI command to list models
   ctx.command('elysia-api.models.list', '列出所有模型').action(() => {
-    const all = ctx.elysiaApi.models.getAll()
+    const all = ctx.elysiaApi?.models.getAll() ?? []
     return `可用模型列表 (${all.length}):\n` +
       all.map(m => `- ${m.name} (${m.type})`).join('\n')
   })

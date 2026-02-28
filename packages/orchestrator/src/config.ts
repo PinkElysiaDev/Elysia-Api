@@ -39,6 +39,7 @@ export interface Config {
   server: ServerConfig
   heartbeatTimeout?: number
   heartbeatInterval?: number
+  httpTimeout?: number
   tokens: Record<string, AccessToken>
   modelGroups: ModelGroupConfig[]
   debugMode?: boolean
@@ -148,6 +149,7 @@ export const createConfig = (ctx: Context): Schema<Config> => {
       }),
       heartbeatTimeout: Schema.number().default(300).description('后端心跳超时时间（秒）'),
       heartbeatInterval: Schema.number().default(60).description('插件发送心跳间隔（秒）'),
+      httpTimeout: Schema.number().default(120).description('HTTP 请求超时时间（秒），0 为不限制'),
     }).description('基础配置'),
 
     // 访问令牌配置（dict 类型，使用 table 外观）
@@ -186,6 +188,7 @@ export const ConfigSchema: Schema<Config> = Schema.intersect([
     }),
     heartbeatTimeout: Schema.number().default(300).description('后端心跳超时时间（秒）'),
     heartbeatInterval: Schema.number().default(60).description('插件发送心跳间隔（秒）'),
+    httpTimeout: Schema.number().default(120).description('HTTP 请求超时时间（秒），0 为不限制'),
   }).description('基础配置'),
 
   // 访问令牌配置（dict 类型，使用 table 外观）

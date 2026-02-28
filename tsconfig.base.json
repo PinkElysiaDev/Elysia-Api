@@ -8,7 +8,9 @@
         "incremental": true,
         "skipLibCheck": true,
         "esModuleInterop": true,
-        "strictNullChecks": false,
+        "strict": true,
+        "strictNullChecks": true,
+        "noImplicitAny": true,
         "moduleResolution": "bundler",
         "jsx": "react-jsx",
         "jsxImportSource": "@satorijs/element"

@@ -627,9 +627,116 @@ func UnifiedToClaude(unified *UnifiedRequest) ([]byte, error) {
 
 // UnifiedToGemini 将统一格式转换为 Gemini 格式
 func UnifiedToGemini(unified *UnifiedRequest) ([]byte, error) {
-	// TODO: 实现 Gemini 格式转换
-	// 暂时使用 OpenAI 格式
-	return UnifiedToOpenAI(unified)
+	// Gemini API 格式结构
+	type GeminiPart struct {
+		Text string `json:"text,omitempty"`
+	}
+
+	type GeminiContent struct {
+		Role  string       `json:"role"`
+		Parts []GeminiPart `json:"parts"`
+	}
+
+	type GeminiRequest struct {
+		Contents          []GeminiContent `json:"contents"`
+		GenerationConfig  *struct {
+			Temperature float64 `json:"temperature,omitempty"`
+			MaxTokens   int     `json:"maxOutputTokens,omitempty"`
+			TopP        float64 `json:"topP,omitempty"`
+			TopK        int     `json:"topK,omitempty"`
+		} `json:"generationConfig,omitempty"`
+	}
+
+	req := GeminiRequest{
+		Contents: make([]GeminiContent, 0, len(unified.Messages)),
+	}
+
+	// 如果有参数，创建 generationConfig
+	hasConfig := unified.Temperature != nil || unified.MaxTokens > 0 ||
+		unified.TopP != nil || unified.TopK > 0
+
+	if hasConfig {
+		req.GenerationConfig = &struct {
+			Temperature float64 `json:"temperature,omitempty"`
+			MaxTokens   int     `json:"maxOutputTokens,omitempty"`
+			TopP        float64 `json:"topP,omitempty"`
+			TopK        int     `json:"topK,omitempty"`
+		}{}
+
+		if unified.Temperature != nil {
+			req.GenerationConfig.Temperature = *unified.Temperature
+		}
+		if unified.MaxTokens > 0 {
+			req.GenerationConfig.MaxTokens = unified.MaxTokens
+		}
+		if unified.TopP != nil {
+			req.GenerationConfig.TopP = *unified.TopP
+		}
+		if unified.TopK > 0 {
+			req.GenerationConfig.TopK = unified.TopK
+		}
+	}
+
+	// 转换消息
+	for _, msg := range unified.Messages {
+		// Role 映射: assistant -> model
+		role := msg.Role
+		if role == "assistant" {
+			role = "model"
+		}
+
+		content := GeminiContent{
+			Role: role,
+		}
+
+		// 处理 content (可能是字符串或数组)
+		text := ""
+		if msg.Content == nil {
+			text = ""
+		} else if str, ok := msg.Content.(string); ok {
+			text = str
+		} else {
+			// 数组类型提取文本
+			text = extractTextFromContent(msg.Content)
+		}
+
+		content.Parts = []GeminiPart{{Text: text}}
+		req.Contents = append(req.Contents, content)
+	}
+
+	return json.Marshal(req)
+}
+
+// extractTextFromContent 从 content 中提取文本（支持多种格式）
+func extractTextFromContent(content interface{}) string {
+	if content == nil {
+		return ""
+	}
+
+	// 字符串直接返回
+	if str, ok := content.(string); ok {
+		return str
+	}
+
+	// 数组类型提取文本
+	if arr, ok := content.([]interface{}); ok {
+		var textBuilder strings.Builder
+		for _, item := range arr {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				if itemType, ok := itemMap["type"].(string); ok {
+					if itemType == "text" {
+						if text, ok := itemMap["text"].(string); ok {
+							textBuilder.WriteString(text)
+						}
+					}
+				}
+			}
+		}
+		return textBuilder.String()
+	}
+
+	// 其他情况，尝试转为字符串
+	return fmt.Sprintf("%v", content)
 }
 
 // normalizeContentForDeepSeek 将 content 转换为 DeepSeek 支持的格式

@@ -1,7 +1,7 @@
 import { Context } from 'koishi'
 import { spawn, ChildProcess } from 'child_process'
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
-import { join, dirname, resolve } from 'path'
+import { join, dirname } from 'path'
 import { ModelGroupConfig, ServerConfig, AccessToken, Capability } from './config'
 import { Model } from '@elysia-api/shared'
 
@@ -9,6 +9,9 @@ interface BackendConfig {
   server: { host: string; port: number }
   tokens: Array<{ token: string; name: string; enabled: boolean }>
   heartbeatTimeout?: number  // 心跳超时时间（秒）
+  httpTimeout?: number  // HTTP 请求超时时间（秒），0 为不限制
+  debugMode?: boolean     // 调试模式
+  verboseLog?: boolean    // 详细日志模式
   modelGroups: Array<{
     id: string
     name: string
@@ -49,6 +52,8 @@ export class BackendManager {
     private modelGroups: ModelGroupConfig[],
     private heartbeatIntervalSec: number = 60,  // 心跳发送间隔（秒）
     heartbeatTimeout?: number,  // 后端心跳超时时间（秒）
+    private httpTimeout: number = 120,  // HTTP 请求超时时间（秒），0 为不限制
+    private debugMode: boolean = false,  // 调试模式
     private verboseLog: boolean = false,  // 详细日志模式
   ) {
     this.configPath = join(ctx.baseDir, 'data/elysia-api/config.json')
@@ -73,9 +78,9 @@ export class BackendManager {
       case 'darwin':
         // macOS 需要根据架构选择
         if (arch === 'arm64') {
-          return 'elysia-backend-macos-arm64'
+          return 'elysia-backend-darwin-arm64'
         } else {
-          return 'elysia-backend-macos-amd64'
+          return 'elysia-backend-darwin-amd64'
         }
       default:
         this.ctx.logger.warn(`Unknown platform: ${platform}, falling back to default binary name`)
@@ -103,34 +108,17 @@ export class BackendManager {
       this.ctx.logger.info(`[VERBOSE] binaryName = ${binaryName}`)
     }
 
-    // 生成多个候选路径，按优先级查找
-    // 这种方案可以同时适应开发环境和生产环境
+    // 生成候选路径，按优先级查找
     const candidates: string[] = []
 
-    // 候选 0: 打包在插件内的二进制文件（最高优先级）
+    // 候选 0: 打包在插件内的二进制文件
     // 发布到 npm 后，二进制文件位于 assets/bin/ 目录
     candidates.push(join(__dirname, '../assets/bin', binaryName))
 
-    // 候选 1: 开发环境 - ctx.baseDir 指向项目根目录（如 koishi-app/）
-    candidates.push(join(this.ctx.baseDir, 'external/elysia-api/backend/bin', binaryName))
-
-    // 候选 2: ctx.baseDir 指向 data/ 目录的情况
-    candidates.push(join(this.ctx.baseDir, '../external/elysia-api/backend/bin', binaryName))
-
-    // 候选 3: 生产环境 - 从插件位置（__dirname）向上查找
-    // __dirname 通常是 .../node_modules/@elysia-api/orchestrator/lib/
-    // 向上查找 backend/bin 目录
-    const pluginRoot = resolve(__dirname, '../..')  // .../node_modules/@elysia-api/orchestrator/
-    const workspaceRoot = resolve(pluginRoot, '../..')  // .../node_modules/
-    candidates.push(join(workspaceRoot, '@elysia-api/backend/bin', binaryName))
-
-    // 候选 4: 如果 backend 在独立安装的位置（如全局 node_modules）
-    candidates.push(resolve(__dirname, '../../../backend/bin', binaryName))
-    candidates.push(resolve(__dirname, '../../../../backend/bin', binaryName))
-
-    // 详细日志：输出所有候选路径
+    // 详细日志：输出候选路径
     if (this.verboseLog) {
-      this.ctx.logger.info(`[VERBOSE] Searching for backend binary in ${candidates.length} candidate paths...`)
+      this.ctx.logger.info(`[VERBOSE] Searching for backend binary in ${candidates.length} candidate path...`)
+      this.ctx.logger.info(`[VERBOSE] Candidate: ${candidates[0]}`)
     }
 
     // 查找第一个存在的路径
@@ -270,6 +258,9 @@ export class BackendManager {
       server: this.serverConfig,
       tokens: tokensArray,
       heartbeatTimeout: this.heartbeatTimeoutSec,
+      httpTimeout: this.httpTimeout,
+      debugMode: this.debugMode,
+      verboseLog: this.verboseLog,
       modelGroups: this.modelGroups
         .filter(g => g.enabled)
         .map(group => {
@@ -300,7 +291,7 @@ export class BackendManager {
             maxConcurrency: group.enableRateLimit ? group.maxConcurrency : undefined,
             dailyLimitMaxRequests: group.enableRateLimit ? group.dailyLimitMaxRequests : undefined,
             dailyLimitMaxTokens: group.enableRateLimit ? group.dailyLimitMaxTokens : undefined,
-            type: group.type,
+            type: group.type ?? 'llm',
             maxTokens: group.maxTokens,
             ...capabilityBooleans,
             thinkingMode: group.thinkingMode,

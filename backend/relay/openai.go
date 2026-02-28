@@ -8,16 +8,46 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type OpenAIAdapter struct {
 	client *http.Client
 }
 
-func NewOpenAIAdapter() *OpenAIAdapter {
-	return &OpenAIAdapter{
-		client: &http.Client{},
+func NewOpenAIAdapter(timeout time.Duration) *OpenAIAdapter {
+	client := &http.Client{
+		Transport: &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 10,
+			IdleConnTimeout:     90 * time.Second,
+		},
 	}
+	// timeout > 0 时才设置超时
+	if timeout > 0 {
+		client.Timeout = timeout
+	}
+	return &OpenAIAdapter{
+		client: client,
+	}
+}
+
+// buildHTTPRequest 构建带有标准认证头的 HTTP 请求
+func buildHTTPRequest(method, url, apiKey string, body []byte, extraHeaders map[string]string) (*http.Request, error) {
+	req, err := http.NewRequest(method, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	// 添加额外的头部
+	for k, v := range extraHeaders {
+		req.Header.Set(k, v)
+	}
+
+	return req, nil
 }
 
 // OpenAIRequest 兼容 OpenAI API 格式
@@ -190,13 +220,11 @@ func (a *OpenAIAdapter) SendRequest(baseUrl, apiKey string, req OpenAIRequest) (
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequest("POST", fmt.Sprintf("%s/chat/completions", strings.TrimSuffix(baseUrl, "/")), bytes.NewReader(body))
+	url := fmt.Sprintf("%s/chat/completions", strings.TrimSuffix(baseUrl, "/"))
+	httpReq, err := buildHTTPRequest("POST", url, apiKey, body, nil)
 	if err != nil {
 		return nil, err
 	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {
@@ -223,13 +251,11 @@ func (a *OpenAIAdapter) SendRequest(baseUrl, apiKey string, req OpenAIRequest) (
 
 // SendRequestRaw 发送原始 JSON 请求体
 func (a *OpenAIAdapter) SendRequestRaw(baseUrl, apiKey string, body []byte) (*OpenAIResponse, error) {
-	httpReq, err := http.NewRequest("POST", fmt.Sprintf("%s/chat/completions", strings.TrimSuffix(baseUrl, "/")), bytes.NewReader(body))
+	url := fmt.Sprintf("%s/chat/completions", strings.TrimSuffix(baseUrl, "/"))
+	httpReq, err := buildHTTPRequest("POST", url, apiKey, body, nil)
 	if err != nil {
 		return nil, err
 	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {
@@ -269,14 +295,14 @@ func IsStreamRequest(body []byte) bool {
 // SendRequestStream 发送流式请求并返回原始 HTTP 响应
 // 调用方需要负责关闭 resp.Body
 func (a *OpenAIAdapter) SendRequestStream(baseUrl, apiKey string, body []byte) (*http.Response, error) {
-	httpReq, err := http.NewRequest("POST", fmt.Sprintf("%s/chat/completions", strings.TrimSuffix(baseUrl, "/")), bytes.NewReader(body))
+	url := fmt.Sprintf("%s/chat/completions", strings.TrimSuffix(baseUrl, "/"))
+	extraHeaders := map[string]string{
+		"Accept": "text/event-stream",
+	}
+	httpReq, err := buildHTTPRequest("POST", url, apiKey, body, extraHeaders)
 	if err != nil {
 		return nil, err
 	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-	httpReq.Header.Set("Accept", "text/event-stream")
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {

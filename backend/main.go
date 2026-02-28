@@ -6,7 +6,6 @@ import (
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/server"
 	"github.com/elysia-api/backend/signal"
-	_ "github.com/elysia-api/backend/signal"
 )
 
 func main() {

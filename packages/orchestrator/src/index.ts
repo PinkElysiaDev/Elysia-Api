@@ -78,6 +78,8 @@ export function apply(ctx: Context, config: Config) {
       config.modelGroups,
       config.heartbeatInterval ?? 60,  // 心跳发送间隔
       config.heartbeatTimeout,         // 后端心跳超时时间
+      config.httpTimeout ?? 120,       // HTTP 请求超时时间（秒）
+      config.debugMode ?? false,       // 调试模式
       config.verboseLog ?? false       // 详细日志模式
     )
 
