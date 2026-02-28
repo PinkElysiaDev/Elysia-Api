@@ -13,15 +13,11 @@ export interface AccessToken {
 
 export type Capability = 'visionCapable' | 'toolsCapable' | 'structuredOutput'
 
-export interface ModelItem {
-  model: string
-}
-
 export interface ModelGroupConfig {
   id: string
   name: string
   enabled: boolean
-  models: ModelItem[]
+  models: string[]  // 改为直接存储模型 ID 的数组
   strategy: 'round-robin' | 'sequential' | 'random'
   maxRetries: number
   retryInterval: number
@@ -53,13 +49,9 @@ const modelGroupSchema = Schema.intersect([
     id: Schema.string().required().description('模型组 ID'),
     name: Schema.string().required().description('模型组名称'),
     enabled: Schema.boolean().default(true).description('模型组启用'),
-  }),
-
-  // 添加模型（table 类型）
-  Schema.object({
-    models: Schema.array(Schema.object({
-      model: Schema.dynamic('elysia-api-orchestrator.models'),
-    })).description('添加模型').default([]),
+    models: Schema.dynamic('elysia-api-orchestrator.models')
+      .description('选择模型')
+      .default([]),
   }),
 
   // 轮询策略
@@ -218,30 +210,31 @@ export const ConfigSchema: Schema<Config> = Schema.intersect([
 export const name = 'elysia-api-orchestrator'
 
 /**
- * 更新动态模型列表的 Schema
- * 参考 mbc-satori-ai-charon 的 updateBotIdOptions 模式
+ * 更新动态模型列表的 Schema（复选框形式）
+ * 参考 multi-bot-controller 的指令过滤器模式
  *
  * @param ctx - Koishi context
  * @param models - 模型列表
  */
 export function updateModelSchema(ctx: Context, models: Model[]) {
-  // 占位符始终放在最前面，作为默认选项
-  const placeholder = Schema.const('').description('无')
-
   if (models.length === 0) {
-    ctx.schema.set('elysia-api-orchestrator.models', Schema.union([placeholder]))
+    ctx.schema.set('elysia-api-orchestrator.models', Schema.array(Schema.union([
+      Schema.const('').description('暂无可用模型'),
+    ])).default([]).description('可用模型列表（暂无可用模型）'))
     return
   }
 
-  const options = [
-    placeholder,
-    ...models.map(m => {
-      // 统一格式：[源名称] 模型名称
-      const sourcePrefix = m.sourceName ?? '未知来源'
-      const displayName = `[${sourcePrefix}] ${m.name}`
-      return Schema.const(m.id).description(displayName)
-    })
-  ]
+  // 创建 union schema，每个模型作为一个选项
+  const unionSchema = Schema.union(models.map(m => {
+    // 统一格式：[源名称] 模型名称
+    const sourcePrefix = m.sourceName ?? '未知来源'
+    const displayName = `[${sourcePrefix}] ${m.name}`
+    return Schema.const(m.id).description(displayName)
+  }))
 
-  ctx.schema.set('elysia-api-orchestrator.models', Schema.union(options))
+  // 使用 Schema.array + role('select') 实现复选框
+  ctx.schema.set('elysia-api-orchestrator.models', Schema.array(unionSchema)
+    .default([])
+    .description(`可用模型列表（共 ${models.length} 个可用模型）`)
+    .role('select'))
 }

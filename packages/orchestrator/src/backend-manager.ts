@@ -247,6 +247,13 @@ export class BackendManager {
     const models = this.ctx['elysia-api-aggregator']?.getAll() ?? []
     const modelMap = new Map(models.map(m => [m.id, m]))
 
+    if (this.debugMode || this.verboseLog) {
+      this.ctx.logger.info(`[writeConfig] Aggregator 提供了 ${models.length} 个模型`)
+      for (const m of models) {
+        this.ctx.logger.info(`[writeConfig] 可用模型: id="${m.id}", name="${m.name}"`)
+      }
+    }
+
     // 将 tokens dict 转换为数组（供后端使用）
     const tokensArray = Object.entries(this.tokens).map(([name, token]) => ({
       name,
@@ -264,10 +271,23 @@ export class BackendManager {
       modelGroups: this.modelGroups
         .filter(g => g.enabled)
         .map(group => {
-          // models 现在是 ModelItem[]，需要提取 model 字段
+          // models 现在是 string[]（模型 ID 数组）
           // 添加防御性检查：如果 models 未定义，使用空数组
-          const groupModels = (group.models || [])
-            .map(item => modelMap.get(item.model))
+          const configuredModelIds = group.models || []
+
+          if (this.debugMode || this.verboseLog) {
+            this.ctx.logger.info(`[writeConfig] 模型组 "${group.name}" 配置了 ${configuredModelIds.length} 个模型`)
+            this.ctx.logger.info(`[writeConfig] 配置的模型 ID: ${JSON.stringify(configuredModelIds)}`)
+          }
+
+          const groupModels = configuredModelIds
+            .map(modelId => {
+              const model = modelMap.get(modelId)
+              if (this.debugMode && !model) {
+                this.ctx.logger.warn(`[writeConfig] 模型 ID "${modelId}" 在 aggregator 中未找到`)
+              }
+              return model
+            })
             .filter((m): m is Model => m !== undefined)
             .map(m => ({
               id: m.id,
@@ -276,6 +296,10 @@ export class BackendManager {
               apiKey: m.apiKey,
               platform: m.platform,
             }))
+
+          if (this.debugMode || this.verboseLog) {
+            this.ctx.logger.info(`[writeConfig] 模型组 "${group.name}" 匹配到 ${groupModels.length} 个有效模型`)
+          }
 
           // 将 capabilities 转换为布尔字段
           const capabilityBooleans = this.capabilitiesToBooleans(group.capabilities)
