@@ -122,6 +122,16 @@ export function apply(ctx: Context, config: Config) {
 
     updateModels()  // 更新动态 schema
     initializeBackend()  // 确保后端已初始化
+    backend?.updateRuntimeConfig(
+      config.server,
+      config.tokens,
+      config.modelGroups,
+      config.heartbeatInterval ?? 60,
+      config.heartbeatTimeout ?? 300,
+      config.httpTimeout ?? 120,
+      config.debugMode ?? false,
+      config.verboseLog ?? false
+    )
     backend?.reloadConfig()  // 只更新配置文件，不重启
   })
 
@@ -144,7 +154,17 @@ export function apply(ctx: Context, config: Config) {
 
   // Reload on config change
   ctx.on('config', () => {
-    // 更新现有 backend 实例的配置
+    // 更新现有 backend 实例的配置（关键：同步内存态字段）
+    backend?.updateRuntimeConfig(
+      config.server,
+      config.tokens,
+      config.modelGroups,
+      config.heartbeatInterval ?? 60,
+      config.heartbeatTimeout ?? 300,
+      config.httpTimeout ?? 120,
+      config.debugMode ?? false,
+      config.verboseLog ?? false
+    )
     backend?.reloadConfig()
   })
 
