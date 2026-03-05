@@ -1,9 +1,12 @@
 package relay
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
+	"time"
 )
 
 // Platform 平台类型
@@ -59,11 +62,11 @@ func DetectPlatform(baseURL, platform string) Platform {
 type FormatType string
 
 const (
-	FormatOpenAI    FormatType = "openai"
-	FormatDeepSeek  FormatType = "deepseek"
-	FormatGemini    FormatType = "gemini"
-	FormatClaude    FormatType = "claude"
-	FormatUnknown   FormatType = "unknown"
+	FormatOpenAI   FormatType = "openai"
+	FormatDeepSeek FormatType = "deepseek"
+	FormatGemini   FormatType = "gemini"
+	FormatClaude   FormatType = "claude"
+	FormatUnknown  FormatType = "unknown"
 )
 
 // DetectInputFormat 检测输入请求的格式
@@ -93,46 +96,46 @@ func DetectInputFormat(body []byte) FormatType {
 // 这是所有格式的"全集"，包含所有可能的字段
 type UnifiedRequest struct {
 	// 基础字段
-	Model               string               `json:"model"`
-	Messages            []UnifiedMessage    `json:"messages"`
-	MaxTokens           int                  `json:"max_tokens,omitempty"`
-	MaxCompletionTokens int                  `json:"max_completion_tokens,omitempty"`
-	Temperature         *float64             `json:"temperature,omitempty"`
-	TopP                *float64             `json:"top_p,omitempty"`
-	TopK                int                  `json:"top_k,omitempty"`
-	N                   int                  `json:"n,omitempty"`
-	Stream              bool                 `json:"stream,omitempty"`
-	StreamOptions       *StreamOptions       `json:"stream_options,omitempty"`
-	Stop                interface{}          `json:"stop,omitempty"`
+	Model               string           `json:"model"`
+	Messages            []UnifiedMessage `json:"messages"`
+	MaxTokens           int              `json:"max_tokens,omitempty"`
+	MaxCompletionTokens int              `json:"max_completion_tokens,omitempty"`
+	Temperature         *float64         `json:"temperature,omitempty"`
+	TopP                *float64         `json:"top_p,omitempty"`
+	TopK                int              `json:"top_k,omitempty"`
+	N                   int              `json:"n,omitempty"`
+	Stream              bool             `json:"stream,omitempty"`
+	StreamOptions       *StreamOptions   `json:"stream_options,omitempty"`
+	Stop                interface{}      `json:"stop,omitempty"`
 
 	// 惩罚参数
-	PresencePenalty     *float64             `json:"presence_penalty,omitempty"`
-	FrequencyPenalty    *float64             `json:"frequency_penalty,omitempty"`
+	PresencePenalty  *float64 `json:"presence_penalty,omitempty"`
+	FrequencyPenalty *float64 `json:"frequency_penalty,omitempty"`
 
 	// 思考模式相关 (OpenAI/Claude/Gemini)
-	ReasoningEffort     string               `json:"reasoning_effort,omitempty"`
-	ThinkingConfig      *ThinkingConfig      `json:"thinking_config,omitempty"`
+	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
+	ThinkingConfig  *ThinkingConfig `json:"thinking_config,omitempty"`
 
 	// 工具调用
-	Tools               []Tool               `json:"tools,omitempty"`
-	ToolChoice          interface{}          `json:"tool_choice,omitempty"`
-	ParallelToolCalls   bool                 `json:"parallel_tool_calls,omitempty"`
+	Tools             []Tool      `json:"tools,omitempty"`
+	ToolChoice        interface{} `json:"tool_choice,omitempty"`
+	ParallelToolCalls bool        `json:"parallel_tool_calls,omitempty"`
 
 	// 响应格式
-	ResponseFormat      *ResponseFormat      `json:"response_format,omitempty"`
+	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
 
 	// 其他常用字段
-	User                string               `json:"user,omitempty"`
-	Seed                float64              `json:"seed,omitempty"`
-	LogProbs            bool                 `json:"logprobs,omitempty"`
-	TopLogProbs         int                  `json:"top_logprobs,omitempty"`
+	User        string  `json:"user,omitempty"`
+	Seed        float64 `json:"seed,omitempty"`
+	LogProbs    bool    `json:"logprobs,omitempty"`
+	TopLogProbs int     `json:"top_logprobs,omitempty"`
 
 	// SiliconFlow / 其他提供商特定字段
-	PromptCacheKey      string               `json:"prompt_cache_key,omitempty"`
-	PromptCacheRetention json.RawMessage      `json:"prompt_cache_retention,omitempty"`
+	PromptCacheKey       string          `json:"prompt_cache_key,omitempty"`
+	PromptCacheRetention json.RawMessage `json:"prompt_cache_retention,omitempty"`
 
 	// 预留扩展字段（使用 json.RawMessage 保留原始 JSON）
-	ExtraFields         map[string]json.RawMessage `json:"-"`
+	ExtraFields map[string]json.RawMessage `json:"-"`
 }
 
 type UnifiedMessage struct {
@@ -145,17 +148,19 @@ type ThinkingConfig struct {
 	Effort  string `json:"effort,omitempty"` // "low" | "medium" | "high"
 }
 
-// ConvertToUnified 将任意格式的请求转换为统一格式
-func ConvertToUnified(body []byte) (*UnifiedRequest, error) {
-	format := DetectInputFormat(body)
+// ConvertToUnified 将任意格式的请求转换为统一格式。
+// hint 为路径推断的格式，FormatUnknown 时回退到字段检测。
+func ConvertToUnified(body []byte, hint FormatType) (*UnifiedRequest, error) {
+	format := hint
+	if format == FormatUnknown {
+		format = DetectInputFormat(body)
+	}
 
 	switch format {
 	case FormatGemini:
 		return GeminiToUnified(body)
 	case FormatClaude:
 		return ClaudeToUnified(body)
-	case FormatOpenAI, FormatDeepSeek, FormatUnknown:
-		return OpenAIToUnified(body)
 	default:
 		return OpenAIToUnified(body)
 	}
@@ -169,7 +174,7 @@ func OpenAIToUnified(body []byte) (*UnifiedRequest, error) {
 	}
 
 	unified := &UnifiedRequest{
-		Model: reqString(req, "model"),
+		Model:  reqString(req, "model"),
 		Stream: reqBool(req, "stream"),
 	}
 
@@ -248,7 +253,7 @@ func OpenAIToUnified(body []byte) (*UnifiedRequest, error) {
 						unified.Tools = append(unified.Tools, Tool{
 							Type: "function",
 							Function: FunctionDefinition{
-								Name:       reqString(funcMap, "name"),
+								Name:        reqString(funcMap, "name"),
 								Description: reqString(funcMap, "description"),
 								Parameters:  params,
 							},
@@ -289,8 +294,8 @@ func reqBool(m map[string]interface{}, key string) bool {
 // GeminiToUnified 将 Gemini 格式转换为统一格式
 func GeminiToUnified(body []byte) (*UnifiedRequest, error) {
 	var geminiReq struct {
-		Model         string `json:"model"`
-		Contents      []GeminiContent `json:"contents"`
+		Model            string          `json:"model"`
+		Contents         []GeminiContent `json:"contents"`
 		GenerationConfig struct {
 			Temperature float64 `json:"temperature,omitempty"`
 			MaxTokens   int     `json:"maxOutputTokens,omitempty"`
@@ -381,16 +386,16 @@ func ClaudeToUnified(body []byte) (*UnifiedRequest, error) {
 		Model     string `json:"model"`
 		MaxTokens int    `json:"max_tokens"`
 		Messages  []struct {
-			Role    string `json:"role"`
+			Role    string      `json:"role"`
 			Content interface{} `json:"content"`
 		} `json:"messages"`
-		System          string  `json:"system,omitempty"`
-		Temperature     float64 `json:"temperature,omitempty"`
-		TopP            float64 `json:"top_p,omitempty"`
-		Stream          bool    `json:"stream,omitempty"`
+		System          interface{} `json:"system,omitempty"`
+		Temperature     float64     `json:"temperature,omitempty"`
+		TopP            float64     `json:"top_p,omitempty"`
+		Stream          bool        `json:"stream,omitempty"`
 		Stop            interface{} `json:"stop,omitempty"`
-		ThinkingEnabled *bool   `json:"thinking_enabled,omitempty"`
-		ThinkingBudget  int     `json:"thinking_budget,omitempty"`
+		ThinkingEnabled *bool       `json:"thinking_enabled,omitempty"`
+		ThinkingBudget  int         `json:"thinking_budget,omitempty"`
 		Tools           []struct {
 			Name        string                 `json:"name"`
 			Description string                 `json:"description,omitempty"`
@@ -425,11 +430,11 @@ func ClaudeToUnified(body []byte) (*UnifiedRequest, error) {
 		})
 	}
 
-	// 如果有 system 消息，添加到开头
-	if claudeReq.System != "" {
+	// 如果有 system 消息，添加到开头（兼容 string / content blocks）
+	if systemText := extractClaudeSystemText(claudeReq.System); systemText != "" {
 		systemMsg := UnifiedMessage{
 			Role:    "system",
-			Content: claudeReq.System,
+			Content: systemText,
 		}
 		unified.Messages = append([]UnifiedMessage{systemMsg}, unified.Messages...)
 	}
@@ -467,15 +472,15 @@ func ClaudeToUnified(body []byte) (*UnifiedRequest, error) {
 
 // Types for Gemini
 type GeminiContent struct {
-	Role  string        `json:"role"`
-	Parts []GeminiPart  `json:"parts"`
+	Role  string       `json:"role"`
+	Parts []GeminiPart `json:"parts"`
 }
 
 type GeminiPart struct {
-	Text            string              `json:"text,omitempty"`
+	Text             string                `json:"text,omitempty"`
 	ExecutableCode   *GeminiExecutableCode `json:"executableCode,omitempty"`
-	FunctionCall     interface{}         `json:"functionCall,omitempty"`
-	FunctionResponse interface{}         `json:"functionResponse,omitempty"`
+	FunctionCall     interface{}           `json:"functionCall,omitempty"`
+	FunctionResponse interface{}           `json:"functionResponse,omitempty"`
 }
 
 type GeminiExecutableCode struct {
@@ -554,7 +559,7 @@ func UnifiedToDeepSeek(unified *UnifiedRequest) ([]byte, error) {
 	for i, msg := range unified.Messages {
 		messages[i] = map[string]interface{}{
 			"role":    msg.Role,
-			"content": normalizeContentForDeepSeek(msg.Content),
+			"content": extractTextFromContent(msg.Content),
 		}
 	}
 	result["messages"] = messages
@@ -591,9 +596,36 @@ func UnifiedToClaude(unified *UnifiedRequest) ([]byte, error) {
 	result := make(map[string]interface{})
 
 	result["model"] = unified.Model
-	result["messages"] = unified.Messages
+
+	// 提取 system 消息到顶层，Claude 不接受 messages 中的 system role
+	var systemText string
+	var filteredMessages []UnifiedMessage
+	for _, msg := range unified.Messages {
+		if msg.Role == "system" {
+			if s, ok := msg.Content.(string); ok {
+				if systemText == "" {
+					systemText = s
+				} else {
+					systemText += "\n" + s
+				}
+			}
+		} else {
+			filteredMessages = append(filteredMessages, msg)
+		}
+	}
+	if systemText != "" {
+		result["system"] = systemText
+	}
+	if filteredMessages != nil {
+		result["messages"] = filteredMessages
+	} else {
+		result["messages"] = []UnifiedMessage{}
+	}
+
 	if unified.MaxTokens > 0 {
 		result["max_tokens"] = unified.MaxTokens
+	} else {
+		result["max_tokens"] = 65536 // Claude 要求必须有 max_tokens，默认 64K
 	}
 
 	if unified.Temperature != nil {
@@ -606,20 +638,38 @@ func UnifiedToClaude(unified *UnifiedRequest) ([]byte, error) {
 		result["stream"] = unified.Stream
 	}
 	if unified.Stop != nil {
-		result["stop"] = unified.Stop
+		result["stop_sequences"] = unified.Stop
 	}
 
-	// Claude 思考模式
+	// Claude 思考模式：使用真实的 thinking 对象格式
+	// https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
 	if unified.ThinkingConfig != nil && unified.ThinkingConfig.Enabled {
-		enabled := true
-		result["thinking_enabled"] = &enabled
 		budget := 10000
 		if unified.ThinkingConfig.Effort == "low" {
-			budget = 1000
+			budget = 1280
 		} else if unified.ThinkingConfig.Effort == "high" {
 			budget = 20000
 		}
-		result["thinking_budget"] = budget
+		result["thinking"] = map[string]interface{}{
+			"type":          "enabled",
+			"budget_tokens": budget,
+		}
+		// 启用 thinking 时必须 temperature=1, 不能设置 top_p
+		result["temperature"] = 1.0
+		delete(result, "top_p")
+	}
+
+	// Claude 工具转换：OpenAI function.parameters → Claude input_schema
+	if len(unified.Tools) > 0 {
+		claudeTools := make([]map[string]interface{}, 0, len(unified.Tools))
+		for _, tool := range unified.Tools {
+			claudeTools = append(claudeTools, map[string]interface{}{
+				"name":         tool.Function.Name,
+				"description":  tool.Function.Description,
+				"input_schema": tool.Function.Parameters,
+			})
+		}
+		result["tools"] = claudeTools
 	}
 
 	return json.Marshal(result)
@@ -638,8 +688,8 @@ func UnifiedToGemini(unified *UnifiedRequest) ([]byte, error) {
 	}
 
 	type GeminiRequest struct {
-		Contents          []GeminiContent `json:"contents"`
-		GenerationConfig  *struct {
+		Contents         []GeminiContent `json:"contents"`
+		GenerationConfig *struct {
 			Temperature float64 `json:"temperature,omitempty"`
 			MaxTokens   int     `json:"maxOutputTokens,omitempty"`
 			TopP        float64 `json:"topP,omitempty"`
@@ -707,6 +757,26 @@ func UnifiedToGemini(unified *UnifiedRequest) ([]byte, error) {
 	return json.Marshal(req)
 }
 
+func extractClaudeSystemText(system interface{}) string {
+	if system == nil {
+		return ""
+	}
+
+	// Claude 传统格式：system 为字符串
+	if s, ok := system.(string); ok {
+		return s
+	}
+
+	// Claude 新格式：system 为 content block 数组
+	// 复用通用提取逻辑，支持 [{type:"text", text:"..."}]
+	if text := extractTextFromContent(system); text != "" {
+		return text
+	}
+
+	// 兜底
+	return fmt.Sprintf("%v", system)
+}
+
 // extractTextFromContent 从 content 中提取文本（支持多种格式）
 func extractTextFromContent(content interface{}) string {
 	if content == nil {
@@ -739,38 +809,6 @@ func extractTextFromContent(content interface{}) string {
 	return fmt.Sprintf("%v", content)
 }
 
-// normalizeContentForDeepSeek 将 content 转换为 DeepSeek 支持的格式
-func normalizeContentForDeepSeek(content interface{}) string {
-	if content == nil {
-		return ""
-	}
-
-	// 如果是字符串，直接返回
-	if str, ok := content.(string); ok {
-		return str
-	}
-
-	// 如果是数组，提取所有文本内容
-	if arr, ok := content.([]interface{}); ok {
-		var textBuilder strings.Builder
-		for _, item := range arr {
-			if itemMap, ok := item.(map[string]interface{}); ok {
-				if itemType, ok := itemMap["type"].(string); ok {
-					if itemType == "text" {
-						if text, ok := itemMap["text"].(string); ok {
-							textBuilder.WriteString(text)
-						}
-					}
-				}
-			}
-		}
-		return textBuilder.String()
-	}
-
-	// 其他情况，尝试转为字符串
-	return fmt.Sprintf("%v", content)
-}
-
 // MarshalUnifiedRequest 序列化统一请求为 JSON（用于日志）
 func MarshalUnifiedRequest(req *UnifiedRequest) ([]byte, error) {
 	return json.MarshalIndent(req, "", "  ")
@@ -779,4 +817,838 @@ func MarshalUnifiedRequest(req *UnifiedRequest) ([]byte, error) {
 // MarshalResponse 序列化响应为 JSON（用于日志）
 func MarshalResponse(resp *OpenAIResponse) ([]byte, error) {
 	return json.MarshalIndent(resp, "", "  ")
+}
+
+// ConvertClaudeStreamToOpenAI 将 Claude SSE 流转换为 OpenAI SSE 格式写入 writer
+func ConvertClaudeStreamToOpenAI(resp *http.Response, writer StreamResponseWriter) error {
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	toolCallIndex := -1
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if strings.HasPrefix(line, "event: ") {
+			continue
+		}
+
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		data := line[6:]
+		if data == "" {
+			continue
+		}
+
+		var event map[string]interface{}
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+
+		eventType, _ := event["type"].(string)
+
+		var chunk map[string]interface{}
+
+		switch eventType {
+		case "message_start":
+			chunk = map[string]interface{}{
+				"object":  "chat.completion.chunk",
+				"choices": []map[string]interface{}{{"index": 0, "delta": map[string]interface{}{"role": "assistant", "content": ""}, "finish_reason": nil}},
+			}
+
+		case "content_block_start":
+			cbRaw, _ := event["content_block"].(map[string]interface{})
+			if cbRaw == nil {
+				continue
+			}
+			cbType, _ := cbRaw["type"].(string)
+			if cbType == "tool_use" {
+				toolCallIndex++
+				toolID, _ := cbRaw["id"].(string)
+				toolName, _ := cbRaw["name"].(string)
+				chunk = map[string]interface{}{
+					"object": "chat.completion.chunk",
+					"choices": []map[string]interface{}{{
+						"index": 0,
+						"delta": map[string]interface{}{
+							"tool_calls": []map[string]interface{}{{
+								"index": toolCallIndex,
+								"id":    toolID,
+								"type":  "function",
+								"function": map[string]interface{}{
+									"name":      toolName,
+									"arguments": "",
+								},
+							}},
+						},
+						"finish_reason": nil,
+					}},
+				}
+			}
+
+		case "content_block_delta":
+			deltaRaw, _ := event["delta"].(map[string]interface{})
+			if deltaRaw == nil {
+				continue
+			}
+			deltaType, _ := deltaRaw["type"].(string)
+			switch deltaType {
+			case "text_delta":
+				text, _ := deltaRaw["text"].(string)
+				chunk = map[string]interface{}{
+					"object":  "chat.completion.chunk",
+					"choices": []map[string]interface{}{{"index": 0, "delta": map[string]interface{}{"content": text}, "finish_reason": nil}},
+				}
+			case "thinking_delta":
+				thinkingText, _ := deltaRaw["thinking"].(string)
+				chunk = map[string]interface{}{
+					"object":  "chat.completion.chunk",
+					"choices": []map[string]interface{}{{"index": 0, "delta": map[string]interface{}{"reasoning_content": thinkingText}, "finish_reason": nil}},
+				}
+			case "input_json_delta":
+				partialJSON, _ := deltaRaw["partial_json"].(string)
+				idx := toolCallIndex
+				if idx < 0 {
+					idx = 0
+				}
+				chunk = map[string]interface{}{
+					"object": "chat.completion.chunk",
+					"choices": []map[string]interface{}{{
+						"index": 0,
+						"delta": map[string]interface{}{
+							"tool_calls": []map[string]interface{}{{
+								"index":    idx,
+								"function": map[string]interface{}{"arguments": partialJSON},
+							}},
+						},
+						"finish_reason": nil,
+					}},
+				}
+			}
+
+		case "message_delta":
+			deltaRaw, _ := event["delta"].(map[string]interface{})
+			stopReason, _ := deltaRaw["stop_reason"].(string)
+			finishReason := claudeStopReasonToOpenAI(stopReason)
+			chunk = map[string]interface{}{
+				"object":  "chat.completion.chunk",
+				"choices": []map[string]interface{}{{"index": 0, "delta": map[string]interface{}{}, "finish_reason": finishReason}},
+			}
+
+		case "message_stop":
+			_, _ = writer.Write([]byte("data: [DONE]\n\n"))
+			_ = writer.Flush()
+			return nil
+		}
+
+		if chunk != nil {
+			chunkJSON, err := json.Marshal(chunk)
+			if err == nil {
+				_, _ = writer.Write([]byte("data: " + string(chunkJSON) + "\n\n"))
+				_ = writer.Flush()
+			}
+		}
+	}
+
+	return scanner.Err()
+}
+
+// ConvertOpenAIStreamToClaudeStream 将 OpenAI SSE 流转换为 Claude SSE 格式写入 writer
+func ConvertOpenAIStreamToClaudeStream(resp *http.Response, writer StreamResponseWriter, model string) error {
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
+	headerSent := false
+	outputTokens := 0
+
+	writeEvent := func(event, data string) {
+		_, _ = writer.WriteString("event: " + event + "\ndata: " + data + "\n\n")
+		_ = writer.Flush()
+	}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		data := line[6:]
+		if data == "[DONE]" {
+			break
+		}
+		if data == "" {
+			continue
+		}
+
+		var chunk map[string]interface{}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+
+		choices, _ := chunk["choices"].([]interface{})
+		if len(choices) == 0 {
+			continue
+		}
+		choice, _ := choices[0].(map[string]interface{})
+		if choice == nil {
+			continue
+		}
+		delta, _ := choice["delta"].(map[string]interface{})
+
+		if !headerSent {
+			headerSent = true
+			startMsg, _ := json.Marshal(map[string]interface{}{
+				"type": "message_start",
+				"message": map[string]interface{}{
+					"id": msgID, "type": "message", "role": "assistant",
+					"content": []interface{}{}, "model": model,
+					"stop_reason": nil, "stop_sequence": nil,
+					"usage": map[string]interface{}{"input_tokens": 0, "output_tokens": 0},
+				},
+			})
+			writeEvent("message_start", string(startMsg))
+
+			blockStart, _ := json.Marshal(map[string]interface{}{
+				"type": "content_block_start", "index": 0,
+				"content_block": map[string]interface{}{"type": "text", "text": ""},
+			})
+			writeEvent("content_block_start", string(blockStart))
+			writeEvent("ping", `{"type":"ping"}`)
+		}
+
+		if delta != nil {
+			if text, ok := delta["content"].(string); ok && text != "" {
+				outputTokens++
+				deltaMsg, _ := json.Marshal(map[string]interface{}{
+					"type": "content_block_delta", "index": 0,
+					"delta": map[string]interface{}{"type": "text_delta", "text": text},
+				})
+				writeEvent("content_block_delta", string(deltaMsg))
+			}
+		}
+
+		if finishReason, _ := choice["finish_reason"].(string); finishReason != "" {
+			stopReason := openAIFinishReasonToClaude(finishReason)
+			blockStop, _ := json.Marshal(map[string]interface{}{"type": "content_block_stop", "index": 0})
+			writeEvent("content_block_stop", string(blockStop))
+
+			msgDelta, _ := json.Marshal(map[string]interface{}{
+				"type":  "message_delta",
+				"delta": map[string]interface{}{"stop_reason": stopReason, "stop_sequence": nil},
+				"usage": map[string]interface{}{"output_tokens": outputTokens},
+			})
+			writeEvent("message_delta", string(msgDelta))
+			writeEvent("message_stop", `{"type":"message_stop"}`)
+			return nil
+		}
+	}
+
+	if headerSent {
+		blockStop, _ := json.Marshal(map[string]interface{}{"type": "content_block_stop", "index": 0})
+		writeEvent("content_block_stop", string(blockStop))
+		msgDelta, _ := json.Marshal(map[string]interface{}{
+			"type":  "message_delta",
+			"delta": map[string]interface{}{"stop_reason": "end_turn", "stop_sequence": nil},
+			"usage": map[string]interface{}{"output_tokens": outputTokens},
+		})
+		writeEvent("message_delta", string(msgDelta))
+		writeEvent("message_stop", `{"type":"message_stop"}`)
+	}
+
+	return scanner.Err()
+}
+
+// ForwardStreamRaw 直接逐行转发 SSE（不做格式转换，用于 Claude→Claude 直通）
+func ForwardStreamRaw(resp *http.Response, writer StreamResponseWriter) error {
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		_, _ = writer.WriteString(line + "\n")
+		if line == "" {
+			_ = writer.Flush()
+		}
+	}
+	return scanner.Err()
+}
+
+// ConvertOpenAIStreamToGeminiStream 将 OpenAI SSE 流转换为 Gemini SSE 格式写入 writer
+func ConvertOpenAIStreamToGeminiStream(resp *http.Response, writer StreamResponseWriter) error {
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	emittedCandidate := false
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		data := line[6:]
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+
+		var chunk map[string]interface{}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+
+		if usageRaw, ok := chunk["usage"].(map[string]interface{}); ok {
+			u := map[string]interface{}{
+				"promptTokenCount":     int(numberFromMap(usageRaw, "prompt_tokens")),
+				"candidatesTokenCount": int(numberFromMap(usageRaw, "completion_tokens")),
+				"totalTokenCount":      int(numberFromMap(usageRaw, "total_tokens")),
+			}
+			usageChunk := map[string]interface{}{
+				"usageMetadata": u,
+			}
+			if err := writeSSEData(writer, usageChunk); err != nil {
+				return err
+			}
+		}
+
+		choicesRaw, ok := chunk["choices"].([]interface{})
+		if !ok || len(choicesRaw) == 0 {
+			continue
+		}
+		choice, _ := choicesRaw[0].(map[string]interface{})
+		if choice == nil {
+			continue
+		}
+
+		if deltaRaw, ok := choice["delta"].(map[string]interface{}); ok {
+			parts := make([]map[string]interface{}, 0, 3)
+
+			if text, ok := deltaRaw["content"].(string); ok && text != "" {
+				parts = append(parts, map[string]interface{}{"text": text})
+			}
+
+			if reasoning, ok := deltaRaw["reasoning_content"].(string); ok && reasoning != "" {
+				parts = append(parts, map[string]interface{}{
+					"text":    reasoning,
+					"thought": true,
+				})
+			}
+
+			if toolCalls, ok := deltaRaw["tool_calls"].([]interface{}); ok {
+				for _, tc := range toolCalls {
+					tcMap, _ := tc.(map[string]interface{})
+					if tcMap == nil {
+						continue
+					}
+					funcMap, _ := tcMap["function"].(map[string]interface{})
+					if funcMap == nil {
+						continue
+					}
+
+					name, _ := funcMap["name"].(string)
+					argsRaw := funcMap["arguments"]
+					if argsRaw == nil {
+						argsRaw = map[string]interface{}{}
+					}
+
+					parsedArgs := argsRaw
+					if argStr, ok := argsRaw.(string); ok {
+						if argStr == "" {
+							parsedArgs = map[string]interface{}{}
+						} else {
+							var parsedObj interface{}
+							if err := json.Unmarshal([]byte(argStr), &parsedObj); err == nil {
+								parsedArgs = parsedObj
+							} else {
+								parsedArgs = map[string]interface{}{
+									"__raw_arguments": argStr,
+								}
+							}
+						}
+					}
+
+					part := map[string]interface{}{
+						"functionCall": map[string]interface{}{
+							"name": name,
+							"args": parsedArgs,
+						},
+					}
+					parts = append(parts, part)
+				}
+			}
+
+			if len(parts) > 0 {
+				geminiChunk := map[string]interface{}{
+					"candidates": []map[string]interface{}{
+						{
+							"content": map[string]interface{}{
+								"role":  "model",
+								"parts": parts,
+							},
+						},
+					},
+				}
+				if err := writeSSEData(writer, geminiChunk); err != nil {
+					return err
+				}
+				emittedCandidate = true
+			}
+		}
+
+		if finishReason, ok := choice["finish_reason"].(string); ok && finishReason != "" {
+			endCandidate := map[string]interface{}{
+				"finishReason": openAIFinishReasonToGemini(finishReason),
+			}
+
+			if !emittedCandidate {
+				endCandidate["content"] = map[string]interface{}{
+					"role": "model",
+					"parts": []map[string]interface{}{
+						{"text": ""},
+					},
+				}
+			}
+
+			endChunk := map[string]interface{}{
+				"candidates": []map[string]interface{}{endCandidate},
+			}
+			if err := writeSSEData(writer, endChunk); err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+
+	return scanner.Err()
+}
+
+// ConvertClaudeStreamToGeminiStream 将 Claude SSE 流转换为 Gemini SSE 格式写入 writer
+func ConvertClaudeStreamToGeminiStream(resp *http.Response, writer StreamResponseWriter) error {
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		data := line[6:]
+		if data == "" {
+			continue
+		}
+
+		var event map[string]interface{}
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+
+		eventType, _ := event["type"].(string)
+
+		switch eventType {
+		case "content_block_delta":
+			deltaRaw, _ := event["delta"].(map[string]interface{})
+			if deltaRaw == nil {
+				continue
+			}
+			deltaType, _ := deltaRaw["type"].(string)
+			if deltaType != "text_delta" {
+				continue
+			}
+			text, _ := deltaRaw["text"].(string)
+			if text == "" {
+				continue
+			}
+
+			geminiChunk := map[string]interface{}{
+				"candidates": []map[string]interface{}{
+					{
+						"content": map[string]interface{}{
+							"role": "model",
+							"parts": []map[string]interface{}{
+								{"text": text},
+							},
+						},
+					},
+				},
+			}
+			if err := writeSSEData(writer, geminiChunk); err != nil {
+				return err
+			}
+
+		case "message_delta":
+			deltaRaw, _ := event["delta"].(map[string]interface{})
+			stopReason, _ := deltaRaw["stop_reason"].(string)
+			finishReason := geminiFinishReasonFromClaudeStopReason(stopReason)
+
+			endChunk := map[string]interface{}{
+				"candidates": []map[string]interface{}{
+					{
+						"finishReason": finishReason,
+					},
+				},
+			}
+			if err := writeSSEData(writer, endChunk); err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+
+	return scanner.Err()
+}
+
+func geminiFinishReasonFromClaudeStopReason(stopReason string) string {
+	switch stopReason {
+	case "max_tokens":
+		return "MAX_TOKENS"
+	default:
+		return "STOP"
+	}
+}
+
+func writeSSEData(writer StreamResponseWriter, payload interface{}) error {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	if _, err := writer.Write([]byte("data: " + string(b) + "\n\n")); err != nil {
+		return err
+	}
+	return writer.Flush()
+}
+
+func numberFromMap(m map[string]interface{}, key string) float64 {
+	v, ok := m[key]
+	if !ok || v == nil {
+		return 0
+	}
+	switch n := v.(type) {
+	case float64:
+		return n
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	}
+	return 0
+}
+
+func geminiFinishReasonToClaudeStopReason(reason string) string {
+	switch reason {
+	case "MAX_TOKENS":
+		return "max_tokens"
+	default:
+		return "end_turn"
+	}
+}
+
+// ConvertGeminiStreamToClaudeStream 将 Gemini SSE 流转换为 Claude SSE 格式写入 writer
+func ConvertGeminiStreamToClaudeStream(resp *http.Response, writer StreamResponseWriter, model string) error {
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
+	headerSent := false
+	inputTokens := 0
+	outputTokens := 0
+
+	writeEvent := func(event, data string) {
+		_, _ = writer.WriteString("event: " + event + "\ndata: " + data + "\n\n")
+		_ = writer.Flush()
+	}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		data := line[6:]
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+
+		var chunk GeminiResponse
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+
+		if chunk.UsageMetadata.PromptTokenCount > 0 {
+			inputTokens = chunk.UsageMetadata.PromptTokenCount
+		}
+		if chunk.UsageMetadata.CandidatesTokenCount > 0 {
+			outputTokens = chunk.UsageMetadata.CandidatesTokenCount
+		}
+
+		for _, cand := range chunk.Candidates {
+			for _, part := range cand.Content.Parts {
+				if part.Text == "" {
+					continue
+				}
+
+				if !headerSent {
+					headerSent = true
+					startMsg, _ := json.Marshal(map[string]interface{}{
+						"type": "message_start",
+						"message": map[string]interface{}{
+							"id": msgID, "type": "message", "role": "assistant",
+							"content": []interface{}{}, "model": model,
+							"stop_reason": nil, "stop_sequence": nil,
+							"usage": map[string]interface{}{"input_tokens": inputTokens, "output_tokens": 0},
+						},
+					})
+					writeEvent("message_start", string(startMsg))
+
+					blockStart, _ := json.Marshal(map[string]interface{}{
+						"type": "content_block_start", "index": 0,
+						"content_block": map[string]interface{}{"type": "text", "text": ""},
+					})
+					writeEvent("content_block_start", string(blockStart))
+				}
+
+				deltaMsg, _ := json.Marshal(map[string]interface{}{
+					"type": "content_block_delta", "index": 0,
+					"delta": map[string]interface{}{"type": "text_delta", "text": part.Text},
+				})
+				writeEvent("content_block_delta", string(deltaMsg))
+			}
+
+			if cand.FinishReason != "" {
+				if !headerSent {
+					headerSent = true
+					startMsg, _ := json.Marshal(map[string]interface{}{
+						"type": "message_start",
+						"message": map[string]interface{}{
+							"id": msgID, "type": "message", "role": "assistant",
+							"content": []interface{}{}, "model": model,
+							"stop_reason": nil, "stop_sequence": nil,
+							"usage": map[string]interface{}{"input_tokens": inputTokens, "output_tokens": 0},
+						},
+					})
+					writeEvent("message_start", string(startMsg))
+
+					blockStart, _ := json.Marshal(map[string]interface{}{
+						"type": "content_block_start", "index": 0,
+						"content_block": map[string]interface{}{"type": "text", "text": ""},
+					})
+					writeEvent("content_block_start", string(blockStart))
+				}
+
+				blockStop, _ := json.Marshal(map[string]interface{}{"type": "content_block_stop", "index": 0})
+				writeEvent("content_block_stop", string(blockStop))
+
+				msgDelta, _ := json.Marshal(map[string]interface{}{
+					"type": "message_delta",
+					"delta": map[string]interface{}{
+						"stop_reason":   geminiFinishReasonToClaudeStopReason(cand.FinishReason),
+						"stop_sequence": nil,
+					},
+					"usage": map[string]interface{}{"output_tokens": outputTokens},
+				})
+				writeEvent("message_delta", string(msgDelta))
+				writeEvent("message_stop", `{"type":"message_stop"}`)
+				return nil
+			}
+		}
+	}
+
+	if headerSent {
+		blockStop, _ := json.Marshal(map[string]interface{}{"type": "content_block_stop", "index": 0})
+		writeEvent("content_block_stop", string(blockStop))
+		msgDelta, _ := json.Marshal(map[string]interface{}{
+			"type": "message_delta",
+			"delta": map[string]interface{}{
+				"stop_reason":   "end_turn",
+				"stop_sequence": nil,
+			},
+			"usage": map[string]interface{}{"output_tokens": outputTokens},
+		})
+		writeEvent("message_delta", string(msgDelta))
+		writeEvent("message_stop", `{"type":"message_stop"}`)
+	}
+
+	return scanner.Err()
+}
+
+// ConvertGeminiStreamToOpenAI 将 Gemini SSE 流转换为 OpenAI SSE 格式写入 writer
+func ConvertGeminiStreamToOpenAI(resp *http.Response, writer StreamResponseWriter) error {
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	sentRole := false
+	toolIndexByKey := map[string]int{}
+	nextToolIndex := 0
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		data := line[6:]
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+
+		var chunk map[string]interface{}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+
+		if usageRaw, ok := chunk["usageMetadata"].(map[string]interface{}); ok {
+			usageChunk := map[string]interface{}{
+				"object":  "chat.completion.chunk",
+				"choices": []interface{}{},
+				"usage": map[string]interface{}{
+					"prompt_tokens":     int(numberFromMap(usageRaw, "promptTokenCount")),
+					"completion_tokens": int(numberFromMap(usageRaw, "candidatesTokenCount")),
+					"total_tokens":      int(numberFromMap(usageRaw, "totalTokenCount")),
+				},
+			}
+			if err := writeSSEData(writer, usageChunk); err != nil {
+				return err
+			}
+		}
+
+		cands, _ := chunk["candidates"].([]interface{})
+		for _, c := range cands {
+			cand, _ := c.(map[string]interface{})
+			if cand == nil {
+				continue
+			}
+
+			if !sentRole {
+				roleChunk := map[string]interface{}{
+					"object": "chat.completion.chunk",
+					"choices": []map[string]interface{}{{
+						"index":         0,
+						"delta":         map[string]interface{}{"role": "assistant"},
+						"finish_reason": nil,
+					}},
+				}
+				if err := writeSSEData(writer, roleChunk); err != nil {
+					return err
+				}
+				sentRole = true
+			}
+
+			contentRaw, _ := cand["content"].(map[string]interface{})
+			partsRaw, _ := contentRaw["parts"].([]interface{})
+
+			for _, p := range partsRaw {
+				part, _ := p.(map[string]interface{})
+				if part == nil {
+					continue
+				}
+
+				if text, ok := part["text"].(string); ok && text != "" {
+					delta := map[string]interface{}{}
+					if thought, _ := part["thought"].(bool); thought {
+						delta["reasoning_content"] = text
+					} else {
+						delta["content"] = text
+					}
+
+					out := map[string]interface{}{
+						"object": "chat.completion.chunk",
+						"choices": []map[string]interface{}{{
+							"index":         0,
+							"delta":         delta,
+							"finish_reason": nil,
+						}},
+					}
+					if err := writeSSEData(writer, out); err != nil {
+						return err
+					}
+				}
+
+				if fcRaw, ok := part["functionCall"].(map[string]interface{}); ok {
+					name, _ := fcRaw["name"].(string)
+					key := name
+					if key == "" {
+						key = fmt.Sprintf("tool_%d", nextToolIndex)
+					}
+
+					index, exists := toolIndexByKey[key]
+					if !exists {
+						index = nextToolIndex
+						nextToolIndex++
+						toolIndexByKey[key] = index
+					}
+
+					args := fcRaw["args"]
+					argsJSON := "{}"
+					if args != nil {
+						if b, err := json.Marshal(args); err == nil {
+							argsJSON = string(b)
+						}
+					}
+
+					out := map[string]interface{}{
+						"object": "chat.completion.chunk",
+						"choices": []map[string]interface{}{{
+							"index": 0,
+							"delta": map[string]interface{}{
+								"tool_calls": []map[string]interface{}{{
+									"index": index,
+									"id":    fmt.Sprintf("call_%d", index),
+									"type":  "function",
+									"function": map[string]interface{}{
+										"name":      name,
+										"arguments": argsJSON,
+									},
+								}},
+							},
+							"finish_reason": nil,
+						}},
+					}
+					if err := writeSSEData(writer, out); err != nil {
+						return err
+					}
+				}
+			}
+
+			if finishReason, ok := cand["finishReason"].(string); ok && finishReason != "" {
+				out := map[string]interface{}{
+					"object": "chat.completion.chunk",
+					"choices": []map[string]interface{}{{
+						"index":         0,
+						"delta":         map[string]interface{}{},
+						"finish_reason": geminiFinishReasonToOpenAI(finishReason),
+					}},
+				}
+				if err := writeSSEData(writer, out); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	_, _ = writer.Write([]byte("data: [DONE]\n\n"))
+	_ = writer.Flush()
+	return scanner.Err()
 }

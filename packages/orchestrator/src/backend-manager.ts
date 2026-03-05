@@ -62,6 +62,30 @@ export class BackendManager {
   }
 
   /**
+   * 更新运行时配置（不重启进程），供 reloadConfig 写入最新配置文件使用
+   */
+  updateRuntimeConfig(
+    serverConfig: ServerConfig,
+    tokens: Record<string, AccessToken>,
+    modelGroups: ModelGroupConfig[],
+    heartbeatIntervalSec: number = this.heartbeatIntervalSec,
+    heartbeatTimeoutSec: number = this.heartbeatTimeoutSec,
+    httpTimeout: number = this.httpTimeout,
+    debugMode: boolean = this.debugMode,
+    verboseLog: boolean = this.verboseLog,
+  ) {
+    this.serverConfig = serverConfig
+    this.tokens = tokens
+    this.modelGroups = modelGroups
+    this.heartbeatIntervalSec = heartbeatIntervalSec
+    this.heartbeatTimeoutSec = heartbeatTimeoutSec
+    this.httpTimeout = httpTimeout
+    this.debugMode = debugMode
+    this.verboseLog = verboseLog
+    this.heartbeatUrl = `http://${serverConfig.host}:${serverConfig.port}/__heartbeat`
+  }
+
+  /**
    * 根据当前平台获取正确的二进制文件名
    */
   private getBinaryName(): string {
