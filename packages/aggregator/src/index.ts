@@ -91,40 +91,24 @@ export function apply(ctx: Context, config: Config) {
 
   // Initial model load
   async function loadModels() {
-    if (config.debugMode) {
-      ctx.logger.info('=== loadModels: Starting to load models ===')
-    } else {
-      ctx.logger.info('Loading models...')
-    }
+    const loadStartedAt = Date.now()
+    ctx.logger.info('Loading models...')
 
     // Fetch auto sources
     const fetchedModels: Model[] = []
     for (const source of config.autoFetchSources) {
       if (!source.enabled) continue
 
-      if (config.debugMode) {
-        ctx.logger.info(`loadModels: Fetching from ${source.name}`)
-      }
-
+      const sourceStartedAt = Date.now()
       const sourceModels = await fetcher.fetchModels(source)
       fetchedModels.push(...sourceModels)
 
-      if (config.debugMode) {
-        ctx.logger.info(`loadModels: Fetched ${sourceModels.length} models from ${source.name}`)
-      } else {
-        ctx.logger.info(`Fetched ${sourceModels.length} models from ${source.name}`)
-      }
+      const sourceCostMs = Date.now() - sourceStartedAt
+      ctx.logger.info(`[source] ${source.name}: ${sourceModels.length} models (${sourceCostMs}ms)`)
     }
 
     // Add manual models
-    if (config.debugMode) {
-      ctx.logger.info(`loadModels: Processing ${config.manualModels.length} manual models`)
-    }
-
     const manualModels: Model[] = config.manualModels.map(m => {
-      if (config.debugMode) {
-        ctx.logger.info(`loadModels: Adding manual model ${m.id}`)
-      }
       return {
         id: m.id,
         name: m.name,
@@ -151,19 +135,11 @@ export function apply(ctx: Context, config: Config) {
     // Update service (使用保存的 service 引用)
     service.updateModels(allModels)
 
-    if (config.debugMode) {
-      ctx.logger.info(`loadModels: Total models loaded: ${allModels.length}`)
-      ctx.logger.info(`loadModels: Model IDs: ${allModels.map(m => m.id).join(', ')}`)
-      ctx.logger.info(`loadModels: ctx.elysiaApi exists: ${ctx.elysiaApi != null}`)
-      ctx.logger.info(`loadModels: ctx.elysiaApi.models exists: ${ctx.elysiaApi?.models != null}`)
-    } else {
-      ctx.logger.info(`Total models loaded: ${allModels.length}`)
-    }
+    const totalCostMs = Date.now() - loadStartedAt
+    ctx.logger.info(`[source] manual: ${manualModels.length} models`)
+    ctx.logger.info(`Total models loaded: ${allModels.length} (${totalCostMs}ms)`)
 
     // Emit update event
-    if (config.debugMode) {
-      ctx.logger.info(`loadModels: Emitting elysia-api/models-updated event with ${allModels.length} models`)
-    }
     ctx.emit('elysia-api/models-updated', [...allModels])
   }
 

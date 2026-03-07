@@ -45,6 +45,20 @@ export class BackendManager {
   private heartbeatUrl: string
   private heartbeatTimeoutSec: number  // 后端心跳超时时间（秒）
 
+  private summarizeModelIds(modelIds: string[], limit = 12): string {
+    if (!modelIds.length) return 'none'
+    const head = modelIds.slice(0, limit).join(', ')
+    const remaining = modelIds.length - limit
+    return remaining > 0 ? `${head}, ... (+${remaining} more)` : head
+  }
+
+  private summarizeModelNames(models: Model[], limit = 12): string {
+    if (!models.length) return 'none'
+    const head = models.slice(0, limit).map(m => `${m.id}(${m.name})`).join(', ')
+    const remaining = models.length - limit
+    return remaining > 0 ? `${head}, ... (+${remaining} more)` : head
+  }
+
   constructor(
     private ctx: Context,
     private serverConfig: ServerConfig,
@@ -272,10 +286,9 @@ export class BackendManager {
     const modelMap = new Map(models.map(m => [m.id, m]))
 
     if (this.debugMode || this.verboseLog) {
-      this.ctx.logger.info(`[writeConfig] Aggregator 提供了 ${models.length} 个模型`)
-      for (const m of models) {
-        this.ctx.logger.info(`[writeConfig] 可用模型: id="${m.id}", name="${m.name}"`)
-      }
+      this.ctx.logger.info(
+        `[writeConfig] Aggregator 提供了 ${models.length} 个模型 | sample: ${this.summarizeModelNames(models)}`
+      )
     }
 
     // 将 tokens dict 转换为数组（供后端使用）
@@ -300,8 +313,9 @@ export class BackendManager {
           const configuredModelIds = group.models || []
 
           if (this.debugMode || this.verboseLog) {
-            this.ctx.logger.info(`[writeConfig] 模型组 "${group.name}" 配置了 ${configuredModelIds.length} 个模型`)
-            this.ctx.logger.info(`[writeConfig] 配置的模型 ID: ${JSON.stringify(configuredModelIds)}`)
+            this.ctx.logger.info(
+              `[writeConfig] 模型组 "${group.name}" 配置了 ${configuredModelIds.length} 个模型 | sample IDs: ${this.summarizeModelIds(configuredModelIds)}`
+            )
           }
 
           const groupModels = configuredModelIds

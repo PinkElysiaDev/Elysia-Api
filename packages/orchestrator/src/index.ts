@@ -23,6 +23,13 @@ export const usage = `---
 - \`elysia-api.backend.reload\` - 重载配置
 - \`elysia-api.models.list\` - 列出可用模型
 
+## 0.2.1 版本更新说明
+
+完善了 claude - gemini - openai 格式间的互相转化
+优化了日志逻辑，避免因大量日志导致 koishi 卡顿
+仍然存在未知 bug 导致 claude code 中长度很大的调用无法成功
+欢迎前往 github 主页提 issue
+
 ---
 
 `
@@ -54,6 +61,47 @@ export function apply(ctx: Context, config: Config) {
 
   let backend: BackendManager
   let backendInitialized = false
+  let lastModelsHash = ''
+  let lastRuntimeConfigHash = ''
+
+  const buildModelsHash = (models: Model[]) => {
+    const normalized = [...models]
+      .map(m => ({
+        id: m.id,
+        name: m.name,
+        platform: m.platform,
+        type: m.type,
+        maxTokens: m.maxTokens,
+        visionCapable: m.visionCapable,
+        toolsCapable: m.toolsCapable,
+        structuredOutput: m.structuredOutput,
+        thinkingMode: m.thinkingMode,
+        available: m.available,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id))
+
+    return JSON.stringify(normalized)
+  }
+
+  const buildRuntimeConfigHash = () => {
+    return JSON.stringify({
+      server: config.server,
+      tokens: config.tokens,
+      modelGroups: config.modelGroups,
+      heartbeatInterval: config.heartbeatInterval ?? 60,
+      heartbeatTimeout: config.heartbeatTimeout ?? 300,
+      httpTimeout: config.httpTimeout ?? 120,
+      debugMode: config.debugMode ?? false,
+      verboseLog: config.verboseLog ?? false,
+    })
+  }
+
+  const summarizeModels = (models: Model[], limit = 12) => {
+    if (!models.length) return 'none'
+    const head = models.slice(0, limit).map(m => m.id).join(', ')
+    const remaining = models.length - limit
+    return remaining > 0 ? `${head}, ... (+${remaining} more)` : head
+  }
 
   // 初始化后端（只执行一次）
   const initializeBackend = () => {
@@ -96,10 +144,9 @@ export function apply(ctx: Context, config: Config) {
     const models = ctx['elysia-api-aggregator']?.getAll() ?? []
 
     if (config.debugMode) {
-      ctx.logger.info(`updateModels: Retrieved ${models.length} models from aggregator`)
-      for (const model of models) {
-        ctx.logger.info(`updateModels: Model - id="${model.id}", name="${model.name}"`)
-      }
+      ctx.logger.info(
+        `updateModels: Retrieved ${models.length} models from aggregator | sample IDs: ${summarizeModels(models)}`
+      )
     }
 
     updateModelSchema(ctx, models)
@@ -114,6 +161,15 @@ export function apply(ctx: Context, config: Config) {
   // Listen for model updates from aggregator
   // 这个事件会在 aggregator 加载完模型后触发
   ctx.on('elysia-api/models-updated', (models) => {
+    const modelsHash = buildModelsHash(models)
+    if (modelsHash === lastModelsHash) {
+      if (config.debugMode) {
+        ctx.logger.info(`orchestrator: models-updated ignored (no effective model changes)`)
+      }
+      return
+    }
+    lastModelsHash = modelsHash
+
     if (config.debugMode) {
       ctx.logger.info(`=== orchestrator: elysia-api/models-updated event received ===`)
       ctx.logger.info(`orchestrator: Event contains ${models.length} models`)
@@ -121,7 +177,11 @@ export function apply(ctx: Context, config: Config) {
     ctx.logger.info(`Models updated: ${models.length} models available`)
 
     updateModels()  // 更新动态 schema
+
+    // 首次初始化时 backend.start() 内部会先 writeConfig()，无需再立即 reload，避免重复日志与重复写盘
+    const wasBackendInitialized = backendInitialized
     initializeBackend()  // 确保后端已初始化
+
     backend?.updateRuntimeConfig(
       config.server,
       config.tokens,
@@ -132,7 +192,12 @@ export function apply(ctx: Context, config: Config) {
       config.debugMode ?? false,
       config.verboseLog ?? false
     )
-    backend?.reloadConfig()  // 只更新配置文件，不重启
+
+    if (wasBackendInitialized) {
+      backend?.reloadConfig()  // 仅在已运行实例上热更新配置
+    } else if (config.debugMode) {
+      ctx.logger.info('orchestrator: skip immediate reload after first backend initialization')
+    }
   })
 
   // Wait for aggregator to be ready
@@ -154,6 +219,15 @@ export function apply(ctx: Context, config: Config) {
 
   // Reload on config change
   ctx.on('config', () => {
+    const runtimeConfigHash = buildRuntimeConfigHash()
+    if (runtimeConfigHash === lastRuntimeConfigHash) {
+      if (config.debugMode) {
+        ctx.logger.info('orchestrator: config event ignored (runtime config unchanged)')
+      }
+      return
+    }
+    lastRuntimeConfigHash = runtimeConfigHash
+
     // 更新现有 backend 实例的配置（关键：同步内存态字段）
     backend?.updateRuntimeConfig(
       config.server,
