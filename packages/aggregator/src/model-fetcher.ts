@@ -4,8 +4,6 @@ export class ModelFetcher {
   constructor(private ctx: import('koishi').Context) {}
 
   async fetchModels(source: AutoFetchSource): Promise<Model[]> {
-    this.ctx.logger.info(`Fetching models from ${source.name} (${source.platform})`)
-
     try {
       switch (source.platform) {
         case 'openai':
