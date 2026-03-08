@@ -27,6 +27,11 @@ export const usage = `---
 
 完善了 claude - gemini - openai 格式间的互相转化
 优化了日志逻辑，避免因大量日志导致 koishi 卡顿
+
+## 0.2.2 版本更新说明
+
+修复了插件重载逻辑。
+
 仍然存在未知 bug 导致 claude code 中长度很大的调用无法成功
 欢迎前往 github 主页提 issue
 

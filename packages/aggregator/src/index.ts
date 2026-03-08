@@ -89,71 +89,145 @@ export function apply(ctx: Context, config: Config) {
     },
   }
 
-  // Initial model load
-  async function loadModels() {
-    const loadStartedAt = Date.now()
-    ctx.logger.info('Loading models...')
+  let isLoading = false
+  let pendingReload = false
+  let lastModelsHash = ''
+  let lastConfigHash = ''
 
-    // Fetch auto sources
-    const fetchedModels: Model[] = []
-    for (const source of config.autoFetchSources) {
-      if (!source.enabled) continue
-
-      const sourceStartedAt = Date.now()
-      const sourceModels = await fetcher.fetchModels(source)
-      fetchedModels.push(...sourceModels)
-
-      const sourceCostMs = Date.now() - sourceStartedAt
-      ctx.logger.info(`[source] ${source.name}: ${sourceModels.length} models (${sourceCostMs}ms)`)
-    }
-
-    // Add manual models
-    const manualModels: Model[] = config.manualModels.map(m => {
-      return {
-        id: m.id,
-        name: m.name,
-        source: 'manual' as ModelSource,
-        sourceName: m.sourceName,
-        baseUrl: m.baseUrl,
-        apiKey: m.apiKey,
-        platform: m.platform,
-        // 使用默认值
-        type: 'llm' as ModelType,
-        maxTokens: 128000,
-        visionCapable: false,
-        toolsCapable: false,
-        structuredOutput: false,
-        thinkingMode: 'both' as const,
-        available: true,
-        lastChecked: new Date(),
-      }
+  const buildConfigHash = () => {
+    return JSON.stringify({
+      autoFetchSources: config.autoFetchSources,
+      manualModels: config.manualModels,
     })
-
-    // Combine all models
-    const allModels = [...fetchedModels, ...manualModels]
-
-    // Update service (使用保存的 service 引用)
-    service.updateModels(allModels)
-
-    const totalCostMs = Date.now() - loadStartedAt
-    ctx.logger.info(`[source] manual: ${manualModels.length} models`)
-    ctx.logger.info(`Total models loaded: ${allModels.length} (${totalCostMs}ms)`)
-
-    // Emit update event
-    ctx.emit('elysia-api/models-updated', [...allModels])
   }
 
+  const buildModelsHash = (models: Model[]) => {
+    const normalized = [...models]
+      .map(m => ({
+        id: m.id,
+        name: m.name,
+        source: m.source,
+        sourceName: m.sourceName,
+        baseUrl: m.baseUrl,
+        platform: m.platform,
+        type: m.type,
+        maxTokens: m.maxTokens,
+        visionCapable: m.visionCapable,
+        toolsCapable: m.toolsCapable,
+        structuredOutput: m.structuredOutput,
+        thinkingMode: m.thinkingMode,
+        available: m.available,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id))
+
+    return JSON.stringify(normalized)
+  }
+
+  // Initial model load
+  async function loadModels(trigger: 'ready' | 'config' | 'command' | 'pending' = 'config') {
+    if (isLoading) {
+      pendingReload = true
+      if (config.debugMode) {
+        ctx.logger.info(`loadModels skipped (already running), queued pending reload (trigger=${trigger})`)
+      }
+      return
+    }
+
+    isLoading = true
+    const loadStartedAt = Date.now()
+
+    try {
+      ctx.logger.info('Loading models...')
+
+      // Fetch auto sources
+      const fetchedModels: Model[] = []
+      for (const source of config.autoFetchSources) {
+        if (!source.enabled) continue
+
+        const sourceStartedAt = Date.now()
+        const sourceModels = await fetcher.fetchModels(source)
+        fetchedModels.push(...sourceModels)
+
+        const sourceCostMs = Date.now() - sourceStartedAt
+        ctx.logger.info(`[source] ${source.name}: ${sourceModels.length} models (${sourceCostMs}ms)`)
+      }
+
+      // Add manual models
+      const manualModels: Model[] = config.manualModels.map(m => {
+        return {
+          id: m.id,
+          name: m.name,
+          source: 'manual' as ModelSource,
+          sourceName: m.sourceName,
+          baseUrl: m.baseUrl,
+          apiKey: m.apiKey,
+          platform: m.platform,
+          // 使用默认值
+          type: 'llm' as ModelType,
+          maxTokens: 128000,
+          visionCapable: false,
+          toolsCapable: false,
+          structuredOutput: false,
+          thinkingMode: 'both' as const,
+          available: true,
+          lastChecked: new Date(),
+        }
+      })
+
+      // Combine all models
+      const allModels = [...fetchedModels, ...manualModels]
+
+      // Update service (使用保存的 service 引用)
+      service.updateModels(allModels)
+
+      const totalCostMs = Date.now() - loadStartedAt
+      ctx.logger.info(`[source] manual: ${manualModels.length} models`)
+
+      const modelsHash = buildModelsHash(allModels)
+      if (modelsHash === lastModelsHash) {
+        ctx.logger.info(`Total models loaded: ${allModels.length} (${totalCostMs}ms, unchanged)`)
+        return
+      }
+
+      lastModelsHash = modelsHash
+      ctx.logger.info(`Total models loaded: ${allModels.length} (${totalCostMs}ms)`)
+
+      // Emit update event
+      ctx.emit('elysia-api/models-updated', [...allModels])
+    } finally {
+      isLoading = false
+
+      if (pendingReload) {
+        pendingReload = false
+        void loadModels('pending')
+      }
+    }
+  }
+
+  lastConfigHash = buildConfigHash()
+
   // Load models on ready
-  ctx.on('ready', loadModels)
+  ctx.on('ready', () => {
+    void loadModels('ready')
+  })
 
   // Reload on config change
   ctx.on('config', () => {
-    loadModels()
+    const configHash = buildConfigHash()
+    if (configHash === lastConfigHash) {
+      if (config.debugMode) {
+        ctx.logger.info('aggregator: config event ignored (aggregator config unchanged)')
+      }
+      return
+    }
+
+    lastConfigHash = configHash
+    void loadModels('config')
   })
 
   // CLI command for manual reload
   ctx.command('elysia-api.models.reload', '重新加载模型列表').action(async () => {
-    await loadModels()
+    await loadModels('command')
     const count = service.getAll().length
     return `已加载 ${count} 个模型`
   })
