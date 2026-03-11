@@ -1,13 +1,21 @@
 import { Context } from 'koishi'
 import { spawn, ChildProcess } from 'child_process'
-import { writeFileSync, mkdirSync, existsSync } from 'fs'
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
+import { createCipheriv, createHash, randomBytes } from 'crypto'
 import { ModelGroupConfig, ServerConfig, AccessToken, Capability } from './config'
 import { Model } from '@elysia-api/shared'
 
+interface SecretValue {
+  version: number
+  algorithm: 'aes-256-gcm'
+  nonce: string
+  ciphertext: string
+}
+
 interface BackendConfig {
   server: { host: string; port: number }
-  tokens: Array<{ token: string; name: string; enabled: boolean }>
+  tokens: Array<{ tokenEnc: SecretValue; name: string; enabled: boolean }>
   heartbeatTimeout?: number  // 心跳超时时间（秒）
   httpTimeout?: number  // HTTP 请求超时时间（秒），0 为不限制
   debugMode?: boolean     // 调试模式
@@ -20,7 +28,7 @@ interface BackendConfig {
       id: string
       name: string
       baseUrl: string
-      apiKey: string
+      apiKeyEnc: SecretValue
       platform: string
     }>
     strategy: string
@@ -41,6 +49,7 @@ interface BackendConfig {
 export class BackendManager {
   private process: ChildProcess | null = null
   private configPath: string
+  private masterKeyPath: string
   private heartbeatInterval: NodeJS.Timeout | null = null
   private heartbeatUrl: string
   private heartbeatTimeoutSec: number  // 后端心跳超时时间（秒）
@@ -71,6 +80,7 @@ export class BackendManager {
     private verboseLog: boolean = false,  // 详细日志模式
   ) {
     this.configPath = join(ctx.baseDir, 'data/elysia-api/config.json')
+    this.masterKeyPath = join(ctx.baseDir, 'data/elysia-api/master.key')
     this.heartbeatUrl = `http://${serverConfig.host}:${serverConfig.port}/__heartbeat`
     this.heartbeatTimeoutSec = heartbeatTimeout ?? 300  // 默认 300 秒
   }
@@ -195,6 +205,10 @@ export class BackendManager {
 
     this.process = spawn(binaryPath, ['--config', this.configPath], {
       stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        ELYSIA_API_MASTER_KEY: process.env.ELYSIA_API_MASTER_KEY ?? readFileSync(this.masterKeyPath, 'utf8').trim(),
+      },
     })
 
     if (this.verboseLog) {
@@ -275,11 +289,48 @@ export class BackendManager {
     }
   }
 
+  private ensureMasterKey(): string {
+    if (process.env.ELYSIA_API_MASTER_KEY?.trim()) {
+      return process.env.ELYSIA_API_MASTER_KEY.trim()
+    }
+
+    if (existsSync(this.masterKeyPath)) {
+      const key = readFileSync(this.masterKeyPath, 'utf8').trim()
+      if (key) return key
+    }
+
+    const generated = randomBytes(32).toString('base64')
+    writeFileSync(this.masterKeyPath, `${generated}\n`)
+    this.ctx.logger.info(`Generated master key at ${this.masterKeyPath}`)
+    return generated
+  }
+
+  private deriveEncryptionKey(raw: string): Buffer {
+    return createHash('sha256').update(raw).digest()
+  }
+
+  private encryptSecret(value: string, key: Buffer): SecretValue {
+    const nonce = randomBytes(12)
+    const cipher = createCipheriv('aes-256-gcm', key, nonce)
+    const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()])
+    const authTag = cipher.getAuthTag()
+
+    return {
+      version: 1,
+      algorithm: 'aes-256-gcm',
+      nonce: nonce.toString('base64'),
+      ciphertext: Buffer.concat([ciphertext, authTag]).toString('base64'),
+    }
+  }
+
   writeConfig() {
     // Ensure directory exists
     if (!existsSync(dirname(this.configPath))) {
       mkdirSync(dirname(this.configPath), { recursive: true })
     }
+
+    const masterKey = this.ensureMasterKey()
+    const encryptionKey = this.deriveEncryptionKey(masterKey)
 
     // Get models from aggregator service (通过 inject 注入的服务)
     const models = this.ctx['elysia-api-aggregator']?.getAll() ?? []
@@ -292,11 +343,13 @@ export class BackendManager {
     }
 
     // 将 tokens dict 转换为数组（供后端使用）
-    const tokensArray = Object.entries(this.tokens).map(([name, token]) => ({
-      name,
-      token: token.token,
-      enabled: token.enabled,
-    }))
+    const tokensArray = Object.entries(this.tokens)
+      .filter(([, token]) => !!token.token)
+      .map(([name, token]) => ({
+        name,
+        tokenEnc: this.encryptSecret(token.token, encryptionKey),
+        enabled: token.enabled,
+      }))
 
     const backendConfig: BackendConfig = {
       server: this.serverConfig,
@@ -327,11 +380,12 @@ export class BackendManager {
               return model
             })
             .filter((m): m is Model => m !== undefined)
+            .filter(m => !!m.apiKey)
             .map(m => ({
               id: m.id,
               name: m.name,
               baseUrl: m.baseUrl,
-              apiKey: m.apiKey,
+              apiKeyEnc: this.encryptSecret(m.apiKey, encryptionKey),
               platform: m.platform,
             }))
 

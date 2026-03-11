@@ -7,6 +7,8 @@ export { ConfigSchema as Config, createConfig, name }
 
 export const usage = `---
 
+**本插件安全防护方面可能存在风险，请勿将后端端口开放公网访问！**
+
 ## 使用说明
 
 本插件提供 API 网关和模型编排功能，支持负载均衡、流式响应、格式转换。
@@ -23,14 +25,9 @@ export const usage = `---
 - \`elysia-api.backend.reload\` - 重载配置
 - \`elysia-api.models.list\` - 列出可用模型
 
-## 0.2.1 版本更新说明
+## 0.2.3 版本更新说明
 
-完善了 claude - gemini - openai 格式间的互相转化
-优化了日志逻辑，避免因大量日志导致 koishi 卡顿
-
-## 0.2.2 版本更新说明
-
-修复了插件重载逻辑。
+增强插件安全性，heartbeat 端口仅允许本地访问。
 
 仍然存在未知 bug 导致 claude code 中长度很大的调用无法成功
 欢迎前往 github 主页提 issue
