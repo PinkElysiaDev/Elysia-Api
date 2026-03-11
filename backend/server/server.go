@@ -6,7 +6,9 @@ import (
 	"io"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +17,13 @@ import (
 	"github.com/elysia-api/backend/relay"
 	"github.com/gin-gonic/gin"
 )
+
+type rateLimitState struct {
+	Date     string
+	Requests int
+	Tokens   int
+	Active   int
+}
 
 type Server struct {
 	config        *config.Config
@@ -25,11 +34,15 @@ type Server struct {
 	// 轮询状态跟踪：模型组ID -> 当前模型索引
 	roundRobinIndex map[string]int
 	roundRobinMutex sync.Mutex
+
+	rateLimitMu sync.Mutex
+	rateLimits  map[string]*rateLimitState
 }
 
 func New(cfg *config.Config) *Server {
 	gin.SetMode(gin.ReleaseMode)
-	engine := gin.Default()
+	engine := gin.New()
+	engine.Use(gin.Recovery(), gin.Logger())
 
 	// 获取 HTTP 超时配置，默认 120 秒
 	httpTimeout := time.Duration(cfg.HTTPTimeout) * time.Second
@@ -44,6 +57,7 @@ func New(cfg *config.Config) *Server {
 		claudeAdapter:   relay.NewClaudeAdapter(httpTimeout),
 		geminiAdapter:   relay.NewGeminiAdapter(httpTimeout),
 		roundRobinIndex: make(map[string]int),
+		rateLimits:      make(map[string]*rateLimitState),
 	}
 }
 
@@ -63,6 +77,7 @@ func (s *Server) logVerbose(format string, args ...interface{}) {
 
 func (s *Server) setupRoutes() {
 	v1 := s.engine.Group("/v1")
+	v1.Use(s.authMiddleware())
 	{
 		v1.POST("/chat/completions", s.chatCompletions)
 		v1.POST("/messages", s.chatCompletions)          // Claude 原生格式入口
@@ -74,12 +89,62 @@ func (s *Server) setupRoutes() {
 	// /v1beta/models/MODEL:generateContent 和 /v1beta/models/MODEL:streamGenerateContent
 	// gin 不支持参数内含冒号，用通配符捕获整段路径
 	v1beta := s.engine.Group("/v1beta")
+	v1beta.Use(s.authMiddleware())
 	{
 		v1beta.GET("/models", s.listGeminiModels)
 		v1beta.POST("/models/*action", s.chatCompletions)
 	}
 
 	s.engine.GET("/health", s.healthCheck)
+}
+
+func (s *Server) authMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := extractAccessToken(c.Request)
+		if !s.config.IsValidAccessToken(token) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error": "unauthorized",
+			})
+			return
+		}
+		c.Next()
+	}
+}
+
+func extractAccessToken(r *http.Request) string {
+	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+	if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+		return strings.TrimSpace(authHeader[7:])
+	}
+
+	apiKey := strings.TrimSpace(r.Header.Get("x-api-key"))
+	if apiKey != "" {
+		return apiKey
+	}
+
+	return ""
+}
+
+func (s *Server) heartbeatLoopbackOnly(handler http.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !isLoopbackRequest(c.Request) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error": "heartbeat endpoint is only available from loopback",
+			})
+			return
+		}
+		handler(c.Writer, c.Request)
+	}
+}
+
+func isLoopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err != nil {
+		host = strings.TrimSpace(r.RemoteAddr)
+	}
+
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func (s *Server) chatCompletions(c *gin.Context) {
@@ -164,6 +229,11 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	selectedModel := s.selectModel(group)
 	s.logDebug("Request model group: '%s', selected: %s", group.Name, selectedModel.Name)
 
+	if err := validateOutboundBaseURL(selectedModel.BaseURL); err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": fmt.Sprintf("target baseUrl rejected: %v", err)})
+		return
+	}
+
 	// 更新模型名称
 	unifiedReq.Model = selectedModel.Name
 
@@ -177,6 +247,14 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		group.MaxTokens,
 		unifiedReq.MaxTokens,
 	)
+
+	estimatedTokens := estimateUnifiedRequestTokens(unifiedReq)
+	releaseLimiter, err := s.acquireRateLimit(group, estimatedTokens)
+	if err != nil {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": err.Error()})
+		return
+	}
+	defer releaseLimiter(estimatedTokens)
 
 	// 检测目标平台
 	targetPlatform := relay.DetectPlatform(selectedModel.BaseURL, selectedModel.Platform)
@@ -221,14 +299,14 @@ func (s *Server) chatCompletions(c *gin.Context) {
 
 	if isStream {
 		// 流式请求处理
-		s.handleStreamRequest(c, selectedModel, targetBody, targetPlatform, inputFormat, startTime)
+		s.handleStreamRequest(c, group, selectedModel, targetBody, targetPlatform, inputFormat, startTime, estimatedTokens)
 	} else {
 		// 非流式请求处理
-		s.handleNormalRequest(c, selectedModel, targetBody, targetPlatform, inputFormat, startTime)
+		s.handleNormalRequest(c, group, selectedModel, targetBody, targetPlatform, inputFormat, startTime, estimatedTokens)
 	}
 }
 
-func (s *Server) handleNormalRequest(c *gin.Context, selectedModel config.ModelRef, targetBody []byte, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time) {
+func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, estimatedTokens int) {
 	// 设计原则：
 	// 1) 先按 targetPlatform 获取并解析上游响应
 	// 2) 再按 inputFormat 渲染客户端响应
@@ -255,6 +333,9 @@ func (s *Server) handleNormalRequest(c *gin.Context, selectedModel config.ModelR
 			c.JSON(500, gin.H{"error": fmt.Sprintf("Failed to parse response: %v", err)})
 			return
 		}
+
+		actualTokens := claudeResp.Usage.InputTokens + claudeResp.Usage.OutputTokens
+		s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
 
 		// 统一转为 OpenAI 中间响应，再渲染到客户端格式
 		oaiResp := relay.ConvertClaudeResponseToOpenAI(&claudeResp)
@@ -292,6 +373,9 @@ func (s *Server) handleNormalRequest(c *gin.Context, selectedModel config.ModelR
 		}
 
 		oaiResp := relay.ConvertGeminiResponseToOpenAI(&geminiResp)
+		actualTokens := oaiResp.Usage.TotalTokens
+		s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
+
 		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
 
 		switch inputFormat {
@@ -311,6 +395,8 @@ func (s *Server) handleNormalRequest(c *gin.Context, selectedModel config.ModelR
 			return
 		}
 
+		s.adjustTokenUsage(group.ID, estimatedTokens, resp.Usage.TotalTokens)
+
 		s.logVerbose("=== Response ===")
 		if respJSON, err := relay.MarshalResponse(resp); err == nil {
 			s.logVerbose("%s", string(respJSON))
@@ -328,7 +414,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, selectedModel config.ModelR
 	}
 }
 
-func (s *Server) handleStreamRequest(c *gin.Context, selectedModel config.ModelRef, targetBody []byte, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time) {
+func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, estimatedTokens int) {
 	// 设置 SSE 响应头
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
@@ -557,6 +643,174 @@ func (s *Server) validateModelGroup(groupName string) (*config.ModelGroupConfig,
 	return group, nil
 }
 
+func (s *Server) acquireRateLimit(group *config.ModelGroupConfig, estimatedTokens int) (func(actualTokens int), error) {
+	s.rateLimitMu.Lock()
+	defer s.rateLimitMu.Unlock()
+
+	state := s.getOrCreateRateLimitStateLocked(group.ID)
+
+	if group.MaxConcurrency > 0 && state.Active >= group.MaxConcurrency {
+		return nil, fmt.Errorf("max concurrency exceeded for group '%s'", group.Name)
+	}
+	if group.DailyLimitMaxRequests > 0 && state.Requests >= group.DailyLimitMaxRequests {
+		return nil, fmt.Errorf("daily request limit exceeded for group '%s'", group.Name)
+	}
+	if group.DailyLimitMaxTokens > 0 && estimatedTokens > 0 && state.Tokens+estimatedTokens > group.DailyLimitMaxTokens {
+		return nil, fmt.Errorf("daily token limit exceeded for group '%s'", group.Name)
+	}
+
+	state.Active++
+	state.Requests++
+	if estimatedTokens > 0 {
+		state.Tokens += estimatedTokens
+	}
+
+	return func(actualTokens int) {
+		s.rateLimitMu.Lock()
+		defer s.rateLimitMu.Unlock()
+
+		current := s.getOrCreateRateLimitStateLocked(group.ID)
+		if current.Active > 0 {
+			current.Active--
+		}
+
+		if actualTokens > 0 {
+			current.Tokens += actualTokens - estimatedTokens
+			if current.Tokens < 0 {
+				current.Tokens = 0
+			}
+		}
+	}, nil
+}
+
+func (s *Server) adjustTokenUsage(groupID string, estimatedTokens, actualTokens int) {
+	s.rateLimitMu.Lock()
+	defer s.rateLimitMu.Unlock()
+
+	state := s.getOrCreateRateLimitStateLocked(groupID)
+	state.Tokens += actualTokens - estimatedTokens
+	if state.Tokens < 0 {
+		state.Tokens = 0
+	}
+}
+
+func (s *Server) getOrCreateRateLimitStateLocked(groupID string) *rateLimitState {
+	today := time.Now().Format("2006-01-02")
+	state, ok := s.rateLimits[groupID]
+	if !ok {
+		state = &rateLimitState{Date: today}
+		s.rateLimits[groupID] = state
+	}
+	if state.Date != today {
+		state.Date = today
+		state.Requests = 0
+		state.Tokens = 0
+		state.Active = 0
+	}
+	return state
+}
+
+func estimateUnifiedRequestTokens(req *relay.UnifiedRequest) int {
+	totalChars := 0
+	for _, msg := range req.Messages {
+		totalChars += estimateContentChars(msg.Content)
+	}
+
+	inputTokens := (totalChars + 3) / 4
+	if inputTokens < 0 {
+		inputTokens = 0
+	}
+
+	outputBudget := req.MaxTokens
+	if outputBudget < 0 {
+		outputBudget = 0
+	}
+
+	return inputTokens + outputBudget
+}
+
+func validateOutboundBaseURL(raw string) error {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("unsupported scheme: %s", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("missing host")
+	}
+	if parsed.User != nil {
+		return fmt.Errorf("userinfo is not allowed in baseUrl")
+	}
+
+	hostname := parsed.Hostname()
+	if hostname == "" {
+		return fmt.Errorf("missing hostname")
+	}
+	if strings.EqualFold(hostname, "localhost") {
+		return fmt.Errorf("loopback host is not allowed")
+	}
+
+	ips, err := net.LookupIP(hostname)
+	if err != nil {
+		return fmt.Errorf("dns resolve failed: %w", err)
+	}
+	if len(ips) == 0 {
+		return fmt.Errorf("hostname resolved to no addresses")
+	}
+
+	for _, ip := range ips {
+		if isPrivateOrRestrictedIP(ip) {
+			return fmt.Errorf("resolved IP %s is private or restricted", ip.String())
+		}
+	}
+
+	return nil
+}
+
+func isPrivateOrRestrictedIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsMulticast() || ip.IsUnspecified() {
+		return true
+	}
+	if ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast() {
+		return true
+	}
+
+	if v4 := ip.To4(); v4 != nil {
+		// 169.254.0.0/16
+		if v4[0] == 169 && v4[1] == 254 {
+			return true
+		}
+		// 100.64.0.0/10 carrier-grade NAT
+		if v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127 {
+			return true
+		}
+		// 0.0.0.0/8
+		if v4[0] == 0 {
+			return true
+		}
+		return false
+	}
+
+	// IPv6 unique local fc00::/7
+	if len(ip) == net.IPv6len {
+		if (ip[0] & 0xfe) == 0xfc {
+			return true
+		}
+		// fe80::/10 link local
+		if ip[0] == 0xfe && (ip[1]&0xc0) == 0x80 {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (s *Server) listModels(c *gin.Context) {
 	groups := s.config.GetGroups()
 
@@ -687,7 +941,5 @@ func (s *Server) ListenAndServe() error {
 
 // RegisterHeartbeatHandler 注册心跳处理器
 func (s *Server) RegisterHeartbeatHandler(handler http.HandlerFunc) {
-	s.engine.GET("/__heartbeat", func(c *gin.Context) {
-		handler(c.Writer, c.Request)
-	})
+	s.engine.GET("/__heartbeat", s.heartbeatLoopbackOnly(handler))
 }
