@@ -25,9 +25,11 @@ export const usage = `---
 - \`elysia-api.backend.reload\` - 重载配置
 - \`elysia-api.models.list\` - 列出可用模型
 
-## 0.2.3 版本更新说明
+## 0.2.3 & 0.2.4 版本更新说明
 
 增强插件安全性，heartbeat 端口仅允许本地访问。
+优化模型聚合插件 schema 结构，改善配置体验。
+完善 claude 来源模型自动拉取逻辑。
 
 仍然存在未知 bug 导致 claude code 中长度很大的调用无法成功
 欢迎前往 github 主页提 issue

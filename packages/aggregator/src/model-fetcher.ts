@@ -1,9 +1,24 @@
-import { Model, AutoFetchSource, ModelSource, ModelType } from '@elysia-api/shared'
+import { Model, ModelSource, ModelType, PlatformType } from '@elysia-api/shared'
+import { AutoFetchAggregatorSource } from './config'
+
+interface ClaudeModelInfo {
+  id: string
+  created_at?: string
+  display_name?: string
+  type?: 'model'
+}
+
+interface ClaudeListModelsResponse {
+  data: ClaudeModelInfo[]
+  first_id?: string
+  has_more?: boolean
+  last_id?: string
+}
 
 export class ModelFetcher {
   constructor(private ctx: import('koishi').Context) {}
 
-  async fetchModels(source: AutoFetchSource): Promise<Model[]> {
+  async fetchModels(source: AutoFetchAggregatorSource): Promise<Model[]> {
     try {
       switch (source.platform) {
         case 'openai':
@@ -22,39 +37,104 @@ export class ModelFetcher {
     }
   }
 
-  private async fetchOpenAIModels(source: AutoFetchSource): Promise<Model[]> {
-    const response = await fetch(`${source.baseUrl}/models`, {
-      headers: { 'Authorization': `Bearer ${source.apiKey}` }
+  private normalizeBaseUrl(baseUrl: string): string {
+    return baseUrl.replace(/\/+$/, '')
+  }
+
+  private buildUrl(baseUrl: string, path: string): string {
+    const normalizedBase = this.normalizeBaseUrl(baseUrl)
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`
+    return `${normalizedBase}${normalizedPath}`
+  }
+
+  private getModelPlatform(source: AutoFetchAggregatorSource): PlatformType {
+    return source.platform === 'openai-compatible' ? 'openai' : source.platform
+  }
+
+  private async fetchOpenAIModels(source: AutoFetchAggregatorSource): Promise<Model[]> {
+    const response = await fetch(this.buildUrl(source.baseUrl, '/models'), {
+      headers: { Authorization: `Bearer ${source.apiKey}` },
     })
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      const raw = await response.text().catch(() => '')
+      throw new Error(`HTTP ${response.status}: ${response.statusText}${raw ? ` | ${raw}` : ''}`)
     }
 
     const data = await response.json()
-    const models = data.data || []
+    const models = Array.isArray(data?.data) ? data.data : []
 
-    return models.map((model: any) => ({
-      id: `${source.name}:${model.id}`,
-      name: model.id,
-      source: 'auto' as ModelSource,
-      sourceName: source.name,
-      baseUrl: source.baseUrl,
-      apiKey: source.apiKey,
-      platform: 'openai' as const,
-      type: this.inferModelType(model.id),
-      maxTokens: this.inferMaxTokens(model.id),
-      visionCapable: this.hasVisionCapability(model.id),
-      toolsCapable: this.hasToolsCapability(model.id),
-      structuredOutput: this.hasStructuredOutput(model.id),
-      thinkingMode: 'both' as const,
-      available: true,
-      lastChecked: new Date(),
-    }))
+    return models
+      .filter((model: any) => typeof model?.id === 'string' && model.id.length > 0)
+      .map((model: any) => ({
+        id: `${source.name}:${model.id}`,
+        name: model.id,
+        source: 'auto' as ModelSource,
+        sourceName: source.name,
+        baseUrl: source.baseUrl,
+        apiKey: source.apiKey,
+        platform: this.getModelPlatform(source),
+        type: this.inferModelType(model.id),
+        maxTokens: this.inferMaxTokens(model.id),
+        visionCapable: this.hasVisionCapability(model.id),
+        toolsCapable: this.hasToolsCapability(model.id),
+        structuredOutput: this.hasStructuredOutput(model.id),
+        thinkingMode: 'both' as const,
+        available: true,
+        lastChecked: new Date(),
+      }))
   }
 
-  private async fetchClaudeModels(source: AutoFetchSource): Promise<Model[]> {
-    // Claude doesn't have a models endpoint, return known models
+  private async fetchClaudeModels(source: AutoFetchAggregatorSource): Promise<Model[]> {
+    try {
+      const response = await fetch(this.buildUrl(source.baseUrl, '/models'), {
+        headers: {
+          'x-api-key': source.apiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        const raw = await response.text().catch(() => '')
+        throw new Error(`HTTP ${response.status}: ${response.statusText}${raw ? ` | ${raw}` : ''}`)
+      }
+
+      const data = (await response.json()) as ClaudeListModelsResponse
+      const models = Array.isArray(data?.data) ? data.data : []
+
+      if (!models.length) {
+        throw new Error('Claude models API returned empty list')
+      }
+
+      return models
+        .filter(model => typeof model?.id === 'string' && model.id.length > 0)
+        .map(model => ({
+          id: `${source.name}:${model.id}`,
+          name: model.display_name?.trim() || model.id,
+          source: 'auto' as ModelSource,
+          sourceName: source.name,
+          baseUrl: source.baseUrl,
+          apiKey: source.apiKey,
+          platform: 'claude' as const,
+          type: 'llm' as const,
+          maxTokens: this.inferClaudeMaxTokens(model.id),
+          visionCapable: true,
+          toolsCapable: true,
+          structuredOutput: true,
+          thinkingMode: 'both' as const,
+          available: true,
+          lastChecked: new Date(),
+        }))
+    } catch (error) {
+      this.ctx.logger.warn(
+        `[Claude Fetch Fallback] Failed to fetch models from source "${source.name}" (${source.baseUrl}), fallback to built-in Claude model list: ${error}`
+      )
+      return this.getBuiltInClaudeModels(source)
+    }
+  }
+
+  private getBuiltInClaudeModels(source: AutoFetchAggregatorSource): Model[] {
     const knownModels = [
       { id: 'claude-3-7-sonnet-20250219', maxTokens: 200000 },
       { id: 'claude-3-5-sonnet-20241022', maxTokens: 200000 },
@@ -81,38 +161,43 @@ export class ModelFetcher {
     }))
   }
 
-  private async fetchGeminiModels(source: AutoFetchSource): Promise<Model[]> {
-    // Gemini models endpoint
+  private async fetchGeminiModels(source: AutoFetchAggregatorSource): Promise<Model[]> {
     const response = await fetch(
-      `${source.baseUrl}/v1beta/models?key=${source.apiKey}`
+      this.buildUrl(source.baseUrl, `/v1beta/models?key=${encodeURIComponent(source.apiKey)}`)
     )
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      const raw = await response.text().catch(() => '')
+      throw new Error(`HTTP ${response.status}: ${response.statusText}${raw ? ` | ${raw}` : ''}`)
     }
 
     const data = await response.json()
-    const models = data.models || []
+    const models = Array.isArray(data?.models) ? data.models : []
 
     return models
-      .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
-      .map((model: any) => ({
-        id: `${source.name}:${model.name}`,
-        name: model.name,
-        source: 'auto' as ModelSource,
-        sourceName: source.name,
-        baseUrl: source.baseUrl,
-        apiKey: source.apiKey,
-        platform: 'gemini' as const,
-        type: 'llm' as const,
-        maxTokens: this.parseGeminiMaxTokens(model),
-        visionCapable: true,
-        toolsCapable: true,
-        structuredOutput: false,
-        thinkingMode: 'both' as const,
-        available: true,
-        lastChecked: new Date(),
-      }))
+      .filter((m: any) => m?.supportedGenerationMethods?.includes('generateContent'))
+      .map((model: any) => {
+        const rawName = typeof model.name === 'string' ? model.name : ''
+        const displayName = rawName.replace(/^models\//, '') || rawName
+
+        return {
+          id: `${source.name}:${rawName}`,
+          name: displayName,
+          source: 'auto' as ModelSource,
+          sourceName: source.name,
+          baseUrl: source.baseUrl,
+          apiKey: source.apiKey,
+          platform: 'gemini' as const,
+          type: 'llm' as const,
+          maxTokens: this.parseGeminiMaxTokens(model),
+          visionCapable: true,
+          toolsCapable: true,
+          structuredOutput: false,
+          thinkingMode: 'both' as const,
+          available: true,
+          lastChecked: new Date(),
+        }
+      })
   }
 
   private inferModelType(modelId: string): ModelType {
@@ -148,6 +233,14 @@ export class ModelFetcher {
     return 128000 // Default
   }
 
+  private inferClaudeMaxTokens(modelId: string): number {
+    const id = modelId.toLowerCase()
+    if (id.includes('claude-3') || id.includes('claude-sonnet') || id.includes('claude-opus') || id.includes('claude-haiku')) {
+      return 200000
+    }
+    return 200000
+  }
+
   private hasVisionCapability(modelId: string): boolean {
     const id = modelId.toLowerCase()
     return id.includes('vision') || id.includes('gpt-4o') || id.includes('gpt-4-turbo')
@@ -164,6 +257,8 @@ export class ModelFetcher {
   }
 
   private parseGeminiMaxTokens(model: any): number {
-    return model.topK?.outputTokenLimit || 128000
+    return Number(model?.outputTokenLimit)
+      || Number(model?.inputTokenLimit)
+      || 128000
   }
 }

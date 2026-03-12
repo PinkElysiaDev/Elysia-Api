@@ -1,8 +1,12 @@
-import { Context, Schema, Service } from 'koishi'
-import { Model, ModelType, AutoFetchSource, ManualModel, ModelSource } from '@elysia-api/shared'
+import { Context, Service } from 'koishi'
+import { Model, ModelType, ModelSource } from '@elysia-api/shared'
 import { ModelFetcher } from './model-fetcher'
-import { ModelValidator } from './model-validator'
-import { Config, name } from './config'
+import {
+  Config,
+  name,
+  AggregatorSourceConfig,
+  ManualAggregatorSource,
+} from './config'
 
 export { Config, name }
 
@@ -14,9 +18,15 @@ export const usage = `---
 
 ### 配置步骤
 
-1. **自动获取**: 在「自动拉取源」中添加 API 端点和 API Key
-2. **手动添加**: 在「手动添加的模型」中直接配置模型
+1. **添加源**: 在「添加源」中配置 API 端点、API Key 与平台
+2. **自动/手动模式**: 保持「是否自动拉取模型」为是，或切换为否后手动填写模型
 3. **重新加载**: 配置完成后使用 \`elysia-api.models.reload\` 命令生效
+
+### 自动拉取说明
+
+- OpenAI / OpenAI-compatible：通过模型列表接口自动拉取
+- Gemini：通过 Google Gemini 模型列表接口自动拉取
+- Claude：优先尝试远程拉取，失败时回退到内置模型列表，并打印警告日志
 
 ---
 
@@ -96,8 +106,7 @@ export function apply(ctx: Context, config: Config) {
 
   const buildConfigHash = () => {
     return JSON.stringify({
-      autoFetchSources: config.autoFetchSources,
-      manualModels: config.manualModels,
+      sources: config.sources,
     })
   }
 
@@ -123,6 +132,27 @@ export function apply(ctx: Context, config: Config) {
     return JSON.stringify(normalized)
   }
 
+  const mapManualSourceModels = (source: ManualAggregatorSource): Model[] => {
+    return source.manualModels.map(m => ({
+      id: `${source.name}:${m.id}`,
+      name: m.name,
+      source: 'manual' as ModelSource,
+      sourceName: source.name,
+      baseUrl: source.baseUrl,
+      apiKey: source.apiKey,
+      platform: source.platform === 'openai-compatible' ? 'openai' : source.platform,
+      // 使用默认值
+      type: 'llm' as ModelType,
+      maxTokens: 128000,
+      visionCapable: false,
+      toolsCapable: false,
+      structuredOutput: false,
+      thinkingMode: 'both' as const,
+      available: true,
+      lastChecked: new Date(),
+    }))
+  }
+
   // Initial model load
   async function loadModels(trigger: 'ready' | 'config' | 'command' | 'pending' = 'config') {
     if (isLoading) {
@@ -139,49 +169,32 @@ export function apply(ctx: Context, config: Config) {
     try {
       ctx.logger.info('Loading models...')
 
-      // Fetch auto sources
-      const fetchedModels: Model[] = []
-      for (const source of config.autoFetchSources) {
+      const allModels: Model[] = []
+
+      for (const source of config.sources) {
         if (!source.enabled) continue
 
         const sourceStartedAt = Date.now()
-        const sourceModels = await fetcher.fetchModels(source)
-        fetchedModels.push(...sourceModels)
+        let sourceModels: Model[] = []
+
+        if (source.autoFetchModels) {
+          sourceModels = await fetcher.fetchModels(source)
+        } else {
+          sourceModels = mapManualSourceModels(source)
+        }
+
+        allModels.push(...sourceModels)
 
         const sourceCostMs = Date.now() - sourceStartedAt
-        ctx.logger.info(`[source] ${source.name}: ${sourceModels.length} models (${sourceCostMs}ms)`)
+        ctx.logger.info(
+          `[source] ${source.name}: ${sourceModels.length} models (${sourceCostMs}ms${source.autoFetchModels ? ', auto' : ', manual'})`
+        )
       }
 
-      // Add manual models
-      const manualModels: Model[] = config.manualModels.map(m => {
-        return {
-          id: m.id,
-          name: m.name,
-          source: 'manual' as ModelSource,
-          sourceName: m.sourceName,
-          baseUrl: m.baseUrl,
-          apiKey: m.apiKey,
-          platform: m.platform,
-          // 使用默认值
-          type: 'llm' as ModelType,
-          maxTokens: 128000,
-          visionCapable: false,
-          toolsCapable: false,
-          structuredOutput: false,
-          thinkingMode: 'both' as const,
-          available: true,
-          lastChecked: new Date(),
-        }
-      })
-
-      // Combine all models
-      const allModels = [...fetchedModels, ...manualModels]
-
-      // Update service (使用保存的 service 引用)
+      // Update service
       service.updateModels(allModels)
 
       const totalCostMs = Date.now() - loadStartedAt
-      ctx.logger.info(`[source] manual: ${manualModels.length} models`)
 
       const modelsHash = buildModelsHash(allModels)
       if (modelsHash === lastModelsHash) {
