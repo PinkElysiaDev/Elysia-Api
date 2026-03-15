@@ -104,10 +104,35 @@ export function apply(ctx: Context, config: Config) {
   let lastModelsHash = ''
   let lastConfigHash = ''
 
+  const summarizeSources = (sources: AggregatorSourceConfig[]) => {
+    return sources.map(source => ({
+      name: source.name,
+      baseUrl: source.baseUrl,
+      platform: source.platform,
+      enabled: source.enabled,
+      autoFetchModels: source.autoFetchModels,
+      manualModelsCount: source.autoFetchModels ? 0 : source.manualModels.length,
+      hasApiKey: Boolean(source.apiKey),
+    }))
+  }
+
+  const verboseLog = (message: string, payload?: unknown) => {
+    if (!config.verboseLog) return
+    if (payload === undefined) {
+      ctx.logger.info(`[aggregator verbose] ${message}`)
+      return
+    }
+    ctx.logger.info(`[aggregator verbose] ${message}: ${JSON.stringify(payload)}`)
+  }
+
   const buildConfigHash = () => {
-    return JSON.stringify({
-      sources: config.sources,
-    })
+    const normalized = {
+      sources: summarizeSources(config.sources),
+    }
+    const hash = JSON.stringify(normalized)
+    verboseLog('buildConfigHash summary', normalized)
+    verboseLog('buildConfigHash value', hash)
+    return hash
   }
 
   const buildModelsHash = (models: Model[]) => {
@@ -155,11 +180,23 @@ export function apply(ctx: Context, config: Config) {
 
   // Initial model load
   async function loadModels(trigger: 'ready' | 'config' | 'command' | 'pending' = 'config') {
+    verboseLog('loadModels entered', {
+      trigger,
+      isLoading,
+      pendingReload,
+      sourceCount: config.sources.length,
+      sources: summarizeSources(config.sources),
+    })
+
     if (isLoading) {
       pendingReload = true
       if (config.debugMode) {
         ctx.logger.info(`loadModels skipped (already running), queued pending reload (trigger=${trigger})`)
       }
+      verboseLog('loadModels skipped because already loading', {
+        trigger,
+        pendingReload,
+      })
       return
     }
 
@@ -168,14 +205,35 @@ export function apply(ctx: Context, config: Config) {
 
     try {
       ctx.logger.info('Loading models...')
+      verboseLog('loadModels start state', {
+        trigger,
+        sourceCount: config.sources.length,
+        sources: summarizeSources(config.sources),
+      })
 
       const allModels: Model[] = []
 
       for (const source of config.sources) {
-        if (!source.enabled) continue
+        if (!source.enabled) {
+          verboseLog('skip disabled source', {
+            name: source.name,
+            autoFetchModels: source.autoFetchModels,
+          })
+          continue
+        }
 
         const sourceStartedAt = Date.now()
         let sourceModels: Model[] = []
+
+        verboseLog('processing source', {
+          name: source.name,
+          baseUrl: source.baseUrl,
+          platform: source.platform,
+          enabled: source.enabled,
+          autoFetchModels: source.autoFetchModels,
+          manualModelsCount: source.autoFetchModels ? 0 : source.manualModels.length,
+          hasApiKey: Boolean(source.apiKey),
+        })
 
         if (source.autoFetchModels) {
           sourceModels = await fetcher.fetchModels(source)
@@ -189,6 +247,12 @@ export function apply(ctx: Context, config: Config) {
         ctx.logger.info(
           `[source] ${source.name}: ${sourceModels.length} models (${sourceCostMs}ms${source.autoFetchModels ? ', auto' : ', manual'})`
         )
+        verboseLog('source processed', {
+          name: source.name,
+          trigger,
+          sourceModelsCount: sourceModels.length,
+          sourceCostMs,
+        })
       }
 
       // Update service
@@ -197,44 +261,92 @@ export function apply(ctx: Context, config: Config) {
       const totalCostMs = Date.now() - loadStartedAt
 
       const modelsHash = buildModelsHash(allModels)
+      verboseLog('buildModelsHash value', {
+        modelsHash,
+        lastModelsHash,
+        allModelsCount: allModels.length,
+      })
+
       if (modelsHash === lastModelsHash) {
         ctx.logger.info(`Total models loaded: ${allModels.length} (${totalCostMs}ms, unchanged)`)
+        verboseLog('models unchanged, skip emit', {
+          trigger,
+          allModelsCount: allModels.length,
+          totalCostMs,
+        })
         return
       }
 
       lastModelsHash = modelsHash
       ctx.logger.info(`Total models loaded: ${allModels.length} (${totalCostMs}ms)`)
+      verboseLog('models updated', {
+        trigger,
+        allModelsCount: allModels.length,
+        totalCostMs,
+        lastModelsHash,
+      })
 
       // Emit update event
       ctx.emit('elysia-api/models-updated', [...allModels])
     } finally {
       isLoading = false
+      verboseLog('loadModels finally', {
+        trigger,
+        pendingReload,
+        isLoading,
+      })
 
       if (pendingReload) {
         pendingReload = false
+        verboseLog('pending reload consumed', {
+          nextTrigger: 'pending',
+        })
         void loadModels('pending')
       }
     }
   }
 
   lastConfigHash = buildConfigHash()
+  verboseLog('initial lastConfigHash', lastConfigHash)
 
   // Load models on ready
   ctx.on('ready', () => {
+    verboseLog('ready event fired', {
+      sourceCount: config.sources.length,
+      sources: summarizeSources(config.sources),
+    })
     void loadModels('ready')
   })
 
   // Reload on config change
   ctx.on('config', () => {
+    verboseLog('config event fired', {
+      sourceCount: config.sources.length,
+      sources: summarizeSources(config.sources),
+      lastConfigHash,
+    })
+
     const configHash = buildConfigHash()
+    verboseLog('config event hash compare', {
+      configHash,
+      lastConfigHash,
+      equal: configHash === lastConfigHash,
+    })
+
     if (configHash === lastConfigHash) {
       if (config.debugMode) {
         ctx.logger.info('aggregator: config event ignored (aggregator config unchanged)')
       }
+      verboseLog('config event ignored', {
+        reason: 'unchanged',
+      })
       return
     }
 
     lastConfigHash = configHash
+    verboseLog('config event accepted', {
+      newLastConfigHash: lastConfigHash,
+    })
     void loadModels('config')
   })
 
