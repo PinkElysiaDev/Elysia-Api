@@ -75,6 +75,188 @@ func (s *Server) logVerbose(format string, args ...interface{}) {
 	}
 }
 
+func compactLogJSON(data []byte) string {
+	var obj interface{}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return string(data)
+	}
+
+	compacted, err := json.Marshal(obj)
+	if err != nil {
+		return string(data)
+	}
+
+	return string(compacted)
+}
+
+func isVisionCapable(group *config.ModelGroupConfig) bool {
+	return group != nil && group.VisionCapable != nil && *group.VisionCapable
+}
+
+func filterVisionInputsIfNeeded(group *config.ModelGroupConfig, req *relay.UnifiedRequest) (changed bool, filteredMessages int, filteredParts int) {
+	if req == nil || group == nil || isVisionCapable(group) {
+		return false, 0, 0
+	}
+
+	newMessages, filteredMessages, filteredParts := filterUnifiedMessagesVisionContent(req.Messages)
+	if filteredParts == 0 {
+		return false, 0, 0
+	}
+
+	req.Messages = newMessages
+	return true, filteredMessages, filteredParts
+}
+
+func filterUnifiedMessagesVisionContent(messages []relay.UnifiedMessage) ([]relay.UnifiedMessage, int, int) {
+	if len(messages) == 0 {
+		return messages, 0, 0
+	}
+
+	newMessages := make([]relay.UnifiedMessage, 0, len(messages))
+	filteredMessages := 0
+	filteredParts := 0
+
+	for _, msg := range messages {
+		newContent, removedParts, changed := filterSingleMessageVisionContent(msg.Content)
+		if changed {
+			filteredMessages++
+			filteredParts += removedParts
+			msg.Content = newContent
+		}
+		newMessages = append(newMessages, msg)
+	}
+
+	return newMessages, filteredMessages, filteredParts
+}
+
+func filterSingleMessageVisionContent(content interface{}) (newContent interface{}, removedParts int, changed bool) {
+	if content == nil {
+		return content, 0, false
+	}
+
+	parts, ok := content.([]interface{})
+	if !ok {
+		return content, 0, false
+	}
+
+	filtered := make([]interface{}, 0, len(parts))
+	for _, part := range parts {
+		partMap, ok := part.(map[string]interface{})
+		if !ok {
+			filtered = append(filtered, part)
+			continue
+		}
+
+		if isVisionPart(partMap) {
+			removedParts++
+			continue
+		}
+
+		filtered = append(filtered, part)
+	}
+
+	if removedParts == 0 {
+		return content, 0, false
+	}
+
+	return normalizeFilteredContent(filtered), removedParts, true
+}
+
+func normalizeFilteredContent(parts []interface{}) interface{} {
+	if len(parts) == 0 {
+		return ""
+	}
+
+	if text, ok := mergeTextParts(parts); ok {
+		return text
+	}
+
+	return parts
+}
+
+func mergeTextParts(parts []interface{}) (string, bool) {
+	var builder strings.Builder
+
+	for _, part := range parts {
+		partMap, ok := part.(map[string]interface{})
+		if !ok {
+			return "", false
+		}
+
+		if !isTextPart(partMap) {
+			return "", false
+		}
+
+		text, _ := partMap["text"].(string)
+		builder.WriteString(text)
+	}
+
+	return builder.String(), true
+}
+
+func isTextPart(item map[string]interface{}) bool {
+	partType, _ := item["type"].(string)
+	_, hasText := item["text"].(string)
+
+	if hasText && (partType == "" || strings.EqualFold(partType, "text")) {
+		return true
+	}
+
+	return false
+}
+
+func isVisionPart(item map[string]interface{}) bool {
+	partType, _ := item["type"].(string)
+	switch strings.ToLower(strings.TrimSpace(partType)) {
+	case "image", "image_url", "input_image":
+		return true
+	}
+
+	if _, ok := item["image_url"]; ok {
+		return true
+	}
+	if _, ok := item["image"]; ok {
+		return true
+	}
+
+	if inlineData, ok := item["inlineData"].(map[string]interface{}); ok {
+		if isImageMime(extractMimeType(inlineData)) || inlineData["data"] != nil {
+			return true
+		}
+	}
+
+	if fileData, ok := item["fileData"].(map[string]interface{}); ok {
+		if isImageMime(extractMimeType(fileData)) {
+			return true
+		}
+	}
+
+	if source, ok := item["source"].(map[string]interface{}); ok {
+		if isImageMime(extractMimeType(source)) {
+			return true
+		}
+	}
+
+	if isImageMime(extractMimeType(item)) {
+		return true
+	}
+
+	return false
+}
+
+func extractMimeType(item map[string]interface{}) string {
+	for _, key := range []string{"mimeType", "mime_type", "media_type"} {
+		if value, ok := item[key].(string); ok {
+			return strings.TrimSpace(strings.ToLower(value))
+		}
+	}
+	return ""
+}
+
+func isImageMime(mimeType string) bool {
+	return strings.HasPrefix(strings.TrimSpace(strings.ToLower(mimeType)), "image/")
+}
+
 func (s *Server) setupRoutes() {
 	v1 := s.engine.Group("/v1")
 	v1.Use(s.authMiddleware())
@@ -122,6 +304,16 @@ func extractAccessToken(r *http.Request) string {
 		return apiKey
 	}
 
+	geminiHeaderKey := strings.TrimSpace(r.Header.Get("x-goog-api-key"))
+	if geminiHeaderKey != "" {
+		return geminiHeaderKey
+	}
+
+	queryKey := strings.TrimSpace(r.URL.Query().Get("key"))
+	if queryKey != "" {
+		return queryKey
+	}
+
 	return ""
 }
 
@@ -148,6 +340,7 @@ func isLoopbackRequest(r *http.Request) bool {
 }
 
 func (s *Server) chatCompletions(c *gin.Context) {
+	s.logVerbose("[REQUEST ENTER] path=%s method=%s remote=%s contentType=%s", c.Request.URL.Path, c.Request.Method, c.Request.RemoteAddr, c.Request.Header.Get("Content-Type"))
 	// 请求处理矩阵：inputFormat × targetPlatform
 	//
 	// 非流式 (handleNormalRequest):
@@ -171,8 +364,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		return
 	}
 
-	s.logVerbose("=== Incoming Request (raw) ===")
-	s.logVerbose("%s", string(bodyBytes))
+	s.logVerbose("[Incoming Request Raw] %s", compactLogJSON(bodyBytes))
 
 	// 根据请求路径判断客户端期望的输入/输出格式
 	var inputFormat relay.FormatType
@@ -184,7 +376,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	default:
 		inputFormat = relay.FormatOpenAI
 	}
-	s.logVerbose("Input format (by path): %s", inputFormat)
+	s.logVerbose("[Input Format] %s", inputFormat)
 
 	// 转换为统一格式
 	unifiedReq, err := relay.ConvertToUnified(bodyBytes, inputFormat)
@@ -207,9 +399,8 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		}
 	}
 
-	s.logVerbose("=== Unified Request ===")
 	if unifiedReqJSON, err := relay.MarshalUnifiedRequest(unifiedReq); err == nil {
-		s.logVerbose("%s", string(unifiedReqJSON))
+		s.logVerbose("[Unified Request] %s", compactLogJSON(unifiedReqJSON))
 	}
 
 	// 验证并获取模型组
@@ -223,6 +414,25 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		}
 		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
+	}
+
+	filtered, filteredMessages, filteredParts := filterVisionInputsIfNeeded(group, unifiedReq)
+	if filtered {
+		log.Printf(
+			"[vision filter] model group %q is not vision-capable, filtered %d image part(s) from %d message(s)",
+			group.Name,
+			filteredParts,
+			filteredMessages,
+		)
+		s.logVerbose(
+			"[vision filter detail] group=%s filteredMessages=%d filteredImageParts=%d",
+			group.Name,
+			filteredMessages,
+			filteredParts,
+		)
+		if unifiedReqJSON, err := relay.MarshalUnifiedRequest(unifiedReq); err == nil {
+			s.logVerbose("[Unified Request After Vision Filter] %s", compactLogJSON(unifiedReqJSON))
+		}
 	}
 
 	// 根据策略选择具体模型
@@ -258,7 +468,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 
 	// 检测目标平台
 	targetPlatform := relay.DetectPlatform(selectedModel.BaseURL, selectedModel.Platform)
-	s.logVerbose("Target platform: %s", targetPlatform)
+	s.logVerbose("[Target Platform] %s", targetPlatform)
 
 	// 从统一格式转换为目标平台格式
 	targetBody, err := relay.ConvertFromUnified(unifiedReq, targetPlatform)
@@ -268,8 +478,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		return
 	}
 
-	s.logVerbose("=== Outgoing Request to %s ===", selectedModel.BaseURL)
-	s.logVerbose("%s", string(targetBody))
+	s.logVerbose("[Outgoing Request] baseUrl=%s body=%s", selectedModel.BaseURL, compactLogJSON(targetBody))
 
 	// 检查是否为流式请求
 	// 规则：
@@ -293,8 +502,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			c.JSON(500, gin.H{"error": fmt.Sprintf("Failed to prepare stream request: %v", streamBodyErr)})
 			return
 		}
-		s.logVerbose("=== Outgoing Stream Request (patched) ===")
-		s.logVerbose("%s", string(targetBody))
+		s.logVerbose("[Outgoing Stream Request Patched] body=%s", compactLogJSON(targetBody))
 	}
 
 	if isStream {

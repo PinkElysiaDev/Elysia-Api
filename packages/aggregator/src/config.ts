@@ -35,6 +35,7 @@ export interface Config {
 
   // Debug mode
   debugMode?: boolean
+  verboseLog?: boolean
 }
 
 const manualSourceModelSchema: Schema<ManualSourceModel> = Schema.object({
@@ -53,40 +54,38 @@ const sourceBaseSchema = Schema.object({
     Schema.const('openai-compatible' as const).description('OpenAI 兼容'),
   ]).description('平台类型') as Schema<SourcePlatformType>,
   enabled: Schema.boolean().default(true).description('启用'),
+  autoFetchModels: Schema.boolean()
+    .default(true)
+    .description('是否自动拉取模型'),
 })
 
 const sourceSchema = Schema.intersect([
   sourceBaseSchema,
-  Schema.intersect([
+  Schema.union([
+    Schema.object({}),
     Schema.object({
-      autoFetchModels: Schema.boolean()
-        .default(true)
-        .description('是否自动拉取模型'),
+      autoFetchModels: Schema.const(false).required(),
+      manualModels: Schema.array(manualSourceModelSchema)
+        .default([])
+        .role('table')
+        .description('手动添加模型'),
     }),
-    Schema.union([
-      Schema.object({
-        autoFetchModels: Schema.const(true).required(),
-      }),
-      Schema.object({
-        autoFetchModels: Schema.const(false).required(),
-        manualModels: Schema.array(manualSourceModelSchema)
-          .role('table')
-          .description('手动添加模型'),
-      }),
-    ]),
   ]),
 ])
 
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     sources: Schema.array(sourceSchema)
+      .role('list')
+      .default([])
       .description('添加源'),
   }).description('模型源配置'),
 
   // Debug options
   Schema.object({
     debugMode: Schema.boolean().default(false).description('启用调试日志'),
+    verboseLog: Schema.boolean().default(false).description('启用详细日志（输出配置摘要、hash 与重载判断过程）'),
   }).description('调试选项'),
-])
+]) as unknown as Schema<Config>
 
 export const name = 'elysia-api-aggregator'
