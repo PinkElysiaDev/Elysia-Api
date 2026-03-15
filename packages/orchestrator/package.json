@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-elysia-api-orchestrator",
   "description": "Inspired by New-API, the Elysia-API model orchestrator plugin manages API gateways and allows users to define custom model groups. This plugin depends on the model aggregator plugin.",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "main": "lib/index.cjs",
   "module": "lib/index.mjs",
   "typings": "lib/index.d.ts",

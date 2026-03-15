@@ -238,9 +238,38 @@ export class BackendManager {
   }
 
   async reloadConfig(): Promise<void> {
-    // 只写入配置文件，后端通过文件监控自动重载
     this.writeConfig()
-    this.ctx.logger.info('Config file updated, backend will reload automatically')
+
+    const reloadUrl = `http://${this.serverConfig.host}:${this.serverConfig.port}/__reload`
+
+    try {
+      const response = await fetch(reloadUrl, {
+        method: 'POST',
+        signal: AbortSignal.timeout(5000),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        this.ctx.logger.warn(`Backend config reload failed: ${response.status} ${response.statusText}`)
+        if (this.verboseLog) {
+          this.ctx.logger.warn(`[VERBOSE] Backend reload response: ${JSON.stringify(payload)}`)
+        }
+        return
+      }
+
+      if (payload?.serverChangedRequiresRestart) {
+        this.ctx.logger.info('Backend config hot-reloaded successfully, but server host/port changes require backend restart to take effect')
+      } else {
+        this.ctx.logger.info('Backend config hot-reloaded successfully')
+      }
+
+      if (this.verboseLog) {
+        this.ctx.logger.info(`[VERBOSE] Backend reload response: ${JSON.stringify(payload)}`)
+      }
+    } catch (err) {
+      this.ctx.logger.warn(`Backend config reload request failed: ${(err as Error).message}`)
+    }
   }
 
   private startHeartbeat() {

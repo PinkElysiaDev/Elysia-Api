@@ -278,6 +278,7 @@ func (s *Server) setupRoutes() {
 	}
 
 	s.engine.GET("/health", s.healthCheck)
+	s.engine.POST("/__reload", s.loopbackOnly(s.reloadConfig))
 }
 
 func (s *Server) authMiddleware() gin.HandlerFunc {
@@ -327,6 +328,58 @@ func (s *Server) heartbeatLoopbackOnly(handler http.HandlerFunc) gin.HandlerFunc
 		}
 		handler(c.Writer, c.Request)
 	}
+}
+
+func (s *Server) loopbackOnly(handler gin.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !isLoopbackRequest(c.Request) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error": "reload endpoint is only available from loopback",
+			})
+			return
+		}
+		handler(c)
+	}
+}
+
+func (s *Server) reloadConfig(c *gin.Context) {
+	oldHost := s.config.Server.Host
+	oldPort := s.config.Server.Port
+
+	if err := s.config.Reload(); err != nil {
+		log.Printf("Config reload failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"reloaded": false,
+			"error":    err.Error(),
+		})
+		return
+	}
+
+	serverChanged := oldHost != s.config.Server.Host || oldPort != s.config.Server.Port
+	if serverChanged {
+		log.Printf(
+			"Config hot-reloaded successfully, but server listen address change requires restart (old=%s:%d new=%s:%d)",
+			oldHost,
+			oldPort,
+			s.config.Server.Host,
+			s.config.Server.Port,
+		)
+	} else {
+		log.Printf("Config hot-reloaded successfully")
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"reloaded":                     true,
+		"debugMode":                    s.config.DebugMode,
+		"verboseLog":                   s.config.VerboseLog,
+		"serverChangedRequiresRestart": serverChanged,
+		"server": gin.H{
+			"oldHost": oldHost,
+			"oldPort": oldPort,
+			"newHost": s.config.Server.Host,
+			"newPort": s.config.Server.Port,
+		},
+	})
 }
 
 func isLoopbackRequest(r *http.Request) bool {
