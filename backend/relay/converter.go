@@ -504,12 +504,102 @@ func ConvertFromUnified(unified *UnifiedRequest, targetPlatform Platform) ([]byt
 	}
 }
 
+// convertUnifiedMessagesToOpenAI 将统一消息转换为 OpenAI messages，重点兼容 Claude tool_use/tool_result。
+func convertUnifiedMessagesToOpenAI(messages []UnifiedMessage) []map[string]interface{} {
+	result := make([]map[string]interface{}, 0, len(messages))
+
+	for _, msg := range messages {
+		if blocks, ok := msg.Content.([]interface{}); ok {
+			if converted := convertClaudeBlocksMessageToOpenAI(msg.Role, blocks); len(converted) > 0 {
+				result = append(result, converted...)
+				continue
+			}
+		}
+
+		result = append(result, map[string]interface{}{
+			"role":    msg.Role,
+			"content": msg.Content,
+		})
+	}
+
+	return result
+}
+
+func convertClaudeBlocksMessageToOpenAI(role string, blocks []interface{}) []map[string]interface{} {
+	var textBuilder strings.Builder
+	var toolCalls []map[string]interface{}
+	var toolMessages []map[string]interface{}
+	sawClaudeToolBlock := false
+
+	for _, block := range blocks {
+		blockMap, ok := block.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		blockType, _ := blockMap["type"].(string)
+		switch blockType {
+		case "text":
+			if text, ok := blockMap["text"].(string); ok {
+				textBuilder.WriteString(text)
+			}
+		case "tool_use":
+			sawClaudeToolBlock = true
+			id, _ := blockMap["id"].(string)
+			name, _ := blockMap["name"].(string)
+			args := "{}"
+			if input := blockMap["input"]; input != nil {
+				if b, err := json.Marshal(input); err == nil {
+					args = string(b)
+				}
+			}
+			toolCalls = append(toolCalls, map[string]interface{}{
+				"id":   id,
+				"type": "function",
+				"function": map[string]interface{}{
+					"name":      name,
+					"arguments": args,
+				},
+			})
+		case "tool_result":
+			sawClaudeToolBlock = true
+			toolUseID, _ := blockMap["tool_use_id"].(string)
+			toolMessages = append(toolMessages, map[string]interface{}{
+				"role":         "tool",
+				"tool_call_id": toolUseID,
+				"content":      extractTextFromContent(blockMap["content"]),
+			})
+		}
+	}
+
+	if !sawClaudeToolBlock {
+		return nil
+	}
+
+	converted := make([]map[string]interface{}, 0, 1+len(toolMessages))
+	if len(toolCalls) > 0 {
+		converted = append(converted, map[string]interface{}{
+			"role":       "assistant",
+			"content":    textBuilder.String(),
+			"tool_calls": toolCalls,
+		})
+	} else if textBuilder.Len() > 0 {
+		converted = append(converted, map[string]interface{}{
+			"role":    role,
+			"content": textBuilder.String(),
+		})
+	}
+	converted = append(converted, toolMessages...)
+
+	return converted
+}
+
 // UnifiedToOpenAI 将统一格式转换为 OpenAI 格式
 func UnifiedToOpenAI(unified *UnifiedRequest) ([]byte, error) {
 	result := make(map[string]interface{})
 
 	result["model"] = unified.Model
-	result["messages"] = unified.Messages
+	result["messages"] = convertUnifiedMessagesToOpenAI(unified.Messages)
 
 	if unified.MaxTokens > 0 {
 		result["max_tokens"] = unified.MaxTokens
@@ -825,7 +915,7 @@ func ConvertClaudeStreamToOpenAI(resp *http.Response, writer StreamResponseWrite
 
 	scanner := bufio.NewScanner(resp.Body)
 	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	scanner.Buffer(buf, 16*1024*1024)
 
 	toolCallIndex := -1
 
@@ -958,21 +1048,95 @@ func ConvertClaudeStreamToOpenAI(resp *http.Response, writer StreamResponseWrite
 	return scanner.Err()
 }
 
-// ConvertOpenAIStreamToClaudeStream 将 OpenAI SSE 流转换为 Claude SSE 格式写入 writer
+// ConvertOpenAIStreamToClaudeStream 将 OpenAI SSE 流转换为 Claude SSE 格式写入 writer。
+// 同时支持文本增量与 OpenAI tool_calls 增量到 Claude tool_use/input_json_delta 的转换。
 func ConvertOpenAIStreamToClaudeStream(resp *http.Response, writer StreamResponseWriter, model string) error {
 	defer resp.Body.Close()
 
 	scanner := bufio.NewScanner(resp.Body)
 	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	scanner.Buffer(buf, 16*1024*1024)
 
 	msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
 	headerSent := false
 	outputTokens := 0
+	nextBlockIndex := 0
+	activeBlockIndex := -1
+	textBlockIndex := -1
+	toolBlockIndexByOpenAIIndex := map[int]int{}
 
 	writeEvent := func(event, data string) {
 		_, _ = writer.WriteString("event: " + event + "\ndata: " + data + "\n\n")
 		_ = writer.Flush()
+	}
+
+	ensureMessageStart := func() {
+		if headerSent {
+			return
+		}
+		headerSent = true
+		startMsg, _ := json.Marshal(map[string]interface{}{
+			"type": "message_start",
+			"message": map[string]interface{}{
+				"id": msgID, "type": "message", "role": "assistant",
+				"content": []interface{}{}, "model": model,
+				"stop_reason": nil, "stop_sequence": nil,
+				"usage": map[string]interface{}{"input_tokens": 0, "output_tokens": 0},
+			},
+		})
+		writeEvent("message_start", string(startMsg))
+		writeEvent("ping", `{"type":"ping"}`)
+	}
+
+	stopActiveBlock := func() {
+		if activeBlockIndex < 0 {
+			return
+		}
+		blockStop, _ := json.Marshal(map[string]interface{}{"type": "content_block_stop", "index": activeBlockIndex})
+		writeEvent("content_block_stop", string(blockStop))
+		activeBlockIndex = -1
+	}
+
+	ensureTextBlock := func() {
+		ensureMessageStart()
+		if textBlockIndex >= 0 {
+			activeBlockIndex = textBlockIndex
+			return
+		}
+		textBlockIndex = nextBlockIndex
+		nextBlockIndex++
+		activeBlockIndex = textBlockIndex
+		blockStart, _ := json.Marshal(map[string]interface{}{
+			"type": "content_block_start", "index": textBlockIndex,
+			"content_block": map[string]interface{}{"type": "text", "text": ""},
+		})
+		writeEvent("content_block_start", string(blockStart))
+	}
+
+	startToolBlock := func(openAIIndex int, toolID string, toolName string) int {
+		ensureMessageStart()
+		stopActiveBlock()
+
+		if toolID == "" {
+			toolID = fmt.Sprintf("call_%d", openAIIndex)
+		}
+
+		claudeIndex := nextBlockIndex
+		nextBlockIndex++
+		toolBlockIndexByOpenAIIndex[openAIIndex] = claudeIndex
+		activeBlockIndex = claudeIndex
+
+		blockStart, _ := json.Marshal(map[string]interface{}{
+			"type": "content_block_start", "index": claudeIndex,
+			"content_block": map[string]interface{}{
+				"type":  "tool_use",
+				"id":    toolID,
+				"name":  toolName,
+				"input": map[string]interface{}{},
+			},
+		})
+		writeEvent("content_block_start", string(blockStart))
+		return claudeIndex
 	}
 
 	for scanner.Scan() {
@@ -1004,43 +1168,60 @@ func ConvertOpenAIStreamToClaudeStream(resp *http.Response, writer StreamRespons
 		}
 		delta, _ := choice["delta"].(map[string]interface{})
 
-		if !headerSent {
-			headerSent = true
-			startMsg, _ := json.Marshal(map[string]interface{}{
-				"type": "message_start",
-				"message": map[string]interface{}{
-					"id": msgID, "type": "message", "role": "assistant",
-					"content": []interface{}{}, "model": model,
-					"stop_reason": nil, "stop_sequence": nil,
-					"usage": map[string]interface{}{"input_tokens": 0, "output_tokens": 0},
-				},
-			})
-			writeEvent("message_start", string(startMsg))
-
-			blockStart, _ := json.Marshal(map[string]interface{}{
-				"type": "content_block_start", "index": 0,
-				"content_block": map[string]interface{}{"type": "text", "text": ""},
-			})
-			writeEvent("content_block_start", string(blockStart))
-			writeEvent("ping", `{"type":"ping"}`)
-		}
-
 		if delta != nil {
 			if text, ok := delta["content"].(string); ok && text != "" {
+				if activeBlockIndex >= 0 && activeBlockIndex != textBlockIndex {
+					stopActiveBlock()
+				}
+				ensureTextBlock()
 				outputTokens++
 				deltaMsg, _ := json.Marshal(map[string]interface{}{
-					"type": "content_block_delta", "index": 0,
+					"type": "content_block_delta", "index": textBlockIndex,
 					"delta": map[string]interface{}{"type": "text_delta", "text": text},
 				})
 				writeEvent("content_block_delta", string(deltaMsg))
 			}
+
+			if toolCalls, ok := delta["tool_calls"].([]interface{}); ok {
+				for _, tc := range toolCalls {
+					tcMap, _ := tc.(map[string]interface{})
+					if tcMap == nil {
+						continue
+					}
+
+					openAIIndex := int(numberFromMap(tcMap, "index"))
+					toolID, _ := tcMap["id"].(string)
+					funcMap, _ := tcMap["function"].(map[string]interface{})
+					toolName := ""
+					arguments := ""
+					if funcMap != nil {
+						toolName, _ = funcMap["name"].(string)
+						arguments, _ = funcMap["arguments"].(string)
+					}
+
+					claudeIndex, exists := toolBlockIndexByOpenAIIndex[openAIIndex]
+					if !exists {
+						claudeIndex = startToolBlock(openAIIndex, toolID, toolName)
+					} else {
+						activeBlockIndex = claudeIndex
+					}
+
+					if arguments != "" {
+						deltaMsg, _ := json.Marshal(map[string]interface{}{
+							"type": "content_block_delta", "index": claudeIndex,
+							"delta": map[string]interface{}{"type": "input_json_delta", "partial_json": arguments},
+						})
+						writeEvent("content_block_delta", string(deltaMsg))
+					}
+				}
+			}
 		}
 
 		if finishReason, _ := choice["finish_reason"].(string); finishReason != "" {
-			stopReason := openAIFinishReasonToClaude(finishReason)
-			blockStop, _ := json.Marshal(map[string]interface{}{"type": "content_block_stop", "index": 0})
-			writeEvent("content_block_stop", string(blockStop))
+			ensureMessageStart()
+			stopActiveBlock()
 
+			stopReason := openAIFinishReasonToClaude(finishReason)
 			msgDelta, _ := json.Marshal(map[string]interface{}{
 				"type":  "message_delta",
 				"delta": map[string]interface{}{"stop_reason": stopReason, "stop_sequence": nil},
@@ -1053,8 +1234,7 @@ func ConvertOpenAIStreamToClaudeStream(resp *http.Response, writer StreamRespons
 	}
 
 	if headerSent {
-		blockStop, _ := json.Marshal(map[string]interface{}{"type": "content_block_stop", "index": 0})
-		writeEvent("content_block_stop", string(blockStop))
+		stopActiveBlock()
 		msgDelta, _ := json.Marshal(map[string]interface{}{
 			"type":  "message_delta",
 			"delta": map[string]interface{}{"stop_reason": "end_turn", "stop_sequence": nil},
@@ -1073,7 +1253,7 @@ func ForwardStreamRaw(resp *http.Response, writer StreamResponseWriter) error {
 
 	scanner := bufio.NewScanner(resp.Body)
 	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	scanner.Buffer(buf, 16*1024*1024)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -1091,7 +1271,7 @@ func ConvertOpenAIStreamToGeminiStream(resp *http.Response, writer StreamRespons
 
 	scanner := bufio.NewScanner(resp.Body)
 	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	scanner.Buffer(buf, 16*1024*1024)
 
 	emittedCandidate := false
 
@@ -1242,7 +1422,7 @@ func ConvertClaudeStreamToGeminiStream(resp *http.Response, writer StreamRespons
 
 	scanner := bufio.NewScanner(resp.Body)
 	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	scanner.Buffer(buf, 16*1024*1024)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -1366,7 +1546,7 @@ func ConvertGeminiStreamToClaudeStream(resp *http.Response, writer StreamRespons
 
 	scanner := bufio.NewScanner(resp.Body)
 	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	scanner.Buffer(buf, 16*1024*1024)
 
 	msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
 	headerSent := false
@@ -1497,7 +1677,7 @@ func ConvertGeminiStreamToOpenAI(resp *http.Response, writer StreamResponseWrite
 
 	scanner := bufio.NewScanner(resp.Body)
 	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	scanner.Buffer(buf, 16*1024*1024)
 
 	sentRole := false
 	toolIndexByKey := map[string]int{}
