@@ -126,6 +126,19 @@ func ConvertClaudeResponseToOpenAI(claudeResp *ClaudeResponse) *OpenAIResponse {
 		Role:    "assistant",
 		Content: textContent.String(),
 	}
+	if len(toolCalls) > 0 {
+		for _, toolCall := range toolCalls {
+			function, _ := toolCall["function"].(map[string]interface{})
+			message.ToolCalls = append(message.ToolCalls, OpenAIToolCall{
+				ID:   stringFromMap(toolCall, "id"),
+				Type: stringFromMap(toolCall, "type"),
+				Function: OpenAIToolFunction{
+					Name:      stringFromMap(function, "name"),
+					Arguments: stringFromMap(function, "arguments"),
+				},
+			})
+		}
+	}
 
 	finishReason := claudeStopReasonToOpenAI(claudeResp.StopReason)
 
@@ -149,6 +162,14 @@ func ConvertClaudeResponseToOpenAI(claudeResp *ClaudeResponse) *OpenAIResponse {
 	}
 }
 
+func stringFromMap(m map[string]interface{}, key string) string {
+	if m == nil {
+		return ""
+	}
+	value, _ := m[key].(string)
+	return value
+}
+
 // ConvertOpenAIResponseToClaude 将 OpenAI 响应转换为 Claude 原生格式
 func ConvertOpenAIResponseToClaude(oaiResp *OpenAIResponse) *ClaudeResponse {
 	var content []ClaudeContent
@@ -160,6 +181,22 @@ func ConvertOpenAIResponseToClaude(oaiResp *OpenAIResponse) *ClaudeResponse {
 
 		if text, ok := choice.Message.Content.(string); ok && text != "" {
 			content = append(content, ClaudeContent{Type: "text", Text: text})
+		}
+
+		if len(choice.Message.ToolCalls) > 0 {
+			stopReason = "tool_use"
+			for _, toolCall := range choice.Message.ToolCalls {
+				input := json.RawMessage([]byte("{}"))
+				if strings.TrimSpace(toolCall.Function.Arguments) != "" {
+					input = json.RawMessage(toolCall.Function.Arguments)
+				}
+				content = append(content, ClaudeContent{
+					Type:  "tool_use",
+					ID:    toolCall.ID,
+					Name:  toolCall.Function.Name,
+					Input: input,
+				})
+			}
 		}
 	}
 

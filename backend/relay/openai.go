@@ -117,8 +117,21 @@ type ContentPrediction struct {
 }
 
 type Message struct {
-	Role    string      `json:"role"`
-	Content interface{} `json:"content"`
+	Role       string           `json:"role"`
+	Content    interface{}      `json:"content"`
+	ToolCalls  []OpenAIToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
+}
+
+type OpenAIToolCall struct {
+	ID       string             `json:"id"`
+	Type     string             `json:"type"`
+	Function OpenAIToolFunction `json:"function"`
+}
+
+type OpenAIToolFunction struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
 }
 
 func (m *Message) NormalizeContent() {
@@ -318,7 +331,7 @@ func ForwardOpenAIStream(resp *http.Response, writer StreamResponseWriter) error
 
 	scanner := bufio.NewScanner(resp.Body)
 	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	scanner.Buffer(buf, 16*1024*1024)
 
 	for scanner.Scan() {
 		_, _ = writer.WriteString(scanner.Text() + "\n\n")
