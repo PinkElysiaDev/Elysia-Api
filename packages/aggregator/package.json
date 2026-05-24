@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-elysia-api-aggregator",
   "description": "Inspired by New-API, the Elysia-API model aggregator plugin allows automatic fetching and manual configuration of available AI models, designed to work with the orchestrator plugin.",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "main": "lib/index.cjs",
   "module": "lib/index.mjs",
   "typings": "lib/index.d.ts",
