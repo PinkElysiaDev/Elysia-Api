@@ -1,14 +1,13 @@
 {
     "extends": "./tsconfig.base",
     "compilerOptions": {
-        "baseUrl": ".",
         "paths": {
-            "koishi-plugin-elysia-api-aggregator": ["packages/aggregator/src"],
-            "koishi-plugin-elysia-api-aggregator/*": ["packages/aggregator/src/*"],
-            "koishi-plugin-elysia-api-orchestrator": ["packages/orchestrator/src"],
-            "koishi-plugin-elysia-api-orchestrator/*": ["packages/orchestrator/src/*"],
-            "@elysia-api/shared": ["packages/shared/src"],
-            "@elysia-api/shared/*": ["packages/shared/src/*"]
+            "koishi-plugin-elysia-api-aggregator": ["./packages/aggregator/src"],
+            "koishi-plugin-elysia-api-aggregator/*": ["./packages/aggregator/src/*"],
+            "koishi-plugin-elysia-api-orchestrator": ["./packages/orchestrator/src"],
+            "koishi-plugin-elysia-api-orchestrator/*": ["./packages/orchestrator/src/*"],
+            "@elysia-api/shared": ["./packages/shared/src"],
+            "@elysia-api/shared/*": ["./packages/shared/src/*"]
         }
     }
 }
