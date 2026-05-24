@@ -3,9 +3,8 @@
     "compilerOptions": {
         "rootDir": "src",
         "outDir": "lib",
-        "baseUrl": "../../../",
         "paths": {
-            "koishi": ["node_modules/koishi"]
+            "koishi": ["../../../../node_modules/koishi"]
         }
     },
     "include": [
