@@ -613,6 +613,9 @@ func UnifiedToOpenAI(unified *UnifiedRequest) ([]byte, error) {
 	if unified.Stream {
 		result["stream"] = unified.Stream
 	}
+	if unified.StreamOptions != nil {
+		result["stream_options"] = unified.StreamOptions
+	}
 	if unified.Stop != nil {
 		result["stop"] = unified.Stop
 	}

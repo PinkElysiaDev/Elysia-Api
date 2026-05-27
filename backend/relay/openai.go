@@ -189,9 +189,35 @@ type Choice struct {
 }
 
 type Usage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
+	PromptTokens         int    `json:"prompt_tokens"`
+	CompletionTokens     int    `json:"completion_tokens"`
+	TotalTokens          int    `json:"total_tokens"`
+	CachedTokens         int    `json:"cached_tokens,omitempty"`
+	PromptCacheHitTokens int    `json:"prompt_cache_hit_tokens,omitempty"`
+	UsageSemantic        string `json:"usage_semantic,omitempty"`
+	UsageSource          string `json:"usage_source,omitempty"`
+
+	PromptTokensDetails     PromptTokensDetails     `json:"prompt_tokens_details,omitempty"`
+	InputTokensDetails      PromptTokensDetails     `json:"input_tokens_details,omitempty"`
+	CompletionTokensDetails CompletionTokensDetails `json:"completion_tokens_details,omitempty"`
+	InputTokens             int                     `json:"input_tokens,omitempty"`
+	OutputTokens            int                     `json:"output_tokens,omitempty"`
+}
+
+type PromptTokensDetails struct {
+	CachedTokens         int `json:"cached_tokens,omitempty"`
+	CacheReadTokens      int `json:"cache_read_tokens,omitempty"`
+	CachedCreationTokens int `json:"cached_creation_tokens,omitempty"`
+	TextTokens           int `json:"text_tokens,omitempty"`
+	AudioTokens          int `json:"audio_tokens,omitempty"`
+	ImageTokens          int `json:"image_tokens,omitempty"`
+}
+
+type CompletionTokensDetails struct {
+	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
+	TextTokens      int `json:"text_tokens,omitempty"`
+	AudioTokens     int `json:"audio_tokens,omitempty"`
+	ImageTokens     int `json:"image_tokens,omitempty"`
 }
 
 func (a *OpenAIAdapter) SendRequest(baseUrl, apiKey string, req OpenAIRequest) (*OpenAIResponse, error) {
@@ -260,6 +286,66 @@ func (a *OpenAIAdapter) SendRequestRaw(baseUrl, apiKey string, body []byte) (*Op
 	return &openAIResp, nil
 }
 
+func (a *OpenAIAdapter) SendRequestRawWithBody(baseUrl, apiKey string, body []byte) (*OpenAIResponse, []byte, error) {
+	url := fmt.Sprintf("%s/chat/completions", strings.TrimSuffix(baseUrl, "/"))
+	httpReq, err := buildHTTPRequest("POST", url, apiKey, body, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	resp, err := a.client.Do(httpReq)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, respBody, fmt.Errorf("API error: %s", string(respBody))
+	}
+
+	var openAIResp OpenAIResponse
+	if err := json.Unmarshal(respBody, &openAIResp); err != nil {
+		return nil, respBody, err
+	}
+
+	return &openAIResp, respBody, nil
+}
+
+func (a *OpenAIAdapter) SendResponsesRawWithBody(baseUrl, apiKey string, body []byte) (*OpenAIResponsesResponse, []byte, error) {
+	url := fmt.Sprintf("%s/responses", strings.TrimSuffix(baseUrl, "/"))
+	httpReq, err := buildHTTPRequest("POST", url, apiKey, body, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	resp, err := a.client.Do(httpReq)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, respBody, fmt.Errorf("API error: %s", string(respBody))
+	}
+
+	var responsesResp OpenAIResponsesResponse
+	if err := json.Unmarshal(respBody, &responsesResp); err != nil {
+		return nil, respBody, err
+	}
+
+	return &responsesResp, respBody, nil
+}
+
 // IsStreamRequest 检查请求体是否为流式请求
 func IsStreamRequest(body []byte) bool {
 	var req map[string]interface{}
@@ -275,6 +361,30 @@ func IsStreamRequest(body []byte) bool {
 // SendRequestStream 发送流式请求并返回原始 HTTP 响应
 func (a *OpenAIAdapter) SendRequestStream(baseUrl, apiKey string, body []byte) (*http.Response, error) {
 	url := fmt.Sprintf("%s/chat/completions", strings.TrimSuffix(baseUrl, "/"))
+	extraHeaders := map[string]string{
+		"Accept": "text/event-stream",
+	}
+	httpReq, err := buildHTTPRequest("POST", url, apiKey, body, extraHeaders)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := a.client.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error: %s", string(respBody))
+	}
+
+	return resp, nil
+}
+
+func (a *OpenAIAdapter) SendResponsesStream(baseUrl, apiKey string, body []byte) (*http.Response, error) {
+	url := fmt.Sprintf("%s/responses", strings.TrimSuffix(baseUrl, "/"))
 	extraHeaders := map[string]string{
 		"Accept": "text/event-stream",
 	}

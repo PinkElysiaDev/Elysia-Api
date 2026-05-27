@@ -17,20 +17,41 @@ import (
 )
 
 type Config struct {
-	Server           ServerConfig       `json:"server"`
-	Tokens           []AccessToken      `json:"tokens"`
-	Groups           []ModelGroupConfig `json:"modelGroups"`
-	HeartbeatTimeout int                `json:"heartbeatTimeout,omitempty"` // 心跳超时时间（秒）
-	HTTPTimeout      int                `json:"httpTimeout,omitempty"`      // HTTP 请求超时时间（秒），0 为不限制
-	DebugMode        bool               `json:"debugMode,omitempty"`        // 调试模式
-	VerboseLog       bool               `json:"verboseLog,omitempty"`       // 详细日志模式
-	mu               sync.RWMutex
-	path             string
+	Server                 ServerConfig       `json:"server"`
+	DashboardToken         string             `json:"dashboardToken,omitempty"`
+	DashboardTokenEnc      *SecretValue       `json:"dashboardTokenEnc,omitempty"`
+	Tokens                 []AccessToken      `json:"tokens"`
+	Groups                 []ModelGroupConfig `json:"modelGroups"`
+	Responses              ResponsesConfig    `json:"responses,omitempty"`              // Responses API 兼容策略
+	Usage                  UsageConfig        `json:"usage,omitempty"`                  // 用量估算配置
+	HeartbeatTimeout       int                `json:"heartbeatTimeout,omitempty"`       // 心跳超时时间（秒）
+	HTTPTimeout            int                `json:"httpTimeout,omitempty"`            // HTTP 请求超时时间（秒），0 为不限制
+	DebugMode              bool               `json:"debugMode,omitempty"`              // 调试模式
+	VerboseLog             bool               `json:"verboseLog,omitempty"`             // 详细日志模式
+	UsagePersistEnabled    *bool              `json:"usagePersistEnabled,omitempty"`    // 持久化用量统计
+	UsagePersistMaxRecords int                `json:"usagePersistMaxRecords,omitempty"` // 最多保留的用量记录条数
+	mu                     sync.RWMutex
+	path                   string
 }
 
 type ServerConfig struct {
 	Host string `json:"host"`
 	Port int    `json:"port"`
+}
+
+type ResponsesConfig struct {
+	Enabled                      *bool  `json:"enabled,omitempty"`
+	UpstreamMode                 string `json:"upstreamMode,omitempty"`                 // native | transform | auto
+	TransformUnsupportedBehavior string `json:"transformUnsupportedBehavior,omitempty"` // error | warn | ignore
+	PassThroughUnknownFields     *bool  `json:"passThroughUnknownFields,omitempty"`
+}
+
+type UsageConfig struct {
+	EstimateWhenMissing         *bool `json:"estimateWhenMissing,omitempty"`
+	CharsPerToken               int   `json:"charsPerToken,omitempty"`
+	DefaultOutputTokenEstimate  int   `json:"defaultOutputTokenEstimate,omitempty"`
+	ImageInputTokenEstimate     int   `json:"imageInputTokenEstimate,omitempty"`
+	FileInputTokenEstimatePerKB int   `json:"fileInputTokenEstimatePerKB,omitempty"`
 }
 
 type SecretValue struct {
@@ -64,13 +85,21 @@ type ModelGroupConfig struct {
 	ToolsCapable          *bool      `json:"toolsCapable,omitempty"`
 }
 
+type EndpointCapabilities struct {
+	ChatCompletions       *bool `json:"chatCompletions,omitempty"`
+	Responses             *bool `json:"responses,omitempty"`
+	ClaudeMessages        *bool `json:"claudeMessages,omitempty"`
+	GeminiGenerateContent *bool `json:"geminiGenerateContent,omitempty"`
+}
+
 type ModelRef struct {
-	ID        string       `json:"id"`
-	Name      string       `json:"name"`
-	BaseURL   string       `json:"baseUrl"`
-	APIKey    string       `json:"apiKey,omitempty"`
-	APIKeyEnc *SecretValue `json:"apiKeyEnc,omitempty"`
-	Platform  string       `json:"platform"`
+	ID        string                `json:"id"`
+	Name      string                `json:"name"`
+	BaseURL   string                `json:"baseUrl"`
+	APIKey    string                `json:"apiKey,omitempty"`
+	APIKeyEnc *SecretValue          `json:"apiKeyEnc,omitempty"`
+	Platform  string                `json:"platform"`
+	Endpoints *EndpointCapabilities `json:"endpoints,omitempty"`
 }
 
 var GlobalConfig *Config
@@ -116,15 +145,28 @@ func (c *Config) Reload() error {
 
 	c.mu.Lock()
 	c.Server = newCfg.Server
+	c.DashboardToken = newCfg.DashboardToken
+	c.DashboardTokenEnc = newCfg.DashboardTokenEnc
 	c.Tokens = newCfg.Tokens
 	c.Groups = newCfg.Groups
+	c.Responses = newCfg.Responses
+	c.Usage = newCfg.Usage
 	c.HeartbeatTimeout = newCfg.HeartbeatTimeout
 	c.HTTPTimeout = newCfg.HTTPTimeout
 	c.DebugMode = newCfg.DebugMode
 	c.VerboseLog = newCfg.VerboseLog
+	c.UsagePersistEnabled = newCfg.UsagePersistEnabled
+	c.UsagePersistMaxRecords = newCfg.UsagePersistMaxRecords
 	c.mu.Unlock()
 
 	return nil
+}
+
+func (c *Config) Dir() string {
+	c.mu.RLock()
+	path := c.path
+	c.mu.RUnlock()
+	return filepath.Dir(path)
 }
 
 func (c *Config) GetGroups() []ModelGroupConfig {
@@ -153,9 +195,14 @@ func (c *Config) GetTokens() []AccessToken {
 }
 
 func (c *Config) IsValidAccessToken(token string) bool {
+	_, ok := c.FindAccessToken(token)
+	return ok
+}
+
+func (c *Config) FindAccessToken(token string) (AccessToken, bool) {
 	token = strings.TrimSpace(token)
 	if token == "" {
-		return false
+		return AccessToken{}, false
 	}
 
 	c.mu.RLock()
@@ -163,10 +210,41 @@ func (c *Config) IsValidAccessToken(token string) bool {
 
 	for _, item := range c.Tokens {
 		if item.Enabled && item.Token == token {
-			return true
+			return item, true
 		}
 	}
-	return false
+	return AccessToken{}, false
+}
+
+func (c *Config) IsValidDashboardToken(token string) bool {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return false
+	}
+
+	c.mu.RLock()
+	dashboardToken := c.DashboardToken
+	c.mu.RUnlock()
+
+	return dashboardToken != "" && token == dashboardToken
+}
+
+func (c *Config) IsUsagePersistEnabled() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.UsagePersistEnabled == nil || *c.UsagePersistEnabled
+}
+
+func (c *Config) GetUsagePersistMaxRecords() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.UsagePersistMaxRecords <= 0 {
+		return 10000
+	}
+	if c.UsagePersistMaxRecords < 1000 {
+		return 1000
+	}
+	return c.UsagePersistMaxRecords
 }
 
 func (c *Config) GetHeartbeatTimeout() time.Duration {
@@ -179,10 +257,64 @@ func (c *Config) GetHeartbeatTimeout() time.Duration {
 	return 300 * time.Second // 默认 300 秒
 }
 
+func (c *Config) GetResponsesConfig() ResponsesConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	cfg := c.Responses
+	if cfg.Enabled == nil {
+		v := true
+		cfg.Enabled = &v
+	}
+	if strings.TrimSpace(cfg.UpstreamMode) == "" {
+		cfg.UpstreamMode = "native"
+	}
+	if strings.TrimSpace(cfg.TransformUnsupportedBehavior) == "" {
+		cfg.TransformUnsupportedBehavior = "error"
+	}
+	if cfg.PassThroughUnknownFields == nil {
+		v := true
+		cfg.PassThroughUnknownFields = &v
+	}
+	return cfg
+}
+
+func (c *Config) GetUsageConfig() UsageConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	cfg := c.Usage
+	if cfg.EstimateWhenMissing == nil {
+		v := true
+		cfg.EstimateWhenMissing = &v
+	}
+	if cfg.CharsPerToken <= 0 {
+		cfg.CharsPerToken = 4
+	}
+	if cfg.DefaultOutputTokenEstimate <= 0 {
+		cfg.DefaultOutputTokenEstimate = 1024
+	}
+	if cfg.ImageInputTokenEstimate <= 0 {
+		cfg.ImageInputTokenEstimate = 300
+	}
+	if cfg.FileInputTokenEstimatePerKB <= 0 {
+		cfg.FileInputTokenEstimatePerKB = 128
+	}
+	return cfg
+}
+
 func (c *Config) resolveSecrets() error {
 	key, err := loadMasterKey(c.path)
 	if err != nil {
 		return err
+	}
+
+	if c.DashboardToken == "" && c.DashboardTokenEnc != nil {
+		plain, err := decryptSecret(*c.DashboardTokenEnc, key)
+		if err != nil {
+			return fmt.Errorf("failed to decrypt dashboard token: %w", err)
+		}
+		c.DashboardToken = plain
 	}
 
 	for i := range c.Tokens {
@@ -272,6 +404,10 @@ func decryptSecret(secret SecretValue, key []byte) (string, error) {
 }
 
 func init() {
+	if strings.HasSuffix(os.Args[0], ".test") || strings.HasSuffix(os.Args[0], ".test.exe") {
+		return
+	}
+
 	configFile := flag.String("config", "", "Path to config file")
 	flag.Parse()
 

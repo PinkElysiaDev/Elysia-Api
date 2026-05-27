@@ -66,8 +66,21 @@ type ClaudeContent struct {
 }
 
 type ClaudeUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
+	InputTokens              int                       `json:"input_tokens"`
+	OutputTokens             int                       `json:"output_tokens"`
+	CacheCreationInputTokens int                       `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadInputTokens     int                       `json:"cache_read_input_tokens,omitempty"`
+	CacheCreation            *ClaudeCacheCreationUsage `json:"cache_creation,omitempty"`
+	ServerToolUse            *ClaudeServerToolUse      `json:"server_tool_use,omitempty"`
+}
+
+type ClaudeCacheCreationUsage struct {
+	Ephemeral5mInputTokens int `json:"ephemeral_5m_input_tokens,omitempty"`
+	Ephemeral1hInputTokens int `json:"ephemeral_1h_input_tokens,omitempty"`
+}
+
+type ClaudeServerToolUse struct {
+	WebSearchRequests int `json:"web_search_requests,omitempty"`
 }
 
 // claudeStopReasonToOpenAI 将 Claude stop_reason 映射为 OpenAI finish_reason

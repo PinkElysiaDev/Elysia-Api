@@ -37,6 +37,9 @@ type Server struct {
 
 	rateLimitMu sync.Mutex
 	rateLimits  map[string]*rateLimitState
+
+	usageMu      sync.Mutex
+	usageRecords []usageRecord
 }
 
 func New(cfg *config.Config) *Server {
@@ -50,7 +53,7 @@ func New(cfg *config.Config) *Server {
 		httpTimeout = 0 // 0 表示不限制
 	}
 
-	return &Server{
+	server := &Server{
 		config:          cfg,
 		engine:          engine,
 		openaiAdapter:   relay.NewOpenAIAdapter(httpTimeout),
@@ -59,6 +62,10 @@ func New(cfg *config.Config) *Server {
 		roundRobinIndex: make(map[string]int),
 		rateLimits:      make(map[string]*rateLimitState),
 	}
+	if err := server.loadUsageRecords(); err != nil {
+		log.Printf("failed to load usage records: %v", err)
+	}
+	return server
 }
 
 // logDebug 仅在调试模式下输出基本信息（模型组、选中模型、耗时）
@@ -262,6 +269,7 @@ func (s *Server) setupRoutes() {
 	v1.Use(s.authMiddleware())
 	{
 		v1.POST("/chat/completions", s.chatCompletions)
+		v1.POST("/responses", s.responses)               // OpenAI Responses API 入口
 		v1.POST("/messages", s.chatCompletions)          // Claude 原生格式入口
 		v1.POST("/messages/count_tokens", s.countTokens) // Claude 兼容 token 统计端点
 		v1.GET("/models", s.listModels)
@@ -277,6 +285,17 @@ func (s *Server) setupRoutes() {
 		v1beta.POST("/models/*action", s.chatCompletions)
 	}
 
+	s.engine.GET("/usage", s.usageDashboard)
+
+	usage := s.engine.Group("/__usage")
+	usage.Use(s.dashboardAuthMiddleware())
+	{
+		usage.GET("/stats", s.usageStats)
+		usage.GET("/logs", s.usageLogs)
+		usage.GET("/logs/:id", s.usageLogDetail)
+		usage.POST("/reset", s.resetUsage)
+	}
+
 	s.engine.GET("/health", s.healthCheck)
 	s.engine.POST("/__reload", s.loopbackOnly(s.reloadConfig))
 }
@@ -284,9 +303,25 @@ func (s *Server) setupRoutes() {
 func (s *Server) authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := extractAccessToken(c.Request)
-		if !s.config.IsValidAccessToken(token) {
+		accessToken, ok := s.config.FindAccessToken(token)
+		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error": "unauthorized",
+			})
+			return
+		}
+		c.Set("elysiaKeyName", accessToken.Name)
+		c.Set("elysiaKeyHash", shortTokenHash(token))
+		c.Next()
+	}
+}
+
+func (s *Server) dashboardAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := extractAccessToken(c.Request)
+		if !s.config.IsValidDashboardToken(token) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error": "dashboard token is not configured or invalid",
 			})
 			return
 		}
@@ -429,6 +464,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	default:
 		inputFormat = relay.FormatOpenAI
 	}
+	record := s.initUsageRecord(c, startTime, bodyBytes, inputFormat)
 	s.logVerbose("[Input Format] %s", inputFormat)
 
 	// 转换为统一格式
@@ -465,9 +501,15 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		} else if strings.Contains(errMsg, "disabled") {
 			statusCode = 403
 		}
+		record.StatusCode = statusCode
+		record.Error = err.Error()
+		record.EndedAt = time.Now()
+		record.DurationMs = time.Since(startTime).Milliseconds()
+		s.recordUsage(record)
 		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
+	setRecordGroup(record, group)
 
 	filtered, filteredMessages, filteredParts := filterVisionInputsIfNeeded(group, unifiedReq)
 	if filtered {
@@ -521,15 +563,22 @@ func (s *Server) chatCompletions(c *gin.Context) {
 
 	// 检测目标平台
 	targetPlatform := relay.DetectPlatform(selectedModel.BaseURL, selectedModel.Platform)
+	setRecordModel(record, selectedModel, targetPlatform)
 	s.logVerbose("[Target Platform] %s", targetPlatform)
 
 	// 从统一格式转换为目标平台格式
 	targetBody, err := relay.ConvertFromUnified(unifiedReq, targetPlatform)
 	if err != nil {
 		log.Printf("Error converting to target format: %v", err)
+		record.StatusCode = http.StatusInternalServerError
+		record.Error = fmt.Sprintf("Failed to convert request: %v", err)
+		record.EndedAt = time.Now()
+		record.DurationMs = time.Since(startTime).Milliseconds()
+		s.recordUsage(record)
 		c.JSON(500, gin.H{"error": fmt.Sprintf("Failed to convert request: %v", err)})
 		return
 	}
+	record.OutgoingBody = sanitizeUsageBody(targetBody)
 
 	s.logVerbose("[Outgoing Request] baseUrl=%s body=%s", selectedModel.BaseURL, compactLogJSON(targetBody))
 
@@ -552,22 +601,37 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		)
 		if streamBodyErr != nil {
 			log.Printf("Error ensuring stream flag in target body: %v", streamBodyErr)
+			record.StatusCode = http.StatusInternalServerError
+			record.Error = fmt.Sprintf("Failed to prepare stream request: %v", streamBodyErr)
+			record.EndedAt = time.Now()
+			record.DurationMs = time.Since(startTime).Milliseconds()
+			s.recordUsage(record)
 			c.JSON(500, gin.H{"error": fmt.Sprintf("Failed to prepare stream request: %v", streamBodyErr)})
 			return
 		}
+		record.OutgoingBody = sanitizeUsageBody(targetBody)
 		s.logVerbose("[Outgoing Stream Request Patched] body=%s", compactLogJSON(targetBody))
 	}
 
 	if isStream {
+		record.Stream = true
 		// 流式请求处理
-		s.handleStreamRequest(c, group, selectedModel, targetBody, targetPlatform, inputFormat, startTime, estimatedTokens)
+		s.handleStreamRequest(c, group, selectedModel, targetBody, targetPlatform, inputFormat, startTime, estimatedTokens, record)
 	} else {
 		// 非流式请求处理
-		s.handleNormalRequest(c, group, selectedModel, targetBody, targetPlatform, inputFormat, startTime, estimatedTokens)
+		s.handleNormalRequest(c, group, selectedModel, targetBody, targetPlatform, inputFormat, startTime, estimatedTokens, record)
 	}
 }
 
-func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, estimatedTokens int) {
+func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord) {
+	defer func() {
+		if record.FirstByteMs == 0 {
+			record.FirstByteMs = time.Since(startTime).Milliseconds()
+		}
+		record.EndedAt = time.Now()
+		record.DurationMs = time.Since(startTime).Milliseconds()
+		s.recordUsage(record)
+	}()
 	// 设计原则：
 	// 1) 先按 targetPlatform 获取并解析上游响应
 	// 2) 再按 inputFormat 渲染客户端响应
@@ -577,6 +641,8 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		httpResp, err := s.claudeAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, targetBody, false)
 		if err != nil {
 			log.Printf("Error forwarding Claude request: %v", err)
+			record.StatusCode = http.StatusInternalServerError
+			record.Error = fmt.Sprintf("Failed to forward request: %v", err)
 			c.JSON(500, gin.H{"error": fmt.Sprintf("Failed to forward request: %v", err)})
 			return
 		}
@@ -584,18 +650,28 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 
 		if httpResp.StatusCode != http.StatusOK {
 			respBody, _ := io.ReadAll(httpResp.Body)
+			record.StatusCode = httpResp.StatusCode
+			record.Error = string(respBody)
 			c.Data(httpResp.StatusCode, "application/json", respBody)
 			return
 		}
 
 		var claudeResp relay.ClaudeResponse
-		if err := readJSON(httpResp, &claudeResp); err != nil {
+		respBody, err := readBodyAndJSON(httpResp, &claudeResp)
+		record.ProviderResponse = sanitizeUsageBody(respBody)
+		if err != nil {
 			log.Printf("Error parsing Claude response: %v", err)
+			record.StatusCode = http.StatusInternalServerError
+			record.Error = fmt.Sprintf("Failed to parse response: %v", err)
 			c.JSON(500, gin.H{"error": fmt.Sprintf("Failed to parse response: %v", err)})
 			return
 		}
 
-		actualTokens := claudeResp.Usage.InputTokens + claudeResp.Usage.OutputTokens
+		record.Usage = usageFromProviderBody(targetPlatform, respBody)
+		actualTokens := 0
+		if record.Usage.TotalTokens != nil {
+			actualTokens = *record.Usage.TotalTokens
+		}
 		s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
 
 		// 统一转为 OpenAI 中间响应，再渲染到客户端格式
@@ -615,6 +691,8 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		httpResp, err := s.geminiAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, false)
 		if err != nil {
 			log.Printf("Error forwarding Gemini request: %v", err)
+			record.StatusCode = http.StatusInternalServerError
+			record.Error = fmt.Sprintf("Failed to forward request: %v", err)
 			c.JSON(500, gin.H{"error": fmt.Sprintf("Failed to forward request: %v", err)})
 			return
 		}
@@ -622,19 +700,29 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 
 		if httpResp.StatusCode != http.StatusOK {
 			respBody, _ := io.ReadAll(httpResp.Body)
+			record.StatusCode = httpResp.StatusCode
+			record.Error = string(respBody)
 			c.Data(httpResp.StatusCode, "application/json", respBody)
 			return
 		}
 
 		var geminiResp relay.GeminiResponse
-		if err := readJSON(httpResp, &geminiResp); err != nil {
+		respBody, err := readBodyAndJSON(httpResp, &geminiResp)
+		record.ProviderResponse = sanitizeUsageBody(respBody)
+		if err != nil {
 			log.Printf("Error parsing Gemini response: %v", err)
+			record.StatusCode = http.StatusInternalServerError
+			record.Error = fmt.Sprintf("Failed to parse response: %v", err)
 			c.JSON(500, gin.H{"error": fmt.Sprintf("Failed to parse response: %v", err)})
 			return
 		}
 
 		oaiResp := relay.ConvertGeminiResponseToOpenAI(&geminiResp)
-		actualTokens := oaiResp.Usage.TotalTokens
+		record.Usage = usageFromProviderBody(targetPlatform, respBody)
+		actualTokens := 0
+		if record.Usage.TotalTokens != nil {
+			actualTokens = *record.Usage.TotalTokens
+		}
 		s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
 
 		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
@@ -649,14 +737,22 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		}
 
 	default:
-		resp, err := s.openaiAdapter.SendRequestRaw(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
+		resp, respBody, err := s.openaiAdapter.SendRequestRawWithBody(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		if err != nil {
 			log.Printf("Error forwarding request: %v", err)
+			record.StatusCode = http.StatusInternalServerError
+			record.Error = fmt.Sprintf("Failed to forward request: %v", err)
 			c.JSON(500, gin.H{"error": fmt.Sprintf("Failed to forward request: %v", err)})
 			return
 		}
 
-		s.adjustTokenUsage(group.ID, estimatedTokens, resp.Usage.TotalTokens)
+		record.ProviderResponse = sanitizeUsageBody(respBody)
+		record.Usage = usageFromProviderBody(targetPlatform, respBody)
+		actualTokens := 0
+		if record.Usage.TotalTokens != nil {
+			actualTokens = *record.Usage.TotalTokens
+		}
+		s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
 
 		s.logVerbose("=== Response ===")
 		if respJSON, err := relay.MarshalResponse(resp); err == nil {
@@ -675,7 +771,12 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 	}
 }
 
-func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, estimatedTokens int) {
+func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord) {
+	defer func() {
+		record.EndedAt = time.Now()
+		record.DurationMs = time.Since(startTime).Milliseconds()
+		s.recordUsage(record)
+	}()
 	// 设置 SSE 响应头
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
@@ -686,25 +787,38 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		log.Printf("Streaming not supported")
+		record.StatusCode = http.StatusInternalServerError
+		record.Error = "Streaming not supported"
 		c.JSON(500, gin.H{"error": "Streaming not supported"})
 		return
 	}
-	writer := &ginStreamWriter{writer: c.Writer, flusher: flusher}
+	writer := &observingStreamWriter{
+		inner:        &ginStreamWriter{writer: c.Writer, flusher: flusher},
+		record:       record,
+		startTime:    startTime,
+		observeUsage: false,
+	}
 
 	switch targetPlatform {
 	case relay.PlatformAnthropic:
 		httpResp, err := s.claudeAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, targetBody, true)
 		if err != nil {
 			log.Printf("Error forwarding Claude stream request: %v", err)
+			record.StatusCode = http.StatusBadGateway
+			record.Error = fmt.Sprintf("Failed to forward request: %v", err)
 			writeStreamForwardError(c, inputFormat, err)
 			return
 		}
 		if httpResp.StatusCode != http.StatusOK {
 			defer httpResp.Body.Close()
 			respBody, _ := io.ReadAll(httpResp.Body)
+			record.StatusCode = httpResp.StatusCode
+			record.Error = string(respBody)
 			c.Data(httpResp.StatusCode, "application/json", respBody)
 			return
 		}
+
+		observeUpstreamUsage(httpResp, record, targetPlatform)
 
 		switch inputFormat {
 		case relay.FormatClaude:
@@ -725,15 +839,21 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		httpResp, err := s.geminiAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, true)
 		if err != nil {
 			log.Printf("Error forwarding Gemini stream request: %v", err)
+			record.StatusCode = http.StatusBadGateway
+			record.Error = fmt.Sprintf("Failed to forward request: %v", err)
 			writeStreamForwardError(c, inputFormat, err)
 			return
 		}
 		if httpResp.StatusCode != http.StatusOK {
 			defer httpResp.Body.Close()
 			respBody, _ := io.ReadAll(httpResp.Body)
+			record.StatusCode = httpResp.StatusCode
+			record.Error = string(respBody)
 			c.Data(httpResp.StatusCode, "application/json", respBody)
 			return
 		}
+
+		observeUpstreamUsage(httpResp, record, targetPlatform)
 
 		switch inputFormat {
 		case relay.FormatClaude:
@@ -754,9 +874,13 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		resp, err := s.openaiAdapter.SendRequestStream(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		if err != nil {
 			log.Printf("Error forwarding stream request: %v", err)
+			record.StatusCode = http.StatusBadGateway
+			record.Error = fmt.Sprintf("Failed to forward request: %v", err)
 			writeStreamForwardError(c, inputFormat, err)
 			return
 		}
+
+		observeUpstreamUsage(resp, record, targetPlatform)
 
 		switch inputFormat {
 		case relay.FormatClaude:
@@ -775,6 +899,14 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 	}
 
 	s.logDebug("Stream request completed in %dms", time.Since(startTime).Milliseconds())
+}
+
+func readBodyAndJSON(resp *http.Response, v interface{}) ([]byte, error) {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return body, json.Unmarshal(body, v)
 }
 
 // readJSON 从 HTTP 响应中读取并解析 JSON
@@ -828,11 +960,12 @@ func ensureStreamFlagInTargetBody(
 
 	// OpenAI 兼容接口可附带 stream_options，帮助下游返回 usage chunk
 	if targetPlatform == relay.PlatformOpenAI || targetPlatform == relay.PlatformDeepSeek || targetPlatform == relay.PlatformAzure {
-		if _, exists := req["stream_options"]; !exists {
-			req["stream_options"] = map[string]interface{}{
-				"include_usage": true,
-			}
+		streamOptions, ok := req["stream_options"].(map[string]interface{})
+		if !ok {
+			streamOptions = map[string]interface{}{}
 		}
+		streamOptions["include_usage"] = true
+		req["stream_options"] = streamOptions
 	}
 
 	return json.Marshal(req)
@@ -972,22 +1105,30 @@ func (s *Server) getOrCreateRateLimitStateLocked(groupID string) *rateLimitState
 }
 
 func estimateUnifiedRequestTokens(req *relay.UnifiedRequest) int {
+	return estimateUnifiedRequestInputTokens(req) + estimateUnifiedRequestOutputTokens(req.MaxTokens, req.MaxCompletionTokens)
+}
+
+func estimateUnifiedRequestInputTokens(req *relay.UnifiedRequest) int {
 	totalChars := 0
 	for _, msg := range req.Messages {
 		totalChars += estimateContentChars(msg.Content)
 	}
-
 	inputTokens := (totalChars + 3) / 4
 	if inputTokens < 0 {
-		inputTokens = 0
+		return 0
 	}
+	return inputTokens
+}
 
-	outputBudget := req.MaxTokens
+func estimateUnifiedRequestOutputTokens(requestedMaxTokens int, requestedMaxCompletionTokens int) int {
+	outputBudget := requestedMaxCompletionTokens
+	if outputBudget == 0 {
+		outputBudget = requestedMaxTokens
+	}
 	if outputBudget < 0 {
-		outputBudget = 0
+		return 0
 	}
-
-	return inputTokens + outputBudget
+	return outputBudget
 }
 
 func validateOutboundBaseURL(raw string) error {
