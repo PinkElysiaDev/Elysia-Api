@@ -365,8 +365,8 @@ func CanonicalToResponsesRequest(req *CanonicalRequest, original *OpenAIResponse
 	}
 
 	out["model"] = req.Model
-	if req.Instructions != "" {
-		out["instructions"] = req.Instructions
+	if instructions := canonicalResponsesInstructions(req); instructions != "" {
+		out["instructions"] = instructions
 	}
 	out["input"] = canonicalInputToResponses(req)
 	if req.MaxOutputTokens > 0 {
@@ -796,6 +796,27 @@ func canonicalMessagesToGemini(req *CanonicalRequest) []map[string]any {
 	return contents
 }
 
+func canonicalResponsesInstructions(req *CanonicalRequest) string {
+	if req == nil {
+		return ""
+	}
+
+	var parts []string
+	if strings.TrimSpace(req.Instructions) != "" {
+		parts = append(parts, req.Instructions)
+	}
+	for _, msg := range req.Messages {
+		role := strings.ToLower(strings.TrimSpace(msg.Role))
+		if role != "system" && role != "developer" {
+			continue
+		}
+		if text := strings.TrimSpace(canonicalText(msg.Content)); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	return strings.Join(parts, "\n\n")
+}
+
 func canonicalInputToResponses(req *CanonicalRequest) any {
 	if len(req.InputItems) > 0 {
 		var items []map[string]any
@@ -804,34 +825,149 @@ func canonicalInputToResponses(req *CanonicalRequest) any {
 			case CanonicalInputFunctionCallOutput:
 				items = append(items, map[string]any{"type": "function_call_output", "call_id": item.CallID, "output": item.Output})
 			default:
-				items = append(items, map[string]any{"role": item.Role, "content": canonicalContentToResponsesInputContent(item.Content)})
+				if raw := rawResponsesInputItem(item.RawExtra); raw != nil {
+					items = append(items, raw)
+					continue
+				}
+				role := responsesInputRole(item.Role)
+				items = append(items, map[string]any{"role": role, "content": canonicalContentToResponsesInputContent(role, item.Content)})
 			}
 		}
 		return items
 	}
+
 	var items []map[string]any
 	for _, msg := range req.Messages {
-		items = append(items, map[string]any{"role": msg.Role, "content": canonicalContentToResponsesInputContent(msg.Content)})
+		role := strings.ToLower(strings.TrimSpace(msg.Role))
+		switch role {
+		case "", "system", "developer":
+			continue
+		case "tool", "function":
+			callID := strings.TrimSpace(msg.ToolCallID)
+			output := canonicalText(msg.Content)
+			if callID == "" {
+				items = append(items, map[string]any{"role": "user", "content": []map[string]any{{"type": "input_text", "text": fmt.Sprintf("[tool_output_missing_call_id] %s", output)}}})
+				continue
+			}
+			items = append(items, map[string]any{"type": "function_call_output", "call_id": callID, "output": output})
+			continue
+		}
+
+		items = append(items, map[string]any{"role": responsesInputRole(role), "content": canonicalContentToResponsesInputContent(role, msg.Content)})
+		if role == "assistant" {
+			items = append(items, canonicalToolCallsToResponsesItems(msg.ToolCalls)...)
+		}
 	}
 	return items
 }
 
-func canonicalContentToResponsesInputContent(parts []CanonicalContentPart) []map[string]any {
+func rawResponsesInputItem(rawExtra map[string]json.RawMessage) map[string]any {
+	if len(rawExtra) == 0 || len(rawExtra["raw"]) == 0 {
+		return nil
+	}
+	var item map[string]any
+	if err := json.Unmarshal(rawExtra["raw"], &item); err != nil {
+		return nil
+	}
+	return item
+}
+
+func responsesInputRole(role string) string {
+	role = strings.ToLower(strings.TrimSpace(role))
+	switch role {
+	case "assistant":
+		return "assistant"
+	default:
+		return "user"
+	}
+}
+
+func canonicalToolCallsToResponsesItems(calls []CanonicalToolCall) []map[string]any {
+	items := make([]map[string]any, 0, len(calls))
+	for _, call := range calls {
+		callID := strings.TrimSpace(call.ID)
+		name := strings.TrimSpace(call.Name)
+		if callID == "" || name == "" {
+			continue
+		}
+		args := strings.TrimSpace(string(call.Arguments))
+		if args == "" {
+			args = "{}"
+		}
+		items = append(items, map[string]any{
+			"type":      "function_call",
+			"call_id":   callID,
+			"name":      name,
+			"arguments": args,
+		})
+	}
+	return items
+}
+
+func canonicalContentToResponsesInputContent(role string, parts []CanonicalContentPart) []map[string]any {
+	role = responsesInputRole(role)
 	out := make([]map[string]any, 0, len(parts))
 	for _, part := range parts {
 		switch part.Type {
 		case CanonicalContentText:
-			out = append(out, map[string]any{"type": "input_text", "text": part.Text})
+			out = append(out, map[string]any{"type": responsesTextPartTypeForRole(role), "text": part.Text})
+		case CanonicalContentReasoning:
+			if role == "assistant" {
+				text := part.ReasoningText
+				if text == "" {
+					text = part.Text
+				}
+				out = append(out, map[string]any{"type": "output_text", "text": text})
+			}
 		case CanonicalContentImage:
-			out = append(out, map[string]any{"type": "input_image", "image_url": part.ImageURL})
+			if role == "user" {
+				out = append(out, map[string]any{"type": "input_image", "image_url": part.ImageURL})
+			}
 		case CanonicalContentFile:
-			out = append(out, map[string]any{"type": "input_file", "file_id": part.FileID, "filename": part.FileName})
+			if role == "user" {
+				item := map[string]any{"type": "input_file"}
+				if part.FileID != "" {
+					item["file_id"] = part.FileID
+				}
+				if part.FileName != "" {
+					item["filename"] = part.FileName
+				}
+				if part.FileData != "" {
+					item["file_data"] = part.FileData
+				}
+				out = append(out, item)
+			}
+		default:
+			if refusal := refusalTextFromRaw(part.Raw); role == "assistant" && refusal != "" {
+				out = append(out, map[string]any{"type": "refusal", "refusal": refusal})
+			}
 		}
 	}
 	if len(out) == 0 {
-		out = append(out, map[string]any{"type": "input_text", "text": ""})
+		out = append(out, map[string]any{"type": responsesTextPartTypeForRole(role), "text": ""})
 	}
 	return out
+}
+
+func responsesTextPartTypeForRole(role string) string {
+	if responsesInputRole(role) == "assistant" {
+		return "output_text"
+	}
+	return "input_text"
+}
+
+func refusalTextFromRaw(raw any) string {
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return ""
+	}
+	if strings.ToLower(strings.TrimSpace(stringValue(m["type"]))) != "refusal" {
+		return ""
+	}
+	if refusal := stringValue(m["refusal"]); refusal != "" {
+		return refusal
+	}
+	return stringValue(m["text"])
 }
 
 func canonicalToolsToOpenAI(tools []CanonicalTool) ([]map[string]any, error) {

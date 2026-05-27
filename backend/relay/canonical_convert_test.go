@@ -187,6 +187,157 @@ func TestCanonicalToResponsesRequestPreservesRawBuiltinToolsAndReasoning(t *test
 	}
 }
 
+func TestCanonicalToResponsesRequestMatchesNewAPIChatHistorySemantics(t *testing.T) {
+	req := &CanonicalRequest{
+		Model:        "gpt-4.1",
+		Instructions: "base instructions",
+		Messages: []CanonicalMessage{
+			{Role: "system", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "system instructions"}}},
+			{Role: "developer", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "developer instructions"}}},
+			{Role: "user", Content: []CanonicalContentPart{
+				{Type: CanonicalContentText, Text: "hello"},
+				{Type: CanonicalContentImage, ImageURL: "https://example.com/image.png"},
+				{Type: CanonicalContentFile, FileID: "file_123", FileName: "a.pdf"},
+			}},
+			{Role: "assistant", Content: []CanonicalContentPart{
+				{Type: CanonicalContentText, Text: "hi"},
+				{Type: CanonicalContentImage, ImageURL: "https://example.com/assistant-image.png"},
+				{Type: CanonicalContentFile, FileID: "file_assistant"},
+			}, ToolCalls: []CanonicalToolCall{{
+				ID:        "call_1",
+				Type:      CanonicalToolFunction,
+				Name:      "lookup",
+				Arguments: json.RawMessage(`{"q":"x"}`),
+			}}},
+			{Role: "tool", ToolCallID: "call_1", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "tool result"}}},
+		},
+	}
+
+	body, err := CanonicalToResponsesRequest(req, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var out map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+
+	if got := out["instructions"]; got != "base instructions\n\nsystem instructions\n\ndeveloper instructions" {
+		t.Fatalf("expected system/developer messages to be merged into instructions, got %#v", got)
+	}
+
+	input, _ := out["input"].([]any)
+	if len(input) != 4 {
+		t.Fatalf("expected user, assistant, function_call and function_call_output items, got %d: %s", len(input), body)
+	}
+
+	userItem, _ := input[0].(map[string]any)
+	if userItem["role"] != "user" {
+		t.Fatalf("expected first item to be user, got %#v", userItem)
+	}
+	userContent, _ := userItem["content"].([]any)
+	if userContent[0].(map[string]any)["type"] != "input_text" {
+		t.Fatalf("expected user text to use input_text, got %#v", userContent[0])
+	}
+	if userContent[1].(map[string]any)["type"] != "input_image" || userContent[2].(map[string]any)["type"] != "input_file" {
+		t.Fatalf("expected user media to remain input media, got %#v", userContent)
+	}
+
+	assistantItem, _ := input[1].(map[string]any)
+	if assistantItem["role"] != "assistant" {
+		t.Fatalf("expected second item to be assistant, got %#v", assistantItem)
+	}
+	assistantContent, _ := assistantItem["content"].([]any)
+	if len(assistantContent) != 1 {
+		t.Fatalf("expected assistant input media to be suppressed, got %#v", assistantContent)
+	}
+	if assistantContent[0].(map[string]any)["type"] != "output_text" {
+		t.Fatalf("expected assistant text to use output_text, got %#v", assistantContent[0])
+	}
+
+	functionCall, _ := input[2].(map[string]any)
+	if functionCall["type"] != "function_call" || functionCall["call_id"] != "call_1" || functionCall["name"] != "lookup" || functionCall["arguments"] != `{"q":"x"}` {
+		t.Fatalf("expected assistant tool call to become function_call item, got %#v", functionCall)
+	}
+
+	functionOutput, _ := input[3].(map[string]any)
+	if functionOutput["type"] != "function_call_output" || functionOutput["call_id"] != "call_1" || functionOutput["output"] != "tool result" {
+		t.Fatalf("expected tool result to become function_call_output item, got %#v", functionOutput)
+	}
+}
+
+func TestCanonicalToResponsesRequestRewritesOriginalInvalidInput(t *testing.T) {
+	original := &OpenAIResponsesRequest{
+		Model: "gpt-4.1",
+		Input: json.RawMessage(`[
+			{"role":"assistant","content":[{"type":"input_text","text":"bad historical assistant content"}]}
+		]`),
+		Include: []string{"reasoning.encrypted_content"},
+	}
+	req := &CanonicalRequest{
+		Model: "gpt-4.1",
+		Messages: []CanonicalMessage{
+			{Role: "user", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "one"}}},
+			{Role: "assistant", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "two"}}},
+			{Role: "user", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "three"}}},
+			{Role: "assistant", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "four"}}},
+			{Role: "user", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "five"}}},
+			{Role: "assistant", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "six"}}},
+			{Role: "user", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "seven"}}},
+			{Role: "assistant", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "eight"}}},
+		},
+	}
+
+	body, err := CanonicalToResponsesRequest(req, original)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var out map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if include, _ := out["include"].([]any); len(include) != 1 || include[0] != "reasoning.encrypted_content" {
+		t.Fatalf("expected original non-input fields to be preserved, got %s", body)
+	}
+
+	input, _ := out["input"].([]any)
+	if len(input) != 8 {
+		t.Fatalf("expected rewritten canonical input to replace original input, got %d: %s", len(input), body)
+	}
+	item7, _ := input[7].(map[string]any)
+	content7, _ := item7["content"].([]any)
+	if item7["role"] != "assistant" || content7[0].(map[string]any)["type"] != "output_text" {
+		t.Fatalf("expected input[7] assistant content to use output_text, got %#v", item7)
+	}
+}
+
+func TestCanonicalToResponsesRequestPreservesRawResponsesInputItems(t *testing.T) {
+	raw := json.RawMessage(`{"type":"item_reference","id":"item_123"}`)
+	req := &CanonicalRequest{
+		Model: "gpt-4.1",
+		InputItems: []CanonicalInputItem{{
+			Type:     CanonicalInputItemReference,
+			RawExtra: map[string]json.RawMessage{"raw": raw},
+		}},
+	}
+
+	body, err := CanonicalToResponsesRequest(req, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var out map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	input, _ := out["input"].([]any)
+	if len(input) != 1 || input[0].(map[string]any)["type"] != "item_reference" || input[0].(map[string]any)["id"] != "item_123" {
+		t.Fatalf("expected raw responses item to be preserved, got %s", body)
+	}
+}
+
 func TestResponsesResponseToCanonicalIncludesUsageDetailsAndBuiltinCounts(t *testing.T) {
 	resp := &OpenAIResponsesResponse{
 		ID:        "resp_1",
