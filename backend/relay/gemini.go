@@ -63,9 +63,20 @@ type GeminiCandidate struct {
 }
 
 type GeminiUsageMeta struct {
-	PromptTokenCount     int `json:"promptTokenCount"`
-	CandidatesTokenCount int `json:"candidatesTokenCount"`
-	TotalTokenCount      int `json:"totalTokenCount"`
+	PromptTokenCount           int                 `json:"promptTokenCount"`
+	ToolUsePromptTokenCount    int                 `json:"toolUsePromptTokenCount,omitempty"`
+	CandidatesTokenCount       int                 `json:"candidatesTokenCount"`
+	TotalTokenCount            int                 `json:"totalTokenCount"`
+	ThoughtsTokenCount         int                 `json:"thoughtsTokenCount,omitempty"`
+	CachedContentTokenCount    int                 `json:"cachedContentTokenCount,omitempty"`
+	PromptTokensDetails        []GeminiTokenDetail `json:"promptTokensDetails,omitempty"`
+	ToolUsePromptTokensDetails []GeminiTokenDetail `json:"toolUsePromptTokensDetails,omitempty"`
+	CandidatesTokensDetails    []GeminiTokenDetail `json:"candidatesTokensDetails,omitempty"`
+}
+
+type GeminiTokenDetail struct {
+	Modality   string `json:"modality"`
+	TokenCount int    `json:"tokenCount"`
 }
 
 // geminiFinishReasonToOpenAI 将 Gemini finishReason 映射为 OpenAI finish_reason

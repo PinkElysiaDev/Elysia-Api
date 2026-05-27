@@ -15,11 +15,14 @@ interface SecretValue {
 
 interface BackendConfig {
   server: { host: string; port: number }
+  dashboardTokenEnc?: SecretValue
   tokens: Array<{ tokenEnc: SecretValue; name: string; enabled: boolean }>
   heartbeatTimeout?: number  // 心跳超时时间（秒）
   httpTimeout?: number  // HTTP 请求超时时间（秒），0 为不限制
   debugMode?: boolean     // 调试模式
   verboseLog?: boolean    // 详细日志模式
+  usagePersistEnabled?: boolean
+  usagePersistMaxRecords?: number
   modelGroups: Array<{
     id: string
     name: string
@@ -73,11 +76,14 @@ export class BackendManager {
     private serverConfig: ServerConfig,
     private tokens: Record<string, AccessToken>,
     private modelGroups: ModelGroupConfig[],
+    private dashboardToken: string | undefined,
     private heartbeatIntervalSec: number = 60,  // 心跳发送间隔（秒）
     heartbeatTimeout?: number,  // 后端心跳超时时间（秒）
     private httpTimeout: number = 120,  // HTTP 请求超时时间（秒），0 为不限制
     private debugMode: boolean = false,  // 调试模式
     private verboseLog: boolean = false,  // 详细日志模式
+    private usagePersistEnabled: boolean = true,
+    private usagePersistMaxRecords: number = 10000,
   ) {
     this.configPath = join(ctx.baseDir, 'data/elysia-api/config.json')
     this.masterKeyPath = join(ctx.baseDir, 'data/elysia-api/master.key')
@@ -92,20 +98,26 @@ export class BackendManager {
     serverConfig: ServerConfig,
     tokens: Record<string, AccessToken>,
     modelGroups: ModelGroupConfig[],
+    dashboardToken: string | undefined = this.dashboardToken,
     heartbeatIntervalSec: number = this.heartbeatIntervalSec,
     heartbeatTimeoutSec: number = this.heartbeatTimeoutSec,
     httpTimeout: number = this.httpTimeout,
     debugMode: boolean = this.debugMode,
     verboseLog: boolean = this.verboseLog,
+    usagePersistEnabled: boolean = this.usagePersistEnabled,
+    usagePersistMaxRecords: number = this.usagePersistMaxRecords,
   ) {
     this.serverConfig = serverConfig
     this.tokens = tokens
     this.modelGroups = modelGroups
+    this.dashboardToken = dashboardToken
     this.heartbeatIntervalSec = heartbeatIntervalSec
     this.heartbeatTimeoutSec = heartbeatTimeoutSec
     this.httpTimeout = httpTimeout
     this.debugMode = debugMode
     this.verboseLog = verboseLog
+    this.usagePersistEnabled = usagePersistEnabled
+    this.usagePersistMaxRecords = usagePersistMaxRecords
     this.heartbeatUrl = `http://${serverConfig.host}:${serverConfig.port}/__heartbeat`
   }
 
@@ -237,6 +249,27 @@ export class BackendManager {
     }
   }
 
+  async resetUsageRecords(): Promise<void> {
+    if (!this.dashboardToken?.trim()) {
+      throw new Error('Usage 面板访问令牌未配置，无法清除 usage 记录')
+    }
+
+    const resetUrl = `http://${this.serverConfig.host}:${this.serverConfig.port}/__usage/reset`
+    const response = await fetch(resetUrl, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.dashboardToken}` },
+      signal: AbortSignal.timeout(5000),
+    })
+
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(`reset usage failed: ${response.status} ${response.statusText} ${JSON.stringify(payload)}`)
+    }
+
+    if (this.verboseLog) {
+      this.ctx.logger.info(`[VERBOSE] Usage reset response: ${JSON.stringify(payload)}`)
+    }
+  }
   async reloadConfig(): Promise<void> {
     this.writeConfig()
 
@@ -382,11 +415,14 @@ export class BackendManager {
 
     const backendConfig: BackendConfig = {
       server: this.serverConfig,
+      dashboardTokenEnc: this.dashboardToken ? this.encryptSecret(this.dashboardToken, encryptionKey) : undefined,
       tokens: tokensArray,
       heartbeatTimeout: this.heartbeatTimeoutSec,
       httpTimeout: this.httpTimeout,
       debugMode: this.debugMode,
       verboseLog: this.verboseLog,
+      usagePersistEnabled: this.usagePersistEnabled,
+      usagePersistMaxRecords: this.usagePersistMaxRecords,
       modelGroups: this.modelGroups
         .filter(g => g.enabled)
         .map(group => {

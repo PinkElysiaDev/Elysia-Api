@@ -23,11 +23,14 @@ export const usage = `---
 
 - \`elysia-api.backend.status\` - 查看后端状态
 - \`elysia-api.backend.reload\` - 重载配置
+- \`elysia-api.usage.reset\` - 清除 Usage 用量统计记录
 - \`elysia-api.models.list\` - 列出可用模型
 
-## 0.2.8 版本更新说明
+## 0.2.8 & 0.3.0 & 0.3.1 版本更新说明
 
-修复了流式传输和工具调用存在的 bug 以适配类似 claude code 的工具。
+修复了流式传输和工具调用存在的 bug 。
+新增用量统计面板，请访问后端运行端口/usage链接以进入 webui 。
+新增对 Responses API 的兼容。
 
 欢迎前往 github 主页提 issue
 
@@ -92,6 +95,9 @@ export function apply(ctx: Context, config: Config) {
       heartbeatInterval: config.heartbeatInterval ?? 60,
       heartbeatTimeout: config.heartbeatTimeout ?? 300,
       httpTimeout: config.httpTimeout ?? 120,
+      dashboardToken: config.dashboardToken ?? '',
+      usagePersistEnabled: config.usagePersistEnabled ?? true,
+      usagePersistMaxRecords: config.usagePersistMaxRecords ?? 10000,
       debugMode: config.debugMode ?? false,
       verboseLog: config.verboseLog ?? false,
     })
@@ -125,11 +131,14 @@ export function apply(ctx: Context, config: Config) {
       config.server,
       config.tokens,
       config.modelGroups,
+      config.dashboardToken,
       config.heartbeatInterval ?? 60,  // 心跳发送间隔
       config.heartbeatTimeout,         // 后端心跳超时时间
       config.httpTimeout ?? 120,       // HTTP 请求超时时间（秒）
       config.debugMode ?? false,       // 调试模式
-      config.verboseLog ?? false       // 详细日志模式
+      config.verboseLog ?? false,      // 详细日志模式
+      config.usagePersistEnabled ?? true,
+      config.usagePersistMaxRecords ?? 10000
     )
 
     // 启动后端（如果未运行）
@@ -187,11 +196,14 @@ export function apply(ctx: Context, config: Config) {
       config.server,
       config.tokens,
       config.modelGroups,
+      config.dashboardToken,
       config.heartbeatInterval ?? 60,
       config.heartbeatTimeout ?? 300,
       config.httpTimeout ?? 120,
       config.debugMode ?? false,
-      config.verboseLog ?? false
+      config.verboseLog ?? false,
+      config.usagePersistEnabled ?? true,
+      config.usagePersistMaxRecords ?? 10000
     )
 
     if (wasBackendInitialized) {
@@ -234,11 +246,14 @@ export function apply(ctx: Context, config: Config) {
       config.server,
       config.tokens,
       config.modelGroups,
+      config.dashboardToken,
       config.heartbeatInterval ?? 60,
       config.heartbeatTimeout ?? 300,
       config.httpTimeout ?? 120,
       config.debugMode ?? false,
-      config.verboseLog ?? false
+      config.verboseLog ?? false,
+      config.usagePersistEnabled ?? true,
+      config.usagePersistMaxRecords ?? 10000
     )
     backend?.reloadConfig()
   })
@@ -258,6 +273,18 @@ export function apply(ctx: Context, config: Config) {
   ctx.command('elysia-api.backend.reload', '重载后端配置').action(async () => {
     await backend?.reloadConfig()
     return '后端配置已重载'
+  })
+
+  ctx.command('elysia-api.usage.reset', '清除 Usage 用量统计记录').action(async () => {
+    if (!backend?.isRunning()) {
+      return '后端未运行，无法清除 usage 记录'
+    }
+    try {
+      await backend.resetUsageRecords()
+      return 'Usage 用量统计记录已清除'
+    } catch (err) {
+      return `清除 Usage 记录失败：${(err as Error).message}`
+    }
   })
 
   ctx.command('elysia-api.backend.restart', '重启后端').action(async () => {

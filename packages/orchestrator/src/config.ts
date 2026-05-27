@@ -36,6 +36,9 @@ export interface Config {
   heartbeatTimeout?: number
   heartbeatInterval?: number
   httpTimeout?: number
+  dashboardToken?: string
+  usagePersistEnabled?: boolean
+  usagePersistMaxRecords?: number
   tokens: Record<string, AccessToken>
   modelGroups: ModelGroupConfig[]
   debugMode?: boolean
@@ -142,7 +145,14 @@ export const createConfig = (ctx: Context): Schema<Config> => {
       heartbeatTimeout: Schema.number().default(300).description('后端心跳超时时间（秒）'),
       heartbeatInterval: Schema.number().default(60).description('插件发送心跳间隔（秒）'),
       httpTimeout: Schema.number().default(120).description('HTTP 请求超时时间（秒），0 为不限制'),
+      dashboardToken: Schema.string().role('secret').description('Usage 面板访问令牌，用于访问用量统计面板'),
     }).description('基础配置'),
+
+    // Usage stats options
+    Schema.object({
+      usagePersistEnabled: Schema.boolean().default(true).description('持久化用量统计'),
+      usagePersistMaxRecords: Schema.number().default(10000).description('最多保留的用量记录条数'),
+    }).description('Usage 统计'),
 
     // 访问令牌配置（dict 类型，使用 table 外观）
     Schema.object({
@@ -181,6 +191,7 @@ export const ConfigSchema: Schema<Config> = Schema.intersect([
     heartbeatTimeout: Schema.number().default(300).description('后端心跳超时时间（秒）'),
     heartbeatInterval: Schema.number().default(60).description('插件发送心跳间隔（秒）'),
     httpTimeout: Schema.number().default(120).description('HTTP 请求超时时间（秒），0 为不限制'),
+    dashboardToken: Schema.string().role('secret').description('Usage 面板访问令牌（建议与 API 访问令牌分开设置）'),
   }).description('基础配置'),
 
   // 访问令牌配置（dict 类型，使用 table 外观）

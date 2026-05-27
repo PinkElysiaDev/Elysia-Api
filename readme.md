@@ -24,10 +24,11 @@ Elysia-API 是为 Koishi 设计的模型网关和编排插件，由两个部分�
 - **模型组管理**：将模型组织成自定义组
 - **负载均衡**：支持轮询、顺序和随机策略
 - **API 网关**：内置 Go 后端实现高性能请求转发
-- **格式转换**：自动在不同 API 格式间转换（OpenAI、Claude、Gemini、DeepSeek 等）
-- **流式响应**：完整支持流式输出
+- **格式转换**：自动在不同 API 格式间转换（OpenAI Chat Completions、OpenAI Responses、Claude Messages、Gemini GenerateContent 等）
+- **Responses API**：支持 `/v1/responses` 端点，可原生转发或通过 Canonical 中间层转换到 Chat / Claude / Gemini 上游
+- **流式响应**：完整支持流式输出，并支持 Chat / Claude / Gemini 流转换为 Responses SSE 事件
 - **流量限制**：可选的请求频率控制和并发限制
-- **Token 计费**：跟踪请求的 token 使用量
+- **Token 计费**：跟踪请求的 token 使用量，包含缓存命中、推理 token、多模态 token 和内置工具调用统计
 
 ## 安装
 
@@ -57,6 +58,84 @@ npm install koishi-plugin-elysia-api-aggregator koishi-plugin-elysia-api-orchest
 - DeepSeek
 - SiliconFlow
 - 以及更多...
+
+## API 格式与 Responses 支持
+
+后端以 Canonical Request / Response / Usage 作为中间表示，支持在以下格式之间转换：
+
+| 输入 / 输出格式 | 非流式 | 流式 | 工具调用 | Usage 提取 |
+| --- | --- | --- | --- | --- |
+| OpenAI Chat Completions (`/v1/chat/completions`) | ✅ | ✅ | ✅ function tools | ✅ prompt / completion / cached / reasoning |
+| OpenAI Responses (`/v1/responses`) | ✅ | ✅ | ✅ function 与部分 builtin tools | ✅ input / output / cached / reasoning |
+| Claude Messages (`/v1/messages`) | ✅ | ✅ 转 Responses SSE | ✅ tool_use / tool_result | ✅ input / output / cache read / cache creation |
+| Gemini GenerateContent | ✅ | ✅ 转 Responses SSE | ✅ functionCall / functionResponse | ✅ prompt / candidates / thoughts / cached / modality details |
+
+### `/v1/responses`
+
+`/v1/responses` 可根据模型端点能力和配置选择处理方式：
+
+- **native**：上游原生支持 Responses 时直接请求上游 `/responses`。
+- **transform**：上游不支持 Responses 时，将请求转换为目标上游格式，再将响应转换回 Responses 格式。
+- **auto**：根据模型 `endpoints.responses` / `endpoints.chatCompletions` / `endpoints.claudeMessages` / `endpoints.geminiGenerateContent` 自动选择。
+
+配置示例：
+
+```json
+{
+  "responses": {
+    "enabled": true,
+    "upstreamMode": "auto",
+    "transformUnsupportedBehavior": "error",
+    "passThroughUnknownFields": true
+  },
+  "usage": {
+    "estimateWhenMissing": true,
+    "charsPerToken": 4,
+    "defaultOutputTokenEstimate": 1024,
+    "imageInputTokenEstimate": 300,
+    "fileInputTokenEstimatePerKB": 128
+  },
+  "modelGroups": [
+    {
+      "id": "default",
+      "name": "default",
+      "models": [
+        {
+          "id": "gpt",
+          "name": "gpt-4.1",
+          "platform": "openai",
+          "baseUrl": "https://api.openai.com/v1",
+          "endpoints": {
+            "chatCompletions": true,
+            "responses": true
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Usage 统计字段
+
+用量记录会尽量保留各平台返回的原始 token 语义，并统一输出到 dashboard / logs：
+
+- `inputTokens` / `outputTokens` / `totalTokens`
+- `cacheHitTokens`
+- `usageDetail.cachedInputTokens`
+- `usageDetail.cacheCreationInputTokens`
+- `usageDetail.reasoningTokens`
+- `usageDetail.textInputTokens` / `textOutputTokens`
+- `usageDetail.imageInputTokens` / `imageOutputTokens`
+- `usageDetail.audioInputTokens` / `audioOutputTokens`
+- `usageDetail.toolUseTokens`
+- `builtinToolUsage.webSearchCalls`
+- `builtinToolUsage.fileSearchCalls`
+- `builtinToolUsage.imageGenerationCalls`
+- `usageSource`
+- `estimated` / `estimatedTokens`
+
+当上游没有返回 usage 且开启 `usage.estimateWhenMissing` 时，后端会基于 Canonical 请求内容进行估算。估算值会标记为 `estimated=true`，并单独计入 `estimatedTokens`，不会污染 provider 返回的真实 token 总量。
 
 ## CLI 命令
 
