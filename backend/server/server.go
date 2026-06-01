@@ -667,11 +667,9 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 			return
 		}
 
-		record.Usage = usageFromProviderBody(targetPlatform, respBody)
-		actualTokens := 0
-		if record.Usage.TotalTokens != nil {
-			actualTokens = *record.Usage.TotalTokens
-		}
+		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
+		applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(targetPlatform, "", respBody), s.config.GetUsageConfig())
+		actualTokens := getInt(record.Usage.TotalTokens)
 		s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
 
 		// 统一转为 OpenAI 中间响应，再渲染到客户端格式
@@ -718,11 +716,9 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		}
 
 		oaiResp := relay.ConvertGeminiResponseToOpenAI(&geminiResp)
-		record.Usage = usageFromProviderBody(targetPlatform, respBody)
-		actualTokens := 0
-		if record.Usage.TotalTokens != nil {
-			actualTokens = *record.Usage.TotalTokens
-		}
+		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
+		applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(targetPlatform, "", respBody), s.config.GetUsageConfig())
+		actualTokens := getInt(record.Usage.TotalTokens)
 		s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
 
 		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
@@ -747,11 +743,9 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		}
 
 		record.ProviderResponse = sanitizeUsageBody(respBody)
-		record.Usage = usageFromProviderBody(targetPlatform, respBody)
-		actualTokens := 0
-		if record.Usage.TotalTokens != nil {
-			actualTokens = *record.Usage.TotalTokens
-		}
+		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
+		applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(targetPlatform, "", respBody), s.config.GetUsageConfig())
+		actualTokens := getInt(record.Usage.TotalTokens)
 		s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
 
 		s.logVerbose("=== Response ===")
@@ -898,6 +892,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		}
 	}
 
+	applyLocalResponseEstimate(record, writer.responseText.String(), s.config.GetUsageConfig())
 	s.logDebug("Stream request completed in %dms", time.Since(startTime).Milliseconds())
 }
 

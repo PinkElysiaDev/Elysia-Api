@@ -401,6 +401,58 @@ func TestEstimateCanonicalRequestUsageCountsTextFilesImagesAndTools(t *testing.T
 	}
 }
 
+func TestCanonicalEstimateDoesNotPopulateActualUsage(t *testing.T) {
+	canonical := &relay.CanonicalUsage{
+		InputTokens:           10,
+		OutputTokens:          1000000,
+		TotalTokens:           1000010,
+		EstimatedTotalTokens:  1000010,
+		EstimatedOutputTokens: 1000000,
+		Estimated:             true,
+		Source:                "canonical_estimate",
+	}
+
+	usage := usageTokenUsageFromCanonical(canonical)
+	if usage.InputTokens != nil || usage.OutputTokens != nil || usage.TotalTokens != nil {
+		t.Fatalf("expected request estimate to stay out of actual usage fields, got %+v", usage)
+	}
+	if !usage.Estimated || usage.EstimatedTokens != 1000010 {
+		t.Fatalf("expected estimated tokens to be tracked separately, got %+v", usage)
+	}
+}
+
+func TestResponsesCompletedStreamUsageNested(t *testing.T) {
+	usage, ok := parseStreamUsage(`{"type":"response.completed","response":{"usage":{"input_tokens":12,"output_tokens":9,"total_tokens":21,"input_tokens_details":{"cached_tokens":4},"output_tokens_details":{"reasoning_tokens":3}}}}`)
+	if !ok {
+		t.Fatal("expected nested Responses stream usage")
+	}
+	if usage.InputTokens == nil || *usage.InputTokens != 12 || usage.OutputTokens == nil || *usage.OutputTokens != 9 || usage.TotalTokens == nil || *usage.TotalTokens != 21 || usage.CacheHitTokens == nil || *usage.CacheHitTokens != 4 {
+		t.Fatalf("expected nested Responses usage fields, got %+v", usage)
+	}
+}
+
+func TestResponsesOutputItemDoneRecordsBuiltinTool(t *testing.T) {
+	result := extractProviderUsageFromStreamEvent(relay.PlatformOpenAI, relay.FormatResponses, `{"type":"response.output_item.done","item":{"type":"web_search_call"}}`)
+	if !result.HasUsage || result.Builtin.WebSearchCalls != 1 {
+		t.Fatalf("expected Responses output item builtin tool usage, got %+v", result)
+	}
+}
+
+func TestLocalResponseEstimateDoesNotUseMaxOutputEstimate(t *testing.T) {
+	record := &usageRecord{Usage: usageTokenUsage{EstimatedTokens: 1000000, Estimated: true}}
+	applyLocalResponseEstimate(record, "hello", config.UsageConfig{CharsPerToken: 1})
+
+	if record.Usage.OutputTokens == nil || *record.Usage.OutputTokens != 5 {
+		t.Fatalf("expected local estimate from response text, got %+v", record.Usage)
+	}
+	if record.Usage.OutputTokens != nil && *record.Usage.OutputTokens == 1000000 {
+		t.Fatalf("expected max output estimate not to become actual output tokens, got %+v", record.Usage)
+	}
+	if record.UsageSource != "local_response_estimate" {
+		t.Fatalf("expected local response estimate source, got %q", record.UsageSource)
+	}
+}
+
 func TestSummarizeUsageIncludesCanonicalDetailAndResponsesModes(t *testing.T) {
 	now := time.Now()
 	summary := summarizeUsage([]usageRecord{{
@@ -441,5 +493,27 @@ func TestSummarizeUsageIncludesCanonicalDetailAndResponsesModes(t *testing.T) {
 	}
 	if summary.CacheHitRate != 0.25 {
 		t.Fatalf("expected cache hit rate 0.25, got %f", summary.CacheHitRate)
+	}
+}
+
+func TestSummarizeUsageTracksFirstAndLastUsedAt(t *testing.T) {
+	base := time.Date(2026, 5, 28, 10, 0, 0, 0, time.UTC)
+	summary := summarizeUsage([]usageRecord{
+		{StartedAt: base.Add(10 * time.Minute), StatusCode: 200, ModelName: "middle-model"},
+		{StartedAt: base, StatusCode: 200, ModelName: "first-model"},
+		{StartedAt: base.Add(30 * time.Minute), StatusCode: 200, ModelName: "last-model"},
+	})
+
+	if !summary.FirstUsedAt.Equal(base) {
+		t.Fatalf("expected first used at %s, got %s", base, summary.FirstUsedAt)
+	}
+	if !summary.LastUsedAt.Equal(base.Add(30 * time.Minute)) {
+		t.Fatalf("expected last used at %s, got %s", base.Add(30*time.Minute), summary.LastUsedAt)
+	}
+	if summary.FirstModelName != "first-model" {
+		t.Fatalf("expected first model first-model, got %s", summary.FirstModelName)
+	}
+	if summary.LastModelName != "last-model" {
+		t.Fatalf("expected last model last-model, got %s", summary.LastModelName)
 	}
 }
