@@ -135,7 +135,10 @@ type usageSummary struct {
 	AvgDurationMs                float64   `json:"avgDurationMs"`
 	P95DurationMs                int64     `json:"p95DurationMs"`
 	AvgLatencyMs                 float64   `json:"avgLatencyMs"`
+	FirstUsedAt                  time.Time `json:"firstUsedAt,omitempty"`
+	FirstModelName               string    `json:"firstModelName,omitempty"`
 	LastUsedAt                   time.Time `json:"lastUsedAt,omitempty"`
+	LastModelName                string    `json:"lastModelName,omitempty"`
 }
 
 type usageAggregate struct {
@@ -214,38 +217,103 @@ func intPtr(v int) *int {
 	return &v
 }
 
+type providerUsageResult struct {
+	Usage    usageTokenUsage
+	Detail   usageDetail
+	Builtin  builtinToolUsage
+	Source   string
+	HasUsage bool
+}
+
 func usageFromProviderBody(platform relay.Platform, body []byte) usageTokenUsage {
+	return extractProviderUsageFromBody(platform, "", body).Usage
+}
+
+func extractProviderUsageFromBody(platform relay.Platform, format relay.FormatType, body []byte) providerUsageResult {
 	var payload map[string]interface{}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return usageTokenUsage{}
+		return providerUsageResult{}
 	}
+	return extractProviderUsageFromPayload(platform, format, payload, "provider_response")
+}
 
+func extractProviderUsageFromStreamEvent(platform relay.Platform, format relay.FormatType, payload string) providerUsageResult {
+	var event map[string]interface{}
+	if err := json.Unmarshal([]byte(payload), &event); err != nil {
+		return providerUsageResult{}
+	}
+	return extractProviderUsageFromPayload(platform, format, event, "provider_stream")
+}
+
+func extractProviderUsageFromPayload(platform relay.Platform, format relay.FormatType, payload map[string]interface{}, source string) providerUsageResult {
+	if result := usageFromResponsesStreamPayload(payload, source); result.HasUsage {
+		return result
+	}
+	if raw, ok := payload["usageMetadata"].(map[string]interface{}); ok {
+		return usageResultFromGeminiUsageMetadata(raw, source)
+	}
+	if raw, ok := payload["message"].(map[string]interface{}); ok {
+		if usageRaw, ok := raw["usage"].(map[string]interface{}); ok {
+			return usageResultFromClaudeUsage(usageRaw, source)
+		}
+	}
+	if usageRaw, ok := payload["message_delta"].(map[string]interface{}); ok {
+		if raw, ok := usageRaw["usage"].(map[string]interface{}); ok {
+			return usageResultFromClaudeUsage(raw, source)
+		}
+	}
 	switch platform {
 	case relay.PlatformAnthropic:
 		if raw, ok := payload["usage"].(map[string]interface{}); ok {
-			return usageFromClaudeUsage(raw)
+			return usageResultFromClaudeUsage(raw, source)
+		}
+		if raw, ok := payload["message"].(map[string]interface{}); ok {
+			if usageRaw, ok := raw["usage"].(map[string]interface{}); ok {
+				return usageResultFromClaudeUsage(usageRaw, source)
+			}
+		}
+		if usageRaw, ok := payload["message_delta"].(map[string]interface{}); ok {
+			if raw, ok := usageRaw["usage"].(map[string]interface{}); ok {
+				return usageResultFromClaudeUsage(raw, source)
+			}
 		}
 	case relay.PlatformGemini:
 		if raw, ok := payload["usageMetadata"].(map[string]interface{}); ok {
-			return usageFromGeminiUsageMetadata(raw)
+			return usageResultFromGeminiUsageMetadata(raw, source)
 		}
 	default:
-		usage := usageFromOpenAICompatiblePayload(payload)
-		if usageHasAnyTokens(usage) {
-			return usage
+		if format == relay.FormatResponses {
+			if result := usageResultFromResponsesPayload(payload, source, true); result.HasUsage {
+				return result
+			}
+		}
+		result := usageResultFromOpenAICompatiblePayload(payload, source)
+		if result.HasUsage {
+			return result
 		}
 	}
-	return usageTokenUsage{}
+	return providerUsageResult{}
 }
 
-func usageFromOpenAICompatiblePayload(payload map[string]interface{}) usageTokenUsage {
-	usage := usageTokenUsage{}
-	if raw, ok := payload["usage"].(map[string]interface{}); ok {
-		usage = usageFromOpenAIUsage(raw)
+func applyProviderUsageToRecord(record *usageRecord, result providerUsageResult) {
+	if record == nil || !result.HasUsage {
+		return
 	}
+	record.Usage = mergeUsage(record.Usage, result.Usage)
+	record.UsageDetail = mergeUsageDetail(record.UsageDetail, result.Detail)
+	record.BuiltinToolUsage = mergeBuiltinToolUsage(record.BuiltinToolUsage, result.Builtin)
+	if result.Source != "" {
+		record.UsageSource = result.Source
+	}
+}
 
-	cacheHitTokens := getInt(usage.CacheHitTokens)
-	cacheFieldSeen := usage.CacheHitTokens != nil
+func usageResultFromOpenAICompatiblePayload(payload map[string]interface{}, source string) providerUsageResult {
+	result := providerUsageResult{Source: source}
+	if raw, ok := payload["usage"].(map[string]interface{}); ok {
+		result = usageResultFromOpenAIUsage(raw, source)
+	}
+	cacheHitTokens := getInt(result.Usage.CacheHitTokens)
+	cacheFieldSeen := result.Usage.CacheHitTokens != nil
 	if choices, ok := payload["choices"].([]interface{}); ok {
 		for _, choice := range choices {
 			choiceMap, ok := choice.(map[string]interface{})
@@ -269,13 +337,287 @@ func usageFromOpenAICompatiblePayload(payload map[string]interface{}) usageToken
 		}
 	}
 	if cacheFieldSeen {
-		usage.CacheHitTokens = intPtr(cacheHitTokens)
+		result.Usage.CacheHitTokens = intPtr(cacheHitTokens)
+		result.Detail.CachedInputTokens = intPtr(cacheHitTokens)
+		result.HasUsage = true
 	}
-	return usage
+	if usageHasAnyTokens(result.Usage) {
+		result.HasUsage = true
+	}
+	return result
+}
+
+func usageResultFromOpenAIUsage(raw map[string]interface{}, source string) providerUsageResult {
+	usage := usageFromOpenAIUsage(raw)
+	detail := usageDetail{}
+	if usage.InputTokens != nil {
+		detail.InputTokens = intPtr(getInt(usage.InputTokens))
+	}
+	if usage.OutputTokens != nil {
+		detail.OutputTokens = intPtr(getInt(usage.OutputTokens))
+	}
+	if usage.TotalTokens != nil {
+		detail.TotalTokens = intPtr(getInt(usage.TotalTokens))
+	}
+	if usage.CacheHitTokens != nil {
+		detail.CachedInputTokens = intPtr(getInt(usage.CacheHitTokens))
+	}
+	if details, ok := raw["completion_tokens_details"].(map[string]interface{}); ok {
+		setDetailInt(&detail.ReasoningTokens, details, "reasoning_tokens")
+		setDetailInt(&detail.TextOutputTokens, details, "text_tokens")
+		setDetailInt(&detail.AudioOutputTokens, details, "audio_tokens")
+		setDetailInt(&detail.ImageOutputTokens, details, "image_tokens")
+	}
+	if details, ok := raw["output_tokens_details"].(map[string]interface{}); ok {
+		setDetailInt(&detail.ReasoningTokens, details, "reasoning_tokens")
+		setDetailInt(&detail.TextOutputTokens, details, "text_tokens")
+		setDetailInt(&detail.AudioOutputTokens, details, "audio_tokens")
+		setDetailInt(&detail.ImageOutputTokens, details, "image_tokens")
+	}
+	for _, key := range []string{"prompt_tokens_details", "input_tokens_details"} {
+		if details, ok := raw[key].(map[string]interface{}); ok {
+			setDetailInt(&detail.TextInputTokens, details, "text_tokens")
+			setDetailInt(&detail.AudioInputTokens, details, "audio_tokens")
+			setDetailInt(&detail.ImageInputTokens, details, "image_tokens")
+		}
+	}
+	return providerUsageResult{Usage: usage, Detail: detail, Source: source, HasUsage: usageHasAnyTokens(usage)}
+}
+
+func usageResultFromResponsesPayload(payload map[string]interface{}, source string, includeOutputTools bool) providerUsageResult {
+	result := providerUsageResult{Source: source}
+	if raw, ok := payload["usage"].(map[string]interface{}); ok {
+		result = usageResultFromOpenAIUsage(raw, source)
+	}
+	if includeOutputTools {
+		result.Builtin = builtinToolUsageFromResponsesOutput(payload["output"])
+		if result.Builtin != (builtinToolUsage{}) {
+			result.HasUsage = true
+		}
+	}
+	if usageHasAnyTokens(result.Usage) {
+		result.HasUsage = true
+	}
+	return result
+}
+
+func usageFromResponsesStreamPayload(payload map[string]interface{}, source string) providerUsageResult {
+	if response, ok := payload["response"].(map[string]interface{}); ok {
+		if raw, ok := response["usage"].(map[string]interface{}); ok {
+			return usageResultFromOpenAIUsage(raw, source)
+		}
+	}
+	if strings.EqualFold(stringValueFromMap(payload, "type"), "response.usage.delta") {
+		if raw, ok := payload["usage"].(map[string]interface{}); ok {
+			return usageResultFromOpenAIUsage(raw, source)
+		}
+		if raw, ok := payload["delta"].(map[string]interface{}); ok {
+			return usageResultFromOpenAIUsage(raw, source)
+		}
+	}
+	if strings.EqualFold(stringValueFromMap(payload, "type"), "response.output_item.done") {
+		if item, ok := payload["item"].(map[string]interface{}); ok {
+			builtin := builtinToolUsageFromResponsesItem(item)
+			if builtin != (builtinToolUsage{}) {
+				return providerUsageResult{Builtin: builtin, Source: source, HasUsage: true}
+			}
+		}
+	}
+	return providerUsageResult{}
+}
+
+func usageResultFromGeminiUsageMetadata(raw map[string]interface{}, source string) providerUsageResult {
+	usage := usageFromGeminiUsageMetadata(raw)
+	detail := usageDetail{}
+	if usage.InputTokens != nil {
+		detail.InputTokens = intPtr(getInt(usage.InputTokens))
+	}
+	if usage.OutputTokens != nil {
+		detail.OutputTokens = intPtr(getInt(usage.OutputTokens))
+	}
+	if usage.TotalTokens != nil {
+		detail.TotalTokens = intPtr(getInt(usage.TotalTokens))
+	}
+	if usage.CacheHitTokens != nil {
+		detail.CachedInputTokens = intPtr(getInt(usage.CacheHitTokens))
+	}
+	if rawValue, ok := raw["thoughtsTokenCount"]; ok && rawValue != nil {
+		detail.ReasoningTokens = intPtr(int(numberFromUsageMap(raw, "thoughtsTokenCount")))
+	}
+	addGeminiTokenDetails(raw, "promptTokensDetails", &detail.TextInputTokens, &detail.ImageInputTokens, &detail.AudioInputTokens)
+	addGeminiTokenDetails(raw, "toolUsePromptTokensDetails", &detail.TextInputTokens, &detail.ImageInputTokens, &detail.AudioInputTokens)
+	addGeminiTokenDetails(raw, "candidatesTokensDetails", &detail.TextOutputTokens, &detail.ImageOutputTokens, &detail.AudioOutputTokens)
+	return providerUsageResult{Usage: usage, Detail: detail, Source: source, HasUsage: usageHasAnyTokens(usage)}
+}
+
+func usageResultFromClaudeUsage(raw map[string]interface{}, source string) providerUsageResult {
+	usage := usageFromClaudeUsage(raw)
+	detail := usageDetail{}
+	if usage.InputTokens != nil {
+		detail.InputTokens = intPtr(getInt(usage.InputTokens))
+	}
+	if usage.OutputTokens != nil {
+		detail.OutputTokens = intPtr(getInt(usage.OutputTokens))
+	}
+	if usage.TotalTokens != nil {
+		detail.TotalTokens = intPtr(getInt(usage.TotalTokens))
+	}
+	if usage.CacheHitTokens != nil {
+		detail.CachedInputTokens = intPtr(getInt(usage.CacheHitTokens))
+	}
+	cacheCreation := int(numberFromUsageMap(raw, "cache_creation_input_tokens"))
+	if creation, ok := raw["cache_creation"].(map[string]interface{}); ok && cacheCreation == 0 {
+		cacheCreation = int(numberFromUsageMap(creation, "ephemeral_5m_input_tokens")) + int(numberFromUsageMap(creation, "ephemeral_1h_input_tokens"))
+	}
+	if cacheCreation > 0 {
+		detail.CacheCreationInputTokens = intPtr(cacheCreation)
+	}
+	builtin := builtinToolUsage{}
+	if tool, ok := raw["server_tool_use"].(map[string]interface{}); ok {
+		builtin.WebSearchCalls = int(numberFromUsageMap(tool, "web_search_requests"))
+	}
+	return providerUsageResult{Usage: usage, Detail: detail, Builtin: builtin, Source: source, HasUsage: usageHasAnyTokens(usage) || builtin != (builtinToolUsage{})}
 }
 
 func usageHasAnyTokens(usage usageTokenUsage) bool {
 	return usage.InputTokens != nil || usage.OutputTokens != nil || usage.TotalTokens != nil || usage.CacheHitTokens != nil
+}
+
+func setDetailInt(target **int, raw map[string]interface{}, key string) {
+	if rawValue, ok := raw[key]; ok && rawValue != nil {
+		*target = intPtr(int(numberFromUsageMap(raw, key)))
+	}
+}
+
+func addGeminiTokenDetails(raw map[string]interface{}, key string, textTokens **int, imageTokens **int, audioTokens **int) {
+	details, ok := raw[key].([]interface{})
+	if !ok {
+		return
+	}
+	textTotal := getInt(*textTokens)
+	imageTotal := getInt(*imageTokens)
+	audioTotal := getInt(*audioTokens)
+	seenText := *textTokens != nil
+	seenImage := *imageTokens != nil
+	seenAudio := *audioTokens != nil
+	for _, item := range details {
+		detail, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		count := int(numberFromUsageMap(detail, "tokenCount"))
+		switch strings.ToUpper(stringValueFromMap(detail, "modality")) {
+		case "TEXT":
+			textTotal += count
+			seenText = true
+		case "IMAGE":
+			imageTotal += count
+			seenImage = true
+		case "AUDIO":
+			audioTotal += count
+			seenAudio = true
+		}
+	}
+	if seenText {
+		*textTokens = intPtr(textTotal)
+	}
+	if seenImage {
+		*imageTokens = intPtr(imageTotal)
+	}
+	if seenAudio {
+		*audioTokens = intPtr(audioTotal)
+	}
+}
+
+func builtinToolUsageFromResponsesOutput(raw interface{}) builtinToolUsage {
+	items, ok := raw.([]interface{})
+	if !ok {
+		return builtinToolUsage{}
+	}
+	usage := builtinToolUsage{}
+	for _, item := range items {
+		if itemMap, ok := item.(map[string]interface{}); ok {
+			usage = mergeBuiltinToolUsage(usage, builtinToolUsageFromResponsesItem(itemMap))
+		}
+	}
+	return usage
+}
+
+func builtinToolUsageFromResponsesItem(item map[string]interface{}) builtinToolUsage {
+	switch stringValueFromMap(item, "type") {
+	case "web_search_call":
+		return builtinToolUsage{WebSearchCalls: 1}
+	case "file_search_call":
+		return builtinToolUsage{FileSearchCalls: 1}
+	case "image_generation_call":
+		return builtinToolUsage{ImageGenerationCalls: 1}
+	case "code_interpreter_call":
+		return builtinToolUsage{CodeInterpreterCalls: 1}
+	case "computer_call", "computer_use":
+		return builtinToolUsage{ComputerUseCalls: 1}
+	default:
+		return builtinToolUsage{}
+	}
+}
+
+func mergeUsageDetail(existing usageDetail, next usageDetail) usageDetail {
+	if next.InputTokens != nil {
+		existing.InputTokens = next.InputTokens
+	}
+	if next.OutputTokens != nil {
+		existing.OutputTokens = next.OutputTokens
+	}
+	if next.TotalTokens != nil {
+		existing.TotalTokens = next.TotalTokens
+	}
+	if next.CachedInputTokens != nil {
+		existing.CachedInputTokens = next.CachedInputTokens
+	}
+	if next.CacheCreationInputTokens != nil {
+		existing.CacheCreationInputTokens = next.CacheCreationInputTokens
+	}
+	if next.ReasoningTokens != nil {
+		existing.ReasoningTokens = next.ReasoningTokens
+	}
+	if next.TextInputTokens != nil {
+		existing.TextInputTokens = next.TextInputTokens
+	}
+	if next.TextOutputTokens != nil {
+		existing.TextOutputTokens = next.TextOutputTokens
+	}
+	if next.ImageInputTokens != nil {
+		existing.ImageInputTokens = next.ImageInputTokens
+	}
+	if next.ImageOutputTokens != nil {
+		existing.ImageOutputTokens = next.ImageOutputTokens
+	}
+	if next.AudioInputTokens != nil {
+		existing.AudioInputTokens = next.AudioInputTokens
+	}
+	if next.AudioOutputTokens != nil {
+		existing.AudioOutputTokens = next.AudioOutputTokens
+	}
+	if next.ToolUseTokens != nil {
+		existing.ToolUseTokens = next.ToolUseTokens
+	}
+	if next.Estimated {
+		existing.Estimated = true
+	}
+	return existing
+}
+
+func mergeBuiltinToolUsage(existing builtinToolUsage, next builtinToolUsage) builtinToolUsage {
+	existing.WebSearchCalls += next.WebSearchCalls
+	existing.FileSearchCalls += next.FileSearchCalls
+	existing.ImageGenerationCalls += next.ImageGenerationCalls
+	existing.CodeInterpreterCalls += next.CodeInterpreterCalls
+	existing.ComputerUseCalls += next.ComputerUseCalls
+	return existing
+}
+
+func stringValueFromMap(raw map[string]interface{}, key string) string {
+	value, _ := raw[key].(string)
+	return value
 }
 
 func mergeUsage(existing usageTokenUsage, next usageTokenUsage) usageTokenUsage {
@@ -638,8 +980,13 @@ func addRecordToSummary(summary *usageSummary, record usageRecord) {
 	case "transformed_responses":
 		summary.TransformedResponsesRequests++
 	}
+	if summary.FirstUsedAt.IsZero() || record.StartedAt.Before(summary.FirstUsedAt) {
+		summary.FirstUsedAt = record.StartedAt
+		summary.FirstModelName = record.ModelName
+	}
 	if record.StartedAt.After(summary.LastUsedAt) {
 		summary.LastUsedAt = record.StartedAt
+		summary.LastModelName = record.ModelName
 	}
 }
 
@@ -791,6 +1138,7 @@ type observingStreamWriter struct {
 	record       *usageRecord
 	startTime    time.Time
 	events       []json.RawMessage
+	responseText strings.Builder
 	observeUsage bool
 }
 
@@ -815,9 +1163,6 @@ func (w *observingStreamWriter) observe(data []byte) {
 	if w.record.FirstByteMs == 0 && len(strings.TrimSpace(string(data))) > 0 {
 		w.record.FirstByteMs = time.Since(w.startTime).Milliseconds()
 	}
-	if !w.observeUsage {
-		return
-	}
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, "data:") {
@@ -827,16 +1172,18 @@ func (w *observingStreamWriter) observe(data []byte) {
 		if payload == "" || payload == "[DONE]" {
 			continue
 		}
+		w.responseText.WriteString(extractOutputTextFromStreamPayload(payload))
+		if !w.observeUsage {
+			continue
+		}
 		if len(w.events) < 50 {
 			w.events = append(w.events, json.RawMessage(payload))
 			if eventBytes, err := json.Marshal(w.events); err == nil {
 				w.record.ProviderResponse = sanitizeUsageBody(eventBytes)
 			}
 		}
-		usage, ok := parseStreamUsage(payload)
-		if ok {
-			w.record.Usage = mergeUsage(w.record.Usage, usage)
-		}
+		result := extractProviderUsageFromStreamEvent("", relay.FormatResponses, payload)
+		applyProviderUsageToRecord(w.record, result)
 	}
 }
 
@@ -844,15 +1191,20 @@ type upstreamUsageObservingBody struct {
 	inner    io.ReadCloser
 	record   *usageRecord
 	platform relay.Platform
+	format   relay.FormatType
 	buffer   []byte
 	events   []json.RawMessage
 }
 
-func observeUpstreamUsage(resp *http.Response, record *usageRecord, platform relay.Platform) {
+func observeUpstreamUsage(resp *http.Response, record *usageRecord, platform relay.Platform, formats ...relay.FormatType) {
 	if resp == nil || resp.Body == nil || record == nil {
 		return
 	}
-	resp.Body = &upstreamUsageObservingBody{inner: resp.Body, record: record, platform: platform}
+	format := relay.FormatType("")
+	if len(formats) > 0 {
+		format = formats[0]
+	}
+	resp.Body = &upstreamUsageObservingBody{inner: resp.Body, record: record, platform: platform, format: format}
 }
 
 func (b *upstreamUsageObservingBody) Read(p []byte) (int, error) {
@@ -898,61 +1250,18 @@ func (b *upstreamUsageObservingBody) observeLine(line string) {
 			b.record.ProviderResponse = sanitizeUsageBody(eventBytes)
 		}
 	}
-	usage, ok := parsePlatformStreamUsage(b.platform, payload)
-	if ok {
-		b.record.Usage = mergeUsage(b.record.Usage, usage)
-	}
+	result := extractProviderUsageFromStreamEvent(b.platform, b.format, payload)
+	applyProviderUsageToRecord(b.record, result)
 }
 
 func parsePlatformStreamUsage(platform relay.Platform, payload string) (usageTokenUsage, bool) {
-	var event map[string]interface{}
-	if err := json.Unmarshal([]byte(payload), &event); err != nil {
-		return usageTokenUsage{}, false
-	}
-	switch platform {
-	case relay.PlatformAnthropic:
-		if raw, ok := event["message"].(map[string]interface{}); ok {
-			if usageRaw, ok := raw["usage"].(map[string]interface{}); ok {
-				return usageFromClaudeUsage(usageRaw), true
-			}
-		}
-		if usageRaw, ok := event["usage"].(map[string]interface{}); ok {
-			return usageFromClaudeUsage(usageRaw), true
-		}
-	case relay.PlatformGemini:
-		if raw, ok := event["usageMetadata"].(map[string]interface{}); ok {
-			return usageFromGeminiUsageMetadata(raw), true
-		}
-	default:
-		if raw, ok := event["usage"].(map[string]interface{}); ok {
-			return usageFromOpenAIUsage(raw), true
-		}
-	}
-	return usageTokenUsage{}, false
+	result := extractProviderUsageFromStreamEvent(platform, "", payload)
+	return result.Usage, usageHasAnyTokens(result.Usage)
 }
 
 func parseStreamUsage(payload string) (usageTokenUsage, bool) {
-	var event map[string]interface{}
-	if err := json.Unmarshal([]byte(payload), &event); err != nil {
-		return usageTokenUsage{}, false
-	}
-	if raw, ok := event["usageMetadata"].(map[string]interface{}); ok {
-		return usageFromGeminiUsageMetadata(raw), true
-	}
-	if raw, ok := event["message"].(map[string]interface{}); ok {
-		if usageRaw, ok := raw["usage"].(map[string]interface{}); ok {
-			return usageFromClaudeUsage(usageRaw), true
-		}
-	}
-	if raw, ok := event["message_delta"].(map[string]interface{}); ok {
-		if usageRaw, ok := raw["usage"].(map[string]interface{}); ok {
-			return usageFromClaudeUsage(usageRaw), true
-		}
-	}
-	if raw, ok := event["usage"].(map[string]interface{}); ok {
-		return usageFromOpenAIUsage(raw), true
-	}
-	return usageTokenUsage{}, false
+	result := extractProviderUsageFromStreamEvent("", relay.FormatResponses, payload)
+	return result.Usage, usageHasAnyTokens(result.Usage)
 }
 
 func usageFromOpenAIUsage(raw map[string]interface{}) usageTokenUsage {
@@ -1083,6 +1392,161 @@ func usageFromClaudeUsage(raw map[string]interface{}) usageTokenUsage {
 		usage.TotalTokens = intPtr(getInt(usage.InputTokens) + getInt(usage.OutputTokens))
 	}
 	return usage
+}
+
+func applyLocalResponseEstimate(record *usageRecord, responseText string, cfg config.UsageConfig) {
+	if record == nil || strings.TrimSpace(responseText) == "" || record.Usage.OutputTokens != nil {
+		return
+	}
+	outputTokens := estimateTextTokens(responseText, cfg)
+	if outputTokens <= 0 {
+		return
+	}
+	record.Usage.OutputTokens = intPtr(outputTokens)
+	if record.Usage.TotalTokens == nil {
+		record.Usage.TotalTokens = intPtr(getInt(record.Usage.InputTokens) + outputTokens)
+	}
+	record.Usage.Estimated = true
+	if record.Usage.EstimatedTokens == 0 {
+		record.Usage.EstimatedTokens = getInt(record.Usage.TotalTokens)
+	}
+	record.UsageDetail = mergeUsageDetail(record.UsageDetail, usageDetail{OutputTokens: intPtr(outputTokens), TotalTokens: record.Usage.TotalTokens, Estimated: true})
+	record.UsageSource = "local_response_estimate"
+}
+
+func estimateTextTokens(text string, cfg config.UsageConfig) int {
+	charsPerToken := cfg.CharsPerToken
+	if charsPerToken <= 0 {
+		charsPerToken = 4
+	}
+	chars := len([]rune(text))
+	if chars == 0 {
+		return 0
+	}
+	return (chars + charsPerToken - 1) / charsPerToken
+}
+
+func extractOutputTextFromCanonicalResponse(resp *relay.CanonicalResponse) string {
+	if resp == nil {
+		return ""
+	}
+	var builder strings.Builder
+	for _, item := range resp.Output {
+		for _, part := range item.Content {
+			builder.WriteString(part.Text)
+			builder.WriteString(part.ReasoningText)
+		}
+		if len(item.Arguments) > 0 {
+			builder.Write(item.Arguments)
+		}
+	}
+	return builder.String()
+}
+
+func extractOutputTextFromProviderBody(platform relay.Platform, format relay.FormatType, body []byte) string {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return ""
+	}
+	return extractOutputTextFromPayload(payload)
+}
+
+func extractOutputTextFromStreamPayload(payload string) string {
+	var event map[string]interface{}
+	if err := json.Unmarshal([]byte(payload), &event); err != nil {
+		return ""
+	}
+	return extractOutputTextFromPayload(event)
+}
+
+func extractOutputTextFromPayload(payload map[string]interface{}) string {
+	var builder strings.Builder
+	if choices, ok := payload["choices"].([]interface{}); ok {
+		for _, choice := range choices {
+			choiceMap, _ := choice.(map[string]interface{})
+			if delta, ok := choiceMap["delta"].(map[string]interface{}); ok {
+				builder.WriteString(stringValueFromMap(delta, "content"))
+			}
+			if msg, ok := choiceMap["message"].(map[string]interface{}); ok {
+				builder.WriteString(extractTextFromAny(msg["content"]))
+			}
+		}
+	}
+	if delta := stringValueFromMap(payload, "delta"); delta != "" && strings.Contains(stringValueFromMap(payload, "type"), "output_text") {
+		builder.WriteString(delta)
+	}
+	if text := stringValueFromMap(payload, "text"); text != "" && strings.Contains(stringValueFromMap(payload, "type"), "output_text") {
+		builder.WriteString(text)
+	}
+	if raw, ok := payload["delta"].(map[string]interface{}); ok {
+		builder.WriteString(stringValueFromMap(raw, "text"))
+		builder.WriteString(stringValueFromMap(raw, "thinking"))
+	}
+	if response, ok := payload["response"].(map[string]interface{}); ok {
+		builder.WriteString(extractTextFromResponsesOutput(response["output"]))
+	}
+	builder.WriteString(extractTextFromResponsesOutput(payload["output"]))
+	if content, ok := payload["content"].([]interface{}); ok {
+		for _, item := range content {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				builder.WriteString(stringValueFromMap(itemMap, "text"))
+			}
+		}
+	}
+	if candidates, ok := payload["candidates"].([]interface{}); ok {
+		for _, candidate := range candidates {
+			candMap, _ := candidate.(map[string]interface{})
+			if content, ok := candMap["content"].(map[string]interface{}); ok {
+				if parts, ok := content["parts"].([]interface{}); ok {
+					for _, part := range parts {
+						if partMap, ok := part.(map[string]interface{}); ok {
+							builder.WriteString(stringValueFromMap(partMap, "text"))
+						}
+					}
+				}
+			}
+		}
+	}
+	return builder.String()
+}
+
+func extractTextFromResponsesOutput(raw interface{}) string {
+	items, ok := raw.([]interface{})
+	if !ok {
+		return ""
+	}
+	var builder strings.Builder
+	for _, item := range items {
+		itemMap, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if content, ok := itemMap["content"].([]interface{}); ok {
+			for _, part := range content {
+				if partMap, ok := part.(map[string]interface{}); ok {
+					builder.WriteString(stringValueFromMap(partMap, "text"))
+				}
+			}
+		}
+	}
+	return builder.String()
+}
+
+func extractTextFromAny(raw interface{}) string {
+	switch value := raw.(type) {
+	case string:
+		return value
+	case []interface{}:
+		var builder strings.Builder
+		for _, item := range value {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				builder.WriteString(stringValueFromMap(itemMap, "text"))
+			}
+		}
+		return builder.String()
+	default:
+		return ""
+	}
 }
 
 func numberFromUsageMap(raw map[string]interface{}, key string) float64 {

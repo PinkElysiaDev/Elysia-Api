@@ -81,9 +81,6 @@ func (s *Server) responses(c *gin.Context) {
 	setRecordModel(record, selectedModel, targetPlatform)
 
 	canonicalReq.Model = selectedModel.Name
-	if group.MaxTokens > 0 {
-		canonicalReq.MaxOutputTokens = group.MaxTokens
-	}
 
 	targetFormat, responsesMode, err := selectResponsesTargetFormat(selectedModel, targetPlatform, responsesCfg)
 	if err != nil {
@@ -173,6 +170,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 		}
 		record.ConversionChain = append(record.ConversionChain, "openai_responses_response")
 		updateRecordUsageFromCanonical(record, canonicalResp.Usage)
+		applyLocalResponseEstimate(record, extractOutputTextFromCanonicalResponse(canonicalResp), s.config.GetUsageConfig())
 		actualTokens := getInt(record.Usage.TotalTokens)
 		s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
 		c.Data(http.StatusOK, "application/json", respBody)
@@ -267,6 +265,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 	}
 	record.ConversionChain = append(record.ConversionChain, string(targetFormat)+"_response", "canonical_response", "openai_responses_response")
 	updateRecordUsageFromCanonical(record, canonicalResp.Usage)
+	applyLocalResponseEstimate(record, extractOutputTextFromCanonicalResponse(canonicalResp), s.config.GetUsageConfig())
 	actualTokens := getInt(record.Usage.TotalTokens)
 	s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
 
@@ -317,7 +316,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
 			return
 		}
-		observeUpstreamUsage(resp, record, targetPlatform)
+		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
 		if err := relay.ForwardResponsesStream(resp, writer); err != nil {
 			log.Printf("Error forwarding Responses stream: %v", err)
 		}
@@ -329,7 +328,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
 			return
 		}
-		observeUpstreamUsage(resp, record, targetPlatform)
+		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
 		if err := relay.ConvertClaudeStreamToResponsesStream(resp, writer, selectedModel.Name); err != nil {
 			log.Printf("Error converting Claude stream to Responses stream: %v", err)
 		}
@@ -341,7 +340,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
 			return
 		}
-		observeUpstreamUsage(resp, record, targetPlatform)
+		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
 		if err := relay.ConvertGeminiStreamToResponsesStream(resp, writer, selectedModel.Name); err != nil {
 			log.Printf("Error converting Gemini stream to Responses stream: %v", err)
 		}
@@ -353,15 +352,13 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
 			return
 		}
-		observeUpstreamUsage(resp, record, targetPlatform)
+		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
 		if err := relay.ConvertOpenAIChatStreamToResponsesStream(resp, writer, selectedModel.Name); err != nil {
 			log.Printf("Error converting OpenAI chat stream to Responses stream: %v", err)
 		}
 	}
 
-	if record.Usage.TotalTokens == nil && record.Usage.EstimatedTokens > 0 {
-		record.Usage.TotalTokens = intPtr(record.Usage.EstimatedTokens)
-	}
+	applyLocalResponseEstimate(record, writer.responseText.String(), s.config.GetUsageConfig())
 	actualTokens := getInt(record.Usage.TotalTokens)
 	s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
 }

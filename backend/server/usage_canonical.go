@@ -13,6 +13,13 @@ func usageTokenUsageFromCanonical(u *relay.CanonicalUsage) usageTokenUsage {
 		return usageTokenUsage{}
 	}
 	usage := usageTokenUsage{}
+	if u.Estimated && (u.Source == "" || strings.Contains(u.Source, "estimate")) {
+		if u.EstimatedTotalTokens > 0 {
+			usage.EstimatedTokens = u.EstimatedTotalTokens
+		}
+		usage.Estimated = true
+		return usage
+	}
 	if u.InputTokens > 0 {
 		usage.InputTokens = intPtr(u.InputTokens)
 	}
@@ -41,6 +48,9 @@ func usageDetailFromCanonical(u *relay.CanonicalUsage) usageDetail {
 		return usageDetail{}
 	}
 	detail := usageDetail{Estimated: u.Estimated}
+	if u.Estimated && (u.Source == "" || strings.Contains(u.Source, "estimate")) {
+		return detail
+	}
 	if u.InputTokens > 0 {
 		detail.InputTokens = intPtr(u.InputTokens)
 	}

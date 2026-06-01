@@ -84,28 +84,29 @@ const usageDashboardHTML = `<!doctype html>
     .tabs { display: flex; flex-wrap: wrap; gap: 8px; flex: 1; }
     .tab { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
     .tab.active { background: var(--primary); color: var(--primary-text); border-color: var(--primary); }
-    .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 216px)); gap: 14px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+    @media (min-width: 1500px) { .cards { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
     .card, section { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); }
     .card { padding: 14px; }
     .card .label { color: var(--muted); font-size: 12px; }
     .card .value { font-size: 22px; font-weight: 800; margin-top: 8px; }
-    .overview-card { position: relative; aspect-ratio: 1 / 1; overflow: hidden; padding: 22px; transition: transform .25s ease, border-color .25s ease; }
+    .overview-card { position: relative; aspect-ratio: 1 / 1; min-width: 0; overflow: hidden; padding: 18px; transition: transform .25s ease, border-color .25s ease; }
     .overview-card:hover { transform: translateY(-2px); border-color: var(--primary); }
-    .overview-bg { position: absolute; right: 10px; bottom: -20px; font-size: clamp(64px, 10vw, 116px); line-height: 1; font-weight: 900; color: var(--primary); opacity: .10; pointer-events: none; transition: transform .32s ease, font-size .32s ease, opacity .32s ease; }
+    .overview-bg { position: absolute; right: 10px; bottom: -20px; font-size: clamp(52px, 8vw, 96px); line-height: 1; font-weight: 900; color: var(--primary); opacity: .10; pointer-events: none; transition: transform .32s ease, font-size .32s ease, opacity .32s ease; }
     .overview-card.last-call-card .overview-bg { left: 12px; right: 12px; bottom: -8px; font-size: clamp(54px, 7vw, 84px); letter-spacing: -.08em; text-align: center; white-space: normal; overflow-wrap: anywhere; }
     .overview-card:hover .overview-bg { transform: translateY(-10px) scale(.7); opacity: 0; }
     .overview-main { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; justify-content: space-between; transition: transform .3s ease, opacity .25s ease; }
     .overview-card:hover .overview-main { transform: translateY(-42%) scale(.58); opacity: 0; }
     .overview-card.last-call-card .overview-main { justify-content: space-between; }
-    .overview-card.last-call-card .overview-value { font-size: clamp(18px, 2.5vw, 28px); letter-spacing: -.02em; line-height: 1.15; margin-top: auto; margin-bottom: auto; }
-    .overview-label { color: var(--muted); font-size: 15px; font-weight: 800; margin-bottom: auto; margin-top: 18px; }
-    .overview-value { font-size: clamp(28px, 4vw, 52px); font-weight: 900; margin-top: auto; margin-bottom: auto; letter-spacing: -.04em; word-break: break-all; overflow: hidden; }
+    .overview-card.last-call-card .overview-value { font-size: clamp(20px, 2.8vw, 31px); letter-spacing: -.02em; line-height: 1.15; margin-top: auto; margin-bottom: auto; }
+    .overview-label { color: var(--muted); font-size: 14px; font-weight: 800; margin-bottom: auto; margin-top: 14px; }
+    .overview-value { font-size: clamp(24px, 3.2vw, 46px); font-weight: 900; margin-top: auto; margin-bottom: auto; letter-spacing: -.04em; word-break: break-all; overflow: hidden; }
     .overview-note { color: var(--muted); margin-top: 0; font-size: 0; }
     .overview-compact { position: absolute; z-index: 3; top: 14px; left: 16px; right: 16px; display: flex; align-items: baseline; gap: 6px; opacity: 0; transform: translateY(10px); transition: opacity .24s ease .08s, transform .28s ease .05s; white-space: nowrap; }
     .overview-card:hover .overview-compact { opacity: 1; transform: translateY(0); }
     .overview-compact span { color: var(--muted); font-size: 15px; font-weight: 800; }
     .overview-compact b { color: var(--text); font-size: 15px; font-weight: 900; overflow: hidden; text-overflow: ellipsis; }
-    .overview-reveal { position: absolute; z-index: 2; left: 0; right: 0; bottom: 0; height: calc(100% - 42px); padding: 16px 20px 26px; background: color-mix(in srgb, var(--panel-2) 94%, var(--primary) 6%); border-top: 1px solid var(--border); transform: translateY(100%); transition: transform .32s cubic-bezier(.2,.8,.2,1); }
+    .overview-reveal { position: absolute; z-index: 2; left: 0; right: 0; bottom: 0; height: calc(100% - 42px); padding: 16px 16px 26px; background: color-mix(in srgb, var(--panel-2) 94%, var(--primary) 6%); border-top: 1px solid var(--border); transform: translateY(100%); transition: transform .32s cubic-bezier(.2,.8,.2,1); }
     .overview-card:hover .overview-reveal { transform: translateY(0); }
     .overview-reveal-row { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px dashed var(--border); padding: 6px 0; font-size: 12px; }
     .overview-reveal-row span { color: var(--muted); }
@@ -185,19 +186,20 @@ const usageDashboardHTML = `<!doctype html>
     .detail-section { margin-top: 18px; }
     .detail-title { display: flex; align-items: center; gap: 8px; margin: 18px 0 10px; }
     .detail-title h3 { margin: 0; }
-    .detail-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-bottom: 12px; }
+    .detail-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; align-items: stretch; }
     .detail-metric { background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
     .detail-metric span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
     .detail-metric b { font-size: 16px; word-break: break-word; }
-    .detail-token-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 10px 0 12px; }
     .status-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 9px; font-size: 12px; font-weight: 800; border: 1px solid var(--border); background: var(--panel-2); }
     .status-pill.ok { color: var(--ok); }
     .status-pill.error { color: var(--danger); }
     .body-card { border: 1px solid var(--border); border-radius: 14px; padding: 12px; background: var(--panel); margin-bottom: 12px; }
     .body-card > h4 { margin: 0 0 10px; color: var(--primary); }
     pre { white-space: pre-wrap; word-break: break-word; background: var(--panel-2); border-radius: 12px; padding: 12px; border: 1px solid var(--border); max-height: 280px; overflow: auto; }
-    @media (max-width: 1200px) { .controls, .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid { grid-template-columns: 1fr; } .log-controls-row { grid-template-columns: 1fr; } .filter-pane { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); } .filter-actions { flex-wrap: wrap; } .log-page-size { width: 132px; } }
+    @media (max-width: 1200px) { .controls, .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid { grid-template-columns: 1fr; } .log-controls-row { grid-template-columns: 1fr; } .filter-pane { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); } .filter-actions { flex-wrap: wrap; } .log-page-size { width: 132px; } .detail-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @media (max-width: 760px) { .detail-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 680px) { .cards { grid-template-columns: 1fr; } .global-timebar label { min-width: 100%; } }
+    @media (max-width: 520px) { .detail-summary { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -377,6 +379,14 @@ function compactNumber(n) {
 }
 function fmtToken(n, withUnit = false) { const text = compactNumber(n); return withUnit ? text + ' token' : text }
 function fmtExactToken(n) { return fmtCount(n) + ' token' }
+function fmtPlainRate(n) { const v = Number(n); return Number.isFinite(v) ? fmtCount(Math.round(v)) : '-' }
+function fmtRPM(n) { const v = Number(n); return Number.isFinite(v) ? v.toFixed(v < 10 ? 2 : v < 100 ? 1 : 0).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0$/, '$1') + '/min' : '-' }
+function fmtTPM(n) { const v = Number(n); return Number.isFinite(v) ? fmtToken(v, false) + '/min' : '-' }
+function fmtRateDetail(n, unit) { const v = Number(n); return Number.isFinite(v) ? v.toLocaleString([], { maximumFractionDigits: 2 }) + ' ' + unit : '-' }
+function minutesBetween(from, to) { const start = validTime(from); const end = validTime(to); if (!start || !end) return 0; return Math.max(0, (end.getTime() - start.getTime()) / 60000) }
+function ratePerMinute(count, from, to) { const minutes = minutesBetween(from, to); return minutes > 0 ? Number(count || 0) / minutes : NaN }
+function outputShare(s) { const total = Number((s && s.totalTokens) || 0); return total > 0 ? Number((s && s.outputTokens) || 0) / total : 0 }
+function builtinToolCalls(s) { return Number((s && s.webSearchCalls) || 0) + Number((s && s.fileSearchCalls) || 0) + Number((s && s.imageGenerationCalls) || 0) }
 function niceScale(max, count = 4) {
   max = Math.max(1, Number(max || 0))
   const rough = max / count
@@ -398,19 +408,28 @@ function fmtMaybe(n) {
 function pct(n) { return ((Number(n || 0)) * 100).toFixed(1) + '%' }
 function ms(n) { const v = Number(n); return Number.isFinite(v) && v > 0 ? Math.round(v) + ' ms' : '-' }
 function sec(n) { const v = Number(n); return Number.isFinite(v) && v > 0 ? (v / 1000).toFixed(2).replace(/\.?0+$/, '') + ' s' : '-' }
-function time(v) { return v ? new Date(v).toLocaleString() : '-' }
+function validTime(v) { if (!v) return null; const d = new Date(v); return isNaN(d) || d.getFullYear() <= 1 ? null : d }
+function time(v) { const d = validTime(v); return d ? d.toLocaleString() : '-' }
 function esc(s) { return String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])) }
 function card(label, value, title = '', className = '') { return '<div class="card ' + esc(className) + '"' + (title ? ' title="' + esc(title) + '"' : '') + '><div class="label">' + label + '</div><div class="value">' + value + '</div></div>' }
 function tokenCard(label, value) { return card(label, fmtToken(value, true), label + '：' + fmtCount(value) + ' token', 'token-card') }
 function overviewRangeLabel() { return state.customFrom && state.customTo ? '当前时间窗' : '最近 24h' }
-function overviewCards(rangeSummary, allTimeSummary) {
+function overviewCards(rangeSummary, allTimeSummary, rangeFrom, rangeTo) {
   const range = rangeSummary || {}
   const all = allTimeSummary || range
+  const rangeTPM = ratePerMinute(range.totalTokens, rangeFrom, rangeTo)
+  const rangeRPM = ratePerMinute(range.requests, rangeFrom, rangeTo)
+  const allTPM = ratePerMinute(all.totalTokens, all.firstUsedAt, all.lastUsedAt)
+  const allRPM = ratePerMinute(all.requests, all.firstUsedAt, all.lastUsedAt)
   return '<div class="cards">'
     + overviewHeroCard({ label: '请求次数', value: fmtCount(range.requests), bg: '24h', compactPrefix: '24h', reveal: [['全部请求', fmtCount(all.requests)], ['失败次数', fmtCount(all.failed)], ['成功率', pct(all.successRate)], ['流式请求', fmtCount(all.streamRequests)]] })
     + overviewHeroCard({ label: '消耗 token', compactLabel: 'Token', value: fmtToken(range.totalTokens, false), bg: '24h', compactPrefix: '24h', pages: [[['历史总 token', fmtExactToken(all.totalTokens)], ['输入 Token', fmtExactToken(all.inputTokens)], ['输出 Token', fmtExactToken(all.outputTokens)]], [['缓存 Token', fmtExactToken(all.cacheHitTokens)], ['缓存命中率', pct(all.cacheHitRate)]]] })
     + overviewHeroCard({ label: '平均延迟', value: sec(range.avgLatencyMs), bg: '24h', compactPrefix: '24h', reveal: [['历史平均延迟', ms(all.avgLatencyMs)], ['历史平均首字', ms(all.avgFirstByteMs)], ['历史平均耗时', ms(all.avgDurationMs)]] })
-    + overviewHeroCard({ label: '最后调用', value: preciseTime(range.lastUsedAt), bg: yearText(range.lastUsedAt), compactPrefix: '', compactLabel: '最后调用', compactValue: preciseTime(range.lastUsedAt), className: 'last-call-card', reveal: [['完整时间', time(range.lastUsedAt)], ['当前成功率', pct(range.successRate)], ['当前失败', fmtCount(range.failed)]] })
+    + overviewHeroCard({ label: 'TPM', value: fmtPlainRate(rangeTPM), bg: '24h', compactPrefix: '24h', compactLabel: 'TPM', compactValue: fmtPlainRate(rangeTPM), reveal: [['24h RPM', fmtRateDetail(rangeRPM, '次')], ['总体 TPM', fmtRateDetail(allTPM, 'token')], ['总体 RPM', fmtRateDetail(allRPM, '次')]] })
+    + overviewHeroCard({ label: '最后调用', value: minuteTime(range.lastUsedAt), bg: yearText(range.lastUsedAt), compactPrefix: '', compactLabel: '最后调用', compactValue: minuteTime(range.lastUsedAt), className: 'last-call-card', reveal: [['首次调用', fullSecondTime(all.firstUsedAt)], ['首次调用模型', all.firstModelName || '-'], ['最后调用', fullSecondTime(all.lastUsedAt)], ['最后调用模型', all.lastModelName || '-']] })
+    + overviewHeroCard({ label: '服务质量', value: pct(range.successRate), bg: 'SLA', compactPrefix: '24h', compactLabel: '成功率', reveal: [['24h 失败数', fmtCount(range.failed)], ['完整成功率', pct(all.successRate)], ['完整失败数', fmtCount(all.failed)]] })
+    + overviewHeroCard({ label: 'Token 结构', value: pct(outputShare(range)), bg: 'OUT', compactPrefix: '24h', compactLabel: '输出占比', reveal: [['24h 输入', fmtExactToken(range.inputTokens)], ['24h 输出', fmtExactToken(range.outputTokens)], ['24h 缓存', fmtExactToken(range.cacheHitTokens)], ['完整缓存命中', pct(all.cacheHitRate)]] })
+    + overviewHeroCard({ label: '能力调用', value: fmtCount(builtinToolCalls(range)), bg: 'TOOL', compactPrefix: '24h', compactLabel: '工具', reveal: [['Web Search', fmtCount(range.webSearchCalls)], ['File Search', fmtCount(range.fileSearchCalls)], ['Image Generation', fmtCount(range.imageGenerationCalls)], ['Responses 请求', fmtCount(range.responsesRequests)]] })
     + '</div>'
 }
 function overviewHeroCard(cfg) {
@@ -421,11 +440,12 @@ function overviewPagedReveal(pages) {
   return '<div class="overview-page-window"><div class="overview-pages">' + pages.map(page => '<div class="overview-page">' + page.map(r => '<div class="overview-reveal-row"><span>' + esc(r[0]) + '</span><b>' + esc(r[1]) + '</b></div>').join('') + '</div>').join('') + '</div></div><div class="overview-dots"><button type="button" class="overview-dot page-1" onmouseenter="setOverviewPage(this, 1)" aria-label="第一页"></button><button type="button" class="overview-dot page-2" onmouseenter="setOverviewPage(this, 2)" aria-label="第二页"></button></div>'
 }
 function setOverviewPage(dot, page) { const card = dot.closest('.overview-card'); if (card) card.classList.toggle('page-2', page === 2) }
-function shortDate(v) { if (!v) return '-'; const d = new Date(v); return isNaN(d) ? '-' : d.toLocaleDateString([], { month: '2-digit', day: '2-digit' }) }
-function yearText(v) { if (!v) return 'LAST'; const d = new Date(v); return isNaN(d) ? 'LAST' : String(d.getFullYear()) }
-function preciseTime(v) { if (!v) return '-'; const d = new Date(v); return isNaN(d) ? '-' : d.toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) }
-function shortClock(v) { if (!v) return '-'; const d = new Date(v); return isNaN(d) ? '-' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
-function cards(s) { return overviewCards(s, s) }
+function shortDate(v) { const d = validTime(v); return d ? d.toLocaleDateString([], { month: '2-digit', day: '2-digit' }) : '-' }
+function yearText(v) { const d = validTime(v); return d ? String(d.getFullYear()) : 'LAST' }
+function minuteTime(v) { const d = validTime(v); return d ? d.toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-' }
+function fullSecondTime(v) { const d = validTime(v); return d ? d.toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-' }
+function shortClock(v) { const d = validTime(v); return d ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-' }
+function cards(s) { return overviewCards(s, s, null, null) }
 
 const cols = [['名称', r => r.key, r => r.key], ['请求', r => fmtCount(r.summary.requests), r => r.summary.requests], ['成功率', r => pct(r.summary.successRate), r => r.summary.successRate], ['总Token', r => fmtExactToken(r.summary.totalTokens), r => r.summary.totalTokens], ['输入', r => fmtExactToken(r.summary.inputTokens), r => r.summary.inputTokens], ['输出', r => fmtExactToken(r.summary.outputTokens), r => r.summary.outputTokens], ['缓存', r => fmtExactToken(r.summary.cacheHitTokens), r => r.summary.cacheHitTokens], ['平均首字', r => ms(r.summary.avgFirstByteMs), r => r.summary.avgFirstByteMs], ['P95首字', r => ms(r.summary.p95FirstByteMs), r => r.summary.p95FirstByteMs], ['平均耗时', r => ms(r.summary.avgDurationMs), r => r.summary.avgDurationMs], ['最后调用', r => time(r.summary.lastUsedAt), r => new Date(r.summary.lastUsedAt).getTime() || 0]]
 function table(rows, columns = cols, tableId = '') {
@@ -461,7 +481,7 @@ function render() {
 }
 function renderOverview() {
   const overviewStats = state.overviewStats || state.stats
-  $('content').innerHTML = '<div class="overview-stack">' + overviewCards((overviewStats && overviewStats.summary) || {}, (overviewStats && (overviewStats.allTimeSummary || overviewStats.summary)) || {}) + '<section><h2>时间趋势</h2><div class="chart" id="chart"></div></section></div>'
+  $('content').innerHTML = '<div class="overview-stack">' + overviewCards((overviewStats && overviewStats.summary) || {}, (overviewStats && (overviewStats.allTimeSummary || overviewStats.summary)) || {}, overviewStats && overviewStats.from, overviewStats && overviewStats.to) + '<section><h2>时间趋势</h2><div class="chart" id="chart"></div></section></div>'
   renderLineChart('chart', state.stats.chartSeries || state.stats.series || [], [['请求数', 'requests'], ['总Token', 'totalTokens'], ['输入Token', 'inputTokens'], ['输出Token', 'outputTokens']], 'overviewVisibleMetrics')
 }
 function renderTime() {
@@ -683,20 +703,19 @@ function renderDetailSummary(data) {
   const statusCode = field(data, 'statusCode', 'StatusCode')
   const inputFormat = field(data, 'inputFormat', 'InputFormat')
   const targetPlatform = field(data, 'targetPlatform', 'TargetPlatform') || field(data, 'platform', 'Platform')
+  const groupName = field(data, 'groupName', 'GroupName') || '-'
+  const modelName = field(data, 'modelName', 'ModelName') || '-'
   return '<div class="detail-section">'
     + '<div class="detail-title"><h3>请求概览</h3>' + statusPill(statusCode) + '</div>'
     + '<div class="detail-summary">'
     + detailMetric('请求 ID', field(data, 'requestId', 'RequestID'))
     + detailMetric('调用方', field(data, 'keyName', 'KeyName') || field(data, 'keyHash', 'KeyHash'))
-    + detailMetric('模型组', field(data, 'groupName', 'GroupName'))
-    + detailMetric('模型', field(data, 'modelName', 'ModelName'))
+    + detailMetric('模型组 / 模型', groupName + ' / ' + modelName)
     + detailMetric('协议转换', (inputFormat || '-') + ' → ' + (targetPlatform || '-'))
     + detailMetric('流式', field(data, 'stream', 'Stream') ? '是' : '否')
     + detailMetric('重试次数', field(data, 'retryCount', 'RetryCount'))
     + detailMetric('首字延迟', ms(field(data, 'firstByteMs', 'FirstByteMs')))
     + detailMetric('总耗时', ms(field(data, 'durationMs', 'DurationMs')))
-    + '</div>'
-    + '<div class="detail-token-grid">'
     + detailMetric('总 Token', tokenDetail(field(usage, 'totalTokens', 'TotalTokens')), 'token-card')
     + detailMetric('输入 Token', tokenDetail(field(usage, 'inputTokens', 'InputTokens')), 'token-card')
     + detailMetric('输出 Token', tokenDetail(field(usage, 'outputTokens', 'OutputTokens')), 'token-card')
