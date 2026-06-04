@@ -26,12 +26,13 @@ export const usage = `---
 - \`elysia-api.usage.reset\` - 清除 Usage 用量统计记录
 - \`elysia-api.models.list\` - 列出可用模型
 
-## 0.2.8 & 0.3.0 & 0.3.1 & 0.3.2 版本更新说明
+## 0.2.8 & 0.3.0 & 0.3.1 & 0.3.2 & 0.3.3 版本更新说明
 
 修复了流式传输和工具调用存在的 bug 。
 新增用量统计面板，请访问后端运行端口/usage链接以进入 webui 。
 新增对 Responses API 的兼容。
 实现了对不同 api 协议转换方法的重构。
+修复了模型聚合插件的配置页 schema 。
 
 欢迎前往 github 主页提 issue
 

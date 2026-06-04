@@ -62,7 +62,6 @@ const sourceBaseSchema = Schema.object({
 const sourceSchema = Schema.intersect([
   sourceBaseSchema,
   Schema.union([
-    Schema.object({}),
     Schema.object({
       autoFetchModels: Schema.const(false).required(),
       manualModels: Schema.array(manualSourceModelSchema)
@@ -70,6 +69,7 @@ const sourceSchema = Schema.intersect([
         .role('table')
         .description('手动添加模型'),
     }),
+    Schema.object({}),
   ]),
 ])
 
