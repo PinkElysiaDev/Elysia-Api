@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -672,6 +673,18 @@ func (s *Server) recordUsage(record *usageRecord) {
 		record.DurationMs = record.EndedAt.Sub(record.StartedAt).Milliseconds()
 	}
 
+	if s.store != nil {
+		// 优先异步落库，避免请求路径阻塞在 SQLite 写入上；
+		// 队列满或未启动时降级为同步写，保证不丢记录。
+		if s.enqueueUsageRecord(record) {
+			return
+		}
+		if err := s.saveUsageRecordToStore(record); err != nil {
+			log.Printf("failed to save usage record to sqlite: %v", err)
+		}
+		return
+	}
+
 	s.usageMu.Lock()
 	defer s.usageMu.Unlock()
 	s.usageRecords = append(s.usageRecords, *record)
@@ -694,6 +707,15 @@ func (s *Server) usageDashboard(c *gin.Context) {
 func (s *Server) usageStats(c *gin.Context) {
 	from, to := usageTimeRange(c)
 	window := usageWindow(c.Query("window"), from, to)
+	if s.store != nil {
+		summary, err := s.store.UsageTotals(c.Request.Context(), usageQueryFromRequest(c))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"from": from, "to": to, "window": window, "summary": summary, "allTimeSummary": summary})
+		return
+	}
 	snapshot := s.usageSnapshot()
 	records := filterUsageRecords(snapshot, c, from, to)
 
@@ -718,6 +740,15 @@ func (s *Server) usageStats(c *gin.Context) {
 }
 
 func (s *Server) usageLogs(c *gin.Context) {
+	if s.store != nil {
+		total, items, err := s.store.QueryUsageLogs(c.Request.Context(), usageQueryFromRequest(c))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"total": total, "items": items})
+		return
+	}
 	from, to := usageTimeRange(c)
 	records := filterUsageRecords(s.usageSnapshot(), c, from, to)
 	sort.Slice(records, func(i, j int) bool { return records[i].StartedAt.After(records[j].StartedAt) })
@@ -771,6 +802,19 @@ func (s *Server) usageLogs(c *gin.Context) {
 
 func (s *Server) usageLogDetail(c *gin.Context) {
 	id := c.Param("id")
+	if s.store != nil {
+		payload, found, err := s.store.GetUsageRecordJSON(c.Request.Context(), id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if !found {
+			c.JSON(http.StatusNotFound, gin.H{"error": "usage log not found"})
+			return
+		}
+		c.Data(http.StatusOK, "application/json; charset=utf-8", payload)
+		return
+	}
 	for _, record := range s.usageSnapshot() {
 		if record.RequestID == id {
 			c.JSON(http.StatusOK, record)
@@ -781,6 +825,14 @@ func (s *Server) usageLogDetail(c *gin.Context) {
 }
 
 func (s *Server) resetUsage(c *gin.Context) {
+	if s.store != nil {
+		if err := s.store.ClearUsage(c.Request.Context()); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"reset": true})
+		return
+	}
 	if err := s.clearUsageRecords(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

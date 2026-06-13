@@ -1,0 +1,161 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * 主题色板：
+ *  - 日间：粉色 + 白色（柔和奶白底 + 玫粉主色）
+ *  - 夜间：粉色 + 黑色（近黑暖底 + 亮粉主色）
+ * 数值沿用后端 usage_dashboard 的配色精神，统一转换为 HSL 以便 Tailwind 调用。
+ */
+:root {
+  --background: 345 100% 98%;
+  --foreground: 340 100% 10%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 340 100% 10%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 340 100% 10%;
+
+  --primary: 333 71% 51%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 342 100% 96%;
+  --secondary-foreground: 336 45% 33%;
+
+  --muted: 342 100% 97%;
+  --muted-foreground: 335 28% 49%;
+
+  --accent: 330 100% 94%;
+  --accent-foreground: 336 60% 32%;
+
+  --destructive: 347 77% 50%;
+  --destructive-foreground: 0 0% 100%;
+
+  --success: 160 84% 32%;
+  --success-foreground: 0 0% 100%;
+
+  --border: 343 100% 91%;
+  --input: 343 100% 91%;
+  --ring: 333 71% 51%;
+
+  --sidebar: 0 0% 100%;
+  --sidebar-foreground: 340 100% 10%;
+
+  --radius: 0.85rem;
+
+  color-scheme: light;
+}
+
+.dark {
+  --background: 336 45% 5%;
+  --foreground: 327 73% 95%;
+
+  --card: 334 32% 8%;
+  --card-foreground: 327 73% 95%;
+
+  --popover: 334 32% 8%;
+  --popover-foreground: 327 73% 95%;
+
+  --primary: 330 86% 70%;
+  --primary-foreground: 336 45% 6%;
+
+  --secondary: 332 30% 14%;
+  --secondary-foreground: 327 60% 92%;
+
+  --muted: 332 28% 13%;
+  --muted-foreground: 326 22% 70%;
+
+  --accent: 331 35% 18%;
+  --accent-foreground: 327 73% 95%;
+
+  --destructive: 351 95% 82%;
+  --destructive-foreground: 336 45% 8%;
+
+  --success: 158 64% 52%;
+  --success-foreground: 336 45% 6%;
+
+  --border: 333 30% 22%;
+  --input: 333 30% 22%;
+  --ring: 330 86% 70%;
+
+  --sidebar: 335 36% 7%;
+  --sidebar-foreground: 327 73% 95%;
+
+  color-scheme: dark;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 柔和的粉色光晕背景，营造优雅氛围 */
+.app-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 60rem at 110% -10%, hsl(var(--primary) / 0.12), transparent 60%),
+    radial-gradient(50rem 50rem at -10% 110%, hsl(var(--primary) / 0.08), transparent 55%);
+}
+
+/* 滚动条美化 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--primary) / 0.25);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.45);
+  background-clip: padding-box;
+}
+
+/* 骨架屏微光 */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: hsl(var(--muted));
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, hsl(var(--primary) / 0.08), transparent);
+  animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}

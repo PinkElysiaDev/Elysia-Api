@@ -1,0 +1,57 @@
+﻿import { Schema } from 'koishi'
+
+export interface Config {
+  enabled: boolean
+  backendBinaryMode: 'bundled' | 'custom'
+  backendBinaryPath?: string
+  configPath: string
+  host: string
+  port: number
+  panelAccessToken?: string
+  databasePath: string
+  logLevel: 'debug' | 'info' | 'warn' | 'error'
+  httpTimeout: number
+  secretKeyPath?: string
+  webuiDir?: string
+  enablePprof: boolean
+  maxBodyBytes: number
+  autoStart: boolean
+  restartOnConfigChange: boolean
+  webuiOpenCommand?: string
+}
+
+export const name = 'elysia-api'
+
+export const Config: Schema<Config> = Schema.intersect([
+  Schema.object({
+    enabled: Schema.boolean().default(true).description('启用独立 Elysia-API 后端入口插件'),
+    backendBinaryMode: Schema.union([
+      Schema.const('bundled' as const).description('使用插件内置后端二进制'),
+      Schema.const('custom' as const).description('使用自定义后端二进制路径'),
+    ]).default('bundled' as const).description('后端二进制来源'),
+    backendBinaryPath: Schema.string().description('自定义后端二进制路径，仅 backendBinaryMode=custom 时使用'),
+  }).description('后端程序'),
+  Schema.object({
+    configPath: Schema.string().default('data/elysia-api-standalone/config.json').description('独立后端 bootstrap config.json 路径，默认不覆盖旧 orchestrator 配置'),
+    host: Schema.string().default('127.0.0.1').description('后端监听地址'),
+    port: Schema.number().default(18765).description('后端监听端口，默认避开旧 orchestrator 的 8765'),
+    panelAccessToken: Schema.string().role('secret').description('WebUI / 管理 API 访问令牌；留空时插件启动时自动生成写入 bootstrap config'),
+    databasePath: Schema.string().default('data/elysia-api-standalone/elysia-api.sqlite3').description('SQLite 数据库路径'),
+    logLevel: Schema.union([
+      Schema.const('debug' as const).description('debug'),
+      Schema.const('info' as const).description('info'),
+      Schema.const('warn' as const).description('warn'),
+      Schema.const('error' as const).description('error'),
+    ]).default('info' as const).description('后端日志等级'),
+    httpTimeout: Schema.number().default(120).description('后端上游 HTTP 超时秒数，0 表示不限制'),
+    secretKeyPath: Schema.string().description('后端密钥文件路径，留空时使用 config.json 同目录 .master-key'),
+    webuiDir: Schema.string().description('可选；自定义 WebUI 静态资源目录。留空则使用后端内嵌的 WebUI（开箱即用），仅在需要覆盖内嵌版本时填写'),
+    enablePprof: Schema.boolean().default(false).description('启用 /debug/pprof，需管理令牌访问'),
+    maxBodyBytes: Schema.number().default(33554432).description('请求体最大字节数，默认 32MiB'),
+  }).description('后端启动配置'),
+  Schema.object({
+    autoStart: Schema.boolean().default(true).description('Koishi ready 后自动启动后端'),
+    restartOnConfigChange: Schema.boolean().default(true).description('host/port/configPath/binary 变化时自动重启，否则仅写入配置'),
+    webuiOpenCommand: Schema.string().description('可选打开 WebUI 的命令，例如 xdg-open/open/start；留空时只返回 URL'),
+  }).description('进程管理'),
+]) as Schema<Config>
