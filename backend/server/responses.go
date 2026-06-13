@@ -243,12 +243,15 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 		}
 
 	default:
-		openAIResp, respBody, err := s.openaiAdapter.SendRequestRawWithBody(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
+		openAIResp, respBody, statusCode, err := s.openaiAdapter.SendRequestRawWithBody(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		record.ProviderResponse = sanitizeUsageBody(respBody)
 		if err != nil {
-			record.StatusCode = http.StatusBadGateway
+			if statusCode <= 0 {
+				statusCode = http.StatusBadGateway
+			}
+			record.StatusCode = statusCode
 			record.Error = err.Error()
-			c.Data(http.StatusBadGateway, "application/json", respBody)
+			c.Data(statusCode, "application/json", respBody)
 			return
 		}
 		canonicalResp, err = relay.OpenAIChatResponseToCanonical(openAIResp)
@@ -366,11 +369,10 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 func selectResponsesTargetFormat(model config.ModelRef, platform relay.Platform, responsesCfg config.ResponsesConfig) (relay.FormatType, string, error) {
 	mode := strings.ToLower(strings.TrimSpace(responsesCfg.UpstreamMode))
 	if mode == "" {
-		mode = "native"
+		mode = "auto"
 	}
 
-	nativeResponses := endpointSupportsResponses(model, platform)
-	if nativeResponses {
+	if endpointSupportsResponses(model, platform) {
 		return relay.FormatResponses, "native_responses", nil
 	}
 
@@ -378,21 +380,53 @@ func selectResponsesTargetFormat(model config.ModelRef, platform relay.Platform,
 		return "", "native_responses", fmt.Errorf("selected upstream model %q does not declare Responses API support", model.Name)
 	}
 
-	if mode == "auto" {
-		behavior := strings.ToLower(strings.TrimSpace(responsesCfg.TransformUnsupportedBehavior))
-		if behavior == "" || behavior == "error" {
-			return "", "auto_responses", fmt.Errorf("selected upstream model %q does not declare Responses API support", model.Name)
-		}
+	if mode != "auto" && mode != "transform" {
+		return "", mode + "_responses", fmt.Errorf("unsupported Responses upstreamMode %q", responsesCfg.UpstreamMode)
 	}
 
-	switch platform {
-	case relay.PlatformAnthropic:
-		return relay.FormatClaude, "transformed_responses", nil
-	case relay.PlatformGemini:
-		return relay.FormatGemini, "transformed_responses", nil
-	default:
-		return relay.FormatOpenAIChat, "transformed_responses", nil
+	targetFormat, ok := transformedResponsesTargetFormat(model, platform)
+	if !ok {
+		return "", mode + "_responses", fmt.Errorf("selected upstream model %q does not declare a transformable endpoint for Responses API", model.Name)
 	}
+	return targetFormat, "transformed_responses", nil
+}
+
+func transformedResponsesTargetFormat(model config.ModelRef, platform relay.Platform) (relay.FormatType, bool) {
+	if endpointSupportsClaudeMessages(model, platform) {
+		return relay.FormatClaude, true
+	}
+	if endpointSupportsGeminiGenerateContent(model, platform) {
+		return relay.FormatGemini, true
+	}
+	if endpointSupportsChatCompletions(model, platform) {
+		return relay.FormatOpenAIChat, true
+	}
+	return "", false
+}
+
+func endpointSupportsChatCompletions(model config.ModelRef, platform relay.Platform) bool {
+	if model.Endpoints != nil && model.Endpoints.ChatCompletions != nil {
+		return *model.Endpoints.ChatCompletions
+	}
+	switch platform {
+	case relay.PlatformOpenAI, relay.PlatformDeepSeek, relay.PlatformAzure:
+		return true
+	}
+	return false
+}
+
+func endpointSupportsClaudeMessages(model config.ModelRef, platform relay.Platform) bool {
+	if model.Endpoints != nil && model.Endpoints.ClaudeMessages != nil {
+		return *model.Endpoints.ClaudeMessages
+	}
+	return platform == relay.PlatformAnthropic
+}
+
+func endpointSupportsGeminiGenerateContent(model config.ModelRef, platform relay.Platform) bool {
+	if model.Endpoints != nil && model.Endpoints.GeminiGenerateContent != nil {
+		return *model.Endpoints.GeminiGenerateContent
+	}
+	return platform == relay.PlatformGemini
 }
 
 func endpointSupportsResponses(model config.ModelRef, platform relay.Platform) bool {

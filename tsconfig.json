@@ -2,6 +2,8 @@
     "extends": "./tsconfig.base",
     "compilerOptions": {
         "paths": {
+            "koishi-plugin-elysia-api": ["./packages/elysia-api/src"],
+            "koishi-plugin-elysia-api/*": ["./packages/elysia-api/src/*"],
             "koishi-plugin-elysia-api-aggregator": ["./packages/aggregator/src"],
             "koishi-plugin-elysia-api-aggregator/*": ["./packages/aggregator/src/*"],
             "koishi-plugin-elysia-api-orchestrator": ["./packages/orchestrator/src"],
