@@ -97,3 +97,19 @@ func TestSourceModelsGroupsTokensAndUsage(t *testing.T) {
 		t.Fatalf("summary = %#v", summary)
 	}
 }
+
+// 回归 #10：空库时 UsageTotals 不应因 SUM(CASE...) 返回 NULL 而 Scan 失败。
+func TestUsageTotalsEmptyDB(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "empty.sqlite3"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+	summary, err := store.UsageTotals(context.Background(), UsageQuery{})
+	if err != nil {
+		t.Fatalf("UsageTotals on empty db should not error, got: %v", err)
+	}
+	if summary["requests"].(int) != 0 || summary["success"].(int) != 0 || summary["failed"].(int) != 0 {
+		t.Fatalf("empty db totals should be zero, got: %#v", summary)
+	}
+}

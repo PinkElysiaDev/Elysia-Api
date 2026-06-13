@@ -106,7 +106,7 @@ func (s *Server) loadTokensFromStore() (map[string]config.AccessToken, bool) {
 		if !item.Enabled {
 			continue
 		}
-		tokens[item.Token] = config.AccessToken{Name: item.Name, Token: item.Token, Enabled: item.Enabled}
+		tokens[item.Token] = config.AccessToken{Name: item.Name, Token: item.Token, Enabled: item.Enabled, AllowedGroups: item.AllowedGroups}
 	}
 	return tokens, true
 }

@@ -2,7 +2,6 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
   Database,
-  Boxes,
   Layers,
   KeyRound,
   BarChart3,
@@ -24,9 +23,8 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { to: '/overview', label: '概览', icon: LayoutDashboard, group: '总览' },
   { to: '/sources', label: '模型源', icon: Database, group: '模型配置' },
-  { to: '/models', label: '模型缓存', icon: Boxes, group: '模型配置' },
   { to: '/groups', label: '模型组', icon: Layers, group: '模型配置' },
-  { to: '/tokens', label: 'API Tokens', icon: KeyRound, group: '访问控制' },
+  { to: '/tokens', label: 'API Keys', icon: KeyRound, group: '访问控制' },
   { to: '/usage', label: 'Usage 统计', icon: BarChart3, group: '观测' },
   { to: '/usage-logs', label: 'Usage 日志', icon: ScrollText, group: '观测' },
   { to: '/logs', label: '系统日志', icon: Terminal, group: '观测' },

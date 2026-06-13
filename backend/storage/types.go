@@ -59,11 +59,12 @@ type ModelGroup struct {
 }
 
 type APIToken struct {
-	Name      string    `json:"name"`
-	Token     string    `json:"token,omitempty"`
-	Enabled   bool      `json:"enabled"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	Name          string    `json:"name"`
+	Token         string    `json:"token,omitempty"`
+	Enabled       bool      `json:"enabled"`
+	AllowedGroups []string  `json:"allowedGroups"` // 允许访问的模型组名称；空表示不限制（可访问全部）
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 type UsageQuery struct {

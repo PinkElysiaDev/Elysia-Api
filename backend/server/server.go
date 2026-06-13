@@ -74,7 +74,12 @@ type Server struct {
 func New(cfg *config.Config) *Server {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
-	engine.Use(gin.Recovery(), gin.Logger())
+	engine.Use(gin.Recovery())
+	// gin.Logger 会为每个请求打一行访问日志，叠加 Koishi 插件全量转发后端
+	// stdout，会造成日志刷屏。仅在调试模式下启用；正常运行只保留 Recovery。
+	if cfg.DebugMode {
+		engine.Use(gin.Logger())
+	}
 
 	// 获取 HTTP 超时配置，默认 120 秒
 	httpTimeout := time.Duration(cfg.HTTPTimeout) * time.Second
@@ -398,6 +403,7 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 		}
 		c.Set("elysiaKeyName", accessToken.Name)
 		c.Set("elysiaKeyHash", shortTokenHash(token))
+		c.Set("elysiaAllowedGroups", accessToken.AllowedGroups)
 		c.Next()
 	}
 }
@@ -568,6 +574,18 @@ func (s *Server) chatCompletions(c *gin.Context) {
 
 	if unifiedReqJSON, err := relay.MarshalUnifiedRequest(unifiedReq); err == nil {
 		s.logVerbose("[Unified Request] %s", compactLogJSON(unifiedReqJSON))
+	}
+
+	// 模型组级访问权限：先于 validateModelGroup 校验请求的模型组名，
+	// 这样即使目标组为空/未配置，越权访问也返回 403（而非泄露组的存在性/状态）。
+	if !s.tokenAllowsGroup(c, unifiedReq.Model) {
+		record.StatusCode = http.StatusForbidden
+		record.Error = "access to this model group is not allowed for this api key"
+		record.EndedAt = time.Now()
+		record.DurationMs = time.Since(startTime).Milliseconds()
+		s.recordUsage(record)
+		c.JSON(http.StatusForbidden, gin.H{"error": fmt.Sprintf("api key is not allowed to access model group '%s'", unifiedReq.Model)})
+		return
 	}
 
 	// 验证并获取模型组
@@ -1173,6 +1191,26 @@ func (s *Server) selectModel(group *config.ModelGroupConfig) config.ModelRef {
 		return config.ModelRef{}
 	}
 	return candidates[0]
+}
+
+// tokenAllowsGroup 校验当前请求的 API key 是否被允许访问指定模型组。
+// 从 gin context 取 authMiddleware 写入的 AllowedGroups：为空表示不限制（放行）；
+// 非空则要求 groupName 在白名单内。
+func (s *Server) tokenAllowsGroup(c *gin.Context, groupName string) bool {
+	value, exists := c.Get("elysiaAllowedGroups")
+	if !exists {
+		return true
+	}
+	allowed, ok := value.([]string)
+	if !ok || len(allowed) == 0 {
+		return true // 未设置限制 → 放行
+	}
+	for _, g := range allowed {
+		if g == groupName {
+			return true
+		}
+	}
+	return false
 }
 
 // validateModelGroup 验证模型组配置
