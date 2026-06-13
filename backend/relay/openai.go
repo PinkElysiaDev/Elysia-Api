@@ -286,34 +286,37 @@ func (a *OpenAIAdapter) SendRequestRaw(baseUrl, apiKey string, body []byte) (*Op
 	return &openAIResp, nil
 }
 
-func (a *OpenAIAdapter) SendRequestRawWithBody(baseUrl, apiKey string, body []byte) (*OpenAIResponse, []byte, error) {
+// SendRequestRawWithBody 发送原始请求体并返回解析结果、原始响应体和上游 HTTP
+// 状态码。状态码用于上层故障转移决策（区分可重试的 5xx/429 与不可重试的 4xx）。
+// 非 200 时返回 err，但 statusCode 仍为真实上游状态码；连接层错误时 statusCode=0。
+func (a *OpenAIAdapter) SendRequestRawWithBody(baseUrl, apiKey string, body []byte) (*OpenAIResponse, []byte, int, error) {
 	url := fmt.Sprintf("%s/chat/completions", strings.TrimSuffix(baseUrl, "/"))
 	httpReq, err := buildHTTPRequest("POST", url, apiKey, body, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, resp.StatusCode, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, respBody, fmt.Errorf("API error: %s", string(respBody))
+		return nil, respBody, resp.StatusCode, fmt.Errorf("API error: %s", string(respBody))
 	}
 
 	var openAIResp OpenAIResponse
 	if err := json.Unmarshal(respBody, &openAIResp); err != nil {
-		return nil, respBody, err
+		return nil, respBody, resp.StatusCode, err
 	}
 
-	return &openAIResp, respBody, nil
+	return &openAIResp, respBody, resp.StatusCode, nil
 }
 
 func (a *OpenAIAdapter) SendResponsesRawWithBody(baseUrl, apiKey string, body []byte) (*OpenAIResponsesResponse, []byte, error) {

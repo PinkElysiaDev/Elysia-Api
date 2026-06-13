@@ -1,0 +1,4 @@
+# 根 .gitignore 忽略了所有 dist/，但内嵌 WebUI 产物必须随仓库提交，
+# 否则 go build 拿不到资源、二进制无法开箱即用。此处显式取消忽略。
+!dist/
+!dist/**

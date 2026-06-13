@@ -16,3 +16,12 @@ tsconfig.tsbuildinfo
 *.ntvs*
 *.njsproj
 *.sln
+
+# 运行时 / 本地产物，不应提交
+backend/**/usage-records.jsonl
+backend/**/*.sqlite3
+backend/**/*.sqlite3-shm
+backend/**/*.sqlite3-wal
+backend/**/.db-key
+backend/**/master.key
+package-lock.json

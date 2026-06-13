@@ -70,13 +70,13 @@ npm install koishi-plugin-elysia-api-aggregator koishi-plugin-elysia-api-orchest
 | Claude Messages (`/v1/messages`) | ✅ | ✅ 转 Responses SSE | ✅ tool_use / tool_result | ✅ input / output / cache read / cache creation |
 | Gemini GenerateContent | ✅ | ✅ 转 Responses SSE | ✅ functionCall / functionResponse | ✅ prompt / candidates / thoughts / cached / modality details |
 
-### `/v1/responses`
+### `/v1/responses` å¯æ ¹æ®æ¨¡åç«¯ç¹è½ååéç½®éæ©å¤çæ¹å¼ï¼é»è®¤æ¨è `upstreamMode: "auto"`ï¼
 
-`/v1/responses` 可根据模型端点能力和配置选择处理方式：
+- **native**ï¼ä¸æ¸¸åçæ¯æ Responses æ¶ç´æ¥è¯·æ±ä¸æ¸¸ `/responses`ï¼æ¾å¼è®¾ç½®è¯¥æ¨¡å¼ä¼ä¸¥æ ¼è¦æ±ä¸æ¸¸å£°æ Responses æ¯æã
+- **transform**ï¼ä¸æ¸¸ä¸æ¯æ Responses æ¶ï¼å°è¯·æ±è½¬æ¢ä¸ºç®æ ä¸æ¸¸æ ¼å¼ï¼åå°ååºè½¬æ¢å Responses æ ¼å¼ã
+- **auto**ï¼ä¼åä½¿ç¨åç Responsesï¼å¦åæ ¹æ®æ¨¡å `endpoints.responses` / `endpoints.chatCompletions` / `endpoints.claudeMessages` / `endpoints.geminiGenerateContent` èªå¨éæ©è½¬æ¢ç®æ ã
 
-- **native**：上游原生支持 Responses 时直接请求上游 `/responses`。
-- **transform**：上游不支持 Responses 时，将请求转换为目标上游格式，再将响应转换回 Responses 格式。
-- **auto**：根据模型 `endpoints.responses` / `endpoints.chatCompletions` / `endpoints.claudeMessages` / `endpoints.geminiGenerateContent` 自动选择。
+Claude-only ä¸æ¸¸å¯éç½® `platform: "anthropic"` æ `endpoints.claudeMessages: true`ï¼Codex ç­åªåé Responses è¯·æ±çå®¢æ·ç«¯ä¼èªå¨è½¬æ¢å° Claude Messagesã
 
 配置示例：
 
