@@ -82,10 +82,11 @@ type SecretValue struct {
 }
 
 type AccessToken struct {
-	Token    string       `json:"token,omitempty"`
-	TokenEnc *SecretValue `json:"tokenEnc,omitempty"`
-	Name     string       `json:"name"`
-	Enabled  bool         `json:"enabled"`
+	Token         string       `json:"token,omitempty"`
+	TokenEnc      *SecretValue `json:"tokenEnc,omitempty"`
+	Name          string       `json:"name"`
+	Enabled       bool         `json:"enabled"`
+	AllowedGroups []string     `json:"allowedGroups,omitempty"` // 允许访问的模型组；空表示不限制
 }
 
 type ModelGroupConfig struct {

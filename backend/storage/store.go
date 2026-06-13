@@ -97,6 +97,12 @@ func (s *Store) migrate(ctx context.Context) error {
 			return err
 		}
 	}
+	// 增量迁移：为 api_tokens 增加 allowed_groups_json 列（模型组级访问权限）。
+	// SQLite 无 ADD COLUMN IF NOT EXISTS，重复执行会报 duplicate column，忽略该错误即幂等。
+	if _, err := s.db.ExecContext(ctx, `ALTER TABLE api_tokens ADD COLUMN allowed_groups_json TEXT NOT NULL DEFAULT '[]'`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
 	_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(1, ?)`, time.Now().UTC().Format(time.RFC3339Nano))
 	return err
 }
@@ -144,7 +150,7 @@ func (s *Store) GetSetting(ctx context.Context, key string, target any) (bool, e
 }
 
 func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT name, token, enabled, created_at, updated_at FROM api_tokens ORDER BY name`)
+	rows, err := s.db.QueryContext(ctx, `SELECT name, token, enabled, allowed_groups_json, created_at, updated_at FROM api_tokens ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -153,8 +159,8 @@ func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
 	for rows.Next() {
 		var item APIToken
 		var enabled int
-		var created, updated string
-		if err := rows.Scan(&item.Name, &item.Token, &enabled, &created, &updated); err != nil {
+		var allowedGroups, created, updated string
+		if err := rows.Scan(&item.Name, &item.Token, &enabled, &allowedGroups, &created, &updated); err != nil {
 			return nil, err
 		}
 		if plain, err := s.codec.decrypt(item.Token); err == nil {
@@ -163,11 +169,25 @@ func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
 			return nil, err
 		}
 		item.Enabled = intBool(enabled)
+		item.AllowedGroups = decodeStringSlice(allowedGroups)
 		item.CreatedAt = parseTime(created)
 		item.UpdatedAt = parseTime(updated)
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// decodeStringSlice 解析 allowed_groups_json 等 JSON 字符串数组列，
+// 解析失败或为空时返回空切片（语义：不限制）。
+func decodeStringSlice(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return []string{}
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return []string{}
+	}
+	return out
 }
 
 func (s *Store) UpsertAPIToken(ctx context.Context, item APIToken) error {
@@ -178,14 +198,47 @@ func (s *Store) UpsertAPIToken(ctx context.Context, item APIToken) error {
 	if err != nil {
 		return err
 	}
+	if item.AllowedGroups == nil {
+		item.AllowedGroups = []string{}
+	}
+	allowedGroups, err := json.Marshal(item.AllowedGroups)
+	if err != nil {
+		return err
+	}
 	now := nowString()
-	_, err = s.db.ExecContext(ctx, `INSERT INTO api_tokens(name, token, enabled, created_at, updated_at) VALUES(?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET token=excluded.token, enabled=excluded.enabled, updated_at=excluded.updated_at`, item.Name, stored, boolInt(item.Enabled), now, now)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO api_tokens(name, token, enabled, allowed_groups_json, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET token=excluded.token, enabled=excluded.enabled, allowed_groups_json=excluded.allowed_groups_json, updated_at=excluded.updated_at`, item.Name, stored, boolInt(item.Enabled), string(allowedGroups), now, now)
 	return err
 }
 
 func (s *Store) DeleteAPIToken(ctx context.Context, name string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM api_tokens WHERE name = ?`, name)
 	return err
+}
+
+// FindAPITokenByName 按名称查找单个 token（含解密后的明文），
+// 供「留空即不变」编辑时保留原 token 使用。
+func (s *Store) FindAPITokenByName(ctx context.Context, name string) (APIToken, bool, error) {
+	var item APIToken
+	var enabled int
+	var allowedGroups, created, updated string
+	err := s.db.QueryRowContext(ctx, `SELECT name, token, enabled, allowed_groups_json, created_at, updated_at FROM api_tokens WHERE name = ?`, name).
+		Scan(&item.Name, &item.Token, &enabled, &allowedGroups, &created, &updated)
+	if errors.Is(err, sql.ErrNoRows) {
+		return APIToken{}, false, nil
+	}
+	if err != nil {
+		return APIToken{}, false, err
+	}
+	if plain, derr := s.codec.decrypt(item.Token); derr == nil {
+		item.Token = plain
+	} else {
+		return APIToken{}, false, derr
+	}
+	item.Enabled = intBool(enabled)
+	item.AllowedGroups = decodeStringSlice(allowedGroups)
+	item.CreatedAt = parseTime(created)
+	item.UpdatedAt = parseTime(updated)
+	return item, true, nil
 }
 
 // FindAPIToken 按明文 token 查找。由于 token 以随机 nonce 加密存储，

@@ -1,0 +1,87 @@
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+
+export function formatNumber(value: number | undefined | null): string {
+  if (value == null || Number.isNaN(value)) return '0'
+  return new Intl.NumberFormat('zh-CN').format(value)
+}
+
+export function formatBytes(bytes: number | undefined | null): string {
+  if (!bytes || bytes < 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  return `${value.toFixed(value >= 100 || unit === 0 ? 0 : 1)} ${units[unit]}`
+}
+
+export function formatDuration(ms: number | undefined | null): string {
+  if (ms == null || Number.isNaN(ms)) return '-'
+  if (ms < 1000) return `${Math.round(ms)} ms`
+  return `${(ms / 1000).toFixed(2)} s`
+}
+
+export function formatDateTime(value: string | number | Date | undefined | null): string {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date)
+}
+
+export function formatRelative(value: string | number | Date | undefined | null): string {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  const diff = Date.now() - date.getTime()
+  const abs = Math.abs(diff)
+  const minute = 60_000
+  const hour = 60 * minute
+  const day = 24 * hour
+  if (abs < minute) return '刚刚'
+  if (abs < hour) return `${Math.round(abs / minute)} 分钟前`
+  if (abs < day) return `${Math.round(abs / hour)} 小时前`
+  if (abs < 30 * day) return `${Math.round(abs / day)} 天前`
+  return formatDateTime(date)
+}
+
+export function percent(part: number, total: number): string {
+  if (!total) return '0%'
+  return `${((part / total) * 100).toFixed(1)}%`
+}
+
+export function maskMiddle(value: string | undefined): string {
+  if (!value) return ''
+  if (value.length <= 8) return '***'
+  return `${value.slice(0, 4)}…${value.slice(-4)}`
+}
+
+/** RFC3339 时间戳，供 usage 查询参数使用。 */
+export function toRFC3339(date: Date): string {
+  return date.toISOString()
+}
+
+export function startOfRange(range: '24h' | '7d' | '30d' | 'all'): string | undefined {
+  if (range === 'all') return undefined
+  const now = Date.now()
+  const map: Record<string, number> = {
+    '24h': 24 * 60 * 60 * 1000,
+    '7d': 7 * 24 * 60 * 60 * 1000,
+    '30d': 30 * 24 * 60 * 60 * 1000,
+  }
+  return new Date(now - map[range]).toISOString()
+}

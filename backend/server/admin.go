@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -119,12 +120,35 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 	if item.ID == "" {
 		item.ID = slugID(item.Name)
 	}
+	// 「留空即不变」：编辑时若未填 apiKey，保留已有记录的原 key，避免被清空。
+	if strings.TrimSpace(item.APIKey) == "" {
+		if existing, found := s.findSourceByID(c.Request.Context(), item.ID); found {
+			item.APIKey = existing.APIKey
+		}
+	}
 	if err := store.UpsertSource(c.Request.Context(), item); err != nil {
 		fail(c, 400, "save_source_failed", err.Error())
 		return
 	}
 	s.invalidateRouteCache()
 	ok(c, item)
+}
+
+// findSourceByID 按 id 查找模型源（用于「留空即不变」保留原 secret）。
+func (s *Server) findSourceByID(ctx context.Context, id string) (storage.ModelSource, bool) {
+	if s.store == nil || id == "" {
+		return storage.ModelSource{}, false
+	}
+	sources, err := s.store.ListSources(ctx)
+	if err != nil {
+		return storage.ModelSource{}, false
+	}
+	for _, src := range sources {
+		if src.ID == id {
+			return src, true
+		}
+	}
+	return storage.ModelSource{}, false
 }
 
 func (s *Server) adminDeleteSource(c *gin.Context) {
@@ -257,6 +281,15 @@ func (s *Server) adminUpsertToken(c *gin.Context) {
 	if name := c.Param("name"); name != "" {
 		item.Name = name
 	}
+	if name := c.Param("name"); name != "" {
+		item.Name = name
+	}
+	// 「留空即不变」：编辑时若未填 token，保留原值（不清空）。
+	if strings.TrimSpace(item.Token) == "" {
+		if existing, found, err := store.FindAPITokenByName(c.Request.Context(), item.Name); err == nil && found {
+			item.Token = existing.Token
+		}
+	}
 	if err := store.UpsertAPIToken(c.Request.Context(), item); err != nil {
 		fail(c, 400, "save_token_failed", err.Error())
 		return
@@ -366,7 +399,13 @@ func slugID(value string) string {
 			b.WriteByte('-')
 		}
 	}
-	return strings.Trim(b.String(), "-")
+	slug := strings.Trim(b.String(), "-")
+	// 清洗后为空（例如纯中文/纯符号名称），回退到时间戳 id，
+	// 避免 item.ID 为空导致存储层误报 "id is required"。
+	if slug == "" {
+		return fmt.Sprintf("item-%d", time.Now().UnixNano())
+	}
+	return slug
 }
 
 func maskSecret(value string) string {

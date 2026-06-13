@@ -288,7 +288,7 @@ func (s *Store) ClearUsage(ctx context.Context) error {
 
 func (s *Store) UsageTotals(ctx context.Context, q UsageQuery) (map[string]any, error) {
 	where, args := usageWhere(q)
-	row := s.db.QueryRowContext(ctx, `SELECT COUNT(*), SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0), COALESCE(AVG(duration_ms),0) FROM usage_records `+where, args...)
+	row := s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0), COALESCE(AVG(duration_ms),0) FROM usage_records `+where, args...)
 	var requests, success, input, output, total int
 	var avgDuration float64
 	if err := row.Scan(&requests, &success, &input, &output, &total, &avgDuration); err != nil {

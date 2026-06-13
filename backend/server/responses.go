@@ -48,6 +48,17 @@ func (s *Server) responses(c *gin.Context) {
 		return
 	}
 
+	// 模型组级访问权限：先于 validateModelGroup 校验，越权即使目标组为空也返回 403。
+	if !s.tokenAllowsGroup(c, canonicalReq.Model) {
+		record.StatusCode = http.StatusForbidden
+		record.Error = "access to this model group is not allowed for this api key"
+		record.EndedAt = time.Now()
+		record.DurationMs = time.Since(startTime).Milliseconds()
+		s.recordUsage(record)
+		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"message": fmt.Sprintf("api key is not allowed to access model group '%s'", canonicalReq.Model), "type": "permission_error"}})
+		return
+	}
+
 	group, err := s.validateModelGroup(canonicalReq.Model)
 	if err != nil {
 		statusCode := http.StatusInternalServerError

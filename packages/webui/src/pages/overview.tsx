@@ -2,12 +2,14 @@ import { Link } from 'react-router-dom'
 import {
   Activity,
   ArrowRight,
+  Boxes,
   CheckCircle2,
   Cpu,
   Database,
   Gauge,
-  RefreshCw,
+  Layers,
   ScrollText,
+  Server,
   Terminal,
   Timer,
   Zap,
@@ -18,46 +20,45 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useToast } from '@/components/ui/use-toast'
-import { useHealth, useUsageStats, revalidate } from '@/lib/hooks'
-import { api } from '@/lib/api'
+import { useHealth, useUsageStats, useSources, useModels, useGroups } from '@/lib/hooks'
 import { formatBytes, formatDuration, formatNumber, percent, startOfRange, toRFC3339 } from '@/lib/utils'
-import { useState } from 'react'
 
 export function OverviewPage() {
-  const toast = useToast()
-  const [refreshing, setRefreshing] = useState(false)
   const { data: health, isLoading: healthLoading } = useHealth(15000)
   const usageParams = { from: startOfRange('7d'), to: toRFC3339(new Date()) }
   const { data: stats, isLoading: statsLoading } = useUsageStats(usageParams)
-
-  async function refreshAllModels() {
-    setRefreshing(true)
-    try {
-      const result = await api.refreshModels()
-      await revalidate.models()
-      toast.success('模型已刷新', `共聚合 ${result.count} 个模型`)
-    } catch (err) {
-      toast.error('刷新失败', (err as Error).message)
-    } finally {
-      setRefreshing(false)
-    }
-  }
+  const { data: sources, isLoading: sourcesLoading } = useSources()
+  const { data: models, isLoading: modelsLoading } = useModels()
+  const { data: groups, isLoading: groupsLoading } = useGroups()
 
   const successRate = stats ? percent(stats.success, stats.requests) : '—'
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="概览"
-        description="后端运行状态与近 7 天用量速览"
-        actions={
-          <Button onClick={refreshAllModels} disabled={refreshing}>
-            <RefreshCw className={refreshing ? 'animate-spin' : ''} />
-            刷新全部模型
-          </Button>
-        }
-      />
+      <PageHeader title="概览" description="后端运行状态与近 7 天用量速览" />
+
+      {/* 聚合规模 */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard
+          accent
+          label="模型源"
+          value={sourcesLoading ? <Skeleton className="h-7 w-12" /> : formatNumber(sources?.length ?? 0)}
+          hint="已配置的上游供应商"
+          icon={<Server className="h-5 w-5" />}
+        />
+        <StatCard
+          label="聚合模型"
+          value={modelsLoading ? <Skeleton className="h-7 w-12" /> : formatNumber(models?.length ?? 0)}
+          hint="各源拉取到的可用模型"
+          icon={<Boxes className="h-5 w-5" />}
+        />
+        <StatCard
+          label="模型组"
+          value={groupsLoading ? <Skeleton className="h-7 w-12" /> : formatNumber(groups?.length ?? 0)}
+          hint="对客户端暴露的模型"
+          icon={<Layers className="h-5 w-5" />}
+        />
+      </div>
 
       {/* 后端状态 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
