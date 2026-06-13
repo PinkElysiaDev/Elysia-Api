@@ -7,34 +7,34 @@ const usageDashboardHTML = `<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Elysia API Usage Dashboard</title>
   <style>
-    
+
     :root {
 
       color-scheme: light;
-      --bg: #f8fafc;
+      --bg: #fff5f7;
       --panel: #ffffff;
-      --panel-2: #f1f5f9;
-      --text: #0f172a;
-      --muted: #64748b;
-      --border: #e2e8f0;
-      --primary: #2563eb;
+      --panel-2: #ffeef2;
+      --text: #350014;
+      --muted: #9d5d78;
+      --border: #ffd1dc;
+      --primary: #db2777;
       --primary-text: #ffffff;
-      --danger: #dc2626;
-      --ok: #16a34a;
-      --shadow: 0 10px 30px rgba(15, 23, 42, .08);
+      --danger: #e11d48;
+      --ok: #059669;
+      --shadow: 0 10px 30px rgba(219, 39, 119, .08);
     }
     [data-theme="dark"] {
       color-scheme: dark;
-      --bg: #0f172a;
-      --panel: #111827;
-      --panel-2: #1f2937;
-      --text: #e5e7eb;
-      --muted: #94a3b8;
-      --border: #334155;
-      --primary: #60a5fa;
-      --primary-text: #0f172a;
-      --danger: #f87171;
-      --ok: #4ade80;
+      --bg: #10070b;
+      --panel: #180d13;
+      --panel-2: #25141d;
+      --text: #fce7f3;
+      --muted: #c0a9b6;
+      --border: #4a2135;
+      --primary: #f472b6;
+      --primary-text: #10070b;
+      --danger: #fda4af;
+      --ok: #34d399;
       --shadow: none;
     }
     * { box-sizing: border-box; }
@@ -62,23 +62,23 @@ const usageDashboardHTML = `<!doctype html>
     input, select, button { border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 10px; padding: 10px 12px; font: inherit; }
     button { cursor: pointer; background: var(--primary); color: var(--primary-text); border-color: var(--primary); font-weight: 700; }
     button.secondary { background: var(--panel-2); color: var(--text); border-color: var(--border); }
-    .theme-switch { position: relative; width: 78px; height: 38px; padding: 3px; display: inline-flex; align-items: center; background: linear-gradient(180deg, #60a5fa 0%, #bae6fd 100%); color: var(--text); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; transition: background-color .24s ease, border-color .24s ease, box-shadow .22s ease; }
+    .theme-switch { position: relative; width: 78px; height: 38px; padding: 3px; display: inline-flex; align-items: center; background: linear-gradient(180deg, #f472b6 0%, #fce7f3 100%); color: var(--text); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; transition: background-color .24s ease, border-color .24s ease, box-shadow .22s ease; }
     .theme-switch:hover { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent); }
     .theme-switch:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
     .theme-switch-scene { position: absolute; inset: 0; opacity: 0; transition: opacity .24s ease; }
-    .theme-switch-scene.light { opacity: 1; background: linear-gradient(180deg, #38bdf8 0%, #bae6fd 100%); }
+    .theme-switch-scene.light { opacity: 1; background: linear-gradient(180deg, #f472b6 0%, #fce7f3 100%); }
     .theme-switch-scene.light::before { content: ''; position: absolute; left: 33px; right: 6px; bottom: 5px; height: 13px; border-radius: 999px; background: rgba(255,255,255,.78); box-shadow: -13px 4px 0 -2px rgba(255,255,255,.72), 8px -4px 0 -3px rgba(255,255,255,.62); }
-    .theme-switch-scene.dark { background: #111827; }
+    .theme-switch-scene.dark { background: #180d13; }
     .theme-switch.is-dark .theme-switch-scene.light { opacity: 0; }
     .theme-switch.is-dark .theme-switch-scene.dark { opacity: 1; }
     .theme-switch-thumb { position: absolute; z-index: 2; top: 4px; left: 4px; width: 30px; height: 30px; border-radius: 999px; background: rgba(255,255,255,.78); border: 1px solid rgba(255,255,255,.9); box-shadow: 0 2px 7px rgba(15, 23, 42, .25); transition: transform .26s cubic-bezier(.2,.8,.2,1), background-color .22s ease; }
-    .theme-switch.is-dark .theme-switch-thumb { transform: translateX(40px); background: rgba(15,23,42,.55); border-color: rgba(148,163,184,.7); }
+    .theme-switch.is-dark .theme-switch-thumb { transform: translateX(40px); background: rgba(24,13,19,.55); border-color: rgba(192,169,182,.7); }
     .sun { position: absolute; z-index: 1; left: 10px; top: 8px; width: 16px; height: 16px; border-radius: 999px; background: radial-gradient(circle at 35% 30%, #ffffff 0%, #fffbeb 18%, #fef08a 44%, #eab308 100%); box-shadow: 0 0 5px #fff, 0 0 12px #fde047, 0 0 20px #eab308, 0 0 0 4px rgba(254,240,138,.46); filter: saturate(1.25); }
     .cloud, .cloud::before, .cloud::after { position: absolute; display: block; background: rgba(255,255,255,.95); border-radius: 999px; content: ''; }
     .cloud { left: 39px; top: 18px; width: 26px; height: 8px; box-shadow: -7px 2px 0 -2px rgba(255,255,255,.78); }
     .cloud::before { left: 3px; top: -6px; width: 11px; height: 11px; }
     .cloud::after { left: 12px; top: -8px; width: 15px; height: 15px; }
-    .moon { position: absolute; right: 11px; top: 8px; width: 17px; height: 17px; border-radius: 999px; background: #fde68a; box-shadow: -5px 0 0 #111827 inset; }
+    .moon { position: absolute; right: 11px; top: 8px; width: 17px; height: 17px; border-radius: 999px; background: #fde68a; box-shadow: -5px 0 0 #180d13 inset; }
     .star { position: absolute; width: 3px; height: 3px; border-radius: 999px; background: #e0f2fe; }
     .star.s1 { left: 14px; top: 9px; } .star.s2 { left: 27px; top: 22px; } .star.s3 { left: 45px; top: 12px; }
     .tabs { display: flex; flex-wrap: wrap; gap: 8px; flex: 1; }
@@ -173,8 +173,8 @@ const usageDashboardHTML = `<!doctype html>
     .json-row { margin-left: 16px; line-height: 1.7; }
     .json-key { color: var(--primary); font-weight: 800; }
     .json-string { color: var(--ok); }
-    .json-number { color: #9333ea; }
-    .json-bool { color: #ea580c; }
+    .json-number { color: #a855f7; }
+    .json-bool { color: #fb923c; }
     .json-null { color: var(--muted); font-style: italic; }
     .protocol-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin: 8px 0 12px; }
     .protocol-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px; }
@@ -246,7 +246,7 @@ const state = { token: localStorage.getItem('elysiaDashboardToken') || '', stats
 const views = [
   ['overview', '总览'], ['time', '按时间'], ['caller', '按调用方'], ['group', '按模型组'], ['model', '按具体模型'], ['logs', '请求日志']
 ]
-const colors = ['#2563eb', '#16a34a', '#dc2626', '#9333ea']
+const colors = ['#ec4899', '#10b981', '#f59e0b', '#8b5cf6']
 function applyTheme(theme) { document.documentElement.dataset.theme = theme; localStorage.setItem('elysiaUsageTheme', theme); syncThemeSwitches(theme) }
 function syncThemeSwitches(theme) {
   const isDark = theme === 'dark'
