@@ -165,7 +165,27 @@ func TestForwardResponsesStreamPreservesEventStreamLines(t *testing.T) {
 	if got := writer.String(); got != "event: response.created\ndata: {\"type\":\"response.created\"}\n\n" {
 		t.Fatalf("expected stream to be forwarded verbatim, got %q", got)
 	}
-	if writer.flushes != 1 {
-		t.Fatalf("expected one flush on blank line, got %d", writer.flushes)
+	// 一次空行 flush + 循环结束的兜底 flush（确保末尾事件不被滞留，
+	// 修复 codex "stream closed before response.completed"）。
+	if writer.flushes < 1 {
+		t.Fatalf("expected at least one flush, got %d", writer.flushes)
+	}
+}
+
+// 回归 #2：上游最后一个事件后没有紧跟空行就 EOF 时，末尾事件必须被 flush 给下游，
+// 否则 codex 报 "stream closed before response.completed"。
+func TestForwardResponsesStreamFlushesFinalEventWithoutTrailingBlank(t *testing.T) {
+	// 注意：结尾没有 \n\n（缺少收尾空行）。
+	resp := sseResponse("event: response.completed\ndata: {\"type\":\"response.completed\"}")
+	writer := &captureStreamWriter{}
+
+	if err := ForwardResponsesStream(resp, writer); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(writer.String(), "response.completed") {
+		t.Fatalf("final event must be forwarded, got %q", writer.String())
+	}
+	if writer.flushes < 1 {
+		t.Fatalf("final event must be flushed to client, got %d flushes", writer.flushes)
 	}
 }

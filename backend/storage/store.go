@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,7 +104,42 @@ func (s *Store) migrate(ctx context.Context) error {
 		!strings.Contains(err.Error(), "duplicate column") {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(1, ?)`, time.Now().UTC().Format(time.RFC3339Nano))
+	// 增量迁移：为 api_tokens 增加 token_hash 列（SHA256 哈希，用于去重检查）。
+	// 空 hash 不参与唯一约束，兼容历史数据过渡期（旧数据 hash 为空，下次编辑时补齐）。
+	if _, err := s.db.ExecContext(ctx, `ALTER TABLE api_tokens ADD COLUMN token_hash TEXT NOT NULL DEFAULT ''`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
+	// 为 token_hash 建唯一索引（WHERE token_hash != '' 保证空值不参与约束）。
+	if _, err := s.db.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash) WHERE token_hash != ''`); err != nil {
+		return err
+	}
+	// 回填历史数据的 token_hash：查所有 hash 为空的行，解密 → 计算 SHA256 → UPDATE。
+	// 解密失败（极端情况：master key 变了）跳过该行并记日志。
+	rows, err := s.db.QueryContext(ctx, `SELECT name, token FROM api_tokens WHERE token_hash = ''`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name, encryptedToken string
+		if err := rows.Scan(&name, &encryptedToken); err != nil {
+			continue
+		}
+		plaintext, err := s.codec.decrypt(encryptedToken)
+		if err != nil {
+			log.Printf("[token_hash backfill] failed to decrypt token %q: %v (skipped)", name, err)
+			continue
+		}
+		hash := hashToken(plaintext)
+		if _, err := s.db.ExecContext(ctx, `UPDATE api_tokens SET token_hash = ? WHERE name = ?`, hash, name); err != nil {
+			log.Printf("[token_hash backfill] failed to update hash for %q: %v", name, err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(1, ?)`, time.Now().UTC().Format(time.RFC3339Nano))
 	return err
 }
 
@@ -194,6 +230,17 @@ func (s *Store) UpsertAPIToken(ctx context.Context, item APIToken) error {
 	if strings.TrimSpace(item.Name) == "" {
 		return errors.New("token name is required")
 	}
+	// 去重检查：同一 token 值不允许配置到两个不同 name 上。用 SHA256 hash 走唯一索引快速判重。
+	tokenHash := hashToken(item.Token)
+	if tokenHash != "" {
+		var existingName string
+		err := s.db.QueryRowContext(ctx, `SELECT name FROM api_tokens WHERE token_hash = ? AND name != ?`, tokenHash, item.Name).Scan(&existingName)
+		if err == nil {
+			return fmt.Errorf("该 token 已被 API Key %q 使用，请更换", existingName)
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+	}
 	stored, err := s.codec.encrypt(item.Token)
 	if err != nil {
 		return err
@@ -206,7 +253,7 @@ func (s *Store) UpsertAPIToken(ctx context.Context, item APIToken) error {
 		return err
 	}
 	now := nowString()
-	_, err = s.db.ExecContext(ctx, `INSERT INTO api_tokens(name, token, enabled, allowed_groups_json, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET token=excluded.token, enabled=excluded.enabled, allowed_groups_json=excluded.allowed_groups_json, updated_at=excluded.updated_at`, item.Name, stored, boolInt(item.Enabled), string(allowedGroups), now, now)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO api_tokens(name, token, token_hash, enabled, allowed_groups_json, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET token=excluded.token, token_hash=excluded.token_hash, enabled=excluded.enabled, allowed_groups_json=excluded.allowed_groups_json, updated_at=excluded.updated_at`, item.Name, stored, tokenHash, boolInt(item.Enabled), string(allowedGroups), now, now)
 	return err
 }
 

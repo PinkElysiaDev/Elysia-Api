@@ -23,6 +23,11 @@ func ForwardResponsesStream(resp *http.Response, writer StreamResponseWriter) er
 			_ = writer.Flush()
 		}
 	}
+	// 关键：循环结束后必须再 flush 一次。否则若上游最后一个事件（含
+	// response.completed）后没有紧跟空行就 EOF，缓冲里的数据不会被推给下游，
+	// 客户端会在收到 response.completed 之前就看到连接关闭
+	// （codex 报 "stream closed before response.completed"）。
+	_ = writer.Flush()
 	return scanner.Err()
 }
 
