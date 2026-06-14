@@ -226,3 +226,46 @@ func TestUpsertAPITokenRejectsDuplicateValue(t *testing.T) {
 		t.Fatalf("distinct token value should succeed: %v", err)
 	}
 }
+
+// 回归：token_hash 回填迁移在单连接池上不得死锁（曾因 rows 未关时做 Exec 死锁，
+// 导致后端启动崩溃 "all goroutines are asleep - deadlock!"）。
+// 覆盖"已有 token 数据需回填"的真实崩溃场景：建库写 token → 关闭 →
+// 手动清空 token_hash 模拟旧数据 → 重新 Open 触发回填，应在超时内完成。
+func TestTokenHashBackfillNoDeadlock(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "backfill.sqlite3")
+
+	store, err := OpenWithKey(dbPath, []byte("master-key"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if err := store.UpsertAPIToken(ctx, APIToken{Name: "k1", Token: "sk-a", Enabled: true}); err != nil {
+		t.Fatalf("upsert k1: %v", err)
+	}
+	if err := store.UpsertAPIToken(ctx, APIToken{Name: "k2", Token: "sk-b", Enabled: true}); err != nil {
+		t.Fatalf("upsert k2: %v", err)
+	}
+	// 模拟旧数据：清空 token_hash，使重新 Open 时触发回填迁移。
+	if _, err := store.db.ExecContext(ctx, `UPDATE api_tokens SET token_hash = ''`); err != nil {
+		t.Fatalf("reset hash: %v", err)
+	}
+	store.Close()
+
+	// 重新打开应在超时内完成（回填不死锁）。
+	done := make(chan error, 1)
+	go func() {
+		s2, err := OpenWithKey(dbPath, []byte("master-key"))
+		if s2 != nil {
+			s2.Close()
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("reopen with backfill failed: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("token_hash backfill deadlocked on reopen")
+	}
+}

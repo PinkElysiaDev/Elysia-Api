@@ -116,28 +116,41 @@ func (s *Store) migrate(ctx context.Context) error {
 	}
 	// 回填历史数据的 token_hash：查所有 hash 为空的行，解密 → 计算 SHA256 → UPDATE。
 	// 解密失败（极端情况：master key 变了）跳过该行并记日志。
+	//
+	// 重要：store 用 SetMaxOpenConns(1)（单连接）。必须先把待回填的行全部读进内存
+	// 并关闭游标，再做 UPDATE/后续 Exec——否则未关闭的 rows 一直占着唯一连接，
+	// 循环内的 ExecContext 永远拿不到连接，导致死锁（即使 0 行，defer 的 Close
+	// 也会拖到函数末尾，使后面的 Exec 死锁）。
+	type tokenRow struct{ name, encryptedToken string }
+	var pending []tokenRow
 	rows, err := s.db.QueryContext(ctx, `SELECT name, token FROM api_tokens WHERE token_hash = ''`)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
 	for rows.Next() {
-		var name, encryptedToken string
-		if err := rows.Scan(&name, &encryptedToken); err != nil {
-			continue
+		var r tokenRow
+		if err := rows.Scan(&r.name, &r.encryptedToken); err != nil {
+			rows.Close()
+			return err
 		}
-		plaintext, err := s.codec.decrypt(encryptedToken)
-		if err != nil {
-			log.Printf("[token_hash backfill] failed to decrypt token %q: %v (skipped)", name, err)
+		pending = append(pending, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close() // 必须在任何后续 Exec 前释放连接
+
+	for _, r := range pending {
+		plaintext, derr := s.codec.decrypt(r.encryptedToken)
+		if derr != nil {
+			log.Printf("[token_hash backfill] failed to decrypt token %q: %v (skipped)", r.name, derr)
 			continue
 		}
 		hash := hashToken(plaintext)
-		if _, err := s.db.ExecContext(ctx, `UPDATE api_tokens SET token_hash = ? WHERE name = ?`, hash, name); err != nil {
-			log.Printf("[token_hash backfill] failed to update hash for %q: %v", name, err)
+		if _, err := s.db.ExecContext(ctx, `UPDATE api_tokens SET token_hash = ? WHERE name = ?`, hash, r.name); err != nil {
+			log.Printf("[token_hash backfill] failed to update hash for %q: %v", r.name, err)
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
 	}
 	_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(1, ?)`, time.Now().UTC().Format(time.RFC3339Nano))
 	return err
