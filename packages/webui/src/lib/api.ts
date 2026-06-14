@@ -139,6 +139,8 @@ export const api = {
     request<{ deleted: boolean }>(`/model-groups/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   listTokens: () => request<ListEnvelope<ApiToken>>('/api-tokens').then((r) => r.items ?? []),
+  revealToken: (name: string) =>
+    request<{ name: string; token: string }>(`/api-tokens/${encodeURIComponent(name)}/reveal`),
   createToken: (body: ApiToken) => request<ApiToken>('/api-tokens', { method: 'POST', body }),
   updateToken: (name: string, body: ApiToken) =>
     request<ApiToken>(`/api-tokens/${encodeURIComponent(name)}`, { method: 'PUT', body }),

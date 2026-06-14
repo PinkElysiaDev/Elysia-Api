@@ -17,26 +17,38 @@ type openAIModelsResponse struct {
 	} `json:"data"`
 }
 
-func (s *Server) refreshAllSources(ctx context.Context) (int, error) {
+// sourceRefreshError 记录单个源刷新失败的信息，供全量刷新汇总返回。
+type sourceRefreshError struct {
+	SourceID   string `json:"sourceId"`
+	SourceName string `json:"sourceName"`
+	Error      string `json:"error"`
+}
+
+// refreshAllSources 刷新所有启用的源。**单源失败不再中断整体**：收集每个源的
+// 错误继续往下，返回累计成功数与各源错误列表。
+func (s *Server) refreshAllSources(ctx context.Context) (int, []sourceRefreshError, error) {
 	if s.store == nil {
-		return 0, fmt.Errorf("sqlite store is unavailable")
+		return 0, nil, fmt.Errorf("sqlite store is unavailable")
 	}
 	sources, err := s.store.ListSources(ctx)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	total := 0
+	var failures []sourceRefreshError
 	for _, source := range sources {
 		if !source.Enabled {
 			continue
 		}
 		count, err := s.refreshSourceByValue(ctx, source)
 		if err != nil {
-			return total, err
+			failures = append(failures, sourceRefreshError{SourceID: source.ID, SourceName: source.Name, Error: err.Error()})
+			_ = s.store.InsertSystemLog(ctx, "warn", "model source refresh failed", map[string]any{"sourceId": source.ID, "sourceName": source.Name, "error": err.Error()})
+			continue
 		}
 		total += count
 	}
-	return total, nil
+	return total, failures, nil
 }
 
 func (s *Server) refreshSource(ctx context.Context, id string) (int, error) {
@@ -80,9 +92,9 @@ func (s *Server) refreshSourceByValue(ctx context.Context, source storage.ModelS
 func (s *Server) fetchModelsFromSource(ctx context.Context, source storage.ModelSource) ([]storage.Model, error) {
 	switch source.Platform {
 	case "claude":
-		// Claude 平台不支持自动拉取：中转站普遍不实现 Anthropic 原生的模型发现端点。
-		// 直接返回明确提示，引导用户在模型源里手动添加模型（manualModels）。
-		return nil, fmt.Errorf("Claude 平台不支持自动拉取模型，请在模型源中关闭自动拉取并手动添加模型")
+		// Anthropic 官方 /v1/models 存在（需 x-api-key + anthropic-version），中转站则
+		// 普遍提供 OpenAI 兼容的 /v1/models。两种鉴权都试一遍，返回 OpenAI 风格 {data:[{id}]}。
+		return s.fetchClaudeModels(ctx, source)
 	case "gemini":
 		return s.fetchGeminiModels(ctx, source)
 	default:
@@ -90,15 +102,21 @@ func (s *Server) fetchModelsFromSource(ctx context.Context, source storage.Model
 	}
 }
 
+// openAIModelsEndpoint 在 baseURL 上拼出 /v1/models（baseURL 已含 /v1 时不重复加）。
+func openAIModelsEndpoint(baseURL string) string {
+	baseURL = strings.TrimRight(baseURL, "/")
+	if strings.Contains(baseURL, "/v1") {
+		return baseURL + "/models"
+	}
+	return baseURL + "/v1/models"
+}
+
 func (s *Server) fetchOpenAIModels(ctx context.Context, source storage.ModelSource) ([]storage.Model, error) {
 	baseURL := strings.TrimRight(source.BaseURL, "/")
 	if baseURL == "" {
 		return nil, fmt.Errorf("source baseUrl is required")
 	}
-	endpoint := baseURL + "/models"
-	if !strings.Contains(baseURL, "/v1") {
-		endpoint = baseURL + "/v1/models"
-	}
+	endpoint := openAIModelsEndpoint(baseURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -116,6 +134,55 @@ func (s *Server) fetchOpenAIModels(ctx context.Context, source storage.ModelSour
 		models = append(models, inferredModel(source, item, item))
 	}
 	return models, nil
+}
+
+// fetchClaudeModels 从 Claude 源拉取模型列表。Anthropic 官方与多数中转站都在
+// {baseURL}/v1/models 暴露 OpenAI 风格的列表，差异仅在鉴权头：官方要
+// x-api-key + anthropic-version，中转站常用 Authorization: Bearer。
+// 这里先试 x-api-key，失败再回退 Bearer，最大化兼容。
+func (s *Server) fetchClaudeModels(ctx context.Context, source storage.ModelSource) ([]storage.Model, error) {
+	baseURL := strings.TrimRight(source.BaseURL, "/")
+	if baseURL == "" {
+		return nil, fmt.Errorf("source baseUrl is required")
+	}
+	endpoint := openAIModelsEndpoint(baseURL)
+
+	attempts := []func(*http.Request){
+		func(r *http.Request) {
+			if source.APIKey != "" {
+				r.Header.Set("x-api-key", source.APIKey)
+				r.Header.Set("anthropic-version", "2023-06-01")
+			}
+		},
+		func(r *http.Request) {
+			if source.APIKey != "" {
+				r.Header.Set("Authorization", "Bearer "+source.APIKey)
+			}
+		},
+	}
+
+	var lastErr error
+	for _, applyAuth := range attempts {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, err
+		}
+		applyAuth(req)
+		var raw map[string]any
+		if err := doJSON(req, &raw); err != nil {
+			lastErr = err
+			continue
+		}
+		items := extractOpenAIModelIDs(raw)
+		models := make([]storage.Model, 0, len(items))
+		for _, item := range items {
+			m := inferredModel(source, item, item)
+			m.Platform = "claude"
+			models = append(models, m)
+		}
+		return models, nil
+	}
+	return nil, fmt.Errorf("claude 模型拉取失败（已尝试 x-api-key 与 Bearer 两种鉴权）: %w", lastErr)
 }
 
 func (s *Server) fetchGeminiModels(ctx context.Context, source storage.ModelSource) ([]storage.Model, error) {

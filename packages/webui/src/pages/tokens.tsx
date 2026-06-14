@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Check, Copy, KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -104,7 +104,10 @@ export function TokensPage() {
                   <TableRow key={token.name}>
                     <TableCell className="font-medium">{token.name}</TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
-                      {token.token || '••••'}
+                      <div className="flex items-center gap-1.5">
+                        <span>{token.token || '••••'}</span>
+                        <RevealCopyButton name={token.name} />
+                      </div>
                     </TableCell>
                     <TableCell>
                       {token.allowedGroups && token.allowedGroups.length > 0 ? (
@@ -143,6 +146,33 @@ export function TokensPage() {
       <TokenFormDialog open={formOpen} onOpenChange={setFormOpen} token={editing} onSaved={() => mutate()} />
       {dialog}
     </div>
+  )
+}
+
+// RevealCopyButton 点击时按需取该 Key 的完整明文并复制到剪贴板（列表默认仍脱敏）。
+function RevealCopyButton({ name }: { name: string }) {
+  const toast = useToast()
+  const [copied, setCopied] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  async function handleCopy() {
+    setBusy(true)
+    try {
+      const { token } = await api.revealToken(name)
+      await navigator.clipboard.writeText(token)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch (err) {
+      toast.error('复制失败', (err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Button variant="ghost" size="iconSm" title="复制完整 Key" disabled={busy} onClick={handleCopy}>
+      {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+    </Button>
   )
 }
 

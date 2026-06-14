@@ -96,17 +96,23 @@ func (s *Store) ListGroups(ctx context.Context) ([]ModelGroup, error) {
 	}
 
 	for i := range items {
-		modelRows, err := s.db.QueryContext(ctx, `SELECT model_id FROM model_group_models WHERE group_id = ? ORDER BY position`, items[i].ID)
+		modelRows, err := s.db.QueryContext(ctx, `SELECT model_id, source_id FROM model_group_models WHERE group_id = ? ORDER BY position`, items[i].ID)
 		if err != nil {
 			return nil, err
 		}
 		for modelRows.Next() {
-			var id string
-			if err := modelRows.Scan(&id); err != nil {
+			var id, sourceID string
+			if err := modelRows.Scan(&id, &sourceID); err != nil {
 				modelRows.Close()
 				return nil, err
 			}
-			items[i].Models = append(items[i].Models, id)
+			// 有 source_id 则返回复合键 sourceId:modelId（精确身份）；
+			// 旧数据 source_id 为空时返回裸 id（装配端会按 id 回退匹配）。
+			if sourceID != "" {
+				items[i].Models = append(items[i].Models, sourceID+":"+id)
+			} else {
+				items[i].Models = append(items[i].Models, id)
+			}
 		}
 		if err := modelRows.Close(); err != nil {
 			return nil, err
@@ -150,14 +156,21 @@ func (s *Store) UpsertGroup(ctx context.Context, item ModelGroup) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM model_group_models WHERE group_id = ?`, item.ID); err != nil {
 		return err
 	}
-	for i, modelID := range item.Models {
-		model, ok, err := s.findModel(ctx, tx, modelID)
-		if err != nil {
-			return err
-		}
-		sourceID := ""
-		if ok {
-			sourceID = model.SourceID
+	for i, ref := range item.Models {
+		// ref 形如 "sourceId:modelId"（新）或裸 "modelId"（旧/兼容）。
+		// 复合键直接拆出 source_id + model_id，精确定位同名不同源的模型；
+		// 裸 id 回退到 findModel 猜一个源（保持旧行为）。
+		var modelID, sourceID string
+		if idx := strings.Index(ref, ":"); idx >= 0 {
+			sourceID = ref[:idx]
+			modelID = ref[idx+1:]
+		} else {
+			modelID = ref
+			if model, ok, err := s.findModel(ctx, tx, modelID); err != nil {
+				return err
+			} else if ok {
+				sourceID = model.SourceID
+			}
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO model_group_models(group_id, model_id, source_id, position) VALUES(?, ?, ?, ?)`, item.ID, modelID, sourceID, i); err != nil {
 			return err

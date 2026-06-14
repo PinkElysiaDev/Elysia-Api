@@ -41,6 +41,7 @@ func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
 	admin.PUT("/model-groups/:id", s.adminUpsertGroup)
 	admin.DELETE("/model-groups/:id", s.adminDeleteGroup)
 	admin.GET("/api-tokens", s.adminListTokens)
+	admin.GET("/api-tokens/:name/reveal", s.adminRevealToken)
 	admin.POST("/api-tokens", s.adminUpsertToken)
 	admin.PUT("/api-tokens/:name", s.adminUpsertToken)
 	admin.DELETE("/api-tokens/:name", s.adminDeleteToken)
@@ -131,6 +132,21 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 		return
 	}
 	s.invalidateRouteCache()
+
+	// 保存后自动拉取一次该源的模型，省去用户额外手动刷新：
+	//   - 自动拉取源：异步拉取（不阻塞保存响应），失败仅记日志；
+	//   - 手动源：ReplaceSourceModels 同步 manualModels 到模型缓存。
+	saved := item
+	go func() {
+		if _, err := s.refreshSourceByValue(context.Background(), saved); err != nil {
+			if s.store != nil {
+				_ = s.store.InsertSystemLog(context.Background(), "warn", "auto refresh after save failed", map[string]any{"sourceId": saved.ID, "sourceName": saved.Name, "error": err.Error()})
+			}
+			return
+		}
+		s.invalidateRouteCache()
+	}()
+
 	ok(c, item)
 }
 
@@ -193,13 +209,13 @@ func (s *Server) adminListModels(c *gin.Context) {
 }
 
 func (s *Server) adminRefreshModels(c *gin.Context) {
-	count, err := s.refreshAllSources(c.Request.Context())
+	count, failures, err := s.refreshAllSources(c.Request.Context())
 	if err != nil {
 		fail(c, 500, "refresh_models_failed", err.Error())
 		return
 	}
 	s.invalidateRouteCache()
-	ok(c, gin.H{"refreshed": true, "count": count})
+	ok(c, gin.H{"refreshed": true, "count": count, "failures": failures})
 }
 
 func (s *Server) adminListGroups(c *gin.Context) {
@@ -266,6 +282,25 @@ func (s *Server) adminListTokens(c *gin.Context) {
 		items[i].Token = maskSecret(items[i].Token)
 	}
 	ok(c, gin.H{"items": items})
+}
+
+// adminRevealToken 在 dashboard 鉴权下返回指定 API Key 的完整明文，
+// 供前端"复制"按钮按需取用（列表默认仍脱敏，不在页面常驻明文）。
+func (s *Server) adminRevealToken(c *gin.Context) {
+	store, okStore := s.requireStore(c)
+	if !okStore {
+		return
+	}
+	item, found, err := store.FindAPITokenByName(c.Request.Context(), c.Param("name"))
+	if err != nil {
+		fail(c, 500, "reveal_token_failed", err.Error())
+		return
+	}
+	if !found {
+		fail(c, 404, "token_not_found", "api key not found")
+		return
+	}
+	ok(c, gin.H{"name": item.Name, "token": item.Token})
 }
 
 func (s *Server) adminUpsertToken(c *gin.Context) {
