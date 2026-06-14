@@ -13,20 +13,27 @@ import (
 
 type OpenAIAdapter struct {
 	client *http.Client
+	// streamClient 专用于流式请求：不设 Timeout。Go 的 http.Client.Timeout 覆盖
+	// 整个请求生命周期（含读取 body），会把正常传输中的 SSE 长连接在 N 秒后无差别
+	// 掐断（下游表现为"连接刚转发就被切断"）。流式只靠 Transport 的连接级超时控制。
+	streamClient *http.Client
 }
 
 func NewOpenAIAdapter(timeout time.Duration) *OpenAIAdapter {
-	client := &http.Client{
-		Transport: &http.Transport{
+	transport := func() *http.Transport {
+		return &http.Transport{
 			MaxIdleConns:        100,
 			MaxIdleConnsPerHost: 10,
 			IdleConnTimeout:     90 * time.Second,
-		},
+		}
 	}
+	client := &http.Client{Transport: transport()}
 	if timeout > 0 {
 		client.Timeout = timeout
 	}
-	return &OpenAIAdapter{client: client}
+	// 流式 client：永不设 Timeout（对照 new-api 默认 RelayTimeout=0）。
+	streamClient := &http.Client{Transport: transport()}
+	return &OpenAIAdapter{client: client, streamClient: streamClient}
 }
 
 // buildHTTPRequest 构建带有标准认证头的 HTTP 请求
@@ -372,7 +379,7 @@ func (a *OpenAIAdapter) SendRequestStream(baseUrl, apiKey string, body []byte) (
 		return nil, err
 	}
 
-	resp, err := a.client.Do(httpReq)
+	resp, err := a.streamClient.Do(httpReq)
 	if err != nil {
 		return nil, err
 	}
@@ -396,7 +403,7 @@ func (a *OpenAIAdapter) SendResponsesStream(baseUrl, apiKey string, body []byte)
 		return nil, err
 	}
 
-	resp, err := a.client.Do(httpReq)
+	resp, err := a.streamClient.Do(httpReq)
 	if err != nil {
 		return nil, err
 	}

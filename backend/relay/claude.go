@@ -13,20 +13,24 @@ import (
 // ClaudeAdapter 用于向 Claude 原生 API 发送请求
 type ClaudeAdapter struct {
 	client *http.Client
+	// streamClient 专用于流式请求：不设 Timeout，避免长连接被硬超时掐断。
+	streamClient *http.Client
 }
 
 func NewClaudeAdapter(timeout time.Duration) *ClaudeAdapter {
-	client := &http.Client{
-		Transport: &http.Transport{
+	transport := func() *http.Transport {
+		return &http.Transport{
 			MaxIdleConns:        100,
 			MaxIdleConnsPerHost: 10,
 			IdleConnTimeout:     90 * time.Second,
-		},
+		}
 	}
+	client := &http.Client{Transport: transport()}
 	if timeout > 0 {
 		client.Timeout = timeout
 	}
-	return &ClaudeAdapter{client: client}
+	streamClient := &http.Client{Transport: transport()}
+	return &ClaudeAdapter{client: client, streamClient: streamClient}
 }
 
 // SendRequest 向 Claude /v1/messages 发送请求，返回原始 HTTP 响应
@@ -41,6 +45,7 @@ func (a *ClaudeAdapter) SendRequest(baseUrl, apiKey string, body []byte, isStrea
 	req.Header.Set("anthropic-version", "2023-06-01")
 	if isStream {
 		req.Header.Set("Accept", "text/event-stream")
+		return a.streamClient.Do(req)
 	}
 	return a.client.Do(req)
 }

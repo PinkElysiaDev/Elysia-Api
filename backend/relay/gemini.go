@@ -13,20 +13,24 @@ import (
 // GeminiAdapter 用于向 Gemini 原生 API 发送请求
 type GeminiAdapter struct {
 	client *http.Client
+	// streamClient 专用于流式请求：不设 Timeout，避免长连接被硬超时掐断。
+	streamClient *http.Client
 }
 
 func NewGeminiAdapter(timeout time.Duration) *GeminiAdapter {
-	client := &http.Client{
-		Transport: &http.Transport{
+	transport := func() *http.Transport {
+		return &http.Transport{
 			MaxIdleConns:        100,
 			MaxIdleConnsPerHost: 10,
 			IdleConnTimeout:     90 * time.Second,
-		},
+		}
 	}
+	client := &http.Client{Transport: transport()}
 	if timeout > 0 {
 		client.Timeout = timeout
 	}
-	return &GeminiAdapter{client: client}
+	streamClient := &http.Client{Transport: transport()}
+	return &GeminiAdapter{client: client, streamClient: streamClient}
 }
 
 // SendRequest 向 Gemini generateContent 端点发送请求，返回原始 HTTP 响应
@@ -47,6 +51,7 @@ func (a *GeminiAdapter) SendRequest(baseUrl, apiKey, model string, body []byte, 
 	req.Header.Set("x-goog-api-key", apiKey)
 	if isStream {
 		req.Header.Set("Accept", "text/event-stream")
+		return a.streamClient.Do(req)
 	}
 	return a.client.Do(req)
 }
