@@ -171,6 +171,10 @@ function DonutChart({
   centerLabel: string
 }) {
   const hasData = data.some((d) => d.value > 0)
+  // 单项数据（只有一个非零扇区）时 paddingAngle=0，让圆环完全闭合；
+  // 多项时保留 2° 间隔便于区分扇区。
+  const nonZeroCount = data.filter((d) => d.value > 0).length
+  const paddingAngle = nonZeroCount <= 1 ? 0 : 2
   return (
     <div className="relative h-64">
       {hasData ? (
@@ -182,7 +186,7 @@ function DonutChart({
               nameKey="name"
               innerRadius={64}
               outerRadius={92}
-              paddingAngle={2}
+              paddingAngle={paddingAngle}
               stroke="none"
             >
               {data.map((entry) => (
@@ -206,18 +210,23 @@ function DonutChart({
           <BarChart3 className="mr-2 h-4 w-4" /> 暂无数据
         </div>
       )}
-      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-semibold tracking-tight">{formatNumber(total)}</span>
-        <span className="text-xs text-muted-foreground">{centerLabel}</span>
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 flex justify-center gap-4">
-        {data.map((entry) => (
-          <span key={entry.name} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="h-2.5 w-2.5 rounded-full" style={{ background: entry.color }} />
-            {entry.name} {formatNumber(entry.value)}
-          </span>
-        ))}
-      </div>
+      {/* 中心数字仅在有数据时显示，避免与"暂无数据"并列出现 0 */}
+      {hasData && (
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-2xl font-semibold tracking-tight">{formatNumber(total)}</span>
+          <span className="text-xs text-muted-foreground">{centerLabel}</span>
+        </div>
+      )}
+      {hasData && (
+        <div className="absolute bottom-0 left-0 right-0 flex justify-center gap-4">
+          {data.map((entry) => (
+            <span key={entry.name} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: entry.color }} />
+              {entry.name} {formatNumber(entry.value)}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

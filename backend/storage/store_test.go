@@ -200,3 +200,29 @@ func TestModelGroupLegacyBareIDCompat(t *testing.T) {
 		}
 	}
 }
+
+// 回归 #1：同一 token 值不允许配置到两个不同 name 上。
+func TestUpsertAPITokenRejectsDuplicateValue(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(filepath.Join(t.TempDir(), "dup.sqlite3"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.UpsertAPIToken(ctx, APIToken{Name: "k1", Token: "sk-same-value", Enabled: true}); err != nil {
+		t.Fatalf("first upsert should succeed: %v", err)
+	}
+	// 不同 name 用同一 token 值 → 应被拒。
+	if err := store.UpsertAPIToken(ctx, APIToken{Name: "k2", Token: "sk-same-value", Enabled: true}); err == nil {
+		t.Fatalf("duplicate token value across names should be rejected")
+	}
+	// 同名更新自身（token 不变）→ 应允许。
+	if err := store.UpsertAPIToken(ctx, APIToken{Name: "k1", Token: "sk-same-value", Enabled: false}); err != nil {
+		t.Fatalf("updating same token's own record should succeed: %v", err)
+	}
+	// 不同 name 用不同 token 值 → 应允许。
+	if err := store.UpsertAPIToken(ctx, APIToken{Name: "k3", Token: "sk-other-value", Enabled: true}); err != nil {
+		t.Fatalf("distinct token value should succeed: %v", err)
+	}
+}
