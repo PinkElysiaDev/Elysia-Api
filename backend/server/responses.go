@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -321,6 +322,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		observeUsage: true,
 	}
 
+	var streamErr error
 	switch targetFormat {
 	case relay.FormatResponses:
 		resp, err := s.openaiAdapter.SendResponsesStream(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
@@ -331,9 +333,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 			return
 		}
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
-		if err := relay.ForwardResponsesStream(resp, writer); err != nil {
-			log.Printf("Error forwarding Responses stream: %v", err)
-		}
+		streamErr = relay.ForwardResponsesStream(resp, writer)
 	case relay.FormatClaude:
 		resp, err := s.claudeAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, targetBody, true)
 		if err != nil {
@@ -343,9 +343,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 			return
 		}
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
-		if err := relay.ConvertClaudeStreamToResponsesStream(resp, writer, selectedModel.Name); err != nil {
-			log.Printf("Error converting Claude stream to Responses stream: %v", err)
-		}
+		streamErr = relay.ConvertClaudeStreamToResponsesStream(resp, writer, selectedModel.Name)
 	case relay.FormatGemini:
 		resp, err := s.geminiAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, true)
 		if err != nil {
@@ -355,9 +353,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 			return
 		}
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
-		if err := relay.ConvertGeminiStreamToResponsesStream(resp, writer, selectedModel.Name); err != nil {
-			log.Printf("Error converting Gemini stream to Responses stream: %v", err)
-		}
+		streamErr = relay.ConvertGeminiStreamToResponsesStream(resp, writer, selectedModel.Name)
 	default:
 		resp, err := s.openaiAdapter.SendRequestStream(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		if err != nil {
@@ -367,14 +363,38 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 			return
 		}
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
-		if err := relay.ConvertOpenAIChatStreamToResponsesStream(resp, writer, selectedModel.Name); err != nil {
-			log.Printf("Error converting OpenAI chat stream to Responses stream: %v", err)
-		}
+		streamErr = relay.ConvertOpenAIChatStreamToResponsesStream(resp, writer, selectedModel.Name)
+	}
+
+	// 流式转发中途出错（如上游断流）：向下游写一个 SSE error 终止事件，让客户端能
+	// 明确感知"出错了"，而非看到连接莫名中断、无任何收尾。
+	if streamErr != nil {
+		log.Printf("Error forwarding Responses stream: %v", streamErr)
+		record.Error = streamErr.Error()
+		writeResponsesStreamError(writer, streamErr)
 	}
 
 	applyLocalResponseEstimate(record, writer.responseText.String(), s.config.GetUsageConfig())
 	actualTokens := getInt(record.Usage.TotalTokens)
 	s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
+}
+
+// writeResponsesStreamError 向已开始的 SSE 流写一个 error 事件作为收尾，
+// 用于上游中途断流等场景，避免下游看到"无收尾的突然断开"。
+func writeResponsesStreamError(writer relay.StreamResponseWriter, err error) {
+	payload, merr := json.Marshal(map[string]any{
+		"type": "error",
+		"error": map[string]any{
+			"type":    "upstream_stream_error",
+			"message": err.Error(),
+		},
+	})
+	if merr != nil {
+		return
+	}
+	_, _ = writer.WriteString("event: error\n")
+	_, _ = writer.WriteString("data: " + string(payload) + "\n\n")
+	_ = writer.Flush()
 }
 
 func selectResponsesTargetFormat(model config.ModelRef, platform relay.Platform, responsesCfg config.ResponsesConfig) (relay.FormatType, string, error) {
