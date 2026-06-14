@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"strings"
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/storage"
@@ -67,15 +68,29 @@ func (s *Server) assembleGroupsFromStore() ([]config.ModelGroupConfig, bool) {
 		s.logWarnf("failed to load models from sqlite: %v", err)
 		return nil, false
 	}
-	modelMap := make(map[string]storage.Model, len(models))
+	// 同时按复合键(sourceId:id)与裸 id 建索引：复合键精确命中（解决同名模型路由错乱），
+	// 裸 id 用于向后兼容旧数据（models 元素无 ":" 前缀时回退）。
+	modelByComposite := make(map[string]storage.Model, len(models))
+	modelByID := make(map[string]storage.Model, len(models))
 	for _, model := range models {
-		modelMap[model.ID] = model
+		modelByComposite[model.SourceID+":"+model.ID] = model
+		if _, exists := modelByID[model.ID]; !exists {
+			modelByID[model.ID] = model
+		}
+	}
+	resolveModel := func(ref string) (storage.Model, bool) {
+		if strings.Contains(ref, ":") {
+			m, ok := modelByComposite[ref]
+			return m, ok
+		}
+		m, ok := modelByID[ref] // 旧数据：裸 id 回退
+		return m, ok
 	}
 	converted := make([]config.ModelGroupConfig, 0, len(groups))
 	for _, group := range groups {
 		refs := make([]config.ModelRef, 0, len(group.Models))
-		for _, modelID := range group.Models {
-			model, ok := modelMap[modelID]
+		for _, modelRef := range group.Models {
+			model, ok := resolveModel(modelRef)
 			if !ok || !model.Available {
 				continue
 			}

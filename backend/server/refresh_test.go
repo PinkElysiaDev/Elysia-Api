@@ -1,0 +1,113 @@
+package server
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"testing"
+
+	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/storage"
+)
+
+func newRefreshTestServer(t *testing.T) *Server {
+	t.Helper()
+	store, err := storage.Open(filepath.Join(t.TempDir(), "refresh.sqlite3"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+	return &Server{config: &config.Config{}, store: store}
+}
+
+// #1: Claude 源走 /v1/models 拉取（OpenAI 风格响应），x-api-key 鉴权命中。
+func TestFetchClaudeModelsViaV1Models(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			w.WriteHeader(404)
+			return
+		}
+		gotAuth = r.Header.Get("x-api-key")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"claude-3-5-sonnet"},{"id":"claude-3-opus"}]}`))
+	}))
+	defer srv.Close()
+
+	s := newRefreshTestServer(t)
+	models, err := s.fetchClaudeModels(context.Background(), storage.ModelSource{
+		Name: "claude-relay", BaseURL: srv.URL, Platform: "claude", APIKey: "sk-ant-xxx", Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("fetchClaudeModels error: %v", err)
+	}
+	if len(models) != 2 {
+		t.Fatalf("expected 2 models, got %d", len(models))
+	}
+	if gotAuth != "sk-ant-xxx" {
+		t.Fatalf("expected x-api-key auth, got %q", gotAuth)
+	}
+	if models[0].Platform != "claude" {
+		t.Fatalf("expected platform claude, got %q", models[0].Platform)
+	}
+}
+
+// #1: Claude 官方鉴权失败时回退 Bearer（模拟只认 Bearer 的中转站）。
+func TestFetchClaudeModelsBearerFallback(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 只接受 Bearer，x-api-key 一律 401。
+		if r.Header.Get("Authorization") != "Bearer sk-relay" {
+			w.WriteHeader(401)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"claude-3-5-sonnet"}]}`))
+	}))
+	defer srv.Close()
+
+	s := newRefreshTestServer(t)
+	models, err := s.fetchClaudeModels(context.Background(), storage.ModelSource{
+		Name: "relay", BaseURL: srv.URL, Platform: "claude", APIKey: "sk-relay", Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("expected bearer fallback to succeed, got: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("expected 1 model via fallback, got %d", len(models))
+	}
+}
+
+// #1: 全量刷新时单源失败不阻塞其他源，错误被收集返回。
+func TestRefreshAllSourcesFaultTolerant(t *testing.T) {
+	ctx := context.Background()
+	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"gpt-4o"},{"id":"gpt-4o-mini"}]}`))
+	}))
+	defer good.Close()
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+	}))
+	defer bad.Close()
+
+	s := newRefreshTestServer(t)
+	// 一个能拉取的 openai 源 + 一个总是 500 的源。
+	if err := s.store.UpsertSource(ctx, storage.ModelSource{ID: "good", Name: "good", BaseURL: good.URL, Platform: "openai", Enabled: true, AutoFetchModels: true}); err != nil {
+		t.Fatalf("upsert good: %v", err)
+	}
+	if err := s.store.UpsertSource(ctx, storage.ModelSource{ID: "bad", Name: "bad", BaseURL: bad.URL, Platform: "openai", Enabled: true, AutoFetchModels: true}); err != nil {
+		t.Fatalf("upsert bad: %v", err)
+	}
+
+	count, failures, err := s.refreshAllSources(ctx)
+	if err != nil {
+		t.Fatalf("refreshAllSources should not hard-error: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 models from good source, got %d", count)
+	}
+	if len(failures) != 1 || failures[0].SourceID != "bad" {
+		t.Fatalf("expected exactly the bad source to fail, got %+v", failures)
+	}
+}

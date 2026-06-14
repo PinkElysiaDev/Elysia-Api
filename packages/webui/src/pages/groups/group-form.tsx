@@ -72,10 +72,15 @@ export function GroupFormDialog({
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
-  function toggleModel(id: string) {
+  // 模型的复合身份键：sourceId:modelId。解决不同源同名模型被裸 id 联动选中的问题。
+  function modelKey(model: Model): string {
+    return `${model.sourceId ?? ''}:${model.id}`
+  }
+
+  function toggleModel(key: string) {
     setForm((prev) => ({
       ...prev,
-      models: prev.models.includes(id) ? prev.models.filter((m) => m !== id) : [...prev.models, id],
+      models: prev.models.includes(key) ? prev.models.filter((m) => m !== key) : [...prev.models, key],
     }))
   }
 
@@ -170,19 +175,19 @@ export function GroupFormDialog({
                 <ModelOption
                   key={`${model.sourceId}-${model.id}`}
                   model={model}
-                  selected={form.models.includes(model.id)}
-                  onToggle={() => toggleModel(model.id)}
+                  selected={form.models.includes(modelKey(model))}
+                  onToggle={() => toggleModel(modelKey(model))}
                 />
               ))}
             </div>
-            {/* 已选但不在缓存中的模型（例如手动模型） */}
-            {form.models.filter((id) => !(models ?? []).some((m) => m.id === id)).length > 0 && (
+            {/* 已选但不在缓存中的模型（例如手动模型 / 已删除源），按复合键比对 */}
+            {form.models.filter((key) => !(models ?? []).some((m) => modelKey(m) === key)).length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {form.models
-                  .filter((id) => !(models ?? []).some((m) => m.id === id))
-                  .map((id) => (
-                    <Badge key={id} variant="outline" className="cursor-pointer" onClick={() => toggleModel(id)}>
-                      {id} ✕
+                  .filter((key) => !(models ?? []).some((m) => modelKey(m) === key))
+                  .map((key) => (
+                    <Badge key={key} variant="outline" className="cursor-pointer" onClick={() => toggleModel(key)}>
+                      {key.includes(':') ? key.slice(key.indexOf(':') + 1) : key} ✕
                     </Badge>
                   ))}
               </div>
