@@ -301,9 +301,9 @@ function LogDetailDialog({ id, onClose }: { id: string | null; onClose: () => vo
 }
 
 /** 总览字段：键值对小项。 */
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className="space-y-0.5">
+    <div className={cn('space-y-0.5', className)}>
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-sm">{children}</div>
     </div>
@@ -314,13 +314,15 @@ function LogOverview({ detail }: { detail: UsageLogDetail }) {
   const u = detail.usage ?? {}
   const sourceFmt = detail.sourceFormat || detail.inputFormat || ''
   const targetFmt = detail.targetFormat || detail.platform || ''
-  const sameFmt = !sourceFmt || !targetFmt || sourceFmt === targetFmt
+  // 源与目标协议一致即为透传（未做有损格式转换）
+  const passthrough = !!sourceFmt && !!targetFmt && sourceFmt === targetFmt
   return (
     <div className="rounded-xl border border-border bg-background/60 p-4">
       <div className="mb-3 flex items-center gap-2">
         <span className="text-sm font-medium">总览</span>
         <StatusCodeBadge code={detail.statusCode} />
         {detail.stream && <Badge variant="outline">流式</Badge>}
+        {passthrough && <Badge variant="outline">透传</Badge>}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -330,16 +332,12 @@ function LogOverview({ detail }: { detail: UsageLogDetail }) {
             <CopyButton value={detail.requestId} />
           </span>
         </Field>
-        <Field label={sameFmt ? '使用的 API' : '使用的 API（转换）'}>
-          {sameFmt ? (
-            <PlatformBadge platform={targetFmt || sourceFmt || '—'} />
-          ) : (
-            <span className="inline-flex flex-wrap items-center gap-1.5">
-              <PlatformBadge platform={sourceFmt} />
-              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <PlatformBadge platform={targetFmt} />
-            </span>
-          )}
+        <Field label="协议转换" className="lg:col-span-2">
+          <span className="inline-flex flex-wrap items-center gap-1.5">
+            <PlatformBadge platform={sourceFmt || '—'} />
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <PlatformBadge platform={targetFmt || '—'} />
+          </span>
         </Field>
         <Field label="模型组">{detail.groupName || '—'}</Field>
         <Field label="模型">
