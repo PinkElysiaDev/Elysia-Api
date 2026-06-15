@@ -106,6 +106,28 @@ const (
 	FormatUnknown  FormatType = "unknown"
 )
 
+// FormatMatchesPlatform 判断客户端输入格式是否与所选上游线路 API 同源。
+// 同源时可走零转换透传（PassthroughBody），无需经 unified 中间模型有损往返：
+//
+//	FormatClaude            ↔ PlatformAnthropic
+//	FormatGemini            ↔ PlatformGemini
+//	FormatOpenAI/FormatDeepSeek ↔ PlatformOpenAI/PlatformDeepSeek/PlatformAzure
+//
+// 注意：这里只看 wire 协议族是否一致，不区分具体厂商（OpenAI/DeepSeek/Azure 同属
+// Chat Completions 协议族，请求/响应结构兼容，可互相透传）。
+func FormatMatchesPlatform(inputFormat FormatType, platform Platform) bool {
+	switch inputFormat {
+	case FormatClaude:
+		return platform == PlatformAnthropic
+	case FormatGemini:
+		return platform == PlatformGemini
+	case FormatOpenAI, FormatDeepSeek:
+		return platform == PlatformOpenAI || platform == PlatformDeepSeek || platform == PlatformAzure
+	default:
+		return false
+	}
+}
+
 // DetectInputFormat 检测输入请求的格式
 func DetectInputFormat(body []byte) FormatType {
 	var req map[string]interface{}

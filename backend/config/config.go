@@ -28,6 +28,7 @@ type Config struct {
 	Tokens                 []AccessToken      `json:"-"` // 运行时字段：仅用于 store-nil 回退与测试；不再从 config.json 读取（模型/token 走 SQLite）
 	Groups                 []ModelGroupConfig `json:"-"` // 同上：旧 config.json 的 modelGroups 字段已废弃，数据走 SQLite
 	Responses              ResponsesConfig    `json:"responses,omitempty"`              // Responses API 兼容策略
+	Relay                  RelayConfig        `json:"relay,omitempty"`                  // 转发（chat/claude/gemini）策略
 	Usage                  UsageConfig        `json:"usage,omitempty"`                  // 用量估算配置
 	HTTPTimeout            int                `json:"httpTimeout,omitempty"`            // HTTP 请求超时时间（秒），0 为不限制
 	DebugMode              bool               `json:"debugMode,omitempty"`              // 调试模式
@@ -59,6 +60,14 @@ type ResponsesConfig struct {
 	UpstreamMode                 string `json:"upstreamMode,omitempty"`                 // native | transform | auto
 	TransformUnsupportedBehavior string `json:"transformUnsupportedBehavior,omitempty"` // error | warn | ignore
 	PassThroughUnknownFields     *bool  `json:"passThroughUnknownFields,omitempty"`
+}
+
+// RelayConfig 控制 chat_completions / claude / gemini 三种线路 API 的转发策略。
+// Passthrough：当客户端输入格式与所选上游线路 API 一致时（如 Claude→Anthropic、
+// Gemini→Gemini、OpenAI→OpenAI），跳过 unified 中间模型的有损往返，以原始请求字节
+// 直发上游（仅改写 model、按需补 stream）。默认开启；置 false 可强制恒走转换。
+type RelayConfig struct {
+	Passthrough *bool `json:"passthrough,omitempty"`
 }
 
 type UsageConfig struct {
@@ -445,6 +454,24 @@ func (c *Config) GetResponsesConfig() ResponsesConfig {
 		cfg.PassThroughUnknownFields = &v
 	}
 	return cfg
+}
+
+// GetRelayConfig 返回转发策略配置，Passthrough 默认开启。
+func (c *Config) GetRelayConfig() RelayConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	cfg := c.Relay
+	if cfg.Passthrough == nil {
+		v := true
+		cfg.Passthrough = &v
+	}
+	return cfg
+}
+
+// IsRelayPassthroughEnabled 是 GetRelayConfig().Passthrough 的便捷封装。
+func (c *Config) IsRelayPassthroughEnabled() bool {
+	return *c.GetRelayConfig().Passthrough
 }
 
 func (c *Config) GetUsageConfig() UsageConfig {
