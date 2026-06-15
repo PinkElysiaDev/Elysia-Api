@@ -10,6 +10,7 @@ import type {
   RuntimeConfigUpdate,
   RuntimeConfigUpdateResult,
   SystemLogsResult,
+  UsageLogDetail,
   UsageLogItem,
   UsageLogsResult,
   UsageQueryParams,
@@ -149,7 +150,7 @@ export const api = {
 
   usageStats: (params: UsageQueryParams) => request<UsageStats>('/usage/stats', { query: serializeUsage(params) }),
   usageLogs: (params: UsageQueryParams) => request<UsageLogsResult>('/usage/logs', { query: serializeUsage(params) }),
-  usageLogDetail: (id: string) => request<unknown>(`/usage/logs/${encodeURIComponent(id)}`),
+  usageLogDetail: (id: string) => request<UsageLogDetail>(`/usage/logs/${encodeURIComponent(id)}`),
   usageReset: () => request<unknown>('/usage/reset', { method: 'POST' }),
 
   systemLogs: (params: { limit?: number; offset?: number; level?: string }) =>

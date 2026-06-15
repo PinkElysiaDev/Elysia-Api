@@ -85,3 +85,26 @@ export function startOfRange(range: '24h' | '7d' | '30d' | 'all'): string | unde
   }
   return new Date(now - map[range]).toISOString()
 }
+
+/** 把任意数据序列化为 JSON 文件并触发浏览器下载。 */
+export function downloadJSON(filename: string, data: unknown): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+/** 尽量把字符串解析成 JSON 对象；失败则原样返回字符串。用于展示/导出捕获的请求体。 */
+export function tryParseJSON(content: string | undefined | null): unknown {
+  if (content == null || content === '') return content ?? ''
+  try {
+    return JSON.parse(content)
+  } catch {
+    return content
+  }
+}

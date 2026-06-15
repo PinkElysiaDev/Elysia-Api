@@ -159,6 +159,66 @@ export interface UsageLogsResult {
   items: UsageLogItem[]
 }
 
+/** 单段链路内容（请求体 / 响应体），content 可能是 JSON 字符串。 */
+export interface UsageBody {
+  content: string
+  truncated: boolean
+}
+
+export interface UsageTokenUsage {
+  inputTokens?: number
+  outputTokens?: number
+  totalTokens?: number
+  cacheHitTokens?: number
+  estimatedTokens?: number
+  estimated?: boolean
+}
+
+export interface UsageRetryEvent {
+  attempt: number
+  model: string
+  error?: string
+}
+
+/** GET /usage/logs/:id 返回的完整记录，含四段链路原文。 */
+export interface UsageLogDetail {
+  requestId: string
+  startedAt: string
+  endedAt: string
+  keyName: string
+  keyHash: string
+  requestedModelGroup?: string
+  groupId?: string
+  groupName: string
+  modelId?: string
+  modelName: string
+  platform: string
+  inputFormat?: string
+  sourceFormat?: string
+  targetFormat?: string
+  sourceEndpoint?: string
+  targetEndpoint?: string
+  relayMode?: string
+  responsesMode?: string
+  conversionChain?: string[]
+  usageSource?: string
+  requestWarnings?: string[]
+  stream: boolean
+  statusCode: number
+  error?: string
+  firstByteMs: number
+  durationMs: number
+  usage: UsageTokenUsage
+  usageDetail?: Record<string, unknown>
+  builtinToolUsage?: Record<string, number>
+  retryCount: number
+  retryEvents?: UsageRetryEvent[]
+  incomingBody: UsageBody
+  outgoingBody: UsageBody
+  providerResponse: UsageBody
+  downstreamResponse: UsageBody
+}
+
 export interface SystemLog {
   id: number
   createdAt: string

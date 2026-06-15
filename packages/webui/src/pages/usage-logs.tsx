@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, ChevronLeft, ChevronRight, Eye, RotateCcw, ScrollText } from 'lucide-react'
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Eye,
+  RotateCcw,
+  ScrollText,
+} from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -11,17 +20,29 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
 import { AsyncState } from '@/components/ui/states'
-import { StatusCodeBadge } from '@/components/badges'
+import { PlatformBadge, StatusCodeBadge } from '@/components/badges'
+import { CopyButton } from '@/components/copy-button'
 import { RangeSelect, type RangeKey } from '@/components/range-select'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { useUsageLogs, revalidate } from '@/lib/hooks'
 import { api } from '@/lib/api'
-import { formatDateTime, formatDuration, formatNumber, startOfRange, toRFC3339 } from '@/lib/utils'
+import type { UsageBody, UsageLogDetail } from '@/lib/types'
+import {
+  cn,
+  downloadJSON,
+  formatDateTime,
+  formatDuration,
+  formatNumber,
+  startOfRange,
+  toRFC3339,
+  tryParseJSON,
+} from '@/lib/utils'
 
 const PAGE_SIZE = 20
 
@@ -212,7 +233,7 @@ export function UsageLogsPage() {
 }
 
 function LogDetailDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
-  const [detail, setDetail] = useState<unknown>(null)
+  const [detail, setDetail] = useState<UsageLogDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -241,6 +262,11 @@ function LogDetailDialog({ id, onClose }: { id: string | null; onClose: () => vo
     }
   }, [id])
 
+  function handleExport() {
+    if (!detail) return
+    downloadJSON(`usage-log-${detail.requestId}.json`, buildExportPayload(detail))
+  }
+
   return (
     <Dialog open={!!id} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-3xl">
@@ -251,14 +277,194 @@ function LogDetailDialog({ id, onClose }: { id: string | null; onClose: () => vo
             请求 / 响应体可能被截断，并非完整内容
           </DialogDescription>
         </DialogHeader>
+
         {loading && <div className="skeleton h-64 rounded-xl" />}
         {err && <p className="text-sm text-destructive">{err}</p>}
-        {!loading && !err && (
-          <pre className="max-h-[60vh] overflow-auto rounded-xl border border-border bg-background/60 p-4 font-mono text-xs leading-relaxed">
-            {JSON.stringify(detail, null, 2)}
-          </pre>
+        {!loading && !err && detail && (
+          <div className="max-h-[64vh] space-y-4 overflow-auto pr-1">
+            <LogOverview detail={detail} />
+            <LogChainSection detail={detail} />
+          </div>
         )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            关闭
+          </Button>
+          <Button onClick={handleExport} disabled={!detail}>
+            <Download className="h-4 w-4" /> 导出完整日志
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
+}
+
+/** 总览字段：键值对小项。 */
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-0.5">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-sm">{children}</div>
+    </div>
+  )
+}
+
+function LogOverview({ detail }: { detail: UsageLogDetail }) {
+  const u = detail.usage ?? {}
+  return (
+    <div className="rounded-xl border border-border bg-background/60 p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="text-sm font-medium">总览</span>
+        <StatusCodeBadge code={detail.statusCode} />
+        {detail.stream && <Badge variant="outline">流式</Badge>}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <Field label="请求 ID">
+          <span className="inline-flex items-center gap-1">
+            <span className="font-mono text-xs">{detail.requestId}</span>
+            <CopyButton value={detail.requestId} />
+          </span>
+        </Field>
+        <Field label="使用的 API">
+          <PlatformBadge platform={detail.platform} />
+        </Field>
+        <Field label="协议转换">
+          <span className="inline-flex items-center gap-1.5">
+            <PlatformBadge platform={detail.sourceFormat || detail.inputFormat || '—'} />
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            <PlatformBadge platform={detail.targetFormat || detail.platform || '—'} />
+          </span>
+        </Field>
+        <Field label="模型组">{detail.groupName || '—'}</Field>
+        <Field label="模型">
+          <span className="font-mono text-xs">{detail.modelName || '—'}</span>
+        </Field>
+        <Field label="重试次数">
+          {detail.retryCount > 0 ? `${detail.retryCount} 次` : '无'}
+        </Field>
+        <Field label="首字延迟">{formatDuration(detail.firstByteMs)}</Field>
+        <Field label="总耗时">{formatDuration(detail.durationMs)}</Field>
+        <Field label="开始时间">
+          <span className="text-xs">{formatDateTime(detail.startedAt)}</span>
+        </Field>
+        <Field label="Token 总量">{formatNumber(u.totalTokens ?? 0)}</Field>
+        <Field label="输入 / 输出">
+          ↑{formatNumber(u.inputTokens ?? 0)} ↓{formatNumber(u.outputTokens ?? 0)}
+        </Field>
+        <Field label="缓存命中">
+          {formatNumber(u.cacheHitTokens ?? 0)}
+          {u.estimated && <span className="ml-1 text-xs text-muted-foreground">(估算)</span>}
+        </Field>
+      </div>
+
+      {detail.error && (
+        <div className="mt-3 rounded-lg border border-destructive/40 bg-destructive/10 p-2.5 text-xs text-destructive">
+          {detail.error}
+        </div>
+      )}
+
+      {detail.retryCount > 0 && detail.retryEvents && detail.retryEvents.length > 0 && (
+        <div className="mt-3 space-y-1">
+          <div className="text-xs text-muted-foreground">重试历史</div>
+          {detail.retryEvents.map((ev, i) => (
+            <div key={i} className="rounded-md bg-muted/40 px-2 py-1 text-xs">
+              <span className="font-medium">#{ev.attempt}</span>{' '}
+              <span className="font-mono">{ev.model}</span>
+              {ev.error && <span className="text-destructive"> — {ev.error}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** 四段链路：下游请求 → 后端转发 → 上游回传 → 返回下游，默认折叠。 */
+function LogChainSection({ detail }: { detail: UsageLogDetail }) {
+  const segments: { key: string; title: string; body: UsageBody }[] = [
+    { key: 'incoming', title: '① 下游请求（客户端发来）', body: detail.incomingBody },
+    { key: 'outgoing', title: '② 后端转发（发往上游）', body: detail.outgoingBody },
+    { key: 'provider', title: '③ 上游回传（供应商响应）', body: detail.providerResponse },
+    { key: 'downstream', title: '④ 返回下游（写回客户端）', body: detail.downstreamResponse },
+  ]
+  return (
+    <div className="space-y-2">
+      <div className="text-sm font-medium">完整链路</div>
+      {segments.map((seg) => (
+        <ChainBlock key={seg.key} title={seg.title} body={seg.body} />
+      ))}
+    </div>
+  )
+}
+
+function ChainBlock({ title, body }: { title: string; body: UsageBody | undefined }) {
+  const [open, setOpen] = useState(false)
+  const content = body?.content ?? ''
+  const pretty = useMemo(() => {
+    const parsed = tryParseJSON(content)
+    return typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2)
+  }, [content])
+
+  return (
+    <div className="rounded-xl border border-border bg-background/60">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="flex items-center gap-2">
+          {title}
+          {body?.truncated && <Badge variant="outline">已截断</Badge>}
+          {!content && <span className="text-xs text-muted-foreground">（空）</span>}
+        </span>
+        <ChevronDown className={cn('h-4 w-4 transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && content && (
+        <pre className="max-h-[40vh] overflow-auto border-t border-border px-4 py-3 font-mono text-xs leading-relaxed">
+          {pretty}
+        </pre>
+      )}
+    </div>
+  )
+}
+
+/** 把详情重组为带标签的导出结构：总览 + 四段链路（请求体尽量解析为对象）+ 原始记录。 */
+function buildExportPayload(detail: UsageLogDetail) {
+  const seg = (b: UsageBody | undefined) => ({
+    content: tryParseJSON(b?.content ?? ''),
+    truncated: b?.truncated ?? false,
+  })
+  return {
+    overview: {
+      requestId: detail.requestId,
+      api: detail.platform,
+      groupName: detail.groupName,
+      modelName: detail.modelName,
+      conversion: {
+        from: detail.sourceFormat || detail.inputFormat || '',
+        to: detail.targetFormat || detail.platform || '',
+        chain: detail.conversionChain ?? [],
+      },
+      stream: detail.stream,
+      statusCode: detail.statusCode,
+      error: detail.error ?? '',
+      retryCount: detail.retryCount,
+      retryEvents: detail.retryEvents ?? [],
+      firstByteMs: detail.firstByteMs,
+      durationMs: detail.durationMs,
+      usage: detail.usage,
+      usageDetail: detail.usageDetail,
+      startedAt: detail.startedAt,
+      endedAt: detail.endedAt,
+    },
+    chain: {
+      downstreamRequest: seg(detail.incomingBody),
+      backendForward: seg(detail.outgoingBody),
+      upstreamResponse: seg(detail.providerResponse),
+      downstreamResponse: seg(detail.downstreamResponse),
+    },
+    raw: detail,
+  }
 }

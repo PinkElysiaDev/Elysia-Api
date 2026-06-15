@@ -26,6 +26,7 @@ func (s *Server) responses(c *gin.Context) {
 	record := s.initUsageRecord(c, startTime, bodyBytes, relay.FormatResponses)
 	record.SourceFormat = string(relay.FormatResponses)
 	record.SourceEndpoint = "/v1/responses"
+	installDownstreamCapture(c, record)
 
 	responsesCfg := s.config.GetResponsesConfig()
 	if responsesCfg.Enabled != nil && !*responsesCfg.Enabled {
