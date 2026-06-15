@@ -984,7 +984,8 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		c.Writer.Header().Set("Content-Type", "text/event-stream")
 		c.Writer.Header().Set("Cache-Control", "no-cache")
 		c.Writer.Header().Set("Connection", "keep-alive")
-		c.Writer.Header().Set("Transfer-Encoding", "chunked")
+		// 不手动设 Transfer-Encoding：Go 的 http.Server 对无 Content-Length 的
+		// 流式响应自动 chunked，手动设是冗余且在错误路径易制造 TE+Content-Length 冲突。
 		c.Writer.Header().Set("X-Accel-Buffering", "no")
 		sseStarted = true
 	}
@@ -995,6 +996,11 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		startTime:    startTime,
 		observeUsage: false,
 	}
+
+	// forwardErr 收集"上游连接成功、SSE 已开始后"的流转发/转换错误。
+	// 一旦 SSE 头已发出就无法改 HTTP 状态码，但必须把 record.StatusCode 从 200
+	// 下调，否则中途断流/空响应会被统计与日志误判为成功。
+	var forwardErr error
 
 	switch targetPlatform {
 	case relay.PlatformAnthropic:
@@ -1017,17 +1023,11 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 
 		switch inputFormat {
 		case relay.FormatClaude:
-			if err := relay.ForwardStreamRaw(httpResp, writer); err != nil {
-				log.Printf("Error streaming Claude response: %v", err)
-			}
+			forwardErr = relay.ForwardStreamRaw(httpResp, writer)
 		case relay.FormatGemini:
-			if err := relay.ConvertClaudeStreamToGeminiStream(httpResp, writer); err != nil {
-				log.Printf("Error converting Claude stream to Gemini format: %v", err)
-			}
+			forwardErr = relay.ConvertClaudeStreamToGeminiStream(httpResp, writer)
 		default:
-			if err := relay.ConvertClaudeStreamToOpenAI(httpResp, writer); err != nil {
-				log.Printf("Error converting Claude stream to OpenAI format: %v", err)
-			}
+			forwardErr = relay.ConvertClaudeStreamToOpenAI(httpResp, writer)
 		}
 
 	case relay.PlatformGemini:
@@ -1050,17 +1050,11 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 
 		switch inputFormat {
 		case relay.FormatClaude:
-			if err := relay.ConvertGeminiStreamToClaudeStream(httpResp, writer, selectedModel.Name); err != nil {
-				log.Printf("Error converting Gemini stream to Claude format: %v", err)
-			}
+			forwardErr = relay.ConvertGeminiStreamToClaudeStream(httpResp, writer, selectedModel.Name)
 		case relay.FormatGemini:
-			if err := relay.ForwardStreamRaw(httpResp, writer); err != nil {
-				log.Printf("Error forwarding Gemini stream: %v", err)
-			}
+			forwardErr = relay.ForwardStreamRaw(httpResp, writer)
 		default:
-			if err := relay.ConvertGeminiStreamToOpenAI(httpResp, writer); err != nil {
-				log.Printf("Error converting Gemini stream to OpenAI format: %v", err)
-			}
+			forwardErr = relay.ConvertGeminiStreamToOpenAI(httpResp, writer)
 		}
 
 	default:
@@ -1077,24 +1071,48 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 
 		switch inputFormat {
 		case relay.FormatClaude:
-			if err := relay.ConvertOpenAIStreamToClaudeStream(resp, writer, selectedModel.Name); err != nil {
-				log.Printf("Error converting OpenAI stream to Claude format: %v", err)
-			}
+			forwardErr = relay.ConvertOpenAIStreamToClaudeStream(resp, writer, selectedModel.Name)
 		case relay.FormatGemini:
-			if err := relay.ConvertOpenAIStreamToGeminiStream(resp, writer); err != nil {
-				log.Printf("Error converting OpenAI stream to Gemini format: %v", err)
-			}
+			forwardErr = relay.ConvertOpenAIStreamToGeminiStream(resp, writer)
 		default:
-			if err := relay.ForwardOpenAIStream(resp, writer); err != nil {
-				log.Printf("Error forwarding OpenAI stream: %v", err)
-			}
+			forwardErr = relay.ForwardOpenAIStream(resp, writer)
 		}
+	}
+
+	// 上游已建连、SSE 已开始后的转发/转换错误：HTTP 状态码已无法更改，
+	// 但必须把 record.StatusCode 从 200 下调为 502 并记录错误，否则中途断流/
+	// 空响应会在 usage 日志与统计里被误判为成功。
+	if forwardErr != nil {
+		log.Printf("Error forwarding stream after SSE started: %v", forwardErr)
+		record.Error = forwardErr.Error()
+		if record.StatusCode < 400 {
+			record.StatusCode = http.StatusBadGateway
+		}
+	} else if streamYieldedNothing(record, writer) {
+		// 上游返回 200 但既无任何输出文本、也无 usage —— 实际是空响应。
+		// 这类"看似成功实则空结构体"必须记为失败，否则日志/统计误判为成功。
+		log.Printf("Upstream stream returned empty response (no content, no usage)")
+		record.Error = "upstream returned empty response"
+		record.StatusCode = http.StatusBadGateway
 	}
 
 	applyLocalResponseEstimate(record, writer.responseText.String(), s.config.GetUsageConfig())
 	s.logDebug("Stream request completed in %dms", time.Since(startTime).Milliseconds())
-	result = relayOutcome{committed: true, statusCode: http.StatusOK}
+	result = relayOutcome{committed: true, statusCode: record.StatusCode}
 	return result
+}
+
+// streamYieldedNothing 判断一次"无错误"的流式转发是否实际为空响应：
+// 既没有任何输出文本，也没有捕获到任何 usage token。用于把上游 200 空响应
+// 从"成功"纠正为失败。
+func streamYieldedNothing(record *usageRecord, writer *observingStreamWriter) bool {
+	if writer.responseText.Len() > 0 {
+		return false
+	}
+	if getInt(record.Usage.TotalTokens) > 0 || getInt(record.Usage.OutputTokens) > 0 {
+		return false
+	}
+	return true
 }
 
 func readBodyAndJSON(resp *http.Response, v interface{}) ([]byte, error) {
