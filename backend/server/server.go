@@ -549,6 +549,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		inputFormat = relay.FormatOpenAI
 	}
 	record := s.initUsageRecord(c, startTime, bodyBytes, inputFormat)
+	installDownstreamCapture(c, record)
 	s.logVerbose("[Input Format] %s", inputFormat)
 
 	// 转换为统一格式
