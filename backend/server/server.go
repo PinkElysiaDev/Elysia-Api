@@ -690,10 +690,49 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		setRecordModel(record, selectedModel, targetPlatform)
 		s.logDebug("Request model group: '%s' attempt %d/%d, selected: %s", group.Name, attempt+1, attempts, selectedModel.Name)
 
-		targetBody, err := relay.ConvertFromUnified(unifiedReq, targetPlatform)
+		// 同源透传判定：客户端输入格式与所选上游线路 API 一致（Claude→Anthropic、
+		// Gemini→Gemini、OpenAI→OpenAI 系），且本次未因 vision 过滤改写过请求体时，
+		// 以原始请求字节直发上游，跳过 unified 中间模型的有损往返——保留上游特有字段
+		// （cache_control / thinking / 各类未知扩展）。借鉴 Responses 透传与 new-api
+		// 的 should_convert=false 分支。vision 过滤改写了 unifiedReq 而非原始字节，
+		// 故 filtered=true 时必须回退到转换路径，否则被过滤的图片会随原始字节漏给上游。
+		usePassthrough := s.config.IsRelayPassthroughEnabled() && !filtered && relay.FormatMatchesPlatform(inputFormat, targetPlatform)
+
+		// 流式意图取自客户端原始请求：OpenAI/Claude 看请求体 stream 字段，
+		// Gemini 看 URL action（:streamGenerateContent）。
+		isStream := relay.IsStreamRequest(bodyBytes)
+		if action := c.Param("action"); strings.Contains(action, ":streamGenerateContent") {
+			isStream = true
+		}
+
+		var targetBody []byte
+		if usePassthrough {
+			// Gemini：model 在 URL 里（adapter 单独接收 selectedModel.Name），原生
+			// generateContent 请求体不含顶层 model，故透传时不改写 model（传空），
+			// 也不向体内注入 stream（由 URL action 决定）。OpenAI/Claude 则改写 model；
+			// OpenAI 兼容线路补 stream_options.include_usage 以拿到 usage chunk。
+			passModelName := selectedModel.Name
+			addStreamOptions := false
+			ensureStream := false
+			if targetPlatform == relay.PlatformGemini {
+				passModelName = ""
+			} else {
+				ensureStream = isStream
+				addStreamOptions = targetPlatform == relay.PlatformOpenAI || targetPlatform == relay.PlatformDeepSeek || targetPlatform == relay.PlatformAzure
+			}
+			targetBody, err = relay.PassthroughBody(bodyBytes, passModelName, ensureStream, addStreamOptions)
+			if err == nil {
+				record.RelayMode = "passthrough"
+			}
+		} else {
+			targetBody, err = relay.ConvertFromUnified(unifiedReq, targetPlatform)
+			if err == nil {
+				record.RelayMode = "transform"
+			}
+		}
 		if err != nil {
 			lastStatus = http.StatusInternalServerError
-			lastErr = fmt.Sprintf("Failed to convert request: %v", err)
+			lastErr = fmt.Sprintf("Failed to build upstream request: %v", err)
 			s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
 			if isLast {
 				record.StatusCode = lastStatus
@@ -704,14 +743,10 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			continue
 		}
 		record.OutgoingBody = sanitizeUsageBody(targetBody)
-		s.logVerbose("[Outgoing Request] baseUrl=%s body=%s", selectedModel.BaseURL, compactLogJSON(targetBody))
+		s.logVerbose("[Outgoing Request] passthrough=%v baseUrl=%s body=%s", usePassthrough, selectedModel.BaseURL, compactLogJSON(targetBody))
 
-		// 检查是否为流式请求
-		isStream := relay.IsStreamRequest(targetBody)
-		if action := c.Param("action"); strings.Contains(action, ":streamGenerateContent") {
-			isStream = true
-		}
-		if isStream {
+		// 非透传路径仍需为流式补齐 stream 标记（透传已在 PassthroughBody 内处理）。
+		if isStream && !usePassthrough {
 			var streamBodyErr error
 			targetBody, streamBodyErr = ensureStreamFlagInTargetBody(targetBody, targetPlatform)
 			if streamBodyErr != nil {

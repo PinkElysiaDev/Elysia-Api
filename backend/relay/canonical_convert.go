@@ -381,6 +381,37 @@ func ResponsesPassthroughBody(originalBody []byte, modelName string) ([]byte, er
 	return json.Marshal(out)
 }
 
+// PassthroughBody 通用透传：当客户端输入格式与所选上游线路 API 一致时，以原始请求
+// 字节为基底直发上游——只改写 model（模型组路由需要），并按需补 stream 标记，其余字段
+// （含上游特有的 cache_control / thinking / 各类未知字段）原样保留，避免 unified 中间模型
+// 的有损往返。这是把 Responses 的零转换透传推广到 chat_completions / claude / gemini。
+//
+//   - modelName 为空时不覆盖 model；
+//   - ensureStream=true 时确保 stream=true（OpenAI 系同时补 stream_options.include_usage，
+//     以便上游回传 usage chunk）。Gemini 由 URL action 决定流式，调用方应传 false；
+//   - addStreamOptions 仅对 OpenAI 兼容线路有意义。
+func PassthroughBody(originalBody []byte, modelName string, ensureStream, addStreamOptions bool) ([]byte, error) {
+	out := map[string]any{}
+	if err := json.Unmarshal(originalBody, &out); err != nil {
+		return nil, fmt.Errorf("failed to parse request for passthrough: %w", err)
+	}
+	if modelName != "" {
+		out["model"] = modelName
+	}
+	if ensureStream {
+		out["stream"] = true
+		if addStreamOptions {
+			streamOptions, ok := out["stream_options"].(map[string]any)
+			if !ok {
+				streamOptions = map[string]any{}
+			}
+			streamOptions["include_usage"] = true
+			out["stream_options"] = streamOptions
+		}
+	}
+	return json.Marshal(out)
+}
+
 func CanonicalToResponsesRequest(req *CanonicalRequest, original *OpenAIResponsesRequest) ([]byte, error) {
 	out := map[string]any{}
 	if original != nil {
