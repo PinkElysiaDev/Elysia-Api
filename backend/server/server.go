@@ -57,6 +57,9 @@ type Server struct {
 	// 可选的后台健康检测器（config.HealthCheck.Enabled 控制）。
 	healthChecker *healthChecker
 
+	// httpServer 持有底层 http.Server 引用，供 /__shutdown 优雅关停使用。
+	httpServer *http.Server
+
 	// 路由缓存：把 groups+models 装配结果与 tokens 载入内存，
 	// 让请求热路径无需每次查 SQLite（消除 N+1 + 单连接串行瓶颈）。
 	// 借鉴 new-api 的 *_cache.go + SyncOptions：读走内存，写后失效。
@@ -366,6 +369,7 @@ func (s *Server) setupRoutes() {
 
 	s.engine.GET("/health", s.healthCheck)
 	s.engine.POST("/__reload", s.loopbackOnly(s.reloadConfig))
+	s.engine.POST("/__shutdown", s.loopbackOnly(s.shutdown))
 }
 
 // mountWebUI 在 /ui 提供控制台静态资源，优先级：
@@ -1562,5 +1566,28 @@ func (s *Server) ListenAndServe() error {
 	addr := fmt.Sprintf("%s:%d", s.config.Server.Host, s.config.Server.Port)
 	log.Printf("Starting server on %s", addr)
 
-	return s.engine.Run(addr)
+	// 显式持有 http.Server，便于 /__shutdown 优雅关停。
+	s.httpServer = &http.Server{Addr: addr, Handler: s.engine}
+	err := s.httpServer.ListenAndServe()
+	if err == http.ErrServerClosed {
+		// 被 /__shutdown 主动关停属正常退出，不视为错误。
+		log.Printf("Server stopped gracefully")
+		return nil
+	}
+	return err
+}
+
+// shutdown 处理 /__shutdown：优雅关停 http.Server（给在途请求一个超时窗口），
+// 仅允许本机回环调用。Koishi 重启流程靠它停掉旧 daemon 后再起新进程。
+func (s *Server) shutdown(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"shuttingDown": true})
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if s.httpServer != nil {
+			if err := s.httpServer.Shutdown(ctx); err != nil {
+				log.Printf("graceful shutdown error: %v", err)
+			}
+		}
+	}()
 }

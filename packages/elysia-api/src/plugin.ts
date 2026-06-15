@@ -9,8 +9,9 @@ export const usage = `---
 
 Elysia-API 独立后端入口插件。
 
-本插件只负责 bootstrap config、后端进程和 WebUI 入口，不聚合模型、不配置模型组、不依赖 aggregator/orchestrator。
-旧 aggregator/orchestrator 可以继续并行运行；默认配置目录为 data/elysia-api-standalone，避免覆盖旧 orchestrator 的 data/elysia-api/config.json。
+本插件只负责 bootstrap config、后端进程和 WebUI 入口，不聚合模型、不配置模型组。
+后端以 daemon 方式运行，独立于 Koishi 存活：Koishi 退出/重启不会停止后端；
+启动时若检测到后端已在运行则不接管。模型组/模型源/Token 全部在 WebUI 管理（存 SQLite）。
 
 ### 命令
 
@@ -32,9 +33,9 @@ export function apply(ctx: Context, config: Config) {
     if (config.autoStart) void manager.start()
   })
 
-  ctx.on('dispose', () => {
-    void manager.stop()
-  })
+  // 后端已 daemon 化，独立于 Koishi 存活：dispose 时不再停止后端，
+  // 仅放手即可。重启/停止后端请用对应指令或改配置触发。
+  ctx.on('dispose', () => {})
 
   ctx.on('config', () => {
     manager.updateConfig(config)
@@ -62,7 +63,7 @@ export function apply(ctx: Context, config: Config) {
   })
 
   ctx.command('elysia-api.standalone.backend.status', '查询 Elysia-API 独立后端状态').action(async () => {
-    if (!manager.isRunning()) return 'Elysia-API 独立后端进程未由本插件启动'
+    if (!(await manager.isRunning())) return 'Elysia-API 独立后端未在运行'
     try {
       const health = await manager.health()
       return `Elysia-API 独立后端运行中：${JSON.stringify(health)}`

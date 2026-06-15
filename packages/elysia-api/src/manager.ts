@@ -12,10 +12,6 @@ interface BootstrapConfig {
   databasePath: string
   logLevel: string
   httpTimeout: number
-  secretKeyPath?: string
-  webuiDir?: string
-  enablePprof?: boolean
-  maxBodyBytes?: number
 }
 
 export class StandaloneBackendManager {
@@ -40,8 +36,19 @@ export class StandaloneBackendManager {
     return `http://${this.config.host}:${this.config.port}`
   }
 
-  isRunning() {
-    return this.process !== null && this.process.exitCode === null
+  /**
+   * 后端已 daemon 化，与 Koishi 进程解耦：重启 Koishi 后 this.process 会丢失，
+   * 但 daemon 仍在运行。因此存活判断以「端口健康探测」为准，而非进程句柄。
+   */
+  async isRunning(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.getAdminBaseURL()}/health`, {
+        signal: AbortSignal.timeout(2000),
+      })
+      return response.ok || response.status === 401 // 401 也说明后端在监听
+    } catch {
+      return false
+    }
   }
 
   writeBootstrapConfig() {
@@ -56,10 +63,6 @@ export class StandaloneBackendManager {
       databasePath: this.resolvePath(this.config.databasePath),
       logLevel: this.config.logLevel,
       httpTimeout: this.config.httpTimeout,
-      secretKeyPath: this.config.secretKeyPath ? this.resolvePath(this.config.secretKeyPath) : undefined,
-      webuiDir: this.config.webuiDir ? this.resolvePath(this.config.webuiDir) : undefined,
-      enablePprof: this.config.enablePprof,
-      maxBodyBytes: this.config.maxBodyBytes,
     }
     writeFileSync(path, JSON.stringify(payload, null, 2))
     this.lastConfigHash = this.buildRuntimeHash()
@@ -71,58 +74,66 @@ export class StandaloneBackendManager {
       this.ctx.logger.info('Elysia-API standalone backend is disabled')
       return
     }
-    if (this.isRunning()) {
-      this.ctx.logger.info('Elysia-API standalone backend is already running')
+    // 后端已 daemon 化：若已有实例在监听端口，则不接管、不重启（独立存活）。
+    if (await this.isRunning()) {
+      this.ctx.logger.info('Elysia-API standalone backend already running, leaving it as-is')
       return
     }
     this.writeBootstrapConfig()
     const binaryPath = this.resolveBinaryPath()
-    this.ctx.logger.info(`Starting Elysia-API standalone backend: ${binaryPath}`)
-    this.process = spawn(binaryPath, ['--config', this.getConfigPath()], {
-      stdio: ['ignore', 'pipe', 'pipe'],
+    this.ctx.logger.info(`Starting Elysia-API standalone backend (daemon): ${binaryPath}`)
+    // detached + unref + stdio:ignore：子进程脱离 Koishi 进程组，
+    // Koishi 退出/重启不再连坐杀掉后端。日志由后端自身处理，不再回流 pipe。
+    const child = spawn(binaryPath, ['--config', this.getConfigPath()], {
+      stdio: 'ignore',
       windowsHide: true,
+      detached: true,
       env: { ...process.env },
     })
-    this.process.stdout?.on('data', data => this.ctx.logger.info(`[elysia-api] ${data.toString().trim()}`))
-    this.process.stderr?.on('data', data => this.ctx.logger.warn(`[elysia-api] ${data.toString().trim()}`))
-    this.process.on('exit', code => {
-      this.ctx.logger.info(`Elysia-API standalone backend exited with code ${code}`)
-      this.process = null
+    child.on('error', error => {
+      this.ctx.logger.error(`Elysia-API standalone backend spawn error: ${error.message}`)
     })
-    this.process.on('error', error => {
-      this.ctx.logger.error(`Elysia-API standalone backend process error: ${error.message}`)
-    })
+    child.unref()
+    this.process = child
   }
 
-  async stop(timeoutMs = 5000) {
-    const proc = this.process
-    if (!proc) return
-    // 已退出则直接清理
-    if (proc.exitCode !== null || proc.signalCode !== null) {
+  /**
+   * 停止 daemon：通过 /__shutdown 端点请求后端优雅关停（loopbackOnly，仅本机可调），
+   * 再轮询 /health 直到不再响应。不再用 process.kill —— daemon 可能不由本会话持有句柄。
+   */
+  async stop(timeoutMs = 10000) {
+    if (!(await this.isRunning())) {
       this.process = null
       return
     }
-    await new Promise<void>(resolveExit => {
-      let settled = false
-      const finish = () => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        resolveExit()
-      }
-      // 等待进程真正退出（端口此时才会释放）再返回
-      proc.once('exit', finish)
-      // 兜底：超时未退出则强制结束，避免 restart 永久挂起
-      const timer = setTimeout(() => {
-        this.ctx.logger.warn(`Backend did not exit within ${timeoutMs}ms, forcing kill (pid=${proc.pid})`)
-        proc.kill('SIGKILL')
-      }, timeoutMs)
-      proc.kill('SIGTERM')
-    })
+    try {
+      await fetch(`${this.getAdminBaseURL()}/__shutdown`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(3000),
+      })
+    } catch (error) {
+      // 关停请求本身可能因连接被切断而抛错，属正常；继续轮询确认。
+      this.ctx.logger.debug(`shutdown request returned: ${(error as Error).message}`)
+    }
+    const stopped = await this.waitForStopped(timeoutMs)
+    if (!stopped) {
+      this.ctx.logger.warn(`Backend did not stop within ${timeoutMs}ms after /__shutdown`)
+    }
     this.process = null
   }
 
+  /** 轮询直到后端端口不再响应（已关停），或超时。 */
+  private async waitForStopped(timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      if (!(await this.isRunning())) return true
+      await new Promise(r => setTimeout(r, 200))
+    }
+    return !(await this.isRunning())
+  }
+
   async restart() {
+    this.writeBootstrapConfig()
     await this.stop()
     await this.start()
   }
@@ -135,7 +146,7 @@ export class StandaloneBackendManager {
       await this.restart()
       return 'restarted'
     }
-    if (this.isRunning()) {
+    if (await this.isRunning()) {
       await this.adminFetch('/api/admin/reload', { method: 'POST' }).catch(error => {
         this.ctx.logger.warn(`Backend reload request failed: ${(error as Error).message}`)
       })

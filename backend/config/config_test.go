@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// 裸配置（无任何 xxxEnc 密文）应能在没有 master.key 文件时成功加载。
-// 这是零配置开箱即用的关键：新架构不再向 config.json 写密文。
+// 裸配置应能在没有 master.key 文件时成功加载。新架构不再向 config.json 写密文，
+// 模型组/token/密钥统一走 SQLite，因此 config.json 永远是零密文的瘦 bootstrap。
 func TestLoadBareConfigWithoutMasterKey(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
@@ -24,56 +24,43 @@ func TestLoadBareConfigWithoutMasterKey(t *testing.T) {
 
 	cfg, err := Load(path)
 	if err != nil {
-		t.Fatalf("bare config without master.key should load, got error: %v", err)
+		t.Fatalf("bare config should load, got error: %v", err)
 	}
 	if cfg.PanelAccessToken != "bare-token" {
 		t.Fatalf("panelAccessToken not loaded: %q", cfg.PanelAccessToken)
 	}
-	if cfg.hasEncryptedSecrets() {
-		t.Fatalf("bare config should have no encrypted secrets")
-	}
 }
 
-// 含密文（dashboardTokenEnc）但缺少 master.key 时，应明确报错——
-// 不能静默放过需要解密的配置。
-func TestLoadEncryptedConfigRequiresMasterKey(t *testing.T) {
+// 旧 orchestrator 风格的 config.json（含 modelGroups/tokens/密文字段）现在应被
+// 静默忽略——这些字段已是 json:"-" 或已从结构体删除，不再参与反序列化，
+// 加载不报错，且不会把它们的数据带进运行时。
+func TestLegacyEncryptedFieldsIgnored(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	content := `{
   "host": "127.0.0.1",
   "port": 8765,
   "databasePath": "x.sqlite3",
-  "dashboardTokenEnc": {"algorithm":"aes-256-gcm","nonce":"AAAA","ciphertext":"BBBB"}
+  "dashboardTokenEnc": {"algorithm":"aes-256-gcm","nonce":"AAAA","ciphertext":"BBBB"},
+  "tokens": [{"name":"t1","tokenEnc":{"algorithm":"aes-256-gcm","nonce":"AAAA","ciphertext":"BBBB"}}],
+  "modelGroups": [{"id":"g1","name":"grp"}]
 }`
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-
-	// 确保环境变量不存在，强制走 master.key 文件路径。
+	// 确保无 master.key 也不再报错（不再有密文解密路径）。
 	t.Setenv("ELYSIA_API_MASTER_KEY", "")
 	os.Unsetenv("ELYSIA_API_MASTER_KEY")
 
-	if _, err := Load(path); err == nil {
-		t.Fatalf("encrypted config without master key should fail to load")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("legacy config with encrypted fields should load without error now, got: %v", err)
 	}
-}
-
-// 含密文 + 提供 ELYSIA_API_MASTER_KEY 环境变量时，hasEncryptedSecrets 应为真，
-// 且加载会尝试解密（这里用无效密文，预期解密失败而非"找不到 key"）。
-func TestEncryptedConfigDetected(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.json")
-	content := `{
-  "port": 8765,
-  "tokens": [{"name":"t1","tokenEnc":{"algorithm":"aes-256-gcm","nonce":"AAAA","ciphertext":"BBBB"}}]
-}`
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
+	// modelGroups/tokens 是 json:"-"，不参与反序列化，运行时应为空。
+	if len(cfg.Groups) != 0 {
+		t.Fatalf("legacy modelGroups must NOT be loaded from config.json, got %d", len(cfg.Groups))
 	}
-	t.Setenv("ELYSIA_API_MASTER_KEY", "some-key")
-
-	// 提供了 key，但密文是无效的 base64/GCM，预期解密报错（说明确实走了解密分支）。
-	if _, err := Load(path); err == nil {
-		t.Fatalf("expected decryption error for invalid ciphertext")
+	if len(cfg.Tokens) != 0 {
+		t.Fatalf("legacy tokens must NOT be loaded from config.json, got %d", len(cfg.Tokens))
 	}
 }
