@@ -13,16 +13,24 @@ import {
   Server,
   Terminal,
   Timer,
-  Zap,
+  XCircle,
 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { StatCard } from '@/components/stat-card'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useHealth, useUsageStats, useSources, useModels, useGroups } from '@/lib/hooks'
-import { formatBytes, formatDuration, formatNumber, percent, startOfRange, toRFC3339 } from '@/lib/utils'
+import {
+  compactNumber,
+  formatBytes,
+  formatDuration,
+  formatNumber,
+  percent,
+  ratePerMinute,
+  startOfRange,
+  toRFC3339,
+} from '@/lib/utils'
 
 export function OverviewPage() {
   const { data: health, isLoading: healthLoading } = useHealth(15000)
@@ -38,6 +46,9 @@ export function OverviewPage() {
   const { data: groups, isLoading: groupsLoading } = useGroups()
 
   const successRate = stats ? percent(stats.success, stats.requests) : '—'
+  // 近 7 天窗口跨度固定，直接用查询的 from/to 估算每分钟速率。
+  const rpm = stats ? ratePerMinute(stats.requests, usageParams.from, usageParams.to) : null
+  const tpm = stats ? ratePerMinute(stats.totalTokens, usageParams.from, usageParams.to) : null
 
   return (
     <div className="space-y-6">
@@ -82,7 +93,6 @@ export function OverviewPage() {
               <span className="text-destructive">异常</span>
             )
           }
-          hint="每 15 秒自动刷新"
           icon={<Activity className="h-5 w-5" />}
         />
         <StatCard
@@ -90,13 +100,16 @@ export function OverviewPage() {
           value={
             healthLoading ? (
               <Skeleton className="h-7 w-20" />
+            ) : health?.database ? (
+              <span className="flex items-center gap-2 text-success">
+                <CheckCircle2 className="h-5 w-5" /> 已连接
+              </span>
             ) : (
-              <Badge variant={health?.database ? 'success' : 'destructive'}>
-                {health?.database ? '已连接' : '不可用'}
-              </Badge>
+              <span className="flex items-center gap-2 text-destructive">
+                <XCircle className="h-5 w-5" /> 不可用
+              </span>
             )
           }
-          hint="数据存储"
           icon={<Database className="h-5 w-5" />}
         />
         <StatCard
@@ -130,29 +143,35 @@ export function OverviewPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <MiniStat
               loading={statsLoading}
-              icon={<Zap className="h-4 w-4" />}
-              label="请求数"
-              value={formatNumber(stats?.requests)}
-            />
-            <MiniStat
-              loading={statsLoading}
               icon={<CheckCircle2 className="h-4 w-4" />}
               label="成功率"
               value={successRate}
-              sub={stats ? `成功 ${formatNumber(stats.success)} · 失败 ${formatNumber(stats.failed)}` : undefined}
+              sub={
+                stats
+                  ? `成功 ${formatNumber(stats.success)} · 失败 ${formatNumber(stats.failed)} · 共 ${formatNumber(stats.requests)}`
+                  : undefined
+              }
             />
             <MiniStat
               loading={statsLoading}
               icon={<Cpu className="h-4 w-4" />}
               label="Token 总量"
               value={formatNumber(stats?.totalTokens)}
-              sub={stats ? `入 ${formatNumber(stats.inputTokens)} · 出 ${formatNumber(stats.outputTokens)}` : undefined}
+              sub={stats ? `缓存命中率 ${percent(stats.cacheHitTokens, stats.inputTokens)}` : undefined}
             />
             <MiniStat
               loading={statsLoading}
               icon={<Timer className="h-4 w-4" />}
               label="平均耗时"
               value={formatDuration(stats?.avgDurationMs)}
+              sub={stats ? `平均首字 ${formatDuration(stats.avgFirstByteMs)}` : undefined}
+            />
+            <MiniStat
+              loading={statsLoading}
+              icon={<Gauge className="h-4 w-4" />}
+              label="平均吞吐"
+              value={tpm == null ? '—' : `${compactNumber(tpm)} tpm`}
+              sub={rpm == null ? undefined : `${rpm.toFixed(rpm < 10 ? 2 : rpm < 100 ? 1 : 0)} rpm`}
             />
           </div>
         </CardContent>

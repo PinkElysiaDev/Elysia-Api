@@ -33,6 +33,7 @@ func (s *Server) saveUsageRecordToStore(record *usageRecord) error {
 		InputTokens:       intPtrValue(record.Usage.InputTokens),
 		OutputTokens:      intPtrValue(record.Usage.OutputTokens),
 		TotalTokens:       intPtrValue(record.Usage.TotalTokens),
+		CacheHitTokens:    intPtrValue(record.Usage.CacheHitTokens),
 		RequestTruncated:  record.IncomingBody.Truncated,
 		ResponseTruncated: record.ProviderResponse.Truncated,
 	}

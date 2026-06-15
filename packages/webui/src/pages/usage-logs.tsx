@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { MultiSelect } from '@/components/ui/multi-select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
   Dialog,
@@ -30,7 +31,7 @@ import { CopyButton } from '@/components/copy-button'
 import { RangeSelect, type RangeKey } from '@/components/range-select'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
-import { useUsageLogs, revalidate } from '@/lib/hooks'
+import { useUsageLogs, useGroups, useModels, useTokens, revalidate } from '@/lib/hooks'
 import { api } from '@/lib/api'
 import type { UsageBody, UsageLogDetail } from '@/lib/types'
 import {
@@ -42,6 +43,7 @@ import {
   startOfRange,
   toRFC3339,
   tryParseJSON,
+  uniqueSorted,
 } from '@/lib/utils'
 
 const PAGE_SIZE = 20
@@ -50,21 +52,33 @@ export function UsageLogsPage() {
   const toast = useToast()
   const { confirm, dialog } = useConfirm()
   const [range, setRange] = useState<RangeKey>('7d')
-  const [groupName, setGroupName] = useState('')
+  const [groupNames, setGroupNames] = useState<string[]>([])
+  const [modelNames, setModelNames] = useState<string[]>([])
+  const [keyNames, setKeyNames] = useState<string[]>([])
   const [statusCode, setStatusCode] = useState('')
   const [page, setPage] = useState(0)
   const [detailId, setDetailId] = useState<string | null>(null)
+
+  const { data: groups } = useGroups()
+  const { data: models } = useModels()
+  const { data: tokens } = useTokens()
+
+  const groupOptions = useMemo(() => uniqueSorted((groups ?? []).map((g) => g.name)), [groups])
+  const modelOptions = useMemo(() => uniqueSorted((models ?? []).map((m) => m.name)), [models])
+  const keyOptions = useMemo(() => uniqueSorted((tokens ?? []).map((t) => t.name)), [tokens])
 
   const params = useMemo(
     () => ({
       from: startOfRange(range),
       to: toRFC3339(new Date()),
-      groupName: groupName.trim() || undefined,
+      groupNames: groupNames.length ? groupNames : undefined,
+      modelNames: modelNames.length ? modelNames : undefined,
+      keyNames: keyNames.length ? keyNames : undefined,
       statusCode: statusCode.trim() ? Number(statusCode) : undefined,
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
     }),
-    [range, groupName, statusCode, page],
+    [range, groupNames, modelNames, keyNames, statusCode, page],
   )
 
   const { data, isLoading, error, mutate } = useUsageLogs(params)
@@ -105,7 +119,7 @@ export function UsageLogsPage() {
       />
 
       <Card className="p-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <div className="space-y-1.5">
             <Label className="text-xs">时间范围</Label>
             <RangeSelect
@@ -118,13 +132,41 @@ export function UsageLogsPage() {
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">模型组</Label>
-            <Input
-              value={groupName}
-              placeholder="group name"
-              onChange={(e) => {
-                setGroupName(e.target.value)
+            <MultiSelect
+              options={groupOptions}
+              value={groupNames}
+              onChange={(v) => {
+                setGroupNames(v)
                 resetFilters()
               }}
+              placeholder="全部模型组"
+              searchPlaceholder="搜索模型组"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">模型</Label>
+            <MultiSelect
+              options={modelOptions}
+              value={modelNames}
+              onChange={(v) => {
+                setModelNames(v)
+                resetFilters()
+              }}
+              placeholder="全部模型"
+              searchPlaceholder="搜索模型"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">调用方 API Key</Label>
+            <MultiSelect
+              options={keyOptions}
+              value={keyNames}
+              onChange={(v) => {
+                setKeyNames(v)
+                resetFilters()
+              }}
+              placeholder="全部调用方"
+              searchPlaceholder="搜索调用方"
             />
           </div>
           <div className="space-y-1.5">

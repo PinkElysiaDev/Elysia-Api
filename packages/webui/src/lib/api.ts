@@ -30,10 +30,12 @@ export class ApiError extends Error {
 
 const ADMIN_BASE = '/api/admin'
 
+type QueryValue = string | number | boolean | undefined | null | string[]
+
 interface RequestOptions {
   method?: string
   body?: unknown
-  query?: Record<string, string | number | boolean | undefined | null>
+  query?: Record<string, QueryValue>
   signal?: AbortSignal
 }
 
@@ -43,6 +45,14 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(query)) {
     if (value === undefined || value === null || value === '') continue
+    // 数组值展开为重复参数（?key=a&key=b），对应后端 c.QueryArray。
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item === undefined || item === null || item === '') continue
+        params.append(key, String(item))
+      }
+      continue
+    }
     params.set(key, String(value))
   }
   const qs = params.toString()
@@ -157,7 +167,7 @@ export const api = {
     request<SystemLogsResult>('/logs', { query: params }),
 }
 
-function serializeUsage(params: UsageQueryParams): Record<string, string | number | undefined> {
+function serializeUsage(params: UsageQueryParams): Record<string, QueryValue> {
   return {
     from: params.from,
     to: params.to,
@@ -168,6 +178,10 @@ function serializeUsage(params: UsageQueryParams): Record<string, string | numbe
     groupName: params.groupName,
     modelName: params.modelName,
     statusCode: params.statusCode || undefined,
+    // 多选数组按重复参数发送（keyName/groupName/modelName），后端用 QueryArray 读取。
+    ...(params.keyNames?.length ? { keyName: params.keyNames } : {}),
+    ...(params.groupNames?.length ? { groupName: params.groupNames } : {}),
+    ...(params.modelNames?.length ? { modelName: params.modelNames } : {}),
   }
 }
 

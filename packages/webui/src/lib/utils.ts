@@ -64,6 +64,48 @@ export function percent(part: number, total: number): string {
   return `${((part / total) * 100).toFixed(1)}%`
 }
 
+/** 紧凑数字：1234 → 1.2k，1200000 → 1.2m。用于 TPM 等大数值的大字展示。 */
+export function compactNumber(value: number | undefined | null): string {
+  const n = Number(value || 0)
+  const abs = Math.abs(n)
+  if (abs < 1000) return String(Math.round(n))
+  if (abs < 1_000_000) return `${(n / 1000).toFixed(abs < 10_000 ? 1 : 0).replace(/\.0$/, '')}k`
+  if (abs < 1_000_000_000) return `${(n / 1_000_000).toFixed(abs < 10_000_000 ? 1 : 0).replace(/\.0$/, '')}m`
+  return `${(n / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}b`
+}
+
+/**
+ * 速率（每分钟）。count 为请求数或 token 数，from/to 为 ISO 时间串。
+ * 跨度无效（缺失或非正）时返回 null，由调用方决定展示占位符。
+ */
+export function ratePerMinute(
+  count: number | undefined | null,
+  from: string | undefined | null,
+  to: string | undefined | null,
+): number | null {
+  if (!from || !to) return null
+  const start = new Date(from).getTime()
+  const end = new Date(to).getTime()
+  if (Number.isNaN(start) || Number.isNaN(end)) return null
+  const minutes = (end - start) / 60_000
+  if (minutes <= 0) return null
+  return Number(count || 0) / minutes
+}
+
+/** 去重 + 去空 + 按中文/字母序排序，返回 {value,label} 选项数组，供多选下拉使用。 */
+export function uniqueSorted(values: (string | undefined | null)[]): { value: string; label: string }[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const raw of values) {
+    const v = (raw ?? '').trim()
+    if (!v || seen.has(v)) continue
+    seen.add(v)
+    result.push(v)
+  }
+  result.sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+  return result.map((v) => ({ value: v, label: v }))
+}
+
 export function maskMiddle(value: string | undefined): string {
   if (!value) return ''
   if (value.length <= 8) return '***'

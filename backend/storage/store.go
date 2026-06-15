@@ -114,6 +114,13 @@ func (s *Store) migrate(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash) WHERE token_hash != ''`); err != nil {
 		return err
 	}
+	// 增量迁移：为 usage_records 增加 cache_hit_tokens 列（缓存命中 token 数）。
+	// 用于统计接口直接 SUM 出缓存命中量与命中率，免去逐条解析 record_json。
+	// 历史数据该列为 0（可接受：旧记录缓存命中量不再回填）。
+	if _, err := s.db.ExecContext(ctx, `ALTER TABLE usage_records ADD COLUMN cache_hit_tokens INTEGER NOT NULL DEFAULT 0`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
 	// 回填历史数据的 token_hash：查所有 hash 为空的行，解密 → 计算 SHA256 → UPDATE。
 	// 解密失败（极端情况：master key 变了）跳过该行并记日志。
 	//

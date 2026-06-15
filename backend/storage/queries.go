@@ -207,7 +207,7 @@ func (s *Store) SaveUsageRecordJSON(ctx context.Context, payload []byte, summary
 	if summary.StartedAt.IsZero() {
 		summary.StartedAt = endedAt
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT OR REPLACE INTO usage_records(request_id, started_at, ended_at, key_name, key_hash, group_name, model_name, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, request_truncated, response_truncated, record_json) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, summary.RequestID, summary.StartedAt.UTC().Format(time.RFC3339Nano), endedAt.UTC().Format(time.RFC3339Nano), summary.KeyName, summary.KeyHash, summary.GroupName, summary.ModelName, summary.Platform, summary.SourceFormat, summary.TargetFormat, summary.RelayMode, summary.ResponsesMode, summary.UsageSource, boolInt(summary.Stream), summary.StatusCode, summary.Error, summary.FirstByteMs, summary.DurationMs, summary.InputTokens, summary.OutputTokens, summary.TotalTokens, boolInt(summary.RequestTruncated), boolInt(summary.ResponseTruncated), string(payload))
+	_, err := s.db.ExecContext(ctx, `INSERT OR REPLACE INTO usage_records(request_id, started_at, ended_at, key_name, key_hash, group_name, model_name, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated, record_json) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, summary.RequestID, summary.StartedAt.UTC().Format(time.RFC3339Nano), endedAt.UTC().Format(time.RFC3339Nano), summary.KeyName, summary.KeyHash, summary.GroupName, summary.ModelName, summary.Platform, summary.SourceFormat, summary.TargetFormat, summary.RelayMode, summary.ResponsesMode, summary.UsageSource, boolInt(summary.Stream), summary.StatusCode, summary.Error, summary.FirstByteMs, summary.DurationMs, summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, boolInt(summary.RequestTruncated), boolInt(summary.ResponseTruncated), string(payload))
 	return err
 }
 
@@ -226,7 +226,7 @@ func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageL
 		offset = 0
 	}
 	args = append(args, limit, offset)
-	rows, err := s.db.QueryContext(ctx, `SELECT request_id, started_at, key_name, key_hash, group_name, model_name, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, request_truncated, response_truncated FROM usage_records `+where+` ORDER BY started_at DESC LIMIT ? OFFSET ?`, args...)
+	rows, err := s.db.QueryContext(ctx, `SELECT request_id, started_at, key_name, key_hash, group_name, model_name, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated FROM usage_records `+where+` ORDER BY started_at DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -236,7 +236,7 @@ func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageL
 		var item UsageLogItem
 		var started string
 		var stream, reqTrunc, respTrunc int
-		if err := rows.Scan(&item.RequestID, &started, &item.KeyName, &item.KeyHash, &item.GroupName, &item.ModelName, &item.Platform, &item.SourceFormat, &item.TargetFormat, &item.RelayMode, &item.ResponsesMode, &item.UsageSource, &stream, &item.StatusCode, &item.Error, &item.FirstByteMs, &item.DurationMs, &item.InputTokens, &item.OutputTokens, &item.TotalTokens, &reqTrunc, &respTrunc); err != nil {
+		if err := rows.Scan(&item.RequestID, &started, &item.KeyName, &item.KeyHash, &item.GroupName, &item.ModelName, &item.Platform, &item.SourceFormat, &item.TargetFormat, &item.RelayMode, &item.ResponsesMode, &item.UsageSource, &stream, &item.StatusCode, &item.Error, &item.FirstByteMs, &item.DurationMs, &item.InputTokens, &item.OutputTokens, &item.TotalTokens, &item.CacheHitTokens, &reqTrunc, &respTrunc); err != nil {
 			return 0, nil, err
 		}
 		item.StartedAt = parseTime(started)
@@ -259,7 +259,13 @@ func usageWhere(q UsageQuery) (string, []any) {
 		parts = append(parts, "started_at <= ?")
 		args = append(args, q.To.UTC().Format(time.RFC3339Nano))
 	}
-	if q.KeyName != "" {
+	// 多选优先于单值：非空时生成 IN (...)，否则回退到单值等值条件。
+	if len(q.KeyNames) > 0 {
+		parts = append(parts, usageInClause("key_name", len(q.KeyNames)))
+		for _, v := range q.KeyNames {
+			args = append(args, v)
+		}
+	} else if q.KeyName != "" {
 		parts = append(parts, "key_name = ?")
 		args = append(args, q.KeyName)
 	}
@@ -267,11 +273,21 @@ func usageWhere(q UsageQuery) (string, []any) {
 		parts = append(parts, "key_hash = ?")
 		args = append(args, q.KeyHash)
 	}
-	if q.GroupName != "" {
+	if len(q.GroupNames) > 0 {
+		parts = append(parts, usageInClause("group_name", len(q.GroupNames)))
+		for _, v := range q.GroupNames {
+			args = append(args, v)
+		}
+	} else if q.GroupName != "" {
 		parts = append(parts, "group_name = ?")
 		args = append(args, q.GroupName)
 	}
-	if q.ModelName != "" {
+	if len(q.ModelNames) > 0 {
+		parts = append(parts, usageInClause("model_name", len(q.ModelNames)))
+		for _, v := range q.ModelNames {
+			args = append(args, v)
+		}
+	} else if q.ModelName != "" {
 		parts = append(parts, "model_name = ?")
 		args = append(args, q.ModelName)
 	}
@@ -280,6 +296,12 @@ func usageWhere(q UsageQuery) (string, []any) {
 		args = append(args, q.StatusCode)
 	}
 	return "WHERE " + strings.Join(parts, " AND "), args
+}
+
+// usageInClause 生成 `col IN (?, ?, ...)`，n 为占位符个数。
+func usageInClause(col string, n int) string {
+	placeholders := strings.TrimSuffix(strings.Repeat("?, ", n), ", ")
+	return col + " IN (" + placeholders + ")"
 }
 
 func (s *Store) GetUsageRecordJSON(ctx context.Context, id string) ([]byte, bool, error) {
@@ -301,13 +323,33 @@ func (s *Store) ClearUsage(ctx context.Context) error {
 
 func (s *Store) UsageTotals(ctx context.Context, q UsageQuery) (map[string]any, error) {
 	where, args := usageWhere(q)
-	row := s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0), COALESCE(AVG(duration_ms),0) FROM usage_records `+where, args...)
-	var requests, success, input, output, total int
-	var avgDuration float64
-	if err := row.Scan(&requests, &success, &input, &output, &total, &avgDuration); err != nil {
+	// avg_first_byte 仅对 first_byte_ms > 0 的记录求平均（非流式/未记录首字的请求为 0，
+	// 计入会拉低均值）；first/last_used_at 提供时间跨度，供前端计算 RPM/TPM。
+	row := s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0), COALESCE(SUM(cache_hit_tokens),0), COALESCE(AVG(duration_ms),0), COALESCE(AVG(CASE WHEN first_byte_ms > 0 THEN first_byte_ms END),0), COALESCE(MIN(started_at),''), COALESCE(MAX(started_at),'') FROM usage_records `+where, args...)
+	var requests, success, input, output, total, cacheHit int
+	var avgDuration, avgFirstByte float64
+	var firstUsedAt, lastUsedAt string
+	if err := row.Scan(&requests, &success, &input, &output, &total, &cacheHit, &avgDuration, &avgFirstByte, &firstUsedAt, &lastUsedAt); err != nil {
 		return nil, err
 	}
-	return map[string]any{"requests": requests, "success": success, "failed": requests - success, "inputTokens": input, "outputTokens": output, "totalTokens": total, "avgDurationMs": avgDuration}, nil
+	cacheHitRate := 0.0
+	if input > 0 {
+		cacheHitRate = float64(cacheHit) / float64(input)
+	}
+	return map[string]any{
+		"requests":       requests,
+		"success":        success,
+		"failed":         requests - success,
+		"inputTokens":    input,
+		"outputTokens":   output,
+		"totalTokens":    total,
+		"cacheHitTokens": cacheHit,
+		"cacheHitRate":   cacheHitRate,
+		"avgDurationMs":  avgDuration,
+		"avgFirstByteMs": avgFirstByte,
+		"firstUsedAt":    firstUsedAt,
+		"lastUsedAt":     lastUsedAt,
+	}, nil
 }
 
 func (s *Store) InsertSystemLog(ctx context.Context, level, message string, fields any) error {
