@@ -7,10 +7,12 @@ const PLATFORM_LABEL: Record<string, string> = {
   chat_completions: 'Chat Completions API',
   anthropic: 'Anthropic API',
   gemini: 'Gemini API',
-  // 旧值向后兼容（库里可能仍是这些）
+  // relay FormatType 值（usage 日志的 sourceFormat/targetFormat 用这套）
+  openai_responses: 'Responses API',
   openai: 'Chat Completions API',
-  'openai-compatible': 'Chat Completions API',
   claude: 'Anthropic API',
+  // 旧值向后兼容（库里可能仍是这些）
+  'openai-compatible': 'Chat Completions API',
 }
 
 export function PlatformBadge({ platform }: { platform: Platform | string }) {
