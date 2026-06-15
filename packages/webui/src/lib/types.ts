@@ -126,7 +126,12 @@ export interface UsageStats {
   inputTokens: number
   outputTokens: number
   totalTokens: number
+  cacheHitTokens: number
+  cacheHitRate: number
   avgDurationMs: number
+  avgFirstByteMs: number
+  firstUsedAt?: string
+  lastUsedAt?: string
 }
 
 export interface UsageLogItem {
@@ -252,4 +257,8 @@ export interface UsageQueryParams {
   groupName?: string
   modelName?: string
   statusCode?: number
+  // 多选筛选：非空时后端按 IN (...) 匹配，优先于对应单值字段。
+  keyNames?: string[]
+  groupNames?: string[]
+  modelNames?: string[]
 }
