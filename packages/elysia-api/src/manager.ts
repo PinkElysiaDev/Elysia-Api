@@ -9,8 +9,6 @@ interface BootstrapConfig {
   host: string
   port: number
   panelAccessToken: string
-  databasePath: string
-  logLevel: string
   httpTimeout: number
 }
 
@@ -60,8 +58,6 @@ export class StandaloneBackendManager {
       host: this.config.host,
       port: this.config.port,
       panelAccessToken,
-      databasePath: this.resolvePath(this.config.databasePath),
-      logLevel: this.config.logLevel,
       httpTimeout: this.config.httpTimeout,
     }
     writeFileSync(path, JSON.stringify(payload, null, 2))

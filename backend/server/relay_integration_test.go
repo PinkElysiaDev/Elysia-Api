@@ -341,3 +341,36 @@ func ExampleServer_smoke() {
 	fmt.Println("ok")
 	// Output: ok
 }
+
+// 流式请求：上游返回 200 但 body 立即关闭（空 SSE 流），转发会出错。
+// 回归断言：record.StatusCode 必须从 200 下调为失败码，否则会被日志/统计误判为成功。
+func TestStreamEmptyUpstreamRecordsFailure(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		// 不写任何 SSE 事件，直接结束 —— 模拟"上游返回结构体为空"。
+	}))
+	defer upstream.Close()
+
+	group := config.ModelGroupConfig{
+		ID: "g1", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 1,
+		Models: []config.ModelRef{openAIModel("m", upstream.URL)},
+	}
+	s := newTestServer([]config.ModelGroupConfig{group})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	c.Request = req
+	s.chatCompletions(c)
+
+	records := s.usageSnapshot()
+	if len(records) == 0 {
+		t.Fatal("expected a usage record to be written")
+	}
+	last := records[len(records)-1]
+	if last.StatusCode < 400 {
+		t.Fatalf("empty/failed upstream stream must NOT be recorded as success, got statusCode=%d error=%q", last.StatusCode, last.Error)
+	}
+}

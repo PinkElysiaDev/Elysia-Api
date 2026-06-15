@@ -326,34 +326,34 @@ func (a *OpenAIAdapter) SendRequestRawWithBody(baseUrl, apiKey string, body []by
 	return &openAIResp, respBody, resp.StatusCode, nil
 }
 
-func (a *OpenAIAdapter) SendResponsesRawWithBody(baseUrl, apiKey string, body []byte) (*OpenAIResponsesResponse, []byte, error) {
+func (a *OpenAIAdapter) SendResponsesRawWithBody(baseUrl, apiKey string, body []byte) (*OpenAIResponsesResponse, []byte, int, error) {
 	url := fmt.Sprintf("%s/responses", strings.TrimSuffix(baseUrl, "/"))
 	httpReq, err := buildHTTPRequest("POST", url, apiKey, body, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, resp.StatusCode, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, respBody, fmt.Errorf("API error: %s", string(respBody))
+		return nil, respBody, resp.StatusCode, fmt.Errorf("API error: %s", string(respBody))
 	}
 
 	var responsesResp OpenAIResponsesResponse
 	if err := json.Unmarshal(respBody, &responsesResp); err != nil {
-		return nil, respBody, err
+		return nil, respBody, resp.StatusCode, err
 	}
 
-	return &responsesResp, respBody, nil
+	return &responsesResp, respBody, resp.StatusCode, nil
 }
 
 // IsStreamRequest 检查请求体是否为流式请求

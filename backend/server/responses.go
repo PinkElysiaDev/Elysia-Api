@@ -176,12 +176,17 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 
 	switch targetFormat {
 	case relay.FormatResponses:
-		responsesResp, respBody, err := s.openaiAdapter.SendResponsesRawWithBody(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
+		responsesResp, respBody, upstreamStatus, err := s.openaiAdapter.SendResponsesRawWithBody(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		record.ProviderResponse = sanitizeUsageBody(respBody)
 		if err != nil {
-			record.StatusCode = http.StatusBadGateway
+			// 记录真实的上游状态码（而非一律 502），与 Claude/Gemini 分支保持一致。
+			status := upstreamStatus
+			if status < 400 {
+				status = http.StatusBadGateway
+			}
+			record.StatusCode = status
 			record.Error = err.Error()
-			c.Data(http.StatusBadGateway, "application/json", respBody)
+			c.Data(status, "application/json", respBody)
 			return
 		}
 		canonicalResp, err = relay.ResponsesResponseToCanonical(responsesResp)
@@ -313,12 +318,6 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		s.recordUsage(record)
 	}()
 
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("Transfer-Encoding", "chunked")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		record.StatusCode = http.StatusInternalServerError
@@ -326,6 +325,25 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": "Streaming not supported", "type": "api_error"}})
 		return
 	}
+
+	// SSE 响应头延后到上游连接成功、即将写出响应体之前再设置（借鉴 new-api /
+	// handleStreamRequest）。这样上游快速失败时还没设流式头，AbortWithStatusJSON
+	// 能干净返回 JSON 错误（带 Content-Length），不会和 Transfer-Encoding 冲突。
+	// 不手动设 Transfer-Encoding：Go 的 http.Server 对无 Content-Length 的流式
+	// 响应自动 chunked，手动设反而在错误路径制造 TE + Content-Length 冲突，
+	// 导致 codex 等客户端判定响应损坏、立即断连、不断重试。
+	sseStarted := false
+	startSSE := func() {
+		if sseStarted {
+			return
+		}
+		c.Writer.Header().Set("Content-Type", "text/event-stream")
+		c.Writer.Header().Set("Cache-Control", "no-cache")
+		c.Writer.Header().Set("Connection", "keep-alive")
+		c.Writer.Header().Set("X-Accel-Buffering", "no")
+		sseStarted = true
+	}
+
 	writer := &observingStreamWriter{
 		inner:        &ginStreamWriter{writer: c.Writer, flusher: flusher},
 		record:       record,
@@ -343,6 +361,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
 			return
 		}
+		startSSE()
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
 		streamErr = relay.ForwardResponsesStream(resp, writer)
 	case relay.FormatClaude:
@@ -353,6 +372,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
 			return
 		}
+		startSSE()
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
 		streamErr = relay.ConvertClaudeStreamToResponsesStream(resp, writer, selectedModel.Name)
 	case relay.FormatGemini:
@@ -363,6 +383,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
 			return
 		}
+		startSSE()
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
 		streamErr = relay.ConvertGeminiStreamToResponsesStream(resp, writer, selectedModel.Name)
 	default:
@@ -373,16 +394,28 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
 			return
 		}
+		startSSE()
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
 		streamErr = relay.ConvertOpenAIChatStreamToResponsesStream(resp, writer, selectedModel.Name)
 	}
 
-	// 流式转发中途出错（如上游断流）：向下游写一个 SSE error 终止事件，让客户端能
+	// 流式转发中途出错（如上游断流/空响应）：向下游写一个 SSE error 终止事件，让客户端能
 	// 明确感知"出错了"，而非看到连接莫名中断、无任何收尾。
 	if streamErr != nil {
 		log.Printf("Error forwarding Responses stream: %v", streamErr)
 		record.Error = streamErr.Error()
+		// 转发中途出错必须反映为失败状态码，否则会被统计/日志误判为成功（200）。
+		// 上游已成功建连但流中断属上游侧问题，记 502。
+		if record.StatusCode < 400 {
+			record.StatusCode = http.StatusBadGateway
+		}
 		writeResponsesStreamError(writer, streamErr)
+	} else if streamYieldedNothing(record, writer) {
+		// 上游返回 200 但既无输出文本也无 usage —— 实际空响应，纠正为失败。
+		log.Printf("Upstream Responses stream returned empty response (no content, no usage)")
+		record.Error = "upstream returned empty response"
+		record.StatusCode = http.StatusBadGateway
+		writeResponsesStreamError(writer, fmt.Errorf("upstream returned empty response"))
 	}
 
 	applyLocalResponseEstimate(record, writer.responseText.String(), s.config.GetUsageConfig())
