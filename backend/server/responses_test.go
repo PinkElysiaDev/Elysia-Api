@@ -37,13 +37,30 @@ func TestSelectResponsesTargetFormatNativeClaudeErrors(t *testing.T) {
 	}
 }
 
-func TestSelectResponsesTargetFormatOpenAIDefaultsNative(t *testing.T) {
+// 旧的 "openai" apiFormat 现在归一化为 chat_completions，因此走 transform 而非
+// native Responses——这是有意的契约变更：只有用户明确选 responses 才透传，避免
+// 旧实现里 Responses→Responses 的有损重建导致 codex 1 秒断连。
+func TestSelectResponsesTargetFormatLegacyOpenAITransforms(t *testing.T) {
 	model := config.ModelRef{Name: "gpt-4.1", Platform: "openai"}
 
 	format, mode, err := selectResponsesTargetFormat(model, relay.PlatformOpenAI, config.ResponsesConfig{})
 
 	if err != nil {
-		t.Fatalf("expected OpenAI model to use native Responses, got error: %v", err)
+		t.Fatalf("expected legacy openai model to transform, got error: %v", err)
+	}
+	if format != relay.FormatOpenAIChat || mode != "transformed_responses" {
+		t.Fatalf("expected chat transform target, got format=%q mode=%q", format, mode)
+	}
+}
+
+// 明确选 responses apiFormat → 走 native Responses（透传），不转换。
+func TestSelectResponsesTargetFormatExplicitResponsesIsNative(t *testing.T) {
+	model := config.ModelRef{Name: "gpt-5-codex", Platform: "responses"}
+
+	format, mode, err := selectResponsesTargetFormat(model, relay.PlatformOpenAI, config.ResponsesConfig{})
+
+	if err != nil {
+		t.Fatalf("expected responses apiFormat to use native Responses, got error: %v", err)
 	}
 	if format != relay.FormatResponses || mode != "native_responses" {
 		t.Fatalf("expected native Responses target, got format=%q mode=%q", format, mode)

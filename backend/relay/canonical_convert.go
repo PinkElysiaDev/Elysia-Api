@@ -235,8 +235,11 @@ func CanonicalToOpenAIChatRequest(req *CanonicalRequest) ([]byte, error) {
 	}
 	if req.Stream {
 		out["stream"] = true
-	}
-	if req.StreamOptions != nil {
+		// 流式必须注入 stream_options.include_usage=true：OpenAI 兼容上游默认不在
+		// 流式响应里返回 usage，不注入则末尾 chunk 没有 usage，Chat→Responses 转换
+		// 时 response.completed.usage 只能全 0。借鉴 cc-switch inject_openai_stream_include_usage。
+		out["stream_options"] = StreamOptions{IncludeUsage: true}
+	} else if req.StreamOptions != nil {
 		out["stream_options"] = StreamOptions{IncludeUsage: req.StreamOptions.IncludeUsage}
 	}
 	if req.Stop != nil {
@@ -353,6 +356,27 @@ func CanonicalToGeminiRequest(req *CanonicalRequest) ([]byte, error) {
 			"includeThoughts": true,
 			"thinkingEffort":  req.Thinking.Effort,
 		}
+	}
+	return json.Marshal(out)
+}
+
+// ResponsesPassthroughBody 透传式构造 Responses 上游请求体：以**原始请求字节**为基底，
+// 只覆盖 model 名（模型组路由需要），其余字段（input/tools/reasoning/encrypted_content/
+// stream/stream_options/prompt_cache_key 等）原样保留。
+//
+// 为什么不走 CanonicalToResponsesRequest：那条路把请求拆进 canonical 再重建 input，
+// 而 codex 的 input 含 reasoning/function_call/encrypted_content 等富项，重建会丢字段或
+// 改结构，上游严格校验直接拒 → 1 秒断连。当上游本身就支持 Responses API（用户明确选了
+// Responses API 线路）时，零转换透传最稳妥（借鉴 cc-switch 的 should_convert=false 分支）。
+//
+// modelName 为空时不覆盖 model。
+func ResponsesPassthroughBody(originalBody []byte, modelName string) ([]byte, error) {
+	out := map[string]any{}
+	if err := json.Unmarshal(originalBody, &out); err != nil {
+		return nil, fmt.Errorf("failed to parse Responses request for passthrough: %w", err)
+	}
+	if modelName != "" {
+		out["model"] = modelName
 	}
 	return json.Marshal(out)
 }

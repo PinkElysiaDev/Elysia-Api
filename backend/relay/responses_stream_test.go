@@ -59,7 +59,10 @@ func TestConvertOpenAIChatStreamToResponsesStreamEmitsTextAndUsage(t *testing.T)
 		`"text":"hello"`,
 		"event: response.output_item.done",
 		"event: response.completed",
-		`"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}`,
+		// codex 要求 response.completed.usage 含整数 input_tokens/output_tokens/total_tokens
+		`"input_tokens":3`,
+		`"output_tokens":2`,
+		`"total_tokens":5`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("expected output to contain %q, got:\n%s", want, out)
@@ -119,7 +122,11 @@ func TestConvertClaudeStreamToResponsesStreamEmitsTextAndUsage(t *testing.T) {
 		"event: response.output_text.done",
 		`"text":"hi"`,
 		"event: response.completed",
-		`"usage":{"output_tokens":4}`,
+		// 重映射 + 合并语义：input_tokens(10) 来自 message_start，output_tokens(4) 来自
+		// message_delta，二者必须都保留（修复前 message_delta 会覆盖丢掉 input_tokens）。
+		`"input_tokens":10`,
+		`"output_tokens":4`,
+		`"total_tokens":14`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("expected output to contain %q, got:\n%s", want, out)
@@ -146,7 +153,10 @@ func TestConvertGeminiStreamToResponsesStreamEmitsTextAndUsage(t *testing.T) {
 		"event: response.output_text.done",
 		`"text":"gemini"`,
 		"event: response.completed",
-		`"usage":{"candidatesTokenCount":6,"promptTokenCount":5,"totalTokenCount":11}`,
+		// Gemini usageMetadata 重映射：promptTokenCount→input, candidatesTokenCount→output。
+		`"input_tokens":5`,
+		`"output_tokens":6`,
+		`"total_tokens":11`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("expected output to contain %q, got:\n%s", want, out)

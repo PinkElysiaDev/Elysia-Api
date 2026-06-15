@@ -94,9 +94,31 @@ export class StandaloneBackendManager {
     })
   }
 
-  async stop() {
-    if (!this.process) return
-    this.process.kill('SIGTERM')
+  async stop(timeoutMs = 5000) {
+    const proc = this.process
+    if (!proc) return
+    // 已退出则直接清理
+    if (proc.exitCode !== null || proc.signalCode !== null) {
+      this.process = null
+      return
+    }
+    await new Promise<void>(resolveExit => {
+      let settled = false
+      const finish = () => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolveExit()
+      }
+      // 等待进程真正退出（端口此时才会释放）再返回
+      proc.once('exit', finish)
+      // 兜底：超时未退出则强制结束，避免 restart 永久挂起
+      const timer = setTimeout(() => {
+        this.ctx.logger.warn(`Backend did not exit within ${timeoutMs}ms, forcing kill (pid=${proc.pid})`)
+        proc.kill('SIGKILL')
+      }, timeoutMs)
+      proc.kill('SIGTERM')
+    })
     this.process = null
   }
 

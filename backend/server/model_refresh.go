@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -90,14 +91,16 @@ func (s *Server) refreshSourceByValue(ctx context.Context, source storage.ModelS
 }
 
 func (s *Server) fetchModelsFromSource(ctx context.Context, source storage.ModelSource) ([]storage.Model, error) {
-	switch source.Platform {
-	case "claude":
+	// 按归一化后的 apiFormat 分发，兼容旧的 platform 值（claude/openai/openai-compatible…）。
+	switch relay.NormalizeAPIFormat(source.Platform) {
+	case relay.APIFormatAnthropic:
 		// Anthropic 官方 /v1/models 存在（需 x-api-key + anthropic-version），中转站则
 		// 普遍提供 OpenAI 兼容的 /v1/models。两种鉴权都试一遍，返回 OpenAI 风格 {data:[{id}]}。
 		return s.fetchClaudeModels(ctx, source)
-	case "gemini":
+	case relay.APIFormatGemini:
 		return s.fetchGeminiModels(ctx, source)
 	default:
+		// responses / chat_completions 都用 OpenAI 风格 /v1/models 拉取。
 		return s.fetchOpenAIModels(ctx, source)
 	}
 }

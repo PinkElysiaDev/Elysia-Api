@@ -130,7 +130,17 @@ func (s *Server) responses(c *gin.Context) {
 	}
 	defer releaseLimiter(estimatedTokens)
 
-	targetBody, err := relay.CanonicalToTargetRequest(canonicalReq, targetFormat, originalResponsesReq)
+	// 上游原生支持 Responses API（targetFormat=FormatResponses）时，走「透传」：
+	// 以客户端原始请求体为基底，只改写 model 名（模型组路由需要），其余字段
+	// （input/tools/reasoning/stream/stream_options 及任何未知字段如 codex 的
+	// encrypted reasoning item）原样保留。借鉴 cc-switch：信任原生 Responses 流，
+	// 不做有损的 canonical 重建——这是「已知上游支持 Responses 就直选」零出错的关键。
+	var targetBody []byte
+	if targetFormat == relay.FormatResponses {
+		targetBody, err = relay.ResponsesPassthroughBody(bodyBytes, selectedModel.Name)
+	} else {
+		targetBody, err = relay.CanonicalToTargetRequest(canonicalReq, targetFormat, originalResponsesReq)
+	}
 	if err != nil {
 		record.StatusCode = http.StatusBadRequest
 		record.Error = err.Error()
@@ -435,36 +445,38 @@ func transformedResponsesTargetFormat(model config.ModelRef, platform relay.Plat
 	return "", false
 }
 
+// 端点能力判定改为以「线路 API（apiFormat）」为准：模型源在 UI 上明确选了哪种
+// wire API，就只声明对应那一种端点能力。这样选 Chat Completions 的源不会被误判为
+// 支持 Responses（旧逻辑 platform==openai 时把两者混为一谈，导致该转换的没转换）。
+// 显式 Endpoints 覆盖仍优先。apiFormat 取自 model.Platform，经 NormalizeAPIFormat
+// 在线兼容旧值（openai/openai-compatible→chat_completions 等）。
+
 func endpointSupportsChatCompletions(model config.ModelRef, platform relay.Platform) bool {
 	if model.Endpoints != nil && model.Endpoints.ChatCompletions != nil {
 		return *model.Endpoints.ChatCompletions
 	}
-	switch platform {
-	case relay.PlatformOpenAI, relay.PlatformDeepSeek, relay.PlatformAzure:
-		return true
-	}
-	return false
+	return relay.NormalizeAPIFormat(model.Platform) == relay.APIFormatChatCompletions
 }
 
 func endpointSupportsClaudeMessages(model config.ModelRef, platform relay.Platform) bool {
 	if model.Endpoints != nil && model.Endpoints.ClaudeMessages != nil {
 		return *model.Endpoints.ClaudeMessages
 	}
-	return platform == relay.PlatformAnthropic
+	return relay.NormalizeAPIFormat(model.Platform) == relay.APIFormatAnthropic
 }
 
 func endpointSupportsGeminiGenerateContent(model config.ModelRef, platform relay.Platform) bool {
 	if model.Endpoints != nil && model.Endpoints.GeminiGenerateContent != nil {
 		return *model.Endpoints.GeminiGenerateContent
 	}
-	return platform == relay.PlatformGemini
+	return relay.NormalizeAPIFormat(model.Platform) == relay.APIFormatGemini
 }
 
 func endpointSupportsResponses(model config.ModelRef, platform relay.Platform) bool {
 	if model.Endpoints != nil && model.Endpoints.Responses != nil {
 		return *model.Endpoints.Responses
 	}
-	return platform == relay.PlatformOpenAI
+	return relay.NormalizeAPIFormat(model.Platform) == relay.APIFormatResponses
 }
 
 func targetEndpointForFormat(format relay.FormatType) string {
