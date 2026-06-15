@@ -312,6 +312,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function LogOverview({ detail }: { detail: UsageLogDetail }) {
   const u = detail.usage ?? {}
+  const sourceFmt = detail.sourceFormat || detail.inputFormat || ''
+  const targetFmt = detail.targetFormat || detail.platform || ''
+  const sameFmt = !sourceFmt || !targetFmt || sourceFmt === targetFmt
   return (
     <div className="rounded-xl border border-border bg-background/60 p-4">
       <div className="mb-3 flex items-center gap-2">
@@ -327,15 +330,16 @@ function LogOverview({ detail }: { detail: UsageLogDetail }) {
             <CopyButton value={detail.requestId} />
           </span>
         </Field>
-        <Field label="使用的 API">
-          <PlatformBadge platform={detail.platform} />
-        </Field>
-        <Field label="协议转换">
-          <span className="inline-flex items-center gap-1.5">
-            <PlatformBadge platform={detail.sourceFormat || detail.inputFormat || '—'} />
-            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-            <PlatformBadge platform={detail.targetFormat || detail.platform || '—'} />
-          </span>
+        <Field label={sameFmt ? '使用的 API' : '使用的 API（转换）'}>
+          {sameFmt ? (
+            <PlatformBadge platform={targetFmt || sourceFmt || '—'} />
+          ) : (
+            <span className="inline-flex flex-wrap items-center gap-1.5">
+              <PlatformBadge platform={sourceFmt} />
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <PlatformBadge platform={targetFmt} />
+            </span>
+          )}
         </Field>
         <Field label="模型组">{detail.groupName || '—'}</Field>
         <Field label="模型">
@@ -384,10 +388,10 @@ function LogOverview({ detail }: { detail: UsageLogDetail }) {
 /** 四段链路：下游请求 → 后端转发 → 上游回传 → 返回下游，默认折叠。 */
 function LogChainSection({ detail }: { detail: UsageLogDetail }) {
   const segments: { key: string; title: string; body: UsageBody }[] = [
-    { key: 'incoming', title: '① 下游请求（客户端发来）', body: detail.incomingBody },
-    { key: 'outgoing', title: '② 后端转发（发往上游）', body: detail.outgoingBody },
-    { key: 'provider', title: '③ 上游回传（供应商响应）', body: detail.providerResponse },
-    { key: 'downstream', title: '④ 返回下游（写回客户端）', body: detail.downstreamResponse },
+    { key: 'incoming', title: '① 下游请求', body: detail.incomingBody },
+    { key: 'outgoing', title: '② 后端转发', body: detail.outgoingBody },
+    { key: 'provider', title: '③ 上游回传', body: detail.providerResponse },
+    { key: 'downstream', title: '④ 返回下游', body: detail.downstreamResponse },
   ]
   return (
     <div className="space-y-2">
@@ -402,10 +406,7 @@ function LogChainSection({ detail }: { detail: UsageLogDetail }) {
 function ChainBlock({ title, body }: { title: string; body: UsageBody | undefined }) {
   const [open, setOpen] = useState(false)
   const content = body?.content ?? ''
-  const pretty = useMemo(() => {
-    const parsed = tryParseJSON(content)
-    return typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2)
-  }, [content])
+  const pretty = useMemo(() => prettyPrintBody(content), [content])
 
   return (
     <div className="rounded-xl border border-border bg-background/60">
@@ -422,12 +423,43 @@ function ChainBlock({ title, body }: { title: string; body: UsageBody | undefine
         <ChevronDown className={cn('h-4 w-4 transition-transform', open && 'rotate-180')} />
       </button>
       {open && content && (
-        <pre className="max-h-[40vh] overflow-auto border-t border-border px-4 py-3 font-mono text-xs leading-relaxed">
+        <pre className="max-h-[40vh] overflow-auto whitespace-pre-wrap break-words border-t border-border px-4 py-3 font-mono text-xs leading-relaxed">
           {pretty}
         </pre>
       )}
     </div>
   )
+}
+
+/**
+ * 把链路内容格式化为带换行的可读文本：
+ * - 整体是 JSON → 缩进美化；
+ * - SSE 流（多行 data: 事件）→ 逐事件美化其 JSON，事件间空行分隔；
+ * - 其它 → 原文返回。
+ */
+function prettyPrintBody(content: string): string {
+  if (!content) return ''
+  const parsed = tryParseJSON(content)
+  if (typeof parsed !== 'string') {
+    return JSON.stringify(parsed, null, 2)
+  }
+  // 不是整体 JSON：尝试按 SSE 事件逐条美化
+  if (content.includes('data:')) {
+    const blocks: string[] = []
+    for (const rawLine of content.split('\n')) {
+      const line = rawLine.trim()
+      if (!line.startsWith('data:')) continue
+      const payload = line.slice('data:'.length).trim()
+      if (!payload || payload === '[DONE]') {
+        blocks.push(payload || '')
+        continue
+      }
+      const ev = tryParseJSON(payload)
+      blocks.push(typeof ev === 'string' ? ev : JSON.stringify(ev, null, 2))
+    }
+    if (blocks.length > 0) return blocks.join('\n\n')
+  }
+  return content
 }
 
 /** 把详情重组为带标签的导出结构：总览 + 四段链路（请求体尽量解析为对象）+ 原始记录。 */
