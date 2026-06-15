@@ -21,11 +21,48 @@ const (
 	PlatformUnknown   Platform = "unknown"
 )
 
+// APIFormat 是按「线路 API 协议」对模型源/模型的分类，取代旧的含糊 platform
+// （把厂商和协议混为一谈）。四个值一一对应一种上游 wire API：
+//   - APIFormatResponses        OpenAI Responses API（codex 用，选它即透传，不转换）
+//   - APIFormatChatCompletions  OpenAI Chat Completions API（最通用的兼容协议）
+//   - APIFormatAnthropic        Anthropic Messages API（/v1/messages）
+//   - APIFormatGemini           Gemini API（/v1beta generateContent）
+const (
+	APIFormatResponses       = "responses"
+	APIFormatChatCompletions = "chat_completions"
+	APIFormatAnthropic       = "anthropic"
+	APIFormatGemini          = "gemini"
+)
+
+// NormalizeAPIFormat 把任意历史 platform 值归一化到上述四个 apiFormat 之一。
+// 用于读取时在线兼容旧库（无需数据迁移）：
+//   - openai / openai-compatible / azure / deepseek / ""  → chat_completions
+//   - claude / anthropic                                  → anthropic
+//   - gemini / google                                     → gemini
+//   - responses / openai_responses                        → responses
+//
+// 注意：旧的 "openai" 归一到 chat_completions（而非 responses），因为旧实现走的就是
+// chat completions 转换路径；只有用户在新 UI 明确选 "responses" 才触发透传。
+func NormalizeAPIFormat(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case APIFormatResponses, "openai_responses", "openai-responses":
+		return APIFormatResponses
+	case APIFormatAnthropic, "claude":
+		return APIFormatAnthropic
+	case APIFormatGemini, "google":
+		return APIFormatGemini
+	default:
+		// chat_completions / openai / openai-compatible / azure / deepseek / 未知
+		return APIFormatChatCompletions
+	}
+}
+
 // DetectPlatform 从 baseURL 或 platform 字段检测平台类型
 func DetectPlatform(baseURL, platform string) Platform {
-	// 首先检查明确的 platform 字段
-	switch strings.ToLower(platform) {
-	case "openai":
+	// 首先检查明确的 platform / apiFormat 字段。
+	// 同时识别新的 apiFormat 值（responses/chat_completions）与旧值（openai 等）。
+	switch strings.ToLower(strings.TrimSpace(platform)) {
+	case "openai", "chat_completions", "responses", "openai_responses", "openai-compatible":
 		return PlatformOpenAI
 	case "deepseek":
 		return PlatformDeepSeek

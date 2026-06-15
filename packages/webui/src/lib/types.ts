@@ -15,7 +15,16 @@ export interface ApiErrorEnvelope {
 
 export type ApiResult<T> = ApiEnvelope<T> | ApiErrorEnvelope
 
-export type Platform = 'openai' | 'openai-compatible' | 'claude' | 'gemini'
+// API 协议（线路 API），与上游 wire API 一一对应。旧值 openai/openai-compatible/claude
+// 仍可能出现在存量数据里，后端读取时会归一化；类型保留它们避免存量源在下拉里显示空。
+export type Platform =
+  | 'responses'
+  | 'chat_completions'
+  | 'anthropic'
+  | 'gemini'
+  | 'openai'
+  | 'openai-compatible'
+  | 'claude'
 export type ModelType = 'llm' | 'embedding' | 'reranker'
 export type GroupStrategy = 'round-robin' | 'sequential' | 'random'
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'

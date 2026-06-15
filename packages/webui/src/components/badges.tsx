@@ -2,10 +2,15 @@ import { Badge } from './ui/badge'
 import type { Platform, ModelType, GroupStrategy } from '@/lib/types'
 
 const PLATFORM_LABEL: Record<string, string> = {
-  openai: 'OpenAI',
-  'openai-compatible': 'OpenAI 兼容',
-  claude: 'Claude',
-  gemini: 'Gemini',
+  // 新的 apiFormat 命名
+  responses: 'Responses API',
+  chat_completions: 'Chat Completions API',
+  anthropic: 'Anthropic API',
+  gemini: 'Gemini API',
+  // 旧值向后兼容（库里可能仍是这些）
+  openai: 'Chat Completions API',
+  'openai-compatible': 'Chat Completions API',
+  claude: 'Anthropic API',
 }
 
 export function PlatformBadge({ platform }: { platform: Platform | string }) {

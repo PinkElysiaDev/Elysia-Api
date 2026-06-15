@@ -25,12 +25,33 @@ import { api } from '@/lib/api'
 import { revalidate } from '@/lib/hooks'
 import type { ManualModel, ModelSource, Platform } from '@/lib/types'
 
-const PLATFORMS: { value: Platform; label: string }[] = [
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'openai-compatible', label: 'OpenAI 兼容' },
-  { value: 'claude', label: 'Claude' },
-  { value: 'gemini', label: 'Gemini' },
+// 按「线路 API 协议」命名，取代旧的厂商混称（openai/openai-compatible/claude/gemini）。
+// 选 Responses API 即触发透传（不做格式转换），适合明确知道上游支持 Responses 的场景。
+const PLATFORMS: { value: Platform; label: string; hint: string }[] = [
+  { value: 'responses', label: 'Responses API', hint: '上游原生 Responses（codex 直连，透传不转换）' },
+  { value: 'chat_completions', label: 'Chat Completions API', hint: 'OpenAI 兼容协议，最通用' },
+  { value: 'anthropic', label: 'Anthropic API', hint: 'Claude /v1/messages' },
+  { value: 'gemini', label: 'Gemini API', hint: 'Gemini /v1beta generateContent' },
 ]
+
+// 把历史 platform 值归一化到新的四个 apiFormat，使旧源在新下拉里正确回显
+// （与后端 NormalizeAPIFormat 保持一致）。
+function normalizePlatform(raw: string | undefined): Platform {
+  switch ((raw ?? '').toLowerCase()) {
+    case 'responses':
+    case 'openai_responses':
+      return 'responses'
+    case 'anthropic':
+    case 'claude':
+      return 'anthropic'
+    case 'gemini':
+    case 'google':
+      return 'gemini'
+    default:
+      // chat_completions / openai / openai-compatible / azure / deepseek / 空
+      return 'chat_completions'
+  }
+}
 
 function emptySource(): ModelSource {
   return {
@@ -38,7 +59,7 @@ function emptySource(): ModelSource {
     name: '',
     baseUrl: '',
     apiKey: '',
-    platform: 'openai',
+    platform: 'chat_completions',
     enabled: true,
     autoFetchModels: true,
     manualModels: [],
@@ -61,8 +82,13 @@ export function SourceFormDialog({
 
   useEffect(() => {
     if (open) {
-      // 编辑时不回填明文 apiKey（后端按 secret 处理），留空表示保持原值
-      setForm(source ? { ...source, apiKey: '', manualModels: source.manualModels ?? [] } : emptySource())
+      // 编辑时不回填明文 apiKey（后端按 secret 处理），留空表示保持原值；
+      // platform 归一化到新 apiFormat，旧源（openai/claude…）也能正确回显。
+      setForm(
+        source
+          ? { ...source, platform: normalizePlatform(source.platform), apiKey: '', manualModels: source.manualModels ?? [] }
+          : emptySource(),
+      )
     }
   }, [open, source])
 
@@ -139,7 +165,7 @@ export function SourceFormDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label required>平台</Label>
+              <Label required>API 协议</Label>
               <Select value={form.platform} onValueChange={(v) => update('platform', v as Platform)}>
                 <SelectTrigger>
                   <SelectValue />
@@ -152,6 +178,9 @@ export function SourceFormDialog({
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                {PLATFORMS.find((p) => p.value === form.platform)?.hint}
+              </p>
             </div>
           </div>
 
