@@ -18,18 +18,12 @@ type ClaudeAdapter struct {
 }
 
 func NewClaudeAdapter(timeout time.Duration) *ClaudeAdapter {
-	transport := func() *http.Transport {
-		return &http.Transport{
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 10,
-			IdleConnTimeout:     90 * time.Second,
-		}
-	}
-	client := &http.Client{Transport: transport()}
+	// 连接时 SSRF 校验的安全 transport（newSecureTransport），杜绝 DNS rebinding。
+	client := &http.Client{Transport: newSecureTransport()}
 	if timeout > 0 {
 		client.Timeout = timeout
 	}
-	streamClient := &http.Client{Transport: transport()}
+	streamClient := &http.Client{Transport: newSecureTransport()}
 	return &ClaudeAdapter{client: client, streamClient: streamClient}
 }
 

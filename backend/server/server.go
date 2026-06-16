@@ -656,10 +656,17 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	estimatedTokens := estimateUnifiedRequestTokens(unifiedReq)
 	releaseLimiter, err := s.acquireRateLimit(group, estimatedTokens)
 	if err != nil {
+		// 限流命中也要记 usage（与 403/404/500 及 Responses 路径一致），
+		// 否则最值得关注的限流事件在主入口的统计/日志里完全不可见。
+		record.StatusCode = http.StatusTooManyRequests
+		record.Error = err.Error()
+		record.EndedAt = time.Now()
+		record.DurationMs = time.Since(startTime).Milliseconds()
+		s.recordUsage(record)
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": err.Error()})
 		return
 	}
-	defer releaseLimiter(estimatedTokens)
+	defer releaseLimiter()
 
 	attempts := maxAttempts(group.MaxRetries, len(candidates))
 	var lastStatus int
@@ -869,7 +876,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
 		applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(targetPlatform, "", respBody), s.config.GetUsageConfig())
 		actualTokens := getInt(record.Usage.TotalTokens)
-		s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
+		s.adjustTokenUsage(group.ID, actualTokens)
 
 		// 统一转为 OpenAI 中间响应，再渲染到客户端格式
 		oaiResp := relay.ConvertClaudeResponseToOpenAI(&claudeResp)
@@ -915,7 +922,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
 		applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(targetPlatform, "", respBody), s.config.GetUsageConfig())
 		actualTokens := getInt(record.Usage.TotalTokens)
-		s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
+		s.adjustTokenUsage(group.ID, actualTokens)
 
 		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
 
@@ -953,7 +960,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
 		applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(targetPlatform, "", respBody), s.config.GetUsageConfig())
 		actualTokens := getInt(record.Usage.TotalTokens)
-		s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
+		s.adjustTokenUsage(group.ID, actualTokens)
 
 		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
 
@@ -1290,7 +1297,7 @@ func (s *Server) validateModelGroup(groupName string) (*config.ModelGroupConfig,
 	return group, nil
 }
 
-func (s *Server) acquireRateLimit(group *config.ModelGroupConfig, estimatedTokens int) (func(actualTokens int), error) {
+func (s *Server) acquireRateLimit(group *config.ModelGroupConfig, estimatedTokens int) (func(), error) {
 	s.rateLimitMu.Lock()
 	defer s.rateLimitMu.Unlock()
 
@@ -1312,17 +1319,25 @@ func (s *Server) acquireRateLimit(group *config.ModelGroupConfig, estimatedToken
 		state.Tokens += estimatedTokens
 	}
 
-	return func(actualTokens int) {
+	// release 是单一的「结算点」：无论成功还是失败，都释放一个在途计数并
+	// 退还本次预留的 estimatedTokens。实际消耗由成功路径的 adjustTokenUsage
+	// 单独累加。这样**失败请求**（永不调用 adjustTokenUsage）的预留会被如数
+	// 退还，不再永久占用每日 token 配额（修复 H1）。
+	released := false
+	return func() {
 		s.rateLimitMu.Lock()
 		defer s.rateLimitMu.Unlock()
+		if released {
+			return // 幂等：避免重复 defer 误减
+		}
+		released = true
 
 		current := s.getOrCreateRateLimitStateLocked(group.ID)
 		if current.Active > 0 {
 			current.Active--
 		}
-
-		if actualTokens > 0 {
-			current.Tokens += actualTokens - estimatedTokens
+		if estimatedTokens > 0 {
+			current.Tokens -= estimatedTokens
 			if current.Tokens < 0 {
 				current.Tokens = 0
 			}
@@ -1330,12 +1345,18 @@ func (s *Server) acquireRateLimit(group *config.ModelGroupConfig, estimatedToken
 	}, nil
 }
 
-func (s *Server) adjustTokenUsage(groupID string, estimatedTokens, actualTokens int) {
+// adjustTokenUsage 在请求成功并拿到实际 token 数后，把实际消耗累加到每日计数。
+// 预留额度的退还由 acquireRateLimit 返回的 release 闭包统一负责，因此这里只加
+// 实际值、不再二次扣减预留（修复 H1 的重复对账）。
+func (s *Server) adjustTokenUsage(groupID string, actualTokens int) {
+	if actualTokens <= 0 {
+		return
+	}
 	s.rateLimitMu.Lock()
 	defer s.rateLimitMu.Unlock()
 
 	state := s.getOrCreateRateLimitStateLocked(groupID)
-	state.Tokens += actualTokens - estimatedTokens
+	state.Tokens += actualTokens
 	if state.Tokens < 0 {
 		state.Tokens = 0
 	}
@@ -1349,10 +1370,13 @@ func (s *Server) getOrCreateRateLimitStateLocked(groupID string) *rateLimitState
 		s.rateLimits[groupID] = state
 	}
 	if state.Date != today {
+		// 日期翻转只重置每日配额计数（Requests/Tokens），不动 Active：
+		// Active 跟踪的是「当前在途请求数」，与日期无关。跨午夜仍在途的请求
+		// 其 release 会对 Active 做 --，若此处清零会导致并发计数错乱、
+		// MaxConcurrency 在午夜窗口被突破（修复 M3）。
 		state.Date = today
 		state.Requests = 0
 		state.Tokens = 0
-		state.Active = 0
 	}
 	return state
 }
@@ -1433,46 +1457,11 @@ func validateOutboundBaseURL(raw string) error {
 	return nil
 }
 
+// isPrivateOrRestrictedIP 委托到 relay 包的同名判定，保证「预校验」（这里，
+// 解析后逐个判 IP）与「连接时校验」（relay secureControl）用同一份网段清单，
+// 不再各维护一份易漂移的列表（修复 H3）。
 func isPrivateOrRestrictedIP(ip net.IP) bool {
-	if ip == nil {
-		return true
-	}
-
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsMulticast() || ip.IsUnspecified() {
-		return true
-	}
-	if ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast() {
-		return true
-	}
-
-	if v4 := ip.To4(); v4 != nil {
-		// 169.254.0.0/16
-		if v4[0] == 169 && v4[1] == 254 {
-			return true
-		}
-		// 100.64.0.0/10 carrier-grade NAT
-		if v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127 {
-			return true
-		}
-		// 0.0.0.0/8
-		if v4[0] == 0 {
-			return true
-		}
-		return false
-	}
-
-	// IPv6 unique local fc00::/7
-	if len(ip) == net.IPv6len {
-		if (ip[0] & 0xfe) == 0xfc {
-			return true
-		}
-		// fe80::/10 link local
-		if ip[0] == 0xfe && (ip[1]&0xc0) == 0x80 {
-			return true
-		}
-	}
-
-	return false
+	return relay.IsPrivateOrRestrictedIP(ip)
 }
 
 func (s *Server) listModels(c *gin.Context) {
@@ -1642,5 +1631,12 @@ func (s *Server) shutdown(c *gin.Context) {
 				log.Printf("graceful shutdown error: %v", err)
 			}
 		}
+		// http.Server.Shutdown 已等待在途请求结束，此时不会再有新记录入队。
+		// 先停健康检查 goroutine，再冲刷 usage 队列把缓冲中的记录落库，
+		// 避免优雅重启（Koishi 依赖 /__shutdown）丢失计费/统计记录与 goroutine 泄漏。
+		if s.healthChecker != nil {
+			s.healthChecker.shutdown()
+		}
+		s.stopUsageWriter()
 	}()
 }

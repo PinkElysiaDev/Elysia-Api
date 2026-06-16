@@ -107,6 +107,16 @@ func ForwardResponsesStream(resp *http.Response, writer StreamResponseWriter) er
 	return scanner.Err()
 }
 
+// fnCall 累积 Chat 流式里一个 tool_call 的状态，用于在 Responses 流中补齐
+// output_item.added / function_call_arguments.done / completed.output（修复 R1）。
+type fnCall struct {
+	callID      string
+	name        string
+	args        strings.Builder
+	outputIndex int
+	added       bool
+}
+
 func ConvertOpenAIChatStreamToResponsesStream(resp *http.Response, writer StreamResponseWriter, model string) error {
 	defer resp.Body.Close()
 
@@ -165,6 +175,22 @@ func ConvertOpenAIChatStreamToResponsesStream(resp *http.Response, writer Stream
 	var fullText strings.Builder
 	var finalUsage any
 	finishReason := "stop"
+
+	// 工具调用累积：按 OpenAI tool_call index 跟踪 function_call 项，分配顺序
+	// output_index（message 占 0，工具从 1 起），补齐 Responses 协议要求的
+	// output_item.added / function_call_arguments.done / output_item.done 事件，
+	// 并把 function_call 项纳入 completed.output（修复 R1：此前只发 arguments.delta，
+	// 客户端收到指向「未声明项」的增量、且完成响应里没有 function_call）。
+	type fnCall struct {
+		callID      string
+		name        string
+		args        strings.Builder
+		outputIndex int
+		added       bool
+	}
+	toolCalls := map[int]*fnCall{}
+	var toolOrder []int
+	nextOutputIndex := 1
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -226,31 +252,68 @@ func ConvertOpenAIChatStreamToResponsesStream(resp *http.Response, writer Stream
 				return err
 			}
 		}
-		if toolCalls, ok := delta["tool_calls"].([]any); ok {
-			for _, toolCall := range toolCalls {
+		if toolCalls0, ok := delta["tool_calls"].([]any); ok {
+			for _, toolCall := range toolCalls0 {
 				tc, _ := toolCall.(map[string]any)
 				if tc == nil {
 					continue
 				}
+				idx := 0
+				if v, ok := numberValue(tc["index"]); ok {
+					idx = int(v)
+				}
+				call := toolCalls[idx]
+				if call == nil {
+					call = &fnCall{outputIndex: nextOutputIndex}
+					nextOutputIndex++
+					toolCalls[idx] = call
+					toolOrder = append(toolOrder, idx)
+				}
+				if id := stringValue(tc["id"]); id != "" {
+					call.callID = id
+				}
 				fn, _ := tc["function"].(map[string]any)
-				if fn == nil {
-					continue
+				if fn != nil {
+					if name := stringValue(fn["name"]); name != "" {
+						call.name = name
+					}
 				}
-				args := stringValue(fn["arguments"])
-				if args == "" {
-					continue
+				// 首见该工具项时补发 output_item.added（function_call），
+				// 让下游知道随后的 arguments.delta 属于哪个已声明项。
+				if !call.added {
+					call.added = true
+					if call.callID == "" {
+						call.callID = fmt.Sprintf("call_%d", idx)
+					}
+					if err := writeResponsesEvent("response.output_item.added", map[string]any{
+						"type":         "response.output_item.added",
+						"output_index": call.outputIndex,
+						"item": map[string]any{
+							"id":        call.callID,
+							"type":      "function_call",
+							"status":    "in_progress",
+							"call_id":   call.callID,
+							"name":      call.name,
+							"arguments": "",
+						},
+					}); err != nil {
+						return err
+					}
 				}
-				callID := stringValue(tc["id"])
-				if callID == "" {
-					callID = fmt.Sprintf("call_%v", tc["index"])
-				}
-				if err := writeResponsesEvent("response.function_call_arguments.delta", map[string]any{
-					"type":         "response.function_call_arguments.delta",
-					"item_id":      callID,
-					"output_index": 1,
-					"delta":        args,
-				}); err != nil {
-					return err
+				if fn != nil {
+					args := stringValue(fn["arguments"])
+					if args == "" {
+						continue
+					}
+					call.args.WriteString(args)
+					if err := writeResponsesEvent("response.function_call_arguments.delta", map[string]any{
+						"type":         "response.function_call_arguments.delta",
+						"item_id":      call.callID,
+						"output_index": call.outputIndex,
+						"delta":        args,
+					}); err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -268,18 +331,53 @@ func ConvertOpenAIChatStreamToResponsesStream(resp *http.Response, writer Stream
 		}
 	}
 
+	outputItems := []map[string]any{{
+		"id":      itemID,
+		"type":    "message",
+		"status":  "completed",
+		"role":    "assistant",
+		"content": []map[string]any{{"type": "output_text", "text": fullText.String()}},
+	}}
 	if err := writeResponsesEvent("response.output_item.done", map[string]any{
 		"type":         "response.output_item.done",
 		"output_index": 0,
-		"item": map[string]any{
-			"id":      itemID,
-			"type":    "message",
-			"status":  "completed",
-			"role":    "assistant",
-			"content": []map[string]any{{"type": "output_text", "text": fullText.String()}},
-		},
+		"item":         outputItems[0],
 	}); err != nil {
 		return err
+	}
+
+	// 工具调用项收尾：按出现顺序为每个 function_call 补发 arguments.done +
+	// output_item.done，并纳入最终 output（修复 R1——此前只发 arguments.delta，
+	// 既不声明项也不收尾、completed.output 里也没有 function_call）。
+	for _, idx := range toolOrder {
+		call := toolCalls[idx]
+		if call == nil {
+			continue
+		}
+		if err := writeResponsesEvent("response.function_call_arguments.done", map[string]any{
+			"type":         "response.function_call_arguments.done",
+			"item_id":      call.callID,
+			"output_index": call.outputIndex,
+			"arguments":    call.args.String(),
+		}); err != nil {
+			return err
+		}
+		fnItem := map[string]any{
+			"id":        call.callID,
+			"type":      "function_call",
+			"status":    "completed",
+			"call_id":   call.callID,
+			"name":      call.name,
+			"arguments": call.args.String(),
+		}
+		if err := writeResponsesEvent("response.output_item.done", map[string]any{
+			"type":         "response.output_item.done",
+			"output_index": call.outputIndex,
+			"item":         fnItem,
+		}); err != nil {
+			return err
+		}
+		outputItems = append(outputItems, fnItem)
 	}
 
 	completed := map[string]any{
@@ -288,13 +386,7 @@ func ConvertOpenAIChatStreamToResponsesStream(resp *http.Response, writer Stream
 		"created_at": createdAt,
 		"status":     "completed",
 		"model":      model,
-		"output": []map[string]any{{
-			"id":      itemID,
-			"type":    "message",
-			"status":  "completed",
-			"role":    "assistant",
-			"content": []map[string]any{{"type": "output_text", "text": fullText.String()}},
-		}},
+		"output":     outputItems,
 	}
 	// usage 始终重映射为 Responses 命名（input/output/total_tokens）；上游未给 usage
 	// 时也输出全 0 的完整结构，避免 codex 解析失败。

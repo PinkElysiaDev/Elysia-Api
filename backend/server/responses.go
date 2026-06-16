@@ -79,39 +79,22 @@ func (s *Server) responses(c *gin.Context) {
 	}
 	setRecordGroup(record, group)
 
-	selectedModel := s.selectModel(group)
-	if err := validateOutboundBaseURL(selectedModel.BaseURL); err != nil {
-		record.StatusCode = http.StatusForbidden
-		record.Error = err.Error()
+	// 构建有序候选并按渠道亲和性置顶，与 chatCompletions 对齐——Responses 入口
+	// 此前只取单个候选、无故障转移（C1）。空候选集显式返回 500「无可用模型」，
+	// 而非让空 baseUrl 掉进 SSRF 校验误报 403。
+	candidates := s.buildCandidates(group)
+	if len(candidates) == 0 {
+		record.StatusCode = http.StatusInternalServerError
+		record.Error = "no available models in group"
 		record.EndedAt = time.Now()
 		record.DurationMs = time.Since(startTime).Milliseconds()
 		s.recordUsage(record)
-		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"message": fmt.Sprintf("target baseUrl rejected: %v", err), "type": "invalid_request_error"}})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": fmt.Sprintf("no available models in group '%s'", group.Name), "type": "api_error"}})
 		return
 	}
-
-	targetPlatform := relay.DetectPlatform(selectedModel.BaseURL, selectedModel.Platform)
-	setRecordModel(record, selectedModel, targetPlatform)
-
-	canonicalReq.Model = selectedModel.Name
-
-	targetFormat, responsesMode, err := selectResponsesTargetFormat(selectedModel, targetPlatform, responsesCfg)
-	if err != nil {
-		record.StatusCode = http.StatusBadRequest
-		record.Error = err.Error()
-		record.ResponsesMode = responsesMode
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": err.Error(), "type": "unsupported_endpoint", "code": "responses_api_not_supported"}})
-		return
+	if sticky := s.affinity.get(record.KeyHash, group.ID, startTime); sticky != "" {
+		candidates = applyAffinity(candidates, sticky)
 	}
-
-	record.TargetFormat = string(targetFormat)
-	record.TargetEndpoint = targetEndpointForFormat(targetFormat)
-	record.RelayMode = responsesMode
-	record.ResponsesMode = responsesMode
-	record.ConversionChain = []string{"openai_responses_request", "canonical_request", string(targetFormat) + "_request"}
 
 	estimatedUsage := estimateCanonicalRequestUsage(canonicalReq, s.config.GetUsageConfig())
 	estimatedTokens := estimatedUsage.EstimatedTotalTokens
@@ -129,41 +112,148 @@ func (s *Server) responses(c *gin.Context) {
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": gin.H{"message": err.Error(), "type": "rate_limit_error"}})
 		return
 	}
-	defer releaseLimiter(estimatedTokens)
+	defer releaseLimiter()
 
-	// 上游原生支持 Responses API（targetFormat=FormatResponses）时，走「透传」：
-	// 以客户端原始请求体为基底，只改写 model 名（模型组路由需要），其余字段
-	// （input/tools/reasoning/stream/stream_options 及任何未知字段如 codex 的
-	// encrypted reasoning item）原样保留。借鉴 cc-switch：信任原生 Responses 流，
-	// 不做有损的 canonical 重建——这是「已知上游支持 Responses 就直选」零出错的关键。
-	var targetBody []byte
-	if targetFormat == relay.FormatResponses {
-		targetBody, err = relay.ResponsesPassthroughBody(bodyBytes, selectedModel.Name)
-	} else {
-		targetBody, err = relay.CanonicalToTargetRequest(canonicalReq, targetFormat, originalResponsesReq)
+	attempts := maxAttempts(group.MaxRetries, len(candidates))
+	var lastStatus int
+	var lastErr string
+	committed := false
+
+	for attempt := 0; attempt < attempts; attempt++ {
+		selectedModel := candidates[attempt]
+		isLast := attempt == attempts-1
+
+		// SSRF 出站校验（连接时还会再校验一次实际 IP，见 secureControl）。
+		if err := s.validateOutbound(selectedModel.BaseURL); err != nil {
+			lastStatus = http.StatusForbidden
+			lastErr = fmt.Sprintf("target baseUrl rejected: %v", err)
+			s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
+			if isLast {
+				record.StatusCode = lastStatus
+				record.Error = lastErr
+				record.EndedAt = time.Now()
+				record.DurationMs = time.Since(startTime).Milliseconds()
+				s.recordUsage(record)
+				c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"message": lastErr, "type": "invalid_request_error"}})
+				committed = true
+			}
+			continue
+		}
+
+		targetPlatform := relay.DetectPlatform(selectedModel.BaseURL, selectedModel.Platform)
+		setRecordModel(record, selectedModel, targetPlatform)
+		canonicalReq.Model = selectedModel.Name
+
+		targetFormat, responsesMode, err := selectResponsesTargetFormat(selectedModel, targetPlatform, responsesCfg)
+		if err != nil {
+			// 该候选不支持 Responses（或转换目标）——其他候选可能支持，故可重试。
+			lastStatus = http.StatusBadRequest
+			lastErr = err.Error()
+			record.ResponsesMode = responsesMode
+			s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
+			if isLast {
+				record.StatusCode = lastStatus
+				record.Error = lastErr
+				record.EndedAt = time.Now()
+				record.DurationMs = time.Since(startTime).Milliseconds()
+				s.recordUsage(record)
+				c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": lastErr, "type": "unsupported_endpoint", "code": "responses_api_not_supported"}})
+				committed = true
+			}
+			continue
+		}
+
+		record.TargetFormat = string(targetFormat)
+		record.TargetEndpoint = targetEndpointForFormat(targetFormat)
+		record.RelayMode = responsesMode
+		record.ResponsesMode = responsesMode
+		record.ConversionChain = []string{"openai_responses_request", "canonical_request", string(targetFormat) + "_request"}
+
+		// 上游原生支持 Responses API（targetFormat=FormatResponses）时走「透传」：
+		// 以客户端原始请求体为基底，只改写 model 名，其余字段原样保留。
+		var targetBody []byte
+		if targetFormat == relay.FormatResponses {
+			targetBody, err = relay.ResponsesPassthroughBody(bodyBytes, selectedModel.Name)
+		} else {
+			targetBody, err = relay.CanonicalToTargetRequest(canonicalReq, targetFormat, originalResponsesReq)
+		}
+		if err != nil {
+			lastStatus = http.StatusBadRequest
+			lastErr = err.Error()
+			s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
+			if isLast {
+				record.StatusCode = lastStatus
+				record.Error = lastErr
+				record.EndedAt = time.Now()
+				record.DurationMs = time.Since(startTime).Milliseconds()
+				s.recordUsage(record)
+				c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": lastErr, "type": "invalid_request_error"}})
+				committed = true
+			}
+			continue
+		}
+		record.OutgoingBody = sanitizeUsageBody(targetBody)
+
+		var outcome relayOutcome
+		if canonicalReq.Stream {
+			record.Stream = true
+			outcome = s.handleResponsesStream(c, group, selectedModel, targetBody, targetPlatform, targetFormat, startTime, estimatedTokens, record, isLast)
+		} else {
+			outcome = s.handleResponsesNormal(c, group, selectedModel, targetBody, targetPlatform, targetFormat, startTime, estimatedTokens, record, isLast)
+		}
+
+		if outcome.committed {
+			committed = true
+			if outcome.statusCode >= 200 && outcome.statusCode < 300 {
+				s.affinity.set(record.KeyHash, group.ID, selectedModel.Name, startTime)
+			}
+			break
+		}
+
+		lastStatus = outcome.statusCode
+		lastErr = outcome.errMsg
+		s.appendRetryEvent(record, attempt, selectedModel.Name, outcome.errMsg)
+		if !isLast && group.RetryInterval > 0 {
+			time.Sleep(time.Duration(group.RetryInterval) * time.Millisecond)
+		}
 	}
-	if err != nil {
-		record.StatusCode = http.StatusBadRequest
-		record.Error = err.Error()
+
+	if !committed {
+		if lastStatus == 0 {
+			lastStatus = http.StatusBadGateway
+		}
+		record.StatusCode = lastStatus
+		record.Error = lastErr
 		record.EndedAt = time.Now()
 		record.DurationMs = time.Since(startTime).Milliseconds()
 		s.recordUsage(record)
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": err.Error(), "type": "invalid_request_error"}})
-		return
+		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": firstNonEmpty(lastErr, "all upstream attempts failed"), "type": "api_error"}})
 	}
-	record.OutgoingBody = sanitizeUsageBody(targetBody)
-
-	if canonicalReq.Stream {
-		record.Stream = true
-		s.handleResponsesStream(c, group, selectedModel, targetBody, targetPlatform, targetFormat, startTime, estimatedTokens, record)
-		return
-	}
-
-	s.handleResponsesNormal(c, group, selectedModel, targetBody, targetPlatform, targetFormat, startTime, estimatedTokens, record)
 }
 
-func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, targetPlatform relay.Platform, targetFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord) {
+func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, targetPlatform relay.Platform, targetFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord, isLast bool) relayOutcome {
+	// failResult 决定：最后一次尝试或不可重试状态码 → 向客户端提交错误响应；
+	// 否则返回 committed=false 让上层故障转移到下一个候选。
+	failResult := func(statusCode int, errMsg string, respBody []byte) relayOutcome {
+		retryable := shouldRetryStatus(statusCode)
+		if isLast || !retryable {
+			record.StatusCode = statusCode
+			record.Error = errMsg
+			if respBody != nil {
+				c.Data(statusCode, "application/json", respBody)
+			} else {
+				c.JSON(statusCode, gin.H{"error": gin.H{"message": errMsg, "type": "api_error"}})
+			}
+			return relayOutcome{committed: true, statusCode: statusCode, errMsg: errMsg}
+		}
+		return relayOutcome{committed: false, statusCode: statusCode, errMsg: errMsg}
+	}
+
+	var result relayOutcome
 	defer func() {
+		if !result.committed {
+			return
+		}
 		if record.FirstByteMs == 0 {
 			record.FirstByteMs = time.Since(startTime).Milliseconds()
 		}
@@ -179,95 +269,76 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 		responsesResp, respBody, upstreamStatus, err := s.openaiAdapter.SendResponsesRawWithBody(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		record.ProviderResponse = sanitizeUsageBody(respBody)
 		if err != nil {
-			// 记录真实的上游状态码（而非一律 502），与 Claude/Gemini 分支保持一致。
 			status := upstreamStatus
-			if status < 400 {
+			if status <= 0 {
 				status = http.StatusBadGateway
 			}
-			record.StatusCode = status
-			record.Error = err.Error()
-			c.Data(status, "application/json", respBody)
-			return
+			result = failResult(status, err.Error(), respBody)
+			return result
 		}
 		canonicalResp, err = relay.ResponsesResponseToCanonical(responsesResp)
 		if err != nil {
-			record.StatusCode = http.StatusInternalServerError
-			record.Error = err.Error()
-			c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
-			return
+			result = failResult(http.StatusInternalServerError, err.Error(), nil)
+			return result
 		}
 		record.ConversionChain = append(record.ConversionChain, "openai_responses_response")
 		updateRecordUsageFromCanonical(record, canonicalResp.Usage)
 		applyLocalResponseEstimate(record, extractOutputTextFromCanonicalResponse(canonicalResp), s.config.GetUsageConfig())
 		actualTokens := getInt(record.Usage.TotalTokens)
-		s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
+		s.adjustTokenUsage(group.ID, actualTokens)
+		record.StatusCode = http.StatusOK
 		c.Data(http.StatusOK, "application/json", respBody)
-		return
+		result = relayOutcome{committed: true, statusCode: http.StatusOK}
+		return result
 
 	case relay.FormatClaude:
 		httpResp, err := s.claudeAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, targetBody, false)
 		if err != nil {
-			record.StatusCode = http.StatusBadGateway
-			record.Error = err.Error()
-			c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
-			return
+			result = failResult(http.StatusBadGateway, err.Error(), nil)
+			return result
 		}
 		defer httpResp.Body.Close()
 		if httpResp.StatusCode != http.StatusOK {
 			respBody, _ := io.ReadAll(httpResp.Body)
-			record.StatusCode = httpResp.StatusCode
-			record.Error = string(respBody)
-			c.Data(httpResp.StatusCode, "application/json", respBody)
-			return
+			result = failResult(httpResp.StatusCode, string(respBody), respBody)
+			return result
 		}
 		var claudeResp relay.ClaudeResponse
 		respBody, err := readBodyAndJSON(httpResp, &claudeResp)
 		record.ProviderResponse = sanitizeUsageBody(respBody)
 		if err != nil {
-			record.StatusCode = http.StatusInternalServerError
-			record.Error = err.Error()
-			c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
-			return
+			result = failResult(http.StatusInternalServerError, err.Error(), nil)
+			return result
 		}
 		canonicalResp, err = relay.ClaudeResponseToCanonical(&claudeResp)
 		if err != nil {
-			record.StatusCode = http.StatusInternalServerError
-			record.Error = err.Error()
-			c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
-			return
+			result = failResult(http.StatusInternalServerError, err.Error(), nil)
+			return result
 		}
 
 	case relay.FormatGemini:
 		httpResp, err := s.geminiAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, false)
 		if err != nil {
-			record.StatusCode = http.StatusBadGateway
-			record.Error = err.Error()
-			c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
-			return
+			result = failResult(http.StatusBadGateway, err.Error(), nil)
+			return result
 		}
 		defer httpResp.Body.Close()
 		if httpResp.StatusCode != http.StatusOK {
 			respBody, _ := io.ReadAll(httpResp.Body)
-			record.StatusCode = httpResp.StatusCode
-			record.Error = string(respBody)
-			c.Data(httpResp.StatusCode, "application/json", respBody)
-			return
+			result = failResult(httpResp.StatusCode, string(respBody), respBody)
+			return result
 		}
 		var geminiResp relay.GeminiResponse
 		respBody, err := readBodyAndJSON(httpResp, &geminiResp)
 		record.ProviderResponse = sanitizeUsageBody(respBody)
 		if err != nil {
-			record.StatusCode = http.StatusInternalServerError
-			record.Error = err.Error()
-			c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
-			return
+			result = failResult(http.StatusInternalServerError, err.Error(), nil)
+			return result
 		}
 		canonicalResp, err = relay.GeminiResponseToCanonical(&geminiResp)
 		if err != nil {
-			record.StatusCode = http.StatusInternalServerError
-			record.Error = err.Error()
-			c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
-			return
+			result = failResult(http.StatusInternalServerError, err.Error(), nil)
+			return result
 		}
 
 	default:
@@ -277,17 +348,13 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 			if statusCode <= 0 {
 				statusCode = http.StatusBadGateway
 			}
-			record.StatusCode = statusCode
-			record.Error = err.Error()
-			c.Data(statusCode, "application/json", respBody)
-			return
+			result = failResult(statusCode, err.Error(), respBody)
+			return result
 		}
 		canonicalResp, err = relay.OpenAIChatResponseToCanonical(openAIResp)
 		if err != nil {
-			record.StatusCode = http.StatusInternalServerError
-			record.Error = err.Error()
-			c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
-			return
+			result = failResult(http.StatusInternalServerError, err.Error(), nil)
+			return result
 		}
 	}
 
@@ -298,32 +365,55 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 	updateRecordUsageFromCanonical(record, canonicalResp.Usage)
 	applyLocalResponseEstimate(record, extractOutputTextFromCanonicalResponse(canonicalResp), s.config.GetUsageConfig())
 	actualTokens := getInt(record.Usage.TotalTokens)
-	s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
+	s.adjustTokenUsage(group.ID, actualTokens)
 
 	responsesResp, err := relay.CanonicalToResponsesResponse(canonicalResp)
 	if err != nil {
-		record.StatusCode = http.StatusInternalServerError
-		record.Error = err.Error()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
-		return
+		result = failResult(http.StatusInternalServerError, err.Error(), nil)
+		return result
 	}
 
+	record.StatusCode = http.StatusOK
 	c.JSON(http.StatusOK, responsesResp)
+	result = relayOutcome{committed: true, statusCode: http.StatusOK}
+	return result
 }
 
-func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, targetPlatform relay.Platform, targetFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord) {
+func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, targetPlatform relay.Platform, targetFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord, isLast bool) relayOutcome {
+	var result relayOutcome
 	defer func() {
+		if !result.committed {
+			return
+		}
 		record.EndedAt = time.Now()
 		record.DurationMs = time.Since(startTime).Milliseconds()
 		s.recordUsage(record)
 	}()
+
+	// connFail 处理「SSE 尚未开始」的上游建连失败：可重试且非最后一次 →
+	// committed=false 让上层换下一个候选；否则写出 JSON 错误并提交。
+	connFail := func(statusCode int, errMsg string, respBody []byte) relayOutcome {
+		retryable := shouldRetryStatus(statusCode)
+		if isLast || !retryable {
+			record.StatusCode = statusCode
+			record.Error = errMsg
+			if respBody != nil {
+				c.Data(statusCode, "application/json", respBody)
+			} else {
+				c.AbortWithStatusJSON(statusCode, gin.H{"error": gin.H{"message": errMsg, "type": "api_error"}})
+			}
+			return relayOutcome{committed: true, statusCode: statusCode, errMsg: errMsg}
+		}
+		return relayOutcome{committed: false, statusCode: statusCode, errMsg: errMsg}
+	}
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		record.StatusCode = http.StatusInternalServerError
 		record.Error = "Streaming not supported"
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": "Streaming not supported", "type": "api_error"}})
-		return
+		result = relayOutcome{committed: true, statusCode: http.StatusInternalServerError}
+		return result
 	}
 
 	// SSE 响应头延后到上游连接成功、即将写出响应体之前再设置（借鉴 new-api /
@@ -356,10 +446,8 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 	case relay.FormatResponses:
 		resp, err := s.openaiAdapter.SendResponsesStream(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		if err != nil {
-			record.StatusCode = http.StatusBadGateway
-			record.Error = err.Error()
-			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
-			return
+			result = connFail(http.StatusBadGateway, err.Error(), nil)
+			return result
 		}
 		startSSE()
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
@@ -367,10 +455,16 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 	case relay.FormatClaude:
 		resp, err := s.claudeAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, targetBody, true)
 		if err != nil {
-			record.StatusCode = http.StatusBadGateway
-			record.Error = err.Error()
-			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
-			return
+			result = connFail(http.StatusBadGateway, err.Error(), nil)
+			return result
+		}
+		// 上游非 200：body 是 JSON 错误而非 SSE，转换器会扫不到 data: 行、
+		// 发出伪造的空流并吞掉错误（R3）。SSE 尚未开始，可走 connFail 故障转移。
+		if resp.StatusCode != http.StatusOK {
+			respBody, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			result = connFail(resp.StatusCode, string(respBody), respBody)
+			return result
 		}
 		startSSE()
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
@@ -378,10 +472,14 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 	case relay.FormatGemini:
 		resp, err := s.geminiAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, true)
 		if err != nil {
-			record.StatusCode = http.StatusBadGateway
-			record.Error = err.Error()
-			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
-			return
+			result = connFail(http.StatusBadGateway, err.Error(), nil)
+			return result
+		}
+		if resp.StatusCode != http.StatusOK {
+			respBody, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			result = connFail(resp.StatusCode, string(respBody), respBody)
+			return result
 		}
 		startSSE()
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
@@ -389,10 +487,8 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 	default:
 		resp, err := s.openaiAdapter.SendRequestStream(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		if err != nil {
-			record.StatusCode = http.StatusBadGateway
-			record.Error = err.Error()
-			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": err.Error(), "type": "api_error"}})
-			return
+			result = connFail(http.StatusBadGateway, err.Error(), nil)
+			return result
 		}
 		startSSE()
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
@@ -420,7 +516,10 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 
 	applyLocalResponseEstimate(record, writer.responseText.String(), s.config.GetUsageConfig())
 	actualTokens := getInt(record.Usage.TotalTokens)
-	s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
+	s.adjustTokenUsage(group.ID, actualTokens)
+	// SSE 已开始即无法再改 HTTP 状态码/换上游，本次必然提交（无论流中途是否出错）。
+	result = relayOutcome{committed: true, statusCode: record.StatusCode}
+	return result
 }
 
 // writeResponsesStreamError 向已开始的 SSE 流写一个 error 事件作为收尾，

@@ -980,6 +980,12 @@ func ConvertClaudeStreamToOpenAI(resp *http.Response, writer StreamResponseWrite
 	scanner.Buffer(buf, 16*1024*1024)
 
 	toolCallIndex := -1
+	// 累积 usage：Claude 在 message_start.message.usage 带 input_tokens，
+	// 在 message_delta.usage 带 output_tokens。OpenAI 流需要在结尾补一个带 usage
+	// 的 chunk，否则下游按 OpenAI 协议计费会得到 0 token（修复 R2）。
+	inputTokens := 0
+	outputTokens := 0
+	usageSeen := false
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -1008,6 +1014,18 @@ func ConvertClaudeStreamToOpenAI(resp *http.Response, writer StreamResponseWrite
 
 		switch eventType {
 		case "message_start":
+			if msg, ok := event["message"].(map[string]interface{}); ok {
+				if usage, ok := msg["usage"].(map[string]interface{}); ok {
+					if v, ok := numberValue(usage["input_tokens"]); ok {
+						inputTokens = int(v)
+						usageSeen = true
+					}
+					if v, ok := numberValue(usage["output_tokens"]); ok {
+						outputTokens = int(v)
+						usageSeen = true
+					}
+				}
+			}
 			chunk = map[string]interface{}{
 				"object":  "chat.completion.chunk",
 				"choices": []map[string]interface{}{{"index": 0, "delta": map[string]interface{}{"role": "assistant", "content": ""}, "finish_reason": nil}},
@@ -1087,12 +1105,40 @@ func ConvertClaudeStreamToOpenAI(resp *http.Response, writer StreamResponseWrite
 			deltaRaw, _ := event["delta"].(map[string]interface{})
 			stopReason, _ := deltaRaw["stop_reason"].(string)
 			finishReason := claudeStopReasonToOpenAI(stopReason)
+			// Claude 在 message_delta.usage 带最终 output_tokens（修复 R2）。
+			if usage, ok := event["usage"].(map[string]interface{}); ok {
+				if v, ok := numberValue(usage["output_tokens"]); ok {
+					outputTokens = int(v)
+					usageSeen = true
+				}
+				if v, ok := numberValue(usage["input_tokens"]); ok {
+					inputTokens = int(v)
+					usageSeen = true
+				}
+			}
 			chunk = map[string]interface{}{
 				"object":  "chat.completion.chunk",
 				"choices": []map[string]interface{}{{"index": 0, "delta": map[string]interface{}{}, "finish_reason": finishReason}},
 			}
 
 		case "message_stop":
+			// 在 [DONE] 之前补发一个带 usage 的空 choices chunk（对齐 OpenAI
+			// stream_options.include_usage 语义），让下游能拿到 token 计费数据。
+			if usageSeen {
+				usageChunk := map[string]interface{}{
+					"object":  "chat.completion.chunk",
+					"choices": []map[string]interface{}{},
+					"usage": map[string]interface{}{
+						"prompt_tokens":     inputTokens,
+						"completion_tokens": outputTokens,
+						"total_tokens":      inputTokens + outputTokens,
+					},
+				}
+				if usageJSON, err := json.Marshal(usageChunk); err == nil {
+					_, _ = writer.Write([]byte("data: " + string(usageJSON) + "\n\n"))
+					_ = writer.Flush()
+				}
+			}
 			_, _ = writer.Write([]byte("data: [DONE]\n\n"))
 			_ = writer.Flush()
 			return nil

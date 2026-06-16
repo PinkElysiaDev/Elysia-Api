@@ -234,7 +234,9 @@ func (c *Config) Dir() string {
 func (c *Config) GetGroups() []ModelGroupConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.Groups
+	// 返回副本：锁在 return 即释放，直接返回内部切片会让调用方在锁外
+	// 与 Reload/admin 的并发重写竞争（go test -race 可验证）。
+	return append([]ModelGroupConfig(nil), c.Groups...)
 }
 
 // GetGroupByName 根据模型组名称查找模型组配置
@@ -253,7 +255,8 @@ func (c *Config) GetGroupByName(name string) *ModelGroupConfig {
 func (c *Config) GetTokens() []AccessToken {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.Tokens
+	// 返回副本，理由同 GetGroups：避免锁外别名读取与并发重写竞争。
+	return append([]AccessToken(nil), c.Tokens...)
 }
 
 // 以下访问器/设置器统一通过 mu 锁保护那些会被请求热路径与 Reload/admin
@@ -338,29 +341,58 @@ func (c *Config) GetDBEncryptionKey() []byte {
 
 	c.mu.RLock()
 	dbPath := c.DatabasePath
+	keyPath := c.SecretKeyPath
 	c.mu.RUnlock()
-	if dbPath == "" {
-		return nil
+
+	// 优先使用配置的 SecretKeyPath（默认 <configDir>/.master-key）。运维显式
+	// 指定的受保护路径不再被忽略（修复 S2：旧实现硬编码 .db-key、SecretKeyPath 形同摆设）。
+	if keyPath != "" {
+		if data, err := os.ReadFile(keyPath); err == nil {
+			if key := strings.TrimSpace(string(data)); key != "" {
+				return []byte(key)
+			}
+		}
 	}
 
-	keyPath := filepath.Join(filepath.Dir(dbPath), ".db-key")
-	if data, err := os.ReadFile(keyPath); err == nil {
-		if key := strings.TrimSpace(string(data)); key != "" {
-			return []byte(key)
+	// 向后兼容：历史版本把密钥写在 <dbDir>/.db-key。若 SecretKeyPath 尚未建立但
+	// 旧密钥文件存在，沿用旧密钥——否则既有加密数据在升级后将无法解密。
+	var legacyKeyPath string
+	if dbPath != "" {
+		legacyKeyPath = filepath.Join(filepath.Dir(dbPath), ".db-key")
+		if data, err := os.ReadFile(legacyKeyPath); err == nil {
+			if key := strings.TrimSpace(string(data)); key != "" {
+				return []byte(key)
+			}
 		}
+	}
+
+	// 选定要写入的新密钥路径：优先 SecretKeyPath，回退到旧 .db-key 位置。
+	target := keyPath
+	if target == "" {
+		target = legacyKeyPath
+	}
+	if target == "" {
+		return nil
 	}
 
 	// 自动生成并持久化一个随机密钥（base64，约 43 字符）。
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
+		// 修复 S4：rand 失败原本静默返回 nil（无日志）→ 明文存储且无人知晓。
+		log.Printf("warning: failed to generate db encryption key: %v (secrets will be stored UNENCRYPTED)", err)
 		return nil
 	}
 	key := base64.StdEncoding.EncodeToString(raw)
-	if err := os.WriteFile(keyPath, []byte(key), 0o600); err != nil {
-		log.Printf("warning: failed to persist db encryption key to %s: %v (secrets will be at risk if key is lost)", keyPath, err)
+	if err := os.WriteFile(target, []byte(key), 0o600); err != nil {
+		log.Printf("warning: failed to persist db encryption key to %s: %v (secrets will be at risk if key is lost)", target, err)
 		// 仍返回内存中的 key，本次进程内加密可用；但重启后无法解密，
 		// 因此只在能落盘时才真正启用持久加密。
 		return nil
+	}
+	// 修复 S1：密钥若与数据库同目录，备份/卷快照/cp -r 会同时带走密文与密钥，
+	// at-rest 加密形同虚设。落到同目录时打印醒目告警，引导改用环境变量或独立路径。
+	if dbPath != "" && filepath.Dir(target) == filepath.Dir(dbPath) {
+		log.Printf("warning: db encryption key %s sits in the SAME directory as the database; a backup/snapshot of that directory exposes both ciphertext and key. Prefer ELYSIA_API_MASTER_KEY or point secretKeyPath at a separately-secured location.", target)
 	}
 	return []byte(key)
 }

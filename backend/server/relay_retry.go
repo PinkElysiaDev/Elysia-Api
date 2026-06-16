@@ -17,13 +17,17 @@ type relayOutcome struct {
 	errMsg     string
 }
 
-// appendRetryEvent 把一次失败尝试追加到 usage 记录的 RetryEvents，
-// 并递增 RetryCount。attempt 从 0 计数（0 即首次尝试）。
+// appendRetryEvent 把一次失败尝试追加到 usage 记录的 RetryEvents，并更新 RetryCount。
+// attempt 从 0 计数（0 即首次尝试，不算重试）。RetryCount 取「本次失败之前已发生的
+// 重试次数」= attempt 本身：首次尝试失败 → 0 次重试；attempt=2 失败 → 已重试 2 次。
+// 各次调用的 attempt 单调递增，故末次失败写入的值即最终重试次数（修正旧的 off-by-one）。
 func (s *Server) appendRetryEvent(record *usageRecord, attempt int, model, errMsg string) {
 	if record == nil {
 		return
 	}
-	record.RetryCount = len(record.RetryEvents) + 1
+	if attempt > record.RetryCount {
+		record.RetryCount = attempt
+	}
 	record.RetryEvents = append(record.RetryEvents, retryEvent{
 		Attempt: attempt,
 		Model:   model,
