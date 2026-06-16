@@ -76,8 +76,12 @@ func OpenAIChatRequestToCanonical(body []byte) (*CanonicalRequest, error) {
 	if cacheKey := stringValue(raw["prompt_cache_key"]); cacheKey != "" {
 		req.PromptCacheKey = cacheKey
 	}
-	if retention, ok := raw["prompt_cache_retention"].(json.RawMessage); ok {
-		req.PromptCacheRetention = retention
+	// raw 已解码进 map[string]any，值不会是 json.RawMessage（断言恒失败、retention
+	// 静默丢失）。重新 marshal 该值拿回原始 JSON 字节再保留（修复 R7）。
+	if retentionValue, exists := raw["prompt_cache_retention"]; exists && retentionValue != nil {
+		if encoded, err := json.Marshal(retentionValue); err == nil {
+			req.PromptCacheRetention = encoded
+		}
 	}
 
 	req.Messages = parseOpenAIChatMessages(raw["messages"])
