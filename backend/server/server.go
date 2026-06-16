@@ -1095,7 +1095,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		case relay.FormatGemini:
 			forwardErr = relay.ConvertOpenAIStreamToGeminiStream(resp, writer)
 		default:
-			forwardErr = relay.ForwardOpenAIStream(resp, writer)
+			forwardErr = relay.ForwardOpenAIStream(c.Request.Context(), resp, writer)
 		}
 	}
 

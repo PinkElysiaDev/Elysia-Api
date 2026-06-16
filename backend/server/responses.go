@@ -421,7 +421,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		}
 		startSSE()
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
-		streamErr = relay.ForwardResponsesStream(resp, writer)
+		streamErr = relay.ForwardResponsesStream(c.Request.Context(), resp, writer)
 	case relay.FormatClaude:
 		resp, err := s.claudeAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, targetBody, true)
 		if err != nil {
