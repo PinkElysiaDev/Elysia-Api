@@ -356,8 +356,8 @@ function LogOverview({ detail }: { detail: UsageLogDetail }) {
   const u = detail.usage ?? {}
   const sourceFmt = detail.sourceFormat || detail.inputFormat || ''
   const targetFmt = detail.targetFormat || detail.platform || ''
-  // 源与目标协议一致即为透传（未做有损格式转换）
-  const passthrough = !!sourceFmt && !!targetFmt && sourceFmt === targetFmt
+  // 透传模式：后端未做格式转换（relay_mode = "passthrough"）
+  const passthrough = detail.relayMode === 'passthrough'
   return (
     <div className="rounded-xl border border-border bg-background/60 p-4">
       <div className="mb-3 flex items-center gap-2">
