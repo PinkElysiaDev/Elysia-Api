@@ -356,9 +356,9 @@ func GeminiToUnified(body []byte) (*UnifiedRequest, error) {
 		Model            string          `json:"model"`
 		Contents         []GeminiContent `json:"contents"`
 		GenerationConfig struct {
-			Temperature float64 `json:"temperature,omitempty"`
-			MaxTokens   int     `json:"maxOutputTokens,omitempty"`
-			TopP        float64 `json:"topP,omitempty"`
+			Temperature *float64 `json:"temperature,omitempty"`
+			MaxTokens   int      `json:"maxOutputTokens,omitempty"`
+			TopP        *float64 `json:"topP,omitempty"`
 		} `json:"generationConfig,omitempty"`
 		ThinkingConfig *struct {
 			IncludeThoughts bool   `json:"includeThoughts,omitempty"`
@@ -375,12 +375,13 @@ func GeminiToUnified(body []byte) (*UnifiedRequest, error) {
 		MaxTokens: geminiReq.GenerationConfig.MaxTokens,
 	}
 
-	// 正确处理指针类型
-	if geminiReq.GenerationConfig.Temperature > 0 {
-		unified.Temperature = &geminiReq.GenerationConfig.Temperature
+	// 正确处理指针类型：用 *float64 区分「未设置」与「显式设为 0」（temperature=0
+	// 是确定性输出的合法值，不能当未设丢弃）。
+	if geminiReq.GenerationConfig.Temperature != nil {
+		unified.Temperature = geminiReq.GenerationConfig.Temperature
 	}
-	if geminiReq.GenerationConfig.TopP > 0 {
-		unified.TopP = &geminiReq.GenerationConfig.TopP
+	if geminiReq.GenerationConfig.TopP != nil {
+		unified.TopP = geminiReq.GenerationConfig.TopP
 	}
 
 	// 转换思考配置
@@ -406,14 +407,28 @@ func GeminiToUnified(body []byte) (*UnifiedRequest, error) {
 
 		for _, part := range content.Parts {
 			if part.Text != "" {
-				// 如果只有文本，合并为单一字符串
-				contentParts = nil
+				// 累积文本；不要清空 contentParts，否则同消息内先出现的
+				// executableCode/functionCall 会被后续文本部件抹掉（修复 R8）。
 				textContent.WriteString(part.Text)
 			}
 			if part.ExecutableCode != nil {
 				contentParts = append(contentParts, map[string]interface{}{
 					"type": "code",
 					"code": part.ExecutableCode.Code,
+				})
+			}
+			// functionCall / functionResponse 此前完全未转换，整段工具往返丢失。
+			// 以保真为先：原样保留其结构体，交由下游 ConvertFromUnified 渲染。
+			if part.FunctionCall != nil {
+				contentParts = append(contentParts, map[string]interface{}{
+					"type":         "function_call",
+					"functionCall": part.FunctionCall,
+				})
+			}
+			if part.FunctionResponse != nil {
+				contentParts = append(contentParts, map[string]interface{}{
+					"type":             "function_response",
+					"functionResponse": part.FunctionResponse,
 				})
 			}
 		}
@@ -449,8 +464,8 @@ func ClaudeToUnified(body []byte) (*UnifiedRequest, error) {
 			Content interface{} `json:"content"`
 		} `json:"messages"`
 		System          interface{} `json:"system,omitempty"`
-		Temperature     float64     `json:"temperature,omitempty"`
-		TopP            float64     `json:"top_p,omitempty"`
+		Temperature     *float64    `json:"temperature,omitempty"`
+		TopP            *float64    `json:"top_p,omitempty"`
 		Stream          bool        `json:"stream,omitempty"`
 		Stop            interface{} `json:"stop,omitempty"`
 		ThinkingEnabled *bool       `json:"thinking_enabled,omitempty"`
@@ -473,12 +488,13 @@ func ClaudeToUnified(body []byte) (*UnifiedRequest, error) {
 		Stop:      claudeReq.Stop,
 	}
 
-	// 正确处理指针类型
-	if claudeReq.Temperature > 0 {
-		unified.Temperature = &claudeReq.Temperature
+	// 正确处理指针类型：解码为 *float64 后判 nil，保留合法的 0 值
+	// （temperature=0 表示确定性输出，是有效值，不能当未设丢弃）。
+	if claudeReq.Temperature != nil {
+		unified.Temperature = claudeReq.Temperature
 	}
-	if claudeReq.TopP > 0 {
-		unified.TopP = &claudeReq.TopP
+	if claudeReq.TopP != nil {
+		unified.TopP = claudeReq.TopP
 	}
 
 	// 转换消息
