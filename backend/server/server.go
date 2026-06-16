@@ -57,6 +57,9 @@ type Server struct {
 	// 可选的后台健康检测器（config.HealthCheck.Enabled 控制）。
 	healthChecker *healthChecker
 
+	// httpServer 持有底层 http.Server 引用，供 /__shutdown 优雅关停使用。
+	httpServer *http.Server
+
 	// 路由缓存：把 groups+models 装配结果与 tokens 载入内存，
 	// 让请求热路径无需每次查 SQLite（消除 N+1 + 单连接串行瓶颈）。
 	// 借鉴 new-api 的 *_cache.go + SyncOptions：读走内存，写后失效。
@@ -74,7 +77,12 @@ type Server struct {
 func New(cfg *config.Config) *Server {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
-	engine.Use(gin.Recovery(), gin.Logger())
+	engine.Use(gin.Recovery())
+	// gin.Logger 会为每个请求打一行访问日志，叠加 Koishi 插件全量转发后端
+	// stdout，会造成日志刷屏。仅在调试模式下启用；正常运行只保留 Recovery。
+	if cfg.DebugMode {
+		engine.Use(gin.Logger())
+	}
 
 	// 获取 HTTP 超时配置，默认 120 秒
 	httpTimeout := time.Duration(cfg.HTTPTimeout) * time.Second
@@ -361,6 +369,7 @@ func (s *Server) setupRoutes() {
 
 	s.engine.GET("/health", s.healthCheck)
 	s.engine.POST("/__reload", s.loopbackOnly(s.reloadConfig))
+	s.engine.POST("/__shutdown", s.loopbackOnly(s.shutdown))
 }
 
 // mountWebUI 在 /ui 提供控制台静态资源，优先级：
@@ -398,6 +407,7 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 		}
 		c.Set("elysiaKeyName", accessToken.Name)
 		c.Set("elysiaKeyHash", shortTokenHash(token))
+		c.Set("elysiaAllowedGroups", accessToken.AllowedGroups)
 		c.Next()
 	}
 }
@@ -543,6 +553,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		inputFormat = relay.FormatOpenAI
 	}
 	record := s.initUsageRecord(c, startTime, bodyBytes, inputFormat)
+	installDownstreamCapture(c, record)
 	s.logVerbose("[Input Format] %s", inputFormat)
 
 	// 转换为统一格式
@@ -570,6 +581,13 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		s.logVerbose("[Unified Request] %s", compactLogJSON(unifiedReqJSON))
 	}
 
+	// 模型组级访问权限：先于 validateModelGroup 校验请求的模型组名，
+	// 这样即使目标组为空/未配置，越权访问也返回 403（而非泄露组的存在性/状态）。
+	if !s.tokenAllowsGroup(c, unifiedReq.Model) {
+		s.failRequest(c, record, startTime, http.StatusForbidden, fmt.Sprintf("api key is not allowed to access model group '%s'", unifiedReq.Model))
+		return
+	}
+
 	// 验证并获取模型组
 	group, err := s.validateModelGroup(unifiedReq.Model)
 	if err != nil {
@@ -579,12 +597,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		} else if strings.Contains(errMsg, "disabled") {
 			statusCode = 403
 		}
-		record.StatusCode = statusCode
-		record.Error = err.Error()
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-		c.JSON(statusCode, gin.H{"error": err.Error()})
+		s.failRequest(c, record, startTime, statusCode, err.Error())
 		return
 	}
 	setRecordGroup(record, group)
@@ -611,12 +624,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	// 构建有序候选模型列表，按模型组策略排列。失败时逐个故障转移。
 	candidates := s.buildCandidates(group)
 	if len(candidates) == 0 {
-		record.StatusCode = http.StatusInternalServerError
-		record.Error = "no available models in group"
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-		c.JSON(500, gin.H{"error": fmt.Sprintf("no available models in group '%s'", group.Name)})
+		s.failRequest(c, record, startTime, http.StatusInternalServerError, fmt.Sprintf("no available models in group '%s'", group.Name))
 		return
 	}
 	// 渠道亲和性：把该 key+group 上次成功的模型提到候选最前（短 TTL 粘连），
@@ -633,10 +641,10 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	estimatedTokens := estimateUnifiedRequestTokens(unifiedReq)
 	releaseLimiter, err := s.acquireRateLimit(group, estimatedTokens)
 	if err != nil {
-		c.JSON(http.StatusTooManyRequests, gin.H{"error": err.Error()})
+		s.failRequest(c, record, startTime, http.StatusTooManyRequests, err.Error())
 		return
 	}
-	defer releaseLimiter(estimatedTokens)
+	defer releaseLimiter()
 
 	attempts := maxAttempts(group.MaxRetries, len(candidates))
 	var lastStatus int
@@ -667,10 +675,49 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		setRecordModel(record, selectedModel, targetPlatform)
 		s.logDebug("Request model group: '%s' attempt %d/%d, selected: %s", group.Name, attempt+1, attempts, selectedModel.Name)
 
-		targetBody, err := relay.ConvertFromUnified(unifiedReq, targetPlatform)
+		// 同源透传判定：客户端输入格式与所选上游线路 API 一致（Claude→Anthropic、
+		// Gemini→Gemini、OpenAI→OpenAI 系），且本次未因 vision 过滤改写过请求体时，
+		// 以原始请求字节直发上游，跳过 unified 中间模型的有损往返——保留上游特有字段
+		// （cache_control / thinking / 各类未知扩展）。借鉴 Responses 透传与 new-api
+		// 的 should_convert=false 分支。vision 过滤改写了 unifiedReq 而非原始字节，
+		// 故 filtered=true 时必须回退到转换路径，否则被过滤的图片会随原始字节漏给上游。
+		usePassthrough := s.config.IsRelayPassthroughEnabled() && !filtered && relay.FormatMatchesPlatform(inputFormat, targetPlatform)
+
+		// 流式意图取自客户端原始请求：OpenAI/Claude 看请求体 stream 字段，
+		// Gemini 看 URL action（:streamGenerateContent）。
+		isStream := relay.IsStreamRequest(bodyBytes)
+		if action := c.Param("action"); strings.Contains(action, ":streamGenerateContent") {
+			isStream = true
+		}
+
+		var targetBody []byte
+		if usePassthrough {
+			// Gemini：model 在 URL 里（adapter 单独接收 selectedModel.Name），原生
+			// generateContent 请求体不含顶层 model，故透传时不改写 model（传空），
+			// 也不向体内注入 stream（由 URL action 决定）。OpenAI/Claude 则改写 model；
+			// OpenAI 兼容线路补 stream_options.include_usage 以拿到 usage chunk。
+			passModelName := selectedModel.Name
+			addStreamOptions := false
+			ensureStream := false
+			if targetPlatform == relay.PlatformGemini {
+				passModelName = ""
+			} else {
+				ensureStream = isStream
+				addStreamOptions = targetPlatform == relay.PlatformOpenAI || targetPlatform == relay.PlatformDeepSeek || targetPlatform == relay.PlatformAzure
+			}
+			targetBody, err = relay.PassthroughBody(bodyBytes, passModelName, ensureStream, addStreamOptions)
+			if err == nil {
+				record.RelayMode = "passthrough"
+			}
+		} else {
+			targetBody, err = relay.ConvertFromUnified(unifiedReq, targetPlatform)
+			if err == nil {
+				record.RelayMode = "transform"
+			}
+		}
 		if err != nil {
 			lastStatus = http.StatusInternalServerError
-			lastErr = fmt.Sprintf("Failed to convert request: %v", err)
+			lastErr = fmt.Sprintf("Failed to build upstream request: %v", err)
 			s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
 			if isLast {
 				record.StatusCode = lastStatus
@@ -681,14 +728,10 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			continue
 		}
 		record.OutgoingBody = sanitizeUsageBody(targetBody)
-		s.logVerbose("[Outgoing Request] baseUrl=%s body=%s", selectedModel.BaseURL, compactLogJSON(targetBody))
+		s.logVerbose("[Outgoing Request] passthrough=%v baseUrl=%s body=%s", usePassthrough, selectedModel.BaseURL, compactLogJSON(targetBody))
 
-		// 检查是否为流式请求
-		isStream := relay.IsStreamRequest(targetBody)
-		if action := c.Param("action"); strings.Contains(action, ":streamGenerateContent") {
-			isStream = true
-		}
-		if isStream {
+		// 非透传路径仍需为流式补齐 stream 标记（透传已在 PassthroughBody 内处理）。
+		if isStream && !usePassthrough {
 			var streamBodyErr error
 			targetBody, streamBodyErr = ensureStreamFlagInTargetBody(targetBody, targetPlatform)
 			if streamBodyErr != nil {
@@ -811,7 +854,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
 		applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(targetPlatform, "", respBody), s.config.GetUsageConfig())
 		actualTokens := getInt(record.Usage.TotalTokens)
-		s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
+		s.adjustTokenUsage(group.ID, actualTokens)
 
 		// 统一转为 OpenAI 中间响应，再渲染到客户端格式
 		oaiResp := relay.ConvertClaudeResponseToOpenAI(&claudeResp)
@@ -857,7 +900,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
 		applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(targetPlatform, "", respBody), s.config.GetUsageConfig())
 		actualTokens := getInt(record.Usage.TotalTokens)
-		s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
+		s.adjustTokenUsage(group.ID, actualTokens)
 
 		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
 
@@ -895,7 +938,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
 		applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(targetPlatform, "", respBody), s.config.GetUsageConfig())
 		actualTokens := getInt(record.Usage.TotalTokens)
-		s.adjustTokenUsage(group.ID, estimatedTokens, actualTokens)
+		s.adjustTokenUsage(group.ID, actualTokens)
 
 		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
 
@@ -961,7 +1004,8 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		c.Writer.Header().Set("Content-Type", "text/event-stream")
 		c.Writer.Header().Set("Cache-Control", "no-cache")
 		c.Writer.Header().Set("Connection", "keep-alive")
-		c.Writer.Header().Set("Transfer-Encoding", "chunked")
+		// 不手动设 Transfer-Encoding：Go 的 http.Server 对无 Content-Length 的
+		// 流式响应自动 chunked，手动设是冗余且在错误路径易制造 TE+Content-Length 冲突。
 		c.Writer.Header().Set("X-Accel-Buffering", "no")
 		sseStarted = true
 	}
@@ -972,6 +1016,11 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		startTime:    startTime,
 		observeUsage: false,
 	}
+
+	// forwardErr 收集"上游连接成功、SSE 已开始后"的流转发/转换错误。
+	// 一旦 SSE 头已发出就无法改 HTTP 状态码，但必须把 record.StatusCode 从 200
+	// 下调，否则中途断流/空响应会被统计与日志误判为成功。
+	var forwardErr error
 
 	switch targetPlatform {
 	case relay.PlatformAnthropic:
@@ -994,17 +1043,11 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 
 		switch inputFormat {
 		case relay.FormatClaude:
-			if err := relay.ForwardStreamRaw(httpResp, writer); err != nil {
-				log.Printf("Error streaming Claude response: %v", err)
-			}
+			forwardErr = relay.ForwardStreamRaw(httpResp, writer)
 		case relay.FormatGemini:
-			if err := relay.ConvertClaudeStreamToGeminiStream(httpResp, writer); err != nil {
-				log.Printf("Error converting Claude stream to Gemini format: %v", err)
-			}
+			forwardErr = relay.ConvertClaudeStreamToGeminiStream(httpResp, writer)
 		default:
-			if err := relay.ConvertClaudeStreamToOpenAI(httpResp, writer); err != nil {
-				log.Printf("Error converting Claude stream to OpenAI format: %v", err)
-			}
+			forwardErr = relay.ConvertClaudeStreamToOpenAI(httpResp, writer)
 		}
 
 	case relay.PlatformGemini:
@@ -1027,17 +1070,11 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 
 		switch inputFormat {
 		case relay.FormatClaude:
-			if err := relay.ConvertGeminiStreamToClaudeStream(httpResp, writer, selectedModel.Name); err != nil {
-				log.Printf("Error converting Gemini stream to Claude format: %v", err)
-			}
+			forwardErr = relay.ConvertGeminiStreamToClaudeStream(httpResp, writer, selectedModel.Name)
 		case relay.FormatGemini:
-			if err := relay.ForwardStreamRaw(httpResp, writer); err != nil {
-				log.Printf("Error forwarding Gemini stream: %v", err)
-			}
+			forwardErr = relay.ForwardStreamRaw(httpResp, writer)
 		default:
-			if err := relay.ConvertGeminiStreamToOpenAI(httpResp, writer); err != nil {
-				log.Printf("Error converting Gemini stream to OpenAI format: %v", err)
-			}
+			forwardErr = relay.ConvertGeminiStreamToOpenAI(httpResp, writer)
 		}
 
 	default:
@@ -1054,24 +1091,48 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 
 		switch inputFormat {
 		case relay.FormatClaude:
-			if err := relay.ConvertOpenAIStreamToClaudeStream(resp, writer, selectedModel.Name); err != nil {
-				log.Printf("Error converting OpenAI stream to Claude format: %v", err)
-			}
+			forwardErr = relay.ConvertOpenAIStreamToClaudeStream(resp, writer, selectedModel.Name)
 		case relay.FormatGemini:
-			if err := relay.ConvertOpenAIStreamToGeminiStream(resp, writer); err != nil {
-				log.Printf("Error converting OpenAI stream to Gemini format: %v", err)
-			}
+			forwardErr = relay.ConvertOpenAIStreamToGeminiStream(resp, writer)
 		default:
-			if err := relay.ForwardOpenAIStream(resp, writer); err != nil {
-				log.Printf("Error forwarding OpenAI stream: %v", err)
-			}
+			forwardErr = relay.ForwardOpenAIStream(c.Request.Context(), resp, writer)
 		}
+	}
+
+	// 上游已建连、SSE 已开始后的转发/转换错误：HTTP 状态码已无法更改，
+	// 但必须把 record.StatusCode 从 200 下调为 502 并记录错误，否则中途断流/
+	// 空响应会在 usage 日志与统计里被误判为成功。
+	if forwardErr != nil {
+		log.Printf("Error forwarding stream after SSE started: %v", forwardErr)
+		record.Error = forwardErr.Error()
+		if record.StatusCode < 400 {
+			record.StatusCode = http.StatusBadGateway
+		}
+	} else if streamYieldedNothing(record, writer) {
+		// 上游返回 200 但既无任何输出文本、也无 usage —— 实际是空响应。
+		// 这类"看似成功实则空结构体"必须记为失败，否则日志/统计误判为成功。
+		log.Printf("Upstream stream returned empty response (no content, no usage)")
+		record.Error = "upstream returned empty response"
+		record.StatusCode = http.StatusBadGateway
 	}
 
 	applyLocalResponseEstimate(record, writer.responseText.String(), s.config.GetUsageConfig())
 	s.logDebug("Stream request completed in %dms", time.Since(startTime).Milliseconds())
-	result = relayOutcome{committed: true, statusCode: http.StatusOK}
+	result = relayOutcome{committed: true, statusCode: record.StatusCode}
 	return result
+}
+
+// streamYieldedNothing 判断一次"无错误"的流式转发是否实际为空响应：
+// 既没有任何输出文本，也没有捕获到任何 usage token。用于把上游 200 空响应
+// 从"成功"纠正为失败。
+func streamYieldedNothing(record *usageRecord, writer *observingStreamWriter) bool {
+	if writer.responseText.Len() > 0 {
+		return false
+	}
+	if getInt(record.Usage.TotalTokens) > 0 || getInt(record.Usage.OutputTokens) > 0 {
+		return false
+	}
+	return true
 }
 
 func readBodyAndJSON(resp *http.Response, v interface{}) ([]byte, error) {
@@ -1082,14 +1143,6 @@ func readBodyAndJSON(resp *http.Response, v interface{}) ([]byte, error) {
 	return body, json.Unmarshal(body, v)
 }
 
-// readJSON 从 HTTP 响应中读取并解析 JSON
-func readJSON(resp *http.Response, v interface{}) error {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(body, v)
-}
 
 func writeStreamForwardError(
 	c *gin.Context,
@@ -1175,6 +1228,26 @@ func (s *Server) selectModel(group *config.ModelGroupConfig) config.ModelRef {
 	return candidates[0]
 }
 
+// tokenAllowsGroup 校验当前请求的 API key 是否被允许访问指定模型组。
+// 从 gin context 取 authMiddleware 写入的 AllowedGroups：为空表示不限制（放行）；
+// 非空则要求 groupName 在白名单内。
+func (s *Server) tokenAllowsGroup(c *gin.Context, groupName string) bool {
+	value, exists := c.Get("elysiaAllowedGroups")
+	if !exists {
+		return true
+	}
+	allowed, ok := value.([]string)
+	if !ok || len(allowed) == 0 {
+		return true // 未设置限制 → 放行
+	}
+	for _, g := range allowed {
+		if g == groupName {
+			return true
+		}
+	}
+	return false
+}
+
 // validateModelGroup 验证模型组配置
 func (s *Server) validateModelGroup(groupName string) (*config.ModelGroupConfig, error) {
 	if groupName == "" {
@@ -1194,7 +1267,7 @@ func (s *Server) validateModelGroup(groupName string) (*config.ModelGroupConfig,
 	return group, nil
 }
 
-func (s *Server) acquireRateLimit(group *config.ModelGroupConfig, estimatedTokens int) (func(actualTokens int), error) {
+func (s *Server) acquireRateLimit(group *config.ModelGroupConfig, estimatedTokens int) (func(), error) {
 	s.rateLimitMu.Lock()
 	defer s.rateLimitMu.Unlock()
 
@@ -1216,17 +1289,25 @@ func (s *Server) acquireRateLimit(group *config.ModelGroupConfig, estimatedToken
 		state.Tokens += estimatedTokens
 	}
 
-	return func(actualTokens int) {
+	// release 是单一的「结算点」：无论成功还是失败，都释放一个在途计数并
+	// 退还本次预留的 estimatedTokens。实际消耗由成功路径的 adjustTokenUsage
+	// 单独累加。这样**失败请求**（永不调用 adjustTokenUsage）的预留会被如数
+	// 退还，不再永久占用每日 token 配额。
+	released := false
+	return func() {
 		s.rateLimitMu.Lock()
 		defer s.rateLimitMu.Unlock()
+		if released {
+			return // 幂等：避免重复 defer 误减
+		}
+		released = true
 
 		current := s.getOrCreateRateLimitStateLocked(group.ID)
 		if current.Active > 0 {
 			current.Active--
 		}
-
-		if actualTokens > 0 {
-			current.Tokens += actualTokens - estimatedTokens
+		if estimatedTokens > 0 {
+			current.Tokens -= estimatedTokens
 			if current.Tokens < 0 {
 				current.Tokens = 0
 			}
@@ -1234,12 +1315,18 @@ func (s *Server) acquireRateLimit(group *config.ModelGroupConfig, estimatedToken
 	}, nil
 }
 
-func (s *Server) adjustTokenUsage(groupID string, estimatedTokens, actualTokens int) {
+// adjustTokenUsage 在请求成功并拿到实际 token 数后，把实际消耗累加到每日计数。
+// 预留额度的退还由 acquireRateLimit 返回的 release 闭包统一负责，因此这里只加
+// 实际值、不再二次扣减预留。
+func (s *Server) adjustTokenUsage(groupID string, actualTokens int) {
+	if actualTokens <= 0 {
+		return
+	}
 	s.rateLimitMu.Lock()
 	defer s.rateLimitMu.Unlock()
 
 	state := s.getOrCreateRateLimitStateLocked(groupID)
-	state.Tokens += actualTokens - estimatedTokens
+	state.Tokens += actualTokens
 	if state.Tokens < 0 {
 		state.Tokens = 0
 	}
@@ -1253,10 +1340,13 @@ func (s *Server) getOrCreateRateLimitStateLocked(groupID string) *rateLimitState
 		s.rateLimits[groupID] = state
 	}
 	if state.Date != today {
+		// 日期翻转只重置每日配额计数（Requests/Tokens），不动 Active：
+		// Active 跟踪的是「当前在途请求数」，与日期无关。跨午夜仍在途的请求
+		// 其 release 会对 Active 做 --，若此处清零会导致并发计数错乱、
+		// MaxConcurrency 在午夜窗口被突破。
 		state.Date = today
 		state.Requests = 0
 		state.Tokens = 0
-		state.Active = 0
 	}
 	return state
 }
@@ -1337,46 +1427,11 @@ func validateOutboundBaseURL(raw string) error {
 	return nil
 }
 
+// isPrivateOrRestrictedIP 委托到 relay 包的同名判定，保证「预校验」（这里，
+// 解析后逐个判 IP）与「连接时校验」（relay secureControl）用同一份网段清单，
+// 不再各维护一份易漂移的列表。
 func isPrivateOrRestrictedIP(ip net.IP) bool {
-	if ip == nil {
-		return true
-	}
-
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsMulticast() || ip.IsUnspecified() {
-		return true
-	}
-	if ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast() {
-		return true
-	}
-
-	if v4 := ip.To4(); v4 != nil {
-		// 169.254.0.0/16
-		if v4[0] == 169 && v4[1] == 254 {
-			return true
-		}
-		// 100.64.0.0/10 carrier-grade NAT
-		if v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127 {
-			return true
-		}
-		// 0.0.0.0/8
-		if v4[0] == 0 {
-			return true
-		}
-		return false
-	}
-
-	// IPv6 unique local fc00::/7
-	if len(ip) == net.IPv6len {
-		if (ip[0] & 0xfe) == 0xfc {
-			return true
-		}
-		// fe80::/10 link local
-		if ip[0] == 0xfe && (ip[1]&0xc0) == 0x80 {
-			return true
-		}
-	}
-
-	return false
+	return relay.IsPrivateOrRestrictedIP(ip)
 }
 
 func (s *Server) listModels(c *gin.Context) {
@@ -1523,5 +1578,35 @@ func (s *Server) ListenAndServe() error {
 	addr := fmt.Sprintf("%s:%d", s.config.Server.Host, s.config.Server.Port)
 	log.Printf("Starting server on %s", addr)
 
-	return s.engine.Run(addr)
+	// 显式持有 http.Server，便于 /__shutdown 优雅关停。
+	s.httpServer = &http.Server{Addr: addr, Handler: s.engine}
+	err := s.httpServer.ListenAndServe()
+	if err == http.ErrServerClosed {
+		// 被 /__shutdown 主动关停属正常退出，不视为错误。
+		log.Printf("Server stopped gracefully")
+		return nil
+	}
+	return err
+}
+
+// shutdown 处理 /__shutdown：优雅关停 http.Server（给在途请求一个超时窗口），
+// 仅允许本机回环调用。Koishi 重启流程靠它停掉旧 daemon 后再起新进程。
+func (s *Server) shutdown(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"shuttingDown": true})
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if s.httpServer != nil {
+			if err := s.httpServer.Shutdown(ctx); err != nil {
+				log.Printf("graceful shutdown error: %v", err)
+			}
+		}
+		// http.Server.Shutdown 已等待在途请求结束，此时不会再有新记录入队。
+		// 先停健康检查 goroutine，再冲刷 usage 队列把缓冲中的记录落库，
+		// 避免优雅重启（Koishi 依赖 /__shutdown）丢失计费/统计记录与 goroutine 泄漏。
+		if s.healthChecker != nil {
+			s.healthChecker.shutdown()
+		}
+		s.stopUsageWriter()
+	}()
 }

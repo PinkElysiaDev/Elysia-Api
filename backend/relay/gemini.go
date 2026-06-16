@@ -13,25 +13,24 @@ import (
 // GeminiAdapter 用于向 Gemini 原生 API 发送请求
 type GeminiAdapter struct {
 	client *http.Client
+	// streamClient 专用于流式请求：不设 Timeout，避免长连接被硬超时掐断。
+	streamClient *http.Client
 }
 
 func NewGeminiAdapter(timeout time.Duration) *GeminiAdapter {
-	client := &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 10,
-			IdleConnTimeout:     90 * time.Second,
-		},
-	}
+	client := &http.Client{Transport: newSecureTransport()}
 	if timeout > 0 {
 		client.Timeout = timeout
 	}
-	return &GeminiAdapter{client: client}
+	streamClient := &http.Client{Transport: newSecureTransport()}
+	return &GeminiAdapter{client: client, streamClient: streamClient}
 }
 
 // SendRequest 向 Gemini generateContent 端点发送请求，返回原始 HTTP 响应
 func (a *GeminiAdapter) SendRequest(baseUrl, apiKey, model string, body []byte, isStream bool) (*http.Response, error) {
-	base := strings.TrimSuffix(baseUrl, "/")
+	// 剥掉用户误填的末尾版本段（/v1、/v1beta 等），再拼自己的 /v1beta 路径，
+	// 避免 /v1/v1beta/... 这类重复版本段导致 404。
+	base := stripTrailingVersionSegment(baseUrl)
 	var url string
 	if isStream {
 		url = fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?alt=sse", base, model)
@@ -47,6 +46,7 @@ func (a *GeminiAdapter) SendRequest(baseUrl, apiKey, model string, body []byte, 
 	req.Header.Set("x-goog-api-key", apiKey)
 	if isStream {
 		req.Header.Set("Accept", "text/event-stream")
+		return a.streamClient.Do(req)
 	}
 	return a.client.Do(req)
 }
@@ -86,7 +86,11 @@ func geminiFinishReasonToOpenAI(reason string) string {
 		return "stop"
 	case "MAX_TOKENS":
 		return "length"
-	case "SAFETY", "RECITATION", "OTHER":
+	case "SAFETY", "RECITATION":
+		// 安全策略/复述拦截属于「被内容过滤」，映射为 content_filter，
+		// 让调用方能区分「正常结束」与「被拦截」。
+		return "content_filter"
+	case "OTHER":
 		return "stop"
 	default:
 		return "stop"

@@ -76,8 +76,12 @@ func OpenAIChatRequestToCanonical(body []byte) (*CanonicalRequest, error) {
 	if cacheKey := stringValue(raw["prompt_cache_key"]); cacheKey != "" {
 		req.PromptCacheKey = cacheKey
 	}
-	if retention, ok := raw["prompt_cache_retention"].(json.RawMessage); ok {
-		req.PromptCacheRetention = retention
+	// raw 已解码进 map[string]any，值不会是 json.RawMessage（断言恒失败、retention
+	// 静默丢失）。重新 marshal 该值拿回原始 JSON 字节再保留。
+	if retentionValue, exists := raw["prompt_cache_retention"]; exists && retentionValue != nil {
+		if encoded, err := json.Marshal(retentionValue); err == nil {
+			req.PromptCacheRetention = encoded
+		}
 	}
 
 	req.Messages = parseOpenAIChatMessages(raw["messages"])
@@ -235,8 +239,11 @@ func CanonicalToOpenAIChatRequest(req *CanonicalRequest) ([]byte, error) {
 	}
 	if req.Stream {
 		out["stream"] = true
-	}
-	if req.StreamOptions != nil {
+		// 流式必须注入 stream_options.include_usage=true：OpenAI 兼容上游默认不在
+		// 流式响应里返回 usage，不注入则末尾 chunk 没有 usage，Chat→Responses 转换
+		// 时 response.completed.usage 只能全 0。借鉴 cc-switch inject_openai_stream_include_usage。
+		out["stream_options"] = StreamOptions{IncludeUsage: true}
+	} else if req.StreamOptions != nil {
 		out["stream_options"] = StreamOptions{IncludeUsage: req.StreamOptions.IncludeUsage}
 	}
 	if req.Stop != nil {
@@ -274,7 +281,7 @@ func CanonicalToClaudeRequest(req *CanonicalRequest) ([]byte, error) {
 	out := map[string]any{
 		"model":      req.Model,
 		"messages":   canonicalMessagesToClaude(req),
-		"max_tokens": max(req.MaxOutputTokens, 65536),
+		"max_tokens": max(req.MaxOutputTokens, ClaudeDefaultMaxTokens),
 	}
 	if req.Instructions != "" {
 		out["system"] = req.Instructions
@@ -352,6 +359,58 @@ func CanonicalToGeminiRequest(req *CanonicalRequest) ([]byte, error) {
 		out["thinkingConfig"] = map[string]any{
 			"includeThoughts": true,
 			"thinkingEffort":  req.Thinking.Effort,
+		}
+	}
+	return json.Marshal(out)
+}
+
+// ResponsesPassthroughBody 透传式构造 Responses 上游请求体：以**原始请求字节**为基底，
+// 只覆盖 model 名（模型组路由需要），其余字段（input/tools/reasoning/encrypted_content/
+// stream/stream_options/prompt_cache_key 等）原样保留。
+//
+// 为什么不走 CanonicalToResponsesRequest：那条路把请求拆进 canonical 再重建 input，
+// 而 codex 的 input 含 reasoning/function_call/encrypted_content 等富项，重建会丢字段或
+// 改结构，上游严格校验直接拒 → 1 秒断连。当上游本身就支持 Responses API（用户明确选了
+// Responses API 线路）时，零转换透传最稳妥（借鉴 cc-switch 的 should_convert=false 分支）。
+//
+// modelName 为空时不覆盖 model。
+func ResponsesPassthroughBody(originalBody []byte, modelName string) ([]byte, error) {
+	out := map[string]any{}
+	if err := json.Unmarshal(originalBody, &out); err != nil {
+		return nil, fmt.Errorf("failed to parse Responses request for passthrough: %w", err)
+	}
+	if modelName != "" {
+		out["model"] = modelName
+	}
+	return json.Marshal(out)
+}
+
+// PassthroughBody 通用透传：当客户端输入格式与所选上游线路 API 一致时，以原始请求
+// 字节为基底直发上游——只改写 model（模型组路由需要），并按需补 stream 标记，其余字段
+// （含上游特有的 cache_control / thinking / 各类未知字段）原样保留，避免 unified 中间模型
+// 的有损往返。这是把 Responses 的零转换透传推广到 chat_completions / claude / gemini。
+//
+//   - modelName 为空时不覆盖 model；
+//   - ensureStream=true 时确保 stream=true（OpenAI 系同时补 stream_options.include_usage，
+//     以便上游回传 usage chunk）。Gemini 由 URL action 决定流式，调用方应传 false；
+//   - addStreamOptions 仅对 OpenAI 兼容线路有意义。
+func PassthroughBody(originalBody []byte, modelName string, ensureStream, addStreamOptions bool) ([]byte, error) {
+	out := map[string]any{}
+	if err := json.Unmarshal(originalBody, &out); err != nil {
+		return nil, fmt.Errorf("failed to parse request for passthrough: %w", err)
+	}
+	if modelName != "" {
+		out["model"] = modelName
+	}
+	if ensureStream {
+		out["stream"] = true
+		if addStreamOptions {
+			streamOptions, ok := out["stream_options"].(map[string]any)
+			if !ok {
+				streamOptions = map[string]any{}
+			}
+			streamOptions["include_usage"] = true
+			out["stream_options"] = streamOptions
 		}
 	}
 	return json.Marshal(out)
@@ -458,7 +517,7 @@ func parseClaudeMessages(raw any) []CanonicalMessage {
 				case "text":
 					msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentText, Text: stringValue(bm["text"]), Raw: bm})
 				case "image":
-					msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentImage, Raw: bm})
+					msg.Content = append(msg.Content, claudeImageBlockToPart(bm))
 				case "tool_use":
 					inputRaw, _ := json.Marshal(bm["input"])
 					msg.ToolCalls = append(msg.ToolCalls, CanonicalToolCall{
@@ -526,6 +585,23 @@ func parseGeminiContents(raw any) []CanonicalMessage {
 					ToolCallID: stringValue(fr["name"]),
 					ToolOutput: string(respRaw),
 					Raw:        pm,
+				})
+			}
+			// 多模态：inlineData（base64）/ fileData（URI）→ canonical image part。
+			if inline, ok := pm["inlineData"].(map[string]any); ok {
+				msg.Content = append(msg.Content, CanonicalContentPart{
+					Type:        CanonicalContentImage,
+					MediaType:   firstNonEmptyString(stringValue(inline["mimeType"]), stringValue(inline["mime_type"])),
+					ImageBase64: stringValue(inline["data"]),
+					Raw:         pm,
+				})
+			}
+			if fileData, ok := pm["fileData"].(map[string]any); ok {
+				msg.Content = append(msg.Content, CanonicalContentPart{
+					Type:      CanonicalContentImage,
+					MediaType: firstNonEmptyString(stringValue(fileData["mimeType"]), stringValue(fileData["mime_type"])),
+					ImageURL:  firstNonEmptyString(stringValue(fileData["fileUri"]), stringValue(fileData["file_uri"])),
+					Raw:       pm,
 				})
 			}
 		}
@@ -716,6 +792,119 @@ func canonicalMessagesToOpenAI(req *CanonicalRequest) []map[string]any {
 	return messages
 }
 
+// firstNonEmptyString 返回第一个非空字符串。
+func firstNonEmptyString(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// claudeImageBlockToPart 把 Claude image block（{"source":{...}}）解析为 canonical
+// image part：base64 source → ImageBase64+MediaType；url source → ImageURL。
+func claudeImageBlockToPart(bm map[string]any) CanonicalContentPart {
+	part := CanonicalContentPart{Type: CanonicalContentImage, Raw: bm}
+	src, _ := bm["source"].(map[string]any)
+	if src == nil {
+		return part
+	}
+	switch stringValue(src["type"]) {
+	case "base64":
+		part.MediaType = firstNonEmptyString(stringValue(src["media_type"]), stringValue(src["mimeType"]))
+		part.ImageBase64 = stringValue(src["data"])
+	case "url":
+		part.ImageURL = stringValue(src["url"])
+	default:
+		// 未声明 type：尽量从字段推断（data→base64，url→url）。
+		if data := stringValue(src["data"]); data != "" {
+			part.MediaType = firstNonEmptyString(stringValue(src["media_type"]), stringValue(src["mimeType"]))
+			part.ImageBase64 = data
+		} else if u := stringValue(src["url"]); u != "" {
+			part.ImageURL = u
+		}
+	}
+	return part
+}
+
+// parseDataURL 解析 data:[<mediatype>][;base64],<data> URI，返回媒体类型与原始数据。
+func parseDataURL(u string) (mediaType, data string, ok bool) {
+	if !strings.HasPrefix(u, "data:") {
+		return "", "", false
+	}
+	rest := u[len("data:"):]
+	comma := strings.IndexByte(rest, ',')
+	if comma < 0 {
+		return "", "", false
+	}
+	meta := strings.TrimSuffix(rest[:comma], ";base64")
+	return meta, rest[comma+1:], true
+}
+
+// imagePartBase64 从图片 part 提取 (mediaType, base64)。优先用结构化的
+// ImageBase64+MediaType；否则解析 ImageURL 里内联的 data: URI。
+func imagePartBase64(part CanonicalContentPart) (string, string) {
+	if part.ImageBase64 != "" {
+		return part.MediaType, part.ImageBase64
+	}
+	if strings.HasPrefix(part.ImageURL, "data:") {
+		if mt, b64, ok := parseDataURL(part.ImageURL); ok {
+			return mt, b64
+		}
+	}
+	return "", ""
+}
+
+// imagePartToOpenAIURL 把图片 part 渲染为 OpenAI image_url 的 url 值
+// （http(s) URL 原样；base64 数据组装成 data: URI）。
+func imagePartToOpenAIURL(part CanonicalContentPart) string {
+	if part.ImageURL != "" {
+		return part.ImageURL
+	}
+	if part.ImageBase64 != "" {
+		mt := part.MediaType
+		if mt == "" {
+			mt = "image/png"
+		}
+		return "data:" + mt + ";base64," + part.ImageBase64
+	}
+	return ""
+}
+
+// imagePartToClaudeSource 把图片 part 渲染为 Claude image block 的 source。
+func imagePartToClaudeSource(part CanonicalContentPart) map[string]any {
+	if mt, b64 := imagePartBase64(part); b64 != "" {
+		if mt == "" {
+			mt = "image/png"
+		}
+		return map[string]any{"type": "base64", "media_type": mt, "data": b64}
+	}
+	if part.ImageURL != "" {
+		return map[string]any{"type": "url", "url": part.ImageURL}
+	}
+	return nil
+}
+
+// imagePartToGeminiPart 把图片 part 渲染为 Gemini 的 inlineData（base64）或
+// fileData（http(s) URL）part。
+func imagePartToGeminiPart(part CanonicalContentPart) map[string]any {
+	if mt, b64 := imagePartBase64(part); b64 != "" {
+		if mt == "" {
+			mt = "image/png"
+		}
+		return map[string]any{"inlineData": map[string]any{"mimeType": mt, "data": b64}}
+	}
+	if part.ImageURL != "" {
+		fileData := map[string]any{"fileUri": part.ImageURL}
+		if part.MediaType != "" {
+			fileData["mimeType"] = part.MediaType
+		}
+		return map[string]any{"fileData": fileData}
+	}
+	return nil
+}
+
 func canonicalMessagesToClaude(req *CanonicalRequest) []map[string]any {
 	var messages []map[string]any
 	for _, msg := range req.Messages {
@@ -731,6 +920,10 @@ func canonicalMessagesToClaude(req *CanonicalRequest) []map[string]any {
 			switch part.Type {
 			case CanonicalContentText:
 				content = append(content, map[string]any{"type": "text", "text": part.Text})
+			case CanonicalContentImage:
+				if src := imagePartToClaudeSource(part); src != nil {
+					content = append(content, map[string]any{"type": "image", "source": src})
+				}
 			case CanonicalContentToolOutput:
 				content = append(content, map[string]any{"type": "tool_result", "tool_use_id": part.ToolCallID, "content": part.ToolOutput})
 			}
@@ -756,6 +949,17 @@ func canonicalMessagesToClaude(req *CanonicalRequest) []map[string]any {
 }
 
 func canonicalMessagesToGemini(req *CanonicalRequest) []map[string]any {
+	// 构建 tool_call_id → function_name 映射表：Gemini 的 functionResponse.name
+	// 必须是函数名（如 "Read"），而非 Anthropic 的 tool_use_id（如 "toolu_01ABC"）。
+	toolCallNames := make(map[string]string)
+	for _, msg := range req.Messages {
+		for _, call := range msg.ToolCalls {
+			if call.ID != "" && call.Name != "" {
+				toolCallNames[call.ID] = call.Name
+			}
+		}
+	}
+
 	var contents []map[string]any
 	for _, msg := range req.Messages {
 		if msg.Role == "system" {
@@ -770,15 +974,39 @@ func canonicalMessagesToGemini(req *CanonicalRequest) []map[string]any {
 			switch part.Type {
 			case CanonicalContentText:
 				parts = append(parts, map[string]any{"text": part.Text})
+			case CanonicalContentImage:
+				if p := imagePartToGeminiPart(part); p != nil {
+					parts = append(parts, p)
+				}
 			case CanonicalContentReasoning:
 				parts = append(parts, map[string]any{"text": part.ReasoningText, "thought": true})
 			case CanonicalContentToolOutput:
-				var response any = part.ToolOutput
-				var parsed any
-				if json.Unmarshal([]byte(part.ToolOutput), &parsed) == nil {
-					response = parsed
+				// Gemini 的 functionResponse.response 必须是 JSON 对象（google.protobuf.Struct），
+				// 不能是字符串、数组、null 或空。三层降级策略（参考 new-api）：
+				// 1. 尝试解析为 JSON 对象 → 直接使用
+				// 2. 解析为 JSON 数组 → 包装为 {"result": array}
+				// 3. 空或非 JSON 文本 → 包装为 {"content": text}
+				var responseMap map[string]any
+				if part.ToolOutput != "" {
+					if err := json.Unmarshal([]byte(part.ToolOutput), &responseMap); err != nil {
+						var arr []any
+						if err := json.Unmarshal([]byte(part.ToolOutput), &arr); err == nil {
+							responseMap = map[string]any{"result": arr}
+						} else {
+							responseMap = map[string]any{"content": part.ToolOutput}
+						}
+					}
+				} else {
+					responseMap = map[string]any{"content": ""}
 				}
-				parts = append(parts, map[string]any{"functionResponse": map[string]any{"name": part.ToolCallID, "response": response}})
+
+				// functionResponse.name 必须是函数名，而非 tool_use_id；回查之前的 tool_use 获取函数名。
+				name := part.ToolCallID
+				if fn, ok := toolCallNames[part.ToolCallID]; ok {
+					name = fn
+				}
+
+				parts = append(parts, map[string]any{"functionResponse": map[string]any{"name": name, "response": responseMap}})
 			}
 		}
 		for _, call := range msg.ToolCalls {
@@ -1181,10 +1409,10 @@ func effortFromBudget(budget int) string {
 	if budget <= 0 {
 		return ""
 	}
-	if budget <= 1000 {
+	if budget <= EffortBudgetLowCeil {
 		return "low"
 	}
-	if budget >= 20000 {
+	if budget >= EffortBudgetHighFloor {
 		return "high"
 	}
 	return "medium"
@@ -1195,9 +1423,9 @@ func budgetFromEffort(effort string) int {
 	case "low":
 		return 1280
 	case "high":
-		return 20000
+		return EffortBudgetHighFloor
 	default:
-		return 10000
+		return EffortBudgetDefault
 	}
 }
 

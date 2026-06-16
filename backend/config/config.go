@@ -1,15 +1,11 @@
 package config
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -29,10 +25,10 @@ type Config struct {
 	MaxBodyBytes           int64              `json:"maxBodyBytes,omitempty"`
 	Server                 ServerConfig       `json:"server"`
 	DashboardToken         string             `json:"dashboardToken,omitempty"`
-	DashboardTokenEnc      *SecretValue       `json:"dashboardTokenEnc,omitempty"`
-	Tokens                 []AccessToken      `json:"tokens"`
-	Groups                 []ModelGroupConfig `json:"modelGroups"`
+	Tokens                 []AccessToken      `json:"-"` // 运行时字段：仅用于 store-nil 回退与测试；不再从 config.json 读取（模型/token 走 SQLite）
+	Groups                 []ModelGroupConfig `json:"-"` // 同上：旧 config.json 的 modelGroups 字段已废弃，数据走 SQLite
 	Responses              ResponsesConfig    `json:"responses,omitempty"`              // Responses API 兼容策略
+	Relay                  RelayConfig        `json:"relay,omitempty"`                  // 转发（chat/claude/gemini）策略
 	Usage                  UsageConfig        `json:"usage,omitempty"`                  // 用量估算配置
 	HTTPTimeout            int                `json:"httpTimeout,omitempty"`            // HTTP 请求超时时间（秒），0 为不限制
 	DebugMode              bool               `json:"debugMode,omitempty"`              // 调试模式
@@ -66,6 +62,14 @@ type ResponsesConfig struct {
 	PassThroughUnknownFields     *bool  `json:"passThroughUnknownFields,omitempty"`
 }
 
+// RelayConfig 控制 chat_completions / claude / gemini 三种线路 API 的转发策略。
+// Passthrough：当客户端输入格式与所选上游线路 API 一致时（如 Claude→Anthropic、
+// Gemini→Gemini、OpenAI→OpenAI），跳过 unified 中间模型的有损往返，以原始请求字节
+// 直发上游（仅改写 model、按需补 stream）。默认开启；置 false 可强制恒走转换。
+type RelayConfig struct {
+	Passthrough *bool `json:"passthrough,omitempty"`
+}
+
 type UsageConfig struct {
 	EstimateWhenMissing         *bool `json:"estimateWhenMissing,omitempty"`
 	CharsPerToken               int   `json:"charsPerToken,omitempty"`
@@ -74,18 +78,11 @@ type UsageConfig struct {
 	FileInputTokenEstimatePerKB int   `json:"fileInputTokenEstimatePerKB,omitempty"`
 }
 
-type SecretValue struct {
-	Version    int    `json:"version,omitempty"`
-	Algorithm  string `json:"algorithm,omitempty"`
-	Nonce      string `json:"nonce,omitempty"`
-	Ciphertext string `json:"ciphertext,omitempty"`
-}
-
 type AccessToken struct {
-	Token    string       `json:"token,omitempty"`
-	TokenEnc *SecretValue `json:"tokenEnc,omitempty"`
-	Name     string       `json:"name"`
-	Enabled  bool         `json:"enabled"`
+	Token         string   `json:"token,omitempty"`
+	Name          string   `json:"name"`
+	Enabled       bool     `json:"enabled"`
+	AllowedGroups []string `json:"allowedGroups,omitempty"` // 允许访问的模型组；空表示不限制
 }
 
 type ModelGroupConfig struct {
@@ -117,7 +114,6 @@ type ModelRef struct {
 	Name      string                `json:"name"`
 	BaseURL   string                `json:"baseUrl"`
 	APIKey    string                `json:"apiKey,omitempty"`
-	APIKeyEnc *SecretValue          `json:"apiKeyEnc,omitempty"`
 	Platform  string                `json:"platform"`
 	Endpoints *EndpointCapabilities `json:"endpoints,omitempty"`
 }
@@ -137,9 +133,6 @@ func Load(path string) (*Config, error) {
 
 	cfg.path = path
 	cfg.applyBootstrapDefaults(path)
-	if err := cfg.resolveSecrets(); err != nil {
-		return nil, err
-	}
 
 	cfg.mu.Lock()
 	GlobalConfig = &cfg
@@ -203,9 +196,6 @@ func (c *Config) Reload() error {
 
 	newCfg.path = c.path
 	newCfg.applyBootstrapDefaults(c.path)
-	if err := newCfg.resolveSecrets(); err != nil {
-		return err
-	}
 
 	c.mu.Lock()
 	c.Host = newCfg.Host
@@ -219,9 +209,8 @@ func (c *Config) Reload() error {
 	c.MaxBodyBytes = newCfg.MaxBodyBytes
 	c.Server = newCfg.Server
 	c.DashboardToken = newCfg.DashboardToken
-	c.DashboardTokenEnc = newCfg.DashboardTokenEnc
-	c.Tokens = newCfg.Tokens
-	c.Groups = newCfg.Groups
+	// 注意：Tokens/Groups 是 json:"-" 运行时字段，不从 config.json 读取，
+	// 因此热重载不覆盖它们（模型组/token 的变更走 SQLite + 路由缓存失效）。
 	c.Responses = newCfg.Responses
 	c.Usage = newCfg.Usage
 	c.HTTPTimeout = newCfg.HTTPTimeout
@@ -245,7 +234,9 @@ func (c *Config) Dir() string {
 func (c *Config) GetGroups() []ModelGroupConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.Groups
+	// 返回副本：锁在 return 即释放，直接返回内部切片会让调用方在锁外
+	// 与 Reload/admin 的并发重写竞争（go test -race 可验证）。
+	return append([]ModelGroupConfig(nil), c.Groups...)
 }
 
 // GetGroupByName 根据模型组名称查找模型组配置
@@ -264,7 +255,8 @@ func (c *Config) GetGroupByName(name string) *ModelGroupConfig {
 func (c *Config) GetTokens() []AccessToken {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.Tokens
+	// 返回副本，理由同 GetGroups：避免锁外别名读取与并发重写竞争。
+	return append([]AccessToken(nil), c.Tokens...)
 }
 
 // 以下访问器/设置器统一通过 mu 锁保护那些会被请求热路径与 Reload/admin
@@ -349,29 +341,58 @@ func (c *Config) GetDBEncryptionKey() []byte {
 
 	c.mu.RLock()
 	dbPath := c.DatabasePath
+	keyPath := c.SecretKeyPath
 	c.mu.RUnlock()
-	if dbPath == "" {
-		return nil
+
+	// 优先使用配置的 SecretKeyPath（默认 <configDir>/.master-key）。运维显式
+	// 指定的受保护路径不再被忽略（修复 S2：旧实现硬编码 .db-key、SecretKeyPath 形同摆设）。
+	if keyPath != "" {
+		if data, err := os.ReadFile(keyPath); err == nil {
+			if key := strings.TrimSpace(string(data)); key != "" {
+				return []byte(key)
+			}
+		}
 	}
 
-	keyPath := filepath.Join(filepath.Dir(dbPath), ".db-key")
-	if data, err := os.ReadFile(keyPath); err == nil {
-		if key := strings.TrimSpace(string(data)); key != "" {
-			return []byte(key)
+	// 向后兼容：历史版本把密钥写在 <dbDir>/.db-key。若 SecretKeyPath 尚未建立但
+	// 旧密钥文件存在，沿用旧密钥——否则既有加密数据在升级后将无法解密。
+	var legacyKeyPath string
+	if dbPath != "" {
+		legacyKeyPath = filepath.Join(filepath.Dir(dbPath), ".db-key")
+		if data, err := os.ReadFile(legacyKeyPath); err == nil {
+			if key := strings.TrimSpace(string(data)); key != "" {
+				return []byte(key)
+			}
 		}
+	}
+
+	// 选定要写入的新密钥路径：优先 SecretKeyPath，回退到旧 .db-key 位置。
+	target := keyPath
+	if target == "" {
+		target = legacyKeyPath
+	}
+	if target == "" {
+		return nil
 	}
 
 	// 自动生成并持久化一个随机密钥（base64，约 43 字符）。
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
+		// 修复 S4：rand 失败原本静默返回 nil（无日志）→ 明文存储且无人知晓。
+		log.Printf("warning: failed to generate db encryption key: %v (secrets will be stored UNENCRYPTED)", err)
 		return nil
 	}
 	key := base64.StdEncoding.EncodeToString(raw)
-	if err := os.WriteFile(keyPath, []byte(key), 0o600); err != nil {
-		log.Printf("warning: failed to persist db encryption key to %s: %v (secrets will be at risk if key is lost)", keyPath, err)
+	if err := os.WriteFile(target, []byte(key), 0o600); err != nil {
+		log.Printf("warning: failed to persist db encryption key to %s: %v (secrets will be at risk if key is lost)", target, err)
 		// 仍返回内存中的 key，本次进程内加密可用；但重启后无法解密，
 		// 因此只在能落盘时才真正启用持久加密。
 		return nil
+	}
+	// 修复 S1：密钥若与数据库同目录，备份/卷快照/cp -r 会同时带走密文与密钥，
+	// at-rest 加密形同虚设。落到同目录时打印醒目告警，引导改用环境变量或独立路径。
+	if dbPath != "" && filepath.Dir(target) == filepath.Dir(dbPath) {
+		log.Printf("warning: db encryption key %s sits in the SAME directory as the database; a backup/snapshot of that directory exposes both ciphertext and key. Prefer ELYSIA_API_MASTER_KEY or point secretKeyPath at a separately-secured location.", target)
 	}
 	return []byte(key)
 }
@@ -467,6 +488,24 @@ func (c *Config) GetResponsesConfig() ResponsesConfig {
 	return cfg
 }
 
+// GetRelayConfig 返回转发策略配置，Passthrough 默认开启。
+func (c *Config) GetRelayConfig() RelayConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	cfg := c.Relay
+	if cfg.Passthrough == nil {
+		v := true
+		cfg.Passthrough = &v
+	}
+	return cfg
+}
+
+// IsRelayPassthroughEnabled 是 GetRelayConfig().Passthrough 的便捷封装。
+func (c *Config) IsRelayPassthroughEnabled() bool {
+	return *c.GetRelayConfig().Passthrough
+}
+
 func (c *Config) GetUsageConfig() UsageConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -489,142 +528,6 @@ func (c *Config) GetUsageConfig() UsageConfig {
 		cfg.FileInputTokenEstimatePerKB = 128
 	}
 	return cfg
-}
-
-func (c *Config) resolveSecrets() error {
-	// 仅当 config.json 里确实存在加密字段（xxxEnc）时才需要 master key。
-	// 新架构（WebUI + SQLite）不再向 config.json 写密文，因此裸配置可零配置启动，
-	// 不再强制要求 master.key 文件存在。旧 orchestrator 写出的加密配置仍兼容。
-	if !c.hasEncryptedSecrets() {
-		return nil
-	}
-
-	key, err := loadMasterKey(c.path)
-	if err != nil {
-		return err
-	}
-
-	if c.DashboardToken == "" && c.DashboardTokenEnc != nil {
-		plain, err := decryptSecret(*c.DashboardTokenEnc, key)
-		if err != nil {
-			return fmt.Errorf("failed to decrypt dashboard token: %w", err)
-		}
-		c.DashboardToken = plain
-	}
-
-	for i := range c.Tokens {
-		if c.Tokens[i].Token == "" && c.Tokens[i].TokenEnc != nil {
-			plain, err := decryptSecret(*c.Tokens[i].TokenEnc, key)
-			if err != nil {
-				return fmt.Errorf("failed to decrypt token %q: %w", c.Tokens[i].Name, err)
-			}
-			c.Tokens[i].Token = plain
-		}
-	}
-
-	for gi := range c.Groups {
-		for mi := range c.Groups[gi].Models {
-			model := &c.Groups[gi].Models[mi]
-			if model.APIKey == "" && model.APIKeyEnc != nil {
-				plain, err := decryptSecret(*model.APIKeyEnc, key)
-				if err != nil {
-					return fmt.Errorf("failed to decrypt apiKey for model %q in group %q: %w", model.Name, c.Groups[gi].Name, err)
-				}
-				model.APIKey = plain
-			}
-		}
-	}
-
-	return nil
-}
-
-// hasEncryptedSecrets 报告 config.json 里是否存在任何需要 master key 解密的
-// 密文字段（dashboardTokenEnc / tokenEnc / apiKeyEnc）。
-// 仅在存在时才加载 master key，避免裸配置因缺少 master.key 文件而启动失败。
-func (c *Config) hasEncryptedSecrets() bool {
-	if c.DashboardToken == "" && c.DashboardTokenEnc != nil {
-		return true
-	}
-	for i := range c.Tokens {
-		if c.Tokens[i].Token == "" && c.Tokens[i].TokenEnc != nil {
-			return true
-		}
-	}
-	for gi := range c.Groups {
-		for mi := range c.Groups[gi].Models {
-			model := &c.Groups[gi].Models[mi]
-			if model.APIKey == "" && model.APIKeyEnc != nil {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func loadMasterKey(configPath string) ([]byte, error) {
-	if envValue := strings.TrimSpace(os.Getenv("ELYSIA_API_MASTER_KEY")); envValue != "" {
-		return deriveMasterKey(envValue), nil
-	}
-
-	keyPath := filepath.Join(filepath.Dir(configPath), "master.key")
-	data, err := os.ReadFile(keyPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read master key file %s: %w", keyPath, err)
-	}
-
-	keyText := strings.TrimSpace(string(data))
-	if keyText == "" {
-		return nil, fmt.Errorf("master key file %s is empty", keyPath)
-	}
-
-	return deriveMasterKey(keyText), nil
-}
-
-func deriveMasterKey(raw string) []byte {
-	sum := sha256.Sum256([]byte(raw))
-	return sum[:]
-}
-
-func decryptSecret(secret SecretValue, key []byte) (string, error) {
-	if secret.Algorithm != "" && secret.Algorithm != "aes-256-gcm" {
-		return "", fmt.Errorf("unsupported algorithm: %s", secret.Algorithm)
-	}
-	if secret.Nonce == "" || secret.Ciphertext == "" {
-		return "", fmt.Errorf("missing nonce or ciphertext")
-	}
-
-	nonce, err := base64.StdEncoding.DecodeString(secret.Nonce)
-	if err != nil {
-		return "", fmt.Errorf("invalid nonce: %w", err)
-	}
-
-	ciphertext, err := base64.StdEncoding.DecodeString(secret.Ciphertext)
-	if err != nil {
-		return "", fmt.Errorf("invalid ciphertext: %w", err)
-	}
-
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	// 必须先校验 nonce 长度：gcm.Open 在 nonce 长度不符时会 panic 而非返回 error，
-	// 而 secret 来自外部 config.json（可能被篡改/损坏），不能让它崩进程。
-	if len(nonce) != gcm.NonceSize() {
-		return "", fmt.Errorf("invalid nonce size: got %d, want %d", len(nonce), gcm.NonceSize())
-	}
-
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		return "", err
-	}
-
-	return string(plaintext), nil
 }
 
 func init() {

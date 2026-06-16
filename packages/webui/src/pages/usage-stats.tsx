@@ -6,36 +6,60 @@ import {
   ResponsiveContainer,
   Tooltip as RTooltip,
 } from 'recharts'
-import { BarChart3, CheckCircle2, Cpu, Timer, Zap } from 'lucide-react'
+import { BarChart3, CheckCircle2, Cpu, Gauge, Timer } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { StatCard } from '@/components/stat-card'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ErrorState } from '@/components/ui/states'
+import { MultiSelect } from '@/components/ui/multi-select'
 import { RangeSelect, type RangeKey } from '@/components/range-select'
-import { useUsageStats } from '@/lib/hooks'
-import { formatDuration, formatNumber, percent, startOfRange, toRFC3339 } from '@/lib/utils'
+import { useUsageStats, useGroups, useModels, useTokens } from '@/lib/hooks'
+import {
+  compactNumber,
+  formatDuration,
+  formatNumber,
+  percent,
+  ratePerMinute,
+  startOfRange,
+  toRFC3339,
+  uniqueSorted,
+} from '@/lib/utils'
 
 export function UsageStatsPage() {
   const [range, setRange] = useState<RangeKey>('7d')
-  const [groupName, setGroupName] = useState('')
-  const [modelName, setModelName] = useState('')
-  const [keyName, setKeyName] = useState('')
+  const [groupNames, setGroupNames] = useState<string[]>([])
+  const [modelNames, setModelNames] = useState<string[]>([])
+  const [keyNames, setKeyNames] = useState<string[]>([])
+
+  const { data: groups } = useGroups()
+  const { data: models } = useModels()
+  const { data: tokens } = useTokens()
+
+  const groupOptions = useMemo(() => uniqueSorted((groups ?? []).map((g) => g.name)), [groups])
+  const modelOptions = useMemo(() => uniqueSorted((models ?? []).map((m) => m.name)), [models])
+  const keyOptions = useMemo(() => uniqueSorted((tokens ?? []).map((t) => t.name)), [tokens])
 
   const params = useMemo(
     () => ({
       from: startOfRange(range),
       to: toRFC3339(new Date()),
-      groupName: groupName.trim() || undefined,
-      modelName: modelName.trim() || undefined,
-      keyName: keyName.trim() || undefined,
+      groupNames: groupNames.length ? groupNames : undefined,
+      modelNames: modelNames.length ? modelNames : undefined,
+      keyNames: keyNames.length ? keyNames : undefined,
     }),
-    [range, groupName, modelName, keyName],
+    [range, groupNames, modelNames, keyNames],
   )
 
   const { data: stats, isLoading, error, mutate } = useUsageStats(params)
+
+  const successRate = percent(stats?.success ?? 0, stats?.requests ?? 0)
+  // 范围跨度优先用实际首末调用时间（更贴近真实速率），缺失时回退到查询窗口。
+  const spanFrom = stats?.firstUsedAt || params.from
+  const spanTo = stats?.lastUsedAt || params.to
+  const rpm = stats ? ratePerMinute(stats.requests, spanFrom, spanTo) : null
+  const tpm = stats ? ratePerMinute(stats.totalTokens, spanFrom, spanTo) : null
 
   const pieData = useMemo(
     () => [
@@ -48,7 +72,9 @@ export function UsageStatsPage() {
   const tokenData = useMemo(
     () => [
       { name: '输入', value: stats?.inputTokens ?? 0, color: 'hsl(var(--primary))' },
-      { name: '输出', value: stats?.outputTokens ?? 0, color: 'hsl(330 86% 78%)' },
+      // 输出用高饱和青绿，与输入的粉色形成强区分；缓存命中沿用旧输出的浅粉，区分度更低。
+      { name: '输出', value: stats?.outputTokens ?? 0, color: 'hsl(160 84% 45%)' },
+      { name: '缓存命中', value: stats?.cacheHitTokens ?? 0, color: 'hsl(330 86% 78%)' },
     ],
     [stats],
   )
@@ -64,9 +90,18 @@ export function UsageStatsPage() {
             <Label className="text-xs">时间范围</Label>
             <RangeSelect value={range} onChange={setRange} />
           </div>
-          <FilterInput label="模型组" value={groupName} onChange={setGroupName} placeholder="group name" />
-          <FilterInput label="模型" value={modelName} onChange={setModelName} placeholder="model name" />
-          <FilterInput label="Key 名称" value={keyName} onChange={setKeyName} placeholder="key name" />
+          <div className="space-y-1.5">
+            <Label className="text-xs">模型组</Label>
+            <MultiSelect options={groupOptions} value={groupNames} onChange={setGroupNames} placeholder="全部模型组" searchPlaceholder="搜索模型组" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">模型</Label>
+            <MultiSelect options={modelOptions} value={modelNames} onChange={setModelNames} placeholder="全部模型" searchPlaceholder="搜索模型" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">调用方 API Key</Label>
+            <MultiSelect options={keyOptions} value={keyNames} onChange={setKeyNames} placeholder="全部调用方" searchPlaceholder="搜索调用方" />
+          </div>
         </div>
       </Card>
 
@@ -79,64 +114,45 @@ export function UsageStatsPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               accent
-              label="请求数"
-              value={isLoading ? <Skeleton className="h-7 w-20" /> : formatNumber(stats?.requests)}
-              icon={<Zap className="h-5 w-5" />}
-            />
-            <StatCard
               label="成功率"
-              value={
-                isLoading ? (
-                  <Skeleton className="h-7 w-20" />
-                ) : (
-                  percent(stats?.success ?? 0, stats?.requests ?? 0)
-                )
+              value={isLoading ? <Skeleton className="h-7 w-20" /> : successRate}
+              hint={
+                stats
+                  ? `成功 ${formatNumber(stats.success)} · 失败 ${formatNumber(stats.failed)} · 共 ${formatNumber(stats.requests)}`
+                  : undefined
               }
-              hint={stats ? `成功 ${formatNumber(stats.success)} · 失败 ${formatNumber(stats.failed)}` : undefined}
               icon={<CheckCircle2 className="h-5 w-5" />}
             />
             <StatCard
               label="Token 总量"
               value={isLoading ? <Skeleton className="h-7 w-24" /> : formatNumber(stats?.totalTokens)}
-              hint={stats ? `入 ${formatNumber(stats.inputTokens)} · 出 ${formatNumber(stats.outputTokens)}` : undefined}
+              hint={stats ? `缓存命中率 ${percent(stats.cacheHitTokens, stats.inputTokens)}` : undefined}
               icon={<Cpu className="h-5 w-5" />}
             />
             <StatCard
               label="平均耗时"
               value={isLoading ? <Skeleton className="h-7 w-20" /> : formatDuration(stats?.avgDurationMs)}
+              hint={stats ? `平均首字 ${formatDuration(stats.avgFirstByteMs)}` : undefined}
               icon={<Timer className="h-5 w-5" />}
+            />
+            <StatCard
+              label="平均吞吐"
+              value={isLoading ? <Skeleton className="h-7 w-20" /> : tpm == null ? '—' : `${compactNumber(tpm)} tpm`}
+              hint={rpm == null ? undefined : `${rpm.toFixed(rpm < 10 ? 2 : rpm < 100 ? 1 : 0)} rpm`}
+              icon={<Gauge className="h-5 w-5" />}
             />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <ChartCard title="请求成功 / 失败" description="状态码 2xx-3xx 视为成功">
+            <ChartCard title="请求成功 / 失败">
               <DonutChart data={pieData} total={stats?.requests ?? 0} centerLabel="请求" />
             </ChartCard>
-            <ChartCard title="Token 输入 / 输出" description="累计 token 分布">
+            <ChartCard title="累计 token 分布">
               <DonutChart data={tokenData} total={stats?.totalTokens ?? 0} centerLabel="Token" />
             </ChartCard>
           </div>
         </>
       )}
-    </div>
-  )
-}
-
-function FilterInput({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  placeholder?: string
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-xs">{label}</Label>
-      <Input value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
     </div>
   )
 }
@@ -147,14 +163,14 @@ function ChartCard({
   children,
 }: {
   title: string
-  description: string
+  description?: string
   children: React.ReactNode
 }) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
+        {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
       <CardContent>{children}</CardContent>
     </Card>
@@ -171,6 +187,10 @@ function DonutChart({
   centerLabel: string
 }) {
   const hasData = data.some((d) => d.value > 0)
+  // 单项数据（只有一个非零扇区）时 paddingAngle=0，让圆环完全闭合；
+  // 多项时保留 2° 间隔便于区分扇区。
+  const nonZeroCount = data.filter((d) => d.value > 0).length
+  const paddingAngle = nonZeroCount <= 1 ? 0 : 2
   return (
     <div className="relative h-64">
       {hasData ? (
@@ -182,7 +202,7 @@ function DonutChart({
               nameKey="name"
               innerRadius={64}
               outerRadius={92}
-              paddingAngle={2}
+              paddingAngle={paddingAngle}
               stroke="none"
             >
               {data.map((entry) => (
@@ -206,18 +226,23 @@ function DonutChart({
           <BarChart3 className="mr-2 h-4 w-4" /> 暂无数据
         </div>
       )}
-      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-semibold tracking-tight">{formatNumber(total)}</span>
-        <span className="text-xs text-muted-foreground">{centerLabel}</span>
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 flex justify-center gap-4">
-        {data.map((entry) => (
-          <span key={entry.name} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="h-2.5 w-2.5 rounded-full" style={{ background: entry.color }} />
-            {entry.name} {formatNumber(entry.value)}
-          </span>
-        ))}
-      </div>
+      {/* 中心数字仅在有数据时显示，避免与"暂无数据"并列出现 0 */}
+      {hasData && (
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-2xl font-semibold tracking-tight">{formatNumber(total)}</span>
+          <span className="text-xs text-muted-foreground">{centerLabel}</span>
+        </div>
+      )}
+      {hasData && (
+        <div className="absolute bottom-0 left-0 right-0 flex justify-center gap-4">
+          {data.map((entry) => (
+            <span key={entry.name} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: entry.color }} />
+              {entry.name} {formatNumber(entry.value)}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

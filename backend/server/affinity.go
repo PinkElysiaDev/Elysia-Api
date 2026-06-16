@@ -18,7 +18,6 @@ import (
 // 不改变可用候选集合，因此与故障转移完全兼容：粘连模型失败时照常转移到
 // 其他候选，并在成功后更新粘连目标。
 
-const affinityTTL = 5 * time.Minute
 
 type affinityEntry struct {
 	modelName string
@@ -65,7 +64,7 @@ func (a *affinityCache) set(keyHash, groupID, modelName string, now time.Time) {
 			delete(a.entries, k)
 		}
 	}
-	a.entries[affinityKey(keyHash, groupID)] = affinityEntry{modelName: modelName, expiresAt: now.Add(affinityTTL)}
+	a.entries[affinityKey(keyHash, groupID)] = affinityEntry{modelName: modelName, expiresAt: now.Add(AffinityTTL)}
 }
 
 // applyAffinity 把粘连模型（若存在且仍在候选集合内）提到候选列表最前面，

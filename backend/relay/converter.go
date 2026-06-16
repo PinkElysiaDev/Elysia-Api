@@ -1,7 +1,6 @@
 package relay
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -21,11 +20,48 @@ const (
 	PlatformUnknown   Platform = "unknown"
 )
 
+// APIFormat 是按「线路 API 协议」对模型源/模型的分类，取代旧的含糊 platform
+// （把厂商和协议混为一谈）。四个值一一对应一种上游 wire API：
+//   - APIFormatResponses        OpenAI Responses API（codex 用，选它即透传，不转换）
+//   - APIFormatChatCompletions  OpenAI Chat Completions API（最通用的兼容协议）
+//   - APIFormatAnthropic        Anthropic Messages API（/v1/messages）
+//   - APIFormatGemini           Gemini API（/v1beta generateContent）
+const (
+	APIFormatResponses       = "responses"
+	APIFormatChatCompletions = "chat_completions"
+	APIFormatAnthropic       = "anthropic"
+	APIFormatGemini          = "gemini"
+)
+
+// NormalizeAPIFormat 把任意历史 platform 值归一化到上述四个 apiFormat 之一。
+// 用于读取时在线兼容旧库（无需数据迁移）：
+//   - openai / openai-compatible / azure / deepseek / ""  → chat_completions
+//   - claude / anthropic                                  → anthropic
+//   - gemini / google                                     → gemini
+//   - responses / openai_responses                        → responses
+//
+// 注意：旧的 "openai" 归一到 chat_completions（而非 responses），因为旧实现走的就是
+// chat completions 转换路径；只有用户在新 UI 明确选 "responses" 才触发透传。
+func NormalizeAPIFormat(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case APIFormatResponses, "openai_responses", "openai-responses":
+		return APIFormatResponses
+	case APIFormatAnthropic, "claude":
+		return APIFormatAnthropic
+	case APIFormatGemini, "google":
+		return APIFormatGemini
+	default:
+		// chat_completions / openai / openai-compatible / azure / deepseek / 未知
+		return APIFormatChatCompletions
+	}
+}
+
 // DetectPlatform 从 baseURL 或 platform 字段检测平台类型
 func DetectPlatform(baseURL, platform string) Platform {
-	// 首先检查明确的 platform 字段
-	switch strings.ToLower(platform) {
-	case "openai":
+	// 首先检查明确的 platform / apiFormat 字段。
+	// 同时识别新的 apiFormat 值（responses/chat_completions）与旧值（openai 等）。
+	switch strings.ToLower(strings.TrimSpace(platform)) {
+	case "openai", "chat_completions", "responses", "openai_responses", "openai-compatible":
 		return PlatformOpenAI
 	case "deepseek":
 		return PlatformDeepSeek
@@ -68,6 +104,28 @@ const (
 	FormatClaude   FormatType = "claude"
 	FormatUnknown  FormatType = "unknown"
 )
+
+// FormatMatchesPlatform 判断客户端输入格式是否与所选上游线路 API 同源。
+// 同源时可走零转换透传（PassthroughBody），无需经 unified 中间模型有损往返：
+//
+//	FormatClaude            ↔ PlatformAnthropic
+//	FormatGemini            ↔ PlatformGemini
+//	FormatOpenAI/FormatDeepSeek ↔ PlatformOpenAI/PlatformDeepSeek/PlatformAzure
+//
+// 注意：这里只看 wire 协议族是否一致，不区分具体厂商（OpenAI/DeepSeek/Azure 同属
+// Chat Completions 协议族，请求/响应结构兼容，可互相透传）。
+func FormatMatchesPlatform(inputFormat FormatType, platform Platform) bool {
+	switch inputFormat {
+	case FormatClaude:
+		return platform == PlatformAnthropic
+	case FormatGemini:
+		return platform == PlatformGemini
+	case FormatOpenAI, FormatDeepSeek:
+		return platform == PlatformOpenAI || platform == PlatformDeepSeek || platform == PlatformAzure
+	default:
+		return false
+	}
+}
 
 // DetectInputFormat 检测输入请求的格式
 func DetectInputFormat(body []byte) FormatType {
@@ -297,9 +355,9 @@ func GeminiToUnified(body []byte) (*UnifiedRequest, error) {
 		Model            string          `json:"model"`
 		Contents         []GeminiContent `json:"contents"`
 		GenerationConfig struct {
-			Temperature float64 `json:"temperature,omitempty"`
-			MaxTokens   int     `json:"maxOutputTokens,omitempty"`
-			TopP        float64 `json:"topP,omitempty"`
+			Temperature *float64 `json:"temperature,omitempty"`
+			MaxTokens   int      `json:"maxOutputTokens,omitempty"`
+			TopP        *float64 `json:"topP,omitempty"`
 		} `json:"generationConfig,omitempty"`
 		ThinkingConfig *struct {
 			IncludeThoughts bool   `json:"includeThoughts,omitempty"`
@@ -316,12 +374,13 @@ func GeminiToUnified(body []byte) (*UnifiedRequest, error) {
 		MaxTokens: geminiReq.GenerationConfig.MaxTokens,
 	}
 
-	// 正确处理指针类型
-	if geminiReq.GenerationConfig.Temperature > 0 {
-		unified.Temperature = &geminiReq.GenerationConfig.Temperature
+	// 正确处理指针类型：用 *float64 区分「未设置」与「显式设为 0」（temperature=0
+	// 是确定性输出的合法值，不能当未设丢弃）。
+	if geminiReq.GenerationConfig.Temperature != nil {
+		unified.Temperature = geminiReq.GenerationConfig.Temperature
 	}
-	if geminiReq.GenerationConfig.TopP > 0 {
-		unified.TopP = &geminiReq.GenerationConfig.TopP
+	if geminiReq.GenerationConfig.TopP != nil {
+		unified.TopP = geminiReq.GenerationConfig.TopP
 	}
 
 	// 转换思考配置
@@ -347,14 +406,28 @@ func GeminiToUnified(body []byte) (*UnifiedRequest, error) {
 
 		for _, part := range content.Parts {
 			if part.Text != "" {
-				// 如果只有文本，合并为单一字符串
-				contentParts = nil
+				// 累积文本；不要清空 contentParts，否则同消息内先出现的
+				// executableCode/functionCall 会被后续文本部件抹掉。
 				textContent.WriteString(part.Text)
 			}
 			if part.ExecutableCode != nil {
 				contentParts = append(contentParts, map[string]interface{}{
 					"type": "code",
 					"code": part.ExecutableCode.Code,
+				})
+			}
+			// functionCall / functionResponse 此前完全未转换，整段工具往返丢失。
+			// 以保真为先：原样保留其结构体，交由下游 ConvertFromUnified 渲染。
+			if part.FunctionCall != nil {
+				contentParts = append(contentParts, map[string]interface{}{
+					"type":         "function_call",
+					"functionCall": part.FunctionCall,
+				})
+			}
+			if part.FunctionResponse != nil {
+				contentParts = append(contentParts, map[string]interface{}{
+					"type":             "function_response",
+					"functionResponse": part.FunctionResponse,
 				})
 			}
 		}
@@ -390,8 +463,8 @@ func ClaudeToUnified(body []byte) (*UnifiedRequest, error) {
 			Content interface{} `json:"content"`
 		} `json:"messages"`
 		System          interface{} `json:"system,omitempty"`
-		Temperature     float64     `json:"temperature,omitempty"`
-		TopP            float64     `json:"top_p,omitempty"`
+		Temperature     *float64    `json:"temperature,omitempty"`
+		TopP            *float64    `json:"top_p,omitempty"`
 		Stream          bool        `json:"stream,omitempty"`
 		Stop            interface{} `json:"stop,omitempty"`
 		ThinkingEnabled *bool       `json:"thinking_enabled,omitempty"`
@@ -414,12 +487,13 @@ func ClaudeToUnified(body []byte) (*UnifiedRequest, error) {
 		Stop:      claudeReq.Stop,
 	}
 
-	// 正确处理指针类型
-	if claudeReq.Temperature > 0 {
-		unified.Temperature = &claudeReq.Temperature
+	// 正确处理指针类型：解码为 *float64 后判 nil，保留合法的 0 值
+	// （temperature=0 表示确定性输出，是有效值，不能当未设丢弃）。
+	if claudeReq.Temperature != nil {
+		unified.Temperature = claudeReq.Temperature
 	}
-	if claudeReq.TopP > 0 {
-		unified.TopP = &claudeReq.TopP
+	if claudeReq.TopP != nil {
+		unified.TopP = claudeReq.TopP
 	}
 
 	// 转换消息
@@ -441,13 +515,9 @@ func ClaudeToUnified(body []byte) (*UnifiedRequest, error) {
 
 	// 转换思考配置
 	if claudeReq.ThinkingEnabled != nil && *claudeReq.ThinkingEnabled {
-		effort := "medium"
-		if claudeReq.ThinkingBudget > 0 {
-			if claudeReq.ThinkingBudget <= 1000 {
-				effort = "low"
-			} else if claudeReq.ThinkingBudget >= 20000 {
-				effort = "high"
-			}
+		effort := effortFromBudget(claudeReq.ThinkingBudget)
+		if effort == "" {
+			effort = "medium"
 		}
 		unified.ThinkingConfig = &ThinkingConfig{
 			Enabled: true,
@@ -737,12 +807,7 @@ func UnifiedToClaude(unified *UnifiedRequest) ([]byte, error) {
 	// Claude 思考模式：使用真实的 thinking 对象格式
 	// https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
 	if unified.ThinkingConfig != nil && unified.ThinkingConfig.Enabled {
-		budget := 10000
-		if unified.ThinkingConfig.Effort == "low" {
-			budget = 1280
-		} else if unified.ThinkingConfig.Effort == "high" {
-			budget = 20000
-		}
+		budget := budgetFromEffort(unified.ThinkingConfig.Effort)
 		result["thinking"] = map[string]interface{}{
 			"type":          "enabled",
 			"budget_tokens": budget,
@@ -916,11 +981,15 @@ func MarshalResponse(resp *OpenAIResponse) ([]byte, error) {
 func ConvertClaudeStreamToOpenAI(resp *http.Response, writer StreamResponseWriter) error {
 	defer resp.Body.Close()
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
+	scanner := newSSEScanner(resp.Body)
 
 	toolCallIndex := -1
+	// 累积 usage：Claude 在 message_start.message.usage 带 input_tokens，
+	// 在 message_delta.usage 带 output_tokens。OpenAI 流需要在结尾补一个带 usage
+	// 的 chunk，否则下游按 OpenAI 协议计费会得到 0 token。
+	inputTokens := 0
+	outputTokens := 0
+	usageSeen := false
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -949,6 +1018,18 @@ func ConvertClaudeStreamToOpenAI(resp *http.Response, writer StreamResponseWrite
 
 		switch eventType {
 		case "message_start":
+			if msg, ok := event["message"].(map[string]interface{}); ok {
+				if usage, ok := msg["usage"].(map[string]interface{}); ok {
+					if v, ok := numberValue(usage["input_tokens"]); ok {
+						inputTokens = int(v)
+						usageSeen = true
+					}
+					if v, ok := numberValue(usage["output_tokens"]); ok {
+						outputTokens = int(v)
+						usageSeen = true
+					}
+				}
+			}
 			chunk = map[string]interface{}{
 				"object":  "chat.completion.chunk",
 				"choices": []map[string]interface{}{{"index": 0, "delta": map[string]interface{}{"role": "assistant", "content": ""}, "finish_reason": nil}},
@@ -1028,12 +1109,40 @@ func ConvertClaudeStreamToOpenAI(resp *http.Response, writer StreamResponseWrite
 			deltaRaw, _ := event["delta"].(map[string]interface{})
 			stopReason, _ := deltaRaw["stop_reason"].(string)
 			finishReason := claudeStopReasonToOpenAI(stopReason)
+			// Claude 在 message_delta.usage 带最终 output_tokens。
+			if usage, ok := event["usage"].(map[string]interface{}); ok {
+				if v, ok := numberValue(usage["output_tokens"]); ok {
+					outputTokens = int(v)
+					usageSeen = true
+				}
+				if v, ok := numberValue(usage["input_tokens"]); ok {
+					inputTokens = int(v)
+					usageSeen = true
+				}
+			}
 			chunk = map[string]interface{}{
 				"object":  "chat.completion.chunk",
 				"choices": []map[string]interface{}{{"index": 0, "delta": map[string]interface{}{}, "finish_reason": finishReason}},
 			}
 
 		case "message_stop":
+			// 在 [DONE] 之前补发一个带 usage 的空 choices chunk（对齐 OpenAI
+			// stream_options.include_usage 语义），让下游能拿到 token 计费数据。
+			if usageSeen {
+				usageChunk := map[string]interface{}{
+					"object":  "chat.completion.chunk",
+					"choices": []map[string]interface{}{},
+					"usage": map[string]interface{}{
+						"prompt_tokens":     inputTokens,
+						"completion_tokens": outputTokens,
+						"total_tokens":      inputTokens + outputTokens,
+					},
+				}
+				if usageJSON, err := json.Marshal(usageChunk); err == nil {
+					_, _ = writer.Write([]byte("data: " + string(usageJSON) + "\n\n"))
+					_ = writer.Flush()
+				}
+			}
 			_, _ = writer.Write([]byte("data: [DONE]\n\n"))
 			_ = writer.Flush()
 			return nil
@@ -1056,9 +1165,7 @@ func ConvertClaudeStreamToOpenAI(resp *http.Response, writer StreamResponseWrite
 func ConvertOpenAIStreamToClaudeStream(resp *http.Response, writer StreamResponseWriter, model string) error {
 	defer resp.Body.Close()
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
+	scanner := newSSEScanner(resp.Body)
 
 	msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
 	headerSent := false
@@ -1254,9 +1361,7 @@ func ConvertOpenAIStreamToClaudeStream(resp *http.Response, writer StreamRespons
 func ForwardStreamRaw(resp *http.Response, writer StreamResponseWriter) error {
 	defer resp.Body.Close()
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
+	scanner := newSSEScanner(resp.Body)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -1272,9 +1377,7 @@ func ForwardStreamRaw(resp *http.Response, writer StreamResponseWriter) error {
 func ConvertOpenAIStreamToGeminiStream(resp *http.Response, writer StreamResponseWriter) error {
 	defer resp.Body.Close()
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
+	scanner := newSSEScanner(resp.Body)
 
 	emittedCandidate := false
 
@@ -1423,9 +1526,7 @@ func ConvertOpenAIStreamToGeminiStream(resp *http.Response, writer StreamRespons
 func ConvertClaudeStreamToGeminiStream(resp *http.Response, writer StreamResponseWriter) error {
 	defer resp.Body.Close()
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
+	scanner := newSSEScanner(resp.Body)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -1547,9 +1648,7 @@ func geminiFinishReasonToClaudeStopReason(reason string) string {
 func ConvertGeminiStreamToClaudeStream(resp *http.Response, writer StreamResponseWriter, model string) error {
 	defer resp.Body.Close()
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
+	scanner := newSSEScanner(resp.Body)
 
 	msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
 	headerSent := false
@@ -1678,9 +1777,7 @@ func ConvertGeminiStreamToClaudeStream(resp *http.Response, writer StreamRespons
 func ConvertGeminiStreamToOpenAI(resp *http.Response, writer StreamResponseWriter) error {
 	defer resp.Body.Close()
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
+	scanner := newSSEScanner(resp.Body)
 
 	sentRole := false
 	toolIndexByKey := map[string]int{}

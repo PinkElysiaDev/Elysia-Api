@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"strings"
 )
@@ -14,6 +15,16 @@ import (
 // subtleConstantTimeEqual 以常量时间比较两个字符串，避免 token 比对的时序侧信道。
 func subtleConstantTimeEqual(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+// hashToken 返回明文 token 的 SHA256 十六进制摘要，用于 token 去重的唯一索引。
+// 哈希不可逆，落库后无法还原 token，安全；空 token 返回空串（不参与唯一约束）。
+func hashToken(plaintext string) string {
+	if plaintext == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(plaintext))
+	return hex.EncodeToString(sum[:])
 }
 
 // secretCodec 负责对落库的敏感字段（API token、上游 api_key）做透明

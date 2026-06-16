@@ -4,12 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
+	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -19,26 +18,38 @@ type openAIModelsResponse struct {
 	} `json:"data"`
 }
 
-func (s *Server) refreshAllSources(ctx context.Context) (int, error) {
+// sourceRefreshError 记录单个源刷新失败的信息，供全量刷新汇总返回。
+type sourceRefreshError struct {
+	SourceID   string `json:"sourceId"`
+	SourceName string `json:"sourceName"`
+	Error      string `json:"error"`
+}
+
+// refreshAllSources 刷新所有启用的源。**单源失败不再中断整体**：收集每个源的
+// 错误继续往下，返回累计成功数与各源错误列表。
+func (s *Server) refreshAllSources(ctx context.Context) (int, []sourceRefreshError, error) {
 	if s.store == nil {
-		return 0, fmt.Errorf("sqlite store is unavailable")
+		return 0, nil, fmt.Errorf("sqlite store is unavailable")
 	}
 	sources, err := s.store.ListSources(ctx)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	total := 0
+	var failures []sourceRefreshError
 	for _, source := range sources {
 		if !source.Enabled {
 			continue
 		}
 		count, err := s.refreshSourceByValue(ctx, source)
 		if err != nil {
-			return total, err
+			failures = append(failures, sourceRefreshError{SourceID: source.ID, SourceName: source.Name, Error: err.Error()})
+			_ = s.store.InsertSystemLog(ctx, "warn", "model source refresh failed", map[string]any{"sourceId": source.ID, "sourceName": source.Name, "error": err.Error()})
+			continue
 		}
 		total += count
 	}
-	return total, nil
+	return total, failures, nil
 }
 
 func (s *Server) refreshSource(ctx context.Context, id string) (int, error) {
@@ -80,19 +91,27 @@ func (s *Server) refreshSourceByValue(ctx context.Context, source storage.ModelS
 }
 
 func (s *Server) fetchModelsFromSource(ctx context.Context, source storage.ModelSource) ([]storage.Model, error) {
-	switch source.Platform {
-	case "claude":
-		models, err := s.fetchClaudeModels(ctx, source)
-		if err != nil {
-			log.Printf("claude model fetch failed for source %q, using built-in fallback: %v", source.Name, err)
-			return builtInClaudeModels(source), nil
-		}
-		return models, nil
-	case "gemini":
+	// 按归一化后的 apiFormat 分发，兼容旧的 platform 值（claude/openai/openai-compatible…）。
+	switch relay.NormalizeAPIFormat(source.Platform) {
+	case relay.APIFormatAnthropic:
+		// Anthropic 官方 /v1/models 存在（需 x-api-key + anthropic-version），中转站则
+		// 普遍提供 OpenAI 兼容的 /v1/models。两种鉴权都试一遍，返回 OpenAI 风格 {data:[{id}]}。
+		return s.fetchClaudeModels(ctx, source)
+	case relay.APIFormatGemini:
 		return s.fetchGeminiModels(ctx, source)
 	default:
+		// responses / chat_completions 都用 OpenAI 风格 /v1/models 拉取。
 		return s.fetchOpenAIModels(ctx, source)
 	}
+}
+
+// openAIModelsEndpoint 在 baseURL 上拼出 /v1/models（baseURL 已含 /v1 时不重复加）。
+func openAIModelsEndpoint(baseURL string) string {
+	baseURL = strings.TrimRight(baseURL, "/")
+	if strings.Contains(baseURL, "/v1") {
+		return baseURL + "/models"
+	}
+	return baseURL + "/v1/models"
 }
 
 func (s *Server) fetchOpenAIModels(ctx context.Context, source storage.ModelSource) ([]storage.Model, error) {
@@ -100,10 +119,7 @@ func (s *Server) fetchOpenAIModels(ctx context.Context, source storage.ModelSour
 	if baseURL == "" {
 		return nil, fmt.Errorf("source baseUrl is required")
 	}
-	endpoint := baseURL + "/models"
-	if !strings.Contains(baseURL, "/v1") {
-		endpoint = baseURL + "/v1/models"
-	}
+	endpoint := openAIModelsEndpoint(baseURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -112,7 +128,7 @@ func (s *Server) fetchOpenAIModels(ctx context.Context, source storage.ModelSour
 		req.Header.Set("Authorization", "Bearer "+source.APIKey)
 	}
 	var raw map[string]any
-	if err := doJSON(req, &raw); err != nil {
+	if err := fetchAndDecodeJSON(req, &raw); err != nil {
 		return nil, err
 	}
 	items := extractOpenAIModelIDs(raw)
@@ -123,86 +139,101 @@ func (s *Server) fetchOpenAIModels(ctx context.Context, source storage.ModelSour
 	return models, nil
 }
 
+// fetchClaudeModels 从 Claude 源拉取模型列表。Anthropic 官方与多数中转站都在
+// {baseURL}/v1/models 暴露 OpenAI 风格的列表，差异仅在鉴权头：官方要
+// x-api-key + anthropic-version，中转站常用 Authorization: Bearer。
+// 这里先试 x-api-key，失败再回退 Bearer，最大化兼容。
 func (s *Server) fetchClaudeModels(ctx context.Context, source storage.ModelSource) ([]storage.Model, error) {
-	endpoint := strings.TrimRight(source.BaseURL, "/") + "/models"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, err
+	baseURL := strings.TrimRight(source.BaseURL, "/")
+	if baseURL == "" {
+		return nil, fmt.Errorf("source baseUrl is required")
 	}
-	if source.APIKey != "" {
-		req.Header.Set("x-api-key", source.APIKey)
+	endpoint := openAIModelsEndpoint(baseURL)
+
+	attempts := []func(*http.Request){
+		func(r *http.Request) {
+			if source.APIKey != "" {
+				r.Header.Set("x-api-key", source.APIKey)
+				r.Header.Set("anthropic-version", "2023-06-01")
+			}
+		},
+		func(r *http.Request) {
+			if source.APIKey != "" {
+				r.Header.Set("Authorization", "Bearer "+source.APIKey)
+			}
+		},
 	}
-	req.Header.Set("anthropic-version", "2023-06-01")
-	var raw map[string]any
-	if err := doJSON(req, &raw); err != nil {
-		return nil, err
-	}
-	data, _ := raw["data"].([]any)
-	if len(data) == 0 {
-		return nil, fmt.Errorf("claude models API returned empty list")
-	}
-	models := make([]storage.Model, 0, len(data))
-	for _, value := range data {
-		item, _ := value.(map[string]any)
-		id, _ := item["id"].(string)
-		if id == "" {
+
+	var lastErr error
+	for _, applyAuth := range attempts {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, err
+		}
+		applyAuth(req)
+		var raw map[string]any
+		if err := fetchAndDecodeJSON(req, &raw); err != nil {
+			lastErr = err
 			continue
 		}
-		name, _ := item["display_name"].(string)
-		if strings.TrimSpace(name) == "" {
-			name = id
+		items := extractOpenAIModelIDs(raw)
+		models := make([]storage.Model, 0, len(items))
+		for _, item := range items {
+			m := inferredModel(source, item, item)
+			m.Platform = "claude"
+			models = append(models, m)
 		}
-		model := inferredModel(source, id, name)
-		model.Platform = "claude"
-		model.Type = "llm"
-		model.MaxTokens = 200000
-		model.VisionCapable = true
-		model.ToolsCapable = true
-		model.StructuredOutput = true
-		models = append(models, model)
+		return models, nil
 	}
-	return models, nil
+	return nil, fmt.Errorf("claude 模型拉取失败（已尝试 x-api-key 与 Bearer 两种鉴权）: %w", lastErr)
 }
 
 func (s *Server) fetchGeminiModels(ctx context.Context, source storage.ModelSource) ([]storage.Model, error) {
 	baseURL := strings.TrimRight(source.BaseURL, "/")
-	endpoint := baseURL + "/v1beta/models?key=" + url.QueryEscape(source.APIKey)
+	endpoint := baseURL + "/v1beta/models"
 	if strings.Contains(baseURL, "/v1beta") {
-		endpoint = baseURL + "/models?key=" + url.QueryEscape(source.APIKey)
+		endpoint = baseURL + "/models"
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
+	// 用 x-goog-api-key header 传 key（对照 new-api）。中转站多只识别 header 形式，
+	// 旧实现用 ?key= query param 在中转站（如 moyuu.cc）会被拒。
+	if source.APIKey != "" {
+		req.Header.Set("x-goog-api-key", source.APIKey)
+	}
 	var raw map[string]any
-	if err := doJSON(req, &raw); err != nil {
+	if err := fetchAndDecodeJSON(req, &raw); err != nil {
 		return nil, err
 	}
 	data, _ := raw["models"].([]any)
 	models := make([]storage.Model, 0, len(data))
 	for _, value := range data {
 		item, _ := value.(map[string]any)
-		methods, _ := item["supportedGenerationMethods"].([]any)
-		if !containsString(methods, "generateContent") {
-			continue
-		}
 		rawName, _ := item["name"].(string)
 		if rawName == "" {
 			continue
 		}
+		// 不再用 supportedGenerationMethods 过滤（对照 new-api）：中转站常不返回该字段，
+		// 过滤会漏掉可用模型。仅剥离 models/ 前缀。
 		name := strings.TrimPrefix(rawName, "models/")
 		model := inferredModel(source, rawName, name)
 		model.Platform = "gemini"
 		model.Type = "llm"
-		model.MaxTokens = intFromAny(item["outputTokenLimit"], intFromAny(item["inputTokenLimit"], 128000))
-		model.VisionCapable = true
-		model.ToolsCapable = true
+		// Gemini /v1beta/models 会返回 inputTokenLimit/outputTokenLimit，
+		// 返回了就解析（优先 input 作为上下文窗口），没返回则留空（=0）由用户填。
+		if limit := intFromAny(item["inputTokenLimit"], 0); limit > 0 {
+			model.MaxTokens = limit
+		} else if limit := intFromAny(item["outputTokenLimit"], 0); limit > 0 {
+			model.MaxTokens = limit
+		}
 		models = append(models, model)
 	}
 	return models, nil
 }
 
-func doJSON(req *http.Request, target any) error {
+func fetchAndDecodeJSON(req *http.Request, target any) error {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -232,17 +263,18 @@ func inferredModel(source storage.ModelSource, id, name string) storage.Model {
 	if strings.TrimSpace(name) == "" {
 		name = id
 	}
+	// 原则：API 返回了字段就解析（见各 fetch 函数对 maxTokens 等的赋值），
+	// 没返回的才留空，由用户在模型缓存里手动填写——不再硬编码猜测（旧实现一律
+	// 给 128000 会对 1M 上下文等新模型造成明显错误）。此处只设可靠的默认：
+	// type 轻量推断（embedding/reranker/llm），MaxTokens/能力默认留空。
 	return storage.Model{
-		ID:               id,
-		Name:             name,
-		Platform:         normalizeSourcePlatform(source.Platform),
-		Type:             inferModelType(id),
-		MaxTokens:        inferMaxTokens(id),
-		VisionCapable:    hasVisionCapability(id),
-		ToolsCapable:     hasToolsCapability(id),
-		StructuredOutput: hasStructuredOutput(id),
-		ThinkingMode:     "both",
-		Available:        true,
+		ID:           id,
+		Name:         name,
+		Platform:     normalizeSourcePlatform(source.Platform),
+		Type:         inferModelType(id),
+		MaxTokens:    0,
+		ThinkingMode: "both",
+		Available:    true,
 	}
 }
 
@@ -251,27 +283,6 @@ func normalizeSourcePlatform(platform string) string {
 		return "openai"
 	}
 	return platform
-}
-
-func builtInClaudeModels(source storage.ModelSource) []storage.Model {
-	ids := []string{
-		"claude-3-7-sonnet-20250219",
-		"claude-3-5-sonnet-20241022",
-		"claude-3-5-haiku-20241022",
-		"claude-3-opus-20240229",
-	}
-	models := make([]storage.Model, 0, len(ids))
-	for _, id := range ids {
-		model := inferredModel(source, id, id)
-		model.Platform = "claude"
-		model.Type = "llm"
-		model.MaxTokens = 200000
-		model.VisionCapable = true
-		model.ToolsCapable = true
-		model.StructuredOutput = true
-		models = append(models, model)
-	}
-	return models
 }
 
 func inferModelType(modelID string) string {
@@ -285,56 +296,8 @@ func inferModelType(modelID string) string {
 	return "llm"
 }
 
-func inferMaxTokens(modelID string) int {
-	id := strings.ToLower(modelID)
-	limits := []struct {
-		key   string
-		limit int
-	}{
-		{"gpt-4o-mini", 128000},
-		{"gpt-4o", 128000},
-		{"gpt-4-turbo", 128000},
-		{"gpt-4", 8192},
-		{"gpt-3.5-turbo", 16385},
-		{"text-embedding-3-small", 8191},
-		{"text-embedding-3-large", 8191},
-		{"text-embedding-ada-002", 8191},
-	}
-	for _, item := range limits {
-		if strings.Contains(id, item.key) {
-			return item.limit
-		}
-	}
-	if strings.Contains(id, "claude") {
-		return 200000
-	}
-	return 128000
-}
-
-func hasVisionCapability(modelID string) bool {
-	id := strings.ToLower(modelID)
-	return strings.Contains(id, "vision") || strings.Contains(id, "gpt-4o") || strings.Contains(id, "gpt-4-turbo") || strings.Contains(id, "gemini") || strings.Contains(id, "claude-3")
-}
-
-func hasToolsCapability(modelID string) bool {
-	id := strings.ToLower(modelID)
-	return !strings.Contains(id, "gpt-3.5") && !strings.Contains(id, "embedding")
-}
-
-func hasStructuredOutput(modelID string) bool {
-	id := strings.ToLower(modelID)
-	return strings.Contains(id, "gpt-4o") || strings.Contains(id, "gpt-4-turbo") || strings.Contains(id, "claude")
-}
-
-func containsString(values []any, expected string) bool {
-	for _, value := range values {
-		if text, ok := value.(string); ok && text == expected {
-			return true
-		}
-	}
-	return false
-}
-
+// intFromAny 从 JSON 解析出的 any 值中安全提取正整数，无法识别或非正时返回 fallback。
+// 用于解析上游返回的 inputTokenLimit/outputTokenLimit 等数值字段。
 func intFromAny(value any, fallback int) int {
 	switch v := value.(type) {
 	case float64:

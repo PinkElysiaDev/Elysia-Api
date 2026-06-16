@@ -1,4 +1,8 @@
-lib
+# TS 编译产物（仅 Koishi 包根的 lib/，不误伤 webui 的 src/lib 源码目录）
+packages/*/lib
+backend/lib
+lib/
+!packages/webui/src/lib/
 dist
 external
 

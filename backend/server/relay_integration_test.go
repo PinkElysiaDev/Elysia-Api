@@ -30,6 +30,9 @@ func parseTestIP(t *testing.T, raw string) net.IP {
 // groups 走 config）。跳过 SSRF 校验以便上游指向 httptest 的 127.0.0.1。
 func newTestServer(groups []config.ModelGroupConfig) *Server {
 	gin.SetMode(gin.TestMode)
+	// 上游指向 httptest 的 127.0.0.1：关闭 relay 的连接时 SSRF 校验，
+	// 否则私网 IP 会被 secureControl 在 connect 时拒绝。
+	relay.SetAllowPrivateDial(true)
 	cfg := &config.Config{}
 	cfg.Groups = groups
 	cfg.Server = config.ServerConfig{Host: "127.0.0.1", Port: 8765}
@@ -245,7 +248,7 @@ func TestAcquireRateLimitConcurrency(t *testing.T) {
 	if _, err := s.acquireRateLimit(group, 0); err == nil {
 		t.Fatalf("second acquire should be rejected by max concurrency")
 	}
-	release1(0)
+	release1()
 	if _, err := s.acquireRateLimit(group, 0); err != nil {
 		t.Fatalf("acquire after release should succeed: %v", err)
 	}
@@ -259,10 +262,49 @@ func TestAcquireRateLimitDailyRequests(t *testing.T) {
 		if err != nil {
 			t.Fatalf("acquire %d should succeed: %v", i, err)
 		}
-		release(0)
+		release()
 	}
 	if _, err := s.acquireRateLimit(group, 0); err == nil {
 		t.Fatalf("daily request limit should reject the 3rd request")
+	}
+}
+
+// H1 回归：失败请求（只 acquire+release、从不 adjustTokenUsage）必须把预留的
+// estimatedTokens 如数退还，不能永久占用每日 token 配额。
+func TestAcquireRateLimitRefundsReservationOnRelease(t *testing.T) {
+	s := newTestServer(nil)
+	group := &config.ModelGroupConfig{ID: "g1", Name: "grp", DailyLimitMaxTokens: 1000}
+
+	// 预留 800，随后 release（模拟请求失败：不调用 adjustTokenUsage）。
+	release, err := s.acquireRateLimit(group, 800)
+	if err != nil {
+		t.Fatalf("acquire should succeed: %v", err)
+	}
+	release()
+
+	// 退还后每日 token 计数应回到 0，新的 800 预留仍应被接受。
+	if got := s.rateLimits["g1"].Tokens; got != 0 {
+		t.Fatalf("reservation must be refunded on release, got Tokens=%d", got)
+	}
+	if _, err := s.acquireRateLimit(group, 800); err != nil {
+		t.Fatalf("after refund a fresh 800-token reservation should fit under 1000: %v", err)
+	}
+}
+
+// H1 成功路径：release 退还预留、adjustTokenUsage 累加实际值，净额应为实际消耗。
+func TestRateLimitSettlesToActualOnSuccess(t *testing.T) {
+	s := newTestServer(nil)
+	group := &config.ModelGroupConfig{ID: "g1", Name: "grp", DailyLimitMaxTokens: 10000}
+
+	release, err := s.acquireRateLimit(group, 800) // 预留估算值
+	if err != nil {
+		t.Fatalf("acquire should succeed: %v", err)
+	}
+	s.adjustTokenUsage("g1", 320) // 拿到实际值后累加
+	release()                     // 退还预留
+
+	if got := s.rateLimits["g1"].Tokens; got != 320 {
+		t.Fatalf("daily tokens should net to actual usage 320, got %d", got)
 	}
 }
 
@@ -307,8 +349,11 @@ func TestValidateOutboundBaseURLRejectsLoopbackAndPrivate(t *testing.T) {
 }
 
 func TestIsPrivateOrRestrictedIP(t *testing.T) {
-	private := []string{"127.0.0.1", "10.1.2.3", "192.168.0.1", "172.16.0.1", "169.254.0.1", "100.64.0.1", "0.0.0.0", "::1", "fc00::1", "fe80::1"}
-	public := []string{"8.8.8.8", "1.1.1.1", "203.0.113.10", "2606:4700:4700::1111"}
+	// 含 RFC1918/环回/链路本地/CGNAT/0.0.0.0 以及保留文档与基准测试段
+	// （192.0.2/24、198.18/15、198.51.100/24、203.0.113/24、240/4）——
+	// 这些都不可路由，作为上游应一律拒绝（H3 收紧后的行为）。
+	private := []string{"127.0.0.1", "10.1.2.3", "192.168.0.1", "172.16.0.1", "169.254.0.1", "100.64.0.1", "0.0.0.0", "::1", "fc00::1", "fe80::1", "192.0.2.10", "198.18.0.1", "198.51.100.5", "203.0.113.10", "240.0.0.1"}
+	public := []string{"8.8.8.8", "1.1.1.1", "9.9.9.9", "2606:4700:4700::1111"}
 	for _, ip := range private {
 		if !isPrivateOrRestrictedIP(parseTestIP(t, ip)) {
 			t.Fatalf("%s should be private/restricted", ip)
@@ -340,4 +385,37 @@ func TestIsLoopbackRequest(t *testing.T) {
 func ExampleServer_smoke() {
 	fmt.Println("ok")
 	// Output: ok
+}
+
+// 流式请求：上游返回 200 但 body 立即关闭（空 SSE 流），转发会出错。
+// 回归断言：record.StatusCode 必须从 200 下调为失败码，否则会被日志/统计误判为成功。
+func TestStreamEmptyUpstreamRecordsFailure(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		// 不写任何 SSE 事件，直接结束 —— 模拟"上游返回结构体为空"。
+	}))
+	defer upstream.Close()
+
+	group := config.ModelGroupConfig{
+		ID: "g1", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 1,
+		Models: []config.ModelRef{openAIModel("m", upstream.URL)},
+	}
+	s := newTestServer([]config.ModelGroupConfig{group})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	c.Request = req
+	s.chatCompletions(c)
+
+	records := s.usageSnapshot()
+	if len(records) == 0 {
+		t.Fatal("expected a usage record to be written")
+	}
+	last := records[len(records)-1]
+	if last.StatusCode < 400 {
+		t.Fatalf("empty/failed upstream stream must NOT be recorded as success, got statusCode=%d error=%q", last.StatusCode, last.Error)
+	}
 }

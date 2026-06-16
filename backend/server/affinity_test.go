@@ -47,7 +47,7 @@ func TestAffinityCacheGetSetTTL(t *testing.T) {
 	if got := a.get("keyhash", "g1", now.Add(time.Minute)); got != "model-x" {
 		t.Fatalf("within TTL should return model-x, got %q", got)
 	}
-	if got := a.get("keyhash", "g1", now.Add(affinityTTL+time.Second)); got != "" {
+	if got := a.get("keyhash", "g1", now.Add(AffinityTTL+time.Second)); got != "" {
 		t.Fatalf("after TTL should expire, got %q", got)
 	}
 	// 不同 key / group 隔离
