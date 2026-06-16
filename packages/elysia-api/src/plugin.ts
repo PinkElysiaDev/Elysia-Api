@@ -15,13 +15,13 @@ Elysia-API 独立后端入口插件。
 
 ### 命令
 
-- elysia-api.standalone.backend.start：启动独立后端
-- elysia-api.standalone.backend.stop：停止独立后端
-- elysia-api.standalone.backend.restart：重启独立后端
-- elysia-api.standalone.backend.status：查询后端状态
-- elysia-api.standalone.backend.reload：写入 bootstrap config 并热重载/重启
-- elysia-api.standalone.webui.url：显示 WebUI 地址
-- elysia-api.standalone.webui.open：按配置命令打开 WebUI
+- elysia-api.backend.start：启动独立后端
+- elysia-api.backend.stop：停止独立后端
+- elysia-api.backend.restart：重启独立后端
+- elysia-api.backend.status：查询后端状态
+- elysia-api.backend.reload：写入 bootstrap config 并热重载/重启
+- elysia-api.webui.url：显示 WebUI 地址
+- elysia-api.webui.open：按配置命令打开 WebUI
 
 ---
 `
@@ -42,27 +42,27 @@ export function apply(ctx: Context, config: Config) {
     void manager.reloadOrRestart()
   })
 
-  ctx.command('elysia-api.standalone.backend.start', '启动 Elysia-API 独立后端').action(async () => {
+  ctx.command('elysia-api.backend.start', '启动 Elysia-API 独立后端').action(async () => {
     await manager.start()
     return `Elysia-API 独立后端启动中：${manager.getAdminBaseURL()}`
   })
 
-  ctx.command('elysia-api.standalone.backend.stop', '停止 Elysia-API 独立后端').action(async () => {
+  ctx.command('elysia-api.backend.stop', '停止 Elysia-API 独立后端').action(async () => {
     await manager.stop()
     return 'Elysia-API 独立后端已停止'
   })
 
-  ctx.command('elysia-api.standalone.backend.restart', '重启 Elysia-API 独立后端').action(async () => {
+  ctx.command('elysia-api.backend.restart', '重启 Elysia-API 独立后端').action(async () => {
     await manager.restart()
     return `Elysia-API 独立后端已重启：${manager.getAdminBaseURL()}`
   })
 
-  ctx.command('elysia-api.standalone.backend.reload', '写入 bootstrap config 并请求后端重载').action(async () => {
+  ctx.command('elysia-api.backend.reload', '写入 bootstrap config 并请求后端重载').action(async () => {
     const result = await manager.reloadOrRestart()
     return `Elysia-API 独立后端配置已处理：${result}`
   })
 
-  ctx.command('elysia-api.standalone.backend.status', '查询 Elysia-API 独立后端状态').action(async () => {
+  ctx.command('elysia-api.backend.status', '查询 Elysia-API 独立后端状态').action(async () => {
     if (!(await manager.isRunning())) return 'Elysia-API 独立后端未在运行'
     try {
       const health = await manager.health()
@@ -72,9 +72,9 @@ export function apply(ctx: Context, config: Config) {
     }
   })
 
-  ctx.command('elysia-api.standalone.webui.url', '显示 Elysia-API WebUI 地址').action(() => manager.getWebUIURL())
+  ctx.command('elysia-api.webui.url', '显示 Elysia-API WebUI 地址').action(() => manager.getWebUIURL())
 
-  ctx.command('elysia-api.standalone.webui.open', '打开 Elysia-API WebUI').action(() => {
+  ctx.command('elysia-api.webui.open', '打开 Elysia-API WebUI').action(() => {
     const url = manager.getWebUIURL()
     if (!config.webuiOpenCommand?.trim()) return url
     const child = spawn(config.webuiOpenCommand, [url], { stdio: 'ignore', detached: true, windowsHide: true })
