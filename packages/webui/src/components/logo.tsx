@@ -6,7 +6,7 @@ export function Logo({ className }: { className?: string }) {
     <span className={cn('inline-flex items-center gap-2.5', className)}>
       <span className="relative flex h-10 w-10 items-center justify-center">
         <img
-          src="/logo.png"
+          src={`${import.meta.env.BASE_URL}logo.png`}
           alt="Elysia Logo"
           className="h-10 w-10 object-contain drop-shadow-[0_0_8px_rgba(255,64,255,0.6)]"
         />
