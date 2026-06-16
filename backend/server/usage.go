@@ -19,7 +19,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const usageBodyMaxBytes = 64 * 1024
 
 type usageBody struct {
 	Content   string `json:"content"`
@@ -102,6 +101,11 @@ type usageRecord struct {
 	IncomingBody        usageBody        `json:"incomingBody"`
 	OutgoingBody        usageBody        `json:"outgoingBody"`
 	ProviderResponse    usageBody        `json:"providerResponse"`
+	DownstreamResponse  usageBody        `json:"downstreamResponse"`
+
+	// downstream 是写回下游客户端的 ResponseWriter 捕获器，运行期内部使用，
+	// 不参与 JSON 序列化。recordUsage 会从它回读 DownstreamResponse。
+	downstream *downstreamCaptureWriter `json:"-"`
 }
 
 type usageSummary struct {
@@ -171,9 +175,9 @@ func (s *Server) initUsageRecord(c *gin.Context, start time.Time, body []byte, i
 }
 
 func sanitizeUsageBody(data []byte) usageBody {
-	truncated := len(data) > usageBodyMaxBytes
+	truncated := len(data) > UsageBodyMaxBytes
 	if truncated {
-		data = data[:usageBodyMaxBytes]
+		data = data[:UsageBodyMaxBytes]
 	}
 
 	var value interface{}
@@ -665,6 +669,11 @@ func maxInt(values ...int) int {
 func (s *Server) recordUsage(record *usageRecord) {
 	if record == nil {
 		return
+	}
+	// 回读「返回下游」内容（第四段链路）。capture writer tee 了实际写给客户端的字节。
+	// 仅在还没显式设置过时回填，避免覆盖特殊路径手动赋的值。
+	if record.downstream != nil && record.DownstreamResponse.Content == "" {
+		record.DownstreamResponse = record.downstream.downstreamBody()
 	}
 	if record.EndedAt.IsZero() {
 		record.EndedAt = time.Now()

@@ -129,7 +129,7 @@ func estimateCanonicalRequestUsage(req *relay.CanonicalRequest, cfg config.Usage
 
 	charsPerToken := cfg.CharsPerToken
 	if charsPerToken <= 0 {
-		charsPerToken = 4
+		charsPerToken = DefaultCharsPerToken
 	}
 
 	textChars := len([]rune(req.Instructions))

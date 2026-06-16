@@ -13,25 +13,25 @@ import (
 // ClaudeAdapter 用于向 Claude 原生 API 发送请求
 type ClaudeAdapter struct {
 	client *http.Client
+	// streamClient 专用于流式请求：不设 Timeout，避免长连接被硬超时掐断。
+	streamClient *http.Client
 }
 
 func NewClaudeAdapter(timeout time.Duration) *ClaudeAdapter {
-	client := &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 10,
-			IdleConnTimeout:     90 * time.Second,
-		},
-	}
+	// 连接时 SSRF 校验的安全 transport（newSecureTransport），杜绝 DNS rebinding。
+	client := &http.Client{Transport: newSecureTransport()}
 	if timeout > 0 {
 		client.Timeout = timeout
 	}
-	return &ClaudeAdapter{client: client}
+	streamClient := &http.Client{Transport: newSecureTransport()}
+	return &ClaudeAdapter{client: client, streamClient: streamClient}
 }
 
 // SendRequest 向 Claude /v1/messages 发送请求，返回原始 HTTP 响应
 func (a *ClaudeAdapter) SendRequest(baseUrl, apiKey string, body []byte, isStream bool) (*http.Response, error) {
-	url := strings.TrimSuffix(baseUrl, "/") + "/v1/messages"
+	// 用户可能误填带 /v1 的 base（如 https://x.com/v1），先剥掉末尾版本段，
+	// 避免拼成 /v1/v1/messages。Claude adapter 约定 base 为裸 host。
+	url := stripTrailingVersionSegment(baseUrl) + "/v1/messages"
 	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -41,6 +41,7 @@ func (a *ClaudeAdapter) SendRequest(baseUrl, apiKey string, body []byte, isStrea
 	req.Header.Set("anthropic-version", "2023-06-01")
 	if isStream {
 		req.Header.Set("Accept", "text/event-stream")
+		return a.streamClient.Do(req)
 	}
 	return a.client.Do(req)
 }
@@ -94,6 +95,10 @@ func claudeStopReasonToOpenAI(reason string) string {
 		return "tool_calls"
 	case "stop_sequence":
 		return "stop"
+	case "refusal":
+		// Claude 的 refusal（安全/政策拒答）映射为 content_filter，
+		// 让调用方能区分「正常结束」与「被拒答」。
+		return "content_filter"
 	default:
 		return "stop"
 	}

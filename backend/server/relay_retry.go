@@ -17,13 +17,17 @@ type relayOutcome struct {
 	errMsg     string
 }
 
-// appendRetryEvent 把一次失败尝试追加到 usage 记录的 RetryEvents，
-// 并递增 RetryCount。attempt 从 0 计数（0 即首次尝试）。
+// appendRetryEvent 把一次失败尝试追加到 usage 记录的 RetryEvents，并更新 RetryCount。
+// attempt 从 0 计数（0 即首次尝试，不算重试）。RetryCount 取「本次失败之前已发生的
+// 重试次数」= attempt 本身：首次尝试失败 → 0 次重试；attempt=2 失败 → 已重试 2 次。
+// 各次调用的 attempt 单调递增，故末次失败写入的值即最终重试次数（修正旧的 off-by-one）。
 func (s *Server) appendRetryEvent(record *usageRecord, attempt int, model, errMsg string) {
 	if record == nil {
 		return
 	}
-	record.RetryCount = len(record.RetryEvents) + 1
+	if attempt > record.RetryCount {
+		record.RetryCount = attempt
+	}
 	record.RetryEvents = append(record.RetryEvents, retryEvent{
 		Attempt: attempt,
 		Model:   model,
@@ -34,9 +38,8 @@ func (s *Server) appendRetryEvent(record *usageRecord, attempt int, model, errMs
 // truncateRetryError 限制单条重试错误的长度，避免上游返回的大块错误体
 // 撑爆 usage 记录。
 func truncateRetryError(msg string) string {
-	const max = 512
-	if len(msg) > max {
-		return msg[:max] + "...(truncated)"
+	if len(msg) > RetryErrorMaxLen {
+		return msg[:RetryErrorMaxLen] + "...(truncated)"
 	}
 	return msg
 }

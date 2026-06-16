@@ -396,8 +396,8 @@ func contentPartsToInterface(parts []CanonicalContentPart) any {
 		case CanonicalContentText:
 			out = append(out, map[string]any{"type": "text", "text": part.Text})
 		case CanonicalContentImage:
-			if part.ImageURL != "" {
-				out = append(out, map[string]any{"type": "image_url", "image_url": map[string]any{"url": part.ImageURL}})
+			if url := imagePartToOpenAIURL(part); url != "" {
+				out = append(out, map[string]any{"type": "image_url", "image_url": map[string]any{"url": url}})
 			}
 		default:
 			if part.Raw != nil {

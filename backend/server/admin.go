@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -40,6 +41,7 @@ func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
 	admin.PUT("/model-groups/:id", s.adminUpsertGroup)
 	admin.DELETE("/model-groups/:id", s.adminDeleteGroup)
 	admin.GET("/api-tokens", s.adminListTokens)
+	admin.GET("/api-tokens/:name/reveal", s.adminRevealToken)
 	admin.POST("/api-tokens", s.adminUpsertToken)
 	admin.PUT("/api-tokens/:name", s.adminUpsertToken)
 	admin.DELETE("/api-tokens/:name", s.adminDeleteToken)
@@ -119,12 +121,50 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 	if item.ID == "" {
 		item.ID = slugID(item.Name)
 	}
+	// 「留空即不变」：编辑时若未填 apiKey，保留已有记录的原 key，避免被清空。
+	if strings.TrimSpace(item.APIKey) == "" {
+		if existing, found := s.findSourceByID(c.Request.Context(), item.ID); found {
+			item.APIKey = existing.APIKey
+		}
+	}
 	if err := store.UpsertSource(c.Request.Context(), item); err != nil {
 		fail(c, 400, "save_source_failed", err.Error())
 		return
 	}
 	s.invalidateRouteCache()
+
+	// 保存后自动拉取一次该源的模型，省去用户额外手动刷新：
+	//   - 自动拉取源：异步拉取（不阻塞保存响应），失败仅记日志；
+	//   - 手动源：ReplaceSourceModels 同步 manualModels 到模型缓存。
+	saved := item
+	go func() {
+		if _, err := s.refreshSourceByValue(context.Background(), saved); err != nil {
+			if s.store != nil {
+				_ = s.store.InsertSystemLog(context.Background(), "warn", "auto refresh after save failed", map[string]any{"sourceId": saved.ID, "sourceName": saved.Name, "error": err.Error()})
+			}
+			return
+		}
+		s.invalidateRouteCache()
+	}()
+
 	ok(c, item)
+}
+
+// findSourceByID 按 id 查找模型源（用于「留空即不变」保留原 secret）。
+func (s *Server) findSourceByID(ctx context.Context, id string) (storage.ModelSource, bool) {
+	if s.store == nil || id == "" {
+		return storage.ModelSource{}, false
+	}
+	sources, err := s.store.ListSources(ctx)
+	if err != nil {
+		return storage.ModelSource{}, false
+	}
+	for _, src := range sources {
+		if src.ID == id {
+			return src, true
+		}
+	}
+	return storage.ModelSource{}, false
 }
 
 func (s *Server) adminDeleteSource(c *gin.Context) {
@@ -169,13 +209,13 @@ func (s *Server) adminListModels(c *gin.Context) {
 }
 
 func (s *Server) adminRefreshModels(c *gin.Context) {
-	count, err := s.refreshAllSources(c.Request.Context())
+	count, failures, err := s.refreshAllSources(c.Request.Context())
 	if err != nil {
 		fail(c, 500, "refresh_models_failed", err.Error())
 		return
 	}
 	s.invalidateRouteCache()
-	ok(c, gin.H{"refreshed": true, "count": count})
+	ok(c, gin.H{"refreshed": true, "count": count, "failures": failures})
 }
 
 func (s *Server) adminListGroups(c *gin.Context) {
@@ -244,6 +284,25 @@ func (s *Server) adminListTokens(c *gin.Context) {
 	ok(c, gin.H{"items": items})
 }
 
+// adminRevealToken 在 dashboard 鉴权下返回指定 API Key 的完整明文，
+// 供前端"复制"按钮按需取用（列表默认仍脱敏，不在页面常驻明文）。
+func (s *Server) adminRevealToken(c *gin.Context) {
+	store, okStore := s.requireStore(c)
+	if !okStore {
+		return
+	}
+	item, found, err := store.FindAPITokenByName(c.Request.Context(), c.Param("name"))
+	if err != nil {
+		fail(c, 500, "reveal_token_failed", err.Error())
+		return
+	}
+	if !found {
+		fail(c, 404, "token_not_found", "api key not found")
+		return
+	}
+	ok(c, gin.H{"name": item.Name, "token": item.Token})
+}
+
 func (s *Server) adminUpsertToken(c *gin.Context) {
 	store, okStore := s.requireStore(c)
 	if !okStore {
@@ -256,6 +315,15 @@ func (s *Server) adminUpsertToken(c *gin.Context) {
 	}
 	if name := c.Param("name"); name != "" {
 		item.Name = name
+	}
+	if name := c.Param("name"); name != "" {
+		item.Name = name
+	}
+	// 「留空即不变」：编辑时若未填 token，保留原值（不清空）。
+	if strings.TrimSpace(item.Token) == "" {
+		if existing, found, err := store.FindAPITokenByName(c.Request.Context(), item.Name); err == nil && found {
+			item.Token = existing.Token
+		}
 	}
 	if err := store.UpsertAPIToken(c.Request.Context(), item); err != nil {
 		fail(c, 400, "save_token_failed", err.Error())
@@ -350,7 +418,32 @@ func (s *Server) adminHealth(c *gin.Context) {
 
 func usageQueryFromRequest(c *gin.Context) storage.UsageQuery {
 	from, to := usageTimeRange(c)
-	return storage.UsageQuery{From: from, To: to, Limit: parsePositiveInt(c.Query("limit"), 50), Offset: parsePositiveInt(c.Query("offset"), 0), KeyName: c.Query("keyName"), KeyHash: c.Query("keyHash"), GroupName: firstNonEmpty(c.Query("groupName"), c.Query("modelGroup")), ModelName: c.Query("modelName"), StatusCode: parsePositiveInt(c.Query("statusCode"), 0)}
+	// 多选筛选：QueryArray 收集重复出现的同名参数（?keyName=a&keyName=b）；
+	// 为空时下沉到单值字段，保持与旧调用方（含遗留 /__usage 面板）的兼容。
+	return storage.UsageQuery{
+		From:       from,
+		To:         to,
+		Limit:      parsePositiveInt(c.Query("limit"), 50),
+		Offset:     parsePositiveInt(c.Query("offset"), 0),
+		KeyName:    c.Query("keyName"),
+		KeyHash:    c.Query("keyHash"),
+		GroupName:  firstNonEmpty(c.Query("groupName"), c.Query("modelGroup")),
+		ModelName:  c.Query("modelName"),
+		StatusCode: parsePositiveInt(c.Query("statusCode"), 0),
+		KeyNames:   c.QueryArray("keyName"),
+		GroupNames: firstNonEmptyArray(c.QueryArray("groupName"), c.QueryArray("modelGroup")),
+		ModelNames: c.QueryArray("modelName"),
+	}
+}
+
+// firstNonEmptyArray 返回第一个非空切片，用于 groupName/modelGroup 两个别名取其一。
+func firstNonEmptyArray(values ...[]string) []string {
+	for _, v := range values {
+		if len(v) > 0 {
+			return v
+		}
+	}
+	return nil
 }
 
 func slugID(value string) string {
@@ -366,7 +459,13 @@ func slugID(value string) string {
 			b.WriteByte('-')
 		}
 	}
-	return strings.Trim(b.String(), "-")
+	slug := strings.Trim(b.String(), "-")
+	// 清洗后为空（例如纯中文/纯符号名称），回退到时间戳 id，
+	// 避免 item.ID 为空导致存储层误报 "id is required"。
+	if slug == "" {
+		return fmt.Sprintf("item-%d", time.Now().UnixNano())
+	}
+	return slug
 }
 
 func maskSecret(value string) string {

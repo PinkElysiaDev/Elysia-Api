@@ -1,14 +1,15 @@
 import { cn } from '@/lib/utils'
 
-/** 品牌 Logo：粉色渐变方块 + 花蕊图形，呼应整体粉色调。 */
+/** 品牌 Logo：爱莉希雅白色玫瑰花徽章（基于 Elysian 图案）。 */
 export function Logo({ className }: { className?: string }) {
   return (
     <span className={cn('inline-flex items-center gap-2.5', className)}>
-      <span className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[hsl(330_86%_70%)] to-[hsl(333_71%_51%)] shadow-soft">
-        <svg viewBox="0 0 24 24" className="h-5 w-5 text-white" fill="currentColor" aria-hidden>
-          <path d="M12 4c-.9 2.6-2.6 4.3-5.2 5.2C9.4 10.1 11.1 11.8 12 14.4c.9-2.6 2.6-4.3 5.2-5.2C14.6 8.3 12.9 6.6 12 4Z" />
-          <circle cx="17" cy="17" r="2" opacity="0.85" />
-        </svg>
+      <span className="relative flex h-12 w-12 items-center justify-center">
+        <img
+          src={`${import.meta.env.BASE_URL}logo.png`}
+          alt="Elysia Logo"
+          className="h-12 w-12 object-contain drop-shadow-[0_0_8px_rgba(255,64,255,0.6)]"
+        />
       </span>
       <span className="flex flex-col leading-tight">
         <span className="text-sm font-semibold tracking-tight">Elysia API</span>

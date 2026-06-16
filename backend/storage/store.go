@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -97,7 +98,68 @@ func (s *Store) migrate(ctx context.Context) error {
 			return err
 		}
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(1, ?)`, time.Now().UTC().Format(time.RFC3339Nano))
+	// 增量迁移：为 api_tokens 增加 allowed_groups_json 列（模型组级访问权限）。
+	// SQLite 无 ADD COLUMN IF NOT EXISTS，重复执行会报 duplicate column，忽略该错误即幂等。
+	if _, err := s.db.ExecContext(ctx, `ALTER TABLE api_tokens ADD COLUMN allowed_groups_json TEXT NOT NULL DEFAULT '[]'`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
+	// 增量迁移：为 api_tokens 增加 token_hash 列（SHA256 哈希，用于去重检查）。
+	// 空 hash 不参与唯一约束，兼容历史数据过渡期（旧数据 hash 为空，下次编辑时补齐）。
+	if _, err := s.db.ExecContext(ctx, `ALTER TABLE api_tokens ADD COLUMN token_hash TEXT NOT NULL DEFAULT ''`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
+	// 为 token_hash 建唯一索引（WHERE token_hash != '' 保证空值不参与约束）。
+	if _, err := s.db.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash) WHERE token_hash != ''`); err != nil {
+		return err
+	}
+	// 增量迁移：为 usage_records 增加 cache_hit_tokens 列（缓存命中 token 数）。
+	// 用于统计接口直接 SUM 出缓存命中量与命中率，免去逐条解析 record_json。
+	// 历史数据该列为 0（可接受：旧记录缓存命中量不再回填）。
+	if _, err := s.db.ExecContext(ctx, `ALTER TABLE usage_records ADD COLUMN cache_hit_tokens INTEGER NOT NULL DEFAULT 0`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
+	// 回填历史数据的 token_hash：查所有 hash 为空的行，解密 → 计算 SHA256 → UPDATE。
+	// 解密失败（极端情况：master key 变了）跳过该行并记日志。
+	//
+	// 重要：store 用 SetMaxOpenConns(1)（单连接）。必须先把待回填的行全部读进内存
+	// 并关闭游标，再做 UPDATE/后续 Exec——否则未关闭的 rows 一直占着唯一连接，
+	// 循环内的 ExecContext 永远拿不到连接，导致死锁（即使 0 行，defer 的 Close
+	// 也会拖到函数末尾，使后面的 Exec 死锁）。
+	type tokenRow struct{ name, encryptedToken string }
+	var pending []tokenRow
+	rows, err := s.db.QueryContext(ctx, `SELECT name, token FROM api_tokens WHERE token_hash = ''`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var r tokenRow
+		if err := rows.Scan(&r.name, &r.encryptedToken); err != nil {
+			rows.Close()
+			return err
+		}
+		pending = append(pending, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close() // 必须在任何后续 Exec 前释放连接
+
+	for _, r := range pending {
+		plaintext, derr := s.codec.decrypt(r.encryptedToken)
+		if derr != nil {
+			log.Printf("[token_hash backfill] failed to decrypt token %q: %v (skipped)", r.name, derr)
+			continue
+		}
+		hash := hashToken(plaintext)
+		if _, err := s.db.ExecContext(ctx, `UPDATE api_tokens SET token_hash = ? WHERE name = ?`, hash, r.name); err != nil {
+			log.Printf("[token_hash backfill] failed to update hash for %q: %v", r.name, err)
+		}
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(1, ?)`, time.Now().UTC().Format(time.RFC3339Nano))
 	return err
 }
 
@@ -144,7 +206,7 @@ func (s *Store) GetSetting(ctx context.Context, key string, target any) (bool, e
 }
 
 func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT name, token, enabled, created_at, updated_at FROM api_tokens ORDER BY name`)
+	rows, err := s.db.QueryContext(ctx, `SELECT name, token, enabled, allowed_groups_json, created_at, updated_at FROM api_tokens ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -153,8 +215,8 @@ func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
 	for rows.Next() {
 		var item APIToken
 		var enabled int
-		var created, updated string
-		if err := rows.Scan(&item.Name, &item.Token, &enabled, &created, &updated); err != nil {
+		var allowedGroups, created, updated string
+		if err := rows.Scan(&item.Name, &item.Token, &enabled, &allowedGroups, &created, &updated); err != nil {
 			return nil, err
 		}
 		if plain, err := s.codec.decrypt(item.Token); err == nil {
@@ -163,6 +225,7 @@ func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
 			return nil, err
 		}
 		item.Enabled = intBool(enabled)
+		item.AllowedGroups = decodeStringSlice(allowedGroups)
 		item.CreatedAt = parseTime(created)
 		item.UpdatedAt = parseTime(updated)
 		items = append(items, item)
@@ -170,22 +233,79 @@ func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
 	return items, rows.Err()
 }
 
+// decodeStringSlice 解析 allowed_groups_json 等 JSON 字符串数组列，
+// 解析失败或为空时返回空切片（语义：不限制）。
+func decodeStringSlice(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return []string{}
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return []string{}
+	}
+	return out
+}
+
 func (s *Store) UpsertAPIToken(ctx context.Context, item APIToken) error {
 	if strings.TrimSpace(item.Name) == "" {
 		return errors.New("token name is required")
+	}
+	// 去重检查：同一 token 值不允许配置到两个不同 name 上。用 SHA256 hash 走唯一索引快速判重。
+	tokenHash := hashToken(item.Token)
+	if tokenHash != "" {
+		var existingName string
+		err := s.db.QueryRowContext(ctx, `SELECT name FROM api_tokens WHERE token_hash = ? AND name != ?`, tokenHash, item.Name).Scan(&existingName)
+		if err == nil {
+			return fmt.Errorf("该 token 已被 API Key %q 使用，请更换", existingName)
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
 	}
 	stored, err := s.codec.encrypt(item.Token)
 	if err != nil {
 		return err
 	}
+	if item.AllowedGroups == nil {
+		item.AllowedGroups = []string{}
+	}
+	allowedGroups, err := json.Marshal(item.AllowedGroups)
+	if err != nil {
+		return err
+	}
 	now := nowString()
-	_, err = s.db.ExecContext(ctx, `INSERT INTO api_tokens(name, token, enabled, created_at, updated_at) VALUES(?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET token=excluded.token, enabled=excluded.enabled, updated_at=excluded.updated_at`, item.Name, stored, boolInt(item.Enabled), now, now)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO api_tokens(name, token, token_hash, enabled, allowed_groups_json, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET token=excluded.token, token_hash=excluded.token_hash, enabled=excluded.enabled, allowed_groups_json=excluded.allowed_groups_json, updated_at=excluded.updated_at`, item.Name, stored, tokenHash, boolInt(item.Enabled), string(allowedGroups), now, now)
 	return err
 }
 
 func (s *Store) DeleteAPIToken(ctx context.Context, name string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM api_tokens WHERE name = ?`, name)
 	return err
+}
+
+// FindAPITokenByName 按名称查找单个 token（含解密后的明文），
+// 供「留空即不变」编辑时保留原 token 使用。
+func (s *Store) FindAPITokenByName(ctx context.Context, name string) (APIToken, bool, error) {
+	var item APIToken
+	var enabled int
+	var allowedGroups, created, updated string
+	err := s.db.QueryRowContext(ctx, `SELECT name, token, enabled, allowed_groups_json, created_at, updated_at FROM api_tokens WHERE name = ?`, name).
+		Scan(&item.Name, &item.Token, &enabled, &allowedGroups, &created, &updated)
+	if errors.Is(err, sql.ErrNoRows) {
+		return APIToken{}, false, nil
+	}
+	if err != nil {
+		return APIToken{}, false, err
+	}
+	if plain, derr := s.codec.decrypt(item.Token); derr == nil {
+		item.Token = plain
+	} else {
+		return APIToken{}, false, derr
+	}
+	item.Enabled = intBool(enabled)
+	item.AllowedGroups = decodeStringSlice(allowedGroups)
+	item.CreatedAt = parseTime(created)
+	item.UpdatedAt = parseTime(updated)
+	return item, true, nil
 }
 
 // FindAPIToken 按明文 token 查找。由于 token 以随机 nonce 加密存储，
@@ -251,12 +371,20 @@ func (s *Store) UpsertSource(ctx context.Context, item ModelSource) error {
 }
 
 func (s *Store) DeleteSource(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM model_sources WHERE id = ?`, id)
+	// 事务化：删除模型源与其下模型必须原子完成，避免第二步失败留下孤儿模型
+	// （models 表对 model_sources 无 FK 级联）。
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `DELETE FROM models WHERE source_id = ?`, id)
-	return err
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM model_sources WHERE id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM models WHERE source_id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) ReplaceSourceModels(ctx context.Context, source ModelSource, models []Model) error {

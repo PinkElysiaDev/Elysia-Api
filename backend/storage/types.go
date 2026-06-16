@@ -59,11 +59,12 @@ type ModelGroup struct {
 }
 
 type APIToken struct {
-	Name      string    `json:"name"`
-	Token     string    `json:"token,omitempty"`
-	Enabled   bool      `json:"enabled"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	Name          string    `json:"name"`
+	Token         string    `json:"token,omitempty"`
+	Enabled       bool      `json:"enabled"`
+	AllowedGroups []string  `json:"allowedGroups"` // 允许访问的模型组名称；空表示不限制（可访问全部）
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 type UsageQuery struct {
@@ -76,6 +77,10 @@ type UsageQuery struct {
 	GroupName  string
 	ModelName  string
 	StatusCode int
+	// 多选筛选：非空时优先于对应的单值字段，生成 IN (...) 条件。
+	KeyNames   []string
+	GroupNames []string
+	ModelNames []string
 }
 
 type UsageLogItem struct {
@@ -99,6 +104,7 @@ type UsageLogItem struct {
 	InputTokens       int       `json:"inputTokens"`
 	OutputTokens      int       `json:"outputTokens"`
 	TotalTokens       int       `json:"totalTokens"`
+	CacheHitTokens    int       `json:"cacheHitTokens"`
 	RequestTruncated  bool      `json:"incomingBodyTruncated"`
 	ResponseTruncated bool      `json:"providerResponseTruncated"`
 }
