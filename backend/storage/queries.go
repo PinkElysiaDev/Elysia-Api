@@ -148,10 +148,23 @@ func (s *Store) UpsertGroup(ctx context.Context, item ModelGroup) error {
 		return err
 	}
 	defer tx.Rollback()
+
+	// 取改名前的旧组名：token 用组名（而非 id）引用可访问组，改名后需把所有
+	// token 的 allowed_groups_json 里的旧名同步成新名，否则旧名会残留成悬空引用。
+	var oldName string
+	if err := tx.QueryRowContext(ctx, `SELECT name FROM model_groups WHERE id = ?`, item.ID).Scan(&oldName); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+
 	now := nowString()
 	_, err = tx.ExecContext(ctx, `INSERT INTO model_groups(id, name, enabled, strategy, max_retries, retry_interval, max_concurrency, daily_limit_max_requests, daily_limit_max_tokens, type, max_tokens, vision_capable, tools_capable, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, enabled=excluded.enabled, strategy=excluded.strategy, max_retries=excluded.max_retries, retry_interval=excluded.retry_interval, max_concurrency=excluded.max_concurrency, daily_limit_max_requests=excluded.daily_limit_max_requests, daily_limit_max_tokens=excluded.daily_limit_max_tokens, type=excluded.type, max_tokens=excluded.max_tokens, vision_capable=excluded.vision_capable, tools_capable=excluded.tools_capable, updated_at=excluded.updated_at`, item.ID, item.Name, boolInt(item.Enabled), item.Strategy, item.MaxRetries, item.RetryInterval, item.MaxConcurrency, item.DailyLimitMaxRequests, item.DailyLimitMaxTokens, item.Type, item.MaxTokens, boolInt(item.VisionCapable), boolInt(item.ToolsCapable), now, now)
 	if err != nil {
 		return err
+	}
+	if oldName != "" && oldName != item.Name {
+		if err := renameGroupInTokens(ctx, tx, oldName, item.Name); err != nil {
+			return err
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM model_group_models WHERE group_id = ?`, item.ID); err != nil {
 		return err
@@ -177,6 +190,80 @@ func (s *Store) UpsertGroup(ctx context.Context, item ModelGroup) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// renameGroupInTokens 在组改名后，把所有 token 的 allowed_groups_json 里的旧组名
+// 替换为新名。逐行 JSON 解析后精确替换（不用 SQL REPLACE，避免误伤子串，
+// 如 "gpt" 误伤 "gpt-4"）；替换时去重，防止新名已存在导致重复项。
+// 仅对实际包含旧名的 token 执行 UPDATE。必须在改名同一事务内调用以保证原子性。
+func renameGroupInTokens(ctx context.Context, tx *sql.Tx, oldName, newName string) error {
+	type pendingToken struct {
+		name   string
+		groups []string
+	}
+	var pending []pendingToken
+	rows, err := tx.QueryContext(ctx, `SELECT name, allowed_groups_json FROM api_tokens`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var name, raw string
+		if err := rows.Scan(&name, &raw); err != nil {
+			rows.Close()
+			return err
+		}
+		groups := decodeStringSlice(raw)
+		updated, changed := replaceGroupName(groups, oldName, newName)
+		if changed {
+			pending = append(pending, pendingToken{name: name, groups: updated})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	now := nowString()
+	for _, t := range pending {
+		payload, err := json.Marshal(t.groups)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE api_tokens SET allowed_groups_json = ?, updated_at = ? WHERE name = ?`, string(payload), now, t.name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// replaceGroupName 把切片里的 oldName 替换为 newName 并去重，返回新切片与是否发生变更。
+// 仅当 oldName 实际存在时才视为变更（避免对未引用该组的 token 产生无谓 UPDATE）；
+// 替换后去重，防止 newName 与列表中已有项重复。
+func replaceGroupName(groups []string, oldName, newName string) ([]string, bool) {
+	found := false
+	for _, g := range groups {
+		if g == oldName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return groups, false
+	}
+	seen := make(map[string]struct{}, len(groups))
+	out := make([]string, 0, len(groups))
+	for _, g := range groups {
+		if g == oldName {
+			g = newName
+		}
+		if _, dup := seen[g]; dup {
+			continue
+		}
+		seen[g] = struct{}{}
+		out = append(out, g)
+	}
+	return out, true
 }
 
 func (s *Store) DeleteGroup(ctx context.Context, id string) error {
