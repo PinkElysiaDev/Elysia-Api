@@ -42,6 +42,8 @@ export function apply(ctx: Context, config: Config) {
     void manager.reloadOrRestart()
   })
 
+  ctx.command('elysia-api', 'Elysia-API 管理指令', { authority: 3 })
+
   ctx.command('elysia-api.backend.start', '启动 Elysia-API 独立后端').action(async () => {
     await manager.start()
     return `Elysia-API 独立后端启动中：${manager.getAdminBaseURL()}`
