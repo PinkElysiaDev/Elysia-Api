@@ -38,9 +38,8 @@ func (s *Server) appendRetryEvent(record *usageRecord, attempt int, model, errMs
 // truncateRetryError 限制单条重试错误的长度，避免上游返回的大块错误体
 // 撑爆 usage 记录。
 func truncateRetryError(msg string) string {
-	const max = 512
-	if len(msg) > max {
-		return msg[:max] + "...(truncated)"
+	if len(msg) > RetryErrorMaxLen {
+		return msg[:RetryErrorMaxLen] + "...(truncated)"
 	}
 	return msg
 }

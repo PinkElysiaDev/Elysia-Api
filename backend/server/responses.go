@@ -30,34 +30,19 @@ func (s *Server) responses(c *gin.Context) {
 
 	responsesCfg := s.config.GetResponsesConfig()
 	if responsesCfg.Enabled != nil && !*responsesCfg.Enabled {
-		record.StatusCode = http.StatusNotFound
-		record.Error = "Responses API is disabled"
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"message": "Responses API is disabled", "type": "unsupported_endpoint"}})
+		s.failRequestTyped(c, record, startTime, http.StatusNotFound, "unsupported_endpoint", "Responses API is disabled")
 		return
 	}
 
 	canonicalReq, originalResponsesReq, err := relay.ResponsesRequestToCanonical(bodyBytes)
 	if err != nil {
-		record.StatusCode = http.StatusBadRequest
-		record.Error = err.Error()
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": err.Error(), "type": "invalid_request_error"}})
+		s.failRequestTyped(c, record, startTime, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
 
 	// 模型组级访问权限：先于 validateModelGroup 校验，越权即使目标组为空也返回 403。
 	if !s.tokenAllowsGroup(c, canonicalReq.Model) {
-		record.StatusCode = http.StatusForbidden
-		record.Error = "access to this model group is not allowed for this api key"
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"message": fmt.Sprintf("api key is not allowed to access model group '%s'", canonicalReq.Model), "type": "permission_error"}})
+		s.failRequestTyped(c, record, startTime, http.StatusForbidden, "permission_error", fmt.Sprintf("api key is not allowed to access model group '%s'", canonicalReq.Model))
 		return
 	}
 
@@ -69,12 +54,7 @@ func (s *Server) responses(c *gin.Context) {
 		} else if strings.Contains(err.Error(), "disabled") {
 			statusCode = http.StatusForbidden
 		}
-		record.StatusCode = statusCode
-		record.Error = err.Error()
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-		c.JSON(statusCode, gin.H{"error": gin.H{"message": err.Error(), "type": "invalid_request_error"}})
+		s.failRequestTyped(c, record, startTime, statusCode, "invalid_request_error", err.Error())
 		return
 	}
 	setRecordGroup(record, group)
@@ -84,12 +64,7 @@ func (s *Server) responses(c *gin.Context) {
 	// 而非让空 baseUrl 掉进 SSRF 校验误报 403。
 	candidates := s.buildCandidates(group)
 	if len(candidates) == 0 {
-		record.StatusCode = http.StatusInternalServerError
-		record.Error = "no available models in group"
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": fmt.Sprintf("no available models in group '%s'", group.Name), "type": "api_error"}})
+		s.failRequestTyped(c, record, startTime, http.StatusInternalServerError, "api_error", fmt.Sprintf("no available models in group '%s'", group.Name))
 		return
 	}
 	if sticky := s.affinity.get(record.KeyHash, group.ID, startTime); sticky != "" {
@@ -104,12 +79,7 @@ func (s *Server) responses(c *gin.Context) {
 
 	releaseLimiter, err := s.acquireRateLimit(group, estimatedTokens)
 	if err != nil {
-		record.StatusCode = http.StatusTooManyRequests
-		record.Error = err.Error()
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-		c.JSON(http.StatusTooManyRequests, gin.H{"error": gin.H{"message": err.Error(), "type": "rate_limit_error"}})
+		s.failRequestTyped(c, record, startTime, http.StatusTooManyRequests, "rate_limit_error", err.Error())
 		return
 	}
 	defer releaseLimiter()

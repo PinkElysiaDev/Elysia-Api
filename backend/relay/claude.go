@@ -97,7 +97,7 @@ func claudeStopReasonToOpenAI(reason string) string {
 		return "stop"
 	case "refusal":
 		// Claude 的 refusal（安全/政策拒答）映射为 content_filter，
-		// 让调用方能区分「正常结束」与「被拒答」（修复 R13）。
+		// 让调用方能区分「正常结束」与「被拒答」。
 		return "content_filter"
 	default:
 		return "stop"

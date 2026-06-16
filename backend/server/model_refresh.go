@@ -128,7 +128,7 @@ func (s *Server) fetchOpenAIModels(ctx context.Context, source storage.ModelSour
 		req.Header.Set("Authorization", "Bearer "+source.APIKey)
 	}
 	var raw map[string]any
-	if err := doJSON(req, &raw); err != nil {
+	if err := fetchAndDecodeJSON(req, &raw); err != nil {
 		return nil, err
 	}
 	items := extractOpenAIModelIDs(raw)
@@ -172,7 +172,7 @@ func (s *Server) fetchClaudeModels(ctx context.Context, source storage.ModelSour
 		}
 		applyAuth(req)
 		var raw map[string]any
-		if err := doJSON(req, &raw); err != nil {
+		if err := fetchAndDecodeJSON(req, &raw); err != nil {
 			lastErr = err
 			continue
 		}
@@ -204,7 +204,7 @@ func (s *Server) fetchGeminiModels(ctx context.Context, source storage.ModelSour
 		req.Header.Set("x-goog-api-key", source.APIKey)
 	}
 	var raw map[string]any
-	if err := doJSON(req, &raw); err != nil {
+	if err := fetchAndDecodeJSON(req, &raw); err != nil {
 		return nil, err
 	}
 	data, _ := raw["models"].([]any)
@@ -233,7 +233,7 @@ func (s *Server) fetchGeminiModels(ctx context.Context, source storage.ModelSour
 	return models, nil
 }
 
-func doJSON(req *http.Request, target any) error {
+func fetchAndDecodeJSON(req *http.Request, target any) error {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {

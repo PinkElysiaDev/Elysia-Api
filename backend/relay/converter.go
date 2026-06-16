@@ -1,7 +1,6 @@
 package relay
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -408,7 +407,7 @@ func GeminiToUnified(body []byte) (*UnifiedRequest, error) {
 		for _, part := range content.Parts {
 			if part.Text != "" {
 				// 累积文本；不要清空 contentParts，否则同消息内先出现的
-				// executableCode/functionCall 会被后续文本部件抹掉（修复 R8）。
+				// executableCode/functionCall 会被后续文本部件抹掉。
 				textContent.WriteString(part.Text)
 			}
 			if part.ExecutableCode != nil {
@@ -516,13 +515,9 @@ func ClaudeToUnified(body []byte) (*UnifiedRequest, error) {
 
 	// 转换思考配置
 	if claudeReq.ThinkingEnabled != nil && *claudeReq.ThinkingEnabled {
-		effort := "medium"
-		if claudeReq.ThinkingBudget > 0 {
-			if claudeReq.ThinkingBudget <= 1000 {
-				effort = "low"
-			} else if claudeReq.ThinkingBudget >= 20000 {
-				effort = "high"
-			}
+		effort := effortFromBudget(claudeReq.ThinkingBudget)
+		if effort == "" {
+			effort = "medium"
 		}
 		unified.ThinkingConfig = &ThinkingConfig{
 			Enabled: true,
@@ -812,12 +807,7 @@ func UnifiedToClaude(unified *UnifiedRequest) ([]byte, error) {
 	// Claude 思考模式：使用真实的 thinking 对象格式
 	// https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
 	if unified.ThinkingConfig != nil && unified.ThinkingConfig.Enabled {
-		budget := 10000
-		if unified.ThinkingConfig.Effort == "low" {
-			budget = 1280
-		} else if unified.ThinkingConfig.Effort == "high" {
-			budget = 20000
-		}
+		budget := budgetFromEffort(unified.ThinkingConfig.Effort)
 		result["thinking"] = map[string]interface{}{
 			"type":          "enabled",
 			"budget_tokens": budget,
@@ -991,14 +981,12 @@ func MarshalResponse(resp *OpenAIResponse) ([]byte, error) {
 func ConvertClaudeStreamToOpenAI(resp *http.Response, writer StreamResponseWriter) error {
 	defer resp.Body.Close()
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
+	scanner := newSSEScanner(resp.Body)
 
 	toolCallIndex := -1
 	// 累积 usage：Claude 在 message_start.message.usage 带 input_tokens，
 	// 在 message_delta.usage 带 output_tokens。OpenAI 流需要在结尾补一个带 usage
-	// 的 chunk，否则下游按 OpenAI 协议计费会得到 0 token（修复 R2）。
+	// 的 chunk，否则下游按 OpenAI 协议计费会得到 0 token。
 	inputTokens := 0
 	outputTokens := 0
 	usageSeen := false
@@ -1121,7 +1109,7 @@ func ConvertClaudeStreamToOpenAI(resp *http.Response, writer StreamResponseWrite
 			deltaRaw, _ := event["delta"].(map[string]interface{})
 			stopReason, _ := deltaRaw["stop_reason"].(string)
 			finishReason := claudeStopReasonToOpenAI(stopReason)
-			// Claude 在 message_delta.usage 带最终 output_tokens（修复 R2）。
+			// Claude 在 message_delta.usage 带最终 output_tokens。
 			if usage, ok := event["usage"].(map[string]interface{}); ok {
 				if v, ok := numberValue(usage["output_tokens"]); ok {
 					outputTokens = int(v)
@@ -1177,9 +1165,7 @@ func ConvertClaudeStreamToOpenAI(resp *http.Response, writer StreamResponseWrite
 func ConvertOpenAIStreamToClaudeStream(resp *http.Response, writer StreamResponseWriter, model string) error {
 	defer resp.Body.Close()
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
+	scanner := newSSEScanner(resp.Body)
 
 	msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
 	headerSent := false
@@ -1375,9 +1361,7 @@ func ConvertOpenAIStreamToClaudeStream(resp *http.Response, writer StreamRespons
 func ForwardStreamRaw(resp *http.Response, writer StreamResponseWriter) error {
 	defer resp.Body.Close()
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
+	scanner := newSSEScanner(resp.Body)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -1393,9 +1377,7 @@ func ForwardStreamRaw(resp *http.Response, writer StreamResponseWriter) error {
 func ConvertOpenAIStreamToGeminiStream(resp *http.Response, writer StreamResponseWriter) error {
 	defer resp.Body.Close()
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
+	scanner := newSSEScanner(resp.Body)
 
 	emittedCandidate := false
 
@@ -1544,9 +1526,7 @@ func ConvertOpenAIStreamToGeminiStream(resp *http.Response, writer StreamRespons
 func ConvertClaudeStreamToGeminiStream(resp *http.Response, writer StreamResponseWriter) error {
 	defer resp.Body.Close()
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
+	scanner := newSSEScanner(resp.Body)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -1668,9 +1648,7 @@ func geminiFinishReasonToClaudeStopReason(reason string) string {
 func ConvertGeminiStreamToClaudeStream(resp *http.Response, writer StreamResponseWriter, model string) error {
 	defer resp.Body.Close()
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
+	scanner := newSSEScanner(resp.Body)
 
 	msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
 	headerSent := false
@@ -1799,9 +1777,7 @@ func ConvertGeminiStreamToClaudeStream(resp *http.Response, writer StreamRespons
 func ConvertGeminiStreamToOpenAI(resp *http.Response, writer StreamResponseWriter) error {
 	defer resp.Body.Close()
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
+	scanner := newSSEScanner(resp.Body)
 
 	sentRole := false
 	toolIndexByKey := map[string]int{}

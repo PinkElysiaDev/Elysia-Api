@@ -142,7 +142,7 @@ func (h *healthChecker) probe(ctx context.Context, model storage.Model, timeoutS
 	}
 	// 用一个极小的 chat/completions 请求做探测：max_tokens=1，单字提示。
 	// 对绝大多数 OpenAI 兼容/Claude/Gemini 上游都能触发一次真实鉴权+路由。
-	body := []byte(fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"ping"}],"max_tokens":1}`, model.Name))
+	body := []byte(fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"ping"}],"max_tokens":%d}`, model.Name, HealthProbeMaxTokens))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, probeEndpoint(model), bytes.NewReader(body))
 	if err != nil {
 		return false

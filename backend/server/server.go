@@ -584,12 +584,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	// 模型组级访问权限：先于 validateModelGroup 校验请求的模型组名，
 	// 这样即使目标组为空/未配置，越权访问也返回 403（而非泄露组的存在性/状态）。
 	if !s.tokenAllowsGroup(c, unifiedReq.Model) {
-		record.StatusCode = http.StatusForbidden
-		record.Error = "access to this model group is not allowed for this api key"
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-		c.JSON(http.StatusForbidden, gin.H{"error": fmt.Sprintf("api key is not allowed to access model group '%s'", unifiedReq.Model)})
+		s.failRequest(c, record, startTime, http.StatusForbidden, fmt.Sprintf("api key is not allowed to access model group '%s'", unifiedReq.Model))
 		return
 	}
 
@@ -602,12 +597,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		} else if strings.Contains(errMsg, "disabled") {
 			statusCode = 403
 		}
-		record.StatusCode = statusCode
-		record.Error = err.Error()
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-		c.JSON(statusCode, gin.H{"error": err.Error()})
+		s.failRequest(c, record, startTime, statusCode, err.Error())
 		return
 	}
 	setRecordGroup(record, group)
@@ -634,12 +624,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	// 构建有序候选模型列表，按模型组策略排列。失败时逐个故障转移。
 	candidates := s.buildCandidates(group)
 	if len(candidates) == 0 {
-		record.StatusCode = http.StatusInternalServerError
-		record.Error = "no available models in group"
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-		c.JSON(500, gin.H{"error": fmt.Sprintf("no available models in group '%s'", group.Name)})
+		s.failRequest(c, record, startTime, http.StatusInternalServerError, fmt.Sprintf("no available models in group '%s'", group.Name))
 		return
 	}
 	// 渠道亲和性：把该 key+group 上次成功的模型提到候选最前（短 TTL 粘连），
@@ -656,14 +641,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	estimatedTokens := estimateUnifiedRequestTokens(unifiedReq)
 	releaseLimiter, err := s.acquireRateLimit(group, estimatedTokens)
 	if err != nil {
-		// 限流命中也要记 usage（与 403/404/500 及 Responses 路径一致），
-		// 否则最值得关注的限流事件在主入口的统计/日志里完全不可见。
-		record.StatusCode = http.StatusTooManyRequests
-		record.Error = err.Error()
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-		c.JSON(http.StatusTooManyRequests, gin.H{"error": err.Error()})
+		s.failRequest(c, record, startTime, http.StatusTooManyRequests, err.Error())
 		return
 	}
 	defer releaseLimiter()
@@ -1165,14 +1143,6 @@ func readBodyAndJSON(resp *http.Response, v interface{}) ([]byte, error) {
 	return body, json.Unmarshal(body, v)
 }
 
-// readJSON 从 HTTP 响应中读取并解析 JSON
-func readJSON(resp *http.Response, v interface{}) error {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(body, v)
-}
 
 func writeStreamForwardError(
 	c *gin.Context,
@@ -1322,7 +1292,7 @@ func (s *Server) acquireRateLimit(group *config.ModelGroupConfig, estimatedToken
 	// release 是单一的「结算点」：无论成功还是失败，都释放一个在途计数并
 	// 退还本次预留的 estimatedTokens。实际消耗由成功路径的 adjustTokenUsage
 	// 单独累加。这样**失败请求**（永不调用 adjustTokenUsage）的预留会被如数
-	// 退还，不再永久占用每日 token 配额（修复 H1）。
+	// 退还，不再永久占用每日 token 配额。
 	released := false
 	return func() {
 		s.rateLimitMu.Lock()
@@ -1347,7 +1317,7 @@ func (s *Server) acquireRateLimit(group *config.ModelGroupConfig, estimatedToken
 
 // adjustTokenUsage 在请求成功并拿到实际 token 数后，把实际消耗累加到每日计数。
 // 预留额度的退还由 acquireRateLimit 返回的 release 闭包统一负责，因此这里只加
-// 实际值、不再二次扣减预留（修复 H1 的重复对账）。
+// 实际值、不再二次扣减预留。
 func (s *Server) adjustTokenUsage(groupID string, actualTokens int) {
 	if actualTokens <= 0 {
 		return
@@ -1373,7 +1343,7 @@ func (s *Server) getOrCreateRateLimitStateLocked(groupID string) *rateLimitState
 		// 日期翻转只重置每日配额计数（Requests/Tokens），不动 Active：
 		// Active 跟踪的是「当前在途请求数」，与日期无关。跨午夜仍在途的请求
 		// 其 release 会对 Active 做 --，若此处清零会导致并发计数错乱、
-		// MaxConcurrency 在午夜窗口被突破（修复 M3）。
+		// MaxConcurrency 在午夜窗口被突破。
 		state.Date = today
 		state.Requests = 0
 		state.Tokens = 0
@@ -1459,7 +1429,7 @@ func validateOutboundBaseURL(raw string) error {
 
 // isPrivateOrRestrictedIP 委托到 relay 包的同名判定，保证「预校验」（这里，
 // 解析后逐个判 IP）与「连接时校验」（relay secureControl）用同一份网段清单，
-// 不再各维护一份易漂移的列表（修复 H3）。
+// 不再各维护一份易漂移的列表。
 func isPrivateOrRestrictedIP(ip net.IP) bool {
 	return relay.IsPrivateOrRestrictedIP(ip)
 }
