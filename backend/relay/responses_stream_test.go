@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -202,7 +203,7 @@ func TestForwardResponsesStreamPreservesEventStreamLines(t *testing.T) {
 	resp := sseResponse("event: response.created\ndata: {\"type\":\"response.created\"}\n\n")
 	writer := &captureStreamWriter{}
 
-	if err := ForwardResponsesStream(resp, writer); err != nil {
+	if err := ForwardResponsesStream(context.Background(), resp, writer); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -223,7 +224,7 @@ func TestForwardResponsesStreamFlushesFinalEventWithoutTrailingBlank(t *testing.
 	resp := sseResponse("event: response.completed\ndata: {\"type\":\"response.completed\"}")
 	writer := &captureStreamWriter{}
 
-	if err := ForwardResponsesStream(resp, writer); err != nil {
+	if err := ForwardResponsesStream(context.Background(), resp, writer); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !strings.Contains(writer.String(), "response.completed") {

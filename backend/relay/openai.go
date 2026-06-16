@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -484,18 +485,29 @@ type StreamResponseWriter interface {
 }
 
 // ForwardOpenAIStream 直接转发 OpenAI SSE 流（不做格式转换）。
-func ForwardOpenAIStream(resp *http.Response, writer StreamResponseWriter) error {
-	return forwardSSELines(resp, writer, false)
+func ForwardOpenAIStream(ctx context.Context, resp *http.Response, writer StreamResponseWriter) error {
+	return forwardSSELines(ctx, resp, writer, false)
 }
 
 // forwardSSELines 逐行转发 SSE 流，在空行处 flush。
 // finalFlush=true 时在 EOF 后额外 flush 一次（Responses 协议需要此行为）。
-func forwardSSELines(resp *http.Response, writer StreamResponseWriter, finalFlush bool) error {
+// 使用 context 和超时保护避免长工作流中的连接静默断开。
+func forwardSSELines(ctx context.Context, resp *http.Response, writer StreamResponseWriter, finalFlush bool) error {
 	defer resp.Body.Close()
 
 	scanner := newSSEScanner(resp.Body)
-	for scanner.Scan() {
-		line := scanner.Text()
+	// 5分钟流式读超时：Claude 思考模式可能长时间不吐 token，但正常不应超过 5 分钟无响应。
+	// 每成功读取一行后重置超时，防止长工作流被 IdleConnTimeout 断开。
+	streamTimeout := 5 * time.Minute
+
+	for {
+		line, hasMore, err := scanSSEWithTimeout(ctx, scanner, streamTimeout)
+		if err != nil {
+			return err
+		}
+		if !hasMore {
+			break
+		}
 		_, _ = writer.WriteString(line + "\n")
 		if strings.TrimSpace(line) == "" {
 			_ = writer.Flush()
@@ -504,5 +516,5 @@ func forwardSSELines(resp *http.Response, writer StreamResponseWriter, finalFlus
 	if finalFlush {
 		_ = writer.Flush()
 	}
-	return scanner.Err()
+	return nil
 }

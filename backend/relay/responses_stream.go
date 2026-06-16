@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -84,8 +85,8 @@ func chatUsageToResponsesUsage(raw any) map[string]any {
 	return result
 }
 
-func ForwardResponsesStream(resp *http.Response, writer StreamResponseWriter) error {
-	return forwardSSELines(resp, writer, true)
+func ForwardResponsesStream(ctx context.Context, resp *http.Response, writer StreamResponseWriter) error {
+	return forwardSSELines(ctx, resp, writer, true)
 }
 
 // fnCall 累积 Chat 流式里一个 tool_call 的状态，用于在 Responses 流中补齐
