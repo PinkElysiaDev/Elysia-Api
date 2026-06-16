@@ -165,6 +165,67 @@ func TestModelGroupCompositeKeyDistinctSources(t *testing.T) {
 	}
 }
 
+// 回归：模型组改名后，引用它的 token 的 allowed_groups_json 应级联更新为新名，
+// 不再残留旧名（旧名残留会成为无法去掉的悬空引用）。
+func TestUpsertGroupRenameCascadesToTokens(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(filepath.Join(t.TempDir(), "rename-cascade.sqlite3"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.UpsertGroup(ctx, ModelGroup{ID: "g1", Name: "旧组名", Enabled: true, Strategy: "round-robin", Type: "llm"}); err != nil {
+		t.Fatalf("UpsertGroup create: %v", err)
+	}
+	if err := store.UpsertGroup(ctx, ModelGroup{ID: "g2", Name: "其它组", Enabled: true, Strategy: "round-robin", Type: "llm"}); err != nil {
+		t.Fatalf("UpsertGroup create g2: %v", err)
+	}
+	// token 引用旧组名 + 一个无关组名。
+	if err := store.UpsertAPIToken(ctx, APIToken{Name: "k1", Token: "sk-a", Enabled: true, AllowedGroups: []string{"旧组名", "其它组"}}); err != nil {
+		t.Fatalf("UpsertAPIToken: %v", err)
+	}
+	// 不引用该组的 token 不应受影响。
+	if err := store.UpsertAPIToken(ctx, APIToken{Name: "k2", Token: "sk-b", Enabled: true, AllowedGroups: []string{"其它组"}}); err != nil {
+		t.Fatalf("UpsertAPIToken k2: %v", err)
+	}
+
+	// 改名（同 id，新 name）。
+	if err := store.UpsertGroup(ctx, ModelGroup{ID: "g1", Name: "新组名", Enabled: true, Strategy: "round-robin", Type: "llm"}); err != nil {
+		t.Fatalf("UpsertGroup rename: %v", err)
+	}
+
+	tokens, err := store.ListAPITokens(ctx)
+	if err != nil {
+		t.Fatalf("ListAPITokens: %v", err)
+	}
+	byName := map[string][]string{}
+	for _, tk := range tokens {
+		byName[tk.Name] = tk.AllowedGroups
+	}
+	if got := byName["k1"]; len(got) != 2 || got[0] != "新组名" || got[1] != "其它组" {
+		t.Fatalf("k1 allowedGroups after rename = %v, want [新组名 其它组]", got)
+	}
+	if got := byName["k2"]; len(got) != 1 || got[0] != "其它组" {
+		t.Fatalf("k2 allowedGroups should be untouched, got %v", got)
+	}
+}
+
+// 改名级联在 token 内部去重：replaceGroupName 把旧名替换为新名时，
+// 若新名已存在于该 token 列表，应去重避免重复 Badge。
+func TestUpsertGroupRenameDedupesWithinToken(t *testing.T) {
+	if _, changed := replaceGroupName([]string{"a", "b", "a"}, "x", "y"); changed {
+		t.Fatalf("no oldName present but reported changed")
+	}
+	out, changed := replaceGroupName([]string{"old", "keep", "new"}, "old", "new")
+	if !changed {
+		t.Fatalf("expected changed when oldName replaced")
+	}
+	if len(out) != 2 || out[0] != "new" || out[1] != "keep" {
+		t.Fatalf("dedupe result = %v, want [new keep]", out)
+	}
+}
+
 // 向后兼容：裸 id（无 source_id）的旧组数据，ListGroups 仍返回裸 id。
 func TestModelGroupLegacyBareIDCompat(t *testing.T) {
 	ctx := context.Background()

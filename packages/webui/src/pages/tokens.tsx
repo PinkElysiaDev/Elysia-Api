@@ -31,8 +31,12 @@ export function TokensPage() {
   const toast = useToast()
   const { confirm, dialog } = useConfirm()
   const { data, isLoading, error, mutate } = useTokens()
+  const { data: groups } = useGroups()
   const [editing, setEditing] = useState<ApiToken | null>(null)
   const [formOpen, setFormOpen] = useState(false)
+
+  // 当前存在的模型组名集合，用于标记列表中已失效的组名。
+  const validGroupNames = new Set((groups ?? []).map((g) => g.name))
 
   function openCreate() {
     setEditing(null)
@@ -113,7 +117,12 @@ export function TokensPage() {
                       {token.allowedGroups && token.allowedGroups.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {token.allowedGroups.map((g) => (
-                            <Badge key={g} variant="secondary">
+                            <Badge
+                              key={g}
+                              variant={validGroupNames.has(g) ? 'secondary' : 'muted'}
+                              className={validGroupNames.has(g) ? undefined : 'line-through opacity-60'}
+                              title={validGroupNames.has(g) ? undefined : '该模型组已不存在，编辑后将自动清除'}
+                            >
                               {g}
                             </Badge>
                           ))}
@@ -201,9 +210,11 @@ function TokenFormDialog({
       setName(token?.name ?? '')
       setSecret('')
       setEnabled(token?.enabled ?? true)
-      setAllowedGroups(token?.allowedGroups ?? [])
+      // 过滤掉已不存在的组名（历史悬空引用），保存时不写回脏数据。
+      const validNames = new Set((groups ?? []).map((g) => g.name))
+      setAllowedGroups((token?.allowedGroups ?? []).filter((g) => validNames.has(g)))
     }
-  }, [open, token])
+  }, [open, token, groups])
 
   function toggleGroup(groupName: string) {
     setAllowedGroups((prev) =>
