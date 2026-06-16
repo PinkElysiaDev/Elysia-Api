@@ -8,7 +8,7 @@ export function Logo({ className }: { className?: string }) {
         <img
           src={`${import.meta.env.BASE_URL}logo.png`}
           alt="Elysia Logo"
-          className="h-12 w-12 object-contain drop-shadow-[0_0_8px_rgba(255,64,255,0.6)]"
+          className="h-12 w-12 object-contain drop-shadow-[0_0_8px_rgba(245,190,221,0.6)]"
         />
       </span>
       <span className="flex flex-col leading-tight">
