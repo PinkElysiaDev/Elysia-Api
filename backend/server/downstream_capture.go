@@ -8,7 +8,7 @@ import (
 // tee 一份到封顶 buffer，用于 usage 日志的第四段「返回下游」内容捕获。
 //
 // 它内嵌 gin.ResponseWriter 接口，因此 Flush/Status/Header/Hijack 等方法自动透传，
-// 只覆盖 Write/WriteString 累积字节。buffer 封顶 usageBodyMaxBytes，超出仅丢弃多余
+// 只覆盖 Write/WriteString 累积字节。buffer 封顶 UsageBodyMaxBytes，超出仅丢弃多余
 // 部分并置 truncated（不影响实际写出给客户端的内容）。
 type downstreamCaptureWriter struct {
 	gin.ResponseWriter
@@ -24,7 +24,7 @@ func (w *downstreamCaptureWriter) capture(data []byte) {
 	if w.truncated {
 		return
 	}
-	remaining := usageBodyMaxBytes - len(w.buf)
+	remaining := UsageBodyMaxBytes - len(w.buf)
 	if remaining <= 0 {
 		w.truncated = true
 		return

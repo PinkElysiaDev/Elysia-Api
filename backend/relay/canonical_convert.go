@@ -77,7 +77,7 @@ func OpenAIChatRequestToCanonical(body []byte) (*CanonicalRequest, error) {
 		req.PromptCacheKey = cacheKey
 	}
 	// raw 已解码进 map[string]any，值不会是 json.RawMessage（断言恒失败、retention
-	// 静默丢失）。重新 marshal 该值拿回原始 JSON 字节再保留（修复 R7）。
+	// 静默丢失）。重新 marshal 该值拿回原始 JSON 字节再保留。
 	if retentionValue, exists := raw["prompt_cache_retention"]; exists && retentionValue != nil {
 		if encoded, err := json.Marshal(retentionValue); err == nil {
 			req.PromptCacheRetention = encoded
@@ -281,7 +281,7 @@ func CanonicalToClaudeRequest(req *CanonicalRequest) ([]byte, error) {
 	out := map[string]any{
 		"model":      req.Model,
 		"messages":   canonicalMessagesToClaude(req),
-		"max_tokens": max(req.MaxOutputTokens, 65536),
+		"max_tokens": max(req.MaxOutputTokens, ClaudeDefaultMaxTokens),
 	}
 	if req.Instructions != "" {
 		out["system"] = req.Instructions
@@ -587,7 +587,7 @@ func parseGeminiContents(raw any) []CanonicalMessage {
 					Raw:        pm,
 				})
 			}
-			// 多模态：inlineData（base64）/ fileData（URI）→ canonical image part（修复 R4）。
+			// 多模态：inlineData（base64）/ fileData（URI）→ canonical image part。
 			if inline, ok := pm["inlineData"].(map[string]any); ok {
 				msg.Content = append(msg.Content, CanonicalContentPart{
 					Type:        CanonicalContentImage,
@@ -803,7 +803,7 @@ func firstNonEmptyString(values ...string) string {
 }
 
 // claudeImageBlockToPart 把 Claude image block（{"source":{...}}）解析为 canonical
-// image part：base64 source → ImageBase64+MediaType；url source → ImageURL（修复 R4）。
+// image part：base64 source → ImageBase64+MediaType；url source → ImageURL。
 func claudeImageBlockToPart(bm map[string]any) CanonicalContentPart {
 	part := CanonicalContentPart{Type: CanonicalContentImage, Raw: bm}
 	src, _ := bm["source"].(map[string]any)
@@ -1378,10 +1378,10 @@ func effortFromBudget(budget int) string {
 	if budget <= 0 {
 		return ""
 	}
-	if budget <= 1000 {
+	if budget <= EffortBudgetLowCeil {
 		return "low"
 	}
-	if budget >= 20000 {
+	if budget >= EffortBudgetHighFloor {
 		return "high"
 	}
 	return "medium"
@@ -1392,9 +1392,9 @@ func budgetFromEffort(effort string) int {
 	case "low":
 		return 1280
 	case "high":
-		return 20000
+		return EffortBudgetHighFloor
 	default:
-		return 10000
+		return EffortBudgetDefault
 	}
 }
 

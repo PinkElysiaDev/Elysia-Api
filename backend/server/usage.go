@@ -19,7 +19,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const usageBodyMaxBytes = 1 * 1024 * 1024
 
 type usageBody struct {
 	Content   string `json:"content"`
@@ -176,9 +175,9 @@ func (s *Server) initUsageRecord(c *gin.Context, start time.Time, body []byte, i
 }
 
 func sanitizeUsageBody(data []byte) usageBody {
-	truncated := len(data) > usageBodyMaxBytes
+	truncated := len(data) > UsageBodyMaxBytes
 	if truncated {
-		data = data[:usageBodyMaxBytes]
+		data = data[:UsageBodyMaxBytes]
 	}
 
 	var value interface{}

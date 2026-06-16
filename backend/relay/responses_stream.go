@@ -1,7 +1,6 @@
 package relay
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -86,29 +85,11 @@ func chatUsageToResponsesUsage(raw any) map[string]any {
 }
 
 func ForwardResponsesStream(resp *http.Response, writer StreamResponseWriter) error {
-	defer resp.Body.Close()
-
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		_, _ = writer.WriteString(line + "\n")
-		if strings.TrimSpace(line) == "" {
-			_ = writer.Flush()
-		}
-	}
-	// 关键：循环结束后必须再 flush 一次。否则若上游最后一个事件（含
-	// response.completed）后没有紧跟空行就 EOF，缓冲里的数据不会被推给下游，
-	// 客户端会在收到 response.completed 之前就看到连接关闭
-	// （codex 报 "stream closed before response.completed"）。
-	_ = writer.Flush()
-	return scanner.Err()
+	return forwardSSELines(resp, writer, true)
 }
 
 // fnCall 累积 Chat 流式里一个 tool_call 的状态，用于在 Responses 流中补齐
-// output_item.added / function_call_arguments.done / completed.output（修复 R1）。
+// output_item.added / function_call_arguments.done / completed.output。
 type fnCall struct {
 	callID      string
 	name        string
@@ -117,81 +98,244 @@ type fnCall struct {
 	added       bool
 }
 
-func ConvertOpenAIChatStreamToResponsesStream(resp *http.Response, writer StreamResponseWriter, model string) error {
-	defer resp.Body.Close()
+// responsesStreamState holds state for converting a Chat Completions SSE stream
+// into the Responses API event format.
+type responsesStreamState struct {
+	writer      StreamResponseWriter
+	responseID  string
+	itemID      string
+	createdAt   int64
+	model       string
+	textStarted bool
+	fullText    strings.Builder
+	finalUsage  any
+	finishReason string
+	toolCalls    map[int]*fnCall
+	toolOrder    []int
+	nextOutputIdx int
+}
 
-	responseID := newCanonicalResponseID("resp")
-	itemID := newCanonicalResponseID("msg")
-	createdAt := time.Now().Unix()
-	textStarted := false
-
-	writeResponsesEvent := func(eventType string, payload any) error {
-		data, err := json.Marshal(payload)
-		if err != nil {
-			return err
-		}
-		if _, err := writer.WriteString("event: " + eventType + "\n"); err != nil {
-			return err
-		}
-		if _, err := writer.WriteString("data: " + string(data) + "\n\n"); err != nil {
-			return err
-		}
-		return writer.Flush()
+func newResponsesStreamState(writer StreamResponseWriter, model string) *responsesStreamState {
+	return &responsesStreamState{
+		writer:        writer,
+		responseID:    newCanonicalResponseID("resp"),
+		itemID:        newCanonicalResponseID("msg"),
+		createdAt:     time.Now().Unix(),
+		model:         model,
+		finishReason:  "stop",
+		toolCalls:     map[int]*fnCall{},
+		nextOutputIdx: 1,
 	}
+}
 
+func (s *responsesStreamState) writeEvent(eventType string, payload any) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	if _, err := s.writer.WriteString("event: " + eventType + "\n"); err != nil {
+		return err
+	}
+	if _, err := s.writer.WriteString("data: " + string(data) + "\n\n"); err != nil {
+		return err
+	}
+	return s.writer.Flush()
+}
+
+func (s *responsesStreamState) emitHeader() error {
 	baseResponse := map[string]any{
-		"id":         responseID,
+		"id":         s.responseID,
 		"object":     "response",
-		"created_at": createdAt,
+		"created_at": s.createdAt,
 		"status":     "in_progress",
-		"model":      model,
+		"model":      s.model,
 		"output":     []any{},
 	}
-
-	if err := writeResponsesEvent("response.created", map[string]any{
+	if err := s.writeEvent("response.created", map[string]any{
 		"type":     "response.created",
 		"response": baseResponse,
 	}); err != nil {
 		return err
 	}
-	if err := writeResponsesEvent("response.output_item.added", map[string]any{
+	return s.writeEvent("response.output_item.added", map[string]any{
 		"type":         "response.output_item.added",
 		"output_index": 0,
 		"item": map[string]any{
-			"id":      itemID,
+			"id":      s.itemID,
 			"type":    "message",
 			"status":  "in_progress",
 			"role":    "assistant",
 			"content": []any{},
 		},
+	})
+}
+
+func (s *responsesStreamState) handleTextDelta(text string) error {
+	if !s.textStarted {
+		s.textStarted = true
+		if err := s.writeEvent("response.content_part.added", map[string]any{
+			"type":          "response.content_part.added",
+			"item_id":       s.itemID,
+			"output_index":  0,
+			"content_index": 0,
+			"part":          map[string]any{"type": "output_text", "text": ""},
+		}); err != nil {
+			return err
+		}
+	}
+	s.fullText.WriteString(text)
+	return s.writeEvent("response.output_text.delta", map[string]any{
+		"type":          "response.output_text.delta",
+		"item_id":       s.itemID,
+		"output_index":  0,
+		"content_index": 0,
+		"delta":         text,
+	})
+}
+
+func (s *responsesStreamState) handleToolCallDelta(tc map[string]any) error {
+	idx := 0
+	if v, ok := numberValue(tc["index"]); ok {
+		idx = int(v)
+	}
+	call := s.toolCalls[idx]
+	if call == nil {
+		call = &fnCall{outputIndex: s.nextOutputIdx}
+		s.nextOutputIdx++
+		s.toolCalls[idx] = call
+		s.toolOrder = append(s.toolOrder, idx)
+	}
+	if id := stringValue(tc["id"]); id != "" {
+		call.callID = id
+	}
+	fn, _ := tc["function"].(map[string]any)
+	if fn != nil {
+		if name := stringValue(fn["name"]); name != "" {
+			call.name = name
+		}
+	}
+	if !call.added {
+		call.added = true
+		if call.callID == "" {
+			call.callID = fmt.Sprintf("call_%d", idx)
+		}
+		if err := s.writeEvent("response.output_item.added", map[string]any{
+			"type":         "response.output_item.added",
+			"output_index": call.outputIndex,
+			"item": map[string]any{
+				"id":        call.callID,
+				"type":      "function_call",
+				"status":    "in_progress",
+				"call_id":   call.callID,
+				"name":      call.name,
+				"arguments": "",
+			},
+		}); err != nil {
+			return err
+		}
+	}
+	if fn != nil {
+		args := stringValue(fn["arguments"])
+		if args == "" {
+			return nil
+		}
+		call.args.WriteString(args)
+		return s.writeEvent("response.function_call_arguments.delta", map[string]any{
+			"type":         "response.function_call_arguments.delta",
+			"item_id":      call.callID,
+			"output_index": call.outputIndex,
+			"delta":        args,
+		})
+	}
+	return nil
+}
+
+func (s *responsesStreamState) emitCompletion() error {
+	if s.textStarted {
+		if err := s.writeEvent("response.output_text.done", map[string]any{
+			"type":          "response.output_text.done",
+			"item_id":       s.itemID,
+			"output_index":  0,
+			"content_index": 0,
+			"text":          s.fullText.String(),
+		}); err != nil {
+			return err
+		}
+	}
+
+	outputItems := []map[string]any{{
+		"id":      s.itemID,
+		"type":    "message",
+		"status":  "completed",
+		"role":    "assistant",
+		"content": []map[string]any{{"type": "output_text", "text": s.fullText.String()}},
+	}}
+	if err := s.writeEvent("response.output_item.done", map[string]any{
+		"type":         "response.output_item.done",
+		"output_index": 0,
+		"item":         outputItems[0],
 	}); err != nil {
 		return err
 	}
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
-
-	var fullText strings.Builder
-	var finalUsage any
-	finishReason := "stop"
-
-	// 工具调用累积：按 OpenAI tool_call index 跟踪 function_call 项，分配顺序
-	// output_index（message 占 0，工具从 1 起），补齐 Responses 协议要求的
-	// output_item.added / function_call_arguments.done / output_item.done 事件，
-	// 并把 function_call 项纳入 completed.output（修复 R1：此前只发 arguments.delta，
-	// 客户端收到指向「未声明项」的增量、且完成响应里没有 function_call）。
-	type fnCall struct {
-		callID      string
-		name        string
-		args        strings.Builder
-		outputIndex int
-		added       bool
+	for _, idx := range s.toolOrder {
+		call := s.toolCalls[idx]
+		if call == nil {
+			continue
+		}
+		if err := s.writeEvent("response.function_call_arguments.done", map[string]any{
+			"type":         "response.function_call_arguments.done",
+			"item_id":      call.callID,
+			"output_index": call.outputIndex,
+			"arguments":    call.args.String(),
+		}); err != nil {
+			return err
+		}
+		fnItem := map[string]any{
+			"id":        call.callID,
+			"type":      "function_call",
+			"status":    "completed",
+			"call_id":   call.callID,
+			"name":      call.name,
+			"arguments": call.args.String(),
+		}
+		if err := s.writeEvent("response.output_item.done", map[string]any{
+			"type":         "response.output_item.done",
+			"output_index": call.outputIndex,
+			"item":         fnItem,
+		}); err != nil {
+			return err
+		}
+		outputItems = append(outputItems, fnItem)
 	}
-	toolCalls := map[int]*fnCall{}
-	var toolOrder []int
-	nextOutputIndex := 1
 
+	completed := map[string]any{
+		"id":         s.responseID,
+		"object":     "response",
+		"created_at": s.createdAt,
+		"status":     "completed",
+		"model":      s.model,
+		"output":     outputItems,
+		"usage":      chatUsageToResponsesUsage(s.finalUsage),
+	}
+	if s.finishReason != "" {
+		completed["incomplete_details"] = nil
+	}
+	return s.writeEvent("response.completed", map[string]any{
+		"type":     "response.completed",
+		"response": completed,
+	})
+}
+
+func ConvertOpenAIChatStreamToResponsesStream(resp *http.Response, writer StreamResponseWriter, model string) error {
+	defer resp.Body.Close()
+
+	state := newResponsesStreamState(writer, model)
+	if err := state.emitHeader(); err != nil {
+		return err
+	}
+
+	scanner := newSSEScanner(resp.Body)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if !strings.HasPrefix(line, "data:") {
@@ -210,7 +354,7 @@ func ConvertOpenAIChatStreamToResponsesStream(resp *http.Response, writer Stream
 			continue
 		}
 		if usage, ok := chunk["usage"].(map[string]any); ok {
-			finalUsage = usage
+			state.finalUsage = usage
 		}
 
 		choices, _ := chunk["choices"].([]any)
@@ -222,33 +366,14 @@ func ConvertOpenAIChatStreamToResponsesStream(resp *http.Response, writer Stream
 			continue
 		}
 		if fr := stringValue(choice["finish_reason"]); fr != "" {
-			finishReason = fr
+			state.finishReason = fr
 		}
 		delta, _ := choice["delta"].(map[string]any)
 		if delta == nil {
 			continue
 		}
 		if text := stringValue(delta["content"]); text != "" {
-			if !textStarted {
-				textStarted = true
-				if err := writeResponsesEvent("response.content_part.added", map[string]any{
-					"type":          "response.content_part.added",
-					"item_id":       itemID,
-					"output_index":  0,
-					"content_index": 0,
-					"part":          map[string]any{"type": "output_text", "text": ""},
-				}); err != nil {
-					return err
-				}
-			}
-			fullText.WriteString(text)
-			if err := writeResponsesEvent("response.output_text.delta", map[string]any{
-				"type":          "response.output_text.delta",
-				"item_id":       itemID,
-				"output_index":  0,
-				"content_index": 0,
-				"delta":         text,
-			}); err != nil {
+			if err := state.handleTextDelta(text); err != nil {
 				return err
 			}
 		}
@@ -258,147 +383,14 @@ func ConvertOpenAIChatStreamToResponsesStream(resp *http.Response, writer Stream
 				if tc == nil {
 					continue
 				}
-				idx := 0
-				if v, ok := numberValue(tc["index"]); ok {
-					idx = int(v)
-				}
-				call := toolCalls[idx]
-				if call == nil {
-					call = &fnCall{outputIndex: nextOutputIndex}
-					nextOutputIndex++
-					toolCalls[idx] = call
-					toolOrder = append(toolOrder, idx)
-				}
-				if id := stringValue(tc["id"]); id != "" {
-					call.callID = id
-				}
-				fn, _ := tc["function"].(map[string]any)
-				if fn != nil {
-					if name := stringValue(fn["name"]); name != "" {
-						call.name = name
-					}
-				}
-				// 首见该工具项时补发 output_item.added（function_call），
-				// 让下游知道随后的 arguments.delta 属于哪个已声明项。
-				if !call.added {
-					call.added = true
-					if call.callID == "" {
-						call.callID = fmt.Sprintf("call_%d", idx)
-					}
-					if err := writeResponsesEvent("response.output_item.added", map[string]any{
-						"type":         "response.output_item.added",
-						"output_index": call.outputIndex,
-						"item": map[string]any{
-							"id":        call.callID,
-							"type":      "function_call",
-							"status":    "in_progress",
-							"call_id":   call.callID,
-							"name":      call.name,
-							"arguments": "",
-						},
-					}); err != nil {
-						return err
-					}
-				}
-				if fn != nil {
-					args := stringValue(fn["arguments"])
-					if args == "" {
-						continue
-					}
-					call.args.WriteString(args)
-					if err := writeResponsesEvent("response.function_call_arguments.delta", map[string]any{
-						"type":         "response.function_call_arguments.delta",
-						"item_id":      call.callID,
-						"output_index": call.outputIndex,
-						"delta":        args,
-					}); err != nil {
-						return err
-					}
+				if err := state.handleToolCallDelta(tc); err != nil {
+					return err
 				}
 			}
 		}
 	}
 
-	if textStarted {
-		if err := writeResponsesEvent("response.output_text.done", map[string]any{
-			"type":          "response.output_text.done",
-			"item_id":       itemID,
-			"output_index":  0,
-			"content_index": 0,
-			"text":          fullText.String(),
-		}); err != nil {
-			return err
-		}
-	}
-
-	outputItems := []map[string]any{{
-		"id":      itemID,
-		"type":    "message",
-		"status":  "completed",
-		"role":    "assistant",
-		"content": []map[string]any{{"type": "output_text", "text": fullText.String()}},
-	}}
-	if err := writeResponsesEvent("response.output_item.done", map[string]any{
-		"type":         "response.output_item.done",
-		"output_index": 0,
-		"item":         outputItems[0],
-	}); err != nil {
-		return err
-	}
-
-	// 工具调用项收尾：按出现顺序为每个 function_call 补发 arguments.done +
-	// output_item.done，并纳入最终 output（修复 R1——此前只发 arguments.delta，
-	// 既不声明项也不收尾、completed.output 里也没有 function_call）。
-	for _, idx := range toolOrder {
-		call := toolCalls[idx]
-		if call == nil {
-			continue
-		}
-		if err := writeResponsesEvent("response.function_call_arguments.done", map[string]any{
-			"type":         "response.function_call_arguments.done",
-			"item_id":      call.callID,
-			"output_index": call.outputIndex,
-			"arguments":    call.args.String(),
-		}); err != nil {
-			return err
-		}
-		fnItem := map[string]any{
-			"id":        call.callID,
-			"type":      "function_call",
-			"status":    "completed",
-			"call_id":   call.callID,
-			"name":      call.name,
-			"arguments": call.args.String(),
-		}
-		if err := writeResponsesEvent("response.output_item.done", map[string]any{
-			"type":         "response.output_item.done",
-			"output_index": call.outputIndex,
-			"item":         fnItem,
-		}); err != nil {
-			return err
-		}
-		outputItems = append(outputItems, fnItem)
-	}
-
-	completed := map[string]any{
-		"id":         responseID,
-		"object":     "response",
-		"created_at": createdAt,
-		"status":     "completed",
-		"model":      model,
-		"output":     outputItems,
-	}
-	// usage 始终重映射为 Responses 命名（input/output/total_tokens）；上游未给 usage
-	// 时也输出全 0 的完整结构，避免 codex 解析失败。
-	completed["usage"] = chatUsageToResponsesUsage(finalUsage)
-	if finishReason != "" {
-		completed["incomplete_details"] = nil
-	}
-
-	return writeResponsesEvent("response.completed", map[string]any{
-		"type":     "response.completed",
-		"response": completed,
-	})
+	return state.emitCompletion()
 }
 
 func ConvertClaudeStreamToResponsesStream(resp *http.Response, writer StreamResponseWriter, model string) error {
@@ -465,9 +457,7 @@ func convertGenericTextSSEToResponses(resp *http.Response, writer StreamResponse
 		return err
 	}
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
+	scanner := newSSEScanner(resp.Body)
 
 	var fullText strings.Builder
 	// finalUsage 用合并语义累积：Claude 的 input_tokens 来自 message_start，

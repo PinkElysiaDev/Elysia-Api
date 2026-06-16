@@ -44,7 +44,7 @@ func TestDownstreamCaptureTruncatesAtLimit(t *testing.T) {
 	inner, rec := newTestGinWriter()
 	capture := newDownstreamCaptureWriter(inner)
 
-	big := strings.Repeat("a", usageBodyMaxBytes+512)
+	big := strings.Repeat("a", UsageBodyMaxBytes+512)
 	if _, err := capture.Write([]byte(big)); err != nil {
 		t.Fatalf("unexpected write error: %v", err)
 	}
@@ -53,8 +53,8 @@ func TestDownstreamCaptureTruncatesAtLimit(t *testing.T) {
 	if !body.Truncated {
 		t.Fatal("expected truncation flag for oversized body")
 	}
-	if len(body.Content) != usageBodyMaxBytes {
-		t.Fatalf("expected captured content capped at %d, got %d", usageBodyMaxBytes, len(body.Content))
+	if len(body.Content) != UsageBodyMaxBytes {
+		t.Fatalf("expected captured content capped at %d, got %d", UsageBodyMaxBytes, len(body.Content))
 	}
 	// 截断只影响捕获的副本，客户端仍收到完整字节。
 	if rec.Body.Len() != len(big) {

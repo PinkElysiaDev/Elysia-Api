@@ -1,7 +1,6 @@
 package relay
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -484,42 +483,26 @@ type StreamResponseWriter interface {
 	Flush() error
 }
 
-// ForwardStreamResponse 转发 SSE 流式响应。忠实逐行转发，保留 event:/id:/retry:
-// 等非 data: 字段，仅在空行（事件边界）处 flush。
-func ForwardStreamResponse(resp *http.Response, writer StreamResponseWriter) error {
+// ForwardOpenAIStream 直接转发 OpenAI SSE 流（不做格式转换）。
+func ForwardOpenAIStream(resp *http.Response, writer StreamResponseWriter) error {
+	return forwardSSELines(resp, writer, false)
+}
+
+// forwardSSELines 逐行转发 SSE 流，在空行处 flush。
+// finalFlush=true 时在 EOF 后额外 flush 一次（Responses 协议需要此行为）。
+func forwardSSELines(resp *http.Response, writer StreamResponseWriter, finalFlush bool) error {
 	defer resp.Body.Close()
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
-
+	scanner := newSSEScanner(resp.Body)
 	for scanner.Scan() {
 		line := scanner.Text()
 		_, _ = writer.WriteString(line + "\n")
-		if line == "" {
+		if strings.TrimSpace(line) == "" {
 			_ = writer.Flush()
 		}
 	}
-	return scanner.Err()
-}
-
-// ForwardOpenAIStream 直接转发 OpenAI SSE 流（不做格式转换）。
-// 忠实逐行转发 line+"\n"，仅在原始空行（事件边界）处补齐分隔并 flush。
-// 旧实现对每行追加 "\n\n"，会把一个多行 SSE 事件（如 data: 与 event: 同属一帧）
-// 拆成多个畸形事件，并在每行后插入空行。改为照搬 ForwardStreamRaw 的忠实转发。
-func ForwardOpenAIStream(resp *http.Response, writer StreamResponseWriter) error {
-	defer resp.Body.Close()
-
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 16*1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		_, _ = writer.WriteString(line + "\n")
-		if line == "" {
-			_ = writer.Flush()
-		}
+	if finalFlush {
+		_ = writer.Flush()
 	}
 	return scanner.Err()
 }

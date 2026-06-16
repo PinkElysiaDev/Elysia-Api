@@ -88,7 +88,7 @@ func geminiFinishReasonToOpenAI(reason string) string {
 		return "length"
 	case "SAFETY", "RECITATION":
 		// 安全策略/复述拦截属于「被内容过滤」，映射为 content_filter，
-		// 让调用方能区分「正常结束」与「被拦截」（修复 R13）。
+		// 让调用方能区分「正常结束」与「被拦截」。
 		return "content_filter"
 	case "OTHER":
 		return "stop"

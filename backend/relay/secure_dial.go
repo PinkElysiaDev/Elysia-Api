@@ -18,7 +18,7 @@ func SetAllowPrivateDial(allow bool) { allowPrivateDial.Store(allow) }
 
 // secureControl 是 net.Dialer.Control 回调：在 DNS 解析之后、实际 connect 之前，
 // 拿到「将要连接的真实 IP:port」并校验。这关掉了 DNS rebinding 的 TOCTOU 窗口——
-// 校验的就是即将连接的那个 IP，而非更早一次独立解析的结果（修复 H2）。
+// 校验的就是即将连接的那个 IP，而非更早一次独立解析的结果。
 func secureControl(network, address string, _ syscall.RawConn) error {
 	if allowPrivateDial.Load() {
 		return nil
