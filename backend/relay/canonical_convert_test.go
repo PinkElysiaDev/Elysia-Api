@@ -403,3 +403,126 @@ func TestCanonicalUsageRoundTripsProviderUsageShapes(t *testing.T) {
 		t.Fatalf("Responses usage mapping failed: %+v", responses)
 	}
 }
+
+// 回归：Anthropic → Gemini 转换中 tool_result 块的 functionResponse 必须满足 Gemini API 约束：
+// 1. functionResponse.response 必须是 JSON 对象（google.protobuf.Struct），不能是字符串/数组/null/空
+// 2. functionResponse.name 必须是函数名（如 "Read"），而非 Anthropic 的 tool_use_id（如 "toolu_01ABC"）
+// 覆盖场景：空 tool_result、纯文本 tool_result、JSON 数组 tool_result、JSON 对象 tool_result、多个 tool_result
+func TestCanonicalMessagesToGeminiFunctionResponse(t *testing.T) {
+	req := &CanonicalRequest{
+		Messages: []CanonicalMessage{
+			// Assistant 消息：包含 tool_use（functionCall）
+			{
+				Role: "assistant",
+				Content: []CanonicalContentPart{
+					{Type: CanonicalContentText, Text: "Let me check that for you."},
+				},
+				ToolCalls: []CanonicalToolCall{
+					{ID: "toolu_01A", Type: CanonicalToolFunction, Name: "Read", Arguments: json.RawMessage(`{"file":"a.txt"}`)},
+					{ID: "toolu_01B", Type: CanonicalToolFunction, Name: "Bash", Arguments: json.RawMessage(`{"cmd":"ls"}`)},
+					{ID: "toolu_01C", Type: CanonicalToolFunction, Name: "Grep", Arguments: json.RawMessage(`{"pattern":"foo"}`)},
+				},
+			},
+			// User 消息：包含 tool_result（functionResponse）
+			{
+				Role: "user",
+				Content: []CanonicalContentPart{
+					// 场景 1：空 tool_result（content: []）→ ToolOutput = "" → 应包装为 {"content": ""}
+					{Type: CanonicalContentToolOutput, ToolCallID: "toolu_01A", ToolOutput: ""},
+					// 场景 2：纯文本 tool_result（非 JSON）→ 应包装为 {"content": "file contents"}
+					{Type: CanonicalContentToolOutput, ToolCallID: "toolu_01B", ToolOutput: "file contents here"},
+					// 场景 3：JSON 数组 tool_result → 应包装为 {"result": [...]}
+					{Type: CanonicalContentToolOutput, ToolCallID: "toolu_01C", ToolOutput: `["item1","item2"]`},
+				},
+			},
+		},
+	}
+
+	contents := canonicalMessagesToGemini(req)
+	if len(contents) != 2 {
+		t.Fatalf("expected 2 contents (assistant + user), got %d", len(contents))
+	}
+
+	// 验证 assistant 消息：应包含 3 个 functionCall parts
+	assistantMsg := contents[0]
+	if assistantMsg["role"] != "model" {
+		t.Fatalf("assistant role should map to 'model', got %v", assistantMsg["role"])
+	}
+	assistantParts := assistantMsg["parts"].([]map[string]any)
+	if len(assistantParts) != 4 { // 1 text + 3 functionCall
+		t.Fatalf("expected 4 parts in assistant message (1 text + 3 functionCall), got %d", len(assistantParts))
+	}
+	for i := 1; i < 4; i++ {
+		if assistantParts[i]["functionCall"] == nil {
+			t.Fatalf("assistantParts[%d] should have functionCall, got %+v", i, assistantParts[i])
+		}
+	}
+
+	// 验证 user 消息：应包含 3 个 functionResponse parts
+	userMsg := contents[1]
+	if userMsg["role"] != "user" {
+		t.Fatalf("user role should stay 'user', got %v", userMsg["role"])
+	}
+	userParts := userMsg["parts"].([]map[string]any)
+	if len(userParts) != 3 {
+		t.Fatalf("expected 3 functionResponse parts in user message, got %d", len(userParts))
+	}
+
+	// 场景 1：空 tool_result → response 应为 {"content": ""}，name 应为 "Read"（非 "toolu_01A"）
+	fr1 := userParts[0]["functionResponse"].(map[string]any)
+	if fr1["name"] != "Read" {
+		t.Fatalf("functionResponse[0].name should be 'Read' (function name), got %v", fr1["name"])
+	}
+	resp1 := fr1["response"].(map[string]any)
+	if resp1["content"] != "" {
+		t.Fatalf("functionResponse[0].response should be {\"content\": \"\"}, got %+v", resp1)
+	}
+
+	// 场景 2：纯文本 → response 应为 {"content": "file contents here"}，name 应为 "Bash"
+	fr2 := userParts[1]["functionResponse"].(map[string]any)
+	if fr2["name"] != "Bash" {
+		t.Fatalf("functionResponse[1].name should be 'Bash', got %v", fr2["name"])
+	}
+	resp2 := fr2["response"].(map[string]any)
+	if resp2["content"] != "file contents here" {
+		t.Fatalf("functionResponse[1].response should be {\"content\": \"file contents here\"}, got %+v", resp2)
+	}
+
+	// 场景 3：JSON 数组 → response 应为 {"result": ["item1", "item2"]}，name 应为 "Grep"
+	fr3 := userParts[2]["functionResponse"].(map[string]any)
+	if fr3["name"] != "Grep" {
+		t.Fatalf("functionResponse[2].name should be 'Grep', got %v", fr3["name"])
+	}
+	resp3 := fr3["response"].(map[string]any)
+	resultArr, ok := resp3["result"].([]any)
+	if !ok || len(resultArr) != 2 || resultArr[0] != "item1" || resultArr[1] != "item2" {
+		t.Fatalf("functionResponse[2].response should be {\"result\": [\"item1\", \"item2\"]}, got %+v", resp3)
+	}
+
+	// 额外验证：JSON 对象应直接使用（不包装）
+	reqWithJsonObject := &CanonicalRequest{
+		Messages: []CanonicalMessage{
+			{
+				Role: "assistant",
+				ToolCalls: []CanonicalToolCall{
+					{ID: "toolu_999", Type: CanonicalToolFunction, Name: "GetStatus", Arguments: json.RawMessage(`{}`)},
+				},
+			},
+			{
+				Role: "user",
+				Content: []CanonicalContentPart{
+					{Type: CanonicalContentToolOutput, ToolCallID: "toolu_999", ToolOutput: `{"status":"ok","code":200}`},
+				},
+			},
+		},
+	}
+	contentsWithObj := canonicalMessagesToGemini(reqWithJsonObject)
+	userMsgWithObj := contentsWithObj[1]
+	userPartsWithObj := userMsgWithObj["parts"].([]map[string]any)
+	frObj := userPartsWithObj[0]["functionResponse"].(map[string]any)
+	respObj := frObj["response"].(map[string]any)
+	// JSON 对象应直接使用，不包装
+	if respObj["status"] != "ok" || respObj["code"].(float64) != 200 {
+		t.Fatalf("JSON object should be used as-is, got %+v", respObj)
+	}
+}

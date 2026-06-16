@@ -949,6 +949,17 @@ func canonicalMessagesToClaude(req *CanonicalRequest) []map[string]any {
 }
 
 func canonicalMessagesToGemini(req *CanonicalRequest) []map[string]any {
+	// 构建 tool_call_id → function_name 映射表：Gemini 的 functionResponse.name
+	// 必须是函数名（如 "Read"），而非 Anthropic 的 tool_use_id（如 "toolu_01ABC"）。
+	toolCallNames := make(map[string]string)
+	for _, msg := range req.Messages {
+		for _, call := range msg.ToolCalls {
+			if call.ID != "" && call.Name != "" {
+				toolCallNames[call.ID] = call.Name
+			}
+		}
+	}
+
 	var contents []map[string]any
 	for _, msg := range req.Messages {
 		if msg.Role == "system" {
@@ -970,12 +981,32 @@ func canonicalMessagesToGemini(req *CanonicalRequest) []map[string]any {
 			case CanonicalContentReasoning:
 				parts = append(parts, map[string]any{"text": part.ReasoningText, "thought": true})
 			case CanonicalContentToolOutput:
-				var response any = part.ToolOutput
-				var parsed any
-				if json.Unmarshal([]byte(part.ToolOutput), &parsed) == nil {
-					response = parsed
+				// Gemini 的 functionResponse.response 必须是 JSON 对象（google.protobuf.Struct），
+				// 不能是字符串、数组、null 或空。三层降级策略（参考 new-api）：
+				// 1. 尝试解析为 JSON 对象 → 直接使用
+				// 2. 解析为 JSON 数组 → 包装为 {"result": array}
+				// 3. 空或非 JSON 文本 → 包装为 {"content": text}
+				var responseMap map[string]any
+				if part.ToolOutput != "" {
+					if err := json.Unmarshal([]byte(part.ToolOutput), &responseMap); err != nil {
+						var arr []any
+						if err := json.Unmarshal([]byte(part.ToolOutput), &arr); err == nil {
+							responseMap = map[string]any{"result": arr}
+						} else {
+							responseMap = map[string]any{"content": part.ToolOutput}
+						}
+					}
+				} else {
+					responseMap = map[string]any{"content": ""}
 				}
-				parts = append(parts, map[string]any{"functionResponse": map[string]any{"name": part.ToolCallID, "response": response}})
+
+				// functionResponse.name 必须是函数名，而非 tool_use_id；回查之前的 tool_use 获取函数名。
+				name := part.ToolCallID
+				if fn, ok := toolCallNames[part.ToolCallID]; ok {
+					name = fn
+				}
+
+				parts = append(parts, map[string]any{"functionResponse": map[string]any{"name": name, "response": responseMap}})
 			}
 		}
 		for _, call := range msg.ToolCalls {
