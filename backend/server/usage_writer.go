@@ -40,12 +40,28 @@ func (s *Server) enqueueUsageRecord(record *usageRecord) bool {
 	if s.usageQueue == nil {
 		return false
 	}
-	// 复制一份，避免调用方在记录入队后继续改写底层结构。
+	// 深拷贝：浅拷贝会让 copied 的切片字段与原记录共享底层数组，一旦调用方
+	// 在入队后继续 append（RetryEvents 等）即与 writer goroutine 读取竞争。
+	// downstream 捕获器的内容已在 recordUsage 物化进 DownstreamResponse，置 nil 断开指针别名。
 	copied := *record
+	copied.RetryEvents = cloneSlice(record.RetryEvents)
+	copied.ConversionChain = cloneSlice(record.ConversionChain)
+	copied.RequestWarnings = cloneSlice(record.RequestWarnings)
+	copied.downstream = nil
 	select {
 	case s.usageQueue <- &copied:
 		return true
 	default:
 		return false // 队列满：降级同步写
 	}
+}
+
+// cloneSlice 返回切片的浅副本（元素为值类型，足以断开底层数组别名）。nil 仍返回 nil。
+func cloneSlice[T any](src []T) []T {
+	if src == nil {
+		return nil
+	}
+	dst := make([]T, len(src))
+	copy(dst, src)
+	return dst
 }

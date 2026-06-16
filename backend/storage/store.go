@@ -371,12 +371,20 @@ func (s *Store) UpsertSource(ctx context.Context, item ModelSource) error {
 }
 
 func (s *Store) DeleteSource(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM model_sources WHERE id = ?`, id)
+	// 事务化：删除模型源与其下模型必须原子完成，避免第二步失败留下孤儿模型
+	// （models 表对 model_sources 无 FK 级联）。
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `DELETE FROM models WHERE source_id = ?`, id)
-	return err
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM model_sources WHERE id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM models WHERE source_id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) ReplaceSourceModels(ctx context.Context, source ModelSource, models []Model) error {

@@ -18,18 +18,11 @@ type GeminiAdapter struct {
 }
 
 func NewGeminiAdapter(timeout time.Duration) *GeminiAdapter {
-	transport := func() *http.Transport {
-		return &http.Transport{
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 10,
-			IdleConnTimeout:     90 * time.Second,
-		}
-	}
-	client := &http.Client{Transport: transport()}
+	client := &http.Client{Transport: newSecureTransport()}
 	if timeout > 0 {
 		client.Timeout = timeout
 	}
-	streamClient := &http.Client{Transport: transport()}
+	streamClient := &http.Client{Transport: newSecureTransport()}
 	return &GeminiAdapter{client: client, streamClient: streamClient}
 }
 

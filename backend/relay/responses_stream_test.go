@@ -100,6 +100,40 @@ func TestConvertOpenAIChatStreamToResponsesStreamEmitsFunctionArgumentDeltas(t *
 	}
 }
 
+// R1 回归：Chat→Responses 流式必须为工具调用补发 output_item.added(function_call)、
+// function_call_arguments.done，并把 function_call 项纳入 response.completed.output。
+func TestConvertOpenAIChatStreamToResponsesStreamEmitsFunctionCallItem(t *testing.T) {
+	resp := sseResponse(strings.Join([]string{
+		`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"lookup","arguments":"{\"q\""}}]}}]}`,
+		`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":":\"x\"}"}}]}}]}`,
+		`data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`,
+		`data: [DONE]`,
+		``,
+	}, "\n"))
+	writer := &captureStreamWriter{}
+
+	if err := ConvertOpenAIChatStreamToResponsesStream(resp, writer, "gpt-4o"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := writer.String()
+	for _, want := range []string{
+		"event: response.output_item.added",
+		`"type":"function_call"`,
+		`"call_id":"call_1"`,
+		`"name":"lookup"`,
+		"event: response.function_call_arguments.delta",
+		"event: response.function_call_arguments.done",
+		`"arguments":"{\"q\":\"x\"}"`,
+		"event: response.output_item.done",
+		"event: response.completed",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected output to contain %q, got:\n%s", want, out)
+		}
+	}
+}
+
 func TestConvertClaudeStreamToResponsesStreamEmitsTextAndUsage(t *testing.T) {
 	resp := sseResponse(strings.Join([]string{
 		`data: {"type":"message_start","message":{"usage":{"input_tokens":10,"cache_read_input_tokens":2}}}`,

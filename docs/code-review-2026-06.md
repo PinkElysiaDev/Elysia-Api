@@ -5,6 +5,33 @@
 - **方法**：分子系统逐文件审查，结论按严重度排序。每条给出位置、影响与修复建议。
 - **代码量**：后端约 13.9k 行（不含测试）+ 前端约 20 个页面/组件。
 
+## 修复进度（2026-06-16 更新）
+
+全部 **Critical + High** 项已修复并补回归测试；顺带修了相关的 Medium（M1/M2/M3、S5/S7）：
+
+| 条目 | 状态 | 修复要点 |
+|---|---|---|
+| C1 Responses 无故障转移 | ✅ | `responses()` 改用 `buildCandidates`+尝试循环，两处空组返回 500；新增 `TestResponsesFailoverToHealthyModel`/`...EmptyGroupReturns500` |
+| H1 失败请求占用 token 配额 | ✅ | release 闭包统一退还预留，`adjustTokenUsage` 只加实际值；新增 `TestAcquireRateLimitRefundsReservationOnRelease` |
+| H2 SSRF DNS rebinding | ✅ | 新增 `relay/secure_dial.go`：`net.Dialer.Control` 连接时校验实际 IP；新增 `secure_dial_test.go` |
+| H3 保留网段不全 | ✅ | `IsPrivateOrRestrictedIP` 补 TEST-NET/基准段/240.0.0.0/4 |
+| H4 异步入队浅拷贝 | ✅ | `enqueueUsageRecord` 深拷贝切片字段、置空 downstream 指针 |
+| H5 退出不冲刷 usage | ✅ | `shutdown` 在 `httpServer.Shutdown` 后 `stopUsageWriter()`+`healthChecker.shutdown()` |
+| M1 429 不记 usage | ✅ | `chatCompletions` 限流路径补 `recordUsage` |
+| M2 重试计数 off-by-one | ✅ | `RetryCount = attempt`（0 次重试=首次） |
+| M3 午夜重置清零 Active | ✅ | 日期翻转只重置 Requests/Tokens，不动 Active |
+| R1 Chat→Responses 丢工具调用 | ✅ | 跟踪 function_call 项，补 `output_item.added`/`arguments.done`/纳入 `completed.output`；新增 `...EmitsFunctionCallItem` |
+| R2 Claude→OpenAI 流丢 usage | ✅ | 从 `message_start`/`message_delta` 取 usage，`[DONE]` 前补 usage chunk |
+| R3 Claude/Gemini 不检查状态码 | ✅ | Responses 流路径对 Claude/Gemini 非 200 走 `connFail`（可故障转移） |
+| R4 多模态图片丢失 | ✅ | canonical 解析/渲染补 image（Claude source / Gemini inlineData/fileData / OpenAI data URI）；新增 `multimodal_test.go` |
+| S1/S2 加密密钥同目录/路径不一致 | ✅ | `GetDBEncryptionKey` 改用 `SecretKeyPath`，保留 `.db-key` 兼容回退，同目录时告警 |
+| S3 `GetGroups/GetTokens` 返回内部切片 | ✅ | 返回副本，消除锁外别名 |
+| S5 `DeleteSource` 非事务 | ✅ | 包进事务 |
+| S7 cacheHitRate 可能 >1 | ✅ | 钳到 `[0,1]` |
+| W1 多选嵌套交互元素 | ✅ | trigger 改 `div[role=combobox]`，clear 为同级 `<button>`，补 ARIA/键盘（W3） |
+
+未处理项（按优先级保留在下文）：R5–R13 的剩余 Medium/Low、M4（纯工具流空响应误判，与 R1 改动有交集需再评估）、W2/W4–W10、各 Low/风格项。
+
 ## 摘要
 
 整体工程质量较高：路由热路径有内存缓存、SSE 头时机与 `Transfer-Encoding` 冲突处理得当、SQL 全部走参数占位符（无注入）、面板令牌用常量时间比较、SQLite 单连接下的回填死锁有正确规避。本次新增的「同源透传」也已落地并通过测试。

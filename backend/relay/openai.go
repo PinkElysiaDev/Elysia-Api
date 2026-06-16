@@ -86,19 +86,13 @@ type OpenAIAdapter struct {
 }
 
 func NewOpenAIAdapter(timeout time.Duration) *OpenAIAdapter {
-	transport := func() *http.Transport {
-		return &http.Transport{
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 10,
-			IdleConnTimeout:     90 * time.Second,
-		}
-	}
-	client := &http.Client{Transport: transport()}
+	// 连接时 SSRF 校验的安全 transport（newSecureTransport），杜绝 DNS rebinding。
+	client := &http.Client{Transport: newSecureTransport()}
 	if timeout > 0 {
 		client.Timeout = timeout
 	}
 	// 流式 client：永不设 Timeout（对照 new-api 默认 RelayTimeout=0）。
-	streamClient := &http.Client{Transport: transport()}
+	streamClient := &http.Client{Transport: newSecureTransport()}
 	return &OpenAIAdapter{client: client, streamClient: streamClient}
 }
 

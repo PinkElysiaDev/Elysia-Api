@@ -513,7 +513,7 @@ func parseClaudeMessages(raw any) []CanonicalMessage {
 				case "text":
 					msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentText, Text: stringValue(bm["text"]), Raw: bm})
 				case "image":
-					msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentImage, Raw: bm})
+					msg.Content = append(msg.Content, claudeImageBlockToPart(bm))
 				case "tool_use":
 					inputRaw, _ := json.Marshal(bm["input"])
 					msg.ToolCalls = append(msg.ToolCalls, CanonicalToolCall{
@@ -581,6 +581,23 @@ func parseGeminiContents(raw any) []CanonicalMessage {
 					ToolCallID: stringValue(fr["name"]),
 					ToolOutput: string(respRaw),
 					Raw:        pm,
+				})
+			}
+			// 多模态：inlineData（base64）/ fileData（URI）→ canonical image part（修复 R4）。
+			if inline, ok := pm["inlineData"].(map[string]any); ok {
+				msg.Content = append(msg.Content, CanonicalContentPart{
+					Type:        CanonicalContentImage,
+					MediaType:   firstNonEmptyString(stringValue(inline["mimeType"]), stringValue(inline["mime_type"])),
+					ImageBase64: stringValue(inline["data"]),
+					Raw:         pm,
+				})
+			}
+			if fileData, ok := pm["fileData"].(map[string]any); ok {
+				msg.Content = append(msg.Content, CanonicalContentPart{
+					Type:      CanonicalContentImage,
+					MediaType: firstNonEmptyString(stringValue(fileData["mimeType"]), stringValue(fileData["mime_type"])),
+					ImageURL:  firstNonEmptyString(stringValue(fileData["fileUri"]), stringValue(fileData["file_uri"])),
+					Raw:       pm,
 				})
 			}
 		}
@@ -771,6 +788,119 @@ func canonicalMessagesToOpenAI(req *CanonicalRequest) []map[string]any {
 	return messages
 }
 
+// firstNonEmptyString 返回第一个非空字符串。
+func firstNonEmptyString(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// claudeImageBlockToPart 把 Claude image block（{"source":{...}}）解析为 canonical
+// image part：base64 source → ImageBase64+MediaType；url source → ImageURL（修复 R4）。
+func claudeImageBlockToPart(bm map[string]any) CanonicalContentPart {
+	part := CanonicalContentPart{Type: CanonicalContentImage, Raw: bm}
+	src, _ := bm["source"].(map[string]any)
+	if src == nil {
+		return part
+	}
+	switch stringValue(src["type"]) {
+	case "base64":
+		part.MediaType = firstNonEmptyString(stringValue(src["media_type"]), stringValue(src["mimeType"]))
+		part.ImageBase64 = stringValue(src["data"])
+	case "url":
+		part.ImageURL = stringValue(src["url"])
+	default:
+		// 未声明 type：尽量从字段推断（data→base64，url→url）。
+		if data := stringValue(src["data"]); data != "" {
+			part.MediaType = firstNonEmptyString(stringValue(src["media_type"]), stringValue(src["mimeType"]))
+			part.ImageBase64 = data
+		} else if u := stringValue(src["url"]); u != "" {
+			part.ImageURL = u
+		}
+	}
+	return part
+}
+
+// parseDataURL 解析 data:[<mediatype>][;base64],<data> URI，返回媒体类型与原始数据。
+func parseDataURL(u string) (mediaType, data string, ok bool) {
+	if !strings.HasPrefix(u, "data:") {
+		return "", "", false
+	}
+	rest := u[len("data:"):]
+	comma := strings.IndexByte(rest, ',')
+	if comma < 0 {
+		return "", "", false
+	}
+	meta := strings.TrimSuffix(rest[:comma], ";base64")
+	return meta, rest[comma+1:], true
+}
+
+// imagePartBase64 从图片 part 提取 (mediaType, base64)。优先用结构化的
+// ImageBase64+MediaType；否则解析 ImageURL 里内联的 data: URI。
+func imagePartBase64(part CanonicalContentPart) (string, string) {
+	if part.ImageBase64 != "" {
+		return part.MediaType, part.ImageBase64
+	}
+	if strings.HasPrefix(part.ImageURL, "data:") {
+		if mt, b64, ok := parseDataURL(part.ImageURL); ok {
+			return mt, b64
+		}
+	}
+	return "", ""
+}
+
+// imagePartToOpenAIURL 把图片 part 渲染为 OpenAI image_url 的 url 值
+// （http(s) URL 原样；base64 数据组装成 data: URI）。
+func imagePartToOpenAIURL(part CanonicalContentPart) string {
+	if part.ImageURL != "" {
+		return part.ImageURL
+	}
+	if part.ImageBase64 != "" {
+		mt := part.MediaType
+		if mt == "" {
+			mt = "image/png"
+		}
+		return "data:" + mt + ";base64," + part.ImageBase64
+	}
+	return ""
+}
+
+// imagePartToClaudeSource 把图片 part 渲染为 Claude image block 的 source。
+func imagePartToClaudeSource(part CanonicalContentPart) map[string]any {
+	if mt, b64 := imagePartBase64(part); b64 != "" {
+		if mt == "" {
+			mt = "image/png"
+		}
+		return map[string]any{"type": "base64", "media_type": mt, "data": b64}
+	}
+	if part.ImageURL != "" {
+		return map[string]any{"type": "url", "url": part.ImageURL}
+	}
+	return nil
+}
+
+// imagePartToGeminiPart 把图片 part 渲染为 Gemini 的 inlineData（base64）或
+// fileData（http(s) URL）part。
+func imagePartToGeminiPart(part CanonicalContentPart) map[string]any {
+	if mt, b64 := imagePartBase64(part); b64 != "" {
+		if mt == "" {
+			mt = "image/png"
+		}
+		return map[string]any{"inlineData": map[string]any{"mimeType": mt, "data": b64}}
+	}
+	if part.ImageURL != "" {
+		fileData := map[string]any{"fileUri": part.ImageURL}
+		if part.MediaType != "" {
+			fileData["mimeType"] = part.MediaType
+		}
+		return map[string]any{"fileData": fileData}
+	}
+	return nil
+}
+
 func canonicalMessagesToClaude(req *CanonicalRequest) []map[string]any {
 	var messages []map[string]any
 	for _, msg := range req.Messages {
@@ -786,6 +916,10 @@ func canonicalMessagesToClaude(req *CanonicalRequest) []map[string]any {
 			switch part.Type {
 			case CanonicalContentText:
 				content = append(content, map[string]any{"type": "text", "text": part.Text})
+			case CanonicalContentImage:
+				if src := imagePartToClaudeSource(part); src != nil {
+					content = append(content, map[string]any{"type": "image", "source": src})
+				}
 			case CanonicalContentToolOutput:
 				content = append(content, map[string]any{"type": "tool_result", "tool_use_id": part.ToolCallID, "content": part.ToolOutput})
 			}
@@ -825,6 +959,10 @@ func canonicalMessagesToGemini(req *CanonicalRequest) []map[string]any {
 			switch part.Type {
 			case CanonicalContentText:
 				parts = append(parts, map[string]any{"text": part.Text})
+			case CanonicalContentImage:
+				if p := imagePartToGeminiPart(part); p != nil {
+					parts = append(parts, p)
+				}
 			case CanonicalContentReasoning:
 				parts = append(parts, map[string]any{"text": part.ReasoningText, "thought": true})
 			case CanonicalContentToolOutput:

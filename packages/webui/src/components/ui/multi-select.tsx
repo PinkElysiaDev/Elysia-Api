@@ -84,11 +84,23 @@ export function MultiSelect({
 
   return (
     <div ref={rootRef} className={cn('relative', className)}>
-      <button
-        type="button"
+      {/* 用 div[role=combobox] 而非 <button> 作触发器：清空控件需要是真实
+          <button>，嵌套在 <button> 里是非法 HTML（修复 W1）。键盘可达：
+          Enter/Space/↓ 打开（W3）。 */}
+      <div
+        role="combobox"
+        tabIndex={0}
+        aria-expanded={open}
+        aria-haspopup="listbox"
         onClick={() => setOpen((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+            e.preventDefault()
+            setOpen(true)
+          }
+        }}
         className={cn(
-          'flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-input bg-background/60 px-3 py-2 text-sm shadow-sm',
+          'flex h-10 w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-input bg-background/60 px-3 py-2 text-sm shadow-sm',
           'focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary',
         )}
       >
@@ -97,22 +109,21 @@ export function MultiSelect({
         </span>
         <span className="flex items-center gap-1">
           {value.length > 0 && (
-            <span
-              role="button"
-              tabIndex={-1}
+            <button
+              type="button"
               aria-label="清空选择"
-              className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+              className="rounded p-0.5 text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onClick={(e) => {
                 e.stopPropagation()
                 onChange([])
               }}
             >
               <X className="h-3.5 w-3.5" />
-            </span>
+            </button>
           )}
           <ChevronDown className="h-4 w-4 opacity-60" />
         </span>
-      </button>
+      </div>
 
       {open && (
         <div className="absolute z-50 mt-1 w-full min-w-[12rem] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-glow">
@@ -126,7 +137,7 @@ export function MultiSelect({
               className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
-          <div className="max-h-60 overflow-auto p-1">
+          <div role="listbox" aria-multiselectable className="max-h-60 overflow-auto p-1">
             {filtered.length === 0 ? (
               <p className="px-3 py-4 text-center text-xs text-muted-foreground">{emptyText}</p>
             ) : (
@@ -136,10 +147,12 @@ export function MultiSelect({
                   <button
                     key={option.value}
                     type="button"
+                    role="option"
+                    aria-selected={checked}
                     onClick={() => toggle(option.value)}
                     className={cn(
                       'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none',
-                      'hover:bg-accent hover:text-accent-foreground',
+                      'hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent',
                     )}
                   >
                     <span

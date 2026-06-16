@@ -335,6 +335,11 @@ func (s *Store) UsageTotals(ctx context.Context, q UsageQuery) (map[string]any, 
 	cacheHitRate := 0.0
 	if input > 0 {
 		cacheHitRate = float64(cacheHit) / float64(input)
+		// 缓存命中 token 是 input 的子集，比率应落在 [0,1]；个别上游语义差异或
+		// 迁移前未记录 input 的行可能令分子虚高，钳制避免出现 >100% 的命中率。
+		if cacheHitRate > 1 {
+			cacheHitRate = 1
+		}
 	}
 	return map[string]any{
 		"requests":       requests,
