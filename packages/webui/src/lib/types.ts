@@ -33,10 +33,12 @@ export type ThinkingMode = 'both' | 'non-thinking-only' | 'thinking-only'
 export interface RuntimeConfig {
   host: string
   port: number
-  panelAccessTokenConfigured: boolean
+  panelAccessToken: string
   databasePath: string
+  defaultDatabasePath: string
   logLevel: LogLevel
   httpTimeout: number
+  enablePprof: boolean
 }
 
 export interface RuntimeConfigUpdate {
@@ -44,6 +46,9 @@ export interface RuntimeConfigUpdate {
   port?: number
   logLevel?: LogLevel
   httpTimeout?: number
+  panelAccessToken?: string
+  databasePath?: string
+  enablePprof?: boolean
 }
 
 export interface RuntimeConfigUpdateResult {

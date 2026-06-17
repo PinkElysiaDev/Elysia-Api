@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, RefreshCw, Save, Settings } from 'lucide-react'
+import { AlertTriangle, RefreshCw, RotateCcw, Save, Settings, Database, Shield } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ErrorState, LoadingState } from '@/components/ui/states'
 import { useToast } from '@/components/ui/use-toast'
@@ -45,12 +44,15 @@ export function RuntimeConfigPage() {
         port: form.port,
         logLevel: form.logLevel,
         httpTimeout: form.httpTimeout,
+        panelAccessToken: form.panelAccessToken,
+        databasePath: form.databasePath,
+        enablePprof: form.enablePprof,
       })
       await revalidate.runtimeConfig()
       setRestartNotice(result.restartRequired)
       toast.success(
         '运行配置已更新',
-        result.restartRequired ? 'host/port 变更需重启后端生效' : '热更新字段已生效',
+        result.restartRequired ? '部分变更需重启后端生效' : '热更新字段已生效',
       )
     } catch (err) {
       toast.error('保存失败', (err as Error).message)
@@ -87,7 +89,7 @@ export function RuntimeConfigPage() {
     <div className="space-y-6">
       <PageHeader
         title="运行配置"
-        description="可热更新 logLevel 与 httpTimeout；host/port 变更需重启后端"
+        description="可热更新 logLevel 与 httpTimeout；host/port/databasePath 变更需重启后端"
         actions={
           <Button onClick={handleSave} disabled={saving}>
             <Save className="h-4 w-4" /> {saving ? '保存中…' : '保存'}
@@ -98,7 +100,7 @@ export function RuntimeConfigPage() {
       {restartNotice && (
         <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/8 px-4 py-3 text-sm">
           <AlertTriangle className="h-4 w-4 text-primary" />
-          host 或 port 已变更，需要通过入口插件或手动重启后端才能生效。
+          部分配置已变更，需要通过入口插件或手动重启后端才能生效。
         </div>
       )}
 
@@ -154,17 +156,52 @@ export function RuntimeConfigPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>引导配置（只读）</CardTitle>
-          <CardDescription>以下字段属于 bootstrap config.json，通常通过重启后端或入口插件修改。</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-4 w-4 text-primary" /> 数据库
+          </CardTitle>
+          <CardDescription>修改数据库路径需重启后端生效。</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <ReadOnlyField label="数据库路径" value={form.databasePath} mono />
-          <div className="space-y-2">
-            <Label>Panel Access Token</Label>
-            <Badge variant={form.panelAccessTokenConfigured ? 'success' : 'destructive'}>
-              {form.panelAccessTokenConfigured ? '已配置' : '未配置'}
-            </Badge>
+        <CardContent className="space-y-2">
+          <Label>数据库路径</Label>
+          <div className="flex gap-2">
+            <Input
+              className="font-mono text-xs"
+              value={form.databasePath}
+              placeholder={data?.defaultDatabasePath}
+              onChange={(e) => update('databasePath', e.target.value)}
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              title="重置为默认路径"
+              onClick={() => update('databasePath', data?.defaultDatabasePath ?? '')}
+            >
+              <RotateCcw className="h-4 w-4" />
+            </Button>
           </div>
+          {data?.defaultDatabasePath && form.databasePath !== data.defaultDatabasePath && (
+            <p className="text-xs text-muted-foreground">
+              默认路径：<code className="rounded bg-muted px-1 py-0.5 font-mono">{data.defaultDatabasePath}</code>
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="h-4 w-4 text-primary" /> Panel Access Token
+          </CardTitle>
+          <CardDescription>用于 WebUI 面板登录与管理 API 鉴权的令牌。</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Label>Token</Label>
+          <Input
+            type="password"
+            value={form.panelAccessToken}
+            placeholder="输入新的 Panel Access Token"
+            onChange={(e) => update('panelAccessToken', e.target.value)}
+          />
         </CardContent>
       </Card>
 
@@ -182,22 +219,6 @@ export function RuntimeConfigPage() {
         >
           <RefreshCw className="h-4 w-4" /> 触发热重载
         </Button>
-      </div>
-    </div>
-  )
-}
-
-function ReadOnlyField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-      <div
-        className={`flex h-10 items-center truncate rounded-lg border border-border bg-muted/50 px-3 text-sm text-muted-foreground ${
-          mono ? 'font-mono text-xs' : ''
-        }`}
-        title={value}
-      >
-        {value || '—'}
       </div>
     </div>
   )
