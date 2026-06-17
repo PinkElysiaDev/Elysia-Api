@@ -9,9 +9,7 @@ export const usage = `---
 
 Elysia-API 独立后端入口插件。
 
-本插件只负责 bootstrap config、后端进程和 WebUI 入口，不聚合模型、不配置模型组。
-后端以 daemon 方式运行，独立于 Koishi 存活：Koishi 退出/重启不会停止后端；
-启动时若检测到后端已在运行则不接管。模型组/模型源/Token 全部在 WebUI 管理（存 SQLite）。
+本插件只负责调整后端的启动时行为，可绕过本插件手动控制后端。
 
 ### 命令
 

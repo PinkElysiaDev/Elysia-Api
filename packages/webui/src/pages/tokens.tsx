@@ -68,7 +68,7 @@ export function TokensPage() {
     <div className="space-y-6">
       <PageHeader
         title="API Keys"
-        description="转发客户端访问 /v1/* 与 /v1beta/* 所用的密钥，列表中已脱敏"
+        description="转发客户端访问 /v1/* 与 /v1beta/* 所用的密钥"
         actions={
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" /> 新增 API Key

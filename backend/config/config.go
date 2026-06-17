@@ -183,6 +183,75 @@ func (c *Config) applyBootstrapDefaults(path string) {
 	}
 }
 
+func (c *Config) Save() error {
+	c.mu.RLock()
+	path := c.path
+	c.mu.RUnlock()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	c.mu.RLock()
+	raw["host"] = c.Host
+	raw["port"] = c.Port
+	raw["panelAccessToken"] = c.PanelAccessToken
+	raw["databasePath"] = c.DatabasePath
+	raw["logLevel"] = c.LogLevel
+	raw["enablePprof"] = c.EnablePprof
+	raw["httpTimeout"] = c.HTTPTimeout
+	c.mu.RUnlock()
+
+	out, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0o644)
+}
+
+func (c *Config) SetPanelAccessToken(token string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.PanelAccessToken = token
+	c.DashboardToken = token
+}
+
+func (c *Config) GetPanelAccessToken() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.PanelAccessToken
+}
+
+func (c *Config) SetDatabasePath(path string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.DatabasePath = path
+}
+
+func (c *Config) GetDefaultDatabasePath() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return filepath.Join(filepath.Dir(c.path), "elysia-api.sqlite3")
+}
+
+func (c *Config) SetEnablePprof(enabled bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.EnablePprof = enabled
+}
+
+func (c *Config) GetEnablePprof() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.EnablePprof
+}
+
 func (c *Config) Reload() error {
 	data, err := os.ReadFile(c.path)
 	if err != nil {
