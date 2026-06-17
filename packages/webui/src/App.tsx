@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { getToken, subscribeToken } from './lib/auth'
+import { getToken, subscribeToken, syncCookieFromStorage } from './lib/auth'
 import { AppLayout } from './components/app-layout'
 import { LoginPage } from './pages/login'
 import { OverviewPage } from './pages/overview'
@@ -16,7 +16,11 @@ import { DiagnosticsPage } from './pages/diagnostics'
 /** 订阅 token 变化，集中管理登录态。 */
 function useAuthState() {
   const [token, setTokenState] = useState<string | null>(() => getToken())
-  useEffect(() => subscribeToken(setTokenState), [])
+  useEffect(() => {
+    // 启动时按 localStorage 重建 cookie，确保 pprof 等浏览器导航请求能携带认证。
+    syncCookieFromStorage()
+    return subscribeToken(setTokenState)
+  }, [])
   return token
 }
 
