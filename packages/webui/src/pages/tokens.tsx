@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, Copy, KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Check, Copy, Eye, EyeOff, KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -68,7 +68,7 @@ export function TokensPage() {
     <div className="space-y-6">
       <PageHeader
         title="API Keys"
-        description="转发客户端访问 /v1/* 与 /v1beta/* 所用的密钥"
+        description="转发客户端访问所用的密钥"
         actions={
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" /> 新增 API Key
@@ -97,7 +97,7 @@ export function TokensPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>名称</TableHead>
-                  <TableHead>Key（脱敏）</TableHead>
+                  <TableHead>Key</TableHead>
                   <TableHead>可访问模型组</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead className="text-right">操作</TableHead>
@@ -109,8 +109,7 @@ export function TokensPage() {
                     <TableCell className="font-medium">{token.name}</TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
                       <div className="flex items-center gap-1.5">
-                        <span>{token.token || '••••'}</span>
-                        <RevealCopyButton name={token.name} />
+                        <RevealCopyButton name={token.name} maskedToken={token.token || '••••'} />
                       </div>
                     </TableCell>
                     <TableCell>
@@ -158,16 +157,36 @@ export function TokensPage() {
   )
 }
 
-// RevealCopyButton 点击时按需取该 Key 的完整明文并复制到剪贴板（列表默认仍脱敏）。
-function RevealCopyButton({ name }: { name: string }) {
+// RevealCopyButton 支持显示/隐藏和复制完整 Key。
+function RevealCopyButton({ name, maskedToken }: { name: string; maskedToken: string }) {
   const toast = useToast()
   const [copied, setCopied] = useState(false)
+  const [revealed, setRevealed] = useState(false)
+  const [revealedToken, setRevealedToken] = useState('')
   const [busy, setBusy] = useState(false)
+
+  async function handleReveal() {
+    if (revealed) {
+      setRevealed(false)
+      setRevealedToken('')
+      return
+    }
+    setBusy(true)
+    try {
+      const { token } = await api.revealToken(name)
+      setRevealedToken(token)
+      setRevealed(true)
+    } catch (err) {
+      toast.error('获取失败', (err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function handleCopy() {
     setBusy(true)
     try {
-      const { token } = await api.revealToken(name)
+      const token = revealed ? revealedToken : (await api.revealToken(name)).token
       await navigator.clipboard.writeText(token)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
@@ -179,9 +198,21 @@ function RevealCopyButton({ name }: { name: string }) {
   }
 
   return (
-    <Button variant="ghost" size="iconSm" title="复制完整 Key" disabled={busy} onClick={handleCopy}>
-      {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
-    </Button>
+    <>
+      <span className="font-mono text-xs">{revealed ? revealedToken : maskedToken}</span>
+      <Button
+        variant="ghost"
+        size="iconSm"
+        title={revealed ? '隐藏' : '显示完整 Key'}
+        disabled={busy}
+        onClick={handleReveal}
+      >
+        {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+      </Button>
+      <Button variant="ghost" size="iconSm" title="复制完整 Key" disabled={busy} onClick={handleCopy}>
+        {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+      </Button>
+    </>
   )
 }
 

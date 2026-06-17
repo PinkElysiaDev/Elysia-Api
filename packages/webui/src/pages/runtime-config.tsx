@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, RefreshCw, RotateCcw, Save, Settings, Database, Shield } from 'lucide-react'
+import { AlertTriangle, Eye, EyeOff, RefreshCw, RotateCcw, Save, Settings, Database, Shield } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,7 @@ export function RuntimeConfigPage() {
   const [form, setForm] = useState<RuntimeConfig | null>(null)
   const [saving, setSaving] = useState(false)
   const [restartNotice, setRestartNotice] = useState(false)
+  const [showToken, setShowToken] = useState(false)
 
   useEffect(() => {
     if (data) setForm(data)
@@ -196,12 +197,23 @@ export function RuntimeConfigPage() {
         </CardHeader>
         <CardContent className="space-y-2">
           <Label>Token</Label>
-          <Input
-            type="password"
-            value={form.panelAccessToken}
-            placeholder="输入新的 Panel Access Token"
-            onChange={(e) => update('panelAccessToken', e.target.value)}
-          />
+          <div className="flex gap-2">
+            <Input
+              type={showToken ? 'text' : 'password'}
+              value={form.panelAccessToken}
+              placeholder="输入新的 Panel Access Token"
+              onChange={(e) => update('panelAccessToken', e.target.value)}
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              type="button"
+              title={showToken ? '隐藏' : '显示'}
+              onClick={() => setShowToken(!showToken)}
+            >
+              {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

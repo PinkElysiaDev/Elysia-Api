@@ -54,15 +54,18 @@ export class StandaloneBackendManager {
     mkdirSync(dirname(path), { recursive: true })
     const existing = this.readExistingConfig(path)
     const panelAccessToken = this.config.panelAccessToken?.trim() || existing.panelAccessToken || randomBytes(24).toString('base64url')
-    const payload: BootstrapConfig = {
+    // 合并而非覆写：保留后端通过 WebUI 写入的字段（enablePprof、databasePath 等），
+    // 仅更新 Koishi 插件管控的 bootstrap 字段。
+    const merged = {
+      ...existing,
       host: this.config.host,
       port: this.config.port,
       panelAccessToken,
       httpTimeout: this.config.httpTimeout,
     }
-    writeFileSync(path, JSON.stringify(payload, null, 2))
+    writeFileSync(path, JSON.stringify(merged, null, 2))
     this.lastConfigHash = this.buildRuntimeHash()
-    return payload
+    return merged
   }
 
   async start() {
