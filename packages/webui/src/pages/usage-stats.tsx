@@ -1,11 +1,5 @@
 import { useMemo, useState } from 'react'
-import {
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip as RTooltip,
-} from 'recharts'
+import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
 import { BarChart3, CheckCircle2, Cpu, Gauge, Timer } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { StatCard } from '@/components/stat-card'
@@ -186,11 +180,15 @@ function DonutChart({
   total: number
   centerLabel: string
 }) {
+  // 悬停的扇区下标；null 时圆环中央显示总计。鼠标移开圆环即恢复总计。
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const hasData = data.some((d) => d.value > 0)
   // 单项数据（只有一个非零扇区）时 paddingAngle=0，让圆环完全闭合；
   // 多项时保留 2° 间隔便于区分扇区。
   const nonZeroCount = data.filter((d) => d.value > 0).length
   const paddingAngle = nonZeroCount <= 1 ? 0 : 2
+  const active = activeIndex != null ? data[activeIndex] : null
+
   return (
     <div className="relative h-64">
       {hasData ? (
@@ -204,21 +202,20 @@ function DonutChart({
               outerRadius={92}
               paddingAngle={paddingAngle}
               stroke="none"
+              onMouseEnter={(_, index) => setActiveIndex(index)}
+              onMouseLeave={() => setActiveIndex(null)}
+              isAnimationActive={false}
             >
-              {data.map((entry) => (
-                <Cell key={entry.name} fill={entry.color} />
+              {data.map((entry, index) => (
+                <Cell
+                  key={entry.name}
+                  fill={entry.color}
+                  // 悬停时降低其余扇区不透明度，突出当前环。
+                  opacity={activeIndex == null || activeIndex === index ? 1 : 0.35}
+                  style={{ transition: 'opacity 150ms ease' }}
+                />
               ))}
             </Pie>
-            <RTooltip
-              contentStyle={{
-                borderRadius: 12,
-                border: '1px solid hsl(var(--border))',
-                background: 'hsl(var(--popover))',
-                color: 'hsl(var(--popover-foreground))',
-                fontSize: 13,
-              }}
-              formatter={(value: number, name: string) => [formatNumber(value), name]}
-            />
           </PieChart>
         </ResponsiveContainer>
       ) : (
@@ -226,17 +223,36 @@ function DonutChart({
           <BarChart3 className="mr-2 h-4 w-4" /> 暂无数据
         </div>
       )}
-      {/* 中心数字仅在有数据时显示，避免与"暂无数据"并列出现 0 */}
+      {/* 圆环中央：悬停某环时显示该环信息，否则显示总计。 */}
       {hasData && (
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-2xl font-semibold tracking-tight">{formatNumber(total)}</span>
-          <span className="text-xs text-muted-foreground">{centerLabel}</span>
+          {active ? (
+            <>
+              <span className="max-w-[8rem] truncate text-2xl font-semibold tracking-tight" style={{ color: active.color }}>
+                {formatNumber(active.value)}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {active.name} · {percent(active.value, total)}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="text-2xl font-semibold tracking-tight">{formatNumber(total)}</span>
+              <span className="text-xs text-muted-foreground">{centerLabel}</span>
+            </>
+          )}
         </div>
       )}
       {hasData && (
         <div className="absolute bottom-0 left-0 right-0 flex justify-center gap-4">
-          {data.map((entry) => (
-            <span key={entry.name} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          {data.map((entry, index) => (
+            <span
+              key={entry.name}
+              className="flex cursor-default items-center gap-1.5 text-xs text-muted-foreground transition-opacity"
+              style={{ opacity: activeIndex == null || activeIndex === index ? 1 : 0.45 }}
+              onMouseEnter={() => setActiveIndex(index)}
+              onMouseLeave={() => setActiveIndex(null)}
+            >
               <span className="h-2.5 w-2.5 rounded-full" style={{ background: entry.color }} />
               {entry.name} {formatNumber(entry.value)}
             </span>

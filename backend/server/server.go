@@ -446,8 +446,13 @@ func extractAccessToken(r *http.Request) string {
 		return queryKey
 	}
 
-	// Check cookie for panel access token
+	// Check cookie for panel access token.
+	// 前端写入 cookie 时用了 encodeURIComponent，而 Go 的 r.Cookie() 不会自动解码，
+	// 这里手动 url.QueryUnescape 还原，保证含特殊字符的 token 也能匹配。
 	if cookie, err := r.Cookie("panel_access_token"); err == nil {
+		if decoded, derr := url.QueryUnescape(cookie.Value); derr == nil {
+			return strings.TrimSpace(decoded)
+		}
 		return strings.TrimSpace(cookie.Value)
 	}
 
