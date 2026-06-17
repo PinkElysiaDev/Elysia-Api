@@ -415,9 +415,9 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 func (s *Server) dashboardAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := extractAccessToken(c.Request)
-		if !s.config.IsValidDashboardToken(token) {
+		if !s.config.IsValidPanelAccessToken(token) {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "dashboard token is not configured or invalid",
+				"error": "panel access token is not configured or invalid",
 			})
 			return
 		}
@@ -444,6 +444,11 @@ func extractAccessToken(r *http.Request) string {
 	queryKey := strings.TrimSpace(r.URL.Query().Get("key"))
 	if queryKey != "" {
 		return queryKey
+	}
+
+	// Check cookie for panel access token
+	if cookie, err := r.Cookie("panel_access_token"); err == nil {
+		return strings.TrimSpace(cookie.Value)
 	}
 
 	return ""
