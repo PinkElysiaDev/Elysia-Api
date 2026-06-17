@@ -52,7 +52,7 @@ export function GroupsPage() {
     <div className="space-y-6">
       <PageHeader
         title="模型组"
-        description="组名即客户端 /v1/models 看到的模型 ID，按策略转发到组内模型"
+        description="对外展示的模型 ID"
         actions={
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" /> 新增模型组
