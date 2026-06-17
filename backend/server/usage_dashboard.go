@@ -210,7 +210,7 @@ const usageDashboardHTML = `<!doctype html>
         <button id="themeLogin" class="theme-switch" type="button" aria-label="切换主题" aria-pressed="false"><span class="theme-switch-scene light"><span class="sun"></span><span class="cloud"></span></span><span class="theme-switch-scene dark"><span class="moon"></span><span class="star s1"></span><span class="star s2"></span><span class="star s3"></span></span><span class="theme-switch-thumb"></span></button>
       </div>
       <p>请输入 Usage 面板访问令牌后进入统计面板。这个令牌只用于查看统计，不是上游模型 API key；业务调用方 access token 会作为统计维度展示。</p>
-      <label>面板访问令牌 <input id="dashboardToken" type="password" autocomplete="off" placeholder="dashboard token" /></label>
+      <label>面板访问令牌 <input id="panelToken" type="password" autocomplete="off" placeholder="panel access token" /></label>
       <div style="display:flex; gap:10px; margin-top:14px; align-items:center">
         <button id="enter" type="button">进入面板</button>
         <span id="loginStatus" class="muted"></span>
@@ -242,7 +242,7 @@ const usageDashboardHTML = `<!doctype html>
   <dialog id="detail"><form method="dialog"><button class="secondary" style="float:right">关闭</button></form><h2>请求详情</h2><div id="detailBody"></div></dialog>
 <script>
 const $ = id => document.getElementById(id)
-const state = { token: localStorage.getItem('elysiaDashboardToken') || '', stats: null, overviewStats: null, logs: null, view: 'overview', customFrom: '', customTo: '', sort: { table: '', index: -1, dir: 'desc' }, logFilters: { keyNames: [], groupNames: [], modelNames: [], stream: '', status: '' }, logPage: 1, logPageSize: '50', activeRangeText: '最近 24h', overviewVisibleMetrics: { requests: true, totalTokens: true, inputTokens: true, outputTokens: true }, timeVisibleMetrics: { requests: true, totalTokens: true, inputTokens: true, outputTokens: true, cacheHitTokens: true } }
+const state = { token: localStorage.getItem('elysiaPanelToken') || '', stats: null, overviewStats: null, logs: null, view: 'overview', customFrom: '', customTo: '', sort: { table: '', index: -1, dir: 'desc' }, logFilters: { keyNames: [], groupNames: [], modelNames: [], stream: '', status: '' }, logPage: 1, logPageSize: '50', activeRangeText: '最近 24h', overviewVisibleMetrics: { requests: true, totalTokens: true, inputTokens: true, outputTokens: true }, timeVisibleMetrics: { requests: true, totalTokens: true, inputTokens: true, outputTokens: true, cacheHitTokens: true } }
 const views = [
   ['overview', '总览'], ['time', '按时间'], ['caller', '按调用方'], ['group', '按模型组'], ['model', '按具体模型'], ['logs', '请求日志']
 ]
@@ -262,9 +262,9 @@ function initTheme() { applyTheme(localStorage.getItem('elysiaUsageTheme') || (m
 function toggleTheme() { applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark') }
 $('theme').onclick = toggleTheme
 $('themeLogin').onclick = toggleTheme
-$('dashboardToken').value = state.token
+$('panelToken').value = state.token
 $('enter').onclick = enter
-$('logout').onclick = () => { localStorage.removeItem('elysiaDashboardToken'); state.token = ''; $('app').classList.add('hidden'); $('login').classList.remove('hidden') }
+$('logout').onclick = () => { localStorage.removeItem('elysiaPanelToken'); state.token = ''; $('app').classList.add('hidden'); $('login').classList.remove('hidden') }
 $('refresh').onclick = refresh
 initTheme()
 renderTabs()
@@ -310,12 +310,12 @@ async function getJSON(path) {
   return res.json()
 }
 async function enter() {
-  const token = $('dashboardToken').value.trim()
+  const token = $('panelToken').value.trim()
   if (!token) { $('loginStatus').textContent = '请输入面板访问令牌'; $('loginStatus').className = 'error'; return }
   state.token = token; $('loginStatus').textContent = '验证中...'; $('loginStatus').className = 'muted'
   try {
     await loadData()
-    localStorage.setItem('elysiaDashboardToken', token)
+    localStorage.setItem('elysiaPanelToken', token)
     $('login').classList.add('hidden'); $('app').classList.remove('hidden')
     render()
   } catch (err) {

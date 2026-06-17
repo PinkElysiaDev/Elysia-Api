@@ -41,7 +41,7 @@ func TestLegacyEncryptedFieldsIgnored(t *testing.T) {
   "host": "127.0.0.1",
   "port": 8765,
   "databasePath": "x.sqlite3",
-  "dashboardTokenEnc": {"algorithm":"aes-256-gcm","nonce":"AAAA","ciphertext":"BBBB"},
+  "panelAccessToken": "test-token",
   "tokens": [{"name":"t1","tokenEnc":{"algorithm":"aes-256-gcm","nonce":"AAAA","ciphertext":"BBBB"}}],
   "modelGroups": [{"id":"g1","name":"grp"}]
 }`

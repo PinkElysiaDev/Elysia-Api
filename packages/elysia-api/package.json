@@ -21,13 +21,13 @@
   },
   "license": "MIT",
   "author": "MissPinkElf <xiaolan20020118@gmail.com>",
-  "homepage": "https://github.com/PinkElysiaDev/koishi-plugin-elysia-api#readme",
+  "homepage": "https://github.com/PinkElysiaDev/Elysia-Api#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/PinkElysiaDev/koishi-plugin-elysia-api.git"
+    "url": "https://github.com/PinkElysiaDev/Elysia-Api.git"
   },
   "bugs": {
-    "url": "https://github.com/PinkElysiaDev/koishi-plugin-elysia-api/issues"
+    "url": "https://github.com/PinkElysiaDev/Elysia-Api/issues"
   },
   "scripts": {
     "build": "atsc -b"

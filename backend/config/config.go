@@ -24,7 +24,6 @@ type Config struct {
 	EnablePprof            bool               `json:"enablePprof,omitempty"`
 	MaxBodyBytes           int64              `json:"maxBodyBytes,omitempty"`
 	Server                 ServerConfig       `json:"server"`
-	DashboardToken         string             `json:"dashboardToken,omitempty"`
 	Tokens                 []AccessToken      `json:"-"` // 运行时字段：仅用于 store-nil 回退与测试；不再从 config.json 读取（模型/token 走 SQLite）
 	Groups                 []ModelGroupConfig `json:"-"` // 同上：旧 config.json 的 modelGroups 字段已废弃，数据走 SQLite
 	Responses              ResponsesConfig    `json:"responses,omitempty"`              // Responses API 兼容策略
@@ -156,12 +155,6 @@ func (c *Config) applyBootstrapDefaults(path string) {
 	}
 	c.Server.Host = c.Host
 	c.Server.Port = c.Port
-	if c.PanelAccessToken == "" {
-		c.PanelAccessToken = c.DashboardToken
-	}
-	if c.DashboardToken == "" {
-		c.DashboardToken = c.PanelAccessToken
-	}
 	if c.DatabasePath == "" {
 		c.DatabasePath = filepath.Join(filepath.Dir(path), "elysia-api.sqlite3")
 	} else if !filepath.IsAbs(c.DatabasePath) {
@@ -219,7 +212,6 @@ func (c *Config) SetPanelAccessToken(token string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.PanelAccessToken = token
-	c.DashboardToken = token
 }
 
 func (c *Config) GetPanelAccessToken() string {
@@ -277,7 +269,6 @@ func (c *Config) Reload() error {
 	c.EnablePprof = newCfg.EnablePprof
 	c.MaxBodyBytes = newCfg.MaxBodyBytes
 	c.Server = newCfg.Server
-	c.DashboardToken = newCfg.DashboardToken
 	// 注意：Tokens/Groups 是 json:"-" 运行时字段，不从 config.json 读取，
 	// 因此热重载不覆盖它们（模型组/token 的变更走 SQLite + 路由缓存失效）。
 	c.Responses = newCfg.Responses
@@ -469,7 +460,7 @@ func (c *Config) GetDBEncryptionKey() []byte {
 func (c *Config) IsPanelAccessConfigured() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.PanelAccessToken != "" || c.DashboardToken != ""
+	return c.PanelAccessToken != ""
 }
 
 func (c *Config) IsValidAccessToken(token string) bool {
@@ -494,20 +485,17 @@ func (c *Config) FindAccessToken(token string) (AccessToken, bool) {
 	return AccessToken{}, false
 }
 
-func (c *Config) IsValidDashboardToken(token string) bool {
+func (c *Config) IsValidPanelAccessToken(token string) bool {
 	token = strings.TrimSpace(token)
 	if token == "" {
 		return false
 	}
 
 	c.mu.RLock()
-	dashboardToken := c.DashboardToken
-	if dashboardToken == "" {
-		dashboardToken = c.PanelAccessToken
-	}
+	panelAccessToken := c.PanelAccessToken
 	c.mu.RUnlock()
 
-	return dashboardToken != "" && constantTimeEqual(dashboardToken, token)
+	return panelAccessToken != "" && constantTimeEqual(panelAccessToken, token)
 }
 
 // constantTimeEqual 以常量时间比较两个字符串，避免通过比较耗时差异
