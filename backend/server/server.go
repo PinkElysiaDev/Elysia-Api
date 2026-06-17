@@ -415,9 +415,9 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 func (s *Server) dashboardAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := extractAccessToken(c.Request)
-		if !s.config.IsValidDashboardToken(token) {
+		if !s.config.IsValidPanelAccessToken(token) {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "dashboard token is not configured or invalid",
+				"error": "panel access token is not configured or invalid",
 			})
 			return
 		}
@@ -444,6 +444,16 @@ func extractAccessToken(r *http.Request) string {
 	queryKey := strings.TrimSpace(r.URL.Query().Get("key"))
 	if queryKey != "" {
 		return queryKey
+	}
+
+	// Check cookie for panel access token.
+	// 前端写入 cookie 时用了 encodeURIComponent，而 Go 的 r.Cookie() 不会自动解码，
+	// 这里手动 url.QueryUnescape 还原，保证含特殊字符的 token 也能匹配。
+	if cookie, err := r.Cookie("panel_access_token"); err == nil {
+		if decoded, derr := url.QueryUnescape(cookie.Value); derr == nil {
+			return strings.TrimSpace(decoded)
+		}
+		return strings.TrimSpace(cookie.Value)
 	}
 
 	return ""
