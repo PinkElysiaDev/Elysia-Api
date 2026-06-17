@@ -100,7 +100,7 @@ export function SourcesPage() {
     <div className="space-y-6">
       <PageHeader
         title="模型源"
-        description="管理上游供应商与其聚合的模型，支持 OpenAI / 兼容 / Claude / Gemini，自动拉取或手动模型"
+        description="管理上游供应商与其聚合的模型"
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={refreshAll} disabled={refreshingAll}>

@@ -63,15 +63,27 @@ func (s *Server) requireStore(c *gin.Context) (*storage.Store, bool) {
 
 func (s *Server) adminRuntimeConfig(c *gin.Context) {
 	server := s.config.GetServer()
-	ok(c, gin.H{"host": server.Host, "port": server.Port, "panelAccessTokenConfigured": s.config.IsPanelAccessConfigured(), "databasePath": s.config.GetDatabasePath(), "logLevel": s.config.GetLogLevel(), "httpTimeout": s.config.GetHTTPTimeout()})
+	ok(c, gin.H{
+		"host":              server.Host,
+		"port":              server.Port,
+		"panelAccessToken":  s.config.GetPanelAccessToken(),
+		"databasePath":      s.config.GetDatabasePath(),
+		"defaultDatabasePath": s.config.GetDefaultDatabasePath(),
+		"logLevel":          s.config.GetLogLevel(),
+		"httpTimeout":       s.config.GetHTTPTimeout(),
+		"enablePprof":       s.config.GetEnablePprof(),
+	})
 }
 
 func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 	var payload struct {
-		Host        string `json:"host"`
-		Port        int    `json:"port"`
-		LogLevel    string `json:"logLevel"`
-		HTTPTimeout int    `json:"httpTimeout"`
+		Host             string  `json:"host"`
+		Port             int     `json:"port"`
+		LogLevel         string  `json:"logLevel"`
+		HTTPTimeout      int     `json:"httpTimeout"`
+		PanelAccessToken *string `json:"panelAccessToken"`
+		DatabasePath     *string `json:"databasePath"`
+		EnablePprof      *bool   `json:"enablePprof"`
 	}
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		fail(c, 400, "invalid_json", err.Error())
@@ -84,6 +96,24 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 	}
 	if payload.HTTPTimeout >= 0 {
 		s.config.SetHTTPTimeout(payload.HTTPTimeout)
+	}
+	if payload.PanelAccessToken != nil {
+		s.config.SetPanelAccessToken(*payload.PanelAccessToken)
+	}
+	if payload.DatabasePath != nil {
+		old := s.config.GetDatabasePath()
+		s.config.SetDatabasePath(*payload.DatabasePath)
+		if s.config.GetDatabasePath() != old {
+			restartRequired = true
+		}
+	}
+	if payload.EnablePprof != nil {
+		s.config.SetEnablePprof(*payload.EnablePprof)
+		restartRequired = true
+	}
+	if err := s.config.Save(); err != nil {
+		fail(c, 500, "save_config_failed", err.Error())
+		return
 	}
 	ok(c, gin.H{"updated": true, "restartRequired": restartRequired})
 }

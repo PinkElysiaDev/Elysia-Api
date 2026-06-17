@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Activity, Cpu, Database, HardDrive, RefreshCw, Recycle, TerminalSquare } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { StatCard } from '@/components/stat-card'
@@ -5,18 +6,37 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Label } from '@/components/ui/label'
 import { ErrorState } from '@/components/ui/states'
-import { useHealth } from '@/lib/hooks'
+import { useHealth, useRuntimeConfig, revalidate } from '@/lib/hooks'
+import { useToast } from '@/components/ui/use-toast'
+import { api } from '@/lib/api'
 import { formatBytes, formatNumber } from '@/lib/utils'
 
 export function DiagnosticsPage() {
+  const toast = useToast()
   const { data: health, isLoading, error, mutate } = useHealth(10000)
+  const { data: runtimeConfig } = useRuntimeConfig()
+  const [togglingPprof, setTogglingPprof] = useState(false)
+
+  async function handleTogglePprof(enabled: boolean) {
+    setTogglingPprof(true)
+    try {
+      await api.updateRuntimeConfig({ enablePprof: enabled })
+      await revalidate.runtimeConfig()
+      toast.success(enabled ? 'pprof 已启用' : 'pprof 已关闭', '需重启后端生效')
+    } catch (err) {
+      toast.error('切换失败', (err as Error).message)
+    } finally {
+      setTogglingPprof(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="诊断"
-        description="后端内存指标与运行健康度，每 10 秒自动刷新"
+        description="后端内存指标与运行健康度"
         actions={
           <Button variant="outline" onClick={() => mutate()}>
             <RefreshCw className="h-4 w-4" /> 刷新
@@ -95,18 +115,32 @@ export function DiagnosticsPage() {
                 <CardTitle className="flex items-center gap-2">
                   <TerminalSquare className="h-4 w-4 text-primary" /> pprof 性能分析
                 </CardTitle>
-                <CardDescription>仅当后端启用 enablePprof 时可用</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  若后端以 <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">enablePprof: true</code>{' '}
-                  启动，可访问以下路径获取性能分析数据（需 Panel Token 鉴权）：
-                </p>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>启用 pprof</Label>
+                  <Button
+                    variant={runtimeConfig?.enablePprof ? 'default' : 'outline'}
+                    size="sm"
+                    disabled={togglingPprof}
+                    onClick={() => handleTogglePprof(!runtimeConfig?.enablePprof)}
+                  >
+                    {runtimeConfig?.enablePprof ? '已启用' : '已关闭'}
+                  </Button>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {['/debug/pprof/heap', '/debug/pprof/goroutine', '/debug/pprof/profile'].map((path) => (
-                    <Badge key={path} variant="outline" className="font-mono">
-                      {path}
-                    </Badge>
+                    <a
+                      key={path}
+                      href={path}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex"
+                    >
+                      <Badge variant="outline" className="font-mono hover:bg-accent cursor-pointer">
+                        {path}
+                      </Badge>
+                    </a>
                   ))}
                 </div>
               </CardContent>
