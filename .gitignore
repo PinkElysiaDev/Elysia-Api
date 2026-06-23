@@ -1,4 +1,4 @@
-# TS 编译产物（仅 Koishi 包根的 lib/，不误伤 webui 的 src/lib 源码目录）
+# TS 编译产物（不误伤 webui 的 src/lib 源码目录）
 packages/*/lib
 backend/lib
 lib/
@@ -21,6 +21,9 @@ tsconfig.tsbuildinfo
 *.njsproj
 *.sln
 
+# 本地 CodeGraph 索引与守护进程状态
+.codegraph/
+
 # 运行时 / 本地产物，不应提交
 backend/**/usage-records.jsonl
 backend/**/*.sqlite3
@@ -28,4 +31,10 @@ backend/**/*.sqlite3-shm
 backend/**/*.sqlite3-wal
 backend/**/.db-key
 backend/**/master.key
+**/.master-key
+**/elysia-api.sqlite3
+**/elysia-api.sqlite3-shm
+**/elysia-api.sqlite3-wal
+config.json
 package-lock.json
+yarn.lock

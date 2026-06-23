@@ -26,16 +26,20 @@ Elysia-API 的可视化管理控制台。纯前端单页应用，所有数据来
 
 ```bash
 # 先启动后端（默认 127.0.0.1:8765）
-npm run dev          # Vite dev server，端口 5273，已代理 /api /v1 /health 到后端
+yarn workspace @root/webui dev
 ```
+
+Vite dev server 端口为 5273，已代理 `/api`、`/v1`、`/health` 到后端。
 
 登录使用后端 bootstrap `config.json` 中的 `panelAccessToken`。
 
 ## 构建
 
 ```bash
-npm run build        # 产物输出到 dist/，base 为 /ui/
+yarn workspace @root/webui build
 ```
+
+产物输出到 `dist/`，生产 base 为 `/ui/`。
 
 将 `dist/` 部署为后端 `webuiDir`，后端通过 `gin.Static("/ui", webuiDir)` 提供服务，
 访问 `http://<host>:<port>/ui/`。后端无 history fallback，故前端使用 HashRouter。

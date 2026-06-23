@@ -78,8 +78,8 @@ func New(cfg *config.Config) *Server {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	engine.Use(gin.Recovery())
-	// gin.Logger 会为每个请求打一行访问日志，叠加 Koishi 插件全量转发后端
-	// stdout，会造成日志刷屏。仅在调试模式下启用；正常运行只保留 Recovery。
+	// gin.Logger 会为每个请求打一行访问日志。正常运行只保留 Recovery，
+	// 仅在调试模式下启用访问日志。
 	if cfg.DebugMode {
 		engine.Use(gin.Logger())
 	}
@@ -1153,7 +1153,6 @@ func readBodyAndJSON(resp *http.Response, v interface{}) ([]byte, error) {
 	return body, json.Unmarshal(body, v)
 }
 
-
 func writeStreamForwardError(
 	c *gin.Context,
 	inputFormat relay.FormatType,
@@ -1600,7 +1599,7 @@ func (s *Server) ListenAndServe() error {
 }
 
 // shutdown 处理 /__shutdown：优雅关停 http.Server（给在途请求一个超时窗口），
-// 仅允许本机回环调用。Koishi 重启流程靠它停掉旧 daemon 后再起新进程。
+// 仅允许本机回环调用。供本地管理工具或用户手动优雅停止进程。
 func (s *Server) shutdown(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"shuttingDown": true})
 	go func() {
@@ -1613,7 +1612,7 @@ func (s *Server) shutdown(c *gin.Context) {
 		}
 		// http.Server.Shutdown 已等待在途请求结束，此时不会再有新记录入队。
 		// 先停健康检查 goroutine，再冲刷 usage 队列把缓冲中的记录落库，
-		// 避免优雅重启（Koishi 依赖 /__shutdown）丢失计费/统计记录与 goroutine 泄漏。
+		// 避免优雅关停时丢失计费/统计记录与 goroutine 泄漏。
 		if s.healthChecker != nil {
 			s.healthChecker.shutdown()
 		}

@@ -1,6 +1,6 @@
 ﻿# WebUI Data Model
 
-本文档是前端实现 Elysia-API WebUI 的类型合同。WebUI 只调用新后端 `/api/admin/*`，不读取、不修改旧 Koishi `aggregator` / `orchestrator` 配置。
+本文档是前端实现 Elysia-API WebUI 的类型合同。WebUI 只调用后端 `/api/admin/*`，不直接读取或修改本地配置文件。
 
 ## Common Types
 
