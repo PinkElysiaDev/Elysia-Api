@@ -1,9 +1,0 @@
-{
-  "host": "127.0.0.1",
-  "port": 8765,
-  "panelAccessToken": "change-me",
-  "databasePath": "elysia-api.sqlite3",
-  "logLevel": "info",
-  "httpTimeout": 120,
-  "secretKeyPath": ".master-key"
-}

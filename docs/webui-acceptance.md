@@ -1,26 +1,25 @@
-﻿# WebUI Acceptance Checklist
-
-只有本清单全部通过后，才能考虑废弃旧 `aggregator` 和 `orchestrator` 插件。
+# WebUI Acceptance Checklist
 
 ## 基础运行
 
-- [ ] 不安装任何 Koishi 插件，直接运行后端，WebUI 可以登录并完成全部配置。
-- [ ] 安装新 `koishi-plugin-elysia-api`，不安装 aggregator/orchestrator，也能启动后端并打开 WebUI。
-- [ ] 新入口插件默认使用 `data/elysia-api-standalone/config.json`，不会覆盖旧 orchestrator 配置。
-- [ ] 旧 aggregator + orchestrator 仍可在旧端口运行。
+- [ ] 不安装任何外部启动器，直接运行后端，WebUI 可以登录并完成全部配置。
+- [ ] 默认 `config.json` 旁边生成 SQLite 数据库与主密钥文件。
+- [ ] 内嵌 WebUI 在 `/ui/` 可访问。
+- [ ] 修改 `logLevel` 与 `httpTimeout` 后可热重载生效。
+- [ ] 修改 `host`、`port`、`databasePath` 或 `enablePprof` 后明确提示需要重启。
 
 ## 模型源覆盖
 
 - [ ] OpenAI source 可自动拉取模型。
 - [ ] OpenAI-compatible source 可自动拉取模型。
-- [ ] Claude source 拉取失败时可看到 fallback 或错误提示。
-- [ ] Gemini source 可自动拉取支持 `generateContent` 的模型。
+- [ ] Claude source 拉取失败时可看到错误提示并写入系统日志。
+- [ ] Gemini source 可自动拉取模型。
 - [ ] 手动 source 可新增多个模型并进入模型缓存。
 - [ ] 禁用 source 后不会参与刷新与选择。
 
 ## 模型组覆盖
 
-- [ ] 可创建旧 orchestrator 等价的 LLM group。
+- [ ] 可创建 LLM group。
 - [ ] 可配置 round-robin、sequential、random。
 - [ ] 可配置 maxRetries、retryInterval。
 - [ ] 可配置 maxConcurrency、dailyLimitMaxRequests、dailyLimitMaxTokens。
@@ -29,10 +28,11 @@
 
 ## Token 与安全
 
-- [ ] API token 可创建、禁用、删除。
+- [ ] Relay API Token 可创建、禁用、删除。
 - [ ] 未授权访问 `/api/admin/*` 返回 401。
 - [ ] 未授权访问 `/v1/*` 返回 401。
 - [ ] token 和 API key 不在列表、日志、usage 明文泄漏。
+- [ ] SQLite 敏感字段在配置主密钥后以密文保存。
 
 ## Usage 与日志
 
@@ -42,9 +42,9 @@
 - [ ] reset usage 后统计清零。
 - [ ] 系统日志页能显示刷新模型、错误等事件。
 
-## 并行迁移
+## 独立发行
 
-- [ ] 旧模式与新模式可不同端口同时运行。
-- [ ] 同一模型源和模型组在新模式下的转发结果与旧模式一致。
-- [ ] 新 WebUI 配置覆盖旧 aggregator/orchestrator 的所有常用配置能力。
-- [ ] 迁移报告能说明哪些旧配置已导入、哪些需要用户手动处理。
+- [ ] `yarn build` 生成 `dist/standalone`。
+- [ ] 仓库根目录保留 `config.json.example`，发行目录不复制配置模板。
+- [ ] Windows、Linux、macOS 二进制均嵌入最新 WebUI。
+- [ ] 发行目录不包含本地 SQLite、WAL、主密钥或运行时 config。

@@ -2,7 +2,7 @@
 // 使后端开箱即用——无需任何外部目录或 webuiDir 配置即可在 /ui/ 提供控制台。
 //
 // dist/ 下是前端构建产物（packages/webui 的 vite build 输出），已随仓库提交，
-// 因此 `go build` 永远能拿到真实资源；scripts/build-backend.sh 会在发布前用
+// 因此 `go build` 永远能拿到真实资源；`yarn build` 会在发布前用
 // 最新产物覆盖该目录。
 package webui
 

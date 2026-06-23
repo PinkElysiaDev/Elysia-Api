@@ -1,6 +1,6 @@
 ﻿# WebUI Frontend Spec
 
-WebUI 目标：完整覆盖旧 `aggregator` 与 `orchestrator` 的配置能力，并只通过新后端 `/api/admin/*` 工作。
+WebUI 目标：完整覆盖模型网关的配置能力，并只通过后端 `/api/admin/*` 工作。
 
 ## 页面结构
 
@@ -55,25 +55,25 @@ WebUI 目标：完整覆盖旧 `aggregator` 与 `orchestrator` 的配置能力�
 10. 运行配置页
     - `GET /api/admin/runtime-config` 展示当前配置。
     - `PUT /api/admin/runtime-config` 修改可热更新字段。
-    - host/port 变化时提示需要入口插件或用户重启后端。
+    - host/port 变化时提示需要用户或服务管理器重启后端。
 
 11. 诊断页
     - 展示 `/api/admin/health` 内存指标。
     - 如果后端启用 pprof，可提示用户访问 `/debug/pprof`。
 
-## 旧插件功能覆盖映射
+## 功能覆盖映射
 
-- Aggregator sources → 模型源页。
-- Aggregator manualModels → 模型源页的手动模型表格。
-- Aggregator reload/list → 模型缓存页刷新和列表。
-- Orchestrator tokens → API Tokens 页。
-- Orchestrator modelGroups → 模型组页。
-- Orchestrator usage dashboard → Usage 统计页 + Usage 日志页。
-- Orchestrator backend status/reload/reset → 概览页、运行配置页、Usage 页。
+- 模型源配置 → 模型源页。
+- 手动模型配置 → 模型源页的手动模型表格。
+- 模型刷新与缓存 → 模型缓存页刷新和列表。
+- Relay API Token → API Tokens 页。
+- 模型组配置 → 模型组页。
+- Usage dashboard → Usage 统计页 + Usage 日志页。
+- 后端状态、重载和 reset → 概览页、运行配置页、Usage 页。
 
 ## UX 要求
 
 - 所有 destructive 操作必须二次确认：删除 source、删除 group、删除 token、reset usage。
 - 保存 secret 后立即清空明文输入框。
 - 所有列表必须支持 loading、empty、error 三种状态。
-- 不假设 Koishi 存在；WebUI 应完全基于后端 API 工作。
+- WebUI 应完全基于后端 API 工作。
