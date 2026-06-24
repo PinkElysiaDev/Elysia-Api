@@ -7,8 +7,4 @@
 *.webp -text
 
 # 后端二进制：禁止行尾/文本转换，否则 CRLF→LF 替换会损坏可执行文件
-packages/*/assets/bin/* binary
-elysia-api-windows-amd64.exe binary
-elysia-api-linux-amd64 binary
-elysia-api-linux-arm64 binary
-elysia-api-darwin-arm64 binary
+dist/standalone/elysia-api-* binary

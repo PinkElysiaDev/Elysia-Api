@@ -53,7 +53,7 @@ Legacy `server`, `dashboardToken`, `tokens`, and `modelGroups` fields are still 
 
 ### `GET /api/admin/runtime-config`
 
-Returns current bootstrap runtime values. Tokens are not returned in plaintext. `webuiDir`, `enablePprof`, and `maxBodyBytes` are bootstrap-only fields and normally changed by restarting the backend or through the standalone Koishi entry plugin.
+Returns current bootstrap runtime values. Tokens are not returned in plaintext. `webuiDir`, `enablePprof`, and `maxBodyBytes` are bootstrap-only fields and normally changed by restarting the backend.
 
 ### `PUT /api/admin/runtime-config`
 
@@ -61,7 +61,7 @@ Returns current bootstrap runtime values. Tokens are not returned in plaintext. 
 { "host": "127.0.0.1", "port": 8765, "logLevel": "debug", "httpTimeout": 120 }
 ```
 
-Returns `restartRequired: true` when host or port changes. Persisting bootstrap config to disk can be handled by the Koishi entry plugin or an installer tool.
+Returns `restartRequired: true` when host or port changes. Persisting bootstrap config to disk is handled by the backend `config.Save()` path; process restarts should be handled by the operator or service manager.
 
 ## Model Sources
 

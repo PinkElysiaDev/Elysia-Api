@@ -1,8 +1,33 @@
-﻿# Elysia-API Deployment Guide
+# Elysia-API Deployment Guide
 
-## Standalone Backend
+## Build
 
-Create a minimal `config.json` next to the backend binary:
+Install dependencies first when building from a fresh checkout or after dependency changes:
+
+```bash
+yarn install
+```
+
+Build the embedded WebUI and standalone backend binaries:
+
+```bash
+yarn build
+```
+
+The standalone binaries are emitted to `dist/standalone/`:
+
+| Platform | File |
+| --- | --- |
+| Windows amd64 | `elysia-api-windows-amd64.exe` |
+| Linux amd64 | `elysia-api-linux-amd64` |
+| macOS Intel | `elysia-api-darwin-amd64` |
+| macOS Apple Silicon | `elysia-api-darwin-arm64` |
+
+`config.json.example` stays at the repository root and is not copied into `dist/standalone/`.
+
+## Configuration
+
+Create `config.json` from the root `config.json.example`, place it next to the backend binary, and change at least `panelAccessToken`:
 
 ```json
 {
@@ -16,26 +41,62 @@ Create a minimal `config.json` next to the backend binary:
 }
 ```
 
-Run:
+Relative `databasePath`, `secretKeyPath`, and `webuiDir` values are resolved from the directory containing `config.json`.
 
-```bash
-elysia-api-backend --config config.json
+## Run
+
+### Windows
+
+Put `elysia-api-windows-amd64.exe` and `config.json` in the same directory, then run:
+
+```powershell
+.\elysia-api-windows-amd64.exe --config .\config.json
 ```
 
-Open the WebUI against `http://127.0.0.1:8765/ui/` and authenticate with `panelAccessToken`.
+If `config.json` is in the same directory as the exe, double-clicking the exe also works because the default config path is `config.json` in the current working directory.
 
-The WebUI is embedded in the backend binary (`//go:embed`), so `/ui/` works out of the box with **no `webuiDir` configuration required**. To override it with a custom build, set `webuiDir` in `config.json` to a directory containing the built assets.
+### Linux
 
-## Optional Koishi Entry Plugin
+Put `elysia-api-linux-amd64` and `config.json` in the same directory, then run:
 
-The Koishi side should be reduced to an entry plugin only. It should:
+```bash
+chmod +x ./elysia-api-linux-amd64
+./elysia-api-linux-amd64 --config ./config.json
+```
 
-- edit bootstrap `config.json` values such as host, port, database path, and panel access token;
-- start, stop, or restart the backend process;
-- open or display the WebUI URL;
-- call `/api/admin/reload` where a hot reload is enough.
+### macOS
 
-It must not aggregate models, write model groups, proxy requests, or maintain heartbeat logic.
+Apple Silicon uses `elysia-api-darwin-arm64`; Intel Macs use `elysia-api-darwin-amd64`:
+
+```bash
+chmod +x ./elysia-api-darwin-arm64
+./elysia-api-darwin-arm64 --config ./config.json
+```
+
+Open the WebUI at `http://127.0.0.1:8765/ui/` and authenticate with `panelAccessToken`.
+
+The WebUI is embedded in the backend binary, so `/ui/` works without a separate frontend deployment. To override it with a custom build, set `webuiDir` in `config.json` to a directory containing the built assets.
+
+## Process Supervision
+
+The backend is a normal long-running process. In production, run it under a platform service manager such as systemd, Windows Service wrappers, supervisord, Docker, or another supervisor.
+
+Minimal systemd example:
+
+```ini
+[Unit]
+Description=Elysia-API Backend
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/elysia-api
+ExecStart=/opt/elysia-api/elysia-api-linux-amd64 --config /opt/elysia-api/config.json
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
 
 ## SQLite and WAL
 
@@ -52,7 +113,7 @@ Expect these files beside the configured database:
 - `elysia-api.sqlite3-wal`
 - `elysia-api.sqlite3-shm`
 
-For backup, copy the database through SQLite backup tooling or stop the backend before copying all three files.
+For backup, use SQLite backup tooling or stop the backend before copying all three files. If `secretKeyPath` points to a file, back it up separately and protect it.
 
 ## Access Token Reset
 
@@ -60,12 +121,17 @@ If the panel token is lost, stop the backend, edit `panelAccessToken` in bootstr
 
 Relay API tokens are stored in SQLite and can be changed through `/api/admin/api-tokens` after panel access is restored.
 
+## Runtime Changes
+
+`POST /api/admin/reload` reloads hot-reloadable bootstrap fields. Changes to `host`, `port`, `databasePath`, or `enablePprof` normally require a process restart.
+
+Local-only management endpoints are also available:
+
+- `POST /__reload`
+- `POST /__shutdown`
+
+Both endpoints are restricted to loopback callers.
+
 ## Migration Notes
 
 Legacy configs containing `tokens` and `modelGroups` are imported into SQLite on startup as compatibility data. New installations should only keep bootstrap fields in `config.json`.
-
-The backend no longer exits when Koishi stops because heartbeat self-shutdown has been removed. Process supervision should be handled by the OS, service manager, Docker, or the optional Koishi entry plugin.
-
-## Memory Diagnostics
-
-Use `GET /api/admin/health` to inspect basic Go memory metrics. The migration reduces memory growth by storing usage records in SQLite instead of keeping all records in an in-memory slice.

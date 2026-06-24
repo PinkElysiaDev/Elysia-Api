@@ -101,7 +101,7 @@ export function RuntimeConfigPage() {
       {restartNotice && (
         <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/8 px-4 py-3 text-sm">
           <AlertTriangle className="h-4 w-4 text-primary" />
-          部分配置已变更，需要通过入口插件或手动重启后端才能生效。
+          部分配置已变更，需要手动重启或通过服务管理器重启后端才能生效。
         </div>
       )}
 

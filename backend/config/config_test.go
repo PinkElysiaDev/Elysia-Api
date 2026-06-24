@@ -31,7 +31,7 @@ func TestLoadBareConfigWithoutMasterKey(t *testing.T) {
 	}
 }
 
-// 旧 orchestrator 风格的 config.json（含 modelGroups/tokens/密文字段）现在应被
+// 旧配置格式的 config.json（含 modelGroups/tokens/密文字段）现在应被
 // 静默忽略——这些字段已是 json:"-" 或已从结构体删除，不再参与反序列化，
 // 加载不报错，且不会把它们的数据带进运行时。
 func TestLegacyEncryptedFieldsIgnored(t *testing.T) {
