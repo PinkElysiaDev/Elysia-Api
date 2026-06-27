@@ -191,6 +191,12 @@ export function SourceFormDialog({
               placeholder="https://api.openai.com/v1"
               onChange={(e) => update('baseUrl', e.target.value)}
             />
+            <p className="text-xs text-muted-foreground">
+              请配置完整的 base URL（包括版本段）：
+              OpenAI 兼容源示例 <code>https://api.openai.com/v1</code>，
+              Claude 源示例 <code>https://api.anthropic.com/v1</code>，
+              Gemini 源示例 <code>https://generativelanguage.googleapis.com/v1beta</code>
+            </p>
           </div>
 
           <div className="space-y-2">

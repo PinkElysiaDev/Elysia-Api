@@ -29,9 +29,7 @@ func NewClaudeAdapter(timeout time.Duration) *ClaudeAdapter {
 
 // SendRequest 向 Claude /v1/messages 发送请求，返回原始 HTTP 响应
 func (a *ClaudeAdapter) SendRequest(baseUrl, apiKey string, body []byte, isStream bool) (*http.Response, error) {
-	// 用户可能误填带 /v1 的 base（如 https://x.com/v1），先剥掉末尾版本段，
-	// 避免拼成 /v1/v1/messages。Claude adapter 约定 base 为裸 host。
-	url := stripTrailingVersionSegment(baseUrl) + "/v1/messages"
+	url := strings.TrimRight(strings.TrimSpace(baseUrl), "/") + "/v1/messages"
 	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
