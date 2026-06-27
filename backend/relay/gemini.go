@@ -28,9 +28,7 @@ func NewGeminiAdapter(timeout time.Duration) *GeminiAdapter {
 
 // SendRequest 向 Gemini generateContent 端点发送请求，返回原始 HTTP 响应
 func (a *GeminiAdapter) SendRequest(baseUrl, apiKey, model string, body []byte, isStream bool) (*http.Response, error) {
-	// 剥掉用户误填的末尾版本段（/v1、/v1beta 等），再拼自己的 /v1beta 路径，
-	// 避免 /v1/v1beta/... 这类重复版本段导致 404。
-	base := stripTrailingVersionSegment(baseUrl)
+	base := strings.TrimRight(strings.TrimSpace(baseUrl), "/")
 	var url string
 	if isStream {
 		url = fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?alt=sse", base, model)
