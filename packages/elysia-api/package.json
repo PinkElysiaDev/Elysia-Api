@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-elysia-api",
   "description": "Standalone Elysia-API backend entry plugin for Koishi. It only manages backend bootstrap config, process lifecycle, and WebUI entry.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "main": "lib/index.cjs",
   "module": "lib/index.mjs",
   "typings": "lib/index.d.ts",
