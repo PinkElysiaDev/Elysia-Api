@@ -105,13 +105,9 @@ func (s *Server) fetchModelsFromSource(ctx context.Context, source storage.Model
 	}
 }
 
-// openAIModelsEndpoint 在 baseURL 上拼出 /v1/models（baseURL 已含 /v1 时不重复加）。
+// openAIModelsEndpoint 用用户配置的 base URL 直接拼接 /models。
 func openAIModelsEndpoint(baseURL string) string {
-	baseURL = strings.TrimRight(baseURL, "/")
-	if strings.Contains(baseURL, "/v1") {
-		return baseURL + "/models"
-	}
-	return baseURL + "/v1/models"
+	return strings.TrimRight(baseURL, "/") + "/models"
 }
 
 func (s *Server) fetchOpenAIModels(ctx context.Context, source storage.ModelSource) ([]storage.Model, error) {
@@ -190,10 +186,7 @@ func (s *Server) fetchClaudeModels(ctx context.Context, source storage.ModelSour
 
 func (s *Server) fetchGeminiModels(ctx context.Context, source storage.ModelSource) ([]storage.Model, error) {
 	baseURL := strings.TrimRight(source.BaseURL, "/")
-	endpoint := baseURL + "/v1beta/models"
-	if strings.Contains(baseURL, "/v1beta") {
-		endpoint = baseURL + "/models"
-	}
+	endpoint := baseURL + "/models"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err

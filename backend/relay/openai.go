@@ -7,74 +7,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
-	"regexp"
 	"strings"
 	"time"
 )
 
-// openAIVersionSegmentRe 匹配 URL path 中的版本段（/v1、/v2、/v1beta 等）。
-// 仅检查 path，不会把 https://v1.example.com 这类 host 里的 v1 误判为版本段。
-var openAIVersionSegmentRe = regexp.MustCompile(`(?i)/v\d`)
-
-// normalizeOpenAIBaseURL 规范化 OpenAI 系（Chat Completions / Responses）的 base URL。
-//
-// OpenAI 兼容供应商约定 base 自带版本段（如 https://api.openai.com/v1），后端再拼
-// /chat/completions 或 /responses。但用户常只填裸 host（如 https://moyuu.cc），
-// 导致端点拼成 https://moyuu.cc/responses（少了 /v1）→ 上游 404 秒断、下游疯狂重试。
-//
-// 容错规则：path 已含版本段（/v1、/v2、/v1beta…）则原样用；否则自动补 /v1。
-// 只作用于 OpenAI adapter——Claude/Gemini adapter 自己补 /v1、/v1beta，不能在此规范化。
-func normalizeOpenAIBaseURL(baseUrl string) string {
-	trimmed := strings.TrimRight(strings.TrimSpace(baseUrl), "/")
-	if trimmed == "" {
-		return trimmed
-	}
-	// 只解析 path 判断版本段，避免 host 中的 v\d 误判。解析失败则回退到原始串
-	// 的整体匹配（保守起见仍尽量不重复补 /v1）。
-	if u, err := url.Parse(trimmed); err == nil {
-		if openAIVersionSegmentRe.MatchString(u.Path) {
-			return trimmed
-		}
-		return trimmed + "/v1"
-	}
-	if openAIVersionSegmentRe.MatchString(trimmed) {
-		return trimmed
-	}
-	return trimmed + "/v1"
-}
-
-// openAIEndpoint 用（可能是裸 host 的）base URL 拼出完整的 OpenAI 系端点 URL，
-// path 形如 "/chat/completions" 或 "/responses"。
+// openAIEndpoint 用用户配置的 base URL 直接拼接端点 path。
+// 用户负责配置正确的 base URL（如 https://api.openai.com/v1），后端不做任何规范化。
 func openAIEndpoint(baseUrl, path string) string {
-	return normalizeOpenAIBaseURL(baseUrl) + path
-}
-
-// versionTailRe 匹配 base URL 末尾的版本段：/v1、/v1beta、/v2 等（不区分大小写）。
-var versionTailRe = regexp.MustCompile(`(?i)/v\d+[a-z]*$`)
-
-// stripTrailingVersionSegment 去掉 base URL 末尾多余的版本段（/v1、/v1beta 等）。
-//
-// 用于 Claude/Gemini adapter：它们各自拼接完整版本路径（/v1/messages、
-// /v1beta/models/...），约定 base 是裸 host。但用户常照 OpenAI 习惯在 base 末尾
-// 填 /v1，导致拼成 /v1/v1/messages、/v1/v1beta/... 而 404。此函数把末尾的版本段
-// 剥掉，让 base 回到不含版本的前缀，再由 adapter 拼自己的版本路径。
-//
-// 只看 path 末段，不会把 https://v1.example.com 这类 host 里的 v1 误剥。
-func stripTrailingVersionSegment(baseUrl string) string {
-	trimmed := strings.TrimRight(strings.TrimSpace(baseUrl), "/")
-	if trimmed == "" {
-		return trimmed
-	}
-	// 反复剥离末尾版本段，兼容 /v1beta/v1 这类多重误填。
-	for {
-		stripped := strings.TrimRight(versionTailRe.ReplaceAllString(trimmed, ""), "/")
-		if stripped == trimmed {
-			break
-		}
-		trimmed = stripped
-	}
-	return trimmed
+	return strings.TrimRight(strings.TrimSpace(baseUrl), "/") + path
 }
 
 type OpenAIAdapter struct {
