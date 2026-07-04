@@ -39,6 +39,7 @@ export interface RuntimeConfig {
   logLevel: LogLevel
   httpTimeout: number
   enablePprof: boolean
+  allowFakeIPOutbound: boolean
 }
 
 export interface RuntimeConfigUpdate {
@@ -49,6 +50,7 @@ export interface RuntimeConfigUpdate {
   panelAccessToken?: string
   databasePath?: string
   enablePprof?: boolean
+  allowFakeIPOutbound?: boolean
 }
 
 export interface RuntimeConfigUpdateResult {

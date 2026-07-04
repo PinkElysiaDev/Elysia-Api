@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"net"
 	"strings"
 	"syscall"
 	"testing"
@@ -41,5 +42,64 @@ func TestSecureControlRejectsNonIP(t *testing.T) {
 	defer SetAllowPrivateDial(true)
 	if err := secureControl("tcp", "not-an-ip", syscall.RawConn(nil)); err == nil || !strings.Contains(err.Error(), "non-IP") {
 		t.Fatalf("expected non-IP address to be refused, got %v", err)
+	}
+}
+
+// SetAllowFakeIPRanges（生产开关）开启后仅放行 Clash/Mihomo TUN fake-ip 段，
+// 其余私网/元数据/环回/CGNAT 段仍拦截；关闭后 fake-ip 段恢复拦截。
+func TestIsPrivateOrRestrictedIP_FakeIPExemption(t *testing.T) {
+	t.Cleanup(func() { SetAllowFakeIPRanges(false) })
+
+	mustIP := func(s string) net.IP {
+		ip := net.ParseIP(s)
+		if ip == nil {
+			t.Fatalf("bad ip literal %q", s)
+		}
+		return ip
+	}
+
+	fakeIPs := []string{
+		"198.18.0.5", "198.19.1.1", "198.18.255.254", // 198.18.0.0/15
+		"240.0.0.1", "255.255.255.255", // 240.0.0.0/4
+	}
+	stillRestricted := []string{
+		"10.0.0.1", "172.16.0.1", "192.168.1.1", // RFC1918 私网
+		"127.0.0.1",       // 环回
+		"169.254.169.254", // 链路本地 / 云元数据
+		"100.64.0.1",      // CGNAT
+		"0.0.0.0",         // 未指定 / 0.0.0.0/8
+		"192.0.2.1",       // TEST-NET-1
+		"198.51.100.1",    // TEST-NET-2
+		"203.0.113.1",     // TEST-NET-3
+		"::1",             // IPv6 环回
+		"fc00::1",         // IPv6 ULA
+		"fe80::1",         // IPv6 链路本地
+	}
+
+	// 默认（开关关闭）：fake-ip 段被视为受限。
+	SetAllowFakeIPRanges(false)
+	for _, s := range fakeIPs {
+		if !IsPrivateOrRestrictedIP(mustIP(s)) {
+			t.Fatalf("expected %s to be restricted when fake-ip exemption is OFF", s)
+		}
+	}
+
+	// 开启：仅放行 fake-ip 段，其余受限段仍拦截。
+	SetAllowFakeIPRanges(true)
+	for _, s := range fakeIPs {
+		if IsPrivateOrRestrictedIP(mustIP(s)) {
+			t.Fatalf("expected %s to be ALLOWED when fake-ip exemption is ON", s)
+		}
+	}
+	for _, s := range stillRestricted {
+		if !IsPrivateOrRestrictedIP(mustIP(s)) {
+			t.Fatalf("expected %s to remain restricted even with fake-ip exemption ON", s)
+		}
+	}
+
+	// 关回后恢复拦截。
+	SetAllowFakeIPRanges(false)
+	if !IsPrivateOrRestrictedIP(mustIP("198.18.0.5")) {
+		t.Fatalf("expected 198.18.0.5 to be restricted again after turning exemption OFF")
 	}
 }

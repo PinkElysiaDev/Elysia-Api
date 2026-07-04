@@ -64,26 +64,28 @@ func (s *Server) requireStore(c *gin.Context) (*storage.Store, bool) {
 func (s *Server) adminRuntimeConfig(c *gin.Context) {
 	server := s.config.GetServer()
 	ok(c, gin.H{
-		"host":              server.Host,
-		"port":              server.Port,
-		"panelAccessToken":  s.config.GetPanelAccessToken(),
-		"databasePath":      s.config.GetDatabasePath(),
+		"host":                server.Host,
+		"port":                server.Port,
+		"panelAccessToken":    s.config.GetPanelAccessToken(),
+		"databasePath":        s.config.GetDatabasePath(),
 		"defaultDatabasePath": s.config.GetDefaultDatabasePath(),
-		"logLevel":          s.config.GetLogLevel(),
-		"httpTimeout":       s.config.GetHTTPTimeout(),
-		"enablePprof":       s.config.GetEnablePprof(),
+		"logLevel":            s.config.GetLogLevel(),
+		"httpTimeout":         s.config.GetHTTPTimeout(),
+		"enablePprof":         s.config.GetEnablePprof(),
+		"allowFakeIPOutbound": s.config.IsFakeIPOutboundAllowed(),
 	})
 }
 
 func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 	var payload struct {
-		Host             string  `json:"host"`
-		Port             int     `json:"port"`
-		LogLevel         string  `json:"logLevel"`
-		HTTPTimeout      int     `json:"httpTimeout"`
-		PanelAccessToken *string `json:"panelAccessToken"`
-		DatabasePath     *string `json:"databasePath"`
-		EnablePprof      *bool   `json:"enablePprof"`
+		Host                string  `json:"host"`
+		Port                int     `json:"port"`
+		LogLevel            string  `json:"logLevel"`
+		HTTPTimeout         int     `json:"httpTimeout"`
+		PanelAccessToken    *string `json:"panelAccessToken"`
+		DatabasePath        *string `json:"databasePath"`
+		EnablePprof         *bool   `json:"enablePprof"`
+		AllowFakeIPOutbound *bool   `json:"allowFakeIPOutbound"`
 	}
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		fail(c, 400, "invalid_json", err.Error())
@@ -110,6 +112,11 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 	if payload.EnablePprof != nil {
 		s.config.SetEnablePprof(*payload.EnablePprof)
 		restartRequired = true
+	}
+	if payload.AllowFakeIPOutbound != nil {
+		s.config.SetAllowFakeIPOutbound(*payload.AllowFakeIPOutbound)
+		// 即时下发到 relay 包级开关，无需重启。
+		s.syncRelaySSRFPolicy()
 	}
 	if err := s.config.Save(); err != nil {
 		fail(c, 500, "save_config_failed", err.Error())

@@ -38,3 +38,11 @@ backend/**/master.key
 config.json
 package-lock.json
 yarn.lock
+
+# Yarn Berry 本地缓存与发布产物
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions

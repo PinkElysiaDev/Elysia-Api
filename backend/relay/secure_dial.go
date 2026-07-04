@@ -16,6 +16,16 @@ var allowPrivateDial atomic.Bool
 // SetAllowPrivateDial 切换是否放行私网/环回出站连接。仅测试调用。
 func SetAllowPrivateDial(allow bool) { allowPrivateDial.Store(allow) }
 
+// allowFakeIPRanges 由配置驱动（生产开关）：开启后放行 Clash/Mihomo TUN
+// fake-ip 段（198.18.0.0/15、240.0.0.0/4），其余私网/元数据/环回/CGNAT 段
+// 仍按 IsPrivateOrRestrictedIP 拦截。由 server 层在启动/热重载/admin 改配置后
+// 调用 SetAllowFakeIPRanges 下发，供连接时校验（secureControl）与 server 层
+// 预校验（validateOutboundBaseURL）共用同一份判定，两层同时生效。
+var allowFakeIPRanges atomic.Bool
+
+// SetAllowFakeIPRanges 切换是否放行 fake-ip 段出站连接。生产由配置驱动。
+func SetAllowFakeIPRanges(allow bool) { allowFakeIPRanges.Store(allow) }
+
 // secureControl 是 net.Dialer.Control 回调：在 DNS 解析之后、实际 connect 之前，
 // 拿到「将要连接的真实 IP:port」并校验。这关掉了 DNS rebinding 的 TOCTOU 窗口——
 // 校验的就是即将连接的那个 IP，而非更早一次独立解析的结果。
@@ -70,6 +80,18 @@ func IsPrivateOrRestrictedIP(ip net.IP) bool {
 	}
 
 	if v4 := ip.To4(); v4 != nil {
+		// 配置驱动的 fake-ip 豁免：开启后放行 Clash/Mihomo TUN fake-ip 段。
+		// 必须在下面的保留段判定之前短路，否则 198.18.0.0/15（基准测试段）
+		// 与 240.0.0.0/4（保留段）会被当作受限段拒绝，TUN 代理下所有上游
+		// 域名都被解析到该段而被误杀。其余私网/元数据/环回段不受影响。
+		if allowFakeIPRanges.Load() {
+			if v4[0] == 198 && (v4[1] == 18 || v4[1] == 19) { // 198.18.0.0/15
+				return false
+			}
+			if v4[0] >= 240 { // 240.0.0.0/4
+				return false
+			}
+		}
 		switch {
 		case v4[0] == 169 && v4[1] == 254: // 169.254.0.0/16 link-local（含云元数据 169.254.169.254）
 			return true

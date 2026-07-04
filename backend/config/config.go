@@ -24,8 +24,8 @@ type Config struct {
 	EnablePprof            bool               `json:"enablePprof,omitempty"`
 	MaxBodyBytes           int64              `json:"maxBodyBytes,omitempty"`
 	Server                 ServerConfig       `json:"server"`
-	Tokens                 []AccessToken      `json:"-"` // 运行时字段：仅用于 store-nil 回退与测试；不再从 config.json 读取（模型/token 走 SQLite）
-	Groups                 []ModelGroupConfig `json:"-"` // 同上：旧 config.json 的 modelGroups 字段已废弃，数据走 SQLite
+	Tokens                 []AccessToken      `json:"-"`                                // 运行时字段：仅用于 store-nil 回退与测试；不再从 config.json 读取（模型/token 走 SQLite）
+	Groups                 []ModelGroupConfig `json:"-"`                                // 同上：旧 config.json 的 modelGroups 字段已废弃，数据走 SQLite
 	Responses              ResponsesConfig    `json:"responses,omitempty"`              // Responses API 兼容策略
 	Relay                  RelayConfig        `json:"relay,omitempty"`                  // 转发（chat/claude/gemini）策略
 	Usage                  UsageConfig        `json:"usage,omitempty"`                  // 用量估算配置
@@ -35,6 +35,7 @@ type Config struct {
 	UsagePersistEnabled    *bool              `json:"usagePersistEnabled,omitempty"`    // 持久化用量统计
 	UsagePersistMaxRecords int                `json:"usagePersistMaxRecords,omitempty"` // 最多保留的用量记录条数
 	HealthCheck            HealthCheckConfig  `json:"healthCheck,omitempty"`            // 可选的后台健康检测
+	AllowFakeIPOutbound    bool               `json:"allowFakeIPOutbound,omitempty"`    // 放行 Clash/Mihomo TUN fake-ip 段（198.18.0.0/15、240.0.0.0/4）出站，解决全局 TUN 代理下上游域名被解析为假 IP 遭 SSRF 守卫误杀
 	mu                     sync.RWMutex
 	path                   string
 }
@@ -199,6 +200,7 @@ func (c *Config) Save() error {
 	raw["logLevel"] = c.LogLevel
 	raw["enablePprof"] = c.EnablePprof
 	raw["httpTimeout"] = c.HTTPTimeout
+	raw["allowFakeIPOutbound"] = c.AllowFakeIPOutbound
 	c.mu.RUnlock()
 
 	out, err := json.MarshalIndent(raw, "", "  ")
@@ -244,6 +246,21 @@ func (c *Config) GetEnablePprof() bool {
 	return c.EnablePprof
 }
 
+// IsFakeIPOutboundAllowed 返回是否放行 fake-ip 段出站。默认 false（安全）。
+func (c *Config) IsFakeIPOutboundAllowed() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.AllowFakeIPOutbound
+}
+
+// SetAllowFakeIPOutbound 设置是否放行 fake-ip 段出站。调用方负责同步下发到
+// relay 包的包级开关（见 server.syncRelaySSRFPolicy）。
+func (c *Config) SetAllowFakeIPOutbound(v bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.AllowFakeIPOutbound = v
+}
+
 func (c *Config) Reload() error {
 	data, err := os.ReadFile(c.path)
 	if err != nil {
@@ -279,6 +296,7 @@ func (c *Config) Reload() error {
 	c.UsagePersistEnabled = newCfg.UsagePersistEnabled
 	c.UsagePersistMaxRecords = newCfg.UsagePersistMaxRecords
 	c.HealthCheck = newCfg.HealthCheck
+	c.AllowFakeIPOutbound = newCfg.AllowFakeIPOutbound
 	c.mu.Unlock()
 
 	return nil

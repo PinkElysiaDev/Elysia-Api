@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Eye, EyeOff, RefreshCw, RotateCcw, Save, Settings, Database, Shield } from 'lucide-react'
+import { AlertTriangle, Eye, EyeOff, RefreshCw, RotateCcw, Save, Settings, Database, Shield, Network } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { ErrorState, LoadingState } from '@/components/ui/states'
 import { useToast } from '@/components/ui/use-toast'
 import { useRuntimeConfig, revalidate } from '@/lib/hooks'
@@ -48,6 +49,7 @@ export function RuntimeConfigPage() {
         panelAccessToken: form.panelAccessToken,
         databasePath: form.databasePath,
         enablePprof: form.enablePprof,
+        allowFakeIPOutbound: form.allowFakeIPOutbound,
       })
       await revalidate.runtimeConfig()
       setRestartNotice(result.restartRequired)
@@ -214,6 +216,33 @@ export function RuntimeConfigPage() {
               {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Network className="h-4 w-4 text-primary" /> SSRF / 虚拟网卡（TUN fake-ip）
+          </CardTitle>
+          <CardDescription>
+            开启后放行 Clash/Mihomo TUN fake-ip 段（198.18.0.0/15、240.0.0.0/4），解决全局 TUN 代理下
+            上游域名被解析为假 IP 而遭 SSRF 守卫误杀返回 403 的问题。真实内网、云元数据 169.254.169.254、
+            环回等段仍被拦截。变更即时生效，无需重启。
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <label className="flex items-center gap-3">
+            <Switch
+              checked={form.allowFakeIPOutbound}
+              onCheckedChange={(v) => update('allowFakeIPOutbound', v)}
+            />
+            <span className="text-sm font-medium">允许 fake-ip 段出站</span>
+          </label>
+          {form.allowFakeIPOutbound && (
+            <p className="mt-2 flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="h-3 w-3" /> 已放宽 SSRF 出站校验，请确保上游 baseUrl 可信。
+            </p>
+          )}
         </CardContent>
       </Card>
 

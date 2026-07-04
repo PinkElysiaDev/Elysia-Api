@@ -108,7 +108,14 @@ func New(cfg *config.Config) *Server {
 			log.Printf("failed to import legacy config into sqlite: %v", err)
 		}
 	}
+	server.syncRelaySSRFPolicy()
 	return server
+}
+
+// syncRelaySSRFPolicy 把 SSRF 相关运行时配置下发给 relay 包的包级开关。
+// 在启动、热重载、admin 改配置后调用，确保连接时校验与预校验即时反映配置。
+func (s *Server) syncRelaySSRFPolicy() {
+	relay.SetAllowFakeIPRanges(s.config.IsFakeIPOutboundAllowed())
 }
 
 // logDebug 仅在调试模式或 LogLevel=debug 时输出基本信息（模型组、选中模型、耗时）
@@ -489,6 +496,8 @@ func (s *Server) reloadConfig(c *gin.Context) {
 	serverChanged := oldHost != newServer.Host || oldPort != newServer.Port
 	// 配置热更新后失效路由缓存，下次请求按新配置重建（借鉴 SyncOptions）。
 	s.invalidateRouteCache()
+	// SSRF 放行策略可能随配置变更，同步到 relay 包级开关（即时生效）。
+	s.syncRelaySSRFPolicy()
 	if serverChanged {
 		log.Printf(
 			"Config hot-reloaded successfully, but server listen address change requires restart (old=%s:%d new=%s:%d)",

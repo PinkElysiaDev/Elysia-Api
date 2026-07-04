@@ -78,6 +78,50 @@ func TestFetchClaudeModelsBearerFallback(t *testing.T) {
 	}
 }
 
+// Gemini 源走 /v1beta/models 拉取（与 relay 适配器 baseUrl 不含 /v1beta 的约定一致），
+// x-goog-api-key 鉴权，解析 name 前缀与 inputTokenLimit。
+func TestFetchGeminiModelsViaV1BetaModels(t *testing.T) {
+	var gotAuth string
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("x-goog-api-key")
+		if r.URL.Path != "/v1beta/models" {
+			w.WriteHeader(404)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":[{"name":"models/gemini-1.5-flash","inputTokenLimit":1048576,"outputTokenLimit":8192}]}`))
+	}))
+	defer srv.Close()
+
+	s := newRefreshTestServer(t)
+	models, err := s.fetchGeminiModels(context.Background(), storage.ModelSource{
+		Name: "gemini-relay", BaseURL: srv.URL, Platform: "gemini", APIKey: "gem-key", Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("fetchGeminiModels error: %v", err)
+	}
+	if gotPath != "/v1beta/models" {
+		t.Fatalf("expected request to /v1beta/models, got %q", gotPath)
+	}
+	if gotAuth != "gem-key" {
+		t.Fatalf("expected x-goog-api-key auth, got %q", gotAuth)
+	}
+	if len(models) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(models))
+	}
+	if models[0].Name != "gemini-1.5-flash" {
+		t.Fatalf("expected name gemini-1.5-flash (models/ prefix stripped), got %q", models[0].Name)
+	}
+	if models[0].Platform != "gemini" {
+		t.Fatalf("expected platform gemini, got %q", models[0].Platform)
+	}
+	if models[0].MaxTokens != 1048576 {
+		t.Fatalf("expected MaxTokens from inputTokenLimit, got %d", models[0].MaxTokens)
+	}
+}
+
 // #1: 全量刷新时单源失败不阻塞其他源，错误被收集返回。
 func TestRefreshAllSourcesFaultTolerant(t *testing.T) {
 	ctx := context.Background()

@@ -144,7 +144,10 @@ func (s *Server) fetchClaudeModels(ctx context.Context, source storage.ModelSour
 	if baseURL == "" {
 		return nil, fmt.Errorf("source baseUrl is required")
 	}
-	endpoint := openAIModelsEndpoint(baseURL)
+	// Claude 的 baseUrl 不含 /v1（relay 适配器自行拼 /v1/messages），故此处补 /v1/models，
+	// 与 Anthropic 官方及多数中转站暴露 OpenAI 风格列表的路径一致。不能用
+	// openAIModelsEndpoint（它假定 baseUrl 已含 /v1，仅补 /models，属 OpenAI 约定）。
+	endpoint := baseURL + "/v1/models"
 
 	attempts := []func(*http.Request){
 		func(r *http.Request) {
@@ -186,7 +189,9 @@ func (s *Server) fetchClaudeModels(ctx context.Context, source storage.ModelSour
 
 func (s *Server) fetchGeminiModels(ctx context.Context, source storage.ModelSource) ([]storage.Model, error) {
 	baseURL := strings.TrimRight(source.BaseURL, "/")
-	endpoint := baseURL + "/models"
+	// Gemini 的 baseUrl 不含 /v1beta（relay 适配器自行拼 /v1beta/models/{model}:...），
+	// 故此处补 /v1beta/models，与 Google 官方列表端点及上方 tokenLimit 解析注释一致。
+	endpoint := baseURL + "/v1beta/models"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
