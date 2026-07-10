@@ -9,9 +9,9 @@
   "license": "MIT",
   "scripts": {
     "build": "node scripts/build-standalone.mjs",
-    "build:webui": "yarn workspace @root/webui build",
-    "lint": "yarn eslint packages/webui --cache --ext=ts,tsx",
-    "lint-fix": "yarn eslint packages/webui --cache --ext=ts,tsx --fix"
+    "build:webui": "npm run build --workspace @root/webui",
+    "lint": "npm exec eslint -- packages/webui --cache --ext=ts,tsx",
+    "lint-fix": "npm exec eslint -- packages/webui --cache --ext=ts,tsx --fix"
   },
   "devDependencies": {
     "eslint": "^8.57.1",

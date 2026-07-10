@@ -30,7 +30,7 @@ function run(command, args, options = {}) {
 
 function commandForPlatform(command, args) {
   if (process.platform !== 'win32') return { command, args }
-  if (command === 'yarn') return { command: 'cmd.exe', args: ['/d', '/s', '/c', 'yarn', ...args] }
+  if (command === 'npm') return { command: 'cmd.exe', args: ['/d', '/s', '/c', 'npm', ...args] }
   if (command === 'go') return { command: 'go.exe', args }
   return { command, args }
 }
@@ -57,7 +57,7 @@ function stripTrailingWhitespace(dir) {
 }
 
 log('Building WebUI')
-run('yarn', ['workspace', '@root/webui', 'build'])
+run('npm', ['run', 'build', '--workspace', '@root/webui'])
 
 log('Syncing WebUI assets into backend/webui/dist')
 rmSync(embeddedWebuiDist, { recursive: true, force: true })
@@ -75,6 +75,7 @@ for (const target of targets) {
     cwd: backendDir,
     env: {
       ...process.env,
+      CGO_ENABLED: '0',
       GOOS: target.goos,
       GOARCH: target.goarch,
     },

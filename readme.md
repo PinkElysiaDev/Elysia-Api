@@ -34,6 +34,8 @@ elysia-api/
 
 ## 快速开始
 
+仓库自带四平台预编译二进制（位于 `dist/standalone/`），克隆后可直接取用，无需自行构建；如需从源码重建，参考下文「构建」一节。
+
 ### 通用配置
 
 从仓库根目录的 `config.json.example` 创建运行时配置，至少修改 `panelAccessToken`：
@@ -102,13 +104,15 @@ curl http://127.0.0.1:8765/v1/chat/completions \
 首次构建或依赖变更后先安装依赖：
 
 ```bash
-yarn install
+npm install
 ```
+
+> 若网络无法访问 `proxy.golang.org`，构建前先设置 Go 模块代理：`export GOPROXY=https://goproxy.cn,direct`
 
 构建 WebUI、同步嵌入资源并生成多平台独立发行物：
 
 ```bash
-yarn build
+npm run build
 ```
 
 二进制产物位于 `dist/standalone/`：
@@ -124,7 +128,7 @@ yarn build
 
 ```bash
 cd packages/webui
-yarn dev
+npm run dev
 ```
 
 Vite dev server 默认代理到 `http://127.0.0.1:8765`。

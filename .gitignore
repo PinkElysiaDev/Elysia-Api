@@ -3,7 +3,15 @@ packages/*/lib
 backend/lib
 lib/
 !packages/webui/src/lib/
-dist
+
+# 构建产物（WebUI 编译输出），不提交
+packages/webui/dist
+backend/webui/dist
+
+# 独立发行二进制提交到 dist/standalone/，供 clone 即用；其余 dist 内容忽略
+dist/*
+!dist/standalone/
+
 external
 
 node_modules
@@ -38,11 +46,3 @@ backend/**/master.key
 config.json
 package-lock.json
 yarn.lock
-
-# Yarn Berry 本地缓存与发布产物
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/sdks
-!.yarn/versions
