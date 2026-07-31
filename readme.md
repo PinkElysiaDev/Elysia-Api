@@ -34,7 +34,14 @@ elysia-api/
 
 ## 快速开始
 
-仓库自带四平台预编译二进制（位于 `dist/standalone/`），克隆后可直接取用，无需自行构建；如需从源码重建，参考下文「构建」一节。
+预编译二进制通过 [GitHub Releases](https://github.com/PinkElysiaDev/Elysia-Api/releases/latest) 发布。下载对应平台的程序和 `SHA256SUMS`；如需从源码重建，参考下文「构建」一节。
+
+| 平台 | Release 文件 |
+| --- | --- |
+| Windows amd64 | `elysia-api-windows-amd64.exe` |
+| Linux amd64 | `elysia-api-linux-amd64` |
+| macOS Intel | `elysia-api-darwin-amd64` |
+| macOS Apple Silicon | `elysia-api-darwin-arm64` |
 
 ### 通用配置
 
@@ -115,7 +122,7 @@ npm install
 npm run build
 ```
 
-二进制产物位于 `dist/standalone/`：
+本地构建产物位于 `dist/standalone/`。该目录不会提交到 Git；正式版本通过 GitHub Releases 分发：
 
 | 平台 | 文件 |
 | --- | --- |

@@ -8,9 +8,8 @@ lib/
 packages/webui/dist
 backend/webui/dist
 
-# 独立发行二进制提交到 dist/standalone/，供 clone 即用；其余 dist 内容忽略
-dist/*
-!dist/standalone/
+# 独立发行产物由 GitHub Releases 托管，不提交到仓库
+dist/
 
 external
 

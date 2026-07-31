@@ -5,6 +5,3 @@
 *.ico -text
 *.gif -text
 *.webp -text
-
-# 后端二进制：禁止行尾/文本转换，否则 CRLF→LF 替换会损坏可执行文件
-dist/standalone/elysia-api-* binary
