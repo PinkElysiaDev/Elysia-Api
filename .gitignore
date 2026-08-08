@@ -20,6 +20,8 @@ yarn-error.log
 tsconfig.tsbuildinfo
 
 .eslintcache
+.codex-go-cache/
+**/.codex-go-cache/
 .DS_Store
 .idea
 .vscode

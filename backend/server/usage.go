@@ -850,8 +850,8 @@ func (s *Server) resetUsage(c *gin.Context) {
 }
 
 func usageTimeRange(c *gin.Context) (time.Time, time.Time) {
+	var from time.Time
 	to := time.Now()
-	from := to.Add(-24 * time.Hour)
 	if raw := strings.TrimSpace(c.Query("to")); raw != "" {
 		if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
 			to = parsed
@@ -873,6 +873,10 @@ func usageWindow(raw string, from, to time.Time) string {
 		return "5m"
 	}
 
+	if from.IsZero() {
+		return "day"
+	}
+
 	duration := to.Sub(from)
 	if duration <= 24*time.Hour {
 		return "5m"
@@ -891,7 +895,7 @@ func filterUsageRecords(records []usageRecord, c *gin.Context, from, to time.Tim
 	stream := strings.TrimSpace(c.Query("stream"))
 	status := strings.TrimSpace(c.Query("status"))
 	for _, record := range records {
-		if record.StartedAt.Before(from) || record.StartedAt.After(to) {
+		if (!from.IsZero() && record.StartedAt.Before(from)) || (!to.IsZero() && record.StartedAt.After(to)) {
 			continue
 		}
 		if !usageValueMatches(keyNames, record.KeyName) {
@@ -1099,7 +1103,21 @@ func aggregateUsageSeries(records []usageRecord, window string, from, to time.Ti
 	if len(records) > 0 {
 		location = records[0].StartedAt.Location()
 	}
-	start := truncateUsageWindow(from.In(location), window)
+	startFrom := from
+	if startFrom.IsZero() {
+		if len(records) > 0 {
+			earliest := records[0].StartedAt
+			for _, r := range records {
+				if r.StartedAt.Before(earliest) {
+					earliest = r.StartedAt
+				}
+			}
+			startFrom = earliest
+		} else {
+			startFrom = to
+		}
+	}
+	start := truncateUsageWindow(startFrom.In(location), window)
 	end := truncateUsageWindow(to.In(location), window)
 	series := make([]usageAggregate, 0)
 	for current := start; !current.After(end); current = nextUsageWindow(current, window) {

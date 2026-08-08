@@ -27,7 +27,9 @@ The standalone binaries are emitted to `dist/standalone/`:
 
 ## Configuration
 
-Create `config.json` from the root `config.json.example`, place it next to the backend binary, and change at least `panelAccessToken`:
+If `config.json` does not exist next to the binary on first launch, the backend automatically writes a default one with a **randomly generated `panelAccessToken`** (not the `change-me` placeholder) to the default config path and continues starting up. The generated token and the config path are printed once to the startup log — copy that token to log in, then rotate it from the panel. You do not need to create the file by hand; the manual template below is only for reference.
+
+To create `config.json` manually instead, copy it from the root `config.json.example`, place it next to the backend binary, and change at least `panelAccessToken`:
 
 ```json
 {
@@ -47,17 +49,17 @@ Relative `databasePath`, `secretKeyPath`, and `webuiDir` values are resolved fro
 
 ### Windows
 
-Put `elysia-api-windows-amd64.exe` and `config.json` in the same directory, then run:
+Put `elysia-api-windows-amd64.exe` in a directory and run it:
 
 ```powershell
 .\elysia-api-windows-amd64.exe --config .\config.json
 ```
 
-If `config.json` is in the same directory as the exe, double-clicking the exe also works because the default config path is `config.json` in the current working directory.
+If `config.json` is in the same directory as the exe, double-clicking the exe also works because the default config path is `config.json` in the current working directory. When `config.json` is absent on first launch, a default with a random `panelAccessToken` is created automatically — check the startup log for the generated token.
 
 ### Linux
 
-Put `elysia-api-linux-amd64` and `config.json` in the same directory, then run:
+Put `elysia-api-linux-amd64` in a directory and run it:
 
 ```bash
 chmod +x ./elysia-api-linux-amd64
@@ -135,3 +137,14 @@ Both endpoints are restricted to loopback callers.
 ## Migration Notes
 
 Legacy configs containing `tokens` and `modelGroups` are imported into SQLite on startup as compatibility data. New installations should only keep bootstrap fields in `config.json`.
+
+The optional `customProtocols` bootstrap field registers Maheshvara-based
+provider protocols. Set a model source's `platform` to `custom:<protocol-id>`
+to use one. Custom request bodies are constrained JSON templates; they can map
+`maheshvara.model`, `maheshvara.messages`, `maheshvara.tools`, generation
+parameters, metadata, and `raw_extra`, while response paths map text, tool
+calls, usage, finish reason, and errors back into the core response model.
+
+See `docs/maheshvara-protocol.md` for the complete Maheshvara v1 field model,
+four-protocol mapping matrix, streaming contract, security rules, and a full
+custom protocol example.

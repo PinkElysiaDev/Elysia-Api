@@ -70,6 +70,10 @@ func (s *Server) responses(c *gin.Context) {
 	if sticky := s.affinity.get(record.KeyHash, group.ID, startTime); sticky != "" {
 		candidates = applyAffinity(candidates, sticky)
 	}
+	filteredVision, filteredVisionParts := filterCanonicalVisionInputsIfNeeded(group, canonicalReq)
+	if filteredVision {
+		s.logVerbose("[Maheshvara Vision Filter] group=%s filteredImageParts=%d", group.Name, filteredVisionParts)
+	}
 
 	estimatedUsage := estimateCanonicalRequestUsage(canonicalReq, s.config.GetUsageConfig())
 	estimatedTokens := estimatedUsage.EstimatedTotalTokens
@@ -132,20 +136,59 @@ func (s *Server) responses(c *gin.Context) {
 			}
 			continue
 		}
+		if filteredVision && targetFormat == relay.FormatResponses {
+			transformedFormat, ok := transformedResponsesTargetFormat(selectedModel, targetPlatform)
+			if !ok || transformedFormat == relay.FormatResponses {
+				lastStatus = http.StatusBadRequest
+				lastErr = "Responses target cannot represent the filtered canonical vision input"
+				s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
+				if isLast {
+					record.StatusCode = lastStatus
+					record.Error = lastErr
+					record.EndedAt = time.Now()
+					record.DurationMs = time.Since(startTime).Milliseconds()
+					s.recordUsage(record)
+					c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": lastErr, "type": "invalid_request_error"}})
+					committed = true
+				}
+				continue
+			}
+			targetFormat = transformedFormat
+			responsesMode = "transformed_responses"
+		}
 
-		record.TargetFormat = string(targetFormat)
-		record.TargetEndpoint = targetEndpointForFormat(targetFormat)
+		if relay.IsCustomPlatform(targetPlatform) {
+			record.TargetFormat = string(targetPlatform)
+			if protocol, exists := relay.GetCustomProtocol(relay.CustomProtocolID(targetPlatform)); exists {
+				record.TargetEndpoint = protocol.Request.PathTemplate
+			}
+		} else {
+			record.TargetFormat = string(targetFormat)
+			record.TargetEndpoint = targetEndpointForFormat(targetFormat)
+		}
 		record.RelayMode = responsesMode
 		record.ResponsesMode = responsesMode
 		record.ConversionChain = []string{"openai_responses_request", "canonical_request", string(targetFormat) + "_request"}
 
-		// 上游原生支持 Responses API（targetFormat=FormatResponses）时走「透传」：
-		// 以客户端原始请求体为基底，只改写 model 名，其余字段原样保留。
+		// 上游原生支持 Responses API 时仍默认经过 Maheshvara；只有显式开启
+		// relay.passthrough 且未发生视觉过滤时，才以原始请求体为基底透传。
 		var targetBody []byte
-		if targetFormat == relay.FormatResponses {
+		var customRequest *relay.CustomProtocolRequestResult
+		if relay.IsCustomPlatform(targetPlatform) {
+			customRequest, err = relay.RenderRegisteredCustomProtocolRequest(canonicalReq, relay.CustomProtocolID(targetPlatform))
+			if customRequest != nil {
+				targetBody = customRequest.Body
+			}
+		} else if targetFormat == relay.FormatResponses && s.config.IsRelayPassthroughEnabled() && !filteredVision {
 			targetBody, err = relay.ResponsesPassthroughBody(bodyBytes, selectedModel.Name)
+			if err == nil {
+				record.RelayMode = "passthrough"
+			}
 		} else {
 			targetBody, err = relay.CanonicalToTargetRequest(canonicalReq, targetFormat, originalResponsesReq)
+			if err == nil {
+				record.RelayMode = "transform"
+			}
 		}
 		if err != nil {
 			lastStatus = http.StatusBadRequest
@@ -167,9 +210,9 @@ func (s *Server) responses(c *gin.Context) {
 		var outcome relayOutcome
 		if canonicalReq.Stream {
 			record.Stream = true
-			outcome = s.handleResponsesStream(c, group, selectedModel, targetBody, targetPlatform, targetFormat, startTime, estimatedTokens, record, isLast)
+			outcome = s.handleResponsesStream(c, group, selectedModel, targetBody, customRequest, targetPlatform, targetFormat, startTime, estimatedTokens, record, isLast)
 		} else {
-			outcome = s.handleResponsesNormal(c, group, selectedModel, targetBody, targetPlatform, targetFormat, startTime, estimatedTokens, record, isLast)
+			outcome = s.handleResponsesNormal(c, group, selectedModel, targetBody, customRequest, targetPlatform, targetFormat, startTime, estimatedTokens, record, isLast)
 		}
 
 		if outcome.committed {
@@ -201,7 +244,10 @@ func (s *Server) responses(c *gin.Context) {
 	}
 }
 
-func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, targetPlatform relay.Platform, targetFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord, isLast bool) relayOutcome {
+func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, targetFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord, isLast bool) relayOutcome {
+	if relay.IsCustomPlatform(targetPlatform) {
+		return s.handleCustomResponsesNormal(c, group, selectedModel, customRequest, targetPlatform, startTime, record, isLast)
+	}
 	// failResult 决定：最后一次尝试或不可重试状态码 → 向客户端提交错误响应；
 	// 否则返回 committed=false 让上层故障转移到下一个候选。
 	failResult := func(statusCode int, errMsg string, respBody []byte) relayOutcome {
@@ -349,7 +395,10 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 	return result
 }
 
-func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, targetPlatform relay.Platform, targetFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord, isLast bool) relayOutcome {
+func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, targetFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord, isLast bool) relayOutcome {
+	if relay.IsCustomPlatform(targetPlatform) {
+		return s.handleCustomStreamRequest(c, group, selectedModel, customRequest, targetPlatform, relay.FormatResponses, startTime, record, isLast)
+	}
 	var result relayOutcome
 	defer func() {
 		if !result.committed {
@@ -421,7 +470,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		}
 		startSSE()
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
-		streamErr = relay.ForwardResponsesStream(c.Request.Context(), resp, writer)
+		streamErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatResponses, relay.FormatResponses, writer, selectedModel.Name)
 	case relay.FormatClaude:
 		resp, err := s.claudeAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, targetBody, true)
 		if err != nil {
@@ -438,7 +487,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		}
 		startSSE()
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
-		streamErr = relay.ConvertClaudeStreamToResponsesStream(resp, writer, selectedModel.Name)
+		streamErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatClaude, relay.FormatResponses, writer, selectedModel.Name)
 	case relay.FormatGemini:
 		resp, err := s.geminiAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, true)
 		if err != nil {
@@ -453,7 +502,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		}
 		startSSE()
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
-		streamErr = relay.ConvertGeminiStreamToResponsesStream(resp, writer, selectedModel.Name)
+		streamErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatGemini, relay.FormatResponses, writer, selectedModel.Name)
 	default:
 		resp, err := s.openaiAdapter.SendRequestStream(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		if err != nil {
@@ -462,7 +511,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		}
 		startSSE()
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
-		streamErr = relay.ConvertOpenAIChatStreamToResponsesStream(resp, writer, selectedModel.Name)
+		streamErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatOpenAIChat, relay.FormatResponses, writer, selectedModel.Name)
 	}
 
 	// 流式转发中途出错（如上游断流/空响应）：向下游写一个 SSE error 终止事件，让客户端能
@@ -536,6 +585,10 @@ func selectResponsesTargetFormat(model config.ModelRef, platform relay.Platform,
 }
 
 func transformedResponsesTargetFormat(model config.ModelRef, platform relay.Platform) (relay.FormatType, bool) {
+	if relay.IsCustomPlatform(platform) {
+		_, ok := relay.GetCustomProtocol(relay.CustomProtocolID(platform))
+		return relay.FormatOpenAIChat, ok
+	}
 	if endpointSupportsClaudeMessages(model, platform) {
 		return relay.FormatClaude, true
 	}

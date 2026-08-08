@@ -28,7 +28,7 @@ func messagesRequestContext(body string) (*gin.Context, *httptest.ResponseRecord
 }
 
 // Claude→Anthropic 同源：应走透传，上游收到的请求体保留客户端原始字段
-// （含 unified 模型不携带的 cache_control / 未知扩展），且 model 被改写为上游模型名。
+// （含 Maheshvara 尚未稳定表达的未知扩展），且 model 被改写为上游模型名。
 func TestChatCompletionsClaudePassthroughPreservesFields(t *testing.T) {
 	var gotBody []byte
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -43,8 +43,10 @@ func TestChatCompletionsClaudePassthroughPreservesFields(t *testing.T) {
 		Models: []config.ModelRef{claudeModel("upstream-claude", upstream.URL)},
 	}
 	s := newTestServer([]config.ModelGroupConfig{group})
+	enabled := true
+	s.config.Relay = config.RelayConfig{Passthrough: &enabled}
 
-	// 含 cache_control（unified 模型不携带）与未知扩展字段，验证透传保真。
+	// 含 cache_control 与未知扩展字段，验证显式透传保真。
 	reqBody := `{"model":"grp","system":[{"type":"text","text":"sys","cache_control":{"type":"ephemeral"}}],"messages":[{"role":"user","content":"hello"}],"x_future_flag":true}`
 	c, rec := messagesRequestContext(reqBody)
 	s.chatCompletions(c)
@@ -63,7 +65,7 @@ func TestChatCompletionsClaudePassthroughPreservesFields(t *testing.T) {
 	if _, ok := sent["x_future_flag"]; !ok {
 		t.Errorf("unknown field x_future_flag dropped — passthrough not active")
 	}
-	// cache_control 嵌在 system[0]，unified 往返会丢失；透传应保留。
+	// cache_control 嵌在 system[0]，透传应保留原始结构。
 	system, ok := sent["system"].([]any)
 	if !ok || len(system) == 0 {
 		t.Fatalf("system field lost: %v", sent["system"])
@@ -74,7 +76,7 @@ func TestChatCompletionsClaudePassthroughPreservesFields(t *testing.T) {
 	}
 }
 
-// 关闭 passthrough 后，同源请求应回退到转换路径（unified 往返），
+// 关闭 passthrough 后，同源请求应回退到 Maheshvara 转换路径，
 // 此时上游收到的请求体不再含未知扩展字段。
 func TestChatCompletionsPassthroughDisabledFallsBackToConvert(t *testing.T) {
 	var gotBody []byte
@@ -105,6 +107,6 @@ func TestChatCompletionsPassthroughDisabledFallsBackToConvert(t *testing.T) {
 		t.Fatalf("upstream body not JSON: %v", err)
 	}
 	if _, ok := sent["x_future_flag"]; ok {
-		t.Errorf("convert path must not carry unknown field x_future_flag through unified model")
+		t.Errorf("convert path must not carry unknown field x_future_flag through Maheshvara")
 	}
 }

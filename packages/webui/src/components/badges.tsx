@@ -16,6 +16,9 @@ const PLATFORM_LABEL: Record<string, string> = {
 }
 
 export function PlatformBadge({ platform }: { platform: Platform | string }) {
+  if (platform.toLowerCase().startsWith('custom:')) {
+    return <Badge variant="outline">Custom · {platform.slice('custom:'.length)}</Badge>
+  }
   return <Badge variant="outline">{PLATFORM_LABEL[platform] ?? platform}</Badge>
 }
 

@@ -26,18 +26,22 @@ import { revalidate } from '@/lib/hooks'
 import type { ManualModel, ModelSource, Platform } from '@/lib/types'
 
 // 按「线路 API 协议」命名，取代旧的厂商混称（openai/openai-compatible/claude/gemini）。
-// 选 Responses API 即触发透传（不做格式转换），适合明确知道上游支持 Responses 的场景。
-const PLATFORMS: { value: Platform; label: string; hint: string }[] = [
-  { value: 'responses', label: 'Responses API', hint: '上游原生 Responses（codex 直连，透传不转换）' },
+// 选择 Responses API 表示上游端点类型；默认仍经过 Maheshvara，显式 relay.passthrough
+// 才会启用同协议透传。
+const PLATFORMS: { value: string; label: string; hint: string }[] = [
+  { value: 'responses', label: 'Responses API', hint: '上游原生 Responses（默认经过 Maheshvara）' },
   { value: 'chat_completions', label: 'Chat Completions API', hint: 'OpenAI 兼容协议，最通用' },
   { value: 'anthropic', label: 'Anthropic API', hint: 'Claude /v1/messages' },
   { value: 'gemini', label: 'Gemini API', hint: 'Gemini /v1beta generateContent' },
+  { value: 'custom', label: '自定义 Maheshvara 协议', hint: '使用 config.json 中注册的 customProtocols 协议 ID' },
 ]
 
 // 把历史 platform 值归一化到新的四个 apiFormat，使旧源在新下拉里正确回显
 // （与后端 NormalizeAPIFormat 保持一致）。
 function normalizePlatform(raw: string | undefined): Platform {
-  switch ((raw ?? '').toLowerCase()) {
+  const normalized = (raw ?? '').trim().toLowerCase()
+  if (normalized.startsWith('custom:')) return normalized as Platform
+  switch (normalized) {
     case 'responses':
     case 'openai_responses':
       return 'responses'
@@ -51,6 +55,14 @@ function normalizePlatform(raw: string | undefined): Platform {
       // chat_completions / openai / openai-compatible / azure / deepseek / 空
       return 'chat_completions'
   }
+}
+
+function isCustomPlatform(platform: string): platform is `custom:${string}` {
+  return platform.toLowerCase().startsWith('custom:')
+}
+
+function customProtocolID(platform: string): string {
+  return isCustomPlatform(platform) ? platform.slice('custom:'.length).trim() : ''
 }
 
 function emptySource(): ModelSource {
@@ -121,21 +133,45 @@ export function SourceFormDialog({
       toast.error('请完善必填项', 'name 与 baseUrl 不能为空')
       return
     }
+    const custom = isCustomPlatform(form.platform)
+    const protocolID = customProtocolID(form.platform)
+    if (custom && !protocolID) {
+      toast.error('请填写自定义协议 ID', '该 ID 必须与 config.json 的 customProtocols[].id 一致')
+      return
+    }
     setSaving(true)
     try {
       const payload: ModelSource = {
         ...form,
-        manualModels: form.autoFetchModels ? [] : (form.manualModels ?? []).filter((m) => m.id || m.name),
+        platform: custom ? (`custom:${protocolID}` as Platform) : form.platform,
+        autoFetchModels: custom ? false : form.autoFetchModels,
+        manualModels: custom || !form.autoFetchModels ? (form.manualModels ?? []).filter((m) => m.id || m.name) : [],
       }
       // 编辑时若 apiKey 留空则不覆盖
       if (isEdit && !payload.apiKey) delete payload.apiKey
       if (isEdit && source) {
         await api.updateSource(source.id, payload)
+        await revalidate.sources()
+        await revalidate.models()
+        toast.success('模型源已更新')
       } else {
-        await api.createSource(payload)
+        const created = await api.createSource(payload)
+        await revalidate.sources()
+        let fetchCount: number | null = null
+        if (created.autoFetchModels && created.enabled) {
+          try {
+            const result = await api.fetchSource(created.id)
+            fetchCount = result.count
+          } catch (fetchErr) {
+            console.error('Auto fetch models failed:', fetchErr)
+          }
+        }
+        await revalidate.models()
+        toast.success(
+          '模型源已创建',
+          fetchCount !== null ? `已自动拉取 ${fetchCount} 个模型` : undefined,
+        )
       }
-      await revalidate.sources()
-      toast.success(isEdit ? '模型源已更新' : '模型源已创建')
       onOpenChange(false)
     } catch (err) {
       toast.error('保存失败', (err as Error).message)
@@ -143,6 +179,9 @@ export function SourceFormDialog({
       setSaving(false)
     }
   }
+
+  const custom = isCustomPlatform(form.platform)
+  const selectedPlatform = custom ? 'custom' : form.platform
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -166,7 +205,16 @@ export function SourceFormDialog({
             </div>
             <div className="space-y-2">
               <Label required>API 协议</Label>
-              <Select value={form.platform} onValueChange={(v) => update('platform', v as Platform)}>
+              <Select
+                value={selectedPlatform}
+                onValueChange={(value) =>
+                  setForm((previous) =>
+                    value === 'custom'
+                      ? { ...previous, platform: 'custom:', autoFetchModels: false }
+                      : { ...previous, platform: value as Platform },
+                  )
+                }
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -179,8 +227,18 @@ export function SourceFormDialog({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                {PLATFORMS.find((p) => p.value === form.platform)?.hint}
+                {PLATFORMS.find((p) => p.value === selectedPlatform)?.hint}
               </p>
+              {custom && (
+                <div className="space-y-2 pt-1">
+                  <Label required>自定义协议 ID</Label>
+                  <Input
+                    value={customProtocolID(form.platform)}
+                    placeholder="vendor-json"
+                    onChange={(event) => update('platform', `custom:${event.target.value}` as Platform)}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
@@ -208,7 +266,11 @@ export function SourceFormDialog({
               <span className="text-sm font-medium">启用此源</span>
             </label>
             <label className="flex items-center gap-3">
-              <Switch checked={form.autoFetchModels} onCheckedChange={(v) => update('autoFetchModels', v)} />
+              <Switch
+                checked={form.autoFetchModels}
+                disabled={custom}
+                onCheckedChange={(v) => update('autoFetchModels', v)}
+              />
               <span className="text-sm font-medium">自动拉取模型</span>
             </label>
           </div>

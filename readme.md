@@ -10,7 +10,7 @@ WebUI 通过 `//go:embed` 嵌入后端二进制，默认在 `/ui/` 提供。运�
 elysia-api/
 ├── backend/                # Go 后端（网关本体）
 │   ├── config/             # 配置加载 / 热重载 / 加密密钥
-│   ├── relay/              # 上游转发 / 格式转换 / Canonical 中间表示
+│   ├── relay/              # 上游转发 / 格式转换 / Maheshvara 核心协议
 │   ├── server/             # HTTP 路由 / 鉴权中间件 / Usage 仪表盘 / 管理 API
 │   ├── storage/            # SQLite 持久化
 │   └── webui/              # 内嵌 WebUI 静态资源（//go:embed all:dist）
@@ -23,10 +23,10 @@ elysia-api/
 ## 功能特性
 
 - 模型组与负载均衡：支持轮询、顺序、随机策略和模型组级权限。
-- 多格式互转：以 Canonical Request / Response / Usage 为中间表示，在 OpenAI Chat Completions、OpenAI Responses、Claude Messages、Gemini GenerateContent 之间转换。
+- 多格式互转：以 Maheshvara Request / Response / Usage 为唯一核心，在 OpenAI Chat Completions、OpenAI Responses、Claude Messages、Gemini GenerateContent 之间转换。
 - Responses API：`/v1/responses` 可原生转发，也可转换到 Chat / Claude / Gemini 上游。
-- 流式响应：支持流式转发，并支持 Chat / Claude / Gemini 流转换为 Responses SSE 事件。
-- 同源直发透传：当客户端输入格式与上游格式一致时，可跳过不必要的中间转换。
+- 流式响应：四种内建协议和自定义协议均通过 Maheshvara 状态化 decoder / renderer 转换 SSE。
+- 显式兼容透传：`relay.passthrough` 默认关闭；仅在用户主动开启且上下游同协议时绕过 Maheshvara。
 - Usage 统计：记录缓存命中、推理 token、多模态 token、内置工具调用、请求/响应摘要和重试事件。
 - 流量限制：支持模型组级并发和每日请求/token 限制。
 - 安全加固：敏感字段加密存储、SSRF 防护、常量时间 token 比较。
@@ -44,6 +44,8 @@ elysia-api/
 | macOS Apple Silicon | `elysia-api-darwin-arm64` |
 
 ### 通用配置
+
+首次启动时若二进制同目录下没有 `config.json`，后端会自动写入一份默认配置，其中 `panelAccessToken` 用 `crypto/rand` 随机生成（非 `change-me` 占位符），生成的 token 与配置路径会打印在启动日志里——用它登录面板后请及时轮换。无需手工建文件，下方的模板仅供参考。
 
 从仓库根目录的 `config.json.example` 创建运行时配置，至少修改 `panelAccessToken`：
 
@@ -69,7 +71,7 @@ elysia-api/
 .\elysia-api-windows-amd64.exe --config .\config.json
 ```
 
-如果 `config.json` 与 exe 位于同一目录，也可以直接双击 exe；未传 `--config` 时程序会读取当前目录下的 `config.json`。
+如果 `config.json` 与 exe 位于同一目录，也可以直接双击 exe；未传 `--config` 时程序会读取当前目录下的 `config.json`。首次启动若该文件不存在会自动创建（带随机 `panelAccessToken`，见启动日志）。
 
 ### Linux
 
@@ -156,6 +158,36 @@ Vite dev server 默认代理到 `http://127.0.0.1:8765`。
 | `webuiDir` | 可选。留空使用内嵌 WebUI；填写后用外部静态资源目录覆盖。 |
 | `enablePprof` | 可选。启用受 panel token 保护的 pprof 端点。 |
 | `maxBodyBytes` | 可选。请求体大小上限。 |
+
+### Maheshvara 与自定义协议
+
+跨协议转换统一经过 Maheshvara 核心请求/响应模型：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 和 Gemini GenerateContent 都先解析为 Maheshvara，再按上游协议渲染。模型源的 `platform` 可以写成 `custom:<协议ID>`（WebUI 可直接选择并填写 ID），并在 bootstrap `config.json` 的 `customProtocols` 中声明安全的 JSON body 模板。自定义协议源使用手动模型列表，不执行自动模型发现。例如：
+
+```json
+{
+  "customProtocols": [
+    {
+      "id": "vendor-json",
+      "request": {
+        "method": "POST",
+        "path": "/v2/generate/{{maheshvara.model}}",
+        "headers": {"X-Model": "{{maheshvara.model}}"},
+        "bodyTemplate": "{\"model\":{{maheshvara.model | json}},\"messages\":{{maheshvara.messages}},\"temperature\":{{maheshvara.temperature | default:0.2}}}",
+        "omitIfEmpty": ["temperature"]
+      },
+      "response": {
+        "textPath": "answer.text",
+        "usagePath": "usage",
+        "finishReasonPath": "finish"
+      }
+    }
+  ]
+}
+```
+
+模板只读 `maheshvara.*`（同时兼容 `canonical.*` 和 `request.*`），支持字符串插值、原生 JSON 值、`json`、`default:` 和 `omitIfEmpty`；不执行任意代码。常用字段包括 `model`、`instructions`、`messages`、`tools`、`tool_choice`、生成参数、`reasoning`、`metadata`、`stream` 和 `raw_extra`。非流式响应和 SSE / NDJSON 流都可映射回 Maheshvara，再渲染为客户端所请求的四种协议之一。
+
+完整字段模型、四协议映射矩阵、reasoning 安全约定、Gemini Part 不变量和自定义协议配置说明见 [`docs/maheshvara-protocol.md`](docs/maheshvara-protocol.md)。
 
 也可以通过环境变量 `ELYSIA_API_MASTER_KEY` 提供主密钥。生产环境中，如果数据库目录会被整体备份或打包，建议把 `secretKeyPath` 放在单独受保护的位置，或使用环境变量注入。
 

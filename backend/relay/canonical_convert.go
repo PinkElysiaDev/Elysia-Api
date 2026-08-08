@@ -3,6 +3,7 @@ package relay
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -87,6 +88,7 @@ func OpenAIChatRequestToCanonical(body []byte) (*CanonicalRequest, error) {
 	req.Messages = parseOpenAIChatMessages(raw["messages"])
 	req.Tools = parseOpenAIChatTools(raw["tools"])
 	req.ResponseFormat = parseOpenAIResponseFormat(raw["response_format"])
+	applyOpenAIRequestExtensions(raw, req)
 
 	return req, nil
 }
@@ -130,6 +132,7 @@ func ClaudeRequestToCanonical(body []byte) (*CanonicalRequest, error) {
 			req.Reasoning = &CanonicalReasoning{Effort: effortFromBudget(budget)}
 		}
 	}
+	applyClaudeRequestExtensions(raw, req)
 
 	return req, nil
 }
@@ -151,6 +154,7 @@ func GeminiRequestToCanonical(body []byte, urlModel string) (*CanonicalRequest, 
 	req.Tools = parseGeminiTools(raw["tools"])
 	req.ToolChoice = raw["toolConfig"]
 
+	var thinkingConfig map[string]any
 	if cfg, ok := raw["generationConfig"].(map[string]any); ok {
 		if v, ok := cfg["temperature"].(float64); ok {
 			req.Temperature = &v
@@ -166,16 +170,27 @@ func GeminiRequestToCanonical(body []byte, urlModel string) (*CanonicalRequest, 
 			req.MaxOutputTokens = int(v)
 		}
 		req.ResponseFormat = parseGeminiResponseFormat(cfg)
+		if configuredThinking, ok := cfg["thinkingConfig"].(map[string]any); ok {
+			thinkingConfig = configuredThinking
+		}
 	}
 
-	if thinking, ok := raw["thinkingConfig"].(map[string]any); ok {
-		includeThoughts := boolValue(thinking["includeThoughts"])
-		effort := stringValue(thinking["thinkingEffort"])
-		req.Thinking = &CanonicalThinking{Enabled: includeThoughts, Effort: effort}
-		if includeThoughts {
+	// Gemini places thinkingConfig inside generationConfig. Accept the legacy
+	// top-level form and thinkingEffort spelling as input compatibility only.
+	if legacyThinking, ok := raw["thinkingConfig"].(map[string]any); ok {
+		thinkingConfig = legacyThinking
+	}
+	if thinkingConfig != nil {
+		includeThoughts := boolValue(thinkingConfig["includeThoughts"])
+		effort := firstNonEmptyString(stringValue(thinkingConfig["thinkingLevel"]), stringValue(thinkingConfig["thinkingEffort"]))
+		budget := intValue(thinkingConfig["thinkingBudget"])
+		enabled := includeThoughts || effort != "" || budget > 0
+		req.Thinking = &CanonicalThinking{Enabled: enabled, Effort: effort, BudgetTokens: budget}
+		if enabled {
 			req.Reasoning = &CanonicalReasoning{Effort: effort}
 		}
 	}
+	applyGeminiRequestExtensions(raw, req)
 
 	return req, nil
 }
@@ -219,11 +234,18 @@ func ResponsesRequestToCanonical(body []byte) (*CanonicalRequest, *OpenAIRespons
 	canonical.ResponseFormat = parseResponsesTextFormat(req.Text)
 	canonical.Tools = parseResponsesTools(req.Tools)
 	canonical.InputItems, canonical.Messages = parseResponsesInput(req.Input)
+	var raw map[string]any
+	if err := json.Unmarshal(body, &raw); err == nil {
+		applyResponsesRequestExtensions(raw, canonical)
+	}
 
 	return canonical, &req, nil
 }
 
 func CanonicalToOpenAIChatRequest(req *CanonicalRequest) ([]byte, error) {
+	if err := validateCanonicalRequestForTarget(req, FormatOpenAIChat); err != nil {
+		return nil, err
+	}
 	out := map[string]any{
 		"model":    req.Model,
 		"messages": canonicalMessagesToOpenAI(req),
@@ -257,7 +279,7 @@ func CanonicalToOpenAIChatRequest(req *CanonicalRequest) ([]byte, error) {
 		out["tools"] = tools
 	}
 	if req.ToolChoice != nil {
-		out["tool_choice"] = req.ToolChoice
+		out["tool_choice"] = canonicalToolChoiceToOpenAI(req.ToolChoice)
 	}
 	if req.ParallelToolCalls != nil {
 		out["parallel_tool_calls"] = *req.ParallelToolCalls
@@ -274,17 +296,25 @@ func CanonicalToOpenAIChatRequest(req *CanonicalRequest) ([]byte, error) {
 	if req.PromptCacheKey != "" {
 		out["prompt_cache_key"] = req.PromptCacheKey
 	}
+	applyOpenAIRequestExtensionsToBody(out, req)
 	return json.Marshal(out)
 }
 
 func CanonicalToClaudeRequest(req *CanonicalRequest) ([]byte, error) {
+	if err := validateCanonicalRequestForTarget(req, FormatClaude); err != nil {
+		return nil, err
+	}
+	messages, err := canonicalMessagesToClaude(req)
+	if err != nil {
+		return nil, err
+	}
 	out := map[string]any{
 		"model":      req.Model,
-		"messages":   canonicalMessagesToClaude(req),
+		"messages":   messages,
 		"max_tokens": max(req.MaxOutputTokens, ClaudeDefaultMaxTokens),
 	}
-	if req.Instructions != "" {
-		out["system"] = req.Instructions
+	if instructions := canonicalResponsesInstructions(req); instructions != "" {
+		out["system"] = instructions
 	}
 	if req.Temperature != nil {
 		out["temperature"] = *req.Temperature
@@ -305,6 +335,9 @@ func CanonicalToClaudeRequest(req *CanonicalRequest) ([]byte, error) {
 		}
 		out["tools"] = tools
 	}
+	if req.ToolChoice != nil {
+		out["tool_choice"] = canonicalToolChoiceToClaude(req.ToolChoice)
+	}
 	if req.Thinking != nil && req.Thinking.Enabled {
 		budget := req.Thinking.BudgetTokens
 		if budget <= 0 {
@@ -314,16 +347,24 @@ func CanonicalToClaudeRequest(req *CanonicalRequest) ([]byte, error) {
 		out["temperature"] = 1.0
 		delete(out, "top_p")
 	}
+	applyClaudeRequestExtensionsToBody(out, req)
 	return json.Marshal(out)
 }
 
 func CanonicalToGeminiRequest(req *CanonicalRequest) ([]byte, error) {
-	out := map[string]any{
-		"contents": canonicalMessagesToGemini(req),
+	if err := validateCanonicalRequestForTarget(req, FormatGemini); err != nil {
+		return nil, err
 	}
-	if req.Instructions != "" {
+	contents, err := canonicalMessagesToGemini(req)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]any{
+		"contents": contents,
+	}
+	if instructions := canonicalResponsesInstructions(req); instructions != "" {
 		out["systemInstruction"] = map[string]any{
-			"parts": []map[string]any{{"text": req.Instructions}},
+			"parts": []map[string]any{{"text": instructions}},
 		}
 	}
 	cfg := map[string]any{}
@@ -353,14 +394,25 @@ func CanonicalToGeminiRequest(req *CanonicalRequest) ([]byte, error) {
 		out["tools"] = tools
 	}
 	if req.ToolChoice != nil {
-		out["toolConfig"] = req.ToolChoice
-	}
-	if req.Thinking != nil && req.Thinking.Enabled {
-		out["thinkingConfig"] = map[string]any{
-			"includeThoughts": true,
-			"thinkingEffort":  req.Thinking.Effort,
+		if toolConfig := canonicalToolChoiceToGemini(req.ToolChoice); toolConfig != nil {
+			out["toolConfig"] = toolConfig
 		}
 	}
+	if req.Thinking != nil && req.Thinking.Enabled {
+		thinkingConfig := map[string]any{"includeThoughts": true}
+		if req.Thinking.Effort != "" {
+			thinkingConfig["thinkingLevel"] = req.Thinking.Effort
+		}
+		if req.Thinking.BudgetTokens > 0 {
+			thinkingConfig["thinkingBudget"] = req.Thinking.BudgetTokens
+		}
+		if generationConfig, ok := out["generationConfig"].(map[string]any); ok {
+			generationConfig["thinkingConfig"] = thinkingConfig
+		} else {
+			out["generationConfig"] = map[string]any{"thinkingConfig": thinkingConfig}
+		}
+	}
+	applyGeminiRequestExtensionsToBody(out, req)
 	return json.Marshal(out)
 }
 
@@ -417,6 +469,9 @@ func PassthroughBody(originalBody []byte, modelName string, ensureStream, addStr
 }
 
 func CanonicalToResponsesRequest(req *CanonicalRequest, original *OpenAIResponsesRequest) ([]byte, error) {
+	if err := validateCanonicalRequestForTarget(req, FormatResponses); err != nil {
+		return nil, err
+	}
 	out := map[string]any{}
 	if original != nil {
 		b, _ := json.Marshal(original)
@@ -444,7 +499,7 @@ func CanonicalToResponsesRequest(req *CanonicalRequest, original *OpenAIResponse
 		out["tools"] = canonicalToolsToResponses(req.Tools)
 	}
 	if req.ToolChoice != nil {
-		out["tool_choice"] = req.ToolChoice
+		out["tool_choice"] = canonicalToolChoiceToOpenAI(req.ToolChoice)
 	}
 	if req.ParallelToolCalls != nil {
 		out["parallel_tool_calls"] = *req.ParallelToolCalls
@@ -462,6 +517,7 @@ func CanonicalToResponsesRequest(req *CanonicalRequest, original *OpenAIResponse
 		}
 		out["reasoning"] = reasoning
 	}
+	applyResponsesRequestExtensionsToBody(out, req)
 	return json.Marshal(out)
 }
 
@@ -474,9 +530,19 @@ func parseOpenAIChatMessages(raw any) []CanonicalMessage {
 			continue
 		}
 		msg := CanonicalMessage{
-			Role:       stringValue(m["role"]),
-			Content:    interfaceToContentParts(m["content"]),
-			ToolCallID: stringValue(m["tool_call_id"]),
+			Role:         stringValue(m["role"]),
+			Content:      interfaceToContentParts(m["content"]),
+			ToolCallID:   stringValue(m["tool_call_id"]),
+			Name:         stringValue(m["name"]),
+			CacheControl: m["cache_control"],
+			Metadata:     mapValue(m["metadata"]),
+			RawExtra:     rawFields(m),
+		}
+		if reasoning := stringValue(m["reasoning_content"]); strings.TrimSpace(reasoning) != "" {
+			msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentReasoning, Text: reasoning, ReasoningText: reasoning, Raw: m})
+		}
+		if refusal := firstNonEmptyString(stringValue(m["refusal"]), stringValue(m["refusal_text"])); refusal != "" {
+			msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentRefusal, Text: refusal, Raw: m})
 		}
 		if toolCalls, ok := m["tool_calls"].([]any); ok {
 			for _, tc := range toolCalls {
@@ -485,17 +551,72 @@ func parseOpenAIChatMessages(raw any) []CanonicalMessage {
 					continue
 				}
 				fn, _ := tcm["function"].(map[string]any)
+				arguments := stringValue(fn["arguments"])
+				if arguments == "" {
+					arguments = "{}"
+				}
+				thoughtSignature := openAIGoogleThoughtSignature(tcm)
+				thoughtSignatureProvider := ""
+				if thoughtSignature != "" {
+					thoughtSignatureProvider = CanonicalSignatureProviderGemini
+				}
 				msg.ToolCalls = append(msg.ToolCalls, CanonicalToolCall{
-					ID:        stringValue(tcm["id"]),
-					Type:      stringValue(tcm["type"]),
-					Name:      stringValue(fn["name"]),
-					Arguments: json.RawMessage(stringValue(fn["arguments"])),
+					ID:                       stringValue(tcm["id"]),
+					Type:                     firstNonEmptyString(stringValue(tcm["type"]), CanonicalToolFunction),
+					Name:                     stringValue(fn["name"]),
+					Arguments:                json.RawMessage(arguments),
+					ArgumentsText:            arguments,
+					ThoughtSignature:         thoughtSignature,
+					ThoughtSignatureProvider: thoughtSignatureProvider,
+					Raw:                      tcm,
 				})
+			}
+		}
+		if msg.Role == "assistant" && m["audio"] != nil {
+			msg.Audio = audioConfigFromAny(m["audio"])
+			if audioPart := openAIAudioValueToPart(m["audio"]); audioPart != nil {
+				msg.Content = append(msg.Content, *audioPart)
 			}
 		}
 		messages = append(messages, msg)
 	}
 	return messages
+}
+
+func openAIGoogleThoughtSignature(toolCall map[string]any) string {
+	if toolCall == nil {
+		return ""
+	}
+	extraContent := mapValue(toolCall["extra_content"])
+	google := mapValue(extraContent["google"])
+	return firstNonEmptyString(
+		stringValue(google["thought_signature"]),
+		stringValue(google["thoughtSignature"]),
+		stringValue(toolCall["thought_signature"]),
+		stringValue(toolCall["thoughtSignature"]),
+	)
+}
+
+func openAIAudioValueToPart(value any) *CanonicalContentPart {
+	object, ok := value.(map[string]any)
+	if !ok || object == nil {
+		return nil
+	}
+	data := firstNonEmptyString(stringValue(object["data"]), stringValue(object["audio_data"]), stringValue(object["base64"]))
+	url := firstNonEmptyString(stringValue(object["url"]), stringValue(object["audio_url"]))
+	transcript := stringValue(object["transcript"])
+	if data == "" && url == "" && transcript == "" {
+		return nil
+	}
+	return &CanonicalContentPart{
+		Type:        CanonicalContentAudio,
+		AudioURL:    url,
+		AudioBase64: data,
+		Data:        data,
+		Text:        transcript,
+		MediaType:   firstNonEmptyString(stringValue(object["format"]), stringValue(object["mime_type"]), stringValue(object["mimeType"])),
+		Raw:         object,
+	}
 }
 
 func parseClaudeMessages(raw any) []CanonicalMessage {
@@ -506,7 +627,10 @@ func parseClaudeMessages(raw any) []CanonicalMessage {
 		if m == nil {
 			continue
 		}
-		msg := CanonicalMessage{Role: stringValue(m["role"])}
+		msg := CanonicalMessage{Role: stringValue(m["role"]), RawExtra: rawFields(m)}
+		msg.Name = stringValue(m["name"])
+		msg.CacheControl = m["cache_control"]
+		msg.Metadata = mapValue(m["metadata"])
 		if blocks, ok := m["content"].([]any); ok {
 			for _, block := range blocks {
 				bm, _ := block.(map[string]any)
@@ -515,24 +639,78 @@ func parseClaudeMessages(raw any) []CanonicalMessage {
 				}
 				switch stringValue(bm["type"]) {
 				case "text":
-					msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentText, Text: stringValue(bm["text"]), Raw: bm})
+					msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentText, Text: stringValue(bm["text"]), CacheControl: bm["cache_control"], Raw: bm})
+				case "thinking":
+					thinking := stringValue(bm["thinking"])
+					signature := stringValue(bm["signature"])
+					part := CanonicalContentPart{
+						Type:              CanonicalContentReasoning,
+						Text:              thinking,
+						ReasoningText:     thinking,
+						Signature:         signature,
+						SignatureProvider: CanonicalSignatureProviderAnthropic,
+						Raw:               bm,
+					}
+					if envelope, ok := decodeMaheshvaraReasoningEnvelope(signature); ok {
+						part.Signature = ""
+						part.SignatureProvider = CanonicalSignatureProviderMaheshvara
+						part.EncryptedContent = envelope.EncryptedContent
+						part.ReasoningSummary = envelope.Summary
+						if part.Text == "" {
+							part.Text = envelope.Text
+							part.ReasoningText = envelope.Text
+						}
+					}
+					if strings.TrimSpace(part.ReasoningText) != "" || part.EncryptedContent != "" {
+						msg.Content = append(msg.Content, part)
+					}
 				case "image":
 					msg.Content = append(msg.Content, claudeImageBlockToPart(bm))
+				case "document", "file":
+					msg.Content = append(msg.Content, claudeDocumentBlockToPart(bm))
+				case "audio":
+					msg.Content = append(msg.Content, claudeMediaBlockToPart(bm, CanonicalContentAudio))
+				case "video":
+					msg.Content = append(msg.Content, claudeMediaBlockToPart(bm, CanonicalContentVideo))
 				case "tool_use":
 					inputRaw, _ := json.Marshal(bm["input"])
+					if len(inputRaw) == 0 || string(inputRaw) == "null" {
+						inputRaw = json.RawMessage([]byte("{}"))
+					}
 					msg.ToolCalls = append(msg.ToolCalls, CanonicalToolCall{
-						ID:        stringValue(bm["id"]),
-						Type:      CanonicalToolFunction,
-						Name:      stringValue(bm["name"]),
-						Arguments: inputRaw,
+						ID:            stringValue(bm["id"]),
+						Type:          CanonicalToolFunction,
+						Name:          stringValue(bm["name"]),
+						Arguments:     inputRaw,
+						ArgumentsText: string(inputRaw),
+						Raw:           bm,
 					})
 				case "tool_result":
 					msg.Content = append(msg.Content, CanonicalContentPart{
 						Type:       CanonicalContentToolOutput,
 						ToolCallID: stringValue(bm["tool_use_id"]),
-						ToolOutput: extractTextFromContent(bm["content"]),
+						ToolOutput: contentValueToString(bm["content"]),
 						Raw:        bm,
 					})
+				case "redacted_thinking":
+					// Only Maheshvara-owned envelopes are decoded. Arbitrary provider
+					// ciphertext remains filtered and never becomes prompt text.
+					if envelope, ok := decodeMaheshvaraReasoningEnvelope(stringValue(bm["data"])); ok {
+						msg.Content = append(msg.Content, CanonicalContentPart{
+							Type:              CanonicalContentReasoning,
+							Text:              envelope.Text,
+							ReasoningText:     envelope.Text,
+							SignatureProvider: CanonicalSignatureProviderMaheshvara,
+							EncryptedContent:  envelope.EncryptedContent,
+							ReasoningSummary:  envelope.Summary,
+							Raw:               bm,
+						})
+					}
+					continue
+				default:
+					// Unknown provider blocks remain intentionally filtered. Their
+					// raw bytes are not safe to reinterpret as plain text.
+					continue
 				}
 			}
 		} else {
@@ -546,7 +724,7 @@ func parseClaudeMessages(raw any) []CanonicalMessage {
 func parseGeminiContents(raw any) []CanonicalMessage {
 	arr, _ := raw.([]any)
 	messages := make([]CanonicalMessage, 0, len(arr))
-	for _, item := range arr {
+	for messageIndex, item := range arr {
 		m, _ := item.(map[string]any)
 		if m == nil {
 			continue
@@ -555,9 +733,9 @@ func parseGeminiContents(raw any) []CanonicalMessage {
 		if role == "model" {
 			role = "assistant"
 		}
-		msg := CanonicalMessage{Role: role}
+		msg := CanonicalMessage{Role: role, Name: stringValue(m["name"]), CacheControl: m["cache_control"], RawExtra: rawFields(m)}
 		parts, _ := m["parts"].([]any)
-		for _, part := range parts {
+		for partIndex, part := range parts {
 			pm, _ := part.(map[string]any)
 			if pm == nil {
 				continue
@@ -567,42 +745,84 @@ func parseGeminiContents(raw any) []CanonicalMessage {
 				if boolValue(pm["thought"]) {
 					partType = CanonicalContentReasoning
 				}
-				msg.Content = append(msg.Content, CanonicalContentPart{Type: partType, Text: text, ReasoningText: text, Raw: pm})
+				msg.Content = append(msg.Content, CanonicalContentPart{Type: partType, Text: text, ReasoningText: text, Thought: boolValue(pm["thought"]), Signature: stringValue(pm["thoughtSignature"]), SignatureProvider: CanonicalSignatureProviderGemini, Raw: pm})
 			}
 			if fc, ok := pm["functionCall"].(map[string]any); ok {
 				argsRaw, _ := json.Marshal(fc["args"])
+				if len(argsRaw) == 0 || string(argsRaw) == "null" {
+					argsRaw = json.RawMessage([]byte("{}"))
+				}
 				msg.ToolCalls = append(msg.ToolCalls, CanonicalToolCall{
-					ID:        "call_" + stringValue(fc["name"]),
-					Type:      CanonicalToolFunction,
-					Name:      stringValue(fc["name"]),
-					Arguments: argsRaw,
+					ID:                       firstNonEmptyString(stringValue(fc["id"]), stringValue(pm["id"]), fmt.Sprintf("call_%d_%d", messageIndex, partIndex)),
+					Type:                     CanonicalToolFunction,
+					Name:                     stringValue(fc["name"]),
+					Arguments:                argsRaw,
+					ArgumentsText:            string(argsRaw),
+					ThoughtSignature:         stringValue(pm["thoughtSignature"]),
+					ThoughtSignatureProvider: CanonicalSignatureProviderGemini,
+					Raw:                      pm,
 				})
 			}
 			if fr, ok := pm["functionResponse"].(map[string]any); ok {
 				respRaw, _ := json.Marshal(fr["response"])
 				msg.Content = append(msg.Content, CanonicalContentPart{
 					Type:       CanonicalContentToolOutput,
-					ToolCallID: stringValue(fr["name"]),
+					ToolCallID: firstNonEmptyString(stringValue(fr["id"]), stringValue(fr["name"])),
 					ToolOutput: string(respRaw),
 					Raw:        pm,
 				})
 			}
 			// 多模态：inlineData（base64）/ fileData（URI）→ canonical image part。
 			if inline, ok := pm["inlineData"].(map[string]any); ok {
-				msg.Content = append(msg.Content, CanonicalContentPart{
-					Type:        CanonicalContentImage,
-					MediaType:   firstNonEmptyString(stringValue(inline["mimeType"]), stringValue(inline["mime_type"])),
-					ImageBase64: stringValue(inline["data"]),
-					Raw:         pm,
-				})
+				mediaType := firstNonEmptyString(stringValue(inline["mimeType"]), stringValue(inline["mime_type"]))
+				partType := CanonicalContentImage
+				if strings.HasPrefix(strings.ToLower(mediaType), "audio/") {
+					partType = CanonicalContentAudio
+				} else if strings.HasPrefix(strings.ToLower(mediaType), "video/") {
+					partType = CanonicalContentVideo
+				}
+				data := stringValue(inline["data"])
+				part := CanonicalContentPart{Type: partType, MediaType: mediaType, Data: data, Raw: pm}
+				switch partType {
+				case CanonicalContentAudio:
+					part.AudioBase64 = data
+				case CanonicalContentVideo:
+					part.VideoBase64 = data
+				default:
+					part.ImageBase64 = data
+				}
+				msg.Content = append(msg.Content, part)
 			}
 			if fileData, ok := pm["fileData"].(map[string]any); ok {
-				msg.Content = append(msg.Content, CanonicalContentPart{
-					Type:      CanonicalContentImage,
-					MediaType: firstNonEmptyString(stringValue(fileData["mimeType"]), stringValue(fileData["mime_type"])),
-					ImageURL:  firstNonEmptyString(stringValue(fileData["fileUri"]), stringValue(fileData["file_uri"])),
-					Raw:       pm,
-				})
+				mediaType := firstNonEmptyString(stringValue(fileData["mimeType"]), stringValue(fileData["mime_type"]))
+				partType := CanonicalContentFile
+				switch {
+				case strings.HasPrefix(strings.ToLower(mediaType), "image/"):
+					partType = CanonicalContentImage
+				case strings.HasPrefix(strings.ToLower(mediaType), "audio/"):
+					partType = CanonicalContentAudio
+				case strings.HasPrefix(strings.ToLower(mediaType), "video/"):
+					partType = CanonicalContentVideo
+				}
+				uri := firstNonEmptyString(stringValue(fileData["fileUri"]), stringValue(fileData["file_uri"]))
+				part := CanonicalContentPart{Type: partType, MediaType: mediaType, URI: uri, Raw: pm}
+				switch partType {
+				case CanonicalContentImage:
+					part.ImageURL = uri
+				case CanonicalContentAudio:
+					part.AudioURL = uri
+				case CanonicalContentVideo:
+					part.VideoURL = uri
+				}
+				msg.Content = append(msg.Content, part)
+			}
+			if code, ok := pm["executableCode"].(map[string]any); ok {
+				encoded, _ := json.Marshal(code)
+				msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentFile, Text: string(encoded), Raw: pm})
+			}
+			if result, ok := pm["codeExecutionResult"].(map[string]any); ok {
+				encoded, _ := json.Marshal(result)
+				msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentToolOutput, ToolOutput: string(encoded), Raw: pm})
 			}
 		}
 		messages = append(messages, msg)
@@ -641,6 +861,8 @@ func parseResponsesInput(raw json.RawMessage) ([]CanonicalInputItem, []Canonical
 			itemType = CanonicalInputMessage
 		}
 		item := CanonicalInputItem{Type: itemType, Role: stringValue(m["role"]), ItemID: stringValue(m["id"])}
+		rawEntry, _ := json.Marshal(m)
+		item.RawExtra = map[string]json.RawMessage{"raw": rawEntry}
 		switch itemType {
 		case CanonicalInputMessage:
 			item.Type = CanonicalInputMessage
@@ -652,16 +874,48 @@ func parseResponsesInput(raw json.RawMessage) ([]CanonicalInputItem, []Canonical
 		case CanonicalInputFunctionCallOutput:
 			item.Type = CanonicalInputFunctionCallOutput
 			item.CallID = stringValue(m["call_id"])
-			item.Output = stringValue(m["output"])
+			item.Output = contentValueToString(m["output"])
 			messages = append(messages, CanonicalMessage{
 				Role:       "tool",
 				ToolCallID: item.CallID,
-				Content:    []CanonicalContentPart{{Type: CanonicalContentText, Text: item.Output}},
+				Content:    []CanonicalContentPart{{Type: CanonicalContentToolOutput, ToolCallID: item.CallID, ToolOutput: item.Output, Raw: m}},
 			})
+		case "function_call":
+			item.CallID = firstNonEmptyString(stringValue(m["call_id"]), stringValue(m["id"]))
+			item.ItemID = firstNonEmptyString(item.ItemID, item.CallID)
+			item.Role = "assistant"
+			item.Content = nil
+			arguments := contentValueToString(m["arguments"])
+			if arguments == "" || arguments == "null" {
+				arguments = "{}"
+			}
+			messages = append(messages, CanonicalMessage{
+				Role: "assistant",
+				ToolCalls: []CanonicalToolCall{{
+					ID:            item.CallID,
+					Type:          CanonicalToolFunction,
+					Name:          stringValue(m["name"]),
+					Arguments:     json.RawMessage(arguments),
+					ArgumentsText: arguments,
+					Raw:           m,
+				}},
+			})
+		case "reasoning":
+			var summaryText strings.Builder
+			if summary, ok := m["summary"].([]any); ok {
+				for _, summaryItem := range summary {
+					summaryMap, _ := summaryItem.(map[string]any)
+					summaryText.WriteString(stringValue(summaryMap["text"]))
+				}
+			}
+			if summaryText.Len() > 0 {
+				item.Role = "assistant"
+				item.Content = []CanonicalContentPart{{Type: CanonicalContentReasoning, Text: summaryText.String(), ReasoningText: summaryText.String(), Thought: true, Raw: m}}
+				messages = append(messages, CanonicalMessage{Role: "assistant", Content: item.Content})
+			}
 		default:
-			item.RawExtra = map[string]json.RawMessage{}
-			rawEntry, _ := json.Marshal(m)
-			item.RawExtra["raw"] = rawEntry
+			// Keep provider-specific input items in RawExtra so a Responses
+			// target can round-trip them without inventing a lossy translation.
 		}
 		items = append(items, item)
 	}
@@ -678,14 +932,25 @@ func parseOpenAIChatTools(raw any) []CanonicalTool {
 		}
 		if stringValue(m["type"]) == "function" {
 			fn, _ := m["function"].(map[string]any)
+			strict := boolPointer(fn["strict"])
 			tools = append(tools, CanonicalTool{
 				Type:        CanonicalToolFunction,
 				Name:        stringValue(fn["name"]),
 				Description: stringValue(fn["description"]),
 				Parameters:  mapValue(fn["parameters"]),
+				InputSchema: mapValue(fn["parameters"]),
+				Strict:      strict,
+				Provider:    stringValue(m["provider"]),
 				Raw:         m,
 			})
+			continue
 		}
+		tools = append(tools, CanonicalTool{
+			Type:     stringValue(m["type"]),
+			Provider: stringValue(m["provider"]),
+			Config:   m,
+			Raw:      m,
+		})
 	}
 	return tools
 }
@@ -699,11 +964,14 @@ func parseClaudeTools(raw any) []CanonicalTool {
 			continue
 		}
 		tools = append(tools, CanonicalTool{
-			Type:        CanonicalToolFunction,
-			Name:        stringValue(m["name"]),
-			Description: stringValue(m["description"]),
-			Parameters:  mapValue(m["input_schema"]),
-			Raw:         m,
+			Type:         CanonicalToolFunction,
+			Name:         stringValue(m["name"]),
+			Description:  stringValue(m["description"]),
+			Parameters:   mapValue(m["input_schema"]),
+			InputSchema:  mapValue(m["input_schema"]),
+			Strict:       boolPointer(m["strict"]),
+			CacheControl: m["cache_control"],
+			Raw:          m,
 		})
 	}
 	return tools
@@ -728,8 +996,20 @@ func parseGeminiTools(raw any) []CanonicalTool {
 				Name:        stringValue(fn["name"]),
 				Description: stringValue(fn["description"]),
 				Parameters:  mapValue(fn["parameters"]),
+				InputSchema: mapValue(fn["parameters"]),
+				Strict:      boolPointer(fn["strict"]),
 				Raw:         fn,
 			})
+		}
+		if len(fns) == 0 {
+			toolType := stringValue(m["type"])
+			if toolType == "" {
+				for key := range m {
+					toolType = key
+					break
+				}
+			}
+			tools = append(tools, CanonicalTool{Type: toolType, Config: m, Raw: m})
 		}
 	}
 	return tools
@@ -744,6 +1024,8 @@ func parseResponsesTools(raw []map[string]any) []CanonicalTool {
 			ct.Name = stringValue(tool["name"])
 			ct.Description = stringValue(tool["description"])
 			ct.Parameters = mapValue(tool["parameters"])
+			ct.InputSchema = mapValue(tool["parameters"])
+			ct.Strict = boolPointer(tool["strict"])
 		}
 		if t == CanonicalToolWebSearchPreview {
 			ct.SearchContextSize = stringValue(tool["search_context_size"])
@@ -754,6 +1036,9 @@ func parseResponsesTools(raw []map[string]any) []CanonicalTool {
 					ct.VectorStoreIDs = append(ct.VectorStoreIDs, fmt.Sprintf("%v", id))
 				}
 			}
+		}
+		if ids, ok := tool["vector_store_ids"].([]string); ok {
+			ct.VectorStoreIDs = append(ct.VectorStoreIDs, ids...)
 		}
 		tools = append(tools, ct)
 	}
@@ -766,9 +1051,50 @@ func canonicalMessagesToOpenAI(req *CanonicalRequest) []map[string]any {
 		messages = append(messages, map[string]any{"role": "system", "content": req.Instructions})
 	}
 	for _, msg := range req.Messages {
+		visibleParts := make([]CanonicalContentPart, 0, len(msg.Content))
+		var reasoning strings.Builder
+		var refusal strings.Builder
+		for _, part := range msg.Content {
+			if part.Type == CanonicalContentReasoning {
+				text := firstNonEmptyString(part.ReasoningText, part.Text)
+				if text != "" {
+					reasoning.WriteString(text)
+				}
+				continue
+			}
+			if part.Type == CanonicalContentRefusal {
+				if part.Text != "" {
+					refusal.WriteString(part.Text)
+				}
+				continue
+			}
+			visibleParts = append(visibleParts, part)
+		}
+		role := strings.ToLower(strings.TrimSpace(msg.Role))
+		if role == "" {
+			role = "user"
+		}
 		out := map[string]any{
-			"role":    msg.Role,
-			"content": contentPartsToInterface(msg.Content),
+			"role":    role,
+			"content": contentPartsToInterface(visibleParts),
+		}
+		if len(visibleParts) == 0 && len(msg.ToolCalls) > 0 {
+			out["content"] = nil
+		}
+		if reasoning.Len() > 0 {
+			out["reasoning_content"] = reasoning.String()
+		}
+		if refusal.Len() > 0 {
+			out["refusal"] = refusal.String()
+		}
+		if msg.Name != "" {
+			out["name"] = msg.Name
+		}
+		if msg.Metadata != nil {
+			out["metadata"] = msg.Metadata
+		}
+		if msg.CacheControl != nil {
+			out["cache_control"] = msg.CacheControl
 		}
 		if msg.ToolCallID != "" {
 			out["tool_call_id"] = msg.ToolCallID
@@ -776,14 +1102,26 @@ func canonicalMessagesToOpenAI(req *CanonicalRequest) []map[string]any {
 		if len(msg.ToolCalls) > 0 {
 			var calls []map[string]any
 			for _, call := range msg.ToolCalls {
-				calls = append(calls, map[string]any{
+				arguments := strings.TrimSpace(string(call.Arguments))
+				if arguments == "" {
+					arguments = call.ArgumentsText
+				}
+				if arguments == "" {
+					arguments = "{}"
+				}
+				callType := firstNonEmptyString(call.Type, CanonicalToolFunction)
+				wireCall := map[string]any{
 					"id":   call.ID,
-					"type": "function",
+					"type": callType,
 					"function": map[string]any{
 						"name":      call.Name,
-						"arguments": string(call.Arguments),
+						"arguments": arguments,
 					},
-				})
+				}
+				if signature := canonicalSignatureForProvider(call.ThoughtSignature, call.ThoughtSignatureProvider, CanonicalSignatureProviderGemini); signature != "" {
+					wireCall["extra_content"] = map[string]any{"google": map[string]any{"thought_signature": signature}}
+				}
+				calls = append(calls, wireCall)
 			}
 			out["tool_calls"] = calls
 		}
@@ -848,8 +1186,8 @@ func imagePartBase64(part CanonicalContentPart) (string, string) {
 	if part.ImageBase64 != "" {
 		return part.MediaType, part.ImageBase64
 	}
-	if strings.HasPrefix(part.ImageURL, "data:") {
-		if mt, b64, ok := parseDataURL(part.ImageURL); ok {
+	if uri := firstNonEmptyString(part.ImageURL, part.URI); strings.HasPrefix(uri, "data:") {
+		if mt, b64, ok := parseDataURL(uri); ok {
 			return mt, b64
 		}
 	}
@@ -859,8 +1197,8 @@ func imagePartBase64(part CanonicalContentPart) (string, string) {
 // imagePartToOpenAIURL 把图片 part 渲染为 OpenAI image_url 的 url 值
 // （http(s) URL 原样；base64 数据组装成 data: URI）。
 func imagePartToOpenAIURL(part CanonicalContentPart) string {
-	if part.ImageURL != "" {
-		return part.ImageURL
+	if uri := firstNonEmptyString(part.ImageURL, part.URI); uri != "" {
+		return uri
 	}
 	if part.ImageBase64 != "" {
 		mt := part.MediaType
@@ -880,8 +1218,8 @@ func imagePartToClaudeSource(part CanonicalContentPart) map[string]any {
 		}
 		return map[string]any{"type": "base64", "media_type": mt, "data": b64}
 	}
-	if part.ImageURL != "" {
-		return map[string]any{"type": "url", "url": part.ImageURL}
+	if uri := firstNonEmptyString(part.ImageURL, part.URI); uri != "" {
+		return map[string]any{"type": "url", "url": uri}
 	}
 	return nil
 }
@@ -895,8 +1233,8 @@ func imagePartToGeminiPart(part CanonicalContentPart) map[string]any {
 		}
 		return map[string]any{"inlineData": map[string]any{"mimeType": mt, "data": b64}}
 	}
-	if part.ImageURL != "" {
-		fileData := map[string]any{"fileUri": part.ImageURL}
+	if uri := firstNonEmptyString(part.ImageURL, part.URI); uri != "" {
+		fileData := map[string]any{"fileUri": uri}
 		if part.MediaType != "" {
 			fileData["mimeType"] = part.MediaType
 		}
@@ -905,27 +1243,57 @@ func imagePartToGeminiPart(part CanonicalContentPart) map[string]any {
 	return nil
 }
 
-func canonicalMessagesToClaude(req *CanonicalRequest) []map[string]any {
+func canonicalMessagesToClaude(req *CanonicalRequest) ([]map[string]any, error) {
 	var messages []map[string]any
 	for _, msg := range req.Messages {
-		if msg.Role == "system" {
+		if strings.EqualFold(strings.TrimSpace(msg.Role), "system") || strings.EqualFold(strings.TrimSpace(msg.Role), "developer") {
 			continue
 		}
-		role := msg.Role
-		if role == "assistant" {
-			role = "assistant"
+		role := strings.ToLower(strings.TrimSpace(msg.Role))
+		if role == "tool" || role == "function" || role == "" {
+			role = "user"
 		}
 		var content []map[string]any
 		for _, part := range msg.Content {
 			switch part.Type {
 			case CanonicalContentText:
-				content = append(content, map[string]any{"type": "text", "text": part.Text})
+				if part.Text == "" {
+					continue
+				}
+				block := map[string]any{"type": "text", "text": part.Text}
+				if part.CacheControl != nil {
+					block["cache_control"] = part.CacheControl
+				}
+				content = append(content, block)
+			case CanonicalContentReasoning:
+				text := firstNonEmptyString(part.ReasoningText, part.Text)
+				if text != "" {
+					block := map[string]any{"type": "thinking", "thinking": text}
+					if signature := canonicalSignatureForProvider(part.Signature, part.SignatureProvider, CanonicalSignatureProviderAnthropic); signature != "" {
+						block["signature"] = signature
+					}
+					content = append(content, block)
+				}
 			case CanonicalContentImage:
 				if src := imagePartToClaudeSource(part); src != nil {
 					content = append(content, map[string]any{"type": "image", "source": src})
 				}
 			case CanonicalContentToolOutput:
-				content = append(content, map[string]any{"type": "tool_result", "tool_use_id": part.ToolCallID, "content": part.ToolOutput})
+				if part.ToolCallID != "" {
+					content = append(content, map[string]any{"type": "tool_result", "tool_use_id": part.ToolCallID, "content": part.ToolOutput})
+				}
+			case CanonicalContentRefusal:
+				if part.Text != "" {
+					content = append(content, map[string]any{"type": "text", "text": part.Text})
+				}
+			case CanonicalContentDocument:
+				if block := canonicalDocumentToClaudeBlock(part); block != nil {
+					content = append(content, block)
+				}
+			case CanonicalContentAudio, CanonicalContentVideo:
+				if block := canonicalMediaToClaudeBlock(part); block != nil {
+					content = append(content, block)
+				}
 			}
 		}
 		for _, call := range msg.ToolCalls {
@@ -941,14 +1309,28 @@ func canonicalMessagesToClaude(req *CanonicalRequest) []map[string]any {
 			})
 		}
 		if len(content) == 0 {
-			content = []map[string]any{{"type": "text", "text": ""}}
+			continue
 		}
-		messages = append(messages, map[string]any{"role": role, "content": content})
+		message := map[string]any{"role": role, "content": content}
+		if msg.Name != "" {
+			message["name"] = msg.Name
+		}
+		if msg.CacheControl != nil {
+			message["cache_control"] = msg.CacheControl
+		}
+		if msg.Metadata != nil {
+			message["metadata"] = msg.Metadata
+		}
+		messages = append(messages, message)
 	}
-	return messages
+	return messages, nil
 }
 
-func canonicalMessagesToGemini(req *CanonicalRequest) []map[string]any {
+func canonicalMessagesToGemini(req *CanonicalRequest) ([]map[string]any, error) {
+	if req == nil {
+		return nil, fmt.Errorf("cannot convert request to Gemini: nil canonical request")
+	}
+
 	// 构建 tool_call_id → function_name 映射表：Gemini 的 functionResponse.name
 	// 必须是函数名（如 "Read"），而非 Anthropic 的 tool_use_id（如 "toolu_01ABC"）。
 	toolCallNames := make(map[string]string)
@@ -961,67 +1343,151 @@ func canonicalMessagesToGemini(req *CanonicalRequest) []map[string]any {
 	}
 
 	var contents []map[string]any
-	for _, msg := range req.Messages {
-		if msg.Role == "system" {
+	for msgIndex, msg := range req.Messages {
+		if strings.EqualFold(strings.TrimSpace(msg.Role), "system") || strings.EqualFold(strings.TrimSpace(msg.Role), "developer") {
 			continue
 		}
-		role := msg.Role
+		role := strings.ToLower(strings.TrimSpace(msg.Role))
 		if role == "assistant" {
 			role = "model"
+		} else if role == "tool" || role == "function" || role == "developer" || role == "" {
+			role = "user"
 		}
 		var parts []map[string]any
-		for _, part := range msg.Content {
+		var firstFunctionCallPart map[string]any
+		for partIndex, part := range msg.Content {
 			switch part.Type {
 			case CanonicalContentText:
-				parts = append(parts, map[string]any{"text": part.Text})
+				if part.Text != "" {
+					parts = append(parts, map[string]any{"text": part.Text})
+				}
 			case CanonicalContentImage:
 				if p := imagePartToGeminiPart(part); p != nil {
 					parts = append(parts, p)
 				}
-			case CanonicalContentReasoning:
-				parts = append(parts, map[string]any{"text": part.ReasoningText, "thought": true})
-			case CanonicalContentToolOutput:
-				// Gemini 的 functionResponse.response 必须是 JSON 对象（google.protobuf.Struct），
-				// 不能是字符串、数组、null 或空。三层降级策略（参考 new-api）：
-				// 1. 尝试解析为 JSON 对象 → 直接使用
-				// 2. 解析为 JSON 数组 → 包装为 {"result": array}
-				// 3. 空或非 JSON 文本 → 包装为 {"content": text}
-				var responseMap map[string]any
-				if part.ToolOutput != "" {
-					if err := json.Unmarshal([]byte(part.ToolOutput), &responseMap); err != nil {
-						var arr []any
-						if err := json.Unmarshal([]byte(part.ToolOutput), &arr); err == nil {
-							responseMap = map[string]any{"result": arr}
-						} else {
-							responseMap = map[string]any{"content": part.ToolOutput}
-						}
-					}
-				} else {
-					responseMap = map[string]any{"content": ""}
+			case CanonicalContentAudio, CanonicalContentVideo, CanonicalContentFile, CanonicalContentDocument:
+				if p := canonicalPartToGeminiPart(part); p != nil {
+					parts = append(parts, p)
 				}
+			case CanonicalContentReasoning:
+				reasoningText := part.ReasoningText
+				if reasoningText == "" {
+					reasoningText = part.Text
+				}
+				if reasoningText != "" {
+					thought := map[string]any{"text": reasoningText, "thought": true}
+					if signature := canonicalSignatureForProvider(part.Signature, part.SignatureProvider, CanonicalSignatureProviderGemini); signature != "" {
+						thought["thoughtSignature"] = signature
+					}
+					parts = append(parts, thought)
+				}
+			case CanonicalContentRefusal:
+				if part.Text != "" {
+					parts = append(parts, map[string]any{"text": part.Text})
+				}
+			case CanonicalContentToolOutput:
+				responseMap := geminiFunctionResponsePayload(part.ToolOutput)
 
 				// functionResponse.name 必须是函数名，而非 tool_use_id；回查之前的 tool_use 获取函数名。
-				name := part.ToolCallID
-				if fn, ok := toolCallNames[part.ToolCallID]; ok {
-					name = fn
+				name, ok := toolCallNames[part.ToolCallID]
+				if !ok {
+					name = functionResponseNameFromRaw(part.Raw)
+					ok = name != ""
+				}
+				if !ok || strings.TrimSpace(name) == "" {
+					return nil, fmt.Errorf("cannot convert message %d part %d to Gemini: function response tool_use_id %q has no matching function name", msgIndex, partIndex, part.ToolCallID)
 				}
 
-				parts = append(parts, map[string]any{"functionResponse": map[string]any{"name": name, "response": responseMap}})
+				response := map[string]any{"name": name, "response": responseMap}
+				responseID := functionResponseIDFromRaw(part.Raw)
+				if responseID == "" && part.ToolCallID != "" && part.ToolCallID != name {
+					responseID = part.ToolCallID
+				}
+				if responseID != "" {
+					response["id"] = responseID
+				}
+				parts = append(parts, map[string]any{"functionResponse": response})
 			}
 		}
-		for _, call := range msg.ToolCalls {
+		for callIndex, call := range msg.ToolCalls {
+			if strings.TrimSpace(call.Name) == "" {
+				return nil, fmt.Errorf("cannot convert message %d tool call %d to Gemini: missing function name for call id %q", msgIndex, callIndex, call.ID)
+			}
 			var args any = map[string]any{}
 			if len(call.Arguments) > 0 {
-				_ = json.Unmarshal(call.Arguments, &args)
+				if err := json.Unmarshal(call.Arguments, &args); err != nil {
+					if call.ArgumentsText != "" {
+						_ = json.Unmarshal([]byte(call.ArgumentsText), &args)
+					}
+				}
 			}
-			parts = append(parts, map[string]any{"functionCall": map[string]any{"name": call.Name, "args": args}})
+			functionCall := map[string]any{"name": call.Name, "args": args}
+			if call.ID != "" {
+				functionCall["id"] = call.ID
+			}
+			part := map[string]any{"functionCall": functionCall}
+			if firstFunctionCallPart == nil {
+				firstFunctionCallPart = part
+			}
+			if signature := canonicalSignatureForProvider(call.ThoughtSignature, call.ThoughtSignatureProvider, CanonicalSignatureProviderGemini); signature != "" {
+				part["thoughtSignature"] = signature
+			}
+			parts = append(parts, part)
+		}
+		if firstFunctionCallPart != nil && stringValue(firstFunctionCallPart["thoughtSignature"]) == "" {
+			firstFunctionCallPart["thoughtSignature"] = geminiCrossProviderThoughtSignature
 		}
 		if len(parts) == 0 {
-			parts = []map[string]any{{"text": ""}}
+			continue
+		}
+		if len(contents) > 0 && contents[len(contents)-1]["role"] == role {
+			previousParts, _ := contents[len(contents)-1]["parts"].([]map[string]any)
+			contents[len(contents)-1]["parts"] = append(previousParts, parts...)
+			continue
 		}
 		contents = append(contents, map[string]any{"role": role, "parts": parts})
 	}
-	return contents
+	if len(contents) == 0 {
+		return nil, fmt.Errorf("cannot convert request to Gemini: no representable message content")
+	}
+	return contents, nil
+}
+
+func functionResponseNameFromRaw(raw any) string {
+	object, _ := raw.(map[string]any)
+	if object == nil {
+		return ""
+	}
+	if response, ok := object["functionResponse"].(map[string]any); ok {
+		return firstNonEmptyString(stringValue(response["name"]), stringValue(response["function_name"]))
+	}
+	return firstNonEmptyString(stringValue(object["name"]), stringValue(object["function_name"]))
+}
+
+func functionResponseIDFromRaw(raw any) string {
+	object, _ := raw.(map[string]any)
+	if object == nil {
+		return ""
+	}
+	if response, ok := object["functionResponse"].(map[string]any); ok {
+		return firstNonEmptyString(stringValue(response["id"]), stringValue(response["call_id"]))
+	}
+	return firstNonEmptyString(stringValue(object["id"]), stringValue(object["call_id"]))
+}
+
+func geminiFunctionResponsePayload(output string) map[string]any {
+	if output == "" {
+		return map[string]any{"content": ""}
+	}
+	var object map[string]any
+	if err := json.Unmarshal([]byte(output), &object); err == nil && object != nil {
+		return object
+	}
+	var array []any
+	if err := json.Unmarshal([]byte(output), &array); err == nil && array != nil {
+		return map[string]any{"result": array}
+	}
+	return map[string]any{"content": output}
 }
 
 func canonicalResponsesInstructions(req *CanonicalRequest) string {
@@ -1058,7 +1524,11 @@ func canonicalInputToResponses(req *CanonicalRequest) any {
 					continue
 				}
 				role := responsesInputRole(item.Role)
-				items = append(items, map[string]any{"role": role, "content": canonicalContentToResponsesInputContent(role, item.Content)})
+				content := canonicalContentToResponsesInputContent(role, item.Content)
+				if len(content) == 0 {
+					continue
+				}
+				items = append(items, map[string]any{"role": role, "content": content})
 			}
 		}
 		return items
@@ -1081,7 +1551,10 @@ func canonicalInputToResponses(req *CanonicalRequest) any {
 			continue
 		}
 
-		items = append(items, map[string]any{"role": responsesInputRole(role), "content": canonicalContentToResponsesInputContent(role, msg.Content)})
+		content := canonicalContentToResponsesInputContent(role, msg.Content)
+		if len(content) > 0 {
+			items = append(items, map[string]any{"role": responsesInputRole(role), "content": content})
+		}
 		if role == "assistant" {
 			items = append(items, canonicalToolCallsToResponsesItems(msg.ToolCalls)...)
 		}
@@ -1138,18 +1611,37 @@ func canonicalContentToResponsesInputContent(role string, parts []CanonicalConte
 	for _, part := range parts {
 		switch part.Type {
 		case CanonicalContentText:
-			out = append(out, map[string]any{"type": responsesTextPartTypeForRole(role), "text": part.Text})
+			if part.Text != "" {
+				out = append(out, map[string]any{"type": responsesTextPartTypeForRole(role), "text": part.Text})
+			}
 		case CanonicalContentReasoning:
 			if role == "assistant" {
 				text := part.ReasoningText
 				if text == "" {
 					text = part.Text
 				}
-				out = append(out, map[string]any{"type": "output_text", "text": text})
+				if text != "" {
+					out = append(out, map[string]any{"type": "output_text", "text": text})
+				}
 			}
 		case CanonicalContentImage:
 			if role == "user" {
-				out = append(out, map[string]any{"type": "input_image", "image_url": part.ImageURL})
+				if url := imagePartToOpenAIURL(part); url != "" {
+					out = append(out, map[string]any{"type": "input_image", "image_url": url})
+				}
+			}
+		case CanonicalContentAudio:
+			if role == "user" {
+				data := firstNonEmptyString(part.AudioBase64, part.Data, part.AudioURL)
+				if data != "" {
+					out = append(out, map[string]any{"type": "input_audio", "audio": map[string]any{"data": data, "format": firstNonEmptyString(part.MediaType, part.MimeType)}})
+				}
+			}
+		case CanonicalContentVideo:
+			if role == "user" {
+				if url := firstNonEmptyString(part.VideoURL, part.URI, part.ImageURL); url != "" {
+					out = append(out, map[string]any{"type": "input_video", "video_url": url})
+				}
 			}
 		case CanonicalContentFile:
 			if role == "user" {
@@ -1163,16 +1655,15 @@ func canonicalContentToResponsesInputContent(role string, parts []CanonicalConte
 				if part.FileData != "" {
 					item["file_data"] = part.FileData
 				}
-				out = append(out, item)
+				if len(item) > 1 {
+					out = append(out, item)
+				}
 			}
 		default:
 			if refusal := refusalTextFromRaw(part.Raw); role == "assistant" && refusal != "" {
 				out = append(out, map[string]any{"type": "refusal", "refusal": refusal})
 			}
 		}
-	}
-	if len(out) == 0 {
-		out = append(out, map[string]any{"type": responsesTextPartTypeForRole(role), "text": ""})
 	}
 	return out
 }
@@ -1204,13 +1695,21 @@ func canonicalToolsToOpenAI(tools []CanonicalTool) ([]map[string]any, error) {
 		if tool.Type != CanonicalToolFunction {
 			return nil, fmt.Errorf("builtin tool %q cannot be transformed to OpenAI chat completions", tool.Type)
 		}
+		parameters := tool.Parameters
+		if parameters == nil {
+			parameters = tool.InputSchema
+		}
+		function := map[string]any{
+			"name":        tool.Name,
+			"description": tool.Description,
+			"parameters":  parameters,
+		}
+		if tool.Strict != nil {
+			function["strict"] = *tool.Strict
+		}
 		out = append(out, map[string]any{
-			"type": "function",
-			"function": map[string]any{
-				"name":        tool.Name,
-				"description": tool.Description,
-				"parameters":  tool.Parameters,
-			},
+			"type":     "function",
+			"function": function,
 		})
 	}
 	return out, nil
@@ -1222,31 +1721,57 @@ func canonicalToolsToClaude(tools []CanonicalTool) ([]map[string]any, error) {
 		if tool.Type != CanonicalToolFunction {
 			return nil, fmt.Errorf("builtin tool %q cannot be transformed to Claude messages", tool.Type)
 		}
-		out = append(out, map[string]any{
+		inputSchema := tool.InputSchema
+		if inputSchema == nil {
+			inputSchema = tool.Parameters
+		}
+		item := map[string]any{
 			"name":         tool.Name,
 			"description":  tool.Description,
-			"input_schema": tool.Parameters,
-		})
+			"input_schema": inputSchema,
+		}
+		if tool.Strict != nil {
+			item["strict"] = *tool.Strict
+		}
+		if tool.CacheControl != nil {
+			item["cache_control"] = tool.CacheControl
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
 
 func canonicalToolsToGemini(tools []CanonicalTool) ([]map[string]any, error) {
 	var declarations []map[string]any
+	var nativeTools []map[string]any
 	for _, tool := range tools {
 		if tool.Type != CanonicalToolFunction {
-			return nil, fmt.Errorf("builtin tool %q cannot be transformed to Gemini", tool.Type)
+			if tool.Raw != nil {
+				nativeTools = append(nativeTools, tool.Raw)
+				continue
+			}
+			return nil, fmt.Errorf("builtin tool %q cannot be transformed to Gemini without a native definition", tool.Type)
 		}
-		declarations = append(declarations, map[string]any{
+		parameters := tool.Parameters
+		if parameters == nil {
+			parameters = tool.InputSchema
+		}
+		declaration := map[string]any{
 			"name":        tool.Name,
 			"description": tool.Description,
-			"parameters":  tool.Parameters,
-		})
+			"parameters":  parameters,
+		}
+		if tool.Strict != nil {
+			declaration["strict"] = *tool.Strict
+		}
+		declarations = append(declarations, declaration)
 	}
-	if len(declarations) == 0 {
-		return nil, nil
+	var out []map[string]any
+	if len(declarations) > 0 {
+		out = append(out, map[string]any{"functionDeclarations": declarations})
 	}
-	return []map[string]any{{"functionDeclarations": declarations}}, nil
+	out = append(out, nativeTools...)
+	return out, nil
 }
 
 func canonicalToolsToResponses(tools []CanonicalTool) []map[string]any {
@@ -1260,7 +1785,10 @@ func canonicalToolsToResponses(tools []CanonicalTool) []map[string]any {
 		if tool.Type == CanonicalToolFunction {
 			m["name"] = tool.Name
 			m["description"] = tool.Description
-			m["parameters"] = tool.Parameters
+			m["parameters"] = firstNonNilMap(tool.Parameters, tool.InputSchema)
+			if tool.Strict != nil {
+				m["strict"] = *tool.Strict
+			}
 		}
 		out = append(out, m)
 	}
@@ -1390,10 +1918,33 @@ func numberValue(v any) (float64, bool) {
 	switch n := v.(type) {
 	case float64:
 		return n, true
+	case float32:
+		return float64(n), true
 	case int:
+		return float64(n), true
+	case int8:
+		return float64(n), true
+	case int16:
+		return float64(n), true
+	case int32:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case uint:
+		return float64(n), true
+	case uint8:
+		return float64(n), true
+	case uint16:
+		return float64(n), true
+	case uint32:
+		return float64(n), true
+	case uint64:
 		return float64(n), true
 	case json.Number:
 		f, err := n.Float64()
+		return f, err == nil
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(n), 64)
 		return f, err == nil
 	default:
 		return 0, false
@@ -1459,8 +2010,38 @@ func OpenAIChatResponseToCanonical(resp *OpenAIResponse) (*CanonicalResponse, er
 		if item.Role == "" {
 			item.Role = "assistant"
 		}
+		for _, part := range item.Content {
+			if part.Type == CanonicalContentReasoning {
+				out.Output = append(out.Output, CanonicalOutputItem{
+					ID: newCanonicalResponseID("rs"), Type: CanonicalOutputReasoning, Status: "completed",
+					Content: []CanonicalContentPart{part},
+				})
+			}
+		}
+		if choice.Message.ReasoningContent != "" {
+			out.Output = append(out.Output, CanonicalOutputItem{
+				ID: newCanonicalResponseID("rs"), Type: CanonicalOutputReasoning, Status: "completed",
+				Content: []CanonicalContentPart{{Type: CanonicalContentReasoning, Text: choice.Message.ReasoningContent, ReasoningText: choice.Message.ReasoningContent}},
+			})
+		}
+		if choice.Message.Refusal != "" {
+			item.Content = append(item.Content, CanonicalContentPart{Type: CanonicalContentRefusal, Text: choice.Message.Refusal})
+		}
+		if choice.Message.Audio != nil {
+			if audioPart := openAIAudioValueToPart(choice.Message.Audio); audioPart != nil {
+				item.Content = append(item.Content, *audioPart)
+			}
+		}
 		out.Output = append(out.Output, item)
 		for _, call := range choice.Message.ToolCalls {
+			thoughtSignature := ""
+			thoughtSignatureProvider := ""
+			if call.ExtraContent != nil && call.ExtraContent.Google != nil {
+				thoughtSignature = call.ExtraContent.Google.ThoughtSignature
+				if thoughtSignature != "" {
+					thoughtSignatureProvider = CanonicalSignatureProviderGemini
+				}
+			}
 			out.Output = append(out.Output, CanonicalOutputItem{
 				ID:        call.ID,
 				Type:      CanonicalOutputFunctionCall,
@@ -1468,6 +2049,7 @@ func OpenAIChatResponseToCanonical(resp *OpenAIResponse) (*CanonicalResponse, er
 				CallID:    call.ID,
 				Name:      call.Function.Name,
 				Arguments: json.RawMessage(call.Function.Arguments),
+				ToolCalls: []CanonicalToolCall{{ID: call.ID, Type: CanonicalToolFunction, Name: call.Function.Name, Arguments: json.RawMessage(call.Function.Arguments), ThoughtSignature: thoughtSignature, ThoughtSignatureProvider: thoughtSignatureProvider}},
 			})
 		}
 		out.StopReason = choice.FinishReason
@@ -1491,14 +2073,32 @@ func ClaudeResponseToCanonical(resp *ClaudeResponse) (*CanonicalResponse, error)
 	for _, block := range resp.Content {
 		switch block.Type {
 		case "text":
-			msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentText, Text: block.Text})
+			msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentText, Text: block.Text, Raw: block})
 		case "thinking":
+			part := CanonicalContentPart{Type: CanonicalContentReasoning, ReasoningText: block.Thinking, Text: block.Thinking, Signature: block.Signature, SignatureProvider: CanonicalSignatureProviderAnthropic}
+			if envelope, ok := decodeMaheshvaraReasoningEnvelope(block.Signature); ok {
+				part.Signature = ""
+				part.SignatureProvider = CanonicalSignatureProviderMaheshvara
+				part.EncryptedContent = envelope.EncryptedContent
+				part.ReasoningSummary = envelope.Summary
+				if part.Text == "" {
+					part.Text = envelope.Text
+					part.ReasoningText = envelope.Text
+				}
+			}
 			out.Output = append(out.Output, CanonicalOutputItem{
 				ID:      newCanonicalResponseID("rs"),
 				Type:    CanonicalOutputReasoning,
 				Status:  "completed",
-				Content: []CanonicalContentPart{{Type: CanonicalContentReasoning, ReasoningText: block.Thinking, Text: block.Thinking}},
+				Content: []CanonicalContentPart{part},
 			})
+		case "redacted_thinking":
+			if envelope, ok := decodeMaheshvaraReasoningEnvelope(block.Data); ok {
+				out.Output = append(out.Output, CanonicalOutputItem{
+					ID: newCanonicalResponseID("rs"), Type: CanonicalOutputReasoning, Status: "completed",
+					Content: []CanonicalContentPart{{Type: CanonicalContentReasoning, Text: envelope.Text, ReasoningText: envelope.Text, SignatureProvider: CanonicalSignatureProviderMaheshvara, EncryptedContent: envelope.EncryptedContent, ReasoningSummary: envelope.Summary}},
+				})
+			}
 		case "tool_use":
 			out.Output = append(out.Output, CanonicalOutputItem{
 				ID:        block.ID,
@@ -1508,6 +2108,12 @@ func ClaudeResponseToCanonical(resp *ClaudeResponse) (*CanonicalResponse, error)
 				Name:      block.Name,
 				Arguments: block.Input,
 			})
+		case "image":
+			msg.Content = append(msg.Content, claudeImageBlockToPart(map[string]any{"type": "image", "source": block.Source}))
+		case "document", "file":
+			msg.Content = append(msg.Content, claudeDocumentBlockToPart(map[string]any{"type": block.Type, "source": block.Source}))
+		case "tool_result":
+			msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentToolOutput, ToolCallID: block.ToolUseID, ToolOutput: customValueString(block.Content), Raw: block})
 		}
 	}
 	if len(msg.Content) > 0 {
@@ -1521,10 +2127,14 @@ func GeminiResponseToCanonical(resp *GeminiResponse) (*CanonicalResponse, error)
 		return nil, fmt.Errorf("nil Gemini response")
 	}
 	out := &CanonicalResponse{
-		ID:        newCanonicalResponseID("gemini"),
+		ID:        resp.ResponseID,
+		Model:     resp.ModelVersion,
 		CreatedAt: time.Now().Unix(),
 		Status:    "completed",
 		Usage:     canonicalUsageFromGeminiUsage(resp.UsageMetadata),
+	}
+	if out.ID == "" {
+		out.ID = newCanonicalResponseID("gemini")
 	}
 	msg := CanonicalOutputItem{ID: newCanonicalResponseID("msg"), Type: CanonicalOutputMessage, Status: "completed", Role: "assistant"}
 	if len(resp.Candidates) > 0 {
@@ -1532,16 +2142,35 @@ func GeminiResponseToCanonical(resp *GeminiResponse) (*CanonicalResponse, error)
 		out.StopReason = cand.FinishReason
 		for _, part := range cand.Content.Parts {
 			if part.Text != "" {
-				msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentText, Text: part.Text})
+				if part.Thought {
+					out.Output = append(out.Output, CanonicalOutputItem{
+						ID: newCanonicalResponseID("rs"), Type: CanonicalOutputReasoning, Status: "completed",
+						Content: []CanonicalContentPart{{Type: CanonicalContentReasoning, Text: part.Text, ReasoningText: part.Text, Signature: part.ThoughtSignature, SignatureProvider: CanonicalSignatureProviderGemini}},
+					})
+				} else {
+					msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentText, Text: part.Text})
+				}
 			}
 			if part.FunctionCall != nil {
-				raw, _ := json.Marshal(part.FunctionCall)
+				functionCall, _ := part.FunctionCall.(map[string]any)
+				raw, _ := json.Marshal(functionCall["args"])
+				callID := stringValue(functionCall["id"])
+				name := stringValue(functionCall["name"])
 				out.Output = append(out.Output, CanonicalOutputItem{
 					ID:        newCanonicalResponseID("call"),
 					Type:      CanonicalOutputFunctionCall,
 					Status:    "completed",
+					CallID:    callID,
+					Name:      name,
 					Arguments: raw,
+					ToolCalls: []CanonicalToolCall{{ID: callID, Type: CanonicalToolFunction, Name: name, Arguments: raw, ThoughtSignature: part.ThoughtSignature, ThoughtSignatureProvider: CanonicalSignatureProviderGemini}},
 				})
+			}
+			if part.InlineData != nil {
+				msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentImage, MediaType: firstNonEmptyString(stringValue(part.InlineData["mimeType"]), stringValue(part.InlineData["mime_type"])), ImageBase64: stringValue(part.InlineData["data"])})
+			}
+			if part.FileData != nil {
+				msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentFile, MediaType: firstNonEmptyString(stringValue(part.FileData["mimeType"]), stringValue(part.FileData["mime_type"])), URI: firstNonEmptyString(stringValue(part.FileData["fileUri"]), stringValue(part.FileData["file_uri"]))})
 			}
 		}
 	}
@@ -1556,11 +2185,27 @@ func ResponsesResponseToCanonical(resp *OpenAIResponsesResponse) (*CanonicalResp
 		return nil, fmt.Errorf("nil Responses response")
 	}
 	out := &CanonicalResponse{
-		ID:        resp.ID,
-		Model:     resp.Model,
-		CreatedAt: resp.CreatedAt,
-		Status:    resp.Status,
-		Usage:     canonicalUsageFromResponsesUsage(resp.Usage),
+		ID:                resp.ID,
+		Model:             resp.Model,
+		CreatedAt:         resp.CreatedAt,
+		Status:            resp.Status,
+		Usage:             canonicalUsageFromResponsesUsage(resp.Usage),
+		IncompleteDetails: resp.IncompleteDetails,
+		Metadata:          resp.Metadata,
+		ServiceTier:       resp.ServiceTier,
+	}
+	if resp.Error != nil {
+		if object := mapValue(resp.Error); object != nil {
+			out.Error = &CanonicalError{
+				Message: stringValue(object["message"]),
+				Type:    stringValue(object["type"]),
+				Code:    stringValue(object["code"]),
+				Param:   stringValue(object["param"]),
+				Raw:     object,
+			}
+		} else {
+			out.Error = &CanonicalError{Message: contentValueToString(resp.Error)}
+		}
 	}
 	for _, item := range resp.Output {
 		citem := CanonicalOutputItem{
@@ -1574,12 +2219,42 @@ func ResponsesResponseToCanonical(resp *OpenAIResponsesResponse) (*CanonicalResp
 			Raw:       map[string]any{"quality": item.Quality, "size": item.Size},
 		}
 		for _, content := range item.Content {
-			if content.Type == "output_text" || content.Type == "text" {
-				citem.Content = append(citem.Content, CanonicalContentPart{Type: CanonicalContentText, Text: content.Text})
+			switch content.Type {
+			case "output_text", "text":
+				citem.Content = append(citem.Content, CanonicalContentPart{Type: CanonicalContentText, Text: content.Text, Annotations: content.Annotations})
+			case "refusal":
+				citem.Content = append(citem.Content, CanonicalContentPart{Type: CanonicalContentRefusal, Text: content.Refusal})
+			case "input_image", "image":
+				citem.Content = append(citem.Content, CanonicalContentPart{Type: CanonicalContentImage, ImageURL: content.ImageURL})
+			case "input_file", "file":
+				citem.Content = append(citem.Content, CanonicalContentPart{Type: CanonicalContentFile, FileID: content.FileID, URI: content.FileURL, FileName: content.Filename})
+			case "input_audio", "audio":
+				part := CanonicalContentPart{Type: CanonicalContentAudio, Raw: content.Audio}
+				if content.Audio != nil {
+					part.AudioBase64 = firstNonEmptyString(stringValue(content.Audio["data"]), stringValue(content.Audio["audio_data"]))
+					part.AudioURL = firstNonEmptyString(stringValue(content.Audio["url"]), stringValue(content.Audio["audio_url"]))
+					part.MediaType = firstNonEmptyString(stringValue(content.Audio["format"]), stringValue(content.Audio["mime_type"]))
+				}
+				citem.Content = append(citem.Content, part)
 			}
 		}
 		for _, summary := range item.Summary {
 			citem.Summary = append(citem.Summary, CanonicalReasoningSummary{Type: summary.Type, Text: summary.Text})
+		}
+		if item.Type == CanonicalOutputReasoning {
+			var summaryText strings.Builder
+			for _, summary := range citem.Summary {
+				summaryText.WriteString(summary.Text)
+			}
+			citem.Reasoning = &CanonicalReasoning{
+				Text:             summaryText.String(),
+				Summary:          summaryText.String(),
+				SummaryParts:     append([]CanonicalReasoningSummary(nil), citem.Summary...),
+				EncryptedContent: item.EncryptedContent,
+			}
+			if summaryText.Len() > 0 || item.EncryptedContent != "" {
+				citem.Content = append(citem.Content, CanonicalContentPart{Type: CanonicalContentReasoning, Text: summaryText.String(), ReasoningText: summaryText.String(), EncryptedContent: item.EncryptedContent, ReasoningSummary: citem.Summary})
+			}
 		}
 		out.Output = append(out.Output, citem)
 		if out.Usage != nil {
@@ -1597,25 +2272,63 @@ func ResponsesResponseToCanonical(resp *OpenAIResponsesResponse) (*CanonicalResp
 }
 
 func CanonicalToOpenAIChatResponse(resp *CanonicalResponse) (*OpenAIResponse, error) {
+	if resp == nil {
+		return nil, fmt.Errorf("nil Maheshvara response")
+	}
 	msg := Message{Role: "assistant", Content: ""}
 	var toolCalls []OpenAIToolCall
-	var text strings.Builder
+	var messageParts []CanonicalContentPart
 	for _, item := range resp.Output {
 		switch item.Type {
 		case CanonicalOutputMessage:
-			text.WriteString(canonicalText(item.Content))
+			for _, part := range item.Content {
+				switch part.Type {
+				case CanonicalContentReasoning:
+					continue
+				case CanonicalContentRefusal:
+					if part.Text != "" {
+						msg.Refusal += part.Text
+					}
+				case CanonicalContentAudio:
+					if msg.Audio == nil {
+						if part.Raw != nil {
+							msg.Audio = part.Raw
+						} else {
+							msg.Audio = map[string]any{"data": firstNonEmptyString(part.AudioBase64, part.Data), "url": part.AudioURL, "transcript": part.Text}
+						}
+					}
+				default:
+					messageParts = append(messageParts, part)
+				}
+			}
 		case CanonicalOutputFunctionCall:
-			toolCalls = append(toolCalls, OpenAIToolCall{
+			arguments := strings.TrimSpace(string(item.Arguments))
+			if arguments == "" {
+				arguments = "{}"
+			}
+			toolCall := OpenAIToolCall{
 				ID:   item.CallID,
 				Type: "function",
 				Function: OpenAIToolFunction{
 					Name:      item.Name,
-					Arguments: string(item.Arguments),
+					Arguments: arguments,
 				},
-			})
+			}
+			if len(item.ToolCalls) > 0 {
+				if signature := canonicalSignatureForProvider(item.ToolCalls[0].ThoughtSignature, item.ToolCalls[0].ThoughtSignatureProvider, CanonicalSignatureProviderGemini); signature != "" {
+					toolCall.ExtraContent = &OpenAIToolCallExtraContent{Google: &OpenAIToolCallGoogleExtraContent{ThoughtSignature: signature}}
+				}
+			}
+			toolCalls = append(toolCalls, toolCall)
+		case CanonicalOutputReasoning:
+			msg.ReasoningContent += canonicalReasoningText(item)
 		}
 	}
-	msg.Content = text.String()
+	if len(messageParts) == 1 && messageParts[0].Type == CanonicalContentText {
+		msg.Content = messageParts[0].Text
+	} else if len(messageParts) > 0 {
+		msg.Content = contentPartsToInterface(messageParts)
+	}
 	msg.ToolCalls = toolCalls
 	return &OpenAIResponse{
 		ID:      resp.ID,
@@ -1628,21 +2341,85 @@ func CanonicalToOpenAIChatResponse(resp *CanonicalResponse) (*OpenAIResponse, er
 }
 
 func CanonicalToClaudeResponse(resp *CanonicalResponse) (*ClaudeResponse, error) {
+	if resp == nil {
+		return nil, fmt.Errorf("nil Maheshvara response")
+	}
 	var content []ClaudeContent
+	appendMapContent := func(raw map[string]any) error {
+		if raw == nil {
+			return nil
+		}
+		encoded, err := json.Marshal(raw)
+		if err != nil {
+			return err
+		}
+		var block ClaudeContent
+		if err := json.Unmarshal(encoded, &block); err != nil {
+			return err
+		}
+		content = append(content, block)
+		return nil
+	}
 	for _, item := range resp.Output {
 		switch item.Type {
 		case CanonicalOutputMessage:
-			if text := canonicalText(item.Content); text != "" {
-				content = append(content, ClaudeContent{Type: "text", Text: text})
+			for _, part := range item.Content {
+				switch part.Type {
+				case CanonicalContentText:
+					if part.Text != "" {
+						content = append(content, ClaudeContent{Type: "text", Text: part.Text})
+					}
+				case CanonicalContentReasoning:
+					text := firstNonEmptyString(part.ReasoningText, part.Text)
+					if text != "" {
+						content = append(content, ClaudeContent{Type: "thinking", Thinking: text, Signature: canonicalSignatureForProvider(part.Signature, part.SignatureProvider, CanonicalSignatureProviderAnthropic)})
+					}
+				case CanonicalContentRefusal:
+					if part.Text != "" {
+						content = append(content, ClaudeContent{Type: "text", Text: part.Text})
+					}
+				case CanonicalContentImage:
+					if source := imagePartToClaudeSource(part); source != nil {
+						if err := appendMapContent(map[string]any{"type": "image", "source": source}); err != nil {
+							return nil, err
+						}
+					}
+				case CanonicalContentDocument, CanonicalContentFile:
+					if block := canonicalDocumentToClaudeBlock(part); block != nil {
+						if err := appendMapContent(block); err != nil {
+							return nil, err
+						}
+					}
+				case CanonicalContentAudio, CanonicalContentVideo:
+					if block := canonicalMediaToClaudeBlock(part); block != nil {
+						if err := appendMapContent(block); err != nil {
+							return nil, err
+						}
+					}
+				case CanonicalContentToolOutput:
+					if part.ToolCallID != "" {
+						content = append(content, ClaudeContent{Type: "tool_result", ToolUseID: part.ToolCallID, Content: part.ToolOutput})
+					}
+				}
 			}
 		case CanonicalOutputReasoning:
-			content = append(content, ClaudeContent{Type: "thinking", Thinking: canonicalText(item.Content)})
+			text := canonicalReasoningText(item)
+			if text != "" {
+				block := ClaudeContent{Type: "thinking", Thinking: text}
+				if len(item.Content) > 0 {
+					block.Signature = canonicalSignatureForProvider(item.Content[0].Signature, item.Content[0].SignatureProvider, CanonicalSignatureProviderAnthropic)
+				}
+				content = append(content, block)
+			}
 		case CanonicalOutputFunctionCall:
+			if strings.TrimSpace(item.Name) == "" {
+				return nil, fmt.Errorf("cannot convert Maheshvara response to Claude: function call is missing a name")
+			}
 			content = append(content, ClaudeContent{Type: "tool_use", ID: item.CallID, Name: item.Name, Input: item.Arguments})
 		}
 	}
 	if len(content) == 0 {
-		content = []ClaudeContent{{Type: "text", Text: ""}}
+		return nil, fmt.Errorf("cannot convert Maheshvara response to Claude: no representable output content")
 	}
 	return &ClaudeResponse{
 		ID:         resp.ID,
@@ -1656,19 +2433,76 @@ func CanonicalToClaudeResponse(resp *CanonicalResponse) (*ClaudeResponse, error)
 }
 
 func CanonicalToGeminiResponse(resp *CanonicalResponse) (*GeminiResponse, error) {
+	if resp == nil {
+		return nil, fmt.Errorf("nil Maheshvara response")
+	}
 	var parts []GeminiPart
+	firstFunctionCallIndex := -1
+	appendRawPart := func(raw map[string]any) error {
+		if raw == nil {
+			return nil
+		}
+		encoded, err := json.Marshal(raw)
+		if err != nil {
+			return err
+		}
+		var part GeminiPart
+		if err := json.Unmarshal(encoded, &part); err != nil {
+			return err
+		}
+		parts = append(parts, part)
+		return nil
+	}
 	for _, item := range resp.Output {
 		switch item.Type {
 		case CanonicalOutputMessage:
-			if text := canonicalText(item.Content); text != "" {
-				parts = append(parts, GeminiPart{Text: text})
+			for _, contentPart := range item.Content {
+				switch contentPart.Type {
+				case CanonicalContentText, CanonicalContentRefusal:
+					if contentPart.Text != "" {
+						parts = append(parts, GeminiPart{Text: contentPart.Text})
+					}
+				case CanonicalContentReasoning:
+					text := firstNonEmptyString(contentPart.ReasoningText, contentPart.Text)
+					if text != "" {
+						part := GeminiPart{Text: text, Thought: true, ThoughtSignature: canonicalSignatureForProvider(contentPart.Signature, contentPart.SignatureProvider, CanonicalSignatureProviderGemini)}
+						parts = append(parts, part)
+					}
+				default:
+					if err := appendRawPart(canonicalPartToGeminiPart(contentPart)); err != nil {
+						return nil, err
+					}
+				}
 			}
 		case CanonicalOutputFunctionCall:
-			parts = append(parts, GeminiPart{FunctionCall: map[string]any{"name": item.Name, "args": jsonRawToAny(item.Arguments)}})
+			functionCall := map[string]any{"name": item.Name, "args": jsonRawToAny(item.Arguments)}
+			if item.CallID != "" {
+				functionCall["id"] = item.CallID
+			}
+			part := GeminiPart{FunctionCall: functionCall}
+			if firstFunctionCallIndex < 0 {
+				firstFunctionCallIndex = len(parts)
+			}
+			if len(item.ToolCalls) > 0 {
+				part.ThoughtSignature = canonicalSignatureForProvider(item.ToolCalls[0].ThoughtSignature, item.ToolCalls[0].ThoughtSignatureProvider, CanonicalSignatureProviderGemini)
+			}
+			parts = append(parts, part)
+		case CanonicalOutputReasoning:
+			text := canonicalReasoningText(item)
+			if text != "" {
+				part := GeminiPart{Text: text, Thought: true}
+				if len(item.Content) > 0 {
+					part.ThoughtSignature = canonicalSignatureForProvider(item.Content[0].Signature, item.Content[0].SignatureProvider, CanonicalSignatureProviderGemini)
+				}
+				parts = append(parts, part)
+			}
 		}
 	}
+	if firstFunctionCallIndex >= 0 && parts[firstFunctionCallIndex].ThoughtSignature == "" {
+		parts[firstFunctionCallIndex].ThoughtSignature = geminiCrossProviderThoughtSignature
+	}
 	if len(parts) == 0 {
-		parts = []GeminiPart{{Text: ""}}
+		return nil, fmt.Errorf("cannot convert Maheshvara response to Gemini: no representable output part")
 	}
 	return &GeminiResponse{
 		Candidates: []GeminiCandidate{{
@@ -1676,17 +2510,25 @@ func CanonicalToGeminiResponse(resp *CanonicalResponse) (*GeminiResponse, error)
 			FinishReason: canonicalStopToGemini(resp.StopReason),
 		}},
 		UsageMetadata: geminiUsageFromCanonical(resp.Usage),
+		ModelVersion:  resp.Model,
+		ResponseID:    resp.ID,
 	}, nil
 }
 
 func CanonicalToResponsesResponse(resp *CanonicalResponse) (*OpenAIResponsesResponse, error) {
+	if resp == nil {
+		return nil, fmt.Errorf("nil Maheshvara response")
+	}
 	out := &OpenAIResponsesResponse{
-		ID:        resp.ID,
-		Object:    "response",
-		CreatedAt: resp.CreatedAt,
-		Status:    resp.Status,
-		Model:     resp.Model,
-		Usage:     responsesUsageFromCanonical(resp.Usage),
+		ID:                resp.ID,
+		Object:            "response",
+		CreatedAt:         resp.CreatedAt,
+		Status:            resp.Status,
+		Model:             resp.Model,
+		Usage:             responsesUsageFromCanonical(resp.Usage),
+		IncompleteDetails: resp.IncompleteDetails,
+		Metadata:          resp.Metadata,
+		ServiceTier:       resp.ServiceTier,
 	}
 	if out.ID == "" {
 		out.ID = newCanonicalResponseID("resp")
@@ -1697,6 +2539,14 @@ func CanonicalToResponsesResponse(resp *CanonicalResponse) (*OpenAIResponsesResp
 	if out.Status == "" {
 		out.Status = "completed"
 	}
+	if resp.Error != nil {
+		out.Error = map[string]any{
+			"type":    resp.Error.Type,
+			"code":    resp.Error.Code,
+			"param":   resp.Error.Param,
+			"message": resp.Error.Message,
+		}
+	}
 	for _, item := range resp.Output {
 		ritem := ResponsesOutput{
 			ID:        item.ID,
@@ -1706,34 +2556,72 @@ func CanonicalToResponsesResponse(resp *CanonicalResponse) (*OpenAIResponsesResp
 			CallID:    item.CallID,
 			Name:      item.Name,
 			Arguments: item.Arguments,
+			Metadata:  item.Metadata,
 		}
 		if ritem.Type == CanonicalOutputMessage || ritem.Type == "message" {
 			ritem.Type = "message"
 			ritem.Role = "assistant"
-			ritem.Content = []ResponsesOutputContent{{Type: "output_text", Text: canonicalText(item.Content)}}
+			for _, part := range item.Content {
+				if part.Type == CanonicalContentReasoning {
+					continue
+				}
+				if rendered, ok := canonicalPartToResponsesOutputContent(part); ok {
+					ritem.Content = append(ritem.Content, rendered)
+				}
+			}
 		}
 		if ritem.Type == CanonicalOutputFunctionCall {
 			ritem.Type = "function_call"
 		}
 		if ritem.Type == CanonicalOutputReasoning {
 			ritem.Type = "reasoning"
-			for _, s := range item.Summary {
+			for _, s := range canonicalReasoningSummary(item) {
 				ritem.Summary = append(ritem.Summary, ResponsesReasoningSummaryPart{Type: s.Type, Text: s.Text})
 			}
+			ritem.EncryptedContent = canonicalReasoningEncryptedContent(item)
 		}
 		out.Output = append(out.Output, ritem)
 	}
 	return out, nil
 }
 
+func canonicalPartToResponsesOutputContent(part CanonicalContentPart) (ResponsesOutputContent, bool) {
+	switch part.Type {
+	case CanonicalContentText:
+		return ResponsesOutputContent{Type: "output_text", Text: part.Text, Annotations: part.Annotations}, part.Text != ""
+	case CanonicalContentRefusal:
+		return ResponsesOutputContent{Type: "refusal", Refusal: part.Text, Annotations: part.Annotations}, part.Text != ""
+	case CanonicalContentImage:
+		return ResponsesOutputContent{Type: "image", ImageURL: firstNonEmptyString(part.ImageURL, part.URI)}, firstNonEmptyString(part.ImageURL, part.URI) != ""
+	case CanonicalContentFile, CanonicalContentDocument:
+		return ResponsesOutputContent{Type: "file", FileID: part.FileID, FileURL: firstNonEmptyString(part.URI, part.ImageURL), Filename: part.FileName}, part.FileID != "" || part.URI != "" || part.FileData != ""
+	case CanonicalContentAudio:
+		audio := map[string]any{}
+		if data := firstNonEmptyString(part.AudioBase64, part.Data); data != "" {
+			audio["data"] = data
+		}
+		if part.AudioURL != "" {
+			audio["url"] = part.AudioURL
+		}
+		if part.MediaType != "" {
+			audio["format"] = part.MediaType
+		}
+		return ResponsesOutputContent{Type: "audio", Audio: audio}, len(audio) > 0
+	default:
+		return ResponsesOutputContent{}, false
+	}
+}
+
 func canonicalUsageFromOpenAIUsage(usage Usage) *CanonicalUsage {
 	u := &CanonicalUsage{
-		InputTokens:       usage.PromptTokens,
-		OutputTokens:      usage.CompletionTokens,
-		TotalTokens:       usage.TotalTokens,
-		CachedInputTokens: max(usage.CachedTokens, usage.PromptCacheHitTokens),
-		ReasoningTokens:   usage.CompletionTokensDetails.ReasoningTokens,
-		Source:            "provider_response",
+		InputTokens:              usage.PromptTokens,
+		OutputTokens:             usage.CompletionTokens,
+		TotalTokens:              usage.TotalTokens,
+		CachedInputTokens:        max(usage.CachedTokens, usage.PromptCacheHitTokens),
+		ReasoningTokens:          usage.CompletionTokensDetails.ReasoningTokens,
+		AcceptedPredictionTokens: usage.CompletionTokensDetails.AcceptedPredictionTokens,
+		RejectedPredictionTokens: usage.CompletionTokensDetails.RejectedPredictionTokens,
+		Source:                   "provider_response",
 	}
 	if u.CachedInputTokens == 0 {
 		u.CachedInputTokens = max(usage.PromptTokensDetails.CachedTokens, usage.PromptTokensDetails.CacheReadTokens)
@@ -1834,7 +2722,9 @@ func openAIUsageFromCanonical(u *CanonicalUsage) Usage {
 			CachedTokens: u.CachedInputTokens,
 		},
 		CompletionTokensDetails: CompletionTokensDetails{
-			ReasoningTokens: u.ReasoningTokens,
+			ReasoningTokens:          u.ReasoningTokens,
+			AcceptedPredictionTokens: u.AcceptedPredictionTokens,
+			RejectedPredictionTokens: u.RejectedPredictionTokens,
 		},
 	}
 }

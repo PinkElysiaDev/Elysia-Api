@@ -28,6 +28,7 @@ type Config struct {
 	Groups                 []ModelGroupConfig `json:"-"`                                // 同上：旧 config.json 的 modelGroups 字段已废弃，数据走 SQLite
 	Responses              ResponsesConfig    `json:"responses,omitempty"`              // Responses API 兼容策略
 	Relay                  RelayConfig        `json:"relay,omitempty"`                  // 转发（chat/claude/gemini）策略
+	CustomProtocols        []json.RawMessage  `json:"customProtocols,omitempty"`        // Maheshvara 自定义协议 JSON 配置
 	Usage                  UsageConfig        `json:"usage,omitempty"`                  // 用量估算配置
 	HTTPTimeout            int                `json:"httpTimeout,omitempty"`            // HTTP 请求超时时间（秒），0 为不限制
 	DebugMode              bool               `json:"debugMode,omitempty"`              // 调试模式
@@ -56,16 +57,18 @@ type ServerConfig struct {
 }
 
 type ResponsesConfig struct {
-	Enabled                      *bool  `json:"enabled,omitempty"`
-	UpstreamMode                 string `json:"upstreamMode,omitempty"`                 // native | transform | auto
-	TransformUnsupportedBehavior string `json:"transformUnsupportedBehavior,omitempty"` // error | warn | ignore
-	PassThroughUnknownFields     *bool  `json:"passThroughUnknownFields,omitempty"`
+	Enabled      *bool  `json:"enabled,omitempty"`
+	UpstreamMode string `json:"upstreamMode,omitempty"` // native | transform | auto
+
+	// Deprecated: Maheshvara now uses explicit conversion errors and protocol-bound RawExtra fields.
+	TransformUnsupportedBehavior string `json:"transformUnsupportedBehavior,omitempty"`
+	// Deprecated: unknown fields are retained in Maheshvara RawExtra and are never blindly copied across protocols.
+	PassThroughUnknownFields *bool `json:"passThroughUnknownFields,omitempty"`
 }
 
-// RelayConfig 控制 chat_completions / claude / gemini 三种线路 API 的转发策略。
-// Passthrough：当客户端输入格式与所选上游线路 API 一致时（如 Claude→Anthropic、
-// Gemini→Gemini、OpenAI→OpenAI），跳过 unified 中间模型的有损往返，以原始请求字节
-// 直发上游（仅改写 model、按需补 stream）。默认开启；置 false 可强制恒走转换。
+// RelayConfig controls compatibility optimizations around the Maheshvara path.
+// Passthrough is an explicit opt-in escape hatch for same-protocol forwarding;
+// it is disabled by default so every request follows wire -> Maheshvara -> wire.
 type RelayConfig struct {
 	Passthrough *bool `json:"passthrough,omitempty"`
 }
@@ -201,6 +204,15 @@ func (c *Config) Save() error {
 	raw["enablePprof"] = c.EnablePprof
 	raw["httpTimeout"] = c.HTTPTimeout
 	raw["allowFakeIPOutbound"] = c.AllowFakeIPOutbound
+	if len(c.CustomProtocols) > 0 {
+		protocols := make([]json.RawMessage, len(c.CustomProtocols))
+		for index, protocol := range c.CustomProtocols {
+			protocols[index] = append(json.RawMessage(nil), protocol...)
+		}
+		raw["customProtocols"] = protocols
+	} else {
+		delete(raw, "customProtocols")
+	}
 	c.mu.RUnlock()
 
 	out, err := json.MarshalIndent(raw, "", "  ")
@@ -297,6 +309,10 @@ func (c *Config) Reload() error {
 	c.UsagePersistMaxRecords = newCfg.UsagePersistMaxRecords
 	c.HealthCheck = newCfg.HealthCheck
 	c.AllowFakeIPOutbound = newCfg.AllowFakeIPOutbound
+	c.CustomProtocols = make([]json.RawMessage, len(newCfg.CustomProtocols))
+	for index, protocol := range newCfg.CustomProtocols {
+		c.CustomProtocols[index] = append(json.RawMessage(nil), protocol...)
+	}
 	c.mu.Unlock()
 
 	return nil
@@ -335,6 +351,16 @@ func (c *Config) GetTokens() []AccessToken {
 	defer c.mu.RUnlock()
 	// 返回副本，理由同 GetGroups：避免锁外别名读取与并发重写竞争。
 	return append([]AccessToken(nil), c.Tokens...)
+}
+
+func (c *Config) GetCustomProtocols() []json.RawMessage {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	protocols := make([]json.RawMessage, len(c.CustomProtocols))
+	for index, raw := range c.CustomProtocols {
+		protocols[index] = append(json.RawMessage(nil), raw...)
+	}
+	return protocols
 }
 
 // 以下访问器/设置器统一通过 mu 锁保护那些会被请求热路径与 Reload/admin
@@ -563,14 +589,14 @@ func (c *Config) GetResponsesConfig() ResponsesConfig {
 	return cfg
 }
 
-// GetRelayConfig 返回转发策略配置，Passthrough 默认开启。
+// GetRelayConfig returns relay policy. Passthrough is disabled by default.
 func (c *Config) GetRelayConfig() RelayConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	cfg := c.Relay
 	if cfg.Passthrough == nil {
-		v := true
+		v := false
 		cfg.Passthrough = &v
 	}
 	return cfg
@@ -617,9 +643,15 @@ func init() {
 		*configFile = "config.json"
 	}
 
-	cfg, err := Load(*configFile)
+	cfg, created, err := EnsureConfig(*configFile)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	if created {
+		log.Printf("No config found at %s; created a default with a generated panelAccessToken.", *configFile)
+		log.Printf("Generated panelAccessToken: %s", cfg.GetPanelAccessToken())
+		log.Printf("Please review %s and rotate the token before exposing the service.", *configFile)
 	}
 
 	GlobalConfig = cfg

@@ -92,7 +92,11 @@ func (s *Server) refreshSourceByValue(ctx context.Context, source storage.ModelS
 
 func (s *Server) fetchModelsFromSource(ctx context.Context, source storage.ModelSource) ([]storage.Model, error) {
 	// 按归一化后的 apiFormat 分发，兼容旧的 platform 值（claude/openai/openai-compatible…）。
-	switch relay.NormalizeAPIFormat(source.Platform) {
+	apiFormat := relay.NormalizeAPIFormat(source.Platform)
+	if strings.HasPrefix(apiFormat, "custom:") {
+		return nil, fmt.Errorf("custom protocol source %q does not define model discovery; disable autoFetchModels and configure manual models", source.Platform)
+	}
+	switch apiFormat {
 	case relay.APIFormatAnthropic:
 		// Anthropic 官方 /v1/models 存在（需 x-api-key + anthropic-version），中转站则
 		// 普遍提供 OpenAI 兼容的 /v1/models。两种鉴权都试一遍，返回 OpenAI 风格 {data:[{id}]}。

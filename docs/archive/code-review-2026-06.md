@@ -1,5 +1,7 @@
 # Elysia-API 代码审查报告
 
+> 归档说明：本文记录的是 2026-06 当时的实现。当前生产转换已统一经过 Maheshvara，`relay.passthrough` 默认关闭；现行约定见 `docs/maheshvara-protocol.md`。
+
 - **日期**：2026-06-15
 - **范围**：`backend/`（Go：relay / server / storage / config）与 `packages/webui/`（React + TypeScript）
 - **方法**：分子系统逐文件审查，结论按严重度排序。每条给出位置、影响与修复建议。
@@ -34,29 +36,29 @@
 
 ## 摘要
 
-整体工程质量较高：路由热路径有内存缓存、SSE 头时机与 `Transfer-Encoding` 冲突处理得当、SQL 全部走参数占位符（无注入）、面板令牌用常量时间比较、SQLite 单连接下的回填死锁有正确规避。本次新增的「同源透传」也已落地并通过测试。
+整体工程质量较高：路由热路径有内存缓存、SSE 头时机与 `Transfer-Encoding` 冲突处理得当、SQL 全部走参数占位符（无注入）、面板令牌用常量时间比较、SQLite 单连接下的回填死锁有正确规避。当前默认转换路径已统一迁移到 Maheshvara；同源透传只保留为显式兼容逃生口。
 
 但存在若干**值得优先处理**的问题，集中在四类：
 
 1. **可靠性不一致**：`/v1/responses` 入口无故障转移、空模型组会误报 403（C1）。
 2. **计量正确性**：失败请求永久占用每日 token 配额（H1）；`/chat/completions` 的 429 不记 usage（M1）；优雅退出不冲刷 usage 队列，重启即丢账（H5）。
 3. **安全**：SSRF 校验存在 DNS rebinding TOCTOU 窗口（H2）；at-rest 加密的密钥默认与数据库同目录，威胁模型基本落空（S1/S2）。
-4. **转换保真度**：经 unified/流式路径时，工具调用、多模态图片、usage token 在多个方向被丢弃（R1–R4）。新增的「同源透传」恰好绕开了其中一部分，但跨协议转换仍受影响。
+4. **转换保真度**：当时经旧 unified/流式路径时，工具调用、多模态图片、usage token 在多个方向被丢弃（R1–R4）。现行实现已由 Maheshvara 请求、响应和状态化流式转换器替代这些路径。
 
 下面按子系统展开。严重度：**Critical** 影响核心功能/数据正确性、**High** 显著影响可靠性或安全、**Medium** 局部正确性/可观测性、**Low** 次要/风格。
 
 ---
 
-## 0. 本次新增：三种 API 的同源透传（已实现并验证）
+## 0. 同源透传兼容逃生口（已实现并验证）
 
 针对需求「完善 responses 之外另三种 API 的透传」，已实现：
 
-- `relay.PassthroughBody`（`backend/relay/canonical_convert.go`）：以原始请求字节为基底，仅改写 `model`、按需补 `stream`/`stream_options.include_usage`，其余字段原样保留，把 Responses 的零转换透传推广到 chat_completions / claude / gemini。
+- `relay.PassthroughBody`（`backend/relay/canonical_convert.go`）：以原始请求字节为基底，仅改写 `model`、按需补 `stream`/`stream_options.include_usage`，其余字段原样保留；仅在显式开启兼容模式时使用。
 - `relay.FormatMatchesPlatform`（`backend/relay/converter.go`）：判定输入格式与上游线路 API 是否同源（Claude↔Anthropic、Gemini↔Gemini、OpenAI/DeepSeek↔OpenAI/DeepSeek/Azure）。
-- `chatCompletions`（`backend/server/server.go`）：同源且未触发 vision 过滤时走透传，否则回退转换；用 `RelayConfig.Passthrough`（默认开）可关闭。
+- `chatCompletions`（`backend/server/server.go`）：默认始终执行 `wire → Maheshvara → wire`；只有 `RelayConfig.Passthrough=true`、协议同源且未触发 vision 过滤时才走透传。
 - 测试：`relay/passthrough_test.go` + `server/passthrough_test.go`，覆盖未知字段保真、model 改写、stream 处理、关闭后回退转换。
 
-**审查结论（来自 server 审查 M4）**：vision 过滤的 `!filtered` 守卫正确——被过滤的图片只改了 `unifiedReq` 而非原始字节，透传会把图片漏给上游，因此过滤后必须回退转换。Gemini 不改写体内 `model`（model 在 URL）也正确。**小问题**：`record.RelayMode` 只在 body 构造成功后设置，构造失败的记录看不到 passthrough/transform 标记——建议在构造前按 `usePassthrough` 预设。
+**审查结论（来自 server 审查 M4）**：vision 过滤的 `!filtered` 守卫正确——被过滤的图片只改了 `canonicalReq` 而非原始字节，透传会把图片漏给上游，因此过滤后必须回退 Maheshvara 转换。Gemini 不改写体内 `model`（model 在 URL）也正确。**小问题**：`record.RelayMode` 只在 body 构造成功后设置，构造失败的记录看不到 passthrough/transform 标记——建议在构造前按 `usePassthrough` 预设。
 
 ---
 
@@ -140,7 +142,7 @@
 
 ## 2. relay 包（格式转换 / 流式 / 适配器）
 
-> 注意：本次新增的「同源透传」对**同协议**方向（Claude→Claude 等）绕开了下述多数转换缺陷；但**跨协议**转换（如 Claude 客户端 → OpenAI 上游）仍走 unified/流式路径，以下问题依然成立。
+> 归档注意：下述条目描述 2026-06 的旧 unified/流式实现。当前默认路径始终经过 Maheshvara；同源透传默认关闭，仅在用户显式 opt-in 时作为兼容逃生口。
 
 ### Critical / High
 
@@ -292,5 +294,4 @@
 
 ## 6. 总评
 
-架构清晰、热路径优化与 SSE 细节处理到位，新增透传实现正确且有测试覆盖。最值得立即投入的是**计量正确性**（H1/H5/M1，直接影响计费与配额）、**Responses 入口可靠性对齐**（C1）与**SSRF 连接时校验**（H2）。转换保真问题（R1–R4）主要影响跨协议场景——本次透传已显著降低同协议场景的暴露面，是正确的方向。
-
+架构清晰、热路径优化与 SSE 细节处理到位。本文当时建议优先修复**计量正确性**、**Responses 入口可靠性**与**SSRF 连接时校验**；这些高优先级项及 R1–R4 已在后续修复。现行协议转换以 Maheshvara 为核心，同源透传默认关闭。

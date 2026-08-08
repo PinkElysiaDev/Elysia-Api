@@ -25,6 +25,7 @@ export type Platform =
   | 'openai'
   | 'openai-compatible'
   | 'claude'
+  | `custom:${string}`
 export type ModelType = 'llm' | 'embedding' | 'reranker'
 export type GroupStrategy = 'round-robin' | 'sequential' | 'random'
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'

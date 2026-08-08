@@ -44,7 +44,9 @@ func buildHTTPRequest(method, url, apiKey string, body []byte, extraHeaders map[
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 
 	for k, v := range extraHeaders {
 		req.Header.Set(k, v)
@@ -124,16 +126,29 @@ type ContentPrediction struct {
 }
 
 type Message struct {
-	Role       string           `json:"role"`
-	Content    interface{}      `json:"content"`
-	ToolCalls  []OpenAIToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string           `json:"tool_call_id,omitempty"`
+	Role             string           `json:"role"`
+	Content          interface{}      `json:"content"`
+	ReasoningContent string           `json:"reasoning_content,omitempty"`
+	Refusal          string           `json:"refusal,omitempty"`
+	Audio            interface{}      `json:"audio,omitempty"`
+	Name             string           `json:"name,omitempty"`
+	ToolCalls        []OpenAIToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string           `json:"tool_call_id,omitempty"`
 }
 
 type OpenAIToolCall struct {
-	ID       string             `json:"id"`
-	Type     string             `json:"type"`
-	Function OpenAIToolFunction `json:"function"`
+	ID           string                      `json:"id"`
+	Type         string                      `json:"type"`
+	Function     OpenAIToolFunction          `json:"function"`
+	ExtraContent *OpenAIToolCallExtraContent `json:"extra_content,omitempty"`
+}
+
+type OpenAIToolCallExtraContent struct {
+	Google *OpenAIToolCallGoogleExtraContent `json:"google,omitempty"`
+}
+
+type OpenAIToolCallGoogleExtraContent struct {
+	ThoughtSignature string `json:"thought_signature,omitempty"`
 }
 
 type OpenAIToolFunction struct {
@@ -221,10 +236,12 @@ type PromptTokensDetails struct {
 }
 
 type CompletionTokensDetails struct {
-	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
-	TextTokens      int `json:"text_tokens,omitempty"`
-	AudioTokens     int `json:"audio_tokens,omitempty"`
-	ImageTokens     int `json:"image_tokens,omitempty"`
+	ReasoningTokens          int `json:"reasoning_tokens,omitempty"`
+	TextTokens               int `json:"text_tokens,omitempty"`
+	AudioTokens              int `json:"audio_tokens,omitempty"`
+	ImageTokens              int `json:"image_tokens,omitempty"`
+	AcceptedPredictionTokens int `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int `json:"rejected_prediction_tokens,omitempty"`
 }
 
 func (a *OpenAIAdapter) SendRequest(baseUrl, apiKey string, req OpenAIRequest) (*OpenAIResponse, error) {

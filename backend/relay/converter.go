@@ -22,7 +22,7 @@ const (
 
 // APIFormat 是按「线路 API 协议」对模型源/模型的分类，取代旧的含糊 platform
 // （把厂商和协议混为一谈）。四个值一一对应一种上游 wire API：
-//   - APIFormatResponses        OpenAI Responses API（codex 用，选它即透传，不转换）
+//   - APIFormatResponses        OpenAI Responses API（codex 用；默认仍经过 Maheshvara）
 //   - APIFormatChatCompletions  OpenAI Chat Completions API（最通用的兼容协议）
 //   - APIFormatAnthropic        Anthropic Messages API（/v1/messages）
 //   - APIFormatGemini           Gemini API（/v1beta generateContent）
@@ -41,9 +41,13 @@ const (
 //   - responses / openai_responses                        → responses
 //
 // 注意：旧的 "openai" 归一到 chat_completions（而非 responses），因为旧实现走的就是
-// chat completions 转换路径；只有用户在新 UI 明确选 "responses" 才触发透传。
+// chat completions 转换路径；只有显式开启 relay.passthrough 且协议同源时才允许透传。
 func NormalizeAPIFormat(raw string) string {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	if strings.HasPrefix(normalized, "custom:") && strings.TrimPrefix(normalized, "custom:") != "" {
+		return normalized
+	}
+	switch normalized {
 	case APIFormatResponses, "openai_responses", "openai-responses":
 		return APIFormatResponses
 	case APIFormatAnthropic, "claude":
@@ -58,6 +62,9 @@ func NormalizeAPIFormat(raw string) string {
 
 // DetectPlatform 从 baseURL 或 platform 字段检测平台类型
 func DetectPlatform(baseURL, platform string) Platform {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(platform)), "custom:") {
+		return Platform(strings.ToLower(strings.TrimSpace(platform)))
+	}
 	// 首先检查明确的 platform / apiFormat 字段。
 	// 同时识别新的 apiFormat 值（responses/chat_completions）与旧值（openai 等）。
 	switch strings.ToLower(strings.TrimSpace(platform)) {
@@ -92,6 +99,33 @@ func DetectPlatform(baseURL, platform string) Platform {
 	}
 
 	return PlatformUnknown
+}
+
+func IsCustomPlatform(platform Platform) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(string(platform))), "custom:")
+}
+
+func CustomProtocolID(platform Platform) string {
+	if !IsCustomPlatform(platform) {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimPrefix(strings.ToLower(strings.TrimSpace(string(platform))), "custom:"))
+}
+
+func TargetFormatForPlatform(platform Platform) (FormatType, error) {
+	if IsCustomPlatform(platform) {
+		return FormatUnknown, fmt.Errorf("custom platform %q requires a registered protocol renderer", platform)
+	}
+	switch platform {
+	case PlatformAnthropic:
+		return FormatClaude, nil
+	case PlatformGemini:
+		return FormatGemini, nil
+	case PlatformOpenAI, PlatformDeepSeek, PlatformAzure, PlatformUnknown:
+		return FormatOpenAIChat, nil
+	default:
+		return FormatUnknown, fmt.Errorf("unsupported target platform %q", platform)
+	}
 }
 
 // FormatType 请求格式类型
@@ -152,6 +186,7 @@ func DetectInputFormat(body []byte) FormatType {
 
 // UnifiedRequest 统一的内部请求格式
 // 这是所有格式的"全集"，包含所有可能的字段
+// Deprecated: use MaheshvaraRequest (CanonicalRequest).
 type UnifiedRequest struct {
 	// 基础字段
 	Model               string           `json:"model"`
@@ -208,6 +243,8 @@ type ThinkingConfig struct {
 
 // ConvertToUnified 将任意格式的请求转换为统一格式。
 // hint 为路径推断的格式，FormatUnknown 时回退到字段检测。
+// Deprecated: production relay paths must use ConvertRequestToCanonical and
+// the Maheshvara request model.
 func ConvertToUnified(body []byte, hint FormatType) (*UnifiedRequest, error) {
 	format := hint
 	if format == FormatUnknown {
@@ -548,6 +585,10 @@ type GeminiContent struct {
 
 type GeminiPart struct {
 	Text             string                `json:"text,omitempty"`
+	Thought          bool                  `json:"thought,omitempty"`
+	ThoughtSignature string                `json:"thoughtSignature,omitempty"`
+	InlineData       map[string]any        `json:"inlineData,omitempty"`
+	FileData         map[string]any        `json:"fileData,omitempty"`
 	ExecutableCode   *GeminiExecutableCode `json:"executableCode,omitempty"`
 	FunctionCall     interface{}           `json:"functionCall,omitempty"`
 	FunctionResponse interface{}           `json:"functionResponse,omitempty"`
@@ -559,6 +600,8 @@ type GeminiExecutableCode struct {
 }
 
 // ConvertFromUnified 从统一格式转换为目标平台格式
+// Deprecated: production relay paths must render from Maheshvara with
+// CanonicalToTargetRequest.
 func ConvertFromUnified(unified *UnifiedRequest, targetPlatform Platform) ([]byte, error) {
 	switch targetPlatform {
 	case PlatformDeepSeek:

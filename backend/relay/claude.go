@@ -56,12 +56,17 @@ type ClaudeResponse struct {
 }
 
 type ClaudeContent struct {
-	Type     string          `json:"type"` // "text" | "thinking" | "tool_use"
-	Text     string          `json:"text,omitempty"`
-	Thinking string          `json:"thinking,omitempty"`
-	ID       string          `json:"id,omitempty"`   // tool_use id
-	Name     string          `json:"name,omitempty"` // tool_use name
-	Input    json.RawMessage `json:"input,omitempty"`
+	Type      string          `json:"type"` // "text" | "thinking" | "tool_use"
+	Text      string          `json:"text,omitempty"`
+	Thinking  string          `json:"thinking,omitempty"`
+	Signature string          `json:"signature,omitempty"`
+	Data      string          `json:"data,omitempty"`
+	ID        string          `json:"id,omitempty"`   // tool_use id
+	Name      string          `json:"name,omitempty"` // tool_use name
+	Input     json.RawMessage `json:"input,omitempty"`
+	ToolUseID string          `json:"tool_use_id,omitempty"`
+	Content   any             `json:"content,omitempty"`
+	Source    map[string]any  `json:"source,omitempty"`
 }
 
 type ClaudeUsage struct {

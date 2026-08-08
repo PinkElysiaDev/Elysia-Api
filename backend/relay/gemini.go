@@ -53,6 +53,8 @@ func (a *GeminiAdapter) SendRequest(baseUrl, apiKey, model string, body []byte, 
 type GeminiResponse struct {
 	Candidates    []GeminiCandidate `json:"candidates"`
 	UsageMetadata GeminiUsageMeta   `json:"usageMetadata"`
+	ModelVersion  string            `json:"modelVersion,omitempty"`
+	ResponseID    string            `json:"responseId,omitempty"`
 }
 
 type GeminiCandidate struct {

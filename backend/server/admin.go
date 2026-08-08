@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
@@ -158,6 +159,10 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 	if item.ID == "" {
 		item.ID = slugID(item.Name)
 	}
+	if err := validateCustomSourceProtocol(&item); err != nil {
+		fail(c, 400, "invalid_custom_protocol_source", err.Error())
+		return
+	}
 	// 「留空即不变」：编辑时若未填 apiKey，保留已有记录的原 key，避免被清空。
 	if strings.TrimSpace(item.APIKey) == "" {
 		if existing, found := s.findSourceByID(c.Request.Context(), item.ID); found {
@@ -185,6 +190,25 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 	}()
 
 	ok(c, item)
+}
+
+func validateCustomSourceProtocol(item *storage.ModelSource) error {
+	if item == nil {
+		return fmt.Errorf("model source is nil")
+	}
+	platform := relay.NormalizeAPIFormat(item.Platform)
+	if !strings.HasPrefix(platform, "custom:") {
+		return nil
+	}
+	protocolID := strings.TrimPrefix(platform, "custom:")
+	if _, ok := relay.GetCustomProtocol(protocolID); !ok {
+		return fmt.Errorf("custom protocol %q is not registered in config.json", protocolID)
+	}
+	if item.AutoFetchModels {
+		return fmt.Errorf("custom protocol sources require autoFetchModels=false and manualModels")
+	}
+	item.Platform = platform
+	return nil
 }
 
 // findSourceByID 按 id 查找模型源（用于「留空即不变」保留原 secret）。

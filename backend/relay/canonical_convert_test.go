@@ -2,6 +2,7 @@ package relay
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -438,7 +439,10 @@ func TestCanonicalMessagesToGeminiFunctionResponse(t *testing.T) {
 		},
 	}
 
-	contents := canonicalMessagesToGemini(req)
+	contents, err := canonicalMessagesToGemini(req)
+	if err != nil {
+		t.Fatalf("canonicalMessagesToGemini: %v", err)
+	}
 	if len(contents) != 2 {
 		t.Fatalf("expected 2 contents (assistant + user), got %d", len(contents))
 	}
@@ -516,7 +520,10 @@ func TestCanonicalMessagesToGeminiFunctionResponse(t *testing.T) {
 			},
 		},
 	}
-	contentsWithObj := canonicalMessagesToGemini(reqWithJsonObject)
+	contentsWithObj, err := canonicalMessagesToGemini(reqWithJsonObject)
+	if err != nil {
+		t.Fatalf("canonicalMessagesToGemini JSON object: %v", err)
+	}
 	userMsgWithObj := contentsWithObj[1]
 	userPartsWithObj := userMsgWithObj["parts"].([]map[string]any)
 	frObj := userPartsWithObj[0]["functionResponse"].(map[string]any)
@@ -525,4 +532,278 @@ func TestCanonicalMessagesToGeminiFunctionResponse(t *testing.T) {
 	if respObj["status"] != "ok" || respObj["code"].(float64) != 200 {
 		t.Fatalf("JSON object should be used as-is, got %+v", respObj)
 	}
+}
+
+func TestClaudeToGeminiFiltersEmptyPartsAndPreservesThinking(t *testing.T) {
+	body := []byte(`{
+		"model":"claude-test",
+		"max_tokens":128,
+		"messages":[
+			{"role":"user","content":[{"type":"text","text":"first"}]},
+			{"role":"assistant","content":[{"type":"redacted_thinking","data":"opaque"}]},
+			{"role":"user","content":[{"type":"text","text":""},{"type":"unknown_block","value":"ignored"},{"type":"text","text":"second"}]},
+			{"role":"assistant","content":[{"type":"thinking","thinking":"consider the result","signature":"sig"},{"type":"redacted_thinking","data":"opaque"},{"type":"text","text":"done"}]}
+		]
+	}`)
+
+	req, err := ClaudeRequestToCanonical(body)
+	if err != nil {
+		t.Fatalf("ClaudeRequestToCanonical: %v", err)
+	}
+	out, err := CanonicalToGeminiRequest(req)
+	if err != nil {
+		t.Fatalf("CanonicalToGeminiRequest: %v", err)
+	}
+
+	contents := assertGeminiPartsHaveData(t, out)
+	if len(contents) != 2 {
+		t.Fatalf("expected adjacent user messages to merge into 2 contents, got %d: %s", len(contents), out)
+	}
+
+	userContent := contents[0].(map[string]any)
+	if userContent["role"] != "user" {
+		t.Fatalf("expected first content role user, got %v", userContent["role"])
+	}
+	userParts := userContent["parts"].([]any)
+	if len(userParts) != 2 || userParts[0].(map[string]any)["text"] != "first" || userParts[1].(map[string]any)["text"] != "second" {
+		t.Fatalf("expected merged user text parts, got %+v", userParts)
+	}
+
+	modelContent := contents[1].(map[string]any)
+	if modelContent["role"] != "model" {
+		t.Fatalf("expected assistant role to map to model, got %v", modelContent["role"])
+	}
+	modelParts := modelContent["parts"].([]any)
+	if len(modelParts) != 2 {
+		t.Fatalf("expected thinking and text parts, got %+v", modelParts)
+	}
+	thoughtPart := modelParts[0].(map[string]any)
+	if thoughtPart["text"] != "consider the result" || thoughtPart["thought"] != true {
+		t.Fatalf("expected Gemini thought part, got %+v", thoughtPart)
+	}
+	if _, exists := thoughtPart["thoughtSignature"]; exists {
+		t.Fatalf("Anthropic signature must not be replayed as Gemini thoughtSignature: %+v", thoughtPart)
+	}
+	if modelParts[1].(map[string]any)["text"] != "done" {
+		t.Fatalf("expected final assistant text, got %+v", modelParts[1])
+	}
+	if strings.Contains(string(out), "opaque") || strings.Contains(string(out), "unknown_block") || strings.Contains(string(out), `"text":""`) {
+		t.Fatalf("unrepresentable or empty content leaked into Gemini request: %s", out)
+	}
+}
+
+func TestClaudeToGeminiRejectsRequestWithoutRepresentableContent(t *testing.T) {
+	body := []byte(`{
+		"model":"claude-test",
+		"max_tokens":128,
+		"messages":[
+			{"role":"assistant","content":[{"type":"redacted_thinking","data":"opaque"}]},
+			{"role":"user","content":[{"type":"text","text":""},{"type":"unknown_block"}]}
+		]
+	}`)
+
+	req, err := ClaudeRequestToCanonical(body)
+	if err != nil {
+		t.Fatalf("ClaudeRequestToCanonical: %v", err)
+	}
+	_, err = CanonicalToGeminiRequest(req)
+	if err == nil || !strings.Contains(err.Error(), "no representable message content") {
+		t.Fatalf("expected clear no-content conversion error, got %v", err)
+	}
+}
+
+func TestCanonicalMessagesToGeminiRejectsUnmatchedFunctionResponse(t *testing.T) {
+	req := &CanonicalRequest{
+		Messages: []CanonicalMessage{
+			{
+				Role: "user",
+				Content: []CanonicalContentPart{
+					{Type: CanonicalContentToolOutput, ToolCallID: "toolu_missing", ToolOutput: "result"},
+				},
+			},
+		},
+	}
+
+	_, err := canonicalMessagesToGemini(req)
+	if err == nil || !strings.Contains(err.Error(), "message 0 part 0") || !strings.Contains(err.Error(), "toolu_missing") {
+		t.Fatalf("expected indexed unmatched function response error, got %v", err)
+	}
+}
+
+func TestGeminiThinkingConfigUsesGenerationConfig(t *testing.T) {
+	request, err := GeminiRequestToCanonical([]byte(`{
+		"contents":[{"role":"user","parts":[{"text":"hello"}]}],
+		"generationConfig":{"thinkingConfig":{"includeThoughts":true,"thinkingLevel":"high","thinkingBudget":2048}}
+	}`), "gemini-test")
+	if err != nil {
+		t.Fatalf("parse Gemini thinking config: %v", err)
+	}
+	if request.Thinking == nil || !request.Thinking.Enabled || request.Thinking.Effort != "high" || request.Thinking.BudgetTokens != 2048 {
+		t.Fatalf("Gemini thinking config was not normalized: %+v", request.Thinking)
+	}
+
+	body, err := CanonicalToGeminiRequest(request)
+	if err != nil {
+		t.Fatalf("render Gemini thinking config: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode rendered Gemini request: %v", err)
+	}
+	if _, exists := payload["thinkingConfig"]; exists {
+		t.Fatalf("thinkingConfig must not be rendered at the request top level: %s", body)
+	}
+	generationConfig, ok := payload["generationConfig"].(map[string]any)
+	if !ok {
+		t.Fatalf("rendered request has no generationConfig: %s", body)
+	}
+	thinkingConfig, ok := generationConfig["thinkingConfig"].(map[string]any)
+	if !ok || thinkingConfig["thinkingLevel"] != "high" || thinkingConfig["thinkingBudget"] != float64(2048) {
+		t.Fatalf("unexpected rendered thinkingConfig: %+v", generationConfig["thinkingConfig"])
+	}
+}
+
+func TestGeminiToolPartsPreserveIDsAndThoughtSignature(t *testing.T) {
+	request := &CanonicalRequest{Messages: []CanonicalMessage{
+		{Role: "assistant", ToolCalls: []CanonicalToolCall{{
+			ID: "call_1", Type: CanonicalToolFunction, Name: "lookup", Arguments: json.RawMessage(`{"q":"elysia"}`), ThoughtSignature: "sig_1", ThoughtSignatureProvider: CanonicalSignatureProviderGemini,
+		}}},
+		{Role: "tool", ToolCallID: "call_1", Content: []CanonicalContentPart{{
+			Type: CanonicalContentToolOutput, ToolCallID: "call_1", ToolOutput: `{"ok":true}`,
+		}}},
+	}}
+
+	contents, err := canonicalMessagesToGemini(request)
+	if err != nil {
+		t.Fatalf("render Gemini tool history: %v", err)
+	}
+	modelParts := contents[0]["parts"].([]map[string]any)
+	functionCall := modelParts[0]["functionCall"].(map[string]any)
+	if functionCall["id"] != "call_1" || modelParts[0]["thoughtSignature"] != "sig_1" {
+		t.Fatalf("function call ID or thought signature was lost: %+v", modelParts[0])
+	}
+	if _, nested := functionCall["thoughtSignature"]; nested {
+		t.Fatalf("thoughtSignature must be a Part field, not a functionCall field: %+v", functionCall)
+	}
+
+	userParts := contents[1]["parts"].([]map[string]any)
+	functionResponse := userParts[0]["functionResponse"].(map[string]any)
+	if functionResponse["id"] != "call_1" || functionResponse["name"] != "lookup" {
+		t.Fatalf("function response ID or name was lost: %+v", functionResponse)
+	}
+}
+
+func TestGeminiResponsePreservesResponseAndToolMetadata(t *testing.T) {
+	canonical, err := GeminiResponseToCanonical(&GeminiResponse{
+		ResponseID:   "resp_1",
+		ModelVersion: "gemini-test",
+		Candidates: []GeminiCandidate{{Content: GeminiContent{Role: "model", Parts: []GeminiPart{{
+			FunctionCall:     map[string]any{"id": "call_1", "name": "lookup", "args": map[string]any{"q": "elysia"}},
+			ThoughtSignature: "sig_1",
+		}}}}},
+	})
+	if err != nil {
+		t.Fatalf("normalize Gemini response: %v", err)
+	}
+	if canonical.ID != "resp_1" || canonical.Model != "gemini-test" || len(canonical.Output) != 1 || len(canonical.Output[0].ToolCalls) != 1 {
+		t.Fatalf("Gemini response metadata was lost: %+v", canonical)
+	}
+	if canonical.Output[0].ToolCalls[0].ThoughtSignature != "sig_1" || canonical.Output[0].ToolCalls[0].ThoughtSignatureProvider != CanonicalSignatureProviderGemini {
+		t.Fatalf("Gemini tool thought signature was lost: %+v", canonical.Output[0])
+	}
+
+	rendered, err := CanonicalToGeminiResponse(canonical)
+	if err != nil {
+		t.Fatalf("render Gemini response: %v", err)
+	}
+	if rendered.ResponseID != "resp_1" || rendered.ModelVersion != "gemini-test" || rendered.Candidates[0].Content.Parts[0].ThoughtSignature != "sig_1" {
+		t.Fatalf("Gemini response metadata did not round-trip: %+v", rendered)
+	}
+}
+
+func TestOpenAIExtendedGoogleThoughtSignatureRoundTripsThroughMaheshvara(t *testing.T) {
+	req, err := OpenAIChatRequestToCanonical([]byte(`{
+		"model":"openai-compatible",
+		"messages":[{"role":"assistant","content":null,"tool_calls":[{
+			"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{\"q\":\"elysia\"}"},
+			"extra_content":{"google":{"thought_signature":"sig_google"}}
+		}]}]
+	}`))
+	if err != nil {
+		t.Fatalf("parse extended OpenAI request: %v", err)
+	}
+	call := req.Messages[0].ToolCalls[0]
+	if call.ThoughtSignature != "sig_google" || call.ThoughtSignatureProvider != CanonicalSignatureProviderGemini {
+		t.Fatalf("Google thought signature was not normalized: %+v", call)
+	}
+
+	gemini, err := canonicalMessagesToGemini(req)
+	if err != nil {
+		t.Fatalf("render Gemini request: %v", err)
+	}
+	geminiPart := gemini[0]["parts"].([]map[string]any)[0]
+	if geminiPart["thoughtSignature"] != "sig_google" {
+		t.Fatalf("Gemini signature was not restored: %+v", geminiPart)
+	}
+
+	openAI, err := CanonicalToOpenAIChatRequest(req)
+	if err != nil {
+		t.Fatalf("render extended OpenAI request: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(openAI, &payload); err != nil {
+		t.Fatalf("decode extended OpenAI request: %v", err)
+	}
+	message := payload["messages"].([]any)[0].(map[string]any)
+	wireCall := message["tool_calls"].([]any)[0].(map[string]any)
+	extra := wireCall["extra_content"].(map[string]any)
+	google := extra["google"].(map[string]any)
+	if google["thought_signature"] != "sig_google" {
+		t.Fatalf("extended OpenAI signature was not restored: %+v", wireCall)
+	}
+}
+
+func assertGeminiPartsHaveData(t *testing.T, body []byte) []any {
+	t.Helper()
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("unmarshal Gemini request: %v", err)
+	}
+	contents, ok := payload["contents"].([]any)
+	if !ok || len(contents) == 0 {
+		t.Fatalf("Gemini request has no contents: %s", body)
+	}
+	dataFields := []string{"text", "inlineData", "fileData", "functionCall", "functionResponse"}
+	for contentIndex, rawContent := range contents {
+		content, ok := rawContent.(map[string]any)
+		if !ok {
+			t.Fatalf("contents[%d] is not an object: %+v", contentIndex, rawContent)
+		}
+		parts, ok := content["parts"].([]any)
+		if !ok || len(parts) == 0 {
+			t.Fatalf("contents[%d] has no parts: %+v", contentIndex, content)
+		}
+		for partIndex, rawPart := range parts {
+			part, ok := rawPart.(map[string]any)
+			if !ok {
+				t.Fatalf("contents[%d].parts[%d] is not an object: %+v", contentIndex, partIndex, rawPart)
+			}
+			dataCount := 0
+			for _, field := range dataFields {
+				value, exists := part[field]
+				if !exists {
+					continue
+				}
+				dataCount++
+				if field == "text" && value == "" {
+					t.Fatalf("contents[%d].parts[%d] contains empty text: %+v", contentIndex, partIndex, part)
+				}
+			}
+			if dataCount != 1 {
+				t.Fatalf("contents[%d].parts[%d] must contain exactly one data field, got %+v", contentIndex, partIndex, part)
+			}
+		}
+	}
+	return contents
 }

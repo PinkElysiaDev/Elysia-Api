@@ -5,5 +5,9 @@
   "databasePath": "elysia-api.sqlite3",
   "logLevel": "info",
   "httpTimeout": 120,
-  "secretKeyPath": ".master-key"
+  "secretKeyPath": ".master-key",
+  "relay": {
+    "passthrough": false
+  },
+  "customProtocols": []
 }

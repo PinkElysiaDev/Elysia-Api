@@ -109,6 +109,7 @@ func New(cfg *config.Config) *Server {
 		}
 	}
 	server.syncRelaySSRFPolicy()
+	server.syncCustomProtocols()
 	return server
 }
 
@@ -148,170 +149,6 @@ func compactLogJSON(data []byte) string {
 
 func isVisionCapable(group *config.ModelGroupConfig) bool {
 	return group != nil && group.VisionCapable != nil && *group.VisionCapable
-}
-
-func filterVisionInputsIfNeeded(group *config.ModelGroupConfig, req *relay.UnifiedRequest) (changed bool, filteredMessages int, filteredParts int) {
-	if req == nil || group == nil || isVisionCapable(group) {
-		return false, 0, 0
-	}
-
-	newMessages, filteredMessages, filteredParts := filterUnifiedMessagesVisionContent(req.Messages)
-	if filteredParts == 0 {
-		return false, 0, 0
-	}
-
-	req.Messages = newMessages
-	return true, filteredMessages, filteredParts
-}
-
-func filterUnifiedMessagesVisionContent(messages []relay.UnifiedMessage) ([]relay.UnifiedMessage, int, int) {
-	if len(messages) == 0 {
-		return messages, 0, 0
-	}
-
-	newMessages := make([]relay.UnifiedMessage, 0, len(messages))
-	filteredMessages := 0
-	filteredParts := 0
-
-	for _, msg := range messages {
-		newContent, removedParts, changed := filterSingleMessageVisionContent(msg.Content)
-		if changed {
-			filteredMessages++
-			filteredParts += removedParts
-			msg.Content = newContent
-		}
-		newMessages = append(newMessages, msg)
-	}
-
-	return newMessages, filteredMessages, filteredParts
-}
-
-func filterSingleMessageVisionContent(content interface{}) (newContent interface{}, removedParts int, changed bool) {
-	if content == nil {
-		return content, 0, false
-	}
-
-	parts, ok := content.([]interface{})
-	if !ok {
-		return content, 0, false
-	}
-
-	filtered := make([]interface{}, 0, len(parts))
-	for _, part := range parts {
-		partMap, ok := part.(map[string]interface{})
-		if !ok {
-			filtered = append(filtered, part)
-			continue
-		}
-
-		if isVisionPart(partMap) {
-			removedParts++
-			continue
-		}
-
-		filtered = append(filtered, part)
-	}
-
-	if removedParts == 0 {
-		return content, 0, false
-	}
-
-	return normalizeFilteredContent(filtered), removedParts, true
-}
-
-func normalizeFilteredContent(parts []interface{}) interface{} {
-	if len(parts) == 0 {
-		return ""
-	}
-
-	if text, ok := mergeTextParts(parts); ok {
-		return text
-	}
-
-	return parts
-}
-
-func mergeTextParts(parts []interface{}) (string, bool) {
-	var builder strings.Builder
-
-	for _, part := range parts {
-		partMap, ok := part.(map[string]interface{})
-		if !ok {
-			return "", false
-		}
-
-		if !isTextPart(partMap) {
-			return "", false
-		}
-
-		text, _ := partMap["text"].(string)
-		builder.WriteString(text)
-	}
-
-	return builder.String(), true
-}
-
-func isTextPart(item map[string]interface{}) bool {
-	partType, _ := item["type"].(string)
-	_, hasText := item["text"].(string)
-
-	if hasText && (partType == "" || strings.EqualFold(partType, "text")) {
-		return true
-	}
-
-	return false
-}
-
-func isVisionPart(item map[string]interface{}) bool {
-	partType, _ := item["type"].(string)
-	switch strings.ToLower(strings.TrimSpace(partType)) {
-	case "image", "image_url", "input_image":
-		return true
-	}
-
-	if _, ok := item["image_url"]; ok {
-		return true
-	}
-	if _, ok := item["image"]; ok {
-		return true
-	}
-
-	if inlineData, ok := item["inlineData"].(map[string]interface{}); ok {
-		if isImageMime(extractMimeType(inlineData)) || inlineData["data"] != nil {
-			return true
-		}
-	}
-
-	if fileData, ok := item["fileData"].(map[string]interface{}); ok {
-		if isImageMime(extractMimeType(fileData)) {
-			return true
-		}
-	}
-
-	if source, ok := item["source"].(map[string]interface{}); ok {
-		if isImageMime(extractMimeType(source)) {
-			return true
-		}
-	}
-
-	if isImageMime(extractMimeType(item)) {
-		return true
-	}
-
-	return false
-}
-
-func extractMimeType(item map[string]interface{}) string {
-	for _, key := range []string{"mimeType", "mime_type", "media_type"} {
-		if value, ok := item[key].(string); ok {
-			return strings.TrimSpace(strings.ToLower(value))
-		}
-	}
-	return ""
-}
-
-func isImageMime(mimeType string) bool {
-	return strings.HasPrefix(strings.TrimSpace(strings.ToLower(mimeType)), "image/")
 }
 
 func (s *Server) setupRoutes() {
@@ -498,6 +335,7 @@ func (s *Server) reloadConfig(c *gin.Context) {
 	s.invalidateRouteCache()
 	// SSRF 放行策略可能随配置变更，同步到 relay 包级开关（即时生效）。
 	s.syncRelaySSRFPolicy()
+	s.syncCustomProtocols()
 	if serverChanged {
 		log.Printf(
 			"Config hot-reloaded successfully, but server listen address change requires restart (old=%s:%d new=%s:%d)",
@@ -534,21 +372,21 @@ func isLoopbackRequest(r *http.Request) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+func geminiModelFromAction(action string) string {
+	modelPart := strings.TrimPrefix(strings.TrimSpace(action), "/")
+	modelPart = strings.TrimPrefix(modelPart, "models/")
+	if idx := strings.LastIndex(modelPart, ":"); idx != -1 {
+		modelPart = modelPart[:idx]
+	}
+	return strings.TrimSpace(modelPart)
+}
+
 func (s *Server) chatCompletions(c *gin.Context) {
 	s.logVerbose("[REQUEST ENTER] path=%s method=%s remote=%s contentType=%s", c.Request.URL.Path, c.Request.Method, c.Request.RemoteAddr, c.Request.Header.Get("Content-Type"))
-	// 请求处理矩阵：inputFormat × targetPlatform
-	//
-	// 非流式 (handleNormalRequest):
-	//   下游平台      | inputFormat=Claude              | inputFormat=OpenAI/其他
-	//   Anthropic    | 直接返回 ClaudeResponse          | ConvertClaudeResponseToOpenAI
-	//   Gemini       | ConvertGemini→OAI→Claude        | ConvertGeminiResponseToOpenAI
-	//   OpenAI/其他  | ConvertOpenAIResponseToClaude   | 直接返回 OpenAIResponse
-	//
-	// 流式 (handleStreamRequest):
-	//   下游平台      | inputFormat=Claude              | inputFormat=OpenAI/其他
-	//   Anthropic    | ForwardStreamRaw（直接转发）      | ConvertClaudeStreamToOpenAI
-	//   Gemini       | ConvertGeminiStreamToOpenAI     | ConvertGeminiStreamToOpenAI
-	//   OpenAI/其他  | ConvertOpenAIStreamToClaudeStream | ForwardOpenAIStream（直接转发）
+	// 生产转换路径统一为 Maheshvara：
+	//   非流式：client wire -> MaheshvaraRequest -> target wire；provider response -> MaheshvaraResponse -> client wire。
+	//   流式：provider SSE -> source decoder -> MaheshvaraStreamEvent -> target renderer -> client SSE。
+	// 仅在 relay.passthrough 显式开启、协议同源且请求未被过滤时允许绕过该路径。
 	startTime := time.Now()
 
 	// 读取原始请求体
@@ -575,40 +413,43 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	installDownstreamCapture(c, record)
 	s.logVerbose("[Input Format] %s", inputFormat)
 
-	// 转换为统一格式
-	unifiedReq, err := relay.ConvertToUnified(bodyBytes, inputFormat)
-	if err != nil {
-		log.Printf("Error converting request: %v", err)
-		c.JSON(400, gin.H{"error": fmt.Sprintf("Failed to convert request: %v", err)})
+	// 转换为 Maheshvara 核心请求。
+	urlModel := ""
+	if inputFormat == relay.FormatGemini {
+		urlModel = geminiModelFromAction(c.Param("action"))
+	}
+	canonicalReq, _, canonicalErr := relay.ConvertRequestToCanonical(bodyBytes, inputFormat, urlModel)
+	if canonicalErr != nil {
+		log.Printf("Error converting request to Maheshvara: %v", canonicalErr)
+		c.JSON(400, gin.H{"error": fmt.Sprintf("Failed to convert request to Maheshvara: %v", canonicalErr)})
 		return
 	}
 
 	// Gemini 原生路径 /v1beta/models/MODEL:generateContent 中模型名在 URL 里
 	// 若请求体没有 model 字段，从路径参数提取
-	if unifiedReq.Model == "" {
+	if canonicalReq.Model == "" {
 		if action := c.Param("action"); action != "" {
 			// action 形如 /gemini-2.0-flash:generateContent
-			modelPart := strings.TrimPrefix(action, "/")
+			modelPart := geminiModelFromAction(action)
 			if idx := strings.LastIndex(modelPart, ":"); idx != -1 {
 				modelPart = modelPart[:idx]
 			}
-			unifiedReq.Model = modelPart
+			canonicalReq.Model = modelPart
 		}
 	}
-
-	if unifiedReqJSON, err := relay.MarshalUnifiedRequest(unifiedReq); err == nil {
-		s.logVerbose("[Unified Request] %s", compactLogJSON(unifiedReqJSON))
+	if canonicalJSON, err := json.Marshal(canonicalReq); err == nil {
+		s.logVerbose("[Maheshvara Request] %s", compactLogJSON(canonicalJSON))
 	}
 
 	// 模型组级访问权限：先于 validateModelGroup 校验请求的模型组名，
 	// 这样即使目标组为空/未配置，越权访问也返回 403（而非泄露组的存在性/状态）。
-	if !s.tokenAllowsGroup(c, unifiedReq.Model) {
-		s.failRequest(c, record, startTime, http.StatusForbidden, fmt.Sprintf("api key is not allowed to access model group '%s'", unifiedReq.Model))
+	if !s.tokenAllowsGroup(c, canonicalReq.Model) {
+		s.failRequest(c, record, startTime, http.StatusForbidden, fmt.Sprintf("api key is not allowed to access model group '%s'", canonicalReq.Model))
 		return
 	}
 
 	// 验证并获取模型组
-	group, err := s.validateModelGroup(unifiedReq.Model)
+	group, err := s.validateModelGroup(canonicalReq.Model)
 	if err != nil {
 		statusCode := 500
 		if errMsg := err.Error(); strings.Contains(errMsg, "not found") {
@@ -620,25 +461,6 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		return
 	}
 	setRecordGroup(record, group)
-
-	filtered, filteredMessages, filteredParts := filterVisionInputsIfNeeded(group, unifiedReq)
-	if filtered {
-		log.Printf(
-			"[vision filter] model group %q is not vision-capable, filtered %d image part(s) from %d message(s)",
-			group.Name,
-			filteredParts,
-			filteredMessages,
-		)
-		s.logVerbose(
-			"[vision filter detail] group=%s filteredMessages=%d filteredImageParts=%d",
-			group.Name,
-			filteredMessages,
-			filteredParts,
-		)
-		if unifiedReqJSON, err := relay.MarshalUnifiedRequest(unifiedReq); err == nil {
-			s.logVerbose("[Unified Request After Vision Filter] %s", compactLogJSON(unifiedReqJSON))
-		}
-	}
 
 	// 构建有序候选模型列表，按模型组策略排列。失败时逐个故障转移。
 	candidates := s.buildCandidates(group)
@@ -654,10 +476,21 @@ func (s *Server) chatCompletions(c *gin.Context) {
 
 	// 如果模型组配置了 MaxTokens，覆盖客户端发来的值
 	if group.MaxTokens > 0 {
-		unifiedReq.MaxTokens = group.MaxTokens
+		canonicalReq.MaxOutputTokens = group.MaxTokens
+	}
+	filtered, filteredParts := filterCanonicalVisionInputsIfNeeded(group, canonicalReq)
+	if filtered {
+		s.logVerbose("[Maheshvara Vision Filter] group=%s filteredImageParts=%d", group.Name, filteredParts)
+		if canonicalJSON, err := json.Marshal(canonicalReq); err == nil {
+			s.logVerbose("[Maheshvara Request After Vision Filter] %s", compactLogJSON(canonicalJSON))
+		}
 	}
 
-	estimatedTokens := estimateUnifiedRequestTokens(unifiedReq)
+	estimatedUsage := estimateCanonicalRequestUsage(canonicalReq, s.config.GetUsageConfig())
+	estimatedTokens := estimatedUsage.EstimatedTotalTokens
+	record.Usage = usageTokenUsageFromCanonical(estimatedUsage)
+	record.UsageDetail = usageDetailFromCanonical(estimatedUsage)
+	record.UsageSource = estimatedUsage.Source
 	releaseLimiter, err := s.acquireRateLimit(group, estimatedTokens)
 	if err != nil {
 		s.failRequest(c, record, startTime, http.StatusTooManyRequests, err.Error())
@@ -689,16 +522,16 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			continue
 		}
 
-		unifiedReq.Model = selectedModel.Name
+		canonicalReq.Model = selectedModel.Name
 		targetPlatform := relay.DetectPlatform(selectedModel.BaseURL, selectedModel.Platform)
 		setRecordModel(record, selectedModel, targetPlatform)
 		s.logDebug("Request model group: '%s' attempt %d/%d, selected: %s", group.Name, attempt+1, attempts, selectedModel.Name)
 
 		// 同源透传判定：客户端输入格式与所选上游线路 API 一致（Claude→Anthropic、
 		// Gemini→Gemini、OpenAI→OpenAI 系），且本次未因 vision 过滤改写过请求体时，
-		// 以原始请求字节直发上游，跳过 unified 中间模型的有损往返——保留上游特有字段
+		// 以原始请求字节直发上游，跳过 Maheshvara 往返——保留尚未纳入核心协议的私有字段
 		// （cache_control / thinking / 各类未知扩展）。借鉴 Responses 透传与 new-api
-		// 的 should_convert=false 分支。vision 过滤改写了 unifiedReq 而非原始字节，
+		// 的 should_convert=false 分支。vision 过滤改写了 canonicalReq 而非原始字节，
 		// 故 filtered=true 时必须回退到转换路径，否则被过滤的图片会随原始字节漏给上游。
 		usePassthrough := s.config.IsRelayPassthroughEnabled() && !filtered && relay.FormatMatchesPlatform(inputFormat, targetPlatform)
 
@@ -707,9 +540,11 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		isStream := relay.IsStreamRequest(bodyBytes)
 		if action := c.Param("action"); strings.Contains(action, ":streamGenerateContent") {
 			isStream = true
+			canonicalReq.Stream = true
 		}
 
 		var targetBody []byte
+		var customRequest *relay.CustomProtocolRequestResult
 		if usePassthrough {
 			// Gemini：model 在 URL 里（adapter 单独接收 selectedModel.Name），原生
 			// generateContent 请求体不含顶层 model，故透传时不改写 model（传空），
@@ -728,20 +563,33 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			if err == nil {
 				record.RelayMode = "passthrough"
 			}
+		} else if relay.IsCustomPlatform(targetPlatform) {
+			customRequest, err = relay.RenderRegisteredCustomProtocolRequest(canonicalReq, relay.CustomProtocolID(targetPlatform))
+			if err == nil {
+				targetBody = customRequest.Body
+			}
+			if err == nil {
+				record.RelayMode = "transform"
+			}
 		} else {
-			targetBody, err = relay.ConvertFromUnified(unifiedReq, targetPlatform)
+			targetFormat, formatErr := relay.TargetFormatForPlatform(targetPlatform)
+			if formatErr != nil {
+				err = formatErr
+			} else {
+				targetBody, err = relay.CanonicalToTargetRequest(canonicalReq, targetFormat, nil)
+			}
 			if err == nil {
 				record.RelayMode = "transform"
 			}
 		}
 		if err != nil {
-			lastStatus = http.StatusInternalServerError
+			lastStatus = http.StatusBadRequest
 			lastErr = fmt.Sprintf("Failed to build upstream request: %v", err)
 			s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
 			if isLast {
 				record.StatusCode = lastStatus
 				record.Error = lastErr
-				c.JSON(500, gin.H{"error": lastErr})
+				c.JSON(lastStatus, gin.H{"error": lastErr})
 				committed = true
 			}
 			continue
@@ -750,7 +598,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		s.logVerbose("[Outgoing Request] passthrough=%v baseUrl=%s body=%s", usePassthrough, selectedModel.BaseURL, compactLogJSON(targetBody))
 
 		// 非透传路径仍需为流式补齐 stream 标记（透传已在 PassthroughBody 内处理）。
-		if isStream && !usePassthrough {
+		if isStream && !usePassthrough && !relay.IsCustomPlatform(targetPlatform) {
 			var streamBodyErr error
 			targetBody, streamBodyErr = ensureStreamFlagInTargetBody(targetBody, targetPlatform)
 			if streamBodyErr != nil {
@@ -771,9 +619,9 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		var outcome relayOutcome
 		if isStream {
 			record.Stream = true
-			outcome = s.handleStreamRequest(c, group, selectedModel, targetBody, targetPlatform, inputFormat, startTime, estimatedTokens, record, isLast)
+			outcome = s.handleStreamRequest(c, group, selectedModel, targetBody, customRequest, targetPlatform, inputFormat, startTime, estimatedTokens, record, isLast)
 		} else {
-			outcome = s.handleNormalRequest(c, group, selectedModel, targetBody, targetPlatform, inputFormat, startTime, estimatedTokens, record, isLast)
+			outcome = s.handleNormalRequest(c, group, selectedModel, targetBody, customRequest, targetPlatform, inputFormat, startTime, estimatedTokens, record, isLast)
 		}
 
 		if outcome.committed {
@@ -809,7 +657,10 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	}
 }
 
-func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord, isLast bool) relayOutcome {
+func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord, isLast bool) relayOutcome {
+	if relay.IsCustomPlatform(targetPlatform) {
+		return s.handleCustomNormalRequest(c, group, selectedModel, customRequest, targetPlatform, inputFormat, startTime, record, isLast)
+	}
 	// failResult 在转发失败时决定是提交错误响应（最后一次尝试或不可重试），
 	// 还是返回 committed=false 让上层故障转移到下一个候选模型。
 	failResult := func(statusCode int, errMsg string, respBody []byte, contentType string) relayOutcome {
@@ -875,19 +726,20 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		actualTokens := getInt(record.Usage.TotalTokens)
 		s.adjustTokenUsage(group.ID, actualTokens)
 
-		// 统一转为 OpenAI 中间响应，再渲染到客户端格式
-		oaiResp := relay.ConvertClaudeResponseToOpenAI(&claudeResp)
+		canonicalResp, canonicalErr := relay.ClaudeResponseToCanonical(&claudeResp)
+		if canonicalErr != nil {
+			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to convert Claude response to Maheshvara: %v", canonicalErr), nil, "")
+			return result
+		}
 		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
 
 		record.StatusCode = http.StatusOK
-		switch inputFormat {
-		case relay.FormatClaude:
-			c.JSON(200, claudeResp)
-		case relay.FormatGemini:
-			c.JSON(200, relay.ConvertOpenAIResponseToGemini(oaiResp))
-		default:
-			c.JSON(200, oaiResp)
+		output, renderErr := renderCanonicalChatResponse(canonicalResp, inputFormat)
+		if renderErr != nil {
+			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to render Maheshvara response: %v", renderErr), nil, "")
+			return result
 		}
+		c.JSON(200, output)
 		result = relayOutcome{committed: true, statusCode: 200}
 		return result
 
@@ -915,7 +767,11 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 			return result
 		}
 
-		oaiResp := relay.ConvertGeminiResponseToOpenAI(&geminiResp)
+		canonicalResp, canonicalErr := relay.GeminiResponseToCanonical(&geminiResp)
+		if canonicalErr != nil {
+			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to convert Gemini response to Maheshvara: %v", canonicalErr), nil, "")
+			return result
+		}
 		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
 		applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(targetPlatform, "", respBody), s.config.GetUsageConfig())
 		actualTokens := getInt(record.Usage.TotalTokens)
@@ -924,14 +780,12 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
 
 		record.StatusCode = http.StatusOK
-		switch inputFormat {
-		case relay.FormatClaude:
-			c.JSON(200, relay.ConvertOpenAIResponseToClaude(oaiResp))
-		case relay.FormatGemini:
-			c.JSON(200, geminiResp)
-		default:
-			c.JSON(200, oaiResp)
+		output, renderErr := renderCanonicalChatResponse(canonicalResp, inputFormat)
+		if renderErr != nil {
+			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to render Maheshvara response: %v", renderErr), nil, "")
+			return result
 		}
+		c.JSON(200, output)
 		result = relayOutcome{committed: true, statusCode: 200}
 		return result
 
@@ -962,20 +816,26 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
 
 		record.StatusCode = http.StatusOK
-		switch inputFormat {
-		case relay.FormatClaude:
-			c.JSON(200, relay.ConvertOpenAIResponseToClaude(resp))
-		case relay.FormatGemini:
-			c.JSON(200, relay.ConvertOpenAIResponseToGemini(resp))
-		default:
-			c.JSON(200, resp)
+		canonicalResp, canonicalErr := relay.OpenAIChatResponseToCanonical(resp)
+		if canonicalErr != nil {
+			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to convert OpenAI response to Maheshvara: %v", canonicalErr), nil, "")
+			return result
 		}
+		output, renderErr := renderCanonicalChatResponse(canonicalResp, inputFormat)
+		if renderErr != nil {
+			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to render Maheshvara response: %v", renderErr), nil, "")
+			return result
+		}
+		c.JSON(200, output)
 		result = relayOutcome{committed: true, statusCode: 200}
 		return result
 	}
 }
 
-func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord, isLast bool) relayOutcome {
+func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord, isLast bool) relayOutcome {
+	if relay.IsCustomPlatform(targetPlatform) {
+		return s.handleCustomStreamRequest(c, group, selectedModel, customRequest, targetPlatform, inputFormat, startTime, record, isLast)
+	}
 	var result relayOutcome
 	defer func() {
 		if !result.committed {
@@ -1060,14 +920,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		record.StatusCode = http.StatusOK
 		observeUpstreamUsage(httpResp, record, targetPlatform)
 
-		switch inputFormat {
-		case relay.FormatClaude:
-			forwardErr = relay.ForwardStreamRaw(httpResp, writer)
-		case relay.FormatGemini:
-			forwardErr = relay.ConvertClaudeStreamToGeminiStream(httpResp, writer)
-		default:
-			forwardErr = relay.ConvertClaudeStreamToOpenAI(httpResp, writer)
-		}
+		forwardErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), httpResp, relay.FormatClaude, inputFormat, writer, selectedModel.Name)
 
 	case relay.PlatformGemini:
 		httpResp, err := s.geminiAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, true)
@@ -1087,14 +940,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		record.StatusCode = http.StatusOK
 		observeUpstreamUsage(httpResp, record, targetPlatform)
 
-		switch inputFormat {
-		case relay.FormatClaude:
-			forwardErr = relay.ConvertGeminiStreamToClaudeStream(httpResp, writer, selectedModel.Name)
-		case relay.FormatGemini:
-			forwardErr = relay.ForwardStreamRaw(httpResp, writer)
-		default:
-			forwardErr = relay.ConvertGeminiStreamToOpenAI(httpResp, writer)
-		}
+		forwardErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), httpResp, relay.FormatGemini, inputFormat, writer, selectedModel.Name)
 
 	default:
 		resp, err := s.openaiAdapter.SendRequestStream(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
@@ -1108,14 +954,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		record.StatusCode = http.StatusOK
 		observeUpstreamUsage(resp, record, targetPlatform)
 
-		switch inputFormat {
-		case relay.FormatClaude:
-			forwardErr = relay.ConvertOpenAIStreamToClaudeStream(resp, writer, selectedModel.Name)
-		case relay.FormatGemini:
-			forwardErr = relay.ConvertOpenAIStreamToGeminiStream(resp, writer)
-		default:
-			forwardErr = relay.ForwardOpenAIStream(c.Request.Context(), resp, writer)
-		}
+		forwardErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatOpenAIChat, inputFormat, writer, selectedModel.Name)
 	}
 
 	// 上游已建连、SSE 已开始后的转发/转换错误：HTTP 状态码已无法更改，
@@ -1369,35 +1208,6 @@ func (s *Server) getOrCreateRateLimitStateLocked(groupID string) *rateLimitState
 	return state
 }
 
-func estimateUnifiedRequestTokens(req *relay.UnifiedRequest) int {
-	return estimateUnifiedRequestInputTokens(req) + estimateUnifiedRequestOutputTokens(req.MaxTokens, req.MaxCompletionTokens)
-}
-
-func estimateUnifiedRequestInputTokens(req *relay.UnifiedRequest) int {
-	totalChars := 0
-	for _, msg := range req.Messages {
-		totalChars += estimateContentChars(msg.Content)
-	}
-	inputTokens := (totalChars + 3) / 4
-	if inputTokens < 0 {
-		return 0
-	}
-	return inputTokens
-}
-
-func estimateUnifiedRequestOutputTokens(requestedMaxTokens int, requestedMaxCompletionTokens int) int {
-	outputBudget := requestedMaxCompletionTokens
-	if outputBudget == 0 {
-		outputBudget = requestedMaxTokens
-	}
-	if outputBudget < 0 {
-		return 0
-	}
-	return outputBudget
-}
-
-// validateOutbound 是 validateOutboundBaseURL 的实例方法封装，
-// 支持测试场景下跳过 SSRF 校验（skipOutboundValidation）。生产恒走校验。
 func (s *Server) validateOutbound(raw string) error {
 	if s.skipOutboundValidation {
 		return nil
@@ -1519,52 +1329,17 @@ func (s *Server) countTokens(c *gin.Context) {
 		return
 	}
 
-	unifiedReq, err := relay.ConvertToUnified(bodyBytes, relay.FormatClaude)
+	canonicalReq, err := relay.ClaudeRequestToCanonical(bodyBytes)
 	if err != nil {
 		c.JSON(400, gin.H{"error": fmt.Sprintf("Failed to convert request: %v", err)})
 		return
 	}
 
-	totalChars := 0
-	for _, msg := range unifiedReq.Messages {
-		totalChars += estimateContentChars(msg.Content)
-	}
-
-	// 粗略估算：中英文混合场景下按 1 token ≈ 4 chars 估算
-	inputTokens := (totalChars + 3) / 4
-	if inputTokens < 0 {
-		inputTokens = 0
-	}
+	inputTokens := estimateCanonicalRequestUsage(canonicalReq, s.config.GetUsageConfig()).InputTokens
 
 	c.JSON(200, gin.H{
 		"input_tokens": inputTokens,
 	})
-}
-
-func estimateContentChars(content interface{}) int {
-	if content == nil {
-		return 0
-	}
-
-	switch v := content.(type) {
-	case string:
-		return len([]rune(v))
-	case []interface{}:
-		total := 0
-		for _, item := range v {
-			if itemMap, ok := item.(map[string]interface{}); ok {
-				itemType, _ := itemMap["type"].(string)
-				if itemType == "text" {
-					if text, ok := itemMap["text"].(string); ok {
-						total += len([]rune(text))
-					}
-				}
-			}
-		}
-		return total
-	default:
-		return len([]rune(fmt.Sprintf("%v", content)))
-	}
 }
 
 func (s *Server) healthCheck(c *gin.Context) {
