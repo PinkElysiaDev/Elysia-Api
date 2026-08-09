@@ -11,7 +11,7 @@ import (
 )
 
 func (s *Store) ListModels(ctx context.Context) ([]Model, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, source_id, name, source_name, base_url, api_key, platform, type, max_tokens, vision_capable, tools_capable, structured_output, thinking_mode, available, last_checked_at FROM models ORDER BY source_name, name`)
+	rows, err := s.db.QueryContext(ctx, `SELECT m.id, m.source_id, m.name, m.source_name, m.base_url, m.api_key, m.platform, m.type, m.max_tokens, m.vision_capable, m.tools_capable, m.structured_output, m.thinking_mode, m.available, m.last_checked_at FROM models m LEFT JOIN model_sources ms ON m.source_id = ms.id WHERE (m.source_id = '' OR ms.enabled = 1 OR ms.id IS NULL) ORDER BY m.source_name, m.name`)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +284,32 @@ func (s *Store) SetModelAvailability(ctx context.Context, modelID, sourceID stri
 // ListAllModelsForProbe 返回所有模型（含不可用的），供健康检测遍历。
 // 与 ListModels 不同，这里不过滤 available，以便对已禁用模型做恢复探测。
 func (s *Store) ListAllModelsForProbe(ctx context.Context) ([]Model, error) {
-	return s.ListModels(ctx)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, source_id, name, source_name, base_url, api_key, platform, type, max_tokens, vision_capable, tools_capable, structured_output, thinking_mode, available, last_checked_at FROM models ORDER BY source_name, name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Model{}
+	for rows.Next() {
+		var item Model
+		var vision, tools, structured, available int
+		var checked string
+		if err := rows.Scan(&item.ID, &item.SourceID, &item.Name, &item.SourceName, &item.BaseURL, &item.APIKey, &item.Platform, &item.Type, &item.MaxTokens, &vision, &tools, &structured, &item.ThinkingMode, &available, &checked); err != nil {
+			return nil, err
+		}
+		item.VisionCapable = intBool(vision)
+		item.ToolsCapable = intBool(tools)
+		item.StructuredOutput = intBool(structured)
+		item.Available = intBool(available)
+		item.LastCheckedAt = parseTime(checked)
+		if plain, err := s.codec.decrypt(item.APIKey); err == nil {
+			item.APIKey = plain
+		} else {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func (s *Store) SaveUsageRecordJSON(ctx context.Context, payload []byte, summary UsageLogItem, endedAt time.Time) error {

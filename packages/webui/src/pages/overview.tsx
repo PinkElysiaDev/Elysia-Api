@@ -26,20 +26,20 @@ import {
   formatBytes,
   formatDuration,
   formatNumber,
+  normalizedNow,
   percent,
   ratePerMinute,
   startOfRange,
-  toRFC3339,
 } from '@/lib/utils'
 
 export function OverviewPage() {
   const { data: health, isLoading: healthLoading } = useHealth(15000)
   // 必须 memo：否则 toRFC3339(new Date()) 每次渲染都生成新时间戳，
   // 导致 useUsageStats 的 SWR key 每帧都变、永远重新请求、卡在 loading。
-  const usageParams = useMemo(
-    () => ({ from: startOfRange('7d'), to: toRFC3339(new Date()) }),
-    [],
-  )
+  const usageParams = useMemo(() => {
+    const to = normalizedNow()
+    return { from: startOfRange('7d', to), to }
+  }, [])
   const { data: stats, isLoading: statsLoading } = useUsageStats(usageParams)
   const { data: sources, isLoading: sourcesLoading } = useSources()
   const { data: models, isLoading: modelsLoading } = useModels()

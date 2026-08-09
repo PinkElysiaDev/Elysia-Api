@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
-import { revalidate, useModels } from '@/lib/hooks'
+import { revalidate, useModels, useSources } from '@/lib/hooks'
 import { cn } from '@/lib/utils'
 import type { GroupStrategy, Model, ModelGroup, ModelType } from '@/lib/types'
 
@@ -57,9 +57,18 @@ export function GroupFormDialog({
   const toast = useToast()
   const isEdit = !!group
   const { data: models } = useModels()
+  const { data: sources } = useSources()
   const [form, setForm] = useState<ModelGroup>(emptyGroup())
   const [saving, setSaving] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
+
+  const enabledSourceIds = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of sources ?? []) {
+      if (s.enabled) set.add(s.id)
+    }
+    return set
+  }, [sources])
 
   useEffect(() => {
     if (open) {
@@ -85,11 +94,11 @@ export function GroupFormDialog({
   }
 
   const filteredModels = useMemo(() => {
-    const list = models ?? []
+    const list = (models ?? []).filter((m) => !m.sourceId || enabledSourceIds.has(m.sourceId))
     const kw = modelSearch.trim().toLowerCase()
     if (!kw) return list
     return list.filter((m) => `${m.id} ${m.name} ${m.sourceName ?? ''}`.toLowerCase().includes(kw))
-  }, [models, modelSearch])
+  }, [models, enabledSourceIds, modelSearch])
 
   async function handleSave() {
     if (!form.name.trim()) {

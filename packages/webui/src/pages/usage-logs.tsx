@@ -40,8 +40,8 @@ import {
   formatDateTime,
   formatDuration,
   formatNumber,
+  normalizedNow,
   startOfRange,
-  toRFC3339,
   tryParseJSON,
   uniqueSorted,
 } from '@/lib/utils'
@@ -67,19 +67,19 @@ export function UsageLogsPage() {
   const modelOptions = useMemo(() => uniqueSorted((models ?? []).map((m) => m.name)), [models])
   const keyOptions = useMemo(() => uniqueSorted((tokens ?? []).map((t) => t.name)), [tokens])
 
-  const params = useMemo(
-    () => ({
-      from: startOfRange(range),
-      to: toRFC3339(new Date()),
+  const params = useMemo(() => {
+    const to = normalizedNow()
+    return {
+      from: startOfRange(range, to),
+      to,
       groupNames: groupNames.length ? groupNames : undefined,
       modelNames: modelNames.length ? modelNames : undefined,
       keyNames: keyNames.length ? keyNames : undefined,
       statusCode: statusCode.trim() ? Number(statusCode) : undefined,
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
-    }),
-    [range, groupNames, modelNames, keyNames, statusCode, page],
-  )
+    }
+  }, [range, groupNames, modelNames, keyNames, statusCode, page])
 
   const { data, isLoading, error, mutate } = useUsageLogs(params)
   const total = data?.total ?? 0

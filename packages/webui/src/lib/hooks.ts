@@ -32,12 +32,18 @@ export function useTokens() {
   return useSWR('api-tokens', () => api.listTokens(), defaultConfig)
 }
 
+const usageConfig: SWRConfiguration = {
+  ...defaultConfig,
+  keepPreviousData: true,
+  dedupingInterval: 5000,
+}
+
 export function useUsageStats(params: UsageQueryParams) {
-  return useSWR(['usage-stats', params], () => api.usageStats(params), defaultConfig)
+  return useSWR(['usage-stats', params], () => api.usageStats(params), usageConfig)
 }
 
 export function useUsageLogs(params: UsageQueryParams) {
-  return useSWR(['usage-logs', params], () => api.usageLogs(params), defaultConfig)
+  return useSWR(['usage-logs', params], () => api.usageLogs(params), usageConfig)
 }
 
 export function useSystemLogs(params: { limit?: number; offset?: number; level?: string }) {

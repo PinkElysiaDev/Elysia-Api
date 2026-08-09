@@ -589,14 +589,14 @@ func (c *Config) GetResponsesConfig() ResponsesConfig {
 	return cfg
 }
 
-// GetRelayConfig returns relay policy. Passthrough is disabled by default.
+// GetRelayConfig returns relay policy. Passthrough is enabled by default.
 func (c *Config) GetRelayConfig() RelayConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	cfg := c.Relay
 	if cfg.Passthrough == nil {
-		v := false
+		v := true
 		cfg.Passthrough = &v
 	}
 	return cfg

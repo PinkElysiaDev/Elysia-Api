@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
 import { BarChart3, CheckCircle2, Cpu, Gauge, Timer } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
@@ -14,10 +14,10 @@ import {
   compactNumber,
   formatDuration,
   formatNumber,
+  normalizedNow,
   percent,
   ratePerMinute,
   startOfRange,
-  toRFC3339,
   uniqueSorted,
 } from '@/lib/utils'
 
@@ -35,16 +35,16 @@ export function UsageStatsPage() {
   const modelOptions = useMemo(() => uniqueSorted((models ?? []).map((m) => m.name)), [models])
   const keyOptions = useMemo(() => uniqueSorted((tokens ?? []).map((t) => t.name)), [tokens])
 
-  const params = useMemo(
-    () => ({
-      from: startOfRange(range),
-      to: toRFC3339(new Date()),
+  const params = useMemo(() => {
+    const to = normalizedNow()
+    return {
+      from: startOfRange(range, to),
+      to,
       groupNames: groupNames.length ? groupNames : undefined,
       modelNames: modelNames.length ? modelNames : undefined,
       keyNames: keyNames.length ? keyNames : undefined,
-    }),
-    [range, groupNames, modelNames, keyNames],
-  )
+    }
+  }, [range, groupNames, modelNames, keyNames])
 
   const { data: stats, isLoading, error, mutate } = useUsageStats(params)
 
@@ -194,6 +194,7 @@ function DonutChart({
   // 悬停状态与悬停的扇区下标；null 时圆环中央显示总计。鼠标移开圆环即恢复总计。
   const [isHovered, setIsHovered] = useState(false)
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
+  const chartRef = useRef<HTMLDivElement>(null)
 
   const activeData = isHovered && hoverData ? hoverData : data
   const hasData = activeData.some((d) => d.value > 0)
@@ -203,10 +204,24 @@ function DonutChart({
   const paddingAngle = nonZeroCount <= 1 ? 0 : 2
   const active = activeIndex != null ? activeData[activeIndex] : null
 
+  function updateHoverFromMouse(clientX: number, clientY: number) {
+    const container = chartRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    const cx = rect.left + rect.width / 2
+    const cy = rect.top + rect.height / 2
+    const dx = clientX - cx
+    const dy = clientY - cy
+    const distance = Math.sqrt(dx * dx + dy * dy)
+    // outerRadius=92，允许少量容差让触发更自然。
+    setIsHovered(distance <= 98)
+  }
+
   return (
     <div
+      ref={chartRef}
       className="relative h-64"
-      onMouseEnter={() => setIsHovered(true)}
+      onMouseMove={(e) => updateHoverFromMouse(e.clientX, e.clientY)}
       onMouseLeave={() => {
         setIsHovered(false)
         setActiveIndex(null)

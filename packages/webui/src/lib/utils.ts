@@ -117,15 +117,21 @@ export function toRFC3339(date: Date): string {
   return date.toISOString()
 }
 
-export function startOfRange(range: '24h' | '7d' | '30d' | 'all'): string | undefined {
-  if (range === 'all') return undefined
+/** 规范化查询结束时间（向下舍入到 1 分钟），避免毫秒级时间戳导致 SWR Cache Key 频繁变动。 */
+export function normalizedNow(intervalMs = 60_000): string {
   const now = Date.now()
+  return new Date(Math.floor(now / intervalMs) * intervalMs).toISOString()
+}
+
+export function startOfRange(range: '24h' | '7d' | '30d' | 'all', nowIso?: string): string | undefined {
+  if (range === 'all') return undefined
+  const reference = nowIso ? new Date(nowIso).getTime() : Date.now()
   const map: Record<string, number> = {
     '24h': 24 * 60 * 60 * 1000,
     '7d': 7 * 24 * 60 * 60 * 1000,
     '30d': 30 * 24 * 60 * 60 * 1000,
   }
-  return new Date(now - map[range]).toISOString()
+  return new Date(reference - map[range]).toISOString()
 }
 
 /** 把任意数据序列化为 JSON 文件并触发浏览器下载。 */
