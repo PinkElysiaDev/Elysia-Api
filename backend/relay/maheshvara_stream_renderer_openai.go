@@ -112,6 +112,11 @@ func (renderer *MaheshvaraStreamRenderer) writeOpenAIToolEvent(event *Maheshvara
 		renderer.openAI.tools[index] = state
 	}
 	state.id = firstNonEmptyString(event.ToolCallID, state.id)
+	if state.id == "" {
+		// 上游分块可能遗漏 id，合成一个稳定 ID，保证下游客户端的
+		// assistant tool_calls[].id 与后续 tool 消息能够对齐。
+		state.id = ensureToolCallID("", event.ChoiceIndex, index)
+	}
 	state.name = firstNonEmptyString(event.ToolName, state.name)
 	argumentDelta := event.ToolArgumentsDelta
 	if event.ToolArgumentsDone != "" {
@@ -145,10 +150,8 @@ func (renderer *MaheshvaraStreamRenderer) writeOpenAIToolEvent(event *Maheshvara
 			delete(renderer.openAI.pendingGeminiSignatures, event.ChoiceIndex)
 		}
 	}
-	if state.id != "" {
-		toolCall["id"] = state.id
-	}
-	if len(function) == 0 && state.id == "" {
+	toolCall["id"] = state.id
+	if len(function) == 0 {
 		return nil
 	}
 	return renderer.writeOpenAIChatChunk(event.ChoiceIndex, map[string]any{"tool_calls": []any{toolCall}}, "", nil)

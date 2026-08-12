@@ -9,19 +9,24 @@ import (
 )
 
 func ConvertRequestToCanonical(body []byte, format FormatType, urlModel string) (*CanonicalRequest, *OpenAIResponsesRequest, error) {
+	var req *CanonicalRequest
+	var original *OpenAIResponsesRequest
+	var err error
 	switch format {
 	case FormatClaude:
-		req, err := ClaudeRequestToCanonical(body)
-		return req, nil, err
+		req, err = ClaudeRequestToCanonical(body)
 	case FormatGemini:
-		req, err := GeminiRequestToCanonical(body, urlModel)
-		return req, nil, err
+		req, err = GeminiRequestToCanonical(body, urlModel)
 	case FormatResponses:
-		return ResponsesRequestToCanonical(body)
+		req, original, err = ResponsesRequestToCanonical(body)
 	default:
-		req, err := OpenAIChatRequestToCanonical(body)
-		return req, nil, err
+		req, err = OpenAIChatRequestToCanonical(body)
 	}
+	if err != nil {
+		return nil, original, err
+	}
+	completeCanonicalToolCallIDs(req)
+	return req, original, nil
 }
 
 func CanonicalToTargetRequest(req *CanonicalRequest, format FormatType, originalResponses *OpenAIResponsesRequest) ([]byte, error) {
@@ -239,6 +244,7 @@ func ResponsesRequestToCanonical(body []byte) (*CanonicalRequest, *OpenAIRespons
 		applyResponsesRequestExtensions(raw, canonical)
 	}
 
+	completeCanonicalToolCallIDs(canonical)
 	return canonical, &req, nil
 }
 
@@ -466,6 +472,70 @@ func PassthroughBody(originalBody []byte, modelName string, ensureStream, addStr
 		}
 	}
 	return json.Marshal(out)
+}
+
+// NormalizeOpenAIToolCallIDs 对 OpenAI Chat 透传请求做最小修补：仅当检测到
+// messages[*].tool_calls[*].id 缺失或为空时，才合成确定性的非空 ID，并同步改写
+// 后续 role:"tool" 消息的空 tool_call_id；没有任何缺项时返回与输入完全相同的字节，
+// 保证透传路径默认零改动。
+func NormalizeOpenAIToolCallIDs(body []byte) ([]byte, error) {
+	var root map[string]any
+	if err := json.Unmarshal(body, &root); err != nil {
+		return nil, fmt.Errorf("failed to parse OpenAI request for tool call id repair: %w", err)
+	}
+	messages, ok := root["messages"].([]any)
+	if !ok {
+		return body, nil
+	}
+
+	changed := false
+	var active []string
+	outputIndex := 0
+	for msgIndex, raw := range messages {
+		m, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if callsRaw, hasCalls := m["tool_calls"].([]any); hasCalls && len(callsRaw) > 0 {
+			active = active[:0]
+			for callIndex, callRaw := range callsRaw {
+				call, ok := callRaw.(map[string]any)
+				if !ok {
+					continue
+				}
+				id, _ := call["id"].(string)
+				if strings.TrimSpace(id) == "" {
+					call["id"] = ensureToolCallID("", msgIndex, callIndex)
+					changed = true
+				}
+				if repaired, ok := call["id"].(string); ok && strings.TrimSpace(repaired) != "" {
+					active = append(active, repaired)
+				}
+			}
+			outputIndex = 0
+			continue
+		}
+		role, _ := m["role"].(string)
+		if role != "tool" && role != "function" {
+			continue
+		}
+		toolCallID, _ := m["tool_call_id"].(string)
+		if strings.TrimSpace(toolCallID) != "" || len(active) == 0 {
+			continue
+		}
+		index := outputIndex
+		if index >= len(active) {
+			index = len(active) - 1
+		} else {
+			outputIndex++
+		}
+		m["tool_call_id"] = active[index]
+		changed = true
+	}
+	if !changed {
+		return body, nil
+	}
+	return json.Marshal(root)
 }
 
 func CanonicalToResponsesRequest(req *CanonicalRequest, original *OpenAIResponsesRequest) ([]byte, error) {
@@ -1050,7 +1120,7 @@ func canonicalMessagesToOpenAI(req *CanonicalRequest) []map[string]any {
 	if req.Instructions != "" {
 		messages = append(messages, map[string]any{"role": "system", "content": req.Instructions})
 	}
-	for _, msg := range req.Messages {
+	for msgIndex, msg := range req.Messages {
 		visibleParts := make([]CanonicalContentPart, 0, len(msg.Content))
 		var toolOutputs []CanonicalContentPart
 		var reasoning strings.Builder
@@ -1113,7 +1183,7 @@ func canonicalMessagesToOpenAI(req *CanonicalRequest) []map[string]any {
 			}
 			if len(msg.ToolCalls) > 0 {
 				var calls []map[string]any
-				for _, call := range msg.ToolCalls {
+				for callIndex, call := range msg.ToolCalls {
 					arguments := strings.TrimSpace(string(call.Arguments))
 					if arguments == "" {
 						arguments = call.ArgumentsText
@@ -1123,7 +1193,9 @@ func canonicalMessagesToOpenAI(req *CanonicalRequest) []map[string]any {
 					}
 					callType := firstNonEmptyString(call.Type, CanonicalToolFunction)
 					wireCall := map[string]any{
-						"id":   call.ID,
+						// 即使上游输入遗漏 id，也绝不向 OpenAI 线格式输出空 id；
+						// 空串会被严格的上游校验器判为 "missing field id"。
+						"id":   ensureToolCallID(call.ID, msgIndex, callIndex),
 						"type": callType,
 						"function": map[string]any{
 							"name":      call.Name,
@@ -1161,6 +1233,94 @@ func firstNonEmptyString(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// ensureToolCallID 保留非空原始 ID，否则生成确定性的合成 ID。
+// 使用 call_<msgIdx>_<callIdx> 与 Gemini 解析器的既有约定保持一致，
+// 保证同一次请求内 assistant tool_calls[].id 与后续 role:"tool" 消息对齐。
+func ensureToolCallID(id string, msgIndex, callIndex int) string {
+	if strings.TrimSpace(id) != "" {
+		return id
+	}
+	return fmt.Sprintf("call_%d_%d", msgIndex, callIndex)
+}
+
+// completeCanonicalToolCallIDs 在 canonical 解析完成后统一补齐工具调用 ID：
+//   - assistant ToolCalls/function_call 的空 ID 按 (消息/调用序号) 合成；
+//   - 空 tool_call_id/function_call_output 按顺序关联最近一条 assistant 调用的合成 ID；
+//   - 已有非空 ID 一律原样保留。
+func completeCanonicalToolCallIDs(req *CanonicalRequest) {
+	if req == nil {
+		return
+	}
+	completeMessageToolCallIDs(req.Messages)
+	completeInputItemCallIDs(req.InputItems)
+}
+
+func completeMessageToolCallIDs(messages []CanonicalMessage) {
+	var active []string
+	outputIndex := 0
+	for msgIndex := range messages {
+		msg := &messages[msgIndex]
+		if len(msg.ToolCalls) > 0 {
+			active = active[:0]
+			for callIndex := range msg.ToolCalls {
+				msg.ToolCalls[callIndex].ID = ensureToolCallID(msg.ToolCalls[callIndex].ID, msgIndex, callIndex)
+				active = append(active, msg.ToolCalls[callIndex].ID)
+			}
+			outputIndex = 0
+			continue
+		}
+		nextID := func() string {
+			if outputIndex < len(active) {
+				id := active[outputIndex]
+				outputIndex++
+				return id
+			}
+			return ensureToolCallID("", msgIndex, outputIndex)
+		}
+		role := strings.ToLower(strings.TrimSpace(msg.Role))
+		if msg.ToolCallID == "" && (role == "tool" || role == "function") {
+			if len(active) > 0 {
+				msg.ToolCallID = nextID()
+			}
+		}
+		for partIndex := range msg.Content {
+			part := &msg.Content[partIndex]
+			if part.Type == CanonicalContentToolOutput && part.ToolCallID == "" {
+				// Responses 输入可能同时带消息级 ToolCallID 与 ToolOutput 内容块，
+				// 两者必须共享同一个合成 ID，避免渲染出两条 tool 消息。
+				if msg.ToolCallID != "" {
+					part.ToolCallID = msg.ToolCallID
+				} else if len(active) > 0 {
+					part.ToolCallID = nextID()
+				}
+			}
+		}
+	}
+}
+
+func completeInputItemCallIDs(items []CanonicalInputItem) {
+	var active []string
+	outputIndex := 0
+	for itemIndex := range items {
+		item := &items[itemIndex]
+		switch item.Type {
+		case "function_call":
+			item.CallID = ensureToolCallID(item.CallID, itemIndex, 0)
+			active = append(active[:0], item.CallID)
+			outputIndex = 0
+		case CanonicalInputFunctionCallOutput:
+			if item.CallID == "" {
+				if outputIndex < len(active) {
+					item.CallID = active[outputIndex]
+					outputIndex++
+				} else {
+					item.CallID = ensureToolCallID("", itemIndex, 0)
+				}
+			}
+		}
+	}
 }
 
 // claudeImageBlockToPart 把 Claude image block（{"source":{...}}）解析为 canonical

@@ -199,7 +199,7 @@ func MaheshvaraStreamEventToOpenAIChatChunk(event *MaheshvaraStreamEvent) ([]byt
 		toolArguments = event.ToolArgumentsDone
 	}
 	if toolArguments != "" || event.ToolName != "" {
-		delta["tool_calls"] = []map[string]any{{"index": event.ChoiceIndex, "id": event.ToolCallID, "type": "function", "function": map[string]any{"name": event.ToolName, "arguments": toolArguments}}}
+		delta["tool_calls"] = []map[string]any{{"index": event.ChoiceIndex, "id": ensureToolCallID(event.ToolCallID, event.ChoiceIndex, event.ToolCallIndex), "type": "function", "function": map[string]any{"name": event.ToolName, "arguments": toolArguments}}}
 	}
 	chunk := map[string]any{"id": event.ResponseID, "object": "chat.completion.chunk", "choices": []map[string]any{{"index": event.ChoiceIndex, "delta": delta, "finish_reason": nil}}}
 	if event.FinishReason != "" {

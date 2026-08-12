@@ -293,6 +293,11 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesTool(event *MaheshvaraSt
 		renderer.responses.toolOrder = append(renderer.responses.toolOrder, key)
 	}
 	state.callID = firstNonEmptyString(event.ToolCallID, state.callID, state.id)
+	if state.callID == "" {
+		// function_call 事件的 call_id 缺失时合成稳定 ID，避免下游
+		// 回传 function_call_output 时对不上调用。
+		state.callID = ensureToolCallID("", event.ToolCallIndex, 0)
+	}
 	state.name = firstNonEmptyString(event.ToolName, state.name)
 	if !state.added {
 		state.added = true

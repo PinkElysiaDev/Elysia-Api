@@ -142,7 +142,10 @@ export const api = {
   listModels: () => request<ListEnvelope<Model>>('/models').then((r) => r.items ?? []),
   refreshModels: () => request<{ refreshed: boolean; count: number }>('/models/refresh', { method: 'POST' }),
 
-  listGroups: () => request<ListEnvelope<ModelGroup>>('/model-groups').then((r) => r.items ?? []),
+  listGroups: () =>
+    request<ListEnvelope<ModelGroup>>('/model-groups').then((r) =>
+      (r.items ?? []).map((group) => ({ ...group, models: group.models ?? [] })),
+    ),
   createGroup: (body: ModelGroup) => request<ModelGroup>('/model-groups', { method: 'POST', body }),
   updateGroup: (id: string, body: ModelGroup) =>
     request<ModelGroup>(`/model-groups/${encodeURIComponent(id)}`, { method: 'PUT', body }),

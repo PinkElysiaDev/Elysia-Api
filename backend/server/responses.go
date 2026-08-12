@@ -470,7 +470,13 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		}
 		startSSE()
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
-		streamErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatResponses, relay.FormatResponses, writer, selectedModel.Name)
+		if record.RelayMode == "passthrough" {
+			// 同协议透传：原样转发上游 SSE，保留 reasoning_text 等
+			// provider 私有事件，不再经 Maheshvara 解码重渲染。
+			streamErr = relay.ForwardResponsesStream(c.Request.Context(), resp, writer)
+		} else {
+			streamErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatResponses, relay.FormatResponses, writer, selectedModel.Name)
+		}
 	case relay.FormatClaude:
 		resp, err := s.claudeAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, targetBody, true)
 		if err != nil {

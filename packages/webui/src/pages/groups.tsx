@@ -100,13 +100,13 @@ export function GroupsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
-                        {group.models.slice(0, 3).map((m) => (
+                        {(group.models ?? []).slice(0, 3).map((m) => (
                           <Badge key={m} variant="outline" className="font-mono text-[11px]">
                             {m}
                           </Badge>
                         ))}
-                        {group.models.length > 3 && (
-                          <Badge variant="muted">+{group.models.length - 3}</Badge>
+                        {(group.models ?? []).length > 3 && (
+                          <Badge variant="muted">+{(group.models ?? []).length - 3}</Badge>
                         )}
                       </div>
                     </TableCell>

@@ -562,6 +562,11 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			targetBody, err = relay.PassthroughBody(bodyBytes, passModelName, ensureStream, addStreamOptions)
 			if err == nil {
 				record.RelayMode = "passthrough"
+				// OpenAI 系透传同样补齐缺失的 tool call id：部分客户端重建历史时
+				// 会遗漏 tool_calls[].id，直接透传会被严格上游以 missing field id 拒绝。
+				if targetPlatform == relay.PlatformOpenAI || targetPlatform == relay.PlatformDeepSeek || targetPlatform == relay.PlatformAzure {
+					targetBody, err = relay.NormalizeOpenAIToolCallIDs(targetBody)
+				}
 			}
 		} else if relay.IsCustomPlatform(targetPlatform) {
 			customRequest, err = relay.RenderRegisteredCustomProtocolRequest(canonicalReq, relay.CustomProtocolID(targetPlatform))
@@ -954,7 +959,13 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		record.StatusCode = http.StatusOK
 		observeUpstreamUsage(resp, record, targetPlatform)
 
-		forwardErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatOpenAIChat, inputFormat, writer, selectedModel.Name)
+		if record.RelayMode == "passthrough" {
+			// OpenAI 系同协议透传：原始转发上游 SSE，保留 tool call id、
+			// reasoning_content 等字段，不经过 Maheshvara 重渲染。
+			forwardErr = relay.ForwardOpenAIStream(c.Request.Context(), resp, writer)
+		} else {
+			forwardErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatOpenAIChat, inputFormat, writer, selectedModel.Name)
+		}
 	}
 
 	// 上游已建连、SSE 已开始后的转发/转换错误：HTTP 状态码已无法更改，
@@ -1187,6 +1198,23 @@ func (s *Server) adjustTokenUsage(groupID string, actualTokens int) {
 	if state.Tokens < 0 {
 		state.Tokens = 0
 	}
+}
+
+// forgetGroupRuntimeState 删除模型组后清理其残留的限流、轮询游标与粘滞映射，
+// 避免已删除组的键永远留在内存中。所有删除都在对应锁内完成。
+func (s *Server) forgetGroupRuntimeState(groupID string) {
+	if groupID == "" {
+		return
+	}
+	s.rateLimitMu.Lock()
+	delete(s.rateLimits, groupID)
+	s.rateLimitMu.Unlock()
+
+	s.roundRobinMutex.Lock()
+	delete(s.roundRobinIndex, groupID)
+	s.roundRobinMutex.Unlock()
+
+	s.affinity.removeGroup(groupID)
 }
 
 func (s *Server) getOrCreateRateLimitStateLocked(groupID string) *rateLimitState {

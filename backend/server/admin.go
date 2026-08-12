@@ -337,6 +337,7 @@ func (s *Server) adminDeleteGroup(c *gin.Context) {
 		return
 	}
 	s.invalidateRouteCache()
+	s.forgetGroupRuntimeState(c.Param("id"))
 	ok(c, gin.H{"deleted": true})
 }
 

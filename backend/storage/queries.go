@@ -86,6 +86,9 @@ func (s *Store) ListGroups(ctx context.Context) ([]ModelGroup, error) {
 		item.Enabled = intBool(enabled)
 		item.VisionCapable = intBool(vision)
 		item.ToolsCapable = intBool(tools)
+		// Models 必须以空数组而非 nil 序列化：前端 groups 列表直接调用
+		// group.models.slice(...)，nil 会被 JSON 编码为 null 并导致整页崩溃。
+		item.Models = []string{}
 		items = append(items, item)
 	}
 	if err := rows.Close(); err != nil {
@@ -267,8 +270,94 @@ func replaceGroupName(groups []string, oldName, newName string) ([]string, bool)
 }
 
 func (s *Store) DeleteGroup(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM model_groups WHERE id = ?`, id)
-	return err
+	if strings.TrimSpace(id) == "" {
+		return errors.New("group id is required")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// 删除前读取组名，用于级联清理 token 的 allowed_groups_json 悬空引用。
+	var name string
+	if err := tx.QueryRowContext(ctx, `SELECT name FROM model_groups WHERE id = ?`, id).Scan(&name); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM model_groups WHERE id = ?`, id); err != nil {
+		return err
+	}
+	if name != "" {
+		if err := removeGroupFromTokens(ctx, tx, name); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// removeGroupFromTokens 在删除模型组后，把所有 token 的 allowed_groups_json 里的
+// 该组名移除，避免残留成悬空引用。仅在 JSON 实际包含该组名时写回；与
+// renameGroupInTokens 一样，必须在删除组的事务内调用以保证原子性。
+func removeGroupFromTokens(ctx context.Context, tx *sql.Tx, groupName string) error {
+	type pendingToken struct {
+		name   string
+		groups []string
+	}
+	var pending []pendingToken
+	rows, err := tx.QueryContext(ctx, `SELECT name, allowed_groups_json FROM api_tokens`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var name, raw string
+		if err := rows.Scan(&name, &raw); err != nil {
+			rows.Close()
+			return err
+		}
+		groups := decodeStringSlice(raw)
+		updated, changed := removeGroupName(groups, groupName)
+		if changed {
+			pending = append(pending, pendingToken{name: name, groups: updated})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	now := nowString()
+	for _, t := range pending {
+		payload, err := json.Marshal(t.groups)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE api_tokens SET allowed_groups_json = ?, updated_at = ? WHERE name = ?`, string(payload), now, t.name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// removeGroupName 从切片中移除指定组名并保持原有顺序，返回新切片与是否发生变更。
+func removeGroupName(groups []string, groupName string) ([]string, bool) {
+	found := false
+	for _, g := range groups {
+		if g == groupName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return groups, false
+	}
+	out := make([]string, 0, len(groups))
+	for _, g := range groups {
+		if g != groupName {
+			out = append(out, g)
+		}
+	}
+	return out, true
 }
 
 // SetModelAvailability 更新某个模型（按 id+source_id 唯一）的可用状态，

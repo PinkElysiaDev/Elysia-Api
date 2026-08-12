@@ -1,6 +1,7 @@
 package server
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -17,7 +18,6 @@ import (
 // 实现为带 TTL 的内存映射。仅影响候选模型的"排序"（把粘连模型提到最前），
 // 不改变可用候选集合，因此与故障转移完全兼容：粘连模型失败时照常转移到
 // 其他候选，并在成功后更新粘连目标。
-
 
 type affinityEntry struct {
 	modelName string
@@ -65,6 +65,21 @@ func (a *affinityCache) set(keyHash, groupID, modelName string, now time.Time) {
 		}
 	}
 	a.entries[affinityKey(keyHash, groupID)] = affinityEntry{modelName: modelName, expiresAt: now.Add(AffinityTTL)}
+}
+
+// removeGroup 删除与指定模型组相关的全部粘滞条目，供组被删除时清理运行时状态。
+func (a *affinityCache) removeGroup(groupID string) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	suffix := "\x00" + groupID
+	for key := range a.entries {
+		if strings.HasSuffix(key, suffix) {
+			delete(a.entries, key)
+		}
+	}
 }
 
 // applyAffinity 把粘连模型（若存在且仍在候选集合内）提到候选列表最前面，

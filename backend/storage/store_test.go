@@ -2,7 +2,9 @@ package storage
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -328,5 +330,107 @@ func TestTokenHashBackfillNoDeadlock(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("token_hash backfill deadlocked on reopen")
+	}
+}
+
+// 回归：删除被 API Key 引用的模型组后，token 的 allowed_groups_json 应级联
+// 移除该组名（与改名行为对齐），且 usage 历史必须保留。
+func TestDeleteGroupRemovesTokenReferencesAndKeepsUsage(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(filepath.Join(t.TempDir(), "delete-group.sqlite3"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.UpsertGroup(ctx, ModelGroup{ID: "g1", Name: "group-a", Enabled: true, Strategy: "round-robin", Type: "llm"}); err != nil {
+		t.Fatalf("UpsertGroup g1: %v", err)
+	}
+	if err := store.UpsertAPIToken(ctx, APIToken{Name: "k1", Token: "sk-a", Enabled: true, AllowedGroups: []string{"group-a", "group-b"}}); err != nil {
+		t.Fatalf("UpsertAPIToken k1: %v", err)
+	}
+	if err := store.UpsertAPIToken(ctx, APIToken{Name: "k2", Token: "sk-b", Enabled: true, AllowedGroups: []string{"group-b"}}); err != nil {
+		t.Fatalf("UpsertAPIToken k2: %v", err)
+	}
+	usage := UsageLogItem{RequestID: "req-deleted-group", StartedAt: time.Now().UTC(), KeyName: "default", GroupName: "group-a", ModelName: "m1", StatusCode: 200, InputTokens: 1, OutputTokens: 2, TotalTokens: 3}
+	if err := store.SaveUsageRecordJSON(ctx, []byte(`{"requestId":"req-deleted-group"}`), usage, time.Now().UTC()); err != nil {
+		t.Fatalf("SaveUsageRecordJSON: %v", err)
+	}
+
+	if err := store.DeleteGroup(ctx, "g1"); err != nil {
+		t.Fatalf("DeleteGroup: %v", err)
+	}
+
+	tokens, err := store.ListAPITokens(ctx)
+	if err != nil {
+		t.Fatalf("ListAPITokens: %v", err)
+	}
+	byName := map[string][]string{}
+	for _, tk := range tokens {
+		byName[tk.Name] = tk.AllowedGroups
+	}
+	if got := byName["k1"]; len(got) != 1 || got[0] != "group-b" {
+		t.Fatalf("k1 allowedGroups after delete = %v, want [group-b]", got)
+	}
+	if got := byName["k2"]; len(got) != 1 || got[0] != "group-b" {
+		t.Fatalf("k2 allowedGroups should be untouched, got %v", got)
+	}
+
+	var usageCount int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_records WHERE group_name = ?`, "group-a").Scan(&usageCount); err != nil {
+		t.Fatalf("count usage: %v", err)
+	}
+	if usageCount != 1 {
+		t.Fatalf("usage history should be preserved, got %d records", usageCount)
+	}
+
+	groups, err := store.ListGroups(ctx)
+	if err != nil {
+		t.Fatalf("ListGroups: %v", err)
+	}
+	for _, g := range groups {
+		if g.ID == "g1" {
+			t.Fatalf("deleted group g1 still listed")
+		}
+	}
+}
+
+// 回归：零可见模型的组必须以空数组（而非 nil）返回，避免前端把 null 传给
+// group.models.slice 并导致整页崩溃。
+func TestListGroupsNeverSerializesNullModels(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(filepath.Join(t.TempDir(), "empty-models.sqlite3"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.UpsertGroup(ctx, ModelGroup{ID: "g-empty", Name: "empty-group", Enabled: true, Strategy: "round-robin", Type: "llm"}); err != nil {
+		t.Fatalf("UpsertGroup: %v", err)
+	}
+
+	groups, err := store.ListGroups(ctx)
+	if err != nil {
+		t.Fatalf("ListGroups: %v", err)
+	}
+	var target *ModelGroup
+	for i := range groups {
+		if groups[i].ID == "g-empty" {
+			target = &groups[i]
+			break
+		}
+	}
+	if target == nil {
+		t.Fatal("empty group not returned by ListGroups")
+	}
+	if target.Models == nil {
+		t.Fatal("ListGroups returned nil Models; must return empty slice")
+	}
+	encoded, err := json.Marshal(target)
+	if err != nil {
+		t.Fatalf("marshal group: %v", err)
+	}
+	if !strings.Contains(string(encoded), `"models":[]`) || strings.Contains(string(encoded), `"models":null`) {
+		t.Fatalf("group wire shape wrong, got %s", encoded)
 	}
 }
