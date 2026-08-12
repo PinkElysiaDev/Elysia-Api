@@ -175,19 +175,30 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 	}
 	s.invalidateRouteCache()
 
-	// 保存后自动拉取一次该源的模型，省去用户额外手动刷新：
-	//   - 自动拉取源：异步拉取（不阻塞保存响应），失败仅记日志；
-	//   - 手动源：ReplaceSourceModels 同步 manualModels 到模型缓存。
+	// 保存后自动同步该源的模型到模型缓存，省去用户额外手动刷新：
+	//   - 手动源：同步写入（不阻塞网络），保证保存响应返回后前端立即 revalidate
+	//     能读到新模型（消除「手动模型不更新模型组」的竞态）；
+	//   - 自动拉取源：异步拉取（不阻塞保存响应），失败仅记日志。
 	saved := item
-	go func() {
-		if _, err := s.refreshSourceByValue(context.Background(), saved); err != nil {
+	if !saved.AutoFetchModels {
+		if _, err := s.refreshSourceByValue(c.Request.Context(), saved); err != nil {
 			if s.store != nil {
-				_ = s.store.InsertSystemLog(context.Background(), "warn", "auto refresh after save failed", map[string]any{"sourceId": saved.ID, "sourceName": saved.Name, "error": err.Error()})
+				_ = s.store.InsertSystemLog(c.Request.Context(), "warn", "manual model sync after save failed", map[string]any{"sourceId": saved.ID, "sourceName": saved.Name, "error": err.Error()})
 			}
-			return
+		} else {
+			s.invalidateRouteCache()
 		}
-		s.invalidateRouteCache()
-	}()
+	} else {
+		go func() {
+			if _, err := s.refreshSourceByValue(context.Background(), saved); err != nil {
+				if s.store != nil {
+					_ = s.store.InsertSystemLog(context.Background(), "warn", "auto refresh after save failed", map[string]any{"sourceId": saved.ID, "sourceName": saved.Name, "error": err.Error()})
+				}
+				return
+			}
+			s.invalidateRouteCache()
+		}()
+	}
 
 	ok(c, item)
 }

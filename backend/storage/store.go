@@ -371,8 +371,9 @@ func (s *Store) UpsertSource(ctx context.Context, item ModelSource) error {
 }
 
 func (s *Store) DeleteSource(ctx context.Context, id string) error {
-	// 事务化：删除模型源与其下模型必须原子完成，避免第二步失败留下孤儿模型
-	// （models 表对 model_sources 无 FK 级联）。
+	// 事务化：删除模型源、其下模型以及组内对该源模型的引用必须原子完成，
+	// 避免第二步失败留下孤儿模型或组内残留旧模型引用。
+	// （models / model_group_models 表对 model_sources 无 FK 级联）。
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -382,6 +383,9 @@ func (s *Store) DeleteSource(ctx context.Context, id string) error {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM models WHERE source_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM model_group_models WHERE source_id = ?`, id); err != nil {
 		return err
 	}
 	return tx.Commit()

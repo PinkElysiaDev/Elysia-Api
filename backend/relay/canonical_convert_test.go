@@ -807,3 +807,52 @@ func assertGeminiPartsHaveData(t *testing.T, body []byte) []any {
 	}
 	return contents
 }
+
+func TestClaudeToolResultBecomesOpenAIToolMessages(t *testing.T) {
+	body := []byte(`{
+		"model":"claude-test",
+		"max_tokens":128,
+		"messages":[
+			{"role":"user","content":[{"type":"text","text":"what is the weather?"}]},
+			{"role":"assistant","content":[{"type":"text","text":"let me check"},{"type":"tool_use","id":"toolu_01A","name":"get_weather","input":{"city":"sf"}}]},
+			{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01A","content":"sunny"}]}
+		]
+	}`)
+
+	req, err := ClaudeRequestToCanonical(body)
+	if err != nil {
+		t.Fatalf("ClaudeRequestToCanonical: %v", err)
+	}
+	out, err := CanonicalToOpenAIChatRequest(req)
+	if err != nil {
+		t.Fatalf("CanonicalToOpenAIChatRequest: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(out, &payload); err != nil {
+		t.Fatalf("decode OpenAI request: %v", err)
+	}
+	messages, ok := payload["messages"].([]any)
+	if !ok || len(messages) != 3 {
+		t.Fatalf("expected 3 messages (user, assistant, tool), got %s", out)
+	}
+
+	assistant := messages[1].(map[string]any)
+	toolCalls, ok := assistant["tool_calls"].([]any)
+	if !ok || len(toolCalls) != 1 {
+		t.Fatalf("expected 1 tool_call in assistant message, got %+v", assistant)
+	}
+	callID := toolCalls[0].(map[string]any)["id"]
+
+	toolMsg := messages[2].(map[string]any)
+	if toolMsg["role"] != "tool" {
+		t.Fatalf("expected role 'tool', got %v", toolMsg["role"])
+	}
+	if toolMsg["tool_call_id"] != callID {
+		t.Fatalf("tool_call_id %v does not match assistant tool_call id %v", toolMsg["tool_call_id"], callID)
+	}
+	if toolMsg["content"] != "sunny" {
+		t.Fatalf("tool message content lost: %v", toolMsg["content"])
+	}
+}
+

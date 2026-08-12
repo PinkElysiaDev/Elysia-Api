@@ -170,8 +170,8 @@ func (s *Server) responses(c *gin.Context) {
 		record.ResponsesMode = responsesMode
 		record.ConversionChain = []string{"openai_responses_request", "canonical_request", string(targetFormat) + "_request"}
 
-		// 上游原生支持 Responses API 时仍默认经过 Maheshvara；只有显式开启
-		// relay.passthrough 且未发生视觉过滤时，才以原始请求体为基底透传。
+		// 上游原生支持 Responses API（targetFormat == responses，即同协议）且未发生
+		// 视觉过滤时，以原始请求体为基底零转换透传，保留 reasoning/function_call 等富字段。
 		var targetBody []byte
 		var customRequest *relay.CustomProtocolRequestResult
 		if relay.IsCustomPlatform(targetPlatform) {
@@ -179,7 +179,7 @@ func (s *Server) responses(c *gin.Context) {
 			if customRequest != nil {
 				targetBody = customRequest.Body
 			}
-		} else if targetFormat == relay.FormatResponses && s.config.IsRelayPassthroughEnabled() && !filteredVision {
+		} else if targetFormat == relay.FormatResponses && !filteredVision {
 			targetBody, err = relay.ResponsesPassthroughBody(bodyBytes, selectedModel.Name)
 			if err == nil {
 				record.RelayMode = "passthrough"

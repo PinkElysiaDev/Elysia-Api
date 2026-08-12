@@ -386,7 +386,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	// 生产转换路径统一为 Maheshvara：
 	//   非流式：client wire -> MaheshvaraRequest -> target wire；provider response -> MaheshvaraResponse -> client wire。
 	//   流式：provider SSE -> source decoder -> MaheshvaraStreamEvent -> target renderer -> client SSE。
-	// 仅在 relay.passthrough 显式开启、协议同源且请求未被过滤时允许绕过该路径。
+	// 协议同源且请求未被过滤时，直接绕过 Maheshvara 往返、零转换透传。
 	startTime := time.Now()
 
 	// 读取原始请求体
@@ -533,7 +533,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		// （cache_control / thinking / 各类未知扩展）。借鉴 Responses 透传与 new-api
 		// 的 should_convert=false 分支。vision 过滤改写了 canonicalReq 而非原始字节，
 		// 故 filtered=true 时必须回退到转换路径，否则被过滤的图片会随原始字节漏给上游。
-		usePassthrough := s.config.IsRelayPassthroughEnabled() && !filtered && relay.FormatMatchesPlatform(inputFormat, targetPlatform)
+		usePassthrough := !filtered && relay.FormatMatchesPlatform(inputFormat, targetPlatform)
 
 		// 流式意图取自客户端原始请求：OpenAI/Claude 看请求体 stream 字段，
 		// Gemini 看 URL action（:streamGenerateContent）。

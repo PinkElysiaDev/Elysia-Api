@@ -1052,6 +1052,7 @@ func canonicalMessagesToOpenAI(req *CanonicalRequest) []map[string]any {
 	}
 	for _, msg := range req.Messages {
 		visibleParts := make([]CanonicalContentPart, 0, len(msg.Content))
+		var toolOutputs []CanonicalContentPart
 		var reasoning strings.Builder
 		var refusal strings.Builder
 		for _, part := range msg.Content {
@@ -1068,64 +1069,86 @@ func canonicalMessagesToOpenAI(req *CanonicalRequest) []map[string]any {
 				}
 				continue
 			}
+			if part.Type == CanonicalContentToolOutput {
+				toolOutputs = append(toolOutputs, part)
+				continue
+			}
 			visibleParts = append(visibleParts, part)
 		}
 		role := strings.ToLower(strings.TrimSpace(msg.Role))
 		if role == "" {
 			role = "user"
 		}
-		out := map[string]any{
-			"role":    role,
-			"content": contentPartsToInterface(visibleParts),
-		}
-		if len(visibleParts) == 0 && len(msg.ToolCalls) > 0 {
-			out["content"] = nil
-		}
-		if reasoning.Len() > 0 {
-			out["reasoning_content"] = reasoning.String()
-		}
-		if refusal.Len() > 0 {
-			out["refusal"] = refusal.String()
-		}
-		if msg.Name != "" {
-			out["name"] = msg.Name
-		}
-		if msg.Metadata != nil {
-			out["metadata"] = msg.Metadata
-		}
-		if msg.CacheControl != nil {
-			out["cache_control"] = msg.CacheControl
-		}
-		if msg.ToolCallID != "" {
-			out["tool_call_id"] = msg.ToolCallID
-		}
-		if len(msg.ToolCalls) > 0 {
-			var calls []map[string]any
-			for _, call := range msg.ToolCalls {
-				arguments := strings.TrimSpace(string(call.Arguments))
-				if arguments == "" {
-					arguments = call.ArgumentsText
-				}
-				if arguments == "" {
-					arguments = "{}"
-				}
-				callType := firstNonEmptyString(call.Type, CanonicalToolFunction)
-				wireCall := map[string]any{
-					"id":   call.ID,
-					"type": callType,
-					"function": map[string]any{
-						"name":      call.Name,
-						"arguments": arguments,
-					},
-				}
-				if signature := canonicalSignatureForProvider(call.ThoughtSignature, call.ThoughtSignatureProvider, CanonicalSignatureProviderGemini); signature != "" {
-					wireCall["extra_content"] = map[string]any{"google": map[string]any{"thought_signature": signature}}
-				}
-				calls = append(calls, wireCall)
+
+		// 纯 tool_result 消息（Claude user 轮里的 tool_result block）不生成空的
+		// user 消息，只输出下面的 role:"tool" 消息。避免 assistant 的 tool_calls
+		// 之后没有对应的 tool 消息而被上游拒（insufficient tool messages）。
+		hasRegularContent := len(visibleParts) > 0 || reasoning.Len() > 0 || refusal.Len() > 0 ||
+			len(msg.ToolCalls) > 0 || msg.Name != "" || msg.Metadata != nil || msg.CacheControl != nil || msg.ToolCallID != ""
+		if hasRegularContent {
+			out := map[string]any{
+				"role":    role,
+				"content": contentPartsToInterface(visibleParts),
 			}
-			out["tool_calls"] = calls
+			if len(visibleParts) == 0 && len(msg.ToolCalls) > 0 {
+				out["content"] = nil
+			}
+			if reasoning.Len() > 0 {
+				out["reasoning_content"] = reasoning.String()
+			}
+			if refusal.Len() > 0 {
+				out["refusal"] = refusal.String()
+			}
+			if msg.Name != "" {
+				out["name"] = msg.Name
+			}
+			if msg.Metadata != nil {
+				out["metadata"] = msg.Metadata
+			}
+			if msg.CacheControl != nil {
+				out["cache_control"] = msg.CacheControl
+			}
+			if msg.ToolCallID != "" {
+				out["tool_call_id"] = msg.ToolCallID
+			}
+			if len(msg.ToolCalls) > 0 {
+				var calls []map[string]any
+				for _, call := range msg.ToolCalls {
+					arguments := strings.TrimSpace(string(call.Arguments))
+					if arguments == "" {
+						arguments = call.ArgumentsText
+					}
+					if arguments == "" {
+						arguments = "{}"
+					}
+					callType := firstNonEmptyString(call.Type, CanonicalToolFunction)
+					wireCall := map[string]any{
+						"id":   call.ID,
+						"type": callType,
+						"function": map[string]any{
+							"name":      call.Name,
+							"arguments": arguments,
+						},
+					}
+					if signature := canonicalSignatureForProvider(call.ThoughtSignature, call.ThoughtSignatureProvider, CanonicalSignatureProviderGemini); signature != "" {
+						wireCall["extra_content"] = map[string]any{"google": map[string]any{"thought_signature": signature}}
+					}
+					calls = append(calls, wireCall)
+				}
+				out["tool_calls"] = calls
+			}
+			messages = append(messages, out)
 		}
-		messages = append(messages, out)
+
+		// tool_result block → OpenAI role:"tool" 消息，带 tool_call_id，
+		// 与 assistant 的 tool_calls[].id 一一对应。
+		for _, to := range toolOutputs {
+			messages = append(messages, map[string]any{
+				"role":         "tool",
+				"tool_call_id": to.ToolCallID,
+				"content":      to.ToolOutput,
+			})
+		}
 	}
 	return messages
 }

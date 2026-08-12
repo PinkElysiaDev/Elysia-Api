@@ -26,7 +26,7 @@ elysia-api/
 - 多格式互转：以 Maheshvara Request / Response / Usage 为唯一核心，在 OpenAI Chat Completions、OpenAI Responses、Claude Messages、Gemini GenerateContent 之间转换。
 - Responses API：`/v1/responses` 可原生转发，也可转换到 Chat / Claude / Gemini 上游。
 - 流式响应：四种内建协议和自定义协议均通过 Maheshvara 状态化 decoder / renderer 转换 SSE。
-- 显式兼容透传：`relay.passthrough` 默认关闭；仅在用户主动开启且上下游同协议时绕过 Maheshvara。
+- 同协议透传：四种协议（Chat Completions、Responses、Claude Messages、Gemini GenerateContent）在客户端与上游线路协议同源时自动零转换透传，仅改写 model 名，其余字段原样保留。
 - Usage 统计：记录缓存命中、推理 token、多模态 token、内置工具调用、请求/响应摘要和重试事件。
 - 流量限制：支持模型组级并发和每日请求/token 限制。
 - 安全加固：敏感字段加密存储、SSRF 防护、常量时间 token 比较。

@@ -71,7 +71,7 @@ mkdirSync(releaseDir, { recursive: true })
 
 for (const target of targets) {
   log(`Building ${target.output} (${target.goos}/${target.goarch})`)
-  run('go', ['build', '-o', join(releaseDir, target.output), '.'], {
+  run('go', ['build', '-ldflags', '-s -w', '-o', join(releaseDir, target.output), '.'], {
     cwd: backendDir,
     env: {
       ...process.env,

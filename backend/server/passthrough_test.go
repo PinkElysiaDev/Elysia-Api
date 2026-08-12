@@ -43,10 +43,8 @@ func TestChatCompletionsClaudePassthroughPreservesFields(t *testing.T) {
 		Models: []config.ModelRef{claudeModel("upstream-claude", upstream.URL)},
 	}
 	s := newTestServer([]config.ModelGroupConfig{group})
-	enabled := true
-	s.config.Relay = config.RelayConfig{Passthrough: &enabled}
 
-	// 含 cache_control 与未知扩展字段，验证显式透传保真。
+	// 含 cache_control 与未知扩展字段，验证同协议透传默认保真。
 	reqBody := `{"model":"grp","system":[{"type":"text","text":"sys","cache_control":{"type":"ephemeral"}}],"messages":[{"role":"user","content":"hello"}],"x_future_flag":true}`
 	c, rec := messagesRequestContext(reqBody)
 	s.chatCompletions(c)
@@ -73,40 +71,5 @@ func TestChatCompletionsClaudePassthroughPreservesFields(t *testing.T) {
 	first, _ := system[0].(map[string]any)
 	if _, ok := first["cache_control"]; !ok {
 		t.Errorf("cache_control dropped — passthrough not preserving rich content")
-	}
-}
-
-// 关闭 passthrough 后，同源请求应回退到 Maheshvara 转换路径，
-// 此时上游收到的请求体不再含未知扩展字段。
-func TestChatCompletionsPassthroughDisabledFallsBackToConvert(t *testing.T) {
-	var gotBody []byte
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotBody, _ = io.ReadAll(r.Body)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"id":"msg_1","type":"message","role":"assistant","model":"upstream-claude","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`)
-	}))
-	defer upstream.Close()
-
-	group := config.ModelGroupConfig{
-		ID: "g1", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 1,
-		Models: []config.ModelRef{claudeModel("upstream-claude", upstream.URL)},
-	}
-	s := newTestServer([]config.ModelGroupConfig{group})
-	disabled := false
-	s.config.Relay = config.RelayConfig{Passthrough: &disabled}
-
-	reqBody := `{"model":"grp","messages":[{"role":"user","content":"hello"}],"x_future_flag":true}`
-	c, rec := messagesRequestContext(reqBody)
-	s.chatCompletions(c)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
-	}
-	var sent map[string]any
-	if err := json.Unmarshal(gotBody, &sent); err != nil {
-		t.Fatalf("upstream body not JSON: %v", err)
-	}
-	if _, ok := sent["x_future_flag"]; ok {
-		t.Errorf("convert path must not carry unknown field x_future_flag through Maheshvara")
 	}
 }

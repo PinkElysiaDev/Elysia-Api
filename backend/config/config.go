@@ -67,9 +67,11 @@ type ResponsesConfig struct {
 }
 
 // RelayConfig controls compatibility optimizations around the Maheshvara path.
-// Passthrough is an explicit opt-in escape hatch for same-protocol forwarding;
-// it is disabled by default so every request follows wire -> Maheshvara -> wire.
+// Same-protocol passthrough (client wire == upstream wire) is now applied
+// unconditionally so provider-specific fields survive verbatim. The legacy
+// Passthrough flag is retained for backward compatibility only.
 type RelayConfig struct {
+	// Deprecated: same-protocol passthrough is unconditional; no longer consulted.
 	Passthrough *bool `json:"passthrough,omitempty"`
 }
 
@@ -589,7 +591,7 @@ func (c *Config) GetResponsesConfig() ResponsesConfig {
 	return cfg
 }
 
-// GetRelayConfig returns relay policy. Passthrough is enabled by default.
+// GetRelayConfig returns relay policy. Same-protocol passthrough is always enabled.
 func (c *Config) GetRelayConfig() RelayConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

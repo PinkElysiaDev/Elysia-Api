@@ -96,7 +96,7 @@ func (s *Store) ListGroups(ctx context.Context) ([]ModelGroup, error) {
 	}
 
 	for i := range items {
-		modelRows, err := s.db.QueryContext(ctx, `SELECT model_id, source_id FROM model_group_models WHERE group_id = ? ORDER BY position`, items[i].ID)
+		modelRows, err := s.db.QueryContext(ctx, `SELECT mgm.model_id, mgm.source_id FROM model_group_models mgm LEFT JOIN model_sources ms ON ms.id = mgm.source_id WHERE mgm.group_id = ? AND (mgm.source_id = '' OR (ms.id IS NOT NULL AND ms.enabled = 1)) ORDER BY mgm.position`, items[i].ID)
 		if err != nil {
 			return nil, err
 		}
