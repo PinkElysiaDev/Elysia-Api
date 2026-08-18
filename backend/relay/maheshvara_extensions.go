@@ -62,6 +62,12 @@ func applyClaudeRequestExtensions(raw map[string]any, req *CanonicalRequest) {
 	}
 	if raw["tool_choice"] != nil {
 		req.ToolChoice = raw["tool_choice"]
+		if object, ok := raw["tool_choice"].(map[string]any); ok {
+			if disable, ok := object["disable_parallel_tool_use"].(bool); ok {
+				enabled := !disable
+				req.ParallelToolCalls = &enabled
+			}
+		}
 	}
 	if raw["service_tier"] != nil {
 		req.ServiceTier = stringValue(raw["service_tier"])
@@ -216,9 +222,6 @@ func applyClaudeRequestExtensionsToBody(out map[string]any, req *CanonicalReques
 	}
 	if req.Metadata != nil {
 		out["metadata"] = req.Metadata
-	}
-	if req.ToolChoice != nil {
-		out["tool_choice"] = req.ToolChoice
 	}
 	if req.ServiceTier != "" {
 		out["service_tier"] = req.ServiceTier
@@ -526,7 +529,27 @@ func canonicalToolChoiceToClaude(value any) any {
 	if choice == "" {
 		return nil
 	}
+	if choice == "required" {
+		choice = "any"
+	}
 	return map[string]any{"type": choice}
+}
+
+func applyClaudeDisableParallelToolUse(toolChoice any, parallel *bool) any {
+	if parallel == nil || *parallel {
+		return toolChoice
+	}
+	object, ok := toolChoice.(map[string]any)
+	if !ok {
+		if toolChoice != nil {
+			return toolChoice
+		}
+		object = map[string]any{"type": "auto"}
+	}
+	if strings.ToLower(strings.TrimSpace(stringValue(object["type"]))) != "none" {
+		object["disable_parallel_tool_use"] = true
+	}
+	return object
 }
 
 func canonicalToolChoiceToOpenAI(value any) any {
@@ -549,20 +572,30 @@ func canonicalToolChoiceToOpenAI(value any) any {
 			return mode
 		}
 		if function, ok := object["function"].(map[string]any); ok {
-			if stringValue(object["type"]) == "function" {
-				return object
+			if name := stringValue(function["name"]); name != "" {
+				return map[string]any{"type": "function", "function": map[string]any{"name": name}}
 			}
-			return map[string]any{"type": "function", "function": map[string]any{"name": stringValue(function["name"])}}
 		}
-		if stringValue(object["type"]) == "tool" && stringValue(object["name"]) != "" {
-			return map[string]any{"type": "function", "function": map[string]any{"name": stringValue(object["name"])}}
+		choiceType := strings.ToLower(strings.TrimSpace(stringValue(object["type"])))
+		name := stringValue(object["name"])
+		switch choiceType {
+		case "auto":
+			return "auto"
+		case "none":
+			return "none"
+		case "any", "required":
+			return "required"
+		case "tool", "function":
+			if name != "" {
+				return map[string]any{"type": "function", "function": map[string]any{"name": name}}
+			}
 		}
 	}
 	choice := strings.ToLower(strings.TrimSpace(stringValue(value)))
-	if choice == "required" {
+	switch choice {
+	case "any", "required":
 		return "required"
-	}
-	if choice == "none" || choice == "auto" {
+	case "none", "auto":
 		return choice
 	}
 	return value

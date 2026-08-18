@@ -856,3 +856,130 @@ func TestClaudeToolResultBecomesOpenAIToolMessages(t *testing.T) {
 	}
 }
 
+func TestCanonicalToolChoiceToOpenAIMapsAnthropicObjects(t *testing.T) {
+	cases := []struct {
+		name string
+		in   any
+		want any
+	}{
+		{name: "auto object", in: map[string]any{"type": "auto"}, want: "auto"},
+		{name: "any object", in: map[string]any{"type": "any"}, want: "required"},
+		{name: "none object", in: map[string]any{"type": "none"}, want: "none"},
+		{name: "required object", in: map[string]any{"type": "required"}, want: "required"},
+		{name: "tool object", in: map[string]any{"type": "tool", "name": "lookup"}, want: map[string]any{"type": "function", "function": map[string]any{"name": "lookup"}}},
+		{name: "responses flat function", in: map[string]any{"type": "function", "name": "lookup"}, want: map[string]any{"type": "function", "function": map[string]any{"name": "lookup"}}},
+		{name: "openai function object", in: map[string]any{"type": "function", "function": map[string]any{"name": "lookup"}}, want: map[string]any{"type": "function", "function": map[string]any{"name": "lookup"}}},
+		{name: "auto string", in: "auto", want: "auto"},
+		{name: "required string", in: "required", want: "required"},
+		{name: "drops allowed_tools", in: map[string]any{"type": "auto", "allowed_tools": map[string]any{"tools": []any{map[string]any{"name": "lookup"}}}}, want: "auto"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := canonicalToolChoiceToOpenAI(tc.in)
+			if !toolChoiceEqual(got, tc.want) {
+				t.Fatalf("canonicalToolChoiceToOpenAI(%v) = %#v, want %#v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestClaudeAutoToolChoiceBecomesOpenAIString(t *testing.T) {
+	req, err := ClaudeRequestToCanonical([]byte(`{
+		"model":"claude-test",
+		"max_tokens":128,
+		"tools":[{"name":"lookup","description":"Lookup","input_schema":{"type":"object"}}],
+		"tool_choice":{"type":"auto","disable_parallel_tool_use":true},
+		"messages":[{"role":"user","content":"hi"}]
+	}`))
+	if err != nil {
+		t.Fatalf("ClaudeRequestToCanonical: %v", err)
+	}
+	if req.ParallelToolCalls == nil || *req.ParallelToolCalls {
+		t.Fatalf("disable_parallel_tool_use should map to ParallelToolCalls=false, got %+v", req.ParallelToolCalls)
+	}
+
+	out, err := CanonicalToOpenAIChatRequest(req)
+	if err != nil {
+		t.Fatalf("CanonicalToOpenAIChatRequest: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(out, &payload); err != nil {
+		t.Fatalf("decode OpenAI request: %v", err)
+	}
+	if payload["tool_choice"] != "auto" {
+		t.Fatalf("expected Chat tool_choice string %q, got %#v", "auto", payload["tool_choice"])
+	}
+	if payload["parallel_tool_calls"] != false {
+		t.Fatalf("expected parallel_tool_calls=false, got %#v", payload["parallel_tool_calls"])
+	}
+}
+
+func TestOpenAIToolChoiceRendersClaudeObjects(t *testing.T) {
+	cases := []struct {
+		name        string
+		toolChoice  string
+		parallel    *bool
+		wantType    string
+		wantName    string
+		wantDisable bool
+	}{
+		{name: "auto string", toolChoice: `"auto"`, wantType: "auto"},
+		{name: "function object", toolChoice: `{"type":"function","function":{"name":"lookup"}}`, wantType: "tool", wantName: "lookup"},
+		{name: "auto with parallel disabled", toolChoice: `"auto"`, parallel: boolPtr(false), wantType: "auto", wantDisable: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte(`{"model":"gpt-test","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}],"tool_choice":` + tc.toolChoice + `}`)
+			req, err := OpenAIChatRequestToCanonical(body)
+			if err != nil {
+				t.Fatalf("OpenAIChatRequestToCanonical: %v", err)
+			}
+			if tc.parallel != nil {
+				req.ParallelToolCalls = tc.parallel
+			}
+			out, err := CanonicalToClaudeRequest(req)
+			if err != nil {
+				t.Fatalf("CanonicalToClaudeRequest: %v", err)
+			}
+			var payload map[string]any
+			if err := json.Unmarshal(out, &payload); err != nil {
+				t.Fatalf("decode Claude request: %v", err)
+			}
+			choice, ok := payload["tool_choice"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected Claude object tool_choice, got %#v in %s", payload["tool_choice"], out)
+			}
+			if choice["type"] != tc.wantType {
+				t.Fatalf("type = %v, want %q", choice["type"], tc.wantType)
+			}
+			if tc.wantName != "" && choice["name"] != tc.wantName {
+				t.Fatalf("name = %v, want %q", choice["name"], tc.wantName)
+			}
+			if _, hasFunction := choice["function"]; hasFunction {
+				t.Fatalf("Claude tool_choice must not keep OpenAI function wrapper: %#v", choice)
+			}
+			if tc.wantDisable {
+				if choice["disable_parallel_tool_use"] != true {
+					t.Fatalf("expected disable_parallel_tool_use=true, got %#v", choice)
+				}
+			} else if _, exists := choice["disable_parallel_tool_use"]; exists {
+				t.Fatalf("did not expect disable_parallel_tool_use, got %#v", choice)
+			}
+		})
+	}
+}
+
+func boolPtr(v bool) *bool { return &v }
+
+func toolChoiceEqual(got, want any) bool {
+	gotJSON, err := json.Marshal(got)
+	if err != nil {
+		return false
+	}
+	wantJSON, err := json.Marshal(want)
+	if err != nil {
+		return false
+	}
+	return string(gotJSON) == string(wantJSON)
+}
+

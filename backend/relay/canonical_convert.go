@@ -341,8 +341,8 @@ func CanonicalToClaudeRequest(req *CanonicalRequest) ([]byte, error) {
 		}
 		out["tools"] = tools
 	}
-	if req.ToolChoice != nil {
-		out["tool_choice"] = canonicalToolChoiceToClaude(req.ToolChoice)
+	if converted := applyClaudeDisableParallelToolUse(canonicalToolChoiceToClaude(req.ToolChoice), req.ParallelToolCalls); converted != nil {
+		out["tool_choice"] = converted
 	}
 	if req.Thinking != nil && req.Thinking.Enabled {
 		budget := req.Thinking.BudgetTokens
