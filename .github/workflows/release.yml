@@ -4,12 +4,13 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  build-binaries:
     runs-on: ubuntu-latest
 
     steps:
@@ -33,7 +34,7 @@ jobs:
       - name: Build standalone binaries
         run: npm run build
 
-      - name: Verify release assets
+      - name: Verify build outputs
         shell: bash
         run: |
           set -euo pipefail
@@ -41,23 +42,95 @@ jobs:
           test -f dist/standalone/elysia-api-linux-amd64
           test -f dist/standalone/elysia-api-darwin-amd64
           test -f dist/standalone/elysia-api-darwin-arm64
-          cd dist/standalone
+
+      - name: Upload windows/linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-binaries
+          if-no-files-found: error
+          path: |
+            dist/standalone/elysia-api-windows-amd64.exe
+            dist/standalone/elysia-api-linux-amd64
+
+  build-macos-app:
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: backend/go.sum
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build standalone binaries
+        run: npm run build
+
+      - name: Resolve app version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "MACOS_APP_VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+          else
+            echo "MACOS_APP_VERSION=$(git describe --tags --always)" >> "$GITHUB_ENV"
+          fi
+
+      - name: Assemble macOS app DMG
+        run: npm run build:macos-app
+
+      - name: Upload macOS DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app
+          if-no-files-found: error
+          path: dist/standalone/elysia-api-macos.dmg
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-binaries, build-macos-app]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Verify and checksum release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          test -f elysia-api-windows-amd64.exe
+          test -f elysia-api-linux-amd64
+          test -f elysia-api-macos.dmg
           sha256sum \
             elysia-api-windows-amd64.exe \
             elysia-api-linux-amd64 \
-            elysia-api-darwin-amd64 \
-            elysia-api-darwin-arm64 > SHA256SUMS
+            elysia-api-macos.dmg > SHA256SUMS
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create ${GITHUB_REF_NAME} \
-            dist/standalone/elysia-api-windows-amd64.exe \
-            dist/standalone/elysia-api-linux-amd64 \
-            dist/standalone/elysia-api-darwin-amd64 \
-            dist/standalone/elysia-api-darwin-arm64 \
-            dist/standalone/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" \
+            dist/elysia-api-windows-amd64.exe \
+            dist/elysia-api-linux-amd64 \
+            dist/elysia-api-macos.dmg \
+            dist/SHA256SUMS \
             --verify-tag \
             --generate-notes \
             --title ${GITHUB_REF_NAME}

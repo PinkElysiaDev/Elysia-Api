@@ -22,8 +22,13 @@ The standalone binaries are emitted to `dist/standalone/`:
 | Linux amd64 | `elysia-api-linux-amd64` |
 | macOS Intel | `elysia-api-darwin-amd64` |
 | macOS Apple Silicon | `elysia-api-darwin-arm64` |
+| macOS app image (universal) | `elysia-api-macos.dmg` |
 
 `config.json.example` stays at the repository root and is not copied into `dist/standalone/`.
+
+On a macOS host with Xcode Command Line Tools installed, `npm run build:macos-app` additionally assembles `ElysiaApi.app` (universal arm64 + amd64) into `dist/standalone/` from the binaries produced by `npm run build`, and packs it into `elysia-api-macos.dmg`.
+
+Releases only ship the DMG for macOS; the standalone darwin binaries above are intended for local builds and command-line use.
 
 ## Configuration
 
@@ -68,7 +73,7 @@ chmod +x ./elysia-api-linux-amd64
 
 ### macOS
 
-Apple Silicon uses `elysia-api-darwin-arm64`; Intel Macs use `elysia-api-darwin-amd64`:
+For command-line use, build from source (`npm run build`) and run the matching binary — `elysia-api-darwin-arm64` on Apple Silicon, `elysia-api-darwin-amd64` on Intel:
 
 ```bash
 chmod +x ./elysia-api-darwin-arm64
@@ -78,6 +83,19 @@ chmod +x ./elysia-api-darwin-arm64
 Open the WebUI at `http://127.0.0.1:8765/ui/` and authenticate with `panelAccessToken`.
 
 The WebUI is embedded in the backend binary, so `/ui/` works without a separate frontend deployment. To override it with a custom build, set `webuiDir` in `config.json` to a directory containing the built assets.
+
+### macOS app bundle
+
+`elysia-api-macos.dmg` (attached to each release) contains `ElysiaApi.app`, a native wrapper around the same universal backend binary (requires macOS 12 or newer, matching the Go-built backend). Open the DMG and drag ElysiaApi onto the Applications shortcut, then launch it from the Applications folder or Launchpad:
+
+- The app runs the backend as a child process and shows the WebUI in its own window; the panel token from the generated config is injected automatically, so no manual login is needed.
+- First launch writes a config with a randomly generated `panelAccessToken`. All runtime data lives in `~/Library/Application Support/ElysiaApi/` (`config.json`, SQLite database, `.master-key`, `elysia-api.log`) and survives app updates.
+- A menu bar item shows the running state, port and version, with shortcuts to copy the API base URL / panel token and to start/stop the backend.
+- The default port is `8765`; if it is occupied the app automatically picks a free port starting from `8799`. The actual port is shown in the menu bar status line.
+- Closing the window keeps the backend running in the background (Dock icon hidden, menu bar item only); reopen the window from the menu bar. Quitting from the menu bar stops the backend.
+- Updates: an update banner appears in the bottom-left corner of the window when a newer release is published. Clicking **Update now** downloads the new DMG, verifies its SHA-256 digest (refused if the release publishes no digest), swaps in the entire new app bundle exactly as signed by CI, and relaunches — config and database are untouched. Also available from the menu bar item (**Check for Updates**).
+
+The bundle is ad-hoc signed by CI. If Gatekeeper blocks a freshly downloaded copy, run `xattr -d com.apple.quarantine /Applications/ElysiaApi.app` and open it again.
 
 ## Process Supervision
 
