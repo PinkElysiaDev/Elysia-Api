@@ -9,6 +9,7 @@
   "license": "MIT",
   "scripts": {
     "build": "node scripts/build-standalone.mjs",
+    "build:macos-app": "node scripts/build-macos-app.mjs",
     "build:webui": "npm run build --workspace @root/webui",
     "lint": "npm exec eslint -- packages/webui --cache --ext=ts,tsx",
     "lint-fix": "npm exec eslint -- packages/webui --cache --ext=ts,tsx --fix"
