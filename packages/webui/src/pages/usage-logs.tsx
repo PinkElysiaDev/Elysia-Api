@@ -31,7 +31,7 @@ import { CopyButton } from '@/components/copy-button'
 import { RangeSelect, type RangeKey } from '@/components/range-select'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
-import { useUsageLogs, useGroups, useModels, useTokens, revalidate } from '@/lib/hooks'
+import { useUsageLogs, useGroups, useModels, useTokens, useMinuteTick, revalidate } from '@/lib/hooks'
 import { api } from '@/lib/api'
 import type { UsageBody, UsageLogDetail } from '@/lib/types'
 import {
@@ -58,6 +58,7 @@ export function UsageLogsPage() {
   const [statusCode, setStatusCode] = useState('')
   const [page, setPage] = useState(0)
   const [detailId, setDetailId] = useState<string | null>(null)
+  const minuteTick = useMinuteTick()
 
   const { data: groups } = useGroups()
   const { data: models } = useModels()
@@ -79,11 +80,18 @@ export function UsageLogsPage() {
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
     }
-  }, [range, groupNames, modelNames, keyNames, statusCode, page])
+    // minuteTick 让 to 随时间推进，避免查询窗口冻结在挂载时刻。
+ // eslint-disable-next-line react-hooks/exhaustive-deps -- minuteTick 驱动查询窗口随时间推进，不在回调体内使用是有意的
+  }, [range, groupNames, modelNames, keyNames, statusCode, page, minuteTick])
 
   const { data, isLoading, error, mutate } = useUsageLogs(params)
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
+  // total 收缩（重置/裁剪）后把超界的页码收敛回最后一页。
+  useEffect(() => {
+    setPage((p) => Math.min(p, totalPages - 1))
+  }, [totalPages])
 
   async function handleReset() {
     const okToReset = await confirm({

@@ -53,7 +53,7 @@ func (s *Server) handleCustomStreamRequest(
 	if err != nil {
 		return fail(http.StatusInternalServerError, fmt.Sprintf("custom protocol stream config is invalid: %v", err), nil, false)
 	}
-	response, err := s.openaiAdapter.SendCustomProtocolRequest(selectedModel.BaseURL, selectedModel.APIKey, request, true)
+	response, err := s.openaiAdapter.SendCustomProtocolRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, request, true)
 	if err != nil {
 		return fail(http.StatusBadGateway, fmt.Sprintf("failed to forward custom protocol stream: %v", err), nil, true)
 	}

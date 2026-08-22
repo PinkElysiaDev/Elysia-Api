@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -16,9 +17,9 @@ import (
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
-
 
 type usageBody struct {
 	Content   string `json:"content"`
@@ -164,7 +165,7 @@ func shortTokenHash(token string) string {
 
 func (s *Server) initUsageRecord(c *gin.Context, start time.Time, body []byte, inputFormat relay.FormatType) *usageRecord {
 	return &usageRecord{
-		RequestID:    fmt.Sprintf("req_%d", start.UnixNano()),
+		RequestID:    usageRequestID(start),
 		StartedAt:    start,
 		KeyName:      c.GetString("elysiaKeyName"),
 		KeyHash:      c.GetString("elysiaKeyHash"),
@@ -172,6 +173,16 @@ func (s *Server) initUsageRecord(c *gin.Context, start time.Time, body []byte, i
 		StatusCode:   http.StatusOK,
 		IncomingBody: sanitizeUsageBody(body),
 	}
+}
+
+// usageRequestID 生成带随机后缀的请求 ID：并发请求可能拿到相同的 UnixNano
+// （Windows 时钟粒度下概率可观），裸纳秒时间戳会与 INSERT OR REPLACE 相互覆盖。
+func usageRequestID(start time.Time) string {
+	suffix := make([]byte, 4)
+	if _, err := rand.Read(suffix); err != nil {
+		return fmt.Sprintf("req_%d", start.UnixNano())
+	}
+	return fmt.Sprintf("req_%d_%x", start.UnixNano(), suffix)
 }
 
 func sanitizeUsageBody(data []byte) usageBody {
@@ -717,12 +728,20 @@ func (s *Server) usageStats(c *gin.Context) {
 	from, to := usageTimeRange(c)
 	window := usageWindow(c.Query("window"), from, to)
 	if s.store != nil {
-		summary, err := s.store.UsageTotals(c.Request.Context(), usageQueryFromRequest(c))
+		query := usageQueryFromRequest(c)
+		summary, err := s.store.UsageTotals(c.Request.Context(), query)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"from": from, "to": to, "window": window, "summary": summary, "allTimeSummary": summary})
+		// allTimeSummary 是"累计"口径：不带任何过滤再查一次，
+		// 与非 store 分支的 summarizeUsage(snapshot) 语义保持一致。
+		allTimeSummary, err := s.store.UsageTotals(c.Request.Context(), storage.UsageQuery{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"from": from, "to": to, "window": window, "summary": summary, "allTimeSummary": allTimeSummary})
 		return
 	}
 	snapshot := s.usageSnapshot()
@@ -1190,17 +1209,22 @@ func fillAggregateLabels(item *usageAggregate, record usageRecord, dimension str
 }
 
 func truncateUsageWindow(t time.Time, window string) time.Time {
+	// 按本地时钟对齐窗口边界：t.Truncate 按 Unix 纪元取整，在非整小时时区
+	//（如 UTC+5:30）会把"小时"桶切在半点上，图表标签与数据错位。
+	location := t.Location()
 	switch window {
 	case "5m":
-		return t.Truncate(5 * time.Minute)
+		minute := t.Minute() - t.Minute()%5
+		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), minute, 0, 0, location)
 	case "15m":
-		return t.Truncate(15 * time.Minute)
+		minute := t.Minute() - t.Minute()%15
+		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), minute, 0, 0, location)
 	case "minute":
-		return t.Truncate(time.Minute)
+		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), 0, 0, location)
 	case "day":
-		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, location)
 	default:
-		return t.Truncate(time.Hour)
+		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, location)
 	}
 }
 

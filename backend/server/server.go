@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -67,6 +68,11 @@ type Server struct {
 	cachedGroups     []config.ModelGroupConfig
 	cachedTokens     map[string]config.AccessToken
 	routeCacheLoaded bool
+
+	// 存在需要重启才能生效的配置变更（host/port/databasePath/pprof），
+	// 由 adminUpdateRuntimeConfig 置位，restart-required/check 查询；进程重启自然清零。
+	restartMu       sync.Mutex
+	restartRequired bool
 
 	// skipOutboundValidation 仅供测试使用：跳过 SSRF 出站校验，
 	// 以便用 httptest 的 127.0.0.1 上游做端到端转发/故障转移测试。
@@ -231,12 +237,40 @@ func (s *Server) mountWebUI() {
 	}
 
 	if sub, ok := webui.FS(); ok {
-		s.engine.StaticFS("/ui", http.FS(sub))
+		// hashed 文件名的静态资源可永久强缓存；其余（index.html）必须每次
+		// 重新校验，避免升级二进制后旧 index 引用新 hash 资源 404 白屏。
+		// 子目录一律 404，阻止 http.FileServer 渲染目录列表页（文件名枚举）。
+		ui := s.engine.Group("/ui", func(c *gin.Context) {
+			if strings.HasPrefix(c.Request.URL.Path, "/ui/assets/") {
+				c.Header("Cache-Control", "public, max-age=31536000, immutable")
+			} else {
+				c.Header("Cache-Control", "no-cache")
+			}
+		})
+		ui.StaticFS("/", http.FS(noDirectoryFS{inner: sub}))
 		log.Printf("WebUI mounted from embedded assets at /ui")
 		return
 	}
 
 	log.Printf("WebUI is not available (no embedded assets and no valid webuiDir); /ui is disabled")
+}
+
+// noDirectoryFS 隐藏子目录：http.FileServer 对无 index.html 的目录会渲染
+// 目录列表页，泄露资源文件名；根目录（含 index.html）保持正常服务。
+type noDirectoryFS struct {
+	inner fs.FS
+}
+
+func (n noDirectoryFS) Open(name string) (fs.File, error) {
+	f, err := n.inner.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	if stat, statErr := f.Stat(); statErr == nil && stat.IsDir() && name != "." {
+		f.Close()
+		return nil, fs.ErrNotExist
+	}
+	return f, nil
 }
 
 func (s *Server) authMiddleware() gin.HandlerFunc {
@@ -516,6 +550,9 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			if isLast {
 				record.StatusCode = lastStatus
 				record.Error = lastErr
+				record.EndedAt = time.Now()
+				record.DurationMs = time.Since(startTime).Milliseconds()
+				s.recordUsage(record)
 				c.JSON(http.StatusForbidden, gin.H{"error": lastErr})
 				committed = true
 			}
@@ -594,6 +631,9 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			if isLast {
 				record.StatusCode = lastStatus
 				record.Error = lastErr
+				record.EndedAt = time.Now()
+				record.DurationMs = time.Since(startTime).Milliseconds()
+				s.recordUsage(record)
 				c.JSON(lastStatus, gin.H{"error": lastErr})
 				committed = true
 			}
@@ -613,6 +653,9 @@ func (s *Server) chatCompletions(c *gin.Context) {
 				if isLast {
 					record.StatusCode = lastStatus
 					record.Error = lastErr
+					record.EndedAt = time.Now()
+					record.DurationMs = time.Since(startTime).Milliseconds()
+					s.recordUsage(record)
 					c.JSON(500, gin.H{"error": lastErr})
 					committed = true
 				}
@@ -703,7 +746,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 	// 这样输入协议与下游平台彻底解耦，避免协议错配。
 	switch targetPlatform {
 	case relay.PlatformAnthropic:
-		httpResp, err := s.claudeAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, targetBody, false)
+		httpResp, err := s.claudeAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody, false)
 		if err != nil {
 			log.Printf("Error forwarding Claude request: %v", err)
 			result = failResult(http.StatusBadGateway, fmt.Sprintf("Failed to forward request: %v", err), nil, "")
@@ -749,7 +792,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		return result
 
 	case relay.PlatformGemini:
-		httpResp, err := s.geminiAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, false)
+		httpResp, err := s.geminiAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, false)
 		if err != nil {
 			log.Printf("Error forwarding Gemini request: %v", err)
 			result = failResult(http.StatusBadGateway, fmt.Sprintf("Failed to forward request: %v", err), nil, "")
@@ -795,7 +838,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		return result
 
 	default:
-		resp, respBody, statusCode, err := s.openaiAdapter.SendRequestRawWithBody(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
+		resp, respBody, statusCode, err := s.openaiAdapter.SendRequestRawWithBody(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		if err != nil {
 			log.Printf("Error forwarding request (status=%d): %v", statusCode, err)
 			if len(respBody) > 0 {
@@ -908,7 +951,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 
 	switch targetPlatform {
 	case relay.PlatformAnthropic:
-		httpResp, err := s.claudeAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, targetBody, true)
+		httpResp, err := s.claudeAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody, true)
 		if err != nil {
 			log.Printf("Error forwarding Claude stream request: %v", err)
 			result = failResult(http.StatusBadGateway, fmt.Sprintf("Failed to forward request: %v", err), nil)
@@ -928,7 +971,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		forwardErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), httpResp, relay.FormatClaude, inputFormat, writer, selectedModel.Name)
 
 	case relay.PlatformGemini:
-		httpResp, err := s.geminiAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, true)
+		httpResp, err := s.geminiAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, true)
 		if err != nil {
 			log.Printf("Error forwarding Gemini stream request: %v", err)
 			result = failResult(http.StatusBadGateway, fmt.Sprintf("Failed to forward request: %v", err), nil)
@@ -948,7 +991,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		forwardErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), httpResp, relay.FormatGemini, inputFormat, writer, selectedModel.Name)
 
 	default:
-		resp, err := s.openaiAdapter.SendRequestStream(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
+		resp, err := s.openaiAdapter.SendRequestStream(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		if err != nil {
 			log.Printf("Error forwarding stream request: %v", err)
 			result = failResult(http.StatusBadGateway, fmt.Sprintf("Failed to forward request: %v", err), nil)

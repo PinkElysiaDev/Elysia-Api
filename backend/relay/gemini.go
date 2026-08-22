@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -12,22 +13,21 @@ import (
 
 // GeminiAdapter 用于向 Gemini 原生 API 发送请求
 type GeminiAdapter struct {
-	client *http.Client
+	client *dynamicTimeoutClient
 	// streamClient 专用于流式请求：不设 Timeout，避免长连接被硬超时掐断。
 	streamClient *http.Client
 }
 
 func NewGeminiAdapter(timeout time.Duration) *GeminiAdapter {
-	client := &http.Client{Transport: newSecureTransport()}
-	if timeout > 0 {
-		client.Timeout = timeout
-	}
-	streamClient := &http.Client{Transport: newSecureTransport()}
-	return &GeminiAdapter{client: client, streamClient: streamClient}
+	return &GeminiAdapter{client: newDynamicTimeoutClient(timeout), streamClient: &http.Client{Transport: newSecureTransport()}}
 }
 
-// SendRequest 向 Gemini generateContent 端点发送请求，返回原始 HTTP 响应
-func (a *GeminiAdapter) SendRequest(baseUrl, apiKey, model string, body []byte, isStream bool) (*http.Response, error) {
+// SetTimeout 运行时更新非流式请求超时（admin 面板改 httpTimeout 后即时生效）。
+func (a *GeminiAdapter) SetTimeout(d time.Duration) { a.client.SetTimeout(d) }
+
+// SendRequest 向 Gemini generateContent 端点发送请求，返回原始 HTTP 响应。
+// ctx 传播客户端取消信号（断连即中止上游调用）。
+func (a *GeminiAdapter) SendRequest(ctx context.Context, baseUrl, apiKey, model string, body []byte, isStream bool) (*http.Response, error) {
 	base := strings.TrimRight(strings.TrimSpace(baseUrl), "/")
 	var url string
 	if isStream {
@@ -36,7 +36,7 @@ func (a *GeminiAdapter) SendRequest(baseUrl, apiKey, model string, body []byte, 
 		url = fmt.Sprintf("%s/v1beta/models/%s:generateContent", base, model)
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

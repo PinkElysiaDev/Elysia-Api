@@ -6,8 +6,5 @@
   "logLevel": "info",
   "httpTimeout": 120,
   "secretKeyPath": ".master-key",
-  "relay": {
-    "passthrough": false
-  },
   "customProtocols": []
 }

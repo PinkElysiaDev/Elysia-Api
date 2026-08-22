@@ -202,8 +202,10 @@ func TestCustomProtocolOmitIfEmptyKeepsNonEmptyArrayItems(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render array omit template: %v", err)
 	}
-	if string(rendered.Body) != `{"items":[{"value":"keep"},null]}` {
-		t.Fatalf("non-empty array item was removed: %s", rendered.Body)
+	// 回归：omitIfEmpty 命中数组元素时真正从数组移除（旧实现置 nil 留洞，
+	// 输出 {"items":[...,null]}，下游收到语义错误的 null 元素）。
+	if string(rendered.Body) != `{"items":[{"value":"keep"}]}` {
+		t.Fatalf("unexpected omit-if-empty result: %s", rendered.Body)
 	}
 }
 

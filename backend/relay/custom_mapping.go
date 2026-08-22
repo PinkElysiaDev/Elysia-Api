@@ -213,57 +213,69 @@ func setCustomPathValue(current any, tokens []customPathToken, value any) (any, 
 	return object, nil
 }
 
-func deleteCustomPath(root any, path string) {
+func deleteCustomPath(root any, path string) any {
 	tokens, err := parseCustomPath(path)
 	if err != nil {
-		return
+		return root
 	}
-	deleteCustomPathValue(root, tokens)
+	updated, _ := deleteCustomPathValue(root, tokens)
+	return updated
 }
 
-func deleteCustomPathValue(current any, tokens []customPathToken) bool {
+// deleteCustomPathValue 按路径删除空值，返回（可能被替换的）新值与是否删除。
+// 删除数组元素会返回缩短后的新 slice——Go 无法原地缩短 slice 并让父容器感知，
+// 调用方必须用返回值替换旧值，否则 JSON 输出会留下 null 洞。
+func deleteCustomPathValue(current any, tokens []customPathToken) (any, bool) {
 	if len(tokens) == 0 {
-		return true
+		return current, true
 	}
 	token := tokens[0]
 	if token.index != nil {
 		array, ok := current.([]any)
 		if !ok || *token.index >= len(array) {
-			return false
+			return current, false
 		}
+		index := *token.index
 		if len(tokens) == 1 {
-			if customEmptyValue(array[*token.index]) {
-				array[*token.index] = nil
-				return true
+			if customEmptyValue(array[index]) {
+				return append(array[:index], array[index+1:]...), true
 			}
-			return false
+			return current, false
 		}
-		if deleteCustomPathValue(array[*token.index], tokens[1:]) && customEmptyValue(array[*token.index]) {
-			array[*token.index] = nil
-			return true
+		updated, ok := deleteCustomPathValue(array[index], tokens[1:])
+		if !ok {
+			return current, false
 		}
-		return false
+		array[index] = updated
+		if customEmptyValue(array[index]) {
+			return append(array[:index], array[index+1:]...), true
+		}
+		return current, true
 	}
 	object, ok := current.(map[string]any)
 	if !ok {
-		return false
+		return current, false
 	}
 	value, exists := object[token.name]
 	if !exists {
-		return false
+		return current, false
 	}
 	if len(tokens) == 1 {
 		if customEmptyValue(value) {
 			delete(object, token.name)
-			return true
+			return current, true
 		}
-		return false
+		return current, false
 	}
-	if deleteCustomPathValue(value, tokens[1:]) && customEmptyValue(value) {
+	updated, deleted := deleteCustomPathValue(value, tokens[1:])
+	if !deleted {
+		return current, false
+	}
+	object[token.name] = updated
+	if customEmptyValue(updated) {
 		delete(object, token.name)
-		return true
 	}
-	return false
+	return current, true
 }
 
 func applyCustomFieldMappings(response *MaheshvaraResponse, root any, mappings []CustomProtocolFieldMapping) (*MaheshvaraResponse, error) {

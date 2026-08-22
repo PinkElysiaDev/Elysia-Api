@@ -20,8 +20,8 @@ The standalone binaries are emitted to `dist/standalone/`:
 | --- | --- |
 | Windows amd64 | `elysia-api-windows-amd64.exe` |
 | Linux amd64 | `elysia-api-linux-amd64` |
-| macOS Intel | `elysia-api-darwin-amd64` |
-| macOS Apple Silicon | `elysia-api-darwin-arm64` |
+| macOS Intel (local builds only) | `elysia-api-darwin-amd64` |
+| macOS Apple Silicon (local builds only) | `elysia-api-darwin-arm64` |
 | macOS app image (universal) | `elysia-api-macos.dmg` |
 
 `config.json.example` stays at the repository root and is not copied into `dist/standalone/`.

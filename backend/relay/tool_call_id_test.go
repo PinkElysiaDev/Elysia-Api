@@ -144,23 +144,8 @@ func TestNormalizeOpenAIToolCallIDsRepairsAndPreserves(t *testing.T) {
 	}
 }
 
-// 回归：流式事件缺 id 时，OpenAI chunk 渲染必须补出非空 id。
+// 回归：流式事件缺 id 时，有状态 renderer 渲染必须补出非空 id。
 func TestStreamRenderersSynthesizeMissingToolCallID(t *testing.T) {
-	event := &MaheshvaraStreamEvent{
-		Type:               CanonicalEventFunctionCallArgumentsDelta,
-		ChoiceIndex:        0,
-		ToolCallIndex:      0,
-		ToolName:           "lookup",
-		ToolArgumentsDelta: "{}",
-	}
-	chunk, err := MaheshvaraStreamEventToOpenAIChatChunk(event)
-	if err != nil {
-		t.Fatalf("MaheshvaraStreamEventToOpenAIChatChunk: %v", err)
-	}
-	if !strings.Contains(string(chunk), `"id":"call_0_0"`) {
-		t.Fatalf("chunk missing synthesized tool id: %s", chunk)
-	}
-
 	writer := &captureStreamWriter{}
 	renderer := NewMaheshvaraStreamRenderer(FormatOpenAIChat, writer, "model")
 	if err := renderer.Write(&MaheshvaraStreamEvent{Type: CanonicalEventFunctionCallAdded, ChoiceIndex: 0, ToolCallIndex: 0, ToolName: "lookup"}); err != nil {

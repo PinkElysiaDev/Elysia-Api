@@ -387,91 +387,112 @@ func (renderer *MaheshvaraStreamRenderer) completeResponses() error {
 		return err
 	}
 	var outputs []maheshvaraResponsesRenderedOutput
+	// 各类 item 的收尾事件先收集、统一按 outputIndex 排序后发出。
+	// 按类别顺序（message→reasoning→tool）发出时，多 choice 场景下
+	// output_item.done 事件次序与 output_index 不一致，逐事件消费的
+	// 客户端会看到乱序的输出项。
+	type deferredDone struct {
+		index int
+		run   func() error
+	}
+	pending := make([]deferredDone, 0, len(state.messages)+len(state.reasoning)+len(state.tools))
+
 	for choiceIndex, message := range state.messages {
 		if message == nil || message.done {
 			continue
 		}
-		if message.textStarted && !message.textDone {
-			if err := renderer.finishResponsesText(choiceIndex, ""); err != nil {
+		pending = append(pending, deferredDone{index: message.outputIndex, run: func() error {
+			if message.textStarted && !message.textDone {
+				if err := renderer.finishResponsesText(choiceIndex, ""); err != nil {
+					return err
+				}
+			}
+			if message.refusalStarted && !message.refusalDone {
+				if err := renderer.finishResponsesRefusal(choiceIndex, ""); err != nil {
+					return err
+				}
+			}
+			content := make([]any, responsesMessageContentCount(message))
+			if message.textStarted {
+				part := map[string]any{"type": "output_text", "text": message.text.String(), "annotations": []any{}}
+				content[message.textIndex] = part
+				if err := renderer.writeResponsesEvent(CanonicalEventContentPartDone, map[string]any{"type": CanonicalEventContentPartDone, "item_id": message.id, "output_index": message.outputIndex, "content_index": message.textIndex, "part": part}); err != nil {
+					return err
+				}
+			}
+			if message.refusalStarted {
+				part := map[string]any{"type": "refusal", "refusal": message.refusal.String()}
+				content[message.refusalIndex] = part
+				if err := renderer.writeResponsesEvent(CanonicalEventContentPartDone, map[string]any{"type": CanonicalEventContentPartDone, "item_id": message.id, "output_index": message.outputIndex, "content_index": message.refusalIndex, "part": part}); err != nil {
+					return err
+				}
+			}
+			for index, part := range message.extraParts {
+				content[index] = part
+			}
+			content = compactResponsesContent(content)
+			item := map[string]any{"id": message.id, "type": CanonicalOutputMessage, "status": "completed", "role": "assistant", "content": content}
+			if err := renderer.writeResponsesEvent(CanonicalEventOutputItemDone, map[string]any{"type": CanonicalEventOutputItemDone, "output_index": message.outputIndex, "item": item}); err != nil {
 				return err
 			}
-		}
-		if message.refusalStarted && !message.refusalDone {
-			if err := renderer.finishResponsesRefusal(choiceIndex, ""); err != nil {
-				return err
-			}
-		}
-		content := make([]any, responsesMessageContentCount(message))
-		if message.textStarted {
-			part := map[string]any{"type": "output_text", "text": message.text.String(), "annotations": []any{}}
-			content[message.textIndex] = part
-			if err := renderer.writeResponsesEvent(CanonicalEventContentPartDone, map[string]any{"type": CanonicalEventContentPartDone, "item_id": message.id, "output_index": message.outputIndex, "content_index": message.textIndex, "part": part}); err != nil {
-				return err
-			}
-		}
-		if message.refusalStarted {
-			part := map[string]any{"type": "refusal", "refusal": message.refusal.String()}
-			content[message.refusalIndex] = part
-			if err := renderer.writeResponsesEvent(CanonicalEventContentPartDone, map[string]any{"type": CanonicalEventContentPartDone, "item_id": message.id, "output_index": message.outputIndex, "content_index": message.refusalIndex, "part": part}); err != nil {
-				return err
-			}
-		}
-		for index, part := range message.extraParts {
-			content[index] = part
-		}
-		content = compactResponsesContent(content)
-		item := map[string]any{"id": message.id, "type": CanonicalOutputMessage, "status": "completed", "role": "assistant", "content": content}
-		if err := renderer.writeResponsesEvent(CanonicalEventOutputItemDone, map[string]any{"type": CanonicalEventOutputItemDone, "output_index": message.outputIndex, "item": item}); err != nil {
-			return err
-		}
-		message.done = true
-		outputs = append(outputs, maheshvaraResponsesRenderedOutput{index: message.outputIndex, item: item})
+			message.done = true
+			outputs = append(outputs, maheshvaraResponsesRenderedOutput{index: message.outputIndex, item: item})
+			return nil
+		}})
 	}
 	for choiceIndex, reasoning := range state.reasoning {
-		if reasoning == nil || !reasoning.started || reasoning.done {
-			continue
-		}
-		if err := renderer.finishResponsesReasoning(choiceIndex, ""); err != nil {
-			return err
-		}
-	}
-	for _, reasoning := range state.reasoning {
 		if reasoning == nil || !reasoning.started {
 			continue
 		}
-		part := map[string]any{"type": "summary_text", "text": reasoning.text.String()}
-		if err := renderer.writeResponsesEvent("response.reasoning_summary_part.done", map[string]any{"type": "response.reasoning_summary_part.done", "item_id": reasoning.id, "output_index": reasoning.outputIndex, "summary_index": 0, "part": part}); err != nil {
-			return err
-		}
-		item := map[string]any{"id": reasoning.id, "type": CanonicalOutputReasoning, "status": "completed", "summary": []any{part}}
-		if err := renderer.writeResponsesEvent(CanonicalEventOutputItemDone, map[string]any{"type": CanonicalEventOutputItemDone, "output_index": reasoning.outputIndex, "item": item}); err != nil {
-			return err
-		}
-		outputs = append(outputs, maheshvaraResponsesRenderedOutput{index: reasoning.outputIndex, item: item})
+		pending = append(pending, deferredDone{index: reasoning.outputIndex, run: func() error {
+			// finish 是幂等的：流中已正常收尾的 reasoning 直接跳过。
+			if err := renderer.finishResponsesReasoning(choiceIndex, ""); err != nil {
+				return err
+			}
+			part := map[string]any{"type": "summary_text", "text": reasoning.text.String()}
+			if err := renderer.writeResponsesEvent("response.reasoning_summary_part.done", map[string]any{"type": "response.reasoning_summary_part.done", "item_id": reasoning.id, "output_index": reasoning.outputIndex, "summary_index": 0, "part": part}); err != nil {
+				return err
+			}
+			item := map[string]any{"id": reasoning.id, "type": CanonicalOutputReasoning, "status": "completed", "summary": []any{part}}
+			if err := renderer.writeResponsesEvent(CanonicalEventOutputItemDone, map[string]any{"type": CanonicalEventOutputItemDone, "output_index": reasoning.outputIndex, "item": item}); err != nil {
+				return err
+			}
+			outputs = append(outputs, maheshvaraResponsesRenderedOutput{index: reasoning.outputIndex, item: item})
+			return nil
+		}})
 	}
 	for _, key := range state.toolOrder {
 		tool := state.tools[key]
 		if tool == nil || tool.done {
 			continue
 		}
-		if !tool.added {
-			if err := renderer.writeResponsesTool(&MaheshvaraStreamEvent{Type: CanonicalEventFunctionCallAdded, ToolCallID: tool.callID, ToolName: tool.name, ToolCallIndex: tool.outputIndex}); err != nil {
+		pending = append(pending, deferredDone{index: tool.outputIndex, run: func() error {
+			if !tool.added {
+				if err := renderer.writeResponsesTool(&MaheshvaraStreamEvent{Type: CanonicalEventFunctionCallAdded, ToolCallID: tool.callID, ToolName: tool.name, ToolCallIndex: tool.outputIndex}); err != nil {
+					return err
+				}
+			}
+			arguments := tool.arguments.String()
+			if arguments == "" {
+				arguments = "{}"
+			}
+			if err := renderer.writeResponsesEvent(CanonicalEventFunctionCallArgumentsDone, map[string]any{"type": CanonicalEventFunctionCallArgumentsDone, "item_id": tool.id, "output_index": tool.outputIndex, "arguments": arguments}); err != nil {
 				return err
 			}
-		}
-		arguments := tool.arguments.String()
-		if arguments == "" {
-			arguments = "{}"
-		}
-		if err := renderer.writeResponsesEvent(CanonicalEventFunctionCallArgumentsDone, map[string]any{"type": CanonicalEventFunctionCallArgumentsDone, "item_id": tool.id, "output_index": tool.outputIndex, "arguments": arguments}); err != nil {
+			item := map[string]any{"id": tool.id, "type": CanonicalOutputFunctionCall, "status": "completed", "call_id": tool.callID, "name": tool.name, "arguments": arguments}
+			if err := renderer.writeResponsesEvent(CanonicalEventOutputItemDone, map[string]any{"type": CanonicalEventOutputItemDone, "output_index": tool.outputIndex, "item": item}); err != nil {
+				return err
+			}
+			tool.done = true
+			outputs = append(outputs, maheshvaraResponsesRenderedOutput{index: tool.outputIndex, item: item})
+			return nil
+		}})
+	}
+	sort.Slice(pending, func(left, right int) bool { return pending[left].index < pending[right].index })
+	for _, done := range pending {
+		if err := done.run(); err != nil {
 			return err
 		}
-		item := map[string]any{"id": tool.id, "type": CanonicalOutputFunctionCall, "status": "completed", "call_id": tool.callID, "name": tool.name, "arguments": arguments}
-		if err := renderer.writeResponsesEvent(CanonicalEventOutputItemDone, map[string]any{"type": CanonicalEventOutputItemDone, "output_index": tool.outputIndex, "item": item}); err != nil {
-			return err
-		}
-		tool.done = true
-		outputs = append(outputs, maheshvaraResponsesRenderedOutput{index: tool.outputIndex, item: item})
 	}
 	sort.Slice(outputs, func(left, right int) bool { return outputs[left].index < outputs[right].index })
 	outputItems := make([]any, 0, len(outputs))

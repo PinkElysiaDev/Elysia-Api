@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/storage"
@@ -29,6 +31,76 @@ func TestProbeEndpoint(t *testing.T) {
 	}
 	if got := probeEndpoint(storage.Model{BaseURL: "https://api.anthropic.com", Platform: "claude"}); got != "https://api.anthropic.com/messages" {
 		t.Fatalf("claude endpoint wrong: %s", got)
+	}
+	if got := probeEndpoint(storage.Model{BaseURL: "https://generativelanguage.googleapis.com/", Platform: "gemini", Name: "gemini-2.0-flash"}); got != "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent" {
+		t.Fatalf("gemini endpoint wrong: %s", got)
+	}
+}
+
+// 回归：Gemini 平台探测必须用 generateContent 请求体与 x-goog-api-key 鉴权，
+// 否则原生上游必 404/401，模型会被健康检查误禁。
+func TestProbeGeminiEndpointAndAuth(t *testing.T) {
+	var gotPath, gotAuth, gotBody string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("x-goog-api-key")
+		buf := make([]byte, r.ContentLength)
+		_, _ = r.Body.Read(buf)
+		gotBody = string(buf)
+		w.WriteHeader(200)
+	}))
+	defer ts.Close()
+
+	s := newHealthTestServer(t)
+	hc := newHealthChecker(s)
+	if !hc.probe(context.Background(), storage.Model{BaseURL: ts.URL, Platform: "gemini", Name: "gemini-2.0-flash", APIKey: "gkey"}, 5) {
+		t.Fatalf("gemini probe should succeed against native endpoint")
+	}
+	if gotPath != "/v1beta/models/gemini-2.0-flash:generateContent" {
+		t.Fatalf("gemini probe path wrong: %s", gotPath)
+	}
+	if gotAuth != "gkey" {
+		t.Fatalf("gemini probe must use x-goog-api-key, got %q", gotAuth)
+	}
+	if !strings.Contains(gotBody, `"contents"`) {
+		t.Fatalf("gemini probe body must use contents shape: %s", gotBody)
+	}
+}
+
+// 回归：单个慢上游不得挤占本轮探测预算，导致后续健康模型被误判失败。
+func TestSlowProbeDoesNotStarveSubsequentModels(t *testing.T) {
+	s := newHealthTestServer(t)
+	hc := newHealthChecker(s)
+	ctx := context.Background()
+
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Second)
+		w.WriteHeader(200)
+	}))
+	defer slow.Close()
+	fast := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	defer fast.Close()
+
+	// 慢上游以 1s 超时探测必然失败；若探测共享整轮 ctx，紧随其后的
+	// 健康上游会因 ctx 已耗尽而同样失败。
+	if hc.probe(ctx, storage.Model{BaseURL: slow.URL, Platform: "openai", Name: "m"}, 1) {
+		t.Fatalf("slow upstream should fail the 1s probe")
+	}
+	if !hc.probe(ctx, storage.Model{BaseURL: fast.URL, Platform: "openai", Name: "m"}, 1) {
+		t.Fatalf("subsequent healthy model must not be starved by earlier slow probe")
+	}
+}
+
+// 回归：404/405 表示端点不支持探测而非上游故障，不得计入失败。
+func TestProbeTreatsEndpointUnsupportedAsHealthy(t *testing.T) {
+	s := newHealthTestServer(t)
+	hc := newHealthChecker(s)
+	for _, status := range []int{404, 405} {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status) }))
+		if !hc.probe(context.Background(), storage.Model{BaseURL: ts.URL, Platform: "openai", Name: "m"}, 5) {
+			t.Fatalf("status %d means endpoint unsupported, must not count as failure", status)
+		}
+		ts.Close()
 	}
 }
 

@@ -46,7 +46,8 @@ export function RuntimeConfigPage() {
         port: form.port,
         logLevel: form.logLevel,
         httpTimeout: form.httpTimeout,
-        panelAccessToken: form.panelAccessToken,
+        // 留空 = 不修改现有令牌；提交空串会被后端拒绝（空令牌会锁死面板）。
+        panelAccessToken: form.panelAccessToken.trim() ? form.panelAccessToken : undefined,
         databasePath: form.databasePath,
         enablePprof: form.enablePprof,
         allowFakeIPOutbound: form.allowFakeIPOutbound,

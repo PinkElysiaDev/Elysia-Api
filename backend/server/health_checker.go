@@ -88,7 +88,9 @@ func (h *healthChecker) runOnce() {
 
 	changed := false
 	for _, model := range models {
-		ok := h.probe(ctx, model, cfg.TimeoutSeconds)
+		// 每次探测在 probe 内部独立限时：若整轮共享一个超时 ctx，一个慢上游
+		// 就会耗尽预算，导致本轮后续所有探测连锁失败、健康模型被误禁。
+		ok := h.probe(context.Background(), model, cfg.TimeoutSeconds)
 		if h.record(model, ok, cfg.FailureThreshold) {
 			changed = true
 		}
@@ -140,10 +142,10 @@ func (h *healthChecker) probe(ctx context.Context, model storage.Model, timeoutS
 	if err := h.server.validateOutbound(model.BaseURL); err != nil {
 		return false
 	}
-	// 用一个极小的 chat/completions 请求做探测：max_tokens=1，单字提示。
-	// 对绝大多数 OpenAI 兼容/Claude/Gemini 上游都能触发一次真实鉴权+路由。
-	body := []byte(fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"ping"}],"max_tokens":%d}`, model.Name, HealthProbeMaxTokens))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, probeEndpoint(model), bytes.NewReader(body))
+	// 单次探测独立超时，避免上一个慢探测挤占本轮预算。
+	probeCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodPost, probeEndpoint(model), bytes.NewReader(probeBody(model)))
 	if err != nil {
 		return false
 	}
@@ -161,7 +163,21 @@ func (h *healthChecker) probe(ctx context.Context, model storage.Model, timeoutS
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return true
 	}
+	// 404/405：上游可达且正常响应，只是该端点不支持探测（如网关只实现了
+	// chat/completions）。鉴权与连通性已验证，不计入失败以免误禁。
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
+		return true
+	}
 	return resp.StatusCode >= 200 && resp.StatusCode < 300
+}
+
+// probeBody 按平台构造最小探测请求体：OpenAI 兼容/Claude 用 chat 格式，
+// Gemini 原生 generateContent 端点只接受 contents 结构。
+func probeBody(model storage.Model) []byte {
+	if model.Platform == "gemini" {
+		return []byte(`{"contents":[{"parts":[{"text":"ping"}]}],"generationConfig":{"maxOutputTokens":1}}`)
+	}
+	return []byte(fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"ping"}],"max_tokens":%d}`, model.Name, HealthProbeMaxTokens))
 }
 
 func probeEndpoint(model storage.Model) string {
@@ -172,6 +188,9 @@ func probeEndpoint(model storage.Model) string {
 	switch model.Platform {
 	case "claude":
 		return base + "/messages"
+	case "gemini":
+		// 与 relay.GeminiAdapter 的 URL 规则保持一致。
+		return base + "/v1beta/models/" + model.Name + ":generateContent"
 	default:
 		return base + "/chat/completions"
 	}
@@ -185,6 +204,8 @@ func applyProbeAuth(req *http.Request, model storage.Model) {
 	case "claude":
 		req.Header.Set("x-api-key", model.APIKey)
 		req.Header.Set("anthropic-version", "2023-06-01")
+	case "gemini":
+		req.Header.Set("x-goog-api-key", model.APIKey)
 	default:
 		req.Header.Set("Authorization", "Bearer "+model.APIKey)
 	}

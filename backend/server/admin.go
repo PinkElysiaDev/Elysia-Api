@@ -82,7 +82,7 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		Host                string  `json:"host"`
 		Port                int     `json:"port"`
 		LogLevel            string  `json:"logLevel"`
-		HTTPTimeout         int     `json:"httpTimeout"`
+		HTTPTimeout         *int    `json:"httpTimeout"`
 		PanelAccessToken    *string `json:"panelAccessToken"`
 		DatabasePath        *string `json:"databasePath"`
 		EnablePprof         *bool   `json:"enablePprof"`
@@ -93,42 +93,75 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		return
 	}
 	server := s.config.GetServer()
-	restartRequired := (payload.Host != "" && payload.Host != server.Host) || (payload.Port != 0 && payload.Port != server.Port)
+	requestsRestart := (payload.Host != "" && payload.Host != server.Host) || (payload.Port != 0 && payload.Port != server.Port)
 	if payload.LogLevel != "" {
 		s.config.SetLogLevel(payload.LogLevel)
 	}
-	if payload.HTTPTimeout >= 0 {
-		s.config.SetHTTPTimeout(payload.HTTPTimeout)
+	if payload.HTTPTimeout != nil {
+		seconds := *payload.HTTPTimeout
+		if seconds < 0 {
+			fail(c, 400, "invalid_http_timeout", "httpTimeout must not be negative")
+			return
+		}
+		s.config.SetHTTPTimeout(seconds)
+		// 即时下发到三个 relay adapter，运行时修改无需重启。
+		timeout := time.Duration(seconds) * time.Second
+		s.openaiAdapter.SetTimeout(timeout)
+		s.claudeAdapter.SetTimeout(timeout)
+		s.geminiAdapter.SetTimeout(timeout)
 	}
 	if payload.PanelAccessToken != nil {
+		// 空面板令牌会让 IsValidPanelAccessToken 对一切请求返回 false，
+		// 直接锁死整个管理面板，只能去服务器手改 config.json 恢复。
+		if strings.TrimSpace(*payload.PanelAccessToken) == "" {
+			fail(c, 400, "invalid_panel_access_token", "panel access token must not be empty")
+			return
+		}
 		s.config.SetPanelAccessToken(*payload.PanelAccessToken)
 	}
 	if payload.DatabasePath != nil {
 		old := s.config.GetDatabasePath()
 		s.config.SetDatabasePath(*payload.DatabasePath)
 		if s.config.GetDatabasePath() != old {
-			restartRequired = true
+			requestsRestart = true
 		}
 	}
 	if payload.EnablePprof != nil {
 		s.config.SetEnablePprof(*payload.EnablePprof)
-		restartRequired = true
+		// pprof 路由在进程启动时挂载，运行时修改只有重启后生效。
+		requestsRestart = true
 	}
 	if payload.AllowFakeIPOutbound != nil {
 		s.config.SetAllowFakeIPOutbound(*payload.AllowFakeIPOutbound)
 		// 即时下发到 relay 包级开关，无需重启。
 		s.syncRelaySSRFPolicy()
 	}
+	if requestsRestart {
+		s.markRestartRequired()
+	}
 	if err := s.config.Save(); err != nil {
 		fail(c, 500, "save_config_failed", err.Error())
 		return
 	}
-	ok(c, gin.H{"updated": true, "restartRequired": restartRequired})
+	ok(c, gin.H{"updated": true, "restartRequired": requestsRestart})
 }
 
 func (s *Server) adminReload(c *gin.Context) { s.reloadConfig(c) }
 
-func (s *Server) adminRestartRequired(c *gin.Context) { ok(c, gin.H{"restartRequired": false}) }
+// markRestartRequired 记录"存在需要重启才能生效的变更"，
+// 供 /api/admin/restart-required/check 查询。
+func (s *Server) markRestartRequired() {
+	s.restartMu.Lock()
+	s.restartRequired = true
+	s.restartMu.Unlock()
+}
+
+func (s *Server) adminRestartRequired(c *gin.Context) {
+	s.restartMu.Lock()
+	pending := s.restartRequired
+	s.restartMu.Unlock()
+	ok(c, gin.H{"restartRequired": pending})
+}
 
 func (s *Server) adminListSources(c *gin.Context) {
 	store, okStore := s.requireStore(c)

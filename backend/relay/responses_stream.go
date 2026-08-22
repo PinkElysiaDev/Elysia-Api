@@ -102,17 +102,17 @@ type fnCall struct {
 // responsesStreamState holds state for converting a Chat Completions SSE stream
 // into the Responses API event format.
 type responsesStreamState struct {
-	writer      StreamResponseWriter
-	responseID  string
-	itemID      string
-	createdAt   int64
-	model       string
-	textStarted bool
-	fullText    strings.Builder
-	finalUsage  any
-	finishReason string
-	toolCalls    map[int]*fnCall
-	toolOrder    []int
+	writer        StreamResponseWriter
+	responseID    string
+	itemID        string
+	createdAt     int64
+	model         string
+	textStarted   bool
+	fullText      strings.Builder
+	finalUsage    any
+	finishReason  string
+	toolCalls     map[int]*fnCall
+	toolOrder     []int
 	nextOutputIdx int
 }
 

@@ -87,6 +87,13 @@ func (s *Server) refreshSourceByValue(ctx context.Context, source storage.ModelS
 	if err != nil {
 		return 0, err
 	}
+	if len(fetched) == 0 {
+		// 上游 200 但解析不出任何模型（中转站返回 {"error":...} 等异常结构是常态）。
+		// ReplaceSourceModels 会先 DELETE 该源全部模型再插入，空列表会把
+		// 现有模型清空、相关模型组变成"无可用模型"——跳过替换并告警。
+		_ = s.store.InsertSystemLog(ctx, "warn", "model source refresh returned no models; kept existing models", map[string]any{"sourceId": source.ID, "sourceName": source.Name})
+		return 0, fmt.Errorf("source %q returned no models; kept existing model list", source.Name)
+	}
 	return len(fetched), s.store.ReplaceSourceModels(ctx, source, fetched)
 }
 

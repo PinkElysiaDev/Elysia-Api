@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -432,5 +433,118 @@ func TestListGroupsNeverSerializesNullModels(t *testing.T) {
 	}
 	if !strings.Contains(string(encoded), `"models":[]`) || strings.Contains(string(encoded), `"models":null`) {
 		t.Fatalf("group wire shape wrong, got %s", encoded)
+	}
+}
+
+// 回归：时间过滤/排序改用 started_ms 整型列。此前按 RFC3339Nano 字符串比较，
+// 整秒时间戳（…T00:00:00Z）与带毫秒时间戳（…T00:00:00.123Z）因 '.' < 'Z'
+// 的字典序，整秒边界的记录会被 from=整秒 的过滤漏掉。
+func TestUsageQueryWholeSecondBoundary(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(filepath.Join(t.TempDir(), "usage-boundary.sqlite3"))
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer store.Close()
+
+	boundary := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	older := UsageLogItem{RequestID: "req-exact", StartedAt: boundary, StatusCode: 200, InputTokens: 1}
+	newer := UsageLogItem{RequestID: "req-millis", StartedAt: boundary.Add(123 * time.Millisecond), StatusCode: 200, InputTokens: 2}
+	for _, item := range []UsageLogItem{older, newer} {
+		payload := []byte(`{"requestId":"` + item.RequestID + `"}`)
+		if err := store.SaveUsageRecordJSON(ctx, payload, item, item.StartedAt.Add(time.Second)); err != nil {
+			t.Fatalf("SaveUsageRecordJSON(%s) error = %v", item.RequestID, err)
+		}
+	}
+
+	total, logs, err := store.QueryUsageLogs(ctx, UsageQuery{From: boundary, To: boundary.Add(time.Minute), Limit: 10})
+	if err != nil {
+		t.Fatalf("QueryUsageLogs() error = %v", err)
+	}
+	if total != 2 || len(logs) != 2 {
+		t.Fatalf("both whole-second and millisecond records must match the boundary filter, total=%d logs=%#v", total, logs)
+	}
+	if logs[0].RequestID != "req-millis" || logs[1].RequestID != "req-exact" {
+		t.Fatalf("records must sort newest-first, got %s then %s", logs[0].RequestID, logs[1].RequestID)
+	}
+}
+
+// 回归：旧 schema 库（无 started_ms / cache_hit_tokens 列）打开时自动迁移并
+// 回填 started_ms；整秒、毫秒、9 位小数三种 RFC3339Nano 时间戳都必须转换正确。
+// 迁移分批提交，崩溃后重开只补 started_ms=0 的剩余行（幂等）。
+func TestMigrateBackfillsStartedMsOnLegacyDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.sqlite3")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open legacy db: %v", err)
+	}
+	// 模拟旧版本 schema：比当前建表语句少了 cache_hit_tokens 与 started_ms 两列。
+	if _, err := db.Exec(`CREATE TABLE usage_records (request_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, ended_at TEXT NOT NULL, key_name TEXT NOT NULL DEFAULT '', key_hash TEXT NOT NULL DEFAULT '', group_name TEXT NOT NULL DEFAULT '', model_name TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL DEFAULT '', source_format TEXT NOT NULL DEFAULT '', target_format TEXT NOT NULL DEFAULT '', relay_mode TEXT NOT NULL DEFAULT '', stream INTEGER NOT NULL DEFAULT 0, status_code INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', first_byte_ms INTEGER NOT NULL DEFAULT 0, duration_ms INTEGER NOT NULL DEFAULT 0, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, total_tokens INTEGER NOT NULL DEFAULT 0, request_truncated INTEGER NOT NULL DEFAULT 0, response_truncated INTEGER NOT NULL DEFAULT 0, record_json TEXT NOT NULL)`); err != nil {
+		t.Fatalf("create legacy table: %v", err)
+	}
+	rows := []struct{ id, startedAt string }{
+		{"legacy-exact", "2026-08-01T00:00:00Z"},
+		{"legacy-millis", "2026-08-01T00:00:00.123Z"},
+		{"legacy-nanos", "2026-08-01T00:00:00.123456789Z"},
+	}
+	for _, r := range rows {
+		if _, err := db.Exec(`INSERT INTO usage_records(request_id, started_at, ended_at, record_json) VALUES(?, ?, ?, '{}')`, r.id, r.startedAt, r.startedAt); err != nil {
+			t.Fatalf("insert legacy row %s: %v", r.id, err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close legacy db: %v", err)
+	}
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() should migrate legacy schema, got %v", err)
+	}
+	defer store.Close()
+
+	for _, r := range rows {
+		expected, perr := time.Parse(time.RFC3339Nano, r.startedAt)
+		if perr != nil {
+			t.Fatalf("parse %q: %v", r.startedAt, perr)
+		}
+		var got int64
+		if err := store.db.QueryRow(`SELECT started_ms FROM usage_records WHERE request_id = ?`, r.id).Scan(&got); err != nil {
+			t.Fatalf("query started_ms for %s: %v", r.id, err)
+		}
+		if got != expected.UnixMilli() {
+			t.Fatalf("%s: started_ms = %d, want %d", r.id, got, expected.UnixMilli())
+		}
+	}
+
+	// 幂等：重开后没有待回填行，started_ms 值保持不变。
+	if err := store.Close(); err != nil {
+		t.Fatalf("close for reopen: %v", err)
+	}
+	store2, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer store2.Close()
+	var pending int
+	if err := store2.db.QueryRow(`SELECT COUNT(*) FROM usage_records WHERE started_ms = 0`).Scan(&pending); err != nil {
+		t.Fatalf("count pending: %v", err)
+	}
+	if pending != 0 {
+		t.Fatalf("reopen must find nothing to backfill, got %d rows", pending)
+	}
+}
+
+func TestBackfillProgressBar(t *testing.T) {
+	if got := backfillProgressBar(5, 10); got != "[###############...............]" {
+		t.Fatalf("half progress bar wrong: %s", got)
+	}
+	if got := backfillProgressBar(0, 10); got != "[..............................]" {
+		t.Fatalf("empty progress bar wrong: %s", got)
+	}
+	if got := backfillProgressBar(10, 10); got != "[##############################]" {
+		t.Fatalf("full progress bar wrong: %s", got)
+	}
+	if got := backfillProgressBar(3, 0); got != "" {
+		t.Fatalf("zero total must render empty, got %s", got)
 	}
 }

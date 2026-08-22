@@ -314,10 +314,16 @@ func CanonicalToClaudeRequest(req *CanonicalRequest) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	// max_tokens 仅在未设置（<=0）时兜底到默认值；显式设置的小值必须原样
+	// 透传，否则客户端的输出长度限制和按 token 计费都会失真。
+	maxTokens := req.MaxOutputTokens
+	if maxTokens <= 0 {
+		maxTokens = ClaudeDefaultMaxTokens
+	}
 	out := map[string]any{
 		"model":      req.Model,
 		"messages":   messages,
-		"max_tokens": max(req.MaxOutputTokens, ClaudeDefaultMaxTokens),
+		"max_tokens": maxTokens,
 	}
 	if instructions := canonicalResponsesInstructions(req); instructions != "" {
 		out["system"] = instructions
@@ -608,8 +614,22 @@ func parseOpenAIChatMessages(raw any) []CanonicalMessage {
 			Metadata:     mapValue(m["metadata"]),
 			RawExtra:     rawFields(m),
 		}
+		if msg.Role == "tool" || msg.Role == "function" {
+			// tool/function 消息的 content 是工具结果文本，必须包装成 ToolOutput part，
+			// 否则会被当作普通文本，Claude/Gemini 渲染器无法生成 tool_result/functionResponse，
+			// 上游会因 tool_use 缺少对应结果而 400。
+			output := canonicalText(msg.Content)
+			msg.Content = []CanonicalContentPart{{
+				Type:       CanonicalContentToolOutput,
+				ToolCallID: msg.ToolCallID,
+				ToolOutput: output,
+				Raw:        m,
+			}}
+		}
+		// reasoning 前插：Anthropic 要求启用 thinking 时 assistant 消息的 thinking
+		// 块必须位于最前，Gemini 的 thought part 同理。
 		if reasoning := stringValue(m["reasoning_content"]); strings.TrimSpace(reasoning) != "" {
-			msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentReasoning, Text: reasoning, ReasoningText: reasoning, Raw: m})
+			msg.Content = append([]CanonicalContentPart{{Type: CanonicalContentReasoning, Text: reasoning, ReasoningText: reasoning, Raw: m}}, msg.Content...)
 		}
 		if refusal := firstNonEmptyString(stringValue(m["refusal"]), stringValue(m["refusal_text"])); refusal != "" {
 			msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentRefusal, Text: refusal, Raw: m})
@@ -897,7 +917,47 @@ func parseGeminiContents(raw any) []CanonicalMessage {
 		}
 		messages = append(messages, msg)
 	}
+	alignGeminiFunctionResponses(messages)
 	return messages
+}
+
+// alignGeminiFunctionResponses 把无 id 的 functionResponse 的 ToolCallID
+// （此时取的是函数名）回填为同名 functionCall 的实际/合成 ID。
+// Gemini 原生语义以 name 关联调用与响应，而 OpenAI/Anthropic 线格式以 id 关联；
+// 不对齐时转出的 tool_call_id/tool_use_id 会与调用侧对不上而被上游 400。
+func alignGeminiFunctionResponses(messages []CanonicalMessage) {
+	byName := make(map[string]string)
+	for i := range messages {
+		for _, call := range messages[i].ToolCalls {
+			if call.Name != "" && call.ID != "" {
+				if _, exists := byName[call.Name]; !exists {
+					byName[call.Name] = call.ID
+				}
+			}
+		}
+	}
+	if len(byName) == 0 {
+		return
+	}
+	knownIDs := make(map[string]bool, len(byName))
+	for _, id := range byName {
+		knownIDs[id] = true
+	}
+	for i := range messages {
+		for j := range messages[i].Content {
+			part := &messages[i].Content[j]
+			if part.Type != CanonicalContentToolOutput || part.ToolCallID == "" {
+				continue
+			}
+			// ToolCallID 不是任何已知调用 ID、但与某个函数名一致时，
+			// 说明响应侧没有 id、只有 name——替换为该调用的 ID。
+			if !knownIDs[part.ToolCallID] {
+				if id, ok := byName[part.ToolCallID]; ok {
+					part.ToolCallID = id
+				}
+			}
+		}
+	}
 }
 
 func parseResponsesInput(raw json.RawMessage) ([]CanonicalInputItem, []CanonicalMessage) {
@@ -1155,6 +1215,22 @@ func canonicalMessagesToOpenAI(req *CanonicalRequest) []map[string]any {
 		// 之后没有对应的 tool 消息而被上游拒（insufficient tool messages）。
 		hasRegularContent := len(visibleParts) > 0 || reasoning.Len() > 0 || refusal.Len() > 0 ||
 			len(msg.ToolCalls) > 0 || msg.Name != "" || msg.Metadata != nil || msg.CacheControl != nil || msg.ToolCallID != ""
+		if (role == "tool" || role == "function") && len(toolOutputs) > 0 {
+			// tool 角色消息的内容已全部由下方 toolOutputs 循环输出为 role:"tool" 消息，
+			// 不再额外生成一条空 content 的重复 tool 消息。
+			hasRegularContent = false
+		}
+
+		// OpenAI 要求 role:"tool" 消息紧跟带 tool_calls 的 assistant 消息；
+		// Claude user 轮 [tool_result, text] 混合时必须先输出 tool 结果，再输出剩余文本。
+		for _, to := range toolOutputs {
+			messages = append(messages, map[string]any{
+				"role":         "tool",
+				"tool_call_id": to.ToolCallID,
+				"content":      to.ToolOutput,
+			})
+		}
+
 		if hasRegularContent {
 			out := map[string]any{
 				"role":    role,
@@ -1210,16 +1286,6 @@ func canonicalMessagesToOpenAI(req *CanonicalRequest) []map[string]any {
 				out["tool_calls"] = calls
 			}
 			messages = append(messages, out)
-		}
-
-		// tool_result block → OpenAI role:"tool" 消息，带 tool_call_id，
-		// 与 assistant 的 tool_calls[].id 一一对应。
-		for _, to := range toolOutputs {
-			messages = append(messages, map[string]any{
-				"role":         "tool",
-				"tool_call_id": to.ToolCallID,
-				"content":      to.ToolOutput,
-			})
 		}
 	}
 	return messages
@@ -2253,11 +2319,22 @@ func ClaudeResponseToCanonical(resp *ClaudeResponse) (*CanonicalResponse, error)
 		Usage:      canonicalUsageFromClaudeUsage(resp.Usage),
 	}
 	msg := CanonicalOutputItem{ID: resp.ID, Type: CanonicalOutputMessage, Status: "completed", Role: "assistant"}
+	// 按 block 原始出现顺序输出：遇到 thinking/tool_use 等独立 item 前先冲刷
+	// 已累积的 message。Anthropic 要求启用 thinking 时 thinking 块必须是 assistant
+	// 消息的第一块；若把 msg 一律前插，[thinking, text] 会变成 [text, thinking]，
+	// Claude→canonical→Claude 往返即违反约束。
+	flushMsg := func() {
+		if len(msg.Content) > 0 {
+			out.Output = append(out.Output, msg)
+			msg = CanonicalOutputItem{ID: resp.ID, Type: CanonicalOutputMessage, Status: "completed", Role: "assistant"}
+		}
+	}
 	for _, block := range resp.Content {
 		switch block.Type {
 		case "text":
 			msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentText, Text: block.Text, Raw: block})
 		case "thinking":
+			flushMsg()
 			part := CanonicalContentPart{Type: CanonicalContentReasoning, ReasoningText: block.Thinking, Text: block.Thinking, Signature: block.Signature, SignatureProvider: CanonicalSignatureProviderAnthropic}
 			if envelope, ok := decodeMaheshvaraReasoningEnvelope(block.Signature); ok {
 				part.Signature = ""
@@ -2276,6 +2353,7 @@ func ClaudeResponseToCanonical(resp *ClaudeResponse) (*CanonicalResponse, error)
 				Content: []CanonicalContentPart{part},
 			})
 		case "redacted_thinking":
+			flushMsg()
 			if envelope, ok := decodeMaheshvaraReasoningEnvelope(block.Data); ok {
 				out.Output = append(out.Output, CanonicalOutputItem{
 					ID: newCanonicalResponseID("rs"), Type: CanonicalOutputReasoning, Status: "completed",
@@ -2283,6 +2361,7 @@ func ClaudeResponseToCanonical(resp *ClaudeResponse) (*CanonicalResponse, error)
 				})
 			}
 		case "tool_use":
+			flushMsg()
 			out.Output = append(out.Output, CanonicalOutputItem{
 				ID:        block.ID,
 				Type:      CanonicalOutputFunctionCall,
@@ -2299,9 +2378,7 @@ func ClaudeResponseToCanonical(resp *ClaudeResponse) (*CanonicalResponse, error)
 			msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentToolOutput, ToolCallID: block.ToolUseID, ToolOutput: customValueString(block.Content), Raw: block})
 		}
 	}
-	if len(msg.Content) > 0 {
-		out.Output = append([]CanonicalOutputItem{msg}, out.Output...)
-	}
+	flushMsg()
 	return out, nil
 }
 
@@ -2817,7 +2894,9 @@ func canonicalUsageFromOpenAIUsage(usage Usage) *CanonicalUsage {
 
 func canonicalUsageFromClaudeUsage(usage ClaudeUsage) *CanonicalUsage {
 	input := usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
-	if usage.CacheCreation != nil {
+	if usage.CacheCreationInputTokens == 0 && usage.CacheCreation != nil {
+		// Anthropic 官方响应里 cache_creation.ephemeral_* 是 cache_creation_input_tokens
+		// 的明细拆分，两者同时返回且相等；只在总数缺失时才用明细求和，避免双重计入。
 		input += usage.CacheCreation.Ephemeral5mInputTokens + usage.CacheCreation.Ephemeral1hInputTokens
 	}
 	u := &CanonicalUsage{
@@ -2916,8 +2995,15 @@ func claudeUsageFromCanonical(u *CanonicalUsage) ClaudeUsage {
 	if u == nil {
 		return ClaudeUsage{}
 	}
+	// Claude 协议中 input_tokens 不含缓存 token（缓存读/写是独立字段），而 canonical
+	// 的 InputTokens 是含缓存的总数；还原时剔除缓存部分，避免 Claude→canonical→Claude
+	// 往返后 input_tokens 与 cache 字段重复计入。
+	input := u.InputTokens - u.CachedInputTokens - u.CacheCreationInputTokens
+	if input < 0 {
+		input = u.InputTokens
+	}
 	return ClaudeUsage{
-		InputTokens:              u.InputTokens,
+		InputTokens:              input,
 		OutputTokens:             u.OutputTokens,
 		CacheReadInputTokens:     u.CachedInputTokens,
 		CacheCreationInputTokens: u.CacheCreationInputTokens,
@@ -2963,40 +3049,61 @@ func valueOrSum(total, input, output int) int {
 	return input + output
 }
 
+// canonicalStopToOpenAI 把任意上游的终止原因归一化到 OpenAI finish_reason
+// 合法枚举（stop/length/tool_calls/content_filter/function_call）。
+// 未知值原样透传会让严格反序列化的客户端 SDK 失败，一律归一到 stop。
 func canonicalStopToOpenAI(reason string) string {
 	switch reason {
-	case "end_turn", "STOP", "":
-		return "stop"
-	case "max_tokens", "MAX_TOKENS":
-		return "length"
+	case "tool_calls", "function_call":
+		return reason
 	case "tool_use":
 		return "tool_calls"
+	case "max_tokens", "MAX_TOKENS", "length":
+		return "length"
+	case "content_filter", "refusal", "SAFETY", "RECITATION", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "LANGUAGE":
+		return "content_filter"
 	default:
-		return reason
+		// end_turn/STOP/stop_sequence/"" 及一切未知值。
+		return "stop"
 	}
 }
 
+// canonicalStopToClaude 归一化到 Claude stop_reason 合法枚举
+// （end_turn/max_tokens/stop_sequence/tool_use/refusal）。
 func canonicalStopToClaude(reason string) string {
 	switch reason {
-	case "stop", "STOP", "":
+	case "stop", "STOP", "end_turn", "":
 		return "end_turn"
-	case "length", "MAX_TOKENS":
+	case "length", "MAX_TOKENS", "max_tokens":
 		return "max_tokens"
-	case "tool_calls":
+	case "stop_sequence", "STOP_SEQUENCE":
+		return "stop_sequence"
+	case "tool_calls", "function_call", "tool_use":
 		return "tool_use"
+	case "content_filter", "refusal", "SAFETY", "RECITATION", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "LANGUAGE":
+		return "refusal"
 	default:
-		return reason
+		return "end_turn"
 	}
 }
 
+// canonicalStopToGemini 归一化到 Gemini finishReason 合法枚举
+// （STOP/MAX_TOKENS/STOP_SEQUENCE/SAFETY/RECITATION/LANGUAGE/OTHER/BLOCKLIST/
+// PROHIBITED_CONTENT/SPII/MALFORMED_FUNCTION_CALL）。
 func canonicalStopToGemini(reason string) string {
 	switch reason {
-	case "stop", "end_turn", "":
-		return "STOP"
-	case "length", "max_tokens":
+	case "length", "max_tokens", "MAX_TOKENS":
 		return "MAX_TOKENS"
-	default:
+	case "stop_sequence", "STOP_SEQUENCE":
+		return "STOP_SEQUENCE"
+	case "SAFETY", "RECITATION", "LANGUAGE", "OTHER", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "MALFORMED_FUNCTION_CALL":
 		return reason
+	case "content_filter", "refusal":
+		return "SAFETY"
+	default:
+		// stop/end_turn/tool_use/tool_calls/"" 及一切未知值：Gemini 函数调用
+		// 完成时 finishReason 也是 STOP，统一归 STOP。
+		return "STOP"
 	}
 }
 

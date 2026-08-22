@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ErrorState } from '@/components/ui/states'
 import { MultiSelect } from '@/components/ui/multi-select'
 import { RangeSelect, type RangeKey } from '@/components/range-select'
-import { useUsageStats, useGroups, useModels, useTokens } from '@/lib/hooks'
+import { useUsageStats, useGroups, useModels, useTokens, useMinuteTick } from '@/lib/hooks'
 import {
   compactNumber,
   formatDuration,
@@ -26,6 +26,7 @@ export function UsageStatsPage() {
   const [groupNames, setGroupNames] = useState<string[]>([])
   const [modelNames, setModelNames] = useState<string[]>([])
   const [keyNames, setKeyNames] = useState<string[]>([])
+  const minuteTick = useMinuteTick()
 
   const { data: groups } = useGroups()
   const { data: models } = useModels()
@@ -44,7 +45,9 @@ export function UsageStatsPage() {
       modelNames: modelNames.length ? modelNames : undefined,
       keyNames: keyNames.length ? keyNames : undefined,
     }
-  }, [range, groupNames, modelNames, keyNames])
+    // minuteTick 让 to 随时间推进，避免查询窗口冻结在挂载时刻。
+ // eslint-disable-next-line react-hooks/exhaustive-deps -- minuteTick 驱动查询窗口随时间推进，不在回调体内使用是有意的
+  }, [range, groupNames, modelNames, keyNames, minuteTick])
 
   const { data: stats, isLoading, error, mutate } = useUsageStats(params)
 

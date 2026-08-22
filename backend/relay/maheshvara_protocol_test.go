@@ -135,27 +135,3 @@ func TestGeminiConversionNeverEmitsEmptyDataPart(t *testing.T) {
 		t.Fatalf("expected clear empty-response error, got %v", err)
 	}
 }
-
-func TestMaheshvaraStreamEventAdapters(t *testing.T) {
-	event, err := OpenAIChatStreamChunkToMaheshvara([]byte(`{"id":"chatcmpl_1","created":1,"choices":[{"index":0,"delta":{"role":"assistant","content":"hi"}}]}`))
-	if err != nil || event.Type != CanonicalEventTextDelta || event.Delta != "hi" {
-		t.Fatalf("OpenAI stream event was not normalized: %+v, %v", event, err)
-	}
-	chunk, err := MaheshvaraStreamEventToOpenAIChatChunk(event)
-	if err != nil || !strings.Contains(string(chunk), `"content":"hi"`) {
-		t.Fatalf("Maheshvara stream event was not rendered: %s, %v", chunk, err)
-	}
-
-	event, err = AnthropicStreamEventToMaheshvara([]byte(`{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"plan"}}`))
-	if err != nil || event.Type != CanonicalEventReasoningDelta || event.ReasoningDelta != "plan" {
-		t.Fatalf("Anthropic reasoning event was not normalized: %+v, %v", event, err)
-	}
-	event, err = GeminiStreamChunkToMaheshvara([]byte(`{"candidates":[{"content":{"parts":[{"text":"thought","thought":true}]}}]}`))
-	if err != nil || event.Type != CanonicalEventReasoningDelta || event.ReasoningDelta != "thought" {
-		t.Fatalf("Gemini reasoning event was not normalized: %+v, %v", event, err)
-	}
-	event, err = OpenAIResponsesStreamEventToMaheshvara([]byte(`{"type":"response.output_text.delta","response_id":"resp_1","delta":"ok"}`))
-	if err != nil || event.Type != CanonicalEventTextDelta || event.Delta != "ok" {
-		t.Fatalf("Responses event was not normalized: %+v, %v", event, err)
-	}
-}

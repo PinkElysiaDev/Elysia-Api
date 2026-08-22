@@ -70,12 +70,12 @@ func filterCanonicalVisionInputsIfNeeded(group *config.ModelGroupConfig, request
 }
 
 func (s *Server) handleCustomNormalRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, request *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
-	defer func() {
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-	}()
-	fail := func(status int, message string, body []byte) relayOutcome {
+	// fail 在转发失败时决定是提交错误响应（最后一次尝试或不可重试），
+	// 还是返回 committed=false 让上层故障转移到下一个候选模型。
+	fail := func(status int, message string, body []byte, retryable bool) relayOutcome {
+		if retryable && !isLast {
+			return relayOutcome{committed: false, statusCode: status, errMsg: message}
+		}
 		record.StatusCode = status
 		record.Error = message
 		if body != nil {
@@ -85,29 +85,46 @@ func (s *Server) handleCustomNormalRequest(c *gin.Context, group *config.ModelGr
 		}
 		return relayOutcome{committed: true, statusCode: status, errMsg: message}
 	}
+	// 仅在 committed 时记录 usage；未提交（将要重试）时不记录，
+	// 由最终成功/失败的那次尝试统一记录。
+	var result relayOutcome
+	defer func() {
+		if !result.committed {
+			return
+		}
+		record.EndedAt = time.Now()
+		record.DurationMs = time.Since(startTime).Milliseconds()
+		s.recordUsage(record)
+	}()
 	if request == nil {
-		return fail(http.StatusInternalServerError, "custom protocol request was not rendered", nil)
+		result = fail(http.StatusInternalServerError, "custom protocol request was not rendered", nil, false)
+		return result
 	}
 	protocol, ok := relay.GetCustomProtocol(relay.CustomProtocolID(targetPlatform))
 	if !ok {
-		return fail(http.StatusInternalServerError, fmt.Sprintf("custom protocol %q is not registered", relay.CustomProtocolID(targetPlatform)), nil)
+		result = fail(http.StatusInternalServerError, fmt.Sprintf("custom protocol %q is not registered", relay.CustomProtocolID(targetPlatform)), nil, false)
+		return result
 	}
-	response, err := s.openaiAdapter.SendCustomProtocolRequest(selectedModel.BaseURL, selectedModel.APIKey, request, false)
+	response, err := s.openaiAdapter.SendCustomProtocolRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, request, false)
 	if err != nil {
-		return fail(http.StatusBadGateway, fmt.Sprintf("failed to forward custom protocol request: %v", err), nil)
+		result = fail(http.StatusBadGateway, fmt.Sprintf("failed to forward custom protocol request: %v", err), nil, true)
+		return result
 	}
 	defer response.Body.Close()
 	body, readErr := io.ReadAll(response.Body)
 	record.ProviderResponse = sanitizeUsageBody(body)
 	if readErr != nil {
-		return fail(http.StatusBadGateway, fmt.Sprintf("failed to read custom protocol response: %v", readErr), nil)
+		result = fail(http.StatusBadGateway, fmt.Sprintf("failed to read custom protocol response: %v", readErr), nil, true)
+		return result
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fail(response.StatusCode, string(body), body)
+		result = fail(response.StatusCode, string(body), body, shouldRetryStatus(response.StatusCode))
+		return result
 	}
 	canonicalResponse, err := relay.CustomProtocolResponseToCanonical(body, protocol)
 	if err != nil {
-		return fail(http.StatusBadGateway, fmt.Sprintf("failed to parse custom protocol response: %v", err), nil)
+		result = fail(http.StatusBadGateway, fmt.Sprintf("failed to parse custom protocol response: %v", err), nil, false)
+		return result
 	}
 	if canonicalResponse.Model == "" {
 		canonicalResponse.Model = selectedModel.Name
@@ -126,20 +143,22 @@ func (s *Server) handleCustomNormalRequest(c *gin.Context, group *config.ModelGr
 		output, err = relay.CanonicalToOpenAIChatResponse(canonicalResponse)
 	}
 	if err != nil {
-		return fail(http.StatusInternalServerError, fmt.Sprintf("failed to render custom protocol response: %v", err), nil)
+		result = fail(http.StatusInternalServerError, fmt.Sprintf("failed to render custom protocol response: %v", err), nil, false)
+		return result
 	}
 	record.StatusCode = http.StatusOK
 	c.JSON(http.StatusOK, output)
-	return relayOutcome{committed: true, statusCode: http.StatusOK}
+	result = relayOutcome{committed: true, statusCode: http.StatusOK}
+	return result
 }
 
 func (s *Server) handleCustomResponsesNormal(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, request *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
-	defer func() {
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-	}()
-	fail := func(status int, message string, body []byte) relayOutcome {
+	// 与 handleCustomNormalRequest 相同的故障转移模式：可重试错误在非最后
+	// 一次尝试时返回 committed=false，让上层换下一个候选。
+	fail := func(status int, message string, body []byte, retryable bool) relayOutcome {
+		if retryable && !isLast {
+			return relayOutcome{committed: false, statusCode: status, errMsg: message}
+		}
 		record.StatusCode = status
 		record.Error = message
 		if body != nil {
@@ -149,29 +168,44 @@ func (s *Server) handleCustomResponsesNormal(c *gin.Context, group *config.Model
 		}
 		return relayOutcome{committed: true, statusCode: status, errMsg: message}
 	}
+	var result relayOutcome
+	defer func() {
+		if !result.committed {
+			return
+		}
+		record.EndedAt = time.Now()
+		record.DurationMs = time.Since(startTime).Milliseconds()
+		s.recordUsage(record)
+	}()
 	if request == nil {
-		return fail(http.StatusInternalServerError, "custom protocol request was not rendered", nil)
+		result = fail(http.StatusInternalServerError, "custom protocol request was not rendered", nil, false)
+		return result
 	}
 	protocol, ok := relay.GetCustomProtocol(relay.CustomProtocolID(targetPlatform))
 	if !ok {
-		return fail(http.StatusInternalServerError, fmt.Sprintf("custom protocol %q is not registered", relay.CustomProtocolID(targetPlatform)), nil)
+		result = fail(http.StatusInternalServerError, fmt.Sprintf("custom protocol %q is not registered", relay.CustomProtocolID(targetPlatform)), nil, false)
+		return result
 	}
-	response, err := s.openaiAdapter.SendCustomProtocolRequest(selectedModel.BaseURL, selectedModel.APIKey, request, false)
+	response, err := s.openaiAdapter.SendCustomProtocolRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, request, false)
 	if err != nil {
-		return fail(http.StatusBadGateway, fmt.Sprintf("failed to forward custom protocol request: %v", err), nil)
+		result = fail(http.StatusBadGateway, fmt.Sprintf("failed to forward custom protocol request: %v", err), nil, true)
+		return result
 	}
 	defer response.Body.Close()
 	body, readErr := io.ReadAll(response.Body)
 	record.ProviderResponse = sanitizeUsageBody(body)
 	if readErr != nil {
-		return fail(http.StatusBadGateway, fmt.Sprintf("failed to read custom protocol response: %v", readErr), nil)
+		result = fail(http.StatusBadGateway, fmt.Sprintf("failed to read custom protocol response: %v", readErr), nil, true)
+		return result
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fail(response.StatusCode, string(body), body)
+		result = fail(response.StatusCode, string(body), body, shouldRetryStatus(response.StatusCode))
+		return result
 	}
 	canonicalResponse, err := relay.CustomProtocolResponseToCanonical(body, protocol)
 	if err != nil {
-		return fail(http.StatusBadGateway, fmt.Sprintf("failed to parse custom protocol response: %v", err), nil)
+		result = fail(http.StatusBadGateway, fmt.Sprintf("failed to parse custom protocol response: %v", err), nil, false)
+		return result
 	}
 	if canonicalResponse.Model == "" {
 		canonicalResponse.Model = selectedModel.Name
@@ -181,11 +215,13 @@ func (s *Server) handleCustomResponsesNormal(c *gin.Context, group *config.Model
 	s.adjustTokenUsage(group.ID, getInt(record.Usage.TotalTokens))
 	output, err := relay.CanonicalToResponsesResponse(canonicalResponse)
 	if err != nil {
-		return fail(http.StatusInternalServerError, fmt.Sprintf("failed to render custom Responses response: %v", err), nil)
+		result = fail(http.StatusInternalServerError, fmt.Sprintf("failed to render custom Responses response: %v", err), nil, false)
+		return result
 	}
 	record.StatusCode = http.StatusOK
 	c.JSON(http.StatusOK, output)
-	return relayOutcome{committed: true, statusCode: http.StatusOK}
+	result = relayOutcome{committed: true, statusCode: http.StatusOK}
+	return result
 }
 
 func renderCanonicalChatResponse(response *relay.CanonicalResponse, inputFormat relay.FormatType) (any, error) {

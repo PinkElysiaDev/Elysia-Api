@@ -282,7 +282,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 
 	switch targetFormat {
 	case relay.FormatResponses:
-		responsesResp, respBody, upstreamStatus, err := s.openaiAdapter.SendResponsesRawWithBody(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
+		responsesResp, respBody, upstreamStatus, err := s.openaiAdapter.SendResponsesRawWithBody(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		record.ProviderResponse = sanitizeUsageBody(respBody)
 		if err != nil {
 			status := upstreamStatus
@@ -308,7 +308,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 		return result
 
 	case relay.FormatClaude:
-		httpResp, err := s.claudeAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, targetBody, false)
+		httpResp, err := s.claudeAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody, false)
 		if err != nil {
 			result = failResult(http.StatusBadGateway, err.Error(), nil)
 			return result
@@ -333,7 +333,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 		}
 
 	case relay.FormatGemini:
-		httpResp, err := s.geminiAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, false)
+		httpResp, err := s.geminiAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, false)
 		if err != nil {
 			result = failResult(http.StatusBadGateway, err.Error(), nil)
 			return result
@@ -358,7 +358,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 		}
 
 	default:
-		openAIResp, respBody, statusCode, err := s.openaiAdapter.SendRequestRawWithBody(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
+		openAIResp, respBody, statusCode, err := s.openaiAdapter.SendRequestRawWithBody(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		record.ProviderResponse = sanitizeUsageBody(respBody)
 		if err != nil {
 			if statusCode <= 0 {
@@ -463,7 +463,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 	var streamErr error
 	switch targetFormat {
 	case relay.FormatResponses:
-		resp, err := s.openaiAdapter.SendResponsesStream(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
+		resp, err := s.openaiAdapter.SendResponsesStream(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		if err != nil {
 			result = connFail(http.StatusBadGateway, err.Error(), nil)
 			return result
@@ -478,7 +478,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 			streamErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatResponses, relay.FormatResponses, writer, selectedModel.Name)
 		}
 	case relay.FormatClaude:
-		resp, err := s.claudeAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, targetBody, true)
+		resp, err := s.claudeAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody, true)
 		if err != nil {
 			result = connFail(http.StatusBadGateway, err.Error(), nil)
 			return result
@@ -495,7 +495,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
 		streamErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatClaude, relay.FormatResponses, writer, selectedModel.Name)
 	case relay.FormatGemini:
-		resp, err := s.geminiAdapter.SendRequest(selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, true)
+		resp, err := s.geminiAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, true)
 		if err != nil {
 			result = connFail(http.StatusBadGateway, err.Error(), nil)
 			return result
@@ -510,7 +510,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
 		streamErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatGemini, relay.FormatResponses, writer, selectedModel.Name)
 	default:
-		resp, err := s.openaiAdapter.SendRequestStream(selectedModel.BaseURL, selectedModel.APIKey, targetBody)
+		resp, err := s.openaiAdapter.SendRequestStream(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		if err != nil {
 			result = connFail(http.StatusBadGateway, err.Error(), nil)
 			return result

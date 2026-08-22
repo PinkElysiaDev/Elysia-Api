@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -12,25 +13,23 @@ import (
 
 // ClaudeAdapter 用于向 Claude 原生 API 发送请求
 type ClaudeAdapter struct {
-	client *http.Client
+	client *dynamicTimeoutClient
 	// streamClient 专用于流式请求：不设 Timeout，避免长连接被硬超时掐断。
 	streamClient *http.Client
 }
 
 func NewClaudeAdapter(timeout time.Duration) *ClaudeAdapter {
-	// 连接时 SSRF 校验的安全 transport（newSecureTransport），杜绝 DNS rebinding。
-	client := &http.Client{Transport: newSecureTransport()}
-	if timeout > 0 {
-		client.Timeout = timeout
-	}
-	streamClient := &http.Client{Transport: newSecureTransport()}
-	return &ClaudeAdapter{client: client, streamClient: streamClient}
+	return &ClaudeAdapter{client: newDynamicTimeoutClient(timeout), streamClient: &http.Client{Transport: newSecureTransport()}}
 }
 
-// SendRequest 向 Claude /v1/messages 发送请求，返回原始 HTTP 响应
-func (a *ClaudeAdapter) SendRequest(baseUrl, apiKey string, body []byte, isStream bool) (*http.Response, error) {
+// SetTimeout 运行时更新非流式请求超时（admin 面板改 httpTimeout 后即时生效）。
+func (a *ClaudeAdapter) SetTimeout(d time.Duration) { a.client.SetTimeout(d) }
+
+// SendRequest 向 Claude /v1/messages 发送请求，返回原始 HTTP 响应。
+// ctx 传播客户端取消信号（断连即中止上游调用）。
+func (a *ClaudeAdapter) SendRequest(ctx context.Context, baseUrl, apiKey string, body []byte, isStream bool) (*http.Response, error) {
 	url := strings.TrimRight(strings.TrimSpace(baseUrl), "/") + "/v1/messages"
-	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

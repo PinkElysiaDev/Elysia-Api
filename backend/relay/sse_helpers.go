@@ -150,16 +150,18 @@ func (reader *SSEEventReader) scan(source io.Reader) {
 			}
 			hasFields = true
 		default:
-			trimmed := strings.TrimSpace(line)
-			if !hasFields && (trimmed == "[DONE]" || json.Valid([]byte(trimmed))) {
-				dataLines = append(dataLines, trimmed)
-				if !emit() {
-					return
+			// SSE 规范要求忽略未知字段行（如 "foo: bar"），混入 data 会破坏
+			// 事件 JSON 解析甚至中止整条流。仅保留对非标准上游的兼容：事件
+			// 尚未开始时，不带 data: 前缀直接输出的 [DONE]/JSON 行视为 data。
+			if !hasFields {
+				trimmed := strings.TrimSpace(line)
+				if trimmed == "[DONE]" || json.Valid([]byte(trimmed)) {
+					dataLines = append(dataLines, trimmed)
+					if !emit() {
+						return
+					}
 				}
-				continue
 			}
-			dataLines = append(dataLines, line)
-			hasFields = true
 		}
 	}
 	if !emit() {

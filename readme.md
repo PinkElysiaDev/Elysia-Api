@@ -118,23 +118,23 @@ npm install
 
 > 若网络无法访问 `proxy.golang.org`，构建前先设置 Go 模块代理：`export GOPROXY=https://goproxy.cn,direct`
 
-构建 WebUI、同步嵌入资源并生成多平台独立发行物：
+构建 WebUI、同步嵌入资源并交叉编译全平台独立二进制（与构建主机无关）：
 
 ```bash
 npm run build
 ```
 
-本地构建产物位于 `dist/standalone/`。该目录不会提交到 Git；正式版本通过 GitHub Releases 分发：
+本地构建产物位于 `dist/standalone/`。该目录不会提交到 Git；正式版本通过 GitHub Releases 分发，发布物只有三件套：
 
-| 平台 | 文件 |
+| 平台 | 发布物 |
 | --- | --- |
 | Windows amd64 | `elysia-api-windows-amd64.exe` |
 | Linux amd64 | `elysia-api-linux-amd64` |
-| macOS Intel | `elysia-api-darwin-amd64` |
-| macOS Apple Silicon | `elysia-api-darwin-arm64` |
-| macOS App | `elysia-api-macos.dmg` |
+| macOS（Intel / Apple Silicon 通用） | `elysia-api-macos.dmg` |
 
-在 macOS 上额外执行以下命令可在 `dist/standalone/` 组装出 `ElysiaApi.app`（需要 Xcode Command Line Tools，产物为通用二进制）：
+> DMG 只能在 macOS 上组装（依赖 swiftc / lipo / codesign / hdiutil），由 CI 在发布时产出：推 `v*` tag 自动发布，或在 Actions 页面手动触发（`workflow_dispatch`）后下载产物。两个 darwin 裸二进制只是 DMG 的组装输入，命令行场景仍可直接使用。
+
+在 macOS 上（需要 Xcode Command Line Tools）可从 `npm run build` 产出的 darwin 二进制单独组装 `ElysiaApi.app` 与 DMG：
 
 ```bash
 npm run build:macos-app

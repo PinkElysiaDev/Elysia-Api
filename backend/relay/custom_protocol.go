@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -380,7 +381,7 @@ func RenderRegisteredCustomProtocolRequest(req *MaheshvaraRequest, id string) (*
 	return RenderCustomProtocolRequest(req, config)
 }
 
-func (a *OpenAIAdapter) SendCustomProtocolRequest(baseURL, apiKey string, request *CustomProtocolRequestResult, stream bool) (*http.Response, error) {
+func (a *OpenAIAdapter) SendCustomProtocolRequest(ctx context.Context, baseURL, apiKey string, request *CustomProtocolRequestResult, stream bool) (*http.Response, error) {
 	if a == nil || request == nil {
 		return nil, fmt.Errorf("custom protocol request is nil")
 	}
@@ -423,7 +424,7 @@ func (a *OpenAIAdapter) SendCustomProtocolRequest(baseURL, apiKey string, reques
 	if authMode == "bearer" {
 		requestAPIKey = apiKey
 	}
-	httpRequest, err := buildHTTPRequest(method, parsed.String(), requestAPIKey, request.Body, extraHeaders)
+	httpRequest, err := buildHTTPRequest(ctx, method, parsed.String(), requestAPIKey, request.Body, extraHeaders)
 	if err != nil {
 		return nil, err
 	}
@@ -435,12 +436,11 @@ func (a *OpenAIAdapter) SendCustomProtocolRequest(baseURL, apiKey string, reques
 		prefix := auth.Prefix
 		httpRequest.Header.Set(header, prefix+apiKey)
 	}
-	client := a.client
 	if stream {
-		client = a.streamClient
 		httpRequest.Header.Set("Accept", "text/event-stream")
+		return a.streamClient.Do(httpRequest)
 	}
-	return client.Do(httpRequest)
+	return a.client.Do(httpRequest)
 }
 
 func CustomProtocolResponseToCanonical(body []byte, config CustomProtocolConfig) (*MaheshvaraResponse, error) {
@@ -583,7 +583,7 @@ func renderCustomTemplate(template string, context map[string]any, omitIfEmpty [
 		return nil, err
 	}
 	for _, path := range omitIfEmpty {
-		deleteEmptyPath(value, strings.TrimPrefix(strings.TrimSpace(path), "maheshvara."))
+		value = deleteEmptyPath(value, strings.TrimPrefix(strings.TrimSpace(path), "maheshvara."))
 	}
 	if err := validateCustomJSONDepth(value, 0); err != nil {
 		return nil, err
@@ -864,33 +864,8 @@ func customEmptyValue(value any) bool {
 	}
 }
 
-func deleteEmptyPath(root any, path string) {
-	deleteCustomPath(root, path)
-}
-
-func deleteEmptyPathParts(current any, parts []string) {
-	if len(parts) == 0 {
-		return
-	}
-	object, ok := current.(map[string]any)
-	if !ok {
-		return
-	}
-	key := parts[0]
-	value, exists := object[key]
-	if !exists {
-		return
-	}
-	if len(parts) == 1 {
-		if customEmptyValue(value) {
-			delete(object, key)
-		}
-		return
-	}
-	deleteEmptyPathParts(value, parts[1:])
-	if customEmptyValue(value) {
-		delete(object, key)
-	}
+func deleteEmptyPath(root any, path string) any {
+	return deleteCustomPath(root, path)
 }
 
 func validateCustomJSONDepth(value any, depth int) error {

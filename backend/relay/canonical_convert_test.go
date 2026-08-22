@@ -392,7 +392,9 @@ func TestCanonicalUsageRoundTripsProviderUsageShapes(t *testing.T) {
 		t.Fatalf("OpenAI usage mapping failed: %+v", openai)
 	}
 	claude := claudeUsageFromCanonical(u)
-	if claude.InputTokens != 100 || claude.OutputTokens != 50 || claude.CacheReadInputTokens != 25 || claude.CacheCreationInputTokens != 5 {
+	// canonical 的 InputTokens 含缓存 token，而 Claude 线格式的 input_tokens 不含；
+	// 还原后 input+cache_read+cache_creation 应还原 canonical 总数（70+25+5=100）。
+	if claude.InputTokens != 70 || claude.OutputTokens != 50 || claude.CacheReadInputTokens != 25 || claude.CacheCreationInputTokens != 5 {
 		t.Fatalf("Claude usage mapping failed: %+v", claude)
 	}
 	gemini := geminiUsageFromCanonical(u)
@@ -982,4 +984,3 @@ func toolChoiceEqual(got, want any) bool {
 	}
 	return string(gotJSON) == string(wantJSON)
 }
-

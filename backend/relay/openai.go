@@ -18,7 +18,7 @@ func openAIEndpoint(baseUrl, path string) string {
 }
 
 type OpenAIAdapter struct {
-	client *http.Client
+	client *dynamicTimeoutClient
 	// streamClient 专用于流式请求：不设 Timeout。Go 的 http.Client.Timeout 覆盖
 	// 整个请求生命周期（含读取 body），会把正常传输中的 SSE 长连接在 N 秒后无差别
 	// 掐断（下游表现为"连接刚转发就被切断"）。流式只靠 Transport 的连接级超时控制。
@@ -26,19 +26,16 @@ type OpenAIAdapter struct {
 }
 
 func NewOpenAIAdapter(timeout time.Duration) *OpenAIAdapter {
-	// 连接时 SSRF 校验的安全 transport（newSecureTransport），杜绝 DNS rebinding。
-	client := &http.Client{Transport: newSecureTransport()}
-	if timeout > 0 {
-		client.Timeout = timeout
-	}
-	// 流式 client：永不设 Timeout（对照 new-api 默认 RelayTimeout=0）。
-	streamClient := &http.Client{Transport: newSecureTransport()}
-	return &OpenAIAdapter{client: client, streamClient: streamClient}
+	return &OpenAIAdapter{client: newDynamicTimeoutClient(timeout), streamClient: &http.Client{Transport: newSecureTransport()}}
 }
 
-// buildHTTPRequest 构建带有标准认证头的 HTTP 请求
-func buildHTTPRequest(method, url, apiKey string, body []byte, extraHeaders map[string]string) (*http.Request, error) {
-	req, err := http.NewRequest(method, url, bytes.NewReader(body))
+// SetTimeout 运行时更新非流式请求超时（admin 面板改 httpTimeout 后即时生效）。
+func (a *OpenAIAdapter) SetTimeout(d time.Duration) { a.client.SetTimeout(d) }
+
+// buildHTTPRequest 构建带有标准认证头的 HTTP 请求。ctx 传播客户端请求的
+// 取消信号：客户端断连后上游调用随之中止，不再白耗带宽与上游配额。
+func buildHTTPRequest(ctx context.Context, method, url, apiKey string, body []byte, extraHeaders map[string]string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -244,14 +241,14 @@ type CompletionTokensDetails struct {
 	RejectedPredictionTokens int `json:"rejected_prediction_tokens,omitempty"`
 }
 
-func (a *OpenAIAdapter) SendRequest(baseUrl, apiKey string, req OpenAIRequest) (*OpenAIResponse, error) {
+func (a *OpenAIAdapter) SendRequest(ctx context.Context, baseUrl, apiKey string, req OpenAIRequest) (*OpenAIResponse, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
 	}
 
 	url := openAIEndpoint(baseUrl, "/chat/completions")
-	httpReq, err := buildHTTPRequest("POST", url, apiKey, body, nil)
+	httpReq, err := buildHTTPRequest(ctx, "POST", url, apiKey, body, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -280,9 +277,9 @@ func (a *OpenAIAdapter) SendRequest(baseUrl, apiKey string, req OpenAIRequest) (
 }
 
 // SendRequestRaw 发送原始 JSON 请求体
-func (a *OpenAIAdapter) SendRequestRaw(baseUrl, apiKey string, body []byte) (*OpenAIResponse, error) {
+func (a *OpenAIAdapter) SendRequestRaw(ctx context.Context, baseUrl, apiKey string, body []byte) (*OpenAIResponse, error) {
 	url := openAIEndpoint(baseUrl, "/chat/completions")
-	httpReq, err := buildHTTPRequest("POST", url, apiKey, body, nil)
+	httpReq, err := buildHTTPRequest(ctx, "POST", url, apiKey, body, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -313,9 +310,9 @@ func (a *OpenAIAdapter) SendRequestRaw(baseUrl, apiKey string, body []byte) (*Op
 // SendRequestRawWithBody 发送原始请求体并返回解析结果、原始响应体和上游 HTTP
 // 状态码。状态码用于上层故障转移决策（区分可重试的 5xx/429 与不可重试的 4xx）。
 // 非 200 时返回 err，但 statusCode 仍为真实上游状态码；连接层错误时 statusCode=0。
-func (a *OpenAIAdapter) SendRequestRawWithBody(baseUrl, apiKey string, body []byte) (*OpenAIResponse, []byte, int, error) {
+func (a *OpenAIAdapter) SendRequestRawWithBody(ctx context.Context, baseUrl, apiKey string, body []byte) (*OpenAIResponse, []byte, int, error) {
 	url := openAIEndpoint(baseUrl, "/chat/completions")
-	httpReq, err := buildHTTPRequest("POST", url, apiKey, body, nil)
+	httpReq, err := buildHTTPRequest(ctx, "POST", url, apiKey, body, nil)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -343,9 +340,9 @@ func (a *OpenAIAdapter) SendRequestRawWithBody(baseUrl, apiKey string, body []by
 	return &openAIResp, respBody, resp.StatusCode, nil
 }
 
-func (a *OpenAIAdapter) SendResponsesRawWithBody(baseUrl, apiKey string, body []byte) (*OpenAIResponsesResponse, []byte, int, error) {
+func (a *OpenAIAdapter) SendResponsesRawWithBody(ctx context.Context, baseUrl, apiKey string, body []byte) (*OpenAIResponsesResponse, []byte, int, error) {
 	url := openAIEndpoint(baseUrl, "/responses")
-	httpReq, err := buildHTTPRequest("POST", url, apiKey, body, nil)
+	httpReq, err := buildHTTPRequest(ctx, "POST", url, apiKey, body, nil)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -386,12 +383,12 @@ func IsStreamRequest(body []byte) bool {
 }
 
 // SendRequestStream 发送流式请求并返回原始 HTTP 响应
-func (a *OpenAIAdapter) SendRequestStream(baseUrl, apiKey string, body []byte) (*http.Response, error) {
+func (a *OpenAIAdapter) SendRequestStream(ctx context.Context, baseUrl, apiKey string, body []byte) (*http.Response, error) {
 	url := openAIEndpoint(baseUrl, "/chat/completions")
 	extraHeaders := map[string]string{
 		"Accept": "text/event-stream",
 	}
-	httpReq, err := buildHTTPRequest("POST", url, apiKey, body, extraHeaders)
+	httpReq, err := buildHTTPRequest(ctx, "POST", url, apiKey, body, extraHeaders)
 	if err != nil {
 		return nil, err
 	}
@@ -410,12 +407,12 @@ func (a *OpenAIAdapter) SendRequestStream(baseUrl, apiKey string, body []byte) (
 	return resp, nil
 }
 
-func (a *OpenAIAdapter) SendResponsesStream(baseUrl, apiKey string, body []byte) (*http.Response, error) {
+func (a *OpenAIAdapter) SendResponsesStream(ctx context.Context, baseUrl, apiKey string, body []byte) (*http.Response, error) {
 	url := openAIEndpoint(baseUrl, "/responses")
 	extraHeaders := map[string]string{
 		"Accept": "text/event-stream",
 	}
-	httpReq, err := buildHTTPRequest("POST", url, apiKey, body, extraHeaders)
+	httpReq, err := buildHTTPRequest(ctx, "POST", url, apiKey, body, extraHeaders)
 	if err != nil {
 		return nil, err
 	}

@@ -517,3 +517,32 @@ func TestSummarizeUsageTracksFirstAndLastUsedAt(t *testing.T) {
 		t.Fatalf("expected last model last-model, got %s", summary.LastModelName)
 	}
 }
+
+// 回归：并发请求可能拿到相同的 UnixNano（Windows 时钟粒度下概率可观），
+// 请求 ID 必须带随机后缀，否则 INSERT OR REPLACE 会静默覆盖彼此的记录。
+func TestUsageRequestIDUniqueForSameNanosecond(t *testing.T) {
+	now := time.Now()
+	if usageRequestID(now) == usageRequestID(now) {
+		t.Fatal("usage request ids must carry a random suffix")
+	}
+}
+
+// 回归：时间窗口按本地时钟对齐。t.Truncate 按 Unix 纪元取整，在非整小时
+// 时区（如 UTC+5:30）会把"小时"桶切到半点上，图表标签与数据错位。
+func TestTruncateUsageWindowAlignsToLocalClock(t *testing.T) {
+	zone := time.FixedZone("IST", 5*3600+30*60)
+	input := time.Date(2026, 8, 1, 12, 7, 33, 0, zone)
+
+	hour := truncateUsageWindow(input, "hour")
+	if hour.Hour() != 12 || hour.Minute() != 0 {
+		t.Fatalf("hour bucket must align to the local clock hour, got %v", hour)
+	}
+	five := truncateUsageWindow(input, "5m")
+	if five.Minute() != 5 {
+		t.Fatalf("5m bucket must align to local 5-minute boundary, got %v", five)
+	}
+	fifteen := truncateUsageWindow(input, "15m")
+	if fifteen.Minute() != 0 {
+		t.Fatalf("15m bucket must align to local 15-minute boundary, got %v", fifteen)
+	}
+}

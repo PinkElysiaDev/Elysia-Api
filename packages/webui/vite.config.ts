@@ -19,6 +19,8 @@ export default defineConfig(({ command }) => ({
       '/api': { target: 'http://127.0.0.1:8765', changeOrigin: true },
       '/v1': { target: 'http://127.0.0.1:8765', changeOrigin: true },
       '/health': { target: 'http://127.0.0.1:8765', changeOrigin: true },
+      // 诊断页的 pprof 链接是绝对路径，开发期也要能打开。
+      '/debug': { target: 'http://127.0.0.1:8765', changeOrigin: true },
     },
   },
   build: {

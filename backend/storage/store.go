@@ -159,8 +159,118 @@ func (s *Store) migrate(ctx context.Context) error {
 			log.Printf("[token_hash backfill] failed to update hash for %q: %v", r.name, err)
 		}
 	}
+	// 增量迁移：usage_records 增加 started_ms（Unix 毫秒整型）列。
+	// started_at 是 RFC3339Nano 字符串，格式化会去掉小数尾零，整秒时间戳
+	// （…T00:00:00Z）与带毫秒的时间戳（…T00:00:00.123Z）按字符串比较时
+	// '.'(0x2E) < 'Z'(0x5A)，导致整秒边界的时间过滤漏记录、同秒内排序错乱。
+	// 时间过滤与排序改用整型列；started_at 保留用于展示。
+	if _, err := s.db.ExecContext(ctx, `ALTER TABLE usage_records ADD COLUMN started_ms INTEGER NOT NULL DEFAULT 0`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_usage_started_ms ON usage_records(started_ms)`); err != nil {
+		return err
+	}
+	// 回填存量行的 started_ms。单连接约束：先全部读进内存并关闭游标，再 UPDATE。
+	type usageRow struct{ requestID, startedAt string }
+	var pendingUsage []usageRow
+	usageRows, err := s.db.QueryContext(ctx, `SELECT request_id, started_at FROM usage_records WHERE started_ms = 0`)
+	if err != nil {
+		return err
+	}
+	for usageRows.Next() {
+		var r usageRow
+		if err := usageRows.Scan(&r.requestID, &r.startedAt); err != nil {
+			usageRows.Close()
+			return err
+		}
+		pendingUsage = append(pendingUsage, r)
+	}
+	if err := usageRows.Err(); err != nil {
+		usageRows.Close()
+		return err
+	}
+	usageRows.Close()
+
+	if len(pendingUsage) > 0 {
+		// 大表回填可能耗时，先明确告知用户这是升级过程中的一次性迁移。
+		log.Printf("[migration] usage_records: backfilling started_ms for %d rows — one-time upgrade, please wait", len(pendingUsage))
+		backfillStartedAt := time.Now()
+		// 逐行自动提交会在大表上造成每行一次 fsync（usage 记录含 record_json
+		// 大字段，整行重写放大严重），改为分批事务 + 预编译语句：每批一次提交，
+		// 速度提升数百倍；中途失败时已提交批次保留，下次启动仅补剩余行（幂等）。
+		const backfillBatchSize = 2000
+		var tx *sql.Tx
+		var stmt *sql.Stmt
+		closeBatch := func() error {
+			if stmt != nil {
+				_ = stmt.Close()
+				stmt = nil
+			}
+			if tx != nil {
+				if err := tx.Commit(); err != nil {
+					tx = nil
+					return err
+				}
+				tx = nil
+			}
+			return nil
+		}
+		for index, r := range pendingUsage {
+			if tx == nil {
+				tx, err = s.db.BeginTx(ctx, nil)
+				if err != nil {
+					return err
+				}
+				stmt, err = tx.PrepareContext(ctx, `UPDATE usage_records SET started_ms = ? WHERE request_id = ?`)
+				if err != nil {
+					rollbackErr := tx.Rollback()
+					tx, stmt = nil, nil
+					if err != nil {
+						return err
+					}
+					return rollbackErr
+				}
+			}
+			parsed, perr := time.Parse(time.RFC3339Nano, r.startedAt)
+			if perr != nil {
+				// 无法解析的旧行保持 0；写入侧全部走 RFC3339Nano，实际不应出现。
+				log.Printf("[migration] usage_records: unparseable started_at %q for %q (skipped)", r.startedAt, r.requestID)
+			} else if _, err = stmt.ExecContext(ctx, parsed.UnixMilli(), r.requestID); err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("backfill started_ms for %q: %w", r.requestID, err)
+			}
+			if (index+1)%backfillBatchSize == 0 || index+1 == len(pendingUsage) {
+				if err = closeBatch(); err != nil {
+					return err
+				}
+				done := index + 1
+				log.Printf("[migration] usage_records: %s %d%% (%d/%d rows, %.1fs elapsed)",
+					backfillProgressBar(done, len(pendingUsage)), done*100/len(pendingUsage), done, len(pendingUsage),
+					time.Since(backfillStartedAt).Seconds())
+			}
+		}
+		if err = closeBatch(); err != nil {
+			return err
+		}
+		log.Printf("[migration] usage_records: started_ms backfill complete in %s", time.Since(backfillStartedAt).Round(time.Millisecond))
+	}
 	_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(1, ?)`, time.Now().UTC().Format(time.RFC3339Nano))
 	return err
+}
+
+// backfillProgressBar 渲染等宽字符进度条。只用 ASCII 的 '#' 与 '.'，
+// 避免宽字符进度条在部分 Windows 控制台代码页下乱码。
+func backfillProgressBar(done, total int) string {
+	const width = 30
+	if total <= 0 || done < 0 {
+		return ""
+	}
+	filled := done * width / total
+	if filled > width {
+		filled = width
+	}
+	return "[" + strings.Repeat("#", filled) + strings.Repeat(".", width-filled) + "]"
 }
 
 func boolInt(v bool) int {

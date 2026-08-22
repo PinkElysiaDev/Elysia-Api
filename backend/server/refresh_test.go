@@ -155,3 +155,35 @@ func TestRefreshAllSourcesFaultTolerant(t *testing.T) {
 		t.Fatalf("expected exactly the bad source to fail, got %+v", failures)
 	}
 }
+
+// 回归：上游 200 但返回异常结构（解析出 0 个模型）时，不得清空该源已有的
+// 模型列表——ReplaceSourceModels 是先 DELETE 全部再插入，空列表会清库。
+func TestRefreshEmptyModelListKeepsExistingModels(t *testing.T) {
+	ctx := context.Background()
+	// 返回 200 + 无 data 字段的中转站（异常但常见）。
+	empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"error":{"message":"upstream degraded"}}`))
+	}))
+	defer empty.Close()
+
+	s := newRefreshTestServer(t)
+	source := storage.ModelSource{ID: "s-empty", Name: "empty", BaseURL: empty.URL, Platform: "openai", Enabled: true, AutoFetchModels: true}
+	if err := s.store.UpsertSource(ctx, source); err != nil {
+		t.Fatalf("upsert source: %v", err)
+	}
+	if err := s.store.ReplaceSourceModels(ctx, source, []storage.Model{{ID: "keep-me", Name: "keep-me", Available: true}}); err != nil {
+		t.Fatalf("seed models: %v", err)
+	}
+
+	if _, err := s.refreshSource(ctx, "s-empty"); err == nil {
+		t.Fatal("refresh with an empty model list must surface an error")
+	}
+	models, err := s.store.ListModels(ctx)
+	if err != nil {
+		t.Fatalf("list models: %v", err)
+	}
+	if len(models) != 1 || models[0].Name != "keep-me" {
+		t.Fatalf("existing models must be kept on empty refresh, got %+v", models)
+	}
+}

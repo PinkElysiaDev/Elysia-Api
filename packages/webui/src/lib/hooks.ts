@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import useSWR, { mutate as globalMutate, type SWRConfiguration } from 'swr'
 import { api } from './api'
 import type { UsageQueryParams } from './types'
@@ -6,6 +7,24 @@ const defaultConfig: SWRConfiguration = {
   revalidateOnFocus: false,
   shouldRetryOnError: false,
   dedupingInterval: 2000,
+}
+
+/**
+ * 每分钟推进一次的计数器。usage 查询窗口的 `to = normalizedNow()` 若只放在
+ * useMemo 里，SWR 刷新时会重放同一个闭包，窗口永远冻结在挂载（或上次改
+ * 过滤器）那一刻——开着"全部时间"也看不到新记录。把该计数器加进 useMemo
+ * 依赖，查询 key 每分钟更新一次，窗口随时间前进并自动重新请求。
+ */
+export function useMinuteTick(): number {
+  const [tick, setTick] = useState(() => Math.floor(Date.now() / 60_000))
+  useEffect(() => {
+    const id = setInterval(() => {
+      const next = Math.floor(Date.now() / 60_000)
+      setTick((prev) => (prev === next ? prev : next))
+    }, 15_000)
+    return () => clearInterval(id)
+  }, [])
+  return tick
 }
 
 export function useHealth(refreshInterval = 0) {

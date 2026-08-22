@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, RefreshCw, Terminal } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui/card'
@@ -37,6 +37,11 @@ export function SystemLogsPage() {
   const { data, isLoading, error, mutate } = useSystemLogs(params)
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
+  // total 收缩（日志被裁剪）后把超界的页码收敛回最后一页。
+  useEffect(() => {
+    setPage((p) => Math.min(p, totalPages - 1))
+  }, [totalPages])
 
   return (
     <div className="space-y-6">

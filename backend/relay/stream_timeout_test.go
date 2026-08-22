@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -36,7 +37,7 @@ func TestOpenAIStreamNotCutByClientTimeout(t *testing.T) {
 
 	// 关键：Timeout=1s。非流式会被掐断，流式（streamClient 无超时）不会。
 	a := NewOpenAIAdapter(1 * time.Second)
-	resp, err := a.SendRequestStream(srv.URL, "k", []byte(`{"stream":true}`))
+	resp, err := a.SendRequestStream(context.Background(), srv.URL, "k", []byte(`{"stream":true}`))
 	if err != nil {
 		t.Fatalf("stream request should not be cut by client timeout, got: %v", err)
 	}
@@ -73,7 +74,7 @@ func TestOpenAINonStreamStillRespectsTimeout(t *testing.T) {
 	defer srv.Close()
 
 	a := NewOpenAIAdapter(1 * time.Second)
-	_, _, _, err := a.SendRequestRawWithBody(srv.URL, "k", []byte(`{}`))
+	_, _, _, err := a.SendRequestRawWithBody(context.Background(), srv.URL, "k", []byte(`{}`))
 	if err == nil {
 		t.Fatalf("non-stream request should be cut by 1s client timeout, but succeeded")
 	}

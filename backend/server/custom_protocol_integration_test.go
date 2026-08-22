@@ -326,3 +326,49 @@ func TestChatCompletionsCustomProtocolCumulativeMultilineStreamingEndToEnd(t *te
 		t.Fatalf("event filtering or cumulative delta handling failed: %s", body)
 	}
 }
+
+// 回归：custom 协议非流式请求必须支持故障转移——第一个上游 500 时换下一个
+// 候选，而不是直接把错误提交给客户端。
+func TestCustomProtocolNormalRequestFailsOver(t *testing.T) {
+	registerIntegrationCustomProtocol(t)
+	var hits int
+	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(500)
+	}))
+	defer broken.Close()
+	healthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"answer":{"text":"from-backup"},"finish":"stop","usage":{"prompt_tokens":1,"completion_tokens":1}}`)
+	}))
+	defer healthy.Close()
+
+	// MaxRetries=1：首个候选 500 后允许再试一个候选。
+	group := config.ModelGroupConfig{
+		ID:         "g1",
+		Name:       "grp",
+		Enabled:    true,
+		MaxRetries: 1,
+		Models: []config.ModelRef{
+			{ID: "m1", Name: "vendor-model", BaseURL: broken.URL, APIKey: "k", Platform: "custom:vendor-json"},
+			{ID: "m2", Name: "vendor-model", BaseURL: healthy.URL, APIKey: "k", Platform: "custom:vendor-json"},
+		},
+	}
+	s := newTestServer([]config.ModelGroupConfig{group})
+	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hello"}]}`)
+	s.chatCompletions(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected failover to the healthy upstream and 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if hits != 1 {
+		t.Fatalf("broken upstream should have been hit exactly once, got %d", hits)
+	}
+	var response relay.OpenAIResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode downstream response: %v", err)
+	}
+	if len(response.Choices) != 1 || response.Choices[0].Message.Content != "from-backup" {
+		t.Fatalf("unexpected downstream response: %s", rec.Body.String())
+	}
+}

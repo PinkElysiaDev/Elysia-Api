@@ -1,9 +1,10 @@
 // Package webui 把构建好的 WebUI 静态资源通过 //go:embed 嵌入二进制，
 // 使后端开箱即用——无需任何外部目录或 webuiDir 配置即可在 /ui/ 提供控制台。
 //
-// dist/ 下是前端构建产物（packages/webui 的 vite build 输出），已随仓库提交，
-// 因此 `go build` 永远能拿到真实资源；`yarn build` 会在发布前用
-// 最新产物覆盖该目录。
+// dist/ 下是前端构建产物（packages/webui 的 vite build 输出），由
+// scripts/build-standalone.mjs 在发布前同步，不随仓库提交；仓库只跟踪
+// dist/.gitkeep 占位文件，保证全新 clone 在未构建前端时也能 `go build`
+// （此时 /ui 优雅降级为不可用，见 FS/HasIndex）。
 package webui
 
 import (

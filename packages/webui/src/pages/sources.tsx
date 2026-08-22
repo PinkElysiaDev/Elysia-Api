@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { Database, Pencil, Plus, RefreshCw, Trash2, ChevronRight, Eye, Wrench, Boxes } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { Card } from '@/components/ui/card'
@@ -147,8 +147,8 @@ export function SourcesPage() {
                   const sourceModels = modelsBySource.get(source.id) ?? []
                   const isOpen = !!expanded[source.id]
                   return (
-                    <>
-                      <TableRow key={source.id}>
+                    <Fragment key={source.id}>
+                      <TableRow>
                         <TableCell className="pr-0">
                           <button
                             type="button"
@@ -198,7 +198,7 @@ export function SourcesPage() {
                         </TableCell>
                       </TableRow>
                       {isOpen && (
-                        <TableRow key={`${source.id}-models`} className="hover:bg-transparent">
+                        <TableRow className="hover:bg-transparent">
                           <TableCell colSpan={7} className="bg-muted/30">
                             {sourceModels.length === 0 ? (
                               <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
@@ -218,7 +218,7 @@ export function SourcesPage() {
                           </TableCell>
                         </TableRow>
                       )}
-                    </>
+                    </Fragment>
                   )
                 })}
               </TableBody>

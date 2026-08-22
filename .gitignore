@@ -4,12 +4,15 @@ backend/lib
 lib/
 !packages/webui/src/lib/
 
-# 构建产物（WebUI 编译输出），不提交
+# 构建产物（WebUI 编译输出），不提交。
+# backend/webui/dist 保留 .gitkeep 占位：go:embed 需要目录存在才能编译，
+# 全新 clone 在未跑 npm build 时也能 go build / go test。
 packages/webui/dist
-backend/webui/dist
+backend/webui/dist/*
+!backend/webui/dist/.gitkeep
 
-# 独立发行产物由 GitHub Releases 托管，不提交到仓库
-dist/
+# 独立发行产物由 GitHub Releases 托管，不提交到仓库（仅根目录）
+/dist/
 
 external
 
@@ -32,6 +35,9 @@ tsconfig.tsbuildinfo
 
 # 本地 CodeGraph 索引与守护进程状态
 .codegraph/
+
+# ZCode 会话本地数据
+.zcode/
 
 # 运行时 / 本地产物，不应提交
 backend/**/usage-records.jsonl

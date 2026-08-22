@@ -20,7 +20,7 @@ import { StatCard } from '@/components/stat-card'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useHealth, useUsageStats, useSources, useModels, useGroups } from '@/lib/hooks'
+import { useHealth, useUsageStats, useSources, useModels, useGroups, useMinuteTick } from '@/lib/hooks'
 import {
   compactNumber,
   formatBytes,
@@ -34,12 +34,15 @@ import {
 
 export function OverviewPage() {
   const { data: health, isLoading: healthLoading } = useHealth(15000)
+  const minuteTick = useMinuteTick()
   // 必须 memo：否则 toRFC3339(new Date()) 每次渲染都生成新时间戳，
   // 导致 useUsageStats 的 SWR key 每帧都变、永远重新请求、卡在 loading。
+  // minuteTick 让"近 7 天"窗口每分钟推进一次，页面挂着不过夜。
   const usageParams = useMemo(() => {
     const to = normalizedNow()
     return { from: startOfRange('7d', to), to }
-  }, [])
+ // eslint-disable-next-line react-hooks/exhaustive-deps -- minuteTick 驱动查询窗口随时间推进，不在回调体内使用是有意的
+  }, [minuteTick])
   const { data: stats, isLoading: statsLoading } = useUsageStats(usageParams)
   const { data: sources, isLoading: sourcesLoading } = useSources()
   const { data: models, isLoading: modelsLoading } = useModels()

@@ -2,11 +2,14 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/elysia-api/backend/config"
 )
 
 func (s *Server) usagePersistPath() string {
@@ -106,23 +109,20 @@ func (s *Server) rewriteUsageRecordsLocked() {
 		return
 	}
 
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
-	if err != nil {
-		log.Printf("failed to rewrite usage persistence file: %v", err)
-		return
-	}
-	defer file.Close()
-
+	// 先在内存拼好完整内容再原子替换：O_TRUNC 直写在压缩重写中途崩溃会
+	// 丢掉全部历史记录，而不是只丢最后一条。
+	var buf bytes.Buffer
 	for _, record := range s.usageRecords {
 		payload, err := json.Marshal(record)
 		if err != nil {
 			log.Printf("failed to marshal usage record during compact: %v", err)
 			continue
 		}
-		if _, err := file.Write(append(payload, '\n')); err != nil {
-			log.Printf("failed to write usage record during compact: %v", err)
-			return
-		}
+		buf.Write(payload)
+		buf.WriteByte('\n')
+	}
+	if err := config.WriteFileAtomic(path, buf.Bytes(), 0o600); err != nil {
+		log.Printf("failed to rewrite usage persistence file: %v", err)
 	}
 }
 
@@ -134,7 +134,7 @@ func (s *Server) clearUsageRecords() error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, nil, 0o600); err != nil {
+	if err := config.WriteFileAtomic(path, nil, 0o600); err != nil {
 		return fmt.Errorf("failed to clear usage persistence file: %w", err)
 	}
 	return nil

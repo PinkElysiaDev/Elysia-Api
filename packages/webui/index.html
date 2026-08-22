@@ -6,6 +6,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <title>Elysia API · 控制台</title>
+    <script>
+      // 在 React 挂载前同步设置主题 class，避免暗色用户首帧闪烁亮色（FOUC）。
+      // 与 src/lib/theme.tsx 的 STORAGE_KEY / 取值逻辑保持一致。
+      ;(function () {
+        try {
+          var stored = localStorage.getItem('elysia-webui.theme')
+          var dark =
+            stored === 'dark' ||
+            ((stored !== 'light') && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          if (dark) document.documentElement.classList.add('dark')
+        } catch (e) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

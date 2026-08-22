@@ -183,11 +183,12 @@ func (c *Config) applyBootstrapDefaults(path string) {
 }
 
 func (c *Config) Save() error {
-	c.mu.RLock()
-	path := c.path
-	c.mu.RUnlock()
+	// 读-改-写全程持写锁：并发 Save（多管理员同时改配置）若跨两次 RLock 段
+	// 进行，会基于彼此过期的快照互相覆盖。
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(c.path)
 	if err != nil {
 		return err
 	}
@@ -197,7 +198,6 @@ func (c *Config) Save() error {
 		return err
 	}
 
-	c.mu.RLock()
 	raw["host"] = c.Host
 	raw["port"] = c.Port
 	raw["panelAccessToken"] = c.PanelAccessToken
@@ -215,13 +215,40 @@ func (c *Config) Save() error {
 	} else {
 		delete(raw, "customProtocols")
 	}
-	c.mu.RUnlock()
 
 	out, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, out, 0o644)
+	// 原子替换：直接覆盖在写入中途崩溃会留下半截 config.json（含面板令牌），不可恢复。
+	return WriteFileAtomic(c.path, out, 0o644)
+}
+
+// WriteFileAtomic 以"写临时文件 + fsync + 原子重命名"落盘：进程在写入中途
+// 崩溃或断电时，目标文件要么是完整旧内容、要么是完整新内容。
+func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // Rename 成功后为 no-op
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 func (c *Config) SetPanelAccessToken(token string) {

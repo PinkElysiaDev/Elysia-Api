@@ -69,4 +69,3 @@ func installDownstreamCapture(c *gin.Context, record *usageRecord) *downstreamCa
 	record.downstream = capture
 	return capture
 }
-

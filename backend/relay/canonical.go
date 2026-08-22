@@ -556,14 +556,18 @@ func contentPartsToInterface(parts []CanonicalContentPart) any {
 				out = append(out, map[string]any{"type": "image_url", "image_url": image})
 			}
 		case CanonicalContentAudio:
-			url := firstNonEmptyString(part.AudioURL, part.URI)
-			if url == "" {
-				if data := firstNonEmptyString(part.AudioBase64, part.Data); data != "" {
-					url = "data:" + firstNonEmptyString(part.MediaType, part.MimeType, "audio/mpeg") + ";base64," + data
+			// OpenAI Chat 协议要求 input_audio.data 为裸 base64、format 为
+			// mp3/wav 短格式；data: URI 或完整 MIME 会被上游校验拒绝。
+			data := firstNonEmptyString(part.AudioBase64, part.Data)
+			mediaType := firstNonEmptyString(part.MediaType, part.MimeType)
+			if uriMime, b64, isURI := splitAudioDataURL(data); isURI {
+				data = b64
+				if mediaType == "" {
+					mediaType = uriMime
 				}
 			}
-			if url != "" {
-				out = append(out, map[string]any{"type": "input_audio", "input_audio": map[string]any{"data": url, "format": part.MediaType}})
+			if data != "" {
+				out = append(out, map[string]any{"type": "input_audio", "input_audio": map[string]any{"data": data, "format": audioFormatFromMediaType(mediaType)}})
 			}
 		case CanonicalContentVideo:
 			url := firstNonEmptyString(part.VideoURL, part.URI)
@@ -615,6 +619,37 @@ func contentPartsToInterface(parts []CanonicalContentPart) any {
 	return out
 }
 
+// splitAudioDataURL 解析 "data:<mime>;base64,<payload>" 形式的音频数据，
+// 返回 mime 与裸 base64；非 data URI 或缺少逗号时 ok=false。
+func splitAudioDataURL(data string) (mime, base64 string, ok bool) {
+	if !strings.HasPrefix(data, "data:") {
+		return "", "", false
+	}
+	rest := data[len("data:"):]
+	comma := strings.Index(rest, ",")
+	if comma < 0 {
+		return "", "", false
+	}
+	meta := rest[:comma]
+	mime = meta
+	if strings.HasSuffix(meta, ";base64") {
+		mime = meta[:len(meta)-len(";base64")]
+	}
+	return mime, rest[comma+1:], true
+}
+
+// audioFormatFromMediaType 把 MIME 类型或既有短格式归一化为 OpenAI
+// input_audio.format 接受的 "mp3"/"wav"。
+func audioFormatFromMediaType(mediaType string) string {
+	switch strings.ToLower(strings.TrimSpace(mediaType)) {
+	case "wav", "wave", "audio/wav", "audio/wave", "audio/x-wav":
+		return "wav"
+	default:
+		// audio/mpeg、audio/mp3、mp3 及未知类型统一归 mp3（OpenAI 仅接受 mp3/wav）。
+		return "mp3"
+	}
+}
+
 func interfaceToContentParts(content any) []CanonicalContentPart {
 	if content == nil {
 		return nil
@@ -662,13 +697,21 @@ func interfaceToContentParts(content any) []CanonicalContentPart {
 			if nested == nil {
 				nested, _ = m["audio_url"].(map[string]any)
 			}
+			dataVal := firstNonEmptyString(stringValue(m["data"]), stringValue(nested["data"]), stringValue(nested["audio_data"]))
+			mediaVal := firstNonEmptyString(stringValue(m["format"]), stringValue(m["mime_type"]), stringValue(nested["format"]), stringValue(nested["mime_type"]), stringValue(nested["mimeType"]))
+			if uriMime, b64, isURI := splitAudioDataURL(dataVal); isURI {
+				dataVal = b64
+				if mediaVal == "" {
+					mediaVal = uriMime
+				}
+			}
 			parts = append(parts, CanonicalContentPart{
 				Type:        CanonicalContentAudio,
 				AudioURL:    firstNonEmptyString(stringValue(m["audio_url"]), stringValue(nested["url"]), stringValue(nested["audio_url"])),
-				AudioBase64: firstNonEmptyString(stringValue(m["data"]), stringValue(nested["data"]), stringValue(nested["audio_data"])),
-				Data:        firstNonEmptyString(stringValue(m["data"]), stringValue(nested["data"]), stringValue(nested["audio_data"])),
+				AudioBase64: dataVal,
+				Data:        dataVal,
 				Text:        firstNonEmptyString(stringValue(m["transcript"]), stringValue(nested["transcript"])),
-				MediaType:   firstNonEmptyString(stringValue(m["format"]), stringValue(m["mime_type"]), stringValue(nested["format"]), stringValue(nested["mime_type"]), stringValue(nested["mimeType"])),
+				MediaType:   mediaVal,
 				Raw:         m,
 			})
 		case "video_url", "input_video", "video":

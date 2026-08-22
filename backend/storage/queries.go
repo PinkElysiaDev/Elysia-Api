@@ -408,7 +408,7 @@ func (s *Store) SaveUsageRecordJSON(ctx context.Context, payload []byte, summary
 	if summary.StartedAt.IsZero() {
 		summary.StartedAt = endedAt
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT OR REPLACE INTO usage_records(request_id, started_at, ended_at, key_name, key_hash, group_name, model_name, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated, record_json) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, summary.RequestID, summary.StartedAt.UTC().Format(time.RFC3339Nano), endedAt.UTC().Format(time.RFC3339Nano), summary.KeyName, summary.KeyHash, summary.GroupName, summary.ModelName, summary.Platform, summary.SourceFormat, summary.TargetFormat, summary.RelayMode, summary.ResponsesMode, summary.UsageSource, boolInt(summary.Stream), summary.StatusCode, summary.Error, summary.FirstByteMs, summary.DurationMs, summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, boolInt(summary.RequestTruncated), boolInt(summary.ResponseTruncated), string(payload))
+	_, err := s.db.ExecContext(ctx, `INSERT OR REPLACE INTO usage_records(request_id, started_at, started_ms, ended_at, key_name, key_hash, group_name, model_name, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated, record_json) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, summary.RequestID, summary.StartedAt.UTC().Format(time.RFC3339Nano), summary.StartedAt.UnixMilli(), endedAt.UTC().Format(time.RFC3339Nano), summary.KeyName, summary.KeyHash, summary.GroupName, summary.ModelName, summary.Platform, summary.SourceFormat, summary.TargetFormat, summary.RelayMode, summary.ResponsesMode, summary.UsageSource, boolInt(summary.Stream), summary.StatusCode, summary.Error, summary.FirstByteMs, summary.DurationMs, summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, boolInt(summary.RequestTruncated), boolInt(summary.ResponseTruncated), string(payload))
 	return err
 }
 
@@ -427,7 +427,7 @@ func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageL
 		offset = 0
 	}
 	args = append(args, limit, offset)
-	rows, err := s.db.QueryContext(ctx, `SELECT request_id, started_at, key_name, key_hash, group_name, model_name, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated FROM usage_records `+where+` ORDER BY started_at DESC LIMIT ? OFFSET ?`, args...)
+	rows, err := s.db.QueryContext(ctx, `SELECT request_id, started_at, key_name, key_hash, group_name, model_name, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated FROM usage_records `+where+` ORDER BY started_ms DESC, started_at DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -452,13 +452,15 @@ func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageL
 func usageWhere(q UsageQuery) (string, []any) {
 	parts := []string{"1=1"}
 	args := []any{}
+	// 时间过滤用整型毫秒列：RFC3339Nano 字符串的字典序在整秒/带毫秒混合时
+	// 不可靠（'.' < 'Z'），会把边界上的记录漏掉。
 	if !q.From.IsZero() {
-		parts = append(parts, "started_at >= ?")
-		args = append(args, q.From.UTC().Format(time.RFC3339Nano))
+		parts = append(parts, "started_ms >= ?")
+		args = append(args, q.From.UnixMilli())
 	}
 	if !q.To.IsZero() {
-		parts = append(parts, "started_at <= ?")
-		args = append(args, q.To.UTC().Format(time.RFC3339Nano))
+		parts = append(parts, "started_ms <= ?")
+		args = append(args, q.To.UnixMilli())
 	}
 	// 多选优先于单值：非空时生成 IN (...)，否则回退到单值等值条件。
 	if len(q.KeyNames) > 0 {
