@@ -40,8 +40,7 @@ elysia-api/
 | --- | --- |
 | Windows amd64 | `elysia-api-windows-amd64.exe` |
 | Linux amd64 | `elysia-api-linux-amd64` |
-| macOS Intel | `elysia-api-darwin-amd64` |
-| macOS Apple Silicon | `elysia-api-darwin-arm64` |
+| macOS App（Intel / Apple Silicon 通用） | `elysia-api-macos.dmg` |
 
 ### 通用配置
 
@@ -84,12 +83,13 @@ chmod +x ./elysia-api-linux-amd64
 
 ### macOS
 
-Apple Silicon 使用 `elysia-api-darwin-arm64`，Intel 设备使用 `elysia-api-darwin-amd64`：
+从 Release 下载 `elysia-api-macos.dmg`，双击打开后将 `ElysiaApi` 拖入 `Applications` 快捷方式即完成安装，之后从启动台双击运行：
+- 首次启动自动生成配置与随机 `panelAccessToken`，数据统一保存在 `~/Library/Application Support/ElysiaApi/`（config.json、SQLite、`.master-key`、`elysia-api.log`）。
+- 支持应用内更新：有新版本时窗口左下角出现「立即更新」按钮，一键完成下载（DMG）、sha256 校验、提取与替换；也可通过菜单栏「检查更新…」手动触发。更新只替换内嵌后端，配置与数据不受影响。
+- 默认端口 `8765`，若被占用会自动改用 `8799` 起的空闲端口（实际端口见菜单栏状态行与面板地址）。
 
-```bash
-chmod +x ./elysia-api-darwin-arm64
-./elysia-api-darwin-arm64 --config ./config.json
-```
+> CI 产物为 ad-hoc 签名。首次打开若被 Gatekeeper 拦截，执行
+> `xattr -d com.apple.quarantine /Applications/ElysiaApi.app` 后再打开即可。
 
 ### WebUI 初始化
 
@@ -132,6 +132,13 @@ npm run build
 | Linux amd64 | `elysia-api-linux-amd64` |
 | macOS Intel | `elysia-api-darwin-amd64` |
 | macOS Apple Silicon | `elysia-api-darwin-arm64` |
+| macOS App | `elysia-api-macos.dmg` |
+
+在 macOS 上额外执行以下命令可在 `dist/standalone/` 组装出 `ElysiaApi.app`（需要 Xcode Command Line Tools，产物为通用二进制）：
+
+```bash
+npm run build:macos-app
+```
 
 开发 WebUI：
 
