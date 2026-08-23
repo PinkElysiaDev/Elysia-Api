@@ -4,6 +4,8 @@ import (
 	"math/rand"
 
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/storage"
 )
 
 // relayOutcome 是单次转发尝试的结果，供故障转移循环决策。
@@ -114,6 +116,125 @@ func (s *Server) buildCandidates(group *config.ModelGroupConfig) []config.ModelR
 		rrStart = s.nextRoundRobinIndex(group.ID, len(group.Models))
 	}
 	return orderedCandidates(group, rrStart)
+}
+
+// reorderCandidatesByRequestNeeds 组内候选软过滤（方向2）：请求携带多模态输入时把
+// 声明不支持视觉的候选移到列表末尾，请求使用工具时把不支持工具的候选移到末尾
+// （均保持组内相对顺序，候选集合不变）。全部候选都不支持时维持原序照常发送——
+// 模型级能力来自目录推断，只做优先级参考，不做硬拒绝。
+func reorderCandidatesByRequestNeeds(candidates []config.ModelRef, needsVision, needsTools bool) []config.ModelRef {
+	if len(candidates) <= 1 {
+		return candidates
+	}
+	var capable, incapable []config.ModelRef
+	split := func(keep func(config.ModelRef) bool) {
+		capable = capable[:0]
+		incapable = incapable[:0]
+		for _, candidate := range candidates {
+			if keep(candidate) {
+				capable = append(capable, candidate)
+			} else {
+				incapable = append(incapable, candidate)
+			}
+		}
+		if len(capable) == 0 {
+			return // 全部不支持：维持原序，照常发送
+		}
+		candidates = append(capable, incapable...)
+	}
+	if needsVision {
+		split(func(candidate config.ModelRef) bool { return candidate.VisionCapable })
+	}
+	if needsTools {
+		split(func(candidate config.ModelRef) bool { return candidate.ToolsCapable })
+	}
+	return candidates
+}
+
+// canonicalRequestHasMultimodalInput 检测请求是否携带多模态输入（image/audio/video）。
+func canonicalRequestHasMultimodalInput(request *relay.CanonicalRequest) bool {
+	if request == nil {
+		return false
+	}
+	for index := range request.Messages {
+		for _, part := range request.Messages[index].Content {
+			if isMultimodalContentPart(part.Type) {
+				return true
+			}
+		}
+	}
+	for index := range request.InputItems {
+		for _, part := range request.InputItems[index].Content {
+			if isMultimodalContentPart(part.Type) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// expandCandidatesByKeyStrategy 为候选列表解析每次尝试实际使用的 key（方向6）。
+// 在既有故障转移循环之前把「候选 × key」展开成逐次尝试的序列，循环体无需感知 key 维度：
+//   - single（默认）        → 原样（ModelRef.APIKey，兼容旧单 key 行为）；
+//   - priority             → 每个候选按 key 列表顺序展开为多次连续尝试——失败时
+//                             先轮换同候选的下一个 key（至多 len(keys) 次），耗尽再切候选；
+//   - round-robin          → 每候选一次，key 取源级原子游标（同源多候选在请求内错开、
+//                             跨请求轮转；内存态，重启归零）；
+//   - random               → 每候选一次，key 随机选取。
+// 展开后 maxAttempts 语义不变：重试预算封顶总尝试次数。
+func (s *Server) expandCandidatesByKeyStrategy(candidates []config.ModelRef) []config.ModelRef {
+	multi := false
+	for i := range candidates {
+		if len(candidates[i].APIKeys) > 1 {
+			multi = true
+			break
+		}
+	}
+	if !multi {
+		return candidates
+	}
+	expanded := make([]config.ModelRef, 0, len(candidates))
+	for _, candidate := range candidates {
+		clone := candidate
+		clone.APIKeys = nil
+		switch storage.SourceKeyStrategy(candidate.KeyStrategy) {
+		case storage.KeyStrategyPriority:
+			for _, key := range candidate.APIKeys {
+				withKey := clone
+				withKey.APIKey = key
+				expanded = append(expanded, withKey)
+			}
+		case storage.KeyStrategyRoundRobin:
+			clone.APIKey = candidate.APIKeys[s.nextSourceKeyIndex(candidate.SourceID, len(candidate.APIKeys))]
+			expanded = append(expanded, clone)
+		case storage.KeyStrategyRandom:
+			clone.APIKey = candidate.APIKeys[rand.Intn(len(candidate.APIKeys))]
+			expanded = append(expanded, clone)
+		default: // single / 未知策略：单 key 原样
+			expanded = append(expanded, clone)
+		}
+	}
+	return expanded
+}
+
+// nextSourceKeyIndex 读取并推进源级 round-robin key 游标（方向6）。
+// 游标是进程内存态：重启归零可接受（key 轮转无持久化必要，对照 new-api 的
+// polling 需持久化的取舍，这里选简单实现）。
+func (s *Server) nextSourceKeyIndex(sourceID string, count int) int {
+	if count <= 0 {
+		return 0
+	}
+	s.keyRRMutex.Lock()
+	defer s.keyRRMutex.Unlock()
+	if s.keyRRIndex == nil {
+		s.keyRRIndex = make(map[string]int)
+	}
+	idx := s.keyRRIndex[sourceID] % count
+	if idx < 0 {
+		idx = 0
+	}
+	s.keyRRIndex[sourceID] = idx + 1
+	return idx
 }
 
 // maxAttempts 计算一次请求最多尝试多少个候选模型。

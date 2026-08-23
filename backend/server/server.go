@@ -12,6 +12,7 @@ import (
 	"net/http/pprof"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,10 @@ type Server struct {
 	// 轮询状态跟踪：模型组ID -> 当前模型索引
 	roundRobinIndex map[string]int
 	roundRobinMutex sync.Mutex
+
+	// 源级多 key round-robin 游标（方向6）：sourceID -> 当前 key 索引。
+	keyRRMutex sync.Mutex
+	keyRRIndex map[string]int
 
 	rateLimitMu sync.Mutex
 	rateLimits  map[string]*rateLimitState
@@ -68,6 +73,9 @@ type Server struct {
 	cachedGroups     []config.ModelGroupConfig
 	cachedTokens     map[string]config.AccessToken
 	routeCacheLoaded bool
+
+	// 模型能力元数据目录（models.dev）：刷新模型时自动回填能力字段（方向1）。
+	catalog *modelCatalog
 
 	// 存在需要重启才能生效的配置变更（host/port/databasePath/pprof），
 	// 由 adminUpdateRuntimeConfig 置位，restart-required/check 查询；进程重启自然清零。
@@ -105,7 +113,17 @@ func New(cfg *config.Config) *Server {
 		roundRobinIndex: make(map[string]int),
 		rateLimits:      make(map[string]*rateLimitState),
 		affinity:        newAffinityCache(),
+		catalog: newModelCatalog(cfg.GetModelCatalog, func() string {
+			// 缓存落在数据库同目录，跟随用户的数据目录布局。
+			dbPath := cfg.GetDatabasePath()
+			if strings.TrimSpace(dbPath) == "" {
+				return ""
+			}
+			return filepath.Join(filepath.Dir(dbPath), "model-catalog.json")
+		}),
 	}
+	// 目录定期后台更新（周期动态读取配置，管理页修改即时生效）。
+	go server.catalog.runPeriodic()
 	if store, err := storage.OpenWithKey(cfg.DatabasePath, cfg.GetDBEncryptionKey()); err != nil {
 		log.Printf("failed to open sqlite store: %v", err)
 	} else {
@@ -507,17 +525,31 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	if sticky := s.affinity.get(record.KeyHash, group.ID, startTime); sticky != "" {
 		candidates = applyAffinity(candidates, sticky)
 	}
+	// 组内候选软过滤（方向2）：按请求内容把不支持所需能力的候选移到末尾。
+	candidates = reorderCandidatesByRequestNeeds(candidates,
+		canonicalRequestHasMultimodalInput(canonicalReq), canonicalRequestUsesTools(canonicalReq))
+	// 多 key 展开（方向6）：按源策略把候选解析为逐次尝试序列（single 时原样）。
+	candidates = s.expandCandidatesByKeyStrategy(candidates)
 
 	// 如果模型组配置了 MaxTokens，覆盖客户端发来的值
 	if group.MaxTokens > 0 {
 		canonicalReq.MaxOutputTokens = group.MaxTokens
 	}
-	filtered, filteredParts := filterCanonicalVisionInputsIfNeeded(group, canonicalReq)
+	// 组级 tools 能力落地（方向2）：组声明不支持工具而请求携带工具定义/工具消息时，
+	// 400 拒绝并明确报错——静默剥离会破坏 agent 循环语义（已确认的产品决策）。
+	if rejectToolRequestsIfNeeded(group, canonicalReq) {
+		s.failRequest(c, record, startTime, http.StatusBadRequest,
+			fmt.Sprintf("model group '%s' does not support tool calling, but the request contains tools or tool messages", group.Name))
+		return
+	}
+	filtered, filteredParts, filteredModalities := filterCanonicalMultimodalInputsIfNeeded(group, canonicalReq)
 	if filtered {
-		s.logVerbose("[Maheshvara Vision Filter] group=%s filteredImageParts=%d", group.Name, filteredParts)
+		s.logVerbose("[Maheshvara Multimodal Filter] group=%s filteredParts=%d modalities=%v", group.Name, filteredParts, filteredModalities)
 		if canonicalJSON, err := json.Marshal(canonicalReq); err == nil {
-			s.logVerbose("[Maheshvara Request After Vision Filter] %s", compactLogJSON(canonicalJSON))
+			s.logVerbose("[Maheshvara Request After Multimodal Filter] %s", compactLogJSON(canonicalJSON))
 		}
+		// 让客户端可感知剥离行为（非纯静默）：形如 "image,audio"。
+		c.Writer.Header().Set("X-Elysia-Filtered-Modalities", strings.Join(filteredModalities, ","))
 	}
 
 	estimatedUsage := estimateCanonicalRequestUsage(canonicalReq, s.config.GetUsageConfig())

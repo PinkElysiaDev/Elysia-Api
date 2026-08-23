@@ -61,6 +61,9 @@ export function GroupFormDialog({
   const [form, setForm] = useState<ModelGroup>(emptyGroup())
   const [saving, setSaving] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
+  // 方向1：能力开关是否被用户手动改过。未改过时，选中成员变化会按成员能力
+  // 重新推导预填（vision=任一支持、tools=全部支持）；一旦手动切换即固定。
+  const [capsTouched, setCapsTouched] = useState(false)
 
   const enabledSourceIds = useMemo(() => {
     const set = new Set<string>()
@@ -74,11 +77,17 @@ export function GroupFormDialog({
     if (open) {
       setForm(group ? { ...group, models: [...group.models] } : emptyGroup())
       setModelSearch('')
+      setCapsTouched(false)
     }
   }, [open, group])
 
   function update<K extends keyof ModelGroup>(key: K, value: ModelGroup[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  function updateCapability<K extends 'visionCapable' | 'toolsCapable'>(key: K, value: ModelGroup[K]) {
+    setCapsTouched(true)
+    update(key, value)
   }
 
   // 模型的复合身份键：sourceId:modelId。解决不同源同名模型被裸 id 联动选中的问题。
@@ -87,10 +96,21 @@ export function GroupFormDialog({
   }
 
   function toggleModel(key: string) {
-    setForm((prev) => ({
-      ...prev,
-      models: prev.models.includes(key) ? prev.models.filter((m) => m !== key) : [...prev.models, key],
-    }))
+    setForm((prev) => {
+      const selected = prev.models.includes(key)
+        ? prev.models.filter((m) => m !== key)
+        : [...prev.models, key]
+      // 未手动改过能力开关时，按新的选中集合推导预填（方向1）：
+      // 视觉与工具均为「任一成员支持即开启」。
+      if (capsTouched) return { ...prev, models: selected }
+      const members = (models ?? []).filter((m) => selected.includes(modelKey(m)))
+      return {
+        ...prev,
+        models: selected,
+        visionCapable: members.some((m) => m.visionCapable),
+        toolsCapable: members.some((m) => m.toolsCapable),
+      }
+    })
   }
 
   const filteredModels = useMemo(() => {
@@ -255,21 +275,24 @@ export function GroupFormDialog({
               value={form.maxTokens ?? 0}
               onChange={(v) => update('maxTokens', v)}
             />
-            <div className="flex items-end gap-6 pb-1">
-              <label className="flex items-center gap-2">
-                <Switch checked={form.visionCapable} onCheckedChange={(v) => update('visionCapable', v)} />
-                <span className="text-sm font-medium">视觉</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <Switch checked={form.toolsCapable} onCheckedChange={(v) => update('toolsCapable', v)} />
-                <span className="text-sm font-medium">工具</span>
-              </label>
+            <div className="space-y-2">
+              <Label>能力</Label>
+              <div className="flex h-10 items-center gap-6">
+                <label className="flex items-center gap-2">
+                  <Switch checked={form.visionCapable} onCheckedChange={(v) => updateCapability('visionCapable', v)} />
+                  <span className="text-sm font-medium">视觉</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <Switch checked={form.toolsCapable} onCheckedChange={(v) => updateCapability('toolsCapable', v)} />
+                  <span className="text-sm font-medium">工具</span>
+                </label>
+              </div>
             </div>
           </div>
 
           <label className="flex items-center gap-3">
             <Switch checked={form.enabled} onCheckedChange={(v) => update('enabled', v)} />
-            <span className="text-sm font-medium">启用此组（对外可见）</span>
+            <span className="text-sm font-medium">启用此组</span>
           </label>
         </div>
 

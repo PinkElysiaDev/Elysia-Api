@@ -39,7 +39,7 @@ func TestValidateCustomSourceProtocol(t *testing.T) {
 }
 
 func TestCustomSourceModelDiscoveryRequiresManualModels(t *testing.T) {
-	_, err := (&Server{}).fetchModelsFromSource(context.Background(), storage.ModelSource{Platform: "custom:vendor-json"})
+	_, err := (&Server{}).fetchModelsFromSource(context.Background(), storage.ModelSource{Platform: "custom:vendor-json"}, "")
 	if err == nil || !strings.Contains(err.Error(), "does not define model discovery") {
 		t.Fatalf("expected custom discovery error, got %v", err)
 	}

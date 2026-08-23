@@ -10,28 +10,68 @@ import (
 	"time"
 )
 
+// modelColumns 是 models 行读取的统一列清单（含 enabled/origin/capability_source）。
+const modelColumns = `m.id, m.source_id, m.name, m.source_name, m.base_url, m.api_key, m.platform, m.type, m.max_tokens, m.vision_capable, m.tools_capable, m.structured_output, m.thinking_mode, m.available, m.enabled, m.origin, m.capability_source, m.last_checked_at`
+
+// scanModel 把一行 models 数据扫进 Model（解密 api_key）。
+func (s *Store) scanModel(scanner interface{ Scan(dest ...any) error }) (Model, error) {
+	var item Model
+	var vision, tools, structured, available, enabled int
+	var checked string
+	if err := scanner.Scan(&item.ID, &item.SourceID, &item.Name, &item.SourceName, &item.BaseURL, &item.APIKey, &item.Platform, &item.Type, &item.MaxTokens, &vision, &tools, &structured, &item.ThinkingMode, &available, &enabled, &item.Origin, &item.CapabilitySource, &checked); err != nil {
+		return Model{}, err
+	}
+	item.VisionCapable = intBool(vision)
+	item.ToolsCapable = intBool(tools)
+	item.StructuredOutput = intBool(structured)
+	item.Available = intBool(available)
+	item.Enabled = intBool(enabled)
+	item.LastCheckedAt = parseTime(checked)
+	if plain, err := s.codec.decrypt(item.APIKey); err == nil {
+		item.APIKey = plain
+	} else {
+		return Model{}, err
+	}
+	return item, nil
+}
+
+// ModelListFilter 提供管理面的模型列表过滤（方向4）：SourceID 为空查全部；
+// Search 对 id/name/source_name 做 SQL LIKE 模糊匹配（已 escape 通配符）。
+type ModelListFilter struct {
+	SourceID string
+	Search   string
+}
+
 func (s *Store) ListModels(ctx context.Context) ([]Model, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT m.id, m.source_id, m.name, m.source_name, m.base_url, m.api_key, m.platform, m.type, m.max_tokens, m.vision_capable, m.tools_capable, m.structured_output, m.thinking_mode, m.available, m.last_checked_at FROM models m LEFT JOIN model_sources ms ON m.source_id = ms.id WHERE (m.source_id = '' OR ms.enabled = 1 OR ms.id IS NULL) ORDER BY m.source_name, m.name`)
+	return s.listModelsFiltered(ctx, ModelListFilter{})
+}
+
+// ListModelsFiltered 按过滤条件列出模型（管理面检索，方向4）。
+func (s *Store) ListModelsFiltered(ctx context.Context, filter ModelListFilter) ([]Model, error) {
+	return s.listModelsFiltered(ctx, filter)
+}
+
+func (s *Store) listModelsFiltered(ctx context.Context, filter ModelListFilter) ([]Model, error) {
+	where := "WHERE (m.source_id = '' OR ms.enabled = 1 OR ms.id IS NULL)"
+	args := []any{}
+	if filter.SourceID != "" {
+		where += " AND m.source_id = ?"
+		args = append(args, filter.SourceID)
+	}
+	if search := strings.TrimSpace(filter.Search); search != "" {
+		where += " AND (m.id LIKE ? ESCAPE '\\' OR m.name LIKE ? ESCAPE '\\' OR m.source_name LIKE ? ESCAPE '\\')"
+		like := "%" + escapeLike(search) + "%"
+		args = append(args, like, like, like)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT `+modelColumns+` FROM models m LEFT JOIN model_sources ms ON m.source_id = ms.id `+where+` ORDER BY m.source_name, m.name`, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	items := []Model{}
 	for rows.Next() {
-		var item Model
-		var vision, tools, structured, available int
-		var checked string
-		if err := rows.Scan(&item.ID, &item.SourceID, &item.Name, &item.SourceName, &item.BaseURL, &item.APIKey, &item.Platform, &item.Type, &item.MaxTokens, &vision, &tools, &structured, &item.ThinkingMode, &available, &checked); err != nil {
-			return nil, err
-		}
-		item.VisionCapable = intBool(vision)
-		item.ToolsCapable = intBool(tools)
-		item.StructuredOutput = intBool(structured)
-		item.Available = intBool(available)
-		item.LastCheckedAt = parseTime(checked)
-		if plain, err := s.codec.decrypt(item.APIKey); err == nil {
-			item.APIKey = plain
-		} else {
+		item, err := s.scanModel(rows)
+		if err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -39,32 +79,25 @@ func (s *Store) ListModels(ctx context.Context) ([]Model, error) {
 	return items, rows.Err()
 }
 
+// escapeLike 转义 LIKE 通配符，保证搜索词按字面匹配。
+func escapeLike(value string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(value)
+}
+
 func (s *Store) findModel(ctx context.Context, tx *sql.Tx, id string) (Model, bool, error) {
-	query := `SELECT id, source_id, name, source_name, base_url, api_key, platform, type, max_tokens, vision_capable, tools_capable, structured_output, thinking_mode, available, last_checked_at FROM models WHERE id = ? ORDER BY source_name LIMIT 1`
+	query := `SELECT ` + modelColumns + ` FROM models m WHERE m.id = ? ORDER BY m.source_name LIMIT 1`
 	var row *sql.Row
 	if tx != nil {
 		row = tx.QueryRowContext(ctx, query, id)
 	} else {
 		row = s.db.QueryRowContext(ctx, query, id)
 	}
-	var item Model
-	var vision, tools, structured, available int
-	var checked string
-	err := row.Scan(&item.ID, &item.SourceID, &item.Name, &item.SourceName, &item.BaseURL, &item.APIKey, &item.Platform, &item.Type, &item.MaxTokens, &vision, &tools, &structured, &item.ThinkingMode, &available, &checked)
+	item, err := s.scanModel(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Model{}, false, nil
 	}
 	if err != nil {
-		return Model{}, false, err
-	}
-	item.VisionCapable = intBool(vision)
-	item.ToolsCapable = intBool(tools)
-	item.StructuredOutput = intBool(structured)
-	item.Available = intBool(available)
-	item.LastCheckedAt = parseTime(checked)
-	if plain, err := s.codec.decrypt(item.APIKey); err == nil {
-		item.APIKey = plain
-	} else {
 		return Model{}, false, err
 	}
 	return item, true, nil
@@ -269,6 +302,107 @@ func replaceGroupName(groups []string, oldName, newName string) ([]string, bool)
 	return out, true
 }
 
+// AddGroupMembers 向现有模型组追加成员（方向3：批量「添加到已有组」的原子端点，
+// 避免整组 PUT 的读改写竞争）。refs 元素为 "sourceId:modelId" 复合键或裸 id；
+// 已存在的引用跳过，新引用的 position 排在现有成员之后。返回实际新增数。
+func (s *Store) AddGroupMembers(ctx context.Context, groupID string, refs []string) (int, error) {
+	if strings.TrimSpace(groupID) == "" {
+		return 0, errors.New("group id is required")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	var exists int
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM model_groups WHERE id = ?`, groupID).Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, fmt.Errorf("model group %q not found", groupID)
+		}
+		return 0, err
+	}
+	var maxPosition int
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(position), -1) FROM model_group_models WHERE group_id = ?`, groupID).Scan(&maxPosition); err != nil {
+		return 0, err
+	}
+	insert, err := tx.PrepareContext(ctx, `INSERT OR IGNORE INTO model_group_models(group_id, model_id, source_id, position) VALUES(?, ?, ?, ?)`)
+	if err != nil {
+		return 0, err
+	}
+	defer insert.Close()
+	added := 0
+	for _, ref := range refs {
+		modelID, sourceID, err := s.resolveModelRef(ctx, tx, ref)
+		if err != nil {
+			return 0, err
+		}
+		if modelID == "" {
+			continue // 解析不到对应模型的引用跳过（不阻断整批）
+		}
+		res, err := insert.ExecContext(ctx, groupID, modelID, sourceID, maxPosition+1+added)
+		if err != nil {
+			return 0, err
+		}
+		if affected, _ := res.RowsAffected(); affected > 0 {
+			added++
+		}
+	}
+	return added, tx.Commit()
+}
+
+// RemoveGroupMembers 从模型组移除成员。refs 元素为复合键或裸 id；裸 id 会删除
+// 该组内所有同名引用（跨源同名场景需用复合键精确指定）。返回实际移除数。
+func (s *Store) RemoveGroupMembers(ctx context.Context, groupID string, refs []string) (int, error) {
+	if strings.TrimSpace(groupID) == "" {
+		return 0, errors.New("group id is required")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	removed := 0
+	for _, ref := range refs {
+		modelID, sourceID, err := s.resolveModelRef(ctx, tx, ref)
+		if err != nil {
+			return 0, err
+		}
+		if modelID == "" {
+			continue
+		}
+		var res sql.Result
+		if sourceID != "" {
+			res, err = tx.ExecContext(ctx, `DELETE FROM model_group_models WHERE group_id = ? AND model_id = ? AND source_id = ?`, groupID, modelID, sourceID)
+		} else {
+			res, err = tx.ExecContext(ctx, `DELETE FROM model_group_models WHERE group_id = ? AND model_id = ?`, groupID, modelID)
+		}
+		if err != nil {
+			return 0, err
+		}
+		if affected, _ := res.RowsAffected(); affected > 0 {
+			removed++
+		}
+	}
+	return removed, tx.Commit()
+}
+
+// resolveModelRef 把 "sourceId:modelId" 复合键或裸 id 解析为 (modelID, sourceID)。
+// 裸 id 回退 findModel 猜源（与 UpsertGroup 的兼容行为一致）；解析不到返回空串。
+func (s *Store) resolveModelRef(ctx context.Context, tx *sql.Tx, ref string) (modelID, sourceID string, err error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", "", nil
+	}
+	if idx := strings.Index(ref, ":"); idx >= 0 {
+		return ref[idx+1:], ref[:idx], nil
+	}
+	model, ok, err := s.findModel(ctx, tx, ref)
+	if err != nil || !ok {
+		return ref, "", err
+	}
+	return model.ID, model.SourceID, nil
+}
+
 func (s *Store) DeleteGroup(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return errors.New("group id is required")
@@ -373,32 +507,125 @@ func (s *Store) SetModelAvailability(ctx context.Context, modelID, sourceID stri
 // ListAllModelsForProbe 返回所有模型（含不可用的），供健康检测遍历。
 // 与 ListModels 不同，这里不过滤 available，以便对已禁用模型做恢复探测。
 func (s *Store) ListAllModelsForProbe(ctx context.Context) ([]Model, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, source_id, name, source_name, base_url, api_key, platform, type, max_tokens, vision_capable, tools_capable, structured_output, thinking_mode, available, last_checked_at FROM models ORDER BY source_name, name`)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+modelColumns+` FROM models m ORDER BY m.source_name, m.name`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	items := []Model{}
 	for rows.Next() {
-		var item Model
-		var vision, tools, structured, available int
-		var checked string
-		if err := rows.Scan(&item.ID, &item.SourceID, &item.Name, &item.SourceName, &item.BaseURL, &item.APIKey, &item.Platform, &item.Type, &item.MaxTokens, &vision, &tools, &structured, &item.ThinkingMode, &available, &checked); err != nil {
-			return nil, err
-		}
-		item.VisionCapable = intBool(vision)
-		item.ToolsCapable = intBool(tools)
-		item.StructuredOutput = intBool(structured)
-		item.Available = intBool(available)
-		item.LastCheckedAt = parseTime(checked)
-		if plain, err := s.codec.decrypt(item.APIKey); err == nil {
-			item.APIKey = plain
-		} else {
+		item, err := s.scanModel(rows)
+		if err != nil {
 			return nil, err
 		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// ModelPatch 是单个模型的部分更新（方向4）：nil 字段表示不修改。
+type ModelPatch struct {
+	Name             *string
+	Type             *string
+	MaxTokens        *int
+	VisionCapable    *bool
+	ToolsCapable     *bool
+	StructuredOutput *bool
+	ThinkingMode     *string
+	Enabled          *bool
+}
+
+// UpdateModel 按 (id, source_id) 更新单个模型的可编辑字段，返回是否找到该行。
+// 任一能力字段（vision/tools/structured/thinking/maxTokens/type）被修改时，
+// capability_source 置为 'manual'——后续刷新保留这些用户修改值。
+func (s *Store) UpdateModel(ctx context.Context, modelID, sourceID string, patch ModelPatch) (bool, error) {
+	sets := []string{}
+	args := []any{}
+	capabilityTouched := false
+	if patch.Name != nil {
+		sets = append(sets, "name = ?")
+		args = append(args, *patch.Name)
+	}
+	if patch.Type != nil {
+		sets = append(sets, "type = ?")
+		args = append(args, *patch.Type)
+		capabilityTouched = true
+	}
+	if patch.MaxTokens != nil {
+		sets = append(sets, "max_tokens = ?")
+		args = append(args, *patch.MaxTokens)
+		capabilityTouched = true
+	}
+	if patch.VisionCapable != nil {
+		sets = append(sets, "vision_capable = ?")
+		args = append(args, boolInt(*patch.VisionCapable))
+		capabilityTouched = true
+	}
+	if patch.ToolsCapable != nil {
+		sets = append(sets, "tools_capable = ?")
+		args = append(args, boolInt(*patch.ToolsCapable))
+		capabilityTouched = true
+	}
+	if patch.StructuredOutput != nil {
+		sets = append(sets, "structured_output = ?")
+		args = append(args, boolInt(*patch.StructuredOutput))
+		capabilityTouched = true
+	}
+	if patch.ThinkingMode != nil {
+		sets = append(sets, "thinking_mode = ?")
+		args = append(args, *patch.ThinkingMode)
+		capabilityTouched = true
+	}
+	if patch.Enabled != nil {
+		sets = append(sets, "enabled = ?")
+		args = append(args, boolInt(*patch.Enabled))
+	}
+	if len(sets) == 0 {
+		// 无字段更新：探测行是否存在即可。
+		var one int
+		err := s.db.QueryRowContext(ctx, `SELECT 1 FROM models WHERE id = ? AND source_id = ?`, modelID, sourceID).Scan(&one)
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return err == nil, err
+	}
+	if capabilityTouched {
+		sets = append(sets, "capability_source = 'manual'")
+	}
+	args = append(args, modelID, sourceID)
+	res, err := s.db.ExecContext(ctx, `UPDATE models SET `+strings.Join(sets, ", ")+` WHERE id = ? AND source_id = ?`, args...)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
+}
+
+// DeleteModel 删除单个模型并清理组内引用（事务化防悬空）。返回是否删除了行。
+func (s *Store) DeleteModel(ctx context.Context, modelID, sourceID string) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `DELETE FROM models WHERE id = ? AND source_id = ?`, modelID, sourceID)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM model_group_models WHERE model_id = ? AND source_id = ?`, modelID, sourceID); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
 }
 
 func (s *Store) SaveUsageRecordJSON(ctx context.Context, payload []byte, summary UsageLogItem, endedAt time.Time) error {

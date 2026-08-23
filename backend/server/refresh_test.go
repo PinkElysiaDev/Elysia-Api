@@ -37,8 +37,8 @@ func TestFetchClaudeModelsViaV1Models(t *testing.T) {
 
 	s := newRefreshTestServer(t)
 	models, err := s.fetchClaudeModels(context.Background(), storage.ModelSource{
-		Name: "claude-relay", BaseURL: srv.URL, Platform: "claude", APIKey: "sk-ant-xxx", Enabled: true,
-	})
+		Name: "claude-relay", BaseURL: srv.URL, Platform: "claude", Enabled: true,
+	}, "sk-ant-xxx")
 	if err != nil {
 		t.Fatalf("fetchClaudeModels error: %v", err)
 	}
@@ -68,8 +68,8 @@ func TestFetchClaudeModelsBearerFallback(t *testing.T) {
 
 	s := newRefreshTestServer(t)
 	models, err := s.fetchClaudeModels(context.Background(), storage.ModelSource{
-		Name: "relay", BaseURL: srv.URL, Platform: "claude", APIKey: "sk-relay", Enabled: true,
-	})
+		Name: "relay", BaseURL: srv.URL, Platform: "claude", Enabled: true,
+	}, "sk-relay")
 	if err != nil {
 		t.Fatalf("expected bearer fallback to succeed, got: %v", err)
 	}
@@ -97,8 +97,8 @@ func TestFetchGeminiModelsViaV1BetaModels(t *testing.T) {
 
 	s := newRefreshTestServer(t)
 	models, err := s.fetchGeminiModels(context.Background(), storage.ModelSource{
-		Name: "gemini-relay", BaseURL: srv.URL, Platform: "gemini", APIKey: "gem-key", Enabled: true,
-	})
+		Name: "gemini-relay", BaseURL: srv.URL, Platform: "gemini", Enabled: true,
+	}, "gem-key")
 	if err != nil {
 		t.Fatalf("fetchGeminiModels error: %v", err)
 	}

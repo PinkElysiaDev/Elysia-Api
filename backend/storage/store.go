@@ -82,8 +82,8 @@ func (s *Store) migrate(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS api_tokens (name TEXT PRIMARY KEY, token TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
-		`CREATE TABLE IF NOT EXISTS model_sources (id TEXT PRIMARY KEY, name TEXT NOT NULL, base_url TEXT NOT NULL, api_key TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, auto_fetch_models INTEGER NOT NULL DEFAULT 1, manual_models_json TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
-		`CREATE TABLE IF NOT EXISTS models (id TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '', name TEXT NOT NULL, source_name TEXT NOT NULL DEFAULT '', base_url TEXT NOT NULL, api_key TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'llm', max_tokens INTEGER NOT NULL DEFAULT 0, vision_capable INTEGER NOT NULL DEFAULT 0, tools_capable INTEGER NOT NULL DEFAULT 0, structured_output INTEGER NOT NULL DEFAULT 0, thinking_mode TEXT NOT NULL DEFAULT 'both', available INTEGER NOT NULL DEFAULT 1, last_checked_at TEXT NOT NULL, PRIMARY KEY (id, source_id))`,
+		`CREATE TABLE IF NOT EXISTS model_sources (id TEXT PRIMARY KEY, name TEXT NOT NULL, base_url TEXT NOT NULL, api_key TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, auto_fetch_models INTEGER NOT NULL DEFAULT 1, manual_models_json TEXT NOT NULL DEFAULT '[]', fetch_base_url TEXT NOT NULL DEFAULT '', api_keys TEXT NOT NULL DEFAULT '', key_strategy TEXT NOT NULL DEFAULT 'single', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS models (id TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '', name TEXT NOT NULL, source_name TEXT NOT NULL DEFAULT '', base_url TEXT NOT NULL, api_key TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'llm', max_tokens INTEGER NOT NULL DEFAULT 0, vision_capable INTEGER NOT NULL DEFAULT 0, tools_capable INTEGER NOT NULL DEFAULT 0, structured_output INTEGER NOT NULL DEFAULT 0, thinking_mode TEXT NOT NULL DEFAULT 'both', available INTEGER NOT NULL DEFAULT 1, enabled INTEGER NOT NULL DEFAULT 1, origin TEXT NOT NULL DEFAULT 'fetched', capability_source TEXT NOT NULL DEFAULT '', last_checked_at TEXT NOT NULL, PRIMARY KEY (id, source_id))`,
 		`CREATE TABLE IF NOT EXISTS model_groups (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL DEFAULT 1, strategy TEXT NOT NULL DEFAULT 'round-robin', max_retries INTEGER NOT NULL DEFAULT 3, retry_interval INTEGER NOT NULL DEFAULT 1000, max_concurrency INTEGER NOT NULL DEFAULT 0, daily_limit_max_requests INTEGER NOT NULL DEFAULT 0, daily_limit_max_tokens INTEGER NOT NULL DEFAULT 0, type TEXT NOT NULL DEFAULT 'llm', max_tokens INTEGER NOT NULL DEFAULT 0, vision_capable INTEGER NOT NULL DEFAULT 0, tools_capable INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS model_group_models (group_id TEXT NOT NULL, model_id TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (group_id, model_id, source_id), FOREIGN KEY(group_id) REFERENCES model_groups(id) ON DELETE CASCADE)`,
 		`CREATE TABLE IF NOT EXISTS usage_records (request_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, ended_at TEXT NOT NULL, key_name TEXT NOT NULL DEFAULT '', key_hash TEXT NOT NULL DEFAULT '', requested_model_group TEXT NOT NULL DEFAULT '', group_id TEXT NOT NULL DEFAULT '', group_name TEXT NOT NULL DEFAULT '', model_id TEXT NOT NULL DEFAULT '', model_name TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL DEFAULT '', source_format TEXT NOT NULL DEFAULT '', target_format TEXT NOT NULL DEFAULT '', relay_mode TEXT NOT NULL DEFAULT '', responses_mode TEXT NOT NULL DEFAULT '', usage_source TEXT NOT NULL DEFAULT '', stream INTEGER NOT NULL DEFAULT 0, status_code INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', first_byte_ms INTEGER NOT NULL DEFAULT 0, duration_ms INTEGER NOT NULL DEFAULT 0, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, total_tokens INTEGER NOT NULL DEFAULT 0, request_truncated INTEGER NOT NULL DEFAULT 0, response_truncated INTEGER NOT NULL DEFAULT 0, record_json TEXT NOT NULL)`,
@@ -254,6 +254,26 @@ func (s *Store) migrate(ctx context.Context) error {
 			return err
 		}
 		log.Printf("[migration] usage_records: started_ms backfill complete in %s", time.Since(backfillStartedAt).Round(time.Millisecond))
+	}
+	// 增量迁移（幂等，duplicate column 忽略）：
+	//   model_sources.fetch_base_url —— 模型列表拉取专用地址（空=与 base_url 一致）；
+	//   model_sources.api_keys / key_strategy —— 多 Key 配置与调度策略；
+	//   models.enabled —— 用户手动启停（与 available 健康位分离）；
+	//   models.origin —— 行来源（fetched 随刷新合并替换 / manual 刷新永不触碰）；
+	//   models.capability_source —— 能力字段填充来源（''/catalog/manual，
+	//     manual 的用户修改在刷新时保留，catalog 值随刷新更新）。
+	for _, stmt := range []string{
+		`ALTER TABLE model_sources ADD COLUMN fetch_base_url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE model_sources ADD COLUMN api_keys TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE model_sources ADD COLUMN key_strategy TEXT NOT NULL DEFAULT 'single'`,
+		`ALTER TABLE models ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE models ADD COLUMN origin TEXT NOT NULL DEFAULT 'fetched'`,
+		`ALTER TABLE models ADD COLUMN capability_source TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := s.db.ExecContext(ctx, stmt); err != nil &&
+			!strings.Contains(err.Error(), "duplicate column") {
+			return err
+		}
 	}
 	_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(1, ?)`, time.Now().UTC().Format(time.RFC3339Nano))
 	return err
@@ -435,7 +455,7 @@ func (s *Store) FindAPIToken(ctx context.Context, token string) (APIToken, bool,
 }
 
 func (s *Store) ListSources(ctx context.Context) ([]ModelSource, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, base_url, api_key, platform, enabled, auto_fetch_models, manual_models_json, created_at, updated_at FROM model_sources ORDER BY name`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, base_url, api_key, platform, enabled, auto_fetch_models, manual_models_json, fetch_base_url, api_keys, key_strategy, created_at, updated_at FROM model_sources ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -444,12 +464,14 @@ func (s *Store) ListSources(ctx context.Context) ([]ModelSource, error) {
 	for rows.Next() {
 		var item ModelSource
 		var enabled, autoFetch int
-		var manual, created, updated string
-		if err := rows.Scan(&item.ID, &item.Name, &item.BaseURL, &item.APIKey, &item.Platform, &enabled, &autoFetch, &manual, &created, &updated); err != nil {
+		var manual, fetchBase, storedKeys, strategy, created, updated string
+		if err := rows.Scan(&item.ID, &item.Name, &item.BaseURL, &item.APIKey, &item.Platform, &enabled, &autoFetch, &manual, &fetchBase, &storedKeys, &strategy, &created, &updated); err != nil {
 			return nil, err
 		}
 		item.Enabled = intBool(enabled)
 		item.AutoFetchModels = intBool(autoFetch)
+		item.FetchBaseURL = fetchBase
+		item.KeyStrategy = SourceKeyStrategy(strategy)
 		item.CreatedAt = parseTime(created)
 		item.UpdatedAt = parseTime(updated)
 		if plain, err := s.codec.decrypt(item.APIKey); err == nil {
@@ -458,6 +480,13 @@ func (s *Store) ListSources(ctx context.Context) ([]ModelSource, error) {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(manual), &item.ManualModels)
+		if storedKeys != "" {
+			if plain, err := s.codec.decrypt(storedKeys); err == nil {
+				_ = json.Unmarshal([]byte(plain), &item.APIKeys)
+			} else {
+				return nil, err
+			}
+		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
@@ -475,8 +504,39 @@ func (s *Store) UpsertSource(ctx context.Context, item ModelSource) error {
 	if err != nil {
 		return err
 	}
+	// api_keys 为 JSON 数组整体加密存储；空列表落空串（单 key 模式）。
+	storedKeys := ""
+	if len(item.APIKeys) > 0 {
+		payload, err := json.Marshal(item.APIKeys)
+		if err != nil {
+			return err
+		}
+		if storedKeys, err = s.codec.encrypt(string(payload)); err != nil {
+			return err
+		}
+	}
+	strategy := string(item.KeyStrategy)
+	if strategy == "" {
+		strategy = string(KeyStrategySingle)
+	}
 	now := nowString()
-	_, err = s.db.ExecContext(ctx, `INSERT INTO model_sources(id, name, base_url, api_key, platform, enabled, auto_fetch_models, manual_models_json, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, base_url=excluded.base_url, api_key=excluded.api_key, platform=excluded.platform, enabled=excluded.enabled, auto_fetch_models=excluded.auto_fetch_models, manual_models_json=excluded.manual_models_json, updated_at=excluded.updated_at`, item.ID, item.Name, item.BaseURL, storedKey, item.Platform, boolInt(item.Enabled), boolInt(item.AutoFetchModels), string(manual), now, now)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO model_sources(id, name, base_url, api_key, platform, enabled, auto_fetch_models, manual_models_json, fetch_base_url, api_keys, key_strategy, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, base_url=excluded.base_url, api_key=excluded.api_key, platform=excluded.platform, enabled=excluded.enabled, auto_fetch_models=excluded.auto_fetch_models, manual_models_json=excluded.manual_models_json, fetch_base_url=excluded.fetch_base_url, api_keys=excluded.api_keys, key_strategy=excluded.key_strategy, updated_at=excluded.updated_at`, item.ID, item.Name, item.BaseURL, storedKey, item.Platform, boolInt(item.Enabled), boolInt(item.AutoFetchModels), string(manual), item.FetchBaseURL, storedKeys, strategy, now, now)
+	return err
+}
+
+// UpdateSourceAPIKeys 定向更新某个源的 key 列表（加密整列重写，不碰其他字段）。
+// 供逐 key 拉取后回写 fetchedModels/allowedModels 使用——避免为了改 key 元数据
+// 而走整源 Upsert 与用户编辑产生竞争。
+func (s *Store) UpdateSourceAPIKeys(ctx context.Context, sourceID string, keys []SourceAPIKey) error {
+	payload, err := json.Marshal(keys)
+	if err != nil {
+		return err
+	}
+	stored, err := s.codec.encrypt(string(payload))
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE model_sources SET api_keys = ?, updated_at = ? WHERE id = ?`, stored, nowString(), sourceID)
 	return err
 }
 
@@ -510,31 +570,34 @@ func (s *Store) ReplaceSourceModels(ctx context.Context, source ModelSource, mod
 	if _, err := tx.ExecContext(ctx, `DELETE FROM models WHERE source_id = ?`, source.ID); err != nil {
 		return err
 	}
-	stmt, err := tx.PrepareContext(ctx, `INSERT INTO models(id, source_id, name, source_name, base_url, api_key, platform, type, max_tokens, vision_capable, tools_capable, structured_output, thinking_mode, available, last_checked_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO models(id, source_id, name, source_name, base_url, api_key, platform, type, max_tokens, vision_capable, tools_capable, structured_output, thinking_mode, available, enabled, origin, capability_source, last_checked_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 	checked := nowString()
-	storedKey, err := s.codec.encrypt(source.APIKey)
+	// models.api_key 冗余列写入首个有效 key：热路径已改用源级 key 集合（方向6），
+	// 该列仅供健康检测等遗留消费方回退，避免空 key 探测必败。
+	storedKey, err := s.codec.encrypt(firstEffectiveKey(source))
 	if err != nil {
 		return err
 	}
 	for _, model := range models {
-		if model.Type == "" {
-			model.Type = "llm"
-		}
-		if model.ThinkingMode == "" {
-			model.ThinkingMode = "both"
-		}
-		if model.Name == "" {
-			model.Name = model.ID
-		}
-		if _, err := stmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, source.BaseURL, storedKey, normalizePlatform(source.Platform), model.Type, model.MaxTokens, boolInt(model.VisionCapable), boolInt(model.ToolsCapable), boolInt(model.StructuredOutput), model.ThinkingMode, boolInt(true), checked); err != nil {
+		model = normalizeModelDefaults(model)
+		if _, err := stmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, source.BaseURL, storedKey, normalizePlatform(source.Platform), model.Type, model.MaxTokens, boolInt(model.VisionCapable), boolInt(model.ToolsCapable), boolInt(model.StructuredOutput), model.ThinkingMode, boolInt(true), boolInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
+}
+
+// firstEffectiveKey 返回源的首个有效 key（多 key 时取第一个启用项，单 key 即 APIKey），
+// 供 models.api_key 冗余列的向后兼容写入。
+func firstEffectiveKey(source ModelSource) string {
+	for _, key := range source.EffectiveKeys() {
+		return key.Value
+	}
+	return ""
 }
 
 func normalizePlatform(platform string) string {
@@ -542,4 +605,141 @@ func normalizePlatform(platform string) string {
 		return "openai"
 	}
 	return platform
+}
+
+// ModelMergeResult 汇总一次刷新合并的变更，供前端展示「新增 N / 移除 M」。
+type ModelMergeResult struct {
+	Added   []string `json:"added"`
+	Removed []string `json:"removed"`
+}
+
+// MergeSourceModels 用新拉取（或手动同步）的模型列表合并进该源的模型表，
+// 替代旧的全删全插（ReplaceSourceModels）：
+//   - manual 行（origin='manual'）永不触碰：既不更新也不删除——手动模型与
+//     用户显式保留的模型不随上游变动丢失（借鉴 axonhub manual∪fetched 合并策略）；
+//   - fetched 行更新源身份（base_url/api_key/platform/name）与上游返回的元数据，
+//     但保留用户手动启停（enabled）与健康位（available）；
+//   - 能力字段（vision/tools/structured/thinking/maxTokens/type）：incoming 携带
+//     capability_source='manual'（用户在 UI 编辑过）的行保留现有值，否则用
+//     incoming 值（目录回填或上游解析）覆盖；
+//   - 上游消失的 fetched 行删除并同步清理组内引用；manual 行即使上游消失也保留。
+func (s *Store) MergeSourceModels(ctx context.Context, source ModelSource, incoming []Model) (ModelMergeResult, error) {
+	result := ModelMergeResult{Added: []string{}, Removed: []string{}}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return result, err
+	}
+	defer tx.Rollback()
+
+	// 读取现有行（单连接库：先全部读进内存再写，避免游标占用连接死锁）。
+	type existingRow struct {
+		id, name, thinking, origin, capabilitySource string
+		maxTokens                                     int
+		vision, tools, structured                     bool
+	}
+	existing := make(map[string]existingRow, len(incoming))
+	rows, err := tx.QueryContext(ctx, `SELECT id, name, thinking_mode, origin, capability_source, max_tokens, vision_capable, tools_capable, structured_output FROM models WHERE source_id = ?`, source.ID)
+	if err != nil {
+		return result, err
+	}
+	for rows.Next() {
+		var r existingRow
+		var vision, tools, structured int
+		if err := rows.Scan(&r.id, &r.name, &r.thinking, &r.origin, &r.capabilitySource, &r.maxTokens, &vision, &tools, &structured); err != nil {
+			rows.Close()
+			return result, err
+		}
+		r.vision, r.tools, r.structured = intBool(vision), intBool(tools), intBool(structured)
+		existing[r.id] = r
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return result, err
+	}
+	rows.Close()
+
+	checked := nowString()
+	storedKey, err := s.codec.encrypt(firstEffectiveKey(source))
+	if err != nil {
+		return result, err
+	}
+	insertStmt, err := tx.PrepareContext(ctx, `INSERT INTO models(id, source_id, name, source_name, base_url, api_key, platform, type, max_tokens, vision_capable, tools_capable, structured_output, thinking_mode, available, enabled, origin, capability_source, last_checked_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return result, err
+	}
+	defer insertStmt.Close()
+	updateStmt, err := tx.PrepareContext(ctx, `UPDATE models SET name = ?, source_name = ?, base_url = ?, api_key = ?, platform = ?, type = ?, max_tokens = ?, vision_capable = ?, tools_capable = ?, structured_output = ?, thinking_mode = ?, capability_source = ?, last_checked_at = ? WHERE id = ? AND source_id = ?`)
+	if err != nil {
+		return result, err
+	}
+	defer updateStmt.Close()
+
+	incomingIDs := make(map[string]struct{}, len(incoming))
+	for i := range incoming {
+		model := normalizeModelDefaults(incoming[i])
+		incomingIDs[model.ID] = struct{}{}
+		prev, existed := existing[model.ID]
+		if existed && prev.origin == "manual" {
+			// manual 行完全保留（含能力与启停），只刷新检查时间。
+			if _, err := tx.ExecContext(ctx, `UPDATE models SET last_checked_at = ? WHERE id = ? AND source_id = ?`, checked, model.ID, source.ID); err != nil {
+				return result, err
+			}
+			continue
+		}
+		if existed {
+			// 用户编辑过的能力字段（capability_source='manual'）在刷新时保留，
+			// 其余能力值随 incoming（目录回填/上游解析）更新。
+			vision, tools, structured, thinking, maxTokens, modelType, capabilitySource :=
+				model.VisionCapable, model.ToolsCapable, model.StructuredOutput, model.ThinkingMode, model.MaxTokens, model.Type, model.CapabilitySource
+			if prev.capabilitySource == "manual" {
+				vision, tools, structured = prev.vision, prev.tools, prev.structured
+				thinking, maxTokens = prev.thinking, prev.maxTokens
+				capabilitySource = "manual"
+			}
+			if _, err := updateStmt.ExecContext(ctx, model.Name, source.Name, source.BaseURL, storedKey, normalizePlatform(source.Platform), modelType, maxTokens, boolInt(vision), boolInt(tools), boolInt(structured), thinking, capabilitySource, checked, model.ID, source.ID); err != nil {
+				return result, err
+			}
+			continue
+		}
+		// 新模型默认启用（已确认的默认值），available 初始为 true 由健康检测接管。
+		result.Added = append(result.Added, model.ID)
+		if _, err := insertStmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, source.BaseURL, storedKey, normalizePlatform(source.Platform), model.Type, model.MaxTokens, boolInt(model.VisionCapable), boolInt(model.ToolsCapable), boolInt(model.StructuredOutput), model.ThinkingMode, boolInt(true), boolInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
+			return result, err
+		}
+	}
+
+	// 上游消失的 fetched 行删除（manual 行保留）；同步清理组内引用防悬空。
+	for id, prev := range existing {
+		if _, stillPresent := incomingIDs[id]; stillPresent || prev.origin == "manual" {
+			continue
+		}
+		result.Removed = append(result.Removed, id)
+		if _, err := tx.ExecContext(ctx, `DELETE FROM models WHERE id = ? AND source_id = ?`, id, source.ID); err != nil {
+			return result, err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM model_group_models WHERE model_id = ? AND source_id = ?`, id, source.ID); err != nil {
+			return result, err
+		}
+	}
+	return result, tx.Commit()
+}
+
+// normalizeModelDefaults 补齐模型字段的落库默认值。
+// Enabled 恒置 true：该函数只服务于「新插入行」（合并的新模型默认启用——已确认
+// 的产品决策；已有行的启停由 UPDATE 语句不涉及该列而天然保留，manual 行整体跳过）。
+func normalizeModelDefaults(model Model) Model {
+	if model.Type == "" {
+		model.Type = "llm"
+	}
+	if model.ThinkingMode == "" {
+		model.ThinkingMode = "both"
+	}
+	if model.Name == "" {
+		model.Name = model.ID
+	}
+	if model.Origin == "" {
+		model.Origin = "fetched"
+	}
+	model.Enabled = true
+	return model
 }

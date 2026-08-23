@@ -135,12 +135,56 @@ export const api = {
   deleteSource: (id: string) =>
     request<{ deleted: boolean }>(`/model-sources/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   fetchSource: (id: string) =>
-    request<{ refreshed: boolean; count: number }>(`/model-sources/${encodeURIComponent(id)}/fetch`, {
-      method: 'POST',
-    }),
+    request<{
+      refreshed: boolean
+      count: number
+      added?: string[]
+      removed?: string[]
+      keys?: { index: number; note?: string; count: number; error?: string }[]
+    }>(`/model-sources/${encodeURIComponent(id)}/fetch`, { method: 'POST' }),
 
-  listModels: () => request<ListEnvelope<Model>>('/models').then((r) => r.items ?? []),
-  refreshModels: () => request<{ refreshed: boolean; count: number }>('/models/refresh', { method: 'POST' }),
+  modelCatalogStatus: () =>
+    request<{
+      enabled: boolean
+      url: string
+      entries: number
+      syncIntervalMinutes?: number
+      /** 数据来源：snapshot（内置快照）/ cache（落盘缓存）/ network（在线更新）。 */
+      source?: string
+      sourceURL?: string
+      lastSync?: string
+      lastError?: string
+    }>('/model-catalog/status'),
+  modelCatalogRefresh: () =>
+    request<{
+      refreshed: boolean
+      status: {
+        enabled: boolean
+        url: string
+        entries: number
+        syncIntervalMinutes?: number
+        source?: string
+        sourceURL?: string
+        lastSync?: string | null
+        lastError?: string
+      }
+    }>('/model-catalog/refresh', { method: 'POST' }),
+
+  listModels: (params?: { sourceId?: string; search?: string }) =>
+    request<ListEnvelope<Model>>('/models', {
+      query: params && { sourceId: params.sourceId, search: params.search },
+    }).then((r) => r.items ?? []),
+  refreshModels: () =>
+    request<{ refreshed: boolean; count: number }>('/models/refresh', { method: 'POST' }),
+  updateModel: (sourceId: string, modelId: string, body: Partial<Omit<Model, 'id' | 'sourceId'>>) =>
+    request<{ updated: boolean }>(
+      `/models/${encodeURIComponent(sourceId)}/${encodeURIComponent(modelId)}`,
+      { method: 'PATCH', body },
+    ),
+  deleteModel: (sourceId: string, modelId: string) =>
+    request<{ deleted: boolean }>(`/models/${encodeURIComponent(sourceId)}/${encodeURIComponent(modelId)}`, {
+      method: 'DELETE',
+    }),
 
   listGroups: () =>
     request<ListEnvelope<ModelGroup>>('/model-groups').then((r) =>
@@ -151,6 +195,16 @@ export const api = {
     request<ModelGroup>(`/model-groups/${encodeURIComponent(id)}`, { method: 'PUT', body }),
   deleteGroup: (id: string) =>
     request<{ deleted: boolean }>(`/model-groups/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  addGroupMembers: (id: string, models: string[]) =>
+    request<{ added: number }>(`/model-groups/${encodeURIComponent(id)}/models`, {
+      method: 'POST',
+      body: { models },
+    }),
+  removeGroupMembers: (id: string, models: string[]) =>
+    request<{ removed: number }>(`/model-groups/${encodeURIComponent(id)}/models`, {
+      method: 'DELETE',
+      body: { models },
+    }),
 
   listTokens: () => request<ListEnvelope<ApiToken>>('/api-tokens').then((r) => r.items ?? []),
   revealToken: (name: string) =>

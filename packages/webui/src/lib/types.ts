@@ -30,6 +30,16 @@ export type ModelType = 'llm' | 'embedding' | 'reranker'
 export type GroupStrategy = 'round-robin' | 'sequential' | 'random'
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 export type ThinkingMode = 'both' | 'non-thinking-only' | 'thinking-only'
+/** 源级多 key 调度策略：single（单 key）/ round-robin / random / priority（按列表顺序）。 */
+export type SourceKeyStrategy = 'single' | 'round-robin' | 'random' | 'priority'
+
+export interface ModelCatalogInfo {
+  enabled: boolean
+  url: string
+  proxy?: string
+  /** 刷新周期（分钟），0 = 默认 1440（24 小时）。 */
+  syncIntervalMinutes: number
+}
 
 export interface RuntimeConfig {
   host: string
@@ -41,6 +51,7 @@ export interface RuntimeConfig {
   httpTimeout: number
   enablePprof: boolean
   allowFakeIPOutbound: boolean
+  modelCatalog?: ModelCatalogInfo
 }
 
 export interface RuntimeConfigUpdate {
@@ -52,6 +63,9 @@ export interface RuntimeConfigUpdate {
   databasePath?: string
   enablePprof?: boolean
   allowFakeIPOutbound?: boolean
+  modelCatalog?: {
+    syncIntervalMinutes?: number
+  }
 }
 
 export interface RuntimeConfigUpdateResult {
@@ -71,6 +85,17 @@ export interface ManualModel {
   available?: boolean
 }
 
+/** 多 key 配置中的一条（方向6）。 */
+export interface SourceAPIKey {
+  value: string
+  note?: string
+  disabled?: boolean
+  /** 该 key 上次独立拉取到的模型集（权限自动发现结果，勾选界面的展示宇宙）。 */
+  fetchedModels?: string[]
+  /** 用户勾选启用的模型子集；undefined = 未勾选过 = 全部启用。 */
+  allowedModels?: string[]
+}
+
 export interface ModelSource {
   id: string
   name: string
@@ -80,6 +105,11 @@ export interface ModelSource {
   enabled: boolean
   autoFetchModels: boolean
   manualModels?: ManualModel[]
+  /** 模型列表拉取专用地址（方向5）：空 = 与 baseUrl 一致。 */
+  fetchBaseUrl?: string
+  /** 多 key 配置（方向6）：空 = 单 key（apiKey）。 */
+  apiKeys?: SourceAPIKey[]
+  keyStrategy?: SourceKeyStrategy
   createdAt?: string
   updatedAt?: string
 }
@@ -98,6 +128,12 @@ export interface Model {
   structuredOutput: boolean
   thinkingMode: ThinkingMode
   available: boolean
+  /** 用户手动启停（方向4），与 available（健康检测自动）分离：可调度 = enabled && available。 */
+  enabled: boolean
+  /** 行来源：fetched（随刷新合并替换）/ manual（刷新永不触碰）。 */
+  origin?: 'fetched' | 'manual'
+  /** 能力字段填充来源：''（默认）/ 'catalog'（models.dev 回填）/ 'manual'（用户编辑，刷新保留）。 */
+  capabilitySource?: '' | 'catalog' | 'manual'
   lastCheckedAt: string
 }
 

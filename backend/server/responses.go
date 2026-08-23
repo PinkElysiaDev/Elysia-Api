@@ -70,9 +70,21 @@ func (s *Server) responses(c *gin.Context) {
 	if sticky := s.affinity.get(record.KeyHash, group.ID, startTime); sticky != "" {
 		candidates = applyAffinity(candidates, sticky)
 	}
-	filteredVision, filteredVisionParts := filterCanonicalVisionInputsIfNeeded(group, canonicalReq)
+	// 组内候选软过滤（方向2）：与 chatCompletions 入口对齐。
+	candidates = reorderCandidatesByRequestNeeds(candidates,
+		canonicalRequestHasMultimodalInput(canonicalReq), canonicalRequestUsesTools(canonicalReq))
+	// 多 key 展开（方向6）：与 chatCompletions 入口对齐。
+	candidates = s.expandCandidatesByKeyStrategy(candidates)
+	// 组级 tools 能力落地（方向2）：携带工具的请求对不支持工具的组直接 400。
+	if rejectToolRequestsIfNeeded(group, canonicalReq) {
+		s.failRequestTyped(c, record, startTime, http.StatusBadRequest, "invalid_request_error",
+			fmt.Sprintf("model group '%s' does not support tool calling, but the request contains tools or tool messages", group.Name))
+		return
+	}
+	filteredVision, filteredVisionParts, filteredModalities := filterCanonicalMultimodalInputsIfNeeded(group, canonicalReq)
 	if filteredVision {
-		s.logVerbose("[Maheshvara Vision Filter] group=%s filteredImageParts=%d", group.Name, filteredVisionParts)
+		s.logVerbose("[Maheshvara Multimodal Filter] group=%s filteredParts=%d modalities=%v", group.Name, filteredVisionParts, filteredModalities)
+		c.Writer.Header().Set("X-Elysia-Filtered-Modalities", strings.Join(filteredModalities, ","))
 	}
 
 	estimatedUsage := estimateCanonicalRequestUsage(canonicalReq, s.config.GetUsageConfig())

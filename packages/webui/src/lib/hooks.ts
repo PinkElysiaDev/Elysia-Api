@@ -35,12 +35,22 @@ export function useRuntimeConfig() {
   return useSWR('runtime-config', () => api.runtimeConfig(), defaultConfig)
 }
 
-export function useSources() {
-  return useSWR('model-sources', () => api.listSources(), defaultConfig)
+export function useSources(refreshInterval = 0) {
+  return useSWR('model-sources', () => api.listSources(), { ...defaultConfig, refreshInterval })
 }
 
-export function useModels() {
-  return useSWR('models', () => api.listModels(), defaultConfig)
+/** 能力目录（models.dev）状态：未加载或加载失败时模型能力不会被自动回填，
+ * 供 sources 页提示用户自诊断（目录不可达 → 配置 modelCatalog.url/proxy）。 */
+export function useModelCatalogStatus() {
+  return useSWR(
+    'model-catalog-status',
+    () => api.modelCatalogStatus(),
+    { ...defaultConfig, refreshInterval: 60_000 },
+  )
+}
+
+export function useModels(refreshInterval = 0) {
+  return useSWR('models', () => api.listModels(), { ...defaultConfig, refreshInterval })
 }
 
 export function useGroups() {
@@ -76,6 +86,7 @@ export const revalidate = {
   groups: () => globalMutate('model-groups'),
   tokens: () => globalMutate('api-tokens'),
   runtimeConfig: () => globalMutate('runtime-config'),
+  modelCatalogStatus: () => globalMutate('model-catalog-status'),
   health: () => globalMutate('health'),
   usage: () =>
     globalMutate((key) => Array.isArray(key) && (key[0] === 'usage-stats' || key[0] === 'usage-logs'), undefined, {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Eye, EyeOff, RefreshCw, RotateCcw, Save, Settings, Database, Shield, Network } from 'lucide-react'
+import { AlertTriangle, BookOpen, Eye, EyeOff, RefreshCw, RotateCcw, Save, Settings, Database, Shield, Network } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,17 +9,34 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { ErrorState, LoadingState } from '@/components/ui/states'
 import { useToast } from '@/components/ui/use-toast'
-import { useRuntimeConfig, revalidate } from '@/lib/hooks'
+import { useRuntimeConfig, useModelCatalogStatus, revalidate } from '@/lib/hooks'
 import { api } from '@/lib/api'
+import { formatRelative } from '@/lib/utils'
 import type { LogLevel, RuntimeConfig } from '@/lib/types'
+
+// 目录数据来源的展示名。
+function catalogSourceLabel(source: string): string {
+  switch (source) {
+    case 'snapshot':
+      return '内置快照'
+    case 'cache':
+      return '本地缓存'
+    case 'network':
+      return '在线更新'
+    default:
+      return source
+  }
+}
 
 export function RuntimeConfigPage() {
   const toast = useToast()
   const { data, isLoading, error, mutate } = useRuntimeConfig()
+  const { data: catalogStatus } = useModelCatalogStatus()
   const [form, setForm] = useState<RuntimeConfig | null>(null)
   const [saving, setSaving] = useState(false)
   const [restartNotice, setRestartNotice] = useState(false)
   const [showToken, setShowToken] = useState(false)
+  const [catalogRefreshing, setCatalogRefreshing] = useState(false)
 
   useEffect(() => {
     if (data) setForm(data)
@@ -51,6 +68,8 @@ export function RuntimeConfigPage() {
         databasePath: form.databasePath,
         enablePprof: form.enablePprof,
         allowFakeIPOutbound: form.allowFakeIPOutbound,
+        // 目录刷新周期：0 = 默认 24h；保存即生效（后台周期动态读取配置）。
+        modelCatalog: { syncIntervalMinutes: form.modelCatalog?.syncIntervalMinutes ?? 0 },
       })
       await revalidate.runtimeConfig()
       setRestartNotice(result.restartRequired)
@@ -216,6 +235,100 @@ export function RuntimeConfigPage() {
             >
               {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BookOpen className="h-4 w-4 text-primary" /> 模型能力目录
+          </CardTitle>
+          <CardDescription>
+            数据源为 models.dev，用于模型刷新时自动回填视觉/工具等能力字段。
+            目录定期后台更新并缓存到数据库同目录（model-catalog.json），重启后立即可用。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>
+                更新周期 (分钟){' '}
+                <span className="text-xs font-normal text-muted-foreground">0 = 默认 1440（24 小时）</span>
+              </Label>
+              <Input
+                type="number"
+                min={0}
+                value={form.modelCatalog?.syncIntervalMinutes ?? 0}
+                onChange={(e) =>
+                  setForm((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          modelCatalog: {
+                            ...(prev.modelCatalog ?? { enabled: true, url: '', syncIntervalMinutes: 0 }),
+                            syncIntervalMinutes: Math.max(0, Number(e.target.value) || 0),
+                          },
+                        }
+                      : prev,
+                  )
+                }
+              />
+              <p className="text-xs text-muted-foreground">随上方「保存」提交，保存后立即生效，无需重启。</p>
+            </div>
+            <div className="space-y-2">
+              <Label>目录状态</Label>
+              <div className="flex h-10 items-center">
+                <Button
+                  variant="outline"
+                  disabled={catalogRefreshing || form.modelCatalog?.enabled === false}
+                  onClick={async () => {
+                    setCatalogRefreshing(true)
+                    try {
+                      const result = await api.modelCatalogRefresh()
+                      await revalidate.modelCatalogStatus()
+                      const status = result.status
+                      if (status.lastError) {
+                        toast.error('目录更新失败', status.lastError)
+                      } else {
+                        toast.success(
+                          '能力目录已更新',
+                          `已加载 ${status.entries} 个模型${status.lastSync ? ` · ${formatRelative(status.lastSync)}` : ''}`,
+                        )
+                      }
+                    } catch (err) {
+                      toast.error('目录更新失败', (err as Error).message)
+                    } finally {
+                      setCatalogRefreshing(false)
+                    }
+                  }}
+                >
+                  <RefreshCw className={catalogRefreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> 立即更新
+                </Button>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <p>
+              {catalogStatus
+                ? catalogStatus.entries > 0
+                  ? `已加载 ${catalogStatus.entries} 个模型`
+                  : '尚未加载成功'
+                : '状态加载中…'}
+              {catalogStatus?.source && ` · 来源：${catalogSourceLabel(catalogStatus.source)}`}
+              {catalogStatus?.lastSync && ` · 上次更新 ${formatRelative(catalogStatus.lastSync)}`}
+              {catalogStatus?.sourceURL && (
+                <>
+                  {' '}
+                  · <span className="font-mono">{catalogStatus.sourceURL}</span>
+                </>
+              )}
+            </p>
+            {catalogStatus?.lastError && (
+              <p className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="h-3 w-3" /> 在线更新失败（内置快照/缓存仍可用）：{catalogStatus.lastError}
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

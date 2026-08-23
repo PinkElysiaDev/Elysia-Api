@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Config struct {
@@ -37,8 +38,29 @@ type Config struct {
 	UsagePersistMaxRecords int                `json:"usagePersistMaxRecords,omitempty"` // 最多保留的用量记录条数
 	HealthCheck            HealthCheckConfig  `json:"healthCheck,omitempty"`            // 可选的后台健康检测
 	AllowFakeIPOutbound    bool               `json:"allowFakeIPOutbound,omitempty"`    // 放行 Clash/Mihomo TUN fake-ip 段（198.18.0.0/15、240.0.0.0/4）出站，解决全局 TUN 代理下上游域名被解析为假 IP 遭 SSRF 守卫误杀
+	ModelCatalog           ModelCatalogConfig `json:"modelCatalog,omitempty"`           // 模型能力元数据目录（默认 models.dev）
 	mu                     sync.RWMutex
 	path                   string
+}
+
+// ModelCatalogConfig 控制模型能力元数据目录：模型刷新时按模型 id 匹配目录条目，
+// 自动回填 vision/tools/structured/thinking/maxTokens 等能力字段（未命中保持手动值）。
+// 默认数据源为 https://models.dev/api.json；网络受限环境可配置镜像 URL 或出站代理。
+type ModelCatalogConfig struct {
+	Enabled *bool  `json:"enabled,omitempty"` // 默认启用；false 时完全停用目录（纯手动）
+	URL     string `json:"url,omitempty"`     // 目录 JSON 地址，空则用默认 models.dev
+	Proxy   string `json:"proxy,omitempty"`   // 拉取目录使用的出站代理（如 http://127.0.0.1:7890），空则走环境变量/直连
+	// SyncIntervalMinutes 为目录定期刷新周期（分钟），0 = 默认 1440（24 小时）。
+	// 后台按此周期自动更新并落盘缓存；管理页可运行时修改，无需重启。
+	SyncIntervalMinutes int `json:"syncIntervalMinutes,omitempty"`
+}
+
+// ModelCatalogSyncInterval 返回生效的刷新周期（未配置时默认 24 小时）。
+func (c ModelCatalogConfig) ModelCatalogSyncInterval() time.Duration {
+	if c.SyncIntervalMinutes > 0 {
+		return time.Duration(c.SyncIntervalMinutes) * time.Minute
+	}
+	return 24 * time.Hour
 }
 
 // HealthCheckConfig 控制可选的后台模型健康检测。默认关闭（Enabled=false）。
@@ -121,6 +143,16 @@ type ModelRef struct {
 	APIKey    string                `json:"apiKey,omitempty"`
 	Platform  string                `json:"platform"`
 	Endpoints *EndpointCapabilities `json:"endpoints,omitempty"`
+	// 模型级能力（来自模型表，目录回填/用户编辑）：用于组内候选软过滤——
+	// 请求携带多模态输入或工具时优先选择声明支持的候选，不参与硬拒绝。
+	VisionCapable bool `json:"visionCapable,omitempty"`
+	ToolsCapable  bool `json:"toolsCapable,omitempty"`
+	// 多 Key（方向6）：所属源的有效 key 列表与调度策略。非空时由
+	// expandCandidatesByKeyStrategy 在请求时为每次尝试选定实际使用的 key
+	// （写入克隆后的 APIKey），APIKey 保留为单 key 回退值。
+	APIKeys     []string `json:"apiKeys,omitempty"`
+	KeyStrategy string   `json:"keyStrategy,omitempty"`
+	SourceID    string   `json:"sourceId,omitempty"`
 }
 
 var GlobalConfig *Config
@@ -380,6 +412,22 @@ func (c *Config) GetTokens() []AccessToken {
 	defer c.mu.RUnlock()
 	// 返回副本，理由同 GetGroups：避免锁外别名读取与并发重写竞争。
 	return append([]AccessToken(nil), c.Tokens...)
+}
+
+// GetModelCatalog 返回模型能力元数据目录配置（值类型，字段均为不可变字符串/指针，
+// 无需深拷贝）。未配置时返回零值，由使用方按默认值处理。
+func (c *Config) GetModelCatalog() ModelCatalogConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.ModelCatalog
+}
+
+// SetModelCatalogSyncInterval 运行时修改目录刷新周期（分钟，0 = 默认 24h）。
+// 周期检查是动态的，修改后立即生效，无需重启。
+func (c *Config) SetModelCatalogSyncInterval(minutes int) {
+	c.mu.Lock()
+	c.ModelCatalog.SyncIntervalMinutes = minutes
+	c.mu.Unlock()
 }
 
 func (c *Config) GetCustomProtocols() []json.RawMessage {

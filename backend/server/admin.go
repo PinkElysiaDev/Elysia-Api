@@ -35,12 +35,18 @@ func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
 	admin.PUT("/model-sources/:id", s.adminUpsertSource)
 	admin.DELETE("/model-sources/:id", s.adminDeleteSource)
 	admin.POST("/model-sources/:id/fetch", s.adminFetchSource)
+	admin.GET("/model-catalog/status", s.adminModelCatalogStatus)
+	admin.POST("/model-catalog/refresh", s.adminModelCatalogRefresh)
 	admin.GET("/models", s.adminListModels)
 	admin.POST("/models/refresh", s.adminRefreshModels)
+	admin.PATCH("/models/:sourceId/:modelId", s.adminUpdateModel)
+	admin.DELETE("/models/:sourceId/:modelId", s.adminDeleteModel)
 	admin.GET("/model-groups", s.adminListGroups)
 	admin.POST("/model-groups", s.adminUpsertGroup)
 	admin.PUT("/model-groups/:id", s.adminUpsertGroup)
 	admin.DELETE("/model-groups/:id", s.adminDeleteGroup)
+	admin.POST("/model-groups/:id/models", s.adminAddGroupMembers)
+	admin.DELETE("/model-groups/:id/models", s.adminRemoveGroupMembers)
 	admin.GET("/api-tokens", s.adminListTokens)
 	admin.GET("/api-tokens/:name/reveal", s.adminRevealToken)
 	admin.POST("/api-tokens", s.adminUpsertToken)
@@ -64,6 +70,8 @@ func (s *Server) requireStore(c *gin.Context) (*storage.Store, bool) {
 
 func (s *Server) adminRuntimeConfig(c *gin.Context) {
 	server := s.config.GetServer()
+	catalog := s.config.GetModelCatalog()
+	catalogEnabled := catalog.Enabled == nil || *catalog.Enabled
 	ok(c, gin.H{
 		"host":                server.Host,
 		"port":                server.Port,
@@ -74,6 +82,12 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 		"httpTimeout":         s.config.GetHTTPTimeout(),
 		"enablePprof":         s.config.GetEnablePprof(),
 		"allowFakeIPOutbound": s.config.IsFakeIPOutboundAllowed(),
+		"modelCatalog": gin.H{
+			"enabled":             catalogEnabled,
+			"url":                 catalogResolveURL(catalog),
+			"proxy":               catalog.Proxy,
+			"syncIntervalMinutes": catalog.SyncIntervalMinutes,
+		},
 	})
 }
 
@@ -87,6 +101,9 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		DatabasePath        *string `json:"databasePath"`
 		EnablePprof         *bool   `json:"enablePprof"`
 		AllowFakeIPOutbound *bool   `json:"allowFakeIPOutbound"`
+		ModelCatalog        *struct {
+			SyncIntervalMinutes *int `json:"syncIntervalMinutes"`
+		} `json:"modelCatalog"`
 	}
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		fail(c, 400, "invalid_json", err.Error())
@@ -135,6 +152,15 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		s.config.SetAllowFakeIPOutbound(*payload.AllowFakeIPOutbound)
 		// 即时下发到 relay 包级开关，无需重启。
 		s.syncRelaySSRFPolicy()
+	}
+	if payload.ModelCatalog != nil && payload.ModelCatalog.SyncIntervalMinutes != nil {
+		minutes := *payload.ModelCatalog.SyncIntervalMinutes
+		if minutes < 0 {
+			fail(c, 400, "invalid_sync_interval", "syncIntervalMinutes must not be negative")
+			return
+		}
+		// 周期检查是动态的，写入配置即生效（0 = 默认 24h），无需重启。
+		s.config.SetModelCatalogSyncInterval(minutes)
 	}
 	if requestsRestart {
 		s.markRestartRequired()
@@ -290,14 +316,32 @@ func (s *Server) adminFetchSource(c *gin.Context) {
 	if !okStore {
 		return
 	}
-	count, err := s.refreshSource(c.Request.Context(), c.Param("id"))
+	summary, err := s.refreshSource(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		fail(c, 500, "fetch_source_failed", err.Error())
 		return
 	}
-	_ = store.InsertSystemLog(c.Request.Context(), "info", "model source refreshed", gin.H{"sourceId": c.Param("id"), "count": count})
+	_ = store.InsertSystemLog(c.Request.Context(), "info", "model source refreshed", gin.H{"sourceId": c.Param("id"), "count": summary.Count})
 	s.invalidateRouteCache()
-	ok(c, gin.H{"refreshed": true, "count": count})
+	ok(c, gin.H{"refreshed": true, "count": summary.Count, "added": summary.Added, "removed": summary.Removed, "keys": summary.Keys})
+}
+
+// adminModelCatalogStatus 返回能力目录（models.dev）的运行状态（方向1）。
+func (s *Server) adminModelCatalogStatus(c *gin.Context) {
+	ok(c, s.catalog.Status())
+}
+
+// adminModelCatalogRefresh 立即更新能力目录（绕过周期/退避），返回最新状态。
+// 已有拉取进行中时等待其完成（有限时），不会重复发起。
+func (s *Server) adminModelCatalogRefresh(c *gin.Context) {
+	status, refreshed := s.catalog.Refresh()
+	if !refreshed {
+		if disabled, _ := status["enabled"].(bool); !disabled {
+			fail(c, 400, "catalog_disabled", "model catalog is disabled")
+			return
+		}
+	}
+	ok(c, gin.H{"refreshed": refreshed, "status": status})
 }
 
 func (s *Server) adminListModels(c *gin.Context) {
@@ -305,12 +349,135 @@ func (s *Server) adminListModels(c *gin.Context) {
 	if !okStore {
 		return
 	}
-	items, err := store.ListModels(c.Request.Context())
+	filter := storage.ModelListFilter{
+		SourceID: strings.TrimSpace(c.Query("sourceId")),
+		Search:   strings.TrimSpace(c.Query("search")),
+	}
+	items, err := store.ListModelsFiltered(c.Request.Context(), filter)
 	if err != nil {
 		fail(c, 500, "list_models_failed", err.Error())
 		return
 	}
 	ok(c, gin.H{"items": items})
+}
+
+// adminUpdateModel 单模型部分更新（方向4）：名称/类型/能力/maxTokens/启停。
+// 能力字段被修改时 capability_source 置 manual，后续刷新保留用户值。
+func (s *Server) adminUpdateModel(c *gin.Context) {
+	store, okStore := s.requireStore(c)
+	if !okStore {
+		return
+	}
+	var payload struct {
+		Name             *string `json:"name"`
+		Type             *string `json:"type"`
+		MaxTokens        *int    `json:"maxTokens"`
+		VisionCapable    *bool   `json:"visionCapable"`
+		ToolsCapable     *bool   `json:"toolsCapable"`
+		StructuredOutput *bool   `json:"structuredOutput"`
+		ThinkingMode     *string `json:"thinkingMode"`
+		Enabled          *bool   `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		fail(c, 400, "invalid_json", err.Error())
+		return
+	}
+	patch := storage.ModelPatch{
+		Name:             payload.Name,
+		Type:             payload.Type,
+		MaxTokens:        payload.MaxTokens,
+		VisionCapable:    payload.VisionCapable,
+		ToolsCapable:     payload.ToolsCapable,
+		StructuredOutput: payload.StructuredOutput,
+		ThinkingMode:     payload.ThinkingMode,
+		Enabled:          payload.Enabled,
+	}
+	if patch.ThinkingMode != nil && *patch.ThinkingMode == "" {
+		fail(c, 400, "invalid_thinking_mode", "thinkingMode must not be empty")
+		return
+	}
+	found, err := store.UpdateModel(c.Request.Context(), c.Param("modelId"), c.Param("sourceId"), patch)
+	if err != nil {
+		fail(c, 500, "update_model_failed", err.Error())
+		return
+	}
+	if !found {
+		fail(c, 404, "model_not_found", "model not found in source")
+		return
+	}
+	s.invalidateRouteCache()
+	ok(c, gin.H{"updated": true})
+}
+
+// adminDeleteModel 删除单个模型（事务内同步清理组内引用，方向4）。
+func (s *Server) adminDeleteModel(c *gin.Context) {
+	store, okStore := s.requireStore(c)
+	if !okStore {
+		return
+	}
+	deleted, err := store.DeleteModel(c.Request.Context(), c.Param("modelId"), c.Param("sourceId"))
+	if err != nil {
+		fail(c, 500, "delete_model_failed", err.Error())
+		return
+	}
+	if !deleted {
+		fail(c, 404, "model_not_found", "model not found in source")
+		return
+	}
+	s.invalidateRouteCache()
+	ok(c, gin.H{"deleted": true})
+}
+
+// adminAddGroupMembers 向现有组追加成员（方向3：批量「添加到已有组」原子端点）。
+func (s *Server) adminAddGroupMembers(c *gin.Context) {
+	store, okStore := s.requireStore(c)
+	if !okStore {
+		return
+	}
+	var payload struct {
+		Models []string `json:"models"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		fail(c, 400, "invalid_json", err.Error())
+		return
+	}
+	if len(payload.Models) == 0 {
+		fail(c, 400, "models_required", "models list must not be empty")
+		return
+	}
+	added, err := store.AddGroupMembers(c.Request.Context(), c.Param("id"), payload.Models)
+	if err != nil {
+		fail(c, 400, "add_group_models_failed", err.Error())
+		return
+	}
+	s.invalidateRouteCache()
+	ok(c, gin.H{"added": added})
+}
+
+// adminRemoveGroupMembers 从组移除成员（方向3）。
+func (s *Server) adminRemoveGroupMembers(c *gin.Context) {
+	store, okStore := s.requireStore(c)
+	if !okStore {
+		return
+	}
+	var payload struct {
+		Models []string `json:"models"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		fail(c, 400, "invalid_json", err.Error())
+		return
+	}
+	if len(payload.Models) == 0 {
+		fail(c, 400, "models_required", "models list must not be empty")
+		return
+	}
+	removed, err := store.RemoveGroupMembers(c.Request.Context(), c.Param("id"), payload.Models)
+	if err != nil {
+		fail(c, 400, "remove_group_models_failed", err.Error())
+		return
+	}
+	s.invalidateRouteCache()
+	ok(c, gin.H{"removed": removed})
 }
 
 func (s *Server) adminRefreshModels(c *gin.Context) {

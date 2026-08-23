@@ -6,5 +6,11 @@
   "logLevel": "info",
   "httpTimeout": 120,
   "secretKeyPath": ".master-key",
-  "customProtocols": []
+  "customProtocols": [],
+  "modelCatalog": {
+    "enabled": true,
+    "url": "",
+    "proxy": "",
+    "syncIntervalMinutes": 1440
+  }
 }
