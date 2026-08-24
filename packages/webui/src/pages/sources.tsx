@@ -2,7 +2,6 @@ import { Fragment, useMemo, useState } from 'react'
 import {
   Boxes,
   Check,
-  ChevronDown,
   ChevronRight,
   Eye,
   ListPlus,
@@ -16,13 +15,13 @@ import {
   Wrench,
 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
-import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Switch } from '@/components/ui/switch'
 import { AsyncState } from '@/components/ui/states'
-import { EnabledBadge, PlatformBadge, ModelTypeBadge } from '@/components/badges'
+import { ExpandRow } from '@/components/expand-row'
+import { CapChip, Dot, PlatformBadge } from '@/components/badges'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { useSources, useModels, useModelCatalogStatus, revalidate } from '@/lib/hooks'
@@ -83,12 +82,14 @@ export function SourcesPage() {
   const { data, isLoading, error, mutate } = useSources(60_000)
   const { data: models } = useModels(60_000)
   const { data: catalogStatus } = useModelCatalogStatus()
+  const [keyword, setKeyword] = useState('')
   const [editing, setEditing] = useState<ModelSource | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [switchBusyId, setSwitchBusyId] = useState<string | null>(null)
   const [refreshingAll, setRefreshingAll] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  // 方向3/4：源内模型的选择状态、面板检索（跨组全局 + 组内）、分组折叠、单模型编辑。
+  // 源内模型的选择状态、面板检索（跨组全局 + 组内）、分组折叠、单模型编辑。
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [globalSearch, setGlobalSearch] = useState<Record<string, string>>({})
   const [groupSearch, setGroupSearch] = useState<Record<string, string>>({})
@@ -99,7 +100,6 @@ export function SourcesPage() {
   const [quickCreate, setQuickCreate] = useState<{ source: ModelSource; models: Model[] } | null>(null)
   const [addToGroup, setAddToGroup] = useState<Model[] | null>(null)
 
-  // 按 sourceId 分组的模型缓存（合并自原「模型缓存」页）。
   const modelsBySource = useMemo(() => {
     const map = new Map<string, Model[]>()
     for (const m of models ?? []) {
@@ -110,6 +110,18 @@ export function SourcesPage() {
     }
     return map
   }, [models])
+
+  // bar 搜索：名称 / 平台 / Base URL
+  const kw = keyword.trim().toLowerCase()
+  const filtered = useMemo(() => {
+    if (!kw) return data ?? []
+    return (data ?? []).filter(
+      (s) => `${s.name} ${s.platform} ${s.baseUrl}`.toLowerCase().includes(kw),
+    )
+  }, [data, kw])
+
+  const enabledCount = (data ?? []).filter((s) => s.enabled).length
+  const disabledCount = (data ?? []).length - enabledCount
 
   function openCreate() {
     setEditing(null)
@@ -142,7 +154,7 @@ export function SourcesPage() {
     })
   }
 
-  // 批量启停（方向4）：对选中模型循环 PATCH enabled，完成后统一刷新并汇总。
+  // 批量启停：对选中模型循环 PATCH enabled，完成后统一刷新并汇总。
   async function batchSetEnabled(list: Model[], enabled: boolean) {
     if (list.length === 0 || batchBusy) return
     setBatchBusy(true)
@@ -183,14 +195,9 @@ export function SourcesPage() {
       const result = await api.fetchSource(source.id)
       await revalidate.models()
       setExpanded((prev) => ({ ...prev, [source.id]: true }))
-      // 方向4：变更摘要提示（新增默认启用、移除同步清理组引用）；
-      // 多 key 源附带逐 key 拉取结果（权限发现）。
       const added = result.added?.length ?? 0
       const removed = result.removed?.length ?? 0
-      const changes = [
-        added > 0 ? `新增 ${added}` : '',
-        removed > 0 ? `移除 ${removed}` : '',
-      ]
+      const changes = [added > 0 ? `新增 ${added}` : '', removed > 0 ? `移除 ${removed}` : '']
         .filter(Boolean)
         .join('，')
       const keySummary = (result.keys ?? [])
@@ -207,6 +214,19 @@ export function SourcesPage() {
       toast.error('拉取失败', (err as Error).message)
     } finally {
       setBusyId(null)
+    }
+  }
+
+  async function toggleSource(source: ModelSource) {
+    setSwitchBusyId(source.id)
+    try {
+      await api.updateSource(source.id, { ...source, enabled: !source.enabled })
+      await mutate()
+      toast.success(source.enabled ? '已停用模型源' : '已启用模型源', source.name)
+    } catch (err) {
+      toast.error('操作失败', (err as Error).message)
+    } finally {
+      setSwitchBusyId(null)
     }
   }
 
@@ -244,15 +264,14 @@ export function SourcesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <>
       <PageHeader
         title="模型源"
-        description="管理上游供应商与其聚合的模型"
+        description="管理上游供应商与其聚合的模型。启用中的源会参与模型聚合与转发，停用仅影响新请求。"
         actions={
-          <div className="flex items-center gap-2">
+          <>
             {catalogStatus?.enabled && (
-              <Badge
-                variant="muted"
+              <CapChip
                 className="max-w-[280px] truncate"
                 title={
                   catalogStatus.entries > 0
@@ -260,52 +279,79 @@ export function SourcesPage() {
                     : '能力目录尚未加载成功：模型能力不会被自动回填，可在模型编辑中手动开启；服务器需可访问 models.dev（或配置 modelCatalog.url/proxy）'
                 }
               >
-                {catalogStatus.entries > 0
-                  ? `能力目录 ${catalogStatus.entries} 模型`
-                  : '能力目录未加载'}
-              </Badge>
+                {catalogStatus.entries > 0 ? `能力目录 ${catalogStatus.entries} 模型` : '能力目录未加载'}
+              </CapChip>
             )}
-            <Button variant="outline" onClick={refreshAll} disabled={refreshingAll}>
-              <RefreshCw className={refreshingAll ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> 刷新全部模型
+            <Button onClick={refreshAll} disabled={refreshingAll}>
+              <RefreshCw className={refreshingAll ? 'animate-spin' : undefined} /> 刷新全部模型
             </Button>
-            <Button onClick={openCreate}>
-              <Plus className="h-4 w-4" /> 新增模型源
+            <Button variant="primary" onClick={openCreate}>
+              <Plus /> 新增模型源
             </Button>
-          </div>
+          </>
         }
       />
 
-      <Card>
-        <AsyncState
-          isLoading={isLoading}
-          error={error}
-          data={data}
-          onRetry={() => mutate()}
-          loadingColumns={6}
-          emptyIcon={<Boxes className="h-7 w-7" />}
-          emptyTitle="还没有模型源"
-          emptyDescription="新增一个上游供应商，开始聚合模型。"
-          emptyAction={
-            <Button onClick={openCreate}>
-              <Plus className="h-4 w-4" /> 新增模型源
-            </Button>
-          }
-        >
-          {(sources) => (
-            <Table>
+      {/* 工具条 */}
+      <div className="flex flex-wrap items-center gap-2.5 border-b border-border py-3">
+        <div className="relative w-[250px]">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            className="pl-8"
+            type="search"
+            placeholder="搜索名称 / 平台 / Base URL…"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+          />
+        </div>
+        <span className="tnum flex flex-wrap items-center gap-x-4 text-xs text-muted-foreground">
+          <span>
+            <b className="font-semibold text-jade">{enabledCount}</b> 启用
+          </span>
+          <span>
+            <b className="font-semibold text-ember">{disabledCount}</b> 停用
+          </span>
+          <span>
+            聚合模型 <b className="font-semibold text-foreground">{formatNumber(models?.length ?? 0)}</b>
+          </span>
+        </span>
+        <span className="ml-auto text-xs text-muted-foreground">
+          共 <b className="tnum font-semibold text-foreground">{(data ?? []).length}</b> 个源
+        </span>
+      </div>
+
+      <AsyncState
+        isLoading={isLoading}
+        error={error}
+        data={data}
+        onRetry={() => mutate()}
+        loadingColumns={8}
+        emptyIcon={<Boxes className="h-7 w-7" />}
+        emptyTitle="还没有模型源"
+        emptyDescription="新增一个上游供应商，开始聚合模型。"
+        emptyAction={
+          <Button variant="primary" onClick={openCreate}>
+            <Plus /> 新增模型源
+          </Button>
+        }
+      >
+        {() => (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-8" />
+                  <TableHead className="w-[34px] px-0 text-center" />
                   <TableHead>名称</TableHead>
                   <TableHead>平台</TableHead>
                   <TableHead>Base URL</TableHead>
-                  <TableHead>模型数</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead className="num">模型数</TableHead>
+                  <TableHead>拉取策略</TableHead>
+                  <TableHead className="text-center">状态</TableHead>
+                  <TableHead className="text-center">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sources.map((source) => {
+                {filtered.map((source) => {
                   const sourceModels = modelsBySource.get(source.id) ?? []
                   const isOpen = !!expanded[source.id]
                   const groups = buildModelGroups(source, sourceModels)
@@ -316,12 +362,12 @@ export function SourcesPage() {
                   const selectedCount = selectedModelsOf(source.id).length
                   const allVisibleModels = groups
                     .map((g) => {
-                      const kw = (groupSearch[`${source.id}:${g.key}`] ?? '').trim().toLowerCase()
-                      return kw
+                      const kw2 = (groupSearch[`${source.id}:${g.key}`] ?? '').trim().toLowerCase()
+                      return kw2
                         ? g.models.filter(
                             (m) =>
                               matchesGlobal(m) &&
-                              `${m.id} ${m.name} ${m.sourceName ?? ''}`.toLowerCase().includes(kw),
+                              `${m.id} ${m.name} ${m.sourceName ?? ''}`.toLowerCase().includes(kw2),
                           )
                         : g.models.filter(matchesGlobal)
                     })
@@ -329,34 +375,47 @@ export function SourcesPage() {
                   return (
                     <Fragment key={source.id}>
                       <TableRow>
-                        <TableCell className="pr-0">
+                        <TableCell className="w-[34px] px-0 text-center">
                           <button
                             type="button"
                             onClick={() => toggleExpand(source.id)}
                             className="rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
                             aria-label={isOpen ? '收起' : '展开'}
                           >
-                            <ChevronRight className={cn('h-4 w-4 transition-transform', isOpen && 'rotate-90')} />
+                            <ChevronRight
+                              className={cn(
+                                'h-[15px] w-[15px] transition-transform duration-200',
+                                isOpen && 'rotate-90 text-rose',
+                              )}
+                            />
                           </button>
                         </TableCell>
-                        <TableCell className="font-medium">
+                        <TableCell className="font-semibold">
                           {source.name}
-                          <div className="text-xs text-muted-foreground">{source.id}</div>
+                          <span className="sub">{source.id}</span>
                         </TableCell>
                         <TableCell>
                           <PlatformBadge platform={source.platform} />
                         </TableCell>
-                        <TableCell className="max-w-[220px] truncate font-mono text-xs text-muted-foreground">
-                          {source.baseUrl}
+                        <TableCell className="max-w-[220px]">
+                          <span className="block truncate font-mono text-xs text-muted-foreground" title={source.baseUrl}>
+                            {source.baseUrl}
+                          </span>
                         </TableCell>
+                        <TableCell className="num">{sourceModels.length}</TableCell>
                         <TableCell>
-                          <Badge variant="muted">{sourceModels.length}</Badge>
+                          <CapChip>{source.autoFetchModels ? '自动拉取' : '手动维护'}</CapChip>
                         </TableCell>
-                        <TableCell>
-                          <EnabledBadge enabled={source.enabled} />
+                        <TableCell className="text-center">
+                          <Switch
+                            checked={source.enabled}
+                            disabled={switchBusyId === source.id}
+                            onCheckedChange={() => toggleSource(source)}
+                            aria-label={`${source.enabled ? '停用' : '启用'} ${source.name}`}
+                          />
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center justify-end gap-1">
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-0.5">
                             {source.autoFetchModels && (
                               <Button
                                 variant="ghost"
@@ -365,190 +424,210 @@ export function SourcesPage() {
                                 disabled={busyId === source.id || !source.enabled}
                                 onClick={() => handleFetch(source)}
                               >
-                                <RefreshCw className={busyId === source.id ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+                                <RefreshCw className={busyId === source.id ? 'animate-spin' : undefined} />
                               </Button>
                             )}
                             <Button variant="ghost" size="iconSm" title="编辑" onClick={() => openEdit(source)}>
-                              <Pencil className="h-4 w-4" />
+                              <Pencil />
                             </Button>
-                            <Button variant="ghost" size="iconSm" title="删除" onClick={() => handleDelete(source)}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
+                            <Button variant="danger" size="iconSm" title="删除" onClick={() => handleDelete(source)}>
+                              <Trash2 />
                             </Button>
                           </div>
                         </TableCell>
                       </TableRow>
-                      {isOpen && (
-                        <TableRow className="hover:bg-transparent">
-                          <TableCell colSpan={7} className="bg-muted/30">
-                            {sourceModels.length === 0 ? (
-                              <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
-                                <Boxes className="h-4 w-4" />
-                                暂无模型。
-                                {source.autoFetchModels
-                                  ? '点击右侧刷新按钮拉取，或在编辑中添加手动模型。'
-                                  : '在编辑中添加手动模型。'}
-                              </div>
-                            ) : (
-                              <div className="space-y-3 py-3">
-                                {/* 顶部工具条：跨组搜索 + 更新时间 + 全局选择 + 批量操作 */}
-                                <div className="flex flex-wrap items-center gap-2">
-                                  {groups.length > 1 && (
-                                    <div className="relative w-56">
-                                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                      <Input
-                                        className="h-8 pl-9"
-                                        placeholder="跨组搜索全部模型…"
-                                        value={globalSearch[source.id] ?? ''}
-                                        onChange={(e) =>
-                                          setGlobalSearch((prev) => ({ ...prev, [source.id]: e.target.value }))
-                                        }
-                                      />
-                                    </div>
-                                  )}
-                                  {source.updatedAt && (
-                                    <span className="text-xs text-muted-foreground">
-                                      更新于 {formatRelative(source.updatedAt)}
-                                    </span>
-                                  )}
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    disabled={allVisibleModels.length === 0}
-                                    onClick={() => setModelsSelected(allVisibleModels, true)}
-                                  >
-                                    全选
-                                  </Button>
-                                  <Button variant="ghost" size="sm" onClick={() => setModelsSelected(sourceModels, false)}>
-                                    清空选择
-                                  </Button>
-                                  <div className="ml-auto flex flex-wrap items-center gap-2">
-                                    <span className="text-xs text-muted-foreground">已选 {selectedCount}</span>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      disabled={selectedCount === 0 || batchBusy}
-                                      onClick={() => batchSetEnabled(selectedModelsOf(source.id), true)}
-                                    >
-                                      <Power className="h-4 w-4" /> 一键启用
-                                    </Button>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      disabled={selectedCount === 0 || batchBusy}
-                                      onClick={() => batchSetEnabled(selectedModelsOf(source.id), false)}
-                                    >
-                                      <PowerOff className="h-4 w-4" /> 一键禁用
-                                    </Button>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      disabled={selectedCount === 0}
-                                      onClick={() => setQuickCreate({ source, models: selectedModelsOf(source.id) })}
-                                    >
-                                      <Plus className="h-4 w-4" /> 创建模型组
-                                    </Button>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      disabled={selectedCount === 0}
-                                      onClick={() => setAddToGroup(selectedModelsOf(source.id))}
-                                    >
-                                      <ListPlus className="h-4 w-4" /> 加入模型组
-                                    </Button>
-                                  </div>
+                      <ExpandRow open={isOpen} colSpan={8} className="pl-11">
+                        {() => sourceModels.length === 0 ? (
+                          <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+                            <Boxes className="h-4 w-4" />
+                            暂无模型。
+                            {source.autoFetchModels
+                              ? '点击右侧刷新按钮拉取，或在编辑中添加手动模型。'
+                              : '在编辑中添加手动模型。'}
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {/* 顶部工具条：跨组搜索 + 更新时间 + 全局选择 + 批量操作 */}
+                            <div className="flex flex-wrap items-center gap-2">
+                              {groups.length > 1 && (
+                                <div className="relative w-56">
+                                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                                  <Input
+                                    className="h-[29px] pl-8 text-xs"
+                                    placeholder="跨组搜索全部模型…"
+                                    value={globalSearch[source.id] ?? ''}
+                                    onChange={(e) =>
+                                      setGlobalSearch((prev) => ({ ...prev, [source.id]: e.target.value }))
+                                    }
+                                  />
                                 </div>
-                                {/* 按 key 分组（单 key 源为单一「全部模型」组） */}
-                                {groups.map((group) => {
-                                  const groupStateKey = `${source.id}:${group.key}`
-                                  const groupKeyword = (groupSearch[groupStateKey] ?? '').trim().toLowerCase()
-                                  const groupVisible = group.models.filter(
-                                    (m) =>
-                                      matchesGlobal(m) &&
-                                      (!groupKeyword ||
-                                        `${m.id} ${m.name} ${m.sourceName ?? ''}`.toLowerCase().includes(groupKeyword)),
-                                  )
-                                  const collapsed = !!collapsedGroups[groupStateKey]
-                                  return (
-                                    <div key={group.key} className="rounded-xl border border-border/60 bg-background/40">
-                                      <div className="flex flex-wrap items-center gap-2 px-3 py-2">
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            setCollapsedGroups((prev) => ({ ...prev, [groupStateKey]: !prev[groupStateKey] }))
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={allVisibleModels.length === 0}
+                                onClick={() => setModelsSelected(allVisibleModels, true)}
+                              >
+                                全选
+                              </Button>
+                              <Button variant="ghost" size="sm" onClick={() => setModelsSelected(sourceModels, false)}>
+                                清空选择
+                              </Button>
+                              <div className="ml-auto flex flex-wrap items-center gap-2">
+                                <span className="tnum text-xs text-muted-foreground">已选 {selectedCount}</span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={selectedCount === 0 || batchBusy}
+                                  onClick={() => batchSetEnabled(selectedModelsOf(source.id), true)}
+                                >
+                                  <Power /> 启用
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={selectedCount === 0 || batchBusy}
+                                  onClick={() => batchSetEnabled(selectedModelsOf(source.id), false)}
+                                >
+                                  <PowerOff /> 禁用
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={selectedCount === 0}
+                                  onClick={() => setQuickCreate({ source, models: selectedModelsOf(source.id) })}
+                                >
+                                  <Plus /> 创建模型组
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={selectedCount === 0}
+                                  onClick={() => setAddToGroup(selectedModelsOf(source.id))}
+                                >
+                                  <ListPlus /> 加入模型组
+                                </Button>
+                              </div>
+                            </div>
+                            {/* 按 key 分组（单 key 源为单一「全部模型」组） */}
+                            {groups.map((group) => {
+                              const groupStateKey = `${source.id}:${group.key}`
+                              const groupKeyword = (groupSearch[groupStateKey] ?? '').trim().toLowerCase()
+                              const groupVisible = group.models.filter(
+                                (m) =>
+                                  matchesGlobal(m) &&
+                                  (!groupKeyword ||
+                                    `${m.id} ${m.name} ${m.sourceName ?? ''}`.toLowerCase().includes(groupKeyword)),
+                              )
+                              const collapsed = !!collapsedGroups[groupStateKey]
+                              return (
+                                <div key={group.key}>
+                                  <div className="flex flex-wrap items-center gap-2 py-1">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setCollapsedGroups((prev) => ({ ...prev, [groupStateKey]: !collapsed }))
+                                      }
+                                      className="rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
+                                      aria-label={collapsed ? '展开分组' : '折叠分组'}
+                                    >
+                                      <ChevronRight
+                                        className={cn(
+                                          'h-3.5 w-3.5 transition-transform',
+                                          !collapsed && 'rotate-90',
+                                        )}
+                                      />
+                                    </button>
+                                    <span className="text-xs font-semibold">
+                                      {group.label}
+                                      {group.note ? ` · ${group.note}` : ''}
+                                    </span>
+                                    {group.badge && <CapChip>{group.badge}</CapChip>}
+                                    <CapChip>{group.models.length} 模型</CapChip>
+                                    <div className="ml-auto flex items-center gap-2">
+                                      <div className="relative w-44">
+                                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                                        <Input
+                                          className="h-[29px] pl-7 text-xs"
+                                          placeholder="组内搜索…"
+                                          value={groupSearch[groupStateKey] ?? ''}
+                                          onChange={(e) =>
+                                            setGroupSearch((prev) => ({ ...prev, [groupStateKey]: e.target.value }))
                                           }
-                                          className="rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
-                                          aria-label={collapsed ? '展开分组' : '折叠分组'}
-                                        >
-                                          <ChevronDown
-                                            className={cn('h-4 w-4 transition-transform', collapsed && '-rotate-90')}
-                                          />
-                                        </button>
-                                        <span className="text-sm font-medium">
-                                          {group.label}
-                                          {group.note ? ` · ${group.note}` : ''}
-                                        </span>
-                                        {group.badge && <Badge variant="outline">{group.badge}</Badge>}
-                                        <Badge variant="muted">{group.models.length} 模型</Badge>
-                                        <div className="ml-auto flex items-center gap-2">
-                                          <div className="relative w-44">
-                                            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                                            <Input
-                                              className="h-7 pl-8 text-xs"
-                                              placeholder="组内搜索…"
-                                              value={groupSearch[groupStateKey] ?? ''}
-                                              onChange={(e) =>
-                                                setGroupSearch((prev) => ({ ...prev, [groupStateKey]: e.target.value }))
-                                              }
-                                            />
-                                          </div>
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            disabled={groupVisible.length === 0}
-                                            onClick={() => setModelsSelected(groupVisible, true)}
-                                          >
-                                            全选本组
-                                          </Button>
-                                        </div>
+                                        />
                                       </div>
-                                      {!collapsed && (
-                                        <div className="border-t border-border/60 p-3">
-                                          {groupVisible.length === 0 ? (
-                                            <p className="py-2 text-center text-sm text-muted-foreground">
-                                              没有匹配的模型
-                                            </p>
-                                          ) : (
-                                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                                              {groupVisible.map((model) => (
-                                                <ModelCard
-                                                  key={`${group.key}-${model.sourceId}-${model.id}`}
-                                                  model={model}
-                                                  checked={!!selected[`${source.id}:${model.id}`]}
-                                                  onToggleSelect={() => toggleModelSelected(source.id, model.id)}
-                                                  onEdit={() => openModelEdit(model)}
-                                                  onToggleEnabled={() => toggleModelEnabled(model)}
-                                                />
-                                              ))}
-                                            </div>
-                                          )}
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        disabled={groupVisible.length === 0}
+                                        onClick={() => setModelsSelected(groupVisible, true)}
+                                      >
+                                        全选本组
+                                      </Button>
+                                    </div>
+                                  </div>
+                                  {!collapsed && (
+                                    <div className="mb-1 mt-1.5">
+                                      {groupVisible.length === 0 ? (
+                                        <p className="py-2 text-center text-sm text-muted-foreground">
+                                          没有匹配的模型
+                                        </p>
+                                      ) : (
+                                        <div className="flex flex-wrap gap-[7px]">
+                                          {groupVisible.map((model) => (
+                                            <ModelChip
+                                              key={`${group.key}-${model.sourceId}-${model.id}`}
+                                              model={model}
+                                              checked={!!selected[`${source.id}:${model.id}`]}
+                                              onToggleSelect={() => toggleModelSelected(source.id, model.id)}
+                                              onEdit={() => openModelEdit(model)}
+                                              onToggleEnabled={() => toggleModelEnabled(model)}
+                                            />
+                                          ))}
                                         </div>
                                       )}
                                     </div>
-                                  )
-                                })}
-                              </div>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      )}
+                                  )}
+                                </div>
+                              )
+                            })}
+                            {/* 脚注：可用性检测 / 上次拉取 */}
+                            <p className="tnum mt-2.5 flex flex-wrap gap-x-3.5 text-2xs text-muted-foreground">
+                              <span>
+                                上次拉取{' '}
+                                {source.updatedAt ? formatRelative(source.updatedAt) : '—'}
+                              </span>
+                              <span>
+                                可用性检测{' '}
+                                {sourceModels.some((m) => m.lastCheckedAt)
+                                  ? formatRelative(
+                                      sourceModels
+                                        .filter((m) => m.lastCheckedAt)
+                                        .map((m) => m.lastCheckedAt)
+                                        .sort()
+                                        .at(-1),
+                                    )
+                                  : '—'}
+                              </span>
+                            </p>
+                          </div>
+                        )}
+                      </ExpandRow>
                     </Fragment>
                   )
                 })}
+                {filtered.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                      没有匹配的模型源
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
-            </Table>
-          )}
-        </AsyncState>
-      </Card>
+            </table>
+          </div>
+        )}
+      </AsyncState>
 
       <SourceFormDialog open={formOpen} onOpenChange={setFormOpen} source={editing} />
       <ModelEditDialog open={modelEditOpen} onOpenChange={setModelEditOpen} model={editingModel} />
@@ -564,11 +643,12 @@ export function SourcesPage() {
         models={addToGroup ?? []}
       />
       {dialog}
-    </div>
+    </>
   )
 }
 
-function ModelCard({
+/** 模型芯片：mono 名称 + 能力图标 + 类型 + max tokens；失效置灰。 */
+function ModelChip({
   model,
   checked,
   onToggleSelect,
@@ -581,77 +661,60 @@ function ModelCard({
   onEdit: () => void
   onToggleEnabled: () => void
 }) {
-  // 停用（enabled=false）或健康不可用（available=false）都置灰，但语义区分展示。
   const dimmed = model.enabled === false || !model.available
   const isEnabled = model.enabled !== false
   return (
-    <div
+    <span
       className={cn(
-        'group rounded-xl border border-border/70 bg-background/60 p-3 transition-colors',
-        dimmed && 'opacity-55',
-        checked && 'border-primary/60 ring-1 ring-primary/30',
+        'group inline-flex items-center gap-1.5 rounded-md border bg-card px-[9px] py-1 font-mono text-xs text-muted-foreground transition-colors',
+        checked ? 'border-rose text-rose' : 'border-input hover:border-rose hover:text-foreground',
+        dimmed && 'opacity-50',
       )}
+      title={`${model.id}${model.lastCheckedAt ? ` · 检测于 ${formatRelative(model.lastCheckedAt)}` : ''}`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-start gap-2">
-          <button
-            type="button"
-            onClick={onToggleSelect}
-            aria-label={checked ? '取消选择' : '选择'}
-            className={cn(
-              'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
-              checked ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:border-primary/60',
-            )}
-          >
-            {checked && <Check className="h-3 w-3" />}
-          </button>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium" title={model.id}>
-              {model.name || model.id}
-            </p>
-            <p className="truncate font-mono text-xs text-muted-foreground" title={model.id}>
-              {model.id}
-            </p>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-0.5">
-          <PlatformBadge platform={model.platform} />
-        </div>
-      </div>
-      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-        <ModelTypeBadge type={model.type} />
-        {model.maxTokens > 0 && <Badge variant="outline">{formatNumber(model.maxTokens)} tok</Badge>}
-        {model.visionCapable && (
-          <Badge variant="secondary">
-            <Eye className="h-3 w-3" /> 视觉
-          </Badge>
+      <button
+        type="button"
+        onClick={onToggleSelect}
+        aria-label={checked ? '取消选择' : '选择'}
+        aria-pressed={checked}
+        className={cn(
+          'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors',
+          checked ? 'border-rose bg-rose text-white' : 'border-border hover:border-rose',
         )}
-        {model.toolsCapable && (
-          <Badge variant="secondary">
-            <Wrench className="h-3 w-3" /> 工具
-          </Badge>
-        )}
-        {model.capabilitySource === 'catalog' && <Badge variant="outline">目录</Badge>}
-        {model.origin === 'manual' && <Badge variant="outline">手动</Badge>}
-        {model.enabled === false && <Badge variant="muted">已停用</Badge>}
-        {model.enabled !== false && !model.available && <Badge variant="muted">不可用</Badge>}
-      </div>
-      <div className="mt-2 flex items-center justify-between">
-        <p className="text-[11px] text-muted-foreground">检测于 {formatRelative(model.lastCheckedAt)}</p>
-        <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-          <Button variant="ghost" size="iconSm" title="编辑" onClick={onEdit}>
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="iconSm"
-            title={isEnabled ? '停用（不参与调度）' : '启用'}
-            onClick={onToggleEnabled}
-          >
-            <Power className={cn('h-3.5 w-3.5', !isEnabled && 'text-amber-500')} />
-          </Button>
-        </div>
-      </div>
-    </div>
+      >
+        {checked && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+      </button>
+      <button type="button" onClick={onToggleSelect} className="max-w-[220px] truncate">
+        {model.name || model.id}
+      </button>
+      <span className="rounded border border-border px-1 text-2xs uppercase tracking-[0.08em] text-muted-foreground">
+        {(model.type || 'llm').slice(0, 3)}
+      </span>
+      {model.visionCapable && <Eye className="h-3 w-3 text-muted-foreground" aria-label="视觉" />}
+      {model.toolsCapable && <Wrench className="h-3 w-3 text-muted-foreground" aria-label="工具" />}
+      {model.maxTokens > 0 && (
+        <span className="tnum text-2xs text-muted-foreground">{formatNumber(model.maxTokens)}</span>
+      )}
+      <span className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={onEdit}
+          title="编辑模型"
+          aria-label="编辑模型"
+          className="rounded p-0.5 text-muted-foreground hover:text-rose"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+        <button
+          type="button"
+          onClick={onToggleEnabled}
+          title={isEnabled ? '停用（不参与调度）' : '启用'}
+          aria-label={isEnabled ? '停用模型' : '启用模型'}
+          className="rounded p-0.5 text-muted-foreground hover:text-rose"
+        >
+          <Dot state={isEnabled ? 'ok' : 'off'} />
+        </button>
+      </span>
+    </span>
   )
 }

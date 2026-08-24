@@ -13,6 +13,11 @@ import (
 // modelColumns 是 models 行读取的统一列清单（含 enabled/origin/capability_source）。
 const modelColumns = `m.id, m.source_id, m.name, m.source_name, m.base_url, m.api_key, m.platform, m.type, m.max_tokens, m.vision_capable, m.tools_capable, m.structured_output, m.thinking_mode, m.available, m.enabled, m.origin, m.capability_source, m.last_checked_at`
 
+const (
+	usageSuccessPredicate = "status_code >= 200 AND status_code < 400"
+	usageFailedPredicate  = "status_code < 200 OR status_code >= 400"
+)
+
 // scanModel 把一行 models 数据扫进 Model（解密 api_key）。
 func (s *Store) scanModel(scanner interface{ Scan(dest ...any) error }) (Model, error) {
 	var item Model
@@ -686,7 +691,7 @@ func usageWhere(q UsageQuery) (string, []any) {
 		args = append(args, q.From.UnixMilli())
 	}
 	if !q.To.IsZero() {
-		parts = append(parts, "started_ms <= ?")
+		parts = append(parts, "started_ms < ?")
 		args = append(args, q.To.UnixMilli())
 	}
 	// 多选优先于单值：非空时生成 IN (...)，否则回退到单值等值条件。
@@ -724,8 +729,54 @@ func usageWhere(q UsageQuery) (string, []any) {
 	if q.StatusCode > 0 {
 		parts = append(parts, "status_code = ?")
 		args = append(args, q.StatusCode)
+	} else if q.Status == "success" {
+		parts = append(parts, usageSuccessPredicate)
+	} else if q.Status == "failed" {
+		parts = append(parts, "("+usageFailedPredicate+")")
 	}
 	return "WHERE " + strings.Join(parts, " AND "), args
+}
+
+// UsageDaily 按固定 UTC offset 的本地日聚合请求数与 token 数。
+func (s *Store) UsageDaily(ctx context.Context, q UsageQuery, utcOffsetMinutes int) ([]UsageDailyBucket, error) {
+	where, args := usageWhere(q)
+	offsetMs := int64(utcOffsetMinutes) * 60_000
+	args = append([]any{offsetMs}, args...)
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT date((started_ms + ?) / 1000, 'unixepoch'), COUNT(*), COALESCE(SUM(total_tokens),0) FROM usage_records `+where+` GROUP BY 1 ORDER BY 1`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	buckets := []UsageDailyBucket{}
+	for rows.Next() {
+		var b UsageDailyBucket
+		if err := rows.Scan(&b.Date, &b.Requests, &b.Tokens); err != nil {
+			return nil, err
+		}
+		buckets = append(buckets, b)
+	}
+	return buckets, rows.Err()
+}
+
+// UsageByModel 按模型聚合（请求数 / 失败数 / tokens），按请求数降序、模型名升序。
+func (s *Store) UsageByModel(ctx context.Context, q UsageQuery) ([]UsageModelBucket, error) {
+	where, args := usageWhere(q)
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT model_name, COUNT(*), COALESCE(SUM(CASE WHEN `+usageFailedPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(total_tokens),0) FROM usage_records `+where+` GROUP BY model_name ORDER BY COUNT(*) DESC, model_name ASC`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	buckets := []UsageModelBucket{}
+	for rows.Next() {
+		var b UsageModelBucket
+		if err := rows.Scan(&b.Model, &b.Requests, &b.Failed, &b.Tokens); err != nil {
+			return nil, err
+		}
+		buckets = append(buckets, b)
+	}
+	return buckets, rows.Err()
 }
 
 // usageInClause 生成 `col IN (?, ?, ...)`，n 为占位符个数。
@@ -753,9 +804,9 @@ func (s *Store) ClearUsage(ctx context.Context) error {
 
 func (s *Store) UsageTotals(ctx context.Context, q UsageQuery) (map[string]any, error) {
 	where, args := usageWhere(q)
-	// avg_first_byte 仅对 first_byte_ms > 0 的记录求平均（非流式/未记录首字的请求为 0，
-	// 计入会拉低均值）；first/last_used_at 提供时间跨度，供前端计算 RPM/TPM。
-	row := s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0), COALESCE(SUM(cache_hit_tokens),0), COALESCE(AVG(duration_ms),0), COALESCE(AVG(CASE WHEN first_byte_ms > 0 THEN first_byte_ms END),0), COALESCE(MIN(started_at),''), COALESCE(MAX(started_at),'') FROM usage_records `+where, args...)
+	// avg_first_byte 仅对 first_byte_ms > 0 的记录求平均（未记录首字的请求为 0）。
+	// firstUsedAt / lastUsedAt 仍返回，给旧 /__usage 面板算跨度。
+	row := s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0), COALESCE(SUM(cache_hit_tokens),0), COALESCE(AVG(duration_ms),0), COALESCE(AVG(CASE WHEN first_byte_ms > 0 THEN first_byte_ms END),0), COALESCE(MIN(started_at),''), COALESCE(MAX(started_at),'') FROM usage_records `+where, args...)
 	var requests, success, input, output, total, cacheHit int
 	var avgDuration, avgFirstByte float64
 	var firstUsedAt, lastUsedAt string

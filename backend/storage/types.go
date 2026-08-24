@@ -162,11 +162,28 @@ type UsageQuery struct {
 	KeyHash    string
 	GroupName  string
 	ModelName  string
+	// Status 可选 success / failed；StatusCode 非零时精确状态码优先。
+	Status     string
 	StatusCode int
 	// 多选筛选：非空时优先于对应的单值字段，生成 IN (...) 条件。
 	KeyNames   []string
 	GroupNames []string
 	ModelNames []string
+}
+
+// UsageDailyBucket 趋势图的单日聚合行。Date 是请求方时区的本地日（YYYY-MM-DD）。
+type UsageDailyBucket struct {
+	Date     string `json:"date"`
+	Requests int    `json:"requests"`
+	Tokens   int    `json:"tokens"`
+}
+
+// UsageModelBucket 按模型的聚合行（热门模型 / 明细表）。
+type UsageModelBucket struct {
+	Model    string `json:"model"`
+	Requests int    `json:"requests"`
+	Failed   int    `json:"failed"`
+	Tokens   int    `json:"tokens"`
 }
 
 type UsageLogItem struct {

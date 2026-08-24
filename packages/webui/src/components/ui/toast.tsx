@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 
 export const ToastProvider = ToastPrimitives.Provider
 
+/* 底部居中，宽度稳定以避免长短文案导致卡片跳变。 */
 export const ToastViewport = forwardRef<
   React.ElementRef<typeof ToastPrimitives.Viewport>,
   React.ComponentPropsWithoutRef<typeof ToastPrimitives.Viewport>
@@ -13,7 +14,7 @@ export const ToastViewport = forwardRef<
   <ToastPrimitives.Viewport
     ref={ref}
     className={cn(
-      'fixed bottom-0 right-0 z-[100] flex max-h-screen w-full flex-col-reverse gap-2 p-4 sm:bottom-4 sm:right-4 sm:top-auto sm:w-[400px]',
+      'pointer-events-none fixed bottom-6 left-1/2 z-[90] flex w-[min(420px,calc(100%-32px))] -translate-x-1/2 flex-col items-stretch gap-2.5 outline-none',
       className,
     )}
     {...props}
@@ -21,14 +22,19 @@ export const ToastViewport = forwardRef<
 ))
 ToastViewport.displayName = ToastPrimitives.Viewport.displayName
 
+/* 轻量通知卡：无装饰顶线，状态由图标与整体边框表达。 */
 const toastVariants = cva(
-  'group pointer-events-auto relative flex w-full items-start gap-3 overflow-hidden rounded-xl border p-4 pr-8 shadow-glow transition-all data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-80 data-[state=open]:slide-in-from-right-full data-[state=closed]:slide-out-to-right-full',
+  'group pointer-events-auto relative flex w-full items-start gap-3 overflow-hidden rounded-xl border bg-card/95 px-3.5 py-3 pr-10 text-card-foreground shadow-lg backdrop-blur-md '
+    + 'data-[state=open]:animate-toast-in data-[state=closed]:animate-toast-out motion-reduce:animate-none '
+    + 'data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none '
+    + 'data-[swipe=cancel]:translate-x-0 data-[swipe=cancel]:transition-transform data-[swipe=cancel]:duration-200 '
+    + 'data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)]',
   {
     variants: {
       variant: {
-        default: 'border-border bg-card text-card-foreground',
-        success: 'border-success/30 bg-card text-card-foreground',
-        destructive: 'border-destructive/40 bg-card text-card-foreground',
+        default: 'border-border/90',
+        success: 'border-success/25',
+        destructive: 'border-destructive/30',
       },
     },
     defaultVariants: { variant: 'default' },
@@ -50,13 +56,14 @@ export const ToastClose = forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      'absolute right-2 top-2 rounded-md p-1 text-muted-foreground/70 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100',
+      'absolute right-2 top-2 rounded-md p-1 text-muted-foreground/70 transition-colors hover:bg-wash hover:text-foreground focus-visible:text-foreground',
       className,
     )}
     toast-close=""
+    aria-label="关闭通知"
     {...props}
   >
-    <X className="h-4 w-4" />
+    <X className="h-3.5 w-3.5" aria-hidden />
   </ToastPrimitives.Close>
 ))
 ToastClose.displayName = ToastPrimitives.Close.displayName
@@ -65,7 +72,7 @@ export const ToastTitle = forwardRef<
   React.ElementRef<typeof ToastPrimitives.Title>,
   React.ComponentPropsWithoutRef<typeof ToastPrimitives.Title>
 >(({ className, ...props }, ref) => (
-  <ToastPrimitives.Title ref={ref} className={cn('text-sm font-semibold', className)} {...props} />
+  <ToastPrimitives.Title ref={ref} className={cn('text-sm font-semibold leading-5', className)} {...props} />
 ))
 ToastTitle.displayName = ToastPrimitives.Title.displayName
 
@@ -73,6 +80,10 @@ export const ToastDescription = forwardRef<
   React.ElementRef<typeof ToastPrimitives.Description>,
   React.ComponentPropsWithoutRef<typeof ToastPrimitives.Description>
 >(({ className, ...props }, ref) => (
-  <ToastPrimitives.Description ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props} />
+  <ToastPrimitives.Description
+    ref={ref}
+    className={cn('break-words text-xs leading-5 text-muted-foreground', className)}
+    {...props}
+  />
 ))
 ToastDescription.displayName = ToastPrimitives.Description.displayName

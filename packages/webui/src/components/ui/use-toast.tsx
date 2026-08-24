@@ -29,9 +29,21 @@ const ToastContext = createContext<ToastApi | null>(null)
 let counter = 0
 
 const icons: Record<ToastVariant, ReactNode> = {
-  default: <Info className="mt-0.5 h-5 w-5 text-primary" />,
-  success: <CheckCircle2 className="mt-0.5 h-5 w-5 text-success" />,
-  destructive: <AlertTriangle className="mt-0.5 h-5 w-5 text-destructive" />,
+  default: (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-primary/15 bg-primary/10 text-primary">
+      <Info className="h-4 w-4" aria-hidden />
+    </span>
+  ),
+  success: (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-success/20 bg-success/10 text-success">
+      <CheckCircle2 className="h-4 w-4" aria-hidden />
+    </span>
+  ),
+  destructive: (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-destructive/20 bg-destructive/10 text-destructive">
+      <AlertTriangle className="h-4 w-4" aria-hidden />
+    </span>
+  ),
 }
 
 export function ToastHost({ children }: { children: ReactNode }) {
@@ -66,7 +78,7 @@ export function ToastHost({ children }: { children: ReactNode }) {
             }}
           >
             {icons[item.variant]}
-            <div className="grid gap-0.5">
+            <div className="min-w-0 flex-1">
               {item.title && <ToastTitle>{item.title}</ToastTitle>}
               {item.description && <ToastDescription>{item.description}</ToastDescription>}
             </div>
@@ -79,6 +91,7 @@ export function ToastHost({ children }: { children: ReactNode }) {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- toast hook 与 Host 组件同文件
 export function useToast() {
   const ctx = useContext(ToastContext)
   if (!ctx) throw new Error('useToast must be used within ToastHost')

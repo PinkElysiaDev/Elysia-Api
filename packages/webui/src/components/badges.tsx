@@ -1,46 +1,99 @@
-import { Badge } from './ui/badge'
+import { FileText, Zap, type LucideIcon } from 'lucide-react'
 import type { Platform, ModelType, GroupStrategy } from '@/lib/types'
+import { protocolLabel } from '@/lib/protocol'
+import { cn } from '@/lib/utils'
 
-const PLATFORM_LABEL: Record<string, string> = {
-  // 新的 apiFormat 命名
-  responses: 'Responses API',
-  chat_completions: 'Chat Completions API',
-  anthropic: 'Anthropic API',
-  gemini: 'Gemini API',
-  // relay FormatType 值（usage 日志的 sourceFormat/targetFormat 用这套）
-  openai_responses: 'Responses API',
-  openai: 'Chat Completions API',
-  claude: 'Anthropic API',
-  // 旧值向后兼容（库里可能仍是这些）
-  'openai-compatible': 'Chat Completions API',
+/* ---------- 状态点 ---------- */
+
+export function Dot({ state, className }: { state: 'ok' | 'err' | 'off'; className?: string }) {
+  return <span aria-hidden className={cn('dot', `dot-${state}`, className)} />
+}
+
+/* ---------- 状态码胶囊 ---------- */
+
+export function CodePill({ code, className }: { code: number; className?: string }) {
+  if (code === 0) return <span className={cn('font-mono text-xs text-muted-foreground', className)}>—</span>
+  const s2 = code >= 200 && code < 400
+  return (
+    <span
+      className={cn(
+        'tnum inline-flex items-center rounded-[5px] border px-[7px] py-0.5 font-mono text-xs font-medium',
+        s2
+          ? 'border-[color-mix(in_srgb,var(--jade)_26%,transparent)] bg-[color-mix(in_srgb,var(--jade)_9%,transparent)] text-jade'
+          : 'border-[color-mix(in_srgb,var(--ember)_28%,transparent)] bg-[color-mix(in_srgb,var(--ember)_9%,transparent)] text-ember',
+        className,
+      )}
+    >
+      {code}
+    </span>
+  )
 }
 
 export function PlatformBadge({ platform }: { platform: Platform | string }) {
-  if (platform.toLowerCase().startsWith('custom:')) {
-    return <Badge variant="outline">Custom · {platform.slice('custom:'.length)}</Badge>
+  return (
+    <span className="inline-flex whitespace-nowrap font-mono text-2xs text-muted-foreground">
+      {protocolLabel(platform, 'short')}
+    </span>
+  )
+}
+
+/* ---------- 能力 / 策略 chip ---------- */
+
+export function CapChip({
+  icon: Icon,
+  children,
+  className,
+  title,
+}: {
+  icon?: LucideIcon
+  children: React.ReactNode
+  className?: string
+  title?: string
+}) {
+  return (
+    <span
+      title={title}
+      className={cn(
+        'inline-flex items-center gap-1 rounded border border-border px-1.5 py-px text-2xs text-muted-foreground',
+        className,
+      )}
+    >
+      {Icon && <Icon className="h-[11px] w-[11px]" aria-hidden />}
+      {children}
+    </span>
+  )
+}
+
+/* ---------- 流式图标态 ---------- */
+
+export function StreamIcon({
+  streaming,
+  type,
+  className,
+}: {
+  streaming?: boolean
+  type?: ModelType | string
+  className?: string
+}) {
+  if (type === 'embedding') {
+    return (
+      <span className={cn('inline-flex items-center gap-1 text-2xs text-muted-foreground', className)}>
+        <FileText className="h-[11px] w-[11px]" aria-hidden />
+      </span>
+    )
   }
-  return <Badge variant="outline">{PLATFORM_LABEL[platform] ?? platform}</Badge>
-}
-
-const TYPE_LABEL: Record<string, string> = {
-  llm: 'LLM',
-  embedding: 'Embedding',
-  reranker: 'Reranker',
-}
-
-export function ModelTypeBadge({ type }: { type: ModelType | string }) {
-  return <Badge variant="secondary">{TYPE_LABEL[type] ?? type}</Badge>
-}
-
-export function EnabledBadge({ enabled }: { enabled: boolean }) {
-  return enabled ? <Badge variant="success">已启用</Badge> : <Badge variant="muted">已停用</Badge>
-}
-
-export function StatusCodeBadge({ code }: { code: number }) {
-  if (code === 0) return <Badge variant="muted">—</Badge>
-  if (code >= 200 && code < 400) return <Badge variant="success">{code}</Badge>
-  if (code >= 400 && code < 500) return <Badge variant="destructive">{code}</Badge>
-  return <Badge variant="destructive">{code}</Badge>
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 text-2xs',
+        streaming ? 'text-jade' : 'text-muted-foreground',
+        className,
+      )}
+      title={streaming ? '流式' : '非流式'}
+    >
+      <Zap className="h-[11px] w-[11px]" aria-hidden strokeWidth={2} />
+    </span>
+  )
 }
 
 const STRATEGY_LABEL: Record<GroupStrategy, string> = {
@@ -50,5 +103,5 @@ const STRATEGY_LABEL: Record<GroupStrategy, string> = {
 }
 
 export function StrategyBadge({ strategy }: { strategy: GroupStrategy | string }) {
-  return <Badge variant="outline">{STRATEGY_LABEL[strategy as GroupStrategy] ?? strategy}</Badge>
+  return <CapChip>{STRATEGY_LABEL[strategy as GroupStrategy] ?? strategy}</CapChip>
 }

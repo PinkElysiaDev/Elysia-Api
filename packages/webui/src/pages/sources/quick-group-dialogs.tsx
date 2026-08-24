@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils'
 import type { Model, ModelGroup } from '@/lib/types'
 
 /** 从选中成员推导组能力（方向1）：任一成员支持即开启（视觉与工具同语义）。 */
+// eslint-disable-next-line react-refresh/only-export-components -- 纯推导函数与对话框组件同文件
 export function deriveGroupCapabilities(models: Model[]): { visionCapable: boolean; toolsCapable: boolean } {
   return {
     visionCapable: models.some((m) => m.visionCapable),

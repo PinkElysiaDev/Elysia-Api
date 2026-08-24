@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Check, Copy, Eye, EyeOff, KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
-import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
   Dialog,
   DialogContent,
@@ -17,14 +15,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { AsyncState } from '@/components/ui/states'
-import { EnabledBadge } from '@/components/badges'
+import { CapChip } from '@/components/badges'
 import { SecretInput } from '@/components/secret-input'
 import { CopyButton } from '@/components/copy-button'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
-import { useTokens, useGroups } from '@/lib/hooks'
+import { useTokens, useGroups, revalidate } from '@/lib/hooks'
 import { api } from '@/lib/api'
-import { cn } from '@/lib/utils'
+import { cn, formatDateTime } from '@/lib/utils'
 import type { ApiToken } from '@/lib/types'
 
 export function TokensPage() {
@@ -34,6 +32,7 @@ export function TokensPage() {
   const { data: groups } = useGroups()
   const [editing, setEditing] = useState<ApiToken | null>(null)
   const [formOpen, setFormOpen] = useState(false)
+  const [switchBusy, setSwitchBusy] = useState<string | null>(null)
 
   // 当前存在的模型组名集合，用于标记列表中已失效的组名。
   const validGroupNames = new Set((groups ?? []).map((g) => g.name))
@@ -46,6 +45,19 @@ export function TokensPage() {
   function openEdit(token: ApiToken) {
     setEditing(token)
     setFormOpen(true)
+  }
+
+  async function toggleToken(token: ApiToken) {
+    setSwitchBusy(token.name)
+    try {
+      await api.updateToken(token.name, { ...token, enabled: !token.enabled })
+      await Promise.all([mutate(), revalidate.usage()])
+      toast.success(token.enabled ? '已停用 API Key' : '已启用 API Key', token.name)
+    } catch (err) {
+      toast.error('操作失败', (err as Error).message)
+    } finally {
+      setSwitchBusy(null)
+    }
   }
 
   async function handleDelete(token: ApiToken) {
@@ -65,95 +77,103 @@ export function TokensPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <>
       <PageHeader
-        title="API Keys"
-        description="转发客户端访问所用的密钥"
+        title="访问令牌"
+        description="签发给转发客户端的 API Key，可限定可访问的模型组。"
         actions={
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" /> 新增 API Key
+          <Button variant="primary" onClick={openCreate}>
+            <Plus /> 新增令牌
           </Button>
         }
       />
 
-      <Card>
-        <AsyncState
-          isLoading={isLoading}
-          error={error}
-          data={data}
-          onRetry={() => mutate()}
-          loadingColumns={5}
-          emptyIcon={<KeyRound className="h-7 w-7" />}
-          emptyTitle="还没有 API Key"
-          emptyDescription="创建一个 Key，供转发客户端鉴权使用。"
-          emptyAction={
-            <Button onClick={openCreate}>
-              <Plus className="h-4 w-4" /> 新增 API Key
-            </Button>
-          }
-        >
-          {(tokens) => (
-            <Table>
+      <AsyncState
+        isLoading={isLoading}
+        error={error}
+        data={data}
+        onRetry={() => mutate()}
+        loadingColumns={5}
+        emptyIcon={<KeyRound className="h-7 w-7" />}
+        emptyTitle="还没有访问令牌"
+        emptyDescription="创建一个 Key，供转发客户端鉴权使用。"
+        emptyAction={
+          <Button variant="primary" onClick={openCreate}>
+            <Plus /> 新增令牌
+          </Button>
+        }
+      >
+        {(tokens) => (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
               <TableHeader>
                 <TableRow>
                   <TableHead>名称</TableHead>
                   <TableHead>Key</TableHead>
                   <TableHead>可访问模型组</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>创建时间</TableHead>
+                  <TableHead className="text-center">启停</TableHead>
+                  <TableHead className="text-center">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {tokens.map((token) => (
                   <TableRow key={token.name}>
-                    <TableCell className="font-medium">{token.name}</TableCell>
+                    <TableCell className="font-semibold">{token.name}</TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
-                      <div className="flex items-center gap-1.5">
+                      <span className="flex items-center gap-1.5">
                         <RevealCopyButton name={token.name} maskedToken={token.token || '••••'} />
-                      </div>
+                      </span>
                     </TableCell>
                     <TableCell>
                       {token.allowedGroups && token.allowedGroups.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
+                        <span className="flex flex-wrap gap-1">
                           {token.allowedGroups.map((g) => (
-                            <Badge
+                            <CapChip
                               key={g}
-                              variant={validGroupNames.has(g) ? 'secondary' : 'muted'}
-                              className={validGroupNames.has(g) ? undefined : 'line-through opacity-60'}
+                              className={cn(!validGroupNames.has(g) && 'line-through opacity-60')}
                               title={validGroupNames.has(g) ? undefined : '该模型组已不存在，编辑后将自动清除'}
                             >
                               {g}
-                            </Badge>
+                            </CapChip>
                           ))}
-                        </div>
+                        </span>
                       ) : (
-                        <Badge variant="muted">全部</Badge>
+                        <span className="text-xs text-muted-foreground">全部</span>
                       )}
                     </TableCell>
-                    <TableCell>
-                      <EnabledBadge enabled={token.enabled} />
+                    <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+                      {token.createdAt ? formatDateTime(token.createdAt) : '—'}
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-1">
+                    <TableCell className="text-center">
+                      <Switch
+                        checked={token.enabled}
+                        disabled={switchBusy === token.name}
+                        onCheckedChange={() => toggleToken(token)}
+                        aria-label={`${token.enabled ? '停用' : '启用'} ${token.name}`}
+                      />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex items-center justify-center gap-0.5">
                         <Button variant="ghost" size="iconSm" title="编辑" onClick={() => openEdit(token)}>
-                          <Pencil className="h-4 w-4" />
+                          <Pencil />
                         </Button>
-                        <Button variant="ghost" size="iconSm" title="删除" onClick={() => handleDelete(token)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
+                        <Button variant="danger" size="iconSm" title="删除" onClick={() => handleDelete(token)}>
+                          <Trash2 />
                         </Button>
                       </div>
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
-          )}
-        </AsyncState>
-      </Card>
+            </table>
+          </div>
+        )}
+      </AsyncState>
 
       <TokenFormDialog open={formOpen} onOpenChange={setFormOpen} token={editing} onSaved={() => mutate()} />
       {dialog}
-    </div>
+    </>
   )
 }
 
@@ -210,7 +230,7 @@ function RevealCopyButton({ name, maskedToken }: { name: string; maskedToken: st
         {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
       </Button>
       <Button variant="ghost" size="iconSm" title="复制完整 Key" disabled={busy} onClick={handleCopy}>
-        {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+        {copied ? <Check className="h-3.5 w-3.5 text-jade" /> : <Copy className="h-3.5 w-3.5" />}
       </Button>
     </>
   )
@@ -284,7 +304,7 @@ function TokenFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{isEdit ? '编辑 API Key' : '新增 API Key'}</DialogTitle>
+          <DialogTitle>{isEdit ? '编辑访问令牌' : '新增访问令牌'}</DialogTitle>
           <DialogDescription>明文 Key 仅在此处录入，保存后不再展示完整值。</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
@@ -324,10 +344,10 @@ function TokenFormDialog({
                       type="button"
                       onClick={() => toggleGroup(g.name)}
                       className={cn(
-                        'rounded-full border px-3 py-1 text-xs transition-colors',
+                        'inline-flex h-[29px] items-center gap-1.5 rounded-full border px-3 text-xs transition-colors',
                         active
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border bg-background text-muted-foreground hover:text-foreground',
+                          ? 'border-rose bg-wash font-semibold text-rose'
+                          : 'border-border bg-card text-muted-foreground hover:text-foreground',
                       )}
                     >
                       {g.name}
@@ -346,7 +366,7 @@ function TokenFormDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             取消
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button variant="primary" onClick={handleSave} disabled={saving}>
             {saving ? '保存中…' : '保存'}
           </Button>
         </DialogFooter>

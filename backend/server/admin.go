@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,6 +54,8 @@ func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
 	admin.PUT("/api-tokens/:name", s.adminUpsertToken)
 	admin.DELETE("/api-tokens/:name", s.adminDeleteToken)
 	admin.GET("/usage/stats", s.adminUsageStats)
+	admin.GET("/usage/trend", s.adminUsageTrend)
+	admin.GET("/usage/by-model", s.adminUsageByModel)
 	admin.GET("/usage/logs", s.adminUsageLogs)
 	admin.GET("/usage/logs/:id", s.adminUsageLogDetail)
 	admin.POST("/usage/reset", s.adminUsageReset)
@@ -620,6 +623,39 @@ func (s *Server) adminDeleteToken(c *gin.Context) {
 	ok(c, gin.H{"deleted": true})
 }
 
+// adminUsageTrend 按请求方提供的固定 UTC offset 聚合本地日趋势。
+func (s *Server) adminUsageTrend(c *gin.Context) {
+	store, okStore := s.requireStore(c)
+	if !okStore {
+		return
+	}
+	utcOffsetMinutes, err := strconv.Atoi(c.DefaultQuery("utcOffsetMinutes", "0"))
+	if err != nil || utcOffsetMinutes < -14*60 || utcOffsetMinutes > 14*60 {
+		fail(c, 400, "invalid_utc_offset", "utcOffsetMinutes must be an integer between -840 and 840")
+		return
+	}
+	buckets, err := store.UsageDaily(c.Request.Context(), usageQueryFromRequest(c), utcOffsetMinutes)
+	if err != nil {
+		fail(c, 500, "usage_trend_failed", err.Error())
+		return
+	}
+	ok(c, buckets)
+}
+
+// adminUsageByModel 按模型聚合（热门模型 / 明细表），支持与 stats 相同的时间与多选筛选。
+func (s *Server) adminUsageByModel(c *gin.Context) {
+	store, okStore := s.requireStore(c)
+	if !okStore {
+		return
+	}
+	buckets, err := store.UsageByModel(c.Request.Context(), usageQueryFromRequest(c))
+	if err != nil {
+		fail(c, 500, "usage_by_model_failed", err.Error())
+		return
+	}
+	ok(c, buckets)
+}
+
 func (s *Server) adminUsageStats(c *gin.Context) {
 	store, okStore := s.requireStore(c)
 	if !okStore {
@@ -691,6 +727,10 @@ func (s *Server) adminHealth(c *gin.Context) {
 
 func usageQueryFromRequest(c *gin.Context) storage.UsageQuery {
 	from, to := usageTimeRange(c)
+	status := strings.ToLower(strings.TrimSpace(c.Query("status")))
+	if status != "success" && status != "failed" {
+		status = ""
+	}
 	// 多选筛选：QueryArray 收集重复出现的同名参数（?keyName=a&keyName=b）；
 	// 为空时下沉到单值字段，保持与旧调用方（含遗留 /__usage 面板）的兼容。
 	return storage.UsageQuery{
@@ -702,6 +742,7 @@ func usageQueryFromRequest(c *gin.Context) storage.UsageQuery {
 		KeyHash:    c.Query("keyHash"),
 		GroupName:  firstNonEmpty(c.Query("groupName"), c.Query("modelGroup")),
 		ModelName:  c.Query("modelName"),
+		Status:     status,
 		StatusCode: parsePositiveInt(c.Query("statusCode"), 0),
 		KeyNames:   c.QueryArray("keyName"),
 		GroupNames: firstNonEmptyArray(c.QueryArray("groupName"), c.QueryArray("modelGroup")),
