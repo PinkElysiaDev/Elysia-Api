@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, BookOpen, Eye, EyeOff, RefreshCw, RotateCcw, Save, Settings, Database, Shield, Network } from 'lucide-react'
+import { AlertTriangle, Eye, EyeOff, RefreshCw, RotateCcw, Save } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { SectionHeader } from '@/components/section-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -86,55 +86,61 @@ export function RuntimeConfigPage() {
 
   if (isLoading && !form) {
     return (
-      <div className="space-y-6">
+      <>
         <PageHeader title="运行配置" description="查看与修改后端运行参数" />
-        <Card>
-          <LoadingState rows={4} columns={2} />
-        </Card>
-      </div>
+        <LoadingState rows={4} columns={2} />
+      </>
     )
   }
 
   if (error) {
     return (
-      <div className="space-y-6">
+      <>
         <PageHeader title="运行配置" description="查看与修改后端运行参数" />
-        <Card>
-          <ErrorState message={(error as Error).message} onRetry={() => mutate()} />
-        </Card>
-      </div>
+        <ErrorState message={(error as Error).message} onRetry={() => mutate()} />
+      </>
     )
   }
 
   if (!form) return null
 
   return (
-    <div className="space-y-6">
+    <>
       <PageHeader
         title="运行配置"
         description="可热更新 logLevel 与 httpTimeout；host/port/databasePath 变更需重启后端"
         actions={
-          <Button onClick={handleSave} disabled={saving}>
-            <Save className="h-4 w-4" /> {saving ? '保存中…' : '保存'}
-          </Button>
+          <>
+            <Button
+              onClick={async () => {
+                try {
+                  await api.reload()
+                  toast.success('已触发热重载')
+                } catch (err) {
+                  toast.error('热重载失败', (err as Error).message)
+                }
+              }}
+            >
+              <RefreshCw /> 重载配置
+            </Button>
+            <Button variant="primary" onClick={handleSave} disabled={saving}>
+              <Save /> {saving ? '保存中…' : '保存'}
+            </Button>
+          </>
         }
       />
 
       {restartNotice && (
-        <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/8 px-4 py-3 text-sm">
-          <AlertTriangle className="h-4 w-4 text-primary" />
+        <div className="flex items-center gap-2 rounded-[7px] border border-[color-mix(in_srgb,var(--amber)_35%,transparent)] bg-[color-mix(in_srgb,var(--amber)_7%,transparent)] px-4 py-3 text-sm text-amber">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
           部分配置已变更，需要手动重启或通过服务管理器重启后端才能生效。
         </div>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings className="h-4 w-4 text-primary" /> 监听与超时
-          </CardTitle>
-          <CardDescription>修改 host 或 port 后需要重启后端进程。</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
+      {/* 服务 */}
+      <section className="pt-8 first:pt-0">
+        <SectionHeader title="服务" />
+        <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label>Host</Label>
             <Input value={form.host} placeholder="127.0.0.1" onChange={(e) => update('host', e.target.value)} />
@@ -174,17 +180,60 @@ export function RuntimeConfigPage() {
               onChange={(e) => update('httpTimeout', Math.max(0, Number(e.target.value) || 0))}
             />
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Database className="h-4 w-4 text-primary" /> 数据库
-          </CardTitle>
-          <CardDescription>修改数据库路径需重启后端生效。</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
+      {/* 安全 */}
+      <section className="pt-8 first:pt-0">
+        <SectionHeader title="安全" />
+        <div className="max-w-xl space-y-4">
+          <div className="space-y-2">
+            <Label>Panel Access Token</Label>
+            <p className="text-xs text-muted-foreground">用于 WebUI 面板登录与管理 API 鉴权的令牌；留空提交则保持不变。</p>
+            <div className="flex gap-2">
+              <Input
+                type={showToken ? 'text' : 'password'}
+                value={form.panelAccessToken}
+                placeholder="输入新的 Panel Access Token"
+                onChange={(e) => update('panelAccessToken', e.target.value)}
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                type="button"
+                title={showToken ? '隐藏' : '显示'}
+                onClick={() => setShowToken(!showToken)}
+              >
+                {showToken ? <EyeOff /> : <Eye />}
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-2 rounded-[7px] border border-border p-3.5">
+            <label className="flex items-center gap-3">
+              <Switch
+                checked={form.allowFakeIPOutbound}
+                onCheckedChange={(v) => update('allowFakeIPOutbound', v)}
+              />
+              <span className="text-sm font-medium">允许 fake-ip 段出站（TUN 虚拟网卡）</span>
+            </label>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              开启后放行 Clash/Mihomo TUN fake-ip 段（198.18.0.0/15、240.0.0.0/4），解决全局 TUN 代理下
+              上游域名被解析为假 IP 而遭 SSRF 守卫误杀返回 403 的问题。真实内网、云元数据 169.254.169.254、
+              环回等段仍被拦截。变更即时生效，无需重启。
+            </p>
+            {form.allowFakeIPOutbound && (
+              <p className="flex items-center gap-2 text-xs text-amber">
+                <AlertTriangle className="h-3 w-3" /> 已放宽 SSRF 出站校验，请确保上游 baseUrl 可信。
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* 数据库 */}
+      <section className="pt-8 first:pt-0">
+        <SectionHeader title="数据库" />
+        <div className="max-w-xl space-y-2">
           <Label>数据库路径</Label>
           <div className="flex gap-2">
             <Input
@@ -199,57 +248,26 @@ export function RuntimeConfigPage() {
               title="重置为默认路径"
               onClick={() => update('databasePath', data?.defaultDatabasePath ?? '')}
             >
-              <RotateCcw className="h-4 w-4" />
+              <RotateCcw />
             </Button>
           </div>
           {data?.defaultDatabasePath && form.databasePath !== data.defaultDatabasePath && (
             <p className="text-xs text-muted-foreground">
-              默认路径：<code className="rounded bg-muted px-1 py-0.5 font-mono">{data.defaultDatabasePath}</code>
+              默认路径：<code className="rounded bg-code px-1 py-0.5 font-mono">{data.defaultDatabasePath}</code>
+              （修改路径需重启后端生效）
             </p>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="h-4 w-4 text-primary" /> Panel Access Token
-          </CardTitle>
-          <CardDescription>用于 WebUI 面板登录与管理 API 鉴权的令牌。</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <Label>Token</Label>
-          <div className="flex gap-2">
-            <Input
-              type={showToken ? 'text' : 'password'}
-              value={form.panelAccessToken}
-              placeholder="输入新的 Panel Access Token"
-              onChange={(e) => update('panelAccessToken', e.target.value)}
-            />
-            <Button
-              variant="outline"
-              size="icon"
-              type="button"
-              title={showToken ? '隐藏' : '显示'}
-              onClick={() => setShowToken(!showToken)}
-            >
-              {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <BookOpen className="h-4 w-4 text-primary" /> 模型能力目录
-          </CardTitle>
-          <CardDescription>
+      {/* 高级：模型能力目录 */}
+      <section className="pt-8 first:pt-0">
+        <SectionHeader title="模型能力目录" />
+        <div className="max-w-2xl space-y-4">
+          <p className="text-xs leading-relaxed text-muted-foreground">
             数据源为 models.dev，用于模型刷新时自动回填视觉/工具等能力字段。
             目录定期后台更新并缓存到数据库同目录（model-catalog.json），重启后立即可用。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+          </p>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>
@@ -278,7 +296,7 @@ export function RuntimeConfigPage() {
             </div>
             <div className="space-y-2">
               <Label>目录状态</Label>
-              <div className="flex h-10 items-center">
+              <div className="flex h-[34px] items-center">
                 <Button
                   variant="outline"
                   disabled={catalogRefreshing || form.modelCatalog?.enabled === false}
@@ -303,7 +321,7 @@ export function RuntimeConfigPage() {
                     }
                   }}
                 >
-                  <RefreshCw className={catalogRefreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> 立即更新
+                  <RefreshCw className={catalogRefreshing ? 'animate-spin' : undefined} /> 立即更新
                 </Button>
               </div>
             </div>
@@ -325,56 +343,13 @@ export function RuntimeConfigPage() {
               )}
             </p>
             {catalogStatus?.lastError && (
-              <p className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+              <p className="flex items-center gap-1.5 text-amber">
                 <AlertTriangle className="h-3 w-3" /> 在线更新失败（内置快照/缓存仍可用）：{catalogStatus.lastError}
               </p>
             )}
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Network className="h-4 w-4 text-primary" /> SSRF / 虚拟网卡（TUN fake-ip）
-          </CardTitle>
-          <CardDescription>
-            开启后放行 Clash/Mihomo TUN fake-ip 段（198.18.0.0/15、240.0.0.0/4），解决全局 TUN 代理下
-            上游域名被解析为假 IP 而遭 SSRF 守卫误杀返回 403 的问题。真实内网、云元数据 169.254.169.254、
-            环回等段仍被拦截。变更即时生效，无需重启。
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <label className="flex items-center gap-3">
-            <Switch
-              checked={form.allowFakeIPOutbound}
-              onCheckedChange={(v) => update('allowFakeIPOutbound', v)}
-            />
-            <span className="text-sm font-medium">允许 fake-ip 段出站</span>
-          </label>
-          {form.allowFakeIPOutbound && (
-            <p className="mt-2 flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
-              <AlertTriangle className="h-3 w-3" /> 已放宽 SSRF 出站校验，请确保上游 baseUrl 可信。
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <div>
-        <Button
-          variant="outline"
-          onClick={async () => {
-            try {
-              await api.reload()
-              toast.success('已触发热重载')
-            } catch (err) {
-              toast.error('热重载失败', (err as Error).message)
-            }
-          }}
-        >
-          <RefreshCw className="h-4 w-4" /> 触发热重载
-        </Button>
-      </div>
-    </div>
+        </div>
+      </section>
+    </>
   )
 }

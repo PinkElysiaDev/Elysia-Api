@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { Loader2, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { SecretInput } from '@/components/secret-input'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { Logo } from '@/components/logo'
+import { BrandMark } from '@/components/brand-mark'
+import { RoleWatermark } from '@/components/role-watermark'
 import { setToken } from '@/lib/auth'
 import { verifyToken } from '@/lib/api'
 
@@ -38,24 +38,21 @@ export function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen">
-      <div className="app-aurora" />
-      <div className="absolute right-4 top-4">
+    <div className="relative mx-auto grid min-h-screen w-full max-w-[1600px] place-items-center px-4">
+      <RoleWatermark className="-right-4 top-1/2 -translate-y-1/2 rail:-right-8" />
+
+      <div className="absolute right-[22px] top-[22px] max-rail:right-[14px] max-rail:top-[14px]">
         <ThemeToggle />
       </div>
-      <div className="grid min-h-screen place-items-center px-4">
-        <Card className="w-full max-w-md p-8">
-          <div className="mb-6 flex flex-col items-center gap-4 text-center">
-            <Logo className="scale-110" />
-            <div className="space-y-1">
-              <h1 className="text-xl font-semibold tracking-tight">登录控制台</h1>
-              <p className="text-sm text-muted-foreground">
-                使用后端 config.json 配置的 Panel Access Token 登录
-              </p>
-            </div>
-          </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="relative z-[1] w-full max-w-[400px]">
+        <BrandMark size="login" className="mb-8 justify-center" />
+
+        <div className="rounded-lg border border-border bg-card p-7 shadow-soft">
+          <h1 className="font-display text-xl font-semibold tracking-[0.01em]">登录控制台</h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">使用后端 config.json 配置的 Panel Access Token 登录</p>
+
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="token" required>
                 Panel Access Token
@@ -70,18 +67,18 @@ export function LoginPage() {
                   setError(null)
                 }}
               />
-              {error && <p className="text-sm text-destructive">{error}</p>}
+              {error && <p className="text-xs text-ember">{error}</p>}
             </div>
-            <Button type="submit" className="w-full" size="lg" disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+            <Button type="submit" variant="primary" className="w-full" size="lg" disabled={loading}>
+              {loading ? <Loader2 className="animate-spin" /> : <ShieldCheck />}
               {loading ? '验证中…' : '登录'}
             </Button>
           </form>
+        </div>
 
-          <p className="mt-6 text-center text-xs text-muted-foreground">
-            Token 仅保存在本地浏览器，所有请求通过 Bearer 认证。
-          </p>
-        </Card>
+        <p className="mt-6 text-center text-2xs text-muted-foreground">
+          Token 仅保存在本地浏览器，所有请求通过 Bearer 认证。
+        </p>
       </div>
     </div>
   )
