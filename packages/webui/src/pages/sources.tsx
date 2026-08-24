@@ -220,8 +220,9 @@ export function SourcesPage() {
   async function toggleSource(source: ModelSource) {
     setSwitchBusyId(source.id)
     try {
-      await api.updateSource(source.id, { ...source, enabled: !source.enabled })
-      await mutate()
+      // 专用轻量端点：整源 PUT 会触发「保存后自动同步模型」（重拉上游），启停无需。
+      await api.setSourceEnabled(source.id, !source.enabled)
+      await Promise.all([mutate(), revalidate.models()])
       toast.success(source.enabled ? '已停用模型源' : '已启用模型源', source.name)
     } catch (err) {
       toast.error('操作失败', (err as Error).message)
@@ -342,10 +343,10 @@ export function SourcesPage() {
                 <TableRow>
                   <TableHead className="w-[34px] px-0 text-center" />
                   <TableHead>名称</TableHead>
-                  <TableHead>平台</TableHead>
+                  <TableHead className="text-center">平台</TableHead>
                   <TableHead>Base URL</TableHead>
-                  <TableHead className="num">模型数</TableHead>
-                  <TableHead>拉取策略</TableHead>
+                  <TableHead className="num text-center">模型数</TableHead>
+                  <TableHead className="text-center">拉取策略</TableHead>
                   <TableHead className="text-center">状态</TableHead>
                   <TableHead className="text-center">操作</TableHead>
                 </TableRow>
@@ -394,7 +395,7 @@ export function SourcesPage() {
                           {source.name}
                           <span className="sub">{source.id}</span>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="text-center">
                           <PlatformBadge platform={source.platform} />
                         </TableCell>
                         <TableCell className="max-w-[220px]">
@@ -402,8 +403,8 @@ export function SourcesPage() {
                             {source.baseUrl}
                           </span>
                         </TableCell>
-                        <TableCell className="num">{sourceModels.length}</TableCell>
-                        <TableCell>
+                        <TableCell className="num text-center">{sourceModels.length}</TableCell>
+                        <TableCell className="text-center">
                           <CapChip>{source.autoFetchModels ? '自动拉取' : '手动维护'}</CapChip>
                         </TableCell>
                         <TableCell className="text-center">

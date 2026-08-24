@@ -171,7 +171,7 @@ export function ModelEditDialog({
                 checked={form.visionCapable}
                 onCheckedChange={(v) => setForm((p) => ({ ...p, visionCapable: v }))}
               />
-              <span className="text-sm font-medium">视觉（多模态输入）</span>
+              <span className="text-sm font-medium">视觉</span>
             </label>
             <label className="flex items-center gap-2">
               <Switch checked={form.toolsCapable} onCheckedChange={(v) => setForm((p) => ({ ...p, toolsCapable: v }))} />

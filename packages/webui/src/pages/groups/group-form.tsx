@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
+import { CapChip } from '@/components/badges'
 import { api } from '@/lib/api'
 import { revalidate, useModels, useSources } from '@/lib/hooks'
 import { cn } from '@/lib/utils'
@@ -61,8 +62,11 @@ export function GroupFormDialog({
   const [form, setForm] = useState<ModelGroup>(emptyGroup())
   const [saving, setSaving] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
+  // 模型列表筛选：能力（vision/tools/structured）与模型源；与搜索词叠加。
+  const [capFilter, setCapFilter] = useState<'all' | 'vision' | 'tools' | 'structured'>('all')
+  const [sourceFilter, setSourceFilter] = useState<string>('all')
   // 方向1：能力开关是否被用户手动改过。未改过时，选中成员变化会按成员能力
-  // 重新推导预填（vision=任一支持、tools=全部支持）；一旦手动切换即固定。
+  // 重新推导预填（vision=任一支持、tools=任一支持）；一旦手动切换即固定。
   const [capsTouched, setCapsTouched] = useState(false)
 
   const enabledSourceIds = useMemo(() => {
@@ -77,6 +81,8 @@ export function GroupFormDialog({
     if (open) {
       setForm(group ? { ...group, models: [...group.models] } : emptyGroup())
       setModelSearch('')
+      setCapFilter('all')
+      setSourceFilter('all')
       setCapsTouched(false)
     }
   }, [open, group])
@@ -116,9 +122,29 @@ export function GroupFormDialog({
   const filteredModels = useMemo(() => {
     const list = (models ?? []).filter((m) => !m.sourceId || enabledSourceIds.has(m.sourceId))
     const kw = modelSearch.trim().toLowerCase()
-    if (!kw) return list
-    return list.filter((m) => `${m.id} ${m.name} ${m.sourceName ?? ''}`.toLowerCase().includes(kw))
-  }, [models, enabledSourceIds, modelSearch])
+    const matched = list.filter((m) => {
+      if (kw && !`${m.id} ${m.name} ${m.sourceName ?? ''}`.toLowerCase().includes(kw)) return false
+      if (sourceFilter !== 'all' && (m.sourceId ?? '') !== sourceFilter) return false
+      if (capFilter === 'vision' && !m.visionCapable) return false
+      if (capFilter === 'tools' && !m.toolsCapable) return false
+      if (capFilter === 'structured' && !m.structuredOutput) return false
+      return true
+    })
+    // 已选模型稳定前置：命中列表中已选的排最前（各分区内部保持缓存顺序）。
+    const selectedKeys = new Set(form.models)
+    const chosen: Model[] = []
+    const rest: Model[] = []
+    for (const m of matched) {
+      (selectedKeys.has(modelKey(m)) ? chosen : rest).push(m)
+    }
+    return [...chosen, ...rest]
+  }, [models, enabledSourceIds, modelSearch, capFilter, sourceFilter, form.models])
+
+  // 模型源筛选项：启用源（与列表可选范围一致）。
+  const sourceOptions = useMemo(
+    () => (sources ?? []).filter((s) => s.enabled),
+    [sources],
+  )
 
   async function handleSave() {
     if (!form.name.trim()) {
@@ -161,7 +187,7 @@ export function GroupFormDialog({
         <div className="grid gap-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label required>组名（对外模型 ID）</Label>
+              <Label required>组名</Label>
               <Input value={form.name} placeholder="gpt-default" onChange={(e) => update('name', e.target.value)} />
             </div>
             <div className="space-y-2">
@@ -185,14 +211,40 @@ export function GroupFormDialog({
               <Label required>组内模型</Label>
               <span className="text-xs text-muted-foreground">已选 {form.models.length} 个</span>
             </div>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                placeholder="搜索模型缓存"
-                value={modelSearch}
-                onChange={(e) => setModelSearch(e.target.value)}
-              />
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative w-44">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="h-9 pl-9"
+                  placeholder="搜索模型缓存"
+                  value={modelSearch}
+                  onChange={(e) => setModelSearch(e.target.value)}
+                />
+              </div>
+              <Select value={capFilter} onValueChange={(v) => setCapFilter(v as typeof capFilter)}>
+                <SelectTrigger className="h-9 w-[118px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部能力</SelectItem>
+                  <SelectItem value="vision">视觉</SelectItem>
+                  <SelectItem value="tools">工具</SelectItem>
+                  <SelectItem value="structured">结构化输出</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                <SelectTrigger className="h-9 w-[150px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部模型源</SelectItem>
+                  {sourceOptions.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-border/70 bg-background/40 p-2">
               {filteredModels.length === 0 && (
@@ -336,6 +388,11 @@ function ModelOption({
         {selected && <Check className="h-3 w-3" />}
       </span>
       <span className="min-w-0 flex-1 truncate">{model.id}</span>
+      <span className="flex shrink-0 items-center gap-1">
+        {model.visionCapable && <CapChip>视觉</CapChip>}
+        {model.toolsCapable && <CapChip>工具</CapChip>}
+        {model.structuredOutput && <CapChip>结构化</CapChip>}
+      </span>
       {model.sourceName && <span className="shrink-0 text-xs text-muted-foreground">{model.sourceName}</span>}
     </button>
   )

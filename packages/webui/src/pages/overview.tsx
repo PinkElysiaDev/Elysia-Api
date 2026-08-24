@@ -40,9 +40,24 @@ function localMidnight(offsetDays = 0, reference = new Date()): Date {
   return d
 }
 
-/** 本地时区的 YYYY-MM-DD（后端趋势按相同固定 UTC offset 分桶）。 */
-function localDateKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+/**
+ * 固定 UTC offset 的"日桶"算术——与后端 UsageDaily 的分桶公式完全一致
+ * （dayKey = UTC 日期 of (ts + offset)；日界 = floor((ts+offset)/86400000)）。
+ * 趋势图的刻度 key 必须用这套算法生成：本地挂钟日（setHours）在 DST 切换日
+ * 与固定 offset 日差 1 小时，会导致 key 对不上后端的桶。
+ */
+const DAY_MS = 86_400_000
+
+/** 第 dayOffset 天（0=今天）的桶起点时间戳（负值=往过去偏移）。 */
+function offsetDayStart(ts: number, offsetMinutes: number, dayOffset = 0): number {
+  const shifted = ts + offsetMinutes * 60_000
+  return (Math.floor(shifted / DAY_MS) + dayOffset) * DAY_MS - offsetMinutes * 60_000
+}
+
+/** 时间戳在固定 offset 分桶下的 YYYY-MM-DD（与后端 date() 输出同构）。 */
+function offsetDayKey(ts: number, offsetMinutes: number): string {
+  const shifted = new Date(ts + offsetMinutes * 60_000)
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`
 }
 
 /** RFC3339 → 本地 HH:mm:ss（日志时间戳统一走本地时区展示）。 */
@@ -184,7 +199,7 @@ export function OverviewPage() {
             <button
               type="button"
               onClick={() => navigate('/diagnostics')}
-              className="inline-flex -translate-y-1 items-center gap-2 rounded-full border border-transparent px-3 py-1.5 text-xs text-muted-foreground transition-all duration-200 hover:border-border hover:bg-card/90 hover:text-foreground hover:shadow-soft hover:backdrop-blur"
+              className="inline-flex -translate-y-1 items-center gap-2 rounded-full border border-transparent py-1.5 pl-2 pr-3 text-xs text-muted-foreground transition-all duration-200 hover:border-border hover:bg-card/90 hover:text-foreground hover:shadow-soft hover:backdrop-blur"
               title="点击查看系统诊断"
             >
               <Dot state={healthState} />
@@ -432,23 +447,25 @@ function TrendSection({ minuteTick }: { minuteTick: number }) {
   const [showReq, setShowReq] = useState(true)
   const [showTok, setShowTok] = useState(true)
 
-  // 后端按日聚合（固定 UTC offset 与浏览器本地日对齐），不受明细 limit 钳制影响
+  // 后端按日聚合（固定 UTC offset），刻度 key 用同一套 offset 算术生成，按构造对齐。
   const params = useMemo(() => {
     const days = range === '7d' ? 7 : 30
     const now = new Date(minuteTick * 60_000)
-    const from = localMidnight(-(days - 1), now)
-    return { from: from.toISOString(), utcOffsetMinutes: -now.getTimezoneOffset() }
+    const offsetMinutes = -now.getTimezoneOffset()
+    const from = offsetDayStart(now.getTime(), offsetMinutes, -(days - 1))
+    return { from: new Date(from).toISOString(), utcOffsetMinutes: offsetMinutes }
   }, [range, minuteTick])
   const { data: buckets, isLoading, error, mutate } = useUsageTrend(params)
 
-  // 补齐空白天，让刻度连续；label 用本地日期
+  // 补齐空白天，让刻度连续；key 用 offsetDayKey 与后端分桶一致（DST 安全）。
   const series = useMemo(() => {
     const byDay = new Map((buckets ?? []).map((b) => [b.date, b]))
     const days = range === '7d' ? 7 : 30
     const now = new Date(minuteTick * 60_000)
+    const offsetMinutes = -now.getTimezoneOffset()
     const out: { date: string; label: string; req: number; tok: number }[] = []
     for (let i = days - 1; i >= 0; i--) {
-      const key = localDateKey(localMidnight(-i, now))
+      const key = offsetDayKey(offsetDayStart(now.getTime(), offsetMinutes, -i), offsetMinutes)
       const b = byDay.get(key)
       out.push({
         date: key,

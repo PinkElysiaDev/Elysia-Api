@@ -540,6 +540,21 @@ func (s *Store) UpdateSourceAPIKeys(ctx context.Context, sourceID string, keys [
 	return err
 }
 
+// UpdateSourceEnabled 仅更新源的启停开关（方向：源级轻量 PATCH）。
+// 与整源 Upsert 不同：不触发「保存后自动同步模型」之类的副作用，也不触碰
+// key/模型数据——启停与模型列表无关，重拉上游纯属多余（可能触发限流）。
+func (s *Store) UpdateSourceEnabled(ctx context.Context, id string, enabled bool) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE model_sources SET enabled = ?, updated_at = ? WHERE id = ?`, boolInt(enabled), nowString(), id)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
+}
+
 func (s *Store) DeleteSource(ctx context.Context, id string) error {
 	// 事务化：删除模型源、其下模型以及组内对该源模型的引用必须原子完成，
 	// 避免第二步失败留下孤儿模型或组内残留旧模型引用。

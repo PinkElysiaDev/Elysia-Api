@@ -914,7 +914,9 @@ func filterUsageRecords(records []usageRecord, c *gin.Context, from, to time.Tim
 	stream := strings.TrimSpace(c.Query("stream"))
 	status := strings.TrimSpace(c.Query("status"))
 	for _, record := range records {
-		if (!from.IsZero() && record.StartedAt.Before(from)) || (!to.IsZero() && record.StartedAt.After(to)) {
+		// 半开区间 [from, to)：与 SQL 侧 started_ms >= ? AND started_ms < ? 口径一致，
+		// 毫秒边界（StartedAt == to）的记录排除，两种部署模式统计归属相同。
+		if (!from.IsZero() && record.StartedAt.Before(from)) || (!to.IsZero() && !record.StartedAt.Before(to)) {
 			continue
 		}
 		if !usageValueMatches(keyNames, record.KeyName) {

@@ -36,6 +36,7 @@ func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
 	admin.PUT("/model-sources/:id", s.adminUpsertSource)
 	admin.DELETE("/model-sources/:id", s.adminDeleteSource)
 	admin.POST("/model-sources/:id/fetch", s.adminFetchSource)
+	admin.PATCH("/model-sources/:id/enabled", s.adminSetSourceEnabled)
 	admin.GET("/model-catalog/status", s.adminModelCatalogStatus)
 	admin.POST("/model-catalog/refresh", s.adminModelCatalogRefresh)
 	admin.GET("/models", s.adminListModels)
@@ -327,6 +328,38 @@ func (s *Server) adminFetchSource(c *gin.Context) {
 	_ = store.InsertSystemLog(c.Request.Context(), "info", "model source refreshed", gin.H{"sourceId": c.Param("id"), "count": summary.Count})
 	s.invalidateRouteCache()
 	ok(c, gin.H{"refreshed": true, "count": summary.Count, "added": summary.Added, "removed": summary.Removed, "keys": summary.Keys})
+}
+
+// adminSetSourceEnabled 仅切换源启停：专用轻量端点，避免整源 PUT 附带的
+// 「保存后自动同步模型」副作用（启停与模型列表无关，重拉上游可能触发限流）。
+func (s *Server) adminSetSourceEnabled(c *gin.Context) {
+	store, okStore := s.requireStore(c)
+	if !okStore {
+		return
+	}
+	var payload struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		fail(c, 400, "invalid_json", err.Error())
+		return
+	}
+	if payload.Enabled == nil {
+		fail(c, 400, "enabled_required", "enabled field is required")
+		return
+	}
+	found, err := store.UpdateSourceEnabled(c.Request.Context(), c.Param("id"), *payload.Enabled)
+	if err != nil {
+		fail(c, 500, "set_source_enabled_failed", err.Error())
+		return
+	}
+	if !found {
+		fail(c, 404, "source_not_found", "model source not found")
+		return
+	}
+	// 路由装配按源 enabled 过滤模型（ListModels/ListGroups 的 join 条件），必须失效。
+	s.invalidateRouteCache()
+	ok(c, gin.H{"updated": true, "enabled": *payload.Enabled})
 }
 
 // adminModelCatalogStatus 返回能力目录（models.dev）的运行状态（方向1）。

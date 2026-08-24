@@ -50,7 +50,13 @@ export function TokensPage() {
   async function toggleToken(token: ApiToken) {
     setSwitchBusy(token.name)
     try {
-      await api.updateToken(token.name, { ...token, enabled: !token.enabled })
+      // 只提交启停所需字段，绝不回传列表里的 token——那是脱敏值（abcd...wxyz），
+      // 整体 PUT 会绕过「留空即不变」把真实密钥覆盖成掩码（密钥永久损坏）。
+      await api.updateToken(token.name, {
+        name: token.name,
+        enabled: !token.enabled,
+        allowedGroups: token.allowedGroups ?? [],
+      })
       await Promise.all([mutate(), revalidate.usage()])
       toast.success(token.enabled ? '已停用 API Key' : '已启用 API Key', token.name)
     } catch (err) {

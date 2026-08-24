@@ -143,11 +143,11 @@ export function GroupsPage() {
                 <TableRow>
                   <TableHead className="w-[34px] px-0 text-center" />
                   <TableHead>名称 / 类型</TableHead>
-                  <TableHead className="num">模型数</TableHead>
+                  <TableHead className="num text-center">模型数</TableHead>
                   <TableHead>成员</TableHead>
-                  <TableHead>策略</TableHead>
-                  <TableHead>重试</TableHead>
-                  <TableHead>并发 / 日限额</TableHead>
+                  <TableHead className="text-center">策略</TableHead>
+                  <TableHead className="text-center">重试</TableHead>
+                  <TableHead className="text-center">并发 / 日限额</TableHead>
                   <TableHead className="text-center">启停</TableHead>
                   <TableHead className="text-center">操作</TableHead>
                 </TableRow>
@@ -177,7 +177,7 @@ export function GroupsPage() {
                             {group.toolsCapable && <CapChip>工具</CapChip>}
                           </span>
                         </TableCell>
-                        <TableCell className="num">{members.length}</TableCell>
+                        <TableCell className="num text-center">{members.length}</TableCell>
                         <TableCell>
                           <span className="flex flex-wrap gap-1">
                             {members.slice(0, 3).map((m) => (
@@ -196,13 +196,13 @@ export function GroupsPage() {
                             )}
                           </span>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="text-center">
                           <StrategyBadge strategy={group.strategy} />
                         </TableCell>
-                        <TableCell className="num text-xs">
+                        <TableCell className="num text-center text-xs">
                           {group.maxRetries} · {group.retryInterval}ms
                         </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
+                        <TableCell className="text-center text-xs text-muted-foreground">
                           <span className="tnum block">{group.maxConcurrency ? `并发 ${group.maxConcurrency}` : '并发不限'}</span>
                           <span className="tnum block">
                             {group.dailyLimitMaxRequests ? `${formatNumber(group.dailyLimitMaxRequests)} 次/日` : '请求不限'}

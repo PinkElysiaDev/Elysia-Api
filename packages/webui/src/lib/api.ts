@@ -134,6 +134,12 @@ export const api = {
   createSource: (body: ModelSource) => request<ModelSource>('/model-sources', { method: 'POST', body }),
   updateSource: (id: string, body: ModelSource) =>
     request<ModelSource>(`/model-sources/${encodeURIComponent(id)}`, { method: 'PUT', body }),
+  /** 仅切换源启停：轻量端点，不触发整源保存附带的模型自动同步。 */
+  setSourceEnabled: (id: string, enabled: boolean) =>
+    request<{ updated: boolean; enabled: boolean }>(`/model-sources/${encodeURIComponent(id)}/enabled`, {
+      method: 'PATCH',
+      body: { enabled },
+    }),
   deleteSource: (id: string) =>
     request<{ deleted: boolean }>(`/model-sources/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   fetchSource: (id: string) =>

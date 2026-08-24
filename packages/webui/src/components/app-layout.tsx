@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 import { Sidebar } from './sidebar'
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
+  const asideRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     setMobileOpen(false)
@@ -26,9 +27,23 @@ export function AppLayout() {
     return () => window.removeEventListener('keydown', onKey)
   }, [mobileOpen])
 
+  // 收起态的侧栏只是平移出屏幕，Tab 仍会聚焦其中的链接。inert 让整棵子树对
+  // 焦点与辅助技术不可达（React 18 不支持布尔 inert prop，经 ref 打属性）。
+  // 仅在 ≤760px 的抽屉布局下生效——桌面端侧栏常驻可见，必须保持可聚焦。
+  useEffect(() => {
+    const aside = asideRef.current
+    if (!aside) return
+    const media = window.matchMedia('(max-width: 760px)')
+    const apply = () => aside.toggleAttribute('inert', media.matches && !mobileOpen)
+    apply()
+    media.addEventListener('change', apply)
+    return () => media.removeEventListener('change', apply)
+  }, [mobileOpen])
+
   return (
     <div className="grid min-h-screen grid-cols-[228px_minmax(0,1fr)] max-rail:grid-cols-1">
       <aside
+        ref={asideRef}
         className={cn(
           'sticky top-0 h-screen w-[228px] border-r border-border',
           'max-rail:fixed max-rail:inset-y-0 max-rail:left-0 max-rail:z-[80] max-rail:h-full max-rail:bg-background max-rail:shadow-lg max-rail:transition-transform max-rail:duration-300',
