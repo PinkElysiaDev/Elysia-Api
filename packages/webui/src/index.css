@@ -3,87 +3,131 @@
 @tailwind utilities;
 
 /*
- * 主题色板：
- *  - 日间：粉色 + 白色（柔和奶白底 + 玫粉主色）
- *  - 夜间：粉色 + 黑色（近黑暖底 + 亮粉主色）
- * 数值沿用后端 usage_dashboard 的配色精神，统一转换为 HSL 以便 Tailwind 调用。
+ * 瓷梅刻印（porcelain / plum-ink）设计 token。
+ * 上半部分沿用 shadcn HSL 语义变量，下半部分提供少量品牌效果变量。
  */
 :root {
-  --background: 345 100% 98%;
-  --foreground: 340 100% 10%;
+  /* ---- shadcn 语义变量（HSL）· 瓷梅浅色 ---- */
+  --background: 330 33% 98%;          /* #FBF7F9 瓷白 */
+  --foreground: 321 22% 13%;          /* #271922 梅墨 */
 
-  --card: 0 0% 100%;
-  --card-foreground: 340 100% 10%;
+  --card: 0 0% 100%;                  /* #FFFFFF */
+  --card-foreground: 321 22% 13%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 340 100% 10%;
+  --popover-foreground: 321 22% 13%;
 
-  --primary: 333 71% 51%;
+  --primary: 333 75% 45%;             /* #C81D6B 玫红 */
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 342 100% 96%;
-  --secondary-foreground: 336 45% 33%;
+  --secondary: 320 33% 95%;           /* #F6EDF3 */
+  --secondary-foreground: 326 10% 42%; /* #75606C */
 
-  --muted: 342 100% 97%;
-  --muted-foreground: 335 28% 49%;
+  --muted: 320 33% 95%;
+  --muted-foreground: 327 11% 59%;    /* #A18B97 */
 
-  --accent: 330 100% 94%;
-  --accent-foreground: 336 60% 32%;
+  --accent: 330 50% 95%;              /* wash 底 */
+  --accent-foreground: 333 75% 37%;
 
-  --destructive: 347 77% 50%;
+  --destructive: 9 75% 44%;           /* #C4361C 余烬 */
   --destructive-foreground: 0 0% 100%;
 
-  --success: 160 84% 32%;
+  --success: 164 80% 30%;             /* #0F8A6A 玉 */
   --success-foreground: 0 0% 100%;
 
-  --border: 343 100% 91%;
-  --input: 343 100% 91%;
-  --ring: 333 71% 51%;
+  --border: 326 25% 89%;              /* #EADCE4 刻线 */
+  --input: 326 25% 89%;
+  --ring: 333 75% 45%;
 
-  --sidebar: 0 0% 100%;
-  --sidebar-foreground: 340 100% 10%;
+  --sidebar: 320 33% 95%;
+  --sidebar-foreground: 321 22% 13%;
 
-  --radius: 0.85rem;
+  --radius: 0.45rem;                  /* 按钮 6px / 卡片 7-8px 的仪器感 */
 
   color-scheme: light;
+
+  /* ---- 品牌效果 token ---- */
+  --rose: hsl(var(--primary));
+  --rose-soft: #E489B0;
+  --orchid: #7C4DBE;
+  --jade: hsl(var(--success));
+  --ember: hsl(var(--destructive));
+  --amber: #9A6B12;
+
+  --wash: rgba(200, 29, 107, 0.055);
+  --code-bg: #F6EEF4;
+
+  --halo-a: rgba(236, 110, 166, 0.20);
+  --halo-b: rgba(148, 104, 222, 0.13);
+
+  --grad-a: var(--rose);              /* 品牌渐变：玫红 → 粉 */
+  --grad-b: #E5699E;
+
+  --scrim: rgba(58, 28, 44, 0.38);
+
+  --shadow-soft: 0 1px 2px rgba(80, 40, 60, 0.05), 0 14px 36px -18px rgba(80, 40, 60, 0.16);
+  --shadow-lg: 0 2px 6px rgba(80, 40, 60, 0.07), 0 28px 70px -28px rgba(80, 40, 60, 0.3);
 }
 
 .dark {
-  --background: 336 45% 5%;
-  --foreground: 327 73% 95%;
+  /* ---- shadcn 语义变量（HSL）· 冷调梅紫夜釉 ---- */
+  --background: 287 27% 6%;           /* #130C15 */
+  --foreground: 290 23% 95%;          /* #F4EFF5 */
 
-  --card: 334 32% 8%;
-  --card-foreground: 327 73% 95%;
+  --card: 290 22% 11%;                /* #1F1521 */
+  --card-foreground: 290 23% 95%;
 
-  --popover: 334 32% 8%;
-  --popover-foreground: 327 73% 95%;
+  --popover: 290 22% 11%;
+  --popover-foreground: 290 23% 95%;
 
-  --primary: 330 86% 70%;
-  --primary-foreground: 336 45% 6%;
+  --primary: 333 84% 64%;             /* #F0559B */
+  --primary-foreground: 287 27% 8%;
 
-  --secondary: 332 30% 14%;
-  --secondary-foreground: 327 60% 92%;
+  --secondary: 300 22% 8%;            /* #191019 */
+  --secondary-foreground: 276 14% 71%; /* #B7ABBF */
 
-  --muted: 332 28% 13%;
-  --muted-foreground: 326 22% 70%;
+  --muted: 290 20% 9%;
+  --muted-foreground: 276 9% 53%;     /* #8A7D93 */
 
-  --accent: 331 35% 18%;
-  --accent-foreground: 327 73% 95%;
+  --accent: 300 35% 12%;
+  --accent-foreground: 333 70% 78%;
 
-  --destructive: 351 95% 82%;
-  --destructive-foreground: 336 45% 8%;
+  --destructive: 9 88% 65%;           /* #F4705A */
+  --destructive-foreground: 287 27% 8%;
 
-  --success: 158 64% 52%;
-  --success-foreground: 336 45% 6%;
+  --success: 160 58% 48%;             /* #2FC794 */
+  --success-foreground: 287 27% 8%;
 
-  --border: 333 30% 22%;
-  --input: 333 30% 22%;
-  --ring: 330 86% 70%;
+  --border: 280 17% 17%;              /* #2F2534 紫灰刻线 */
+  --input: 280 17% 17%;
+  --ring: 333 84% 64%;
 
-  --sidebar: 335 36% 7%;
-  --sidebar-foreground: 327 73% 95%;
+  --sidebar: 300 22% 8%;
+  --sidebar-foreground: 290 23% 95%;
 
   color-scheme: dark;
+
+  /* ---- 品牌 token（暗色）---- */
+  --rose: hsl(var(--primary));
+  --rose-soft: #A63E68;
+  --orchid: #A78BEA;
+  --jade: hsl(var(--success));
+  --ember: hsl(var(--destructive));
+  --amber: #E6AC4E;
+
+  --wash: rgba(240, 85, 155, 0.10);
+  --code-bg: #1C131E;
+
+  --halo-a: rgba(245, 100, 163, 0.17);
+  --halo-b: rgba(157, 92, 224, 0.15);
+
+  --grad-a: var(--rose);              /* 品牌渐变：玫瑰 → 兰花紫 */
+  --grad-b: #9D5CE0;
+
+  --scrim: rgba(6, 3, 10, 0.62);
+
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.35), 0 14px 34px -18px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.42), 0 24px 60px -28px rgba(0, 0, 0, 0.55);
 }
 
 * {
@@ -103,17 +147,25 @@ body {
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* 立绘水印向内容画布右缘出血，clip 掉横向溢出（不产生滚动条，也不破坏 sticky） */
+  overflow-x: clip;
 }
 
-/* 柔和的粉色光晕背景，营造优雅氛围 */
-.app-aurora {
+/* 页面光晕：左上玫粉 + 右下梅紫，双层 radial 挂在 fixed 伪元素上 */
+body::before {
+  content: '';
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(60rem 60rem at 110% -10%, hsl(var(--primary) / 0.12), transparent 60%),
-    radial-gradient(50rem 50rem at -10% 110%, hsl(var(--primary) / 0.08), transparent 55%);
+    radial-gradient(52rem 34rem at 8% -6%, var(--halo-a), transparent 62%),
+    radial-gradient(48rem 36rem at 96% 108%, var(--halo-b), transparent 60%);
+}
+
+::selection {
+  background: var(--wash);
+  color: var(--rose);
 }
 
 /* 滚动条美化 */
@@ -158,4 +210,85 @@ body {
 :focus-visible {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@layer utilities {
+  /* mono 数字等宽对齐（表格 / KPI 数字用） */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 表格数字与副行 */
+  .num {
+    font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .sub {
+    display: block;
+    margin-top: 1px;
+    font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* 状态点（状态视图 / 源健康表）：jade 呼吸光环 / ember / 熄灭 */
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+    display: inline-block;
+  }
+  .dot-ok {
+    background: var(--jade);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--jade) 18%, transparent);
+    animation: breathe 2.6s ease-in-out infinite;
+  }
+  .dot-err {
+    background: var(--ember);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ember) 18%, transparent);
+  }
+  .dot-off {
+    background: hsl(var(--border));
+  }
+
+  /* JSON 高亮（lib/json-highlight.ts 输出）：j-k 键 / j-s 字符串 / j-n 数字 / j-b 布尔 */
+  .j-k {
+    color: hsl(var(--secondary-foreground));
+    font-weight: 500;
+  }
+  .j-s {
+    color: var(--jade);
+  }
+  .j-n {
+    color: var(--amber);
+  }
+  .j-b {
+    color: var(--ember);
+    font-style: italic;
+  }
+
+  /* 立绘水印（总览 .deco .fig）：渐变底；mask 图片路径带 /ui/ base，由组件内联注入 */
+  .role-fig {
+    background: linear-gradient(172deg, var(--grad-a) 8%, var(--grad-b) 92%);
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: bottom center;
+    mask-position: bottom center;
+  }
 }

@@ -62,6 +62,7 @@ export function ConfirmDialog({
 }
 
 /** 命令式确认 hook，简化页面里的状态管理。 */
+// eslint-disable-next-line react-refresh/only-export-components -- 命令式确认 hook 与 Provider 组件同文件
 export function useConfirm() {
   const [state, setState] = useState<{
     open: boolean

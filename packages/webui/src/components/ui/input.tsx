@@ -1,6 +1,9 @@
 import { forwardRef } from 'react'
 import { cn } from '@/lib/utils'
 
+/*
+ * 34px 高、卡片底、玫红 focus（border + 3px wash ring）。
+ */
 export type InputProps = React.InputHTMLAttributes<HTMLInputElement>
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(({ className, type, ...props }, ref) => (
@@ -8,9 +11,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(({ className, type
     type={type}
     ref={ref}
     className={cn(
-      'flex h-10 w-full rounded-lg border border-input bg-background/60 px-3 py-2 text-sm shadow-sm transition-colors',
-      'placeholder:text-muted-foreground/70',
-      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary',
+      'h-[34px] w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm text-foreground transition-[border-color,box-shadow] duration-200',
+      'placeholder:text-muted-foreground',
+      'focus-visible:outline-none focus-visible:border-rose focus-visible:ring-[3px] focus-visible:ring-wash',
       'disabled:cursor-not-allowed disabled:opacity-50',
       'file:border-0 file:bg-transparent file:text-sm file:font-medium',
       className,
@@ -26,8 +29,8 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(({ classN
   <textarea
     ref={ref}
     className={cn(
-      'flex min-h-[80px] w-full rounded-lg border border-input bg-background/60 px-3 py-2 text-sm shadow-sm transition-colors',
-      'placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary',
+      'flex min-h-[80px] w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground transition-[border-color,box-shadow] duration-200',
+      'placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-rose focus-visible:ring-[3px] focus-visible:ring-wash',
       'disabled:cursor-not-allowed disabled:opacity-50',
       className,
     )}

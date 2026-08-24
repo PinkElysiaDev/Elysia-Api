@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import {
-  LayoutDashboard,
+  Activity,
   Database,
   Layers,
   KeyRound,
@@ -8,74 +8,76 @@ import {
   ScrollText,
   Terminal,
   Settings,
-  Activity,
+  Stethoscope,
+  LogOut,
+  type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Logo } from './logo'
+import { clearToken } from '@/lib/auth'
+import { ThemeToggle } from './theme-toggle'
+import { BrandMark } from './brand-mark'
 
-export interface NavItem {
+interface NavItem {
   to: string
   label: string
-  icon: React.ComponentType<{ className?: string }>
+  icon: LucideIcon
   group: string
 }
 
-export const NAV_ITEMS: NavItem[] = [
-  { to: '/overview', label: '概览', icon: LayoutDashboard, group: '总览' },
-  { to: '/sources', label: '模型源', icon: Database, group: '模型配置' },
-  { to: '/groups', label: '模型组', icon: Layers, group: '模型配置' },
-  { to: '/tokens', label: 'API Keys', icon: KeyRound, group: '访问控制' },
+const NAV_ITEMS: NavItem[] = [
+  { to: '/overview', label: '总览', icon: Activity, group: '监控' },
+  { to: '/usage-logs', label: '调用日志', icon: ScrollText, group: '监控' },
+  { to: '/sources', label: '模型源', icon: Database, group: '网关配置' },
+  { to: '/groups', label: '模型组', icon: Layers, group: '网关配置' },
+  { to: '/tokens', label: '访问令牌', icon: KeyRound, group: '网关配置' },
   { to: '/usage', label: 'Usage 统计', icon: BarChart3, group: '观测' },
-  { to: '/usage-logs', label: 'Usage 日志', icon: ScrollText, group: '观测' },
-  { to: '/logs', label: '系统日志', icon: Terminal, group: '观测' },
+  { to: '/logs', label: '系统日志', icon: Terminal, group: '系统' },
   { to: '/runtime', label: '运行配置', icon: Settings, group: '系统' },
-  { to: '/diagnostics', label: '诊断', icon: Activity, group: '系统' },
+  { to: '/diagnostics', label: '诊断', icon: Stethoscope, group: '系统' },
 ]
 
-const GROUP_ORDER = ['总览', '模型配置', '访问控制', '观测', '系统']
+const GROUP_ORDER = ['监控', '网关配置', '观测', '系统']
 
-export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+export function Sidebar() {
   const grouped = GROUP_ORDER.map((group) => ({
     group,
     items: NAV_ITEMS.filter((item) => item.group === group),
   }))
 
   return (
-    <div className="flex h-full flex-col gap-6 bg-sidebar text-sidebar-foreground">
-      <div className="px-5 pt-6">
-        <Logo />
-      </div>
-      <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-6">
+    <div className="flex h-full flex-col gap-[22px] bg-rail-fade py-[22px] pb-[18px] text-sidebar-foreground max-rail:bg-background">
+      <BrandMark className="px-[22px]" />
+
+      <nav aria-label="主导航" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-2">
         {grouped.map(({ group, items }) => (
-          <div key={group} className="space-y-1">
-            <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+          <div key={group} className="flex flex-col gap-0.5">
+            <span className="px-3 pb-1.5 pt-3.5 text-2xs uppercase tracking-[0.18em] text-muted-foreground">
               {group}
-            </p>
+            </span>
             {items.map((item) => {
               const Icon = item.icon
               return (
                 <NavLink
                   key={item.to}
                   to={item.to}
-                  onClick={onNavigate}
                   className={({ isActive }) =>
                     cn(
-                      'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200',
+                      'relative flex w-full items-center gap-[11px] rounded-md px-3 py-[9px] text-sm transition-colors duration-200',
                       isActive
-                        ? 'bg-primary/12 text-primary'
-                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                        ? 'bg-wash font-semibold text-rose'
+                        : 'text-muted-foreground hover:bg-wash hover:text-foreground',
                     )
                   }
                 >
                   {({ isActive }) => (
                     <>
-                      <span
-                        className={cn(
-                          'absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary transition-all duration-200',
-                          isActive ? 'opacity-100' : 'opacity-0',
-                        )}
-                      />
-                      <Icon className="h-[18px] w-[18px] shrink-0" />
+                      {isActive && (
+                        <span
+                          aria-hidden
+                          className="absolute -left-3 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-brand-grad"
+                        />
+                      )}
+                      <Icon className="h-[17px] w-[17px] shrink-0" strokeWidth={1.8} />
                       <span>{item.label}</span>
                     </>
                   )}
@@ -85,6 +87,19 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         ))}
       </nav>
+
+      {/* 底部：主题按钮 · 登出 */}
+      <div className="mt-auto flex items-center justify-between gap-2 border-t border-border px-[22px] pt-3.5">
+        <ThemeToggle />
+        <button
+          onClick={() => clearToken()}
+          aria-label="退出登录"
+          title="退出登录"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-rose hover:bg-wash hover:text-rose"
+        >
+          <LogOut className="h-3.5 w-3.5" />
+        </button>
+      </div>
     </div>
   )
 }

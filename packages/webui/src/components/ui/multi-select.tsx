@@ -126,7 +126,7 @@ export function MultiSelect({
       </div>
 
       {open && (
-        <div className="absolute z-50 mt-1 w-full min-w-[12rem] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-glow">
+        <div className="absolute z-50 mt-1 w-full min-w-[12rem] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-soft">
           <div className="flex items-center gap-2 border-b border-border px-2.5 py-2">
             <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <input
