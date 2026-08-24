@@ -64,6 +64,18 @@ export function percent(part: number, total: number): string {
   return `${((part / total) * 100).toFixed(1)}%`
 }
 
+/** cacheHitRate（0–1）→ 百分比文案。 */
+export function formatHitRate(rate: number): string {
+  return `${(rate * 100).toFixed(1)}%`
+}
+
+/** Recharts 轴刻度共用样式。 */
+export const CHART_TICK = {
+  fontFamily: 'ui-monospace, SF Mono, Menlo, monospace',
+  fontSize: 11,
+  fill: 'hsl(var(--muted-foreground))',
+} as const
+
 /** 紧凑数字：1234 → 1.2k，1200000 → 1.2m。用于 TPM 等大数值的大字展示。 */
 export function compactNumber(value: number | undefined | null): string {
   const n = Number(value || 0)
@@ -72,24 +84,6 @@ export function compactNumber(value: number | undefined | null): string {
   if (abs < 1_000_000) return `${(n / 1000).toFixed(abs < 10_000 ? 1 : 0).replace(/\.0$/, '')}k`
   if (abs < 1_000_000_000) return `${(n / 1_000_000).toFixed(abs < 10_000_000 ? 1 : 0).replace(/\.0$/, '')}m`
   return `${(n / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}b`
-}
-
-/**
- * 速率（每分钟）。count 为请求数或 token 数，from/to 为 ISO 时间串。
- * 跨度无效（缺失或非正）时返回 null，由调用方决定展示占位符。
- */
-export function ratePerMinute(
-  count: number | undefined | null,
-  from: string | undefined | null,
-  to: string | undefined | null,
-): number | null {
-  if (!from || !to) return null
-  const start = new Date(from).getTime()
-  const end = new Date(to).getTime()
-  if (Number.isNaN(start) || Number.isNaN(end)) return null
-  const minutes = (end - start) / 60_000
-  if (minutes <= 0) return null
-  return Number(count || 0) / minutes
 }
 
 /** 去重 + 去空 + 按中文/字母序排序，返回 {value,label} 选项数组，供多选下拉使用。 */
@@ -110,17 +104,6 @@ export function maskMiddle(value: string | undefined): string {
   if (!value) return ''
   if (value.length <= 8) return '***'
   return `${value.slice(0, 4)}…${value.slice(-4)}`
-}
-
-/** RFC3339 时间戳，供 usage 查询参数使用。 */
-export function toRFC3339(date: Date): string {
-  return date.toISOString()
-}
-
-/** 规范化查询结束时间（向下舍入到 1 分钟），避免毫秒级时间戳导致 SWR Cache Key 频繁变动。 */
-export function normalizedNow(intervalMs = 60_000): string {
-  const now = Date.now()
-  return new Date(Math.floor(now / intervalMs) * intervalMs).toISOString()
 }
 
 export function startOfRange(range: '24h' | '7d' | '30d' | 'all', nowIso?: string): string | undefined {

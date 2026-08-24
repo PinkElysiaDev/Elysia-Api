@@ -1,24 +1,33 @@
 import { useMemo, useRef, useState } from 'react'
-import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
-import { BarChart3, CheckCircle2, Cpu, Gauge, Timer } from 'lucide-react'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
+import { BarChart3 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
-import { StatCard } from '@/components/stat-card'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import { Skeleton } from '@/components/ui/skeleton'
+import { SectionHeader } from '@/components/section-header'
+import { KpiCard, KpiGrid } from '@/components/kpi-card'
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ErrorState } from '@/components/ui/states'
 import { MultiSelect } from '@/components/ui/multi-select'
 import { RangeSelect, type RangeKey } from '@/components/range-select'
-import { useUsageStats, useGroups, useModels, useTokens, useMinuteTick } from '@/lib/hooks'
+import { useUsageStats, useUsageByModel, useUsageFilterOptions, useMinuteTick } from '@/lib/hooks'
 import {
+  CHART_TICK,
   compactNumber,
   formatDuration,
+  formatHitRate,
   formatNumber,
-  normalizedNow,
   percent,
-  ratePerMinute,
   startOfRange,
-  uniqueSorted,
 } from '@/lib/utils'
 
 export function UsageStatsPage() {
@@ -28,16 +37,10 @@ export function UsageStatsPage() {
   const [keyNames, setKeyNames] = useState<string[]>([])
   const minuteTick = useMinuteTick()
 
-  const { data: groups } = useGroups()
-  const { data: models } = useModels()
-  const { data: tokens } = useTokens()
-
-  const groupOptions = useMemo(() => uniqueSorted((groups ?? []).map((g) => g.name)), [groups])
-  const modelOptions = useMemo(() => uniqueSorted((models ?? []).map((m) => m.name)), [models])
-  const keyOptions = useMemo(() => uniqueSorted((tokens ?? []).map((t) => t.name)), [tokens])
+  const { groupOptions, modelOptions, keyOptions } = useUsageFilterOptions()
 
   const params = useMemo(() => {
-    const to = normalizedNow()
+    const to = new Date(minuteTick * 60_000).toISOString()
     return {
       from: startOfRange(range, to),
       to,
@@ -45,31 +48,31 @@ export function UsageStatsPage() {
       modelNames: modelNames.length ? modelNames : undefined,
       keyNames: keyNames.length ? keyNames : undefined,
     }
-    // minuteTick 让 to 随时间推进，避免查询窗口冻结在挂载时刻。
- // eslint-disable-next-line react-hooks/exhaustive-deps -- minuteTick 驱动查询窗口随时间推进，不在回调体内使用是有意的
   }, [range, groupNames, modelNames, keyNames, minuteTick])
 
   const { data: stats, isLoading, error, mutate } = useUsageStats(params)
 
-  const successRate = percent(stats?.success ?? 0, stats?.requests ?? 0)
-  // 范围跨度优先用实际首末调用时间（更贴近真实速率），缺失时回退到查询窗口。
-  const spanFrom = stats?.firstUsedAt || params.from
-  const spanTo = stats?.lastUsedAt || params.to
-  const rpm = stats ? ratePerMinute(stats.requests, spanFrom, spanTo) : null
-  const tpm = stats ? ratePerMinute(stats.totalTokens, spanFrom, spanTo) : null
+  // 按模型聚合（后端 SQL 分组，与 stats 同窗口同筛选）
+  const {
+    data: byModelRows,
+    isLoading: byModelLoading,
+    error: byModelError,
+    mutate: retryByModel,
+  } = useUsageByModel(params)
+  const byModel = byModelRows ?? []
 
   const pieData = useMemo(
     () => [
-      { name: '成功', value: stats?.success ?? 0, color: 'hsl(var(--success))' },
-      { name: '失败', value: stats?.failed ?? 0, color: 'hsl(var(--destructive))' },
+      { name: '成功', value: stats?.success ?? 0, color: 'var(--jade)' },
+      { name: '失败', value: stats?.failed ?? 0, color: 'var(--ember)' },
     ],
     [stats],
   )
 
   const tokenData = useMemo(
     () => [
-      { name: '输入', value: stats?.inputTokens ?? 0, color: 'hsl(var(--primary))' },
-      { name: '输出', value: stats?.outputTokens ?? 0, color: 'hsl(160 84% 45%)' },
+      { name: '输入', value: stats?.inputTokens ?? 0, color: 'var(--rose)' },
+      { name: '输出', value: stats?.outputTokens ?? 0, color: 'var(--jade)' },
     ],
     [stats],
   )
@@ -79,107 +82,186 @@ export function UsageStatsPage() {
     const hit = stats?.cacheHitTokens ?? 0
     const miss = Math.max(0, input - hit)
     return [
-      { name: '缓存未命中', value: miss, color: 'hsl(var(--primary))' },
-      { name: '缓存命中', value: hit, color: 'hsl(330 86% 78%)' },
-      { name: '输出', value: stats?.outputTokens ?? 0, color: 'hsl(160 84% 45%)' },
+      { name: '缓存未命中', value: miss, color: 'var(--rose)' },
+      { name: '缓存命中', value: hit, color: 'var(--rose-soft)' },
+      { name: '输出', value: stats?.outputTokens ?? 0, color: 'var(--jade)' },
     ]
   }, [stats])
 
   return (
-    <div className="space-y-6">
+    <>
       <PageHeader title="Usage 统计" description="按时间范围与过滤条件汇总的请求与 token 用量" />
 
-      {/* 过滤条件 */}
-      <Card className="p-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-1.5">
-            <Label className="text-xs">时间范围</Label>
-            <RangeSelect value={range} onChange={setRange} />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">模型组</Label>
-            <MultiSelect options={groupOptions} value={groupNames} onChange={setGroupNames} placeholder="全部模型组" searchPlaceholder="搜索模型组" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">模型</Label>
-            <MultiSelect options={modelOptions} value={modelNames} onChange={setModelNames} placeholder="全部模型" searchPlaceholder="搜索模型" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">调用方 API Key</Label>
-            <MultiSelect options={keyOptions} value={keyNames} onChange={setKeyNames} placeholder="全部调用方" searchPlaceholder="搜索调用方" />
-          </div>
+      {/* 过滤条 */}
+      <div className="flex flex-wrap items-center gap-2.5 border-b border-border py-3">
+        <div className="w-[150px]">
+          <RangeSelect value={range} onChange={setRange} />
         </div>
-      </Card>
+        <div className="min-w-[150px]">
+          <MultiSelect options={groupOptions} value={groupNames} onChange={setGroupNames} placeholder="全部模型组" searchPlaceholder="搜索模型组" />
+        </div>
+        <div className="min-w-[150px]">
+          <MultiSelect options={modelOptions} value={modelNames} onChange={setModelNames} placeholder="全部模型" searchPlaceholder="搜索模型" />
+        </div>
+        <div className="min-w-[140px]">
+          <MultiSelect options={keyOptions} value={keyNames} onChange={setKeyNames} placeholder="全部调用方" searchPlaceholder="搜索调用方" />
+        </div>
+      </div>
 
       {error ? (
-        <Card>
-          <ErrorState message={(error as Error).message} onRetry={() => mutate()} />
-        </Card>
+        <ErrorState message={(error as Error).message} onRetry={() => mutate()} />
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard
-              accent
-              label="成功率"
-              value={isLoading ? <Skeleton className="h-7 w-20" /> : successRate}
-              hint={
-                stats
-                  ? `成功 ${formatNumber(stats.success)} · 失败 ${formatNumber(stats.failed)} · 共 ${formatNumber(stats.requests)}`
-                  : undefined
-              }
-              icon={<CheckCircle2 className="h-5 w-5" />}
-            />
-            <StatCard
-              label="Token 总量"
-              value={isLoading ? <Skeleton className="h-7 w-24" /> : formatNumber(stats?.totalTokens)}
-              hint={stats ? `缓存命中率 ${percent(stats.cacheHitTokens, stats.inputTokens)}` : undefined}
-              icon={<Cpu className="h-5 w-5" />}
-            />
-            <StatCard
-              label="平均耗时"
-              value={isLoading ? <Skeleton className="h-7 w-20" /> : formatDuration(stats?.avgDurationMs)}
-              hint={stats ? `平均首字 ${formatDuration(stats.avgFirstByteMs)}` : undefined}
-              icon={<Timer className="h-5 w-5" />}
-            />
-            <StatCard
-              label="平均吞吐"
-              value={isLoading ? <Skeleton className="h-7 w-20" /> : tpm == null ? '—' : `${compactNumber(tpm)} tpm`}
-              hint={rpm == null ? undefined : `${rpm.toFixed(rpm < 10 ? 2 : rpm < 100 ? 1 : 0)} rpm`}
-              icon={<Gauge className="h-5 w-5" />}
-            />
-          </div>
+          <section aria-label="汇总">
+            <KpiGrid cols={6}>
+              <KpiCard label="请求" value={stats ? formatNumber(stats.requests) : '—'} />
+              <KpiCard
+                label="成功"
+                value={stats ? formatNumber(stats.success) : '—'}
+                deltaTone="up"
+                delta={stats ? `占比 ${percent(stats.success, stats.requests)}` : undefined}
+              />
+              <KpiCard
+                label="失败"
+                value={stats ? formatNumber(stats.failed) : '—'}
+                deltaTone={stats?.failed ? 'down' : 'neutral'}
+                delta={stats ? (stats.failed ? `占比 ${percent(stats.failed, stats.requests)}` : '无失败') : undefined}
+              />
+              <KpiCard label="Token 总量" value={stats ? compactNumber(stats.totalTokens) : '—'} />
+              <KpiCard
+                label="缓存命中"
+                value={stats ? compactNumber(stats.cacheHitTokens) : '—'}
+                delta={stats ? `命中率 ${formatHitRate(stats.cacheHitRate)}` : undefined}
+              />
+              <KpiCard
+                label="平均耗时"
+                value={stats ? formatDuration(stats.avgDurationMs) : '—'}
+                delta={stats ? `平均首字 ${formatDuration(stats.avgFirstByteMs)}` : undefined}
+              />
+            </KpiGrid>
+          </section>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <ChartCard title="请求成功 / 失败">
-              <DonutChart data={pieData} total={stats?.requests ?? 0} centerLabel="请求" />
-            </ChartCard>
-            <ChartCard title="累计 token 分布">
-              <DonutChart data={tokenData} hoverData={tokenHoverData} total={stats?.totalTokens ?? 0} centerLabel="Token" />
-            </ChartCard>
-          </div>
+          {/* 分布环图 */}
+          <section className="border-t border-border pt-6" aria-label="分布">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(320px,100%),1fr))] gap-9">
+              <div>
+                <SectionHeader sm title="请求成功 / 失败" />
+                {isLoading && !stats ? (
+                  <div className="skeleton h-64 rounded-md" />
+                ) : (
+                  <DonutChart data={pieData} total={stats?.requests ?? 0} centerLabel="请求" />
+                )}
+              </div>
+              <div>
+                <SectionHeader sm title="累计 Token 分布" />
+                {isLoading && !stats ? (
+                  <div className="skeleton h-64 rounded-md" />
+                ) : (
+                  <DonutChart data={tokenData} hoverData={tokenHoverData} total={stats?.totalTokens ?? 0} centerLabel="Token" />
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="border-t border-border pt-6" aria-label="按模型">
+            {byModelError ? (
+              <ErrorState className="py-8" message={(byModelError as Error).message} onRetry={() => retryByModel()} />
+            ) : byModelLoading && !byModelRows ? (
+              <div className="skeleton h-[240px] rounded-md" />
+            ) : (
+              <>
+                <SectionHeader
+                  sm
+                  title="按模型请求量"
+                  count={byModel.length > 0 ? `共 ${byModel.length} 个模型` : undefined}
+                />
+                {byModel.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">当前筛选范围内暂无模型调用</p>
+                ) : (
+                  <>
+                    <div className="h-[240px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={byModel.slice(0, 8)} margin={{ top: 8, right: 8, bottom: 0, left: 4 }}>
+                          <CartesianGrid stroke="var(--border)" strokeDasharray="1 5" vertical={false} />
+                          <XAxis
+                            dataKey="model"
+                            tick={CHART_TICK}
+                            tickLine={false}
+                            axisLine={{ stroke: 'var(--border)' }}
+                            interval={0}
+                            tickFormatter={(v: string) => {
+                              const label = v || '—'
+                              return label.length > 12 ? label.slice(0, 11) + '…' : label
+                            }}
+                          />
+                          <YAxis
+                            tick={CHART_TICK}
+                            tickLine={false}
+                            axisLine={false}
+                            width={40}
+                            allowDecimals={false}
+                          />
+                          <Tooltip cursor={{ fill: 'var(--wash)' }} content={<ModelBarTooltip />} />
+                          <Bar dataKey="requests" name="请求数" radius={[2, 2, 0, 0]} maxBarSize={36}>
+                            {byModel.slice(0, 8).map((entry) => (
+                              <Cell key={entry.model || '__unknown__'} fill="var(--rose)" fillOpacity={0.55} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="mt-6 overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>模型</TableHead>
+                            <TableHead className="num">请求数</TableHead>
+                            <TableHead className="num">失败</TableHead>
+                            <TableHead className="num">Tokens</TableHead>
+                            <TableHead className="num">占比</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {byModel.map((row) => (
+                            <TableRow key={row.model || '__unknown__'}>
+                              <TableCell className="max-w-[280px] truncate font-mono text-xs" title={row.model || '未知模型'}>
+                                {row.model || '—'}
+                              </TableCell>
+                              <TableCell className="num">{formatNumber(row.requests)}</TableCell>
+                              <TableCell className="num">
+                                <span className={row.failed > 0 ? 'text-ember' : undefined}>{row.failed}</span>
+                              </TableCell>
+                              <TableCell className="num">{formatNumber(row.tokens)}</TableCell>
+                              <TableCell className="num">{percent(row.requests, stats?.requests ?? 0)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </section>
         </>
       )}
-    </div>
+    </>
   )
 }
 
-function ChartCard({
-  title,
-  description,
-  children,
-}: {
-  title: string
-  description?: string
-  children: React.ReactNode
+function ModelBarTooltip({ active, payload, label }: {
+  active?: boolean
+  payload?: { name?: string; value?: number | string }[]
+  label?: string
 }) {
+  if (!active || !payload?.length) return null
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        {description && <CardDescription>{description}</CardDescription>}
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
+    <div className="rounded-[7px] border border-input bg-card px-[11px] py-2 text-xs shadow-soft tnum">
+      <p className="font-mono text-2xs text-muted-foreground">{label}</p>
+      <p>
+        {payload[0]?.name} <b className="font-semibold">{formatNumber(Number(payload[0]?.value))}</b>
+      </p>
+    </div>
   )
 }
 
@@ -267,7 +349,7 @@ function DonutChart({
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
           {active ? (
             <>
-              <span className="max-w-[8rem] truncate text-2xl font-semibold tracking-tight" style={{ color: active.color }}>
+              <span className="tnum max-w-[8rem] truncate font-display text-xl font-semibold" style={{ color: active.color }}>
                 {formatNumber(active.value)}
               </span>
               <span className="text-xs text-muted-foreground">
@@ -276,7 +358,7 @@ function DonutChart({
             </>
           ) : (
             <>
-              <span className="text-2xl font-semibold tracking-tight">{formatNumber(total)}</span>
+              <span className="tnum font-display text-xl font-semibold">{formatNumber(total)}</span>
               <span className="text-xs text-muted-foreground">{centerLabel}</span>
             </>
           )}
@@ -287,12 +369,12 @@ function DonutChart({
           {activeData.map((entry, index) => (
             <span
               key={entry.name}
-              className="flex cursor-default items-center gap-1.5 text-xs text-muted-foreground transition-opacity"
+              className="tnum flex cursor-default items-center gap-1.5 text-xs text-muted-foreground transition-opacity"
               style={{ opacity: activeIndex == null || activeIndex === index ? 1 : 0.45 }}
               onMouseEnter={() => setActiveIndex(index)}
               onMouseLeave={() => setActiveIndex(null)}
             >
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: entry.color }} />
+              <span className="h-2 w-2 rounded-[2px]" style={{ background: entry.color }} />
               {entry.name} {formatNumber(entry.value)}
             </span>
           ))}

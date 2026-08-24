@@ -174,8 +174,6 @@ export interface UsageStats {
   cacheHitRate: number
   avgDurationMs: number
   avgFirstByteMs: number
-  firstUsedAt?: string
-  lastUsedAt?: string
 }
 
 export interface UsageLogItem {
@@ -201,6 +199,21 @@ export interface UsageLogItem {
   totalTokens: number
   incomingBodyTruncated: boolean
   providerResponseTruncated: boolean
+}
+
+/** 趋势图单日聚合行（date 为浏览器传入固定 UTC offset 后的本地日）。 */
+export interface UsageTrendPoint {
+  date: string
+  requests: number
+  tokens: number
+}
+
+/** 按模型聚合行（热门模型 / 明细表）。 */
+export interface UsageModelStat {
+  model: string
+  requests: number
+  failed: number
+  tokens: number
 }
 
 export interface UsageLogsResult {
@@ -300,6 +313,7 @@ export interface UsageQueryParams {
   keyHash?: string
   groupName?: string
   modelName?: string
+  status?: 'success' | 'failed'
   statusCode?: number
   // 多选筛选：非空时后端按 IN (...) 匹配，优先于对应单值字段。
   keyNames?: string[]
