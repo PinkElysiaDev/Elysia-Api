@@ -94,31 +94,39 @@ export function GroupsPage() {
   }
 
   return (
-    <>
+    <div className="space-y-6">
       <PageHeader
         title="模型组"
-        description="把多个上游模型聚合为一个对客户端暴露的模型 ID，按策略调度与重试。"
+        description="把多个上游模型聚合为一个对外暴露的虚拟模型 ID，支持轮询、顺序与随机负载调度。"
         actions={
           <Button variant="primary" onClick={openCreate}>
-            <Plus /> 新增模型组
+            <Plus className="h-4 w-4" /> 新增模型组
           </Button>
         }
       />
 
-      {/* 策略筛选 + 汇总 */}
-      <div className="flex flex-wrap items-center gap-2.5 border-b border-border py-3">
-        <Seg aria-label="策略筛选" options={STRATEGY_OPTIONS} value={strategyFilter} onChange={setStrategyFilter} />
-        <span className="tnum flex items-center gap-x-4 text-xs text-muted-foreground">
-          <span>
-            <b className="font-semibold text-jade">{enabledCount}</b> 启用
+      {/* 策略筛选 + 汇总状态 */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-card p-3 shadow-soft">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">调度策略</span>
+          <Seg aria-label="策略筛选" options={STRATEGY_OPTIONS} value={strategyFilter} onChange={setStrategyFilter} />
+        </div>
+        <div className="flex items-center gap-4 text-xs">
+          <span className="tnum flex items-center gap-3 text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-jade" />
+              <b className="font-semibold text-foreground">{enabledCount}</b> 启用
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-ember" />
+              <b className="font-semibold text-foreground">{(data ?? []).length - enabledCount}</b> 停用
+            </span>
           </span>
-          <span>
-            <b className="font-semibold text-ember">{(data ?? []).length - enabledCount}</b> 停用
+          <span className="h-3 w-px bg-border" />
+          <span className="text-muted-foreground">
+            共 <b className="tnum font-semibold text-foreground">{(data ?? []).length}</b> 个模型组
           </span>
-        </span>
-        <span className="ml-auto text-xs text-muted-foreground">
-          共 <b className="tnum font-semibold text-foreground">{(data ?? []).length}</b> 个组
-        </span>
+        </div>
       </div>
 
       <AsyncState
@@ -128,149 +136,151 @@ export function GroupsPage() {
         onRetry={() => mutate()}
         loadingColumns={9}
         emptyIcon={<Layers className="h-7 w-7" />}
-        emptyTitle="还没有模型组"
-        emptyDescription="创建模型组，把多个模型聚合为一个对外模型 ID。"
+        emptyTitle="暂无任何模型组"
+        emptyDescription="创建你的第一个模型组，聚合多渠道模型实现负载均衡与故障自动转移。"
         emptyAction={
           <Button variant="primary" onClick={openCreate}>
-            <Plus /> 新增模型组
+            <Plus className="h-4 w-4" /> 新增模型组
           </Button>
         }
       >
         {() => (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[34px] px-0 text-center" />
-                  <TableHead>名称 / 类型</TableHead>
-                  <TableHead className="num text-center">模型数</TableHead>
-                  <TableHead>成员</TableHead>
-                  <TableHead className="text-center">策略</TableHead>
-                  <TableHead className="text-center">重试</TableHead>
-                  <TableHead className="text-center">并发 / 日限额</TableHead>
-                  <TableHead className="text-center">启停</TableHead>
-                  <TableHead className="text-center">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((group) => {
-                  const isOpen = !!expanded[group.id]
-                  const members = group.models ?? []
-                  return (
-                    <Fragment key={group.id}>
-                      <TableRow>
-                        <TableCell className="w-[34px] px-0 text-center">
-                          <button
-                            type="button"
-                            onClick={() => setExpanded((p) => ({ ...p, [group.id]: !p[group.id] }))}
-                            className="rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
-                            aria-label={isOpen ? '收起' : '展开'}
-                          >
-                            <ChevronRight className={cn('h-[15px] w-[15px] transition-transform duration-200', isOpen && 'rotate-90 text-rose')} />
-                          </button>
-                        </TableCell>
-                        <TableCell className="font-semibold">
-                          {group.name}
-                          <span className="mt-1 flex flex-wrap gap-1">
-                            <CapChip>{(group.type || 'llm').toUpperCase()}</CapChip>
-                            {group.visionCapable && <CapChip>视觉</CapChip>}
-                            {group.toolsCapable && <CapChip>工具</CapChip>}
-                          </span>
-                        </TableCell>
-                        <TableCell className="num text-center">{members.length}</TableCell>
-                        <TableCell>
-                          <span className="flex flex-wrap gap-1">
-                            {members.slice(0, 3).map((m) => (
-                              <span
-                                key={m}
-                                className="max-w-[160px] truncate rounded border border-border px-1.5 py-px font-mono text-2xs text-muted-foreground"
-                                title={m}
-                              >
-                                {m}
-                              </span>
-                            ))}
-                            {members.length > 3 && (
-                              <span className="rounded border border-dashed border-border px-1.5 py-px font-mono text-2xs text-muted-foreground">
-                                +{members.length - 3}
-                              </span>
-                            )}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <StrategyBadge strategy={group.strategy} />
-                        </TableCell>
-                        <TableCell className="num text-center text-xs">
-                          {group.maxRetries} · {group.retryInterval}ms
-                        </TableCell>
-                        <TableCell className="text-center text-xs text-muted-foreground">
-                          <span className="tnum block">{group.maxConcurrency ? `并发 ${group.maxConcurrency}` : '并发不限'}</span>
-                          <span className="tnum block">
-                            {group.dailyLimitMaxRequests ? `${formatNumber(group.dailyLimitMaxRequests)} 次/日` : '请求不限'}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Switch
-                            checked={group.enabled}
-                            disabled={switchBusyId === group.id}
-                            onCheckedChange={() => toggleGroup(group)}
-                            aria-label={`${group.enabled ? '停用' : '启用'} ${group.name}`}
-                          />
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex items-center justify-center gap-0.5">
-                            <Button variant="ghost" size="iconSm" title="编辑" onClick={() => openEdit(group)}>
-                              <Pencil />
-                            </Button>
-                            <Button variant="danger" size="iconSm" title="删除" onClick={() => handleDelete(group)}>
-                              <Trash2 />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                      <ExpandRow open={isOpen} colSpan={9} className="pl-11">
-                        {() => members.length === 0 ? (
-                          <p className="py-2 text-sm text-muted-foreground">该组还没有成员，编辑可添加。</p>
-                        ) : (
-                          <div className="flex flex-wrap gap-[7px]">
-                            {members.map((m) => (
-                              <span
-                                key={m}
-                                className="group/chip inline-flex items-center gap-1.5 rounded-md border border-input bg-card px-[9px] py-1 font-mono text-xs text-muted-foreground"
-                              >
-                                <Dot state="ok" />
-                                <span className="max-w-[240px] truncate">{m}</span>
-                                <button
-                                  type="button"
-                                  title="移除成员"
-                                  aria-label={`移除 ${m}`}
-                                  onClick={() => removeMember(group, m)}
-                                  className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-ember"
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </ExpandRow>
-                    </Fragment>
-                  )
-                })}
-                {filtered.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={9} className="py-8 text-center text-sm text-muted-foreground">
-                      没有匹配的模型组
-                    </TableCell>
+          <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-soft">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <TableHeader className="bg-secondary/40">
+                  <TableRow className="border-b border-border/80 hover:bg-transparent">
+                    <TableHead className="w-[38px] px-0 text-center" />
+                    <TableHead className="py-3.5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">组名称 / 类型</TableHead>
+                    <TableHead className="py-3.5 num text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">成员数</TableHead>
+                    <TableHead className="py-3.5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">聚合模型列表</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">调度策略</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">重试规则</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">并发 / 限额</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">状态</TableHead>
+                    <TableHead className="py-3.5 pr-5 text-right font-semibold text-xs uppercase tracking-wider text-muted-foreground">操作</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </table>
+                </TableHeader>
+                <TableBody className="divide-y divide-border/60">
+                  {filtered.map((group) => {
+                    const isOpen = !!expanded[group.id]
+                    const members = group.models ?? []
+                    return (
+                      <Fragment key={group.id}>
+                        <TableRow className="transition-colors hover:bg-secondary/30">
+                          <TableCell className="w-[38px] px-0 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setExpanded((p) => ({ ...p, [group.id]: !p[group.id] }))}
+                              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground hover:bg-secondary"
+                              aria-label={isOpen ? '收起' : '展开'}
+                            >
+                              <ChevronRight className={cn('h-4 w-4 transition-transform duration-200', isOpen && 'rotate-90 text-primary')} />
+                            </button>
+                          </TableCell>
+                          <TableCell className="py-3.5 font-medium text-foreground">
+                            <div>{group.name}</div>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              <CapChip>{(group.type || 'llm').toUpperCase()}</CapChip>
+                              {group.visionCapable && <CapChip>视觉</CapChip>}
+                              {group.toolsCapable && <CapChip>工具</CapChip>}
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-3.5 num text-center text-foreground font-semibold">{members.length}</TableCell>
+                          <TableCell className="py-3.5">
+                            <div className="flex flex-wrap gap-1">
+                              {members.slice(0, 3).map((m) => (
+                                <span
+                                  key={m}
+                                  className="max-w-[160px] truncate rounded border border-border bg-card px-1.5 py-0.5 font-mono text-2xs text-muted-foreground"
+                                  title={m}
+                                >
+                                  {m}
+                                </span>
+                              ))}
+                              {members.length > 3 && (
+                                <span className="rounded border border-dashed border-border px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
+                                  +{members.length - 3}
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-3.5 text-center">
+                            <StrategyBadge strategy={group.strategy} />
+                          </TableCell>
+                          <TableCell className="py-3.5 num text-center text-xs text-muted-foreground">
+                            {group.maxRetries} 次 · {group.retryInterval}ms
+                          </TableCell>
+                          <TableCell className="py-3.5 text-center text-xs text-muted-foreground">
+                            <span className="tnum block">{group.maxConcurrency ? `并发 ${group.maxConcurrency}` : '并发无限制'}</span>
+                            <span className="tnum block">
+                              {group.dailyLimitMaxRequests ? `${formatNumber(group.dailyLimitMaxRequests)} 次/日` : '请求无限制'}
+                            </span>
+                          </TableCell>
+                          <TableCell className="py-3.5 text-center">
+                            <Switch
+                              checked={group.enabled}
+                              disabled={switchBusyId === group.id}
+                              onCheckedChange={() => toggleGroup(group)}
+                              aria-label={`${group.enabled ? '停用' : '启用'} ${group.name}`}
+                            />
+                          </TableCell>
+                          <TableCell className="py-3.5 pr-5 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button variant="ghost" size="iconSm" title="编辑" onClick={() => openEdit(group)}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="danger" size="iconSm" title="删除" onClick={() => handleDelete(group)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                        <ExpandRow open={isOpen} colSpan={9} className="bg-secondary/15 pl-12 py-3">
+                          {() => members.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">该组暂无聚合成员模型，点击编辑即可勾选关联。</p>
+                          ) : (
+                            <div className="flex flex-wrap gap-2">
+                              {members.map((m) => (
+                                <span
+                                  key={m}
+                                  className="group/chip inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-card px-2.5 py-1 font-mono text-xs text-muted-foreground shadow-sm"
+                                >
+                                  <Dot state="ok" />
+                                  <span className="max-w-[240px] truncate">{m}</span>
+                                  <button
+                                    type="button"
+                                    title="移除成员"
+                                    aria-label={`移除 ${m}`}
+                                    onClick={() => removeMember(group, m)}
+                                    className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-ember"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </ExpandRow>
+                      </Fragment>
+                    )
+                  })}
+                  {filtered.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={9} className="py-12 text-center text-sm text-muted-foreground">
+                        暂无匹配策略的模型组
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </table>
+            </div>
           </div>
         )}
       </AsyncState>
 
       <GroupFormDialog open={formOpen} onOpenChange={setFormOpen} group={editing} />
       {dialog}
-    </>
+    </div>
   )
 }

@@ -83,13 +83,13 @@ export function TokensPage() {
   }
 
   return (
-    <>
+    <div className="space-y-6">
       <PageHeader
         title="访问令牌"
-        description="签发给转发客户端的 API Key，可限定可访问的模型组。"
+        description="签发给外部调用客户端的 API Key，可细粒度限定允许路由的模型组与启用状态。"
         actions={
           <Button variant="primary" onClick={openCreate}>
-            <Plus /> 新增令牌
+            <Plus className="h-4 w-4" /> 新增令牌
           </Button>
         }
       />
@@ -101,85 +101,89 @@ export function TokensPage() {
         onRetry={() => mutate()}
         loadingColumns={5}
         emptyIcon={<KeyRound className="h-7 w-7" />}
-        emptyTitle="还没有访问令牌"
-        emptyDescription="创建一个 Key，供转发客户端鉴权使用。"
+        emptyTitle="暂无任何访问令牌"
+        emptyDescription="创建你的第一个 API Key，供 OpenAI / Claude SDK 客户端鉴权接入。"
         emptyAction={
           <Button variant="primary" onClick={openCreate}>
-            <Plus /> 新增令牌
+            <Plus className="h-4 w-4" /> 新增令牌
           </Button>
         }
       >
         {(tokens) => (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>Key</TableHead>
-                  <TableHead>可访问模型组</TableHead>
-                  <TableHead>创建时间</TableHead>
-                  <TableHead className="text-center">启停</TableHead>
-                  <TableHead className="text-center">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tokens.map((token) => (
-                  <TableRow key={token.name}>
-                    <TableCell className="font-semibold">{token.name}</TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1.5">
-                        <RevealCopyButton name={token.name} maskedToken={token.token || '••••'} />
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {token.allowedGroups && token.allowedGroups.length > 0 ? (
-                        <span className="flex flex-wrap gap-1">
-                          {token.allowedGroups.map((g) => (
-                            <CapChip
-                              key={g}
-                              className={cn(!validGroupNames.has(g) && 'line-through opacity-60')}
-                              title={validGroupNames.has(g) ? undefined : '该模型组已不存在，编辑后将自动清除'}
-                            >
-                              {g}
-                            </CapChip>
-                          ))}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">全部</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
-                      {token.createdAt ? formatDateTime(token.createdAt) : '—'}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Switch
-                        checked={token.enabled}
-                        disabled={switchBusy === token.name}
-                        onCheckedChange={() => toggleToken(token)}
-                        aria-label={`${token.enabled ? '停用' : '启用'} ${token.name}`}
-                      />
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex items-center justify-center gap-0.5">
-                        <Button variant="ghost" size="iconSm" title="编辑" onClick={() => openEdit(token)}>
-                          <Pencil />
-                        </Button>
-                        <Button variant="danger" size="iconSm" title="删除" onClick={() => handleDelete(token)}>
-                          <Trash2 />
-                        </Button>
-                      </div>
-                    </TableCell>
+          <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-soft">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <TableHeader className="bg-secondary/40">
+                  <TableRow className="border-b border-border/80 hover:bg-transparent">
+                    <TableHead className="py-3.5 pl-5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">名称</TableHead>
+                    <TableHead className="py-3.5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Key 凭证</TableHead>
+                    <TableHead className="py-3.5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">绑定模型组</TableHead>
+                    <TableHead className="py-3.5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">创建时间</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">状态</TableHead>
+                    <TableHead className="py-3.5 pr-5 text-right font-semibold text-xs uppercase tracking-wider text-muted-foreground">操作</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </table>
+                </TableHeader>
+                <TableBody className="divide-y divide-border/60">
+                  {tokens.map((token) => (
+                    <TableRow key={token.name} className="transition-colors hover:bg-secondary/30">
+                      <TableCell className="py-3.5 pl-5 font-medium text-foreground">{token.name}</TableCell>
+                      <TableCell className="py-3.5 font-mono text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1.5">
+                          <RevealCopyButton name={token.name} maskedToken={token.token || '••••'} />
+                        </span>
+                      </TableCell>
+                      <TableCell className="py-3.5">
+                        {token.allowedGroups && token.allowedGroups.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {token.allowedGroups.map((g) => (
+                              <CapChip
+                                key={g}
+                                className={cn(!validGroupNames.has(g) && 'line-through opacity-60')}
+                                title={validGroupNames.has(g) ? undefined : '该模型组已不存在，编辑后将自动清除'}
+                              >
+                                {g}
+                              </CapChip>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center rounded border border-border px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
+                            全部模型组
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="py-3.5 whitespace-nowrap font-mono text-xs text-muted-foreground">
+                        {token.createdAt ? formatDateTime(token.createdAt) : '—'}
+                      </TableCell>
+                      <TableCell className="py-3.5 text-center">
+                        <Switch
+                          checked={token.enabled}
+                          disabled={switchBusy === token.name}
+                          onCheckedChange={() => toggleToken(token)}
+                          aria-label={`${token.enabled ? '停用' : '启用'} ${token.name}`}
+                        />
+                      </TableCell>
+                      <TableCell className="py-3.5 pr-5 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="iconSm" title="编辑" onClick={() => openEdit(token)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="danger" size="iconSm" title="删除" onClick={() => handleDelete(token)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </table>
+            </div>
           </div>
         )}
       </AsyncState>
 
       <TokenFormDialog open={formOpen} onOpenChange={setFormOpen} token={editing} onSaved={() => mutate()} />
       {dialog}
-    </>
+    </div>
   )
 }
 

@@ -12,7 +12,6 @@ import {
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { MultiSelect } from '@/components/ui/multi-select'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Seg } from '@/components/ui/seg'
@@ -142,108 +141,115 @@ export function UsageLogsPage() {
   }
 
   return (
-    <>
+    <div className="space-y-6">
       <PageHeader
         title="调用日志"
-        description="每一次经过网关的调用都会记录耗时与 token 明细。点击任意行查看协议转换和四段链路原文。"
+        description="每一次经过网关的 API 调用明细。点击任意行可深入查看四段链路原文与协议转换时序。"
         actions={
           <>
             <Button onClick={handleExport}>
-              <Download /> 导出
+              <Download className="h-4 w-4" /> 导出日志
             </Button>
             <Button variant="danger" onClick={handleReset}>
-              <RotateCcw /> 重置 Usage
+              <RotateCcw className="h-4 w-4" /> 重置用量
             </Button>
           </>
         }
       />
 
-      {/* 筛选 bar */}
-      <div className="flex flex-wrap items-center gap-2.5 border-b border-border py-3">
-        <Seg
-          aria-label="状态"
-          options={[
-            { value: 'all', label: '全部' },
-            { value: 'ok', label: '成功' },
-            { value: 'fail', label: '失败' },
-          ]}
-          value={statusView}
-          onChange={(value) => {
-            setStatusView(value)
-            setStatusCode('')
-            setPage(0)
-          }}
-        />
-        <div className="w-[150px]">
-          <RangeSelect
-            value={range}
-            onChange={(v) => {
-              setRange(v)
+      {/* 筛选卡片：筛选组与统计摘要各自成块，中屏（761-1100px）整齐换行而非交错挤压 */}
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-xl border border-border/70 bg-card p-3.5 shadow-soft">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Seg
+            aria-label="状态"
+            options={[
+              { value: 'all', label: '全部' },
+              { value: 'ok', label: '成功' },
+              { value: 'fail', label: '失败' },
+            ]}
+            value={statusView}
+            onChange={(value) => {
+              setStatusView(value)
+              setStatusCode('')
+              setPage(0)
+            }}
+          />
+          <div className="w-[130px]">
+            <RangeSelect
+              value={range}
+              onChange={(v) => {
+                setRange(v)
+                setPage(0)
+              }}
+            />
+          </div>
+          <div className="min-w-[120px] flex-1 sm:flex-none">
+            <MultiSelect
+              options={groupOptions}
+              value={groupNames}
+              onChange={(v) => {
+                setGroupNames(v)
+                setPage(0)
+              }}
+              placeholder="全部模型组"
+              searchPlaceholder="搜索模型组"
+            />
+          </div>
+          <div className="min-w-[120px] flex-1 sm:flex-none">
+            <MultiSelect
+              options={modelOptions}
+              value={modelNames}
+              onChange={(v) => {
+                setModelNames(v)
+                setPage(0)
+              }}
+              placeholder="全部模型"
+              searchPlaceholder="搜索模型"
+            />
+          </div>
+          <div className="min-w-[110px] flex-1 sm:flex-none">
+            <MultiSelect
+              options={keyOptions}
+              value={keyNames}
+              onChange={(v) => {
+                setKeyNames(v)
+                setPage(0)
+              }}
+              placeholder="全部调用方"
+              searchPlaceholder="搜索调用方"
+            />
+          </div>
+          <Input
+            aria-label="状态码"
+            className="w-[84px] text-xs font-mono"
+            value={statusCode}
+            placeholder="HTTP码"
+            title="精确状态码过滤（如 429、500）"
+            onChange={(e) => {
+              const value = e.target.value.replace(/[^0-9]/g, '')
+              setStatusCode(value)
+              if (value) setStatusView('all')
               setPage(0)
             }}
           />
         </div>
-        <div className="min-w-[150px]">
-          <MultiSelect
-            options={groupOptions}
-            value={groupNames}
-            onChange={(v) => {
-              setGroupNames(v)
-              setPage(0)
-            }}
-            placeholder="全部模型组"
-            searchPlaceholder="搜索模型组"
-          />
-        </div>
-        <div className="min-w-[150px]">
-          <MultiSelect
-            options={modelOptions}
-            value={modelNames}
-            onChange={(v) => {
-              setModelNames(v)
-              setPage(0)
-            }}
-            placeholder="全部模型"
-            searchPlaceholder="搜索模型"
-          />
-        </div>
-        <div className="min-w-[140px]">
-          <MultiSelect
-            options={keyOptions}
-            value={keyNames}
-            onChange={(v) => {
-              setKeyNames(v)
-              setPage(0)
-            }}
-            placeholder="全部调用方"
-            searchPlaceholder="搜索调用方"
-          />
-        </div>
-        <Label className="sr-only">状态码</Label>
-        <Input
-          className="w-[92px]"
-          value={statusCode}
-          placeholder="状态码"
-          title="精确状态码过滤（如 429）"
-          onChange={(e) => {
-            const value = e.target.value.replace(/[^0-9]/g, '')
-            setStatusCode(value)
-            if (value) setStatusView('all')
-            setPage(0)
-          }}
-        />
-        <span className="tnum ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span>
-            <b className="font-semibold text-jade">{summary.ok}</b> 成功
+
+        <div className="flex items-center gap-3 text-xs">
+          <span className="tnum flex flex-wrap items-center gap-3 text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-jade" />
+              <b className="font-semibold text-foreground">{summary.ok}</b> 成功
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-ember" />
+              <b className="font-semibold text-foreground">{summary.failed}</b> 失败
+            </span>
+            <span>
+              平均时延 <b className="font-semibold text-foreground">{formatDuration(summary.avg)}</b>
+            </span>
           </span>
-          <span>
-            <b className="font-semibold text-ember">{summary.failed}</b> 失败
-          </span>
-          <span>
-            平均 <b className="font-semibold text-foreground">{formatDuration(summary.avg)}</b>
-          </span>
-          <span className="text-muted-foreground/70">（本页 {summary.count} 条）</span>
-        </span>
+          <span className="text-muted-foreground/70">（当前 {summary.count} 条）</span>
+        </div>
       </div>
 
       <AsyncState
@@ -253,53 +259,62 @@ export function UsageLogsPage() {
         onRetry={() => mutate()}
         loadingColumns={8}
         emptyIcon={<ScrollText className="h-7 w-7" />}
-        emptyTitle="暂无调用日志"
-        emptyDescription="该时间范围内还没有请求记录。"
+        emptyTitle="暂无匹配日志记录"
+        emptyDescription="当前筛选时间与过滤条件范围内未查询到任何请求。"
       >
         {() => (
-          <>
+          <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-soft">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>时间</TableHead>
-                    <TableHead>调用方</TableHead>
-                    <TableHead>模型组 / 模型</TableHead>
-                    <TableHead className="text-center">模式</TableHead>
-                    <TableHead className="text-center">状态</TableHead>
-                    <TableHead className="num">首字</TableHead>
-                    <TableHead className="num">耗时</TableHead>
-                    <TableHead className="num">Tokens 入/出</TableHead>
+                <TableHeader className="bg-secondary/40">
+                  <TableRow className="border-b border-border/80 hover:bg-transparent">
+                    <TableHead className="py-3.5 pl-5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">请求时间</TableHead>
+                    <TableHead className="py-3.5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">调用凭证</TableHead>
+                    <TableHead className="py-3.5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">实际模型 / 路由组</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">流式</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">状态码</TableHead>
+                    <TableHead className="py-3.5 num font-semibold text-xs uppercase tracking-wider text-muted-foreground">首字耗时</TableHead>
+                    <TableHead className="py-3.5 num font-semibold text-xs uppercase tracking-wider text-muted-foreground">总耗时</TableHead>
+                    <TableHead className="py-3.5 pr-5 num font-semibold text-xs uppercase tracking-wider text-muted-foreground">Tokens 输入 / 输出</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <TableBody className="divide-y divide-border/60">
                   {items.map((log) => (
                     <TableRow
                       key={log.requestId}
-                      className="cursor-pointer"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`查看请求 ${log.requestId} 详情`}
+                      className="cursor-pointer transition-colors hover:bg-secondary/30 focus-visible:bg-secondary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-rose/50"
                       onClick={() => setDetailId(log.requestId)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setDetailId(log.requestId)
+                        }
+                      }}
                     >
-                      <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+                      <TableCell className="py-3 pl-5 whitespace-nowrap font-mono text-xs text-muted-foreground">
                         {formatDateTime(log.startedAt)}
                       </TableCell>
-                      <TableCell className="max-w-[120px] truncate text-xs">{log.keyName || '—'}</TableCell>
-                      <TableCell>
-                        <span className="block truncate text-xs font-semibold">{log.modelName || '—'}</span>
-                        <span className="sub">{log.groupName || '—'}</span>
+                      <TableCell className="py-3 max-w-[120px] truncate text-xs font-mono text-foreground">{log.keyName || '—'}</TableCell>
+                      <TableCell className="py-3">
+                        <span className="block truncate text-xs font-semibold text-foreground">{log.modelName || '—'}</span>
+                        <span className="sub font-mono">{log.groupName || '—'}</span>
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="py-3 text-center">
                         <StreamIcon streaming={log.stream} />
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="py-3 text-center">
                         <CodePill code={log.statusCode} />
                       </TableCell>
-                      <TableCell className="num">
+                      <TableCell className="py-3 num">
                         {log.firstByteMs > 0 ? formatDuration(log.firstByteMs) : '—'}
                       </TableCell>
-                      <TableCell className="num">{formatDuration(log.durationMs)}</TableCell>
-                      <TableCell className="num">
-                        ↑{formatNumber(log.inputTokens)} <span className="text-muted-foreground">↓</span>
-                        {formatNumber(log.outputTokens)}
+                      <TableCell className="py-3 num font-medium text-foreground">{formatDuration(log.durationMs)}</TableCell>
+                      <TableCell className="py-3 pr-5 num">
+                        <span className="font-mono">↑{formatNumber(log.inputTokens)}</span>{' '}
+                        <span className="text-muted-foreground font-mono">↓{formatNumber(log.outputTokens)}</span>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -307,19 +322,19 @@ export function UsageLogsPage() {
               </table>
             </div>
 
-            {/* tfoot 分页 */}
-            <div className="flex items-center justify-between pt-3 text-xs text-muted-foreground">
+            {/* 分页栏 */}
+            <div className="flex items-center justify-between border-t border-border/70 bg-secondary/20 px-5 py-3 text-xs text-muted-foreground">
               <span className="tnum">
-                共 {formatNumber(total)} 条 · 第 {page + 1}/{totalPages} 页
+                共 <b className="font-semibold text-foreground">{formatNumber(total)}</b> 条记录 · 第 {page + 1}/{totalPages} 页
               </span>
-              <span className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   disabled={page === 0}
                   onClick={() => setPage((p) => Math.max(0, p - 1))}
                 >
-                  <ChevronLeft /> 上一页
+                  <ChevronLeft className="h-3.5 w-3.5" /> 上一页
                 </Button>
                 <Button
                   variant="outline"
@@ -327,17 +342,17 @@ export function UsageLogsPage() {
                   disabled={page >= totalPages - 1}
                   onClick={() => setPage((p) => p + 1)}
                 >
-                  下一页 <ChevronRight />
+                  下一页 <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
-              </span>
+              </div>
             </div>
-          </>
+          </div>
         )}
       </AsyncState>
 
       <LogDetailSheet id={detailId} onClose={() => setDetailId(null)} />
       {dialog}
-    </>
+    </div>
   )
 }
 

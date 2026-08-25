@@ -3,131 +3,134 @@
 @tailwind utilities;
 
 /*
- * 瓷梅刻印（porcelain / plum-ink）设计 token。
- * 上半部分沿用 shadcn HSL 语义变量，下半部分提供少量品牌效果变量。
+ * 瓷梅刻印 2.0（Porcelain / Plum-ink）设计 token。
+ * 上半部分沿用 shadcn HSL 语义变量，下半部分提供清透品牌效果变量。
+ * 纯净冷瓷基底 + 澄澈中性灰阶 + 瑰梅为钻点缀，彻底去除混浊脏粉杂色。
  */
 :root {
-  /* ---- shadcn 语义变量（HSL）· 瓷梅浅色 ---- */
-  --background: 330 33% 98%;          /* #FBF7F9 瓷白 */
-  --foreground: 321 22% 13%;          /* #271922 梅墨 */
+  /* ---- shadcn 语义变量（HSL）· 羊脂冷瓷浅色 ---- */
+  --background: 230 14% 98.5%;          /* #FAFAFC 极净冷瓷白底 */
+  --foreground: 228 24% 12%;            /* #171A23 墨黑（高对比清晰易读） */
 
-  --card: 0 0% 100%;                  /* #FFFFFF */
-  --card-foreground: 321 22% 13%;
+  --card: 0 0% 100%;                    /* #FFFFFF 纯白卡片 */
+  --card-foreground: 228 24% 12%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 321 22% 13%;
+  --popover-foreground: 228 24% 12%;
 
-  --primary: 333 75% 45%;             /* #C81D6B 玫红 */
+  --primary: 336 80% 48%;               /* #DC185D 鲜活瑰梅红（明亮透澈） */
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 320 33% 95%;           /* #F6EDF3 */
-  --secondary-foreground: 326 10% 42%; /* #75606C */
+  --secondary: 230 10% 95%;             /* #F1F2F6 纯净浅灰底 */
+  --secondary-foreground: 228 12% 38%;  /* #595E6B 次级文本 */
 
-  --muted: 320 33% 95%;
-  --muted-foreground: 327 11% 59%;    /* #A18B97 */
+  --muted: 230 10% 95%;
+  --muted-foreground: 226 10% 42%;      /* #606877 次级文字，浅底对比度 ≥4.5:1 (WCAG AA) */
 
-  --accent: 330 50% 95%;              /* wash 底 */
-  --accent-foreground: 333 75% 37%;
+  --accent: 336 85% 96%;                /* #FDF0F4 瑰梅洗色底 */
+  --accent-foreground: 336 80% 38%;
 
-  --destructive: 9 75% 44%;           /* #C4361C 余烬 */
+  --destructive: 0 84% 56%;             /* #EE2A2A 纯正朱砂红 */
   --destructive-foreground: 0 0% 100%;
 
-  --success: 164 80% 30%;             /* #0F8A6A 玉 */
+  --success: 160 84% 33%;               /* #0DA574 翡翠碧玉绿 */
   --success-foreground: 0 0% 100%;
 
-  --border: 326 25% 89%;              /* #EADCE4 刻线 */
-  --input: 326 25% 89%;
-  --ring: 333 75% 45%;
+  --border: 230 12% 89%;                /* #DEE1E9 清爽微冷刻线 */
+  --input: 230 12% 89%;
+  --ring: 336 80% 48%;
 
-  --sidebar: 320 33% 95%;
-  --sidebar-foreground: 321 22% 13%;
+  --sidebar: 230 14% 97.5%;             /* #F7F8FB 侧栏浅色 */
+  --sidebar-foreground: 228 24% 12%;
 
-  --radius: 0.45rem;                  /* 按钮 6px / 卡片 7-8px 的仪器感 */
+  --radius: 0.5rem;                     /* 8px 现代微圆角 */
 
   color-scheme: light;
 
   /* ---- 品牌效果 token ---- */
   --rose: hsl(var(--primary));
-  --rose-soft: #E489B0;
+  --rose-soft: #F43F85;
   --orchid: #7C4DBE;
   --jade: hsl(var(--success));
   --ember: hsl(var(--destructive));
-  --amber: #9A6B12;
+  --amber: #D97706;
 
-  --wash: rgba(200, 29, 107, 0.055);
-  --code-bg: #F6EEF4;
+  --wash: rgba(220, 24, 93, 0.05);
+  --code-bg: #F2F4F8;
 
-  --halo-a: rgba(236, 110, 166, 0.20);
-  --halo-b: rgba(148, 104, 222, 0.13);
+  --halo-a: rgba(220, 24, 93, 0.06);    /* 弱化全局光晕扩散，避免全屏泛色 */
+  --btn-inset-hi: rgba(255, 255, 255, 0.22); /* 主按钮顶边高光（暗色下减弱） */
+  --halo-b: rgba(99, 102, 241, 0.04);
 
-  --grad-a: var(--rose);              /* 品牌渐变：玫红 → 粉 */
-  --grad-b: #E5699E;
+  --grad-a: var(--rose);                /* 品牌渐变：瑰梅 → 明艳粉 */
+  --grad-b: #F43F85;
 
-  --scrim: rgba(58, 28, 44, 0.38);
+  --scrim: rgba(15, 23, 42, 0.45);
 
-  --shadow-soft: 0 1px 2px rgba(80, 40, 60, 0.05), 0 14px 36px -18px rgba(80, 40, 60, 0.16);
-  --shadow-lg: 0 2px 6px rgba(80, 40, 60, 0.07), 0 28px 70px -28px rgba(80, 40, 60, 0.3);
+  --shadow-soft: 0 1px 3px rgba(15, 23, 42, 0.03), 0 8px 20px -8px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 4px 6px -1px rgba(15, 23, 42, 0.04), 0 20px 32px -12px rgba(15, 23, 42, 0.09);
 }
 
 .dark {
-  /* ---- shadcn 语义变量（HSL）· 冷调梅紫夜釉 ---- */
-  --background: 287 27% 6%;           /* #130C15 */
-  --foreground: 290 23% 95%;          /* #F4EFF5 */
+  /* ---- shadcn 语义变量（HSL）· 玄曜夜釉深色 ---- */
+  --background: 240 16% 7%;             /* #0F0F14 极深玄曜 */
+  --foreground: 230 20% 96%;            /* #F3F4F9 冰瓷白 */
 
-  --card: 290 22% 11%;                /* #1F1521 */
-  --card-foreground: 290 23% 95%;
+  --card: 240 14% 10%;                  /* #16161D 沉静深空卡片 */
+  --card-foreground: 230 20% 96%;
 
-  --popover: 290 22% 11%;
-  --popover-foreground: 290 23% 95%;
+  --popover: 240 14% 10%;
+  --popover-foreground: 230 20% 96%;
 
-  --primary: 333 84% 64%;             /* #F0559B */
-  --primary-foreground: 287 27% 8%;
+  --primary: 336 90% 64%;               /* #FB4D88 霓虹梅粉 */
+  --primary-foreground: 240 16% 7%;
 
-  --secondary: 300 22% 8%;            /* #191019 */
-  --secondary-foreground: 276 14% 71%; /* #B7ABBF */
+  --secondary: 240 10% 14%;             /* #202028 */
+  --secondary-foreground: 230 12% 72%;  /* #B2B5C4 */
 
-  --muted: 290 20% 9%;
-  --muted-foreground: 276 9% 53%;     /* #8A7D93 */
+  --muted: 240 10% 13%;
+  --muted-foreground: 230 8% 55%;       /* #85899A */
 
-  --accent: 300 35% 12%;
-  --accent-foreground: 333 70% 78%;
+  --accent: 336 40% 15%;
+  --accent-foreground: 336 90% 75%;
 
-  --destructive: 9 88% 65%;           /* #F4705A */
-  --destructive-foreground: 287 27% 8%;
+  --destructive: 0 84% 60%;             /* #F84F4F */
+  --destructive-foreground: 240 16% 7%;
 
-  --success: 160 58% 48%;             /* #2FC794 */
-  --success-foreground: 287 27% 8%;
+  --success: 160 70% 45%;               /* #22C58B */
+  --success-foreground: 240 16% 7%;
 
-  --border: 280 17% 17%;              /* #2F2534 紫灰刻线 */
-  --input: 280 17% 17%;
-  --ring: 333 84% 64%;
+  --border: 240 10% 18%;                /* #2B2B36 清晰微冷暗刻线 */
+  --input: 240 10% 18%;
+  --ring: 336 90% 64%;
 
-  --sidebar: 300 22% 8%;
-  --sidebar-foreground: 290 23% 95%;
+  --sidebar: 240 16% 8.5%;              /* #131319 */
+  --sidebar-foreground: 230 20% 96%;
 
   color-scheme: dark;
 
   /* ---- 品牌 token（暗色）---- */
   --rose: hsl(var(--primary));
-  --rose-soft: #A63E68;
+  --rose-soft: #DB2777;
   --orchid: #A78BEA;
   --jade: hsl(var(--success));
   --ember: hsl(var(--destructive));
-  --amber: #E6AC4E;
+  --amber: #F59E0B;
 
-  --wash: rgba(240, 85, 155, 0.10);
-  --code-bg: #1C131E;
+  --wash: rgba(251, 77, 136, 0.08);
+  --code-bg: #1A1A23;
 
-  --halo-a: rgba(245, 100, 163, 0.17);
-  --halo-b: rgba(157, 92, 224, 0.15);
+  --halo-a: rgba(251, 77, 136, 0.08);
+  --btn-inset-hi: rgba(255, 255, 255, 0.08);
+  --halo-b: rgba(129, 140, 248, 0.05);
 
-  --grad-a: var(--rose);              /* 品牌渐变：玫瑰 → 兰花紫 */
-  --grad-b: #9D5CE0;
+  --grad-a: var(--rose);                /* 品牌渐变：霓虹梅粉 → 兰花紫 */
+  --grad-b: #C084FC;
 
-  --scrim: rgba(6, 3, 10, 0.62);
+  --scrim: rgba(0, 0, 0, 0.72);
 
-  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.35), 0 14px 34px -18px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.42), 0 24px 60px -28px rgba(0, 0, 0, 0.55);
+  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.4), 0 12px 28px -10px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.5), 0 24px 48px -15px rgba(0, 0, 0, 0.7);
 }
 
 * {
@@ -151,7 +154,7 @@ body {
   overflow-x: clip;
 }
 
-/* 页面光晕：左上玫粉 + 右下梅紫，双层 radial 挂在 fixed 伪元素上 */
+/* 页面光晕：左上瑰梅 + 右下靛蓝，极轻量 radial 挂在 fixed 伪元素上，不污染正文 */
 body::before {
   content: '';
   position: fixed;
@@ -159,8 +162,8 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(52rem 34rem at 8% -6%, var(--halo-a), transparent 62%),
-    radial-gradient(48rem 36rem at 96% 108%, var(--halo-b), transparent 60%);
+    radial-gradient(42rem 28rem at 5% -4%, var(--halo-a), transparent 60%),
+    radial-gradient(40rem 30rem at 98% 106%, var(--halo-b), transparent 60%);
 }
 
 ::selection {

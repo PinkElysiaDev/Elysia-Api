@@ -63,37 +63,37 @@ export function SystemLogsPage() {
   }, [totalPages])
 
   return (
-    <>
+    <div className="space-y-6">
       <PageHeader
         title="系统日志"
-        description="模型刷新、错误等后端事件。点击 fields 查看结构化详情。"
+        description="后端事件、模型拉取同步与异常告警记录。点击 fields 属性可展开 JSON 结构化详情。"
         actions={
-          <Button onClick={() => mutate()}>
-            <RefreshCw /> 刷新
+          <Button onClick={() => mutate()} disabled={isLoading}>
+            <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin')} /> 刷新日志
           </Button>
         }
       />
 
-      {/* 级别筛选 */}
-      <div className="flex flex-wrap items-center gap-2.5 border-b border-border py-3">
-        <Seg
-          aria-label="级别"
-          options={[
-            { value: 'all', label: '全部' },
-            { value: 'debug', label: 'DEBUG' },
-            { value: 'info', label: 'INFO' },
-            { value: 'warn', label: 'WARN' },
-            { value: 'error', label: 'ERROR' },
-          ]}
-          value={level}
-          onChange={(v) => {
-            setLevel(v)
-            setPage(0)
-          }}
-        />
-        <span className="tnum ml-auto text-xs text-muted-foreground">
-          共 <b className="font-semibold text-foreground">{formatNumber(total)}</b> 条
-        </span>
+      {/* 级别筛选卡片 */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-card p-3 shadow-soft">
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">日志级别</span>
+          <Seg
+            aria-label="级别"
+            options={[
+              { value: 'all', label: '全部' },
+              { value: 'debug', label: 'DEBUG' },
+              { value: 'info', label: 'INFO' },
+              { value: 'warn', label: 'WARN' },
+              { value: 'error', label: 'ERROR' },
+            ]}
+            value={level}
+            onChange={(v) => {
+              setLevel(v)
+              setPage(0)
+            }}
+          />
+        </div>
       </div>
 
       <AsyncState
@@ -103,33 +103,33 @@ export function SystemLogsPage() {
         onRetry={() => mutate()}
         loadingColumns={3}
         emptyIcon={<Terminal className="h-7 w-7" />}
-        emptyTitle="暂无系统日志"
-        emptyDescription="后端尚未产生该级别的日志。"
+        emptyTitle="暂无匹配系统日志"
+        emptyDescription="当前筛选日志级别下未记录任何运行事件。"
       >
         {(items) => (
-          <>
+          <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-soft">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[180px]">时间</TableHead>
-                    <TableHead className="w-[90px]">级别</TableHead>
-                    <TableHead>消息 / fields</TableHead>
+                <TableHeader className="bg-secondary/40">
+                  <TableRow className="border-b border-border/80 hover:bg-transparent">
+                    <TableHead className="py-3.5 pl-5 w-[190px] font-semibold text-xs uppercase tracking-wider text-muted-foreground">记录时间</TableHead>
+                    <TableHead className="py-3.5 w-[100px] font-semibold text-xs uppercase tracking-wider text-muted-foreground">级别</TableHead>
+                    <TableHead className="py-3.5 pr-5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">日志消息 / 附加字段 (Fields)</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <TableBody className="divide-y divide-border/60">
                   {items.map((log) => {
                     const hasFields = log.fields && log.fields !== '{}' && log.fields !== 'null'
                     return (
-                      <TableRow key={log.id}>
-                        <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+                      <TableRow key={log.id} className="transition-colors hover:bg-secondary/30">
+                        <TableCell className="py-3.5 pl-5 whitespace-nowrap font-mono text-xs text-muted-foreground">
                           {formatDateTime(log.createdAt)}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-3.5">
                           <LevelPill level={log.level} />
                         </TableCell>
-                        <TableCell>
-                          <p className="text-sm">{log.message}</p>
+                        <TableCell className="py-3.5 pr-5">
+                          <p className="text-xs font-medium text-foreground">{log.message}</p>
                           {hasFields && (
                             <button
                               type="button"
@@ -140,7 +140,7 @@ export function SystemLogsPage() {
                                   createdAt: log.createdAt,
                                 })
                               }
-                              className="mt-0.5 block max-w-[720px] truncate text-left font-mono text-2xs text-muted-foreground underline decoration-dashed underline-offset-2 transition-colors hover:text-rose"
+                              className="mt-1 block max-w-[760px] truncate text-left font-mono text-2xs text-muted-foreground underline decoration-dashed underline-offset-2 transition-colors hover:text-primary"
                               title="查看结构化详情"
                             >
                               {log.fields}
@@ -154,18 +154,18 @@ export function SystemLogsPage() {
               </table>
             </div>
 
-            <div className="flex items-center justify-between pt-3 text-xs text-muted-foreground">
+            <div className="flex items-center justify-between border-t border-border/70 bg-secondary/20 px-5 py-3 text-xs text-muted-foreground">
               <span className="tnum">
-                共 {formatNumber(total)} 条 · 第 {page + 1}/{totalPages} 页
+                共 <b className="font-semibold text-foreground">{formatNumber(total)}</b> 条 · 第 {page + 1}/{totalPages} 页
               </span>
-              <span className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   disabled={page === 0}
                   onClick={() => setPage((p) => Math.max(0, p - 1))}
                 >
-                  <ChevronLeft /> 上一页
+                  <ChevronLeft className="h-3.5 w-3.5" /> 上一页
                 </Button>
                 <Button
                   variant="outline"
@@ -173,11 +173,11 @@ export function SystemLogsPage() {
                   disabled={page >= totalPages - 1}
                   onClick={() => setPage((p) => p + 1)}
                 >
-                  下一页 <ChevronRight />
+                  下一页 <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
-              </span>
+              </div>
             </div>
-          </>
+          </div>
         )}
       </AsyncState>
 
@@ -205,7 +205,7 @@ export function SystemLogsPage() {
           </SheetBody>
         </SheetContent>
       </Sheet>
-    </>
+    </div>
   )
 }
 

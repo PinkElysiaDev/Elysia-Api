@@ -298,10 +298,10 @@ export function SourcesPage() {
   }
 
   return (
-    <>
+    <div className="space-y-6">
       <PageHeader
         title="模型源"
-        description="管理上游供应商与其聚合的模型。启用中的源会参与模型聚合与转发，停用仅影响新请求。"
+        description="管理上游 API 供应商与其聚合的模型能力，支持多 Key 轮询鉴权与自动能力回填。"
         actions={
           <>
             {catalogStatus?.enabled && (
@@ -317,41 +317,46 @@ export function SourcesPage() {
               </CapChip>
             )}
             <Button onClick={refreshAll} disabled={refreshingAll}>
-              <RefreshCw className={refreshingAll || anyRefreshing ? 'animate-spin' : undefined} /> 刷新全部模型
+              <RefreshCw className={cn('h-4 w-4', (refreshingAll || anyRefreshing) && 'animate-spin')} /> 刷新全部模型
             </Button>
             <Button variant="primary" onClick={openCreate}>
-              <Plus /> 新增模型源
+              <Plus className="h-4 w-4" /> 新增模型源
             </Button>
           </>
         }
       />
 
-      {/* 工具条 */}
-      <div className="flex flex-wrap items-center gap-2.5 border-b border-border py-3">
-        <div className="relative w-[250px]">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+      {/* 搜索工具条与统计卡片 */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-card p-3 shadow-soft">
+        <div className="relative w-full sm:w-72">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            className="pl-8"
+            className="pl-9 text-xs"
             type="search"
-            placeholder="搜索名称 / 平台 / Base URL…"
+            placeholder="搜索源名称 / 平台 / 接口地址…"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
           />
         </div>
-        <span className="tnum flex flex-wrap items-center gap-x-4 text-xs text-muted-foreground">
-          <span>
-            <b className="font-semibold text-jade">{enabledCount}</b> 启用
+        <div className="flex items-center gap-4 text-xs">
+          <span className="tnum flex items-center gap-3 text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-jade" />
+              <b className="font-semibold text-foreground">{enabledCount}</b> 启用
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-ember" />
+              <b className="font-semibold text-foreground">{disabledCount}</b> 停用
+            </span>
+            <span className="flex items-center gap-1.5">
+              聚合模型 <b className="font-semibold text-foreground">{formatNumber(models?.length ?? 0)}</b>
+            </span>
           </span>
-          <span>
-            <b className="font-semibold text-ember">{disabledCount}</b> 停用
+          <span className="h-3 w-px bg-border" />
+          <span className="text-muted-foreground">
+            共 <b className="tnum font-semibold text-foreground">{(data ?? []).length}</b> 个模型源
           </span>
-          <span>
-            聚合模型 <b className="font-semibold text-foreground">{formatNumber(models?.length ?? 0)}</b>
-          </span>
-        </span>
-        <span className="ml-auto text-xs text-muted-foreground">
-          共 <b className="tnum font-semibold text-foreground">{(data ?? []).length}</b> 个源
-        </span>
+        </div>
       </div>
 
       <AsyncState
@@ -361,134 +366,135 @@ export function SourcesPage() {
         onRetry={() => mutate()}
         loadingColumns={8}
         emptyIcon={<Boxes className="h-7 w-7" />}
-        emptyTitle="还没有模型源"
-        emptyDescription="新增一个上游供应商，开始聚合模型。"
+        emptyTitle="暂无任何模型源"
+        emptyDescription="添加你的第一个上游供应商（OpenAI / Anthropic / DeepSeek / 自定义网关），开始聚合模型。"
         emptyAction={
           <Button variant="primary" onClick={openCreate}>
-            <Plus /> 新增模型源
+            <Plus className="h-4 w-4" /> 新增模型源
           </Button>
         }
       >
         {() => (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[34px] px-0 text-center" />
-                  <TableHead>名称</TableHead>
-                  <TableHead className="text-center">平台</TableHead>
-                  <TableHead>Base URL</TableHead>
-                  <TableHead className="num text-center">模型数</TableHead>
-                  <TableHead className="text-center">拉取策略</TableHead>
-                  <TableHead className="text-center">状态</TableHead>
-                  <TableHead className="text-center">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((source) => {
-                  const sourceModels = modelsBySource.get(source.id) ?? []
-                  const isOpen = !!expanded[source.id]
-                  // 后台拉取进行中：锁定该源的模型相关操作（避免合并期间冲突误操作），
-                  // 其余源与页面功能不受影响。
-                  const busy = sourceBusy(source)
-                  const groups = buildModelGroups(source, sourceModels)
-                  const globalKeyword = (globalSearch[source.id] ?? '').trim().toLowerCase()
-                  const matchesGlobal = (m: Model) =>
-                    !globalKeyword ||
-                    `${m.id} ${m.name} ${m.sourceName ?? ''}`.toLowerCase().includes(globalKeyword)
-                  const selectedCount = selectedModelsOf(source.id).length
-                  const allVisibleModels = groups
-                    .map((g) => {
-                      const kw2 = (groupSearch[`${source.id}:${g.key}`] ?? '').trim().toLowerCase()
-                      return kw2
-                        ? g.models.filter(
-                            (m) =>
-                              matchesGlobal(m) &&
-                              `${m.id} ${m.name} ${m.sourceName ?? ''}`.toLowerCase().includes(kw2),
-                          )
-                        : g.models.filter(matchesGlobal)
-                    })
-                    .flat()
-                  return (
-                    <Fragment key={source.id}>
-                      <TableRow>
-                        <TableCell className="w-[34px] px-0 text-center">
-                          <button
-                            type="button"
-                            onClick={() => toggleExpand(source.id)}
-                            className="rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
-                            aria-label={isOpen ? '收起' : '展开'}
-                          >
-                            <ChevronRight
-                              className={cn(
-                                'h-[15px] w-[15px] transition-transform duration-200',
-                                isOpen && 'rotate-90 text-rose',
-                              )}
+          <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-soft">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <TableHeader className="bg-secondary/40">
+                  <TableRow className="border-b border-border/80 hover:bg-transparent">
+                    <TableHead className="w-[38px] px-0 text-center" />
+                    <TableHead className="py-3.5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">源名称 / ID</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">平台架构</TableHead>
+                    <TableHead className="py-3.5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Base URL</TableHead>
+                    <TableHead className="py-3.5 num text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">模型数</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">同步策略</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">状态</TableHead>
+                    <TableHead className="py-3.5 pr-5 text-right font-semibold text-xs uppercase tracking-wider text-muted-foreground">操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="divide-y divide-border/60">
+                  {filtered.map((source) => {
+                    const sourceModels = modelsBySource.get(source.id) ?? []
+                    const isOpen = !!expanded[source.id]
+                    // 后台拉取进行中：锁定该源的模型相关操作（避免合并期间冲突误操作），
+                    // 其余源与页面功能不受影响。
+                    const busy = sourceBusy(source)
+                    const groups = buildModelGroups(source, sourceModels)
+                    const globalKeyword = (globalSearch[source.id] ?? '').trim().toLowerCase()
+                    const matchesGlobal = (m: Model) =>
+                      !globalKeyword ||
+                      `${m.id} ${m.name} ${m.sourceName ?? ''}`.toLowerCase().includes(globalKeyword)
+                    const selectedCount = selectedModelsOf(source.id).length
+                    const allVisibleModels = groups
+                      .map((g) => {
+                        const kw2 = (groupSearch[`${source.id}:${g.key}`] ?? '').trim().toLowerCase()
+                        return kw2
+                          ? g.models.filter(
+                              (m) =>
+                                matchesGlobal(m) &&
+                                `${m.id} ${m.name} ${m.sourceName ?? ''}`.toLowerCase().includes(kw2),
+                            )
+                          : g.models.filter(matchesGlobal)
+                      })
+                      .flat()
+                    return (
+                      <Fragment key={source.id}>
+                        <TableRow className="transition-colors hover:bg-secondary/30">
+                          <TableCell className="w-[38px] px-0 text-center">
+                            <button
+                              type="button"
+                              onClick={() => toggleExpand(source.id)}
+                              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground hover:bg-secondary"
+                              aria-label={isOpen ? '收起' : '展开'}
+                            >
+                              <ChevronRight
+                                className={cn(
+                                  'h-4 w-4 transition-transform duration-200',
+                                  isOpen && 'rotate-90 text-primary',
+                                )}
+                              />
+                            </button>
+                          </TableCell>
+                          <TableCell className="py-3.5 font-medium text-foreground">
+                            <span className="inline-flex items-center gap-1.5">
+                              {source.name}
+                              {busy && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />}
+                            </span>
+                            <span className="sub font-mono">{source.id}</span>
+                          </TableCell>
+                          <TableCell className="py-3.5 text-center">
+                            <PlatformBadge platform={source.platform} />
+                          </TableCell>
+                          <TableCell className="py-3.5 max-w-[220px]">
+                            <span className="block truncate font-mono text-xs text-muted-foreground" title={source.baseUrl}>
+                              {source.baseUrl}
+                            </span>
+                          </TableCell>
+                          <TableCell className="py-3.5 num text-center font-semibold text-foreground">{sourceModels.length}</TableCell>
+                          <TableCell className="py-3.5 text-center">
+                            <CapChip>{source.autoFetchModels ? '自动拉取' : '手动维护'}</CapChip>
+                          </TableCell>
+                          <TableCell className="py-3.5 text-center">
+                            <Switch
+                              checked={source.enabled}
+                              disabled={switchBusyId === source.id || busy}
+                              onCheckedChange={() => toggleSource(source)}
+                              aria-label={`${source.enabled ? '停用' : '启用'} ${source.name}`}
                             />
-                          </button>
-                        </TableCell>
-                        <TableCell className="font-semibold">
-                          <span className="inline-flex items-center gap-1.5">
-                            {source.name}
-                            {busy && <RefreshCw className="h-3 w-3 animate-spin text-rose" />}
-                          </span>
-                          <span className="sub">{source.id}</span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <PlatformBadge platform={source.platform} />
-                        </TableCell>
-                        <TableCell className="max-w-[220px]">
-                          <span className="block truncate font-mono text-xs text-muted-foreground" title={source.baseUrl}>
-                            {source.baseUrl}
-                          </span>
-                        </TableCell>
-                        <TableCell className="num text-center">{sourceModels.length}</TableCell>
-                        <TableCell className="text-center">
-                          <CapChip>{source.autoFetchModels ? '自动拉取' : '手动维护'}</CapChip>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Switch
-                            checked={source.enabled}
-                            disabled={switchBusyId === source.id || busy}
-                            onCheckedChange={() => toggleSource(source)}
-                            aria-label={`${source.enabled ? '停用' : '启用'} ${source.name}`}
-                          />
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex items-center justify-center gap-0.5">
-                            {source.autoFetchModels && (
+                          </TableCell>
+                          <TableCell className="py-3.5 pr-5 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              {source.autoFetchModels && (
+                                <Button
+                                  variant="ghost"
+                                  size="iconSm"
+                                  title={busy ? '后台拉取进行中' : '拉取模型'}
+                                  disabled={busyId === source.id || !source.enabled || busy}
+                                  onClick={() => handleFetch(source)}
+                                >
+                                  <RefreshCw className={cn('h-3.5 w-3.5', (busy || busyId === source.id) && 'animate-spin')} />
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="iconSm"
-                                title={busy ? '后台拉取进行中' : '拉取模型'}
-                                disabled={busyId === source.id || !source.enabled || busy}
-                                onClick={() => handleFetch(source)}
+                                title="编辑"
+                                disabled={busy}
+                                onClick={() => openEdit(source)}
                               >
-                                <RefreshCw className={busy || busyId === source.id ? 'animate-spin' : undefined} />
+                                <Pencil className="h-3.5 w-3.5" />
                               </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="iconSm"
-                              title="编辑"
-                              disabled={busy}
-                              onClick={() => openEdit(source)}
-                            >
-                              <Pencil />
-                            </Button>
-                            <Button
-                              variant="danger"
-                              size="iconSm"
-                              title="删除"
-                              disabled={busy}
-                              onClick={() => handleDelete(source)}
-                            >
-                              <Trash2 />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                      <ExpandRow open={isOpen} colSpan={8} className="pl-11">
+                              <Button
+                                variant="danger"
+                                size="iconSm"
+                                title="删除"
+                                disabled={busy}
+                                onClick={() => handleDelete(source)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                        <ExpandRow open={isOpen} colSpan={8} className="bg-secondary/15 pl-12 py-3">
                         {() => sourceModels.length === 0 ? (
                           <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
                             <Boxes className="h-4 w-4" />
@@ -684,8 +690,9 @@ export function SourcesPage() {
               </TableBody>
             </table>
           </div>
-        )}
-      </AsyncState>
+        </div>
+      )}
+    </AsyncState>
 
       <SourceFormDialog open={formOpen} onOpenChange={setFormOpen} source={editing} />
       <ModelEditDialog open={modelEditOpen} onOpenChange={setModelEditOpen} model={editingModel} />
@@ -701,7 +708,7 @@ export function SourcesPage() {
         models={addToGroup ?? []}
       />
       {dialog}
-    </>
+    </div>
   )
 }
 

@@ -48,9 +48,9 @@ export function LoginPage() {
       <div className="relative z-[1] w-full max-w-[400px]">
         <BrandMark size="login" className="mb-8 justify-center" />
 
-        <div className="rounded-lg border border-border bg-card p-7 shadow-soft">
-          <h1 className="font-display text-xl font-semibold tracking-[0.01em]">登录控制台</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">使用后端 config.json 配置的 Panel Access Token 登录</p>
+        <div className="rounded-xl border border-border/80 bg-card p-8 shadow-lg backdrop-blur-sm">
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">登录控制台</h1>
+          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">请输入服务端 config.json 中配置的 Panel Access Token 访问面板</p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div className="space-y-2">
@@ -61,17 +61,21 @@ export function LoginPage() {
                 id="token"
                 autoFocus
                 value={value}
-                placeholder="输入访问令牌"
+                placeholder="请输入访问令牌"
                 onChange={(e) => {
                   setValue(e.target.value)
                   setError(null)
                 }}
               />
-              {error && <p className="text-xs text-ember">{error}</p>}
+              {error && (
+                <div className="rounded-lg bg-ember/10 px-3 py-2 text-xs font-medium text-ember">
+                  {error}
+                </div>
+              )}
             </div>
-            <Button type="submit" variant="primary" className="w-full" size="lg" disabled={loading}>
-              {loading ? <Loader2 className="animate-spin" /> : <ShieldCheck />}
-              {loading ? '验证中…' : '登录'}
+            <Button type="submit" variant="primary" className="w-full h-10 text-sm font-semibold" disabled={loading}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+              {loading ? '身份验证中…' : '立即登录'}
             </Button>
           </form>
         </div>

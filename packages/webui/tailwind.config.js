@@ -96,7 +96,7 @@ export default {
       boxShadow: {
         soft: 'var(--shadow-soft)',
         lg: 'var(--shadow-lg)',
-        'pri-glow': 'inset 0 1px 0 rgba(255,255,255,0.22), 0 6px 18px -8px var(--halo-a)',
+        'pri-glow': 'inset 0 1px 0 var(--btn-inset-hi), 0 6px 18px -8px var(--halo-a)',
       },
       backgroundImage: {
         // 品牌渐变（KPI 数字、主按钮、进度条、导航菱形、立绘）
