@@ -168,7 +168,16 @@ func (s *Store) migrate(ctx context.Context) error {
 		!strings.Contains(err.Error(), "duplicate column") {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_usage_started_ms ON usage_records(started_ms)`); err != nil {
+	// 聚合覆盖索引：统计 KPI（UsageTotals）、按模型分组（UsageByModel）与按日趋势
+	// （UsageDaily）的全部过滤与聚合列都在索引内——index-only 扫描，不回表读取
+	// 含 record_json（完整请求/响应体，单行可达几十 KB）的胖行。月级数据的聚合
+	// 从 GB 级行读取降为几十 MB 索引扫描。列全为整数/短字符串，空间开销可控；
+	// 幂等建索引，大表首次执行为一次性启动成本。
+	if _, err := s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_usage_agg_cover ON usage_records(started_ms, model_name, group_name, key_name, status_code, stream, input_tokens, output_tokens, total_tokens, cache_hit_tokens, duration_ms, first_byte_ms)`); err != nil {
+		return err
+	}
+	// 旧的时间索引成为覆盖索引前缀的冗余（写入双份维护），删除。
+	if _, err := s.db.ExecContext(ctx, `DROP INDEX IF EXISTS idx_usage_started_ms`); err != nil {
 		return err
 	}
 	// 回填存量行的 started_ms。单连接约束：先全部读进内存并关闭游标，再 UPDATE。

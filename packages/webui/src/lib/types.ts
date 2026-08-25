@@ -96,6 +96,17 @@ export interface SourceAPIKey {
   allowedModels?: string[]
 }
 
+/** 源的后台拉取任务状态（后端运行时叠加，不落库）。 */
+export interface SourceRefreshState {
+  refreshing: boolean
+  lastCount?: number
+  lastAdded?: number
+  lastRemoved?: number
+  lastError?: string
+  lastFinishedAt?: string
+  lastKeys?: { index: number; note?: string; count: number; error?: string }[]
+}
+
 export interface ModelSource {
   id: string
   name: string
@@ -110,6 +121,8 @@ export interface ModelSource {
   /** 多 key 配置（方向6）：空 = 单 key（apiKey）。 */
   apiKeys?: SourceAPIKey[]
   keyStrategy?: SourceKeyStrategy
+  /** 后台拉取任务状态（轮询进度与最近结果）。 */
+  refreshState?: SourceRefreshState
   createdAt?: string
   updatedAt?: string
 }

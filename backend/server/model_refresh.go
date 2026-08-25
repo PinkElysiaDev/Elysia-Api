@@ -19,13 +19,6 @@ type openAIModelsResponse struct {
 	} `json:"data"`
 }
 
-// sourceRefreshError 记录单个源刷新失败的信息，供全量刷新汇总返回。
-type sourceRefreshError struct {
-	SourceID   string `json:"sourceId"`
-	SourceName string `json:"sourceName"`
-	Error      string `json:"error"`
-}
-
 // refreshSummary 汇总一次源刷新的结果：模型总数、新增/移除清单与逐 key 拉取结果
 // （多 key 源的权限发现，供前端按 key 展示与 toast 提示）。
 type refreshSummary struct {
@@ -42,33 +35,6 @@ type keyFetchOutcome struct {
 	Note  string `json:"note,omitempty"`
 	Count int    `json:"count"`
 	Error string `json:"error,omitempty"`
-}
-
-// refreshAllSources 刷新所有启用的源。**单源失败不再中断整体**：收集每个源的
-// 错误继续往下，返回累计成功数与各源错误列表。
-func (s *Server) refreshAllSources(ctx context.Context) (int, []sourceRefreshError, error) {
-	if s.store == nil {
-		return 0, nil, fmt.Errorf("sqlite store is unavailable")
-	}
-	sources, err := s.store.ListSources(ctx)
-	if err != nil {
-		return 0, nil, err
-	}
-	total := 0
-	var failures []sourceRefreshError
-	for _, source := range sources {
-		if !source.Enabled {
-			continue
-		}
-		summary, err := s.refreshSourceByValue(ctx, source)
-		if err != nil {
-			failures = append(failures, sourceRefreshError{SourceID: source.ID, SourceName: source.Name, Error: err.Error()})
-			_ = s.store.InsertSystemLog(ctx, "warn", "model source refresh failed", map[string]any{"sourceId": source.ID, "sourceName": source.Name, "error": err.Error()})
-			continue
-		}
-		total += summary.Count
-	}
-	return total, failures, nil
 }
 
 func (s *Server) refreshSource(ctx context.Context, id string) (refreshSummary, error) {

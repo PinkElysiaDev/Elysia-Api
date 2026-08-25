@@ -306,11 +306,13 @@ export function SourceFormDialog({
       } else {
         const created = await api.createSource(payload)
         await revalidate.sources()
-        let fetchCount: number | null = null
+        let backgroundFetch = false
         if (created.autoFetchModels && created.enabled) {
+          // 拉取为后台任务：发起即返回，进度经源列表 refreshState 轮询，
+          // 完成时由 sources 页统一弹结果提示。
           try {
             const result = await api.fetchSource(created.id)
-            fetchCount = result.count
+            backgroundFetch = result.started || !!result.alreadyRunning
           } catch (fetchErr) {
             console.error('Auto fetch models failed:', fetchErr)
           }
@@ -318,7 +320,7 @@ export function SourceFormDialog({
         await revalidate.models()
         toast.success(
           '模型源已创建',
-          fetchCount !== null ? `已自动拉取 ${fetchCount} 个模型` : undefined,
+          backgroundFetch ? '已在后台开始拉取模型' : undefined,
         )
       }
       onOpenChange(false)

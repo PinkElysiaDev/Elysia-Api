@@ -142,14 +142,12 @@ export const api = {
     }),
   deleteSource: (id: string) =>
     request<{ deleted: boolean }>(`/model-sources/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /** 发起源的后台模型拉取：立即返回，进度与结果经源列表的 refreshState 轮询。 */
   fetchSource: (id: string) =>
-    request<{
-      refreshed: boolean
-      count: number
-      added?: string[]
-      removed?: string[]
-      keys?: { index: number; note?: string; count: number; error?: string }[]
-    }>(`/model-sources/${encodeURIComponent(id)}/fetch`, { method: 'POST' }),
+    request<{ started: boolean; alreadyRunning?: boolean }>(
+      `/model-sources/${encodeURIComponent(id)}/fetch`,
+      { method: 'POST' },
+    ),
 
   modelCatalogStatus: () =>
     request<{
@@ -182,8 +180,9 @@ export const api = {
     request<ListEnvelope<Model>>('/models', {
       query: params && { sourceId: params.sourceId, search: params.search },
     }).then((r) => r.items ?? []),
+  /** 为所有启用源发起后台拉取：立即返回启动数量，进度见各源 refreshState。 */
   refreshModels: () =>
-    request<{ refreshed: boolean; count: number }>('/models/refresh', { method: 'POST' }),
+    request<{ started: number; total: number }>('/models/refresh', { method: 'POST' }),
   updateModel: (sourceId: string, modelId: string, body: Partial<Omit<Model, 'id' | 'sourceId'>>) =>
     request<{ updated: boolean }>(
       `/models/${encodeURIComponent(sourceId)}/${encodeURIComponent(modelId)}`,

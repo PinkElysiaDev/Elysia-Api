@@ -203,7 +203,20 @@ func (s *Server) adminListSources(c *gin.Context) {
 		fail(c, 500, "list_sources_failed", err.Error())
 		return
 	}
-	ok(c, gin.H{"items": items})
+	// 叠加运行时拉取状态（后台任务进行中/最近结果），内嵌结构体 JSON 展平，
+	// 前端在源对象上直接读 refreshState 轮询进度。
+	type sourceWithRefresh struct {
+		storage.ModelSource
+		RefreshState sourceRefreshState `json:"refreshState"`
+	}
+	withState := make([]sourceWithRefresh, len(items))
+	for i := range items {
+		withState[i] = sourceWithRefresh{
+			ModelSource:  items[i],
+			RefreshState: s.sourceRefreshStateOf(items[i].ID),
+		}
+	}
+	ok(c, gin.H{"items": withState})
 }
 
 func (s *Server) adminUpsertSource(c *gin.Context) {
@@ -239,9 +252,9 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 	s.invalidateRouteCache()
 
 	// 保存后自动同步该源的模型到模型缓存，省去用户额外手动刷新：
-	//   - 手动源：同步写入（不阻塞网络），保证保存响应返回后前端立即 revalidate
-	//     能读到新模型（消除「手动模型不更新模型组」的竞态）；
-	//   - 自动拉取源：异步拉取（不阻塞保存响应），失败仅记日志。
+	//   - 手动源：同步写入（不涉网络），保证保存响应返回后前端立即能读到新模型；
+	//   - 自动拉取源：走后台任务管理器（refresh_jobs.go）异步拉取——与手动拉取
+	//     共享去重/并发约束，结果落在源的 refreshState 上（前端可见进度与成败）。
 	saved := item
 	if !saved.AutoFetchModels {
 		if _, err := s.refreshSourceByValue(c.Request.Context(), saved); err != nil {
@@ -252,15 +265,7 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 			s.invalidateRouteCache()
 		}
 	} else {
-		go func() {
-			if _, err := s.refreshSourceByValue(context.Background(), saved); err != nil {
-				if s.store != nil {
-					_ = s.store.InsertSystemLog(context.Background(), "warn", "auto refresh after save failed", map[string]any{"sourceId": saved.ID, "sourceName": saved.Name, "error": err.Error()})
-				}
-				return
-			}
-			s.invalidateRouteCache()
-		}()
+		s.launchSourceRefresh(saved)
 	}
 
 	ok(c, item)
@@ -315,19 +320,55 @@ func (s *Server) adminDeleteSource(c *gin.Context) {
 	ok(c, gin.H{"deleted": true})
 }
 
+// adminFetchSource 发起指定源的后台模型拉取：**立即返回**，任务在后台执行
+// （refresh_jobs.go），前端轮询源列表的 refreshState 获取进度与结果。慢上游
+// 不再阻塞界面；同一源重复触发会被去重。
 func (s *Server) adminFetchSource(c *gin.Context) {
+	if _, okStore := s.requireStore(c); !okStore {
+		return
+	}
+	started, alreadyRunning, err := s.startSourceRefreshByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "not found") {
+			status = http.StatusNotFound
+		}
+		fail(c, status, "fetch_source_failed", err.Error())
+		return
+	}
+	if alreadyRunning {
+		ok(c, gin.H{"started": false, "alreadyRunning": true})
+		return
+	}
+	ok(c, gin.H{"started": started})
+}
+
+// adminRefreshModels 为所有启用的源发起后台拉取，立即返回启动数量。
+// 各源独立成任务（源间并发受全局信号量约束），单个源失败只记日志与状态，
+// 不影响其他源——返回值不再携带失败明细，结果见各源 refreshState 与系统日志。
+func (s *Server) adminRefreshModels(c *gin.Context) {
 	store, okStore := s.requireStore(c)
 	if !okStore {
 		return
 	}
-	summary, err := s.refreshSource(c.Request.Context(), c.Param("id"))
+	sources, err := store.ListSources(c.Request.Context())
 	if err != nil {
-		fail(c, 500, "fetch_source_failed", err.Error())
+		fail(c, 500, "refresh_models_failed", err.Error())
 		return
 	}
-	_ = store.InsertSystemLog(c.Request.Context(), "info", "model source refreshed", gin.H{"sourceId": c.Param("id"), "count": summary.Count})
+	enabled := 0
+	started := 0
+	for _, source := range sources {
+		if !source.Enabled {
+			continue
+		}
+		enabled++
+		if s.launchSourceRefresh(source) {
+			started++
+		}
+	}
 	s.invalidateRouteCache()
-	ok(c, gin.H{"refreshed": true, "count": summary.Count, "added": summary.Added, "removed": summary.Removed, "keys": summary.Keys})
+	ok(c, gin.H{"started": started, "total": enabled})
 }
 
 // adminSetSourceEnabled 仅切换源启停：专用轻量端点，避免整源 PUT 附带的
@@ -514,16 +555,6 @@ func (s *Server) adminRemoveGroupMembers(c *gin.Context) {
 	}
 	s.invalidateRouteCache()
 	ok(c, gin.H{"removed": removed})
-}
-
-func (s *Server) adminRefreshModels(c *gin.Context) {
-	count, failures, err := s.refreshAllSources(c.Request.Context())
-	if err != nil {
-		fail(c, 500, "refresh_models_failed", err.Error())
-		return
-	}
-	s.invalidateRouteCache()
-	ok(c, gin.H{"refreshed": true, "count": count, "failures": failures})
 }
 
 func (s *Server) adminListGroups(c *gin.Context) {

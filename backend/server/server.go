@@ -45,6 +45,13 @@ type Server struct {
 	keyRRMutex sync.Mutex
 	keyRRIndex map[string]int
 
+	// 模型拉取后台任务状态（refresh_jobs.go）：去重标志、结果快照与源间并发
+	// 信号量。任务异步执行，端点发起即返回，前端轮询 refreshState。
+	sourceRefreshMu  sync.Mutex
+	sourceRefreshing map[string]bool
+	sourceLastFetch  map[string]sourceRefreshState
+	refreshSem       chan struct{}
+
 	rateLimitMu sync.Mutex
 	rateLimits  map[string]*rateLimitState
 
@@ -113,6 +120,9 @@ func New(cfg *config.Config) *Server {
 		roundRobinIndex: make(map[string]int),
 		rateLimits:      make(map[string]*rateLimitState),
 		affinity:        newAffinityCache(),
+		sourceRefreshing: make(map[string]bool),
+		sourceLastFetch:  make(map[string]sourceRefreshState),
+		refreshSem:       make(chan struct{}, sourceRefreshConcurrency),
 		catalog: newModelCatalog(cfg.GetModelCatalog, func() string {
 			// 缓存落在数据库同目录，跟随用户的数据目录布局。
 			dbPath := cfg.GetDatabasePath()

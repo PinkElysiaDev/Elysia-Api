@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Boxes,
   Check,
@@ -176,12 +176,55 @@ export function SourcesPage() {
     }
   }
 
+  // 后台拉取任务：任一源进行中时快速轮询（3s），空闲时回落 60s 常规刷新。
+  const anyRefreshing = (data ?? []).some((s) => s.refreshState?.refreshing)
+  useEffect(() => {
+    if (!anyRefreshing) return
+    const id = setInterval(() => {
+      revalidate.sources()
+      revalidate.models()
+    }, 3000)
+    return () => clearInterval(id)
+  }, [anyRefreshing])
+
+  // 任务完成通知：只提示本页面见过的「进行中 → 完成」迁移（按 lastFinishedAt
+  // 去重），首次加载的历史结果不弹。
+  const seenRefreshing = useRef<Record<string, boolean>>({})
+  const notifiedFinish = useRef<Record<string, string>>({})
+  useEffect(() => {
+    for (const source of data ?? []) {
+      const state = source.refreshState
+      const isRefreshing = !!state?.refreshing
+      const wasRefreshing = !!seenRefreshing.current[source.id]
+      seenRefreshing.current[source.id] = isRefreshing
+      if (!state || isRefreshing || !wasRefreshing || !state.lastFinishedAt) continue
+      if (notifiedFinish.current[source.id] === state.lastFinishedAt) continue
+      notifiedFinish.current[source.id] = state.lastFinishedAt
+      if (state.lastError) {
+        toast.error('拉取失败', `${source.name}：${state.lastError}`)
+      } else {
+        const changes = [
+          state.lastAdded ? `新增 ${state.lastAdded}` : '',
+          state.lastRemoved ? `移除 ${state.lastRemoved}` : '',
+        ]
+          .filter(Boolean)
+          .join('，')
+        toast.success('拉取完成', `${source.name} 共 ${state.lastCount ?? 0} 个模型${changes ? `（${changes}）` : ''}`)
+      }
+    }
+  }, [data, toast])
+
+  /** 该源的后台拉取进行中：锁定其模型相关操作，避免合并期间冲突误操作。 */
+  function sourceBusy(source: ModelSource): boolean {
+    return !!source.refreshState?.refreshing
+  }
+
   async function refreshAll() {
     setRefreshingAll(true)
     try {
       const result = await api.refreshModels()
-      await revalidate.models()
-      toast.success('已刷新全部模型', `共聚合 ${result.count} 个模型`)
+      await Promise.all([mutate(), revalidate.models()])
+      toast.success('已开始后台刷新', `已启动 ${result.started}/${result.total} 个源的拉取任务`)
     } catch (err) {
       toast.error('刷新失败', (err as Error).message)
     } finally {
@@ -193,25 +236,15 @@ export function SourcesPage() {
     setBusyId(source.id)
     try {
       const result = await api.fetchSource(source.id)
-      await revalidate.models()
       setExpanded((prev) => ({ ...prev, [source.id]: true }))
-      const added = result.added?.length ?? 0
-      const removed = result.removed?.length ?? 0
-      const changes = [added > 0 ? `新增 ${added}` : '', removed > 0 ? `移除 ${removed}` : '']
-        .filter(Boolean)
-        .join('，')
-      const keySummary = (result.keys ?? [])
-        .map((k, i) => (k.error ? `Key${i + 1}失败` : `Key${i + 1}: ${k.count}`))
-        .join('，')
-      const description = [
-        `${source.name} 共 ${result.count} 个模型${changes ? `（${changes}）` : ''}`,
-        keySummary,
-      ]
-        .filter(Boolean)
-        .join('；')
-      toast.success('拉取完成', description)
+      await mutate()
+      if (result.alreadyRunning) {
+        toast.success('已在后台拉取中', `${source.name} 正在拉取，完成后会提示`)
+      } else {
+        toast.success('已在后台开始拉取', `${source.name} · 页面可继续其他操作`)
+      }
     } catch (err) {
-      toast.error('拉取失败', (err as Error).message)
+      toast.error('发起拉取失败', (err as Error).message)
     } finally {
       setBusyId(null)
     }
@@ -284,7 +317,7 @@ export function SourcesPage() {
               </CapChip>
             )}
             <Button onClick={refreshAll} disabled={refreshingAll}>
-              <RefreshCw className={refreshingAll ? 'animate-spin' : undefined} /> 刷新全部模型
+              <RefreshCw className={refreshingAll || anyRefreshing ? 'animate-spin' : undefined} /> 刷新全部模型
             </Button>
             <Button variant="primary" onClick={openCreate}>
               <Plus /> 新增模型源
@@ -355,6 +388,9 @@ export function SourcesPage() {
                 {filtered.map((source) => {
                   const sourceModels = modelsBySource.get(source.id) ?? []
                   const isOpen = !!expanded[source.id]
+                  // 后台拉取进行中：锁定该源的模型相关操作（避免合并期间冲突误操作），
+                  // 其余源与页面功能不受影响。
+                  const busy = sourceBusy(source)
                   const groups = buildModelGroups(source, sourceModels)
                   const globalKeyword = (globalSearch[source.id] ?? '').trim().toLowerCase()
                   const matchesGlobal = (m: Model) =>
@@ -392,7 +428,10 @@ export function SourcesPage() {
                           </button>
                         </TableCell>
                         <TableCell className="font-semibold">
-                          {source.name}
+                          <span className="inline-flex items-center gap-1.5">
+                            {source.name}
+                            {busy && <RefreshCw className="h-3 w-3 animate-spin text-rose" />}
+                          </span>
                           <span className="sub">{source.id}</span>
                         </TableCell>
                         <TableCell className="text-center">
@@ -410,7 +449,7 @@ export function SourcesPage() {
                         <TableCell className="text-center">
                           <Switch
                             checked={source.enabled}
-                            disabled={switchBusyId === source.id}
+                            disabled={switchBusyId === source.id || busy}
                             onCheckedChange={() => toggleSource(source)}
                             aria-label={`${source.enabled ? '停用' : '启用'} ${source.name}`}
                           />
@@ -421,17 +460,29 @@ export function SourcesPage() {
                               <Button
                                 variant="ghost"
                                 size="iconSm"
-                                title="拉取模型"
-                                disabled={busyId === source.id || !source.enabled}
+                                title={busy ? '后台拉取进行中' : '拉取模型'}
+                                disabled={busyId === source.id || !source.enabled || busy}
                                 onClick={() => handleFetch(source)}
                               >
-                                <RefreshCw className={busyId === source.id ? 'animate-spin' : undefined} />
+                                <RefreshCw className={busy || busyId === source.id ? 'animate-spin' : undefined} />
                               </Button>
                             )}
-                            <Button variant="ghost" size="iconSm" title="编辑" onClick={() => openEdit(source)}>
+                            <Button
+                              variant="ghost"
+                              size="iconSm"
+                              title="编辑"
+                              disabled={busy}
+                              onClick={() => openEdit(source)}
+                            >
                               <Pencil />
                             </Button>
-                            <Button variant="danger" size="iconSm" title="删除" onClick={() => handleDelete(source)}>
+                            <Button
+                              variant="danger"
+                              size="iconSm"
+                              title="删除"
+                              disabled={busy}
+                              onClick={() => handleDelete(source)}
+                            >
                               <Trash2 />
                             </Button>
                           </div>
@@ -466,12 +517,17 @@ export function SourcesPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                disabled={allVisibleModels.length === 0}
+                                disabled={busy || allVisibleModels.length === 0}
                                 onClick={() => setModelsSelected(allVisibleModels, true)}
                               >
                                 全选
                               </Button>
-                              <Button variant="ghost" size="sm" onClick={() => setModelsSelected(sourceModels, false)}>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={busy}
+                                onClick={() => setModelsSelected(sourceModels, false)}
+                              >
                                 清空选择
                               </Button>
                               <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -479,7 +535,7 @@ export function SourcesPage() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  disabled={selectedCount === 0 || batchBusy}
+                                  disabled={busy || selectedCount === 0 || batchBusy}
                                   onClick={() => batchSetEnabled(selectedModelsOf(source.id), true)}
                                 >
                                   <Power /> 启用
@@ -487,7 +543,7 @@ export function SourcesPage() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  disabled={selectedCount === 0 || batchBusy}
+                                  disabled={busy || selectedCount === 0 || batchBusy}
                                   onClick={() => batchSetEnabled(selectedModelsOf(source.id), false)}
                                 >
                                   <PowerOff /> 禁用
@@ -495,7 +551,7 @@ export function SourcesPage() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  disabled={selectedCount === 0}
+                                  disabled={busy || selectedCount === 0}
                                   onClick={() => setQuickCreate({ source, models: selectedModelsOf(source.id) })}
                                 >
                                   <Plus /> 创建模型组
@@ -503,7 +559,7 @@ export function SourcesPage() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  disabled={selectedCount === 0}
+                                  disabled={busy || selectedCount === 0}
                                   onClick={() => setAddToGroup(selectedModelsOf(source.id))}
                                 >
                                   <ListPlus /> 加入模型组
@@ -580,6 +636,7 @@ export function SourcesPage() {
                                               key={`${group.key}-${model.sourceId}-${model.id}`}
                                               model={model}
                                               checked={!!selected[`${source.id}:${model.id}`]}
+                                              locked={busy}
                                               onToggleSelect={() => toggleModelSelected(source.id, model.id)}
                                               onEdit={() => openModelEdit(model)}
                                               onToggleEnabled={() => toggleModelEnabled(model)}
@@ -648,16 +705,19 @@ export function SourcesPage() {
   )
 }
 
-/** 模型芯片：mono 名称 + 能力图标 + 类型 + max tokens；失效置灰。 */
+/** 模型芯片：mono 名称 + 能力图标 + 类型 + max tokens；失效置灰。
+ * locked：所属源后台拉取进行中——禁用选择与编辑/启停，避免合并期间冲突。 */
 function ModelChip({
   model,
   checked,
+  locked = false,
   onToggleSelect,
   onEdit,
   onToggleEnabled,
 }: {
   model: Model
   checked: boolean
+  locked?: boolean
   onToggleSelect: () => void
   onEdit: () => void
   onToggleEnabled: () => void
@@ -669,13 +729,15 @@ function ModelChip({
       className={cn(
         'group inline-flex items-center gap-1.5 rounded-md border bg-card px-[9px] py-1 font-mono text-xs text-muted-foreground transition-colors',
         checked ? 'border-rose text-rose' : 'border-input hover:border-rose hover:text-foreground',
-        dimmed && 'opacity-50',
+        (dimmed || locked) && 'opacity-50',
+        locked && 'pointer-events-none',
       )}
-      title={`${model.id}${model.lastCheckedAt ? ` · 检测于 ${formatRelative(model.lastCheckedAt)}` : ''}`}
+      title={`${model.id}${model.lastCheckedAt ? ` · 检测于 ${formatRelative(model.lastCheckedAt)}` : ''}${locked ? ' · 拉取进行中' : ''}`}
     >
       <button
         type="button"
         onClick={onToggleSelect}
+        disabled={locked}
         aria-label={checked ? '取消选择' : '选择'}
         aria-pressed={checked}
         className={cn(
@@ -685,7 +747,7 @@ function ModelChip({
       >
         {checked && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
       </button>
-      <button type="button" onClick={onToggleSelect} className="max-w-[220px] truncate">
+      <button type="button" onClick={onToggleSelect} disabled={locked} className="max-w-[220px] truncate">
         {model.name || model.id}
       </button>
       <span className="rounded border border-border px-1 text-2xs uppercase tracking-[0.08em] text-muted-foreground">
@@ -700,6 +762,7 @@ function ModelChip({
         <button
           type="button"
           onClick={onEdit}
+          disabled={locked}
           title="编辑模型"
           aria-label="编辑模型"
           className="rounded p-0.5 text-muted-foreground hover:text-rose"
@@ -709,6 +772,7 @@ function ModelChip({
         <button
           type="button"
           onClick={onToggleEnabled}
+          disabled={locked}
           title={isEnabled ? '停用（不参与调度）' : '启用'}
           aria-label={isEnabled ? '停用模型' : '启用模型'}
           className="rounded p-0.5 text-muted-foreground hover:text-rose"

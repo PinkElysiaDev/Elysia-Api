@@ -11,7 +11,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { BarChart3 } from 'lucide-react'
+import { BarChart3, RefreshCw } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { SectionHeader } from '@/components/section-header'
 import { KpiCard, KpiGrid } from '@/components/kpi-card'
@@ -40,7 +40,10 @@ export function UsageStatsPage() {
   const { groupOptions, modelOptions, keyOptions } = useUsageFilterOptions()
 
   const params = useMemo(() => {
-    const to = new Date(minuteTick * 60_000).toISOString()
+    // 时间参数按 5 分钟桶量化：缓存键在桶内稳定，切走再切回直接命中缓存秒开，
+    // 不再因分钟粒度的 to 抖动导致每次返回都重新等待慢查询。
+    const bucketMs = 5 * 60_000
+    const to = new Date(Math.floor((minuteTick * 60_000) / bucketMs) * bucketMs).toISOString()
     return {
       from: startOfRange(range, to),
       to,
@@ -50,7 +53,7 @@ export function UsageStatsPage() {
     }
   }, [range, groupNames, modelNames, keyNames, minuteTick])
 
-  const { data: stats, isLoading, error, mutate } = useUsageStats(params)
+  const { data: stats, isLoading, error, mutate, isValidating } = useUsageStats(params)
 
   // 按模型聚合（后端 SQL 分组，与 stats 同窗口同筛选）
   const {
@@ -58,8 +61,10 @@ export function UsageStatsPage() {
     isLoading: byModelLoading,
     error: byModelError,
     mutate: retryByModel,
+    isValidating: byModelValidating,
   } = useUsageByModel(params)
   const byModel = byModelRows ?? []
+  const updating = (isLoading && !!stats) || isValidating || byModelValidating
 
   const pieData = useMemo(
     () => [
@@ -106,6 +111,13 @@ export function UsageStatsPage() {
         <div className="min-w-[140px]">
           <MultiSelect options={keyOptions} value={keyNames} onChange={setKeyNames} placeholder="全部调用方" searchPlaceholder="搜索调用方" />
         </div>
+        {/* 更新反馈：旧数据保留可见，同时明示聚合刷新进行中（keepPreviousData 下
+            若无指示，慢查询返回前的静默期会被误读为筛选失效）。 */}
+        {updating && (
+          <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+            <RefreshCw className="h-3 w-3 animate-spin" /> 更新中…
+          </span>
+        )}
       </div>
 
       {error ? (

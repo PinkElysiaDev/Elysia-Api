@@ -75,7 +75,10 @@ export function useUsageFilterOptions() {
 const usageConfig: SWRConfiguration = {
   ...defaultConfig,
   keepPreviousData: true,
-  dedupingInterval: 5000,
+  // 60s 去重窗口：同键在窗口内重复挂载/校验直接用缓存不发请求（SWR 无
+  // staleTime，dedupingInterval 即等价物）——配合统计页 5 分钟桶化的时间参数，
+  // 页面往返即开。用量日志页键含分钟粒度 tick，每次新键不受影响。
+  dedupingInterval: 60_000,
 }
 
 export function useUsageStats(params: UsageQueryParams) {
