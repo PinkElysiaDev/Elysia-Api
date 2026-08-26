@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Area,
@@ -44,7 +44,8 @@ import {
   useMinuteTick,
 } from '@/lib/hooks'
 import type { ModelSource } from '@/lib/types'
-import { bucketedTimeISO, CHART_TICK, compactNumber, formatDuration, formatHitRate, formatNumber, percent } from '@/lib/utils'
+import { bucketedTimeISO, CHART_TICK, compactNumber, formatDuration, formatHitRate, formatNumber, percent, startOfRange } from '@/lib/utils'
+import type { RangeKey } from '@/components/usage-filter-bar'
 
 /** 本地零点（今日 / 昨日），用于 KPI 的"今日 vs 昨日"窗口。 */
 function localMidnight(offsetDays = 0, reference = new Date()): Date {
@@ -95,14 +96,34 @@ function SourceHealthScroller({
   modelStatsBySource: Map<string, { total: number; available: number }>
 }) {
   const navigate = useNavigate()
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  // 仅当内容真实超出可用高度（由同排最高的相邻卡片决定）时才滚动，否则静态
+  // 展示全部行。ResizeObserver 兜底容器/行高变化（字体加载、响应式重排）。
+  const [scrolling, setScrolling] = useState(false)
   const rows = sources.map((source) => {
     const stats = modelStatsBySource.get(source.id) ?? { total: 0, available: 0 }
     return { source, stats, health: summarizeSourceHealth(source.enabled, stats.total, stats.available) }
   })
-  const VISIBLE_ROWS = 5
-  const shouldScroll = rows.length > VISIBLE_ROWS
-  // 滚动时长按行数缩放：每行约 2.6s，观感均匀。
-  const durationSeconds = Math.max(12, rows.length * 2.6)
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current
+    const content = contentRef.current
+    if (!viewport || !content) return
+    const measure = () => {
+      // 静态态比较单份内容高度；滚动态内容为双份，取一半高度比较，判定单调稳定。
+      const contentHeight = content.scrollHeight / (scrolling ? 2 : 1)
+      setScrolling(contentHeight > viewport.clientHeight + 1)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(viewport)
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [rows.length, scrolling])
+
+  // 滚动时长按行数缩放（每行约 3.05s，比初版放慢 15%），观感均匀。
+  const durationSeconds = Math.max(14, Math.round(rows.length * 3.05))
   const renderRow = ({ source, stats, health }: (typeof rows)[number], keyPrefix: string) => (
     <tr
       key={`${keyPrefix}-${source.id}`}
@@ -131,31 +152,20 @@ function SourceHealthScroller({
     return <p className="py-8 text-center text-xs text-muted-foreground">暂无模型源</p>
   }
 
-  if (!shouldScroll) {
-    return (
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <tbody>{rows.map((row) => renderRow(row, 'static'))}</tbody>
-        </table>
-      </div>
-    )
-  }
-
   return (
-    <div
-      className="group/scroller overflow-hidden"
-      style={{ maxHeight: `${VISIBLE_ROWS * 41}px` }}
-      title="悬停暂停滚动"
-    >
+    // 绝对定位让内容不撑高卡片：可用高度完全由同排相邻卡片决定，「能否展示
+    // 全部」的判定才不会自我满足（内容撑开容器 → 永远"装得下"）。
+    <div ref={viewportRef} className="group/scroller absolute inset-0 overflow-hidden pt-1" title={scrolling ? '悬停暂停滚动' : undefined}>
       <div
-        className="animate-source-marquee group-hover/scroller:[animation-play-state:paused]"
-        style={{ animationDuration: `${durationSeconds}s` }}
+        ref={contentRef}
+        className={scrolling ? 'animate-source-marquee group-hover/scroller:[animation-play-state:paused]' : undefined}
+        style={scrolling ? { animationDuration: `${durationSeconds}s` } : undefined}
       >
         <table className="w-full text-xs">
           <tbody>
-            {rows.map((row) => renderRow(row, 'a'))}
-            {/* 复制一份内容实现无缝循环（keys 加前缀避免重复）。 */}
-            {rows.map((row) => renderRow(row, 'b'))}
+            {rows.map((row) => renderRow(row, scrolling ? 'a' : 'static'))}
+            {/* 滚动态复制一份内容实现无缝循环（keys 加前缀避免重复）。 */}
+            {scrolling && rows.map((row) => renderRow(row, 'b'))}
           </tbody>
         </table>
       </div>
@@ -227,13 +237,19 @@ export function OverviewPage() {
       : null
   const successRate = today ? percent(today.success, today.requests) : '—'
 
-  // 热门模型（今日窗口）
+  // 热门模型分布：独立时间窗（右上角 Seg 快捷切换 24小时/7天/30天/全部），
+  // to 沿用 5 分钟桶化保持缓存键稳定；与 KPI 的今日统计互不影响。
+  const [topRange, setTopRange] = useState<RangeKey>('24h')
+  const topModelsParams = useMemo(() => {
+    const to = bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)
+    return { from: startOfRange(topRange, to), to }
+  }, [topRange, minuteTick])
   const {
     data: byModel,
     isLoading: byModelLoading,
     error: byModelError,
     mutate: retryByModel,
-  } = useUsageByModel(todayParams)
+  } = useUsageByModel(topModelsParams)
 
   const topModels = useMemo(() => {
     const sorted = byModel ?? []
@@ -406,7 +422,18 @@ export function OverviewPage() {
                 <Cpu className="h-4 w-4 text-primary" />
                 <h3 className="text-sm font-semibold text-foreground">热门模型分布</h3>
               </div>
-              <span className="text-2xs text-muted-foreground font-mono">今日聚合</span>
+              <Seg
+                aria-label="热门模型时间窗"
+                className="h-7"
+                options={[
+                  { value: '24h', label: '24小时' },
+                  { value: '7d', label: '7天' },
+                  { value: '30d', label: '30天' },
+                  { value: 'all', label: '全部' },
+                ]}
+                value={topRange}
+                onChange={setTopRange}
+              />
             </div>
             <div className="pt-1">
               {byModelError ? (
@@ -414,7 +441,7 @@ export function OverviewPage() {
               ) : byModelLoading && !byModel ? (
                 <div className="skeleton h-36 rounded-md" />
               ) : topModels.length === 0 ? (
-                <p className="py-8 text-center text-xs text-muted-foreground">今日暂无调用数据</p>
+                <p className="py-8 text-center text-xs text-muted-foreground">所选时间窗内暂无调用数据</p>
               ) : (
                 <div className="space-y-3.5">
                   {topModels.map((m, idx) => (
@@ -446,7 +473,7 @@ export function OverviewPage() {
           </div>
 
           {/* Bento 2: 模型源健康状态 */}
-          <div className="space-y-4">
+          <div className="flex h-full flex-col space-y-4">
             <div className="flex items-center justify-between border-b border-border/50 pb-3">
               <div className="flex items-center gap-2">
                 <Boxes className="h-4 w-4 text-jade" />
@@ -459,8 +486,8 @@ export function OverviewPage() {
                 全部 <MoveUpRight className="h-3 w-3 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
               </button>
             </div>
-            <div className="pt-1">
-              {sourceHealthError ? (
+            {sourceHealthError ? (
+              <div className="pt-1">
                 <ErrorState
                   className="py-6"
                   message={(sourceHealthError as Error).message}
@@ -468,12 +495,18 @@ export function OverviewPage() {
                     void Promise.all([retrySources(), retryModels()])
                   }}
                 />
-              ) : sourceHealthLoading ? (
+              </div>
+            ) : sourceHealthLoading ? (
+              <div className="pt-1">
                 <div className="skeleton h-36 rounded-md" />
-              ) : (
+              </div>
+            ) : (
+              /* 高度由同排最高的相邻卡片拉伸决定（单列布局时 min-h 兜底）；
+                 滚动器绝对定位其中，据实测溢出决定静态展示还是滚动。 */
+              <div className="relative min-h-[12.5rem] flex-1">
                 <SourceHealthScroller sources={sources ?? []} modelStatsBySource={modelStatsBySource} />
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Bento 3: 最近失败调用 */}
