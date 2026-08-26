@@ -718,6 +718,7 @@ function TrendSection({ minuteTick }: { minuteTick: number }) {
                       type="monotone"
                       fill="url(#reqAreaGrad)"
                       stroke="none"
+                      tooltipType="none"
                     />
                     <Line
                       yAxisId="req"

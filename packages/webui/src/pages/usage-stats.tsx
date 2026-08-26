@@ -302,6 +302,7 @@ export function UsageStatsPage() {
                               type="monotone"
                               fill="url(#usageReqAreaGrad)"
                               stroke="none"
+                              tooltipType="none"
                             />
                             <Line
                               yAxisId="req"
