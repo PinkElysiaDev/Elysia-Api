@@ -7,6 +7,8 @@ interface ModelBreakdownTooltipProps {
     name?: string
     value?: number | string
     color?: string
+    /** recharts 系列的 tooltipType；'none' 表示装饰系列（如渐变面积），不展示。 */
+    type?: string
     payload?: {
       date?: string
       label?: string
@@ -87,19 +89,22 @@ export function ModelBreakdownTooltip({ active, payload, label, mode = 'both' }:
         <span className="font-mono text-2xs font-semibold text-muted-foreground">{rawData?.date || label}</span>
       </div>
 
-      {/* 指标总览项 */}
+      {/* 指标总览项（过滤装饰系列：recharts 只在默认 tooltip 内容里过滤
+          type === 'none'，自定义内容需自行遵守该约定） */}
       <div className="space-y-1.5 py-2">
-        {payload.map((entry) => (
-          <div key={entry.name} className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-muted-foreground">
-              <i className="h-2 w-2 rounded-full" style={{ background: entry.color }} aria-hidden />
-              {entry.name}
-            </span>
-            <b className="font-mono font-semibold text-foreground">
-              {typeof entry.value === 'number' ? formatNumber(entry.value) : entry.value}
-            </b>
-          </div>
-        ))}
+        {payload
+          .filter((entry) => entry.type !== 'none')
+          .map((entry) => (
+            <div key={entry.name} className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <i className="h-2 w-2 rounded-full" style={{ background: entry.color }} aria-hidden />
+                {entry.name}
+              </span>
+              <b className="font-mono font-semibold text-foreground">
+                {typeof entry.value === 'number' ? formatNumber(entry.value) : entry.value}
+              </b>
+            </div>
+          ))}
       </div>
 
       {/* 模型级细分明细（若当前桶包含模型细分数据） */}
