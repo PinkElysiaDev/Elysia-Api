@@ -12,11 +12,12 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
+import { RoleWatermark } from '@/components/role-watermark'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { SettingCard, SettingRow } from '@/components/ui/setting-card'
+import { SettingSection, SettingRow } from '@/components/ui/setting-card'
 import { ErrorState, LoadingState } from '@/components/ui/states'
 import { useToast } from '@/components/ui/use-toast'
 import { useRuntimeConfig, useModelCatalogStatus, revalidate } from '@/lib/hooks'
@@ -97,7 +98,7 @@ export function RuntimeConfigPage() {
   if (isLoading && !form) {
     return (
       <div className="space-y-6">
-        <PageHeader title="运行配置" description="查看与修改后端运行参数" />
+        <PageHeader title="运行配置" />
         <LoadingState rows={4} columns={2} />
       </div>
     )
@@ -106,7 +107,7 @@ export function RuntimeConfigPage() {
   if (error) {
     return (
       <div className="space-y-6">
-        <PageHeader title="运行配置" description="查看与修改后端运行参数" />
+        <PageHeader title="运行配置" />
         <ErrorState message={(error as Error).message} onRetry={() => mutate()} />
       </div>
     )
@@ -115,11 +116,12 @@ export function RuntimeConfigPage() {
   if (!form) return null
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="运行配置"
-        description="管理网关端口、安全鉴权、持久化存储与模型能力目录参数。"
-        actions={
+    <>
+      <RoleWatermark className="-right-8 top-0 opacity-[0.05] dark:opacity-[0.08]" />
+
+      <div className="relative z-[1] space-y-6">
+        <PageHeader
+          title="运行配置"        actions={
           <>
             <Button
               onClick={async () => {
@@ -147,9 +149,9 @@ export function RuntimeConfigPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* 卡片 1: 服务与网络 */}
-        <SettingCard
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 pt-2">
+        {/* 章节 1: 服务与网络 */}
+        <SettingSection
           icon={Server}
           title="服务与网络"
           description="网关监听地址、网络端口与核心超时设置"
@@ -216,10 +218,10 @@ export function RuntimeConfigPage() {
               </div>
             </SettingRow>
           </div>
-        </SettingCard>
+        </SettingSection>
 
-        {/* 卡片 2: 安全与访问鉴权 */}
-        <SettingCard
+        {/* 章节 2: 安全与访问鉴权 */}
+        <SettingSection
           icon={ShieldCheck}
           title="安全与访问鉴权"
           description="WebUI 面板口令与网络出站安全守卫"
@@ -265,10 +267,10 @@ export function RuntimeConfigPage() {
               </div>
             )}
           </div>
-        </SettingCard>
+        </SettingSection>
 
-        {/* 卡片 3: 数据存储 */}
-        <SettingCard
+        {/* 章节 3: 数据存储 */}
+        <SettingSection
           icon={Database}
           title="持久化存储"
           description="SQLite 数据库文件路径与用量记录存储"
@@ -304,14 +306,12 @@ export function RuntimeConfigPage() {
               </div>
             </SettingRow>
           </div>
-        </SettingCard>
+        </SettingSection>
 
-        {/* 卡片 4: 模型能力目录 */}
-        <SettingCard
+        {/* 章节 4: 模型能力目录 */}
+        <SettingSection
           icon={Layers}
-          title="模型能力目录 (models.dev)"
-          description="自动识别与回填上游模型的视觉、工具调用等高级能力"
-          action={
+          title="模型能力目录 (models.dev)"          action={
             <Button
               variant="outline"
               size="sm"
@@ -344,21 +344,21 @@ export function RuntimeConfigPage() {
           <div className="space-y-4">
             <SettingRow
               label="后台自动同步周期"
-              description="定期后台同步周期（分钟，0 表示默认 1440 即 24 小时）"
+              description="定期后台同步周期（分钟，0 表示不启用该功能）"
             >
               <div className="flex w-full items-center gap-2 sm:w-48">
                 <Input
                   type="number"
                   min={0}
                   className="font-mono text-xs"
-                  value={form.modelCatalog?.syncIntervalMinutes ?? 0}
+                  value={form.modelCatalog?.syncIntervalMinutes ?? 1440}
                   onChange={(e) =>
                     setForm((prev) =>
                       prev
                         ? {
                             ...prev,
                             modelCatalog: {
-                              ...(prev.modelCatalog ?? { enabled: true, url: '', syncIntervalMinutes: 0 }),
+                              ...(prev.modelCatalog ?? { enabled: true, url: '', syncIntervalMinutes: 1440 }),
                               syncIntervalMinutes: Math.max(0, Number(e.target.value) || 0),
                             },
                           }
@@ -370,7 +370,7 @@ export function RuntimeConfigPage() {
               </div>
             </SettingRow>
 
-            <div className="rounded-xl border border-border/70 bg-secondary/30 p-3 text-xs space-y-1.5">
+            <div className="border-t border-border/40 pt-3 text-xs space-y-2">
               <div className="flex items-center justify-between text-muted-foreground">
                 <span>当前加载规模</span>
                 <span className="font-semibold text-foreground">
@@ -394,8 +394,9 @@ export function RuntimeConfigPage() {
               )}
             </div>
           </div>
-        </SettingCard>
+        </SettingSection>
       </div>
     </div>
+    </>
   )
 }

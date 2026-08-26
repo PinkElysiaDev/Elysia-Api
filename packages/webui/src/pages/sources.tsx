@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   Boxes,
   Check,
@@ -15,6 +16,7 @@ import {
   Wrench,
 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
+import { RoleWatermark } from '@/components/role-watermark'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -99,6 +101,15 @@ export function SourcesPage() {
   const [modelEditOpen, setModelEditOpen] = useState(false)
   const [quickCreate, setQuickCreate] = useState<{ source: ModelSource; models: Model[] } | null>(null)
   const [addToGroup, setAddToGroup] = useState<Model[] | null>(null)
+
+  // 总览「源健康」跳转：带 openSource 状态自动展开对应源行（一次性消费）。
+  const location = useLocation()
+  useEffect(() => {
+    const openSource = (location.state as { openSource?: string } | null)?.openSource
+    if (!openSource) return
+    setExpanded((prev) => ({ ...prev, [openSource]: true }))
+    window.history.replaceState({}, '')
+  }, [location.state])
 
   const modelsBySource = useMemo(() => {
     const map = new Map<string, Model[]>()
@@ -298,99 +309,99 @@ export function SourcesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="模型源"
-        description="管理上游 API 供应商与其聚合的模型能力，支持多 Key 轮询鉴权与自动能力回填。"
-        actions={
-          <>
-            {catalogStatus?.enabled && (
-              <CapChip
-                className="max-w-[280px] truncate"
-                title={
-                  catalogStatus.entries > 0
-                    ? `模型能力目录已加载 ${catalogStatus.entries} 个模型（models.dev），刷新模型时自动回填视觉/工具等能力`
-                    : '能力目录尚未加载成功：模型能力不会被自动回填，可在模型编辑中手动开启；服务器需可访问 models.dev（或配置 modelCatalog.url/proxy）'
-                }
-              >
-                {catalogStatus.entries > 0 ? `能力目录 ${catalogStatus.entries} 模型` : '能力目录未加载'}
-              </CapChip>
-            )}
-            <Button onClick={refreshAll} disabled={refreshingAll}>
-              <RefreshCw className={cn('h-4 w-4', (refreshingAll || anyRefreshing) && 'animate-spin')} /> 刷新全部模型
-            </Button>
+    <>
+      <RoleWatermark className="-right-8 top-0 opacity-[0.05] dark:opacity-[0.08]" />
+
+      <div className="relative z-[1] space-y-6">
+        <PageHeader
+          title="模型源"          actions={
+            <>
+              {catalogStatus?.enabled && (
+                <CapChip
+                  className="max-w-[280px] truncate"
+                  title={
+                    catalogStatus.entries > 0
+                      ? `模型能力目录已加载 ${catalogStatus.entries} 个模型（models.dev），刷新模型时自动回填视觉/工具等能力`
+                      : '能力目录尚未加载成功：模型能力不会被自动回填，可在模型编辑中手动开启；服务器需可访问 models.dev（或配置 modelCatalog.url/proxy）'
+                  }
+                >
+                  {catalogStatus.entries > 0 ? `能力目录 ${catalogStatus.entries} 模型` : '能力目录未加载'}
+                </CapChip>
+              )}
+              <Button onClick={refreshAll} disabled={refreshingAll}>
+                <RefreshCw className={cn('h-4 w-4', (refreshingAll || anyRefreshing) && 'animate-spin')} /> 刷新全部模型
+              </Button>
+              <Button variant="primary" onClick={openCreate}>
+                <Plus className="h-4 w-4" /> 新增模型源
+              </Button>
+            </>
+          }
+        />
+
+        {/* 搜索工具条与统计指标 */}
+        <div className="flex flex-wrap items-center justify-between gap-3 py-1">
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="pl-9 text-xs"
+              type="search"
+              placeholder="搜索源名称 / 平台 / 接口地址…"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-4 text-xs">
+            <span className="tnum flex items-center gap-3 text-muted-foreground font-mono">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-jade" />
+                <b className="font-semibold text-foreground">{enabledCount}</b> 启用
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-ember" />
+                <b className="font-semibold text-foreground">{disabledCount}</b> 停用
+              </span>
+              <span className="flex items-center gap-1.5">
+                聚合模型 <b className="font-semibold text-foreground">{formatNumber(models?.length ?? 0)}</b>
+              </span>
+            </span>
+            <span className="h-3 w-px bg-border/70" />
+            <span className="text-muted-foreground font-mono">
+              共 <b className="tnum font-semibold text-foreground">{(data ?? []).length}</b> 个模型源
+            </span>
+          </div>
+        </div>
+
+        <AsyncState
+          isLoading={isLoading}
+          error={error}
+          data={data}
+          onRetry={() => mutate()}
+          loadingColumns={8}
+          emptyIcon={<Boxes className="h-7 w-7" />}
+          emptyTitle="暂无任何模型源"
+          emptyDescription="添加你的第一个上游供应商（OpenAI / Anthropic / DeepSeek / 自定义网关），开始聚合模型。"
+          emptyAction={
             <Button variant="primary" onClick={openCreate}>
               <Plus className="h-4 w-4" /> 新增模型源
             </Button>
-          </>
-        }
-      />
-
-      {/* 搜索工具条与统计卡片 */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-card p-3 shadow-soft">
-        <div className="relative w-full sm:w-72">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="pl-9 text-xs"
-            type="search"
-            placeholder="搜索源名称 / 平台 / 接口地址…"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-          />
-        </div>
-        <div className="flex items-center gap-4 text-xs">
-          <span className="tnum flex items-center gap-3 text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-jade" />
-              <b className="font-semibold text-foreground">{enabledCount}</b> 启用
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-ember" />
-              <b className="font-semibold text-foreground">{disabledCount}</b> 停用
-            </span>
-            <span className="flex items-center gap-1.5">
-              聚合模型 <b className="font-semibold text-foreground">{formatNumber(models?.length ?? 0)}</b>
-            </span>
-          </span>
-          <span className="h-3 w-px bg-border" />
-          <span className="text-muted-foreground">
-            共 <b className="tnum font-semibold text-foreground">{(data ?? []).length}</b> 个模型源
-          </span>
-        </div>
-      </div>
-
-      <AsyncState
-        isLoading={isLoading}
-        error={error}
-        data={data}
-        onRetry={() => mutate()}
-        loadingColumns={8}
-        emptyIcon={<Boxes className="h-7 w-7" />}
-        emptyTitle="暂无任何模型源"
-        emptyDescription="添加你的第一个上游供应商（OpenAI / Anthropic / DeepSeek / 自定义网关），开始聚合模型。"
-        emptyAction={
-          <Button variant="primary" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> 新增模型源
-          </Button>
-        }
-      >
-        {() => (
-          <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-soft">
+          }
+        >
+          {() => (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <TableHeader className="bg-secondary/40">
-                  <TableRow className="border-b border-border/80 hover:bg-transparent">
+                <TableHeader className="bg-secondary/20">
+                  <TableRow className="border-b border-border/60 hover:bg-transparent">
                     <TableHead className="w-[38px] px-0 text-center" />
-                    <TableHead className="py-3.5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">源名称 / ID</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">平台架构</TableHead>
-                    <TableHead className="py-3.5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Base URL</TableHead>
-                    <TableHead className="py-3.5 num text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">模型数</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">同步策略</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">状态</TableHead>
-                    <TableHead className="py-3.5 pr-5 text-right font-semibold text-xs uppercase tracking-wider text-muted-foreground">操作</TableHead>
+                    <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">源名称 / ID</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">平台架构</TableHead>
+                    <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">Base URL</TableHead>
+                    <TableHead className="py-3.5 num text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">模型数</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">同步策略</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">状态</TableHead>
+                    <TableHead className="py-3.5 pr-5 text-right font-semibold text-2xs uppercase tracking-wider text-muted-foreground">操作</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody className="divide-y divide-border/60">
+                <TableBody className="divide-y divide-border/30">
                   {filtered.map((source) => {
                     const sourceModels = modelsBySource.get(source.id) ?? []
                     const isOpen = !!expanded[source.id]
@@ -690,9 +701,8 @@ export function SourcesPage() {
               </TableBody>
             </table>
           </div>
-        </div>
-      )}
-    </AsyncState>
+        )}
+      </AsyncState>
 
       <SourceFormDialog open={formOpen} onOpenChange={setFormOpen} source={editing} />
       <ModelEditDialog open={modelEditOpen} onOpenChange={setModelEditOpen} model={editingModel} />
@@ -709,6 +719,7 @@ export function SourcesPage() {
       />
       {dialog}
     </div>
+    </>
   )
 }
 

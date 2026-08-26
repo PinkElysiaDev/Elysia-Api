@@ -50,17 +50,22 @@ type ModelCatalogConfig struct {
 	Enabled *bool  `json:"enabled,omitempty"` // 默认启用；false 时完全停用目录（纯手动）
 	URL     string `json:"url,omitempty"`     // 目录 JSON 地址，空则用默认 models.dev
 	Proxy   string `json:"proxy,omitempty"`   // 拉取目录使用的出站代理（如 http://127.0.0.1:7890），空则走环境变量/直连
-	// SyncIntervalMinutes 为目录定期刷新周期（分钟），0 = 默认 1440（24 小时）。
-	// 后台按此周期自动更新并落盘缓存；管理页可运行时修改，无需重启。
-	SyncIntervalMinutes int `json:"syncIntervalMinutes,omitempty"`
+	// SyncIntervalMinutes 为目录定期刷新周期（分钟）。nil/未配置 = 默认 1440；
+	// **显式 0 = 不启用定期后台同步**（仅使用内置快照与本地缓存，管理页
+	// 「立即更新」仍可用）。指针类型用于区分「未配置」与「显式 0」。
+	SyncIntervalMinutes *int `json:"syncIntervalMinutes,omitempty"`
 }
 
-// ModelCatalogSyncInterval 返回生效的刷新周期（未配置时默认 24 小时）。
-func (c ModelCatalogConfig) ModelCatalogSyncInterval() time.Duration {
-	if c.SyncIntervalMinutes > 0 {
-		return time.Duration(c.SyncIntervalMinutes) * time.Minute
+// ModelCatalogSyncInterval 返回生效的刷新周期与是否启用定期同步：
+// nil → 默认 1440 分钟（启用）；0 → 不启用（仅快照/缓存）；>0 → 该值（启用）。
+func (c ModelCatalogConfig) ModelCatalogSyncInterval() (time.Duration, bool) {
+	if c.SyncIntervalMinutes == nil {
+		return 24 * time.Hour, true
 	}
-	return 24 * time.Hour
+	if *c.SyncIntervalMinutes <= 0 {
+		return 0, false
+	}
+	return time.Duration(*c.SyncIntervalMinutes) * time.Minute, true
 }
 
 // HealthCheckConfig 控制可选的后台模型健康检测。默认关闭（Enabled=false）。
@@ -422,11 +427,21 @@ func (c *Config) GetModelCatalog() ModelCatalogConfig {
 	return c.ModelCatalog
 }
 
-// SetModelCatalogSyncInterval 运行时修改目录刷新周期（分钟，0 = 默认 24h）。
-// 周期检查是动态的，修改后立即生效，无需重启。
+// ResolveModelCatalogInterval 返回供管理页表单显示的周期值（分钟）：
+// nil → 默认 1440；显式 0 → 0（不启用）；>0 → 原值。
+func ResolveModelCatalogInterval(c ModelCatalogConfig) int {
+	if c.SyncIntervalMinutes == nil {
+		return 1440
+	}
+	return *c.SyncIntervalMinutes
+}
+
+// SetModelCatalogSyncInterval 运行时修改目录定期同步周期（分钟）：
+// >0 = 按该周期同步；0 = 不启用定期同步（仅快照/缓存）。立即生效，无需重启。
 func (c *Config) SetModelCatalogSyncInterval(minutes int) {
 	c.mu.Lock()
-	c.ModelCatalog.SyncIntervalMinutes = minutes
+	value := minutes
+	c.ModelCatalog.SyncIntervalMinutes = &value
 	c.mu.Unlock()
 }
 

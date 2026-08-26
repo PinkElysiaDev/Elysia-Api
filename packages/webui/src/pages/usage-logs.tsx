@@ -10,9 +10,9 @@ import {
   ScrollText,
 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
+import { RoleWatermark } from '@/components/role-watermark'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { MultiSelect } from '@/components/ui/multi-select'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Seg } from '@/components/ui/seg'
 import {
@@ -27,10 +27,11 @@ import { AsyncState } from '@/components/ui/states'
 import { CodePill, StreamIcon } from '@/components/badges'
 import { protocolLabel } from '@/lib/protocol'
 import { CopyButton } from '@/components/copy-button'
-import { RangeSelect, type RangeKey } from '@/components/range-select'
+import type { RangeKey } from '@/components/range-select'
+import { UsageFilterBar, effectiveModelFilter } from '@/components/usage-filter-bar'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
-import { useUsageLogs, useUsageFilterOptions, useMinuteTick, revalidate } from '@/lib/hooks'
+import { useUsageLogs, useUsageFilterOptions, useMinuteTick, useSources, useModels, revalidate } from '@/lib/hooks'
 import { api } from '@/lib/api'
 import { colorize } from '@/lib/json-highlight'
 import type { UsageBody, UsageLogDetail } from '@/lib/types'
@@ -55,6 +56,7 @@ export function UsageLogsPage() {
   const [range, setRange] = useState<RangeKey>('7d')
   const [groupNames, setGroupNames] = useState<string[]>([])
   const [modelNames, setModelNames] = useState<string[]>([])
+  const [sourceNames, setSourceNames] = useState<string[]>([])
   const [keyNames, setKeyNames] = useState<string[]>([])
   const [statusCode, setStatusCode] = useState('')
   const [statusView, setStatusView] = useState<StatusView>('all')
@@ -69,6 +71,18 @@ export function UsageLogsPage() {
   }, [location.state])
 
   const { groupOptions, modelOptions, keyOptions } = useUsageFilterOptions()
+  const { data: sources } = useSources()
+  const { data: allModels } = useModels()
+  const sourceOptions = useMemo(
+    () => (sources ?? []).filter((s) => s.enabled).map((s) => s.name),
+    [sources],
+  )
+
+  // 模型源筛选（sourceNames）与模型筛选取交集后随 modelNames 下发。
+  const effectiveModelNames = useMemo(
+    () => effectiveModelFilter(modelNames, sourceNames, allModels ?? []),
+    [modelNames, sourceNames, allModels],
+  )
 
   const params = useMemo(() => {
     const to = new Date(minuteTick * 60_000).toISOString()
@@ -76,14 +90,14 @@ export function UsageLogsPage() {
       from: startOfRange(range, to),
       to,
       groupNames: groupNames.length ? groupNames : undefined,
-      modelNames: modelNames.length ? modelNames : undefined,
+      modelNames: effectiveModelNames.length ? effectiveModelNames : undefined,
       keyNames: keyNames.length ? keyNames : undefined,
       status: statusView === 'ok' ? ('success' as const) : statusView === 'fail' ? ('failed' as const) : undefined,
       statusCode: statusCode.trim() ? Number(statusCode) : undefined,
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
     }
-  }, [range, groupNames, modelNames, keyNames, statusView, statusCode, page, minuteTick])
+  }, [range, groupNames, effectiveModelNames, keyNames, statusView, statusCode, page, minuteTick])
 
   const { data, isLoading, error, mutate } = useUsageLogs(params)
   const total = data?.total ?? 0
@@ -141,25 +155,74 @@ export function UsageLogsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="调用日志"
-        description="每一次经过网关的 API 调用明细。点击任意行可深入查看四段链路原文与协议转换时序。"
-        actions={
-          <>
-            <Button onClick={handleExport}>
-              <Download className="h-4 w-4" /> 导出日志
-            </Button>
-            <Button variant="danger" onClick={handleReset}>
-              <RotateCcw className="h-4 w-4" /> 重置用量
-            </Button>
-          </>
-        }
-      />
+    <>
+      <RoleWatermark className="-right-8 top-0 opacity-[0.05] dark:opacity-[0.08]" />
 
-      {/* 筛选卡片：筛选组与统计摘要各自成块，中屏（761-1100px）整齐换行而非交错挤压 */}
-      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-xl border border-border/70 bg-card p-3.5 shadow-soft">
-        <div className="flex flex-wrap items-center gap-2.5">
+      <div className="relative z-[1] space-y-6">
+        <PageHeader
+          title="调用日志"
+          actions={
+            <>
+              <Button onClick={handleExport}>
+                <Download className="h-4 w-4" /> 导出日志
+              </Button>
+              <Button variant="danger" onClick={handleReset}>
+                <RotateCcw className="h-4 w-4" /> 重置用量
+              </Button>
+            </>
+          }
+        />
+
+        {/* 共用筛选条（含模型源维度）+ 页面专属状态筛选 + 汇总图例 */}
+        <UsageFilterBar
+          range={range}
+          onRangeChange={(v) => {
+            setRange(v)
+            setPage(0)
+          }}
+          groupOptions={groupOptions}
+          modelOptions={modelOptions}
+          keyOptions={keyOptions}
+          sourceOptions={sourceOptions}
+          groupNames={groupNames}
+          onGroupNamesChange={(v) => {
+            setGroupNames(v)
+            setPage(0)
+          }}
+          modelNames={modelNames}
+          onModelNamesChange={(v) => {
+            setModelNames(v)
+            setPage(0)
+          }}
+          sourceNames={sourceNames}
+          onSourceNamesChange={(v) => {
+            setSourceNames(v)
+            setPage(0)
+          }}
+          keyNames={keyNames}
+          onKeyNamesChange={(v) => {
+            setKeyNames(v)
+            setPage(0)
+          }}
+          right={
+            <div className="flex items-center gap-3 text-xs font-mono">
+              <span className="tnum flex flex-wrap items-center gap-3 text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-jade" />
+                  <b className="font-semibold text-foreground">{summary.ok}</b> 成功
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-ember" />
+                  <b className="font-semibold text-foreground">{summary.failed}</b> 失败
+                </span>
+                <span>
+                  平均时延 <b className="font-semibold text-foreground">{formatDuration(summary.avg)}</b>
+                </span>
+              </span>
+              <span className="text-muted-foreground/70">（当前 {summary.count} 条）</span>
+            </div>
+          }
+        >
           <Seg
             aria-label="状态"
             options={[
@@ -174,51 +237,6 @@ export function UsageLogsPage() {
               setPage(0)
             }}
           />
-          <div className="w-[130px]">
-            <RangeSelect
-              value={range}
-              onChange={(v) => {
-                setRange(v)
-                setPage(0)
-              }}
-            />
-          </div>
-          <div className="min-w-[120px] flex-1 sm:flex-none">
-            <MultiSelect
-              options={groupOptions}
-              value={groupNames}
-              onChange={(v) => {
-                setGroupNames(v)
-                setPage(0)
-              }}
-              placeholder="全部模型组"
-              searchPlaceholder="搜索模型组"
-            />
-          </div>
-          <div className="min-w-[120px] flex-1 sm:flex-none">
-            <MultiSelect
-              options={modelOptions}
-              value={modelNames}
-              onChange={(v) => {
-                setModelNames(v)
-                setPage(0)
-              }}
-              placeholder="全部模型"
-              searchPlaceholder="搜索模型"
-            />
-          </div>
-          <div className="min-w-[110px] flex-1 sm:flex-none">
-            <MultiSelect
-              options={keyOptions}
-              value={keyNames}
-              onChange={(v) => {
-                setKeyNames(v)
-                setPage(0)
-              }}
-              placeholder="全部调用方"
-              searchPlaceholder="搜索调用方"
-            />
-          </div>
           <Input
             aria-label="状态码"
             className="w-[84px] text-xs font-mono"
@@ -232,53 +250,35 @@ export function UsageLogsPage() {
               setPage(0)
             }}
           />
-        </div>
+        </UsageFilterBar>
 
-        <div className="flex items-center gap-3 text-xs">
-          <span className="tnum flex flex-wrap items-center gap-3 text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-jade" />
-              <b className="font-semibold text-foreground">{summary.ok}</b> 成功
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-ember" />
-              <b className="font-semibold text-foreground">{summary.failed}</b> 失败
-            </span>
-            <span>
-              平均时延 <b className="font-semibold text-foreground">{formatDuration(summary.avg)}</b>
-            </span>
-          </span>
-          <span className="text-muted-foreground/70">（当前 {summary.count} 条）</span>
-        </div>
-      </div>
-
-      <AsyncState
-        isLoading={isLoading}
-        error={error}
-        data={data?.items}
-        onRetry={() => mutate()}
-        loadingColumns={8}
-        emptyIcon={<ScrollText className="h-7 w-7" />}
-        emptyTitle="暂无匹配日志记录"
-        emptyDescription="当前筛选时间与过滤条件范围内未查询到任何请求。"
-      >
-        {() => (
-          <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-soft">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <TableHeader className="bg-secondary/40">
-                  <TableRow className="border-b border-border/80 hover:bg-transparent">
-                    <TableHead className="py-3.5 pl-5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">请求时间</TableHead>
-                    <TableHead className="py-3.5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">调用凭证</TableHead>
-                    <TableHead className="py-3.5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">实际模型 / 路由组</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">流式</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">状态码</TableHead>
-                    <TableHead className="py-3.5 num font-semibold text-xs uppercase tracking-wider text-muted-foreground">首字耗时</TableHead>
-                    <TableHead className="py-3.5 num font-semibold text-xs uppercase tracking-wider text-muted-foreground">总耗时</TableHead>
-                    <TableHead className="py-3.5 pr-5 num font-semibold text-xs uppercase tracking-wider text-muted-foreground">Tokens 输入 / 输出</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody className="divide-y divide-border/60">
+        <AsyncState
+          isLoading={isLoading}
+          error={error}
+          data={data?.items}
+          onRetry={() => mutate()}
+          loadingColumns={8}
+          emptyIcon={<ScrollText className="h-7 w-7" />}
+          emptyTitle="暂无匹配日志记录"
+          emptyDescription="当前筛选时间与过滤条件范围内未查询到任何请求。"
+        >
+          {() => (
+            <div className="space-y-3">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <TableHeader className="bg-secondary/20">
+                    <TableRow className="border-b border-border/60 hover:bg-transparent">
+                      <TableHead className="py-3.5 pl-4 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">请求时间</TableHead>
+                      <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">调用凭证</TableHead>
+                      <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">实际模型 / 路由组</TableHead>
+                      <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">流式</TableHead>
+                      <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">状态码</TableHead>
+                      <TableHead className="py-3.5 num font-semibold text-2xs uppercase tracking-wider text-muted-foreground">首字耗时</TableHead>
+                      <TableHead className="py-3.5 num font-semibold text-2xs uppercase tracking-wider text-muted-foreground">总耗时</TableHead>
+                      <TableHead className="py-3.5 pr-4 num font-semibold text-2xs uppercase tracking-wider text-muted-foreground">Tokens 输入 / 输出</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody className="divide-y divide-border/30">
                   {items.map((log) => (
                     <TableRow
                       key={log.requestId}
@@ -294,7 +294,7 @@ export function UsageLogsPage() {
                         }
                       }}
                     >
-                      <TableCell className="py-3 pl-5 whitespace-nowrap font-mono text-xs text-muted-foreground">
+                      <TableCell className="py-3 pl-4 whitespace-nowrap font-mono text-xs text-muted-foreground">
                         {formatDateTime(log.startedAt)}
                       </TableCell>
                       <TableCell className="py-3 max-w-[120px] truncate text-xs font-mono text-foreground">{log.keyName || '—'}</TableCell>
@@ -312,7 +312,7 @@ export function UsageLogsPage() {
                         {log.firstByteMs > 0 ? formatDuration(log.firstByteMs) : '—'}
                       </TableCell>
                       <TableCell className="py-3 num font-medium text-foreground">{formatDuration(log.durationMs)}</TableCell>
-                      <TableCell className="py-3 pr-5 num">
+                      <TableCell className="py-3 pr-4 num">
                         <span className="font-mono">↑{formatNumber(log.inputTokens)}</span>{' '}
                         <span className="text-muted-foreground font-mono">↓{formatNumber(log.outputTokens)}</span>
                       </TableCell>
@@ -323,8 +323,8 @@ export function UsageLogsPage() {
             </div>
 
             {/* 分页栏 */}
-            <div className="flex items-center justify-between border-t border-border/70 bg-secondary/20 px-5 py-3 text-xs text-muted-foreground">
-              <span className="tnum">
+            <div className="flex items-center justify-between pt-3 text-xs text-muted-foreground border-t border-border/40">
+              <span className="tnum font-mono">
                 共 <b className="font-semibold text-foreground">{formatNumber(total)}</b> 条记录 · 第 {page + 1}/{totalPages} 页
               </span>
               <div className="flex items-center gap-2">
@@ -353,6 +353,7 @@ export function UsageLogsPage() {
       <LogDetailSheet id={detailId} onClose={() => setDetailId(null)} />
       {dialog}
     </div>
+    </>
   )
 }
 

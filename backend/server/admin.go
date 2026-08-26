@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
@@ -87,10 +88,11 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 		"enablePprof":         s.config.GetEnablePprof(),
 		"allowFakeIPOutbound": s.config.IsFakeIPOutboundAllowed(),
 		"modelCatalog": gin.H{
-			"enabled":             catalogEnabled,
-			"url":                 catalogResolveURL(catalog),
-			"proxy":               catalog.Proxy,
-			"syncIntervalMinutes": catalog.SyncIntervalMinutes,
+			"enabled": catalogEnabled,
+			"url":     catalogResolveURL(catalog),
+			"proxy":   catalog.Proxy,
+			// 未配置（nil）时回填默认 1440 供表单显示；显式 0 = 不启用定期同步。
+			"syncIntervalMinutes": config.ResolveModelCatalogInterval(catalog),
 		},
 	})
 }

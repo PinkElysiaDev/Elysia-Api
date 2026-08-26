@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
+  Area,
   Bar,
   CartesianGrid,
   ComposedChart,
@@ -26,12 +27,12 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { KpiCard, KpiGrid } from '@/components/kpi-card'
-import { RoleWatermark } from '@/components/role-watermark'
+import { ElysiaStage } from '@/components/role-watermark'
 import { Fchip } from '@/components/ui/fchip'
 import { Seg } from '@/components/ui/seg'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ErrorState } from '@/components/ui/states'
 import { CodePill, Dot, PlatformBadge } from '@/components/badges'
+import { ModelBreakdownTooltip } from '@/components/model-breakdown-tooltip'
 import {
   useHealth,
   useUsageStats,
@@ -42,6 +43,7 @@ import {
   useModels,
   useMinuteTick,
 } from '@/lib/hooks'
+import type { ModelSource } from '@/lib/types'
 import { CHART_TICK, compactNumber, formatDuration, formatHitRate, formatNumber, percent } from '@/lib/utils'
 
 /** 本地零点（今日 / 昨日），用于 KPI 的"今日 vs 昨日"窗口。 */
@@ -78,6 +80,87 @@ function summarizeSourceHealth(enabled: boolean, total: number, available: numbe
   if (total === 0) return { state: 'off' as const, label: '无模型', tone: 'text-muted-foreground' }
   if (available === total) return { state: 'ok' as const, label: '正常', tone: 'text-jade' }
   return { state: 'err' as const, label: `${available}/${total} 可用`, tone: 'text-ember' }
+}
+
+/**
+ * 源健康滚动列表：源数超过可视行数（5）时自动垂直滚动轮播展示全部源，
+ * 鼠标悬停暂停；点击某一行携带 openSource 状态跳转到模型源页，由该页
+ * 自动展开并定位到对应源的配置。
+ */
+function SourceHealthScroller({
+  sources,
+  modelStatsBySource,
+}: {
+  sources: ModelSource[]
+  modelStatsBySource: Map<string, { total: number; available: number }>
+}) {
+  const navigate = useNavigate()
+  const rows = sources.map((source) => {
+    const stats = modelStatsBySource.get(source.id) ?? { total: 0, available: 0 }
+    return { source, stats, health: summarizeSourceHealth(source.enabled, stats.total, stats.available) }
+  })
+  const VISIBLE_ROWS = 5
+  const shouldScroll = rows.length > VISIBLE_ROWS
+  // 滚动时长按行数缩放：每行约 2.6s，观感均匀。
+  const durationSeconds = Math.max(12, rows.length * 2.6)
+  const renderRow = ({ source, stats, health }: (typeof rows)[number], keyPrefix: string) => (
+    <tr
+      key={`${keyPrefix}-${source.id}`}
+      onClick={() => navigate('/sources', { state: { openSource: source.id } })}
+      title={`查看「${source.name}」配置`}
+      className="cursor-pointer border-b border-border/30 last:border-b-0 hover:bg-wash/30 transition-colors"
+    >
+      <td className="py-2.5 pr-2">
+        <span className="block font-medium text-foreground">{source.name}</span>
+        <span className="sub text-2xs">{source.id}</span>
+      </td>
+      <td className="py-2.5 pr-2">
+        <PlatformBadge platform={source.platform} />
+      </td>
+      <td className="num py-2.5 pr-2 text-right">{stats.total}</td>
+      <td className="py-2.5 pl-2 text-right">
+        <span className={`inline-flex items-center gap-1.5 text-2xs ${health.tone}`}>
+          <Dot state={health.state} />
+          {health.label}
+        </span>
+      </td>
+    </tr>
+  )
+
+  if (rows.length === 0) {
+    return <p className="py-8 text-center text-xs text-muted-foreground">暂无模型源</p>
+  }
+
+  if (!shouldScroll) {
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <tbody>{rows.map((row) => renderRow(row, 'static'))}</tbody>
+        </table>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="group/scroller overflow-hidden"
+      style={{ maxHeight: `${VISIBLE_ROWS * 41}px` }}
+      title="悬停暂停滚动"
+    >
+      <div
+        className="animate-source-marquee group-hover/scroller:[animation-play-state:paused]"
+        style={{ animationDuration: `${durationSeconds}s` }}
+      >
+        <table className="w-full text-xs">
+          <tbody>
+            {rows.map((row) => renderRow(row, 'a'))}
+            {/* 复制一份内容实现无缝循环（keys 加前缀避免重复）。 */}
+            {rows.map((row) => renderRow(row, 'b'))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
 }
 
 export function OverviewPage() {
@@ -192,35 +275,45 @@ export function OverviewPage() {
   const sourceHealthError = sourcesError ?? modelsError
   const sourceHealthLoading = (sourcesLoading && !sources) || (modelsLoading && !models)
 
+  // 角色光环状态共鸣
+  const stageStatus =
+    healthState === 'err'
+      ? 'err'
+      : lastMinute && lastMinute.requests > 0
+        ? 'active'
+        : 'ok'
+
   return (
     <>
-      <RoleWatermark className="-right-8 top-0 rail:-right-12" />
+      {/* 爱莉希雅视觉中枢立绘舞台 */}
+      <ElysiaStage statusState={stageStatus} className="-right-6 -top-4 rail:-right-10" />
 
-      <div className="relative z-[1] space-y-6">
+      <div className="relative z-[1] space-y-7">
         <PageHeader
           title="总览"
-          description="今日累计、实时吞吐与服务运行概览。"
           actions={
+            // 诊断胶囊：默认隐身（仅文字与指标裸排，与标题对齐），hover 时过渡出
+            // 胶囊壳（边框/底色/阴影/毛玻璃）与右上箭头。
             <button
               type="button"
               onClick={() => navigate('/diagnostics')}
-              className="inline-flex items-center gap-2.5 rounded-full border border-border/80 bg-card/90 px-3.5 py-1.5 text-xs text-muted-foreground shadow-soft backdrop-blur-sm transition-all hover:border-primary/40 hover:text-foreground hover:shadow-md"
+              className="group inline-flex items-center gap-1.5 rounded-full border border-transparent bg-transparent py-1.5 pl-1 pr-2.5 text-xs text-muted-foreground transition-all duration-200 hover:border-border/70 hover:bg-card/80 hover:shadow-soft hover:backdrop-blur-md"
               title="点击查看系统诊断"
             >
               <Dot state={healthState} />
               <span className="font-semibold text-foreground">{healthLabel}</span>
-              <span className="h-3 w-px bg-border" />
+              <span className="h-3 w-px bg-border/80" />
               <span className="tnum font-mono text-muted-foreground">
                 堆内存 {health ? (health.memory.alloc / 1024 / 1024).toFixed(1) : '—'} MB
               </span>
-              <span className="h-3 w-px bg-border" />
+              <span className="h-3 w-px bg-border/80" />
               <span className="tnum font-mono text-muted-foreground">GC {health ? `${health.memory.numGC} 次` : '—'}</span>
-              <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground/70" />
+              <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground/0 transition-all duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-muted-foreground/70" />
             </button>
           }
         />
 
-        {/* 核心 KPI 指标网格（第一视觉重心） */}
+        {/* 核心 KPI 指标区（无界灵动数据锚点） */}
         <section aria-label="今日核心用量">
           <KpiGrid>
             {/* HERO 主卡片：今日请求数 */}
@@ -228,7 +321,7 @@ export function OverviewPage() {
               variant="hero"
               label="今日请求总数"
               value={today ? formatNumber(today.requests) : '—'}
-              icon={<Flame className="h-4 w-4 text-rose" />}
+              icon={<Flame className="h-4 w-4 text-rose animate-pulse" />}
               delta={
                 todayError ? (
                   <em className="not-italic">加载失败</em>
@@ -300,21 +393,21 @@ export function OverviewPage() {
           </KpiGrid>
         </section>
 
-        {/* 趋势图表区（卡片化封装） */}
+        {/* 趋势图表区：双流引擎 (请求折线图 + Token柱状图悬停模型明细) */}
         <TrendSection minuteTick={minuteTick} />
 
-        {/* 底部 Bento 三栏面板 */}
-        <section aria-label="服务状态与热点" className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+        {/* 底部 Bento 三栏面板：开放式流式栅格 */}
+        <section aria-label="服务状态与热点" className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3 pt-2">
           {/* Bento 1: 热门模型 */}
-          <Card className="shadow-soft transition-shadow hover:shadow-md">
-            <CardHeader className="flex flex-row items-center justify-between border-b border-border/60 pb-3 pt-4">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b border-border/50 pb-3">
               <div className="flex items-center gap-2">
-                <Cpu className="h-4 w-4 text-rose" />
-                <CardTitle className="text-sm font-semibold">热门模型分布</CardTitle>
+                <Cpu className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold text-foreground">热门模型分布</h3>
               </div>
-              <span className="text-2xs text-muted-foreground">今日聚合</span>
-            </CardHeader>
-            <CardContent className="p-4">
+              <span className="text-2xs text-muted-foreground font-mono">今日聚合</span>
+            </div>
+            <div className="pt-1">
               {byModelError ? (
                 <ErrorState className="py-6" message={(byModelError as Error).message} onRetry={() => retryByModel()} />
               ) : byModelLoading && !byModel ? (
@@ -322,12 +415,12 @@ export function OverviewPage() {
               ) : topModels.length === 0 ? (
                 <p className="py-8 text-center text-xs text-muted-foreground">今日暂无调用数据</p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-3.5">
                   {topModels.map((m, idx) => (
                     <div key={m.name} className="space-y-1.5">
                       <div className="flex items-center justify-between gap-2 text-xs">
                         <div className="flex items-center gap-1.5 truncate">
-                          <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-secondary text-2xs font-mono font-medium text-muted-foreground">
+                          <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-secondary/80 text-2xs font-mono font-medium text-muted-foreground">
                             {idx + 1}
                           </span>
                           <span className={`truncate font-mono ${m.muted ? 'text-muted-foreground' : 'font-medium text-foreground'}`} title={m.name}>
@@ -338,7 +431,7 @@ export function OverviewPage() {
                           {formatNumber(m.count)}
                         </span>
                       </div>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary/70">
                         <div
                           className={m.muted ? 'h-full rounded-full bg-muted-foreground/40' : 'h-full rounded-full bg-brand-grad'}
                           style={{ width: `${Math.max(m.ratio * 100, 3)}%` }}
@@ -348,24 +441,24 @@ export function OverviewPage() {
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Bento 2: 模型源健康状态 */}
-          <Card className="shadow-soft transition-shadow hover:shadow-md">
-            <CardHeader className="flex flex-row items-center justify-between border-b border-border/60 pb-3 pt-4">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b border-border/50 pb-3">
               <div className="flex items-center gap-2">
                 <Boxes className="h-4 w-4 text-jade" />
-                <CardTitle className="text-sm font-semibold">模型源健康</CardTitle>
+                <h3 className="text-sm font-semibold text-foreground">模型源健康</h3>
               </div>
               <button
                 onClick={() => navigate('/sources')}
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-rose"
+                className="group inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-rose"
               >
-                全部 <MoveUpRight className="h-3 w-3" />
+                全部 <MoveUpRight className="h-3 w-3 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
               </button>
-            </CardHeader>
-            <CardContent className="p-4">
+            </div>
+            <div className="pt-1">
               {sourceHealthError ? (
                 <ErrorState
                   className="py-6"
@@ -377,104 +470,72 @@ export function OverviewPage() {
               ) : sourceHealthLoading ? (
                 <div className="skeleton h-36 rounded-md" />
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <tbody>
-                      {(sources ?? []).slice(0, 5).map((source) => {
-                        const stats = modelStatsBySource.get(source.id) ?? { total: 0, available: 0 }
-                        const sourceHealth = summarizeSourceHealth(source.enabled, stats.total, stats.available)
-                        return (
-                          <tr key={source.id} className="border-b border-border/50 last:border-b-0">
-                            <td className="py-2 pr-2">
-                              <span className="block font-medium text-foreground">{source.name}</span>
-                              <span className="sub text-2xs">{source.id}</span>
-                            </td>
-                            <td className="py-2 pr-2">
-                              <PlatformBadge platform={source.platform} />
-                            </td>
-                            <td className="num py-2 pr-2 text-right">{stats.total}</td>
-                            <td className="py-2 pl-2 text-right">
-                              <span className={`inline-flex items-center gap-1.5 text-2xs ${sourceHealth.tone}`}>
-                                <Dot state={sourceHealth.state} />
-                                {sourceHealth.label}
-                              </span>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                      {(sources ?? []).length === 0 && (
-                        <tr>
-                          <td className="py-8 text-center text-xs text-muted-foreground" colSpan={4}>
-                            暂无模型源
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                <SourceHealthScroller sources={sources ?? []} modelStatsBySource={modelStatsBySource} />
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Bento 3: 最近失败调用 */}
-          <Card className="shadow-soft transition-shadow hover:shadow-md md:col-span-2 lg:col-span-1">
-            <CardHeader className="flex flex-row items-center justify-between border-b border-border/60 pb-3 pt-4">
+          <div className="space-y-4 md:col-span-2 lg:col-span-1">
+            <div className="flex items-center justify-between border-b border-border/50 pb-3">
               <div className="flex items-center gap-2">
                 <ShieldAlert className="h-4 w-4 text-ember" />
-                <CardTitle className="text-sm font-semibold">最近异常调用</CardTitle>
+                <h3 className="text-sm font-semibold text-foreground">最近异常调用</h3>
               </div>
               <button
                 onClick={() => navigate('/usage-logs')}
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-rose"
+                className="group inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-rose"
               >
-                日志 <MoveUpRight className="h-3 w-3" />
+                日志 <MoveUpRight className="h-3 w-3 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
               </button>
-            </CardHeader>
-            <CardContent className="p-4">
+            </div>
+            <div className="pt-1">
               {failuresError ? (
                 <ErrorState className="py-6" message={(failuresError as Error).message} onRetry={() => retryFailures()} />
               ) : failuresLoading && !failuresPage ? (
                 <div className="skeleton h-36 rounded-md" />
               ) : recentFailures.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center text-xs text-muted-foreground">
-                  <CheckCircle2 className="mb-2 h-7 w-7 text-jade/80" />
-                  今日无失败请求，运行平稳
+                  <CheckCircle2 className="h-8 w-8 text-jade/70 mb-2" />
+                  <span>近期无任何调用异常记录</span>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {recentFailures.map((log) => (
+                  {recentFailures.map((item) => (
                     <button
-                      key={log.requestId}
-                      onClick={() => navigate('/usage-logs', { state: { openDetail: log.requestId } })}
-                      className="group block w-full rounded-lg border border-border/60 bg-secondary/30 p-2.5 text-left transition-all hover:border-primary/40 hover:bg-wash"
+                      key={item.requestId}
+                      onClick={() => navigate('/usage-logs', { state: { openDetail: item.requestId } })}
+                      className="group flex w-full flex-col justify-between gap-1.5 border-b border-border/30 pb-2.5 last:border-b-0 text-left hover:bg-wash/30 p-1.5 rounded transition-colors"
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-2xs text-muted-foreground">
-                          {localTimeOf(log.startedAt)}
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <CodePill code={item.statusCode} />
+                          <span className="font-mono text-2xs font-medium text-foreground truncate">
+                            {item.modelName || '—'}
+                          </span>
+                        </div>
+                        <span className="font-mono text-2xs text-muted-foreground/70 shrink-0">
+                          {localTimeOf(item.startedAt)}
                         </span>
-                        <span className="truncate font-mono text-xs font-semibold text-foreground group-hover:text-primary">
-                          {log.modelName || '—'}
-                        </span>
-                        <CodePill code={log.statusCode} />
                       </div>
-                      {log.error && (
-                        <p className="mt-1 line-clamp-1 text-xs text-ember">
-                          {log.error}
+                      {item.error && (
+                        <p className="text-2xs text-ember/90 truncate font-mono" title={item.error}>
+                          {item.error}
                         </p>
                       )}
                     </button>
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </section>
       </div>
     </>
   )
 }
 
-/* ---------------- 趋势图 ---------------- */
+/* ---------------- 双流趋势图表引擎 (请求折线图 + Token 柱状图 + 模型悬停明细) ---------------- */
 
 function ticksFor(values: number[]): number[] {
   const max = Math.max(0, ...values)
@@ -485,8 +546,8 @@ function ticksFor(values: number[]): number[] {
 
 function TrendSection({ minuteTick }: { minuteTick: number }) {
   const [range, setRange] = useState<'7d' | '30d'>('7d')
-  const [showReq, setShowReq] = useState(true)
-  const [showTok, setShowTok] = useState(true)
+  const [showReqLine, setShowReqLine] = useState(true)
+  const [showTokBar, setShowTokBar] = useState(true)
 
   const params = useMemo(() => {
     const days = range === '7d' ? 7 : 30
@@ -495,6 +556,7 @@ function TrendSection({ minuteTick }: { minuteTick: number }) {
     const from = offsetDayStart(now.getTime(), offsetMinutes, -(days - 1))
     return { from: new Date(from).toISOString(), utcOffsetMinutes: offsetMinutes }
   }, [range, minuteTick])
+
   const { data: buckets, isLoading, error, mutate } = useUsageTrend(params)
 
   const series = useMemo(() => {
@@ -502,7 +564,16 @@ function TrendSection({ minuteTick }: { minuteTick: number }) {
     const days = range === '7d' ? 7 : 30
     const now = new Date(minuteTick * 60_000)
     const offsetMinutes = -now.getTimezoneOffset()
-    const out: { date: string; label: string; req: number; tok: number }[] = []
+    const out: Array<{
+      date: string
+      label: string
+      req: number
+      tok: number
+      successReq: number
+      failedReq: number
+      modelTokens?: Record<string, number>
+    }> = []
+
     for (let i = days - 1; i >= 0; i--) {
       const key = offsetDayKey(offsetDayStart(now.getTime(), offsetMinutes, -i), offsetMinutes)
       const b = byDay.get(key)
@@ -511,6 +582,9 @@ function TrendSection({ minuteTick }: { minuteTick: number }) {
         label: key.slice(5).replace('-', '/'),
         req: b?.requests ?? 0,
         tok: b?.tokens ?? 0,
+        successReq: b?.successRequests ?? b?.requests ?? 0,
+        failedReq: b?.failedRequests ?? 0,
+        modelTokens: b?.modelTokens,
       })
     }
     return out
@@ -519,15 +593,15 @@ function TrendSection({ minuteTick }: { minuteTick: number }) {
   const last = series.length > 0 ? series[series.length - 1] : null
 
   return (
-    <Card className="shadow-soft transition-shadow hover:shadow-md">
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4 border-b border-border/60 pb-3.5 pt-4">
+    <section className="space-y-4 pt-1">
+      <div className="flex flex-row flex-wrap items-center justify-between gap-4 border-b border-border/50 pb-3.5">
         <div className="flex items-center gap-2">
           <Activity className="h-4 w-4 text-primary" />
-          <CardTitle className="text-sm font-semibold">请求与 Token 趋势</CardTitle>
+          <h2 className="text-sm font-semibold text-foreground">请求流与 Token 消耗趋势</h2>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
-          <Fchip label="请求数" color="var(--rose)" active={showReq} onClick={() => setShowReq(!showReq)} />
-          <Fchip label="Tokens" color="var(--jade)" active={showTok} onClick={() => setShowTok(!showTok)} />
+          <Fchip label="请求折线" color="var(--rose)" active={showReqLine} onClick={() => setShowReqLine(!showReqLine)} />
+          <Fchip label="Token 柱图" color="var(--jade)" active={showTokBar} onClick={() => setShowTokBar(!showTokBar)} />
           <Seg
             aria-label="时间范围"
             options={[
@@ -538,28 +612,36 @@ function TrendSection({ minuteTick }: { minuteTick: number }) {
             onChange={setRange}
           />
         </div>
-      </CardHeader>
-      <CardContent className="p-4 pt-5">
-        <div className="h-[280px] w-full">
+      </div>
+
+      <div className="pt-2">
+        <div className="h-[290px] w-full">
           {error ? (
             <ErrorState className="h-full py-8" message={(error as Error).message} onRetry={() => mutate()} />
           ) : isLoading && !buckets ? (
             <div className="skeleton h-full w-full rounded-md" />
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={series} margin={{ top: 12, right: 40, bottom: 0, left: 0 }}>
-                <CartesianGrid stroke="hsl(var(--border) / 0.5)" strokeDasharray="3 3" vertical={false} />
+              <ComposedChart data={series} margin={{ top: 12, right: 36, bottom: 0, left: 0 }}>
+                <defs>
+                  {/* 请求折线平滑光芒区域渐变 */}
+                  <linearGradient id="reqAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--rose)" stopOpacity={0.18} />
+                    <stop offset="95%" stopColor="var(--rose)" stopOpacity={0.0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="hsl(var(--border) / 0.45)" strokeDasharray="3 3" vertical={false} />
                 <XAxis
                   dataKey="label"
                   tick={CHART_TICK}
                   tickLine={false}
-                  axisLine={{ stroke: 'hsl(var(--border))' }}
+                  axisLine={{ stroke: 'hsl(var(--border) / 0.6)' }}
                   interval="preserveStartEnd"
                   minTickGap={24}
                 />
                 <YAxis
                   yAxisId="tok"
-                  tick={CHART_TICK}
+                  tick={{ ...CHART_TICK, fill: 'var(--jade)' }}
                   tickLine={false}
                   axisLine={false}
                   width={52}
@@ -569,48 +651,66 @@ function TrendSection({ minuteTick }: { minuteTick: number }) {
                 <YAxis
                   yAxisId="req"
                   orientation="right"
-                  tick={CHART_TICK}
+                  tick={{ ...CHART_TICK, fill: 'var(--rose)' }}
                   tickLine={false}
                   axisLine={false}
                   width={40}
                   allowDecimals={false}
                 />
-                <Tooltip content={<TrendTooltip />} cursor={{ fill: 'var(--wash)' }} />
-                {showReq && (
+                <Tooltip
+                  content={<ModelBreakdownTooltip />}
+                  cursor={{ fill: 'var(--wash)' }}
+                />
+
+                {/* Token 消耗柱状图（柱子悬停展示模型细分） */}
+                {showTokBar && (
                   <Bar
-                    yAxisId="req"
-                    dataKey="req"
-                    name="请求数"
-                    fill="var(--rose)"
-                    fillOpacity={0.22}
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={22}
-                  />
-                )}
-                {showTok && (
-                  <Line
                     yAxisId="tok"
                     dataKey="tok"
-                    name="Tokens"
-                    type="monotone"
-                    stroke="var(--jade)"
-                    strokeWidth={2.4}
-                    dot={false}
-                    activeDot={{ r: 4, fill: 'var(--jade)', strokeWidth: 0 }}
+                    name="Token 消耗"
+                    fill="var(--jade)"
+                    fillOpacity={0.45}
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={24}
                   />
                 )}
-                {showTok && last && last.tok > 0 && (
+
+                {/* 请求数平滑折线与微光面积 */}
+                {showReqLine && (
+                  <>
+                    <Area
+                      yAxisId="req"
+                      dataKey="req"
+                      type="monotone"
+                      fill="url(#reqAreaGrad)"
+                      stroke="none"
+                    />
+                    <Line
+                      yAxisId="req"
+                      dataKey="req"
+                      name="请求数"
+                      type="monotone"
+                      stroke="var(--rose)"
+                      strokeWidth={2.4}
+                      dot={false}
+                      activeDot={{ r: 4.5, fill: 'var(--rose)', stroke: 'hsl(var(--card))', strokeWidth: 2 }}
+                    />
+                  </>
+                )}
+
+                {/* 终点锚点标记 */}
+                {showReqLine && last && last.req > 0 && (
                   <ReferenceDot
-                    yAxisId="tok"
+                    yAxisId="req"
                     x={last.label}
-                    y={last.tok}
+                    y={last.req}
                     r={3.5}
-                    fill="var(--jade)"
+                    fill="var(--rose)"
                     stroke="none"
                     label={{
-                      value: compactNumber(last.tok),
-                      position: 'right',
-                      fill: 'var(--jade)',
+                      value: formatNumber(last.req),
+                      position: 'top',
+                      fill: 'var(--rose)',
                       fontSize: CHART_TICK.fontSize,
                       fontFamily: CHART_TICK.fontFamily,
                     }}
@@ -620,27 +720,7 @@ function TrendSection({ minuteTick }: { minuteTick: number }) {
             </ResponsiveContainer>
           )}
         </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function TrendTooltip({ active, payload, label }: {
-  active?: boolean
-  payload?: { name?: string; value?: number | string; color?: string }[]
-  label?: string
-}) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="rounded-lg border border-border/80 bg-card/95 px-3 py-2 text-xs shadow-md backdrop-blur-sm tnum">
-      <p className="font-mono text-2xs font-medium text-muted-foreground">{label}</p>
-      {payload.map((entry) => (
-        <p key={entry.name} className="flex items-center gap-2 leading-relaxed">
-          <i className="h-2 w-2 rounded-full" style={{ background: entry.color }} aria-hidden />
-          <span className="text-muted-foreground">{entry.name}</span>
-          <b className="ml-auto pl-3 font-mono font-semibold text-foreground">{formatNumber(Number(entry.value))}</b>
-        </p>
-      ))}
-    </div>
+      </div>
+    </section>
   )
 }

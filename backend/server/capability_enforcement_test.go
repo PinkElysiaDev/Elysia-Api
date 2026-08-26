@@ -327,11 +327,19 @@ func TestModelCatalogCacheRoundTrip(t *testing.T) {
 
 // 周期换算：未配置默认 24h，配置后按分钟生效。
 func TestModelCatalogSyncIntervalConfig(t *testing.T) {
-	if got := (config.ModelCatalogConfig{}).ModelCatalogSyncInterval(); got != 24*time.Hour {
-		t.Fatalf("default interval = %v", got)
+	// nil（未配置）= 默认 24h 且启用。
+	if got, enabled := (config.ModelCatalogConfig{}).ModelCatalogSyncInterval(); got != 24*time.Hour || !enabled {
+		t.Fatalf("default interval = %v enabled=%v", got, enabled)
 	}
-	if got := (config.ModelCatalogConfig{SyncIntervalMinutes: 30}).ModelCatalogSyncInterval(); got != 30*time.Minute {
-		t.Fatalf("configured interval = %v", got)
+	// 显式 0 = 不启用定期同步（仅快照/缓存）。
+	zero := 0
+	if got, enabled := (config.ModelCatalogConfig{SyncIntervalMinutes: &zero}).ModelCatalogSyncInterval(); enabled || got != 0 {
+		t.Fatalf("explicit 0 must disable periodic sync, got %v enabled=%v", got, enabled)
+	}
+	// >0 = 该值。
+	thirty := 30
+	if got, enabled := (config.ModelCatalogConfig{SyncIntervalMinutes: &thirty}).ModelCatalogSyncInterval(); got != 30*time.Minute || !enabled {
+		t.Fatalf("configured interval = %v enabled=%v", got, enabled)
 	}
 }
 

@@ -28,15 +28,18 @@ func TestUsageDailyUsesFixedUTCOffset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UsageDaily(+08:00) error = %v", err)
 	}
-	if len(east) != 2 || east[0] != (UsageDailyBucket{Date: "2026-08-01", Requests: 1, Tokens: 10}) || east[1] != (UsageDailyBucket{Date: "2026-08-02", Requests: 2, Tokens: 25}) {
+	if len(east) != 2 || east[0].Date != "2026-08-01" || east[0].Requests != 1 || east[0].Tokens != 10 || east[1].Date != "2026-08-02" || east[1].Requests != 2 || east[1].Tokens != 25 {
 		t.Fatalf("UsageDaily(+08:00) = %#v", east)
+	}
+	if east[0].ModelTokens["model-a"] != 10 || east[1].ModelTokens["model-b"] != 20 || east[1].ModelTokens["model-c"] != 5 {
+		t.Fatalf("UsageDaily(+08:00) modelTokens = %#v, %#v", east[0].ModelTokens, east[1].ModelTokens)
 	}
 
 	west, err := store.UsageDaily(ctx, UsageQuery{}, -7*60)
 	if err != nil {
 		t.Fatalf("UsageDaily(-07:00) error = %v", err)
 	}
-	if len(west) != 1 || west[0] != (UsageDailyBucket{Date: "2026-08-01", Requests: 3, Tokens: 35}) {
+	if len(west) != 1 || west[0].Date != "2026-08-01" || west[0].Requests != 3 || west[0].Tokens != 35 {
 		t.Fatalf("UsageDaily(-07:00) = %#v", west)
 	}
 

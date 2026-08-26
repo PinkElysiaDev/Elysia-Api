@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
-export interface SettingCardProps {
+export interface SettingSectionProps {
   title: ReactNode
   description?: ReactNode
   icon?: LucideIcon
@@ -13,10 +12,12 @@ export interface SettingCardProps {
   className?: string
 }
 
+export type SettingCardProps = SettingSectionProps
+
 /**
- * 统一设置卡片容器：用于将零散的配置选项聚合为结构清晰的模块。
+ * 无界配置章节：开放式排版、极细晶辉发丝下划线、彻底摒弃灰色表头与四周封闭卡片盒。
  */
-export function SettingCard({
+export function SettingSection({
   title,
   description,
   icon: Icon,
@@ -24,34 +25,31 @@ export function SettingCard({
   action,
   children,
   className,
-}: SettingCardProps) {
+}: SettingSectionProps) {
   return (
-    <Card className={cn('overflow-hidden shadow-soft transition-shadow hover:shadow-md', className)}>
-      <CardHeader className="border-b border-border/70 bg-secondary/30 pb-4 pt-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            {Icon && (
-              <span className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-rose shadow-sm">
-                <Icon className="h-4 w-4" />
-              </span>
-            )}
-            <div>
-              <div className="flex items-center gap-2">
-                <CardTitle className="text-[15px] font-semibold tracking-tight text-foreground">{title}</CardTitle>
-                {badge}
-              </div>
-              {description && (
-                <CardDescription className="mt-0.5 text-xs text-muted-foreground">{description}</CardDescription>
-              )}
+    <section className={cn('space-y-4 pt-1', className)}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 pb-3.5">
+        <div className="flex items-center gap-2.5">
+          {Icon && <Icon className="h-4 w-4 text-primary shrink-0" />}
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold tracking-tight text-foreground">{title}</h3>
+              {badge}
             </div>
+            {description && (
+              <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+            )}
           </div>
-          {action && <div className="flex items-center gap-2">{action}</div>}
         </div>
-      </CardHeader>
-      <CardContent className="p-5 sm:p-6">{children}</CardContent>
-    </Card>
+        {action && <div className="flex items-center gap-2">{action}</div>}
+      </div>
+      <div className="pt-1">{children}</div>
+    </section>
   )
 }
+
+/** 兼容旧名称 */
+export const SettingCard = SettingSection
 
 export interface SettingRowProps {
   label: ReactNode
@@ -64,7 +62,7 @@ export interface SettingRowProps {
 }
 
 /**
- * 统一设置行：规范左侧 Label/说明 与 右侧 Control 的对齐与层级。
+ * 统一设置行：规范左侧 Label/说明 与 右侧 Control 的对齐与层级，使用发丝细线分隔。
  */
 export function SettingRow({
   label,
@@ -79,7 +77,7 @@ export function SettingRow({
       <div
         className={cn(
           'flex flex-col gap-3 py-3.5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between',
-          'border-b border-border/50 last:border-b-0',
+          'border-b border-border/30 last:border-b-0',
           className,
         )}
       >
@@ -98,7 +96,7 @@ export function SettingRow({
   return (
     <div
       className={cn(
-        'space-y-2 py-3.5 first:pt-0 last:pb-0 border-b border-border/50 last:border-b-0',
+        'space-y-2 py-3.5 first:pt-0 last:pb-0 border-b border-border/30 last:border-b-0',
         className,
       )}
     >

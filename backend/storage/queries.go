@@ -737,26 +737,55 @@ func usageWhere(q UsageQuery) (string, []any) {
 	return "WHERE " + strings.Join(parts, " AND "), args
 }
 
-// UsageDaily 按固定 UTC offset 的本地日聚合请求数与 token 数。
+// UsageDaily 按固定 UTC offset 的本地日聚合请求数、细分 tokens 以及各模型消耗。
 func (s *Store) UsageDaily(ctx context.Context, q UsageQuery, utcOffsetMinutes int) ([]UsageDailyBucket, error) {
 	where, args := usageWhere(q)
 	offsetMs := int64(utcOffsetMinutes) * 60_000
-	args = append([]any{offsetMs}, args...)
+	fullArgs := append([]any{offsetMs}, args...)
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT date((started_ms + ?) / 1000, 'unixepoch'), COUNT(*), COALESCE(SUM(total_tokens),0) FROM usage_records `+where+` GROUP BY 1 ORDER BY 1`, args...)
+		`SELECT date((started_ms + ?) / 1000, 'unixepoch'), COUNT(*), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cache_hit_tokens),0), COALESCE(SUM(total_tokens),0) FROM usage_records `+where+` GROUP BY 1 ORDER BY 1`, fullArgs...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	buckets := []UsageDailyBucket{}
+	bucketIndex := make(map[string]int)
 	for rows.Next() {
 		var b UsageDailyBucket
-		if err := rows.Scan(&b.Date, &b.Requests, &b.Tokens); err != nil {
+		if err := rows.Scan(&b.Date, &b.Requests, &b.SuccessRequests, &b.InputTokens, &b.OutputTokens, &b.CacheHitTokens, &b.Tokens); err != nil {
 			return nil, err
 		}
+		b.FailedRequests = b.Requests - b.SuccessRequests
+		b.ModelTokens = make(map[string]int)
+		bucketIndex[b.Date] = len(buckets)
 		buckets = append(buckets, b)
 	}
-	return buckets, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// 聚合该时间窗口内各日期下每个模型的 token 消耗明细
+	if len(buckets) > 0 {
+		mRows, mErr := s.db.QueryContext(ctx,
+			`SELECT date((started_ms + ?) / 1000, 'unixepoch'), model_name, COALESCE(SUM(total_tokens),0) FROM usage_records `+where+` GROUP BY 1, 2`, fullArgs...)
+		if mErr == nil {
+			defer mRows.Close()
+			for mRows.Next() {
+				var date, model string
+				var modelTokens int
+				if err := mRows.Scan(&date, &model, &modelTokens); err == nil {
+					if idx, ok := bucketIndex[date]; ok {
+						if model == "" {
+							model = "未知模型"
+						}
+						buckets[idx].ModelTokens[model] += modelTokens
+					}
+				}
+			}
+		}
+	}
+
+	return buckets, nil
 }
 
 // UsageByModel 按模型聚合（请求数 / 失败数 / tokens），按请求数降序、模型名升序。

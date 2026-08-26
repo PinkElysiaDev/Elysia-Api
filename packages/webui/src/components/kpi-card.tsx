@@ -6,8 +6,7 @@ export function KpiGrid({
   cols,
   className,
 }: {
-  /** lg+ 档的目标列数：4（诊断）/ 5（首页，缺省）/ 6（用量统计）。
-   * 基础档统一 grid-cols-2 → md:grid-cols-3。 */
+  /** lg+ 档的目标列数：4（诊断）/ 5（首页，缺省）/ 6（用量统计）。 */
   cols?: number
   children: ReactNode
   className?: string
@@ -15,14 +14,21 @@ export function KpiGrid({
   const lgCols =
     cols === 4 ? 'lg:grid-cols-4' : cols === 6 ? 'lg:grid-cols-3 xl:grid-cols-6' : 'lg:grid-cols-5'
   return (
-    <div className={cn('grid grid-cols-2 gap-3.5 sm:gap-4 md:grid-cols-3', lgCols, className)}>
+    <div
+      className={cn(
+        'relative grid grid-cols-2 gap-y-6 sm:gap-y-8 md:grid-cols-3',
+        'md:divide-x md:divide-border/30',
+        lgCols,
+        className,
+      )}
+    >
       {children}
     </div>
   )
 }
 
 /**
- * 现代高质感 KPI 卡片：支持 Hero 主卡片与标准数据卡片两档视觉权重。
+ * 无界灵动 KPI 计量锚点：数据直接生长在开放画布上，超大 Fraunces 衬线数字，彻底摒弃封闭四周边框与卡片盒子。
  */
 export function KpiCard({
   label,
@@ -51,39 +57,31 @@ export function KpiCard({
   return (
     <div
       className={cn(
-        'relative flex flex-col justify-between overflow-hidden rounded-xl border p-4 sm:p-5 transition-all duration-200',
-        isHero
-          ? 'border-primary/30 bg-gradient-to-b from-card via-card to-primary/[0.03] shadow-soft hover:shadow-md hover:border-primary/50'
-          : 'border-border/80 bg-card shadow-soft hover:shadow-md hover:border-border',
+        'group relative flex flex-col justify-between py-1 px-3 sm:px-5 transition-colors duration-200',
         className,
       )}
     >
-      {/* 顶部微光装饰条（Hero 卡片拥有品牌渐变边线） */}
-      {isHero && (
-        <div className="absolute inset-x-0 top-0 h-[2px] bg-brand-grad" aria-hidden />
-      )}
-
       <div>
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="text-2xs font-semibold uppercase tracking-widest text-muted-foreground">
             {label}
           </span>
-          {icon && <span className="text-muted-foreground/70">{icon}</span>}
+          {icon && <span className="opacity-75 transition-transform duration-200 group-hover:scale-110 group-hover:opacity-100">{icon}</span>}
         </div>
 
-        <div className="mt-2 flex items-baseline gap-1">
+        <div className="mt-3 flex items-baseline gap-1.5">
           <span
             className={cn(
-              'tnum font-display font-semibold tracking-tight text-foreground',
+              'tnum font-display font-medium tracking-tight',
               isHero
-                ? 'text-2xl sm:text-3xl bg-brand-grad bg-clip-text text-transparent'
-                : 'text-xl sm:text-2xl text-foreground',
+                ? 'text-3xl sm:text-4xl lg:text-[40px] bg-brand-grad bg-clip-text text-transparent leading-none'
+                : 'text-2xl sm:text-3xl lg:text-[34px] text-foreground leading-none',
             )}
           >
             {value}
           </span>
           {unit && (
-            <span className="font-mono text-xs font-medium text-muted-foreground">
+            <span className="font-mono text-xs font-semibold text-muted-foreground/90">
               {unit}
             </span>
           )}
@@ -93,7 +91,7 @@ export function KpiCard({
       {delta && (
         <div
           className={cn(
-            'tnum mt-3 inline-flex items-center gap-1.5 text-xs font-medium',
+            'tnum mt-3 inline-flex items-center gap-1.5 text-xs font-normal',
             deltaTone === 'up' && 'text-jade',
             deltaTone === 'down' && 'text-ember',
             deltaTone === 'neutral' && 'text-muted-foreground',

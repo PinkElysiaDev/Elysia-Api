@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from 'react'
 import { ChevronRight, Layers, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
+import { RoleWatermark } from '@/components/role-watermark'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Seg } from '@/components/ui/seg'
@@ -94,74 +95,74 @@ export function GroupsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="模型组"
-        description="把多个上游模型聚合为一个对外暴露的虚拟模型 ID，支持轮询、顺序与随机负载调度。"
-        actions={
-          <Button variant="primary" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> 新增模型组
-          </Button>
-        }
-      />
+    <>
+      <RoleWatermark className="-right-8 top-0 opacity-[0.05] dark:opacity-[0.08]" />
 
-      {/* 策略筛选 + 汇总状态 */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-card p-3 shadow-soft">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">调度策略</span>
-          <Seg aria-label="策略筛选" options={STRATEGY_OPTIONS} value={strategyFilter} onChange={setStrategyFilter} />
-        </div>
-        <div className="flex items-center gap-4 text-xs">
-          <span className="tnum flex items-center gap-3 text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-jade" />
-              <b className="font-semibold text-foreground">{enabledCount}</b> 启用
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-ember" />
-              <b className="font-semibold text-foreground">{(data ?? []).length - enabledCount}</b> 停用
-            </span>
-          </span>
-          <span className="h-3 w-px bg-border" />
-          <span className="text-muted-foreground">
-            共 <b className="tnum font-semibold text-foreground">{(data ?? []).length}</b> 个模型组
-          </span>
-        </div>
-      </div>
+      <div className="relative z-[1] space-y-6">
+        <PageHeader
+          title="模型组"          actions={
+            <Button variant="primary" onClick={openCreate}>
+              <Plus className="h-4 w-4" /> 新增模型组
+            </Button>
+          }
+        />
 
-      <AsyncState
-        isLoading={isLoading}
-        error={error}
-        data={data}
-        onRetry={() => mutate()}
-        loadingColumns={9}
-        emptyIcon={<Layers className="h-7 w-7" />}
-        emptyTitle="暂无任何模型组"
-        emptyDescription="创建你的第一个模型组，聚合多渠道模型实现负载均衡与故障自动转移。"
-        emptyAction={
-          <Button variant="primary" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> 新增模型组
-          </Button>
-        }
-      >
-        {() => (
-          <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-soft">
+        {/* 策略筛选 + 汇总指标 */}
+        <div className="flex flex-wrap items-center justify-between gap-3 py-1">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">调度策略</span>
+            <Seg aria-label="策略筛选" options={STRATEGY_OPTIONS} value={strategyFilter} onChange={setStrategyFilter} />
+          </div>
+          <div className="flex items-center gap-4 text-xs">
+            <span className="tnum flex items-center gap-3 text-muted-foreground font-mono">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-jade" />
+                <b className="font-semibold text-foreground">{enabledCount}</b> 启用
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-ember" />
+                <b className="font-semibold text-foreground">{(data ?? []).length - enabledCount}</b> 停用
+              </span>
+            </span>
+            <span className="h-3 w-px bg-border/70" />
+            <span className="text-muted-foreground font-mono">
+              共 <b className="tnum font-semibold text-foreground">{(data ?? []).length}</b> 个模型组
+            </span>
+          </div>
+        </div>
+
+        <AsyncState
+          isLoading={isLoading}
+          error={error}
+          data={data}
+          onRetry={() => mutate()}
+          loadingColumns={9}
+          emptyIcon={<Layers className="h-7 w-7" />}
+          emptyTitle="暂无任何模型组"
+          emptyDescription="创建你的第一个模型组，聚合多渠道模型实现负载均衡与故障自动转移。"
+          emptyAction={
+            <Button variant="primary" onClick={openCreate}>
+              <Plus className="h-4 w-4" /> 新增模型组
+            </Button>
+          }
+        >
+          {() => (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <TableHeader className="bg-secondary/40">
-                  <TableRow className="border-b border-border/80 hover:bg-transparent">
+                <TableHeader className="bg-secondary/20">
+                  <TableRow className="border-b border-border/60 hover:bg-transparent">
                     <TableHead className="w-[38px] px-0 text-center" />
-                    <TableHead className="py-3.5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">组名称 / 类型</TableHead>
-                    <TableHead className="py-3.5 num text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">成员数</TableHead>
-                    <TableHead className="py-3.5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">聚合模型列表</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">调度策略</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">重试规则</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">并发 / 限额</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-xs uppercase tracking-wider text-muted-foreground">状态</TableHead>
-                    <TableHead className="py-3.5 pr-5 text-right font-semibold text-xs uppercase tracking-wider text-muted-foreground">操作</TableHead>
+                    <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">组名称 / 类型</TableHead>
+                    <TableHead className="py-3.5 num text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">成员数</TableHead>
+                    <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">聚合模型列表</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">调度策略</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">重试规则</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">并发 / 限额</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">状态</TableHead>
+                    <TableHead className="py-3.5 pr-5 text-right font-semibold text-2xs uppercase tracking-wider text-muted-foreground">操作</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody className="divide-y divide-border/60">
+                <TableBody className="divide-y divide-border/30">
                   {filtered.map((group) => {
                     const isOpen = !!expanded[group.id]
                     const members = group.models ?? []
@@ -275,12 +276,12 @@ export function GroupsPage() {
                 </TableBody>
               </table>
             </div>
-          </div>
         )}
       </AsyncState>
 
       <GroupFormDialog open={formOpen} onOpenChange={setFormOpen} group={editing} />
       {dialog}
     </div>
+    </>
   )
 }

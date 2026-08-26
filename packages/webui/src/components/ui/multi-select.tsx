@@ -22,7 +22,8 @@ export function MultiSelect({
   emptyText = '暂无选项',
   className,
 }: {
-  options: MultiSelectOption[]
+  /** 支持纯字符串数组（value=label）或带 hint 的完整选项对象。 */
+  options: (string | MultiSelectOption)[]
   value: string[]
   onChange: (value: string[]) => void
   placeholder?: string
@@ -30,6 +31,11 @@ export function MultiSelect({
   emptyText?: string
   className?: string
 }) {
+  // 归一化为 MultiSelectOption[]：string 项即 value=label。
+  const normalized = useMemo(
+    () => options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o)),
+    [options],
+  )
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
@@ -63,11 +69,11 @@ export function MultiSelect({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return options
-    return options.filter(
+    if (!q) return normalized
+    return normalized.filter(
       (o) => o.label.toLowerCase().includes(q) || (o.hint?.toLowerCase().includes(q) ?? false),
     )
-  }, [options, query])
+  }, [normalized, query])
 
   const selected = useMemo(() => new Set(value), [value])
 
@@ -80,7 +86,7 @@ export function MultiSelect({
   }
 
   const caption =
-    value.length === 0 ? placeholder : value.length === 1 ? labelFor(options, value[0]) : `已选 ${value.length} 项`
+    value.length === 0 ? placeholder : value.length === 1 ? labelFor(normalized, value[0]) : `已选 ${value.length} 项`
 
   return (
     <div ref={rootRef} className={cn('relative', className)}>
@@ -100,8 +106,8 @@ export function MultiSelect({
           }
         }}
         className={cn(
-          'flex h-10 w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-input bg-background/60 px-3 py-2 text-sm shadow-sm',
-          'focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary',
+          'flex h-[34px] w-full cursor-pointer items-center justify-between gap-2 rounded-md border border-input bg-card px-3 py-1 text-sm',
+          'focus:outline-none focus:border-rose focus:ring-[3px] focus:ring-wash',
         )}
       >
         <span className={cn('line-clamp-1 text-left', value.length === 0 && 'text-muted-foreground')}>
@@ -126,7 +132,7 @@ export function MultiSelect({
       </div>
 
       {open && (
-        <div className="absolute z-50 mt-1 w-full min-w-[12rem] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-soft">
+        <div className="absolute z-50 mt-1 w-full min-w-[12rem] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-soft">
           <div className="flex items-center gap-2 border-b border-border px-2.5 py-2">
             <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <input
@@ -151,14 +157,14 @@ export function MultiSelect({
                     aria-selected={checked}
                     onClick={() => toggle(option.value)}
                     className={cn(
-                      'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none',
-                      'hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent',
+                      'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm outline-none',
+                      'focus:bg-wash focus:text-rose',
                     )}
                   >
                     <span
                       className={cn(
-                        'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
-                        checked ? 'border-primary bg-primary text-primary-foreground' : 'border-input',
+                        'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border',
+                        checked ? 'border-rose bg-rose text-white' : 'border-border',
                       )}
                     >
                       {checked && <Check className="h-3 w-3" />}

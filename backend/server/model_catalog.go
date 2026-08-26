@@ -80,13 +80,22 @@ const (
 	modelCatalogPeriodicTick = 30 * time.Second
 )
 
-// catalogSyncInterval 返回当前配置的刷新周期（动态读取，改配置即时生效）。
-func (m *modelCatalog) syncInterval() time.Duration {
+// catalogSyncDue 判断按当前配置的同步周期是否到期（动态读取，改配置即时生效）。
+// 显式配置 0 = 不启用定期同步：只有 force（管理页「立即更新」）才会拉取，
+// 内置快照与本地缓存照常可用。
+func (m *modelCatalog) syncIntervalDue() bool {
 	cfg := config.ModelCatalogConfig{}
 	if m.getter != nil {
 		cfg = m.getter()
 	}
-	return cfg.ModelCatalogSyncInterval()
+	interval, enabled := cfg.ModelCatalogSyncInterval()
+	if !enabled {
+		return false
+	}
+	m.mu.RLock()
+	due := time.Since(m.lastSync) >= interval
+	m.mu.RUnlock()
+	return due
 }
 
 func newModelCatalog(getter func() config.ModelCatalogConfig, cachePathGetter func() string) *modelCatalog {
@@ -243,9 +252,11 @@ func (m *modelCatalog) triggerRefreshIfNeeded(force bool) bool {
 	if !modelCatalogEnabled(cfg) {
 		return false
 	}
+	// 先在锁外计算到期判定（syncIntervalDue 自身取读锁，避免递归加锁）。
+	syncDue := m.syncIntervalDue()
 	m.mu.RLock()
 	shouldFetch := force ||
-		(time.Since(m.lastSync) >= m.syncInterval() &&
+		(syncDue &&
 			time.Since(m.lastTry) >= modelCatalogRetryBackoff &&
 			!m.refreshing)
 	m.mu.RUnlock()
@@ -256,7 +267,7 @@ func (m *modelCatalog) triggerRefreshIfNeeded(force bool) bool {
 	m.mu.Lock()
 	// 双检：可能已有后台拉取在进行。
 	shouldFetch = force ||
-		(time.Since(m.lastSync) >= m.syncInterval() &&
+		(syncDue &&
 			time.Since(m.lastTry) >= modelCatalogRetryBackoff &&
 			!m.refreshing)
 	if !shouldFetch {
@@ -637,7 +648,7 @@ func (m *modelCatalog) Status() map[string]any {
 		cfg = m.getter()
 	}
 	enabled := modelCatalogEnabled(cfg)
-	interval := cfg.ModelCatalogSyncInterval()
+	interval, syncEnabled := cfg.ModelCatalogSyncInterval()
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	status := map[string]any{
@@ -645,6 +656,8 @@ func (m *modelCatalog) Status() map[string]any {
 		"url":                 catalogResolveURL(cfg),
 		"entries":             m.count,
 		"syncIntervalMinutes": int(interval.Minutes()),
+		// syncEnabled=false 表示显式配置 0（不启用定期同步），前端区分展示。
+		"periodicSyncEnabled": syncEnabled,
 		"source":              m.origin,
 		"sourceURL":           m.sourceURL,
 		"lastSync":            nil,

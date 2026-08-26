@@ -214,11 +214,17 @@ export interface UsageLogItem {
   providerResponseTruncated: boolean
 }
 
-/** 趋势图单日聚合行（date 为浏览器传入固定 UTC offset 后的本地日）。 */
+/** 趋势图聚合行（含细分请求数、tokens 与模型级消耗字典）。 */
 export interface UsageTrendPoint {
   date: string
   requests: number
+  successRequests?: number
+  failedRequests?: number
+  inputTokens?: number
+  outputTokens?: number
+  cacheHitTokens?: number
   tokens: number
+  modelTokens?: Record<string, number>
 }
 
 /** 按模型聚合行（热门模型 / 明细表）。 */

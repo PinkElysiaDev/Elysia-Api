@@ -173,9 +173,15 @@ type UsageQuery struct {
 
 // UsageDailyBucket 趋势图的单日聚合行。Date 是请求方时区的本地日（YYYY-MM-DD）。
 type UsageDailyBucket struct {
-	Date     string `json:"date"`
-	Requests int    `json:"requests"`
-	Tokens   int    `json:"tokens"`
+	Date            string         `json:"date"`
+	Requests        int            `json:"requests"`
+	SuccessRequests int            `json:"successRequests,omitempty"`
+	FailedRequests  int            `json:"failedRequests,omitempty"`
+	InputTokens     int            `json:"inputTokens,omitempty"`
+	OutputTokens    int            `json:"outputTokens,omitempty"`
+	CacheHitTokens  int            `json:"cacheHitTokens,omitempty"`
+	Tokens          int            `json:"tokens"`
+	ModelTokens     map[string]int `json:"modelTokens,omitempty"`
 }
 
 // UsageModelBucket 按模型的聚合行（热门模型 / 明细表）。

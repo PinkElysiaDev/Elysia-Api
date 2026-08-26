@@ -154,7 +154,7 @@ body {
   overflow-x: clip;
 }
 
-/* 页面光晕：左上瑰梅 + 右下靛蓝，极轻量 radial 挂在 fixed 伪元素上，不污染正文 */
+/* 页面光晕：左上瑰梅 + 右下靛蓝 + 中右角色光环，极轻量 radial 挂在 fixed 伪元素上，不污染正文 */
 body::before {
   content: '';
   position: fixed;
@@ -162,6 +162,7 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
+    radial-gradient(52rem 36rem at 85% 15%, var(--halo-a), transparent 65%),
     radial-gradient(42rem 28rem at 5% -4%, var(--halo-a), transparent 60%),
     radial-gradient(40rem 30rem at 98% 106%, var(--halo-b), transparent 60%);
 }
@@ -213,6 +214,18 @@ body::before {
 :focus-visible {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
+}
+
+/* 源健康轮播：双份内容无缝上滚（hover 暂停由 group-hover 控制；
+   prefers-reduced-motion 下被全局规则停用）。 */
+@keyframes source-marquee {
+  from { transform: translateY(0); }
+  to { transform: translateY(-50%); }
+}
+.animate-source-marquee {
+  animation-name: source-marquee;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -293,5 +306,34 @@ body::before {
     mask-repeat: no-repeat;
     -webkit-mask-position: bottom center;
     mask-position: bottom center;
+  }
+
+  /* 晶辉微光无界分隔线 */
+  .crystal-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, hsl(var(--border) / 0.8) 25%, hsl(var(--border) / 0.8) 75%, transparent);
+  }
+
+  /* 通透玻璃面板（用于无界画布上的轻盈功能区） */
+  .ethereal-panel {
+    background: color-mix(in srgb, hsl(var(--card)) 65%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid hsl(var(--border) / 0.5);
+  }
+
+  /* 浮动晶光卡槽 */
+  .crystal-card {
+    position: relative;
+    border-radius: var(--radius);
+    background: color-mix(in srgb, hsl(var(--card)) 70%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid hsl(var(--border) / 0.6);
+    transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .crystal-card:hover {
+    border-color: hsl(var(--primary) / 0.35);
+    box-shadow: 0 4px 20px -6px hsl(var(--primary) / 0.12);
   }
 }

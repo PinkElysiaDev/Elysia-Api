@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, RefreshCw, Terminal } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
+import { RoleWatermark } from '@/components/role-watermark'
 import { Button } from '@/components/ui/button'
 import { Seg } from '@/components/ui/seg'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -63,149 +64,151 @@ export function SystemLogsPage() {
   }, [totalPages])
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="系统日志"
-        description="后端事件、模型拉取同步与异常告警记录。点击 fields 属性可展开 JSON 结构化详情。"
-        actions={
-          <Button onClick={() => mutate()} disabled={isLoading}>
-            <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin')} /> 刷新日志
-          </Button>
-        }
-      />
+    <>
+      <RoleWatermark className="-right-8 top-0 opacity-[0.05] dark:opacity-[0.08]" />
 
-      {/* 级别筛选卡片 */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-card p-3 shadow-soft">
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">日志级别</span>
-          <Seg
-            aria-label="级别"
-            options={[
-              { value: 'all', label: '全部' },
-              { value: 'debug', label: 'DEBUG' },
-              { value: 'info', label: 'INFO' },
-              { value: 'warn', label: 'WARN' },
-              { value: 'error', label: 'ERROR' },
-            ]}
-            value={level}
-            onChange={(v) => {
-              setLevel(v)
-              setPage(0)
-            }}
-          />
-        </div>
-      </div>
+      <div className="relative z-[1] space-y-6">
+        <PageHeader
+          title="系统日志"          actions={
+            <Button onClick={() => mutate()} disabled={isLoading}>
+              <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin')} /> 刷新日志
+            </Button>
+          }
+        />
 
-      <AsyncState
-        isLoading={isLoading}
-        error={error}
-        data={data?.items}
-        onRetry={() => mutate()}
-        loadingColumns={3}
-        emptyIcon={<Terminal className="h-7 w-7" />}
-        emptyTitle="暂无匹配系统日志"
-        emptyDescription="当前筛选日志级别下未记录任何运行事件。"
-      >
-        {(items) => (
-          <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-soft">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <TableHeader className="bg-secondary/40">
-                  <TableRow className="border-b border-border/80 hover:bg-transparent">
-                    <TableHead className="py-3.5 pl-5 w-[190px] font-semibold text-xs uppercase tracking-wider text-muted-foreground">记录时间</TableHead>
-                    <TableHead className="py-3.5 w-[100px] font-semibold text-xs uppercase tracking-wider text-muted-foreground">级别</TableHead>
-                    <TableHead className="py-3.5 pr-5 font-semibold text-xs uppercase tracking-wider text-muted-foreground">日志消息 / 附加字段 (Fields)</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody className="divide-y divide-border/60">
-                  {items.map((log) => {
-                    const hasFields = log.fields && log.fields !== '{}' && log.fields !== 'null'
-                    return (
-                      <TableRow key={log.id} className="transition-colors hover:bg-secondary/30">
-                        <TableCell className="py-3.5 pl-5 whitespace-nowrap font-mono text-xs text-muted-foreground">
-                          {formatDateTime(log.createdAt)}
-                        </TableCell>
-                        <TableCell className="py-3.5">
-                          <LevelPill level={log.level} />
-                        </TableCell>
-                        <TableCell className="py-3.5 pr-5">
-                          <p className="text-xs font-medium text-foreground">{log.message}</p>
-                          {hasFields && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setDetailFields({
-                                  message: log.message,
-                                  fields: log.fields ?? '',
-                                  createdAt: log.createdAt,
-                                })
-                              }
-                              className="mt-1 block max-w-[760px] truncate text-left font-mono text-2xs text-muted-foreground underline decoration-dashed underline-offset-2 transition-colors hover:text-primary"
-                              title="查看结构化详情"
-                            >
-                              {log.fields}
-                            </button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </table>
-            </div>
-
-            <div className="flex items-center justify-between border-t border-border/70 bg-secondary/20 px-5 py-3 text-xs text-muted-foreground">
-              <span className="tnum">
-                共 <b className="font-semibold text-foreground">{formatNumber(total)}</b> 条 · 第 {page + 1}/{totalPages} 页
-              </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page === 0}
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" /> 上一页
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages - 1}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  下一页 <ChevronRight className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-      </AsyncState>
-
-      {/* fields 结构化详情 */}
-      <Sheet open={!!detailFields} onOpenChange={(open) => !open && setDetailFields(null)}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>日志详情</SheetTitle>
-          </SheetHeader>
-          <SheetBody>
-            <SheetSectionTitle>字段</SheetSectionTitle>
-            <pre
-              className="mb-5 max-h-[50vh] overflow-auto whitespace-pre rounded-[7px] border border-border bg-code px-3.5 py-3 font-mono text-xs leading-[1.7]"
-              dangerouslySetInnerHTML={{
-                __html: colorize(prettyFields(detailFields?.fields ?? '')),
+        {/* 级别筛选工具条 */}
+        <div className="flex flex-wrap items-center justify-between gap-3 py-1">
+          <div className="flex items-center gap-3">
+            <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">日志级别</span>
+            <Seg
+              aria-label="级别"
+              options={[
+                { value: 'all', label: '全部' },
+                { value: 'debug', label: 'DEBUG' },
+                { value: 'info', label: 'INFO' },
+                { value: 'warn', label: 'WARN' },
+                { value: 'error', label: 'ERROR' },
+              ]}
+              value={level}
+              onChange={(v) => {
+                setLevel(v)
+                setPage(0)
               }}
             />
-            <SheetSectionTitle>上下文</SheetSectionTitle>
-            <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-[7px] text-xs">
-              <dt className="text-muted-foreground">时间</dt>
-              <dd className="tnum break-all">{detailFields ? formatDateTime(detailFields.createdAt) : '—'}</dd>
-              <dt className="text-muted-foreground">消息</dt>
-              <dd className="min-w-0 break-all">{detailFields?.message ?? '—'}</dd>
-            </dl>
-          </SheetBody>
-        </SheetContent>
-      </Sheet>
-    </div>
+          </div>
+        </div>
+
+        <AsyncState
+          isLoading={isLoading}
+          error={error}
+          data={data?.items}
+          onRetry={() => mutate()}
+          loadingColumns={3}
+          emptyIcon={<Terminal className="h-7 w-7" />}
+          emptyTitle="暂无匹配系统日志"
+          emptyDescription="当前筛选日志级别下未记录任何运行事件。"
+        >
+          {(items) => (
+            <div className="space-y-3">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <TableHeader className="bg-secondary/20">
+                    <TableRow className="border-b border-border/60 hover:bg-transparent">
+                      <TableHead className="py-3.5 pl-4 w-[190px] font-semibold text-2xs uppercase tracking-wider text-muted-foreground">记录时间</TableHead>
+                      <TableHead className="py-3.5 w-[100px] font-semibold text-2xs uppercase tracking-wider text-muted-foreground">级别</TableHead>
+                      <TableHead className="py-3.5 pr-4 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">日志消息 / 附加字段 (Fields)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody className="divide-y divide-border/30">
+                    {items.map((log) => {
+                      const hasFields = log.fields && log.fields !== '{}' && log.fields !== 'null'
+                      return (
+                        <TableRow key={log.id} className="transition-colors hover:bg-secondary/30">
+                          <TableCell className="py-3.5 pl-4 whitespace-nowrap font-mono text-xs text-muted-foreground">
+                            {formatDateTime(log.createdAt)}
+                          </TableCell>
+                          <TableCell className="py-3.5">
+                            <LevelPill level={log.level} />
+                          </TableCell>
+                          <TableCell className="py-3.5 pr-4">
+                            <p className="text-xs font-medium text-foreground">{log.message}</p>
+                            {hasFields && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setDetailFields({
+                                    message: log.message,
+                                    fields: log.fields ?? '',
+                                    createdAt: log.createdAt,
+                                  })
+                                }
+                                className="mt-1 block max-w-[760px] truncate text-left font-mono text-2xs text-muted-foreground underline decoration-dashed underline-offset-2 transition-colors hover:text-primary"
+                                title="查看结构化详情"
+                              >
+                                {log.fields}
+                              </button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-between pt-3 text-xs text-muted-foreground border-t border-border/40">
+                <span className="tnum font-mono">
+                  共 <b className="font-semibold text-foreground">{formatNumber(total)}</b> 条 · 第 {page + 1}/{totalPages} 页
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page === 0}
+                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" /> 上一页
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= totalPages - 1}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    下一页 <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </AsyncState>
+
+        {/* fields 结构化详情 */}
+        <Sheet open={!!detailFields} onOpenChange={(open) => !open && setDetailFields(null)}>
+          <SheetContent>
+            <SheetHeader>
+              <SheetTitle>日志详情</SheetTitle>
+            </SheetHeader>
+            <SheetBody>
+              <SheetSectionTitle>字段</SheetSectionTitle>
+              <pre
+                className="mb-5 max-h-[50vh] overflow-auto whitespace-pre rounded-[7px] border border-border bg-code px-3.5 py-3 font-mono text-xs leading-[1.7]"
+                dangerouslySetInnerHTML={{
+                  __html: colorize(prettyFields(detailFields?.fields ?? '')),
+                }}
+              />
+              <SheetSectionTitle>上下文</SheetSectionTitle>
+              <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-[7px] text-xs">
+                <dt className="text-muted-foreground">时间</dt>
+                <dd className="tnum break-all">{detailFields ? formatDateTime(detailFields.createdAt) : '—'}</dd>
+                <dt className="text-muted-foreground">消息</dt>
+                <dd className="min-w-0 break-all">{detailFields?.message ?? '—'}</dd>
+              </dl>
+            </SheetBody>
+          </SheetContent>
+        </Sheet>
+      </div>
+    </>
   )
 }
 
