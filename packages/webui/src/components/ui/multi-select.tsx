@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronDown, Search, X } from 'lucide-react'
+import { ChevronDown, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export interface MultiSelectOption {
@@ -153,7 +153,7 @@ export function MultiSelect({
               className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
-          <div role="listbox" aria-multiselectable className="max-h-60 overflow-auto p-1">
+          <div role="listbox" aria-multiselectable className="hide-scrollbar max-h-60 overflow-auto p-1">
             {filtered.length === 0 ? (
               <p className="px-3 py-4 text-center text-xs text-muted-foreground">{emptyText}</p>
             ) : (
@@ -167,18 +167,12 @@ export function MultiSelect({
                     aria-selected={checked}
                     onClick={() => toggle(option.value)}
                     className={cn(
-                      'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm outline-none',
-                      'focus:bg-wash focus:text-rose',
+                      'flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-sm outline-none transition-colors duration-100',
+                      checked
+                        ? 'bg-wash font-medium text-rose'
+                        : 'text-foreground hover:bg-wash focus:bg-wash',
                     )}
                   >
-                    <span
-                      className={cn(
-                        'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border',
-                        checked ? 'border-rose bg-rose text-white' : 'border-border',
-                      )}
-                    >
-                      {checked && <Check className="h-3 w-3" />}
-                    </span>
                     <span className="flex-1 truncate">
                       {option.label}
                       {option.hint && (

@@ -8,9 +8,13 @@ export function cn(...inputs: ClassValue[]) {
 
 /**
  * 模型源筛选是纯前端实现：选中源 → 该源下全部模型名，与「模型」筛选取交集后
- * 走后端已有的 modelName 多值 IN 过滤（零后端改动）。两侧都未选时返回空数组
- * （= 不过滤）。
+ * 走后端已有的 modelName 多值 IN 过滤（零后端改动）。
+ * 交集为空且确有筛选输入时返回 [NO_MATCH_MODEL_FILTER]：这个哨兵值在后端
+ * 匹配不到任何行，页面展示显式空结果——而不是把空数组当"未筛选"静默丢掉
+ * 筛选条件、回退成全量数据。两侧都未选时返回空数组（= 不过滤）。
  */
+export const NO_MATCH_MODEL_FILTER = 'ￗno-match'
+
 export function effectiveModelFilter(
   modelNames: string[],
   sourceNames: string[],
@@ -19,9 +23,12 @@ export function effectiveModelFilter(
   if (sourceNames.length === 0) return modelNames
   const set = new Set(sourceNames)
   const fromSources = models.filter((m) => m.sourceName && set.has(m.sourceName)).map((m) => m.name)
-  if (modelNames.length === 0) return fromSources
+  if (modelNames.length === 0) {
+    return fromSources.length > 0 ? fromSources : [NO_MATCH_MODEL_FILTER]
+  }
   const sourceSet = new Set(fromSources)
-  return modelNames.filter((name) => sourceSet.has(name))
+  const matched = modelNames.filter((name) => sourceSet.has(name))
+  return matched.length > 0 ? matched : [NO_MATCH_MODEL_FILTER]
 }
 
 export function formatNumber(value: number | undefined | null): string {

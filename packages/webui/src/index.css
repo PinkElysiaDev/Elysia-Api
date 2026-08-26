@@ -191,6 +191,15 @@ body::before {
   background-clip: padding-box;
 }
 
+/* 隐藏滚动条但保留滚动能力（筛选下拉等窄弹层里，滚动条挤占行宽且显突兀） */
+.hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* 骨架屏微光 */
 .skeleton {
   position: relative;
