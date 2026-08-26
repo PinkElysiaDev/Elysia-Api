@@ -64,6 +64,9 @@ type Server struct {
 	usageQueue    chan *usageRecord
 	usageWriterWG sync.WaitGroup
 
+	// usage 只读端点的短 TTL 响应缓存 + 并发合并（usage_cache.go）。
+	usageCache usageResponseCache
+
 	// 渠道亲和性：token+group → 上次成功模型的短 TTL 粘连映射。
 	affinity *affinityCache
 
@@ -233,8 +236,8 @@ func (s *Server) setupRoutes() {
 	usage := s.engine.Group("/__usage")
 	usage.Use(s.dashboardAuthMiddleware())
 	{
-		usage.GET("/stats", s.usageStats)
-		usage.GET("/logs", s.usageLogs)
+		usage.GET("/stats", s.usageCache.middleware(), s.usageStats)
+		usage.GET("/logs", s.usageCache.middleware(), s.usageLogs)
 		usage.GET("/logs/:id", s.usageLogDetail)
 		usage.POST("/reset", s.resetUsage)
 	}

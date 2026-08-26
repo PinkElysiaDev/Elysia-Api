@@ -1,24 +1,5 @@
 import { MultiSelect, type MultiSelectOption } from '@/components/ui/multi-select'
 import { RangeSelect, type RangeKey } from '@/components/range-select'
-import type { Model } from '@/lib/types'
-
-/**
- * 模型源筛选是纯前端实现：选中源 → 该源下全部模型名，与「模型」筛选取交集后
- * 走后端已有的 modelName 多值 IN 过滤（零后端改动）。两侧都未选时返回空数组
- * （= 不过滤）。
- */
-export function effectiveModelFilter(
-  modelNames: string[],
-  sourceNames: string[],
-  models: Model[],
-): string[] {
-  if (sourceNames.length === 0) return modelNames
-  const set = new Set(sourceNames)
-  const fromSources = models.filter((m) => m.sourceName && set.has(m.sourceName)).map((m) => m.name)
-  if (modelNames.length === 0) return fromSources
-  const sourceSet = new Set(fromSources)
-  return modelNames.filter((name) => sourceSet.has(name))
-}
 
 /**
  * 用量页共用筛选条（调用日志 + Usage 统计）：时间窗 + 模型组 / 模型 / 模型源 /

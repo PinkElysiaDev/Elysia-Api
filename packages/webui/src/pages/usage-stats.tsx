@@ -31,7 +31,7 @@ import { RoleWatermark } from '@/components/role-watermark'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ErrorState } from '@/components/ui/states'
 import { Fchip } from '@/components/ui/fchip'
-import { UsageFilterBar, effectiveModelFilter } from '@/components/usage-filter-bar'
+import { UsageFilterBar } from '@/components/usage-filter-bar'
 import type { RangeKey } from '@/components/range-select'
 import { ModelBreakdownTooltip } from '@/components/model-breakdown-tooltip'
 import {
@@ -44,8 +44,10 @@ import {
   useModels,
 } from '@/lib/hooks'
 import {
+  bucketedTimeISO,
   CHART_TICK,
   compactNumber,
+  effectiveModelFilter,
   formatDuration,
   formatHitRate,
   formatNumber,
@@ -80,8 +82,7 @@ export function UsageStatsPage() {
 
   const params = useMemo(() => {
     // 时间参数按 5 分钟桶量化：缓存键在桶内稳定，切走再切回直接命中缓存秒开
-    const bucketMs = 5 * 60_000
-    const to = new Date(Math.floor((minuteTick * 60_000) / bucketMs) * bucketMs).toISOString()
+    const to = bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)
     return {
       from: startOfRange(range, to),
       to,

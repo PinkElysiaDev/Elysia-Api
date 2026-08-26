@@ -1,8 +1,27 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import type { Model } from '@/lib/types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+/**
+ * 模型源筛选是纯前端实现：选中源 → 该源下全部模型名，与「模型」筛选取交集后
+ * 走后端已有的 modelName 多值 IN 过滤（零后端改动）。两侧都未选时返回空数组
+ * （= 不过滤）。
+ */
+export function effectiveModelFilter(
+  modelNames: string[],
+  sourceNames: string[],
+  models: Model[],
+): string[] {
+  if (sourceNames.length === 0) return modelNames
+  const set = new Set(sourceNames)
+  const fromSources = models.filter((m) => m.sourceName && set.has(m.sourceName)).map((m) => m.name)
+  if (modelNames.length === 0) return fromSources
+  const sourceSet = new Set(fromSources)
+  return modelNames.filter((name) => sourceSet.has(name))
 }
 
 export function formatNumber(value: number | undefined | null): string {
@@ -115,6 +134,12 @@ export function startOfRange(range: '24h' | '7d' | '30d' | 'all', nowIso?: strin
     '30d': 30 * 24 * 60 * 60 * 1000,
   }
   return new Date(reference - map[range]).toISOString()
+}
+
+/** 把参考时刻向下取整到 bucketMs 边界再序列化：作为 usage 查询的 to 参数时，
+ *  缓存键在桶内保持稳定，空闲自动刷新从每分钟一次降为每桶一次。 */
+export function bucketedTimeISO(atMs: number, bucketMs: number): string {
+  return new Date(Math.floor(atMs / bucketMs) * bucketMs).toISOString()
 }
 
 /** 把任意数据序列化为 JSON 文件并触发浏览器下载。 */

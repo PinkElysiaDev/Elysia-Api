@@ -858,6 +858,7 @@ func (s *Server) resetUsage(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		s.usageCache.flush()
 		c.JSON(http.StatusOK, gin.H{"reset": true})
 		return
 	}

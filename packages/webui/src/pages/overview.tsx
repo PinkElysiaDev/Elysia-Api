@@ -44,7 +44,7 @@ import {
   useMinuteTick,
 } from '@/lib/hooks'
 import type { ModelSource } from '@/lib/types'
-import { CHART_TICK, compactNumber, formatDuration, formatHitRate, formatNumber, percent } from '@/lib/utils'
+import { bucketedTimeISO, CHART_TICK, compactNumber, formatDuration, formatHitRate, formatNumber, percent } from '@/lib/utils'
 
 /** 本地零点（今日 / 昨日），用于 KPI 的"今日 vs 昨日"窗口。 */
 function localMidnight(offsetDays = 0, reference = new Date()): Date {
@@ -167,10 +167,11 @@ export function OverviewPage() {
   const minuteTick = useMinuteTick()
   const navigate = useNavigate()
 
-  // 今日 / 昨日窗口
+  // 今日 / 昨日窗口（今日的 to 按 5 分钟桶量化：缓存键在桶内稳定，空闲时
+  // 不再每分钟重拉全窗聚合；最近一分钟 KPI 保持分钟粒度单独请求）
   const todayParams = useMemo(() => {
-    const now = new Date(minuteTick * 60_000)
-    return { from: localMidnight(0, now).toISOString(), to: now.toISOString() }
+    const to = bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)
+    return { from: localMidnight(0, new Date(to)).toISOString(), to }
   }, [minuteTick])
 
   const yesterdayParams = useMemo(() => {
@@ -243,12 +244,12 @@ export function OverviewPage() {
     return top.map((it) => ({ ...it, ratio: it.count / max }))
   }, [byModel])
 
-  // 最近失败（最新 3 条）
+  // 最近失败（最新 3 条，今日窗口、与 KPI 相同的 5 分钟桶化）
   const failuresParams = useMemo(() => {
-    const now = new Date(minuteTick * 60_000)
+    const to = bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)
     return {
-      from: localMidnight(0, now).toISOString(),
-      to: now.toISOString(),
+      from: localMidnight(0, new Date(to)).toISOString(),
+      to,
       status: 'failed' as const,
       limit: 3,
     }

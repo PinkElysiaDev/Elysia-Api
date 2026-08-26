@@ -28,7 +28,7 @@ import { CodePill, StreamIcon } from '@/components/badges'
 import { protocolLabel } from '@/lib/protocol'
 import { CopyButton } from '@/components/copy-button'
 import type { RangeKey } from '@/components/range-select'
-import { UsageFilterBar, effectiveModelFilter } from '@/components/usage-filter-bar'
+import { UsageFilterBar } from '@/components/usage-filter-bar'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { useUsageLogs, useUsageFilterOptions, useMinuteTick, useSources, useModels, revalidate } from '@/lib/hooks'
@@ -42,6 +42,8 @@ import {
   formatDuration,
   formatNumber,
   startOfRange,
+  bucketedTimeISO,
+  effectiveModelFilter,
   tryParseJSON,
 } from '@/lib/utils'
 
@@ -85,7 +87,8 @@ export function UsageLogsPage() {
   )
 
   const params = useMemo(() => {
-    const to = new Date(minuteTick * 60_000).toISOString()
+    // to 按 5 分钟桶量化：缓存键在桶内稳定，空闲自动刷新从每分钟一次降为每桶一次
+    const to = bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)
     return {
       from: startOfRange(range, to),
       to,

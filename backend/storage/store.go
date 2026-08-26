@@ -68,6 +68,12 @@ func (s *Store) init(ctx context.Context) error {
 		"PRAGMA busy_timeout=5000",
 		"PRAGMA foreign_keys=ON",
 		"PRAGMA synchronous=NORMAL",
+		// GROUP BY 的临时 B-tree 进内存而非临时文件；大窗口聚合（日×模型分组）
+		// 依赖临时结构，落盘会让大库统计明显变慢。
+		"PRAGMA temp_store=MEMORY",
+		// 64MiB 页缓存：大索引（idx_usage_agg_cover）扫描时热页驻留内存，
+		// 避免反复从磁盘重读索引页。
+		"PRAGMA cache_size=-65536",
 	}
 	for _, stmt := range pragmas {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {

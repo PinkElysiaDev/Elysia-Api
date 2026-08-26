@@ -659,7 +659,10 @@ func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageL
 		offset = 0
 	}
 	args = append(args, limit, offset)
-	rows, err := s.db.QueryContext(ctx, `SELECT request_id, started_at, key_name, key_hash, group_name, model_name, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated FROM usage_records `+where+` ORDER BY started_ms DESC, started_at DESC LIMIT ? OFFSET ?`, args...)
+	// 排序只用 started_ms：索引可直接反向游走取前 offset+limit 条窄索引项、
+	// 仅对页内行回表。若追加 started_at 次级排序，任何索引都无法满足复合顺序，
+	// SQLite 会退化为全窗口临时 B-tree 排序并逐行回表读取 record_json 胖行。
+	rows, err := s.db.QueryContext(ctx, `SELECT request_id, started_at, key_name, key_hash, group_name, model_name, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated FROM usage_records `+where+` ORDER BY started_ms DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -738,54 +741,82 @@ func usageWhere(q UsageQuery) (string, []any) {
 }
 
 // UsageDaily 按固定 UTC offset 的本地日聚合请求数、细分 tokens 以及各模型消耗。
+// 单条 (日, 模型) 粒度的 GROUP BY 扫描后在 Go 内按日归并：相比旧版"日汇总 +
+// 日×模型"两次全窗口扫描，IO 减半；整数日桶 (started_ms+offset)/86400000 也省去
+// 逐行调用 date() 函数的成本。输出结构（含日期格式、未知模型归并）与旧版一致。
 func (s *Store) UsageDaily(ctx context.Context, q UsageQuery, utcOffsetMinutes int) ([]UsageDailyBucket, error) {
+	rows, err := s.scanUsageDailyRows(ctx, q, int64(utcOffsetMinutes)*60_000)
+	if err != nil {
+		return nil, err
+	}
+	buckets := []UsageDailyBucket{}
+	bucketIndex := make(map[string]int)
+	for i := range rows {
+		r := &rows[i]
+		date := usageDayKeyDate(r.dayKey)
+		idx, ok := bucketIndex[date]
+		if !ok {
+			buckets = append(buckets, UsageDailyBucket{Date: date, ModelTokens: make(map[string]int)})
+			idx = len(buckets) - 1
+			bucketIndex[date] = idx
+		}
+		b := &buckets[idx]
+		b.Requests += r.requests
+		b.SuccessRequests += r.success
+		b.InputTokens += r.inputTokens
+		b.OutputTokens += r.outputTokens
+		b.CacheHitTokens += r.cacheHitTokens
+		b.Tokens += r.totalTokens
+		model := r.model
+		if model == "" {
+			model = "未知模型"
+		}
+		b.ModelTokens[model] += r.totalTokens
+	}
+	for i := range buckets {
+		buckets[i].FailedRequests = buckets[i].Requests - buckets[i].SuccessRequests
+	}
+	return buckets, nil
+}
+
+// usageDayRow 是 (本地日, 模型) 粒度的聚合行，由 raw 扫描与 rollup 扫描共同产出，
+// 供上层（UsageDaily 及阶段二统一聚合入口）合并。
+type usageDayRow struct {
+	dayKey        int64
+	model         string
+	requests      int
+	success       int
+	inputTokens   int
+	outputTokens  int
+	cacheHitTokens int
+	totalTokens   int
+}
+
+// scanUsageDailyRows 对 usage_records 做单次 (日, 模型) 粒度聚合扫描。
+// offsetMs 为固定 UTC offset（毫秒），日桶 = (started_ms+offsetMs)/86400000。
+func (s *Store) scanUsageDailyRows(ctx context.Context, q UsageQuery, offsetMs int64) ([]usageDayRow, error) {
 	where, args := usageWhere(q)
-	offsetMs := int64(utcOffsetMinutes) * 60_000
 	fullArgs := append([]any{offsetMs}, args...)
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT date((started_ms + ?) / 1000, 'unixepoch'), COUNT(*), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cache_hit_tokens),0), COALESCE(SUM(total_tokens),0) FROM usage_records `+where+` GROUP BY 1 ORDER BY 1`, fullArgs...)
+		`SELECT (started_ms + ?) / 86400000, model_name, COUNT(*), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cache_hit_tokens),0), COALESCE(SUM(total_tokens),0) FROM usage_records `+where+` GROUP BY 1, 2 ORDER BY 1`, fullArgs...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	buckets := []UsageDailyBucket{}
-	bucketIndex := make(map[string]int)
+	out := []usageDayRow{}
 	for rows.Next() {
-		var b UsageDailyBucket
-		if err := rows.Scan(&b.Date, &b.Requests, &b.SuccessRequests, &b.InputTokens, &b.OutputTokens, &b.CacheHitTokens, &b.Tokens); err != nil {
+		var r usageDayRow
+		if err := rows.Scan(&r.dayKey, &r.model, &r.requests, &r.success, &r.inputTokens, &r.outputTokens, &r.cacheHitTokens, &r.totalTokens); err != nil {
 			return nil, err
 		}
-		b.FailedRequests = b.Requests - b.SuccessRequests
-		b.ModelTokens = make(map[string]int)
-		bucketIndex[b.Date] = len(buckets)
-		buckets = append(buckets, b)
+		out = append(out, r)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
+	return out, rows.Err()
+}
 
-	// 聚合该时间窗口内各日期下每个模型的 token 消耗明细
-	if len(buckets) > 0 {
-		mRows, mErr := s.db.QueryContext(ctx,
-			`SELECT date((started_ms + ?) / 1000, 'unixepoch'), model_name, COALESCE(SUM(total_tokens),0) FROM usage_records `+where+` GROUP BY 1, 2`, fullArgs...)
-		if mErr == nil {
-			defer mRows.Close()
-			for mRows.Next() {
-				var date, model string
-				var modelTokens int
-				if err := mRows.Scan(&date, &model, &modelTokens); err == nil {
-					if idx, ok := bucketIndex[date]; ok {
-						if model == "" {
-							model = "未知模型"
-						}
-						buckets[idx].ModelTokens[model] += modelTokens
-					}
-				}
-			}
-		}
-	}
-
-	return buckets, nil
+// usageDayKeyDate 把整数日桶格式化为 YYYY-MM-DD，与 SQLite date(...,'unixepoch') 输出一致。
+func usageDayKeyDate(dayKey int64) string {
+	return time.Unix(dayKey*86400, 0).UTC().Format("2006-01-02")
 }
 
 // UsageByModel 按模型聚合（请求数 / 失败数 / tokens），按请求数降序、模型名升序。
@@ -835,12 +866,29 @@ func (s *Store) UsageTotals(ctx context.Context, q UsageQuery) (map[string]any, 
 	where, args := usageWhere(q)
 	// avg_first_byte 仅对 first_byte_ms > 0 的记录求平均（未记录首字的请求为 0）。
 	// firstUsedAt / lastUsedAt 仍返回，给旧 /__usage 面板算跨度。
-	row := s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0), COALESCE(SUM(cache_hit_tokens),0), COALESCE(AVG(duration_ms),0), COALESCE(AVG(CASE WHEN first_byte_ms > 0 THEN first_byte_ms END),0), COALESCE(MIN(started_at),''), COALESCE(MAX(started_at),'') FROM usage_records `+where, args...)
+	// MIN/MAX 取 started_ms（覆盖索引内）而非文本列 started_at：后者会迫使整个
+	// KPI 查询退化为全表扫描回读 record_json 胖行；毫秒值在 Go 内再格式化。
+	row := s.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0), COALESCE(SUM(cache_hit_tokens),0), COALESCE(SUM(duration_ms),0), COALESCE(SUM(CASE WHEN first_byte_ms > 0 THEN first_byte_ms END),0), COALESCE(COUNT(CASE WHEN first_byte_ms > 0 THEN 1 END),0), COALESCE(MIN(started_ms),0), COALESCE(MAX(started_ms),0) FROM usage_records `+where, args...)
 	var requests, success, input, output, total, cacheHit int
-	var avgDuration, avgFirstByte float64
-	var firstUsedAt, lastUsedAt string
-	if err := row.Scan(&requests, &success, &input, &output, &total, &cacheHit, &avgDuration, &avgFirstByte, &firstUsedAt, &lastUsedAt); err != nil {
+	var durationSum, firstByteSum, firstByteCount, firstMs, lastMs int64
+	if err := row.Scan(&requests, &success, &input, &output, &total, &cacheHit, &durationSum, &firstByteSum, &firstByteCount, &firstMs, &lastMs); err != nil {
 		return nil, err
+	}
+	// AVG 改为 sum/count 重构：结果与 SQL AVG 一致，同时让调用方可以只扫一遍
+	// （阶段二的 rollup 合并也依赖同一公式）。
+	var avgDuration, avgFirstByte float64
+	if requests > 0 {
+		avgDuration = float64(durationSum) / float64(requests)
+	}
+	if firstByteCount > 0 {
+		avgFirstByte = float64(firstByteSum) / float64(firstByteCount)
+	}
+	firstUsedAt, lastUsedAt := "", ""
+	if firstMs > 0 {
+		firstUsedAt = time.UnixMilli(firstMs).UTC().Format(time.RFC3339)
+	}
+	if lastMs > 0 {
+		lastUsedAt = time.UnixMilli(lastMs).UTC().Format(time.RFC3339)
 	}
 	cacheHitRate := 0.0
 	if input > 0 {
