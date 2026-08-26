@@ -31,8 +31,7 @@ import { RoleWatermark } from '@/components/role-watermark'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ErrorState } from '@/components/ui/states'
 import { Fchip } from '@/components/ui/fchip'
-import { UsageFilterBar } from '@/components/usage-filter-bar'
-import type { RangeKey } from '@/components/range-select'
+import { UsageFilterBar, type RangeKey } from '@/components/usage-filter-bar'
 import { ModelBreakdownTooltip } from '@/components/model-breakdown-tooltip'
 import {
   useUsageStats,

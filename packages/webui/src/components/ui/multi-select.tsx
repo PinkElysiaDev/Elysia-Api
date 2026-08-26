@@ -10,26 +10,27 @@ export interface MultiSelectOption {
 }
 
 /**
- * 带搜索的复选下拉菜单。受控组件：value 为已选值数组，onChange 回传新数组。
- * 自实现弹层（而非 Radix DropdownMenu），以便内嵌搜索框不被菜单的焦点管理抢走输入。
+ * 筛选胶囊下拉：紧凑触发器（「模型 · 2」）+ 搜索复选弹层，受控组件。
+ * 触发器是筛选工具栏的统一形态：未选时中性灰，激活时 wash 底 + 玫红字 +
+ * 已选计数与快捷清除。自实现弹层（而非 Radix DropdownMenu），以便内嵌
+ * 搜索框不被菜单的焦点管理抢走输入。
  */
 export function MultiSelect({
+  label,
   options,
   value,
   onChange,
-  placeholder = '全部',
   searchPlaceholder = '搜索…',
   emptyText = '暂无选项',
-  className,
 }: {
+  /** 触发器上展示的维度名（如「模型组」）。 */
+  label: string
   /** 支持纯字符串数组（value=label）或带 hint 的完整选项对象。 */
   options: (string | MultiSelectOption)[]
   value: string[]
   onChange: (value: string[]) => void
-  placeholder?: string
   searchPlaceholder?: string
   emptyText?: string
-  className?: string
 }) {
   // 归一化为 MultiSelectOption[]：string 项即 value=label。
   const normalized = useMemo(
@@ -85,19 +86,18 @@ export function MultiSelect({
     }
   }
 
-  const caption =
-    value.length === 0 ? placeholder : value.length === 1 ? labelFor(normalized, value[0]) : `已选 ${value.length} 项`
+  const active = value.length > 0
 
   return (
-    <div ref={rootRef} className={cn('relative', className)}>
+    <div ref={rootRef} className="relative">
       {/* 用 div[role=combobox] 而非 <button> 作触发器：清空控件需要是真实
-          <button>，嵌套在 <button> 里是非法 HTML（修复 W1）。键盘可达：
-          Enter/Space/↓ 打开（W3）。 */}
+          <button>，嵌套在 <button> 里是非法 HTML。键盘可达：Enter/Space/↓ 打开。 */}
       <div
         role="combobox"
         tabIndex={0}
         aria-expanded={open}
         aria-haspopup="listbox"
+        aria-label={`${label}筛选${active ? `（已选 ${value.length} 项）` : ''}`}
         onClick={() => setOpen((v) => !v)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
@@ -106,33 +106,43 @@ export function MultiSelect({
           }
         }}
         className={cn(
-          'flex h-[34px] w-full cursor-pointer items-center justify-between gap-2 rounded-md border border-input bg-card px-3 py-1 text-sm',
-          'focus:outline-none focus:border-rose focus:ring-[3px] focus:ring-wash',
+          'flex h-[34px] cursor-pointer select-none items-center gap-1.5 rounded-md border px-3 text-sm transition-colors duration-150',
+          'focus:outline-none focus-visible:border-rose focus-visible:ring-[3px] focus-visible:ring-wash',
+          active
+            ? 'border-rose/30 bg-wash text-rose'
+            : 'border-input bg-card text-muted-foreground hover:text-foreground',
         )}
       >
-        <span className={cn('line-clamp-1 text-left', value.length === 0 && 'text-muted-foreground')}>
-          {caption}
+        <span className="whitespace-nowrap">
+          {active ? (
+            <>
+              <span className="font-medium">{label}</span>
+              <span className="ml-1 font-mono text-xs">· {value.length}</span>
+            </>
+          ) : (
+            label
+          )}
         </span>
-        <span className="flex items-center gap-1">
-          {value.length > 0 && (
+        <span className="flex items-center gap-0.5">
+          {active && (
             <button
               type="button"
               aria-label="清空选择"
-              className="rounded p-0.5 text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded p-0.5 hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onClick={(e) => {
                 e.stopPropagation()
                 onChange([])
               }}
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-3 w-3" />
             </button>
           )}
-          <ChevronDown className="h-4 w-4 opacity-60" />
+          <ChevronDown className="h-3.5 w-3.5 opacity-60" />
         </span>
       </div>
 
       {open && (
-        <div className="absolute z-50 mt-1 w-full min-w-[12rem] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-soft">
+        <div className="absolute left-0 z-50 mt-1.5 w-max min-w-[11rem] max-w-[16rem] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-soft">
           <div className="flex items-center gap-2 border-b border-border px-2.5 py-2">
             <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <input
@@ -184,8 +194,4 @@ export function MultiSelect({
       )}
     </div>
   )
-}
-
-function labelFor(options: MultiSelectOption[], value: string): string {
-  return options.find((o) => o.value === value)?.label ?? value
 }

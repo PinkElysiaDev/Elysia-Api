@@ -1,10 +1,22 @@
+import type { ReactNode } from 'react'
+import { X } from 'lucide-react'
 import { MultiSelect, type MultiSelectOption } from '@/components/ui/multi-select'
-import { RangeSelect, type RangeKey } from '@/components/range-select'
+import { Seg, type SegOption } from '@/components/ui/seg'
+
+export type RangeKey = '24h' | '7d' | '30d' | 'all'
+
+const RANGE_OPTIONS: SegOption<RangeKey>[] = [
+  { value: '24h', label: '24小时' },
+  { value: '7d', label: '7天' },
+  { value: '30d', label: '30天' },
+  { value: 'all', label: '全部' },
+]
 
 /**
- * 用量页共用筛选条（调用日志 + Usage 统计）：时间窗 + 模型组 / 模型 / 模型源 /
- * 调用方，风格与全站 h-[34px] 控件对齐。页面专属筛选控件经 children 追加，
- * 右侧汇总/指示区经 right 提供。
+ * 用量页共用筛选工具栏（调用日志 + Usage 统计）：时间窗 Seg + 模型组 / 模型 /
+ * 模型源 / 调用方筛选胶囊。单行紧凑布局，窄屏 flex-wrap 换行为小胶囊而非
+ * 堆叠的大配置框；任一维度激活时提供一键「清除筛选」。页面专属筛选控件经
+ * children 追加，右侧汇总/指示区经 right 提供。
  */
 export function UsageFilterBar({
   range,
@@ -40,57 +52,70 @@ export function UsageFilterBar({
   keyNames: string[]
   onKeyNamesChange: (value: string[]) => void
   /** 页面专属筛选控件（追加在调用方之后）。 */
-  children?: React.ReactNode
+  children?: ReactNode
   /** 右侧区域（汇总图例 / 更新指示）。 */
-  right?: React.ReactNode
+  right?: ReactNode
 }) {
+  const hasFilters =
+    groupNames.length > 0 || modelNames.length > 0 || sourceNames.length > 0 || keyNames.length > 0
+
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-xl border border-border/70 bg-card p-3.5 shadow-soft">
-      <div className="flex flex-wrap items-center gap-2.5">
-        <div className="w-[130px]">
-          <RangeSelect value={range} onChange={onRangeChange} />
-        </div>
-        <div className="min-w-[120px] flex-1 sm:flex-none">
-          <MultiSelect
-            options={groupOptions}
-            value={groupNames}
-            onChange={onGroupNamesChange}
-            placeholder="全部模型组"
-            searchPlaceholder="搜索模型组"
-          />
-        </div>
-        <div className="min-w-[120px] flex-1 sm:flex-none">
-          <MultiSelect
-            options={modelOptions}
-            value={modelNames}
-            onChange={onModelNamesChange}
-            placeholder="全部模型"
-            searchPlaceholder="搜索模型"
-          />
-        </div>
-        {sourceOptions.length > 0 && (
-          <div className="min-w-[110px] flex-1 sm:flex-none">
-            <MultiSelect
-              options={sourceOptions}
-              value={sourceNames}
-              onChange={onSourceNamesChange}
-              placeholder="全部模型源"
-              searchPlaceholder="搜索模型源"
-            />
-          </div>
-        )}
-        <div className="min-w-[110px] flex-1 sm:flex-none">
-          <MultiSelect
-            options={keyOptions}
-            value={keyNames}
-            onChange={onKeyNamesChange}
-            placeholder="全部调用方"
-            searchPlaceholder="搜索调用方"
-          />
-        </div>
-        {children}
-      </div>
-      {right}
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
+      <Seg
+        aria-label="时间窗"
+        className="h-[34px]"
+        options={RANGE_OPTIONS}
+        value={range}
+        onChange={onRangeChange}
+      />
+      <span className="h-5 w-px bg-border/70" aria-hidden />
+      <MultiSelect
+        label="模型组"
+        options={groupOptions}
+        value={groupNames}
+        onChange={onGroupNamesChange}
+        searchPlaceholder="搜索模型组"
+      />
+      <MultiSelect
+        label="模型"
+        options={modelOptions}
+        value={modelNames}
+        onChange={onModelNamesChange}
+        searchPlaceholder="搜索模型"
+      />
+      {sourceOptions.length > 0 && (
+        <MultiSelect
+          label="模型源"
+          options={sourceOptions}
+          value={sourceNames}
+          onChange={onSourceNamesChange}
+          searchPlaceholder="搜索模型源"
+        />
+      )}
+      <MultiSelect
+        label="调用方"
+        options={keyOptions}
+        value={keyNames}
+        onChange={onKeyNamesChange}
+        searchPlaceholder="搜索调用方"
+      />
+      {children}
+      {hasFilters && (
+        <button
+          type="button"
+          onClick={() => {
+            onGroupNamesChange([])
+            onModelNamesChange([])
+            onSourceNamesChange([])
+            onKeyNamesChange([])
+          }}
+          className="flex h-[34px] items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors duration-150 hover:bg-wash hover:text-rose focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <X className="h-3.5 w-3.5" />
+          清除筛选
+        </button>
+      )}
+      {right ? <div className="ml-auto pl-1">{right}</div> : null}
     </div>
   )
 }

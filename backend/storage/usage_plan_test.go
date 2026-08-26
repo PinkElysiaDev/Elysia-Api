@@ -85,3 +85,73 @@ func TestUsageDailyScanPlanCovering(t *testing.T) {
 		t.Fatalf("daily scan must use covering index, plan:\n%s", plan)
 	}
 }
+
+// 带维度筛选（模型/组/调用方）的查询必须留在覆盖索引上：遗留单列索引
+// （idx_usage_model / idx_usage_group）会把规划器引向"单列索引 + 临时 B-tree
+// 排序/逐行回表读 record_json 胖行"的陷阱——大库上带筛选查询几十秒的根因。
+// 该测试防止索引被重新引入或规划器退路复现。
+func TestUsageFilteredQueryPlansStayCovering(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "filtered-plan.sqlite3"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+
+	started := time.Now().Add(-2 * time.Hour)
+	if err := store.SaveUsageRecordJSON(ctx, []byte("{}"), UsageLogItem{
+		RequestID: "r1", StartedAt: started, ModelName: "m1", GroupName: "g1",
+		KeyName: "k1", StatusCode: 200, TotalTokens: 5,
+	}, started.Add(time.Second)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// 遗留单列索引不存在（迁移已删除）。
+	var dropped string
+	err = store.db.QueryRowContext(ctx,
+		`SELECT name FROM sqlite_master WHERE type='index' AND name IN ('idx_usage_model','idx_usage_group','idx_usage_started_at')`).Scan(&dropped)
+	if err == nil {
+		t.Fatalf("legacy single-column index %q must be dropped", dropped)
+	}
+
+	cases := []struct {
+		name  string
+		query string
+		args  []any
+	}{
+		{
+			name:  "logs page with model IN",
+			query: `SELECT request_id, started_at, model_name FROM usage_records WHERE started_ms >= ? AND started_ms < ? AND model_name IN (?) ORDER BY started_ms DESC LIMIT 20 OFFSET 0`,
+			args:  []any{started.Add(-time.Hour).UnixMilli(), time.Now().UnixMilli(), "m1"},
+		},
+		{
+			name:  "count with model IN",
+			query: `SELECT COUNT(*) FROM usage_records WHERE started_ms >= ? AND started_ms < ? AND model_name IN (?)`,
+			args:  []any{started.Add(-time.Hour).UnixMilli(), time.Now().UnixMilli(), "m1"},
+		},
+		{
+			name:  "totals with model IN",
+			query: `SELECT COUNT(*), COALESCE(SUM(total_tokens),0) FROM usage_records WHERE started_ms >= ? AND started_ms < ? AND model_name IN (?)`,
+			args:  []any{started.Add(-time.Hour).UnixMilli(), time.Now().UnixMilli(), "m1"},
+		},
+		{
+			name:  "by-model with group =",
+			query: `SELECT model_name, COUNT(*), COALESCE(SUM(total_tokens),0) FROM usage_records WHERE started_ms >= ? AND started_ms < ? AND group_name = ? GROUP BY model_name`,
+			args:  []any{started.Add(-time.Hour).UnixMilli(), time.Now().UnixMilli(), "g1"},
+		},
+		{
+			name:  "daily with key IN",
+			query: `SELECT (started_ms + ?) / 86400000, model_name, COUNT(*) FROM usage_records WHERE started_ms >= ? AND started_ms < ? AND key_name IN (?) GROUP BY 1, 2`,
+			args:  []any{int64(8 * 60 * 60_000), started.Add(-time.Hour).UnixMilli(), time.Now().UnixMilli(), "k1"},
+		},
+	}
+	for _, tc := range cases {
+		plan := explainPlan(t, store, tc.query, tc.args...)
+		if !strings.Contains(plan, "idx_usage_agg_cover") {
+			t.Fatalf("%s: must use covering index, plan:\n%s", tc.name, plan)
+		}
+		if strings.Contains(plan, "USE TEMP B-TREE FOR ORDER BY") {
+			t.Fatalf("%s: must not temp-sort, plan:\n%s", tc.name, plan)
+		}
+	}
+}

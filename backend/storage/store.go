@@ -93,9 +93,6 @@ func (s *Store) migrate(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS model_groups (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL DEFAULT 1, strategy TEXT NOT NULL DEFAULT 'round-robin', max_retries INTEGER NOT NULL DEFAULT 3, retry_interval INTEGER NOT NULL DEFAULT 1000, max_concurrency INTEGER NOT NULL DEFAULT 0, daily_limit_max_requests INTEGER NOT NULL DEFAULT 0, daily_limit_max_tokens INTEGER NOT NULL DEFAULT 0, type TEXT NOT NULL DEFAULT 'llm', max_tokens INTEGER NOT NULL DEFAULT 0, vision_capable INTEGER NOT NULL DEFAULT 0, tools_capable INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS model_group_models (group_id TEXT NOT NULL, model_id TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (group_id, model_id, source_id), FOREIGN KEY(group_id) REFERENCES model_groups(id) ON DELETE CASCADE)`,
 		`CREATE TABLE IF NOT EXISTS usage_records (request_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, ended_at TEXT NOT NULL, key_name TEXT NOT NULL DEFAULT '', key_hash TEXT NOT NULL DEFAULT '', requested_model_group TEXT NOT NULL DEFAULT '', group_id TEXT NOT NULL DEFAULT '', group_name TEXT NOT NULL DEFAULT '', model_id TEXT NOT NULL DEFAULT '', model_name TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL DEFAULT '', source_format TEXT NOT NULL DEFAULT '', target_format TEXT NOT NULL DEFAULT '', relay_mode TEXT NOT NULL DEFAULT '', responses_mode TEXT NOT NULL DEFAULT '', usage_source TEXT NOT NULL DEFAULT '', stream INTEGER NOT NULL DEFAULT 0, status_code INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', first_byte_ms INTEGER NOT NULL DEFAULT 0, duration_ms INTEGER NOT NULL DEFAULT 0, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, total_tokens INTEGER NOT NULL DEFAULT 0, request_truncated INTEGER NOT NULL DEFAULT 0, response_truncated INTEGER NOT NULL DEFAULT 0, record_json TEXT NOT NULL)`,
-		`CREATE INDEX IF NOT EXISTS idx_usage_started_at ON usage_records(started_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_usage_group ON usage_records(group_name)`,
-		`CREATE INDEX IF NOT EXISTS idx_usage_model ON usage_records(model_name)`,
 		`CREATE TABLE IF NOT EXISTS system_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, level TEXT NOT NULL, message TEXT NOT NULL, fields_json TEXT NOT NULL DEFAULT '{}')`,
 		`CREATE INDEX IF NOT EXISTS idx_system_logs_created_at ON system_logs(created_at)`,
 	}
@@ -185,6 +182,20 @@ func (s *Store) migrate(ctx context.Context) error {
 	// 旧的时间索引成为覆盖索引前缀的冗余（写入双份维护），删除。
 	if _, err := s.db.ExecContext(ctx, `DROP INDEX IF EXISTS idx_usage_started_ms`); err != nil {
 		return err
+	}
+	// 遗留单列索引（started_at / group_name / model_name）是带筛选查询的性能
+	// 陷阱：无 ANALYZE 统计时，规划器会把 model_name IN / group_name = 等筛选
+	// 引到单列索引上，随后 ORDER BY started_ms 走临时 B-tree 排序、聚合逐行
+	// 回表读取 record_json 胖行（大库上带筛选查询几十秒的根因）。覆盖索引的
+	// 列已覆盖全部筛选/聚合/排序形态，删除后每次写入也少维护 3 个索引。
+	for _, stmt := range []string{
+		`DROP INDEX IF EXISTS idx_usage_started_at`,
+		`DROP INDEX IF EXISTS idx_usage_group`,
+		`DROP INDEX IF EXISTS idx_usage_model`,
+	} {
+		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
 	}
 	// 回填存量行的 started_ms。单连接约束：先全部读进内存并关闭游标，再 UPDATE。
 	type usageRow struct{ requestID, startedAt string }
