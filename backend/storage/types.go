@@ -3,32 +3,39 @@ package storage
 import (
 	"database/sql"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
 type Store struct {
 	db    *sql.DB
 	codec *secretCodec
+
+	// rollupReady：小时级预聚合已完成回填，聚合查询可走 rollup 路径。
+	rollupReady atomic.Bool
+	rollupMu    sync.Mutex // 序列化回填执行（防重复启动）
+	rollupWG    sync.WaitGroup
 }
 
 type ModelSource struct {
-	ID              string    `json:"id"`
-	Name            string    `json:"name"`
-	BaseURL         string    `json:"baseUrl"`
-	APIKey          string    `json:"apiKey,omitempty"`
-	Platform        string    `json:"platform"`
-	Enabled         bool      `json:"enabled"`
-	AutoFetchModels bool      `json:"autoFetchModels"`
-	ManualModels    []Model   `json:"manualModels,omitempty"`
+	ID              string  `json:"id"`
+	Name            string  `json:"name"`
+	BaseURL         string  `json:"baseUrl"`
+	APIKey          string  `json:"apiKey,omitempty"`
+	Platform        string  `json:"platform"`
+	Enabled         bool    `json:"enabled"`
+	AutoFetchModels bool    `json:"autoFetchModels"`
+	ManualModels    []Model `json:"manualModels,omitempty"`
 	// FetchBaseURL 为模型列表拉取专用地址（方向5）：空 = 与 BaseURL 一致（现状）。
 	// 用于拉取端点与请求端点不同源（域名/端口/协议不一致）的站点。
 	FetchBaseURL string `json:"fetchBaseUrl,omitempty"`
 	// APIKeys 为多 Key 配置（方向6）：空列表 = 单 key 模式（用 APIKey 字段）。
 	// 存储 JSON 数组整体加密；KeyStrategy 决定调度方式。
-	APIKeys     []SourceAPIKey   `json:"apiKeys,omitempty"`
+	APIKeys     []SourceAPIKey    `json:"apiKeys,omitempty"`
 	KeyStrategy SourceKeyStrategy `json:"keyStrategy,omitempty"`
-	CreatedAt   time.Time        `json:"createdAt"`
-	UpdatedAt   time.Time        `json:"updatedAt"`
+	CreatedAt   time.Time         `json:"createdAt"`
+	UpdatedAt   time.Time         `json:"updatedAt"`
 }
 
 // EffectiveKeys 返回参与调度的 key 列表（多 key 时过滤 disabled；单 key 回退 APIKey）。
@@ -90,7 +97,8 @@ func (k SourceAPIKey) KeyAllowsModel(modelID string) bool {
 }
 
 // SourceKeyStrategy 是源级 key 调度策略。
-//   single（默认，兼容旧单 key）/ round-robin / random / priority（按列表顺序，失败先轮换 key）。
+//
+//	single（默认，兼容旧单 key）/ round-robin / random / priority（按列表顺序，失败先轮换 key）。
 type SourceKeyStrategy string
 
 const (
@@ -101,20 +109,20 @@ const (
 )
 
 type Model struct {
-	ID               string    `json:"id"`
-	Name             string    `json:"name"`
-	SourceID         string    `json:"sourceId,omitempty"`
-	SourceName       string    `json:"sourceName,omitempty"`
-	BaseURL          string    `json:"baseUrl"`
-	APIKey           string    `json:"apiKey,omitempty"`
-	Platform         string    `json:"platform"`
-	Type             string    `json:"type"`
-	MaxTokens        int       `json:"maxTokens"`
-	VisionCapable    bool      `json:"visionCapable"`
-	ToolsCapable     bool      `json:"toolsCapable"`
-	StructuredOutput bool      `json:"structuredOutput"`
-	ThinkingMode     string    `json:"thinkingMode"`
-	Available        bool      `json:"available"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	SourceID         string `json:"sourceId,omitempty"`
+	SourceName       string `json:"sourceName,omitempty"`
+	BaseURL          string `json:"baseUrl"`
+	APIKey           string `json:"apiKey,omitempty"`
+	Platform         string `json:"platform"`
+	Type             string `json:"type"`
+	MaxTokens        int    `json:"maxTokens"`
+	VisionCapable    bool   `json:"visionCapable"`
+	ToolsCapable     bool   `json:"toolsCapable"`
+	StructuredOutput bool   `json:"structuredOutput"`
+	ThinkingMode     string `json:"thinkingMode"`
+	Available        bool   `json:"available"`
 	// Enabled 是用户手动启停开关（方向4），与 Available（健康检测自动翻转）分离：
 	// 模型可被调度 = Enabled && Available。
 	Enabled bool `json:"enabled"`
@@ -154,14 +162,14 @@ type APIToken struct {
 }
 
 type UsageQuery struct {
-	From       time.Time
-	To         time.Time
-	Limit      int
-	Offset     int
-	KeyName    string
-	KeyHash    string
-	GroupName  string
-	ModelName  string
+	From      time.Time
+	To        time.Time
+	Limit     int
+	Offset    int
+	KeyName   string
+	KeyHash   string
+	GroupName string
+	ModelName string
 	// Status 可选 success / failed；StatusCode 非零时精确状态码优先。
 	Status     string
 	StatusCode int

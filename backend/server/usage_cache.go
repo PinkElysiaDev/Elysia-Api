@@ -103,6 +103,7 @@ func (c *usageResponseCache) handle(gc *gin.Context) {
 		entry = nil
 	}
 	call.entry = entry
+	close(call.done)
 	c.mu.Lock()
 	delete(c.inflight, key)
 	c.mu.Unlock()

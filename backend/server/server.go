@@ -141,6 +141,9 @@ func New(cfg *config.Config) *Server {
 		log.Printf("failed to open sqlite store: %v", err)
 	} else {
 		server.store = store
+		// 历史数据回填进小时级 rollup 预聚合表（后台、幂等、可断点续跑）；
+		// 完成前聚合查询自动走 raw 路径，功能不受影响。
+		store.StartRollupBackfill()
 		if err := server.importLegacyConfig(); err != nil {
 			log.Printf("failed to import legacy config into sqlite: %v", err)
 		}

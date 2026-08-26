@@ -270,6 +270,36 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 		log.Printf("[migration] usage_records: started_ms backfill complete in %s", time.Since(backfillStartedAt).Round(time.Millisecond))
 	}
+	// 小时级 rollup 预聚合表 + 状态表（rollup.go）：仪表盘聚合与原始表大小
+	// 解耦。只新增、不改任何现有表/列——usage_records 数据零风险，两张新表
+	// 均为纯派生数据，可随时删除重建。WITHOUT ROWID 让 PK 即表结构，
+	// hour_ms 范围扫描与 UPSERT 都走主键。
+	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS usage_rollup_hour (
+		hour_ms INTEGER NOT NULL,
+		model_name TEXT NOT NULL DEFAULT '',
+		group_name TEXT NOT NULL DEFAULT '',
+		key_name TEXT NOT NULL DEFAULT '',
+		status_code INTEGER NOT NULL DEFAULT 0,
+		cnt INTEGER NOT NULL DEFAULT 0,
+		in_tok INTEGER NOT NULL DEFAULT 0,
+		out_tok INTEGER NOT NULL DEFAULT 0,
+		total_tok INTEGER NOT NULL DEFAULT 0,
+		cache_tok INTEGER NOT NULL DEFAULT 0,
+		dur_ms_sum INTEGER NOT NULL DEFAULT 0,
+		fb_ms_sum INTEGER NOT NULL DEFAULT 0,
+		fb_cnt INTEGER NOT NULL DEFAULT 0,
+		min_started_ms INTEGER NOT NULL DEFAULT 0,
+		max_started_ms INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY (hour_ms, model_name, group_name, key_name, status_code)
+	) WITHOUT ROWID`); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS usage_rollup_state (key TEXT PRIMARY KEY, int_value INTEGER NOT NULL DEFAULT 0)`); err != nil {
+		return err
+	}
+	if err := s.initRollupState(ctx); err != nil {
+		return err
+	}
 	// 增量迁移（幂等，duplicate column 忽略）：
 	//   model_sources.fetch_base_url —— 模型列表拉取专用地址（空=与 base_url 一致）；
 	//   model_sources.api_keys / key_strategy —— 多 Key 配置与调度策略；
@@ -664,8 +694,8 @@ func (s *Store) MergeSourceModels(ctx context.Context, source ModelSource, incom
 	// 读取现有行（单连接库：先全部读进内存再写，避免游标占用连接死锁）。
 	type existingRow struct {
 		id, name, thinking, origin, capabilitySource string
-		maxTokens                                     int
-		vision, tools, structured                     bool
+		maxTokens                                    int
+		vision, tools, structured                    bool
 	}
 	existing := make(map[string]existingRow, len(incoming))
 	rows, err := tx.QueryContext(ctx, `SELECT id, name, thinking_mode, origin, capability_source, max_tokens, vision_capable, tools_capable, structured_output FROM models WHERE source_id = ?`, source.ID)
