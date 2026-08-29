@@ -71,6 +71,9 @@ const (
 	CanonicalEventFunctionCallArgumentsDone  = "response.function_call_arguments.done"
 	CanonicalEventOutputItemDone             = "response.output_item.done"
 	CanonicalEventUsageDelta                 = "response.usage.delta"
+	// CanonicalEventAnnotationDelta 承载引用/出处标注增量（Claude
+	// citations_delta 等），由各渲染器翻译回对应协议的合法事件。
+	CanonicalEventAnnotationDelta = "annotation.delta"
 	CanonicalEventResponseCompleted          = "response.completed"
 	CanonicalEventResponseFailed             = "response.failed"
 )
@@ -701,12 +704,25 @@ func contentPartsToInterface(parts []CanonicalContentPart) any {
 				out = append(out, map[string]any{"type": "text", "text": part.Text})
 			}
 		default:
-			if part.Raw != nil {
-				out = append(out, part.Raw)
+			// 未知 part 的裸透传仅限 OpenAI 线已知的内容 part 类型——把 Claude
+			// 的 server_tool_use 等块原样发给 OpenAI 系上游会成为非法 content
+			// part（严格上游 400）。跨线的协议专属块在此丢弃；同线回放由
+			// canonicalMessagesToClaude 的 default 分支负责。
+			if raw, ok := part.Raw.(map[string]any); ok && isOpenAIContentPartType(stringValue(raw["type"])) {
+				out = append(out, raw)
 			}
 		}
 	}
 	return out
+}
+
+// isOpenAIContentPartType 判断是否为 OpenAI chat 线的已知 content part 类型。
+func isOpenAIContentPartType(typeName string) bool {
+	switch typeName {
+	case "text", "image_url", "input_audio", "output_audio", "video_url", "file", "tool_result":
+		return true
+	}
+	return false
 }
 
 // splitAudioDataURL 解析 "data:<mime>;base64,<payload>" 形式的音频数据，

@@ -221,9 +221,11 @@ type Usage struct {
 	UsageSemantic        string `json:"usage_semantic,omitempty"`
 	UsageSource          string `json:"usage_source,omitempty"`
 
-	PromptTokensDetails     PromptTokensDetails     `json:"prompt_tokens_details,omitempty"`
-	InputTokensDetails      PromptTokensDetails     `json:"input_tokens_details,omitempty"`
-	CompletionTokensDetails CompletionTokensDetails `json:"completion_tokens_details,omitempty"`
+	// details 用指针：值结构体的 omitempty 不生效（永远序列化成 {}），
+	// 会覆盖 RawFields 透传的同键子对象。
+	PromptTokensDetails     *PromptTokensDetails     `json:"prompt_tokens_details,omitempty"`
+	InputTokensDetails      *PromptTokensDetails     `json:"input_tokens_details,omitempty"`
+	CompletionTokensDetails *CompletionTokensDetails `json:"completion_tokens_details,omitempty"`
 	InputTokens             int                     `json:"input_tokens,omitempty"`
 	OutputTokens            int                     `json:"output_tokens,omitempty"`
 

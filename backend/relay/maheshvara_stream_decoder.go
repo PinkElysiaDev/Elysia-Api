@@ -30,6 +30,10 @@ type MaheshvaraStreamDecoder struct {
 	terminal        bool
 	sawWireEvent    bool
 	sawOutput       bool
+	// sawFinishReason：上游是否发过真实 finish_reason（chat）/message_delta
+	//（Claude）/finishReason（Gemini）/终态 status（Responses）。空但合法的
+	// 完成（content_filter 拒答）据此与残缺流区分。
+	sawFinishReason bool
 	openAITools     map[int]*maheshvaraStreamToolState
 	openAIToolOrder []int
 	finishedChoices map[int]bool
@@ -38,6 +42,12 @@ type MaheshvaraStreamDecoder struct {
 	// 只允许补发缺失后缀，不得把已流式输出过的内容再发一遍。
 	openAIChoiceText     map[int]string
 	openAIChoiceReasoned map[int]bool
+	// openAIPartText 按 (choice, contentIndex) 分桶累计快照文本：终态 message
+	// 的多 text part 各自独立差分，后续 part 不因前一个 part 的累计而误判
+	// 前缀不匹配被丢弃。
+	openAIPartText map[string]string
+	// nextSyntheticCallID：无 id 工具调用的合成 id 单调计数器（跨 chunk 不撞）。
+	nextSyntheticCallID int
 	anthropicBlocks      map[int]*maheshvaraAnthropicBlock
 }
 
@@ -49,6 +59,7 @@ func NewMaheshvaraStreamDecoder(format FormatType) *MaheshvaraStreamDecoder {
 		seenChoices:          make(map[int]bool),
 		openAIChoiceText:     make(map[int]string),
 		openAIChoiceReasoned: make(map[int]bool),
+		openAIPartText:       make(map[string]string),
 		anthropicBlocks:      make(map[int]*maheshvaraAnthropicBlock),
 	}
 }
@@ -63,6 +74,11 @@ func (decoder *MaheshvaraStreamDecoder) SawWireEvent() bool {
 
 func (decoder *MaheshvaraStreamDecoder) SawOutput() bool {
 	return decoder != nil && decoder.sawOutput
+}
+
+// SawFinishReason 报告上游是否发过真实终态原因（区别于合成 [DONE] 终态）。
+func (decoder *MaheshvaraStreamDecoder) SawFinishReason() bool {
+	return decoder != nil && decoder.sawFinishReason
 }
 
 func (decoder *MaheshvaraStreamDecoder) Decode(event SSEEvent) ([]MaheshvaraStreamEvent, error) {
@@ -245,6 +261,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]
 
 		finishReason := stringValue(choice["finish_reason"])
 		if finishReason != "" {
+			decoder.sawFinishReason = true
 			// finish_reason:"error" 是终态失败，不得伪装成正常 stop（DC5b）。
 			if strings.EqualFold(finishReason, "error") {
 				decoder.finishedChoices[choiceIndex] = true
@@ -374,9 +391,9 @@ func (decoder *MaheshvaraStreamDecoder) openAIContentEvents(value any, choiceInd
 			return nil
 		}
 		if snapshot {
-			return decoder.openAISnapshotTextSuffix(text, choiceIndex, raw)
+			return decoder.openAISnapshotTextSuffix(text, choiceIndex, 0, raw)
 		}
-		decoder.openAIChoiceText[choiceIndex] += text
+		decoder.openAIPartText[fmt.Sprintf("%d:%d", choiceIndex, 0)] += text
 		event := decoder.baseEvent(CanonicalEventTextDelta, raw)
 		event.ChoiceIndex = choiceIndex
 		event.Delta = text
@@ -403,13 +420,13 @@ func (decoder *MaheshvaraStreamDecoder) openAIContentEvents(value any, choiceInd
 			event.ContentPart = &part
 		}
 		if event.Type == CanonicalEventTextDelta && snapshot {
-			suffixEvents := decoder.openAISnapshotTextSuffix(event.Delta, choiceIndex, raw)
+			suffixEvents := decoder.openAISnapshotTextSuffix(event.Delta, choiceIndex, index, raw)
 			events = append(events, suffixEvents...)
 			continue
 		}
 		if maheshvaraStreamEventHasOutput(event) {
 			if event.Type == CanonicalEventTextDelta {
-				decoder.openAIChoiceText[choiceIndex] += event.Delta
+				decoder.openAIPartText[fmt.Sprintf("%d:%d", choiceIndex, index)] += event.Delta
 			}
 			if event.Type == CanonicalEventReasoningDelta {
 				decoder.openAIChoiceReasoned[choiceIndex] = true
@@ -423,11 +440,11 @@ func (decoder *MaheshvaraStreamDecoder) openAIContentEvents(value any, choiceInd
 // openAISnapshotTextSuffix 应用终态快照的后缀语义（PC7f）：完整文本与已流式
 // 输出的前缀一致时只补缺失后缀；完全相同或分歧（非前缀）时不再重发，避免
 // 下游收到重复/冲突内容。
-func (decoder *MaheshvaraStreamDecoder) openAISnapshotTextSuffix(text string, choiceIndex int, raw map[string]any) []MaheshvaraStreamEvent {
-	streamed := decoder.openAIChoiceText[choiceIndex]
+func (decoder *MaheshvaraStreamDecoder) openAISnapshotTextSuffix(text string, choiceIndex, contentIndex int, raw map[string]any) []MaheshvaraStreamEvent {
+	streamed := decoder.openAIPartText[fmt.Sprintf("%d:%d", choiceIndex, contentIndex)]
 	if text == streamed || streamed == "" {
 		if streamed == "" {
-			decoder.openAIChoiceText[choiceIndex] = text
+			decoder.openAIPartText[fmt.Sprintf("%d:%d", choiceIndex, contentIndex)] = text
 			event := decoder.baseEvent(CanonicalEventTextDelta, raw)
 			event.ChoiceIndex = choiceIndex
 			event.Delta = text
@@ -437,7 +454,7 @@ func (decoder *MaheshvaraStreamDecoder) openAISnapshotTextSuffix(text string, ch
 	}
 	if strings.HasPrefix(text, streamed) {
 		suffix := text[len(streamed):]
-		decoder.openAIChoiceText[choiceIndex] = text
+		decoder.openAIPartText[fmt.Sprintf("%d:%d", choiceIndex, contentIndex)] = text
 		event := decoder.baseEvent(CanonicalEventTextDelta, raw)
 		event.ChoiceIndex = choiceIndex
 		event.Delta = suffix

@@ -38,6 +38,19 @@ func (renderer *MaheshvaraStreamRenderer) writeClaude(event *MaheshvaraStreamEve
 		return renderer.startClaude()
 	case CanonicalEventUsageDelta:
 		return nil
+	case CanonicalEventAnnotationDelta:
+		// 引用标注（citations）：翻译回 Claude 的合法 citations_delta 事件，
+		// 挂在当前活动块上——绝不作为独立块回放（"citations_delta" 不是合法
+		// content block 类型，严格 SDK 会报错）。
+		if len(event.Annotations) == 0 || !renderer.claude.active {
+			return nil
+		}
+		for _, citation := range event.Annotations {
+			if err := renderer.writeSSEEvent("content_block_delta", map[string]any{"type": "content_block_delta", "index": renderer.claude.activeIndex, "delta": map[string]any{"type": "citations_delta", "citation": citation}}); err != nil {
+				return err
+			}
+		}
+		return nil
 	case CanonicalEventTextDelta:
 		if event.Delta == "" {
 			return nil

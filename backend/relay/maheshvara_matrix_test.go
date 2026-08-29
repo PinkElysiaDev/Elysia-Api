@@ -244,7 +244,7 @@ func TestMaheshvaraReasoningSignaturesAreProviderBoundAndLegacyEnvelopeIsReadOnl
 			ID: "rs_1", Type: CanonicalOutputReasoning, Status: "completed",
 			Content: []MaheshvaraContentPart{{
 				Type: CanonicalContentReasoning, Text: "concise rationale", ReasoningText: "concise rationale",
-				EncryptedContent: "provider-ciphertext",
+				EncryptedContent: "provider-ciphertext", EncryptedProvider: CanonicalSignatureProviderOpenAI,
 				ReasoningSummary: []CanonicalReasoningSummary{{Type: "summary_text", Text: "summary"}},
 			}},
 		}},
@@ -261,6 +261,20 @@ func TestMaheshvaraReasoningSignaturesAreProviderBoundAndLegacyEnvelopeIsReadOnl
 	}
 	if !strings.HasPrefix(claude.Content[0].Signature, "maheshvara-reasoning-v2:") {
 		t.Fatalf("cross-provider ciphertext must be wrapped in a v2 envelope, got %q", claude.Content[0].Signature)
+	}
+
+	// 签发方不明的密文不回放：门控无法判断归属。
+	anonymous := *response
+	anonymous.Output = []MaheshvaraOutputItem{{
+		ID: "rs_anon", Type: CanonicalOutputReasoning, Status: "completed",
+		Content: []MaheshvaraContentPart{{Type: CanonicalContentReasoning, Text: "anon", ReasoningText: "anon", EncryptedContent: "mystery"}},
+	}}
+	anonRendered, err := MaheshvaraToAnthropicResponse(&anonymous)
+	if err != nil {
+		t.Fatalf("render anonymous: %v", err)
+	}
+	if len(anonRendered.Content) != 1 || anonRendered.Content[0].Signature != "" {
+		t.Fatalf("provider-less ciphertext must not be replayed: %+v", anonRendered.Content)
 	}
 
 	gemini, err := MaheshvaraToGeminiResponse(response)

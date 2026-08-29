@@ -90,9 +90,9 @@ func applyClaudeRequestExtensions(raw map[string]any, req *CanonicalRequest) {
 	}
 }
 
-func applyGeminiRequestExtensions(raw map[string]any, req *CanonicalRequest) {
+func applyGeminiRequestExtensions(raw map[string]any, req *CanonicalRequest) error {
 	if req == nil {
-		return
+		return nil
 	}
 	req.Stream = boolValue(raw["stream"])
 	if raw["safetySettings"] != nil {
@@ -102,9 +102,10 @@ func applyGeminiRequestExtensions(raw map[string]any, req *CanonicalRequest) {
 		req.CacheControl = raw["cachedContent"]
 	}
 	if cfg, ok := raw["generationConfig"].(map[string]any); ok {
-		if value, ok := numberValue(cfg["candidateCount"]); ok {
-			v := int(value)
-			req.N = &v
+		if value, ok := numberValue(cfg["candidateCount"]); ok && int(value) > 1 {
+			// 网关一次只出一份候选：与 chat 线 n>1 拒绝对齐（此前
+			// candidateCount 绕过检查，转出 n=2 后只取 choices[0] 静默丢弃）。
+			return fmt.Errorf("gemini candidateCount must be 1: this gateway returns a single candidate per request")
 		}
 		if value, ok := numberValue(cfg["seed"]); ok {
 			v := int64(value)
@@ -125,6 +126,7 @@ func applyGeminiRequestExtensions(raw map[string]any, req *CanonicalRequest) {
 		}
 	}
 	req.RawExtra = rawFields(raw)
+	return nil
 }
 
 func applyResponsesRequestExtensions(raw map[string]any, req *CanonicalRequest) {

@@ -103,11 +103,16 @@ func claudeThinkingSignatureForPart(part CanonicalContentPart, model string) str
 		// anthropic 的"密文"就是 thinking 签名本身，无需再包信封。
 		return part.EncryptedContent
 	}
+	provider := firstNonEmptyString(part.EncryptedProvider, part.SignatureProvider)
+	if provider == "" {
+		// 签发方不明的密文不回放：门控无法判断归属，发给任何上游都可能被拒。
+		return ""
+	}
 	signature, err := encodeMaheshvaraReasoningEnvelope(
 		firstNonEmptyString(part.ReasoningText, part.Text),
 		part.EncryptedContent,
 		part.ReasoningSummary,
-		firstNonEmptyString(part.EncryptedProvider, part.SignatureProvider),
+		provider,
 		firstNonEmptyString(part.EncryptedModel, model),
 	)
 	if err != nil {

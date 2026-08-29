@@ -127,6 +127,21 @@ func IsPrivateOrRestrictedIP(ip net.IP) bool {
 		if ip[0] == 0xfe && (ip[1]&0xc0) == 0x80 { // fe80::/10 link local
 			return true
 		}
+		// IPv6 过渡范围会在 IPv6 报文里内嵌一个 IPv4 地址，To4() 对它们返回
+		// nil（非 v4 映射形式），从而绕过上面的 v4 限制表——解包内嵌地址后
+		// 递归走一遍 v4 判定（例如 2002:a9fe:a9fe:: 内嵌 169.254.169.254
+		// 云元数据地址）。
+		var embedded net.IP
+		if ip[0] == 0x20 && ip[1] == 0x02 { // 2002::/16 6to4：字节 2-5
+			embedded = net.IPv4(ip[2], ip[3], ip[4], ip[5])
+		} else if ip[0] == 0x00 && ip[1] == 0x64 && ip[2] == 0xff && ip[3] == 0x9b { // 64:ff9b::/96 NAT64：字节 12-15
+			embedded = net.IPv4(ip[12], ip[13], ip[14], ip[15])
+		} else if ip[0] == 0x20 && ip[1] == 0x01 && ip[2] == 0x00 && ip[3] == 0x00 { // 2001::/32 Teredo：字节 12-15 取反
+			embedded = net.IPv4(^ip[12], ^ip[13], ^ip[14], ^ip[15])
+		}
+		if embedded != nil && IsPrivateOrRestrictedIP(embedded) {
+			return true
+		}
 	}
 
 	return false

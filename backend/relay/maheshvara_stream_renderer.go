@@ -268,7 +268,9 @@ func TransformStreamViaMaheshvara(ctx context.Context, response *http.Response, 
 	if !decoder.TerminalReceived() {
 		return abort(fmt.Errorf("upstream stream ended before a terminal event"))
 	}
-	if !decoder.SawOutput() && !renderer.HasOutput() {
+	// 上游发了真实 finish_reason 的空完成（content_filter 拒答、空工具轮等）
+	// 是合法响应：只在终态为合成（无 finish 的 [DONE]）时才要求有可表达输出。
+	if !decoder.SawOutput() && !renderer.HasOutput() && !decoder.SawFinishReason() {
 		return abort(fmt.Errorf("upstream stream completed without representable output"))
 	}
 	for index := range terminalEvents {

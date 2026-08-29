@@ -60,7 +60,10 @@ func (decoder *MaheshvaraStreamDecoder) decodeGemini(raw map[string]any) ([]Mahe
 				events = append(events, event)
 			}
 			if functionCall := mapValue(part["functionCall"]); functionCall != nil {
-				callID := firstNonEmptyString(stringValue(functionCall["id"]), fmt.Sprintf("call_%d_%d", choiceIndex, partIndex))
+				// 合成 id 用解码器级单调计数器：partIndex 是 chunk 内序号（每块
+				// 从 0 重新计），跨 chunk 的两个无 id 调用会撞成 call_0_0。
+				callID := firstNonEmptyString(stringValue(functionCall["id"]), fmt.Sprintf("call_syn_%d", decoder.nextSyntheticCallID))
+				decoder.nextSyntheticCallID++
 				name := stringValue(functionCall["name"])
 				added := decoder.baseEvent(CanonicalEventFunctionCallAdded, raw)
 				added.ChoiceIndex = choiceIndex
@@ -120,6 +123,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeGemini(raw map[string]any) ([]Mahe
 			}
 		}
 		if finishReason := stringValue(candidate["finishReason"]); finishReason != "" {
+			decoder.sawFinishReason = true
 			decoder.finishedChoices[choiceIndex] = true
 			event := decoder.baseEvent(CanonicalEventResponseCompleted, raw)
 			event.ChoiceIndex = choiceIndex

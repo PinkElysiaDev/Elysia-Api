@@ -107,10 +107,12 @@ func (decoder *MaheshvaraStreamDecoder) decodeAnthropic(raw map[string]any) ([]M
 		case "citations_delta":
 			citation := mapValue(delta["citation"])
 			if citation != nil {
-				part := CanonicalContentPart{Type: CanonicalContentText, Annotations: []map[string]any{citation}, Raw: delta}
-				event := decoder.baseEvent(CanonicalEventContentPartAdded, raw)
+				// 引用标注不生成独立 part（空文本 part 在部分渲染器会被当作
+				// 畸形块原样回放）；挂到事件 Annotations 载体，由 Claude 渲染器
+				// 在对应文本块收尾前发合法的 citations_delta。
+				event := decoder.baseEvent(CanonicalEventAnnotationDelta, raw)
 				event.ContentIndex = index
-				event.ContentPart = &part
+				event.Annotations = []map[string]any{citation}
 				events = append(events, event)
 			}
 		}
@@ -136,6 +138,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeAnthropic(raw map[string]any) ([]M
 		}
 		delta := mapValue(raw["delta"])
 		if finishReason := stringValue(delta["stop_reason"]); finishReason != "" {
+			decoder.sawFinishReason = true
 			decoder.terminal = true
 			event := decoder.baseEvent(CanonicalEventResponseCompleted, raw)
 			event.FinishReason = finishReason

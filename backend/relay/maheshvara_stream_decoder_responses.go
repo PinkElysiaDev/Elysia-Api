@@ -91,6 +91,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeResponses(raw map[string]any) ([]M
 		return []MaheshvaraStreamEvent{event}, nil
 	case CanonicalEventResponseCompleted:
 		decoder.terminal = true
+		decoder.sawFinishReason = true
 		if responseValue != nil {
 			response, err := responsesMapToCanonical(responseValue)
 			if err != nil {

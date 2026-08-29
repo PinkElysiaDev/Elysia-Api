@@ -398,7 +398,9 @@ func TestCanonicalUsageRoundTripsProviderUsageShapes(t *testing.T) {
 		t.Fatalf("Claude usage mapping failed: %+v", claude)
 	}
 	gemini := geminiUsageFromCanonical(u)
-	if gemini.PromptTokenCount != 100 || gemini.CandidatesTokenCount != 50 || gemini.ThoughtsTokenCount != 7 || gemini.ToolUsePromptTokenCount != 3 {
+	// canonical 总数含 tool/thought 分量；Gemini 各计数器是独立分项，还原时
+	// 剔除已单列的分量（100-3=97、50-7=43），往返求和不双计。
+	if gemini.PromptTokenCount != 97 || gemini.CandidatesTokenCount != 43 || gemini.ThoughtsTokenCount != 7 || gemini.ToolUsePromptTokenCount != 3 {
 		t.Fatalf("Gemini usage mapping failed: %+v", gemini)
 	}
 	responses := responsesUsageFromCanonical(u)

@@ -91,6 +91,21 @@ func (renderer *MaheshvaraStreamRenderer) writeResponses(event *MaheshvaraStream
 		return renderer.finishResponsesReasoning(event.ChoiceIndex, event.ReasoningDone)
 	case CanonicalEventReasoningSignatureDelta:
 		return renderer.writeResponsesReasoningSignature(event.ChoiceIndex, event.ReasoningSignatureDelta)
+	case CanonicalEventAnnotationDelta:
+		// 引用标注并入当前文本 part 的 annotations（不生成畸形独立 part）。
+		if len(event.Annotations) == 0 {
+			return nil
+		}
+		if state := renderer.responses.messages[event.ChoiceIndex]; state != nil && state.textStarted {
+			if part, ok := state.extraParts[state.textIndex].(map[string]any); ok {
+				annotations, _ := part["annotations"].([]any)
+				for _, citation := range event.Annotations {
+					annotations = append(annotations, citation)
+				}
+				part["annotations"] = annotations
+			}
+		}
+		return nil
 	case CanonicalEventContentPartAdded:
 		return renderer.writeResponsesContentPart(event)
 	case CanonicalEventFunctionCallAdded, CanonicalEventFunctionCallArgumentsDelta, CanonicalEventFunctionCallArgumentsDone:
@@ -315,7 +330,9 @@ func nextResponsesContentIndex(state *maheshvaraResponsesMessageState) int {
 }
 
 func (renderer *MaheshvaraStreamRenderer) writeResponsesTool(event *MaheshvaraStreamEvent) error {
-	key := firstNonEmptyString(event.ToolCallID, fmt.Sprintf("tool_%d", event.ToolCallIndex))
+	// 按调用序号定键：id 可能在首个增量之后才到达，按 id 定键会把同一逻辑
+	// 调用分裂成两个状态（参数被拆到两个 function_call item）。id 只作属性。
+	key := fmt.Sprintf("choice_%d_tool_%d", event.ChoiceIndex, event.ToolCallIndex)
 	state := renderer.responses.tools[key]
 	if state == nil {
 		state = &maheshvaraResponsesToolState{id: newCanonicalResponseID("fc"), callID: event.ToolCallID, name: event.ToolName, outputIndex: renderer.responses.nextOutput}

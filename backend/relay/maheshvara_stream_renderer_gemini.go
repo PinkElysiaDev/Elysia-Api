@@ -112,7 +112,8 @@ func (renderer *MaheshvaraStreamRenderer) writeGemini(event *MaheshvaraStreamEve
 }
 
 func (renderer *MaheshvaraStreamRenderer) writeGeminiToolEvent(event *MaheshvaraStreamEvent) error {
-	key := firstNonEmptyString(event.ToolCallID, fmt.Sprintf("tool_%d", event.ToolCallIndex))
+	// 按调用序号定键（id 迟到不换键），id 只作属性更新。
+	key := fmt.Sprintf("choice_%d_tool_%d", event.ChoiceIndex, event.ToolCallIndex)
 	state := renderer.gemini.tools[key]
 	if state == nil {
 		state = &maheshvaraGeminiToolRenderState{index: event.ToolCallIndex}

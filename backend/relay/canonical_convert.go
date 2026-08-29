@@ -236,7 +236,9 @@ func GeminiRequestToCanonical(body []byte, urlModel string) (*CanonicalRequest, 
 			req.Reasoning = &CanonicalReasoning{Effort: effort}
 		}
 	}
-	applyGeminiRequestExtensions(raw, req)
+	if err := applyGeminiRequestExtensions(raw, req); err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -1574,20 +1576,21 @@ func completeMessageToolCallIDs(messages []CanonicalMessage) {
 }
 
 func completeInputItemCallIDs(items []CanonicalInputItem) {
-	var active []string
-	outputIndex := 0
+	// FIFO 队列按序配对：并行调用 [fc1, fc2, fco1, fco2] 时输出按发出顺序
+	// 对应调用（fco1→fc1、fco2→fc2）——只记最近一条调用会把两个输出都配给
+	// fc2，工具结果错位。
+	var pending []string
 	for itemIndex := range items {
 		item := &items[itemIndex]
 		switch item.Type {
 		case "function_call":
 			item.CallID = ensureToolCallID(item.CallID, itemIndex, 0)
-			active = append(active[:0], item.CallID)
-			outputIndex = 0
+			pending = append(pending, item.CallID)
 		case CanonicalInputFunctionCallOutput:
 			if item.CallID == "" {
-				if outputIndex < len(active) {
-					item.CallID = active[outputIndex]
-					outputIndex++
+				if len(pending) > 0 {
+					item.CallID = pending[0]
+					pending = pending[1:]
 				} else {
 					item.CallID = ensureToolCallID("", itemIndex, 0)
 				}
@@ -2222,9 +2225,9 @@ func isLegacyFunctionTool(tool CanonicalTool) bool {
 }
 
 func isLegacyFunctionCall(call CanonicalToolCall) bool {
-	if strings.HasPrefix(call.ID, legacyFunctionCallIDPrefix) {
-		return true
-	}
+	// 只认解析器打的显式标记，不按 ID 前缀猜测——真实工具调用的 id 可能
+	// 恰好以 "legacy_function:" 开头（客户端可造），前缀猜测会把它错误地
+	// 降级成旧形态。
 	return call.Raw != nil && call.Raw["legacy_function"] == true
 }
 
@@ -2945,6 +2948,12 @@ func CanonicalToOpenAIChatResponse(resp *CanonicalResponse) (*OpenAIResponse, er
 						}
 					}
 				default:
+					// 协议专属块（Claude server_tool_use 等）不得成为 OpenAI 消息
+					// content part（严格 SDK 反序列化失败）——contentPartsToInterface
+					// 的类型白名单会在渲染时丢弃它们，此处同样过滤。
+					if raw, ok := part.Raw.(map[string]any); ok && !isOpenAIContentPartType(stringValue(raw["type"])) && part.Type != CanonicalContentText && part.Type != CanonicalContentImage && part.Type != CanonicalContentVideo && part.Type != CanonicalContentFile && part.Type != CanonicalContentDocument {
+						continue
+					}
 					messageParts = append(messageParts, part)
 				}
 			}
@@ -3306,24 +3315,31 @@ func canonicalPartToResponsesOutputContent(part CanonicalContentPart) (Responses
 }
 
 func canonicalUsageFromOpenAIUsage(usage Usage) *CanonicalUsage {
-	promptDetails := usage.PromptTokensDetails
-	if usage.InputTokensDetails.CachedTokens > 0 || usage.InputTokensDetails.TextTokens > 0 {
-		promptDetails = usage.InputTokensDetails
+	var promptDetails PromptTokensDetails
+	if usage.PromptTokensDetails != nil {
+		promptDetails = *usage.PromptTokensDetails
+	}
+	if usage.InputTokensDetails != nil && (usage.InputTokensDetails.CachedTokens > 0 || usage.InputTokensDetails.TextTokens > 0) {
+		promptDetails = *usage.InputTokensDetails
+	}
+	var completionDetails CompletionTokensDetails
+	if usage.CompletionTokensDetails != nil {
+		completionDetails = *usage.CompletionTokensDetails
 	}
 	u := &CanonicalUsage{
 		InputTokens:              usage.PromptTokens,
 		OutputTokens:             usage.CompletionTokens,
 		TotalTokens:              usage.TotalTokens,
 		CachedInputTokens:        max(usage.CachedTokens, usage.PromptCacheHitTokens),
-		ReasoningTokens:          usage.CompletionTokensDetails.ReasoningTokens,
-		AcceptedPredictionTokens: usage.CompletionTokensDetails.AcceptedPredictionTokens,
-		RejectedPredictionTokens: usage.CompletionTokensDetails.RejectedPredictionTokens,
+		ReasoningTokens:          completionDetails.ReasoningTokens,
+		AcceptedPredictionTokens: completionDetails.AcceptedPredictionTokens,
+		RejectedPredictionTokens: completionDetails.RejectedPredictionTokens,
 		TextInputTokens:          promptDetails.TextTokens,
 		AudioInputTokens:         promptDetails.AudioTokens,
 		ImageInputTokens:         promptDetails.ImageTokens,
-		TextOutputTokens:         usage.CompletionTokensDetails.TextTokens,
-		AudioOutputTokens:        usage.CompletionTokensDetails.AudioTokens,
-		ImageOutputTokens:        usage.CompletionTokensDetails.ImageTokens,
+		TextOutputTokens:         completionDetails.TextTokens,
+		AudioOutputTokens:        completionDetails.AudioTokens,
+		ImageOutputTokens:        completionDetails.ImageTokens,
 		Raw:                      usage.RawFields,
 		Source:                   "provider_response",
 	}
@@ -3427,25 +3443,35 @@ func openAIUsageFromCanonical(u *CanonicalUsage) Usage {
 	if u == nil {
 		return Usage{}
 	}
-	return Usage{
-		PromptTokens:     u.InputTokens,
-		CompletionTokens: u.OutputTokens,
-		TotalTokens:      valueOrSum(u.TotalTokens, u.InputTokens, u.OutputTokens),
-		CachedTokens:     u.CachedInputTokens,
-		PromptTokensDetails: PromptTokensDetails{
+	// details 仅在有值时输出（指针 omitempty）——空对象会覆盖 RawFields
+	// 透传的同键子对象。
+	var promptDetails *PromptTokensDetails
+	if u.CachedInputTokens > 0 || u.TextInputTokens > 0 || u.AudioInputTokens > 0 || u.ImageInputTokens > 0 {
+		promptDetails = &PromptTokensDetails{
 			CachedTokens: u.CachedInputTokens,
 			TextTokens:   u.TextInputTokens,
 			AudioTokens:  u.AudioInputTokens,
 			ImageTokens:  u.ImageInputTokens,
-		},
-		CompletionTokensDetails: CompletionTokensDetails{
+		}
+	}
+	var completionDetails *CompletionTokensDetails
+	if u.ReasoningTokens > 0 || u.TextOutputTokens > 0 || u.AudioOutputTokens > 0 || u.ImageOutputTokens > 0 || u.AcceptedPredictionTokens > 0 || u.RejectedPredictionTokens > 0 {
+		completionDetails = &CompletionTokensDetails{
 			ReasoningTokens:          u.ReasoningTokens,
 			TextTokens:               u.TextOutputTokens,
 			AudioTokens:              u.AudioOutputTokens,
 			ImageTokens:              u.ImageOutputTokens,
 			AcceptedPredictionTokens: u.AcceptedPredictionTokens,
 			RejectedPredictionTokens: u.RejectedPredictionTokens,
-		},
+		}
+	}
+	return Usage{
+		PromptTokens:           u.InputTokens,
+		CompletionTokens:       u.OutputTokens,
+		TotalTokens:            valueOrSum(u.TotalTokens, u.InputTokens, u.OutputTokens),
+		CachedTokens:           u.CachedInputTokens,
+		PromptTokensDetails:    promptDetails,
+		CompletionTokensDetails: completionDetails,
 		// 上游新增的未知计数键原样透传（原始对象为底，类型化字段覆盖）。
 		RawFields: u.Raw,
 	}
@@ -3485,10 +3511,20 @@ func geminiUsageFromCanonical(u *CanonicalUsage) GeminiUsageMeta {
 	if u == nil {
 		return GeminiUsageMeta{}
 	}
+	// canonical 的 Input/Output 是含 tool/thought 分量的总数；Gemini 各计数器
+	// 是独立分项，还原时剔除已单列的分量，避免往返双计（对齐 Claude 缓存减法）。
+	promptTokens := u.InputTokens - u.ToolUseTokens
+	if promptTokens < 0 {
+		promptTokens = u.InputTokens
+	}
+	candidateTokens := u.OutputTokens - u.ReasoningTokens
+	if candidateTokens < 0 {
+		candidateTokens = u.OutputTokens
+	}
 	meta := GeminiUsageMeta{
-		PromptTokenCount:        u.InputTokens,
+		PromptTokenCount:        promptTokens,
 		ToolUsePromptTokenCount: u.ToolUseTokens,
-		CandidatesTokenCount:    u.OutputTokens,
+		CandidatesTokenCount:    candidateTokens,
 		TotalTokenCount:         valueOrSum(u.TotalTokens, u.InputTokens, u.OutputTokens),
 		ThoughtsTokenCount:      u.ReasoningTokens,
 		CachedContentTokenCount: u.CachedInputTokens,
