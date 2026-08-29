@@ -19,6 +19,10 @@ const (
 	CanonicalSignatureProviderOpenAI     = "openai"
 	CanonicalSignatureProviderMaheshvara = "maheshvara"
 
+	// CanonicalAnnotationGeminiGrounding 是 Gemini groundingMetadata 在
+	// canonical annotations 里的包装键（值为原始 groundingMetadata 对象）。
+	CanonicalAnnotationGeminiGrounding = "gemini_grounding_metadata"
+
 	CanonicalContentText       = "text"
 	CanonicalContentImage      = "image"
 	CanonicalContentAudio      = "audio"
@@ -191,8 +195,11 @@ type CanonicalContentPart struct {
 	EncryptedModel    string                      `json:"encrypted_model,omitempty"`
 	ReasoningSummary  []CanonicalReasoningSummary `json:"reasoning_summary,omitempty"`
 	CacheControl      any                         `json:"cache_control,omitempty"`
-	Annotations       []map[string]any            `json:"annotations,omitempty"`
-	Metadata          map[string]any              `json:"metadata,omitempty"`
+	// Citations 原样承载 Claude text block 的引用标注（来源出处脚注），
+	// 跨线不发明翻译，仅 Claude↔Claude 往返保真。
+	Citations  json.RawMessage       `json:"citations,omitempty"`
+	Annotations []map[string]any     `json:"annotations,omitempty"`
+	Metadata    map[string]any       `json:"metadata,omitempty"`
 
 	Raw any `json:"raw,omitempty"`
 }
@@ -383,6 +390,10 @@ type CanonicalStreamEvent struct {
 	Delta    string `json:"delta,omitempty"`
 	TextDone string `json:"text_done,omitempty"`
 
+	// Annotations 随文本事件携带的出处标注（Gemini grounding 包装 /
+	// Claude citations 等），渲染层据此回写对应协议的引用字段。
+	Annotations []map[string]any `json:"annotations,omitempty"`
+
 	ToolCallID                 string `json:"tool_call_id,omitempty"`
 	ToolCallIndex              int    `json:"tool_call_index,omitempty"`
 	ToolName                   string `json:"tool_name,omitempty"`
@@ -547,14 +558,19 @@ func contentPartsToInterface(parts []CanonicalContentPart) any {
 	if len(parts) == 0 {
 		return ""
 	}
-	if len(parts) == 1 && parts[0].Type == CanonicalContentText {
+	if len(parts) == 1 && parts[0].Type == CanonicalContentText && len(parts[0].Annotations) == 0 {
 		return parts[0].Text
 	}
 	out := make([]any, 0, len(parts))
 	for _, part := range parts {
 		switch part.Type {
 		case CanonicalContentText:
-			out = append(out, map[string]any{"type": "text", "text": part.Text})
+			textPart := map[string]any{"type": "text", "text": part.Text}
+			if len(part.Annotations) > 0 {
+				// 出处标注（url_citation / grounding 包装等）原样随文本下发。
+				textPart["annotations"] = part.Annotations
+			}
+			out = append(out, textPart)
 		case CanonicalContentImage:
 			if url := imagePartToOpenAIURL(part); url != "" {
 				image := map[string]any{"url": url}

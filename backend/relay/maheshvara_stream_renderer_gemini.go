@@ -20,10 +20,28 @@ type maheshvaraGeminiRenderState struct {
 	pendingSignature  string
 	toolSignatureSent map[int]bool
 	finishSent        map[int]bool
+	// grounding：文本事件携带的据实来源标注，随 finishReason chunk 回写。
+	grounding map[string]any
 }
 
 func newMaheshvaraGeminiRenderState() *maheshvaraGeminiRenderState {
 	return &maheshvaraGeminiRenderState{tools: make(map[string]*maheshvaraGeminiToolRenderState), toolSignatureSent: make(map[int]bool), finishSent: make(map[int]bool)}
+}
+
+// collectGeminiGrounding 提取文本事件 annotations 里的 groundingMetadata
+// 包装（首个命中即可，candidate 级字段），随 finishReason chunk 回写。
+func (renderer *MaheshvaraStreamRenderer) collectGeminiGrounding(annotations []map[string]any) {
+	if renderer.gemini.grounding != nil {
+		return
+	}
+	for _, annotation := range annotations {
+		if value, ok := annotation[CanonicalAnnotationGeminiGrounding]; ok {
+			if metadata, ok := value.(map[string]any); ok {
+				renderer.gemini.grounding = metadata
+			}
+			return
+		}
+	}
 }
 
 func (renderer *MaheshvaraStreamRenderer) writeGemini(event *MaheshvaraStreamEvent) error {
@@ -37,6 +55,10 @@ func (renderer *MaheshvaraStreamRenderer) writeGemini(event *MaheshvaraStreamEve
 		}
 		return renderer.writeSSEData(map[string]any{"usageMetadata": geminiUsageFromCanonical(renderer.usage)})
 	case CanonicalEventTextDelta:
+		if event.Delta == "" && len(event.Annotations) == 0 {
+			return nil
+		}
+		renderer.collectGeminiGrounding(event.Annotations)
 		if event.Delta == "" {
 			return nil
 		}
@@ -75,7 +97,11 @@ func (renderer *MaheshvaraStreamRenderer) writeGemini(event *MaheshvaraStreamEve
 		if reason == "" {
 			reason = "stop"
 		}
-		payload := map[string]any{"candidates": []any{map[string]any{"index": event.ChoiceIndex, "finishReason": canonicalStopToGemini(reason)}}}
+		candidate := map[string]any{"index": event.ChoiceIndex, "finishReason": canonicalStopToGemini(reason)}
+		if renderer.gemini.grounding != nil {
+			candidate["groundingMetadata"] = renderer.gemini.grounding
+		}
+		payload := map[string]any{"candidates": []any{candidate}}
 		if renderer.usage != nil {
 			payload["usageMetadata"] = geminiUsageFromCanonical(renderer.usage)
 		}

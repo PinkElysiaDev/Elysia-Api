@@ -24,6 +24,10 @@ func (decoder *MaheshvaraStreamDecoder) decodeGemini(raw map[string]any) ([]Mahe
 		}
 		choiceIndex := intValue(candidate["index"])
 		decoder.seenChoices[choiceIndex] = true
+		// 搜索/据实来源标注随 candidate 到达：挂到同 chunk 首个文本事件上，
+		// 渲染层据此回写 candidate.groundingMetadata。
+		grounding := mapValue(candidate["groundingMetadata"])
+		groundingEmitted := false
 		content := mapValue(candidate["content"])
 		parts, _ := content["parts"].([]any)
 		for partIndex, partValue := range parts {
@@ -48,6 +52,10 @@ func (decoder *MaheshvaraStreamDecoder) decodeGemini(raw map[string]any) ([]Mahe
 					event.ReasoningDelta = text
 				} else {
 					event.Delta = text
+					if !groundingEmitted && grounding != nil {
+						groundingEmitted = true
+						event.Annotations = []map[string]any{{CanonicalAnnotationGeminiGrounding: grounding}}
+					}
 				}
 				events = append(events, event)
 			}

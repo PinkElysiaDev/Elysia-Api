@@ -810,7 +810,13 @@ func parseClaudeMessages(raw any) []CanonicalMessage {
 				}
 				switch stringValue(bm["type"]) {
 				case "text":
-					msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentText, Text: stringValue(bm["text"]), CacheControl: bm["cache_control"], Raw: bm})
+					part := CanonicalContentPart{Type: CanonicalContentText, Text: stringValue(bm["text"]), CacheControl: bm["cache_control"], Raw: bm}
+					if citations, ok := bm["citations"]; ok && citations != nil {
+						if encoded, err := json.Marshal(citations); err == nil {
+							part.Citations = encoded
+						}
+					}
+					msg.Content = append(msg.Content, part)
 				case "thinking":
 					thinking := stringValue(bm["thinking"])
 					signature := stringValue(bm["signature"])
@@ -1614,6 +1620,9 @@ func canonicalMessagesToClaude(req *CanonicalRequest) ([]map[string]any, error) 
 				block := map[string]any{"type": "text", "text": part.Text}
 				if part.CacheControl != nil {
 					block["cache_control"] = part.CacheControl
+				}
+				if len(part.Citations) > 0 {
+					block["citations"] = json.RawMessage(part.Citations)
 				}
 				content = append(content, block)
 			case CanonicalContentReasoning:
@@ -2547,7 +2556,7 @@ func ClaudeResponseToCanonical(resp *ClaudeResponse) (*CanonicalResponse, error)
 	for _, block := range resp.Content {
 		switch block.Type {
 		case "text":
-			msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentText, Text: block.Text, Raw: block})
+			msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentText, Text: block.Text, Citations: block.Citations, Raw: block})
 		case "thinking":
 			flushMsg()
 			part := CanonicalContentPart{Type: CanonicalContentReasoning, ReasoningText: block.Thinking, Text: block.Thinking, Signature: block.Signature, SignatureProvider: CanonicalSignatureProviderAnthropic}
@@ -2617,6 +2626,21 @@ func GeminiResponseToCanonical(resp *GeminiResponse) (*CanonicalResponse, error)
 	if len(resp.Candidates) > 0 {
 		cand := resp.Candidates[0]
 		out.StopReason = cand.FinishReason
+		// 搜索/据实来源标注挂在首个文本 part 的 annotations 上（包装原始
+		// JSON），Gemini 目标渲染时提取回 candidate.groundingMetadata。
+		groundingAttached := false
+		attachGrounding := func(part *CanonicalContentPart) {
+			if groundingAttached || len(cand.GroundingMetadata) == 0 {
+				return
+			}
+			groundingAttached = true
+			var metadata any
+			if err := json.Unmarshal(cand.GroundingMetadata, &metadata); err == nil {
+				if annotation, ok := metadata.(map[string]any); ok {
+					part.Annotations = append(part.Annotations, map[string]any{CanonicalAnnotationGeminiGrounding: annotation})
+				}
+			}
+		}
 		for _, part := range cand.Content.Parts {
 			if part.Text != "" {
 				if part.Thought {
@@ -2625,7 +2649,9 @@ func GeminiResponseToCanonical(resp *GeminiResponse) (*CanonicalResponse, error)
 						Content: []CanonicalContentPart{{Type: CanonicalContentReasoning, Text: part.Text, ReasoningText: part.Text, Signature: part.ThoughtSignature, SignatureProvider: CanonicalSignatureProviderGemini}},
 					})
 				} else {
-					msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentText, Text: part.Text})
+					textPart := CanonicalContentPart{Type: CanonicalContentText, Text: part.Text}
+					attachGrounding(&textPart)
+					msg.Content = append(msg.Content, textPart)
 				}
 			}
 			if part.FunctionCall != nil {
@@ -2801,7 +2827,7 @@ func CanonicalToOpenAIChatResponse(resp *CanonicalResponse) (*OpenAIResponse, er
 			msg.ReasoningContent += canonicalReasoningText(item)
 		}
 	}
-	if len(messageParts) == 1 && messageParts[0].Type == CanonicalContentText {
+	if len(messageParts) == 1 && messageParts[0].Type == CanonicalContentText && len(messageParts[0].Annotations) == 0 {
 		msg.Content = messageParts[0].Text
 	} else if len(messageParts) > 0 {
 		msg.Content = contentPartsToInterface(messageParts)
@@ -2844,7 +2870,7 @@ func CanonicalToClaudeResponse(resp *CanonicalResponse) (*ClaudeResponse, error)
 				switch part.Type {
 				case CanonicalContentText:
 					if part.Text != "" {
-						content = append(content, ClaudeContent{Type: "text", Text: part.Text})
+						content = append(content, ClaudeContent{Type: "text", Text: part.Text, Citations: part.Citations})
 					}
 				case CanonicalContentReasoning:
 					text := firstNonEmptyString(part.ReasoningText, part.Text)
@@ -2919,6 +2945,8 @@ func CanonicalToGeminiResponse(resp *CanonicalResponse) (*GeminiResponse, error)
 	}
 	var parts []GeminiPart
 	firstFunctionCallIndex := -1
+	// 从文本 part 的 annotations 提取 Gemini 据实来源标注，渲染回 candidate。
+	groundingMetadata := extractGeminiGroundingMetadata(resp)
 	appendRawPart := func(raw map[string]any) error {
 		if raw == nil {
 			return nil
@@ -2987,13 +3015,34 @@ func CanonicalToGeminiResponse(resp *CanonicalResponse) (*GeminiResponse, error)
 	}
 	return &GeminiResponse{
 		Candidates: []GeminiCandidate{{
-			Content:      GeminiContent{Role: "model", Parts: parts},
-			FinishReason: canonicalStopToGemini(resp.StopReason),
+			Content:           GeminiContent{Role: "model", Parts: parts},
+			FinishReason:      canonicalStopToGemini(resp.StopReason),
+			GroundingMetadata: groundingMetadata,
 		}},
 		UsageMetadata: geminiUsageFromCanonical(resp.Usage),
 		ModelVersion:  resp.Model,
 		ResponseID:    resp.ID,
 	}, nil
+}
+
+// extractGeminiGroundingMetadata 从 canonical 输出的文本 part annotations 中
+// 提取包装的 groundingMetadata 原始对象（首个命中即可，candidate 级字段）。
+func extractGeminiGroundingMetadata(resp *CanonicalResponse) json.RawMessage {
+	for _, item := range resp.Output {
+		if item.Type != CanonicalOutputMessage {
+			continue
+		}
+		for _, part := range item.Content {
+			for _, annotation := range part.Annotations {
+				if value, ok := annotation[CanonicalAnnotationGeminiGrounding]; ok {
+					if encoded, err := json.Marshal(value); err == nil {
+						return encoded
+					}
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func CanonicalToResponsesResponse(resp *CanonicalResponse) (*OpenAIResponsesResponse, error) {

@@ -66,6 +66,9 @@ type ClaudeContent struct {
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	Content   any             `json:"content,omitempty"`
 	Source    map[string]any  `json:"source,omitempty"`
+	// Citations：text block 的引用标注（web_search_result_location 等），
+	// 原样往返，不做跨协议语义翻译。
+	Citations json.RawMessage `json:"citations,omitempty"`
 }
 
 type ClaudeUsage struct {

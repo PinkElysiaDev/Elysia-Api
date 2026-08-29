@@ -3,6 +3,7 @@ package relay
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -60,6 +61,9 @@ type GeminiResponse struct {
 type GeminiCandidate struct {
 	Content      GeminiContent `json:"content"`
 	FinishReason string        `json:"finishReason"`
+	// GroundingMetadata：搜索/据实生成的来源标注（groundingChunks/queries/
+	// citations），原样保真往返，不做跨协议语义翻译。
+	GroundingMetadata json.RawMessage `json:"groundingMetadata,omitempty"`
 }
 
 type GeminiUsageMeta struct {
