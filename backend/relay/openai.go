@@ -200,8 +200,10 @@ type OpenAIResponse struct {
 	Object  string   `json:"object"`
 	Created int64    `json:"created"`
 	Model   string   `json:"model"`
-	Choices []Choice `json:"choices"`
-	Usage   Usage    `json:"usage"`
+	// SystemFingerprint：上游的版本指纹（模型权重/配置版本标识），往返保真。
+	SystemFingerprint string   `json:"system_fingerprint,omitempty"`
+	Choices           []Choice `json:"choices"`
+	Usage             Usage    `json:"usage"`
 }
 
 type Choice struct {

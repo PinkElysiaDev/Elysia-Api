@@ -98,6 +98,23 @@ func OpenAIChatRequestToCanonical(body []byte) (*CanonicalRequest, error) {
 
 	req.Messages = parseOpenAIChatMessages(raw["messages"])
 	req.Tools = parseOpenAIChatTools(raw["tools"])
+	// 遗留 function calling（PC2.9）：顶层 functions 解析为工具（带 legacy
+	// 标记），chat 目标按旧形态回发，跨协议目标按现代工具转换。
+	if functions, ok := raw["functions"].([]any); ok {
+		for _, functionValue := range functions {
+			fn, _ := functionValue.(map[string]any)
+			if fn == nil || stringValue(fn["name"]) == "" {
+				continue
+			}
+			req.Tools = append(req.Tools, CanonicalTool{
+				Type:        CanonicalToolFunction,
+				Name:        stringValue(fn["name"]),
+				Description: stringValue(fn["description"]),
+				Parameters:  mapValue(fn["parameters"]),
+				Raw:         map[string]any{"legacy_function": true},
+			})
+		}
+	}
 	req.ResponseFormat = parseOpenAIResponseFormat(raw["response_format"])
 	applyOpenAIRequestExtensions(raw, req)
 
@@ -302,11 +319,34 @@ func CanonicalToOpenAIChatRequest(req *CanonicalRequest) ([]byte, error) {
 		out["stop"] = req.Stop
 	}
 	if len(req.Tools) > 0 {
-		tools, err := canonicalToolsToOpenAI(req.Tools)
-		if err != nil {
-			return nil, err
+		// 遗留 functions 分流：来自旧版 function calling 的工具按旧形态发
+		//（PC2.9），其余按现代 tools 发；两种形态可并存。
+		var tools, legacyFunctions []map[string]any
+		for _, tool := range req.Tools {
+			if isLegacyFunctionTool(tool) {
+				parameters := tool.Parameters
+				if parameters == nil {
+					parameters = tool.InputSchema
+				}
+				legacyFunctions = append(legacyFunctions, map[string]any{
+					"name":        tool.Name,
+					"description": tool.Description,
+					"parameters":  parameters,
+				})
+				continue
+			}
+			converted, err := canonicalToolsToOpenAI([]CanonicalTool{tool})
+			if err != nil {
+				return nil, err
+			}
+			tools = append(tools, converted...)
 		}
-		out["tools"] = tools
+		if len(tools) > 0 {
+			out["tools"] = tools
+		}
+		if len(legacyFunctions) > 0 {
+			out["functions"] = legacyFunctions
+		}
 	}
 	if req.ToolChoice != nil {
 		out["tool_choice"] = canonicalToolChoiceToOpenAI(req.ToolChoice)
@@ -707,9 +747,15 @@ func parseOpenAIChatMessages(raw any) []CanonicalMessage {
 			// 否则会被当作普通文本，Claude/Gemini 渲染器无法生成 tool_result/functionResponse，
 			// 上游会因 tool_use 缺少对应结果而 400。
 			output := canonicalText(msg.Content)
+			// 遗留 function 结果消息用 name 而非 tool_call_id 关联调用：
+			// 合成 legacy_function:<name>，与 assistant 侧 function_call 的 ID 对齐。
+			callID := msg.ToolCallID
+			if callID == "" && msg.Role == "function" && msg.Name != "" {
+				callID = legacyFunctionCallIDPrefix + msg.Name
+			}
 			msg.Content = []CanonicalContentPart{{
 				Type:       CanonicalContentToolOutput,
-				ToolCallID: msg.ToolCallID,
+				ToolCallID: callID,
 				ToolOutput: output,
 				Raw:        m,
 			}}
@@ -761,6 +807,24 @@ func parseOpenAIChatMessages(raw any) []CanonicalMessage {
 			if audioPart := openAIAudioValueToPart(m["audio"]); audioPart != nil {
 				msg.Content = append(msg.Content, *audioPart)
 			}
+		}
+		// 遗留 function calling（PC2.9）：assistant 的 function_call 还原为
+		// 带 legacy 标记的工具调用，ID 与 role:"function" 结果消息对齐；
+		// chat 目标渲染时还原旧形态。
+		if fc, ok := m["function_call"].(map[string]any); ok && stringValue(fc["name"]) != "" {
+			arguments := stringValue(fc["arguments"])
+			if arguments == "" {
+				arguments = "{}"
+			}
+			name := stringValue(fc["name"])
+			msg.ToolCalls = append(msg.ToolCalls, CanonicalToolCall{
+				ID:            legacyFunctionCallIDPrefix + name,
+				Type:          CanonicalToolFunction,
+				Name:          name,
+				Arguments:     json.RawMessage(arguments),
+				ArgumentsText: arguments,
+				Raw:           map[string]any{"legacy_function": true},
+			})
 		}
 		messages = append(messages, msg)
 	}
@@ -1342,6 +1406,15 @@ func canonicalMessagesToOpenAI(req *CanonicalRequest) []map[string]any {
 		// OpenAI 要求 role:"tool" 消息紧跟带 tool_calls 的 assistant 消息；
 		// Claude user 轮 [tool_result, text] 混合时必须先输出 tool 结果，再输出剩余文本。
 		for _, to := range toolOutputs {
+			if strings.HasPrefix(to.ToolCallID, legacyFunctionCallIDPrefix) {
+				// 遗留 function 结果：role:"function" + name（无 tool_call_id）。
+				messages = append(messages, map[string]any{
+					"role":    "function",
+					"name":    strings.TrimPrefix(to.ToolCallID, legacyFunctionCallIDPrefix),
+					"content": to.ToolOutput,
+				})
+				continue
+			}
 			messages = append(messages, map[string]any{
 				"role":         "tool",
 				"tool_call_id": to.ToolCallID,
@@ -1390,6 +1463,15 @@ func canonicalMessagesToOpenAI(req *CanonicalRequest) []map[string]any {
 					if arguments == "" {
 						arguments = "{}"
 					}
+					if isLegacyFunctionCall(call) {
+						// 遗留 function_call：消息级单对象形态（每条 assistant
+						// 消息至多一个，旧客户端语义）。
+						out["function_call"] = map[string]any{
+							"name":      call.Name,
+							"arguments": arguments,
+						}
+						continue
+					}
 					callType := firstNonEmptyString(call.Type, CanonicalToolFunction)
 					wireCall := map[string]any{
 						// 即使上游输入遗漏 id，也绝不向 OpenAI 线格式输出空 id；
@@ -1406,7 +1488,9 @@ func canonicalMessagesToOpenAI(req *CanonicalRequest) []map[string]any {
 					}
 					calls = append(calls, wireCall)
 				}
-				out["tool_calls"] = calls
+				if len(calls) > 0 {
+					out["tool_calls"] = calls
+				}
 			}
 			messages = append(messages, out)
 		}
@@ -2104,6 +2188,10 @@ func canonicalToolsToOpenAI(tools []CanonicalTool) ([]map[string]any, error) {
 		if tool.Type != CanonicalToolFunction {
 			return nil, fmt.Errorf("builtin tool %q cannot be transformed to OpenAI chat completions", tool.Type)
 		}
+		if isLegacyFunctionTool(tool) {
+			// 遗留工具由调用方按 functions 形态分流，此处跳过。
+			continue
+		}
 		parameters := tool.Parameters
 		if parameters == nil {
 			parameters = tool.InputSchema
@@ -2122,6 +2210,22 @@ func canonicalToolsToOpenAI(tools []CanonicalTool) ([]map[string]any, error) {
 		})
 	}
 	return out, nil
+}
+
+// legacyFunctionCallIDPrefix 是遗留 function calling 的调用 ID 前缀：
+// role:"function" 结果消息没有 tool_call_id，用该前缀 + 函数名合成，
+// 与 assistant function_call 的 ID 对齐。
+const legacyFunctionCallIDPrefix = "legacy_function:"
+
+func isLegacyFunctionTool(tool CanonicalTool) bool {
+	return tool.Raw != nil && tool.Raw["legacy_function"] == true
+}
+
+func isLegacyFunctionCall(call CanonicalToolCall) bool {
+	if strings.HasPrefix(call.ID, legacyFunctionCallIDPrefix) {
+		return true
+	}
+	return call.Raw != nil && call.Raw["legacy_function"] == true
 }
 
 func canonicalToolsToClaude(tools []CanonicalTool) ([]map[string]any, error) {
@@ -2481,11 +2585,12 @@ func OpenAIChatResponseToCanonical(resp *OpenAIResponse) (*CanonicalResponse, er
 		return nil, fmt.Errorf("nil OpenAI response")
 	}
 	out := &CanonicalResponse{
-		ID:        resp.ID,
-		Model:     resp.Model,
-		CreatedAt: resp.Created,
-		Status:    "completed",
-		Usage:     canonicalUsageFromOpenAIUsage(resp.Usage),
+		ID:                resp.ID,
+		Model:             resp.Model,
+		CreatedAt:         resp.Created,
+		Status:            "completed",
+		SystemFingerprint: resp.SystemFingerprint,
+		Usage:             canonicalUsageFromOpenAIUsage(resp.Usage),
 	}
 	if len(resp.Choices) > 0 {
 		choice := resp.Choices[0]
@@ -2873,12 +2978,13 @@ func CanonicalToOpenAIChatResponse(resp *CanonicalResponse) (*OpenAIResponse, er
 	}
 	msg.ToolCalls = toolCalls
 	return &OpenAIResponse{
-		ID:      resp.ID,
-		Object:  "chat.completion",
-		Created: resp.CreatedAt,
-		Model:   resp.Model,
-		Choices: []Choice{{Index: 0, Message: msg, FinishReason: canonicalStopToOpenAI(resp.StopReason)}},
-		Usage:   openAIUsageFromCanonical(resp.Usage),
+		ID:                resp.ID,
+		Object:            "chat.completion",
+		Created:           resp.CreatedAt,
+		Model:             resp.Model,
+		SystemFingerprint: resp.SystemFingerprint,
+		Choices:           []Choice{{Index: 0, Message: msg, FinishReason: canonicalStopToOpenAI(resp.StopReason)}},
+		Usage:             openAIUsageFromCanonical(resp.Usage),
 	}, nil
 }
 
