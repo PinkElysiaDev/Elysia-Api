@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -152,7 +153,12 @@ func (h *healthChecker) probe(ctx context.Context, model storage.Model, timeoutS
 	applyProbeAuth(req, model)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: time.Duration(timeoutSeconds) * time.Second}
+	// 探测走与转发路径相同的 SSRF 防护 Transport：连接时校验每个实际拨号
+	// IP（含重定向后的目标），裸 http.Client 会跟随重定向绕过预校验。
+	client := &http.Client{
+		Timeout:   time.Duration(timeoutSeconds) * time.Second,
+		Transport: relay.NewSecureTransport(),
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return false

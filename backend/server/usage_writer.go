@@ -1,22 +1,37 @@
 package server
 
-import "log"
+import (
+	"log"
+	"sync"
+)
 
 // usageQueueCapacity 是异步 usage 写入缓冲区大小。突发流量下若 writer
 // 暂时跟不上，最多缓冲这么多条；超出则该条记录降级为同步写入（保证不丢）。
 const usageQueueCapacity = 1024
 
+// usageWriterState 守护队列的关闭语义：优雅关停时 Shutdown 只等 5 秒，
+// 长流请求可能仍在运行并在之后调用 enqueueUsageRecord——直接 close(ch)
+// 会让这些发送 panic。closed 标志 + 互斥锁保证关停后入队安全降级为同步
+// 写盘（丢给 WAL，而不是丢给 runtime panic）。
+type usageWriterState struct {
+	mu     sync.Mutex
+	queue  chan *usageRecord
+	closed bool
+	wg     sync.WaitGroup
+}
+
 // startUsageWriter 在 store 模式下启动单个后台 writer goroutine，
-// 从 usageQueue 取记录落库。仅在有 store 时调用一次（ListenAndServe 内）。
+// 从队列取记录落库。仅在有 store 时调用一次（ListenAndServe 内）。
 func (s *Server) startUsageWriter() {
-	if s.store == nil || s.usageQueue != nil {
+	if s.store == nil || s.usageWriter != nil {
 		return
 	}
-	s.usageQueue = make(chan *usageRecord, usageQueueCapacity)
-	s.usageWriterWG.Add(1)
+	writer := &usageWriterState{queue: make(chan *usageRecord, usageQueueCapacity)}
+	s.usageWriter = writer
+	writer.wg.Add(1)
 	go func() {
-		defer s.usageWriterWG.Done()
-		for record := range s.usageQueue {
+		defer writer.wg.Done()
+		for record := range writer.queue {
 			if err := s.saveUsageRecordToStore(record); err != nil {
 				log.Printf("failed to save usage record to sqlite (async): %v", err)
 			}
@@ -24,20 +39,31 @@ func (s *Server) startUsageWriter() {
 	}()
 }
 
-// stopUsageWriter 关闭队列并等待 writer 把剩余记录冲刷落库。用于优雅退出/测试。
+// stopUsageWriter 关闭队列并等待 writer 把剩余记录冲刷落库。幂等；
+// 关停后的入队请求由 enqueueUsageRecord 降级为同步写盘。
 func (s *Server) stopUsageWriter() {
-	if s.usageQueue == nil {
+	w := s.usageWriter
+	if w == nil {
 		return
 	}
-	close(s.usageQueue)
-	s.usageWriterWG.Wait()
-	s.usageQueue = nil
+	w.mu.Lock()
+	if w.closed {
+		w.mu.Unlock()
+		w.wg.Wait()
+		return
+	}
+	w.closed = true
+	close(w.queue)
+	w.mu.Unlock()
+	w.wg.Wait()
+	s.usageWriter = nil
 }
 
-// enqueueUsageRecord 尝试把记录投递到异步队列。队列已满或未启动时返回 false，
-// 调用方据此降级为同步写入，确保 usage 不丢失。
+// enqueueUsageRecord 尝试把记录投递到异步队列。队列已满或已关停时返回
+// false，调用方据此降级为同步写入，确保 usage 不丢失。
 func (s *Server) enqueueUsageRecord(record *usageRecord) bool {
-	if s.usageQueue == nil {
+	w := s.usageWriter
+	if w == nil {
 		return false
 	}
 	// 深拷贝：浅拷贝会让 copied 的切片字段与原记录共享底层数组，一旦调用方
@@ -48,8 +74,14 @@ func (s *Server) enqueueUsageRecord(record *usageRecord) bool {
 	copied.ConversionChain = cloneSlice(record.ConversionChain)
 	copied.RequestWarnings = cloneSlice(record.RequestWarnings)
 	copied.downstream = nil
+	w.mu.Lock()
+	closed := w.closed
+	w.mu.Unlock()
+	if closed {
+		return false
+	}
 	select {
-	case s.usageQueue <- &copied:
+	case w.queue <- &copied:
 		return true
 	default:
 		return false // 队列满：降级同步写

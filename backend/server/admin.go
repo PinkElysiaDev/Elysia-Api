@@ -117,15 +117,28 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 	}
 	server := s.config.GetServer()
 	requestsRestart := (payload.Host != "" && payload.Host != server.Host) || (payload.Port != 0 && payload.Port != server.Port)
+	// 两阶段：先整体校验，全部通过后再应用——避免「后段字段非法/保存失败
+	// 但前段已生效」造成的内存与磁盘状态分叉（面板令牌等即时字段尤其敏感）。
+	if payload.HTTPTimeout != nil && *payload.HTTPTimeout < 0 {
+		fail(c, 400, "invalid_http_timeout", "httpTimeout must not be negative")
+		return
+	}
+	if payload.PanelAccessToken != nil && strings.TrimSpace(*payload.PanelAccessToken) == "" {
+		// 空面板令牌会让 IsValidPanelAccessToken 对一切请求返回 false，
+		// 直接锁死整个管理面板，只能去服务器手改 config.json 恢复。
+		fail(c, 400, "invalid_panel_access_token", "panel access token must not be empty")
+		return
+	}
+	if payload.ModelCatalog != nil && payload.ModelCatalog.SyncIntervalMinutes != nil && *payload.ModelCatalog.SyncIntervalMinutes < 0 {
+		fail(c, 400, "invalid_sync_interval", "syncIntervalMinutes must not be negative")
+		return
+	}
+
 	if payload.LogLevel != "" {
 		s.config.SetLogLevel(payload.LogLevel)
 	}
 	if payload.HTTPTimeout != nil {
 		seconds := *payload.HTTPTimeout
-		if seconds < 0 {
-			fail(c, 400, "invalid_http_timeout", "httpTimeout must not be negative")
-			return
-		}
 		s.config.SetHTTPTimeout(seconds)
 		// 即时下发到三个 relay adapter，运行时修改无需重启。
 		timeout := time.Duration(seconds) * time.Second
@@ -134,12 +147,6 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		s.geminiAdapter.SetTimeout(timeout)
 	}
 	if payload.PanelAccessToken != nil {
-		// 空面板令牌会让 IsValidPanelAccessToken 对一切请求返回 false，
-		// 直接锁死整个管理面板，只能去服务器手改 config.json 恢复。
-		if strings.TrimSpace(*payload.PanelAccessToken) == "" {
-			fail(c, 400, "invalid_panel_access_token", "panel access token must not be empty")
-			return
-		}
 		s.config.SetPanelAccessToken(*payload.PanelAccessToken)
 	}
 	if payload.DatabasePath != nil {
@@ -160,13 +167,8 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		s.syncRelaySSRFPolicy()
 	}
 	if payload.ModelCatalog != nil && payload.ModelCatalog.SyncIntervalMinutes != nil {
-		minutes := *payload.ModelCatalog.SyncIntervalMinutes
-		if minutes < 0 {
-			fail(c, 400, "invalid_sync_interval", "syncIntervalMinutes must not be negative")
-			return
-		}
 		// 周期检查是动态的，写入配置即生效（0 = 默认 24h），无需重启。
-		s.config.SetModelCatalogSyncInterval(minutes)
+		s.config.SetModelCatalogSyncInterval(*payload.ModelCatalog.SyncIntervalMinutes)
 	}
 	if requestsRestart {
 		s.markRestartRequired()

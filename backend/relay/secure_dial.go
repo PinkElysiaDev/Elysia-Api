@@ -48,6 +48,13 @@ func secureControl(network, address string, _ syscall.RawConn) error {
 	return nil
 }
 
+// NewSecureTransport 导出带连接时 SSRF 校验的 http.Transport，供 server 层
+// 非转发出站路径（健康探测等）复用同一份拨号防护——裸 http.Client 跟随
+// 重定向时无连接级校验，可能被引到内网/元数据地址。
+func NewSecureTransport() *http.Transport {
+	return newSecureTransport()
+}
+
 // newSecureTransport 构造带连接时 SSRF 校验的 http.Transport。
 // 所有上游适配器（OpenAI/Claude/Gemini）共用，确保出站连接的目标 IP
 // 在 connect 时被校验，杜绝 rebinding 绕过。

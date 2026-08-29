@@ -453,7 +453,7 @@ func (a *OpenAIAdapter) SendRequestStream(ctx context.Context, baseUrl, apiKey s
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
 		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error: %s", string(respBody))
+		return nil, &UpstreamStatusError{StatusCode: resp.StatusCode, Body: string(respBody)}
 	}
 
 	return resp, nil
@@ -477,10 +477,22 @@ func (a *OpenAIAdapter) SendResponsesStream(ctx context.Context, baseUrl, apiKey
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
 		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error: %s", string(respBody))
+		return nil, &UpstreamStatusError{StatusCode: resp.StatusCode, Body: string(respBody)}
 	}
 
 	return resp, nil
+}
+
+// UpstreamStatusError 携带上游真实状态码：调用方据此决定对客户端的响应码
+// 与重试分类——401/403/400 等永久错误不得洗白成 502 后被当作可重试错误
+// 对全部候选扇出。
+type UpstreamStatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *UpstreamStatusError) Error() string {
+	return fmt.Sprintf("API error (%d): %s", e.StatusCode, e.Body)
 }
 
 // StreamResponseWriter 流式响应写入接口

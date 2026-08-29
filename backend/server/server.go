@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -61,8 +62,8 @@ type Server struct {
 
 	// 异步 usage 写入：store 模式下，请求路径只把记录投递到 buffer channel，
 	// 由单个 writer goroutine 落库，避免请求在 SQLite 写入（单连接串行）上阻塞。
-	usageQueue    chan *usageRecord
-	usageWriterWG sync.WaitGroup
+	// usageWriter 包含队列与关闭标志（usage_writer.go），关停后入队安全降级。
+	usageWriter *usageWriterState
 
 	// usage 只读端点的短 TTL 响应缓存 + 并发合并（usage_cache.go）。
 	usageCache usageResponseCache
@@ -79,10 +80,12 @@ type Server struct {
 	// 路由缓存：把 groups+models 装配结果与 tokens 载入内存，
 	// 让请求热路径无需每次查 SQLite（消除 N+1 + 单连接串行瓶颈）。
 	// 借鉴 new-api 的 *_cache.go + SyncOptions：读走内存，写后失效。
-	routeCacheMu     sync.RWMutex
-	cachedGroups     []config.ModelGroupConfig
-	cachedTokens     map[string]config.AccessToken
-	routeCacheLoaded bool
+	// routeCacheGeneration 是失效代际：装配期间发生失效则旧快照不得落缓存。
+	routeCacheMu         sync.RWMutex
+	cachedGroups         []config.ModelGroupConfig
+	cachedTokens         map[string]config.AccessToken
+	routeCacheLoaded     bool
+	routeCacheGeneration uint64
 
 	// 模型能力元数据目录（models.dev）：刷新模型时自动回填能力字段（方向1）。
 	catalog *modelCatalog
@@ -942,6 +945,16 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		s.recordUsage(record)
 	}()
 
+	// upstreamErrorStatus 从错误中提取上游真实状态码（UpstreamStatusError），
+	// 无则回退 fallback——永久错误（401/403/400）不得洗白成可重试的 502。
+	upstreamErrorStatus := func(err error, fallback int) int {
+		var statusErr *relay.UpstreamStatusError
+		if errors.As(err, &statusErr) && statusErr.StatusCode > 0 {
+			return statusErr.StatusCode
+		}
+		return fallback
+	}
+
 	// 流式失败的可重试性判定。注意：一旦开始向客户端写出 SSE 字节，
 	// 就无法再重试（响应头已发出），因此重试只发生在"建立上游连接 +
 	// 读到上游首个状态码"之前。
@@ -1042,7 +1055,9 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		resp, err := s.openaiAdapter.SendRequestStream(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		if err != nil {
 			log.Printf("Error forwarding stream request: %v", err)
-			result = failResult(http.StatusBadGateway, fmt.Sprintf("Failed to forward request: %v", err), nil)
+			// 上游真实状态码保真：401/403/400 等永久错误不得洗白成 502
+			// 触发对全部候选的扇出重试。
+			result = failResult(upstreamErrorStatus(err, http.StatusBadGateway), fmt.Sprintf("Failed to forward request: %v", err), nil)
 			return result
 		}
 

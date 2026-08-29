@@ -858,6 +858,7 @@ func (s *Server) resetUsage(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		// 两个分支都要清缓存：无 store 分支此前漏清，15s 内会回放重置前的旧响应。
 		s.usageCache.flush()
 		c.JSON(http.StatusOK, gin.H{"reset": true})
 		return
@@ -866,6 +867,7 @@ func (s *Server) resetUsage(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	s.usageCache.flush()
 	c.JSON(http.StatusOK, gin.H{"reset": true})
 }
 

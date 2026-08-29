@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -421,6 +422,16 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		s.recordUsage(record)
 	}()
 
+	// upstreamErrorStatus 从错误中提取上游真实状态码：永久错误（401/403/400）
+	// 不得洗白成 502 触发全候选扇出重试。
+	upstreamErrorStatus := func(err error, fallback int) int {
+		var statusErr *relay.UpstreamStatusError
+		if errors.As(err, &statusErr) && statusErr.StatusCode > 0 {
+			return statusErr.StatusCode
+		}
+		return fallback
+	}
+
 	// connFail 处理「SSE 尚未开始」的上游建连失败：可重试且非最后一次 →
 	// committed=false 让上层换下一个候选；否则写出 JSON 错误并提交。
 	connFail := func(statusCode int, errMsg string, respBody []byte) relayOutcome {
@@ -477,7 +488,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 	case relay.FormatResponses:
 		resp, err := s.openaiAdapter.SendResponsesStream(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		if err != nil {
-			result = connFail(http.StatusBadGateway, err.Error(), nil)
+			result = connFail(upstreamErrorStatus(err, http.StatusBadGateway), err.Error(), nil)
 			return result
 		}
 		startSSE()
@@ -524,7 +535,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 	default:
 		resp, err := s.openaiAdapter.SendRequestStream(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		if err != nil {
-			result = connFail(http.StatusBadGateway, err.Error(), nil)
+			result = connFail(upstreamErrorStatus(err, http.StatusBadGateway), err.Error(), nil)
 			return result
 		}
 		startSSE()

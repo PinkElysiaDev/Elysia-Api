@@ -23,13 +23,16 @@ func (s *Server) ensureRouteCache() bool {
 	}
 	s.routeCacheMu.RLock()
 	loaded := s.routeCacheLoaded
+	// 代际计数：装配期间若有写操作触发失效，gen 会递增——旧快照不允许
+	// 带着 loaded=true 落缓存（已撤销的 token/已删模型会继续放行）。
+	generation := s.routeCacheGeneration
 	s.routeCacheMu.RUnlock()
 	if loaded {
 		return true
 	}
 
 	// 装配在锁外完成，减少持锁时间；多个并发请求可能重复装配一次，
-	// 但结果一致且幂等，可接受。
+	// 但结果一致且幂等，可接受（最终落缓存的以 gen 校验为准）。
 	groups, okGroups := s.assembleGroupsFromStore()
 	tokens, okTokens := s.loadTokensFromStore()
 	if !okGroups || !okTokens {
@@ -37,6 +40,11 @@ func (s *Server) ensureRouteCache() bool {
 	}
 
 	s.routeCacheMu.Lock()
+	if s.routeCacheGeneration != generation {
+		// 装配期间发生失效：丢弃本快照，让下次读取重新装配。
+		s.routeCacheMu.Unlock()
+		return false
+	}
 	s.cachedGroups = groups
 	s.cachedTokens = tokens
 	s.routeCacheLoaded = true
@@ -49,6 +57,7 @@ func (s *Server) ensureRouteCache() bool {
 func (s *Server) invalidateRouteCache() {
 	s.routeCacheMu.Lock()
 	s.routeCacheLoaded = false
+	s.routeCacheGeneration++
 	s.cachedGroups = nil
 	s.cachedTokens = nil
 	s.routeCacheMu.Unlock()

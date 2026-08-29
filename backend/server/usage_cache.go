@@ -86,6 +86,20 @@ func (c *usageResponseCache) handle(gc *gin.Context) {
 	c.inflight[key] = call
 	c.mu.Unlock()
 
+	// 兜底清理：handler panic 时（gin.Recovery 在本帧之上恢复）done 关闭与
+	// inflight 清理仍会执行，等待者与后续同 key 请求不会永久挂起；清理后
+	// panic 继续上抛。
+	doneClosed := false
+	defer func() {
+		if !doneClosed {
+			call.entry = nil
+			close(call.done)
+			c.mu.Lock()
+			delete(c.inflight, key)
+			c.mu.Unlock()
+		}
+	}()
+
 	rec := &usageCacheRecorder{ResponseWriter: gc.Writer}
 	rec.buf.Grow(512)
 	gc.Writer = rec
@@ -103,6 +117,7 @@ func (c *usageResponseCache) handle(gc *gin.Context) {
 		entry = nil
 	}
 	call.entry = entry
+	doneClosed = true
 	close(call.done)
 	c.mu.Lock()
 	delete(c.inflight, key)
@@ -153,8 +168,9 @@ func (r *usageCacheRecorder) WriteString(s string) (int, error) {
 	return r.ResponseWriter.WriteString(s)
 }
 
-// canonicalUsageCacheKey 以 path + 排序后的 query 生成缓存键：
-// 参数顺序不同但语义相同的请求共享同一条缓存。
+// canonicalUsageCacheKey 以 path + 排序后的 query 生成缓存键：参数顺序不同
+// 但语义相同的请求共享同一条缓存。值经转义，防止 "b&keyName=a" 这类含分隔
+// 符的筛选拼接出与多参数组合相同的键。
 func canonicalUsageCacheKey(u *url.URL) string {
 	values := u.Query()
 	keys := make([]string, 0, len(values))
@@ -169,9 +185,9 @@ func canonicalUsageCacheKey(u *url.URL) string {
 		sort.Strings(vs)
 		for _, v := range vs {
 			b.WriteByte('&')
-			b.WriteString(k)
+			b.WriteString(url.QueryEscape(k))
 			b.WriteByte('=')
-			b.WriteString(v)
+			b.WriteString(url.QueryEscape(v))
 		}
 	}
 	return b.String()
