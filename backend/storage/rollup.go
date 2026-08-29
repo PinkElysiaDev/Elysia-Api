@@ -129,6 +129,11 @@ func (s *Store) RunRollupBackfill(ctx context.Context) error {
 		if minMs > 0 {
 			through = minMs / 3_600_000 * 3_600_000
 			total = until - through
+		} else {
+			// 空库：无任何记录可回填，直接就绪——否则会从纪元起空跑约 9 万个
+			// 6 小时空块（持续占用单连接 + 进度日志刷屏）。
+			through = until
+			total = 0
 		}
 	}
 	if total <= 0 {
@@ -204,14 +209,22 @@ FROM usage_records WHERE started_ms >= ? AND started_ms < ? GROUP BY 1, model_na
 }
 
 // auditRollupHours 按小时对比 raw 与 rollup 的记录数，重建不一致的区间，
-// 返回重建的块数。0 表示无需修复。
+// 返回重建的块数。0 表示无需修复。两次聚合在同一读事务（WAL 快照）内执行：
+// 分开跑会在活写入下产生假阳性"不一致"（两查询之间落库的记录只计入一侧），
+// 触发无意义的重建。
 func (s *Store) auditRollupHours(ctx context.Context) (int, error) {
 	type hourCount struct {
 		hourMs int64
 		count  int64
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }() // 只读事务，结束即弃
+
 	rawByHour := make(map[int64]int64)
-	rows, err := s.db.QueryContext(ctx, `SELECT (started_ms / 3600000) * 3600000, COUNT(*) FROM usage_records GROUP BY 1`)
+	rows, err := tx.QueryContext(ctx, `SELECT (started_ms / 3600000) * 3600000, COUNT(*) FROM usage_records GROUP BY 1`)
 	if err != nil {
 		return 0, err
 	}
@@ -230,7 +243,7 @@ func (s *Store) auditRollupHours(ctx context.Context) (int, error) {
 	rows.Close()
 
 	rollupByHour := make(map[int64]int64)
-	rows, err = s.db.QueryContext(ctx, `SELECT hour_ms, SUM(cnt) FROM usage_rollup_hour GROUP BY 1`)
+	rows, err = tx.QueryContext(ctx, `SELECT hour_ms, SUM(cnt) FROM usage_rollup_hour GROUP BY 1`)
 	if err != nil {
 		return 0, err
 	}
@@ -247,6 +260,11 @@ func (s *Store) auditRollupHours(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	rows.Close()
+	// 读快照用完立即释放连接：单连接约束下，下面的重建（写事务）必须能拿到
+	// 连接——审计事务若持有连接直到函数返回，重建会自锁死。
+	if err := tx.Rollback(); err != nil {
+		return 0, err
+	}
 
 	// 找出计数不一致的小时，合并成连续区间后按块重建。
 	var mismatches []int64

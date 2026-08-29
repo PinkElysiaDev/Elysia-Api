@@ -950,6 +950,10 @@ func (s *Store) GetUsageRecordJSON(ctx context.Context, id string) ([]byte, bool
 // ClearUsage 清空全部 usage 数据。rollup 表与状态一并重置（through=until=now、
 // ready 保持），后续记录继续由写入侧增量累积，无需重跑回填。
 func (s *Store) ClearUsage(ctx context.Context) error {
+	// 与后台回填互斥：ClearUsage 重置水位期间若回填循环在跑，其随后的
+	// setRollupStateInt 会把水位写回旧值（状态卫生问题，数据本身无损）。
+	s.rollupMu.Lock()
+	defer s.rollupMu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

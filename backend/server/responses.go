@@ -240,7 +240,13 @@ func (s *Server) responses(c *gin.Context) {
 		lastErr = outcome.errMsg
 		s.appendRetryEvent(record, attempt, selectedModel.Name, outcome.errMsg)
 		if !isLast && group.RetryInterval > 0 {
-			time.Sleep(time.Duration(group.RetryInterval) * time.Millisecond)
+			// 尊重客户端取消：被放弃的请求不再空耗等待 + 对剩余候选扇出。
+			select {
+			case <-c.Request.Context().Done():
+				committed = true
+				return
+			case <-time.After(time.Duration(group.RetryInterval) * time.Millisecond):
+			}
 		}
 	}
 
