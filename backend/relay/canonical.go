@@ -555,27 +555,7 @@ type ResponsesOutput struct {
 // 载荷字段完整保留，常规项（RawItem 为空）退化为普通结构体序列化。
 func (o ResponsesOutput) MarshalJSON() ([]byte, error) {
 	type alias ResponsesOutput
-	encoded, err := json.Marshal(alias(o))
-	if err != nil {
-		return nil, err
-	}
-	if len(o.RawItem) == 0 {
-		return encoded, nil
-	}
-	var typed map[string]any
-	if err := json.Unmarshal(encoded, &typed); err != nil {
-		return nil, err
-	}
-	merged := make(map[string]any, len(o.RawItem)+len(typed))
-	for key, value := range o.RawItem {
-		merged[key] = value
-	}
-	for key, value := range typed {
-		if value != nil {
-			merged[key] = value
-		}
-	}
-	return json.Marshal(merged)
+	return mergeRawOverTyped(o.RawItem, alias(o))
 }
 
 type ResponsesOutputContent struct {
@@ -621,6 +601,52 @@ type ResponsesStreamResponse struct {
 	OutputIndex  int                      `json:"output_index,omitempty"`
 	ContentIndex int                      `json:"content_index,omitempty"`
 	Part         any                      `json:"part,omitempty"`
+}
+
+// deltaVsAccumulated 计算终态完整值相对已累计增量的差分：相等则无输出、
+// 是前缀则只补后缀、否则整体替换（调用方负责重置累计并输出 delta）。
+func deltaVsAccumulated(accumulated, complete string) (delta string, replaced bool) {
+	switch {
+	case complete == accumulated:
+		return "", false
+	case strings.HasPrefix(complete, accumulated):
+		return strings.TrimPrefix(complete, accumulated), false
+	default:
+		return complete, true
+	}
+}
+
+// mergeRawOverTyped 把类型化值序列化后与原始对象合并：原始对象为底、
+// 类型化的非空字段覆盖其上（服务端工具项载荷 / usage 未知键等往返保真的
+// 统一机制）。raw 为空时退化为普通序列化。
+func mergeRawOverTyped(raw map[string]any, typed any) ([]byte, error) {
+	encoded, err := json.Marshal(typed)
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) == 0 {
+		return encoded, nil
+	}
+	var typedMap map[string]any
+	if err := json.Unmarshal(encoded, &typedMap); err != nil {
+		return nil, err
+	}
+	merged := make(map[string]any, len(raw)+len(typedMap))
+	for key, value := range raw {
+		merged[key] = value
+	}
+	for key, value := range typedMap {
+		if value != nil {
+			merged[key] = value
+		}
+	}
+	return json.Marshal(merged)
+}
+
+// joinBasePath 规范化拼接上游基地址与路径：去空白、去尾部斜杠后拼接，
+// 是各适配器 endpoint 构造的统一入口。
+func joinBasePath(baseURL, path string) string {
+	return strings.TrimRight(strings.TrimSpace(baseURL), "/") + path
 }
 
 func contentPartsToInterface(parts []CanonicalContentPart) any {

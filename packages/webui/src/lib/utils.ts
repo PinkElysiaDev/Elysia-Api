@@ -170,3 +170,15 @@ export function tryParseJSON(content: string | undefined | null): unknown {
     return content
   }
 }
+
+/** 判断 HTTP 状态码是否属于成功区间（2xx/3xx）。 */
+export function isSuccessStatus(code: number): boolean {
+  return code >= 200 && code < 400
+}
+
+/** 模型检索谓词：按 id / 名称 / 所属源名的子串匹配（忽略大小写）。 */
+export function matchesModelKeyword(keyword: string, model: { id: string; name: string; sourceName?: string }): boolean {
+  const kw = keyword.trim().toLowerCase()
+  if (!kw) return true
+  return `${model.id} ${model.name} ${model.sourceName ?? ''}`.toLowerCase().includes(kw)
+}

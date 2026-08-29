@@ -4,8 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"sort"
-	"strings"
-	"time"
+		"time"
 )
 
 // sqlQueryer 抽象 *sql.DB 与 *sql.Tx：rollup 路径的中段 + 两侧边缘必须在
@@ -74,47 +73,13 @@ func rollupEdgeBounds(q UsageQuery, fromHour, toHour int64) (headFrom, headTo, t
 
 // usageRollupWhere 生成 rollup 表的筛选条件（与 usageWhere 的维度语义一致，
 // 但不含时间与 key_hash：时间由小时区间显式给出，keyHash 走 raw 回退）。
+// usageRollupWhere 生成 rollup 表的筛选条件（与 usageWhere 的维度语义一致，
+// 但不含时间与 key_hash：时间由小时区间显式给出，keyHash 走 raw 回退）。
+// 筛选链构造复用 usageFilterClauses（与 raw 表共享同一份判定逻辑）。
 func usageRollupWhere(q UsageQuery) (string, []any) {
-	parts := []string{"1=1"}
-	args := []any{}
-	if len(q.KeyNames) > 0 {
-		parts = append(parts, usageInClause("key_name", len(q.KeyNames)))
-		for _, v := range q.KeyNames {
-			args = append(args, v)
-		}
-	} else if q.KeyName != "" {
-		parts = append(parts, "key_name = ?")
-		args = append(args, q.KeyName)
-	}
-	if len(q.GroupNames) > 0 {
-		parts = append(parts, usageInClause("group_name", len(q.GroupNames)))
-		for _, v := range q.GroupNames {
-			args = append(args, v)
-		}
-	} else if q.GroupName != "" {
-		parts = append(parts, "group_name = ?")
-		args = append(args, q.GroupName)
-	}
-	if len(q.ModelNames) > 0 {
-		parts = append(parts, usageInClause("model_name", len(q.ModelNames)))
-		for _, v := range q.ModelNames {
-			args = append(args, v)
-		}
-	} else if q.ModelName != "" {
-		parts = append(parts, "model_name = ?")
-		args = append(args, q.ModelName)
-	}
-	if q.StatusCode > 0 {
-		parts = append(parts, "status_code = ?")
-		args = append(args, q.StatusCode)
-	} else if q.Status == "success" {
-		parts = append(parts, usageSuccessPredicate)
-	} else if q.Status == "failed" {
-		parts = append(parts, "("+usageFailedPredicate+")")
-	}
-	return " AND " + strings.Join(parts, " AND "), args
+	clauses, args := usageFilterClauses(q, false, false)
+	return " AND " + clauses, args
 }
-
 // ---------- UsageTotals ----------
 
 // usageTotalsAcc 是 totals 的可加 accumulator：raw 单行聚合与 rollup 单行

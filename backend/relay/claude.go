@@ -5,8 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"strings"
-	"time"
+		"time"
 )
 
 // ========== Claude Adapter ==========
@@ -28,7 +27,7 @@ func (a *ClaudeAdapter) SetTimeout(d time.Duration) { a.client.SetTimeout(d) }
 // SendRequest 向 Claude /v1/messages 发送请求，返回原始 HTTP 响应。
 // ctx 传播客户端取消信号（断连即中止上游调用）。
 func (a *ClaudeAdapter) SendRequest(ctx context.Context, baseUrl, apiKey string, body []byte, isStream bool) (*http.Response, error) {
-	url := strings.TrimRight(strings.TrimSpace(baseUrl), "/") + "/v1/messages"
+	url := joinBasePath(baseUrl, "/v1/messages")
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -95,27 +94,7 @@ func (c *ClaudeContent) UnmarshalJSON(data []byte) error {
 	// 载荷完整保留；常规块退化为普通结构体序列化。
 func (c ClaudeContent) MarshalJSON() ([]byte, error) {
 	type alias ClaudeContent
-	encoded, err := json.Marshal(alias(c))
-	if err != nil {
-		return nil, err
-	}
-	if len(c.RawFields) == 0 {
-		return encoded, nil
-	}
-	var typed map[string]any
-	if err := json.Unmarshal(encoded, &typed); err != nil {
-		return nil, err
-	}
-	merged := make(map[string]any, len(c.RawFields)+len(typed))
-	for key, value := range c.RawFields {
-		merged[key] = value
-	}
-	for key, value := range typed {
-		if value != nil {
-			merged[key] = value
-		}
-	}
-	return json.Marshal(merged)
+	return mergeRawOverTyped(c.RawFields, alias(c))
 }
 
 type ClaudeUsage struct {

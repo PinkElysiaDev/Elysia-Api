@@ -120,15 +120,10 @@ func (renderer *MaheshvaraStreamRenderer) writeOpenAIToolEvent(event *Maheshvara
 	state.name = firstNonEmptyString(event.ToolName, state.name)
 	argumentDelta := event.ToolArgumentsDelta
 	if event.ToolArgumentsDone != "" {
-		complete := event.ToolArgumentsDone
-		current := state.arguments.String()
-		switch {
-		case complete == current:
-			argumentDelta = ""
-		case strings.HasPrefix(complete, current):
-			argumentDelta = strings.TrimPrefix(complete, current)
-		default:
-			argumentDelta = complete
+		if delta, replaced := deltaVsAccumulated(state.arguments.String(), event.ToolArgumentsDone); replaced {
+			argumentDelta = delta
+		} else {
+			argumentDelta = delta
 		}
 	}
 	if argumentDelta != "" {

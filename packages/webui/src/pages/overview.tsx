@@ -30,6 +30,7 @@ import { KpiCard, KpiGrid } from '@/components/kpi-card'
 import { ElysiaStage } from '@/components/role-watermark'
 import { Fchip } from '@/components/ui/fchip'
 import { Seg } from '@/components/ui/seg'
+import { RANGE_OPTIONS } from '@/components/usage-filter-bar'
 import { ErrorState } from '@/components/ui/states'
 import { CodePill, Dot, PlatformBadge } from '@/components/badges'
 import { ModelBreakdownTooltip } from '@/components/model-breakdown-tooltip'
@@ -425,12 +426,7 @@ export function OverviewPage() {
               <Seg
                 aria-label="热门模型时间窗"
                 className="h-7"
-                options={[
-                  { value: '24h', label: '24小时' },
-                  { value: '7d', label: '7天' },
-                  { value: '30d', label: '30天' },
-                  { value: 'all', label: '全部' },
-                ]}
+                options={RANGE_OPTIONS}
                 value={topRange}
                 onChange={setTopRange}
               />

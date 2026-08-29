@@ -352,17 +352,11 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesTool(event *MaheshvaraSt
 	}
 	argumentDelta := event.ToolArgumentsDelta
 	if event.ToolArgumentsDone != "" {
-		complete := event.ToolArgumentsDone
-		current := state.arguments.String()
-		switch {
-		case complete == current:
-			argumentDelta = ""
-		case strings.HasPrefix(complete, current):
-			argumentDelta = strings.TrimPrefix(complete, current)
-		default:
+		delta, replaced := deltaVsAccumulated(state.arguments.String(), event.ToolArgumentsDone)
+		if replaced {
 			state.arguments.Reset()
-			argumentDelta = complete
 		}
+		argumentDelta = delta
 	}
 	if argumentDelta != "" {
 		state.arguments.WriteString(argumentDelta)

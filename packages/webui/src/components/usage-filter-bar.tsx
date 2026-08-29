@@ -5,7 +5,7 @@ import { Seg, type SegOption } from '@/components/ui/seg'
 
 export type RangeKey = '24h' | '7d' | '30d' | 'all'
 
-const RANGE_OPTIONS: SegOption<RangeKey>[] = [
+export const RANGE_OPTIONS: SegOption<RangeKey>[] = [
   { value: '24h', label: '24小时' },
   { value: '7d', label: '7天' },
   { value: '30d', label: '30天' },

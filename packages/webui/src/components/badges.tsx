@@ -1,7 +1,7 @@
 import { FileText, Zap, type LucideIcon } from 'lucide-react'
 import type { Platform, ModelType, GroupStrategy } from '@/lib/types'
 import { protocolLabel } from '@/lib/protocol'
-import { cn } from '@/lib/utils'
+import { cn, isSuccessStatus } from '@/lib/utils'
 
 /* ---------- 状态点 ---------- */
 
@@ -13,12 +13,12 @@ export function Dot({ state, className }: { state: 'ok' | 'err' | 'off'; classNa
 
 export function CodePill({ code, className }: { code: number; className?: string }) {
   if (code === 0) return <span className={cn('font-mono text-xs text-muted-foreground', className)}>—</span>
-  const s2 = code >= 200 && code < 400
+  const isSuccess = isSuccessStatus(code)
   return (
     <span
       className={cn(
         'tnum inline-flex items-center rounded-[5px] border px-[7px] py-0.5 font-mono text-xs font-medium',
-        s2
+        isSuccess
           ? 'border-[color-mix(in_srgb,var(--jade)_26%,transparent)] bg-[color-mix(in_srgb,var(--jade)_9%,transparent)] text-jade'
           : 'border-[color-mix(in_srgb,var(--ember)_28%,transparent)] bg-[color-mix(in_srgb,var(--ember)_9%,transparent)] text-ember',
         className,

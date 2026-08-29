@@ -68,12 +68,8 @@ func OpenAIChatRequestToCanonical(body []byte) (*CanonicalRequest, error) {
 	} else if v, ok := numberValue(raw["max_tokens"]); ok {
 		req.MaxOutputTokens = int(v)
 	}
-	if v, ok := raw["temperature"].(float64); ok {
-		req.Temperature = &v
-	}
-	if v, ok := raw["top_p"].(float64); ok {
-		req.TopP = &v
-	}
+	req.Temperature = floatPointer(raw["temperature"])
+	req.TopP = floatPointer(raw["top_p"])
 	if so, ok := raw["stream_options"].(map[string]any); ok {
 		req.StreamOptions = &CanonicalStreamOptions{IncludeUsage: boolValue(so["include_usage"])}
 	}
@@ -141,12 +137,8 @@ func ClaudeRequestToCanonical(body []byte) (*CanonicalRequest, error) {
 	if v, ok := numberValue(raw["max_tokens"]); ok {
 		req.MaxOutputTokens = int(v)
 	}
-	if v, ok := raw["temperature"].(float64); ok {
-		req.Temperature = &v
-	}
-	if v, ok := raw["top_p"].(float64); ok {
-		req.TopP = &v
-	}
+	req.Temperature = floatPointer(raw["temperature"])
+	req.TopP = floatPointer(raw["top_p"])
 
 	req.Messages = parseClaudeMessages(raw["messages"])
 	req.Tools = parseClaudeTools(raw["tools"])
