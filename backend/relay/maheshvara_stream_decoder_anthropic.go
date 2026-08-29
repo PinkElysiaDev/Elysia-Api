@@ -42,7 +42,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeAnthropic(raw map[string]any) ([]M
 			events = append(events, event)
 		case "redacted_thinking":
 			if envelope, ok := decodeMaheshvaraReasoningEnvelope(stringValue(blockValue["data"])); ok {
-				part := CanonicalContentPart{Type: CanonicalContentReasoning, Thought: true, ReasoningText: envelope.Text, Text: envelope.Text, SignatureProvider: CanonicalSignatureProviderMaheshvara, EncryptedContent: envelope.EncryptedContent, ReasoningSummary: envelope.Summary, Raw: blockValue}
+				part := CanonicalContentPart{Type: CanonicalContentReasoning, Thought: true, ReasoningText: envelope.Text, Text: envelope.Text, SignatureProvider: CanonicalSignatureProviderMaheshvara, EncryptedContent: envelope.EncryptedContent, EncryptedProvider: envelope.Provider, EncryptedModel: envelope.Model, ReasoningSummary: envelope.Summary, Raw: blockValue}
 				event := decoder.baseEvent(CanonicalEventContentPartAdded, raw)
 				event.ContentIndex = index
 				event.ContentPart = &part

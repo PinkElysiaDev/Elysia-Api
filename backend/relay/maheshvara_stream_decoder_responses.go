@@ -64,6 +64,16 @@ func (decoder *MaheshvaraStreamDecoder) decodeResponses(raw map[string]any) ([]M
 	case CanonicalEventReasoningDone, CanonicalEventReasoningSummaryDone, "response.reasoning_text.done":
 		event.ReasoningDone = firstNonEmptyString(stringValue(raw["text"]), stringValue(raw["delta"]), stringValue(raw["content"]))
 		return []MaheshvaraStreamEvent{event}, nil
+	case CanonicalEventReasoningSignatureDelta, "response.reasoning_signature.done":
+		// 此前落入 default 且按 "reasoning" 前缀被误当推理文本拼接。
+		signature := firstNonEmptyString(stringValue(raw["delta"]), stringValue(raw["signature"]), stringValue(raw["text"]))
+		if signature != "" {
+			event.Type = CanonicalEventReasoningSignatureDelta
+			event.ReasoningSignatureDelta = signature
+			event.ReasoningSignatureProvider = firstNonEmptyString(stringValue(raw["provider"]), CanonicalSignatureProviderOpenAI)
+			return []MaheshvaraStreamEvent{event}, nil
+		}
+		return nil, nil
 	case CanonicalEventFunctionCallArgumentsDelta:
 		event.ToolCallID = stringValue(raw["call_id"])
 		event.ToolName = stringValue(raw["name"])

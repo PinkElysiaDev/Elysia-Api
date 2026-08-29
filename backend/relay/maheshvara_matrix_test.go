@@ -254,8 +254,13 @@ func TestMaheshvaraReasoningSignaturesAreProviderBoundAndLegacyEnvelopeIsReadOnl
 	if err != nil {
 		t.Fatalf("render Anthropic reasoning: %v", err)
 	}
-	if len(claude.Content) != 1 || claude.Content[0].Type != "thinking" || claude.Content[0].Signature != "" {
-		t.Fatalf("provider ciphertext must not be smuggled into an Anthropic signature: %+v", claude.Content)
+	// 跨厂商密文不得以裸签名形态发给 Claude 客户端，但允许装进 Maheshvara
+	// 信封放在签名槽位（客户端原样回传后解出回放，密文不落入正文）。
+	if len(claude.Content) != 1 || claude.Content[0].Type != "thinking" || claude.Content[0].Signature == "" {
+		t.Fatalf("cross-provider ciphertext should be carried as an envelope signature: %+v", claude.Content)
+	}
+	if !strings.HasPrefix(claude.Content[0].Signature, "maheshvara-reasoning-v2:") {
+		t.Fatalf("cross-provider ciphertext must be wrapped in a v2 envelope, got %q", claude.Content[0].Signature)
 	}
 
 	gemini, err := MaheshvaraToGeminiResponse(response)
@@ -266,7 +271,7 @@ func TestMaheshvaraReasoningSignaturesAreProviderBoundAndLegacyEnvelopeIsReadOnl
 		t.Fatalf("provider ciphertext must not be smuggled into a Gemini signature: %+v", gemini)
 	}
 
-	legacyEnvelope, err := encodeMaheshvaraReasoningEnvelope("concise rationale", "provider-ciphertext", []CanonicalReasoningSummary{{Type: "summary_text", Text: "summary"}})
+	legacyEnvelope, err := encodeMaheshvaraReasoningEnvelope("concise rationale", "provider-ciphertext", []CanonicalReasoningSummary{{Type: "summary_text", Text: "summary"}}, "", "")
 	if err != nil {
 		t.Fatalf("encode legacy envelope: %v", err)
 	}

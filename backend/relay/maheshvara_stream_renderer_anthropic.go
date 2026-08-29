@@ -55,13 +55,22 @@ func (renderer *MaheshvaraStreamRenderer) writeClaude(event *MaheshvaraStreamEve
 		}
 		return renderer.writeSSEEvent("content_block_delta", map[string]any{"type": "content_block_delta", "index": renderer.claude.activeIndex, "delta": map[string]any{"type": "thinking_delta", "thinking": event.ReasoningDelta}})
 	case CanonicalEventReasoningSignatureDelta:
-		if canonicalSignatureForProvider(event.ReasoningSignatureDelta, event.ReasoningSignatureProvider, CanonicalSignatureProviderAnthropic) == "" {
+		signature := event.ReasoningSignatureDelta
+		if signature == "" {
+			return nil
+		}
+		// 原生 anthropic 签名与已装信封的跨协议密文（maheshvara）可直接下发；
+		// 其他厂商裸签名流式片段不下发——客户端无法续用，完整密文由非流式
+		// 路径装信封后回放。
+		switch strings.TrimSpace(event.ReasoningSignatureProvider) {
+		case "", CanonicalSignatureProviderAnthropic, CanonicalSignatureProviderMaheshvara:
+		default:
 			return nil
 		}
 		if err := renderer.ensureClaudeBlock(claudeStreamKey("thinking", event), "thinking", event, nil); err != nil {
 			return err
 		}
-		return renderer.writeSSEEvent("content_block_delta", map[string]any{"type": "content_block_delta", "index": renderer.claude.activeIndex, "delta": map[string]any{"type": "signature_delta", "signature": event.ReasoningSignatureDelta}})
+		return renderer.writeSSEEvent("content_block_delta", map[string]any{"type": "content_block_delta", "index": renderer.claude.activeIndex, "delta": map[string]any{"type": "signature_delta", "signature": signature}})
 	case CanonicalEventRefusalDelta:
 		if event.RefusalDelta == "" {
 			return nil

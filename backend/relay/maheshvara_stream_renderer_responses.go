@@ -27,6 +27,8 @@ type maheshvaraResponsesReasoningState struct {
 	outputIndex int
 	started     bool
 	text        strings.Builder
+	signature   strings.Builder
+	encrypted   string
 	done        bool
 }
 
@@ -87,11 +89,15 @@ func (renderer *MaheshvaraStreamRenderer) writeResponses(event *MaheshvaraStream
 		return renderer.writeResponsesReasoning(event.ChoiceIndex, event.ReasoningDelta)
 	case CanonicalEventReasoningDone, CanonicalEventReasoningSummaryDone:
 		return renderer.finishResponsesReasoning(event.ChoiceIndex, event.ReasoningDone)
+	case CanonicalEventReasoningSignatureDelta:
+		return renderer.writeResponsesReasoningSignature(event.ChoiceIndex, event.ReasoningSignatureDelta)
 	case CanonicalEventContentPartAdded:
 		return renderer.writeResponsesContentPart(event)
 	case CanonicalEventFunctionCallAdded, CanonicalEventFunctionCallArgumentsDelta, CanonicalEventFunctionCallArgumentsDone:
 		return renderer.writeResponsesTool(event)
-	case CanonicalEventOutputItemAdded:
+	case CanonicalEventOutputItemAdded, CanonicalEventOutputItemDone:
+		// done 事件携带完整终态 item（推理密文、已完成工具调用等只在此出现），
+		// 与 added 同路径处理；各 finish 路径幂等，不会重复输出。
 		return renderer.writeResponsesOutputItem(event)
 	case CanonicalEventResponseCompleted:
 		return renderer.completeResponses()
@@ -198,24 +204,49 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesReasoning(choiceIndex in
 	if text == "" {
 		return nil
 	}
-	state := renderer.responses.reasoning[choiceIndex]
-	if state == nil {
-		state = &maheshvaraResponsesReasoningState{id: newCanonicalResponseID("rs"), outputIndex: renderer.responses.nextOutput}
-		renderer.responses.nextOutput++
-		renderer.responses.reasoning[choiceIndex] = state
+	state, err := renderer.ensureResponsesReasoning(choiceIndex)
+	if err != nil {
+		return err
 	}
+	state.text.WriteString(text)
+	return renderer.writeResponsesEvent(CanonicalEventReasoningSummaryDelta, map[string]any{"type": CanonicalEventReasoningSummaryDelta, "item_id": state.id, "output_index": state.outputIndex, "summary_index": 0, "delta": text})
+}
+
+// ensureResponsesReasoning 保证 reasoning item 已对下游宣告（签名/密文可能先
+// 于文本到达，也需要挂在同一个 item 上）。
+func (renderer *MaheshvaraStreamRenderer) ensureResponsesReasoning(choiceIndex int) (*maheshvaraResponsesReasoningState, error) {
+	state := renderer.responses.reasoning[choiceIndex]
+	if state != nil {
+		return state, nil
+	}
+	state = &maheshvaraResponsesReasoningState{id: newCanonicalResponseID("rs"), outputIndex: renderer.responses.nextOutput}
+	renderer.responses.nextOutput++
+	renderer.responses.reasoning[choiceIndex] = state
 	if !state.started {
 		state.started = true
 		item := map[string]any{"id": state.id, "type": CanonicalOutputReasoning, "status": "in_progress", "summary": []any{}}
 		if err := renderer.writeResponsesEvent(CanonicalEventOutputItemAdded, map[string]any{"type": CanonicalEventOutputItemAdded, "output_index": state.outputIndex, "item": item}); err != nil {
-			return err
+			return nil, err
 		}
 		if err := renderer.writeResponsesEvent("response.reasoning_summary_part.added", map[string]any{"type": "response.reasoning_summary_part.added", "item_id": state.id, "output_index": state.outputIndex, "summary_index": 0, "part": map[string]any{"type": "summary_text", "text": ""}}); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	state.text.WriteString(text)
-	return renderer.writeResponsesEvent(CanonicalEventReasoningSummaryDelta, map[string]any{"type": CanonicalEventReasoningSummaryDelta, "item_id": state.id, "output_index": state.outputIndex, "summary_index": 0, "delta": text})
+	return state, nil
+}
+
+// writeResponsesReasoningSignature 输出签名增量（跨协议推理闭环：下游把签名
+// 原样回传，加密思考得以在下一轮续用）。
+func (renderer *MaheshvaraStreamRenderer) writeResponsesReasoningSignature(choiceIndex int, signature string) error {
+	if signature == "" {
+		return nil
+	}
+	state, err := renderer.ensureResponsesReasoning(choiceIndex)
+	if err != nil {
+		return err
+	}
+	state.signature.WriteString(signature)
+	return renderer.writeResponsesEvent(CanonicalEventReasoningSignatureDelta, map[string]any{"type": CanonicalEventReasoningSignatureDelta, "item_id": state.id, "output_index": state.outputIndex, "delta": signature})
 }
 
 func (renderer *MaheshvaraStreamRenderer) finishResponsesReasoning(choiceIndex int, text string) error {
@@ -346,6 +377,13 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesOutputItem(event *Mahesh
 			return renderer.writeResponsesTool(added)
 		}
 	case CanonicalOutputReasoning:
+		state, err := renderer.ensureResponsesReasoning(event.ChoiceIndex)
+		if err != nil {
+			return err
+		}
+		if encrypted := canonicalReasoningEncryptedContent(*item); encrypted != "" {
+			state.encrypted = encrypted
+		}
 		return renderer.writeResponsesReasoning(event.ChoiceIndex, canonicalReasoningText(*item))
 	default:
 		for index := range item.Content {
@@ -454,6 +492,10 @@ func (renderer *MaheshvaraStreamRenderer) completeResponses() error {
 				return err
 			}
 			item := map[string]any{"id": reasoning.id, "type": CanonicalOutputReasoning, "status": "completed", "summary": []any{part}}
+			if reasoning.encrypted != "" {
+				// 跨协议推理闭环：把加密思考随终态 item 回写，下游续轮原样带回。
+				item["encrypted_content"] = reasoning.encrypted
+			}
 			if err := renderer.writeResponsesEvent(CanonicalEventOutputItemDone, map[string]any{"type": CanonicalEventOutputItemDone, "output_index": reasoning.outputIndex, "item": item}); err != nil {
 				return err
 			}

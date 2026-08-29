@@ -126,6 +126,9 @@ type Message struct {
 	Role             string           `json:"role"`
 	Content          interface{}      `json:"content"`
 	ReasoningContent string           `json:"reasoning_content,omitempty"`
+	// ReasoningDetails 是 OpenRouter 风格的推理明细数组（reasoning.text /
+	// reasoning.encrypted 逐条成项），往返保真优于标量 reasoning_content。
+	ReasoningDetails []map[string]any `json:"reasoning_details,omitempty"`
 	Refusal          string           `json:"refusal,omitempty"`
 	Audio            interface{}      `json:"audio,omitempty"`
 	Name             string           `json:"name,omitempty"`

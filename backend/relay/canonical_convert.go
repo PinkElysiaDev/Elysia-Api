@@ -127,14 +127,32 @@ func ClaudeRequestToCanonical(body []byte) (*CanonicalRequest, error) {
 	req.Tools = parseClaudeTools(raw["tools"])
 
 	if thinking, ok := raw["thinking"].(map[string]any); ok {
-		enabled := strings.EqualFold(stringValue(thinking["type"]), "enabled")
-		budget := 0
-		if v, ok := numberValue(thinking["budget_tokens"]); ok {
-			budget = int(v)
+		thinkingType := strings.ToLower(strings.TrimSpace(stringValue(thinking["type"])))
+		// adaptive：Claude 4.5+ 自适应思考（无固定预算，effort 走 output_config）。
+		req.Thinking = &CanonicalThinking{
+			Enabled:  thinkingType == "enabled" || thinkingType == "adaptive",
+			Adaptive: thinkingType == "adaptive",
 		}
-		req.Thinking = &CanonicalThinking{Enabled: enabled, BudgetTokens: budget}
-		if enabled {
-			req.Reasoning = &CanonicalReasoning{Effort: effortFromBudget(budget)}
+		if v, ok := numberValue(thinking["budget_tokens"]); ok {
+			req.Thinking.BudgetTokens = int(v)
+		}
+		if req.Thinking.Enabled {
+			req.Reasoning = &CanonicalReasoning{Effort: effortFromBudget(req.Thinking.BudgetTokens)}
+		}
+	}
+	// output_config.effort 是 adaptive 思考的档位载体，优先于固定预算折算。
+	if outputConfig, ok := raw["output_config"].(map[string]any); ok {
+		if effort := stringValue(outputConfig["effort"]); effort != "" {
+			if req.Thinking == nil {
+				req.Thinking = &CanonicalThinking{}
+			}
+			if !strings.EqualFold(effort, "none") {
+				req.Thinking.Effort = effort
+			} else if !req.Thinking.Adaptive {
+				// 固定预算模式下显式关闭思考。
+				req.Thinking.Enabled = false
+			}
+			req.Reasoning = &CanonicalReasoning{Effort: req.Thinking.Effort}
 		}
 	}
 	applyClaudeRequestExtensions(raw, req)
@@ -351,11 +369,19 @@ func CanonicalToClaudeRequest(req *CanonicalRequest) ([]byte, error) {
 		out["tool_choice"] = converted
 	}
 	if req.Thinking != nil && req.Thinking.Enabled {
-		budget := req.Thinking.BudgetTokens
-		if budget <= 0 {
-			budget = budgetFromEffort(req.Thinking.Effort)
+		if req.Thinking.Adaptive {
+			// 自适应思考：无固定预算，档位走 output_config.effort。
+			out["thinking"] = map[string]any{"type": "adaptive"}
+			if req.Thinking.Effort != "" {
+				out["output_config"] = map[string]any{"effort": req.Thinking.Effort}
+			}
+		} else {
+			budget := req.Thinking.BudgetTokens
+			if budget <= 0 {
+				budget = budgetFromEffort(req.Thinking.Effort)
+			}
+			out["thinking"] = map[string]any{"type": "enabled", "budget_tokens": budget}
 		}
-		out["thinking"] = map[string]any{"type": "enabled", "budget_tokens": budget}
 		out["temperature"] = 1.0
 		delete(out, "top_p")
 	}
@@ -588,13 +614,62 @@ func CanonicalToResponsesRequest(req *CanonicalRequest, original *OpenAIResponse
 		for k, v := range req.Reasoning.Raw {
 			reasoning[k] = v
 		}
-		if req.Reasoning.Effort != "" {
+		if strings.EqualFold(req.Reasoning.Effort, "none") {
+			// 上游会把 effort:"none" 静默当成 low 档执行，必须整个省略字段。
+			delete(reasoning, "effort")
+		} else if req.Reasoning.Effort != "" {
 			reasoning["effort"] = req.Reasoning.Effort
 		}
 		out["reasoning"] = reasoning
 	}
+	// 携带加密思考历史的请求发给 Responses 上游时，追加 include 让上游
+	// 返回加密思考，跨轮续用才可行。
+	if canonicalRequestHasEncryptedReasoning(req) {
+		out["include"] = appendResponsesInclude(out["include"], "reasoning.encrypted_content")
+	}
 	applyResponsesRequestExtensionsToBody(out, req)
 	return json.Marshal(out)
+}
+
+func canonicalRequestHasEncryptedReasoning(req *CanonicalRequest) bool {
+	for _, msg := range req.Messages {
+		for _, part := range msg.Content {
+			if part.Type == CanonicalContentReasoning && part.EncryptedContent != "" {
+				return true
+			}
+		}
+	}
+	for _, item := range req.InputItems {
+		if item.Reasoning != nil && item.Reasoning.EncryptedContent != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func appendResponsesInclude(current any, value string) []string {
+	include := make([]string, 0, 4)
+	switch typed := current.(type) {
+	case []string:
+		include = append(include, typed...)
+	case []any:
+		for _, item := range typed {
+			if s, ok := item.(string); ok {
+				include = append(include, s)
+			}
+		}
+	case nil:
+	default:
+		if s, ok := typed.(string); ok {
+			include = append(include, s)
+		}
+	}
+	for _, existing := range include {
+		if existing == value {
+			return include
+		}
+	}
+	return append(include, value)
 }
 
 func parseOpenAIChatMessages(raw any) []CanonicalMessage {
@@ -630,6 +705,12 @@ func parseOpenAIChatMessages(raw any) []CanonicalMessage {
 		// 块必须位于最前，Gemini 的 thought part 同理。
 		if reasoning := stringValue(m["reasoning_content"]); strings.TrimSpace(reasoning) != "" {
 			msg.Content = append([]CanonicalContentPart{{Type: CanonicalContentReasoning, Text: reasoning, ReasoningText: reasoning, Raw: m}}, msg.Content...)
+		}
+		// OpenRouter 风格明细与 opaque 密文优先于标量（每条一 part）。
+		if details := openAIReasoningDetailsToParts(m["reasoning_details"]); len(details) > 0 {
+			msg.Content = append(details, msg.Content...)
+		} else if opaque := stringValue(m["reasoning_opaque"]); opaque != "" {
+			msg.Content = append([]CanonicalContentPart{{Type: CanonicalContentReasoning, EncryptedContent: opaque, EncryptedProvider: CanonicalSignatureProviderOpenAI, Raw: m}}, msg.Content...)
 		}
 		if refusal := firstNonEmptyString(stringValue(m["refusal"]), stringValue(m["refusal_text"])); refusal != "" {
 			msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentRefusal, Text: refusal, Raw: m})
@@ -745,6 +826,8 @@ func parseClaudeMessages(raw any) []CanonicalMessage {
 						part.Signature = ""
 						part.SignatureProvider = CanonicalSignatureProviderMaheshvara
 						part.EncryptedContent = envelope.EncryptedContent
+						part.EncryptedProvider = envelope.Provider
+						part.EncryptedModel = envelope.Model
 						part.ReasoningSummary = envelope.Summary
 						if part.Text == "" {
 							part.Text = envelope.Text
@@ -792,6 +875,8 @@ func parseClaudeMessages(raw any) []CanonicalMessage {
 							ReasoningText:     envelope.Text,
 							SignatureProvider: CanonicalSignatureProviderMaheshvara,
 							EncryptedContent:  envelope.EncryptedContent,
+							EncryptedProvider: envelope.Provider,
+							EncryptedModel:    envelope.Model,
 							ReasoningSummary:  envelope.Summary,
 							Raw:               bm,
 						})
@@ -1038,9 +1123,19 @@ func parseResponsesInput(raw json.RawMessage) ([]CanonicalInputItem, []Canonical
 					summaryText.WriteString(stringValue(summaryMap["text"]))
 				}
 			}
-			if summaryText.Len() > 0 {
+			encrypted := stringValue(m["encrypted_content"])
+			if summaryText.Len() > 0 || encrypted != "" {
 				item.Role = "assistant"
-				item.Content = []CanonicalContentPart{{Type: CanonicalContentReasoning, Text: summaryText.String(), ReasoningText: summaryText.String(), Thought: true, Raw: m}}
+				item.Content = []CanonicalContentPart{{
+					Type:              CanonicalContentReasoning,
+					Text:              summaryText.String(),
+					ReasoningText:     summaryText.String(),
+					EncryptedContent:  encrypted,
+					EncryptedProvider: CanonicalSignatureProviderOpenAI,
+					EncryptedModel:    stringValue(m["model"]),
+					Thought:           true,
+					Raw:               m,
+				}}
 				messages = append(messages, CanonicalMessage{Role: "assistant", Content: item.Content})
 			}
 		default:
@@ -1185,12 +1280,14 @@ func canonicalMessagesToOpenAI(req *CanonicalRequest) []map[string]any {
 		var toolOutputs []CanonicalContentPart
 		var reasoning strings.Builder
 		var refusal strings.Builder
+		reasoningParts := make([]CanonicalContentPart, 0, 2)
 		for _, part := range msg.Content {
 			if part.Type == CanonicalContentReasoning {
 				text := firstNonEmptyString(part.ReasoningText, part.Text)
 				if text != "" {
 					reasoning.WriteString(text)
 				}
+				reasoningParts = append(reasoningParts, part)
 				continue
 			}
 			if part.Type == CanonicalContentRefusal {
@@ -1241,6 +1338,11 @@ func canonicalMessagesToOpenAI(req *CanonicalRequest) []map[string]any {
 			}
 			if reasoning.Len() > 0 {
 				out["reasoning_content"] = reasoning.String()
+			}
+			// OpenRouter 风格推理明细：逐条回放（含加密思考，provider 门控），
+			// 保真优于标量 reasoning_content。
+			if details := canonicalReasoningToOpenAIDetails(reasoningParts); len(details) > 0 {
+				out["reasoning_details"] = details
 			}
 			if refusal.Len() > 0 {
 				out["refusal"] = refusal.String()
@@ -1516,12 +1618,9 @@ func canonicalMessagesToClaude(req *CanonicalRequest) ([]map[string]any, error) 
 				content = append(content, block)
 			case CanonicalContentReasoning:
 				text := firstNonEmptyString(part.ReasoningText, part.Text)
-				if text != "" {
-					block := map[string]any{"type": "thinking", "thinking": text}
-					if signature := canonicalSignatureForProvider(part.Signature, part.SignatureProvider, CanonicalSignatureProviderAnthropic); signature != "" {
-						block["signature"] = signature
-					}
-					content = append(content, block)
+				signature := claudeThinkingSignatureForPart(part, req.Model)
+				if text != "" || signature != "" {
+					content = append(content, map[string]any{"type": "thinking", "thinking": text, "signature": signature})
 				}
 			case CanonicalContentImage:
 				if src := imagePartToClaudeSource(part); src != nil {
@@ -1805,10 +1904,44 @@ func canonicalInputToResponses(req *CanonicalRequest) any {
 			items = append(items, map[string]any{"role": responsesInputRole(role), "content": content})
 		}
 		if role == "assistant" {
+			items = append(items, canonicalReasoningToResponsesItems(msg)...)
 			items = append(items, canonicalToolCallsToResponsesItems(msg.ToolCalls)...)
 		}
 	}
 	return items
+}
+
+// canonicalReasoningToResponsesItems 把 assistant 消息里的推理 parts 汇成
+// Responses reasoning item。加密思考按签发方门控回放：仅 openai 签发的密文
+// 发还给 openai 系上游（其余厂商密文丢弃、保留摘要文本）；v1 信封无签发方
+// 信息时保守回放。
+func canonicalReasoningToResponsesItems(msg CanonicalMessage) []map[string]any {
+	var summary []map[string]any
+	encrypted := ""
+	encryptedProvider := ""
+	for _, part := range msg.Content {
+		if part.Type != CanonicalContentReasoning {
+			continue
+		}
+		if text := firstNonEmptyString(part.ReasoningText, part.Text); text != "" {
+			summary = append(summary, map[string]any{"type": "summary_text", "text": text})
+		}
+		if part.EncryptedContent != "" && encrypted == "" {
+			encrypted = part.EncryptedContent
+			encryptedProvider = strings.TrimSpace(part.EncryptedProvider)
+		}
+	}
+	if encrypted != "" && encryptedProvider != "" && !strings.EqualFold(encryptedProvider, CanonicalSignatureProviderOpenAI) {
+		encrypted = ""
+	}
+	if len(summary) == 0 && encrypted == "" {
+		return nil
+	}
+	item := map[string]any{"type": "reasoning", "summary": summary}
+	if encrypted != "" {
+		item["encrypted_content"] = encrypted
+	}
+	return []map[string]any{item}
 }
 
 func rawResponsesInputItem(rawExtra map[string]json.RawMessage) map[string]any {
@@ -1864,15 +1997,10 @@ func canonicalContentToResponsesInputContent(role string, parts []CanonicalConte
 				out = append(out, map[string]any{"type": responsesTextPartTypeForRole(role), "text": part.Text})
 			}
 		case CanonicalContentReasoning:
-			if role == "assistant" {
-				text := part.ReasoningText
-				if text == "" {
-					text = part.Text
-				}
-				if text != "" {
-					out = append(out, map[string]any{"type": "output_text", "text": text})
-				}
-			}
+			// 推理不作为消息内容降级输出：assistant 的思考由
+			// canonicalReasoningToResponsesItems 汇成独立 reasoning item
+			// （含加密思考回放），避免与正文混杂。
+			continue
 		case CanonicalContentImage:
 			if role == "user" {
 				if url := imagePartToOpenAIURL(part); url != "" {
@@ -2205,28 +2333,108 @@ func mapValue(v any) map[string]any {
 	return m
 }
 
+// effortFromBudget 把固定思考预算量化为 effort 档位（对齐 Claude 官方
+// budget 档：1024/4096/16384，超过 high 归 xhigh）。
 func effortFromBudget(budget int) string {
 	if budget <= 0 {
 		return ""
 	}
-	if budget <= EffortBudgetLowCeil {
+	if budget <= 1024 {
 		return "low"
 	}
-	if budget >= EffortBudgetHighFloor {
+	if budget <= 4096 {
+		return "medium"
+	}
+	if budget <= 16384 {
 		return "high"
 	}
-	return "medium"
+	return "xhigh"
 }
 
+// budgetFromEffort 把 effort 档位量化回固定预算（low/medium/high/xhigh →
+// Claude 官方档位预算；xhigh 与 max 共享 32000 上限）。
 func budgetFromEffort(effort string) int {
-	switch effort {
-	case "low":
-		return 1280
+	switch strings.ToLower(strings.TrimSpace(effort)) {
+	case "low", "minimal", "min":
+		return 1024
+	case "medium":
+		return 4096
 	case "high":
-		return EffortBudgetHighFloor
+		return 16384
+	case "xhigh", "max":
+		return 32000
 	default:
 		return EffortBudgetDefault
 	}
+}
+
+// openAIReasoningDetailsToParts 把 OpenRouter 风格的 reasoning_details 逐条
+// 解析为推理 parts（每条一 part，不合并不去重）；text/summary 走明文，
+// encrypted/data 走密文（签发方记为 openai）。
+func openAIReasoningDetailsToParts(raw any) []CanonicalContentPart {
+	var arr []map[string]any
+	switch typed := raw.(type) {
+	case []map[string]any:
+		arr = typed
+	case []any:
+		arr = make([]map[string]any, 0, len(typed))
+		for _, item := range typed {
+			if m, ok := item.(map[string]any); ok {
+				arr = append(arr, m)
+			}
+		}
+	}
+	parts := make([]CanonicalContentPart, 0, len(arr))
+	for _, detail := range arr {
+		if detail == nil {
+			continue
+		}
+		text := firstNonEmptyString(stringValue(detail["text"]), stringValue(detail["summary"]))
+		encrypted := firstNonEmptyString(stringValue(detail["encrypted_content"]), stringValue(detail["data"]))
+		if text == "" && encrypted == "" {
+			continue
+		}
+		part := CanonicalContentPart{Type: CanonicalContentReasoning, Raw: detail, Thought: true}
+		if text != "" {
+			part.Text = text
+			part.ReasoningText = text
+		}
+		if encrypted != "" {
+			part.EncryptedContent = encrypted
+			part.EncryptedProvider = CanonicalSignatureProviderOpenAI
+		}
+		parts = append(parts, part)
+	}
+	return parts
+}
+
+// canonicalReasoningToOpenAIDetails 把推理 parts 重建为 reasoning_details
+// 数组（原始条目字段优先，text 用最新值；密文仅回放 openai 签发或来源不明
+// 的——其余厂商密文发给 chat 系上游只会被拒）。
+func canonicalReasoningToOpenAIDetails(parts []CanonicalContentPart) []map[string]any {
+	details := make([]map[string]any, 0, len(parts))
+	for _, part := range parts {
+		if part.Type != CanonicalContentReasoning {
+			continue
+		}
+		text := firstNonEmptyString(part.ReasoningText, part.Text)
+		if text != "" {
+			detail := map[string]any{"type": "reasoning.text", "text": text}
+			if raw, ok := part.Raw.(map[string]any); ok && strings.HasPrefix(stringValue(raw["type"]), "reasoning.") {
+				merged := make(map[string]any, len(raw)+1)
+				for k, v := range raw {
+					merged[k] = v
+				}
+				merged["text"] = text
+				detail = merged
+			}
+			details = append(details, detail)
+		}
+		if part.EncryptedContent != "" && (part.EncryptedProvider == "" || strings.EqualFold(part.EncryptedProvider, CanonicalSignatureProviderOpenAI)) {
+			details = append(details, map[string]any{"type": "reasoning.encrypted", "data": part.EncryptedContent})
+		}
+	}
+	return details
 }
 
 func max(a, b int) int {
@@ -2271,6 +2479,13 @@ func OpenAIChatResponseToCanonical(resp *OpenAIResponse) (*CanonicalResponse, er
 			out.Output = append(out.Output, CanonicalOutputItem{
 				ID: newCanonicalResponseID("rs"), Type: CanonicalOutputReasoning, Status: "completed",
 				Content: []CanonicalContentPart{{Type: CanonicalContentReasoning, Text: choice.Message.ReasoningContent, ReasoningText: choice.Message.ReasoningContent}},
+			})
+		}
+		// OpenRouter 风格推理明细：每条一 item（不合并不去重），密文带签发方。
+		for _, part := range openAIReasoningDetailsToParts(choice.Message.ReasoningDetails) {
+			out.Output = append(out.Output, CanonicalOutputItem{
+				ID: newCanonicalResponseID("rs"), Type: CanonicalOutputReasoning, Status: "completed",
+				Content: []CanonicalContentPart{part},
 			})
 		}
 		if choice.Message.Refusal != "" {
@@ -2340,6 +2555,8 @@ func ClaudeResponseToCanonical(resp *ClaudeResponse) (*CanonicalResponse, error)
 				part.Signature = ""
 				part.SignatureProvider = CanonicalSignatureProviderMaheshvara
 				part.EncryptedContent = envelope.EncryptedContent
+				part.EncryptedProvider = envelope.Provider
+				part.EncryptedModel = envelope.Model
 				part.ReasoningSummary = envelope.Summary
 				if part.Text == "" {
 					part.Text = envelope.Text
@@ -2357,7 +2574,7 @@ func ClaudeResponseToCanonical(resp *ClaudeResponse) (*CanonicalResponse, error)
 			if envelope, ok := decodeMaheshvaraReasoningEnvelope(block.Data); ok {
 				out.Output = append(out.Output, CanonicalOutputItem{
 					ID: newCanonicalResponseID("rs"), Type: CanonicalOutputReasoning, Status: "completed",
-					Content: []CanonicalContentPart{{Type: CanonicalContentReasoning, Text: envelope.Text, ReasoningText: envelope.Text, SignatureProvider: CanonicalSignatureProviderMaheshvara, EncryptedContent: envelope.EncryptedContent, ReasoningSummary: envelope.Summary}},
+					Content: []CanonicalContentPart{{Type: CanonicalContentReasoning, Text: envelope.Text, ReasoningText: envelope.Text, SignatureProvider: CanonicalSignatureProviderMaheshvara, EncryptedContent: envelope.EncryptedContent, EncryptedProvider: envelope.Provider, EncryptedModel: envelope.Model, ReasoningSummary: envelope.Summary}},
 				})
 			}
 		case "tool_use":
@@ -2513,7 +2730,7 @@ func ResponsesResponseToCanonical(resp *OpenAIResponsesResponse) (*CanonicalResp
 				EncryptedContent: item.EncryptedContent,
 			}
 			if summaryText.Len() > 0 || item.EncryptedContent != "" {
-				citem.Content = append(citem.Content, CanonicalContentPart{Type: CanonicalContentReasoning, Text: summaryText.String(), ReasoningText: summaryText.String(), EncryptedContent: item.EncryptedContent, ReasoningSummary: citem.Summary})
+				citem.Content = append(citem.Content, CanonicalContentPart{Type: CanonicalContentReasoning, Text: summaryText.String(), ReasoningText: summaryText.String(), EncryptedContent: item.EncryptedContent, EncryptedProvider: CanonicalSignatureProviderOpenAI, EncryptedModel: resp.Model, ReasoningSummary: citem.Summary})
 			}
 		}
 		out.Output = append(out.Output, citem)
@@ -2631,8 +2848,8 @@ func CanonicalToClaudeResponse(resp *CanonicalResponse) (*ClaudeResponse, error)
 					}
 				case CanonicalContentReasoning:
 					text := firstNonEmptyString(part.ReasoningText, part.Text)
-					if text != "" {
-						content = append(content, ClaudeContent{Type: "thinking", Thinking: text, Signature: canonicalSignatureForProvider(part.Signature, part.SignatureProvider, CanonicalSignatureProviderAnthropic)})
+					if signature := claudeThinkingSignatureForPart(part, resp.Model); text != "" || signature != "" {
+						content = append(content, ClaudeContent{Type: "thinking", Thinking: text, Signature: signature})
 					}
 				case CanonicalContentRefusal:
 					if part.Text != "" {
@@ -2664,12 +2881,16 @@ func CanonicalToClaudeResponse(resp *CanonicalResponse) (*ClaudeResponse, error)
 			}
 		case CanonicalOutputReasoning:
 			text := canonicalReasoningText(item)
-			if text != "" {
-				block := ClaudeContent{Type: "thinking", Thinking: text}
-				if len(item.Content) > 0 {
-					block.Signature = canonicalSignatureForProvider(item.Content[0].Signature, item.Content[0].SignatureProvider, CanonicalSignatureProviderAnthropic)
-				}
-				content = append(content, block)
+			sigPart := CanonicalContentPart{}
+			if len(item.Content) > 0 {
+				sigPart = item.Content[0]
+			}
+			if item.Reasoning != nil && sigPart.EncryptedContent == "" {
+				sigPart.EncryptedContent = item.Reasoning.EncryptedContent
+			}
+			signature := claudeThinkingSignatureForPart(sigPart, resp.Model)
+			if text != "" || signature != "" {
+				content = append(content, ClaudeContent{Type: "thinking", Thinking: text, Signature: signature})
 			}
 		case CanonicalOutputFunctionCall:
 			if strings.TrimSpace(item.Name) == "" {

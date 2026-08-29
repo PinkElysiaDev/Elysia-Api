@@ -184,6 +184,11 @@ type CanonicalContentPart struct {
 	Signature         string                      `json:"signature,omitempty"`
 	SignatureProvider string                      `json:"signature_provider,omitempty"`
 	EncryptedContent  string                      `json:"encrypted_content,omitempty"`
+	// EncryptedProvider/EncryptedModel 记录密文的签发方与签发时模型（信封 v2
+	// 随载）：跨协议走私密文时按 provider 门控——只回发给同厂商上游，避免
+	// 不认识密文的上游报错或误读。
+	EncryptedProvider string                      `json:"encrypted_provider,omitempty"`
+	EncryptedModel    string                      `json:"encrypted_model,omitempty"`
 	ReasoningSummary  []CanonicalReasoningSummary `json:"reasoning_summary,omitempty"`
 	CacheControl      any                         `json:"cache_control,omitempty"`
 	Annotations       []map[string]any            `json:"annotations,omitempty"`
@@ -241,10 +246,13 @@ type CanonicalReasoning struct {
 }
 
 type CanonicalThinking struct {
-	Enabled        bool   `json:"enabled"`
-	Effort         string `json:"effort,omitempty"`
-	BudgetTokens   int    `json:"budget_tokens,omitempty"`
-	IncludeSummary bool   `json:"include_summary,omitempty"`
+	Enabled bool   `json:"enabled"`
+	Effort  string `json:"effort,omitempty"`
+	// BudgetTokens 是 Claude/Gemini 的固定思考预算；Adaptive 表示 Claude 4.5+
+	// 的自适应思考（模型自行决定思考量，无固定预算，effort 走 output_config）。
+	BudgetTokens   int  `json:"budget_tokens,omitempty"`
+	Adaptive       bool `json:"adaptive,omitempty"`
+	IncludeSummary bool `json:"include_summary,omitempty"`
 }
 
 type CanonicalAudioConfig struct {
