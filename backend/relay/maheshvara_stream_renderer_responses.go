@@ -25,7 +25,6 @@ type maheshvaraResponsesMessageState struct {
 type maheshvaraResponsesReasoningState struct {
 	id          string
 	outputIndex int
-	started     bool
 	text        strings.Builder
 	signature   strings.Builder
 	encrypted   string
@@ -237,15 +236,12 @@ func (renderer *MaheshvaraStreamRenderer) ensureResponsesReasoning(choiceIndex i
 	state = &maheshvaraResponsesReasoningState{id: newCanonicalResponseID("rs"), outputIndex: renderer.responses.nextOutput}
 	renderer.responses.nextOutput++
 	renderer.responses.reasoning[choiceIndex] = state
-	if !state.started {
-		state.started = true
-		item := map[string]any{"id": state.id, "type": CanonicalOutputReasoning, "status": "in_progress", "summary": []any{}}
+	item := map[string]any{"id": state.id, "type": CanonicalOutputReasoning, "status": "in_progress", "summary": []any{}}
 		if err := renderer.writeResponsesEvent(CanonicalEventOutputItemAdded, map[string]any{"type": CanonicalEventOutputItemAdded, "output_index": state.outputIndex, "item": item}); err != nil {
 			return nil, err
 		}
 		if err := renderer.writeResponsesEvent("response.reasoning_summary_part.added", map[string]any{"type": "response.reasoning_summary_part.added", "item_id": state.id, "output_index": state.outputIndex, "summary_index": 0, "part": map[string]any{"type": "summary_text", "text": ""}}); err != nil {
 			return nil, err
-		}
 	}
 	return state, nil
 }
@@ -266,7 +262,7 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesReasoningSignature(choic
 
 func (renderer *MaheshvaraStreamRenderer) finishResponsesReasoning(choiceIndex int, text string) error {
 	state := renderer.responses.reasoning[choiceIndex]
-	if state == nil || !state.started || state.done {
+	if state == nil || state.done {
 		return nil
 	}
 	if text != "" && state.text.Len() == 0 {
@@ -496,7 +492,7 @@ func (renderer *MaheshvaraStreamRenderer) completeResponses() error {
 		}})
 	}
 	for choiceIndex, reasoning := range state.reasoning {
-		if reasoning == nil || !reasoning.started {
+		if reasoning == nil {
 			continue
 		}
 		pending = append(pending, deferredDone{index: reasoning.outputIndex, run: func() error {

@@ -301,7 +301,7 @@ export function SourcesPage() {
   }
 
   async function toggleModelEnabled(model: Model) {
-    const next = !(model.enabled !== false)
+    const next = !model.enabled
     try {
       await api.updateModel(model.sourceId ?? '', model.id, { enabled: next })
       await revalidate.models()
@@ -743,7 +743,7 @@ function ModelChip({
   onEdit: () => void
   onToggleEnabled: () => void
 }) {
-  const dimmed = model.enabled === false || !model.available
+  const dimmed = !model.enabled || !model.available
   const isEnabled = model.enabled !== false
   return (
     <span
@@ -772,7 +772,7 @@ function ModelChip({
         {model.name || model.id}
       </button>
       <span className="rounded border border-border px-1 text-2xs uppercase tracking-[0.08em] text-muted-foreground">
-        {(model.type || 'llm').slice(0, 3)}
+        {model.type.slice(0, 3)}
       </span>
       {model.visionCapable && <Eye className="h-3 w-3 text-muted-foreground" aria-label="视觉" />}
       {model.toolsCapable && <Wrench className="h-3 w-3 text-muted-foreground" aria-label="工具" />}

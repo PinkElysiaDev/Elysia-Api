@@ -7,10 +7,7 @@ import (
 )
 
 func applyOpenAIRequestExtensions(raw map[string]any, req *CanonicalRequest) {
-	if req == nil {
-		return
-	}
-	if value, ok := numberValue(raw["n"]); ok {
+		if value, ok := numberValue(raw["n"]); ok {
 		v := int(value)
 		req.N = &v
 	}
@@ -50,10 +47,7 @@ func applyOpenAIRequestExtensions(raw map[string]any, req *CanonicalRequest) {
 }
 
 func applyClaudeRequestExtensions(raw map[string]any, req *CanonicalRequest) {
-	if req == nil {
-		return
-	}
-	if value, ok := numberValue(raw["top_k"]); ok {
+		if value, ok := numberValue(raw["top_k"]); ok {
 		v := int(value)
 		req.TopK = &v
 	}
@@ -75,12 +69,7 @@ func applyClaudeRequestExtensions(raw map[string]any, req *CanonicalRequest) {
 	if raw["cache_control"] != nil {
 		req.CacheControl = raw["cache_control"]
 	}
-	if raw["output_config"] != nil {
-		req.RawExtra = rawFields(raw)
-	}
-	if req.RawExtra == nil {
-		req.RawExtra = rawFields(raw)
-	}
+	req.RawExtra = rawFields(raw)
 	// Claude system 数组块的块级 cache_control（"缓存到这里"标记）在拼纯文本
 	// 时会丢：保留原始块数组，Claude 目标渲染时原样回放。
 	if blocks, ok := raw["system"].([]any); ok && len(blocks) > 0 {
@@ -91,10 +80,7 @@ func applyClaudeRequestExtensions(raw map[string]any, req *CanonicalRequest) {
 }
 
 func applyGeminiRequestExtensions(raw map[string]any, req *CanonicalRequest) error {
-	if req == nil {
-		return nil
-	}
-	req.Stream = boolValue(raw["stream"])
+		req.Stream = boolValue(raw["stream"])
 	if raw["safetySettings"] != nil {
 		req.SafetySettings = safetySettingsFromAny(raw["safetySettings"])
 	}
@@ -130,10 +116,7 @@ func applyGeminiRequestExtensions(raw map[string]any, req *CanonicalRequest) err
 }
 
 func applyResponsesRequestExtensions(raw map[string]any, req *CanonicalRequest) {
-	if req == nil {
-		return
-	}
-	if value, ok := numberValue(raw["seed"]); ok {
+		if value, ok := numberValue(raw["seed"]); ok {
 		v := int64(value)
 		req.Seed = &v
 	}
@@ -166,10 +149,7 @@ func applyResponsesRequestExtensions(raw map[string]any, req *CanonicalRequest) 
 }
 
 func applyOpenAIRequestExtensionsToBody(out map[string]any, req *CanonicalRequest) {
-	if req == nil {
-		return
-	}
-	if req.N != nil {
+		if req.N != nil {
 		out["n"] = *req.N
 	}
 	if req.Seed != nil {
@@ -227,10 +207,7 @@ func applyOpenAIRequestExtensionsToBody(out map[string]any, req *CanonicalReques
 }
 
 func applyClaudeRequestExtensionsToBody(out map[string]any, req *CanonicalRequest) {
-	if req == nil {
-		return
-	}
-	if req.TopK != nil {
+		if req.TopK != nil {
 		out["top_k"] = *req.TopK
 	}
 	if req.Metadata != nil {
@@ -256,10 +233,7 @@ func applyClaudeRequestExtensionsToBody(out map[string]any, req *CanonicalReques
 }
 
 func applyGeminiRequestExtensionsToBody(out map[string]any, req *CanonicalRequest) {
-	if req == nil {
-		return
-	}
-	if len(req.SafetySettings) > 0 {
+		if len(req.SafetySettings) > 0 {
 		settings := make([]map[string]any, 0, len(req.SafetySettings))
 		for _, setting := range req.SafetySettings {
 			item := map[string]any{}
@@ -327,10 +301,7 @@ func canonicalStopSequences(value any) []string {
 }
 
 func applyResponsesRequestExtensionsToBody(out map[string]any, req *CanonicalRequest) {
-	if req == nil {
-		return
-	}
-	if req.Seed != nil {
+		if req.Seed != nil {
 		out["seed"] = *req.Seed
 	}
 	if req.ServiceTier != "" {

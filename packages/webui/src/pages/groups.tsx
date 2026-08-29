@@ -165,7 +165,7 @@ export function GroupsPage() {
                 <TableBody className="divide-y divide-border/30">
                   {filtered.map((group) => {
                     const isOpen = !!expanded[group.id]
-                    const members = group.models ?? []
+                    const members = group.models
                     return (
                       <Fragment key={group.id}>
                         <TableRow className="transition-colors hover:bg-secondary/30">

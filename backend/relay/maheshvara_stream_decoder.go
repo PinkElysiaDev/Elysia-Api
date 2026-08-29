@@ -144,11 +144,8 @@ func normalizeMaheshvaraStreamFormat(format FormatType) FormatType {
 	switch format {
 	case FormatClaude, FormatGemini, FormatResponses:
 		return format
-	case FormatOpenAI, FormatOpenAIChat, FormatDeepSeek:
-		return FormatOpenAIChat
-	default:
-		return FormatOpenAIChat
 	}
+	return FormatOpenAIChat
 }
 
 func decodeSSEEventJSON(data string) (map[string]any, error) {

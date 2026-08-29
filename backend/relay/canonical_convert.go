@@ -25,8 +25,10 @@ func ConvertRequestToCanonical(body []byte, format FormatType, urlModel string) 
 	if err != nil {
 		return nil, original, err
 	}
+	// 直接调用方（含测试）依赖此处补齐；经 ConvertRequestToCanonical 进入时幂等。
 	completeCanonicalToolCallIDs(req)
 	return req, original, nil
+
 }
 
 func CanonicalToTargetRequest(req *CanonicalRequest, format FormatType, originalResponses *OpenAIResponsesRequest) ([]byte, error) {

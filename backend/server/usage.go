@@ -225,25 +225,14 @@ func extractProviderUsageFromPayload(platform relay.Platform, format relay.Forma
 			return usageResultFromClaudeUsage(raw, source)
 		}
 	}
-	switch platform {
-	case relay.PlatformAnthropic:
+	// Claude 的顶层 usage 键是上面前置探测未覆盖的最后一处；message/message_delta/
+	// usageMetadata 已在前置探测处理，平台分支不再重复。
+	if platform == relay.PlatformAnthropic {
 		if raw, ok := payload["usage"].(map[string]interface{}); ok {
 			return usageResultFromClaudeUsage(raw, source)
 		}
-		if raw, ok := payload["message"].(map[string]interface{}); ok {
-			if usageRaw, ok := raw["usage"].(map[string]interface{}); ok {
-				return usageResultFromClaudeUsage(usageRaw, source)
-			}
-		}
-		if usageRaw, ok := payload["message_delta"].(map[string]interface{}); ok {
-			if raw, ok := usageRaw["usage"].(map[string]interface{}); ok {
-				return usageResultFromClaudeUsage(raw, source)
-			}
-		}
-	case relay.PlatformGemini:
-		if raw, ok := payload["usageMetadata"].(map[string]interface{}); ok {
-			return usageResultFromGeminiUsageMetadata(raw, source)
-		}
+	}
+	switch platform {
 	default:
 		if format == relay.FormatResponses {
 			if result := usageResultFromResponsesPayload(payload, source, true); result.HasUsage {
@@ -325,17 +314,14 @@ func usageResultFromOpenAIUsage(raw map[string]interface{}, source string) provi
 	if usage.CacheHitTokens != nil {
 		detail.CachedInputTokens = intPtr(getInt(usage.CacheHitTokens))
 	}
-	if details, ok := raw["completion_tokens_details"].(map[string]interface{}); ok {
-		setDetailInt(&detail.ReasoningTokens, details, "reasoning_tokens")
-		setDetailInt(&detail.TextOutputTokens, details, "text_tokens")
-		setDetailInt(&detail.AudioOutputTokens, details, "audio_tokens")
-		setDetailInt(&detail.ImageOutputTokens, details, "image_tokens")
-	}
-	if details, ok := raw["output_tokens_details"].(map[string]interface{}); ok {
-		setDetailInt(&detail.ReasoningTokens, details, "reasoning_tokens")
-		setDetailInt(&detail.TextOutputTokens, details, "text_tokens")
-		setDetailInt(&detail.AudioOutputTokens, details, "audio_tokens")
-		setDetailInt(&detail.ImageOutputTokens, details, "image_tokens")
+	// completion/output 两个键是同一明细的两种命名（Responses 与 chat 兼容上游各用其一）。
+	for _, key := range []string{"completion_tokens_details", "output_tokens_details"} {
+		if details, ok := raw[key].(map[string]interface{}); ok {
+			setDetailInt(&detail.ReasoningTokens, details, "reasoning_tokens")
+			setDetailInt(&detail.TextOutputTokens, details, "text_tokens")
+			setDetailInt(&detail.AudioOutputTokens, details, "audio_tokens")
+			setDetailInt(&detail.ImageOutputTokens, details, "image_tokens")
+		}
 	}
 	for _, key := range []string{"prompt_tokens_details", "input_tokens_details"} {
 		if details, ok := raw[key].(map[string]interface{}); ok {

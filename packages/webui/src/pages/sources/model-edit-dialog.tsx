@@ -54,9 +54,9 @@ export function ModelEditDialog({
     if (open && model) {
       setForm({
         name: model.name || model.id,
-        type: model.type ?? 'llm',
-        maxTokens: model.maxTokens ?? 0,
-        visionCapable: !!model.visionCapable,
+        type: model.type,
+        maxTokens: model.maxTokens,
+        visionCapable: model.visionCapable,
         toolsCapable: !!model.toolsCapable,
         structuredOutput: !!model.structuredOutput,
         thinkingMode: model.thinkingMode ?? 'both',

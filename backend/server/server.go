@@ -485,12 +485,9 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	// 若请求体没有 model 字段，从路径参数提取
 	if canonicalReq.Model == "" {
 		if action := c.Param("action"); action != "" {
-			// action 形如 /gemini-2.0-flash:generateContent
-			modelPart := geminiModelFromAction(action)
-			if idx := strings.LastIndex(modelPart, ":"); idx != -1 {
-				modelPart = modelPart[:idx]
-			}
-			canonicalReq.Model = modelPart
+			// action 形如 /gemini-2.0-flash:generateContent（geminiModelFromAction
+			// 内部已剥离 :action 后缀，无需二次处理）。
+			canonicalReq.Model = geminiModelFromAction(action)
 		}
 	}
 	if canonicalJSON, err := json.Marshal(canonicalReq); err == nil {
