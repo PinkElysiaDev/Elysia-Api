@@ -168,7 +168,8 @@ export function GroupsPage() {
                     const members = group.models ?? []
                     return (
                       <Fragment key={group.id}>
-                        <TableRow className="transition-colors hover:bg-secondary/30">
+                        {/* border-b-0：行间分隔线只由 divide-y 的 /30 淡线承担 */}
+                        <TableRow className="border-b-0 transition-colors hover:bg-secondary/30">
                           <TableCell className="w-[38px] px-0 text-center">
                             <button
                               type="button"
@@ -176,7 +177,7 @@ export function GroupsPage() {
                               className="rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground hover:bg-secondary"
                               aria-label={isOpen ? '收起' : '展开'}
                             >
-                              <ChevronRight className={cn('h-4 w-4 transition-transform duration-200', isOpen && 'rotate-90 text-primary')} />
+                              <ChevronRight className={cn('h-4 w-4 transition-transform duration-300 ease-smooth', isOpen && 'rotate-90 text-primary')} />
                             </button>
                           </TableCell>
                           <TableCell className="py-3.5 font-medium text-foreground">

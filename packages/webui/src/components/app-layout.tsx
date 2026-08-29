@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 import { Sidebar } from './sidebar'
@@ -82,10 +82,19 @@ export function AppLayout() {
       />
 
       <div className="flex min-w-0 flex-col">
-        {/* 所有后台页共用主栏：吃满可用宽度，软顶 1600px，超出居中。 */}
-        <main className="w-full flex-1 space-y-6 px-10 pb-[72px] pt-[30px] max-rail:px-[22px] max-rail:pt-16">
-          <div key={location.pathname} className="relative mx-auto w-full max-w-[1600px] animate-rise">
-            <Outlet />
+        {/* 后台页主栏吃满侧栏右侧；填写区由各页自己限制输入宽度。 */}
+        <main className="w-full flex-1 space-y-6 px-6 pb-[72px] pt-[30px] max-rail:px-[22px] max-rail:pt-16">
+          <div key={location.pathname} className="relative w-full animate-rise">
+            {/* Suspense 放在 Outlet 内层：页面 chunk 加载时只替换主栏，侧栏不闪烁。 */}
+            <Suspense
+              fallback={
+                <div className="flex min-h-[70vh] items-center justify-center" aria-busy="true">
+                  <span className="skeleton h-9 w-9 rounded-full" />
+                </div>
+              }
+            >
+              <Outlet />
+            </Suspense>
           </div>
         </main>
       </div>

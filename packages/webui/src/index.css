@@ -25,7 +25,7 @@
   --secondary-foreground: 228 12% 38%;  /* #595E6B 次级文本 */
 
   --muted: 230 10% 95%;
-  --muted-foreground: 226 10% 42%;      /* #606877 次级文字，浅底对比度 ≥4.5:1 (WCAG AA) */
+  --muted-foreground: 226 12% 34%;      /* #4C5363 次级文字，大屏必须可读 */
 
   --accent: 336 85% 96%;                /* #FDF0F4 瑰梅洗色底 */
   --accent-foreground: 336 80% 38%;
@@ -89,7 +89,7 @@
   --secondary-foreground: 230 12% 72%;  /* #B2B5C4 */
 
   --muted: 240 10% 13%;
-  --muted-foreground: 230 8% 55%;       /* #85899A */
+  --muted-foreground: 230 10% 72%;      /* #B0B4C2 次级文字，暗底必须可读 */
 
   --accent: 336 40% 15%;
   --accent-foreground: 336 90% 75%;
@@ -135,6 +135,13 @@
 
 * {
   border-color: hsl(var(--border));
+}
+
+html {
+  font-size: 16px;
+  /* 立绘水印右缘出血会撑出 8px 横向滚动：clip 必须设在根元素上——
+   * Chrome 不把 body 的 overflow 传播到视口。clip 不产生滚动容器，sticky 侧栏不受影响 */
+  overflow-x: clip;
 }
 
 html,
@@ -257,7 +264,7 @@ body::before {
   /* 表格数字与副行 */
   .num {
     font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
-    font-size: 12px;
+    font-size: 0.8125rem;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
@@ -265,7 +272,7 @@ body::before {
     display: block;
     margin-top: 1px;
     font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
-    font-size: 11px;
+    font-size: 0.75rem;
     color: hsl(var(--muted-foreground));
   }
 

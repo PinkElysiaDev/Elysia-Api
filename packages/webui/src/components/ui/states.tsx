@@ -72,8 +72,7 @@ export function LoadingState({ rows, columns }: { rows?: number; columns?: numbe
 
 /**
  * 统一的列表三态封装：loading / error / empty / content。
- * 三态都包在与内容态（表格卡片）同规格的卡壳内——加载→就绪不再「长出」
- * 边框阴影导致布局跳变（五张列表页共用）。
+ * 不包卡片壳——三态都以居中信息直接呈现，与无卡片的内容态表格一致。
  */
 export function AsyncState<T>({
   isLoading,
@@ -100,24 +99,16 @@ export function AsyncState<T>({
   loadingColumns?: number
   children: (data: T[]) => ReactNode
 }) {
-  const shell = 'rounded-xl border border-border/70 bg-card shadow-soft'
-  if (isLoading && !data)
-    return (
-      <div className={cn(shell, 'overflow-hidden p-4')}>
-        <LoadingState rows={loadingRows} columns={loadingColumns} />
-      </div>
-    )
-  if (error)
-    return (
-      <div className={shell}>
-        <ErrorState message={(error as Error)?.message} onRetry={onRetry} />
-      </div>
-    )
+  if (isLoading && !data) return <LoadingState rows={loadingRows} columns={loadingColumns} />
+  if (error) return <ErrorState message={(error as Error)?.message} onRetry={onRetry} />
   if (!data || data.length === 0)
     return (
-      <div className={shell}>
-        <EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} icon={emptyIcon} />
-      </div>
+      <EmptyState
+        title={emptyTitle}
+        description={emptyDescription}
+        action={emptyAction}
+        icon={emptyIcon}
+      />
     )
   return <>{children(data)}</>
 }
