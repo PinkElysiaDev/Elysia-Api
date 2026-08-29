@@ -63,6 +63,7 @@ func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
 	admin.GET("/usage/by-model-daily", s.usageCache.middleware(), s.adminUsageByModelDaily)
 	admin.GET("/usage/logs", s.usageCache.middleware(), s.adminUsageLogs)
 	admin.GET("/usage/logs/:id", s.adminUsageLogDetail)
+	admin.GET("/usage/seq", s.adminUsageSeq)
 	admin.POST("/usage/reset", s.adminUsageReset)
 	admin.GET("/logs", s.adminSystemLogs)
 	admin.GET("/health", s.adminHealth)
@@ -842,6 +843,10 @@ func (s *Server) adminUsageLogDetail(c *gin.Context) {
 		return
 	}
 	ok(c, value)
+}
+
+func (s *Server) adminUsageSeq(c *gin.Context) {
+	ok(c, gin.H{"seq": s.usageSeq.Load()})
 }
 
 func (s *Server) adminUsageReset(c *gin.Context) { s.resetUsage(c) }

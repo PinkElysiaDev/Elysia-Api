@@ -81,7 +81,7 @@ export function UsageStatsPage() {
   )
 
   const params = useMemo(() => {
-    // 时间参数按 5 分钟桶量化：缓存键在桶内稳定，切走再切回直接命中缓存秒开
+    // to 取下一 5 分钟边界：缓存键稳定，且当前桶内新记录能进半开区间
     const to = bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)
     return {
       from: startOfRange(range, to),

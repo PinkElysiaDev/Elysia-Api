@@ -91,7 +91,11 @@ func (s *Server) persistUsageRecord(record *usageRecord) {
 	s.usagePersistMu.Unlock()
 	if err != nil {
 		log.Printf("failed to save usage record to sqlite: %v", err)
+		return
 	}
+	// 只读缓存按 TTL 活着，不随写入失效的话，KPI/日志会再吃一整轮旧响应。
+	s.usageCache.flush()
+	s.usageSeq.Add(1)
 }
 
 // enqueueUsageRecord 尝试把记录投递到异步队列。队列已满或已关停时返回

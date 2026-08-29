@@ -12,9 +12,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// usage 只读端点的短 TTL 响应缓存。usage 数据只追加、前端请求参数本就按
-// 5 分钟桶化，15s TTL 足以把切窗三连发（stats/trend/by-model）与 overview
-// 重叠窗口的并发请求合并成单次 SQL，同时不引入可感知的滞后。
+// usage 只读端点的短 TTL 响应缓存。切窗三连发与 overview 重叠窗口的并发
+// GET 合并成一次 SQL；写入成功后 flush，避免新调用仍命中旧响应。
 const (
 	usageCacheTTL        = 15 * time.Second
 	usageCacheMaxEntries = 256

@@ -147,10 +147,11 @@ export function startOfRange(range: '24h' | '7d' | '30d' | 'all', nowIso?: strin
   return new Date(reference - map[range]).toISOString()
 }
 
-/** 把参考时刻向下取整到 bucketMs 边界再序列化：作为 usage 查询的 to 参数时，
- *  缓存键在桶内保持稳定，空闲自动刷新从每分钟一次降为每桶一次。 */
+/** 把参考时刻向上取整到下一个 bucketMs 边界再序列化。
+ *  usage 查询是半开区间 [from, to)：to 必须在「现在」之后，当前桶内的新记录才会被包含。
+ *  用下一边界而不是上一边界，缓存键在桶内仍稳定，又不会把刚发生的调用排除在外。 */
 export function bucketedTimeISO(atMs: number, bucketMs: number): string {
-  return new Date(Math.floor(atMs / bucketMs) * bucketMs).toISOString()
+  return new Date(Math.floor(atMs / bucketMs) * bucketMs + bucketMs).toISOString()
 }
 
 /** 把任意数据序列化为 JSON 文件并触发浏览器下载。 */

@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 import { Sidebar } from './sidebar'
 import { cn } from '@/lib/utils'
+import { useUsageLive } from '@/lib/hooks'
 
 /**
  * 外壳：≥761px 时 228px 侧栏常驻、无顶栏；
@@ -13,6 +14,7 @@ export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
   const asideRef = useRef<HTMLElement>(null)
+  useUsageLive()
 
   useEffect(() => {
     setMobileOpen(false)

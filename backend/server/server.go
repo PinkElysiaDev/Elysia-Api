@@ -67,6 +67,7 @@ type Server struct {
 	usageWriter *usageWriterState
 	// usageWriteGen 在 reset 时递增，丢掉队列里尚未落库的旧记录。
 	usageWriteGen  atomic.Uint64
+	usageSeq       atomic.Uint64
 	usagePersistMu sync.Mutex
 	shutdownOnce   sync.Once
 

@@ -245,6 +245,7 @@ export const api = {
     }),
   usageLogs: (params: UsageQueryParams) => request<UsageLogsResult>('/usage/logs', { query: serializeUsage(params) }),
   usageLogDetail: (id: string) => request<UsageLogDetail>(`/usage/logs/${encodeURIComponent(id)}`),
+  usageSeq: () => request<{ seq: number }>('/usage/seq'),
   usageReset: () => request<unknown>('/usage/reset', { method: 'POST' }),
 
   systemLogs: (params: { limit?: number; offset?: number; level?: string }) =>

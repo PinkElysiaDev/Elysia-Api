@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -870,6 +869,7 @@ func (s *Server) resetUsage(c *gin.Context) {
 		s.usagePersistMu.Unlock()
 		// 两个分支都要清缓存：无 store 分支此前漏清，15s 内会回放重置前的旧响应。
 		s.usageCache.flush()
+		s.usageSeq.Add(1)
 		c.JSON(http.StatusOK, gin.H{"reset": true})
 		return
 	}
@@ -878,6 +878,7 @@ func (s *Server) resetUsage(c *gin.Context) {
 		return
 	}
 	s.usageCache.flush()
+	s.usageSeq.Add(1)
 	c.JSON(http.StatusOK, gin.H{"reset": true})
 }
 

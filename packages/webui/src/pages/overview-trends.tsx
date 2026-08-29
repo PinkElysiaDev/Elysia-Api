@@ -175,8 +175,7 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
     mutate: retryTrend,
   } = useUsageTrend(trendParams)
 
-  // 2. Breakdown 模型日调用数据源（to 按 5 分钟桶量化保持缓存键稳定，
-  // 新鲜度由 usageConfig 的 60s 轮询保证）
+  // 2. Breakdown 模型日调用（to 取下一 5 分钟边界，包含当前桶内新记录）
   const breakdownParams = useMemo(() => {
     const days = range === '7d' ? 7 : 30
     const toMs = new Date(bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)).getTime()

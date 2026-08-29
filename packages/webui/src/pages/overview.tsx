@@ -214,8 +214,7 @@ export function OverviewPage() {
   const minuteTick = useMinuteTick()
   const navigate = useNavigate()
 
-  // 今日 / 昨日窗口（今日的 to 按 5 分钟桶量化保持缓存键稳定：5 分钟内回到
-  // 本页秒开；数据新鲜度由 usageConfig 的 60s 轮询保证，最多旧 1 分钟）
+  // 今日 / 昨日窗口（今日 to 取下一 5 分钟边界：键稳定且包含当前桶内新记录）
   const todayParams = useMemo(() => {
     const to = bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)
     return { from: localMidnight(0, new Date(to)).toISOString(), to }
@@ -270,7 +269,7 @@ export function OverviewPage() {
   const successRate = today ? percent(today.success, today.requests) : '—'
 
   // 热门模型分布：独立时间窗（右上角 Seg 快捷切换 24小时/7天/30天/全部），
-  // to 按 5 分钟桶化保持缓存键稳定（新鲜度见 usageConfig 60s 轮询）
+  // to 取下一 5 分钟边界，缓存键稳定且包含当前桶内新记录
   const [topRange, setTopRange] = useState<RangeKey>('24h')
   const topModelsParams = useMemo(() => {
     const to = bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)
@@ -292,7 +291,7 @@ export function OverviewPage() {
     return top.map((it) => ({ ...it, ratio: it.count / max }))
   }, [byModel])
 
-  // 最近失败（最新 3 条，今日窗口、5 分钟桶化缓存键 + 60s 轮询保新鲜）
+  // 最近失败（最新 3 条，今日窗口；to 取下一 5 分钟边界）
   const failuresParams = useMemo(() => {
     const to = bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)
     return {

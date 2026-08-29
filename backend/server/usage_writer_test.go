@@ -127,6 +127,33 @@ func TestResetDrainDoesNotHangWhenQueueCloses(t *testing.T) {
 	}
 }
 
+func TestUsageSeqIncrementsOnPersistAndReset(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store, err := storage.Open(filepath.Join(t.TempDir(), "usage-seq.sqlite3"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+	s := &Server{store: store}
+	if s.usageSeq.Load() != 0 {
+		t.Fatalf("seq start = %d", s.usageSeq.Load())
+	}
+	s.persistUsageRecord(&usageRecord{
+		RequestID: "one", StartedAt: time.Now(), EndedAt: time.Now(),
+		ModelName: "m", StatusCode: 200,
+	})
+	if s.usageSeq.Load() != 1 {
+		t.Fatalf("seq after persist = %d", s.usageSeq.Load())
+	}
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/reset", nil)
+	s.resetUsage(ctx)
+	if s.usageSeq.Load() != 2 {
+		t.Fatalf("seq after reset = %d", s.usageSeq.Load())
+	}
+}
+
 func TestEnqueueAfterStopDoesNotPanic(t *testing.T) {
 	store, err := storage.Open(filepath.Join(t.TempDir(), "enqueue-stop.sqlite3"))
 	if err != nil {
