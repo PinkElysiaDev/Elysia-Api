@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/elysia-api/backend/config"
@@ -64,6 +65,10 @@ type Server struct {
 	// 由单个 writer goroutine 落库，避免请求在 SQLite 写入（单连接串行）上阻塞。
 	// usageWriter 包含队列与关闭标志（usage_writer.go），关停后入队安全降级。
 	usageWriter *usageWriterState
+	// usageWriteGen 在 reset 时递增，丢掉队列里尚未落库的旧记录。
+	usageWriteGen  atomic.Uint64
+	usagePersistMu sync.Mutex
+	shutdownOnce   sync.Once
 
 	// usage 只读端点的短 TTL 响应缓存 + 并发合并（usage_cache.go）。
 	usageCache usageResponseCache
@@ -118,14 +123,14 @@ func New(cfg *config.Config) *Server {
 	}
 
 	server := &Server{
-		config:          cfg,
-		engine:          engine,
-		openaiAdapter:   relay.NewOpenAIAdapter(httpTimeout),
-		claudeAdapter:   relay.NewClaudeAdapter(httpTimeout),
-		geminiAdapter:   relay.NewGeminiAdapter(httpTimeout),
-		roundRobinIndex: make(map[string]int),
-		rateLimits:      make(map[string]*rateLimitState),
-		affinity:        newAffinityCache(),
+		config:           cfg,
+		engine:           engine,
+		openaiAdapter:    relay.NewOpenAIAdapter(httpTimeout),
+		claudeAdapter:    relay.NewClaudeAdapter(httpTimeout),
+		geminiAdapter:    relay.NewGeminiAdapter(httpTimeout),
+		roundRobinIndex:  make(map[string]int),
+		rateLimits:       make(map[string]*rateLimitState),
+		affinity:         newAffinityCache(),
 		sourceRefreshing: make(map[string]bool),
 		sourceLastFetch:  make(map[string]sourceRefreshState),
 		refreshSem:       make(chan struct{}, sourceRefreshConcurrency),
@@ -1527,20 +1532,22 @@ func (s *Server) ListenAndServe() error {
 // 仅允许本机回环调用。供本地管理工具或用户手动优雅停止进程。
 func (s *Server) shutdown(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"shuttingDown": true})
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if s.httpServer != nil {
-			if err := s.httpServer.Shutdown(ctx); err != nil {
-				log.Printf("graceful shutdown error: %v", err)
-			}
+	go s.shutdownOnce.Do(s.doShutdown)
+}
+
+func (s *Server) doShutdown() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if s.httpServer != nil {
+		if err := s.httpServer.Shutdown(ctx); err != nil {
+			log.Printf("graceful shutdown error: %v", err)
 		}
-		// http.Server.Shutdown 已等待在途请求结束，此时不会再有新记录入队。
-		// 先停健康检查 goroutine，再冲刷 usage 队列把缓冲中的记录落库，
-		// 避免优雅关停时丢失计费/统计记录与 goroutine 泄漏。
-		if s.healthChecker != nil {
-			s.healthChecker.shutdown()
-		}
-		s.stopUsageWriter()
-	}()
+	}
+	// http.Server.Shutdown 已等待在途请求结束，此时不会再有新记录入队。
+	// 先停健康检查 goroutine，再冲刷 usage 队列把缓冲中的记录落库，
+	// 避免优雅关停时丢失计费/统计记录与 goroutine 泄漏。
+	if s.healthChecker != nil {
+		s.healthChecker.shutdown()
+	}
+	s.stopUsageWriter()
 }

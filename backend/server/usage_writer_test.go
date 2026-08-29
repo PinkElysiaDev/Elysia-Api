@@ -1,0 +1,142 @@
+package server
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/elysia-api/backend/storage"
+	"github.com/gin-gonic/gin"
+)
+
+func TestResetUsageDropsQueuedWrites(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store, err := storage.Open(filepath.Join(t.TempDir(), "reset-queue.sqlite3"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+
+	s := &Server{store: store}
+	s.startUsageWriter()
+	defer s.stopUsageWriter()
+
+	started := time.Now().UTC()
+	if err := s.saveUsageRecordToStore(&usageRecord{
+		RequestID: "keep-before", StartedAt: started, EndedAt: started.Add(time.Millisecond),
+		ModelName: "m", StatusCode: 200,
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	queued := &usageRecord{
+		RequestID: "queued-after-reset", StartedAt: started, EndedAt: started.Add(time.Millisecond),
+		ModelName: "m", StatusCode: 200, writeGen: 0,
+	}
+	s.usageWriter.queue <- queued
+
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/reset", nil)
+	s.resetUsage(ctx)
+	if w.Code != http.StatusOK {
+		t.Fatalf("reset status=%d body=%s", w.Code, w.Body.String())
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		totals, err := store.UsageTotals(ctx.Request.Context(), storage.UsageQuery{})
+		if err != nil {
+			t.Fatalf("totals: %v", err)
+		}
+		if totals["requests"].(int) == 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	totals, _ := store.UsageTotals(ctx.Request.Context(), storage.UsageQuery{})
+	t.Fatalf("reset must remain empty after queued write, totals=%#v", totals)
+}
+
+func TestStopUsageWriterIdempotent(t *testing.T) {
+	store, err := storage.Open(filepath.Join(t.TempDir(), "stop-writer.sqlite3"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+	s := &Server{store: store}
+	s.startUsageWriter()
+	s.stopUsageWriter()
+	s.stopUsageWriter()
+	s.stopUsageWriter()
+}
+
+func TestDoShutdownIsIdempotentAndBlocksEnqueue(t *testing.T) {
+	store, err := storage.Open(filepath.Join(t.TempDir(), "shutdown.sqlite3"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	s := &Server{store: store}
+	s.startUsageWriter()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.doShutdown()
+		}()
+	}
+	wg.Wait()
+
+	if s.enqueueUsageRecord(&usageRecord{RequestID: "after"}) {
+		t.Fatal("enqueue after shutdown must fail")
+	}
+}
+
+func TestResetDrainDoesNotHangWhenQueueCloses(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store, err := storage.Open(filepath.Join(t.TempDir(), "reset-drain-close.sqlite3"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+	s := &Server{store: store}
+	s.startUsageWriter()
+
+	for i := 0; i < 64; i++ {
+		s.enqueueUsageRecord(&usageRecord{RequestID: "q", StartedAt: time.Now()})
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		w := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(w)
+		ctx.Request = httptest.NewRequest(http.MethodPost, "/reset", nil)
+		s.resetUsage(ctx)
+	}()
+	s.stopUsageWriter()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("reset drain hung after queue close")
+	}
+}
+
+func TestEnqueueAfterStopDoesNotPanic(t *testing.T) {
+	store, err := storage.Open(filepath.Join(t.TempDir(), "enqueue-stop.sqlite3"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+	s := &Server{store: store}
+	s.startUsageWriter()
+	s.stopUsageWriter()
+	if s.enqueueUsageRecord(&usageRecord{RequestID: "x"}) {
+		t.Fatal("enqueue after stop must return false")
+	}
+}

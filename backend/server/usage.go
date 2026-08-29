@@ -77,6 +77,7 @@ type usageRecord struct {
 	GroupName           string           `json:"groupName"`
 	ModelID             string           `json:"modelId"`
 	ModelName           string           `json:"modelName"`
+	SourceID            string           `json:"sourceId,omitempty"`
 	Platform            string           `json:"platform"`
 	InputFormat         string           `json:"inputFormat"`
 	TargetPlatform      string           `json:"targetPlatform"`
@@ -107,6 +108,8 @@ type usageRecord struct {
 	// downstream 是写回下游客户端的 ResponseWriter 捕获器，运行期内部使用，
 	// 不参与 JSON 序列化。recordUsage 会从它回读 DownstreamResponse。
 	downstream *downstreamCaptureWriter `json:"-"`
+	// writeGen 与 Server.usageWriteGen 对齐；reset 递增后丢弃更早的写入。
+	writeGen uint64 `json:"-"`
 }
 
 type usageSummary struct {
@@ -694,14 +697,13 @@ func (s *Server) recordUsage(record *usageRecord) {
 	}
 
 	if s.store != nil {
+		record.writeGen = s.usageWriteGen.Load()
 		// 优先异步落库，避免请求路径阻塞在 SQLite 写入上；
 		// 队列满或未启动时降级为同步写，保证不丢记录。
 		if s.enqueueUsageRecord(record) {
 			return
 		}
-		if err := s.saveUsageRecordToStore(record); err != nil {
-			log.Printf("failed to save usage record to sqlite: %v", err)
-		}
+		s.persistUsageRecord(record)
 		return
 	}
 
@@ -854,10 +856,18 @@ func (s *Server) usageLogDetail(c *gin.Context) {
 
 func (s *Server) resetUsage(c *gin.Context) {
 	if s.store != nil {
-		if err := s.store.ClearUsage(c.Request.Context()); err != nil {
+		s.usagePersistMu.Lock()
+		prevGen := s.usageWriteGen.Load()
+		s.usageWriteGen.Add(1)
+		err := s.store.ClearUsage(c.Request.Context())
+		if err != nil {
+			s.usageWriteGen.Store(prevGen)
+			s.usagePersistMu.Unlock()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		s.drainUsageQueue()
+		s.usagePersistMu.Unlock()
 		// 两个分支都要清缓存：无 store 分支此前漏清，15s 内会回放重置前的旧响应。
 		s.usageCache.flush()
 		c.JSON(http.StatusOK, gin.H{"reset": true})
@@ -914,6 +924,7 @@ func filterUsageRecords(records []usageRecord, c *gin.Context, from, to time.Tim
 	keyNames := c.QueryArray("keyName")
 	groupNames := c.QueryArray("groupName")
 	modelNames := c.QueryArray("modelName")
+	sourceIDs := c.QueryArray("sourceId")
 	stream := strings.TrimSpace(c.Query("stream"))
 	status := strings.TrimSpace(c.Query("status"))
 	for _, record := range records {
@@ -929,6 +940,9 @@ func filterUsageRecords(records []usageRecord, c *gin.Context, from, to time.Tim
 			continue
 		}
 		if !usageValueMatches(modelNames, record.ModelName) {
+			continue
+		}
+		if !usageValueMatches(sourceIDs, record.SourceID) {
 			continue
 		}
 		if stream != "" && strconv.FormatBool(record.Stream) != strings.ToLower(stream) {
@@ -1690,6 +1704,7 @@ func setRecordModel(record *usageRecord, model config.ModelRef, platform relay.P
 	}
 	record.ModelID = model.ID
 	record.ModelName = model.Name
+	record.SourceID = model.SourceID
 	record.Platform = model.Platform
 	record.TargetPlatform = string(platform)
 }

@@ -519,7 +519,7 @@ func TestSummarizeUsageTracksFirstAndLastUsedAt(t *testing.T) {
 }
 
 // 回归：并发请求可能拿到相同的 UnixNano（Windows 时钟粒度下概率可观），
-// 请求 ID 必须带随机后缀，否则 INSERT OR REPLACE 会静默覆盖彼此的记录。
+// 请求 ID 必须带随机后缀，否则同毫秒并发会撞主键；第二次写入会被忽略。
 func TestUsageRequestIDUniqueForSameNanosecond(t *testing.T) {
 	now := time.Now()
 	if usageRequestID(now) == usageRequestID(now) {

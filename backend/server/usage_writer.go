@@ -32,9 +32,7 @@ func (s *Server) startUsageWriter() {
 	go func() {
 		defer writer.wg.Done()
 		for record := range writer.queue {
-			if err := s.saveUsageRecordToStore(record); err != nil {
-				log.Printf("failed to save usage record to sqlite (async): %v", err)
-			}
+			s.persistUsageRecord(record)
 		}
 	}()
 }
@@ -57,6 +55,43 @@ func (s *Server) stopUsageWriter() {
 	w.mu.Unlock()
 	w.wg.Wait()
 	s.usageWriter = nil
+}
+
+// drainUsageQueue 丢弃队列里尚未落库的记录。调用方须持有 usagePersistMu，
+// 并已递增 usageWriteGen，使并发 writer 拿到的旧 generation 写入也会被跳过。
+func (s *Server) drainUsageQueue() {
+	w := s.usageWriter
+	if w == nil {
+		return
+	}
+	for {
+		select {
+		case _, ok := <-w.queue:
+			if !ok {
+				return
+			}
+		default:
+			return
+		}
+	}
+}
+
+// persistUsageRecord 在 persist 锁下核对 generation 后落库。reset 持同一把锁，
+// 避免清库后旧写入写回。
+func (s *Server) persistUsageRecord(record *usageRecord) {
+	if record == nil || s.store == nil {
+		return
+	}
+	s.usagePersistMu.Lock()
+	if record.writeGen != s.usageWriteGen.Load() {
+		s.usagePersistMu.Unlock()
+		return
+	}
+	err := s.saveUsageRecordToStore(record)
+	s.usagePersistMu.Unlock()
+	if err != nil {
+		log.Printf("failed to save usage record to sqlite: %v", err)
+	}
 }
 
 // enqueueUsageRecord 尝试把记录投递到异步队列。队列已满或已关停时返回
