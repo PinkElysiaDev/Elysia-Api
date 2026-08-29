@@ -1,42 +1,26 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Area,
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  ReferenceDot,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
-import {
-  Activity,
-  ArrowUpRight,
   Boxes,
   CheckCircle2,
-  Clock,
   Coins,
   Cpu,
+  Database,
   Flame,
   MoveUpRight,
-  Radio,
+  RefreshCcw,
+  Server,
   ShieldAlert,
 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { KpiCard, KpiGrid } from '@/components/kpi-card'
 import { ElysiaStage } from '@/components/role-watermark'
-import { Fchip } from '@/components/ui/fchip'
 import { Seg } from '@/components/ui/seg'
 import { ErrorState } from '@/components/ui/states'
-import { CodePill, Dot, PlatformBadge } from '@/components/badges'
-import { ModelBreakdownTooltip } from '@/components/model-breakdown-tooltip'
+import { CodePill, PlatformBadge } from '@/components/badges'
 import {
   useHealth,
   useUsageStats,
-  useUsageTrend,
   useUsageByModel,
   useUsageLogs,
   useSources,
@@ -44,8 +28,10 @@ import {
   useMinuteTick,
 } from '@/lib/hooks'
 import type { ModelSource } from '@/lib/types'
-import { bucketedTimeISO, CHART_TICK, compactNumber, formatDuration, formatHitRate, formatNumber, percent, startOfRange } from '@/lib/utils'
+import { bucketedTimeISO, compactNumber, cn, formatHitRate, formatNumber, percent, startOfRange } from '@/lib/utils'
 import type { RangeKey } from '@/components/usage-filter-bar'
+import { TemporalTrendSection } from './overview-trends'
+import { PulseSection } from './overview-pulse'
 
 /** 本地零点（今日 / 昨日），用于 KPI 的"今日 vs 昨日"窗口。 */
 function localMidnight(offsetDays = 0, reference = new Date()): Date {
@@ -53,20 +39,6 @@ function localMidnight(offsetDays = 0, reference = new Date()): Date {
   d.setHours(0, 0, 0, 0)
   d.setDate(d.getDate() + offsetDays)
   return d
-}
-
-const DAY_MS = 86_400_000
-
-/** 第 dayOffset 天（0=今天）的桶起点时间戳（负值=往过去偏移）。 */
-function offsetDayStart(ts: number, offsetMinutes: number, dayOffset = 0): number {
-  const shifted = ts + offsetMinutes * 60_000
-  return (Math.floor(shifted / DAY_MS) + dayOffset) * DAY_MS - offsetMinutes * 60_000
-}
-
-/** 时间戳在固定 offset 分桶下的 YYYY-MM-DD（与后端 date() 输出同构）。 */
-function offsetDayKey(ts: number, offsetMinutes: number): string {
-  const shifted = new Date(ts + offsetMinutes * 60_000)
-  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`
 }
 
 /** RFC3339 → 本地 HH:mm:ss（日志时间戳统一走本地时区展示）。 */
@@ -84,9 +56,36 @@ function summarizeSourceHealth(enabled: boolean, total: number, available: numbe
 }
 
 /**
- * 源健康滚动列表：源数超过可视行数（5）时自动垂直滚动轮播展示全部源，
- * 鼠标悬停暂停；点击某一行携带 openSource 状态跳转到模型源页，由该页
- * 自动展开并定位到对应源的配置。
+ * 状态胶囊配色：与 CodePill 同一套 color-mix 底色语言（绿=正常 / 红=部分可用 /
+ * 灰=停用），后台拉取进行中时覆盖为玫红「拉取中」。
+ */
+const HEALTH_TONE: Record<'ok' | 'err' | 'off', string> = {
+  ok: 'border-[color-mix(in_srgb,var(--jade)_26%,transparent)] bg-[color-mix(in_srgb,var(--jade)_9%,transparent)] text-jade',
+  err: 'border-[color-mix(in_srgb,var(--ember)_28%,transparent)] bg-[color-mix(in_srgb,var(--ember)_9%,transparent)] text-ember',
+  off: 'border-border bg-secondary/60 text-muted-foreground',
+}
+
+/** 源健康表列定义：静态表头与轮播表体共用同一组列宽（table-fixed + colgroup），保证上下对齐。 */
+const HEALTH_COLUMNS = [
+  { key: 'name', label: '源名称', width: '30%', align: 'left' },
+  { key: 'platform', label: '协议类型', width: '30%', align: 'left' },
+  { key: 'models', label: '模型', width: '16%', align: 'right' },
+  { key: 'status', label: '状态', width: '24%', align: 'right' },
+] as const
+
+function HealthColGroup() {
+  return (
+    <colgroup>
+      {HEALTH_COLUMNS.map((col) => (
+        <col key={col.key} style={{ width: col.width }} />
+      ))}
+    </colgroup>
+  )
+}
+
+/**
+ * 源健康滚动列表：源数超过可视行数时自动垂直轮播展示全部源，悬停暂停；
+ * 点击某一行携带 openSource 状态跳转到模型源页，由该页自动展开并定位。
  */
 function SourceHealthScroller({
   sources,
@@ -124,29 +123,40 @@ function SourceHealthScroller({
 
   // 滚动时长按行数缩放（每行约 3.05s，比初版放慢 15%），观感均匀。
   const durationSeconds = Math.max(14, Math.round(rows.length * 3.05))
-  const renderRow = ({ source, stats, health }: (typeof rows)[number], keyPrefix: string) => (
-    <tr
-      key={`${keyPrefix}-${source.id}`}
-      onClick={() => navigate('/sources', { state: { openSource: source.id } })}
-      title={`查看「${source.name}」配置`}
-      className="cursor-pointer border-b border-border/30 last:border-b-0 hover:bg-wash/30 transition-colors"
-    >
-      <td className="py-2.5 pr-2">
-        <span className="block font-medium text-foreground">{source.name}</span>
-        <span className="sub text-2xs">{source.id}</span>
-      </td>
-      <td className="py-2.5 pr-2">
-        <PlatformBadge platform={source.platform} />
-      </td>
-      <td className="num py-2.5 pr-2 text-right">{stats.total}</td>
-      <td className="py-2.5 pl-2 text-right">
-        <span className={`inline-flex items-center gap-1.5 text-2xs ${health.tone}`}>
-          <Dot state={health.state} />
-          {health.label}
-        </span>
-      </td>
-    </tr>
-  )
+  const renderRow = ({ source, stats, health }: (typeof rows)[number], keyPrefix: string) => {
+    const refreshing = !!source.refreshState?.refreshing
+    return (
+      <tr
+        key={`${keyPrefix}-${source.id}`}
+        onClick={() => navigate('/sources', { state: { openSource: source.id } })}
+        title={`查看「${source.name}」配置`}
+        className="cursor-pointer border-b border-border/30 last:border-b-0 hover:bg-wash/30 transition-colors"
+      >
+        <td className="overflow-hidden py-3 pr-2">
+          <span className="block truncate font-medium text-foreground" title={source.id}>
+            {source.name}
+          </span>
+        </td>
+        <td className="overflow-hidden py-3 pr-2">
+          <PlatformBadge platform={source.platform} />
+        </td>
+        <td className="num overflow-hidden py-3 pr-2 text-right font-medium text-foreground">
+          {formatNumber(stats.total)}
+        </td>
+        <td className="overflow-hidden py-3 pl-2 text-right">
+          <span
+            className={cn(
+              'inline-flex min-w-[3.5rem] items-center justify-center gap-1 rounded-[5px] border px-[7px] py-0.5 text-2xs font-medium',
+              refreshing ? 'border-rose/30 bg-wash text-rose' : HEALTH_TONE[health.state],
+            )}
+          >
+            {refreshing && <RefreshCcw className="h-2.5 w-2.5 animate-spin" aria-hidden />}
+            {refreshing ? '拉取中' : health.label}
+          </span>
+        </td>
+      </tr>
+    )
+  }
 
   if (rows.length === 0) {
     return <p className="py-8 text-center text-xs text-muted-foreground">暂无模型源</p>
@@ -155,19 +165,46 @@ function SourceHealthScroller({
   return (
     // 绝对定位让内容不撑高卡片：可用高度完全由同排相邻卡片决定，「能否展示
     // 全部」的判定才不会自我满足（内容撑开容器 → 永远"装得下"）。
-    <div ref={viewportRef} className="group/scroller absolute inset-0 overflow-hidden pt-1" title={scrolling ? '悬停暂停滚动' : undefined}>
+    <div className="absolute inset-0 flex flex-col">
+      {/* 列名：静态表头，不随轮播滚动。首行文字与其他两栏面板的内容起始线对齐。 */}
+      <table className="w-full table-fixed text-xs">
+        <HealthColGroup />
+        <thead>
+          <tr className="border-b border-border/40">
+            {HEALTH_COLUMNS.map((col) => (
+              <th
+                key={col.key}
+                scope="col"
+                className={cn(
+                  'pb-2 pt-3 text-2xs font-semibold uppercase tracking-wider text-muted-foreground',
+                  col.align === 'right' ? 'text-right' : 'text-left',
+                )}
+              >
+                {col.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+      </table>
       <div
-        ref={contentRef}
-        className={scrolling ? 'animate-source-marquee group-hover/scroller:[animation-play-state:paused]' : undefined}
-        style={scrolling ? { animationDuration: `${durationSeconds}s` } : undefined}
+        ref={viewportRef}
+        className="group/scroller relative min-h-0 flex-1 overflow-hidden"
+        title={scrolling ? '悬停暂停滚动' : undefined}
       >
-        <table className="w-full text-xs">
-          <tbody>
-            {rows.map((row) => renderRow(row, scrolling ? 'a' : 'static'))}
-            {/* 滚动态复制一份内容实现无缝循环（keys 加前缀避免重复）。 */}
-            {scrolling && rows.map((row) => renderRow(row, 'b'))}
-          </tbody>
-        </table>
+        <div
+          ref={contentRef}
+          className={cn(scrolling && 'animate-source-marquee group-hover/scroller:[animation-play-state:paused]')}
+          style={scrolling ? { animationDuration: `${durationSeconds}s` } : undefined}
+        >
+          <table className="w-full table-fixed text-xs">
+            <HealthColGroup />
+            <tbody>
+              {rows.map((row) => renderRow(row, scrolling ? 'a' : 'static'))}
+              {/* 滚动态复制一份内容实现无缝循环（keys 加前缀避免重复）。 */}
+              {scrolling && rows.map((row) => renderRow(row, 'b'))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )
@@ -177,8 +214,8 @@ export function OverviewPage() {
   const minuteTick = useMinuteTick()
   const navigate = useNavigate()
 
-  // 今日 / 昨日窗口（今日的 to 按 5 分钟桶量化：缓存键在桶内稳定，空闲时
-  // 不再每分钟重拉全窗聚合；最近一分钟 KPI 保持分钟粒度单独请求）
+  // 今日 / 昨日窗口（今日的 to 按 5 分钟桶量化保持缓存键稳定：5 分钟内回到
+  // 本页秒开；数据新鲜度由 usageConfig 的 60s 轮询保证，最多旧 1 分钟）
   const todayParams = useMemo(() => {
     const to = bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)
     return { from: localMidnight(0, new Date(to)).toISOString(), to }
@@ -224,11 +261,6 @@ export function OverviewPage() {
   const health = healthError ? undefined : healthData
 
   const healthState = healthError ? ('err' as const) : health ? (health.database ? ('ok' as const) : ('err' as const)) : ('off' as const)
-  const healthLabel = healthError
-    ? '无法获取状态'
-    : health
-      ? health.database ? '网关就绪' : '服务异常'
-      : '检查中…'
 
   // KPI 计算
   const deltaPct =
@@ -238,7 +270,7 @@ export function OverviewPage() {
   const successRate = today ? percent(today.success, today.requests) : '—'
 
   // 热门模型分布：独立时间窗（右上角 Seg 快捷切换 24小时/7天/30天/全部），
-  // to 沿用 5 分钟桶化保持缓存键稳定；与 KPI 的今日统计互不影响。
+  // to 按 5 分钟桶化保持缓存键稳定（新鲜度见 usageConfig 60s 轮询）
   const [topRange, setTopRange] = useState<RangeKey>('24h')
   const topModelsParams = useMemo(() => {
     const to = bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)
@@ -260,7 +292,7 @@ export function OverviewPage() {
     return top.map((it) => ({ ...it, ratio: it.count / max }))
   }, [byModel])
 
-  // 最近失败（最新 3 条，今日窗口、与 KPI 相同的 5 分钟桶化）
+  // 最近失败（最新 3 条，今日窗口、5 分钟桶化缓存键 + 60s 轮询保新鲜）
   const failuresParams = useMemo(() => {
     const to = bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)
     return {
@@ -306,39 +338,17 @@ export function OverviewPage() {
       <ElysiaStage statusState={stageStatus} className="-right-6 -top-4 rail:-right-10" />
 
       <div className="relative z-[1] space-y-7">
-        <PageHeader
-          title="总览"
-          actions={
-            // 诊断胶囊：默认隐身（仅文字与指标裸排，与标题对齐），hover 时过渡出
-            // 胶囊壳（边框/底色/阴影/毛玻璃）与右上箭头。
-            <button
-              type="button"
-              onClick={() => navigate('/diagnostics')}
-              className="group inline-flex items-center gap-1.5 rounded-full border border-transparent bg-transparent py-1.5 pl-1 pr-2.5 text-xs text-muted-foreground transition-all duration-200 hover:border-border/70 hover:bg-card/80 hover:shadow-soft hover:backdrop-blur-md"
-              title="点击查看系统诊断"
-            >
-              <Dot state={healthState} />
-              <span className="font-semibold text-foreground">{healthLabel}</span>
-              <span className="h-3 w-px bg-border/80" />
-              <span className="tnum font-mono text-muted-foreground">
-                堆内存 {health ? (health.memory.alloc / 1024 / 1024).toFixed(1) : '—'} MB
-              </span>
-              <span className="h-3 w-px bg-border/80" />
-              <span className="tnum font-mono text-muted-foreground">GC {health ? `${health.memory.numGC} 次` : '—'}</span>
-              <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground/0 transition-all duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-muted-foreground/70" />
-            </button>
-          }
-        />
+        <PageHeader title="总览" />
 
-        {/* 核心 KPI 指标区（无界灵动数据锚点） */}
+        {/* 核心 KPI 指标区（无界灵动数据锚点，精选 6 大核心指标，宽敞大气） */}
         <section aria-label="今日核心用量">
-          <KpiGrid>
+          <KpiGrid cols={6}>
             {/* HERO 主卡片：今日请求数 */}
             <KpiCard
               variant="hero"
               label="今日请求总数"
               value={today ? formatNumber(today.requests) : '—'}
-              icon={<Flame className="h-4 w-4 text-rose animate-pulse" />}
+              icon={<Flame className="h-4 w-4 text-rose" />}
               delta={
                 todayError ? (
                   <em className="not-italic">加载失败</em>
@@ -379,52 +389,61 @@ export function OverviewPage() {
               label="Token 总消耗"
               value={today ? compactNumber(today.totalTokens) : '—'}
               icon={<Coins className="h-4 w-4 text-amber" />}
-              delta={today ? `缓存命中 ${formatHitRate(today.cacheHitRate)}` : todayError ? '加载失败' : undefined}
+              delta={today ? `输入 ${compactNumber(today.inputTokens)} · 输出 ${compactNumber(today.outputTokens)}` : todayError ? '加载失败' : undefined}
               deltaTone={todayError ? 'down' : 'neutral'}
             />
 
-            {/* 支撑指标 3：时延表现 */}
+            {/* 支撑指标 3：缓存命中率 */}
             <KpiCard
-              label="平均请求时延"
-              value={today ? formatDuration(today.avgDurationMs) : '—'}
-              icon={<Clock className="h-4 w-4 text-muted-foreground" />}
-              delta={today ? `首字 ${formatDuration(today.avgFirstByteMs)}` : todayError ? '加载失败' : undefined}
+              label="缓存命中率"
+              value={today ? formatHitRate(today.cacheHitRate).replace('%', '') : '—'}
+              unit={today ? '%' : undefined}
+              icon={<Database className="h-4 w-4 text-jade" />}
+              delta={today ? `命中 ${compactNumber(today.cacheHitTokens)} tokens` : todayError ? '加载失败' : undefined}
               deltaTone={todayError ? 'down' : 'neutral'}
             />
 
-            {/* 支撑指标 4：实时速率 */}
+            {/* 支撑指标 4：内存占用 */}
             <KpiCard
-              label="实时速率"
-              value={lastMinute ? formatNumber(lastMinute.requests) : '—'}
-              unit={lastMinute ? 'rpm' : undefined}
-              icon={<Radio className="h-4 w-4 text-primary animate-pulse" />}
-              delta={
-                lastMinute
-                  ? `${compactNumber(lastMinute.totalTokens)} tpm`
-                  : lastMinuteError
-                    ? '加载失败'
-                    : '静止'
-              }
-              deltaTone={lastMinuteError ? 'down' : 'neutral'}
+              label="内存占用"
+              value={health ? (health.memory.alloc / 1024 / 1024).toFixed(1) : '—'}
+              unit={health ? 'MB' : undefined}
+              icon={<Server className="h-4 w-4 text-muted-foreground" />}
+              delta={healthError ? '加载失败' : health ? `向 OS 申请 ${(health.memory.sys / 1024 / 1024).toFixed(1)} MB` : undefined}
+              deltaTone={healthError ? 'down' : 'neutral'}
+              title="查看诊断"
+              onClick={() => navigate('/diagnostics')}
+            />
+
+            {/* 支撑指标 5：GC 次数 */}
+            <KpiCard
+              label="GC 次数"
+              value={health ? formatNumber(health.memory.numGC) : '—'}
+              icon={<RefreshCcw className="h-4 w-4 text-muted-foreground" />}
+              delta={healthError ? '加载失败' : '进程启动以来'}
+              deltaTone={healthError ? 'down' : 'neutral'}
+              title="查看诊断"
+              onClick={() => navigate('/diagnostics')}
             />
           </KpiGrid>
         </section>
 
-        {/* 趋势图表区：双流引擎 (请求折线图 + Token柱状图悬停模型明细) */}
-        <TrendSection minuteTick={minuteTick} />
+        <PulseSection minuteTick={minuteTick} />
+
+        {/* 时序透视中枢：智能整合请求趋势与模型分流 */}
+        <TemporalTrendSection minuteTick={minuteTick} />
 
         {/* 底部 Bento 三栏面板：开放式流式栅格 */}
         <section aria-label="服务状态与热点" className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3 pt-2">
           {/* Bento 1: 热门模型 */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between border-b border-border/50 pb-3">
+            <div className="flex min-h-[42px] items-center justify-between border-b border-border/50 pb-3">
               <div className="flex items-center gap-2">
                 <Cpu className="h-4 w-4 text-primary" />
                 <h3 className="text-sm font-semibold text-foreground">热门模型分布</h3>
               </div>
               <Seg
                 aria-label="热门模型时间窗"
-                className="h-7"
                 options={[
                   { value: '24h', label: '24小时' },
                   { value: '7d', label: '7天' },
@@ -435,7 +454,7 @@ export function OverviewPage() {
                 onChange={setTopRange}
               />
             </div>
-            <div className="pt-1">
+            <div className="pt-3">
               {byModelError ? (
                 <ErrorState className="py-6" message={(byModelError as Error).message} onRetry={() => retryByModel()} />
               ) : byModelLoading && !byModel ? (
@@ -474,7 +493,7 @@ export function OverviewPage() {
 
           {/* Bento 2: 模型源健康状态 */}
           <div className="flex h-full flex-col space-y-4">
-            <div className="flex items-center justify-between border-b border-border/50 pb-3">
+            <div className="flex min-h-[42px] items-center justify-between border-b border-border/50 pb-3">
               <div className="flex items-center gap-2">
                 <Boxes className="h-4 w-4 text-jade" />
                 <h3 className="text-sm font-semibold text-foreground">模型源健康</h3>
@@ -487,7 +506,7 @@ export function OverviewPage() {
               </button>
             </div>
             {sourceHealthError ? (
-              <div className="pt-1">
+              <div className="pt-3">
                 <ErrorState
                   className="py-6"
                   message={(sourceHealthError as Error).message}
@@ -497,7 +516,7 @@ export function OverviewPage() {
                 />
               </div>
             ) : sourceHealthLoading ? (
-              <div className="pt-1">
+              <div className="pt-3">
                 <div className="skeleton h-36 rounded-md" />
               </div>
             ) : (
@@ -511,7 +530,7 @@ export function OverviewPage() {
 
           {/* Bento 3: 最近失败调用 */}
           <div className="space-y-4 md:col-span-2 lg:col-span-1">
-            <div className="flex items-center justify-between border-b border-border/50 pb-3">
+            <div className="flex min-h-[42px] items-center justify-between border-b border-border/50 pb-3">
               <div className="flex items-center gap-2">
                 <ShieldAlert className="h-4 w-4 text-ember" />
                 <h3 className="text-sm font-semibold text-foreground">最近异常调用</h3>
@@ -523,7 +542,7 @@ export function OverviewPage() {
                 日志 <MoveUpRight className="h-3 w-3 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
               </button>
             </div>
-            <div className="pt-1">
+            <div className="pt-1.5">
               {failuresError ? (
                 <ErrorState className="py-6" message={(failuresError as Error).message} onRetry={() => retryFailures()} />
               ) : failuresLoading && !failuresPage ? (
@@ -566,196 +585,5 @@ export function OverviewPage() {
         </section>
       </div>
     </>
-  )
-}
-
-/* ---------------- 双流趋势图表引擎 (请求折线图 + Token 柱状图 + 模型悬停明细) ---------------- */
-
-function ticksFor(values: number[]): number[] {
-  const max = Math.max(0, ...values)
-  if (max <= 0) return [0]
-  const step = Math.max(1, Math.ceil(max / 3))
-  return [0, step, step * 2, step * 3]
-}
-
-function TrendSection({ minuteTick }: { minuteTick: number }) {
-  const [range, setRange] = useState<'7d' | '30d'>('7d')
-  const [showReqLine, setShowReqLine] = useState(true)
-  const [showTokBar, setShowTokBar] = useState(true)
-
-  const params = useMemo(() => {
-    const days = range === '7d' ? 7 : 30
-    const now = new Date(minuteTick * 60_000)
-    const offsetMinutes = -now.getTimezoneOffset()
-    const from = offsetDayStart(now.getTime(), offsetMinutes, -(days - 1))
-    return { from: new Date(from).toISOString(), utcOffsetMinutes: offsetMinutes }
-  }, [range, minuteTick])
-
-  const { data: buckets, isLoading, error, mutate } = useUsageTrend(params)
-
-  const series = useMemo(() => {
-    const byDay = new Map((buckets ?? []).map((b) => [b.date, b]))
-    const days = range === '7d' ? 7 : 30
-    const now = new Date(minuteTick * 60_000)
-    const offsetMinutes = -now.getTimezoneOffset()
-    const out: Array<{
-      date: string
-      label: string
-      req: number
-      tok: number
-      successReq: number
-      failedReq: number
-      modelTokens?: Record<string, number>
-    }> = []
-
-    for (let i = days - 1; i >= 0; i--) {
-      const key = offsetDayKey(offsetDayStart(now.getTime(), offsetMinutes, -i), offsetMinutes)
-      const b = byDay.get(key)
-      out.push({
-        date: key,
-        label: key.slice(5).replace('-', '/'),
-        req: b?.requests ?? 0,
-        tok: b?.tokens ?? 0,
-        successReq: b?.successRequests ?? b?.requests ?? 0,
-        failedReq: b?.failedRequests ?? 0,
-        modelTokens: b?.modelTokens,
-      })
-    }
-    return out
-  }, [buckets, range, minuteTick])
-
-  const last = series.length > 0 ? series[series.length - 1] : null
-
-  return (
-    <section className="space-y-4 pt-1">
-      <div className="flex flex-row flex-wrap items-center justify-between gap-4 border-b border-border/50 pb-3.5">
-        <div className="flex items-center gap-2">
-          <Activity className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold text-foreground">请求流与 Token 消耗趋势</h2>
-        </div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Fchip label="请求折线" color="var(--rose)" active={showReqLine} onClick={() => setShowReqLine(!showReqLine)} />
-          <Fchip label="Token 柱图" color="var(--jade)" active={showTokBar} onClick={() => setShowTokBar(!showTokBar)} />
-          <Seg
-            aria-label="时间范围"
-            options={[
-              { value: '7d', label: '近 7 天' },
-              { value: '30d', label: '近 30 天' },
-            ]}
-            value={range}
-            onChange={setRange}
-          />
-        </div>
-      </div>
-
-      <div className="pt-2">
-        <div className="h-[290px] w-full">
-          {error ? (
-            <ErrorState className="h-full py-8" message={(error as Error).message} onRetry={() => mutate()} />
-          ) : isLoading && !buckets ? (
-            <div className="skeleton h-full w-full rounded-md" />
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={series} margin={{ top: 12, right: 36, bottom: 0, left: 0 }}>
-                <defs>
-                  {/* 请求折线平滑光芒区域渐变 */}
-                  <linearGradient id="reqAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--rose)" stopOpacity={0.18} />
-                    <stop offset="95%" stopColor="var(--rose)" stopOpacity={0.0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="hsl(var(--border) / 0.45)" strokeDasharray="3 3" vertical={false} />
-                <XAxis
-                  dataKey="label"
-                  tick={CHART_TICK}
-                  tickLine={false}
-                  axisLine={{ stroke: 'hsl(var(--border) / 0.6)' }}
-                  interval="preserveStartEnd"
-                  minTickGap={24}
-                />
-                <YAxis
-                  yAxisId="tok"
-                  tick={{ ...CHART_TICK, fill: 'var(--jade)' }}
-                  tickLine={false}
-                  axisLine={false}
-                  width={52}
-                  ticks={ticksFor(series.map((d) => d.tok))}
-                  tickFormatter={(v: number) => compactNumber(v)}
-                />
-                <YAxis
-                  yAxisId="req"
-                  orientation="right"
-                  tick={{ ...CHART_TICK, fill: 'var(--rose)' }}
-                  tickLine={false}
-                  axisLine={false}
-                  width={40}
-                  allowDecimals={false}
-                />
-                <Tooltip
-                  content={<ModelBreakdownTooltip />}
-                  cursor={{ fill: 'var(--wash)' }}
-                />
-
-                {/* Token 消耗柱状图（柱子悬停展示模型细分） */}
-                {showTokBar && (
-                  <Bar
-                    yAxisId="tok"
-                    dataKey="tok"
-                    name="Token 消耗"
-                    fill="var(--jade)"
-                    fillOpacity={0.45}
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={24}
-                  />
-                )}
-
-                {/* 请求数平滑折线与微光面积 */}
-                {showReqLine && (
-                  <>
-                    <Area
-                      yAxisId="req"
-                      dataKey="req"
-                      type="monotone"
-                      fill="url(#reqAreaGrad)"
-                      stroke="none"
-                      tooltipType="none"
-                    />
-                    <Line
-                      yAxisId="req"
-                      dataKey="req"
-                      name="请求数"
-                      type="monotone"
-                      stroke="var(--rose)"
-                      strokeWidth={2.4}
-                      dot={false}
-                      activeDot={{ r: 4.5, fill: 'var(--rose)', stroke: 'hsl(var(--card))', strokeWidth: 2 }}
-                    />
-                  </>
-                )}
-
-                {/* 终点锚点标记 */}
-                {showReqLine && last && last.req > 0 && (
-                  <ReferenceDot
-                    yAxisId="req"
-                    x={last.label}
-                    y={last.req}
-                    r={3.5}
-                    fill="var(--rose)"
-                    stroke="none"
-                    label={{
-                      value: formatNumber(last.req),
-                      position: 'top',
-                      fill: 'var(--rose)',
-                      fontSize: CHART_TICK.fontSize,
-                      fontFamily: CHART_TICK.fontFamily,
-                    }}
-                  />
-                )}
-              </ComposedChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
-    </section>
   )
 }

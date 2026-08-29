@@ -3,6 +3,8 @@ import type {
   ApiResult,
   UsageTrendPoint,
   UsageModelStat,
+  UsagePulseResult,
+  UsageModelDailyPoint,
   ApiToken,
   Health,
   Model,
@@ -229,6 +231,18 @@ export const api = {
     }),
   usageByModel: (params: UsageQueryParams) =>
     request<UsageModelStat[]>('/usage/by-model', { query: serializeUsage(params) }),
+  usagePulse: (params: UsageQueryParams & { utcOffsetMinutes: number; bucketMinutes: number }) =>
+    request<UsagePulseResult>('/usage/pulse', {
+      query: {
+        ...serializeUsage(params),
+        utcOffsetMinutes: params.utcOffsetMinutes,
+        bucketMinutes: params.bucketMinutes,
+      },
+    }),
+  usageByModelDaily: (params: UsageQueryParams & { utcOffsetMinutes: number; top?: number }) =>
+    request<UsageModelDailyPoint[]>('/usage/by-model-daily', {
+      query: { ...serializeUsage(params), utcOffsetMinutes: params.utcOffsetMinutes, top: params.top },
+    }),
   usageLogs: (params: UsageQueryParams) => request<UsageLogsResult>('/usage/logs', { query: serializeUsage(params) }),
   usageLogDetail: (id: string) => request<UsageLogDetail>(`/usage/logs/${encodeURIComponent(id)}`),
   usageReset: () => request<unknown>('/usage/reset', { method: 'POST' }),
@@ -253,6 +267,7 @@ function serializeUsage(params: UsageQueryParams): Record<string, QueryValue> {
     ...(params.keyNames?.length ? { keyName: params.keyNames } : {}),
     ...(params.groupNames?.length ? { groupName: params.groupNames } : {}),
     ...(params.modelNames?.length ? { modelName: params.modelNames } : {}),
+    ...(params.sourceIds?.length ? { sourceId: params.sourceIds } : {}),
   }
 }
 

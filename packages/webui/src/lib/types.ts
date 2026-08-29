@@ -218,8 +218,8 @@ export interface UsageLogItem {
 export interface UsageTrendPoint {
   date: string
   requests: number
-  successRequests?: number
-  failedRequests?: number
+  successRequests: number
+  failedRequests: number
   inputTokens?: number
   outputTokens?: number
   cacheHitTokens?: number
@@ -233,6 +233,36 @@ export interface UsageModelStat {
   requests: number
   failed: number
   tokens: number
+}
+
+/** 短窗脉搏单桶（t 为桶起点 Unix 毫秒）。 */
+export interface UsagePulsePoint {
+  t: number
+  requests: number
+  avgDurationMs: number
+  p95DurationMs: number
+  totalTokens?: number
+}
+
+/** 整段脉搏窗口汇总。P95：样本 ≤ 16384 时精确，超出为蓄水池估算；不是桶 P95 均值。 */
+export interface UsagePulseWindow {
+  requests: number
+  avgDurationMs: number
+  p95DurationMs: number
+  totalTokens: number
+}
+
+export interface UsagePulseResult {
+  points: UsagePulsePoint[]
+  window: UsagePulseWindow
+}
+
+/** 本地日 × 模型请求数。isOther 为 Top N 之外的合计，展示文案由前端决定。 */
+export interface UsageModelDailyPoint {
+  date: string
+  model: string
+  requests: number
+  isOther?: boolean
 }
 
 export interface UsageLogsResult {
@@ -338,4 +368,5 @@ export interface UsageQueryParams {
   keyNames?: string[]
   groupNames?: string[]
   modelNames?: string[]
+  sourceIds?: string[]
 }
