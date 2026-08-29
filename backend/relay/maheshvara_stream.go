@@ -23,6 +23,9 @@ func canonicalUsageFromRawMap(raw map[string]any) *CanonicalUsage {
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.InputTokens + usage.OutputTokens
 	}
+	// 原始 usage 对象整体留存：同线渲染时未知计数键原样透传（XF5b：不重释、
+	// 不丢弃），已知键由类型化字段覆盖。
+	usage.Raw = raw
 	return usage
 }
 

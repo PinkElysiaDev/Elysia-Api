@@ -297,6 +297,9 @@ func mergeCanonicalStreamUsage(current, update *CanonicalUsage) *CanonicalUsage 
 	mergeInt(&current.TotalTokens, update.TotalTokens)
 	mergeInt(&current.CachedInputTokens, update.CachedInputTokens)
 	mergeInt(&current.CacheCreationInputTokens, update.CacheCreationInputTokens)
+	mergeInt(&current.CacheCreation5mTokens, update.CacheCreation5mTokens)
+	mergeInt(&current.CacheCreation1hTokens, update.CacheCreation1hTokens)
+	mergeInt(&current.ToolPromptTokens, update.ToolPromptTokens)
 	mergeInt(&current.ReasoningTokens, update.ReasoningTokens)
 	mergeInt(&current.AcceptedPredictionTokens, update.AcceptedPredictionTokens)
 	mergeInt(&current.RejectedPredictionTokens, update.RejectedPredictionTokens)
@@ -308,6 +311,17 @@ func mergeCanonicalStreamUsage(current, update *CanonicalUsage) *CanonicalUsage 
 	}
 	if update.Provider != "" {
 		current.Provider = update.Provider
+	}
+	if update.Raw != nil {
+		if current.Raw == nil {
+			current.Raw = update.Raw
+		} else {
+			for key, value := range update.Raw {
+				if _, exists := current.Raw[key]; !exists {
+					current.Raw[key] = value
+				}
+			}
+		}
 	}
 	return current
 }

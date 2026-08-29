@@ -123,9 +123,9 @@ type ContentPrediction struct {
 }
 
 type Message struct {
-	Role             string           `json:"role"`
-	Content          interface{}      `json:"content"`
-	ReasoningContent string           `json:"reasoning_content,omitempty"`
+	Role             string      `json:"role"`
+	Content          interface{} `json:"content"`
+	ReasoningContent string      `json:"reasoning_content,omitempty"`
 	// ReasoningDetails 是 OpenRouter 风格的推理明细数组（reasoning.text /
 	// reasoning.encrypted 逐条成项），往返保真优于标量 reasoning_content。
 	ReasoningDetails []map[string]any `json:"reasoning_details,omitempty"`
@@ -224,6 +224,53 @@ type Usage struct {
 	CompletionTokensDetails CompletionTokensDetails `json:"completion_tokens_details,omitempty"`
 	InputTokens             int                     `json:"input_tokens,omitempty"`
 	OutputTokens            int                     `json:"output_tokens,omitempty"`
+
+	// RawFields：usage 的完整原始对象（UnmarshalJSON 捕获）。上游新增的
+	// 计数键在跨协议中转时不丢失——MarshalJSON 以原始对象为底、类型化
+	// 字段覆盖其上（XF5b：不重释、不丢弃）。
+	RawFields map[string]any `json:"-"`
+}
+
+// UnmarshalJSON 在类型化解码之外捕获完整原始 usage 对象。
+func (u *Usage) UnmarshalJSON(data []byte) error {
+	type alias Usage
+	var typed alias
+	if err := json.Unmarshal(data, &typed); err != nil {
+		return err
+	}
+	*u = Usage(typed)
+	var raw map[string]any
+	if json.Unmarshal(data, &raw) == nil {
+		u.RawFields = raw
+	}
+	return nil
+}
+
+// MarshalJSON 以 RawFields 为底、非空类型化字段覆盖其上：上游新增计数键
+// 原样透传；常规路径退化为普通结构体序列化。
+func (u Usage) MarshalJSON() ([]byte, error) {
+	type alias Usage
+	encoded, err := json.Marshal(alias(u))
+	if err != nil {
+		return nil, err
+	}
+	if len(u.RawFields) == 0 {
+		return encoded, nil
+	}
+	var typed map[string]any
+	if err := json.Unmarshal(encoded, &typed); err != nil {
+		return nil, err
+	}
+	merged := make(map[string]any, len(u.RawFields)+len(typed))
+	for key, value := range u.RawFields {
+		merged[key] = value
+	}
+	for key, value := range typed {
+		if value != nil {
+			merged[key] = value
+		}
+	}
+	return json.Marshal(merged)
 }
 
 type PromptTokensDetails struct {

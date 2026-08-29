@@ -3200,6 +3200,10 @@ func canonicalPartToResponsesOutputContent(part CanonicalContentPart) (Responses
 }
 
 func canonicalUsageFromOpenAIUsage(usage Usage) *CanonicalUsage {
+	promptDetails := usage.PromptTokensDetails
+	if usage.InputTokensDetails.CachedTokens > 0 || usage.InputTokensDetails.TextTokens > 0 {
+		promptDetails = usage.InputTokensDetails
+	}
 	u := &CanonicalUsage{
 		InputTokens:              usage.PromptTokens,
 		OutputTokens:             usage.CompletionTokens,
@@ -3208,10 +3212,20 @@ func canonicalUsageFromOpenAIUsage(usage Usage) *CanonicalUsage {
 		ReasoningTokens:          usage.CompletionTokensDetails.ReasoningTokens,
 		AcceptedPredictionTokens: usage.CompletionTokensDetails.AcceptedPredictionTokens,
 		RejectedPredictionTokens: usage.CompletionTokensDetails.RejectedPredictionTokens,
+		TextInputTokens:          promptDetails.TextTokens,
+		AudioInputTokens:         promptDetails.AudioTokens,
+		ImageInputTokens:         promptDetails.ImageTokens,
+		TextOutputTokens:         usage.CompletionTokensDetails.TextTokens,
+		AudioOutputTokens:        usage.CompletionTokensDetails.AudioTokens,
+		ImageOutputTokens:        usage.CompletionTokensDetails.ImageTokens,
+		Raw:                      usage.RawFields,
 		Source:                   "provider_response",
 	}
 	if u.CachedInputTokens == 0 {
-		u.CachedInputTokens = max(usage.PromptTokensDetails.CachedTokens, usage.PromptTokensDetails.CacheReadTokens)
+		u.CachedInputTokens = max(promptDetails.CachedTokens, promptDetails.CacheReadTokens)
+	}
+	if u.CacheCreationInputTokens == 0 {
+		u.CacheCreationInputTokens = promptDetails.CachedCreationTokens
 	}
 	if u.TotalTokens == 0 {
 		u.TotalTokens = u.InputTokens + u.OutputTokens
@@ -3233,6 +3247,11 @@ func canonicalUsageFromClaudeUsage(usage ClaudeUsage) *CanonicalUsage {
 		CachedInputTokens:        usage.CacheReadInputTokens,
 		CacheCreationInputTokens: usage.CacheCreationInputTokens,
 		Source:                   "provider_response",
+	}
+	if usage.CacheCreation != nil {
+		// 双 TTL 桶明细保真（ephemeral_5m / ephemeral_1h）。
+		u.CacheCreation5mTokens = usage.CacheCreation.Ephemeral5mInputTokens
+		u.CacheCreation1hTokens = usage.CacheCreation.Ephemeral1hInputTokens
 	}
 	if usage.ServerToolUse != nil {
 		u.WebSearchCallCount = usage.ServerToolUse.WebSearchRequests
@@ -3309,12 +3328,20 @@ func openAIUsageFromCanonical(u *CanonicalUsage) Usage {
 		CachedTokens:     u.CachedInputTokens,
 		PromptTokensDetails: PromptTokensDetails{
 			CachedTokens: u.CachedInputTokens,
+			TextTokens:   u.TextInputTokens,
+			AudioTokens:  u.AudioInputTokens,
+			ImageTokens:  u.ImageInputTokens,
 		},
 		CompletionTokensDetails: CompletionTokensDetails{
 			ReasoningTokens:          u.ReasoningTokens,
+			TextTokens:               u.TextOutputTokens,
+			AudioTokens:              u.AudioOutputTokens,
+			ImageTokens:              u.ImageOutputTokens,
 			AcceptedPredictionTokens: u.AcceptedPredictionTokens,
 			RejectedPredictionTokens: u.RejectedPredictionTokens,
 		},
+		// 上游新增的未知计数键原样透传（原始对象为底，类型化字段覆盖）。
+		RawFields: u.Raw,
 	}
 }
 
@@ -3329,19 +3356,30 @@ func claudeUsageFromCanonical(u *CanonicalUsage) ClaudeUsage {
 	if input < 0 {
 		input = u.InputTokens
 	}
-	return ClaudeUsage{
+	usage := ClaudeUsage{
 		InputTokens:              input,
 		OutputTokens:             u.OutputTokens,
 		CacheReadInputTokens:     u.CachedInputTokens,
 		CacheCreationInputTokens: u.CacheCreationInputTokens,
 	}
+	if u.CacheCreation5mTokens > 0 || u.CacheCreation1hTokens > 0 {
+		// 双 TTL 桶明细回写（仅在有明细时输出，避免空对象）。
+		usage.CacheCreation = &ClaudeCacheCreationUsage{
+			Ephemeral5mInputTokens: u.CacheCreation5mTokens,
+			Ephemeral1hInputTokens: u.CacheCreation1hTokens,
+		}
+	}
+	if u.WebSearchCallCount > 0 {
+		usage.ServerToolUse = &ClaudeServerToolUse{WebSearchRequests: u.WebSearchCallCount}
+	}
+	return usage
 }
 
 func geminiUsageFromCanonical(u *CanonicalUsage) GeminiUsageMeta {
 	if u == nil {
 		return GeminiUsageMeta{}
 	}
-	return GeminiUsageMeta{
+	meta := GeminiUsageMeta{
 		PromptTokenCount:        u.InputTokens,
 		ToolUsePromptTokenCount: u.ToolUseTokens,
 		CandidatesTokenCount:    u.OutputTokens,
@@ -3349,6 +3387,19 @@ func geminiUsageFromCanonical(u *CanonicalUsage) GeminiUsageMeta {
 		ThoughtsTokenCount:      u.ReasoningTokens,
 		CachedContentTokenCount: u.CachedInputTokens,
 	}
+	// 模态明细回写（有值才输出，保持 usageMetadata 紧凑）。
+	appendModality := func(target *[]GeminiTokenDetail, modality string, count int) {
+		if count > 0 {
+			*target = append(*target, GeminiTokenDetail{Modality: modality, TokenCount: count})
+		}
+	}
+	appendModality(&meta.PromptTokensDetails, "TEXT", u.TextInputTokens)
+	appendModality(&meta.PromptTokensDetails, "IMAGE", u.ImageInputTokens)
+	appendModality(&meta.PromptTokensDetails, "AUDIO", u.AudioInputTokens)
+	appendModality(&meta.CandidatesTokensDetails, "TEXT", u.TextOutputTokens)
+	appendModality(&meta.CandidatesTokensDetails, "IMAGE", u.ImageOutputTokens)
+	appendModality(&meta.CandidatesTokensDetails, "AUDIO", u.AudioOutputTokens)
+	return meta
 }
 
 func responsesUsageFromCanonical(u *CanonicalUsage) *ResponsesUsage {

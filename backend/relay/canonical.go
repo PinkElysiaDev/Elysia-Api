@@ -184,10 +184,10 @@ type CanonicalContentPart struct {
 	ToolCallID string `json:"tool_call_id,omitempty"`
 	ToolOutput string `json:"tool_output,omitempty"`
 
-	ReasoningText     string                      `json:"reasoning_text,omitempty"`
-	Signature         string                      `json:"signature,omitempty"`
-	SignatureProvider string                      `json:"signature_provider,omitempty"`
-	EncryptedContent  string                      `json:"encrypted_content,omitempty"`
+	ReasoningText     string `json:"reasoning_text,omitempty"`
+	Signature         string `json:"signature,omitempty"`
+	SignatureProvider string `json:"signature_provider,omitempty"`
+	EncryptedContent  string `json:"encrypted_content,omitempty"`
 	// EncryptedProvider/EncryptedModel 记录密文的签发方与签发时模型（信封 v2
 	// 随载）：跨协议走私密文时按 provider 门控——只回发给同厂商上游，避免
 	// 不认识密文的上游报错或误读。
@@ -197,9 +197,9 @@ type CanonicalContentPart struct {
 	CacheControl      any                         `json:"cache_control,omitempty"`
 	// Citations 原样承载 Claude text block 的引用标注（来源出处脚注），
 	// 跨线不发明翻译，仅 Claude↔Claude 往返保真。
-	Citations  json.RawMessage       `json:"citations,omitempty"`
-	Annotations []map[string]any     `json:"annotations,omitempty"`
-	Metadata    map[string]any       `json:"metadata,omitempty"`
+	Citations   json.RawMessage  `json:"citations,omitempty"`
+	Annotations []map[string]any `json:"annotations,omitempty"`
+	Metadata    map[string]any   `json:"metadata,omitempty"`
 
 	Raw any `json:"raw,omitempty"`
 }
@@ -337,7 +337,12 @@ type CanonicalUsage struct {
 
 	CachedInputTokens        int `json:"cached_input_tokens,omitempty"`
 	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
-	ReasoningTokens          int `json:"reasoning_tokens,omitempty"`
+	// Claude 缓存写入的双 TTL 桶（ephemeral_5m / ephemeral_1h）与工具提示
+	// token 计数：账单保真，跨线不糊。
+	CacheCreation5mTokens int `json:"cache_creation_5m_tokens,omitempty"`
+	CacheCreation1hTokens int `json:"cache_creation_1h_tokens,omitempty"`
+	ToolPromptTokens      int `json:"tool_prompt_tokens,omitempty"`
+	ReasoningTokens       int `json:"reasoning_tokens,omitempty"`
 
 	TextInputTokens          int `json:"text_input_tokens,omitempty"`
 	TextOutputTokens         int `json:"text_output_tokens,omitempty"`
