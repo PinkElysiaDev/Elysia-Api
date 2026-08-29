@@ -52,6 +52,7 @@ import {
   formatNumber,
   percent,
   startOfRange,
+  uniqueSorted,
 } from '@/lib/utils'
 
 export function UsageStatsPage() {
@@ -69,13 +70,13 @@ export function UsageStatsPage() {
   const { data: allModels } = useModels()
 
   const sourceOptions = useMemo(
-    () => (sources ?? []).filter((s) => s.enabled).map((s) => s.name),
+    () => uniqueSorted((sources ?? []).filter((s) => s.enabled).map((s) => s.name)),
     [sources],
   )
 
   // 模型源筛选（sourceNames）与模型筛选取交集后随 modelNames 下发。
   const effectiveModelNames = useMemo(
-    () => effectiveModelFilter(modelNames, sourceNames, allModels ?? []),
+    () => effectiveModelFilter(modelNames, sourceNames, allModels ?? [], allModels !== undefined),
     [modelNames, sourceNames, allModels],
   )
 

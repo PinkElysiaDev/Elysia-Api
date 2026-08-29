@@ -19,8 +19,12 @@ export function effectiveModelFilter(
   modelNames: string[],
   sourceNames: string[],
   models: Model[],
+  modelsLoaded = true,
 ): string[] {
   if (sourceNames.length === 0) return modelNames
+  // 模型目录尚未加载（或加载失败）时不做源→模型交集：空目录会把任何源
+  // 选择误判为"无命中"，页面显示永久空态。
+  if (!modelsLoaded) return modelNames
   const set = new Set(sourceNames)
   const fromSources = models.filter((m) => m.sourceName && set.has(m.sourceName)).map((m) => m.name)
   if (modelNames.length === 0) {

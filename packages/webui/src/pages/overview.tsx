@@ -256,7 +256,7 @@ export function OverviewPage() {
     const top = sorted.slice(0, 5).map((row) => ({ name: row.model || '—', count: row.requests, muted: false }))
     const rest = sorted.slice(5).reduce((sum, row) => sum + row.requests, 0)
     if (rest > 0) top.push({ name: `其他 ${sorted.length - 5} 个模型`, count: rest, muted: true })
-    const max = top[0]?.count ?? 1
+    const max = top[0]?.count || 1
     return top.map((it) => ({ ...it, ratio: it.count / max }))
   }, [byModel])
 

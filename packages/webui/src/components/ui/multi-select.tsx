@@ -84,9 +84,21 @@ export function MultiSelect({
     } else {
       onChange([...value, optionValue])
     }
+    // 选项按钮获得焦点后键盘输入不再进搜索框——点选后立即还焦。
+    if (open) {
+      window.setTimeout(() => searchRef.current?.focus(), 0)
+    }
   }
 
   const active = value.length > 0
+
+  // 右缘溢出时弹层改为右对齐（body overflow-x: clip 会静默裁掉溢出部分）。
+  const [flipRight, setFlipRight] = useState(false)
+  useEffect(() => {
+    if (!open || !rootRef.current) return
+    const rect = rootRef.current.getBoundingClientRect()
+    setFlipRight(rect.left + 288 > window.innerWidth)
+  }, [open])
 
   return (
     <div ref={rootRef} className="relative">
@@ -100,6 +112,9 @@ export function MultiSelect({
         aria-label={`${label}筛选${active ? `（已选 ${value.length} 项）` : ''}`}
         onClick={() => setOpen((v) => !v)}
         onKeyDown={(e) => {
+          // 只响应触发器自身的按键：内部清空按钮的 Enter/Space 冒泡到此处
+          // 会被 preventDefault 吞掉（浏览器不再合成 click），键盘无法清空。
+          if (e.target !== e.currentTarget) return
           if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
             e.preventDefault()
             setOpen(true)
@@ -142,7 +157,12 @@ export function MultiSelect({
       </div>
 
       {open && (
-        <div className="absolute left-0 z-50 mt-1.5 w-max min-w-[11rem] max-w-[16rem] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-soft">
+        <div
+          className={cn(
+            'absolute z-50 mt-1.5 w-max min-w-[11rem] max-w-[16rem] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-soft',
+            flipRight ? 'right-0' : 'left-0',
+          )}
+        >
           <div className="flex items-center gap-2 border-b border-border px-2.5 py-2">
             <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <input

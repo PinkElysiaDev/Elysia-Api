@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
   ChevronLeft,
@@ -41,6 +41,7 @@ import {
   formatDuration,
   formatNumber,
   startOfRange,
+  uniqueSorted,
   bucketedTimeISO,
   effectiveModelFilter,
   tryParseJSON,
@@ -54,6 +55,7 @@ export function UsageLogsPage() {
   const toast = useToast()
   const { confirm, dialog } = useConfirm()
   const location = useLocation()
+  const navigate = useNavigate()
   const [range, setRange] = useState<RangeKey>('7d')
   const [groupNames, setGroupNames] = useState<string[]>([])
   const [modelNames, setModelNames] = useState<string[]>([])
@@ -65,23 +67,26 @@ export function UsageLogsPage() {
   const [detailId, setDetailId] = useState<string | null>(null)
   const minuteTick = useMinuteTick()
 
-  // 总览「最近失败」跳转：带 openDetail 状态直接打开抽屉
+  // 总览「最近失败」跳转：带 openDetail 状态直接打开抽屉（一次性消费，
+  // 否则刷新页面会因 history.state 仍在而重开抽屉）。
   useEffect(() => {
     const open = (location.state as { openDetail?: string } | null)?.openDetail
-    if (open) setDetailId(open)
-  }, [location.state])
+    if (!open) return
+    setDetailId(open)
+    navigate(location.pathname, { replace: true, state: {} })
+  }, [location.state, location.pathname, navigate])
 
   const { groupOptions, modelOptions, keyOptions } = useUsageFilterOptions()
   const { data: sources } = useSources()
   const { data: allModels } = useModels()
   const sourceOptions = useMemo(
-    () => (sources ?? []).filter((s) => s.enabled).map((s) => s.name),
+    () => uniqueSorted((sources ?? []).filter((s) => s.enabled).map((s) => s.name)),
     [sources],
   )
 
   // 模型源筛选（sourceNames）与模型筛选取交集后随 modelNames 下发。
   const effectiveModelNames = useMemo(
-    () => effectiveModelFilter(modelNames, sourceNames, allModels ?? []),
+    () => effectiveModelFilter(modelNames, sourceNames, allModels ?? [], allModels !== undefined),
     [modelNames, sourceNames, allModels],
   )
 

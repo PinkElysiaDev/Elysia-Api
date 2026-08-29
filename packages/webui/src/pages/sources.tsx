@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Boxes,
   Check,
@@ -103,13 +103,16 @@ export function SourcesPage() {
   const [addToGroup, setAddToGroup] = useState<Model[] | null>(null)
 
   // 总览「源健康」跳转：带 openSource 状态自动展开对应源行（一次性消费）。
+  // 经 router 清 state：直接 window.history.replaceState 会抹掉 router 存在
+  // history.state 里的 key/idx 元数据，损坏 Back/Forward 行为。
   const location = useLocation()
+  const navigate = useNavigate()
   useEffect(() => {
     const openSource = (location.state as { openSource?: string } | null)?.openSource
     if (!openSource) return
     setExpanded((prev) => ({ ...prev, [openSource]: true }))
-    window.history.replaceState({}, '')
-  }, [location.state])
+    navigate(location.pathname, { replace: true, state: {} })
+  }, [location.state, location.pathname, navigate])
 
   const modelsBySource = useMemo(() => {
     const map = new Map<string, Model[]>()
