@@ -11,7 +11,7 @@ elysia-api/
 ├── backend/                # Go 后端（网关本体）
 │   ├── config/             # 配置加载 / 热重载 / 加密密钥
 │   ├── relay/              # 上游转发 / 格式转换 / Maheshvara 核心协议
-│   ├── server/             # HTTP 路由 / 鉴权中间件 / Usage 仪表盘 / 管理 API
+│   ├── server/             # HTTP 路由 / 鉴权中间件 / 管理 API / Usage 记录
 │   ├── storage/            # SQLite 持久化
 │   └── webui/              # 内嵌 WebUI 静态资源（//go:embed all:dist）
 ├── packages/webui/         # React + Vite 控制台源码
@@ -30,7 +30,7 @@ elysia-api/
 - Usage 统计：记录缓存命中、推理 token、多模态 token、内置工具调用、请求/响应摘要和重试事件。
 - 流量限制：支持模型组级并发和每日请求/token 限制。
 - 安全加固：敏感字段加密存储、SSRF 防护、常量时间 token 比较。
-- 运维诊断：内置健康检查、系统日志、pprof、Usage 仪表盘和热重载端点。
+- 运维诊断：内置健康检查、系统日志、pprof、WebUI 用量面板和热重载端点。
 - 多 Key 调度：一个模型源可配置多个 API Key，按轮询 / 随机 / 优先级策略调度；**逐 Key 权限自动发现**——拉取时每个 Key 独立请求模型列表，自动得到各自分组的可用模型集（可在面板按 Key 勾选启停），调度时保证不会切到无权限的 Key。
 - 模型能力目录：内置 models.dev 快照（零配置开箱即用），后台定期在线更新并落盘缓存（models.dev 不可达时自动回退 jsDelivr 镜像）；拉取模型时自动回填视觉 / 工具 / 结构化输出 / 思考模式 / 上下文长度等能力。模型组按成员推导能力并实际生效（不支持视觉的组自动剥离图片，不支持工具的组拒绝工具请求）。
 - 异步后台拉取：模型拉取为后台任务，发起即返回、页面不阻塞，进度与结果实时轮询展示；拉取中的源自动锁定相关操作防止误冲突。
@@ -234,8 +234,6 @@ SQLite 数据库使用 WAL 模式。运行后通常会看到：
 | `GET /v1/models` | 列出可用模型组 | Relay API Token |
 | `GET /v1beta/models` / `POST /v1beta/models/*` | Gemini 兼容入口 | Relay API Token |
 | `GET /ui/` | WebUI 控制台 | 页面登录 |
-| `GET /usage` | 独立 Usage 仪表盘 | Panel Token |
-| `GET /__usage/*` | Usage 统计 / 日志 API | Panel Token |
 | `GET /api/admin/*` | 管理 API | Panel Token |
 | `GET /debug/pprof/*` | pprof 性能分析（需启用） | Panel Token |
 | `GET /health` | 健康检查 | 无 |

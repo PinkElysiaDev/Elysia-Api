@@ -1,12 +1,14 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
 
@@ -46,6 +49,42 @@ func newTestServer(groups []config.ModelGroupConfig) *Server {
 		rateLimits:             make(map[string]*rateLimitState),
 		affinity:               newAffinityCache(),
 		skipOutboundValidation: true,
+	}
+}
+
+// newTestServerWithStore 在 newTestServer 基础上挂临时 SQLite store：
+// usage 记录走异步落库路径，测试用 QueryUsageLogs 读回（内存态快照已随
+// 遗留面板下线移除）。
+func newTestServerWithStore(t *testing.T, groups []config.ModelGroupConfig) *Server {
+	t.Helper()
+	s := newTestServer(groups)
+	store, err := storage.Open(filepath.Join(t.TempDir(), "usage-test.sqlite3"))
+	if err != nil {
+		t.Fatalf("storage.Open() error = %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+	s.store = store
+	// config 里的组/模型导入 store（store 模式下路由装配读 DB，不读 config）。
+	if err := s.importLegacyConfig(); err != nil {
+		t.Fatalf("importLegacyConfig: %v", err)
+	}
+	s.startUsageWriter()
+	return s
+}
+
+// latestUsageRecords 读回已落库的 usage 记录（重试等待异步 writer 冲刷）。
+func latestUsageRecords(t *testing.T, s *Server) []storage.UsageLogItem {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		_, items, err := s.store.QueryUsageLogs(context.Background(), storage.UsageQuery{})
+		if err != nil {
+			t.Fatalf("QueryUsageLogs: %v", err)
+		}
+		if len(items) > 0 || time.Now().After(deadline) {
+			return items
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
@@ -401,7 +440,7 @@ func TestStreamEmptyUpstreamRecordsFailure(t *testing.T) {
 		ID: "g1", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 1,
 		Models: []config.ModelRef{openAIModel("m", upstream.URL)},
 	}
-	s := newTestServer([]config.ModelGroupConfig{group})
+	s := newTestServerWithStore(t, []config.ModelGroupConfig{group})
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -410,7 +449,7 @@ func TestStreamEmptyUpstreamRecordsFailure(t *testing.T) {
 	c.Request = req
 	s.chatCompletions(c)
 
-	records := s.usageSnapshot()
+	records := latestUsageRecords(t, s)
 	if len(records) == 0 {
 		t.Fatal("expected a usage record to be written")
 	}

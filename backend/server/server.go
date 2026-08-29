@@ -56,9 +56,7 @@ type Server struct {
 	rateLimitMu sync.Mutex
 	rateLimits  map[string]*rateLimitState
 
-	usageMu      sync.Mutex
-	usageRecords []usageRecord
-	store        *storage.Store
+	store *storage.Store
 
 	// 异步 usage 写入：store 模式下，请求路径只把记录投递到 buffer channel，
 	// 由单个 writer goroutine 落库，避免请求在 SQLite 写入（单连接串行）上阻塞。
@@ -221,7 +219,6 @@ func (s *Server) setupRoutes() {
 		v1beta.POST("/models/*action", s.chatCompletions)
 	}
 
-	s.engine.GET("/usage", s.usageDashboard)
 	s.mountWebUI()
 	if s.config.EnablePprof {
 		debug := s.engine.Group("/debug/pprof")
@@ -237,15 +234,6 @@ func (s *Server) setupRoutes() {
 		debug.GET("/heap", gin.WrapH(pprof.Handler("heap")))
 		debug.GET("/mutex", gin.WrapH(pprof.Handler("mutex")))
 		debug.GET("/threadcreate", gin.WrapH(pprof.Handler("threadcreate")))
-	}
-
-	usage := s.engine.Group("/__usage")
-	usage.Use(s.dashboardAuthMiddleware())
-	{
-		usage.GET("/stats", s.usageCache.middleware(), s.usageStats)
-		usage.GET("/logs", s.usageCache.middleware(), s.usageLogs)
-		usage.GET("/logs/:id", s.usageLogDetail)
-		usage.POST("/reset", s.resetUsage)
 	}
 
 	admin := s.engine.Group("/api/admin")

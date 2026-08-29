@@ -655,7 +655,13 @@ func (s *Store) ReplaceSourceModels(ctx context.Context, source ModelSource, mod
 	}
 	for _, model := range models {
 		model = normalizeModelDefaults(model)
-		if _, err := stmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, source.BaseURL, storedKey, normalizePlatform(source.Platform), model.Type, model.MaxTokens, boolInt(model.VisionCapable), boolInt(model.ToolsCapable), boolInt(model.StructuredOutput), model.ThinkingMode, boolInt(true), boolInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
+		// platform 优先取模型自带值（legacy 配置导入的模型可逐模型声明平台，
+		// 如 responses/gemini），为空才回落源级平台（自动拉取的模型两者一致）。
+		platform := model.Platform
+		if strings.TrimSpace(platform) == "" {
+			platform = source.Platform
+		}
+		if _, err := stmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, model.BaseURL, storedKey, normalizePlatform(platform), model.Type, model.MaxTokens, boolInt(model.VisionCapable), boolInt(model.ToolsCapable), boolInt(model.StructuredOutput), model.ThinkingMode, boolInt(true), boolInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
 			return err
 		}
 	}

@@ -244,14 +244,6 @@ func (nopStreamWriter) Write(data []byte) (int, error)       { return len(data),
 func (nopStreamWriter) WriteString(data string) (int, error) { return len(data), nil }
 func (nopStreamWriter) Flush() error                         { return nil }
 
-func TestEstimatedTokensDoNotAffectSummaryTotals(t *testing.T) {
-	summary := summarizeUsage([]usageRecord{{Usage: usageTokenUsage{EstimatedTokens: 32000, Estimated: true}}})
-
-	if summary.TotalTokens != 0 || summary.EstimatedTokens != 32000 {
-		t.Fatalf("expected estimated tokens to be tracked separately without inflating total, got %+v", summary)
-	}
-}
-
 func TestUsageStatusMatches(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -287,14 +279,6 @@ func TestUsageValueMatches(t *testing.T) {
 	}
 	if usageValueMatches([]string{"caller-a", "caller-b"}, "caller-c") {
 		t.Fatal("expected multi-value filter to reject missing value")
-	}
-}
-
-func TestSummarizeUsageIgnoresNilTokenFields(t *testing.T) {
-	summary := summarizeUsage([]usageRecord{{Usage: usageTokenUsage{}}})
-
-	if summary.InputTokens != 0 || summary.OutputTokens != 0 || summary.TotalTokens != 0 || summary.CacheHitTokens != 0 {
-		t.Fatalf("expected nil usage fields to summarize as zero, got %+v", summary)
 	}
 }
 
@@ -453,73 +437,6 @@ func TestLocalResponseEstimateDoesNotUseMaxOutputEstimate(t *testing.T) {
 	}
 }
 
-func TestSummarizeUsageIncludesCanonicalDetailAndResponsesModes(t *testing.T) {
-	now := time.Now()
-	summary := summarizeUsage([]usageRecord{{
-		StartedAt:     now,
-		StatusCode:    200,
-		Stream:        true,
-		SourceFormat:  string(relay.FormatResponses),
-		ResponsesMode: "native_responses",
-		Usage: usageTokenUsage{
-			InputTokens:     intPtr(100),
-			OutputTokens:    intPtr(50),
-			TotalTokens:     intPtr(150),
-			CacheHitTokens:  intPtr(25),
-			EstimatedTokens: 200,
-			Estimated:       true,
-		},
-		UsageDetail: usageDetail{
-			ReasoningTokens: intPtr(7),
-		},
-		BuiltinToolUsage: builtinToolUsage{
-			WebSearchCalls:       1,
-			FileSearchCalls:      2,
-			ImageGenerationCalls: 3,
-		},
-	}})
-
-	if summary.Requests != 1 || summary.Success != 1 || summary.StreamRequests != 1 || summary.EstimatedRequests != 1 {
-		t.Fatalf("expected request counters, got %+v", summary)
-	}
-	if summary.ResponsesRequests != 1 || summary.NativeResponsesRequests != 1 || summary.TransformedResponsesRequests != 0 {
-		t.Fatalf("expected responses counters, got %+v", summary)
-	}
-	if summary.InputTokens != 100 || summary.OutputTokens != 50 || summary.TotalTokens != 150 || summary.CacheHitTokens != 25 || summary.EstimatedTokens != 200 || summary.ReasoningTokens != 7 {
-		t.Fatalf("expected token counters, got %+v", summary)
-	}
-	if summary.WebSearchCalls != 1 || summary.FileSearchCalls != 2 || summary.ImageGenerationCalls != 3 {
-		t.Fatalf("expected builtin counters, got %+v", summary)
-	}
-	if summary.CacheHitRate != 0.25 {
-		t.Fatalf("expected cache hit rate 0.25, got %f", summary.CacheHitRate)
-	}
-}
-
-func TestSummarizeUsageTracksFirstAndLastUsedAt(t *testing.T) {
-	base := time.Date(2026, 5, 28, 10, 0, 0, 0, time.UTC)
-	summary := summarizeUsage([]usageRecord{
-		{StartedAt: base.Add(10 * time.Minute), StatusCode: 200, ModelName: "middle-model"},
-		{StartedAt: base, StatusCode: 200, ModelName: "first-model"},
-		{StartedAt: base.Add(30 * time.Minute), StatusCode: 200, ModelName: "last-model"},
-	})
-
-	if !summary.FirstUsedAt.Equal(base) {
-		t.Fatalf("expected first used at %s, got %s", base, summary.FirstUsedAt)
-	}
-	if !summary.LastUsedAt.Equal(base.Add(30 * time.Minute)) {
-		t.Fatalf("expected last used at %s, got %s", base.Add(30*time.Minute), summary.LastUsedAt)
-	}
-	if summary.FirstModelName != "first-model" {
-		t.Fatalf("expected first model first-model, got %s", summary.FirstModelName)
-	}
-	if summary.LastModelName != "last-model" {
-		t.Fatalf("expected last model last-model, got %s", summary.LastModelName)
-	}
-}
-
-// 回归：并发请求可能拿到相同的 UnixNano（Windows 时钟粒度下概率可观），
-// 请求 ID 必须带随机后缀，否则 INSERT OR REPLACE 会静默覆盖彼此的记录。
 func TestUsageRequestIDUniqueForSameNanosecond(t *testing.T) {
 	now := time.Now()
 	if usageRequestID(now) == usageRequestID(now) {
