@@ -264,7 +264,7 @@ func (s *Server) mountWebUI() {
 		// 子目录一律 404，阻止 http.FileServer 渲染目录列表页（文件名枚举）。
 		ui := s.engine.Group("/ui", func(c *gin.Context) {
 			if strings.HasPrefix(c.Request.URL.Path, "/ui/assets/") {
-				c.Header("Cache-Control", "public, max-age=31536000, immutable")
+				c.Header("Cache-Control", CacheHeaderImmutable)
 			} else {
 				c.Header("Cache-Control", "no-cache")
 			}
@@ -631,7 +631,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			}
 			targetBody, err = relay.PassthroughBody(bodyBytes, passModelName, ensureStream, addStreamOptions)
 			if err == nil {
-				record.RelayMode = "passthrough"
+				record.RelayMode = RelayModePassthrough
 				// OpenAI 系透传同样补齐缺失的 tool call id：部分客户端重建历史时
 				// 会遗漏 tool_calls[].id，直接透传会被严格上游以 missing field id 拒绝。
 				if targetPlatform == relay.PlatformOpenAI || targetPlatform == relay.PlatformDeepSeek || targetPlatform == relay.PlatformAzure {
@@ -644,7 +644,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 				targetBody = customRequest.Body
 			}
 			if err == nil {
-				record.RelayMode = "transform"
+				record.RelayMode = RelayModeTransform
 			}
 		} else {
 			targetFormat, formatErr := relay.TargetFormatForPlatform(targetPlatform)
@@ -654,7 +654,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 				targetBody, err = relay.CanonicalToTargetRequest(canonicalReq, targetFormat, nil)
 			}
 			if err == nil {
-				record.RelayMode = "transform"
+				record.RelayMode = RelayModeTransform
 			}
 		}
 		if err != nil {
@@ -1054,7 +1054,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		record.StatusCode = http.StatusOK
 		observeUpstreamUsage(resp, record, targetPlatform)
 
-		if record.RelayMode == "passthrough" {
+		if record.RelayMode == RelayModePassthrough {
 			// OpenAI 系同协议透传：原始转发上游 SSE，保留 tool call id、
 			// reasoning_content 等字段，不经过 Maheshvara 重渲染。
 			forwardErr = relay.ForwardOpenAIStream(c.Request.Context(), resp, writer)

@@ -258,7 +258,7 @@ export function OverviewPage() {
     const rest = sorted.slice(5).reduce((sum, row) => sum + row.requests, 0)
     if (rest > 0) top.push({ name: `其他 ${sorted.length - 5} 个模型`, count: rest, muted: true })
     const max = top[0]?.count || 1
-    return top.map((it) => ({ ...it, ratio: it.count / max }))
+    return top.map((model) => ({ ...model, ratio: model.count / max }))
   }, [byModel])
 
   // 最近失败（最新 3 条，今日窗口、与 KPI 相同的 5 分钟桶化）

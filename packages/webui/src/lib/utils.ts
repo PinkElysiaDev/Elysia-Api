@@ -2,6 +2,7 @@ import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import type { Model } from '@/lib/types'
 
+/** Tailwind class 合并（后者覆盖前者同前缀）。 */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
@@ -35,11 +36,13 @@ export function effectiveModelFilter(
   return matched.length > 0 ? matched : [NO_MATCH_MODEL_FILTER]
 }
 
+/** 千分位格式化数字；空值显示 0。 */
 export function formatNumber(value: number | undefined | null): string {
   if (value == null || Number.isNaN(value)) return '0'
   return new Intl.NumberFormat('zh-CN').format(value)
 }
 
+/** 字节数人性化显示（KB/MB/GB），保留两位小数。 */
 export function formatBytes(bytes: number | undefined | null): string {
   if (!bytes || bytes < 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -52,12 +55,14 @@ export function formatBytes(bytes: number | undefined | null): string {
   return `${value.toFixed(value >= 100 || unit === 0 ? 0 : 1)} ${units[unit]}`
 }
 
+/** 毫秒时长人性化显示（ms/s/min/h）。 */
 export function formatDuration(ms: number | undefined | null): string {
   if (ms == null || Number.isNaN(ms)) return '-'
   if (ms < 1000) return `${Math.round(ms)} ms`
   return `${(ms / 1000).toFixed(2)} s`
 }
 
+/** ISO 时间转本地 YYYY-MM-DD HH:mm:ss 显示。 */
 export function formatDateTime(value: string | number | Date | undefined | null): string {
   if (!value) return '-'
   const date = new Date(value)
@@ -73,6 +78,7 @@ export function formatDateTime(value: string | number | Date | undefined | null)
   }).format(date)
 }
 
+/** 相对时间（刚刚/N 分钟前/…），超过阈值回退绝对时间。 */
 export function formatRelative(value: string | number | Date | undefined | null): string {
   if (!value) return '-'
   const date = new Date(value)
@@ -89,6 +95,7 @@ export function formatRelative(value: string | number | Date | undefined | null)
   return formatDateTime(date)
 }
 
+/** 分子/分母 百分比字符串（保留一位小数）；分母为 0 显示 —。 */
 export function percent(part: number, total: number): string {
   if (!total) return '0%'
   return `${((part / total) * 100).toFixed(1)}%`
@@ -131,6 +138,7 @@ export function uniqueSorted(values: (string | undefined | null)[]): { value: st
 }
 
 
+/** 时间窗起点 ISO（24h/7d/30d；all 返回 undefined 表示无下界）。 */
 export function startOfRange(range: '24h' | '7d' | '30d' | 'all', nowIso?: string): string | undefined {
   if (range === 'all') return undefined
   const reference = nowIso ? new Date(nowIso).getTime() : Date.now()

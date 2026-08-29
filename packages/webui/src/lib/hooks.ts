@@ -27,6 +27,7 @@ export function useMinuteTick(): number {
   return tick
 }
 
+/** 网关健康状态（内存/DB），refreshInterval 毫秒轮询。 */
 export function useHealth(refreshInterval = 0) {
   return useSWR('health', () => api.health(), { ...defaultConfig, refreshInterval })
 }
@@ -35,6 +36,7 @@ export function useRuntimeConfig() {
   return useSWR('runtime-config', () => api.runtimeConfig(), defaultConfig)
 }
 
+/** 模型源列表（可选轮询间隔毫秒）。 */
 export function useSources(refreshInterval = 0) {
   return useSWR('model-sources', () => api.listSources(), { ...defaultConfig, refreshInterval })
 }
@@ -49,14 +51,17 @@ export function useModelCatalogStatus() {
   )
 }
 
+/** 全量模型列表（可选轮询间隔毫秒）。 */
 export function useModels(refreshInterval = 0) {
   return useSWR('models', () => api.listModels(), { ...defaultConfig, refreshInterval })
 }
 
+/** 模型组列表。 */
 export function useGroups() {
   return useSWR('model-groups', () => api.listGroups(), defaultConfig)
 }
 
+/** API token 列表（列表值已脱敏）。 */
 export function useTokens() {
   return useSWR('api-tokens', () => api.listTokens(), defaultConfig)
 }
@@ -81,6 +86,7 @@ const usageConfig: SWRConfiguration = {
   dedupingInterval: 60_000,
 }
 
+/** Usage KPI 汇总（params 见 serializeUsage）。 */
 export function useUsageStats(params: UsageQueryParams) {
   return useSWR(['usage-stats', params], () => api.usageStats(params), usageConfig)
 }
@@ -95,10 +101,12 @@ export function useUsageByModel(params: UsageQueryParams) {
   return useSWR(['usage-by-model', params], () => api.usageByModel(params), usageConfig)
 }
 
+/** Usage 调用日志分页（params 含 limit/offset）。 */
 export function useUsageLogs(params: UsageQueryParams) {
   return useSWR(['usage-logs', params], () => api.usageLogs(params), usageConfig)
 }
 
+/** 系统日志分页。 */
 export function useSystemLogs(params: { limit?: number; offset?: number; level?: string }) {
   return useSWR(['system-logs', params], () => api.systemLogs(params), defaultConfig)
 }

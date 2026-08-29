@@ -644,7 +644,7 @@ func (s *Server) recordUsage(record *usageRecord) {
 // 面板下线后不再有无 store 的内存态分支。
 func (s *Server) resetUsage(c *gin.Context) {
 	if s.store == nil {
-		fail(c, http.StatusServiceUnavailable, "store_unavailable", "sqlite store is unavailable")
+		respondFail(c, http.StatusServiceUnavailable, "store_unavailable", "sqlite store is unavailable")
 		return
 	}
 	if err := s.store.ClearUsage(c.Request.Context()); err != nil {

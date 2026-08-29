@@ -167,7 +167,7 @@ func (s *Server) responses(c *gin.Context) {
 				continue
 			}
 			targetFormat = transformedFormat
-			responsesMode = "transformed_responses"
+			responsesMode = ResponsesModeTransformed
 		}
 
 		if relay.IsCustomPlatform(targetPlatform) {
@@ -195,12 +195,12 @@ func (s *Server) responses(c *gin.Context) {
 		} else if targetFormat == relay.FormatResponses && !filteredVision {
 			targetBody, err = relay.ResponsesPassthroughBody(bodyBytes, selectedModel.Name)
 			if err == nil {
-				record.RelayMode = "passthrough"
+				record.RelayMode = RelayModePassthrough
 			}
 		} else {
 			targetBody, err = relay.CanonicalToTargetRequest(canonicalReq, targetFormat, originalResponsesReq)
 			if err == nil {
-				record.RelayMode = "transform"
+				record.RelayMode = RelayModeTransform
 			}
 		}
 		if err != nil {
@@ -499,7 +499,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		}
 		startSSE()
 		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
-		if record.RelayMode == "passthrough" {
+		if record.RelayMode == RelayModePassthrough {
 			// 同协议透传：原样转发上游 SSE，保留 reasoning_text 等
 			// provider 私有事件，不再经 Maheshvara 解码重渲染。
 			streamErr = relay.ForwardResponsesStream(c.Request.Context(), resp, writer)
@@ -601,14 +601,14 @@ func selectResponsesTargetFormat(model config.ModelRef, platform relay.Platform,
 	}
 
 	if endpointSupportsResponses(model, platform) {
-		return relay.FormatResponses, "native_responses", nil
+		return relay.FormatResponses, ResponsesModeNative, nil
 	}
 
 	if mode == "native" {
-		return "", "native_responses", fmt.Errorf("selected upstream model %q does not declare Responses API support", model.Name)
+		return "", ResponsesModeNative, fmt.Errorf("selected upstream model %q does not declare Responses API support", model.Name)
 	}
 
-	if mode != "auto" && mode != "transform" {
+	if mode != "auto" && mode != RelayModeTransform {
 		return "", mode + "_responses", fmt.Errorf("unsupported Responses upstreamMode %q", responsesCfg.UpstreamMode)
 	}
 
@@ -616,7 +616,7 @@ func selectResponsesTargetFormat(model config.ModelRef, platform relay.Platform,
 	if !ok {
 		return "", mode + "_responses", fmt.Errorf("selected upstream model %q does not declare a transformable endpoint for Responses API", model.Name)
 	}
-	return targetFormat, "transformed_responses", nil
+	return targetFormat, ResponsesModeTransformed, nil
 }
 
 func transformedResponsesTargetFormat(model config.ModelRef, platform relay.Platform) (relay.FormatType, bool) {
