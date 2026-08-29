@@ -534,6 +534,132 @@ func TestMigrateBackfillsStartedMsOnLegacyDatabase(t *testing.T) {
 	}
 }
 
+func TestUnparseableStartedAtExcludedFromRollupIncludedInAllTimeTotals(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bad-ts.sqlite3")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE usage_records (request_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, ended_at TEXT NOT NULL, key_name TEXT NOT NULL DEFAULT '', key_hash TEXT NOT NULL DEFAULT '', group_name TEXT NOT NULL DEFAULT '', model_name TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL DEFAULT '', source_format TEXT NOT NULL DEFAULT '', target_format TEXT NOT NULL DEFAULT '', relay_mode TEXT NOT NULL DEFAULT '', stream INTEGER NOT NULL DEFAULT 0, status_code INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', first_byte_ms INTEGER NOT NULL DEFAULT 0, duration_ms INTEGER NOT NULL DEFAULT 0, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, total_tokens INTEGER NOT NULL DEFAULT 0, request_truncated INTEGER NOT NULL DEFAULT 0, response_truncated INTEGER NOT NULL DEFAULT 0, record_json TEXT NOT NULL)`); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO usage_records(request_id, started_at, ended_at, record_json, status_code, total_tokens) VALUES('bad','not-a-time','not-a-time','{}', 200, 3)`); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+
+	var startedMs int64
+	if err := store.db.QueryRow(`SELECT started_ms FROM usage_records WHERE request_id='bad'`).Scan(&startedMs); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if startedMs != 0 {
+		t.Fatalf("unparseable started_ms = %d, want 0", startedMs)
+	}
+
+	if err := store.RunRollupBackfill(context.Background()); err != nil {
+		t.Fatalf("backfill: %v", err)
+	}
+	var rollupCnt int
+	if err := store.db.QueryRow(`SELECT COALESCE(SUM(cnt),0) FROM usage_rollup_hour`).Scan(&rollupCnt); err != nil {
+		t.Fatalf("rollup count: %v", err)
+	}
+	if rollupCnt != 0 {
+		t.Fatalf("orphan timestamps must stay out of rollup, got %d", rollupCnt)
+	}
+
+	totals, err := store.UsageTotals(context.Background(), UsageQuery{})
+	if err != nil {
+		t.Fatalf("UsageTotals: %v", err)
+	}
+	if totals["requests"].(int) != 1 {
+		t.Fatalf("all-time totals must include orphan row, got %#v", totals)
+	}
+
+	daily, err := store.UsageDaily(context.Background(), UsageQuery{}, 0)
+	if err != nil {
+		t.Fatalf("UsageDaily: %v", err)
+	}
+	if len(daily) != 0 {
+		t.Fatalf("daily must not invent a 1970 bucket for orphan timestamps, got %#v", daily)
+	}
+
+	if _, err := store.db.Exec(`UPDATE usage_records SET key_hash = 'kh', source_id = 'src' WHERE request_id = 'bad'`); err != nil {
+		t.Fatalf("tag orphan: %v", err)
+	}
+	validAt := time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC)
+	if _, err := store.db.Exec(`INSERT INTO usage_records(request_id, started_at, started_ms, ended_at, model_name, key_hash, source_id, status_code, total_tokens, record_json) VALUES('ok', ?, ?, ?, 'm', 'kh', 'src', 200, 4, '{}')`,
+		validAt.Format(time.RFC3339Nano), validAt.UnixMilli(), validAt.Add(time.Second).Format(time.RFC3339Nano)); err != nil {
+		t.Fatalf("insert valid: %v", err)
+	}
+
+	assertNo1970 := func(t *testing.T, label string, buckets []UsageDailyBucket) {
+		t.Helper()
+		if len(buckets) == 0 {
+			t.Fatalf("%s: expected the valid 2026 row, got empty", label)
+		}
+		for _, b := range buckets {
+			if b.Date < "2020-01-01" {
+				t.Fatalf("%s produced epoch-like bucket %#v", label, buckets)
+			}
+		}
+	}
+
+	store.rollupReady.Store(false)
+	rawDaily, err := store.UsageDaily(context.Background(), UsageQuery{}, 0)
+	store.rollupReady.Store(true)
+	if err != nil {
+		t.Fatalf("daily raw: %v", err)
+	}
+	assertNo1970(t, "rollup not ready", rawDaily)
+
+	byHash, err := store.UsageDaily(context.Background(), UsageQuery{KeyHash: "kh"}, 0)
+	if err != nil {
+		t.Fatalf("daily keyHash: %v", err)
+	}
+	assertNo1970(t, "keyHash", byHash)
+
+	bySource, err := store.UsageDaily(context.Background(), UsageQuery{SourceID: "src"}, 0)
+	if err != nil {
+		t.Fatalf("daily sourceId: %v", err)
+	}
+	assertNo1970(t, "sourceId", bySource)
+
+	halfHour, err := store.UsageDaily(context.Background(), UsageQuery{}, 5*60+30)
+	if err != nil {
+		t.Fatalf("daily +05:30: %v", err)
+	}
+	assertNo1970(t, "+05:30", halfHour)
+
+	modelDaily, err := store.UsageByModelDaily(context.Background(), UsageQuery{SourceID: "src"}, 0, 8)
+	if err != nil {
+		t.Fatalf("by-model-daily: %v", err)
+	}
+	for _, b := range modelDaily {
+		if b.Date < "2020-01-01" {
+			t.Fatalf("UsageByModelDaily epoch-like %#v", modelDaily)
+		}
+	}
+}
+
+func TestStoreCloseCancelsRollupBackfill(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "close-rollup.sqlite3"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	store.StartRollupBackfill()
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+}
+
 func TestBackfillProgressBar(t *testing.T) {
 	if got := backfillProgressBar(5, 10); got != "[###############...............]" {
 		t.Fatalf("half progress bar wrong: %s", got)

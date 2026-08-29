@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"runtime"
@@ -57,7 +58,9 @@ func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
 	admin.DELETE("/api-tokens/:name", s.adminDeleteToken)
 	admin.GET("/usage/stats", s.usageCache.middleware(), s.adminUsageStats)
 	admin.GET("/usage/trend", s.usageCache.middleware(), s.adminUsageTrend)
+	admin.GET("/usage/pulse", s.usageCache.middleware(), s.adminUsagePulse)
 	admin.GET("/usage/by-model", s.usageCache.middleware(), s.adminUsageByModel)
+	admin.GET("/usage/by-model-daily", s.usageCache.middleware(), s.adminUsageByModelDaily)
 	admin.GET("/usage/logs", s.usageCache.middleware(), s.adminUsageLogs)
 	admin.GET("/usage/logs/:id", s.adminUsageLogDetail)
 	admin.POST("/usage/reset", s.adminUsageReset)
@@ -697,14 +700,83 @@ func (s *Server) adminUsageTrend(c *gin.Context) {
 	if !okStore {
 		return
 	}
-	utcOffsetMinutes, err := strconv.Atoi(c.DefaultQuery("utcOffsetMinutes", "0"))
-	if err != nil || utcOffsetMinutes < -14*60 || utcOffsetMinutes > 14*60 {
-		fail(c, 400, "invalid_utc_offset", "utcOffsetMinutes must be an integer between -840 and 840")
+	utcOffsetMinutes, okOffset := parseUTCOffsetMinutes(c)
+	if !okOffset {
 		return
 	}
 	buckets, err := store.UsageDaily(c.Request.Context(), usageQueryFromRequest(c), utcOffsetMinutes)
 	if err != nil {
 		fail(c, 500, "usage_trend_failed", err.Error())
+		return
+	}
+	ok(c, buckets)
+}
+
+func parseUTCOffsetMinutes(c *gin.Context) (int, bool) {
+	utcOffsetMinutes, err := strconv.Atoi(c.DefaultQuery("utcOffsetMinutes", "0"))
+	if err != nil || utcOffsetMinutes < -14*60 || utcOffsetMinutes > 14*60 {
+		fail(c, 400, "invalid_utc_offset", "utcOffsetMinutes must be an integer between -840 and 840")
+		return 0, false
+	}
+	return utcOffsetMinutes, true
+}
+
+// adminUsagePulse 短窗按分钟桶聚合 RPM 与时延（平均 / P95）。
+func (s *Server) adminUsagePulse(c *gin.Context) {
+	store, okStore := s.requireStore(c)
+	if !okStore {
+		return
+	}
+	utcOffsetMinutes, okOffset := parseUTCOffsetMinutes(c)
+	if !okOffset {
+		return
+	}
+	bucketMinutes, err := strconv.Atoi(c.DefaultQuery("bucketMinutes", "1"))
+	if err != nil || (bucketMinutes != 1 && bucketMinutes != 5 && bucketMinutes != 15) {
+		fail(c, 400, "invalid_bucket", "bucketMinutes must be 1, 5, or 15")
+		return
+	}
+	query := usageQueryFromRequest(c)
+	if err := storage.ValidatePulseQuery(query); err != nil {
+		code := "invalid_from"
+		if errors.Is(err, storage.ErrPulseWindowTooLong) {
+			code = "window_too_long"
+		} else if errors.Is(err, storage.ErrPulseInvertedRange) {
+			code = "invalid_range"
+		}
+		fail(c, 400, code, err.Error())
+		return
+	}
+	result, err := store.UsagePulse(c.Request.Context(), query, utcOffsetMinutes, bucketMinutes)
+	if err != nil {
+		fail(c, 500, "usage_pulse_failed", err.Error())
+		return
+	}
+	ok(c, result)
+}
+
+// adminUsageByModelDaily 按本地日 × 模型聚合；top 之外的模型合并为 isOther=true。
+func (s *Server) adminUsageByModelDaily(c *gin.Context) {
+	store, okStore := s.requireStore(c)
+	if !okStore {
+		return
+	}
+	utcOffsetMinutes, okOffset := parseUTCOffsetMinutes(c)
+	if !okOffset {
+		return
+	}
+	top := 8
+	if raw := c.Query("top"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 20 {
+			fail(c, 400, "invalid_top", "top must be an integer between 1 and 20")
+			return
+		}
+		top = n
+	}
+	buckets, err := store.UsageByModelDaily(c.Request.Context(), usageQueryFromRequest(c), utcOffsetMinutes, top)
+	if err != nil {
+		fail(c, 500, "usage_by_model_daily_failed", err.Error())
 		return
 	}
 	ok(c, buckets)
@@ -815,6 +887,8 @@ func usageQueryFromRequest(c *gin.Context) storage.UsageQuery {
 		KeyNames:   c.QueryArray("keyName"),
 		GroupNames: firstNonEmptyArray(c.QueryArray("groupName"), c.QueryArray("modelGroup")),
 		ModelNames: c.QueryArray("modelName"),
+		SourceID:   c.Query("sourceId"),
+		SourceIDs:  c.QueryArray("sourceId"),
 	}
 }
 

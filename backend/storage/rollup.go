@@ -37,7 +37,14 @@ func (s *Store) StartRollupBackfill() {
 	s.rollupWG.Add(1)
 	go func() {
 		defer s.rollupWG.Done()
-		if err := s.RunRollupBackfill(context.Background()); err != nil {
+		ctx := s.rollupCtx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		if err := s.RunRollupBackfill(ctx); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
 			log.Printf("[usage-rollup] backfill failed (queries stay on raw path): %v", err)
 		}
 	}()
@@ -119,15 +126,16 @@ func (s *Store) RunRollupBackfill(ctx context.Context) error {
 	}
 
 	total := until - through
-	// 首次回填时把起点钳到最早数据所在小时：水位默认从 0（纪元）开始，
-	// 不钳制会对着空时间段跑数万个 6 小时空块。
+	// 首次回填时把起点钳到最早数据所在小时：水位默认从 0（Unix 纪元）开始。
+	// 空库 MIN(started_ms) 为 NULL/0，若不短路会从 1970 空跑到现在
+	// （约 2 万天、数万个 6 小时空块，启动日志会卡在 0% 刷很久）。
 	if through == 0 && total > 0 {
-		var minMs int64
-		if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MIN(started_ms), 0) FROM usage_records`).Scan(&minMs); err != nil {
+		var minMs sql.NullInt64
+		if err := s.db.QueryRowContext(ctx, `SELECT MIN(started_ms) FROM usage_records WHERE started_ms > 0`).Scan(&minMs); err != nil {
 			return err
 		}
-		if minMs > 0 {
-			through = minMs / 3_600_000 * 3_600_000
+		if minMs.Valid && minMs.Int64 > 0 {
+			through = minMs.Int64 / 3_600_000 * 3_600_000
 			total = until - through
 		} else {
 			// 空库：无任何记录可回填，直接就绪——否则会从纪元起空跑约 9 万个
@@ -169,7 +177,13 @@ func (s *Store) RunRollupBackfill(ctx context.Context) error {
 			percent := (through - throughInitial) * 100 / total
 			log.Printf("[usage-rollup] %s %d%%", backfillProgressBar(int(percent), 100), percent)
 		}
-		time.Sleep(rollupChunkPauseMs * time.Millisecond)
+		timer := time.NewTimer(rollupChunkPauseMs * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
 	}
 	if err := s.setRollupStateInt(ctx, rollupStateReady, 1); err != nil {
 		return err
@@ -201,7 +215,7 @@ SELECT (started_ms / 3600000) * 3600000, model_name, group_name, key_name, statu
        COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0), COALESCE(SUM(cache_hit_tokens),0),
        COALESCE(SUM(duration_ms),0), COALESCE(SUM(CASE WHEN first_byte_ms > 0 THEN first_byte_ms END),0), COALESCE(COUNT(CASE WHEN first_byte_ms > 0 THEN 1 END),0),
        COALESCE(MIN(started_ms),0), COALESCE(MAX(started_ms),0)
-FROM usage_records WHERE started_ms >= ? AND started_ms < ? GROUP BY 1, model_name, group_name, key_name, status_code`, fromMs, toMs); err != nil {
+FROM usage_records WHERE started_ms > 0 AND started_ms >= ? AND started_ms < ? GROUP BY 1, model_name, group_name, key_name, status_code`, fromMs, toMs); err != nil {
 		return err
 	}
 	committed = true
@@ -224,7 +238,7 @@ func (s *Store) auditRollupHours(ctx context.Context) (int, error) {
 	defer func() { _ = tx.Rollback() }() // 只读事务，结束即弃
 
 	rawByHour := make(map[int64]int64)
-	rows, err := tx.QueryContext(ctx, `SELECT (started_ms / 3600000) * 3600000, COUNT(*) FROM usage_records GROUP BY 1`)
+	rows, err := tx.QueryContext(ctx, `SELECT (started_ms / 3600000) * 3600000, COUNT(*) FROM usage_records WHERE started_ms > 0 GROUP BY 1`)
 	if err != nil {
 		return 0, err
 	}
