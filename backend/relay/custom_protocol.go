@@ -123,30 +123,6 @@ func RegisterCustomProtocol(config CustomProtocolConfig) error {
 	return nil
 }
 
-func RegisterCustomProtocols(configs []CustomProtocolConfig) error {
-	validated := make(map[string]CustomProtocolConfig, len(configs))
-	for _, config := range configs {
-		if err := ValidateCustomProtocol(config); err != nil {
-			return err
-		}
-		id := strings.ToLower(strings.TrimSpace(config.ID))
-		if _, exists := validated[id]; exists {
-			return fmt.Errorf("custom protocol %q is duplicated", config.ID)
-		}
-		validated[id] = cloneCustomProtocol(config)
-	}
-	customProtocolRegistry.Lock()
-	next := make(map[string]CustomProtocolConfig, len(customProtocolRegistry.items)+len(validated))
-	for id, config := range customProtocolRegistry.items {
-		next[id] = config
-	}
-	for id, config := range validated {
-		next[id] = config
-	}
-	customProtocolRegistry.items = next
-	customProtocolRegistry.Unlock()
-	return nil
-}
 
 // ReplaceCustomProtocols validates the complete set and swaps it atomically.
 // A failed reload leaves the previously registered protocols untouched.
@@ -451,9 +427,6 @@ func CustomProtocolResponseToCanonical(body []byte, config CustomProtocolConfig)
 // single streaming event. Empty events are valid and are represented by an
 // otherwise empty Maheshvara response so callers can continue scanning until a
 // later event carries text, a tool call, usage, or a finish reason.
-func CustomProtocolStreamEventToCanonical(body []byte, config CustomProtocolConfig) (*MaheshvaraResponse, error) {
-	return customProtocolResponseToCanonical(body, config, true)
-}
 
 func customProtocolStreamEventToCanonicalValidated(body []byte, config CustomProtocolConfig) (*MaheshvaraResponse, error) {
 	return customProtocolResponseToCanonicalValidated(body, config, true)
@@ -950,6 +923,4 @@ func escapeJSONString(value string) string {
 	return strings.Trim(string(encoded), "\"")
 }
 
-func timeNowUnix() int64 {
-	return time.Now().Unix()
-}
+func timeNowUnix() int64 { return time.Now().Unix() }

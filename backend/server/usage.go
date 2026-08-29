@@ -191,9 +191,6 @@ type providerUsageResult struct {
 	HasUsage bool
 }
 
-func usageFromProviderBody(platform relay.Platform, body []byte) usageTokenUsage {
-	return extractProviderUsageFromBody(platform, "", body).Usage
-}
 
 func extractProviderUsageFromBody(platform relay.Platform, format relay.FormatType, body []byte) providerUsageResult {
 	var payload map[string]interface{}
@@ -923,15 +920,7 @@ func (b *upstreamUsageObservingBody) observeLine(line string) {
 	applyProviderUsageToRecord(b.record, result)
 }
 
-func parsePlatformStreamUsage(platform relay.Platform, payload string) (usageTokenUsage, bool) {
-	result := extractProviderUsageFromStreamEvent(platform, "", payload)
-	return result.Usage, usageHasAnyTokens(result.Usage)
-}
 
-func parseStreamUsage(payload string) (usageTokenUsage, bool) {
-	result := extractProviderUsageFromStreamEvent("", relay.FormatResponses, payload)
-	return result.Usage, usageHasAnyTokens(result.Usage)
-}
 
 func usageFromOpenAIUsage(raw map[string]interface{}) usageTokenUsage {
 	usage := usageTokenUsage{}

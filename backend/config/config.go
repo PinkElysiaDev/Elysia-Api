@@ -400,17 +400,6 @@ func (c *Config) GetGroups() []ModelGroupConfig {
 }
 
 // GetGroupByName 根据模型组名称查找模型组配置
-func (c *Config) GetGroupByName(name string) *ModelGroupConfig {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	for i := range c.Groups {
-		if c.Groups[i].Name == name {
-			groupCopy := c.Groups[i]
-			return &groupCopy
-		}
-	}
-	return nil
-}
 
 func (c *Config) GetTokens() []AccessToken {
 	c.mu.RLock()
@@ -599,10 +588,6 @@ func (c *Config) IsPanelAccessConfigured() bool {
 	return c.PanelAccessToken != ""
 }
 
-func (c *Config) IsValidAccessToken(token string) bool {
-	_, ok := c.FindAccessToken(token)
-	return ok
-}
 
 func (c *Config) FindAccessToken(token string) (AccessToken, bool) {
 	token = strings.TrimSpace(token)
@@ -679,24 +664,6 @@ func (c *Config) GetResponsesConfig() ResponsesConfig {
 		cfg.PassThroughUnknownFields = &v
 	}
 	return cfg
-}
-
-// GetRelayConfig returns relay policy. Same-protocol passthrough is always enabled.
-func (c *Config) GetRelayConfig() RelayConfig {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	cfg := c.Relay
-	if cfg.Passthrough == nil {
-		v := true
-		cfg.Passthrough = &v
-	}
-	return cfg
-}
-
-// IsRelayPassthroughEnabled 是 GetRelayConfig().Passthrough 的便捷封装。
-func (c *Config) IsRelayPassthroughEnabled() bool {
-	return *c.GetRelayConfig().Passthrough
 }
 
 func (c *Config) GetUsageConfig() UsageConfig {

@@ -130,11 +130,6 @@ export function uniqueSorted(values: (string | undefined | null)[]): { value: st
   return result.map((v) => ({ value: v, label: v }))
 }
 
-export function maskMiddle(value: string | undefined): string {
-  if (!value) return ''
-  if (value.length <= 8) return '***'
-  return `${value.slice(0, 4)}…${value.slice(-4)}`
-}
 
 export function startOfRange(range: '24h' | '7d' | '30d' | 'all', nowIso?: string): string | undefined {
   if (range === 'all') return undefined

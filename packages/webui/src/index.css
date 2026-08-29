@@ -318,31 +318,8 @@ body::before {
   }
 
   /* 晶辉微光无界分隔线 */
-  .crystal-line {
-    height: 1px;
-    background: linear-gradient(90deg, transparent, hsl(var(--border) / 0.8) 25%, hsl(var(--border) / 0.8) 75%, transparent);
-  }
 
   /* 通透玻璃面板（用于无界画布上的轻盈功能区） */
-  .ethereal-panel {
-    background: color-mix(in srgb, hsl(var(--card)) 65%, transparent);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid hsl(var(--border) / 0.5);
-  }
 
   /* 浮动晶光卡槽 */
-  .crystal-card {
-    position: relative;
-    border-radius: var(--radius);
-    background: color-mix(in srgb, hsl(var(--card)) 70%, transparent);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid hsl(var(--border) / 0.6);
-    transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-  .crystal-card:hover {
-    border-color: hsl(var(--primary) / 0.35);
-    box-shadow: 0 4px 20px -6px hsl(var(--primary) / 0.12);
-  }
 }

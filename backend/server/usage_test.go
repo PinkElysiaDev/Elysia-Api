@@ -463,3 +463,18 @@ func TestTruncateUsageWindowAlignsToLocalClock(t *testing.T) {
 		t.Fatalf("15m bucket must align to local 15-minute boundary, got %v", fifteen)
 	}
 }
+
+// 测试内薄包装：走与生产相同的内部路径（生产侧的便捷包装已随死代码清除）。
+func usageFromProviderBody(platform relay.Platform, body []byte) usageTokenUsage {
+	return extractProviderUsageFromBody(platform, "", body).Usage
+}
+
+func parsePlatformStreamUsage(platform relay.Platform, payload string) (usageTokenUsage, bool) {
+	result := extractProviderUsageFromStreamEvent(platform, "", payload)
+	return result.Usage, usageHasAnyTokens(result.Usage)
+}
+
+func parseStreamUsage(payload string) (usageTokenUsage, bool) {
+	result := extractProviderUsageFromStreamEvent("", relay.FormatResponses, payload)
+	return result.Usage, usageHasAnyTokens(result.Usage)
+}

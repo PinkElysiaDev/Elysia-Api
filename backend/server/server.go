@@ -188,9 +188,6 @@ func compactLogJSON(data []byte) string {
 	return string(compacted)
 }
 
-func isVisionCapable(group *config.ModelGroupConfig) bool {
-	return group != nil && group.VisionCapable != nil && *group.VisionCapable
-}
 
 func (s *Server) setupRoutes() {
 	if s.config.MaxBodyBytes > 0 {
@@ -1189,13 +1186,6 @@ func (w *ginStreamWriter) Flush() error {
 // 现在复用 buildCandidates 的有序候选列表取第一个，避免旧实现里
 // round-robin 用过期索引访问 models[idx] 导致的越界 panic（高危1）。
 // 需要故障转移的路径应直接使用 buildCandidates 遍历全部候选。
-func (s *Server) selectModel(group *config.ModelGroupConfig) config.ModelRef {
-	candidates := s.buildCandidates(group)
-	if len(candidates) == 0 {
-		return config.ModelRef{}
-	}
-	return candidates[0]
-}
 
 // tokenAllowsGroup 校验当前请求的 API key 是否被允许访问指定模型组。
 // 从 gin context 取 authMiddleware 写入的 AllowedGroups：为空表示不限制（放行）；

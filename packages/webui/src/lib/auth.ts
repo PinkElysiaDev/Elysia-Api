@@ -73,6 +73,3 @@ export function subscribeToken(listener: Listener): () => void {
   return () => listeners.delete(listener)
 }
 
-export function isAuthenticated(): boolean {
-  return !!getToken()
-}
