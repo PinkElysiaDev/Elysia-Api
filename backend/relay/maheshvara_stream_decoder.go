@@ -34,16 +34,22 @@ type MaheshvaraStreamDecoder struct {
 	openAIToolOrder []int
 	finishedChoices map[int]bool
 	seenChoices     map[int]bool
-	anthropicBlocks map[int]*maheshvaraAnthropicBlock
+	// chat 线的终态快照语义（PC7f）：部分上游在终态 chunk 里回传完整 message，
+	// 只允许补发缺失后缀，不得把已流式输出过的内容再发一遍。
+	openAIChoiceText     map[int]string
+	openAIChoiceReasoned map[int]bool
+	anthropicBlocks      map[int]*maheshvaraAnthropicBlock
 }
 
 func NewMaheshvaraStreamDecoder(format FormatType) *MaheshvaraStreamDecoder {
 	return &MaheshvaraStreamDecoder{
-		format:          normalizeMaheshvaraStreamFormat(format),
-		openAITools:     make(map[int]*maheshvaraStreamToolState),
-		finishedChoices: make(map[int]bool),
-		seenChoices:     make(map[int]bool),
-		anthropicBlocks: make(map[int]*maheshvaraAnthropicBlock),
+		format:               normalizeMaheshvaraStreamFormat(format),
+		openAITools:          make(map[int]*maheshvaraStreamToolState),
+		finishedChoices:      make(map[int]bool),
+		seenChoices:          make(map[int]bool),
+		openAIChoiceText:     make(map[int]string),
+		openAIChoiceReasoned: make(map[int]bool),
+		anthropicBlocks:      make(map[int]*maheshvaraAnthropicBlock),
 	}
 }
 
@@ -73,6 +79,13 @@ func (decoder *MaheshvaraStreamDecoder) Decode(event SSEEvent) ([]MaheshvaraStre
 			return nil, nil
 		}
 		decoder.terminal = true
+		// 已见过 choice 却从未收到任何 finish_reason：[DONE] 不是终态替身，
+		// 这样的流是残缺的（对齐 PC7/DC7b：不允许把没写完的答卷当完整交付）。
+		if len(decoder.seenChoices) > 0 && !allMaheshvaraChoicesFinished(decoder.seenChoices, decoder.finishedChoices) {
+			event := decoder.baseEvent(CanonicalEventResponseFailed, map[string]any{})
+			event.Error = &CanonicalError{Type: "upstream_stream_error", Message: "upstream stream ended without a finish_reason"}
+			return []MaheshvaraStreamEvent{event}, nil
+		}
 		return []MaheshvaraStreamEvent{{Type: CanonicalEventResponseCompleted, ResponseID: decoder.responseID, Model: decoder.model}}, nil
 	}
 	raw, err := decodeSSEEventJSON(data)
@@ -164,8 +177,12 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]
 		choiceIndex := intValue(choice["index"])
 		decoder.seenChoices[choiceIndex] = true
 		delta := mapValue(choice["delta"])
+		snapshot := false
 		if delta == nil {
+			// 终态 chunk 用完整 message 回传时是快照而非增量：已流式输出过的
+			// 内容只能补缺失后缀，不能整段重发（PC7f）。
 			delta = mapValue(choice["message"])
+			snapshot = delta != nil
 		}
 		if role := stringValue(delta["role"]); role != "" {
 			event := decoder.baseEvent(CanonicalEventResponseInProgress, raw)
@@ -174,16 +191,17 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]
 			event.CreatedAt = createdAt
 			events = append(events, event)
 		}
-		events = append(events, decoder.openAIContentEvents(delta["content"], choiceIndex, raw)...)
+		events = append(events, decoder.openAIContentEvents(delta["content"], choiceIndex, raw, snapshot)...)
 
 		reasoning := firstNonEmptyString(stringValue(delta["reasoning_content"]), stringValue(delta["reasoning"]), stringValue(delta["thinking"]))
-		if reasoning != "" {
+		if reasoning != "" && !(snapshot && decoder.openAIChoiceReasoned[choiceIndex]) {
+			decoder.openAIChoiceReasoned[choiceIndex] = true
 			event := decoder.baseEvent(CanonicalEventReasoningDelta, raw)
 			event.ChoiceIndex = choiceIndex
 			event.ReasoningDelta = reasoning
 			events = append(events, event)
 		}
-		if refusal := stringValue(delta["refusal"]); refusal != "" {
+		if refusal := stringValue(delta["refusal"]); refusal != "" && !(snapshot && decoder.openAIChoiceText[choiceIndex] != "") {
 			event := decoder.baseEvent(CanonicalEventRefusalDelta, raw)
 			event.ChoiceIndex = choiceIndex
 			event.RefusalDelta = refusal
@@ -222,11 +240,23 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]
 			events = append(events, event)
 		}
 		if toolCalls, ok := delta["tool_calls"].([]any); ok {
-			events = append(events, decoder.decodeOpenAIToolCalls(toolCalls, choiceIndex, raw)...)
+			events = append(events, decoder.decodeOpenAIToolCalls(toolCalls, choiceIndex, raw, snapshot)...)
 		}
 
 		finishReason := stringValue(choice["finish_reason"])
 		if finishReason != "" {
+			// finish_reason:"error" 是终态失败，不得伪装成正常 stop（DC5b）。
+			if strings.EqualFold(finishReason, "error") {
+				decoder.finishedChoices[choiceIndex] = true
+				event := decoder.baseEvent(CanonicalEventResponseFailed, raw)
+				message := firstNonEmptyString(stringValue(mapValue(raw["error"])["message"]), stringValue(delta["content"]))
+				if message == "" {
+					message = "upstream reported finish_reason=error"
+				}
+				event.Error = &CanonicalError{Type: "upstream_stream_error", Message: message}
+				terminalEvents = append(terminalEvents, event)
+				continue
+			}
 			decoder.finishedChoices[choiceIndex] = true
 			for _, toolIndex := range decoder.openAIToolOrder {
 				state := decoder.openAITools[toolIndex]
@@ -254,7 +284,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]
 	return append(events, terminalEvents...), nil
 }
 
-func (decoder *MaheshvaraStreamDecoder) decodeOpenAIToolCalls(toolCalls []any, choiceIndex int, raw map[string]any) []MaheshvaraStreamEvent {
+func (decoder *MaheshvaraStreamDecoder) decodeOpenAIToolCalls(toolCalls []any, choiceIndex int, raw map[string]any, snapshot bool) []MaheshvaraStreamEvent {
 	var events []MaheshvaraStreamEvent
 	for _, toolValue := range toolCalls {
 		tool := mapValue(toolValue)
@@ -289,6 +319,24 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIToolCalls(toolCalls []any, c
 			events = append(events, event)
 		}
 		if arguments := stringValue(function["arguments"]); arguments != "" {
+			if snapshot {
+				// 快照是完整参数值：与已累计内容一致时不重发，否则作为完整值
+				// 走 done 事件（渲染层对 done 做前缀差分，只补后缀）。
+				if state.arguments.String() == arguments {
+					continue
+				}
+				rewritten := &maheshvaraStreamToolState{id: state.id, name: state.name, added: true}
+				rewritten.arguments.WriteString(arguments)
+				decoder.openAITools[toolIndex] = rewritten
+				event := decoder.baseEvent(CanonicalEventFunctionCallArgumentsDone, raw)
+				event.ChoiceIndex = choiceIndex
+				event.ToolCallIndex = toolIndex
+				event.ToolCallID = state.id
+				event.ToolName = state.name
+				event.ToolArgumentsDone = arguments
+				events = append(events, event)
+				continue
+			}
 			state.arguments.WriteString(arguments)
 			event := decoder.baseEvent(CanonicalEventFunctionCallArgumentsDelta, raw)
 			event.ChoiceIndex = choiceIndex
@@ -320,11 +368,15 @@ func openAIReasoningSignatureProvider(detail map[string]any) string {
 	}
 }
 
-func (decoder *MaheshvaraStreamDecoder) openAIContentEvents(value any, choiceIndex int, raw map[string]any) []MaheshvaraStreamEvent {
+func (decoder *MaheshvaraStreamDecoder) openAIContentEvents(value any, choiceIndex int, raw map[string]any, snapshot bool) []MaheshvaraStreamEvent {
 	if text, ok := value.(string); ok {
 		if text == "" {
 			return nil
 		}
+		if snapshot {
+			return decoder.openAISnapshotTextSuffix(text, choiceIndex, raw)
+		}
+		decoder.openAIChoiceText[choiceIndex] += text
 		event := decoder.baseEvent(CanonicalEventTextDelta, raw)
 		event.ChoiceIndex = choiceIndex
 		event.Delta = text
@@ -350,11 +402,48 @@ func (decoder *MaheshvaraStreamDecoder) openAIContentEvents(value any, choiceInd
 		default:
 			event.ContentPart = &part
 		}
+		if event.Type == CanonicalEventTextDelta && snapshot {
+			suffixEvents := decoder.openAISnapshotTextSuffix(event.Delta, choiceIndex, raw)
+			events = append(events, suffixEvents...)
+			continue
+		}
 		if maheshvaraStreamEventHasOutput(event) {
+			if event.Type == CanonicalEventTextDelta {
+				decoder.openAIChoiceText[choiceIndex] += event.Delta
+			}
+			if event.Type == CanonicalEventReasoningDelta {
+				decoder.openAIChoiceReasoned[choiceIndex] = true
+			}
 			events = append(events, event)
 		}
 	}
 	return events
+}
+
+// openAISnapshotTextSuffix 应用终态快照的后缀语义（PC7f）：完整文本与已流式
+// 输出的前缀一致时只补缺失后缀；完全相同或分歧（非前缀）时不再重发，避免
+// 下游收到重复/冲突内容。
+func (decoder *MaheshvaraStreamDecoder) openAISnapshotTextSuffix(text string, choiceIndex int, raw map[string]any) []MaheshvaraStreamEvent {
+	streamed := decoder.openAIChoiceText[choiceIndex]
+	if text == streamed || streamed == "" {
+		if streamed == "" {
+			decoder.openAIChoiceText[choiceIndex] = text
+			event := decoder.baseEvent(CanonicalEventTextDelta, raw)
+			event.ChoiceIndex = choiceIndex
+			event.Delta = text
+			return []MaheshvaraStreamEvent{event}
+		}
+		return nil
+	}
+	if strings.HasPrefix(text, streamed) {
+		suffix := text[len(streamed):]
+		decoder.openAIChoiceText[choiceIndex] = text
+		event := decoder.baseEvent(CanonicalEventTextDelta, raw)
+		event.ChoiceIndex = choiceIndex
+		event.Delta = suffix
+		return []MaheshvaraStreamEvent{event}
+	}
+	return nil
 }
 
 func allMaheshvaraChoicesFinished(seen, finished map[int]bool) bool {
