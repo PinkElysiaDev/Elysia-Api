@@ -68,10 +68,10 @@ func TestEnvelopeV2RoundTripAndProviderGate(t *testing.T) {
 	response := &MaheshvaraResponse{
 		ID: "r", Model: "gpt-x", Status: "completed",
 		Output: []MaheshvaraOutputItem{{
-			ID: "rs", Type: CanonicalOutputReasoning, Status: "completed",
+			ID: "rs", Type: MaheshvaraOutputReasoning, Status: "completed",
 			Content: []MaheshvaraContentPart{{
-				Type: CanonicalContentReasoning, ReasoningText: "理由",
-				EncryptedContent: "openai-ciphertext", EncryptedProvider: CanonicalSignatureProviderOpenAI,
+				Type: MaheshvaraContentReasoning, ReasoningText: "理由",
+				EncryptedContent: "openai-ciphertext", EncryptedProvider: MaheshvaraSignatureProviderOpenAI,
 			}},
 		}},
 	}
@@ -89,7 +89,7 @@ func TestEnvelopeV2RoundTripAndProviderGate(t *testing.T) {
 		t.Fatalf("decode back: %v", err)
 	}
 	part := findReasoningPart(t, req)
-	if part.EncryptedContent != "openai-ciphertext" || part.EncryptedProvider != CanonicalSignatureProviderOpenAI {
+	if part.EncryptedContent != "openai-ciphertext" || part.EncryptedProvider != MaheshvaraSignatureProviderOpenAI {
 		t.Fatalf("envelope did not round-trip: %+v", part)
 	}
 	// 回放给 Responses 上游：input 中出现带 encrypted_content 的 reasoning item。
@@ -119,8 +119,8 @@ func TestEnvelopeV2RoundTripAndProviderGate(t *testing.T) {
 	// 门控：gemini 签发的密文不回放给 Responses 上游。
 	for i := range req.Messages {
 		for j := range req.Messages[i].Content {
-			if req.Messages[i].Content[j].Type == CanonicalContentReasoning {
-				req.Messages[i].Content[j].EncryptedProvider = CanonicalSignatureProviderGemini
+			if req.Messages[i].Content[j].Type == MaheshvaraContentReasoning {
+				req.Messages[i].Content[j].EncryptedProvider = MaheshvaraSignatureProviderGemini
 			}
 		}
 	}
@@ -134,7 +134,7 @@ func TestEnvelopeV2RoundTripAndProviderGate(t *testing.T) {
 }
 
 // Claude adaptive thinking：{"type":"adaptive"} + output_config.effort 解码为
-// canonical Adaptive，编码回 Claude 请求保持 adaptive 形态。
+// maheshvara Adaptive，编码回 Claude 请求保持 adaptive 形态。
 func TestClaudeAdaptiveThinking(t *testing.T) {
 	req, err := AnthropicToMaheshvara([]byte(`{"model":"grp","max_tokens":16,"thinking":{"type":"adaptive"},"output_config":{"effort":"high"},"messages":[{"role":"user","content":"hi"}]}`))
 	if err != nil {
@@ -165,8 +165,8 @@ func TestClaudeAdaptiveThinking(t *testing.T) {
 // 当成 low 档执行）。
 func TestResponsesEffortNoneOmitted(t *testing.T) {
 	target, err := MaheshvaraToOpenAIResponses(&MaheshvaraRequest{
-		Model: "m", Messages: []MaheshvaraMessage{{Role: "user", Content: []MaheshvaraContentPart{{Type: CanonicalContentText, Text: "hi"}}}},
-		Reasoning: &CanonicalReasoning{Effort: "none", Raw: map[string]any{"effort": json.RawMessage(`"none"`)}},
+		Model: "m", Messages: []MaheshvaraMessage{{Role: "user", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "hi"}}}},
+		Reasoning: &MaheshvaraReasoning{Effort: "none", Raw: map[string]any{"effort": json.RawMessage(`"none"`)}},
 	}, nil)
 	if err != nil {
 		t.Fatalf("render: %v", err)
@@ -186,7 +186,7 @@ func TestChatReasoningDetailsRoundTrip(t *testing.T) {
 	texts := 0
 	encrypted := ""
 	for _, part := range msg.Content {
-		if part.Type == CanonicalContentReasoning {
+		if part.Type == MaheshvaraContentReasoning {
 			if part.EncryptedContent != "" {
 				encrypted = part.EncryptedContent
 			} else {
@@ -213,7 +213,7 @@ func findReasoningPart(t *testing.T, req *MaheshvaraRequest) MaheshvaraContentPa
 	t.Helper()
 	for _, msg := range req.Messages {
 		for _, part := range msg.Content {
-			if part.Type == CanonicalContentReasoning {
+			if part.Type == MaheshvaraContentReasoning {
 				return part
 			}
 		}

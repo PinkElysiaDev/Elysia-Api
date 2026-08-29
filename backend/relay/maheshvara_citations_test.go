@@ -73,7 +73,7 @@ func TestGeminiGroundingRoundTrip(t *testing.T) {
 	var textPart *MaheshvaraContentPart
 	for i := range resp.Output {
 		for j := range resp.Output[i].Content {
-			if resp.Output[i].Content[j].Type == CanonicalContentText {
+			if resp.Output[i].Content[j].Type == MaheshvaraContentText {
 				textPart = &resp.Output[i].Content[j]
 			}
 		}
@@ -81,7 +81,7 @@ func TestGeminiGroundingRoundTrip(t *testing.T) {
 	if textPart == nil || len(textPart.Annotations) == 0 {
 		t.Fatalf("grounding not attached to text part: %+v", resp.Output)
 	}
-	if _, ok := textPart.Annotations[0][CanonicalAnnotationGeminiGrounding]; !ok {
+	if _, ok := textPart.Annotations[0][MaheshvaraAnnotationGeminiGrounding]; !ok {
 		t.Fatalf("grounding wrapper key missing: %+v", textPart.Annotations)
 	}
 	rendered, err := MaheshvaraToGeminiResponse(resp)

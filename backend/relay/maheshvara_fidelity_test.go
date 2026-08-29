@@ -75,11 +75,11 @@ func TestResponsesServerToolItemRoundTrip(t *testing.T) {
 	if len(resp.RawOutputs) != 1 {
 		t.Fatalf("raw outputs must be captured: %+v", resp.RawOutputs)
 	}
-	canonical, err := OpenAIResponsesResponseToMaheshvara(&resp)
+	maheshvara, err := OpenAIResponsesResponseToMaheshvara(&resp)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	rendered, err := MaheshvaraToOpenAIResponsesResponse(canonical)
+	rendered, err := MaheshvaraToOpenAIResponsesResponse(maheshvara)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -103,11 +103,11 @@ func TestClaudeServerToolBlockRoundTrip(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	canonical, err := AnthropicResponseToMaheshvara(&resp)
+	maheshvara, err := AnthropicResponseToMaheshvara(&resp)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	rendered, err := MaheshvaraToAnthropicResponse(canonical)
+	rendered, err := MaheshvaraToAnthropicResponse(maheshvara)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}

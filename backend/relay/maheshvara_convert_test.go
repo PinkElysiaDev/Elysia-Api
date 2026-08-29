@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestResponsesRequestToCanonicalCoversResponsesSpecificFields(t *testing.T) {
+func TestOpenAIResponsesToMaheshvaraCoversResponsesSpecificFields(t *testing.T) {
 	body := []byte(`{
 		"model":"gpt-4.1",
 		"instructions":"be concise",
@@ -34,7 +34,7 @@ func TestResponsesRequestToCanonicalCoversResponsesSpecificFields(t *testing.T) 
 		"max_output_tokens":321
 	}`)
 
-	req, original, err := ResponsesRequestToCanonical(body)
+	req, original, err := OpenAIResponsesToMaheshvara(body)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -62,27 +62,27 @@ func TestResponsesRequestToCanonicalCoversResponsesSpecificFields(t *testing.T) 
 	if len(req.Tools) != 3 {
 		t.Fatalf("expected three tools, got %+v", req.Tools)
 	}
-	if req.Tools[0].Type != CanonicalToolFunction || req.Tools[0].Name != "lookup" {
+	if req.Tools[0].Type != MaheshvaraToolFunction || req.Tools[0].Name != "lookup" {
 		t.Fatalf("function tool was not mapped: %+v", req.Tools[0])
 	}
-	if req.Tools[1].Type != CanonicalToolWebSearchPreview || req.Tools[1].SearchContextSize != "low" {
+	if req.Tools[1].Type != MaheshvaraToolWebSearchPreview || req.Tools[1].SearchContextSize != "low" {
 		t.Fatalf("web search tool was not mapped: %+v", req.Tools[1])
 	}
-	if req.Tools[2].Type != CanonicalToolFileSearch || len(req.Tools[2].VectorStoreIDs) != 2 {
+	if req.Tools[2].Type != MaheshvaraToolFileSearch || len(req.Tools[2].VectorStoreIDs) != 2 {
 		t.Fatalf("file search tool was not mapped: %+v", req.Tools[2])
 	}
 	if len(req.InputItems) != 2 || len(req.Messages) != 2 {
 		t.Fatalf("input items/messages were not mapped: items=%+v messages=%+v", req.InputItems, req.Messages)
 	}
-	if got := canonicalText(req.InputItems[0].Content); got != "hello" {
+	if got := maheshvaraText(req.InputItems[0].Content); got != "hello" {
 		t.Fatalf("expected input text, got %q", got)
 	}
-	if req.InputItems[1].Type != CanonicalInputFunctionCallOutput || req.InputItems[1].CallID != "call_1" {
+	if req.InputItems[1].Type != MaheshvaraInputFunctionCallOutput || req.InputItems[1].CallID != "call_1" {
 		t.Fatalf("function_call_output was not mapped: %+v", req.InputItems[1])
 	}
 }
 
-func TestOpenAIChatRequestToCanonicalCoversToolsReasoningAndStreamUsage(t *testing.T) {
+func TestOpenAIChatToMaheshvaraCoversToolsReasoningAndStreamUsage(t *testing.T) {
 	body := []byte(`{
 		"model":"gpt-4o",
 		"messages":[
@@ -100,7 +100,7 @@ func TestOpenAIChatRequestToCanonicalCoversToolsReasoningAndStreamUsage(t *testi
 		"response_format":{"type":"json_schema","json_schema":{"name":"answer","schema":{"type":"object"},"strict":true}}
 	}`)
 
-	req, err := OpenAIChatRequestToCanonical(body)
+	req, err := OpenAIChatToMaheshvara(body)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -124,42 +124,42 @@ func TestOpenAIChatRequestToCanonicalCoversToolsReasoningAndStreamUsage(t *testi
 	}
 }
 
-func TestCanonicalToTargetRequestRejectsBuiltinToolsForChatClaudeGemini(t *testing.T) {
-	req := &CanonicalRequest{
+func TestMaheshvaraToTargetRequestRejectsBuiltinToolsForChatClaudeGemini(t *testing.T) {
+	req := &MaheshvaraRequest{
 		Model:    "model",
-		Messages: []CanonicalMessage{{Role: "user", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "hello"}}}},
-		Tools:    []CanonicalTool{{Type: CanonicalToolWebSearchPreview}},
+		Messages: []MaheshvaraMessage{{Role: "user", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "hello"}}}},
+		Tools:    []MaheshvaraTool{{Type: MaheshvaraToolWebSearchPreview}},
 	}
 
-	if _, err := CanonicalToOpenAIChatRequest(req); err == nil {
+	if _, err := MaheshvaraToOpenAIChat(req); err == nil {
 		t.Fatal("expected OpenAI chat conversion to reject builtin tool")
 	}
-	if _, err := CanonicalToClaudeRequest(req); err == nil {
+	if _, err := MaheshvaraToAnthropic(req); err == nil {
 		t.Fatal("expected Claude conversion to reject builtin tool")
 	}
-	if _, err := CanonicalToGeminiRequest(req); err == nil {
+	if _, err := MaheshvaraToGemini(req); err == nil {
 		t.Fatal("expected Gemini conversion to reject builtin tool")
 	}
 }
 
-func TestCanonicalToResponsesRequestPreservesRawBuiltinToolsAndReasoning(t *testing.T) {
+func TestMaheshvaraToOpenAIResponsesRequestPreservesRawBuiltinToolsAndReasoning(t *testing.T) {
 	store := true
 	original := &OpenAIResponsesRequest{Store: &store}
-	req := &CanonicalRequest{
+	req := &MaheshvaraRequest{
 		Model:           "gpt-4.1",
 		Instructions:    "be concise",
 		MaxOutputTokens: 99,
 		Stream:          true,
-		Messages:        []CanonicalMessage{{Role: "user", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "hello"}}}},
-		Tools: []CanonicalTool{{
-			Type: CanonicalToolWebSearchPreview,
+		Messages:        []MaheshvaraMessage{{Role: "user", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "hello"}}}},
+		Tools: []MaheshvaraTool{{
+			Type: MaheshvaraToolWebSearchPreview,
 			Raw:  map[string]any{"type": "web_search_preview", "search_context_size": "medium"},
 		}},
-		Reasoning:      &CanonicalReasoning{Effort: "low", Raw: map[string]any{"summary": "auto"}},
-		ResponseFormat: &CanonicalResponseFormat{Type: "json_schema", Name: "answer", Schema: map[string]any{"type": "object"}},
+		Reasoning:      &MaheshvaraReasoning{Effort: "low", Raw: map[string]any{"summary": "auto"}},
+		ResponseFormat: &MaheshvaraResponseFormat{Type: "json_schema", Name: "answer", Schema: map[string]any{"type": "object"}},
 	}
 
-	body, err := CanonicalToResponsesRequest(req, original)
+	body, err := MaheshvaraToOpenAIResponses(req, original)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -188,33 +188,33 @@ func TestCanonicalToResponsesRequestPreservesRawBuiltinToolsAndReasoning(t *test
 	}
 }
 
-func TestCanonicalToResponsesRequestMatchesNewAPIChatHistorySemantics(t *testing.T) {
-	req := &CanonicalRequest{
+func TestMaheshvaraToOpenAIResponsesRequestMatchesNewAPIChatHistorySemantics(t *testing.T) {
+	req := &MaheshvaraRequest{
 		Model:        "gpt-4.1",
 		Instructions: "base instructions",
-		Messages: []CanonicalMessage{
-			{Role: "system", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "system instructions"}}},
-			{Role: "developer", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "developer instructions"}}},
-			{Role: "user", Content: []CanonicalContentPart{
-				{Type: CanonicalContentText, Text: "hello"},
-				{Type: CanonicalContentImage, ImageURL: "https://example.com/image.png"},
-				{Type: CanonicalContentFile, FileID: "file_123", FileName: "a.pdf"},
+		Messages: []MaheshvaraMessage{
+			{Role: "system", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "system instructions"}}},
+			{Role: "developer", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "developer instructions"}}},
+			{Role: "user", Content: []MaheshvaraContentPart{
+				{Type: MaheshvaraContentText, Text: "hello"},
+				{Type: MaheshvaraContentImage, ImageURL: "https://example.com/image.png"},
+				{Type: MaheshvaraContentFile, FileID: "file_123", FileName: "a.pdf"},
 			}},
-			{Role: "assistant", Content: []CanonicalContentPart{
-				{Type: CanonicalContentText, Text: "hi"},
-				{Type: CanonicalContentImage, ImageURL: "https://example.com/assistant-image.png"},
-				{Type: CanonicalContentFile, FileID: "file_assistant"},
-			}, ToolCalls: []CanonicalToolCall{{
+			{Role: "assistant", Content: []MaheshvaraContentPart{
+				{Type: MaheshvaraContentText, Text: "hi"},
+				{Type: MaheshvaraContentImage, ImageURL: "https://example.com/assistant-image.png"},
+				{Type: MaheshvaraContentFile, FileID: "file_assistant"},
+			}, ToolCalls: []MaheshvaraToolCall{{
 				ID:        "call_1",
-				Type:      CanonicalToolFunction,
+				Type:      MaheshvaraToolFunction,
 				Name:      "lookup",
 				Arguments: json.RawMessage(`{"q":"x"}`),
 			}}},
-			{Role: "tool", ToolCallID: "call_1", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "tool result"}}},
+			{Role: "tool", ToolCallID: "call_1", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "tool result"}}},
 		},
 	}
 
-	body, err := CanonicalToResponsesRequest(req, nil)
+	body, err := MaheshvaraToOpenAIResponses(req, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestCanonicalToResponsesRequestMatchesNewAPIChatHistorySemantics(t *testing
 	}
 }
 
-func TestCanonicalToResponsesRequestRewritesOriginalInvalidInput(t *testing.T) {
+func TestMaheshvaraToOpenAIResponsesRequestRewritesOriginalInvalidInput(t *testing.T) {
 	original := &OpenAIResponsesRequest{
 		Model: "gpt-4.1",
 		Input: json.RawMessage(`[
@@ -276,21 +276,21 @@ func TestCanonicalToResponsesRequestRewritesOriginalInvalidInput(t *testing.T) {
 		]`),
 		Include: []string{"reasoning.encrypted_content"},
 	}
-	req := &CanonicalRequest{
+	req := &MaheshvaraRequest{
 		Model: "gpt-4.1",
-		Messages: []CanonicalMessage{
-			{Role: "user", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "one"}}},
-			{Role: "assistant", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "two"}}},
-			{Role: "user", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "three"}}},
-			{Role: "assistant", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "four"}}},
-			{Role: "user", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "five"}}},
-			{Role: "assistant", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "six"}}},
-			{Role: "user", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "seven"}}},
-			{Role: "assistant", Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: "eight"}}},
+		Messages: []MaheshvaraMessage{
+			{Role: "user", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "one"}}},
+			{Role: "assistant", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "two"}}},
+			{Role: "user", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "three"}}},
+			{Role: "assistant", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "four"}}},
+			{Role: "user", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "five"}}},
+			{Role: "assistant", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "six"}}},
+			{Role: "user", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "seven"}}},
+			{Role: "assistant", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "eight"}}},
 		},
 	}
 
-	body, err := CanonicalToResponsesRequest(req, original)
+	body, err := MaheshvaraToOpenAIResponses(req, original)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -305,7 +305,7 @@ func TestCanonicalToResponsesRequestRewritesOriginalInvalidInput(t *testing.T) {
 
 	input, _ := out["input"].([]any)
 	if len(input) != 8 {
-		t.Fatalf("expected rewritten canonical input to replace original input, got %d: %s", len(input), body)
+		t.Fatalf("expected rewritten maheshvara input to replace original input, got %d: %s", len(input), body)
 	}
 	item7, _ := input[7].(map[string]any)
 	content7, _ := item7["content"].([]any)
@@ -314,17 +314,17 @@ func TestCanonicalToResponsesRequestRewritesOriginalInvalidInput(t *testing.T) {
 	}
 }
 
-func TestCanonicalToResponsesRequestPreservesRawResponsesInputItems(t *testing.T) {
+func TestMaheshvaraToOpenAIResponsesRequestPreservesRawResponsesInputItems(t *testing.T) {
 	raw := json.RawMessage(`{"type":"item_reference","id":"item_123"}`)
-	req := &CanonicalRequest{
+	req := &MaheshvaraRequest{
 		Model: "gpt-4.1",
-		InputItems: []CanonicalInputItem{{
-			Type:     CanonicalInputItemReference,
+		InputItems: []MaheshvaraInputItem{{
+			Type:     MaheshvaraInputItemReference,
 			RawExtra: map[string]json.RawMessage{"raw": raw},
 		}},
 	}
 
-	body, err := CanonicalToResponsesRequest(req, nil)
+	body, err := MaheshvaraToOpenAIResponses(req, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -339,7 +339,7 @@ func TestCanonicalToResponsesRequestPreservesRawResponsesInputItems(t *testing.T
 	}
 }
 
-func TestResponsesResponseToCanonicalIncludesUsageDetailsAndBuiltinCounts(t *testing.T) {
+func TestOpenAIResponsesResponseToMaheshvaraIncludesUsageDetailsAndBuiltinCounts(t *testing.T) {
 	resp := &OpenAIResponsesResponse{
 		ID:        "resp_1",
 		Model:     "gpt-4.1",
@@ -361,7 +361,7 @@ func TestResponsesResponseToCanonicalIncludesUsageDetailsAndBuiltinCounts(t *tes
 		},
 	}
 
-	got, err := ResponsesResponseToCanonical(resp)
+	got, err := OpenAIResponsesResponseToMaheshvara(resp)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -371,13 +371,13 @@ func TestResponsesResponseToCanonicalIncludesUsageDetailsAndBuiltinCounts(t *tes
 	if got.Usage.WebSearchCallCount != 1 || got.Usage.FileSearchCallCount != 1 || got.Usage.ImageGenerationCallCount != 1 {
 		t.Fatalf("builtin call counts were not mapped: %+v", got.Usage)
 	}
-	if len(got.Output) != 5 || canonicalText(got.Output[0].Content) != "hello" {
+	if len(got.Output) != 5 || maheshvaraText(got.Output[0].Content) != "hello" {
 		t.Fatalf("output was not mapped: %+v", got.Output)
 	}
 }
 
-func TestCanonicalUsageRoundTripsProviderUsageShapes(t *testing.T) {
-	u := &CanonicalUsage{
+func TestMaheshvaraUsageRoundTripsProviderUsageShapes(t *testing.T) {
+	u := &MaheshvaraUsage{
 		InputTokens:              100,
 		OutputTokens:             50,
 		TotalTokens:              150,
@@ -387,23 +387,23 @@ func TestCanonicalUsageRoundTripsProviderUsageShapes(t *testing.T) {
 		ToolUseTokens:            3,
 	}
 
-	openai := openAIUsageFromCanonical(u)
+	openai := openAIUsageFromMaheshvara(u)
 	if openai.PromptTokens != 100 || openai.CompletionTokens != 50 || openai.PromptTokensDetails.CachedTokens != 25 || openai.CompletionTokensDetails.ReasoningTokens != 7 {
 		t.Fatalf("OpenAI usage mapping failed: %+v", openai)
 	}
-	claude := claudeUsageFromCanonical(u)
-	// canonical 的 InputTokens 含缓存 token，而 Claude 线格式的 input_tokens 不含；
-	// 还原后 input+cache_read+cache_creation 应还原 canonical 总数（70+25+5=100）。
+	claude := claudeUsageFromMaheshvara(u)
+	// maheshvara 的 InputTokens 含缓存 token，而 Claude 线格式的 input_tokens 不含；
+	// 还原后 input+cache_read+cache_creation 应还原 maheshvara 总数（70+25+5=100）。
 	if claude.InputTokens != 70 || claude.OutputTokens != 50 || claude.CacheReadInputTokens != 25 || claude.CacheCreationInputTokens != 5 {
 		t.Fatalf("Claude usage mapping failed: %+v", claude)
 	}
-	gemini := geminiUsageFromCanonical(u)
-	// canonical 总数含 tool/thought 分量；Gemini 各计数器是独立分项，还原时
+	gemini := geminiUsageFromMaheshvara(u)
+	// maheshvara 总数含 tool/thought 分量；Gemini 各计数器是独立分项，还原时
 	// 剔除已单列的分量（100-3=97、50-7=43），往返求和不双计。
 	if gemini.PromptTokenCount != 97 || gemini.CandidatesTokenCount != 43 || gemini.ThoughtsTokenCount != 7 || gemini.ToolUsePromptTokenCount != 3 {
 		t.Fatalf("Gemini usage mapping failed: %+v", gemini)
 	}
-	responses := responsesUsageFromCanonical(u)
+	responses := responsesUsageFromMaheshvara(u)
 	if responses.InputTokens != 100 || responses.OutputTokens != 50 || responses.InputTokensDetails.CachedTokens != 25 || responses.OutputTokensDetails.ReasoningTokens != 7 {
 		t.Fatalf("Responses usage mapping failed: %+v", responses)
 	}
@@ -413,39 +413,39 @@ func TestCanonicalUsageRoundTripsProviderUsageShapes(t *testing.T) {
 // 1. functionResponse.response 必须是 JSON 对象（google.protobuf.Struct），不能是字符串/数组/null/空
 // 2. functionResponse.name 必须是函数名（如 "Read"），而非 Anthropic 的 tool_use_id（如 "toolu_01ABC"）
 // 覆盖场景：空 tool_result、纯文本 tool_result、JSON 数组 tool_result、JSON 对象 tool_result、多个 tool_result
-func TestCanonicalMessagesToGeminiFunctionResponse(t *testing.T) {
-	req := &CanonicalRequest{
-		Messages: []CanonicalMessage{
+func TestMaheshvaraMessagesToGeminiFunctionResponse(t *testing.T) {
+	req := &MaheshvaraRequest{
+		Messages: []MaheshvaraMessage{
 			// Assistant 消息：包含 tool_use（functionCall）
 			{
 				Role: "assistant",
-				Content: []CanonicalContentPart{
-					{Type: CanonicalContentText, Text: "Let me check that for you."},
+				Content: []MaheshvaraContentPart{
+					{Type: MaheshvaraContentText, Text: "Let me check that for you."},
 				},
-				ToolCalls: []CanonicalToolCall{
-					{ID: "toolu_01A", Type: CanonicalToolFunction, Name: "Read", Arguments: json.RawMessage(`{"file":"a.txt"}`)},
-					{ID: "toolu_01B", Type: CanonicalToolFunction, Name: "Bash", Arguments: json.RawMessage(`{"cmd":"ls"}`)},
-					{ID: "toolu_01C", Type: CanonicalToolFunction, Name: "Grep", Arguments: json.RawMessage(`{"pattern":"foo"}`)},
+				ToolCalls: []MaheshvaraToolCall{
+					{ID: "toolu_01A", Type: MaheshvaraToolFunction, Name: "Read", Arguments: json.RawMessage(`{"file":"a.txt"}`)},
+					{ID: "toolu_01B", Type: MaheshvaraToolFunction, Name: "Bash", Arguments: json.RawMessage(`{"cmd":"ls"}`)},
+					{ID: "toolu_01C", Type: MaheshvaraToolFunction, Name: "Grep", Arguments: json.RawMessage(`{"pattern":"foo"}`)},
 				},
 			},
 			// User 消息：包含 tool_result（functionResponse）
 			{
 				Role: "user",
-				Content: []CanonicalContentPart{
+				Content: []MaheshvaraContentPart{
 					// 场景 1：空 tool_result（content: []）→ ToolOutput = "" → 应包装为 {"content": ""}
-					{Type: CanonicalContentToolOutput, ToolCallID: "toolu_01A", ToolOutput: ""},
+					{Type: MaheshvaraContentToolOutput, ToolCallID: "toolu_01A", ToolOutput: ""},
 					// 场景 2：纯文本 tool_result（非 JSON）→ 应包装为 {"content": "file contents"}
-					{Type: CanonicalContentToolOutput, ToolCallID: "toolu_01B", ToolOutput: "file contents here"},
+					{Type: MaheshvaraContentToolOutput, ToolCallID: "toolu_01B", ToolOutput: "file contents here"},
 					// 场景 3：JSON 数组 tool_result → 应包装为 {"result": [...]}
-					{Type: CanonicalContentToolOutput, ToolCallID: "toolu_01C", ToolOutput: `["item1","item2"]`},
+					{Type: MaheshvaraContentToolOutput, ToolCallID: "toolu_01C", ToolOutput: `["item1","item2"]`},
 				},
 			},
 		},
 	}
 
-	contents, err := canonicalMessagesToGemini(req)
+	contents, err := maheshvaraMessagesToGemini(req)
 	if err != nil {
-		t.Fatalf("canonicalMessagesToGemini: %v", err)
+		t.Fatalf("maheshvaraMessagesToGemini: %v", err)
 	}
 	if len(contents) != 2 {
 		t.Fatalf("expected 2 contents (assistant + user), got %d", len(contents))
@@ -508,25 +508,25 @@ func TestCanonicalMessagesToGeminiFunctionResponse(t *testing.T) {
 	}
 
 	// 额外验证：JSON 对象应直接使用（不包装）
-	reqWithJsonObject := &CanonicalRequest{
-		Messages: []CanonicalMessage{
+	reqWithJsonObject := &MaheshvaraRequest{
+		Messages: []MaheshvaraMessage{
 			{
 				Role: "assistant",
-				ToolCalls: []CanonicalToolCall{
-					{ID: "toolu_999", Type: CanonicalToolFunction, Name: "GetStatus", Arguments: json.RawMessage(`{}`)},
+				ToolCalls: []MaheshvaraToolCall{
+					{ID: "toolu_999", Type: MaheshvaraToolFunction, Name: "GetStatus", Arguments: json.RawMessage(`{}`)},
 				},
 			},
 			{
 				Role: "user",
-				Content: []CanonicalContentPart{
-					{Type: CanonicalContentToolOutput, ToolCallID: "toolu_999", ToolOutput: `{"status":"ok","code":200}`},
+				Content: []MaheshvaraContentPart{
+					{Type: MaheshvaraContentToolOutput, ToolCallID: "toolu_999", ToolOutput: `{"status":"ok","code":200}`},
 				},
 			},
 		},
 	}
-	contentsWithObj, err := canonicalMessagesToGemini(reqWithJsonObject)
+	contentsWithObj, err := maheshvaraMessagesToGemini(reqWithJsonObject)
 	if err != nil {
-		t.Fatalf("canonicalMessagesToGemini JSON object: %v", err)
+		t.Fatalf("maheshvaraMessagesToGemini JSON object: %v", err)
 	}
 	userMsgWithObj := contentsWithObj[1]
 	userPartsWithObj := userMsgWithObj["parts"].([]map[string]any)
@@ -550,13 +550,13 @@ func TestClaudeToGeminiFiltersEmptyPartsAndPreservesThinking(t *testing.T) {
 		]
 	}`)
 
-	req, err := ClaudeRequestToCanonical(body)
+	req, err := AnthropicToMaheshvara(body)
 	if err != nil {
-		t.Fatalf("ClaudeRequestToCanonical: %v", err)
+		t.Fatalf("AnthropicToMaheshvara: %v", err)
 	}
-	out, err := CanonicalToGeminiRequest(req)
+	out, err := MaheshvaraToGemini(req)
 	if err != nil {
-		t.Fatalf("CanonicalToGeminiRequest: %v", err)
+		t.Fatalf("MaheshvaraToGemini: %v", err)
 	}
 
 	contents := assertGeminiPartsHaveData(t, out)
@@ -606,36 +606,36 @@ func TestClaudeToGeminiRejectsRequestWithoutRepresentableContent(t *testing.T) {
 		]
 	}`)
 
-	req, err := ClaudeRequestToCanonical(body)
+	req, err := AnthropicToMaheshvara(body)
 	if err != nil {
-		t.Fatalf("ClaudeRequestToCanonical: %v", err)
+		t.Fatalf("AnthropicToMaheshvara: %v", err)
 	}
-	_, err = CanonicalToGeminiRequest(req)
+	_, err = MaheshvaraToGemini(req)
 	if err == nil || !strings.Contains(err.Error(), "no representable message content") {
 		t.Fatalf("expected clear no-content conversion error, got %v", err)
 	}
 }
 
-func TestCanonicalMessagesToGeminiRejectsUnmatchedFunctionResponse(t *testing.T) {
-	req := &CanonicalRequest{
-		Messages: []CanonicalMessage{
+func TestMaheshvaraMessagesToGeminiRejectsUnmatchedFunctionResponse(t *testing.T) {
+	req := &MaheshvaraRequest{
+		Messages: []MaheshvaraMessage{
 			{
 				Role: "user",
-				Content: []CanonicalContentPart{
-					{Type: CanonicalContentToolOutput, ToolCallID: "toolu_missing", ToolOutput: "result"},
+				Content: []MaheshvaraContentPart{
+					{Type: MaheshvaraContentToolOutput, ToolCallID: "toolu_missing", ToolOutput: "result"},
 				},
 			},
 		},
 	}
 
-	_, err := canonicalMessagesToGemini(req)
+	_, err := maheshvaraMessagesToGemini(req)
 	if err == nil || !strings.Contains(err.Error(), "message 0 part 0") || !strings.Contains(err.Error(), "toolu_missing") {
 		t.Fatalf("expected indexed unmatched function response error, got %v", err)
 	}
 }
 
 func TestGeminiThinkingConfigUsesGenerationConfig(t *testing.T) {
-	request, err := GeminiRequestToCanonical([]byte(`{
+	request, err := GeminiToMaheshvara([]byte(`{
 		"contents":[{"role":"user","parts":[{"text":"hello"}]}],
 		"generationConfig":{"thinkingConfig":{"includeThoughts":true,"thinkingLevel":"high","thinkingBudget":2048}}
 	}`), "gemini-test")
@@ -646,7 +646,7 @@ func TestGeminiThinkingConfigUsesGenerationConfig(t *testing.T) {
 		t.Fatalf("Gemini thinking config was not normalized: %+v", request.Thinking)
 	}
 
-	body, err := CanonicalToGeminiRequest(request)
+	body, err := MaheshvaraToGemini(request)
 	if err != nil {
 		t.Fatalf("render Gemini thinking config: %v", err)
 	}
@@ -668,16 +668,16 @@ func TestGeminiThinkingConfigUsesGenerationConfig(t *testing.T) {
 }
 
 func TestGeminiToolPartsPreserveIDsAndThoughtSignature(t *testing.T) {
-	request := &CanonicalRequest{Messages: []CanonicalMessage{
-		{Role: "assistant", ToolCalls: []CanonicalToolCall{{
-			ID: "call_1", Type: CanonicalToolFunction, Name: "lookup", Arguments: json.RawMessage(`{"q":"elysia"}`), ThoughtSignature: "sig_1", ThoughtSignatureProvider: CanonicalSignatureProviderGemini,
+	request := &MaheshvaraRequest{Messages: []MaheshvaraMessage{
+		{Role: "assistant", ToolCalls: []MaheshvaraToolCall{{
+			ID: "call_1", Type: MaheshvaraToolFunction, Name: "lookup", Arguments: json.RawMessage(`{"q":"elysia"}`), ThoughtSignature: "sig_1", ThoughtSignatureProvider: MaheshvaraSignatureProviderGemini,
 		}}},
-		{Role: "tool", ToolCallID: "call_1", Content: []CanonicalContentPart{{
-			Type: CanonicalContentToolOutput, ToolCallID: "call_1", ToolOutput: `{"ok":true}`,
+		{Role: "tool", ToolCallID: "call_1", Content: []MaheshvaraContentPart{{
+			Type: MaheshvaraContentToolOutput, ToolCallID: "call_1", ToolOutput: `{"ok":true}`,
 		}}},
 	}}
 
-	contents, err := canonicalMessagesToGemini(request)
+	contents, err := maheshvaraMessagesToGemini(request)
 	if err != nil {
 		t.Fatalf("render Gemini tool history: %v", err)
 	}
@@ -698,7 +698,7 @@ func TestGeminiToolPartsPreserveIDsAndThoughtSignature(t *testing.T) {
 }
 
 func TestGeminiResponsePreservesResponseAndToolMetadata(t *testing.T) {
-	canonical, err := GeminiResponseToCanonical(&GeminiResponse{
+	maheshvara, err := GeminiResponseToMaheshvara(&GeminiResponse{
 		ResponseID:   "resp_1",
 		ModelVersion: "gemini-test",
 		Candidates: []GeminiCandidate{{Content: GeminiContent{Role: "model", Parts: []GeminiPart{{
@@ -709,14 +709,14 @@ func TestGeminiResponsePreservesResponseAndToolMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("normalize Gemini response: %v", err)
 	}
-	if canonical.ID != "resp_1" || canonical.Model != "gemini-test" || len(canonical.Output) != 1 || len(canonical.Output[0].ToolCalls) != 1 {
-		t.Fatalf("Gemini response metadata was lost: %+v", canonical)
+	if maheshvara.ID != "resp_1" || maheshvara.Model != "gemini-test" || len(maheshvara.Output) != 1 || len(maheshvara.Output[0].ToolCalls) != 1 {
+		t.Fatalf("Gemini response metadata was lost: %+v", maheshvara)
 	}
-	if canonical.Output[0].ToolCalls[0].ThoughtSignature != "sig_1" || canonical.Output[0].ToolCalls[0].ThoughtSignatureProvider != CanonicalSignatureProviderGemini {
-		t.Fatalf("Gemini tool thought signature was lost: %+v", canonical.Output[0])
+	if maheshvara.Output[0].ToolCalls[0].ThoughtSignature != "sig_1" || maheshvara.Output[0].ToolCalls[0].ThoughtSignatureProvider != MaheshvaraSignatureProviderGemini {
+		t.Fatalf("Gemini tool thought signature was lost: %+v", maheshvara.Output[0])
 	}
 
-	rendered, err := CanonicalToGeminiResponse(canonical)
+	rendered, err := MaheshvaraToGeminiResponse(maheshvara)
 	if err != nil {
 		t.Fatalf("render Gemini response: %v", err)
 	}
@@ -726,7 +726,7 @@ func TestGeminiResponsePreservesResponseAndToolMetadata(t *testing.T) {
 }
 
 func TestOpenAIExtendedGoogleThoughtSignatureRoundTripsThroughMaheshvara(t *testing.T) {
-	req, err := OpenAIChatRequestToCanonical([]byte(`{
+	req, err := OpenAIChatToMaheshvara([]byte(`{
 		"model":"openai-compatible",
 		"messages":[{"role":"assistant","content":null,"tool_calls":[{
 			"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{\"q\":\"elysia\"}"},
@@ -737,11 +737,11 @@ func TestOpenAIExtendedGoogleThoughtSignatureRoundTripsThroughMaheshvara(t *test
 		t.Fatalf("parse extended OpenAI request: %v", err)
 	}
 	call := req.Messages[0].ToolCalls[0]
-	if call.ThoughtSignature != "sig_google" || call.ThoughtSignatureProvider != CanonicalSignatureProviderGemini {
+	if call.ThoughtSignature != "sig_google" || call.ThoughtSignatureProvider != MaheshvaraSignatureProviderGemini {
 		t.Fatalf("Google thought signature was not normalized: %+v", call)
 	}
 
-	gemini, err := canonicalMessagesToGemini(req)
+	gemini, err := maheshvaraMessagesToGemini(req)
 	if err != nil {
 		t.Fatalf("render Gemini request: %v", err)
 	}
@@ -750,7 +750,7 @@ func TestOpenAIExtendedGoogleThoughtSignatureRoundTripsThroughMaheshvara(t *test
 		t.Fatalf("Gemini signature was not restored: %+v", geminiPart)
 	}
 
-	openAI, err := CanonicalToOpenAIChatRequest(req)
+	openAI, err := MaheshvaraToOpenAIChat(req)
 	if err != nil {
 		t.Fatalf("render extended OpenAI request: %v", err)
 	}
@@ -823,13 +823,13 @@ func TestClaudeToolResultBecomesOpenAIToolMessages(t *testing.T) {
 		]
 	}`)
 
-	req, err := ClaudeRequestToCanonical(body)
+	req, err := AnthropicToMaheshvara(body)
 	if err != nil {
-		t.Fatalf("ClaudeRequestToCanonical: %v", err)
+		t.Fatalf("AnthropicToMaheshvara: %v", err)
 	}
-	out, err := CanonicalToOpenAIChatRequest(req)
+	out, err := MaheshvaraToOpenAIChat(req)
 	if err != nil {
-		t.Fatalf("CanonicalToOpenAIChatRequest: %v", err)
+		t.Fatalf("MaheshvaraToOpenAIChat: %v", err)
 	}
 
 	var payload map[string]any
@@ -860,7 +860,7 @@ func TestClaudeToolResultBecomesOpenAIToolMessages(t *testing.T) {
 	}
 }
 
-func TestCanonicalToolChoiceToOpenAIMapsAnthropicObjects(t *testing.T) {
+func TestMaheshvaraToolChoiceToOpenAIMapsAnthropicObjects(t *testing.T) {
 	cases := []struct {
 		name string
 		in   any
@@ -879,16 +879,16 @@ func TestCanonicalToolChoiceToOpenAIMapsAnthropicObjects(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := canonicalToolChoiceToOpenAI(tc.in)
+			got := maheshvaraToolChoiceToOpenAI(tc.in)
 			if !toolChoiceEqual(got, tc.want) {
-				t.Fatalf("canonicalToolChoiceToOpenAI(%v) = %#v, want %#v", tc.in, got, tc.want)
+				t.Fatalf("maheshvaraToolChoiceToOpenAI(%v) = %#v, want %#v", tc.in, got, tc.want)
 			}
 		})
 	}
 }
 
 func TestClaudeAutoToolChoiceBecomesOpenAIString(t *testing.T) {
-	req, err := ClaudeRequestToCanonical([]byte(`{
+	req, err := AnthropicToMaheshvara([]byte(`{
 		"model":"claude-test",
 		"max_tokens":128,
 		"tools":[{"name":"lookup","description":"Lookup","input_schema":{"type":"object"}}],
@@ -896,15 +896,15 @@ func TestClaudeAutoToolChoiceBecomesOpenAIString(t *testing.T) {
 		"messages":[{"role":"user","content":"hi"}]
 	}`))
 	if err != nil {
-		t.Fatalf("ClaudeRequestToCanonical: %v", err)
+		t.Fatalf("AnthropicToMaheshvara: %v", err)
 	}
 	if req.ParallelToolCalls == nil || *req.ParallelToolCalls {
 		t.Fatalf("disable_parallel_tool_use should map to ParallelToolCalls=false, got %+v", req.ParallelToolCalls)
 	}
 
-	out, err := CanonicalToOpenAIChatRequest(req)
+	out, err := MaheshvaraToOpenAIChat(req)
 	if err != nil {
-		t.Fatalf("CanonicalToOpenAIChatRequest: %v", err)
+		t.Fatalf("MaheshvaraToOpenAIChat: %v", err)
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(out, &payload); err != nil {
@@ -934,16 +934,16 @@ func TestOpenAIToolChoiceRendersClaudeObjects(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			body := []byte(`{"model":"gpt-test","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}],"tool_choice":` + tc.toolChoice + `}`)
-			req, err := OpenAIChatRequestToCanonical(body)
+			req, err := OpenAIChatToMaheshvara(body)
 			if err != nil {
-				t.Fatalf("OpenAIChatRequestToCanonical: %v", err)
+				t.Fatalf("OpenAIChatToMaheshvara: %v", err)
 			}
 			if tc.parallel != nil {
 				req.ParallelToolCalls = tc.parallel
 			}
-			out, err := CanonicalToClaudeRequest(req)
+			out, err := MaheshvaraToAnthropic(req)
 			if err != nil {
-				t.Fatalf("CanonicalToClaudeRequest: %v", err)
+				t.Fatalf("MaheshvaraToAnthropic: %v", err)
 			}
 			var payload map[string]any
 			if err := json.Unmarshal(out, &payload); err != nil {

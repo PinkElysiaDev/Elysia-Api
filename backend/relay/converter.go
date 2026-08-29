@@ -184,7 +184,7 @@ func DetectInputFormat(body []byte) FormatType {
 
 // UnifiedRequest 统一的内部请求格式
 // 这是所有格式的"全集"，包含所有可能的字段
-// Deprecated: use MaheshvaraRequest (CanonicalRequest).
+// Deprecated: use MaheshvaraRequest (MaheshvaraRequest).
 
 type GeminiContent struct {
 	Role  string       `json:"role"`

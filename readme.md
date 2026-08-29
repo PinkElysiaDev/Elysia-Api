@@ -197,7 +197,7 @@ Vite dev server 默认代理到 `http://127.0.0.1:8765`。
 }
 ```
 
-模板只读 `maheshvara.*`（同时兼容 `canonical.*` 和 `request.*`），支持字符串插值、原生 JSON 值、`json`、`default:` 和 `omitIfEmpty`；不执行任意代码。常用字段包括 `model`、`instructions`、`messages`、`tools`、`tool_choice`、生成参数、`reasoning`、`metadata`、`stream` 和 `raw_extra`。非流式响应和 SSE / NDJSON 流都可映射回 Maheshvara，再渲染为客户端所请求的四种协议之一。
+模板只读 `maheshvara.*`（同时兼容 `request.*`），支持字符串插值、原生 JSON 值、`json`、`default:` 和 `omitIfEmpty`；不执行任意代码。常用字段包括 `model`、`instructions`、`messages`、`tools`、`tool_choice`、生成参数、`reasoning`、`metadata`、`stream` 和 `raw_extra`。非流式响应和 SSE / NDJSON 流都可映射回 Maheshvara，再渲染为客户端所请求的四种协议之一。
 
 完整字段模型、四协议映射矩阵、reasoning 安全约定、Gemini Part 不变量和自定义协议配置说明见 [`docs/maheshvara-protocol.md`](docs/maheshvara-protocol.md)。
 

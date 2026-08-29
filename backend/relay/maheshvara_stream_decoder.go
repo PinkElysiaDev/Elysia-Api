@@ -98,11 +98,11 @@ func (decoder *MaheshvaraStreamDecoder) Decode(event SSEEvent) ([]MaheshvaraStre
 		// 已见过 choice 却从未收到任何 finish_reason：[DONE] 不是终态替身，
 		// 这样的流是残缺的（对齐 PC7/DC7b：不允许把没写完的答卷当完整交付）。
 		if len(decoder.seenChoices) > 0 && !allMaheshvaraChoicesFinished(decoder.seenChoices, decoder.finishedChoices) {
-			event := decoder.baseEvent(CanonicalEventResponseFailed, map[string]any{})
-			event.Error = &CanonicalError{Type: "upstream_stream_error", Message: "upstream stream ended without a finish_reason"}
+			event := decoder.baseEvent(MaheshvaraEventResponseFailed, map[string]any{})
+			event.Error = &MaheshvaraError{Type: "upstream_stream_error", Message: "upstream stream ended without a finish_reason"}
 			return []MaheshvaraStreamEvent{event}, nil
 		}
-		return []MaheshvaraStreamEvent{{Type: CanonicalEventResponseCompleted, ResponseID: decoder.responseID, Model: decoder.model}}, nil
+		return []MaheshvaraStreamEvent{{Type: MaheshvaraEventResponseCompleted, ResponseID: decoder.responseID, Model: decoder.model}}, nil
 	}
 	raw, err := decodeSSEEventJSON(data)
 	if err != nil {
@@ -173,8 +173,8 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]
 	decoder.model = firstNonEmptyString(stringValue(raw["model"]), decoder.model)
 	createdAt := int64Value(raw["created"])
 	var events []MaheshvaraStreamEvent
-	if usage := canonicalUsageFromRawMap(mapValue(raw["usage"])); usage != nil {
-		event := decoder.baseEvent(CanonicalEventUsageDelta, raw)
+	if usage := maheshvaraUsageFromRawMap(mapValue(raw["usage"])); usage != nil {
+		event := decoder.baseEvent(MaheshvaraEventUsageDelta, raw)
 		event.Usage = usage
 		event.CreatedAt = createdAt
 		events = append(events, event)
@@ -198,7 +198,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]
 			snapshot = delta != nil
 		}
 		if role := stringValue(delta["role"]); role != "" {
-			event := decoder.baseEvent(CanonicalEventResponseInProgress, raw)
+			event := decoder.baseEvent(MaheshvaraEventResponseInProgress, raw)
 			event.Role = role
 			event.ChoiceIndex = choiceIndex
 			event.CreatedAt = createdAt
@@ -209,13 +209,13 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]
 		reasoning := firstNonEmptyString(stringValue(delta["reasoning_content"]), stringValue(delta["reasoning"]), stringValue(delta["thinking"]))
 		if reasoning != "" && !(snapshot && decoder.openAIChoiceReasoned[choiceIndex]) {
 			decoder.openAIChoiceReasoned[choiceIndex] = true
-			event := decoder.baseEvent(CanonicalEventReasoningDelta, raw)
+			event := decoder.baseEvent(MaheshvaraEventReasoningDelta, raw)
 			event.ChoiceIndex = choiceIndex
 			event.ReasoningDelta = reasoning
 			events = append(events, event)
 		}
 		if refusal := stringValue(delta["refusal"]); refusal != "" && !(snapshot && decoder.openAIChoiceText[choiceIndex] != "") {
-			event := decoder.baseEvent(CanonicalEventRefusalDelta, raw)
+			event := decoder.baseEvent(MaheshvaraEventRefusalDelta, raw)
 			event.ChoiceIndex = choiceIndex
 			event.RefusalDelta = refusal
 			events = append(events, event)
@@ -224,13 +224,13 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]
 			for _, detailValue := range details {
 				detail := mapValue(detailValue)
 				if text := firstNonEmptyString(stringValue(detail["text"]), stringValue(detail["content"])); text != "" {
-					event := decoder.baseEvent(CanonicalEventReasoningDelta, raw)
+					event := decoder.baseEvent(MaheshvaraEventReasoningDelta, raw)
 					event.ChoiceIndex = choiceIndex
 					event.ReasoningDelta = text
 					events = append(events, event)
 				}
 				if signature := firstNonEmptyString(stringValue(detail["signature"]), stringValue(detail["data"])); signature != "" {
-					event := decoder.baseEvent(CanonicalEventReasoningSignatureDelta, raw)
+					event := decoder.baseEvent(MaheshvaraEventReasoningSignatureDelta, raw)
 					event.ChoiceIndex = choiceIndex
 					event.ReasoningSignatureDelta = signature
 					event.ReasoningSignatureProvider = openAIReasoningSignatureProvider(detail)
@@ -239,15 +239,15 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]
 			}
 		}
 		if signature := stringValue(delta["reasoning_signature"]); signature != "" {
-			event := decoder.baseEvent(CanonicalEventReasoningSignatureDelta, raw)
+			event := decoder.baseEvent(MaheshvaraEventReasoningSignatureDelta, raw)
 			event.ChoiceIndex = choiceIndex
 			event.ReasoningSignatureDelta = signature
 			event.ReasoningSignatureProvider = stringValue(delta["reasoning_signature_provider"])
 			events = append(events, event)
 		}
 		if audio := mapValue(delta["audio"]); audio != nil {
-			part := CanonicalContentPart{Type: CanonicalContentAudio, AudioBase64: firstNonEmptyString(stringValue(audio["data"]), stringValue(audio["audio_data"])), AudioURL: firstNonEmptyString(stringValue(audio["url"]), stringValue(audio["audio_url"])), Text: stringValue(audio["transcript"]), MediaType: firstNonEmptyString(stringValue(audio["format"]), stringValue(audio["mime_type"])), Raw: audio}
-			event := decoder.baseEvent(CanonicalEventContentPartAdded, raw)
+			part := MaheshvaraContentPart{Type: MaheshvaraContentAudio, AudioBase64: firstNonEmptyString(stringValue(audio["data"]), stringValue(audio["audio_data"])), AudioURL: firstNonEmptyString(stringValue(audio["url"]), stringValue(audio["audio_url"])), Text: stringValue(audio["transcript"]), MediaType: firstNonEmptyString(stringValue(audio["format"]), stringValue(audio["mime_type"])), Raw: audio}
+			event := decoder.baseEvent(MaheshvaraEventContentPartAdded, raw)
 			event.ChoiceIndex = choiceIndex
 			event.ContentPart = &part
 			events = append(events, event)
@@ -262,12 +262,12 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]
 			// finish_reason:"error" 是终态失败，不得伪装成正常 stop（DC5b）。
 			if strings.EqualFold(finishReason, "error") {
 				decoder.finishedChoices[choiceIndex] = true
-				event := decoder.baseEvent(CanonicalEventResponseFailed, raw)
+				event := decoder.baseEvent(MaheshvaraEventResponseFailed, raw)
 				message := firstNonEmptyString(stringValue(mapValue(raw["error"])["message"]), stringValue(delta["content"]))
 				if message == "" {
 					message = "upstream reported finish_reason=error"
 				}
-				event.Error = &CanonicalError{Type: "upstream_stream_error", Message: message}
+				event.Error = &MaheshvaraError{Type: "upstream_stream_error", Message: message}
 				terminalEvents = append(terminalEvents, event)
 				continue
 			}
@@ -277,7 +277,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]
 				if state.arguments.Len() == 0 {
 					continue
 				}
-				event := decoder.baseEvent(CanonicalEventFunctionCallArgumentsDone, raw)
+				event := decoder.baseEvent(MaheshvaraEventFunctionCallArgumentsDone, raw)
 				event.ChoiceIndex = choiceIndex
 				event.ToolCallIndex = toolIndex
 				event.ToolCallID = state.id
@@ -285,7 +285,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]
 				event.ToolArgumentsDone = state.arguments.String()
 				terminalEvents = append(terminalEvents, event)
 			}
-			event := decoder.baseEvent(CanonicalEventResponseCompleted, raw)
+			event := decoder.baseEvent(MaheshvaraEventResponseCompleted, raw)
 			event.ChoiceIndex = choiceIndex
 			event.FinishReason = finishReason
 			event.CreatedAt = createdAt
@@ -314,18 +314,18 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIToolCalls(toolCalls []any, c
 		}
 		function := mapValue(tool["function"])
 		if signature := openAIGoogleThoughtSignature(tool); signature != "" {
-			event := decoder.baseEvent(CanonicalEventReasoningSignatureDelta, raw)
+			event := decoder.baseEvent(MaheshvaraEventReasoningSignatureDelta, raw)
 			event.ChoiceIndex = choiceIndex
 			event.ToolCallIndex = toolIndex
 			event.ReasoningSignatureDelta = signature
-			event.ReasoningSignatureProvider = CanonicalSignatureProviderGemini
+			event.ReasoningSignatureProvider = MaheshvaraSignatureProviderGemini
 			events = append(events, event)
 		}
 		state.id = firstNonEmptyString(stringValue(tool["id"]), state.id)
 		state.name = firstNonEmptyString(stringValue(function["name"]), state.name)
 		if !state.added && (state.id != "" || state.name != "") {
 			state.added = true
-			event := decoder.baseEvent(CanonicalEventFunctionCallAdded, raw)
+			event := decoder.baseEvent(MaheshvaraEventFunctionCallAdded, raw)
 			event.ChoiceIndex = choiceIndex
 			event.ToolCallIndex = toolIndex
 			event.ToolCallID = state.id
@@ -342,7 +342,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIToolCalls(toolCalls []any, c
 				rewritten := &maheshvaraStreamToolState{id: state.id, name: state.name, added: true}
 				rewritten.arguments.WriteString(arguments)
 				decoder.openAITools[toolIndex] = rewritten
-				event := decoder.baseEvent(CanonicalEventFunctionCallArgumentsDone, raw)
+				event := decoder.baseEvent(MaheshvaraEventFunctionCallArgumentsDone, raw)
 				event.ChoiceIndex = choiceIndex
 				event.ToolCallIndex = toolIndex
 				event.ToolCallID = state.id
@@ -352,7 +352,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIToolCalls(toolCalls []any, c
 				continue
 			}
 			state.arguments.WriteString(arguments)
-			event := decoder.baseEvent(CanonicalEventFunctionCallArgumentsDelta, raw)
+			event := decoder.baseEvent(MaheshvaraEventFunctionCallArgumentsDelta, raw)
 			event.ChoiceIndex = choiceIndex
 			event.ToolCallIndex = toolIndex
 			event.ToolCallID = state.id
@@ -372,11 +372,11 @@ func openAIReasoningSignatureProvider(detail map[string]any) string {
 	typeName := strings.ToLower(firstNonEmptyString(stringValue(detail["type"]), stringValue(detail["format"])))
 	switch {
 	case strings.Contains(typeName, "google"), strings.Contains(typeName, "gemini"):
-		return CanonicalSignatureProviderGemini
+		return MaheshvaraSignatureProviderGemini
 	case strings.Contains(typeName, "anthropic"), strings.Contains(typeName, "claude"):
-		return CanonicalSignatureProviderAnthropic
+		return MaheshvaraSignatureProviderAnthropic
 	case strings.Contains(typeName, "openai"):
-		return CanonicalSignatureProviderOpenAI
+		return MaheshvaraSignatureProviderOpenAI
 	default:
 		return ""
 	}
@@ -391,7 +391,7 @@ func (decoder *MaheshvaraStreamDecoder) openAIContentEvents(value any, choiceInd
 			return decoder.openAISnapshotTextSuffix(text, choiceIndex, 0, raw)
 		}
 		decoder.openAIPartText[fmt.Sprintf("%d:%d", choiceIndex, 0)] += text
-		event := decoder.baseEvent(CanonicalEventTextDelta, raw)
+		event := decoder.baseEvent(MaheshvaraEventTextDelta, raw)
 		event.ChoiceIndex = choiceIndex
 		event.Delta = text
 		return []MaheshvaraStreamEvent{event}
@@ -400,32 +400,32 @@ func (decoder *MaheshvaraStreamDecoder) openAIContentEvents(value any, choiceInd
 	events := make([]MaheshvaraStreamEvent, 0, len(parts))
 	for index := range parts {
 		part := parts[index]
-		event := decoder.baseEvent(CanonicalEventContentPartAdded, raw)
+		event := decoder.baseEvent(MaheshvaraEventContentPartAdded, raw)
 		event.ChoiceIndex = choiceIndex
 		event.ContentIndex = index
 		switch part.Type {
-		case CanonicalContentText:
-			event.Type = CanonicalEventTextDelta
+		case MaheshvaraContentText:
+			event.Type = MaheshvaraEventTextDelta
 			event.Delta = part.Text
-		case CanonicalContentReasoning:
-			event.Type = CanonicalEventReasoningDelta
+		case MaheshvaraContentReasoning:
+			event.Type = MaheshvaraEventReasoningDelta
 			event.ReasoningDelta = firstNonEmptyString(part.ReasoningText, part.Text)
-		case CanonicalContentRefusal:
-			event.Type = CanonicalEventRefusalDelta
+		case MaheshvaraContentRefusal:
+			event.Type = MaheshvaraEventRefusalDelta
 			event.RefusalDelta = part.Text
 		default:
 			event.ContentPart = &part
 		}
-		if event.Type == CanonicalEventTextDelta && snapshot {
+		if event.Type == MaheshvaraEventTextDelta && snapshot {
 			suffixEvents := decoder.openAISnapshotTextSuffix(event.Delta, choiceIndex, index, raw)
 			events = append(events, suffixEvents...)
 			continue
 		}
 		if maheshvaraStreamEventHasOutput(event) {
-			if event.Type == CanonicalEventTextDelta {
+			if event.Type == MaheshvaraEventTextDelta {
 				decoder.openAIPartText[fmt.Sprintf("%d:%d", choiceIndex, index)] += event.Delta
 			}
-			if event.Type == CanonicalEventReasoningDelta {
+			if event.Type == MaheshvaraEventReasoningDelta {
 				decoder.openAIChoiceReasoned[choiceIndex] = true
 			}
 			events = append(events, event)
@@ -442,7 +442,7 @@ func (decoder *MaheshvaraStreamDecoder) openAISnapshotTextSuffix(text string, ch
 	if text == streamed || streamed == "" {
 		if streamed == "" {
 			decoder.openAIPartText[fmt.Sprintf("%d:%d", choiceIndex, contentIndex)] = text
-			event := decoder.baseEvent(CanonicalEventTextDelta, raw)
+			event := decoder.baseEvent(MaheshvaraEventTextDelta, raw)
 			event.ChoiceIndex = choiceIndex
 			event.Delta = text
 			return []MaheshvaraStreamEvent{event}
@@ -452,7 +452,7 @@ func (decoder *MaheshvaraStreamDecoder) openAISnapshotTextSuffix(text string, ch
 	if strings.HasPrefix(text, streamed) {
 		suffix := text[len(streamed):]
 		decoder.openAIPartText[fmt.Sprintf("%d:%d", choiceIndex, contentIndex)] = text
-		event := decoder.baseEvent(CanonicalEventTextDelta, raw)
+		event := decoder.baseEvent(MaheshvaraEventTextDelta, raw)
 		event.ChoiceIndex = choiceIndex
 		event.Delta = suffix
 		return []MaheshvaraStreamEvent{event}

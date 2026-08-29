@@ -474,35 +474,35 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	if inputFormat == relay.FormatGemini {
 		urlModel = geminiModelFromAction(c.Param("action"))
 	}
-	canonicalReq, _, canonicalErr := relay.ConvertRequestToCanonical(bodyBytes, inputFormat, urlModel)
-	if canonicalErr != nil {
-		log.Printf("Error converting request to Maheshvara: %v", canonicalErr)
-		c.JSON(400, gin.H{"error": fmt.Sprintf("Failed to convert request to Maheshvara: %v", canonicalErr)})
+	maheshvaraReq, _, maheshvaraErr := relay.ConvertRequestToMaheshvara(bodyBytes, inputFormat, urlModel)
+	if maheshvaraErr != nil {
+		log.Printf("Error converting request to Maheshvara: %v", maheshvaraErr)
+		c.JSON(400, gin.H{"error": fmt.Sprintf("Failed to convert request to Maheshvara: %v", maheshvaraErr)})
 		return
 	}
 
 	// Gemini 原生路径 /v1beta/models/MODEL:generateContent 中模型名在 URL 里
 	// 若请求体没有 model 字段，从路径参数提取
-	if canonicalReq.Model == "" {
+	if maheshvaraReq.Model == "" {
 		if action := c.Param("action"); action != "" {
 			// action 形如 /gemini-2.0-flash:generateContent（geminiModelFromAction
 			// 内部已剥离 :action 后缀，无需二次处理）。
-			canonicalReq.Model = geminiModelFromAction(action)
+			maheshvaraReq.Model = geminiModelFromAction(action)
 		}
 	}
-	if canonicalJSON, err := json.Marshal(canonicalReq); err == nil {
-		s.logVerbose("[Maheshvara Request] %s", compactLogJSON(canonicalJSON))
+	if maheshvaraJSON, err := json.Marshal(maheshvaraReq); err == nil {
+		s.logVerbose("[Maheshvara Request] %s", compactLogJSON(maheshvaraJSON))
 	}
 
 	// 模型组级访问权限：先于 validateModelGroup 校验请求的模型组名，
 	// 这样即使目标组为空/未配置，越权访问也返回 403（而非泄露组的存在性/状态）。
-	if !s.tokenAllowsGroup(c, canonicalReq.Model) {
-		s.failRequest(c, record, startTime, http.StatusForbidden, fmt.Sprintf("api key is not allowed to access model group '%s'", canonicalReq.Model))
+	if !s.tokenAllowsGroup(c, maheshvaraReq.Model) {
+		s.failRequest(c, record, startTime, http.StatusForbidden, fmt.Sprintf("api key is not allowed to access model group '%s'", maheshvaraReq.Model))
 		return
 	}
 
 	// 验证并获取模型组
-	group, err := s.validateModelGroup(canonicalReq.Model)
+	group, err := s.validateModelGroup(maheshvaraReq.Model)
 	if err != nil {
 		statusCode := 500
 		if errMsg := err.Error(); strings.Contains(errMsg, "not found") {
@@ -528,35 +528,35 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	}
 	// 组内候选软过滤（方向2）：按请求内容把不支持所需能力的候选移到末尾。
 	candidates = reorderCandidatesByRequestNeeds(candidates,
-		canonicalRequestHasMultimodalInput(canonicalReq), canonicalRequestUsesTools(canonicalReq))
+		maheshvaraRequestHasMultimodalInput(maheshvaraReq), maheshvaraRequestUsesTools(maheshvaraReq))
 	// 多 key 展开（方向6）：按源策略把候选解析为逐次尝试序列（single 时原样）。
 	candidates = s.expandCandidatesByKeyStrategy(candidates)
 
 	// 如果模型组配置了 MaxTokens，覆盖客户端发来的值
 	if group.MaxTokens > 0 {
-		canonicalReq.MaxOutputTokens = group.MaxTokens
+		maheshvaraReq.MaxOutputTokens = group.MaxTokens
 	}
 	// 组级 tools 能力落地（方向2）：组声明不支持工具而请求携带工具定义/工具消息时，
 	// 400 拒绝并明确报错——静默剥离会破坏 agent 循环语义（已确认的产品决策）。
-	if rejectToolRequestsIfNeeded(group, canonicalReq) {
+	if rejectToolRequestsIfNeeded(group, maheshvaraReq) {
 		s.failRequest(c, record, startTime, http.StatusBadRequest,
 			fmt.Sprintf("model group '%s' does not support tool calling, but the request contains tools or tool messages", group.Name))
 		return
 	}
-	filtered, filteredParts, filteredModalities := filterCanonicalMultimodalInputsIfNeeded(group, canonicalReq)
+	filtered, filteredParts, filteredModalities := filterMaheshvaraMultimodalInputsIfNeeded(group, maheshvaraReq)
 	if filtered {
 		s.logVerbose("[Maheshvara Multimodal Filter] group=%s filteredParts=%d modalities=%v", group.Name, filteredParts, filteredModalities)
-		if canonicalJSON, err := json.Marshal(canonicalReq); err == nil {
-			s.logVerbose("[Maheshvara Request After Multimodal Filter] %s", compactLogJSON(canonicalJSON))
+		if maheshvaraJSON, err := json.Marshal(maheshvaraReq); err == nil {
+			s.logVerbose("[Maheshvara Request After Multimodal Filter] %s", compactLogJSON(maheshvaraJSON))
 		}
 		// 让客户端可感知剥离行为（非纯静默）：形如 "image,audio"。
 		c.Writer.Header().Set("X-Elysia-Filtered-Modalities", strings.Join(filteredModalities, ","))
 	}
 
-	estimatedUsage := estimateCanonicalRequestUsage(canonicalReq, s.config.GetUsageConfig())
+	estimatedUsage := estimateMaheshvaraRequestUsage(maheshvaraReq, s.config.GetUsageConfig())
 	estimatedTokens := estimatedUsage.EstimatedTotalTokens
-	record.Usage = usageTokenUsageFromCanonical(estimatedUsage)
-	record.UsageDetail = usageDetailFromCanonical(estimatedUsage)
+	record.Usage = usageTokenUsageFromMaheshvara(estimatedUsage)
+	record.UsageDetail = usageDetailFromMaheshvara(estimatedUsage)
 	record.UsageSource = estimatedUsage.Source
 	releaseLimiter, err := s.acquireRateLimit(group, estimatedTokens)
 	if err != nil {
@@ -592,7 +592,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			continue
 		}
 
-		canonicalReq.Model = selectedModel.Name
+		maheshvaraReq.Model = selectedModel.Name
 		targetPlatform := relay.DetectPlatform(selectedModel.BaseURL, selectedModel.Platform)
 		setRecordModel(record, selectedModel, targetPlatform)
 		s.logDebug("Request model group: '%s' attempt %d/%d, selected: %s", group.Name, attempt+1, attempts, selectedModel.Name)
@@ -601,7 +601,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		// Gemini→Gemini、OpenAI→OpenAI 系），且本次未因 vision 过滤改写过请求体时，
 		// 以原始请求字节直发上游，跳过 Maheshvara 往返——保留尚未纳入核心协议的私有字段
 		// （cache_control / thinking / 各类未知扩展）。借鉴 Responses 透传与 new-api
-		// 的 should_convert=false 分支。vision 过滤改写了 canonicalReq 而非原始字节，
+		// 的 should_convert=false 分支。vision 过滤改写了 maheshvaraReq 而非原始字节，
 		// 故 filtered=true 时必须回退到转换路径，否则被过滤的图片会随原始字节漏给上游。
 		usePassthrough := !filtered && relay.FormatMatchesPlatform(inputFormat, targetPlatform)
 
@@ -610,7 +610,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		isStream := relay.IsStreamRequest(bodyBytes)
 		if action := c.Param("action"); strings.Contains(action, ":streamGenerateContent") {
 			isStream = true
-			canonicalReq.Stream = true
+			maheshvaraReq.Stream = true
 		}
 
 		var targetBody []byte
@@ -639,7 +639,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 				}
 			}
 		} else if relay.IsCustomPlatform(targetPlatform) {
-			customRequest, err = relay.RenderRegisteredCustomProtocolRequest(canonicalReq, relay.CustomProtocolID(targetPlatform))
+			customRequest, err = relay.RenderRegisteredCustomProtocolRequest(maheshvaraReq, relay.CustomProtocolID(targetPlatform))
 			if err == nil {
 				targetBody = customRequest.Body
 			}
@@ -651,7 +651,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			if formatErr != nil {
 				err = formatErr
 			} else {
-				targetBody, err = relay.CanonicalToTargetRequest(canonicalReq, targetFormat, nil)
+				targetBody, err = relay.MaheshvaraToTargetRequest(maheshvaraReq, targetFormat, nil)
 			}
 			if err == nil {
 				record.RelayMode = RelayModeTransform
@@ -814,15 +814,15 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		actualTokens := getInt(record.Usage.TotalTokens)
 		s.adjustTokenUsage(group.ID, actualTokens)
 
-		canonicalResp, canonicalErr := relay.ClaudeResponseToCanonical(&claudeResp)
-		if canonicalErr != nil {
-			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to convert Claude response to Maheshvara: %v", canonicalErr), nil, "")
+		maheshvaraResp, maheshvaraErr := relay.AnthropicResponseToMaheshvara(&claudeResp)
+		if maheshvaraErr != nil {
+			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to convert Claude response to Maheshvara: %v", maheshvaraErr), nil, "")
 			return result
 		}
 		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
 
 		record.StatusCode = http.StatusOK
-		output, renderErr := renderCanonicalChatResponse(canonicalResp, inputFormat)
+		output, renderErr := renderMaheshvaraChatResponse(maheshvaraResp, inputFormat)
 		if renderErr != nil {
 			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to render Maheshvara response: %v", renderErr), nil, "")
 			return result
@@ -855,9 +855,9 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 			return result
 		}
 
-		canonicalResp, canonicalErr := relay.GeminiResponseToCanonical(&geminiResp)
-		if canonicalErr != nil {
-			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to convert Gemini response to Maheshvara: %v", canonicalErr), nil, "")
+		maheshvaraResp, maheshvaraErr := relay.GeminiResponseToMaheshvara(&geminiResp)
+		if maheshvaraErr != nil {
+			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to convert Gemini response to Maheshvara: %v", maheshvaraErr), nil, "")
 			return result
 		}
 		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
@@ -868,7 +868,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
 
 		record.StatusCode = http.StatusOK
-		output, renderErr := renderCanonicalChatResponse(canonicalResp, inputFormat)
+		output, renderErr := renderMaheshvaraChatResponse(maheshvaraResp, inputFormat)
 		if renderErr != nil {
 			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to render Maheshvara response: %v", renderErr), nil, "")
 			return result
@@ -904,12 +904,12 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
 
 		record.StatusCode = http.StatusOK
-		canonicalResp, canonicalErr := relay.OpenAIChatResponseToCanonical(resp)
-		if canonicalErr != nil {
-			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to convert OpenAI response to Maheshvara: %v", canonicalErr), nil, "")
+		maheshvaraResp, maheshvaraErr := relay.OpenAIChatResponseToMaheshvara(resp)
+		if maheshvaraErr != nil {
+			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to convert OpenAI response to Maheshvara: %v", maheshvaraErr), nil, "")
 			return result
 		}
-		output, renderErr := renderCanonicalChatResponse(canonicalResp, inputFormat)
+		output, renderErr := renderMaheshvaraChatResponse(maheshvaraResp, inputFormat)
 		if renderErr != nil {
 			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to render Maheshvara response: %v", renderErr), nil, "")
 			return result
@@ -1445,13 +1445,13 @@ func (s *Server) countTokens(c *gin.Context) {
 		return
 	}
 
-	canonicalReq, err := relay.ClaudeRequestToCanonical(bodyBytes)
+	maheshvaraReq, err := relay.AnthropicToMaheshvara(bodyBytes)
 	if err != nil {
 		c.JSON(400, gin.H{"error": fmt.Sprintf("Failed to convert request: %v", err)})
 		return
 	}
 
-	inputTokens := estimateCanonicalRequestUsage(canonicalReq, s.config.GetUsageConfig()).InputTokens
+	inputTokens := estimateMaheshvaraRequestUsage(maheshvaraReq, s.config.GetUsageConfig()).InputTokens
 
 	c.JSON(200, gin.H{
 		"input_tokens": inputTokens,

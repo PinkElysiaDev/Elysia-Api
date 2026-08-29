@@ -191,7 +191,7 @@ func ValidateCustomProtocol(config CustomProtocolConfig) error {
 		return fmt.Errorf("custom protocol %q uses unsupported method %q", config.ID, method)
 	}
 	if template != "" {
-		if _, err := renderCustomTemplate(template, maheshvaraTemplateContext(&CanonicalRequest{}), nil); err != nil {
+		if _, err := renderCustomTemplate(template, maheshvaraTemplateContext(&MaheshvaraRequest{}), nil); err != nil {
 			return fmt.Errorf("custom protocol %q has invalid body template: %w", config.ID, err)
 		}
 	}
@@ -255,7 +255,7 @@ func validateCustomProtocolResponse(configID, location string, response CustomPr
 		}
 	}
 	for index, mapping := range response.FieldMappings {
-		target := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(mapping.Target), "maheshvara."), "canonical.")
+		target := strings.TrimPrefix(strings.TrimSpace(mapping.Target), "maheshvara.")
 		if err := validateCustomResponseTarget(target); err != nil {
 			return fmt.Errorf("custom protocol %q %s.fieldMappings[%d]: %w", configID, location, index, err)
 		}
@@ -419,27 +419,27 @@ func (a *OpenAIAdapter) SendCustomProtocolRequest(ctx context.Context, baseURL, 
 	return a.client.Do(httpRequest)
 }
 
-func CustomProtocolResponseToCanonical(body []byte, config CustomProtocolConfig) (*MaheshvaraResponse, error) {
-	return customProtocolResponseToCanonical(body, config, false)
+func CustomProtocolResponseToMaheshvara(body []byte, config CustomProtocolConfig) (*MaheshvaraResponse, error) {
+	return customProtocolResponseToMaheshvara(body, config, false)
 }
 
-// CustomProtocolStreamEventToCanonical applies the same response mapping to a
+// CustomProtocolStreamEventToMaheshvara applies the same response mapping to a
 // single streaming event. Empty events are valid and are represented by an
 // otherwise empty Maheshvara response so callers can continue scanning until a
 // later event carries text, a tool call, usage, or a finish reason.
 
-func customProtocolStreamEventToCanonicalValidated(body []byte, config CustomProtocolConfig) (*MaheshvaraResponse, error) {
-	return customProtocolResponseToCanonicalValidated(body, config, true)
+func customProtocolStreamEventToMaheshvaraValidated(body []byte, config CustomProtocolConfig) (*MaheshvaraResponse, error) {
+	return customProtocolResponseToMaheshvaraValidated(body, config, true)
 }
 
-func customProtocolResponseToCanonical(body []byte, config CustomProtocolConfig, allowEmpty bool) (*MaheshvaraResponse, error) {
+func customProtocolResponseToMaheshvara(body []byte, config CustomProtocolConfig, allowEmpty bool) (*MaheshvaraResponse, error) {
 	if err := ValidateCustomProtocol(config); err != nil {
 		return nil, err
 	}
-	return customProtocolResponseToCanonicalValidated(body, config, allowEmpty)
+	return customProtocolResponseToMaheshvaraValidated(body, config, allowEmpty)
 }
 
-func customProtocolResponseToCanonicalValidated(body []byte, config CustomProtocolConfig, allowEmpty bool) (*MaheshvaraResponse, error) {
+func customProtocolResponseToMaheshvaraValidated(body []byte, config CustomProtocolConfig, allowEmpty bool) (*MaheshvaraResponse, error) {
 	var raw any
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
@@ -468,7 +468,7 @@ func customProtocolResponseToCanonicalValidated(body []byte, config CustomProtoc
 		mapping.FinishReasonPath = firstNonEmptyString(mapping.FinishReasonPath, mapping.Mappings["finish_reason"])
 		mapping.ErrorPath = firstNonEmptyString(mapping.ErrorPath, mapping.Mappings["error"])
 	}
-	response := &CanonicalResponse{
+	response := &MaheshvaraResponse{
 		ID:         customStringAt(raw, mapping.IDPath),
 		Model:      customStringAt(raw, mapping.ModelPath),
 		Status:     customStringAt(raw, mapping.StatusPath),
@@ -484,19 +484,19 @@ func customProtocolResponseToCanonicalValidated(body []byte, config CustomProtoc
 	}
 	if mapping.ErrorPath != "" {
 		if value := customValueAt(raw, mapping.ErrorPath); value != nil {
-			response.Error = &CanonicalError{Message: customValueString(value), Raw: customMap(value)}
+			response.Error = &MaheshvaraError{Message: customValueString(value), Raw: customMap(value)}
 		}
 	}
 	if text := customTextAt(raw, mapping.TextPath); text != "" {
-		response.Output = append(response.Output, CanonicalOutputItem{
-			ID: newCanonicalResponseID("msg"), Type: CanonicalOutputMessage, Status: "completed", Role: "assistant",
-			Content: []CanonicalContentPart{{Type: CanonicalContentText, Text: text}},
+		response.Output = append(response.Output, MaheshvaraOutputItem{
+			ID: newMaheshvaraResponseID("msg"), Type: MaheshvaraOutputMessage, Status: "completed", Role: "assistant",
+			Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: text}},
 		})
 	}
 	if reasoning := customTextAt(raw, mapping.ReasoningPath); reasoning != "" {
-		response.Output = append(response.Output, CanonicalOutputItem{
-			ID: newCanonicalResponseID("rs"), Type: CanonicalOutputReasoning, Status: "completed",
-			Content: []CanonicalContentPart{{Type: CanonicalContentReasoning, Text: reasoning, ReasoningText: reasoning}},
+		response.Output = append(response.Output, MaheshvaraOutputItem{
+			ID: newMaheshvaraResponseID("rs"), Type: MaheshvaraOutputReasoning, Status: "completed",
+			Content: []MaheshvaraContentPart{{Type: MaheshvaraContentReasoning, Text: reasoning, ReasoningText: reasoning}},
 		})
 	}
 	if mapping.ToolCallsPath != "" {
@@ -505,8 +505,8 @@ func customProtocolResponseToCanonicalValidated(body []byte, config CustomProtoc
 			if call.Name == "" {
 				continue
 			}
-			response.Output = append(response.Output, CanonicalOutputItem{
-				ID: firstNonEmptyString(call.ID, newCanonicalResponseID("call")), Type: CanonicalOutputFunctionCall,
+			response.Output = append(response.Output, MaheshvaraOutputItem{
+				ID: firstNonEmptyString(call.ID, newMaheshvaraResponseID("call")), Type: MaheshvaraOutputFunctionCall,
 				Status: "completed", CallID: call.ID, Name: call.Name, Arguments: call.Arguments,
 			})
 		}
@@ -542,7 +542,6 @@ func maheshvaraTemplateContext(req *MaheshvaraRequest) map[string]any {
 	}
 	return map[string]any{
 		"maheshvara": value,
-		"canonical":  value,
 		"request":    value,
 	}
 }
@@ -736,16 +735,16 @@ func customArrayAt(root any, path string) []any {
 	return nil
 }
 
-func customToolCall(value any, index int) CanonicalToolCall {
+func customToolCall(value any, index int) MaheshvaraToolCall {
 	object, _ := value.(map[string]any)
 	if object == nil {
-		return CanonicalToolCall{}
+		return MaheshvaraToolCall{}
 	}
 	function := customMap(object["function"])
-	call := CanonicalToolCall{
+	call := MaheshvaraToolCall{
 		ID:   firstNonEmptyString(stringValue(object["id"]), stringValue(object["call_id"]), stringValue(object["tool_call_id"]), stringValue(function["id"]), fmt.Sprintf("call_%d", index)),
 		Name: firstNonEmptyString(stringValue(object["name"]), stringValue(object["function_name"]), stringValue(function["name"])),
-		Type: CanonicalToolFunction,
+		Type: MaheshvaraToolFunction,
 	}
 	arguments := object["arguments"]
 	if arguments == nil {
@@ -771,12 +770,12 @@ func customToolCall(value any, index int) CanonicalToolCall {
 	return call
 }
 
-func customUsageAt(root any, path string) *CanonicalUsage {
+func customUsageAt(root any, path string) *MaheshvaraUsage {
 	object, _ := customValueAt(root, path).(map[string]any)
 	if object == nil {
 		return nil
 	}
-	usage := &CanonicalUsage{Source: "provider_response"}
+	usage := &MaheshvaraUsage{Source: "provider_response"}
 	usage.InputTokens = customInt(object, "input_tokens", "inputTokens", "prompt_tokens", "promptTokenCount")
 	usage.OutputTokens = customInt(object, "output_tokens", "outputTokens", "completion_tokens", "candidatesTokenCount")
 	usage.TotalTokens = customInt(object, "total_tokens", "totalTokens", "totalTokenCount")

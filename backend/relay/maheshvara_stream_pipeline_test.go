@@ -175,13 +175,13 @@ func TestTransformStreamViaMaheshvaraGeminiKeepsSignatureOnSameThoughtPart(t *te
 func TestGeminiStreamRendererNormalizesFunctionResponse(t *testing.T) {
 	writer := &captureStreamWriter{}
 	renderer := NewMaheshvaraStreamRenderer(FormatGemini, writer, "gemini-target")
-	part := CanonicalContentPart{
-		Type:       CanonicalContentToolOutput,
+	part := MaheshvaraContentPart{
+		Type:       MaheshvaraContentToolOutput,
 		ToolCallID: "call_1",
 		ToolOutput: `["one","two"]`,
 		Raw:        map[string]any{"id": "call_1", "name": "lookup"},
 	}
-	if err := renderer.Write(&MaheshvaraStreamEvent{Type: CanonicalEventContentPartAdded, ContentPart: &part}); err != nil {
+	if err := renderer.Write(&MaheshvaraStreamEvent{Type: MaheshvaraEventContentPartAdded, ContentPart: &part}); err != nil {
 		t.Fatalf("render function response: %v", err)
 	}
 	if err := renderer.Finish(); err != nil {

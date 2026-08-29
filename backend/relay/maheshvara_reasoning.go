@@ -20,7 +20,7 @@ const (
 	geminiCrossProviderThoughtSignature = "skip_thought_signature_validator"
 )
 
-func canonicalSignatureForProvider(signature, sourceProvider, targetProvider string) string {
+func maheshvaraSignatureForProvider(signature, sourceProvider, targetProvider string) string {
 	if strings.TrimSpace(signature) == "" || !strings.EqualFold(strings.TrimSpace(sourceProvider), strings.TrimSpace(targetProvider)) {
 		return ""
 	}
@@ -31,14 +31,14 @@ type maheshvaraReasoningEnvelope struct {
 	Version          string                      `json:"version"`
 	Text             string                      `json:"text,omitempty"`
 	EncryptedContent string                      `json:"encrypted_content"`
-	Summary          []CanonicalReasoningSummary `json:"summary,omitempty"`
+	Summary          []MaheshvaraReasoningSummary `json:"summary,omitempty"`
 	// Provider/Model 记录密文签发方与签发时模型（v2 新增）：回放时按 provider
 	// 门控，密文只发还给同厂商上游，不匹配则丢弃密文只保留明文/摘要。
 	Provider string `json:"provider,omitempty"`
 	Model    string `json:"model,omitempty"`
 }
 
-func encodeMaheshvaraReasoningEnvelope(text, encryptedContent string, summary []CanonicalReasoningSummary, provider, model string) (string, error) {
+func encodeMaheshvaraReasoningEnvelope(text, encryptedContent string, summary []MaheshvaraReasoningSummary, provider, model string) (string, error) {
 	if strings.TrimSpace(encryptedContent) == "" {
 		return "", nil
 	}
@@ -46,7 +46,7 @@ func encodeMaheshvaraReasoningEnvelope(text, encryptedContent string, summary []
 		Version:          MaheshvaraProtocolVersion,
 		Text:             text,
 		EncryptedContent: encryptedContent,
-		Summary:          append([]CanonicalReasoningSummary(nil), summary...),
+		Summary:          append([]MaheshvaraReasoningSummary(nil), summary...),
 		Provider:         provider,
 		Model:            model,
 	})
@@ -92,14 +92,14 @@ func decodeMaheshvaraReasoningEnvelope(value string) (maheshvaraReasoningEnvelop
 //   - 厂商原生签名（provider 匹配 anthropic）原样使用；
 //   - 携带密文的跨协议思考装进信封（v2，随载签发方与模型），客户端原样回传后
 //     解出回放；签发方非 anthropic 时密文绝不以原生形态发给 Claude 上游。
-func claudeThinkingSignatureForPart(part CanonicalContentPart, model string) string {
-	if signature := canonicalSignatureForProvider(part.Signature, part.SignatureProvider, CanonicalSignatureProviderAnthropic); signature != "" {
+func claudeThinkingSignatureForPart(part MaheshvaraContentPart, model string) string {
+	if signature := maheshvaraSignatureForProvider(part.Signature, part.SignatureProvider, MaheshvaraSignatureProviderAnthropic); signature != "" {
 		return signature
 	}
 	if strings.TrimSpace(part.EncryptedContent) == "" {
 		return ""
 	}
-	if part.EncryptedProvider == CanonicalSignatureProviderAnthropic {
+	if part.EncryptedProvider == MaheshvaraSignatureProviderAnthropic {
 		// anthropic 的"密文"就是 thinking 签名本身，无需再包信封。
 		return part.EncryptedContent
 	}
@@ -121,7 +121,7 @@ func claudeThinkingSignatureForPart(part CanonicalContentPart, model string) str
 	return signature
 }
 
-func canonicalReasoningText(item CanonicalOutputItem) string {
+func maheshvaraReasoningText(item MaheshvaraOutputItem) string {
 	if item.Reasoning != nil {
 		if item.Reasoning.Text != "" {
 			return item.Reasoning.Text
@@ -132,7 +132,7 @@ func canonicalReasoningText(item CanonicalOutputItem) string {
 	}
 	var builder strings.Builder
 	for _, part := range item.Content {
-		if part.Type != CanonicalContentReasoning {
+		if part.Type != MaheshvaraContentReasoning {
 			continue
 		}
 		builder.WriteString(firstNonEmptyString(part.ReasoningText, part.Text))
@@ -146,32 +146,32 @@ func canonicalReasoningText(item CanonicalOutputItem) string {
 	return builder.String()
 }
 
-func canonicalReasoningEncryptedContent(item CanonicalOutputItem) string {
+func maheshvaraReasoningEncryptedContent(item MaheshvaraOutputItem) string {
 	if item.Reasoning != nil && item.Reasoning.EncryptedContent != "" {
 		return item.Reasoning.EncryptedContent
 	}
 	for _, part := range item.Content {
-		if part.Type == CanonicalContentReasoning && part.EncryptedContent != "" {
+		if part.Type == MaheshvaraContentReasoning && part.EncryptedContent != "" {
 			return part.EncryptedContent
 		}
 	}
 	return ""
 }
 
-func canonicalReasoningSummary(item CanonicalOutputItem) []CanonicalReasoningSummary {
+func maheshvaraReasoningSummary(item MaheshvaraOutputItem) []MaheshvaraReasoningSummary {
 	if len(item.Summary) > 0 {
-		return append([]CanonicalReasoningSummary(nil), item.Summary...)
+		return append([]MaheshvaraReasoningSummary(nil), item.Summary...)
 	}
 	if item.Reasoning != nil && len(item.Reasoning.SummaryParts) > 0 {
-		return append([]CanonicalReasoningSummary(nil), item.Reasoning.SummaryParts...)
+		return append([]MaheshvaraReasoningSummary(nil), item.Reasoning.SummaryParts...)
 	}
 	for _, part := range item.Content {
 		if len(part.ReasoningSummary) > 0 {
-			return append([]CanonicalReasoningSummary(nil), part.ReasoningSummary...)
+			return append([]MaheshvaraReasoningSummary(nil), part.ReasoningSummary...)
 		}
 	}
-	if text := canonicalReasoningText(item); text != "" {
-		return []CanonicalReasoningSummary{{Type: "summary_text", Text: text}}
+	if text := maheshvaraReasoningText(item); text != "" {
+		return []MaheshvaraReasoningSummary{{Type: "summary_text", Text: text}}
 	}
 	return nil
 }

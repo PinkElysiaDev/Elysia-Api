@@ -64,14 +64,14 @@ func TestSystemFingerprintRoundTrip(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	canonical, err := OpenAIChatResponseToMaheshvara(&resp)
+	maheshvara, err := OpenAIChatResponseToMaheshvara(&resp)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if canonical.SystemFingerprint != "fp-123" {
-		t.Fatalf("system_fingerprint not parsed: %+v", canonical.SystemFingerprint)
+	if maheshvara.SystemFingerprint != "fp-123" {
+		t.Fatalf("system_fingerprint not parsed: %+v", maheshvara.SystemFingerprint)
 	}
-	rendered, err := MaheshvaraToOpenAIChatResponse(canonical)
+	rendered, err := MaheshvaraToOpenAIChatResponse(maheshvara)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}

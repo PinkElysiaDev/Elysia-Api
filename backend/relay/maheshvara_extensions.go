@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func applyOpenAIRequestExtensions(raw map[string]any, req *CanonicalRequest) {
+func applyOpenAIRequestExtensions(raw map[string]any, req *MaheshvaraRequest) {
 		if value, ok := numberValue(raw["n"]); ok {
 		v := int(value)
 		req.N = &v
@@ -46,7 +46,7 @@ func applyOpenAIRequestExtensions(raw map[string]any, req *CanonicalRequest) {
 	req.RawExtra = rawFields(raw)
 }
 
-func applyClaudeRequestExtensions(raw map[string]any, req *CanonicalRequest) {
+func applyClaudeRequestExtensions(raw map[string]any, req *MaheshvaraRequest) {
 		if value, ok := numberValue(raw["top_k"]); ok {
 		v := int(value)
 		req.TopK = &v
@@ -79,7 +79,7 @@ func applyClaudeRequestExtensions(raw map[string]any, req *CanonicalRequest) {
 	}
 }
 
-func applyGeminiRequestExtensions(raw map[string]any, req *CanonicalRequest) error {
+func applyGeminiRequestExtensions(raw map[string]any, req *MaheshvaraRequest) error {
 		req.Stream = boolValue(raw["stream"])
 	if raw["safetySettings"] != nil {
 		req.SafetySettings = safetySettingsFromAny(raw["safetySettings"])
@@ -115,7 +115,7 @@ func applyGeminiRequestExtensions(raw map[string]any, req *CanonicalRequest) err
 	return nil
 }
 
-func applyResponsesRequestExtensions(raw map[string]any, req *CanonicalRequest) {
+func applyResponsesRequestExtensions(raw map[string]any, req *MaheshvaraRequest) {
 		if value, ok := numberValue(raw["seed"]); ok {
 		v := int64(value)
 		req.Seed = &v
@@ -133,7 +133,7 @@ func applyResponsesRequestExtensions(raw map[string]any, req *CanonicalRequest) 
 	}
 	req.SafetyIdentifier = firstNonEmptyString(req.SafetyIdentifier, stringValue(raw["safety_identifier"]))
 	if streamOptions := mapValue(raw["stream_options"]); streamOptions != nil {
-		req.StreamOptions = &CanonicalStreamOptions{
+		req.StreamOptions = &MaheshvaraStreamOptions{
 			IncludeUsage:       boolValue(streamOptions["include_usage"]),
 			IncludeObfuscation: boolPointer(streamOptions["include_obfuscation"]),
 			Raw:                streamOptions,
@@ -148,7 +148,7 @@ func applyResponsesRequestExtensions(raw map[string]any, req *CanonicalRequest) 
 	req.RawExtra = rawFields(raw)
 }
 
-func applyOpenAIRequestExtensionsToBody(out map[string]any, req *CanonicalRequest) {
+func applyOpenAIRequestExtensionsToBody(out map[string]any, req *MaheshvaraRequest) {
 		if req.N != nil {
 		out["n"] = *req.N
 	}
@@ -206,7 +206,7 @@ func applyOpenAIRequestExtensionsToBody(out map[string]any, req *CanonicalReques
 	}
 }
 
-func applyClaudeRequestExtensionsToBody(out map[string]any, req *CanonicalRequest) {
+func applyClaudeRequestExtensionsToBody(out map[string]any, req *MaheshvaraRequest) {
 		if req.TopK != nil {
 		out["top_k"] = *req.TopK
 	}
@@ -232,7 +232,7 @@ func applyClaudeRequestExtensionsToBody(out map[string]any, req *CanonicalReques
 	}
 }
 
-func applyGeminiRequestExtensionsToBody(out map[string]any, req *CanonicalRequest) {
+func applyGeminiRequestExtensionsToBody(out map[string]any, req *MaheshvaraRequest) {
 		if len(req.SafetySettings) > 0 {
 		settings := make([]map[string]any, 0, len(req.SafetySettings))
 		for _, setting := range req.SafetySettings {
@@ -282,7 +282,7 @@ func applyGeminiRequestExtensionsToBody(out map[string]any, req *CanonicalReques
 	if len(req.Modalities) > 0 {
 		cfg["responseModalities"] = req.Modalities
 	}
-	if stopSequences := canonicalStopSequences(req.Stop); len(stopSequences) > 0 {
+	if stopSequences := maheshvaraStopSequences(req.Stop); len(stopSequences) > 0 {
 		cfg["stopSequences"] = stopSequences
 	}
 	if len(cfg) > 0 {
@@ -290,7 +290,7 @@ func applyGeminiRequestExtensionsToBody(out map[string]any, req *CanonicalReques
 	}
 }
 
-func canonicalStopSequences(value any) []string {
+func maheshvaraStopSequences(value any) []string {
 	if value == nil {
 		return nil
 	}
@@ -300,7 +300,7 @@ func canonicalStopSequences(value any) []string {
 	return stringSlice(value)
 }
 
-func applyResponsesRequestExtensionsToBody(out map[string]any, req *CanonicalRequest) {
+func applyResponsesRequestExtensionsToBody(out map[string]any, req *MaheshvaraRequest) {
 		if req.Seed != nil {
 		out["seed"] = *req.Seed
 	}
@@ -377,12 +377,12 @@ func stringSlice(value any) []string {
 	return result
 }
 
-func audioConfigFromAny(value any) *CanonicalAudioConfig {
+func audioConfigFromAny(value any) *MaheshvaraAudioConfig {
 	object, ok := value.(map[string]any)
 	if !ok {
 		return nil
 	}
-	return &CanonicalAudioConfig{
+	return &MaheshvaraAudioConfig{
 		Voice:      firstNonEmptyString(stringValue(object["voice"]), stringValue(object["voice_name"])),
 		Format:     firstNonEmptyString(stringValue(object["format"]), stringValue(object["audio_format"])),
 		Codec:      stringValue(object["codec"]),
@@ -391,7 +391,7 @@ func audioConfigFromAny(value any) *CanonicalAudioConfig {
 	}
 }
 
-func safetySettingsFromAny(value any) []CanonicalSafetySetting {
+func safetySettingsFromAny(value any) []MaheshvaraSafetySetting {
 	array, ok := value.([]any)
 	if !ok {
 		if typed, typedOK := value.([]map[string]any); typedOK {
@@ -403,13 +403,13 @@ func safetySettingsFromAny(value any) []CanonicalSafetySetting {
 			return nil
 		}
 	}
-	result := make([]CanonicalSafetySetting, 0, len(array))
+	result := make([]MaheshvaraSafetySetting, 0, len(array))
 	for _, item := range array {
 		object, ok := item.(map[string]any)
 		if !ok {
 			continue
 		}
-		result = append(result, CanonicalSafetySetting{
+		result = append(result, MaheshvaraSafetySetting{
 			Category:  stringValue(object["category"]),
 			Threshold: stringValue(object["threshold"]),
 			Action:    stringValue(object["action"]),
@@ -465,7 +465,7 @@ func rawFields(raw map[string]any) map[string]json.RawMessage {
 	return result
 }
 
-func validateCanonicalRequestForTarget(req *CanonicalRequest, format FormatType) error {
+func validateMaheshvaraRequestForTarget(req *MaheshvaraRequest, format FormatType) error {
 	if req == nil {
 		return fmt.Errorf("cannot render %s request from nil Maheshvara request", format)
 	}
@@ -475,7 +475,7 @@ func validateCanonicalRequestForTarget(req *CanonicalRequest, format FormatType)
 	return nil
 }
 
-func canonicalToolChoiceToGemini(value any) any {
+func maheshvaraToolChoiceToGemini(value any) any {
 	if object, ok := value.(map[string]any); ok {
 		if _, exists := object["functionCallingConfig"]; exists {
 			return object
@@ -505,7 +505,7 @@ func geminiToolConfig(choiceType, name string) map[string]any {
 	return map[string]any{"functionCallingConfig": config}
 }
 
-func canonicalToolChoiceToClaude(value any) any {
+func maheshvaraToolChoiceToClaude(value any) any {
 	if object, ok := value.(map[string]any); ok {
 		if function, ok := object["function"].(map[string]any); ok && stringValue(function["name"]) != "" {
 			return map[string]any{"type": "tool", "name": stringValue(function["name"])}
@@ -547,7 +547,7 @@ func applyClaudeDisableParallelToolUse(toolChoice any, parallel *bool) any {
 	return object
 }
 
-func canonicalToolChoiceToOpenAI(value any) any {
+func maheshvaraToolChoiceToOpenAI(value any) any {
 	if object, ok := value.(map[string]any); ok {
 		if config, ok := object["functionCallingConfig"].(map[string]any); ok {
 			mode := strings.ToLower(strings.TrimSpace(stringValue(config["mode"])))
@@ -596,8 +596,8 @@ func canonicalToolChoiceToOpenAI(value any) any {
 	return value
 }
 
-func claudeDocumentBlockToPart(block map[string]any) CanonicalContentPart {
-	part := CanonicalContentPart{Type: CanonicalContentDocument, Raw: block}
+func claudeDocumentBlockToPart(block map[string]any) MaheshvaraContentPart {
+	part := MaheshvaraContentPart{Type: MaheshvaraContentDocument, Raw: block}
 	if source, ok := block["source"].(map[string]any); ok {
 		part.MediaType = firstNonEmptyString(stringValue(source["media_type"]), stringValue(source["mimeType"]))
 		part.MimeType = part.MediaType
@@ -610,8 +610,8 @@ func claudeDocumentBlockToPart(block map[string]any) CanonicalContentPart {
 	return part
 }
 
-func claudeMediaBlockToPart(block map[string]any, partType string) CanonicalContentPart {
-	part := CanonicalContentPart{Type: partType, Raw: block}
+func claudeMediaBlockToPart(block map[string]any, partType string) MaheshvaraContentPart {
+	part := MaheshvaraContentPart{Type: partType, Raw: block}
 	if source, ok := block["source"].(map[string]any); ok {
 		part.MediaType = firstNonEmptyString(stringValue(source["media_type"]), stringValue(source["mimeType"]))
 		part.MimeType = part.MediaType
@@ -621,7 +621,7 @@ func claudeMediaBlockToPart(block map[string]any, partType string) CanonicalCont
 	return part
 }
 
-func canonicalDocumentToClaudeBlock(part CanonicalContentPart) map[string]any {
+func maheshvaraDocumentToClaudeBlock(part MaheshvaraContentPart) map[string]any {
 	if part.FileData != "" {
 		mediaType := firstNonEmptyString(part.MediaType, part.MimeType, "application/octet-stream")
 		return map[string]any{"type": "document", "source": map[string]any{"type": "base64", "media_type": mediaType, "data": part.FileData}}
@@ -635,7 +635,7 @@ func canonicalDocumentToClaudeBlock(part CanonicalContentPart) map[string]any {
 	return nil
 }
 
-func canonicalMediaToClaudeBlock(part CanonicalContentPart) map[string]any {
+func maheshvaraMediaToClaudeBlock(part MaheshvaraContentPart) map[string]any {
 	data := firstNonEmptyString(part.Data, part.AudioBase64, part.VideoBase64)
 	mediaType := firstNonEmptyString(part.MediaType, part.MimeType)
 	if data != "" {
@@ -648,16 +648,16 @@ func canonicalMediaToClaudeBlock(part CanonicalContentPart) map[string]any {
 	return nil
 }
 
-func canonicalPartToGeminiPart(part CanonicalContentPart) map[string]any {
+func maheshvaraPartToGeminiPart(part MaheshvaraContentPart) map[string]any {
 	mediaType := firstNonEmptyString(part.MediaType, part.MimeType)
 	data := firstNonEmptyString(part.Data, part.AudioBase64, part.VideoBase64, part.FileData)
 	uri := firstNonEmptyString(part.URI, part.AudioURL, part.VideoURL, part.ImageURL)
 	if data != "" {
 		if mediaType == "" {
 			switch part.Type {
-			case CanonicalContentAudio:
+			case MaheshvaraContentAudio:
 				mediaType = "audio/mpeg"
-			case CanonicalContentVideo:
+			case MaheshvaraContentVideo:
 				mediaType = "video/mp4"
 			default:
 				mediaType = "application/octet-stream"

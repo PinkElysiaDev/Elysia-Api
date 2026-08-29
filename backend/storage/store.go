@@ -225,6 +225,9 @@ func (s *Store) migrate(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := s.migrateMaheshvaraLabels(ctx); err != nil {
+		return err
+	}
 	_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(1, ?)`, time.Now().UTC().Format(time.RFC3339Nano))
 	return err
 }
@@ -837,4 +840,31 @@ func normalizeModelDefaults(model Model) Model {
 	}
 	model.Enabled = true
 	return model
+}
+
+// migrateMaheshvaraLabels 把历史 usage 记录里的 canonical_* 展示标签改写为
+// maheshvara_*（命名统一的一次性数据迁移；写入侧已改用新值）。幂等：改写
+// 后旧行拼写不再存在，重跑无操作。record_json 的 REPLACE 用带引号的完整
+// 成员上下文（"usageSource":"..."）与数组元素（"canonical_request"），
+// 误碰撞仅影响展示字段，无功能语义。
+func (s *Store) migrateMaheshvaraLabels(ctx context.Context) error {
+	// 极老的库可能还没有 usage_source 列（本迁移步骤之后的其他列迁移会补）：
+	// 先探测，缺列则跳过列改写——record_json 的改写不受影响。
+	var hasUsageSource int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('usage_records') WHERE name = 'usage_source'`).Scan(&hasUsageSource); err == nil && hasUsageSource > 0 {
+		if _, err := s.db.ExecContext(ctx,
+			`UPDATE usage_records SET usage_source = 'maheshvara_estimate' WHERE usage_source = 'canonical_estimate'`); err != nil {
+			return err
+		}
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE usage_records
+		SET record_json = REPLACE(REPLACE(REPLACE(record_json,
+			'"usageSource":"canonical_estimate"', '"usageSource":"maheshvara_estimate"'),
+			'"canonical_request"', '"maheshvara_request"'),
+			'"canonical_response"', '"maheshvara_response"')
+		WHERE record_json LIKE '%canonical_%'`); err != nil {
+		return err
+	}
+	return nil
 }

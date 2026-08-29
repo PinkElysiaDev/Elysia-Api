@@ -5,11 +5,11 @@ import (
 )
 
 // R9 回归：temperature=0 是「确定性输出」的合法值，不能被当作未设置而丢弃。
-// 经 Maheshvara canonical 管线验证同一语义（旧 Unified 管线已随死代码移除）。
+// 经 Maheshvara maheshvara 管线验证同一语义（旧 Unified 管线已随死代码移除）。
 
 func TestClaudeTemperatureZeroPreserved(t *testing.T) {
 	body := []byte(`{"model":"m","max_tokens":10,"temperature":0,"top_p":0,"messages":[{"role":"user","content":"hi"}]}`)
-	req, err := ClaudeRequestToCanonical(body)
+	req, err := AnthropicToMaheshvara(body)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -23,7 +23,7 @@ func TestClaudeTemperatureZeroPreserved(t *testing.T) {
 
 func TestClaudeTemperatureUnsetStaysNil(t *testing.T) {
 	body := []byte(`{"model":"m","max_tokens":10,"messages":[{"role":"user","content":"hi"}]}`)
-	req, err := ClaudeRequestToCanonical(body)
+	req, err := AnthropicToMaheshvara(body)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestClaudeTemperatureUnsetStaysNil(t *testing.T) {
 
 func TestGeminiTemperatureZeroPreserved(t *testing.T) {
 	body := []byte(`{"model":"m","generationConfig":{"temperature":0,"topP":0},"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`)
-	req, err := GeminiRequestToCanonical(body, "")
+	req, err := GeminiToMaheshvara(body, "")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -48,24 +48,24 @@ func TestGeminiTemperatureZeroPreserved(t *testing.T) {
 
 func TestGeminiSafetyMapsToContentFilter(t *testing.T) {
 	const body = `{"model":"m","contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"stopSequences":["x"]}}`
-	if _, err := GeminiRequestToCanonical([]byte(body), ""); err != nil {
+	if _, err := GeminiToMaheshvara([]byte(body), ""); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	// SAFETY→content_filter 的映射在响应方向：canonicalStopToOpenAI("SAFETY")。
-	if got := canonicalStopToOpenAI("SAFETY"); got != "content_filter" {
+	// SAFETY→content_filter 的映射在响应方向：maheshvaraStopToOpenAI("SAFETY")。
+	if got := maheshvaraStopToOpenAI("SAFETY"); got != "content_filter" {
 		t.Fatalf("SAFETY must map to content_filter, got %q", got)
 	}
 }
 
 func TestClaudeRefusalMapsToContentFilter(t *testing.T) {
-	if got := canonicalStopToOpenAI("refusal"); got != "content_filter" {
+	if got := maheshvaraStopToOpenAI("refusal"); got != "content_filter" {
 		t.Fatalf("refusal must map to content_filter, got %q", got)
 	}
 }
 
 func TestGeminiPartsAccumulateWithText(t *testing.T) {
 	body := []byte(`{"model":"m","contents":[{"role":"user","parts":[{"text":"a"},{"text":"b"}]}]}`)
-	req, err := GeminiRequestToCanonical(body, "")
+	req, err := GeminiToMaheshvara(body, "")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestGeminiPartsAccumulateWithText(t *testing.T) {
 
 func TestGeminiFunctionCallConverted(t *testing.T) {
 	body := []byte(`{"model":"m","contents":[{"role":"user","parts":[{"text":"q"}]},{"role":"model","parts":[{"functionCall":{"name":"f","args":{"a":1}}}]}]}`)
-	req, err := GeminiRequestToCanonical(body, "")
+	req, err := GeminiToMaheshvara(body, "")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}

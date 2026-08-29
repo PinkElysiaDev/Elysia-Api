@@ -30,17 +30,17 @@ func (s *Server) syncCustomProtocols() {
 	}
 }
 
-// filterCanonicalMultimodalInputsIfNeeded 在模型组声明不支持多模态输入
+// filterMaheshvaraMultimodalInputsIfNeeded 在模型组声明不支持多模态输入
 // （vision=false，语义为「视觉/多模态」）时，剥离请求中的 image/audio/video part：
 // 文本请求仍可正常服务（与工具拒绝不同，图片剥离不会让对话语义崩坏）。
 // 返回是否发生剥离、剥离的 part 数与涉及的模态集合（用于响应头
 // X-Elysia-Filtered-Modalities，让客户端可感知而非纯静默）。
-func filterCanonicalMultimodalInputsIfNeeded(group *config.ModelGroupConfig, request *relay.CanonicalRequest) (changed bool, filteredParts int, filteredModalities []string) {
+func filterMaheshvaraMultimodalInputsIfNeeded(group *config.ModelGroupConfig, request *relay.MaheshvaraRequest) (changed bool, filteredParts int, filteredModalities []string) {
 	if request == nil || group == nil || group.VisionCapable == nil || *group.VisionCapable {
 		return false, 0, nil
 	}
 	seen := map[string]struct{}{}
-	strip := func(parts []relay.CanonicalContentPart) []relay.CanonicalContentPart {
+	strip := func(parts []relay.MaheshvaraContentPart) []relay.MaheshvaraContentPart {
 		kept := parts[:0]
 		for _, part := range parts {
 			if isMultimodalContentPart(part.Type) {
@@ -63,7 +63,7 @@ func filterCanonicalMultimodalInputsIfNeeded(group *config.ModelGroupConfig, req
 		item.Content = strip(item.Content)
 		if filteredParts > before {
 			// The raw Responses item may still contain the removed media. Force
-			// the target renderer to rebuild this item from canonical content.
+			// the target renderer to rebuild this item from maheshvara content.
 			item.RawExtra = nil
 		}
 	}
@@ -81,15 +81,15 @@ func filterCanonicalMultimodalInputsIfNeeded(group *config.ModelGroupConfig, req
 // isMultimodalContentPart 判断内容块是否为多模态输入（image/audio/video）。
 func isMultimodalContentPart(contentType string) bool {
 	switch contentType {
-	case relay.CanonicalContentImage, relay.CanonicalContentAudio, relay.CanonicalContentVideo:
+	case relay.MaheshvaraContentImage, relay.MaheshvaraContentAudio, relay.MaheshvaraContentVideo:
 		return true
 	}
 	return false
 }
 
-// canonicalRequestUsesTools 检测请求是否依赖工具调用：tools 定义、tool_choice、
+// maheshvaraRequestUsesTools 检测请求是否依赖工具调用：tools 定义、tool_choice、
 // 消息/输入项中的 tool_call 与工具输出（function_call_output）。
-func canonicalRequestUsesTools(request *relay.CanonicalRequest) bool {
+func maheshvaraRequestUsesTools(request *relay.MaheshvaraRequest) bool {
 	if request == nil {
 		return false
 	}
@@ -98,18 +98,18 @@ func canonicalRequestUsesTools(request *relay.CanonicalRequest) bool {
 	}
 	for index := range request.Messages {
 		for _, part := range request.Messages[index].Content {
-			if part.Type == relay.CanonicalContentToolCall || part.Type == relay.CanonicalContentToolOutput {
+			if part.Type == relay.MaheshvaraContentToolCall || part.Type == relay.MaheshvaraContentToolOutput {
 				return true
 			}
 		}
 	}
 	for index := range request.InputItems {
 		item := &request.InputItems[index]
-		if item.Type == relay.CanonicalInputFunctionCallOutput {
+		if item.Type == relay.MaheshvaraInputFunctionCallOutput {
 			return true
 		}
 		for _, part := range item.Content {
-			if part.Type == relay.CanonicalContentToolCall || part.Type == relay.CanonicalContentToolOutput {
+			if part.Type == relay.MaheshvaraContentToolCall || part.Type == relay.MaheshvaraContentToolOutput {
 				return true
 			}
 		}
@@ -121,11 +121,11 @@ func canonicalRequestUsesTools(request *relay.CanonicalRequest) bool {
 // 组声明不支持工具（tools=false）而请求携带工具定义/工具消息时，直接 400 拒绝并
 // 返回明确错误——静默剥离工具会破坏 agent 循环语义（调用方拿到无法理解的响应），
 // 与视觉的「剥图继续」不同。返回 true 表示已写响应，调用方应中止处理。
-func rejectToolRequestsIfNeeded(group *config.ModelGroupConfig, request *relay.CanonicalRequest) bool {
+func rejectToolRequestsIfNeeded(group *config.ModelGroupConfig, request *relay.MaheshvaraRequest) bool {
 	if request == nil || group == nil || group.ToolsCapable == nil || *group.ToolsCapable {
 		return false
 	}
-	return canonicalRequestUsesTools(request)
+	return maheshvaraRequestUsesTools(request)
 }
 
 func (s *Server) handleCustomNormalRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, request *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
@@ -180,26 +180,26 @@ func (s *Server) handleCustomNormalRequest(c *gin.Context, group *config.ModelGr
 		result = fail(response.StatusCode, string(body), body, shouldRetryStatus(response.StatusCode))
 		return result
 	}
-	canonicalResponse, err := relay.CustomProtocolResponseToCanonical(body, protocol)
+	maheshvaraResponse, err := relay.CustomProtocolResponseToMaheshvara(body, protocol)
 	if err != nil {
 		result = fail(http.StatusBadGateway, fmt.Sprintf("failed to parse custom protocol response: %v", err), nil, false)
 		return result
 	}
-	if canonicalResponse.Model == "" {
-		canonicalResponse.Model = selectedModel.Name
+	if maheshvaraResponse.Model == "" {
+		maheshvaraResponse.Model = selectedModel.Name
 	}
-	updateRecordUsageFromCanonical(record, canonicalResponse.Usage)
-	applyLocalResponseEstimate(record, extractOutputTextFromCanonicalResponse(canonicalResponse), s.config.GetUsageConfig())
+	updateRecordUsageFromMaheshvara(record, maheshvaraResponse.Usage)
+	applyLocalResponseEstimate(record, extractOutputTextFromMaheshvaraResponse(maheshvaraResponse), s.config.GetUsageConfig())
 	s.adjustTokenUsage(group.ID, getInt(record.Usage.TotalTokens))
 
 	var output any
 	switch inputFormat {
 	case relay.FormatClaude:
-		output, err = relay.CanonicalToClaudeResponse(canonicalResponse)
+		output, err = relay.MaheshvaraToAnthropicResponse(maheshvaraResponse)
 	case relay.FormatGemini:
-		output, err = relay.CanonicalToGeminiResponse(canonicalResponse)
+		output, err = relay.MaheshvaraToGeminiResponse(maheshvaraResponse)
 	default:
-		output, err = relay.CanonicalToOpenAIChatResponse(canonicalResponse)
+		output, err = relay.MaheshvaraToOpenAIChatResponse(maheshvaraResponse)
 	}
 	if err != nil {
 		result = fail(http.StatusInternalServerError, fmt.Sprintf("failed to render custom protocol response: %v", err), nil, false)
@@ -261,18 +261,18 @@ func (s *Server) handleCustomResponsesNormal(c *gin.Context, group *config.Model
 		result = fail(response.StatusCode, string(body), body, shouldRetryStatus(response.StatusCode))
 		return result
 	}
-	canonicalResponse, err := relay.CustomProtocolResponseToCanonical(body, protocol)
+	maheshvaraResponse, err := relay.CustomProtocolResponseToMaheshvara(body, protocol)
 	if err != nil {
 		result = fail(http.StatusBadGateway, fmt.Sprintf("failed to parse custom protocol response: %v", err), nil, false)
 		return result
 	}
-	if canonicalResponse.Model == "" {
-		canonicalResponse.Model = selectedModel.Name
+	if maheshvaraResponse.Model == "" {
+		maheshvaraResponse.Model = selectedModel.Name
 	}
-	updateRecordUsageFromCanonical(record, canonicalResponse.Usage)
-	applyLocalResponseEstimate(record, extractOutputTextFromCanonicalResponse(canonicalResponse), s.config.GetUsageConfig())
+	updateRecordUsageFromMaheshvara(record, maheshvaraResponse.Usage)
+	applyLocalResponseEstimate(record, extractOutputTextFromMaheshvaraResponse(maheshvaraResponse), s.config.GetUsageConfig())
 	s.adjustTokenUsage(group.ID, getInt(record.Usage.TotalTokens))
-	output, err := relay.CanonicalToResponsesResponse(canonicalResponse)
+	output, err := relay.MaheshvaraToOpenAIResponsesResponse(maheshvaraResponse)
 	if err != nil {
 		result = fail(http.StatusInternalServerError, fmt.Sprintf("failed to render custom Responses response: %v", err), nil, false)
 		return result
@@ -283,13 +283,13 @@ func (s *Server) handleCustomResponsesNormal(c *gin.Context, group *config.Model
 	return result
 }
 
-func renderCanonicalChatResponse(response *relay.CanonicalResponse, inputFormat relay.FormatType) (any, error) {
+func renderMaheshvaraChatResponse(response *relay.MaheshvaraResponse, inputFormat relay.FormatType) (any, error) {
 	switch inputFormat {
 	case relay.FormatClaude:
-		return relay.CanonicalToClaudeResponse(response)
+		return relay.MaheshvaraToAnthropicResponse(response)
 	case relay.FormatGemini:
-		return relay.CanonicalToGeminiResponse(response)
+		return relay.MaheshvaraToGeminiResponse(response)
 	default:
-		return relay.CanonicalToOpenAIChatResponse(response)
+		return relay.MaheshvaraToOpenAIChatResponse(response)
 	}
 }

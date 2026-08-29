@@ -100,9 +100,9 @@ func (s *Server) handleCustomStreamRequest(
 		for index := range events {
 			event := events[index]
 			if event.Usage != nil {
-				updateRecordUsageFromCanonical(record, event.Usage)
+				updateRecordUsageFromMaheshvara(record, event.Usage)
 			}
-			if event.Error != nil || event.Type == relay.CanonicalEventResponseFailed {
+			if event.Error != nil || event.Type == relay.MaheshvaraEventResponseFailed {
 				message := "custom protocol stream failed"
 				if event.Error != nil && event.Error.Message != "" {
 					message = event.Error.Message
@@ -110,7 +110,7 @@ func (s *Server) handleCustomStreamRequest(
 				streamErr = fmt.Errorf("%s", message)
 				break
 			}
-			if event.Type == relay.CanonicalEventResponseCompleted {
+			if event.Type == relay.MaheshvaraEventResponseCompleted {
 				terminalEvents = append(terminalEvents, event)
 				continue
 			}

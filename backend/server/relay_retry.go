@@ -151,8 +151,8 @@ func reorderCandidatesByRequestNeeds(candidates []config.ModelRef, needsVision, 
 	return candidates
 }
 
-// canonicalRequestHasMultimodalInput 检测请求是否携带多模态输入（image/audio/video）。
-func canonicalRequestHasMultimodalInput(request *relay.CanonicalRequest) bool {
+// maheshvaraRequestHasMultimodalInput 检测请求是否携带多模态输入（image/audio/video）。
+func maheshvaraRequestHasMultimodalInput(request *relay.MaheshvaraRequest) bool {
 	if request == nil {
 		return false
 	}

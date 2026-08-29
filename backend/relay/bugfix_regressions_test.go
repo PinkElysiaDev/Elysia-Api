@@ -13,15 +13,15 @@ import (
 
 // A1 回归：客户端显式设置的小 max_tokens 必须原样透传给 Claude，
 // 不能被默认值 65536 强制抬高。
-func TestCanonicalToClaudeRequestRespectsExplicitMaxTokens(t *testing.T) {
+func TestMaheshvaraToAnthropicRequestRespectsExplicitMaxTokens(t *testing.T) {
 	body := []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}],"max_tokens":128}`)
-	canonical, err := OpenAIChatRequestToCanonical(body)
+	maheshvara, err := OpenAIChatToMaheshvara(body)
 	if err != nil {
-		t.Fatalf("OpenAIChatRequestToCanonical: %v", err)
+		t.Fatalf("OpenAIChatToMaheshvara: %v", err)
 	}
-	out, err := CanonicalToClaudeRequest(canonical)
+	out, err := MaheshvaraToAnthropic(maheshvara)
 	if err != nil {
-		t.Fatalf("CanonicalToClaudeRequest: %v", err)
+		t.Fatalf("MaheshvaraToAnthropic: %v", err)
 	}
 	var req map[string]any
 	if err := json.Unmarshal(out, &req); err != nil {
@@ -32,10 +32,10 @@ func TestCanonicalToClaudeRequestRespectsExplicitMaxTokens(t *testing.T) {
 	}
 
 	// 未设置时仍兜底默认值。
-	canonical.MaxOutputTokens = 0
-	out, err = CanonicalToClaudeRequest(canonical)
+	maheshvara.MaxOutputTokens = 0
+	out, err = MaheshvaraToAnthropic(maheshvara)
 	if err != nil {
-		t.Fatalf("CanonicalToClaudeRequest(default): %v", err)
+		t.Fatalf("MaheshvaraToAnthropic(default): %v", err)
 	}
 	if err := json.Unmarshal(out, &req); err != nil {
 		t.Fatalf("unmarshal claude default request: %v", err)
@@ -55,20 +55,20 @@ func TestClaudeUsageCacheCreationNotDoubleCounted(t *testing.T) {
 		CacheCreationInputTokens: 5,
 		CacheCreation:            &ClaudeCacheCreationUsage{Ephemeral5mInputTokens: 5},
 	}
-	canonical := canonicalUsageFromClaudeUsage(usage)
-	if canonical.InputTokens != 70+25+5 {
-		t.Fatalf("ephemeral breakdown must not be added on top of the total, got input=%d", canonical.InputTokens)
+	maheshvara := maheshvaraUsageFromClaudeUsage(usage)
+	if maheshvara.InputTokens != 70+25+5 {
+		t.Fatalf("ephemeral breakdown must not be added on top of the total, got input=%d", maheshvara.InputTokens)
 	}
 
 	// 只有明细、没有总数时（部分兼容实现）才用明细求和。
 	usage.CacheCreationInputTokens = 0
-	canonical = canonicalUsageFromClaudeUsage(usage)
-	if canonical.InputTokens != 70+25+5 {
-		t.Fatalf("breakdown-only usage should be summed, got input=%d", canonical.InputTokens)
+	maheshvara = maheshvaraUsageFromClaudeUsage(usage)
+	if maheshvara.InputTokens != 70+25+5 {
+		t.Fatalf("breakdown-only usage should be summed, got input=%d", maheshvara.InputTokens)
 	}
 
-	// Claude → canonical → Claude 往返：input + cache_read + cache_creation 保持一致。
-	roundTrip := claudeUsageFromCanonical(canonicalUsageFromClaudeUsage(ClaudeUsage{
+	// Claude → maheshvara → Claude 往返：input + cache_read + cache_creation 保持一致。
+	roundTrip := claudeUsageFromMaheshvara(maheshvaraUsageFromClaudeUsage(ClaudeUsage{
 		InputTokens: 70, OutputTokens: 20, CacheReadInputTokens: 25, CacheCreationInputTokens: 5,
 	}))
 	total := roundTrip.InputTokens + roundTrip.CacheReadInputTokens + roundTrip.CacheCreationInputTokens
@@ -84,14 +84,14 @@ func TestOpenAIToolHistoryConvertsToToolResults(t *testing.T) {
 		`{"role":"user","content":"run the tool"},` +
 		`{"role":"assistant","tool_calls":[{"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{\"q\":\"x\"}"}}]},` +
 		`{"role":"tool","tool_call_id":"call_1","content":"42"}]}`)
-	canonical, err := OpenAIChatRequestToCanonical(body)
+	maheshvara, err := OpenAIChatToMaheshvara(body)
 	if err != nil {
-		t.Fatalf("OpenAIChatRequestToCanonical: %v", err)
+		t.Fatalf("OpenAIChatToMaheshvara: %v", err)
 	}
 
-	claudeBody, err := CanonicalToClaudeRequest(canonical)
+	claudeBody, err := MaheshvaraToAnthropic(maheshvara)
 	if err != nil {
-		t.Fatalf("CanonicalToClaudeRequest: %v", err)
+		t.Fatalf("MaheshvaraToAnthropic: %v", err)
 	}
 	var claudeReq struct {
 		Messages []struct {
@@ -117,18 +117,18 @@ func TestOpenAIToolHistoryConvertsToToolResults(t *testing.T) {
 		t.Fatalf("claude conversion missing tool_use/tool_result: %s", claudeBody)
 	}
 
-	geminiBody, err := CanonicalToGeminiRequest(canonical)
+	geminiBody, err := MaheshvaraToGemini(maheshvara)
 	if err != nil {
-		t.Fatalf("CanonicalToGeminiRequest: %v", err)
+		t.Fatalf("MaheshvaraToGemini: %v", err)
 	}
 	if !strings.Contains(string(geminiBody), `"functionCall"`) || !strings.Contains(string(geminiBody), `"functionResponse"`) {
 		t.Fatalf("gemini conversion missing functionCall/functionResponse: %s", geminiBody)
 	}
 
-	// OpenAI → canonical → OpenAI 往返不得产生重复的 tool 消息。
-	openAIBody, err := CanonicalToOpenAIChatRequest(canonical)
+	// OpenAI → maheshvara → OpenAI 往返不得产生重复的 tool 消息。
+	openAIBody, err := MaheshvaraToOpenAIChat(maheshvara)
 	if err != nil {
-		t.Fatalf("CanonicalToOpenAIChatRequest: %v", err)
+		t.Fatalf("MaheshvaraToOpenAIChat: %v", err)
 	}
 	if strings.Count(string(openAIBody), `"role":"tool"`) != 1 {
 		t.Fatalf("round trip must emit exactly one tool message: %s", openAIBody)
@@ -155,14 +155,14 @@ func TestStopReasonNormalization(t *testing.T) {
 		{"empty", "", "stop", "end_turn", "STOP"},
 	}
 	for _, tc := range cases {
-		if got := canonicalStopToOpenAI(tc.reason); got != tc.wantOpenAI {
-			t.Errorf("%s: canonicalStopToOpenAI = %q, want %q", tc.name, got, tc.wantOpenAI)
+		if got := maheshvaraStopToOpenAI(tc.reason); got != tc.wantOpenAI {
+			t.Errorf("%s: maheshvaraStopToOpenAI = %q, want %q", tc.name, got, tc.wantOpenAI)
 		}
-		if got := canonicalStopToClaude(tc.reason); got != tc.wantClaude {
-			t.Errorf("%s: canonicalStopToClaude = %q, want %q", tc.name, got, tc.wantClaude)
+		if got := maheshvaraStopToClaude(tc.reason); got != tc.wantClaude {
+			t.Errorf("%s: maheshvaraStopToClaude = %q, want %q", tc.name, got, tc.wantClaude)
 		}
-		if got := canonicalStopToGemini(tc.reason); got != tc.wantGemini {
-			t.Errorf("%s: canonicalStopToGemini = %q, want %q", tc.name, got, tc.wantGemini)
+		if got := maheshvaraStopToGemini(tc.reason); got != tc.wantGemini {
+			t.Errorf("%s: maheshvaraStopToGemini = %q, want %q", tc.name, got, tc.wantGemini)
 		}
 	}
 }
@@ -171,13 +171,13 @@ func TestStopReasonNormalization(t *testing.T) {
 // 块必须位于 content 首位。
 func TestOpenAIReasoningPrependedAsFirstClaudeBlock(t *testing.T) {
 	body := []byte(`{"model":"m","messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"answer text","reasoning_content":"because"}]}`)
-	canonical, err := OpenAIChatRequestToCanonical(body)
+	maheshvara, err := OpenAIChatToMaheshvara(body)
 	if err != nil {
-		t.Fatalf("OpenAIChatRequestToCanonical: %v", err)
+		t.Fatalf("OpenAIChatToMaheshvara: %v", err)
 	}
-	out, err := CanonicalToClaudeRequest(canonical)
+	out, err := MaheshvaraToAnthropic(maheshvara)
 	if err != nil {
-		t.Fatalf("CanonicalToClaudeRequest: %v", err)
+		t.Fatalf("MaheshvaraToAnthropic: %v", err)
 	}
 	var req struct {
 		Messages []struct {
@@ -193,7 +193,7 @@ func TestOpenAIReasoningPrependedAsFirstClaudeBlock(t *testing.T) {
 	}
 }
 
-// A5 回归：Claude 响应 [thinking, text] 经 canonical 往返后 thinking 仍居首。
+// A5 回归：Claude 响应 [thinking, text] 经 maheshvara 往返后 thinking 仍居首。
 func TestClaudeResponseRoundTripKeepsThinkingFirst(t *testing.T) {
 	resp := &ClaudeResponse{
 		ID: "msg_1", Type: "message", Role: "assistant",
@@ -202,13 +202,13 @@ func TestClaudeResponseRoundTripKeepsThinkingFirst(t *testing.T) {
 			{Type: "text", Text: "answer"},
 		},
 	}
-	canonical, err := ClaudeResponseToCanonical(resp)
+	maheshvara, err := AnthropicResponseToMaheshvara(resp)
 	if err != nil {
-		t.Fatalf("ClaudeResponseToCanonical: %v", err)
+		t.Fatalf("AnthropicResponseToMaheshvara: %v", err)
 	}
-	out, err := CanonicalToClaudeResponse(canonical)
+	out, err := MaheshvaraToAnthropicResponse(maheshvara)
 	if err != nil {
-		t.Fatalf("CanonicalToClaudeResponse: %v", err)
+		t.Fatalf("MaheshvaraToAnthropicResponse: %v", err)
 	}
 	if len(out.Content) == 0 || out.Content[0].Type != "thinking" {
 		t.Fatalf("thinking must stay first after round trip, got %+v", out.Content)
@@ -222,13 +222,13 @@ func TestClaudeMixedToolResultAndTextOrderToOpenAI(t *testing.T) {
 		`{"role":"user","content":"run"},` +
 		`{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"lookup","input":{"q":"x"}}]},` +
 		`{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"42"},{"type":"text","text":"now summarize"}]}]}`)
-	canonical, err := ClaudeRequestToCanonical(body)
+	maheshvara, err := AnthropicToMaheshvara(body)
 	if err != nil {
-		t.Fatalf("ClaudeRequestToCanonical: %v", err)
+		t.Fatalf("AnthropicToMaheshvara: %v", err)
 	}
-	out, err := CanonicalToOpenAIChatRequest(canonical)
+	out, err := MaheshvaraToOpenAIChat(maheshvara)
 	if err != nil {
-		t.Fatalf("CanonicalToOpenAIChatRequest: %v", err)
+		t.Fatalf("MaheshvaraToOpenAIChat: %v", err)
 	}
 	var req struct {
 		Messages []struct {
@@ -256,13 +256,13 @@ func TestGeminiNameOnlyFunctionResponseAligned(t *testing.T) {
 		`{"role":"user","parts":[{"text":"run"}]},` +
 		`{"role":"model","parts":[{"functionCall":{"name":"lookup","args":{"q":"x"}}}]},` +
 		`{"role":"user","parts":[{"functionResponse":{"name":"lookup","response":{"content":"42"}}}]}]}`)
-	canonical, err := GeminiRequestToCanonical(body, "m")
+	maheshvara, err := GeminiToMaheshvara(body, "m")
 	if err != nil {
-		t.Fatalf("GeminiRequestToCanonical: %v", err)
+		t.Fatalf("GeminiToMaheshvara: %v", err)
 	}
-	out, err := CanonicalToOpenAIChatRequest(canonical)
+	out, err := MaheshvaraToOpenAIChat(maheshvara)
 	if err != nil {
-		t.Fatalf("CanonicalToOpenAIChatRequest: %v", err)
+		t.Fatalf("MaheshvaraToOpenAIChat: %v", err)
 	}
 	var req struct {
 		Messages []struct {
@@ -296,13 +296,13 @@ func TestGeminiNameOnlyFunctionResponseAligned(t *testing.T) {
 func TestAudioInputRenderedAsBareBase64(t *testing.T) {
 	uriInput := []byte(`{"model":"m","messages":[{"role":"user","content":[` +
 		`{"type":"input_audio","input_audio":{"data":"data:audio/mpeg;base64,QUJD","format":"mp3"}}]}]}`)
-	canonical, err := OpenAIChatRequestToCanonical(uriInput)
+	maheshvara, err := OpenAIChatToMaheshvara(uriInput)
 	if err != nil {
-		t.Fatalf("OpenAIChatRequestToCanonical: %v", err)
+		t.Fatalf("OpenAIChatToMaheshvara: %v", err)
 	}
-	out, err := CanonicalToOpenAIChatRequest(canonical)
+	out, err := MaheshvaraToOpenAIChat(maheshvara)
 	if err != nil {
-		t.Fatalf("CanonicalToOpenAIChatRequest: %v", err)
+		t.Fatalf("MaheshvaraToOpenAIChat: %v", err)
 	}
 	if !strings.Contains(string(out), `"data":"QUJD"`) || strings.Contains(string(out), "data:audio") {
 		t.Fatalf("audio data must be bare base64: %s", out)
@@ -312,15 +312,15 @@ func TestAudioInputRenderedAsBareBase64(t *testing.T) {
 	}
 
 	// 完整 MIME 类型归一化为短格式。
-	canonical2 := &CanonicalRequest{
+	maheshvara2 := &MaheshvaraRequest{
 		Model: "m",
-		Messages: []CanonicalMessage{{Role: "user", Content: []CanonicalContentPart{
-			{Type: CanonicalContentAudio, AudioBase64: "REVG", MediaType: "audio/wav"},
+		Messages: []MaheshvaraMessage{{Role: "user", Content: []MaheshvaraContentPart{
+			{Type: MaheshvaraContentAudio, AudioBase64: "REVG", MediaType: "audio/wav"},
 		}}},
 	}
-	out2, err := CanonicalToOpenAIChatRequest(canonical2)
+	out2, err := MaheshvaraToOpenAIChat(maheshvara2)
 	if err != nil {
-		t.Fatalf("CanonicalToOpenAIChatRequest(mime): %v", err)
+		t.Fatalf("MaheshvaraToOpenAIChat(mime): %v", err)
 	}
 	if !strings.Contains(string(out2), `"format":"wav"`) {
 		t.Fatalf("audio/wav must map to short format: %s", out2)

@@ -15,7 +15,7 @@ type MaheshvaraStreamRenderer struct {
 	responseID string
 	model      string
 	createdAt  int64
-	usage      *CanonicalUsage
+	usage      *MaheshvaraUsage
 	finished   bool
 	aborted    bool
 	hasOutput  bool
@@ -28,7 +28,7 @@ type MaheshvaraStreamRenderer struct {
 
 func NewMaheshvaraStreamRenderer(format FormatType, writer StreamResponseWriter, model string) *MaheshvaraStreamRenderer {
 	createdAt := time.Now().Unix()
-	responseID := newCanonicalResponseID("resp")
+	responseID := newMaheshvaraResponseID("resp")
 	renderer := &MaheshvaraStreamRenderer{
 		format:     normalizeMaheshvaraStreamFormat(format),
 		writer:     writer,
@@ -61,10 +61,10 @@ func (renderer *MaheshvaraStreamRenderer) Write(event *MaheshvaraStreamEvent) er
 		renderer.createdAt = event.CreatedAt
 	}
 	if event.Usage != nil {
-		renderer.usage = mergeCanonicalStreamUsage(renderer.usage, event.Usage)
+		renderer.usage = mergeMaheshvaraStreamUsage(renderer.usage, event.Usage)
 	}
 	if event.Response != nil && !renderer.hasOutput && len(event.Response.Output) > 0 {
-		if err := renderer.writeCanonicalResponseContent(event.Response); err != nil {
+		if err := renderer.writeMaheshvaraResponseContent(event.Response); err != nil {
 			return err
 		}
 	}
@@ -86,7 +86,7 @@ func (renderer *MaheshvaraStreamRenderer) Write(event *MaheshvaraStreamEvent) er
 	return err
 }
 
-func (renderer *MaheshvaraStreamRenderer) WriteResponse(response *CanonicalResponse) error {
+func (renderer *MaheshvaraStreamRenderer) WriteResponse(response *MaheshvaraResponse) error {
 	if renderer == nil || response == nil {
 		return fmt.Errorf("nil Maheshvara stream response")
 	}
@@ -102,37 +102,37 @@ func (renderer *MaheshvaraStreamRenderer) WriteResponse(response *CanonicalRespo
 	if response.CreatedAt != 0 {
 		renderer.createdAt = response.CreatedAt
 	}
-	if err := renderer.writeCanonicalResponseContent(response); err != nil {
+	if err := renderer.writeMaheshvaraResponseContent(response); err != nil {
 		return err
 	}
 	if response.Usage != nil {
-		if err := renderer.Write(&MaheshvaraStreamEvent{Type: CanonicalEventUsageDelta, ResponseID: renderer.responseID, Model: renderer.model, Usage: response.Usage}); err != nil {
+		if err := renderer.Write(&MaheshvaraStreamEvent{Type: MaheshvaraEventUsageDelta, ResponseID: renderer.responseID, Model: renderer.model, Usage: response.Usage}); err != nil {
 			return err
 		}
 	}
 	if response.StopReason != "" || response.Status == "completed" {
-		return renderer.Write(&MaheshvaraStreamEvent{Type: CanonicalEventResponseCompleted, ResponseID: renderer.responseID, Model: renderer.model, FinishReason: response.StopReason, Response: response})
+		return renderer.Write(&MaheshvaraStreamEvent{Type: MaheshvaraEventResponseCompleted, ResponseID: renderer.responseID, Model: renderer.model, FinishReason: response.StopReason, Response: response})
 	}
 	return nil
 }
 
-func (renderer *MaheshvaraStreamRenderer) writeCanonicalResponseContent(response *CanonicalResponse) error {
+func (renderer *MaheshvaraStreamRenderer) writeMaheshvaraResponseContent(response *MaheshvaraResponse) error {
 	for outputIndex := range response.Output {
 		item := response.Output[outputIndex]
 		switch item.Type {
-		case CanonicalOutputFunctionCall:
-			if err := renderer.Write(&MaheshvaraStreamEvent{Type: CanonicalEventFunctionCallAdded, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ToolCallIndex: outputIndex, ToolCallID: item.CallID, ToolName: item.Name, OutputItem: &item}); err != nil {
+		case MaheshvaraOutputFunctionCall:
+			if err := renderer.Write(&MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallAdded, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ToolCallIndex: outputIndex, ToolCallID: item.CallID, ToolName: item.Name, OutputItem: &item}); err != nil {
 				return err
 			}
 			if len(item.Arguments) > 0 {
-				if err := renderer.Write(&MaheshvaraStreamEvent{Type: CanonicalEventFunctionCallArgumentsDone, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ToolCallIndex: outputIndex, ToolCallID: item.CallID, ToolName: item.Name, ToolArgumentsDone: string(item.Arguments)}); err != nil {
+				if err := renderer.Write(&MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallArgumentsDone, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ToolCallIndex: outputIndex, ToolCallID: item.CallID, ToolName: item.Name, ToolArgumentsDone: string(item.Arguments)}); err != nil {
 					return err
 				}
 			}
-		case CanonicalOutputReasoning:
-			text := canonicalReasoningText(item)
+		case MaheshvaraOutputReasoning:
+			text := maheshvaraReasoningText(item)
 			if text != "" {
-				if err := renderer.Write(&MaheshvaraStreamEvent{Type: CanonicalEventReasoningDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ItemID: item.ID, ReasoningDelta: text}); err != nil {
+				if err := renderer.Write(&MaheshvaraStreamEvent{Type: MaheshvaraEventReasoningDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ItemID: item.ID, ReasoningDelta: text}); err != nil {
 					return err
 				}
 			}
@@ -141,17 +141,17 @@ func (renderer *MaheshvaraStreamRenderer) writeCanonicalResponseContent(response
 				part := item.Content[contentIndex]
 				event := &MaheshvaraStreamEvent{ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID}
 				switch part.Type {
-				case CanonicalContentText:
-					event.Type = CanonicalEventTextDelta
+				case MaheshvaraContentText:
+					event.Type = MaheshvaraEventTextDelta
 					event.Delta = part.Text
-				case CanonicalContentReasoning:
-					event.Type = CanonicalEventReasoningDelta
+				case MaheshvaraContentReasoning:
+					event.Type = MaheshvaraEventReasoningDelta
 					event.ReasoningDelta = firstNonEmptyString(part.ReasoningText, part.Text)
-				case CanonicalContentRefusal:
-					event.Type = CanonicalEventRefusalDelta
+				case MaheshvaraContentRefusal:
+					event.Type = MaheshvaraEventRefusalDelta
 					event.RefusalDelta = part.Text
 				default:
-					event.Type = CanonicalEventContentPartAdded
+					event.Type = MaheshvaraEventContentPartAdded
 					event.ContentPart = &part
 				}
 				if maheshvaraStreamEventHasOutput(*event) {
@@ -246,14 +246,14 @@ func TransformStreamViaMaheshvara(ctx context.Context, response *http.Response, 
 		}
 		for index := range events {
 			event := events[index]
-			if event.Type == CanonicalEventResponseFailed || event.Error != nil {
+			if event.Type == MaheshvaraEventResponseFailed || event.Error != nil {
 				message := "upstream stream failed"
 				if event.Error != nil && event.Error.Message != "" {
 					message = event.Error.Message
 				}
 				return abort(fmt.Errorf("%s", message))
 			}
-			if event.Type == CanonicalEventResponseCompleted {
+			if event.Type == MaheshvaraEventResponseCompleted {
 				terminalEvents = append(terminalEvents, event)
 				continue
 			}
@@ -281,7 +281,7 @@ func TransformStreamViaMaheshvara(ctx context.Context, response *http.Response, 
 	return renderer.Finish()
 }
 
-func mergeCanonicalStreamUsage(current, update *CanonicalUsage) *CanonicalUsage {
+func mergeMaheshvaraStreamUsage(current, update *MaheshvaraUsage) *MaheshvaraUsage {
 	if update == nil {
 		return current
 	}

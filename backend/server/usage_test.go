@@ -282,8 +282,8 @@ func TestUsageValueMatches(t *testing.T) {
 	}
 }
 
-func TestUsageDetailAndBuiltinToolUsageFromCanonical(t *testing.T) {
-	canonical := &relay.CanonicalUsage{
+func TestUsageDetailAndBuiltinToolUsageFromMaheshvara(t *testing.T) {
+	maheshvara := &relay.MaheshvaraUsage{
 		InputTokens:              100,
 		OutputTokens:             50,
 		TotalTokens:              150,
@@ -306,7 +306,7 @@ func TestUsageDetailAndBuiltinToolUsageFromCanonical(t *testing.T) {
 		Source:                   "provider_response",
 	}
 
-	detail := usageDetailFromCanonical(canonical)
+	detail := usageDetailFromMaheshvara(maheshvara)
 	if detail.InputTokens == nil || *detail.InputTokens != 100 ||
 		detail.OutputTokens == nil || *detail.OutputTokens != 50 ||
 		detail.TotalTokens == nil || *detail.TotalTokens != 150 ||
@@ -321,55 +321,55 @@ func TestUsageDetailAndBuiltinToolUsageFromCanonical(t *testing.T) {
 		detail.AudioOutputTokens == nil || *detail.AudioOutputTokens != 4 ||
 		detail.ToolUseTokens == nil || *detail.ToolUseTokens != 9 ||
 		!detail.Estimated {
-		t.Fatalf("expected detailed canonical usage mapping, got %+v", detail)
+		t.Fatalf("expected detailed maheshvara usage mapping, got %+v", detail)
 	}
 
-	builtin := builtinToolUsageFromCanonical(canonical)
+	builtin := builtinToolUsageFromMaheshvara(maheshvara)
 	if builtin.WebSearchCalls != 1 || builtin.FileSearchCalls != 2 || builtin.ImageGenerationCalls != 3 || builtin.CodeInterpreterCalls != 4 || builtin.ComputerUseCalls != 5 {
 		t.Fatalf("expected builtin tool usage mapping, got %+v", builtin)
 	}
 
 	record := &usageRecord{}
-	updateRecordUsageFromCanonical(record, canonical)
+	updateRecordUsageFromMaheshvara(record, maheshvara)
 	if record.UsageSource != "provider_response" || record.Usage.InputTokens == nil || *record.Usage.InputTokens != 100 || record.BuiltinToolUsage.WebSearchCalls != 1 {
-		t.Fatalf("expected record to be updated from canonical usage, got %+v", record)
+		t.Fatalf("expected record to be updated from maheshvara usage, got %+v", record)
 	}
 }
 
-func TestEstimateCanonicalRequestUsageCountsTextFilesImagesAndTools(t *testing.T) {
-	req := &relay.CanonicalRequest{
+func TestEstimateMaheshvaraRequestUsageCountsTextFilesImagesAndTools(t *testing.T) {
+	req := &relay.MaheshvaraRequest{
 		Instructions:    "system",
 		MaxOutputTokens: 20,
-		Messages: []relay.CanonicalMessage{{
+		Messages: []relay.MaheshvaraMessage{{
 			Role: "user",
-			Content: []relay.CanonicalContentPart{
-				{Type: relay.CanonicalContentText, Text: "hello world"},
-				{Type: relay.CanonicalContentImage, ImageURL: "https://example.com/a.png"},
-				{Type: relay.CanonicalContentFile, FileData: strings.Repeat("x", 2048)},
+			Content: []relay.MaheshvaraContentPart{
+				{Type: relay.MaheshvaraContentText, Text: "hello world"},
+				{Type: relay.MaheshvaraContentImage, ImageURL: "https://example.com/a.png"},
+				{Type: relay.MaheshvaraContentFile, FileData: strings.Repeat("x", 2048)},
 			},
-			ToolCalls: []relay.CanonicalToolCall{{Name: "lookup", Arguments: []byte(`{"q":"x"}`)}},
+			ToolCalls: []relay.MaheshvaraToolCall{{Name: "lookup", Arguments: []byte(`{"q":"x"}`)}},
 		}},
-		InputItems: []relay.CanonicalInputItem{{
-			Type:   relay.CanonicalInputFunctionCallOutput,
+		InputItems: []relay.MaheshvaraInputItem{{
+			Type:   relay.MaheshvaraInputFunctionCallOutput,
 			Output: "tool result",
 		}},
-		Tools: []relay.CanonicalTool{
-			{Type: relay.CanonicalToolWebSearchPreview},
-			{Type: relay.CanonicalToolFileSearch},
-			{Type: relay.CanonicalToolImageGeneration},
+		Tools: []relay.MaheshvaraTool{
+			{Type: relay.MaheshvaraToolWebSearchPreview},
+			{Type: relay.MaheshvaraToolFileSearch},
+			{Type: relay.MaheshvaraToolImageGeneration},
 		},
-		ResponseFormat: &relay.CanonicalResponseFormat{Type: "json_schema", Name: "answer"},
+		ResponseFormat: &relay.MaheshvaraResponseFormat{Type: "json_schema", Name: "answer"},
 	}
 
-	usage := estimateCanonicalRequestUsage(req, config.UsageConfig{
+	usage := estimateMaheshvaraRequestUsage(req, config.UsageConfig{
 		CharsPerToken:               4,
 		DefaultOutputTokenEstimate:  1024,
 		ImageInputTokenEstimate:     300,
 		FileInputTokenEstimatePerKB: 128,
 	})
 
-	if usage == nil || !usage.Estimated || usage.Source != "canonical_estimate" {
-		t.Fatalf("expected estimated canonical usage, got %+v", usage)
+	if usage == nil || !usage.Estimated || usage.Source != "maheshvara_estimate" {
+		t.Fatalf("expected estimated maheshvara usage, got %+v", usage)
 	}
 	if usage.OutputTokens != 20 || usage.EstimatedOutputTokens != 20 {
 		t.Fatalf("expected max output tokens to drive estimate, got %+v", usage)
@@ -385,18 +385,18 @@ func TestEstimateCanonicalRequestUsageCountsTextFilesImagesAndTools(t *testing.T
 	}
 }
 
-func TestCanonicalEstimateDoesNotPopulateActualUsage(t *testing.T) {
-	canonical := &relay.CanonicalUsage{
+func TestMaheshvaraEstimateDoesNotPopulateActualUsage(t *testing.T) {
+	maheshvara := &relay.MaheshvaraUsage{
 		InputTokens:           10,
 		OutputTokens:          1000000,
 		TotalTokens:           1000010,
 		EstimatedTotalTokens:  1000010,
 		EstimatedOutputTokens: 1000000,
 		Estimated:             true,
-		Source:                "canonical_estimate",
+		Source:                "maheshvara_estimate",
 	}
 
-	usage := usageTokenUsageFromCanonical(canonical)
+	usage := usageTokenUsageFromMaheshvara(maheshvara)
 	if usage.InputTokens != nil || usage.OutputTokens != nil || usage.TotalTokens != nil {
 		t.Fatalf("expected request estimate to stay out of actual usage fields, got %+v", usage)
 	}

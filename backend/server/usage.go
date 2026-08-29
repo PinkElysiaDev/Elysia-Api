@@ -1070,7 +1070,7 @@ func estimateTextTokens(text string, cfg config.UsageConfig) int {
 	return (chars + charsPerToken - 1) / charsPerToken
 }
 
-func extractOutputTextFromCanonicalResponse(resp *relay.CanonicalResponse) string {
+func extractOutputTextFromMaheshvaraResponse(resp *relay.MaheshvaraResponse) string {
 	if resp == nil {
 		return ""
 	}

@@ -35,7 +35,7 @@ func (renderer *MaheshvaraStreamRenderer) collectGeminiGrounding(annotations []m
 		return
 	}
 	for _, annotation := range annotations {
-		if value, ok := annotation[CanonicalAnnotationGeminiGrounding]; ok {
+		if value, ok := annotation[MaheshvaraAnnotationGeminiGrounding]; ok {
 			if metadata, ok := value.(map[string]any); ok {
 				renderer.gemini.grounding = metadata
 			}
@@ -49,12 +49,12 @@ func (renderer *MaheshvaraStreamRenderer) writeGemini(event *MaheshvaraStreamEve
 		return nil
 	}
 	switch event.Type {
-	case CanonicalEventUsageDelta:
+	case MaheshvaraEventUsageDelta:
 		if renderer.usage == nil {
 			return nil
 		}
-		return renderer.writeSSEData(map[string]any{"usageMetadata": geminiUsageFromCanonical(renderer.usage)})
-	case CanonicalEventTextDelta:
+		return renderer.writeSSEData(map[string]any{"usageMetadata": geminiUsageFromMaheshvara(renderer.usage)})
+	case MaheshvaraEventTextDelta:
 		if event.Delta == "" && len(event.Annotations) == 0 {
 			return nil
 		}
@@ -65,28 +65,28 @@ func (renderer *MaheshvaraStreamRenderer) writeGemini(event *MaheshvaraStreamEve
 		part := map[string]any{"text": event.Delta}
 		renderer.attachGeminiSignature(part)
 		return renderer.writeGeminiPart(event.ChoiceIndex, part)
-	case CanonicalEventReasoningDelta, CanonicalEventReasoningSummaryDelta:
+	case MaheshvaraEventReasoningDelta, MaheshvaraEventReasoningSummaryDelta:
 		if event.ReasoningDelta == "" {
 			return nil
 		}
 		part := map[string]any{"text": event.ReasoningDelta, "thought": true}
 		renderer.attachGeminiSignature(part)
 		return renderer.writeGeminiPart(event.ChoiceIndex, part)
-	case CanonicalEventReasoningSignatureDelta:
-		if signature := canonicalSignatureForProvider(event.ReasoningSignatureDelta, event.ReasoningSignatureProvider, CanonicalSignatureProviderGemini); signature != "" {
+	case MaheshvaraEventReasoningSignatureDelta:
+		if signature := maheshvaraSignatureForProvider(event.ReasoningSignatureDelta, event.ReasoningSignatureProvider, MaheshvaraSignatureProviderGemini); signature != "" {
 			renderer.gemini.pendingSignature += signature
 		}
 		return nil
-	case CanonicalEventRefusalDelta:
+	case MaheshvaraEventRefusalDelta:
 		if event.RefusalDelta == "" {
 			return nil
 		}
 		return renderer.writeGeminiPart(event.ChoiceIndex, map[string]any{"text": event.RefusalDelta})
-	case CanonicalEventContentPartAdded:
+	case MaheshvaraEventContentPartAdded:
 		return renderer.writeGeminiContentPart(event)
-	case CanonicalEventFunctionCallAdded, CanonicalEventFunctionCallArgumentsDelta, CanonicalEventFunctionCallArgumentsDone:
+	case MaheshvaraEventFunctionCallAdded, MaheshvaraEventFunctionCallArgumentsDelta, MaheshvaraEventFunctionCallArgumentsDone:
 		return renderer.writeGeminiToolEvent(event)
-	case CanonicalEventResponseCompleted:
+	case MaheshvaraEventResponseCompleted:
 		if err := renderer.flushGeminiTools(); err != nil {
 			return err
 		}
@@ -97,13 +97,13 @@ func (renderer *MaheshvaraStreamRenderer) writeGemini(event *MaheshvaraStreamEve
 		if reason == "" {
 			reason = "stop"
 		}
-		candidate := map[string]any{"index": event.ChoiceIndex, "finishReason": canonicalStopToGemini(reason)}
+		candidate := map[string]any{"index": event.ChoiceIndex, "finishReason": maheshvaraStopToGemini(reason)}
 		if renderer.gemini.grounding != nil {
 			candidate["groundingMetadata"] = renderer.gemini.grounding
 		}
 		payload := map[string]any{"candidates": []any{candidate}}
 		if renderer.usage != nil {
-			payload["usageMetadata"] = geminiUsageFromCanonical(renderer.usage)
+			payload["usageMetadata"] = geminiUsageFromMaheshvara(renderer.usage)
 		}
 		renderer.gemini.finishSent[event.ChoiceIndex] = true
 		return renderer.writeSSEData(payload)
@@ -184,7 +184,7 @@ func (renderer *MaheshvaraStreamRenderer) writeGeminiContentPart(event *Maheshva
 	if part == nil {
 		return nil
 	}
-	if part.Type == CanonicalContentToolOutput {
+	if part.Type == MaheshvaraContentToolOutput {
 		name := part.ToolCallID
 		responseID := ""
 		if raw, ok := part.Raw.(map[string]any); ok {
@@ -203,7 +203,7 @@ func (renderer *MaheshvaraStreamRenderer) writeGeminiContentPart(event *Maheshva
 		}
 		return renderer.writeGeminiPart(event.ChoiceIndex, map[string]any{"functionResponse": response})
 	}
-	if rendered := canonicalPartToGeminiPart(*part); rendered != nil {
+	if rendered := maheshvaraPartToGeminiPart(*part); rendered != nil {
 		renderer.attachGeminiSignature(rendered)
 		return renderer.writeGeminiPart(event.ChoiceIndex, rendered)
 	}
@@ -266,7 +266,7 @@ func (renderer *MaheshvaraStreamRenderer) finishGemini() error {
 	renderer.gemini.finishSent[0] = true
 	payload := map[string]any{"candidates": []any{map[string]any{"index": 0, "finishReason": "STOP"}}}
 	if renderer.usage != nil {
-		payload["usageMetadata"] = geminiUsageFromCanonical(renderer.usage)
+		payload["usageMetadata"] = geminiUsageFromMaheshvara(renderer.usage)
 	}
 	return renderer.writeSSEData(payload)
 }

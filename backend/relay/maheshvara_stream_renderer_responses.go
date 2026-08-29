@@ -74,23 +74,23 @@ func (renderer *MaheshvaraStreamRenderer) writeResponses(event *MaheshvaraStream
 		return err
 	}
 	switch event.Type {
-	case CanonicalEventResponseCreated, CanonicalEventResponseInProgress, CanonicalEventUsageDelta:
+	case MaheshvaraEventResponseCreated, MaheshvaraEventResponseInProgress, MaheshvaraEventUsageDelta:
 		return nil
-	case CanonicalEventTextDelta:
+	case MaheshvaraEventTextDelta:
 		return renderer.writeResponsesText(event.ChoiceIndex, event.Delta)
-	case CanonicalEventTextDone:
+	case MaheshvaraEventTextDone:
 		return renderer.finishResponsesText(event.ChoiceIndex, event.TextDone)
-	case CanonicalEventRefusalDelta:
+	case MaheshvaraEventRefusalDelta:
 		return renderer.writeResponsesRefusal(event.ChoiceIndex, event.RefusalDelta)
-	case CanonicalEventRefusalDone:
+	case MaheshvaraEventRefusalDone:
 		return renderer.finishResponsesRefusal(event.ChoiceIndex, event.RefusalDone)
-	case CanonicalEventReasoningDelta, CanonicalEventReasoningSummaryDelta:
+	case MaheshvaraEventReasoningDelta, MaheshvaraEventReasoningSummaryDelta:
 		return renderer.writeResponsesReasoning(event.ChoiceIndex, event.ReasoningDelta)
-	case CanonicalEventReasoningDone, CanonicalEventReasoningSummaryDone:
+	case MaheshvaraEventReasoningDone, MaheshvaraEventReasoningSummaryDone:
 		return renderer.finishResponsesReasoning(event.ChoiceIndex, event.ReasoningDone)
-	case CanonicalEventReasoningSignatureDelta:
+	case MaheshvaraEventReasoningSignatureDelta:
 		return renderer.writeResponsesReasoningSignature(event.ChoiceIndex, event.ReasoningSignatureDelta)
-	case CanonicalEventAnnotationDelta:
+	case MaheshvaraEventAnnotationDelta:
 		// 引用标注并入当前文本 part 的 annotations（不生成畸形独立 part）。
 		if len(event.Annotations) == 0 {
 			return nil
@@ -105,15 +105,15 @@ func (renderer *MaheshvaraStreamRenderer) writeResponses(event *MaheshvaraStream
 			}
 		}
 		return nil
-	case CanonicalEventContentPartAdded:
+	case MaheshvaraEventContentPartAdded:
 		return renderer.writeResponsesContentPart(event)
-	case CanonicalEventFunctionCallAdded, CanonicalEventFunctionCallArgumentsDelta, CanonicalEventFunctionCallArgumentsDone:
+	case MaheshvaraEventFunctionCallAdded, MaheshvaraEventFunctionCallArgumentsDelta, MaheshvaraEventFunctionCallArgumentsDone:
 		return renderer.writeResponsesTool(event)
-	case CanonicalEventOutputItemAdded, CanonicalEventOutputItemDone:
+	case MaheshvaraEventOutputItemAdded, MaheshvaraEventOutputItemDone:
 		// done 事件携带完整终态 item（推理密文、已完成工具调用等只在此出现），
 		// 与 added 同路径处理；各 finish 路径幂等，不会重复输出。
 		return renderer.writeResponsesOutputItem(event)
-	case CanonicalEventResponseCompleted:
+	case MaheshvaraEventResponseCompleted:
 		return renderer.completeResponses()
 	}
 	return nil
@@ -129,10 +129,10 @@ func (renderer *MaheshvaraStreamRenderer) ensureResponsesHeader() error {
 	}
 	state.started = true
 	base := map[string]any{"id": state.responseID, "object": "response", "created_at": state.createdAt, "status": "in_progress", "model": state.model, "output": []any{}}
-	if err := renderer.writeResponsesEvent(CanonicalEventResponseCreated, map[string]any{"type": CanonicalEventResponseCreated, "response": base}); err != nil {
+	if err := renderer.writeResponsesEvent(MaheshvaraEventResponseCreated, map[string]any{"type": MaheshvaraEventResponseCreated, "response": base}); err != nil {
 		return err
 	}
-	return renderer.writeResponsesEvent(CanonicalEventResponseInProgress, map[string]any{"type": CanonicalEventResponseInProgress, "response": base})
+	return renderer.writeResponsesEvent(MaheshvaraEventResponseInProgress, map[string]any{"type": MaheshvaraEventResponseInProgress, "response": base})
 }
 
 func (renderer *MaheshvaraStreamRenderer) ensureResponsesMessage(choiceIndex int) (*maheshvaraResponsesMessageState, error) {
@@ -140,11 +140,11 @@ func (renderer *MaheshvaraStreamRenderer) ensureResponsesMessage(choiceIndex int
 	if state != nil {
 		return state, nil
 	}
-	state = &maheshvaraResponsesMessageState{id: newCanonicalResponseID("msg"), outputIndex: renderer.responses.nextOutput, textIndex: -1, refusalIndex: -1, extraParts: make(map[int]any)}
+	state = &maheshvaraResponsesMessageState{id: newMaheshvaraResponseID("msg"), outputIndex: renderer.responses.nextOutput, textIndex: -1, refusalIndex: -1, extraParts: make(map[int]any)}
 	renderer.responses.nextOutput++
 	renderer.responses.messages[choiceIndex] = state
-	item := map[string]any{"id": state.id, "type": CanonicalOutputMessage, "status": "in_progress", "role": "assistant", "content": []any{}}
-	if err := renderer.writeResponsesEvent(CanonicalEventOutputItemAdded, map[string]any{"type": CanonicalEventOutputItemAdded, "output_index": state.outputIndex, "item": item}); err != nil {
+	item := map[string]any{"id": state.id, "type": MaheshvaraOutputMessage, "status": "in_progress", "role": "assistant", "content": []any{}}
+	if err := renderer.writeResponsesEvent(MaheshvaraEventOutputItemAdded, map[string]any{"type": MaheshvaraEventOutputItemAdded, "output_index": state.outputIndex, "item": item}); err != nil {
 		return nil, err
 	}
 	return state, nil
@@ -162,12 +162,12 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesText(choiceIndex int, te
 		state.textStarted = true
 		state.textIndex = nextResponsesContentIndex(state)
 		part := map[string]any{"type": "output_text", "text": "", "annotations": []any{}}
-		if err := renderer.writeResponsesEvent(CanonicalEventContentPartAdded, map[string]any{"type": CanonicalEventContentPartAdded, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.textIndex, "part": part}); err != nil {
+		if err := renderer.writeResponsesEvent(MaheshvaraEventContentPartAdded, map[string]any{"type": MaheshvaraEventContentPartAdded, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.textIndex, "part": part}); err != nil {
 			return err
 		}
 	}
 	state.text.WriteString(text)
-	return renderer.writeResponsesEvent(CanonicalEventTextDelta, map[string]any{"type": CanonicalEventTextDelta, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.textIndex, "delta": text})
+	return renderer.writeResponsesEvent(MaheshvaraEventTextDelta, map[string]any{"type": MaheshvaraEventTextDelta, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.textIndex, "delta": text})
 }
 
 func (renderer *MaheshvaraStreamRenderer) finishResponsesText(choiceIndex int, text string) error {
@@ -179,7 +179,7 @@ func (renderer *MaheshvaraStreamRenderer) finishResponsesText(choiceIndex int, t
 		state.text.WriteString(text)
 	}
 	state.textDone = true
-	return renderer.writeResponsesEvent(CanonicalEventTextDone, map[string]any{"type": CanonicalEventTextDone, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.textIndex, "text": state.text.String()})
+	return renderer.writeResponsesEvent(MaheshvaraEventTextDone, map[string]any{"type": MaheshvaraEventTextDone, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.textIndex, "text": state.text.String()})
 }
 
 func (renderer *MaheshvaraStreamRenderer) writeResponsesRefusal(choiceIndex int, text string) error {
@@ -194,12 +194,12 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesRefusal(choiceIndex int,
 		state.refusalStarted = true
 		state.refusalIndex = nextResponsesContentIndex(state)
 		part := map[string]any{"type": "refusal", "refusal": ""}
-		if err := renderer.writeResponsesEvent(CanonicalEventContentPartAdded, map[string]any{"type": CanonicalEventContentPartAdded, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.refusalIndex, "part": part}); err != nil {
+		if err := renderer.writeResponsesEvent(MaheshvaraEventContentPartAdded, map[string]any{"type": MaheshvaraEventContentPartAdded, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.refusalIndex, "part": part}); err != nil {
 			return err
 		}
 	}
 	state.refusal.WriteString(text)
-	return renderer.writeResponsesEvent(CanonicalEventRefusalDelta, map[string]any{"type": CanonicalEventRefusalDelta, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.refusalIndex, "delta": text})
+	return renderer.writeResponsesEvent(MaheshvaraEventRefusalDelta, map[string]any{"type": MaheshvaraEventRefusalDelta, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.refusalIndex, "delta": text})
 }
 
 func (renderer *MaheshvaraStreamRenderer) finishResponsesRefusal(choiceIndex int, text string) error {
@@ -211,7 +211,7 @@ func (renderer *MaheshvaraStreamRenderer) finishResponsesRefusal(choiceIndex int
 		state.refusal.WriteString(text)
 	}
 	state.refusalDone = true
-	return renderer.writeResponsesEvent(CanonicalEventRefusalDone, map[string]any{"type": CanonicalEventRefusalDone, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.refusalIndex, "refusal": state.refusal.String()})
+	return renderer.writeResponsesEvent(MaheshvaraEventRefusalDone, map[string]any{"type": MaheshvaraEventRefusalDone, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.refusalIndex, "refusal": state.refusal.String()})
 }
 
 func (renderer *MaheshvaraStreamRenderer) writeResponsesReasoning(choiceIndex int, text string) error {
@@ -223,7 +223,7 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesReasoning(choiceIndex in
 		return err
 	}
 	state.text.WriteString(text)
-	return renderer.writeResponsesEvent(CanonicalEventReasoningSummaryDelta, map[string]any{"type": CanonicalEventReasoningSummaryDelta, "item_id": state.id, "output_index": state.outputIndex, "summary_index": 0, "delta": text})
+	return renderer.writeResponsesEvent(MaheshvaraEventReasoningSummaryDelta, map[string]any{"type": MaheshvaraEventReasoningSummaryDelta, "item_id": state.id, "output_index": state.outputIndex, "summary_index": 0, "delta": text})
 }
 
 // ensureResponsesReasoning 保证 reasoning item 已对下游宣告（签名/密文可能先
@@ -233,11 +233,11 @@ func (renderer *MaheshvaraStreamRenderer) ensureResponsesReasoning(choiceIndex i
 	if state != nil {
 		return state, nil
 	}
-	state = &maheshvaraResponsesReasoningState{id: newCanonicalResponseID("rs"), outputIndex: renderer.responses.nextOutput}
+	state = &maheshvaraResponsesReasoningState{id: newMaheshvaraResponseID("rs"), outputIndex: renderer.responses.nextOutput}
 	renderer.responses.nextOutput++
 	renderer.responses.reasoning[choiceIndex] = state
-	item := map[string]any{"id": state.id, "type": CanonicalOutputReasoning, "status": "in_progress", "summary": []any{}}
-		if err := renderer.writeResponsesEvent(CanonicalEventOutputItemAdded, map[string]any{"type": CanonicalEventOutputItemAdded, "output_index": state.outputIndex, "item": item}); err != nil {
+	item := map[string]any{"id": state.id, "type": MaheshvaraOutputReasoning, "status": "in_progress", "summary": []any{}}
+		if err := renderer.writeResponsesEvent(MaheshvaraEventOutputItemAdded, map[string]any{"type": MaheshvaraEventOutputItemAdded, "output_index": state.outputIndex, "item": item}); err != nil {
 			return nil, err
 		}
 		if err := renderer.writeResponsesEvent("response.reasoning_summary_part.added", map[string]any{"type": "response.reasoning_summary_part.added", "item_id": state.id, "output_index": state.outputIndex, "summary_index": 0, "part": map[string]any{"type": "summary_text", "text": ""}}); err != nil {
@@ -257,7 +257,7 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesReasoningSignature(choic
 		return err
 	}
 	state.signature.WriteString(signature)
-	return renderer.writeResponsesEvent(CanonicalEventReasoningSignatureDelta, map[string]any{"type": CanonicalEventReasoningSignatureDelta, "item_id": state.id, "output_index": state.outputIndex, "delta": signature})
+	return renderer.writeResponsesEvent(MaheshvaraEventReasoningSignatureDelta, map[string]any{"type": MaheshvaraEventReasoningSignatureDelta, "item_id": state.id, "output_index": state.outputIndex, "delta": signature})
 }
 
 func (renderer *MaheshvaraStreamRenderer) finishResponsesReasoning(choiceIndex int, text string) error {
@@ -269,14 +269,14 @@ func (renderer *MaheshvaraStreamRenderer) finishResponsesReasoning(choiceIndex i
 		state.text.WriteString(text)
 	}
 	state.done = true
-	return renderer.writeResponsesEvent(CanonicalEventReasoningSummaryDone, map[string]any{"type": CanonicalEventReasoningSummaryDone, "item_id": state.id, "output_index": state.outputIndex, "summary_index": 0, "text": state.text.String()})
+	return renderer.writeResponsesEvent(MaheshvaraEventReasoningSummaryDone, map[string]any{"type": MaheshvaraEventReasoningSummaryDone, "item_id": state.id, "output_index": state.outputIndex, "summary_index": 0, "text": state.text.String()})
 }
 
 func (renderer *MaheshvaraStreamRenderer) writeResponsesContentPart(event *MaheshvaraStreamEvent) error {
 	if event == nil || event.ContentPart == nil {
 		return nil
 	}
-	part, ok := canonicalPartToResponsesOutputContent(*event.ContentPart)
+	part, ok := maheshvaraPartToResponsesOutputContent(*event.ContentPart)
 	if !ok {
 		if raw, rawOK := event.ContentPart.Raw.(map[string]any); rawOK && len(raw) > 0 {
 			partMap := raw
@@ -302,12 +302,12 @@ func (renderer *MaheshvaraStreamRenderer) addResponsesExtraPart(choiceIndex int,
 	}
 	contentIndex := nextResponsesContentIndex(state)
 	state.extraParts[contentIndex] = part
-	payload := map[string]any{"type": CanonicalEventContentPartAdded, "item_id": state.id, "output_index": state.outputIndex, "content_index": contentIndex, "part": part}
-	if err := renderer.writeResponsesEvent(CanonicalEventContentPartAdded, payload); err != nil {
+	payload := map[string]any{"type": MaheshvaraEventContentPartAdded, "item_id": state.id, "output_index": state.outputIndex, "content_index": contentIndex, "part": part}
+	if err := renderer.writeResponsesEvent(MaheshvaraEventContentPartAdded, payload); err != nil {
 		return err
 	}
-	payload["type"] = CanonicalEventContentPartDone
-	return renderer.writeResponsesEvent(CanonicalEventContentPartDone, payload)
+	payload["type"] = MaheshvaraEventContentPartDone
+	return renderer.writeResponsesEvent(MaheshvaraEventContentPartDone, payload)
 }
 
 func nextResponsesContentIndex(state *maheshvaraResponsesMessageState) int {
@@ -331,7 +331,7 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesTool(event *MaheshvaraSt
 	key := fmt.Sprintf("choice_%d_tool_%d", event.ChoiceIndex, event.ToolCallIndex)
 	state := renderer.responses.tools[key]
 	if state == nil {
-		state = &maheshvaraResponsesToolState{id: newCanonicalResponseID("fc"), callID: event.ToolCallID, name: event.ToolName, outputIndex: renderer.responses.nextOutput}
+		state = &maheshvaraResponsesToolState{id: newMaheshvaraResponseID("fc"), callID: event.ToolCallID, name: event.ToolName, outputIndex: renderer.responses.nextOutput}
 		renderer.responses.nextOutput++
 		renderer.responses.tools[key] = state
 		renderer.responses.toolOrder = append(renderer.responses.toolOrder, key)
@@ -345,8 +345,8 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesTool(event *MaheshvaraSt
 	state.name = firstNonEmptyString(event.ToolName, state.name)
 	if !state.added {
 		state.added = true
-		item := map[string]any{"id": state.id, "type": CanonicalOutputFunctionCall, "status": "in_progress", "call_id": state.callID, "name": state.name, "arguments": ""}
-		if err := renderer.writeResponsesEvent(CanonicalEventOutputItemAdded, map[string]any{"type": CanonicalEventOutputItemAdded, "output_index": state.outputIndex, "item": item}); err != nil {
+		item := map[string]any{"id": state.id, "type": MaheshvaraOutputFunctionCall, "status": "in_progress", "call_id": state.callID, "name": state.name, "arguments": ""}
+		if err := renderer.writeResponsesEvent(MaheshvaraEventOutputItemAdded, map[string]any{"type": MaheshvaraEventOutputItemAdded, "output_index": state.outputIndex, "item": item}); err != nil {
 			return err
 		}
 	}
@@ -360,7 +360,7 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesTool(event *MaheshvaraSt
 	}
 	if argumentDelta != "" {
 		state.arguments.WriteString(argumentDelta)
-		if err := renderer.writeResponsesEvent(CanonicalEventFunctionCallArgumentsDelta, map[string]any{"type": CanonicalEventFunctionCallArgumentsDelta, "item_id": state.id, "output_index": state.outputIndex, "delta": argumentDelta}); err != nil {
+		if err := renderer.writeResponsesEvent(MaheshvaraEventFunctionCallArgumentsDelta, map[string]any{"type": MaheshvaraEventFunctionCallArgumentsDelta, "item_id": state.id, "output_index": state.outputIndex, "delta": argumentDelta}); err != nil {
 			return err
 		}
 	}
@@ -373,38 +373,38 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesOutputItem(event *Mahesh
 		return nil
 	}
 	switch item.Type {
-	case CanonicalOutputFunctionCall:
-		added := &MaheshvaraStreamEvent{Type: CanonicalEventFunctionCallAdded, ToolCallIndex: event.OutputIndex, ToolCallID: item.CallID, ToolName: item.Name}
+	case MaheshvaraOutputFunctionCall:
+		added := &MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallAdded, ToolCallIndex: event.OutputIndex, ToolCallID: item.CallID, ToolName: item.Name}
 		if err := renderer.writeResponsesTool(added); err != nil {
 			return err
 		}
 		if len(item.Arguments) > 0 {
-			added.Type = CanonicalEventFunctionCallArgumentsDone
+			added.Type = MaheshvaraEventFunctionCallArgumentsDone
 			added.ToolArgumentsDone = string(item.Arguments)
 			return renderer.writeResponsesTool(added)
 		}
-	case CanonicalOutputReasoning:
+	case MaheshvaraOutputReasoning:
 		state, err := renderer.ensureResponsesReasoning(event.ChoiceIndex)
 		if err != nil {
 			return err
 		}
-		if encrypted := canonicalReasoningEncryptedContent(*item); encrypted != "" {
+		if encrypted := maheshvaraReasoningEncryptedContent(*item); encrypted != "" {
 			state.encrypted = encrypted
 		}
-		return renderer.writeResponsesReasoning(event.ChoiceIndex, canonicalReasoningText(*item))
+		return renderer.writeResponsesReasoning(event.ChoiceIndex, maheshvaraReasoningText(*item))
 	default:
 		for index := range item.Content {
 			part := item.Content[index]
 			switch part.Type {
-			case CanonicalContentText:
+			case MaheshvaraContentText:
 				if err := renderer.writeResponsesText(event.ChoiceIndex, part.Text); err != nil {
 					return err
 				}
-			case CanonicalContentReasoning:
+			case MaheshvaraContentReasoning:
 				if err := renderer.writeResponsesReasoning(event.ChoiceIndex, firstNonEmptyString(part.ReasoningText, part.Text)); err != nil {
 					return err
 				}
-			case CanonicalContentRefusal:
+			case MaheshvaraContentRefusal:
 				if err := renderer.writeResponsesRefusal(event.ChoiceIndex, part.Text); err != nil {
 					return err
 				}
@@ -461,14 +461,14 @@ func (renderer *MaheshvaraStreamRenderer) completeResponses() error {
 			if message.textStarted {
 				part := map[string]any{"type": "output_text", "text": message.text.String(), "annotations": []any{}}
 				content[message.textIndex] = part
-				if err := renderer.writeResponsesEvent(CanonicalEventContentPartDone, map[string]any{"type": CanonicalEventContentPartDone, "item_id": message.id, "output_index": message.outputIndex, "content_index": message.textIndex, "part": part}); err != nil {
+				if err := renderer.writeResponsesEvent(MaheshvaraEventContentPartDone, map[string]any{"type": MaheshvaraEventContentPartDone, "item_id": message.id, "output_index": message.outputIndex, "content_index": message.textIndex, "part": part}); err != nil {
 					return err
 				}
 			}
 			if message.refusalStarted {
 				part := map[string]any{"type": "refusal", "refusal": message.refusal.String()}
 				content[message.refusalIndex] = part
-				if err := renderer.writeResponsesEvent(CanonicalEventContentPartDone, map[string]any{"type": CanonicalEventContentPartDone, "item_id": message.id, "output_index": message.outputIndex, "content_index": message.refusalIndex, "part": part}); err != nil {
+				if err := renderer.writeResponsesEvent(MaheshvaraEventContentPartDone, map[string]any{"type": MaheshvaraEventContentPartDone, "item_id": message.id, "output_index": message.outputIndex, "content_index": message.refusalIndex, "part": part}); err != nil {
 					return err
 				}
 			}
@@ -476,8 +476,8 @@ func (renderer *MaheshvaraStreamRenderer) completeResponses() error {
 				content[index] = part
 			}
 			content = compactResponsesContent(content)
-			item := map[string]any{"id": message.id, "type": CanonicalOutputMessage, "status": "completed", "role": "assistant", "content": content}
-			if err := renderer.writeResponsesEvent(CanonicalEventOutputItemDone, map[string]any{"type": CanonicalEventOutputItemDone, "output_index": message.outputIndex, "item": item}); err != nil {
+			item := map[string]any{"id": message.id, "type": MaheshvaraOutputMessage, "status": "completed", "role": "assistant", "content": content}
+			if err := renderer.writeResponsesEvent(MaheshvaraEventOutputItemDone, map[string]any{"type": MaheshvaraEventOutputItemDone, "output_index": message.outputIndex, "item": item}); err != nil {
 				return err
 			}
 			message.done = true
@@ -498,12 +498,12 @@ func (renderer *MaheshvaraStreamRenderer) completeResponses() error {
 			if err := renderer.writeResponsesEvent("response.reasoning_summary_part.done", map[string]any{"type": "response.reasoning_summary_part.done", "item_id": reasoning.id, "output_index": reasoning.outputIndex, "summary_index": 0, "part": part}); err != nil {
 				return err
 			}
-			item := map[string]any{"id": reasoning.id, "type": CanonicalOutputReasoning, "status": "completed", "summary": []any{part}}
+			item := map[string]any{"id": reasoning.id, "type": MaheshvaraOutputReasoning, "status": "completed", "summary": []any{part}}
 			if reasoning.encrypted != "" {
 				// 跨协议推理闭环：把加密思考随终态 item 回写，下游续轮原样带回。
 				item["encrypted_content"] = reasoning.encrypted
 			}
-			if err := renderer.writeResponsesEvent(CanonicalEventOutputItemDone, map[string]any{"type": CanonicalEventOutputItemDone, "output_index": reasoning.outputIndex, "item": item}); err != nil {
+			if err := renderer.writeResponsesEvent(MaheshvaraEventOutputItemDone, map[string]any{"type": MaheshvaraEventOutputItemDone, "output_index": reasoning.outputIndex, "item": item}); err != nil {
 				return err
 			}
 			outputs = append(outputs, maheshvaraResponsesRenderedOutput{index: reasoning.outputIndex, item: item})
@@ -517,7 +517,7 @@ func (renderer *MaheshvaraStreamRenderer) completeResponses() error {
 		}
 		pending = append(pending, deferredDone{index: tool.outputIndex, run: func() error {
 			if !tool.added {
-				if err := renderer.writeResponsesTool(&MaheshvaraStreamEvent{Type: CanonicalEventFunctionCallAdded, ToolCallID: tool.callID, ToolName: tool.name, ToolCallIndex: tool.outputIndex}); err != nil {
+				if err := renderer.writeResponsesTool(&MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallAdded, ToolCallID: tool.callID, ToolName: tool.name, ToolCallIndex: tool.outputIndex}); err != nil {
 					return err
 				}
 			}
@@ -525,11 +525,11 @@ func (renderer *MaheshvaraStreamRenderer) completeResponses() error {
 			if arguments == "" {
 				arguments = "{}"
 			}
-			if err := renderer.writeResponsesEvent(CanonicalEventFunctionCallArgumentsDone, map[string]any{"type": CanonicalEventFunctionCallArgumentsDone, "item_id": tool.id, "output_index": tool.outputIndex, "arguments": arguments}); err != nil {
+			if err := renderer.writeResponsesEvent(MaheshvaraEventFunctionCallArgumentsDone, map[string]any{"type": MaheshvaraEventFunctionCallArgumentsDone, "item_id": tool.id, "output_index": tool.outputIndex, "arguments": arguments}); err != nil {
 				return err
 			}
-			item := map[string]any{"id": tool.id, "type": CanonicalOutputFunctionCall, "status": "completed", "call_id": tool.callID, "name": tool.name, "arguments": arguments}
-			if err := renderer.writeResponsesEvent(CanonicalEventOutputItemDone, map[string]any{"type": CanonicalEventOutputItemDone, "output_index": tool.outputIndex, "item": item}); err != nil {
+			item := map[string]any{"id": tool.id, "type": MaheshvaraOutputFunctionCall, "status": "completed", "call_id": tool.callID, "name": tool.name, "arguments": arguments}
+			if err := renderer.writeResponsesEvent(MaheshvaraEventOutputItemDone, map[string]any{"type": MaheshvaraEventOutputItemDone, "output_index": tool.outputIndex, "item": item}); err != nil {
 				return err
 			}
 			tool.done = true
@@ -550,11 +550,11 @@ func (renderer *MaheshvaraStreamRenderer) completeResponses() error {
 	}
 	usage := renderer.usage
 	if usage == nil {
-		usage = &CanonicalUsage{}
+		usage = &MaheshvaraUsage{}
 	}
-	completed := map[string]any{"id": renderer.responseID, "object": "response", "created_at": renderer.createdAt, "status": "completed", "model": renderer.model, "output": outputItems, "usage": responsesUsageFromCanonical(usage)}
+	completed := map[string]any{"id": renderer.responseID, "object": "response", "created_at": renderer.createdAt, "status": "completed", "model": renderer.model, "output": outputItems, "usage": responsesUsageFromMaheshvara(usage)}
 	state.completed = true
-	return renderer.writeResponsesEvent(CanonicalEventResponseCompleted, map[string]any{"type": CanonicalEventResponseCompleted, "response": completed})
+	return renderer.writeResponsesEvent(MaheshvaraEventResponseCompleted, map[string]any{"type": MaheshvaraEventResponseCompleted, "response": completed})
 }
 
 func responsesMessageContentCount(state *maheshvaraResponsesMessageState) int {
@@ -600,7 +600,7 @@ func (renderer *MaheshvaraStreamRenderer) abortResponses(streamErr error) error 
 	}
 	failed := map[string]any{"id": renderer.responseID, "object": "response", "created_at": renderer.createdAt, "status": "failed", "model": renderer.model, "output": []any{}, "error": map[string]any{"type": "upstream_stream_error", "message": streamErr.Error()}}
 	renderer.responses.completed = true
-	return renderer.writeResponsesEvent(CanonicalEventResponseFailed, map[string]any{"type": CanonicalEventResponseFailed, "response": failed})
+	return renderer.writeResponsesEvent(MaheshvaraEventResponseFailed, map[string]any{"type": MaheshvaraEventResponseFailed, "response": failed})
 }
 
 func (renderer *MaheshvaraStreamRenderer) writeResponsesEvent(eventType string, payload map[string]any) error {

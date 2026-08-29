@@ -70,7 +70,7 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 	}
 	if _, done := decoder.doneValues[data]; done {
 		decoder.terminal = true
-		return []MaheshvaraStreamEvent{{Type: CanonicalEventResponseCompleted}}, true, nil
+		return []MaheshvaraStreamEvent{{Type: MaheshvaraEventResponseCompleted}}, true, nil
 	}
 	if len(decoder.events) > 0 {
 		eventName := strings.TrimSpace(wireEvent.Event)
@@ -83,7 +83,7 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 			return nil, false, nil
 		}
 	}
-	response, err := customProtocolStreamEventToCanonicalValidated([]byte(data), decoder.config)
+	response, err := customProtocolStreamEventToMaheshvaraValidated([]byte(data), decoder.config)
 	if err != nil {
 		return nil, false, err
 	}
@@ -92,74 +92,74 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 		if maheshvaraStreamEventHasOutput(event) {
 			decoder.sawOutput = true
 		}
-		if event.Type == CanonicalEventResponseCompleted || event.Type == CanonicalEventResponseFailed {
+		if event.Type == MaheshvaraEventResponseCompleted || event.Type == MaheshvaraEventResponseFailed {
 			decoder.terminal = true
 		}
 	}
 	return events, decoder.terminal, nil
 }
 
-func (decoder *CustomProtocolStreamDecoder) responseEvents(response *CanonicalResponse) []MaheshvaraStreamEvent {
+func (decoder *CustomProtocolStreamDecoder) responseEvents(response *MaheshvaraResponse) []MaheshvaraStreamEvent {
 	if response == nil {
 		return nil
 	}
 	var events []MaheshvaraStreamEvent
 	if response.Error != nil {
-		events = append(events, MaheshvaraStreamEvent{Type: CanonicalEventResponseFailed, ResponseID: response.ID, Model: response.Model, Error: response.Error})
+		events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventResponseFailed, ResponseID: response.ID, Model: response.Model, Error: response.Error})
 		return events
 	}
 	for outputIndex, item := range response.Output {
 		switch item.Type {
-		case CanonicalOutputFunctionCall:
+		case MaheshvaraOutputFunctionCall:
 			key := firstNonEmptyString(item.CallID, item.Name, fmt.Sprintf("tool_%d", outputIndex))
 			if !decoder.toolAdded[key] {
 				decoder.toolAdded[key] = true
-				events = append(events, MaheshvaraStreamEvent{Type: CanonicalEventFunctionCallAdded, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ToolCallIndex: outputIndex, ToolCallID: item.CallID, ToolName: item.Name})
+				events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallAdded, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ToolCallIndex: outputIndex, ToolCallID: item.CallID, ToolName: item.Name})
 			}
 			arguments := string(item.Arguments)
 			if arguments != "" {
 				delta := decoder.streamDelta(decoder.previousArguments, key, arguments)
 				if delta != "" {
-					events = append(events, MaheshvaraStreamEvent{Type: CanonicalEventFunctionCallArgumentsDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ToolCallIndex: outputIndex, ToolCallID: item.CallID, ToolName: item.Name, ToolArgumentsDelta: delta})
+					events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallArgumentsDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ToolCallIndex: outputIndex, ToolCallID: item.CallID, ToolName: item.Name, ToolArgumentsDelta: delta})
 				}
 			}
-		case CanonicalOutputReasoning:
-			text := canonicalReasoningText(item)
+		case MaheshvaraOutputReasoning:
+			text := maheshvaraReasoningText(item)
 			delta := decoder.streamDelta(decoder.previousReasoning, fmt.Sprintf("reasoning_%d", outputIndex), text)
 			if delta != "" {
-				events = append(events, MaheshvaraStreamEvent{Type: CanonicalEventReasoningDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ItemID: item.ID, ReasoningDelta: delta})
+				events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventReasoningDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ItemID: item.ID, ReasoningDelta: delta})
 			}
 		default:
 			for contentIndex, part := range item.Content {
 				key := fmt.Sprintf("%d:%d", outputIndex, contentIndex)
 				switch part.Type {
-				case CanonicalContentText:
+				case MaheshvaraContentText:
 					delta := decoder.streamDelta(decoder.previousText, key, part.Text)
 					if delta != "" {
-						events = append(events, MaheshvaraStreamEvent{Type: CanonicalEventTextDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, Delta: delta})
+						events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventTextDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, Delta: delta})
 					}
-				case CanonicalContentReasoning:
+				case MaheshvaraContentReasoning:
 					delta := decoder.streamDelta(decoder.previousReasoning, key, firstNonEmptyString(part.ReasoningText, part.Text))
 					if delta != "" {
-						events = append(events, MaheshvaraStreamEvent{Type: CanonicalEventReasoningDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, ReasoningDelta: delta})
+						events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventReasoningDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, ReasoningDelta: delta})
 					}
-				case CanonicalContentRefusal:
+				case MaheshvaraContentRefusal:
 					delta := decoder.streamDelta(decoder.previousText, "refusal:"+key, part.Text)
 					if delta != "" {
-						events = append(events, MaheshvaraStreamEvent{Type: CanonicalEventRefusalDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, RefusalDelta: delta})
+						events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventRefusalDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, RefusalDelta: delta})
 					}
 				default:
 					partCopy := part
-					events = append(events, MaheshvaraStreamEvent{Type: CanonicalEventContentPartAdded, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, ContentPart: &partCopy})
+					events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventContentPartAdded, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, ContentPart: &partCopy})
 				}
 			}
 		}
 	}
 	if response.Usage != nil {
-		events = append(events, MaheshvaraStreamEvent{Type: CanonicalEventUsageDelta, ResponseID: response.ID, Model: response.Model, Usage: response.Usage})
+		events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventUsageDelta, ResponseID: response.ID, Model: response.Model, Usage: response.Usage})
 	}
 	if response.StopReason != "" || response.Status == "completed" {
-		events = append(events, MaheshvaraStreamEvent{Type: CanonicalEventResponseCompleted, ResponseID: response.ID, Model: response.Model, FinishReason: response.StopReason, Response: response})
+		events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventResponseCompleted, ResponseID: response.ID, Model: response.Model, FinishReason: response.StopReason, Response: response})
 	}
 	return events
 }
