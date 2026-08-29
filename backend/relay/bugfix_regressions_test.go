@@ -149,7 +149,9 @@ func TestStopReasonNormalization(t *testing.T) {
 		{"openai content_filter", "content_filter", "content_filter", "refusal", "SAFETY"},
 		{"length round trip", "length", "length", "max_tokens", "MAX_TOKENS"},
 		{"tool_use", "tool_use", "tool_calls", "tool_use", "STOP"},
-		{"totally unknown", "weird_vnd_reason", "stop", "end_turn", "STOP"},
+		// 上游新增的未知枚举原样透传（native finish reason 保真，不静默
+		// 塌缩成正常结束）——此前会塌成 stop/end_turn/STOP。
+		{"totally unknown", "weird_vnd_reason", "weird_vnd_reason", "weird_vnd_reason", "weird_vnd_reason"},
 		{"empty", "", "stop", "end_turn", "STOP"},
 	}
 	for _, tc := range cases {

@@ -55,6 +55,12 @@ func OpenAIChatRequestToCanonical(body []byte) (*CanonicalRequest, error) {
 		User:   stringValue(raw["user"]),
 	}
 
+	// 网关一次只出一份候选：显式拒绝 n != 1，替换「发送 n 却只取
+	// choices[0]」的静默丢弃（对齐 DC1a 的诚实语义）。
+	if v, ok := numberValue(raw["n"]); ok && int(v) != 1 {
+		return nil, fmt.Errorf("chat completions n must be 1: this gateway returns a single candidate per request")
+	}
+
 	if v, ok := numberValue(raw["max_completion_tokens"]); ok {
 		req.MaxOutputTokens = int(v)
 	} else if v, ok := numberValue(raw["max_tokens"]); ok {
@@ -343,7 +349,11 @@ func CanonicalToClaudeRequest(req *CanonicalRequest) ([]byte, error) {
 		"messages":   messages,
 		"max_tokens": maxTokens,
 	}
-	if instructions := canonicalResponsesInstructions(req); instructions != "" {
+	// 优先原样回放 Claude 客户端的 system 块数组（保住块级 cache_control
+	// 标记——拍平成纯文本会让缓存省钱设置静默失效）；无原始块时退回拼接文本。
+	if rawBlocks := req.RawExtra["claude_system_blocks"]; len(rawBlocks) > 0 {
+		out["system"] = jsonRawToAny(rawBlocks)
+	} else if instructions := canonicalResponsesInstructions(req); instructions != "" {
 		out["system"] = instructions
 	}
 	if req.Temperature != nil {
@@ -583,6 +593,9 @@ func CanonicalToResponsesRequest(req *CanonicalRequest, original *OpenAIResponse
 	out["model"] = req.Model
 	if instructions := canonicalResponsesInstructions(req); instructions != "" {
 		out["instructions"] = instructions
+	}
+	if req.User != "" {
+		out["user"] = req.User
 	}
 	out["input"] = canonicalInputToResponses(req)
 	if req.MaxOutputTokens > 0 {
@@ -889,9 +902,11 @@ func parseClaudeMessages(raw any) []CanonicalMessage {
 					}
 					continue
 				default:
-					// Unknown provider blocks remain intentionally filtered. Their
-					// raw bytes are not safe to reinterpret as plain text.
-					continue
+					// Unknown blocks are kept verbatim as raw parts (never
+					// reinterpreted as prompt text): same-wire targets replay
+					// them byte-for-byte, cross-wire targets keep their
+					// existing unknown-part handling.
+					msg.Content = append(msg.Content, CanonicalContentPart{Type: stringValue(bm["type"]), Raw: bm})
 				}
 			}
 		} else {
@@ -1650,6 +1665,14 @@ func canonicalMessagesToClaude(req *CanonicalRequest) ([]map[string]any, error) 
 			case CanonicalContentAudio, CanonicalContentVideo:
 				if block := canonicalMediaToClaudeBlock(part); block != nil {
 					content = append(content, block)
+				}
+			default:
+				// 服务端工具块（server_tool_use / web_search_tool_result 等）
+				// 与未知 Claude 块：整块原样回放（Raw 为完整原始对象）。
+				if raw, ok := part.Raw.(map[string]any); ok {
+					if _, hasType := raw["type"]; hasType {
+						content = append(content, raw)
+					}
 				}
 			}
 		}
@@ -2602,6 +2625,13 @@ func ClaudeResponseToCanonical(resp *ClaudeResponse) (*CanonicalResponse, error)
 			msg.Content = append(msg.Content, claudeDocumentBlockToPart(map[string]any{"type": block.Type, "source": block.Source}))
 		case "tool_result":
 			msg.Content = append(msg.Content, CanonicalContentPart{Type: CanonicalContentToolOutput, ToolCallID: block.ToolUseID, ToolOutput: customValueString(block.Content), Raw: block})
+		default:
+			// server_tool_use / web_search_tool_result 等服务端工具块与未知
+			// 块：整块原样保留（RawFields 捕获了全部字段），Claude 目标渲染
+			// 时整块回放；跨协议目标按未知 part 处理。
+			if block.Type != "" {
+				msg.Content = append(msg.Content, CanonicalContentPart{Type: block.Type, Raw: block.RawFields})
+			}
 		}
 	}
 	flushMsg()
@@ -2710,7 +2740,7 @@ func ResponsesResponseToCanonical(resp *OpenAIResponsesResponse) (*CanonicalResp
 			out.Error = &CanonicalError{Message: contentValueToString(resp.Error)}
 		}
 	}
-	for _, item := range resp.Output {
+	for index, item := range resp.Output {
 		citem := CanonicalOutputItem{
 			ID:        item.ID,
 			Type:      item.Type,
@@ -2720,6 +2750,15 @@ func ResponsesResponseToCanonical(resp *OpenAIResponsesResponse) (*CanonicalResp
 			Name:      item.Name,
 			Arguments: item.Arguments,
 			Raw:       map[string]any{"quality": item.Quality, "size": item.Size},
+		}
+		// 服务端工具项（web_search_call 等）没有类型化载荷字段：整项原始
+		// 对象挂到 Raw，Responses 目标渲染时原样回放，不再只剩空壳。
+		if index < len(resp.RawOutputs) {
+			switch item.Type {
+			case "message", "reasoning", "function_call", "custom_tool_call":
+			default:
+				citem.Raw = resp.RawOutputs[index]
+			}
 		}
 		for _, content := range item.Content {
 			switch content.Type {
@@ -2902,6 +2941,15 @@ func CanonicalToClaudeResponse(resp *CanonicalResponse) (*ClaudeResponse, error)
 				case CanonicalContentToolOutput:
 					if part.ToolCallID != "" {
 						content = append(content, ClaudeContent{Type: "tool_result", ToolUseID: part.ToolCallID, Content: part.ToolOutput})
+					}
+				default:
+					// 服务端工具块与未知 Claude 块：整块原样回放。
+					if raw, ok := part.Raw.(map[string]any); ok {
+						if _, hasType := raw["type"]; hasType {
+							if err := appendMapContent(raw); err != nil {
+								return nil, err
+							}
+						}
 					}
 				}
 			}
@@ -3087,6 +3135,15 @@ func CanonicalToResponsesResponse(resp *CanonicalResponse) (*OpenAIResponsesResp
 			Name:      item.Name,
 			Arguments: item.Arguments,
 			Metadata:  item.Metadata,
+		}
+		// 服务端工具项整项回放：原始对象为底，类型化字段覆盖其上
+		//（仅当 Raw 是带 type 的完整原始项，而非 quality/size 摘要）。
+		switch item.Type {
+		case CanonicalOutputMessage, CanonicalOutputFunctionCall, CanonicalOutputReasoning:
+		default:
+			if _, hasType := item.Raw["type"]; hasType {
+				ritem.RawItem = item.Raw
+			}
 		}
 		if ritem.Type == CanonicalOutputMessage || ritem.Type == "message" {
 			ritem.Type = "message"
@@ -3333,8 +3390,12 @@ func canonicalStopToOpenAI(reason string) string {
 	case "content_filter", "refusal", "SAFETY", "RECITATION", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "LANGUAGE":
 		return "content_filter"
 	default:
-		// end_turn/STOP/stop_sequence/"" 及一切未知值。
-		return "stop"
+		// end_turn/STOP/stop_sequence/"" 映射为 stop；上游新增的未知枚举
+		// 原样透传（native finish reason 保真，不静默塌缩成正常结束）。
+		if reason == "" || reason == "end_turn" || reason == "STOP" || reason == "stop_sequence" {
+			return "stop"
+		}
+		return reason
 	}
 }
 
@@ -3353,7 +3414,11 @@ func canonicalStopToClaude(reason string) string {
 	case "content_filter", "refusal", "SAFETY", "RECITATION", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "LANGUAGE":
 		return "refusal"
 	default:
-		return "end_turn"
+		// 上游新增的未知枚举原样透传（native 保真）；空值保持 end_turn。
+		if reason == "" {
+			return "end_turn"
+		}
+		return reason
 	}
 }
 
@@ -3371,9 +3436,13 @@ func canonicalStopToGemini(reason string) string {
 	case "content_filter", "refusal":
 		return "SAFETY"
 	default:
-		// stop/end_turn/tool_use/tool_calls/"" 及一切未知值：Gemini 函数调用
-		// 完成时 finishReason 也是 STOP，统一归 STOP。
-		return "STOP"
+		// stop/end_turn/tool_use/tool_calls/""：Gemini 函数调用完成时
+		// finishReason 也是 STOP，统一归 STOP；上游新增的未知枚举原样透传
+		//（native 保真）。
+		if reason == "" || reason == "stop" || reason == "end_turn" || reason == "tool_use" || reason == "tool_calls" {
+			return "STOP"
+		}
+		return reason
 	}
 }
 

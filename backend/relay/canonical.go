@@ -486,6 +486,33 @@ type OpenAIResponsesResponse struct {
 	IncompleteDetails map[string]any    `json:"incomplete_details,omitempty"`
 	Metadata          map[string]any    `json:"metadata,omitempty"`
 	ServiceTier       string            `json:"service_tier,omitempty"`
+
+	// RawOutputs 与 Output 逐位对应的原始对象（UnmarshalJSON 时捕获），
+	// 供服务端工具项的整项保真往返。
+	RawOutputs []map[string]any `json:"-"`
+}
+
+// UnmarshalJSON 在类型化解码之外并行捕获 output 的原始对象。
+func (r *OpenAIResponsesResponse) UnmarshalJSON(data []byte) error {
+	type alias OpenAIResponsesResponse
+	var typed alias
+	if err := json.Unmarshal(data, &typed); err != nil {
+		return err
+	}
+	*r = OpenAIResponsesResponse(typed)
+	var raw struct {
+		Output []json.RawMessage `json:"output"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+	for _, rawItem := range raw.Output {
+		var item map[string]any
+		if json.Unmarshal(rawItem, &item) == nil {
+			r.RawOutputs = append(r.RawOutputs, item)
+		}
+	}
+	return nil
 }
 
 type ResponsesOutput struct {
@@ -507,6 +534,40 @@ type ResponsesOutput struct {
 
 	Quality string `json:"quality,omitempty"`
 	Size    string `json:"size,omitempty"`
+
+	// RawItem：服务端工具项（web_search_call / file_search_call /
+	// image_generation_call / code_interpreter_call / computer_use_call 等）
+	// 的完整原始对象。这些项的载荷（action/results/attachments）没有类型化
+	// 字段，往返必须整项原样搬运（MarshalJSON 时以原始对象为底、类型化
+	// 字段覆盖），否则只剩 ID/Type/Status 空壳。
+	RawItem map[string]any `json:"-"`
+}
+
+// MarshalJSON 以 RawItem 为底、非空类型化字段覆盖其上：服务端工具项的
+// 载荷字段完整保留，常规项（RawItem 为空）退化为普通结构体序列化。
+func (o ResponsesOutput) MarshalJSON() ([]byte, error) {
+	type alias ResponsesOutput
+	encoded, err := json.Marshal(alias(o))
+	if err != nil {
+		return nil, err
+	}
+	if len(o.RawItem) == 0 {
+		return encoded, nil
+	}
+	var typed map[string]any
+	if err := json.Unmarshal(encoded, &typed); err != nil {
+		return nil, err
+	}
+	merged := make(map[string]any, len(o.RawItem)+len(typed))
+	for key, value := range o.RawItem {
+		merged[key] = value
+	}
+	for key, value := range typed {
+		if value != nil {
+			merged[key] = value
+		}
+	}
+	return json.Marshal(merged)
 }
 
 type ResponsesOutputContent struct {

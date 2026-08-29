@@ -69,6 +69,53 @@ type ClaudeContent struct {
 	// Citations：text block 的引用标注（web_search_result_location 等），
 	// 原样往返，不做跨协议语义翻译。
 	Citations json.RawMessage `json:"citations,omitempty"`
+
+	// RawFields：块的完整原始对象（UnmarshalJSON 捕获）。server_tool_use /
+	// web_search_tool_result 等服务端工具块没有类型化字段，往返必须整块
+	// 原样搬运（MarshalJSON 时以原始对象为底、类型化字段覆盖）。
+	RawFields map[string]any `json:"-"`
+}
+
+// UnmarshalJSON 在类型化解码之外捕获完整原始块。
+func (c *ClaudeContent) UnmarshalJSON(data []byte) error {
+	type alias ClaudeContent
+	var typed alias
+	if err := json.Unmarshal(data, &typed); err != nil {
+		return err
+	}
+	*c = ClaudeContent(typed)
+	var raw map[string]any
+	if json.Unmarshal(data, &raw) == nil {
+		c.RawFields = raw
+	}
+	return nil
+}
+
+// MarshalJSON 以 RawFields 为底、非空类型化字段覆盖其上：服务端工具块的
+	// 载荷完整保留；常规块退化为普通结构体序列化。
+func (c ClaudeContent) MarshalJSON() ([]byte, error) {
+	type alias ClaudeContent
+	encoded, err := json.Marshal(alias(c))
+	if err != nil {
+		return nil, err
+	}
+	if len(c.RawFields) == 0 {
+		return encoded, nil
+	}
+	var typed map[string]any
+	if err := json.Unmarshal(encoded, &typed); err != nil {
+		return nil, err
+	}
+	merged := make(map[string]any, len(c.RawFields)+len(typed))
+	for key, value := range c.RawFields {
+		merged[key] = value
+	}
+	for key, value := range typed {
+		if value != nil {
+			merged[key] = value
+		}
+	}
+	return json.Marshal(merged)
 }
 
 type ClaudeUsage struct {

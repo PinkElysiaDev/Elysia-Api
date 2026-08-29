@@ -81,6 +81,13 @@ func applyClaudeRequestExtensions(raw map[string]any, req *CanonicalRequest) {
 	if req.RawExtra == nil {
 		req.RawExtra = rawFields(raw)
 	}
+	// Claude system 数组块的块级 cache_control（"缓存到这里"标记）在拼纯文本
+	// 时会丢：保留原始块数组，Claude 目标渲染时原样回放。
+	if blocks, ok := raw["system"].([]any); ok && len(blocks) > 0 {
+		if encoded, err := json.Marshal(blocks); err == nil && req.RawExtra != nil {
+			req.RawExtra["claude_system_blocks"] = encoded
+		}
+	}
 }
 
 func applyGeminiRequestExtensions(raw map[string]any, req *CanonicalRequest) {
@@ -211,6 +218,10 @@ func applyOpenAIRequestExtensionsToBody(out map[string]any, req *CanonicalReques
 	if req.Store != nil {
 		out["store"] = *req.Store
 	}
+	if len(req.PromptCacheRetention) > 0 {
+		// 提示词缓存寿命提示：不回写会让上游缓存省钱设置静默失效。
+		out["prompt_cache_retention"] = jsonRawToAny(req.PromptCacheRetention)
+	}
 }
 
 func applyClaudeRequestExtensionsToBody(out map[string]any, req *CanonicalRequest) {
@@ -222,6 +233,17 @@ func applyClaudeRequestExtensionsToBody(out map[string]any, req *CanonicalReques
 	}
 	if req.Metadata != nil {
 		out["metadata"] = req.Metadata
+	}
+	// 调用方身份映射：Claude 把 user 放在 metadata.user_id（对齐 URPV2-8c）。
+	if req.User != "" {
+		metadata, _ := out["metadata"].(map[string]any)
+		if metadata == nil {
+			metadata = map[string]any{}
+			out["metadata"] = metadata
+		}
+		if _, exists := metadata["user_id"]; !exists {
+			metadata["user_id"] = req.User
+		}
 	}
 	if req.ServiceTier != "" {
 		out["service_tier"] = req.ServiceTier
