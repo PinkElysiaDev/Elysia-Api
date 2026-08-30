@@ -27,7 +27,7 @@ export function BrandMark({
         >
           Elysia API
         </b>
-        <span className="block text-2xs uppercase tracking-[0.22em] text-muted-foreground">
+        <span className="block text-2xs uppercase tracking-[0.1em] text-muted-foreground">
           Console
         </span>
       </div>

@@ -106,7 +106,7 @@ export function SheetSectionTitle({ className, ...props }: React.HTMLAttributes<
   return (
     <h3
       className={cn(
-        'mb-3 flex items-center gap-2 text-2xs font-semibold uppercase tracking-[0.16em] text-muted-foreground after:h-px after:flex-1 after:bg-border',
+        'mb-3 flex items-center gap-2 text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground after:h-px after:flex-1 after:bg-border',
         className,
       )}
       {...props}

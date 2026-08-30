@@ -51,7 +51,7 @@ export function Sidebar() {
       <nav aria-label="主导航" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-2">
         {grouped.map(({ group, items }) => (
           <div key={group} className="flex flex-col gap-0.5">
-            <span className="px-3 pb-1.5 pt-3.5 text-2xs uppercase tracking-[0.18em] text-muted-foreground">
+            <span className="px-3 pb-1.5 pt-3.5 text-2xs uppercase tracking-[0.08em] text-muted-foreground">
               {group}
             </span>
             {items.map((item) => {

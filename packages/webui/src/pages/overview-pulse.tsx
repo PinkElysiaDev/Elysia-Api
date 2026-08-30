@@ -245,7 +245,7 @@ export function PulseSection({ minuteTick }: { minuteTick: number }) {
         <div className="flex flex-col gap-9 border-b lg:border-b-0 lg:border-r border-border/40 pb-4 lg:pb-[26px] pr-0 lg:pr-6">
           <div>
             <div className="flex items-baseline gap-1.5">
-              <span className="tnum font-display text-[length:clamp(1.5rem,0.875rem+0.78125vw,2.125rem)] font-medium leading-none tracking-tight text-foreground">
+              <span className="tnum font-display text-[length:clamp(1.5rem,0.875rem+0.78125vw,1.875rem)] font-medium leading-none tracking-tight text-foreground">
                 {shown.rpm.toFixed(1)}
               </span>
               <span className="font-mono text-xs font-semibold text-muted-foreground/80">

@@ -53,7 +53,7 @@ export const TableHead = forwardRef<HTMLTableCellElement, React.ThHTMLAttributes
       ref={ref}
       scope="col"
       className={cn(
-        'whitespace-nowrap border-b border-input px-3 py-[9px] text-left align-middle text-2xs font-semibold uppercase tracking-[0.1em] text-muted-foreground',
+        'whitespace-nowrap border-b border-input px-3 py-[9px] text-left align-middle text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground',
         className,
       )}
       {...props}
