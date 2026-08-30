@@ -191,6 +191,15 @@ func (s *Store) migrate(ctx context.Context) error {
 		!strings.Contains(err.Error(), "duplicate column") {
 		return err
 	}
+	// 大库上首次建索引要扫全表胖行，可达分钟级且期间无任何输出——升级后首启
+	// 会停在本步。先探存在性，确实要建时说一声，避免看起来像"卡住"。
+	var hasAggIndex int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_usage_agg_cover'`).Scan(&hasAggIndex); err != nil {
+		return err
+	}
+	if hasAggIndex == 0 {
+		log.Printf("[migration] building usage aggregate index — one-time on first start after upgrade, duration scales with usage history")
+	}
 	if _, err := s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_usage_agg_cover ON usage_records(started_ms, model_name, group_name, key_name, status_code, stream, input_tokens, output_tokens, total_tokens, cache_hit_tokens, duration_ms, first_byte_ms)`); err != nil {
 		return err
 	}
@@ -858,12 +867,28 @@ func normalizeModelDefaults(model Model) Model {
 	return model
 }
 
+// maheshvaraLabelsMigrationVersion 标记"canonical → maheshvara 展示标签改写"
+// 已完成的 schema_migrations 版本号。改写本身幂等，但 WHERE LIKE 需要全表扫
+// 描胖行——大库上每次启动都重跑会明显拖慢启动，故用版本门控只跑一次。
+const maheshvaraLabelsMigrationVersion = 2
+
 // migrateMaheshvaraLabels 把历史 usage 记录里的 canonical_* 展示标签改写为
-// maheshvara_*（命名统一的一次性数据迁移；写入侧已改用新值）。幂等：改写
-// 后旧行拼写不再存在，重跑无操作。record_json 的 REPLACE 用带引号的完整
-// 成员上下文（"usageSource":"..."）与数组元素（"canonical_request"），
-// 误碰撞仅影响展示字段，无功能语义。
+// maheshvara_*（命名统一的一次性数据迁移；写入侧已改用新值）。以
+// schema_migrations 版本门控：已改写的库直接返回，不再全表扫描。record_json
+// 的 REPLACE 用带引号的完整成员上下文（"usageSource":"..."）与数组元素
+// （"canonical_request"），误碰撞仅影响展示字段，无功能语义。
 func (s *Store) migrateMaheshvaraLabels(ctx context.Context) error {
+	var applied int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, maheshvaraLabelsMigrationVersion).Scan(&applied); err != nil {
+		return err
+	}
+	if applied > 0 {
+		return nil
+	}
+	// 与覆盖索引同理：全表扫描在数据量大的库上可达分钟级，先说一声。
+	started := time.Now()
+	log.Printf("[migration] rewriting legacy usage labels — one-time on first start after upgrade, duration scales with usage history")
 	// usage_source 列自建表即在 CREATE TABLE 内，本库恒存在；探测仅为防御
 	// 外来/前代工程的库（缺列则不可能存有 canonical_estimate，跳过列改写
 	// 是正确行为）——record_json 的改写不受探测门控。
@@ -883,5 +908,11 @@ func (s *Store) migrateMaheshvaraLabels(ctx context.Context) error {
 		WHERE record_json LIKE '%canonical_%'`); err != nil {
 		return err
 	}
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(?, ?)`,
+		maheshvaraLabelsMigrationVersion, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		return err
+	}
+	log.Printf("[migration] legacy usage labels rewritten in %s", time.Since(started).Round(time.Millisecond))
 	return nil
 }

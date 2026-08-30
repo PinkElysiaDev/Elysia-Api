@@ -131,6 +131,8 @@ func TestDoShutdownIsIdempotentAndBlocksEnqueue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
+	// Windows 下 TempDir 清理无法删除仍被连接池持有的 sqlite 文件，必须显式关库。
+	defer store.Close()
 	s := &Server{store: store}
 	s.startUsageWriter()
 
