@@ -848,8 +848,9 @@ func normalizeModelDefaults(model Model) Model {
 // 成员上下文（"usageSource":"..."）与数组元素（"canonical_request"），
 // 误碰撞仅影响展示字段，无功能语义。
 func (s *Store) migrateMaheshvaraLabels(ctx context.Context) error {
-	// 极老的库可能还没有 usage_source 列（本迁移步骤之后的其他列迁移会补）：
-	// 先探测，缺列则跳过列改写——record_json 的改写不受影响。
+	// usage_source 列自建表即在 CREATE TABLE 内，本库恒存在；探测仅为防御
+	// 外来/前代工程的库（缺列则不可能存有 canonical_estimate，跳过列改写
+	// 是正确行为）——record_json 的改写不受探测门控。
 	var hasUsageSource int
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('usage_records') WHERE name = 'usage_source'`).Scan(&hasUsageSource); err == nil && hasUsageSource > 0 {
 		if _, err := s.db.ExecContext(ctx,

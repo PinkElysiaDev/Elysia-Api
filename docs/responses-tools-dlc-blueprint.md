@@ -117,7 +117,7 @@ DLC 关闭时，这些接口应全部 no-op，保证现有行为不变。
 
 ```text
 Responses request
-  -> canonical request
+  -> Maheshvara request
   -> Claude request with client tools
   -> Claude tool_use
   -> elysia-api executor

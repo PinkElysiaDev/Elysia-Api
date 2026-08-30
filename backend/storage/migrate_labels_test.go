@@ -61,7 +61,8 @@ func TestMigrateMaheshvaraLabels(t *testing.T) {
 	if contains(legacyJSONOut, `"canonical_request"`) || contains(legacyJSONOut, `"canonical_estimate"`) {
 		t.Fatalf("record_json still has canonical labels: %s", legacyJSONOut)
 	}
-	// 捕获体里带引号的同串也会被改写（展示字段，可接受）——此处仅确认数组元素已被改写。
+	// 捕获体内的转义形式 \"canonical_request\" 因反斜杠阻隔不会被改写——逐字
+	// 捕获体保留原样是合理行为（本断言只确认数组元素与成员值已被改写）。
 
 	// 幂等：手动重跑迁移无变化、无错误。
 	if err := store.migrateMaheshvaraLabels(ctx); err != nil {
