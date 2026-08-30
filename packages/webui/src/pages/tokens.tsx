@@ -126,7 +126,7 @@ export function TokensPage() {
                 </TableHeader>
                 <TableBody className="divide-y divide-border/30">
                 {tokens.map((token) => (
-                  <TableRow key={token.name} className="transition-colors hover:bg-secondary/30">
+                  <TableRow key={token.name} className="border-b-0 transition-colors hover:bg-secondary/30">
                     <TableCell className="py-3.5 pl-4 font-medium text-foreground">{token.name}</TableCell>
                     <TableCell className="py-3.5 font-mono text-xs text-muted-foreground">
                       <span className="flex items-center gap-1.5">

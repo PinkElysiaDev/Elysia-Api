@@ -170,7 +170,7 @@ export function MultiSelect({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={searchPlaceholder}
-              className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              className="w-full bg-transparent text-sm outline-none focus-visible:outline-none placeholder:text-muted-foreground"
             />
           </div>
           <div role="listbox" aria-multiselectable className="hide-scrollbar max-h-60 overflow-auto p-1">
@@ -188,9 +188,11 @@ export function MultiSelect({
                     onClick={() => toggle(option.value)}
                     className={cn(
                       'flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-sm outline-none transition-colors duration-100',
+                      // focus-visible：鼠标点击取消选中后按钮仍持有焦点，
+                      // 不能用 focus: 否则 wash 背景残留
                       checked
                         ? 'bg-wash font-medium text-rose'
-                        : 'text-foreground hover:bg-wash focus:bg-wash',
+                        : 'text-foreground hover:bg-wash focus-visible:bg-wash',
                     )}
                   >
                     <span className="flex-1 truncate">

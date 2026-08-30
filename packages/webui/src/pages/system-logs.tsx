@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, RefreshCw, Terminal } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { RoleWatermark } from '@/components/role-watermark'
@@ -63,6 +63,13 @@ export function SystemLogsPage() {
     setPage((p) => Math.min(p, totalPages - 1))
   }, [totalPages])
 
+  // 翻页后把表格顶部滚回视野：分页按钮在表格底部，换页应从第一行重新读起。
+  const tableTopRef = useRef<HTMLDivElement>(null)
+  function goToPage(next: number) {
+    setPage(Math.max(0, Math.min(next, totalPages - 1)))
+    tableTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   return (
     <>
       <RoleWatermark className="-right-8 top-0 opacity-[0.05] dark:opacity-[0.08]" />
@@ -110,7 +117,7 @@ export function SystemLogsPage() {
         >
           {(items) => (
             <div className="space-y-3">
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto scroll-mt-4" ref={tableTopRef}>
                 <table className="w-full text-sm">
                   <TableHeader className="bg-secondary/20">
                     <TableRow className="border-b border-border/60 hover:bg-transparent">
@@ -123,7 +130,7 @@ export function SystemLogsPage() {
                     {items.map((log) => {
                       const hasFields = log.fields && log.fields !== '{}' && log.fields !== 'null'
                       return (
-                        <TableRow key={log.id} className="transition-colors hover:bg-secondary/30">
+                        <TableRow key={log.id} className="border-b-0 transition-colors hover:bg-secondary/30">
                           <TableCell className="py-3.5 pl-4 whitespace-nowrap font-mono text-xs text-muted-foreground">
                             {formatDateTime(log.createdAt)}
                           </TableCell>
@@ -165,7 +172,7 @@ export function SystemLogsPage() {
                     variant="outline"
                     size="sm"
                     disabled={page === 0}
-                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                    onClick={() => goToPage(page - 1)}
                   >
                     <ChevronLeft className="h-3.5 w-3.5" /> 上一页
                   </Button>
@@ -173,7 +180,7 @@ export function SystemLogsPage() {
                     variant="outline"
                     size="sm"
                     disabled={page >= totalPages - 1}
-                    onClick={() => setPage((p) => p + 1)}
+                    onClick={() => goToPage(page + 1)}
                   >
                     下一页 <ChevronRight className="h-3.5 w-3.5" />
                   </Button>

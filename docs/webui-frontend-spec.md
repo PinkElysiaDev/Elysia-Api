@@ -41,8 +41,8 @@ Usage 查询共用 `from`、`to`、`keyName`、`groupName`、`modelName` 等筛�
 ## Pages
 
 1. `/login`：保存 panel access token，401 时清除 token 并返回登录页。
-2. `/overview`：今日/昨日 KPI、上一完整 60 秒窗口的 rpm/tpm、7/30 日趋势、热门模型、模型源健康、最近失败；
-   运行状态在页头健康胶囊（10–15s 轮询，区分 loading/error/data）。立绘水印叠在 KPI/趋势右侧。
+2. `/overview`：8 格 KPI（今日请求、成功率、Token、缓存命中率、平均时延、实时 rpm、内存、GC）、短窗 RPM/时延脉搏、7/30 日趋势、模型日调用堆叠图、热门模型、模型源健康、最近失败。
+   内存/GC 格跳转诊断页。立绘水印叠在 KPI/趋势右侧。
 3. `/sources`：模型源增删改、启停、刷新，以及源内模型的筛选和批量操作。
 4. `/groups`：模型组增删改、启停、策略筛选和成员管理；组名即客户端可见模型 ID。
 5. `/tokens`：访问令牌增删改、启停、允许组限制、明文 reveal 与复制。
