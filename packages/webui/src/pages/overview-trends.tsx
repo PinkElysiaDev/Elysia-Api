@@ -178,9 +178,10 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
   // 2. Breakdown 模型日调用（to 取下一 5 分钟边界，包含当前桶内新记录）
   const breakdownParams = useMemo(() => {
     const days = range === '7d' ? 7 : 30
-    const toMs = new Date(bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)).getTime()
-    const offsetMinutes = -new Date(toMs).getTimezoneOffset()
-    const from = offsetDayStart(toMs, offsetMinutes, -(days - 1))
+    const nowMs = minuteTick * 60_000
+    const toMs = new Date(bucketedTimeISO(nowMs, 5 * 60_000)).getTime()
+    const offsetMinutes = -new Date(nowMs).getTimezoneOffset()
+    const from = offsetDayStart(nowMs, offsetMinutes, -(days - 1))
     return {
       from: new Date(from).toISOString(),
       to: new Date(toMs).toISOString(),

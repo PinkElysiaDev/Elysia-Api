@@ -23,7 +23,12 @@ type usageWriterState struct {
 // startUsageWriter 在 store 模式下启动单个后台 writer goroutine，
 // 从队列取记录落库。仅在有 store 时调用一次（ListenAndServe 内）。
 func (s *Server) startUsageWriter() {
-	if s.store == nil || s.usageWriter != nil {
+	if s.store == nil {
+		return
+	}
+	s.usageWriterMu.Lock()
+	defer s.usageWriterMu.Unlock()
+	if s.usageWriter != nil {
 		return
 	}
 	writer := &usageWriterState{queue: make(chan *usageRecord, usageQueueCapacity)}
@@ -37,30 +42,38 @@ func (s *Server) startUsageWriter() {
 	}()
 }
 
+func (s *Server) usageWriterSnapshot() *usageWriterState {
+	s.usageWriterMu.Lock()
+	w := s.usageWriter
+	s.usageWriterMu.Unlock()
+	return w
+}
+
 // stopUsageWriter 关闭队列并等待 writer 把剩余记录冲刷落库。幂等；
 // 关停后的入队请求由 enqueueUsageRecord 降级为同步写盘。
 func (s *Server) stopUsageWriter() {
-	w := s.usageWriter
+	w := s.usageWriterSnapshot()
 	if w == nil {
 		return
 	}
 	w.mu.Lock()
-	if w.closed {
-		w.mu.Unlock()
-		w.wg.Wait()
-		return
+	if !w.closed {
+		w.closed = true
+		close(w.queue)
 	}
-	w.closed = true
-	close(w.queue)
 	w.mu.Unlock()
 	w.wg.Wait()
-	s.usageWriter = nil
+	s.usageWriterMu.Lock()
+	if s.usageWriter == w {
+		s.usageWriter = nil
+	}
+	s.usageWriterMu.Unlock()
 }
 
 // drainUsageQueue 丢弃队列里尚未落库的记录。调用方须持有 usagePersistMu，
 // 并已递增 usageWriteGen，使并发 writer 拿到的旧 generation 写入也会被跳过。
 func (s *Server) drainUsageQueue() {
-	w := s.usageWriter
+	w := s.usageWriterSnapshot()
 	if w == nil {
 		return
 	}
@@ -101,7 +114,7 @@ func (s *Server) persistUsageRecord(record *usageRecord) {
 // enqueueUsageRecord 尝试把记录投递到异步队列。队列已满或已关停时返回
 // false，调用方据此降级为同步写入，确保 usage 不丢失。
 func (s *Server) enqueueUsageRecord(record *usageRecord) bool {
-	w := s.usageWriter
+	w := s.usageWriterSnapshot()
 	if w == nil {
 		return false
 	}
@@ -114,9 +127,8 @@ func (s *Server) enqueueUsageRecord(record *usageRecord) bool {
 	copied.RequestWarnings = cloneSlice(record.RequestWarnings)
 	copied.downstream = nil
 	w.mu.Lock()
-	closed := w.closed
-	w.mu.Unlock()
-	if closed {
+	defer w.mu.Unlock()
+	if w.closed {
 		return false
 	}
 	select {

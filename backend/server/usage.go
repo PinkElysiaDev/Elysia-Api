@@ -193,7 +193,6 @@ type providerUsageResult struct {
 	HasUsage bool
 }
 
-
 func extractProviderUsageFromBody(platform relay.Platform, format relay.FormatType, body []byte) providerUsageResult {
 	var payload map[string]interface{}
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -649,14 +648,14 @@ func (s *Server) resetUsage(c *gin.Context) {
 		return
 	}
 	s.usagePersistMu.Lock()
-	prevGen := s.usageWriteGen.Load()
-	s.usageWriteGen.Add(1)
 	if err := s.store.ClearUsage(c.Request.Context()); err != nil {
-		s.usageWriteGen.Store(prevGen)
 		s.usagePersistMu.Unlock()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	// 清库成功后再递增 generation：失败回滚时若先加后减，并发请求可能
+	// 带着临时新 generation 入队，回滚后会被 persist 当成过期记录丢掉。
+	s.usageWriteGen.Add(1)
 	s.drainUsageQueue()
 	s.usagePersistMu.Unlock()
 	s.usageCache.flush()
@@ -914,8 +913,6 @@ func (b *upstreamUsageObservingBody) observeLine(line string) {
 	result := extractProviderUsageFromStreamEvent(b.platform, b.format, payload)
 	applyProviderUsageToRecord(b.record, result)
 }
-
-
 
 func usageFromOpenAIUsage(raw map[string]interface{}) usageTokenUsage {
 	usage := usageTokenUsage{}

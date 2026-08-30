@@ -287,6 +287,7 @@ func renameGroupInTokens(ctx context.Context, tx *sql.Tx, oldName, newName strin
 		return replaceGroupName(groups, oldName, newName)
 	})
 }
+
 // replaceGroupName 把切片里的 oldName 替换为 newName 并去重，返回新切片与是否发生变更。
 // 仅当 oldName 实际存在时才视为变更（避免对未引用该组的 token 产生无谓 UPDATE）；
 // 替换后去重，防止 newName 与列表中已有项重复。
@@ -451,6 +452,7 @@ func removeGroupFromTokens(ctx context.Context, tx *sql.Tx, groupName string) er
 		return removeGroupName(groups, groupName)
 	})
 }
+
 // removeGroupName 从切片中移除指定组名并保持原有顺序，返回新切片与是否发生变更。
 func removeGroupName(groups []string, groupName string) ([]string, bool) {
 	found := false
@@ -661,7 +663,7 @@ func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageL
 	// 排序只用 started_ms：索引可直接反向游走取前 offset+limit 条窄索引项、
 	// 仅对页内行回表。若追加 started_at 次级排序，任何索引都无法满足复合顺序，
 	// SQLite 会退化为全窗口临时 B-tree 排序并逐行回表读取 record_json 胖行。
-	rows, err := s.db.QueryContext(ctx, `SELECT request_id, started_at, key_name, key_hash, group_name, model_name, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated FROM usage_records `+where+` ORDER BY started_ms DESC LIMIT ? OFFSET ?`, args...)
+	rows, err := s.db.QueryContext(ctx, `SELECT request_id, started_at, key_name, key_hash, group_name, model_name, source_id, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated FROM usage_records `+where+` ORDER BY started_ms DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -671,7 +673,7 @@ func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageL
 		var item UsageLogItem
 		var started string
 		var stream, reqTrunc, respTrunc int
-		if err := rows.Scan(&item.RequestID, &started, &item.KeyName, &item.KeyHash, &item.GroupName, &item.ModelName, &item.Platform, &item.SourceFormat, &item.TargetFormat, &item.RelayMode, &item.ResponsesMode, &item.UsageSource, &stream, &item.StatusCode, &item.Error, &item.FirstByteMs, &item.DurationMs, &item.InputTokens, &item.OutputTokens, &item.TotalTokens, &item.CacheHitTokens, &reqTrunc, &respTrunc); err != nil {
+		if err := rows.Scan(&item.RequestID, &started, &item.KeyName, &item.KeyHash, &item.GroupName, &item.ModelName, &item.SourceID, &item.Platform, &item.SourceFormat, &item.TargetFormat, &item.RelayMode, &item.ResponsesMode, &item.UsageSource, &stream, &item.StatusCode, &item.Error, &item.FirstByteMs, &item.DurationMs, &item.InputTokens, &item.OutputTokens, &item.TotalTokens, &item.CacheHitTokens, &reqTrunc, &respTrunc); err != nil {
 			return 0, nil, err
 		}
 		item.StartedAt = parseTime(started)
@@ -750,6 +752,7 @@ func usageWhere(q UsageQuery) (string, []any) {
 	}
 	return "WHERE " + clauses, args
 }
+
 // UsageDaily 按固定 UTC offset 的本地日聚合请求数、细分 tokens 以及各模型消耗。
 // rollup 就绪时中段（完整小时）走预聚合表、两侧不足一小时的边缘走 raw 单次
 // (日, 模型) 扫描，在一个读事务（WAL 快照）内精确合并；否则整体走 raw 路径

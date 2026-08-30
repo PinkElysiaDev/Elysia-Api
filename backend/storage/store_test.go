@@ -81,7 +81,7 @@ func TestSourceModelsGroupsTokensAndUsage(t *testing.T) {
 	}
 
 	started := time.Now().UTC().Add(-time.Minute)
-	usage := UsageLogItem{RequestID: "req", StartedAt: started, KeyName: "default", GroupName: "Group", ModelName: "Model A", StatusCode: 200, InputTokens: 1, OutputTokens: 2, TotalTokens: 3}
+	usage := UsageLogItem{RequestID: "req", StartedAt: started, KeyName: "default", GroupName: "Group", ModelName: "Model A", SourceID: "src-1", StatusCode: 200, InputTokens: 1, OutputTokens: 2, TotalTokens: 3}
 	if err := store.SaveUsageRecordJSON(ctx, []byte(`{"requestId":"req"}`), usage, time.Now().UTC()); err != nil {
 		t.Fatalf("SaveUsageRecordJSON() error = %v", err)
 	}
@@ -89,7 +89,7 @@ func TestSourceModelsGroupsTokensAndUsage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("QueryUsageLogs() error = %v", err)
 	}
-	if total != 1 || len(logs) != 1 || logs[0].TotalTokens != 3 {
+	if total != 1 || len(logs) != 1 || logs[0].TotalTokens != 3 || logs[0].SourceID != "src-1" {
 		t.Fatalf("total=%d logs=%#v", total, logs)
 	}
 	summary, err := store.UsageTotals(ctx, UsageQuery{})

@@ -30,7 +30,7 @@ import { CopyButton } from '@/components/copy-button'
 import { UsageFilterBar, type RangeKey } from '@/components/usage-filter-bar'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
-import { useUsageLogs, useUsageFilterOptions, useMinuteTick, useSources, useModels, revalidate } from '@/lib/hooks'
+import { useUsageLogs, useUsageFilterOptions, useMinuteTick, useSources, revalidate } from '@/lib/hooks'
 import { api } from '@/lib/api'
 import { colorize } from '@/lib/json-highlight'
 import type { UsageBody, UsageLogDetail } from '@/lib/types'
@@ -41,9 +41,7 @@ import {
   formatDuration,
   formatNumber,
   startOfRange,
-  uniqueSorted,
   bucketedTimeISO,
-  effectiveModelFilter,
   tryParseJSON,
 } from '@/lib/utils'
 
@@ -59,7 +57,7 @@ export function UsageLogsPage() {
   const [range, setRange] = useState<RangeKey>('7d')
   const [groupNames, setGroupNames] = useState<string[]>([])
   const [modelNames, setModelNames] = useState<string[]>([])
-  const [sourceNames, setSourceNames] = useState<string[]>([])
+  const [sourceIds, setSourceIds] = useState<string[]>([])
   const [keyNames, setKeyNames] = useState<string[]>([])
   const [statusCode, setStatusCode] = useState('')
   const [statusView, setStatusView] = useState<StatusView>('all')
@@ -78,33 +76,34 @@ export function UsageLogsPage() {
 
   const { groupOptions, modelOptions, keyOptions } = useUsageFilterOptions()
   const { data: sources } = useSources()
-  const { data: allModels } = useModels()
   const sourceOptions = useMemo(
-    () => uniqueSorted((sources ?? []).filter((s) => s.enabled).map((s) => s.name)),
+    () => (sources ?? []).filter((s) => s.enabled).map((s) => ({ value: s.id, label: s.name || s.id })),
     [sources],
   )
-
-  // 模型源筛选（sourceNames）与模型筛选取交集后随 modelNames 下发。
-  const effectiveModelNames = useMemo(
-    () => effectiveModelFilter(modelNames, sourceNames, allModels ?? [], allModels !== undefined),
-    [modelNames, sourceNames, allModels],
-  )
+  const sourceLabelById = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const source of sources ?? []) map.set(source.id, source.name || source.id)
+    return map
+  }, [sources])
 
   const params = useMemo(() => {
-    // to 取下一 5 分钟边界：缓存键稳定，且当前桶内新记录能进半开区间
-    const to = bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)
+    // to 取下一 5 分钟边界：缓存键稳定，且当前桶内新记录能进半开区间。
+    // 相对窗起点用 now，避免临近午夜把 from 推到次日。
+    const nowMs = minuteTick * 60_000
+    const to = bucketedTimeISO(nowMs, 5 * 60_000)
     return {
-      from: startOfRange(range, to),
+      from: startOfRange(range, new Date(nowMs).toISOString()),
       to,
       groupNames: groupNames.length ? groupNames : undefined,
-      modelNames: effectiveModelNames.length ? effectiveModelNames : undefined,
+      modelNames: modelNames.length ? modelNames : undefined,
+      sourceIds: sourceIds.length ? sourceIds : undefined,
       keyNames: keyNames.length ? keyNames : undefined,
       status: statusView === 'ok' ? ('success' as const) : statusView === 'fail' ? ('failed' as const) : undefined,
       statusCode: statusCode.trim() ? Number(statusCode) : undefined,
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
     }
-  }, [range, groupNames, effectiveModelNames, keyNames, statusView, statusCode, page, minuteTick])
+  }, [range, groupNames, modelNames, sourceIds, keyNames, statusView, statusCode, page, minuteTick])
 
   const { data, isLoading, error, mutate } = useUsageLogs(params)
   const total = data?.total ?? 0
@@ -201,9 +200,9 @@ export function UsageLogsPage() {
             setModelNames(v)
             setPage(0)
           }}
-          sourceNames={sourceNames}
-          onSourceNamesChange={(v) => {
-            setSourceNames(v)
+          sourceIds={sourceIds}
+          onSourceIdsChange={(v) => {
+            setSourceIds(v)
             setPage(0)
           }}
           keyNames={keyNames}
@@ -307,7 +306,10 @@ export function UsageLogsPage() {
                       <TableCell className="py-3 max-w-[120px] truncate text-xs font-mono text-foreground">{log.keyName || '—'}</TableCell>
                       <TableCell className="py-3">
                         <span className="block truncate text-xs font-semibold text-foreground">{log.modelName || '—'}</span>
-                        <span className="sub font-mono">{log.groupName || '—'}</span>
+                        <span className="sub font-mono">
+                          {log.groupName || '—'}
+                          {log.sourceId ? ` · ${sourceLabelById.get(log.sourceId) || log.sourceId}` : ''}
+                        </span>
                       </TableCell>
                       <TableCell className="py-3 text-center">
                         <StreamIcon streaming={log.stream} />

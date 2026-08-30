@@ -32,6 +32,12 @@ func TestProbeEndpoint(t *testing.T) {
 	if got := probeEndpoint(storage.Model{BaseURL: "https://api.anthropic.com", Platform: "claude"}); got != "https://api.anthropic.com/messages" {
 		t.Fatalf("claude endpoint wrong: %s", got)
 	}
+	if got := probeEndpoint(storage.Model{BaseURL: "https://api.anthropic.com", Platform: "anthropic"}); got != "https://api.anthropic.com/messages" {
+		t.Fatalf("anthropic endpoint wrong: %s", got)
+	}
+	if got := probeEndpoint(storage.Model{BaseURL: "https://api.openai.com/v1", Platform: "responses"}); got != "https://api.openai.com/v1/responses" {
+		t.Fatalf("responses endpoint wrong: %s", got)
+	}
 	if got := probeEndpoint(storage.Model{BaseURL: "https://generativelanguage.googleapis.com/", Platform: "gemini", Name: "gemini-2.0-flash"}); got != "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent" {
 		t.Fatalf("gemini endpoint wrong: %s", got)
 	}
@@ -109,6 +115,11 @@ func TestApplyProbeAuth(t *testing.T) {
 	applyProbeAuth(req, storage.Model{APIKey: "k", Platform: "claude"})
 	if req.Header.Get("x-api-key") != "k" || req.Header.Get("anthropic-version") == "" {
 		t.Fatalf("claude auth headers missing")
+	}
+	reqAnthropic, _ := http.NewRequest(http.MethodPost, "https://x", nil)
+	applyProbeAuth(reqAnthropic, storage.Model{APIKey: "k", Platform: "anthropic"})
+	if reqAnthropic.Header.Get("x-api-key") != "k" || reqAnthropic.Header.Get("anthropic-version") == "" {
+		t.Fatalf("anthropic auth headers missing")
 	}
 	req2, _ := http.NewRequest(http.MethodPost, "https://x", nil)
 	applyProbeAuth(req2, storage.Model{APIKey: "k", Platform: "openai"})

@@ -167,3 +167,29 @@ func TestEnqueueAfterStopDoesNotPanic(t *testing.T) {
 		t.Fatal("enqueue after stop must return false")
 	}
 }
+
+func TestEnqueueConcurrentWithStopDoesNotPanic(t *testing.T) {
+	store, err := storage.Open(filepath.Join(t.TempDir(), "enqueue-race.sqlite3"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+	s := &Server{store: store}
+	s.startUsageWriter()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.enqueueUsageRecord(&usageRecord{RequestID: "x", StartedAt: time.Now()})
+		}()
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.stopUsageWriter()
+	}()
+	wg.Wait()
+	s.stopUsageWriter()
+}

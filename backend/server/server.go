@@ -62,7 +62,8 @@ type Server struct {
 	// 异步 usage 写入：store 模式下，请求路径只把记录投递到 buffer channel，
 	// 由单个 writer goroutine 落库，避免请求在 SQLite 写入（单连接串行）上阻塞。
 	// usageWriter 包含队列与关闭标志（usage_writer.go），关停后入队安全降级。
-	usageWriter *usageWriterState
+	usageWriterMu sync.Mutex
+	usageWriter   *usageWriterState
 	// usageWriteGen 在 reset 时递增，丢掉队列里尚未落库的旧记录。
 	usageWriteGen  atomic.Uint64
 	usageSeq       atomic.Uint64
@@ -193,7 +194,6 @@ func compactLogJSON(data []byte) string {
 
 	return string(compacted)
 }
-
 
 func (s *Server) setupRoutes() {
 	if s.config.MaxBodyBytes > 0 {

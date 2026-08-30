@@ -354,7 +354,7 @@ func TestUsageSourceIDFilterDistinguishesSameModelName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("QueryUsageLogs: %v", err)
 	}
-	if logsTotal != 1 || len(items) != 1 || items[0].RequestID != "b" {
+	if logsTotal != 1 || len(items) != 1 || items[0].RequestID != "b" || items[0].SourceID != "azure" {
 		t.Fatalf("source azure logs total=%d items=%#v", logsTotal, items)
 	}
 }

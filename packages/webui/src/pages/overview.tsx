@@ -215,10 +215,12 @@ export function OverviewPage() {
   const minuteTick = useMinuteTick()
   const navigate = useNavigate()
 
-  // 今日 / 昨日窗口（今日 to 取下一 5 分钟边界：键稳定且包含当前桶内新记录）
+  // 今日 / 昨日窗口（今日 to 取下一 5 分钟边界：键稳定且包含当前桶内新记录）。
+  // from 必须用当前时刻算本地日，不能用 ceiled to：临近午夜 to 会落到次日 00:00。
   const todayParams = useMemo(() => {
-    const to = bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)
-    return { from: localMidnight(0, new Date(to)).toISOString(), to }
+    const nowMs = minuteTick * 60_000
+    const to = bucketedTimeISO(nowMs, 5 * 60_000)
+    return { from: localMidnight(0, new Date(nowMs)).toISOString(), to }
   }, [minuteTick])
 
   const yesterdayParams = useMemo(() => {
@@ -273,8 +275,9 @@ export function OverviewPage() {
   // to 取下一 5 分钟边界，缓存键稳定且包含当前桶内新记录
   const [topRange, setTopRange] = useState<RangeKey>('24h')
   const topModelsParams = useMemo(() => {
-    const to = bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)
-    return { from: startOfRange(topRange, to), to }
+    const nowMs = minuteTick * 60_000
+    const to = bucketedTimeISO(nowMs, 5 * 60_000)
+    return { from: startOfRange(topRange, new Date(nowMs).toISOString()), to }
   }, [topRange, minuteTick])
   const {
     data: byModel,
@@ -294,9 +297,10 @@ export function OverviewPage() {
 
   // 最近失败（最新 3 条，今日窗口；to 取下一 5 分钟边界）
   const failuresParams = useMemo(() => {
-    const to = bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)
+    const nowMs = minuteTick * 60_000
+    const to = bucketedTimeISO(nowMs, 5 * 60_000)
     return {
-      from: localMidnight(0, new Date(to)).toISOString(),
+      from: localMidnight(0, new Date(nowMs)).toISOString(),
       to,
       status: 'failed' as const,
       limit: 3,

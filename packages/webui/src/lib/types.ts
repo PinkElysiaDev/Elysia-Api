@@ -196,6 +196,7 @@ export interface UsageLogItem {
   keyHash: string
   groupName: string
   modelName: string
+  sourceId?: string
   platform: string
   sourceFormat: string
   targetFormat: string

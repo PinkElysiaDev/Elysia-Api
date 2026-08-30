@@ -664,9 +664,6 @@ func (s *Server) adminUpsertToken(c *gin.Context) {
 	if name := c.Param("name"); name != "" {
 		item.Name = name
 	}
-	if name := c.Param("name"); name != "" {
-		item.Name = name
-	}
 	// 「留空即不变」：编辑时若未填 token，保留原值（不清空）。
 	if strings.TrimSpace(item.Token) == "" {
 		if existing, found, err := store.FindAPITokenByName(c.Request.Context(), item.Name); err == nil && found {
@@ -701,9 +698,8 @@ func (s *Server) adminUsageTrend(c *gin.Context) {
 	if !okStore {
 		return
 	}
-	utcOffsetMinutes, err := strconv.Atoi(c.DefaultQuery("utcOffsetMinutes", "0"))
-	if err != nil || utcOffsetMinutes < -14*60 || utcOffsetMinutes > 14*60 {
-		respondFail(c, 400, "invalid_utc_offset", "utcOffsetMinutes must be an integer between -840 and 840")
+	utcOffsetMinutes, okOffset := parseUTCOffsetMinutes(c)
+	if !okOffset {
 		return
 	}
 	buckets, err := store.UsageDaily(c.Request.Context(), usageQueryFromRequest(c), utcOffsetMinutes)
