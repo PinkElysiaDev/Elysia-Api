@@ -32,7 +32,7 @@ func TestOpenAIChatPassthroughStreamForwardsRawSSE(t *testing.T) {
 		ID: "g1", Name: "grp", Enabled: true, Strategy: "round-robin", MaxRetries: 1,
 		Models: []config.ModelRef{openAIModel("m", upstream.URL)},
 	}
-	s := newTestServer([]config.ModelGroupConfig{group})
+	s := newTestServerWithStore(t, []config.ModelGroupConfig{group})
 
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
@@ -87,7 +87,7 @@ func TestResponsesPassthroughStreamPreservesReasoningText(t *testing.T) {
 		ID: "g1", Name: "grp", Enabled: true, Strategy: "round-robin", MaxRetries: 1,
 		Models: []config.ModelRef{model},
 	}
-	s := newTestServer([]config.ModelGroupConfig{group})
+	s := newTestServerWithStore(t, []config.ModelGroupConfig{group})
 
 	requestBody := `{"model":"grp","stream":true,"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]},{"type":"reasoning_text","text":"prior thought"}]}`
 	rec := httptest.NewRecorder()
@@ -112,12 +112,12 @@ func TestResponsesPassthroughStreamPreservesReasoningText(t *testing.T) {
 		t.Fatalf("upstream request lost reasoning_text input item, got: %s", upstreamBody)
 	}
 
-	records := s.usageSnapshot()
+	records := latestUsageRecords(t, s)
 	if len(records) == 0 {
 		t.Fatal("expected at least one usage record")
 	}
 	last := records[len(records)-1]
-	if got := getInt(last.Usage.TotalTokens); got != 6 {
+	if got := last.TotalTokens; got != 6 {
 		t.Fatalf("usage total tokens = %d, want 6", got)
 	}
 }

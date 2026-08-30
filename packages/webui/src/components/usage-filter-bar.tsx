@@ -1,16 +1,10 @@
 import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { MultiSelect, type MultiSelectOption } from '@/components/ui/multi-select'
-import { Seg, type SegOption } from '@/components/ui/seg'
+import { Seg } from '@/components/ui/seg'
+import { RANGE_OPTIONS } from '@/lib/range-options'
 
 export type RangeKey = '24h' | '7d' | '30d' | 'all'
-
-const RANGE_OPTIONS: SegOption<RangeKey>[] = [
-  { value: '24h', label: '24小时' },
-  { value: '7d', label: '7天' },
-  { value: '30d', label: '30天' },
-  { value: 'all', label: '全部' },
-]
 
 /**
  * 用量页共用筛选工具栏（调用日志 + Usage 统计）：时间窗 Seg + 模型组 / 模型 /

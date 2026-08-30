@@ -16,6 +16,7 @@ import { PageHeader } from '@/components/page-header'
 import { KpiCard, KpiGrid } from '@/components/kpi-card'
 import { ElysiaStage } from '@/components/role-watermark'
 import { Seg } from '@/components/ui/seg'
+import { RANGE_OPTIONS } from '@/lib/range-options'
 import { ErrorState } from '@/components/ui/states'
 import { CodePill, PlatformBadge } from '@/components/badges'
 import {
@@ -288,7 +289,7 @@ export function OverviewPage() {
     const rest = sorted.slice(5).reduce((sum, row) => sum + row.requests, 0)
     if (rest > 0) top.push({ name: `其他 ${sorted.length - 5} 个模型`, count: rest, muted: true })
     const max = top[0]?.count || 1
-    return top.map((it) => ({ ...it, ratio: it.count / max }))
+    return top.map((model) => ({ ...model, ratio: model.count / max }))
   }, [byModel])
 
   // 最近失败（最新 3 条，今日窗口；to 取下一 5 分钟边界）
@@ -443,12 +444,8 @@ export function OverviewPage() {
               </div>
               <Seg
                 aria-label="热门模型时间窗"
-                options={[
-                  { value: '24h', label: '24小时' },
-                  { value: '7d', label: '7天' },
-                  { value: '30d', label: '30天' },
-                  { value: 'all', label: '全部' },
-                ]}
+                className="h-7"
+                options={RANGE_OPTIONS}
                 value={topRange}
                 onChange={setTopRange}
               />

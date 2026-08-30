@@ -103,7 +103,6 @@ func (s *Server) findAccessToken(token string) (config.AccessToken, bool) {
 		}
 		// 缓存未命中时不再回查 DB：缓存是 token 表的完整快照，
 		// 未命中即不存在（避免给暴力探测留 DB 查询放大面）。
-		return s.config.FindAccessToken(token)
 	}
 	return s.config.FindAccessToken(token)
 }

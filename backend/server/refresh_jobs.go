@@ -137,8 +137,3 @@ func (s *Server) sourceRefreshStateOf(sourceID string) sourceRefreshState {
 }
 
 // anySourceRefreshing 报告是否有任一源的后台拉取进行中。
-func (s *Server) anySourceRefreshing() bool {
-	s.sourceRefreshMu.Lock()
-	defer s.sourceRefreshMu.Unlock()
-	return len(s.sourceRefreshing) > 0
-}

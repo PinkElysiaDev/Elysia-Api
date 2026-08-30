@@ -90,7 +90,7 @@ export function MultiSelect({
     }
   }
 
-  const active = value.length > 0
+  const hasSelection = value.length > 0
 
   // 右缘溢出时弹层改为右对齐（body overflow-x: clip 会静默裁掉溢出部分）。
   const [flipRight, setFlipRight] = useState(false)
@@ -109,7 +109,7 @@ export function MultiSelect({
         tabIndex={0}
         aria-expanded={open}
         aria-haspopup="listbox"
-        aria-label={`${label}筛选${active ? `（已选 ${value.length} 项）` : ''}`}
+        aria-label={`${label}筛选${hasSelection ? `（已选 ${value.length} 项）` : ''}`}
         onClick={() => setOpen((v) => !v)}
         onKeyDown={(e) => {
           // 只响应触发器自身的按键：内部清空按钮的 Enter/Space 冒泡到此处
@@ -123,13 +123,13 @@ export function MultiSelect({
         className={cn(
           'flex h-[34px] cursor-pointer select-none items-center gap-1.5 rounded-md border px-3 text-sm transition-colors duration-150',
           'focus:outline-none focus-visible:border-rose focus-visible:ring-[3px] focus-visible:ring-wash',
-          active
+          hasSelection
             ? 'border-rose/30 bg-wash text-rose'
             : 'border-input bg-card text-muted-foreground hover:text-foreground',
         )}
       >
         <span className="whitespace-nowrap">
-          {active ? (
+          {hasSelection ? (
             <>
               <span className="font-medium">{label}</span>
               <span className="ml-1 font-mono text-xs">· {value.length}</span>
@@ -139,7 +139,7 @@ export function MultiSelect({
           )}
         </span>
         <span className="flex items-center gap-0.5">
-          {active && (
+          {hasSelection && (
             <button
               type="button"
               aria-label="清空选择"

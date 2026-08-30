@@ -37,21 +37,6 @@ type keyFetchOutcome struct {
 	Error string `json:"error,omitempty"`
 }
 
-func (s *Server) refreshSource(ctx context.Context, id string) (refreshSummary, error) {
-	if s.store == nil {
-		return refreshSummary{}, fmt.Errorf("sqlite store is unavailable")
-	}
-	sources, err := s.store.ListSources(ctx)
-	if err != nil {
-		return refreshSummary{}, err
-	}
-	for _, source := range sources {
-		if source.ID == id {
-			return s.refreshSourceByValue(ctx, source)
-		}
-	}
-	return refreshSummary{}, fmt.Errorf("model source %q not found", id)
-}
 
 func (s *Server) refreshSourceByValue(ctx context.Context, source storage.ModelSource) (refreshSummary, error) {
 	empty := refreshSummary{Added: []string{}, Removed: []string{}}

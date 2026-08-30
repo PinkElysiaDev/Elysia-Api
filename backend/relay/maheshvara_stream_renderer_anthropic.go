@@ -34,11 +34,11 @@ func (renderer *MaheshvaraStreamRenderer) writeClaude(event *MaheshvaraStreamEve
 		return nil
 	}
 	switch event.Type {
-	case CanonicalEventResponseCreated, CanonicalEventResponseInProgress:
+	case MaheshvaraEventResponseCreated, MaheshvaraEventResponseInProgress:
 		return renderer.startClaude()
-	case CanonicalEventUsageDelta:
+	case MaheshvaraEventUsageDelta:
 		return nil
-	case CanonicalEventAnnotationDelta:
+	case MaheshvaraEventAnnotationDelta:
 		// 引用标注（citations）：翻译回 Claude 的合法 citations_delta 事件，
 		// 挂在当前活动块上——绝不作为独立块回放（"citations_delta" 不是合法
 		// content block 类型，严格 SDK 会报错）。
@@ -51,7 +51,7 @@ func (renderer *MaheshvaraStreamRenderer) writeClaude(event *MaheshvaraStreamEve
 			}
 		}
 		return nil
-	case CanonicalEventTextDelta:
+	case MaheshvaraEventTextDelta:
 		if event.Delta == "" {
 			return nil
 		}
@@ -59,7 +59,7 @@ func (renderer *MaheshvaraStreamRenderer) writeClaude(event *MaheshvaraStreamEve
 			return err
 		}
 		return renderer.writeSSEEvent("content_block_delta", map[string]any{"type": "content_block_delta", "index": renderer.claude.activeIndex, "delta": map[string]any{"type": "text_delta", "text": event.Delta}})
-	case CanonicalEventReasoningDelta, CanonicalEventReasoningSummaryDelta:
+	case MaheshvaraEventReasoningDelta, MaheshvaraEventReasoningSummaryDelta:
 		if event.ReasoningDelta == "" {
 			return nil
 		}
@@ -67,7 +67,7 @@ func (renderer *MaheshvaraStreamRenderer) writeClaude(event *MaheshvaraStreamEve
 			return err
 		}
 		return renderer.writeSSEEvent("content_block_delta", map[string]any{"type": "content_block_delta", "index": renderer.claude.activeIndex, "delta": map[string]any{"type": "thinking_delta", "thinking": event.ReasoningDelta}})
-	case CanonicalEventReasoningSignatureDelta:
+	case MaheshvaraEventReasoningSignatureDelta:
 		signature := event.ReasoningSignatureDelta
 		if signature == "" {
 			return nil
@@ -76,7 +76,7 @@ func (renderer *MaheshvaraStreamRenderer) writeClaude(event *MaheshvaraStreamEve
 		// 其他厂商裸签名流式片段不下发——客户端无法续用，完整密文由非流式
 		// 路径装信封后回放。
 		switch strings.TrimSpace(event.ReasoningSignatureProvider) {
-		case "", CanonicalSignatureProviderAnthropic, CanonicalSignatureProviderMaheshvara:
+		case "", MaheshvaraSignatureProviderAnthropic, MaheshvaraSignatureProviderMaheshvara:
 		default:
 			return nil
 		}
@@ -84,7 +84,7 @@ func (renderer *MaheshvaraStreamRenderer) writeClaude(event *MaheshvaraStreamEve
 			return err
 		}
 		return renderer.writeSSEEvent("content_block_delta", map[string]any{"type": "content_block_delta", "index": renderer.claude.activeIndex, "delta": map[string]any{"type": "signature_delta", "signature": signature}})
-	case CanonicalEventRefusalDelta:
+	case MaheshvaraEventRefusalDelta:
 		if event.RefusalDelta == "" {
 			return nil
 		}
@@ -92,13 +92,13 @@ func (renderer *MaheshvaraStreamRenderer) writeClaude(event *MaheshvaraStreamEve
 			return err
 		}
 		return renderer.writeSSEEvent("content_block_delta", map[string]any{"type": "content_block_delta", "index": renderer.claude.activeIndex, "delta": map[string]any{"type": "text_delta", "text": event.RefusalDelta}})
-	case CanonicalEventContentPartAdded:
+	case MaheshvaraEventContentPartAdded:
 		return renderer.writeClaudeContentPart(event)
-	case CanonicalEventFunctionCallAdded, CanonicalEventFunctionCallArgumentsDelta, CanonicalEventFunctionCallArgumentsDone:
+	case MaheshvaraEventFunctionCallAdded, MaheshvaraEventFunctionCallArgumentsDelta, MaheshvaraEventFunctionCallArgumentsDone:
 		return renderer.writeClaudeToolEvent(event)
-	case CanonicalEventOutputItemDone, CanonicalEventContentPartDone:
+	case MaheshvaraEventOutputItemDone, MaheshvaraEventContentPartDone:
 		return renderer.closeClaudeBlock()
-	case CanonicalEventResponseCompleted:
+	case MaheshvaraEventResponseCompleted:
 		return renderer.completeClaude(event.FinishReason, event.StopSequence)
 	}
 	return nil
@@ -181,21 +181,16 @@ func (renderer *MaheshvaraStreamRenderer) writeClaudeToolEvent(event *Maheshvara
 	state.name = firstNonEmptyString(event.ToolName, state.name)
 	argumentDelta := event.ToolArgumentsDelta
 	if event.ToolArgumentsDone != "" {
-		complete := event.ToolArgumentsDone
-		current := state.arguments.String()
-		switch {
-		case complete == current:
-			argumentDelta = ""
-		case strings.HasPrefix(complete, current):
-			argumentDelta = strings.TrimPrefix(complete, current)
-		default:
-			argumentDelta = complete
+		if delta, replaced := deltaVsAccumulated(state.arguments.String(), event.ToolArgumentsDone); replaced {
+			argumentDelta = delta
+		} else {
+			argumentDelta = delta
 		}
 	}
 	if argumentDelta != "" {
 		state.arguments.WriteString(argumentDelta)
 	}
-	if event.Type != CanonicalEventFunctionCallArgumentsDone {
+	if event.Type != MaheshvaraEventFunctionCallArgumentsDone {
 		return nil
 	}
 	return renderer.emitClaudeTool(state)
@@ -230,23 +225,23 @@ func (renderer *MaheshvaraStreamRenderer) writeClaudeContentPart(event *Maheshva
 		return nil
 	}
 	switch part.Type {
-	case CanonicalContentReasoning:
+	case MaheshvaraContentReasoning:
 		return nil
-	case CanonicalContentImage:
+	case MaheshvaraContentImage:
 		if source := imagePartToClaudeSource(*part); source != nil {
 			return renderer.writeClaudeStandaloneBlock(map[string]any{"type": "image", "source": source})
 		}
-	case CanonicalContentFile, CanonicalContentDocument:
-		if block := canonicalDocumentToClaudeBlock(*part); block != nil {
+	case MaheshvaraContentFile, MaheshvaraContentDocument:
+		if block := maheshvaraDocumentToClaudeBlock(*part); block != nil {
 			return renderer.writeClaudeStandaloneBlock(block)
 		}
-	case CanonicalContentAudio, CanonicalContentVideo:
-		if block := canonicalMediaToClaudeBlock(*part); block != nil {
+	case MaheshvaraContentAudio, MaheshvaraContentVideo:
+		if block := maheshvaraMediaToClaudeBlock(*part); block != nil {
 			return renderer.writeClaudeStandaloneBlock(block)
 		}
-	case CanonicalContentToolOutput:
+	case MaheshvaraContentToolOutput:
 		if part.ToolOutput != "" {
-			return renderer.writeClaude(&MaheshvaraStreamEvent{Type: CanonicalEventTextDelta, Delta: part.ToolOutput, OutputIndex: event.OutputIndex, ContentIndex: event.ContentIndex})
+			return renderer.writeClaude(&MaheshvaraStreamEvent{Type: MaheshvaraEventTextDelta, Delta: part.ToolOutput, OutputIndex: event.OutputIndex, ContentIndex: event.ContentIndex})
 		}
 	default:
 		if raw, ok := part.Raw.(map[string]any); ok && len(raw) > 0 {
@@ -289,7 +284,7 @@ func (renderer *MaheshvaraStreamRenderer) completeClaude(reason, stopSequence st
 	if reason == "" {
 		reason = "stop"
 	}
-	delta := map[string]any{"stop_reason": canonicalStopToClaude(reason), "stop_sequence": nil}
+	delta := map[string]any{"stop_reason": maheshvaraStopToClaude(reason), "stop_sequence": nil}
 	if stopSequence != "" {
 		delta["stop_sequence"] = stopSequence
 	}

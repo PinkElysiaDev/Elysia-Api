@@ -240,7 +240,9 @@ func (s *Store) UpsertGroup(ctx context.Context, item ModelGroup) error {
 // 替换为新名。逐行 JSON 解析后精确替换（不用 SQL REPLACE，避免误伤子串，
 // 如 "gpt" 误伤 "gpt-4"）；替换时去重，防止新名已存在导致重复项。
 // 仅对实际包含旧名的 token 执行 UPDATE。必须在改名同一事务内调用以保证原子性。
-func renameGroupInTokens(ctx context.Context, tx *sql.Tx, oldName, newName string) error {
+// updateTokenGroupsTx 遍历全部 API token 的组授权，对每个 token 应用 transform
+// 并在变更时落库。重命名/移除组共用同一骨架，只差变换函数。
+func updateTokenGroupsTx(ctx context.Context, tx *sql.Tx, transform func(groups []string) (updated []string, changed bool)) error {
 	type pendingToken struct {
 		name   string
 		groups []string
@@ -256,8 +258,7 @@ func renameGroupInTokens(ctx context.Context, tx *sql.Tx, oldName, newName strin
 			rows.Close()
 			return err
 		}
-		groups := decodeStringSlice(raw)
-		updated, changed := replaceGroupName(groups, oldName, newName)
+		updated, changed := transform(decodeStringSlice(raw))
 		if changed {
 			pending = append(pending, pendingToken{name: name, groups: updated})
 		}
@@ -281,6 +282,11 @@ func renameGroupInTokens(ctx context.Context, tx *sql.Tx, oldName, newName strin
 	return nil
 }
 
+func renameGroupInTokens(ctx context.Context, tx *sql.Tx, oldName, newName string) error {
+	return updateTokenGroupsTx(ctx, tx, func(groups []string) ([]string, bool) {
+		return replaceGroupName(groups, oldName, newName)
+	})
+}
 // replaceGroupName 把切片里的 oldName 替换为 newName 并去重，返回新切片与是否发生变更。
 // 仅当 oldName 实际存在时才视为变更（避免对未引用该组的 token 产生无谓 UPDATE）；
 // 替换后去重，防止 newName 与列表中已有项重复。
@@ -441,46 +447,10 @@ func (s *Store) DeleteGroup(ctx context.Context, id string) error {
 // 该组名移除，避免残留成悬空引用。仅在 JSON 实际包含该组名时写回；与
 // renameGroupInTokens 一样，必须在删除组的事务内调用以保证原子性。
 func removeGroupFromTokens(ctx context.Context, tx *sql.Tx, groupName string) error {
-	type pendingToken struct {
-		name   string
-		groups []string
-	}
-	var pending []pendingToken
-	rows, err := tx.QueryContext(ctx, `SELECT name, allowed_groups_json FROM api_tokens`)
-	if err != nil {
-		return err
-	}
-	for rows.Next() {
-		var name, raw string
-		if err := rows.Scan(&name, &raw); err != nil {
-			rows.Close()
-			return err
-		}
-		groups := decodeStringSlice(raw)
-		updated, changed := removeGroupName(groups, groupName)
-		if changed {
-			pending = append(pending, pendingToken{name: name, groups: updated})
-		}
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return err
-	}
-	rows.Close()
-
-	now := nowString()
-	for _, t := range pending {
-		payload, err := json.Marshal(t.groups)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE api_tokens SET allowed_groups_json = ?, updated_at = ? WHERE name = ?`, string(payload), now, t.name); err != nil {
-			return err
-		}
-	}
-	return nil
+	return updateTokenGroupsTx(ctx, tx, func(groups []string) ([]string, bool) {
+		return removeGroupName(groups, groupName)
+	})
 }
-
 // removeGroupName 从切片中移除指定组名并保持原有顺序，返回新切片与是否发生变更。
 func removeGroupName(groups []string, groupName string) ([]string, bool) {
 	found := false
@@ -713,64 +683,46 @@ func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageL
 	return total, items, rows.Err()
 }
 
-func usageWhere(q UsageQuery) (string, []any) {
+// usageFilterClauses 构造维度筛选链（key/group/model 多选 IN、状态/状态码），
+// raw 与 rollup 两张表共享：includeTime/includeKeyHash 控制时间与 key_hash
+// 两个仅 raw 表适用的谓词。
+func usageFilterClauses(q UsageQuery, includeTime, includeKeyHash bool) (string, []any) {
 	parts := []string{"1=1"}
 	args := []any{}
-	// 时间过滤用整型毫秒列：RFC3339Nano 字符串的字典序在整秒/带毫秒混合时
-	// 不可靠（'.' < 'Z'），会把边界上的记录漏掉。
-	if q.orphanTimestamps {
-		parts = append(parts, "started_ms <= 0")
-	} else {
-		if !q.From.IsZero() {
-			parts = append(parts, "started_ms >= ?")
-			args = append(args, q.From.UnixMilli())
-		}
-		if !q.To.IsZero() {
-			parts = append(parts, "started_ms < ?")
-			args = append(args, q.To.UnixMilli())
+	if includeTime {
+		// 时间过滤用整型毫秒列：RFC3339Nano 字符串的字典序在整秒/带毫秒混合时
+		// 不可靠（'.' < 'Z'），会把边界上的记录漏掉。
+		if q.orphanTimestamps {
+			parts = append(parts, "started_ms <= 0")
+		} else {
+			if !q.From.IsZero() {
+				parts = append(parts, "started_ms >= ?")
+				args = append(args, q.From.UnixMilli())
+			}
+			if !q.To.IsZero() {
+				parts = append(parts, "started_ms < ?")
+				args = append(args, q.To.UnixMilli())
+			}
 		}
 	}
-	// 多选优先于单值：非空时生成 IN (...)，否则回退到单值等值条件。
-	if len(q.KeyNames) > 0 {
-		parts = append(parts, usageInClause("key_name", len(q.KeyNames)))
-		for _, v := range q.KeyNames {
-			args = append(args, v)
-		}
-	} else if q.KeyName != "" {
-		parts = append(parts, "key_name = ?")
-		args = append(args, q.KeyName)
-	}
-	if q.KeyHash != "" {
+	if includeKeyHash && q.KeyHash != "" {
 		parts = append(parts, "key_hash = ?")
 		args = append(args, q.KeyHash)
 	}
-	if len(q.GroupNames) > 0 {
-		parts = append(parts, usageInClause("group_name", len(q.GroupNames)))
-		for _, v := range q.GroupNames {
-			args = append(args, v)
+	appendInClause := func(column string, values []string, fallback string) {
+		if len(values) > 0 {
+			parts = append(parts, usageInClause(column, len(values)))
+			for _, v := range values {
+				args = append(args, v)
+			}
+		} else if fallback != "" {
+			parts = append(parts, column+" = ?")
+			args = append(args, fallback)
 		}
-	} else if q.GroupName != "" {
-		parts = append(parts, "group_name = ?")
-		args = append(args, q.GroupName)
 	}
-	if len(q.ModelNames) > 0 {
-		parts = append(parts, usageInClause("model_name", len(q.ModelNames)))
-		for _, v := range q.ModelNames {
-			args = append(args, v)
-		}
-	} else if q.ModelName != "" {
-		parts = append(parts, "model_name = ?")
-		args = append(args, q.ModelName)
-	}
-	if len(q.SourceIDs) > 0 {
-		parts = append(parts, usageInClause("source_id", len(q.SourceIDs)))
-		for _, v := range q.SourceIDs {
-			args = append(args, v)
-		}
-	} else if q.SourceID != "" {
-		parts = append(parts, "source_id = ?")
-		args = append(args, q.SourceID)
-	}
+	appendInClause("key_name", q.KeyNames, q.KeyName)
+	appendInClause("group_name", q.GroupNames, q.GroupName)
+	appendInClause("model_name", q.ModelNames, q.ModelName)
 	if q.StatusCode > 0 {
 		parts = append(parts, "status_code = ?")
 		args = append(args, q.StatusCode)
@@ -779,9 +731,25 @@ func usageWhere(q UsageQuery) (string, []any) {
 	} else if q.Status == "failed" {
 		parts = append(parts, "("+usageFailedPredicate+")")
 	}
-	return "WHERE " + strings.Join(parts, " AND "), args
+	return strings.Join(parts, " AND "), args
 }
 
+// usageWhere 生成 raw 表（usage_records）的完整筛选条件。
+// source_id 只加在 raw 路径：usage_rollup_hour 没有该列，带 source 过滤时
+// rollupSplit 必须返回 ok=false，避免 rollup SQL 引用不存在的列。
+func usageWhere(q UsageQuery) (string, []any) {
+	clauses, args := usageFilterClauses(q, true, true)
+	if len(q.SourceIDs) > 0 {
+		clauses += " AND " + usageInClause("source_id", len(q.SourceIDs))
+		for _, v := range q.SourceIDs {
+			args = append(args, v)
+		}
+	} else if q.SourceID != "" {
+		clauses += " AND source_id = ?"
+		args = append(args, q.SourceID)
+	}
+	return "WHERE " + clauses, args
+}
 // UsageDaily 按固定 UTC offset 的本地日聚合请求数、细分 tokens 以及各模型消耗。
 // rollup 就绪时中段（完整小时）走预聚合表、两侧不足一小时的边缘走 raw 单次
 // (日, 模型) 扫描，在一个读事务（WAL 快照）内精确合并；否则整体走 raw 路径

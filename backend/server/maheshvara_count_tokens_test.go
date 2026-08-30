@@ -21,11 +21,11 @@ func TestCountTokensUsesMaheshvaraEstimator(t *testing.T) {
 	}`
 
 	server := newTestServer(nil)
-	canonical, err := relay.ClaudeRequestToCanonical([]byte(body))
+	maheshvara, err := relay.AnthropicToMaheshvara([]byte(body))
 	if err != nil {
 		t.Fatalf("parse Maheshvara request: %v", err)
 	}
-	expected := estimateCanonicalRequestUsage(canonical, server.config.GetUsageConfig()).InputTokens
+	expected := estimateMaheshvaraRequestUsage(maheshvara, server.config.GetUsageConfig()).InputTokens
 
 	context, recorder := messagesRequestContext(body)
 	server.countTokens(context)

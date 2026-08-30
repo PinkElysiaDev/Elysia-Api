@@ -241,11 +241,11 @@ func TestMaheshvaraReasoningSignaturesAreProviderBoundAndLegacyEnvelopeIsReadOnl
 	response := &MaheshvaraResponse{
 		ID: "resp_reasoning", Model: "source-model", Status: "completed", StopReason: "stop",
 		Output: []MaheshvaraOutputItem{{
-			ID: "rs_1", Type: CanonicalOutputReasoning, Status: "completed",
+			ID: "rs_1", Type: MaheshvaraOutputReasoning, Status: "completed",
 			Content: []MaheshvaraContentPart{{
-				Type: CanonicalContentReasoning, Text: "concise rationale", ReasoningText: "concise rationale",
-				EncryptedContent: "provider-ciphertext", EncryptedProvider: CanonicalSignatureProviderOpenAI,
-				ReasoningSummary: []CanonicalReasoningSummary{{Type: "summary_text", Text: "summary"}},
+				Type: MaheshvaraContentReasoning, Text: "concise rationale", ReasoningText: "concise rationale",
+				EncryptedContent: "provider-ciphertext", EncryptedProvider: MaheshvaraSignatureProviderOpenAI,
+				ReasoningSummary: []MaheshvaraReasoningSummary{{Type: "summary_text", Text: "summary"}},
 			}},
 		}},
 	}
@@ -266,8 +266,8 @@ func TestMaheshvaraReasoningSignaturesAreProviderBoundAndLegacyEnvelopeIsReadOnl
 	// 签发方不明的密文不回放：门控无法判断归属。
 	anonymous := *response
 	anonymous.Output = []MaheshvaraOutputItem{{
-		ID: "rs_anon", Type: CanonicalOutputReasoning, Status: "completed",
-		Content: []MaheshvaraContentPart{{Type: CanonicalContentReasoning, Text: "anon", ReasoningText: "anon", EncryptedContent: "mystery"}},
+		ID: "rs_anon", Type: MaheshvaraOutputReasoning, Status: "completed",
+		Content: []MaheshvaraContentPart{{Type: MaheshvaraContentReasoning, Text: "anon", ReasoningText: "anon", EncryptedContent: "mystery"}},
 	}}
 	anonRendered, err := MaheshvaraToAnthropicResponse(&anonymous)
 	if err != nil {
@@ -285,7 +285,7 @@ func TestMaheshvaraReasoningSignaturesAreProviderBoundAndLegacyEnvelopeIsReadOnl
 		t.Fatalf("provider ciphertext must not be smuggled into a Gemini signature: %+v", gemini)
 	}
 
-	legacyEnvelope, err := encodeMaheshvaraReasoningEnvelope("concise rationale", "provider-ciphertext", []CanonicalReasoningSummary{{Type: "summary_text", Text: "summary"}}, "", "")
+	legacyEnvelope, err := encodeMaheshvaraReasoningEnvelope("concise rationale", "provider-ciphertext", []MaheshvaraReasoningSummary{{Type: "summary_text", Text: "summary"}}, "", "")
 	if err != nil {
 		t.Fatalf("encode legacy envelope: %v", err)
 	}
@@ -300,7 +300,7 @@ func TestMaheshvaraReasoningSignaturesAreProviderBoundAndLegacyEnvelopeIsReadOnl
 	if part.EncryptedContent != "provider-ciphertext" || part.ReasoningText != "concise rationale" || len(part.ReasoningSummary) != 1 {
 		t.Fatalf("legacy reasoning envelope fields were lost: %+v", part)
 	}
-	if part.Signature != "" || part.SignatureProvider != CanonicalSignatureProviderMaheshvara {
+	if part.Signature != "" || part.SignatureProvider != MaheshvaraSignatureProviderMaheshvara {
 		t.Fatalf("legacy envelope must remain Maheshvara-owned: %+v", part)
 	}
 

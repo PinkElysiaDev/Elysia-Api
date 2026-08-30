@@ -17,11 +17,11 @@ func TestCustomProtocolArrayPathsAndFieldMappings(t *testing.T) {
 			},
 		},
 	}
-	response, err := CustomProtocolResponseToCanonical([]byte(`{"output":[{"content":[{"text":"ok"}]}],"meta":{"tier":"priority"}}`), config)
+	response, err := CustomProtocolResponseToMaheshvara([]byte(`{"output":[{"content":[{"text":"ok"}]}],"meta":{"tier":"priority"}}`), config)
 	if err != nil {
 		t.Fatalf("map custom response: %v", err)
 	}
-	if len(response.Output) != 1 || canonicalText(response.Output[0].Content) != "ok" {
+	if len(response.Output) != 1 || maheshvaraText(response.Output[0].Content) != "ok" {
 		t.Fatalf("array path was not resolved: %+v", response.Output)
 	}
 	if response.Metadata["vendor"] != "example" || response.ServiceTier != "priority" {
@@ -37,11 +37,11 @@ func TestCustomProtocolTextTransformExtractsNestedText(t *testing.T) {
 			{Target: "output", Source: "data", Transform: "output_items"},
 		}},
 	}
-	response, err := CustomProtocolResponseToCanonical([]byte(`{"data":[{"id":"m1","message":{"content":"nested"}}]}`), config)
+	response, err := CustomProtocolResponseToMaheshvara([]byte(`{"data":[{"id":"m1","message":{"content":"nested"}}]}`), config)
 	if err != nil {
 		t.Fatalf("map nested text: %v", err)
 	}
-	if len(response.Output) != 1 || canonicalText(response.Output[0].Content) != "nested" {
+	if len(response.Output) != 1 || maheshvaraText(response.Output[0].Content) != "nested" {
 		t.Fatalf("nested text object was JSON-stringified instead of extracted: %+v", response.Output)
 	}
 }
@@ -112,7 +112,7 @@ func TestCustomProtocolCumulativeStreamAndTerminalValues(t *testing.T) {
 		t.Fatalf("cumulative suffix failed: events=%+v done=%v err=%v", events, done, err)
 	}
 	events, done, err = decoder.Decode(SSEEvent{Event: "message", Data: "END"})
-	if err != nil || !done || len(events) != 1 || events[0].Type != CanonicalEventResponseCompleted {
+	if err != nil || !done || len(events) != 1 || events[0].Type != MaheshvaraEventResponseCompleted {
 		t.Fatalf("terminal value failed: events=%+v done=%v err=%v", events, done, err)
 	}
 	if !decoder.SawOutput() || !decoder.TerminalReceived() {

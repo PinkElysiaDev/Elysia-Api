@@ -212,6 +212,45 @@ func (s *Store) migrate(ctx context.Context) error {
 			return err
 		}
 	}
+	// 回填存量 started_ms（详见 backfillStartedMs）。
+	if err := s.backfillStartedMs(ctx); err != nil {
+		return err
+	}
+	// 小时级 rollup 预聚合表（详见 migrateRollupTables）。
+	if err := s.migrateRollupTables(ctx); err != nil {
+		return err
+	}
+	// 增量迁移（幂等，duplicate column 忽略）：
+	//   model_sources.fetch_base_url —— 模型列表拉取专用地址（空=与 base_url 一致）；
+	//   model_sources.api_keys / key_strategy —— 多 Key 配置与调度策略；
+	//   models.enabled —— 用户手动启停（与 available 健康位分离）；
+	//   models.origin —— 行来源（fetched 随刷新合并替换 / manual 刷新永不触碰）；
+	//   models.capability_source —— 能力字段填充来源（''/catalog/manual，
+	//     manual 的用户修改在刷新时保留，catalog 值随刷新更新）。
+	for _, stmt := range []string{
+		`ALTER TABLE model_sources ADD COLUMN fetch_base_url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE model_sources ADD COLUMN api_keys TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE model_sources ADD COLUMN key_strategy TEXT NOT NULL DEFAULT 'single'`,
+		`ALTER TABLE models ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE models ADD COLUMN origin TEXT NOT NULL DEFAULT 'fetched'`,
+		`ALTER TABLE models ADD COLUMN capability_source TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := s.db.ExecContext(ctx, stmt); err != nil &&
+			!strings.Contains(err.Error(), "duplicate column") {
+			return err
+		}
+	}
+	if err := s.migrateMaheshvaraLabels(ctx); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(1, ?)`, time.Now().UTC().Format(time.RFC3339Nano))
+	return err
+}
+
+// backfillProgressBar 渲染等宽字符进度条。只用 ASCII 的 '#' 与 '.'，
+// 避免宽字符进度条在部分 Windows 控制台代码页下乱码。
+// backfillStartedMs 为存量 usage_records 行回填 started_ms（一次性迁移）。
+func (s *Store) backfillStartedMs(ctx context.Context) error {
 	// 回填存量行的 started_ms。单连接约束：先全部读进内存并关闭游标，再 UPDATE。
 	type usageRow struct{ requestID, startedAt string }
 	var pendingUsage []usageRow
@@ -297,6 +336,11 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 		log.Printf("[migration] usage_records: started_ms backfill complete in %s", time.Since(backfillStartedAt).Round(time.Millisecond))
 	}
+	return nil
+}
+
+// migrateRollupTables 创建小时级预聚合表并初始化状态（设计见 rollup.go）。
+func (s *Store) migrateRollupTables(ctx context.Context) error {
 	// 小时级 rollup 预聚合表 + 状态表（rollup.go）：仪表盘聚合与原始表大小
 	// 解耦。只新增、不改任何现有表/列——usage_records 数据零风险，两张新表
 	// 均为纯派生数据，可随时删除重建。WITHOUT ROWID 让 PK 即表结构，
@@ -327,32 +371,9 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := s.initRollupState(ctx); err != nil {
 		return err
 	}
-	// 增量迁移（幂等，duplicate column 忽略）：
-	//   model_sources.fetch_base_url —— 模型列表拉取专用地址（空=与 base_url 一致）；
-	//   model_sources.api_keys / key_strategy —— 多 Key 配置与调度策略；
-	//   models.enabled —— 用户手动启停（与 available 健康位分离）；
-	//   models.origin —— 行来源（fetched 随刷新合并替换 / manual 刷新永不触碰）；
-	//   models.capability_source —— 能力字段填充来源（''/catalog/manual，
-	//     manual 的用户修改在刷新时保留，catalog 值随刷新更新）。
-	for _, stmt := range []string{
-		`ALTER TABLE model_sources ADD COLUMN fetch_base_url TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE model_sources ADD COLUMN api_keys TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE model_sources ADD COLUMN key_strategy TEXT NOT NULL DEFAULT 'single'`,
-		`ALTER TABLE models ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`,
-		`ALTER TABLE models ADD COLUMN origin TEXT NOT NULL DEFAULT 'fetched'`,
-		`ALTER TABLE models ADD COLUMN capability_source TEXT NOT NULL DEFAULT ''`,
-	} {
-		if _, err := s.db.ExecContext(ctx, stmt); err != nil &&
-			!strings.Contains(err.Error(), "duplicate column") {
-			return err
-		}
-	}
-	_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(1, ?)`, time.Now().UTC().Format(time.RFC3339Nano))
-	return err
+	return nil
 }
 
-// backfillProgressBar 渲染等宽字符进度条。只用 ASCII 的 '#' 与 '.'，
-// 避免宽字符进度条在部分 Windows 控制台代码页下乱码。
 func backfillProgressBar(done, total int) string {
 	const width = 30
 	if total <= 0 || done < 0 {
@@ -671,7 +692,13 @@ func (s *Store) ReplaceSourceModels(ctx context.Context, source ModelSource, mod
 	}
 	for _, model := range models {
 		model = normalizeModelDefaults(model)
-		if _, err := stmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, source.BaseURL, storedKey, normalizePlatform(source.Platform), model.Type, model.MaxTokens, boolInt(model.VisionCapable), boolInt(model.ToolsCapable), boolInt(model.StructuredOutput), model.ThinkingMode, boolInt(true), boolInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
+		// platform 优先取模型自带值（legacy 配置导入的模型可逐模型声明平台，
+		// 如 responses/gemini），为空才回落源级平台（自动拉取的模型两者一致）。
+		platform := model.Platform
+		if strings.TrimSpace(platform) == "" {
+			platform = source.Platform
+		}
+		if _, err := stmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, model.BaseURL, storedKey, normalizePlatform(platform), model.Type, model.MaxTokens, boolInt(model.VisionCapable), boolInt(model.ToolsCapable), boolInt(model.StructuredOutput), model.ThinkingMode, boolInt(true), boolInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
 			return err
 		}
 	}
@@ -829,4 +856,32 @@ func normalizeModelDefaults(model Model) Model {
 	}
 	model.Enabled = true
 	return model
+}
+
+// migrateMaheshvaraLabels 把历史 usage 记录里的 canonical_* 展示标签改写为
+// maheshvara_*（命名统一的一次性数据迁移；写入侧已改用新值）。幂等：改写
+// 后旧行拼写不再存在，重跑无操作。record_json 的 REPLACE 用带引号的完整
+// 成员上下文（"usageSource":"..."）与数组元素（"canonical_request"），
+// 误碰撞仅影响展示字段，无功能语义。
+func (s *Store) migrateMaheshvaraLabels(ctx context.Context) error {
+	// usage_source 列自建表即在 CREATE TABLE 内，本库恒存在；探测仅为防御
+	// 外来/前代工程的库（缺列则不可能存有 canonical_estimate，跳过列改写
+	// 是正确行为）——record_json 的改写不受探测门控。
+	var hasUsageSource int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('usage_records') WHERE name = 'usage_source'`).Scan(&hasUsageSource); err == nil && hasUsageSource > 0 {
+		if _, err := s.db.ExecContext(ctx,
+			`UPDATE usage_records SET usage_source = 'maheshvara_estimate' WHERE usage_source = 'canonical_estimate'`); err != nil {
+			return err
+		}
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE usage_records
+		SET record_json = REPLACE(REPLACE(REPLACE(record_json,
+			'"usageSource":"canonical_estimate"', '"usageSource":"maheshvara_estimate"'),
+			'"canonical_request"', '"maheshvara_request"'),
+			'"canonical_response"', '"maheshvara_response"')
+		WHERE record_json LIKE '%canonical_%'`); err != nil {
+		return err
+	}
+	return nil
 }

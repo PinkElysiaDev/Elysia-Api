@@ -8,11 +8,11 @@ func int64Value(value any) int64 {
 	return int64(number)
 }
 
-func canonicalUsageFromRawMap(raw map[string]any) *CanonicalUsage {
+func maheshvaraUsageFromRawMap(raw map[string]any) *MaheshvaraUsage {
 	if len(raw) == 0 {
 		return nil
 	}
-	usage := &CanonicalUsage{
+	usage := &MaheshvaraUsage{
 		InputTokens:       intValue(firstNonValue(raw, "input_tokens", "inputTokens", "prompt_tokens", "promptTokenCount")),
 		OutputTokens:      intValue(firstNonValue(raw, "output_tokens", "outputTokens", "completion_tokens", "candidatesTokenCount")),
 		TotalTokens:       intValue(firstNonValue(raw, "total_tokens", "totalTokens", "totalTokenCount")),

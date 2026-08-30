@@ -291,7 +291,7 @@ func applyCustomFieldMappings(response *MaheshvaraResponse, root any, mappings [
 		return nil, fmt.Errorf("prepare mapped Maheshvara response: %w", err)
 	}
 	for index, mapping := range mappings {
-		targetPath := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(mapping.Target, "maheshvara."), "canonical."))
+		targetPath := strings.TrimSpace(strings.TrimPrefix(mapping.Target, "maheshvara."))
 		if err := validateCustomResponseTarget(targetPath); err != nil {
 			return nil, fmt.Errorf("fieldMappings[%d]: %w", index, err)
 		}
@@ -496,7 +496,7 @@ func customToolOutputItems(value any) []any {
 			continue
 		}
 		result = append(result, map[string]any{
-			"id": call.ID, "type": CanonicalOutputFunctionCall, "status": "completed", "call_id": call.ID,
+			"id": call.ID, "type": MaheshvaraOutputFunctionCall, "status": "completed", "call_id": call.ID,
 			"name": call.Name, "arguments": jsonRawToAny(call.Arguments),
 		})
 	}
@@ -510,7 +510,7 @@ func customOutputItems(value any) []any {
 		object, _ := item.(map[string]any)
 		if object == nil {
 			if text := customTextValue(item); text != "" {
-				result = append(result, map[string]any{"type": CanonicalOutputMessage, "status": "completed", "role": "assistant", "content": []any{map[string]any{"type": CanonicalContentText, "text": text}}})
+				result = append(result, map[string]any{"type": MaheshvaraOutputMessage, "status": "completed", "role": "assistant", "content": []any{map[string]any{"type": MaheshvaraContentText, "text": text}}})
 			}
 			continue
 		}
@@ -518,8 +518,8 @@ func customOutputItems(value any) []any {
 		if text != "" {
 			result = append(result, map[string]any{
 				"id":   firstNonEmptyString(stringValue(object["id"]), fmt.Sprintf("msg_%d", index)),
-				"type": CanonicalOutputMessage, "status": "completed", "role": "assistant",
-				"content": []any{map[string]any{"type": CanonicalContentText, "text": text}},
+				"type": MaheshvaraOutputMessage, "status": "completed", "role": "assistant",
+				"content": []any{map[string]any{"type": MaheshvaraContentText, "text": text}},
 			})
 		}
 		calls := firstNonNilValue(object["tool_calls"], object["function_calls"], object["calls"])

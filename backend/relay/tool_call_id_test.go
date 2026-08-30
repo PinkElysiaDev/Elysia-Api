@@ -6,15 +6,15 @@ import (
 	"testing"
 )
 
-func openAIChatMessagesFromCanonical(t *testing.T, body []byte, format FormatType) []map[string]any {
+func openAIChatMessagesFromMaheshvara(t *testing.T, body []byte, format FormatType) []map[string]any {
 	t.Helper()
-	req, _, err := ConvertRequestToCanonical(body, format, "")
+	req, _, err := ConvertRequestToMaheshvara(body, format, "")
 	if err != nil {
-		t.Fatalf("ConvertRequestToCanonical: %v", err)
+		t.Fatalf("ConvertRequestToMaheshvara: %v", err)
 	}
-	out, err := CanonicalToOpenAIChatRequest(req)
+	out, err := MaheshvaraToOpenAIChat(req)
 	if err != nil {
-		t.Fatalf("CanonicalToOpenAIChatRequest: %v", err)
+		t.Fatalf("MaheshvaraToOpenAIChat: %v", err)
 	}
 	var wire map[string]any
 	if err := json.Unmarshal(out, &wire); err != nil {
@@ -65,12 +65,12 @@ func TestClaudeToolUseMissingIDConvertsToStableOpenAIID(t *testing.T) {
 			{"role": "user", "content": [{"type": "tool_result", "content": "42"}]}
 		]
 	}`)
-	messages := openAIChatMessagesFromCanonical(t, body, FormatClaude)
+	messages := openAIChatMessagesFromMaheshvara(t, body, FormatClaude)
 	assertAssistantToolIDMatchesToolMessage(t, messages, "call_0_0")
 }
 
 // 回归：OpenAI 输入本身的 tool_calls[].id 与 tool_call_id 为空时，
-// canonical 往返后也必须补齐并对齐。
+// maheshvara 往返后也必须补齐并对齐。
 func TestOpenAIChatMissingToolCallIDGetsSynthesized(t *testing.T) {
 	body := []byte(`{
 		"model": "grp",
@@ -79,7 +79,7 @@ func TestOpenAIChatMissingToolCallIDGetsSynthesized(t *testing.T) {
 			{"role": "tool", "tool_call_id": "", "content": "42"}
 		]
 	}`)
-	messages := openAIChatMessagesFromCanonical(t, body, FormatOpenAI)
+	messages := openAIChatMessagesFromMaheshvara(t, body, FormatOpenAI)
 	assertAssistantToolIDMatchesToolMessage(t, messages, "call_0_0")
 }
 
@@ -93,11 +93,11 @@ func TestResponsesFunctionCallMissingCallIDGetsSynthesized(t *testing.T) {
 			{"type": "function_call_output", "output": "42"}
 		]
 	}`)
-	req, _, err := ResponsesRequestToCanonical(body)
+	req, _, err := OpenAIResponsesToMaheshvara(body)
 	if err != nil {
-		t.Fatalf("ResponsesRequestToCanonical: %v", err)
+		t.Fatalf("OpenAIResponsesToMaheshvara: %v", err)
 	}
-	messages := openAIChatMessagesFromCanonical(t, body, FormatResponses)
+	messages := openAIChatMessagesFromMaheshvara(t, body, FormatResponses)
 	assertAssistantToolIDMatchesToolMessage(t, messages, "call_0_0")
 
 	if len(req.InputItems) != 2 {
@@ -148,7 +148,7 @@ func TestNormalizeOpenAIToolCallIDsRepairsAndPreserves(t *testing.T) {
 func TestStreamRenderersSynthesizeMissingToolCallID(t *testing.T) {
 	writer := &captureStreamWriter{}
 	renderer := NewMaheshvaraStreamRenderer(FormatOpenAIChat, writer, "model")
-	if err := renderer.Write(&MaheshvaraStreamEvent{Type: CanonicalEventFunctionCallAdded, ChoiceIndex: 0, ToolCallIndex: 0, ToolName: "lookup"}); err != nil {
+	if err := renderer.Write(&MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallAdded, ChoiceIndex: 0, ToolCallIndex: 0, ToolName: "lookup"}); err != nil {
 		t.Fatalf("renderer.Write: %v", err)
 	}
 	if !strings.Contains(writer.String(), `"id":"call_0_0"`) {

@@ -6,18 +6,18 @@ import (
 	"testing"
 )
 
-// R4 回归：base64 图片经 canonical 模型转换到 Claude / Gemini 时不丢失。
+// R4 回归：base64 图片经 maheshvara 模型转换到 Claude / Gemini 时不丢失。
 // 旧实现 parseClaudeMessages 只存 Raw、各 emitter 的 switch 无 image case，
-// 任何经 canonical 路由的 vision 请求都会丢图。
+// 任何经 maheshvara 路由的 vision 请求都会丢图。
 
-func TestCanonicalImageOpenAIToClaude(t *testing.T) {
+func TestMaheshvaraImageOpenAIToClaude(t *testing.T) {
 	// OpenAI 客户端：data: URI 内联 base64 图片。
 	body := []byte(`{"model":"m","messages":[{"role":"user","content":[{"type":"text","text":"look"},{"type":"image_url","image_url":{"url":"data:image/png;base64,iVBORw0KGgo="}}]}]}`)
-	req, err := OpenAIChatRequestToCanonical(body)
+	req, err := OpenAIChatToMaheshvara(body)
 	if err != nil {
-		t.Fatalf("to canonical: %v", err)
+		t.Fatalf("to maheshvara: %v", err)
 	}
-	out, err := CanonicalToClaudeRequest(req)
+	out, err := MaheshvaraToAnthropic(req)
 	if err != nil {
 		t.Fatalf("to claude: %v", err)
 	}
@@ -33,13 +33,13 @@ func TestCanonicalImageOpenAIToClaude(t *testing.T) {
 	}
 }
 
-func TestCanonicalImageOpenAIToGemini(t *testing.T) {
+func TestMaheshvaraImageOpenAIToGemini(t *testing.T) {
 	body := []byte(`{"model":"m","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,QQ=="}}]}]}`)
-	req, err := OpenAIChatRequestToCanonical(body)
+	req, err := OpenAIChatToMaheshvara(body)
 	if err != nil {
-		t.Fatalf("to canonical: %v", err)
+		t.Fatalf("to maheshvara: %v", err)
 	}
-	out, err := CanonicalToGeminiRequest(req)
+	out, err := MaheshvaraToGemini(req)
 	if err != nil {
 		t.Fatalf("to gemini: %v", err)
 	}
@@ -51,14 +51,14 @@ func TestCanonicalImageOpenAIToGemini(t *testing.T) {
 	}
 }
 
-func TestCanonicalImageClaudeToOpenAI(t *testing.T) {
-	// Claude 客户端：base64 image block → 经 canonical → OpenAI data: URI。
+func TestMaheshvaraImageClaudeToOpenAI(t *testing.T) {
+	// Claude 客户端：base64 image block → 经 maheshvara → OpenAI data: URI。
 	body := []byte(`{"model":"m","messages":[{"role":"user","content":[{"type":"image","source":{"type":"base64","media_type":"image/webp","data":"AAAA"}}]}]}`)
-	req, err := ClaudeRequestToCanonical(body)
+	req, err := AnthropicToMaheshvara(body)
 	if err != nil {
-		t.Fatalf("to canonical: %v", err)
+		t.Fatalf("to maheshvara: %v", err)
 	}
-	out, err := CanonicalToOpenAIChatRequest(req)
+	out, err := MaheshvaraToOpenAIChat(req)
 	if err != nil {
 		t.Fatalf("to openai: %v", err)
 	}

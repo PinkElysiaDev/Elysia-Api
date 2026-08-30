@@ -76,8 +76,8 @@ func TestUsageCacheSurvivesHandlerPanic(t *testing.T) {
 
 // 缓存键值转义：含分隔符的筛选值不得与多参数组合碰撞。
 func TestUsageCacheKeyEscaping(t *testing.T) {
-	left := canonicalUsageCacheKey(mustParseURL(t, "/p?groupName=b%26keyName%3Da"))
-	right := canonicalUsageCacheKey(mustParseURL(t, "/p?groupName=b&keyName=a"))
+	left := maheshvaraUsageCacheKey(mustParseURL(t, "/p?groupName=b%26keyName%3Da"))
+	right := maheshvaraUsageCacheKey(mustParseURL(t, "/p?groupName=b&keyName=a"))
 	if left == right {
 		t.Fatalf("distinct filter sets must not collide: %q == %q", left, right)
 	}

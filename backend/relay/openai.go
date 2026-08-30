@@ -14,7 +14,7 @@ import (
 // openAIEndpoint 用用户配置的 base URL 直接拼接端点 path。
 // 用户负责配置正确的 base URL（如 https://api.openai.com/v1），后端不做任何规范化。
 func openAIEndpoint(baseUrl, path string) string {
-	return strings.TrimRight(strings.TrimSpace(baseUrl), "/") + path
+	return joinBasePath(baseUrl, path)
 }
 
 type OpenAIAdapter struct {
@@ -254,27 +254,7 @@ func (u *Usage) UnmarshalJSON(data []byte) error {
 // 原样透传；常规路径退化为普通结构体序列化。
 func (u Usage) MarshalJSON() ([]byte, error) {
 	type alias Usage
-	encoded, err := json.Marshal(alias(u))
-	if err != nil {
-		return nil, err
-	}
-	if len(u.RawFields) == 0 {
-		return encoded, nil
-	}
-	var typed map[string]any
-	if err := json.Unmarshal(encoded, &typed); err != nil {
-		return nil, err
-	}
-	merged := make(map[string]any, len(u.RawFields)+len(typed))
-	for key, value := range u.RawFields {
-		merged[key] = value
-	}
-	for key, value := range typed {
-		if value != nil {
-			merged[key] = value
-		}
-	}
-	return json.Marshal(merged)
+	return mergeRawOverTyped(u.RawFields, alias(u))
 }
 
 type PromptTokensDetails struct {

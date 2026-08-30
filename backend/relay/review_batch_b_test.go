@@ -91,7 +91,7 @@ func TestGeminiSyntheticCallIDsUnique(t *testing.T) {
 			t.Fatalf("decode chunk %d: %v", chunk, err)
 		}
 		for _, event := range events {
-			if event.Type == CanonicalEventFunctionCallAdded && event.ToolCallID != "" {
+			if event.Type == MaheshvaraEventFunctionCallAdded && event.ToolCallID != "" {
 				if ids[event.ToolCallID] {
 					t.Fatalf("synthetic call id collision: %s", event.ToolCallID)
 				}
@@ -124,7 +124,7 @@ func TestInputCallIDFIFOPairing(t *testing.T) {
 	}
 	seen := []string{}
 	for _, item := range req.InputItems {
-		if item.Type == CanonicalInputFunctionCallOutput {
+		if item.Type == MaheshvaraInputFunctionCallOutput {
 			seen = append(seen, item.CallID)
 		}
 	}
@@ -135,7 +135,7 @@ func TestInputCallIDFIFOPairing(t *testing.T) {
 
 // Usage details 指针化后不再序列化空 {} 覆盖原始子对象。
 func TestUsageDetailsOmitEmpty(t *testing.T) {
-	usage := openAIUsageFromCanonical(&CanonicalUsage{InputTokens: 10, OutputTokens: 5})
+	usage := openAIUsageFromMaheshvara(&MaheshvaraUsage{InputTokens: 10, OutputTokens: 5})
 	encoded, err := json.Marshal(usage)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)

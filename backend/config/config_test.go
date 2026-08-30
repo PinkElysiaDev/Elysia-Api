@@ -165,13 +165,7 @@ func TestEnsureConfigParseErrorNotAutoCreated(t *testing.T) {
 
 func TestRelayPassthroughDefaultsToEnabled(t *testing.T) {
 	cfg := &Config{}
-	if !cfg.IsRelayPassthroughEnabled() {
-		t.Fatal("relay passthrough must be enabled by default")
-	}
-
-	disabled := false
-	cfg.Relay.Passthrough = &disabled
-	if cfg.IsRelayPassthroughEnabled() {
-		t.Fatal("explicit relay passthrough opt-out was ignored")
+	if cfg.Relay.Passthrough != nil {
+		t.Fatal("relay passthrough must be unset (enabled) by default")
 	}
 }

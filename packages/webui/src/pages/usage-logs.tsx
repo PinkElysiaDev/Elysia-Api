@@ -401,11 +401,11 @@ function LogDetailSheet({ id, onClose }: { id: string | null; onClose: () => voi
     downloadJSON(`usage-log-${detail.requestId}.json`, buildExportPayload(detail))
   }
 
-  const u = detail?.usage
+  const usage = detail?.usage
   // tokbar 三段：缓存命中 rose-soft / 未命中输入 rose / 输出 jade
-  const cacheHit = u?.cacheHitTokens ?? 0
-  const inputMiss = Math.max((u?.inputTokens ?? 0) - cacheHit, 0)
-  const output = u?.outputTokens ?? 0
+  const cacheHit = usage?.cacheHitTokens ?? 0
+  const inputMiss = Math.max((usage?.inputTokens ?? 0) - cacheHit, 0)
+  const output = usage?.outputTokens ?? 0
   const tokTotal = cacheHit + inputMiss + output
   const outputRate =
     detail && output > 0 && detail.durationMs > 0 ? (output / (detail.durationMs / 1000)).toFixed(1) : null
@@ -519,7 +519,7 @@ function LogDetailSheet({ id, onClose }: { id: string | null; onClose: () => voi
                       <span>
                         合计 <b className="font-semibold text-foreground">{formatNumber(tokTotal)}</b>
                       </span>
-                      {u?.estimated && <span className="text-amber">（估算）</span>}
+                      {usage?.estimated && <span className="text-amber">（估算）</span>}
                     </p>
                   </>
                 ) : (

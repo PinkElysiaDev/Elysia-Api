@@ -29,7 +29,7 @@ func TestMaheshvaraFourWireRequestConversions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Anthropic parse failed: %v", err)
 	}
-	if len(claude.Messages) != 1 || len(claude.Messages[0].Content) != 2 || claude.Messages[0].Content[0].Type != CanonicalContentReasoning {
+	if len(claude.Messages) != 1 || len(claude.Messages[0].Content) != 2 || claude.Messages[0].Content[0].Type != MaheshvaraContentReasoning {
 		t.Fatalf("Anthropic reasoning filtering failed: %+v", claude.Messages)
 	}
 
@@ -66,7 +66,7 @@ func TestCustomProtocolTemplateAndResponseMapping(t *testing.T) {
 			FinishReasonPath: "finish",
 		},
 	}
-	req := &MaheshvaraRequest{Model: "vendor-model", Messages: []MaheshvaraMessage{{Role: "user", Content: []MaheshvaraContentPart{{Type: CanonicalContentText, Text: "hello"}}}}}
+	req := &MaheshvaraRequest{Model: "vendor-model", Messages: []MaheshvaraMessage{{Role: "user", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "hello"}}}}}
 	rendered, err := RenderCustomProtocolRequest(req, config)
 	if err != nil {
 		t.Fatalf("custom render failed: %v", err)
@@ -85,11 +85,11 @@ func TestCustomProtocolTemplateAndResponseMapping(t *testing.T) {
 		t.Fatalf("model interpolation failed: %s", rendered.Body)
 	}
 
-	response, err := CustomProtocolResponseToCanonical([]byte(`{"answer":{"text":"ok"},"finish":"stop","usage":{"prompt_tokens":2,"completion_tokens":3}}`), config)
+	response, err := CustomProtocolResponseToMaheshvara([]byte(`{"answer":{"text":"ok"},"finish":"stop","usage":{"prompt_tokens":2,"completion_tokens":3}}`), config)
 	if err != nil {
 		t.Fatalf("custom response mapping failed: %v", err)
 	}
-	if canonicalText(response.Output[0].Content) != "ok" || response.StopReason != "stop" || response.Usage.TotalTokens != 5 {
+	if maheshvaraText(response.Output[0].Content) != "ok" || response.StopReason != "stop" || response.Usage.TotalTokens != 5 {
 		t.Fatalf("custom response was not mapped: %+v", response)
 	}
 }
@@ -100,7 +100,7 @@ func TestCustomProtocolMapsNestedFunctionToolCalls(t *testing.T) {
 		Request:  CustomProtocolRequest{BodyTemplate: `{"prompt":{{maheshvara.messages}}}`},
 		Response: CustomProtocolResponse{ToolCallsPath: "data.choices"},
 	}
-	response, err := CustomProtocolResponseToCanonical([]byte(`{"data":{"choices":[{"id":"call_1","function":{"name":"lookup","arguments":{"q":"x"}}}]}}`), config)
+	response, err := CustomProtocolResponseToMaheshvara([]byte(`{"data":{"choices":[{"id":"call_1","function":{"name":"lookup","arguments":{"q":"x"}}}]}}`), config)
 	if err != nil {
 		t.Fatalf("nested tool response mapping failed: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestGeminiFileDataSurvivesOpenAIConversion(t *testing.T) {
 func TestGeminiConversionNeverEmitsEmptyDataPart(t *testing.T) {
 	req := &MaheshvaraRequest{
 		Model:    "gemini-test",
-		Messages: []MaheshvaraMessage{{Role: "assistant", Content: []MaheshvaraContentPart{{Type: CanonicalContentReasoning, Text: ""}}}},
+		Messages: []MaheshvaraMessage{{Role: "assistant", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentReasoning, Text: ""}}}},
 	}
 	if _, err := MaheshvaraToGemini(req); err == nil || !strings.Contains(err.Error(), "no representable message content") {
 		t.Fatalf("expected clear empty-content error, got %v", err)

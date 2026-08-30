@@ -17,7 +17,7 @@ client wire protocol
 - Gemini GenerateContent
 - OpenAI Responses
 
-代码仍保留历史 `Canonical*` 类型名以避免破坏已有调用方；`Maheshvara*` 是同一组稳定类型的正式协议名称。协议版本常量为 `MaheshvaraProtocolVersion = "1"`。
+全部类型与函数已统一使用 `Maheshvara*` 命名（历史上的 `Canonical*` 别名已移除）。协议版本常量为 `MaheshvaraProtocolVersion = "2"`（v2 引入推理走私信封；v1 信封保持只读兼容）。
 
 ## 1. 设计原则
 
@@ -350,7 +350,6 @@ WebUI 的模型源表单可选择“自定义 Maheshvara 协议”并填写协�
 模板上下文只读：
 
 - `maheshvara.*`
-- `canonical.*`（兼容别名）
 - `request.*`（兼容别名）
 
 常用路径包括：
@@ -462,9 +461,8 @@ passthrough 只作为显式 opt-in 的兼容逃生口，用于必须原样保留
 
 主要实现：
 
-- `backend/relay/canonical.go`：Maheshvara v1 数据模型
-- `backend/relay/canonical_convert.go`：四协议非流式转换
-- `backend/relay/maheshvara_protocol.go`：Maheshvara 命名 API
+- `backend/relay/maheshvara_types.go`：Maheshvara v1 数据模型
+- `backend/relay/maheshvara_convert.go`：四协议非流式转换与全部 Maheshvara 命名入口（原别名包装层已吸收）
 - `backend/relay/maheshvara_reasoning.go`：provider-bound signature 与 legacy envelope decoder
 - `backend/relay/maheshvara_stream*.go`：统一流式 decoder / renderer
 - `backend/relay/custom_protocol.go`：自定义协议注册、模板和 auth

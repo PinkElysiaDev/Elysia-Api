@@ -8,7 +8,7 @@ import (
 	"github.com/elysia-api/backend/relay"
 )
 
-func usageTokenUsageFromCanonical(u *relay.CanonicalUsage) usageTokenUsage {
+func usageTokenUsageFromMaheshvara(u *relay.MaheshvaraUsage) usageTokenUsage {
 	if u == nil {
 		return usageTokenUsage{}
 	}
@@ -43,7 +43,7 @@ func usageTokenUsageFromCanonical(u *relay.CanonicalUsage) usageTokenUsage {
 	return usage
 }
 
-func usageDetailFromCanonical(u *relay.CanonicalUsage) usageDetail {
+func usageDetailFromMaheshvara(u *relay.MaheshvaraUsage) usageDetail {
 	if u == nil {
 		return usageDetail{}
 	}
@@ -97,7 +97,7 @@ func usageDetailFromCanonical(u *relay.CanonicalUsage) usageDetail {
 	return detail
 }
 
-func builtinToolUsageFromCanonical(u *relay.CanonicalUsage) builtinToolUsage {
+func builtinToolUsageFromMaheshvara(u *relay.MaheshvaraUsage) builtinToolUsage {
 	if u == nil {
 		return builtinToolUsage{}
 	}
@@ -110,21 +110,21 @@ func builtinToolUsageFromCanonical(u *relay.CanonicalUsage) builtinToolUsage {
 	}
 }
 
-func updateRecordUsageFromCanonical(record *usageRecord, usage *relay.CanonicalUsage) {
+func updateRecordUsageFromMaheshvara(record *usageRecord, usage *relay.MaheshvaraUsage) {
 	if record == nil || usage == nil {
 		return
 	}
-	record.Usage = mergeUsage(record.Usage, usageTokenUsageFromCanonical(usage))
-	record.UsageDetail = usageDetailFromCanonical(usage)
-	record.BuiltinToolUsage = builtinToolUsageFromCanonical(usage)
+	record.Usage = mergeUsage(record.Usage, usageTokenUsageFromMaheshvara(usage))
+	record.UsageDetail = usageDetailFromMaheshvara(usage)
+	record.BuiltinToolUsage = builtinToolUsageFromMaheshvara(usage)
 	if usage.Source != "" {
 		record.UsageSource = usage.Source
 	}
 }
 
-func estimateCanonicalRequestUsage(req *relay.CanonicalRequest, cfg config.UsageConfig) *relay.CanonicalUsage {
+func estimateMaheshvaraRequestUsage(req *relay.MaheshvaraRequest, cfg config.UsageConfig) *relay.MaheshvaraUsage {
 	if req == nil {
-		return &relay.CanonicalUsage{Estimated: true, Source: "canonical_estimate"}
+		return &relay.MaheshvaraUsage{Estimated: true, Source: "maheshvara_estimate"}
 	}
 
 	charsPerToken := cfg.CharsPerToken
@@ -136,16 +136,16 @@ func estimateCanonicalRequestUsage(req *relay.CanonicalRequest, cfg config.Usage
 	imageTokens := 0
 	fileTokens := 0
 
-	addParts := func(parts []relay.CanonicalContentPart) {
+	addParts := func(parts []relay.MaheshvaraContentPart) {
 		for _, part := range parts {
 			switch part.Type {
-			case relay.CanonicalContentText:
+			case relay.MaheshvaraContentText:
 				textChars += len([]rune(part.Text))
-			case relay.CanonicalContentReasoning:
+			case relay.MaheshvaraContentReasoning:
 				textChars += len([]rune(part.ReasoningText))
-			case relay.CanonicalContentImage:
+			case relay.MaheshvaraContentImage:
 				imageTokens += cfg.ImageInputTokenEstimate
-			case relay.CanonicalContentFile:
+			case relay.MaheshvaraContentFile:
 				if part.FileData != "" {
 					fileTokens += (len(part.FileData)/1024 + 1) * cfg.FileInputTokenEstimatePerKB
 				} else {
@@ -183,7 +183,7 @@ func estimateCanonicalRequestUsage(req *relay.CanonicalRequest, cfg config.Usage
 		outputTokens = cfg.DefaultOutputTokenEstimate
 	}
 
-	return &relay.CanonicalUsage{
+	return &relay.MaheshvaraUsage{
 		InputTokens:              inputTokens,
 		OutputTokens:             outputTokens,
 		TotalTokens:              inputTokens + outputTokens,
@@ -193,14 +193,14 @@ func estimateCanonicalRequestUsage(req *relay.CanonicalRequest, cfg config.Usage
 		EstimatedOutputTokens:    outputTokens,
 		EstimatedTotalTokens:     inputTokens + outputTokens,
 		Estimated:                true,
-		Source:                   "canonical_estimate",
-		FileSearchCallCount:      countRequestBuiltinTool(req, relay.CanonicalToolFileSearch),
-		WebSearchCallCount:       countRequestBuiltinTool(req, relay.CanonicalToolWebSearchPreview),
-		ImageGenerationCallCount: countRequestBuiltinTool(req, relay.CanonicalToolImageGeneration),
+		Source:                   "maheshvara_estimate",
+		FileSearchCallCount:      countRequestBuiltinTool(req, relay.MaheshvaraToolFileSearch),
+		WebSearchCallCount:       countRequestBuiltinTool(req, relay.MaheshvaraToolWebSearchPreview),
+		ImageGenerationCallCount: countRequestBuiltinTool(req, relay.MaheshvaraToolImageGeneration),
 	}
 }
 
-func countRequestBuiltinTool(req *relay.CanonicalRequest, toolType string) int {
+func countRequestBuiltinTool(req *relay.MaheshvaraRequest, toolType string) int {
 	count := 0
 	for _, tool := range req.Tools {
 		if strings.EqualFold(tool.Type, toolType) {

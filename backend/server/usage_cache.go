@@ -61,7 +61,7 @@ func (c *usageResponseCache) handle(gc *gin.Context) {
 		gc.Next()
 		return
 	}
-	key := canonicalUsageCacheKey(gc.Request.URL)
+	key := maheshvaraUsageCacheKey(gc.Request.URL)
 
 	c.mu.Lock()
 	c.initLocked()
@@ -180,10 +180,10 @@ func (r *usageCacheRecorder) WriteString(s string) (int, error) {
 	return r.ResponseWriter.WriteString(s)
 }
 
-// canonicalUsageCacheKey 以 path + 排序后的 query 生成缓存键：参数顺序不同
+// maheshvaraUsageCacheKey 以 path + 排序后的 query 生成缓存键：参数顺序不同
 // 但语义相同的请求共享同一条缓存。值经转义，防止 "b&keyName=a" 这类含分隔
 // 符的筛选拼接出与多参数组合相同的键。
-func canonicalUsageCacheKey(u *url.URL) string {
+func maheshvaraUsageCacheKey(u *url.URL) string {
 	values := u.Query()
 	keys := make([]string, 0, len(values))
 	for k := range values {

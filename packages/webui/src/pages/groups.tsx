@@ -165,7 +165,7 @@ export function GroupsPage() {
                 <TableBody className="divide-y divide-border/30">
                   {filtered.map((group) => {
                     const isOpen = !!expanded[group.id]
-                    const members = group.models ?? []
+                    const members = group.models
                     return (
                       <Fragment key={group.id}>
                         {/* border-b-0：行间分隔线只由 divide-y 的 /30 淡线承担 */}

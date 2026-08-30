@@ -131,27 +131,27 @@ func TestModelCatalogEnrich(t *testing.T) {
 // tools=false 且请求携带 tools / 工具消息 → 拒绝；tools=true 或不含工具 → 放行。
 func TestRejectToolRequestsIfNeeded(t *testing.T) {
 	group := &config.ModelGroupConfig{Name: "g", ToolsCapable: boolPtr(false)}
-	plain := &relay.CanonicalRequest{Model: "m"}
+	plain := &relay.MaheshvaraRequest{Model: "m"}
 	if rejectToolRequestsIfNeeded(group, plain) {
 		t.Fatalf("plain request must pass")
 	}
-	withTools := &relay.CanonicalRequest{Model: "m", Tools: []relay.CanonicalTool{{}}}
+	withTools := &relay.MaheshvaraRequest{Model: "m", Tools: []relay.MaheshvaraTool{{}}}
 	if !rejectToolRequestsIfNeeded(group, withTools) {
 		t.Fatalf("request with tools must be rejected")
 	}
-	withChoice := &relay.CanonicalRequest{Model: "m", ToolChoice: "auto"}
+	withChoice := &relay.MaheshvaraRequest{Model: "m", ToolChoice: "auto"}
 	if !rejectToolRequestsIfNeeded(group, withChoice) {
 		t.Fatalf("request with tool_choice must be rejected")
 	}
-	withToolMessage := &relay.CanonicalRequest{Model: "m", Messages: []relay.CanonicalMessage{{
+	withToolMessage := &relay.MaheshvaraRequest{Model: "m", Messages: []relay.MaheshvaraMessage{{
 		Role:    "assistant",
-		Content: []relay.CanonicalContentPart{{Type: relay.CanonicalContentToolCall}},
+		Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentToolCall}},
 	}}}
 	if !rejectToolRequestsIfNeeded(group, withToolMessage) {
 		t.Fatalf("request with tool_call message must be rejected")
 	}
-	withFunctionOutputItem := &relay.CanonicalRequest{Model: "m", InputItems: []relay.CanonicalInputItem{{
-		Type: relay.CanonicalInputFunctionCallOutput,
+	withFunctionOutputItem := &relay.MaheshvaraRequest{Model: "m", InputItems: []relay.MaheshvaraInputItem{{
+		Type: relay.MaheshvaraInputFunctionCallOutput,
 	}}}
 	if !rejectToolRequestsIfNeeded(group, withFunctionOutputItem) {
 		t.Fatalf("request with function_call_output item must be rejected")
@@ -168,33 +168,33 @@ func TestRejectToolRequestsIfNeeded(t *testing.T) {
 }
 
 // vision=false：image/audio/video 全部剥离，返回被剥离的模态集合；vision=true 不动。
-func TestFilterCanonicalMultimodalInputsIfNeeded(t *testing.T) {
+func TestFilterMaheshvaraMultimodalInputsIfNeeded(t *testing.T) {
 	group := &config.ModelGroupConfig{Name: "g", VisionCapable: boolPtr(false)}
-	request := &relay.CanonicalRequest{Model: "m", Messages: []relay.CanonicalMessage{{
+	request := &relay.MaheshvaraRequest{Model: "m", Messages: []relay.MaheshvaraMessage{{
 		Role: "user",
-		Content: []relay.CanonicalContentPart{
-			{Type: relay.CanonicalContentText},
-			{Type: relay.CanonicalContentImage},
-			{Type: relay.CanonicalContentAudio},
-			{Type: relay.CanonicalContentVideo},
+		Content: []relay.MaheshvaraContentPart{
+			{Type: relay.MaheshvaraContentText},
+			{Type: relay.MaheshvaraContentImage},
+			{Type: relay.MaheshvaraContentAudio},
+			{Type: relay.MaheshvaraContentVideo},
 		},
 	}}}
-	changed, parts, modalities := filterCanonicalMultimodalInputsIfNeeded(group, request)
+	changed, parts, modalities := filterMaheshvaraMultimodalInputsIfNeeded(group, request)
 	if !changed || parts != 3 {
 		t.Fatalf("expected 3 stripped parts, changed=%v parts=%d", changed, parts)
 	}
 	if len(modalities) != 3 || modalities[0] != "audio" || modalities[1] != "image" || modalities[2] != "video" {
 		t.Fatalf("modalities wrong: %v", modalities)
 	}
-	if len(request.Messages[0].Content) != 1 || request.Messages[0].Content[0].Type != relay.CanonicalContentText {
+	if len(request.Messages[0].Content) != 1 || request.Messages[0].Content[0].Type != relay.MaheshvaraContentText {
 		t.Fatalf("text part must be kept, got %+v", request.Messages[0].Content)
 	}
 
 	visionGroup := &config.ModelGroupConfig{Name: "g", VisionCapable: boolPtr(true)}
-	request2 := &relay.CanonicalRequest{Messages: []relay.CanonicalMessage{{
-		Content: []relay.CanonicalContentPart{{Type: relay.CanonicalContentImage}},
+	request2 := &relay.MaheshvaraRequest{Messages: []relay.MaheshvaraMessage{{
+		Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentImage}},
 	}}}
-	if changed, _, _ := filterCanonicalMultimodalInputsIfNeeded(visionGroup, request2); changed {
+	if changed, _, _ := filterMaheshvaraMultimodalInputsIfNeeded(visionGroup, request2); changed {
 		t.Fatalf("vision-capable group must not strip")
 	}
 }

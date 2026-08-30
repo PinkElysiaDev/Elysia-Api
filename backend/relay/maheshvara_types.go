@@ -14,76 +14,76 @@ const (
 )
 
 const (
-	CanonicalSignatureProviderAnthropic  = "anthropic"
-	CanonicalSignatureProviderGemini     = "gemini"
-	CanonicalSignatureProviderOpenAI     = "openai"
-	CanonicalSignatureProviderMaheshvara = "maheshvara"
+	MaheshvaraSignatureProviderAnthropic  = "anthropic"
+	MaheshvaraSignatureProviderGemini     = "gemini"
+	MaheshvaraSignatureProviderOpenAI     = "openai"
+	MaheshvaraSignatureProviderMaheshvara = "maheshvara"
 
-	// CanonicalAnnotationGeminiGrounding 是 Gemini groundingMetadata 在
-	// canonical annotations 里的包装键（值为原始 groundingMetadata 对象）。
-	CanonicalAnnotationGeminiGrounding = "gemini_grounding_metadata"
+	// MaheshvaraAnnotationGeminiGrounding 是 Gemini groundingMetadata 在
+	// maheshvara annotations 里的包装键（值为原始 groundingMetadata 对象）。
+	MaheshvaraAnnotationGeminiGrounding = "gemini_grounding_metadata"
 
-	CanonicalContentText       = "text"
-	CanonicalContentImage      = "image"
-	CanonicalContentAudio      = "audio"
-	CanonicalContentVideo      = "video"
-	CanonicalContentFile       = "file"
-	CanonicalContentDocument   = "document"
-	CanonicalContentToolOutput = "tool_output"
-	CanonicalContentToolCall   = "tool_call"
-	CanonicalContentReasoning  = "reasoning"
-	CanonicalContentRefusal    = "refusal"
+	MaheshvaraContentText       = "text"
+	MaheshvaraContentImage      = "image"
+	MaheshvaraContentAudio      = "audio"
+	MaheshvaraContentVideo      = "video"
+	MaheshvaraContentFile       = "file"
+	MaheshvaraContentDocument   = "document"
+	MaheshvaraContentToolOutput = "tool_output"
+	MaheshvaraContentToolCall   = "tool_call"
+	MaheshvaraContentReasoning  = "reasoning"
+	MaheshvaraContentRefusal    = "refusal"
 
-	CanonicalInputMessage            = "message"
-	CanonicalInputFunctionCallOutput = "function_call_output"
-	CanonicalInputItemReference      = "item_reference"
+	MaheshvaraInputMessage            = "message"
+	MaheshvaraInputFunctionCallOutput = "function_call_output"
+	MaheshvaraInputItemReference      = "item_reference"
 
-	CanonicalToolFunction           = "function"
-	CanonicalToolWebSearchPreview   = "web_search_preview"
-	CanonicalToolFileSearch         = "file_search"
-	CanonicalToolComputerUsePreview = "computer_use_preview"
-	CanonicalToolCodeInterpreter    = "code_interpreter"
-	CanonicalToolImageGeneration    = "image_generation"
+	MaheshvaraToolFunction           = "function"
+	MaheshvaraToolWebSearchPreview   = "web_search_preview"
+	MaheshvaraToolFileSearch         = "file_search"
+	MaheshvaraToolComputerUsePreview = "computer_use_preview"
+	MaheshvaraToolCodeInterpreter    = "code_interpreter"
+	MaheshvaraToolImageGeneration    = "image_generation"
 
-	CanonicalOutputMessage             = "message"
-	CanonicalOutputFunctionCall        = "function_call"
-	CanonicalOutputReasoning           = "reasoning"
-	CanonicalOutputWebSearchCall       = "web_search_call"
-	CanonicalOutputFileSearchCall      = "file_search_call"
-	CanonicalOutputImageGenerationCall = "image_generation_call"
+	MaheshvaraOutputMessage             = "message"
+	MaheshvaraOutputFunctionCall        = "function_call"
+	MaheshvaraOutputReasoning           = "reasoning"
+	MaheshvaraOutputWebSearchCall       = "web_search_call"
+	MaheshvaraOutputFileSearchCall      = "file_search_call"
+	MaheshvaraOutputImageGenerationCall = "image_generation_call"
 
-	CanonicalEventResponseCreated            = "response.created"
-	CanonicalEventResponseInProgress         = "response.in_progress"
-	CanonicalEventOutputItemAdded            = "response.output_item.added"
-	CanonicalEventContentPartAdded           = "response.content_part.added"
-	CanonicalEventContentPartDone            = "response.content_part.done"
-	CanonicalEventTextDelta                  = "response.output_text.delta"
-	CanonicalEventTextDone                   = "response.output_text.done"
-	CanonicalEventReasoningDelta             = "response.reasoning.delta"
-	CanonicalEventReasoningDone              = "response.reasoning.done"
-	CanonicalEventReasoningSummaryDelta      = "response.reasoning_summary_text.delta"
-	CanonicalEventReasoningSummaryDone       = "response.reasoning_summary_text.done"
-	CanonicalEventReasoningSignatureDelta    = "response.reasoning_signature.delta"
-	CanonicalEventRefusalDelta               = "response.refusal.delta"
-	CanonicalEventRefusalDone                = "response.refusal.done"
-	CanonicalEventFunctionCallAdded          = "response.function_call.added"
-	CanonicalEventFunctionCallArgumentsDelta = "response.function_call_arguments.delta"
-	CanonicalEventFunctionCallArgumentsDone  = "response.function_call_arguments.done"
-	CanonicalEventOutputItemDone             = "response.output_item.done"
-	CanonicalEventUsageDelta                 = "response.usage.delta"
-	// CanonicalEventAnnotationDelta 承载引用/出处标注增量（Claude
+	MaheshvaraEventResponseCreated            = "response.created"
+	MaheshvaraEventResponseInProgress         = "response.in_progress"
+	MaheshvaraEventOutputItemAdded            = "response.output_item.added"
+	MaheshvaraEventContentPartAdded           = "response.content_part.added"
+	MaheshvaraEventContentPartDone            = "response.content_part.done"
+	MaheshvaraEventTextDelta                  = "response.output_text.delta"
+	MaheshvaraEventTextDone                   = "response.output_text.done"
+	MaheshvaraEventReasoningDelta             = "response.reasoning.delta"
+	MaheshvaraEventReasoningDone              = "response.reasoning.done"
+	MaheshvaraEventReasoningSummaryDelta      = "response.reasoning_summary_text.delta"
+	MaheshvaraEventReasoningSummaryDone       = "response.reasoning_summary_text.done"
+	MaheshvaraEventReasoningSignatureDelta    = "response.reasoning_signature.delta"
+	MaheshvaraEventRefusalDelta               = "response.refusal.delta"
+	MaheshvaraEventRefusalDone                = "response.refusal.done"
+	MaheshvaraEventFunctionCallAdded          = "response.function_call.added"
+	MaheshvaraEventFunctionCallArgumentsDelta = "response.function_call_arguments.delta"
+	MaheshvaraEventFunctionCallArgumentsDone  = "response.function_call_arguments.done"
+	MaheshvaraEventOutputItemDone             = "response.output_item.done"
+	MaheshvaraEventUsageDelta                 = "response.usage.delta"
+	// MaheshvaraEventAnnotationDelta 承载引用/出处标注增量（Claude
 	// citations_delta 等），由各渲染器翻译回对应协议的合法事件。
-	CanonicalEventAnnotationDelta = "annotation.delta"
-	CanonicalEventResponseCompleted          = "response.completed"
-	CanonicalEventResponseFailed             = "response.failed"
+	MaheshvaraEventAnnotationDelta = "annotation.delta"
+	MaheshvaraEventResponseCompleted          = "response.completed"
+	MaheshvaraEventResponseFailed             = "response.failed"
 )
 
-type CanonicalRequest struct {
+type MaheshvaraRequest struct {
 	Model        string `json:"model"`
 	Instructions string `json:"instructions,omitempty"`
 
-	Messages   []CanonicalMessage   `json:"messages,omitempty"`
-	InputItems []CanonicalInputItem `json:"input_items,omitempty"`
+	Messages   []MaheshvaraMessage   `json:"messages,omitempty"`
+	InputItems []MaheshvaraInputItem `json:"input_items,omitempty"`
 
 	MaxOutputTokens int      `json:"max_output_tokens,omitempty"`
 	MinOutputTokens int      `json:"min_output_tokens,omitempty"`
@@ -105,22 +105,22 @@ type CanonicalRequest struct {
 	TopA              *float64 `json:"top_a,omitempty"`
 
 	Stream        bool                    `json:"stream,omitempty"`
-	StreamOptions *CanonicalStreamOptions `json:"stream_options,omitempty"`
+	StreamOptions *MaheshvaraStreamOptions `json:"stream_options,omitempty"`
 
-	Tools             []CanonicalTool `json:"tools,omitempty"`
+	Tools             []MaheshvaraTool `json:"tools,omitempty"`
 	ToolChoice        any             `json:"tool_choice,omitempty"`
 	ParallelToolCalls *bool           `json:"parallel_tool_calls,omitempty"`
 
-	ResponseFormat   *CanonicalResponseFormat `json:"response_format,omitempty"`
-	Reasoning        *CanonicalReasoning      `json:"reasoning,omitempty"`
-	Thinking         *CanonicalThinking       `json:"thinking,omitempty"`
+	ResponseFormat   *MaheshvaraResponseFormat `json:"response_format,omitempty"`
+	Reasoning        *MaheshvaraReasoning      `json:"reasoning,omitempty"`
+	Thinking         *MaheshvaraThinking       `json:"thinking,omitempty"`
 	Modalities       []string                 `json:"modalities,omitempty"`
-	Audio            *CanonicalAudioConfig    `json:"audio,omitempty"`
+	Audio            *MaheshvaraAudioConfig    `json:"audio,omitempty"`
 	Prediction       any                      `json:"prediction,omitempty"`
 	ServiceTier      string                   `json:"service_tier,omitempty"`
 	SafetyIdentifier string                   `json:"safety_identifier,omitempty"`
 	Verbosity        string                   `json:"verbosity,omitempty"`
-	SafetySettings   []CanonicalSafetySetting `json:"safety_settings,omitempty"`
+	SafetySettings   []MaheshvaraSafetySetting `json:"safety_settings,omitempty"`
 	CacheControl     any                      `json:"cache_control,omitempty"`
 
 	User     string         `json:"user,omitempty"`
@@ -143,25 +143,25 @@ type CanonicalRequest struct {
 	RawExtra map[string]json.RawMessage `json:"-"`
 }
 
-type CanonicalStreamOptions struct {
+type MaheshvaraStreamOptions struct {
 	IncludeUsage       bool           `json:"include_usage,omitempty"`
 	IncludeObfuscation *bool          `json:"include_obfuscation,omitempty"`
 	Raw                map[string]any `json:"raw,omitempty"`
 }
 
-type CanonicalMessage struct {
+type MaheshvaraMessage struct {
 	Role         string                     `json:"role"`
-	Content      []CanonicalContentPart     `json:"content,omitempty"`
-	ToolCalls    []CanonicalToolCall        `json:"tool_calls,omitempty"`
+	Content      []MaheshvaraContentPart     `json:"content,omitempty"`
+	ToolCalls    []MaheshvaraToolCall        `json:"tool_calls,omitempty"`
 	ToolCallID   string                     `json:"tool_call_id,omitempty"`
 	Name         string                     `json:"name,omitempty"`
-	Audio        *CanonicalAudioConfig      `json:"audio,omitempty"`
+	Audio        *MaheshvaraAudioConfig      `json:"audio,omitempty"`
 	CacheControl any                        `json:"cache_control,omitempty"`
 	Metadata     map[string]any             `json:"metadata,omitempty"`
 	RawExtra     map[string]json.RawMessage `json:"-"`
 }
 
-type CanonicalContentPart struct {
+type MaheshvaraContentPart struct {
 	Type string `json:"type"`
 
 	Text string `json:"text,omitempty"`
@@ -196,7 +196,7 @@ type CanonicalContentPart struct {
 	// 不认识密文的上游报错或误读。
 	EncryptedProvider string                      `json:"encrypted_provider,omitempty"`
 	EncryptedModel    string                      `json:"encrypted_model,omitempty"`
-	ReasoningSummary  []CanonicalReasoningSummary `json:"reasoning_summary,omitempty"`
+	ReasoningSummary  []MaheshvaraReasoningSummary `json:"reasoning_summary,omitempty"`
 	CacheControl      any                         `json:"cache_control,omitempty"`
 	// Citations 原样承载 Claude text block 的引用标注（来源出处脚注），
 	// 跨线不发明翻译，仅 Claude↔Claude 往返保真。
@@ -207,18 +207,18 @@ type CanonicalContentPart struct {
 	Raw any `json:"raw,omitempty"`
 }
 
-type CanonicalInputItem struct {
+type MaheshvaraInputItem struct {
 	Type      string                     `json:"type"`
 	Role      string                     `json:"role,omitempty"`
-	Content   []CanonicalContentPart     `json:"content,omitempty"`
+	Content   []MaheshvaraContentPart     `json:"content,omitempty"`
 	CallID    string                     `json:"call_id,omitempty"`
 	Output    string                     `json:"output,omitempty"`
 	ItemID    string                     `json:"item_id,omitempty"`
-	Reasoning *CanonicalReasoning        `json:"reasoning,omitempty"`
+	Reasoning *MaheshvaraReasoning        `json:"reasoning,omitempty"`
 	RawExtra  map[string]json.RawMessage `json:"-"`
 }
 
-type CanonicalTool struct {
+type MaheshvaraTool struct {
 	Type         string         `json:"type"`
 	Name         string         `json:"name,omitempty"`
 	Description  string         `json:"description,omitempty"`
@@ -235,7 +235,7 @@ type CanonicalTool struct {
 	Raw map[string]any `json:"raw,omitempty"`
 }
 
-type CanonicalToolCall struct {
+type MaheshvaraToolCall struct {
 	ID                       string          `json:"id,omitempty"`
 	Type                     string          `json:"type"`
 	Name                     string          `json:"name,omitempty"`
@@ -246,16 +246,16 @@ type CanonicalToolCall struct {
 	Raw                      map[string]any  `json:"raw,omitempty"`
 }
 
-type CanonicalReasoning struct {
+type MaheshvaraReasoning struct {
 	Effort           string                      `json:"effort,omitempty"`
 	Summary          string                      `json:"summary,omitempty"`
-	SummaryParts     []CanonicalReasoningSummary `json:"summary_parts,omitempty"`
+	SummaryParts     []MaheshvaraReasoningSummary `json:"summary_parts,omitempty"`
 	Text             string                      `json:"text,omitempty"`
 	EncryptedContent string                      `json:"encrypted_content,omitempty"`
 	Raw              map[string]any              `json:"raw,omitempty"`
 }
 
-type CanonicalThinking struct {
+type MaheshvaraThinking struct {
 	Enabled bool   `json:"enabled"`
 	Effort  string `json:"effort,omitempty"`
 	// BudgetTokens 是 Claude/Gemini 的固定思考预算；Adaptive 表示 Claude 4.5+
@@ -265,7 +265,7 @@ type CanonicalThinking struct {
 	IncludeSummary bool `json:"include_summary,omitempty"`
 }
 
-type CanonicalAudioConfig struct {
+type MaheshvaraAudioConfig struct {
 	Voice      string `json:"voice,omitempty"`
 	Format     string `json:"format,omitempty"`
 	Codec      string `json:"codec,omitempty"`
@@ -273,13 +273,13 @@ type CanonicalAudioConfig struct {
 	Channels   int    `json:"channels,omitempty"`
 }
 
-type CanonicalSafetySetting struct {
+type MaheshvaraSafetySetting struct {
 	Category  string `json:"category,omitempty"`
 	Threshold string `json:"threshold,omitempty"`
 	Action    string `json:"action,omitempty"`
 }
 
-type CanonicalResponseFormat struct {
+type MaheshvaraResponseFormat struct {
 	Type        string         `json:"type"`
 	Name        string         `json:"name,omitempty"`
 	Description string         `json:"description,omitempty"`
@@ -288,13 +288,13 @@ type CanonicalResponseFormat struct {
 	Raw         map[string]any `json:"raw,omitempty"`
 }
 
-type CanonicalResponse struct {
+type MaheshvaraResponse struct {
 	ID        string `json:"id"`
 	Model     string `json:"model"`
 	CreatedAt int64  `json:"created_at"`
 	Status    string `json:"status"`
 
-	Output []CanonicalOutputItem `json:"output,omitempty"`
+	Output []MaheshvaraOutputItem `json:"output,omitempty"`
 
 	StopReason        string         `json:"stop_reason,omitempty"`
 	IncompleteDetails map[string]any `json:"incomplete_details,omitempty"`
@@ -302,38 +302,38 @@ type CanonicalResponse struct {
 	ServiceTier       string         `json:"service_tier,omitempty"`
 	SystemFingerprint string         `json:"system_fingerprint,omitempty"`
 
-	Usage *CanonicalUsage `json:"usage,omitempty"`
-	Error *CanonicalError `json:"error,omitempty"`
+	Usage *MaheshvaraUsage `json:"usage,omitempty"`
+	Error *MaheshvaraError `json:"error,omitempty"`
 
 	RawExtra map[string]json.RawMessage `json:"-"`
 }
 
-type CanonicalOutputItem struct {
+type MaheshvaraOutputItem struct {
 	ID     string `json:"id,omitempty"`
 	Type   string `json:"type"`
 	Status string `json:"status,omitempty"`
 	Role   string `json:"role,omitempty"`
 
-	Content []CanonicalContentPart `json:"content,omitempty"`
+	Content []MaheshvaraContentPart `json:"content,omitempty"`
 
 	CallID    string              `json:"call_id,omitempty"`
 	Name      string              `json:"name,omitempty"`
 	Arguments json.RawMessage     `json:"arguments,omitempty"`
-	ToolCalls []CanonicalToolCall `json:"tool_calls,omitempty"`
-	Reasoning *CanonicalReasoning `json:"reasoning,omitempty"`
+	ToolCalls []MaheshvaraToolCall `json:"tool_calls,omitempty"`
+	Reasoning *MaheshvaraReasoning `json:"reasoning,omitempty"`
 
-	Summary  []CanonicalReasoningSummary `json:"summary,omitempty"`
+	Summary  []MaheshvaraReasoningSummary `json:"summary,omitempty"`
 	Metadata map[string]any              `json:"metadata,omitempty"`
 
 	Raw map[string]any `json:"raw,omitempty"`
 }
 
-type CanonicalReasoningSummary struct {
+type MaheshvaraReasoningSummary struct {
 	Type string `json:"type,omitempty"`
 	Text string `json:"text,omitempty"`
 }
 
-type CanonicalUsage struct {
+type MaheshvaraUsage struct {
 	InputTokens  int `json:"input_tokens"`
 	OutputTokens int `json:"output_tokens"`
 	TotalTokens  int `json:"total_tokens"`
@@ -373,7 +373,7 @@ type CanonicalUsage struct {
 	Provider string         `json:"provider,omitempty"`
 }
 
-type CanonicalError struct {
+type MaheshvaraError struct {
 	Message string         `json:"message"`
 	Type    string         `json:"type,omitempty"`
 	Param   string         `json:"param,omitempty"`
@@ -382,7 +382,7 @@ type CanonicalError struct {
 	Raw     map[string]any `json:"raw,omitempty"`
 }
 
-type CanonicalStreamEvent struct {
+type MaheshvaraStreamEvent struct {
 	Type string `json:"type"`
 
 	ResponseID string `json:"response_id,omitempty"`
@@ -419,29 +419,14 @@ type CanonicalStreamEvent struct {
 	Sequence                   int64  `json:"sequence,omitempty"`
 	CreatedAt                  int64  `json:"created_at,omitempty"`
 
-	Usage       *CanonicalUsage       `json:"usage,omitempty"`
-	Response    *CanonicalResponse    `json:"response,omitempty"`
-	OutputItem  *CanonicalOutputItem  `json:"output_item,omitempty"`
-	ContentPart *CanonicalContentPart `json:"content_part,omitempty"`
-	Error       *CanonicalError       `json:"error,omitempty"`
+	Usage       *MaheshvaraUsage       `json:"usage,omitempty"`
+	Response    *MaheshvaraResponse    `json:"response,omitempty"`
+	OutputItem  *MaheshvaraOutputItem  `json:"output_item,omitempty"`
+	ContentPart *MaheshvaraContentPart `json:"content_part,omitempty"`
+	Error       *MaheshvaraError       `json:"error,omitempty"`
 
 	Raw map[string]any `json:"raw,omitempty"`
 }
-
-// Maheshvara is the stable internal protocol name. These aliases preserve
-// the existing Canonical API while exposing the new protocol vocabulary.
-type MaheshvaraRequest = CanonicalRequest
-type MaheshvaraMessage = CanonicalMessage
-type MaheshvaraContentPart = CanonicalContentPart
-type MaheshvaraInputItem = CanonicalInputItem
-type MaheshvaraTool = CanonicalTool
-type MaheshvaraToolCall = CanonicalToolCall
-type MaheshvaraReasoning = CanonicalReasoning
-type MaheshvaraResponse = CanonicalResponse
-type MaheshvaraOutputItem = CanonicalOutputItem
-type MaheshvaraUsage = CanonicalUsage
-type MaheshvaraError = CanonicalError
-type MaheshvaraStreamEvent = CanonicalStreamEvent
 
 type OpenAIResponsesRequest struct {
 	Model        string          `json:"model"`
@@ -555,27 +540,7 @@ type ResponsesOutput struct {
 // 载荷字段完整保留，常规项（RawItem 为空）退化为普通结构体序列化。
 func (o ResponsesOutput) MarshalJSON() ([]byte, error) {
 	type alias ResponsesOutput
-	encoded, err := json.Marshal(alias(o))
-	if err != nil {
-		return nil, err
-	}
-	if len(o.RawItem) == 0 {
-		return encoded, nil
-	}
-	var typed map[string]any
-	if err := json.Unmarshal(encoded, &typed); err != nil {
-		return nil, err
-	}
-	merged := make(map[string]any, len(o.RawItem)+len(typed))
-	for key, value := range o.RawItem {
-		merged[key] = value
-	}
-	for key, value := range typed {
-		if value != nil {
-			merged[key] = value
-		}
-	}
-	return json.Marshal(merged)
+	return mergeRawOverTyped(o.RawItem, alias(o))
 }
 
 type ResponsesOutputContent struct {
@@ -623,24 +588,70 @@ type ResponsesStreamResponse struct {
 	Part         any                      `json:"part,omitempty"`
 }
 
-func contentPartsToInterface(parts []CanonicalContentPart) any {
+// deltaVsAccumulated 计算终态完整值相对已累计增量的差分：相等则无输出、
+// 是前缀则只补后缀、否则整体替换（调用方负责重置累计并输出 delta）。
+func deltaVsAccumulated(accumulated, complete string) (delta string, replaced bool) {
+	switch {
+	case complete == accumulated:
+		return "", false
+	case strings.HasPrefix(complete, accumulated):
+		return strings.TrimPrefix(complete, accumulated), false
+	default:
+		return complete, true
+	}
+}
+
+// mergeRawOverTyped 把类型化值序列化后与原始对象合并：原始对象为底、
+// 类型化的非空字段覆盖其上（服务端工具项载荷 / usage 未知键等往返保真的
+// 统一机制）。raw 为空时退化为普通序列化。
+func mergeRawOverTyped(raw map[string]any, typed any) ([]byte, error) {
+	encoded, err := json.Marshal(typed)
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) == 0 {
+		return encoded, nil
+	}
+	var typedMap map[string]any
+	if err := json.Unmarshal(encoded, &typedMap); err != nil {
+		return nil, err
+	}
+	merged := make(map[string]any, len(raw)+len(typedMap))
+	for key, value := range raw {
+		merged[key] = value
+	}
+	for key, value := range typedMap {
+		if value != nil {
+			merged[key] = value
+		}
+	}
+	return json.Marshal(merged)
+}
+
+// joinBasePath 规范化拼接上游基地址与路径：去空白、去尾部斜杠后拼接，
+// 是各适配器 endpoint 构造的统一入口。
+func joinBasePath(baseURL, path string) string {
+	return strings.TrimRight(strings.TrimSpace(baseURL), "/") + path
+}
+
+func contentPartsToInterface(parts []MaheshvaraContentPart) any {
 	if len(parts) == 0 {
 		return ""
 	}
-	if len(parts) == 1 && parts[0].Type == CanonicalContentText && len(parts[0].Annotations) == 0 {
+	if len(parts) == 1 && parts[0].Type == MaheshvaraContentText && len(parts[0].Annotations) == 0 {
 		return parts[0].Text
 	}
 	out := make([]any, 0, len(parts))
 	for _, part := range parts {
 		switch part.Type {
-		case CanonicalContentText:
+		case MaheshvaraContentText:
 			textPart := map[string]any{"type": "text", "text": part.Text}
 			if len(part.Annotations) > 0 {
 				// 出处标注（url_citation / grounding 包装等）原样随文本下发。
 				textPart["annotations"] = part.Annotations
 			}
 			out = append(out, textPart)
-		case CanonicalContentImage:
+		case MaheshvaraContentImage:
 			if url := imagePartToOpenAIURL(part); url != "" {
 				image := map[string]any{"url": url}
 				if part.Detail != "" {
@@ -648,7 +659,7 @@ func contentPartsToInterface(parts []CanonicalContentPart) any {
 				}
 				out = append(out, map[string]any{"type": "image_url", "image_url": image})
 			}
-		case CanonicalContentAudio:
+		case MaheshvaraContentAudio:
 			// OpenAI Chat 协议要求 input_audio.data 为裸 base64、format 为
 			// mp3/wav 短格式；data: URI 或完整 MIME 会被上游校验拒绝。
 			data := firstNonEmptyString(part.AudioBase64, part.Data)
@@ -662,7 +673,7 @@ func contentPartsToInterface(parts []CanonicalContentPart) any {
 			if data != "" {
 				out = append(out, map[string]any{"type": "input_audio", "input_audio": map[string]any{"data": data, "format": audioFormatFromMediaType(mediaType)}})
 			}
-		case CanonicalContentVideo:
+		case MaheshvaraContentVideo:
 			url := firstNonEmptyString(part.VideoURL, part.URI)
 			if url == "" && part.VideoBase64 != "" {
 				url = "data:" + firstNonEmptyString(part.MediaType, part.MimeType, "video/mp4") + ";base64," + part.VideoBase64
@@ -670,7 +681,7 @@ func contentPartsToInterface(parts []CanonicalContentPart) any {
 			if url != "" {
 				out = append(out, map[string]any{"type": "video_url", "video_url": map[string]any{"url": url}})
 			}
-		case CanonicalContentFile, CanonicalContentDocument:
+		case MaheshvaraContentFile, MaheshvaraContentDocument:
 			file := map[string]any{"type": "file"}
 			if part.FileID != "" {
 				file["file_id"] = part.FileID
@@ -690,16 +701,16 @@ func contentPartsToInterface(parts []CanonicalContentPart) any {
 			if len(file) > 1 {
 				out = append(out, file)
 			}
-		case CanonicalContentReasoning:
+		case MaheshvaraContentReasoning:
 			text := firstNonEmptyString(part.ReasoningText, part.Text)
 			if text != "" {
 				out = append(out, map[string]any{"type": "text", "text": text, "thought": true})
 			}
-		case CanonicalContentToolOutput:
+		case MaheshvaraContentToolOutput:
 			if part.ToolOutput != "" {
 				out = append(out, map[string]any{"type": "text", "text": part.ToolOutput})
 			}
-		case CanonicalContentRefusal:
+		case MaheshvaraContentRefusal:
 			if part.Text != "" {
 				out = append(out, map[string]any{"type": "text", "text": part.Text})
 			}
@@ -707,7 +718,7 @@ func contentPartsToInterface(parts []CanonicalContentPart) any {
 			// 未知 part 的裸透传仅限 OpenAI 线已知的内容 part 类型——把 Claude
 			// 的 server_tool_use 等块原样发给 OpenAI 系上游会成为非法 content
 			// part（严格上游 400）。跨线的协议专属块在此丢弃；同线回放由
-			// canonicalMessagesToClaude 的 default 分支负责。
+			// maheshvaraMessagesToClaude 的 default 分支负责。
 			if raw, ok := part.Raw.(map[string]any); ok && isOpenAIContentPartType(stringValue(raw["type"])) {
 				out = append(out, raw)
 			}
@@ -756,21 +767,21 @@ func audioFormatFromMediaType(mediaType string) string {
 	}
 }
 
-func interfaceToContentParts(content any) []CanonicalContentPart {
+func interfaceToContentParts(content any) []MaheshvaraContentPart {
 	if content == nil {
 		return nil
 	}
 	if s, ok := content.(string); ok {
-		return []CanonicalContentPart{{Type: CanonicalContentText, Text: s}}
+		return []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: s}}
 	}
 	if object, ok := content.(map[string]any); ok {
 		return interfaceToContentParts([]any{object})
 	}
 	arr, ok := content.([]any)
 	if !ok {
-		return []CanonicalContentPart{{Type: CanonicalContentText, Text: fmt.Sprintf("%v", content)}}
+		return []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: fmt.Sprintf("%v", content)}}
 	}
-	parts := make([]CanonicalContentPart, 0, len(arr))
+	parts := make([]MaheshvaraContentPart, 0, len(arr))
 	for _, item := range arr {
 		m, ok := item.(map[string]any)
 		if !ok {
@@ -780,11 +791,11 @@ func interfaceToContentParts(content any) []CanonicalContentPart {
 		switch t {
 		case "text", "input_text", "output_text":
 			text, _ := m["text"].(string)
-			parts = append(parts, CanonicalContentPart{Type: CanonicalContentText, Text: text, Raw: m})
+			parts = append(parts, MaheshvaraContentPart{Type: MaheshvaraContentText, Text: text, Raw: m})
 		case "reasoning", "thinking", "reasoning_content":
 			text := firstNonEmptyString(stringValue(m["text"]), stringValue(m["thinking"]), stringValue(m["content"]))
 			if text != "" {
-				parts = append(parts, CanonicalContentPart{Type: CanonicalContentReasoning, Text: text, ReasoningText: text, Thought: true, Raw: m})
+				parts = append(parts, MaheshvaraContentPart{Type: MaheshvaraContentReasoning, Text: text, ReasoningText: text, Thought: true, Raw: m})
 			}
 		case "image_url", "input_image", "image":
 			url := ""
@@ -794,7 +805,7 @@ func interfaceToContentParts(content any) []CanonicalContentPart {
 			if url == "" {
 				url, _ = m["image_url"].(string)
 			}
-			parts = append(parts, CanonicalContentPart{Type: CanonicalContentImage, ImageURL: url, Raw: m})
+			parts = append(parts, MaheshvaraContentPart{Type: MaheshvaraContentImage, ImageURL: url, Raw: m})
 		case "input_audio", "audio", "audio_url", "output_audio":
 			nested, _ := m["input_audio"].(map[string]any)
 			if nested == nil {
@@ -811,8 +822,8 @@ func interfaceToContentParts(content any) []CanonicalContentPart {
 					mediaVal = uriMime
 				}
 			}
-			parts = append(parts, CanonicalContentPart{
-				Type:        CanonicalContentAudio,
+			parts = append(parts, MaheshvaraContentPart{
+				Type:        MaheshvaraContentAudio,
 				AudioURL:    firstNonEmptyString(stringValue(m["audio_url"]), stringValue(nested["url"]), stringValue(nested["audio_url"])),
 				AudioBase64: dataVal,
 				Data:        dataVal,
@@ -825,11 +836,11 @@ func interfaceToContentParts(content any) []CanonicalContentPart {
 			if nested, ok := m["video_url"].(map[string]any); ok {
 				videoURL = stringValue(nested["url"])
 			}
-			parts = append(parts, CanonicalContentPart{Type: CanonicalContentVideo, VideoURL: videoURL, URI: videoURL, Raw: m})
+			parts = append(parts, MaheshvaraContentPart{Type: MaheshvaraContentVideo, VideoURL: videoURL, URI: videoURL, Raw: m})
 		case "input_file", "file":
 			file, _ := m["file"].(map[string]any)
-			parts = append(parts, CanonicalContentPart{
-				Type:     CanonicalContentFile,
+			parts = append(parts, MaheshvaraContentPart{
+				Type:     MaheshvaraContentFile,
 				FileID:   firstNonEmptyString(stringValue(m["file_id"]), stringValue(file["file_id"]), stringValue(file["id"])),
 				FileName: firstNonEmptyString(stringValue(m["filename"]), stringValue(file["filename"]), stringValue(file["name"])),
 				FileData: firstNonEmptyString(stringValue(m["file_data"]), stringValue(file["file_data"]), stringValue(file["data"])),
@@ -837,22 +848,22 @@ func interfaceToContentParts(content any) []CanonicalContentPart {
 				Raw:      m,
 			})
 		case "document":
-			parts = append(parts, CanonicalContentPart{Type: CanonicalContentDocument, FileID: stringValue(m["file_id"]), FileName: stringValue(m["filename"]), FileData: stringValue(m["file_data"]), Raw: m})
+			parts = append(parts, MaheshvaraContentPart{Type: MaheshvaraContentDocument, FileID: stringValue(m["file_id"]), FileName: stringValue(m["filename"]), FileData: stringValue(m["file_data"]), Raw: m})
 		case "refusal":
-			parts = append(parts, CanonicalContentPart{Type: CanonicalContentRefusal, Text: firstNonEmptyString(stringValue(m["refusal"]), stringValue(m["text"])), Raw: m})
+			parts = append(parts, MaheshvaraContentPart{Type: MaheshvaraContentRefusal, Text: firstNonEmptyString(stringValue(m["refusal"]), stringValue(m["text"])), Raw: m})
 		case "tool_result", "function_response":
-			parts = append(parts, CanonicalContentPart{Type: CanonicalContentToolOutput, ToolCallID: firstNonEmptyString(stringValue(m["tool_call_id"]), stringValue(m["call_id"])), ToolOutput: firstNonEmptyString(contentValueToString(m["content"]), contentValueToString(m["output"]), contentValueToString(m["response"])), Raw: m})
+			parts = append(parts, MaheshvaraContentPart{Type: MaheshvaraContentToolOutput, ToolCallID: firstNonEmptyString(stringValue(m["tool_call_id"]), stringValue(m["call_id"])), ToolOutput: firstNonEmptyString(contentValueToString(m["content"]), contentValueToString(m["output"]), contentValueToString(m["response"])), Raw: m})
 		default:
-			parts = append(parts, CanonicalContentPart{Type: t, Raw: m})
+			parts = append(parts, MaheshvaraContentPart{Type: t, Raw: m})
 		}
 	}
 	return parts
 }
 
-func canonicalText(parts []CanonicalContentPart) string {
+func maheshvaraText(parts []MaheshvaraContentPart) string {
 	var b strings.Builder
 	for _, part := range parts {
-		if part.Type == CanonicalContentText {
+		if part.Type == MaheshvaraContentText {
 			b.WriteString(part.Text)
 		}
 	}
@@ -873,6 +884,6 @@ func contentValueToString(value any) string {
 	return string(encoded)
 }
 
-func newCanonicalResponseID(prefix string) string {
+func newMaheshvaraResponseID(prefix string) string {
 	return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
 }

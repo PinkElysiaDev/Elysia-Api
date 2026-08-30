@@ -8,12 +8,12 @@ func (decoder *MaheshvaraStreamDecoder) decodeAnthropic(raw map[string]any) ([]M
 		message := mapValue(raw["message"])
 		decoder.responseID = firstNonEmptyString(stringValue(message["id"]), decoder.responseID)
 		decoder.model = firstNonEmptyString(stringValue(message["model"]), decoder.model)
-		event := decoder.baseEvent(CanonicalEventResponseCreated, raw)
+		event := decoder.baseEvent(MaheshvaraEventResponseCreated, raw)
 		event.Role = firstNonEmptyString(stringValue(message["role"]), "assistant")
 		event.Status = "in_progress"
 		events = append(events, event)
-		if usage := canonicalUsageFromRawMap(mapValue(message["usage"])); usage != nil {
-			usageEvent := decoder.baseEvent(CanonicalEventUsageDelta, raw)
+		if usage := maheshvaraUsageFromRawMap(mapValue(message["usage"])); usage != nil {
+			usageEvent := decoder.baseEvent(MaheshvaraEventUsageDelta, raw)
 			usageEvent.Usage = usage
 			events = append(events, usageEvent)
 		}
@@ -28,35 +28,35 @@ func (decoder *MaheshvaraStreamDecoder) decodeAnthropic(raw map[string]any) ([]M
 		decoder.anthropicBlocks[index] = block
 		switch block.typeName {
 		case "tool_use", "server_tool_use":
-			event := decoder.baseEvent(CanonicalEventFunctionCallAdded, raw)
+			event := decoder.baseEvent(MaheshvaraEventFunctionCallAdded, raw)
 			event.ContentIndex = index
 			event.ToolCallIndex = index
 			event.ToolCallID = block.id
 			event.ToolName = block.name
 			events = append(events, event)
 		case "thinking":
-			part := CanonicalContentPart{Type: CanonicalContentReasoning, Thought: true, SignatureProvider: CanonicalSignatureProviderAnthropic, Raw: blockValue}
-			event := decoder.baseEvent(CanonicalEventContentPartAdded, raw)
+			part := MaheshvaraContentPart{Type: MaheshvaraContentReasoning, Thought: true, SignatureProvider: MaheshvaraSignatureProviderAnthropic, Raw: blockValue}
+			event := decoder.baseEvent(MaheshvaraEventContentPartAdded, raw)
 			event.ContentIndex = index
 			event.ContentPart = &part
 			events = append(events, event)
 		case "redacted_thinking":
 			if envelope, ok := decodeMaheshvaraReasoningEnvelope(stringValue(blockValue["data"])); ok {
-				part := CanonicalContentPart{Type: CanonicalContentReasoning, Thought: true, ReasoningText: envelope.Text, Text: envelope.Text, SignatureProvider: CanonicalSignatureProviderMaheshvara, EncryptedContent: envelope.EncryptedContent, EncryptedProvider: envelope.Provider, EncryptedModel: envelope.Model, ReasoningSummary: envelope.Summary, Raw: blockValue}
-				event := decoder.baseEvent(CanonicalEventContentPartAdded, raw)
+				part := MaheshvaraContentPart{Type: MaheshvaraContentReasoning, Thought: true, ReasoningText: envelope.Text, Text: envelope.Text, SignatureProvider: MaheshvaraSignatureProviderMaheshvara, EncryptedContent: envelope.EncryptedContent, EncryptedProvider: envelope.Provider, EncryptedModel: envelope.Model, ReasoningSummary: envelope.Summary, Raw: blockValue}
+				event := decoder.baseEvent(MaheshvaraEventContentPartAdded, raw)
 				event.ContentIndex = index
 				event.ContentPart = &part
 				events = append(events, event)
 			}
 		case "text":
-			part := CanonicalContentPart{Type: CanonicalContentText, Raw: blockValue}
-			event := decoder.baseEvent(CanonicalEventContentPartAdded, raw)
+			part := MaheshvaraContentPart{Type: MaheshvaraContentText, Raw: blockValue}
+			event := decoder.baseEvent(MaheshvaraEventContentPartAdded, raw)
 			event.ContentIndex = index
 			event.ContentPart = &part
 			events = append(events, event)
 		default:
-			part := CanonicalContentPart{Type: block.typeName, Raw: blockValue}
-			event := decoder.baseEvent(CanonicalEventContentPartAdded, raw)
+			part := MaheshvaraContentPart{Type: block.typeName, Raw: blockValue}
+			event := decoder.baseEvent(MaheshvaraEventContentPartAdded, raw)
 			event.ContentIndex = index
 			event.ContentPart = &part
 			events = append(events, event)
@@ -68,24 +68,24 @@ func (decoder *MaheshvaraStreamDecoder) decodeAnthropic(raw map[string]any) ([]M
 		switch stringValue(delta["type"]) {
 		case "text_delta":
 			if text := stringValue(delta["text"]); text != "" {
-				event := decoder.baseEvent(CanonicalEventTextDelta, raw)
+				event := decoder.baseEvent(MaheshvaraEventTextDelta, raw)
 				event.ContentIndex = index
 				event.Delta = text
 				events = append(events, event)
 			}
 		case "thinking_delta":
 			if text := stringValue(delta["thinking"]); text != "" {
-				event := decoder.baseEvent(CanonicalEventReasoningDelta, raw)
+				event := decoder.baseEvent(MaheshvaraEventReasoningDelta, raw)
 				event.ContentIndex = index
 				event.ReasoningDelta = text
 				events = append(events, event)
 			}
 		case "signature_delta":
 			if signature := stringValue(delta["signature"]); signature != "" {
-				event := decoder.baseEvent(CanonicalEventReasoningSignatureDelta, raw)
+				event := decoder.baseEvent(MaheshvaraEventReasoningSignatureDelta, raw)
 				event.ContentIndex = index
 				event.ReasoningSignatureDelta = signature
-				event.ReasoningSignatureProvider = CanonicalSignatureProviderAnthropic
+				event.ReasoningSignatureProvider = MaheshvaraSignatureProviderAnthropic
 				events = append(events, event)
 			}
 		case "input_json_delta":
@@ -94,7 +94,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeAnthropic(raw map[string]any) ([]M
 				block.arguments.WriteString(arguments)
 			}
 			if arguments != "" {
-				event := decoder.baseEvent(CanonicalEventFunctionCallArgumentsDelta, raw)
+				event := decoder.baseEvent(MaheshvaraEventFunctionCallArgumentsDelta, raw)
 				event.ContentIndex = index
 				event.ToolCallIndex = index
 				if block != nil {
@@ -110,7 +110,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeAnthropic(raw map[string]any) ([]M
 				// 引用标注不生成独立 part（空文本 part 在部分渲染器会被当作
 				// 畸形块原样回放）；挂到事件 Annotations 载体，由 Claude 渲染器
 				// 在对应文本块收尾前发合法的 citations_delta。
-				event := decoder.baseEvent(CanonicalEventAnnotationDelta, raw)
+				event := decoder.baseEvent(MaheshvaraEventAnnotationDelta, raw)
 				event.ContentIndex = index
 				event.Annotations = []map[string]any{citation}
 				events = append(events, event)
@@ -119,7 +119,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeAnthropic(raw map[string]any) ([]M
 	case "content_block_stop":
 		index := intValue(raw["index"])
 		if block := decoder.anthropicBlocks[index]; block != nil && (block.typeName == "tool_use" || block.typeName == "server_tool_use") {
-			event := decoder.baseEvent(CanonicalEventFunctionCallArgumentsDone, raw)
+			event := decoder.baseEvent(MaheshvaraEventFunctionCallArgumentsDone, raw)
 			event.ContentIndex = index
 			event.ToolCallIndex = index
 			event.ToolCallID = block.id
@@ -127,12 +127,12 @@ func (decoder *MaheshvaraStreamDecoder) decodeAnthropic(raw map[string]any) ([]M
 			event.ToolArgumentsDone = firstNonEmptyString(block.arguments.String(), "{}")
 			events = append(events, event)
 		}
-		event := decoder.baseEvent(CanonicalEventOutputItemDone, raw)
+		event := decoder.baseEvent(MaheshvaraEventOutputItemDone, raw)
 		event.ContentIndex = index
 		events = append(events, event)
 	case "message_delta":
-		if usage := canonicalUsageFromRawMap(mapValue(raw["usage"])); usage != nil {
-			usageEvent := decoder.baseEvent(CanonicalEventUsageDelta, raw)
+		if usage := maheshvaraUsageFromRawMap(mapValue(raw["usage"])); usage != nil {
+			usageEvent := decoder.baseEvent(MaheshvaraEventUsageDelta, raw)
 			usageEvent.Usage = usage
 			events = append(events, usageEvent)
 		}
@@ -140,7 +140,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeAnthropic(raw map[string]any) ([]M
 		if finishReason := stringValue(delta["stop_reason"]); finishReason != "" {
 			decoder.sawFinishReason = true
 			decoder.terminal = true
-			event := decoder.baseEvent(CanonicalEventResponseCompleted, raw)
+			event := decoder.baseEvent(MaheshvaraEventResponseCompleted, raw)
 			event.FinishReason = finishReason
 			event.StopSequence = stringValue(delta["stop_sequence"])
 			events = append(events, event)
@@ -148,13 +148,13 @@ func (decoder *MaheshvaraStreamDecoder) decodeAnthropic(raw map[string]any) ([]M
 	case "message_stop":
 		if !decoder.terminal {
 			decoder.terminal = true
-			events = append(events, decoder.baseEvent(CanonicalEventResponseCompleted, raw))
+			events = append(events, decoder.baseEvent(MaheshvaraEventResponseCompleted, raw))
 		}
 	case "error":
 		decoder.terminal = true
 		errorValue := mapValue(raw["error"])
-		event := decoder.baseEvent(CanonicalEventResponseFailed, raw)
-		event.Error = &CanonicalError{Message: firstNonEmptyString(stringValue(errorValue["message"]), "Anthropic stream error"), Type: stringValue(errorValue["type"]), Raw: errorValue}
+		event := decoder.baseEvent(MaheshvaraEventResponseFailed, raw)
+		event.Error = &MaheshvaraError{Message: firstNonEmptyString(stringValue(errorValue["message"]), "Anthropic stream error"), Type: stringValue(errorValue["type"]), Raw: errorValue}
 		events = append(events, event)
 	case "ping":
 		return nil, nil

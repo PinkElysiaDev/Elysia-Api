@@ -8,7 +8,7 @@ import (
 
 // 批次五回归：Usage 保真——Claude 双 TTL 桶、模态明细双向、未知计数键透传。
 
-// Claude 缓存写入的 ephemeral_5m/1h 双桶经 canonical 往返不丢。
+// Claude 缓存写入的 ephemeral_5m/1h 双桶经 maheshvara 往返不丢。
 func TestClaudeCacheCreationTiersRoundTrip(t *testing.T) {
 	var resp ClaudeResponse
 	body := `{"id":"m","model":"c","stop_reason":"end_turn","role":"assistant","content":[{"type":"text","text":"ok"}],` +
@@ -17,14 +17,14 @@ func TestClaudeCacheCreationTiersRoundTrip(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	canonical, err := AnthropicResponseToMaheshvara(&resp)
+	maheshvara, err := AnthropicResponseToMaheshvara(&resp)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if canonical.Usage.CacheCreation5mTokens != 15 || canonical.Usage.CacheCreation1hTokens != 5 {
-		t.Fatalf("cache creation tiers lost: %+v", canonical.Usage)
+	if maheshvara.Usage.CacheCreation5mTokens != 15 || maheshvara.Usage.CacheCreation1hTokens != 5 {
+		t.Fatalf("cache creation tiers lost: %+v", maheshvara.Usage)
 	}
-	rendered, err := MaheshvaraToAnthropicResponse(canonical)
+	rendered, err := MaheshvaraToAnthropicResponse(maheshvara)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -47,11 +47,11 @@ func TestChatModalityDetailsAndUnknownUsageKeys(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	canonical, err := OpenAIChatResponseToMaheshvara(&resp)
+	maheshvara, err := OpenAIChatResponseToMaheshvara(&resp)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	u := canonical.Usage
+	u := maheshvara.Usage
 	if u.TextInputTokens != 80 || u.AudioInputTokens != 10 || u.ImageInputTokens != 10 ||
 		u.TextOutputTokens != 30 || u.CachedInputTokens != 40 {
 		t.Fatalf("modality details lost: %+v", u)
@@ -59,7 +59,7 @@ func TestChatModalityDetailsAndUnknownUsageKeys(t *testing.T) {
 	if u.Raw["vendor_custom_counter"] == nil {
 		t.Fatalf("unknown usage key not retained: %+v", u.Raw)
 	}
-	rendered, err := MaheshvaraToOpenAIChatResponse(canonical)
+	rendered, err := MaheshvaraToOpenAIChatResponse(maheshvara)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestChatModalityDetailsAndUnknownUsageKeys(t *testing.T) {
 	}
 }
 
-// Gemini 模态明细经 canonical 到 Chat 目标下发。
+// Gemini 模态明细经 maheshvara 到 Chat 目标下发。
 func TestGeminiModalityDetailsToChat(t *testing.T) {
 	resp := &GeminiResponse{
 		ResponseID: "g", ModelVersion: "gem",
@@ -85,11 +85,11 @@ func TestGeminiModalityDetailsToChat(t *testing.T) {
 			CandidatesTokensDetails: []GeminiTokenDetail{{Modality: "TEXT", TokenCount: 50}},
 		},
 	}
-	canonical, err := GeminiResponseToMaheshvara(resp)
+	maheshvara, err := GeminiResponseToMaheshvara(resp)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	rendered, err := MaheshvaraToOpenAIChatResponse(canonical)
+	rendered, err := MaheshvaraToOpenAIChatResponse(maheshvara)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}

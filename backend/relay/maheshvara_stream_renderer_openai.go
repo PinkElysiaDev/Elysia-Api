@@ -35,28 +35,28 @@ func (renderer *MaheshvaraStreamRenderer) writeOpenAIChat(event *MaheshvaraStrea
 	}
 	choiceIndex := event.ChoiceIndex
 	switch event.Type {
-	case CanonicalEventResponseCreated, CanonicalEventResponseInProgress:
+	case MaheshvaraEventResponseCreated, MaheshvaraEventResponseInProgress:
 		if event.Role == "" || renderer.openAI.roleSent[choiceIndex] {
 			return nil
 		}
 		return renderer.writeOpenAIChatChunk(choiceIndex, map[string]any{"role": event.Role}, "", nil)
-	case CanonicalEventUsageDelta:
+	case MaheshvaraEventUsageDelta:
 		return renderer.writeOpenAIChatChunk(choiceIndex, nil, "", renderer.usage)
-	case CanonicalEventTextDelta:
+	case MaheshvaraEventTextDelta:
 		if event.Delta == "" {
 			return nil
 		}
 		return renderer.writeOpenAIChatChunk(choiceIndex, map[string]any{"content": event.Delta}, "", nil)
-	case CanonicalEventReasoningDelta, CanonicalEventReasoningSummaryDelta:
+	case MaheshvaraEventReasoningDelta, MaheshvaraEventReasoningSummaryDelta:
 		if event.ReasoningDelta == "" {
 			return nil
 		}
 		return renderer.writeOpenAIChatChunk(choiceIndex, map[string]any{"reasoning_content": event.ReasoningDelta}, "", nil)
-	case CanonicalEventReasoningSignatureDelta:
+	case MaheshvaraEventReasoningSignatureDelta:
 		if event.ReasoningSignatureDelta == "" {
 			return nil
 		}
-		if signature := canonicalSignatureForProvider(event.ReasoningSignatureDelta, event.ReasoningSignatureProvider, CanonicalSignatureProviderGemini); signature != "" {
+		if signature := maheshvaraSignatureForProvider(event.ReasoningSignatureDelta, event.ReasoningSignatureProvider, MaheshvaraSignatureProviderGemini); signature != "" {
 			renderer.openAI.pendingGeminiSignatures[choiceIndex] += signature
 		}
 		delta := map[string]any{"reasoning_signature": event.ReasoningSignatureDelta}
@@ -64,28 +64,28 @@ func (renderer *MaheshvaraStreamRenderer) writeOpenAIChat(event *MaheshvaraStrea
 			delta["reasoning_signature_provider"] = event.ReasoningSignatureProvider
 		}
 		return renderer.writeOpenAIChatChunk(choiceIndex, delta, "", nil)
-	case CanonicalEventRefusalDelta:
+	case MaheshvaraEventRefusalDelta:
 		if event.RefusalDelta == "" {
 			return nil
 		}
 		return renderer.writeOpenAIChatChunk(choiceIndex, map[string]any{"refusal": event.RefusalDelta}, "", nil)
-	case CanonicalEventContentPartAdded:
-		content := canonicalPartToOpenAIStreamContent(event.ContentPart)
+	case MaheshvaraEventContentPartAdded:
+		content := maheshvaraPartToOpenAIStreamContent(event.ContentPart)
 		if content == nil {
 			return nil
 		}
 		return renderer.writeOpenAIChatChunk(choiceIndex, map[string]any{"content": []any{content}}, "", nil)
-	case CanonicalEventFunctionCallAdded, CanonicalEventFunctionCallArgumentsDelta, CanonicalEventFunctionCallArgumentsDone:
+	case MaheshvaraEventFunctionCallAdded, MaheshvaraEventFunctionCallArgumentsDelta, MaheshvaraEventFunctionCallArgumentsDone:
 		return renderer.writeOpenAIToolEvent(event)
-	case CanonicalEventOutputItemAdded:
-		if event.OutputItem != nil && event.OutputItem.Type == CanonicalOutputFunctionCall {
+	case MaheshvaraEventOutputItemAdded:
+		if event.OutputItem != nil && event.OutputItem.Type == MaheshvaraOutputFunctionCall {
 			copy := *event
-			copy.Type = CanonicalEventFunctionCallAdded
+			copy.Type = MaheshvaraEventFunctionCallAdded
 			copy.ToolCallID = firstNonEmptyString(copy.ToolCallID, event.OutputItem.CallID)
 			copy.ToolName = firstNonEmptyString(copy.ToolName, event.OutputItem.Name)
 			return renderer.writeOpenAIToolEvent(&copy)
 		}
-	case CanonicalEventResponseCompleted:
+	case MaheshvaraEventResponseCompleted:
 		if renderer.openAI.finishSent[choiceIndex] {
 			return nil
 		}
@@ -120,31 +120,26 @@ func (renderer *MaheshvaraStreamRenderer) writeOpenAIToolEvent(event *Maheshvara
 	state.name = firstNonEmptyString(event.ToolName, state.name)
 	argumentDelta := event.ToolArgumentsDelta
 	if event.ToolArgumentsDone != "" {
-		complete := event.ToolArgumentsDone
-		current := state.arguments.String()
-		switch {
-		case complete == current:
-			argumentDelta = ""
-		case strings.HasPrefix(complete, current):
-			argumentDelta = strings.TrimPrefix(complete, current)
-		default:
-			argumentDelta = complete
+		if delta, replaced := deltaVsAccumulated(state.arguments.String(), event.ToolArgumentsDone); replaced {
+			argumentDelta = delta
+		} else {
+			argumentDelta = delta
 		}
 	}
 	if argumentDelta != "" {
 		state.arguments.WriteString(argumentDelta)
 	}
 	function := map[string]any{}
-	if state.name != "" && event.Type == CanonicalEventFunctionCallAdded {
+	if state.name != "" && event.Type == MaheshvaraEventFunctionCallAdded {
 		function["name"] = state.name
 	}
 	if argumentDelta != "" {
 		function["arguments"] = argumentDelta
-	} else if event.Type == CanonicalEventFunctionCallAdded {
+	} else if event.Type == MaheshvaraEventFunctionCallAdded {
 		function["arguments"] = ""
 	}
 	toolCall := map[string]any{"index": index, "type": "function", "function": function}
-	if event.Type == CanonicalEventFunctionCallAdded {
+	if event.Type == MaheshvaraEventFunctionCallAdded {
 		if signature := renderer.openAI.pendingGeminiSignatures[event.ChoiceIndex]; signature != "" {
 			toolCall["extra_content"] = map[string]any{"google": map[string]any{"thought_signature": signature}}
 			delete(renderer.openAI.pendingGeminiSignatures, event.ChoiceIndex)
@@ -157,7 +152,7 @@ func (renderer *MaheshvaraStreamRenderer) writeOpenAIToolEvent(event *Maheshvara
 	return renderer.writeOpenAIChatChunk(event.ChoiceIndex, map[string]any{"tool_calls": []any{toolCall}}, "", nil)
 }
 
-func (renderer *MaheshvaraStreamRenderer) writeOpenAIChatChunk(choiceIndex int, delta map[string]any, finishReason string, usage *CanonicalUsage) error {
+func (renderer *MaheshvaraStreamRenderer) writeOpenAIChatChunk(choiceIndex int, delta map[string]any, finishReason string, usage *MaheshvaraUsage) error {
 	chunk := map[string]any{
 		"id":      renderer.responseID,
 		"object":  "chat.completion.chunk",
@@ -166,7 +161,7 @@ func (renderer *MaheshvaraStreamRenderer) writeOpenAIChatChunk(choiceIndex int, 
 	}
 	if usage != nil && delta == nil && finishReason == "" {
 		chunk["choices"] = []any{}
-		chunk["usage"] = openAIUsageFromCanonical(usage)
+		chunk["usage"] = openAIUsageFromMaheshvara(usage)
 		return renderer.writeSSEData(chunk)
 	}
 	if delta == nil {
@@ -182,7 +177,7 @@ func (renderer *MaheshvaraStreamRenderer) writeOpenAIChatChunk(choiceIndex int, 
 	}
 	choice := map[string]any{"index": choiceIndex, "delta": delta, "finish_reason": nil}
 	if finishReason != "" {
-		choice["finish_reason"] = canonicalStopToOpenAI(finishReason)
+		choice["finish_reason"] = maheshvaraStopToOpenAI(finishReason)
 		renderer.openAI.finishSent[choiceIndex] = true
 	}
 	chunk["choices"] = []any{choice}
@@ -214,16 +209,16 @@ func (renderer *MaheshvaraStreamRenderer) abortOpenAIChat(streamErr error) error
 	return renderer.writeSSEDataString("[DONE]")
 }
 
-func canonicalPartToOpenAIStreamContent(part *CanonicalContentPart) any {
+func maheshvaraPartToOpenAIStreamContent(part *MaheshvaraContentPart) any {
 	if part == nil {
 		return nil
 	}
 	switch part.Type {
-	case CanonicalContentText:
+	case MaheshvaraContentText:
 		if part.Text != "" {
 			return map[string]any{"type": "text", "text": part.Text}
 		}
-	case CanonicalContentImage:
+	case MaheshvaraContentImage:
 		if imageURL := imagePartToOpenAIURL(*part); imageURL != "" {
 			image := map[string]any{"url": imageURL}
 			if part.Detail != "" {
@@ -231,7 +226,7 @@ func canonicalPartToOpenAIStreamContent(part *CanonicalContentPart) any {
 			}
 			return map[string]any{"type": "image_url", "image_url": image}
 		}
-	case CanonicalContentAudio:
+	case MaheshvaraContentAudio:
 		audio := map[string]any{}
 		if data := firstNonEmptyString(part.AudioBase64, part.Data); data != "" {
 			audio["data"] = data
@@ -248,11 +243,11 @@ func canonicalPartToOpenAIStreamContent(part *CanonicalContentPart) any {
 		if len(audio) > 0 {
 			return map[string]any{"type": "output_audio", "audio": audio}
 		}
-	case CanonicalContentVideo:
+	case MaheshvaraContentVideo:
 		if uri := firstNonEmptyString(part.VideoURL, part.URI); uri != "" {
 			return map[string]any{"type": "video_url", "video_url": map[string]any{"url": uri}}
 		}
-	case CanonicalContentFile, CanonicalContentDocument:
+	case MaheshvaraContentFile, MaheshvaraContentDocument:
 		file := map[string]any{"type": "file"}
 		if part.FileID != "" {
 			file["file_id"] = part.FileID
@@ -269,7 +264,7 @@ func canonicalPartToOpenAIStreamContent(part *CanonicalContentPart) any {
 		if len(file) > 1 {
 			return file
 		}
-	case CanonicalContentToolOutput:
+	case MaheshvaraContentToolOutput:
 		return map[string]any{"type": "tool_result", "tool_call_id": part.ToolCallID, "content": part.ToolOutput}
 	default:
 		if raw, ok := part.Raw.(map[string]any); ok && len(raw) > 0 {
