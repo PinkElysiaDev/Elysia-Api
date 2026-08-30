@@ -8,11 +8,9 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * 模型源筛选是纯前端实现：选中源 → 该源下全部模型名，与「模型」筛选取交集后
- * 走后端已有的 modelName 多值 IN 过滤（零后端改动）。
- * 交集为空且确有筛选输入时返回 [NO_MATCH_MODEL_FILTER]：这个哨兵值在后端
- * 匹配不到任何行，页面展示显式空结果——而不是把空数组当"未筛选"静默丢掉
- * 筛选条件、回退成全量数据。两侧都未选时返回空数组（= 不过滤）。
+ * 旧的源→模型名交集（仅在无法下发 sourceId 时使用）。
+ * 用量页已改为把 sourceIds 直接传给后端；同名模型跨源时必须走 source_id 列。
+ * 交集为空且确有筛选输入时返回 [NO_MATCH_MODEL_FILTER]，避免空数组被当成「未筛选」。
  */
 export const NO_MATCH_MODEL_FILTER = 'ￗno-match'
 
@@ -106,12 +104,27 @@ export function formatHitRate(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`
 }
 
-/** Recharts 轴刻度共用样式。 */
+/** Recharts 轴刻度共用样式。字号/字重由 --chart-tick-* 定义，rem 随根字号流式缩放。 */
 export const CHART_TICK = {
   fontFamily: 'ui-monospace, SF Mono, Menlo, monospace',
-  fontSize: 11,
+  fontSize: 'var(--chart-tick-size)',
+  fontWeight: 'var(--chart-tick-weight)' as const,
   fill: 'hsl(var(--muted-foreground))',
-} as const
+}
+
+/** 实测 --chart-tick-size 的解析像素值。自定义属性的计算值不换算单位（rem 会原样返回），
+ * 必须挂探针元素让 computed style 解析成 px，供横轴刻度避让测宽。 */
+export function readChartTickSizePx(): number {
+  if (typeof window === 'undefined' || typeof document === 'undefined' || !document.body) return 11
+  const probe = document.createElement('span')
+  probe.style.fontSize = 'var(--chart-tick-size)'
+  probe.style.position = 'absolute'
+  probe.style.visibility = 'hidden'
+  document.body.appendChild(probe)
+  const px = parseFloat(getComputedStyle(probe).fontSize)
+  probe.remove()
+  return Number.isFinite(px) && px > 0 ? px : 11
+}
 
 /** 紧凑数字：1234 → 1.2k，1200000 → 1.2m。用于 TPM 等大数值的大字展示。 */
 export function compactNumber(value: number | undefined | null): string {
@@ -150,10 +163,13 @@ export function startOfRange(range: '24h' | '7d' | '30d' | 'all', nowIso?: strin
   return new Date(reference - map[range]).toISOString()
 }
 
-/** 把参考时刻向下取整到 bucketMs 边界再序列化：作为 usage 查询的 to 参数时，
- *  缓存键在桶内保持稳定，空闲自动刷新从每分钟一次降为每桶一次。 */
+/** 把参考时刻向上取整到下一个 bucketMs 边界再序列化。
+ *  usage 查询是半开区间 [from, to)：to 必须在「现在」之后，当前桶内的新记录才会被包含。
+ *  用下一边界而不是上一边界，缓存键在桶内仍稳定，又不会把刚发生的调用排除在外。
+ *  不要用返回值去算「今天 0 点」：临近本地午夜时下一边界会落到次日 00:00，
+ *  localMidnight(0, new Date(to)) 会得到 from==to 的空窗。日历日一律用 atMs。 */
 export function bucketedTimeISO(atMs: number, bucketMs: number): string {
-  return new Date(Math.floor(atMs / bucketMs) * bucketMs).toISOString()
+  return new Date(Math.floor(atMs / bucketMs) * bucketMs + bucketMs).toISOString()
 }
 
 /** 把任意数据序列化为 JSON 文件并触发浏览器下载。 */

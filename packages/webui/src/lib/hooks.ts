@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR, { mutate as globalMutate, type SWRConfiguration } from 'swr'
 import { api } from './api'
 import type { UsageQueryParams } from './types'
@@ -25,6 +25,19 @@ export function useMinuteTick(): number {
     return () => clearInterval(id)
   }, [])
   return tick
+}
+
+/**
+ * 防抖值：输入框即时回显原始值，重活（过滤、请求）读防抖后的值，
+ * 连续击键只在停顿 debounceMs 后触发一次下游计算。
+ */
+export function useDebouncedValue<T>(value: T, debounceMs = 160): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), debounceMs)
+    return () => clearTimeout(id)
+  }, [value, debounceMs])
+  return debounced
 }
 
 /** 网关健康状态（内存/DB），refreshInterval 毫秒轮询。 */
@@ -80,10 +93,27 @@ export function useUsageFilterOptions() {
 const usageConfig: SWRConfiguration = {
   ...defaultConfig,
   keepPreviousData: true,
-  // 60s 去重窗口：同键在窗口内重复挂载/校验直接用缓存不发请求（SWR 无
-  // staleTime，dedupingInterval 即等价物）——配合统计页 5 分钟桶化的时间参数，
-  // 页面往返即开。用量日志页键含分钟粒度 tick，每次新键不受影响。
-  dedupingInterval: 60_000,
+  // 有新调用时由 useUsageLive 按 seq 立刻重拉。这里只做慢兜底（脉搏窗口随时间滑动）。
+  dedupingInterval: 2_000,
+  refreshInterval: 30_000,
+}
+
+/** 登录后探测 usage 序号：原子计数，无 SQL。序号变化才重拉 KPI/日志/图表。 */
+export function useUsageLive() {
+  const { data } = useSWR('usage-seq', () => api.usageSeq(), {
+    ...defaultConfig,
+    refreshInterval: 2_000,
+    dedupingInterval: 1_000,
+  })
+  const seq = data?.seq
+  const prev = useRef<number | undefined>()
+  useEffect(() => {
+    if (seq == null) return
+    if (prev.current != null && prev.current !== seq) {
+      void revalidate.usage()
+    }
+    prev.current = seq
+  }, [seq])
 }
 
 /** Usage KPI 汇总（params 见 serializeUsage）。 */
@@ -91,14 +121,29 @@ export function useUsageStats(params: UsageQueryParams) {
   return useSWR(['usage-stats', params], () => api.usageStats(params), usageConfig)
 }
 
-/** 按日趋势聚合（后端按固定 UTC offset 换算为本地日，不受明细 limit 钳制影响）。 */
-export function useUsageTrend(params: UsageQueryParams & { utcOffsetMinutes: number }) {
-  return useSWR(['usage-trend', params], () => api.usageTrend(params), usageConfig)
+/**
+ * 按日趋势聚合（后端按固定 UTC offset 换算为本地日，不受明细 limit 钳制影响）。
+ * 查询参数只有 from（日内内容稳定，SWR 键全天不变），由 usageConfig 轮询
+ * 刷新当日桶；如需不同节奏可显式传 refreshInterval 覆盖。
+ */
+export function useUsageTrend(params: UsageQueryParams & { utcOffsetMinutes: number }, refreshInterval?: number) {
+  return useSWR(['usage-trend', params], () => api.usageTrend(params), {
+    ...usageConfig,
+    ...(refreshInterval ? { refreshInterval } : {}),
+  })
 }
 
 /** 按模型聚合（热门模型 / 明细表）。 */
 export function useUsageByModel(params: UsageQueryParams) {
   return useSWR(['usage-by-model', params], () => api.usageByModel(params), usageConfig)
+}
+
+export function useUsagePulse(params: UsageQueryParams & { utcOffsetMinutes: number; bucketMinutes: number }) {
+  return useSWR(['usage-pulse', params], () => api.usagePulse(params), usageConfig)
+}
+
+export function useUsageByModelDaily(params: UsageQueryParams & { utcOffsetMinutes: number; top?: number }) {
+  return useSWR(['usage-by-model-daily', params], () => api.usageByModelDaily(params), usageConfig)
 }
 
 /** Usage 调用日志分页（params 含 limit/offset）。 */
@@ -124,7 +169,12 @@ export const revalidate = {
     globalMutate(
       (key) =>
         Array.isArray(key) &&
-        (key[0] === 'usage-stats' || key[0] === 'usage-logs' || key[0] === 'usage-trend' || key[0] === 'usage-by-model'),
+        (key[0] === 'usage-stats' ||
+          key[0] === 'usage-logs' ||
+          key[0] === 'usage-trend' ||
+          key[0] === 'usage-by-model' ||
+          key[0] === 'usage-pulse' ||
+          key[0] === 'usage-by-model-daily'),
       undefined,
       { revalidate: true },
     ),
