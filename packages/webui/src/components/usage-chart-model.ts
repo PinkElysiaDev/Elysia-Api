@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useLayoutEffect, useEffect, useState } from 'react'
+import { readChartTickSizePx } from '@/lib/utils'
 
 /** 总览折线/面积入场时长：与 recharts 默认一致，脉搏 / 趋势 / 日调用共用。 */
 export const CHART_ENTER_MS = 1500
@@ -78,6 +79,30 @@ export function useCommittedRange<T>(requested: T, ready: boolean): T {
     setCommitted(requested)
   }
   return committed
+}
+
+/** 实测 --chart-tick-size 的解析像素值，供脉搏横轴避让按实际字号测宽。
+ * 刻度字号随根字号随视口连续缩放，没有断点可监听，resize 时用 rAF 节流重测。 */
+export function useChartTickSize(): number {
+  const [size, setSize] = useState(readChartTickSizePx)
+  useLayoutEffect(() => {
+    let raf = 0
+    const update = () => {
+      raf = 0
+      const next = readChartTickSizePx()
+      setSize((prev) => (prev === next ? prev : next))
+    }
+    update()
+    const onResize = () => {
+      if (raf === 0) raf = window.requestAnimationFrame(update)
+    }
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      if (raf !== 0) window.cancelAnimationFrame(raf)
+    }
+  }, [])
+  return size
 }
 
 /** 时间范围切换时播一次入场动画。 */

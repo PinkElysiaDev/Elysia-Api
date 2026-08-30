@@ -99,12 +99,27 @@ export function formatHitRate(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`
 }
 
-/** Recharts 轴刻度共用样式。 */
+/** Recharts 轴刻度共用样式。字号/字重由 --chart-tick-* 定义，rem 随根字号流式缩放。 */
 export const CHART_TICK = {
   fontFamily: 'ui-monospace, SF Mono, Menlo, monospace',
-  fontSize: 11,
+  fontSize: 'var(--chart-tick-size)',
+  fontWeight: 'var(--chart-tick-weight)' as const,
   fill: 'hsl(var(--muted-foreground))',
-} as const
+}
+
+/** 实测 --chart-tick-size 的解析像素值。自定义属性的计算值不换算单位（rem 会原样返回），
+ * 必须挂探针元素让 computed style 解析成 px，供横轴刻度避让测宽。 */
+export function readChartTickSizePx(): number {
+  if (typeof window === 'undefined' || typeof document === 'undefined' || !document.body) return 11
+  const probe = document.createElement('span')
+  probe.style.fontSize = 'var(--chart-tick-size)'
+  probe.style.position = 'absolute'
+  probe.style.visibility = 'hidden'
+  document.body.appendChild(probe)
+  const px = parseFloat(getComputedStyle(probe).fontSize)
+  probe.remove()
+  return Number.isFinite(px) && px > 0 ? px : 11
+}
 
 /** 紧凑数字：1234 → 1.2k，1200000 → 1.2m。用于 TPM 等大数值的大字展示。 */
 export function compactNumber(value: number | undefined | null): string {

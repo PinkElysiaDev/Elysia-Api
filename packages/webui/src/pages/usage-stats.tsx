@@ -207,7 +207,7 @@ export function UsageStatsPage() {
                   delta={stats ? (stats.failed ? `占比 ${percent(stats.failed, stats.requests)}` : '0 次失败') : undefined}
                 />
                 <KpiCard
-                  label="Token 消耗总量"
+                  label="Token 总消耗"
                   value={stats ? compactNumber(stats.totalTokens) : '—'}
                   icon={<Coins className="h-4 w-4 text-amber" />}
                 />

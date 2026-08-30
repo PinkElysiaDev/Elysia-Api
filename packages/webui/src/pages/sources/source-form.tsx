@@ -692,11 +692,11 @@ export function SourceFormDialog({
 function KeyPermissionBadge({ apiKeyEntry }: { apiKeyEntry: SourceAPIKey }) {
   const fetched = apiKeyEntry.fetchedModels ?? []
   if (fetched.length === 0) {
-    return <span className="rounded bg-muted px-1.5 py-0.5 text-[11px]">未拉取 · 不限制</span>
+    return <span className="rounded bg-muted px-1.5 py-0.5 text-2xs">未拉取 · 不限制</span>
   }
   const enabled = apiKeyEntry.allowedModels ?? fetched
   return (
-    <span className="rounded bg-muted px-1.5 py-0.5 text-[11px]">
+    <span className="rounded bg-muted px-1.5 py-0.5 text-2xs">
       已启用 {enabled.length}/{fetched.length}
     </span>
   )
@@ -753,7 +753,7 @@ function KeyModelsPanel({
         >
           反选
         </Button>
-        <span className="ml-auto text-[11px] text-muted-foreground">
+        <span className="ml-auto text-2xs text-muted-foreground">
           该 key 拉取到的模型即其分组权限；取消勾选后此 key 不再服务对应模型
         </span>
       </div>
