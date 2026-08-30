@@ -26,14 +26,21 @@ func newHealthTestServer(t *testing.T) *Server {
 }
 
 func TestProbeEndpoint(t *testing.T) {
-	if got := probeEndpoint(storage.Model{BaseURL: "https://api.x.com/v1/", Platform: "openai"}); got != "https://api.x.com/v1/chat/completions" {
-		t.Fatalf("openai endpoint wrong: %s", got)
+	cases := []struct {
+		platform, base, name, want string
+	}{
+		{"openai", "https://api.x.com/v1/", "", "https://api.x.com/v1/chat/completions"},
+		// claude 是存量库旧值，anthropic 是当前 UI；两者都必须打 /v1/messages。
+		{"claude", "https://api.anthropic.com", "", "https://api.anthropic.com/v1/messages"},
+		{"anthropic", "https://api.anthropic.com", "", "https://api.anthropic.com/v1/messages"},
+		{"responses", "https://api.openai.com/v1", "", "https://api.openai.com/v1/responses"},
+		{"gemini", "https://generativelanguage.googleapis.com/", "gemini-2.0-flash", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"},
 	}
-	if got := probeEndpoint(storage.Model{BaseURL: "https://api.anthropic.com", Platform: "claude"}); got != "https://api.anthropic.com/messages" {
-		t.Fatalf("claude endpoint wrong: %s", got)
-	}
-	if got := probeEndpoint(storage.Model{BaseURL: "https://generativelanguage.googleapis.com/", Platform: "gemini", Name: "gemini-2.0-flash"}); got != "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent" {
-		t.Fatalf("gemini endpoint wrong: %s", got)
+	for _, tc := range cases {
+		got := probeEndpoint(storage.Model{BaseURL: tc.base, Platform: tc.platform, Name: tc.name})
+		if got != tc.want {
+			t.Fatalf("platform %q: got %s want %s", tc.platform, got, tc.want)
+		}
 	}
 }
 
@@ -105,14 +112,16 @@ func TestProbeTreatsEndpointUnsupportedAsHealthy(t *testing.T) {
 }
 
 func TestApplyProbeAuth(t *testing.T) {
-	req, _ := http.NewRequest(http.MethodPost, "https://x", nil)
-	applyProbeAuth(req, storage.Model{APIKey: "k", Platform: "claude"})
-	if req.Header.Get("x-api-key") != "k" || req.Header.Get("anthropic-version") == "" {
-		t.Fatalf("claude auth headers missing")
+	for _, platform := range []string{"claude", "anthropic"} {
+		req, _ := http.NewRequest(http.MethodPost, "https://x", nil)
+		applyProbeAuth(req, storage.Model{APIKey: "k", Platform: platform})
+		if req.Header.Get("x-api-key") != "k" || req.Header.Get("anthropic-version") == "" {
+			t.Fatalf("platform %q: anthropic auth headers missing", platform)
+		}
 	}
-	req2, _ := http.NewRequest(http.MethodPost, "https://x", nil)
-	applyProbeAuth(req2, storage.Model{APIKey: "k", Platform: "openai"})
-	if req2.Header.Get("Authorization") != "Bearer k" {
+	req, _ := http.NewRequest(http.MethodPost, "https://x", nil)
+	applyProbeAuth(req, storage.Model{APIKey: "k", Platform: "openai"})
+	if req.Header.Get("Authorization") != "Bearer k" {
 		t.Fatalf("openai auth header missing")
 	}
 }

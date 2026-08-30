@@ -177,13 +177,16 @@ func (h *healthChecker) probe(ctx context.Context, model storage.Model, timeoutS
 	return resp.StatusCode >= 200 && resp.StatusCode < 300
 }
 
-// probeBody 按平台构造最小探测请求体：OpenAI 兼容/Claude 用 chat 格式，
-// Gemini 原生 generateContent 端点只接受 contents 结构。
+// probeBody 按归一化后的线路协议构造最小探测请求体。
 func probeBody(model storage.Model) []byte {
-	if model.Platform == "gemini" {
+	switch relay.NormalizeAPIFormat(model.Platform) {
+	case relay.APIFormatGemini:
 		return []byte(`{"contents":[{"parts":[{"text":"ping"}]}],"generationConfig":{"maxOutputTokens":1}}`)
+	case relay.APIFormatResponses:
+		return []byte(fmt.Sprintf(`{"model":%q,"input":"ping","max_output_tokens":%d}`, model.Name, HealthProbeMaxTokens))
+	default:
+		return []byte(fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"ping"}],"max_tokens":%d}`, model.Name, HealthProbeMaxTokens))
 	}
-	return []byte(fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"ping"}],"max_tokens":%d}`, model.Name, HealthProbeMaxTokens))
 }
 
 func probeEndpoint(model storage.Model) string {
@@ -191,12 +194,15 @@ func probeEndpoint(model storage.Model) string {
 	for len(base) > 0 && base[len(base)-1] == '/' {
 		base = base[:len(base)-1]
 	}
-	switch model.Platform {
-	case "claude":
-		return base + "/messages"
-	case "gemini":
+	switch relay.NormalizeAPIFormat(model.Platform) {
+	case relay.APIFormatAnthropic:
+		// baseUrl 不含 /v1（与 fetchClaudeModels / ClaudeAdapter 一致），探测必须打 /v1/messages。
+		return base + "/v1/messages"
+	case relay.APIFormatGemini:
 		// 与 relay.GeminiAdapter 的 URL 规则保持一致。
 		return base + "/v1beta/models/" + model.Name + ":generateContent"
+	case relay.APIFormatResponses:
+		return base + "/responses"
 	default:
 		return base + "/chat/completions"
 	}
@@ -206,11 +212,11 @@ func applyProbeAuth(req *http.Request, model storage.Model) {
 	if model.APIKey == "" {
 		return
 	}
-	switch model.Platform {
-	case "claude":
+	switch relay.NormalizeAPIFormat(model.Platform) {
+	case relay.APIFormatAnthropic:
 		req.Header.Set("x-api-key", model.APIKey)
 		req.Header.Set("anthropic-version", "2023-06-01")
-	case "gemini":
+	case relay.APIFormatGemini:
 		req.Header.Set("x-goog-api-key", model.APIKey)
 	default:
 		req.Header.Set("Authorization", "Bearer "+model.APIKey)
