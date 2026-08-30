@@ -29,7 +29,7 @@ Elysia-API 的可视化管理控制台。纯前端单页应用，所有数据来
 yarn workspace @root/webui dev
 ```
 
-Vite dev server 端口为 5273，已代理 `/api`、`/v1`、`/health` 到后端。
+Vite dev server 端口为 5273，已代理 `/api`、`/v1`、`/health` 到后端（默认 `http://127.0.0.1:8765`）。后端不在默认端口时设置 `ELYSIA_DEV_PROXY`。
 
 登录使用后端 bootstrap `config.json` 中的 `panelAccessToken`。
 

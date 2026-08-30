@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Boxes,
@@ -26,7 +26,7 @@ import { ExpandRow } from '@/components/expand-row'
 import { CapChip, Dot, PlatformBadge } from '@/components/badges'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
-import { useSources, useModels, useModelCatalogStatus, revalidate } from '@/lib/hooks'
+import { useSources, useModels, useModelCatalogStatus, useDebouncedValue, revalidate } from '@/lib/hooks'
 import { api } from '@/lib/api'
 import { cn, formatNumber, formatRelative } from '@/lib/utils'
 import type { ModelSource, Model } from '@/lib/types'
@@ -47,6 +47,10 @@ interface ModelGroupView {
 // 每个带 fetchedModels 的启用 key 一组（模型可归属多组），不属于任何 key 集合的
 // 模型归入「其他模型」；无 per-key 数据时维持单一平铺组。
 function buildModelGroups(source: ModelSource, sourceModels: Model[]): ModelGroupView[] {
+  // 已启用排在禁用前（稳定排序，同状态内保持原有顺序），芯片列表一眼分出可用集
+  const ordered = [...sourceModels].sort(
+    (a, b) => Number(b.enabled !== false) - Number(a.enabled !== false),
+  )
   const keysWithFetch = (source.apiKeys ?? [])
     .map((entry, index) => ({ entry, index }))
     .filter(
@@ -54,7 +58,7 @@ function buildModelGroups(source: ModelSource, sourceModels: Model[]): ModelGrou
         !entry.disabled && !!entry.value?.trim() && (entry.fetchedModels?.length ?? 0) > 0,
     )
   if (keysWithFetch.length === 0) {
-    return [{ key: 'all', label: '全部模型', models: sourceModels }]
+    return [{ key: 'all', label: '全部模型', models: ordered }]
   }
   const groups: ModelGroupView[] = keysWithFetch.map(({ entry, index }) => {
     const fetched = new Set(entry.fetchedModels ?? [])
@@ -66,11 +70,11 @@ function buildModelGroups(source: ModelSource, sourceModels: Model[]): ModelGrou
       label: `Key ${index + 1}`,
       note: entry.note,
       badge: `已启用 ${enabledCount}/${fetched.size}`,
-      models: sourceModels.filter((m) => fetched.has(m.id)),
+      models: ordered.filter((m) => fetched.has(m.id)),
     }
   })
   const inAnyGroup = new Set(groups.flatMap((g) => g.models.map((m) => m.id)))
-  const others = sourceModels.filter((m) => !inAnyGroup.has(m.id))
+  const others = ordered.filter((m) => !inAnyGroup.has(m.id))
   if (others.length > 0) {
     groups.push({ key: 'other', label: '其他模型', badge: '未归属任何 Key', models: others })
   }
@@ -95,6 +99,9 @@ export function SourcesPage() {
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [globalSearch, setGlobalSearch] = useState<Record<string, string>>({})
   const [groupSearch, setGroupSearch] = useState<Record<string, string>>({})
+  // 源内搜索词命中过滤遍历全部模型，过滤走防抖值；输入框仍绑定原始状态即时回显。
+  const debouncedGlobalSearch = useDebouncedValue(globalSearch, 160)
+  const debouncedGroupSearch = useDebouncedValue(groupSearch, 160)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
   const [batchBusy, setBatchBusy] = useState(false)
   const [editingModel, setEditingModel] = useState<Model | null>(null)
@@ -125,8 +132,18 @@ export function SourcesPage() {
     return map
   }, [models])
 
-  // bar 搜索：名称 / 平台 / Base URL
-  const kw = keyword.trim().toLowerCase()
+  // 每源的 key 分组视图：只在源数据或模型数据变化时重建，
+  // 不随选择/搜索/折叠等本地状态的重渲染反复计算。
+  const groupsBySource = useMemo(() => {
+    const map = new Map<string, ModelGroupView[]>()
+    for (const source of data ?? []) {
+      map.set(source.id, buildModelGroups(source, modelsBySource.get(source.id) ?? []))
+    }
+    return map
+  }, [data, modelsBySource])
+
+  // bar 搜索：名称 / 平台 / Base URL（输入即时回显，过滤按防抖值触发）。
+  const kw = useDebouncedValue(keyword, 160).trim().toLowerCase()
   const filtered = useMemo(() => {
     if (!kw) return data ?? []
     return (data ?? []).filter(
@@ -134,7 +151,7 @@ export function SourcesPage() {
     )
   }, [data, kw])
 
-  const enabledCount = (data ?? []).filter((s) => s.enabled).length
+  const enabledCount = useMemo(() => (data ?? []).filter((s) => s.enabled).length, [data])
   const disabledCount = (data ?? []).length - enabledCount
 
   function openCreate() {
@@ -155,10 +172,33 @@ export function SourcesPage() {
     return (modelsBySource.get(sourceId) ?? []).filter((m) => selected[`${sourceId}:${m.id}`])
   }
 
-  function toggleModelSelected(sourceId: string, modelId: string) {
-    const key = `${sourceId}:${modelId}`
-    setSelected((prev) => ({ ...prev, [key]: !prev[key] }))
-  }
+  // 以下三个回调供 memo 化的 ModelChip 使用：引用稳定后，选择/搜索/折叠等
+  // 状态变化只重渲染受影响的芯片，而不是整片模型列表。
+  const handleToggleSelect = useCallback((sourceId: string, modelId: string) => {
+    setSelected((prev) => ({ ...prev, [`${sourceId}:${modelId}`]: !prev[`${sourceId}:${modelId}`] }))
+  }, [])
+
+  const handleEditModel = useCallback((model: Model) => {
+    setEditingModel(model)
+    setModelEditOpen(true)
+  }, [])
+
+  const handleToggleModelEnabled = useCallback(
+    async (model: Model) => {
+      const next = !(model.enabled !== false)
+      try {
+        await api.updateModel(model.sourceId ?? '', model.id, { enabled: next })
+        await revalidate.models()
+        toast.success(
+          next ? '已启用模型' : '已停用模型',
+          `${model.name || model.id}${next ? '' : '（不参与模型组调度）'}`,
+        )
+      } catch (err) {
+        toast.error('操作失败', (err as Error).message)
+      }
+    },
+    [toast],
+  )
 
   function setModelsSelected(list: Model[], value: boolean) {
     setSelected((prev) => {
@@ -295,22 +335,6 @@ export function SourcesPage() {
     }
   }
 
-  function openModelEdit(model: Model) {
-    setEditingModel(model)
-    setModelEditOpen(true)
-  }
-
-  async function toggleModelEnabled(model: Model) {
-    const next = !model.enabled
-    try {
-      await api.updateModel(model.sourceId ?? '', model.id, { enabled: next })
-      await revalidate.models()
-      toast.success(next ? '已启用模型' : '已停用模型', `${model.name || model.id}${next ? '' : '（不参与模型组调度）'}`)
-    } catch (err) {
-      toast.error('操作失败', (err as Error).message)
-    }
-  }
-
   return (
     <>
       <RoleWatermark className="-right-8 top-0 opacity-[0.05] dark:opacity-[0.08]" />
@@ -395,8 +419,8 @@ export function SourcesPage() {
                 <TableHeader className="bg-secondary/20">
                   <TableRow className="border-b border-border/60 hover:bg-transparent">
                     <TableHead className="w-[38px] px-0 text-center" />
-                    <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">源名称 / ID</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">平台架构</TableHead>
+                    <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">源名称</TableHead>
+                    <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">协议类型</TableHead>
                     <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">Base URL</TableHead>
                     <TableHead className="py-3.5 num text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">模型数</TableHead>
                     <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">同步策略</TableHead>
@@ -411,15 +435,15 @@ export function SourcesPage() {
                     // 后台拉取进行中：锁定该源的模型相关操作（避免合并期间冲突误操作），
                     // 其余源与页面功能不受影响。
                     const busy = sourceBusy(source)
-                    const groups = buildModelGroups(source, sourceModels)
-                    const globalKeyword = (globalSearch[source.id] ?? '').trim().toLowerCase()
+                    const groups = groupsBySource.get(source.id) ?? []
+                    const globalKeyword = (debouncedGlobalSearch[source.id] ?? '').trim().toLowerCase()
                     const matchesGlobal = (m: Model) =>
                       !globalKeyword ||
                       `${m.id} ${m.name} ${m.sourceName ?? ''}`.toLowerCase().includes(globalKeyword)
                     const selectedCount = selectedModelsOf(source.id).length
                     const allVisibleModels = groups
                       .map((g) => {
-                        const kw2 = (groupSearch[`${source.id}:${g.key}`] ?? '').trim().toLowerCase()
+                        const kw2 = (debouncedGroupSearch[`${source.id}:${g.key}`] ?? '').trim().toLowerCase()
                         return kw2
                           ? g.models.filter(
                               (m) =>
@@ -431,7 +455,9 @@ export function SourcesPage() {
                       .flat()
                     return (
                       <Fragment key={source.id}>
-                        <TableRow className="transition-colors hover:bg-secondary/30">
+                        {/* border-b-0：行间分隔线只由 divide-y 的 /30 淡线承担，
+                            覆盖 TableRow 默认的全强度底边框 */}
+                        <TableRow className="border-b-0 transition-colors hover:bg-secondary/30">
                           <TableCell className="w-[38px] px-0 text-center">
                             <button
                               type="button"
@@ -441,18 +467,17 @@ export function SourcesPage() {
                             >
                               <ChevronRight
                                 className={cn(
-                                  'h-4 w-4 transition-transform duration-200',
+                                  'h-4 w-4 transition-transform duration-300 ease-smooth',
                                   isOpen && 'rotate-90 text-primary',
                                 )}
                               />
                             </button>
                           </TableCell>
                           <TableCell className="py-3.5 font-medium text-foreground">
-                            <span className="inline-flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1.5" title={source.id}>
                               {source.name}
                               {busy && <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />}
                             </span>
-                            <span className="sub font-mono">{source.id}</span>
                           </TableCell>
                           <TableCell className="py-3.5 text-center">
                             <PlatformBadge platform={source.platform} />
@@ -589,7 +614,7 @@ export function SourcesPage() {
                             {/* 按 key 分组（单 key 源为单一「全部模型」组） */}
                             {groups.map((group) => {
                               const groupStateKey = `${source.id}:${group.key}`
-                              const groupKeyword = (groupSearch[groupStateKey] ?? '').trim().toLowerCase()
+                              const groupKeyword = (debouncedGroupSearch[groupStateKey] ?? '').trim().toLowerCase()
                               const groupVisible = group.models.filter(
                                 (m) =>
                                   matchesGlobal(m) &&
@@ -655,11 +680,12 @@ export function SourcesPage() {
                                             <ModelChip
                                               key={`${group.key}-${model.sourceId}-${model.id}`}
                                               model={model}
+                                              sourceId={source.id}
                                               checked={!!selected[`${source.id}:${model.id}`]}
                                               locked={busy}
-                                              onToggleSelect={() => toggleModelSelected(source.id, model.id)}
-                                              onEdit={() => openModelEdit(model)}
-                                              onToggleEnabled={() => toggleModelEnabled(model)}
+                                              onToggleSelect={handleToggleSelect}
+                                              onEdit={handleEditModel}
+                                              onToggleEnabled={handleToggleModelEnabled}
                                             />
                                           ))}
                                         </div>
@@ -713,7 +739,11 @@ export function SourcesPage() {
         open={quickCreate !== null}
         onOpenChange={(open) => !open && setQuickCreate(null)}
         models={quickCreate?.models ?? []}
-        defaultName={quickCreate?.source.name ?? ''}
+        defaultName={
+          quickCreate?.models.length === 1
+            ? quickCreate.models[0].name || quickCreate.models[0].id
+            : quickCreate?.source.name ?? ''
+        }
       />
       <AddToGroupDialog
         open={addToGroup !== null}
@@ -727,9 +757,11 @@ export function SourcesPage() {
 }
 
 /** 模型芯片：mono 名称 + 能力图标 + 类型 + max tokens；失效置灰。
- * locked：所属源后台拉取进行中——禁用选择与编辑/启停，避免合并期间冲突。 */
-function ModelChip({
+ * locked：所属源后台拉取进行中——禁用选择与编辑/启停，避免合并期间冲突。
+ * memo + 稳定回调：单个芯片的勾选只重渲染自己，不再带动整片列表。 */
+const ModelChip = memo(function ModelChip({
   model,
+  sourceId,
   checked,
   locked = false,
   onToggleSelect,
@@ -737,11 +769,12 @@ function ModelChip({
   onToggleEnabled,
 }: {
   model: Model
+  sourceId: string
   checked: boolean
   locked?: boolean
-  onToggleSelect: () => void
-  onEdit: () => void
-  onToggleEnabled: () => void
+  onToggleSelect: (sourceId: string, modelId: string) => void
+  onEdit: (model: Model) => void
+  onToggleEnabled: (model: Model) => void
 }) {
   const dimmed = !model.enabled || !model.available
   const isEnabled = model.enabled !== false
@@ -757,7 +790,7 @@ function ModelChip({
     >
       <button
         type="button"
-        onClick={onToggleSelect}
+        onClick={() => onToggleSelect(sourceId, model.id)}
         disabled={locked}
         aria-label={checked ? '取消选择' : '选择'}
         aria-pressed={checked}
@@ -768,7 +801,12 @@ function ModelChip({
       >
         {checked && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
       </button>
-      <button type="button" onClick={onToggleSelect} disabled={locked} className="max-w-[220px] truncate">
+      <button
+        type="button"
+        onClick={() => onToggleSelect(sourceId, model.id)}
+        disabled={locked}
+        className="max-w-[220px] truncate"
+      >
         {model.name || model.id}
       </button>
       <span className="rounded border border-border px-1 text-2xs uppercase tracking-[0.08em] text-muted-foreground">
@@ -782,7 +820,7 @@ function ModelChip({
       <span className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
         <button
           type="button"
-          onClick={onEdit}
+          onClick={() => onEdit(model)}
           disabled={locked}
           title="编辑模型"
           aria-label="编辑模型"
@@ -792,7 +830,7 @@ function ModelChip({
         </button>
         <button
           type="button"
-          onClick={onToggleEnabled}
+          onClick={() => onToggleEnabled(model)}
           disabled={locked}
           title={isEnabled ? '停用（不参与调度）' : '启用'}
           aria-label={isEnabled ? '停用模型' : '启用模型'}
@@ -803,4 +841,4 @@ function ModelChip({
       </span>
     </span>
   )
-}
+})

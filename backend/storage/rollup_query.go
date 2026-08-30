@@ -18,10 +18,11 @@ type sqlQueryer interface {
 // 返回 ok=false 时调用方必须整体走 raw 路径（优雅降级，行为与阶段一一致）：
 //   - rollup 未就绪（回填未完成或失败）；
 //   - 带 keyHash 筛选（rollup 不含该维度，仅遗留面板使用）；
+//   - 带来源筛选（rollup 不含 source_id，历史行也无法回填该维度）；
 //   - 做本地日分桶且 offset 不是整小时倍数（+5:30 等时区的日边界切在小时桶中间）；
 //   - 窗口本身不足一个完整小时。
 func (s *Store) rollupSplit(q UsageQuery, offsetAligned bool) (fromHour, toHour int64, ok bool) {
-	if !s.rollupReady.Load() || q.KeyHash != "" || !offsetAligned {
+	if !s.rollupReady.Load() || q.KeyHash != "" || q.SourceID != "" || len(q.SourceIDs) > 0 || !offsetAligned {
 		return 0, 0, false
 	}
 	var fromMs int64
@@ -52,6 +53,16 @@ func (q UsageQuery) withBounds(fromMs, toMs int64) UsageQuery {
 	if toMs > 0 {
 		qq.To = time.UnixMilli(toMs)
 	}
+	return qq
+}
+
+// orphansOnly 只扫描 started_ms<=0 的坏时间戳行（rollup 不收录它们）。
+// 仅在查询没有下界（From 为零，即「全部时间」）时并入 totals/by-model。
+func (q UsageQuery) orphansOnly() UsageQuery {
+	qq := q
+	qq.From = time.Time{}
+	qq.To = time.Time{}
+	qq.orphanTimestamps = true
 	return qq
 }
 
@@ -264,6 +275,13 @@ func (s *Store) usageCount(ctx context.Context, q UsageQuery) (int, error) {
 	total += n
 	if hasTail {
 		n, err := usageCountRaw(ctx, tx, q.withBounds(tailFrom, tailTo))
+		if err != nil {
+			return 0, err
+		}
+		total += n
+	}
+	if q.From.IsZero() {
+		n, err := usageCountRaw(ctx, tx, q.orphansOnly())
 		if err != nil {
 			return 0, err
 		}

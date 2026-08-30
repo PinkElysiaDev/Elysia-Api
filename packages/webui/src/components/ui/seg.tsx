@@ -12,15 +12,23 @@ export function Seg<T extends string | number>({
   options,
   value,
   onChange,
+  size = 'md',
   className,
   'aria-label': ariaLabel,
 }: {
   options: SegOption<T>[]
   value: T
   onChange: (value: T) => void
+  size?: 'sm' | 'md' | 'lg'
   className?: string
   'aria-label'?: string
 }) {
+  const sizing =
+    size === 'sm'
+      ? 'min-h-0 min-w-[2.75rem] px-2 text-2xs'
+      : size === 'lg'
+        ? 'min-h-[34px] min-w-[4.5rem] px-3.5 text-xs'
+        : 'min-h-[28px] px-2.5 text-xs'
   return (
     <div
       role="group"
@@ -36,7 +44,8 @@ export function Seg<T extends string | number>({
             aria-pressed={on}
             onClick={() => onChange(opt.value)}
             className={cn(
-              'px-[13px] py-1.5 text-xs transition-colors duration-150',
+              'inline-flex h-full items-center justify-center leading-none transition-colors duration-150 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              sizing,
               i > 0 && 'border-l border-border',
               on ? 'bg-wash font-semibold text-rose' : 'text-muted-foreground hover:text-foreground',
             )}

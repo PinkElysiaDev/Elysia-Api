@@ -40,26 +40,23 @@ import {
   useUsageFilterOptions,
   useMinuteTick,
   useSources,
-  useModels,
 } from '@/lib/hooks'
 import {
   bucketedTimeISO,
   CHART_TICK,
   compactNumber,
-  effectiveModelFilter,
   formatDuration,
   formatHitRate,
   formatNumber,
   percent,
   startOfRange,
-  uniqueSorted,
 } from '@/lib/utils'
 
 export function UsageStatsPage() {
   const [range, setRange] = useState<RangeKey>('7d')
   const [groupNames, setGroupNames] = useState<string[]>([])
   const [modelNames, setModelNames] = useState<string[]>([])
-  const [sourceNames, setSourceNames] = useState<string[]>([])
+  const [sourceIds, setSourceIds] = useState<string[]>([])
   const [keyNames, setKeyNames] = useState<string[]>([])
   const [showReqLine, setShowReqLine] = useState(true)
   const [showTokBar, setShowTokBar] = useState(true)
@@ -67,30 +64,26 @@ export function UsageStatsPage() {
 
   const { groupOptions, modelOptions, keyOptions } = useUsageFilterOptions()
   const { data: sources } = useSources()
-  const { data: allModels } = useModels()
 
   const sourceOptions = useMemo(
-    () => uniqueSorted((sources ?? []).filter((s) => s.enabled).map((s) => s.name)),
+    () => (sources ?? []).filter((s) => s.enabled).map((s) => ({ value: s.id, label: s.name || s.id })),
     [sources],
   )
 
-  // 模型源筛选（sourceNames）与模型筛选取交集后随 modelNames 下发。
-  const effectiveModelNames = useMemo(
-    () => effectiveModelFilter(modelNames, sourceNames, allModels ?? [], allModels !== undefined),
-    [modelNames, sourceNames, allModels],
-  )
-
   const params = useMemo(() => {
-    // 时间参数按 5 分钟桶量化：缓存键在桶内稳定，切走再切回直接命中缓存秒开
-    const to = bucketedTimeISO(minuteTick * 60_000, 5 * 60_000)
+    // to 取下一 5 分钟边界：缓存键稳定，且当前桶内新记录能进半开区间。
+    // 日历日 / 相对窗起点用 now，避免临近午夜时 from 被推到次日。
+    const nowMs = minuteTick * 60_000
+    const to = bucketedTimeISO(nowMs, 5 * 60_000)
     return {
-      from: startOfRange(range, to),
+      from: startOfRange(range, new Date(nowMs).toISOString()),
       to,
       groupNames: groupNames.length ? groupNames : undefined,
-      modelNames: effectiveModelNames.length ? effectiveModelNames : undefined,
+      modelNames: modelNames.length ? modelNames : undefined,
+      sourceIds: sourceIds.length ? sourceIds : undefined,
       keyNames: keyNames.length ? keyNames : undefined,
     }
-  }, [range, groupNames, effectiveModelNames, keyNames, minuteTick])
+  }, [range, groupNames, modelNames, sourceIds, keyNames, minuteTick])
 
   const { data: stats, isLoading, error, mutate, isValidating } = useUsageStats(params)
 
@@ -167,8 +160,8 @@ export function UsageStatsPage() {
           onGroupNamesChange={setGroupNames}
           modelNames={modelNames}
           onModelNamesChange={setModelNames}
-          sourceNames={sourceNames}
-          onSourceNamesChange={setSourceNames}
+          sourceIds={sourceIds}
+          onSourceIdsChange={setSourceIds}
           keyNames={keyNames}
           onKeyNamesChange={setKeyNames}
           right={
@@ -207,7 +200,7 @@ export function UsageStatsPage() {
                   delta={stats ? (stats.failed ? `占比 ${percent(stats.failed, stats.requests)}` : '0 次失败') : undefined}
                 />
                 <KpiCard
-                  label="Token 消耗总量"
+                  label="Token 总消耗"
                   value={stats ? compactNumber(stats.totalTokens) : '—'}
                   icon={<Coins className="h-4 w-4 text-amber" />}
                 />

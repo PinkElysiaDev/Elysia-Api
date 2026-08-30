@@ -23,7 +23,12 @@ type usageWriterState struct {
 // startUsageWriter 在 store 模式下启动单个后台 writer goroutine，
 // 从队列取记录落库。仅在有 store 时调用一次（ListenAndServe 内）。
 func (s *Server) startUsageWriter() {
-	if s.store == nil || s.usageWriter != nil {
+	if s.store == nil {
+		return
+	}
+	s.usageWriterMu.Lock()
+	defer s.usageWriterMu.Unlock()
+	if s.usageWriter != nil {
 		return
 	}
 	writer := &usageWriterState{queue: make(chan *usageRecord, usageQueueCapacity)}
@@ -32,37 +37,84 @@ func (s *Server) startUsageWriter() {
 	go func() {
 		defer writer.wg.Done()
 		for record := range writer.queue {
-			if err := s.saveUsageRecordToStore(record); err != nil {
-				log.Printf("failed to save usage record to sqlite (async): %v", err)
-			}
+			s.persistUsageRecord(record)
 		}
 	}()
+}
+
+func (s *Server) usageWriterSnapshot() *usageWriterState {
+	s.usageWriterMu.Lock()
+	w := s.usageWriter
+	s.usageWriterMu.Unlock()
+	return w
 }
 
 // stopUsageWriter 关闭队列并等待 writer 把剩余记录冲刷落库。幂等；
 // 关停后的入队请求由 enqueueUsageRecord 降级为同步写盘。
 func (s *Server) stopUsageWriter() {
-	w := s.usageWriter
+	w := s.usageWriterSnapshot()
 	if w == nil {
 		return
 	}
 	w.mu.Lock()
-	if w.closed {
-		w.mu.Unlock()
-		w.wg.Wait()
-		return
+	if !w.closed {
+		w.closed = true
+		close(w.queue)
 	}
-	w.closed = true
-	close(w.queue)
 	w.mu.Unlock()
 	w.wg.Wait()
-	s.usageWriter = nil
+	s.usageWriterMu.Lock()
+	if s.usageWriter == w {
+		s.usageWriter = nil
+	}
+	s.usageWriterMu.Unlock()
+}
+
+// drainUsageQueueFrom 丢弃队列里尚未落库的记录。
+// reset 调用方应已持有 w.mu（若 w 非 nil）和 usagePersistMu，这样 enqueue
+// 无法在 drain 与 generation 递增之间把新记录塞进队列。
+func (s *Server) drainUsageQueueFrom(w *usageWriterState) {
+	if w == nil {
+		return
+	}
+	for {
+		select {
+		case _, ok := <-w.queue:
+			if !ok {
+				return
+			}
+		default:
+			return
+		}
+	}
+}
+
+// persistUsageRecord 在 persist 锁下核对 generation 后落库。reset 持同一把锁，
+// 避免清库后旧写入写回。
+func (s *Server) persistUsageRecord(record *usageRecord) {
+	if record == nil || s.store == nil {
+		return
+	}
+	s.usagePersistMu.Lock()
+	if record.writeGen != s.usageWriteGen.Load() {
+		s.usagePersistMu.Unlock()
+		return
+	}
+	err := s.saveUsageRecordToStore(record)
+	s.usagePersistMu.Unlock()
+	if err != nil {
+		log.Printf("failed to save usage record to sqlite: %v", err)
+		return
+	}
+	// 只读缓存按 TTL 活着，不随写入失效的话，KPI/日志会再吃一整轮旧响应。
+	s.usageCache.flush()
+	s.usageSeq.Add(1)
 }
 
 // enqueueUsageRecord 尝试把记录投递到异步队列。队列已满或已关停时返回
 // false，调用方据此降级为同步写入，确保 usage 不丢失。
 func (s *Server) enqueueUsageRecord(record *usageRecord) bool {
-	w := s.usageWriter
+	w := s.usageWriterSnapshot()
 	if w == nil {
 		return false
 	}
@@ -75,9 +127,8 @@ func (s *Server) enqueueUsageRecord(record *usageRecord) bool {
 	copied.RequestWarnings = cloneSlice(record.RequestWarnings)
 	copied.downstream = nil
 	w.mu.Lock()
-	closed := w.closed
-	w.mu.Unlock()
-	if closed {
+	defer w.mu.Unlock()
+	if w.closed {
 		return false
 	}
 	select {

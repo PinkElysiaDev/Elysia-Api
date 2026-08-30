@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -92,5 +93,46 @@ func TestUsageCacheSkipsNonSuccess(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&executions); got != 2 {
 		t.Fatalf("non-200 responses must not be cached, got %d executions", got)
+	}
+}
+
+// TestUsageCacheFlushDropsInflightWriteback：reset 期间已开始的 GET 不得把旧响应写回缓存。
+func TestUsageCacheFlushDropsInflightWriteback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cache := &usageResponseCache{}
+	var executions int32
+	started := make(chan struct{})
+	release := make(chan struct{})
+
+	r := gin.New()
+	r.GET("/p", cache.middleware(), func(c *gin.Context) {
+		n := atomic.AddInt32(&executions, 1)
+		if n == 1 {
+			close(started)
+			<-release
+			c.JSON(http.StatusOK, gin.H{"gen": 1})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"gen": 2})
+	})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/p", nil))
+	}()
+	<-started
+	cache.flush()
+	close(release)
+	<-done
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/p", nil))
+	if got := atomic.LoadInt32(&executions); got != 2 {
+		t.Fatalf("stale inflight must not populate cache, executions=%d", got)
+	}
+	if !strings.Contains(w.Body.String(), `"gen":2`) {
+		t.Fatalf("expected fresh gen=2 body, got %s", w.Body.String())
 	}
 }

@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -76,6 +75,7 @@ type usageRecord struct {
 	GroupName           string           `json:"groupName"`
 	ModelID             string           `json:"modelId"`
 	ModelName           string           `json:"modelName"`
+	SourceID            string           `json:"sourceId,omitempty"`
 	Platform            string           `json:"platform"`
 	InputFormat         string           `json:"inputFormat"`
 	TargetPlatform      string           `json:"targetPlatform"`
@@ -106,6 +106,8 @@ type usageRecord struct {
 	// downstream 是写回下游客户端的 ResponseWriter 捕获器，运行期内部使用，
 	// 不参与 JSON 序列化。recordUsage 会从它回读 DownstreamResponse。
 	downstream *downstreamCaptureWriter `json:"-"`
+	// writeGen 与 Server.usageWriteGen 对齐；reset 递增后丢弃更早的写入。
+	writeGen uint64 `json:"-"`
 }
 
 func shortTokenHash(token string) string {
@@ -190,7 +192,6 @@ type providerUsageResult struct {
 	Source   string
 	HasUsage bool
 }
-
 
 func extractProviderUsageFromBody(platform relay.Platform, format relay.FormatType, body []byte) providerUsageResult {
 	var payload map[string]interface{}
@@ -630,14 +631,13 @@ func (s *Server) recordUsage(record *usageRecord) {
 		// 无 store 的降级模式不再留存 usage（遗留面板已下线，无任何读取方）。
 		return
 	}
+	record.writeGen = s.usageWriteGen.Load()
 	// 优先异步落库，避免请求路径阻塞在 SQLite 写入上；
 	// 队列满或未启动时降级为同步写，保证不丢记录。
 	if s.enqueueUsageRecord(record) {
 		return
 	}
-	if err := s.saveUsageRecordToStore(record); err != nil {
-		log.Printf("failed to save usage record to sqlite: %v", err)
-	}
+	s.persistUsageRecord(record)
 }
 
 // resetUsage 清空全部 usage 数据并失效响应缓存。仅由 admin 端点调用；
@@ -647,11 +647,32 @@ func (s *Server) resetUsage(c *gin.Context) {
 		respondFail(c, http.StatusServiceUnavailable, "store_unavailable", "sqlite store is unavailable")
 		return
 	}
+	// 先挡住 enqueue（w.mu），再拿 persist 锁清库/切 generation。
+	// 顺序必须是 writer mu → persist mu：stopUsageWriter 持 writer mu 后 Wait
+	// writer，而 writer 落库要 persist mu；若此处反序会与 stop 死锁。
+	w := s.usageWriterSnapshot()
+	if w != nil {
+		w.mu.Lock()
+	}
+	s.usagePersistMu.Lock()
 	if err := s.store.ClearUsage(c.Request.Context()); err != nil {
+		s.usagePersistMu.Unlock()
+		if w != nil {
+			w.mu.Unlock()
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	// 清库成功后，在 enqueue 仍被挡住时排空旧队列并递增 generation，
+	// 避免「先加 generation 再 drain」把 reset 之后、drain 之前入队的新记录丢掉。
+	s.drainUsageQueueFrom(w)
+	s.usageWriteGen.Add(1)
+	s.usagePersistMu.Unlock()
+	if w != nil {
+		w.mu.Unlock()
+	}
 	s.usageCache.flush()
+	s.usageSeq.Add(1)
 	c.JSON(http.StatusOK, gin.H{"reset": true})
 }
 
@@ -905,8 +926,6 @@ func (b *upstreamUsageObservingBody) observeLine(line string) {
 	result := extractProviderUsageFromStreamEvent(b.platform, b.format, payload)
 	applyProviderUsageToRecord(b.record, result)
 }
-
-
 
 func usageFromOpenAIUsage(raw map[string]interface{}) usageTokenUsage {
 	usage := usageTokenUsage{}
@@ -1226,6 +1245,7 @@ func setRecordModel(record *usageRecord, model config.ModelRef, platform relay.P
 	}
 	record.ModelID = model.ID
 	record.ModelName = model.Name
+	record.SourceID = model.SourceID
 	record.Platform = model.Platform
 	record.TargetPlatform = string(platform)
 }

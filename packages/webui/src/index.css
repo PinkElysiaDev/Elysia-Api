@@ -25,7 +25,7 @@
   --secondary-foreground: 228 12% 38%;  /* #595E6B 次级文本 */
 
   --muted: 230 10% 95%;
-  --muted-foreground: 226 10% 42%;      /* #606877 次级文字，浅底对比度 ≥4.5:1 (WCAG AA) */
+  --muted-foreground: 226 12% 34%;      /* #4C5363 次级文字，大屏必须可读 */
 
   --accent: 336 85% 96%;                /* #FDF0F4 瑰梅洗色底 */
   --accent-foreground: 336 80% 38%;
@@ -44,6 +44,12 @@
   --sidebar-foreground: 228 24% 12%;
 
   --radius: 0.5rem;                     /* 8px 现代微圆角 */
+
+  /* 图表轴刻度：rem 随根字号流式缩放（16px 根时 11px）。字重不能跟着 rem 走——
+   * 等宽数字在深色底上笔画随字号等比变粗，相对观感反而发细，故按视口阶梯补字重
+   * （ui-monospace/SF Mono 是静态字重，只有 500/600/700 档可用）。 */
+  --chart-tick-size: 0.6875rem;
+  --chart-tick-weight: 500;
 
   color-scheme: light;
 
@@ -89,7 +95,7 @@
   --secondary-foreground: 230 12% 72%;  /* #B2B5C4 */
 
   --muted: 240 10% 13%;
-  --muted-foreground: 230 8% 55%;       /* #85899A */
+  --muted-foreground: 230 10% 72%;      /* #B0B4C2 次级文字，暗底必须可读 */
 
   --accent: 336 40% 15%;
   --accent-foreground: 336 90% 75%;
@@ -135,6 +141,25 @@
 
 * {
   border-color: hsl(var(--border));
+}
+
+html {
+  /* 流式根字号：≤1280px 时 16px，随视口平滑增至 2560px 的 20px——全站 rem（含图表刻度）统一跟随。
+   * 下限用 1rem 而非 16px：尊重浏览器「字号」偏好（Josh Comeau, Pixels and Accessibility）。
+   * 插值配比取 Utopia 流式字号配方：16 = 0.75×16 + 0.3125%×1280，20 = 0.75×16 + 0.3125%×2560。 */
+  font-size: clamp(1rem, 0.75rem + 0.3125vw, 1.25rem);
+  /* 立绘水印右缘出血会撑出 8px 横向滚动：clip 必须设在根元素上——
+   * Chrome 不把 body 的 overflow 传播到视口。clip 不产生滚动容器，sticky 侧栏不受影响 */
+  overflow-x: clip;
+}
+
+/* 刻度字重大屏阶梯：≥1920 刻度已放大到 ~12.4px、≥2560 ~13.8px，w500 的笔画观感偏细，
+ * 逐档提到 Semibold/Bold。小屏保持 500——11px 下 w600 反而发闷。 */
+@media (min-width: 1920px) {
+  :root { --chart-tick-weight: 600; }
+}
+@media (min-width: 2560px) {
+  :root { --chart-tick-weight: 700; }
 }
 
 html,
@@ -257,7 +282,7 @@ body::before {
   /* 表格数字与副行 */
   .num {
     font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
-    font-size: 12px;
+    font-size: 0.8125rem;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
@@ -265,7 +290,7 @@ body::before {
     display: block;
     margin-top: 1px;
     font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
-    font-size: 11px;
+    font-size: 0.75rem;
     color: hsl(var(--muted-foreground));
   }
 

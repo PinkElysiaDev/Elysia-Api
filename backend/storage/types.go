@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"database/sql"
 	"strings"
 	"sync"
@@ -16,6 +17,9 @@ type Store struct {
 	rollupReady atomic.Bool
 	rollupMu    sync.Mutex // 序列化回填执行（防重复启动）
 	rollupWG    sync.WaitGroup
+	// rollupCtx 在 Close 时取消，让后台回填在关库前退出。
+	rollupCtx    context.Context
+	rollupCancel context.CancelFunc
 }
 
 type ModelSource struct {
@@ -177,14 +181,18 @@ type UsageQuery struct {
 	KeyNames   []string
 	GroupNames []string
 	ModelNames []string
+	SourceID   string
+	SourceIDs  []string
+	// orphanTimestamps：只查 started_ms<=0 的坏时间戳行（内部使用，不对外暴露）。
+	orphanTimestamps bool
 }
 
 // UsageDailyBucket 趋势图的单日聚合行。Date 是请求方时区的本地日（YYYY-MM-DD）。
 type UsageDailyBucket struct {
 	Date            string         `json:"date"`
 	Requests        int            `json:"requests"`
-	SuccessRequests int            `json:"successRequests,omitempty"`
-	FailedRequests  int            `json:"failedRequests,omitempty"`
+	SuccessRequests int            `json:"successRequests"`
+	FailedRequests  int            `json:"failedRequests"`
 	InputTokens     int            `json:"inputTokens,omitempty"`
 	OutputTokens    int            `json:"outputTokens,omitempty"`
 	CacheHitTokens  int            `json:"cacheHitTokens,omitempty"`
@@ -200,6 +208,40 @@ type UsageModelBucket struct {
 	Tokens   int    `json:"tokens"`
 }
 
+// UsagePulsePoint 短窗脉搏的一个时间桶（RPM / 时延）。
+// T 是该桶起始时刻的 Unix 毫秒（与 utcOffsetMinutes 对齐后再折回 UTC）。
+type UsagePulsePoint struct {
+	T             int64   `json:"t"`
+	Requests      int     `json:"requests"`
+	AvgDurationMs float64 `json:"avgDurationMs"`
+	P95DurationMs float64 `json:"p95DurationMs"`
+	TotalTokens   int64   `json:"totalTokens,omitempty"`
+}
+
+// UsagePulseWindow 是整段 [from, to) 窗口的汇总（请求数 / 平均耗时为全量；
+// P95 在样本 ≤ 16384 时精确，超出为蓄水池估算，不是各桶 P95 的加权平均）。
+type UsagePulseWindow struct {
+	Requests      int     `json:"requests"`
+	AvgDurationMs float64 `json:"avgDurationMs"`
+	P95DurationMs float64 `json:"p95DurationMs"`
+	TotalTokens   int64   `json:"totalTokens"`
+}
+
+// UsagePulseResult 短窗脉搏：分桶序列 + 窗口级汇总。
+type UsagePulseResult struct {
+	Points []UsagePulsePoint `json:"points"`
+	Window UsagePulseWindow  `json:"window"`
+}
+
+// UsageModelDailyBucket 某本地日某个模型的请求数。
+// Other 为 true 时表示 Top N 之外的合计，Model 为空，展示文案由调用方决定。
+type UsageModelDailyBucket struct {
+	Date     string `json:"date"`
+	Model    string `json:"model"`
+	Requests int    `json:"requests"`
+	Other    bool   `json:"isOther,omitempty"`
+}
+
 type UsageLogItem struct {
 	RequestID         string    `json:"requestId"`
 	StartedAt         time.Time `json:"startedAt"`
@@ -207,6 +249,7 @@ type UsageLogItem struct {
 	KeyHash           string    `json:"keyHash"`
 	GroupName         string    `json:"groupName"`
 	ModelName         string    `json:"modelName"`
+	SourceID          string    `json:"sourceId,omitempty"`
 	Platform          string    `json:"platform"`
 	SourceFormat      string    `json:"sourceFormat"`
 	TargetFormat      string    `json:"targetFormat"`

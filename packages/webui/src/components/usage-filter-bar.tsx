@@ -23,8 +23,8 @@ export function UsageFilterBar({
   onGroupNamesChange,
   modelNames,
   onModelNamesChange,
-  sourceNames,
-  onSourceNamesChange,
+  sourceIds,
+  onSourceIdsChange,
   keyNames,
   onKeyNamesChange,
   children,
@@ -35,14 +35,14 @@ export function UsageFilterBar({
   groupOptions: (string | MultiSelectOption)[]
   modelOptions: (string | MultiSelectOption)[]
   keyOptions: (string | MultiSelectOption)[]
-  /** 启用源名称列表（与 Model.sourceName 对应）；为空则不显示源筛选。 */
+  /** 启用源选项（value 必须是 source id，同名源才能区分）；为空则不显示源筛选。 */
   sourceOptions: (string | MultiSelectOption)[]
   groupNames: string[]
   onGroupNamesChange: (value: string[]) => void
   modelNames: string[]
   onModelNamesChange: (value: string[]) => void
-  sourceNames: string[]
-  onSourceNamesChange: (value: string[]) => void
+  sourceIds: string[]
+  onSourceIdsChange: (value: string[]) => void
   keyNames: string[]
   onKeyNamesChange: (value: string[]) => void
   /** 页面专属筛选控件（追加在调用方之后）。 */
@@ -51,7 +51,7 @@ export function UsageFilterBar({
   right?: ReactNode
 }) {
   const hasFilters =
-    groupNames.length > 0 || modelNames.length > 0 || sourceNames.length > 0 || keyNames.length > 0
+    groupNames.length > 0 || modelNames.length > 0 || sourceIds.length > 0 || keyNames.length > 0
 
   return (
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
@@ -81,8 +81,8 @@ export function UsageFilterBar({
         <MultiSelect
           label="模型源"
           options={sourceOptions}
-          value={sourceNames}
-          onChange={onSourceNamesChange}
+          value={sourceIds}
+          onChange={onSourceIdsChange}
           searchPlaceholder="搜索模型源"
         />
       )}
@@ -100,7 +100,7 @@ export function UsageFilterBar({
           onClick={() => {
             onGroupNamesChange([])
             onModelNamesChange([])
-            onSourceNamesChange([])
+            onSourceIdsChange([])
             onKeyNamesChange([])
           }}
           className="flex h-[34px] items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors duration-150 hover:bg-wash hover:text-rose focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
