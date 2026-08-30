@@ -76,6 +76,7 @@ type usageRecord struct {
 	GroupName           string           `json:"groupName"`
 	ModelID             string           `json:"modelId"`
 	ModelName           string           `json:"modelName"`
+	SourceID            string           `json:"sourceId,omitempty"`
 	Platform            string           `json:"platform"`
 	InputFormat         string           `json:"inputFormat"`
 	TargetPlatform      string           `json:"targetPlatform"`
@@ -1226,6 +1227,7 @@ func setRecordModel(record *usageRecord, model config.ModelRef, platform relay.P
 	}
 	record.ModelID = model.ID
 	record.ModelName = model.Name
+	record.SourceID = model.SourceID
 	record.Platform = model.Platform
 	record.TargetPlatform = string(platform)
 }

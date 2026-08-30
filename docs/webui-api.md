@@ -161,7 +161,18 @@ List responses mask tokens; create/update accepts plaintext.
 
 ### `GET /api/admin/usage/stats`
 
-Query params: `from`, `to` as RFC3339 timestamps; optional `keyName`, `keyHash`, `groupName`, `modelGroup`, `modelName`, `statusCode`.
+Query params: `from`, `to` as RFC3339 timestamps; optional `keyName`, `keyHash`, `groupName`, `modelGroup`, `modelName`, `sourceId`, `statusCode`. Repeated params (`keyName`, `groupName`, `modelName`, `sourceId`) are treated as multi-select.
+
+### `GET /api/admin/usage/pulse`
+
+Query params: same time filters as stats, plus `utcOffsetMinutes` and `bucketMinutes` (`1`, `5`, or `15`).
+`from` is required; `[from, to)` must be at most 48 hours (`to` omitted uses now).
+Returns `{ points, window }` where `points` is `{ t, requests, avgDurationMs, p95DurationMs }[]` (`t` is the bucket start in Unix milliseconds) and `window` is `{ requests, avgDurationMs, p95DurationMs, totalTokens }`. Window `requests` / `avgDurationMs` are exact. Window and bucket `p95DurationMs` are exact up to 16384 samples, then a reservoir-sampling estimate. They are not a mean of bucket P95s.
+
+### `GET /api/admin/usage/by-model-daily`
+
+Query params: same time filters as stats, plus `utcOffsetMinutes` and optional `top` (1–20, default 8).
+Returns `{ date, model, requests, isOther }[]`. Models outside the top-N by request count are merged into one row with `isOther: true` and empty `model`; the client chooses the display label.
 
 ### `GET /api/admin/usage/logs`
 

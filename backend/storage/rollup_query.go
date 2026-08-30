@@ -18,10 +18,11 @@ type sqlQueryer interface {
 // 返回 ok=false 时调用方必须整体走 raw 路径（优雅降级，行为与阶段一一致）：
 //   - rollup 未就绪（回填未完成或失败）；
 //   - 带 keyHash 筛选（rollup 不含该维度，仅遗留面板使用）；
+//   - 带来源筛选（rollup 不含 source_id，历史行也无法回填该维度）；
 //   - 做本地日分桶且 offset 不是整小时倍数（+5:30 等时区的日边界切在小时桶中间）；
 //   - 窗口本身不足一个完整小时。
 func (s *Store) rollupSplit(q UsageQuery, offsetAligned bool) (fromHour, toHour int64, ok bool) {
-	if !s.rollupReady.Load() || q.KeyHash != "" || !offsetAligned {
+	if !s.rollupReady.Load() || q.KeyHash != "" || q.SourceID != "" || len(q.SourceIDs) > 0 || !offsetAligned {
 		return 0, 0, false
 	}
 	var fromMs int64

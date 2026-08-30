@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	randv2 "math/rand/v2"
+	"sort"
 	"strings"
 	"time"
 )
@@ -621,8 +624,17 @@ func (s *Store) SaveUsageRecordJSON(ctx context.Context, payload []byte, summary
 			_ = tx.Rollback()
 		}
 	}()
-	if _, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO usage_records(request_id, started_at, started_ms, ended_at, key_name, key_hash, group_name, model_name, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated, record_json) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, summary.RequestID, summary.StartedAt.UTC().Format(time.RFC3339Nano), summary.StartedAt.UnixMilli(), endedAt.UTC().Format(time.RFC3339Nano), summary.KeyName, summary.KeyHash, summary.GroupName, summary.ModelName, summary.Platform, summary.SourceFormat, summary.TargetFormat, summary.RelayMode, summary.ResponsesMode, summary.UsageSource, boolInt(summary.Stream), summary.StatusCode, summary.Error, summary.FirstByteMs, summary.DurationMs, summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, boolInt(summary.RequestTruncated), boolInt(summary.ResponseTruncated), string(payload)); err != nil {
+	res, err := tx.ExecContext(ctx, `INSERT INTO usage_records(request_id, started_at, started_ms, ended_at, key_name, key_hash, group_name, model_name, source_id, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated, record_json) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(request_id) DO NOTHING`, summary.RequestID, summary.StartedAt.UTC().Format(time.RFC3339Nano), summary.StartedAt.UnixMilli(), endedAt.UTC().Format(time.RFC3339Nano), summary.KeyName, summary.KeyHash, summary.GroupName, summary.ModelName, summary.SourceID, summary.Platform, summary.SourceFormat, summary.TargetFormat, summary.RelayMode, summary.ResponsesMode, summary.UsageSource, boolInt(summary.Stream), summary.StatusCode, summary.Error, summary.FirstByteMs, summary.DurationMs, summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, boolInt(summary.RequestTruncated), boolInt(summary.ResponseTruncated), string(payload))
+	if err != nil {
 		return err
+	}
+	inserted, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if inserted == 0 {
+		// 同 request_id 已落库：禁止覆盖。覆盖会让 rollup 再 +1 而旧桶不回退。
+		return nil
 	}
 	if err := upsertUsageRollupTx(ctx, tx, summary); err != nil {
 		return err
@@ -649,7 +661,7 @@ func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageL
 	// 排序只用 started_ms：索引可直接反向游走取前 offset+limit 条窄索引项、
 	// 仅对页内行回表。若追加 started_at 次级排序，任何索引都无法满足复合顺序，
 	// SQLite 会退化为全窗口临时 B-tree 排序并逐行回表读取 record_json 胖行。
-	rows, err := s.db.QueryContext(ctx, `SELECT request_id, started_at, key_name, key_hash, group_name, model_name, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated FROM usage_records `+where+` ORDER BY started_ms DESC LIMIT ? OFFSET ?`, args...)
+	rows, err := s.db.QueryContext(ctx, `SELECT request_id, started_at, key_name, key_hash, group_name, model_name, source_id, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated FROM usage_records `+where+` ORDER BY started_ms DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -659,7 +671,7 @@ func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageL
 		var item UsageLogItem
 		var started string
 		var stream, reqTrunc, respTrunc int
-		if err := rows.Scan(&item.RequestID, &started, &item.KeyName, &item.KeyHash, &item.GroupName, &item.ModelName, &item.Platform, &item.SourceFormat, &item.TargetFormat, &item.RelayMode, &item.ResponsesMode, &item.UsageSource, &stream, &item.StatusCode, &item.Error, &item.FirstByteMs, &item.DurationMs, &item.InputTokens, &item.OutputTokens, &item.TotalTokens, &item.CacheHitTokens, &reqTrunc, &respTrunc); err != nil {
+		if err := rows.Scan(&item.RequestID, &started, &item.KeyName, &item.KeyHash, &item.GroupName, &item.ModelName, &item.SourceID, &item.Platform, &item.SourceFormat, &item.TargetFormat, &item.RelayMode, &item.ResponsesMode, &item.UsageSource, &stream, &item.StatusCode, &item.Error, &item.FirstByteMs, &item.DurationMs, &item.InputTokens, &item.OutputTokens, &item.TotalTokens, &item.CacheHitTokens, &reqTrunc, &respTrunc); err != nil {
 			return 0, nil, err
 		}
 		item.StartedAt = parseTime(started)
@@ -719,10 +731,22 @@ func usageFilterClauses(q UsageQuery, includeTime, includeKeyHash bool) (string,
 }
 
 // usageWhere 生成 raw 表（usage_records）的完整筛选条件。
+// source_id 只加在 raw 路径：usage_rollup_hour 没有该列，带 source 过滤时
+// rollupSplit 必须返回 ok=false，避免 rollup SQL 引用不存在的列。
 func usageWhere(q UsageQuery) (string, []any) {
 	clauses, args := usageFilterClauses(q, true, true)
+	if len(q.SourceIDs) > 0 {
+		clauses += " AND " + usageInClause("source_id", len(q.SourceIDs))
+		for _, v := range q.SourceIDs {
+			args = append(args, v)
+		}
+	} else if q.SourceID != "" {
+		clauses += " AND source_id = ?"
+		args = append(args, q.SourceID)
+	}
 	return "WHERE " + clauses, args
 }
+
 // UsageDaily 按固定 UTC offset 的本地日聚合请求数、细分 tokens 以及各模型消耗。
 // rollup 就绪时中段（完整小时）走预聚合表、两侧不足一小时的边缘走 raw 单次
 // (日, 模型) 扫描，在一个读事务（WAL 快照）内精确合并；否则整体走 raw 路径
@@ -893,6 +917,258 @@ func (s *Store) UsageByModel(ctx context.Context, q UsageQuery) ([]UsageModelBuc
 	}
 	sortUsageModelBuckets(buckets)
 	return buckets, nil
+}
+
+// MaxPulseSpan 是 UsagePulse 允许的最大 [from, to) 跨度。短窗接口会把时延读入
+// 内存算 P95，不限制窗口会退化成全表扫描。
+const MaxPulseSpan = 48 * time.Hour
+
+var (
+	ErrPulseFromRequired  = errors.New("pulse requires from")
+	ErrPulseWindowTooLong = errors.New("pulse window exceeds 48 hours")
+	ErrPulseInvertedRange = errors.New("pulse to is before from")
+)
+
+// ValidatePulseQuery 要求 from，且 [from, to) 不超过 MaxPulseSpan；to 为空时按 now 计。
+// from > to 视为参数错误，避免调用方把空结果当成「确实没有数据」。
+func ValidatePulseQuery(q UsageQuery) error {
+	if q.From.IsZero() {
+		return ErrPulseFromRequired
+	}
+	end := q.To
+	if end.IsZero() {
+		end = time.Now()
+	}
+	if end.Before(q.From) {
+		return ErrPulseInvertedRange
+	}
+	if end.Sub(q.From) > MaxPulseSpan {
+		return ErrPulseWindowTooLong
+	}
+	return nil
+}
+
+// pulseP95Reservoir 是桶级 / 窗口级 P95 的最大样本数。48h 窗口只限制时长、
+// 不限制 QPS；超过此容量改用 Algorithm R 蓄水池，P95 为估算值。
+const pulseP95Reservoir = 16384
+
+// UsagePulse 按固定分钟桶聚合请求数、平均耗时与 P95 耗时，并同时给出整窗 P95。
+// utcOffsetMinutes 与 UsageDaily 相同，用来把桶边界对齐到调用方本地时区。
+// 按桶排序后流式计算桶级指标。P95 在样本数 ≤ pulseP95Reservoir 时精确，超出为估算。
+func (s *Store) UsagePulse(ctx context.Context, q UsageQuery, utcOffsetMinutes, bucketMinutes int) (UsagePulseResult, error) {
+	if bucketMinutes <= 0 {
+		return UsagePulseResult{}, fmt.Errorf("bucketMinutes must be positive")
+	}
+	if err := ValidatePulseQuery(q); err != nil {
+		return UsagePulseResult{}, err
+	}
+	where, args := usageWhere(q)
+	offsetMs := int64(utcOffsetMinutes) * 60_000
+	bucketMs := int64(bucketMinutes) * 60_000
+	args = append([]any{offsetMs, bucketMs}, args...)
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT ((started_ms + ?) / ?) AS bucket, duration_ms, total_tokens FROM usage_records `+where+` ORDER BY 1, 2`, args...)
+	if err != nil {
+		return UsagePulseResult{}, err
+	}
+	defer rows.Close()
+
+	out := []UsagePulsePoint{}
+	var (
+		curBucket    int64
+		have         bool
+		n            int
+		sum          int64
+		tokenSum     int64
+		bucketSample int64Reservoir
+		windowSample int64Reservoir
+		windowN      int
+		windowSum    int64
+		windowTok    int64
+	)
+	bucketSample.samples = make([]int64, 0, pulseP95Reservoir)
+	windowSample.samples = make([]int64, 0, pulseP95Reservoir)
+	flush := func() {
+		if !have || n == 0 {
+			return
+		}
+		out = append(out, UsagePulsePoint{
+			T:             curBucket*bucketMs - offsetMs,
+			Requests:      n,
+			AvgDurationMs: float64(sum) / float64(n),
+			P95DurationMs: percentileInt64(append([]int64(nil), bucketSample.samples...), 0.95),
+			TotalTokens:   tokenSum,
+		})
+		windowN += n
+		windowSum += sum
+		windowTok += tokenSum
+	}
+	for rows.Next() {
+		var bucket, durationMs, tokens int64
+		if err := rows.Scan(&bucket, &durationMs, &tokens); err != nil {
+			return UsagePulseResult{}, err
+		}
+		if !have || bucket != curBucket {
+			flush()
+			curBucket = bucket
+			have = true
+			n = 0
+			sum = 0
+			tokenSum = 0
+			bucketSample.reset()
+		}
+		n++
+		sum += durationMs
+		tokenSum += tokens
+		bucketSample.add(durationMs)
+		windowSample.add(durationMs)
+	}
+	if err := rows.Err(); err != nil {
+		return UsagePulseResult{}, err
+	}
+	flush()
+	window := UsagePulseWindow{Requests: windowN, TotalTokens: windowTok}
+	if windowN > 0 {
+		window.AvgDurationMs = float64(windowSum) / float64(windowN)
+		window.P95DurationMs = percentileInt64(windowSample.samples, 0.95)
+	}
+	return UsagePulseResult{Points: out, Window: window}, nil
+}
+
+type int64Reservoir struct {
+	samples []int64
+	seen    int
+}
+
+func (r *int64Reservoir) add(v int64) {
+	r.seen++
+	if len(r.samples) < cap(r.samples) {
+		r.samples = append(r.samples, v)
+		return
+	}
+	if cap(r.samples) == 0 {
+		return
+	}
+	j := randv2.IntN(r.seen)
+	if j < len(r.samples) {
+		r.samples[j] = v
+	}
+}
+
+func (r *int64Reservoir) reset() {
+	r.samples = r.samples[:0]
+	r.seen = 0
+}
+
+func percentileInt64(values []int64, p float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
+	idx := int(math.Round(p * float64(len(values)-1)))
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(values) {
+		idx = len(values) - 1
+	}
+	return float64(values[idx])
+}
+
+// UsageByModelDaily 按本地日 × 模型聚合请求数。total 请求最高的 top 个模型保留原名，其余合并为 isOther。
+// 走与 UsageDaily 相同的 rollup 中段 + raw 边缘路径，避免每次刷新都扫完整 raw 表。
+func (s *Store) UsageByModelDaily(ctx context.Context, q UsageQuery, utcOffsetMinutes, top int) ([]UsageModelDailyBucket, error) {
+	if top <= 0 {
+		top = 8
+	}
+	offsetMs := int64(utcOffsetMinutes) * 60_000
+	dayRows, err := s.usageDailyRows(ctx, q, offsetMs)
+	if err != nil {
+		return nil, err
+	}
+
+	type row struct {
+		date, model string
+		requests    int
+	}
+	var raw []row
+	totals := map[string]int{}
+	for _, r := range dayRows {
+		item := row{date: usageDayKeyDate(r.dayKey), model: r.model, requests: r.requests}
+		raw = append(raw, item)
+		totals[item.model] += item.requests
+	}
+
+	type ranked struct {
+		model string
+		n     int
+	}
+	rank := make([]ranked, 0, len(totals))
+	for model, n := range totals {
+		rank = append(rank, ranked{model, n})
+	}
+	sort.Slice(rank, func(i, j int) bool {
+		if rank[i].n != rank[j].n {
+			return rank[i].n > rank[j].n
+		}
+		return rank[i].model < rank[j].model
+	})
+	keep := map[string]bool{}
+	limit := top
+	if limit > len(rank) {
+		limit = len(rank)
+	}
+	for i := 0; i < limit; i++ {
+		keep[rank[i].model] = true
+	}
+
+	type mergeKey struct {
+		model string
+		other bool
+	}
+	merged := map[string]map[mergeKey]int{}
+	dates := []string{}
+	seenDate := map[string]bool{}
+	for _, r := range raw {
+		k := mergeKey{model: r.model}
+		if !keep[r.model] {
+			k = mergeKey{other: true}
+		}
+		if !seenDate[r.date] {
+			seenDate[r.date] = true
+			dates = append(dates, r.date)
+		}
+		byModel := merged[r.date]
+		if byModel == nil {
+			byModel = map[mergeKey]int{}
+			merged[r.date] = byModel
+		}
+		byModel[k] += r.requests
+	}
+
+	out := []UsageModelDailyBucket{}
+	for _, date := range dates {
+		cells := merged[date]
+		keys := make([]mergeKey, 0, len(cells))
+		for k := range cells {
+			keys = append(keys, k)
+		}
+		sort.Slice(keys, func(i, j int) bool {
+			if keys[i].other != keys[j].other {
+				return !keys[i].other
+			}
+			return keys[i].model < keys[j].model
+		})
+		for _, k := range keys {
+			out = append(out, UsageModelDailyBucket{
+				Date:     date,
+				Model:    k.model,
+				Requests: cells[k],
+				Other:    k.other,
+			})
+		}
+	}
+	return out, nil
 }
 
 // usageInClause 生成 `col IN (?, ?, ...)`，n 为占位符个数。

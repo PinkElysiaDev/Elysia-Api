@@ -19,6 +19,7 @@ func (s *Server) saveUsageRecordToStore(record *usageRecord) error {
 		KeyHash:           record.KeyHash,
 		GroupName:         record.GroupName,
 		ModelName:         record.ModelName,
+		SourceID:          record.SourceID,
 		Platform:          record.Platform,
 		SourceFormat:      record.SourceFormat,
 		TargetFormat:      record.TargetFormat,

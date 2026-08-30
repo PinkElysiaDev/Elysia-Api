@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/elysia-api/backend/config"
@@ -61,7 +62,13 @@ type Server struct {
 	// 异步 usage 写入：store 模式下，请求路径只把记录投递到 buffer channel，
 	// 由单个 writer goroutine 落库，避免请求在 SQLite 写入（单连接串行）上阻塞。
 	// usageWriter 包含队列与关闭标志（usage_writer.go），关停后入队安全降级。
-	usageWriter *usageWriterState
+	usageWriterMu sync.Mutex
+	usageWriter   *usageWriterState
+	// usageWriteGen 在 reset 时递增，丢掉队列里尚未落库的旧记录。
+	usageWriteGen  atomic.Uint64
+	usageSeq       atomic.Uint64
+	usagePersistMu sync.Mutex
+	shutdownOnce   sync.Once
 
 	// usage 只读端点的短 TTL 响应缓存 + 并发合并（usage_cache.go）。
 	usageCache usageResponseCache
@@ -116,14 +123,14 @@ func New(cfg *config.Config) *Server {
 	}
 
 	server := &Server{
-		config:          cfg,
-		engine:          engine,
-		openaiAdapter:   relay.NewOpenAIAdapter(httpTimeout),
-		claudeAdapter:   relay.NewClaudeAdapter(httpTimeout),
-		geminiAdapter:   relay.NewGeminiAdapter(httpTimeout),
-		roundRobinIndex: make(map[string]int),
-		rateLimits:      make(map[string]*rateLimitState),
-		affinity:        newAffinityCache(),
+		config:           cfg,
+		engine:           engine,
+		openaiAdapter:    relay.NewOpenAIAdapter(httpTimeout),
+		claudeAdapter:    relay.NewClaudeAdapter(httpTimeout),
+		geminiAdapter:    relay.NewGeminiAdapter(httpTimeout),
+		roundRobinIndex:  make(map[string]int),
+		rateLimits:       make(map[string]*rateLimitState),
+		affinity:         newAffinityCache(),
 		sourceRefreshing: make(map[string]bool),
 		sourceLastFetch:  make(map[string]sourceRefreshState),
 		refreshSem:       make(chan struct{}, sourceRefreshConcurrency),

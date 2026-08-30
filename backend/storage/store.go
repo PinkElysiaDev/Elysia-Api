@@ -176,6 +176,12 @@ func (s *Store) migrate(ctx context.Context) error {
 	// 含 record_json（完整请求/响应体，单行可达几十 KB）的胖行。月级数据的聚合
 	// 从 GB 级行读取降为几十 MB 索引扫描。列全为整数/短字符串，空间开销可控；
 	// 幂等建索引，大表首次执行为一次性启动成本。
+	// 增量迁移：usage 记录持久化模型源 ID，来源筛选按 source_id 精确匹配，
+	// 不再把源名展开成模型名（同名跨源会串数据）。存量行默认为空，不会命中源筛选。
+	if _, err := s.db.ExecContext(ctx, `ALTER TABLE usage_records ADD COLUMN source_id TEXT NOT NULL DEFAULT ''`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
 	if _, err := s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_usage_agg_cover ON usage_records(started_ms, model_name, group_name, key_name, status_code, stream, input_tokens, output_tokens, total_tokens, cache_hit_tokens, duration_ms, first_byte_ms)`); err != nil {
 		return err
 	}
