@@ -105,8 +105,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      # 发布正文来自 CHANGELOG.md 中 tag 对应的小节；缺节即失败，
-      # 避免发出版本却没有完整发布说明。
+      # 发布正文来自 CHANGELOG.md 中 tag 对应的小节：`<!-- release-details -->`
+      # 标记之前是面向使用者的简明正文，只提取这一段；旧版本小节无标记则整节
+      # 作为正文。缺节即失败，避免发出版本却没有完整发布说明。
       - name: Extract release notes from CHANGELOG.md
         shell: bash
         run: |
@@ -114,6 +115,7 @@ jobs:
           awk -v tag="## ${GITHUB_REF_NAME}" '
             $0 == tag || index($0, tag " ") == 1 { in_section = 1; next }
             in_section && /^## / { exit }
+            in_section && /^<!-- release-details -->$/ { exit }
             in_section && started { print }
             in_section && !started && NF > 0 { started = 1; print }
           ' CHANGELOG.md > release-notes.md
