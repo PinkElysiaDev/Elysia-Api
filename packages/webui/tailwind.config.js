@@ -74,14 +74,14 @@ export default {
         ],
       },
       fontSize: {
-        '2xs': ['11px', { lineHeight: '1.5' }],
-        xs: ['12px', { lineHeight: '1.6' }],
-        sm: ['13px', { lineHeight: '1.6' }],
-        base: ['14px', { lineHeight: '1.6' }],
-        lg: ['16px', { lineHeight: '1.5' }],
-        xl: ['19px', { lineHeight: '1.4' }],
-        '2xl': ['30px', { lineHeight: '1.15' }],
-        display: ['30px', { lineHeight: '1.25' }],
+        '2xs': ['0.75rem', { lineHeight: '1.5' }],
+        xs: ['0.8125rem', { lineHeight: '1.6' }],
+        sm: ['0.875rem', { lineHeight: '1.6' }],
+        base: ['1rem', { lineHeight: '1.6' }],
+        lg: ['1.125rem', { lineHeight: '1.5' }],
+        xl: ['1.25rem', { lineHeight: '1.4' }],
+        '2xl': ['1.875rem', { lineHeight: '1.15' }],
+        display: ['2rem', { lineHeight: '1.25' }],
       },
       transitionTimingFunction: {
         // 抽屉、开关和展开行共用的平滑缓动。
