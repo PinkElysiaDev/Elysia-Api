@@ -39,8 +39,10 @@ func OpenWithKey(path string, key []byte) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	store := &Store{db: db, codec: codec}
+	ctx, cancel := context.WithCancel(context.Background())
+	store := &Store{db: db, codec: codec, rollupCtx: ctx, rollupCancel: cancel}
 	if err := store.init(context.Background()); err != nil {
+		cancel()
 		db.Close()
 		return nil, err
 	}
@@ -48,7 +50,14 @@ func OpenWithKey(path string, key []byte) (*Store, error) {
 }
 
 func (s *Store) Close() error {
-	if s == nil || s.db == nil {
+	if s == nil {
+		return nil
+	}
+	if s.rollupCancel != nil {
+		s.rollupCancel()
+	}
+	s.rollupWG.Wait()
+	if s.db == nil {
 		return nil
 	}
 	return s.db.Close()
@@ -303,9 +312,10 @@ func (s *Store) backfillStartedMs(ctx context.Context) error {
 					return rollbackErr
 				}
 			}
-			parsed, perr := time.Parse(time.RFC3339Nano, r.startedAt)
-			if perr != nil {
-				// 无法解析的旧行保持 0；写入侧全部走 RFC3339Nano，实际不应出现。
+			parsed := parseTime(r.startedAt)
+			if parsed.IsZero() {
+				// 无法解析的旧行保持 started_ms=0，与 rollup / 时间窗查询隔离；
+				// 全时段 totals/by-model 另走 raw fallback 计入。
 				log.Printf("[migration] usage_records: unparseable started_at %q for %q (skipped)", r.startedAt, r.requestID)
 			} else if _, err = stmt.ExecContext(ctx, parsed.UnixMilli(), r.requestID); err != nil {
 				_ = tx.Rollback()

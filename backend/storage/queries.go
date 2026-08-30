@@ -287,6 +287,7 @@ func renameGroupInTokens(ctx context.Context, tx *sql.Tx, oldName, newName strin
 		return replaceGroupName(groups, oldName, newName)
 	})
 }
+
 // replaceGroupName 把切片里的 oldName 替换为 newName 并去重，返回新切片与是否发生变更。
 // 仅当 oldName 实际存在时才视为变更（避免对未引用该组的 token 产生无谓 UPDATE）；
 // 替换后去重，防止 newName 与列表中已有项重复。
@@ -451,6 +452,7 @@ func removeGroupFromTokens(ctx context.Context, tx *sql.Tx, groupName string) er
 		return removeGroupName(groups, groupName)
 	})
 }
+
 // removeGroupName 从切片中移除指定组名并保持原有顺序，返回新切片与是否发生变更。
 func removeGroupName(groups []string, groupName string) ([]string, bool) {
 	found := false
@@ -692,13 +694,17 @@ func usageFilterClauses(q UsageQuery, includeTime, includeKeyHash bool) (string,
 	if includeTime {
 		// 时间过滤用整型毫秒列：RFC3339Nano 字符串的字典序在整秒/带毫秒混合时
 		// 不可靠（'.' < 'Z'），会把边界上的记录漏掉。
-		if !q.From.IsZero() {
-			parts = append(parts, "started_ms >= ?")
-			args = append(args, q.From.UnixMilli())
-		}
-		if !q.To.IsZero() {
-			parts = append(parts, "started_ms < ?")
-			args = append(args, q.To.UnixMilli())
+		if q.orphanTimestamps {
+			parts = append(parts, "started_ms <= 0")
+		} else {
+			if !q.From.IsZero() {
+				parts = append(parts, "started_ms >= ?")
+				args = append(args, q.From.UnixMilli())
+			}
+			if !q.To.IsZero() {
+				parts = append(parts, "started_ms < ?")
+				args = append(args, q.To.UnixMilli())
+			}
 		}
 	}
 	if includeKeyHash && q.KeyHash != "" {
@@ -839,6 +845,11 @@ type usageDayRow struct {
 // qe 允许跑在连接池或读事务上（rollup 边缘补扫复用）。
 func scanUsageDailyRows(ctx context.Context, qe sqlQueryer, q UsageQuery, offsetMs int64) ([]usageDayRow, error) {
 	where, args := usageWhere(q)
+	if !q.orphanTimestamps {
+		// 日桶无法安置 started_ms<=0 的坏时间戳，否则会落成 1970-01-01。
+		// rollup 未就绪 / keyHash / sourceId / 非整小时 offset 都会走这条 raw 路径。
+		where += " AND started_ms > 0"
+	}
 	fullArgs := append([]any{offsetMs}, args...)
 	rows, err := qe.QueryContext(ctx,
 		`SELECT (started_ms + ?) / 86400000, model_name, COUNT(*), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cache_hit_tokens),0), COALESCE(SUM(total_tokens),0) FROM usage_records `+where+` GROUP BY 1, 2 ORDER BY 1`, fullArgs...)
@@ -891,6 +902,13 @@ func (s *Store) UsageByModel(ctx context.Context, q UsageQuery) ([]UsageModelBuc
 				return nil, err
 			}
 			rows = append(rows, tail...)
+		}
+		if q.From.IsZero() {
+			orphans, err := scanUsageByModelRawRows(ctx, tx, q.orphansOnly())
+			if err != nil {
+				return nil, err
+			}
+			rows = append(rows, orphans...)
 		}
 	} else {
 		raw, err := scanUsageByModelRawRows(ctx, s.db, q)
@@ -1300,6 +1318,11 @@ func (s *Store) usageTotalsAcc(ctx context.Context, q UsageQuery) (*usageTotalsA
 	}
 	if hasTail {
 		if err := usageTotalsRawInto(ctx, tx, q.withBounds(tailFrom, tailTo), acc); err != nil {
+			return nil, err
+		}
+	}
+	if q.From.IsZero() {
+		if err := usageTotalsRawInto(ctx, tx, q.orphansOnly(), acc); err != nil {
 			return nil, err
 		}
 	}

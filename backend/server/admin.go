@@ -664,9 +664,6 @@ func (s *Server) adminUpsertToken(c *gin.Context) {
 	if name := c.Param("name"); name != "" {
 		item.Name = name
 	}
-	if name := c.Param("name"); name != "" {
-		item.Name = name
-	}
 	// 「留空即不变」：编辑时若未填 token，保留原值（不清空）。
 	if strings.TrimSpace(item.Token) == "" {
 		if existing, found, err := store.FindAPITokenByName(c.Request.Context(), item.Name); err == nil && found {

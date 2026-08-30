@@ -79,7 +79,7 @@ func TestUsageDailyScanPlanCovering(t *testing.T) {
 	defer store.Close()
 
 	plan := explainPlan(t, store,
-		`SELECT (started_ms + ?) / 86400000, model_name, COUNT(*), COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cache_hit_tokens),0), COALESCE(SUM(total_tokens),0) FROM usage_records WHERE started_ms >= ? AND started_ms < ? GROUP BY 1, 2 ORDER BY 1`,
+		`SELECT (started_ms + ?) / 86400000, model_name, COUNT(*), COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cache_hit_tokens),0), COALESCE(SUM(total_tokens),0) FROM usage_records WHERE started_ms >= ? AND started_ms < ? AND started_ms > 0 GROUP BY 1, 2 ORDER BY 1`,
 		int64(8*60*60_000), time.Now().Add(-7*24*time.Hour).UnixMilli(), time.Now().UnixMilli())
 	if !strings.Contains(plan, "USING COVERING INDEX idx_usage_agg_cover") {
 		t.Fatalf("daily scan must use covering index, plan:\n%s", plan)

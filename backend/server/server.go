@@ -195,7 +195,6 @@ func compactLogJSON(data []byte) string {
 	return string(compacted)
 }
 
-
 func (s *Server) setupRoutes() {
 	if s.config.MaxBodyBytes > 0 {
 		s.engine.Use(func(c *gin.Context) {
@@ -1509,20 +1508,22 @@ func (s *Server) ListenAndServe() error {
 // 仅允许本机回环调用。供本地管理工具或用户手动优雅停止进程。
 func (s *Server) shutdown(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"shuttingDown": true})
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if s.httpServer != nil {
-			if err := s.httpServer.Shutdown(ctx); err != nil {
-				log.Printf("graceful shutdown error: %v", err)
-			}
+	go s.shutdownOnce.Do(s.doShutdown)
+}
+
+func (s *Server) doShutdown() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if s.httpServer != nil {
+		if err := s.httpServer.Shutdown(ctx); err != nil {
+			log.Printf("graceful shutdown error: %v", err)
 		}
-		// http.Server.Shutdown 已等待在途请求结束，此时不会再有新记录入队。
-		// 先停健康检查 goroutine，再冲刷 usage 队列把缓冲中的记录落库，
-		// 避免优雅关停时丢失计费/统计记录与 goroutine 泄漏。
-		if s.healthChecker != nil {
-			s.healthChecker.shutdown()
-		}
-		s.stopUsageWriter()
-	}()
+	}
+	// http.Server.Shutdown 已等待在途请求结束，此时不会再有新记录入队。
+	// 先停健康检查 goroutine，再冲刷 usage 队列把缓冲中的记录落库，
+	// 避免优雅关停时丢失计费/统计记录与 goroutine 泄漏。
+	if s.healthChecker != nil {
+		s.healthChecker.shutdown()
+	}
+	s.stopUsageWriter()
 }

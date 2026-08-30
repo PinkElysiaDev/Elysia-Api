@@ -12,9 +12,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// usage 只读端点的短 TTL 响应缓存。usage 数据只追加、前端请求参数本就按
-// 5 分钟桶化，15s TTL 足以把切窗三连发（stats/trend/by-model）与 overview
-// 重叠窗口的并发请求合并成单次 SQL，同时不引入可感知的滞后。
+// usage 只读端点的短 TTL 响应缓存。切窗三连发与 overview 重叠窗口的并发
+// GET 合并成一次 SQL；写入成功后 flush，避免新调用仍命中旧响应。
 const (
 	usageCacheTTL        = 15 * time.Second
 	usageCacheMaxEntries = 256
@@ -31,12 +30,14 @@ type usageCacheEntry struct {
 type usageCacheCall struct {
 	done  chan struct{}
 	entry *usageCacheEntry // 非 200 回源不缓存，等待者 entry 为 nil
+	gen   uint64
 }
 
 // usageResponseCache 缓存 usage 只读端点的响应字节，并把并发同 key 请求
 // 合并为一次回源（手写 singleflight，避免为此引入依赖）。
 type usageResponseCache struct {
 	mu       sync.Mutex
+	gen      uint64 // flush 递增，禁止 reset 前启动的回源写回
 	entries  map[string]*usageCacheEntry
 	order    []string // 插入序，容量超限时淘汰最旧
 	inflight map[string]*usageCacheCall
@@ -64,25 +65,29 @@ func (c *usageResponseCache) handle(gc *gin.Context) {
 
 	c.mu.Lock()
 	c.initLocked()
+	gen := c.gen
 	if e, ok := c.entries[key]; ok && time.Now().Before(e.expiresAt) {
 		c.mu.Unlock()
 		serveUsageCacheEntry(gc, e)
 		gc.Abort()
 		return
 	}
-	if call, ok := c.inflight[key]; ok {
+	if call, ok := c.inflight[key]; ok && call.gen == gen {
 		c.mu.Unlock()
 		<-call.done
-		if call.entry != nil {
+		c.mu.Lock()
+		cur := c.gen
+		c.mu.Unlock()
+		if call.entry != nil && call.gen == cur {
 			serveUsageCacheEntry(gc, call.entry)
 			gc.Abort()
 			return
 		}
-		// 回源失败（非 200）：等待者直接透传执行，不缓存错误响应。
+		// 回源失败或 flush 后过期：等待者自己执行，不复用旧响应。
 		gc.Next()
 		return
 	}
-	call := &usageCacheCall{done: make(chan struct{})}
+	call := &usageCacheCall{done: make(chan struct{}), gen: gen}
 	c.inflight[key] = call
 	c.mu.Unlock()
 
@@ -111,17 +116,19 @@ func (c *usageResponseCache) handle(gc *gin.Context) {
 		statusCode:  rec.Status(),
 		expiresAt:   time.Now().Add(usageCacheTTL),
 	}
-	if entry.statusCode == http.StatusOK && len(entry.body) > 0 {
-		c.storeEntry(key, entry)
+	c.mu.Lock()
+	if entry.statusCode == http.StatusOK && len(entry.body) > 0 && c.gen == gen {
+		c.storeEntryLocked(key, entry)
+		call.entry = entry
 	} else {
-		entry = nil
+		call.entry = nil
 	}
-	call.entry = entry
+	if c.inflight[key] == call {
+		delete(c.inflight, key)
+	}
+	c.mu.Unlock()
 	doneClosed = true
 	close(call.done)
-	c.mu.Lock()
-	delete(c.inflight, key)
-	c.mu.Unlock()
 }
 
 func serveUsageCacheEntry(gc *gin.Context, e *usageCacheEntry) {
@@ -131,6 +138,10 @@ func serveUsageCacheEntry(gc *gin.Context, e *usageCacheEntry) {
 func (c *usageResponseCache) storeEntry(key string, e *usageCacheEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.storeEntryLocked(key, e)
+}
+
+func (c *usageResponseCache) storeEntryLocked(key string, e *usageCacheEntry) {
 	c.initLocked()
 	if _, exists := c.entries[key]; !exists {
 		c.order = append(c.order, key)
@@ -143,10 +154,11 @@ func (c *usageResponseCache) storeEntry(key string, e *usageCacheEntry) {
 	}
 }
 
-// flush 清空全部缓存条目（usage 重置后调用，避免返回已删除数据的旧响应）。
+// flush 清空全部缓存条目并递增 generation，使进行中的回源无法把旧响应写回。
 func (c *usageResponseCache) flush() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.gen++
 	c.entries = nil
 	c.order = nil
 }

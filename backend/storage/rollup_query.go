@@ -56,6 +56,16 @@ func (q UsageQuery) withBounds(fromMs, toMs int64) UsageQuery {
 	return qq
 }
 
+// orphansOnly 只扫描 started_ms<=0 的坏时间戳行（rollup 不收录它们）。
+// 仅在查询没有下界（From 为零，即「全部时间」）时并入 totals/by-model。
+func (q UsageQuery) orphansOnly() UsageQuery {
+	qq := q
+	qq.From = time.Time{}
+	qq.To = time.Time{}
+	qq.orphanTimestamps = true
+	return qq
+}
+
 // edgeBounds 计算 rollup 中段 [fromHour, toHour) 之外的两侧 raw 补扫参数。
 // head 为 [q.From, fromHour)，tail 为 [toHour, q.To)；窗口某侧无界时对应
 // 边界为 0。
@@ -265,6 +275,13 @@ func (s *Store) usageCount(ctx context.Context, q UsageQuery) (int, error) {
 	total += n
 	if hasTail {
 		n, err := usageCountRaw(ctx, tx, q.withBounds(tailFrom, tailTo))
+		if err != nil {
+			return 0, err
+		}
+		total += n
+	}
+	if q.From.IsZero() {
+		n, err := usageCountRaw(ctx, tx, q.orphansOnly())
 		if err != nil {
 			return 0, err
 		}

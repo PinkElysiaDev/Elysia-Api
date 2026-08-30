@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"database/sql"
 	"strings"
 	"sync"
@@ -16,6 +17,9 @@ type Store struct {
 	rollupReady atomic.Bool
 	rollupMu    sync.Mutex // 序列化回填执行（防重复启动）
 	rollupWG    sync.WaitGroup
+	// rollupCtx 在 Close 时取消，让后台回填在关库前退出。
+	rollupCtx    context.Context
+	rollupCancel context.CancelFunc
 }
 
 type ModelSource struct {

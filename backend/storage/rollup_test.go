@@ -245,6 +245,29 @@ func TestRollupBackfillIdempotent(t *testing.T) {
 	}
 }
 
+// TestRollupBackfillEmptyDBSkipsEpochWalk：空库不得从 Unix 纪元空跑到现在
+// （否则启动日志会刷「backfilling 2 万天」并卡在 0% 数分钟）。
+func TestRollupBackfillEmptyDBSkipsEpochWalk(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "rollup-empty.sqlite3"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	started := time.Now()
+	if err := store.RunRollupBackfill(ctx); err != nil {
+		t.Fatalf("empty backfill: %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("empty backfill took %s, likely walked from epoch", elapsed)
+	}
+	if !store.rollupReady.Load() {
+		t.Fatal("empty DB should mark rollup ready immediately")
+	}
+}
+
 // TestRollupGapSelfHeal：模拟中途降级运行旧版二进制（直接向 usage_records 插行、
 // 不更新 rollup），重升级后回填对账应发现缺口并自动补齐。
 func TestRollupGapSelfHeal(t *testing.T) {
