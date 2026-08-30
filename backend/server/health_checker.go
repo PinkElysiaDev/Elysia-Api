@@ -196,7 +196,8 @@ func probeEndpoint(model storage.Model) string {
 	}
 	switch relay.NormalizeAPIFormat(model.Platform) {
 	case relay.APIFormatAnthropic:
-		return base + "/messages"
+		// baseUrl 不含 /v1（与 fetchClaudeModels / ClaudeAdapter 一致），探测必须打 /v1/messages。
+		return base + "/v1/messages"
 	case relay.APIFormatGemini:
 		// 与 relay.GeminiAdapter 的 URL 规则保持一致。
 		return base + "/v1beta/models/" + model.Name + ":generateContent"

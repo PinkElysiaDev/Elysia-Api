@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -11,6 +12,57 @@ import (
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
+
+func TestResetKeepsRecordsSubmittedAfterReturn(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store, err := storage.Open(filepath.Join(t.TempDir(), "reset-after.sqlite3"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer store.Close()
+
+	s := &Server{store: store}
+	s.startUsageWriter()
+	defer s.stopUsageWriter()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		id := fmt.Sprintf("inflight-%d", i)
+		go func() {
+			defer wg.Done()
+			now := time.Now()
+			s.recordUsage(&usageRecord{RequestID: id, StartedAt: now, EndedAt: now, ModelName: "m", StatusCode: 200})
+		}()
+	}
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/reset", nil)
+	s.resetUsage(ctx)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reset status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	wg.Wait()
+
+	now := time.Now()
+	s.recordUsage(&usageRecord{RequestID: "after-reset", StartedAt: now, EndedAt: now, ModelName: "m", StatusCode: 200})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		_, items, err := store.QueryUsageLogs(ctx.Request.Context(), storage.UsageQuery{Limit: 50})
+		if err != nil {
+			t.Fatalf("logs: %v", err)
+		}
+		for _, item := range items {
+			if item.RequestID == "after-reset" {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("record written after reset returned must persist")
+}
 
 func TestResetUsageDropsQueuedWrites(t *testing.T) {
 	gin.SetMode(gin.TestMode)

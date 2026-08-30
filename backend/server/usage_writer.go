@@ -70,10 +70,10 @@ func (s *Server) stopUsageWriter() {
 	s.usageWriterMu.Unlock()
 }
 
-// drainUsageQueue 丢弃队列里尚未落库的记录。调用方须持有 usagePersistMu，
-// 并已递增 usageWriteGen，使并发 writer 拿到的旧 generation 写入也会被跳过。
-func (s *Server) drainUsageQueue() {
-	w := s.usageWriterSnapshot()
+// drainUsageQueueFrom 丢弃队列里尚未落库的记录。
+// reset 调用方应已持有 w.mu（若 w 非 nil）和 usagePersistMu，这样 enqueue
+// 无法在 drain 与 generation 递增之间把新记录塞进队列。
+func (s *Server) drainUsageQueueFrom(w *usageWriterState) {
 	if w == nil {
 		return
 	}

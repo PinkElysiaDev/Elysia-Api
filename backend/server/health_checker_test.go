@@ -30,9 +30,9 @@ func TestProbeEndpoint(t *testing.T) {
 		platform, base, name, want string
 	}{
 		{"openai", "https://api.x.com/v1/", "", "https://api.x.com/v1/chat/completions"},
-		// claude 是存量库旧值，anthropic 是当前 UI；两者都必须归一到 Messages。
-		{"claude", "https://api.anthropic.com", "", "https://api.anthropic.com/messages"},
-		{"anthropic", "https://api.anthropic.com", "", "https://api.anthropic.com/messages"},
+		// claude 是存量库旧值，anthropic 是当前 UI；两者都必须打 /v1/messages。
+		{"claude", "https://api.anthropic.com", "", "https://api.anthropic.com/v1/messages"},
+		{"anthropic", "https://api.anthropic.com", "", "https://api.anthropic.com/v1/messages"},
 		{"responses", "https://api.openai.com/v1", "", "https://api.openai.com/v1/responses"},
 		{"gemini", "https://generativelanguage.googleapis.com/", "gemini-2.0-flash", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"},
 	}

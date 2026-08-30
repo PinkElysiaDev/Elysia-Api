@@ -647,17 +647,30 @@ func (s *Server) resetUsage(c *gin.Context) {
 		respondFail(c, http.StatusServiceUnavailable, "store_unavailable", "sqlite store is unavailable")
 		return
 	}
+	// 先挡住 enqueue（w.mu），再拿 persist 锁清库/切 generation。
+	// 顺序必须是 writer mu → persist mu：stopUsageWriter 持 writer mu 后 Wait
+	// writer，而 writer 落库要 persist mu；若此处反序会与 stop 死锁。
+	w := s.usageWriterSnapshot()
+	if w != nil {
+		w.mu.Lock()
+	}
 	s.usagePersistMu.Lock()
 	if err := s.store.ClearUsage(c.Request.Context()); err != nil {
 		s.usagePersistMu.Unlock()
+		if w != nil {
+			w.mu.Unlock()
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	// 清库成功后再递增 generation：失败回滚时若先加后减，并发请求可能
-	// 带着临时新 generation 入队，回滚后会被 persist 当成过期记录丢掉。
+	// 清库成功后，在 enqueue 仍被挡住时排空旧队列并递增 generation，
+	// 避免「先加 generation 再 drain」把 reset 之后、drain 之前入队的新记录丢掉。
+	s.drainUsageQueueFrom(w)
 	s.usageWriteGen.Add(1)
-	s.drainUsageQueue()
 	s.usagePersistMu.Unlock()
+	if w != nil {
+		w.mu.Unlock()
+	}
 	s.usageCache.flush()
 	s.usageSeq.Add(1)
 	c.JSON(http.StatusOK, gin.H{"reset": true})
