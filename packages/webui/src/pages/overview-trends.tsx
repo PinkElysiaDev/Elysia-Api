@@ -65,6 +65,8 @@ function BreakdownTooltipContent({
       value: Number(e.value),
       color: e.color,
     }))
+    // 与覆盖层级一致：调用次数多的模型排前面。
+    .sort((a, b) => b.value - a.value)
   return <ChartTooltip active={active && items.length > 0} payload={items} label={label} />
 }
 
@@ -254,7 +256,7 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
   const reqTicks = useMemo(() => ticksFor(trendSeries.map((d) => d.req)), [trendSeries])
   const tokTicks = useMemo(() => ticksFor(trendSeries.map((d) => d.tok)), [trendSeries])
 
-  // 模型分流堆叠图时序数据
+  // 模型分流多序列面积图时序数据
   const { breakdownSeries, models } = useMemo(() => {
     const days = chartRange === '7d' ? 7 : 30
     const now = new Date(dayAnchorMs)
@@ -520,23 +522,28 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
                   width={OVERVIEW_CHART.yRightWidth}
                 />
                 <Tooltip content={<BreakdownTooltipContent />} cursor={{ fill: 'var(--wash)' }} />
-                {models.map((name, i) => (
-                  <Area
-                    key={name}
-                    yAxisId="req"
-                    dataKey={name}
-                    name={seriesLabel(name)}
-                    type="monotone"
-                    stroke={modelColor(i)}
-                    fill={modelColor(i)}
-                    fillOpacity={0.12}
-                    strokeWidth={1.4}
-                    strokeOpacity={0.85}
-                    dot={false}
-                    isAnimationActive={breakdownAnimate}
-                    animationDuration={CHART_ENTER_MS}
-                  />
-                ))}
+                {/* 倒序渲染：先声明的序列在下层被后声明的覆盖，
+                    让调用最多的模型面积位于最上层（图例首行与顶层序列对应）。 */}
+                {[...models].reverse().map((name, reversedIdx) => {
+                  const i = models.length - 1 - reversedIdx
+                  return (
+                    <Area
+                      key={name}
+                      yAxisId="req"
+                      dataKey={name}
+                      name={seriesLabel(name)}
+                      type="monotone"
+                      stroke={modelColor(i)}
+                      fill={modelColor(i)}
+                      fillOpacity={0.12}
+                      strokeWidth={1.4}
+                      strokeOpacity={0.85}
+                      dot={false}
+                      isAnimationActive={breakdownAnimate}
+                      animationDuration={CHART_ENTER_MS}
+                    />
+                  )
+                })}
               </ComposedChart>
             </ChartFrame>
           )}
