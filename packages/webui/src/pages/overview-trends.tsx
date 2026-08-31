@@ -13,8 +13,8 @@ import { Layers, TrendingUp, type LucideIcon } from 'lucide-react'
 import { ChartFrame, ChartTooltip } from '@/components/usage-charts'
 import {
   CHART_ENTER_MS,
-  MODEL_COLORS,
   OVERVIEW_CHART,
+  modelColor,
   ticksFor,
   useCommittedRange,
   useEnterAnimation,
@@ -187,7 +187,8 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
       from: new Date(from).toISOString(),
       to: new Date(toMs).toISOString(),
       utcOffsetMinutes: offsetMinutes,
-      top: 8,
+      // top 24：尽量少归并「其他」，后端硬上限 50。
+      top: 24,
       status: 'success' as const,
     }
   }, [range, minuteTick])
@@ -526,8 +527,8 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
                     dataKey={name}
                     name={seriesLabel(name)}
                     type="monotone"
-                    stroke={MODEL_COLORS[i % MODEL_COLORS.length]}
-                    fill={MODEL_COLORS[i % MODEL_COLORS.length]}
+                    stroke={modelColor(i)}
+                    fill={modelColor(i)}
                     fillOpacity={0.12}
                     strokeWidth={1.4}
                     strokeOpacity={0.85}
@@ -547,7 +548,7 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
               <li key={name} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                 <i
                   className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ background: MODEL_COLORS[i % MODEL_COLORS.length] }}
+                  style={{ background: modelColor(i) }}
                   aria-hidden
                 />
                 <span className="font-mono">{seriesLabel(name)}</span>

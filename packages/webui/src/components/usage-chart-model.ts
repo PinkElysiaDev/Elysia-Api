@@ -30,6 +30,15 @@ export const MODEL_COLORS = [
   '#8B6BCF',
 ]
 
+/** 模型序列配色：前 9 序列用品牌色板；其后按黄金角在色相环铺开生成 HSL 色，
+ *  并以明度交错降低相邻序列的相似度——日分布 top 放宽后取模循环必然撞色。 */
+export function modelColor(index: number): string {
+  if (index < MODEL_COLORS.length) return MODEL_COLORS[index]
+  const hue = Math.round((index * 137.508) % 360)
+  const lightness = 52 + ((index * 13) % 14)
+  return `hsl(${hue} 46% ${lightness}%)`
+}
+
 export function ticksFor(values: number[]): number[] {
   const max = Math.max(0, ...values)
   if (max <= 0) return [0]

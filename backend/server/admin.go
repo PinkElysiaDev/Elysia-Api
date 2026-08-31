@@ -779,8 +779,8 @@ func (s *Server) adminUsageByModelDaily(c *gin.Context) {
 	top := 8
 	if raw := c.Query("top"); raw != "" {
 		n, err := strconv.Atoi(raw)
-		if err != nil || n < 1 || n > 20 {
-			respondFail(c, 400, "invalid_top", "top must be an integer between 1 and 20")
+		if err != nil || n < 1 || n > 50 {
+			respondFail(c, 400, "invalid_top", "top must be an integer between 1 and 50")
 			return
 		}
 		top = n
