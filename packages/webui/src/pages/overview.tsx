@@ -441,7 +441,7 @@ export function OverviewPage() {
         <section aria-label="服务状态与热点" className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3 pt-2">
           {/* Bento 1: 热门模型 */}
           <div className="space-y-4">
-            <div className="flex min-h-[42px] items-center justify-between border-b border-border/50 pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/50 pb-3">
               <div className="flex items-center gap-2">
                 <Cpu className="h-4 w-4 text-primary" />
                 <h3 className="text-sm font-semibold text-foreground">热门模型分布</h3>
@@ -493,7 +493,7 @@ export function OverviewPage() {
 
           {/* Bento 2: 模型源健康状态 */}
           <div className="flex h-full flex-col space-y-4">
-            <div className="flex min-h-[42px] items-center justify-between border-b border-border/50 pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/50 pb-3">
               <div className="flex items-center gap-2">
                 <Boxes className="h-4 w-4 text-jade" />
                 <h3 className="text-sm font-semibold text-foreground">模型源健康</h3>
@@ -530,7 +530,7 @@ export function OverviewPage() {
 
           {/* Bento 3: 最近失败调用 */}
           <div className="space-y-4 md:col-span-2 lg:col-span-1">
-            <div className="flex min-h-[42px] items-center justify-between border-b border-border/50 pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/50 pb-3">
               <div className="flex items-center gap-2">
                 <ShieldAlert className="h-4 w-4 text-ember" />
                 <h3 className="text-sm font-semibold text-foreground">最近异常调用</h3>

@@ -44,7 +44,7 @@ export function Seg<T extends string | number>({
             aria-pressed={on}
             onClick={() => onChange(opt.value)}
             className={cn(
-              'inline-flex h-full items-center justify-center leading-none transition-colors duration-150 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'inline-flex h-full items-center justify-center whitespace-nowrap leading-none transition-colors duration-150 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               sizing,
               i > 0 && 'border-l border-border',
               on ? 'bg-wash font-semibold text-rose' : 'text-muted-foreground hover:text-foreground',

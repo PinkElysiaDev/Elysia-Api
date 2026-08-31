@@ -332,7 +332,7 @@ export function UsageLogsPage() {
             </div>
 
             {/* 分页栏 */}
-            <div className="flex items-center justify-between pt-3 text-xs text-muted-foreground border-t border-border/40">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pt-3 text-xs text-muted-foreground border-t border-border/40">
               <span className="tnum font-mono">
                 共 <b className="font-semibold text-foreground">{formatNumber(total)}</b> 条记录 · 第 {page + 1}/{totalPages} 页
               </span>
