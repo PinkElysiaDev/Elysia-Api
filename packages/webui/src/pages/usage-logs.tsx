@@ -369,6 +369,7 @@ export function UsageLogsPage() {
 /* ---------------- 详情抽屉 ---------------- */
 
 function LogDetailSheet({ id, onClose }: { id: string | null; onClose: () => void }) {
+  const toast = useToast()
   const [detail, setDetail] = useState<UsageLogDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -400,7 +401,9 @@ function LogDetailSheet({ id, onClose }: { id: string | null; onClose: () => voi
 
   function handleExport() {
     if (!detail) return
-    downloadJSON(`usage-log-${detail.requestId}.json`, buildExportPayload(detail))
+    const filename = `usage-log-${detail.requestId}.json`
+    downloadJSON(filename, buildExportPayload(detail))
+    toast.success('已导出完整日志', filename)
   }
 
   const usage = detail?.usage

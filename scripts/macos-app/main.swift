@@ -218,7 +218,7 @@ final class DragTitlebarView: NSView {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKScriptMessageHandler, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKDownloadDelegate, WKScriptMessageHandler, NSWindowDelegate {
     var window: NSWindow!
     var webView: WKWebView!
     var overlay: NSView!
@@ -421,6 +421,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                             configuration: webConfig)
         webView.autoresizingMask = [.width, .height]
         webView.navigationDelegate = self
+        // 面板的「导出日志/导出完整日志」走 <a download> blob 下载:
+        // WKWebView 只有在导航代理实现 didBecomeDownload 并接管 WKDownload
+        // (设置其 delegate)时才会把导航转成下载,否则点击无任何反应。
         webView.underPageBackgroundColor = .windowBackgroundColor
         content.addSubview(webView)
 
@@ -773,6 +776,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         handlePanelLoadFailure(error)
+    }
+
+    // MARK: - 下载(WKDownloadDelegate)
+
+    /// 每个下载的保存位置,用于完成/失败时提示;取消的下载记入集合,失败回调里跳过提示。
+    private var downloadDestinations: [WKDownload: URL] = [:]
+    private var cancelledDownloads = Set<ObjectIdentifier>()
+
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+
+    /// 弹系统保存对话框决定落盘位置;用户取消时回调 nil,WebKit 会取消该下载。
+    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
+                  suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = suggestedFilename
+        panel.canCreateDirectories = true
+        let handle: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .OK, let url = panel.url else {
+                self.cancelledDownloads.insert(ObjectIdentifier(download))
+                completionHandler(nil)
+                return
+            }
+            self.downloadDestinations[download] = url
+            completionHandler(url)
+        }
+        if let window {
+            panel.beginSheetModal(for: window, completionHandler: handle)
+        } else {
+            panel.begin(completionHandler: handle)
+        }
+    }
+
+    func downloadDidFinish(_ download: WKDownload) {
+        defer { downloadDestinations[download] = nil }
+        guard let url = downloadDestinations[download] else { return }
+        alert("已导出到:\n\(url.path)")
+    }
+
+    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+        downloadDestinations[download] = nil
+        // 用户主动取消保存面板不算错误,静默即可。
+        if cancelledDownloads.remove(ObjectIdentifier(download)) != nil { return }
+        alert("导出失败:\(error.localizedDescription)")
     }
 
     // MARK: - 主题同步(WKScriptMessageHandler)
