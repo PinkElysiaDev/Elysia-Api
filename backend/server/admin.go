@@ -409,7 +409,7 @@ func (s *Server) adminSetSourceEnabled(c *gin.Context) {
 		respondFail(c, 404, "source_not_found", "model source not found")
 		return
 	}
-	// 路由装配按源 enabled 过滤模型（ListModels/ListGroups 的 join 条件），必须失效。
+	// 路由装配按源 enabled 过滤模型（ListModels 的 join 条件），必须失效。
 	s.invalidateRouteCache()
 	respondOK(c, gin.H{"updated": true, "enabled": *payload.Enabled})
 }

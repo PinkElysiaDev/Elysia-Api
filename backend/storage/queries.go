@@ -140,7 +140,11 @@ func (s *Store) ListGroups(ctx context.Context) ([]ModelGroup, error) {
 	}
 
 	for i := range items {
-		modelRows, err := s.db.QueryContext(ctx, `SELECT mgm.model_id, mgm.source_id FROM model_group_models mgm LEFT JOIN model_sources ms ON ms.id = mgm.source_id WHERE mgm.group_id = ? AND (mgm.source_id = '' OR (ms.id IS NOT NULL AND ms.enabled = 1)) ORDER BY mgm.position`, items[i].ID)
+		// 组成员引用完整返回，即使所属模型源已停用。编辑页打开后无修改保存
+		// 会走 UpsertGroup 的「先删后写」；若此处按源 enabled 过滤，停用源下的
+		// 成员会从 payload 消失并被永久删除。调度热路径仍通过 ListModels 过滤
+		// 停用源，不会把请求打到已停用源。
+		modelRows, err := s.db.QueryContext(ctx, `SELECT mgm.model_id, mgm.source_id FROM model_group_models mgm WHERE mgm.group_id = ? ORDER BY mgm.position`, items[i].ID)
 		if err != nil {
 			return nil, err
 		}
