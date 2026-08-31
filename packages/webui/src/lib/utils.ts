@@ -182,7 +182,7 @@ export function downloadJSON(filename: string, data: unknown): void {
   document.body.appendChild(a)
   a.click()
   a.remove()
-  URL.revokeObjectURL(url)
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
 /** 尽量把字符串解析成 JSON 对象；失败则原样返回字符串。用于展示/导出捕获的请求体。 */
