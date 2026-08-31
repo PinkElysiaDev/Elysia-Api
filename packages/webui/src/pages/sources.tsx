@@ -217,11 +217,19 @@ export function SourcesPage() {
         list.map((m) => api.updateModel(m.sourceId ?? '', m.id, { enabled })),
       )
       const okCount = results.filter((r) => r.status === 'fulfilled').length
-      const failedCount = results.length - okCount
+      const failed = results.filter((r) => r.status === 'rejected')
       await revalidate.models()
-      toast.success(
-        enabled ? '已批量启用' : '已批量禁用',
-        `${list.length} 个模型：成功 ${okCount}${failedCount > 0 ? `，失败 ${failedCount}` : ''}`,
+      if (failed.length === 0) {
+        toast.success(enabled ? '已批量启用' : '已批量禁用', `成功 ${okCount} 个模型`)
+        return
+      }
+      // 失败原因去重后展示，避免只报数量不知道原因。
+      const reasons = [
+        ...new Set(failed.map((r) => (r as PromiseRejectedResult).reason instanceof Error ? r.reason.message : String(r.reason))),
+      ]
+      toast.error(
+        `${enabled ? '批量启用' : '批量禁用'}：成功 ${okCount}，失败 ${failed.length}`,
+        reasons.slice(0, 2).join('；') + (reasons.length > 2 ? `（等 ${reasons.length} 种原因）` : ''),
       )
     } catch (err) {
       toast.error('批量操作失败', (err as Error).message)

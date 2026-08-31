@@ -43,8 +43,11 @@ func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
 	admin.POST("/model-catalog/refresh", s.adminModelCatalogRefresh)
 	admin.GET("/models", s.adminListModels)
 	admin.POST("/models/refresh", s.adminRefreshModels)
-	admin.PATCH("/models/:sourceId/:modelId", s.adminUpdateModel)
-	admin.DELETE("/models/:sourceId/:modelId", s.adminDeleteModel)
+	// modelId 走 query 而非路径段：模型 ID 常含 "/"（如 org/model），路径参数
+	// 在 Gin 路由前已被 URL 解码，%2F 会拆成多段导致 404；query 值只经一次
+	// 解码、不参与路由匹配，对任意字符稳健。
+	admin.PATCH("/models/:sourceId", s.adminUpdateModel)
+	admin.DELETE("/models/:sourceId", s.adminDeleteModel)
 	admin.GET("/model-groups", s.adminListGroups)
 	admin.POST("/model-groups", s.adminUpsertGroup)
 	admin.PUT("/model-groups/:id", s.adminUpsertGroup)
@@ -481,7 +484,12 @@ func (s *Server) adminUpdateModel(c *gin.Context) {
 		respondFail(c, 400, "invalid_thinking_mode", "thinkingMode must not be empty")
 		return
 	}
-	found, err := store.UpdateModel(c.Request.Context(), c.Param("modelId"), c.Param("sourceId"), patch)
+	modelID := c.Query("modelId")
+	if modelID == "" {
+		respondFail(c, 400, "model_id_required", "modelId query parameter is required")
+		return
+	}
+	found, err := store.UpdateModel(c.Request.Context(), modelID, c.Param("sourceId"), patch)
 	if err != nil {
 		respondFail(c, 500, "update_model_failed", err.Error())
 		return
@@ -500,7 +508,12 @@ func (s *Server) adminDeleteModel(c *gin.Context) {
 	if !okStore {
 		return
 	}
-	deleted, err := store.DeleteModel(c.Request.Context(), c.Param("modelId"), c.Param("sourceId"))
+	modelID := c.Query("modelId")
+	if modelID == "" {
+		respondFail(c, 400, "model_id_required", "modelId query parameter is required")
+		return
+	}
+	deleted, err := store.DeleteModel(c.Request.Context(), modelID, c.Param("sourceId"))
 	if err != nil {
 		respondFail(c, 500, "delete_model_failed", err.Error())
 		return

@@ -185,13 +185,15 @@ export const api = {
   /** 为所有启用源发起后台拉取：立即返回启动数量，进度见各源 refreshState。 */
   refreshModels: () =>
     request<{ started: number; total: number }>('/models/refresh', { method: 'POST' }),
+  // modelId 经 query 传递：模型 ID 常含 "/"（如 org/model），放进路径段会被
+  // Gin 在路由前解码拆段导致 404。
   updateModel: (sourceId: string, modelId: string, body: Partial<Omit<Model, 'id' | 'sourceId'>>) =>
     request<{ updated: boolean }>(
-      `/models/${encodeURIComponent(sourceId)}/${encodeURIComponent(modelId)}`,
+      `/models/${encodeURIComponent(sourceId)}?modelId=${encodeURIComponent(modelId)}`,
       { method: 'PATCH', body },
     ),
   deleteModel: (sourceId: string, modelId: string) =>
-    request<{ deleted: boolean }>(`/models/${encodeURIComponent(sourceId)}/${encodeURIComponent(modelId)}`, {
+    request<{ deleted: boolean }>(`/models/${encodeURIComponent(sourceId)}?modelId=${encodeURIComponent(modelId)}`, {
       method: 'DELETE',
     }),
 
