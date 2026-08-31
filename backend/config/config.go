@@ -175,6 +175,7 @@ func Load(path string) (*Config, error) {
 
 	cfg.path = path
 	cfg.applyBootstrapDefaults(path)
+	cfg.applyEnvironmentOverrides()
 
 	cfg.mu.Lock()
 	GlobalConfig = &cfg
@@ -216,6 +217,13 @@ func (c *Config) applyBootstrapDefaults(path string) {
 	}
 	if c.MaxBodyBytes <= 0 {
 		c.MaxBodyBytes = 32 * 1024 * 1024
+	}
+}
+
+func (c *Config) applyEnvironmentOverrides() {
+	if host := strings.TrimSpace(os.Getenv("ELYSIA_API_HOST")); host != "" {
+		c.Host = host
+		c.Server.Host = host
 	}
 }
 
@@ -587,7 +595,6 @@ func (c *Config) IsPanelAccessConfigured() bool {
 	defer c.mu.RUnlock()
 	return c.PanelAccessToken != ""
 }
-
 
 func (c *Config) FindAccessToken(token string) (AccessToken, bool) {
 	token = strings.TrimSpace(token)

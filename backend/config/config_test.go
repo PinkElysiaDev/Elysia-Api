@@ -31,6 +31,36 @@ func TestLoadBareConfigWithoutMasterKey(t *testing.T) {
 	}
 }
 
+func TestLoadHostEnvironmentOverride(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	content := `{
+  "host": "127.0.0.1",
+  "server": {"host": "127.0.0.1"}
+}`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	t.Setenv("ELYSIA_API_HOST", "0.0.0.0")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load with host override: %v", err)
+	}
+	if cfg.Host != "0.0.0.0" || cfg.Server.Host != "0.0.0.0" {
+		t.Fatalf("host override not applied: cfg.Host=%q server.Host=%q", cfg.Host, cfg.Server.Host)
+	}
+
+	t.Setenv("ELYSIA_API_HOST", "")
+	cfg, err = Load(path)
+	if err != nil {
+		t.Fatalf("Load with empty host override: %v", err)
+	}
+	if cfg.Host != "127.0.0.1" || cfg.Server.Host != "127.0.0.1" {
+		t.Fatalf("empty host override changed configured host: cfg.Host=%q server.Host=%q", cfg.Host, cfg.Server.Host)
+	}
+}
+
 // 旧配置格式的 config.json（含 modelGroups/tokens/密文字段）现在应被
 // 静默忽略——这些字段已是 json:"-" 或已从结构体删除，不再参与反序列化，
 // 加载不报错，且不会把它们的数据带进运行时。
