@@ -333,10 +333,10 @@ export function UsageLogsPage() {
                         <span className="text-muted-foreground font-mono">↓{formatNumber(log.outputTokens)}</span>
                         {log.cacheHitTokens != null && log.cacheHitTokens > 0 && log.inputTokens > 0 && (
                           <span
-                            className="ml-1.5 inline-flex items-center gap-0.5 align-[1px] font-mono text-2xs text-amber"
+                            className="ml-1.5 whitespace-nowrap font-mono text-xs text-amber"
                             title={`缓存命中 ${formatNumber(log.cacheHitTokens)} tokens`}
                           >
-                            <Zap className="h-3 w-3" />
+                            <Zap className="mr-px inline h-3 w-3 align-[-1px]" />
                             {Math.round((log.cacheHitTokens / log.inputTokens) * 100)}%
                           </span>
                         )}
