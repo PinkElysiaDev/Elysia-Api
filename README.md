@@ -1,6 +1,14 @@
-# Elysia-API
+<h1 align="center">Elysia-API</h1>
 
-English · [简体中文](./README.zh-CN.md)
+<p align="center">
+  <a href="https://github.com/PinkElysiaDev/Elysia-Api/tags"><img src="https://img.shields.io/github/v/tag/PinkElysiaDev/Elysia-Api?sort=semver&amp;style=flat-square&amp;label=tag" alt="Latest tag"></a>
+  <a href="https://github.com/PinkElysiaDev/Elysia-Api/stargazers"><img src="https://img.shields.io/github/stars/PinkElysiaDev/Elysia-Api?style=flat-square&amp;logo=github" alt="GitHub stars"></a>
+  <a href="./backend/go.mod"><img src="https://img.shields.io/github/go-mod/go-version/PinkElysiaDev/Elysia-Api?filename=backend%2Fgo.mod&amp;style=flat-square" alt="Go version"></a>
+</p>
+
+<p align="center">
+  English · <a href="./README.zh-CN.md">简体中文</a>
+</p>
 
 Elysia-API is a self-hosted multi-upstream AI model gateway. It centralizes request authentication, model-group routing, load balancing, OpenAI / Claude / Gemini format conversion, streaming forwarding, Usage statistics, and WebUI management in a single Go backend.
 

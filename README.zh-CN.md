@@ -1,5 +1,14 @@
-# Elysia-API
-简体中文 · [English](./README.md)
+<h1 align="center">Elysia-API</h1>
+
+<p align="center">
+  <a href="https://github.com/PinkElysiaDev/Elysia-Api/tags"><img src="https://img.shields.io/github/v/tag/PinkElysiaDev/Elysia-Api?sort=semver&amp;style=flat-square&amp;label=tag" alt="最新 tag"></a>
+  <a href="https://github.com/PinkElysiaDev/Elysia-Api/stargazers"><img src="https://img.shields.io/github/stars/PinkElysiaDev/Elysia-Api?style=flat-square&amp;logo=github" alt="GitHub stars"></a>
+  <a href="./backend/go.mod"><img src="https://img.shields.io/github/go-mod/go-version/PinkElysiaDev/Elysia-Api?filename=backend%2Fgo.mod&amp;style=flat-square" alt="Go 版本"></a>
+</p>
+
+<p align="center">
+  简体中文 · <a href="./README.md">English</a>
+</p>
 
 Elysia-API 是一个可独立部署的多上游 AI 模型网关。它把请求鉴权、模型组路由、负载均衡、OpenAI / Claude / Gemini 格式转换、流式转发、Usage 统计和 WebUI 管理能力集中在一个 Go 后端中。
 
