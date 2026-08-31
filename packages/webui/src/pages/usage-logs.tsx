@@ -8,6 +8,7 @@ import {
   MoveRight,
   RotateCcw,
   ScrollText,
+  Zap,
 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { RoleWatermark } from '@/components/role-watermark'
@@ -330,6 +331,15 @@ export function UsageLogsPage() {
                       <TableCell className="py-3 pr-4 num">
                         <span className="font-mono">↑{formatNumber(log.inputTokens)}</span>{' '}
                         <span className="text-muted-foreground font-mono">↓{formatNumber(log.outputTokens)}</span>
+                        {log.cacheHitTokens != null && log.cacheHitTokens > 0 && log.inputTokens > 0 && (
+                          <span
+                            className="ml-1.5 inline-flex items-center gap-0.5 align-[1px] font-mono text-2xs text-amber"
+                            title={`缓存命中 ${formatNumber(log.cacheHitTokens)} tokens`}
+                          >
+                            <Zap className="h-3 w-3" />
+                            {Math.round((log.cacheHitTokens / log.inputTokens) * 100)}%
+                          </span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -415,7 +425,8 @@ function LogDetailSheet({ id, onClose }: { id: string | null; onClose: () => voi
   const usage = detail?.usage
   // tokbar 三段：缓存命中 rose-soft / 未命中输入 rose / 输出 jade
   const cacheHit = usage?.cacheHitTokens ?? 0
-  const inputMiss = Math.max((usage?.inputTokens ?? 0) - cacheHit, 0)
+  const inputTotal = usage?.inputTokens ?? 0
+  const inputMiss = Math.max(inputTotal - cacheHit, 0)
   const output = usage?.outputTokens ?? 0
   const tokTotal = cacheHit + inputMiss + output
   const outputRate =
@@ -518,6 +529,9 @@ function LogDetailSheet({ id, onClose }: { id: string | null; onClose: () => voi
                       <span>
                         <i className="mr-[5px] inline-block h-2 w-2 rounded-[2px] align-[-1px]" style={{ background: 'var(--rose-soft)' }} />
                         缓存命中 {formatNumber(cacheHit)}
+                        {inputTotal > 0 && (
+                          <span className="text-muted-foreground">（输入的 {Math.round((cacheHit / inputTotal) * 100)}%）</span>
+                        )}
                       </span>
                       <span>
                         <i className="mr-[5px] inline-block h-2 w-2 rounded-[2px] align-[-1px]" style={{ background: 'var(--rose)' }} />

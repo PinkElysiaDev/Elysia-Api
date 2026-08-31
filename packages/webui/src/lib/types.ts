@@ -211,6 +211,8 @@ export interface UsageLogItem {
   inputTokens: number
   outputTokens: number
   totalTokens: number
+  /** 命中 prompt 缓存的输入 token 数（缓存命中展示用；0/缺省表示无命中）。 */
+  cacheHitTokens?: number
   incomingBodyTruncated: boolean
   providerResponseTruncated: boolean
 }
