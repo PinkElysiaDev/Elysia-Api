@@ -275,6 +275,7 @@ export function UsageStatsPage() {
                         />
                         <Tooltip
                           content={<ModelBreakdownTooltip />}
+                          wrapperStyle={{ zIndex: 50 }}
                           cursor={{ fill: 'var(--wash)' }}
                         />
                         {showTokBar && (
@@ -394,7 +395,7 @@ export function UsageStatsPage() {
                                 width={40}
                                 allowDecimals={false}
                               />
-                              <Tooltip cursor={{ fill: 'var(--wash)' }} content={<ModelBarTooltip />} />
+                              <Tooltip cursor={{ fill: 'var(--wash)' }} wrapperStyle={{ zIndex: 50 }} content={<ModelBarTooltip />} />
                               <Bar dataKey="requests" name="请求数" radius={[4, 4, 0, 0]} maxBarSize={36}>
                                 {byModel.slice(0, 8).map((entry) => (
                                   <Cell key={entry.model || '__unknown__'} fill="var(--rose)" fillOpacity={0.65} />

@@ -416,6 +416,8 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
                   />
                   <Tooltip
                     content={<ModelBreakdownTooltip />}
+                    // 浮层逃出 ChartFrame 后需要抬高，避免被下方章节盖住
+                    wrapperStyle={{ zIndex: 50 }}
                     cursor={{ fill: 'var(--wash)' }}
                   />
 
@@ -521,7 +523,7 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
                   axisLine={false}
                   width={OVERVIEW_CHART.yRightWidth}
                 />
-                <Tooltip content={<BreakdownTooltipContent />} cursor={{ fill: 'var(--wash)' }} />
+                <Tooltip content={<BreakdownTooltipContent />} wrapperStyle={{ zIndex: 50 }} cursor={{ fill: 'var(--wash)' }} />
                 {/* 倒序渲染：先声明的序列在下层被后声明的覆盖，
                     让调用最多的模型面积位于最上层（图例首行与顶层序列对应）。 */}
                 {[...models].reverse().map((name, reversedIdx) => {
