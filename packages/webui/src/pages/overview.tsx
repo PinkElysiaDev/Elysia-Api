@@ -277,7 +277,8 @@ export function OverviewPage() {
   const topModelsParams = useMemo(() => {
     const nowMs = minuteTick * 60_000
     const to = bucketedTimeISO(nowMs, 5 * 60_000)
-    return { from: startOfRange(topRange, new Date(nowMs).toISOString()), to }
+    // 热门模型只反映成功请求，失败调用不计入排名。
+    return { from: startOfRange(topRange, new Date(nowMs).toISOString()), to, status: 'success' as const }
   }, [topRange, minuteTick])
   const {
     data: byModel,

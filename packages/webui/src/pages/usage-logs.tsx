@@ -119,9 +119,12 @@ export function UsageLogsPage() {
     const all = data?.items ?? []
     const totals = all.reduce(
       (acc, item) => {
-        if (item.statusCode >= 200 && item.statusCode < 400) acc.ok += 1
-        else acc.failed += 1
-        acc.duration += item.durationMs || 0
+        if (item.statusCode >= 200 && item.statusCode < 400) {
+          acc.ok += 1
+          acc.duration += item.durationMs || 0
+        } else {
+          acc.failed += 1
+        }
         return acc
       },
       { ok: 0, failed: 0, duration: 0 },
@@ -129,7 +132,7 @@ export function UsageLogsPage() {
     return {
       ok: totals.ok,
       failed: totals.failed,
-      avg: all.length ? totals.duration / all.length : 0,
+      avg: totals.ok ? totals.duration / totals.ok : 0,
       count: all.length,
     }
   }, [data])
@@ -222,7 +225,10 @@ export function UsageLogsPage() {
                   <b className="font-semibold text-foreground">{summary.failed}</b> 失败
                 </span>
                 <span>
-                  平均时延 <b className="font-semibold text-foreground">{formatDuration(summary.avg)}</b>
+                  平均时延（成功）{' '}
+                  <b className="font-semibold text-foreground">
+                    {summary.ok ? formatDuration(summary.avg) : '—'}
+                  </b>
                 </span>
               </span>
               <span className="text-muted-foreground/70">（当前 {summary.count} 条）</span>

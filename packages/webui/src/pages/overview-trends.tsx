@@ -176,6 +176,7 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
   } = useUsageTrend(trendParams)
 
   // 2. Breakdown 模型日调用（to 取下一 5 分钟边界，包含当前桶内新记录）
+  //    status=success：调用分布只反映成功请求，失败调用不折算成"调用量"。
   const breakdownParams = useMemo(() => {
     const days = range === '7d' ? 7 : 30
     const nowMs = minuteTick * 60_000
@@ -187,6 +188,7 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
       to: new Date(toMs).toISOString(),
       utcOffsetMinutes: offsetMinutes,
       top: 8,
+      status: 'success' as const,
     }
   }, [range, minuteTick])
 
@@ -242,6 +244,9 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
     }
     return out
   }, [trendBuckets, chartRange, dayAnchorMs])
+
+  // 窗口内是否出现过失败调用：无失败时不画零线。失败虚线与「请求折线」同组开关。
+  const hasFailedCalls = useMemo(() => trendSeries.some((d) => d.failedReq > 0), [trendSeries])
 
   // 刻度数组显式缓存并锁定 domain（ticksFor 恒为 3 段）：两个透视的
   // 网格线都落在 1/3、2/3 高度，切换时几何位置一致。
@@ -452,6 +457,23 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
                         animationDuration={CHART_ENTER_MS}
                       />
                     </>
+                  )}
+
+                  {/* 失败调用虚线：与请求折线同组；关闭「请求折线」时一并隐藏。无失败时不画零线。 */}
+                  {showReqLine && hasFailedCalls && (
+                    <Line
+                      key={`failed-line-${chartRange}-${perspective}`}
+                      yAxisId="req"
+                      dataKey="failedReq"
+                      name="失败调用"
+                      type="monotone"
+                      stroke="var(--ember)"
+                      strokeWidth={1.6}
+                      strokeDasharray="5 4"
+                      dot={false}
+                      isAnimationActive={reqAnimate}
+                      animationDuration={CHART_ENTER_MS}
+                    />
                   )}
                 </ComposedChart>
               </ChartFrame>
