@@ -96,6 +96,53 @@ chmod +x ./elysia-api-linux-amd64
 > CI 产物为 ad-hoc 签名。首次打开若被 Gatekeeper 拦截，执行
 > `xattr -d com.apple.quarantine /Applications/ElysiaApi.app` 后再打开即可。
 
+### Docker
+
+最小运行命令：
+
+```bash
+docker run -d \
+  -p 8765:8765 \
+  -v elysia-data:/data \
+  -e ELYSIA_API_HOST=0.0.0.0 \
+  elysia-api:local
+```
+
+首次启动时，如果配置文件不存在，后端会在数据卷中生成配置和随机 `panelAccessToken`。访问 `http://127.0.0.1:8765/ui/`，使用启动日志中的 token 登录。
+
+如需公网访问请配置：`ELYSIA_API_HOST=0.0.0.0`，默认`127.0.0.1`。
+
+如需通过环境变量提供数据库主密钥，在运行命令中增加 `-e ELYSIA_API_MASTER_KEY=...`。
+
+推荐的 Compose 配置：
+
+```yaml
+services:
+  elysia-api:
+    image: elysia-api:local
+    container_name: elysia-api
+    restart: unless-stopped # 自启动
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "${ELYSIA_HTTP_PORT:-8765}:8765"
+    environment:
+      ELYSIA_API_HOST: 0.0.0.0
+      # 使用外部数据库主密钥时取消注释，并通过安全的环境管理方式注入：
+      # ELYSIA_API_MASTER_KEY: your-master-key
+    volumes:
+      - elysia-data:/data
+
+volumes:
+  elysia-data:
+```
+
 ### WebUI 初始化
 
 后端启动后打开 WebUI：
