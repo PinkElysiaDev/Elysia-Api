@@ -8,6 +8,7 @@ import {
   MoveRight,
   RotateCcw,
   ScrollText,
+  Zap,
 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { RoleWatermark } from '@/components/role-watermark'
@@ -119,9 +120,12 @@ export function UsageLogsPage() {
     const all = data?.items ?? []
     const totals = all.reduce(
       (acc, item) => {
-        if (item.statusCode >= 200 && item.statusCode < 400) acc.ok += 1
-        else acc.failed += 1
-        acc.duration += item.durationMs || 0
+        if (item.statusCode >= 200 && item.statusCode < 400) {
+          acc.ok += 1
+          acc.duration += item.durationMs || 0
+        } else {
+          acc.failed += 1
+        }
         return acc
       },
       { ok: 0, failed: 0, duration: 0 },
@@ -129,7 +133,7 @@ export function UsageLogsPage() {
     return {
       ok: totals.ok,
       failed: totals.failed,
-      avg: all.length ? totals.duration / all.length : 0,
+      avg: totals.ok ? totals.duration / totals.ok : 0,
       count: all.length,
     }
   }, [data])
@@ -222,7 +226,10 @@ export function UsageLogsPage() {
                   <b className="font-semibold text-foreground">{summary.failed}</b> 失败
                 </span>
                 <span>
-                  平均时延 <b className="font-semibold text-foreground">{formatDuration(summary.avg)}</b>
+                  平均时延（成功）{' '}
+                  <b className="font-semibold text-foreground">
+                    {summary.ok ? formatDuration(summary.avg) : '—'}
+                  </b>
                 </span>
               </span>
               <span className="text-muted-foreground/70">（当前 {summary.count} 条）</span>
@@ -324,6 +331,15 @@ export function UsageLogsPage() {
                       <TableCell className="py-3 pr-4 num">
                         <span className="font-mono">↑{formatNumber(log.inputTokens)}</span>{' '}
                         <span className="text-muted-foreground font-mono">↓{formatNumber(log.outputTokens)}</span>
+                        {log.cacheHitTokens != null && log.cacheHitTokens > 0 && log.inputTokens > 0 && (
+                          <span
+                            className="ml-1.5 whitespace-nowrap font-mono text-xs text-amber"
+                            title={`缓存命中 ${formatNumber(log.cacheHitTokens)} tokens`}
+                          >
+                            <Zap className="mr-px inline h-3 w-3 align-[-1px]" />
+                            {Math.round((log.cacheHitTokens / log.inputTokens) * 100)}%
+                          </span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -409,7 +425,8 @@ function LogDetailSheet({ id, onClose }: { id: string | null; onClose: () => voi
   const usage = detail?.usage
   // tokbar 三段：缓存命中 rose-soft / 未命中输入 rose / 输出 jade
   const cacheHit = usage?.cacheHitTokens ?? 0
-  const inputMiss = Math.max((usage?.inputTokens ?? 0) - cacheHit, 0)
+  const inputTotal = usage?.inputTokens ?? 0
+  const inputMiss = Math.max(inputTotal - cacheHit, 0)
   const output = usage?.outputTokens ?? 0
   const tokTotal = cacheHit + inputMiss + output
   const outputRate =
@@ -512,6 +529,9 @@ function LogDetailSheet({ id, onClose }: { id: string | null; onClose: () => voi
                       <span>
                         <i className="mr-[5px] inline-block h-2 w-2 rounded-[2px] align-[-1px]" style={{ background: 'var(--rose-soft)' }} />
                         缓存命中 {formatNumber(cacheHit)}
+                        {inputTotal > 0 && (
+                          <span className="text-muted-foreground">（输入的 {Math.round((cacheHit / inputTotal) * 100)}%）</span>
+                        )}
                       </span>
                       <span>
                         <i className="mr-[5px] inline-block h-2 w-2 rounded-[2px] align-[-1px]" style={{ background: 'var(--rose)' }} />

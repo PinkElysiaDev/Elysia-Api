@@ -13,8 +13,8 @@ import { Layers, TrendingUp, type LucideIcon } from 'lucide-react'
 import { ChartFrame, ChartTooltip } from '@/components/usage-charts'
 import {
   CHART_ENTER_MS,
-  MODEL_COLORS,
   OVERVIEW_CHART,
+  modelColor,
   ticksFor,
   useCommittedRange,
   useEnterAnimation,
@@ -65,6 +65,8 @@ function BreakdownTooltipContent({
       value: Number(e.value),
       color: e.color,
     }))
+    // 与覆盖层级一致：调用次数多的模型排前面。
+    .sort((a, b) => b.value - a.value)
   return <ChartTooltip active={active && items.length > 0} payload={items} label={label} />
 }
 
@@ -176,6 +178,7 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
   } = useUsageTrend(trendParams)
 
   // 2. Breakdown 模型日调用（to 取下一 5 分钟边界，包含当前桶内新记录）
+  //    status=success：调用分布只反映成功请求，失败调用不折算成"调用量"。
   const breakdownParams = useMemo(() => {
     const days = range === '7d' ? 7 : 30
     const nowMs = minuteTick * 60_000
@@ -186,7 +189,9 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
       from: new Date(from).toISOString(),
       to: new Date(toMs).toISOString(),
       utcOffsetMinutes: offsetMinutes,
-      top: 8,
+      // top 24：尽量少归并「其他」，后端硬上限 50。
+      top: 24,
+      status: 'success' as const,
     }
   }, [range, minuteTick])
 
@@ -243,12 +248,15 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
     return out
   }, [trendBuckets, chartRange, dayAnchorMs])
 
+  // 窗口内是否出现过失败调用：无失败时不画零线。失败虚线与「请求折线」同组开关。
+  const hasFailedCalls = useMemo(() => trendSeries.some((d) => d.failedReq > 0), [trendSeries])
+
   // 刻度数组显式缓存并锁定 domain（ticksFor 恒为 3 段）：两个透视的
   // 网格线都落在 1/3、2/3 高度，切换时几何位置一致。
   const reqTicks = useMemo(() => ticksFor(trendSeries.map((d) => d.req)), [trendSeries])
   const tokTicks = useMemo(() => ticksFor(trendSeries.map((d) => d.tok)), [trendSeries])
 
-  // 模型分流堆叠图时序数据
+  // 模型分流多序列面积图时序数据
   const { breakdownSeries, models } = useMemo(() => {
     const days = chartRange === '7d' ? 7 : 30
     const now = new Date(dayAnchorMs)
@@ -408,6 +416,8 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
                   />
                   <Tooltip
                     content={<ModelBreakdownTooltip />}
+                    // 浮层逃出 ChartFrame 后需要抬高，避免被下方章节盖住
+                    wrapperStyle={{ zIndex: 50 }}
                     cursor={{ fill: 'var(--wash)' }}
                   />
 
@@ -453,6 +463,23 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
                       />
                     </>
                   )}
+
+                  {/* 失败调用虚线：与请求折线同组；关闭「请求折线」时一并隐藏。无失败时不画零线。 */}
+                  {showReqLine && hasFailedCalls && (
+                    <Line
+                      key={`failed-line-${chartRange}-${perspective}`}
+                      yAxisId="req"
+                      dataKey="failedReq"
+                      name="失败调用"
+                      type="monotone"
+                      stroke="var(--ember)"
+                      strokeWidth={1.6}
+                      strokeDasharray="5 4"
+                      dot={false}
+                      isAnimationActive={reqAnimate}
+                      animationDuration={CHART_ENTER_MS}
+                    />
+                  )}
                 </ComposedChart>
               </ChartFrame>
             )
@@ -496,24 +523,29 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
                   axisLine={false}
                   width={OVERVIEW_CHART.yRightWidth}
                 />
-                <Tooltip content={<BreakdownTooltipContent />} cursor={{ fill: 'var(--wash)' }} />
-                {models.map((name, i) => (
-                  <Area
-                    key={name}
-                    yAxisId="req"
-                    dataKey={name}
-                    name={seriesLabel(name)}
-                    type="monotone"
-                    stroke={MODEL_COLORS[i % MODEL_COLORS.length]}
-                    fill={MODEL_COLORS[i % MODEL_COLORS.length]}
-                    fillOpacity={0.12}
-                    strokeWidth={1.4}
-                    strokeOpacity={0.85}
-                    dot={false}
-                    isAnimationActive={breakdownAnimate}
-                    animationDuration={CHART_ENTER_MS}
-                  />
-                ))}
+                <Tooltip content={<BreakdownTooltipContent />} wrapperStyle={{ zIndex: 50 }} cursor={{ fill: 'var(--wash)' }} />
+                {/* 倒序渲染：先声明的序列在下层被后声明的覆盖，
+                    让调用最多的模型面积位于最上层（图例首行与顶层序列对应）。 */}
+                {[...models].reverse().map((name, reversedIdx) => {
+                  const i = models.length - 1 - reversedIdx
+                  return (
+                    <Area
+                      key={name}
+                      yAxisId="req"
+                      dataKey={name}
+                      name={seriesLabel(name)}
+                      type="monotone"
+                      stroke={modelColor(i)}
+                      fill={modelColor(i)}
+                      fillOpacity={0.12}
+                      strokeWidth={1.4}
+                      strokeOpacity={0.85}
+                      dot={false}
+                      isAnimationActive={breakdownAnimate}
+                      animationDuration={CHART_ENTER_MS}
+                    />
+                  )
+                })}
               </ComposedChart>
             </ChartFrame>
           )}
@@ -525,7 +557,7 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
               <li key={name} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                 <i
                   className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ background: MODEL_COLORS[i % MODEL_COLORS.length] }}
+                  style={{ background: modelColor(i) }}
                   aria-hidden
                 />
                 <span className="font-mono">{seriesLabel(name)}</span>

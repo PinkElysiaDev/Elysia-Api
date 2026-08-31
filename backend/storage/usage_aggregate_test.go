@@ -31,10 +31,11 @@ func TestUsageDailyUsesFixedUTCOffset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UsageDaily(+08:00) error = %v", err)
 	}
-	if len(east) != 2 || east[0].Date != "2026-08-01" || east[0].Requests != 1 || east[0].Tokens != 10 || east[1].Date != "2026-08-02" || east[1].Requests != 2 || east[1].Tokens != 25 {
+	// token 口径为成功记录：model-b（500）的 20 token 不计入。
+	if len(east) != 2 || east[0].Date != "2026-08-01" || east[0].Requests != 1 || east[0].Tokens != 10 || east[1].Date != "2026-08-02" || east[1].Requests != 2 || east[1].Tokens != 5 {
 		t.Fatalf("UsageDaily(+08:00) = %#v", east)
 	}
-	if east[0].ModelTokens["model-a"] != 10 || east[1].ModelTokens["model-b"] != 20 || east[1].ModelTokens["model-c"] != 5 {
+	if east[0].ModelTokens["model-a"] != 10 || east[1].ModelTokens["model-b"] != 0 || east[1].ModelTokens["model-c"] != 5 {
 		t.Fatalf("UsageDaily(+08:00) modelTokens = %#v, %#v", east[0].ModelTokens, east[1].ModelTokens)
 	}
 
@@ -42,7 +43,7 @@ func TestUsageDailyUsesFixedUTCOffset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UsageDaily(-07:00) error = %v", err)
 	}
-	if len(west) != 1 || west[0].Date != "2026-08-01" || west[0].Requests != 3 || west[0].Tokens != 35 {
+	if len(west) != 1 || west[0].Date != "2026-08-01" || west[0].Requests != 3 || west[0].Tokens != 15 {
 		t.Fatalf("UsageDaily(-07:00) = %#v", west)
 	}
 
@@ -80,11 +81,12 @@ func TestUsageByModelAndStatusFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UsageByModel() error = %v", err)
 	}
+	// tokens 口径为成功记录：model-a 仅 200 那条计 10；model-c（429）计 0。
 	want := []UsageModelBucket{
-		{Model: "model-a", Requests: 3, Failed: 2, Tokens: 60},
+		{Model: "model-a", Requests: 3, Failed: 2, Tokens: 10},
 		{Model: "", Requests: 1, Failed: 0, Tokens: 5},
 		{Model: "model-b", Requests: 1, Failed: 0, Tokens: 40},
-		{Model: "model-c", Requests: 1, Failed: 1, Tokens: 50},
+		{Model: "model-c", Requests: 1, Failed: 1, Tokens: 0},
 	}
 	if len(byModel) != len(want) {
 		t.Fatalf("UsageByModel() length = %d, want %d: %#v", len(byModel), len(want), byModel)

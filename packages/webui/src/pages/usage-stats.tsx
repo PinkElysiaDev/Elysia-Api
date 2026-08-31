@@ -200,17 +200,17 @@ export function UsageStatsPage() {
                   delta={stats ? (stats.failed ? `占比 ${percent(stats.failed, stats.requests)}` : '0 次失败') : undefined}
                 />
                 <KpiCard
-                  label="Token 总消耗"
+                  label="Token 总消耗（成功调用）"
                   value={stats ? compactNumber(stats.totalTokens) : '—'}
                   icon={<Coins className="h-4 w-4 text-amber" />}
                 />
                 <KpiCard
-                  label="Prompt 缓存命中"
+                  label="Prompt 缓存命中（成功调用）"
                   value={stats ? compactNumber(stats.cacheHitTokens) : '—'}
                   delta={stats ? `命中率 ${formatHitRate(stats.cacheHitRate)}` : undefined}
                 />
                 <KpiCard
-                  label="平均请求耗时"
+                  label="平均请求耗时（成功调用）"
                   value={stats ? formatDuration(stats.avgDurationMs) : '—'}
                   icon={<Clock className="h-4 w-4 text-muted-foreground" />}
                   delta={stats ? `首字耗时 ${formatDuration(stats.avgFirstByteMs)}` : undefined}
@@ -275,6 +275,7 @@ export function UsageStatsPage() {
                         />
                         <Tooltip
                           content={<ModelBreakdownTooltip />}
+                          wrapperStyle={{ zIndex: 50 }}
                           cursor={{ fill: 'var(--wash)' }}
                         />
                         {showTokBar && (
@@ -394,7 +395,7 @@ export function UsageStatsPage() {
                                 width={40}
                                 allowDecimals={false}
                               />
-                              <Tooltip cursor={{ fill: 'var(--wash)' }} content={<ModelBarTooltip />} />
+                              <Tooltip cursor={{ fill: 'var(--wash)' }} wrapperStyle={{ zIndex: 50 }} content={<ModelBarTooltip />} />
                               <Bar dataKey="requests" name="请求数" radius={[4, 4, 0, 0]} maxBarSize={36}>
                                 {byModel.slice(0, 8).map((entry) => (
                                   <Cell key={entry.model || '__unknown__'} fill="var(--rose)" fillOpacity={0.65} />

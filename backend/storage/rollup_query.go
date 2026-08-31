@@ -128,9 +128,13 @@ func (a *usageTotalsAcc) merge(other usageTotalsAcc) {
 }
 
 // usageTotalsRawInto 对 raw 表做单行全聚合（阶段一的覆盖索引路径），结果并入 acc。
+// 口径：requests/success 计全部记录；token 与时延类只累计成功记录——失败调用的
+// token 多为 0 但存在断流部分估算等非 0 例外，计入会虚增成本类指标并拉偏时延。
 func usageTotalsRawInto(ctx context.Context, qe sqlQueryer, q UsageQuery, acc *usageTotalsAcc) error {
 	where, args := usageWhere(q)
-	row := qe.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0), COALESCE(SUM(cache_hit_tokens),0), COALESCE(SUM(duration_ms),0), COALESCE(SUM(CASE WHEN first_byte_ms > 0 THEN first_byte_ms END),0), COALESCE(COUNT(CASE WHEN first_byte_ms > 0 THEN 1 END),0), COALESCE(MIN(started_ms),0), COALESCE(MAX(started_ms),0) FROM usage_records `+where, args...)
+	succOnly := "CASE WHEN " + usageSuccessPredicate + " THEN "
+	succFb := "CASE WHEN " + usageSuccessPredicate + " AND first_byte_ms > 0 THEN "
+	row := qe.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(`+succOnly+`input_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`output_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`total_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`cache_hit_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`duration_ms ELSE 0 END),0), COALESCE(SUM(`+succFb+`first_byte_ms END),0), COALESCE(COUNT(`+succFb+`1 END),0), COALESCE(MIN(started_ms),0), COALESCE(MAX(started_ms),0) FROM usage_records `+where, args...)
 	var part usageTotalsAcc
 	if err := row.Scan(&part.requests, &part.success, &part.input, &part.output, &part.total, &part.cacheHit, &part.durationSum, &part.firstByteSum, &part.firstByteCnt, &part.firstMs, &part.lastMs); err != nil {
 		return err
@@ -140,10 +144,14 @@ func usageTotalsRawInto(ctx context.Context, qe sqlQueryer, q UsageQuery, acc *u
 }
 
 // usageTotalsRollupInto 对 rollup 表做单行全聚合，结果并入 acc。
+// 口径与 usageTotalsRawInto 一致：token/时延列只累计成功记录（rollup 行按
+// status_code 分桶，谓词可直接用）。
 func usageTotalsRollupInto(ctx context.Context, qe sqlQueryer, q UsageQuery, fromHour, toHour int64, acc *usageTotalsAcc) error {
 	filters, filterArgs := usageRollupWhere(q)
 	args := append([]any{fromHour, toHour}, filterArgs...)
-	row := qe.QueryRowContext(ctx, `SELECT COALESCE(SUM(cnt),0), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN cnt ELSE 0 END),0), COALESCE(SUM(in_tok),0), COALESCE(SUM(out_tok),0), COALESCE(SUM(total_tok),0), COALESCE(SUM(cache_tok),0), COALESCE(SUM(dur_ms_sum),0), COALESCE(SUM(fb_ms_sum),0), COALESCE(SUM(fb_cnt),0), COALESCE(MIN(min_started_ms),0), COALESCE(MAX(max_started_ms),0) FROM usage_rollup_hour WHERE hour_ms >= ? AND hour_ms < ?`+filters, args...)
+	succOnly := "CASE WHEN " + usageSuccessPredicate + " THEN "
+	succFb := "CASE WHEN " + usageSuccessPredicate + " AND fb_cnt > 0 THEN "
+	row := qe.QueryRowContext(ctx, `SELECT COALESCE(SUM(cnt),0), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN cnt ELSE 0 END),0), COALESCE(SUM(`+succOnly+`in_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`out_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`total_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`cache_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`dur_ms_sum ELSE 0 END),0), COALESCE(SUM(`+succFb+`fb_ms_sum END),0), COALESCE(SUM(`+succFb+`fb_cnt ELSE 0 END),0), COALESCE(MIN(min_started_ms),0), COALESCE(MAX(max_started_ms),0) FROM usage_rollup_hour WHERE hour_ms >= ? AND hour_ms < ?`+filters, args...)
 	var part usageTotalsAcc
 	if err := row.Scan(&part.requests, &part.success, &part.input, &part.output, &part.total, &part.cacheHit, &part.durationSum, &part.firstByteSum, &part.firstByteCnt, &part.firstMs, &part.lastMs); err != nil {
 		return err
@@ -159,8 +167,10 @@ func usageTotalsRollupInto(ctx context.Context, qe sqlQueryer, q UsageQuery, fro
 func scanUsageDailyRollupRows(ctx context.Context, qe sqlQueryer, q UsageQuery, fromHour, toHour, offsetMs int64) ([]usageDayRow, error) {
 	filters, filterArgs := usageRollupWhere(q)
 	args := append([]any{offsetMs, fromHour, toHour}, filterArgs...)
+	// token 列只累计成功记录（口径与 UsageTotals 一致）。
+	succOnly := "CASE WHEN " + usageSuccessPredicate + " THEN "
 	rows, err := qe.QueryContext(ctx,
-		`SELECT (hour_ms + ?) / 86400000, model_name, COALESCE(SUM(cnt),0), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN cnt ELSE 0 END),0), COALESCE(SUM(in_tok),0), COALESCE(SUM(out_tok),0), COALESCE(SUM(cache_tok),0), COALESCE(SUM(total_tok),0) FROM usage_rollup_hour WHERE hour_ms >= ? AND hour_ms < ?`+filters+` GROUP BY 1, 2 ORDER BY 1`, args...)
+		`SELECT (hour_ms + ?) / 86400000, model_name, COALESCE(SUM(cnt),0), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN cnt ELSE 0 END),0), COALESCE(SUM(`+succOnly+`in_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`out_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`cache_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`total_tok ELSE 0 END),0) FROM usage_rollup_hour WHERE hour_ms >= ? AND hour_ms < ?`+filters+` GROUP BY 1, 2 ORDER BY 1`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -186,10 +196,11 @@ type usageModelRow struct {
 }
 
 // scanUsageByModelRawRows 对 raw 表按模型聚合（不含排序：rollup+边缘合并后统一排）。
+// requests/failed 计全部记录，tokens 只累计成功记录（成本口径）。
 func scanUsageByModelRawRows(ctx context.Context, qe sqlQueryer, q UsageQuery) ([]usageModelRow, error) {
 	where, args := usageWhere(q)
 	rows, err := qe.QueryContext(ctx,
-		`SELECT model_name, COUNT(*), COALESCE(SUM(CASE WHEN `+usageFailedPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(total_tokens),0) FROM usage_records `+where+` GROUP BY model_name`, args...)
+		`SELECT model_name, COUNT(*), COALESCE(SUM(CASE WHEN `+usageFailedPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN total_tokens ELSE 0 END),0) FROM usage_records `+where+` GROUP BY model_name`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +221,7 @@ func scanUsageByModelRollupRows(ctx context.Context, qe sqlQueryer, q UsageQuery
 	filters, filterArgs := usageRollupWhere(q)
 	args := append([]any{fromHour, toHour}, filterArgs...)
 	rows, err := qe.QueryContext(ctx,
-		`SELECT model_name, COALESCE(SUM(cnt),0), COALESCE(SUM(CASE WHEN `+usageFailedPredicate+` THEN cnt ELSE 0 END),0), COALESCE(SUM(total_tok),0) FROM usage_rollup_hour WHERE hour_ms >= ? AND hour_ms < ?`+filters+` GROUP BY model_name`, args...)
+		`SELECT model_name, COALESCE(SUM(cnt),0), COALESCE(SUM(CASE WHEN `+usageFailedPredicate+` THEN cnt ELSE 0 END),0), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN total_tok ELSE 0 END),0) FROM usage_rollup_hour WHERE hour_ms >= ? AND hour_ms < ?`+filters+` GROUP BY model_name`, args...)
 	if err != nil {
 		return nil, err
 	}

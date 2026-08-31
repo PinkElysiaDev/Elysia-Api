@@ -436,6 +436,66 @@ func TestListGroupsNeverSerializesNullModels(t *testing.T) {
 	}
 }
 
+// 回归：停用模型源后 ListGroups 仍返回该源下的组成员；把读到的组原样
+// Upsert 回去（编辑页打开后直接保存）不得删除 model_group_models 关联。
+func TestListGroupsPreservesDisabledSourceMembersOnUnchangedSave(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(filepath.Join(t.TempDir(), "disabled-source-group.sqlite3"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+
+	src := ModelSource{ID: "src1", Name: "S1", BaseURL: "https://s.example.com", Platform: "openai", Enabled: true, APIKey: "k"}
+	if err := store.UpsertSource(ctx, src); err != nil {
+		t.Fatalf("UpsertSource: %v", err)
+	}
+	if err := store.ReplaceSourceModels(ctx, src, []Model{{ID: "m1", Name: "M1", Type: "llm", Available: true}}); err != nil {
+		t.Fatalf("ReplaceSourceModels: %v", err)
+	}
+	if err := store.UpsertGroup(ctx, ModelGroup{
+		ID: "g1", Name: "grp", Enabled: true, Strategy: "round-robin", Type: "llm",
+		Models: []string{"src1:m1"},
+	}); err != nil {
+		t.Fatalf("UpsertGroup: %v", err)
+	}
+
+	found, err := store.UpdateSourceEnabled(ctx, "src1", false)
+	if err != nil || !found {
+		t.Fatalf("disable source: found=%v err=%v", found, err)
+	}
+
+	groups, err := store.ListGroups(ctx)
+	if err != nil {
+		t.Fatalf("ListGroups: %v", err)
+	}
+	var listed *ModelGroup
+	for i := range groups {
+		if groups[i].ID == "g1" {
+			listed = &groups[i]
+			break
+		}
+	}
+	if listed == nil {
+		t.Fatal("group g1 missing")
+	}
+	if len(listed.Models) != 1 || listed.Models[0] != "src1:m1" {
+		t.Fatalf("ListGroups dropped disabled-source member: %v", listed.Models)
+	}
+
+	if err := store.UpsertGroup(ctx, *listed); err != nil {
+		t.Fatalf("unchanged UpsertGroup: %v", err)
+	}
+
+	var n int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM model_group_models WHERE group_id = ? AND model_id = ? AND source_id = ?`, "g1", "m1", "src1").Scan(&n); err != nil {
+		t.Fatalf("count members: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("unchanged save dropped model_group_models row, count=%d", n)
+	}
+}
+
 // 回归：时间过滤/排序改用 started_ms 整型列。此前按 RFC3339Nano 字符串比较，
 // 整秒时间戳（…T00:00:00Z）与带毫秒时间戳（…T00:00:00.123Z）因 '.' < 'Z'
 // 的字典序，整秒边界的记录会被 from=整秒 的过滤漏掉。

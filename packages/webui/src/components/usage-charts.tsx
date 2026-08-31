@@ -4,7 +4,7 @@ import { formatNumber } from '@/lib/utils'
 
 export function ChartFrame({ height, children }: { height: number; children: ReactElement }) {
   return (
-    <div className="w-full overflow-hidden" style={{ height }}>
+    <div className="w-full" style={{ height }}>
       <ResponsiveContainer width="100%" height={height}>
         {children}
       </ResponsiveContainer>

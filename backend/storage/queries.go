@@ -140,7 +140,11 @@ func (s *Store) ListGroups(ctx context.Context) ([]ModelGroup, error) {
 	}
 
 	for i := range items {
-		modelRows, err := s.db.QueryContext(ctx, `SELECT mgm.model_id, mgm.source_id FROM model_group_models mgm LEFT JOIN model_sources ms ON ms.id = mgm.source_id WHERE mgm.group_id = ? AND (mgm.source_id = '' OR (ms.id IS NOT NULL AND ms.enabled = 1)) ORDER BY mgm.position`, items[i].ID)
+		// 组成员引用完整返回，即使所属模型源已停用。编辑页打开后无修改保存
+		// 会走 UpsertGroup 的「先删后写」；若此处按源 enabled 过滤，停用源下的
+		// 成员会从 payload 消失并被永久删除。调度热路径仍通过 ListModels 过滤
+		// 停用源，不会把请求打到已停用源。
+		modelRows, err := s.db.QueryContext(ctx, `SELECT mgm.model_id, mgm.source_id FROM model_group_models mgm WHERE mgm.group_id = ? ORDER BY mgm.position`, items[i].ID)
 		if err != nil {
 			return nil, err
 		}
@@ -851,8 +855,10 @@ func scanUsageDailyRows(ctx context.Context, qe sqlQueryer, q UsageQuery, offset
 		where += " AND started_ms > 0"
 	}
 	fullArgs := append([]any{offsetMs}, args...)
+	// token 列只累计成功记录（口径与 UsageTotals 一致，失败调用不计成本）。
+	succOnly := "CASE WHEN " + usageSuccessPredicate + " THEN "
 	rows, err := qe.QueryContext(ctx,
-		`SELECT (started_ms + ?) / 86400000, model_name, COUNT(*), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cache_hit_tokens),0), COALESCE(SUM(total_tokens),0) FROM usage_records `+where+` GROUP BY 1, 2 ORDER BY 1`, fullArgs...)
+		`SELECT (started_ms + ?) / 86400000, model_name, COUNT(*), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(`+succOnly+`input_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`output_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`cache_hit_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`total_tokens ELSE 0 END),0) FROM usage_records `+where+` GROUP BY 1, 2 ORDER BY 1`, fullArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -984,8 +990,10 @@ func (s *Store) UsagePulse(ctx context.Context, q UsageQuery, utcOffsetMinutes, 
 	offsetMs := int64(utcOffsetMinutes) * 60_000
 	bucketMs := int64(bucketMinutes) * 60_000
 	args = append([]any{offsetMs, bucketMs}, args...)
+	// 口径：Requests（RPM）计全部记录；时延与 token 只累计成功记录——
+	// 失败调用的时延无性能意义，token 存在断流部分估算等非 0 例外。
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT ((started_ms + ?) / ?) AS bucket, duration_ms, total_tokens FROM usage_records `+where+` ORDER BY 1, 2`, args...)
+		`SELECT ((started_ms + ?) / ?) AS bucket, duration_ms, total_tokens, CASE WHEN `+usageSuccessPredicate+` THEN 1 ELSE 0 END FROM usage_records `+where+` ORDER BY 1, 2`, args...)
 	if err != nil {
 		return UsagePulseResult{}, err
 	}
@@ -996,11 +1004,13 @@ func (s *Store) UsagePulse(ctx context.Context, q UsageQuery, utcOffsetMinutes, 
 		curBucket    int64
 		have         bool
 		n            int
+		succN        int
 		sum          int64
 		tokenSum     int64
 		bucketSample int64Reservoir
 		windowSample int64Reservoir
 		windowN      int
+		windowSuccN  int
 		windowSum    int64
 		windowTok    int64
 	)
@@ -1010,20 +1020,25 @@ func (s *Store) UsagePulse(ctx context.Context, q UsageQuery, utcOffsetMinutes, 
 		if !have || n == 0 {
 			return
 		}
+		avg := 0.0
+		if succN > 0 {
+			avg = float64(sum) / float64(succN)
+		}
 		out = append(out, UsagePulsePoint{
 			T:             curBucket*bucketMs - offsetMs,
 			Requests:      n,
-			AvgDurationMs: float64(sum) / float64(n),
+			AvgDurationMs: avg,
 			P95DurationMs: percentileInt64(append([]int64(nil), bucketSample.samples...), 0.95),
 			TotalTokens:   tokenSum,
 		})
 		windowN += n
+		windowSuccN += succN
 		windowSum += sum
 		windowTok += tokenSum
 	}
 	for rows.Next() {
-		var bucket, durationMs, tokens int64
-		if err := rows.Scan(&bucket, &durationMs, &tokens); err != nil {
+		var bucket, durationMs, tokens, success int64
+		if err := rows.Scan(&bucket, &durationMs, &tokens, &success); err != nil {
 			return UsagePulseResult{}, err
 		}
 		if !have || bucket != curBucket {
@@ -1031,23 +1046,27 @@ func (s *Store) UsagePulse(ctx context.Context, q UsageQuery, utcOffsetMinutes, 
 			curBucket = bucket
 			have = true
 			n = 0
+			succN = 0
 			sum = 0
 			tokenSum = 0
 			bucketSample.reset()
 		}
 		n++
-		sum += durationMs
-		tokenSum += tokens
-		bucketSample.add(durationMs)
-		windowSample.add(durationMs)
+		if success == 1 {
+			succN++
+			sum += durationMs
+			tokenSum += tokens
+			bucketSample.add(durationMs)
+			windowSample.add(durationMs)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return UsagePulseResult{}, err
 	}
 	flush()
 	window := UsagePulseWindow{Requests: windowN, TotalTokens: windowTok}
-	if windowN > 0 {
-		window.AvgDurationMs = float64(windowSum) / float64(windowN)
+	if windowSuccN > 0 {
+		window.AvgDurationMs = float64(windowSum) / float64(windowSuccN)
 		window.P95DurationMs = percentileInt64(windowSample.samples, 0.95)
 	}
 	return UsagePulseResult{Points: out, Window: window}, nil
@@ -1251,9 +1270,10 @@ func (s *Store) UsageTotals(ctx context.Context, q UsageQuery) (map[string]any, 
 	}
 	// avg_first_byte 仅对 first_byte_ms > 0 的记录求平均（未记录首字的请求为 0）。
 	// firstUsedAt / lastUsedAt 仍返回，给旧 /__usage 面板算跨度（毫秒精度）。
+	// durationSum 是成功口径（见 usageTotalsRawInto），分母用 acc.success。
 	var avgDuration, avgFirstByte float64
-	if acc.requests > 0 {
-		avgDuration = float64(acc.durationSum) / float64(acc.requests)
+	if acc.success > 0 {
+		avgDuration = float64(acc.durationSum) / float64(acc.success)
 	}
 	if acc.firstByteCnt > 0 {
 		avgFirstByte = float64(acc.firstByteSum) / float64(acc.firstByteCnt)
