@@ -137,6 +137,7 @@ func (s *Server) handleCustomNormalRequest(c *gin.Context, group *config.ModelGr
 		}
 		record.StatusCode = status
 		record.Error = message
+		record.ErrorKind = ErrorKindUpstream
 		if body != nil {
 			c.Data(status, "application/json", body)
 		} else {
@@ -171,7 +172,7 @@ func (s *Server) handleCustomNormalRequest(c *gin.Context, group *config.ModelGr
 	}
 	defer response.Body.Close()
 	body, readErr := io.ReadAll(response.Body)
-	record.ProviderResponse = sanitizeUsageBody(body)
+	record.ProviderResponse = record.sanitizeBody(body)
 	if readErr != nil {
 		result = fail(http.StatusBadGateway, fmt.Sprintf("failed to read custom protocol response: %v", readErr), nil, true)
 		return result
@@ -220,6 +221,7 @@ func (s *Server) handleCustomResponsesNormal(c *gin.Context, group *config.Model
 		}
 		record.StatusCode = status
 		record.Error = message
+		record.ErrorKind = ErrorKindUpstream
 		if body != nil {
 			c.Data(status, "application/json", body)
 		} else {
@@ -252,7 +254,7 @@ func (s *Server) handleCustomResponsesNormal(c *gin.Context, group *config.Model
 	}
 	defer response.Body.Close()
 	body, readErr := io.ReadAll(response.Body)
-	record.ProviderResponse = sanitizeUsageBody(body)
+	record.ProviderResponse = record.sanitizeBody(body)
 	if readErr != nil {
 		result = fail(http.StatusBadGateway, fmt.Sprintf("failed to read custom protocol response: %v", readErr), nil, true)
 		return result

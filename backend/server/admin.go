@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -68,6 +70,10 @@ func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
 	admin.GET("/usage/logs/:id", s.adminUsageLogDetail)
 	admin.GET("/usage/seq", s.adminUsageSeq)
 	admin.POST("/usage/reset", s.adminUsageReset)
+	// 日志管理：外置媒体文件、占用状态、手动触发清理巡检。
+	admin.GET("/usage/assets/:requestId/:file", s.adminUsageAsset)
+	admin.GET("/usage/storage", s.adminUsageStorage)
+	admin.POST("/usage/cleanup", s.adminUsageCleanup)
 	admin.GET("/logs", s.adminSystemLogs)
 	admin.GET("/health", s.adminHealth)
 }
@@ -84,6 +90,7 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 	server := s.config.GetServer()
 	catalog := s.config.GetModelCatalog()
 	catalogEnabled := catalog.Enabled == nil || *catalog.Enabled
+	usageLog := s.config.GetUsageLogConfig()
 	respondOK(c, gin.H{
 		"host":                server.Host,
 		"port":                server.Port,
@@ -94,6 +101,17 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 		"httpTimeout":         s.config.GetHTTPTimeout(),
 		"enablePprof":         s.config.GetEnablePprof(),
 		"allowFakeIPOutbound": s.config.IsFakeIPOutboundAllowed(),
+		"usageLog": gin.H{
+			// 生效值（归一化后）：表单直接显示当前实际口径，保存时整体回写。
+			"persistEnabled":         usageLog.PersistEnabled,
+			"retentionDays":          usageLog.RetentionDays,
+			"maxStorageMB":           usageLog.MaxStorageBytes / 1024 / 1024,
+			"maxRecords":             usageLog.MaxRecords,
+			"bodyMaxKB":              usageLog.BodyMaxBytes / 1024,
+			"bodyOnErrorOnly":        usageLog.BodyOnErrorOnly,
+			"externalizeMedia":       usageLog.ExternalizeMedia,
+			"cleanupIntervalMinutes": int(usageLog.CleanupInterval.Minutes()),
+		},
 		"modelCatalog": gin.H{
 			"enabled": catalogEnabled,
 			"url":     catalogResolveURL(catalog),
@@ -106,14 +124,15 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 
 func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 	var payload struct {
-		Host                string  `json:"host"`
-		Port                int     `json:"port"`
-		LogLevel            string  `json:"logLevel"`
-		HTTPTimeout         *int    `json:"httpTimeout"`
-		PanelAccessToken    *string `json:"panelAccessToken"`
-		DatabasePath        *string `json:"databasePath"`
-		EnablePprof         *bool   `json:"enablePprof"`
-		AllowFakeIPOutbound *bool   `json:"allowFakeIPOutbound"`
+		Host                string                 `json:"host"`
+		Port                int                    `json:"port"`
+		LogLevel            string                 `json:"logLevel"`
+		HTTPTimeout         *int                   `json:"httpTimeout"`
+		PanelAccessToken    *string                `json:"panelAccessToken"`
+		DatabasePath        *string                `json:"databasePath"`
+		EnablePprof         *bool                  `json:"enablePprof"`
+		AllowFakeIPOutbound *bool                  `json:"allowFakeIPOutbound"`
+		UsageLog            *config.UsageLogConfig `json:"usageLog"`
 		ModelCatalog        *struct {
 			SyncIntervalMinutes *int `json:"syncIntervalMinutes"`
 		} `json:"modelCatalog"`
@@ -139,6 +158,24 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 	if payload.ModelCatalog != nil && payload.ModelCatalog.SyncIntervalMinutes != nil && *payload.ModelCatalog.SyncIntervalMinutes < 0 {
 		respondFail(c, 400, "invalid_sync_interval", "syncIntervalMinutes must not be negative")
 		return
+	}
+	// usageLog：数值字段全部非负（0 是合法的「关闭/不保存」语义）。
+	if payload.UsageLog != nil {
+		for _, check := range []struct {
+			name  string
+			value *int
+		}{
+			{"retentionDays", payload.UsageLog.RetentionDays},
+			{"maxStorageMB", payload.UsageLog.MaxStorageMB},
+			{"maxRecords", payload.UsageLog.MaxRecords},
+			{"bodyMaxKB", payload.UsageLog.BodyMaxKB},
+			{"cleanupIntervalMinutes", payload.UsageLog.CleanupIntervalMinutes},
+		} {
+			if check.value != nil && *check.value < 0 {
+				respondFail(c, 400, "invalid_usage_log", check.name+" must not be negative")
+				return
+			}
+		}
 	}
 
 	if payload.LogLevel != "" {
@@ -172,6 +209,11 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		s.config.SetAllowFakeIPOutbound(*payload.AllowFakeIPOutbound)
 		// 即时下发到 relay 包级开关，无需重启。
 		s.syncRelaySSRFPolicy()
+	}
+	if payload.UsageLog != nil {
+		// 局部更新：仅覆盖显式提供的字段。BodyMaxKB/开关对后续请求即时生效；
+		// 清理参数由后台巡检在下一 tick 重新读取。无需重启。
+		s.config.SetUsageLogConfig(*payload.UsageLog)
 	}
 	if payload.ModelCatalog != nil && payload.ModelCatalog.SyncIntervalMinutes != nil {
 		// 周期检查是动态的，写入配置即生效（0 = 默认 24h），无需重启。
@@ -860,6 +902,159 @@ func (s *Server) adminUsageSeq(c *gin.Context) {
 }
 
 func (s *Server) adminUsageReset(c *gin.Context) { s.resetUsage(c) }
+
+// ---- 日志管理（usage-assets / 占用状态 / 手动清理）----
+
+// adminUsageAsset 下发某条记录的外置媒体文件。资产是捕获的用户内容，
+// 必须留在管理鉴权之后，绝不做公开静态目录。文件名格式严格校验
+// （16 位 hex 哈希 + 白名单扩展名），requestId 拒绝路径分隔符，防穿越。
+func (s *Server) adminUsageAsset(c *gin.Context) {
+	requestID := c.Param("requestId")
+	if requestID == "" || strings.ContainsAny(requestID, `/\.`) {
+		respondFail(c, 400, "invalid_request_id", "invalid request id")
+		return
+	}
+	fileName := c.Param("file")
+	hash, ext, ok := parseAssetFileName(fileName)
+	if !ok {
+		respondFail(c, 400, "invalid_asset_name", "invalid asset file name")
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(s.usageAssetsRoot(), requestID, hash+"."+ext))
+	if err != nil {
+		respondFail(c, 404, "asset_not_found", "asset file not found")
+		return
+	}
+	c.Header("Cache-Control", "private, max-age=86400")
+	c.Data(http.StatusOK, mimeByAssetExt(ext), data)
+}
+
+func mimeByAssetExt(ext string) string {
+	switch ext {
+	case "png":
+		return "image/png"
+	case "jpg":
+		return "image/jpeg"
+	case "gif":
+		return "image/gif"
+	case "webp":
+		return "image/webp"
+	case "mp3":
+		return "audio/mpeg"
+	case "wav":
+		return "audio/wav"
+	case "ogg":
+		return "audio/ogg"
+	case "mp4":
+		return "video/mp4"
+	case "webm":
+		return "video/webm"
+	case "pdf":
+		return "application/pdf"
+	default:
+		return "application/octet-stream"
+	}
+}
+
+// usageAssetsUsage 是资产目录的体积统计（WalkDir 全量遍历，带短 TTL 缓存）。
+type usageAssetsUsage struct {
+	Bytes int64 `json:"bytes"`
+	Files int   `json:"files"`
+	Dirs  int   `json:"dirs"`
+}
+
+const assetsUsageCacheTTL = 30 * time.Second
+
+func (s *Server) usageAssetsUsage() usageAssetsUsage {
+	s.assetsUsageMu.Lock()
+	if time.Since(s.assetsUsageAt) < assetsUsageCacheTTL {
+		cached := s.assetsUsage
+		s.assetsUsageMu.Unlock()
+		return cached
+	}
+	s.assetsUsageMu.Unlock()
+
+	usage := usageAssetsUsage{}
+	_ = filepath.WalkDir(s.usageAssetsRoot(), func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil // 目录缺失/权限等：统计尽力而为
+		}
+		if d.IsDir() {
+			usage.Dirs++
+			return nil
+		}
+		if info, err := d.Info(); err == nil {
+			usage.Bytes += info.Size()
+			usage.Files++
+		}
+		return nil
+	})
+
+	s.assetsUsageMu.Lock()
+	s.assetsUsage, s.assetsUsageAt = usage, time.Now()
+	s.assetsUsageMu.Unlock()
+	return usage
+}
+
+// adminUsageStorage 返回日志占用状态与最近一轮清理结果（设置页展示）。
+func (s *Server) adminUsageStorage(c *gin.Context) {
+	store, okStore := s.requireStore(c)
+	if !okStore {
+		return
+	}
+	ctx := c.Request.Context()
+	dbStats, dbErr := store.UsageDBPageStats(ctx)
+	recordCount, countErr := store.CountUsageRecords(ctx)
+	if dbErr != nil || countErr != nil {
+		respondFail(c, 500, "storage_stats_failed", firstNonEmptyStr(dbErr, countErr))
+		return
+	}
+	cfg := s.config.GetUsageLogConfig()
+	resp := gin.H{
+		"db": gin.H{
+			"totalBytes":   dbStats.TotalBytes(),
+			"logicalBytes": dbStats.LogicalBytes(),
+			"pageCount":    dbStats.PageCount,
+			"pageSize":     dbStats.PageSize,
+			"freePages":    dbStats.FreePages,
+		},
+		"recordCount": recordCount,
+		"assets":      s.usageAssetsUsage(),
+		"config": gin.H{
+			"persistEnabled":         cfg.PersistEnabled,
+			"retentionDays":          cfg.RetentionDays,
+			"maxStorageMB":           cfg.MaxStorageBytes / 1024 / 1024,
+			"maxRecords":             cfg.MaxRecords,
+			"bodyMaxKB":              cfg.BodyMaxBytes / 1024,
+			"bodyOnErrorOnly":        cfg.BodyOnErrorOnly,
+			"externalizeMedia":       cfg.ExternalizeMedia,
+			"cleanupIntervalMinutes": int(cfg.CleanupInterval.Minutes()),
+		},
+	}
+	if r := s.usageRetention; r != nil {
+		resp["lastCleanup"] = r.snapshotStats()
+	}
+	respondOK(c, resp)
+}
+
+// adminUsageCleanup 手动触发一轮清理巡检（异步执行，防重入）。
+func (s *Server) adminUsageCleanup(c *gin.Context) {
+	if s.usageRetention == nil {
+		respondFail(c, http.StatusServiceUnavailable, "retention_unavailable", "usage retention is not running")
+		return
+	}
+	accepted := s.usageRetention.triggerAsync()
+	respondOK(c, gin.H{"accepted": accepted})
+}
+
+func firstNonEmptyStr(errs ...error) string {
+	for _, err := range errs {
+		if err != nil {
+			return err.Error()
+		}
+	}
+	return "unknown error"
+}
 
 func (s *Server) adminSystemLogs(c *gin.Context) {
 	store, okStore := s.requireStore(c)

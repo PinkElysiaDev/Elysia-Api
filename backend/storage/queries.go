@@ -1263,6 +1263,223 @@ func (s *Store) ClearUsage(ctx context.Context) error {
 	return nil
 }
 
+// ---- 日志留存清理（usage_retention.go 使用）----
+//
+// 与 ClearUsage 的全清不同：以下删除只动 usage_records 原始行，不触
+// usage_rollup_hour/水位表——小时聚合在写入时已累加进 rollup，清理原始
+// 记录不影响历史统计口径（仅查询窗口边界小时的 raw 补扫可能少算，可接受）。
+// 每批删除返回被删 request_id，供调用方联动删除外置媒体目录。
+
+// retentionDeleteBatchLimit 是单批删除的默认行数上限。
+const retentionDeleteBatchLimit = 500
+
+func deleteUsageByIDsTx(ctx context.Context, tx *sql.Tx, ids []string) error {
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	_, err := tx.ExecContext(ctx, `DELETE FROM usage_records WHERE request_id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	return err
+}
+
+func deleteUsageSelectTx(ctx context.Context, tx *sql.Tx, selectSQL string, args ...interface{}) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, selectSQL, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// DeleteUsageOlderThan 删除 started_ms 早于 cutoffMs 的最旧一批记录（至多
+// limit 条），返回被删 request_id；空切片表示已无可删。
+func (s *Store) DeleteUsageOlderThan(ctx context.Context, cutoffMs int64, limit int) ([]string, error) {
+	if limit <= 0 {
+		limit = retentionDeleteBatchLimit
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	ids, err := deleteUsageSelectTx(ctx, tx,
+		`SELECT request_id FROM usage_records WHERE started_ms > 0 AND started_ms < ? ORDER BY started_ms ASC LIMIT ?`,
+		cutoffMs, limit)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		committed = true
+		return nil, tx.Commit()
+	}
+	if err := deleteUsageByIDsTx(ctx, tx, ids); err != nil {
+		return nil, err
+	}
+	committed = true
+	return ids, tx.Commit()
+}
+
+// DeleteUsageOldest 删除全局最旧的一批记录（至多 limit 条），超量清理用。
+func (s *Store) DeleteUsageOldest(ctx context.Context, limit int) ([]string, error) {
+	if limit <= 0 {
+		limit = retentionDeleteBatchLimit
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	ids, err := deleteUsageSelectTx(ctx, tx,
+		`SELECT request_id FROM usage_records ORDER BY started_ms ASC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		committed = true
+		return nil, tx.Commit()
+	}
+	if err := deleteUsageByIDsTx(ctx, tx, ids); err != nil {
+		return nil, err
+	}
+	committed = true
+	return ids, tx.Commit()
+}
+
+// DeleteUsageBeyondCount 只保留最新 keep 条，删除其余（分批由调用方循环驱动，
+// 本方法一次至多删 retentionDeleteBatchLimit*4 条），返回被删 id。
+func (s *Store) DeleteUsageBeyondCount(ctx context.Context, keep int64) ([]string, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	ids, err := deleteUsageSelectTx(ctx, tx,
+		`SELECT request_id FROM usage_records ORDER BY started_ms DESC LIMIT -1 OFFSET ?`, keep)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		committed = true
+		return nil, tx.Commit()
+	}
+	// OFFSET 全量选择可能很大：一次事务内分块删除，避免超长 IN 列表。
+	var deleted []string
+	for start := 0; start < len(ids); start += retentionDeleteBatchLimit {
+		end := start + retentionDeleteBatchLimit
+		if end > len(ids) {
+			end = len(ids)
+		}
+		if err := deleteUsageByIDsTx(ctx, tx, ids[start:end]); err != nil {
+			return nil, err
+		}
+		deleted = append(deleted, ids[start:end]...)
+	}
+	committed = true
+	return deleted, tx.Commit()
+}
+
+// CountUsageRecords 返回当前日志记录总数。
+func (s *Store) CountUsageRecords(ctx context.Context) (int64, error) {
+	var count int64
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_records`).Scan(&count)
+	return count, err
+}
+
+// UsageDBStats 是数据库页面统计：LogicalBytes = (PageCount-FreePages)*PageSize，
+// 近似「扣掉空闲页后的实际占用」，超量清理按它收敛（删除会释放整页进空闲
+// 链表，页总数要等 VACUUM 才下降）。
+type UsageDBStats struct {
+	PageCount int64 `json:"pageCount"`
+	PageSize  int64 `json:"pageSize"`
+	FreePages int64 `json:"freePages"`
+}
+
+func (st UsageDBStats) TotalBytes() int64 {
+	return st.PageCount * st.PageSize
+}
+
+func (st UsageDBStats) LogicalBytes() int64 {
+	return (st.PageCount - st.FreePages) * st.PageSize
+}
+
+// UsageDBPageStats 读取 page_count/page_size/freelist_count。
+func (s *Store) UsageDBPageStats(ctx context.Context) (UsageDBStats, error) {
+	var st UsageDBStats
+	if err := s.db.QueryRowContext(ctx, `PRAGMA page_count`).Scan(&st.PageCount); err != nil {
+		return st, err
+	}
+	if err := s.db.QueryRowContext(ctx, `PRAGMA page_size`).Scan(&st.PageSize); err != nil {
+		return st, err
+	}
+	if err := s.db.QueryRowContext(ctx, `PRAGMA freelist_count`).Scan(&st.FreePages); err != nil {
+		return st, err
+	}
+	return st, nil
+}
+
+// UsageRecordIDsExist 批量判断 request_id 是否仍存在于日志表（孤儿资产清扫用）。
+func (s *Store) UsageRecordIDsExist(ctx context.Context, ids []string) (map[string]bool, error) {
+	result := make(map[string]bool, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT request_id FROM usage_records WHERE request_id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		result[id] = true
+	}
+	return result, rows.Err()
+}
+
+// VacuumUsageDB 执行 VACUUM 回收空闲页并截断 WAL。需要短暂独占写锁、
+// 约双倍磁盘空间，调用方必须自行限频（见 usageRetention.maybeVacuum）。
+func (s *Store) VacuumUsageDB(ctx context.Context) error {
+	if _, err := s.db.ExecContext(ctx, `VACUUM`); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`)
+	return err
+}
+
 func (s *Store) UsageTotals(ctx context.Context, q UsageQuery) (map[string]any, error) {
 	acc, err := s.usageTotalsAcc(ctx, q)
 	if err != nil {

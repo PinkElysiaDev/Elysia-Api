@@ -27,7 +27,7 @@ func (s *Server) responses(c *gin.Context) {
 	record := s.initUsageRecord(c, startTime, bodyBytes, relay.FormatResponses)
 	record.SourceFormat = string(relay.FormatResponses)
 	record.SourceEndpoint = "/v1/responses"
-	installDownstreamCapture(c, record)
+	installDownstreamCapture(c, record, downstreamCaptureLimit(s.usageLogConfig()))
 
 	responsesCfg := s.config.GetResponsesConfig()
 	if responsesCfg.Enabled != nil && !*responsesCfg.Enabled {
@@ -37,7 +37,7 @@ func (s *Server) responses(c *gin.Context) {
 
 	maheshvaraReq, originalResponsesReq, err := relay.OpenAIResponsesToMaheshvara(bodyBytes)
 	if err != nil {
-		s.failRequestTyped(c, record, startTime, http.StatusBadRequest, "invalid_request_error", err.Error())
+		s.failRequestTypedKind(c, record, startTime, http.StatusBadRequest, "invalid_request_error", ErrorKindConversion, err.Error())
 		return
 	}
 
@@ -218,7 +218,7 @@ func (s *Server) responses(c *gin.Context) {
 			}
 			continue
 		}
-		record.OutgoingBody = sanitizeUsageBody(targetBody)
+		record.OutgoingBody = record.sanitizeBody(targetBody)
 
 		var outcome relayOutcome
 		if maheshvaraReq.Stream {
@@ -256,6 +256,7 @@ func (s *Server) responses(c *gin.Context) {
 		}
 		record.StatusCode = lastStatus
 		record.Error = lastErr
+		record.ErrorKind = ErrorKindUpstream
 		record.EndedAt = time.Now()
 		record.DurationMs = time.Since(startTime).Milliseconds()
 		s.recordUsage(record)
@@ -274,6 +275,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 		if isLast || !retryable {
 			record.StatusCode = statusCode
 			record.Error = errMsg
+			record.ErrorKind = ErrorKindUpstream
 			if respBody != nil {
 				c.Data(statusCode, "application/json", respBody)
 			} else {
@@ -302,7 +304,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 	switch targetFormat {
 	case relay.FormatResponses:
 		responsesResp, respBody, upstreamStatus, err := s.openaiAdapter.SendResponsesRawWithBody(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
-		record.ProviderResponse = sanitizeUsageBody(respBody)
+		record.ProviderResponse = record.sanitizeBody(respBody)
 		if err != nil {
 			status := upstreamStatus
 			if status <= 0 {
@@ -340,7 +342,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 		}
 		var claudeResp relay.ClaudeResponse
 		respBody, err := readBodyAndJSON(httpResp, &claudeResp)
-		record.ProviderResponse = sanitizeUsageBody(respBody)
+		record.ProviderResponse = record.sanitizeBody(respBody)
 		if err != nil {
 			result = failResult(http.StatusInternalServerError, err.Error(), nil)
 			return result
@@ -365,7 +367,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 		}
 		var geminiResp relay.GeminiResponse
 		respBody, err := readBodyAndJSON(httpResp, &geminiResp)
-		record.ProviderResponse = sanitizeUsageBody(respBody)
+		record.ProviderResponse = record.sanitizeBody(respBody)
 		if err != nil {
 			result = failResult(http.StatusInternalServerError, err.Error(), nil)
 			return result
@@ -378,7 +380,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 
 	default:
 		openAIResp, respBody, statusCode, err := s.openaiAdapter.SendRequestRawWithBody(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
-		record.ProviderResponse = sanitizeUsageBody(respBody)
+		record.ProviderResponse = record.sanitizeBody(respBody)
 		if err != nil {
 			if statusCode <= 0 {
 				statusCode = http.StatusBadGateway
@@ -445,6 +447,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		if isLast || !retryable {
 			record.StatusCode = statusCode
 			record.Error = errMsg
+			record.ErrorKind = ErrorKindUpstream
 			if respBody != nil {
 				c.Data(statusCode, "application/json", respBody)
 			} else {

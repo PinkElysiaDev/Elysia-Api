@@ -19,6 +19,7 @@ import type {
   UsageLogsResult,
   UsageQueryParams,
   UsageStats,
+  UsageStorageStatus,
 } from './types'
 
 export class ApiError extends Error {
@@ -249,6 +250,26 @@ export const api = {
   usageLogDetail: (id: string) => request<UsageLogDetail>(`/usage/logs/${encodeURIComponent(id)}`),
   usageSeq: () => request<{ seq: number }>('/usage/seq'),
   usageReset: () => request<unknown>('/usage/reset', { method: 'POST' }),
+
+  /** 日志占用状态：DB 体积/记录数/外置资产/最近一轮清理结果（设置页展示）。 */
+  usageStorage: () => request<UsageStorageStatus>('/usage/storage'),
+  /** 手动触发一轮日志清理巡检（异步执行；已在跑时后端返回 accepted=false）。 */
+  usageCleanup: () => request<{ accepted: boolean }>('/usage/cleanup', { method: 'POST' }),
+  /** 拉取某条记录的外置媒体文件（二进制）。<img> 无法附带 Bearer 头，
+   * 前端经此函数取 blob 再 objectURL 渲染。 */
+  usageAssetBlob: async (requestId: string, file: string): Promise<Blob> => {
+    const token = getToken()
+    const headers: Record<string, string> = {}
+    if (token) headers.Authorization = `Bearer ${token}`
+    const response = await fetch(
+      buildUrl(`/usage/assets/${encodeURIComponent(requestId)}/${encodeURIComponent(file)}`),
+      { headers },
+    )
+    if (!response.ok) {
+      throw new ApiError('asset_fetch_failed', `媒体文件获取失败（${response.status}）`, response.status)
+    }
+    return response.blob()
+  },
 
   systemLogs: (params: { limit?: number; offset?: number; level?: string }) =>
     request<SystemLogsResult>('/logs', { query: params }),

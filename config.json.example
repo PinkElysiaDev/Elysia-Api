@@ -7,6 +7,16 @@
   "httpTimeout": 120,
   "secretKeyPath": ".master-key",
   "customProtocols": [],
+  "usageLog": {
+    "persistEnabled": true,
+    "retentionDays": 0,
+    "maxStorageMB": 0,
+    "maxRecords": 0,
+    "bodyMaxKB": 1024,
+    "bodyOnErrorOnly": false,
+    "externalizeMedia": true,
+    "cleanupIntervalMinutes": 60
+  },
   "modelCatalog": {
     "enabled": true,
     "url": "",

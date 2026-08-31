@@ -51,7 +51,28 @@ export interface RuntimeConfig {
   httpTimeout: number
   enablePprof: boolean
   allowFakeIPOutbound: boolean
+  usageLog?: UsageLogRuntimeConfig
   modelCatalog?: ModelCatalogInfo
+}
+
+/** 日志管理配置（/api/admin/usage 留存策略，运行配置页「日志管理」卡片）。 */
+export interface UsageLogRuntimeConfig {
+  /** 日志持久化总开关；false 时完全不落库。 */
+  persistEnabled: boolean
+  /** 过期清理天数；0 = 不启用。 */
+  retentionDays: number
+  /** 数据库占用上限（MB）；0 = 不限。 */
+  maxStorageMB: number
+  /** 保留记录条数上限；0 = 不限。 */
+  maxRecords: number
+  /** 单段请求体落库上限（KB）；0 = 不保存任何请求体。 */
+  bodyMaxKB: number
+  /** 仅失败请求保留请求体。 */
+  bodyOnErrorOnly: boolean
+  /** base64 媒体外置为文件 + 占位符。 */
+  externalizeMedia: boolean
+  /** 清理巡检周期（分钟）。 */
+  cleanupIntervalMinutes: number
 }
 
 export interface RuntimeConfigUpdate {
@@ -63,8 +84,32 @@ export interface RuntimeConfigUpdate {
   databasePath?: string
   enablePprof?: boolean
   allowFakeIPOutbound?: boolean
+  usageLog?: Partial<UsageLogRuntimeConfig>
   modelCatalog?: {
     syncIntervalMinutes?: number
+  }
+}
+
+/** /api/admin/usage/storage：日志占用状态（设置页展示）。 */
+export interface UsageStorageStatus {
+  db: {
+    totalBytes: number
+    logicalBytes: number
+    pageCount: number
+    pageSize: number
+    freePages: number
+  }
+  recordCount: number
+  assets: { bytes: number; files: number; dirs: number }
+  config: UsageLogRuntimeConfig
+  lastCleanup?: {
+    lastRunAt: string
+    deletedByTTL: number
+    deletedByRecords: number
+    deletedBySize: number
+    assetsRemoved: number
+    vacuumed: boolean
+    lastError?: string
   }
 }
 
@@ -320,6 +365,8 @@ export interface UsageLogDetail {
   stream: boolean
   statusCode: number
   error?: string
+  /** 错误归类：conversion=协议转换失败、upstream=上游失败；空表示未归类。 */
+  errorKind?: string
   firstByteMs: number
   durationMs: number
   usage: UsageTokenUsage

@@ -79,6 +79,15 @@ type Server struct {
 	// 可选的后台健康检测器（config.HealthCheck.Enabled 控制）。
 	healthChecker *healthChecker
 
+	// 后台日志清理器（usageLog.retentionDays/maxStorageMB/maxRecords 控制，
+	// 默认全关；孤儿资产清扫作为卫生活常开）。
+	usageRetention *usageRetention
+
+	// 资产目录体积统计的短 TTL 缓存（WalkDir 全量遍历，设置页会轮询）。
+	assetsUsageMu sync.Mutex
+	assetsUsage   usageAssetsUsage
+	assetsUsageAt time.Time
+
 	// httpServer 持有底层 http.Server 引用，供 /__shutdown 优雅关停使用。
 	httpServer *http.Server
 
@@ -472,7 +481,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		inputFormat = relay.FormatOpenAI
 	}
 	record := s.initUsageRecord(c, startTime, bodyBytes, inputFormat)
-	installDownstreamCapture(c, record)
+	installDownstreamCapture(c, record, downstreamCaptureLimit(s.usageLogConfig()))
 	s.logVerbose("[Input Format] %s", inputFormat)
 
 	// 转换为 Maheshvara 核心请求。
@@ -483,7 +492,10 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	maheshvaraReq, _, maheshvaraErr := relay.ConvertRequestToMaheshvara(bodyBytes, inputFormat, urlModel)
 	if maheshvaraErr != nil {
 		log.Printf("Error converting request to Maheshvara: %v", maheshvaraErr)
-		c.JSON(400, gin.H{"error": fmt.Sprintf("Failed to convert request to Maheshvara: %v", maheshvaraErr)})
+		// 转换失败同样落 usage 记录（与 /v1/responses 路径对齐）：bodyOnErrorOnly
+		// 模式下这类记录恰恰是唯一保留请求体的排查样本。
+		s.failRequestKind(c, record, startTime, http.StatusBadRequest, ErrorKindConversion,
+			fmt.Sprintf("Failed to convert request to Maheshvara: %v", maheshvaraErr))
 		return
 	}
 
@@ -678,7 +690,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			}
 			continue
 		}
-		record.OutgoingBody = sanitizeUsageBody(targetBody)
+		record.OutgoingBody = record.sanitizeBody(targetBody)
 		s.logVerbose("[Outgoing Request] passthrough=%v baseUrl=%s body=%s", usePassthrough, selectedModel.BaseURL, compactLogJSON(targetBody))
 
 		// 非透传路径仍需为流式补齐 stream 标记（透传已在 PassthroughBody 内处理）。
@@ -700,7 +712,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 				}
 				continue
 			}
-			record.OutgoingBody = sanitizeUsageBody(targetBody)
+			record.OutgoingBody = record.sanitizeBody(targetBody)
 		}
 
 		var outcome relayOutcome
@@ -744,6 +756,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		}
 		record.StatusCode = lastStatus
 		record.Error = lastErr
+		record.ErrorKind = ErrorKindUpstream
 		record.EndedAt = time.Now()
 		record.DurationMs = time.Since(startTime).Milliseconds()
 		s.recordUsage(record)
@@ -762,6 +775,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		if isLast || !retryable {
 			record.StatusCode = statusCode
 			record.Error = errMsg
+			record.ErrorKind = ErrorKindUpstream
 			if respBody != nil {
 				c.Data(statusCode, contentType, respBody)
 			} else {
@@ -808,7 +822,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 
 		var claudeResp relay.ClaudeResponse
 		respBody, err := readBodyAndJSON(httpResp, &claudeResp)
-		record.ProviderResponse = sanitizeUsageBody(respBody)
+		record.ProviderResponse = record.sanitizeBody(respBody)
 		if err != nil {
 			log.Printf("Error parsing Claude response: %v", err)
 			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to parse response: %v", err), nil, "")
@@ -854,7 +868,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 
 		var geminiResp relay.GeminiResponse
 		respBody, err := readBodyAndJSON(httpResp, &geminiResp)
-		record.ProviderResponse = sanitizeUsageBody(respBody)
+		record.ProviderResponse = record.sanitizeBody(respBody)
 		if err != nil {
 			log.Printf("Error parsing Gemini response: %v", err)
 			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to parse response: %v", err), nil, "")
@@ -888,7 +902,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		if err != nil {
 			log.Printf("Error forwarding request (status=%d): %v", statusCode, err)
 			if len(respBody) > 0 {
-				record.ProviderResponse = sanitizeUsageBody(respBody)
+				record.ProviderResponse = record.sanitizeBody(respBody)
 			}
 			if statusCode > 0 {
 				// 上游返回了真实状态码与错误体：透传给客户端（与 Claude/Gemini 分支一致），
@@ -901,7 +915,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 			return result
 		}
 
-		record.ProviderResponse = sanitizeUsageBody(respBody)
+		record.ProviderResponse = record.sanitizeBody(respBody)
 		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
 		applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(targetPlatform, "", respBody), s.config.GetUsageConfig())
 		actualTokens := getInt(record.Usage.TotalTokens)
@@ -958,6 +972,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		if isLast || !retryable {
 			record.StatusCode = statusCode
 			record.Error = errMsg
+			record.ErrorKind = ErrorKindUpstream
 			if respBody != nil {
 				c.Data(statusCode, "application/json", respBody)
 			} else {
@@ -1489,6 +1504,8 @@ func (s *Server) ListenAndServe() error {
 	s.startUsageWriter()
 	s.healthChecker = newHealthChecker(s)
 	s.healthChecker.start()
+	s.usageRetention = newUsageRetention(s)
+	s.usageRetention.start()
 
 	addr := fmt.Sprintf("%s:%d", s.config.Server.Host, s.config.Server.Port)
 	log.Printf("Starting server on %s", addr)
@@ -1524,6 +1541,10 @@ func (s *Server) doShutdown() {
 	// 避免优雅关停时丢失计费/统计记录与 goroutine 泄漏。
 	if s.healthChecker != nil {
 		s.healthChecker.shutdown()
+	}
+	// 日志清理可能正在删行/删资产目录，先等它结束再冲刷 usage 队列。
+	if s.usageRetention != nil {
+		s.usageRetention.shutdown()
 	}
 	s.stopUsageWriter()
 }

@@ -34,6 +34,7 @@ func (s *Server) handleCustomStreamRequest(
 		}
 		record.StatusCode = status
 		record.Error = message
+		record.ErrorKind = ErrorKindUpstream
 		if body != nil {
 			c.Data(status, "application/json", body)
 		} else {

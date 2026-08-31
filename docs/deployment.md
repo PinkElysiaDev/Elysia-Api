@@ -50,6 +50,42 @@ To create `config.json` manually instead, copy it from the root `config.json.exa
 
 Relative `databasePath`, `secretKeyPath`, and `webuiDir` values are resolved from the directory containing `config.json`.
 
+## Request Log Management
+
+The `usageLog` block controls how request logs (usage records and their four captured bodies) are retained. **Automatic cleanup is disabled by default** — logs accumulate exactly like older versions until you opt in. All values can also be changed at runtime from the WebUI settings page (`运行配置` → `日志管理`).
+
+```json
+{
+  "usageLog": {
+    "persistEnabled": true,
+    "retentionDays": 0,
+    "maxStorageMB": 0,
+    "maxRecords": 0,
+    "bodyMaxKB": 1024,
+    "bodyOnErrorOnly": false,
+    "externalizeMedia": true,
+    "cleanupIntervalMinutes": 60
+  }
+}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `persistEnabled` | `true` | Master switch for persisting request logs. `false` stops recording entirely. |
+| `retentionDays` | `0` (off) | Auto-delete records older than N days. |
+| `maxStorageMB` | `0` (off) | Cap on SQLite logical size; oldest records are deleted when exceeded (a rate-limited `VACUUM` reclaims disk space afterwards). |
+| `maxRecords` | `0` (off) | Keep at most N records, deleting the oldest beyond the cap. |
+| `bodyMaxKB` | `1024` | Per-body capture cap for each of the four logged bodies. `0` saves no bodies at all (metadata only). |
+| `bodyOnErrorOnly` | `false` | When enabled, only failed requests keep their bodies; successful requests store metadata only. |
+| `externalizeMedia` | `true` | Base64 media (images / audio / video / files) inside logged bodies are written as separate files under `<db dir>/usage-assets/<requestId>/`, and the body keeps a `__ELYSIA_ASSET__:<requestId>/<hash>.<ext>` placeholder instead. |
+| `cleanupIntervalMinutes` | `60` | How often the background cleanup pass runs (minimum 5). |
+
+Notes:
+
+- Cleanup only deletes raw `usage_records` rows; hourly rollups (aggregate statistics) are untouched, so historical usage reports survive log cleanup.
+- Externalized assets are served through the admin-authenticated endpoint `GET /api/admin/usage/assets/:requestId/:file` and are removed together with their records (on cleanup or `POST /api/admin/usage/reset`).
+- The legacy flat keys `usagePersistEnabled` / `usagePersistMaxRecords` still work: they are honored when the `usageLog` block does not configure the corresponding field.
+
 ## Run
 
 ### Windows

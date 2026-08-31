@@ -18,7 +18,7 @@ func newTestGinWriter() (gin.ResponseWriter, *httptest.ResponseRecorder) {
 
 func TestDownstreamCaptureRecordsWrittenBytes(t *testing.T) {
 	inner, rec := newTestGinWriter()
-	capture := newDownstreamCaptureWriter(inner)
+	capture := newDownstreamCaptureWriter(inner, UsageBodyMaxBytes)
 
 	if _, err := capture.Write([]byte(`{"hello":`)); err != nil {
 		t.Fatalf("unexpected write error: %v", err)
@@ -42,7 +42,7 @@ func TestDownstreamCaptureRecordsWrittenBytes(t *testing.T) {
 
 func TestDownstreamCaptureTruncatesAtLimit(t *testing.T) {
 	inner, rec := newTestGinWriter()
-	capture := newDownstreamCaptureWriter(inner)
+	capture := newDownstreamCaptureWriter(inner, UsageBodyMaxBytes)
 
 	big := strings.Repeat("a", UsageBodyMaxBytes+512)
 	if _, err := capture.Write([]byte(big)); err != nil {
@@ -67,7 +67,7 @@ func TestInstallDownstreamCaptureWiresRecord(t *testing.T) {
 	c, _ := gin.CreateTestContext(rec)
 	record := &usageRecord{}
 
-	capture := installDownstreamCapture(c, record)
+	capture := installDownstreamCapture(c, record, UsageBodyMaxBytes)
 	if capture == nil {
 		t.Fatal("expected capture writer")
 	}
@@ -75,7 +75,7 @@ func TestInstallDownstreamCaptureWiresRecord(t *testing.T) {
 		t.Fatal("record.downstream not wired to capture writer")
 	}
 	// 幂等：重复安装应复用已有 capture，不再二次包裹。
-	again := installDownstreamCapture(c, record)
+	again := installDownstreamCapture(c, record, UsageBodyMaxBytes)
 	if again != capture {
 		t.Fatal("expected installDownstreamCapture to be idempotent")
 	}

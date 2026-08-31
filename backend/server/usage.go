@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -65,49 +67,73 @@ type retryEvent struct {
 }
 
 type usageRecord struct {
-	RequestID           string           `json:"requestId"`
-	StartedAt           time.Time        `json:"startedAt"`
-	EndedAt             time.Time        `json:"endedAt"`
-	KeyName             string           `json:"keyName"`
-	KeyHash             string           `json:"keyHash"`
-	RequestedModelGroup string           `json:"requestedModelGroup"`
-	GroupID             string           `json:"groupId"`
-	GroupName           string           `json:"groupName"`
-	ModelID             string           `json:"modelId"`
-	ModelName           string           `json:"modelName"`
-	SourceID            string           `json:"sourceId,omitempty"`
-	Platform            string           `json:"platform"`
-	InputFormat         string           `json:"inputFormat"`
-	TargetPlatform      string           `json:"targetPlatform"`
-	SourceFormat        string           `json:"sourceFormat,omitempty"`
-	TargetFormat        string           `json:"targetFormat,omitempty"`
-	SourceEndpoint      string           `json:"sourceEndpoint,omitempty"`
-	TargetEndpoint      string           `json:"targetEndpoint,omitempty"`
-	RelayMode           string           `json:"relayMode,omitempty"`
-	ResponsesMode       string           `json:"responsesMode,omitempty"`
-	ConversionChain     []string         `json:"conversionChain,omitempty"`
-	UsageSource         string           `json:"usageSource,omitempty"`
-	RequestWarnings     []string         `json:"requestWarnings,omitempty"`
-	Stream              bool             `json:"stream"`
-	StatusCode          int              `json:"statusCode"`
-	Error               string           `json:"error,omitempty"`
-	FirstByteMs         int64            `json:"firstByteMs"`
-	DurationMs          int64            `json:"durationMs"`
-	Usage               usageTokenUsage  `json:"usage"`
-	UsageDetail         usageDetail      `json:"usageDetail,omitempty"`
-	BuiltinToolUsage    builtinToolUsage `json:"builtinToolUsage,omitempty"`
-	RetryCount          int              `json:"retryCount"`
-	RetryEvents         []retryEvent     `json:"retryEvents"`
-	IncomingBody        usageBody        `json:"incomingBody"`
-	OutgoingBody        usageBody        `json:"outgoingBody"`
-	ProviderResponse    usageBody        `json:"providerResponse"`
-	DownstreamResponse  usageBody        `json:"downstreamResponse"`
+	RequestID           string    `json:"requestId"`
+	StartedAt           time.Time `json:"startedAt"`
+	EndedAt             time.Time `json:"endedAt"`
+	KeyName             string    `json:"keyName"`
+	KeyHash             string    `json:"keyHash"`
+	RequestedModelGroup string    `json:"requestedModelGroup"`
+	GroupID             string    `json:"groupId"`
+	GroupName           string    `json:"groupName"`
+	ModelID             string    `json:"modelId"`
+	ModelName           string    `json:"modelName"`
+	SourceID            string    `json:"sourceId,omitempty"`
+	Platform            string    `json:"platform"`
+	InputFormat         string    `json:"inputFormat"`
+	TargetPlatform      string    `json:"targetPlatform"`
+	SourceFormat        string    `json:"sourceFormat,omitempty"`
+	TargetFormat        string    `json:"targetFormat,omitempty"`
+	SourceEndpoint      string    `json:"sourceEndpoint,omitempty"`
+	TargetEndpoint      string    `json:"targetEndpoint,omitempty"`
+	RelayMode           string    `json:"relayMode,omitempty"`
+	ResponsesMode       string    `json:"responsesMode,omitempty"`
+	ConversionChain     []string  `json:"conversionChain,omitempty"`
+	UsageSource         string    `json:"usageSource,omitempty"`
+	RequestWarnings     []string  `json:"requestWarnings,omitempty"`
+	Stream              bool      `json:"stream"`
+	StatusCode          int       `json:"statusCode"`
+	Error               string    `json:"error,omitempty"`
+	// ErrorKind 是错误归类（ErrorKind* 常量），供面板筛选/展示；空表示未归类。
+	ErrorKind          string           `json:"errorKind,omitempty"`
+	FirstByteMs        int64            `json:"firstByteMs"`
+	DurationMs         int64            `json:"durationMs"`
+	Usage              usageTokenUsage  `json:"usage"`
+	UsageDetail        usageDetail      `json:"usageDetail,omitempty"`
+	BuiltinToolUsage   builtinToolUsage `json:"builtinToolUsage,omitempty"`
+	RetryCount         int              `json:"retryCount"`
+	RetryEvents        []retryEvent     `json:"retryEvents"`
+	IncomingBody       usageBody        `json:"incomingBody"`
+	OutgoingBody       usageBody        `json:"outgoingBody"`
+	ProviderResponse   usageBody        `json:"providerResponse"`
+	DownstreamResponse usageBody        `json:"downstreamResponse"`
 
 	// downstream 是写回下游客户端的 ResponseWriter 捕获器，运行期内部使用，
 	// 不参与 JSON 序列化。recordUsage 会从它回读 DownstreamResponse。
 	downstream *downstreamCaptureWriter `json:"-"`
 	// writeGen 与 Server.usageWriteGen 对齐；reset 递增后丢弃更早的写入。
 	writeGen uint64 `json:"-"`
+	// bodyOpts 是本条请求生效的日志内容策略（initUsageRecord 从配置快照一次，
+	// 四段 body 共用，避免热更新导致同一请求各段口径不一致）。
+	bodyOpts usageBodyOptions `json:"-"`
+	// assets 收集四段 body 中外置的 base64 媒体（捕获期登记、落库期写盘）。
+	assets assetSink `json:"-"`
+}
+
+// usageBodyOptions 是单条请求生效的日志内容策略。initialized=false 表示
+// 未初始化（直接构造的裸记录，多见于测试），按历史默认 1MiB、不外置处理——
+// 不能靠 maxBytes 零值判断，因为 0 是显式的「不保存任何请求体」。
+type usageBodyOptions struct {
+	initialized bool
+	maxBytes    int
+	externalize bool
+}
+
+// effectiveMaxBytes 归一化上限：未初始化走 UsageBodyMaxBytes 历史默认。
+func (o usageBodyOptions) effectiveMaxBytes() int {
+	if !o.initialized {
+		return UsageBodyMaxBytes
+	}
+	return o.maxBytes
 }
 
 func shortTokenHash(token string) string {
@@ -116,15 +142,20 @@ func shortTokenHash(token string) string {
 }
 
 func (s *Server) initUsageRecord(c *gin.Context, start time.Time, body []byte, inputFormat relay.FormatType) *usageRecord {
-	return &usageRecord{
-		RequestID:    usageRequestID(start),
-		StartedAt:    start,
-		KeyName:      c.GetString("elysiaKeyName"),
-		KeyHash:      c.GetString("elysiaKeyHash"),
-		InputFormat:  string(inputFormat),
-		StatusCode:   http.StatusOK,
-		IncomingBody: sanitizeUsageBody(body),
+	cfg := s.usageLogConfig()
+	requestID := usageRequestID(start)
+	record := &usageRecord{
+		RequestID:   requestID,
+		StartedAt:   start,
+		KeyName:     c.GetString("elysiaKeyName"),
+		KeyHash:     c.GetString("elysiaKeyHash"),
+		InputFormat: string(inputFormat),
+		StatusCode:  http.StatusOK,
+		bodyOpts:    usageBodyOptions{initialized: true, maxBytes: cfg.BodyMaxBytes, externalize: cfg.ExternalizeMedia},
+		assets:      newAssetSink(requestID),
 	}
+	record.IncomingBody = record.sanitizeBody(body)
+	return record
 }
 
 // usageRequestID 生成带随机后缀的请求 ID：并发请求可能拿到相同的 UnixNano
@@ -137,21 +168,60 @@ func usageRequestID(start time.Time) string {
 	return fmt.Sprintf("req_%d_%x", start.UnixNano(), suffix)
 }
 
-func sanitizeUsageBody(data []byte) usageBody {
-	truncated := len(data) > UsageBodyMaxBytes
-	if truncated {
-		data = data[:UsageBodyMaxBytes]
+// sanitizeBody 是四段链路共用的请求体清洗入口：解析 → 脱敏 → 媒体外置 → 截断。
+// 顺序关键：外置必须先于截断，否则大请求体会被拦腰截成非法 JSON，其中的
+// base64 媒体也永远提不出来。maxBytes 显式为 0（不保存请求体）时返回空体；
+// JSON 不可解析（非 JSON body）时退化为字节截断，保持历史语义。
+func (r *usageRecord) sanitizeBody(data []byte) usageBody {
+	maxBytes := r.bodyOpts.effectiveMaxBytes()
+	if maxBytes == 0 || len(data) == 0 {
+		return usageBody{}
 	}
-
 	var value interface{}
 	if err := json.Unmarshal(data, &value); err == nil {
 		redactJSON(value)
+		if r.bodyOpts.externalize {
+			r.assets.extractFromValue(value)
+		}
 		if sanitized, err := json.Marshal(value); err == nil {
-			return usageBody{Content: string(sanitized), Truncated: truncated}
+			return truncateUsageBody(string(sanitized), maxBytes)
 		}
 	}
+	if len(data) > maxBytes {
+		return usageBody{Content: string(data[:maxBytes]), Truncated: true}
+	}
+	return usageBody{Content: string(data)}
+}
 
-	return usageBody{Content: string(data), Truncated: truncated}
+// finalizeDownstreamBody 处理第四段「返回下游」：tee 捕获的是流式原始字节，
+// 这里按「整体 JSON → SSE 逐行 → 字节截断」三级降级做外置与截断。
+// 与前三段不同，下游内容不做脱敏（沿用 downstreamBody 的既定语义）。
+func (r *usageRecord) finalizeDownstreamBody(body usageBody) usageBody {
+	maxBytes := r.bodyOpts.effectiveMaxBytes()
+	if maxBytes == 0 || body.Content == "" {
+		return usageBody{}
+	}
+	if !r.bodyOpts.externalize {
+		return truncateUsageBody(body.Content, maxBytes)
+	}
+	var value interface{}
+	if err := json.Unmarshal([]byte(body.Content), &value); err == nil {
+		r.assets.extractFromValue(value)
+		if sanitized, err := json.Marshal(value); err == nil {
+			return truncateUsageBody(string(sanitized), maxBytes)
+		}
+	}
+	// SSE 流：逐行 best-effort，仅解析 data: 前缀且含媒体标记的行。
+	externalized := r.assets.extractFromSSE(body.Content)
+	return truncateUsageBody(externalized, maxBytes)
+}
+
+// truncateUsageBody 按上限截断序列化后的文本。
+func truncateUsageBody(content string, maxBytes int) usageBody {
+	if len(content) <= maxBytes {
+		return usageBody{Content: content}
+	}
+	return usageBody{Content: content[:maxBytes], Truncated: true}
 }
 
 func redactJSON(value interface{}) {
@@ -617,8 +687,13 @@ func (s *Server) recordUsage(record *usageRecord) {
 	}
 	// 回读「返回下游」内容（第四段链路）。capture writer tee 了实际写给客户端的字节。
 	// 仅在还没显式设置过时回填，避免覆盖特殊路径手动赋的值。
+	// 物化后统一走 finalize（外置 + 最终截断）。
 	if record.downstream != nil && record.DownstreamResponse.Content == "" {
-		record.DownstreamResponse = record.downstream.downstreamBody()
+		record.DownstreamResponse = record.finalizeDownstreamBody(record.downstream.downstreamBody())
+	}
+	// 日志持久化总开关（usageLog.persistEnabled，默认 true）：关闭后完全不落库。
+	if !s.usageLogConfig().PersistEnabled {
+		return
 	}
 	if record.EndedAt.IsZero() {
 		record.EndedAt = time.Now()
@@ -667,6 +742,13 @@ func (s *Server) resetUsage(c *gin.Context) {
 	// 避免「先加 generation 再 drain」把 reset 之后、drain 之前入队的新记录丢掉。
 	s.drainUsageQueueFrom(w)
 	s.usageWriteGen.Add(1)
+	// 记录已全清：外置媒体资产目录一并清空。必须在 persist/write 锁释放前
+	// 执行——之后放行的新请求会重建自己的资产目录，不会误删。
+	if root := s.usageAssetsRoot(); root != "" {
+		if err := os.RemoveAll(root); err != nil {
+			log.Printf("usage reset: failed to remove assets root %s: %v", root, err)
+		}
+	}
 	s.usagePersistMu.Unlock()
 	if w != nil {
 		w.mu.Unlock()
@@ -852,7 +934,7 @@ func (w *observingStreamWriter) observe(data []byte) {
 		if len(w.events) < 50 {
 			w.events = append(w.events, json.RawMessage(payload))
 			if eventBytes, err := json.Marshal(w.events); err == nil {
-				w.record.ProviderResponse = sanitizeUsageBody(eventBytes)
+				w.record.ProviderResponse = w.record.sanitizeBody(eventBytes)
 			}
 		}
 		result := extractProviderUsageFromStreamEvent("", relay.FormatResponses, payload)
@@ -920,7 +1002,7 @@ func (b *upstreamUsageObservingBody) observeLine(line string) {
 	if len(b.events) < 50 {
 		b.events = append(b.events, json.RawMessage(payload))
 		if eventBytes, err := json.Marshal(b.events); err == nil {
-			b.record.ProviderResponse = sanitizeUsageBody(eventBytes)
+			b.record.ProviderResponse = b.record.sanitizeBody(eventBytes)
 		}
 	}
 	result := extractProviderUsageFromStreamEvent(b.platform, b.format, payload)

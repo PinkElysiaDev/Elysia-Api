@@ -1,15 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   AlertTriangle,
   Database,
   Eye,
   EyeOff,
+  HardDrive,
   Layers,
   RefreshCw,
   RotateCcw,
   Save,
   Server,
   ShieldCheck,
+  Trash2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { RoleWatermark } from '@/components/role-watermark'
@@ -23,7 +25,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { useRuntimeConfig, useModelCatalogStatus, revalidate } from '@/lib/hooks'
 import { api } from '@/lib/api'
 import { formatRelative } from '@/lib/utils'
-import type { LogLevel, RuntimeConfig } from '@/lib/types'
+import type { LogLevel, RuntimeConfig, UsageLogRuntimeConfig, UsageStorageStatus } from '@/lib/types'
 
 // 目录数据来源的展示名。
 function catalogSourceLabel(source: string): string {
@@ -39,6 +41,30 @@ function catalogSourceLabel(source: string): string {
   }
 }
 
+// 日志管理表单缺省值（后端 GET 返回生效值，老版本无该块时兜底）。
+const defaultUsageLog: UsageLogRuntimeConfig = {
+  persistEnabled: true,
+  retentionDays: 0,
+  maxStorageMB: 0,
+  maxRecords: 0,
+  bodyMaxKB: 1024,
+  bodyOnErrorOnly: false,
+  externalizeMedia: true,
+  cleanupIntervalMinutes: 60,
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit++
+  }
+  return `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`
+}
+
 export function RuntimeConfigPage() {
   const toast = useToast()
   const { data, isLoading, error, mutate } = useRuntimeConfig()
@@ -48,6 +74,26 @@ export function RuntimeConfigPage() {
   const [restartNotice, setRestartNotice] = useState(false)
   const [showToken, setShowToken] = useState(false)
   const [catalogRefreshing, setCatalogRefreshing] = useState(false)
+  const [storage, setStorage] = useState<UsageStorageStatus | null>(null)
+  const [cleaning, setCleaning] = useState(false)
+
+  const refreshStorage = useCallback(async () => {
+    try {
+      setStorage(await api.usageStorage())
+    } catch {
+      // 占用状态展示尽力而为：失败保持旧值，不打断设置页。
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshStorage()
+  }, [refreshStorage])
+
+  function updateUsageLog<K extends keyof UsageLogRuntimeConfig>(key: K, value: UsageLogRuntimeConfig[K]) {
+    setForm((prev) =>
+      prev ? { ...prev, usageLog: { ...(prev.usageLog ?? defaultUsageLog), [key]: value } } : prev,
+    )
+  }
 
   useEffect(() => {
     if (data) setForm(data)
@@ -79,10 +125,13 @@ export function RuntimeConfigPage() {
         databasePath: form.databasePath,
         enablePprof: form.enablePprof,
         allowFakeIPOutbound: form.allowFakeIPOutbound,
+        // 日志管理：数值字段整体回写（GET 返回生效值，保存即显式化当前口径）。
+        usageLog: form.usageLog ?? defaultUsageLog,
         // 目录刷新周期：0 = 默认 24h；保存即生效（后台周期动态读取配置）。
         modelCatalog: { syncIntervalMinutes: form.modelCatalog?.syncIntervalMinutes ?? 0 },
       })
       await revalidate.runtimeConfig()
+      refreshStorage()
       setRestartNotice(result.restartRequired)
       toast.success(
         '运行配置已更新',
@@ -392,6 +441,197 @@ export function RuntimeConfigPage() {
                   <AlertTriangle className="h-3 w-3 shrink-0" /> 在线拉取异常：{catalogStatus.lastError}
                 </p>
               )}
+            </div>
+          </div>
+        </SettingSection>
+
+        {/* 章节 5: 日志管理 */}
+        <SettingSection
+          icon={HardDrive}
+          title="日志管理"
+          description="请求日志的留存策略、请求体保存上限与媒体外置"
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={cleaning}
+              onClick={async () => {
+                setCleaning(true)
+                try {
+                  const result = await api.usageCleanup()
+                  if (result.accepted) {
+                    toast.success('清理已触发', '后台正在执行一轮清理巡检，稍后刷新查看结果')
+                    // 巡检是异步的，稍等后再拉取状态。
+                    setTimeout(refreshStorage, 3000)
+                  } else {
+                    toast.success('清理已在进行中', '上一轮清理尚未结束，请稍后再试')
+                  }
+                } catch (err) {
+                  toast.error('触发清理失败', (err as Error).message)
+                } finally {
+                  setCleaning(false)
+                }
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5" /> 立即清理
+            </Button>
+          }
+        >
+          <div className="space-y-4">
+            <SettingRow
+              label="启用日志持久化"
+              description="关闭后新请求完全不落库（统计与日志面板不再更新）"
+            >
+              <Switch
+                checked={form.usageLog?.persistEnabled ?? defaultUsageLog.persistEnabled}
+                onCheckedChange={(v) => updateUsageLog('persistEnabled', v)}
+              />
+            </SettingRow>
+
+            <SettingRow
+              label="过期清理天数"
+              description="自动删除早于该天数的日志记录（0 = 不启用过期清理）"
+            >
+              <div className="flex w-full items-center gap-2 sm:w-48">
+                <Input
+                  type="number"
+                  min={0}
+                  className="font-mono text-xs"
+                  value={form.usageLog?.retentionDays ?? defaultUsageLog.retentionDays}
+                  onChange={(e) => updateUsageLog('retentionDays', Math.max(0, Number(e.target.value) || 0))}
+                />
+                <span className="shrink-0 text-xs text-muted-foreground">天</span>
+              </div>
+            </SettingRow>
+
+            <SettingRow
+              label="最大占用"
+              description="数据库体积超限时按最旧优先自动清理（0 = 不限）"
+            >
+              <div className="flex w-full items-center gap-2 sm:w-48">
+                <Input
+                  type="number"
+                  min={0}
+                  className="font-mono text-xs"
+                  value={form.usageLog?.maxStorageMB ?? defaultUsageLog.maxStorageMB}
+                  onChange={(e) => updateUsageLog('maxStorageMB', Math.max(0, Number(e.target.value) || 0))}
+                />
+                <span className="shrink-0 text-xs text-muted-foreground">MB</span>
+              </div>
+            </SettingRow>
+
+            <SettingRow
+              label="最大保留条数"
+              description="超出该条数时自动删除最旧的日志（0 = 不限）"
+            >
+              <div className="flex w-full items-center gap-2 sm:w-48">
+                <Input
+                  type="number"
+                  min={0}
+                  className="font-mono text-xs"
+                  value={form.usageLog?.maxRecords ?? defaultUsageLog.maxRecords}
+                  onChange={(e) => updateUsageLog('maxRecords', Math.max(0, Number(e.target.value) || 0))}
+                />
+                <span className="shrink-0 text-xs text-muted-foreground">条</span>
+              </div>
+            </SettingRow>
+
+            <SettingRow
+              label="请求体保存上限"
+              description="每段链路（请求/转发/回传）落库的最大体积（0 = 不保存任何请求体）"
+            >
+              <div className="flex w-full items-center gap-2 sm:w-48">
+                <Input
+                  type="number"
+                  min={0}
+                  className="font-mono text-xs"
+                  value={form.usageLog?.bodyMaxKB ?? defaultUsageLog.bodyMaxKB}
+                  onChange={(e) => updateUsageLog('bodyMaxKB', Math.max(0, Number(e.target.value) || 0))}
+                />
+                <span className="shrink-0 text-xs text-muted-foreground">KB</span>
+              </div>
+            </SettingRow>
+
+            <SettingRow
+              label="仅保存出错请求体"
+              description="开启后成功请求不保留请求体（仅元数据），失败请求完整保留以便排查"
+            >
+              <Switch
+                checked={form.usageLog?.bodyOnErrorOnly ?? defaultUsageLog.bodyOnErrorOnly}
+                onCheckedChange={(v) => updateUsageLog('bodyOnErrorOnly', v)}
+              />
+            </SettingRow>
+
+            <SettingRow
+              label="媒体外置保存"
+              description="请求体中的 base64 媒体（图片/音频/视频/文件）存为独立文件，正文以占位符替代"
+            >
+              <Switch
+                checked={form.usageLog?.externalizeMedia ?? defaultUsageLog.externalizeMedia}
+                onCheckedChange={(v) => updateUsageLog('externalizeMedia', v)}
+              />
+            </SettingRow>
+
+            <SettingRow
+              label="清理巡检周期"
+              description="后台自动清理的执行周期（分钟，最小 5）"
+            >
+              <div className="flex w-full items-center gap-2 sm:w-48">
+                <Input
+                  type="number"
+                  min={5}
+                  className="font-mono text-xs"
+                  value={form.usageLog?.cleanupIntervalMinutes ?? defaultUsageLog.cleanupIntervalMinutes}
+                  onChange={(e) =>
+                    updateUsageLog('cleanupIntervalMinutes', Math.max(0, Number(e.target.value) || 0))
+                  }
+                />
+                <span className="shrink-0 text-xs text-muted-foreground">分钟</span>
+              </div>
+            </SettingRow>
+
+            {/* 当前占用与最近清理结果 */}
+            <div className="border-t border-border/40 pt-3 text-xs space-y-2">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>数据库占用</span>
+                <span className="font-semibold text-foreground">
+                  {storage ? `${formatBytes(storage.db.totalBytes)}（逻辑 ${formatBytes(storage.db.logicalBytes)}）` : '—'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>日志记录</span>
+                <span className="font-semibold text-foreground">
+                  {storage ? `${storage.recordCount.toLocaleString()} 条` : '—'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>外置媒体</span>
+                <span className="font-semibold text-foreground">
+                  {storage ? `${storage.assets.files.toLocaleString()} 个 · ${formatBytes(storage.assets.bytes)}` : '—'}
+                </span>
+              </div>
+              {storage?.lastCleanup?.lastRunAt && (
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>最近清理</span>
+                  <span className="font-mono text-2xs">
+                    {formatRelative(storage.lastCleanup.lastRunAt)}
+                    {storage.lastCleanup.deletedByTTL +
+                      storage.lastCleanup.deletedByRecords +
+                      storage.lastCleanup.deletedBySize >
+                    0
+                      ? ` · 删 ${storage.lastCleanup.deletedByTTL + storage.lastCleanup.deletedByRecords + storage.lastCleanup.deletedBySize} 条`
+                      : ' · 无删除'}
+                  </span>
+                </div>
+              )}
+              {storage?.lastCleanup?.lastError && (
+                <p className="mt-2 text-2xs text-ember flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3 shrink-0" /> 清理异常：{storage.lastCleanup.lastError}
+                </p>
+              )}
+              <p className="pt-1 text-2xs text-muted-foreground/70">
+                统计聚合（小时/日汇总）在日志清理后仍完整保留，历史用量报表不受影响。
+              </p>
             </div>
           </div>
         </SettingSection>

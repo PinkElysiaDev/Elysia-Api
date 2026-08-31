@@ -5,6 +5,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  FileText,
+  Image,
   MoveRight,
   RotateCcw,
   ScrollText,
@@ -457,7 +459,8 @@ function LogDetailSheet({ id, onClose }: { id: string | null; onClose: () => voi
                 <div className="mb-5 flex items-start gap-2 rounded-[7px] border border-[color-mix(in_srgb,var(--ember)_35%,transparent)] bg-[color-mix(in_srgb,var(--ember)_7%,transparent)] p-3 text-sm text-ember">
                   <AlertTriangle className="mt-0.5 h-[15px] w-[15px] shrink-0" />
                   <span className="min-w-0 break-all">
-                    HTTP {detail.statusCode} · {detail.error}
+                    HTTP {detail.statusCode}
+                    {detail.errorKind && ` · ${errorKindLabel(detail.errorKind)}`} · {detail.error}
                   </span>
                 </div>
               )}
@@ -598,6 +601,112 @@ function LogDetailSheet({ id, onClose }: { id: string | null; onClose: () => voi
   )
 }
 
+/* ---------------- 外置媒体（占位符渲染） ---------------- */
+
+/** 占位符形态：__ELYSIA_ASSET__:<requestId>/<hash16>.<ext> */
+interface AssetRef {
+  requestId: string
+  file: string
+}
+
+const ASSET_REF_PATTERN = /__ELYSIA_ASSET__:([\w-]+)\/([0-9a-f]{16}\.[a-z0-9]{1,5})/g
+
+/** 从一段链路原文中提取外置媒体引用（去重，保持出现顺序）。 */
+function extractAssetRefs(content: string): AssetRef[] {
+  const seen = new Set<string>()
+  const refs: AssetRef[] = []
+  for (const match of content.matchAll(ASSET_REF_PATTERN)) {
+    const asset = { requestId: match[1], file: match[2] }
+    const key = `${asset.requestId}/${asset.file}`
+    if (!seen.has(key)) {
+      seen.add(key)
+      refs.push(asset)
+    }
+  }
+  return refs
+}
+
+function assetKind(ext: string): 'image' | 'audio' | 'video' | 'file' {
+  if (['png', 'jpg', 'gif', 'webp'].includes(ext)) return 'image'
+  if (['mp3', 'wav', 'ogg'].includes(ext)) return 'audio'
+  if (['mp4', 'webm'].includes(ext)) return 'video'
+  return 'file'
+}
+
+/** 单个外置媒体：点击后经管理 API 取 blob 渲染（<img> 无法带 Bearer 头）。 */
+function AssetChip({ asset }: { asset: AssetRef }) {
+  const ext = asset.file.split('.').pop() ?? ''
+  const kind = assetKind(ext)
+  const [url, setUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  // url 变化/卸载时回收上一个 objectURL，避免长会话内存泄漏。
+  useEffect(
+    () => () => {
+      if (url) URL.revokeObjectURL(url)
+    },
+    [url],
+  )
+
+  async function load() {
+    if (url || loading || failed) return
+    setLoading(true)
+    try {
+      const blob = await api.usageAssetBlob(asset.requestId, asset.file)
+      setUrl(URL.createObjectURL(blob))
+    } catch {
+      setFailed(true)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const Icon = kind === 'image' ? Image : FileText
+  return (
+    <div className="rounded-[7px] border border-border bg-card p-2">
+      <div className="flex items-center gap-2">
+        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="min-w-0 truncate font-mono text-2xs text-muted-foreground" title={asset.file}>
+          {asset.file}
+        </span>
+        {!url && (
+          <Button variant="outline" size="sm" className="ml-auto shrink-0" onClick={load} disabled={loading || failed}>
+            {failed ? '获取失败' : loading ? '加载中…' : '预览'}
+          </Button>
+        )}
+        {url && kind === 'file' && (
+          <a href={url} download={asset.file} className="ml-auto shrink-0 text-2xs underline text-muted-foreground">
+            下载
+          </a>
+        )}
+      </div>
+      {url && kind === 'image' && (
+        <a href={url} target="_blank" rel="noreferrer" className="mt-2 block" title="点击在新标签页查看原图">
+          <img src={url} alt={asset.file} className="max-h-40 rounded border border-border" loading="lazy" />
+        </a>
+      )}
+      {url && kind === 'audio' && <audio controls src={url} className="mt-2 w-full" />}
+      {url && kind === 'video' && <video controls src={url} className="mt-2 max-h-56 w-full rounded border border-border" />}
+    </div>
+  )
+}
+
+function AssetGallery({ assets }: { assets: AssetRef[] }) {
+  return (
+    <div className="mb-3.5 space-y-2">
+      <p className="text-2xs text-muted-foreground">
+        {assets.length} 个外置媒体（base64 已抽出为独立文件，正文内保留占位符）
+      </p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {assets.map((asset) => (
+          <AssetChip key={`${asset.requestId}/${asset.file}`} asset={asset} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /** 四段链路原文：受控折叠动画 + JSON/SSE 着色，头部字节数 + 截断标记。 */
 function ChainBodies({ detail }: { detail: UsageLogDetail }) {
   const [openSegments, setOpenSegments] = useState<Set<string>>(() => new Set(['incoming']))
@@ -612,6 +721,7 @@ function ChainBodies({ detail }: { detail: UsageLogDetail }) {
       {segments.map((seg) => {
         const content = seg.body?.content ?? ''
         const pretty = prettyPrintBody(content)
+        const assets = extractAssetRefs(content)
         const open = content.length > 0 && openSegments.has(seg.key)
         const panelId = `chain-body-${seg.key}`
         const triggerId = `chain-trigger-${seg.key}`
@@ -670,6 +780,7 @@ function ChainBodies({ detail }: { detail: UsageLogDetail }) {
                     dangerouslySetInnerHTML={{ __html: colorize(pretty) }}
                   />
                 )}
+                {open && assets.length > 0 && <AssetGallery assets={assets} />}
               </div>
             </div>
           </div>
@@ -715,6 +826,12 @@ function buildExportPayload(detail: UsageLogDetail) {
     content: tryParseJSON(b?.content ?? ''),
     truncated: b?.truncated ?? false,
   })
+  // 外置媒体引用清单：正文内是占位符，导出时列出可回查的文件路径。
+  const assets = extractAssetRefs(
+    [detail.incomingBody, detail.outgoingBody, detail.providerResponse, detail.downstreamResponse]
+      .map((b) => b?.content ?? '')
+      .join('\n'),
+  )
   return {
     overview: {
       requestId: detail.requestId,
@@ -729,6 +846,7 @@ function buildExportPayload(detail: UsageLogDetail) {
       stream: detail.stream,
       statusCode: detail.statusCode,
       error: detail.error ?? '',
+      errorKind: detail.errorKind ?? '',
       retryCount: detail.retryCount,
       retryEvents: detail.retryEvents ?? [],
       firstByteMs: detail.firstByteMs,
@@ -744,6 +862,19 @@ function buildExportPayload(detail: UsageLogDetail) {
       upstreamResponse: seg(detail.providerResponse),
       downstreamResponse: seg(detail.downstreamResponse),
     },
+    // 媒体文件可经 GET /api/admin/usage/assets/<requestId>/<file> 回查。
+    assets: assets.map((a) => `${a.requestId}/${a.file}`),
     raw: detail,
+  }
+}
+
+function errorKindLabel(kind: string): string {
+  switch (kind) {
+    case 'conversion':
+      return '协议转换失败'
+    case 'upstream':
+      return '上游失败'
+    default:
+      return kind
   }
 }

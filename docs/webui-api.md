@@ -61,7 +61,24 @@ Returns current bootstrap runtime values. Tokens are not returned in plaintext. 
 { "host": "127.0.0.1", "port": 8765, "logLevel": "debug", "httpTimeout": 120 }
 ```
 
-Returns `restartRequired: true` when host or port changes. Persisting bootstrap config to disk is handled by the backend `config.Save()` path; process restarts should be handled by the operator or service manager.
+Accepts an optional `usageLog` block (all fields partial; numeric `0` is an explicit value):
+
+```json
+{
+  "usageLog": {
+    "persistEnabled": true,
+    "retentionDays": 30,
+    "maxStorageMB": 1024,
+    "maxRecords": 0,
+    "bodyMaxKB": 1024,
+    "bodyOnErrorOnly": false,
+    "externalizeMedia": true,
+    "cleanupIntervalMinutes": 60
+  }
+}
+```
+
+`usageLog` changes apply immediately: body cap / switches take effect for subsequent requests, retention parameters are re-read by the background cleanup loop on its next tick. Returns `restartRequired: true` when host or port changes. Persisting bootstrap config to disk is handled by the backend `config.Save()` path; process restarts should be handled by the operator or service manager.
 
 ## Model Sources
 
@@ -184,7 +201,19 @@ Returns the full stored usage record JSON.
 
 ### `POST /api/admin/usage/reset`
 
-Deletes all usage records.
+Deletes all usage records. Externalized media assets under the `usage-assets/` directory are removed as well.
+
+### `GET /api/admin/usage/assets/:requestId/:file`
+
+Serves an externalized media asset for a usage record (images / audio / video / files captured from logged bodies; the body itself stores a `__ELYSIA_ASSET__:<requestId>/<hash>.<ext>` placeholder instead of the base64 payload). `file` must match `<16-hex>.<ext>`; requests are admin-authenticated like all other admin endpoints.
+
+### `GET /api/admin/usage/storage`
+
+Returns log storage status: `db` (`totalBytes`, `logicalBytes`, `pageCount`, `pageSize`, `freePages`), `recordCount`, `assets` (`bytes`, `files`, `dirs`), the effective `config` (usageLog block), and `lastCleanup` (result of the most recent retention pass).
+
+### `POST /api/admin/usage/cleanup`
+
+Triggers one retention pass asynchronously (TTL / record-count / storage-cap cleanup plus orphan asset sweep). Returns `{ accepted }`; `false` means a pass is already running.
 
 ## Logs and Health
 
