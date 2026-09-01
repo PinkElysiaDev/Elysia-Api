@@ -244,6 +244,13 @@ func (s *Server) responses(c *gin.Context) {
 			select {
 			case <-c.Request.Context().Done():
 				committed = true
+				// 与 chatCompletions 路径对齐：取消也要落库留痕
+				//（499 为 nginx 惯例的 client closed）。
+				record.StatusCode = 499
+				record.Error = "client canceled during retry wait"
+				record.EndedAt = time.Now()
+				record.DurationMs = time.Since(startTime).Milliseconds()
+				s.recordUsage(record)
 				return
 			case <-time.After(time.Duration(group.RetryInterval) * time.Millisecond):
 			}

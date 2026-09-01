@@ -112,38 +112,48 @@ func (r *usageRetention) shutdown() {
 // triggerAsync 手动触发一轮清理（管理端「立即清理」）；已有轮次在跑时返回
 // false。异步执行，调用方立即返回。
 func (r *usageRetention) triggerAsync() bool {
+	if !r.acquireRunSlot() {
+		return false
+	}
+	go func() {
+		defer r.releaseRunSlot()
+		r.runOnceInner()
+	}()
+	return true
+}
+
+// runOnce 获取执行权后执行一轮；已有轮次在跑时直接跳过（周期巡检用：
+// 手动触发刚跑完时少跑一次周期轮无害）。
+func (r *usageRetention) runOnce() {
+	if !r.acquireRunSlot() {
+		return
+	}
+	defer r.releaseRunSlot()
+	r.runOnceInner()
+}
+
+// acquireRunSlot 原子占用单轮执行权；false 表示已有轮次在跑。
+// 注意触发方必须占用后调用无守卫的 runOnceInner——若调用带守卫的
+// runOnce 会被自己置上的 running 标志立即挡回（手动清理空转的根因）。
+func (r *usageRetention) acquireRunSlot() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.running {
 		return false
 	}
 	r.running = true
-	go func() {
-		defer func() {
-			r.mu.Lock()
-			r.running = false
-			r.mu.Unlock()
-		}()
-		r.runOnce()
-	}()
 	return true
 }
 
-// runOnce 执行一轮完整清理。周期巡检与手动触发共用；单轮内部串行。
-func (r *usageRetention) runOnce() {
+func (r *usageRetention) releaseRunSlot() {
 	r.mu.Lock()
-	if r.running {
-		r.mu.Unlock()
-		return
-	}
-	r.running = true
+	r.running = false
 	r.mu.Unlock()
-	defer func() {
-		r.mu.Lock()
-		r.running = false
-		r.mu.Unlock()
-	}()
+}
 
+// runOnceInner 执行一轮完整清理，不做并发守卫——调用方必须已持有执行权
+// （acquireRunSlot）。周期巡检与手动触发共用。
+func (r *usageRetention) runOnceInner() {
 	s := r.server
 	if s.store == nil {
 		return
@@ -168,7 +178,7 @@ func (r *usageRetention) runOnce() {
 		totalDeleted += n
 	}
 
-	// 2. 条数清理。
+	// 2. 条数清理（单批有界，循环驱动直至收敛到上限内）。
 	if cfg.MaxRecords > 0 {
 		count, err := s.store.CountUsageRecords(ctx)
 		if err != nil {
@@ -176,15 +186,17 @@ func (r *usageRetention) runOnce() {
 				stats.LastError = "count: " + err.Error()
 			}
 		} else if count > int64(cfg.MaxRecords) {
-			ids, err := s.store.DeleteUsageBeyondCount(ctx, int64(cfg.MaxRecords))
+			n, ids, err := r.deleteInBatches(ctx, func() ([]string, error) {
+				return s.store.DeleteUsageBeyondCount(ctx, int64(cfg.MaxRecords))
+			})
 			if err != nil {
 				if stats.LastError == "" {
 					stats.LastError = "records: " + err.Error()
 				}
 			} else {
-				stats.DeletedByRecords = len(ids)
+				stats.DeletedByRecords = n
 				stats.AssetsRemoved += removeUsageAssetDirs(assetsRoot, ids)
-				totalDeleted += len(ids)
+				totalDeleted += n
 			}
 		}
 	}
@@ -273,19 +285,20 @@ func (r *usageRetention) enforceStorageCap(ctx context.Context, limitBytes int64
 	return deleted, nil
 }
 
-// maybeVacuum 限频执行 VACUUM + WAL 截断；距上次不足最短间隔或执行失败时
-// 返回 false（失败仅告警，下一轮巡检会再尝试）。
+// maybeVacuum 限频执行 VACUUM + WAL 截断；距上次成功不足最短间隔或执行
+// 失败时返回 false。冷却时间只在成功后占用：失败的 VACUUM（BUSY/磁盘满）
+// 下一轮巡检即会重试，避免超配额状态下删记录却收不回磁盘的空转。
 func (r *usageRetention) maybeVacuum(ctx context.Context) bool {
 	r.vacuumMu.Lock()
 	defer r.vacuumMu.Unlock()
 	if !r.lastVacuumAt.IsZero() && time.Since(r.lastVacuumAt) < retentionVacuumMinInterval {
 		return false
 	}
-	r.lastVacuumAt = time.Now()
 	if err := r.server.store.VacuumUsageDB(ctx); err != nil {
 		log.Printf("usage retention: vacuum failed: %v", err)
 		return false
 	}
+	r.lastVacuumAt = time.Now()
 	return true
 }
 

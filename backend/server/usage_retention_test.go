@@ -182,6 +182,35 @@ func TestRetentionDisabledByDefault(t *testing.T) {
 	}
 }
 
+// 回归：triggerAsync 预占 running 后调用的执行体不得再被自身守卫挡回——
+// 旧实现 triggerAsync 置 running=true 再调带守卫的 runOnce，恒真直接返回，
+// 手动清理（POST /api/admin/usage/cleanup）成了空转。
+func TestTriggerAsyncActuallyRuns(t *testing.T) {
+	s, cfg := newRetentionTestServer(t)
+	now := time.Now()
+	seedUsageRecord(t, s.store, "manual-old", now.Add(-72*time.Hour), 64)
+	days := 1
+	cfg.SetUsageLogConfig(config.UsageLogConfig{RetentionDays: &days})
+
+	r := newUsageRetention(s)
+	if !r.triggerAsync() {
+		t.Fatal("idle retention must accept manual trigger")
+	}
+	// 已有轮次在跑时拒绝重入。
+	if r.triggerAsync() {
+		t.Fatal("concurrent trigger must be rejected while a round is running")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if !usageIDs(t, s.store)["manual-old"] {
+			return // 记录被删：手动触发确实执行了清理
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("triggerAsync must perform real cleanup work")
+}
+
 func TestRemoveUsageAssetDirsRejectsPathTraversal(t *testing.T) {
 	root := t.TempDir()
 	target := filepath.Join(root, "safe")

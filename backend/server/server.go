@@ -741,7 +741,13 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			select {
 			case <-c.Request.Context().Done():
 				committed = true
-				record.StatusCode = 499 // client closed request（nginx 惯例码）
+				// 取消同样是需要留痕的结果：不落库会整条丢记录（含请求体
+				// 与已积累的重试事件）。499 为 nginx 惯例的 client closed。
+				record.StatusCode = 499
+				record.Error = "client canceled during retry wait"
+				record.EndedAt = time.Now()
+				record.DurationMs = time.Since(startTime).Milliseconds()
+				s.recordUsage(record)
 				return
 			case <-time.After(time.Duration(group.RetryInterval) * time.Millisecond):
 			}
@@ -976,7 +982,10 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 			if respBody != nil {
 				c.Data(statusCode, "application/json", respBody)
 			} else {
-				writeStreamForwardError(c, inputFormat, fmt.Errorf("%s", errMsg))
+				// 透传真实上游状态码（failResult 的 statusCode 已经过
+				// upstreamErrorStatus 提取）：固定 502 会让客户端看到
+				// 502 而日志记的是 401/403 等永久错误。
+				writeStreamForwardError(c, inputFormat, statusCode, fmt.Errorf("%s", errMsg))
 			}
 			return relayOutcome{committed: true, statusCode: statusCode, errMsg: errMsg}
 		}
@@ -1102,6 +1111,9 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 	}
 
 	applyLocalResponseEstimate(record, writer.responseText.String(), s.config.GetUsageConfig())
+	// 流式成功路径同样累计日限额（与全部 8 条非流式/自定义路径对齐；
+	// 漏记会让 DailyLimitMaxTokens 对流式客户端形同虚设）。
+	s.adjustTokenUsage(group.ID, getInt(record.Usage.TotalTokens))
 	s.logDebug("Stream request completed in %dms", time.Since(startTime).Milliseconds())
 	result = relayOutcome{committed: true, statusCode: record.StatusCode}
 	return result
@@ -1131,13 +1143,17 @@ func readBodyAndJSON(resp *http.Response, v interface{}) ([]byte, error) {
 func writeStreamForwardError(
 	c *gin.Context,
 	inputFormat relay.FormatType,
+	statusCode int,
 	err error,
 ) {
 	message := fmt.Sprintf("Failed to forward request: %v", err)
+	if statusCode < 400 || statusCode > 599 {
+		statusCode = http.StatusBadGateway
+	}
 
 	switch inputFormat {
 	case relay.FormatClaude:
-		c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{
+		c.AbortWithStatusJSON(statusCode, gin.H{
 			"type": "error",
 			"error": gin.H{
 				"type":    "api_error",
@@ -1145,7 +1161,7 @@ func writeStreamForwardError(
 			},
 		})
 	default:
-		c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{
+		c.AbortWithStatusJSON(statusCode, gin.H{
 			"error": message,
 		})
 	}

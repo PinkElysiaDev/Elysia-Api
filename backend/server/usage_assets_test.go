@@ -186,6 +186,39 @@ func TestAssetSinkExtractFromSSE(t *testing.T) {
 	}
 }
 
+// 回归：CRLF/尾空白是合法 SSE 行尾。旧实现用 TrimSuffix 重建行，payload
+// 被 TrimSpace 后不以原文结尾导致不匹配——base64 残留且行尾拼接出两份 JSON。
+func TestAssetSinkExtractFromSSEWithCRLF(t *testing.T) {
+	record := newExternalizeRecord("req_sse_crlf")
+	payload := base64Len(600)
+	sse := "event: chunk\r\n" +
+		`data: {"image":{"b64_json":"` + payload + `"}}` + "\r\n" +
+		"data: [DONE]\r\n"
+	out := record.assets.extractFromSSE(sse)
+	if strings.Contains(out, payload) {
+		t.Fatal("CRLF SSE b64_json must still be externalized")
+	}
+	if record.assets.count() != 1 {
+		t.Fatalf("1 asset expected, got %d", record.assets.count())
+	}
+	// 媒体行被替换为占位符 JSON，且不能出现行内双 JSON 拼接。
+	mediaLine := ""
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, AssetPlaceholderPrefix) {
+			mediaLine = strings.TrimSpace(line)
+		}
+	}
+	if mediaLine == "" {
+		t.Fatalf("placeholder line missing: %q", out)
+	}
+	if !json.Valid([]byte(strings.TrimPrefix(mediaLine, "data: "))) {
+		t.Fatalf("replaced media line must be a single valid JSON value: %q", mediaLine)
+	}
+	if !strings.Contains(out, "data: [DONE]") {
+		t.Fatalf("DONE line must survive: %q", out)
+	}
+}
+
 func TestWriteUsageAssetsAndSkipExisting(t *testing.T) {
 	root := t.TempDir()
 	sink := newAssetSink("req_write")
