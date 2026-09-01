@@ -107,6 +107,11 @@ func (s *Server) responses(c *gin.Context) {
 	committed := false
 
 	for attempt := 0; attempt < attempts; attempt++ {
+		// 循环顶部拦截客户端取消：interval=0 时无等待期可拦截。
+		if attempt > 0 && s.abortRetryOnClientCancel(c, record, startTime) {
+			committed = true
+			return
+		}
 		selectedModel := candidates[attempt]
 		isLast := attempt == attempts-1
 
@@ -240,17 +245,12 @@ func (s *Server) responses(c *gin.Context) {
 		lastErr = outcome.errMsg
 		s.appendRetryEvent(record, attempt, selectedModel.Name, outcome.errMsg)
 		if !isLast && group.RetryInterval > 0 {
-			// 尊重客户端取消：被放弃的请求不再空耗等待 + 对剩余候选扇出。
+			// 尊重客户端取消：被放弃的请求不再空耗等待 + 对剩余候选扇出
+			//（取消同样落库留痕，499 为 nginx 惯例的 client closed）。
 			select {
 			case <-c.Request.Context().Done():
 				committed = true
-				// 与 chatCompletions 路径对齐：取消也要落库留痕
-				//（499 为 nginx 惯例的 client closed）。
-				record.StatusCode = 499
-				record.Error = "client canceled during retry wait"
-				record.EndedAt = time.Now()
-				record.DurationMs = time.Since(startTime).Milliseconds()
-				s.recordUsage(record)
+				s.abortRetryOnClientCancel(c, record, startTime)
 				return
 			case <-time.After(time.Duration(group.RetryInterval) * time.Millisecond):
 			}

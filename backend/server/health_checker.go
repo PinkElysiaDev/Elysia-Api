@@ -47,30 +47,50 @@ func newHealthChecker(s *Server) *healthChecker {
 
 func probeKey(modelID, sourceID string) string { return modelID + "\x00" + sourceID }
 
-// start 在配置启用且 store 可用时启动后台探测循环。
+// start 在 store 可用时启动后台探测循环。enabled 与 interval 每轮从配置
+// 热读取：旧实现把 interval 烘死在 ticker 里、enabled 只在启动时看一眼，
+// 热重载改配置完全无效。禁用状态循环保持空转（每周期一次 timer 唤醒，
+// 代价可忽略），重新启用无需重启进程。
 func (h *healthChecker) start() {
-	cfg := h.server.config.GetHealthCheckConfig()
-	if !cfg.Enabled || h.server.store == nil {
+	if h.server.store == nil {
 		close(h.done)
 		return
 	}
-	interval := time.Duration(cfg.IntervalSeconds) * time.Second
-	h.server.logInfof("health checker enabled: interval=%s timeout=%ds failureThreshold=%d", interval, cfg.TimeoutSeconds, cfg.FailureThreshold)
+	if cfg := h.server.config.GetHealthCheckConfig(); cfg.Enabled {
+		interval := h.probeInterval()
+		h.server.logInfof("health checker enabled: interval=%s timeout=%ds failureThreshold=%d", interval, cfg.TimeoutSeconds, cfg.FailureThreshold)
+	}
 	go func() {
 		defer close(h.done)
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		// 启动后先跑一轮，不必等第一个 interval。
-		h.runOnce()
+		interval := h.probeInterval()
+		timer := time.NewTimer(interval)
+		defer timer.Stop()
+		if h.server.config.GetHealthCheckConfig().Enabled {
+			// 启动后先跑一轮，不必等第一个 interval。
+			h.runOnce()
+		}
 		for {
 			select {
 			case <-h.stop:
 				return
-			case <-ticker.C:
-				h.runOnce()
+			case <-timer.C:
+				if h.server.config.GetHealthCheckConfig().Enabled {
+					h.runOnce()
+				}
+				// 周期热更新：interval 变化从下一轮生效。
+				timer.Reset(h.probeInterval())
 			}
 		}
 	}()
+}
+
+// probeInterval 读取当前生效的探测周期（非法值回落默认 300s）。
+func (h *healthChecker) probeInterval() time.Duration {
+	cfg := h.server.config.GetHealthCheckConfig()
+	if cfg.IntervalSeconds <= 0 {
+		return 300 * time.Second
+	}
+	return time.Duration(cfg.IntervalSeconds) * time.Second
 }
 
 func (h *healthChecker) shutdown() {

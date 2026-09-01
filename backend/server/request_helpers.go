@@ -42,3 +42,20 @@ func (s *Server) failRequestTypedKind(c *gin.Context, record *usageRecord, start
 	c.JSON(statusCode, gin.H{"error": gin.H{"message": errMsg, "type": errType}})
 	s.recordUsage(record)
 }
+
+// abortRetryOnClientCancel 非阻塞检查客户端取消：已断开时补全记录
+// （499 + 错误/耗时）并落库，返回 true。重试等待期与每轮循环顶部共用——
+// interval=0 时没有等待期可拦截，断连后仍会向剩余候选逐个扇出。
+func (s *Server) abortRetryOnClientCancel(c *gin.Context, record *usageRecord, startTime time.Time) bool {
+	select {
+	case <-c.Request.Context().Done():
+		record.StatusCode = 499
+		record.Error = "client canceled during retry wait"
+		record.EndedAt = time.Now()
+		record.DurationMs = time.Since(startTime).Milliseconds()
+		s.recordUsage(record)
+		return true
+	default:
+		return false
+	}
+}
