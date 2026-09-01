@@ -12,7 +12,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -814,112 +813,6 @@ func usageTimeRange(c *gin.Context) (time.Time, time.Time) {
 	return from, to
 }
 
-func usageValueMatches(filters []string, value string) bool {
-	if len(filters) == 0 {
-		return true
-	}
-	for _, filter := range filters {
-		if strings.TrimSpace(filter) == value {
-			return true
-		}
-	}
-	return false
-}
-
-func usageStatusMatches(statusCode int, filter string) bool {
-	switch strings.ToLower(strings.TrimSpace(filter)) {
-	case "":
-		return true
-	case "success":
-		return statusCode >= 200 && statusCode < 400
-	case "failed":
-		return statusCode < 200 || statusCode >= 400
-	default:
-		code, err := strconv.Atoi(filter)
-		return err == nil && statusCode == code
-	}
-}
-
-func avgInt64(values []int64) float64 {
-	var total int64
-	for _, value := range values {
-		total += value
-	}
-	return float64(total) / float64(len(values))
-}
-
-func percentileInt64(values []int64, percentile float64) int64 {
-	if len(values) == 0 {
-		return 0
-	}
-	sorted := append([]int64(nil), values...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
-	idx := int(float64(len(sorted)-1) * percentile)
-	return sorted[idx]
-}
-
-func nextUsageWindow(t time.Time, window string) time.Time {
-	switch window {
-	case "5m":
-		return t.Add(5 * time.Minute)
-	case "15m":
-		return t.Add(15 * time.Minute)
-	case "day":
-		return t.AddDate(0, 0, 1)
-	default:
-		return t.Add(time.Hour)
-	}
-}
-
-func aggregateKey(record usageRecord, dimension string, window string) string {
-	switch dimension {
-	case "key":
-		if record.KeyName != "" {
-			return record.KeyName + " (" + record.KeyHash + ")"
-		}
-		return record.KeyHash
-	case "modelGroup":
-		return record.GroupName
-	case "model":
-		return record.GroupName + " / " + record.ModelName
-	case "sourceFormat":
-		if record.SourceFormat != "" {
-			return record.SourceFormat
-		}
-		return record.InputFormat
-	case "targetFormat":
-		return record.TargetFormat
-	case "relayMode":
-		return record.RelayMode
-	case "usageSource":
-		return record.UsageSource
-	case "window":
-		return truncateUsageWindow(record.StartedAt, window).Format(time.RFC3339)
-	default:
-		return ""
-	}
-}
-
-func truncateUsageWindow(t time.Time, window string) time.Time {
-	// 按本地时钟对齐窗口边界：t.Truncate 按 Unix 纪元取整，在非整小时时区
-	//（如 UTC+5:30）会把"小时"桶切在半点上，图表标签与数据错位。
-	location := t.Location()
-	switch window {
-	case "5m":
-		minute := t.Minute() - t.Minute()%5
-		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), minute, 0, 0, location)
-	case "15m":
-		minute := t.Minute() - t.Minute()%15
-		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), minute, 0, 0, location)
-	case "minute":
-		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), 0, 0, location)
-	case "day":
-		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, location)
-	default:
-		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, location)
-	}
-}
-
 func parsePositiveInt(raw string, fallback int) int {
 	value, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil || value < 0 {
@@ -1214,7 +1107,7 @@ func applyLocalResponseEstimate(record *usageRecord, responseText string, cfg co
 func estimateTextTokens(text string, cfg config.UsageConfig) int {
 	charsPerToken := cfg.CharsPerToken
 	if charsPerToken <= 0 {
-		charsPerToken = 4
+		charsPerToken = DefaultCharsPerToken
 	}
 	chars := len([]rune(text))
 	if chars == 0 {

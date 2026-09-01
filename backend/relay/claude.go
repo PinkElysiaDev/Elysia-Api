@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-		"time"
+	"time"
 )
 
 // ========== Claude Adapter ==========
@@ -91,7 +91,7 @@ func (c *ClaudeContent) UnmarshalJSON(data []byte) error {
 }
 
 // MarshalJSON 以 RawFields 为底、非空类型化字段覆盖其上：服务端工具块的
-	// 载荷完整保留；常规块退化为普通结构体序列化。
+// 载荷完整保留；常规块退化为普通结构体序列化。
 func (c ClaudeContent) MarshalJSON() ([]byte, error) {
 	type alias ClaudeContent
 	return mergeRawOverTyped(c.RawFields, alias(c))
@@ -150,6 +150,5 @@ func openAIFinishReasonToClaude(reason string) string {
 }
 
 // ConvertClaudeResponseToOpenAI 将 Claude 响应转换为 OpenAI 格式
-
 
 // ConvertOpenAIResponseToClaude 将 OpenAI 响应转换为 Claude 原生格式

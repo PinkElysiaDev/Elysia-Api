@@ -28,9 +28,9 @@ func maheshvaraSignatureForProvider(signature, sourceProvider, targetProvider st
 }
 
 type maheshvaraReasoningEnvelope struct {
-	Version          string                      `json:"version"`
-	Text             string                      `json:"text,omitempty"`
-	EncryptedContent string                      `json:"encrypted_content"`
+	Version          string                       `json:"version"`
+	Text             string                       `json:"text,omitempty"`
+	EncryptedContent string                       `json:"encrypted_content"`
 	Summary          []MaheshvaraReasoningSummary `json:"summary,omitempty"`
 	// Provider/Model 记录密文签发方与签发时模型（v2 新增）：回放时按 provider
 	// 门控，密文只发还给同厂商上游，不匹配则丢弃密文只保留明文/摘要。

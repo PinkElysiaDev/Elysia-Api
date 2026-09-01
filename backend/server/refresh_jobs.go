@@ -96,10 +96,10 @@ func (s *Server) runSourceRefresh(source storage.ModelSource, sem chan struct{})
 	summary, err := s.refreshSourceByValue(ctx, source)
 
 	state := sourceRefreshState{
-		LastCount:    summary.Count,
-		LastAdded:    len(summary.Added),
-		LastRemoved:  len(summary.Removed),
-		LastKeys:     summary.Keys,
+		LastCount:      summary.Count,
+		LastAdded:      len(summary.Added),
+		LastRemoved:    len(summary.Removed),
+		LastKeys:       summary.Keys,
 		LastFinishedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 	if err != nil {
@@ -135,5 +135,3 @@ func (s *Server) sourceRefreshStateOf(sourceID string) sourceRefreshState {
 	}
 	return state
 }
-
-// anySourceRefreshing 报告是否有任一源的后台拉取进行中。

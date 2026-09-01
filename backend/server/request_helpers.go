@@ -49,7 +49,7 @@ func (s *Server) failRequestTypedKind(c *gin.Context, record *usageRecord, start
 func (s *Server) abortRetryOnClientCancel(c *gin.Context, record *usageRecord, startTime time.Time) bool {
 	select {
 	case <-c.Request.Context().Done():
-		record.StatusCode = 499
+		record.StatusCode = statusClientClosedRequest
 		record.Error = "client canceled during retry wait"
 		record.EndedAt = time.Now()
 		record.DurationMs = time.Since(startTime).Milliseconds()

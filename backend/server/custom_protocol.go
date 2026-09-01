@@ -139,7 +139,7 @@ func (s *Server) handleCustomNormalRequest(c *gin.Context, group *config.ModelGr
 		record.Error = message
 		record.ErrorKind = ErrorKindUpstream
 		if body != nil {
-			c.Data(status, "application/json", body)
+			c.Data(status, contentTypeJSON, body)
 		} else {
 			c.JSON(status, gin.H{"error": message})
 		}
@@ -223,7 +223,7 @@ func (s *Server) handleCustomResponsesNormal(c *gin.Context, group *config.Model
 		record.Error = message
 		record.ErrorKind = ErrorKindUpstream
 		if body != nil {
-			c.Data(status, "application/json", body)
+			c.Data(status, contentTypeJSON, body)
 		} else {
 			c.JSON(status, gin.H{"error": gin.H{"message": message, "type": "api_error"}})
 		}

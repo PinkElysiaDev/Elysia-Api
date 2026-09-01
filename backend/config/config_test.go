@@ -192,10 +192,3 @@ func TestEnsureConfigParseErrorNotAutoCreated(t *testing.T) {
 		t.Fatalf("parse-error file must not be overwritten; got %q", got)
 	}
 }
-
-func TestRelayPassthroughDefaultsToEnabled(t *testing.T) {
-	cfg := &Config{}
-	if cfg.Relay.Passthrough != nil {
-		t.Fatal("relay passthrough must be unset (enabled) by default")
-	}
-}

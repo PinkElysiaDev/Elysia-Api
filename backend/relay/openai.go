@@ -196,10 +196,10 @@ type ImageURL struct {
 }
 
 type OpenAIResponse struct {
-	ID      string   `json:"id"`
-	Object  string   `json:"object"`
-	Created int64    `json:"created"`
-	Model   string   `json:"model"`
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Created int64  `json:"created"`
+	Model   string `json:"model"`
 	// SystemFingerprint：上游的版本指纹（模型权重/配置版本标识），往返保真。
 	SystemFingerprint string   `json:"system_fingerprint,omitempty"`
 	Choices           []Choice `json:"choices"`
@@ -226,8 +226,8 @@ type Usage struct {
 	PromptTokensDetails     *PromptTokensDetails     `json:"prompt_tokens_details,omitempty"`
 	InputTokensDetails      *PromptTokensDetails     `json:"input_tokens_details,omitempty"`
 	CompletionTokensDetails *CompletionTokensDetails `json:"completion_tokens_details,omitempty"`
-	InputTokens             int                     `json:"input_tokens,omitempty"`
-	OutputTokens            int                     `json:"output_tokens,omitempty"`
+	InputTokens             int                      `json:"input_tokens,omitempty"`
+	OutputTokens            int                      `json:"output_tokens,omitempty"`
 
 	// RawFields：usage 的完整原始对象（UnmarshalJSON 捕获）。上游新增的
 	// 计数键在跨协议中转时不丢失——MarshalJSON 以原始对象为底、类型化
@@ -498,7 +498,7 @@ func forwardSSELines(ctx context.Context, resp *http.Response, writer StreamResp
 	scanner := newSSEScanner(resp.Body)
 	// 5分钟流式读超时：Claude 思考模式可能长时间不吐 token，但正常不应超过 5 分钟无响应。
 	// 每成功读取一行后重置超时，防止长工作流被 IdleConnTimeout 断开。
-	streamTimeout := 5 * time.Minute
+	streamTimeout := DefaultSSEIdleTimeout
 
 	for {
 		line, hasMore, err := scanSSEWithTimeout(ctx, scanner, streamTimeout)

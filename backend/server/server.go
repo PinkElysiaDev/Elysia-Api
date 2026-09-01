@@ -125,11 +125,8 @@ func New(cfg *config.Config) *Server {
 		engine.Use(gin.Logger())
 	}
 
-	// 获取 HTTP 超时配置，默认 120 秒
+	// HTTP 超时（秒）；0 表示不限制（time.Duration(0) 本身即 0，无需特判）。
 	httpTimeout := time.Duration(cfg.HTTPTimeout) * time.Second
-	if cfg.HTTPTimeout == 0 {
-		httpTimeout = 0 // 0 表示不限制
-	}
 
 	server := &Server{
 		config:           cfg,
@@ -514,15 +511,8 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		return
 	}
 
-	// Gemini 原生路径 /v1beta/models/MODEL:generateContent 中模型名在 URL 里
-	// 若请求体没有 model 字段，从路径参数提取
-	if maheshvaraReq.Model == "" {
-		if action := c.Param("action"); action != "" {
-			// action 形如 /gemini-2.0-flash:generateContent（geminiModelFromAction
-			// 内部已剥离 :action 后缀，无需二次处理）。
-			maheshvaraReq.Model = geminiModelFromAction(action)
-		}
-	}
+	// Gemini 原生路径的模型名提取已由 ConvertRequestToMaheshvara 内部完成
+	//（body 无 model 时回填 urlModel），此处无需重复推导。
 	if maheshvaraJSON, err := json.Marshal(maheshvaraReq); err == nil {
 		s.logVerbose("[Maheshvara Request] %s", compactLogJSON(maheshvaraJSON))
 	}
@@ -770,19 +760,18 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		}
 	}
 
-	// 兜底：理论上最后一次尝试一定会 commit；若因边界情况未 commit，
-	// 这里补一个错误响应，避免客户端收到空响应。
+	// 兜底：最后一次尝试一定会 commit（failResult 的 isLast||!retryable 分支
+	// 与全部提前返回已覆盖）；此块仅防御未来路径回归。lastStatus 必非 0
+	//（空候选已提前返回，每个未 commit 的迭代都会赋值）。
 	if !committed {
-		if lastStatus == 0 {
-			lastStatus = http.StatusBadGateway
-		}
 		record.StatusCode = lastStatus
-		record.Error = lastErr
+		record.Error = firstNonEmpty(lastErr, "all upstream attempts failed")
 		record.ErrorKind = ErrorKindUpstream
 		record.EndedAt = time.Now()
 		record.DurationMs = time.Since(startTime).Milliseconds()
 		// 先写响应再落记录：错误体进下游捕获器后，第四段才有内容。
-		c.JSON(http.StatusBadGateway, gin.H{"error": firstNonEmpty(lastErr, "all upstream attempts failed")})
+		// 状态码与记录保持一致（旧实现记录 429 却恒回 502）。
+		c.JSON(lastStatus, gin.H{"error": record.Error})
 		s.recordUsage(record)
 	}
 }
@@ -839,7 +828,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 
 		if httpResp.StatusCode != http.StatusOK {
 			respBody, _ := io.ReadAll(httpResp.Body)
-			result = failResult(httpResp.StatusCode, string(respBody), respBody, "application/json")
+			result = failResult(httpResp.StatusCode, string(respBody), respBody, contentTypeJSON)
 			return result
 		}
 
@@ -885,7 +874,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 
 		if httpResp.StatusCode != http.StatusOK {
 			respBody, _ := io.ReadAll(httpResp.Body)
-			result = failResult(httpResp.StatusCode, string(respBody), respBody, "application/json")
+			result = failResult(httpResp.StatusCode, string(respBody), respBody, contentTypeJSON)
 			return result
 		}
 
@@ -930,7 +919,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 			if statusCode > 0 {
 				// 上游返回了真实状态码与错误体：透传给客户端（与 Claude/Gemini 分支一致），
 				// 并据真实状态码决定是否故障转移。
-				result = failResult(statusCode, string(respBody), respBody, "application/json")
+				result = failResult(statusCode, string(respBody), respBody, contentTypeJSON)
 			} else {
 				// 连接层错误（无状态码）：当作可重试的 502。
 				result = failResult(http.StatusBadGateway, fmt.Sprintf("Failed to forward request: %v", err), nil, "")
@@ -997,7 +986,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 			record.Error = errMsg
 			record.ErrorKind = ErrorKindUpstream
 			if respBody != nil {
-				c.Data(statusCode, "application/json", respBody)
+				c.Data(statusCode, contentTypeJSON, respBody)
 			} else {
 				// 透传真实上游状态码（failResult 的 statusCode 已经过
 				// upstreamErrorStatus 提取）：固定 502 会让客户端看到
@@ -1231,11 +1220,6 @@ func (w *ginStreamWriter) Flush() error {
 	w.flusher.Flush()
 	return nil
 }
-
-// selectModel 根据配置的策略选择单个模型（首选）。
-// 现在复用 buildCandidates 的有序候选列表取第一个，避免旧实现里
-// round-robin 用过期索引访问 models[idx] 导致的越界 panic（高危1）。
-// 需要故障转移的路径应直接使用 buildCandidates 遍历全部候选。
 
 // tokenAllowsGroup 校验当前请求的 API key 是否被允许访问指定模型组。
 // 从 gin context 取 authMiddleware 写入的 AllowedGroups：为空表示不限制（放行）；
@@ -1476,14 +1460,14 @@ func (s *Server) listGeminiModels(c *gin.Context) {
 		}
 		inputLimit := group.MaxTokens
 		if inputLimit == 0 {
-			inputLimit = 1048576
+			inputLimit = geminiDefaultInputTokenLimit
 		}
 		models = append(models, geminiModel{
 			Name:                       "models/" + group.Name,
 			DisplayName:                group.Name,
 			Description:                "elysia-api model group",
 			InputTokenLimit:            inputLimit,
-			OutputTokenLimit:           8192,
+			OutputTokenLimit:           geminiDefaultOutputTokenLimit,
 			SupportedGenerationMethods: []string{"generateContent", "streamGenerateContent"},
 		})
 	}

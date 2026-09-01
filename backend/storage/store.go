@@ -395,14 +395,14 @@ func backfillProgressBar(done, total int) string {
 	return "[" + strings.Repeat("#", filled) + strings.Repeat(".", width-filled) + "]"
 }
 
-func boolInt(v bool) int {
+func sqlBoolToInt(v bool) int {
 	if v {
 		return 1
 	}
 	return 0
 }
 
-func intBool(v int) bool { return v != 0 }
+func sqlIntToBool(v int) bool { return v != 0 }
 
 func nowString() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
@@ -459,7 +459,7 @@ func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
 			log.Printf("[secret] api token %q: %v (plaintext cleared, row kept)", item.Name, err)
 			item.Token = ""
 		}
-		item.Enabled = intBool(enabled)
+		item.Enabled = sqlIntToBool(enabled)
 		item.AllowedGroups = decodeStringSlice(allowedGroups)
 		item.CreatedAt = parseTime(created)
 		item.UpdatedAt = parseTime(updated)
@@ -508,7 +508,7 @@ func (s *Store) UpsertAPIToken(ctx context.Context, item APIToken) error {
 		return err
 	}
 	now := nowString()
-	_, err = s.db.ExecContext(ctx, `INSERT INTO api_tokens(name, token, token_hash, enabled, allowed_groups_json, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET token=excluded.token, token_hash=excluded.token_hash, enabled=excluded.enabled, allowed_groups_json=excluded.allowed_groups_json, updated_at=excluded.updated_at`, item.Name, stored, tokenHash, boolInt(item.Enabled), string(allowedGroups), now, now)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO api_tokens(name, token, token_hash, enabled, allowed_groups_json, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET token=excluded.token, token_hash=excluded.token_hash, enabled=excluded.enabled, allowed_groups_json=excluded.allowed_groups_json, updated_at=excluded.updated_at`, item.Name, stored, tokenHash, sqlBoolToInt(item.Enabled), string(allowedGroups), now, now)
 	return err
 }
 
@@ -538,7 +538,7 @@ func (s *Store) FindAPITokenByName(ctx context.Context, name string) (APIToken, 
 		log.Printf("[secret] api token %q: %v (plaintext cleared, row kept)", name, derr)
 		item.Token = ""
 	}
-	item.Enabled = intBool(enabled)
+	item.Enabled = sqlIntToBool(enabled)
 	item.AllowedGroups = decodeStringSlice(allowedGroups)
 	item.CreatedAt = parseTime(created)
 	item.UpdatedAt = parseTime(updated)
@@ -575,8 +575,8 @@ func (s *Store) ListSources(ctx context.Context) ([]ModelSource, error) {
 		if err := rows.Scan(&item.ID, &item.Name, &item.BaseURL, &item.APIKey, &item.Platform, &enabled, &autoFetch, &manual, &fetchBase, &storedKeys, &strategy, &created, &updated); err != nil {
 			return nil, err
 		}
-		item.Enabled = intBool(enabled)
-		item.AutoFetchModels = intBool(autoFetch)
+		item.Enabled = sqlIntToBool(enabled)
+		item.AutoFetchModels = sqlIntToBool(autoFetch)
 		item.FetchBaseURL = fetchBase
 		item.KeyStrategy = SourceKeyStrategy(strategy)
 		item.CreatedAt = parseTime(created)
@@ -629,7 +629,7 @@ func (s *Store) UpsertSource(ctx context.Context, item ModelSource) error {
 		strategy = string(KeyStrategySingle)
 	}
 	now := nowString()
-	_, err = s.db.ExecContext(ctx, `INSERT INTO model_sources(id, name, base_url, api_key, platform, enabled, auto_fetch_models, manual_models_json, fetch_base_url, api_keys, key_strategy, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, base_url=excluded.base_url, api_key=excluded.api_key, platform=excluded.platform, enabled=excluded.enabled, auto_fetch_models=excluded.auto_fetch_models, manual_models_json=excluded.manual_models_json, fetch_base_url=excluded.fetch_base_url, api_keys=excluded.api_keys, key_strategy=excluded.key_strategy, updated_at=excluded.updated_at`, item.ID, item.Name, item.BaseURL, storedKey, item.Platform, boolInt(item.Enabled), boolInt(item.AutoFetchModels), string(manual), item.FetchBaseURL, storedKeys, strategy, now, now)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO model_sources(id, name, base_url, api_key, platform, enabled, auto_fetch_models, manual_models_json, fetch_base_url, api_keys, key_strategy, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, base_url=excluded.base_url, api_key=excluded.api_key, platform=excluded.platform, enabled=excluded.enabled, auto_fetch_models=excluded.auto_fetch_models, manual_models_json=excluded.manual_models_json, fetch_base_url=excluded.fetch_base_url, api_keys=excluded.api_keys, key_strategy=excluded.key_strategy, updated_at=excluded.updated_at`, item.ID, item.Name, item.BaseURL, storedKey, item.Platform, sqlBoolToInt(item.Enabled), sqlBoolToInt(item.AutoFetchModels), string(manual), item.FetchBaseURL, storedKeys, strategy, now, now)
 	return err
 }
 
@@ -653,7 +653,7 @@ func (s *Store) UpdateSourceAPIKeys(ctx context.Context, sourceID string, keys [
 // 与整源 Upsert 不同：不触发「保存后自动同步模型」之类的副作用，也不触碰
 // key/模型数据——启停与模型列表无关，重拉上游纯属多余（可能触发限流）。
 func (s *Store) UpdateSourceEnabled(ctx context.Context, id string, enabled bool) (bool, error) {
-	res, err := s.db.ExecContext(ctx, `UPDATE model_sources SET enabled = ?, updated_at = ? WHERE id = ?`, boolInt(enabled), nowString(), id)
+	res, err := s.db.ExecContext(ctx, `UPDATE model_sources SET enabled = ?, updated_at = ? WHERE id = ?`, sqlBoolToInt(enabled), nowString(), id)
 	if err != nil {
 		return false, err
 	}
@@ -714,7 +714,7 @@ func (s *Store) ReplaceSourceModels(ctx context.Context, source ModelSource, mod
 		if strings.TrimSpace(platform) == "" {
 			platform = source.Platform
 		}
-		if _, err := stmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, model.BaseURL, storedKey, normalizePlatform(platform), model.Type, model.MaxTokens, boolInt(model.VisionCapable), boolInt(model.ToolsCapable), boolInt(model.StructuredOutput), model.ThinkingMode, boolInt(true), boolInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
+		if _, err := stmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, model.BaseURL, storedKey, normalizePlatform(platform), model.Type, model.MaxTokens, sqlBoolToInt(model.VisionCapable), sqlBoolToInt(model.ToolsCapable), sqlBoolToInt(model.StructuredOutput), model.ThinkingMode, sqlBoolToInt(true), sqlBoolToInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
 			return err
 		}
 	}
@@ -779,7 +779,7 @@ func (s *Store) MergeSourceModels(ctx context.Context, source ModelSource, incom
 			rows.Close()
 			return result, err
 		}
-		r.vision, r.tools, r.structured = intBool(vision), intBool(tools), intBool(structured)
+		r.vision, r.tools, r.structured = sqlIntToBool(vision), sqlIntToBool(tools), sqlIntToBool(structured)
 		existing[r.id] = r
 	}
 	if err := rows.Err(); err != nil {
@@ -826,14 +826,14 @@ func (s *Store) MergeSourceModels(ctx context.Context, source ModelSource, incom
 				thinking, maxTokens = prev.thinking, prev.maxTokens
 				capabilitySource = "manual"
 			}
-			if _, err := updateStmt.ExecContext(ctx, model.Name, source.Name, source.BaseURL, storedKey, normalizePlatform(source.Platform), modelType, maxTokens, boolInt(vision), boolInt(tools), boolInt(structured), thinking, capabilitySource, checked, model.ID, source.ID); err != nil {
+			if _, err := updateStmt.ExecContext(ctx, model.Name, source.Name, source.BaseURL, storedKey, normalizePlatform(source.Platform), modelType, maxTokens, sqlBoolToInt(vision), sqlBoolToInt(tools), sqlBoolToInt(structured), thinking, capabilitySource, checked, model.ID, source.ID); err != nil {
 				return result, err
 			}
 			continue
 		}
 		// 新模型默认启用（已确认的默认值），available 初始为 true 由健康检测接管。
 		result.Added = append(result.Added, model.ID)
-		if _, err := insertStmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, source.BaseURL, storedKey, normalizePlatform(source.Platform), model.Type, model.MaxTokens, boolInt(model.VisionCapable), boolInt(model.ToolsCapable), boolInt(model.StructuredOutput), model.ThinkingMode, boolInt(true), boolInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
+		if _, err := insertStmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, source.BaseURL, storedKey, normalizePlatform(source.Platform), model.Type, model.MaxTokens, sqlBoolToInt(model.VisionCapable), sqlBoolToInt(model.ToolsCapable), sqlBoolToInt(model.StructuredOutput), model.ThinkingMode, sqlBoolToInt(true), sqlBoolToInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
 			return result, err
 		}
 	}

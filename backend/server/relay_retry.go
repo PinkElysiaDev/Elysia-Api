@@ -77,9 +77,8 @@ func orderedCandidates(group *config.ModelGroupConfig, rrStart int) []config.Mod
 	var start int
 	switch group.Strategy {
 	case "round-robin":
-		// rrStart 已由调用方按 len(models) 取模，这里再兜底 clamp，
-		// 防止外部传入越界值（高危1：索引与模型列表快照不一致）。
-		start = ((rrStart % n) + n) % n
+		// rrStart 由 nextRoundRobinIndex 产出，恒在 [0, n) 内（见其实现）。
+		start = rrStart % n
 	case "random":
 		start = rand.Intn(n)
 	default: // sequential / 未知策略
@@ -102,10 +101,8 @@ func (s *Server) nextRoundRobinIndex(groupID string, modelCount int) int {
 	}
 	s.roundRobinMutex.Lock()
 	defer s.roundRobinMutex.Unlock()
+	// map 零值 0、写入值 (idx+1)%modelCount 恒非负，无需负数钳制。
 	idx := s.roundRobinIndex[groupID] % modelCount
-	if idx < 0 {
-		idx = 0
-	}
 	s.roundRobinIndex[groupID] = (idx + 1) % modelCount
 	return idx
 }
@@ -235,10 +232,8 @@ func (s *Server) nextSourceKeyIndex(sourceID string, count int) int {
 	if s.keyRRIndex == nil {
 		s.keyRRIndex = make(map[string]int)
 	}
+	// map 零值 0、写入值 idx+1 恒非负，无需负数钳制。
 	idx := s.keyRRIndex[sourceID] % count
-	if idx < 0 {
-		idx = 0
-	}
 	s.keyRRIndex[sourceID] = idx + 1
 	return idx
 }

@@ -54,9 +54,6 @@ func (reader *SSEEventReader) Close() {
 }
 
 func (reader *SSEEventReader) Read(ctx context.Context, idleTimeout time.Duration) (SSEEvent, bool, error) {
-	if reader == nil {
-		return SSEEvent{}, false, fmt.Errorf("nil SSE event reader")
-	}
 	if ctx == nil {
 		ctx = context.Background()
 	}

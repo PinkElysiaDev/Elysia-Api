@@ -61,7 +61,7 @@ func (c *usageResponseCache) handle(gc *gin.Context) {
 		gc.Next()
 		return
 	}
-	key := maheshvaraUsageCacheKey(gc.Request.URL)
+	key := usageCacheKey(gc.Request.URL)
 
 	c.mu.Lock()
 	c.initLocked()
@@ -135,12 +135,6 @@ func serveUsageCacheEntry(gc *gin.Context, e *usageCacheEntry) {
 	gc.Data(e.statusCode, e.contentType, e.body)
 }
 
-func (c *usageResponseCache) storeEntry(key string, e *usageCacheEntry) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.storeEntryLocked(key, e)
-}
-
 func (c *usageResponseCache) storeEntryLocked(key string, e *usageCacheEntry) {
 	c.initLocked()
 	if _, exists := c.entries[key]; !exists {
@@ -180,10 +174,10 @@ func (r *usageCacheRecorder) WriteString(s string) (int, error) {
 	return r.ResponseWriter.WriteString(s)
 }
 
-// maheshvaraUsageCacheKey 以 path + 排序后的 query 生成缓存键：参数顺序不同
+// usageCacheKey 以 path + 排序后的 query 生成缓存键：参数顺序不同
 // 但语义相同的请求共享同一条缓存。值经转义，防止 "b&keyName=a" 这类含分隔
 // 符的筛选拼接出与多参数组合相同的键。
-func maheshvaraUsageCacheKey(u *url.URL) string {
+func usageCacheKey(u *url.URL) string {
 	values := u.Query()
 	keys := make([]string, 0, len(values))
 	for k := range values {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"sort"
 	"time"
 )
 
@@ -23,7 +24,13 @@ import (
 //     的库，启动回填时按小时对比 raw 与 rollup 的计数，发现缺口的区间
 //     自动重建补齐。
 const (
-	rollupChunkMs        = 6 * 3_600_000         // 回填分块：6 小时/事务
+	// 时间换算基元（毫秒）。SQL 字符串内的 3600000/86400000 保持字面量
+	//（便于与 PRAGMA/执行计划对照），Go 侧一律用这里的常量。
+	msPerMinute = 60_000
+	msPerHour   = 3_600_000
+	msPerDay    = 86_400_000
+
+	rollupChunkMs        = 6 * msPerHour         // 回填分块：6 小时/事务
 	rollupChunkPauseMs   = 10                    // 块间让出单连接给实时写入
 	rollupLogEveryChunks = 60                    // 进度日志频率（约 15 天数据/次）
 	rollupStateThrough   = "backfill_through_ms" // 已回填到的水位（不含）
@@ -135,7 +142,7 @@ func (s *Store) RunRollupBackfill(ctx context.Context) error {
 			return err
 		}
 		if minMs.Valid && minMs.Int64 > 0 {
-			through = minMs.Int64 / 3_600_000 * 3_600_000
+			through = minMs.Int64 / msPerHour * msPerHour
 			total = until - through
 		} else {
 			// 空库：无任何记录可回填，直接就绪——否则会从纪元起空跑约 9 万个
@@ -156,7 +163,7 @@ func (s *Store) RunRollupBackfill(ctx context.Context) error {
 			return err
 		}
 	}
-	log.Printf("[usage-rollup] backfilling %.1f days of history (one-time, queries stay on raw path until done)", float64(total)/86_400_000.0)
+	log.Printf("[usage-rollup] backfilling %.1f days of history (one-time, queries stay on raw path until done)", float64(total)/float64(msPerDay))
 
 	chunks := 0
 	throughInitial := through
@@ -300,14 +307,14 @@ func (s *Store) auditRollupHours(ctx context.Context) (int, error) {
 	if len(mismatches) == 0 {
 		return 0, nil
 	}
-	sortInt64(mismatches)
+	sort.Slice(mismatches, func(i, j int) bool { return mismatches[i] < mismatches[j] })
 	rebuilt := 0
 	for i := 0; i < len(mismatches); {
 		start := mismatches[i]
-		end := start + 3_600_000
+		end := start + msPerHour
 		for i+1 < len(mismatches) && mismatches[i+1] == end {
 			i++
-			end += 3_600_000
+			end += msPerHour
 		}
 		i++
 		if err := s.rebuildRollupRange(ctx, start, end); err != nil {
@@ -318,18 +325,10 @@ func (s *Store) auditRollupHours(ctx context.Context) (int, error) {
 	return rebuilt, nil
 }
 
-func sortInt64(values []int64) {
-	for i := 1; i < len(values); i++ {
-		for j := i; j > 0 && values[j] < values[j-1]; j-- {
-			values[j], values[j-1] = values[j-1], values[j]
-		}
-	}
-}
-
 // upsertUsageRollupTx 把一条记录增量并入其 (小时, 维度) 桶。与原始行同事务。
 func upsertUsageRollupTx(ctx context.Context, tx *sql.Tx, summary UsageLogItem) error {
 	startedMs := summary.StartedAt.UnixMilli()
-	hourMs := startedMs / 3_600_000 * 3_600_000
+	hourMs := startedMs / msPerHour * msPerHour
 	var fbSum, fbCnt int64
 	if summary.FirstByteMs > 0 {
 		fbSum, fbCnt = summary.FirstByteMs, 1

@@ -36,7 +36,7 @@ func (s *Server) handleCustomStreamRequest(
 		record.Error = message
 		record.ErrorKind = ErrorKindUpstream
 		if body != nil {
-			c.Data(status, "application/json", body)
+			c.Data(status, contentTypeJSON, body)
 		} else {
 			c.JSON(status, gin.H{"error": message})
 		}
@@ -127,11 +127,14 @@ func (s *Server) handleCustomStreamRequest(
 			break
 		}
 	}
-	if streamErr == nil && !decoder.TerminalReceived() {
-		streamErr = fmt.Errorf("custom protocol stream ended before a configured terminal value or finish reason")
-	}
-	if streamErr == nil && !decoder.SawOutput() {
-		streamErr = fmt.Errorf("custom protocol stream completed without representable output")
+	if streamErr == nil {
+		// 终态校验按严重度排序：无终态 > 有终态但无可呈现输出。
+		switch {
+		case !decoder.TerminalReceived():
+			streamErr = fmt.Errorf("custom protocol stream ended before a configured terminal value or finish reason")
+		case !decoder.SawOutput():
+			streamErr = fmt.Errorf("custom protocol stream completed without representable output")
+		}
 	}
 	if streamErr == nil {
 		for index := range terminalEvents {
@@ -154,5 +157,5 @@ func (s *Server) handleCustomStreamRequest(
 		record.StatusCode = http.StatusBadGateway
 		record.Error = streamErr.Error()
 	}
-	return finish(relayOutcome{committed: true, statusCode: record.StatusCode, errMsg: firstNonEmpty(record.Error, "")})
+	return finish(relayOutcome{committed: true, statusCode: record.StatusCode, errMsg: record.Error})
 }

@@ -1058,7 +1058,7 @@ func (s *Server) adminUsageStorage(c *gin.Context) {
 	dbStats, dbErr := store.UsageDBPageStats(ctx)
 	recordCount, countErr := store.CountUsageRecords(ctx)
 	if dbErr != nil || countErr != nil {
-		respondFail(c, 500, "storage_stats_failed", firstNonEmptyStr(dbErr, countErr))
+		respondFail(c, 500, "storage_stats_failed", firstErrMsg(dbErr, countErr))
 		return
 	}
 	cfg := s.config.GetUsageLogConfig()
@@ -1099,7 +1099,7 @@ func (s *Server) adminUsageCleanup(c *gin.Context) {
 	respondOK(c, gin.H{"accepted": accepted})
 }
 
-func firstNonEmptyStr(errs ...error) string {
+func firstErrMsg(errs ...error) string {
 	for _, err := range errs {
 		if err != nil {
 			return err.Error()
@@ -1138,7 +1138,7 @@ func usageQueryFromRequest(c *gin.Context) storage.UsageQuery {
 	return storage.UsageQuery{
 		From:       from,
 		To:         to,
-		Limit:      parsePositiveInt(c.Query("limit"), 50),
+		Limit:      parsePositiveInt(c.Query("limit"), UsageLogsDefaultPageSize),
 		Offset:     parsePositiveInt(c.Query("offset"), 0),
 		KeyName:    c.Query("keyName"),
 		KeyHash:    c.Query("keyHash"),

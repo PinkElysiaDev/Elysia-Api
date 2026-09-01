@@ -37,7 +37,6 @@ type keyFetchOutcome struct {
 	Error string `json:"error,omitempty"`
 }
 
-
 func (s *Server) refreshSourceByValue(ctx context.Context, source storage.ModelSource) (refreshSummary, error) {
 	empty := refreshSummary{Added: []string{}, Removed: []string{}}
 	models := make([]storage.Model, 0)

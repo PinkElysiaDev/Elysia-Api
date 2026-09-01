@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"sort"
-		"time"
+	"time"
 )
 
 // sqlQueryer 抽象 *sql.DB 与 *sql.Tx：rollup 路径的中段 + 两侧边缘必须在
@@ -29,12 +29,12 @@ func (s *Store) rollupSplit(q UsageQuery, offsetAligned bool) (fromHour, toHour 
 	if !q.From.IsZero() {
 		fromMs = q.From.UnixMilli()
 	}
-	fromHour = (fromMs + 3_600_000 - 1) / 3_600_000 * 3_600_000 // ceil 到小时
+	fromHour = (fromMs + msPerHour - 1) / msPerHour * msPerHour // ceil 到小时
 	toMs := time.Now().UnixMilli()
 	if !q.To.IsZero() {
 		toMs = q.To.UnixMilli()
 	}
-	toHour = toMs / 3_600_000 * 3_600_000 // floor 到小时
+	toHour = toMs / msPerHour * msPerHour // floor 到小时
 	if toHour <= fromHour {
 		return 0, 0, false
 	}
@@ -91,6 +91,7 @@ func usageRollupWhere(q UsageQuery) (string, []any) {
 	clauses, args := usageFilterClauses(q, false, false)
 	return " AND " + clauses, args
 }
+
 // ---------- UsageTotals ----------
 
 // usageTotalsAcc 是 totals 的可加 accumulator：raw 单行聚合与 rollup 单行

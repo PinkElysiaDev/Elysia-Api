@@ -62,7 +62,10 @@ func TestParseCatalogDatasetObjectAndArrayShapes(t *testing.T) {
 
 // 目录匹配变体：精确 → 裸 id（去 provider 前缀）→ 去 -latest → 去日期后缀。
 func TestCatalogLookupVariants(t *testing.T) {
-	cases := []struct{ in string; want string }{
+	cases := []struct {
+		in   string
+		want string
+	}{
 		{"gpt-4o", "gpt-4o"},
 		{"openai/gpt-4o", "gpt-4o"},
 		{"claude-3-5-sonnet-20241022", "claude-3-5-sonnet"},
@@ -302,9 +305,8 @@ func TestModelSourceEffectiveKeys(t *testing.T) {
 	}
 }
 
-
 // 落盘缓存往返：saveToCache 写出的文件被新建 catalog 的 loadFromCache 完整恢复
-//（重启语义：无需网络即可用，lastSync 保留上次成功时间）。
+// （重启语义：无需网络即可用，lastSync 保留上次成功时间）。
 func TestModelCatalogCacheRoundTrip(t *testing.T) {
 	cachePath := filepath.Join(t.TempDir(), "model-catalog.json")
 	body := []byte(`{"openai": {"models": {"gpt-4o": {"modalities": {"input": ["text","image"]}, "tool_call": true, "limit": {"context": 128000}}}}}`)

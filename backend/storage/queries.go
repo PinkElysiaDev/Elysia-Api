@@ -18,6 +18,11 @@ import (
 const modelColumns = `m.id, m.source_id, m.name, m.source_name, m.base_url, m.api_key, m.platform, m.type, m.max_tokens, m.vision_capable, m.tools_capable, m.structured_output, m.thinking_mode, m.available, m.enabled, m.origin, m.capability_source, m.last_checked_at`
 
 const (
+	// 查询分页的默认/上限（管理端列表与系统日志各自独立口径）。
+	usageLogPageDefault = 50
+	usageLogPageMax     = 500
+	systemLogPageMax    = 500
+
 	usageSuccessPredicate = "status_code >= 200 AND status_code < 400"
 	usageFailedPredicate  = "status_code < 200 OR status_code >= 400"
 )
@@ -30,11 +35,11 @@ func (s *Store) scanModel(scanner interface{ Scan(dest ...any) error }) (Model, 
 	if err := scanner.Scan(&item.ID, &item.SourceID, &item.Name, &item.SourceName, &item.BaseURL, &item.APIKey, &item.Platform, &item.Type, &item.MaxTokens, &vision, &tools, &structured, &item.ThinkingMode, &available, &enabled, &item.Origin, &item.CapabilitySource, &checked); err != nil {
 		return Model{}, err
 	}
-	item.VisionCapable = intBool(vision)
-	item.ToolsCapable = intBool(tools)
-	item.StructuredOutput = intBool(structured)
-	item.Available = intBool(available)
-	item.Enabled = intBool(enabled)
+	item.VisionCapable = sqlIntToBool(vision)
+	item.ToolsCapable = sqlIntToBool(tools)
+	item.StructuredOutput = sqlIntToBool(structured)
+	item.Available = sqlIntToBool(available)
+	item.Enabled = sqlIntToBool(enabled)
 	item.LastCheckedAt = parseTime(checked)
 	if plain, err := s.codec.decrypt(item.APIKey); err == nil {
 		item.APIKey = plain
@@ -128,9 +133,9 @@ func (s *Store) ListGroups(ctx context.Context) ([]ModelGroup, error) {
 			rows.Close()
 			return nil, err
 		}
-		item.Enabled = intBool(enabled)
-		item.VisionCapable = intBool(vision)
-		item.ToolsCapable = intBool(tools)
+		item.Enabled = sqlIntToBool(enabled)
+		item.VisionCapable = sqlIntToBool(vision)
+		item.ToolsCapable = sqlIntToBool(tools)
 		// Models 必须以空数组而非 nil 序列化：前端 groups 列表直接调用
 		// group.models.slice(...)，nil 会被 JSON 编码为 null 并导致整页崩溃。
 		item.Models = []string{}
@@ -209,7 +214,7 @@ func (s *Store) UpsertGroup(ctx context.Context, item ModelGroup) error {
 	}
 
 	now := nowString()
-	_, err = tx.ExecContext(ctx, `INSERT INTO model_groups(id, name, enabled, strategy, max_retries, retry_interval, max_concurrency, daily_limit_max_requests, daily_limit_max_tokens, type, max_tokens, vision_capable, tools_capable, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, enabled=excluded.enabled, strategy=excluded.strategy, max_retries=excluded.max_retries, retry_interval=excluded.retry_interval, max_concurrency=excluded.max_concurrency, daily_limit_max_requests=excluded.daily_limit_max_requests, daily_limit_max_tokens=excluded.daily_limit_max_tokens, type=excluded.type, max_tokens=excluded.max_tokens, vision_capable=excluded.vision_capable, tools_capable=excluded.tools_capable, updated_at=excluded.updated_at`, item.ID, item.Name, boolInt(item.Enabled), item.Strategy, item.MaxRetries, item.RetryInterval, item.MaxConcurrency, item.DailyLimitMaxRequests, item.DailyLimitMaxTokens, item.Type, item.MaxTokens, boolInt(item.VisionCapable), boolInt(item.ToolsCapable), now, now)
+	_, err = tx.ExecContext(ctx, `INSERT INTO model_groups(id, name, enabled, strategy, max_retries, retry_interval, max_concurrency, daily_limit_max_requests, daily_limit_max_tokens, type, max_tokens, vision_capable, tools_capable, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, enabled=excluded.enabled, strategy=excluded.strategy, max_retries=excluded.max_retries, retry_interval=excluded.retry_interval, max_concurrency=excluded.max_concurrency, daily_limit_max_requests=excluded.daily_limit_max_requests, daily_limit_max_tokens=excluded.daily_limit_max_tokens, type=excluded.type, max_tokens=excluded.max_tokens, vision_capable=excluded.vision_capable, tools_capable=excluded.tools_capable, updated_at=excluded.updated_at`, item.ID, item.Name, sqlBoolToInt(item.Enabled), item.Strategy, item.MaxRetries, item.RetryInterval, item.MaxConcurrency, item.DailyLimitMaxRequests, item.DailyLimitMaxTokens, item.Type, item.MaxTokens, sqlBoolToInt(item.VisionCapable), sqlBoolToInt(item.ToolsCapable), now, now)
 	if err != nil {
 		return err
 	}
@@ -485,7 +490,7 @@ func removeGroupName(groups []string, groupName string) ([]string, bool) {
 // SetModelAvailability 更新某个模型（按 id+source_id 唯一）的可用状态，
 // 供后台健康检测自动禁用/恢复使用。返回受影响行数。
 func (s *Store) SetModelAvailability(ctx context.Context, modelID, sourceID string, available bool) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `UPDATE models SET available = ? WHERE id = ? AND source_id = ?`, boolInt(available), modelID, sourceID)
+	res, err := s.db.ExecContext(ctx, `UPDATE models SET available = ? WHERE id = ? AND source_id = ?`, sqlBoolToInt(available), modelID, sourceID)
 	if err != nil {
 		return 0, err
 	}
@@ -551,17 +556,17 @@ func (s *Store) UpdateModel(ctx context.Context, modelID, sourceID string, patch
 	}
 	if patch.VisionCapable != nil {
 		sets = append(sets, "vision_capable = ?")
-		args = append(args, boolInt(*patch.VisionCapable))
+		args = append(args, sqlBoolToInt(*patch.VisionCapable))
 		capabilityTouched = true
 	}
 	if patch.ToolsCapable != nil {
 		sets = append(sets, "tools_capable = ?")
-		args = append(args, boolInt(*patch.ToolsCapable))
+		args = append(args, sqlBoolToInt(*patch.ToolsCapable))
 		capabilityTouched = true
 	}
 	if patch.StructuredOutput != nil {
 		sets = append(sets, "structured_output = ?")
-		args = append(args, boolInt(*patch.StructuredOutput))
+		args = append(args, sqlBoolToInt(*patch.StructuredOutput))
 		capabilityTouched = true
 	}
 	if patch.ThinkingMode != nil {
@@ -571,7 +576,7 @@ func (s *Store) UpdateModel(ctx context.Context, modelID, sourceID string, patch
 	}
 	if patch.Enabled != nil {
 		sets = append(sets, "enabled = ?")
-		args = append(args, boolInt(*patch.Enabled))
+		args = append(args, sqlBoolToInt(*patch.Enabled))
 	}
 	if len(sets) == 0 {
 		// 无字段更新：探测行是否存在即可。
@@ -639,7 +644,7 @@ func (s *Store) SaveUsageRecordJSON(ctx context.Context, payload []byte, summary
 			_ = tx.Rollback()
 		}
 	}()
-	res, err := tx.ExecContext(ctx, `INSERT INTO usage_records(request_id, started_at, started_ms, ended_at, key_name, key_hash, group_name, model_name, source_id, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated, record_json) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(request_id) DO NOTHING`, summary.RequestID, summary.StartedAt.UTC().Format(time.RFC3339Nano), summary.StartedAt.UnixMilli(), endedAt.UTC().Format(time.RFC3339Nano), summary.KeyName, summary.KeyHash, summary.GroupName, summary.ModelName, summary.SourceID, summary.Platform, summary.SourceFormat, summary.TargetFormat, summary.RelayMode, summary.ResponsesMode, summary.UsageSource, boolInt(summary.Stream), summary.StatusCode, summary.Error, summary.FirstByteMs, summary.DurationMs, summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, boolInt(summary.RequestTruncated), boolInt(summary.ResponseTruncated), string(payload))
+	res, err := tx.ExecContext(ctx, `INSERT INTO usage_records(request_id, started_at, started_ms, ended_at, key_name, key_hash, group_name, model_name, source_id, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated, record_json) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(request_id) DO NOTHING`, summary.RequestID, summary.StartedAt.UTC().Format(time.RFC3339Nano), summary.StartedAt.UnixMilli(), endedAt.UTC().Format(time.RFC3339Nano), summary.KeyName, summary.KeyHash, summary.GroupName, summary.ModelName, summary.SourceID, summary.Platform, summary.SourceFormat, summary.TargetFormat, summary.RelayMode, summary.ResponsesMode, summary.UsageSource, sqlBoolToInt(summary.Stream), summary.StatusCode, summary.Error, summary.FirstByteMs, summary.DurationMs, summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, sqlBoolToInt(summary.RequestTruncated), sqlBoolToInt(summary.ResponseTruncated), string(payload))
 	if err != nil {
 		return err
 	}
@@ -664,8 +669,8 @@ func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageL
 		return 0, nil, err
 	}
 	limit := q.Limit
-	if limit <= 0 || limit > 500 {
-		limit = 50
+	if limit <= 0 || limit > usageLogPageMax {
+		limit = usageLogPageDefault
 	}
 	offset := q.Offset
 	if offset < 0 {
@@ -690,9 +695,9 @@ func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageL
 			return 0, nil, err
 		}
 		item.StartedAt = parseTime(started)
-		item.Stream = intBool(stream)
-		item.RequestTruncated = intBool(reqTrunc)
-		item.ResponseTruncated = intBool(respTrunc)
+		item.Stream = sqlIntToBool(stream)
+		item.RequestTruncated = sqlIntToBool(reqTrunc)
+		item.ResponseTruncated = sqlIntToBool(respTrunc)
 		items = append(items, item)
 	}
 	return total, items, rows.Err()
@@ -772,7 +777,7 @@ func usageWhere(q UsageQuery) (string, []any) {
 // （单次 (日, 模型) 粒度 GROUP BY 扫描 + Go 内按日归并，IO 相比旧版两次全窗
 // 口扫描减半）。输出结构（含日期格式、未知模型归并）与旧版一致。
 func (s *Store) UsageDaily(ctx context.Context, q UsageQuery, utcOffsetMinutes int) ([]UsageDailyBucket, error) {
-	offsetMs := int64(utcOffsetMinutes) * 60_000
+	offsetMs := int64(utcOffsetMinutes) * msPerMinute
 	rows, err := s.usageDailyRows(ctx, q, offsetMs)
 	if err != nil {
 		return nil, err
@@ -808,7 +813,7 @@ func (s *Store) UsageDaily(ctx context.Context, q UsageQuery, utcOffsetMinutes i
 }
 
 func (s *Store) usageDailyRows(ctx context.Context, q UsageQuery, offsetMs int64) ([]usageDayRow, error) {
-	if fromHour, toHour, ok := s.rollupSplit(q, offsetMs%3_600_000 == 0); ok {
+	if fromHour, toHour, ok := s.rollupSplit(q, offsetMs%msPerHour == 0); ok {
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
 			return nil, err
@@ -996,8 +1001,8 @@ func (s *Store) UsagePulse(ctx context.Context, q UsageQuery, utcOffsetMinutes, 
 		return UsagePulseResult{}, err
 	}
 	where, args := usageWhere(q)
-	offsetMs := int64(utcOffsetMinutes) * 60_000
-	bucketMs := int64(bucketMinutes) * 60_000
+	offsetMs := int64(utcOffsetMinutes) * msPerMinute
+	bucketMs := int64(bucketMinutes) * msPerMinute
 	args = append([]any{offsetMs, bucketMs}, args...)
 	// 口径：Requests（RPM）计全部记录；时延与 token 只累计成功记录——
 	// 失败调用的时延无性能意义，token 存在断流部分估算等非 0 例外。
@@ -1127,7 +1132,7 @@ func (s *Store) UsageByModelDaily(ctx context.Context, q UsageQuery, utcOffsetMi
 	if top <= 0 {
 		top = 8
 	}
-	offsetMs := int64(utcOffsetMinutes) * 60_000
+	offsetMs := int64(utcOffsetMinutes) * msPerMinute
 	dayRows, err := s.usageDailyRows(ctx, q, offsetMs)
 	if err != nil {
 		return nil, err
@@ -1591,7 +1596,7 @@ func (s *Store) InsertSystemLog(ctx context.Context, level, message string, fiel
 }
 
 func (s *Store) QuerySystemLogs(ctx context.Context, limit, offset int, level string) (int, []SystemLog, error) {
-	if limit <= 0 || limit > 500 {
+	if limit <= 0 || limit > systemLogPageMax {
 		limit = 100
 	}
 	if offset < 0 {

@@ -289,7 +289,7 @@ func TestListModelsFiltered(t *testing.T) {
 	}
 }
 
-func boolPtrFalse() *bool { v := false; return &v }
-func boolPtrTrue() *bool  { v := true; return &v }
-func intPtr(v int) *int   { return &v }
+func boolPtrFalse() *bool     { v := false; return &v }
+func boolPtrTrue() *bool      { v := true; return &v }
+func intPtr(v int) *int       { return &v }
 func strPtr(v string) *string { return &v }

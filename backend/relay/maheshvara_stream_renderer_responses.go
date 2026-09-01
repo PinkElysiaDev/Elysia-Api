@@ -237,11 +237,11 @@ func (renderer *MaheshvaraStreamRenderer) ensureResponsesReasoning(choiceIndex i
 	renderer.responses.nextOutput++
 	renderer.responses.reasoning[choiceIndex] = state
 	item := map[string]any{"id": state.id, "type": MaheshvaraOutputReasoning, "status": "in_progress", "summary": []any{}}
-		if err := renderer.writeResponsesEvent(MaheshvaraEventOutputItemAdded, map[string]any{"type": MaheshvaraEventOutputItemAdded, "output_index": state.outputIndex, "item": item}); err != nil {
-			return nil, err
-		}
-		if err := renderer.writeResponsesEvent("response.reasoning_summary_part.added", map[string]any{"type": "response.reasoning_summary_part.added", "item_id": state.id, "output_index": state.outputIndex, "summary_index": 0, "part": map[string]any{"type": "summary_text", "text": ""}}); err != nil {
-			return nil, err
+	if err := renderer.writeResponsesEvent(MaheshvaraEventOutputItemAdded, map[string]any{"type": MaheshvaraEventOutputItemAdded, "output_index": state.outputIndex, "item": item}); err != nil {
+		return nil, err
+	}
+	if err := renderer.writeResponsesEvent("response.reasoning_summary_part.added", map[string]any{"type": "response.reasoning_summary_part.added", "item_id": state.id, "output_index": state.outputIndex, "summary_index": 0, "part": map[string]any{"type": "summary_text", "text": ""}}); err != nil {
+		return nil, err
 	}
 	return state, nil
 }

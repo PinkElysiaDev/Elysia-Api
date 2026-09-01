@@ -10,6 +10,14 @@ const (
 	RetryErrorMaxLen     = 512
 )
 
+// 转发/管理响应的通用字面量（避免散落各处的魔法字符串）。
+const (
+	contentTypeJSON = "application/json"
+	// statusClientClosedRequest 是 nginx 惯例的「客户端提前断开」哨兵码，
+	// 记录在 usage 日志中标记重试等待期/迭代间被取消的请求。
+	statusClientClosedRequest = 499
+)
+
 // ErrorKind* 是 usage 记录 errorKind 字段的归类值（供面板筛选/展示）。
 // 未归类的失败保持空串，不参与前端徽标渲染。
 const (
@@ -29,4 +37,10 @@ const (
 	UsageLogsMaxPageSize     = 500
 	StreamEventsCacheMax     = 50
 	RetryEventsCacheMax      = 50
+)
+
+// Gemini 列表接口未回传 token 限额时的默认回填值。
+const (
+	geminiDefaultInputTokenLimit  = 1048576
+	geminiDefaultOutputTokenLimit = 8192
 )

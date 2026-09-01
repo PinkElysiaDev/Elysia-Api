@@ -36,6 +36,5 @@ func (s *Server) logAt(level, format string, args ...interface{}) {
 	log.Printf("["+level+"] "+format, args...)
 }
 
-func (s *Server) logErrorf(format string, args ...interface{}) { s.logAt("error", format, args...) }
-func (s *Server) logWarnf(format string, args ...interface{})  { s.logAt("warn", format, args...) }
-func (s *Server) logInfof(format string, args ...interface{})  { s.logAt("info", format, args...) }
+func (s *Server) logWarnf(format string, args ...interface{}) { s.logAt("warn", format, args...) }
+func (s *Server) logInfof(format string, args ...interface{}) { s.logAt("info", format, args...) }

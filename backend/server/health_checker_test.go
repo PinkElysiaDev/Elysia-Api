@@ -144,11 +144,11 @@ func TestHealthCheckerAutoDisableAndRecover(t *testing.T) {
 	model := storage.Model{ID: "m1", SourceID: "s1", Name: "m1", Available: true}
 
 	// 第 1 次失败：未达阈值(2)，不禁用。
-	if changed := hc.record(model, false, 2); changed {
+	if changed := hc.recordProbeResult(model, false, 2); changed {
 		t.Fatalf("should not disable before threshold")
 	}
 	// 第 2 次失败：达到阈值，禁用。
-	if changed := hc.record(model, false, 2); !changed {
+	if changed := hc.recordProbeResult(model, false, 2); !changed {
 		t.Fatalf("should disable at threshold")
 	}
 	models, _ := s.store.ListModels(ctx)
@@ -158,7 +158,7 @@ func TestHealthCheckerAutoDisableAndRecover(t *testing.T) {
 
 	// 探测恢复：传入 Available=false 的模型，成功一次 → 重新启用。
 	disabled := storage.Model{ID: "m1", SourceID: "s1", Name: "m1", Available: false}
-	if changed := hc.record(disabled, true, 2); !changed {
+	if changed := hc.recordProbeResult(disabled, true, 2); !changed {
 		t.Fatalf("should re-enable on recovery")
 	}
 	models, _ = s.store.ListModels(ctx)

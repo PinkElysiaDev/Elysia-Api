@@ -28,7 +28,6 @@ type Config struct {
 	Tokens                 []AccessToken      `json:"-"`                                // 运行时字段：仅用于 store-nil 回退与测试；不再从 config.json 读取（模型/token 走 SQLite）
 	Groups                 []ModelGroupConfig `json:"-"`                                // 同上：旧 config.json 的 modelGroups 字段已废弃，数据走 SQLite
 	Responses              ResponsesConfig    `json:"responses,omitempty"`              // Responses API 兼容策略
-	Relay                  RelayConfig        `json:"relay,omitempty"`                  // 转发（chat/claude/gemini）策略
 	CustomProtocols        []json.RawMessage  `json:"customProtocols,omitempty"`        // Maheshvara 自定义协议 JSON 配置
 	Usage                  UsageConfig        `json:"usage,omitempty"`                  // 用量估算配置
 	UsageLog               UsageLogConfig     `json:"usageLog,omitempty"`               // 请求日志留存与内容策略（清理默认关闭）
@@ -87,20 +86,6 @@ type ServerConfig struct {
 type ResponsesConfig struct {
 	Enabled      *bool  `json:"enabled,omitempty"`
 	UpstreamMode string `json:"upstreamMode,omitempty"` // native | transform | auto
-
-	// Deprecated: Maheshvara now uses explicit conversion errors and protocol-bound RawExtra fields.
-	TransformUnsupportedBehavior string `json:"transformUnsupportedBehavior,omitempty"`
-	// Deprecated: unknown fields are retained in Maheshvara RawExtra and are never blindly copied across protocols.
-	PassThroughUnknownFields *bool `json:"passThroughUnknownFields,omitempty"`
-}
-
-// RelayConfig controls compatibility optimizations around the Maheshvara path.
-// Same-protocol passthrough (client wire == upstream wire) is now applied
-// unconditionally so provider-specific fields survive verbatim. The legacy
-// Passthrough flag is retained for backward compatibility only.
-type RelayConfig struct {
-	// Deprecated: same-protocol passthrough is unconditional; no longer consulted.
-	Passthrough *bool `json:"passthrough,omitempty"`
 }
 
 type UsageConfig struct {
@@ -485,13 +470,6 @@ func (c *Config) Reload() error {
 	return nil
 }
 
-func (c *Config) Dir() string {
-	c.mu.RLock()
-	path := c.path
-	c.mu.RUnlock()
-	return filepath.Dir(path)
-}
-
 func (c *Config) GetGroups() []ModelGroupConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -499,8 +477,6 @@ func (c *Config) GetGroups() []ModelGroupConfig {
 	// 与 Reload/admin 的并发重写竞争（go test -race 可验证）。
 	return append([]ModelGroupConfig(nil), c.Groups...)
 }
-
-// GetGroupByName 根据模型组名称查找模型组配置
 
 func (c *Config) GetTokens() []AccessToken {
 	c.mu.RLock()
@@ -683,12 +659,6 @@ func (c *Config) GetDBEncryptionKey() []byte {
 	return []byte(key)
 }
 
-func (c *Config) IsPanelAccessConfigured() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.PanelAccessToken != ""
-}
-
 func (c *Config) FindAccessToken(token string) (AccessToken, bool) {
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -726,24 +696,6 @@ func constantTimeEqual(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
-func (c *Config) IsUsagePersistEnabled() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.UsagePersistEnabled == nil || *c.UsagePersistEnabled
-}
-
-func (c *Config) GetUsagePersistMaxRecords() int {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if c.UsagePersistMaxRecords <= 0 {
-		return 10000
-	}
-	if c.UsagePersistMaxRecords < 1000 {
-		return 1000
-	}
-	return c.UsagePersistMaxRecords
-}
-
 func (c *Config) GetResponsesConfig() ResponsesConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -755,13 +707,6 @@ func (c *Config) GetResponsesConfig() ResponsesConfig {
 	}
 	if strings.TrimSpace(cfg.UpstreamMode) == "" {
 		cfg.UpstreamMode = "auto"
-	}
-	if strings.TrimSpace(cfg.TransformUnsupportedBehavior) == "" {
-		cfg.TransformUnsupportedBehavior = "error"
-	}
-	if cfg.PassThroughUnknownFields == nil {
-		v := true
-		cfg.PassThroughUnknownFields = &v
 	}
 	return cfg
 }

@@ -1656,7 +1656,7 @@ func imagePartToOpenAIURL(part MaheshvaraContentPart) string {
 	if part.ImageBase64 != "" {
 		mt := part.MediaType
 		if mt == "" {
-			mt = "image/png"
+			mt = defaultImageMIME
 		}
 		return "data:" + mt + ";base64," + part.ImageBase64
 	}
@@ -1667,7 +1667,7 @@ func imagePartToOpenAIURL(part MaheshvaraContentPart) string {
 func imagePartToClaudeSource(part MaheshvaraContentPart) map[string]any {
 	if mt, b64 := imagePartBase64(part); b64 != "" {
 		if mt == "" {
-			mt = "image/png"
+			mt = defaultImageMIME
 		}
 		return map[string]any{"type": "base64", "media_type": mt, "data": b64}
 	}
@@ -1682,7 +1682,7 @@ func imagePartToClaudeSource(part MaheshvaraContentPart) map[string]any {
 func imagePartToGeminiPart(part MaheshvaraContentPart) map[string]any {
 	if mt, b64 := imagePartBase64(part); b64 != "" {
 		if mt == "" {
-			mt = "image/png"
+			mt = defaultImageMIME
 		}
 		return map[string]any{"inlineData": map[string]any{"mimeType": mt, "data": b64}}
 	}
@@ -2472,13 +2472,13 @@ func effortFromBudget(budget int) string {
 	if budget <= 0 {
 		return ""
 	}
-	if budget <= 1024 {
+	if budget <= effortBudgetLow {
 		return "low"
 	}
-	if budget <= 4096 {
+	if budget <= effortBudgetMedium {
 		return "medium"
 	}
-	if budget <= 16384 {
+	if budget <= effortBudgetHigh {
 		return "high"
 	}
 	return "xhigh"
@@ -2489,13 +2489,13 @@ func effortFromBudget(budget int) string {
 func budgetFromEffort(effort string) int {
 	switch strings.ToLower(strings.TrimSpace(effort)) {
 	case "low", "minimal", "min":
-		return 1024
+		return effortBudgetLow
 	case "medium":
-		return 4096
+		return effortBudgetMedium
 	case "high":
-		return 16384
+		return effortBudgetHigh
 	case "xhigh", "max":
-		return 32000
+		return effortBudgetMax
 	default:
 		return EffortBudgetDefault
 	}
@@ -2568,13 +2568,6 @@ func maheshvaraReasoningToOpenAIDetails(parts []MaheshvaraContentPart) []map[str
 		}
 	}
 	return details
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func OpenAIChatResponseToMaheshvara(resp *OpenAIResponse) (*MaheshvaraResponse, error) {
@@ -3335,7 +3328,7 @@ func maheshvaraUsageFromOpenAIUsage(usage Usage) *MaheshvaraUsage {
 		AudioOutputTokens:        completionDetails.AudioTokens,
 		ImageOutputTokens:        completionDetails.ImageTokens,
 		Raw:                      usage.RawFields,
-		Source:                   "provider_response",
+		Source:                   usageSourceProviderResponse,
 	}
 	if u.CachedInputTokens == 0 {
 		u.CachedInputTokens = max(promptDetails.CachedTokens, promptDetails.CacheReadTokens)
@@ -3362,7 +3355,7 @@ func maheshvaraUsageFromClaudeUsage(usage ClaudeUsage) *MaheshvaraUsage {
 		TotalTokens:              input + usage.OutputTokens,
 		CachedInputTokens:        usage.CacheReadInputTokens,
 		CacheCreationInputTokens: usage.CacheCreationInputTokens,
-		Source:                   "provider_response",
+		Source:                   usageSourceProviderResponse,
 	}
 	if usage.CacheCreation != nil {
 		// 双 TTL 桶明细保真（ephemeral_5m / ephemeral_1h）。
@@ -3383,7 +3376,7 @@ func maheshvaraUsageFromGeminiUsage(usage GeminiUsageMeta) *MaheshvaraUsage {
 		CachedInputTokens: usage.CachedContentTokenCount,
 		ReasoningTokens:   usage.ThoughtsTokenCount,
 		ToolUseTokens:     usage.ToolUsePromptTokenCount,
-		Source:            "provider_response",
+		Source:            usageSourceProviderResponse,
 	}
 	if u.TotalTokens == 0 {
 		u.TotalTokens = u.InputTokens + u.OutputTokens
@@ -3419,7 +3412,7 @@ func maheshvaraUsageFromResponsesUsage(usage *ResponsesUsage) *MaheshvaraUsage {
 		InputTokens:  usage.InputTokens,
 		OutputTokens: usage.OutputTokens,
 		TotalTokens:  usage.TotalTokens,
-		Source:       "provider_response",
+		Source:       usageSourceProviderResponse,
 	}
 	if usage.InputTokensDetails != nil {
 		u.CachedInputTokens = usage.InputTokensDetails.CachedTokens
@@ -3460,11 +3453,11 @@ func openAIUsageFromMaheshvara(u *MaheshvaraUsage) Usage {
 		}
 	}
 	return Usage{
-		PromptTokens:           u.InputTokens,
-		CompletionTokens:       u.OutputTokens,
-		TotalTokens:            valueOrSum(u.TotalTokens, u.InputTokens, u.OutputTokens),
-		CachedTokens:           u.CachedInputTokens,
-		PromptTokensDetails:    promptDetails,
+		PromptTokens:            u.InputTokens,
+		CompletionTokens:        u.OutputTokens,
+		TotalTokens:             valueOrSum(u.TotalTokens, u.InputTokens, u.OutputTokens),
+		CachedTokens:            u.CachedInputTokens,
+		PromptTokensDetails:     promptDetails,
 		CompletionTokensDetails: completionDetails,
 		// 上游新增的未知计数键原样透传（原始对象为底，类型化字段覆盖）。
 		RawFields: u.Raw,

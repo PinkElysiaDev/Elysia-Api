@@ -121,7 +121,7 @@ func (h *healthChecker) runOnce() {
 		// 每次探测在 probe 内部独立限时：若整轮共享一个超时 ctx，一个慢上游
 		// 就会耗尽预算，导致本轮后续所有探测连锁失败、健康模型被误禁。
 		ok := h.probe(context.Background(), model, cfg.TimeoutSeconds)
-		if h.record(model, ok, cfg.FailureThreshold) {
+		if h.recordProbeResult(model, ok, cfg.FailureThreshold) {
 			changed = true
 		}
 	}
@@ -133,7 +133,7 @@ func (h *healthChecker) runOnce() {
 
 // record 根据探测结果更新连续失败计数，并在跨过阈值时切换 available 状态。
 // 返回 true 表示发生了状态变更。
-func (h *healthChecker) record(model storage.Model, ok bool, threshold int) bool {
+func (h *healthChecker) recordProbeResult(model storage.Model, ok bool, threshold int) bool {
 	key := probeKey(model.ID, model.SourceID)
 	h.mu.Lock()
 	if ok {
@@ -180,7 +180,7 @@ func (h *healthChecker) probe(ctx context.Context, model storage.Model, timeoutS
 		return false
 	}
 	applyProbeAuth(req, model)
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentTypeJSON)
 
 	resp, err := h.client.Do(req)
 	if err != nil {

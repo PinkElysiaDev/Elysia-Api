@@ -123,7 +123,6 @@ func RegisterCustomProtocol(config CustomProtocolConfig) error {
 	return nil
 }
 
-
 // ReplaceCustomProtocols validates the complete set and swaps it atomically.
 // A failed reload leaves the previously registered protocols untouched.
 func ReplaceCustomProtocols(configs []CustomProtocolConfig) error {
@@ -152,12 +151,6 @@ func GetCustomProtocol(id string) (CustomProtocolConfig, bool) {
 		return CustomProtocolConfig{}, false
 	}
 	return cloneCustomProtocol(config), true
-}
-
-func RemoveCustomProtocol(id string) {
-	customProtocolRegistry.Lock()
-	delete(customProtocolRegistry.items, strings.ToLower(strings.TrimSpace(id)))
-	customProtocolRegistry.Unlock()
 }
 
 func ClearCustomProtocols() {

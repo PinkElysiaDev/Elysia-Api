@@ -66,7 +66,7 @@ func (s *Server) invalidateRouteCache() {
 // sourceKeyMeta 是源级 key 调度元数据（方向6），装配时随 ModelRef 下发。
 // keys 保留完整 SourceAPIKey：除 value 外还需按 key 的
 // FetchedModels/AllowedModels 对每个模型过滤可服务该模型的 key 池
-//（多 key 权限发现，见 KeyAllowsModel）。
+// （多 key 权限发现，见 KeyAllowsModel）。
 type sourceKeyMeta struct {
 	keys     []storage.SourceAPIKey
 	strategy string

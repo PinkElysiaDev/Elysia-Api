@@ -60,9 +60,6 @@ func newAssetSink(requestID string) assetSink {
 // clone 返回深拷贝（解码字节一并复制），供 enqueueUsageRecord 断开与请求
 // goroutine 的底层数组别名。
 func (a *assetSink) clone() assetSink {
-	if a == nil {
-		return assetSink{}
-	}
 	cloned := assetSink{
 		requestID: a.requestID,
 		items:     make([]mediaAsset, len(a.items)),
@@ -85,9 +82,6 @@ func (a *assetSink) clone() assetSink {
 
 // count 返回已登记（去重后）的媒体数。
 func (a *assetSink) count() int {
-	if a == nil {
-		return 0
-	}
 	return len(a.items)
 }
 

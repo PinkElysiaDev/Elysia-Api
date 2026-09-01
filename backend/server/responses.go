@@ -285,7 +285,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 			record.Error = errMsg
 			record.ErrorKind = ErrorKindUpstream
 			if respBody != nil {
-				c.Data(statusCode, "application/json", respBody)
+				c.Data(statusCode, contentTypeJSON, respBody)
 			} else {
 				c.JSON(statusCode, gin.H{"error": gin.H{"message": errMsg, "type": "api_error"}})
 			}
@@ -332,7 +332,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 		actualTokens := getInt(record.Usage.TotalTokens)
 		s.adjustTokenUsage(group.ID, actualTokens)
 		record.StatusCode = http.StatusOK
-		c.Data(http.StatusOK, "application/json", respBody)
+		c.Data(http.StatusOK, contentTypeJSON, respBody)
 		result = relayOutcome{committed: true, statusCode: http.StatusOK}
 		return result
 
@@ -457,7 +457,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 			record.Error = errMsg
 			record.ErrorKind = ErrorKindUpstream
 			if respBody != nil {
-				c.Data(statusCode, "application/json", respBody)
+				c.Data(statusCode, contentTypeJSON, respBody)
 			} else {
 				c.AbortWithStatusJSON(statusCode, gin.H{"error": gin.H{"message": errMsg, "type": "api_error"}})
 			}

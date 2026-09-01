@@ -7,7 +7,7 @@ import (
 )
 
 func applyOpenAIRequestExtensions(raw map[string]any, req *MaheshvaraRequest) {
-		if value, ok := numberValue(raw["n"]); ok {
+	if value, ok := numberValue(raw["n"]); ok {
 		v := int(value)
 		req.N = &v
 	}
@@ -47,7 +47,7 @@ func applyOpenAIRequestExtensions(raw map[string]any, req *MaheshvaraRequest) {
 }
 
 func applyClaudeRequestExtensions(raw map[string]any, req *MaheshvaraRequest) {
-		if value, ok := numberValue(raw["top_k"]); ok {
+	if value, ok := numberValue(raw["top_k"]); ok {
 		v := int(value)
 		req.TopK = &v
 	}
@@ -80,7 +80,7 @@ func applyClaudeRequestExtensions(raw map[string]any, req *MaheshvaraRequest) {
 }
 
 func applyGeminiRequestExtensions(raw map[string]any, req *MaheshvaraRequest) error {
-		req.Stream = boolValue(raw["stream"])
+	req.Stream = boolValue(raw["stream"])
 	if raw["safetySettings"] != nil {
 		req.SafetySettings = safetySettingsFromAny(raw["safetySettings"])
 	}
@@ -116,7 +116,7 @@ func applyGeminiRequestExtensions(raw map[string]any, req *MaheshvaraRequest) er
 }
 
 func applyResponsesRequestExtensions(raw map[string]any, req *MaheshvaraRequest) {
-		if value, ok := numberValue(raw["seed"]); ok {
+	if value, ok := numberValue(raw["seed"]); ok {
 		v := int64(value)
 		req.Seed = &v
 	}
@@ -149,7 +149,7 @@ func applyResponsesRequestExtensions(raw map[string]any, req *MaheshvaraRequest)
 }
 
 func applyOpenAIRequestExtensionsToBody(out map[string]any, req *MaheshvaraRequest) {
-		if req.N != nil {
+	if req.N != nil {
 		out["n"] = *req.N
 	}
 	if req.Seed != nil {
@@ -207,7 +207,7 @@ func applyOpenAIRequestExtensionsToBody(out map[string]any, req *MaheshvaraReque
 }
 
 func applyClaudeRequestExtensionsToBody(out map[string]any, req *MaheshvaraRequest) {
-		if req.TopK != nil {
+	if req.TopK != nil {
 		out["top_k"] = *req.TopK
 	}
 	if req.Metadata != nil {
@@ -233,7 +233,7 @@ func applyClaudeRequestExtensionsToBody(out map[string]any, req *MaheshvaraReque
 }
 
 func applyGeminiRequestExtensionsToBody(out map[string]any, req *MaheshvaraRequest) {
-		if len(req.SafetySettings) > 0 {
+	if len(req.SafetySettings) > 0 {
 		settings := make([]map[string]any, 0, len(req.SafetySettings))
 		for _, setting := range req.SafetySettings {
 			item := map[string]any{}
@@ -301,7 +301,7 @@ func maheshvaraStopSequences(value any) []string {
 }
 
 func applyResponsesRequestExtensionsToBody(out map[string]any, req *MaheshvaraRequest) {
-		if req.Seed != nil {
+	if req.Seed != nil {
 		out["seed"] = *req.Seed
 	}
 	if req.ServiceTier != "" {

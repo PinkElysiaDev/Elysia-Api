@@ -24,12 +24,12 @@ type maheshvaraAnthropicBlock struct {
 // MaheshvaraStreamDecoder is stateful because tool calls and content blocks
 // are commonly split across multiple upstream events.
 type MaheshvaraStreamDecoder struct {
-	format          FormatType
-	responseID      string
-	model           string
-	terminal        bool
-	sawWireEvent    bool
-	sawOutput       bool
+	format       FormatType
+	responseID   string
+	model        string
+	terminal     bool
+	sawWireEvent bool
+	sawOutput    bool
 	// sawFinishReason：上游是否发过真实 finish_reason（chat）/message_delta
 	//（Claude）/finishReason（Gemini）/终态 status（Responses）。空但合法的
 	// 完成（content_filter 拒答）据此与残缺流区分。
@@ -48,7 +48,7 @@ type MaheshvaraStreamDecoder struct {
 	openAIPartText map[string]string
 	// nextSyntheticCallID：无 id 工具调用的合成 id 单调计数器（跨 chunk 不撞）。
 	nextSyntheticCallID int
-	anthropicBlocks      map[int]*maheshvaraAnthropicBlock
+	anthropicBlocks     map[int]*maheshvaraAnthropicBlock
 }
 
 func NewMaheshvaraStreamDecoder(format FormatType) *MaheshvaraStreamDecoder {

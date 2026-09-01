@@ -192,14 +192,14 @@ type GeminiContent struct {
 }
 
 type GeminiPart struct {
-	Text             string                `json:"text,omitempty"`
-	Thought          bool                  `json:"thought,omitempty"`
-	ThoughtSignature string                `json:"thoughtSignature,omitempty"`
-	InlineData       map[string]any        `json:"inlineData,omitempty"`
-	FileData         map[string]any        `json:"fileData,omitempty"`
-	ExecutableCode   any                    `json:"executableCode,omitempty"`
-	FunctionCall     interface{}           `json:"functionCall,omitempty"`
-	FunctionResponse interface{}           `json:"functionResponse,omitempty"`
+	Text             string         `json:"text,omitempty"`
+	Thought          bool           `json:"thought,omitempty"`
+	ThoughtSignature string         `json:"thoughtSignature,omitempty"`
+	InlineData       map[string]any `json:"inlineData,omitempty"`
+	FileData         map[string]any `json:"fileData,omitempty"`
+	ExecutableCode   any            `json:"executableCode,omitempty"`
+	FunctionCall     interface{}    `json:"functionCall,omitempty"`
+	FunctionResponse interface{}    `json:"functionResponse,omitempty"`
 }
 
 // extractTextFromContent 从 Claude system / Gemini parts 等内容结构中提取纯文本。

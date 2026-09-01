@@ -73,9 +73,9 @@ const (
 	MaheshvaraEventUsageDelta                 = "response.usage.delta"
 	// MaheshvaraEventAnnotationDelta 承载引用/出处标注增量（Claude
 	// citations_delta 等），由各渲染器翻译回对应协议的合法事件。
-	MaheshvaraEventAnnotationDelta = "annotation.delta"
-	MaheshvaraEventResponseCompleted          = "response.completed"
-	MaheshvaraEventResponseFailed             = "response.failed"
+	MaheshvaraEventAnnotationDelta   = "annotation.delta"
+	MaheshvaraEventResponseCompleted = "response.completed"
+	MaheshvaraEventResponseFailed    = "response.failed"
 )
 
 type MaheshvaraRequest struct {
@@ -104,24 +104,24 @@ type MaheshvaraRequest struct {
 	MinP              *float64 `json:"min_p,omitempty"`
 	TopA              *float64 `json:"top_a,omitempty"`
 
-	Stream        bool                    `json:"stream,omitempty"`
+	Stream        bool                     `json:"stream,omitempty"`
 	StreamOptions *MaheshvaraStreamOptions `json:"stream_options,omitempty"`
 
 	Tools             []MaheshvaraTool `json:"tools,omitempty"`
-	ToolChoice        any             `json:"tool_choice,omitempty"`
-	ParallelToolCalls *bool           `json:"parallel_tool_calls,omitempty"`
+	ToolChoice        any              `json:"tool_choice,omitempty"`
+	ParallelToolCalls *bool            `json:"parallel_tool_calls,omitempty"`
 
 	ResponseFormat   *MaheshvaraResponseFormat `json:"response_format,omitempty"`
 	Reasoning        *MaheshvaraReasoning      `json:"reasoning,omitempty"`
 	Thinking         *MaheshvaraThinking       `json:"thinking,omitempty"`
-	Modalities       []string                 `json:"modalities,omitempty"`
+	Modalities       []string                  `json:"modalities,omitempty"`
 	Audio            *MaheshvaraAudioConfig    `json:"audio,omitempty"`
-	Prediction       any                      `json:"prediction,omitempty"`
-	ServiceTier      string                   `json:"service_tier,omitempty"`
-	SafetyIdentifier string                   `json:"safety_identifier,omitempty"`
-	Verbosity        string                   `json:"verbosity,omitempty"`
+	Prediction       any                       `json:"prediction,omitempty"`
+	ServiceTier      string                    `json:"service_tier,omitempty"`
+	SafetyIdentifier string                    `json:"safety_identifier,omitempty"`
+	Verbosity        string                    `json:"verbosity,omitempty"`
 	SafetySettings   []MaheshvaraSafetySetting `json:"safety_settings,omitempty"`
-	CacheControl     any                      `json:"cache_control,omitempty"`
+	CacheControl     any                       `json:"cache_control,omitempty"`
 
 	User     string         `json:"user,omitempty"`
 	Metadata map[string]any `json:"metadata,omitempty"`
@@ -151,11 +151,11 @@ type MaheshvaraStreamOptions struct {
 
 type MaheshvaraMessage struct {
 	Role         string                     `json:"role"`
-	Content      []MaheshvaraContentPart     `json:"content,omitempty"`
-	ToolCalls    []MaheshvaraToolCall        `json:"tool_calls,omitempty"`
+	Content      []MaheshvaraContentPart    `json:"content,omitempty"`
+	ToolCalls    []MaheshvaraToolCall       `json:"tool_calls,omitempty"`
 	ToolCallID   string                     `json:"tool_call_id,omitempty"`
 	Name         string                     `json:"name,omitempty"`
-	Audio        *MaheshvaraAudioConfig      `json:"audio,omitempty"`
+	Audio        *MaheshvaraAudioConfig     `json:"audio,omitempty"`
 	CacheControl any                        `json:"cache_control,omitempty"`
 	Metadata     map[string]any             `json:"metadata,omitempty"`
 	RawExtra     map[string]json.RawMessage `json:"-"`
@@ -194,10 +194,10 @@ type MaheshvaraContentPart struct {
 	// EncryptedProvider/EncryptedModel 记录密文的签发方与签发时模型（信封 v2
 	// 随载）：跨协议走私密文时按 provider 门控——只回发给同厂商上游，避免
 	// 不认识密文的上游报错或误读。
-	EncryptedProvider string                      `json:"encrypted_provider,omitempty"`
-	EncryptedModel    string                      `json:"encrypted_model,omitempty"`
+	EncryptedProvider string                       `json:"encrypted_provider,omitempty"`
+	EncryptedModel    string                       `json:"encrypted_model,omitempty"`
 	ReasoningSummary  []MaheshvaraReasoningSummary `json:"reasoning_summary,omitempty"`
-	CacheControl      any                         `json:"cache_control,omitempty"`
+	CacheControl      any                          `json:"cache_control,omitempty"`
 	// Citations 原样承载 Claude text block 的引用标注（来源出处脚注），
 	// 跨线不发明翻译，仅 Claude↔Claude 往返保真。
 	Citations   json.RawMessage  `json:"citations,omitempty"`
@@ -210,11 +210,11 @@ type MaheshvaraContentPart struct {
 type MaheshvaraInputItem struct {
 	Type      string                     `json:"type"`
 	Role      string                     `json:"role,omitempty"`
-	Content   []MaheshvaraContentPart     `json:"content,omitempty"`
+	Content   []MaheshvaraContentPart    `json:"content,omitempty"`
 	CallID    string                     `json:"call_id,omitempty"`
 	Output    string                     `json:"output,omitempty"`
 	ItemID    string                     `json:"item_id,omitempty"`
-	Reasoning *MaheshvaraReasoning        `json:"reasoning,omitempty"`
+	Reasoning *MaheshvaraReasoning       `json:"reasoning,omitempty"`
 	RawExtra  map[string]json.RawMessage `json:"-"`
 }
 
@@ -247,12 +247,12 @@ type MaheshvaraToolCall struct {
 }
 
 type MaheshvaraReasoning struct {
-	Effort           string                      `json:"effort,omitempty"`
-	Summary          string                      `json:"summary,omitempty"`
+	Effort           string                       `json:"effort,omitempty"`
+	Summary          string                       `json:"summary,omitempty"`
 	SummaryParts     []MaheshvaraReasoningSummary `json:"summary_parts,omitempty"`
-	Text             string                      `json:"text,omitempty"`
-	EncryptedContent string                      `json:"encrypted_content,omitempty"`
-	Raw              map[string]any              `json:"raw,omitempty"`
+	Text             string                       `json:"text,omitempty"`
+	EncryptedContent string                       `json:"encrypted_content,omitempty"`
+	Raw              map[string]any               `json:"raw,omitempty"`
 }
 
 type MaheshvaraThinking struct {
@@ -316,14 +316,14 @@ type MaheshvaraOutputItem struct {
 
 	Content []MaheshvaraContentPart `json:"content,omitempty"`
 
-	CallID    string              `json:"call_id,omitempty"`
-	Name      string              `json:"name,omitempty"`
-	Arguments json.RawMessage     `json:"arguments,omitempty"`
+	CallID    string               `json:"call_id,omitempty"`
+	Name      string               `json:"name,omitempty"`
+	Arguments json.RawMessage      `json:"arguments,omitempty"`
 	ToolCalls []MaheshvaraToolCall `json:"tool_calls,omitempty"`
 	Reasoning *MaheshvaraReasoning `json:"reasoning,omitempty"`
 
 	Summary  []MaheshvaraReasoningSummary `json:"summary,omitempty"`
-	Metadata map[string]any              `json:"metadata,omitempty"`
+	Metadata map[string]any               `json:"metadata,omitempty"`
 
 	Raw map[string]any `json:"raw,omitempty"`
 }
