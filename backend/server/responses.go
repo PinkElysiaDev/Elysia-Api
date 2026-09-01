@@ -40,59 +40,16 @@ func (s *Server) responses(c *gin.Context) {
 		return
 	}
 
-	// 模型组级访问权限：先于 validateModelGroup 校验，越权即使目标组为空也返回 403。
-	if !s.tokenAllowsGroup(c, maheshvaraReq.Model) {
-		s.failRequestTyped(c, record, startTime, http.StatusForbidden, "permission_error", fmt.Sprintf("api key is not allowed to access model group '%s'", maheshvaraReq.Model))
+	// 共用前置阶段（与 chatCompletions 同一实现）：鉴权 → 组校验 → 候选 →
+	// 能力约束 → 预估 → 限流。组级 MaxTokens 覆盖维持 chat 线制独有的行为。
+	plan, ok := s.prepareRelayPlan(c, record, startTime, maheshvaraReq, relayFailer{s: s, c: c, record: record, startTime: startTime, typed: true}, false)
+	if !ok {
 		return
 	}
-
-	group, err := s.validateModelGroup(maheshvaraReq.Model)
-	if err != nil {
-		s.failRequestTyped(c, record, startTime, statusForGroupError(err), "invalid_request_error", err.Error())
-		return
-	}
-	setRecordGroup(record, group)
-
-	// 构建有序候选并按渠道亲和性置顶，与 chatCompletions 对齐——Responses 入口
-	// 此前只取单个候选、无故障转移（C1）。空候选集显式返回 500「无可用模型」，
-	// 而非让空 baseUrl 掉进 SSRF 校验误报 403。
-	candidates := s.buildCandidates(group)
-	if len(candidates) == 0 {
-		s.failRequestTyped(c, record, startTime, http.StatusInternalServerError, "api_error", fmt.Sprintf("no available models in group '%s'", group.Name))
-		return
-	}
-	if sticky := s.affinity.get(record.KeyHash, group.ID, startTime); sticky != "" {
-		candidates = applyAffinity(candidates, sticky)
-	}
-	// 组内候选软过滤（方向2）：与 chatCompletions 入口对齐。
-	candidates = reorderCandidatesByRequestNeeds(candidates,
-		maheshvaraRequestHasMultimodalInput(maheshvaraReq), maheshvaraRequestUsesTools(maheshvaraReq))
-	// 多 key 展开（方向6）：与 chatCompletions 入口对齐。
-	candidates = s.expandCandidatesByKeyStrategy(candidates)
-	// 组级 tools 能力落地（方向2）：携带工具的请求对不支持工具的组直接 400。
-	if rejectToolRequestsIfNeeded(group, maheshvaraReq) {
-		s.failRequestTyped(c, record, startTime, http.StatusBadRequest, "invalid_request_error",
-			fmt.Sprintf("model group '%s' does not support tool calling, but the request contains tools or tool messages", group.Name))
-		return
-	}
-	filteredVision, filteredVisionParts, filteredModalities := filterMaheshvaraMultimodalInputsIfNeeded(group, maheshvaraReq)
-	if filteredVision {
-		s.logVerbose("[Maheshvara Multimodal Filter] group=%s filteredParts=%d modalities=%v", group.Name, filteredVisionParts, filteredModalities)
-		c.Writer.Header().Set("X-Elysia-Filtered-Modalities", strings.Join(filteredModalities, ","))
-	}
-
-	estimatedUsage := estimateMaheshvaraRequestUsage(maheshvaraReq, s.config.GetUsageConfig())
-	estimatedTokens := estimatedUsage.EstimatedTotalTokens
-	record.Usage = usageTokenUsageFromMaheshvara(estimatedUsage)
-	record.UsageDetail = usageDetailFromMaheshvara(estimatedUsage)
-	record.UsageSource = estimatedUsage.Source
-
-	releaseLimiter, err := s.acquireRateLimit(group, estimatedTokens)
-	if err != nil {
-		s.failRequestTyped(c, record, startTime, http.StatusTooManyRequests, "rate_limit_error", err.Error())
-		return
-	}
-	defer releaseLimiter()
+	group, candidates := plan.group, plan.candidates
+	filteredVision := plan.filtered
+	estimatedTokens := plan.estimatedTokens
+	defer plan.releaseLimiter()
 
 	attempts := maxAttempts(group.MaxRetries, len(candidates))
 	var lastStatus int
