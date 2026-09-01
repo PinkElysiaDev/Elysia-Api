@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	randv2 "math/rand/v2"
 	"sort"
@@ -41,14 +40,7 @@ func (s *Store) scanModel(scanner interface{ Scan(dest ...any) error }) (Model, 
 	item.Available = sqlIntToBool(available)
 	item.Enabled = sqlIntToBool(enabled)
 	item.LastCheckedAt = parseTime(checked)
-	if plain, err := s.codec.decrypt(item.APIKey); err == nil {
-		item.APIKey = plain
-	} else {
-		// 行级容错：密钥解不开（master-key 丢失/更换）时清空该行密钥并告警，
-		// 不让单行毒化整个列表——网关保底可用，其余模型照常服务。
-		log.Printf("[secret] model %s/%s: %v (key cleared, row kept)", item.ID, item.SourceID, err)
-		item.APIKey = ""
-	}
+	item.APIKey = s.decryptOrClear("model api_key", item.ID+"/"+item.SourceID, item.APIKey)
 	return item, nil
 }
 
@@ -227,20 +219,11 @@ func (s *Store) UpsertGroup(ctx context.Context, item ModelGroup) error {
 		return err
 	}
 	for i, ref := range item.Models {
-		// ref 形如 "sourceId:modelId"（新）或裸 "modelId"（旧/兼容）。
-		// 复合键直接拆出 source_id + model_id，精确定位同名不同源的模型；
-		// 裸 id 回退到 findModel 猜一个源（保持旧行为）。
-		var modelID, sourceID string
-		if idx := strings.Index(ref, ":"); idx >= 0 {
-			sourceID = ref[:idx]
-			modelID = ref[idx+1:]
-		} else {
-			modelID = ref
-			if model, ok, err := s.findModel(ctx, tx, modelID); err != nil {
-				return err
-			} else if ok {
-				sourceID = model.SourceID
-			}
+		// "sourceId:modelId"（复合键）或裸 "modelId"（旧/兼容），统一走
+		// resolveModelRef 解析（裸 id 回退 findModel 猜源，保持旧行为）。
+		modelID, sourceID, err := s.resolveModelRef(ctx, tx, ref)
+		if err != nil {
+			return err
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO model_group_models(group_id, model_id, source_id, position) VALUES(?, ?, ?, ?)`, item.ID, modelID, sourceID, i); err != nil {
 			return err
@@ -634,16 +617,12 @@ func (s *Store) SaveUsageRecordJSON(ctx context.Context, payload []byte, summary
 		summary.StartedAt = endedAt
 	}
 	// 原始行与 rollup 增量同事务：任一失败整体回滚，两表保持一致。
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
-		}
-	}()
+	return s.withTx(ctx, func(tx *sql.Tx) error {
+		return saveUsageRecordTx(ctx, tx, payload, summary, endedAt)
+	})
+}
+
+func saveUsageRecordTx(ctx context.Context, tx *sql.Tx, payload []byte, summary UsageLogItem, endedAt time.Time) error {
 	res, err := tx.ExecContext(ctx, `INSERT INTO usage_records(request_id, started_at, started_ms, ended_at, key_name, key_hash, group_name, model_name, source_id, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated, record_json) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(request_id) DO NOTHING`, summary.RequestID, summary.StartedAt.UTC().Format(time.RFC3339Nano), summary.StartedAt.UnixMilli(), endedAt.UTC().Format(time.RFC3339Nano), summary.KeyName, summary.KeyHash, summary.GroupName, summary.ModelName, summary.SourceID, summary.Platform, summary.SourceFormat, summary.TargetFormat, summary.RelayMode, summary.ResponsesMode, summary.UsageSource, sqlBoolToInt(summary.Stream), summary.StatusCode, summary.Error, summary.FirstByteMs, summary.DurationMs, summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, sqlBoolToInt(summary.RequestTruncated), sqlBoolToInt(summary.ResponseTruncated), string(payload))
 	if err != nil {
 		return err
@@ -656,11 +635,7 @@ func (s *Store) SaveUsageRecordJSON(ctx context.Context, payload []byte, summary
 		// 同 request_id 已落库：禁止覆盖。覆盖会让 rollup 再 +1 而旧桶不回退。
 		return nil
 	}
-	if err := upsertUsageRollupTx(ctx, tx, summary); err != nil {
-		return err
-	}
-	committed = true
-	return tx.Commit()
+	return upsertUsageRollupTx(ctx, tx, summary)
 }
 
 func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageLogItem, error) {
@@ -668,14 +643,7 @@ func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageL
 	if err != nil {
 		return 0, nil, err
 	}
-	limit := q.Limit
-	if limit <= 0 || limit > usageLogPageMax {
-		limit = usageLogPageDefault
-	}
-	offset := q.Offset
-	if offset < 0 {
-		offset = 0
-	}
+	limit, offset := clampPage(q.Limit, q.Offset, usageLogPageDefault, usageLogPageMax)
 	where, args := usageWhere(q)
 	args = append(args, limit, offset)
 	// 排序只用 started_ms：索引可直接反向游走取前 offset+limit 条窄索引项、
@@ -1255,34 +1223,48 @@ func (s *Store) ClearUsage(ctx context.Context) error {
 		return ErrRollupBackfillInProgress
 	}
 	defer s.rollupMu.Unlock()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
+	if err := s.withTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM usage_records`); err != nil {
+			return err
 		}
-	}()
-	if _, err := tx.ExecContext(ctx, `DELETE FROM usage_records`); err != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM usage_rollup_hour`); err != nil {
+			return err
+		}
+		now := time.Now().UnixMilli()
+		_, err := tx.ExecContext(ctx, `INSERT INTO usage_rollup_state(key, int_value) VALUES(?, ?), (?, ?), (?, 1)
+			ON CONFLICT(key) DO UPDATE SET int_value = excluded.int_value`,
+			rollupStateUntil, now, rollupStateThrough, now, rollupStateReady)
 		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM usage_rollup_hour`); err != nil {
-		return err
-	}
-	now := time.Now().UnixMilli()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO usage_rollup_state(key, int_value) VALUES(?, ?), (?, ?), (?, 1)
-		ON CONFLICT(key) DO UPDATE SET int_value = excluded.int_value`,
-		rollupStateUntil, now, rollupStateThrough, now, rollupStateReady); err != nil {
-		return err
-	}
-	committed = true
-	if err := tx.Commit(); err != nil {
+	}); err != nil {
 		return err
 	}
 	s.rollupReady.Store(true)
 	return nil
+}
+
+// clampPage 归一化分页参数：非法/超限 limit 回落 def，负 offset 归零。
+func clampPage(limit, offset, def, max int) (int, int) {
+	if limit <= 0 || limit > max {
+		limit = def
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return limit, offset
+}
+
+// withTx 是写事务的统一脚手架：fn 返回 nil 即提交、返回错误即回滚。
+// 取代此前并存的三种手写 Begin/defer-Rollback/Commit 风格。
+func (s *Store) withTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if err := fn(tx); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 // ---- 日志留存清理（usage_retention.go 使用）----
@@ -1296,13 +1278,12 @@ func (s *Store) ClearUsage(ctx context.Context) error {
 const retentionDeleteBatchLimit = 500
 
 func deleteUsageByIDsTx(ctx context.Context, tx *sql.Tx, ids []string) error {
-	placeholders := make([]string, len(ids))
+	where := usageInClause("request_id", len(ids))
 	args := make([]interface{}, len(ids))
 	for i, id := range ids {
-		placeholders[i] = "?"
 		args[i] = id
 	}
-	_, err := tx.ExecContext(ctx, `DELETE FROM usage_records WHERE request_id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	_, err := tx.ExecContext(ctx, `DELETE FROM usage_records WHERE `+where, args...)
 	return err
 }
 
@@ -1326,106 +1307,81 @@ func deleteUsageSelectTx(ctx context.Context, tx *sql.Tx, selectSQL string, args
 // DeleteUsageOlderThan 删除 started_ms 早于 cutoffMs 的最旧一批记录（至多
 // limit 条），返回被删 request_id；空切片表示已无可删。
 func (s *Store) DeleteUsageOlderThan(ctx context.Context, cutoffMs int64, limit int) ([]string, error) {
-	if limit <= 0 {
-		limit = retentionDeleteBatchLimit
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
-		}
-	}()
-	ids, err := deleteUsageSelectTx(ctx, tx,
-		`SELECT request_id FROM usage_records WHERE started_ms > 0 AND started_ms < ? ORDER BY started_ms ASC LIMIT ?`,
-		cutoffMs, limit)
-	if err != nil {
-		return nil, err
-	}
-	if len(ids) == 0 {
-		committed = true
-		return nil, tx.Commit()
-	}
-	if err := deleteUsageByIDsTx(ctx, tx, ids); err != nil {
-		return nil, err
-	}
-	committed = true
-	return ids, tx.Commit()
+	return s.deleteUsageOldest(ctx, cutoffMs, limit)
 }
 
 // DeleteUsageOldest 删除全局最旧的一批记录（至多 limit 条），超量清理用。
 func (s *Store) DeleteUsageOldest(ctx context.Context, limit int) ([]string, error) {
+	return s.deleteUsageOldest(ctx, 0, limit)
+}
+
+// deleteUsageOldest 按 started_ms 升序删除一批最旧记录：cutoffMs>0 时仅删
+// 早于该时间戳的行（过期清理），0 表示不限（超量清理）。空切片表示无可删。
+func (s *Store) deleteUsageOldest(ctx context.Context, cutoffMs int64, limit int) ([]string, error) {
 	if limit <= 0 {
 		limit = retentionDeleteBatchLimit
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
+	var ids []string
+	err := s.withTx(ctx, func(tx *sql.Tx) error {
+		query := `SELECT request_id FROM usage_records`
+		args := []any{}
+		if cutoffMs > 0 {
+			query += ` WHERE started_ms > 0 AND started_ms < ?`
+			args = append(args, cutoffMs)
 		}
-	}()
-	ids, err := deleteUsageSelectTx(ctx, tx,
-		`SELECT request_id FROM usage_records ORDER BY started_ms ASC LIMIT ?`, limit)
+		query += ` ORDER BY started_ms ASC LIMIT ?`
+		args = append(args, limit)
+		selected, err := deleteUsageSelectTx(ctx, tx, query, args...)
+		if err != nil {
+			return err
+		}
+		if len(selected) == 0 {
+			return nil
+		}
+		if err := deleteUsageByIDsTx(ctx, tx, selected); err != nil {
+			return err
+		}
+		ids = selected
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if len(ids) == 0 {
-		committed = true
-		return nil, tx.Commit()
-	}
-	if err := deleteUsageByIDsTx(ctx, tx, ids); err != nil {
-		return nil, err
-	}
-	committed = true
-	return ids, tx.Commit()
+	return ids, nil
 }
 
 // retentionBeyondCountBatch 是条数清理单次选择的上限：有界选择避免大表
 // 一次性把数百万 id 读进内存、并在单个事务里持长写锁。
 const retentionBeyondCountBatch = 2000
 
-// DeleteUsageBeyondCount 只保留最新 keep 条，删除超出部分中最旧的一批
-// （单次至多 retentionBeyondCountBatch 条），返回被删 id；空切片表示已收敛。
-// 调用方（usage_retention）循环驱动直至无可删。
 func (s *Store) DeleteUsageBeyondCount(ctx context.Context, keep int64) ([]string, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	var ids []string
+	err := s.withTx(ctx, func(tx *sql.Tx) error {
+		selected, err := deleteUsageSelectTx(ctx, tx,
+			`SELECT request_id FROM usage_records ORDER BY started_ms DESC LIMIT ? OFFSET ?`, retentionBeyondCountBatch, keep)
+		if err != nil {
+			return err
+		}
+		if len(selected) == 0 {
+			return nil
+		}
+		// 事务内按 500 一块删除，避免超长 IN 列表。
+		for start := 0; start < len(selected); start += retentionDeleteBatchLimit {
+			end := start + retentionDeleteBatchLimit
+			if end > len(selected) {
+				end = len(selected)
+			}
+			if err := deleteUsageByIDsTx(ctx, tx, selected[start:end]); err != nil {
+				return err
+			}
+		}
+		ids = selected
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
-		}
-	}()
-	ids, err := deleteUsageSelectTx(ctx, tx,
-		`SELECT request_id FROM usage_records ORDER BY started_ms DESC LIMIT ? OFFSET ?`, retentionBeyondCountBatch, keep)
-	if err != nil {
-		return nil, err
-	}
-	if len(ids) == 0 {
-		committed = true
-		return nil, tx.Commit()
-	}
-	// 事务内按 500 一块删除，避免超长 IN 列表。
-	for start := 0; start < len(ids); start += retentionDeleteBatchLimit {
-		end := start + retentionDeleteBatchLimit
-		if end > len(ids) {
-			end = len(ids)
-		}
-		if err := deleteUsageByIDsTx(ctx, tx, ids[start:end]); err != nil {
-			return nil, err
-		}
-	}
-	committed = true
-	return ids, tx.Commit()
+	return ids, nil
 }
 
 // CountUsageRecords 返回当前日志记录总数。
@@ -1471,14 +1427,13 @@ func (s *Store) UsageRecordIDsExist(ctx context.Context, ids []string) (map[stri
 	if len(ids) == 0 {
 		return result, nil
 	}
-	placeholders := make([]string, len(ids))
+	where := usageInClause("request_id", len(ids))
 	args := make([]interface{}, len(ids))
 	for i, id := range ids {
-		placeholders[i] = "?"
 		args[i] = id
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT request_id FROM usage_records WHERE request_id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+		`SELECT request_id FROM usage_records WHERE `+where, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1596,12 +1551,7 @@ func (s *Store) InsertSystemLog(ctx context.Context, level, message string, fiel
 }
 
 func (s *Store) QuerySystemLogs(ctx context.Context, limit, offset int, level string) (int, []SystemLog, error) {
-	if limit <= 0 || limit > systemLogPageMax {
-		limit = 100
-	}
-	if offset < 0 {
-		offset = 0
-	}
+	limit, offset = clampPage(limit, offset, 100, systemLogPageMax)
 	where := "WHERE 1=1"
 	args := []any{}
 	if level != "" {

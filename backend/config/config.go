@@ -747,6 +747,26 @@ func DefaultUsageLogResolved() UsageLogResolved {
 	}
 }
 
+// clampIntPtr 返回钳为非负的指针副本；nil 透传。
+func clampIntPtr(v *int) *int {
+	if v == nil {
+		return nil
+	}
+	n := *v
+	if n < 0 {
+		n = 0
+	}
+	return &n
+}
+
+// positiveOr 取指针正值；nil/非正返回 def（负数已在 setter 钳为 0，双保险）。
+func positiveOr(p *int, def int) int {
+	if p != nil && *p > 0 {
+		return *p
+	}
+	return def
+}
+
 // GetUsageLogConfig 返回归一化后的日志管理生效值：nil 指针走默认、
 // 显式 0 保留其「关闭」语义、负数钳为 0。旧扁平键仅在显式设置且新块
 // 对应字段未配置时回退（usagePersistMaxRecords 不套用历史 getter 的
@@ -766,15 +786,11 @@ func (c *Config) resolveUsageLogLocked() UsageLogResolved {
 		ExternalizeMedia: cfg.ExternalizeMedia == nil || *cfg.ExternalizeMedia,
 		CleanupInterval:  time.Duration(DefaultUsageCleanupIntervalM) * time.Minute,
 	}
-	if cfg.RetentionDays != nil && *cfg.RetentionDays > 0 {
-		res.RetentionDays = *cfg.RetentionDays
+	res.RetentionDays = positiveOr(cfg.RetentionDays, 0)
+	if mb := positiveOr(cfg.MaxStorageMB, 0); mb > 0 {
+		res.MaxStorageBytes = int64(mb) * 1024 * 1024
 	}
-	if cfg.MaxStorageMB != nil && *cfg.MaxStorageMB > 0 {
-		res.MaxStorageBytes = int64(*cfg.MaxStorageMB) * 1024 * 1024
-	}
-	if cfg.MaxRecords != nil && *cfg.MaxRecords > 0 {
-		res.MaxRecords = *cfg.MaxRecords
-	}
+	res.MaxRecords = positiveOr(cfg.MaxRecords, 0)
 	// 旧扁平键回退（仅显式设置时）。
 	if cfg.PersistEnabled == nil && c.UsagePersistEnabled != nil {
 		res.PersistEnabled = *c.UsagePersistEnabled
@@ -812,36 +828,22 @@ func (c *Config) GetUsageLogRaw() UsageLogConfig {
 func (c *Config) SetUsageLogConfig(patch UsageLogConfig) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	// 局部更新：nil 字段保持现值；数值字段统一经 clampIntPtr 钳为非负
+	//（归一化语义集中在 resolveUsageLogLocked，setter 只做非负化）。
 	if patch.PersistEnabled != nil {
 		c.UsageLog.PersistEnabled = patch.PersistEnabled
 	}
 	if patch.RetentionDays != nil {
-		v := *patch.RetentionDays
-		if v < 0 {
-			v = 0
-		}
-		c.UsageLog.RetentionDays = &v
+		c.UsageLog.RetentionDays = clampIntPtr(patch.RetentionDays)
 	}
 	if patch.MaxStorageMB != nil {
-		v := *patch.MaxStorageMB
-		if v < 0 {
-			v = 0
-		}
-		c.UsageLog.MaxStorageMB = &v
+		c.UsageLog.MaxStorageMB = clampIntPtr(patch.MaxStorageMB)
 	}
 	if patch.MaxRecords != nil {
-		v := *patch.MaxRecords
-		if v < 0 {
-			v = 0
-		}
-		c.UsageLog.MaxRecords = &v
+		c.UsageLog.MaxRecords = clampIntPtr(patch.MaxRecords)
 	}
 	if patch.BodyMaxKB != nil {
-		v := *patch.BodyMaxKB
-		if v < 0 {
-			v = 0
-		}
-		c.UsageLog.BodyMaxKB = &v
+		c.UsageLog.BodyMaxKB = clampIntPtr(patch.BodyMaxKB)
 	}
 	if patch.BodyOnErrorOnly != nil {
 		c.UsageLog.BodyOnErrorOnly = patch.BodyOnErrorOnly
@@ -850,11 +852,7 @@ func (c *Config) SetUsageLogConfig(patch UsageLogConfig) {
 		c.UsageLog.ExternalizeMedia = patch.ExternalizeMedia
 	}
 	if patch.CleanupIntervalMinutes != nil {
-		v := *patch.CleanupIntervalMinutes
-		if v < 0 {
-			v = 0
-		}
-		c.UsageLog.CleanupIntervalMinutes = &v
+		c.UsageLog.CleanupIntervalMinutes = clampIntPtr(patch.CleanupIntervalMinutes)
 	}
 }
 

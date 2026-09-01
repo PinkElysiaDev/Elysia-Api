@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -135,4 +136,16 @@ func (s *Store) SecretIntegrityProbe(ctx context.Context) (hasEncrypted, decrypt
 		return true, true, nil
 	}
 	return false, true, nil
+}
+
+// decryptOrClear 解密存储的密文；解不开（master-key 丢失/更换）时清空该值
+// 并打带行标识的告警——行级容错：不让单行毒化整个列表，行保留供管理端
+// 处置（恢复密钥后重录）。
+func (s *Store) decryptOrClear(kind, id, stored string) string {
+	plain, err := s.codec.decrypt(stored)
+	if err != nil {
+		log.Printf("[secret] %s %s: %v (%s cleared, row kept)", kind, id, err, kind)
+		return ""
+	}
+	return plain
 }

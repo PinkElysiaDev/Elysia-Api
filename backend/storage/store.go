@@ -437,6 +437,23 @@ func (s *Store) GetSetting(ctx context.Context, key string, target any) (bool, e
 	return true, json.Unmarshal([]byte(payload), target)
 }
 
+// scanAPIToken 是 api_tokens 行的统一映射（列表与按名查询共用）：
+// 解密失败时明文清空（行级容错，见 decryptOrClear）。
+func (s *Store) scanAPIToken(row interface{ Scan(dest ...any) error }) (APIToken, error) {
+	var item APIToken
+	var enabled int
+	var allowedGroups, created, updated string
+	if err := row.Scan(&item.Name, &item.Token, &enabled, &allowedGroups, &created, &updated); err != nil {
+		return APIToken{}, err
+	}
+	item.Token = s.decryptOrClear("api token", item.Name, item.Token)
+	item.Enabled = sqlIntToBool(enabled)
+	item.AllowedGroups = decodeStringSlice(allowedGroups)
+	item.CreatedAt = parseTime(created)
+	item.UpdatedAt = parseTime(updated)
+	return item, nil
+}
+
 func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT name, token, enabled, allowed_groups_json, created_at, updated_at FROM api_tokens ORDER BY name`)
 	if err != nil {
@@ -445,24 +462,10 @@ func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
 	defer rows.Close()
 	items := []APIToken{}
 	for rows.Next() {
-		var item APIToken
-		var enabled int
-		var allowedGroups, created, updated string
-		if err := rows.Scan(&item.Name, &item.Token, &enabled, &allowedGroups, &created, &updated); err != nil {
+		item, err := s.scanAPIToken(rows)
+		if err != nil {
 			return nil, err
 		}
-		if plain, err := s.codec.decrypt(item.Token); err == nil {
-			item.Token = plain
-		} else {
-			// 行级容错：解不开的 token 清空明文并告警，保留行供管理端处置
-			//（删除/重录），不再毒化整个令牌列表。
-			log.Printf("[secret] api token %q: %v (plaintext cleared, row kept)", item.Name, err)
-			item.Token = ""
-		}
-		item.Enabled = sqlIntToBool(enabled)
-		item.AllowedGroups = decodeStringSlice(allowedGroups)
-		item.CreatedAt = parseTime(created)
-		item.UpdatedAt = parseTime(updated)
 		items = append(items, item)
 	}
 	return items, rows.Err()
@@ -520,28 +523,14 @@ func (s *Store) DeleteAPIToken(ctx context.Context, name string) error {
 // FindAPITokenByName 按名称查找单个 token（含解密后的明文），
 // 供「留空即不变」编辑时保留原 token 使用。
 func (s *Store) FindAPITokenByName(ctx context.Context, name string) (APIToken, bool, error) {
-	var item APIToken
-	var enabled int
-	var allowedGroups, created, updated string
-	err := s.db.QueryRowContext(ctx, `SELECT name, token, enabled, allowed_groups_json, created_at, updated_at FROM api_tokens WHERE name = ?`, name).
-		Scan(&item.Name, &item.Token, &enabled, &allowedGroups, &created, &updated)
+	item, err := s.scanAPIToken(s.db.QueryRowContext(ctx,
+		`SELECT name, token, enabled, allowed_groups_json, created_at, updated_at FROM api_tokens WHERE name = ?`, name))
 	if errors.Is(err, sql.ErrNoRows) {
 		return APIToken{}, false, nil
 	}
 	if err != nil {
 		return APIToken{}, false, err
 	}
-	if plain, derr := s.codec.decrypt(item.Token); derr == nil {
-		item.Token = plain
-	} else {
-		// 行级容错：解不开时按「明文已不可用」返回空 token，行保留。
-		log.Printf("[secret] api token %q: %v (plaintext cleared, row kept)", name, derr)
-		item.Token = ""
-	}
-	item.Enabled = sqlIntToBool(enabled)
-	item.AllowedGroups = decodeStringSlice(allowedGroups)
-	item.CreatedAt = parseTime(created)
-	item.UpdatedAt = parseTime(updated)
 	return item, true, nil
 }
 
@@ -581,19 +570,11 @@ func (s *Store) ListSources(ctx context.Context) ([]ModelSource, error) {
 		item.KeyStrategy = SourceKeyStrategy(strategy)
 		item.CreatedAt = parseTime(created)
 		item.UpdatedAt = parseTime(updated)
-		if plain, err := s.codec.decrypt(item.APIKey); err == nil {
-			item.APIKey = plain
-		} else {
-			// 行级容错：解不开的源密钥清空并告警，保留行让管理端可见可处置。
-			log.Printf("[secret] source %q: %v (api key cleared, row kept)", item.ID, err)
-			item.APIKey = ""
-		}
+		item.APIKey = s.decryptOrClear("source api_key", item.ID, item.APIKey)
 		_ = json.Unmarshal([]byte(manual), &item.ManualModels)
 		if storedKeys != "" {
-			if plain, err := s.codec.decrypt(storedKeys); err == nil {
+			if plain := s.decryptOrClear("source api_keys", item.ID, storedKeys); plain != "" {
 				_ = json.Unmarshal([]byte(plain), &item.APIKeys)
-			} else {
-				log.Printf("[secret] source %q: %v (key set cleared, row kept)", item.ID, err)
 			}
 		}
 		items = append(items, item)
