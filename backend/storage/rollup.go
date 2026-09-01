@@ -281,11 +281,21 @@ func (s *Store) auditRollupHours(ctx context.Context) (int, error) {
 	}
 
 	// 找出计数不一致的小时，合并成连续区间后按块重建。
+	// 只修「漏计」方向（rollup < raw：写入侧丢增量）；rollup > raw 说明该小时
+	// 的 raw 行被留存清理（usage_retention）或手工删除过——raw 已不是完整
+	// 事实，从 raw 重建只会把统计削掉，跳过即可（rollup 侧保留原计数）。
 	var mismatches []int64
+	retentionDrift := 0
 	for hourMs, count := range rawByHour {
-		if rollupByHour[hourMs] != count {
+		rollupCount := rollupByHour[hourMs]
+		if rollupCount < count {
 			mismatches = append(mismatches, hourMs)
+		} else if rollupCount > count {
+			retentionDrift++
 		}
+	}
+	if retentionDrift > 0 {
+		log.Printf("rollup audit: skipped %d hour(s) where rollup count exceeds raw (retention-cleaned), keeping rollup counts", retentionDrift)
 	}
 	if len(mismatches) == 0 {
 		return 0, nil

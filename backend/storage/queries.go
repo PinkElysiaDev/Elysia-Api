@@ -1226,12 +1226,20 @@ func (s *Store) GetUsageRecordJSON(ctx context.Context, id string) ([]byte, bool
 	return []byte(payload), true, nil
 }
 
+// ErrRollupBackfillInProgress 表示小时聚合后台回填正在运行，ClearUsage 抢
+// 互斥锁失败。调用方（resetUsage）持有 usage writer/persist 锁期间不能排队
+// 等待——大库首次回填可能持锁数分钟，排队会把所有请求的 usage 落库一并卡住。
+var ErrRollupBackfillInProgress = errors.New("rollup backfill in progress")
+
 // ClearUsage 清空全部 usage 数据。rollup 表与状态一并重置（through=until=now、
 // ready 保持），后续记录继续由写入侧增量累积，无需重跑回填。
 func (s *Store) ClearUsage(ctx context.Context) error {
 	// 与后台回填互斥：ClearUsage 重置水位期间若回填循环在跑，其随后的
 	// setRollupStateInt 会把水位写回旧值（状态卫生问题，数据本身无损）。
-	s.rollupMu.Lock()
+	// 抢不到锁立即失败（见 ErrRollupBackfillInProgress），绝不排队阻塞。
+	if !s.rollupMu.TryLock() {
+		return ErrRollupBackfillInProgress
+	}
 	defer s.rollupMu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1365,8 +1373,13 @@ func (s *Store) DeleteUsageOldest(ctx context.Context, limit int) ([]string, err
 	return ids, tx.Commit()
 }
 
-// DeleteUsageBeyondCount 只保留最新 keep 条，删除其余（分批由调用方循环驱动，
-// 本方法一次至多删 retentionDeleteBatchLimit*4 条），返回被删 id。
+// retentionBeyondCountBatch 是条数清理单次选择的上限：有界选择避免大表
+// 一次性把数百万 id 读进内存、并在单个事务里持长写锁。
+const retentionBeyondCountBatch = 2000
+
+// DeleteUsageBeyondCount 只保留最新 keep 条，删除超出部分中最旧的一批
+// （单次至多 retentionBeyondCountBatch 条），返回被删 id；空切片表示已收敛。
+// 调用方（usage_retention）循环驱动直至无可删。
 func (s *Store) DeleteUsageBeyondCount(ctx context.Context, keep int64) ([]string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1379,7 +1392,7 @@ func (s *Store) DeleteUsageBeyondCount(ctx context.Context, keep int64) ([]strin
 		}
 	}()
 	ids, err := deleteUsageSelectTx(ctx, tx,
-		`SELECT request_id FROM usage_records ORDER BY started_ms DESC LIMIT -1 OFFSET ?`, keep)
+		`SELECT request_id FROM usage_records ORDER BY started_ms DESC LIMIT ? OFFSET ?`, retentionBeyondCountBatch, keep)
 	if err != nil {
 		return nil, err
 	}
@@ -1387,8 +1400,7 @@ func (s *Store) DeleteUsageBeyondCount(ctx context.Context, keep int64) ([]strin
 		committed = true
 		return nil, tx.Commit()
 	}
-	// OFFSET 全量选择可能很大：一次事务内分块删除，避免超长 IN 列表。
-	var deleted []string
+	// 事务内按 500 一块删除，避免超长 IN 列表。
 	for start := 0; start < len(ids); start += retentionDeleteBatchLimit {
 		end := start + retentionDeleteBatchLimit
 		if end > len(ids) {
@@ -1397,10 +1409,9 @@ func (s *Store) DeleteUsageBeyondCount(ctx context.Context, keep int64) ([]strin
 		if err := deleteUsageByIDsTx(ctx, tx, ids[start:end]); err != nil {
 			return nil, err
 		}
-		deleted = append(deleted, ids[start:end]...)
 	}
 	committed = true
-	return deleted, tx.Commit()
+	return ids, tx.Commit()
 }
 
 // CountUsageRecords 返回当前日志记录总数。

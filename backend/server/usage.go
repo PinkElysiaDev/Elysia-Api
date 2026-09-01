@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
 
@@ -734,6 +736,13 @@ func (s *Server) resetUsage(c *gin.Context) {
 		s.usagePersistMu.Unlock()
 		if w != nil {
 			w.mu.Unlock()
+		}
+		// 回填进行中：绝不在此排队等锁（调用方已持有 writer/persist 锁，
+		// 排队会卡住全部请求的 usage 落库），转 409 让用户稍后重试。
+		if errors.Is(err, storage.ErrRollupBackfillInProgress) {
+			respondFail(c, http.StatusConflict, "backfill_in_progress",
+				"rollup backfill is running; retry after it completes")
+			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
