@@ -2,6 +2,8 @@ package config
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -96,5 +98,64 @@ func TestUsageLogJSONRoundTripOmitsZeroBlock(t *testing.T) {
 	out, _ = json.Marshal(cfg)
 	if string(out) == "{}" {
 		t.Fatal("explicit zero retentionDays must survive marshaling")
+	}
+}
+
+// 回归：SetHost/SetPort 后 Save() 必须把新值落盘（此前设置页的 host/port
+// 从未被应用，保存等于白保存）；modelCatalog 块同样要随 Save 持久化。
+func TestSavePersistsHostPortAndModelCatalog(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"host":"127.0.0.1","port":8765}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	cfg.SetHost("0.0.0.0")
+	cfg.SetPort(9000)
+	interval := 60
+	cfg.SetModelCatalogSyncInterval(interval)
+	if cfg.Host != "0.0.0.0" || cfg.Server.Host != "0.0.0.0" || cfg.Port != 9000 || cfg.Server.Port != 9000 {
+		t.Fatalf("SetHost/SetPort must sync nested Server fields: %+v", cfg.Server)
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	raw, _ := os.ReadFile(path)
+	var persisted map[string]any
+	if err := json.Unmarshal(raw, &persisted); err != nil {
+		t.Fatal(err)
+	}
+	if persisted["host"] != "0.0.0.0" || persisted["port"] != float64(9000) {
+		t.Fatalf("host/port must persist: %s", raw)
+	}
+	catalog, ok := persisted["modelCatalog"].(map[string]any)
+	if !ok || catalog["syncIntervalMinutes"] != float64(60) {
+		t.Fatalf("modelCatalog.syncIntervalMinutes must persist: %s", raw)
+	}
+
+	// Reload 后新值生效（含 ModelCatalog 拷贝——此前 Reload 漏拷该字段）。
+	cfg2, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg2.GetModelCatalog(); got.SyncIntervalMinutes == nil || *got.SyncIntervalMinutes != 60 {
+		t.Fatalf("reloaded catalog interval = %+v, want 60", got.SyncIntervalMinutes)
+	}
+	if err := os.WriteFile(path, []byte(`{"host":"127.0.0.1","modelCatalog":{"syncIntervalMinutes":30}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg2.Reload(); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if got := cfg2.GetModelCatalog(); got.SyncIntervalMinutes == nil || *got.SyncIntervalMinutes != 30 {
+		t.Fatalf("Reload must refresh ModelCatalog, got %+v", got)
+	}
+	if cfg2.Host != "127.0.0.1" {
+		t.Fatalf("Reload must refresh host, got %q", cfg2.Host)
 	}
 }

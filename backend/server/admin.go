@@ -149,6 +149,14 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		respondFail(c, 400, "invalid_http_timeout", "httpTimeout must not be negative")
 		return
 	}
+	if payload.Port != 0 && (payload.Port < 1 || payload.Port > 65535) {
+		respondFail(c, 400, "invalid_port", "port must be between 1 and 65535")
+		return
+	}
+	if payload.Host != "" && strings.TrimSpace(payload.Host) == "" {
+		respondFail(c, 400, "invalid_host", "host must not be blank")
+		return
+	}
 	if payload.PanelAccessToken != nil && strings.TrimSpace(*payload.PanelAccessToken) == "" {
 		// 空面板令牌会让 IsValidPanelAccessToken 对一切请求返回 false，
 		// 直接锁死整个管理面板，只能去服务器手改 config.json 恢复。
@@ -218,6 +226,15 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 	if payload.ModelCatalog != nil && payload.ModelCatalog.SyncIntervalMinutes != nil {
 		// 周期检查是动态的，写入配置即生效（0 = 默认 24h），无需重启。
 		s.config.SetModelCatalogSyncInterval(*payload.ModelCatalog.SyncIntervalMinutes)
+	}
+	// host/port：此前只用于计算 restartRequired 而从未应用——设置页保存后
+	// 表单闪回旧值、重启后监听也没变。现在即时应用到配置并随 Save() 落盘；
+	// 监听套接字仍需重启切换（restartRequired 语义不变）。
+	if payload.Host != "" && payload.Host != server.Host {
+		s.config.SetHost(payload.Host)
+	}
+	if payload.Port != 0 && payload.Port != server.Port {
+		s.config.SetPort(payload.Port)
 	}
 	if requestsRestart {
 		s.markRestartRequired()

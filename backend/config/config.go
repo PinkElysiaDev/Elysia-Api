@@ -311,6 +311,13 @@ func (c *Config) Save() error {
 	} else {
 		delete(raw, "usageLog")
 	}
+	// modelCatalog 块：管理页可改 syncIntervalMinutes（url/proxy/enabled 走
+	// 手编 config.json），必须随 Save 落盘，否则重启后静默回退默认值。
+	if encoded, err := json.Marshal(c.ModelCatalog); err == nil && string(encoded) != "{}" {
+		raw["modelCatalog"] = c.ModelCatalog
+	} else {
+		delete(raw, "modelCatalog")
+	}
 	if len(c.CustomProtocols) > 0 {
 		protocols := make([]json.RawMessage, len(c.CustomProtocols))
 		for index, protocol := range c.CustomProtocols {
@@ -386,6 +393,24 @@ func (c *Config) SetEnablePprof(enabled bool) {
 	c.EnablePprof = enabled
 }
 
+// SetHost/SetPort 更新监听地址与端口（同步嵌套 Server 字段）。监听套接字
+// 在进程启动时绑定，改动需重启才真正换监听；但配置即时落盘（Save 由调用方
+// 触发），重启后即用新值——此前设置页的 host/port 只用来计算 restartRequired
+// 从未应用，保存等于白保存。
+func (c *Config) SetHost(host string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Host = host
+	c.Server.Host = host
+}
+
+func (c *Config) SetPort(port int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Port = port
+	c.Server.Port = port
+}
+
 func (c *Config) GetEnablePprof() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -420,6 +445,9 @@ func (c *Config) Reload() error {
 
 	newCfg.path = c.path
 	newCfg.applyBootstrapDefaults(c.path)
+	// 与 Load 同序：环境变量覆盖最后应用。否则热重载会让 ELYSIA_API_HOST
+	// 部署静默失效，且随后的 Save 会把文件值固化覆盖部署配置。
+	newCfg.applyEnvironmentOverrides()
 
 	c.mu.Lock()
 	c.Host = newCfg.Host
@@ -437,6 +465,10 @@ func (c *Config) Reload() error {
 	c.Responses = newCfg.Responses
 	c.Usage = newCfg.Usage
 	c.UsageLog = newCfg.UsageLog
+	// ModelCatalog 必须随热重载更新：目录子系统按「周期动态读取配置」设计
+	//（runPeriodic 每轮重读 getter），漏拷会让 url/proxy/enabled/周期在
+	// 重载后维持旧值直到进程重启。
+	c.ModelCatalog = newCfg.ModelCatalog
 	c.HTTPTimeout = newCfg.HTTPTimeout
 	c.DebugMode = newCfg.DebugMode
 	c.VerboseLog = newCfg.VerboseLog
