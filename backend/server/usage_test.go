@@ -147,9 +147,8 @@ func TestGeminiStreamUsageMetadata(t *testing.T) {
 func TestConvertedStreamWriterDoesNotRecordPlaceholderUsage(t *testing.T) {
 	record := &usageRecord{}
 	writer := &observingStreamWriter{
-		inner:        nopStreamWriter{},
-		record:       record,
-		observeUsage: false,
+		inner:  nopStreamWriter{},
+		record: record,
 	}
 
 	_, err := writer.WriteString("data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n")
@@ -177,6 +176,7 @@ func TestUpstreamObserverRecordsRawUsage(t *testing.T) {
 	if record.Usage.InputTokens == nil || *record.Usage.InputTokens != 12 || record.Usage.OutputTokens == nil || *record.Usage.OutputTokens != 9 || record.Usage.TotalTokens == nil || *record.Usage.TotalTokens != 21 {
 		t.Fatalf("expected upstream raw stream usage, got %+v", record.Usage)
 	}
+	record.materializeStreamEvents()
 	if record.ProviderResponse.Content == "" {
 		t.Fatal("expected upstream raw stream sample to be recorded")
 	}

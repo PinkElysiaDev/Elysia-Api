@@ -119,6 +119,9 @@ type usageRecord struct {
 	bodyOpts usageBodyOptions `json:"-"`
 	// assets 收集四段 body 中外置的 base64 媒体（捕获期登记、落库期写盘）。
 	assets assetSink `json:"-"`
+	// pendingStreamEvents 是流式请求捕获的上游事件（环形保留最后
+	// StreamEventsCacheMax 条），recordUsage 物化为 ProviderResponse。
+	pendingStreamEvents []json.RawMessage `json:"-"`
 }
 
 // usageBodyOptions 是单条请求生效的日志内容策略。initialized=false 表示
@@ -224,6 +227,32 @@ func truncateUsageBody(content string, maxBytes int) usageBody {
 		return usageBody{Content: content}
 	}
 	return usageBody{Content: content[:maxBytes], Truncated: true}
+}
+
+// appendStreamEvent 登记一条上游流事件：环形保留最后 StreamEventsCacheMax 条
+// （终态事件——最终 usage、finish 原因——在流尾部，保尾不保头），非法 JSON
+// 直接丢弃（坏片段混进数组会让整个事件数组的序列化永远失败）。
+// 序列化推迟到 recordUsage 一次性物化：旧实现每事件重编组整个数组并完整
+// 清洗，CPU 随事件数平方增长。
+func (r *usageRecord) appendStreamEvent(payload string) {
+	if !json.Valid([]byte(payload)) {
+		return
+	}
+	if len(r.pendingStreamEvents) >= StreamEventsCacheMax {
+		r.pendingStreamEvents = append(r.pendingStreamEvents[:0], r.pendingStreamEvents[1:]...)
+	}
+	r.pendingStreamEvents = append(r.pendingStreamEvents, json.RawMessage(payload))
+}
+
+// materializeStreamEvents 把捕获的流事件物化为 ProviderResponse（该记录
+// 未显式赋值过时）。非流式路径不受影响。
+func (r *usageRecord) materializeStreamEvents() {
+	if r.ProviderResponse.Content != "" || len(r.pendingStreamEvents) == 0 {
+		return
+	}
+	if eventBytes, err := json.Marshal(r.pendingStreamEvents); err == nil {
+		r.ProviderResponse = r.sanitizeBody(eventBytes)
+	}
 }
 
 func redactJSON(value interface{}) {
@@ -693,6 +722,8 @@ func (s *Server) recordUsage(record *usageRecord) {
 	if record.downstream != nil && record.DownstreamResponse.Content == "" {
 		record.DownstreamResponse = record.finalizeDownstreamBody(record.downstream.downstreamBody())
 	}
+	// 流式路径的 ProviderResponse 在此一次性物化（捕获期只登记事件）。
+	record.materializeStreamEvents()
 	// 日志持久化总开关（usageLog.persistEnabled，默认 true）：关闭后完全不落库。
 	if !s.usageLogConfig().PersistEnabled {
 		return
@@ -897,13 +928,16 @@ func parsePositiveInt(raw string, fallback int) int {
 	return value
 }
 
+// observingStreamWriter 是下游观察者：包裹写回客户端的流式 writer，仅负责
+// 首字节计时与输出文本累积（本地 token 估算用）。事件捕获与 usage 提取由
+// 上游观察者（upstreamUsageObservingBody）承担——若两者都写 ProviderResponse，
+// transform 模式下最终值取决于读写交错且记录的是下游渲染格式而非上游原文。
 type observingStreamWriter struct {
 	inner        relay.StreamResponseWriter
 	record       *usageRecord
 	startTime    time.Time
-	events       []json.RawMessage
 	responseText strings.Builder
-	observeUsage bool
+	lines        sseLineSplitter
 }
 
 func (w *observingStreamWriter) Write(data []byte) (int, error) {
@@ -917,6 +951,8 @@ func (w *observingStreamWriter) WriteString(data string) (int, error) {
 }
 
 func (w *observingStreamWriter) Flush() error {
+	// SSE 以空行分帧，Flush 时行必完整；冲刷残余缓冲防止最后一行丢失。
+	w.lines.flushRemainder()
 	return w.inner.Flush()
 }
 
@@ -927,28 +963,51 @@ func (w *observingStreamWriter) observe(data []byte) {
 	if w.record.FirstByteMs == 0 && len(strings.TrimSpace(string(data))) > 0 {
 		w.record.FirstByteMs = time.Since(w.startTime).Milliseconds()
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "data:") {
-			continue
-		}
-		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if payload == "" || payload == "[DONE]" {
-			continue
-		}
-		w.responseText.WriteString(extractOutputTextFromStreamPayload(payload))
-		if !w.observeUsage {
-			continue
-		}
-		if len(w.events) < 50 {
-			w.events = append(w.events, json.RawMessage(payload))
-			if eventBytes, err := json.Marshal(w.events); err == nil {
-				w.record.ProviderResponse = w.record.sanitizeBody(eventBytes)
-			}
-		}
-		result := extractProviderUsageFromStreamEvent("", relay.FormatResponses, payload)
-		applyProviderUsageToRecord(w.record, result)
+	// 行缓冲：data: 载荷可能跨多次 Write 到达，按单次调用切行会把半截 JSON
+	// 当完整事件处理（详见 sseLineSplitter 注释）。
+	w.lines.onLine = w.observeLine
+	w.lines.feed(data)
+}
+
+func (w *observingStreamWriter) observeLine(line string) {
+	if !strings.HasPrefix(line, "data:") {
+		return
 	}
+	payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+	if payload == "" || payload == "[DONE]" {
+		return
+	}
+	w.responseText.WriteString(extractOutputTextFromStreamPayload(payload))
+}
+
+// sseLineSplitter 缓冲跨 Read/Write 到达的字节，按完整行回调 onLine。
+// 观察者逐行解析 SSE，若直接对每次到达的字节片段 Split("\n")，一个跨两次
+// Write 的 data: 载荷会被当成两条（半截）事件处理——坏 JSON 混进事件数组
+// 后，json.Marshal 对内嵌 RawMessage 的校验会让之后的所有序列化全部失败。
+type sseLineSplitter struct {
+	buffer []byte
+	onLine func(line string)
+}
+
+func (s *sseLineSplitter) feed(data []byte) {
+	s.buffer = append(s.buffer, data...)
+	for {
+		idx := bytes.IndexByte(s.buffer, '\n')
+		if idx < 0 {
+			return
+		}
+		line := strings.TrimSpace(string(s.buffer[:idx]))
+		s.buffer = s.buffer[idx+1:]
+		s.onLine(line)
+	}
+}
+
+func (s *sseLineSplitter) flushRemainder() {
+	if line := strings.TrimSpace(string(s.buffer)); line != "" {
+		s.buffer = nil
+		s.onLine(line)
+	}
+	s.buffer = nil
 }
 
 type upstreamUsageObservingBody struct {
@@ -956,8 +1015,7 @@ type upstreamUsageObservingBody struct {
 	record   *usageRecord
 	platform relay.Platform
 	format   relay.FormatType
-	buffer   []byte
-	events   []json.RawMessage
+	lines    sseLineSplitter
 }
 
 func observeUpstreamUsage(resp *http.Response, record *usageRecord, platform relay.Platform, formats ...relay.FormatType) {
@@ -980,26 +1038,16 @@ func (b *upstreamUsageObservingBody) Read(p []byte) (int, error) {
 }
 
 func (b *upstreamUsageObservingBody) Close() error {
-	if line := strings.TrimSpace(string(b.buffer)); line != "" {
-		b.observeLine(line)
-		b.buffer = nil
-	}
+	b.lines.flushRemainder()
 	return b.inner.Close()
 }
 
 func (b *upstreamUsageObservingBody) observe(data []byte) {
-	b.buffer = append(b.buffer, data...)
-	for {
-		idx := bytes.IndexByte(b.buffer, '\n')
-		if idx < 0 {
-			return
-		}
-		line := strings.TrimSpace(string(b.buffer[:idx]))
-		b.buffer = b.buffer[idx+1:]
-		b.observeLine(line)
-	}
+	b.lines.onLine = b.observeLine
+	b.lines.feed(data)
 }
 
+// observeLine 是 ProviderResponse 流事件与 usage 增量的唯一来源（上游线格式）。
 func (b *upstreamUsageObservingBody) observeLine(line string) {
 	if !strings.HasPrefix(line, "data:") {
 		return
@@ -1008,12 +1056,7 @@ func (b *upstreamUsageObservingBody) observeLine(line string) {
 	if payload == "" || payload == "[DONE]" {
 		return
 	}
-	if len(b.events) < 50 {
-		b.events = append(b.events, json.RawMessage(payload))
-		if eventBytes, err := json.Marshal(b.events); err == nil {
-			b.record.ProviderResponse = b.record.sanitizeBody(eventBytes)
-		}
-	}
+	b.record.appendStreamEvent(payload)
 	result := extractProviderUsageFromStreamEvent(b.platform, b.format, payload)
 	applyProviderUsageToRecord(b.record, result)
 }

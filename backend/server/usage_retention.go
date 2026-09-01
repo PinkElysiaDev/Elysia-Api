@@ -167,15 +167,18 @@ func (r *usageRetention) runOnceInner() {
 	// 1. 过期清理。
 	if cfg.RetentionDays > 0 {
 		cutoff := time.Now().AddDate(0, 0, -cfg.RetentionDays).UnixMilli()
-		n, ids, err := r.deleteInBatches(ctx, func() ([]string, error) {
+		err := r.deleteInBatches(ctx, func() ([]string, error) {
 			return s.store.DeleteUsageOlderThan(ctx, cutoff, retentionBatchSize)
+		}, func(ids []string) {
+			// 每批即清资产目录：不把全量被删 id 累积在内存里——大库过期清理
+			// 可达百万行，累积的 id 切片本身就要几十 MB。
+			stats.DeletedByTTL += len(ids)
+			stats.AssetsRemoved += removeUsageAssetDirs(assetsRoot, ids)
+			totalDeleted += len(ids)
 		})
 		if err != nil {
 			stats.LastError = "ttl: " + err.Error()
 		}
-		stats.DeletedByTTL = n
-		stats.AssetsRemoved += removeUsageAssetDirs(assetsRoot, ids)
-		totalDeleted += n
 	}
 
 	// 2. 条数清理（单批有界，循环驱动直至收敛到上限内）。
@@ -186,17 +189,15 @@ func (r *usageRetention) runOnceInner() {
 				stats.LastError = "count: " + err.Error()
 			}
 		} else if count > int64(cfg.MaxRecords) {
-			n, ids, err := r.deleteInBatches(ctx, func() ([]string, error) {
+			err := r.deleteInBatches(ctx, func() ([]string, error) {
 				return s.store.DeleteUsageBeyondCount(ctx, int64(cfg.MaxRecords))
-			})
-			if err != nil {
-				if stats.LastError == "" {
-					stats.LastError = "records: " + err.Error()
-				}
-			} else {
-				stats.DeletedByRecords = n
+			}, func(ids []string) {
+				stats.DeletedByRecords += len(ids)
 				stats.AssetsRemoved += removeUsageAssetDirs(assetsRoot, ids)
-				totalDeleted += n
+				totalDeleted += len(ids)
+			})
+			if err != nil && stats.LastError == "" {
+				stats.LastError = "records: " + err.Error()
 			}
 		}
 	}
@@ -233,20 +234,18 @@ func (r *usageRetention) runOnceInner() {
 	}
 }
 
-// deleteInBatches 循环调用批次删除直至无可删行，返回（总删除数, 全部被删 id）。
-func (r *usageRetention) deleteInBatches(ctx context.Context, batch func() ([]string, error)) (int, []string, error) {
-	total := 0
-	var all []string
+// deleteInBatches 循环调用批次删除直至无可删行；每批结果交 onBatch 处理
+// （计数/资产目录清理），不累积全量 id——百万行级清理时累积切片本身就是负担。
+func (r *usageRetention) deleteInBatches(ctx context.Context, batch func() ([]string, error), onBatch func([]string)) error {
 	for {
 		ids, err := batch()
 		if err != nil {
-			return total, all, err
+			return err
 		}
 		if len(ids) == 0 {
-			return total, all, nil
+			return nil
 		}
-		total += len(ids)
-		all = append(all, ids...)
+		onBatch(ids)
 	}
 }
 

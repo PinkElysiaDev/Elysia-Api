@@ -28,4 +28,5 @@ const (
 	UsageLogsDefaultPageSize = 50
 	UsageLogsMaxPageSize     = 500
 	StreamEventsCacheMax     = 50
+	RetryEventsCacheMax      = 50
 )

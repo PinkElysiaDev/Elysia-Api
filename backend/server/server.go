@@ -780,8 +780,9 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		record.ErrorKind = ErrorKindUpstream
 		record.EndedAt = time.Now()
 		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
+		// 先写响应再落记录：错误体进下游捕获器后，第四段才有内容。
 		c.JSON(http.StatusBadGateway, gin.H{"error": firstNonEmpty(lastErr, "all upstream attempts failed")})
+		s.recordUsage(record)
 	}
 }
 
@@ -1033,10 +1034,9 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 	}
 
 	writer := &observingStreamWriter{
-		inner:        &ginStreamWriter{writer: c.Writer, flusher: flusher},
-		record:       record,
-		startTime:    startTime,
-		observeUsage: false,
+		inner:     &ginStreamWriter{writer: c.Writer, flusher: flusher},
+		record:    record,
+		startTime: startTime,
 	}
 
 	// forwardErr 收集"上游连接成功、SSE 已开始后"的流转发/转换错误。

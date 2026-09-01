@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -297,7 +298,9 @@ func siblingMediaHint(parent map[string]interface{}) (string, bool) {
 }
 
 // fingerprint 生成原始字符串的轻量指纹（长度 + 首尾片段），供 memo 命中。
-// 仅用于同一请求内的重复清洗去重，碰撞只影响占位符复用，不影响正确性。
+// 长度必须参与：只比首尾两段时，同生成器的两张图（头部/尾部结构相同、
+// 中段不同）会撞指纹，后者的占位符会指向前者——是内容替换而非良性复用。
+// 加入长度后碰撞概率可忽略；仍限定同一请求内使用。
 func fingerprint(s string) string {
 	const seg = 48
 	if len(s) <= seg*2 {
@@ -305,6 +308,8 @@ func fingerprint(s string) string {
 	}
 	var b strings.Builder
 	b.Grow(seg*2 + 12)
+	b.WriteString(strconv.Itoa(len(s)))
+	b.WriteByte('|')
 	b.WriteString(s[:seg])
 	b.WriteByte('|')
 	b.WriteString(s[len(s)-seg:])

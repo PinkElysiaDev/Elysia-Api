@@ -266,8 +266,9 @@ func (s *Server) responses(c *gin.Context) {
 		record.ErrorKind = ErrorKindUpstream
 		record.EndedAt = time.Now()
 		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
+		// 先写响应再落记录：错误体进下游捕获器后，第四段才有内容。
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": firstNonEmpty(lastErr, "all upstream attempts failed"), "type": "api_error"}})
+		s.recordUsage(record)
 	}
 }
 
@@ -493,10 +494,9 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 	}
 
 	writer := &observingStreamWriter{
-		inner:        &ginStreamWriter{writer: c.Writer, flusher: flusher},
-		record:       record,
-		startTime:    startTime,
-		observeUsage: true,
+		inner:     &ginStreamWriter{writer: c.Writer, flusher: flusher},
+		record:    record,
+		startTime: startTime,
 	}
 
 	var streamErr error

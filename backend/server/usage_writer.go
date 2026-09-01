@@ -125,6 +125,7 @@ func (s *Server) enqueueUsageRecord(record *usageRecord) bool {
 	copied.RetryEvents = cloneSlice(record.RetryEvents)
 	copied.ConversionChain = cloneSlice(record.ConversionChain)
 	copied.RequestWarnings = cloneSlice(record.RequestWarnings)
+	copied.pendingStreamEvents = cloneSlice(record.pendingStreamEvents)
 	// 资产深拷贝：解码后的媒体字节与请求 goroutine 断开别名，
 	// writer 落盘时请求方早已返回。
 	copied.assets = record.assets.clone()

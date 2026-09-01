@@ -1447,19 +1447,17 @@ func (st UsageDBStats) LogicalBytes() int64 {
 	return (st.PageCount - st.FreePages) * st.PageSize
 }
 
-// UsageDBPageStats 读取 page_count/page_size/freelist_count。
+// UsageDBPageStats 单条语句原子读取 page_count/page_size/freelist_count：
+// 三次独立 PRAGMA 之间夹着并发写入时，(page_count - freelist_count) 可能
+// 基于两个不同快照计算（理论上可为负），超量清理据此会误判收敛。
 func (s *Store) UsageDBPageStats(ctx context.Context) (UsageDBStats, error) {
 	var st UsageDBStats
-	if err := s.db.QueryRowContext(ctx, `PRAGMA page_count`).Scan(&st.PageCount); err != nil {
-		return st, err
-	}
-	if err := s.db.QueryRowContext(ctx, `PRAGMA page_size`).Scan(&st.PageSize); err != nil {
-		return st, err
-	}
-	if err := s.db.QueryRowContext(ctx, `PRAGMA freelist_count`).Scan(&st.FreePages); err != nil {
-		return st, err
-	}
-	return st, nil
+	err := s.db.QueryRowContext(ctx,
+		`SELECT (SELECT page_count FROM pragma_page_count),
+			(SELECT page_size FROM pragma_page_size),
+			(SELECT freelist_count FROM pragma_freelist_count)`).
+		Scan(&st.PageCount, &st.PageSize, &st.FreePages)
+	return st, err
 }
 
 // UsageRecordIDsExist 批量判断 request_id 是否仍存在于日志表（孤儿资产清扫用）。

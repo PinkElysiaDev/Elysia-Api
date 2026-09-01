@@ -13,15 +13,16 @@ func (s *Server) failRequest(c *gin.Context, record *usageRecord, startTime time
 }
 
 // failRequestKind 是 failRequest 的带归类版本：kind 填 ErrorKind* 常量
-// （conversion/upstream），空串表示未归类。
+// （conversion/upstream），空串表示未归类。先写响应再落记录——错误体要先进
+// 下游捕获器，记录里的第四段「返回下游」才有内容。
 func (s *Server) failRequestKind(c *gin.Context, record *usageRecord, startTime time.Time, statusCode int, kind, errMsg string) {
 	record.StatusCode = statusCode
 	record.Error = errMsg
 	record.ErrorKind = kind
 	record.EndedAt = time.Now()
 	record.DurationMs = time.Since(startTime).Milliseconds()
-	s.recordUsage(record)
 	c.JSON(statusCode, gin.H{"error": errMsg})
+	s.recordUsage(record)
 }
 
 // failRequestTyped records a failed request and sends a typed error JSON response
@@ -38,6 +39,6 @@ func (s *Server) failRequestTypedKind(c *gin.Context, record *usageRecord, start
 	record.ErrorKind = kind
 	record.EndedAt = time.Now()
 	record.DurationMs = time.Since(startTime).Milliseconds()
-	s.recordUsage(record)
 	c.JSON(statusCode, gin.H{"error": gin.H{"message": errMsg, "type": errType}})
+	s.recordUsage(record)
 }
