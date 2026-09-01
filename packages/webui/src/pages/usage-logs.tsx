@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
-  ChevronLeft,
   ChevronRight,
   Download,
   FileText,
@@ -17,6 +16,7 @@ import { RoleWatermark } from '@/components/role-watermark'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { PaginationBar } from '@/components/pagination'
 import { Seg } from '@/components/ui/seg'
 import {
   Sheet,
@@ -102,7 +102,7 @@ export function UsageLogsPage() {
   const { data, isLoading, error, mutate } = useUsageLogs(params)
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-
+  // total 收缩（筛选变严/日志被清理）后把超界页码收敛回末页。
   useEffect(() => {
     setPage((p) => Math.min(p, totalPages - 1))
   }, [totalPages])
@@ -341,29 +341,7 @@ export function UsageLogsPage() {
             </div>
 
             {/* 分页栏 */}
-            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pt-3 text-xs text-muted-foreground border-t border-border/40">
-              <span className="tnum font-mono">
-                共 <b className="font-semibold text-foreground">{formatNumber(total)}</b> 条记录 · 第 {page + 1}/{totalPages} 页
-              </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page === 0}
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" /> 上一页
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages - 1}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  下一页 <ChevronRight className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
+            <PaginationBar total={total} page={page} totalPages={totalPages} onNavigate={setPage} />
           </div>
         )}
       </AsyncState>

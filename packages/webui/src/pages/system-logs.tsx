@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, RefreshCw, Terminal } from 'lucide-react'
+import { RefreshCw, Terminal } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
+import { TonePill } from '@/components/badges'
+import { PaginationBar } from '@/components/pagination'
 import { RoleWatermark } from '@/components/role-watermark'
 import { Button } from '@/components/ui/button'
 import { Seg } from '@/components/ui/seg'
@@ -9,7 +11,7 @@ import { Sheet, SheetBody, SheetContent, SheetHeader, SheetSectionTitle, SheetTi
 import { AsyncState } from '@/components/ui/states'
 import { useSystemLogs } from '@/lib/hooks'
 import { colorize } from '@/lib/json-highlight'
-import { cn, formatDateTime, formatNumber, tryParseJSON } from '@/lib/utils'
+import { cn, formatDateTime, tryParseJSON } from '@/lib/utils'
 
 const PAGE_SIZE = 50
 
@@ -25,24 +27,15 @@ const LEVEL_STYLE: Record<string, { color: string }> = {
 function LevelPill({ level }: { level: string }) {
   const style = LEVEL_STYLE[level] ?? LEVEL_STYLE.debug
   return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-[5px] border px-[7px] py-0.5 font-mono text-2xs font-medium uppercase',
-      )}
-      style={{
-        color: style.color,
-        borderColor: `color-mix(in srgb, ${style.color} 28%, transparent)`,
-        background: `color-mix(in srgb, ${style.color} 9%, transparent)`,
-      }}
-    >
+    <TonePill color={style.color} className="text-2xs uppercase">
       {level}
-    </span>
+    </TonePill>
   )
 }
 
 export function SystemLogsPage() {
-  const [level, setLevel] = useState<LevelFilter>('all')
   const [page, setPage] = useState(0)
+  const [level, setLevel] = useState<LevelFilter>('all')
   const [detailFields, setDetailFields] = useState<{ message: string; fields: string; createdAt: string } | null>(null)
 
   const params = useMemo(
@@ -57,7 +50,6 @@ export function SystemLogsPage() {
   const { data, isLoading, error, mutate } = useSystemLogs(params)
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-
   // total 收缩（日志被裁剪）后把超界的页码收敛回最后一页。
   useEffect(() => {
     setPage((p) => Math.min(p, totalPages - 1))
@@ -65,7 +57,7 @@ export function SystemLogsPage() {
 
   // 翻页后把表格顶部滚回视野：分页按钮在表格底部，换页应从第一行重新读起。
   const tableTopRef = useRef<HTMLDivElement>(null)
-  function goToPage(next: number) {
+  function navigateWithScroll(next: number) {
     setPage(Math.max(0, Math.min(next, totalPages - 1)))
     tableTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
@@ -163,29 +155,7 @@ export function SystemLogsPage() {
                 </table>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pt-3 text-xs text-muted-foreground border-t border-border/40">
-                <span className="tnum font-mono">
-                  共 <b className="font-semibold text-foreground">{formatNumber(total)}</b> 条 · 第 {page + 1}/{totalPages} 页
-                </span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page === 0}
-                    onClick={() => goToPage(page - 1)}
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" /> 上一页
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page >= totalPages - 1}
-                    onClick={() => goToPage(page + 1)}
-                  >
-                    下一页 <ChevronRight className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
+              <PaginationBar total={total} page={page} totalPages={totalPages} onNavigate={navigateWithScroll} unitLabel="条" />
             </div>
           )}
         </AsyncState>

@@ -9,6 +9,23 @@ export function Dot({ state, className }: { state: 'ok' | 'err' | 'off'; classNa
   return <span aria-hidden className={cn('dot', `dot-${state}`, className)} />
 }
 
+/** 色调胶囊：以任意前景色生成「边框 28% / 底色 9% / 文字原色」的统一
+ * pill 外观（LevelPill、健康态徽标等动态配色场景共用）。 */
+export function TonePill({ color, className, children }: { color: string; className?: string; children: React.ReactNode }) {
+  return (
+    <span
+      className={cn('inline-flex items-center rounded-[5px] border px-[7px] py-0.5 font-mono text-xs font-medium', className)}
+      style={{
+        color,
+        borderColor: `color-mix(in srgb, ${color} 28%, transparent)`,
+        background: `color-mix(in srgb, ${color} 9%, transparent)`,
+      }}
+    >
+      {children}
+    </span>
+  )
+}
+
 /* ---------- 状态码胶囊 ---------- */
 
 export function CodePill({ code, className }: { code: number; className?: string }) {

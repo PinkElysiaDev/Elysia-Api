@@ -122,83 +122,37 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 	})
 }
 
+// runtimeConfigPayload 是 PUT /runtime-config 的请求体：指针/空串字段
+// 表示「未提供（不修改）」。
+type runtimeConfigPayload struct {
+	Host                string                 `json:"host"`
+	Port                int                    `json:"port"`
+	LogLevel            string                 `json:"logLevel"`
+	HTTPTimeout         *int                   `json:"httpTimeout"`
+	PanelAccessToken    *string                `json:"panelAccessToken"`
+	DatabasePath        *string                `json:"databasePath"`
+	EnablePprof         *bool                  `json:"enablePprof"`
+	AllowFakeIPOutbound *bool                  `json:"allowFakeIPOutbound"`
+	UsageLog            *config.UsageLogConfig `json:"usageLog"`
+	ModelCatalog        *struct {
+		SyncIntervalMinutes *int `json:"syncIntervalMinutes"`
+	} `json:"modelCatalog"`
+}
+
 func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
-	var payload struct {
-		Host                string                 `json:"host"`
-		Port                int                    `json:"port"`
-		LogLevel            string                 `json:"logLevel"`
-		HTTPTimeout         *int                   `json:"httpTimeout"`
-		PanelAccessToken    *string                `json:"panelAccessToken"`
-		DatabasePath        *string                `json:"databasePath"`
-		EnablePprof         *bool                  `json:"enablePprof"`
-		AllowFakeIPOutbound *bool                  `json:"allowFakeIPOutbound"`
-		UsageLog            *config.UsageLogConfig `json:"usageLog"`
-		ModelCatalog        *struct {
-			SyncIntervalMinutes *int `json:"syncIntervalMinutes"`
-		} `json:"modelCatalog"`
-	}
+	var payload runtimeConfigPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		respondFail(c, 400, "invalid_json", err.Error())
 		return
 	}
+	// 两阶段：先整体校验（validateRuntimeConfigPayload），全部通过后再应用
+	//——避免「后段字段非法/保存失败但前段已生效」的内存与磁盘状态分叉。
+	if verr := validateRuntimeConfigPayload(&payload); verr != nil {
+		respondFail(c, verr.status, verr.code, verr.message)
+		return
+	}
 	server := s.config.GetServer()
 	requestsRestart := (payload.Host != "" && payload.Host != server.Host) || (payload.Port != 0 && payload.Port != server.Port)
-	// 两阶段：先整体校验，全部通过后再应用——避免「后段字段非法/保存失败
-	// 但前段已生效」造成的内存与磁盘状态分叉（面板令牌等即时字段尤其敏感）。
-	if payload.HTTPTimeout != nil && *payload.HTTPTimeout < 0 {
-		respondFail(c, 400, "invalid_http_timeout", "httpTimeout must not be negative")
-		return
-	}
-	if payload.Port != 0 && (payload.Port < 1 || payload.Port > 65535) {
-		respondFail(c, 400, "invalid_port", "port must be between 1 and 65535")
-		return
-	}
-	if payload.LogLevel != "" {
-		switch payload.LogLevel {
-		case "debug", "info", "warn", "error":
-		default:
-			// logAt 对未知级别静默按 info 兜底，保存成功但设置无效——
-			// 这里直接拒绝，避免「改了没生效」的困惑。
-			respondFail(c, 400, "invalid_log_level", "logLevel must be one of debug/info/warn/error")
-			return
-		}
-	}
-	if payload.DatabasePath != nil && strings.TrimSpace(*payload.DatabasePath) == "" {
-		respondFail(c, 400, "invalid_database_path", "databasePath must not be empty; unset it in config.json to use the default")
-		return
-	}
-	if payload.Host != "" && strings.TrimSpace(payload.Host) == "" {
-		respondFail(c, 400, "invalid_host", "host must not be blank")
-		return
-	}
-	if payload.PanelAccessToken != nil && strings.TrimSpace(*payload.PanelAccessToken) == "" {
-		// 空面板令牌会让 IsValidPanelAccessToken 对一切请求返回 false，
-		// 直接锁死整个管理面板，只能去服务器手改 config.json 恢复。
-		respondFail(c, 400, "invalid_panel_access_token", "panel access token must not be empty")
-		return
-	}
-	if payload.ModelCatalog != nil && payload.ModelCatalog.SyncIntervalMinutes != nil && *payload.ModelCatalog.SyncIntervalMinutes < 0 {
-		respondFail(c, 400, "invalid_sync_interval", "syncIntervalMinutes must not be negative")
-		return
-	}
-	// usageLog：数值字段全部非负（0 是合法的「关闭/不保存」语义）。
-	if payload.UsageLog != nil {
-		for _, check := range []struct {
-			name  string
-			value *int
-		}{
-			{"retentionDays", payload.UsageLog.RetentionDays},
-			{"maxStorageMB", payload.UsageLog.MaxStorageMB},
-			{"maxRecords", payload.UsageLog.MaxRecords},
-			{"bodyMaxKB", payload.UsageLog.BodyMaxKB},
-			{"cleanupIntervalMinutes", payload.UsageLog.CleanupIntervalMinutes},
-		} {
-			if check.value != nil && *check.value < 0 {
-				respondFail(c, 400, "invalid_usage_log", check.name+" must not be negative")
-				return
-			}
-		}
-	}
 
 	if payload.LogLevel != "" {
 		s.config.SetLogLevel(payload.LogLevel)
@@ -258,6 +212,67 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		return
 	}
 	respondOK(c, gin.H{"updated": true, "restartRequired": requestsRestart})
+}
+
+// runtimeConfigError 携带校验失败的 HTTP 语义（状态码 + 错误码 + 消息）。
+type runtimeConfigError struct {
+	status  int
+	code    string
+	message string
+}
+
+func (e runtimeConfigError) Error() string { return e.message }
+
+// validateRuntimeConfigPayload 整体校验 PUT /runtime-config 的全部字段：
+// 任一非法即返回错误，保证第二阶段（应用 + Save）不会落在部分生效的
+// 状态上。数值字段 0 是合法的「关闭/不保存」语义，只拒绝负数。
+func validateRuntimeConfigPayload(p *runtimeConfigPayload) *runtimeConfigError {
+	if p.HTTPTimeout != nil && *p.HTTPTimeout < 0 {
+		return &runtimeConfigError{400, "invalid_http_timeout", "httpTimeout must not be negative"}
+	}
+	if p.Port != 0 && (p.Port < 1 || p.Port > 65535) {
+		return &runtimeConfigError{400, "invalid_port", "port must be between 1 and 65535"}
+	}
+	if p.Host != "" && strings.TrimSpace(p.Host) == "" {
+		return &runtimeConfigError{400, "invalid_host", "host must not be blank"}
+	}
+	if p.LogLevel != "" {
+		switch p.LogLevel {
+		case "debug", "info", "warn", "error":
+		default:
+			// logAt 对未知级别静默按 info 兜底，保存成功但设置无效——
+			// 直接拒绝，避免「改了没生效」的困惑。
+			return &runtimeConfigError{400, "invalid_log_level", "logLevel must be one of debug/info/warn/error"}
+		}
+	}
+	if p.DatabasePath != nil && strings.TrimSpace(*p.DatabasePath) == "" {
+		return &runtimeConfigError{400, "invalid_database_path", "databasePath must not be empty; unset it in config.json to use the default"}
+	}
+	if p.PanelAccessToken != nil && strings.TrimSpace(*p.PanelAccessToken) == "" {
+		// 空面板令牌会让 IsValidPanelAccessToken 对一切请求返回 false，
+		// 直接锁死整个管理面板，只能去服务器手改 config.json 恢复。
+		return &runtimeConfigError{400, "invalid_panel_access_token", "panel access token must not be empty"}
+	}
+	if p.ModelCatalog != nil && p.ModelCatalog.SyncIntervalMinutes != nil && *p.ModelCatalog.SyncIntervalMinutes < 0 {
+		return &runtimeConfigError{400, "invalid_sync_interval", "syncIntervalMinutes must not be negative"}
+	}
+	if p.UsageLog != nil {
+		for _, check := range []struct {
+			name  string
+			value *int
+		}{
+			{"retentionDays", p.UsageLog.RetentionDays},
+			{"maxStorageMB", p.UsageLog.MaxStorageMB},
+			{"maxRecords", p.UsageLog.MaxRecords},
+			{"bodyMaxKB", p.UsageLog.BodyMaxKB},
+			{"cleanupIntervalMinutes", p.UsageLog.CleanupIntervalMinutes},
+		} {
+			if check.value != nil && *check.value < 0 {
+				return &runtimeConfigError{400, "invalid_usage_log", check.name + " must not be negative"}
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Server) adminReload(c *gin.Context) { s.reloadConfig(c) }
