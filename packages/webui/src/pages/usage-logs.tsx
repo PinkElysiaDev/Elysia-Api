@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -640,6 +640,11 @@ function AssetChip({ asset }: { asset: AssetRef }) {
   const [url, setUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(false)
+  // 卸载标记：详情面板在 blob 请求途中关闭时，resolve 后不得再 setUrl——
+  // 那个 objectURL 会钉住整个 blob 且无人 revoke（长会话累积泄漏）。
+  const cancelledRef = useRef(false)
+
+  useEffect(() => () => { cancelledRef.current = true }, [])
 
   // url 变化/卸载时回收上一个 objectURL，避免长会话内存泄漏。
   useEffect(
@@ -654,9 +659,14 @@ function AssetChip({ asset }: { asset: AssetRef }) {
     setLoading(true)
     try {
       const blob = await api.usageAssetBlob(asset.requestId, asset.file)
-      setUrl(URL.createObjectURL(blob))
+      const objectUrl = URL.createObjectURL(blob)
+      if (cancelledRef.current) {
+        URL.revokeObjectURL(objectUrl)
+        return
+      }
+      setUrl(objectUrl)
     } catch {
-      setFailed(true)
+      if (!cancelledRef.current) setFailed(true)
     } finally {
       setLoading(false)
     }

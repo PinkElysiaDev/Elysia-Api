@@ -386,6 +386,11 @@ func (s *Server) adminDeleteSource(c *gin.Context) {
 		respondFail(c, 500, "delete_source_failed", err.Error())
 		return
 	}
+	// 源级多 key RR 游标一并清理：游标以 sourceID 为键，删除/重建循环下
+	// 不清理会让 map 随历史源数量无限增长。
+	s.keyRRMutex.Lock()
+	delete(s.keyRRIndex, c.Param("id"))
+	s.keyRRMutex.Unlock()
 	s.invalidateRouteCache()
 	respondOK(c, gin.H{"deleted": true})
 }

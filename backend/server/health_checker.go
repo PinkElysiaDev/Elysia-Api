@@ -24,13 +24,21 @@ type healthChecker struct {
 	mu       sync.Mutex
 	failures map[string]int // key: modelID\x00sourceID → 连续失败次数
 
+	// client 全 checker 共享（见 newHealthChecker 注释）。
+	client *http.Client
+
 	stop chan struct{}
 	done chan struct{}
 }
 
 func newHealthChecker(s *Server) *healthChecker {
 	return &healthChecker{
-		server:   s,
+		server: s,
+		// client 全 checker 共享：此前每次探测新建 Transport，空闲连接只能等
+		// GC finalizer 回收——几百模型×每 300s 一轮会持续制造 socket/FD churn。
+		// 探测走与转发路径相同的 SSRF 防护 Transport（连接时校验每个实际拨号
+		// IP，含重定向后的目标）；超时由每次探测的 ctx 控制。
+		client:   &http.Client{Transport: relay.NewSecureTransport()},
 		failures: make(map[string]int),
 		stop:     make(chan struct{}),
 		done:     make(chan struct{}),
@@ -73,6 +81,7 @@ func (h *healthChecker) shutdown() {
 		close(h.stop)
 	}
 	<-h.done
+	h.client.CloseIdleConnections()
 }
 
 // runOnce 探测一轮所有模型。
@@ -153,13 +162,7 @@ func (h *healthChecker) probe(ctx context.Context, model storage.Model, timeoutS
 	applyProbeAuth(req, model)
 	req.Header.Set("Content-Type", "application/json")
 
-	// 探测走与转发路径相同的 SSRF 防护 Transport：连接时校验每个实际拨号
-	// IP（含重定向后的目标），裸 http.Client 会跟随重定向绕过预校验。
-	client := &http.Client{
-		Timeout:   time.Duration(timeoutSeconds) * time.Second,
-		Transport: relay.NewSecureTransport(),
-	}
-	resp, err := client.Do(req)
+	resp, err := h.client.Do(req)
 	if err != nil {
 		return false
 	}

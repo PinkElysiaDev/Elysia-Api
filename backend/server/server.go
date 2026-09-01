@@ -1573,6 +1573,10 @@ func (s *Server) doShutdown() {
 	if s.healthChecker != nil {
 		s.healthChecker.shutdown()
 	}
+	// 目录周期循环同样停机（裸 for+sleep 会泄漏 goroutine）。
+	if s.catalog != nil {
+		s.catalog.shutdown()
+	}
 	// 日志清理可能正在删行/删资产目录，先等它结束再冲刷 usage 队列。
 	if s.usageRetention != nil {
 		s.usageRetention.shutdown()

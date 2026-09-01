@@ -33,8 +33,9 @@ var modelCatalogSnapshotJSON []byte
 // （vision/tools/structured/thinking/maxTokens/type）。
 //
 // 数据链路（借鉴 axonhub 的三级数据源设计）：
-//   远端 JSON → 24h 内存缓存（拉取失败保留上次成功数据）→ 未命中或目录不可达时
-//   优雅降级（不改动模型任何字段，保持手动配置）。
+//
+//	远端 JSON → 24h 内存缓存（拉取失败保留上次成功数据）→ 未命中或目录不可达时
+//	优雅降级（不改动模型任何字段，保持手动配置）。
 //
 // URL 与出站代理可在 config.json 的 modelCatalog 段覆盖；代理未配置时走
 // 环境变量（http.Transport 默认行为）。
@@ -51,6 +52,10 @@ type modelCatalog struct {
 	lastTry    time.Time
 	lastError  string
 	refreshing bool
+	// stop/done 提供周期循环的停机通道：此前裸 for+sleep 无人能停，进程内
+	// 多次构造 Server（测试场景）会泄漏 goroutine。
+	stop chan struct{}
+	done chan struct{}
 	// origin 记录当前数据来源：snapshot（内置快照）/ cache（落盘缓存）/ network
 	// （在线更新）/ empty，供状态接口诊断。
 	origin string
@@ -99,7 +104,7 @@ func (m *modelCatalog) syncIntervalDue() bool {
 }
 
 func newModelCatalog(getter func() config.ModelCatalogConfig, cachePathGetter func() string) *modelCatalog {
-	catalog := &modelCatalog{getter: getter, cachePathGetter: cachePathGetter, entries: map[string]*catalogEntry{}, origin: "empty"}
+	catalog := &modelCatalog{getter: getter, cachePathGetter: cachePathGetter, entries: map[string]*catalogEntry{}, origin: "empty", stop: make(chan struct{}), done: make(chan struct{})}
 	catalog.loadFromSnapshot()
 	catalog.loadFromCache()
 	return catalog
@@ -128,7 +133,7 @@ func (m *modelCatalog) loadFromSnapshot() {
 
 // catalogCacheFile 是落盘缓存的包装结构：原始目录 JSON + 拉取时间。
 type catalogCacheFile struct {
-	FetchedAt time.Time `json:"fetchedAt"`
+	FetchedAt time.Time       `json:"fetchedAt"`
 	Body      json.RawMessage `json:"body"`
 }
 
@@ -233,10 +238,29 @@ func (m *modelCatalog) runPeriodic() {
 	if m == nil {
 		return
 	}
+	defer close(m.done)
 	for {
-		time.Sleep(modelCatalogPeriodicTick)
-		m.triggerRefreshIfNeeded(false)
+		select {
+		case <-m.stop:
+			return
+		case <-time.After(modelCatalogPeriodicTick):
+			m.triggerRefreshIfNeeded(false)
+		}
 	}
+}
+
+// shutdown 停止周期循环并等待退出（幂等）。
+func (m *modelCatalog) shutdown() {
+	if m == nil {
+		return
+	}
+	select {
+	case <-m.stop:
+		// already closed
+	default:
+		close(m.stop)
+	}
+	<-m.done
 }
 
 // triggerRefreshIfNeeded 判定是否需要刷新（force=true 绕过周期与退避）并按需启动
@@ -362,12 +386,12 @@ type catalogDataset struct {
 
 // catalogModelJSON 对应 models.dev 条目模型字段的宽容子集（字段缺失按零值处理）。
 type catalogModelJSON struct {
-	ID                string `json:"id"`
-	Name              string `json:"name"`
-	Type              string `json:"type"`
-	ToolCall          *bool  `json:"tool_call"`
-	StructuredOutput  *bool  `json:"structured_output"`
-	Modalities        *struct {
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Type             string `json:"type"`
+	ToolCall         *bool  `json:"tool_call"`
+	StructuredOutput *bool  `json:"structured_output"`
+	Modalities       *struct {
 		Input  []string `json:"input"`
 		Output []string `json:"output"`
 	} `json:"modalities"`
@@ -442,6 +466,7 @@ func (m *modelCatalog) fetch(ctx context.Context, cfg config.ModelCatalogConfig)
 // parseCatalogDataset 解析 models.dev api.json。兼容两种 providers 形态：
 //   - 对象：{ "openai": { "models": { "gpt-4o": {...} } } }（models.dev api.json）
 //   - 数组：{ "openai": { "models": [ { "id": "gpt-4o", ... } ] } }（镜像快照）
+//
 // 以及镜像常见的顶层 "providers" 包裹：{ "providers": { ... } }。
 func parseCatalogDataset(body []byte) (*catalogDataset, error) {
 	var providers map[string]json.RawMessage
@@ -504,10 +529,10 @@ func parseCatalogDataset(body []byte) (*catalogDataset, error) {
 
 func newCatalogEntry(provider string, model catalogModelJSON) *catalogEntry {
 	entry := &catalogEntry{
-		provider: provider,
-		id:       model.ID,
-		name:     model.Name,
-		tools:    model.ToolCall != nil && *model.ToolCall,
+		provider:   provider,
+		id:         model.ID,
+		name:       model.Name,
+		tools:      model.ToolCall != nil && *model.ToolCall,
 		structured: model.StructuredOutput != nil && *model.StructuredOutput,
 		reasoning:  model.Reasoning != nil && model.Reasoning.Supported != nil && *model.Reasoning.Supported,
 	}
@@ -564,7 +589,7 @@ func catalogNormalizeID(id string) string {
 
 var (
 	// 日期后缀：-2024-11-20 / -20241120（Claude、OpenAI 的快照命名）。
-	catalogDateDashSuffix   = regexp.MustCompile(`-(20\d{2})-(\d{2})-(\d{2})$`)
+	catalogDateDashSuffix    = regexp.MustCompile(`-(20\d{2})-(\d{2})-(\d{2})$`)
 	catalogDateCompactSuffix = regexp.MustCompile(`-(20\d{6})$`)
 )
 
