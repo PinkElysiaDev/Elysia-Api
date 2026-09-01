@@ -128,7 +128,22 @@ func rejectToolRequestsIfNeeded(group *config.ModelGroupConfig, request *relay.M
 	return maheshvaraRequestUsesTools(request)
 }
 
-func (s *Server) handleCustomNormalRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, request *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
+// handleCustomNormal 处理自定义协议的非流式转发，两条线制（chat 与
+// Responses）共用：请求渲染/发送/读取/解析/用量合并完全一致，仅最终
+// 响应渲染不同（render 回调）。fail 的错误体格式随 typed 切换。
+func (s *Server) handleCustomNormal(
+	c *gin.Context,
+	group *config.ModelGroupConfig,
+	selectedModel config.ModelRef,
+	request *relay.CustomProtocolRequestResult,
+	targetPlatform relay.Platform,
+	startTime time.Time,
+	record *usageRecord,
+	isLast bool,
+	typed bool,
+	render func(*relay.MaheshvaraResponse) (any, error),
+	renderErrLabel string,
+) relayOutcome {
 	// fail 在转发失败时决定是提交错误响应（最后一次尝试或不可重试），
 	// 还是返回 committed=false 让上层故障转移到下一个候选模型。
 	fail := func(status int, message string, body []byte, retryable bool) relayOutcome {
@@ -140,6 +155,8 @@ func (s *Server) handleCustomNormalRequest(c *gin.Context, group *config.ModelGr
 		record.ErrorKind = ErrorKindUpstream
 		if body != nil {
 			c.Data(status, contentTypeJSON, body)
+		} else if typed {
+			c.JSON(status, gin.H{"error": gin.H{"message": message, "type": "api_error"}})
 		} else {
 			c.JSON(status, gin.H{"error": message})
 		}
@@ -192,18 +209,9 @@ func (s *Server) handleCustomNormalRequest(c *gin.Context, group *config.ModelGr
 	updateRecordUsageFromMaheshvara(record, maheshvaraResponse.Usage)
 	applyLocalResponseEstimate(record, extractOutputTextFromMaheshvaraResponse(maheshvaraResponse), s.config.GetUsageConfig())
 	s.adjustTokenUsage(group.ID, getInt(record.Usage.TotalTokens))
-
-	var output any
-	switch inputFormat {
-	case relay.FormatClaude:
-		output, err = relay.MaheshvaraToAnthropicResponse(maheshvaraResponse)
-	case relay.FormatGemini:
-		output, err = relay.MaheshvaraToGeminiResponse(maheshvaraResponse)
-	default:
-		output, err = relay.MaheshvaraToOpenAIChatResponse(maheshvaraResponse)
-	}
+	output, err := render(maheshvaraResponse)
 	if err != nil {
-		result = fail(http.StatusInternalServerError, fmt.Sprintf("failed to render custom protocol response: %v", err), nil, false)
+		result = fail(http.StatusInternalServerError, fmt.Sprintf("failed to render %s: %v", renderErrLabel, err), nil, false)
 		return result
 	}
 	record.StatusCode = http.StatusOK
@@ -212,77 +220,20 @@ func (s *Server) handleCustomNormalRequest(c *gin.Context, group *config.ModelGr
 	return result
 }
 
+func (s *Server) handleCustomNormalRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, request *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
+	return s.handleCustomNormal(c, group, selectedModel, request, targetPlatform, startTime, record, isLast, false,
+		func(resp *relay.MaheshvaraResponse) (any, error) {
+			return renderMaheshvaraChatResponse(resp, inputFormat)
+		},
+		"custom protocol response")
+}
+
 func (s *Server) handleCustomResponsesNormal(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, request *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
-	// 与 handleCustomNormalRequest 相同的故障转移模式：可重试错误在非最后
-	// 一次尝试时返回 committed=false，让上层换下一个候选。
-	fail := func(status int, message string, body []byte, retryable bool) relayOutcome {
-		if retryable && !isLast {
-			return relayOutcome{committed: false, statusCode: status, errMsg: message}
-		}
-		record.StatusCode = status
-		record.Error = message
-		record.ErrorKind = ErrorKindUpstream
-		if body != nil {
-			c.Data(status, contentTypeJSON, body)
-		} else {
-			c.JSON(status, gin.H{"error": gin.H{"message": message, "type": "api_error"}})
-		}
-		return relayOutcome{committed: true, statusCode: status, errMsg: message}
-	}
-	var result relayOutcome
-	defer func() {
-		if !result.committed {
-			return
-		}
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-	}()
-	if request == nil {
-		result = fail(http.StatusInternalServerError, "custom protocol request was not rendered", nil, false)
-		return result
-	}
-	protocol, ok := relay.GetCustomProtocol(relay.CustomProtocolID(targetPlatform))
-	if !ok {
-		result = fail(http.StatusInternalServerError, fmt.Sprintf("custom protocol %q is not registered", relay.CustomProtocolID(targetPlatform)), nil, false)
-		return result
-	}
-	response, err := s.openaiAdapter.SendCustomProtocolRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, request, false)
-	if err != nil {
-		result = fail(http.StatusBadGateway, fmt.Sprintf("failed to forward custom protocol request: %v", err), nil, true)
-		return result
-	}
-	defer response.Body.Close()
-	body, readErr := io.ReadAll(response.Body)
-	record.ProviderResponse = record.sanitizeBody(body)
-	if readErr != nil {
-		result = fail(http.StatusBadGateway, fmt.Sprintf("failed to read custom protocol response: %v", readErr), nil, true)
-		return result
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		result = fail(response.StatusCode, string(body), body, shouldRetryStatus(response.StatusCode))
-		return result
-	}
-	maheshvaraResponse, err := relay.CustomProtocolResponseToMaheshvara(body, protocol)
-	if err != nil {
-		result = fail(http.StatusBadGateway, fmt.Sprintf("failed to parse custom protocol response: %v", err), nil, false)
-		return result
-	}
-	if maheshvaraResponse.Model == "" {
-		maheshvaraResponse.Model = selectedModel.Name
-	}
-	updateRecordUsageFromMaheshvara(record, maheshvaraResponse.Usage)
-	applyLocalResponseEstimate(record, extractOutputTextFromMaheshvaraResponse(maheshvaraResponse), s.config.GetUsageConfig())
-	s.adjustTokenUsage(group.ID, getInt(record.Usage.TotalTokens))
-	output, err := relay.MaheshvaraToOpenAIResponsesResponse(maheshvaraResponse)
-	if err != nil {
-		result = fail(http.StatusInternalServerError, fmt.Sprintf("failed to render custom Responses response: %v", err), nil, false)
-		return result
-	}
-	record.StatusCode = http.StatusOK
-	c.JSON(http.StatusOK, output)
-	result = relayOutcome{committed: true, statusCode: http.StatusOK}
-	return result
+	return s.handleCustomNormal(c, group, selectedModel, request, targetPlatform, startTime, record, isLast, true,
+		func(resp *relay.MaheshvaraResponse) (any, error) {
+			return relay.MaheshvaraToOpenAIResponsesResponse(resp)
+		},
+		"custom Responses response")
 }
 
 func renderMaheshvaraChatResponse(response *relay.MaheshvaraResponse, inputFormat relay.FormatType) (any, error) {
