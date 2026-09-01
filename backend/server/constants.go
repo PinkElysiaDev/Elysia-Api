@@ -1,5 +1,7 @@
 package server
 
+import "github.com/elysia-api/backend/relay"
+
 import "time"
 
 const (
@@ -44,3 +46,9 @@ const (
 	geminiDefaultInputTokenLimit  = 1048576
 	geminiDefaultOutputTokenLimit = 8192
 )
+
+// isOpenAICompatible 判断平台是否走 OpenAI 兼容线路（DeepSeek/Azure 与
+// OpenAI 同构，仅 base_url/鉴权头差异）。
+func isOpenAICompatible(platform relay.Platform) bool {
+	return platform == relay.PlatformOpenAI || platform == relay.PlatformDeepSeek || platform == relay.PlatformAzure
+}

@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -527,13 +526,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	// 验证并获取模型组
 	group, err := s.validateModelGroup(maheshvaraReq.Model)
 	if err != nil {
-		statusCode := 500
-		if errMsg := err.Error(); strings.Contains(errMsg, "not found") {
-			statusCode = 404
-		} else if strings.Contains(errMsg, "disabled") {
-			statusCode = 403
-		}
-		s.failRequest(c, record, startTime, statusCode, err.Error())
+		s.failRequest(c, record, startTime, statusForGroupError(err), err.Error())
 		return
 	}
 	setRecordGroup(record, group)
@@ -610,12 +603,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			lastErr = fmt.Sprintf("target baseUrl rejected: %v", err)
 			s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
 			if isLast {
-				record.StatusCode = lastStatus
-				record.Error = lastErr
-				record.EndedAt = time.Now()
-				record.DurationMs = time.Since(startTime).Milliseconds()
-				s.recordUsage(record)
-				c.JSON(http.StatusForbidden, gin.H{"error": lastErr})
+				s.commitLastAttemptFailure(c, record, startTime, lastStatus, "", lastErr, gin.H{"error": lastErr})
 				committed = true
 			}
 			continue
@@ -656,14 +644,14 @@ func (s *Server) chatCompletions(c *gin.Context) {
 				passModelName = ""
 			} else {
 				ensureStream = isStream
-				addStreamOptions = targetPlatform == relay.PlatformOpenAI || targetPlatform == relay.PlatformDeepSeek || targetPlatform == relay.PlatformAzure
+				addStreamOptions = isOpenAICompatible(targetPlatform)
 			}
 			targetBody, err = relay.PassthroughBody(bodyBytes, passModelName, ensureStream, addStreamOptions)
 			if err == nil {
 				record.RelayMode = RelayModePassthrough
 				// OpenAI 系透传同样补齐缺失的 tool call id：部分客户端重建历史时
 				// 会遗漏 tool_calls[].id，直接透传会被严格上游以 missing field id 拒绝。
-				if targetPlatform == relay.PlatformOpenAI || targetPlatform == relay.PlatformDeepSeek || targetPlatform == relay.PlatformAzure {
+				if isOpenAICompatible(targetPlatform) {
 					targetBody, err = relay.NormalizeOpenAIToolCallIDs(targetBody)
 				}
 			}
@@ -691,12 +679,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			lastErr = fmt.Sprintf("Failed to build upstream request: %v", err)
 			s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
 			if isLast {
-				record.StatusCode = lastStatus
-				record.Error = lastErr
-				record.EndedAt = time.Now()
-				record.DurationMs = time.Since(startTime).Milliseconds()
-				s.recordUsage(record)
-				c.JSON(lastStatus, gin.H{"error": lastErr})
+				s.commitLastAttemptFailure(c, record, startTime, lastStatus, ErrorKindConversion, lastErr, gin.H{"error": lastErr})
 				committed = true
 			}
 			continue
@@ -713,12 +696,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 				lastErr = fmt.Sprintf("Failed to prepare stream request: %v", streamBodyErr)
 				s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
 				if isLast {
-					record.StatusCode = lastStatus
-					record.Error = lastErr
-					record.EndedAt = time.Now()
-					record.DurationMs = time.Since(startTime).Milliseconds()
-					s.recordUsage(record)
-					c.JSON(500, gin.H{"error": lastErr})
+					s.commitLastAttemptFailure(c, record, startTime, lastStatus, ErrorKindConversion, lastErr, gin.H{"error": lastErr})
 					committed = true
 				}
 				continue
@@ -750,12 +728,10 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		if !isLast && group.RetryInterval > 0 {
 			// 尊重客户端取消：被放弃的请求不再空耗等待 + 对剩余候选扇出
 			//（取消同样落库留痕，499 为 nginx 惯例的 client closed）。
-			select {
-			case <-c.Request.Context().Done():
+			if !waitForRetryOrCancel(c, group.RetryInterval) {
 				committed = true
 				s.abortRetryOnClientCancel(c, record, startTime)
 				return
-			case <-time.After(time.Duration(group.RetryInterval) * time.Millisecond):
 			}
 		}
 	}
@@ -968,14 +944,6 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 
 	// upstreamErrorStatus 从错误中提取上游真实状态码（UpstreamStatusError），
 	// 无则回退 fallback——永久错误（401/403/400）不得洗白成可重试的 502。
-	upstreamErrorStatus := func(err error, fallback int) int {
-		var statusErr *relay.UpstreamStatusError
-		if errors.As(err, &statusErr) && statusErr.StatusCode > 0 {
-			return statusErr.StatusCode
-		}
-		return fallback
-	}
-
 	// 流式失败的可重试性判定。注意：一旦开始向客户端写出 SSE 字节，
 	// 就无法再重试（响应头已发出），因此重试只发生在"建立上游连接 +
 	// 读到上游首个状态码"之前。
@@ -1190,7 +1158,7 @@ func ensureStreamFlagInTargetBody(
 	req["stream"] = true
 
 	// OpenAI 兼容接口可附带 stream_options，帮助下游返回 usage chunk
-	if targetPlatform == relay.PlatformOpenAI || targetPlatform == relay.PlatformDeepSeek || targetPlatform == relay.PlatformAzure {
+	if isOpenAICompatible(targetPlatform) {
 		streamOptions, ok := req["stream_options"].(map[string]interface{})
 		if !ok {
 			streamOptions = map[string]interface{}{}

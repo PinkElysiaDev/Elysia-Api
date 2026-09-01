@@ -54,10 +54,10 @@ func (s *Server) saveUsageRecordToStore(record *usageRecord) error {
 		Error:             record.Error,
 		FirstByteMs:       record.FirstByteMs,
 		DurationMs:        record.DurationMs,
-		InputTokens:       intPtrValue(record.Usage.InputTokens),
-		OutputTokens:      intPtrValue(record.Usage.OutputTokens),
-		TotalTokens:       intPtrValue(record.Usage.TotalTokens),
-		CacheHitTokens:    intPtrValue(record.Usage.CacheHitTokens),
+		InputTokens:       getInt(record.Usage.InputTokens),
+		OutputTokens:      getInt(record.Usage.OutputTokens),
+		TotalTokens:       getInt(record.Usage.TotalTokens),
+		CacheHitTokens:    getInt(record.Usage.CacheHitTokens),
 		RequestTruncated:  record.IncomingBody.Truncated,
 		ResponseTruncated: record.ProviderResponse.Truncated,
 	}
@@ -83,11 +83,4 @@ func (s *Server) usageAssetsRoot() string {
 		return ""
 	}
 	return filepath.Join(filepath.Dir(dbPath), usageAssetsDirName)
-}
-
-func intPtrValue(value *int) int {
-	if value == nil {
-		return 0
-	}
-	return *value
 }

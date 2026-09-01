@@ -1,8 +1,12 @@
 package server
 
 import (
+	"errors"
+	"net/http"
+	"strings"
 	"time"
 
+	"github.com/elysia-api/backend/relay"
 	"github.com/gin-gonic/gin"
 )
 
@@ -57,5 +61,52 @@ func (s *Server) abortRetryOnClientCancel(c *gin.Context, record *usageRecord, s
 		return true
 	default:
 		return false
+	}
+}
+
+// commitLastAttemptFailure 提交末次尝试的失败：补全记录（状态/错误/归类/
+// 起止耗时）并写回错误响应。先写响应再落记录——错误体要先进下游捕获器，
+// 记录里的第四段「返回下游」才有内容。调用方负责置位 committed。
+func (s *Server) commitLastAttemptFailure(c *gin.Context, record *usageRecord, startTime time.Time, statusCode int, errKind, errMsg string, body gin.H) {
+	record.StatusCode = statusCode
+	record.Error = errMsg
+	record.ErrorKind = errKind
+	record.EndedAt = time.Now()
+	record.DurationMs = time.Since(startTime).Milliseconds()
+	c.JSON(statusCode, body)
+	s.recordUsage(record)
+}
+
+// statusForGroupError 把模型组校验错误映射为 HTTP 状态：组不存在 404、
+// 组被停用 403，其余按内部错误 500（server/responses 两入口共用）。
+func statusForGroupError(err error) int {
+	switch msg := err.Error(); {
+	case strings.Contains(msg, "not found"):
+		return http.StatusNotFound
+	case strings.Contains(msg, "disabled"):
+		return http.StatusForbidden
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+// upstreamErrorStatus 从错误中提取上游真实状态码（UpstreamStatusError），
+// 提取不到时用 fallback。流式与非流式的失败路径共用。
+func upstreamErrorStatus(err error, fallback int) int {
+	var statusErr *relay.UpstreamStatusError
+	if errors.As(err, &statusErr) && statusErr.StatusCode > 0 {
+		return statusErr.StatusCode
+	}
+	return fallback
+}
+
+// waitForRetryOrCancel 等待重试间隔；客户端在等待期断开时返回 false
+// （调用方负责落库并终止，见 abortRetryOnClientCancel）。
+func waitForRetryOrCancel(c *gin.Context, retryIntervalMs int) bool {
+	select {
+	case <-c.Request.Context().Done():
+		return false
+	case <-time.After(time.Duration(retryIntervalMs) * time.Millisecond):
+		return true
 	}
 }

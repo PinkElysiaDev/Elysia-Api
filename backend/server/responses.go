@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -49,13 +48,7 @@ func (s *Server) responses(c *gin.Context) {
 
 	group, err := s.validateModelGroup(maheshvaraReq.Model)
 	if err != nil {
-		statusCode := http.StatusInternalServerError
-		if strings.Contains(err.Error(), "not found") {
-			statusCode = http.StatusNotFound
-		} else if strings.Contains(err.Error(), "disabled") {
-			statusCode = http.StatusForbidden
-		}
-		s.failRequestTyped(c, record, startTime, statusCode, "invalid_request_error", err.Error())
+		s.failRequestTyped(c, record, startTime, statusForGroupError(err), "invalid_request_error", err.Error())
 		return
 	}
 	setRecordGroup(record, group)
@@ -121,12 +114,7 @@ func (s *Server) responses(c *gin.Context) {
 			lastErr = fmt.Sprintf("target baseUrl rejected: %v", err)
 			s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
 			if isLast {
-				record.StatusCode = lastStatus
-				record.Error = lastErr
-				record.EndedAt = time.Now()
-				record.DurationMs = time.Since(startTime).Milliseconds()
-				s.recordUsage(record)
-				c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"message": lastErr, "type": "invalid_request_error"}})
+				s.commitLastAttemptFailure(c, record, startTime, lastStatus, "", lastErr, gin.H{"error": gin.H{"message": lastErr, "type": "invalid_request_error"}})
 				committed = true
 			}
 			continue
@@ -144,12 +132,7 @@ func (s *Server) responses(c *gin.Context) {
 			record.ResponsesMode = responsesMode
 			s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
 			if isLast {
-				record.StatusCode = lastStatus
-				record.Error = lastErr
-				record.EndedAt = time.Now()
-				record.DurationMs = time.Since(startTime).Milliseconds()
-				s.recordUsage(record)
-				c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": lastErr, "type": "unsupported_endpoint", "code": "responses_api_not_supported"}})
+				s.commitLastAttemptFailure(c, record, startTime, lastStatus, "", lastErr, gin.H{"error": gin.H{"message": lastErr, "type": "unsupported_endpoint", "code": "responses_api_not_supported"}})
 				committed = true
 			}
 			continue
@@ -161,12 +144,7 @@ func (s *Server) responses(c *gin.Context) {
 				lastErr = "Responses target cannot represent the filtered maheshvara vision input"
 				s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
 				if isLast {
-					record.StatusCode = lastStatus
-					record.Error = lastErr
-					record.EndedAt = time.Now()
-					record.DurationMs = time.Since(startTime).Milliseconds()
-					s.recordUsage(record)
-					c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": lastErr, "type": "invalid_request_error"}})
+					s.commitLastAttemptFailure(c, record, startTime, lastStatus, ErrorKindConversion, lastErr, gin.H{"error": gin.H{"message": lastErr, "type": "invalid_request_error"}})
 					committed = true
 				}
 				continue
@@ -213,12 +191,7 @@ func (s *Server) responses(c *gin.Context) {
 			lastErr = err.Error()
 			s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
 			if isLast {
-				record.StatusCode = lastStatus
-				record.Error = lastErr
-				record.EndedAt = time.Now()
-				record.DurationMs = time.Since(startTime).Milliseconds()
-				s.recordUsage(record)
-				c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": lastErr, "type": "invalid_request_error"}})
+				s.commitLastAttemptFailure(c, record, startTime, lastStatus, ErrorKindConversion, lastErr, gin.H{"error": gin.H{"message": lastErr, "type": "invalid_request_error"}})
 				committed = true
 			}
 			continue
@@ -247,12 +220,10 @@ func (s *Server) responses(c *gin.Context) {
 		if !isLast && group.RetryInterval > 0 {
 			// 尊重客户端取消：被放弃的请求不再空耗等待 + 对剩余候选扇出
 			//（取消同样落库留痕，499 为 nginx 惯例的 client closed）。
-			select {
-			case <-c.Request.Context().Done():
+			if !waitForRetryOrCancel(c, group.RetryInterval) {
 				committed = true
 				s.abortRetryOnClientCancel(c, record, startTime)
 				return
-			case <-time.After(time.Duration(group.RetryInterval) * time.Millisecond):
 			}
 		}
 	}
@@ -440,14 +411,6 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 
 	// upstreamErrorStatus 从错误中提取上游真实状态码：永久错误（401/403/400）
 	// 不得洗白成 502 触发全候选扇出重试。
-	upstreamErrorStatus := func(err error, fallback int) int {
-		var statusErr *relay.UpstreamStatusError
-		if errors.As(err, &statusErr) && statusErr.StatusCode > 0 {
-			return statusErr.StatusCode
-		}
-		return fallback
-	}
-
 	// connFail 处理「SSE 尚未开始」的上游建连失败：可重试且非最后一次 →
 	// committed=false 让上层换下一个候选；否则写出 JSON 错误并提交。
 	connFail := func(statusCode int, errMsg string, respBody []byte) relayOutcome {

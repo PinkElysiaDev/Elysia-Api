@@ -402,19 +402,7 @@ func usageResultFromOpenAICompatiblePayload(payload map[string]interface{}, sour
 
 func usageResultFromOpenAIUsage(raw map[string]interface{}, source string) providerUsageResult {
 	usage := usageFromOpenAIUsage(raw)
-	detail := usageDetail{}
-	if usage.InputTokens != nil {
-		detail.InputTokens = intPtr(getInt(usage.InputTokens))
-	}
-	if usage.OutputTokens != nil {
-		detail.OutputTokens = intPtr(getInt(usage.OutputTokens))
-	}
-	if usage.TotalTokens != nil {
-		detail.TotalTokens = intPtr(getInt(usage.TotalTokens))
-	}
-	if usage.CacheHitTokens != nil {
-		detail.CachedInputTokens = intPtr(getInt(usage.CacheHitTokens))
-	}
+	detail := detailFromTokenUsage(usage)
 	// completion/output 两个键是同一明细的两种命名（Responses 与 chat 兼容上游各用其一）。
 	for _, key := range []string{"completion_tokens_details", "output_tokens_details"} {
 		if details, ok := raw[key].(map[string]interface{}); ok {
@@ -478,19 +466,7 @@ func usageFromResponsesStreamPayload(payload map[string]interface{}, source stri
 
 func usageResultFromGeminiUsageMetadata(raw map[string]interface{}, source string) providerUsageResult {
 	usage := usageFromGeminiUsageMetadata(raw)
-	detail := usageDetail{}
-	if usage.InputTokens != nil {
-		detail.InputTokens = intPtr(getInt(usage.InputTokens))
-	}
-	if usage.OutputTokens != nil {
-		detail.OutputTokens = intPtr(getInt(usage.OutputTokens))
-	}
-	if usage.TotalTokens != nil {
-		detail.TotalTokens = intPtr(getInt(usage.TotalTokens))
-	}
-	if usage.CacheHitTokens != nil {
-		detail.CachedInputTokens = intPtr(getInt(usage.CacheHitTokens))
-	}
+	detail := detailFromTokenUsage(usage)
 	if rawValue, ok := raw["thoughtsTokenCount"]; ok && rawValue != nil {
 		detail.ReasoningTokens = intPtr(int(numberFromUsageMap(raw, "thoughtsTokenCount")))
 	}
@@ -502,19 +478,7 @@ func usageResultFromGeminiUsageMetadata(raw map[string]interface{}, source strin
 
 func usageResultFromClaudeUsage(raw map[string]interface{}, source string) providerUsageResult {
 	usage := usageFromClaudeUsage(raw)
-	detail := usageDetail{}
-	if usage.InputTokens != nil {
-		detail.InputTokens = intPtr(getInt(usage.InputTokens))
-	}
-	if usage.OutputTokens != nil {
-		detail.OutputTokens = intPtr(getInt(usage.OutputTokens))
-	}
-	if usage.TotalTokens != nil {
-		detail.TotalTokens = intPtr(getInt(usage.TotalTokens))
-	}
-	if usage.CacheHitTokens != nil {
-		detail.CachedInputTokens = intPtr(getInt(usage.CacheHitTokens))
-	}
+	detail := detailFromTokenUsage(usage)
 	cacheCreation := int(numberFromUsageMap(raw, "cache_creation_input_tokens"))
 	if creation, ok := raw["cache_creation"].(map[string]interface{}); ok && cacheCreation == 0 {
 		cacheCreation = int(numberFromUsageMap(creation, "ephemeral_5m_input_tokens")) + int(numberFromUsageMap(creation, "ephemeral_1h_input_tokens"))
@@ -954,6 +918,25 @@ func (b *upstreamUsageObservingBody) observeLine(line string) {
 	applyProviderUsageToRecord(b.record, result)
 }
 
+// detailFromTokenUsage 把顶层 token 计数镜像为明细字段（三个平台解析器的
+// 共同前奏：detail 的四项基础字段与 usage 保持同源）。
+func detailFromTokenUsage(usage usageTokenUsage) usageDetail {
+	detail := usageDetail{}
+	if usage.InputTokens != nil {
+		detail.InputTokens = intPtr(getInt(usage.InputTokens))
+	}
+	if usage.OutputTokens != nil {
+		detail.OutputTokens = intPtr(getInt(usage.OutputTokens))
+	}
+	if usage.TotalTokens != nil {
+		detail.TotalTokens = intPtr(getInt(usage.TotalTokens))
+	}
+	if usage.CacheHitTokens != nil {
+		detail.CachedInputTokens = intPtr(getInt(usage.CacheHitTokens))
+	}
+	return detail
+}
+
 func usageFromOpenAIUsage(raw map[string]interface{}) usageTokenUsage {
 	usage := usageTokenUsage{}
 	if rawValue, ok := raw["prompt_tokens"]; ok && rawValue != nil {
@@ -1149,6 +1132,32 @@ func extractOutputTextFromStreamPayload(payload string) string {
 	return extractOutputTextFromPayload(event)
 }
 
+// geminiTextFromCandidates 拼接 Gemini candidates[].content.parts[].text。
+func geminiTextFromCandidates(payload map[string]interface{}) string {
+	candidates, ok := payload["candidates"].([]interface{})
+	if !ok {
+		return ""
+	}
+	var builder strings.Builder
+	for _, candidate := range candidates {
+		candMap, _ := candidate.(map[string]interface{})
+		content, ok := candMap["content"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		parts, ok := content["parts"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, part := range parts {
+			if partMap, ok := part.(map[string]interface{}); ok {
+				builder.WriteString(stringValueFromMap(partMap, "text"))
+			}
+		}
+	}
+	return builder.String()
+}
+
 func extractOutputTextFromPayload(payload map[string]interface{}) string {
 	var builder strings.Builder
 	if choices, ok := payload["choices"].([]interface{}); ok {
@@ -1183,20 +1192,7 @@ func extractOutputTextFromPayload(payload map[string]interface{}) string {
 			}
 		}
 	}
-	if candidates, ok := payload["candidates"].([]interface{}); ok {
-		for _, candidate := range candidates {
-			candMap, _ := candidate.(map[string]interface{})
-			if content, ok := candMap["content"].(map[string]interface{}); ok {
-				if parts, ok := content["parts"].([]interface{}); ok {
-					for _, part := range parts {
-						if partMap, ok := part.(map[string]interface{}); ok {
-							builder.WriteString(stringValueFromMap(partMap, "text"))
-						}
-					}
-				}
-			}
-		}
-	}
+	builder.WriteString(geminiTextFromCandidates(payload))
 	return builder.String()
 }
 
