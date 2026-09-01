@@ -65,6 +65,50 @@ function formatBytes(bytes: number): string {
   return `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`
 }
 
+/** 数字输入：清空时保持空串展示、失焦还原旧值，只在输入有效数字时提交。
+ * 直接 Number(v)||0 会让「清空准备输入新值」的瞬间坍缩成显式 0——对
+ * bodyMaxKB 这类 0 具有「关闭/不保存」语义的字段，等于一次误触就静默关功能。
+ * 想真正设为 0 必须显式键入 0。 */
+function NumberField({
+  value,
+  onCommit,
+  min,
+  className,
+}: {
+  value: number
+  onCommit: (v: number) => void
+  min?: number
+  className?: string
+}) {
+  const [text, setText] = useState<string>(String(value))
+  useEffect(() => {
+    setText(String(value))
+  }, [value])
+  return (
+    <Input
+      type="number"
+      min={min}
+      className={className}
+      value={text}
+      onChange={(e) => {
+        const raw = e.target.value.trim()
+        if (raw === '') {
+          setText('') // 挂起空态，不提交
+          return
+        }
+        const n = Number(raw)
+        if (Number.isFinite(n)) {
+          setText(e.target.value)
+          onCommit(Math.max(min ?? 0, Math.floor(n)))
+        }
+      }}
+      onBlur={() => {
+        if (text.trim() === '') setText(String(value)) // 空态失焦：还原，不误置 0
+      }}
+    />
+  )
+}
+
 export function RuntimeConfigPage() {
   const toast = useToast()
   const { data, isLoading, error, mutate } = useRuntimeConfig()
@@ -222,13 +266,11 @@ export function RuntimeConfigPage() {
               label="监听 Port"
               description="服务监听端口（1 ~ 65535，需重启生效）"
             >
-              <Input
-                type="number"
-                min={1}
-                max={65535}
-                className="w-full sm:w-56 font-mono text-xs"
+              <NumberField
                 value={form.port}
-                onChange={(e) => update('port', Number(e.target.value) || 0)}
+                min={1}
+                className="w-full sm:w-56 font-mono text-xs"
+                onCommit={(v) => update('port', v)}
               />
             </SettingRow>
 
@@ -256,12 +298,11 @@ export function RuntimeConfigPage() {
               description="上游请求超时时间（秒，0 表示不设硬性超时）"
             >
               <div className="flex w-full items-center gap-2 sm:w-56">
-                <Input
-                  type="number"
+                <NumberField
+                  value={form.httpTimeout}
                   min={0}
                   className="font-mono text-xs"
-                  value={form.httpTimeout}
-                  onChange={(e) => update('httpTimeout', Math.max(0, Number(e.target.value) || 0))}
+                  onCommit={(v) => update('httpTimeout', v)}
                 />
                 <span className="shrink-0 text-xs text-muted-foreground">秒</span>
               </div>
@@ -396,19 +437,18 @@ export function RuntimeConfigPage() {
               description="定期后台同步周期（分钟，0 表示不启用该功能）"
             >
               <div className="flex w-full items-center gap-2 sm:w-48">
-                <Input
-                  type="number"
+                <NumberField
+                  value={form.modelCatalog?.syncIntervalMinutes ?? 1440}
                   min={0}
                   className="font-mono text-xs"
-                  value={form.modelCatalog?.syncIntervalMinutes ?? 1440}
-                  onChange={(e) =>
+                  onCommit={(v) =>
                     setForm((prev) =>
                       prev
                         ? {
                             ...prev,
                             modelCatalog: {
                               ...(prev.modelCatalog ?? { enabled: true, url: '', syncIntervalMinutes: 1440 }),
-                              syncIntervalMinutes: Math.max(0, Number(e.target.value) || 0),
+                              syncIntervalMinutes: v,
                             },
                           }
                         : prev,
@@ -493,12 +533,11 @@ export function RuntimeConfigPage() {
               description="自动删除早于该天数的日志记录（0 = 不启用过期清理）"
             >
               <div className="flex w-full items-center gap-2 sm:w-48">
-                <Input
-                  type="number"
+                <NumberField
+                  value={form.usageLog?.retentionDays ?? defaultUsageLog.retentionDays}
                   min={0}
                   className="font-mono text-xs"
-                  value={form.usageLog?.retentionDays ?? defaultUsageLog.retentionDays}
-                  onChange={(e) => updateUsageLog('retentionDays', Math.max(0, Number(e.target.value) || 0))}
+                  onCommit={(v) => updateUsageLog('retentionDays', v)}
                 />
                 <span className="shrink-0 text-xs text-muted-foreground">天</span>
               </div>
@@ -509,12 +548,11 @@ export function RuntimeConfigPage() {
               description="数据库体积超限时按最旧优先自动清理（0 = 不限）"
             >
               <div className="flex w-full items-center gap-2 sm:w-48">
-                <Input
-                  type="number"
+                <NumberField
+                  value={form.usageLog?.maxStorageMB ?? defaultUsageLog.maxStorageMB}
                   min={0}
                   className="font-mono text-xs"
-                  value={form.usageLog?.maxStorageMB ?? defaultUsageLog.maxStorageMB}
-                  onChange={(e) => updateUsageLog('maxStorageMB', Math.max(0, Number(e.target.value) || 0))}
+                  onCommit={(v) => updateUsageLog('maxStorageMB', v)}
                 />
                 <span className="shrink-0 text-xs text-muted-foreground">MB</span>
               </div>
@@ -525,12 +563,11 @@ export function RuntimeConfigPage() {
               description="超出该条数时自动删除最旧的日志（0 = 不限）"
             >
               <div className="flex w-full items-center gap-2 sm:w-48">
-                <Input
-                  type="number"
+                <NumberField
+                  value={form.usageLog?.maxRecords ?? defaultUsageLog.maxRecords}
                   min={0}
                   className="font-mono text-xs"
-                  value={form.usageLog?.maxRecords ?? defaultUsageLog.maxRecords}
-                  onChange={(e) => updateUsageLog('maxRecords', Math.max(0, Number(e.target.value) || 0))}
+                  onCommit={(v) => updateUsageLog('maxRecords', v)}
                 />
                 <span className="shrink-0 text-xs text-muted-foreground">条</span>
               </div>
@@ -541,12 +578,11 @@ export function RuntimeConfigPage() {
               description="每段链路（请求/转发/回传）落库的最大体积（0 = 不保存任何请求体）"
             >
               <div className="flex w-full items-center gap-2 sm:w-48">
-                <Input
-                  type="number"
+                <NumberField
+                  value={form.usageLog?.bodyMaxKB ?? defaultUsageLog.bodyMaxKB}
                   min={0}
                   className="font-mono text-xs"
-                  value={form.usageLog?.bodyMaxKB ?? defaultUsageLog.bodyMaxKB}
-                  onChange={(e) => updateUsageLog('bodyMaxKB', Math.max(0, Number(e.target.value) || 0))}
+                  onCommit={(v) => updateUsageLog('bodyMaxKB', v)}
                 />
                 <span className="shrink-0 text-xs text-muted-foreground">KB</span>
               </div>

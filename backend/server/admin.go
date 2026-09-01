@@ -153,6 +153,20 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		respondFail(c, 400, "invalid_port", "port must be between 1 and 65535")
 		return
 	}
+	if payload.LogLevel != "" {
+		switch payload.LogLevel {
+		case "debug", "info", "warn", "error":
+		default:
+			// logAt 对未知级别静默按 info 兜底，保存成功但设置无效——
+			// 这里直接拒绝，避免「改了没生效」的困惑。
+			respondFail(c, 400, "invalid_log_level", "logLevel must be one of debug/info/warn/error")
+			return
+		}
+	}
+	if payload.DatabasePath != nil && strings.TrimSpace(*payload.DatabasePath) == "" {
+		respondFail(c, 400, "invalid_database_path", "databasePath must not be empty; unset it in config.json to use the default")
+		return
+	}
 	if payload.Host != "" && strings.TrimSpace(payload.Host) == "" {
 		respondFail(c, 400, "invalid_host", "host must not be blank")
 		return
@@ -311,7 +325,13 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 	}
 	// 「留空即不变」：编辑时若未填 apiKey，保留已有记录的原 key，避免被清空。
 	if strings.TrimSpace(item.APIKey) == "" {
-		if existing, found := s.findSourceByID(c.Request.Context(), item.ID); found {
+		existing, found, findErr := s.findSourceByID(c.Request.Context(), item.ID)
+		if findErr != nil {
+			// 查询失败时绝不能带着空 key 继续保存（会把存量密钥抹掉）。
+			respondFail(c, 500, "lookup_source_failed", findErr.Error())
+			return
+		}
+		if found {
 			item.APIKey = existing.APIKey
 		}
 	}
@@ -361,20 +381,22 @@ func validateCustomSourceProtocol(item *storage.ModelSource) error {
 }
 
 // findSourceByID 按 id 查找模型源（用于「留空即不变」保留原 secret）。
-func (s *Server) findSourceByID(ctx context.Context, id string) (storage.ModelSource, bool) {
+// 查询失败必须显式报错：把错误当「不存在」会让调用方把留空的 api_key 当
+// 「不需要保留」直接写空，静默抹掉存量密钥。
+func (s *Server) findSourceByID(ctx context.Context, id string) (storage.ModelSource, bool, error) {
 	if s.store == nil || id == "" {
-		return storage.ModelSource{}, false
+		return storage.ModelSource{}, false, nil
 	}
 	sources, err := s.store.ListSources(ctx)
 	if err != nil {
-		return storage.ModelSource{}, false
+		return storage.ModelSource{}, false, err
 	}
 	for _, src := range sources {
 		if src.ID == id {
-			return src, true
+			return src, true, nil
 		}
 	}
-	return storage.ModelSource{}, false
+	return storage.ModelSource{}, false, nil
 }
 
 func (s *Server) adminDeleteSource(c *gin.Context) {
@@ -742,10 +764,18 @@ func (s *Server) adminUpsertToken(c *gin.Context) {
 		item.Name = name
 	}
 	// 「留空即不变」：编辑时若未填 token，保留原值（不清空）。
+	isNew := true
 	if strings.TrimSpace(item.Token) == "" {
 		if existing, found, err := store.FindAPITokenByName(c.Request.Context(), item.Name); err == nil && found {
 			item.Token = existing.Token
+			isNew = false
 		}
+	}
+	// 新建时空 token 是死行（hash 为空、认证永远不命中）：直接拒绝而不是
+	// 落一条不可用的记录。编辑路径的「留空即不变」不受影响。
+	if isNew && strings.TrimSpace(item.Token) == "" {
+		respondFail(c, 400, "invalid_token", "token must not be empty when creating a new API token")
+		return
 	}
 	if err := store.UpsertAPIToken(c.Request.Context(), item); err != nil {
 		respondFail(c, 400, "save_token_failed", err.Error())

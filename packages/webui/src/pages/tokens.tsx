@@ -267,16 +267,19 @@ function TokenFormDialog({
   const [allowedGroups, setAllowedGroups] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
 
+  // 打开时初始化一次表单。deps 刻意不含 groups：对话框开着时任何
+  // model-groups 重验证（别的页面触发全局 mutate 等）都会重置表单，
+  // 清掉用户输到一半的 secret。悬空组过滤在初始化时刻快照即可。
   useEffect(() => {
     if (open) {
       setName(token?.name ?? '')
       setSecret('')
       setEnabled(token?.enabled ?? true)
-      // 过滤掉已不存在的组名（历史悬空引用），保存时不写回脏数据。
       const validNames = new Set((groups ?? []).map((g) => g.name))
       setAllowedGroups((token?.allowedGroups ?? []).filter((g) => validNames.has(g)))
     }
-  }, [open, token, groups])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, token])
 
   function toggleGroup(groupName: string) {
     setAllowedGroups((prev) =>
