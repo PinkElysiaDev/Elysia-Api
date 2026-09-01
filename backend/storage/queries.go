@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	randv2 "math/rand/v2"
 	"sort"
@@ -38,7 +39,10 @@ func (s *Store) scanModel(scanner interface{ Scan(dest ...any) error }) (Model, 
 	if plain, err := s.codec.decrypt(item.APIKey); err == nil {
 		item.APIKey = plain
 	} else {
-		return Model{}, err
+		// 行级容错：密钥解不开（master-key 丢失/更换）时清空该行密钥并告警，
+		// 不让单行毒化整个列表——网关保底可用，其余模型照常服务。
+		log.Printf("[secret] model %s/%s: %v (key cleared, row kept)", item.ID, item.SourceID, err)
+		item.APIKey = ""
 	}
 	return item, nil
 }
@@ -488,10 +492,15 @@ func (s *Store) SetModelAvailability(ctx context.Context, modelID, sourceID stri
 	return res.RowsAffected()
 }
 
-// ListAllModelsForProbe 返回所有模型（含不可用的），供健康检测遍历。
-// 与 ListModels 不同，这里不过滤 available，以便对已禁用模型做恢复探测。
+// ListAllModelsForProbe 返回适合健康检测的模型：不过滤 available（已自动
+// 禁用的模型要持续探测以便恢复），但排除用户手动停用的模型（enabled=0）
+// 与所属源已停用的模型——探测是真实的计费请求，打向管理员明确关掉的
+// 模型既浪费钱也毫无意义（路由装配本就不会把流量派过去）。
 func (s *Store) ListAllModelsForProbe(ctx context.Context) ([]Model, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+modelColumns+` FROM models m ORDER BY m.source_name, m.name`)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+modelColumns+` FROM models m
+		LEFT JOIN model_sources ms ON m.source_id = ms.id
+		WHERE m.enabled = 1 AND (m.source_id = '' OR ms.enabled = 1 OR ms.id IS NULL)
+		ORDER BY m.source_name, m.name`)
 	if err != nil {
 		return nil, err
 	}

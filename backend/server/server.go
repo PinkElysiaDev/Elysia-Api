@@ -158,6 +158,21 @@ func New(cfg *config.Config) *Server {
 		log.Printf("failed to open sqlite store: %v", err)
 	} else {
 		server.store = store
+		// 密钥完整性探测：master-key 丢失/更换会让全部密文行解不开——路由
+		// 装配失败导致所有请求 401、管理面板 500。与其静默砖死，启动时把
+		// 原因与恢复手段喊出来（恢复 .master-key 文件或设置环境变量）。
+		if hasEncrypted, decryptOK, perr := store.SecretIntegrityProbe(context.Background()); perr != nil {
+			log.Printf("secret integrity probe failed: %v", perr)
+		} else if hasEncrypted && !decryptOK {
+			log.Printf("========================================================================")
+			log.Printf("FATAL-WARNING: encrypted secrets exist but the current master key cannot decrypt them.")
+			log.Printf("All upstream keys / API tokens are unreadable: routing will fail with 401")
+			log.Printf("and the admin panel cannot list sources/tokens until this is fixed.")
+			log.Printf("Recovery: restore the original .master-key file next to the database, or set")
+			log.Printf("ELYSIA_API_MASTER_KEY to the previous value. Rows are kept (secrets cleared)")
+			log.Printf("so they can be re-entered from the panel once the key is restored.")
+			log.Printf("========================================================================")
+		}
 		// 历史数据回填进小时级 rollup 预聚合表（后台、幂等、可断点续跑）；
 		// 完成前聚合查询自动走 raw 路径，功能不受影响。
 		store.StartRollupBackfill()

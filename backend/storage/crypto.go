@@ -1,13 +1,16 @@
 package storage
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -104,4 +107,32 @@ func (c *secretCodec) decrypt(stored string) (string, error) {
 		return "", fmt.Errorf("failed to decrypt secret: %w", err)
 	}
 	return string(plain), nil
+}
+
+// SecretIntegrityProbe 启动期密钥完整性探测：检查库内是否存在密文行，
+// 并用当前密钥试解一行。hasEncrypted=false 表示没有密文（全新库或明文
+// 模式），无需关心；decryptOK=false 表示 .master-key 丢失或
+// ELYSIA_API_MASTER_KEY 被更换——此时全部 enc:v1: 行解不开，路由装配与
+// 管理面板会整体失败，调用方必须醒目告警而不是静默砖死。
+func (s *Store) SecretIntegrityProbe(ctx context.Context) (hasEncrypted, decryptOK bool, err error) {
+	probeTables := []struct{ query string }{
+		{`SELECT api_key FROM model_sources WHERE api_key LIKE 'enc:v1:%' LIMIT 1`},
+		{`SELECT api_key FROM models WHERE api_key LIKE 'enc:v1:%' LIMIT 1`},
+		{`SELECT token FROM api_tokens WHERE token LIKE 'enc:v1:%' LIMIT 1`},
+	}
+	for _, table := range probeTables {
+		var stored string
+		qErr := s.db.QueryRowContext(ctx, table.query).Scan(&stored)
+		if errors.Is(qErr, sql.ErrNoRows) {
+			continue
+		}
+		if qErr != nil {
+			return false, false, qErr
+		}
+		if _, dErr := s.codec.decrypt(stored); dErr != nil {
+			return true, false, nil
+		}
+		return true, true, nil
+	}
+	return false, true, nil
 }

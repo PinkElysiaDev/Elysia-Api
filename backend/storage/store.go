@@ -454,7 +454,10 @@ func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
 		if plain, err := s.codec.decrypt(item.Token); err == nil {
 			item.Token = plain
 		} else {
-			return nil, err
+			// 行级容错：解不开的 token 清空明文并告警，保留行供管理端处置
+			//（删除/重录），不再毒化整个令牌列表。
+			log.Printf("[secret] api token %q: %v (plaintext cleared, row kept)", item.Name, err)
+			item.Token = ""
 		}
 		item.Enabled = intBool(enabled)
 		item.AllowedGroups = decodeStringSlice(allowedGroups)
@@ -531,7 +534,9 @@ func (s *Store) FindAPITokenByName(ctx context.Context, name string) (APIToken, 
 	if plain, derr := s.codec.decrypt(item.Token); derr == nil {
 		item.Token = plain
 	} else {
-		return APIToken{}, false, derr
+		// 行级容错：解不开时按「明文已不可用」返回空 token，行保留。
+		log.Printf("[secret] api token %q: %v (plaintext cleared, row kept)", name, derr)
+		item.Token = ""
 	}
 	item.Enabled = intBool(enabled)
 	item.AllowedGroups = decodeStringSlice(allowedGroups)
@@ -579,14 +584,16 @@ func (s *Store) ListSources(ctx context.Context) ([]ModelSource, error) {
 		if plain, err := s.codec.decrypt(item.APIKey); err == nil {
 			item.APIKey = plain
 		} else {
-			return nil, err
+			// 行级容错：解不开的源密钥清空并告警，保留行让管理端可见可处置。
+			log.Printf("[secret] source %q: %v (api key cleared, row kept)", item.ID, err)
+			item.APIKey = ""
 		}
 		_ = json.Unmarshal([]byte(manual), &item.ManualModels)
 		if storedKeys != "" {
 			if plain, err := s.codec.decrypt(storedKeys); err == nil {
 				_ = json.Unmarshal([]byte(plain), &item.APIKeys)
 			} else {
-				return nil, err
+				log.Printf("[secret] source %q: %v (key set cleared, row kept)", item.ID, err)
 			}
 		}
 		items = append(items, item)
