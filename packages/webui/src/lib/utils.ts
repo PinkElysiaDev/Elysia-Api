@@ -1,37 +1,12 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import type { Model } from '@/lib/types'
+
+/** 用量时间窗的统一取整粒度：滚动窗口对齐到下一个 5 分钟边界。 */
+export const USAGE_BUCKET_MS = 5 * 60_000
 
 /** Tailwind class 合并（后者覆盖前者同前缀）。 */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
-}
-
-/**
- * 旧的源→模型名交集（仅在无法下发 sourceId 时使用）。
- * 用量页已改为把 sourceIds 直接传给后端；同名模型跨源时必须走 source_id 列。
- * 交集为空且确有筛选输入时返回 [NO_MATCH_MODEL_FILTER]，避免空数组被当成「未筛选」。
- */
-export const NO_MATCH_MODEL_FILTER = 'ￗno-match'
-
-export function effectiveModelFilter(
-  modelNames: string[],
-  sourceNames: string[],
-  models: Model[],
-  modelsLoaded = true,
-): string[] {
-  if (sourceNames.length === 0) return modelNames
-  // 模型目录尚未加载（或加载失败）时不做源→模型交集：空目录会把任何源
-  // 选择误判为"无命中"，页面显示永久空态。
-  if (!modelsLoaded) return modelNames
-  const set = new Set(sourceNames)
-  const fromSources = models.filter((m) => m.sourceName && set.has(m.sourceName)).map((m) => m.name)
-  if (modelNames.length === 0) {
-    return fromSources.length > 0 ? fromSources : [NO_MATCH_MODEL_FILTER]
-  }
-  const sourceSet = new Set(fromSources)
-  const matched = modelNames.filter((name) => sourceSet.has(name))
-  return matched.length > 0 ? matched : [NO_MATCH_MODEL_FILTER]
 }
 
 /** 千分位格式化数字；空值显示 0。 */

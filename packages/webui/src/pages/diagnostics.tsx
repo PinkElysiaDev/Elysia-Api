@@ -15,14 +15,14 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { SettingSection, SettingRow } from '@/components/ui/setting-card'
 import { ErrorState } from '@/components/ui/states'
-import { useHealth, useRuntimeConfig, revalidate } from '@/lib/hooks'
+import { useHealth, useRuntimeConfig, revalidate, POLL } from '@/lib/hooks'
 import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
 import { formatBytes, formatNumber } from '@/lib/utils'
 
 export function DiagnosticsPage() {
   const toast = useToast()
-  const { data: health, isLoading, error, mutate } = useHealth(10000)
+  const { data: health, isLoading, error, mutate } = useHealth(POLL.HEALTH_SLOW)
   const { data: runtimeConfig } = useRuntimeConfig()
   const [togglingPprof, setTogglingPprof] = useState(false)
 

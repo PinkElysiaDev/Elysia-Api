@@ -26,9 +26,9 @@ import { ExpandRow } from '@/components/expand-row'
 import { CapChip, Dot, PlatformBadge } from '@/components/badges'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
-import { useSources, useModels, useModelCatalogStatus, useDebouncedValue, revalidate } from '@/lib/hooks'
+import { useSources, useModels, useModelCatalogStatus, useDebouncedValue, revalidate, POLL } from '@/lib/hooks'
 import { api } from '@/lib/api'
-import { cn, formatNumber, formatRelative } from '@/lib/utils'
+import { cn, formatNumber, formatRelative, matchesModelKeyword } from '@/lib/utils'
 import type { ModelSource, Model } from '@/lib/types'
 import { SourceFormDialog } from './sources/source-form'
 import { ModelEditDialog } from './sources/model-edit-dialog'
@@ -85,8 +85,8 @@ export function SourcesPage() {
   const toast = useToast()
   const { confirm, dialog } = useConfirm()
   // 60s 自动刷新：拉取时间/检测时间/模型数所见即所得，无需手动刷新。
-  const { data, isLoading, error, mutate } = useSources(60_000)
-  const { data: models } = useModels(60_000)
+  const { data, isLoading, error, mutate } = useSources(POLL.LIST)
+  const { data: models } = useModels(POLL.LIST)
   const { data: catalogStatus } = useModelCatalogStatus()
   const [keyword, setKeyword] = useState('')
   const [editing, setEditing] = useState<ModelSource | null>(null)
@@ -245,7 +245,7 @@ export function SourcesPage() {
     const id = setInterval(() => {
       revalidate.sources()
       revalidate.models()
-    }, 3000)
+    }, POLL.SOURCE_FAST)
     return () => clearInterval(id)
   }, [anyRefreshing])
 
@@ -447,16 +447,16 @@ export function SourcesPage() {
                     const globalKeyword = (debouncedGlobalSearch[source.id] ?? '').trim().toLowerCase()
                     const matchesGlobal = (m: Model) =>
                       !globalKeyword ||
-                      `${m.id} ${m.name} ${m.sourceName ?? ''}`.toLowerCase().includes(globalKeyword)
+                      matchesModelKeyword(globalKeyword, m)
                     const selectedCount = selectedModelsOf(source.id).length
                     const allVisibleModels = groups
                       .map((g) => {
-                        const kw2 = (debouncedGroupSearch[`${source.id}:${g.key}`] ?? '').trim().toLowerCase()
-                        return kw2
+                        const groupKeyword = (debouncedGroupSearch[`${source.id}:${g.key}`] ?? '').trim().toLowerCase()
+                        return groupKeyword
                           ? g.models.filter(
                               (m) =>
                                 matchesGlobal(m) &&
-                                `${m.id} ${m.name} ${m.sourceName ?? ''}`.toLowerCase().includes(kw2),
+                                matchesModelKeyword(groupKeyword, m),
                             )
                           : g.models.filter(matchesGlobal)
                       })
@@ -627,7 +627,7 @@ export function SourcesPage() {
                                 (m) =>
                                   matchesGlobal(m) &&
                                   (!groupKeyword ||
-                                    `${m.id} ${m.name} ${m.sourceName ?? ''}`.toLowerCase().includes(groupKeyword)),
+                                    matchesModelKeyword(groupKeyword, m)),
                               )
                               const collapsed = !!collapsedGroups[groupStateKey]
                               return (

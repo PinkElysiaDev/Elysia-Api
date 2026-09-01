@@ -30,7 +30,7 @@ import { KpiCard, KpiGrid } from '@/components/kpi-card'
 import { RoleWatermark } from '@/components/role-watermark'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ErrorState } from '@/components/ui/states'
-import { Fchip } from '@/components/ui/fchip'
+import { LegendChip } from '@/components/ui/legend-chip'
 import { UsageFilterBar, type RangeKey } from '@/components/usage-filter-bar'
 import { ModelBreakdownTooltip } from '@/components/model-breakdown-tooltip'
 import {
@@ -41,16 +41,7 @@ import {
   useMinuteTick,
   useSources,
 } from '@/lib/hooks'
-import {
-  bucketedTimeISO,
-  CHART_TICK,
-  compactNumber,
-  formatDuration,
-  formatHitRate,
-  formatNumber,
-  percent,
-  startOfRange,
-} from '@/lib/utils'
+import { bucketedTimeISO, CHART_TICK, compactNumber, formatDuration, formatHitRate, formatNumber, percent, startOfRange, USAGE_BUCKET_MS } from '@/lib/utils'
 
 export function UsageStatsPage() {
   const [range, setRange] = useState<RangeKey>('7d')
@@ -74,7 +65,7 @@ export function UsageStatsPage() {
     // to 取下一 5 分钟边界：缓存键稳定，且当前桶内新记录能进半开区间。
     // 日历日 / 相对窗起点用 now，避免临近午夜时 from 被推到次日。
     const nowMs = minuteTick * 60_000
-    const to = bucketedTimeISO(nowMs, 5 * 60_000)
+    const to = bucketedTimeISO(nowMs, USAGE_BUCKET_MS)
     return {
       from: startOfRange(range, new Date(nowMs).toISOString()),
       to,
@@ -226,8 +217,8 @@ export function UsageStatsPage() {
                   <h3 className="text-sm font-semibold text-foreground">时间序列双流趋势</h3>
                 </div>
                 <div className="flex flex-wrap items-center gap-2.5">
-                  <Fchip label="请求折线" color="var(--rose)" active={showReqLine} onClick={() => setShowReqLine(!showReqLine)} />
-                  <Fchip label="Token 柱图" color="var(--jade)" active={showTokBar} onClick={() => setShowTokBar(!showTokBar)} />
+                  <LegendChip label="请求折线" color="var(--rose)" active={showReqLine} onClick={() => setShowReqLine(!showReqLine)} />
+                  <LegendChip label="Token 柱图" color="var(--jade)" active={showTokBar} onClick={() => setShowTokBar(!showTokBar)} />
                 </div>
               </div>
               <div className="pt-2">

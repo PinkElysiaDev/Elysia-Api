@@ -1,5 +1,5 @@
-import { FileText, Zap, type LucideIcon } from 'lucide-react'
-import type { Platform, ModelType, GroupStrategy } from '@/lib/types'
+import { Zap, type LucideIcon } from 'lucide-react'
+import type { Platform, GroupStrategy } from '@/lib/types'
 import { protocolLabel } from '@/lib/protocol'
 import { cn, isSuccessStatus } from '@/lib/utils'
 
@@ -68,20 +68,11 @@ export function CapChip({
 
 export function StreamIcon({
   streaming,
-  type,
   className,
 }: {
   streaming?: boolean
-  type?: ModelType | string
   className?: string
 }) {
-  if (type === 'embedding') {
-    return (
-      <span className={cn('inline-flex items-center gap-1 text-2xs text-muted-foreground', className)}>
-        <FileText className="h-[11px] w-[11px]" aria-hidden />
-      </span>
-    )
-  }
   return (
     <span
       className={cn(

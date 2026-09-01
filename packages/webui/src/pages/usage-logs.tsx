@@ -37,16 +37,7 @@ import { useUsageLogs, useUsageFilterOptions, useMinuteTick, useSources, revalid
 import { api } from '@/lib/api'
 import { colorize } from '@/lib/json-highlight'
 import type { UsageBody, UsageLogDetail } from '@/lib/types'
-import {
-  cn,
-  downloadJSON,
-  formatDateTime,
-  formatDuration,
-  formatNumber,
-  startOfRange,
-  bucketedTimeISO,
-  tryParseJSON,
-} from '@/lib/utils'
+import { bucketedTimeISO, cn, downloadJSON, formatDateTime, formatDuration, formatNumber, isSuccessStatus, startOfRange, tryParseJSON, USAGE_BUCKET_MS } from '@/lib/utils'
 
 const PAGE_SIZE = 20
 
@@ -93,7 +84,7 @@ export function UsageLogsPage() {
     // to 取下一 5 分钟边界：缓存键稳定，且当前桶内新记录能进半开区间。
     // 相对窗起点用 now，避免临近午夜把 from 推到次日。
     const nowMs = minuteTick * 60_000
-    const to = bucketedTimeISO(nowMs, 5 * 60_000)
+    const to = bucketedTimeISO(nowMs, USAGE_BUCKET_MS)
     return {
       from: startOfRange(range, new Date(nowMs).toISOString()),
       to,
@@ -122,7 +113,7 @@ export function UsageLogsPage() {
     const all = data?.items ?? []
     const totals = all.reduce(
       (acc, item) => {
-        if (item.statusCode >= 200 && item.statusCode < 400) {
+        if (isSuccessStatus(item.statusCode)) {
           acc.ok += 1
           acc.duration += item.durationMs || 0
         } else {

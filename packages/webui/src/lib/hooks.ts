@@ -4,6 +4,16 @@ import { api } from './api'
 import type { UsageQueryParams } from './types'
 import { uniqueSorted } from './utils'
 
+/** SWR 轮询间隔统一表（毫秒）：散落各页的轮询字面量集中命名。
+ *  SEQ 是日志页变更计数的高频探测；SOURCE_FAST 是源刷新进行中的快轮。 */
+export const POLL = {
+  LIST: 60_000,
+  USAGE: 30_000,
+  HEALTH_SLOW: 10_000,
+  SEQ: 2_000,
+  SOURCE_FAST: 3_000,
+} as const
+
 const defaultConfig: SWRConfiguration = {
   revalidateOnFocus: false,
   shouldRetryOnError: false,
@@ -60,7 +70,7 @@ export function useModelCatalogStatus() {
   return useSWR(
     'model-catalog-status',
     () => api.modelCatalogStatus(),
-    { ...defaultConfig, refreshInterval: 60_000 },
+    { ...defaultConfig, refreshInterval: POLL.LIST },
   )
 }
 
@@ -95,14 +105,14 @@ const usageConfig: SWRConfiguration = {
   keepPreviousData: true,
   // 有新调用时由 useUsageLive 按 seq 立刻重拉。这里只做慢兜底（脉搏窗口随时间滑动）。
   dedupingInterval: 2_000,
-  refreshInterval: 30_000,
+  refreshInterval: POLL.USAGE,
 }
 
 /** 登录后探测 usage 序号：原子计数，无 SQL。序号变化才重拉 KPI/日志/图表。 */
 export function useUsageLive() {
   const { data } = useSWR('usage-seq', () => api.usageSeq(), {
     ...defaultConfig,
-    refreshInterval: 2_000,
+    refreshInterval: POLL.SEQ,
     dedupingInterval: 1_000,
   })
   const seq = data?.seq

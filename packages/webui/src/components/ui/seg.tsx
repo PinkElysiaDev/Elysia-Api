@@ -19,16 +19,14 @@ export function Seg<T extends string | number>({
   options: SegOption<T>[]
   value: T
   onChange: (value: T) => void
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'md' | 'lg'
   className?: string
   'aria-label'?: string
 }) {
   const sizing =
-    size === 'sm'
-      ? 'min-h-0 min-w-[2.75rem] px-2 text-2xs'
-      : size === 'lg'
-        ? 'min-h-[34px] min-w-[4.5rem] px-3.5 text-xs'
-        : 'min-h-[28px] px-2.5 text-xs'
+    size === 'lg'
+      ? 'min-h-[34px] min-w-[4.5rem] px-3.5 text-xs'
+      : 'min-h-[28px] px-2.5 text-xs'
   return (
     <div
       role="group"

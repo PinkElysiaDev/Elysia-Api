@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
  * 图例胶囊：999px 圆角 + 可选色点，选中玫红描边加粗。
  * 图表系列开关 / 筛选 chip 用。
  */
-export function Fchip({
+export function LegendChip({
   label,
   color,
   active = true,

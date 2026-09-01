@@ -24,7 +24,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { CapChip } from '@/components/badges'
 import { api } from '@/lib/api'
 import { revalidate, useModels, useSources } from '@/lib/hooks'
-import { cn } from '@/lib/utils'
+import { cn, matchesModelKeyword } from '@/lib/utils'
 import type { GroupStrategy, Model, ModelGroup, ModelType } from '@/lib/types'
 
 function emptyGroup(): ModelGroup {
@@ -136,7 +136,7 @@ export function GroupFormDialog({
     )
     const kw = modelSearch.trim().toLowerCase()
     const matched = list.filter((m) => {
-      if (kw && !`${m.id} ${m.name} ${m.sourceName ?? ''}`.toLowerCase().includes(kw)) return false
+      if (kw && !matchesModelKeyword(kw, m)) return false
       if (sourceFilter !== 'all' && (m.sourceId ?? '') !== sourceFilter) return false
       if (capFilter === 'vision' && !m.visionCapable) return false
       if (capFilter === 'tools' && !m.toolsCapable) return false

@@ -12,7 +12,6 @@ export interface SettingSectionProps {
   className?: string
 }
 
-export type SettingCardProps = SettingSectionProps
 
 /**
  * 无界配置章节：开放式排版、极细晶辉发丝下划线、彻底摒弃灰色表头与四周封闭卡片盒。
@@ -47,9 +46,6 @@ export function SettingSection({
     </section>
   )
 }
-
-/** 兼容旧名称 */
-export const SettingCard = SettingSection
 
 export interface SettingRowProps {
   label: ReactNode

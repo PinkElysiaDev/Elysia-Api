@@ -24,7 +24,7 @@ import { ErrorState, LoadingState } from '@/components/ui/states'
 import { useToast } from '@/components/ui/use-toast'
 import { useRuntimeConfig, useModelCatalogStatus, revalidate } from '@/lib/hooks'
 import { api } from '@/lib/api'
-import { formatRelative } from '@/lib/utils'
+import { formatRelative, formatBytes } from '@/lib/utils'
 import type { LogLevel, RuntimeConfig, UsageLogRuntimeConfig, UsageStorageStatus } from '@/lib/types'
 
 // 目录数据来源的展示名。
@@ -42,6 +42,9 @@ function catalogSourceLabel(source: string): string {
 }
 
 // 日志管理表单缺省值（后端 GET 返回生效值，老版本无该块时兜底）。
+/** 目录同步周期的表单默认（与后端 ResolveModelCatalogInterval 默认一致）。 */
+const defaultCatalogSyncMinutes = 1440
+
 const defaultUsageLog: UsageLogRuntimeConfig = {
   persistEnabled: true,
   retentionDays: 0,
@@ -51,18 +54,6 @@ const defaultUsageLog: UsageLogRuntimeConfig = {
   bodyOnErrorOnly: false,
   externalizeMedia: true,
   cleanupIntervalMinutes: 60,
-}
-
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let value = bytes
-  let unit = 0
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024
-    unit++
-  }
-  return `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`
 }
 
 /** 数字输入：清空时保持空串展示、失焦还原旧值，只在输入有效数字时提交。
@@ -134,13 +125,23 @@ export function RuntimeConfigPage() {
   }, [refreshStorage])
 
   function updateUsageLog<K extends keyof UsageLogRuntimeConfig>(key: K, value: UsageLogRuntimeConfig[K]) {
-    setForm((prev) =>
-      prev ? { ...prev, usageLog: { ...(prev.usageLog ?? defaultUsageLog), [key]: value } } : prev,
-    )
+    setForm((prev) => (prev && prev.usageLog ? { ...prev, usageLog: { ...prev.usageLog, [key]: value } } : prev))
   }
 
   useEffect(() => {
-    if (data) setForm(data)
+    // 数据入口一次性补默认块：后端省略 usageLog/modelCatalog 时就地归一化，
+    // 表达式与保存路径都不再需要 ?? 兜底（旧实现三处兜底口径不一致：
+    // 显示 1440、保存写 0，UI 与落盘会分叉）。
+    if (data)
+      setForm({
+        ...data,
+        usageLog: data.usageLog ?? defaultUsageLog,
+        modelCatalog: data.modelCatalog ?? {
+          enabled: true,
+          url: '',
+          syncIntervalMinutes: defaultCatalogSyncMinutes,
+        },
+      })
   }, [data])
 
   function update<K extends keyof RuntimeConfig>(key: K, value: RuntimeConfig[K]) {
@@ -149,12 +150,9 @@ export function RuntimeConfigPage() {
 
   async function handleSave() {
     if (!form) return
-    if (form.port < 1 || form.port > 65535) {
-      toast.error('端口非法', 'port 必须在 1-65535 之间')
-      return
-    }
-    if (form.httpTimeout < 0) {
-      toast.error('超时非法', 'httpTimeout 必须为非负整数')
+    // 下界由 NumberField 的 min 钳制保证，这里只校验上界。
+    if (form.port > 65535) {
+      toast.error('端口非法', 'port 不能超过 65535')
       return
     }
     setSaving(true)
@@ -172,7 +170,7 @@ export function RuntimeConfigPage() {
         // 日志管理：数值字段整体回写（GET 返回生效值，保存即显式化当前口径）。
         usageLog: form.usageLog ?? defaultUsageLog,
         // 目录刷新周期：0 = 默认 24h；保存即生效（后台周期动态读取配置）。
-        modelCatalog: { syncIntervalMinutes: form.modelCatalog?.syncIntervalMinutes ?? 0 },
+        modelCatalog: { syncIntervalMinutes: form.modelCatalog?.syncIntervalMinutes ?? defaultCatalogSyncMinutes },
       })
       await revalidate.runtimeConfig()
       refreshStorage()
@@ -438,7 +436,7 @@ export function RuntimeConfigPage() {
             >
               <div className="flex w-full items-center gap-2 sm:w-48">
                 <NumberField
-                  value={form.modelCatalog?.syncIntervalMinutes ?? 1440}
+                  value={form.modelCatalog?.syncIntervalMinutes ?? defaultCatalogSyncMinutes}
                   min={0}
                   className="font-mono text-xs"
                   onCommit={(v) =>
@@ -523,7 +521,7 @@ export function RuntimeConfigPage() {
               description="关闭后新请求完全不落库（统计与日志面板不再更新）"
             >
               <Switch
-                checked={form.usageLog?.persistEnabled ?? defaultUsageLog.persistEnabled}
+                checked={form.usageLog?.persistEnabled}
                 onCheckedChange={(v) => updateUsageLog('persistEnabled', v)}
               />
             </SettingRow>
@@ -593,7 +591,7 @@ export function RuntimeConfigPage() {
               description="开启后成功请求不保留请求体（仅元数据），失败请求完整保留以便排查"
             >
               <Switch
-                checked={form.usageLog?.bodyOnErrorOnly ?? defaultUsageLog.bodyOnErrorOnly}
+                checked={form.usageLog?.bodyOnErrorOnly}
                 onCheckedChange={(v) => updateUsageLog('bodyOnErrorOnly', v)}
               />
             </SettingRow>
@@ -603,7 +601,7 @@ export function RuntimeConfigPage() {
               description="请求体中的 base64 媒体（图片/音频/视频/文件）存为独立文件，正文以占位符替代"
             >
               <Switch
-                checked={form.usageLog?.externalizeMedia ?? defaultUsageLog.externalizeMedia}
+                checked={form.usageLog?.externalizeMedia}
                 onCheckedChange={(v) => updateUsageLog('externalizeMedia', v)}
               />
             </SettingRow>

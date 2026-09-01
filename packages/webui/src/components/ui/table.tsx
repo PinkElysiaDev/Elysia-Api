@@ -6,15 +6,6 @@ import { cn } from '@/lib/utils'
  * 数字列在页面里用 .num（font-mono text-xs tnum），副行用 .sub。
  * .num 只处理数字排版，不隐式改变对齐；控制列按页面语义显式居中。
  */
-export const Table = forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
-  ({ className, ...props }, ref) => (
-    <div className="relative w-full overflow-x-auto">
-      <table ref={ref} className={cn('w-full caption-bottom text-sm', className)} {...props} />
-    </div>
-  ),
-)
-Table.displayName = 'Table'
-
 export const TableHeader = forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
   ({ className, ...props }, ref) => (
     <thead ref={ref} className={cn('[&_tr]:border-b [&_tr]:border-border', className)} {...props} />
@@ -28,13 +19,6 @@ export const TableBody = forwardRef<HTMLTableSectionElement, React.HTMLAttribute
   ),
 )
 TableBody.displayName = 'TableBody'
-
-export const TableFooter = forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
-  ({ className, ...props }, ref) => (
-    <tfoot ref={ref} className={cn('border-t bg-background/50 font-medium', className)} {...props} />
-  ),
-)
-TableFooter.displayName = 'TableFooter'
 
 export const TableRow = forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTMLTableRowElement>>(
   ({ className, ...props }, ref) => (
@@ -68,10 +52,3 @@ export const TableCell = forwardRef<HTMLTableCellElement, React.TdHTMLAttributes
   ),
 )
 TableCell.displayName = 'TableCell'
-
-export const TableCaption = forwardRef<HTMLTableCaptionElement, React.HTMLAttributes<HTMLTableCaptionElement>>(
-  ({ className, ...props }, ref) => (
-    <caption ref={ref} className={cn('mt-4 text-sm text-muted-foreground', className)} {...props} />
-  ),
-)
-TableCaption.displayName = 'TableCaption'

@@ -61,7 +61,7 @@ export function formatPulseCaption(ms: number, nowMs: number): string {
 }
 
 /** 与 CHART_TICK 等宽字体对齐的刻度宽估算（CJK 1em，ASCII ~0.64em）。 */
-export function estimatePulseTickWidth(label: string, fontPx = readChartTickSizePx()): number {
+function estimatePulseTickWidth(label: string, fontPx = readChartTickSizePx()): number {
   const cjk = fontPx
   const ascii = fontPx * 0.64
   let w = 0

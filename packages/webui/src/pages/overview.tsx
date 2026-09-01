@@ -29,7 +29,7 @@ import {
   useMinuteTick,
 } from '@/lib/hooks'
 import type { ModelSource } from '@/lib/types'
-import { bucketedTimeISO, compactNumber, cn, formatHitRate, formatNumber, percent, startOfRange } from '@/lib/utils'
+import { bucketedTimeISO, cn, compactNumber, formatHitRate, formatNumber, percent, startOfRange, USAGE_BUCKET_MS } from '@/lib/utils'
 import type { RangeKey } from '@/components/usage-filter-bar'
 import { TemporalTrendSection } from './overview-trends'
 import { PulseSection } from './overview-pulse'
@@ -219,7 +219,7 @@ export function OverviewPage() {
   // from 必须用当前时刻算本地日，不能用 ceiled to：临近午夜 to 会落到次日 00:00。
   const todayParams = useMemo(() => {
     const nowMs = minuteTick * 60_000
-    const to = bucketedTimeISO(nowMs, 5 * 60_000)
+    const to = bucketedTimeISO(nowMs, USAGE_BUCKET_MS)
     return { from: localMidnight(0, new Date(nowMs)).toISOString(), to }
   }, [minuteTick])
 
@@ -276,7 +276,7 @@ export function OverviewPage() {
   const [topRange, setTopRange] = useState<RangeKey>('24h')
   const topModelsParams = useMemo(() => {
     const nowMs = minuteTick * 60_000
-    const to = bucketedTimeISO(nowMs, 5 * 60_000)
+    const to = bucketedTimeISO(nowMs, USAGE_BUCKET_MS)
     // 热门模型只反映成功请求，失败调用不计入排名。
     return { from: startOfRange(topRange, new Date(nowMs).toISOString()), to, status: 'success' as const }
   }, [topRange, minuteTick])
@@ -299,7 +299,7 @@ export function OverviewPage() {
   // 最近失败（最新 3 条，今日窗口；to 取下一 5 分钟边界）
   const failuresParams = useMemo(() => {
     const nowMs = minuteTick * 60_000
-    const to = bucketedTimeISO(nowMs, 5 * 60_000)
+    const to = bucketedTimeISO(nowMs, USAGE_BUCKET_MS)
     return {
       from: localMidnight(0, new Date(nowMs)).toISOString(),
       to,

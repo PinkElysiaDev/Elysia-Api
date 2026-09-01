@@ -19,13 +19,13 @@ import {
   useCommittedRange,
   useEnterAnimation,
 } from '@/components/usage-chart-model'
-import { Fchip } from '@/components/ui/fchip'
+import { LegendChip } from '@/components/ui/legend-chip'
 import { Seg } from '@/components/ui/seg'
 import { ErrorState } from '@/components/ui/states'
 import { ModelBreakdownTooltip } from '@/components/model-breakdown-tooltip'
 import { useUsageByModelDaily, useUsageTrend } from '@/lib/hooks'
 import type { UsageModelDailyPoint } from '@/lib/types'
-import { bucketedTimeISO, CHART_TICK, cn, compactNumber } from '@/lib/utils'
+import { bucketedTimeISO, CHART_TICK, cn, compactNumber, USAGE_BUCKET_MS } from '@/lib/utils'
 import { offsetDayKey, offsetDayStart } from './overview-time'
 
 export type TrendPerspective = 'overview' | 'breakdown'
@@ -182,7 +182,7 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
   const breakdownParams = useMemo(() => {
     const days = range === '7d' ? 7 : 30
     const nowMs = minuteTick * 60_000
-    const toMs = new Date(bucketedTimeISO(nowMs, 5 * 60_000)).getTime()
+    const toMs = new Date(bucketedTimeISO(nowMs, USAGE_BUCKET_MS)).getTime()
     const offsetMinutes = -new Date(nowMs).getTimezoneOffset()
     const from = offsetDayStart(nowMs, offsetMinutes, -(days - 1))
     return {
@@ -321,7 +321,7 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
                 : 'invisible pointer-events-none flex flex-wrap items-center gap-2.5'
             }
           >
-            <Fchip
+            <LegendChip
               label="请求折线"
               color="var(--rose)"
               active={showReqLine}
@@ -335,7 +335,7 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
                 }
               }}
             />
-            <Fchip
+            <LegendChip
               label="Token 柱图"
               color="var(--jade)"
               active={showTokBar}
