@@ -223,3 +223,110 @@ func TestRemoveUsageAssetDirsRejectsPathTraversal(t *testing.T) {
 		t.Fatal("legit dir must be removed")
 	}
 }
+
+// ---- 超量清理自适应批量 ----
+
+func dbLogicalBytes(t *testing.T, s *Server) int64 {
+	t.Helper()
+	st, err := s.store.UsageDBPageStats(context.Background())
+	if err != nil {
+		t.Fatalf("page stats: %v", err)
+	}
+	return st.LogicalBytes()
+}
+
+func usageRecordCount(t *testing.T, s *Server) int64 {
+	t.Helper()
+	count, err := s.store.CountUsageRecords(context.Background())
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	return count
+}
+
+// seedUntilLogical 持续插入记录直至逻辑占用超过 threshold，返回插入条数。
+func seedUntilLogical(t *testing.T, s *Server, pad int, threshold int64) int {
+	t.Helper()
+	now := time.Now()
+	added := 0
+	for i := 0; i < 20000; i++ {
+		if dbLogicalBytes(t, s) > threshold {
+			return added
+		}
+		seedUsageRecord(t, s.store, fmt.Sprintf("cap-adaptive-%06d", i), now.Add(time.Duration(i)*time.Millisecond), pad)
+		added++
+	}
+	t.Fatal("seeding did not reach threshold")
+	return 0
+}
+
+// 回归：轻微超限时自适应批量只删一小批（旧实现固定 500 条整批超删），
+// 且收敛进迟滞带内（≤ 上限 101%）。
+func TestStorageCapAdaptiveSmallOverage(t *testing.T) {
+	s, cfg := newRetentionTestServer(t)
+	limitBytes := int64(1024 * 1024) // 1 MiB
+	mb := 1
+	cfg.SetUsageLogConfig(config.UsageLogConfig{MaxStorageMB: &mb})
+
+	// 越过迟滞带一点（约数个页面）。
+	seedUntilLogical(t, s, 1024, limitBytes*101/100+8192)
+	before := usageRecordCount(t, s)
+
+	r := newUsageRetention(s)
+	r.runOnce()
+
+	deleted := before - usageRecordCount(t, s)
+	if deleted == 0 {
+		t.Fatal("over-cap database must be cleaned")
+	}
+	if deleted > 2*retentionBatchMin {
+		t.Fatalf("slight overage must delete a small adaptive batch, deleted %d", deleted)
+	}
+	if got := dbLogicalBytes(t, s); got*100 > limitBytes*retentionCapHysteresisPercent {
+		t.Fatalf("must converge into hysteresis band, logical=%d limit=%d", got, limitBytes)
+	}
+}
+
+// 回归：大幅超限时按 500 上限分批删除、多轮收敛。
+func TestStorageCapAdaptiveLargeOverage(t *testing.T) {
+	s, cfg := newRetentionTestServer(t)
+	mb := 1
+	cfg.SetUsageLogConfig(config.UsageLogConfig{MaxStorageMB: &mb})
+	limitBytes := int64(1024 * 1024)
+
+	seedUntilLogical(t, s, 4096, limitBytes*4) // ~4x 超限
+	before := usageRecordCount(t, s)
+
+	r := newUsageRetention(s)
+	r.runOnce()
+
+	deleted := before - usageRecordCount(t, s)
+	if deleted <= retentionBatchSize {
+		t.Fatalf("large overage must span multiple max-size batches, deleted %d", deleted)
+	}
+	if got := dbLogicalBytes(t, s); got*100 > limitBytes*retentionCapHysteresisPercent {
+		t.Fatalf("must converge into hysteresis band, logical=%d limit=%d", got, limitBytes)
+	}
+}
+
+// 迟滞带内（100%~101%）不清理：避免上限附近删删停停。
+func TestStorageCapHysteresisNoop(t *testing.T) {
+	s, cfg := newRetentionTestServer(t)
+	mb := 1
+	cfg.SetUsageLogConfig(config.UsageLogConfig{MaxStorageMB: &mb})
+	limitBytes := int64(1024 * 1024)
+
+	// 小步长插入，恰好越过 100% 但停在 1% 带内。
+	seedUntilLogical(t, s, 512, limitBytes)
+	if got := dbLogicalBytes(t, s); got*100 > limitBytes*retentionCapHysteresisPercent {
+		t.Skipf("page granularity overshot the band (logical=%d); band check inconclusive", got)
+	}
+	before := usageRecordCount(t, s)
+
+	r := newUsageRetention(s)
+	r.runOnce()
+
+	if deleted := before - usageRecordCount(t, s); deleted != 0 {
+		t.Fatalf("within hysteresis band must not delete, deleted %d", deleted)
+	}
+}

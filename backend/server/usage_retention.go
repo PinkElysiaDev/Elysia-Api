@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/elysia-api/backend/storage"
 )
 
 // usageRetention 是后台日志清理器：按配置周期巡检 usage_records，执行
@@ -51,8 +53,16 @@ type retentionStats struct {
 }
 
 const (
-	// retentionBatchSize 是清理循环单批删除的行数（与 storage 层默认一致）。
+	// retentionBatchSize 是清理循环单批删除的行数上限（与 storage 层默认
+	// 一致；同时是单事务写锁时长的上限）。TTL/条数清理按此分批。
 	retentionBatchSize = 500
+	// 超量清理的自适应批量参数：单批下限（避免逐条删的低效）与估算余量
+	//（20% 抵消页碎片与记录大小不均，偏差由删后复测逐轮修正）。
+	retentionBatchMin         = 16
+	retentionCapEstimateSlack = 1.2
+	// retentionCapHysteresisPercent 是超量清理的迟滞带（百分比）：逻辑占用
+	// 未超过上限的 101% 时不清理，避免在上限附近反复删删停停。
+	retentionCapHysteresisPercent = 101
 	// retentionMaxSizePasses 是单轮超量清理的最大删批数：防「其他表占大头、
 	// 日志删光仍超限」时无限循环。每批 500 条，单轮最多删 2.5 万条。
 	retentionMaxSizePasses = 50
@@ -249,9 +259,10 @@ func (r *usageRetention) deleteInBatches(ctx context.Context, batch func() ([]st
 	}
 }
 
-// enforceStorageCap 按 (page_count-freelist)*page_size 收敛到 limitBytes 内：
-// 每批删最旧 500 条后复查（删除释放的整页进空闲链表，逻辑占用随之下降；
-// 页总数与磁盘占用要等 VACUUM 才真实回落）。
+// enforceStorageCap 按 (page_count-freelist)*page_size 收敛到 limitBytes 内。
+// 批量自适应：按「需释放量 ÷ 单条均摊体积」估算本批应删条数（带 20% 余量
+// 抵消页碎片与记录大小不均），删后复测、逐轮修正——轻微超限只删一小批，
+// 不再固定 500 条整批超删；估算只影响批大小，删多少总量仍由复测决定。
 func (r *usageRetention) enforceStorageCap(ctx context.Context, limitBytes int64, stats *retentionStats) (int, error) {
 	s := r.server
 	deleted := 0
@@ -261,15 +272,21 @@ func (r *usageRetention) enforceStorageCap(ctx context.Context, limitBytes int64
 		if err != nil {
 			return deleted, err
 		}
-		if st.LogicalBytes() <= limitBytes {
+		// 迟滞：上限 1% 以内不清理，避免在边界附近删删停停地抖动。
+		if st.LogicalBytes()*100 <= limitBytes*retentionCapHysteresisPercent {
 			break
 		}
-		ids, err := s.store.DeleteUsageOldest(ctx, 0)
+		batch := r.adaptiveCapBatch(ctx, st, limitBytes)
+		if batch <= 0 {
+			// 无记录可删（估算除零保护）：超限部分来自其他表/索引，不再挣扎。
+			vacuumNeeded = deleted > 0
+			break
+		}
+		ids, err := s.store.DeleteUsageOldest(ctx, batch)
 		if err != nil {
 			return deleted, err
 		}
 		if len(ids) == 0 {
-			// 日志删光仍超限：超限部分来自其他表/索引，不再挣扎。
 			vacuumNeeded = deleted > 0
 			break
 		}
@@ -282,6 +299,30 @@ func (r *usageRetention) enforceStorageCap(ctx context.Context, limitBytes int64
 		stats.Vacuumed = r.maybeVacuum(ctx)
 	}
 	return deleted, nil
+}
+
+// adaptiveCapBatch 估算本批删除条数：need := 超限量 ÷ 单条均摊字节 × 1.2
+// + 1，钳到 [retentionBatchMin, retentionBatchSize]。记录数为 0 或均摊
+// 体积异常（0）时返回 0 表示无可删。
+func (r *usageRetention) adaptiveCapBatch(ctx context.Context, st storage.UsageDBStats, limitBytes int64) int {
+	count, err := r.server.store.CountUsageRecords(ctx)
+	if err != nil || count <= 0 {
+		return 0
+	}
+	logical := st.LogicalBytes()
+	if logical <= 0 {
+		return 0
+	}
+	avgBytes := float64(logical) / float64(count)
+	need := float64(logical-limitBytes)/avgBytes*retentionCapEstimateSlack + 1
+	batch := int(need)
+	if batch < retentionBatchMin {
+		batch = retentionBatchMin
+	}
+	if batch > retentionBatchSize {
+		batch = retentionBatchSize
+	}
+	return batch
 }
 
 // maybeVacuum 限频执行 VACUUM + WAL 截断；距上次成功不足最短间隔或执行
