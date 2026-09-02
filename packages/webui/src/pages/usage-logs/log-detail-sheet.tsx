@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/sheet'
 import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
+import { cachedAssetUrl } from '@/lib/asset-blob-cache'
 import { colorize } from '@/lib/json-highlight'
 import { protocolLabel } from '@/lib/protocol'
 import type { UsageBody, UsageLogDetail } from '@/lib/types'
@@ -274,26 +275,26 @@ function assetKind(ext: string): 'image' | 'audio' | 'video' | 'file' {
   return 'file'
 }
 
-/** 外置媒体 blob 获取 hook：asset 非 null 时经管理 API 取 blob 并建
- * objectURL（<img> 无法附带 Bearer 头）；asset 切换/卸载时回收旧 URL，
- * 请求途中组件卸载则立即 revoke，避免长会话内存泄漏。 */
+/** 外置媒体 blob hook：经模块级 LRU 缓存取 objectURL（同一资产在缩略图、
+ * 弹窗与重开的链路段之间复用一份 blob，<img> 无法附带 Bearer 头）。
+ * asset 切换/置空时立即清空旧 url——否则加载下一张期间会短暂显示上一张
+ * （且下载按钮会把上一张的字节存成新文件名）。URL 生命周期归缓存所有，
+ * 组件不做 revoke。 */
 function useAssetObjectUrl(asset: AssetRef | null) {
   const [url, setUrl] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
-    if (!asset) return
+    if (!asset) {
+      setUrl(null)
+      return
+    }
     let cancelled = false
     setFailed(false)
-    api
-      .usageAssetBlob(asset.requestId, asset.file)
-      .then((blob) => {
-        const objectUrl = URL.createObjectURL(blob)
-        if (cancelled) {
-          URL.revokeObjectURL(objectUrl)
-          return
-        }
-        setUrl(objectUrl)
+    setUrl(null)
+    cachedAssetUrl(asset)
+      .then((cached) => {
+        if (!cancelled) setUrl(cached)
       })
       .catch(() => {
         if (!cancelled) setFailed(true)
@@ -301,17 +302,9 @@ function useAssetObjectUrl(asset: AssetRef | null) {
     return () => {
       cancelled = true
     }
-    // 仅依赖身份字段：asset 为 null 时立即返回，对象身份变化不触发重取。
+    // 仅依赖身份字段：asset 为 null 时立即清空，对象身份变化不触发重取。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asset?.requestId, asset?.file])
-
-  // url 变化（切换资产）与卸载时回收上一个 objectURL。
-  useEffect(
-    () => () => {
-      if (url) URL.revokeObjectURL(url)
-    },
-    [url],
-  )
   return { url, failed }
 }
 
@@ -322,7 +315,6 @@ function AssetChip({ asset, onOpenPreview }: { asset: AssetRef; onOpenPreview?: 
   const kind = assetKind(ext)
   const [requested, setRequested] = useState(kind === 'image')
   const { url, failed } = useAssetObjectUrl(requested ? asset : null)
-  const loading = requested && !url && !failed
 
   const Icon = kind === 'image' ? Image : FileText
   return (
@@ -333,8 +325,8 @@ function AssetChip({ asset, onOpenPreview }: { asset: AssetRef; onOpenPreview?: 
           {asset.file}
         </span>
         {!requested && (
-          <Button variant="outline" size="sm" className="ml-auto shrink-0" onClick={() => setRequested(true)} disabled={loading}>
-            {failed ? '获取失败' : loading ? '加载中…' : '加载'}
+          <Button variant="outline" size="sm" className="ml-auto shrink-0" onClick={() => setRequested(true)}>
+            加载
           </Button>
         )}
         {url && kind === 'file' && (
@@ -390,8 +382,11 @@ function AssetLightbox({
       <DialogContent
         className="max-w-4xl"
         onKeyDown={(e) => {
-          if (e.key === 'ArrowLeft') go(index! - 1)
-          if (e.key === 'ArrowRight') go(index! + 1)
+          // Radix 关闭动画期间 Content 仍挂载而 index 已置 null：直接忽略，
+          // 否则 ArrowRight 会把刚关闭的弹窗重开到下一张。
+          if (index == null) return
+          if (e.key === 'ArrowLeft') go(index - 1)
+          if (e.key === 'ArrowRight') go(index + 1)
         }}
       >
         <DialogHeader className="space-y-1">
