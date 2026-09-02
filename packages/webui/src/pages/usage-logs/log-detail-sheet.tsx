@@ -380,7 +380,11 @@ function AssetLightbox({
   return (
     <Dialog open={index != null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
-        className="max-w-4xl"
+        // h-[90vh] + overflow-hidden 覆盖默认的 max-h/overflow-y-auto：
+        // flex 三段布局让图片区 flex-1 自动收缩，头部与底部（翻页/下载）
+        // 恒在视野内——默认 grid + 72vh 图片在视口高 < ~930px 时总高超出
+        // 90vh，下载按钮被折进弹窗内部滚动区。
+        className="flex h-[90vh] max-w-4xl flex-col overflow-hidden"
         onKeyDown={(e) => {
           // Radix 关闭动画期间 Content 仍挂载而 index 已置 null：直接忽略，
           // 否则 ArrowRight 会把刚关闭的弹窗重开到下一张。
@@ -389,22 +393,22 @@ function AssetLightbox({
           if (e.key === 'ArrowRight') go(index + 1)
         }}
       >
-        <DialogHeader className="space-y-1">
+        <DialogHeader className="shrink-0 space-y-1">
           <DialogTitle className="break-all font-mono text-xs">{asset?.file}</DialogTitle>
           <DialogDescription className="text-2xs">
             {index != null ? `${index + 1} / ${assets.length}` : ''}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex min-h-[240px] items-center justify-center">
+        <div className="flex min-h-[240px] min-w-0 flex-1 items-center justify-center py-1">
           {failed ? (
             <span className="text-sm text-muted-foreground">图片获取失败</span>
           ) : url ? (
-            <img src={url} alt={asset?.file} className="max-h-[72vh] w-auto max-w-full rounded object-contain" />
+            <img src={url} alt={asset?.file} className="max-h-full w-auto max-w-full rounded object-contain" />
           ) : (
             <span className="text-sm text-muted-foreground">加载中…</span>
           )}
         </div>
-        <DialogFooter className="flex-row items-center gap-2 sm:justify-between">
+        <DialogFooter className="flex shrink-0 flex-row items-center gap-2 sm:justify-between">
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" disabled={!hasPrev} onClick={() => go(index! - 1)}>
               <ChevronLeft className="h-3.5 w-3.5" /> 上一张
