@@ -181,11 +181,13 @@ func (renderer *MaheshvaraStreamRenderer) writeClaudeToolEvent(event *Maheshvara
 	state.name = firstNonEmptyString(event.ToolName, state.name)
 	argumentDelta := event.ToolArgumentsDelta
 	if event.ToolArgumentsDone != "" {
-		if delta, replaced := deltaVsAccumulated(state.arguments.String(), event.ToolArgumentsDone); replaced {
-			argumentDelta = delta
-		} else {
-			argumentDelta = delta
+		delta, replaced := deltaVsAccumulated(state.arguments.String(), event.ToolArgumentsDone)
+		if replaced {
+			// 终态值与累计增量分叉：丢弃脏前缀改写完整值（与 Gemini/Responses
+			// 渲染器一致；不 Reset 会在下一次终态事件时双份拼接出非法 JSON）。
+			state.arguments.Reset()
 		}
+		argumentDelta = delta
 	}
 	if argumentDelta != "" {
 		state.arguments.WriteString(argumentDelta)

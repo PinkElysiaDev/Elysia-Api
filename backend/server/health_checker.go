@@ -45,6 +45,22 @@ func newHealthChecker(s *Server) *healthChecker {
 	}
 }
 
+// pruneStaleFailureKeys 清理已不存在的模型的连续失败计数：map 只增不删
+// 会在长生命周期进程里随模型更名/源删除无限累积（每键一个 int）。
+func (h *healthChecker) pruneStaleFailureKeys(models []storage.Model) {
+	alive := make(map[string]struct{}, len(models))
+	for _, model := range models {
+		alive[probeKey(model.ID, model.SourceID)] = struct{}{}
+	}
+	h.mu.Lock()
+	for key := range h.failures {
+		if _, ok := alive[key]; !ok {
+			delete(h.failures, key)
+		}
+	}
+	h.mu.Unlock()
+}
+
 func probeKey(modelID, sourceID string) string { return modelID + "\x00" + sourceID }
 
 // start 在 store 可用时启动后台探测循环。enabled 与 interval 每轮从配置
@@ -115,6 +131,7 @@ func (h *healthChecker) runOnce() {
 		h.server.logWarnf("health check: failed to list models: %v", err)
 		return
 	}
+	h.pruneStaleFailureKeys(models)
 
 	changed := false
 	for _, model := range models {

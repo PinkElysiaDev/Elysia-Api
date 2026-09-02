@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -104,6 +105,11 @@ func (s *Server) prepareRelayPlan(
 	filtered, filteredParts, filteredModalities := filterMaheshvaraMultimodalInputsIfNeeded(group, maheshvaraReq)
 	if filtered {
 		s.logVerbose("[Maheshvara Multimodal Filter] group=%s filteredParts=%d modalities=%v", group.Name, filteredParts, filteredModalities)
+		// 过滤是原地变更：dump 变更后的请求，否则排查时只能看到未过滤版
+		//（入口处的 [Maheshvara Request] dump 于此无效）。
+		if maheshvaraJSON, err := json.Marshal(maheshvaraReq); err == nil {
+			s.logVerbose("[Maheshvara Request After Multimodal Filter] %s", compactLogJSON(maheshvaraJSON))
+		}
 		// 让客户端可感知剥离行为（非纯静默）：形如 "image,audio"。
 		c.Writer.Header().Set("X-Elysia-Filtered-Modalities", strings.Join(filteredModalities, ","))
 	}

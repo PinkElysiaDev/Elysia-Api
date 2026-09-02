@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/elysia-api/backend/config"
@@ -809,7 +810,7 @@ func (w *observingStreamWriter) WriteString(data string) (int, error) {
 
 func (w *observingStreamWriter) Flush() error {
 	// SSE 以空行分帧，Flush 时行必完整；冲刷残余缓冲防止最后一行丢失。
-	w.lines.flushRemainder()
+	w.lines.flushRemainder(w.observeLine)
 	return w.inner.Flush()
 }
 
@@ -822,8 +823,7 @@ func (w *observingStreamWriter) observe(data []byte) {
 	}
 	// 行缓冲：data: 载荷可能跨多次 Write 到达，按单次调用切行会把半截 JSON
 	// 当完整事件处理（详见 sseLineSplitter 注释）。
-	w.lines.onLine = w.observeLine
-	w.lines.feed(data)
+	w.lines.feed(data, w.observeLine)
 }
 
 func (w *observingStreamWriter) observeLine(line string) {
@@ -841,12 +841,17 @@ func (w *observingStreamWriter) observeLine(line string) {
 // 观察者逐行解析 SSE，若直接对每次到达的字节片段 Split("\n")，一个跨两次
 // Write 的 data: 载荷会被当成两条（半截）事件处理——坏 JSON 混进事件数组
 // 后，json.Marshal 对内嵌 RawMessage 的校验会让之后的所有序列化全部失败。
+// 互斥保护：上游观察者的 Close（flushRemainder）与扫描 goroutine 解除
+// 阻塞后的最后一次 feed 可能并发（inner.Close 先唤醒阻塞中的 Read）；
+// 回调作为参数传入而非结构体字段，避免回调字段自身的读写竞争。
 type sseLineSplitter struct {
+	mu     sync.Mutex
 	buffer []byte
-	onLine func(line string)
 }
 
-func (s *sseLineSplitter) feed(data []byte) {
+func (s *sseLineSplitter) feed(data []byte, onLine func(line string)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.buffer = append(s.buffer, data...)
 	for {
 		idx := bytes.IndexByte(s.buffer, '\n')
@@ -855,14 +860,16 @@ func (s *sseLineSplitter) feed(data []byte) {
 		}
 		line := strings.TrimSpace(string(s.buffer[:idx]))
 		s.buffer = s.buffer[idx+1:]
-		s.onLine(line)
+		onLine(line)
 	}
 }
 
-func (s *sseLineSplitter) flushRemainder() {
+func (s *sseLineSplitter) flushRemainder(onLine func(line string)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if line := strings.TrimSpace(string(s.buffer)); line != "" {
 		s.buffer = nil
-		s.onLine(line)
+		onLine(line)
 	}
 	s.buffer = nil
 }
@@ -895,13 +902,12 @@ func (b *upstreamUsageObservingBody) Read(p []byte) (int, error) {
 }
 
 func (b *upstreamUsageObservingBody) Close() error {
-	b.lines.flushRemainder()
+	b.lines.flushRemainder(b.observeLine)
 	return b.inner.Close()
 }
 
 func (b *upstreamUsageObservingBody) observe(data []byte) {
-	b.lines.onLine = b.observeLine
-	b.lines.feed(data)
+	b.lines.feed(data, b.observeLine)
 }
 
 // observeLine 是 ProviderResponse 流事件与 usage 增量的唯一来源（上游线格式）。

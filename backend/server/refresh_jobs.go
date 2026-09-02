@@ -104,9 +104,14 @@ func (s *Server) runSourceRefresh(source storage.ModelSource, sem chan struct{})
 	}
 	if err != nil {
 		state.LastError = err.Error()
-		_ = s.store.InsertSystemLog(ctx, "warn", "model source refresh failed", map[string]any{
+		// 系统日志用独立 ctx：任务最典型的失败就是 10 分钟预算耗尽，那时
+		// ctx 已死，再用它写日志必然 DeadlineExceeded——最有价值的失败
+		// 恰好永远进不了系统日志。本地写库，短超时足矣。
+		logCtx, logCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = s.store.InsertSystemLog(logCtx, "warn", "model source refresh failed", map[string]any{
 			"sourceId": source.ID, "sourceName": source.Name, "error": err.Error(),
 		})
+		logCancel()
 	} else {
 		_ = s.store.InsertSystemLog(ctx, "info", "model source refreshed", map[string]any{
 			"sourceId": source.ID, "sourceName": source.Name, "count": summary.Count,

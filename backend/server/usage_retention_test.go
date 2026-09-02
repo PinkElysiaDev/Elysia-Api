@@ -386,19 +386,22 @@ func TestCapBatchSizeEstimate(t *testing.T) {
 
 	// 目标是迟滞带边缘：带内（即使超过上限本身不多）→ 0。
 	bandEdge := limit * retentionCapHysteresisPercent / 100
-	if got := r.capBatchSize(context.Background(), bandEdge, limit, 0); got != 0 {
+	if got, err := r.capBatchSize(context.Background(), bandEdge, limit, 0); err != nil || got != 0 {
 		t.Fatalf("inside band must return 0, got %d", got)
 	}
 	// 实测路径：需释放约 1MiB、实测均摊 1KB → need≈1127 → 钳到上限 1000。
-	if got := r.capBatchSize(context.Background(), bandEdge+1024*1024, limit, 1024); got != retentionCapBatchMax {
+	if got, err := r.capBatchSize(context.Background(), bandEdge+1024*1024, limit, 1024); err != nil || got != retentionCapBatchMax {
 		t.Fatalf("huge need must clamp to max, got %d", got)
 	}
 	// 实测路径：需释放 100B、实测均摊 10KB → need≈1 → 下限 1。
-	if got := r.capBatchSize(context.Background(), bandEdge+100, limit, 10*1024); got != retentionCapBatchMin {
+	if got, err := r.capBatchSize(context.Background(), bandEdge+100, limit, 10*1024); err != nil || got != retentionCapBatchMin {
 		t.Fatalf("tiny need must clamp to min 1, got %d", got)
 	}
 	// 全局均值回落：刚过带边缘一个页面 → 小批量而非 0/负数。
-	small := r.capBatchSize(context.Background(), bandEdge+4096, limit, 0)
+	small, err := r.capBatchSize(context.Background(), bandEdge+4096, limit, 0)
+	if err != nil {
+		t.Fatalf("slight overage estimate failed: %v", err)
+	}
 	if small <= 0 || small > 64 {
 		t.Fatalf("slight overage via global avg must be a small batch, got %d", small)
 	}

@@ -216,9 +216,9 @@ func compactLogJSON(data []byte) string {
 }
 
 func (s *Server) setupRoutes() {
-	if s.config.MaxBodyBytes > 0 {
+	if s.config.GetMaxBodyBytes() > 0 {
 		s.engine.Use(func(c *gin.Context) {
-			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, s.config.MaxBodyBytes)
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, s.config.GetMaxBodyBytes())
 			c.Next()
 		})
 	}
@@ -682,9 +682,13 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	}
 
 	// 兜底：最后一次尝试一定会 commit（failResult 的 isLast||!retryable 分支
-	// 与全部提前返回已覆盖）；此块仅防御未来路径回归。lastStatus 必非 0
-	//（空候选已提前返回，每个未 commit 的迭代都会赋值）。
+	// 与全部提前返回已覆盖）；此块仅防御未来路径回归。lastStatus 理论上
+	// 必非 0，但真为 0 时 c.JSON(0,…) 会让 net/http panic 且记录丢失——
+	// 兜底的兜底，一行守卫换掉一个潜在 panic（与 responses 入口对齐）。
 	if !committed {
+		if lastStatus <= 0 {
+			lastStatus = http.StatusBadGateway
+		}
 		record.StatusCode = lastStatus
 		record.Error = firstNonEmpty(lastErr, "all upstream attempts failed")
 		record.ErrorKind = ErrorKindUpstream

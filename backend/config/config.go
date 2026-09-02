@@ -372,6 +372,14 @@ func (c *Config) GetDefaultDatabasePath() string {
 	return filepath.Join(filepath.Dir(c.path), "elysia-api.sqlite3")
 }
 
+// GetMaxBodyBytes 返回请求体大小上限。热路径（body-limit 中间件）每请求
+// 读取，必须走锁——此前直接读字段与 Reload 的持锁写入构成数据竞争。
+func (c *Config) GetMaxBodyBytes() int64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.MaxBodyBytes
+}
+
 func (c *Config) SetEnablePprof(enabled bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -418,6 +426,12 @@ func (c *Config) SetAllowFakeIPOutbound(v bool) {
 }
 
 func (c *Config) Reload() error {
+	// 全程持锁（含读文件）：此前文件读取在锁外，与「管理端 setter + Save」
+	// 交错时会把刚设置并落盘的值用旧文件内容覆盖，下次 Save 即永久丢失
+	// 管理员改动（丢失更新窗口）。unmarshal 开销极小，不值得为它开窗口。
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	data, err := os.ReadFile(c.path)
 	if err != nil {
 		return err
@@ -434,7 +448,6 @@ func (c *Config) Reload() error {
 	// 部署静默失效，且随后的 Save 会把文件值固化覆盖部署配置。
 	newCfg.applyEnvironmentOverrides()
 
-	c.mu.Lock()
 	c.Host = newCfg.Host
 	c.Port = newCfg.Port
 	c.PanelAccessToken = newCfg.PanelAccessToken
@@ -465,7 +478,6 @@ func (c *Config) Reload() error {
 	for index, protocol := range newCfg.CustomProtocols {
 		c.CustomProtocols[index] = append(json.RawMessage(nil), protocol...)
 	}
-	c.mu.Unlock()
 
 	return nil
 }

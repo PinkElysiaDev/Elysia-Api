@@ -57,7 +57,8 @@ const (
 	// 超量清理的自适应批量区间与估算余量。设计依据：稳态下删除速率恒等于
 	// 增长速率（上限守恒，不可优化），算法只消除可避免损失——
 	//   - 批下限 1：末批精确到条，轻微超限不多删；
-	//   - 批上限 1000：大额超限的单批上限（事务内仍按 500 分块删）；
+	//   - 批上限 1000：大额超限的单批上限（单条 IN 语句直删，1000 个绑定
+	//     参数远低于 modernc SQLite 的 32766 上限；500 分块仅用于条数清理）；
 	//   - slack 10%：估算偏差由逐批实测修正（见 enforceStorageCap），无需大余量；
 	//   - 只清到迟滞带边缘，绝不清到上限以下（不浪费余量删本放得下的记录）。
 	retentionCapBatchMin      = 1
@@ -278,6 +279,7 @@ func (r *usageRetention) enforceStorageCap(ctx context.Context, limitBytes int64
 	measuredAvg := float64(0)
 	prevLogical := int64(-1) // 上一批决策时的逻辑占用
 	prevBatch := 0
+	zeroShrinkPasses := 0 // 连续零收缩批数（停滞检测）
 	for pass := 0; pass < retentionMaxSizePasses; pass++ {
 		st, err := s.store.UsageDBPageStats(ctx)
 		if err != nil {
@@ -291,11 +293,30 @@ func (r *usageRetention) enforceStorageCap(ctx context.Context, limitBytes int64
 		if now*100 <= limitBytes*retentionCapHysteresisPercent {
 			break
 		}
-		batch := r.capBatchSize(ctx, now, limitBytes, measuredAvg)
+		batch, err := r.capBatchSize(ctx, now, limitBytes, measuredAvg)
+		if err != nil {
+			// COUNT 失败必须显式报错：静默当作「无可删」会让面板显示一轮
+			// 干净的空巡检，而配额实际未被强制执行。
+			stats.LastError = "size: " + err.Error()
+			vacuumNeeded = deleted > 0
+			break
+		}
 		if batch <= 0 {
 			// 无记录可删（除零保护）：超限部分来自其他表/索引，不再挣扎。
 			vacuumNeeded = deleted > 0
 			break
+		}
+		// 停滞检测：删除未释放任何页（记录共享页面/超限来自其他表）时，
+		// 连续多批零收缩即停止本轮——继续空删最旧记录毫无意义。
+		if prevBatch > 0 && prevLogical <= now {
+			zeroShrinkPasses++
+			if zeroShrinkPasses >= 3 {
+				stats.LastError = "size: no logical shrink after consecutive batches; overage likely from non-usage tables"
+				vacuumNeeded = deleted > 0
+				break
+			}
+		} else {
+			zeroShrinkPasses = 0
 		}
 		ids, err := s.store.DeleteUsageOldest(ctx, batch)
 		if err != nil {
@@ -323,16 +344,19 @@ func (r *usageRetention) enforceStorageCap(ctx context.Context, limitBytes int64
 // enforceStorageCap 的停止条件一致——迟滞带边缘（而非上限本身），否则
 // 首批会多删整整一个带宽的记录。measuredAvg>0 时用实测值；否则回落
 // 全局均值（logical / 记录数）。已入带或无记录可估返回 0。
-func (r *usageRetention) capBatchSize(ctx context.Context, logical, limitBytes int64, measuredAvg float64) int {
+func (r *usageRetention) capBatchSize(ctx context.Context, logical, limitBytes int64, measuredAvg float64) (int, error) {
 	target := limitBytes * retentionCapHysteresisPercent / 100
 	if logical <= target {
-		return 0
+		return 0, nil
 	}
 	avg := measuredAvg
 	if avg <= 0 {
 		count, err := r.server.store.CountUsageRecords(ctx)
-		if err != nil || count <= 0 || logical <= 0 {
-			return 0
+		if err != nil {
+			return 0, err
+		}
+		if count <= 0 || logical <= 0 {
+			return 0, nil
 		}
 		avg = float64(logical) / float64(count)
 	}
@@ -344,7 +368,7 @@ func (r *usageRetention) capBatchSize(ctx context.Context, logical, limitBytes i
 	if batch > retentionCapBatchMax {
 		batch = retentionCapBatchMax
 	}
-	return batch
+	return batch, nil
 }
 
 // maybeVacuum 限频执行 VACUUM + WAL 截断；距上次成功不足最短间隔或执行

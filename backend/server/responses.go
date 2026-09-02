@@ -186,16 +186,17 @@ func (s *Server) responses(c *gin.Context) {
 	}
 
 	if !committed {
-		if lastStatus == 0 {
+		// 防御未来路径回归；与 chat 入口对齐：零守卫防 c.JSON(0,…) panic，
+		// 回传真实状态与记录一致（旧实现记录 429 却恒回 502）。
+		if lastStatus <= 0 {
 			lastStatus = http.StatusBadGateway
 		}
 		record.StatusCode = lastStatus
-		record.Error = lastErr
+		record.Error = firstNonEmpty(lastErr, "all upstream attempts failed")
 		record.ErrorKind = ErrorKindUpstream
 		record.EndedAt = time.Now()
 		record.DurationMs = time.Since(startTime).Milliseconds()
-		// 先写响应再落记录：错误体进下游捕获器后，第四段才有内容。
-		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": firstNonEmpty(lastErr, "all upstream attempts failed"), "type": "api_error"}})
+		c.JSON(lastStatus, gin.H{"error": gin.H{"message": record.Error, "type": "api_error"}})
 		s.recordUsage(record)
 	}
 }
