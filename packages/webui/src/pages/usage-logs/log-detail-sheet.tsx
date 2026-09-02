@@ -1,7 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, ChevronRight, Download, FileText, Image, MoveRight } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, ChevronLeft, ChevronRight, Download, FileText, Image, MoveRight } from 'lucide-react'
 import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Sheet,
   SheetBody,
@@ -195,11 +203,11 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                   <SheetSectionTitle>重试事件</SheetSectionTitle>
                   <div className="flex flex-col gap-[7px] text-xs">
                     {detail.retryEvents.map((ev, i) => (
-                      <div key={i} className="flex items-baseline gap-2.5">
-                        <span className="tnum flex h-[18px] w-[18px] shrink-0 translate-y-[3px] items-center justify-center rounded-full border border-ember font-mono text-2xs text-ember">
+                      <div key={i} className="flex items-start gap-2.5">
+                        <span className="tnum mt-px flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border border-ember font-mono text-2xs leading-none text-ember">
                           {ev.attempt}
                         </span>
-                        <span className="min-w-0 break-all">
+                        <span className="min-w-0 break-all leading-[18px]">
                           <span className="font-mono text-xs">{ev.model}</span>
                           {ev.error && <span className="text-ember"> — {ev.error}</span>}
                         </span>
@@ -266,44 +274,55 @@ function assetKind(ext: string): 'image' | 'audio' | 'video' | 'file' {
   return 'file'
 }
 
-/** 单个外置媒体：点击后经管理 API 取 blob 渲染（<img> 无法带 Bearer 头）。 */
-function AssetChip({ asset }: { asset: AssetRef }) {
-  const ext = asset.file.split('.').pop() ?? ''
-  const kind = assetKind(ext)
+/** 外置媒体 blob 获取 hook：asset 非 null 时经管理 API 取 blob 并建
+ * objectURL（<img> 无法附带 Bearer 头）；asset 切换/卸载时回收旧 URL，
+ * 请求途中组件卸载则立即 revoke，避免长会话内存泄漏。 */
+function useAssetObjectUrl(asset: AssetRef | null) {
   const [url, setUrl] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(false)
-  // 卸载标记：详情面板在 blob 请求途中关闭时，resolve 后不得再 setUrl——
-  // 那个 objectURL 会钉住整个 blob 且无人 revoke（长会话累积泄漏）。
-  const cancelledRef = useRef(false)
 
-  useEffect(() => () => { cancelledRef.current = true }, [])
+  useEffect(() => {
+    if (!asset) return
+    let cancelled = false
+    setFailed(false)
+    api
+      .usageAssetBlob(asset.requestId, asset.file)
+      .then((blob) => {
+        const objectUrl = URL.createObjectURL(blob)
+        if (cancelled) {
+          URL.revokeObjectURL(objectUrl)
+          return
+        }
+        setUrl(objectUrl)
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true)
+      })
+    return () => {
+      cancelled = true
+    }
+    // 仅依赖身份字段：asset 为 null 时立即返回，对象身份变化不触发重取。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asset?.requestId, asset?.file])
 
-  // url 变化/卸载时回收上一个 objectURL，避免长会话内存泄漏。
+  // url 变化（切换资产）与卸载时回收上一个 objectURL。
   useEffect(
     () => () => {
       if (url) URL.revokeObjectURL(url)
     },
     [url],
   )
+  return { url, failed }
+}
 
-  async function load() {
-    if (url || loading || failed) return
-    setLoading(true)
-    try {
-      const blob = await api.usageAssetBlob(asset.requestId, asset.file)
-      const objectUrl = URL.createObjectURL(blob)
-      if (cancelledRef.current) {
-        URL.revokeObjectURL(objectUrl)
-        return
-      }
-      setUrl(objectUrl)
-    } catch {
-      if (!cancelledRef.current) setFailed(true)
-    } finally {
-      setLoading(false)
-    }
-  }
+/** 单个外置媒体：图片自动加载缩略图、点击打开大图弹窗；音频/视频/文件
+ * 保持点击加载（自动拉取大媒体不划算）。 */
+function AssetChip({ asset, onOpenPreview }: { asset: AssetRef; onOpenPreview?: () => void }) {
+  const ext = asset.file.split('.').pop() ?? ''
+  const kind = assetKind(ext)
+  const [requested, setRequested] = useState(kind === 'image')
+  const { url, failed } = useAssetObjectUrl(requested ? asset : null)
+  const loading = requested && !url && !failed
 
   const Icon = kind === 'image' ? Image : FileText
   return (
@@ -313,9 +332,9 @@ function AssetChip({ asset }: { asset: AssetRef }) {
         <span className="min-w-0 truncate font-mono text-2xs text-muted-foreground" title={asset.file}>
           {asset.file}
         </span>
-        {!url && (
-          <Button variant="outline" size="sm" className="ml-auto shrink-0" onClick={load} disabled={loading || failed}>
-            {failed ? '获取失败' : loading ? '加载中…' : '预览'}
+        {!requested && (
+          <Button variant="outline" size="sm" className="ml-auto shrink-0" onClick={() => setRequested(true)} disabled={loading}>
+            {failed ? '获取失败' : loading ? '加载中…' : '加载'}
           </Button>
         )}
         {url && kind === 'file' && (
@@ -324,10 +343,22 @@ function AssetChip({ asset }: { asset: AssetRef }) {
           </a>
         )}
       </div>
-      {url && kind === 'image' && (
-        <a href={url} target="_blank" rel="noreferrer" className="mt-2 block" title="点击在新标签页查看原图">
-          <img src={url} alt={asset.file} className="max-h-40 rounded border border-border" loading="lazy" />
-        </a>
+      {kind === 'image' && (
+        <button
+          type="button"
+          className="mt-2 block w-full overflow-hidden rounded border border-border transition-opacity hover:opacity-85"
+          title="点击查看大图"
+          onClick={onOpenPreview}
+          disabled={!url}
+        >
+          {url ? (
+            <img src={url} alt={asset.file} className="h-24 w-full object-cover" loading="lazy" />
+          ) : (
+            <span className="flex h-24 w-full items-center justify-center text-2xs text-muted-foreground">
+              {failed ? '获取失败' : '缩略图加载中…'}
+            </span>
+          )}
+        </button>
       )}
       {url && kind === 'audio' && <audio controls src={url} className="mt-2 w-full" />}
       {url && kind === 'video' && <video controls src={url} className="mt-2 max-h-56 w-full rounded border border-border" />}
@@ -335,7 +366,83 @@ function AssetChip({ asset }: { asset: AssetRef }) {
   )
 }
 
+/** 大图预览弹窗：承接 gallery 的图片序列，支持 ←/→ 切换与下载。 */
+function AssetLightbox({
+  assets,
+  index,
+  onNavigate,
+  onClose,
+}: {
+  assets: AssetRef[]
+  index: number | null
+  onNavigate: (next: number) => void
+  onClose: () => void
+}) {
+  const asset = index != null ? assets[index] : null
+  const { url, failed } = useAssetObjectUrl(asset)
+  const hasPrev = index != null && index > 0
+  const hasNext = index != null && index < assets.length - 1
+  const go = (next: number) => {
+    if (next >= 0 && next < assets.length) onNavigate(next)
+  }
+  return (
+    <Dialog open={index != null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        className="max-w-4xl"
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowLeft') go(index! - 1)
+          if (e.key === 'ArrowRight') go(index! + 1)
+        }}
+      >
+        <DialogHeader className="space-y-1">
+          <DialogTitle className="break-all font-mono text-xs">{asset?.file}</DialogTitle>
+          <DialogDescription className="text-2xs">
+            {index != null ? `${index + 1} / ${assets.length}` : ''}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex min-h-[240px] items-center justify-center">
+          {failed ? (
+            <span className="text-sm text-muted-foreground">图片获取失败</span>
+          ) : url ? (
+            <img src={url} alt={asset?.file} className="max-h-[72vh] w-auto max-w-full rounded object-contain" />
+          ) : (
+            <span className="text-sm text-muted-foreground">加载中…</span>
+          )}
+        </div>
+        <DialogFooter className="flex-row items-center gap-2 sm:justify-between">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" disabled={!hasPrev} onClick={() => go(index! - 1)}>
+              <ChevronLeft className="h-3.5 w-3.5" /> 上一张
+            </Button>
+            <Button variant="outline" size="sm" disabled={!hasNext} onClick={() => go(index! + 1)}>
+              下一张 <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          {url && asset && (
+            <a
+              href={url}
+              download={asset.file}
+              className="inline-flex items-center gap-1.5 rounded-md border border-input bg-card px-3 py-1.5 text-xs transition-colors hover:bg-wash"
+            >
+              <Download className="h-3.5 w-3.5" aria-hidden /> 下载
+            </a>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function AssetGallery({ assets }: { assets: AssetRef[] }) {
+  const imageAssets = useMemo(
+    () => assets.filter((a) => assetKind(a.file.split('.').pop() ?? '') === 'image'),
+    [assets],
+  )
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null)
+  const openPreview = (asset: AssetRef) => {
+    const idx = imageAssets.findIndex((a) => a.file === asset.file && a.requestId === asset.requestId)
+    if (idx >= 0) setPreviewIndex(idx)
+  }
   return (
     <div className="mb-3.5 space-y-2">
       <p className="text-2xs text-muted-foreground">
@@ -343,14 +450,14 @@ function AssetGallery({ assets }: { assets: AssetRef[] }) {
       </p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {assets.map((asset) => (
-          <AssetChip key={`${asset.requestId}/${asset.file}`} asset={asset} />
+          <AssetChip key={`${asset.requestId}/${asset.file}`} asset={asset} onOpenPreview={() => openPreview(asset)} />
         ))}
       </div>
+      <AssetLightbox assets={imageAssets} index={previewIndex} onNavigate={setPreviewIndex} onClose={() => setPreviewIndex(null)} />
     </div>
   )
 }
 
-/** 四段链路原文：受控折叠动画 + JSON/SSE 着色，头部字节数 + 截断标记。 */
 function ChainBodies({ detail }: { detail: UsageLogDetail }) {
   const [openSegments, setOpenSegments] = useState<Set<string>>(() => new Set(['incoming']))
   const segments: { key: string; title: string; body: UsageBody | undefined }[] = [
