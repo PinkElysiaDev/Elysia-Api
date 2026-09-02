@@ -8,8 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/elysia-api/backend/storage"
 )
 
 // usageRetention 是后台日志清理器：按配置周期巡检 usage_records，执行
@@ -53,18 +51,24 @@ type retentionStats struct {
 }
 
 const (
-	// retentionBatchSize 是清理循环单批删除的行数上限（与 storage 层默认
-	// 一致；同时是单事务写锁时长的上限）。TTL/条数清理按此分批。
+	// retentionBatchSize 是 TTL/条数清理的分批行数（只影响分块不影响总量），
+	// 同时是单事务内 IN 删除的分块粒度（写锁时长上限由此控制）。
 	retentionBatchSize = 500
-	// 超量清理的自适应批量参数：单批下限（避免逐条删的低效）与估算余量
-	//（20% 抵消页碎片与记录大小不均，偏差由删后复测逐轮修正）。
-	retentionBatchMin         = 16
-	retentionCapEstimateSlack = 1.2
+	// 超量清理的自适应批量区间与估算余量。设计依据：稳态下删除速率恒等于
+	// 增长速率（上限守恒，不可优化），算法只消除可避免损失——
+	//   - 批下限 1：末批精确到条，轻微超限不多删；
+	//   - 批上限 1000：大额超限的单批上限（事务内仍按 500 分块删）；
+	//   - slack 10%：估算偏差由逐批实测修正（见 enforceStorageCap），无需大余量；
+	//   - 只清到迟滞带边缘，绝不清到上限以下（不浪费余量删本放得下的记录）。
+	retentionCapBatchMin      = 1
+	retentionCapBatchMax      = 1000
+	retentionCapEstimateSlack = 1.1
 	// retentionCapHysteresisPercent 是超量清理的迟滞带（百分比）：逻辑占用
-	// 未超过上限的 101% 时不清理，避免在上限附近反复删删停停。
+	// 未超过上限的 101% 时不清理，避免在边界附近删删停停。清理频率由此带
+	// 加巡检周期（≥5min）与 VACUUM 冷却共同限频。
 	retentionCapHysteresisPercent = 101
 	// retentionMaxSizePasses 是单轮超量清理的最大删批数：防「其他表占大头、
-	// 日志删光仍超限」时无限循环。每批 500 条，单轮最多删 2.5 万条。
+	// 日志删光仍超限」时无限循环。批上限 1000 条，单轮最多删 5 万条。
 	retentionMaxSizePasses = 50
 	// retentionVacuumMinInterval 是两次 VACUUM 的最短间隔：VACUUM 需要短暂
 	// 独占写锁与约双倍磁盘空间，频繁执行会拖垮写入。
@@ -259,26 +263,37 @@ func (r *usageRetention) deleteInBatches(ctx context.Context, batch func() ([]st
 	}
 }
 
-// enforceStorageCap 按 (page_count-freelist)*page_size 收敛到 limitBytes 内。
-// 批量自适应：按「需释放量 ÷ 单条均摊体积」估算本批应删条数（带 20% 余量
-// 抵消页碎片与记录大小不均），删后复测、逐轮修正——轻微超限只删一小批，
-// 不再固定 500 条整批超删；估算只影响批大小，删多少总量仍由复测决定。
+// enforceStorageCap 按 (page_count-freelist)*page_size 收敛到迟滞带内。
+// 批量在 [1,1000] 全区间自适应滑动：首批按「需释放量 ÷ 全局均摊字节」
+// 估算，之后逐批用实测均摊字节（上一批真实释放量 ÷ 删除数）修正——实测
+// 值天然涵盖页粒度碎片（单条小于一页的记录删除后可能不释放页）与记录
+// 大小不均。收敛形态：首批接近真实需求，末批收敛到个位数；轻微超限只
+// 删几条，不再整批超删。删多少总量始终由复测决定，估算只影响批大小。
 func (r *usageRetention) enforceStorageCap(ctx context.Context, limitBytes int64, stats *retentionStats) (int, error) {
 	s := r.server
 	deleted := 0
 	vacuumNeeded := false
+	// measuredAvg 是最近一批的实测均摊字节；0 表示尚无实测（首轮走全局
+	// 均值估算）。实测释放为 0（页面未腾空）时沿用上一有效值。
+	measuredAvg := float64(0)
+	prevLogical := int64(-1) // 上一批决策时的逻辑占用
+	prevBatch := 0
 	for pass := 0; pass < retentionMaxSizePasses; pass++ {
 		st, err := s.store.UsageDBPageStats(ctx)
 		if err != nil {
 			return deleted, err
 		}
+		now := st.LogicalBytes()
+		if prevBatch > 0 && prevLogical > now {
+			measuredAvg = float64(prevLogical-now) / float64(prevBatch)
+		}
 		// 迟滞：上限 1% 以内不清理，避免在边界附近删删停停地抖动。
-		if st.LogicalBytes()*100 <= limitBytes*retentionCapHysteresisPercent {
+		if now*100 <= limitBytes*retentionCapHysteresisPercent {
 			break
 		}
-		batch := r.adaptiveCapBatch(ctx, st, limitBytes)
+		batch := r.capBatchSize(ctx, now, limitBytes, measuredAvg)
 		if batch <= 0 {
-			// 无记录可删（估算除零保护）：超限部分来自其他表/索引，不再挣扎。
+			// 无记录可删（除零保护）：超限部分来自其他表/索引，不再挣扎。
 			vacuumNeeded = deleted > 0
 			break
 		}
@@ -290,9 +305,11 @@ func (r *usageRetention) enforceStorageCap(ctx context.Context, limitBytes int64
 			vacuumNeeded = deleted > 0
 			break
 		}
-		deleted += len(ids)
+		prevLogical = now
+		prevBatch = len(ids)
+		deleted += prevBatch
 		vacuumNeeded = true
-		stats.DeletedBySize += len(ids)
+		stats.DeletedBySize += prevBatch
 		stats.AssetsRemoved += removeUsageAssetDirs(s.usageAssetsRoot(), ids)
 	}
 	if vacuumNeeded {
@@ -301,26 +318,31 @@ func (r *usageRetention) enforceStorageCap(ctx context.Context, limitBytes int64
 	return deleted, nil
 }
 
-// adaptiveCapBatch 估算本批删除条数：need := 超限量 ÷ 单条均摊字节 × 1.2
-// + 1，钳到 [retentionBatchMin, retentionBatchSize]。记录数为 0 或均摊
-// 体积异常（0）时返回 0 表示无可删。
-func (r *usageRetention) adaptiveCapBatch(ctx context.Context, st storage.UsageDBStats, limitBytes int64) int {
-	count, err := r.server.store.CountUsageRecords(ctx)
-	if err != nil || count <= 0 {
+// capBatchSize 估算本批删除条数：need := 需释放量 ÷ 均摊字节 × slack + 1，
+// 钳到 [retentionCapBatchMin, retentionCapBatchMax]。需释放量的目标与
+// enforceStorageCap 的停止条件一致——迟滞带边缘（而非上限本身），否则
+// 首批会多删整整一个带宽的记录。measuredAvg>0 时用实测值；否则回落
+// 全局均值（logical / 记录数）。已入带或无记录可估返回 0。
+func (r *usageRetention) capBatchSize(ctx context.Context, logical, limitBytes int64, measuredAvg float64) int {
+	target := limitBytes * retentionCapHysteresisPercent / 100
+	if logical <= target {
 		return 0
 	}
-	logical := st.LogicalBytes()
-	if logical <= 0 {
-		return 0
+	avg := measuredAvg
+	if avg <= 0 {
+		count, err := r.server.store.CountUsageRecords(ctx)
+		if err != nil || count <= 0 || logical <= 0 {
+			return 0
+		}
+		avg = float64(logical) / float64(count)
 	}
-	avgBytes := float64(logical) / float64(count)
-	need := float64(logical-limitBytes)/avgBytes*retentionCapEstimateSlack + 1
+	need := float64(logical-target)/avg*retentionCapEstimateSlack + 1
 	batch := int(need)
-	if batch < retentionBatchMin {
-		batch = retentionBatchMin
+	if batch < retentionCapBatchMin {
+		batch = retentionCapBatchMin
 	}
-	if batch > retentionBatchSize {
-		batch = retentionBatchSize
+	if batch > retentionCapBatchMax {
+		batch = retentionCapBatchMax
 	}
 	return batch
 }

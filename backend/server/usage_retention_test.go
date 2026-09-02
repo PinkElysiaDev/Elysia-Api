@@ -260,8 +260,8 @@ func seedUntilLogical(t *testing.T, s *Server, pad int, threshold int64) int {
 	return 0
 }
 
-// 回归：轻微超限时自适应批量只删一小批（旧实现固定 500 条整批超删），
-// 且收敛进迟滞带内（≤ 上限 101%）。
+// 回归（v2 全区间自适应）：轻微超限只删按体积推算的最少条数
+// （旧实现固定 500 整批，v1 下限 16），且收敛进迟滞带内。
 func TestStorageCapAdaptiveSmallOverage(t *testing.T) {
 	s, cfg := newRetentionTestServer(t)
 	limitBytes := int64(1024 * 1024) // 1 MiB
@@ -270,42 +270,84 @@ func TestStorageCapAdaptiveSmallOverage(t *testing.T) {
 
 	// 越过迟滞带一点（约数个页面）。
 	seedUntilLogical(t, s, 1024, limitBytes*101/100+8192)
-	before := usageRecordCount(t, s)
+	logicalBefore := dbLogicalBytes(t, s)
+	countBefore := usageRecordCount(t, s)
+	avgBefore := float64(logicalBefore) / float64(countBefore)
+	// 理论最少删除条数：把占用拉回迟滞带边缘所需。
+	minNeeded := int(float64(logicalBefore-limitBytes*101/100)/avgBefore) + 1
 
 	r := newUsageRetention(s)
 	r.runOnce()
 
-	deleted := before - usageRecordCount(t, s)
+	deleted := int(countBefore - usageRecordCount(t, s))
 	if deleted == 0 {
 		t.Fatal("over-cap database must be cleaned")
 	}
-	if deleted > 2*retentionBatchMin {
-		t.Fatalf("slight overage must delete a small adaptive batch, deleted %d", deleted)
+	if deleted > minNeeded+4 {
+		t.Fatalf("slight overage must delete near the volume-derived minimum: deleted=%d minNeeded=%d", deleted, minNeeded)
 	}
 	if got := dbLogicalBytes(t, s); got*100 > limitBytes*retentionCapHysteresisPercent {
 		t.Fatalf("must converge into hysteresis band, logical=%d limit=%d", got, limitBytes)
 	}
 }
 
-// 回归：大幅超限时按 500 上限分批删除、多轮收敛。
+// 回归：大幅超限时按 1000 上限分批、多轮收敛。
 func TestStorageCapAdaptiveLargeOverage(t *testing.T) {
 	s, cfg := newRetentionTestServer(t)
 	mb := 1
 	cfg.SetUsageLogConfig(config.UsageLogConfig{MaxStorageMB: &mb})
 	limitBytes := int64(1024 * 1024)
 
-	seedUntilLogical(t, s, 4096, limitBytes*4) // ~4x 超限
+	// 小记录（1KB pad）堆到 4 倍超限：需删数千条，必然跨多个 1000 上限批。
+	seedUntilLogical(t, s, 1024, limitBytes*4)
 	before := usageRecordCount(t, s)
 
 	r := newUsageRetention(s)
 	r.runOnce()
 
 	deleted := before - usageRecordCount(t, s)
-	if deleted <= retentionBatchSize {
+	if deleted <= retentionCapBatchMax {
 		t.Fatalf("large overage must span multiple max-size batches, deleted %d", deleted)
 	}
 	if got := dbLogicalBytes(t, s); got*100 > limitBytes*retentionCapHysteresisPercent {
 		t.Fatalf("must converge into hysteresis band, logical=%d limit=%d", got, limitBytes)
+	}
+}
+
+// 实测修正：记录大小严重不均（最旧一批极小、其后大记录）时，全局均值
+// 估算必然偏小；逐批实测均摊应自动放大后续批量，总量仍收敛进带内。
+func TestStorageCapAdaptiveCorrectsUndershoot(t *testing.T) {
+	s, cfg := newRetentionTestServer(t)
+	limitBytes := int64(1024 * 1024)
+	mb := 1
+	cfg.SetUsageLogConfig(config.UsageLogConfig{MaxStorageMB: &mb})
+
+	// 先放一批「最旧的小记录」（删除时先消耗它们，均摊远低于全局均值），
+	// 再放大记录把总占用顶过 4 倍上限。
+	now := time.Now()
+	for i := 0; i < 400; i++ {
+		seedUsageRecord(t, s.store, fmt.Sprintf("cap-tiny-%03d", i), now.Add(time.Duration(i)*time.Millisecond), 128)
+	}
+	seedUntilLogical(t, s, 4096, limitBytes*4)
+	before := usageRecordCount(t, s)
+	logicalBeforeUd := dbLogicalBytes(t, s)
+	avgBeforeUd := float64(logicalBeforeUd) / float64(before)
+
+	r := newUsageRetention(s)
+	r.runOnce()
+	deleted := int(before - usageRecordCount(t, s))
+	if deleted == 0 {
+		t.Fatal("over-cap database must be cleaned")
+	}
+	logicalAfter := dbLogicalBytes(t, s)
+	if logicalAfter*100 > limitBytes*retentionCapHysteresisPercent {
+		t.Fatalf("measured-avg correction must converge into band, logical=%d limit=%d", logicalAfter, limitBytes)
+	}
+	// 删除效率属性：均摊每条删除记录的实测释放量不低于全局均摊的 60%
+	//——证明批量估算贴合实际（没有为凑字节反复小批空转，也没有巨量超删）。
+	freedPerDeleted := float64(logicalBeforeUd-logicalAfter) / float64(deleted)
+	if freedPerDeleted < 0.6*avgBeforeUd {
+		t.Fatalf("deletion efficiency too low: freed/record=%.0fB global avg=%.0fB", freedPerDeleted, avgBeforeUd)
 	}
 }
 
@@ -329,4 +371,36 @@ func TestStorageCapHysteresisNoop(t *testing.T) {
 	if deleted := before - usageRecordCount(t, s); deleted != 0 {
 		t.Fatalf("within hysteresis band must not delete, deleted %d", deleted)
 	}
+}
+
+// capBatchSize 估算器：实测路径、全局均值回落、上下限钳制与除零保护。
+func TestCapBatchSizeEstimate(t *testing.T) {
+	s, _ := newRetentionTestServer(t)
+	now := time.Now()
+	for i := 0; i < 32; i++ {
+		seedUsageRecord(t, s.store, fmt.Sprintf("est-%02d", i), now, 2048)
+	}
+	r := newUsageRetention(s)
+	const limit = int64(1024 * 1024)
+	logical := dbLogicalBytes(t, s)
+
+	// 目标是迟滞带边缘：带内（即使超过上限本身不多）→ 0。
+	bandEdge := limit * retentionCapHysteresisPercent / 100
+	if got := r.capBatchSize(context.Background(), bandEdge, limit, 0); got != 0 {
+		t.Fatalf("inside band must return 0, got %d", got)
+	}
+	// 实测路径：需释放约 1MiB、实测均摊 1KB → need≈1127 → 钳到上限 1000。
+	if got := r.capBatchSize(context.Background(), bandEdge+1024*1024, limit, 1024); got != retentionCapBatchMax {
+		t.Fatalf("huge need must clamp to max, got %d", got)
+	}
+	// 实测路径：需释放 100B、实测均摊 10KB → need≈1 → 下限 1。
+	if got := r.capBatchSize(context.Background(), bandEdge+100, limit, 10*1024); got != retentionCapBatchMin {
+		t.Fatalf("tiny need must clamp to min 1, got %d", got)
+	}
+	// 全局均值回落：刚过带边缘一个页面 → 小批量而非 0/负数。
+	small := r.capBatchSize(context.Background(), bandEdge+4096, limit, 0)
+	if small <= 0 || small > 64 {
+		t.Fatalf("slight overage via global avg must be a small batch, got %d", small)
+	}
+	_ = logical
 }
