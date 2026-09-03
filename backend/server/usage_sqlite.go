@@ -22,13 +22,21 @@ func (s *Server) saveUsageRecordToStore(record *usageRecord) error {
 		record.ProviderResponse = usageBody{}
 		record.DownstreamResponse = usageBody{}
 	} else if record.assets.count() > 0 {
-		if _, err := writeUsageAssets(s.usageAssetsRoot(), record.RequestID, record.assets.items); err != nil {
+		if _, err := writeUsageAssets(s.usageAssetsRoot(), record.assets.items); err != nil {
 			// 资产写盘失败不阻断记录落库：占位符已写入 body，管理端
 			// 取不到文件时按 404 呈现，正文其余部分仍可排查。
 			log.Printf("usage assets: failed to write %d assets for %s: %v", record.assets.count(), record.RequestID, err)
 		} else {
 			record.RequestWarnings = append(record.RequestWarnings,
 				fmt.Sprintf("%d media assets externalized", record.assets.count()))
+		}
+		// 引用计数：文件全局去重后，删除时机由「还有没有记录引用」决定。
+		// 单条失败不阻断（缺引用的文件交由孤儿清扫在宽限期后回收）。
+		for _, item := range record.assets.items {
+			file := item.Hash + "." + item.Ext
+			if err := s.store.InsertUsageAssetRef(context.Background(), record.RequestID, file); err != nil {
+				log.Printf("usage assets: failed to ref %s for %s: %v", file, record.RequestID, err)
+			}
 		}
 	}
 	payload, err := json.Marshal(record)

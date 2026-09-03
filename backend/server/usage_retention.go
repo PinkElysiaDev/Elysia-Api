@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 )
@@ -188,7 +187,7 @@ func (r *usageRetention) runOnceInner() {
 			// 每批即清资产目录：不把全量被删 id 累积在内存里——大库过期清理
 			// 可达百万行，累积的 id 切片本身就要几十 MB。
 			stats.DeletedByTTL += len(ids)
-			stats.AssetsRemoved += removeUsageAssetDirs(assetsRoot, ids)
+			stats.AssetsRemoved += r.releaseAssets(ctx, assetsRoot, ids)
 			totalDeleted += len(ids)
 		})
 		if err != nil {
@@ -208,7 +207,7 @@ func (r *usageRetention) runOnceInner() {
 				return s.store.DeleteUsageBeyondCount(ctx, int64(cfg.MaxRecords))
 			}, func(ids []string) {
 				stats.DeletedByRecords += len(ids)
-				stats.AssetsRemoved += removeUsageAssetDirs(assetsRoot, ids)
+				stats.AssetsRemoved += r.releaseAssets(ctx, assetsRoot, ids)
 				totalDeleted += len(ids)
 			})
 			if err != nil && stats.LastError == "" {
@@ -331,7 +330,7 @@ func (r *usageRetention) enforceStorageCap(ctx context.Context, limitBytes int64
 		deleted += prevBatch
 		vacuumNeeded = true
 		stats.DeletedBySize += prevBatch
-		stats.AssetsRemoved += removeUsageAssetDirs(s.usageAssetsRoot(), ids)
+		stats.AssetsRemoved += r.releaseAssets(ctx, s.usageAssetsRoot(), ids)
 	}
 	if vacuumNeeded {
 		stats.Vacuumed = r.maybeVacuum(ctx)
@@ -388,11 +387,17 @@ func (r *usageRetention) maybeVacuum(ctx context.Context) bool {
 	return true
 }
 
-// sweepOrphanAssets 删除「request_id 已不在日志表且目录 mtime 超过宽限期」的
-// 资产目录。宽限期保护在途请求（资产先写、记录后落库）。
+// sweepOrphanAssets 删除「引用表中无记录且 mtime 超过宽限期」的资产文件。
+// 宽限期保护在途请求（文件先写、引用随记录后落库）与迁移遗留（旧布局中
+// 记录已删但保守保留的文件）。扁平布局下文件全局去重，孤儿判定依据是
+// usage_asset_refs 引用计数而非目录存在性。
 func (r *usageRetention) sweepOrphanAssets(ctx context.Context, root string) (int, error) {
 	if root == "" {
 		return 0, nil
+	}
+	referenced, err := r.server.store.ReferencedAssetFiles(ctx)
+	if err != nil {
+		return 0, err
 	}
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -401,64 +406,53 @@ func (r *usageRetention) sweepOrphanAssets(ctx context.Context, root string) (in
 		}
 		return 0, err
 	}
-	var names []string
+	removed := 0
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if entry.IsDir() {
+			// 旧布局残留的请求子目录：迁移会搬走文件，这里兜底清空目录。
+			if err := os.RemoveAll(filepath.Join(root, entry.Name())); err == nil {
+				removed++
+			}
 			continue
 		}
 		name := entry.Name()
-		// 目录名即 request_id（req_<nano>_<hex>）：拒绝任何含路径分隔符/
-		// 点号的异常名，防目录穿越。
-		if name != filepath.Base(name) || strings.ContainsAny(name, `/\.`) {
+		if referenced[name] {
 			continue
 		}
-		names = append(names, name)
-	}
-	if len(names) == 0 {
-		return 0, nil
-	}
-	removed := 0
-	for start := 0; start < len(names); start += retentionOrphanProbeBatch {
-		end := start + retentionOrphanProbeBatch
-		if end > len(names) {
-			end = len(names)
+		if _, _, ok := parseAssetFileName(name); !ok {
+			continue
 		}
-		exist, err := r.server.store.UsageRecordIDsExist(ctx, names[start:end])
+		info, err := entry.Info()
 		if err != nil {
-			return removed, err
+			continue
 		}
-		for _, name := range names[start:end] {
-			if exist[name] {
-				continue
-			}
-			dir := filepath.Join(root, name)
-			info, err := os.Stat(dir)
-			if err != nil {
-				continue
-			}
-			if time.Since(info.ModTime()) < retentionOrphanGrace {
-				continue
-			}
-			if err := os.RemoveAll(dir); err == nil {
-				removed++
-			}
+		if time.Since(info.ModTime()) < retentionOrphanGrace {
+			continue
+		}
+		if err := os.Remove(filepath.Join(root, name)); err == nil {
+			removed++
 		}
 	}
 	return removed, nil
 }
 
-// removeUsageAssetDirs 删除一组 request_id 对应的资产目录，返回成功删除数。
-// id 全部来自数据库查询结果，但仍做基本清洗防穿越。
-func removeUsageAssetDirs(root string, ids []string) int {
+// releaseAssets 删除一组记录的资产引用并回收因此零引用的文件，返回删除
+// 的文件数。仍被其他记录引用的文件保留（扁平去重布局的核心语义）。
+func (r *usageRetention) releaseAssets(ctx context.Context, root string, ids []string) int {
 	if root == "" || len(ids) == 0 {
 		return 0
 	}
+	orphans, err := r.server.store.DeleteUsageAssetRefs(ctx, ids)
+	if err != nil {
+		log.Printf("usage retention: delete asset refs failed: %v", err)
+		return 0
+	}
 	removed := 0
-	for _, id := range ids {
-		if id == "" || strings.ContainsAny(id, `/\.`) {
+	for _, file := range orphans {
+		if _, _, ok := parseAssetFileName(file); !ok {
 			continue
 		}
-		if err := os.RemoveAll(filepath.Join(root, id)); err == nil {
+		if err := os.Remove(filepath.Join(root, file)); err == nil {
 			removed++
 		}
 	}

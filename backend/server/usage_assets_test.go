@@ -226,17 +226,17 @@ func TestWriteUsageAssetsAndSkipExisting(t *testing.T) {
 	if _, ok := sink.register("image/png", "", base64Len(600)); !ok {
 		t.Fatal("register failed")
 	}
-	n, err := writeUsageAssets(root, "req_write", sink.items)
+	n, err := writeUsageAssets(root, sink.items)
 	if err != nil || n != 1 {
 		t.Fatalf("writeUsageAssets = %d, %v", n, err)
 	}
 	item := sink.items[0]
-	path := filepath.Join(root, "req_write", item.Hash+"."+item.Ext)
+	path := filepath.Join(root, item.Hash+"."+item.Ext)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("asset file must exist: %v", err)
 	}
-	// 第二次写（同哈希）跳过。
-	if n, err := writeUsageAssets(root, "req_write", sink.items); err != nil || n != 0 {
+	// 第二次写（同哈希，无论哪个请求）跳过——扁平内容寻址全局去重。
+	if n, err := writeUsageAssets(root, sink.items); err != nil || n != 0 {
 		t.Fatalf("re-write should skip existing: %d, %v", n, err)
 	}
 	_ = data

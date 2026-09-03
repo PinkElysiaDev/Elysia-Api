@@ -169,6 +169,9 @@ func New(cfg *config.Config) *Server {
 			log.Printf("so they can be re-entered from the panel once the key is restored.")
 			log.Printf("========================================================================")
 		}
+		// 一次性资产布局迁移：旧的按请求分目录 → 扁平内容寻址 + 引用重建。
+		// 幂等（无子目录即跳过）；失败只告警，交给孤儿清扫兜底。
+		server.migrateUsageAssetsLayout()
 		// 历史数据回填进小时级 rollup 预聚合表（后台、幂等、可断点续跑）；
 		// 完成前聚合查询自动走 raw 路径，功能不受影响。
 		store.StartRollupBackfill()

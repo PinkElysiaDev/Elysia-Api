@@ -60,13 +60,15 @@ func TestRetentionTTLDeletesOldRecordsAndAssets(t *testing.T) {
 	seedUsageRecord(t, s.store, "old-b", now.Add(-48*time.Hour), 64)
 	seedUsageRecord(t, s.store, "fresh", now.Add(-1*time.Hour), 64)
 
-	// old-a 的资产目录：TTL 清理后应联动删除。
+	// old-a 的资产文件（扁平布局）+ 引用：TTL 清理删记录后应联动删引用与文件。
 	assetsRoot := s.usageAssetsRoot()
-	oldDir := filepath.Join(assetsRoot, "old-a")
-	if err := os.MkdirAll(oldDir, 0o755); err != nil {
+	if err := os.MkdirAll(assetsRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(oldDir, "0123456789abcdef.png"), []byte("x"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(assetsRoot, "0123456789abcdef.png"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.InsertUsageAssetRef(context.Background(), "old-a", "0123456789abcdef.png"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -82,8 +84,8 @@ func TestRetentionTTLDeletesOldRecordsAndAssets(t *testing.T) {
 	if !ids["fresh"] {
 		t.Fatal("fresh record must survive TTL cleanup")
 	}
-	if _, err := os.Stat(oldDir); !os.IsNotExist(err) {
-		t.Fatalf("asset dir of deleted record must be removed, err=%v", err)
+	if _, err := os.Stat(filepath.Join(assetsRoot, "0123456789abcdef.png")); !os.IsNotExist(err) {
+		t.Fatalf("asset file of deleted record must be removed, err=%v", err)
 	}
 }
 
@@ -135,19 +137,27 @@ func TestRetentionOrphanSweepRespectsGrace(t *testing.T) {
 	s, _ := newRetentionTestServer(t)
 	now := time.Now()
 	seedUsageRecord(t, s.store, "live", now, 64)
+	ctx := context.Background()
 
 	assetsRoot := s.usageAssetsRoot()
-	// 三个目录：有记录（保留）、无记录但新（宽限保留）、无记录且旧（删除）。
-	newOrphan := filepath.Join(assetsRoot, "orphan-fresh")
-	oldOrphan := filepath.Join(assetsRoot, "orphan-old")
-	liveDir := filepath.Join(assetsRoot, "live")
-	for _, dir := range []string{newOrphan, oldOrphan, liveDir} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+	// 三个文件：被 live 引用（保留）、无引用但新（宽限保留）、无引用且旧（删除）。
+	if err := os.MkdirAll(assetsRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	newOrphan := filepath.Join(assetsRoot, "1111111111111111.png")
+	oldOrphan := filepath.Join(assetsRoot, "2222222222222222.png")
+	referenced := filepath.Join(assetsRoot, "3333333333333333.png")
+	for path, content := range map[string][]byte{
+		newOrphan:  []byte("n"),
+		oldOrphan:  []byte("o"),
+		referenced: []byte("r"),
+	} {
+		if err := os.WriteFile(path, content, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "0123456789abcdef.png"), []byte("x"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+	}
+	if err := s.store.InsertUsageAssetRef(ctx, "live", "3333333333333333.png"); err != nil {
+		t.Fatal(err)
 	}
 	oldTime := time.Now().Add(-48 * time.Hour)
 	if err := os.Chtimes(oldOrphan, oldTime, oldTime); err != nil {
@@ -158,13 +168,13 @@ func TestRetentionOrphanSweepRespectsGrace(t *testing.T) {
 	r.runOnce()
 
 	if _, err := os.Stat(oldOrphan); !os.IsNotExist(err) {
-		t.Fatal("orphan dir past grace must be removed")
+		t.Fatal("unreferenced file past grace must be removed")
 	}
 	if _, err := os.Stat(newOrphan); err != nil {
-		t.Fatalf("orphan dir within grace must survive: %v", err)
+		t.Fatalf("orphan file within grace must survive: %v", err)
 	}
-	if _, err := os.Stat(liveDir); err != nil {
-		t.Fatalf("dir of live record must survive: %v", err)
+	if _, err := os.Stat(referenced); err != nil {
+		t.Fatalf("referenced file must survive: %v", err)
 	}
 }
 
@@ -211,16 +221,20 @@ func TestTriggerAsyncActuallyRuns(t *testing.T) {
 	t.Fatal("triggerAsync must perform real cleanup work")
 }
 
-func TestRemoveUsageAssetDirsRejectsPathTraversal(t *testing.T) {
-	root := t.TempDir()
-	target := filepath.Join(root, "safe")
-	if err := os.MkdirAll(target, 0o755); err != nil {
+// 引用释放的穿越防护：非法文件名（parseAssetFileName 拒绝）不会被执行删除。
+func TestReleaseAssetsRejectsBadFileNames(t *testing.T) {
+	s, _ := newRetentionTestServer(t)
+	ctx := context.Background()
+	if err := s.store.InsertUsageAssetRef(ctx, "req-x", "0123456789abcdef.png"); err != nil {
 		t.Fatal(err)
 	}
-	// 含分隔符/点号的 id 一律跳过；合法 id 正常删除。
-	removeUsageAssetDirs(root, []string{"..", "a/b", "a.b", "safe"})
-	if _, err := os.Stat(target); !os.IsNotExist(err) {
-		t.Fatal("legit dir must be removed")
+	// 引用被删但文件名非法（模拟脏数据）：releaseAssets 跳过文件删除、不报错。
+	if err := s.store.ExecRaw(ctx, "DELETE FROM usage_asset_refs WHERE request_id = 'req-x'"); err != nil {
+		t.Fatal(err)
+	}
+	r := newUsageRetention(s)
+	if n := r.releaseAssets(ctx, t.TempDir(), []string{"req-x"}); n != 0 {
+		t.Fatalf("no deletable files expected, got %d", n)
 	}
 }
 

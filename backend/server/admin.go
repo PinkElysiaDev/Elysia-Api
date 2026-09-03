@@ -972,22 +972,18 @@ func (s *Server) adminUsageReset(c *gin.Context) { s.resetUsage(c) }
 
 // ---- 日志管理（usage-assets / 占用状态 / 手动清理）----
 
-// adminUsageAsset 下发某条记录的外置媒体文件。资产是捕获的用户内容，
-// 必须留在管理鉴权之后，绝不做公开静态目录。文件名格式严格校验
-// （16 位 hex 哈希 + 白名单扩展名），requestId 拒绝路径分隔符，防穿越。
+// adminUsageAsset 下发外置媒体文件。资产是捕获的用户内容，必须留在管理
+// 鉴权之后，绝不做公开静态目录。存储为扁平内容寻址（usage-assets/<hash>.<ext>，
+// 同一图片全局一份）；URL 保留 /:requestId/ 段仅为占位符格式兼容，不参与
+// 寻址。文件名格式严格校验（16 位 hex + 白名单扩展名）防穿越。
 func (s *Server) adminUsageAsset(c *gin.Context) {
-	requestID := c.Param("requestId")
-	if requestID == "" || strings.ContainsAny(requestID, `/\.`) {
-		respondFail(c, 400, "invalid_request_id", "invalid request id")
-		return
-	}
 	fileName := c.Param("file")
 	hash, ext, ok := parseAssetFileName(fileName)
 	if !ok {
 		respondFail(c, 400, "invalid_asset_name", "invalid asset file name")
 		return
 	}
-	data, err := os.ReadFile(filepath.Join(s.usageAssetsRoot(), requestID, hash+"."+ext))
+	data, err := os.ReadFile(filepath.Join(s.usageAssetsRoot(), hash+"."+ext))
 	if err != nil {
 		respondFail(c, 404, "asset_not_found", "asset file not found")
 		return

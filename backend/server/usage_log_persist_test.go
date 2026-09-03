@@ -83,11 +83,15 @@ func TestBodyOnErrorOnlyKeepsFailedBodiesAndWritesAssets(t *testing.T) {
 	if !strings.Contains(stored, `"errorKind":"conversion"`) {
 		t.Fatalf("errorKind must be persisted, got %s", stored)
 	}
-	// 资产已写盘。
+	// 资产已写盘（扁平内容寻址：文件在根目录，不带请求子目录）。
 	item := failed.assets.items[0]
-	path := filepath.Join(s.usageAssetsRoot(), "onerr-failed", item.Hash+"."+item.Ext)
+	path := filepath.Join(s.usageAssetsRoot(), item.Hash+"."+item.Ext)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("asset file must be written for kept body: %v", err)
+	}
+	refs, err := s.store.ReferencedAssetFiles(context.Background())
+	if err != nil || !refs[item.Hash+"."+item.Ext] {
+		t.Fatalf("asset ref must be recorded: refs=%v err=%v", refs, err)
 	}
 	if !containsWarning(failed, "externalized") {
 		t.Fatalf("RequestWarnings must note externalization: %v", failed.RequestWarnings)
@@ -179,7 +183,7 @@ func TestAdminUsageAssetServesFileAndRejectsTraversal(t *testing.T) {
 	router := gin.New()
 	s.setupAdminRoutes(router.Group("/api/admin"))
 
-	// 正常获取：占位符里的文件名可下发，Content-Type 按 ext。
+	// 正常获取：占位符里的文件名可下发（扁平布局，requestId 段仅兼容），Content-Type 按 ext。
 	fileName := record.assets.items[0].Hash + "." + record.assets.items[0].Ext
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/usage/assets/req_asset/"+fileName, nil)
 	w := httptest.NewRecorder()
