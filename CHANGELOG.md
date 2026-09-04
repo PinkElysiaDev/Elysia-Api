@@ -12,7 +12,7 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
 ## v1.3.0 - 2026-09-04
 
 这次更新的主角是日志：日志可以自动清理、不再疯占磁盘，排查问题时还能
-直接在日志详情里看图。同时带来了第一个官方 Docker 镜像。
+直接在日志详情里看图。同时新增了 Docker 支持。
 
 ### 日志管理（新功能）
 
@@ -41,10 +41,10 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
 - 图片默认显示小缩略图，点开是全屏大图预览，还能一键下载；已经看过的
   图会自动缓存，来回切换不再重复加载。
 
-### 第一个官方 Docker 镜像
+### Docker 支持
 
-- 新增 Dockerfile 与自动发布流程：Docker Hub 提供多架构镜像，随版本
-  一起更新，`docker run` 一行命令即可跑起来。
+- 新增多架构 Dockerfile（amd64 / arm64）：克隆仓库后 `docker build`
+  一行命令即可自行构建镜像运行，使用方法见 README 的 Docker 章节。
 
 ### 面板改进
 
@@ -108,10 +108,10 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
 - **重构（不改行为）**：prepareRelayPlan / relayFailer 统一中转入口
   前奏、自定义协议 normal handler 合并、LogDetailSheet 子树抽取、共
   享 UI 原语、死代码清扫、魔法值常量化与嵌套收敛。
-- **Docker 支持**（PR #13 / #14，@LingLambda）：Dockerfile、Docker Hub
-  CI/CD 与多架构镜像发布（linux/amd64 + linux/arm64）、docker README、
-  双语 README 入口与项目状态徽章。本版本为首个随 Release 发布官方镜
-  像的版本。
+- **Docker 支持**（PR #13 / #14，@LingLambda）：多架构 Dockerfile
+  （linux/amd64 + linux/arm64）、Docker Hub 自动发布 workflow（需在
+  仓库 secrets 配置 `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` 后生效）、
+  docker README、双语 README 入口与项目状态徽章。
 - **面板修复与增强**（PR #16 / #23，@vioaki）：macOS App WKWebView
   内日志导出修复、小屏按钮与分段标签布局、禁用组成员保留但选择器隐
   藏、modelId 移至 query 参数（支持含斜杠的模型 id）、缓存命中率展示
