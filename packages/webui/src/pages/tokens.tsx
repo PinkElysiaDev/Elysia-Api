@@ -23,6 +23,7 @@ import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { useTokens, useGroups, revalidate } from '@/lib/hooks'
 import { api } from '@/lib/api'
+import { copyText } from '@/lib/clipboard'
 import { cn, formatDateTime } from '@/lib/utils'
 import type { ApiToken } from '@/lib/types'
 
@@ -218,7 +219,7 @@ function RevealCopyButton({ name, maskedToken }: { name: string; maskedToken: st
     setBusy(true)
     try {
       const token = revealed ? revealedToken : (await api.revealToken(name)).token
-      await navigator.clipboard.writeText(token)
+      await copyText(token)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch (err) {
