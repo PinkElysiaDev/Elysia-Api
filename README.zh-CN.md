@@ -108,6 +108,12 @@ chmod +x ./elysia-api-linux-amd64
 
 ### Docker
 
+先在仓库根目录构建镜像：
+
+```bash
+docker build -t elysia-api:local .
+```
+
 最小运行命令：
 
 ```bash

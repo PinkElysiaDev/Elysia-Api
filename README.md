@@ -109,6 +109,12 @@ Download `elysia-api-macos.dmg` from Releases, double-click it, and drag `Elysia
 
 ### Docker
 
+Build the image from the repository root first:
+
+```bash
+docker build -t elysia-api:local .
+```
+
 Minimal run command:
 
 ```bash
