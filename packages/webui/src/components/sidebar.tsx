@@ -14,6 +14,8 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clearToken } from '@/lib/auth'
+import { useConfirm } from './ui/confirm-dialog'
+import { Button } from './ui/button'
 import { ThemeToggle } from './theme-toggle'
 import { BrandMark } from './brand-mark'
 
@@ -39,10 +41,21 @@ const NAV_ITEMS: NavItem[] = [
 const GROUP_ORDER = ['监控', '网关配置', '观测', '系统']
 
 export function Sidebar() {
+  const { confirm, dialog } = useConfirm()
   const grouped = GROUP_ORDER.map((group) => ({
     group,
     items: NAV_ITEMS.filter((item) => item.group === group),
   }))
+
+  // 登出需二次确认，防止误触直接清除本地令牌。
+  async function handleLogout() {
+    const ok = await confirm({
+      title: '退出登录？',
+      description: '将清除本地保存的 Panel Access Token，重新输入令牌后才能进入控制台。',
+      confirmText: '退出',
+    })
+    if (ok) clearToken()
+  }
 
   return (
     <div className="flex h-full flex-col gap-[22px] bg-rail-fade py-[22px] pb-[18px] text-sidebar-foreground max-rail:bg-background">
@@ -88,18 +101,20 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* 底部：主题按钮 · 登出 */}
+      {/* 底部：主题切换 · 退出登录 */}
       <div className="mt-auto flex items-center justify-between gap-2 border-t border-border px-[22px] pt-3.5">
         <ThemeToggle />
-        <button
-          onClick={() => clearToken()}
+        <Button
+          variant="danger"
+          size="iconSm"
+          onClick={handleLogout}
           aria-label="退出登录"
           title="退出登录"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-rose hover:bg-wash hover:text-rose"
         >
           <LogOut className="h-3.5 w-3.5" />
-        </button>
+        </Button>
       </div>
+      {dialog}
     </div>
   )
 }
