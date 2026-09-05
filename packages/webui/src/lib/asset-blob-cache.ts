@@ -64,6 +64,13 @@ export function cachedAssetUrl(asset: { requestId: string; file: string }): Prom
   return fetch
 }
 
+/** 已缓存条目的字节大小；未命中返回 null。仅供 UI 展示（媒体卡片上的
+ * 文件体积），不会触发加载。 */
+export function cachedAssetBytes(asset: { requestId: string; file: string }): number | null {
+  const hit = entries.get(`${asset.requestId}/${asset.file}`)
+  return hit ? hit.bytes : null
+}
+
 function touch(key: string, entry: AssetCacheEntry) {
   entry.lastUsed = Date.now()
   entries.delete(key)
