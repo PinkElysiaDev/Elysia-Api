@@ -219,6 +219,10 @@ export function SourcesPage() {
       const okCount = results.filter((r) => r.status === 'fulfilled').length
       const failed = results.filter((r) => r.status === 'rejected')
       await revalidate.models()
+      // 操作落地即清除对应选择（allSettled 保序，按下标对回原模型）；
+      // 失败的保留勾选，便于修正后直接重试。
+      const succeeded = list.filter((_, i) => results[i].status === 'fulfilled')
+      if (succeeded.length > 0) setModelsSelected(succeeded, false)
       if (failed.length === 0) {
         toast.success(enabled ? '已批量启用' : '已批量禁用', `成功 ${okCount} 个模型`)
         return
@@ -752,11 +756,13 @@ export function SourcesPage() {
             ? quickCreate.models[0].name || quickCreate.models[0].id
             : quickCreate?.source.name ?? ''
         }
+        onSuccess={() => quickCreate && setModelsSelected(quickCreate.models, false)}
       />
       <AddToGroupDialog
         open={addToGroup !== null}
         onOpenChange={(open) => !open && setAddToGroup(null)}
         models={addToGroup ?? []}
+        onSuccess={() => addToGroup && setModelsSelected(addToGroup, false)}
       />
       {dialog}
     </div>

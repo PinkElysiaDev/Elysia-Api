@@ -33,11 +33,14 @@ export function QuickCreateGroupDialog({
   onOpenChange,
   models,
   defaultName,
+  onSuccess,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   models: Model[]
   defaultName: string
+  /** 创建成功后回调（取消/失败不触发）：调用方借此清除这批模型的选择态。 */
+  onSuccess?: () => void
 }) {
   const toast = useToast()
   const [name, setName] = useState('')
@@ -73,6 +76,7 @@ export function QuickCreateGroupDialog({
       await api.createGroup(payload)
       await revalidate.groups()
       toast.success('模型组已创建', `${name} · ${models.length} 个成员`)
+      onSuccess?.()
       onOpenChange(false)
     } catch (err) {
       toast.error('创建失败', (err as Error).message)
@@ -127,10 +131,13 @@ export function AddToGroupDialog({
   open,
   onOpenChange,
   models,
+  onSuccess,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   models: Model[]
+  /** 添加成功后回调（取消/失败不触发）：调用方借此清除这批模型的选择态。 */
+  onSuccess?: () => void
 }) {
   const toast = useToast()
   const { data: groups } = useGroups()
@@ -166,6 +173,7 @@ export function AddToGroupDialog({
       await revalidate.groups()
       const groupName = (groups ?? []).find((g) => g.id === selected)?.name ?? selected
       toast.success('已加入模型组', `${groupName} · 新增 ${result.added} 个成员`)
+      onSuccess?.()
       onOpenChange(false)
     } catch (err) {
       toast.error('添加失败', (err as Error).message)
