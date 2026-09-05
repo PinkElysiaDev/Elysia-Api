@@ -67,7 +67,7 @@ function customProtocolID(platform: string): string {
 }
 
 const KEY_STRATEGIES: { value: SourceKeyStrategy; label: string; hint: string }[] = [
-  { value: 'round-robin', label: '轮询 Round-robin', hint: '每次请求按顺序轮换 Key（仅一个 Key 时无差别）' },
+  { value: 'round-robin', label: '轮询 Round-robin', hint: '每次请求按顺序轮换 Key' },
   { value: 'random', label: '随机 Random', hint: '每次请求随机选取 Key' },
   { value: 'priority', label: '优先级 Priority', hint: '按列表顺序优先，失败先轮换 Key 再换模型' },
 ]
@@ -425,8 +425,7 @@ export function SourceFormDialog({
           <div className="space-y-2 rounded-xl border border-border/70 bg-background/40 p-4">
             <div className="flex items-center justify-between">
               <Label>
-                API Keys（{selectedStrategy === 'priority' ? '按优先级从上到下' : '列表'}）
-                <span className="ml-1 text-xs font-normal text-muted-foreground">配置一个即为单 Key</span>
+                API Keys{selectedStrategy === 'priority' ? '（按优先级从上到下）' : ''}
               </Label>
               <Button type="button" variant="outline" size="sm" onClick={addApiKey}>
                 <Plus className="h-4 w-4" /> 添加 Key
