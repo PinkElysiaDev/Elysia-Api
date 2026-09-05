@@ -54,7 +54,9 @@ Prebuilt binaries are published through [GitHub Releases](https://github.com/Pin
 | Platform | Release file |
 | --- | --- |
 | Windows amd64 | `elysia-api-windows-amd64.exe` |
+| Windows arm64 | `elysia-api-windows-arm64.exe` |
 | Linux amd64 | `elysia-api-linux-amd64` |
+| Linux arm64 | `elysia-api-linux-arm64` |
 | macOS app (universal Intel / Apple Silicon) | `elysia-api-macos.dmg` |
 
 ### General Configuration
@@ -193,12 +195,14 @@ Build the WebUI, synchronize embedded assets, and cross-compile standalone binar
 npm run build
 ```
 
-Local build artifacts are placed in `dist/standalone/`. This directory is not committed to Git. Formal releases are distributed through GitHub Releases and contain only these three artifacts:
+Local build artifacts are placed in `dist/standalone/`. This directory is not committed to Git. Formal releases are distributed through GitHub Releases and contain these artifacts:
 
 | Platform | Artifact |
 | --- | --- |
 | Windows amd64 | `elysia-api-windows-amd64.exe` |
+| Windows arm64 | `elysia-api-windows-arm64.exe` |
 | Linux amd64 | `elysia-api-linux-amd64` |
+| Linux arm64 | `elysia-api-linux-arm64` |
 | macOS (universal Intel / Apple Silicon) | `elysia-api-macos.dmg` |
 
 > DMG assembly is available only on macOS (requires swiftc / lipo / codesign / hdiutil) and is produced by CI during release: pushing a `v*` tag publishes automatically, or you can trigger `workflow_dispatch` manually from the Actions page and then download the artifacts. The two bare darwin binaries are only inputs to DMG assembly; command-line scenarios can still use them directly.

@@ -9,11 +9,13 @@ const backendDir = join(repoRoot, 'backend')
 const webuiDist = join(repoRoot, 'packages', 'webui', 'dist')
 const embeddedWebuiDist = join(backendDir, 'webui', 'dist')
 
-// 与主机无关，四个目标全部交叉编译。darwin 二进制同时是 macOS DMG 的组装输入；
+// 与主机无关，六个目标全部交叉编译。darwin 二进制同时是 macOS DMG 的组装输入；
 // DMG 只能在 macOS 上组装，发布时由 CI 产出（本地可用 npm run build:macos-app）。
 const targets = [
   { goos: 'windows', goarch: 'amd64', output: 'elysia-api-windows-amd64.exe' },
+  { goos: 'windows', goarch: 'arm64', output: 'elysia-api-windows-arm64.exe' },
   { goos: 'linux', goarch: 'amd64', output: 'elysia-api-linux-amd64' },
+  { goos: 'linux', goarch: 'arm64', output: 'elysia-api-linux-arm64' },
   { goos: 'darwin', goarch: 'amd64', output: 'elysia-api-darwin-amd64' },
   { goos: 'darwin', goarch: 'arm64', output: 'elysia-api-darwin-arm64' },
 ]

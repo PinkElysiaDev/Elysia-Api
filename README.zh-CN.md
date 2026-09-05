@@ -54,7 +54,9 @@ elysia-api/
 | 平台 | Release 文件 |
 | --- | --- |
 | Windows amd64 | `elysia-api-windows-amd64.exe` |
+| Windows arm64 | `elysia-api-windows-arm64.exe` |
 | Linux amd64 | `elysia-api-linux-amd64` |
+| Linux arm64 | `elysia-api-linux-arm64` |
 | macOS App（Intel / Apple Silicon 通用） | `elysia-api-macos.dmg` |
 
 ### 通用配置
@@ -192,12 +194,14 @@ npm install
 npm run build
 ```
 
-本地构建产物位于 `dist/standalone/`。该目录不会提交到 Git；正式版本通过 GitHub Releases 分发，发布物只有三件套：
+本地构建产物位于 `dist/standalone/`。该目录不会提交到 Git；正式版本通过 GitHub Releases 分发，发布物如下：
 
 | 平台 | 发布物 |
 | --- | --- |
 | Windows amd64 | `elysia-api-windows-amd64.exe` |
+| Windows arm64 | `elysia-api-windows-arm64.exe` |
 | Linux amd64 | `elysia-api-linux-amd64` |
+| Linux arm64 | `elysia-api-linux-arm64` |
 | macOS（Intel / Apple Silicon 通用） | `elysia-api-macos.dmg` |
 
 > DMG 只能在 macOS 上组装（依赖 swiftc / lipo / codesign / hdiutil），由 CI 在发布时产出：推 `v*` tag 自动发布，或在 Actions 页面手动触发（`workflow_dispatch`）后下载产物。两个 darwin 裸二进制只是 DMG 的组装输入，命令行场景仍可直接使用。
