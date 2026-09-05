@@ -121,11 +121,11 @@ export function MultiSelect({
           }
         }}
         className={cn(
-          'flex h-[34px] cursor-pointer select-none items-center gap-1.5 rounded-md border px-3 text-sm transition-colors duration-150',
+          'flex h-[34px] cursor-pointer select-none items-center gap-1.5 rounded-full border px-3.5 text-sm transition-colors duration-150',
           'focus:outline-none focus-visible:border-rose focus-visible:ring-[3px] focus-visible:ring-wash',
           hasSelection
-            ? 'border-rose/30 bg-wash text-rose'
-            : 'border-input bg-card text-muted-foreground hover:text-foreground',
+            ? 'border-[color:color-mix(in_srgb,var(--rose)_30%,transparent)] bg-wash text-rose'
+            : 'border-transparent bg-[var(--well)] text-muted-foreground hover:text-foreground',
         )}
       >
         <span className="whitespace-nowrap">
@@ -159,12 +159,13 @@ export function MultiSelect({
       {open && (
         <div
           className={cn(
-            'absolute z-50 mt-1.5 w-max min-w-[11rem] max-w-[16rem] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-soft',
-            flipRight ? 'right-0' : 'left-0',
+            'absolute z-50 mt-1.5 w-max min-w-[11rem] max-w-[16rem] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg',
+            'animate-in fade-in-0 zoom-in-95 duration-150',
+            flipRight ? 'right-0 origin-top-right' : 'left-0 origin-top-left',
           )}
         >
-          <div className="flex items-center gap-2 border-b border-border px-2.5 py-2">
-            <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2.5">
+            <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
             <input
               ref={searchRef}
               value={query}
@@ -187,12 +188,11 @@ export function MultiSelect({
                     aria-selected={checked}
                     onClick={() => toggle(option.value)}
                     className={cn(
-                      'flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-sm outline-none transition-colors duration-100',
-                      // focus-visible：鼠标点击取消选中后按钮仍持有焦点，
-                      // 不能用 focus: 否则 wash 背景残留
+                      'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm outline-none transition-colors duration-100',
+                      // focus-visible 而非 focus：点选后按钮仍持焦点，focus: 会残留 wash 背景。
                       checked
                         ? 'bg-wash font-medium text-rose'
-                        : 'text-foreground hover:bg-wash focus-visible:bg-wash',
+                        : 'text-foreground hover:bg-wash hover:text-rose focus-visible:bg-wash focus-visible:text-rose',
                     )}
                   >
                     <span className="flex-1 truncate">

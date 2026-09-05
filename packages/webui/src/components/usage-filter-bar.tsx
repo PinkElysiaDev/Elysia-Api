@@ -57,7 +57,6 @@ export function UsageFilterBar({
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
       <Seg
         aria-label="时间窗"
-        className="h-[34px]"
         options={RANGE_OPTIONS}
         value={range}
         onChange={onRangeChange}
@@ -103,7 +102,7 @@ export function UsageFilterBar({
             onSourceIdsChange([])
             onKeyNamesChange([])
           }}
-          className="flex h-[34px] items-center gap-1 whitespace-nowrap rounded-md px-2 text-xs text-muted-foreground transition-colors duration-150 hover:bg-wash hover:text-rose focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex h-[34px] items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-xs text-muted-foreground transition-colors duration-150 hover:bg-wash hover:text-rose focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="h-3.5 w-3.5" />
           清除筛选
