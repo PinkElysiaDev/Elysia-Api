@@ -33,11 +33,14 @@ export function QuickCreateGroupDialog({
   onOpenChange,
   models,
   defaultName,
+  onSuccess,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   models: Model[]
   defaultName: string
+  /** 创建成功后回调（取消/失败不触发）：调用方借此清除这批模型的选择态。 */
+  onSuccess?: () => void
 }) {
   const toast = useToast()
   const [name, setName] = useState('')
@@ -73,6 +76,7 @@ export function QuickCreateGroupDialog({
       await api.createGroup(payload)
       await revalidate.groups()
       toast.success('模型组已创建', `${name} · ${models.length} 个成员`)
+      onSuccess?.()
       onOpenChange(false)
     } catch (err) {
       toast.error('创建失败', (err as Error).message)
@@ -113,7 +117,7 @@ export function QuickCreateGroupDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             取消
           </Button>
-          <Button onClick={handleCreate} disabled={saving}>
+          <Button variant="primary" onClick={handleCreate} disabled={saving}>
             {saving ? '创建中…' : '创建'}
           </Button>
         </DialogFooter>
@@ -127,10 +131,13 @@ export function AddToGroupDialog({
   open,
   onOpenChange,
   models,
+  onSuccess,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   models: Model[]
+  /** 添加成功后回调（取消/失败不触发）：调用方借此清除这批模型的选择态。 */
+  onSuccess?: () => void
 }) {
   const toast = useToast()
   const { data: groups } = useGroups()
@@ -166,6 +173,7 @@ export function AddToGroupDialog({
       await revalidate.groups()
       const groupName = (groups ?? []).find((g) => g.id === selected)?.name ?? selected
       toast.success('已加入模型组', `${groupName} · 新增 ${result.added} 个成员`)
+      onSuccess?.()
       onOpenChange(false)
     } catch (err) {
       toast.error('添加失败', (err as Error).message)
@@ -194,7 +202,7 @@ export function AddToGroupDialog({
                 onClick={() => setSelected(group.id)}
                 className={cn(
                   'flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-                  selected === group.id ? 'bg-primary/12 text-primary' : 'hover:bg-accent',
+                  selected === group.id ? 'bg-primary/10 text-primary' : 'hover:bg-accent',
                 )}
               >
                 <span className="min-w-0 flex-1 truncate">{group.name}</span>
@@ -208,7 +216,7 @@ export function AddToGroupDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             取消
           </Button>
-          <Button onClick={handleAdd} disabled={saving || !selected}>
+          <Button variant="primary" onClick={handleAdd} disabled={saving || !selected}>
             {saving ? '添加中…' : '添加'}
           </Button>
         </DialogFooter>

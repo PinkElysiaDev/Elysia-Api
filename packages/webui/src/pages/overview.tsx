@@ -131,7 +131,7 @@ function SourceHealthScroller({
         key={`${keyPrefix}-${source.id}`}
         onClick={() => navigate('/sources', { state: { openSource: source.id } })}
         title={`查看「${source.name}」配置`}
-        className="cursor-pointer border-b border-border/30 last:border-b-0 hover:bg-wash/30 transition-colors"
+        className="cursor-pointer border-b border-border/30 last:border-b-0 hover:bg-wash transition-colors"
       >
         <td className="overflow-hidden py-3 pr-2">
           <span className="block truncate font-medium text-foreground" title={source.id}>
@@ -147,8 +147,8 @@ function SourceHealthScroller({
         <td className="overflow-hidden py-3 pl-2 text-right">
           <span
             className={cn(
-              'inline-flex min-w-[3.5rem] items-center justify-center gap-1 rounded-[5px] border px-[7px] py-0.5 text-2xs font-medium',
-              refreshing ? 'border-rose/30 bg-wash text-rose' : HEALTH_TONE[health.state],
+              'inline-flex min-w-[3.5rem] items-center justify-center gap-1 rounded-full border px-[7px] py-0.5 text-2xs font-medium',
+              refreshing ? 'border-[color:color-mix(in_srgb,var(--rose)_30%,transparent)] bg-wash text-rose' : HEALTH_TONE[health.state],
             )}
           >
             {refreshing && <RefreshCcw className="h-2.5 w-2.5 animate-spin" aria-hidden />}
@@ -449,7 +449,7 @@ export function OverviewPage() {
               </div>
               <Seg
                 aria-label="热门模型时间窗"
-                className="h-7"
+                size="sm"
                 options={RANGE_OPTIONS}
                 value={topRange}
                 onChange={setTopRange}
@@ -550,7 +550,7 @@ export function OverviewPage() {
                 <div className="skeleton h-36 rounded-md" />
               ) : recentFailures.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center text-xs text-muted-foreground">
-                  <CheckCircle2 className="h-8 w-8 text-jade/70 mb-2" />
+                  <CheckCircle2 className="h-8 w-8 mb-2 text-[color:color-mix(in_srgb,var(--jade)_70%,transparent)]" />
                   <span>近期无任何调用异常记录</span>
                 </div>
               ) : (
@@ -559,7 +559,7 @@ export function OverviewPage() {
                     <button
                       key={item.requestId}
                       onClick={() => navigate('/usage-logs', { state: { openDetail: item.requestId } })}
-                      className="group flex w-full flex-col justify-between gap-1.5 border-b border-border/30 pb-2.5 last:border-b-0 text-left hover:bg-wash/30 p-1.5 rounded transition-colors"
+                      className="group flex w-full flex-col justify-between gap-1.5 border-b border-border/30 pb-2.5 last:border-b-0 text-left hover:bg-wash p-1.5 rounded-md transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2 text-xs">
                         <div className="flex items-center gap-1.5 truncate">
@@ -573,7 +573,7 @@ export function OverviewPage() {
                         </span>
                       </div>
                       {item.error && (
-                        <p className="text-2xs text-ember/90 truncate font-mono" title={item.error}>
+                        <p className="text-2xs truncate font-mono text-[color:color-mix(in_srgb,var(--ember)_90%,transparent)]" title={item.error}>
                           {item.error}
                         </p>
                       )}

@@ -14,7 +14,7 @@ export function Dot({ state, className }: { state: 'ok' | 'err' | 'off'; classNa
 export function TonePill({ color, className, children }: { color: string; className?: string; children: React.ReactNode }) {
   return (
     <span
-      className={cn('inline-flex items-center rounded-[5px] border px-[7px] py-0.5 font-mono text-xs font-medium', className)}
+      className={cn('inline-flex items-center rounded-full border px-[7px] py-0.5 font-mono text-xs font-medium', className)}
       style={{
         color,
         borderColor: `color-mix(in srgb, ${color} 28%, transparent)`,
@@ -34,7 +34,7 @@ export function CodePill({ code, className }: { code: number; className?: string
   return (
     <span
       className={cn(
-        'tnum inline-flex items-center rounded-[5px] border px-[7px] py-0.5 font-mono text-xs font-medium',
+        'tnum inline-flex items-center rounded-full border px-[7px] py-0.5 font-mono text-xs font-medium',
         isSuccess
           ? 'border-[color-mix(in_srgb,var(--jade)_26%,transparent)] bg-[color-mix(in_srgb,var(--jade)_9%,transparent)] text-jade'
           : 'border-[color-mix(in_srgb,var(--ember)_28%,transparent)] bg-[color-mix(in_srgb,var(--ember)_9%,transparent)] text-ember',
@@ -71,7 +71,7 @@ export function CapChip({
     <span
       title={title}
       className={cn(
-        'inline-flex items-center gap-1 rounded border border-border px-1.5 py-px text-2xs text-muted-foreground',
+        'inline-flex items-center gap-1 rounded-full border border-border px-2 py-px text-2xs text-muted-foreground',
         className,
       )}
     >

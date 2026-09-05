@@ -1,13 +1,29 @@
-import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, ChevronLeft, ChevronRight, Download, FileText, Image, MoveRight } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  ExternalLink,
+  FileText,
+  Film,
+  Image as ImageIcon,
+  Loader2,
+  Maximize,
+  MoveRight,
+  Music2,
+  X,
+  ZoomIn,
+  ZoomOut,
+  type LucideIcon,
+} from 'lucide-react'
 import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
@@ -20,11 +36,11 @@ import {
 } from '@/components/ui/sheet'
 import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
-import { cachedAssetUrl } from '@/lib/asset-blob-cache'
+import { cachedAssetBytes, cachedAssetUrl } from '@/lib/asset-blob-cache'
 import { colorize } from '@/lib/json-highlight'
 import { protocolLabel } from '@/lib/protocol'
 import type { UsageBody, UsageLogDetail } from '@/lib/types'
-import { cn, downloadJSON, formatDateTime, formatDuration, formatNumber, tryParseJSON } from '@/lib/utils'
+import { cn, downloadJSON, formatBytes, formatDateTime, formatDuration, formatNumber, tryParseJSON } from '@/lib/utils'
 
 /* ---------------- 详情抽屉 ---------------- */
 
@@ -110,13 +126,13 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
               <section className="mb-5">
                 <SheetSectionTitle>协议链路</SheetSectionTitle>
                 <div className="flex flex-wrap items-center gap-[7px]">
-                  <span className="max-w-full break-all rounded-[5px] border border-input bg-card px-2 py-[3px] font-mono text-2xs text-muted-foreground">
+                  <span className="max-w-full break-all rounded-full border border-input bg-card px-2.5 py-[3px] font-mono text-2xs text-muted-foreground">
                     {protocolLabel(detail.sourceFormat || detail.inputFormat || '', 'long') || '—'}
                   </span>
                   <MoveRight className="h-3 w-3 text-muted-foreground" aria-hidden />
                   <span
                     className={cn(
-                      'max-w-full break-all rounded-[5px] border px-2 py-[3px] font-mono text-2xs',
+                      'max-w-full break-all rounded-full border px-2.5 py-[3px] font-mono text-2xs',
                       detail.sourceFormat && detail.targetFormat && detail.sourceFormat !== detail.targetFormat
                         ? 'border-rose bg-wash text-rose'
                         : 'border-input bg-card text-muted-foreground',
@@ -165,7 +181,7 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                 </p>
                 {tokTotal > 0 ? (
                   <>
-                    <div className="my-2 flex h-2 overflow-hidden rounded-[5px] bg-border">
+                    <div className="my-2 flex h-2 overflow-hidden rounded-full bg-border">
                       {cacheHit > 0 && <i className="h-full" style={{ width: `${(cacheHit / tokTotal) * 100}%`, background: 'var(--rose-soft)' }} />}
                       {inputMiss > 0 && <i className="h-full" style={{ width: `${(inputMiss / tokTotal) * 100}%`, background: 'var(--rose)' }} />}
                       {output > 0 && <i className="h-full" style={{ width: `${(output / tokTotal) * 100}%`, background: 'var(--jade)' }} />}
@@ -231,7 +247,7 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                 <Button variant="outline" onClick={onClose}>
                   关闭
                 </Button>
-                <Button onClick={handleExport}>
+                <Button variant="primary" onClick={handleExport}>
                   <Download /> 导出完整日志
                 </Button>
               </div>
@@ -253,6 +269,26 @@ interface AssetRef {
 
 const ASSET_REF_PATTERN = /__ELYSIA_ASSET__:([\w-]+)\/([0-9a-f]{16}\.[a-z0-9]{1,5})/g
 
+type AssetKind = 'image' | 'audio' | 'video' | 'file'
+
+const KIND_META: Record<AssetKind, { icon: LucideIcon; label: string }> = {
+  image: { icon: ImageIcon, label: '图片' },
+  audio: { icon: Music2, label: '音频' },
+  video: { icon: Film, label: '视频' },
+  file: { icon: FileText, label: '文件' },
+}
+
+function assetKind(ext: string): AssetKind {
+  if (['png', 'jpg', 'gif', 'webp'].includes(ext)) return 'image'
+  if (['mp3', 'wav', 'ogg'].includes(ext)) return 'audio'
+  if (['mp4', 'webm'].includes(ext)) return 'video'
+  return 'file'
+}
+
+function assetKindOf(asset: AssetRef): AssetKind {
+  return assetKind(asset.file.split('.').pop() ?? '')
+}
+
 /** 从一段链路原文中提取外置媒体引用（去重，保持出现顺序）。 */
 function extractAssetRefs(content: string): AssetRef[] {
   const seen = new Set<string>()
@@ -268,33 +304,31 @@ function extractAssetRefs(content: string): AssetRef[] {
   return refs
 }
 
-function assetKind(ext: string): 'image' | 'audio' | 'video' | 'file' {
-  if (['png', 'jpg', 'gif', 'webp'].includes(ext)) return 'image'
-  if (['mp3', 'wav', 'ogg'].includes(ext)) return 'audio'
-  if (['mp4', 'webm'].includes(ext)) return 'video'
-  return 'file'
-}
-
 /** 外置媒体 blob hook：经模块级 LRU 缓存取 objectURL（同一资产在缩略图、
  * 弹窗与重开的链路段之间复用一份 blob，<img> 无法附带 Bearer 头）。
  * asset 切换/置空时立即清空旧 url——否则加载下一张期间会短暂显示上一张
  * （且下载按钮会把上一张的字节存成新文件名）。URL 生命周期归缓存所有，
- * 组件不做 revoke。 */
-function useAssetObjectUrl(asset: AssetRef | null) {
+ * 组件不做 revoke。reloadNonce 递增时对同键重取（失败重试用）。 */
+function useAssetObjectUrl(asset: AssetRef | null, reloadNonce = 0) {
   const [url, setUrl] = useState<string | null>(null)
+  const [bytes, setBytes] = useState<number | null>(null)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     if (!asset) {
       setUrl(null)
+      setBytes(null)
       return
     }
     let cancelled = false
     setFailed(false)
     setUrl(null)
+    setBytes(null)
     cachedAssetUrl(asset)
       .then((cached) => {
-        if (!cancelled) setUrl(cached)
+        if (cancelled) return
+        setUrl(cached)
+        setBytes(cachedAssetBytes(asset))
       })
       .catch(() => {
         if (!cancelled) setFailed(true)
@@ -302,63 +336,199 @@ function useAssetObjectUrl(asset: AssetRef | null) {
     return () => {
       cancelled = true
     }
-    // 仅依赖身份字段：asset 为 null 时立即清空，对象身份变化不触发重取。
+    // 仅依赖身份字段与重试计数：asset 为 null 时立即清空，对象身份变化不触发重取。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [asset?.requestId, asset?.file])
-  return { url, failed }
+  }, [asset?.requestId, asset?.file, reloadNonce])
+  return { url, bytes, failed }
 }
 
-/** 单个外置媒体：图片自动加载缩略图、点击打开大图弹窗；音频/视频/文件
- * 保持点击加载（自动拉取大媒体不划算）。 */
-function AssetChip({ asset, onOpenPreview }: { asset: AssetRef; onOpenPreview?: () => void }) {
-  const ext = asset.file.split('.').pop() ?? ''
-  const kind = assetKind(ext)
-  const [requested, setRequested] = useState(kind === 'image')
-  const { url, failed } = useAssetObjectUrl(requested ? asset : null)
-
-  const Icon = kind === 'image' ? Image : FileText
+/** 图片卡：上图下名的两段结构。图区是固定高度画布，object-contain 完整
+ * 显示（截图/文档类图片裁切后只剩无意义局部，contain 才保得住信息量）；
+ * 文件名与体积放底栏常显——hex 文件名是唯一的可读标识，叠在图片内容上的
+ * hover 遮罩既难读又挡内容。点击图区进灯箱，下载钮在底栏右侧。 */
+function AssetImageCard({
+  asset,
+  featured,
+  onOpenPreview,
+}: {
+  asset: AssetRef
+  featured: boolean
+  onOpenPreview: () => void
+}) {
+  const [reloadNonce, setReloadNonce] = useState(0)
+  const { url, bytes, failed } = useAssetObjectUrl(asset, reloadNonce)
+  const canvasCls = featured ? 'min-h-44 max-h-72' : 'h-40'
   return (
-    <div className="rounded-[7px] border border-border bg-card p-2">
-      <div className="flex items-center gap-2">
-        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="min-w-0 truncate font-mono text-2xs text-muted-foreground" title={asset.file}>
+    <figure className="group overflow-hidden rounded-md border border-border bg-card transition-colors duration-200 hover:border-[color-mix(in_srgb,var(--rose)_55%,transparent)]">
+      {url ? (
+        <button type="button" className="block w-full cursor-zoom-in bg-code" onClick={onOpenPreview} aria-label={`查看大图：${asset.file}`} title="点击查看大图">
+          <img
+            src={url}
+            alt={asset.file}
+            draggable={false}
+            loading="lazy"
+            className={cn('mx-auto w-full object-contain', canvasCls)}
+          />
+        </button>
+      ) : failed ? (
+        <div className={cn('flex w-full flex-col items-center justify-center gap-2 bg-code', canvasCls)}>
+          <AlertTriangle className="h-4 w-4 text-ember" aria-hidden />
+          <span className="text-2xs text-muted-foreground">缩略图获取失败</span>
+          <Button variant="outline" size="sm" onClick={() => setReloadNonce((n) => n + 1)}>
+            重试
+          </Button>
+        </div>
+      ) : (
+        <div className={cn('skeleton w-full', canvasCls)} aria-label="缩略图加载中" />
+      )}
+      <figcaption className="flex min-w-0 items-center gap-1.5 border-t border-border px-2.5 py-1.5">
+        <ImageIcon className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="min-w-0 flex-1 truncate font-mono text-2xs text-foreground" title={asset.file}>
           {asset.file}
         </span>
-        {!requested && (
-          <Button variant="outline" size="sm" className="ml-auto shrink-0" onClick={() => setRequested(true)}>
-            加载
-          </Button>
+        {bytes != null && (
+          <span className="tnum shrink-0 text-2xs text-muted-foreground">{formatBytes(bytes)}</span>
         )}
-        {url && kind === 'file' && (
-          <a href={url} download={asset.file} className="ml-auto shrink-0 text-2xs underline text-muted-foreground">
-            下载
+        {url && (
+          <a
+            href={url}
+            download={asset.file}
+            title={`下载 ${asset.file}`}
+            aria-label={`下载 ${asset.file}`}
+            className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:text-rose"
+          >
+            <Download className="h-3.5 w-3.5" aria-hidden />
           </a>
         )}
+      </figcaption>
+    </figure>
+  )
+}
+
+/** 音频/视频/文件行卡：点击「加载」后内联播放（自动拉取大媒体不划算），
+ * 失败可重试；文件类加载后提供下载。 */
+function AssetMediaCard({ asset }: { asset: AssetRef }) {
+  const kind = assetKindOf(asset)
+  const [requested, setRequested] = useState(false)
+  const [reloadNonce, setReloadNonce] = useState(0)
+  const { url, bytes, failed } = useAssetObjectUrl(requested ? asset : null, reloadNonce)
+  const { icon: Icon, label } = KIND_META[kind]
+
+  let stateCtl: React.ReactNode
+  if (!requested) {
+    stateCtl = (
+      <Button variant="outline" size="sm" className="shrink-0" onClick={() => setRequested(true)}>
+        加载
+      </Button>
+    )
+  } else if (failed) {
+    stateCtl = (
+      <Button variant="outline" size="sm" className="shrink-0" onClick={() => setReloadNonce((n) => n + 1)}>
+        重试
+      </Button>
+    )
+  } else if (!url) {
+    stateCtl = (
+      <span className="inline-flex shrink-0 items-center gap-1.5 text-2xs text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> 加载中…
+      </span>
+    )
+  } else if (kind === 'file') {
+    stateCtl = (
+      <Button variant="outline" size="sm" asChild className="shrink-0">
+        <a href={url} download={asset.file}>
+          <Download /> 下载
+        </a>
+      </Button>
+    )
+  } else {
+    stateCtl = (
+      <a
+        href={url}
+        download={asset.file}
+        title={`下载 ${asset.file}`}
+        aria-label={`下载 ${asset.file}`}
+        className="inline-flex h-[29px] w-[29px] shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-wash hover:text-rose"
+      >
+        <Download className="h-3.5 w-3.5" aria-hidden />
+      </a>
+    )
+  }
+
+  return (
+    <div className="rounded-md border border-border bg-card p-2.5">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-wash text-rose">
+          <Icon className="h-3.5 w-3.5" aria-hidden />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-mono text-2xs text-foreground" title={asset.file}>
+            {asset.file}
+          </p>
+          <p className="tnum text-2xs text-muted-foreground">
+            {label}
+            {bytes != null && ` · ${formatBytes(bytes)}`}
+          </p>
+        </div>
+        {stateCtl}
       </div>
-      {kind === 'image' && (
-        <button
-          type="button"
-          className="mt-2 block w-full overflow-hidden rounded border border-border transition-opacity hover:opacity-85"
-          title="点击查看大图"
-          onClick={onOpenPreview}
-          disabled={!url}
-        >
-          {url ? (
-            <img src={url} alt={asset.file} className="h-24 w-full object-cover" loading="lazy" />
-          ) : (
-            <span className="flex h-24 w-full items-center justify-center text-2xs text-muted-foreground">
-              {failed ? '获取失败' : '缩略图加载中…'}
-            </span>
-          )}
-        </button>
+      {url && kind === 'audio' && <audio controls src={url} preload="metadata" className="mt-2.5 w-full" />}
+      {url && kind === 'video' && (
+        <video controls src={url} preload="metadata" playsInline className="mt-2.5 max-h-64 w-full rounded-md border border-border bg-code" />
       )}
-      {url && kind === 'audio' && <audio controls src={url} className="mt-2 w-full" />}
-      {url && kind === 'video' && <video controls src={url} className="mt-2 max-h-56 w-full rounded border border-border" />}
     </div>
   )
 }
 
-/** 大图预览弹窗：承接 gallery 的图片序列，支持 ←/→ 切换与下载。 */
+/* 灯箱缩放参数：滚轮/键盘按指数步进，跨度体感均匀（1 → 1.4 → 2 → 2.7 …）。 */
+const ZOOM_MIN = 1
+const ZOOM_MAX = 8
+const ZOOM_STEP = 1.4
+
+/** 灯箱工具钮：黑幕上的圆形幽灵钮，与浅色主题的 Button 体系解耦。 */
+const LIGHTBOX_TOOL_CLS =
+  'inline-flex items-center justify-center rounded-full p-2 text-white/85 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 disabled:pointer-events-none disabled:opacity-30'
+
+/** 灯箱底部缩略图条的单格：blob 与网格/舞台共用缓存（image 类已在网格加载）。 */
+function LightboxThumb({
+  asset,
+  active,
+  onSelect,
+  innerRef,
+}: {
+  asset: AssetRef
+  active: boolean
+  onSelect: () => void
+  innerRef?: React.Ref<HTMLButtonElement>
+}) {
+  const { url } = useAssetObjectUrl(asset)
+  return (
+    <button
+      type="button"
+      ref={innerRef}
+      onClick={onSelect}
+      aria-current={active}
+      aria-label={`查看 ${asset.file}`}
+      className={cn(
+        'relative h-14 w-20 shrink-0 overflow-hidden rounded-md border bg-black/30 transition-all duration-200',
+        active
+          ? 'border-transparent opacity-100 ring-2 ring-[var(--rose)]'
+          : 'border-white/10 opacity-50 hover:opacity-90',
+      )}
+    >
+      {url ? (
+        <img src={url} alt="" draggable={false} className="h-full w-full object-cover" />
+      ) : (
+        <span className="skeleton block h-full w-full" />
+      )}
+    </button>
+  )
+}
+
+/** 沉浸式大图灯箱：黑幕全屏替代白卡弹窗，图片 object-contain 常驻视野；
+ * 顶部悬浮文件名/计数、左右悬浮箭头翻页、底部缩略图条 + 工具栏
+ * （缩放 / 下载 / 新标签打开）。支持滚轮缩放、双击缩放、拖拽平移，
+ * 键盘 ←/→ 翻页、Home/End 跳转、+/- 缩放、0 复位。 */
 function AssetLightbox({
   assets,
   index,
@@ -372,71 +542,320 @@ function AssetLightbox({
 }) {
   const asset = index != null ? assets[index] : null
   const { url, failed } = useAssetObjectUrl(asset)
+
+  const stageRef = useRef<HTMLDivElement>(null)
+  const imgRef = useRef<HTMLImageElement>(null)
+  const activeThumbRef = useRef<HTMLButtonElement>(null)
+  const [zoom, setZoom] = useState({ scale: 1, x: 0, y: 0 })
+  const [dragging, setDragging] = useState(false)
+  const dragStart = useRef<{ px: number; py: number; x: number; y: number } | null>(null)
+
   const hasPrev = index != null && index > 0
   const hasNext = index != null && index < assets.length - 1
   const go = (next: number) => {
     if (next >= 0 && next < assets.length) onNavigate(next)
   }
+
+  // 切换图片/关闭即复位缩放与拖拽（含 Radix 关闭动画期间 index 置 null 的路径）。
+  useEffect(() => {
+    setZoom({ scale: 1, x: 0, y: 0 })
+    dragStart.current = null
+    setDragging(false)
+  }, [index])
+
+  // 相邻图片预加载：翻页瞬间目标图已命中 blob 缓存，不再白屏等待。
+  useEffect(() => {
+    if (index == null) return
+    for (const neighbor of [assets[index - 1], assets[index + 1]]) {
+      if (neighbor) cachedAssetUrl(neighbor).catch(() => {})
+    }
+  }, [index, assets])
+
+  // 当前缩略图滚到条带可视区中央（block:'nearest' 防止牵动页面滚动）。
+  useEffect(() => {
+    activeThumbRef.current?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+  }, [index])
+
+  /** 放大后的位移按图片实际渲染尺寸收边：图片边缘不得脱出舞台。 */
+  const clampOffset = (x: number, y: number, scale: number) => {
+    const stage = stageRef.current
+    const img = imgRef.current
+    if (!stage || !img || scale <= ZOOM_MIN) return { x: 0, y: 0 }
+    const maxX = Math.max((img.clientWidth * scale - stage.clientWidth) / 2, 0)
+    const maxY = Math.max((img.clientHeight * scale - stage.clientHeight) / 2, 0)
+    return { x: Math.min(Math.max(x, -maxX), maxX), y: Math.min(Math.max(y, -maxY), maxY) }
+  }
+
+  /** 缩放到目标倍率；anchor 为光标相对舞台中心的像素，缺省时绕中心缩放。
+   * 用函数式目标而非外部快照，连续滚轮事件批处理时不会丢步。 */
+  const zoomTo = (target: number | ((cur: number) => number), anchorX?: number, anchorY?: number) => {
+    setZoom((cur) => {
+      const scale = Math.min(
+        Math.max(typeof target === 'function' ? target(cur.scale) : target, ZOOM_MIN),
+        ZOOM_MAX,
+      )
+      if (scale <= ZOOM_MIN) return { scale: 1, x: 0, y: 0 }
+      const k = scale / cur.scale
+      const next =
+        anchorX == null || anchorY == null
+          ? { x: cur.x * k, y: cur.y * k }
+          : { x: anchorX - (anchorX - cur.x) * k, y: anchorY - (anchorY - cur.y) * k }
+      return { scale, ...clampOffset(next.x, next.y, scale) }
+    })
+  }
+
+  /** 光标坐标 → 舞台中心系（缩放锚点）。 */
+  const stageAnchor = (e: { clientX: number; clientY: number }) => {
+    const rect = stageRef.current?.getBoundingClientRect()
+    if (!rect) return null
+    return { x: e.clientX - rect.left - rect.width / 2, y: e.clientY - rect.top - rect.height / 2 }
+  }
+
+  const onStageWheel = (e: React.WheelEvent) => {
+    if (!url) return
+    const anchor = stageAnchor(e)
+    if (anchor) zoomTo((cur) => cur * Math.exp(-e.deltaY * 0.0016), anchor.x, anchor.y)
+  }
+  const onStagePointerDown = (e: React.PointerEvent) => {
+    if (!url || zoom.scale <= ZOOM_MIN || e.button !== 0) return
+    dragStart.current = { px: e.clientX, py: e.clientY, x: zoom.x, y: zoom.y }
+    setDragging(true)
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const onStagePointerMove = (e: React.PointerEvent) => {
+    const start = dragStart.current
+    if (!start) return
+    setZoom((cur) => ({
+      ...cur,
+      ...clampOffset(start.x + e.clientX - start.px, start.y + e.clientY - start.py, cur.scale),
+    }))
+  }
+  const endDrag = () => {
+    dragStart.current = null
+    setDragging(false)
+  }
+  const onStageDoubleClick = (e: React.MouseEvent) => {
+    if (!url) return
+    if (zoom.scale > ZOOM_MIN) {
+      zoomTo(ZOOM_MIN)
+      return
+    }
+    const anchor = stageAnchor(e)
+    if (anchor) zoomTo(2.5, anchor.x, anchor.y)
+  }
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    // Radix 关闭动画期间 Content 仍挂载而 index 已置 null：直接忽略，
+    // 否则 ArrowRight 会把刚关闭的弹窗重开到下一张。
+    if (index == null) return
+    switch (e.key) {
+      case 'ArrowLeft':
+        go(index - 1)
+        break
+      case 'ArrowRight':
+        go(index + 1)
+        break
+      case 'Home':
+        go(0)
+        break
+      case 'End':
+        go(assets.length - 1)
+        break
+      case '+':
+      case '=':
+        zoomTo((cur) => cur * ZOOM_STEP)
+        break
+      case '-':
+      case '_':
+        zoomTo((cur) => cur / ZOOM_STEP)
+        break
+      case '0':
+        zoomTo(ZOOM_MIN)
+        break
+    }
+  }
+
   return (
     <Dialog open={index != null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
-        // h-[90vh] + overflow-hidden 覆盖默认的 max-h/overflow-y-auto：
-        // flex 三段布局让图片区 flex-1 自动收缩，头部与底部（翻页/下载）
-        // 恒在视野内——默认 grid + 72vh 图片在视口高 < ~930px 时总高超出
-        // 90vh，下载按钮被折进弹窗内部滚动区。
-        className="flex h-[90vh] max-w-4xl flex-col overflow-hidden"
-        onKeyDown={(e) => {
-          // Radix 关闭动画期间 Content 仍挂载而 index 已置 null：直接忽略，
-          // 否则 ArrowRight 会把刚关闭的弹窗重开到下一张。
-          if (index == null) return
-          if (e.key === 'ArrowLeft') go(index - 1)
-          if (e.key === 'ArrowRight') go(index + 1)
-        }}
+        hideClose
+        onKeyDown={onKeyDown}
+        // 全屏黑幕灯箱：覆盖 DialogContent 的居中卡片形态（inset-0 + 清空
+        // max-w/圆角/内边距），保留 Radix 的焦点圈闭、Esc 关闭与进出场动画。
+        className="fixed inset-0 left-0 top-0 z-[75] flex h-full max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 bg-black/80 p-0 backdrop-blur-sm"
       >
-        <DialogHeader className="shrink-0 space-y-1">
-          <DialogTitle className="break-all font-mono text-xs">{asset?.file}</DialogTitle>
-          <DialogDescription className="text-2xs">
-            {index != null ? `${index + 1} / ${assets.length}` : ''}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex min-h-[240px] min-w-0 flex-1 items-center justify-center py-1">
-          {failed ? (
-            <span className="text-sm text-muted-foreground">图片获取失败</span>
-          ) : url ? (
-            <img src={url} alt={asset?.file} className="max-h-full w-auto max-w-full rounded object-contain" />
-          ) : (
-            <span className="text-sm text-muted-foreground">加载中…</span>
+        {/* 顶部悬浮信息栏：文件名 + 序号计数 + 操作提示 + 关闭 */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-3 bg-gradient-to-b from-black/70 via-black/30 to-transparent pb-10 pl-5 pr-4 pt-4">
+          <div className="min-w-0 flex-1">
+            <DialogTitle className="truncate font-mono text-xs font-medium text-white/90" title={asset?.file}>
+              {asset?.file ?? '—'}
+            </DialogTitle>
+            <DialogDescription className="tnum mt-0.5 text-2xs text-white/55">
+              {index != null ? `${index + 1} / ${assets.length}` : ''}
+              {assets.length > 1 && (
+                <span className="ml-2 hidden sm:inline">←/→ 切换 · 滚轮缩放 · 双击放大</span>
+              )}
+            </DialogDescription>
+          </div>
+          <DialogClose
+            aria-label="关闭"
+            className="pointer-events-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/40 text-white/85 backdrop-blur transition-colors hover:bg-black/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </DialogClose>
+        </div>
+
+        {/* 舞台：图片居中 contain；翻页箭头挂在舞台外层，拖拽/双击不会误触 */}
+        <div className="relative flex min-h-0 min-w-0 flex-1">
+          <div
+            ref={stageRef}
+            className="flex min-w-0 flex-1 select-none items-center justify-center overflow-hidden"
+            style={{ cursor: url && zoom.scale > ZOOM_MIN ? (dragging ? 'grabbing' : 'grab') : 'default' }}
+            onWheel={onStageWheel}
+            onPointerDown={onStagePointerDown}
+            onPointerMove={onStagePointerMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+            onDoubleClick={onStageDoubleClick}
+          >
+            {failed ? (
+              <div className="flex flex-col items-center gap-2 text-sm text-white/70">
+                <AlertTriangle className="h-5 w-5" aria-hidden />
+                图片获取失败
+              </div>
+            ) : url ? (
+              <img
+                ref={imgRef}
+                src={url}
+                alt={asset?.file}
+                draggable={false}
+                className="max-h-full max-w-full object-contain transition-transform duration-200 ease-smooth motion-reduce:transition-none"
+                style={{
+                  transform: `translate3d(${zoom.x}px, ${zoom.y}px, 0) scale(${zoom.scale})`,
+                  transitionDuration: dragging ? '0ms' : undefined,
+                }}
+              />
+            ) : (
+              <div className="flex flex-col items-center gap-2 text-sm text-white/70">
+                <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                加载中…
+              </div>
+            )}
+          </div>
+          {assets.length > 1 && (
+            <>
+              <button
+                type="button"
+                disabled={!hasPrev}
+                aria-label="上一张"
+                onClick={() => go(index! - 1)}
+                className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full border border-white/15 bg-black/40 p-2.5 text-white/85 backdrop-blur transition-colors hover:bg-black/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 disabled:pointer-events-none disabled:opacity-30"
+              >
+                <ChevronLeft className="h-5 w-5" aria-hidden />
+              </button>
+              <button
+                type="button"
+                disabled={!hasNext}
+                aria-label="下一张"
+                onClick={() => go(index! + 1)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full border border-white/15 bg-black/40 p-2.5 text-white/85 backdrop-blur transition-colors hover:bg-black/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 disabled:pointer-events-none disabled:opacity-30"
+              >
+                <ChevronRight className="h-5 w-5" aria-hidden />
+              </button>
+            </>
           )}
         </div>
-        <DialogFooter className="flex shrink-0 flex-row items-center gap-2 sm:justify-between">
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" disabled={!hasPrev} onClick={() => go(index! - 1)}>
-              <ChevronLeft className="h-3.5 w-3.5" /> 上一张
-            </Button>
-            <Button variant="outline" size="sm" disabled={!hasNext} onClick={() => go(index! + 1)}>
-              下一张 <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-          {url && asset && (
-            <a
-              href={url}
-              download={asset.file}
-              className="inline-flex items-center gap-1.5 rounded-md border border-input bg-card px-3 py-1.5 text-xs transition-colors hover:bg-wash"
-            >
-              <Download className="h-3.5 w-3.5" aria-hidden /> 下载
-            </a>
+
+        {/* 底部：缩略图条（>1 张时）+ 工具栏（缩放 / 下载 / 新标签打开） */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center gap-2.5 bg-gradient-to-t from-black/70 via-black/30 to-transparent pb-4 pt-10">
+          {assets.length > 1 && (
+            <div className="hide-scrollbar pointer-events-auto flex max-w-full items-center gap-1.5 overflow-x-auto px-5 py-1">
+              {assets.map((thumb, i) => (
+                <LightboxThumb
+                  key={`${thumb.requestId}/${thumb.file}`}
+                  asset={thumb}
+                  active={i === index}
+                  onSelect={() => go(i)}
+                  innerRef={i === index ? activeThumbRef : undefined}
+                />
+              ))}
+            </div>
           )}
-        </DialogFooter>
+          <div className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-white/15 bg-black/50 px-1 py-1 shadow-lg backdrop-blur">
+            {url && asset ? (
+              <>
+                <button
+                  type="button"
+                  aria-label="缩小"
+                  title="缩小（-）"
+                  disabled={zoom.scale <= ZOOM_MIN}
+                  onClick={() => zoomTo((cur) => cur / ZOOM_STEP)}
+                  className={LIGHTBOX_TOOL_CLS}
+                >
+                  <ZoomOut className="h-4 w-4" aria-hidden />
+                </button>
+                <span className="tnum w-11 text-center font-mono text-2xs text-white/70">
+                  {Math.round(zoom.scale * 100)}%
+                </span>
+                <button
+                  type="button"
+                  aria-label="放大"
+                  title="放大（+）"
+                  disabled={zoom.scale >= ZOOM_MAX}
+                  onClick={() => zoomTo((cur) => cur * ZOOM_STEP)}
+                  className={LIGHTBOX_TOOL_CLS}
+                >
+                  <ZoomIn className="h-4 w-4" aria-hidden />
+                </button>
+                {zoom.scale > ZOOM_MIN && (
+                  <button
+                    type="button"
+                    aria-label="适应窗口"
+                    title="适应窗口（0）"
+                    onClick={() => zoomTo(ZOOM_MIN)}
+                    className={LIGHTBOX_TOOL_CLS}
+                  >
+                    <Maximize className="h-4 w-4" aria-hidden />
+                  </button>
+                )}
+                <i className="mx-1 h-4 w-px bg-white/15" aria-hidden />
+                <a href={url} download={asset.file} title={`下载 ${asset.file}`} aria-label="下载" className={LIGHTBOX_TOOL_CLS}>
+                  <Download className="h-4 w-4" aria-hidden />
+                </a>
+                <a href={url} target="_blank" rel="noreferrer" title="在新标签页打开" aria-label="在新标签页打开" className={LIGHTBOX_TOOL_CLS}>
+                  <ExternalLink className="h-4 w-4" aria-hidden />
+                </a>
+              </>
+            ) : (
+              <span className="px-3.5 py-1.5 text-2xs text-white/60">{failed ? '图片获取失败' : '加载中…'}</span>
+            )}
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   )
 }
 
+/** 外置媒体区：图片进缩略图网格（点击进灯箱），音频/视频/文件用行卡内联
+ * 加载播放；首行汇总各类数量与占位符说明。灯箱承接本段全部图片序列。 */
 function AssetGallery({ assets }: { assets: AssetRef[] }) {
-  const imageAssets = useMemo(
-    () => assets.filter((a) => assetKind(a.file.split('.').pop() ?? '') === 'image'),
-    [assets],
-  )
+  const imageAssets = useMemo(() => assets.filter((a) => assetKindOf(a) === 'image'), [assets])
+  const plainAssets = useMemo(() => assets.filter((a) => assetKindOf(a) !== 'image'), [assets])
+  const kindCounts = useMemo(() => {
+    const counts: Partial<Record<AssetKind, number>> = {}
+    for (const asset of assets) {
+      const kind = assetKindOf(asset)
+      counts[kind] = (counts[kind] ?? 0) + 1
+    }
+    return counts
+  }, [assets])
+  const summary = [
+    `${assets.length} 个外置媒体`,
+    ...(Object.keys(KIND_META) as AssetKind[])
+      .filter((kind) => kindCounts[kind])
+      .map((kind) => `${KIND_META[kind].label} ${kindCounts[kind]}`),
+  ].join(' · ')
+
   const [previewIndex, setPreviewIndex] = useState<number | null>(null)
   const openPreview = (asset: AssetRef) => {
     const idx = imageAssets.findIndex((a) => a.file === asset.file && a.requestId === asset.requestId)
@@ -445,14 +864,41 @@ function AssetGallery({ assets }: { assets: AssetRef[] }) {
   return (
     <div className="mb-3.5 space-y-2">
       <p className="text-2xs text-muted-foreground">
-        {assets.length} 个外置媒体（base64 已抽出为独立文件，正文内保留占位符）
+        {summary}
+        <span className="text-muted-foreground/65">（base64 已抽出为独立文件，正文内保留占位符）</span>
       </p>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {assets.map((asset) => (
-          <AssetChip key={`${asset.requestId}/${asset.file}`} asset={asset} onOpenPreview={() => openPreview(asset)} />
-        ))}
-      </div>
-      <AssetLightbox assets={imageAssets} index={previewIndex} onNavigate={setPreviewIndex} onClose={() => setPreviewIndex(null)} />
+      {imageAssets.length > 0 && (
+        // 列数随图量走：单图全宽，2-4 张两列（单格够大看得清），≥5 张三列
+        // 控制纵向篇幅——抽屉宽度有限，三列以上单格会小到失去预览意义。
+        <div
+          className={cn(
+            'grid gap-2',
+            imageAssets.length >= 5 ? 'grid-cols-3' : imageAssets.length > 1 && 'grid-cols-2',
+          )}
+        >
+          {imageAssets.map((asset) => (
+            <AssetImageCard
+              key={`${asset.requestId}/${asset.file}`}
+              asset={asset}
+              featured={imageAssets.length === 1}
+              onOpenPreview={() => openPreview(asset)}
+            />
+          ))}
+        </div>
+      )}
+      {plainAssets.length > 0 && (
+        <div className="space-y-2">
+          {plainAssets.map((asset) => (
+            <AssetMediaCard key={`${asset.requestId}/${asset.file}`} asset={asset} />
+          ))}
+        </div>
+      )}
+      <AssetLightbox
+        assets={imageAssets}
+        index={previewIndex}
+        onNavigate={setPreviewIndex}
+        onClose={() => setPreviewIndex(null)}
+      />
     </div>
   )
 }

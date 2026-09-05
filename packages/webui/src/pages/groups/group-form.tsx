@@ -406,7 +406,7 @@ export function GroupFormDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             取消
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button variant="primary" onClick={handleSave} disabled={saving}>
             {saving ? '保存中…' : '保存'}
           </Button>
         </DialogFooter>
@@ -430,12 +430,12 @@ function ModelOption({
       onClick={onToggle}
       className={cn(
         'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-        selected ? 'bg-primary/12 text-primary' : 'hover:bg-accent',
+        selected ? 'bg-primary/10 text-primary' : 'hover:bg-accent',
       )}
     >
       <span
         className={cn(
-          'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
+          'flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] border',
           selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border',
         )}
       >

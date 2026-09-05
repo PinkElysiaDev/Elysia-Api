@@ -219,6 +219,10 @@ export function SourcesPage() {
       const okCount = results.filter((r) => r.status === 'fulfilled').length
       const failed = results.filter((r) => r.status === 'rejected')
       await revalidate.models()
+      // 操作落地即清除对应选择（allSettled 保序，按下标对回原模型）；
+      // 失败的保留勾选，便于修正后直接重试。
+      const succeeded = list.filter((_, i) => results[i].status === 'fulfilled')
+      if (succeeded.length > 0) setModelsSelected(succeeded, false)
       if (failed.length === 0) {
         toast.success(enabled ? '已批量启用' : '已批量禁用', `成功 ${okCount} 个模型`)
         return
@@ -465,12 +469,12 @@ export function SourcesPage() {
                       <Fragment key={source.id}>
                         {/* border-b-0：行间分隔线只由 divide-y 的 /30 淡线承担，
                             覆盖 TableRow 默认的全强度底边框 */}
-                        <TableRow className="border-b-0 transition-colors hover:bg-secondary/30">
+                        <TableRow className="border-b-0">
                           <TableCell className="w-[38px] px-0 text-center">
                             <button
                               type="button"
                               onClick={() => toggleExpand(source.id)}
-                              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground hover:bg-secondary"
+                              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-wash hover:text-rose"
                               aria-label={isOpen ? '收起' : '展开'}
                             >
                               <ChevronRight
@@ -752,11 +756,13 @@ export function SourcesPage() {
             ? quickCreate.models[0].name || quickCreate.models[0].id
             : quickCreate?.source.name ?? ''
         }
+        onSuccess={() => quickCreate && setModelsSelected(quickCreate.models, false)}
       />
       <AddToGroupDialog
         open={addToGroup !== null}
         onOpenChange={(open) => !open && setAddToGroup(null)}
         models={addToGroup ?? []}
+        onSuccess={() => addToGroup && setModelsSelected(addToGroup, false)}
       />
       {dialog}
     </div>

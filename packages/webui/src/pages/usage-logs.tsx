@@ -224,7 +224,7 @@ export function UsageLogsPage() {
           />
           <Input
             aria-label="状态码"
-            className="w-[84px] text-xs font-mono"
+            className="w-[84px] rounded-full border-transparent bg-[var(--well)] text-xs font-mono"
             value={statusCode}
             placeholder="HTTP码"
             title="精确状态码过滤（如 429、500）"
@@ -270,7 +270,7 @@ export function UsageLogsPage() {
                       role="button"
                       tabIndex={0}
                       aria-label={`查看请求 ${log.requestId} 详情`}
-                      className="cursor-pointer transition-colors hover:bg-secondary/30 focus-visible:bg-secondary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-rose/50"
+                      className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:color-mix(in_srgb,var(--rose)_50%,transparent)]"
                       onClick={() => setDetailId(log.requestId)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
