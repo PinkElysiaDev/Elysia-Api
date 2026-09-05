@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useMemo, useState, type ReactNode } from 'react'
 
 type Theme = 'light' | 'dark'
 const STORAGE_KEY = 'elysia-webui.theme'
@@ -10,6 +10,34 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
+
+// 优先用 View Transitions 整页交叉淡化；不支持的浏览器降级为
+// html.theme-transitioning 逐元素过渡（380ms，480ms 后移除，见 index.css）。
+let themeTransitionTimer: number | undefined
+
+function applyThemeToRoot(theme: Theme) {
+  const root = document.documentElement
+  root.classList.toggle('dark', theme === 'dark')
+  try {
+    localStorage.setItem(STORAGE_KEY, theme)
+  } catch {
+    /* ignore */
+  }
+}
+
+function flushTheme(theme: Theme) {
+  if (typeof window === 'undefined') return
+  const doc = document as Document & { startViewTransition?: (update: () => void) => unknown }
+  if (typeof doc.startViewTransition === 'function') {
+    doc.startViewTransition(() => applyThemeToRoot(theme))
+    return
+  }
+  const root = document.documentElement
+  root.classList.add('theme-transitioning')
+  window.clearTimeout(themeTransitionTimer)
+  themeTransitionTimer = window.setTimeout(() => root.classList.remove('theme-transitioning'), 480)
+  applyThemeToRoot(theme)
+}
 
 function readInitialTheme(): Theme {
   try {
@@ -27,14 +55,15 @@ function readInitialTheme(): Theme {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(readInitialTheme)
 
+  // 首帧直接落主题，不走转场。
+  const firstRender = useRef(true)
   useEffect(() => {
-    const root = document.documentElement
-    root.classList.toggle('dark', theme === 'dark')
-    try {
-      localStorage.setItem(STORAGE_KEY, theme)
-    } catch {
-      /* ignore */
+    if (firstRender.current) {
+      firstRender.current = false
+      applyThemeToRoot(theme)
+      return
     }
+    flushTheme(theme)
   }, [theme])
 
   const value = useMemo<ThemeContextValue>(
