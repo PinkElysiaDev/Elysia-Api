@@ -86,7 +86,7 @@ export function AppLayout() {
       <div className="flex min-w-0 flex-col">
         {/* 后台页主栏吃满侧栏右侧；填写区由各页自己限制输入宽度。 */}
         <main className="w-full flex-1 space-y-6 px-6 pb-[72px] pt-[30px] max-rail:px-[22px] max-rail:pt-16">
-          <div key={location.pathname} className="relative w-full animate-rise">
+          <div key={location.pathname} className="relative w-full animate-in fade-in duration-150 motion-reduce:animate-none">
             {/* Suspense 放在 Outlet 内层：页面 chunk 加载时只替换主栏，侧栏不闪烁。 */}
             <Suspense
               fallback={
