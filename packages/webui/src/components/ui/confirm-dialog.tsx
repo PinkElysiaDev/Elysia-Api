@@ -40,7 +40,7 @@ export function ConfirmDialog({
         <DialogHeader>
           <div className="flex items-center gap-3">
             {destructive && (
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/12 text-destructive">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10 text-destructive">
                 <AlertTriangle className="h-5 w-5" />
               </span>
             )}
@@ -52,7 +52,7 @@ export function ConfirmDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             {cancelText}
           </Button>
-          <Button variant={destructive ? 'destructive' : 'default'} onClick={onConfirm} disabled={loading}>
+          <Button variant={destructive ? 'destructive' : 'primary'} onClick={onConfirm} disabled={loading}>
             {confirmText}
           </Button>
         </DialogFooter>

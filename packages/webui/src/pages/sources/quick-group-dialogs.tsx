@@ -117,7 +117,7 @@ export function QuickCreateGroupDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             取消
           </Button>
-          <Button onClick={handleCreate} disabled={saving}>
+          <Button variant="primary" onClick={handleCreate} disabled={saving}>
             {saving ? '创建中…' : '创建'}
           </Button>
         </DialogFooter>
@@ -202,7 +202,7 @@ export function AddToGroupDialog({
                 onClick={() => setSelected(group.id)}
                 className={cn(
                   'flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-                  selected === group.id ? 'bg-primary/12 text-primary' : 'hover:bg-accent',
+                  selected === group.id ? 'bg-primary/10 text-primary' : 'hover:bg-accent',
                 )}
               >
                 <span className="min-w-0 flex-1 truncate">{group.name}</span>
@@ -216,7 +216,7 @@ export function AddToGroupDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             取消
           </Button>
-          <Button onClick={handleAdd} disabled={saving || !selected}>
+          <Button variant="primary" onClick={handleAdd} disabled={saving || !selected}>
             {saving ? '添加中…' : '添加'}
           </Button>
         </DialogFooter>

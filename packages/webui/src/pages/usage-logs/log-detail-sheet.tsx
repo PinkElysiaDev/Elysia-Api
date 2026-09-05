@@ -126,13 +126,13 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
               <section className="mb-5">
                 <SheetSectionTitle>协议链路</SheetSectionTitle>
                 <div className="flex flex-wrap items-center gap-[7px]">
-                  <span className="max-w-full break-all rounded-[5px] border border-input bg-card px-2 py-[3px] font-mono text-2xs text-muted-foreground">
+                  <span className="max-w-full break-all rounded-full border border-input bg-card px-2.5 py-[3px] font-mono text-2xs text-muted-foreground">
                     {protocolLabel(detail.sourceFormat || detail.inputFormat || '', 'long') || '—'}
                   </span>
                   <MoveRight className="h-3 w-3 text-muted-foreground" aria-hidden />
                   <span
                     className={cn(
-                      'max-w-full break-all rounded-[5px] border px-2 py-[3px] font-mono text-2xs',
+                      'max-w-full break-all rounded-full border px-2.5 py-[3px] font-mono text-2xs',
                       detail.sourceFormat && detail.targetFormat && detail.sourceFormat !== detail.targetFormat
                         ? 'border-rose bg-wash text-rose'
                         : 'border-input bg-card text-muted-foreground',
@@ -181,7 +181,7 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                 </p>
                 {tokTotal > 0 ? (
                   <>
-                    <div className="my-2 flex h-2 overflow-hidden rounded-[5px] bg-border">
+                    <div className="my-2 flex h-2 overflow-hidden rounded-full bg-border">
                       {cacheHit > 0 && <i className="h-full" style={{ width: `${(cacheHit / tokTotal) * 100}%`, background: 'var(--rose-soft)' }} />}
                       {inputMiss > 0 && <i className="h-full" style={{ width: `${(inputMiss / tokTotal) * 100}%`, background: 'var(--rose)' }} />}
                       {output > 0 && <i className="h-full" style={{ width: `${(output / tokTotal) * 100}%`, background: 'var(--jade)' }} />}
@@ -247,7 +247,7 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                 <Button variant="outline" onClick={onClose}>
                   关闭
                 </Button>
-                <Button onClick={handleExport}>
+                <Button variant="primary" onClick={handleExport}>
                   <Download /> 导出完整日志
                 </Button>
               </div>
