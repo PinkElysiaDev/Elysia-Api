@@ -122,7 +122,7 @@ export function SystemLogsPage() {
                     {items.map((log) => {
                       const hasFields = log.fields && log.fields !== '{}' && log.fields !== 'null'
                       return (
-                        <TableRow key={log.id} className="border-b-0 transition-colors hover:bg-secondary/30">
+                        <TableRow key={log.id} className="border-b-0">
                           <TableCell className="py-3.5 pl-4 whitespace-nowrap font-mono text-xs text-muted-foreground">
                             {formatDateTime(log.createdAt)}
                           </TableCell>

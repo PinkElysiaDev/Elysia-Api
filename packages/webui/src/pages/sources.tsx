@@ -469,12 +469,12 @@ export function SourcesPage() {
                       <Fragment key={source.id}>
                         {/* border-b-0：行间分隔线只由 divide-y 的 /30 淡线承担，
                             覆盖 TableRow 默认的全强度底边框 */}
-                        <TableRow className="border-b-0 transition-colors hover:bg-secondary/30">
+                        <TableRow className="border-b-0">
                           <TableCell className="w-[38px] px-0 text-center">
                             <button
                               type="button"
                               onClick={() => toggleExpand(source.id)}
-                              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground hover:bg-secondary"
+                              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-wash hover:text-rose"
                               aria-label={isOpen ? '收起' : '展开'}
                             >
                               <ChevronRight

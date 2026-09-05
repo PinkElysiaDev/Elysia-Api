@@ -409,7 +409,7 @@ export function UsageStatsPage() {
                             </TableHeader>
                             <TableBody className="divide-y divide-border/30">
                               {byModel.map((row) => (
-                                <TableRow key={row.model || '__unknown__'} className="transition-colors hover:bg-secondary/30">
+                                <TableRow key={row.model || '__unknown__'}>
                                   <TableCell className="py-2.5 pl-4 max-w-[280px] truncate font-mono text-xs text-foreground font-medium" title={row.model || '未知模型'}>
                                     {row.model || '—'}
                                   </TableCell>

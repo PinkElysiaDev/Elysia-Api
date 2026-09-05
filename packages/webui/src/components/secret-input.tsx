@@ -13,7 +13,7 @@ export const SecretInput = forwardRef<HTMLInputElement, InputProps>(({ className
         type="button"
         tabIndex={-1}
         onClick={() => setVisible((v) => !v)}
-        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
+        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-wash hover:text-rose"
         aria-label={visible ? '隐藏' : '显示'}
       >
         {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

@@ -2,7 +2,7 @@ import * as SwitchPrimitives from '@radix-ui/react-switch'
 import { forwardRef } from 'react'
 import { cn } from '@/lib/utils'
 
-/* 36×20px，选中 jade（开关表达“启用/正常”语义）。 */
+/* 36×20px。选中 jade 表达「启用」语义——全站唯一非玫红的选中色。 */
 export const Switch = forwardRef<
   React.ElementRef<typeof SwitchPrimitives.Root>,
   React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root>
