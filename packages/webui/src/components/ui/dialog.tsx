@@ -16,7 +16,9 @@ export const DialogOverlay = forwardRef<
     className={cn(
       // 层级（见 sheet.tsx 的梯度注释）：Dialog 必须高于 Sheet（60/70）——
       // 弹窗常从抽屉内部发起（如日志详情里的大图预览），低于抽屉会被整体
-      // 压住；仍低于移动端侧栏（80）与 Toast（90）。
+      // 压住；仍低于移动端侧栏（80）与 Toast（90）。portal 到 body 的弹层
+      // （Select/Tooltip 下拉）固定在 76，必须高于本遮罩，否则在弹窗内
+      // 打不开。
       'fixed inset-0 z-[74] bg-foreground/40 backdrop-blur-sm transform-gpu',
       'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
       className,
