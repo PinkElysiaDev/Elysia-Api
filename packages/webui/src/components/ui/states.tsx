@@ -48,7 +48,7 @@ export function ErrorState({
 }) {
   return (
     <div className={cn('flex flex-col items-center justify-center gap-3 px-6 py-16 text-center', className)}>
-      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/12 text-destructive">
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
         <AlertCircle className="h-7 w-7" />
       </span>
       <div className="space-y-1">

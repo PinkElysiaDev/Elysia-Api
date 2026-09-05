@@ -10,47 +10,48 @@ export default {
         rail: '761px',
       },
       colors: {
-        // shadcn 语义色（值来自 index.css 的 HSL 变量）
-        border: 'hsl(var(--border))',
-        input: 'hsl(var(--input))',
-        ring: 'hsl(var(--ring))',
-        background: 'hsl(var(--background))',
-        foreground: 'hsl(var(--foreground))',
+        // shadcn 语义色，值来自 index.css 的 HSL 变量；
+        // <alpha-value> 占位让 /N 透明度修饰符对任意值生效（否则仅 5 的倍数可用）。
+        border: 'hsl(var(--border) / <alpha-value>)',
+        input: 'hsl(var(--input) / <alpha-value>)',
+        ring: 'hsl(var(--ring) / <alpha-value>)',
+        background: 'hsl(var(--background) / <alpha-value>)',
+        foreground: 'hsl(var(--foreground) / <alpha-value>)',
         primary: {
-          DEFAULT: 'hsl(var(--primary))',
-          foreground: 'hsl(var(--primary-foreground))',
+          DEFAULT: 'hsl(var(--primary) / <alpha-value>)',
+          foreground: 'hsl(var(--primary-foreground) / <alpha-value>)',
         },
         secondary: {
-          DEFAULT: 'hsl(var(--secondary))',
-          foreground: 'hsl(var(--secondary-foreground))',
+          DEFAULT: 'hsl(var(--secondary) / <alpha-value>)',
+          foreground: 'hsl(var(--secondary-foreground) / <alpha-value>)',
         },
         destructive: {
-          DEFAULT: 'hsl(var(--destructive))',
-          foreground: 'hsl(var(--destructive-foreground))',
+          DEFAULT: 'hsl(var(--destructive) / <alpha-value>)',
+          foreground: 'hsl(var(--destructive-foreground) / <alpha-value>)',
         },
         success: {
-          DEFAULT: 'hsl(var(--success))',
-          foreground: 'hsl(var(--success-foreground))',
+          DEFAULT: 'hsl(var(--success) / <alpha-value>)',
+          foreground: 'hsl(var(--success-foreground) / <alpha-value>)',
         },
         muted: {
-          DEFAULT: 'hsl(var(--muted))',
-          foreground: 'hsl(var(--muted-foreground))',
+          DEFAULT: 'hsl(var(--muted) / <alpha-value>)',
+          foreground: 'hsl(var(--muted-foreground) / <alpha-value>)',
         },
         accent: {
-          DEFAULT: 'hsl(var(--accent))',
-          foreground: 'hsl(var(--accent-foreground))',
+          DEFAULT: 'hsl(var(--accent) / <alpha-value>)',
+          foreground: 'hsl(var(--accent-foreground) / <alpha-value>)',
         },
         popover: {
-          DEFAULT: 'hsl(var(--popover))',
-          foreground: 'hsl(var(--popover-foreground))',
+          DEFAULT: 'hsl(var(--popover) / <alpha-value>)',
+          foreground: 'hsl(var(--popover-foreground) / <alpha-value>)',
         },
         card: {
-          DEFAULT: 'hsl(var(--card))',
-          foreground: 'hsl(var(--card-foreground))',
+          DEFAULT: 'hsl(var(--card) / <alpha-value>)',
+          foreground: 'hsl(var(--card-foreground) / <alpha-value>)',
         },
         sidebar: {
-          DEFAULT: 'hsl(var(--sidebar))',
-          foreground: 'hsl(var(--sidebar-foreground))',
+          DEFAULT: 'hsl(var(--sidebar) / <alpha-value>)',
+          foreground: 'hsl(var(--sidebar-foreground) / <alpha-value>)',
         },
         // 品牌 token（十六进制变量，随明暗主题切换）
         rose: { DEFAULT: 'var(--rose)', soft: 'var(--rose-soft)' },
@@ -105,7 +106,6 @@ export default {
         'rail-fade': 'linear-gradient(180deg, hsl(var(--secondary)), hsl(var(--background)) 240px)',
       },
       keyframes: {
-        'fade-in': { from: { opacity: '0', transform: 'translateY(6px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
         'toast-in': {
           from: { opacity: '0', transform: 'translateY(14px) scale(0.97)' },
           to: { opacity: '1', transform: 'translateY(0) scale(1)' },
@@ -114,17 +114,13 @@ export default {
           from: { opacity: '1', transform: 'translateY(0) scale(1)' },
           to: { opacity: '0', transform: 'translateY(8px) scale(0.98)' },
         },
-        rise: { from: { opacity: '0', transform: 'translateY(8px)' } },
-        shimmer: { '100%': { transform: 'translateX(100%)' } },
-        breathe: {
+        shimmer: { '100%': { transform: 'translateX(100%)' } },        breathe: {
           '50%': { boxShadow: '0 0 0 5px color-mix(in srgb, var(--jade) 8%, transparent)' },
         },
       },
       animation: {
-        'fade-in': 'fade-in 0.3s ease-out',
         'toast-in': 'toast-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1)',
         'toast-out': 'toast-out 0.2s ease-in forwards',
-        rise: 'rise 0.35s cubic-bezier(0.2, 0.8, 0.2, 1)',
         breathe: 'breathe 2.6s ease-in-out infinite',
       },
     },

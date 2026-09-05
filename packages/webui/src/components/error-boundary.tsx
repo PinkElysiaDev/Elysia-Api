@@ -34,7 +34,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     }
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center">
-        <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/12 text-destructive">
+        <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
           <AlertTriangle className="h-7 w-7" />
         </span>
         <p className="text-base font-semibold">页面渲染失败</p>

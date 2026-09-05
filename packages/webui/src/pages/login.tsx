@@ -68,7 +68,7 @@ export function LoginPage() {
                 }}
               />
               {error && (
-                <div className="rounded-lg bg-ember/10 px-3 py-2 text-xs font-medium text-ember">
+                <div className="rounded-lg bg-[color-mix(in_srgb,var(--ember)_10%,transparent)] px-3 py-2 text-xs font-medium text-ember">
                   {error}
                 </div>
               )}

@@ -26,7 +26,7 @@ export function ElysiaStage({ className, statusState = 'ok', showAura = true }: 
     >
       {/* 氛围呼吸光晕 */}
       {showAura && (
-        <div className="absolute -top-12 right-12 h-72 w-72 rounded-full bg-gradient-to-br from-primary/15 via-orchid/10 to-transparent blur-3xl sm:h-96 sm:w-96" />
+        <div className="absolute -top-12 right-12 h-72 w-72 rounded-full bg-gradient-to-br from-primary/15 to-transparent blur-3xl sm:h-96 sm:w-96" />
       )}
 
       {/* 晶化粒子微光装饰 */}

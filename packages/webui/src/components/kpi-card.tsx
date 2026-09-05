@@ -74,7 +74,7 @@ export function KpiCard({
   const isHero = variant === 'hero'
   const frame = cn(
     'group relative flex flex-col justify-between py-1.5 px-4 sm:px-6 text-left transition-all duration-200',
-    onClick && 'cursor-pointer rounded-lg hover:bg-wash/50 active:scale-[0.98]',
+    onClick && 'cursor-pointer rounded-lg hover:bg-[color-mix(in_srgb,var(--wash)_50%,transparent)] active:scale-[0.98]',
     className,
   )
   const body = (

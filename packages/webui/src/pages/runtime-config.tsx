@@ -192,7 +192,7 @@ export function RuntimeConfigPage() {
       />
 
       {restartNotice && (
-        <div className="flex items-center gap-3 rounded-xl border border-amber/40 bg-amber/10 px-4 py-3 text-sm text-amber shadow-sm">
+        <div className="flex items-center gap-3 rounded-xl border border-[color:color-mix(in_srgb,var(--amber)_40%,transparent)] bg-[color-mix(in_srgb,var(--amber)_10%,transparent)] px-4 py-3 text-sm text-amber shadow-sm">
           <AlertTriangle className="h-5 w-5 shrink-0" />
           <span>部分基础配置已变更，需要手动重启或通过服务管理器重启后端进程方可生效。</span>
         </div>
@@ -307,7 +307,7 @@ export function RuntimeConfigPage() {
               />
             </SettingRow>
             {form.allowFakeIPOutbound && (
-              <div className="rounded-lg bg-amber/10 p-2.5 text-2xs text-amber flex items-center gap-2">
+              <div className="rounded-lg bg-[color-mix(in_srgb,var(--amber)_10%,transparent)] p-2.5 text-2xs text-amber flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span>已放宽 fake-ip SSRF 出站校验，真实内网与 169.254 元数据仍处于拦截保护中。</span>
               </div>
