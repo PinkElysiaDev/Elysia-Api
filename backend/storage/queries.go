@@ -836,6 +836,9 @@ func scanUsageDailyRows(ctx context.Context, qe sqlQueryer, q UsageQuery, offset
 		// rollup 未就绪 / keyHash / sourceId / 非整小时 offset 都会走这条 raw 路径。
 		where += " AND started_ms > 0"
 	}
+	// 模型维度统计排除未路由记录（model_name 为空）：组不存在 / 组内无可用模型
+	// 等前置失败没有产生模型调用，属网关级错误——审计走调用日志，不进模型统计。
+	where += " AND model_name != ''"
 	fullArgs := append([]any{offsetMs}, args...)
 	// token 列只累计成功记录（口径与 UsageTotals 一致，失败调用不计成本）。
 	succOnly := "CASE WHEN " + usageSuccessPredicate + " THEN "

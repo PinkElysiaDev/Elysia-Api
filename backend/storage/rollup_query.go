@@ -167,6 +167,8 @@ func usageTotalsRollupInto(ctx context.Context, qe sqlQueryer, q UsageQuery, fro
 // 行结构与 raw 扫描（scanUsageDailyRows）一致，可直接拼接后按日归并。
 func scanUsageDailyRollupRows(ctx context.Context, qe sqlQueryer, q UsageQuery, fromHour, toHour, offsetMs int64) ([]usageDayRow, error) {
 	filters, filterArgs := usageRollupWhere(q)
+	// 模型维度统计排除未路由记录（model_name 为空的前置失败），口径见 scanUsageDailyRows。
+	filters += " AND model_name != ''"
 	args := append([]any{offsetMs, fromHour, toHour}, filterArgs...)
 	// token 列只累计成功记录（口径与 UsageTotals 一致）。
 	succOnly := "CASE WHEN " + usageSuccessPredicate + " THEN "
@@ -200,6 +202,8 @@ type usageModelRow struct {
 // requests/failed 计全部记录，tokens 只累计成功记录（成本口径）。
 func scanUsageByModelRawRows(ctx context.Context, qe sqlQueryer, q UsageQuery) ([]usageModelRow, error) {
 	where, args := usageWhere(q)
+	// 模型维度统计排除未路由记录（model_name 为空的前置失败），口径见 scanUsageDailyRows。
+	where += " AND model_name != ''"
 	rows, err := qe.QueryContext(ctx,
 		`SELECT model_name, COUNT(*), COALESCE(SUM(CASE WHEN `+usageFailedPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN total_tokens ELSE 0 END),0) FROM usage_records `+where+` GROUP BY model_name`, args...)
 	if err != nil {
@@ -220,6 +224,8 @@ func scanUsageByModelRawRows(ctx context.Context, qe sqlQueryer, q UsageQuery) (
 // scanUsageByModelRollupRows 对 rollup 表按模型聚合。
 func scanUsageByModelRollupRows(ctx context.Context, qe sqlQueryer, q UsageQuery, fromHour, toHour int64) ([]usageModelRow, error) {
 	filters, filterArgs := usageRollupWhere(q)
+	// 模型维度统计排除未路由记录（model_name 为空的前置失败），口径见 scanUsageDailyRows。
+	filters += " AND model_name != ''"
 	args := append([]any{fromHour, toHour}, filterArgs...)
 	rows, err := qe.QueryContext(ctx,
 		`SELECT model_name, COALESCE(SUM(cnt),0), COALESCE(SUM(CASE WHEN `+usageFailedPredicate+` THEN cnt ELSE 0 END),0), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN total_tok ELSE 0 END),0) FROM usage_rollup_hour WHERE hour_ms >= ? AND hour_ms < ?`+filters+` GROUP BY model_name`, args...)
