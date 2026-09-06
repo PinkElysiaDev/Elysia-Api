@@ -1,9 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
-import { Moon, Sun } from 'lucide-react'
 import { useTheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 
-/** 主题切换胶囊（侧栏底部 / 登录页右上角复用）：图标 morph + 一次品牌色涟漪。 */
+/**
+ * 主题切换钮（侧栏底部 / 登录页右上角复用）。
+ * 日/月 morph 移植自 toggles.dev「Classic」；原实现依赖 Tailwind v4 工具类，
+ * 项目停在 v3，形变逻辑因此落在 index.css 的 .theme-sun 下。
+ */
+const SUN_RAYS = [
+  'M12 1.4 12 3.8',
+  'M20.3 3.7 17.8 6.2',
+  'M22.6 12 20.2 12',
+  'M12 22.6 12 20.2',
+  'M1.4 12 3.8 12',
+  'M20.3 20.3 17.8 17.8',
+  'M3.7 20.3 6.2 17.8',
+  'M3.7 3.7 6.2 6.2',
+] as const
+
 export function ThemeToggle() {
   const { theme, toggleTheme } = useTheme()
   const dark = theme === 'dark'
@@ -27,17 +41,29 @@ export function ThemeToggle() {
       aria-pressed={dark}
       title={dark ? '浅色模式' : '深色模式'}
       className={cn(
-        'theme-toggle relative inline-flex h-[34px] items-center gap-2 overflow-hidden rounded-md border border-input bg-card/80 px-3 text-xs text-muted-foreground',
-        // hover 语言与 Button default 同族：玫红洗色，而非独立的灰阶提亮
-        'transition-colors duration-300 hover:border-rose hover:bg-wash hover:text-rose',
+        'theme-toggle relative inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-full text-muted-foreground',
+        'transition-colors duration-300 hover:bg-wash hover:text-rose',
         switching && 'is-switching',
       )}
     >
-      <span className="theme-icon" aria-hidden>
-        <Sun className="icon-sun" strokeWidth={1.8} />
-        <Moon className="icon-moon" strokeWidth={1.8} />
-      </span>
-      <span>{dark ? '深色模式' : '浅色模式'}</span>
+      <svg viewBox="0 0 24 24" className="theme-sun" aria-hidden="true">
+        <defs>
+          <clipPath id="theme-sun-clip">
+            <path className="sun-clip-path" d="M0 0h25a1 1 0 0010 10v14H0Z" />
+          </clipPath>
+        </defs>
+        <g stroke="currentColor" strokeLinecap="round">
+          <circle
+            className="sun-disc"
+            cx="12"
+            cy="12"
+            r="5"
+            fill="currentColor"
+            clipPath="url(#theme-sun-clip)"
+          />
+          <path className="sun-ray" d={SUN_RAYS.join(' ')} fill="none" strokeWidth={2} />
+        </g>
+      </svg>
     </button>
   )
 }

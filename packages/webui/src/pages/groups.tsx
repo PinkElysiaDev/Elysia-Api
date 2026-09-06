@@ -9,6 +9,7 @@ import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/compon
 import { AsyncState } from '@/components/ui/states'
 import { ExpandRow } from '@/components/expand-row'
 import { CapChip, Dot, StrategyBadge } from '@/components/badges'
+import { ToolbarSummary } from '@/components/toolbar-summary'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { useGroups, revalidate } from '@/lib/hooks'
@@ -113,22 +114,14 @@ export function GroupsPage() {
             <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">调度策略</span>
             <Seg aria-label="策略筛选" options={STRATEGY_OPTIONS} value={strategyFilter} onChange={setStrategyFilter} />
           </div>
-          <div className="flex items-center gap-4 text-xs">
-            <span className="tnum flex items-center gap-3 text-muted-foreground font-mono">
-              <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-jade" />
-                <b className="font-semibold text-foreground">{enabledCount}</b> 启用
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-ember" />
-                <b className="font-semibold text-foreground">{(data ?? []).length - enabledCount}</b> 停用
-              </span>
-            </span>
-            <span className="h-3 w-px bg-border/70" />
-            <span className="text-muted-foreground font-mono">
-              共 <b className="tnum font-semibold text-foreground">{(data ?? []).length}</b> 个模型组
-            </span>
-          </div>
+          <ToolbarSummary
+            items={[
+              { label: '启用', value: enabledCount, tone: 'jade' },
+              { label: '停用', value: (data ?? []).length - enabledCount, tone: 'ember' },
+            ]}
+            total={(data ?? []).length}
+            unit="个模型组"
+          />
         </div>
 
         <AsyncState

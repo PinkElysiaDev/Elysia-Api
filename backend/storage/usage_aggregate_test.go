@@ -82,9 +82,10 @@ func TestUsageByModelAndStatusFilters(t *testing.T) {
 		t.Fatalf("UsageByModel() error = %v", err)
 	}
 	// tokens 口径为成功记录：model-a 仅 200 那条计 10；model-c（429）计 0。
+	// empty-model fixture（未路由失败，model_name 为空）不计入模型维度统计，
+	// 其仅保留在调用日志与全局 totals 中（网关级错误 ≠ 模型调用）。
 	want := []UsageModelBucket{
 		{Model: "model-a", Requests: 3, Failed: 2, Tokens: 10},
-		{Model: "", Requests: 1, Failed: 0, Tokens: 5},
 		{Model: "model-b", Requests: 1, Failed: 0, Tokens: 40},
 		{Model: "model-c", Requests: 1, Failed: 1, Tokens: 0},
 	}
