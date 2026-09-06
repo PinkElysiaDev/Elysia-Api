@@ -24,6 +24,8 @@ import { Switch } from '@/components/ui/switch'
 import { AsyncState } from '@/components/ui/states'
 import { ExpandRow } from '@/components/expand-row'
 import { CapChip, Dot, PlatformBadge } from '@/components/badges'
+import { SearchInput } from '@/components/ui/search-input'
+import { ToolbarSummary } from '@/components/toolbar-summary'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { useSources, useModels, useModelCatalogStatus, useDebouncedValue, revalidate, POLL } from '@/lib/hooks'
@@ -353,20 +355,9 @@ export function SourcesPage() {
 
       <div className="relative z-[1] space-y-6">
         <PageHeader
-          title="模型源"          actions={
+          title="模型源"
+          actions={
             <>
-              {catalogStatus?.enabled && (
-                <CapChip
-                  className="max-w-[280px] truncate"
-                  title={
-                    catalogStatus.entries > 0
-                      ? `模型能力目录已加载 ${catalogStatus.entries} 个模型（models.dev），刷新模型时自动回填视觉/工具等能力`
-                      : '能力目录尚未加载成功：模型能力不会被自动回填，可在模型编辑中手动开启；服务器需可访问 models.dev（或配置 modelCatalog.url/proxy）'
-                  }
-                >
-                  {catalogStatus.entries > 0 ? `能力目录 ${catalogStatus.entries} 模型` : '能力目录未加载'}
-                </CapChip>
-              )}
               <Button onClick={refreshAll} disabled={refreshingAll}>
                 <RefreshCw className={cn('h-4 w-4', (refreshingAll || anyRefreshing) && 'animate-spin')} /> 刷新全部模型
               </Button>
@@ -379,34 +370,35 @@ export function SourcesPage() {
 
         {/* 搜索工具条与统计指标 */}
         <div className="flex flex-wrap items-center justify-between gap-3 py-1">
-          <div className="relative w-full sm:w-72">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="pl-9 text-xs"
-              type="search"
-              placeholder="搜索源名称 / 平台 / 接口地址…"
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
+          <SearchInput
+            className="w-full text-xs sm:w-80"
+            ariaLabel="搜索模型源"
+            placeholder="搜索源名称 / 平台 / 接口地址…"
+            value={keyword}
+            onChange={setKeyword}
+          />
+          <div className="flex flex-wrap items-center gap-4">
+            {catalogStatus?.enabled && (
+              <CapChip
+                className="max-w-[280px] truncate"
+                title={
+                  catalogStatus.entries > 0
+                    ? `模型能力目录已加载 ${catalogStatus.entries} 个模型（models.dev），刷新模型时自动回填视觉/工具等能力`
+                    : '能力目录尚未加载成功：模型能力不会被自动回填，可在模型编辑中手动开启；服务器需可访问 models.dev（或配置 modelCatalog.url/proxy）'
+                }
+              >
+                {catalogStatus.entries > 0 ? `能力目录 ${catalogStatus.entries} 模型` : '能力目录未加载'}
+              </CapChip>
+            )}
+            <ToolbarSummary
+              items={[
+                { label: '启用', value: enabledCount, tone: 'jade' },
+                { label: '停用', value: disabledCount, tone: 'ember' },
+                { label: '聚合模型', value: models?.length ?? 0 },
+              ]}
+              total={(data ?? []).length}
+              unit="个模型源"
             />
-          </div>
-          <div className="flex items-center gap-4 text-xs">
-            <span className="tnum flex items-center gap-3 text-muted-foreground font-mono">
-              <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-jade" />
-                <b className="font-semibold text-foreground">{enabledCount}</b> 启用
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-ember" />
-                <b className="font-semibold text-foreground">{disabledCount}</b> 停用
-              </span>
-              <span className="flex items-center gap-1.5">
-                聚合模型 <b className="font-semibold text-foreground">{formatNumber(models?.length ?? 0)}</b>
-              </span>
-            </span>
-            <span className="h-3 w-px bg-border/70" />
-            <span className="text-muted-foreground font-mono">
-              共 <b className="tnum font-semibold text-foreground">{(data ?? []).length}</b> 个模型源
-            </span>
           </div>
         </div>
 
