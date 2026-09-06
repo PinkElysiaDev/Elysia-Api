@@ -173,6 +173,7 @@ export function RuntimeConfigPage() {
           title="运行配置"        actions={
           <>
             <Button
+              variant="ghost"
               onClick={async () => {
                 try {
                   await api.reload()

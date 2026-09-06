@@ -358,7 +358,7 @@ export function SourcesPage() {
           title="模型源"
           actions={
             <>
-              <Button onClick={refreshAll} disabled={refreshingAll}>
+              <Button variant="ghost" onClick={refreshAll} disabled={refreshingAll}>
                 <RefreshCw className={cn('h-4 w-4', (refreshingAll || anyRefreshing) && 'animate-spin')} /> 刷新全部模型
               </Button>
               <Button variant="primary" onClick={openCreate}>

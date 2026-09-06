@@ -56,7 +56,7 @@ export function DiagnosticsPage() {
       <div className="relative z-[1] space-y-6">
         <PageHeader
           title="系统诊断"          actions={
-            <Button onClick={() => mutate()} disabled={isLoading}>
+            <Button variant="ghost" onClick={() => mutate()} disabled={isLoading}>
               <RefreshCw className={isLoading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} /> 立即刷新
             </Button>
           }
