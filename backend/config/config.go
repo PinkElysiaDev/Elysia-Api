@@ -28,7 +28,6 @@ type Config struct {
 	Tokens                 []AccessToken      `json:"-"`                                // 运行时字段：仅用于 store-nil 回退与测试；不再从 config.json 读取（模型/token 走 SQLite）
 	Groups                 []ModelGroupConfig `json:"-"`                                // 同上：旧 config.json 的 modelGroups 字段已废弃，数据走 SQLite
 	Responses              ResponsesConfig    `json:"responses,omitempty"`              // Responses API 兼容策略
-	CustomProtocols        []json.RawMessage  `json:"customProtocols,omitempty"`        // Maheshvara 自定义协议 JSON 配置
 	Usage                  UsageConfig        `json:"usage,omitempty"`                  // 用量估算配置
 	UsageLog               UsageLogConfig     `json:"usageLog,omitempty"`               // 请求日志留存与内容策略（清理默认关闭）
 	HTTPTimeout            int                `json:"httpTimeout,omitempty"`            // HTTP 请求超时时间（秒），0 为不限制
@@ -269,7 +268,12 @@ func (c *Config) Save() error {
 	// 进行，会基于彼此过期的快照互相覆盖。
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.saveLocked()
+}
 
+// saveLocked 是 Save 的锁内实现，供已持写锁的调用方复用，
+// 保证"改内存 + 落盘"在同一个临界区内完成。
+func (c *Config) saveLocked() error {
 	data, err := os.ReadFile(c.path)
 	if err != nil {
 		return err
@@ -302,15 +306,6 @@ func (c *Config) Save() error {
 		raw["modelCatalog"] = c.ModelCatalog
 	} else {
 		delete(raw, "modelCatalog")
-	}
-	if len(c.CustomProtocols) > 0 {
-		protocols := make([]json.RawMessage, len(c.CustomProtocols))
-		for index, protocol := range c.CustomProtocols {
-			protocols[index] = append(json.RawMessage(nil), protocol...)
-		}
-		raw["customProtocols"] = protocols
-	} else {
-		delete(raw, "customProtocols")
 	}
 
 	out, err := json.MarshalIndent(raw, "", "  ")
@@ -346,6 +341,33 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 		return err
 	}
 	return os.Rename(tmpName, path)
+}
+
+// TakeDeprecatedCustomProtocols 取出 config.json 中已废弃的 customProtocols
+// 键并从文件中移除（协议改存 SQLite，由 server 启动时一次性导入）。
+// 键不存在或文件不可读时返回 nil，调用方按"无需迁移"处理。
+func (c *Config) TakeDeprecatedCustomProtocols() []json.RawMessage {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	data, err := os.ReadFile(c.path)
+	if err != nil {
+		return nil
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+	key, exists := raw["customProtocols"]
+	if !exists {
+		return nil
+	}
+	delete(raw, "customProtocols")
+	if out, err := json.MarshalIndent(raw, "", "  "); err == nil {
+		_ = WriteFileAtomic(c.path, out, 0o644)
+	}
+	var entries []json.RawMessage
+	_ = json.Unmarshal(key, &entries)
+	return entries
 }
 
 func (c *Config) SetPanelAccessToken(token string) {
@@ -474,10 +496,6 @@ func (c *Config) Reload() error {
 	c.UsagePersistMaxRecords = newCfg.UsagePersistMaxRecords
 	c.HealthCheck = newCfg.HealthCheck
 	c.AllowFakeIPOutbound = newCfg.AllowFakeIPOutbound
-	c.CustomProtocols = make([]json.RawMessage, len(newCfg.CustomProtocols))
-	for index, protocol := range newCfg.CustomProtocols {
-		c.CustomProtocols[index] = append(json.RawMessage(nil), protocol...)
-	}
 
 	return nil
 }
@@ -521,16 +539,6 @@ func (c *Config) SetModelCatalogSyncInterval(minutes int) {
 	value := minutes
 	c.ModelCatalog.SyncIntervalMinutes = &value
 	c.mu.Unlock()
-}
-
-func (c *Config) GetCustomProtocols() []json.RawMessage {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	protocols := make([]json.RawMessage, len(c.CustomProtocols))
-	for index, raw := range c.CustomProtocols {
-		protocols[index] = append(json.RawMessage(nil), raw...)
-	}
-	return protocols
 }
 
 // 以下访问器/设置器统一通过 mu 锁保护那些会被请求热路径与 Reload/admin

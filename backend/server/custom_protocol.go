@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -14,19 +13,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// syncCustomProtocols 把 SQLite 中的自定义协议装配进 relay 注册表。协议不再
+// 随 config.json 热重载：管理端点每次写入后即时同步。
 func (s *Server) syncCustomProtocols() {
-	rawConfigs := s.config.GetCustomProtocols()
-	configs := make([]relay.CustomProtocolConfig, 0, len(rawConfigs))
-	for index, raw := range rawConfigs {
-		var protocol relay.CustomProtocolConfig
-		if err := json.Unmarshal(raw, &protocol); err != nil {
-			log.Printf("custom protocol config %d is invalid JSON: %v", index, err)
-			return
-		}
-		configs = append(configs, protocol)
-	}
-	if err := relay.ReplaceCustomProtocols(configs); err != nil {
-		log.Printf("custom protocol reload was rejected; keeping the previous registry: %v", err)
+	if err := s.syncCustomProtocolsQuiet(); err != nil {
+		log.Printf("custom protocol registry sync failed; keeping the previous registry: %v", err)
 	}
 }
 

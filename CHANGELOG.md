@@ -9,6 +9,55 @@
 v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.1.1 起的全部
 发布说明已合并进来，根目录不再保留按版本拆散的 `RELEASE_NOTES_v*.md`。
 
+## Unreleased
+
+这个版本的主题是「协议设计器」：自定义 Maheshvara 协议改为字段级双向
+映射模型并入库，WebUI 新增可视化设计页，AI 助手升级为带自动修复与离线
+验证的生成 harness。
+
+### 字段级映射模型
+
+- **请求体**：`request.body` 为"结构即配置"的构造树——容器是普通 JSON
+  对象/数组，每个叶子声明对应 Maheshvara 的哪个字段
+  （`{"field", "mode": "json|string", "default"?, "omitIfEmpty"?}`）或为
+  常量（`{"value": ...}`）。注册时编译为内部渲染表示，运行时链路零改动。
+- **返回体**：`response.body` 构造树与请求体对称——按上游示例搭建结构，
+  叶子标注对应 Maheshvara 的哪个字段（`text` / `usage` /
+  `usage.input_tokens` / `stop_reason` / `metadata.<key>` 等，可选
+  transform）；等效行表 `response.fields` 继续支持（与 body 二选一）；
+  `response.sample` 保存上游示例响应供点选与离线验证。
+- **字段目录单一事实来源**：`GET /api/admin/custom-protocols/schema` 提供
+  请求/响应字段目录、transform 与类型约定，UI 下拉、AI 提示词、后端校验
+  三方同源。
+- 旧模板（`bodyTemplate` / `*Path`）作为 legacy 形态继续兼容加载。
+
+### 协议存入数据库
+
+- 自定义协议持久化到 SQLite（`custom_protocols` 表），保存即校验并原子
+  热更新注册表；`config.json` 的 `customProtocols` 键废弃，升级启动时
+  一次性导入数据库（同 ID 以库为准）并从文件移除。
+
+### WebUI 协议设计器
+
+- 新增 `/ui/#/protocols` 页面：协议列表表格化（与模型源页同款交互，页面
+  容器与其他页对齐），编辑走固定尺寸弹窗：请求体构造树、返回体构造树、
+  **映射配置卡**（两个方向的映射集中配置，每个 Maheshvara 字段附通俗
+  解释，支持 mode / default / omitIfEmpty / transform）、渲染预览（凭证
+  打码）与真实测试（向所选模型源实际发送一次并对照映射结果）；仅有映射
+  行表时可一键转为构造树。
+- 协议 `type` 字段声明任务类型：`llm`（默认）/ `reranker` / `embedding`
+  （声明式预留）/ `x-` 前缀扩展；模型源表单的协议 ID 升级为已注册协议
+  下拉。
+
+### AI 生成 harness
+
+- `POST /api/admin/custom-protocols/assist` 服务端闭环：**生成 → 声明式
+  校验 + 编译 + 注册校验 → 失败自动携带 issues 修复重造（默认 2 轮）→
+  离线验证**（样例请求渲染 + 示例响应映射，不发起真实请求）。系统提示词
+  由字段目录程序化生成；文档/截图/PDF 作为原生多模态输入交给所选模型源，
+  凭证不出服务端。助手草稿一键应用到编辑器，验证结果（渲染请求体与映射
+  出的 Maheshvara 字段）直接展示。
+
 ## v1.3.1 - 2026-09-06
 
 这个版本的主题是「界面焕然一新」：整套控件换了设计语言，图片预览大升级，

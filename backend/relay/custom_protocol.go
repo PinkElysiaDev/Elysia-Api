@@ -27,9 +27,35 @@ type CustomProtocolConfig struct {
 	ID       string                 `json:"id"`
 	Name     string                 `json:"name,omitempty"`
 	Version  string                 `json:"version,omitempty"`
+	Type     string                 `json:"type,omitempty"`
 	Request  CustomProtocolRequest  `json:"request"`
 	Response CustomProtocolResponse `json:"response,omitempty"`
 	Metadata map[string]any         `json:"metadata,omitempty"`
+}
+
+// 协议任务类型的内置约定。当前运行时中转只实现 LLM 语义；reranker/embedding
+// 是声明式预留：注册、模板渲染与响应映射照常可用，等待对应端点接入后生效。
+// x- 前缀保留给外部扩展，核心不做任何解释。
+const (
+	CustomProtocolTypeLLM       = "llm"
+	CustomProtocolTypeReranker  = "reranker"
+	CustomProtocolTypeEmbedding = "embedding"
+)
+
+// NormalizeCustomProtocolType 归一化协议类型：空值回落 llm；接受 llm/reranker/
+// embedding 与 x- 前缀扩展名。返回空串表示非法值。
+func NormalizeCustomProtocolType(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch normalized {
+	case "":
+		return CustomProtocolTypeLLM
+	case CustomProtocolTypeLLM, CustomProtocolTypeReranker, CustomProtocolTypeEmbedding:
+		return normalized
+	}
+	if strings.HasPrefix(normalized, "x-") && len(strings.TrimSpace(normalized)) > 2 {
+		return normalized
+	}
+	return ""
 }
 
 type CustomProtocolRequest struct {
@@ -53,18 +79,24 @@ type CustomProtocolAuth struct {
 }
 
 type CustomProtocolResponse struct {
-	IDPath           string                       `json:"idPath,omitempty"`
-	ModelPath        string                       `json:"modelPath,omitempty"`
-	StatusPath       string                       `json:"statusPath,omitempty"`
-	TextPath         string                       `json:"textPath,omitempty"`
-	ReasoningPath    string                       `json:"reasoningPath,omitempty"`
-	ToolCallsPath    string                       `json:"toolCallsPath,omitempty"`
-	UsagePath        string                       `json:"usagePath,omitempty"`
-	FinishReasonPath string                       `json:"finishReasonPath,omitempty"`
-	ErrorPath        string                       `json:"errorPath,omitempty"`
-	Mappings         map[string]string            `json:"mappings,omitempty"`
-	FieldMappings    []CustomProtocolFieldMapping `json:"fieldMappings,omitempty"`
-	Stream           *CustomProtocolStreamMapping `json:"stream,omitempty"`
+	// Body 是返回体构造树：容器为普通 JSON 对象/数组，叶子为
+	// {"field": "<响应字段>", "value"?: <示例值>, "transform"?} 映射标注或
+	// {"value": ...} / 裸标量结构占位。编译时从中提取字段映射。
+	Body             json.RawMessage                      `json:"body,omitempty"`
+	IDPath           string                               `json:"idPath,omitempty"`
+	ModelPath        string                               `json:"modelPath,omitempty"`
+	StatusPath       string                               `json:"statusPath,omitempty"`
+	TextPath         string                               `json:"textPath,omitempty"`
+	ReasoningPath    string                               `json:"reasoningPath,omitempty"`
+	ToolCallsPath    string                               `json:"toolCallsPath,omitempty"`
+	UsagePath        string                               `json:"usagePath,omitempty"`
+	FinishReasonPath string                               `json:"finishReasonPath,omitempty"`
+	ErrorPath        string                               `json:"errorPath,omitempty"`
+	Mappings         map[string]string                    `json:"mappings,omitempty"`
+	FieldMappings    []CustomProtocolFieldMapping         `json:"fieldMappings,omitempty"`
+	Fields           []CustomProtocolResponseFieldMapping `json:"fields,omitempty"`
+	Sample           json.RawMessage                      `json:"sample,omitempty"`
+	Stream           *CustomProtocolStreamMapping         `json:"stream,omitempty"`
 }
 
 type CustomProtocolFieldMapping struct {
@@ -97,6 +129,21 @@ func (request CustomProtocolRequest) bodyTemplate() string {
 	return ""
 }
 
+// effectiveBodyTemplate 返回生效的请求体模板与 omitIfEmpty 路径：字段引用树
+// （新模型）编译为模板并自动收集 omit 路径；否则维持 legacy 行为。
+func (request CustomProtocolRequest) effectiveBodyTemplate() (string, []string, error) {
+	if !hasCustomProtocolAnnotationBody(request.Body) {
+		return request.bodyTemplate(), request.OmitIfEmpty, nil
+	}
+	compiled, err := compileCustomProtocolBody(request.Body)
+	if err != nil {
+		return "", nil, err
+	}
+	omit := append([]string(nil), request.OmitIfEmpty...)
+	omit = append(omit, compiled.OmitIfEmpty...)
+	return compiled.Template, omit, nil
+}
+
 type CustomProtocolRequestResult struct {
 	Method      string
 	Path        string
@@ -117,6 +164,7 @@ func RegisterCustomProtocol(config CustomProtocolConfig) error {
 	if err := ValidateCustomProtocol(config); err != nil {
 		return err
 	}
+	config.Type = NormalizeCustomProtocolType(config.Type)
 	customProtocolRegistry.Lock()
 	customProtocolRegistry.items[strings.ToLower(strings.TrimSpace(config.ID))] = cloneCustomProtocol(config)
 	customProtocolRegistry.Unlock()
@@ -135,6 +183,7 @@ func ReplaceCustomProtocols(configs []CustomProtocolConfig) error {
 		if _, exists := next[id]; exists {
 			return fmt.Errorf("custom protocol %q is duplicated", config.ID)
 		}
+		config.Type = NormalizeCustomProtocolType(config.Type)
 		next[id] = cloneCustomProtocol(config)
 	}
 	customProtocolRegistry.Lock()
@@ -167,11 +216,20 @@ func ValidateCustomProtocol(config CustomProtocolConfig) error {
 	if strings.ContainsAny(config.ID, " /\\\t\r\n") {
 		return fmt.Errorf("custom protocol %q has invalid id", config.ID)
 	}
+	if NormalizeCustomProtocolType(config.Type) == "" {
+		return fmt.Errorf("custom protocol %q has invalid type %q (allowed: llm, reranker, embedding, x-*)", config.ID, config.Type)
+	}
+	if err := validateCustomProtocolDeclarative(config); err != nil {
+		return err
+	}
 	method := strings.ToUpper(strings.TrimSpace(config.Request.Method))
 	if method == "" {
 		method = http.MethodPost
 	}
-	template := config.Request.bodyTemplate()
+	template, omitIfEmpty, err := config.Request.effectiveBodyTemplate()
+	if err != nil {
+		return fmt.Errorf("custom protocol %q request.body: %w", config.ID, err)
+	}
 	if len(template) == 0 && method != http.MethodGet && method != http.MethodDelete {
 		return fmt.Errorf("custom protocol %q request.bodyTemplate is required", config.ID)
 	}
@@ -186,6 +244,11 @@ func ValidateCustomProtocol(config CustomProtocolConfig) error {
 	if template != "" {
 		if _, err := renderCustomTemplate(template, maheshvaraTemplateContext(&MaheshvaraRequest{}), nil); err != nil {
 			return fmt.Errorf("custom protocol %q has invalid body template: %w", config.ID, err)
+		}
+	}
+	for _, path := range omitIfEmpty {
+		if _, err := parseCustomPath(strings.TrimPrefix(strings.TrimSpace(path), "maheshvara.")); err != nil {
+			return fmt.Errorf("custom protocol %q omitIfEmpty path %q: %w", config.ID, path, err)
 		}
 	}
 	if err := validateCustomStringTemplate(config.Request.PathTemplate); err != nil {
@@ -226,6 +289,11 @@ func ValidateCustomProtocol(config CustomProtocolConfig) error {
 }
 
 func validateCustomProtocolResponse(configID, location string, response CustomProtocolResponse, allowStream bool) error {
+	effective, err := effectiveCustomProtocolResponse(location, response)
+	if err != nil {
+		return fmt.Errorf("custom protocol %q %s: %w", configID, location, err)
+	}
+	response = effective
 	paths := map[string]string{
 		"idPath": response.IDPath, "modelPath": response.ModelPath, "statusPath": response.StatusPath,
 		"textPath": response.TextPath, "reasoningPath": response.ReasoningPath, "toolCallsPath": response.ToolCallsPath,
@@ -306,9 +374,12 @@ func RenderCustomProtocolRequest(req *MaheshvaraRequest, config CustomProtocolCo
 	}
 	ctx := maheshvaraTemplateContext(req)
 	var body []byte
-	if template := config.Request.bodyTemplate(); template != "" {
-		var err error
-		body, err = renderCustomTemplate(template, ctx, config.Request.OmitIfEmpty)
+	template, omitIfEmpty, err := config.Request.effectiveBodyTemplate()
+	if err != nil {
+		return nil, fmt.Errorf("custom protocol %q request.body: %w", config.ID, err)
+	}
+	if template != "" {
+		body, err = renderCustomTemplate(template, ctx, omitIfEmpty)
 		if err != nil {
 			return nil, fmt.Errorf("custom protocol %q request body: %w", config.ID, err)
 		}
@@ -439,16 +510,16 @@ func customProtocolResponseToMaheshvaraValidated(body []byte, config CustomProto
 	if err := decoder.Decode(&raw); err != nil {
 		return nil, fmt.Errorf("failed to parse custom protocol %q response: %w", config.ID, err)
 	}
-	mapping := config.Response
-	if allowEmpty && mapping.Stream != nil {
-		if payloadPath := strings.TrimSpace(mapping.Stream.PayloadPath); payloadPath != "" {
+	if allowEmpty && config.Response.Stream != nil {
+		if payloadPath := strings.TrimSpace(config.Response.Stream.PayloadPath); payloadPath != "" {
 			if payload, ok := customLookupPath(raw, payloadPath); ok {
 				raw = payload
 			}
 		}
-		if mapping.Stream.Response != nil {
-			mapping = *mapping.Stream.Response
-		}
+	}
+	mapping, err := effectiveCustomProtocolRuntimeMapping(config, allowEmpty)
+	if err != nil {
+		return nil, fmt.Errorf("custom protocol %q: %w", config.ID, err)
 	}
 	if mapping.Mappings != nil {
 		mapping.IDPath = firstNonEmptyString(mapping.IDPath, mapping.Mappings["id"])
@@ -862,6 +933,9 @@ func cloneCustomProtocol(config CustomProtocolConfig) CustomProtocolConfig {
 	clone.Request.OmitIfEmpty = append([]string(nil), config.Request.OmitIfEmpty...)
 	clone.Response.Mappings = cloneStringMap(config.Response.Mappings)
 	clone.Response.FieldMappings = cloneCustomFieldMappings(config.Response.FieldMappings)
+	clone.Response.Fields = append([]CustomProtocolResponseFieldMapping(nil), config.Response.Fields...)
+	clone.Response.Sample = append(json.RawMessage(nil), config.Response.Sample...)
+	clone.Response.Body = append(json.RawMessage(nil), config.Response.Body...)
 	clone.Response.Stream = cloneCustomStreamMapping(config.Response.Stream)
 	if config.Metadata != nil {
 		clone.Metadata = make(map[string]any, len(config.Metadata))

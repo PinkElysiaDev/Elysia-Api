@@ -9,6 +9,7 @@ import {
   Terminal,
   Settings,
   Stethoscope,
+  Puzzle,
   LogOut,
   type LucideIcon,
 } from 'lucide-react'
@@ -30,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/overview', label: '总览', icon: Activity, group: '监控' },
   { to: '/usage-logs', label: '调用日志', icon: ScrollText, group: '监控' },
   { to: '/sources', label: '模型源', icon: Database, group: '网关配置' },
+  { to: '/protocols', label: '协议设计器', icon: Puzzle, group: '网关配置' },
   { to: '/groups', label: '模型组', icon: Layers, group: '网关配置' },
   { to: '/tokens', label: '访问令牌', icon: KeyRound, group: '网关配置' },
   { to: '/usage', label: 'Usage 统计', icon: BarChart3, group: '观测' },

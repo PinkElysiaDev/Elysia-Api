@@ -240,31 +240,37 @@ Vite dev server 默认代理到 `http://127.0.0.1:8765`。
 
 ### Maheshvara 与自定义协议
 
-跨协议转换统一经过 Maheshvara 核心请求/响应模型：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 和 Gemini GenerateContent 都先解析为 Maheshvara，再按上游协议渲染。模型源的 `platform` 可以写成 `custom:<协议ID>`（WebUI 可直接选择并填写 ID），并在 bootstrap `config.json` 的 `customProtocols` 中声明安全的 JSON body 模板。自定义协议源使用手动模型列表，不执行自动模型发现。例如：
+跨协议转换统一经过 Maheshvara 核心请求/响应模型：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 和 Gemini GenerateContent 都先解析为 Maheshvara，再按上游协议渲染。模型源的 `platform` 可以写成 `custom:<协议ID>`（WebUI 可直接选择并填写 ID）；协议在 WebUI 的「协议设计器」页面以字段级映射可视化构建（请求体/返回体逐字段声明与 Maheshvara 的对应关系，AI 助手可读取文档自动生成并离线验证），保存即热生效。自定义协议源使用手动模型列表，不执行自动模型发现。协议配置结构示例：
 
 ```json
 {
-  "customProtocols": [
-    {
-      "id": "vendor-json",
-      "request": {
-        "method": "POST",
-        "path": "/v2/generate/{{maheshvara.model}}",
-        "headers": {"X-Model": "{{maheshvara.model}}"},
-        "bodyTemplate": "{\"model\":{{maheshvara.model | json}},\"messages\":{{maheshvara.messages}},\"temperature\":{{maheshvara.temperature | default:0.2}}}",
-        "omitIfEmpty": ["temperature"]
-      },
-      "response": {
-        "textPath": "answer.text",
-        "usagePath": "usage",
-        "finishReasonPath": "finish"
+  "id": "vendor-json",
+  "type": "llm",
+  "request": {
+    "method": "POST",
+    "path": "/v2/generate",
+    "auth": {"mode": "header", "header": "x-api-key"},
+    "body": {
+      "model": {"field": "model", "mode": "string"},
+      "input": {"field": "messages"},
+      "params": {
+        "temperature": {"field": "temperature", "default": 0.7, "omitIfEmpty": true},
+        "api_version": {"value": "2026-01-01"}
       }
     }
-  ]
+  },
+  "response": {
+    "fields": [
+      {"path": "answer.text", "field": "text"},
+      {"path": "finish", "field": "stop_reason"},
+      {"path": "usage.prompt", "field": "usage.input_tokens"},
+      {"path": "usage.completion", "field": "usage.output_tokens"}
+    ]
+  }
 }
 ```
 
-模板只读 `maheshvara.*`（同时兼容 `request.*`），支持字符串插值、原生 JSON 值、`json`、`default:` 和 `omitIfEmpty`；不执行任意代码。常用字段包括 `model`、`instructions`、`messages`、`tools`、`tool_choice`、生成参数、`reasoning`、`metadata`、`stream` 和 `raw_extra`。非流式响应和 SSE / NDJSON 流都可映射回 Maheshvara，再渲染为客户端所请求的四种协议之一。
+请求体与返回体均为字段级映射：每个叶子声明对应 Maheshvara 的哪个字段（`{"field": ..., "mode": "json|string", "default"?, "omitIfEmpty"?}`）或为常量（`{"value": ...}`）；不执行任意代码。可用字段目录由 schema 端点提供，与 UI 下拉、AI 生成和后端校验同源。非流式响应和 SSE / NDJSON 流都可映射回 Maheshvara，再渲染为客户端所请求的四种协议之一。
 
 完整字段模型、四协议映射矩阵、reasoning 安全约定、Gemini Part 不变量和自定义协议配置说明见 [`docs/maheshvara-protocol.md`](docs/maheshvara-protocol.md)。
 

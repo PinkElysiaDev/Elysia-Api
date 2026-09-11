@@ -6,6 +6,13 @@ import type {
   UsagePulseResult,
   UsageModelDailyPoint,
   ApiToken,
+  CustomProtocolAssistDocument,
+  CustomProtocolAssistResult,
+  CustomProtocolConfig,
+  CustomProtocolPreviewResult,
+  CustomProtocolSchema,
+  CustomProtocolSummary,
+  CustomProtocolTestResult,
   Health,
   Model,
   ModelGroup,
@@ -273,6 +280,43 @@ export const api = {
 
   systemLogs: (params: { limit?: number; offset?: number; level?: string }) =>
     request<SystemLogsResult>('/logs', { query: params }),
+
+  // ---- 协议设计器 ----
+  listCustomProtocols: () =>
+    request<ListEnvelope<CustomProtocolSummary>>('/custom-protocols').then((r) => r.items ?? []),
+  /** 字段目录与约束（UI 下拉与校验共用）。 */
+  customProtocolSchema: () => request<CustomProtocolSchema>('/custom-protocols/schema'),
+  upsertCustomProtocol: (protocol: CustomProtocolConfig) =>
+    request<{ saved: boolean; id: string; synced: boolean; warning?: string }>(
+      `/custom-protocols/${encodeURIComponent(protocol.id)}`,
+      { method: 'PUT', body: protocol },
+    ),
+  deleteCustomProtocol: (id: string) =>
+    request<{ deleted: boolean; synced: boolean }>(`/custom-protocols/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+  /** 用样例 Maheshvara 请求渲染协议，预览真实发送形态（凭证打码）。 */
+  previewCustomProtocol: (body: { protocol: CustomProtocolConfig; sampleRequest?: unknown }) =>
+    request<CustomProtocolPreviewResult>('/custom-protocols/preview', { method: 'POST', body }),
+  /** 向所选模型源的上游真实发送渲染后的请求，返回原文与映射结果。 */
+  testCustomProtocol: (body: {
+    protocol: CustomProtocolConfig
+    sourceId: string
+    model: string
+    stream?: boolean
+    sampleRequest?: unknown
+  }) => request<CustomProtocolTestResult>('/custom-protocols/test', { method: 'POST', body }),
+  /** AI harness：读取文档/图片/文本生成草稿，服务端校验+自动修复+离线验证。 */
+  assistCustomProtocol: (body: {
+    sourceId: string
+    model: string
+    protocolType?: string
+    message?: string
+    documents?: CustomProtocolAssistDocument[]
+    currentConfig?: unknown
+    exampleResponse?: unknown
+    maxRepairRounds?: number
+  }) => request<CustomProtocolAssistResult>('/custom-protocols/assist', { method: 'POST', body }),
 }
 
 function serializeUsage(params: UsageQueryParams): Record<string, QueryValue> {

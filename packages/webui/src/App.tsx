@@ -8,6 +8,9 @@ import { AppLayout } from './components/app-layout'
 const LoginPage = lazy(() => import('./pages/login').then((m) => ({ default: m.LoginPage })))
 const OverviewPage = lazy(() => import('./pages/overview').then((m) => ({ default: m.OverviewPage })))
 const SourcesPage = lazy(() => import('./pages/sources').then((m) => ({ default: m.SourcesPage })))
+const ProtocolDesignerPage = lazy(() =>
+  import('./pages/protocol-designer').then((m) => ({ default: m.ProtocolDesignerPage })),
+)
 const GroupsPage = lazy(() => import('./pages/groups').then((m) => ({ default: m.GroupsPage })))
 const TokensPage = lazy(() => import('./pages/tokens').then((m) => ({ default: m.TokensPage })))
 const UsageStatsPage = lazy(() => import('./pages/usage-stats').then((m) => ({ default: m.UsageStatsPage })))
@@ -79,6 +82,7 @@ export function App() {
             <Route element={<AppLayout />}>
               <Route path="/overview" element={<OverviewPage />} />
               <Route path="/sources" element={<SourcesPage />} />
+              <Route path="/protocols" element={<ProtocolDesignerPage />} />
               <Route path="/groups" element={<GroupsPage />} />
               <Route path="/tokens" element={<TokensPage />} />
               <Route path="/usage" element={<UsageStatsPage />} />

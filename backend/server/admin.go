@@ -43,6 +43,14 @@ func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
 	admin.PATCH("/model-sources/:id/enabled", s.adminSetSourceEnabled)
 	admin.GET("/model-catalog/status", s.adminModelCatalogStatus)
 	admin.POST("/model-catalog/refresh", s.adminModelCatalogRefresh)
+	// 协议设计器：协议 CRUD（SQLite）+ 字段目录 + 渲染预览 + 真实测试 + AI 助手。
+	admin.GET("/custom-protocols", s.adminListCustomProtocols)
+	admin.GET("/custom-protocols/schema", s.adminCustomProtocolSchema)
+	admin.PUT("/custom-protocols/:id", s.adminUpsertCustomProtocol)
+	admin.DELETE("/custom-protocols/:id", s.adminDeleteCustomProtocol)
+	admin.POST("/custom-protocols/preview", s.adminPreviewCustomProtocol)
+	admin.POST("/custom-protocols/test", s.adminTestCustomProtocol)
+	admin.POST("/custom-protocols/assist", s.adminAssistCustomProtocol)
 	admin.GET("/models", s.adminListModels)
 	admin.POST("/models/refresh", s.adminRefreshModels)
 	// modelId 走 query 而非路径段：模型 ID 常含 "/"（如 org/model），路径参数
@@ -386,7 +394,7 @@ func validateCustomSourceProtocol(item *storage.ModelSource) error {
 	}
 	protocolID := strings.TrimPrefix(platform, "custom:")
 	if _, ok := relay.GetCustomProtocol(protocolID); !ok {
-		return fmt.Errorf("custom protocol %q is not registered in config.json", protocolID)
+		return fmt.Errorf("custom protocol %q is not registered", protocolID)
 	}
 	if item.AutoFetchModels {
 		return fmt.Errorf("custom protocol sources require autoFetchModels=false and manualModels")

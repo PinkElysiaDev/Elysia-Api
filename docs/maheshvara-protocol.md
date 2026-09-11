@@ -271,79 +271,63 @@ decoder 和 renderer 都是有状态对象，用于维护 tool index、content b
 
 ## 9. 自定义协议
 
-模型源的 `platform` 写成 `custom:<protocol-id>` 后，Elysia API 从 bootstrap `config.json` 的 `customProtocols` 注册对应协议。注册和热重载使用原子替换；新配置验证失败时，运行中的旧注册表保持可用。
+自定义协议持久化在 SQLite 中，由 WebUI「协议设计器」页面（`/ui/#/protocols`）或管理 API（`/api/admin/custom-protocols`）创建与维护，保存即校验并原子热更新注册表（新配置验证失败时，运行中的旧注册表保持可用）。`config.json` 的 `customProtocols` 键已废弃：升级后启动时自动导入数据库并从文件移除。
 
-WebUI 的模型源表单可选择“自定义 Maheshvara 协议”并填写协议 ID。自定义协议当前不定义模型发现 endpoint，因此该类源必须关闭 `autoFetchModels` 并配置 `manualModels`；后端管理 API 会验证协议已注册并拒绝错误的自动发现配置。
+模型源的 `platform` 写成 `custom:<protocol-id>` 后即引用对应协议（模型源表单的下拉直接列出已注册协议）。自定义协议当前不定义模型发现 endpoint，因此该类源必须关闭 `autoFetchModels` 并配置 `manualModels`；后端管理 API 会验证协议已注册并拒绝错误的自动发现配置。
 
-完整示例：
+### 9.0 字段级映射模型（推荐）
+
+协议配置以字段级双向映射为核心：请求体由用户从零构造，每个叶子声明对应 Maheshvara 的哪个字段；响应体同样按字段声明映射关系。配置在注册时编译为内部渲染表示，运行时链路与旧模板完全一致。
 
 ```json
 {
-  "relay": {
-    "passthrough": false
-  },
-  "customProtocols": [
-    {
-      "id": "vendor-json",
-      "name": "Vendor JSON API",
-      "version": "1",
-      "request": {
-        "method": "POST",
-        "path": "/v2/generate/{{maheshvara.model}}",
-        "contentType": "application/json",
-        "headers": {
-          "X-Model": "{{maheshvara.model}}"
-        },
-        "query": {
-          "api-version": "2026-01-01"
-        },
-        "auth": {
-          "mode": "header",
-          "header": "x-api-key",
-          "prefix": ""
-        },
-        "bodyTemplate": "{\"model\":{{maheshvara.model | json}},\"messages\":{{maheshvara.messages}},\"tools\":{{maheshvara.tools}},\"temperature\":{{maheshvara.temperature | default:0.2}},\"stream\":{{maheshvara.stream}}}",
-        "omitIfEmpty": ["tools", "temperature"]
+  "id": "vendor-json",
+  "name": "Vendor JSON API",
+  "version": "1",
+  "type": "llm",
+  "request": {
+    "method": "POST",
+    "path": "/v2/generate",
+    "auth": { "mode": "header", "header": "x-api-key" },
+    "body": {
+      "model": { "field": "model", "mode": "string" },
+      "input": { "field": "messages", "mode": "json" },
+      "params": {
+        "temperature": { "field": "temperature", "default": 0.7, "omitIfEmpty": true },
+        "api_version": { "value": "2026-01-01" }
       },
-      "response": {
-        "idPath": "request_id",
-        "modelPath": "model",
-        "textPath": "result.message.text",
-        "reasoningPath": "result.message.reasoning",
-        "toolCallsPath": "result.message.tool_calls",
-        "usagePath": "usage",
-        "finishReasonPath": "finish_reason",
-        "errorPath": "error",
-        "fieldMappings": [
-          {
-            "target": "metadata.vendor",
-            "value": "vendor-json"
-          },
-          {
-            "target": "service_tier",
-            "source": "meta.tier",
-            "transform": "string",
-            "omitIfEmpty": true
-          }
-        ],
-        "stream": {
-          "payloadPath": "payload",
-          "mode": "cumulative",
-          "events": ["message"],
-          "doneValues": ["[DONE]", "END"],
-          "response": {
-            "textPath": "text",
-            "reasoningPath": "reasoning",
-            "toolCallsPath": "tool_calls",
-            "usagePath": "usage",
-            "finishReasonPath": "finish_reason"
-          }
-        }
-      }
+      "stream": { "field": "stream" }
     }
-  ]
+  },
+  "response": {
+    "body": {
+      "request_id": { "field": "id", "value": "req-1" },
+      "result": {
+        "text": { "field": "text", "value": "你好" },
+        "reason": { "field": "reasoning", "value": "思考…" }
+      },
+      "usage": {
+        "prompt": { "field": "usage.input_tokens", "value": 2 },
+        "done": { "field": "usage.output_tokens", "value": 3 }
+      },
+      "finish": { "field": "stop_reason", "value": "stop" },
+      "fixed_field": { "value": "结构占位（不映射）" }
+    }
+  }
 }
 ```
+
+`request.body` 是"结构即配置"的树：容器为普通 JSON 对象 / 数组；叶子为字段引用 `{"field": "<Maheshvara 请求字段>", "mode": "json|string", "default"?, "omitIfEmpty"?}`（mode json 以原生 JSON 值插入，string 以字符串插入）或常量 `{"value": ...}`。可用字段目录由 `GET /api/admin/custom-protocols/schema` 提供（WebUI 下拉、AI harness 提示词与后端校验同源）。
+
+`response.body` 是返回体构造树（与请求体对称）：容器为普通 JSON 对象 / 数组，结构按上游示例响应搭建；叶子为映射标注 `{"field": "<Maheshvara 响应字段>", "value": <示例值>, "transform"?}` 或纯结构占位 `{"value": ...}`。注册时从树中提取字段映射（路径按树位置生成，特殊键名用 `['key']` 形式）。等效的行列表形态 `response.fields`（每行 `{"path", "field", "transform"?}`）继续支持，但与 `body` 二选一、不得重复声明同一字段。可用响应字段如 `text` / `usage` / `usage.input_tokens` / `stop_reason` / `metadata.<key>`；`usage.*` 默认按 int 处理。
+
+协议可用 `type` 字段声明任务类型：`llm`（默认，聊天 / 生成）、`reranker` 与 `embedding`（声明式预留：注册、渲染、映射照常可用，等待对应中转端点接入后生效）、以及 `x-` 前缀的自定义扩展（核心不解释其语义）。
+
+### AI harness
+
+AI 助手（`POST /api/admin/custom-protocols/assist`）在服务端闭环完成「生成 → 校验 → 自动修复 → 离线验证」：系统提示词由字段目录程序化生成；草稿经声明式校验 + 编译 + 注册校验，失败自动携带 issues 回炉重造（默认 2 轮）；有效草稿用样例请求离线渲染、用 `exampleResponse`（协议的 `response.sample`）离线跑响应映射，全程不发起真实上游请求。文档 / 截图 / PDF 作为原生多模态输入交给所选模型源处理，凭证不出服务端。设计器另提供渲染预览（凭证打码）与「真实测试」（向所选模型源实际发送一次请求并对照映射结果）。
+
+以下小节描述的模板 / 直接路径写法作为 legacy 配置形态继续兼容加载（含从旧版本 `config.json` 迁移的存量协议），新协议一律使用字段级映射模型。
 
 ### 9.1 Request 模板
 

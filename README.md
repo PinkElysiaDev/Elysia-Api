@@ -241,31 +241,37 @@ The Vite dev server proxies to `http://127.0.0.1:8765` by default.
 
 ### Maheshvara and Custom Protocols
 
-Cross-protocol conversion uniformly passes through the Maheshvara core request / response model: OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, and Gemini GenerateContent are all first parsed into Maheshvara and then rendered for the upstream protocol. A model source's `platform` can be `custom:<protocolID>` (the WebUI lets you select and enter the ID directly), with safe JSON body templates declared in `customProtocols` in the bootstrap `config.json`. Custom protocol sources use a manually maintained model list and do not perform automatic model discovery. For example:
+Cross-protocol conversion uniformly passes through the Maheshvara core request / response model: OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, and Gemini GenerateContent are all first parsed into Maheshvara and then rendered for the upstream protocol. A model source's `platform` can be `custom:<protocolID>` (the WebUI lets you select and enter the ID directly). Protocols are built visually in the WebUI Protocol Designer page with field-level mappings — every field in the request/response body declares which Maheshvara field it corresponds to; an AI assistant reads your API docs to generate the config with offline verification, and saves take effect instantly. Custom protocol sources use a manually maintained model list and do not perform automatic model discovery. Protocol config example:
 
 ```json
 {
-  "customProtocols": [
-    {
-      "id": "vendor-json",
-      "request": {
-        "method": "POST",
-        "path": "/v2/generate/{{maheshvara.model}}",
-        "headers": {"X-Model": "{{maheshvara.model}}"},
-        "bodyTemplate": "{\"model\":{{maheshvara.model | json}},\"messages\":{{maheshvara.messages}},\"temperature\":{{maheshvara.temperature | default:0.2}}}",
-        "omitIfEmpty": ["temperature"]
-      },
-      "response": {
-        "textPath": "answer.text",
-        "usagePath": "usage",
-        "finishReasonPath": "finish"
+  "id": "vendor-json",
+  "type": "llm",
+  "request": {
+    "method": "POST",
+    "path": "/v2/generate",
+    "auth": {"mode": "header", "header": "x-api-key"},
+    "body": {
+      "model": {"field": "model", "mode": "string"},
+      "input": {"field": "messages"},
+      "params": {
+        "temperature": {"field": "temperature", "default": 0.7, "omitIfEmpty": true},
+        "api_version": {"value": "2026-01-01"}
       }
     }
-  ]
+  },
+  "response": {
+    "fields": [
+      {"path": "answer.text", "field": "text"},
+      {"path": "finish", "field": "stop_reason"},
+      {"path": "usage.prompt", "field": "usage.input_tokens"},
+      {"path": "usage.completion", "field": "usage.output_tokens"}
+    ]
+  }
 }
 ```
 
-Templates can read only `maheshvara.*` (and are also compatible with `request.*`), and support string interpolation, native JSON values, `json`, `default:`, and `omitIfEmpty`; they do not execute arbitrary code. Common fields include `model`, `instructions`, `messages`, `tools`, `tool_choice`, generation parameters, `reasoning`, `metadata`, `stream`, and `raw_extra`. Both non-streaming responses and SSE / NDJSON streams can be mapped back to Maheshvara and rendered as any of the four protocols requested by the client.
+Both the request and response body use field-level mappings: every leaf declares which Maheshvara field it corresponds to (`{"field": ..., "mode": "json|string", "default"?, "omitIfEmpty"?}`) or is a constant (`{"value": ...}`); no arbitrary code is executed. The field catalog is served by the schema endpoint and shared by the UI dropdowns, AI generation, and backend validation. Both non-streaming responses and SSE / NDJSON streams can be mapped back to Maheshvara and rendered as any of the four protocols requested by the client.
 
 See [`docs/maheshvara-protocol.md`](docs/maheshvara-protocol.md) for the complete field model, four-protocol mapping matrix, reasoning safety conventions, Gemini Part invariants, and custom protocol configuration details.
 

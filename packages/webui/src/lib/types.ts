@@ -420,3 +420,211 @@ export interface UsageQueryParams {
   modelNames?: string[]
   sourceIds?: string[]
 }
+
+// ---- 协议设计器：字段级双向映射模型（backend/relay/custom_protocol_mapping.go）----
+
+/** 协议任务类型：llm 为默认；reranker/embedding 为声明式预留；x- 前缀自定义扩展。 */
+export type CustomProtocolType = 'llm' | 'reranker' | 'embedding' | `x-${string}` | ''
+
+export interface CustomProtocolAuth {
+  /** bearer（默认）/ none / header / query */
+  mode?: string
+  header?: string
+  prefix?: string
+  query?: string
+}
+
+/** 请求体字段引用叶子：声明该字段对应 Maheshvara 的哪个请求字段。 */
+export interface CustomProtocolBodyFieldRef {
+  field: string
+  /** json（默认）：原生 JSON 值插入；string：字符串插入 */
+  mode?: 'string' | 'json'
+  /** Maheshvara 侧缺失或为空时的兜底值 */
+  default?: unknown
+  /** 渲染后为空则删除该键 */
+  omitIfEmpty?: boolean
+}
+
+/** 常量叶子：上游必填但 Maheshvara 无对应的固定值。 */
+export interface CustomProtocolBodyConstant {
+  value: unknown
+}
+
+export type CustomProtocolBodyLeaf = CustomProtocolBodyFieldRef | CustomProtocolBodyConstant
+
+/**
+ * 请求体构造树（结构即配置）：容器为普通 JSON 对象/数组；叶子为字段引用或
+ * 常量。注册时由后端编译为渲染模板。
+ */
+export type CustomProtocolBodyTree =
+  | CustomProtocolBodyLeaf
+  | { [key: string]: CustomProtocolBodyTree }
+  | CustomProtocolBodyTree[]
+
+/** 响应字段映射行：上游响应路径 → Maheshvara 响应字段。 */
+export interface CustomProtocolResponseFieldMapping {
+  /** 上游响应路径（点路径，支持数组下标，如 choices[0].delta.content） */
+  path: string
+  /** Maheshvara 响应字段（见 schema.responseFields，如 text / usage.input_tokens） */
+  field: string
+  transform?: string
+}
+
+export interface CustomProtocolStreamMapping {
+  payloadPath?: string
+  /** delta（默认，事件即增量）/ cumulative（事件为累计全文） */
+  mode?: string
+  doneValues?: string[]
+  events?: string[]
+  response?: CustomProtocolResponse
+}
+
+/** 返回体构造树叶子的映射标注 */
+export interface CustomProtocolResponseBodyLeaf {
+  /** Maheshvara 响应字段（见 schema.responseFields） */
+  field?: string
+  /** 示例值（便于理解结构，不参与运行时） */
+  value?: unknown
+  transform?: string
+}
+
+/**
+ * 返回体构造树（结构即配置）：容器为普通 JSON 对象/数组；叶子为映射标注
+ * （含 field）或纯结构占位（裸标量 / {value: ...}）。
+ */
+export type CustomProtocolResponseBodyTree =
+  | CustomProtocolResponseBodyLeaf
+  | { [key: string]: CustomProtocolResponseBodyTree }
+  | CustomProtocolResponseBodyTree[]
+
+export interface CustomProtocolResponse {
+  /** 返回体构造树（新模型，与 fields 二选一） */
+  body?: CustomProtocolResponseBodyTree
+  /** 字段级映射行表（新模型，UI 与 AI 产出；与 body 二选一） */
+  fields?: CustomProtocolResponseFieldMapping[]
+  /** 上游示例响应原文（供点选与离线验证） */
+  sample?: unknown
+  stream?: CustomProtocolStreamMapping
+  /* ---- legacy 直接路径（后端兼容读取，UI 不再产出） ---- */
+  idPath?: string
+  modelPath?: string
+  statusPath?: string
+  textPath?: string
+  reasoningPath?: string
+  toolCallsPath?: string
+  usagePath?: string
+  finishReasonPath?: string
+  errorPath?: string
+  fieldMappings?: { target: string; source?: string; value?: unknown; default?: unknown; transform?: string; omitIfEmpty?: boolean }[]
+}
+
+export interface CustomProtocolRequest {
+  method?: string
+  path?: string
+  headers?: Record<string, string>
+  query?: Record<string, string>
+  contentType?: string
+  auth?: CustomProtocolAuth
+  /** 字段级构造树（新模型；与 legacy bodyTemplate 二选一） */
+  body?: CustomProtocolBodyTree
+  /* ---- legacy ---- */
+  bodyTemplate?: string
+  submitBody?: string
+  omitIfEmpty?: string[]
+}
+
+export interface CustomProtocolConfig {
+  id: string
+  name?: string
+  version?: string
+  type?: CustomProtocolType
+  request: CustomProtocolRequest
+  response?: CustomProtocolResponse
+  metadata?: Record<string, unknown>
+}
+
+/** 字段目录条目（GET /api/admin/custom-protocols/schema）。 */
+export interface MaheshvaraFieldSpec {
+  name: string
+  label: string
+  /** string（文本）/ native（对象/数组）/ scalar（数字/布尔） */
+  shape: string
+  group: string
+}
+
+export interface CustomProtocolSchema {
+  requestFields: MaheshvaraFieldSpec[]
+  responseFields: MaheshvaraFieldSpec[]
+  transforms: string[]
+  modes: string[]
+  types: { value: string; label: string; hint: string }[]
+}
+
+export interface CustomProtocolSummary {
+  id: string
+  name?: string
+  version?: string
+  type: CustomProtocolType
+  valid: boolean
+  error?: string
+  config: CustomProtocolConfig
+  updatedAt?: string
+}
+
+export interface CustomProtocolPreviewResult {
+  method: string
+  path: string
+  query?: Record<string, string>
+  headers: Record<string, string>
+  contentType: string
+  body?: string
+  authPreview: string
+}
+
+export interface CustomProtocolStreamEventSample {
+  event: string
+  data: string
+}
+
+export interface CustomProtocolTestResult {
+  statusCode: number
+  durationMs: number
+  targetModel: string
+  stream: boolean
+  rawBody?: string
+  maheshvara?: unknown
+  mappingError?: string
+  streamError?: string
+  events?: CustomProtocolStreamEventSample[]
+  decoded?: unknown[]
+}
+
+export interface CustomProtocolAssistDocument {
+  name: string
+  mime?: string
+  /** 纯文本输入（粘贴内容/文本文件） */
+  text?: string
+  /** data: URL（图片与 PDF 等二进制文档，交给模型原生多模态能力） */
+  dataUrl?: string
+}
+
+/** 离线验证结果：样例请求渲染 + 示例响应映射，不发起真实请求。 */
+export interface CustomProtocolAssistVerification {
+  request?: CustomProtocolPreviewResult
+  requestError?: string
+  mappedResponse?: unknown
+  mappingError?: string
+}
+
+export interface CustomProtocolAssistResult {
+  reply: string
+  model: string
+  durationMs: number
+  /** 生成轮次（含修复轮） */
+  rounds?: number
+  config?: CustomProtocolConfig
+  valid?: boolean
+  issues?: string
+  verification?: CustomProtocolAssistVerification
+  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }
+}

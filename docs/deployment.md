@@ -192,12 +192,15 @@ Both endpoints are restricted to loopback callers.
 
 Legacy configs containing `tokens` and `modelGroups` are imported into SQLite on startup as compatibility data. New installations should only keep bootstrap fields in `config.json`.
 
-The optional `customProtocols` bootstrap field registers Maheshvara-based
-provider protocols. Set a model source's `platform` to `custom:<protocol-id>`
-to use one. Custom request bodies are constrained JSON templates; they can map
-`maheshvara.model`, `maheshvara.messages`, `maheshvara.tools`, generation
-parameters, metadata, and `raw_extra`, while response paths map text, tool
-calls, usage, finish reason, and errors back into the core response model.
+Custom Maheshvara protocols are stored in SQLite and managed from the WebUI
+Protocol Designer page (`/ui/#/protocols`) or the admin API; set a model
+source's `platform` to `custom:<protocol-id>` to use one. Request and response
+bodies are field-level mappings: every field declares which Maheshvara field
+it corresponds to (`model`, `messages`, `tools`, generation parameters,
+`raw_extra` on the request side; text, tool calls, usage, finish reason,
+errors on the response side). The deprecated `customProtocols` bootstrap field
+in `config.json` is imported into the database once on startup and removed
+from the file.
 
 See `docs/maheshvara-protocol.md` for the complete Maheshvara v1 field model,
 four-protocol mapping matrix, streaming contract, security rules, and a full

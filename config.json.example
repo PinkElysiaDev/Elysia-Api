@@ -6,7 +6,6 @@
   "logLevel": "info",
   "httpTimeout": 120,
   "secretKeyPath": ".master-key",
-  "customProtocols": [],
   "usageLog": {
     "persistEnabled": true,
     "retentionDays": 0,

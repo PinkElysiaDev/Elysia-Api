@@ -178,6 +178,8 @@ func New(cfg *config.Config) *Server {
 		if err := server.importLegacyConfig(); err != nil {
 			log.Printf("failed to import legacy config into sqlite: %v", err)
 		}
+		// config.json 的 customProtocols 键已废弃：一次性导入 SQLite 后移除。
+		server.migrateLegacyCustomProtocols()
 	}
 	server.syncRelaySSRFPolicy()
 	server.syncCustomProtocols()
@@ -419,8 +421,8 @@ func (s *Server) reloadConfig(c *gin.Context) {
 	// 配置热更新后失效路由缓存，下次请求按新配置重建（借鉴 SyncOptions）。
 	s.invalidateRouteCache()
 	// SSRF 放行策略可能随配置变更，同步到 relay 包级开关（即时生效）。
+	// 自定义协议存 SQLite，不随 config.json 热重载：管理端点写入时即时同步。
 	s.syncRelaySSRFPolicy()
-	s.syncCustomProtocols()
 	if serverChanged {
 		log.Printf(
 			"Config hot-reloaded successfully, but server listen address change requires restart (old=%s:%d new=%s:%d)",

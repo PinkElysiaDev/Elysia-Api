@@ -24,7 +24,14 @@ import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
 import { revalidate } from '@/lib/hooks'
 import { cn } from '@/lib/utils'
-import type { ManualModel, ModelSource, Platform, SourceAPIKey, SourceKeyStrategy } from '@/lib/types'
+import type {
+  CustomProtocolSummary,
+  ManualModel,
+  ModelSource,
+  Platform,
+  SourceAPIKey,
+  SourceKeyStrategy,
+} from '@/lib/types'
 
 // 按「线路 API 协议」命名，取代旧的厂商混称（openai/openai-compatible/claude/gemini）。
 // 选择 Responses API 表示上游端点类型；默认仍经过 Maheshvara，显式 relay.passthrough
@@ -34,7 +41,7 @@ const PLATFORMS: { value: string; label: string; hint: string }[] = [
   { value: 'chat_completions', label: 'Chat Completions API', hint: 'OpenAI 兼容协议，最通用' },
   { value: 'anthropic', label: 'Anthropic API', hint: 'Claude /v1/messages' },
   { value: 'gemini', label: 'Gemini API', hint: 'Gemini /v1beta generateContent' },
-  { value: 'custom', label: '自定义 Maheshvara 协议', hint: '使用 config.json 中注册的 customProtocols 协议 ID' },
+  { value: 'custom', label: '自定义 Maheshvara 协议', hint: '使用协议设计器注册的自定义协议' },
 ]
 
 // 把历史 platform 值归一化到新的四个 apiFormat，使旧源在新下拉里正确回显
@@ -111,6 +118,8 @@ export function SourceFormDialog({
   const [expandedKey, setExpandedKey] = useState<number | null>(null)
   // b 方案：手动模式下每个手动模型选中的 key 下标集合（key 数 >1 时）。
   const [manualKeySelection, setManualKeySelection] = useState<Record<number, number[]>>({})
+  // 已注册的自定义协议（协议下拉选择用）；加载失败静默降级为纯手填。
+  const [registeredProtocols, setRegisteredProtocols] = useState<CustomProtocolSummary[]>([])
 
   const keyCount = (form.apiKeys ?? []).filter((k) => k.value.trim()).length
 
@@ -335,6 +344,23 @@ export function SourceFormDialog({
   const selectedPlatform = custom ? 'custom' : form.platform
   const selectedStrategy = form.keyStrategy ?? 'round-robin'
 
+  // 打开弹窗且选中自定义平台时拉取已注册协议列表供下拉选择。
+  useEffect(() => {
+    if (!open || !custom) return
+    let cancelled = false
+    api
+      .listCustomProtocols()
+      .then((items) => {
+        if (!cancelled) setRegisteredProtocols(items)
+      })
+      .catch(() => {
+        /* 静默：下拉为空，仍可手动填写协议 ID */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, custom])
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -384,11 +410,32 @@ export function SourceFormDialog({
               {custom && (
                 <div className="space-y-2 pt-1">
                   <Label required>自定义协议 ID</Label>
-                  <Input
-                    value={customProtocolID(form.platform)}
-                    placeholder="vendor-json"
-                    onChange={(event) => update('platform', `custom:${event.target.value}` as Platform)}
-                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Select
+                      value={registeredProtocols.some((p) => p.id === customProtocolID(form.platform)) ? customProtocolID(form.platform) : ''}
+                      onValueChange={(value) => value && update('platform', `custom:${value}` as Platform)}
+                    >
+                      <SelectTrigger className="w-64" aria-label="选择已注册协议">
+                        <SelectValue placeholder={registeredProtocols.length ? '选择已注册协议' : '尚无已注册协议'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {registeredProtocols.map((protocol) => (
+                          <SelectItem key={protocol.id} value={protocol.id}>
+                            {protocol.id}
+                            {protocol.name ? ` · ${protocol.name}` : ''}
+                            {protocol.valid ? '' : '（校验失败）'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-muted-foreground">或手动填写：</span>
+                    <Input
+                      className="w-44"
+                      value={customProtocolID(form.platform)}
+                      placeholder="vendor-json"
+                      onChange={(event) => update('platform', `custom:${event.target.value}` as Platform)}
+                    />
+                  </div>
                 </div>
               )}
             </div>
