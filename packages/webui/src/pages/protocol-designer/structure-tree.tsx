@@ -1,5 +1,5 @@
 import { Plus, Trash2 } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -25,11 +25,47 @@ export interface StructureNodeSpec {
   convert: (kind: string) => unknown
   /** 渲染叶子内容（返回 null 表示该叶子无需额外控件） */
   renderLeaf: (node: any, kind: string, setLeaf: (next: unknown) => void) => ReactNode
+  /** 叶子行的次级控件（渲染在行下方，缩进分组；返回 null 表示没有） */
+  renderLeafDetail?: (node: any, kind: string, setLeaf: (next: unknown) => void) => ReactNode
   /** 新增字段/元素的默认叶子 */
   defaultLeaf: () => unknown
-  /** 空对象/数组的展示文案 */
   objectLabel: string
   arrayLabel: string
+}
+
+/**
+ * 键名输入：本地缓冲 + blur/Enter 提交。键名是列表项身份的一部分，若逐
+ * 字符提交会改变条目 key 导致整行卸载重建、输入框失焦。
+ */
+function KeyInput({
+  value,
+  onCommit,
+}: {
+  value: string
+  onCommit: (next: string) => void
+}) {
+  const [buffer, setBuffer] = useState(value)
+  useEffect(() => {
+    setBuffer(value)
+  }, [value])
+  return (
+    <Input
+      className="h-7 w-36 shrink-0 font-mono text-xs"
+      value={buffer}
+      placeholder="字段名"
+      onChange={(event) => setBuffer(event.target.value)}
+      onBlur={() => {
+        if (buffer !== value) onCommit(buffer)
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          if (buffer !== value) onCommit(buffer)
+          event.currentTarget.blur()
+        }
+      }}
+    />
+  )
 }
 
 export function StructureNode({
@@ -50,21 +86,17 @@ export function StructureNode({
   onRemove?: () => void
 }) {
   const kind = spec.kindOf(value)
-  const isLeaf = !Array.isArray(value) && (kind !== 'object' || typeof value !== 'object' || value === null)
   const isObject = kind === 'object'
   const isArray = kind === 'array'
+  const leafDetail =
+    !isObject && !isArray && spec.renderLeafDetail
+      ? spec.renderLeafDetail(value as any, kind, (next) => onChange(next))
+      : null
 
   return (
     <div className="space-y-1.5" style={{ marginLeft: depth > 0 ? 18 : 0 }}>
       <div className="flex flex-wrap items-center gap-1.5">
-        {label !== undefined && onLabelChange && (
-          <Input
-            className="h-7 w-36 shrink-0 font-mono text-xs"
-            value={label}
-            placeholder="字段名"
-            onChange={(event) => onLabelChange(event.target.value)}
-          />
-        )}
+        {label !== undefined && onLabelChange && <KeyInput value={label} onCommit={onLabelChange} />}
         {label !== undefined && !onLabelChange && (
           <span className="w-9 shrink-0 font-mono text-xs text-muted-foreground">{label}</span>
         )}
@@ -82,18 +114,23 @@ export function StructureNode({
             <SelectItem value="array" className="text-xs">数组</SelectItem>
           </SelectContent>
         </Select>
-        {isLeaf && spec.renderLeaf(value as any, kind, (next) => onChange(next))}
+        {!isObject && !isArray && spec.renderLeaf(value as any, kind, (next) => onChange(next))}
         {onRemove && (
           <Button type="button" variant="ghost" size="iconSm" aria-label="删除节点" onClick={onRemove} className="shrink-0">
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         )}
       </div>
+      {leafDetail !== null && leafDetail !== undefined && (
+        <div className="ml-[268px] flex flex-wrap items-center gap-2 border-l-2 border-border/60 pl-3">
+          {leafDetail}
+        </div>
+      )}
       {isObject && (
         <div className="space-y-1.5 rounded-md border border-border/60 bg-background/40 p-2">
           {Object.entries(value as Record<string, unknown>).map(([key, child], index) => (
             <StructureNode
-              key={`${key}:${index}`}
+              key={index}
               label={key}
               onLabelChange={(nextKey) => {
                 if (nextKey === key || nextKey in (value as Record<string, unknown>)) return

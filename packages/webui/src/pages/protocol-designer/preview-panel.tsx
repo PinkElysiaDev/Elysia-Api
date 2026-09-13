@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { FlaskConical, Play, Zap } from 'lucide-react'
+import { FlaskConical, Play } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
 import type {
   CustomProtocolConfig,
@@ -138,7 +138,7 @@ export function PreviewTestPanel({
 
   return (
     <div className="space-y-8">
-      <SettingSection icon={Zap} title="样例请求" description="预览与测试共用的 Maheshvara 请求样例">
+      <SettingSection title="样例请求" description="预览与测试共用的 Maheshvara 请求样例">
         <Textarea
           className="min-h-[140px] font-mono text-xs"
           spellCheck={false}
@@ -149,7 +149,6 @@ export function PreviewTestPanel({
       </SettingSection>
 
       <SettingSection
-        icon={Zap}
         title="渲染预览"
         action={
           <Button type="button" variant="outline" size="sm" disabled={previewLoading} onClick={() => void runPreview()}>
@@ -180,7 +179,7 @@ export function PreviewTestPanel({
         )}
       </SettingSection>
 
-      <SettingSection icon={FlaskConical} title="真实测试" description="向所选模型源实际发送一次请求（产生真实用量）">
+      <SettingSection title="真实测试" description="向所选模型源实际发送一次请求（产生真实用量）">
         <SettingRow label="模型源">
           <Select
             value={testSourceId}

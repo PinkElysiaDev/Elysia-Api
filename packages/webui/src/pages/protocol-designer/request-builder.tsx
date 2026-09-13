@@ -1,4 +1,4 @@
-import { KeyRound, Plus, Send, Trash2 } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SettingRow, SettingSection } from '@/components/ui/setting-card'
@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { CustomProtocolRequest, MaheshvaraFieldSpec } from '@/lib/types'
-import { BodyFieldEditor } from './body-field-editor'
+import { RequestBodyTreeEditor } from './body-tree-editor'
 import { AUTH_MODES } from './schema'
 
 const METHODS = ['POST', 'GET', 'PUT', 'PATCH', 'DELETE']
@@ -85,7 +85,15 @@ export function RequestBuilder({
   const authMode = auth.mode || 'bearer'
   return (
     <div className="space-y-8">
-      <SettingSection icon={Send} title="HTTP 请求">
+
+      <SettingSection title="请求体" description="从零构造发往上游的 JSON，每个字段声明对应 Maheshvara 的哪个字段">
+        <RequestBodyTreeEditor
+          value={request.body}
+          onChange={(body) => onChange({ ...request, body })}
+          fields={requestFields}
+        />
+      </SettingSection>
+      <SettingSection title="HTTP 请求">
         <SettingRow label="Method" description="默认 POST；GET/DELETE 可无请求体">
           <Select value={request.method || 'POST'} onValueChange={(value) => onChange({ ...request, method: value })}>
             <SelectTrigger className="w-28" aria-label="HTTP 方法">
@@ -136,7 +144,7 @@ export function RequestBuilder({
         </SettingRow>
       </SettingSection>
 
-      <SettingSection icon={KeyRound} title="认证（Auth）">
+      <SettingSection title="认证（Auth）">
         <SettingRow label="模式">
           <Select
             value={authMode}
@@ -187,13 +195,6 @@ export function RequestBuilder({
         )}
       </SettingSection>
 
-      <SettingSection icon={KeyRound} title="请求体" description="从零构造发往上游的 JSON，每个字段声明对应 Maheshvara 的哪个字段">
-        <BodyFieldEditor
-          value={request.body}
-          onChange={(body) => onChange({ ...request, body })}
-          fields={requestFields}
-        />
-      </SettingSection>
     </div>
   )
 }

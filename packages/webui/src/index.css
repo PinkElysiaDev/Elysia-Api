@@ -281,6 +281,55 @@ body::before {
 }
 
 /*
+ * 弹窗纯透明度开关动画：tailwindcss-animate 的 enter/exit keyframes 自带
+ * transform from 帧会覆盖 -translate-x-1/2 居中定位，表现为从右下角飞入。
+ */
+@keyframes dialog-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes dialog-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/*
+ * 立绘线条呼吸灯（登录页 .role-breathe）：mask 即线条，滤镜动画只令
+ * 线条本身呼吸变亮，不触碰整体尺寸与位置。日间模式起伏更大（更强的
+ * 明暗差与辉光），夜间模式维持原有幅度；两侧同为 4s 略慢节奏。
+ */
+@keyframes role-line-breathe {
+  0%,
+  100% {
+    filter: none;
+    opacity: 0.6;
+  }
+  50% {
+    filter: brightness(1.4) drop-shadow(0 0 16px hsl(var(--primary) / 0.5));
+    opacity: 1;
+  }
+}
+@keyframes role-line-breathe-strong {
+  0%,
+  100% {
+    filter: none;
+    opacity: 0.45;
+  }
+  50% {
+    filter: brightness(1.75) drop-shadow(0 0 20px hsl(var(--primary) / 0.65));
+    opacity: 1;
+  }
+}
+.role-breathe .role-fig {
+  animation: role-line-breathe 4s ease-in-out infinite;
+}
+html:not(.dark) .role-breathe .role-fig {
+  animation-name: role-line-breathe-strong;
+}
+
+/*
  * 主题切换的「光线转场」：
  * - 主路径：View Transitions 整页交叉淡化（lib/theme.tsx 的 startViewTransition），
  *   单一合成层，所有颜色作为一个整体一起变——时长 320ms，见下方伪元素规则；

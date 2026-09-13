@@ -39,8 +39,9 @@ export const DialogContent = forwardRef<
       className={cn(
         'fixed left-1/2 top-1/2 z-[75] grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 transform-gpu',
         'max-h-[90vh] overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-lg',
-        'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-        'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+        // 纯透明度开关：animate-in/zoom 的 transform 帧会覆盖居中 translate，
+        // 导致从角落飞入；自定义 keyframes 只动 opacity。
+        'data-[state=open]:animate-[dialog-fade-in_160ms_ease-out] data-[state=closed]:animate-[dialog-fade-out_120ms_ease-in]',
         className,
       )}
       {...props}

@@ -32,7 +32,12 @@ function newProtocolDraft(): CustomProtocolConfig {
       },
       auth: { mode: '' },
     },
-    response: { fields: [{ path: '', field: 'text' }] },
+    response: {
+      body: {
+        output: { text: { field: 'text', value: '示例文本' } },
+        finish: { field: 'stop_reason', value: 'stop' },
+      },
+    },
   }
 }
 

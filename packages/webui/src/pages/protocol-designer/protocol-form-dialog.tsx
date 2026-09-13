@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { Braces, Waves } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -25,18 +24,16 @@ import { useToast } from '@/components/ui/use-toast'
 import { api, ApiError } from '@/lib/api'
 import { useModels, useSources } from '@/lib/hooks'
 import type { CustomProtocolConfig, CustomProtocolSchema } from '@/lib/types'
-import { MappingConfig } from './mapping-config'
 import { PreviewTestPanel } from './preview-panel'
 import { RequestBuilder } from './request-builder'
-import { ResponseBodyEditor } from './response-body-editor'
+import { ResponseBodyTreeEditor } from './body-tree-editor'
 
-type EditorTab = 'basic' | 'request' | 'response' | 'mapping' | 'test' | 'json'
+type EditorTab = 'basic' | 'request' | 'response' | 'test' | 'json'
 
 const TAB_OPTIONS: { value: EditorTab; label: string }[] = [
   { value: 'basic', label: '基本信息' },
-  { value: 'request', label: '请求体' },
-  { value: 'response', label: '返回体' },
-  { value: 'mapping', label: '映射配置' },
+  { value: 'request', label: '请求' },
+  { value: 'response', label: '响应' },
   { value: 'test', label: '预览与测试' },
   { value: 'json', label: 'JSON' },
 ]
@@ -117,7 +114,7 @@ export function ProtocolFormDialog({
       <DialogContent className="flex h-[84vh] w-full max-w-4xl flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>{isNew ? '新建协议' : `编辑协议 ${draft.id}`}</DialogTitle>
-          <DialogDescription>构造请求体与返回体，并在「映射配置」中集中声明与大自在天字段的对应关系。</DialogDescription>
+          <DialogDescription>构造请求体与返回体，映射位就地声明与大自在天字段的对应关系。</DialogDescription>
         </DialogHeader>
 
         <div className="flex shrink-0 items-center justify-between">
@@ -196,15 +193,15 @@ export function ProtocolFormDialog({
 
           {tab === 'response' && (
             <div className="space-y-8">
-              <SettingSection title="返回体构造" description="按上游响应示例搭建结构；映射位在「映射配置」中选择对应的大自在天字段">
-                <ResponseBodyEditor
+              <SettingSection title="返回体构造" description="按上游响应示例搭建结构；映射位就地选择对应的大自在天字段">
+                <ResponseBodyTreeEditor
                   response={draft.response ?? {}}
                   onChange={(response) => setDraft({ ...draft, response })}
                   fields={schema?.responseFields ?? []}
+                  transforms={schema?.transforms ?? []}
                 />
               </SettingSection>
               <SettingSection
-                icon={Waves}
                 title="流式映射（可选）"
                 action={
                   <Switch
@@ -305,10 +302,6 @@ export function ProtocolFormDialog({
             </div>
           )}
 
-          {tab === 'mapping' && (
-            <MappingConfig draft={draft} onChange={setDraft} schema={schema} />
-          )}
-
           {tab === 'test' && (
             <PreviewTestPanel
               protocol={draft}
@@ -319,7 +312,7 @@ export function ProtocolFormDialog({
           )}
 
           {tab === 'json' && (
-            <SettingSection icon={Braces} title="JSON 源码" description="协议完整 JSON，可直接粘贴外部编辑后的配置">
+            <SettingSection title="JSON 源码" description="协议完整 JSON，可直接粘贴外部编辑后的配置">
               <Textarea
                 className="min-h-[320px] font-mono text-xs"
                 spellCheck={false}

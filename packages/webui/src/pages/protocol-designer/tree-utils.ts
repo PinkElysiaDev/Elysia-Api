@@ -1,6 +1,5 @@
 import type {
   CustomProtocolBodyFieldRef,
-  CustomProtocolBodyTree,
   CustomProtocolResponse,
   CustomProtocolResponseFieldMapping,
   CustomProtocolResponseBodyLeaf,
@@ -8,8 +7,8 @@ import type {
 } from '@/lib/types'
 
 /**
- * 请求体 / 返回体构造树的共享工具：叶子判别、映射位收集（供映射配置卡）、
- * 从 fields + 示例合成返回体构造树（供 AI 草稿一键转换）。
+ * 请求体 / 返回体构造树的共享工具：叶子判别、从 fields + 示例合成
+ * 返回体构造树（供行表一键转换 / AI 草稿转换）。
  */
 
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -30,92 +29,6 @@ export function isResponseMappingLeaf(value: unknown): value is CustomProtocolRe
 
 export function isResponsePlaceholder(value: unknown): value is { value: unknown } {
   return isPlainObject(value) && 'value' in value && Object.keys(value).length === 1
-}
-
-export interface RequestMappingSlot {
-  /** 树内展示路径（如 params.temperature / items[0]） */
-  path: string
-  leaf: CustomProtocolBodyFieldRef
-  setLeaf: (next: CustomProtocolBodyFieldRef) => void
-}
-
-/** 收集请求体构造树中的全部映射位（含就地更新函数）。 */
-export function collectRequestMappings(
-  tree: CustomProtocolBodyTree | undefined,
-  onChange: (next: CustomProtocolBodyTree) => void,
-): RequestMappingSlot[] {
-  const slots: RequestMappingSlot[] = []
-  const root = tree === undefined || tree === null ? {} : tree
-  const walk = (node: unknown, path: string, replace: (next: unknown) => void) => {
-    if (isRequestFieldRef(node)) {
-      slots.push({
-        path: path || '（根）',
-        leaf: node,
-        setLeaf: (next) => replace(next),
-      })
-      return
-    }
-    if (Array.isArray(node)) {
-      node.forEach((item, index) => walk(item, `${path}[${index}]`, (next) => {
-        const items = node.slice()
-        items[index] = next as CustomProtocolBodyTree
-        replace(items)
-      }))
-      return
-    }
-    if (isPlainObject(node)) {
-      Object.entries(node).forEach(([key, child]) =>
-        walk(child, path ? `${path}.${key}` : key, (next) => {
-          replace({ ...node, [key]: next as CustomProtocolBodyTree })
-        }),
-      )
-    }
-  }
-  walk(root, '', (next) => onChange(next as CustomProtocolBodyTree))
-  return slots
-}
-
-export interface ResponseMappingSlot {
-  path: string
-  leaf: CustomProtocolResponseBodyLeaf
-  setLeaf: (next: CustomProtocolResponseBodyLeaf) => void
-}
-
-/** 收集返回体构造树中的全部映射位（含就地更新函数）。 */
-export function collectResponseMappings(
-  tree: CustomProtocolResponseBodyTree | undefined,
-  onChange: (next: CustomProtocolResponseBodyTree) => void,
-): ResponseMappingSlot[] {
-  const slots: ResponseMappingSlot[] = []
-  const walk = (node: unknown, path: string, replace: (next: unknown) => void) => {
-    if (isResponseMappingLeaf(node)) {
-      if ((node.field ?? '').trim() !== '') {
-        slots.push({
-          path: path || '$',
-          leaf: node,
-          setLeaf: (next) => replace(next),
-        })
-      }
-      return
-    }
-    if (Array.isArray(node)) {
-      node.forEach((item, index) => walk(item, `${path}[${index}]`, (next) => {
-        const items = node.slice()
-        items[index] = next as CustomProtocolResponseBodyTree
-        replace(items)
-      }))
-      return
-    }
-    if (isPlainObject(node)) {
-      Object.entries(node).forEach(([key, child]) =>
-        walk(child, path ? `${path}.${key}` : key, (next) => {
-          replace({ ...node, [key]: next as CustomProtocolResponseBodyTree })
-        }),
-      )
-    }
-  }
-  walk(tree, '', (next) => onChange(next as CustomProtocolResponseBodyTree))
-  return slots
 }
 
 function pathSegments(path: string): string[] {
