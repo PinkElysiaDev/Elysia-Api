@@ -100,9 +100,14 @@ chmod +x ./elysia-api-linux-amd64
 
 ### macOS
 
-从 Release 下载 `elysia-api-macos.dmg`，双击打开后将 `ElysiaApi` 拖入 `Applications` 快捷方式即完成安装，之后从启动台双击运行：
+从 Release 下载 `elysia-api-macos.dmg`，双击打开后将 `ElysiaApi` 拖入 `Applications` 快捷方式即完成安装，之后从启动台双击运行（macOS 12+，Intel / Apple Silicon）：
+
 - 首次启动自动生成配置与随机 `panelAccessToken`，数据统一保存在 `~/Library/Application Support/ElysiaApi/`（config.json、SQLite、`.master-key`、`elysia-api.log`）。
-- 支持应用内更新：有新版本时窗口左下角出现「立即更新」按钮，一键完成下载（DMG）、sha256 校验、提取与替换；也可通过菜单栏「检查更新…」手动触发。更新只替换内嵌后端，配置与数据不受影响。
+- 首次打开显示登录页；从菜单栏选择「复制面板访问令牌」后粘贴登录。手动登录后保留登录态和 Cookie，重开窗口或应用无需重复输入；主动退出登录后需重新登录。
+- 关闭窗口（⌘W）后服务继续运行；从菜单栏、Dock 或启动台重开时，已登录则进入总览，未登录则显示登录页，保留窗口位置和主题。外接屏断开后窗口会回到可见屏幕。
+- 菜单栏图标任何状态下都不带文字；菜单顶部是品牌信息部件（运行状态点、实际地址、版本与最近 24 小时请求脉冲曲线，与面板同款瑰梅红），操作保留启动/停止服务、复制 API 地址、复制面板访问令牌、查看日志与偏好设置。后端异常会自动重启，最多重试 3 次后提供手动重试。
+- 「偏好设置…」（⌘,）提供开机启动与通知开关。开机启动默认关闭，启用后登录时只驻留菜单栏；重要通知默认开启，首次需要发送时才申请系统权限。
+- 应用内更新提供下载进度、取消和失败重试；通过 sha256、DMG 完整性与签名检查后替换整个应用包，替换失败自动回滚。配置、数据库、主密钥和窗口偏好保留。
 - 默认端口 `8765`，若被占用会自动改用 `8799` 起的空闲端口（实际端口见菜单栏状态行与面板地址）。
 
 > CI 产物为 ad-hoc 签名。首次打开若被 Gatekeeper 拦截，执行
@@ -206,11 +211,15 @@ npm run build
 
 > DMG 只能在 macOS 上组装（依赖 swiftc / lipo / codesign / hdiutil），由 CI 在发布时产出：推 `v*` tag 自动发布，或在 Actions 页面手动触发（`workflow_dispatch`）后下载产物。两个 darwin 裸二进制只是 DMG 的组装输入，命令行场景仍可直接使用。
 
-在 macOS 上（需要 Xcode Command Line Tools）可从 `npm run build` 产出的 darwin 二进制单独组装 `ElysiaApi.app` 与 DMG：
+在 macOS 上（需要兼容的 **Universal** 版 Command Line Tools，例如 26.6；完整 Xcode 为可选）可从 `npm run build` 产出的 darwin 二进制单独组装 `ElysiaApi.app` 与 DMG：
 
 ```bash
+npm run build:macos-app -- --check-toolchain
+npm run test:macos-app
 npm run build:macos-app
 ```
+
+构建先验证 Swift 能否链接两种架构，通过后才替换旧产物，并校验可执行文件的双架构、应用签名和 DMG 内的应用及安装快捷方式。运行及更新已打包的 App 不需要 Command Line Tools。工具链排错、原生测试与手动验收范围见 [macOS 验证说明](docs/macos-testing.md)。
 
 开发 WebUI：
 

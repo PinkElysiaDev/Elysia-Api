@@ -3,7 +3,7 @@
 // Prerequisites:
 //   - macOS host (uses lipo / iconutil / codesign / hdiutil)
 //   - `npm run build` has produced dist/standalone/elysia-api-darwin-{arm64,amd64}
-//   - Xcode Command Line Tools (for swiftc)
+//   - Command Line Tools with Swift runtime libraries for both target architectures
 //
 // Output:
 //   dist/standalone/ElysiaApi.app      universal (arm64 + amd64)
@@ -13,8 +13,9 @@
 // (config / SQLite / master key / logs) lives in
 // ~/Library/Application Support/ElysiaApi and survives updates.
 
-import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, rmdirSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { execFileSync, spawnSync } from 'node:child_process'
 
@@ -37,12 +38,49 @@ function log(message) {
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { cwd: repoRoot, stdio: 'inherit', ...options })
   if (result.status !== 0) {
-    process.exit(result.status ?? 1)
+    throw result.error ?? new Error(`${command} failed (${result.status ?? result.signal})`)
   }
 }
 
 function capture(command, args) {
-  return execFileSync(command, args, { cwd: repoRoot, encoding: 'utf8' }).trim()
+  return execFileSync(command, args, { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+}
+
+function checkToolchain() {
+  log('Checking Swift toolchain for macOS 12 (arm64 + x86_64)')
+  console.log(`Compiler: ${capture('xcrun', ['--sdk', 'macosx', '--find', 'swiftc'])}`)
+  console.log(`SDK:      ${capture('xcrun', ['--sdk', 'macosx', '--show-sdk-path'])}`)
+  const probeDir = mkdtempSync(join(tmpdir(), 'elysia-toolchain-check-'))
+  try {
+    for (const arch of ['arm64', 'x86_64']) {
+      const result = spawnSync('xcrun', ['--sdk', 'macosx', 'swiftc', '-target', `${arch}-apple-macos12.0`, '-o', join(probeDir, arch), '-'], {
+        cwd: repoRoot,
+        input: 'import Cocoa\nprint("ElysiaApi toolchain check")\n',
+        encoding: 'utf8',
+      })
+      if (result.status !== 0) {
+        throw new Error([
+          `The selected Swift toolchain cannot link ${arch} for macOS 12.`,
+          result.error?.message ?? result.stderr?.trim() ?? 'Compiler did not finish.',
+          'Use a compatible Universal Command Line Tools package, or select an installed Xcode with DEVELOPER_DIR.',
+          'Missing x86_64 Swift compatibility libraries cannot be fixed by changing the SDK alone.',
+          'See docs/macos-testing.md. Existing app and DMG outputs have not been changed.',
+        ].join('\n'))
+      }
+    }
+  } finally {
+    rmSync(probeDir, { recursive: true, force: true })
+  }
+}
+
+function verifyApp(bundle) {
+  run('plutil', ['-lint', join(bundle, 'Contents', 'Info.plist')])
+  for (const name of ['ElysiaApi', 'elysia-api']) {
+    const executable = join(bundle, 'Contents', 'MacOS', name)
+    if (!(statSync(executable).mode & 0o111)) throw new Error(`Not executable: ${executable}`)
+    run('lipo', [executable, '-verify_arch', 'arm64', 'x86_64'])
+  }
+  run('codesign', ['--verify', '--deep', '--strict', '--verbose=2', bundle])
 }
 
 function resolveVersion() {
@@ -59,6 +97,15 @@ if (process.platform !== 'darwin') {
   console.error('The macOS app bundle can only be assembled on macOS (needs lipo/iconutil/codesign/ditto).')
   process.exit(1)
 }
+
+// A missing cross-architecture runtime must fail before removing any previous bundle.
+try {
+  checkToolchain()
+} catch (error) {
+  console.error(error.message)
+  process.exit(1)
+}
+if (process.argv.includes('--check-toolchain')) process.exit(0)
 
 for (const binary of [armBinary, amdBinary]) {
   if (!existsSync(binary) || !statSync(binary).isFile()) {
@@ -85,7 +132,7 @@ log('Generating AppIcon.icns (white background) from WebUI logo')
 const iconsetDir = join(releaseDir, 'AppIcon.iconset')
 const iconGen = join(releaseDir, 'icon-gen')
 rmSync(iconsetDir, { recursive: true, force: true })
-run('swiftc', ['-O', '-o', iconGen, join(sourceDir, 'icon-gen.swift')])
+run('xcrun', ['--sdk', 'macosx', 'swiftc', '-O', '-o', iconGen, join(sourceDir, 'icon-gen.swift')])
 run(iconGen, [logoSource, iconsetDir])
 rmSync(iconGen, { force: true })
 run('iconutil', ['-c', 'icns', iconsetDir, '-o', join(resourcesDir, 'AppIcon.icns')])
@@ -96,8 +143,9 @@ log('Compiling native wrapper (swiftc, universal)')
 // 目标系统版本与后端二进制对齐:Go 1.25 构建的 darwin 二进制最低要求 macOS 12
 const wrapperArm = join(releaseDir, 'wrapper-arm64')
 const wrapperAmd = join(releaseDir, 'wrapper-amd64')
-run('swiftc', ['-O', '-target', 'arm64-apple-macos12.0', '-o', wrapperArm, join(sourceDir, 'main.swift')])
-run('swiftc', ['-O', '-target', 'x86_64-apple-macos12.0', '-o', wrapperAmd, join(sourceDir, 'main.swift')])
+const wrapperSources = [join(sourceDir, 'MacSupport.swift'), join(sourceDir, 'main.swift')]
+run('xcrun', ['--sdk', 'macosx', 'swiftc', '-O', '-target', 'arm64-apple-macos12.0', '-o', wrapperArm, ...wrapperSources])
+run('xcrun', ['--sdk', 'macosx', 'swiftc', '-O', '-target', 'x86_64-apple-macos12.0', '-o', wrapperAmd, ...wrapperSources])
 run('lipo', ['-create', '-output', join(macosDir, 'ElysiaApi'), wrapperArm, wrapperAmd])
 rmSync(wrapperArm, { force: true })
 rmSync(wrapperAmd, { force: true })
@@ -118,7 +166,7 @@ chmodSync(join(macosDir, 'elysia-api'), 0o755)
 
 log('Ad-hoc code signing')
 run('codesign', ['--force', '--sign', '-', '--deep', appDir])
-run('codesign', ['--verify', '--deep', '--verbose=1', appDir])
+verifyApp(appDir)
 
 log('Creating DMG image (app + /Applications shortcut)')
 const stagingDir = join(releaseDir, 'dmg-staging')
@@ -129,6 +177,22 @@ cpSync(appDir, join(stagingDir, 'ElysiaApi.app'), { recursive: true })
 run('ln', ['-s', '/Applications', join(stagingDir, 'Applications')])
 run('hdiutil', ['create', '-volname', 'ElysiaApi', '-format', 'UDZO', '-srcfolder', stagingDir, '-o', dmgPath])
 rmSync(stagingDir, { recursive: true, force: true })
+log('Verifying DMG and mounted contents')
+run('hdiutil', ['verify', dmgPath])
+const mountDir = mkdtempSync(join(tmpdir(), 'elysia-dmg-check-'))
+let mounted = false
+try {
+  run('hdiutil', ['attach', '-readonly', '-nobrowse', '-mountpoint', mountDir, dmgPath])
+  mounted = true
+  if (readlinkSync(join(mountDir, 'Applications')) !== '/Applications') {
+    throw new Error('DMG is missing the /Applications installation shortcut')
+  }
+  verifyApp(join(mountDir, 'ElysiaApi.app'))
+} finally {
+  // Never recursively delete a mount point if detach fails.
+  if (mounted) run('hdiutil', ['detach', mountDir])
+  rmdirSync(mountDir)
+}
 const sha256 = capture('shasum', ['-a', '256', dmgPath]).split(' ')[0]
 
 console.log(`App bundle: ${appDir}`)

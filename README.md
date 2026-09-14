@@ -100,10 +100,14 @@ chmod +x ./elysia-api-linux-amd64
 
 ### macOS
 
-Download `elysia-api-macos.dmg` from Releases, double-click it, and drag `ElysiaApi` to the `Applications` shortcut to install. Then launch it from Launchpad:
+Download `elysia-api-macos.dmg` from Releases, double-click it, and drag `ElysiaApi` to the `Applications` shortcut to install. Then launch it from Launchpad (macOS 12+, Intel / Apple Silicon):
 
 - The first launch automatically generates the configuration and a random `panelAccessToken`; all data is stored in `~/Library/Application Support/ElysiaApi/` (`config.json`, SQLite, `.master-key`, and `elysia-api.log`).
-- In-app updates are supported: when a new version is available, an **Update now** button appears in the lower-left corner and completes the download (DMG), SHA-256 verification, extraction, and replacement in one step. You can also trigger it manually through **Check for Updates…** in the menu bar. Updates replace only the embedded backend; configuration and data are unaffected.
+- The first window shows the login page. Choose **Copy panel access token** (「复制面板访问令牌」) from the menu bar and paste it to sign in. Manual login saves the session and cookie across window and app restarts; signing out requires logging in again.
+- Closing the window (⌘W) keeps the service running. Reopening from the menu bar, Dock or Launchpad opens Overview when signed in, or the login page otherwise, with the saved frame and theme, including recovery after a display disconnects.
+- The menu bar icon stays icon-only in every state; its menu opens with a branded header (running state dot, actual address, version and a 24-hour request pulse curve in the panel's rose accent) and keeps start/stop service, copy API address, copy panel access token, view logs and preferences. Unexpected failures trigger up to three automatic restarts, followed by manual retry.
+- **Preferences…** (⌘,) controls launch at login and important notifications. Login startup is off by default and opens in the background when enabled. Notifications default to on; system permission is requested before the first notification.
+- In-app updates include download progress, cancellation and retry. SHA-256, DMG integrity and signature checks precede replacement of the entire app bundle, with rollback on replacement failure. Configuration, database, master key and window preferences survive updates.
 - The default port is `8765`. If it is occupied, the app automatically uses an available port starting at `8799` (the actual port appears in the menu bar status row and panel address).
 
 > CI artifacts use ad-hoc signing. If Gatekeeper blocks the first launch, run
@@ -207,11 +211,15 @@ Local build artifacts are placed in `dist/standalone/`. This directory is not co
 
 > DMG assembly is available only on macOS (requires swiftc / lipo / codesign / hdiutil) and is produced by CI during release: pushing a `v*` tag publishes automatically, or you can trigger `workflow_dispatch` manually from the Actions page and then download the artifacts. The two bare darwin binaries are only inputs to DMG assembly; command-line scenarios can still use them directly.
 
-On macOS (with Xcode Command Line Tools), you can assemble `ElysiaApi.app` and the DMG separately from the darwin binary produced by `npm run build`:
+On macOS (with compatible **Universal** Command Line Tools, such as 26.6; full Xcode is optional), you can assemble `ElysiaApi.app` and the DMG separately from the darwin binary produced by `npm run build`:
 
 ```bash
+npm run build:macos-app -- --check-toolchain
+npm run test:macos-app
 npm run build:macos-app
 ```
+
+The build checks Swift linking for both architectures before replacing existing outputs, then verifies both universal executables, the app signature and the mounted DMG contents. Running and updating the packaged app does not require Command Line Tools. See [macOS validation](docs/macos-testing.md) for toolchain troubleshooting, automated coverage and the manual acceptance matrix.
 
 Develop the WebUI:
 
