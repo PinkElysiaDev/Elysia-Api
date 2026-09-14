@@ -109,7 +109,6 @@ export function ProtocolDesignerPage() {
     <div className="relative z-[1] space-y-6">
       <PageHeader
         title="协议设计器"
-        description="构造任意 API 的请求体与返回体，逐字段声明与 Maheshvara（大自在天）的映射，注册后即可被模型源引用。"
         actions={
           <>
             <Button variant="ghost" onClick={() => setAssistantOpen(true)}>
