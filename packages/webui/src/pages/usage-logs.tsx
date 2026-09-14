@@ -83,8 +83,9 @@ export function UsageLogsPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   // total 收缩（筛选变严/日志被清理）后把超界页码收敛回末页。
   useEffect(() => {
+    if (!data || isLoading || error) return
     setPage((p) => Math.min(p, totalPages - 1))
-  }, [totalPages])
+  }, [data, isLoading, error, totalPages])
 
   const items = data?.items ?? []
 
@@ -249,7 +250,7 @@ export function UsageLogsPage() {
         >
           {() => (
             <div className="space-y-3">
-              <div className="overflow-x-auto">
+              <div className={`overflow-x-auto transition-opacity ${isLoading ? 'opacity-50' : ''}`} aria-busy={isLoading}>
                 <table className="w-full text-sm">
                   <TableHeader className="bg-secondary/20">
                     <TableRow className="border-b border-border/60 hover:bg-transparent">
@@ -320,7 +321,7 @@ export function UsageLogsPage() {
             </div>
 
             {/* 分页栏 */}
-            <PaginationBar total={total} page={page} totalPages={totalPages} onNavigate={setPage} />
+            <PaginationBar total={total} page={page} totalPages={totalPages} onNavigate={setPage} loading={isLoading} />
           </div>
         )}
       </AsyncState>

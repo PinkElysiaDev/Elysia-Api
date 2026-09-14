@@ -27,12 +27,16 @@ function applyThemeToRoot(theme: Theme) {
 
 function flushTheme(theme: Theme) {
   if (typeof window === 'undefined') return
+  const root = document.documentElement
+  if (root.classList.contains('dark') === (theme === 'dark') || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    applyThemeToRoot(theme)
+    return
+  }
   const doc = document as Document & { startViewTransition?: (update: () => void) => unknown }
   if (typeof doc.startViewTransition === 'function') {
     doc.startViewTransition(() => applyThemeToRoot(theme))
     return
   }
-  const root = document.documentElement
   root.classList.add('theme-transitioning')
   window.clearTimeout(themeTransitionTimer)
   themeTransitionTimer = window.setTimeout(() => root.classList.remove('theme-transitioning'), 480)
