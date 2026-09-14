@@ -2,8 +2,40 @@ import { Suspense, useEffect, useRef, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import { Sidebar } from './sidebar'
 import { useUsageLive } from '@/lib/hooks'
+import { ARRIVED_FROM_LOGIN_KEY } from '@/lib/auth'
+import { cn } from '@/lib/utils'
+
+/**
+ * 交接残影：登录页的线稿以 0.45 浓度原地交接的瞬间，控制台外壳正从透明
+ * 渐显，内部的水印会被带着一起「消失再出现」。这枚与控制台水印同位置、
+ * 同浓度的残影悬浮在最上层顶住这段渐显期（1s），再自行淡出卸载。
+ */
+function ArrivalEcho() {
+  const [gone, setGone] = useState(false)
+  if (gone) return null
+  const src = `${import.meta.env.BASE_URL}role-mask.png`
+  return createPortal(
+    <div
+      aria-hidden
+      className="arrival-echo pointer-events-none fixed right-[calc(100%_-_100vw_-_6px)] top-[14px] z-[45] w-[280px] sm:w-[380px] md:w-[480px] lg:w-[560px] xl:w-[640px]"
+      style={{
+        WebkitMaskImage: `url(${src})`,
+        maskImage: `url(${src})`,
+        WebkitMaskSize: 'contain',
+        maskSize: 'contain',
+        WebkitMaskRepeat: 'no-repeat',
+        maskRepeat: 'no-repeat',
+        WebkitMaskPosition: 'top right',
+        maskPosition: 'top right',
+      }}
+      onAnimationEnd={() => setGone(true)}
+    />,
+    document.body,
+  )
+}
 
 /** 桌面常驻侧栏；移动端复用 Radix 的焦点管理、滚动锁定与关闭后焦点恢复。 */
 export function AppLayout() {
@@ -11,6 +43,16 @@ export function AppLayout() {
   const location = useLocation()
   const mainRef = useRef<HTMLElement>(null)
   useUsageLive()
+
+  // 仅登录到达时外壳渐显（app-fade）；刷新与普通路由跳转保持无动画。
+  // 初始化器读取标记，移除由 ElysiaStage 的 effect 负责。
+  const [arriving] = useState(() => {
+    try {
+      return sessionStorage.getItem(ARRIVED_FROM_LOGIN_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
 
   useEffect(() => {
     setMobileOpen(false)
@@ -27,7 +69,8 @@ export function AppLayout() {
   }, [])
 
   return (
-    <div className="app-arrive grid min-h-dvh grid-cols-[228px_minmax(0,1fr)] max-rail:grid-cols-1">
+    <div className={cn(arriving && 'app-fade', 'grid min-h-dvh grid-cols-[228px_minmax(0,1fr)] max-rail:grid-cols-1')}>
+      {arriving && <ArrivalEcho />}
       <a
         href="#main-content"
         onClick={(event) => {
@@ -81,7 +124,7 @@ export function AppLayout() {
         tabIndex={-1}
         className="min-w-0 w-full space-y-6 px-6 pb-[max(72px,env(safe-area-inset-bottom))] pt-[30px] outline-none max-rail:px-4 max-rail:pt-[72px]"
       >
-        <div key={location.pathname} className="relative w-full animate-in fade-in duration-150 motion-reduce:animate-none">
+        <div key={location.pathname} className="page-enter relative w-full">
           <Suspense
             fallback={
               <div role="status" aria-label="正在加载页面" className="space-y-6" aria-busy="true">

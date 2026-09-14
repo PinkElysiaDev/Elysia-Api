@@ -157,3 +157,28 @@ test('login supports keyboard secret visibility and announces validation errors'
   await expect(token).toHaveAttribute('aria-invalid', 'true')
   await expect(token).toHaveValue('test-invalid-token')
 })
+
+test('login reports connection failures and can retry the same token', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/#/logs')
+  let offline = true
+  await page.route('**/api/admin/health', (route) => offline
+    ? route.abort('connectionrefused')
+    : route.fulfill({ json: { ok: true, data: {} } }))
+  await page.getByRole('button', { name: '退出登录', exact: true }).click()
+  await page.getByRole('button', { name: '退出', exact: true }).click()
+  const token = page.getByLabel(/Panel Access Token/)
+  await token.fill('test-valid-token')
+  const submit = page.getByRole('button', { name: '立即登录', exact: true })
+  await submit.click()
+  await expect(page.getByRole('alert')).toContainText('Failed to fetch')
+  await expect(page.getByRole('alert')).not.toContainText('Token 无效')
+  await expect(token).toBeFocused()
+  await expect(token).toHaveValue('test-valid-token')
+  await expect(submit).toBeEnabled()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('elysia-webui.panel-token'))).toBeNull()
+  offline = false
+  await submit.click()
+  await expect(page.getByRole('button', { name: '退出登录', exact: true })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('elysia-webui.panel-token'))).toBe('test-valid-token')
+})

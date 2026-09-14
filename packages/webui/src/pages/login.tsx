@@ -1,264 +1,348 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Eye, EyeOff, Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { BrandMark } from '@/components/brand-mark'
-import { RoleWatermark } from '@/components/role-watermark'
+import { ArrowRight, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { useTheme } from '@/lib/theme'
-import { setToken } from '@/lib/auth'
+import { setToken, ARRIVED_FROM_LOGIN_KEY } from '@/lib/auth'
 import { verifyToken } from '@/lib/api'
+import '@fontsource/fraunces/600-italic.css'
+import './login.css'
 
-/** 登录专用下划线令牌输入：一条输入线，聚焦时粉线自左向右展开。 */
-function TokenLineInput({
-  value,
-  onChange,
-}: {
-  value: string
-  onChange: (next: string) => void
-}) {
-  const [focused, setFocused] = useState(false)
+const MEDIA_BASE = `${import.meta.env.BASE_URL}assets/`
+
+/**
+ * 登录页「花庭」：人像视频场景 + 右侧下划线令牌表单。
+ * 视频仅在省流关闭、
+ * 未开启减动效、页面可见时加载，海报图作为常驻兜底。
+ */
+export function LoginPage() {
+  const { theme } = useTheme()
+  const [value, setValue] = useState('')
   const [visible, setVisible] = useState(false)
-  return (
-    <div className="relative">
-      <input
-        type={visible ? 'text' : 'password'}
-        aria-label="Panel Access Token"
-        autoFocus
-        value={value}
-        placeholder="请输入访问令牌"
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full rounded-none border-0 border-b border-input bg-transparent px-0 pb-2 pr-8 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus:outline-none"
-      />
-      <span
-        aria-hidden
-        className={`pointer-events-none absolute bottom-0 left-0 h-[2px] w-full origin-left bg-primary transition-transform duration-300 ease-out ${
-          focused ? 'scale-x-100' : 'scale-x-0'
-        }`}
-      />
-      <button
-        type="button"
-        tabIndex={-1}
-        onClick={() => setVisible((v) => !v)}
-        className="absolute right-0 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:text-rose"
-        aria-label={visible ? '隐藏' : '显示'}
-      >
-        {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-      </button>
-    </div>
+  const [error, setError] = useState('')
+  const [phase, setPhase] = useState<'login' | 'entering'>('login')
+  const [bloom, setBloom] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+
+  const [reduced, setReduced] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+  const [saveData, setSaveData] = useState(
+    () => Boolean((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData),
   )
-}
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false)
+  const [pageHidden, setPageHidden] = useState(document.hidden)
+  const [videoReady, setVideoReady] = useState(false)
+  const [videoFailed, setVideoFailed] = useState(false)
+  const [requestedVideo, setRequestedVideo] = useState(false)
+  const videoMoving = !autoplayBlocked && !saveData && !reduced && !pageHidden && !videoFailed
 
-/** 刻印式主题切换：环 + 单色 logo，色彩表状态——日=琥珀，夜=月蓝。 */
-function SealThemeToggle() {
-  const { theme, toggleTheme } = useTheme()
-  const dark = theme === 'dark'
-  return (
-    <button
-      type="button"
-      onClick={toggleTheme}
-      aria-label={dark ? '切换到浅色模式' : '切换到深色模式'}
-      aria-pressed={dark}
-      title={dark ? '浅色模式' : '深色模式'}
-      className={`inline-flex h-10 w-10 rotate-[-8deg] items-center justify-center rounded-full border transition-all duration-500 hover:brightness-125 ${
-        dark
-          ? 'border-orchid shadow-[0_0_12px_color-mix(in_srgb,var(--orchid)_35%,transparent)]'
-          : 'border-amber-500/70 shadow-[0_0_12px_rgba(245,158,11,0.35)]'
-      }`}
-    >
-      <img
-        src={`${import.meta.env.BASE_URL}logo.png`}
-        alt=""
-        className="h-5 w-5 opacity-80"
-      />
-    </button>
-  )
-}
-
-/** 悬停粒子的主页布点（偏下）与双频谐和轨道参数。 */
-interface OrbitParticle {
-  left: string
-  top: string
-  size: number
-  delay: number
-  tint: boolean
-  /** 两轴各两个不呈整数比的角频率（rad/s）——准周期轨迹永不重复 */
-  wx: [number, number]
-  wy: [number, number]
-  /** 谐和振幅（px），合计即轨道半径 */
-  ax: [number, number]
-  ay: [number, number]
-}
-
-const PARTICLE_HOMES: { left: string; top: string; size: number; delay: number; tint?: boolean }[] = [
-  { left: '7%', top: '45%', size: 3, delay: 0 },
-  { left: '13%', top: '90%', size: 2, delay: 90, tint: true },
-  { left: '21%', top: '25%', size: 4, delay: 40 },
-  { left: '31%', top: '95%', size: 2, delay: 140 },
-  { left: '40%', top: '35%', size: 3, delay: 20, tint: true },
-  { left: '49%', top: '75%', size: 2, delay: 110 },
-  { left: '58%', top: '30%', size: 4, delay: 70 },
-  { left: '67%', top: '85%', size: 3, delay: 160, tint: true },
-  { left: '76%', top: '40%', size: 2, delay: 50 },
-  { left: '84%', top: '70%', size: 3, delay: 130 },
-  { left: '91%', top: '95%', size: 2, delay: 90, tint: true },
-  { left: '96%', top: '35%', size: 4, delay: 30 },
-]
-
-// 互不成整数比的角频率候选（rad/s，整体放缓），随机配对出"多体式"不可解
-// 观感；各粒子轨道参数独立，大振幅下自然相互交叉。
-const OMEGAS = [0.35, 0.5, 0.65, 0.8, 1.0, 1.2, 1.5] as const
-
-function makeOrbits(): OrbitParticle[] {
-  const pick = (exclude?: number) => {
-    let value = OMEGAS[Math.floor(Math.random() * OMEGAS.length)]
-    while (value === exclude) value = OMEGAS[Math.floor(Math.random() * OMEGAS.length)]
-    return value
-  }
-  return PARTICLE_HOMES.map((home) => {
-    const wx1 = pick()
-    const wy1 = pick()
-    return {
-      ...home,
-      tint: home.tint ?? false,
-      wx: [wx1, pick(wx1)],
-      wy: [wy1, pick(wy1)],
-      ax: [9 + Math.random() * 9, 4 + Math.random() * 5],
-      ay: [13 + Math.random() * 13, 5 + Math.random() * 6],
-    }
-  })
-}
-
-/** 混沌轨道粒子：每颗沿自己的双频谐和轨道游走（准周期、不重复）；
- *  再次悬停时轨道时间归零，粒子从原位起跳并继续运动。 */
-function ParticleOrbit({ loading }: { loading: boolean }) {
-  const [orbits] = useState(makeOrbits)
-  const [hovered, setHovered] = useState(false)
-  const layerRef = useRef<HTMLDivElement>(null)
-  const timeRef = useRef(0)
+  const rootRef = useRef<HTMLElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const petalsRef = useRef<HTMLDivElement>(null)
+  const settleTimer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
-    if (!hovered) return
-    timeRef.current = 0 // sin(0)=0：每次进入都恰好在原位
-    let last = performance.now()
-    let raf = 0
-    const tick = (now: number) => {
-      timeRef.current += (now - last) / 1000
-      last = now
-      const t = timeRef.current
-      const dots = layerRef.current?.children
-      if (dots) {
-        for (let i = 0; i < dots.length; i += 1) {
-          const orbit = orbits[i]
-          const x = Math.sin(orbit.wx[0] * t) * orbit.ax[0] + Math.sin(orbit.wx[1] * t) * orbit.ax[1]
-          const y = Math.sin(orbit.wy[0] * t) * orbit.ay[0] + Math.sin(orbit.wy[1] * t) * orbit.ay[1]
-          ;(dots[i] as HTMLElement).style.transform = `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px)`
-        }
-      }
-      raf = requestAnimationFrame(tick)
+    document.title = '登录控制台 · Elysia API'
+    return () => window.clearTimeout(settleTimer.current)
+  }, [])
+
+  useEffect(() => {
+    if (error && !verifying) inputRef.current?.focus()
+  }, [error, verifying])
+
+  // 移动端浏览器地址栏颜色跟随花庭底色；离开登录页即移除，交还控制台默认。
+  useEffect(() => {
+    let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    if (!meta) {
+      meta = document.createElement('meta')
+      meta.name = 'theme-color'
+      document.head.appendChild(meta)
     }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [hovered, orbits])
+    meta.content = theme === 'dark' ? '#18141c' : '#fdfbfc'
+    return () => meta.remove()
+  }, [theme])
 
-  return (
-    <div
-      className="relative"
-      onPointerEnter={() => setHovered(true)}
-      onPointerLeave={() => setHovered(false)}
-    >
-      <div ref={layerRef} aria-hidden className="pointer-events-none absolute inset-0">
-        {orbits.map((particle, index) => (
-          <span
-            key={index}
-            className={`absolute rounded-full transition-opacity duration-500 ease-out ${
-              particle.tint ? 'bg-rose-soft' : 'bg-primary'
-            } ${hovered ? 'opacity-80' : 'opacity-0'}`}
-            style={{
-              left: particle.left,
-              top: particle.top,
-              width: particle.size,
-              height: particle.size,
-              transitionDelay: hovered ? `${particle.delay}ms` : '0ms',
-            }}
-          />
-        ))}
-      </div>
-      <Button
-        type="submit"
-        variant="ghost"
-        className="relative h-10 w-full text-sm font-semibold text-foreground hover:bg-transparent hover:text-rose"
-        disabled={loading}
-      >
-        {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-        {loading ? '身份验证中…' : '立即登录'}
-      </Button>
-    </div>
-  )
-}
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const onMotion = () => setReduced(media.matches)
+    const onVisibility = () => setPageHidden(document.hidden)
+    const onConnection = () =>
+      setSaveData(Boolean((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData))
+    media.addEventListener('change', onMotion)
+    document.addEventListener('visibilitychange', onVisibility)
+    // saveData 用户中途切换网络时恢复视频。
+    ;(navigator as Navigator & { connection?: EventTarget }).connection?.addEventListener?.('change', onConnection)
+    return () => {
+      media.removeEventListener('change', onMotion)
+      document.removeEventListener('visibilitychange', onVisibility)
+      ;(navigator as Navigator & { connection?: EventTarget }).connection?.removeEventListener?.('change', onConnection)
+    }
+  }, [])
 
-export function LoginPage() {
-  const [value, setValue] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    if (videoMoving) setRequestedVideo(true)
+    const video = videoRef.current
+    if (!video) return
+    if (videoMoving && requestedVideo) {
+      void video.play().catch((err: DOMException) => {
+        // 自动播放被浏览器拒绝时降级为海报静帧，不报错。
+        if (err.name === 'NotAllowedError') setAutoplayBlocked(true)
+      })
+    } else {
+      video.pause()
+    }
+  }, [videoMoving, requestedVideo])
+
+  // 指针视差：场景随指针平移并带一点 3D 倾斜（触屏与减动效下关闭）。
+  useEffect(() => {
+    if (reduced || window.matchMedia('(pointer: coarse)').matches) return
+    const root = rootRef.current
+    if (!root) return
+    let targetX = 0
+    let targetY = 0
+    let x = 0
+    let y = 0
+    let raf = 0
+    const tick = () => {
+      x += (targetX - x) * 0.06
+      y += (targetY - y) * 0.06
+      root.style.setProperty('--par-x', x.toFixed(4))
+      root.style.setProperty('--par-y', y.toFixed(4))
+      raf = Math.abs(targetX - x) > 0.002 || Math.abs(targetY - y) > 0.002 ? requestAnimationFrame(tick) : 0
+    }
+    const onMove = (event: PointerEvent) => {
+      targetX = (event.clientX / window.innerWidth) * 2 - 1
+      targetY = (event.clientY / window.innerHeight) * 2 - 1
+      if (!raf) raf = requestAnimationFrame(tick)
+    }
+    const onLeave = () => {
+      targetX = 0
+      targetY = 0
+      if (!raf) raf = requestAnimationFrame(tick)
+    }
+    window.addEventListener('pointermove', onMove)
+    document.documentElement.addEventListener('pointerleave', onLeave)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      document.documentElement.removeEventListener('pointerleave', onLeave)
+      if (raf) cancelAnimationFrame(raf)
+      root.style.removeProperty('--par-x')
+      root.style.removeProperty('--par-y')
+    }
+  }, [reduced])
+
+  // 落英归位：引言浮现之后，褪色的人像化作花瓣，自画面人物处缓缓飘出，
+  // 朝着右上角线稿的画心落去——花落之处，正是水印驻留的位置。
+  // 花瓣用 WAAPI 即抛即毁，延迟对齐引言的散场时刻。
+  useEffect(() => {
+    if (phase !== 'entering' || reduced) return
+    const host = petalsRef.current
+    if (!host) return
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    // 起点：视频人物的画面位置；落点：线稿水印的画心（右上角区域）。
+    const origin = { x: Math.min(vw * 0.4, 620), y: vh * 0.45 }
+    const target = { x: vw - Math.min(vw * 0.2, 280), y: vh * 0.28 }
+    const petals: HTMLSpanElement[] = []
+    for (let i = 0; i < 16; i++) {
+      const petal = document.createElement('span')
+      petal.className = 'garden-petal'
+      const size = 7 + Math.random() * 7
+      petal.style.width = `${size}px`
+      petal.style.height = `${size * 1.3}px`
+      const sx = origin.x + (Math.random() - 0.5) * 300
+      const sy = origin.y + (Math.random() - 0.5) * 320
+      petal.style.left = `${sx}px`
+      petal.style.top = `${sy}px`
+      host.appendChild(petal)
+      petals.push(petal)
+      const tx = target.x - sx + (Math.random() - 0.5) * 150
+      const ty = target.y - sy + (Math.random() - 0.5) * 130
+      const sway = 30 + Math.random() * 54
+      const lift = 26 + Math.random() * 70
+      // 约三成花瓣做前景虚化（景深），其余清晰小巧
+      if (Math.random() < 0.35) petal.style.filter = 'blur(1.4px)'
+      petal.animate(
+        [
+          { transform: 'translate(0, 0) rotate(0deg) scale(1)', opacity: 0 },
+          { transform: `translate(${tx * 0.18}px, ${ty * 0.12 - lift}px) rotate(55deg)`, opacity: 0.9, offset: 0.28 },
+          { transform: `translate(${tx * 0.42 - sway}px, ${ty * 0.38}px) rotate(125deg) scale(0.92)`, opacity: 0.72, offset: 0.54 },
+          { transform: `translate(${tx * 0.74 + sway * 0.5}px, ${ty * 0.76}px) rotate(205deg) scale(0.8)`, opacity: 0.55, offset: 0.8 },
+          { transform: `translate(${tx}px, ${ty}px) rotate(285deg) scale(0.55)`, opacity: 0 },
+        ],
+        { duration: 1400 + Math.random() * 500, delay: 1500 + Math.random() * 300, easing: 'cubic-bezier(0.45, 0.05, 0.35, 0.95)', fill: 'both' },
+      )
+    }
+    return () => petals.forEach((petal) => petal.remove())
+  }, [phase, reduced])
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
+    if (phase !== 'login' || verifying) return
     const token = value.trim()
     if (!token) {
-      setError('请输入 Panel Access Token')
+      setError('请输入访问令牌')
+      inputRef.current?.focus()
       return
     }
-    setLoading(true)
-    setError(null)
+    setError('')
+
+    // 先静默验证：失败直接提示，不打扰花庭；成功才绽开晶辉、播放过场。
+    setVerifying(true)
+    let valid = false
+    let failure = ''
     try {
-      const valid = await verifyToken(token)
-      if (!valid) {
-        setError('Token 无效，请检查服务端配置')
-        return
+      valid = await verifyToken(token)
+    } catch (err) {
+      failure = (err as Error).message || '无法连接到后端'
+    }
+    setVerifying(false)
+    if (!valid || failure) {
+      setError(failure || 'Token 无效，请确认与后端 config.json 中的 panelAccessToken 一致')
+      return
+    }
+
+    if (!reduced) setBloom(true)
+    setPhase('entering')
+    // 光影退行的完整呼吸：视频褪色 + 引言浮现散去 + 花瓣归位，随后交棒。
+    settleTimer.current = window.setTimeout(() => {
+      // 通知总览的 ElysiaStage 播放入画收尾（读后即删）。
+      try {
+        sessionStorage.setItem(ARRIVED_FROM_LOGIN_KEY, '1')
+      } catch {
+        /* 无存储能力时安静跳过 */
       }
       setToken(token)
-    } catch (err) {
-      setError((err as Error).message || '无法连接到后端')
-    } finally {
-      setLoading(false)
-    }
+    }, reduced ? 100 : 3500)
   }
 
   return (
-    <div className="relative mx-auto grid min-h-screen w-full max-w-[1600px] place-items-center px-4">
-      <RoleWatermark className="role-breathe opacity-20 dark:opacity-25 -right-4 top-1/2 -translate-y-1/2 rail:-right-8" />
-
-      {/* 视口左下角：fixed 定位，超宽屏不受居中容器限制 */}
-      <div className="fixed bottom-[22px] left-[22px] z-[60] max-rail:bottom-[14px] max-rail:left-[14px]">
-        <SealThemeToggle />
-      </div>
-
-      <div className="relative z-[1] w-full max-w-[400px]">
-        <BrandMark size="login" className="mb-7" />
-
-        <div className="relative rounded-xl border border-border/80 bg-card/60 p-8 shadow-lg backdrop-blur-sm">
-          <h1 className="font-display text-lg font-semibold tracking-tight text-foreground">Panel Access Token</h1>
-
-          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            <div className="space-y-2">
-              <TokenLineInput
-                value={value}
-                onChange={(next) => {
-                  setValue(next)
-                  setError(null)
-                }}
-              />
-              {error && (
-                <div className="rounded-lg bg-[color-mix(in_srgb,var(--ember)_10%,transparent)] px-3 py-2 text-xs font-medium text-ember">
-                  {error}
-                </div>
-              )}
-            </div>
-            <ParticleOrbit loading={loading} />
-          </form>
+    <main ref={rootRef} className="garden" data-phase={phase} data-motion={videoMoving ? 'playing' : 'paused'}>
+      <div className="garden-scene" aria-hidden="true">
+        <div className="garden-camera">
+          <img className="garden-image" src={`${MEDIA_BASE}elysia-login-poster.jpg`} alt="" />
+          <video
+            ref={videoRef}
+            className={`garden-video ${videoReady && !videoFailed && !reduced ? 'is-ready' : ''}`}
+            src={requestedVideo && !reduced ? `${MEDIA_BASE}elysia-login.mp4` : undefined}
+            muted
+            loop
+            playsInline
+            preload="none"
+            onPlaying={() => setVideoReady(true)}
+            onError={() => setVideoFailed(true)}
+          />
         </div>
       </div>
-    </div>
+      <div className="garden-wash" aria-hidden="true" />
+      <div className="garden-aurora" aria-hidden="true" />
+      <div className="garden-transition" aria-hidden="true" />
+
+      <header className="garden-header">
+        <div className="garden-brand" aria-label="Elysia API 控制台">
+          <img src={`${import.meta.env.BASE_URL}logo-color.png`} alt="" width={32} height={32} />
+          <span>Elysia API</span>
+          <span className="garden-brand-divider" />
+          <span className="garden-console">Console</span>
+        </div>
+        <ThemeToggle />
+      </header>
+
+      <section className="garden-content" aria-label="登录控制台">
+        <div className="garden-login" aria-hidden={phase !== 'login'}>
+          <h1>
+            Elysia <i>API</i>
+            <span className="garden-title-dot">.</span>
+          </h1>
+          <p className="garden-greeting">嗨，想我了吗？♪</p>
+
+          <form className="garden-form" onSubmit={handleSubmit} noValidate>
+            <label htmlFor="token">
+              访问令牌 <span>Panel Access Token</span>
+            </label>
+            <div className="garden-input-wrap" data-invalid={Boolean(error)}>
+              <input
+                ref={inputRef}
+                id="token"
+                type={visible ? 'text' : 'password'}
+                autoComplete="off"
+                spellCheck={false}
+                autoCapitalize="none"
+                placeholder="Panel Access Token"
+                value={value}
+                disabled={verifying || phase !== 'login'}
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? 'token-error' : undefined}
+                onChange={(event) => {
+                  setValue(event.target.value)
+                  setError('')
+                }}
+              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="garden-tool"
+                    aria-label={visible ? '隐藏' : '显示'}
+                    aria-pressed={visible}
+                    disabled={verifying || phase !== 'login'}
+                    onClick={() => setVisible(!visible)}
+                  >
+                    {visible ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{visible ? '隐藏令牌' : '显示令牌'}</TooltipContent>
+              </Tooltip>
+            </div>
+            <div className="garden-error" id="token-error" role="alert">
+              {error}
+            </div>
+            <div className="garden-submit-wrap">
+              <button className="garden-submit" type="submit" disabled={verifying || phase !== 'login'} aria-busy={verifying || phase === 'entering'}>
+                <span>{verifying ? '正在验证' : phase === 'entering' ? '正在进入控制台' : '立即登录'}</span>
+                {verifying || phase === 'entering' ? (
+                  <Loader2 className="garden-spinner" size={18} />
+                ) : (
+                  <ArrowRight size={19} />
+                )}
+              </button>
+              {bloom && <span className="garden-bloom" aria-hidden="true" />}
+            </div>
+          </form>
+        </div>
+      </section>
+
+      {/* 光影退行：视频溶解时，右上角以完整浓度预印她的侧影——位置、尺寸
+          与控制台水印一致，登录页卸载瞬间线稿原地常驻，随后缓缓淡入水印浓度。 */}
+      <div
+        className="garden-echo pointer-events-none fixed right-[calc(100%_-_100vw_-_6px)] top-[14px] w-[280px] sm:w-[380px] md:w-[480px] lg:w-[560px] xl:w-[640px]"
+        aria-hidden="true"
+        style={{
+          WebkitMaskImage: `url(${import.meta.env.BASE_URL}role-mask.png)`,
+          maskImage: `url(${import.meta.env.BASE_URL}role-mask.png)`,
+          WebkitMaskSize: 'contain',
+          maskSize: 'contain',
+          WebkitMaskRepeat: 'no-repeat',
+          maskRepeat: 'no-repeat',
+          WebkitMaskPosition: 'top right',
+          maskPosition: 'top right',
+        }}
+      />
+      <div className="garden-petals" ref={petalsRef} aria-hidden="true" />
+
+      {phase === 'entering' && (
+        <div className="garden-interlude" aria-hidden="true">
+          <span className="garden-interlude-cn">因你而在的故事</span>
+          <span className="garden-interlude-en">TruE</span>
+        </div>
+      )}
+
+      <footer className="garden-footer">
+        <p className="garden-signature">
+          「长风化作她的轺车，<wbr />
+          四海落成她的圆圃」
+        </p>
+      </footer>
+    </main>
   )
 }

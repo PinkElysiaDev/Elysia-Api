@@ -181,6 +181,9 @@
 }
 
 html {
+  /* 恒定预留纵向滚动条槽位：登录页（无滚动）与控制台（可滚动）的布局宽度
+   * 保持一致，视口锚定的到达刻印前后才能逐像素对齐。 */
+  scrollbar-gutter: stable;
   /* 流式根字号：≤1536px 时 16px，随视口平滑增至 2560px 的 18px——全站 rem（含图表刻度）统一跟随。
    * 下限用 1rem 而非 16px：尊重浏览器「字号」偏好（Josh Comeau, Pixels and Accessibility）。
    * 插值配比：16 = 0.8125×16 + 0.1953125%×1536，18 = 0.8125×16 + 0.1953125%×2560。
@@ -428,6 +431,73 @@ html.theme-transitioning :where(body, #root, #root *):not(.theme-sun):not(.theme
 :focus-visible {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
+}
+
+/*
+ * 登录页以中等浓度（0.45）预印的侧面线稿
+ * 原地交接。交接残影顶住外壳渐显期后线性淡出，真实水印同窗线性淡入——
+ * 两者之和恒为 0.45，刻印感知亮度全程无跳变；稳住等看板元素齐现后，
+ * 再缓缓淡入水印常驻浓度（0.09 / 0.14），像被时间慢慢收藏进面板。
+ * 标记由登录页写入 sessionStorage，ElysiaStage 挂载时读后即删：刷新与
+ * 普通路由跳转不重播。
+ * 100% 关键帧留空 = 回落到类定义的基准透明度（明暗主题各自适配）；
+ * 刻意不用 forwards 填充，动画结束回归自然状态，不残留 filter。
+ */
+@keyframes watermark-settle {
+  0% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.45;
+  }
+  40% {
+    opacity: 0.45;
+    animation-timing-function: ease-out;
+  }
+  100% {
+    opacity: var(--wm-base, 0.09);
+  }
+}
+.elysia-arrive .role-fig {
+  --wm-base: 0.09;
+  animation: watermark-settle 4s linear 1s both;
+}
+.dark .elysia-arrive .role-fig {
+  --wm-base: 0.14;
+}
+
+/* 外壳渐显：仅在登录到达时套用（AppLayout 按到达标记决定），让控制台
+ * 整体柔柔显影而非突然出现；平时刷新与路由跳转不套用、完全无动画。 */
+@keyframes app-fade {
+  from {
+    opacity: 0;
+  }
+}
+.app-fade {
+  animation: app-fade 0.8s ease-out backwards;
+}
+
+/* 页面包装层的防护：任何未来加回的 enter/slide 类动画都会让该层在动画期
+ * 成为 fixed 后代（到达刻印）的包含块，造成锚点滑移。显式锁死 transform
+ * （!important 声明优先于动画关键帧），保证到达刻印的视口锚定全程稳定。 */
+.page-enter {
+  transform: none !important;
+}
+
+/* 交接残影（AppLayout 的 ArrivalEcho）：登录页线稿 0.45 原地交接时，
+ * 顶住外壳 0.8s 渐显期，让刻印的感知亮度全程不断；随后自行淡出卸载。 */
+.arrival-echo {
+  aspect-ratio: 760 / 808;
+  background: linear-gradient(172deg, var(--grad-a) 8%, var(--grad-b) 92%);
+  animation: arrival-echo-hold 1.6s linear forwards;
+}
+@keyframes arrival-echo-hold {
+  0%, 62% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 /* 源健康轮播：双份内容无缝上滚（hover 暂停由 group-hover 控制；
