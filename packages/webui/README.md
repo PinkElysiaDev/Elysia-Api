@@ -26,7 +26,8 @@ Elysia-API 的可视化管理控制台。纯前端单页应用，所有数据来
 
 ```bash
 # 先启动后端（默认 127.0.0.1:8765）
-yarn workspace @root/webui dev
+npm install
+npm run dev --workspace @root/webui
 ```
 
 Vite dev server 端口为 5273，已代理 `/api`、`/v1`、`/health` 到后端（默认 `http://127.0.0.1:8765`）。后端不在默认端口时设置 `ELYSIA_DEV_PROXY`。
@@ -36,10 +37,25 @@ Vite dev server 端口为 5273，已代理 `/api`、`/v1`、`/health` 到后端�
 ## 构建
 
 ```bash
-yarn workspace @root/webui build
+npm run build:webui
 ```
 
 产物输出到 `dist/`，生产 base 为 `/ui/`。
 
 将 `dist/` 部署为后端 `webuiDir`，后端通过 `gin.Static("/ui", webuiDir)` 提供服务，
 访问 `http://<host>:<port>/ui/`。后端无 history fallback，故前端使用 HashRouter。
+
+## 前端验证
+
+在仓库根目录运行：
+
+```bash
+npm run lint --workspace @root/webui
+npm run build:webui
+npm exec --workspace @root/webui playwright install chromium
+npm run test:e2e --workspace @root/webui
+```
+
+浏览器测试自动在 `127.0.0.1:5274` 启动前端，以模拟 API 响应验证慢请求下的日志分页、日志清理后的页码修正、失败重试、移动导航焦点管理、筛选键盘操作及深浅主题下的窄屏布局，无需启动后端。已有 Chrome 时可用 `PLAYWRIGHT_CHANNEL=chrome npm run test:e2e --workspace @root/webui`。
+
+移动导航支持 Esc、点击遮罩和点击导航项关闭；关闭后恢复焦点，切回桌面宽度时自动解除滚动锁定。筛选框支持方向键定位、Enter 切换选择、Esc 关闭与 Tab 离开；输入框保留即时反馈，搜索清空后焦点留在输入框。

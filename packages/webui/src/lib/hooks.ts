@@ -163,7 +163,12 @@ export function useUsageLogs(params: UsageQueryParams) {
 
 /** 系统日志分页。 */
 export function useSystemLogs(params: { limit?: number; offset?: number; level?: string }) {
-  return useSWR(['system-logs', params], () => api.systemLogs(params), defaultConfig)
+  return useSWR(['system-logs', params], () => api.systemLogs(params), {
+    ...defaultConfig,
+    keepPreviousData: true,
+    // 日志裁剪后可能立即回到刚访问过的页，必须重新获取该页总数。
+    dedupingInterval: 0,
+  })
 }
 
 /** 数据变更后批量刷新缓存。 */

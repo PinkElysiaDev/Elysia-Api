@@ -1,4 +1,5 @@
-import { Search } from 'lucide-react'
+import { useRef } from 'react'
+import { Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
@@ -16,16 +17,32 @@ export function SearchInput({
   className?: string
   ariaLabel?: string
 }) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const label = ariaLabel ?? placeholder ?? '搜索'
   return (
     <div className={cn('relative', className)}>
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       <Input
-        aria-label={ariaLabel}
-        className="rounded-full border-transparent bg-[var(--well)] pl-9"
+        ref={inputRef}
+        aria-label={label}
+        className="rounded-full border-transparent bg-[var(--well)] pl-9 pr-11"
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
       />
+      {value && (
+        <button
+          type="button"
+          aria-label={`清空${label}`}
+          className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-full text-muted-foreground hover:text-rose"
+          onClick={() => {
+            onChange('')
+            inputRef.current?.focus()
+          }}
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
     </div>
   )
 }

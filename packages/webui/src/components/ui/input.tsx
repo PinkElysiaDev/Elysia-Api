@@ -11,7 +11,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(({ className, type
     type={type}
     ref={ref}
     className={cn(
-      'h-[34px] w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm text-foreground transition-[border-color,box-shadow] duration-200',
+      'h-[34px] w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm text-foreground transition-[border-color,box-shadow] duration-200 max-rail:min-h-11 max-rail:text-base',
       'placeholder:text-muted-foreground',
       'focus-visible:outline-none focus-visible:border-rose focus-visible:ring-[3px] focus-visible:ring-wash',
       'disabled:cursor-not-allowed disabled:opacity-50',
@@ -29,7 +29,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(({ classN
   <textarea
     ref={ref}
     className={cn(
-      'flex min-h-[80px] w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground transition-[border-color,box-shadow] duration-200',
+      'flex min-h-[80px] w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground transition-[border-color,box-shadow] duration-200 max-rail:text-base',
       'placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-rose focus-visible:ring-[3px] focus-visible:ring-wash',
       'disabled:cursor-not-allowed disabled:opacity-50',
       className,

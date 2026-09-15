@@ -340,7 +340,7 @@ export function OverviewPage() {
   return (
     <>
       {/* 爱莉希雅视觉中枢立绘舞台 */}
-      <ElysiaStage statusState={stageStatus} className="-right-6 -top-4 rail:-right-10" />
+      <ElysiaStage statusState={stageStatus} className="right-[calc(100%_-_100vw_-_6px)] top-[14px]" />
 
       <div className="relative z-[1] space-y-7">
         <PageHeader title="总览" />

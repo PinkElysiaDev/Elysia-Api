@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Search, X } from 'lucide-react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Check, ChevronDown, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export interface MultiSelectOption {
@@ -9,12 +9,7 @@ export interface MultiSelectOption {
   hint?: string
 }
 
-/**
- * 筛选胶囊下拉：紧凑触发器（「模型 · 2」）+ 搜索复选弹层，受控组件。
- * 触发器是筛选工具栏的统一形态：未选时中性灰，激活时 wash 底 + 玫红字 +
- * 已选计数与快捷清除。自实现弹层（而非 Radix DropdownMenu），以便内嵌
- * 搜索框不被菜单的焦点管理抢走输入。
- */
+/** 搜索多选：方向键定位、Enter 切换选中、Escape 关闭，Tab 自然离开筛选。 */
 export function MultiSelect({
   label,
   options,
@@ -23,188 +18,238 @@ export function MultiSelect({
   searchPlaceholder = '搜索…',
   emptyText = '暂无选项',
 }: {
-  /** 触发器上展示的维度名（如「模型组」）。 */
   label: string
-  /** 支持纯字符串数组（value=label）或带 hint 的完整选项对象。 */
   options: (string | MultiSelectOption)[]
   value: string[]
   onChange: (value: string[]) => void
   searchPlaceholder?: string
   emptyText?: string
 }) {
-  // 归一化为 MultiSelectOption[]：string 项即 value=label。
+  const id = useId()
+  const panelId = `${id}-panel`
+  const listId = `${id}-list`
   const normalized = useMemo(
     () => options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o)),
     [options],
   )
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [activeValue, setActiveValue] = useState<string | null>(null)
+  const [panelPosition, setPanelPosition] = useState({ left: 0, above: false, maxHeight: 360 })
   const rootRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const optionRefs = useRef(new Map<string, HTMLDivElement>())
 
-  // 点击外部 / Esc 关闭。
   useEffect(() => {
     if (!open) return
-    function onPointerDown(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false)
+    const dismiss = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
     }
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('mousedown', onPointerDown)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
+    document.addEventListener('pointerdown', dismiss)
+    return () => document.removeEventListener('pointerdown', dismiss)
   }, [open])
 
-  // 打开时聚焦搜索框，关闭时清空查询。
-  useEffect(() => {
-    if (open) {
-      const id = window.setTimeout(() => searchRef.current?.focus(), 0)
-      return () => window.clearTimeout(id)
+  // 基于真实弹层宽度避让左右边缘；旋转屏幕或筛选计数改变时重新定位。
+  useLayoutEffect(() => {
+    if (!open) return
+    const position = () => {
+      if (!rootRef.current || !panelRef.current) return
+      const rect = rootRef.current.getBoundingClientRect()
+      const width = panelRef.current.getBoundingClientRect().width
+      const left = Math.max(16, Math.min(rect.left, window.innerWidth - width - 16))
+      const below = window.innerHeight - rect.bottom - 22
+      const above = rect.top - 22
+      const placeAbove = below < 240 && above > below
+      const next = { left: left - rect.left, above: placeAbove, maxHeight: Math.max(100, placeAbove ? above : below) }
+      setPanelPosition((prev) => prev.left === next.left && prev.above === next.above && prev.maxHeight === next.maxHeight ? prev : next)
     }
-    setQuery('')
+    position()
+    window.addEventListener('resize', position)
+    window.addEventListener('scroll', position, true)
+    return () => {
+      window.removeEventListener('resize', position)
+      window.removeEventListener('scroll', position, true)
+    }
+  }, [open, value.length])
+
+  useEffect(() => {
+    if (open) searchRef.current?.focus()
+    else {
+      setQuery('')
+      setActiveValue(null)
+    }
   }, [open])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return normalized
-    return normalized.filter(
-      (o) => o.label.toLowerCase().includes(q) || (o.hint?.toLowerCase().includes(q) ?? false),
-    )
+    return q
+      ? normalized.filter((o) => o.label.toLowerCase().includes(q) || o.hint?.toLowerCase().includes(q))
+      : normalized
   }, [normalized, query])
-
   const selected = useMemo(() => new Set(value), [value])
+  const activeIndex = filtered.findIndex((option) => option.value === activeValue)
+
+  useEffect(() => {
+    if (activeValue !== null) optionRefs.current.get(activeValue)?.scrollIntoView({ block: 'nearest' })
+  }, [activeValue])
 
   function toggle(optionValue: string) {
-    if (selected.has(optionValue)) {
-      onChange(value.filter((v) => v !== optionValue))
-    } else {
-      onChange([...value, optionValue])
-    }
-    // 选项按钮获得焦点后键盘输入不再进搜索框——点选后立即还焦。
-    if (open) {
-      window.setTimeout(() => searchRef.current?.focus(), 0)
-    }
+    onChange(selected.has(optionValue) ? value.filter((v) => v !== optionValue) : [...value, optionValue])
   }
 
   const hasSelection = value.length > 0
 
-  // 右缘溢出时弹层改为右对齐（body overflow-x: clip 会静默裁掉溢出部分）。
-  const [flipRight, setFlipRight] = useState(false)
-  useEffect(() => {
-    if (!open || !rootRef.current) return
-    const rect = rootRef.current.getBoundingClientRect()
-    setFlipRight(rect.left + 288 > window.innerWidth)
-  }, [open])
-
   return (
-    <div ref={rootRef} className="relative">
-      {/* 用 div[role=combobox] 而非 <button> 作触发器：清空控件需要是真实
-          <button>，嵌套在 <button> 里是非法 HTML。键盘可达：Enter/Space/↓ 打开。 */}
+    <div
+      ref={rootRef}
+      className="relative"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false)
+      }}
+      onKeyDown={(event) => {
+        if (open && event.key === 'Escape') {
+          event.preventDefault()
+          event.stopPropagation()
+          setOpen(false)
+          triggerRef.current?.focus()
+        }
+      }}
+    >
       <div
-        role="combobox"
-        tabIndex={0}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        aria-label={`${label}筛选${hasSelection ? `（已选 ${value.length} 项）` : ''}`}
-        onClick={() => setOpen((v) => !v)}
-        onKeyDown={(e) => {
-          // 只响应触发器自身的按键：内部清空按钮的 Enter/Space 冒泡到此处
-          // 会被 preventDefault 吞掉（浏览器不再合成 click），键盘无法清空。
-          if (e.target !== e.currentTarget) return
-          if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
-            e.preventDefault()
-            setOpen(true)
-          }
-        }}
         className={cn(
-          'flex h-[34px] cursor-pointer select-none items-center gap-1.5 rounded-full border px-3.5 text-sm transition-colors duration-150',
-          'focus:outline-none focus-visible:border-rose focus-visible:ring-[3px] focus-visible:ring-wash',
+          'flex min-h-[34px] items-center rounded-full border text-sm transition-colors duration-150 max-rail:min-h-11',
           hasSelection
             ? 'border-[color:color-mix(in_srgb,var(--rose)_30%,transparent)] bg-wash text-rose'
             : 'border-transparent bg-[var(--well)] text-muted-foreground hover:text-foreground',
         )}
       >
-        <span className="whitespace-nowrap">
-          {hasSelection ? (
-            <>
-              <span className="font-medium">{label}</span>
-              <span className="ml-1 font-mono text-xs">· {value.length}</span>
-            </>
-          ) : (
-            label
-          )}
-        </span>
-        <span className="flex items-center gap-0.5">
-          {hasSelection && (
-            <button
-              type="button"
-              aria-label="清空选择"
-              className="rounded p-0.5 hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={(e) => {
-                e.stopPropagation()
-                onChange([])
-              }}
-            >
-              <X className="h-3 w-3" />
-            </button>
-          )}
-          <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-        </span>
+        <button
+          ref={triggerRef}
+          type="button"
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          aria-controls={open ? panelId : undefined}
+          aria-label={`${label}筛选${hasSelection ? `（已选 ${value.length} 项）` : ''}`}
+          onClick={() => setOpen((prev) => !prev)}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault()
+              setOpen(true)
+            }
+          }}
+          className="flex min-h-[32px] items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 max-rail:min-h-11"
+        >
+          <span className={hasSelection ? 'font-medium' : undefined}>{label}</span>
+          {hasSelection && <span className="font-mono text-xs">· {value.length}</span>}
+          <ChevronDown aria-hidden className={cn('h-3.5 w-3.5 opacity-60 transition-transform', open && 'rotate-180')} />
+        </button>
+        {hasSelection && (
+          <button
+            type="button"
+            aria-label={`清空${label}选择`}
+            className="mr-1 flex h-7 w-7 items-center justify-center rounded-full hover:bg-background/60 hover:text-foreground max-rail:h-11 max-rail:w-11"
+            onClick={() => {
+              onChange([])
+              triggerRef.current?.focus()
+            }}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       {open && (
         <div
-          className={cn(
-            'absolute z-50 mt-1.5 w-max min-w-[11rem] max-w-[16rem] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg',
-            'animate-in fade-in-0 zoom-in-95 duration-150',
-            flipRight ? 'right-0 origin-top-right' : 'left-0 origin-top-left',
-          )}
+          ref={panelRef}
+          id={panelId}
+          role="dialog"
+          aria-label={`${label}筛选选项`}
+          style={{
+            left: panelPosition.left,
+            top: panelPosition.above ? undefined : 'calc(100% + 6px)',
+            bottom: panelPosition.above ? 'calc(100% + 6px)' : undefined,
+            maxHeight: panelPosition.maxHeight,
+          }}
+          className="absolute z-50 flex w-72 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg transition-none animate-in fade-in-0 duration-150"
         >
-          <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2.5">
-            <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-3 py-2.5">
+            <Search aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
             <input
               ref={searchRef}
+              role="combobox"
+              aria-label={`搜索${label}`}
+              aria-autocomplete="list"
+              aria-expanded={open}
+              aria-controls={listId}
+              aria-activedescendant={activeIndex >= 0 ? `${id}-option-${activeIndex}` : undefined}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value)
+                setActiveValue(null)
+              }}
+              onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing) return
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                  event.preventDefault()
+                  if (!filtered.length) return
+                  const next = activeIndex < 0
+                    ? (event.key === 'ArrowDown' ? 0 : filtered.length - 1)
+                    : (activeIndex + (event.key === 'ArrowDown' ? 1 : -1) + filtered.length) % filtered.length
+                  setActiveValue(filtered[next].value)
+                } else if (event.key === 'Enter') {
+                  event.preventDefault()
+                  if (activeIndex >= 0) toggle(filtered[activeIndex].value)
+                }
+              }}
               placeholder={searchPlaceholder}
-              className="w-full bg-transparent text-sm outline-none focus-visible:outline-none placeholder:text-muted-foreground"
+              className="min-w-0 w-full bg-transparent text-sm outline-none focus-visible:outline-none placeholder:text-muted-foreground max-rail:min-h-6 max-rail:text-base"
             />
           </div>
-          <div role="listbox" aria-multiselectable className="hide-scrollbar max-h-60 overflow-auto p-1">
-            {filtered.length === 0 ? (
-              <p className="px-3 py-4 text-center text-xs text-muted-foreground">{emptyText}</p>
-            ) : (
-              filtered.map((option) => {
-                const checked = selected.has(option.value)
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="option"
-                    aria-selected={checked}
-                    onClick={() => toggle(option.value)}
-                    className={cn(
-                      'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm outline-none transition-colors duration-100',
-                      // focus-visible 而非 focus：点选后按钮仍持焦点，focus: 会残留 wash 背景。
-                      checked
-                        ? 'bg-wash font-medium text-rose'
-                        : 'text-foreground hover:bg-wash hover:text-rose focus-visible:bg-wash focus-visible:text-rose',
-                    )}
-                  >
-                    <span className="flex-1 truncate">
-                      {option.label}
-                      {option.hint && (
-                        <span className="ml-1.5 text-xs text-muted-foreground">{option.hint}</span>
-                      )}
-                    </span>
-                  </button>
-                )
-              })
-            )}
+          <div id={listId} role="listbox" aria-label={label} aria-multiselectable="true" className="min-h-0 max-h-60 overflow-auto overscroll-contain p-1">
+            {filtered.map((option, index) => {
+              const checked = selected.has(option.value)
+              return (
+                <div
+                  key={option.value}
+                  id={`${id}-option-${index}`}
+                  ref={(element) => {
+                    if (element) optionRefs.current.set(option.value, element)
+                    else optionRefs.current.delete(option.value)
+                  }}
+                  role="option"
+                  aria-selected={checked}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    setActiveValue(option.value)
+                    toggle(option.value)
+                    searchRef.current?.focus()
+                  }}
+                  className={cn(
+                    'flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors max-rail:min-h-11',
+                    checked ? 'font-medium text-rose' : 'text-foreground',
+                    index === activeIndex ? 'bg-wash ring-1 ring-inset ring-ring/30' : 'hover:bg-wash',
+                  )}
+                >
+                  <span aria-hidden className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded border', checked ? 'border-primary bg-primary text-primary-foreground' : 'border-input')}>
+                    {checked && <Check className="h-3 w-3" strokeWidth={3} />}
+                  </span>
+                  <span className="min-w-0 flex-1 break-words">
+                    {option.label}
+                    {option.hint && <span className="mt-0.5 block text-xs font-normal text-muted-foreground">{option.hint}</span>}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+          {filtered.length === 0 && (
+            <p role="status" className="px-3 py-4 text-center text-xs text-muted-foreground">
+              {query.trim() ? '没有匹配的选项，请尝试其他关键词' : emptyText}
+            </p>
+          )}
+          <div className="shrink-0 border-t border-border/60 px-3 py-2 text-xs text-muted-foreground" role="status">
+            {hasSelection ? `已选择 ${value.length} 项` : '可选择多个选项'}
           </div>
         </div>
       )}

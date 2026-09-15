@@ -1,0 +1,552 @@
+/*
+ * 登录页「花庭」场景样式（仅登录页加载，随页面 chunk 懒加载）。
+ * 移植自 login-demo 设计稿（人像视频 + 右缘遮罩 + 指针视差 + 入场级联），
+ * 明暗适配改走项目统一的 html.dark class，视频素材见 public/assets/。
+ */
+
+.garden {
+  --par-x: 0;
+  --par-y: 0;
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+  overflow: hidden;
+  background: #fdfbfc;
+}
+
+.garden-scene,
+.garden-camera,
+.garden-wash,
+.garden-transition {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+/* 场景向四周出血 16px，视差漂移时不会露出硬边；右缘按人像构图裁切并羽化。 */
+.garden-scene {
+  z-index: -3;
+  inset: -16px;
+  right: 16%;
+  overflow: hidden;
+  translate: calc(var(--par-x) * -8px) calc(var(--par-y) * -6px);
+  -webkit-mask-image: linear-gradient(90deg, #000 65%, transparent 100%);
+  mask-image: linear-gradient(90deg, #000 65%, transparent 100%);
+  animation: garden-scene-arrive 1.9s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+/* 2.5D 视差：在场景平移之外，镜头再带一丁点透视倾斜；常驻 scale(1.035)
+ * 垫在倾斜之下，保证转角处不露出场景边缘。 */
+.garden-camera {
+  transform: perspective(1100px) rotateX(calc(var(--par-y) * -1.2deg)) rotateY(calc(var(--par-x) * 1.5deg)) scale(1.035);
+  transform-origin: 50% 43%;
+  animation: garden-breathe 24s ease-in-out infinite alternate;
+}
+.garden-image,
+.garden-video {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 43%;
+}
+.garden-video {
+  opacity: 0;
+  transition: opacity 1.4s ease;
+}
+.garden-video.is-ready {
+  opacity: 1;
+}
+.garden-wash {
+  z-index: -2;
+  background: linear-gradient(90deg, rgb(253 251 252 / 0.03) 20%, rgb(253 251 252 / 0.14) 43%, rgb(253 251 252 / 0.91) 66%, #fdfbfc 100%);
+}
+.garden-wash::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgb(253 251 252 / 0.7), transparent 18%, transparent 80%, rgb(253 251 252 / 0.9));
+}
+/* 进入过场时拉上一层瓷色幕布，掩护向控制台的跳转。 */
+.garden-transition {
+  z-index: -1;
+  background: #fdfbfc;
+  opacity: 0;
+  transition: opacity 1.1s ease;
+}
+.garden[data-phase='entering'] .garden-transition {
+  opacity: 0.75;
+  transition-duration: 1.2s;
+}
+
+/* 极光：两团缓慢游移的瑰梅/兰紫光晕，白天极淡、夜里晶莹。 */
+.garden-aurora {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  animation: garden-arrive 1.6s ease-out 0.7s both;
+}
+.garden-aurora::before,
+.garden-aurora::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  will-change: transform;
+}
+.garden-aurora::before {
+  width: 46vmin;
+  height: 46vmin;
+  right: -8vmin;
+  top: -10vmin;
+  background: radial-gradient(circle at 50% 50%, rgb(224 122 173 / 0.26), transparent 70%);
+  animation: garden-drift-a 38s ease-in-out infinite alternate;
+}
+.garden-aurora::after {
+  width: 54vmin;
+  height: 54vmin;
+  left: -12vmin;
+  bottom: -16vmin;
+  background: radial-gradient(circle at 50% 50%, rgb(176 141 238 / 0.2), transparent 70%);
+  animation: garden-drift-b 47s ease-in-out infinite alternate;
+}
+@keyframes garden-drift-a { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(-7vmin, 5vmin, 0) scale(1.12); } }
+@keyframes garden-drift-b { from { transform: translate3d(0, 0, 0) scale(1.05); } to { transform: translate3d(9vmin, -6vmin, 0) scale(0.94); } }
+
+.garden-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 34px 48px;
+  position: relative;
+  z-index: 2;
+  animation: garden-arrive 1s cubic-bezier(0.2, 0.7, 0.2, 1) 0.95s backwards;
+}
+.garden-brand {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  color: #4a3945;
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 500;
+  font-size: 19px;
+}
+.garden-brand img { object-fit: contain; }
+.garden-brand-divider { height: 16px; width: 1px; background: #b69caa52; margin: 0 2px 0 8px; }
+.garden-console {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-weight: 400;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #826e7b;
+}
+
+/* 花庭里的主题切换钮沿用全局 .theme-toggle 形变，仅覆写配色与尺寸。 */
+.garden-header .theme-toggle { width: 44px; height: 44px; color: #96617e; }
+.garden-header .theme-toggle:hover:not(:disabled) { background: #b76a8b10; color: #7e375c; }
+.dark .garden-header .theme-toggle { color: #e5b3cf; }
+.dark .garden-header .theme-toggle:hover:not(:disabled) { background: rgb(234 198 217 / 0.12); color: #f8dceb; }
+
+/* 登录表单落在画面右侧 34% 画布（不参与指针视差，只有场景在动）。 */
+.garden-content {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  align-items: center;
+  align-self: flex-end;
+  flex: 1;
+  width: 34%;
+  max-width: 510px;
+  margin-right: 7%;
+  padding: 44px 0 60px;
+}
+.garden-login {
+  grid-area: 1 / 1;
+  width: 100%;
+  max-width: 390px;
+  transition: opacity 0.4s ease, transform 1s ease;
+}
+.garden-login > * { animation: garden-arrive 1.25s cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: 1.15s; }
+.garden-login > :nth-child(2) { animation-delay: 1.32s; }
+.garden-login > :nth-child(3) { animation-delay: 1.49s; }
+.garden h1 {
+  position: relative;
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 500;
+  font-size: 64px;
+  line-height: 1.1;
+  white-space: nowrap;
+  margin: 0 0 28px;
+  color: #453640;
+}
+.garden h1 i { font-style: normal; color: #79546c; }
+.garden-title-dot { color: #b75c81; }
+.garden-greeting {
+  font-family: 'Songti SC', 'SimSun', serif;
+  font-size: 27px;
+  margin: 0;
+  color: #785769;
+}
+/*
+ * 花庭场景的刻意偏离（勿随手「归队」到全站规范）：
+ * - 提交按钮为方角（3px）而非全站胶囊：登录页是低频一次性界面，刻意与
+ *   控制台的胶囊海拉开记忆点（产品决策）；配色仍走 --btn-primary token。
+ * - invalid 下划线用场景玫红而非 --ember：与花庭底色同源，朱红在此突兀。
+ * - 场景底色为暖调瓷白/暗梅（#fdfbfc / #18141c），非应用冷调 token——
+ *   为人像素材与暖色遮罩服务，进出控制台的底色跳变由入场动画掩护。
+ */
+
+.garden-form { margin-top: 43px; }
+.garden-form label {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #66535f;
+  margin-bottom: 10px;
+}
+.garden-form label span { font-size: 10px; color: #7d6875; }
+
+/* 下划线式令牌输入框：聚焦时沿底线拉出一条实色光线。 */
+.garden-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 52px;
+  border-bottom: 1px solid #c3a5b5;
+  background: rgb(255 255 255 / 0.5);
+  transition: border-color 0.2s, background 0.2s;
+}
+.garden-input-wrap:focus-within { border-color: #9d436c; background: rgb(255 255 255 / 0.75); }
+.garden-input-wrap::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: #9d436c;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
+  pointer-events: none;
+}
+.garden-input-wrap:focus-within::after { transform: scaleX(1); }
+.garden-input-wrap[data-invalid='true'] { border-color: #aa3956; }
+.garden-input-wrap[data-invalid='true']::after { background: #aa3956; }
+.garden-input-wrap input {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0 12px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #57404e;
+  font-size: 14px;
+}
+.garden-input-wrap input::placeholder { color: #7d6875; font-size: 12px; }
+.garden-error {
+  min-height: 28px;
+  padding-top: 7px;
+  font-size: 12px;
+  color: var(--ember);
+  line-height: 1.6;
+}
+
+.garden-submit-wrap { position: relative; }
+.garden-submit {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 51px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--btn-primary);
+  color: var(--btn-primary-ink);
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: var(--btn-primary-shadow);
+  overflow: hidden;
+  transition: background-color 0.2s;
+}
+.garden-submit:hover:not(:disabled) { background-color: var(--btn-primary-hover); }
+.garden-submit svg { transition: transform 0.25s; }
+.garden-submit:hover:not(:disabled) svg { transform: translateX(3px); }
+.garden-submit:disabled { opacity: 0.8; cursor: default; }
+
+/* 登录开始瞬间从按钮中心绽开的一记晶辉。 */
+.garden-bloom {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 2;
+}
+.garden-bloom::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(255 255 255 / 0.95), rgb(231 152 192 / 0.5) 45%, transparent 72%);
+  animation: garden-bloom-core 0.5s ease-out both;
+}
+.garden-bloom::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  border: 1.5px solid rgb(231 152 192 / 0.45);
+  animation: garden-bloom-ring 0.5s ease-out both;
+}
+@keyframes garden-bloom-core { 0% { opacity: 0; transform: scale(0.4); } 25% { opacity: 0.5; } 100% { opacity: 0; transform: scale(24); } }
+@keyframes garden-bloom-ring { 0% { opacity: 0; transform: scale(0.5); } 25% { opacity: 0.45; } 100% { opacity: 0; transform: scale(30); } }
+
+.garden-footer {
+  position: relative;
+  z-index: 2;
+  padding: 24px 48px 30px;
+  animation: garden-arrive 1.1s ease-out 1.65s backwards;
+}
+.garden-signature {
+  margin: 0;
+  color: #775d6b;
+  font-family: 'Songti SC', 'SimSun', serif;
+  font-size: 13px;
+  line-height: 1.8;
+  text-wrap: balance;
+}
+
+/* 圆形工具钮（令牌显隐），主题钮见上方 .theme-toggle 覆写。 */
+.garden-tool {
+  position: relative;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #96617e;
+  transition: background 0.2s, color 0.2s;
+}
+.garden-tool:hover:not(:disabled) { background: #b76a8b10; color: #7e375c; }
+.garden-tool:disabled { opacity: 0.5; }
+.garden-spinner { animation: garden-spin 1.5s linear infinite; }
+
+.garden :is(button, a):focus-visible { outline: 2px solid #ad5c83; outline-offset: 5px; }
+
+/* 入画阶段：顶栏与底栏退场，画面只留视频、引言与花瓣。 */
+.garden-header,
+.garden-footer {
+  transition: opacity 0.6s ease;
+}
+.garden[data-phase='entering'] .garden-header,
+.garden[data-phase='entering'] .garden-footer {
+  opacity: 0;
+  pointer-events: none;
+}
+.garden[data-phase='entering'] .garden-login { opacity: 0; transform: translateY(-8px); }
+
+.garden[data-motion='paused'] .garden-camera { animation-play-state: paused; }
+
+@keyframes garden-arrive { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+/* 场景引领入场：镜头自轻微推近中淡入落定，界面随后级联浮现。 */
+@keyframes garden-scene-arrive {
+  from { opacity: 0; transform: scale(1.045); }
+  55% { opacity: 1; }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes garden-breathe { from { scale: 1; } to { scale: 1.045; } }
+@keyframes garden-spin { to { transform: rotate(360deg); } }
+
+@media (min-width: 1800px) {
+  .garden-content { margin-right: 10%; }
+  .garden-login { max-width: 430px; }
+  .garden h1 { font-size: 72px; }
+}
+
+@media (max-width: 1100px) {
+  .garden-header { padding: 25px 30px; }
+  .garden-footer { padding: 20px 30px; }
+  .garden-content { width: 38%; margin-right: 5%; }
+  .garden h1 { font-size: 52px; }
+  .garden-wash { background: linear-gradient(90deg, transparent 10%, rgb(253 251 252 / 0.3) 40%, rgb(253 251 252 / 0.94) 66%, #fdfbfc); }
+}
+
+@media (max-width: 700px) {
+  .garden-header { padding: 22px 24px; align-items: flex-start; }
+  .garden-brand { font-size: 17px; gap: 8px; }
+  .garden-brand img { width: 27px; height: 27px; }
+  .garden-brand-divider,
+  .garden-console { display: none; }
+  .garden-scene { height: 65%; min-height: 440px; right: 0; -webkit-mask-image: none; mask-image: none; }
+  .garden-image,
+  .garden-video { object-position: 28% 32%; }
+  .garden-camera { transform-origin: 33% 35%; }
+  .garden-wash { background: linear-gradient(180deg, rgb(253 251 252 / 0.03) 15%, rgb(253 251 252 / 0.04) 28%, rgb(253 251 252 / 0.8) 43%, #fdfbfc 57%); }
+  .garden-wash::after { background: linear-gradient(180deg, rgb(253 251 252 / 0.7), transparent 15%); }
+  .garden-content { width: calc(100% - 56px); max-width: 430px; margin: 240px 28px 0; padding: 0 0 24px; align-self: center; align-items: start; }
+  .garden-login { max-width: none; }
+  .garden h1 { font-size: 52px; margin-bottom: 16px; }
+  .garden-greeting { font-size: 23px; margin-bottom: 7px; }
+  .garden-form { margin-top: 26px; }
+  .garden-input-wrap { background: rgb(255 255 255 / 0.68); }
+  /* 16px 以上避免 iOS 聚焦自动放大。 */
+  .garden-input-wrap input { font-size: 16px; }
+  .garden-footer { padding: 16px 22px 20px; }
+  .garden-signature { font-size: 12px; }
+}
+
+@media (max-width: 370px) {
+  .garden-content { margin-left: 23px; margin-right: 23px; }
+  .garden h1 { font-size: 45px; }
+}
+
+@media (min-width: 701px) and (max-height: 640px) {
+  .garden-header { padding-top: 18px; padding-bottom: 18px; }
+  .garden-content { padding-top: 10px; padding-bottom: 20px; }
+  .garden h1 { font-size: 46px; margin-bottom: 14px; }
+  .garden-greeting { font-size: 23px; }
+  .garden-form { margin-top: 20px; }
+  .garden-footer { padding-top: 8px; padding-bottom: 10px; }
+}
+
+/* 全局已有减动效降级（index.css），这里额外掐掉级联延迟让界面立即可用。 */
+@media (prefers-reduced-motion: reduce) {
+  .garden *,
+  .garden *::before,
+  .garden *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ---- 玄夜：花庭入夜配色 ---- */
+.dark .garden { background: #18141c; }
+.dark .garden-wash { background: linear-gradient(90deg, rgb(24 20 28 / 0.04) 20%, rgb(24 20 28 / 0.16) 43%, rgb(24 20 28 / 0.94) 66%, #18141c 100%); }
+.dark .garden-wash::after { background: linear-gradient(180deg, rgb(24 20 28 / 0.55), transparent 18%, transparent 80%, rgb(24 20 28 / 0.8)); }
+.dark .garden-transition { background: #18141c; }
+.dark .garden-aurora::before { background: radial-gradient(circle at 50% 50%, rgb(231 152 192 / 0.2), transparent 70%); }
+.dark .garden-aurora::after { background: radial-gradient(circle at 50% 50%, rgb(176 141 238 / 0.3), transparent 70%); }
+.dark .garden-brand,
+.dark .garden h1 { color: #f7edf3; }
+.dark .garden h1 i { color: #dfb4cd; }
+.dark .garden-title-dot { color: #e798c0; }
+.dark .garden-greeting { color: #d8b1c8; }
+.dark .garden-console,
+.dark .garden-signature,
+.dark .garden-form label span { color: #bea8b7; }
+.dark .garden-form label { color: #e2cad8; }
+.dark .garden-input-wrap { background: rgb(255 235 248 / 0.045); border-color: #866175; }
+.dark .garden-input-wrap:focus-within { background: rgb(255 235 248 / 0.08); border-color: #dfa0c3; }
+.dark .garden-input-wrap::after { background: #dfa0c3; }
+.dark .garden-input-wrap[data-invalid='true'] { border-color: #ffa6bd; }
+.dark .garden-input-wrap[data-invalid='true']::after { background: #ffa6bd; }
+.dark .garden-input-wrap input { color: #f5e9f0; }
+.dark .garden-input-wrap input::placeholder { color: #bba3b2; }
+.dark .garden-bloom::before { background: radial-gradient(circle, rgb(255 255 255 / 0.95), rgb(240 174 210 / 0.55) 45%, transparent 72%); }
+.dark .garden-bloom::after { border-color: rgb(240 174 210 / 0.5); }
+.dark .garden-tool { color: #e5b3cf; }
+.dark .garden-tool:hover:not(:disabled) { background: rgb(234 198 217 / 0.12); color: #f8dceb; }
+.dark .garden :is(button, a):focus-visible { outline-color: #e7a7ca; }
+
+@media (max-width: 700px) {
+  .dark .garden-wash { background: linear-gradient(180deg, rgb(24 20 28 / 0.03) 15%, rgb(24 20 28 / 0.04) 28%, rgb(24 20 28 / 0.8) 43%, #18141c 57%); }
+  .dark .garden-wash::after { background: linear-gradient(180deg, rgb(24 20 28 / 0.6), transparent 15%); }
+}
+
+/* ---- 光影退行 · 破壁入画（登录到达的唯一编排） ----
+   点击登录后：视频原地褪色变浅（不做缩放——缩放会露出视频边界），
+   引言「因你而在的故事」浮现又散去；随后人像化作花瓣，慢速飘向右上角；
+   线稿以中等浓度在控制台水印的位置预印登场，登录页卸载时原地交接，
+   再缓缓淡入水印浓度（见 index.css 的 watermark-settle）。 */
+/* 两段式褪色：花瓣初现（1.6s）前视频只退到半透明保持存在感，
+   花瓣开始飘出后才继续淡出，交接前几乎隐去。 */
+.garden[data-phase='entering'] .garden-scene {
+  animation: garden-scene-retreat 3.5s ease-in-out forwards;
+}
+@keyframes garden-scene-retreat {
+  0% { opacity: 1; filter: none; }
+  45% { opacity: 0.55; filter: grayscale(0.65) blur(1.5px); }
+  100% { opacity: 0.12; filter: grayscale(1) blur(3px); }
+}
+.garden-petals {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+}
+.garden-petal {
+  position: absolute;
+  border-radius: 88% 12% 88% 12% / 82% 18% 82% 18%;
+  background: linear-gradient(135deg, rgb(255 255 255 / 0.92) 0%, #f7bcd8 55%, #ee9fc4 100%);
+  box-shadow: 0 0 5px rgb(231 152 192 / 0.35);
+  will-change: transform, opacity;
+}
+/* 过场引言：于褪色的人像上浮现，停留一瞬，随花瓣一同散去。 */
+.garden-interlude {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.garden-interlude-cn {
+  font-family: 'Songti SC', 'SimSun', serif;
+  font-size: 30px;
+  color: #6d4763;
+  --interlude-glow: rgb(231 152 192 / 0.4);
+  animation: garden-interlude-main 2.2s cubic-bezier(0.2, 0.7, 0.2, 1) 0.35s both;
+}
+.garden-interlude-en {
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: #9d5678;
+  --interlude-glow: rgb(231 152 192 / 0.3);
+  animation: garden-interlude-sub 2.2s cubic-bezier(0.2, 0.7, 0.2, 1) 0.35s both;
+}
+@keyframes garden-interlude-main {
+  0% { opacity: 0; transform: scale(0.97); filter: blur(6px); text-shadow: 0 0 0 var(--interlude-glow); }
+  18% { opacity: 1; transform: scale(1); filter: blur(0); text-shadow: 0 0 24px var(--interlude-glow); }
+  60% { opacity: 1; transform: scale(1); filter: blur(0); text-shadow: 0 0 24px var(--interlude-glow); }
+  100% { opacity: 0; transform: scale(1.03); filter: blur(9px); text-shadow: 0 0 0 var(--interlude-glow); }
+}
+@keyframes garden-interlude-sub {
+  0% { opacity: 0; filter: blur(4px); }
+  18%, 60% { opacity: 0.85; filter: blur(0); }
+  100% { opacity: 0; filter: blur(8px); }
+}
+.dark .garden-interlude-cn { color: #ecd0e2; --interlude-glow: rgb(240 174 210 / 0.45); }
+.dark .garden-interlude-en { color: #bd93b3; --interlude-glow: rgb(240 174 210 / 0.35); }
+.garden-echo {
+  aspect-ratio: 760 / 808;
+  background: linear-gradient(172deg, var(--grad-a) 8%, var(--grad-b) 92%);
+  opacity: 0;
+}
+/* 中等浓度（不深）：花瓣落定之前在线稿位置候场，交接时亮度无缝续接。 */
+.garden[data-phase='entering'] .garden-echo {
+  opacity: 0.45;
+  transition: opacity 1.2s ease 2s;
+}

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 /** 页头：display 字体标题 + 描述 + 右侧操作槽。 */
@@ -13,6 +13,10 @@ export function PageHeader({
   actions?: ReactNode
   className?: string
 }) {
+  useEffect(() => {
+    document.title = `${title} · Elysia API`
+  }, [title])
+
   return (
     <div
       className={cn(

@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ARRIVED_FROM_LOGIN_KEY } from '@/lib/auth'
 
 interface ElysiaStageProps {
   className?: string
@@ -10,23 +12,55 @@ interface ElysiaStageProps {
 /**
  * 爱莉希雅视觉中枢舞台 (Elysia Visual Stage)
  * 将高精度立绘作为界面的核心视觉主角与氛围发生源，配合灵动微光、状态光环与水晶粒子。
+ *
+ * 登录到达时收尾：登录页以完整浓度预印的线稿原地交接，此处
+ * 从 0.85 浓度缓缓淡入水印常驻浓度（watermark-settle，见 index.css）。
+ * 标记由登录页写入 sessionStorage，此处读后即删——刷新与普通路由跳转不重播。
  */
 export function ElysiaStage({ className, statusState = 'ok', showAura = true }: ElysiaStageProps) {
   const src = `${import.meta.env.BASE_URL}role-mask.png`
+  // 初始化器先于 effect 消费标记读值，StrictMode 双挂载也只播一次。
+  const [arriving, setArriving] = useState(() => {
+    try {
+      return sessionStorage.getItem(ARRIVED_FROM_LOGIN_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem(ARRIVED_FROM_LOGIN_KEY)
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const maskStyle = {
+    WebkitMaskImage: `url(${src})`,
+    maskImage: `url(${src})`,
+    WebkitMaskSize: 'contain',
+    maskSize: 'contain',
+    WebkitMaskRepeat: 'no-repeat',
+    maskRepeat: 'no-repeat',
+    WebkitMaskPosition: 'top right',
+    maskPosition: 'top right',
+  } as const
 
   return (
     <div
       aria-hidden
       className={cn(
-        'pointer-events-none absolute right-0 top-0 z-0 select-none overflow-visible',
+        'pointer-events-none fixed right-0 top-0 z-0 select-none overflow-visible',
         'w-[280px] sm:w-[380px] md:w-[480px] lg:w-[560px] xl:w-[640px]',
         'transition-all duration-700 ease-out',
+        arriving && 'elysia-arrive',
         className,
       )}
     >
       {/* 氛围呼吸光晕 */}
       {showAura && (
-        <div className="absolute -top-12 right-12 h-72 w-72 rounded-full bg-gradient-to-br from-primary/15 to-transparent blur-3xl sm:h-96 sm:w-96" />
+        <div className="elysia-arrive-aura absolute -top-12 right-12 h-72 w-72 rounded-full bg-gradient-to-br from-primary/15 to-transparent blur-3xl sm:h-96 sm:w-96" />
       )}
 
       {/* 晶化粒子微光装饰 */}
@@ -38,23 +72,21 @@ export function ElysiaStage({ className, statusState = 'ok', showAura = true }: 
       </div>
 
       {/* 立绘主体容器：高清晰度硅光色粉渐变 + 柔化羽化 Mask */}
-      <div
-        className={cn(
-          'role-fig aspect-[760/808] w-full',
-          'opacity-[0.09] transition-opacity duration-500 dark:opacity-[0.14]',
-          statusState === 'active' && 'opacity-[0.13] dark:opacity-[0.18]',
-        )}
-        style={{
-          WebkitMaskImage: `url(${src})`,
-          maskImage: `url(${src})`,
-          WebkitMaskSize: 'contain',
-          maskSize: 'contain',
-          WebkitMaskRepeat: 'no-repeat',
-          maskRepeat: 'no-repeat',
-          WebkitMaskPosition: 'top right',
-          maskPosition: 'top right',
-        }}
-      />
+      <div className="relative aspect-[760/808] w-full">
+        <div
+          className={cn(
+            'role-fig absolute inset-0',
+            'opacity-[0.09] transition-opacity duration-500 dark:opacity-[0.14]',
+            statusState === 'active' && 'opacity-[0.13] dark:opacity-[0.18]',
+          )}
+          style={maskStyle}
+          onAnimationEnd={(event) => {
+            // watermark-settle 走完（forwards 填充值与类定义一致）后摘除动画，
+            // 让 statusState 等后续透明度变化恢复生效。
+            if (event.animationName === 'watermark-settle') setArriving(false)
+          }}
+        />
+      </div>
     </div>
   )
 }

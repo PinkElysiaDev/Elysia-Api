@@ -31,10 +31,10 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/overview', label: '总览', icon: Activity, group: '监控' },
   { to: '/usage-logs', label: '调用日志', icon: ScrollText, group: '监控' },
   { to: '/sources', label: '模型源', icon: Database, group: '网关配置' },
-  { to: '/protocols', label: '协议设计器', icon: Puzzle, group: '网关配置' },
   { to: '/groups', label: '模型组', icon: Layers, group: '网关配置' },
   { to: '/tokens', label: '访问令牌', icon: KeyRound, group: '网关配置' },
   { to: '/usage', label: 'Usage 统计', icon: BarChart3, group: '观测' },
+  { to: '/protocols', label: '协议设计器', icon: Puzzle, group: '系统' },
   { to: '/logs', label: '系统日志', icon: Terminal, group: '系统' },
   { to: '/runtime', label: '运行配置', icon: Settings, group: '系统' },
   { to: '/diagnostics', label: '诊断', icon: Stethoscope, group: '系统' },
@@ -42,7 +42,7 @@ const NAV_ITEMS: NavItem[] = [
 
 const GROUP_ORDER = ['监控', '网关配置', '观测', '系统']
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { confirm, dialog } = useConfirm()
   const grouped = GROUP_ORDER.map((group) => ({
     group,
@@ -60,7 +60,7 @@ export function Sidebar() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-[22px] bg-rail-fade py-[22px] pb-[18px] text-sidebar-foreground max-rail:bg-background">
+    <div className="flex h-full flex-col gap-[22px] bg-rail-fade py-[22px] pb-[max(18px,env(safe-area-inset-bottom))] text-sidebar-foreground max-rail:bg-background">
       <BrandMark className="px-[22px]" />
 
       <nav aria-label="主导航" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-2">
@@ -75,9 +75,10 @@ export function Sidebar() {
                 <NavLink
                   key={item.to}
                   to={item.to}
+                  onClick={onNavigate}
                   className={({ isActive }) =>
                     cn(
-                      'relative flex w-full items-center gap-[11px] rounded-md px-3 py-[9px] text-sm transition-colors duration-200',
+                      'relative flex w-full items-center gap-[11px] rounded-md px-3 py-[9px] text-sm transition-colors duration-200 max-rail:min-h-11',
                       isActive
                         ? 'bg-wash font-semibold text-rose'
                         : 'text-muted-foreground hover:bg-wash hover:text-foreground',

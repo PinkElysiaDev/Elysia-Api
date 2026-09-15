@@ -47,13 +47,14 @@ export function SystemLogsPage() {
     [level, page],
   )
 
-  const { data, isLoading, error, mutate } = useSystemLogs(params)
+  const { data, isLoading, isValidating, error, mutate } = useSystemLogs(params)
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-  // total 收缩（日志被裁剪）后把超界的页码收敛回最后一页。
+  // 只根据当前查询返回的总数校正页码，加载中不能把空数据/上一页数据当作结果。
   useEffect(() => {
+    if (!data || isLoading || error) return
     setPage((p) => Math.min(p, totalPages - 1))
-  }, [totalPages])
+  }, [data, isLoading, error, totalPages])
 
   // 翻页后把表格顶部滚回视野：分页按钮在表格底部，换页应从第一行重新读起。
   const tableTopRef = useRef<HTMLDivElement>(null)
@@ -68,9 +69,10 @@ export function SystemLogsPage() {
 
       <div className="relative z-[1] space-y-6">
         <PageHeader
-          title="系统日志"          actions={
-            <Button onClick={() => mutate()} disabled={isLoading}>
-              <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin')} /> 刷新日志
+          title="系统日志"
+          actions={
+            <Button onClick={() => mutate()} disabled={isValidating}>
+              <RefreshCw className={cn('h-4 w-4', isValidating && 'animate-spin')} /> 刷新日志
             </Button>
           }
         />
@@ -109,7 +111,7 @@ export function SystemLogsPage() {
         >
           {(items) => (
             <div className="space-y-3">
-              <div className="overflow-x-auto scroll-mt-4" ref={tableTopRef}>
+              <div className={cn('overflow-x-auto scroll-mt-4 transition-opacity', isLoading && 'opacity-50')} ref={tableTopRef} aria-busy={isLoading}>
                 <table className="w-full text-sm">
                   <TableHeader className="bg-secondary/20">
                     <TableRow className="border-b border-border/60 hover:bg-transparent">
@@ -155,7 +157,7 @@ export function SystemLogsPage() {
                 </table>
               </div>
 
-              <PaginationBar total={total} page={page} totalPages={totalPages} onNavigate={navigateWithScroll} unitLabel="条" />
+              <PaginationBar total={total} page={page} totalPages={totalPages} onNavigate={navigateWithScroll} unitLabel="条" loading={isLoading} />
             </div>
           )}
         </AsyncState>
