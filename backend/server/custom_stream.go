@@ -151,6 +151,7 @@ func (s *Server) handleCustomStreamRequest(
 	record.StatusCode = http.StatusOK
 	if streamErr != nil {
 		record.StatusCode = http.StatusBadGateway
+		record.ErrorKind = ErrorKindUpstream
 		record.Error = streamErr.Error()
 	}
 	return finish(relayOutcome{committed: true, statusCode: record.StatusCode, errMsg: record.Error})

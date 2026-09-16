@@ -201,6 +201,44 @@ func nullableString(s string) any {
 	return s
 }
 
+// classFromOpenAIType 按 OpenAI error.type 反推分类(流式 error 事件与
+// response.failed 的 type 值与 HTTP type 同源)。
+func classFromOpenAIType(t string) ErrorClass {
+	switch t {
+	case "invalid_request_error":
+		return ErrorClassInvalidRequest
+	case "rate_limit_error":
+		return ErrorClassRateLimit
+	case "insufficient_quota":
+		return ErrorClassRateLimit
+	case "service_unavailable_error":
+		return ErrorClassOverloaded
+	case "api_error":
+		return ErrorClassUpstream
+	case "server_error":
+		return ErrorClassServer
+	case "content_filter":
+		return ErrorClassInvalidRequest
+	case "":
+		return ""
+	default:
+		return ErrorClassUpstream
+	}
+}
+
+// SameErrorEnvelope 判断上游错误体与客户端线制是否共用同一错误信封
+// (可原样透传):OpenAI Chat/Responses 与 openai_chat 目标格式共享
+// {error:{message,type,param,code}} 对象;Claude/Gemini 各自匹配。
+func SameErrorEnvelope(upstream, client FormatType) bool {
+	openAIFamily := func(f FormatType) bool {
+		return f == FormatOpenAI || f == FormatOpenAIChat || f == FormatResponses
+	}
+	if openAIFamily(upstream) && openAIFamily(client) {
+		return true
+	}
+	return upstream == client
+}
+
 // classFromStatus 按上游 HTTP 状态反推错误分类(解析出体字段前的兜底)。
 func classFromStatus(status int) ErrorClass {
 	switch {
@@ -313,3 +351,8 @@ func upstreamErrorSummary(body []byte) string {
 	}
 	return "upstream error: " + text
 }
+
+// MaxUpstreamBodyBytes 是上游(非流式)响应体的读取上限:请求方向已有
+// MaxBytesReader(默认 32MiB),响应方向此前无界——被劫持/异常的上游可
+// 用超大响应体直接打爆进程内存。
+const MaxUpstreamBodyBytes = 64 << 20 // 64MiB:容纳大补全+思考链,仍远离 OOM

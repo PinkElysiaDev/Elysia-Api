@@ -173,7 +173,19 @@ func (r *usageRetention) runOnceInner() {
 		return
 	}
 	cfg := s.usageLogConfig()
-	ctx := context.Background()
+	// ctx 挂到 stop:关停信号可中断清理轮次(大库一轮可达分钟级,
+	// 否则 /__shutdown 与 SIGTERM 会一直等它跑完)。
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stopWatchDone := make(chan struct{})
+	go func() {
+		select {
+		case <-r.stop:
+			cancel()
+		case <-stopWatchDone:
+		}
+	}()
+	defer close(stopWatchDone)
 	stats := retentionStats{LastRunAt: time.Now()}
 	assetsRoot := s.usageAssetsRoot()
 	totalDeleted := 0
@@ -252,6 +264,9 @@ func (r *usageRetention) runOnceInner() {
 // （计数/资产目录清理），不累积全量 id——百万行级清理时累积切片本身就是负担。
 func (r *usageRetention) deleteInBatches(ctx context.Context, batch func() ([]string, error), onBatch func([]string)) error {
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		ids, err := batch()
 		if err != nil {
 			return err

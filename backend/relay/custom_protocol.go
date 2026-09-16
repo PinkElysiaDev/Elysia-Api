@@ -561,7 +561,7 @@ func customProtocolResponseToMaheshvaraValidated(body []byte, config CustomProto
 	}
 	if mapping.ErrorPath != "" {
 		if value := customValueAt(raw, mapping.ErrorPath); value != nil {
-			response.Error = &MaheshvaraError{Message: customValueString(value), Raw: customMap(value)}
+			response.Error = &MaheshvaraError{Message: customValueString(value), Class: ErrorClassUpstream, Raw: customMap(value)}
 		}
 	}
 	if text := customTextAt(raw, mapping.TextPath); text != "" {

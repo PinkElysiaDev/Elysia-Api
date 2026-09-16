@@ -113,7 +113,8 @@ func (decoder *MaheshvaraStreamDecoder) decodeResponses(raw map[string]any) ([]M
 			errorValue = mapValue(responseValue["error"])
 		}
 		event.Type = MaheshvaraEventResponseFailed
-		event.Error = &MaheshvaraError{Message: firstNonEmptyString(stringValue(errorValue["message"]), "OpenAI Responses stream failed"), Type: stringValue(errorValue["type"]), Code: stringValue(errorValue["code"]), Param: stringValue(errorValue["param"]), Raw: errorValue}
+		errType := stringValue(errorValue["type"])
+		event.Error = &MaheshvaraError{Message: firstNonEmptyString(stringValue(errorValue["message"]), "OpenAI Responses stream failed"), Type: errType, Class: classFromOpenAIType(errType), Code: stringValue(errorValue["code"]), Param: stringValue(errorValue["param"]), Raw: errorValue}
 		return []MaheshvaraStreamEvent{event}, nil
 	default:
 		if strings.Contains(typeName, "function_call") {

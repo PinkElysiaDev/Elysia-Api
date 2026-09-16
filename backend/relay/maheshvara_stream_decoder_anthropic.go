@@ -154,7 +154,8 @@ func (decoder *MaheshvaraStreamDecoder) decodeAnthropic(raw map[string]any) ([]M
 		decoder.terminal = true
 		errorValue := mapValue(raw["error"])
 		event := decoder.baseEvent(MaheshvaraEventResponseFailed, raw)
-		event.Error = &MaheshvaraError{Message: firstNonEmptyString(stringValue(errorValue["message"]), "Anthropic stream error"), Type: stringValue(errorValue["type"]), Raw: errorValue}
+		errType := stringValue(errorValue["type"])
+		event.Error = &MaheshvaraError{Message: firstNonEmptyString(stringValue(errorValue["message"]), "Anthropic stream error"), Type: errType, Class: classFromAnthropicType(errType), Raw: errorValue}
 		events = append(events, event)
 	case "ping":
 		return nil, nil

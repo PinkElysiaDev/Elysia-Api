@@ -175,8 +175,9 @@ func TestSameProtocolUpstreamErrorPassthrough(t *testing.T) {
 	if rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("status = %d, want 429", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), `"insufficient_quota"`) {
-		t.Fatalf("same-protocol upstream error must pass through verbatim, got: %s", rec.Body.String())
+	// 同信封(OpenAI 族上游 + OpenAI 客户端)必须逐字节透传,不得改写 type/丢字段。
+	if got := rec.Body.String(); got != upstreamBody {
+		t.Fatalf("same-envelope upstream error must pass through verbatim: got %s want %s", got, upstreamBody)
 	}
 }
 

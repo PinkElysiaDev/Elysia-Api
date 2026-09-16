@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -12,6 +13,8 @@ import (
 	"net/http/pprof"
 	"net/url"
 	"os"
+	"os/signal"
+	"syscall"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -409,6 +412,7 @@ func (s *Server) reloadConfig(c *gin.Context) {
 	oldServer := s.config.GetServer()
 	oldHost := oldServer.Host
 	oldPort := oldServer.Port
+	oldHTTPTimeout := s.config.GetHTTPTimeout()
 
 	if err := s.config.Reload(); err != nil {
 		log.Printf("Config reload failed: %v", err)
@@ -421,6 +425,15 @@ func (s *Server) reloadConfig(c *gin.Context) {
 
 	newServer := s.config.GetServer()
 	serverChanged := oldHost != newServer.Host || oldPort != newServer.Port
+	// httpTimeout 属于 adapter 客户端参数,config.json 路径的热重载也要下发
+	//(此前只有管理端 PUT 会 SetTimeout,文件路径改超时静默不生效直到重启)。
+	if timeout := s.config.GetHTTPTimeout(); timeout != oldHTTPTimeout {
+		log.Printf("HTTP timeout hot-reloaded: %ds -> %ds", oldHTTPTimeout, timeout)
+		duration := time.Duration(timeout) * time.Second
+		s.openaiAdapter.SetTimeout(duration)
+		s.claudeAdapter.SetTimeout(duration)
+		s.geminiAdapter.SetTimeout(duration)
+	}
 	// 配置热更新后失效路由缓存，下次请求按新配置重建（借鉴 SyncOptions）。
 	s.invalidateRouteCache()
 	// SSRF 放行策略可能随配置变更，同步到 relay 包级开关（即时生效）。
@@ -854,9 +867,9 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		log.Printf("Streaming not supported")
+		writeProtocolError(c, inputFormat, &relay.MaheshvaraError{Class: relay.ErrorClassServer, Message: "streaming is not supported on this connection"})
 		record.StatusCode = http.StatusInternalServerError
 		record.Error = "Streaming not supported"
-		c.JSON(500, gin.H{"error": "Streaming not supported"})
 		result = relayOutcome{committed: true, statusCode: 500, errMsg: "Streaming not supported"}
 		return result
 	}
@@ -928,8 +941,9 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		if err != nil {
 			log.Printf("Error forwarding stream request: %v", err)
 			// 上游真实状态码保真：401/403/400 等永久错误不得洗白成 502
-			// 触发对全部候选的扇出重试。
-			result = failResult(upstreamErrorStatus(err, http.StatusBadGateway), fmt.Sprintf("Failed to forward request: %v", err), nil)
+			// 触发对全部候选的扇出重试;错误体经 UpstreamStatusError 携带,
+			// 交给 failResult 按信封解析渲染。
+			result = failResult(upstreamErrorStatus(err, http.StatusBadGateway), fmt.Sprintf("Failed to forward request: %v", err), upstreamErrorBody(err))
 			return result
 		}
 
@@ -986,26 +1000,36 @@ func streamYieldedNothing(record *usageRecord, writer *observingStreamWriter) bo
 }
 
 func readBodyAndJSON(resp *http.Response, v interface{}) ([]byte, error) {
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, relay.MaxUpstreamBodyBytes))
 	if err != nil {
 		return nil, err
 	}
 	return body, json.Unmarshal(body, v)
 }
 
-// writeUpstreamError 写上游失败:同线制原样透传(保真),跨线制把上游
-// 错误体解析为核心错误后按客户端线制重渲染(自定义协议平台按 OpenAI
-// 形态尽力解析,失败回退原文摘要)。
+// writeUpstreamError 写上游失败:与客户端共用同一错误信封时原样透传
+// (保真),否则把上游错误体解析为核心错误后按客户端线制重渲染(自定义
+// 协议平台按 OpenAI 形态尽力解析,失败回退原文摘要)。
 func writeUpstreamError(c *gin.Context, inputFormat relay.FormatType, targetPlatform relay.Platform, statusCode int, respBody []byte, contentType string) {
 	upstreamFormat := relay.FormatOpenAI
 	if f, err := relay.TargetFormatForPlatform(targetPlatform); err == nil {
 		upstreamFormat = f
 	}
-	if upstreamFormat == inputFormat {
+	if relay.SameErrorEnvelope(upstreamFormat, inputFormat) {
 		c.Data(statusCode, contentType, respBody)
 		return
 	}
 	writeProtocolError(c, inputFormat, relay.ParseUpstreamError(upstreamFormat, statusCode, respBody))
+}
+
+// upstreamErrorBody 从错误链中提取上游错误体(adapter 非 200 时返回的
+// UpstreamStatusError 自带响应体);没有则返回 nil。
+func upstreamErrorBody(err error) []byte {
+	var statusErr *relay.UpstreamStatusError
+	if errors.As(err, &statusErr) && statusErr.Body != "" {
+		return []byte(statusErr.Body)
+	}
+	return nil
 }
 
 // ensureStreamFlagInTargetBody 在需要流式转发时，为上游请求补齐 stream=true。
@@ -1371,13 +1395,33 @@ func (s *Server) ListenAndServe() error {
 	addr := fmt.Sprintf("%s:%d", s.config.Server.Host, s.config.Server.Port)
 	log.Printf("Starting server on %s", addr)
 
-	// 显式持有 http.Server，便于 /__shutdown 优雅关停。
+	// 显式持有 http.Server，便于 /__shutdown 与信号(SIGTERM/SIGINT)优雅关停。
 	s.httpServer = &http.Server{Addr: addr, Handler: s.engine}
+
+	// 信号到达时在与 /__shutdown 相同的关停序列上收尾:冲刷 usage 队列、
+	// 停后台任务,再退出主 goroutine(ListenAndServe 已在关停序列内被 Close)。
+	sigErr := make(chan error, 1)
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	defer signal.Stop(sigCh)
+	go func() {
+		<-sigCh
+		log.Printf("Shutdown signal received, draining...")
+		s.doShutdown()
+		sigErr <- nil
+	}()
+
 	err := s.httpServer.ListenAndServe()
 	if err == http.ErrServerClosed {
-		// 被 /__shutdown 主动关停属正常退出，不视为错误。
+		// 主动关停(信号或 /__shutdown)属正常退出;等待关停序列完成。
+		<-sigErr
 		log.Printf("Server stopped gracefully")
 		return nil
+	}
+	// ListenAndServe 其他错误(端口占用等):关停序列未跑,直接返回。
+	select {
+	case <-sigErr:
+	default:
 	}
 	return err
 }

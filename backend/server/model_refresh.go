@@ -342,7 +342,9 @@ func (s *Server) fetchGeminiModels(ctx context.Context, source storage.ModelSour
 }
 
 func fetchAndDecodeJSON(req *http.Request, target any) error {
-	client := &http.Client{Timeout: 30 * time.Second}
+	// 模型列表拉取与转发路径同级的外部请求:必须走 secure transport
+	// (拨号级 SSRF 校验),否则拉取 URL 可被引向内网/云元数据端点。
+	client := &http.Client{Timeout: 30 * time.Second, Transport: relay.NewSecureTransport()}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

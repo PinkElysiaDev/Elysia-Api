@@ -267,7 +267,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]
 				if message == "" {
 					message = "upstream reported finish_reason=error"
 				}
-				event.Error = &MaheshvaraError{Type: "upstream_stream_error", Message: message}
+				event.Error = &MaheshvaraError{Type: "upstream_stream_error", Class: ErrorClassUpstream, Message: message}
 				terminalEvents = append(terminalEvents, event)
 				continue
 			}

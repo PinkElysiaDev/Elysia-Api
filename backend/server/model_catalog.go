@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -215,7 +216,9 @@ func catalogResolveURL(cfg config.ModelCatalogConfig) string {
 
 // catalogHTTPClient 构造拉取目录用的 HTTP client：显式代理 > 环境变量代理。
 func catalogHTTPClient(proxy string) *http.Client {
-	transport := &http.Transport{Proxy: http.ProxyFromEnvironment}
+	// 基于 secure transport(拨号级 SSRF 校验)叠代理配置:目录 URL 是
+	// 外部输入,裸 transport 会放过内网/元数据目标。
+	transport := relay.NewSecureTransport()
 	if p := strings.TrimSpace(proxy); p != "" {
 		transport.Proxy = func(*http.Request) (u *url.URL, err error) {
 			return url.Parse(p)

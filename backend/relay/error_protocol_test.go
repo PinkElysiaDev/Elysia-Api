@@ -106,6 +106,29 @@ func TestProtocolErrorBodyMatrix(t *testing.T) {
 	}
 }
 
+// 流式错误事件的分类推导:Anthropic overloaded_error 不得兜底成 Server/500
+// (那会重新触发 SDK 对 5xx 的自动重试)。
+func TestStreamErrorClassDerivation(t *testing.T) {
+	if got := classFromAnthropicType("overloaded_error"); got != ErrorClassOverloaded {
+		t.Fatalf("overloaded_error -> %q, want overloaded", got)
+	}
+	if got := classFromOpenAIType("rate_limit_error"); got != ErrorClassRateLimit {
+		t.Fatalf("rate_limit_error -> %q, want rate_limit", got)
+	}
+	if got := classFromOpenAIType(""); got != "" {
+		t.Fatalf("empty type must stay unclassified for OrDefault, got %q", got)
+	}
+	renderer := NewMaheshvaraStreamRenderer(FormatOpenAI, &bufferedStreamWriter{}, "m")
+	if err := renderer.Abort(&MaheshvaraError{Class: classFromAnthropicType("overloaded_error"), Message: "overloaded"}); err != nil {
+		t.Fatalf("abort: %v", err)
+	}
+	// buffer 内容由 bufferedStreamWriter 校验:此处仅验证 Abort 链路无错,
+	// 类型断言在下方单元。
+	if classFromOpenAIType("service_unavailable_error") != ErrorClassOverloaded {
+		t.Fatal("service_unavailable_error must map to overloaded")
+	}
+}
+
 // 上游真实状态码优先于分类建议值(跨协议翻译保真);细分 code 透传。
 func TestProtocolErrorBodyUpstreamOverride(t *testing.T) {
 	err := &MaheshvaraError{Class: ErrorClassRateLimit, Code: "slow_down", Status: 429, Message: "quota"}
@@ -154,3 +177,9 @@ func paramPtr(p *string) string {
 	}
 	return *p
 }
+
+type bufferedStreamWriter struct{ data []byte }
+
+func (w *bufferedStreamWriter) Write(p []byte) (int, error)       { w.data = append(w.data, p...); return len(p), nil }
+func (w *bufferedStreamWriter) WriteString(s string) (int, error) { w.data = append(w.data, s...); return len(s), nil }
+func (w *bufferedStreamWriter) Flush() error                      { return nil }

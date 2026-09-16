@@ -183,7 +183,7 @@ func postJSONDecode[T any](a *OpenAIAdapter, ctx context.Context, url, apiKey st
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamBodyBytes))
 	if err != nil {
 		return nil, nil, resp.StatusCode, err
 	}
@@ -240,7 +240,7 @@ func (a *OpenAIAdapter) postStream(ctx context.Context, url, apiKey string, body
 
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamBodyBytes))
 		return nil, &UpstreamStatusError{StatusCode: resp.StatusCode, Body: string(respBody)}
 	}
 

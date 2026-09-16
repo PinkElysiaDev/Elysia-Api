@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -36,7 +37,8 @@ func (s *Server) responses(c *gin.Context) {
 	responsesCfg := s.config.GetResponsesConfig()
 	if responsesCfg.Enabled != nil && !*responsesCfg.Enabled {
 		s.failRequestError(c, record, startTime, relay.FormatResponses, &relay.MaheshvaraError{
-			Class: relay.ErrorClassInvalidRequest, Message: "Responses API is disabled",
+			Class: relay.ErrorClassInvalidRequest, Status: http.StatusNotFound,
+			Code: "unsupported_endpoint", Message: "Responses API is disabled",
 		})
 		return
 	}
@@ -318,7 +320,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 	if !ok {
 		record.StatusCode = http.StatusInternalServerError
 		record.Error = "Streaming not supported"
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": "Streaming not supported", "type": "api_error"}})
+		writeProtocolError(c, relay.FormatResponses, &relay.MaheshvaraError{Class: relay.ErrorClassServer, Message: "streaming is not supported on this connection"})
 		result = relayOutcome{committed: true, statusCode: http.StatusInternalServerError}
 		return result
 	}
@@ -396,7 +398,8 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 	default:
 		resp, err := s.openaiAdapter.SendRequestStream(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		if err != nil {
-			result = connFail(upstreamErrorStatus(err, http.StatusBadGateway), err.Error(), nil)
+			// 上游错误体经 UpstreamStatusError 携带,交给 connFail 解析渲染。
+			result = connFail(upstreamErrorStatus(err, http.StatusBadGateway), err.Error(), upstreamErrorBody(err))
 			return result
 		}
 		startSSE()
@@ -414,7 +417,12 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		if record.StatusCode < 400 {
 			record.StatusCode = http.StatusBadGateway
 		}
-		writeResponsesStreamError(writer, streamErr)
+		// 转换路径的 renderer.Abort 已写出规范收尾帧(error + response.failed,
+		// 事件携带 sequence_number),重复补写会打乱事件序;仅纯转发失败需要补帧。
+		var rendered *relay.MaheshvaraError
+		if !errors.As(streamErr, &rendered) {
+			writeResponsesStreamError(writer, streamErr)
+		}
 	} else if streamYieldedNothing(record, writer) {
 		// 上游返回 200 但既无输出文本也无 usage —— 实际空响应，纠正为失败。
 		log.Printf("Upstream Responses stream returned empty response (no content, no usage)")

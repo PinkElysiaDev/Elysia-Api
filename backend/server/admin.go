@@ -358,6 +358,17 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 			item.APIKey = existing.APIKey
 		}
 	}
+	// 保存前预校验出站地址(请求与拉取都会走该地址):内网/云元数据目标
+	// 在保存时即拒绝,与拨号级校验形成双层防护。
+	for _, raw := range []string{strings.TrimSpace(item.BaseURL), strings.TrimSpace(item.FetchBaseURL)} {
+		if raw == "" {
+			continue
+		}
+		if err := s.validateOutbound(raw); err != nil {
+			respondFail(c, 400, "invalid_base_url", fmt.Sprintf("base url rejected: %v", err))
+			return
+		}
+	}
 	if err := store.UpsertSource(c.Request.Context(), item); err != nil {
 		respondFail(c, 400, "save_source_failed", err.Error())
 		return

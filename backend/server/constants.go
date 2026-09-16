@@ -23,7 +23,7 @@ const (
 // ErrorKind* 是 usage 记录 errorKind 字段的归类值（供面板筛选/展示）。
 // 未归类的失败保持空串，不参与前端徽标渲染。
 const (
-	ErrorKindConversion = "conversion" // 协议转换失败（OpenAI/Claude/Gemini 互转）
+	ErrorKindConversion = "conversion" // [已废弃]历史值域,新记录归入 ErrorClass(invalid_request),保留供旧日志兼容
 	ErrorKindUpstream   = "upstream"   // 上游转发失败/候选耗尽
 )
 

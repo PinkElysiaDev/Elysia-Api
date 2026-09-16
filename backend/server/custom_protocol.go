@@ -177,7 +177,7 @@ func (s *Server) handleCustomNormal(
 		return result
 	}
 	defer response.Body.Close()
-	body, readErr := io.ReadAll(response.Body)
+	body, readErr := io.ReadAll(io.LimitReader(response.Body, relay.MaxUpstreamBodyBytes))
 	record.ProviderResponse = record.sanitizeBody(body)
 	if readErr != nil {
 		result = fail(http.StatusBadGateway, fmt.Sprintf("failed to read custom protocol response: %v", readErr), nil, true)

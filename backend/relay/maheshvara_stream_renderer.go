@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"errors"
 	"context"
 	"fmt"
 	"net/http"
@@ -192,7 +193,8 @@ func (renderer *MaheshvaraStreamRenderer) Finish() error {
 // Abort 以核心错误中止流;携带完整分类/细分码的错误会按客户端线制渲染
 // 出对应 type/code(而非一律 upstream_stream_error)。
 func (renderer *MaheshvaraStreamRenderer) Abort(streamErr error) error {
-	if mErr, ok := streamErr.(*MaheshvaraError); ok && mErr != nil {
+	var mErr *MaheshvaraError
+	if errors.As(streamErr, &mErr) {
 		return renderer.AbortWithError(mErr)
 	}
 	message := "upstream stream failed"

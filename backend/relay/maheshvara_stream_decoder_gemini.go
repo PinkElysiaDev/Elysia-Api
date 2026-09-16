@@ -138,7 +138,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeGemini(raw map[string]any) ([]Mahe
 		if feedback := mapValue(raw["promptFeedback"]); feedback != nil && stringValue(feedback["blockReason"]) != "" {
 			decoder.terminal = true
 			event := decoder.baseEvent(MaheshvaraEventResponseFailed, raw)
-			event.Error = &MaheshvaraError{Message: "Gemini request blocked: " + stringValue(feedback["blockReason"]), Type: "content_filter", Raw: feedback}
+			event.Error = &MaheshvaraError{Message: "Gemini request blocked: " + stringValue(feedback["blockReason"]), Type: "content_filter", Class: ErrorClassInvalidRequest, Raw: feedback}
 			events = append(events, event)
 		}
 	}

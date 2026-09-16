@@ -14,7 +14,7 @@ import (
 // 之前的阶段（鉴权中间件、读请求体），与入口处的格式推导共用本函数。
 func inputFormatFromPath(path string) relay.FormatType {
 	switch {
-	case strings.HasSuffix(path, "/messages"):
+	case strings.HasSuffix(path, "/messages"), strings.HasSuffix(path, "/messages/count_tokens"):
 		return relay.FormatClaude
 	case strings.HasPrefix(path, "/v1beta/"):
 		return relay.FormatGemini
