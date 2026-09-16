@@ -31,10 +31,10 @@ func (s *Server) handleCustomStreamRequest(
 	fail := func(status int, message string, body []byte, retryable bool) relayOutcome {
 		outcome := relayFailOutcome(record, isLast, retryable, status, message, func() {
 			if body != nil {
-				c.Data(status, contentTypeJSON, body)
-			} else {
-				c.JSON(status, gin.H{"error": message})
+				writeUpstreamError(c, inputFormat, targetPlatform, status, body, contentTypeJSON)
+				return
 			}
+			writeProtocolError(c, inputFormat, &relay.MaheshvaraError{Class: relay.ErrorClassUpstream, Status: status, Message: message})
 		})
 		if outcome.committed {
 			return finish(outcome)
@@ -102,12 +102,12 @@ func (s *Server) handleCustomStreamRequest(
 			if event.Usage != nil {
 				updateRecordUsageFromMaheshvara(record, event.Usage)
 			}
-			if event.Error != nil || event.Type == relay.MaheshvaraEventResponseFailed {
-				message := "custom protocol stream failed"
-				if event.Error != nil && event.Error.Message != "" {
-					message = event.Error.Message
-				}
-				streamErr = fmt.Errorf("%s", message)
+			if event.Error != nil {
+				streamErr = event.Error
+				break
+			}
+			if event.Type == relay.MaheshvaraEventResponseFailed {
+				streamErr = fmt.Errorf("custom protocol stream failed")
 				break
 			}
 			if event.Type == relay.MaheshvaraEventResponseCompleted {

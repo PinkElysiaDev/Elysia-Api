@@ -373,13 +373,24 @@ type MaheshvaraUsage struct {
 	Provider string         `json:"provider,omitempty"`
 }
 
+func (e *MaheshvaraError) Error() string {
+	if e == nil {
+		return "maheshvara error"
+	}
+	return e.Message
+}
+
 type MaheshvaraError struct {
-	Message string         `json:"message"`
-	Type    string         `json:"type,omitempty"`
-	Param   string         `json:"param,omitempty"`
-	Code    string         `json:"code,omitempty"`
-	Details any            `json:"details,omitempty"`
-	Raw     map[string]any `json:"raw,omitempty"`
+	Message string `json:"message"`
+	Type    string `json:"type,omitempty"`
+	Param   string `json:"param,omitempty"`
+	Code    string `json:"code,omitempty"`
+	// Class 是错误的稳定分类(四线制渲染的权威来源,见 error_protocol.go);
+	// Status 为上游真实 HTTP 状态(跨协议翻译时携带,0 表示按分类推导)。
+	Class  ErrorClass     `json:"class,omitempty"`
+	Status int            `json:"status,omitempty"`
+	Details any           `json:"details,omitempty"`
+	Raw    map[string]any `json:"raw,omitempty"`
 }
 
 type MaheshvaraStreamEvent struct {

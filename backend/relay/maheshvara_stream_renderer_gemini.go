@@ -271,6 +271,7 @@ func (renderer *MaheshvaraStreamRenderer) finishGemini() error {
 	return renderer.writeSSEData(payload)
 }
 
-func (renderer *MaheshvaraStreamRenderer) abortGemini(streamErr error) error {
-	return renderer.writeSSEData(map[string]any{"error": map[string]any{"code": 502, "status": "UNAVAILABLE", "message": streamErr.Error()}})
+func (renderer *MaheshvaraStreamRenderer) abortGemini(mErr *MaheshvaraError) error {
+	status := mErr.EffectiveStatus()
+	return renderer.writeSSEData(map[string]any{"error": map[string]any{"code": status, "status": mErr.Class.geminiStatus(), "message": mErr.Message}})
 }

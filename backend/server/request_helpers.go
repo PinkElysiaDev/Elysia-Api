@@ -10,40 +10,38 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// failRequest records a failed request and sends a flat error JSON response.
-// Used by chatCompletions and other non-Responses endpoints.
-func (s *Server) failRequest(c *gin.Context, record *usageRecord, startTime time.Time, statusCode int, errMsg string) {
-	s.failRequestKind(c, record, startTime, statusCode, "", errMsg)
+// inputFormatFromPath 按 URL 推导客户端线制。错误出口可能出现在协议解析
+// 之前的阶段（鉴权中间件、读请求体），与入口处的格式推导共用本函数。
+func inputFormatFromPath(path string) relay.FormatType {
+	switch {
+	case strings.HasSuffix(path, "/messages"):
+		return relay.FormatClaude
+	case strings.HasPrefix(path, "/v1beta/"):
+		return relay.FormatGemini
+	case strings.HasSuffix(path, "/responses"):
+		return relay.FormatResponses
+	default:
+		return relay.FormatOpenAI
+	}
 }
 
-// failRequestKind 是 failRequest 的带归类版本：kind 填 ErrorKind* 常量
-// （conversion/upstream），空串表示未归类。先写响应再落记录——错误体要先进
+// writeProtocolError 按客户端线制写标准错误体（HTTP 层，SSE 尚未开始时）。
+func writeProtocolError(c *gin.Context, format relay.FormatType, mErr *relay.MaheshvaraError) {
+	status, body := relay.ProtocolErrorBody(format, mErr)
+	c.Data(status, contentTypeJSON, body)
+}
+
+// failRequestError 是转发路径的统一失败出口：按客户端线制渲染标准错误体
+// 并落 usage 记录（class 即 errorKind）。先写响应再落记录——错误体要先进
 // 下游捕获器，记录里的第四段「返回下游」才有内容。
-func (s *Server) failRequestKind(c *gin.Context, record *usageRecord, startTime time.Time, statusCode int, kind, errMsg string) {
-	record.StatusCode = statusCode
-	record.Error = errMsg
-	record.ErrorKind = kind
+func (s *Server) failRequestError(c *gin.Context, record *usageRecord, startTime time.Time, format relay.FormatType, mErr *relay.MaheshvaraError) {
+	status, body := relay.ProtocolErrorBody(format, mErr)
+	record.StatusCode = status
+	record.Error = mErr.Message
+	record.ErrorKind = string(mErr.Class.OrDefault())
 	record.EndedAt = time.Now()
 	record.DurationMs = time.Since(startTime).Milliseconds()
-	c.JSON(statusCode, gin.H{"error": errMsg})
-	s.recordUsage(record)
-}
-
-// failRequestTyped records a failed request and sends a typed error JSON response
-// matching the OpenAI error object format: {"error": {"message": ..., "type": ...}}.
-// Used by Responses API endpoints.
-func (s *Server) failRequestTyped(c *gin.Context, record *usageRecord, startTime time.Time, statusCode int, errType, errMsg string) {
-	s.failRequestTypedKind(c, record, startTime, statusCode, errType, "", errMsg)
-}
-
-// failRequestTypedKind 是 failRequestTyped 的带归类版本。
-func (s *Server) failRequestTypedKind(c *gin.Context, record *usageRecord, startTime time.Time, statusCode int, errType, kind, errMsg string) {
-	record.StatusCode = statusCode
-	record.Error = errMsg
-	record.ErrorKind = kind
-	record.EndedAt = time.Now()
-	record.DurationMs = time.Since(startTime).Milliseconds()
-	c.JSON(statusCode, gin.H{"error": gin.H{"message": errMsg, "type": errType}})
+	c.Data(status, contentTypeJSON, body)
 	s.recordUsage(record)
 }
 
@@ -64,30 +62,11 @@ func (s *Server) abortRetryOnClientCancel(c *gin.Context, record *usageRecord, s
 	}
 }
 
-// commitLastAttemptFailure 提交末次尝试的失败：补全记录（状态/错误/归类/
-// 起止耗时）并写回错误响应。先写响应再落记录——错误体要先进下游捕获器，
-// 记录里的第四段「返回下游」才有内容。调用方负责置位 committed。
-func (s *Server) commitLastAttemptFailure(c *gin.Context, record *usageRecord, startTime time.Time, statusCode int, errKind, errMsg string, body gin.H) {
-	record.StatusCode = statusCode
-	record.Error = errMsg
-	record.ErrorKind = errKind
-	record.EndedAt = time.Now()
-	record.DurationMs = time.Since(startTime).Milliseconds()
-	c.JSON(statusCode, body)
-	s.recordUsage(record)
-}
-
-// statusForGroupError 把模型组校验错误映射为 HTTP 状态：组不存在 404、
-// 组被停用 403，其余按内部错误 500（server/responses 两入口共用）。
-func statusForGroupError(err error) int {
-	switch msg := err.Error(); {
-	case strings.Contains(msg, "not found"):
-		return http.StatusNotFound
-	case strings.Contains(msg, "disabled"):
-		return http.StatusForbidden
-	default:
-		return http.StatusInternalServerError
-	}
+// commitLastAttemptFailure 提交末次尝试的失败：补全记录并按客户端线制写
+// 标准错误体。先写响应再落记录（错误体先进下游捕获器，第四段才有内容）。
+// 调用方负责置位 committed。
+func (s *Server) commitLastAttemptFailure(c *gin.Context, record *usageRecord, startTime time.Time, format relay.FormatType, mErr *relay.MaheshvaraError) {
+	s.failRequestError(c, record, startTime, format, mErr)
 }
 
 // upstreamErrorStatus 从错误中提取上游真实状态码（UpstreamStatusError），

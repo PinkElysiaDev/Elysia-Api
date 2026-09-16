@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
@@ -66,7 +67,7 @@ func TestBodyOnErrorOnlyKeepsFailedBodiesAndWritesAssets(t *testing.T) {
 	failed := newExternalizeRecord("onerr-failed")
 	failed.StatusCode = 400
 	failed.Error = "boom"
-	failed.ErrorKind = ErrorKindConversion
+	failed.ErrorKind = string(relay.ErrorClassInvalidRequest)
 	payload := strings.Repeat("A", 600)
 	failed.IncomingBody = failed.sanitizeBody([]byte(`{"url":"data:image/png;base64,` + payload + `"}`))
 	if failed.assets.count() != 1 {
@@ -80,7 +81,7 @@ func TestBodyOnErrorOnlyKeepsFailedBodiesAndWritesAssets(t *testing.T) {
 	if !strings.Contains(stored, AssetPlaceholderPrefix) {
 		t.Fatalf("failed record must keep body with placeholder, got %s", stored)
 	}
-	if !strings.Contains(stored, `"errorKind":"conversion"`) {
+	if !strings.Contains(stored, `"errorKind":"invalid_request"`) {
 		t.Fatalf("errorKind must be persisted, got %s", stored)
 	}
 	// 资产已写盘（扁平内容寻址：文件在根目录，不带请求子目录）。
@@ -149,7 +150,9 @@ func TestConversionFailureIsRecorded(t *testing.T) {
 	record := s.initUsageRecord(c, start, []byte(`{invalid json`), "openai")
 
 	// 与 chatCompletions 内一致的失败路径。
-	s.failRequestKind(c, record, start, http.StatusBadRequest, ErrorKindConversion, "Failed to convert request to Maheshvara: bad json")
+	s.failRequestError(c, record, start, relay.FormatOpenAI, &relay.MaheshvaraError{
+		Class: relay.ErrorClassInvalidRequest, Message: "failed to convert request: bad json",
+	})
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d", rec.Code)
@@ -158,7 +161,7 @@ func TestConversionFailureIsRecorded(t *testing.T) {
 	for time.Now().Before(deadline) {
 		payload, found, err := store.GetUsageRecordJSON(context.Background(), record.RequestID)
 		if err == nil && found {
-			if !strings.Contains(string(payload), `"errorKind":"conversion"`) {
+			if !strings.Contains(string(payload), `"errorKind":"invalid_request"`) {
 				t.Fatalf("errorKind=conversion must be persisted: %s", payload)
 			}
 			return

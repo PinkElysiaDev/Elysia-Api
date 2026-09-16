@@ -331,8 +331,11 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 		token := extractAccessToken(c.Request)
 		accessToken, ok := s.findAccessToken(token)
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "unauthorized",
+			// 401 也按客户端线制渲染标准错误体(Codex/SDK 依赖 error 对象解析)。
+			c.Abort()
+			writeProtocolError(c, inputFormatFromPath(c.Request.URL.Path), &relay.MaheshvaraError{
+				Class:   relay.ErrorClassAuthentication,
+				Message: "Incorrect API key provided",
 			})
 			return
 		}
@@ -479,23 +482,22 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	// 读取原始请求体
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
+		// 携带底层原因(超限时给出配置上限),不再丢弃给一句固定文案。
+		msg := fmt.Sprintf("failed to read request body: %v", err)
+		if strings.Contains(err.Error(), "request body too large") {
+			msg = fmt.Sprintf("request body exceeds the configured limit (%d bytes)", s.config.GetMaxBodyBytes())
+		}
 		log.Printf("Error reading request body: %v", err)
-		c.JSON(400, gin.H{"error": "Failed to read request body"})
+		writeProtocolError(c, inputFormatFromPath(c.Request.URL.Path), &relay.MaheshvaraError{
+			Class: relay.ErrorClassInvalidRequest, Message: msg,
+		})
 		return
 	}
 
 	s.logVerbose("[Incoming Request Raw] %s", compactLogJSON(bodyBytes))
 
 	// 根据请求路径判断客户端期望的输入/输出格式
-	var inputFormat relay.FormatType
-	switch {
-	case strings.HasSuffix(c.Request.URL.Path, "/messages"):
-		inputFormat = relay.FormatClaude
-	case strings.HasPrefix(c.Request.URL.Path, "/v1beta/"):
-		inputFormat = relay.FormatGemini
-	default:
-		inputFormat = relay.FormatOpenAI
-	}
+	inputFormat := inputFormatFromPath(c.Request.URL.Path)
 	record := s.initUsageRecord(c, startTime, bodyBytes, inputFormat)
 	installDownstreamCapture(c, record, downstreamCaptureLimit(s.usageLogConfig()))
 	s.logVerbose("[Input Format] %s", inputFormat)
@@ -510,8 +512,10 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		log.Printf("Error converting request to Maheshvara: %v", maheshvaraErr)
 		// 转换失败同样落 usage 记录（与 /v1/responses 路径对齐）：bodyOnErrorOnly
 		// 模式下这类记录恰恰是唯一保留请求体的排查样本。
-		s.failRequestKind(c, record, startTime, http.StatusBadRequest, ErrorKindConversion,
-			fmt.Sprintf("Failed to convert request to Maheshvara: %v", maheshvaraErr))
+		s.failRequestError(c, record, startTime, inputFormat, &relay.MaheshvaraError{
+			Class: relay.ErrorClassInvalidRequest,
+			Message: fmt.Sprintf("failed to convert request: %v", maheshvaraErr),
+		})
 		return
 	}
 
@@ -522,7 +526,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	}
 
 	// 共用前置阶段：鉴权 → 组校验 → 候选 → 能力约束 → 预估 → 限流。
-	plan, ok := s.prepareRelayPlan(c, record, startTime, maheshvaraReq, relayFailer{s: s, c: c, record: record, startTime: startTime}, true)
+	plan, ok := s.prepareRelayPlan(c, record, startTime, maheshvaraReq, relayFailer{s: s, c: c, record: record, startTime: startTime, format: inputFormat}, true)
 	if !ok {
 		return
 	}
@@ -531,8 +535,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	estimatedTokens := plan.estimatedTokens
 	defer plan.releaseLimiter()
 
-	s.runRelayAttempts(c, record, startTime, group, candidates,
-		func(errMsg, _ string) gin.H { return gin.H{"error": errMsg} },
+	s.runRelayAttempts(c, record, startTime, group, candidates, inputFormat,
 		func(attempt int, selectedModel config.ModelRef, isLast bool) relayAttemptStep {
 			maheshvaraReq.Model = selectedModel.Name
 			targetPlatform := relay.DetectPlatform(selectedModel.BaseURL, selectedModel.Platform)
@@ -603,8 +606,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 				return relayAttemptStep{
 					skipErr:    skip,
 					skipStatus: http.StatusBadRequest,
-					skipKind:   ErrorKindConversion,
-					skipBody:   gin.H{"error": skip.Error()},
+					skipClass:  relay.ErrorClassInvalidRequest,
 				}
 			}
 			record.OutgoingBody = record.sanitizeBody(targetBody)
@@ -619,8 +621,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 					return relayAttemptStep{
 						skipErr:    skip,
 						skipStatus: http.StatusInternalServerError,
-						skipKind:   ErrorKindConversion,
-						skipBody:   gin.H{"error": skip.Error()},
+						skipClass:  relay.ErrorClassServer,
 					}
 				}
 				record.OutgoingBody = record.sanitizeBody(targetBody)
@@ -643,10 +644,10 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 	failResult := func(statusCode int, errMsg string, respBody []byte, contentType string) relayOutcome {
 		return relayFailOutcome(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, func() {
 			if respBody != nil {
-				c.Data(statusCode, contentType, respBody)
-			} else {
-				c.JSON(statusCode, gin.H{"error": errMsg})
+				writeUpstreamError(c, inputFormat, targetPlatform, statusCode, respBody, contentType)
+				return
 			}
+			writeProtocolError(c, inputFormat, &relay.MaheshvaraError{Class: relay.ErrorClassUpstream, Status: statusCode, Message: errMsg})
 		})
 	}
 
@@ -705,6 +706,13 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		}
 		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
 
+		// 上游 200 但响应体是错误对象:按线制输出标准错误体(带真实分类/码)。
+		if maheshvaraResp.Error != nil {
+			mErr := maheshvaraResp.Error
+			mErr.Class = mErr.Class.OrDefault()
+			result = failResult(mErr.EffectiveStatus(), mErr.Message, nil, "")
+			return result
+		}
 		record.StatusCode = http.StatusOK
 		output, renderErr := renderMaheshvaraChatResponse(maheshvaraResp, inputFormat)
 		if renderErr != nil {
@@ -751,6 +759,13 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 
 		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
 
+		// 上游 200 但响应体是错误对象:按线制输出标准错误体(带真实分类/码)。
+		if maheshvaraResp.Error != nil {
+			mErr := maheshvaraResp.Error
+			mErr.Class = mErr.Class.OrDefault()
+			result = failResult(mErr.EffectiveStatus(), mErr.Message, nil, "")
+			return result
+		}
 		record.StatusCode = http.StatusOK
 		output, renderErr := renderMaheshvaraChatResponse(maheshvaraResp, inputFormat)
 		if renderErr != nil {
@@ -826,13 +841,13 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 	failResult := func(statusCode int, errMsg string, respBody []byte) relayOutcome {
 		return relayFailOutcome(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, func() {
 			if respBody != nil {
-				c.Data(statusCode, contentTypeJSON, respBody)
-			} else {
 				// 透传真实上游状态码（failResult 的 statusCode 已经过
 				// upstreamErrorStatus 提取）：固定 502 会让客户端看到
 				// 502 而日志记的是 401/403 等永久错误。
-				writeStreamForwardError(c, inputFormat, statusCode, fmt.Errorf("%s", errMsg))
+				writeUpstreamError(c, inputFormat, targetPlatform, statusCode, respBody, contentTypeJSON)
+				return
 			}
+			writeProtocolError(c, inputFormat, &relay.MaheshvaraError{Class: relay.ErrorClassUpstream, Status: statusCode, Message: errMsg})
 		})
 	}
 
@@ -978,31 +993,19 @@ func readBodyAndJSON(resp *http.Response, v interface{}) ([]byte, error) {
 	return body, json.Unmarshal(body, v)
 }
 
-func writeStreamForwardError(
-	c *gin.Context,
-	inputFormat relay.FormatType,
-	statusCode int,
-	err error,
-) {
-	message := fmt.Sprintf("Failed to forward request: %v", err)
-	if statusCode < 400 || statusCode > 599 {
-		statusCode = http.StatusBadGateway
+// writeUpstreamError 写上游失败:同线制原样透传(保真),跨线制把上游
+// 错误体解析为核心错误后按客户端线制重渲染(自定义协议平台按 OpenAI
+// 形态尽力解析,失败回退原文摘要)。
+func writeUpstreamError(c *gin.Context, inputFormat relay.FormatType, targetPlatform relay.Platform, statusCode int, respBody []byte, contentType string) {
+	upstreamFormat := relay.FormatOpenAI
+	if f, err := relay.TargetFormatForPlatform(targetPlatform); err == nil {
+		upstreamFormat = f
 	}
-
-	switch inputFormat {
-	case relay.FormatClaude:
-		c.AbortWithStatusJSON(statusCode, gin.H{
-			"type": "error",
-			"error": gin.H{
-				"type":    "api_error",
-				"message": message,
-			},
-		})
-	default:
-		c.AbortWithStatusJSON(statusCode, gin.H{
-			"error": message,
-		})
+	if upstreamFormat == inputFormat {
+		c.Data(statusCode, contentType, respBody)
+		return
 	}
+	writeProtocolError(c, inputFormat, relay.ParseUpstreamError(upstreamFormat, statusCode, respBody))
 }
 
 // ensureStreamFlagInTargetBody 在需要流式转发时，为上游请求补齐 stream=true。
@@ -1074,21 +1077,26 @@ func (s *Server) tokenAllowsGroup(c *gin.Context, groupName string) bool {
 	return false
 }
 
-// validateModelGroup 验证模型组配置
-func (s *Server) validateModelGroup(groupName string) (*config.ModelGroupConfig, error) {
+// validateModelGroup 验证模型组配置,失败返回按稳定错误分类组织的核心错误
+// (各线制的状态码/type/code 由分类派生;消息不暴露内部「组」概念)。
+func (s *Server) validateModelGroup(groupName string) (*config.ModelGroupConfig, *relay.MaheshvaraError) {
 	if groupName == "" {
-		return nil, fmt.Errorf("model name is required")
+		return nil, &relay.MaheshvaraError{Class: relay.ErrorClassInvalidRequest, Message: "model name is required"}
 	}
-
 	group := s.findGroupByName(groupName)
-	if group == nil {
-		return nil, fmt.Errorf("model group '%s' not found", groupName)
+	if group == nil || len(group.Models) == 0 {
+		// 组不存在与组内无可用模型对客户端同义:该模型不可用。
+		// 4xx 让 SDK/Codex 停止自动重试并正确提示。
+		return nil, &relay.MaheshvaraError{
+			Class:   relay.ErrorClassModelNotFound,
+			Message: fmt.Sprintf("The model '%s' does not exist or is not available", groupName),
+		}
 	}
 	if !group.Enabled {
-		return nil, fmt.Errorf("model group '%s' is disabled", groupName)
-	}
-	if len(group.Models) == 0 {
-		return nil, fmt.Errorf("no available models in group '%s'", groupName)
+		return nil, &relay.MaheshvaraError{
+			Class:   relay.ErrorClassPermission,
+			Message: fmt.Sprintf("The model '%s' is disabled by the administrator", groupName),
+		}
 	}
 	return group, nil
 }
@@ -1311,13 +1319,17 @@ func (s *Server) listGeminiModels(c *gin.Context) {
 func (s *Server) countTokens(c *gin.Context) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(400, gin.H{"error": "Failed to read request body"})
+		writeProtocolError(c, relay.FormatClaude, &relay.MaheshvaraError{
+			Class: relay.ErrorClassInvalidRequest, Message: fmt.Sprintf("failed to read request body: %v", err),
+		})
 		return
 	}
 
 	maheshvaraReq, err := relay.AnthropicToMaheshvara(bodyBytes)
 	if err != nil {
-		c.JSON(400, gin.H{"error": fmt.Sprintf("Failed to convert request: %v", err)})
+		writeProtocolError(c, relay.FormatClaude, &relay.MaheshvaraError{
+			Class: relay.ErrorClassInvalidRequest, Message: fmt.Sprintf("failed to convert request: %v", err),
+		})
 		return
 	}
 

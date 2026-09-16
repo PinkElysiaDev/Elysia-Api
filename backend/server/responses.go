@@ -19,7 +19,12 @@ func (s *Server) responses(c *gin.Context) {
 
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+		msg := fmt.Sprintf("failed to read request body: %v", err)
+		if strings.Contains(err.Error(), "request body too large") {
+			msg = fmt.Sprintf("request body exceeds the configured limit (%d bytes)", s.config.GetMaxBodyBytes())
+		}
+		log.Printf("[Responses] error reading request body: %v", err)
+		writeProtocolError(c, relay.FormatResponses, &relay.MaheshvaraError{Class: relay.ErrorClassInvalidRequest, Message: msg})
 		return
 	}
 
@@ -30,19 +35,23 @@ func (s *Server) responses(c *gin.Context) {
 
 	responsesCfg := s.config.GetResponsesConfig()
 	if responsesCfg.Enabled != nil && !*responsesCfg.Enabled {
-		s.failRequestTyped(c, record, startTime, http.StatusNotFound, "unsupported_endpoint", "Responses API is disabled")
+		s.failRequestError(c, record, startTime, relay.FormatResponses, &relay.MaheshvaraError{
+			Class: relay.ErrorClassInvalidRequest, Message: "Responses API is disabled",
+		})
 		return
 	}
 
 	maheshvaraReq, originalResponsesReq, err := relay.OpenAIResponsesToMaheshvara(bodyBytes)
 	if err != nil {
-		s.failRequestTypedKind(c, record, startTime, http.StatusBadRequest, "invalid_request_error", ErrorKindConversion, err.Error())
+		s.failRequestError(c, record, startTime, relay.FormatResponses, &relay.MaheshvaraError{
+			Class: relay.ErrorClassInvalidRequest, Message: err.Error(),
+		})
 		return
 	}
 
 	// 共用前置阶段（与 chatCompletions 同一实现）：鉴权 → 组校验 → 候选 →
 	// 能力约束 → 预估 → 限流。组级 MaxTokens 覆盖维持 chat 线制独有的行为。
-	plan, ok := s.prepareRelayPlan(c, record, startTime, maheshvaraReq, relayFailer{s: s, c: c, record: record, startTime: startTime, typed: true}, false)
+	plan, ok := s.prepareRelayPlan(c, record, startTime, maheshvaraReq, relayFailer{s: s, c: c, record: record, startTime: startTime, format: relay.FormatResponses}, false)
 	if !ok {
 		return
 	}
@@ -51,10 +60,7 @@ func (s *Server) responses(c *gin.Context) {
 	estimatedTokens := plan.estimatedTokens
 	defer plan.releaseLimiter()
 
-	typedFailureBody := func(errMsg, errType string) gin.H {
-		return gin.H{"error": gin.H{"message": errMsg, "type": errType}}
-	}
-	s.runRelayAttempts(c, record, startTime, group, candidates, typedFailureBody,
+	s.runRelayAttempts(c, record, startTime, group, candidates, relay.FormatResponses,
 		func(attempt int, selectedModel config.ModelRef, isLast bool) relayAttemptStep {
 			targetPlatform := relay.DetectPlatform(selectedModel.BaseURL, selectedModel.Platform)
 			setRecordModel(record, selectedModel, targetPlatform)
@@ -67,7 +73,7 @@ func (s *Server) responses(c *gin.Context) {
 				return relayAttemptStep{
 					skipErr:    err,
 					skipStatus: http.StatusBadRequest,
-					skipBody:   gin.H{"error": gin.H{"message": err.Error(), "type": "unsupported_endpoint", "code": "responses_api_not_supported"}},
+					skipClass:  relay.ErrorClassInvalidRequest,
 				}
 			}
 			if filteredVision && targetFormat == relay.FormatResponses {
@@ -77,8 +83,7 @@ func (s *Server) responses(c *gin.Context) {
 					return relayAttemptStep{
 						skipErr:    skipErr,
 						skipStatus: http.StatusBadRequest,
-						skipKind:   ErrorKindConversion,
-						skipBody:   gin.H{"error": gin.H{"message": skipErr.Error(), "type": "invalid_request_error"}},
+						skipClass:  relay.ErrorClassInvalidRequest,
 					}
 				}
 				targetFormat = transformedFormat
@@ -122,8 +127,7 @@ func (s *Server) responses(c *gin.Context) {
 				return relayAttemptStep{
 					skipErr:    err,
 					skipStatus: http.StatusBadRequest,
-					skipKind:   ErrorKindConversion,
-					skipBody:   gin.H{"error": gin.H{"message": err.Error(), "type": "invalid_request_error"}},
+					skipClass:  relay.ErrorClassInvalidRequest,
 				}
 			}
 			record.OutgoingBody = record.sanitizeBody(targetBody)
@@ -145,10 +149,10 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 	failResult := func(statusCode int, errMsg string, respBody []byte) relayOutcome {
 		return relayFailOutcome(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, func() {
 			if respBody != nil {
-				c.Data(statusCode, contentTypeJSON, respBody)
-			} else {
-				c.JSON(statusCode, gin.H{"error": gin.H{"message": errMsg, "type": "api_error"}})
+				writeUpstreamError(c, relay.FormatResponses, targetPlatform, statusCode, respBody, contentTypeJSON)
+				return
 			}
+			writeProtocolError(c, relay.FormatResponses, &relay.MaheshvaraError{Class: relay.ErrorClassUpstream, Status: statusCode, Message: errMsg})
 		})
 	}
 
@@ -303,10 +307,10 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 	connFail := func(statusCode int, errMsg string, respBody []byte) relayOutcome {
 		return relayFailOutcome(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, func() {
 			if respBody != nil {
-				c.Data(statusCode, contentTypeJSON, respBody)
-			} else {
-				c.AbortWithStatusJSON(statusCode, gin.H{"error": gin.H{"message": errMsg, "type": "api_error"}})
+				writeUpstreamError(c, relay.FormatResponses, targetPlatform, statusCode, respBody, contentTypeJSON)
+				return
 			}
+			writeProtocolError(c, relay.FormatResponses, &relay.MaheshvaraError{Class: relay.ErrorClassUpstream, Status: statusCode, Message: errMsg})
 		})
 	}
 
@@ -430,12 +434,12 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 // writeResponsesStreamError 向已开始的 SSE 流写一个 error 事件作为收尾，
 // 用于上游中途断流等场景，避免下游看到"无收尾的突然断开"。
 func writeResponsesStreamError(writer relay.StreamResponseWriter, err error) {
+	// 官方规范:Responses 流的错误事件是平铺对象(无 error 包裹)。
 	payload, merr := json.Marshal(map[string]any{
-		"type": "error",
-		"error": map[string]any{
-			"type":    "upstream_stream_error",
-			"message": err.Error(),
-		},
+		"type":    "error",
+		"code":    nil,
+		"message": err.Error(),
+		"param":   nil,
 	})
 	if merr != nil {
 		return

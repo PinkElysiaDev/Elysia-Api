@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/relay"
 	"github.com/gin-gonic/gin"
 )
 
@@ -15,8 +16,7 @@ type relayAttemptStep struct {
 	outcome    relayOutcome
 	skipErr    error
 	skipStatus int
-	skipKind   string
-	skipBody   gin.H
+	skipClass  relay.ErrorClass
 }
 
 // runRelayAttempts 是 chatCompletions 与 responses 共用的故障转移骨架：
@@ -30,7 +30,7 @@ func (s *Server) runRelayAttempts(
 	startTime time.Time,
 	group *config.ModelGroupConfig,
 	candidates []config.ModelRef,
-	failureBody func(errMsg, errType string) gin.H,
+	format relay.FormatType,
 	run func(attempt int, selectedModel config.ModelRef, isLast bool) relayAttemptStep,
 ) {
 	attempts := maxAttempts(group.MaxRetries, len(candidates))
@@ -55,7 +55,7 @@ func (s *Server) runRelayAttempts(
 			lastErr = fmt.Sprintf("target baseUrl rejected: %v", err)
 			s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
 			if isLast {
-				s.commitLastAttemptFailure(c, record, startTime, lastStatus, "", lastErr, failureBody(lastErr, "invalid_request_error"))
+				s.commitLastAttemptFailure(c, record, startTime, format, &relay.MaheshvaraError{Class: relay.ErrorClassPermission, Status: lastStatus, Message: lastErr})
 				committed = true
 			}
 			continue
@@ -67,7 +67,7 @@ func (s *Server) runRelayAttempts(
 			lastErr = step.skipErr.Error()
 			s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
 			if isLast {
-				s.commitLastAttemptFailure(c, record, startTime, lastStatus, step.skipKind, lastErr, step.skipBody)
+				s.commitLastAttemptFailure(c, record, startTime, format, &relay.MaheshvaraError{Class: step.skipClass.OrDefault(), Status: lastStatus, Message: lastErr})
 				committed = true
 			}
 			continue
@@ -113,7 +113,7 @@ func (s *Server) runRelayAttempts(
 		record.ErrorKind = ErrorKindUpstream
 		record.EndedAt = time.Now()
 		record.DurationMs = time.Since(startTime).Milliseconds()
-		c.JSON(lastStatus, failureBody(record.Error, "api_error"))
+		writeProtocolError(c, format, &relay.MaheshvaraError{Class: relay.ErrorClassUpstream, Status: lastStatus, Message: record.Error})
 		s.recordUsage(record)
 	}
 }

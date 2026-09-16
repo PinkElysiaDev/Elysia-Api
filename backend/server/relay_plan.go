@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -12,23 +11,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// relayFailer 把统一的错误语义写入该入口的响应格式并落库：
-// typed=false 写扁平 {"error": msg}（chat/completions 线制），
-// typed=true 写 OpenAI 错误对象 {"error":{message,type}}（responses 线制）。
+// relayFailer 把前置阶段失败的稳定错误分类渲染成客户端线制的标准错误体
+// 并落库：format 为客户端输入协议（OpenAI/Claude/Gemini/Responses），
+// 分类→各线制 type/status/code 的映射见 relay/error_protocol.go。
 type relayFailer struct {
 	s         *Server
 	c         *gin.Context
 	record    *usageRecord
 	startTime time.Time
-	typed     bool
+	format    relay.FormatType
 }
 
-func (f relayFailer) fail(statusCode int, errType, errKind, errMsg string) {
-	if f.typed {
-		f.s.failRequestTypedKind(f.c, f.record, f.startTime, statusCode, errType, errKind, errMsg)
-		return
-	}
-	f.s.failRequestKind(f.c, f.record, f.startTime, statusCode, errKind, errMsg)
+func (f relayFailer) fail(class relay.ErrorClass, errMsg string) {
+	f.s.failRequestError(f.c, f.record, f.startTime, f.format, &relay.MaheshvaraError{Class: class, Message: errMsg})
 }
 
 // relayPlan 是前置阶段（鉴权→组校验→候选→能力约束→预估→限流）全部
@@ -61,14 +56,14 @@ func (s *Server) prepareRelayPlan(
 	// 模型组级访问权限：先于 validateModelGroup 校验请求的模型组名，
 	// 这样即使目标组为空/未配置，越权访问也返回 403（而非泄露组的存在性/状态）。
 	if !s.tokenAllowsGroup(c, maheshvaraReq.Model) {
-		failer.fail(http.StatusForbidden, "permission_error", "",
+		failer.fail(relay.ErrorClassPermission,
 			fmt.Sprintf("api key is not allowed to access model group '%s'", maheshvaraReq.Model))
 		return nil, false
 	}
 
-	group, err := s.validateModelGroup(maheshvaraReq.Model)
-	if err != nil {
-		failer.fail(statusForGroupError(err), "invalid_request_error", "", err.Error())
+	group, mErr := s.validateModelGroup(maheshvaraReq.Model)
+	if mErr != nil {
+		failer.fail(mErr.Class, mErr.Message)
 		return nil, false
 	}
 	setRecordGroup(record, group)
@@ -76,8 +71,10 @@ func (s *Server) prepareRelayPlan(
 	// 构建有序候选模型列表，按模型组策略排列。失败时逐个故障转移。
 	candidates := s.buildCandidates(group)
 	if len(candidates) == 0 {
-		failer.fail(http.StatusInternalServerError, "api_error", "",
-			fmt.Sprintf("no available models in group '%s'", group.Name))
+		// 候选在运行期被全部过滤（如健康检测全挂）：与「模型不存在」同为
+		// 404——500 会让 SDK/Codex 自动重试并陷入重试风暴。
+		failer.fail(relay.ErrorClassModelNotFound,
+			fmt.Sprintf("The model '%s' does not exist or is not available", group.Name))
 		return nil, false
 	}
 	// 渠道亲和性：把该 key+group 上次成功的模型提到候选最前（短 TTL 粘连），
@@ -98,7 +95,7 @@ func (s *Server) prepareRelayPlan(
 	// 组级 tools 能力落地（方向2）：组声明不支持工具而请求携带工具定义/工具消息时，
 	// 400 拒绝并明确报错——静默剥离会破坏 agent 循环语义（已确认的产品决策）。
 	if rejectToolRequestsIfNeeded(group, maheshvaraReq) {
-		failer.fail(http.StatusBadRequest, "invalid_request_error", "",
+		failer.fail(relay.ErrorClassInvalidRequest,
 			fmt.Sprintf("model group '%s' does not support tool calling, but the request contains tools or tool messages", group.Name))
 		return nil, false
 	}
@@ -121,7 +118,7 @@ func (s *Server) prepareRelayPlan(
 
 	releaseLimiter, err := s.acquireRateLimit(group, estimatedUsage.EstimatedTotalTokens)
 	if err != nil {
-		failer.fail(http.StatusTooManyRequests, "rate_limit_error", "", err.Error())
+		failer.fail(relay.ErrorClassRateLimit, err.Error())
 		return nil, false
 	}
 	return &relayPlan{

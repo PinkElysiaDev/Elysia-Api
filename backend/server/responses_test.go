@@ -53,7 +53,9 @@ func TestResponsesFailoverToHealthyModel(t *testing.T) {
 
 // C1 回归：空模型组（无候选）应返回 500「no available models」，而非旧实现里
 // 空 baseUrl 掉进 SSRF 校验误报的 403。
-func TestResponsesEmptyGroupReturns500(t *testing.T) {
+// 空组返回 404 + model_not_found(而非 500):模型不可用对客户端同义,
+// 且 5xx 会触发 SDK/Codex 自动重试风暴。标准 OpenAI 错误对象四字段齐全。
+func TestResponsesEmptyGroupReturnsModelNotFound(t *testing.T) {
 	group := config.ModelGroupConfig{ID: "g1", Name: "grp", Enabled: true, Models: nil}
 	s := newTestServer([]config.ModelGroupConfig{group})
 
@@ -61,8 +63,14 @@ func TestResponsesEmptyGroupReturns500(t *testing.T) {
 	c, _ := newResponsesContext(rec, `{"model":"grp","input":"hi"}`)
 	s.responses(c)
 
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500 for empty group, got %d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for empty group, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{`"code":"model_not_found"`, `"param":"model"`, `"type":"invalid_request_error"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("model_not_found body missing %s: %s", want, body)
+		}
 	}
 }
 

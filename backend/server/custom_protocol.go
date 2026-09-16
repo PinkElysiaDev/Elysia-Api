@@ -131,7 +131,7 @@ func (s *Server) handleCustomNormal(
 	startTime time.Time,
 	record *usageRecord,
 	isLast bool,
-	typed bool,
+	inputFormat relay.FormatType,
 	render func(*relay.MaheshvaraResponse) (any, error),
 	renderErrLabel string,
 ) relayOutcome {
@@ -145,11 +145,9 @@ func (s *Server) handleCustomNormal(
 		record.Error = message
 		record.ErrorKind = ErrorKindUpstream
 		if body != nil {
-			c.Data(status, contentTypeJSON, body)
-		} else if typed {
-			c.JSON(status, gin.H{"error": gin.H{"message": message, "type": "api_error"}})
+			writeUpstreamError(c, inputFormat, targetPlatform, status, body, contentTypeJSON)
 		} else {
-			c.JSON(status, gin.H{"error": message})
+			writeProtocolError(c, inputFormat, &relay.MaheshvaraError{Class: relay.ErrorClassUpstream, Status: status, Message: message})
 		}
 		return relayOutcome{committed: true, statusCode: status, errMsg: message}
 	}
@@ -212,7 +210,7 @@ func (s *Server) handleCustomNormal(
 }
 
 func (s *Server) handleCustomNormalRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, request *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
-	return s.handleCustomNormal(c, group, selectedModel, request, targetPlatform, startTime, record, isLast, false,
+	return s.handleCustomNormal(c, group, selectedModel, request, targetPlatform, startTime, record, isLast, inputFormat,
 		func(resp *relay.MaheshvaraResponse) (any, error) {
 			return renderMaheshvaraChatResponse(resp, inputFormat)
 		},
@@ -220,7 +218,7 @@ func (s *Server) handleCustomNormalRequest(c *gin.Context, group *config.ModelGr
 }
 
 func (s *Server) handleCustomResponsesNormal(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, request *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
-	return s.handleCustomNormal(c, group, selectedModel, request, targetPlatform, startTime, record, isLast, true,
+	return s.handleCustomNormal(c, group, selectedModel, request, targetPlatform, startTime, record, isLast, relay.FormatResponses,
 		func(resp *relay.MaheshvaraResponse) (any, error) {
 			return relay.MaheshvaraToOpenAIResponsesResponse(resp)
 		},

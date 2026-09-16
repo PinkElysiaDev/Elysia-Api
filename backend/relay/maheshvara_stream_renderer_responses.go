@@ -590,15 +590,21 @@ func (renderer *MaheshvaraStreamRenderer) finishResponses() error {
 	return renderer.completeResponses()
 }
 
-func (renderer *MaheshvaraStreamRenderer) abortResponses(streamErr error) error {
+// abortResponses 按官方规范发两帧:平铺 error 事件(无 error 包裹)与
+// response.failed(response.status=failed + response.error={code,message})。
+func (renderer *MaheshvaraStreamRenderer) abortResponses(mErr *MaheshvaraError) error {
 	if err := renderer.ensureResponsesHeader(); err != nil {
 		return err
 	}
-	errorPayload := map[string]any{"type": "error", "error": map[string]any{"type": "upstream_stream_error", "message": streamErr.Error()}}
+	_, code := mErr.Class.openAITypeCode()
+	if mErr.Code != "" {
+		code = mErr.Code
+	}
+	errorPayload := map[string]any{"type": "error", "code": nullableString(code), "message": mErr.Message, "param": nil}
 	if err := renderer.writeResponsesEvent("error", errorPayload); err != nil {
 		return err
 	}
-	failed := map[string]any{"id": renderer.responseID, "object": "response", "created_at": renderer.createdAt, "status": "failed", "model": renderer.model, "output": []any{}, "error": map[string]any{"type": "upstream_stream_error", "message": streamErr.Error()}}
+	failed := map[string]any{"id": renderer.responseID, "object": "response", "created_at": renderer.createdAt, "status": "failed", "model": renderer.model, "output": []any{}, "error": map[string]any{"code": nullableString(code), "message": mErr.Message}}
 	renderer.responses.completed = true
 	return renderer.writeResponsesEvent(MaheshvaraEventResponseFailed, map[string]any{"type": MaheshvaraEventResponseFailed, "response": failed})
 }

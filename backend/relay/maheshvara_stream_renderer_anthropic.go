@@ -304,9 +304,9 @@ func (renderer *MaheshvaraStreamRenderer) finishClaude() error {
 	return renderer.completeClaude("stop", "")
 }
 
-func (renderer *MaheshvaraStreamRenderer) abortClaude(streamErr error) error {
+func (renderer *MaheshvaraStreamRenderer) abortClaude(mErr *MaheshvaraError) error {
 	_ = renderer.closeClaudeBlock()
-	return renderer.writeSSEEvent("error", map[string]any{"type": "error", "error": map[string]any{"type": "upstream_stream_error", "message": streamErr.Error()}})
+	return renderer.writeSSEEvent("error", map[string]any{"type": "error", "error": map[string]any{"type": mErr.Class.anthropicType(), "message": mErr.Message}})
 }
 
 func claudeStreamKey(kind string, event *MaheshvaraStreamEvent) string {

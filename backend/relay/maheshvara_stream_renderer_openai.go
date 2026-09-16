@@ -199,8 +199,12 @@ func (renderer *MaheshvaraStreamRenderer) finishOpenAIChat() error {
 	return renderer.writeSSEDataString("[DONE]")
 }
 
-func (renderer *MaheshvaraStreamRenderer) abortOpenAIChat(streamErr error) error {
-	payload := map[string]any{"error": map[string]any{"type": "upstream_stream_error", "message": streamErr.Error()}}
+func (renderer *MaheshvaraStreamRenderer) abortOpenAIChat(mErr *MaheshvaraError) error {
+	typ, code := mErr.Class.openAITypeCode()
+	if mErr.Code != "" {
+		code = mErr.Code
+	}
+	payload := map[string]any{"error": map[string]any{"type": typ, "message": mErr.Message, "code": nullableString(code)}}
 	if err := renderer.writeSSEData(payload); err != nil {
 		return err
 	}
