@@ -76,8 +76,11 @@ export function ProtocolFormDialog({
     contentRef.current?.scrollTo({ top: 0 })
   }, [tab])
 
+  // 离开 JSON 标签清空草稿;进入时若为空则用当前 draft 预填(可自由清空
+  // 重写,旧实现的 `jsonDraft || 序列化` 兜底会让清空动作瞬间回弹)。
   useEffect(() => {
     if (tab !== 'json') setJsonDraft('')
+    else setJsonDraft((prev) => prev || JSON.stringify(draft, null, 2))
   }, [tab, draft])
 
   if (!draft) return null
@@ -316,7 +319,7 @@ export function ProtocolFormDialog({
               <Textarea
                 className="min-h-[320px] font-mono text-xs"
                 spellCheck={false}
-                value={jsonDraft || JSON.stringify(draft, null, 2)}
+                value={jsonDraft}
                 onChange={(event) => setJsonDraft(event.target.value)}
               />
               <Button

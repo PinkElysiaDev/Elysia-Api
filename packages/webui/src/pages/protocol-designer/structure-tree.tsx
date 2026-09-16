@@ -155,12 +155,14 @@ export function StructureNode({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() =>
-              onChange({
-                ...(value as Record<string, unknown>),
-                [`field_${Object.keys(value as Record<string, unknown>).length + 1}`]: spec.defaultLeaf(),
-              })
-            }
+            onClick={() => {
+              // 探测最小未用编号:删除中间字段后 length+1 会与现存名碰撞,
+              // 展开赋值将静默覆盖用户已编辑的值。
+              const existing = Object.keys(value as Record<string, unknown>)
+              let index = existing.length + 1
+              while (existing.includes(`field_${index}`)) index++
+              onChange({ ...(value as Record<string, unknown>), [`field_${index}`]: spec.defaultLeaf() })
+            }}
           >
             <Plus className="mr-1 h-3 w-3" /> 添加字段
           </Button>

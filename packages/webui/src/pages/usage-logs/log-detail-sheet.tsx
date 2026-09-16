@@ -1066,9 +1066,23 @@ function buildExportPayload(detail: UsageLogDetail) {
 function errorKindLabel(kind: string): string {
   switch (kind) {
     case 'conversion':
-      return '协议转换失败'
+      return '协议转换失败' // 历史值域,现归入 invalid_request
+    case 'invalid_request':
+      return '请求无效'
+    case 'authentication':
+      return '认证失败'
+    case 'permission':
+      return '无权访问'
+    case 'model_not_found':
+      return '模型不存在'
+    case 'rate_limit':
+      return '限流'
+    case 'overloaded':
+      return '上游过载'
     case 'upstream':
       return '上游失败'
+    case 'server':
+      return '服务内部错误'
     default:
       return kind
   }

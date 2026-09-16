@@ -14,7 +14,7 @@ import { AsyncState } from '@/components/ui/states'
 import { UsageFilterBar } from '@/components/usage-filter-bar'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
-import { useUsageLogs, revalidate } from '@/lib/hooks'
+import { useUsageLogs, revalidate, useDebouncedValue } from '@/lib/hooks'
 import { useUsageFilters } from '@/lib/usage-filters'
 import { api } from '@/lib/api'
 import { downloadJSON, formatDateTime, formatDuration, formatNumber, isSuccessStatus } from '@/lib/utils'
@@ -28,7 +28,8 @@ export function UsageLogsPage() {
   const { confirm, dialog } = useConfirm()
   const location = useLocation()
   const navigate = useNavigate()
-  const [statusCode, setStatusCode] = useState('')
+  const [statusCodeInput, setStatusCodeInput] = useState('')
+  const statusCode = useDebouncedValue(statusCodeInput)
   const [statusView, setStatusView] = useState<StatusView>('all')
   const [page, setPage] = useState(0)
   const [detailId, setDetailId] = useState<string | null>(null)
@@ -174,19 +175,19 @@ export function UsageLogsPage() {
             value={statusView}
             onChange={(value) => {
               setStatusView(value)
-              setStatusCode('')
+              setStatusCodeInput('')
               setPage(0)
             }}
           />
           <Input
             aria-label="状态码"
             className="w-[84px] rounded-full border-transparent bg-[var(--well)] text-xs font-mono"
-            value={statusCode}
+            value={statusCodeInput}
             placeholder="HTTP码"
-            title="精确状态码过滤（如 429、500）"
+            title="精确状态码过滤（如 429、500；0 = 连接层失败）"
             onChange={(e) => {
               const value = e.target.value.replace(/[^0-9]/g, '')
-              setStatusCode(value)
+              setStatusCodeInput(value)
               if (value) setStatusView('all')
               setPage(0)
             }}

@@ -353,7 +353,7 @@ function serializeUsage(params: UsageQueryParams): Record<string, QueryValue> {
     groupName: params.groupName,
     modelName: params.modelName,
     status: params.status,
-    statusCode: params.statusCode || undefined,
+    statusCode: params.statusCode !== undefined ? params.statusCode : undefined,
     // 多选数组按重复参数发送（keyName/groupName/modelName），后端用 QueryArray 读取。
     ...(params.keyNames?.length ? { keyName: params.keyNames } : {}),
     ...(params.groupNames?.length ? { groupName: params.groupNames } : {}),
