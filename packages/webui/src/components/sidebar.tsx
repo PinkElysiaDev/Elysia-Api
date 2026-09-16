@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { useSWRConfig } from 'swr'
 import {
   Activity,
   Database,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clearToken } from '@/lib/auth'
+import { clearAssetCache } from '@/lib/asset-blob-cache'
 import { useConfirm } from './ui/confirm-dialog'
 import { Button } from './ui/button'
 import { ThemeToggle } from './theme-toggle'
@@ -40,10 +42,12 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/diagnostics', label: '诊断', icon: Stethoscope, group: '系统' },
 ]
 
-const GROUP_ORDER = ['监控', '网关配置', '观测', '系统']
+// 分组顺序从导航项声明派生:新增分组零维护,不会因漏改而静默消失。
+const GROUP_ORDER = [...new Set(NAV_ITEMS.map((item) => item.group))]
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { confirm, dialog } = useConfirm()
+  const { mutate } = useSWRConfig()
   const grouped = GROUP_ORDER.map((group) => ({
     group,
     items: NAV_ITEMS.filter((item) => item.group === group),
@@ -56,7 +60,12 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       description: '将清除本地保存的 Panel Access Token，重新输入令牌后才能进入控制台。',
       confirmText: '退出',
     })
-    if (ok) clearToken()
+    if (!ok) return
+    clearToken()
+    // 清空 SWR 全局缓存与媒体 LRU：令牌轮换后重新登录不应看到上一会话的数据。
+    // filter 匹配所有 key，data=undefined 即删除对应缓存条目。
+    void mutate(() => true, undefined, { revalidate: false })
+    clearAssetCache()
   }
 
   return (

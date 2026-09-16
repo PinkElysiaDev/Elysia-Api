@@ -192,3 +192,30 @@ func TestEnsureConfigParseErrorNotAutoCreated(t *testing.T) {
 		t.Fatalf("parse-error file must not be overwritten; got %q", got)
 	}
 }
+
+// 面板令牌校验：空令牌/未配置拒绝，空白容错，命中精确匹配。
+// constantTimeEqual 仅防时序侧信道，语义上就是精确比较。
+func TestIsValidPanelAccessToken(t *testing.T) {
+	cfg := &Config{PanelAccessToken: "panel-secret"}
+
+	if !cfg.IsValidPanelAccessToken("panel-secret") {
+		t.Fatal("exact token should be valid")
+	}
+	if cfg.IsValidPanelAccessToken("wrong-token") {
+		t.Fatal("wrong token must be rejected")
+	}
+	if cfg.IsValidPanelAccessToken("") {
+		t.Fatal("empty token must be rejected")
+	}
+	if !cfg.IsValidPanelAccessToken("  panel-secret\t") {
+		t.Fatal("surrounding whitespace should be trimmed before comparing")
+	}
+
+	empty := &Config{}
+	if empty.IsValidPanelAccessToken("panel-secret") {
+		t.Fatal("unconfigured panel token must reject everything")
+	}
+	if empty.IsValidPanelAccessToken("") {
+		t.Fatal("unconfigured panel token must reject empty token too")
+	}
+}

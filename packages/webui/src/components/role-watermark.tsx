@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ARRIVED_FROM_LOGIN_KEY } from '@/lib/auth'
+import { ROLE_ANCHOR_CLASS, roleMaskStyle } from '@/lib/role-presentation'
 
 interface ElysiaStageProps {
   className?: string
@@ -18,7 +19,6 @@ interface ElysiaStageProps {
  * 标记由登录页写入 sessionStorage，此处读后即删——刷新与普通路由跳转不重播。
  */
 export function ElysiaStage({ className, statusState = 'ok', showAura = true }: ElysiaStageProps) {
-  const src = `${import.meta.env.BASE_URL}role-mask.png`
   // 初始化器先于 effect 消费标记读值，StrictMode 双挂载也只播一次。
   const [arriving, setArriving] = useState(() => {
     try {
@@ -36,23 +36,14 @@ export function ElysiaStage({ className, statusState = 'ok', showAura = true }: 
     }
   }, [])
 
-  const maskStyle = {
-    WebkitMaskImage: `url(${src})`,
-    maskImage: `url(${src})`,
-    WebkitMaskSize: 'contain',
-    maskSize: 'contain',
-    WebkitMaskRepeat: 'no-repeat',
-    maskRepeat: 'no-repeat',
-    WebkitMaskPosition: 'top right',
-    maskPosition: 'top right',
-  } as const
+  const maskStyle = roleMaskStyle()
 
   return (
     <div
       aria-hidden
       className={cn(
-        'pointer-events-none fixed right-0 top-0 z-0 select-none overflow-visible',
-        'w-[280px] sm:w-[380px] md:w-[480px] lg:w-[560px] xl:w-[640px]',
+        ROLE_ANCHOR_CLASS,
+        'z-0 select-none overflow-visible',
         'transition-all duration-700 ease-out',
         arriving && 'elysia-arrive',
         className,
@@ -93,7 +84,6 @@ export function ElysiaStage({ className, statusState = 'ok', showAura = true }: 
 
 /** 页面共用的立绘水印：作为低饱和度品牌暗纹，不抢夺前景信息。 */
 export function RoleWatermark({ className }: { className?: string }) {
-  const src = `${import.meta.env.BASE_URL}role-mask.png`
   return (
     <div
       aria-hidden
@@ -102,17 +92,7 @@ export function RoleWatermark({ className }: { className?: string }) {
         className,
       )}
     >
-      <div
-        className="role-fig aspect-[760/808] w-full"
-        style={{
-          WebkitMaskImage: `url(${src})`,
-          maskImage: `url(${src})`,
-          WebkitMaskSize: 'contain',
-          maskSize: 'contain',
-          WebkitMaskRepeat: 'no-repeat',
-          maskRepeat: 'no-repeat',
-        }}
-      />
+      <div className="role-fig aspect-[760/808] w-full" style={roleMaskStyle()} />
     </div>
   )
 }

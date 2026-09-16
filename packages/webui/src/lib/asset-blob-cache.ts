@@ -44,14 +44,8 @@ export function cachedAssetUrl(asset: { requestId: string; file: string }): Prom
   const fetch = api
     .usageAssetBlob(asset.requestId, asset.file)
     .then((blob) => {
+      // inflight 去重保证同键单飞，此处是唯一写入点，无需再查重。
       const url = URL.createObjectURL(blob)
-      // 同键可能已在等待中被写入（理论上不会，防御重复写）。
-      const existing = entries.get(key)
-      if (existing) {
-        URL.revokeObjectURL(url)
-        touch(key, existing)
-        return existing.url
-      }
       entries.set(key, { url, bytes: blob.size, lastUsed: Date.now() })
       totalBytes += blob.size
       evictIfNeeded()
@@ -85,4 +79,13 @@ function evictIfNeeded() {
     totalBytes -= oldest.bytes
     URL.revokeObjectURL(oldest.url)
   }
+}
+
+/** 登出时清空全部缓存并释放 objectURL。在途请求完成后仍会写入新条目——
+ * 面板为单一令牌体系，登出再登录无跨账号数据，残余条目由 LRU 或下次
+ * 登出清理，属可接受边界。 */
+export function clearAssetCache(): void {
+  for (const entry of entries.values()) URL.revokeObjectURL(entry.url)
+  entries.clear()
+  totalBytes = 0
 }

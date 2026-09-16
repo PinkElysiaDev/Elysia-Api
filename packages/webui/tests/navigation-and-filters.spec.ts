@@ -153,7 +153,7 @@ test('login supports keyboard secret visibility and announces validation errors'
   await page.keyboard.press('Space')
   await expect(token).toHaveAttribute('type', 'text')
   await page.getByRole('button', { name: '立即登录' }).click()
-  await expect(page.getByRole('alert')).toContainText('Token 无效')
+  await expect(page.getByRole('dialog', { name: '登录失败' })).toContainText('Token 无效')
   await expect(token).toHaveAttribute('aria-invalid', 'true')
   await expect(token).toHaveValue('test-invalid-token')
 })
@@ -171,8 +171,10 @@ test('login reports connection failures and can retry the same token', async ({ 
   await token.fill('test-valid-token')
   const submit = page.getByRole('button', { name: '立即登录', exact: true })
   await submit.click()
-  await expect(page.getByRole('alert')).toContainText('Failed to fetch')
-  await expect(page.getByRole('alert')).not.toContainText('Token 无效')
+  const errorDialog = page.getByRole('dialog', { name: '登录失败' })
+  await expect(errorDialog).toContainText('无法连接到后端，请检查网络与服务状态')
+  await expect(errorDialog).not.toContainText('Token 无效')
+  await errorDialog.getByRole('button', { name: '我知道了' }).click()
   await expect(token).toBeFocused()
   await expect(token).toHaveValue('test-valid-token')
   await expect(submit).toBeEnabled()
@@ -181,4 +183,46 @@ test('login reports connection failures and can retry the same token', async ({ 
   await submit.click()
   await expect(page.getByRole('button', { name: '退出登录', exact: true })).toBeVisible()
   await expect.poll(() => page.evaluate(() => localStorage.getItem('elysia-webui.panel-token'))).toBe('test-valid-token')
+})
+
+test('login distinguishes backend failures from invalid tokens', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/#/logs')
+  // 后端 5xx（如反代 502 / SQLite 故障）不应误导用户去改 panelAccessToken。
+  await page.route('**/api/admin/health', (route) => route.fulfill({ status: 503, body: 'service unavailable' }))
+  await page.getByRole('button', { name: '退出登录', exact: true }).click()
+  await page.getByRole('button', { name: '退出', exact: true }).click()
+  const token = page.getByLabel(/Panel Access Token/)
+  await token.fill('test-valid-token')
+  await page.getByRole('button', { name: '立即登录', exact: true }).click()
+  const errorDialog = page.getByRole('dialog', { name: '登录失败' })
+  await expect(errorDialog).toContainText('后端服务异常（HTTP 503）')
+  await expect(errorDialog).not.toContainText('Token 无效')
+})
+
+test('logout clears cached list data before next session', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.route('**/api/admin/health', (route) => route.fulfill({ json: { ok: true, data: {} } }))
+  let session = 0
+  await page.route('**/api/admin/logs**', (route) => {
+    session += 1
+    route.fulfill({ json: { ok: true, data: {
+      total: 1,
+      items: [{ id: session, createdAt: '2026-09-09T08:00:00Z', level: 'info', message: `Session ${session} log` }],
+    } } })
+  })
+  // beforeEach 注入的令牌即第一个会话:先确认其数据已渲染,再走登出与二次登录。
+  await page.goto('/#/logs')
+  await expect(page.getByText('Session 1 log')).toBeVisible()
+  await page.getByRole('button', { name: '退出登录', exact: true }).click()
+  await page.getByRole('button', { name: '退出', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Elysia API' })).toBeVisible()
+  await page.getByLabel(/Panel Access Token/).fill('test-valid-token')
+  await page.getByRole('button', { name: '立即登录', exact: true }).click()
+  await expect(page.getByRole('button', { name: '退出登录', exact: true })).toBeVisible()
+  // 登出时 hash 已被改写为 /login，重新登录后经通配路由落到 /overview（既有行为）。
+  // 显式回到日志页再断言数据来自新请求而非上一会话缓存。
+  await page.goto('/#/logs')
+  await expect(page.getByText('Session 2 log')).toBeVisible()
+  await expect.poll(() => session).toBeGreaterThanOrEqual(2)
 })

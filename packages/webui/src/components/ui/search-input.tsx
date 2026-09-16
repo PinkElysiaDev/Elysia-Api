@@ -34,7 +34,7 @@ export function SearchInput({
         <button
           type="button"
           aria-label={`清空${label}`}
-          className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-full text-muted-foreground hover:text-rose"
+          className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-full text-muted-foreground hover:text-rose focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={() => {
             onChange('')
             inputRef.current?.focus()

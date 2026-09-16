@@ -36,6 +36,15 @@ export function getToken(): string | null {
   }
 }
 
+/** 读取「从登录页到达」标记（供外壳渐显与水印入场判定）。 */
+export function readArrivedFromLogin(): boolean {
+  try {
+    return sessionStorage.getItem(ARRIVED_FROM_LOGIN_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 export function setToken(token: string): void {
   try {
     localStorage.setItem(STORAGE_KEY, token)

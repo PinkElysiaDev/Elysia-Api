@@ -5,8 +5,10 @@ import { Menu, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { Sidebar } from './sidebar'
 import { useUsageLive } from '@/lib/hooks'
-import { ARRIVED_FROM_LOGIN_KEY } from '@/lib/auth'
+import { ARRIVED_FROM_LOGIN_KEY, readArrivedFromLogin } from '@/lib/auth'
+import { ROLE_ANCHOR_CLASS, roleMaskStyle } from '@/lib/role-presentation'
 import { cn } from '@/lib/utils'
+import { Z_INDEX } from '@/lib/z-index'
 
 /**
  * 交接残影：登录页的线稿以 0.45 浓度原地交接的瞬间，控制台外壳正从透明
@@ -16,21 +18,11 @@ import { cn } from '@/lib/utils'
 function ArrivalEcho() {
   const [gone, setGone] = useState(false)
   if (gone) return null
-  const src = `${import.meta.env.BASE_URL}role-mask.png`
   return createPortal(
     <div
       aria-hidden
-      className="arrival-echo pointer-events-none fixed right-[calc(100%_-_100vw_-_6px)] top-[14px] z-[45] w-[280px] sm:w-[380px] md:w-[480px] lg:w-[560px] xl:w-[640px]"
-      style={{
-        WebkitMaskImage: `url(${src})`,
-        maskImage: `url(${src})`,
-        WebkitMaskSize: 'contain',
-        maskSize: 'contain',
-        WebkitMaskRepeat: 'no-repeat',
-        maskRepeat: 'no-repeat',
-        WebkitMaskPosition: 'top right',
-        maskPosition: 'top right',
-      }}
+      className={cn('arrival-echo', Z_INDEX.arrivalEcho, ROLE_ANCHOR_CLASS)}
+      style={roleMaskStyle()}
       onAnimationEnd={() => setGone(true)}
     />,
     document.body,
@@ -46,17 +38,25 @@ export function AppLayout() {
 
   // 仅登录到达时外壳渐显（app-fade）；刷新与普通路由跳转保持无动画。
   // 初始化器读取标记，移除由 ElysiaStage 的 effect 负责。
-  const [arriving] = useState(() => {
-    try {
-      return sessionStorage.getItem(ARRIVED_FROM_LOGIN_KEY) === '1'
-    } catch {
-      return false
-    }
-  })
+  const [arriving] = useState(readArrivedFromLogin)
 
   useEffect(() => {
     setMobileOpen(false)
-    window.scrollTo({ top: 0, behavior: 'instant' })
+    // 'auto' 而非 'instant'：Safari < 15.4 的 ScrollBehavior 枚举里没有后者，会抛 TypeError。
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }, [location.pathname])
+
+  // arrival 标记的删除通常由 overview 内的 ElysiaStage 读后即删完成；若 overview
+  // 懒加载 chunk 完成前用户已导航离开，标记会滞留 sessionStorage，导致同会话稍后
+  // 首次进入 overview 意外重播入场动画。离开 overview 时在此兜底删除。
+  useEffect(() => {
+    if (location.pathname !== '/overview') {
+      try {
+        sessionStorage.removeItem(ARRIVED_FROM_LOGIN_KEY)
+      } catch {
+        /* ignore */
+      }
+    }
   }, [location.pathname])
 
   useEffect(() => {
@@ -78,7 +78,7 @@ export function AppLayout() {
           event.preventDefault()
           mainRef.current?.focus()
         }}
-        className="sr-only z-[100] rounded-md bg-primary px-4 py-3 text-primary-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+        className={cn("sr-only rounded-md bg-primary px-4 py-3 text-primary-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4", Z_INDEX.skipLink)}
       >
         跳转到主要内容
       </a>

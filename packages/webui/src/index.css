@@ -298,39 +298,6 @@ body::before {
   }
 }
 
-/*
- * 立绘线条呼吸灯（登录页 .role-breathe）：mask 即线条，滤镜动画只令
- * 线条本身呼吸变亮，不触碰整体尺寸与位置。日间模式起伏更大（更强的
- * 明暗差与辉光），夜间模式维持原有幅度；两侧同为 4s 略慢节奏。
- */
-@keyframes role-line-breathe {
-  0%,
-  100% {
-    filter: none;
-    opacity: 0.6;
-  }
-  50% {
-    filter: brightness(1.4) drop-shadow(0 0 16px hsl(var(--primary) / 0.5));
-    opacity: 1;
-  }
-}
-@keyframes role-line-breathe-strong {
-  0%,
-  100% {
-    filter: none;
-    opacity: 0.45;
-  }
-  50% {
-    filter: brightness(1.75) drop-shadow(0 0 20px hsl(var(--primary) / 0.65));
-    opacity: 1;
-  }
-}
-.role-breathe .role-fig {
-  animation: role-line-breathe 4s ease-in-out infinite;
-}
-html:not(.dark) .role-breathe .role-fig {
-  animation-name: role-line-breathe-strong;
-}
 
 /*
  * 主题切换的「光线转场」：
@@ -466,6 +433,16 @@ html.theme-transitioning :where(body, #root, #root *):not(.theme-sun):not(.theme
   --wm-base: 0.14;
 }
 
+/* 登录到达时的氛围光环：随线稿入场序列一同淡入（非到达时保持静态渐变）。 */
+.elysia-arrive .elysia-arrive-aura {
+  animation: aura-rise 2.4s ease-out 1.2s both;
+}
+@keyframes aura-rise {
+  from {
+    opacity: 0;
+  }
+}
+
 /* 外壳渐显：仅在登录到达时套用（AppLayout 按到达标记决定），让控制台
  * 整体柔柔显影而非突然出现；平时刷新与路由跳转不套用、完全无动画。 */
 @keyframes app-fade {
@@ -518,6 +495,7 @@ html.theme-transitioning :where(body, #root, #root *):not(.theme-sun):not(.theme
   *::after {
     scroll-behavior: auto !important;
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }

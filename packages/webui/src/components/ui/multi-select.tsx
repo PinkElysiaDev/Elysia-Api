@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Z_INDEX } from '@/lib/z-index'
 
 export interface MultiSelectOption {
   value: string
@@ -137,6 +138,8 @@ export function MultiSelect({
             if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
               event.preventDefault()
               setOpen(true)
+              // panel 已开时（焦点经 Shift+Tab 回到触发器），把焦点送回搜索框恢复方向键导航。
+              if (open) searchRef.current?.focus()
             }
           }}
           className="flex min-h-[32px] items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 max-rail:min-h-11"
@@ -172,7 +175,7 @@ export function MultiSelect({
             bottom: panelPosition.above ? 'calc(100% + 6px)' : undefined,
             maxHeight: panelPosition.maxHeight,
           }}
-          className="absolute z-50 flex w-72 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg transition-none animate-in fade-in-0 duration-150"
+          className={cn("absolute flex w-72 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg transition-none animate-in fade-in-0 duration-150", Z_INDEX.multiSelectPanel)}
         >
           <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-3 py-2.5">
             <Search aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
