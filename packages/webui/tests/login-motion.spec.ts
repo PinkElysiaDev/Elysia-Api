@@ -45,7 +45,8 @@ test('media sampling, cover crop, flight endpoints and text use separate determi
   expect(interludeAtTime(0).opacity).toBe(0)
   expect(interludeAtTime(2).opacity).toBe(1)
   expect(interludeAtTime(3.6).opacity).toBeGreaterThan(0)
-  expect(interludeAtTime(4)).toEqual({ opacity: 0, blur: 12 })
+  expect(interludeAtTime(4).opacity).toBe(1)
+  expect(interludeAtTime(5)).toEqual({ opacity: 0, blur: 12 })
 })
 
 async function mockLogin(page: Page, valid = true) {
@@ -93,7 +94,7 @@ test('pause freezes video, camera, aurora and form; the choice survives reload',
   await expect.poll(() => page.locator('video').evaluate((video) => !video.paused)).toBe(true)
 })
 
-test('labels remain accessible, tools are equal-sized, and errors use a focused dialog without moving the form', async ({ page }) => {
+test('labels remain accessible, tools are equal-sized, and errors surface in a bottom toast without moving the form', async ({ page }) => {
   await mockLogin(page, false)
   await page.addInitScript(() => localStorage.setItem('elysia-webui.login-motion', 'paused'))
   await page.goto('/#/login')
@@ -106,14 +107,8 @@ test('labels remain accessible, tools are equal-sized, and errors use a focused 
   await token.fill('invalid-test-token')
   const before = await token.boundingBox()
   await page.getByRole('button', { name: '立即登录' }).click()
-  const dialog = page.getByRole('dialog', { name: '登录失败' })
-  await expect(dialog).toContainText('Token 无效，请确认与后端 config.json 中的 panelAccessToken 一致')
-  for (let index = 0; index < 5; index++) {
-    await page.keyboard.press('Tab')
-    expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true)
-  }
-  await page.keyboard.press('Escape')
-  await expect(token).toBeFocused()
+  // 底部 toast 报错：不夺焦点、不移动表单，输入值原样保留。
+  await expect(page.locator('li[data-variant="destructive"]')).toContainText('Token 无效，请确认与后端 config.json 中的 panelAccessToken 一致')
   await expect(token).toHaveValue('invalid-test-token')
   expect(await token.boundingBox()).toEqual(before)
   await expect(page.locator('.garden')).toHaveAttribute('data-phase', 'login')
@@ -157,7 +152,8 @@ test('cinematic follows a looping video, keeps Chinese text centered and hands o
   const text = page.locator('.garden-interlude-cn')
   const bounds = await text.boundingBox()
   expect(Math.abs(bounds!.x + bounds!.width / 2 - page.viewportSize()!.width / 2)).toBeLessThan(2)
-  await page.waitForFunction(() => Number(document.querySelector<HTMLCanvasElement>('.garden-cinematic')?.dataset.elapsed) > 3.25)
+  // 5s 时间线:文字淡出窗口 4.0-5.0,采样 4.5s 处应处于半隐状态。
+  await page.waitForFunction(() => Number(document.querySelector<HTMLCanvasElement>('.garden-cinematic')?.dataset.elapsed) > 4.5)
   expect(await text.evaluate((element) => Number(getComputedStyle(element).opacity))).toBeLessThan(1)
   await expect(page.getByRole('button', { name: '退出登录', exact: true })).toBeVisible()
   expect(await page.evaluate(() => localStorage.getItem('elysia-webui.panel-token'))).toBe('animated-test-token')
@@ -288,7 +284,7 @@ test('failed GPU allocation releases partially initialized resources and skips t
   await expect(page.locator('.arrival-echo, .elysia-arrive')).toHaveCount(0)
 })
 
-test('empty submissions use the dialog and repeated pending submissions verify only once', async ({ page }) => {
+test('empty submissions use the toast and repeated pending submissions verify only once', async ({ page }) => {
   await mockLogin(page)
   await page.addInitScript(() => localStorage.setItem('elysia-webui.login-motion', 'paused'))
   let verifications = 0
@@ -301,15 +297,15 @@ test('empty submissions use the dialog and repeated pending submissions verify o
   })
   await page.goto('/#/login')
   await page.getByRole('button', { name: '立即登录' }).click()
-  await expect(page.getByRole('dialog')).toContainText('请输入访问令牌')
+  await expect(page.locator('li[data-variant="destructive"]')).toContainText('请输入访问令牌')
   expect(verifications).toBe(0)
-  await page.keyboard.press('Escape')
   await page.getByLabel(/Panel Access Token/).fill('duplicate-test-token')
   await page.locator('form').evaluate((form) => { form.requestSubmit(); form.requestSubmit(); form.requestSubmit() })
   await expect.poll(() => verifications).toBe(1)
   await expect(page.getByRole('button', { name: '正在验证' })).toBeDisabled()
   release()
-  await expect(page.getByRole('dialog')).toContainText('Token 无效')
+  // 空提交的 toast(4.2s 自动关闭)可能仍在,断言最新弹出的一条。
+  await expect(page.locator('li[data-variant="destructive"]').last()).toContainText('Token 无效')
   expect(verifications).toBe(1)
 })
 

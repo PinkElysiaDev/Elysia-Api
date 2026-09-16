@@ -73,6 +73,8 @@ export function ToastHost({ children }: { children: ReactNode }) {
           <Toast
             key={item.id}
             variant={item.variant}
+            // Radix 的 li 不带 role,显式标记变体作为样式与测试的稳定锚点。
+            data-variant={item.variant}
             onOpenChange={(open) => {
               if (!open) remove(item.id)
             }}

@@ -43,7 +43,7 @@ export function ThemeToggle({ tooltip = false }: { tooltip?: boolean } = {}) {
       aria-pressed={dark}
       title={tooltip ? undefined : dark ? '浅色模式' : '深色模式'}
       className={cn(
-        'theme-toggle relative inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-full text-muted-foreground max-rail:h-11 max-rail:w-11',
+        'theme-toggle icon-toggle relative inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground max-rail:h-11 max-rail:w-11',
         'transition-colors duration-300 hover:bg-wash hover:text-rose',
         switching && 'is-switching',
       )}

@@ -94,7 +94,7 @@ export function smoothRange(start: number, end: number, value: number): number {
 }
 
 export function interludeAtTime(seconds: number): { opacity: number; blur: number } {
-  const arriving = smoothRange(0.7, 1.25, seconds)
-  const leaving = smoothRange(3.2, 4, seconds)
+  const arriving = smoothRange(0.35, 0.8, seconds)
+  const leaving = smoothRange(4.0, 5.0, seconds)
   return { opacity: arriving * (1 - leaving), blur: (1 - arriving) * 6 + leaving * 12 }
 }

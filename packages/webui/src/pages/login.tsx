@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { ArrowRight, Eye, EyeOff, Loader2, Pause, Play } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { LoginCinematic } from '@/components/login-cinematic'
+import { useToast } from '@/components/ui/use-toast'
 import { useTheme } from '@/lib/theme'
+import { cn } from '@/lib/utils'
 import { setToken, ARRIVED_FROM_LOGIN_KEY } from '@/lib/auth'
 import { verifyToken } from '@/lib/api'
 import type { CharacterTrace } from '@/lib/character-trace'
@@ -25,13 +25,14 @@ function arrivalFlag(animated: boolean): void {
 
 export function LoginPage() {
   const { theme } = useTheme()
+  const toast = useToast()
   const [value, setValue] = useState('')
   const [visible, setVisible] = useState(false)
   const [error, setError] = useState('')
-  const [errorOpen, setErrorOpen] = useState(false)
   const [phase, setPhase] = useState<'login' | 'entering'>('login')
   const [verifying, setVerifying] = useState(false)
   const [traceReady, setTraceReady] = useState(false)
+  const [switching, setSwitching] = useState(false)
   const rootRef = useRef<HTMLElement>(null)
   const sceneRef = useRef<HTMLDivElement>(null)
   const cameraRef = useRef<HTMLDivElement>(null)
@@ -43,6 +44,8 @@ export function LoginPage() {
   const mounted = useRef(true)
   const requestGeneration = useRef({ value: 0 })
   const submitting = useRef(false)
+  const switchTimer = useRef<number | undefined>(undefined)
+  const leavingTimer = useRef<number | undefined>(undefined)
   const motion = useLoginMotion(rootRef, videoRef)
   const latestMotion = useRef(motion)
   latestMotion.current = motion
@@ -52,6 +55,15 @@ export function LoginPage() {
     if (!mounted.current || !token) return
     pendingToken.current = null
     arrivalFlag(animated)
+    // 动画路径退场:先让 aurora 光泽经 data-leaving 渐隐 500ms(期间全局 halo
+    // 在底下维持左下光泽),再切到控制台——避免左下光泽一帧内消失的突兀跳变。
+    // 幂等由 pendingToken 置空保证:在途的后续 finish 直接返回,token 始终由
+    // 本次的 timeout 写入。
+    if (animated && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      rootRef.current?.setAttribute('data-leaving', '')
+      leavingTimer.current = window.setTimeout(() => setToken(token), 500)
+      return
+    }
     setToken(token)
   }, [])
 
@@ -63,8 +75,22 @@ export function LoginPage() {
       mounted.current = false
       generationState.value++
       pendingToken.current = null
+      window.clearTimeout(switchTimer.current)
+      window.clearTimeout(leavingTimer.current)
     }
   }, [])
+
+  // 登录场景底色与 body 的 --background 存在色差(暗色下 ΔRGB(9,5,8)):恒定预留的
+  // 滚动条槽(scrollbar-gutter: stable)会露出 body 底色,在右侧形成一条突兀竖条;
+  // 登录页→控制台切换时同一色差也会造成底色跳变。挂载期间把 body 对齐 garden
+  // 底色,卸载还原——交接由外壳 app-fade 渐显自然覆盖。
+  useEffect(() => {
+    const previous = document.body.style.backgroundColor
+    document.body.style.backgroundColor = theme === 'dark' ? '#18141c' : '#fdfbfc'
+    return () => {
+      document.body.style.backgroundColor = previous
+    }
+  }, [theme])
 
   useEffect(() => {
     let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
@@ -102,7 +128,7 @@ export function LoginPage() {
 
   const showError = (message: string) => {
     setError(message)
-    setErrorOpen(true)
+    toast.error('登录失败', message)
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -138,6 +164,10 @@ export function LoginPage() {
 
   const toggleMotion = () => {
     motion.toggle()
+    // 与主题切换钮同款的一次性涟漪状态机（index.css 的 .icon-toggle）。
+    setSwitching(true)
+    window.clearTimeout(switchTimer.current)
+    switchTimer.current = window.setTimeout(() => setSwitching(false), 560)
     if (phase === 'entering') finish(false)
   }
   const motionLabel = motion.reason || (motion.allowed ? '暂停动态效果' : '播放动态效果')
@@ -163,9 +193,12 @@ export function LoginPage() {
         <div className="garden-actions">
           <Tooltip>
             <TooltipTrigger asChild>
-              <button type="button" className="garden-tool garden-motion-toggle" onClick={toggleMotion}
+              <button type="button" className={cn('garden-tool garden-motion-toggle icon-toggle', switching && 'is-switching')} onClick={toggleMotion}
                 disabled={Boolean(motion.reason)} aria-label={motionLabel} aria-pressed={!motion.allowed}>
-                {motion.allowed ? <Pause size={20} aria-hidden="true" /> : <Play size={20} aria-hidden="true" />}
+                {/* 三角(播放)↔正方形(暂停)的 path 形变见 login.css 的 .motion-glyph。 */}
+                <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+                  <path className="motion-glyph" d="M8 5 L19 12 L8 19 L8 5 Z" />
+                </svg>
               </button>
             </TooltipTrigger>
             <TooltipContent>{motionLabel}</TooltipContent>
@@ -214,13 +247,6 @@ export function LoginPage() {
           targetRef={targetRef} trace={traceRef.current} onFinish={finish} />
       )}
       <footer className="garden-footer"><p className="garden-signature">「长风化作她的轺车，<wbr />四海落成她的圆圃」</p></footer>
-
-      <Dialog open={errorOpen} onOpenChange={setErrorOpen}>
-        <DialogContent className="garden-error-dialog" onCloseAutoFocus={(event) => { event.preventDefault(); inputRef.current?.focus() }}>
-          <DialogHeader><DialogTitle>登录失败</DialogTitle><DialogDescription>{error}</DialogDescription></DialogHeader>
-          <DialogFooter><DialogClose asChild><Button type="button">我知道了</Button></DialogClose></DialogFooter>
-        </DialogContent>
-      </Dialog>
     </main>
   )
 }

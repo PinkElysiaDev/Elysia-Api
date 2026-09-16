@@ -67,6 +67,14 @@
   inset: 0;
   background: linear-gradient(180deg, rgb(253 251 252 / 0.7), transparent 18%, transparent 80%, rgb(253 251 252 / 0.9));
 }
+/* 退场:动画结束进入控制台前,aurora 先渐隐(全局 halo 的左下光斑接力),
+ * 左下光泽不再瞬断。garden-arrive 的 both 填充会占住 opacity,先掐动画。 */
+.garden[data-leaving] .garden-aurora {
+  animation: none;
+  opacity: 0;
+  transition: opacity 500ms ease-out;
+}
+
 /* 极光：两团缓慢游移的瑰梅/兰紫光晕，白天极淡、夜里晶莹。 */
 .garden-aurora {
   position: absolute;
@@ -290,6 +298,28 @@
 
 .garden-actions { display: flex; align-items: center; gap: 8px; }
 .garden-motion-toggle { width: 44px; height: 44px; transition-duration: 0.3s; }
+
+/*
+ * 动效开关的三角(播放)↔正方形(暂停)形变——与 .theme-sun 的日/月形变同
+ * 手法：两端 path 命令序列一致(M + 4L + Z)，d 属性过渡得以逐点插值，三角
+ * 的斜边连续「张开」成方形的两条直角边。fill + 同色描边 round join 模拟
+ * 圆角；播放态用元素 attribute 的 d，暂停态由根节点 data-motion 覆盖。
+ */
+.garden-motion-toggle .motion-glyph {
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linejoin: round;
+  transition: d 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+[data-motion='paused'] .garden-motion-toggle .motion-glyph {
+  d: path('M8 5 L19 5 L19 19 L8 19 Z');
+}
+/* d 属性形变不可用的浏览器：降级为透明度暗示状态差异。 */
+@supports not (d: path('M0 0')) {
+  .garden-motion-toggle .motion-glyph { transition: opacity 200ms; }
+  [data-motion='paused'] .garden-motion-toggle .motion-glyph { opacity: 0.55; }
+}
 .garden-login-motion {
   grid-area: 1 / 1;
   width: 100%;
@@ -444,5 +474,3 @@
 }
 .dark .garden-interlude-cn { color: #ecd0e2; text-shadow: 0 0 24px rgb(240 174 210 / 0.4); }
 .garden-echo { aspect-ratio: 760 / 808; opacity: 0; background: linear-gradient(172deg, var(--grad-a) 8%, var(--grad-b) 92%); }
-.garden-error-dialog { width: min(420px, calc(100vw - 40px)); background: #fdfbfc; }
-.dark .garden-error-dialog { background: #211b25; }

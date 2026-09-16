@@ -326,17 +326,17 @@ function targetFlights(paths: TracePath[], count: number, width: number, height:
     if (!segment) continue
     const fraction = (distance - distanceBefore) / Math.max(segment.length, 0.0001)
     const rank = index / Math.max(1, count - 1)
-    const birth = 0.7 + rank * 1.8
+    const birth = 0.875 + rank * 2.25
     flights.push({ group: segment.group, target: {
       horizontal: segment.from.horizontal + (segment.to.horizontal - segment.from.horizontal) * fraction,
       vertical: segment.from.vertical + (segment.to.vertical - segment.from.vertical) * fraction,
-    }, sourceFraction: 0, birth, arrival: 2.55 + rank * 1.45, seed: index + 1 })
+    }, sourceFraction: 0, birth, arrival: 3.19 + rank * 1.81, seed: index + 1 })
   }
   for (let group = 0; group < 4; group++) {
     const members = flights.filter((flight) => flight.group === group)
     members.forEach((flight, index) => { flight.sourceFraction = (index + 0.5) / members.length })
   }
-  if (flights.length) flights[flights.length - 1].arrival = 4
+  if (flights.length) flights[flights.length - 1].arrival = 5
   return flights
 }
 
@@ -421,7 +421,7 @@ function startTransition(options: TransitionOptions, context: WebGL2RenderingCon
   let mediaTime = 0
   let maxFrameDrift = 0
   let lastDrawTime: number | undefined
-  const watchdog = window.setTimeout(() => finish(false), 5500)
+  const watchdog = window.setTimeout(() => finish(false), 6500)
   const finish = (animated: boolean) => {
     if (finished || disposed) return
     finished = true
@@ -464,13 +464,13 @@ function startTransition(options: TransitionOptions, context: WebGL2RenderingCon
     if (document.hidden || now - lastVideoFrame > 900) { finish(false); return }
     if (started === undefined) { animation = requestAnimationFrame(render); return }
     const interval = 1000 / (window.innerWidth <= 700 ? 30 : 60)
-    if (lastDrawTime !== undefined && now - lastDrawTime < interval && now - started < 4000) {
+    if (lastDrawTime !== undefined && now - lastDrawTime < interval && now - started < 5000) {
       animation = requestAnimationFrame(render)
       return
     }
     lastDrawTime = lastDrawTime === undefined ? now : now - (now - lastDrawTime) % interval
     try {
-      const seconds = Math.max(0, Math.min(4, (now - started) / 1000))
+      const seconds = Math.max(0, Math.min(5, (now - started) / 1000))
       const width = window.innerWidth
       const height = window.innerHeight
       const ratio = Math.min(devicePixelRatio || 1, width <= 700 ? 1.5 : 2)
@@ -483,7 +483,7 @@ function startTransition(options: TransitionOptions, context: WebGL2RenderingCon
       const targetBounds = target.getBoundingClientRect()
       const gradientColors = readGradientColors(target)
       const dark = document.documentElement.classList.contains('dark')
-      const targetReveal = smoothRange(2.5, 4, seconds)
+      const targetReveal = smoothRange(3.125, 5, seconds)
       context.clearColor(0, 0, 0, 0)
       context.clear(context.COLOR_BUFFER_BIT)
       context.useProgram(textureProgram.program)
@@ -509,8 +509,8 @@ function startTransition(options: TransitionOptions, context: WebGL2RenderingCon
       context.bufferData(context.ARRAY_BUFFER, new Float32Array(quad), context.DYNAMIC_DRAW)
       context.bindTexture(context.TEXTURE_2D, videoTexture)
       context.uniform1f(textureProgram.uniform('targetMode'), 0)
-      context.uniform1f(textureProgram.uniform('opacity'), (1 - smoothRange(0.7, 4, seconds)) * Number(getComputedStyle(scene).opacity))
-      context.uniform1f(textureProgram.uniform('desaturate'), smoothRange(0.7, 3, seconds) * 0.75)
+      context.uniform1f(textureProgram.uniform('opacity'), (1 - smoothRange(0.875, 5, seconds)) * Number(getComputedStyle(scene).opacity))
+      context.uniform1f(textureProgram.uniform('desaturate'), smoothRange(0.875, 3.75, seconds) * 0.75)
       context.drawArrays(context.TRIANGLES, 0, 6)
       quad.length = 0
       for (const [horizontal, vertical] of [[0, 0], [1, 0], [0, 1], [0, 1], [1, 0], [1, 1]]) {
@@ -520,7 +520,7 @@ function startTransition(options: TransitionOptions, context: WebGL2RenderingCon
       context.bufferData(context.ARRAY_BUFFER, new Float32Array(quad), context.DYNAMIC_DRAW)
       context.bindTexture(context.TEXTURE_2D, targetTexture)
       context.uniform1f(textureProgram.uniform('targetMode'), 1)
-      context.uniform1f(textureProgram.uniform('opacity'), targetReveal * 0.45)
+      context.uniform1f(textureProgram.uniform('opacity'), targetReveal * (dark ? 0.4 : 0.45))
       context.drawArrays(context.TRIANGLES, 0, 6)
 
       const strokes: number[] = []
@@ -547,7 +547,13 @@ function startTransition(options: TransitionOptions, context: WebGL2RenderingCon
           const fraction = (segment.end - segment.length / 2) / Math.max(0.001, groupLengths[group])
           const birth = members[Math.min(members.length - 1, Math.floor(fraction * members.length))]?.birth ?? 2.5
           const opacity = smoothRange(0, 0.7, seconds) * (1 - smoothRange(birth - 0.04, birth + 0.08, seconds))
-          if (opacity > 0.001) strokes.push(segment.from.horizontal, segment.from.vertical, segment.to.horizontal, segment.to.vertical, 1.35, opacity * 0.9, 0, 1, 1, 0.72, 0.89)
+          if (opacity > 0.001) {
+            // 线稿色同一份在暗底上对比度是亮底的 ~7 倍(11.4:1 vs 1.56:1),
+            // 夜间整体压暗到 ~0.65 使两主题的感知强度对齐(约 5:1)。
+            const stroke = dark ? 0.65 : 1
+            strokes.push(segment.from.horizontal, segment.from.vertical, segment.to.horizontal, segment.to.vertical,
+              1.35, opacity * (dark ? 0.7 : 0.9), 0, 1, stroke, 0.72 * stroke, 0.89 * stroke)
+          }
         }
       }
       let activeParticles = 0
@@ -578,7 +584,7 @@ function startTransition(options: TransitionOptions, context: WebGL2RenderingCon
         if (opacity <= 0.001) continue
         activeParticles++
         strokes.push(point.horizontal * width, point.vertical * height, point.horizontal * width, point.vertical * height,
-          2 + randomUnit(flight.seed) * 2.8, opacity, 1, 0, 1, dark ? 0.78 : 0.67, 0.89)
+          2 + randomUnit(flight.seed) * 2.8, opacity * (dark ? 0.75 : 1), 1, 0, 1, dark ? 0.55 : 0.67, 0.89)
       }
       context.useProgram(strokeProgram.program)
       context.bindVertexArray(strokeArray)
@@ -597,7 +603,7 @@ function startTransition(options: TransitionOptions, context: WebGL2RenderingCon
         canvas.dataset.activeParticles = String(activeParticles)
         canvas.dataset.maxFrameDrift = maxFrameDrift.toFixed(3)
       }
-      if (seconds >= 4) animation = requestAnimationFrame(() => finish(true))
+      if (seconds >= 5) animation = requestAnimationFrame(() => finish(true))
       else animation = requestAnimationFrame(render)
     } catch { finish(false) }
   }
