@@ -1,6 +1,5 @@
 import useSWR from 'swr'
 import { api } from '@/lib/api'
-import type { CustomProtocolSchema, MaheshvaraFieldSpec } from '@/lib/types'
 
 /** 字段目录 hook：后端 schema 端点是目录的单一事实来源（校验同源）。 */
 export function useCustomProtocolSchema() {
@@ -31,9 +30,4 @@ export function protocolTypeLabel(type: string | undefined): string {
     default:
       return type.startsWith('x-') ? type.slice(2) : type
   }
-}
-
-/** 响应字段可选项：目录 + 常用 metadata 子键示例（后端允许 metadata.<key>）。 */
-export function responseFieldOptions(schema: CustomProtocolSchema | undefined): MaheshvaraFieldSpec[] {
-  return schema?.responseFields ?? []
 }

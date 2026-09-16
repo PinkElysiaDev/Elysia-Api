@@ -159,12 +159,12 @@ export function ProtocolDesignerPage() {
             <table className="w-full text-sm">
               <TableHeader className="bg-secondary/20">
                 <TableRow className="border-b border-border/60 hover:bg-transparent">
-                  <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">协议 ID</TableHead>
-                  <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">名称</TableHead>
-                  <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">类型</TableHead>
-                  <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">校验</TableHead>
-                  <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">版本</TableHead>
-                  <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">更新时间</TableHead>
+                  <TableHead className="py-3.5">协议 ID</TableHead>
+                  <TableHead className="py-3.5">名称</TableHead>
+                  <TableHead className="py-3.5 text-center">类型</TableHead>
+                  <TableHead className="py-3.5 text-center">校验</TableHead>
+                  <TableHead className="py-3.5 text-center">版本</TableHead>
+                  <TableHead className="py-3.5 text-center">更新时间</TableHead>
                   <TableHead className="py-3.5 pr-5 text-right font-semibold text-2xs uppercase tracking-wider text-muted-foreground">操作</TableHead>
                 </TableRow>
               </TableHeader>

@@ -1,7 +1,7 @@
 import { readChartTickSizePx } from '@/lib/utils'
 
 /** 固定 UTC offset 的日桶算术——与后端 UsageDaily 的分桶公式完全一致。 */
-export const DAY_MS = 86_400_000
+const DAY_MS = 86_400_000
 
 /** 第 dayOffset 天（0=今天）的桶起点时间戳（负值=往过去偏移）。 */
 export function offsetDayStart(ts: number, offsetMinutes: number, dayOffset = 0): number {
@@ -33,7 +33,7 @@ function pad2(n: number) {
   return String(n).padStart(2, '0')
 }
 
-export function formatHm(ms: number) {
+function formatHm(ms: number) {
   const d = new Date(ms)
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
 }

@@ -117,11 +117,11 @@ export function TokensPage() {
               <table className="w-full text-sm">
                 <TableHeader className="bg-secondary/20">
                   <TableRow className="border-b border-border/60 hover:bg-transparent">
-                    <TableHead className="py-3.5 pl-4 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">名称</TableHead>
-                    <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">Key 凭证</TableHead>
-                    <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">绑定模型组</TableHead>
-                    <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">创建时间</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">状态</TableHead>
+                    <TableHead className="py-3.5 pl-4">名称</TableHead>
+                    <TableHead className="py-3.5">Key 凭证</TableHead>
+                    <TableHead className="py-3.5">绑定模型组</TableHead>
+                    <TableHead className="py-3.5">创建时间</TableHead>
+                    <TableHead className="py-3.5 text-center">状态</TableHead>
                     <TableHead className="py-3.5 pr-4 text-right font-semibold text-2xs uppercase tracking-wider text-muted-foreground">操作</TableHead>
                   </TableRow>
                 </TableHeader>

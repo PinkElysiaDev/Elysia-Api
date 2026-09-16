@@ -6,8 +6,8 @@ export function KpiGrid({
   cols,
   className,
 }: {
-  /** lg+ 档的目标列数：4（诊断）/ 5（缺省）/ 6（用量统计/总览）/ 8（历史）。 */
-  cols?: number
+  /** lg+ 档的目标列数：4（诊断，缺省）/ 6（用量统计/总览）。 */
+  cols?: 4 | 6
   children: ReactNode
   className?: string
 }) {
@@ -24,7 +24,7 @@ export function KpiGrid({
         'lg:max-xl:[&>:nth-child(3n+1)]:border-l-0 lg:max-xl:[&>:nth-child(3n+1)]:pl-0 xl:[&>:nth-child(6n+1)]:border-l-0 xl:[&>:nth-child(6n+1)]:pl-0',
     },
   }
-  const { lgCols, rowStart } = layouts[cols ?? 4] ?? layouts[4]
+  const { lgCols, rowStart } = layouts[cols ?? 4]
   return (
     <div
       className={cn(

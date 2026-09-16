@@ -28,7 +28,7 @@ import type { UsageModelDailyPoint } from '@/lib/types'
 import { bucketedTimeISO, CHART_TICK, cn, compactNumber, USAGE_BUCKET_MS } from '@/lib/utils'
 import { offsetDayKey, offsetDayStart } from './overview-time'
 
-export type TrendPerspective = 'overview' | 'breakdown'
+type TrendPerspective = 'overview' | 'breakdown'
 
 const OTHER_KEY = '__other__'
 const UNNAMED_KEY = '__unnamed__'

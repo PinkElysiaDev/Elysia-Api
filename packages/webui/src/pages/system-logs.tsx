@@ -117,7 +117,7 @@ export function SystemLogsPage() {
                     <TableRow className="border-b border-border/60 hover:bg-transparent">
                       <TableHead className="py-3.5 pl-4 w-[190px] font-semibold text-2xs uppercase tracking-wider text-muted-foreground">记录时间</TableHead>
                       <TableHead className="py-3.5 w-[100px] font-semibold text-2xs uppercase tracking-wider text-muted-foreground">级别</TableHead>
-                      <TableHead className="py-3.5 pr-4 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">日志消息 / 附加字段 (Fields)</TableHead>
+                      <TableHead className="py-3.5 pr-4">日志消息 / 附加字段 (Fields)</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody className="divide-y divide-border/30">

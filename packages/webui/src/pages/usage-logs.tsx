@@ -11,12 +11,13 @@ import { CodePill, StreamIcon } from '@/components/badges'
 import { LogDetailSheet } from './usage-logs/log-detail-sheet'
 import { Seg } from '@/components/ui/seg'
 import { AsyncState } from '@/components/ui/states'
-import { UsageFilterBar, type RangeKey } from '@/components/usage-filter-bar'
+import { UsageFilterBar } from '@/components/usage-filter-bar'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
-import { useUsageLogs, useUsageFilterOptions, useMinuteTick, useSources, revalidate } from '@/lib/hooks'
+import { useUsageLogs, revalidate } from '@/lib/hooks'
+import { useUsageFilters } from '@/lib/usage-filters'
 import { api } from '@/lib/api'
-import { bucketedTimeISO, downloadJSON, formatDateTime, formatDuration, formatNumber, isSuccessStatus, startOfRange, USAGE_BUCKET_MS } from '@/lib/utils'
+import { downloadJSON, formatDateTime, formatDuration, formatNumber, isSuccessStatus } from '@/lib/utils'
 
 const PAGE_SIZE = 20
 
@@ -27,16 +28,10 @@ export function UsageLogsPage() {
   const { confirm, dialog } = useConfirm()
   const location = useLocation()
   const navigate = useNavigate()
-  const [range, setRange] = useState<RangeKey>('7d')
-  const [groupNames, setGroupNames] = useState<string[]>([])
-  const [modelNames, setModelNames] = useState<string[]>([])
-  const [sourceIds, setSourceIds] = useState<string[]>([])
-  const [keyNames, setKeyNames] = useState<string[]>([])
   const [statusCode, setStatusCode] = useState('')
   const [statusView, setStatusView] = useState<StatusView>('all')
   const [page, setPage] = useState(0)
   const [detailId, setDetailId] = useState<string | null>(null)
-  const minuteTick = useMinuteTick()
 
   // 总览「最近失败」跳转：带 openDetail 状态直接打开抽屉（一次性消费，
   // 否则刷新页面会因 history.state 仍在而重开抽屉）。
@@ -47,36 +42,24 @@ export function UsageLogsPage() {
     navigate(location.pathname, { replace: true, state: {} })
   }, [location.state, location.pathname, navigate])
 
-  const { groupOptions, modelOptions, keyOptions } = useUsageFilterOptions()
-  const { data: sources } = useSources()
-  const sourceOptions = useMemo(
-    () => (sources ?? []).filter((s) => s.enabled).map((s) => ({ value: s.id, label: s.name || s.id })),
-    [sources],
-  )
+  // 共用筛选(时间窗/组/模型/源/调用方):任一变化即重置分页。
+  const filters = useUsageFilters(() => setPage(0))
   const sourceLabelById = useMemo(() => {
     const map = new Map<string, string>()
-    for (const source of sources ?? []) map.set(source.id, source.name || source.id)
+    for (const source of filters.sources) map.set(source.id, source.name || source.id)
     return map
-  }, [sources])
+  }, [filters.sources])
 
-  const params = useMemo(() => {
-    // to 取下一 5 分钟边界：缓存键稳定，且当前桶内新记录能进半开区间。
-    // 相对窗起点用 now，避免临近午夜把 from 推到次日。
-    const nowMs = minuteTick * 60_000
-    const to = bucketedTimeISO(nowMs, USAGE_BUCKET_MS)
-    return {
-      from: startOfRange(range, new Date(nowMs).toISOString()),
-      to,
-      groupNames: groupNames.length ? groupNames : undefined,
-      modelNames: modelNames.length ? modelNames : undefined,
-      sourceIds: sourceIds.length ? sourceIds : undefined,
-      keyNames: keyNames.length ? keyNames : undefined,
+  const params = useMemo(
+    () => ({
+      ...filters.params,
       status: statusView === 'ok' ? ('success' as const) : statusView === 'fail' ? ('failed' as const) : undefined,
       statusCode: statusCode.trim() ? Number(statusCode) : undefined,
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
-    }
-  }, [range, groupNames, modelNames, sourceIds, keyNames, statusView, statusCode, page, minuteTick])
+    }),
+    [filters.params, statusView, statusCode, page],
+  )
 
   const { data, isLoading, error, mutate } = useUsageLogs(params)
   const total = data?.total ?? 0
@@ -87,10 +70,10 @@ export function UsageLogsPage() {
     setPage((p) => Math.min(p, totalPages - 1))
   }, [data, isLoading, error, totalPages])
 
-  const items = data?.items ?? []
+  const items = useMemo(() => data?.items ?? [], [data])
 
   const summary = useMemo(() => {
-    const all = data?.items ?? []
+    const all = items
     const totals = all.reduce(
       (acc, item) => {
         if (isSuccessStatus(item.statusCode)) {
@@ -109,7 +92,7 @@ export function UsageLogsPage() {
       avg: totals.ok ? totals.duration / totals.ok : 0,
       count: all.length,
     }
-  }, [data])
+  }, [items])
 
   async function handleReset() {
     const okToReset = await confirm({
@@ -133,7 +116,7 @@ export function UsageLogsPage() {
       toast.error('没有可导出的记录')
       return
     }
-    downloadJSON(`usage-logs-${range}.json`, data.items)
+    downloadJSON(`usage-logs-${filters.range}.json`, data.items)
     toast.success('已导出当前页', `${data.items.length} 条记录`)
   }
 
@@ -158,35 +141,7 @@ export function UsageLogsPage() {
 
         {/* 共用筛选条（含模型源维度）+ 页面专属状态筛选 + 汇总图例 */}
         <UsageFilterBar
-          range={range}
-          onRangeChange={(v) => {
-            setRange(v)
-            setPage(0)
-          }}
-          groupOptions={groupOptions}
-          modelOptions={modelOptions}
-          keyOptions={keyOptions}
-          sourceOptions={sourceOptions}
-          groupNames={groupNames}
-          onGroupNamesChange={(v) => {
-            setGroupNames(v)
-            setPage(0)
-          }}
-          modelNames={modelNames}
-          onModelNamesChange={(v) => {
-            setModelNames(v)
-            setPage(0)
-          }}
-          sourceIds={sourceIds}
-          onSourceIdsChange={(v) => {
-            setSourceIds(v)
-            setPage(0)
-          }}
-          keyNames={keyNames}
-          onKeyNamesChange={(v) => {
-            setKeyNames(v)
-            setPage(0)
-          }}
+          {...filters.barProps}
           right={
             <div className="flex items-center gap-3 text-xs font-mono">
               <span className="tnum flex flex-wrap items-center gap-3 text-muted-foreground">
@@ -254,14 +209,14 @@ export function UsageLogsPage() {
                 <table className="w-full text-sm">
                   <TableHeader className="bg-secondary/20">
                     <TableRow className="border-b border-border/60 hover:bg-transparent">
-                      <TableHead className="py-3.5 pl-4 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">请求时间</TableHead>
-                      <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">调用凭证</TableHead>
-                      <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">实际模型 / 路由组</TableHead>
-                      <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">流式</TableHead>
-                      <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">状态码</TableHead>
-                      <TableHead className="py-3.5 num font-semibold text-2xs uppercase tracking-wider text-muted-foreground">首字耗时</TableHead>
-                      <TableHead className="py-3.5 num font-semibold text-2xs uppercase tracking-wider text-muted-foreground">总耗时</TableHead>
-                      <TableHead className="py-3.5 pr-4 num font-semibold text-2xs uppercase tracking-wider text-muted-foreground">Tokens 输入 / 输出</TableHead>
+                      <TableHead className="py-3.5 pl-4">请求时间</TableHead>
+                      <TableHead className="py-3.5">调用凭证</TableHead>
+                      <TableHead className="py-3.5">实际模型 / 路由组</TableHead>
+                      <TableHead className="py-3.5 text-center">流式</TableHead>
+                      <TableHead className="py-3.5 text-center">状态码</TableHead>
+                      <TableHead className="py-3.5 num">首字耗时</TableHead>
+                      <TableHead className="py-3.5 num">总耗时</TableHead>
+                      <TableHead className="py-3.5 pr-4 num">Tokens 输入 / 输出</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody className="divide-y divide-border/30">

@@ -42,10 +42,10 @@ function catalogSourceLabel(source: string): string {
   }
 }
 
-// 日志管理表单缺省值（后端 GET 返回生效值，老版本无该块时兜底）。
 /** 目录同步周期的表单默认（与后端 ResolveModelCatalogInterval 默认一致）。 */
 const defaultCatalogSyncMinutes = 1440
 
+// 日志管理表单缺省值（后端 GET 返回生效值，老版本无该块时兜底）。
 const defaultUsageLog: UsageLogRuntimeConfig = {
   persistEnabled: true,
   retentionDays: 0,
@@ -57,12 +57,20 @@ const defaultUsageLog: UsageLogRuntimeConfig = {
   cleanupIntervalMinutes: 60,
 }
 
+/** 归一化后的表单类型：数据入口 effect 补齐 usageLog/modelCatalog 后二者必非空。 */
+type RuntimeConfigForm = Omit<RuntimeConfig, 'usageLog' | 'modelCatalog'> & {
+  usageLog: UsageLogRuntimeConfig
+  modelCatalog: NonNullable<RuntimeConfig['modelCatalog']>
+}
+
 
 export function RuntimeConfigPage() {
   const toast = useToast()
   const { data, isLoading, error, mutate } = useRuntimeConfig()
   const { data: catalogStatus } = useModelCatalogStatus()
-  const [form, setForm] = useState<RuntimeConfig | null>(null)
+  // 归一化类型:数据入口 effect 已把 usageLog/modelCatalog 补齐为非空块,
+  // 渲染与保存路径直接取字段,不再 ?. / ?? 兜底(旧兜底口径不一曾致 UI 与落盘分叉)。
+  const [form, setForm] = useState<RuntimeConfigForm | null>(null)
   const [saving, setSaving] = useState(false)
   const [restartNotice, setRestartNotice] = useState(false)
   const [showToken, setShowToken] = useState(false)
@@ -83,7 +91,7 @@ export function RuntimeConfigPage() {
   }, [refreshStorage])
 
   function updateUsageLog<K extends keyof UsageLogRuntimeConfig>(key: K, value: UsageLogRuntimeConfig[K]) {
-    setForm((prev) => (prev && prev.usageLog ? { ...prev, usageLog: { ...prev.usageLog, [key]: value } } : prev))
+    setForm((prev) => (prev ? { ...prev, usageLog: { ...prev.usageLog, [key]: value } } : prev))
   }
 
   useEffect(() => {
@@ -126,9 +134,9 @@ export function RuntimeConfigPage() {
         enablePprof: form.enablePprof,
         allowFakeIPOutbound: form.allowFakeIPOutbound,
         // 日志管理：数值字段整体回写（GET 返回生效值，保存即显式化当前口径）。
-        usageLog: form.usageLog ?? defaultUsageLog,
+        usageLog: form.usageLog,
         // 目录刷新周期：0 = 默认 24h；保存即生效（后台周期动态读取配置）。
-        modelCatalog: { syncIntervalMinutes: form.modelCatalog?.syncIntervalMinutes ?? defaultCatalogSyncMinutes },
+        modelCatalog: { syncIntervalMinutes: form.modelCatalog.syncIntervalMinutes },
       })
       await revalidate.runtimeConfig()
       refreshStorage()
@@ -362,7 +370,7 @@ export function RuntimeConfigPage() {
             <Button
               variant="outline"
               size="sm"
-              disabled={catalogRefreshing || form.modelCatalog?.enabled === false}
+              disabled={catalogRefreshing || form.modelCatalog.enabled === false}
               onClick={async () => {
                 setCatalogRefreshing(true)
                 try {
@@ -395,7 +403,7 @@ export function RuntimeConfigPage() {
             >
               <div className="flex w-full items-center gap-2 sm:w-48">
                 <NumberField
-                  value={form.modelCatalog?.syncIntervalMinutes ?? defaultCatalogSyncMinutes}
+                  value={form.modelCatalog.syncIntervalMinutes}
                   min={0}
                   className="font-mono text-xs"
                   onCommit={(v) =>
@@ -404,7 +412,7 @@ export function RuntimeConfigPage() {
                         ? {
                             ...prev,
                             modelCatalog: {
-                              ...(prev.modelCatalog ?? { enabled: true, url: '', syncIntervalMinutes: 1440 }),
+                              ...prev.modelCatalog,
                               syncIntervalMinutes: v,
                             },
                           }
@@ -480,7 +488,7 @@ export function RuntimeConfigPage() {
               description="关闭后新请求完全不落库（统计与日志面板不再更新）"
             >
               <Switch
-                checked={form.usageLog?.persistEnabled}
+                checked={form.usageLog.persistEnabled}
                 onCheckedChange={(v) => updateUsageLog('persistEnabled', v)}
               />
             </SettingRow>
@@ -491,7 +499,7 @@ export function RuntimeConfigPage() {
             >
               <div className="flex w-full items-center gap-2 sm:w-48">
                 <NumberField
-                  value={form.usageLog?.retentionDays ?? defaultUsageLog.retentionDays}
+                  value={form.usageLog.retentionDays}
                   min={0}
                   className="font-mono text-xs"
                   onCommit={(v) => updateUsageLog('retentionDays', v)}
@@ -506,7 +514,7 @@ export function RuntimeConfigPage() {
             >
               <div className="flex w-full items-center gap-2 sm:w-48">
                 <NumberField
-                  value={form.usageLog?.maxStorageMB ?? defaultUsageLog.maxStorageMB}
+                  value={form.usageLog.maxStorageMB}
                   min={0}
                   className="font-mono text-xs"
                   onCommit={(v) => updateUsageLog('maxStorageMB', v)}
@@ -521,7 +529,7 @@ export function RuntimeConfigPage() {
             >
               <div className="flex w-full items-center gap-2 sm:w-48">
                 <NumberField
-                  value={form.usageLog?.maxRecords ?? defaultUsageLog.maxRecords}
+                  value={form.usageLog.maxRecords}
                   min={0}
                   className="font-mono text-xs"
                   onCommit={(v) => updateUsageLog('maxRecords', v)}
@@ -536,7 +544,7 @@ export function RuntimeConfigPage() {
             >
               <div className="flex w-full items-center gap-2 sm:w-48">
                 <NumberField
-                  value={form.usageLog?.bodyMaxKB ?? defaultUsageLog.bodyMaxKB}
+                  value={form.usageLog.bodyMaxKB}
                   min={0}
                   className="font-mono text-xs"
                   onCommit={(v) => updateUsageLog('bodyMaxKB', v)}
@@ -550,7 +558,7 @@ export function RuntimeConfigPage() {
               description="开启后成功请求不保留请求体（仅元数据），失败请求完整保留以便排查"
             >
               <Switch
-                checked={form.usageLog?.bodyOnErrorOnly}
+                checked={form.usageLog.bodyOnErrorOnly}
                 onCheckedChange={(v) => updateUsageLog('bodyOnErrorOnly', v)}
               />
             </SettingRow>
@@ -560,7 +568,7 @@ export function RuntimeConfigPage() {
               description="请求体中的 base64 媒体（图片/音频/视频/文件）存为独立文件，正文以占位符替代"
             >
               <Switch
-                checked={form.usageLog?.externalizeMedia}
+                checked={form.usageLog.externalizeMedia}
                 onCheckedChange={(v) => updateUsageLog('externalizeMedia', v)}
               />
             </SettingRow>
@@ -570,14 +578,11 @@ export function RuntimeConfigPage() {
               description="后台自动清理的执行周期（分钟，最小 5）"
             >
               <div className="flex w-full items-center gap-2 sm:w-48">
-                <Input
-                  type="number"
+                <NumberField
+                  value={form.usageLog.cleanupIntervalMinutes}
                   min={5}
                   className="font-mono text-xs"
-                  value={form.usageLog?.cleanupIntervalMinutes ?? defaultUsageLog.cleanupIntervalMinutes}
-                  onChange={(e) =>
-                    updateUsageLog('cleanupIntervalMinutes', Math.max(0, Number(e.target.value) || 0))
-                  }
+                  onCommit={(v) => updateUsageLog('cleanupIntervalMinutes', v)}
                 />
                 <span className="shrink-0 text-xs text-muted-foreground">分钟</span>
               </div>

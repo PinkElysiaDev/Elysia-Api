@@ -28,5 +28,3 @@ export function Badge({ className, variant, ...props }: BadgeProps) {
   return <span className={cn(badgeVariants({ variant }), className)} {...props} />
 }
 
-// eslint-disable-next-line react-refresh/only-export-components -- shadcn 惯例：变体与组件同文件
-export { badgeVariants }

@@ -27,6 +27,7 @@ import {
   useSources,
   useModels,
   useMinuteTick,
+  POLL,
 } from '@/lib/hooks'
 import type { ModelSource } from '@/lib/types'
 import { bucketedTimeISO, cn, compactNumber, formatHitRate, formatNumber, percent, startOfRange, USAGE_BUCKET_MS } from '@/lib/utils'
@@ -252,14 +253,14 @@ export function OverviewPage() {
     isLoading: sourcesLoading,
     error: sourcesError,
     mutate: retrySources,
-  } = useSources(60_000)
+  } = useSources(POLL.LIST)
   const {
     data: models,
     isLoading: modelsLoading,
     error: modelsError,
     mutate: retryModels,
-  } = useModels(60_000)
-  const { data: healthData, error: healthError } = useHealth(15_000)
+  } = useModels(POLL.LIST)
+  const { data: healthData, error: healthError } = useHealth(POLL.HEALTH_FAST)
   const health = healthError ? undefined : healthData
 
   const healthState = healthError ? ('err' as const) : health ? (health.database ? ('ok' as const) : ('err' as const)) : ('off' as const)
@@ -340,7 +341,7 @@ export function OverviewPage() {
   return (
     <>
       {/* 爱莉希雅视觉中枢立绘舞台 */}
-      <ElysiaStage statusState={stageStatus} className="right-[calc(100%_-_100vw_-_6px)] top-[14px]" />
+      <ElysiaStage statusState={stageStatus} />
 
       <div className="relative z-[1] space-y-7">
         <PageHeader title="总览" />

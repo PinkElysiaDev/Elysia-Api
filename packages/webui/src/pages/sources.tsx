@@ -423,12 +423,12 @@ export function SourcesPage() {
                 <TableHeader className="bg-secondary/20">
                   <TableRow className="border-b border-border/60 hover:bg-transparent">
                     <TableHead className="w-[38px] px-0 text-center" />
-                    <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">源名称</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">协议类型</TableHead>
-                    <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">Base URL</TableHead>
-                    <TableHead className="py-3.5 num text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">模型数</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">同步策略</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">状态</TableHead>
+                    <TableHead className="py-3.5">源名称</TableHead>
+                    <TableHead className="py-3.5 text-center">协议类型</TableHead>
+                    <TableHead className="py-3.5">Base URL</TableHead>
+                    <TableHead className="py-3.5 num text-center">模型数</TableHead>
+                    <TableHead className="py-3.5 text-center">同步策略</TableHead>
+                    <TableHead className="py-3.5 text-center">状态</TableHead>
                     <TableHead className="py-3.5 pr-5 text-right font-semibold text-2xs uppercase tracking-wider text-muted-foreground">操作</TableHead>
                   </TableRow>
                 </TableHeader>

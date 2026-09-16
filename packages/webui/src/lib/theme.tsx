@@ -6,7 +6,6 @@ const STORAGE_KEY = 'elysia-webui.theme'
 interface ThemeContextValue {
   theme: Theme
   toggleTheme: () => void
-  setTheme: (theme: Theme) => void
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
@@ -73,7 +72,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ThemeContextValue>(
     () => ({
       theme,
-      setTheme: setThemeState,
       toggleTheme: () => setThemeState((prev) => (prev === 'dark' ? 'light' : 'dark')),
     }),
     [theme],

@@ -1,6 +1,5 @@
 import type {
   CustomProtocolBodyFieldRef,
-  CustomProtocolResponse,
   CustomProtocolResponseFieldMapping,
   CustomProtocolResponseBodyLeaf,
   CustomProtocolResponseBodyTree,
@@ -25,10 +24,6 @@ export function isRequestConstant(value: unknown): value is { value: unknown } {
 
 export function isResponseMappingLeaf(value: unknown): value is CustomProtocolResponseBodyLeaf {
   return isPlainObject(value) && 'field' in value && typeof (value as { field?: unknown }).field === 'string'
-}
-
-export function isResponsePlaceholder(value: unknown): value is { value: unknown } {
-  return isPlainObject(value) && 'value' in value && Object.keys(value).length === 1
 }
 
 function pathSegments(path: string): string[] {
@@ -101,9 +96,4 @@ function mergeAtPath(target: Record<string, unknown>, segments: string[], leaf: 
   }
   const child = isPlainObject(target[head]) ? (target[head] as Record<string, unknown>) : {}
   return { ...target, [head]: mergeAtPath(child, rest, leaf) }
-}
-
-/** 返回体树是否存在（区别于 undefined：空对象也视为已开始构造）。 */
-export function hasResponseBodyTree(response: CustomProtocolResponse): boolean {
-  return response.body !== undefined && response.body !== null
 }

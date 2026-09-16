@@ -145,13 +145,13 @@ export function GroupsPage() {
                 <TableHeader className="bg-secondary/20">
                   <TableRow className="border-b border-border/60 hover:bg-transparent">
                     <TableHead className="w-[38px] px-0 text-center" />
-                    <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">组名称 / 类型</TableHead>
-                    <TableHead className="py-3.5 num text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">成员数</TableHead>
-                    <TableHead className="py-3.5 font-semibold text-2xs uppercase tracking-wider text-muted-foreground">聚合模型列表</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">调度策略</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">重试规则</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">并发 / 限额</TableHead>
-                    <TableHead className="py-3.5 text-center font-semibold text-2xs uppercase tracking-wider text-muted-foreground">状态</TableHead>
+                    <TableHead className="py-3.5">组名称 / 类型</TableHead>
+                    <TableHead className="py-3.5 num text-center">成员数</TableHead>
+                    <TableHead className="py-3.5">聚合模型列表</TableHead>
+                    <TableHead className="py-3.5 text-center">调度策略</TableHead>
+                    <TableHead className="py-3.5 text-center">重试规则</TableHead>
+                    <TableHead className="py-3.5 text-center">并发 / 限额</TableHead>
+                    <TableHead className="py-3.5 text-center">状态</TableHead>
                     <TableHead className="py-3.5 pr-5 text-right font-semibold text-2xs uppercase tracking-wider text-muted-foreground">操作</TableHead>
                   </TableRow>
                 </TableHeader>

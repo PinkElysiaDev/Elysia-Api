@@ -25,7 +25,6 @@ interface ModelBreakdownTooltipProps {
     }
   }>
   label?: string
-  mode?: 'token' | 'request' | 'both'
 }
 
 const MODEL_PALETTE = [
@@ -41,7 +40,7 @@ const MODEL_PALETTE = [
 /**
  * 趋势图交互悬浮浮层：悬停在 Token 柱或折线点上时展示总览与模型级细分。
  */
-export function ModelBreakdownTooltip({ active, payload, label, mode = 'both' }: ModelBreakdownTooltipProps) {
+export function ModelBreakdownTooltip({ active, payload, label }: ModelBreakdownTooltipProps) {
   const rawData = payload?.[0]?.payload
   const modelTokens = rawData?.modelTokens
 
@@ -108,7 +107,7 @@ export function ModelBreakdownTooltip({ active, payload, label, mode = 'both' }:
       </div>
 
       {/* 模型级细分明细（若当前桶包含模型细分数据） */}
-      {breakdown.length > 0 && mode !== 'request' && (
+      {breakdown.length > 0 && (
         <div className="mt-1 border-t border-border/60 pt-2.5">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
