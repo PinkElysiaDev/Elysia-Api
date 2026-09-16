@@ -50,7 +50,7 @@ function KeyInput({
   }, [value])
   return (
     <Input
-      className="h-7 w-36 shrink-0 font-mono text-xs"
+      className="h-7 w-36 shrink-0 font-mono text-xs max-rail:w-24"
       value={buffer}
       placeholder="字段名"
       onChange={(event) => setBuffer(event.target.value)}
@@ -101,7 +101,7 @@ export function StructureNode({
           <span className="w-9 shrink-0 font-mono text-xs text-muted-foreground">{label}</span>
         )}
         <Select value={kind} onValueChange={(next) => onChange(spec.convert(next))}>
-          <SelectTrigger className="h-7 w-[118px] shrink-0 text-xs" aria-label="节点类型">
+          <SelectTrigger className="h-7 w-[118px] shrink-0 text-xs max-rail:w-24" aria-label="节点类型">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -122,7 +122,7 @@ export function StructureNode({
         )}
       </div>
       {leafDetail !== null && leafDetail !== undefined && (
-        <div className="ml-[268px] flex flex-wrap items-center gap-2 border-l-2 border-border/60 pl-3">
+        <div className="ml-[268px] flex flex-wrap items-center gap-2 border-l-2 border-border/60 pl-3 max-rail:ml-0 max-rail:flex-col max-rail:items-stretch max-rail:pt-1">
           {leafDetail}
         </div>
       )}
@@ -210,7 +210,7 @@ export function ScalarValueInput({
   const isString = typeof value === 'string'
   return (
     <Input
-      className="h-7 min-w-40 flex-1 font-mono text-xs"
+      className="h-7 min-w-40 flex-1 font-mono text-xs max-rail:min-w-0"
       value={isString ? (value as string) : JSON.stringify(value ?? null)}
       placeholder={placeholder}
       onChange={(event) => {

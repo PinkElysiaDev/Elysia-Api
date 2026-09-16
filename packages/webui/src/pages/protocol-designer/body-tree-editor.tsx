@@ -165,7 +165,7 @@ export function BodyTreeEditor({
               onChange={(mode) => setLeaf({ ...node, mode: mode as 'json' | 'string' })}
             />
             <Input
-              className="h-7 w-28 font-mono text-xs"
+              className="h-7 w-28 font-mono text-xs max-rail:w-full"
               placeholder="default 可选"
               value={
                 node.default === undefined
@@ -200,7 +200,7 @@ export function BodyTreeEditor({
       return (
         <>
           <Select value={node.transform ?? ''} onValueChange={(transform) => setLeaf({ ...node, transform })}>
-            <SelectTrigger className="h-7 w-40 shrink-0 text-xs" aria-label="transform">
+            <SelectTrigger className="h-7 w-40 shrink-0 text-xs max-rail:w-full max-rail:shrink" aria-label="transform">
               <SelectValue placeholder="（不变）" />
             </SelectTrigger>
             <SelectContent className="max-h-72">

@@ -41,7 +41,6 @@ const PLATFORMS: { value: string; label: string; hint: string }[] = [
   { value: 'chat_completions', label: 'Chat Completions API', hint: 'OpenAI 兼容协议，最通用' },
   { value: 'anthropic', label: 'Anthropic API', hint: 'Claude /v1/messages' },
   { value: 'gemini', label: 'Gemini API', hint: 'Gemini /v1beta generateContent' },
-  { value: 'custom', label: '自定义 Maheshvara 协议', hint: '使用协议设计器注册的自定义协议' },
 ]
 
 // 把历史 platform 值归一化到新的四个 apiFormat，使旧源在新下拉里正确回显
@@ -341,12 +340,11 @@ export function SourceFormDialog({
   }
 
   const custom = isCustomPlatform(form.platform)
-  const selectedPlatform = custom ? 'custom' : form.platform
   const selectedStrategy = form.keyStrategy ?? 'round-robin'
 
-  // 打开弹窗且选中自定义平台时拉取已注册协议列表供下拉选择。
+  // 弹窗打开即拉取已注册协议：自定义协议直接并入主协议下拉，无需二级选择。
   useEffect(() => {
-    if (!open || !custom) return
+    if (!open) return
     let cancelled = false
     api
       .listCustomProtocols()
@@ -354,12 +352,30 @@ export function SourceFormDialog({
         if (!cancelled) setRegisteredProtocols(items)
       })
       .catch(() => {
-        /* 静默：下拉为空，仍可手动填写协议 ID */
+        /* 静默：下拉仅剩内置协议 */
       })
     return () => {
       cancelled = true
     }
-  }, [open, custom])
+  }, [open])
+
+  // 协议选项 = 内置线路 + 已注册自定义协议（value 即 custom:<id>，选中即生效）。
+  const platformOptions: { value: string; label: string; hint: string }[] = [
+    ...PLATFORMS,
+    ...registeredProtocols.map((protocol) => ({
+      value: `custom:${protocol.id}`,
+      label: protocol.name?.trim() || protocol.id,
+      hint: `自定义协议 · ${protocol.id}${protocol.valid ? '' : '（校验失败）'}`,
+    })),
+  ]
+  // 编辑其协议已被删除的源：当前值不在选项中，追加占位项保证回显并提示重选。
+  if (custom && !platformOptions.some((option) => option.value === form.platform)) {
+    platformOptions.push({
+      value: form.platform,
+      label: `自定义协议（未注册）· ${customProtocolID(form.platform)}`,
+      hint: '该协议已不在注册表中，请重新选择协议',
+    })
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -384,20 +400,21 @@ export function SourceFormDialog({
             <div className="space-y-2">
               <Label required>API 协议</Label>
               <Select
-                value={selectedPlatform}
+                value={form.platform}
                 onValueChange={(value) =>
-                  setForm((previous) =>
-                    value === 'custom'
-                      ? { ...previous, platform: 'custom:', autoFetchModels: false }
-                      : { ...previous, platform: value as Platform },
-                  )
+                  setForm((previous) => ({
+                    ...previous,
+                    platform: value as Platform,
+                    // 自定义协议不走自动拉取（无标准模型列表端点）。
+                    ...(isCustomPlatform(value) ? { autoFetchModels: false } : {}),
+                  }))
                 }
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {PLATFORMS.map((p) => (
+                  {platformOptions.map((p) => (
                     <SelectItem key={p.value} value={p.value}>
                       {p.label}
                     </SelectItem>
@@ -405,39 +422,8 @@ export function SourceFormDialog({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                {PLATFORMS.find((p) => p.value === selectedPlatform)?.hint}
+                {platformOptions.find((p) => p.value === form.platform)?.hint}
               </p>
-              {custom && (
-                <div className="space-y-2 pt-1">
-                  <Label required>自定义协议 ID</Label>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Select
-                      value={registeredProtocols.some((p) => p.id === customProtocolID(form.platform)) ? customProtocolID(form.platform) : ''}
-                      onValueChange={(value) => value && update('platform', `custom:${value}` as Platform)}
-                    >
-                      <SelectTrigger className="w-64" aria-label="选择已注册协议">
-                        <SelectValue placeholder={registeredProtocols.length ? '选择已注册协议' : '尚无已注册协议'} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {registeredProtocols.map((protocol) => (
-                          <SelectItem key={protocol.id} value={protocol.id}>
-                            {protocol.id}
-                            {protocol.name ? ` · ${protocol.name}` : ''}
-                            {protocol.valid ? '' : '（校验失败）'}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <span className="text-xs text-muted-foreground">或手动填写：</span>
-                    <Input
-                      className="w-44"
-                      value={customProtocolID(form.platform)}
-                      placeholder="vendor-json"
-                      onChange={(event) => update('platform', `custom:${event.target.value}` as Platform)}
-                    />
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
