@@ -111,7 +111,7 @@ export function ProtocolFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[84vh] w-full max-w-4xl flex-col overflow-hidden">
+      <DialogContent className="flex h-[84vh] w-full max-w-4xl flex-col overflow-hidden max-lg:left-4 max-lg:right-4 max-lg:w-auto">
         <DialogHeader>
           <DialogTitle>{isNew ? '新建协议' : `编辑协议 ${draft.id}`}</DialogTitle>
           <DialogDescription>构造请求体与返回体，映射位就地声明与大自在天字段的对应关系。</DialogDescription>

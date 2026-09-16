@@ -153,20 +153,26 @@ export function BodyTreeEditor({
     renderLeafDetail: (node, kind, setLeaf) => {
       if (kind !== 'mapped') return null
       if (isRequest) {
+        // 配置项纵向栈:每项一行、带固定标签,任何分辨率都不折行成多列。
         return (
           <>
-            <Seg
-              size="sm"
-              value={node.mode ?? 'json'}
-              options={[
-                { value: 'json', label: '原生 JSON' },
-                { value: 'string', label: '字符串' },
-              ]}
-              onChange={(mode) => setLeaf({ ...node, mode: mode as 'json' | 'string' })}
-            />
-            <Input
-              className="h-7 w-28 font-mono text-xs max-rail:w-full"
-              placeholder="default 可选"
+            <div className="flex items-center gap-2">
+              <span className="w-14 shrink-0 text-2xs text-muted-foreground">格式</span>
+              <Seg
+                size="sm"
+                value={node.mode ?? 'json'}
+                options={[
+                  { value: 'json', label: '原生 JSON' },
+                  { value: 'string', label: '字符串' },
+                ]}
+                onChange={(mode) => setLeaf({ ...node, mode: mode as 'json' | 'string' })}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-14 shrink-0 text-2xs text-muted-foreground">缺省值</span>
+              <Input
+              className="h-7 w-full max-w-56 font-mono text-xs"
+              placeholder="缺省时使用，可留空"
               value={
                 node.default === undefined
                   ? ''
@@ -186,8 +192,10 @@ export function BodyTreeEditor({
                   setLeaf({ ...node, default: text })
                 }
               }}
-            />
-            <label className="flex items-center gap-1 text-2xs text-muted-foreground">
+              />
+            </div>
+            <label className="flex items-center gap-2 text-2xs text-muted-foreground">
+              <span className="w-14 shrink-0"></span>
               <Switch
                 checked={!!node.omitIfEmpty}
                 onCheckedChange={(checked) => setLeaf({ ...node, omitIfEmpty: checked })}
@@ -199,23 +207,29 @@ export function BodyTreeEditor({
       }
       return (
         <>
-          <Select value={node.transform ?? ''} onValueChange={(transform) => setLeaf({ ...node, transform })}>
-            <SelectTrigger className="h-7 w-40 shrink-0 text-xs max-rail:w-full max-rail:shrink" aria-label="transform">
-              <SelectValue placeholder="（不变）" />
-            </SelectTrigger>
+          <div className="flex items-center gap-2">
+            <span className="w-14 shrink-0 text-2xs text-muted-foreground">转换</span>
+            <Select value={node.transform ?? ''} onValueChange={(transform) => setLeaf({ ...node, transform })}>
+              <SelectTrigger className="h-7 w-full max-w-56 text-xs" aria-label="transform">
+                <SelectValue placeholder="（不变）" />
+              </SelectTrigger>
             <SelectContent className="max-h-72">
-              {transforms.map((transform) => (
-                <SelectItem key={transform} value={transform} className="text-xs">
-                  {transform === '' ? '（不变）' : transform}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <ScalarValueInput
-            value={node.value ?? ''}
-            onChange={(next) => setLeaf({ ...node, value: next })}
-            placeholder="示例值"
-          />
+                {transforms.map((transform) => (
+                  <SelectItem key={transform} value={transform} className="text-xs">
+                    {transform === '' ? '（不变）' : transform}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-14 shrink-0 text-2xs text-muted-foreground">示例值</span>
+            <ScalarValueInput
+              value={node.value ?? ''}
+              onChange={(next) => setLeaf({ ...node, value: next })}
+              placeholder="示例值"
+            />
+          </div>
         </>
       )
     },
