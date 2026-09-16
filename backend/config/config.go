@@ -833,14 +833,6 @@ func (c *Config) resolveUsageLogLocked() UsageLogResolved {
 	return res
 }
 
-// GetUsageLogRaw 返回原始（未归一化）日志配置副本，供管理端展示
-// 「已配置值 vs 默认值」。
-func (c *Config) GetUsageLogRaw() UsageLogConfig {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.UsageLog
-}
-
 // SetUsageLogConfig 运行时局部更新日志配置：仅覆盖 patch 中显式提供的字段
 // （指针非 nil，数值字段 0 也是显式值），未提供的字段保持现值。
 // 调用方随后调用 Save() 落盘；BodyMaxKB/开关对后续请求即时生效，

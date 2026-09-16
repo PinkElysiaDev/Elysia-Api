@@ -52,74 +52,8 @@ func buildHTTPRequest(ctx context.Context, method, url, apiKey string, body []by
 	return req, nil
 }
 
-// OpenAIRequest 兼容 OpenAI API 格式
-type OpenAIRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-
-	MaxTokens           int `json:"max_tokens,omitempty"`
-	MaxCompletionTokens int `json:"max_completion_tokens,omitempty"`
-
-	Temperature   float64        `json:"temperature,omitempty"`
-	TopP          float64        `json:"top_p,omitempty"`
-	N             int            `json:"n,omitempty"`
-	Stream        bool           `json:"stream,omitempty"`
-	StreamOptions *StreamOptions `json:"stream_options,omitempty"`
-
-	Stop interface{} `json:"stop,omitempty"`
-
-	PresencePenalty  float64 `json:"presence_penalty,omitempty"`
-	FrequencyPenalty float64 `json:"frequency_penalty,omitempty"`
-
-	Seed int64  `json:"seed,omitempty"`
-	User string `json:"user,omitempty"`
-
-	Tools      []Tool      `json:"tools,omitempty"`
-	ToolChoice interface{} `json:"tool_choice,omitempty"`
-
-	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
-
-	ParallelToolCalls bool `json:"parallel_tool_calls,omitempty"`
-
-	Prediction *Prediction `json:"prediction,omitempty"`
-
-	ReasoningEffort string `json:"reasoning_effort,omitempty"`
-}
-
 type StreamOptions struct {
 	IncludeUsage bool `json:"include_usage,omitempty"`
-}
-
-type Tool struct {
-	Type     string             `json:"type"`
-	Function FunctionDefinition `json:"function"`
-}
-
-type FunctionDefinition struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description,omitempty"`
-	Parameters  map[string]interface{} `json:"parameters,omitempty"`
-}
-
-type ToolChoice struct {
-	Type     string `json:"type"`
-	Function struct {
-		Name string `json:"name"`
-	} `json:"function"`
-}
-
-type ResponseFormat struct {
-	Type       string                 `json:"type"`
-	JSONSchema map[string]interface{} `json:"json_schema,omitempty"`
-}
-
-type Prediction struct {
-	Type              string             `json:"type"`
-	ContentPrediction *ContentPrediction `json:"content,omitempty"`
-}
-
-type ContentPrediction struct {
-	Type string `json:"type"`
 }
 
 type Message struct {
@@ -156,45 +90,6 @@ type OpenAIToolFunction struct {
 	Arguments string `json:"arguments"`
 }
 
-func (m *Message) NormalizeContent() {
-	if m.Content == nil {
-		return
-	}
-	if _, ok := m.Content.(string); ok {
-		return
-	}
-
-	arr, ok := m.Content.([]interface{})
-	if !ok {
-		return
-	}
-	if len(arr) == 0 {
-		m.Content = ""
-		return
-	}
-	if len(arr) == 1 {
-		if item, ok := arr[0].(map[string]interface{}); ok {
-			if itemType, ok := item["type"].(string); ok && itemType == "text" {
-				if text, ok := item["text"].(string); ok {
-					m.Content = text
-					return
-				}
-			}
-		}
-	}
-}
-
-type ContentPart struct {
-	Type     string    `json:"type"`
-	Text     string    `json:"text,omitempty"`
-	ImageURL *ImageURL `json:"image_url,omitempty"`
-}
-
-type ImageURL struct {
-	URL    string `json:"url"`
-	Detail string `json:"detail,omitempty"`
-}
-
 type OpenAIResponse struct {
 	ID      string `json:"id"`
 	Object  string `json:"object"`
@@ -218,8 +113,6 @@ type Usage struct {
 	TotalTokens          int    `json:"total_tokens"`
 	CachedTokens         int    `json:"cached_tokens,omitempty"`
 	PromptCacheHitTokens int    `json:"prompt_cache_hit_tokens,omitempty"`
-	UsageSemantic        string `json:"usage_semantic,omitempty"`
-	UsageSource          string `json:"usage_source,omitempty"`
 
 	// details 用指针：值结构体的 omitempty 不生效（永远序列化成 {}），
 	// 会覆盖 RawFields 透传的同键子对象。
@@ -275,77 +168,10 @@ type CompletionTokensDetails struct {
 	RejectedPredictionTokens int `json:"rejected_prediction_tokens,omitempty"`
 }
 
-func (a *OpenAIAdapter) SendRequest(ctx context.Context, baseUrl, apiKey string, req OpenAIRequest) (*OpenAIResponse, error) {
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-
-	url := openAIEndpoint(baseUrl, "/chat/completions")
-	httpReq, err := buildHTTPRequest(ctx, "POST", url, apiKey, body, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := a.client.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API error: %s", string(respBody))
-	}
-
-	var openAIResp OpenAIResponse
-	if err := json.Unmarshal(respBody, &openAIResp); err != nil {
-		return nil, err
-	}
-
-	return &openAIResp, nil
-}
-
-// SendRequestRaw 发送原始 JSON 请求体
-func (a *OpenAIAdapter) SendRequestRaw(ctx context.Context, baseUrl, apiKey string, body []byte) (*OpenAIResponse, error) {
-	url := openAIEndpoint(baseUrl, "/chat/completions")
-	httpReq, err := buildHTTPRequest(ctx, "POST", url, apiKey, body, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := a.client.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API error: %s", string(respBody))
-	}
-
-	var openAIResp OpenAIResponse
-	if err := json.Unmarshal(respBody, &openAIResp); err != nil {
-		return nil, err
-	}
-
-	return &openAIResp, nil
-}
-
-// SendRequestRawWithBody 发送原始请求体并返回解析结果、原始响应体和上游 HTTP
-// 状态码。状态码用于上层故障转移决策（区分可重试的 5xx/429 与不可重试的 4xx）。
+// postJSONDecode POST JSON 请求体并解码为 T，附带原始响应体与上游状态码。
+// 状态码用于上层故障转移决策（区分可重试的 5xx/429 与不可重试的 4xx）。
 // 非 200 时返回 err，但 statusCode 仍为真实上游状态码；连接层错误时 statusCode=0。
-func (a *OpenAIAdapter) SendRequestRawWithBody(ctx context.Context, baseUrl, apiKey string, body []byte) (*OpenAIResponse, []byte, int, error) {
-	url := openAIEndpoint(baseUrl, "/chat/completions")
+func postJSONDecode[T any](a *OpenAIAdapter, ctx context.Context, url, apiKey string, body []byte) (*T, []byte, int, error) {
 	httpReq, err := buildHTTPRequest(ctx, "POST", url, apiKey, body, nil)
 	if err != nil {
 		return nil, nil, 0, err
@@ -366,42 +192,22 @@ func (a *OpenAIAdapter) SendRequestRawWithBody(ctx context.Context, baseUrl, api
 		return nil, respBody, resp.StatusCode, fmt.Errorf("API error: %s", string(respBody))
 	}
 
-	var openAIResp OpenAIResponse
-	if err := json.Unmarshal(respBody, &openAIResp); err != nil {
+	var decoded T
+	if err := json.Unmarshal(respBody, &decoded); err != nil {
 		return nil, respBody, resp.StatusCode, err
 	}
 
-	return &openAIResp, respBody, resp.StatusCode, nil
+	return &decoded, respBody, resp.StatusCode, nil
 }
 
+// SendRequestRawWithBody 发送 /chat/completions 请求并解码 OpenAIResponse。
+func (a *OpenAIAdapter) SendRequestRawWithBody(ctx context.Context, baseUrl, apiKey string, body []byte) (*OpenAIResponse, []byte, int, error) {
+	return postJSONDecode[OpenAIResponse](a, ctx, openAIEndpoint(baseUrl, "/chat/completions"), apiKey, body)
+}
+
+// SendResponsesRawWithBody 发送 /responses 请求并解码 OpenAIResponsesResponse。
 func (a *OpenAIAdapter) SendResponsesRawWithBody(ctx context.Context, baseUrl, apiKey string, body []byte) (*OpenAIResponsesResponse, []byte, int, error) {
-	url := openAIEndpoint(baseUrl, "/responses")
-	httpReq, err := buildHTTPRequest(ctx, "POST", url, apiKey, body, nil)
-	if err != nil {
-		return nil, nil, 0, err
-	}
-
-	resp, err := a.client.Do(httpReq)
-	if err != nil {
-		return nil, nil, 0, err
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, nil, resp.StatusCode, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, respBody, resp.StatusCode, fmt.Errorf("API error: %s", string(respBody))
-	}
-
-	var responsesResp OpenAIResponsesResponse
-	if err := json.Unmarshal(respBody, &responsesResp); err != nil {
-		return nil, respBody, resp.StatusCode, err
-	}
-
-	return &responsesResp, respBody, resp.StatusCode, nil
+	return postJSONDecode[OpenAIResponsesResponse](a, ctx, openAIEndpoint(baseUrl, "/responses"), apiKey, body)
 }
 
 // IsStreamRequest 检查请求体是否为流式请求
@@ -416,9 +222,9 @@ func IsStreamRequest(body []byte) bool {
 	return false
 }
 
-// SendRequestStream 发送流式请求并返回原始 HTTP 响应
-func (a *OpenAIAdapter) SendRequestStream(ctx context.Context, baseUrl, apiKey string, body []byte) (*http.Response, error) {
-	url := openAIEndpoint(baseUrl, "/chat/completions")
+// postStream 发送 SSE 流式请求；非 200 时读尽错误体并以 UpstreamStatusError
+// 携带真实状态码（供上层决定重试分类），成功时由调用方负责关闭 Body。
+func (a *OpenAIAdapter) postStream(ctx context.Context, url, apiKey string, body []byte) (*http.Response, error) {
 	extraHeaders := map[string]string{
 		"Accept": "text/event-stream",
 	}
@@ -441,28 +247,14 @@ func (a *OpenAIAdapter) SendRequestStream(ctx context.Context, baseUrl, apiKey s
 	return resp, nil
 }
 
+// SendRequestStream 发送 /chat/completions 流式请求并返回原始 HTTP 响应。
+func (a *OpenAIAdapter) SendRequestStream(ctx context.Context, baseUrl, apiKey string, body []byte) (*http.Response, error) {
+	return a.postStream(ctx, openAIEndpoint(baseUrl, "/chat/completions"), apiKey, body)
+}
+
+// SendResponsesStream 发送 /responses 流式请求并返回原始 HTTP 响应。
 func (a *OpenAIAdapter) SendResponsesStream(ctx context.Context, baseUrl, apiKey string, body []byte) (*http.Response, error) {
-	url := openAIEndpoint(baseUrl, "/responses")
-	extraHeaders := map[string]string{
-		"Accept": "text/event-stream",
-	}
-	httpReq, err := buildHTTPRequest(ctx, "POST", url, apiKey, body, extraHeaders)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := a.streamClient.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		defer resp.Body.Close()
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, &UpstreamStatusError{StatusCode: resp.StatusCode, Body: string(respBody)}
-	}
-
-	return resp, nil
+	return a.postStream(ctx, openAIEndpoint(baseUrl, "/responses"), apiKey, body)
 }
 
 // UpstreamStatusError 携带上游真实状态码：调用方据此决定对客户端的响应码

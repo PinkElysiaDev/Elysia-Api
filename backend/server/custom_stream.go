@@ -29,18 +29,17 @@ func (s *Server) handleCustomStreamRequest(
 		return result
 	}
 	fail := func(status int, message string, body []byte, retryable bool) relayOutcome {
-		if retryable && !isLast {
-			return relayOutcome{committed: false, statusCode: status, errMsg: message}
+		outcome := relayFailOutcome(record, isLast, retryable, status, message, func() {
+			if body != nil {
+				c.Data(status, contentTypeJSON, body)
+			} else {
+				c.JSON(status, gin.H{"error": message})
+			}
+		})
+		if outcome.committed {
+			return finish(outcome)
 		}
-		record.StatusCode = status
-		record.Error = message
-		record.ErrorKind = ErrorKindUpstream
-		if body != nil {
-			c.Data(status, contentTypeJSON, body)
-		} else {
-			c.JSON(status, gin.H{"error": message})
-		}
-		return finish(relayOutcome{committed: true, statusCode: status, errMsg: message})
+		return outcome
 	}
 
 	if request == nil {
@@ -68,10 +67,7 @@ func (s *Server) handleCustomStreamRequest(
 	if !ok {
 		return fail(http.StatusInternalServerError, "streaming is not supported", nil, false)
 	}
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	writeSSEHeaders(c.Writer)
 
 	writer := &observingStreamWriter{
 		inner:     &ginStreamWriter{writer: c.Writer, flusher: flusher},

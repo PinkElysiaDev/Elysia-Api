@@ -117,12 +117,8 @@ func (a *assetSink) extractFromSSE(content string) string {
 	}
 	lines := strings.Split(content, "\n")
 	for i, line := range lines {
-		trimmed := strings.TrimLeft(line, " ")
-		if !strings.HasPrefix(trimmed, "data:") {
-			continue
-		}
-		payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
-		if payload == "" || payload == "[DONE]" {
+		payload, ok := sseDataPayload(line)
+		if !ok {
 			continue
 		}
 		if !strings.Contains(payload, ";base64,") && !strings.Contains(payload, "b64_json") {

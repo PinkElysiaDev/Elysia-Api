@@ -284,3 +284,19 @@ func shouldRetryStatus(statusCode int) bool {
 	}
 	return false
 }
+
+// relayFailOutcome 转发失败的统一决策：末次尝试或不可重试 → 补全记录三
+// 要素并提交错误响应；否则 committed=false 交还上层故障转移到下一候选。
+// 错误体的写出形态由调用方闭包提供（扁平 JSON / OpenAI typed / SSE error 帧），
+// retryable 由调用方判定（绝大多数场景即 shouldRetryStatus(statusCode)，
+// 自定义协议等特殊语义可显式传入）。
+func relayFailOutcome(record *usageRecord, isLast, retryable bool, statusCode int, errMsg string, writeError func()) relayOutcome {
+	if isLast || !retryable {
+		record.StatusCode = statusCode
+		record.Error = errMsg
+		record.ErrorKind = ErrorKindUpstream
+		writeError()
+		return relayOutcome{committed: true, statusCode: statusCode, errMsg: errMsg}
+	}
+	return relayOutcome{committed: false, statusCode: statusCode, errMsg: errMsg}
+}

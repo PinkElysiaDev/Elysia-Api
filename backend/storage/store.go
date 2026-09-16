@@ -504,7 +504,7 @@ func (s *Store) UpsertAPIToken(ctx context.Context, item APIToken) error {
 		var existingName string
 		err := s.db.QueryRowContext(ctx, `SELECT name FROM api_tokens WHERE token_hash = ? AND name != ?`, tokenHash, item.Name).Scan(&existingName)
 		if err == nil {
-			return fmt.Errorf("该 token 已被 API Key %q 使用，请更换", existingName)
+			return fmt.Errorf("token already used by API key %q, choose a different value", existingName)
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
@@ -705,7 +705,7 @@ func (s *Store) ReplaceSourceModels(ctx context.Context, source ModelSource, mod
 		if strings.TrimSpace(platform) == "" {
 			platform = source.Platform
 		}
-		if _, err := stmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, model.BaseURL, storedKey, normalizePlatform(platform), model.Type, model.MaxTokens, sqlBoolToInt(model.VisionCapable), sqlBoolToInt(model.ToolsCapable), sqlBoolToInt(model.StructuredOutput), model.ThinkingMode, sqlBoolToInt(true), sqlBoolToInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
+		if _, err := stmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, model.BaseURL, storedKey, NormalizePlatform(platform), model.Type, model.MaxTokens, sqlBoolToInt(model.VisionCapable), sqlBoolToInt(model.ToolsCapable), sqlBoolToInt(model.StructuredOutput), model.ThinkingMode, sqlBoolToInt(true), sqlBoolToInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
 			return err
 		}
 	}
@@ -721,7 +721,9 @@ func firstEffectiveKey(source ModelSource) string {
 	return ""
 }
 
-func normalizePlatform(platform string) string {
+// NormalizePlatform 把历史别名 openai-compatible 归一为 openai（server 侧
+// 同名逻辑已删除，统一从这里调用）。
+func NormalizePlatform(platform string) string {
 	if platform == "openai-compatible" {
 		return "openai"
 	}
@@ -817,14 +819,14 @@ func (s *Store) MergeSourceModels(ctx context.Context, source ModelSource, incom
 				thinking, maxTokens = prev.thinking, prev.maxTokens
 				capabilitySource = "manual"
 			}
-			if _, err := updateStmt.ExecContext(ctx, model.Name, source.Name, source.BaseURL, storedKey, normalizePlatform(source.Platform), modelType, maxTokens, sqlBoolToInt(vision), sqlBoolToInt(tools), sqlBoolToInt(structured), thinking, capabilitySource, checked, model.ID, source.ID); err != nil {
+			if _, err := updateStmt.ExecContext(ctx, model.Name, source.Name, source.BaseURL, storedKey, NormalizePlatform(source.Platform), modelType, maxTokens, sqlBoolToInt(vision), sqlBoolToInt(tools), sqlBoolToInt(structured), thinking, capabilitySource, checked, model.ID, source.ID); err != nil {
 				return result, err
 			}
 			continue
 		}
 		// 新模型默认启用（已确认的默认值），available 初始为 true 由健康检测接管。
 		result.Added = append(result.Added, model.ID)
-		if _, err := insertStmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, source.BaseURL, storedKey, normalizePlatform(source.Platform), model.Type, model.MaxTokens, sqlBoolToInt(model.VisionCapable), sqlBoolToInt(model.ToolsCapable), sqlBoolToInt(model.StructuredOutput), model.ThinkingMode, sqlBoolToInt(true), sqlBoolToInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
+		if _, err := insertStmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, source.BaseURL, storedKey, NormalizePlatform(source.Platform), model.Type, model.MaxTokens, sqlBoolToInt(model.VisionCapable), sqlBoolToInt(model.ToolsCapable), sqlBoolToInt(model.StructuredOutput), model.ThinkingMode, sqlBoolToInt(true), sqlBoolToInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
 			return result, err
 		}
 	}

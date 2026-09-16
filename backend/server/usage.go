@@ -826,15 +826,24 @@ func (w *observingStreamWriter) observe(data []byte) {
 	w.lines.feed(data, w.observeLine)
 }
 
-func (w *observingStreamWriter) observeLine(line string) {
-	if !strings.HasPrefix(line, "data:") {
-		return
+// sseDataPayload 解析 SSE 的 data: 行:返回净载荷;空行/[DONE]/非 data 行
+// 返回 ok=false。容忍行首空白(外置资产扫描与流观察共用)。
+func sseDataPayload(line string) (string, bool) {
+	trimmed := strings.TrimLeft(line, " ")
+	if !strings.HasPrefix(trimmed, "data:") {
+		return "", false
 	}
-	payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+	payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
 	if payload == "" || payload == "[DONE]" {
-		return
+		return "", false
 	}
-	w.responseText.WriteString(extractOutputTextFromStreamPayload(payload))
+	return payload, true
+}
+
+func (w *observingStreamWriter) observeLine(line string) {
+	if payload, ok := sseDataPayload(line); ok {
+		w.responseText.WriteString(extractOutputTextFromStreamPayload(payload))
+	}
 }
 
 // sseLineSplitter 缓冲跨 Read/Write 到达的字节，按完整行回调 onLine。
@@ -912,16 +921,11 @@ func (b *upstreamUsageObservingBody) observe(data []byte) {
 
 // observeLine 是 ProviderResponse 流事件与 usage 增量的唯一来源（上游线格式）。
 func (b *upstreamUsageObservingBody) observeLine(line string) {
-	if !strings.HasPrefix(line, "data:") {
-		return
+	if payload, ok := sseDataPayload(line); ok {
+		b.record.appendStreamEvent(payload)
+		result := extractProviderUsageFromStreamEvent(b.platform, b.format, payload)
+		applyProviderUsageToRecord(b.record, result)
 	}
-	payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-	if payload == "" || payload == "[DONE]" {
-		return
-	}
-	b.record.appendStreamEvent(payload)
-	result := extractProviderUsageFromStreamEvent(b.platform, b.format, payload)
-	applyProviderUsageToRecord(b.record, result)
 }
 
 // detailFromTokenUsage 把顶层 token 计数镜像为明细字段（三个平台解析器的

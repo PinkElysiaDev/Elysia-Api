@@ -110,3 +110,14 @@ func waitForRetryOrCancel(c *gin.Context, retryIntervalMs int) bool {
 		return true
 	}
 }
+
+// writeSSEHeaders 写出 SSE 响应头。调用方负责时机：应在确认上游建连成功、
+// 即将写出响应体之前调用（头一旦发出就无法再改 HTTP 状态码，也就无法重试）。
+// 不手动设 Transfer-Encoding：Go 的 http.Server 对无 Content-Length 的流式
+// 响应自动 chunked，手动设是冗余且在错误路径易制造 TE+Content-Length 冲突。
+func writeSSEHeaders(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+}

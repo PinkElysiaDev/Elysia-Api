@@ -531,179 +531,107 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	estimatedTokens := plan.estimatedTokens
 	defer plan.releaseLimiter()
 
-	attempts := maxAttempts(group.MaxRetries, len(candidates))
-	var lastStatus int
-	var lastErr string
-	committed := false
+	s.runRelayAttempts(c, record, startTime, group, candidates,
+		func(errMsg, _ string) gin.H { return gin.H{"error": errMsg} },
+		func(attempt int, selectedModel config.ModelRef, isLast bool) relayAttemptStep {
+			maheshvaraReq.Model = selectedModel.Name
+			targetPlatform := relay.DetectPlatform(selectedModel.BaseURL, selectedModel.Platform)
+			setRecordModel(record, selectedModel, targetPlatform)
+			s.logDebug("Request model group: '%s' attempt %d/%d, selected: %s", group.Name, attempt+1, maxAttempts(group.MaxRetries, len(candidates)), selectedModel.Name)
 
-	for attempt := 0; attempt < attempts; attempt++ {
-		// 循环顶部拦截客户端取消：interval=0 时无等待期可拦截，断连后
-		// 仍会向剩余候选逐个扇出空耗上游配额。
-		if attempt > 0 && s.abortRetryOnClientCancel(c, record, startTime) {
-			committed = true
-			return
-		}
-		selectedModel := candidates[attempt]
-		isLast := attempt == attempts-1
+			// 同源透传判定：客户端输入格式与所选上游线路 API 一致（Claude→Anthropic、
+			// Gemini→Gemini、OpenAI→OpenAI 系），且本次未因 vision 过滤改写过请求体时，
+			// 以原始请求字节直发上游，跳过 Maheshvara 往返——保留尚未纳入核心协议的私有字段
+			// （cache_control / thinking / 各类未知扩展）。借鉴 Responses 透传与 new-api
+			// 的 should_convert=false 分支。vision 过滤改写了 maheshvaraReq 而非原始字节，
+			// 故 filtered=true 时必须回退到转换路径，否则被过滤的图片会随原始字节漏给上游。
+			usePassthrough := !filtered && relay.FormatMatchesPlatform(inputFormat, targetPlatform)
 
-		// SSRF 出站校验。校验失败属于配置/安全问题，对单个候选不可恢复，
-		// 但其他候选可能合法，因此记为可重试。
-		if err := s.validateOutbound(selectedModel.BaseURL); err != nil {
-			lastStatus = http.StatusForbidden
-			lastErr = fmt.Sprintf("target baseUrl rejected: %v", err)
-			s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
-			if isLast {
-				s.commitLastAttemptFailure(c, record, startTime, lastStatus, "", lastErr, gin.H{"error": lastErr})
-				committed = true
+			// 流式意图取自客户端原始请求：OpenAI/Claude 看请求体 stream 字段，
+			// Gemini 看 URL action（:streamGenerateContent）。
+			isStream := relay.IsStreamRequest(bodyBytes)
+			if action := c.Param("action"); strings.Contains(action, ":streamGenerateContent") {
+				isStream = true
+				maheshvaraReq.Stream = true
 			}
-			continue
-		}
 
-		maheshvaraReq.Model = selectedModel.Name
-		targetPlatform := relay.DetectPlatform(selectedModel.BaseURL, selectedModel.Platform)
-		setRecordModel(record, selectedModel, targetPlatform)
-		s.logDebug("Request model group: '%s' attempt %d/%d, selected: %s", group.Name, attempt+1, attempts, selectedModel.Name)
-
-		// 同源透传判定：客户端输入格式与所选上游线路 API 一致（Claude→Anthropic、
-		// Gemini→Gemini、OpenAI→OpenAI 系），且本次未因 vision 过滤改写过请求体时，
-		// 以原始请求字节直发上游，跳过 Maheshvara 往返——保留尚未纳入核心协议的私有字段
-		// （cache_control / thinking / 各类未知扩展）。借鉴 Responses 透传与 new-api
-		// 的 should_convert=false 分支。vision 过滤改写了 maheshvaraReq 而非原始字节，
-		// 故 filtered=true 时必须回退到转换路径，否则被过滤的图片会随原始字节漏给上游。
-		usePassthrough := !filtered && relay.FormatMatchesPlatform(inputFormat, targetPlatform)
-
-		// 流式意图取自客户端原始请求：OpenAI/Claude 看请求体 stream 字段，
-		// Gemini 看 URL action（:streamGenerateContent）。
-		isStream := relay.IsStreamRequest(bodyBytes)
-		if action := c.Param("action"); strings.Contains(action, ":streamGenerateContent") {
-			isStream = true
-			maheshvaraReq.Stream = true
-		}
-
-		var targetBody []byte
-		var customRequest *relay.CustomProtocolRequestResult
-		if usePassthrough {
-			// Gemini：model 在 URL 里（adapter 单独接收 selectedModel.Name），原生
-			// generateContent 请求体不含顶层 model，故透传时不改写 model（传空），
-			// 也不向体内注入 stream（由 URL action 决定）。OpenAI/Claude 则改写 model；
-			// OpenAI 兼容线路补 stream_options.include_usage 以拿到 usage chunk。
-			passModelName := selectedModel.Name
-			addStreamOptions := false
-			ensureStream := false
-			if targetPlatform == relay.PlatformGemini {
-				passModelName = ""
+			var buildErr error
+			var targetBody []byte
+			var customRequest *relay.CustomProtocolRequestResult
+			if usePassthrough {
+				// Gemini：model 在 URL 里（adapter 单独接收 selectedModel.Name），原生
+				// generateContent 请求体不含顶层 model，故透传时不改写 model（传空），
+				// 也不向体内注入 stream（由 URL action 决定）。OpenAI/Claude 则改写 model；
+				// OpenAI 兼容线路补 stream_options.include_usage 以拿到 usage chunk。
+				passModelName := selectedModel.Name
+				addStreamOptions := false
+				ensureStream := false
+				if targetPlatform == relay.PlatformGemini {
+					passModelName = ""
+				} else {
+					ensureStream = isStream
+					addStreamOptions = isOpenAICompatible(targetPlatform)
+				}
+				targetBody, buildErr = relay.PassthroughBody(bodyBytes, passModelName, ensureStream, addStreamOptions)
+				if buildErr == nil {
+					record.RelayMode = RelayModePassthrough
+					// OpenAI 系透传同样补齐缺失的 tool call id：部分客户端重建历史时
+					// 会遗漏 tool_calls[].id，直接透传会被严格上游以 missing field id 拒绝。
+					if isOpenAICompatible(targetPlatform) {
+						targetBody, buildErr = relay.NormalizeOpenAIToolCallIDs(targetBody)
+					}
+				}
+			} else if relay.IsCustomPlatform(targetPlatform) {
+				customRequest, buildErr = relay.RenderRegisteredCustomProtocolRequest(maheshvaraReq, relay.CustomProtocolID(targetPlatform))
+				if buildErr == nil {
+					targetBody = customRequest.Body
+					record.RelayMode = RelayModeTransform
+				}
 			} else {
-				ensureStream = isStream
-				addStreamOptions = isOpenAICompatible(targetPlatform)
-			}
-			targetBody, err = relay.PassthroughBody(bodyBytes, passModelName, ensureStream, addStreamOptions)
-			if err == nil {
-				record.RelayMode = RelayModePassthrough
-				// OpenAI 系透传同样补齐缺失的 tool call id：部分客户端重建历史时
-				// 会遗漏 tool_calls[].id，直接透传会被严格上游以 missing field id 拒绝。
-				if isOpenAICompatible(targetPlatform) {
-					targetBody, err = relay.NormalizeOpenAIToolCallIDs(targetBody)
+				targetFormat, formatErr := relay.TargetFormatForPlatform(targetPlatform)
+				if formatErr != nil {
+					buildErr = formatErr
+				} else {
+					targetBody, buildErr = relay.MaheshvaraToTargetRequest(maheshvaraReq, targetFormat, nil)
+				}
+				if buildErr == nil {
+					record.RelayMode = RelayModeTransform
 				}
 			}
-		} else if relay.IsCustomPlatform(targetPlatform) {
-			customRequest, err = relay.RenderRegisteredCustomProtocolRequest(maheshvaraReq, relay.CustomProtocolID(targetPlatform))
-			if err == nil {
-				targetBody = customRequest.Body
-			}
-			if err == nil {
-				record.RelayMode = RelayModeTransform
-			}
-		} else {
-			targetFormat, formatErr := relay.TargetFormatForPlatform(targetPlatform)
-			if formatErr != nil {
-				err = formatErr
-			} else {
-				targetBody, err = relay.MaheshvaraToTargetRequest(maheshvaraReq, targetFormat, nil)
-			}
-			if err == nil {
-				record.RelayMode = RelayModeTransform
-			}
-		}
-		if err != nil {
-			lastStatus = http.StatusBadRequest
-			lastErr = fmt.Sprintf("Failed to build upstream request: %v", err)
-			s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
-			if isLast {
-				s.commitLastAttemptFailure(c, record, startTime, lastStatus, ErrorKindConversion, lastErr, gin.H{"error": lastErr})
-				committed = true
-			}
-			continue
-		}
-		record.OutgoingBody = record.sanitizeBody(targetBody)
-		s.logVerbose("[Outgoing Request] passthrough=%v baseUrl=%s body=%s", usePassthrough, selectedModel.BaseURL, compactLogJSON(targetBody))
-
-		// 非透传路径仍需为流式补齐 stream 标记（透传已在 PassthroughBody 内处理）。
-		if isStream && !usePassthrough && !relay.IsCustomPlatform(targetPlatform) {
-			var streamBodyErr error
-			targetBody, streamBodyErr = ensureStreamFlagInTargetBody(targetBody, targetPlatform)
-			if streamBodyErr != nil {
-				lastStatus = http.StatusInternalServerError
-				lastErr = fmt.Sprintf("Failed to prepare stream request: %v", streamBodyErr)
-				s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
-				if isLast {
-					s.commitLastAttemptFailure(c, record, startTime, lastStatus, ErrorKindConversion, lastErr, gin.H{"error": lastErr})
-					committed = true
+			if buildErr != nil {
+				skip := fmt.Errorf("Failed to build upstream request: %w", buildErr)
+				return relayAttemptStep{
+					skipErr:    skip,
+					skipStatus: http.StatusBadRequest,
+					skipKind:   ErrorKindConversion,
+					skipBody:   gin.H{"error": skip.Error()},
 				}
-				continue
 			}
 			record.OutgoingBody = record.sanitizeBody(targetBody)
-		}
+			s.logVerbose("[Outgoing Request] passthrough=%v baseUrl=%s body=%s", usePassthrough, selectedModel.BaseURL, compactLogJSON(targetBody))
 
-		var outcome relayOutcome
-		if isStream {
-			record.Stream = true
-			outcome = s.handleStreamRequest(c, group, selectedModel, targetBody, customRequest, targetPlatform, inputFormat, startTime, estimatedTokens, record, isLast)
-		} else {
-			outcome = s.handleNormalRequest(c, group, selectedModel, targetBody, customRequest, targetPlatform, inputFormat, startTime, estimatedTokens, record, isLast)
-		}
-
-		if outcome.committed {
-			committed = true
-			// 成功（2xx）时记录渠道亲和性，让后续同 key+group 请求优先复用本模型。
-			if outcome.statusCode >= 200 && outcome.statusCode < 300 {
-				s.affinity.set(record.KeyHash, group.ID, selectedModel.Name, startTime)
+			// 非透传路径仍需为流式补齐 stream 标记（透传已在 PassthroughBody 内处理）。
+			if isStream && !usePassthrough && !relay.IsCustomPlatform(targetPlatform) {
+				var streamBodyErr error
+				targetBody, streamBodyErr = ensureStreamFlagInTargetBody(targetBody, targetPlatform)
+				if streamBodyErr != nil {
+					skip := fmt.Errorf("Failed to prepare stream request: %w", streamBodyErr)
+					return relayAttemptStep{
+						skipErr:    skip,
+						skipStatus: http.StatusInternalServerError,
+						skipKind:   ErrorKindConversion,
+						skipBody:   gin.H{"error": skip.Error()},
+					}
+				}
+				record.OutgoingBody = record.sanitizeBody(targetBody)
 			}
-			break
-		}
 
-		// 未提交：本次失败但可重试。记录失败原因，等待重试间隔后换下一个候选。
-		lastStatus = outcome.statusCode
-		lastErr = outcome.errMsg
-		s.appendRetryEvent(record, attempt, selectedModel.Name, outcome.errMsg)
-		if !isLast && group.RetryInterval > 0 {
-			// 尊重客户端取消：被放弃的请求不再空耗等待 + 对剩余候选扇出
-			//（取消同样落库留痕，499 为 nginx 惯例的 client closed）。
-			if !waitForRetryOrCancel(c, group.RetryInterval) {
-				committed = true
-				s.abortRetryOnClientCancel(c, record, startTime)
-				return
+			if isStream {
+				record.Stream = true
+				return relayAttemptStep{outcome: s.handleStreamRequest(c, group, selectedModel, targetBody, customRequest, targetPlatform, inputFormat, startTime, estimatedTokens, record, isLast)}
 			}
-		}
-	}
-
-	// 兜底：最后一次尝试一定会 commit（failResult 的 isLast||!retryable 分支
-	// 与全部提前返回已覆盖）；此块仅防御未来路径回归。lastStatus 理论上
-	// 必非 0，但真为 0 时 c.JSON(0,…) 会让 net/http panic 且记录丢失——
-	// 兜底的兜底，一行守卫换掉一个潜在 panic（与 responses 入口对齐）。
-	if !committed {
-		if lastStatus <= 0 {
-			lastStatus = http.StatusBadGateway
-		}
-		record.StatusCode = lastStatus
-		record.Error = firstNonEmpty(lastErr, "all upstream attempts failed")
-		record.ErrorKind = ErrorKindUpstream
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		// 先写响应再落记录：错误体进下游捕获器后，第四段才有内容。
-		// 状态码与记录保持一致（旧实现记录 429 却恒回 502）。
-		c.JSON(lastStatus, gin.H{"error": record.Error})
-		s.recordUsage(record)
-	}
+			return relayAttemptStep{outcome: s.handleNormalRequest(c, group, selectedModel, targetBody, customRequest, targetPlatform, inputFormat, startTime, estimatedTokens, record, isLast)}
+		})
 }
 
 func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord, isLast bool) relayOutcome {
@@ -713,19 +641,13 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 	// failResult 在转发失败时决定是提交错误响应（最后一次尝试或不可重试），
 	// 还是返回 committed=false 让上层故障转移到下一个候选模型。
 	failResult := func(statusCode int, errMsg string, respBody []byte, contentType string) relayOutcome {
-		retryable := shouldRetryStatus(statusCode)
-		if isLast || !retryable {
-			record.StatusCode = statusCode
-			record.Error = errMsg
-			record.ErrorKind = ErrorKindUpstream
+		return relayFailOutcome(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, func() {
 			if respBody != nil {
 				c.Data(statusCode, contentType, respBody)
 			} else {
 				c.JSON(statusCode, gin.H{"error": errMsg})
 			}
-			return relayOutcome{committed: true, statusCode: statusCode, errMsg: errMsg}
-		}
-		return relayOutcome{committed: false, statusCode: statusCode, errMsg: errMsg}
+		})
 	}
 
 	// 仅在 committed 时记录 usage；未提交（将要重试）时不记录，
@@ -902,11 +824,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 	// 就无法再重试（响应头已发出），因此重试只发生在"建立上游连接 +
 	// 读到上游首个状态码"之前。
 	failResult := func(statusCode int, errMsg string, respBody []byte) relayOutcome {
-		retryable := shouldRetryStatus(statusCode)
-		if isLast || !retryable {
-			record.StatusCode = statusCode
-			record.Error = errMsg
-			record.ErrorKind = ErrorKindUpstream
+		return relayFailOutcome(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, func() {
 			if respBody != nil {
 				c.Data(statusCode, contentTypeJSON, respBody)
 			} else {
@@ -915,9 +833,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 				// 502 而日志记的是 401/403 等永久错误。
 				writeStreamForwardError(c, inputFormat, statusCode, fmt.Errorf("%s", errMsg))
 			}
-			return relayOutcome{committed: true, statusCode: statusCode, errMsg: errMsg}
-		}
-		return relayOutcome{committed: false, statusCode: statusCode, errMsg: errMsg}
+		})
 	}
 
 	flusher, ok := c.Writer.(http.Flusher)
@@ -936,12 +852,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		if sseStarted {
 			return
 		}
-		c.Writer.Header().Set("Content-Type", "text/event-stream")
-		c.Writer.Header().Set("Cache-Control", "no-cache")
-		c.Writer.Header().Set("Connection", "keep-alive")
-		// 不手动设 Transfer-Encoding：Go 的 http.Server 对无 Content-Length 的
-		// 流式响应自动 chunked，手动设是冗余且在错误路径易制造 TE+Content-Length 冲突。
-		c.Writer.Header().Set("X-Accel-Buffering", "no")
+		writeSSEHeaders(c.Writer)
 		sseStarted = true
 	}
 

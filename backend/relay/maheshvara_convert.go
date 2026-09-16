@@ -2086,10 +2086,7 @@ func maheshvaraToolCallsToResponsesItems(calls []MaheshvaraToolCall) []map[strin
 		if callID == "" || name == "" {
 			continue
 		}
-		args := strings.TrimSpace(string(call.Arguments))
-		if args == "" {
-			args = "{}"
-		}
+		args := nonEmptyJSONArgs(strings.TrimSpace(string(call.Arguments)))
 		items = append(items, map[string]any{
 			"type":      "function_call",
 			"call_id":   callID,
@@ -2945,10 +2942,7 @@ func MaheshvaraToOpenAIChatResponse(resp *MaheshvaraResponse) (*OpenAIResponse, 
 				}
 			}
 		case MaheshvaraOutputFunctionCall:
-			arguments := strings.TrimSpace(string(item.Arguments))
-			if arguments == "" {
-				arguments = "{}"
-			}
+			arguments := nonEmptyJSONArgs(strings.TrimSpace(string(item.Arguments)))
 			toolCall := OpenAIToolCall{
 				ID:   item.CallID,
 				Type: "function",
@@ -3336,9 +3330,7 @@ func maheshvaraUsageFromOpenAIUsage(usage Usage) *MaheshvaraUsage {
 	if u.CacheCreationInputTokens == 0 {
 		u.CacheCreationInputTokens = promptDetails.CachedCreationTokens
 	}
-	if u.TotalTokens == 0 {
-		u.TotalTokens = u.InputTokens + u.OutputTokens
-	}
+	u.TotalTokens = valueOrSum(u.TotalTokens, u.InputTokens, u.OutputTokens)
 	return u
 }
 
@@ -3378,9 +3370,7 @@ func maheshvaraUsageFromGeminiUsage(usage GeminiUsageMeta) *MaheshvaraUsage {
 		ToolUseTokens:     usage.ToolUsePromptTokenCount,
 		Source:            usageSourceProviderResponse,
 	}
-	if u.TotalTokens == 0 {
-		u.TotalTokens = u.InputTokens + u.OutputTokens
-	}
+	u.TotalTokens = valueOrSum(u.TotalTokens, u.InputTokens, u.OutputTokens)
 	for _, detail := range usage.PromptTokensDetails {
 		switch strings.ToUpper(detail.Modality) {
 		case "TEXT":
@@ -3420,9 +3410,7 @@ func maheshvaraUsageFromResponsesUsage(usage *ResponsesUsage) *MaheshvaraUsage {
 	if usage.OutputTokensDetails != nil {
 		u.ReasoningTokens = usage.OutputTokensDetails.ReasoningTokens
 	}
-	if u.TotalTokens == 0 {
-		u.TotalTokens = u.InputTokens + u.OutputTokens
-	}
+	u.TotalTokens = valueOrSum(u.TotalTokens, u.InputTokens, u.OutputTokens)
 	return u
 }
 
@@ -3547,6 +3535,15 @@ func responsesUsageFromMaheshvara(u *MaheshvaraUsage) *ResponsesUsage {
 		out.OutputTokensDetails = &ResponsesOutputTokensDetails{ReasoningTokens: u.ReasoningTokens}
 	}
 	return out
+}
+
+// nonEmptyJSONArgs 保证 tool call 的 arguments 非空:空串以 "{}" 兜底,
+// 避免严格上游(要求 arguments 是合法 JSON 对象)直接拒绝整个请求。
+func nonEmptyJSONArgs(args string) string {
+	if args == "" {
+		return "{}"
+	}
+	return args
 }
 
 func valueOrSum(total, input, output int) int {

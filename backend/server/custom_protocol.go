@@ -189,7 +189,7 @@ func (s *Server) handleCustomNormal(
 		result = fail(response.StatusCode, string(body), body, shouldRetryStatus(response.StatusCode))
 		return result
 	}
-	maheshvaraResponse, err := relay.CustomProtocolResponseToMaheshvara(body, protocol)
+	maheshvaraResponse, err := relay.CustomProtocolResponseToMaheshvaraRegistered(body, protocol)
 	if err != nil {
 		result = fail(http.StatusBadGateway, fmt.Sprintf("failed to parse custom protocol response: %v", err), nil, false)
 		return result

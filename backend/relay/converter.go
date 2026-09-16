@@ -1,7 +1,6 @@
 package relay
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -158,33 +157,6 @@ func FormatMatchesPlatform(inputFormat FormatType, platform Platform) bool {
 		return false
 	}
 }
-
-// DetectInputFormat 检测输入请求的格式
-func DetectInputFormat(body []byte) FormatType {
-	var req map[string]interface{}
-	if err := json.Unmarshal(body, &req); err != nil {
-		return FormatUnknown
-	}
-
-	// 检查 Gemini 特有字段
-	if _, hasContents := req["contents"]; hasContents {
-		return FormatGemini
-	}
-
-	// 检查 Claude 特有字段
-	if _, hasSystem := req["system"]; hasSystem {
-		if _, hasMaxTokens := req["max_tokens"]; hasMaxTokens {
-			return FormatClaude
-		}
-	}
-
-	// 默认为 OpenAI 格式
-	return FormatOpenAI
-}
-
-// UnifiedRequest 统一的内部请求格式
-// 这是所有格式的"全集"，包含所有可能的字段
-// Deprecated: use MaheshvaraRequest (MaheshvaraRequest).
 
 type GeminiContent struct {
 	Role  string       `json:"role"`

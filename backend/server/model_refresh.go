@@ -292,7 +292,7 @@ func (s *Server) fetchClaudeModels(ctx context.Context, source storage.ModelSour
 		}
 		return models, nil
 	}
-	return nil, fmt.Errorf("claude 模型拉取失败（已尝试 x-api-key 与 Bearer 两种鉴权）: %w", lastErr)
+	return nil, fmt.Errorf("failed to fetch claude models (tried both x-api-key and Bearer auth): %w", lastErr)
 }
 
 func (s *Server) fetchGeminiModels(ctx context.Context, source storage.ModelSource, apiKey string) ([]storage.Model, error) {
@@ -378,7 +378,7 @@ func inferredModel(source storage.ModelSource, id, name string) storage.Model {
 	return storage.Model{
 		ID:           id,
 		Name:         name,
-		Platform:     normalizeSourcePlatform(source.Platform),
+		Platform:     storage.NormalizePlatform(source.Platform),
 		Type:         inferModelType(id),
 		MaxTokens:    0,
 		ThinkingMode: "both",
@@ -386,12 +386,6 @@ func inferredModel(source storage.ModelSource, id, name string) storage.Model {
 	}
 }
 
-func normalizeSourcePlatform(platform string) string {
-	if platform == "openai-compatible" {
-		return "openai"
-	}
-	return platform
-}
 
 func inferModelType(modelID string) string {
 	id := strings.ToLower(modelID)

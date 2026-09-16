@@ -80,25 +80,5 @@ type GeminiUsageMeta struct {
 
 type GeminiTokenDetail struct {
 	Modality   string `json:"modality"`
-	TokenCount int    `json:"tokenCount"`
+	TokenCount int `json:"tokenCount"`
 }
-
-// geminiFinishReasonToOpenAI 将 Gemini finishReason 映射为 OpenAI finish_reason
-
-// openAIFinishReasonToGemini 将 OpenAI finish_reason 映射为 Gemini finishReason
-func openAIFinishReasonToGemini(reason string) string {
-	switch reason {
-	case "stop":
-		return "STOP"
-	case "length":
-		return "MAX_TOKENS"
-	case "tool_calls":
-		return "STOP"
-	default:
-		return "STOP"
-	}
-}
-
-// ConvertGeminiResponseToOpenAI 将 Gemini 响应转换为 OpenAI 格式
-
-// ConvertOpenAIResponseToGemini 将 OpenAI 响应转换为 Gemini 原生格式

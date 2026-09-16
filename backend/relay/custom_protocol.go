@@ -365,12 +365,18 @@ func validateCustomProtocolResponse(configID, location string, response CustomPr
 	return nil
 }
 
+// RenderCustomProtocolRequest 渲染外部传入的协议配置（预览/测试等非注册路径，
+// 先整体校验）。注册表内的协议走 RenderRegisteredCustomProtocolRequest 免校验。
 func RenderCustomProtocolRequest(req *MaheshvaraRequest, config CustomProtocolConfig) (*CustomProtocolRequestResult, error) {
-	if req == nil {
-		return nil, fmt.Errorf("cannot render custom protocol request from nil Maheshvara request")
-	}
 	if err := ValidateCustomProtocol(config); err != nil {
 		return nil, err
+	}
+	return renderCustomProtocolRequest(req, config)
+}
+
+func renderCustomProtocolRequest(req *MaheshvaraRequest, config CustomProtocolConfig) (*CustomProtocolRequestResult, error) {
+	if req == nil {
+		return nil, fmt.Errorf("cannot render custom protocol request from nil Maheshvara request")
 	}
 	ctx := maheshvaraTemplateContext(req)
 	var body []byte
@@ -418,7 +424,8 @@ func RenderRegisteredCustomProtocolRequest(req *MaheshvaraRequest, id string) (*
 	if !ok {
 		return nil, fmt.Errorf("custom protocol %q is not registered", id)
 	}
-	return RenderCustomProtocolRequest(req, config)
+	// 入注册表时已整体校验（校验含模板空渲染，代价不低），热路径不再重复。
+	return renderCustomProtocolRequest(req, config)
 }
 
 func (a *OpenAIAdapter) SendCustomProtocolRequest(ctx context.Context, baseURL, apiKey string, request *CustomProtocolRequestResult, stream bool) (*http.Response, error) {
@@ -485,6 +492,12 @@ func (a *OpenAIAdapter) SendCustomProtocolRequest(ctx context.Context, baseURL, 
 
 func CustomProtocolResponseToMaheshvara(body []byte, config CustomProtocolConfig) (*MaheshvaraResponse, error) {
 	return customProtocolResponseToMaheshvara(body, config, false)
+}
+
+// CustomProtocolResponseToMaheshvaraRegistered 映射已注册协议（入库时已整体校验）
+// 的上游响应，转发热路径免每请求重复校验。
+func CustomProtocolResponseToMaheshvaraRegistered(body []byte, config CustomProtocolConfig) (*MaheshvaraResponse, error) {
+	return customProtocolResponseToMaheshvaraValidated(body, config, false)
 }
 
 // CustomProtocolStreamEventToMaheshvara applies the same response mapping to a
@@ -619,7 +632,7 @@ func renderCustomTemplate(template string, context map[string]any, omitIfEmpty [
 		return nil, err
 	}
 	for _, path := range omitIfEmpty {
-		value = deleteEmptyPath(value, strings.TrimPrefix(strings.TrimSpace(path), "maheshvara."))
+		value = deleteCustomPath(value, strings.TrimPrefix(strings.TrimSpace(path), "maheshvara."))
 	}
 	if err := validateCustomJSONDepth(value, 0); err != nil {
 		return nil, err
@@ -652,16 +665,18 @@ func renderCustomJSON(template string, context map[string]any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		resolved, ok := customLookup(context, path)
+		resolved, ok := customLookupPath(context, path)
 		if !ok || customEmptyValue(resolved) {
 			resolved = defaultValue
 		}
 		prefix := template[:start]
 		suffix := template[end+2:]
 		quoted := len(prefix) > 0 && prefix[len(prefix)-1] == '"' && len(suffix) > 0 && suffix[0] == '"'
-		if quoted {
+		// 引号包裹且未显式 |json：值按字符串转义嵌入；其余（含无引号占位与
+		// |json 显式声明）一律按 JSON 值嵌入，保证模板整体仍是合法 JSON。
+		if quoted && !forceJSON {
 			builder.WriteString(escapeJSONString(customValueString(resolved)))
-		} else if forceJSON || !quoted {
+		} else {
 			encoded, marshalErr := json.Marshal(resolved)
 			if marshalErr != nil {
 				return nil, fmt.Errorf("placeholder %q: %w", expression, marshalErr)
@@ -690,6 +705,8 @@ func parseCustomExpression(expression string) (string, any, bool, error) {
 	for _, rawOption := range parts[1:] {
 		option := strings.TrimSpace(rawOption)
 		switch {
+		// |json：显式声明占位符按 JSON 值嵌入（无引号占位默认即如此；
+		// 带引号模板配 |json 则跳出字符串转义路径）。
 		case option == "json":
 			forceJSON = true
 		case strings.HasPrefix(option, "default:"):
@@ -733,7 +750,7 @@ func renderCustomString(template string, context map[string]any) string {
 			offset = end + 2
 			continue
 		}
-		resolved, ok := customLookup(context, path)
+		resolved, ok := customLookupPath(context, path)
 		if !ok || customEmptyValue(resolved) {
 			resolved = defaultValue
 		}
@@ -766,10 +783,6 @@ func validateCustomStringTemplate(template string) error {
 		offset = end + 2
 	}
 	return nil
-}
-
-func customLookup(root map[string]any, path string) (any, bool) {
-	return customLookupPath(root, path)
 }
 
 func customValueAt(root any, path string) any {
@@ -845,9 +858,7 @@ func customUsageAt(root any, path string) *MaheshvaraUsage {
 	usage.TotalTokens = customInt(object, "total_tokens", "totalTokens", "totalTokenCount")
 	usage.CachedInputTokens = customInt(object, "cached_input_tokens", "cachedInputTokens", "cached_tokens", "cachedContentTokenCount")
 	usage.ReasoningTokens = customInt(object, "reasoning_tokens", "reasoningTokens", "thoughtsTokenCount")
-	if usage.TotalTokens == 0 {
-		usage.TotalTokens = usage.InputTokens + usage.OutputTokens
-	}
+	usage.TotalTokens = valueOrSum(usage.TotalTokens, usage.InputTokens, usage.OutputTokens)
 	return usage
 }
 
@@ -898,10 +909,6 @@ func customEmptyValue(value any) bool {
 	default:
 		return false
 	}
-}
-
-func deleteEmptyPath(root any, path string) any {
-	return deleteCustomPath(root, path)
 }
 
 func validateCustomJSONDepth(value any, depth int) error {

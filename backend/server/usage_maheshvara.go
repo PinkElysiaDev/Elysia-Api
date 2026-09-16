@@ -8,6 +8,14 @@ import (
 	"github.com/elysia-api/backend/relay"
 )
 
+// totalOrSum 上游未回报 total 时按 input+output 合成;全 0 保持 0(不写指针)。
+func totalOrSum(u *relay.MaheshvaraUsage) int {
+	if u.TotalTokens > 0 {
+		return u.TotalTokens
+	}
+	return u.InputTokens + u.OutputTokens
+}
+
 func usageTokenUsageFromMaheshvara(u *relay.MaheshvaraUsage) usageTokenUsage {
 	if u == nil {
 		return usageTokenUsage{}
@@ -26,11 +34,7 @@ func usageTokenUsageFromMaheshvara(u *relay.MaheshvaraUsage) usageTokenUsage {
 	if u.OutputTokens > 0 {
 		usage.OutputTokens = intPtr(u.OutputTokens)
 	}
-	total := u.TotalTokens
-	if total == 0 && (u.InputTokens > 0 || u.OutputTokens > 0) {
-		total = u.InputTokens + u.OutputTokens
-	}
-	if total > 0 {
+	if total := totalOrSum(u); total > 0 {
 		usage.TotalTokens = intPtr(total)
 	}
 	if u.CachedInputTokens > 0 {
@@ -57,11 +61,7 @@ func usageDetailFromMaheshvara(u *relay.MaheshvaraUsage) usageDetail {
 	if u.OutputTokens > 0 {
 		detail.OutputTokens = intPtr(u.OutputTokens)
 	}
-	total := u.TotalTokens
-	if total == 0 && (u.InputTokens > 0 || u.OutputTokens > 0) {
-		total = u.InputTokens + u.OutputTokens
-	}
-	if total > 0 {
+	if total := totalOrSum(u); total > 0 {
 		detail.TotalTokens = intPtr(total)
 	}
 	if u.CachedInputTokens > 0 {
