@@ -372,3 +372,81 @@ func TestCustomProtocolNormalRequestFailsOver(t *testing.T) {
 		t.Fatalf("unexpected downstream response: %s", rec.Body.String())
 	}
 }
+
+// 阿里 dashscope native(Generation)协议的流式端到端:验证现有自定义协议
+// 机制可无损承载其形态——请求侧注入 X-DashScope-SSE 头与 incremental_output
+// 参数,响应侧累计文本在 output.choices[0].message.content(对象数组取
+// text)、末帧 finish_reason 终态、usage 键名 input_tokens/output_tokens 别名。
+func TestChatCompletionsDashscopeNativeStreamingEndToEnd(t *testing.T) {
+	relay.ClearCustomProtocols()
+	t.Cleanup(relay.ClearCustomProtocols)
+	err := relay.RegisterCustomProtocol(relay.CustomProtocolConfig{
+		ID: "dashscope-native",
+		Request: relay.CustomProtocolRequest{
+			Method:       http.MethodPost,
+			PathTemplate: "/api/v1/services/aigc/text-generation/generation",
+			Headers:      map[string]string{"X-DashScope-SSE": "enable"},
+			BodyTemplate: `{"model":{{maheshvara.model | json}},"parameters":{"incremental_output":true,"result_format":"message"}}`,
+		},
+		Response: relay.CustomProtocolResponse{Stream: &relay.CustomProtocolStreamMapping{
+			// dashscope 默认输出为累计全文;此处以 cumulative 差分还原纯增量。
+			Mode: "cumulative",
+			Response: &relay.CustomProtocolResponse{
+				TextPath:         "output.choices[0].message.content",
+				FinishReasonPath: "output.choices[0].finish_reason",
+				UsagePath:        "usage",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("register dashscope protocol: %v", err)
+	}
+
+	var gotBody, gotSSEHeader string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotBody = string(body)
+		gotSSEHeader = r.Header.Get("X-DashScope-SSE")
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, `data: {"output":{"choices":[{"message":{"content":[{"text":"你好"}]}}]},"usage":{"input_tokens":10,"output_tokens":5},"request_id":"req-1"}`+"\n\n")
+		_, _ = io.WriteString(w, `data: {"output":{"choices":[{"message":{"content":[{"text":"你好，世界"}]},"finish_reason":"stop"}]},"usage":{"input_tokens":10,"output_tokens":8},"request_id":"req-1"}`+"\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer upstream.Close()
+
+	group := config.ModelGroupConfig{
+		ID: "g1", Name: "grp", Enabled: true,
+		Models: []config.ModelRef{{ID: "m1", Name: "qwen-plus", BaseURL: upstream.URL, APIKey: "sk-dashscope", Platform: "custom:dashscope-native"}},
+	}
+	s := newTestServer([]config.ModelGroupConfig{group})
+	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"你好"}]}`)
+	s.chatCompletions(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if gotSSEHeader != "enable" {
+		t.Fatalf("X-DashScope-SSE header must be forwarded, got %q", gotSSEHeader)
+	}
+	if !strings.Contains(gotBody, `"incremental_output":true`) || !strings.Contains(gotBody, `"qwen-plus"`) {
+		t.Fatalf("unexpected upstream request body: %s", gotBody)
+	}
+	body := rec.Body.String()
+	// 累计帧差分为纯增量:第一帧全文、第二帧只剩新增片段。
+	if !strings.Contains(body, `"content":"你好"`) || !strings.Contains(body, `"content":"，世界"`) {
+		t.Fatalf("cumulative dashscope frames must be diffed into deltas: %s", body)
+	}
+	if strings.Contains(body, `"content":"你好，世界"`) {
+		t.Fatalf("cumulative frame must not be re-emitted verbatim: %s", body)
+	}
+	// usage 别名(input_tokens/output_tokens)归集为 OpenAI 用量 chunk,终态映射 stop。
+	if !strings.Contains(body, `"prompt_tokens":10`) || !strings.Contains(body, `"completion_tokens":8`) {
+		t.Fatalf("dashscope usage aliases must be collected: %s", body)
+	}
+	if !strings.Contains(body, `"finish_reason":"stop"`) {
+		t.Fatalf("finish_reason must map to stop: %s", body)
+	}
+	if !strings.Contains(body, "data: [DONE]") {
+		t.Fatalf("downstream stream must terminate with [DONE]: %s", body)
+	}
+}
