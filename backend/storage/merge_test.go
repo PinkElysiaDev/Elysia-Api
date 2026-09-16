@@ -293,3 +293,75 @@ func boolPtrFalse() *bool     { v := false; return &v }
 func boolPtrTrue() *bool      { v := true; return &v }
 func intPtr(v int) *int       { return &v }
 func strPtr(v string) *string { return &v }
+
+// 手动模型的源身份列（base_url/api_key/platform）是源身份的快照而非逐模型
+// 覆盖：源换地址/密钥后再次合并必须刷新，否则请求仍打旧配置（回归：改源
+// url/key 后手动模型走老地址）。能力/启停/origin 仍完全保留。
+func TestMergeSourceModelsRefreshesManualSourceIdentity(t *testing.T) {
+	store := openMergeTestStore(t)
+	ctx := context.Background()
+	source := mergeTestSource()
+	seedSource(t, store, source)
+
+	// 手动模型入库（旧身份随首次合并快照）。
+	if _, err := store.MergeSourceModels(ctx, source, []Model{{ID: "manual-1", Origin: "manual"}}); err != nil {
+		t.Fatalf("first merge: %v", err)
+	}
+	// 用户停用它——合并刷新身份时不得触碰启停。
+	if _, err := store.UpdateModel(ctx, "manual-1", "src1", ModelPatch{Enabled: boolPtrFalse()}); err != nil {
+		t.Fatalf("disable: %v", err)
+	}
+
+	// 源换地址/密钥/平台后再次合并。
+	source.BaseURL = "https://relocated.example.com"
+	source.APIKey = "sk-rotated"
+	source.Platform = "openai-compatible"
+	if _, err := store.MergeSourceModels(ctx, source, []Model{{ID: "manual-1", Origin: "manual"}}); err != nil {
+		t.Fatalf("second merge: %v", err)
+	}
+
+	models, err := store.ListModels(ctx)
+	if err != nil || len(models) != 1 {
+		t.Fatalf("list: %v models=%d", err, len(models))
+	}
+	m := models[0]
+	if m.BaseURL != "https://relocated.example.com" {
+		t.Fatalf("manual row must follow relocated source url, got %q", m.BaseURL)
+	}
+	if m.APIKey != "sk-rotated" {
+		t.Fatalf("manual row must follow rotated source key, got %q", m.APIKey)
+	}
+	if m.Platform != "openai" {
+		t.Fatalf("manual row platform must be normalized, got %q", m.Platform)
+	}
+	if m.Origin != "manual" || m.Enabled {
+		t.Fatalf("origin must stay manual and user disable must survive: %+v", m)
+	}
+}
+
+// legacy 导入源（BaseURL 为空）的 models 行携带逐模型地址：身份刷新必须跳过。
+func TestMergeSourceModelsSkipsLegacyIdentityRefresh(t *testing.T) {
+	store := openMergeTestStore(t)
+	ctx := context.Background()
+	legacy := ModelSource{ID: "legacy-config", Name: "Legacy", BaseURL: "", APIKey: "legacy-key", Platform: "openai", Enabled: true}
+	seedSource(t, store, legacy)
+
+	// legacy 逐模型地址经 ReplaceSourceModels 建立(ImportLegacyConfig 路径),
+	// Merge 的插入分支只写源身份(空地址),不走它。
+	if err := store.ReplaceSourceModels(ctx, legacy, []Model{
+		{ID: "legacy-model", Origin: "manual", BaseURL: "https://per-model.example.com"},
+	}); err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+	if _, err := store.MergeSourceModels(ctx, legacy, []Model{{ID: "legacy-model", Origin: "manual"}}); err != nil {
+		t.Fatalf("second merge: %v", err)
+	}
+
+	models, err := store.ListModels(ctx)
+	if err != nil || len(models) != 1 {
+		t.Fatalf("list: %v models=%d", err, len(models))
+	}
+	if models[0].BaseURL != "https://per-model.example.com" {
+		t.Fatalf("legacy per-model url must survive merges, got %q", models[0].BaseURL)
+	}
+}

@@ -70,6 +70,9 @@ func (s *Server) invalidateRouteCache() {
 type sourceKeyMeta struct {
 	keys     []storage.SourceAPIKey
 	strategy string
+	// 源地址：热路径以源为准（models 行是快照，源保存后若未触发合并——
+	// 如自动拉取失败——快照会滞后）。空 = legacy 导入源，回落 models 行。
+	baseURL string
 }
 
 // assembleGroupsFromStore 一次性读取 groups + models 并装配成
@@ -100,7 +103,7 @@ func (s *Server) assembleGroupsFromStore() ([]config.ModelGroupConfig, bool) {
 		for _, key := range effective {
 			keys = append(keys, key)
 		}
-		keyMeta[source.ID] = sourceKeyMeta{keys: keys, strategy: string(source.KeyStrategy)}
+		keyMeta[source.ID] = sourceKeyMeta{keys: keys, strategy: string(source.KeyStrategy), baseURL: source.BaseURL}
 	}
 	// 同时按复合键(sourceId:id)与裸 id 建索引：复合键精确命中（解决同名模型路由错乱），
 	// 裸 id 用于向后兼容旧数据（models 元素无 ":" 前缀时回退）。
@@ -131,6 +134,14 @@ func (s *Server) assembleGroupsFromStore() ([]config.ModelGroupConfig, bool) {
 			}
 			ref := config.ModelRef{ID: model.ID, Name: model.Name, BaseURL: model.BaseURL, APIKey: model.APIKey, Platform: model.Platform,
 				VisionCapable: model.VisionCapable, ToolsCapable: model.ToolsCapable, SourceID: model.SourceID}
+			if meta, ok := keyMeta[model.SourceID]; ok {
+				// 源身份（地址/密钥）以源为准：models 行是保存时刻的快照，源
+				// url/key 变更后若合并未跑（手动源、自动拉取失败），快照滞后
+				// 会导致请求打到旧地址/旧 key。legacy 源（地址为空）仍用行内值。
+				if meta.baseURL != "" {
+					ref.BaseURL = meta.baseURL
+				}
+			}
 			if meta, ok := keyMeta[model.SourceID]; ok && len(meta.keys) > 0 {
 				// 按模型过滤可服务该模型的 key（多 key 权限发现）：不在任何 key 的
 				// 启用/拉取集合内的模型没有可用 key，该候选从组内剔除。
@@ -144,6 +155,10 @@ func (s *Server) assembleGroupsFromStore() ([]config.ModelGroupConfig, bool) {
 					s.logVerbose("[RouteCache] model %s (source %s) excluded: no api key in this source may serve it", model.ID, model.SourceID)
 					continue
 				}
+				// 单 key 源同样以源级最新 key 为准（旧实现此时用的是 models 行
+				// 快照，源换 key 后仍带旧 key 请求）；APIKey 仅供单 key 直连路径
+				// 消费，多 key 展开仍走 APIKeys + KeyStrategy。
+				ref.APIKey = permitted[0]
 				ref.APIKeys = permitted
 				ref.KeyStrategy = meta.strategy
 			}

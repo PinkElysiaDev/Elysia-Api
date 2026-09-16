@@ -803,8 +803,16 @@ func (s *Store) MergeSourceModels(ctx context.Context, source ModelSource, incom
 		incomingIDs[model.ID] = struct{}{}
 		prev, existed := existing[model.ID]
 		if existed && prev.origin == "manual" {
-			// manual 行完全保留（含能力与启停），只刷新检查时间。
-			if _, err := tx.ExecContext(ctx, `UPDATE models SET last_checked_at = ? WHERE id = ? AND source_id = ?`, checked, model.ID, source.ID); err != nil {
+			// manual 行保留能力与启停，但 base_url/api_key/platform 是源身份的
+			// 快照（产品面不存在逐模型覆盖地址/密钥的语义），随源保存刷新——
+			// 否则改源 url/key 后既有手动模型仍按旧配置请求。源 BaseURL 为空的
+			// legacy 导入源跳过（其 models 行携带逐模型地址，见 ImportLegacyConfig）。
+			if source.BaseURL != "" {
+				if _, err := tx.ExecContext(ctx, `UPDATE models SET base_url = ?, api_key = ?, platform = ?, last_checked_at = ? WHERE id = ? AND source_id = ?`,
+					source.BaseURL, storedKey, NormalizePlatform(source.Platform), checked, model.ID, source.ID); err != nil {
+					return result, err
+				}
+			} else if _, err := tx.ExecContext(ctx, `UPDATE models SET last_checked_at = ? WHERE id = ? AND source_id = ?`, checked, model.ID, source.ID); err != nil {
 				return result, err
 			}
 			continue
