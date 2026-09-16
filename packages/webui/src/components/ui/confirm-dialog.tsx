@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import {
   Dialog,
@@ -34,6 +34,13 @@ export function ConfirmDialog({
   onConfirm,
   onOpenChange,
 }: ConfirmDialogProps) {
+  // 确认弹窗的遮罩半透明+毛玻璃,会让右侧立绘水印透出成突兀的竖向色块
+  // (水印是页面对比最强的区域);弹窗期间在根节点挂标记将其淡出。
+  useEffect(() => {
+    if (open) document.documentElement.dataset.confirmOpen = ''
+    else delete document.documentElement.dataset.confirmOpen
+    return () => { delete document.documentElement.dataset.confirmOpen }
+  }, [open])
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
