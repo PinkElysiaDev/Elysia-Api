@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "sourceSize": [1920, 1080],
+  "groups": ["hair", "face", "hands", "outfit"],
+  "sourceRegions": [
+    {"group":3,"polygon":[[738,572],[757,547],[829,549],[950,537],[1092,588],[1180,651],[1210,750],[1248,905],[1223,980],[1180,1080],[707,1080],[629,1013],[598,947],[569,889],[608,798],[653,725],[684,694],[699,666],[704,626],[717,599]]},
+    {"group":0,"polygon":[[534,375],[632,374],[693,319],[738,251],[782,200],[789,145],[809,43],[835,115],[835,158],[865,128],[919,114],[962,119],[1015,135],[1063,168],[1098,214],[1124,278],[1158,338],[1206,378],[1268,390],[1327,428],[1357,470],[1348,512],[1323,533],[1284,542],[1271,580],[1298,625],[1318,680],[1304,716],[1265,746],[1255,699],[1212,644],[1182,592],[1161,551],[1118,523],[1076,517],[1024,548],[960,561],[907,568],[865,558],[826,558],[789,566],[749,601],[713,594],[681,558],[663,503],[661,453],[622,483],[591,473],[617,440],[572,415]]},
+    {"group":1,"polygon":[[812,339],[884,329],[966,328],[1041,341],[1092,375],[1095,419],[1080,466],[1054,499],[1005,532],[965,548],[918,522],[884,504],[865,483],[835,454],[814,415]]},
+    {"group":2,"polygon":[[967,575],[1008,568],[1051,586],[1089,595],[1146,604],[1181,627],[1198,669],[1211,703],[1199,726],[1162,704],[1135,679],[1098,669],[1060,661],[1023,644],[1002,632],[991,617],[971,609]]},
+    {"group":2,"polygon":[[350,921],[376,902],[410,902],[406,883],[413,862],[451,862],[476,881],[491,869],[495,851],[508,847],[520,860],[528,893],[544,912],[560,879],[578,883],[590,912],[600,917],[623,904],[638,916],[637,945],[641,977],[627,1003],[599,1022],[572,1014],[543,1000],[516,987],[489,975],[461,972],[430,959],[404,952],[376,940]]},
+    {"group":0,"trackWith":1,"polygon":[[697,302],[727,315],[711,369],[686,416],[675,472],[675,528],[666,570],[641,540],[630,503],[634,464],[653,415],[676,366]]},
+    {"group":0,"trackWith":1,"polygon":[[1149,507],[1223,549],[1268,600],[1289,652],[1313,703],[1320,746],[1311,790],[1288,825],[1267,840],[1262,819],[1281,773],[1270,727],[1230,683],[1204,641],[1168,590]]}
+  ],
+  "sourceExclusions": [
+    [[622,411],[652,409],[645,434],[625,452],[606,458]],
+    [[1190,418],[1232,433],[1251,461],[1232,478],[1202,485],[1212,458]],
+    [[1267,439],[1303,456],[1328,481],[1321,506],[1301,521],[1288,510],[1295,484]],
+    [[1256,598],[1272,634],[1299,679],[1289,711],[1269,706],[1255,674]]
+  ],
+  "targetRegions": [
+    {"group": 3, "polygon": [[0,0],[760,0],[760,808],[0,808]]},
+    {"group": 0, "polygon": [[224,0],[533,0],[589,271],[613,358],[673,423],[760,562],[760,777],[654,755],[591,700],[534,767],[371,808],[235,788],[194,752],[218,682],[279,634],[263,538],[215,539],[206,449],[244,388],[261,323],[228,286],[216,232]]},
+    {"group": 1, "polygon": [[263,141],[350,144],[379,201],[367,247],[334,276],[290,267],[272,238],[275,212]]},
+    {"group": 2, "polygon": [[340,244],[403,244],[426,282],[405,342],[405,404],[383,477],[365,516],[335,494],[346,451],[353,391],[351,330],[336,285]]}
+  ],
+  "reviewTimes": [0, 1, 2, 3, 3.8, 4, 4.2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 15.3, 15.5, 15.983333],
+  "corrections": [
+    {"startFrame":920,"endFrame":959,"polygon":[[671,599],[712,582],[727,590],[724,601],[712,617],[675,630]],"exclude":true,"group":3}
+  ],
+  "reviewNotes": [
+    "Reviewed source frames at 0.017, 2, 4, 6, 8, 10, 12, 14 and 15.983 seconds and the target alpha mask.",
+    "Exclude floating crystal, background rings and light rays; retain hair ornaments and clothing structure.",
+    "At approximately 4 seconds the eyes close. Detect current-frame strokes instead of morphing the open-eye drawing.",
+    "Source and target poses differ. Match particles by semantic part, not by a single outline index.",
+    "Second pass: the 4-second overlay revealed incomplete outer hair strands. Extend loose-hair regions and recover bright glove silhouettes using current-frame boundary edges away from existing ink. Third pass: use the main hair motion for loose strands, tighten the lower torso boundary to exclude the background ring, and remove short non-facial fragments.",
+    "Fourth pass: compare frame 959 original and overlay at 400% around source rectangle (630,520)-(750,680). The short blue line around (681,616)-(702,605) belongs to a background light ring, not the shoulder. Exclude only this local region in frames 920-959 and review the preceding and corrected frames.",
+    "Fifth pass: review crops at frames 918, 930 and 959. Related light-ring fragments also appear lower and farther left before the corrected interval. Refine the reference outfit polygon along the visible shoulder and upper cape boundary so background features are excluded throughout tracking. The narrower foreground also exposes a short hair-group boundary candidate around (715,600) at frame 930; expand the existing upper local exclusion up to, but not across, the actual hair and shoulder edge."
+  ]
+}

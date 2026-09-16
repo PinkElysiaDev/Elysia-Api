@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Elysia · 960 帧描边审查</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #15121a; color: #f3e4ef; font: 14px system-ui, sans-serif; }
+  header { padding: 18px 24px; background: #251e2b; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  h1 { font-size: 18px; margin: 0 16px 0 0; }
+  button, select, input { color: inherit; background: #393041; border: 1px solid #87677c; border-radius: 6px; padding: 7px 10px; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid #ffb4df; outline-offset: 3px; }
+  input[type=range] { width: min(600px, 80vw); accent-color: #ffb4df; }
+  .viewport { height: calc(100vh - 170px); min-height: 400px; overflow: auto; }
+  canvas { display: block; margin: auto; height: auto; }
+  video { position: fixed; left: -20px; width: 1px; height: 1px; opacity: 0; }
+  output { display: block; padding: 12px 24px; white-space: pre-wrap; font: 13px monospace; }
+  p { padding: 0 24px; color: #cbb4c7; margin: 5px 0 12px; }
+</style>
+<header>
+  <h1>960 帧描边审查</h1>
+  <button id="previous">上一帧 ←</button><button id="play">播放 / 暂停</button><button id="next">下一帧 →</button>
+  <label>视图 <select id="mode"><option value="overlay">彩色叠加</option><option value="source">原始视频</option><option value="lines">纯线稿</option></select></label>
+  <label>缩放 <select id="zoom"><option value="fit">适应宽度</option><option value="1">100% 原图像素</option><option value="2">200% 局部复核</option></select></label>
+  <label>帧 <input id="scrub" type="range" min="0" max="959" step="1" value="0"></label>
+</header>
+<div class="viewport"><canvas id="preview" width="1920" height="1080"></canvas></div>
+<output id="status" role="status">正在解压内嵌轨迹…</output>
+<p>粉：头发／发饰　黄：面部　青：手部　蓝：服饰。方向键逐帧，空格播放。轨迹与视频均按呈现时间戳取样；几何骨架误差不等于人工语义真值。</p>
+<video id="source" src="__VIDEO__" preload="auto" muted playsinline loop></video>
+<script id="manifest" type="application/json">__MANIFEST__</script>
+<script id="payload" type="application/octet-stream">__PAYLOAD__</script>
+<script type="module">
+const manifest = JSON.parse(document.querySelector('#manifest').textContent)
+const compressed = Uint8Array.from(atob(document.querySelector('#payload').textContent), (character) => character.charCodeAt(0))
+const payload = await new Response(new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer()
+const bytes = new DataView(payload)
+const video = document.querySelector('#source')
+const canvas = document.querySelector('#preview')
+const context = canvas.getContext('2d')
+const scrub = document.querySelector('#scrub')
+const mode = document.querySelector('#mode')
+const status = document.querySelector('#status')
+const colors = ['#ffadef', '#ffee64', '#64ffde', '#70bfff']
+let currentFrame = 0
+let presentedTime = 0
+let snapshot = null
+let canSnapshot = typeof VideoFrame === 'function'
+let seeking = false
+let requestedFrame = null
+function frameAt(time) {
+  let lower = 0
+  let upper = manifest.frameTimes.length - 1
+  while (lower < upper) {
+    const middle = Math.ceil((lower + upper) / 2)
+    if (manifest.frameTimes[middle] <= time + 0.00001) lower = middle
+    else upper = middle - 1
+  }
+  return lower
+}
+function draw() {
+  context.fillStyle = '#15121a'
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  if (mode.value !== 'lines') context.drawImage(snapshot ?? video, 0, 0)
+  let offset = manifest.frameOffsets[currentFrame]
+  const count = bytes.getUint32(offset, true)
+  offset += 4
+  const groups = [0, 0, 0, 0]
+  for (let path = 0; path < count; path++) {
+    const group = bytes.getUint8(offset + 4)
+    const closed = bytes.getUint8(offset + 5)
+    const points = bytes.getUint16(offset + 6, true)
+    offset += 8
+    context.beginPath()
+    context.strokeStyle = colors[group]
+    context.lineWidth = 1
+    let horizontal = 0
+    let vertical = 0
+    for (let point = 0; point < points; point++) {
+      horizontal += bytes.getInt16(offset, true)
+      vertical += bytes.getInt16(offset + 2, true)
+      offset += 4
+      if (point === 0) context.moveTo(horizontal, vertical)
+      else context.lineTo(horizontal, vertical)
+    }
+    if (closed) context.closePath()
+    if (mode.value !== 'source') context.stroke()
+    groups[group]++
+  }
+  scrub.value = currentFrame
+  status.textContent = `帧 ${currentFrame} / 959 · PTS ${manifest.frameTimes[currentFrame].toFixed(6)}s · 实际呈现 ${presentedTime.toFixed(6)}s · ${count} 线段 · 分组 ${groups.join(' / ')}\n视频 SHA-256 ${manifest.source.sha256}`
+}
+function seek(frame) {
+  video.pause()
+  requestedFrame = Math.max(0, Math.min(959, frame))
+  if (seeking) return
+  seeking = true
+  const target = requestedFrame
+  requestedFrame = null
+  video.currentTime = manifest.frameTimes[target] + 0.0001
+}
+video.addEventListener('seeked', () => {
+  seeking = false
+  if (requestedFrame !== null) seek(requestedFrame)
+})
+function presented(_time, metadata) {
+  snapshot?.close()
+  snapshot = null
+  if (canSnapshot) {
+    try { snapshot = new VideoFrame(video) }
+    catch { canSnapshot = false }
+  }
+  if (!snapshot && !video.paused && performance.now() - metadata.expectedDisplayTime > 500 / manifest.source.frameRate) {
+    video.requestVideoFrameCallback(presented)
+    return
+  }
+  presentedTime = snapshot ? snapshot.timestamp / 1000000 : metadata.mediaTime
+  currentFrame = frameAt(presentedTime)
+  draw()
+  video.requestVideoFrameCallback(presented)
+}
+video.requestVideoFrameCallback(presented)
+window.addEventListener('pagehide', () => { snapshot?.close(); snapshot = null })
+video.addEventListener('error', () => { status.textContent = '视频加载失败，请保留审图目录与仓库素材的相对位置。' })
+document.querySelector('#previous').onclick = () => seek(currentFrame - 1)
+document.querySelector('#next').onclick = () => seek(currentFrame + 1)
+document.querySelector('#play').onclick = () => video.paused ? video.play() : video.pause()
+scrub.oninput = () => seek(Number(scrub.value))
+mode.onchange = draw
+document.querySelector('#zoom').onchange = (event) => {
+  canvas.style.width = event.target.value === 'fit' ? '100%' : `${1920 * Number(event.target.value)}px`
+}
+canvas.style.width = '100%'
+document.addEventListener('keydown', (event) => {
+  if (['INPUT', 'SELECT', 'BUTTON'].includes(event.target.tagName)) return
+  if (event.code === 'ArrowLeft') { event.preventDefault(); seek(currentFrame - 1) }
+  if (event.code === 'ArrowRight') { event.preventDefault(); seek(currentFrame + 1) }
+  if (event.code === 'Space') { event.preventDefault(); if (video.paused) video.play(); else video.pause() }
+})
+if (video.readyState >= 2) { presentedTime = video.currentTime; currentFrame = frameAt(presentedTime); draw() }
+</script>
+</html>

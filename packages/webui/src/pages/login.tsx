@@ -1,348 +1,226 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { ArrowRight, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { ArrowRight, Eye, EyeOff, Loader2, Pause, Play } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { LoginCinematic } from '@/components/login-cinematic'
 import { useTheme } from '@/lib/theme'
 import { setToken, ARRIVED_FROM_LOGIN_KEY } from '@/lib/auth'
 import { verifyToken } from '@/lib/api'
-import '@fontsource/fraunces/600-italic.css'
+import type { CharacterTrace } from '@/lib/character-trace'
+import { loadCharacterTrace } from '@/lib/login-assets'
+import { LOGIN_VIDEO_URL, useLoginMotion } from '@/lib/login-motion'
+import { ROLE_ANCHOR_CLASS, roleMaskStyle } from '@/lib/role-presentation'
 import './login.css'
 
 const MEDIA_BASE = `${import.meta.env.BASE_URL}assets/`
 
-/**
- * 登录页「花庭」：人像视频场景 + 右侧下划线令牌表单。
- * 视频仅在省流关闭、
- * 未开启减动效、页面可见时加载，海报图作为常驻兜底。
- */
+function arrivalFlag(animated: boolean): void {
+  try {
+    if (animated) sessionStorage.setItem(ARRIVED_FROM_LOGIN_KEY, '1')
+    else sessionStorage.removeItem(ARRIVED_FROM_LOGIN_KEY)
+  } catch { return }
+}
+
 export function LoginPage() {
   const { theme } = useTheme()
   const [value, setValue] = useState('')
   const [visible, setVisible] = useState(false)
   const [error, setError] = useState('')
+  const [errorOpen, setErrorOpen] = useState(false)
   const [phase, setPhase] = useState<'login' | 'entering'>('login')
-  const [bloom, setBloom] = useState(false)
   const [verifying, setVerifying] = useState(false)
-
-  const [reduced, setReduced] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
-  const [saveData, setSaveData] = useState(
-    () => Boolean((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData),
-  )
-  const [autoplayBlocked, setAutoplayBlocked] = useState(false)
-  const [pageHidden, setPageHidden] = useState(document.hidden)
-  const [videoReady, setVideoReady] = useState(false)
-  const [videoFailed, setVideoFailed] = useState(false)
-  const [requestedVideo, setRequestedVideo] = useState(false)
-  const videoMoving = !autoplayBlocked && !saveData && !reduced && !pageHidden && !videoFailed
-
+  const [traceReady, setTraceReady] = useState(false)
   const rootRef = useRef<HTMLElement>(null)
+  const sceneRef = useRef<HTMLDivElement>(null)
+  const cameraRef = useRef<HTMLDivElement>(null)
+  const targetRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const petalsRef = useRef<HTMLDivElement>(null)
-  const settleTimer = useRef<number | undefined>(undefined)
+  const traceRef = useRef<CharacterTrace | null>(null)
+  const pendingToken = useRef<string | null>(null)
+  const mounted = useRef(true)
+  const requestGeneration = useRef({ value: 0 })
+  const submitting = useRef(false)
+  const motion = useLoginMotion(rootRef, videoRef)
+  const latestMotion = useRef(motion)
+  latestMotion.current = motion
 
-  useEffect(() => {
-    document.title = '登录控制台 · Elysia API'
-    return () => window.clearTimeout(settleTimer.current)
+  const finish = useCallback((animated: boolean) => {
+    const token = pendingToken.current
+    if (!mounted.current || !token) return
+    pendingToken.current = null
+    arrivalFlag(animated)
+    setToken(token)
   }, [])
 
   useEffect(() => {
-    if (error && !verifying) inputRef.current?.focus()
-  }, [error, verifying])
+    mounted.current = true
+    document.title = '登录控制台 · Elysia API'
+    const generationState = requestGeneration.current
+    return () => {
+      mounted.current = false
+      generationState.value++
+      pendingToken.current = null
+    }
+  }, [])
 
-  // 移动端浏览器地址栏颜色跟随花庭底色；离开登录页即移除，交还控制台默认。
   useEffect(() => {
     let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    const previous = meta?.content
+    const created = !meta
     if (!meta) {
       meta = document.createElement('meta')
       meta.name = 'theme-color'
       document.head.appendChild(meta)
     }
     meta.content = theme === 'dark' ? '#18141c' : '#fdfbfc'
-    return () => meta.remove()
+    return () => {
+      if (created) meta.remove()
+      else meta.content = previous ?? ''
+    }
   }, [theme])
 
   useEffect(() => {
-    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const onMotion = () => setReduced(media.matches)
-    const onVisibility = () => setPageHidden(document.hidden)
-    const onConnection = () =>
-      setSaveData(Boolean((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData))
-    media.addEventListener('change', onMotion)
-    document.addEventListener('visibilitychange', onVisibility)
-    // saveData 用户中途切换网络时恢复视频。
-    ;(navigator as Navigator & { connection?: EventTarget }).connection?.addEventListener?.('change', onConnection)
-    return () => {
-      media.removeEventListener('change', onMotion)
-      document.removeEventListener('visibilitychange', onVisibility)
-      ;(navigator as Navigator & { connection?: EventTarget }).connection?.removeEventListener?.('change', onConnection)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (videoMoving) setRequestedVideo(true)
-    const video = videoRef.current
-    if (!video) return
-    if (videoMoving && requestedVideo) {
-      void video.play().catch((err: DOMException) => {
-        // 自动播放被浏览器拒绝时降级为海报静帧，不报错。
-        if (err.name === 'NotAllowedError') setAutoplayBlocked(true)
+    if (!motion.allowed || traceRef.current) return
+    const controller = new AbortController()
+    void Promise.all([loadCharacterTrace(controller.signal), import('@/lib/login-renderer')])
+      .then(([trace]) => {
+        if (controller.signal.aborted) return
+        traceRef.current = trace
+        setTraceReady(true)
+      }).catch(() => {
+        if (!controller.signal.aborted) setTraceReady(false)
       })
-    } else {
-      video.pause()
-    }
-  }, [videoMoving, requestedVideo])
+    return () => controller.abort()
+  }, [motion.allowed])
 
-  // 指针视差：场景随指针平移并带一点 3D 倾斜（触屏与减动效下关闭）。
   useEffect(() => {
-    if (reduced || window.matchMedia('(pointer: coarse)').matches) return
-    const root = rootRef.current
-    if (!root) return
-    let targetX = 0
-    let targetY = 0
-    let x = 0
-    let y = 0
-    let raf = 0
-    const tick = () => {
-      x += (targetX - x) * 0.06
-      y += (targetY - y) * 0.06
-      root.style.setProperty('--par-x', x.toFixed(4))
-      root.style.setProperty('--par-y', y.toFixed(4))
-      raf = Math.abs(targetX - x) > 0.002 || Math.abs(targetY - y) > 0.002 ? requestAnimationFrame(tick) : 0
-    }
-    const onMove = (event: PointerEvent) => {
-      targetX = (event.clientX / window.innerWidth) * 2 - 1
-      targetY = (event.clientY / window.innerHeight) * 2 - 1
-      if (!raf) raf = requestAnimationFrame(tick)
-    }
-    const onLeave = () => {
-      targetX = 0
-      targetY = 0
-      if (!raf) raf = requestAnimationFrame(tick)
-    }
-    window.addEventListener('pointermove', onMove)
-    document.documentElement.addEventListener('pointerleave', onLeave)
-    return () => {
-      window.removeEventListener('pointermove', onMove)
-      document.documentElement.removeEventListener('pointerleave', onLeave)
-      if (raf) cancelAnimationFrame(raf)
-      root.style.removeProperty('--par-x')
-      root.style.removeProperty('--par-y')
-    }
-  }, [reduced])
+    if (phase === 'entering' && !motion.allowed) finish(false)
+  }, [phase, motion.allowed, finish])
 
-  // 落英归位：引言浮现之后，褪色的人像化作花瓣，自画面人物处缓缓飘出，
-  // 朝着右上角线稿的画心落去——花落之处，正是水印驻留的位置。
-  // 花瓣用 WAAPI 即抛即毁，延迟对齐引言的散场时刻。
-  useEffect(() => {
-    if (phase !== 'entering' || reduced) return
-    const host = petalsRef.current
-    if (!host) return
-    const vw = window.innerWidth
-    const vh = window.innerHeight
-    // 起点：视频人物的画面位置；落点：线稿水印的画心（右上角区域）。
-    const origin = { x: Math.min(vw * 0.4, 620), y: vh * 0.45 }
-    const target = { x: vw - Math.min(vw * 0.2, 280), y: vh * 0.28 }
-    const petals: HTMLSpanElement[] = []
-    for (let i = 0; i < 16; i++) {
-      const petal = document.createElement('span')
-      petal.className = 'garden-petal'
-      const size = 7 + Math.random() * 7
-      petal.style.width = `${size}px`
-      petal.style.height = `${size * 1.3}px`
-      const sx = origin.x + (Math.random() - 0.5) * 300
-      const sy = origin.y + (Math.random() - 0.5) * 320
-      petal.style.left = `${sx}px`
-      petal.style.top = `${sy}px`
-      host.appendChild(petal)
-      petals.push(petal)
-      const tx = target.x - sx + (Math.random() - 0.5) * 150
-      const ty = target.y - sy + (Math.random() - 0.5) * 130
-      const sway = 30 + Math.random() * 54
-      const lift = 26 + Math.random() * 70
-      // 约三成花瓣做前景虚化（景深），其余清晰小巧
-      if (Math.random() < 0.35) petal.style.filter = 'blur(1.4px)'
-      petal.animate(
-        [
-          { transform: 'translate(0, 0) rotate(0deg) scale(1)', opacity: 0 },
-          { transform: `translate(${tx * 0.18}px, ${ty * 0.12 - lift}px) rotate(55deg)`, opacity: 0.9, offset: 0.28 },
-          { transform: `translate(${tx * 0.42 - sway}px, ${ty * 0.38}px) rotate(125deg) scale(0.92)`, opacity: 0.72, offset: 0.54 },
-          { transform: `translate(${tx * 0.74 + sway * 0.5}px, ${ty * 0.76}px) rotate(205deg) scale(0.8)`, opacity: 0.55, offset: 0.8 },
-          { transform: `translate(${tx}px, ${ty}px) rotate(285deg) scale(0.55)`, opacity: 0 },
-        ],
-        { duration: 1400 + Math.random() * 500, delay: 1500 + Math.random() * 300, easing: 'cubic-bezier(0.45, 0.05, 0.35, 0.95)', fill: 'both' },
-      )
-    }
-    return () => petals.forEach((petal) => petal.remove())
-  }, [phase, reduced])
+  const showError = (message: string) => {
+    setError(message)
+    setErrorOpen(true)
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
-    if (phase !== 'login' || verifying) return
+    if (phase !== 'login' || submitting.current) return
     const token = value.trim()
-    if (!token) {
-      setError('请输入访问令牌')
-      inputRef.current?.focus()
-      return
-    }
-    setError('')
-
-    // 先静默验证：失败直接提示，不打扰花庭；成功才绽开晶辉、播放过场。
+    if (!token) { showError('请输入访问令牌'); return }
+    submitting.current = true
     setVerifying(true)
-    let valid = false
+    setError('')
+    const generation = ++requestGeneration.current.value
+    void import('./overview').catch(() => undefined)
     let failure = ''
-    try {
-      valid = await verifyToken(token)
-    } catch (err) {
-      failure = (err as Error).message || '无法连接到后端'
-    }
-    setVerifying(false)
-    if (!valid || failure) {
-      setError(failure || 'Token 无效，请确认与后端 config.json 中的 panelAccessToken 一致')
+    try { await verifyToken(token) }
+    catch (caught) { failure = caught instanceof Error && caught.message ? caught.message : '无法连接到后端，请检查网络与服务状态' }
+    // generation 失配说明已有更新的提交或组件经历重挂载，本次结果作废；仍需复位提交锁。
+    if (!mounted.current || generation !== requestGeneration.current.value) {
+      submitting.current = false
       return
     }
-
-    if (!reduced) setBloom(true)
-    setPhase('entering')
-    // 光影退行的完整呼吸：视频褪色 + 引言浮现散去 + 花瓣归位，随后交棒。
-    settleTimer.current = window.setTimeout(() => {
-      // 通知总览的 ElysiaStage 播放入画收尾（读后即删）。
-      try {
-        sessionStorage.setItem(ARRIVED_FROM_LOGIN_KEY, '1')
-      } catch {
-        /* 无存储能力时安静跳过 */
-      }
-      setToken(token)
-    }, reduced ? 100 : 3500)
+    submitting.current = false
+    setVerifying(false)
+    if (failure) {
+      showError(failure)
+      return
+    }
+    pendingToken.current = token
+    const video = videoRef.current
+    if (latestMotion.current.allowed && latestMotion.current.videoReady && traceRef.current
+      && video && !video.paused && video.readyState >= 2 && typeof video.requestVideoFrameCallback === 'function') setPhase('entering')
+    else finish(false)
   }
 
+  const toggleMotion = () => {
+    motion.toggle()
+    if (phase === 'entering') finish(false)
+  }
+  const motionLabel = motion.reason || (motion.allowed ? '暂停动态效果' : '播放动态效果')
+
   return (
-    <main ref={rootRef} className="garden" data-phase={phase} data-motion={videoMoving ? 'playing' : 'paused'}>
-      <div className="garden-scene" aria-hidden="true">
-        <div className="garden-camera">
+    <main ref={rootRef} className="garden" data-phase={phase} data-motion={motion.allowed ? 'playing' : 'paused'} data-intro={motion.introEnabled} data-scene-intro={motion.sceneIntroEnabled} data-trace-ready={traceReady}>
+      <div ref={sceneRef} className="garden-scene" aria-hidden="true">
+        <div ref={cameraRef} className="garden-camera">
           <img className="garden-image" src={`${MEDIA_BASE}elysia-login-poster.jpg`} alt="" />
-          <video
-            ref={videoRef}
-            className={`garden-video ${videoReady && !videoFailed && !reduced ? 'is-ready' : ''}`}
-            src={requestedVideo && !reduced ? `${MEDIA_BASE}elysia-login.mp4` : undefined}
-            muted
-            loop
-            playsInline
-            preload="none"
-            onPlaying={() => setVideoReady(true)}
-            onError={() => setVideoFailed(true)}
-          />
+          <video ref={videoRef} className={`garden-video ${motion.videoReady && !motion.videoFailed && !motion.reduced ? 'is-ready' : ''}`}
+            src={motion.requestedVideo ? LOGIN_VIDEO_URL : undefined}
+            muted loop playsInline preload="none" onPlaying={motion.onPlaying} onError={motion.onError} />
         </div>
       </div>
       <div className="garden-wash" aria-hidden="true" />
       <div className="garden-aurora" aria-hidden="true" />
-      <div className="garden-transition" aria-hidden="true" />
 
       <header className="garden-header">
         <div className="garden-brand" aria-label="Elysia API 控制台">
           <img src={`${import.meta.env.BASE_URL}logo-color.png`} alt="" width={32} height={32} />
-          <span>Elysia API</span>
-          <span className="garden-brand-divider" />
-          <span className="garden-console">Console</span>
+          <span>Elysia API</span><span className="garden-brand-divider" /><span className="garden-console">Console</span>
         </div>
-        <ThemeToggle />
+        <div className="garden-actions">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" className="garden-tool garden-motion-toggle" onClick={toggleMotion}
+                disabled={Boolean(motion.reason)} aria-label={motionLabel} aria-pressed={!motion.allowed}>
+                {motion.allowed ? <Pause size={20} aria-hidden="true" /> : <Play size={20} aria-hidden="true" />}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{motionLabel}</TooltipContent>
+          </Tooltip>
+          <ThemeToggle tooltip />
+        </div>
       </header>
 
       <section className="garden-content" aria-label="登录控制台">
-        <div className="garden-login" aria-hidden={phase !== 'login'}>
-          <h1>
-            Elysia <i>API</i>
-            <span className="garden-title-dot">.</span>
-          </h1>
-          <p className="garden-greeting">嗨，想我了吗？♪</p>
-
-          <form className="garden-form" onSubmit={handleSubmit} noValidate>
-            <label htmlFor="token">
-              访问令牌 <span>Panel Access Token</span>
-            </label>
-            <div className="garden-input-wrap" data-invalid={Boolean(error)}>
-              <input
-                ref={inputRef}
-                id="token"
-                type={visible ? 'text' : 'password'}
-                autoComplete="off"
-                spellCheck={false}
-                autoCapitalize="none"
-                placeholder="Panel Access Token"
-                value={value}
-                disabled={verifying || phase !== 'login'}
-                aria-invalid={Boolean(error)}
-                aria-describedby={error ? 'token-error' : undefined}
-                onChange={(event) => {
-                  setValue(event.target.value)
-                  setError('')
-                }}
-              />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className="garden-tool"
-                    aria-label={visible ? '隐藏' : '显示'}
-                    aria-pressed={visible}
-                    disabled={verifying || phase !== 'login'}
-                    onClick={() => setVisible(!visible)}
-                  >
-                    {visible ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>{visible ? '隐藏令牌' : '显示令牌'}</TooltipContent>
-              </Tooltip>
-            </div>
-            <div className="garden-error" id="token-error" role="alert">
-              {error}
-            </div>
-            <div className="garden-submit-wrap">
-              <button className="garden-submit" type="submit" disabled={verifying || phase !== 'login'} aria-busy={verifying || phase === 'entering'}>
-                <span>{verifying ? '正在验证' : phase === 'entering' ? '正在进入控制台' : '立即登录'}</span>
-                {verifying || phase === 'entering' ? (
-                  <Loader2 className="garden-spinner" size={18} />
-                ) : (
-                  <ArrowRight size={19} />
-                )}
-              </button>
-              {bloom && <span className="garden-bloom" aria-hidden="true" />}
-            </div>
-          </form>
+        <div className="garden-login-motion">
+          <div className="garden-login" aria-hidden={phase !== 'login'}>
+            <h1>Elysia <i>API</i><span className="garden-title-dot">.</span></h1>
+            <p className="garden-greeting">嗨，想我了吗？♪</p>
+            <form className="garden-form" onSubmit={handleSubmit} noValidate>
+              <label htmlFor="token" className="sr-only">访问令牌 Panel Access Token</label>
+              <div className="garden-input-wrap" data-invalid={Boolean(error)}>
+                <input ref={inputRef} id="token" type={visible ? 'text' : 'password'} autoComplete="off" spellCheck={false}
+                  autoCapitalize="none" placeholder="Panel Access Token" value={value} disabled={verifying || phase !== 'login'}
+                  aria-invalid={Boolean(error)} aria-describedby={error ? 'token-error' : undefined}
+                  onChange={(event) => { setValue(event.target.value); setError('') }} />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button type="button" className="garden-tool" aria-label={visible ? '隐藏' : '显示'} aria-pressed={visible}
+                      disabled={verifying || phase !== 'login'} onClick={() => setVisible(!visible)}>
+                      {visible ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>{visible ? '隐藏令牌' : '显示令牌'}</TooltipContent>
+                </Tooltip>
+              </div>
+              {error && <span role="status" className="sr-only" id="token-error">{error}</span>}
+              <div className="garden-submit-wrap">
+                <button className="garden-submit" type="submit" disabled={verifying || phase !== 'login'} aria-busy={verifying || phase === 'entering'}>
+                  <span>{verifying ? '正在验证' : phase === 'entering' ? '正在进入控制台' : '立即登录'}</span>
+                  {verifying || phase === 'entering' ? <Loader2 className="garden-spinner" size={18} /> : <ArrowRight size={19} />}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       </section>
 
-      {/* 光影退行：视频溶解时，右上角以完整浓度预印她的侧影——位置、尺寸
-          与控制台水印一致，登录页卸载瞬间线稿原地常驻，随后缓缓淡入水印浓度。 */}
-      <div
-        className="garden-echo pointer-events-none fixed right-[calc(100%_-_100vw_-_6px)] top-[14px] w-[280px] sm:w-[380px] md:w-[480px] lg:w-[560px] xl:w-[640px]"
-        aria-hidden="true"
-        style={{
-          WebkitMaskImage: `url(${import.meta.env.BASE_URL}role-mask.png)`,
-          maskImage: `url(${import.meta.env.BASE_URL}role-mask.png)`,
-          WebkitMaskSize: 'contain',
-          maskSize: 'contain',
-          WebkitMaskRepeat: 'no-repeat',
-          maskRepeat: 'no-repeat',
-          WebkitMaskPosition: 'top right',
-          maskPosition: 'top right',
-        }}
-      />
-      <div className="garden-petals" ref={petalsRef} aria-hidden="true" />
-
-      {phase === 'entering' && (
-        <div className="garden-interlude" aria-hidden="true">
-          <span className="garden-interlude-cn">因你而在的故事</span>
-          <span className="garden-interlude-en">TruE</span>
-        </div>
+      <div ref={targetRef} className={`garden-echo ${ROLE_ANCHOR_CLASS}`} aria-hidden="true" style={roleMaskStyle()} />
+      {phase === 'entering' && traceRef.current && (
+        <LoginCinematic rootRef={rootRef} sceneRef={sceneRef} cameraRef={cameraRef} videoRef={videoRef}
+          targetRef={targetRef} trace={traceRef.current} onFinish={finish} />
       )}
+      <footer className="garden-footer"><p className="garden-signature">「长风化作她的轺车，<wbr />四海落成她的圆圃」</p></footer>
 
-      <footer className="garden-footer">
-        <p className="garden-signature">
-          「长风化作她的轺车，<wbr />
-          四海落成她的圆圃」
-        </p>
-      </footer>
+      <Dialog open={errorOpen} onOpenChange={setErrorOpen}>
+        <DialogContent className="garden-error-dialog" onCloseAutoFocus={(event) => { event.preventDefault(); inputRef.current?.focus() }}>
+          <DialogHeader><DialogTitle>登录失败</DialogTitle><DialogDescription>{error}</DialogDescription></DialogHeader>
+          <DialogFooter><DialogClose asChild><Button type="button">我知道了</Button></DialogClose></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   )
 }

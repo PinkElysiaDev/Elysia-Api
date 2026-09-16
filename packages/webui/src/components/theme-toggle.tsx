@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useTheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 /**
  * 主题切换钮（侧栏底部 / 登录页右上角复用）。
@@ -18,7 +19,7 @@ const SUN_RAYS = [
   'M3.7 3.7 6.2 6.2',
 ] as const
 
-export function ThemeToggle() {
+export function ThemeToggle({ tooltip = false }: { tooltip?: boolean } = {}) {
   const clipId = useId()
   const { theme, toggleTheme } = useTheme()
   const dark = theme === 'dark'
@@ -34,13 +35,13 @@ export function ThemeToggle() {
     timer.current = window.setTimeout(() => setSwitching(false), 560)
   }
 
-  return (
+  const button = (
     <button
       type="button"
       onClick={handleClick}
       aria-label={dark ? '切换到浅色模式' : '切换到深色模式'}
       aria-pressed={dark}
-      title={dark ? '浅色模式' : '深色模式'}
+      title={tooltip ? undefined : dark ? '浅色模式' : '深色模式'}
       className={cn(
         'theme-toggle relative inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-full text-muted-foreground max-rail:h-11 max-rail:w-11',
         'transition-colors duration-300 hover:bg-wash hover:text-rose',
@@ -67,4 +68,10 @@ export function ThemeToggle() {
       </svg>
     </button>
   )
+  return tooltip ? (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent>{dark ? '切换到浅色模式' : '切换到深色模式'}</TooltipContent>
+    </Tooltip>
+  ) : button
 }

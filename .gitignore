@@ -57,3 +57,6 @@ yarn.lock
 
 # 本地联调环境（临时后端 + vite 日志）
 /.tmp-dev/
+packages/webui/test-results/
+packages/webui/playwright-report/
+scripts/login-trace/__pycache__/
