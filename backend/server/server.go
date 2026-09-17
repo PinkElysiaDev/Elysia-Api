@@ -493,17 +493,8 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	startTime := time.Now()
 
 	// 读取原始请求体
-	bodyBytes, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		// 携带底层原因(超限时给出配置上限),不再丢弃给一句固定文案。
-		msg := fmt.Sprintf("failed to read request body: %v", err)
-		if strings.Contains(err.Error(), "request body too large") {
-			msg = fmt.Sprintf("request body exceeds the configured limit (%d bytes)", s.config.GetMaxBodyBytes())
-		}
-		log.Printf("Error reading request body: %v", err)
-		writeProtocolError(c, inputFormatFromPath(c.Request.URL.Path), &relay.MaheshvaraError{
-			Class: relay.ErrorClassInvalidRequest, Message: msg,
-		})
+	bodyBytes, ok := s.readRequestBody(c)
+	if !ok {
 		return
 	}
 
@@ -545,7 +536,6 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	}
 	group, candidates := plan.group, plan.candidates
 	filtered := plan.filtered
-	estimatedTokens := plan.estimatedTokens
 	defer plan.releaseLimiter()
 
 	s.runRelayAttempts(c, record, startTime, group, candidates, inputFormat,
@@ -642,13 +632,13 @@ func (s *Server) chatCompletions(c *gin.Context) {
 
 			if isStream {
 				record.Stream = true
-				return relayAttemptStep{outcome: s.handleStreamRequest(c, group, selectedModel, targetBody, customRequest, targetPlatform, inputFormat, startTime, estimatedTokens, record, isLast)}
+				return relayAttemptStep{outcome: s.handleStreamRequest(c, group, selectedModel, targetBody, customRequest, targetPlatform, inputFormat, startTime, record, isLast)}
 			}
-			return relayAttemptStep{outcome: s.handleNormalRequest(c, group, selectedModel, targetBody, customRequest, targetPlatform, inputFormat, startTime, estimatedTokens, record, isLast)}
+			return relayAttemptStep{outcome: s.handleNormalRequest(c, group, selectedModel, targetBody, customRequest, targetPlatform, inputFormat, startTime, record, isLast)}
 		})
 }
 
-func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord, isLast bool) relayOutcome {
+func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
 	if relay.IsCustomPlatform(targetPlatform) {
 		return s.handleCustomNormalRequest(c, group, selectedModel, customRequest, targetPlatform, inputFormat, startTime, record, isLast)
 	}
@@ -682,198 +672,56 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 	// 1) 先按 targetPlatform 获取并解析上游响应
 	// 2) 再按 inputFormat 渲染客户端响应
 	// 这样输入协议与下游平台彻底解耦，避免协议错配。
-	switch targetPlatform {
-	case relay.Platform("responses"):
-		// responses 型上游(apiFormat=responses):请求体已是 Responses 形状
-		//(TargetFormatForPlatform 返回 FormatResponses),响应经 Responses 解析
-		//器进 Maheshvara 后按客户端线制渲染。
-		responsesResp, respBody, upstreamStatus, err := s.openaiAdapter.SendResponsesRawWithBody(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
-		record.ProviderResponse = record.sanitizeBody(respBody)
-		if err != nil {
-			status := upstreamStatus
-			if status <= 0 {
-				status = http.StatusBadGateway
-			}
-			result = failResult(status, err.Error(), respBody, contentTypeJSON)
-			return result
+	// 统一取回:四类上游(responses/anthropic/gemini/openai 系)的
+	// 「发送→判错→非 2xx 读体→转 Maheshvara」骨架收敛于 fetchAsMaheshvara。
+	targetFormat := relay.FormatOpenAIChat
+	if f, ferr := relay.TargetFormatForPlatform(targetPlatform); ferr == nil {
+		targetFormat = f
+	}
+	fetched, err := s.fetchAsMaheshvara(c.Request.Context(), selectedModel, targetFormat, targetBody)
+	if fetched.respBody != nil {
+		record.ProviderResponse = record.sanitizeBody(fetched.respBody)
+	}
+	if err != nil {
+		status := fetched.status
+		if status <= 0 {
+			status = http.StatusBadGateway
 		}
-		maheshvaraResp, maheshvaraErr := relay.OpenAIResponsesResponseToMaheshvara(responsesResp)
-		if maheshvaraErr != nil {
-			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to convert Responses payload: %v", maheshvaraErr), nil, "")
-			return result
-		}
-		record.ConversionChain = append(record.ConversionChain, "openai_responses_response")
-		updateRecordUsageFromMaheshvara(record, maheshvaraResp.Usage)
-		applyLocalResponseEstimate(record, extractOutputTextFromMaheshvaraResponse(maheshvaraResp), s.config.GetUsageConfig())
-		actualTokens := getInt(record.Usage.TotalTokens)
-		s.adjustTokenUsage(group.ID, actualTokens, startTime.Format("2006-01-02"))
-
-		if maheshvaraResp.Error != nil {
-			mErr := maheshvaraResp.Error
-			mErr.Class = mErr.Class.OrDefault()
-			result = failResult(mErr.EffectiveStatus(), mErr.Message, nil, "")
-			return result
-		}
-		record.StatusCode = http.StatusOK
-		output, renderErr := renderMaheshvaraChatResponse(maheshvaraResp, inputFormat)
-		if renderErr != nil {
-			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to render Maheshvara response: %v", renderErr), nil, "")
-			return result
-		}
-		c.JSON(200, output)
-		result = relayOutcome{committed: true, statusCode: 200}
-		return result
-
-	case relay.PlatformAnthropic:
-		httpResp, err := s.claudeAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody, false)
-		if err != nil {
-			log.Printf("Error forwarding Claude request: %v", err)
-			result = failResult(http.StatusBadGateway, fmt.Sprintf("Failed to forward request: %v", err), nil, "")
-			return result
-		}
-		defer httpResp.Body.Close()
-
-		if httpResp.StatusCode != http.StatusOK {
-			respBody, _ := io.ReadAll(httpResp.Body)
-			result = failResult(httpResp.StatusCode, string(respBody), respBody, contentTypeJSON)
-			return result
-		}
-
-		var claudeResp relay.ClaudeResponse
-		respBody, err := readBodyAndJSON(httpResp, &claudeResp)
-		record.ProviderResponse = record.sanitizeBody(respBody)
-		if err != nil {
-			log.Printf("Error parsing Claude response: %v", err)
-			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to parse response: %v", err), nil, "")
-			return result
-		}
-
-		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
-		applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(targetPlatform, "", respBody), s.config.GetUsageConfig())
-		actualTokens := getInt(record.Usage.TotalTokens)
-		s.adjustTokenUsage(group.ID, actualTokens, startTime.Format("2006-01-02"))
-
-		maheshvaraResp, maheshvaraErr := relay.AnthropicResponseToMaheshvara(&claudeResp)
-		if maheshvaraErr != nil {
-			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to convert Claude response to Maheshvara: %v", maheshvaraErr), nil, "")
-			return result
-		}
-		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
-
-		// 上游 200 但响应体是错误对象:按线制输出标准错误体(带真实分类/码)。
-		if maheshvaraResp.Error != nil {
-			mErr := maheshvaraResp.Error
-			mErr.Class = mErr.Class.OrDefault()
-			result = failResult(mErr.EffectiveStatus(), mErr.Message, nil, "")
-			return result
-		}
-		record.StatusCode = http.StatusOK
-		output, renderErr := renderMaheshvaraChatResponse(maheshvaraResp, inputFormat)
-		if renderErr != nil {
-			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to render Maheshvara response: %v", renderErr), nil, "")
-			return result
-		}
-		c.JSON(200, output)
-		result = relayOutcome{committed: true, statusCode: 200}
-		return result
-
-	case relay.PlatformGemini:
-		httpResp, err := s.geminiAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, false)
-		if err != nil {
-			log.Printf("Error forwarding Gemini request: %v", err)
-			result = failResult(http.StatusBadGateway, fmt.Sprintf("Failed to forward request: %v", err), nil, "")
-			return result
-		}
-		defer httpResp.Body.Close()
-
-		if httpResp.StatusCode != http.StatusOK {
-			respBody, _ := io.ReadAll(httpResp.Body)
-			result = failResult(httpResp.StatusCode, string(respBody), respBody, contentTypeJSON)
-			return result
-		}
-
-		var geminiResp relay.GeminiResponse
-		respBody, err := readBodyAndJSON(httpResp, &geminiResp)
-		record.ProviderResponse = record.sanitizeBody(respBody)
-		if err != nil {
-			log.Printf("Error parsing Gemini response: %v", err)
-			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to parse response: %v", err), nil, "")
-			return result
-		}
-
-		maheshvaraResp, maheshvaraErr := relay.GeminiResponseToMaheshvara(&geminiResp)
-		if maheshvaraErr != nil {
-			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to convert Gemini response to Maheshvara: %v", maheshvaraErr), nil, "")
-			return result
-		}
-		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
-		applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(targetPlatform, "", respBody), s.config.GetUsageConfig())
-		actualTokens := getInt(record.Usage.TotalTokens)
-		s.adjustTokenUsage(group.ID, actualTokens, startTime.Format("2006-01-02"))
-
-		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
-
-		// 上游 200 但响应体是错误对象:按线制输出标准错误体(带真实分类/码)。
-		if maheshvaraResp.Error != nil {
-			mErr := maheshvaraResp.Error
-			mErr.Class = mErr.Class.OrDefault()
-			result = failResult(mErr.EffectiveStatus(), mErr.Message, nil, "")
-			return result
-		}
-		record.StatusCode = http.StatusOK
-		output, renderErr := renderMaheshvaraChatResponse(maheshvaraResp, inputFormat)
-		if renderErr != nil {
-			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to render Maheshvara response: %v", renderErr), nil, "")
-			return result
-		}
-		c.JSON(200, output)
-		result = relayOutcome{committed: true, statusCode: 200}
-		return result
-
-	default:
-		resp, respBody, statusCode, err := s.openaiAdapter.SendRequestRawWithBody(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
-		if err != nil {
-			log.Printf("Error forwarding request (status=%d): %v", statusCode, err)
-			if len(respBody) > 0 {
-				record.ProviderResponse = record.sanitizeBody(respBody)
-			}
-			if statusCode > 0 {
-				// 上游返回了真实状态码与错误体：透传给客户端（与 Claude/Gemini 分支一致），
-				// 并据真实状态码决定是否故障转移。
-				result = failResult(statusCode, string(respBody), respBody, contentTypeJSON)
-			} else {
-				// 连接层错误（无状态码）：当作可重试的 502。
-				result = failResult(http.StatusBadGateway, fmt.Sprintf("Failed to forward request: %v", err), nil, "")
-			}
-			return result
-		}
-
-		record.ProviderResponse = record.sanitizeBody(respBody)
-		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
-		applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(targetPlatform, "", respBody), s.config.GetUsageConfig())
-		actualTokens := getInt(record.Usage.TotalTokens)
-		s.adjustTokenUsage(group.ID, actualTokens, startTime.Format("2006-01-02"))
-
-		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
-
-		record.StatusCode = http.StatusOK
-		maheshvaraResp, maheshvaraErr := relay.OpenAIChatResponseToMaheshvara(resp)
-		if maheshvaraErr != nil {
-			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to convert OpenAI response to Maheshvara: %v", maheshvaraErr), nil, "")
-			return result
-		}
-		output, renderErr := renderMaheshvaraChatResponse(maheshvaraResp, inputFormat)
-		if renderErr != nil {
-			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to render Maheshvara response: %v", renderErr), nil, "")
-			return result
-		}
-		c.JSON(200, output)
-		result = relayOutcome{committed: true, statusCode: 200}
+		result = failResult(status, err.Error(), fetched.respBody, contentTypeJSON)
 		return result
 	}
+	switch targetFormat {
+	case relay.FormatResponses:
+		record.ConversionChain = append(record.ConversionChain, "openai_responses_response")
+	case relay.FormatClaude:
+		record.ConversionChain = append(record.ConversionChain, "anthropic_response")
+	case relay.FormatGemini:
+		record.ConversionChain = append(record.ConversionChain, "gemini_response")
+	default:
+		record.ConversionChain = append(record.ConversionChain, "openai_chat_response")
+	}
+	s.settleMaheshvaraUsage(group, record, startTime, fetched.maheshvara)
+	s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
+
+	// 上游 200 但响应体是错误对象:按线制输出标准错误体(带真实分类/码)。
+	if fetched.maheshvara.Error != nil {
+		mErr := fetched.maheshvara.Error
+		mErr.Class = mErr.Class.OrDefault()
+		result = failResult(mErr.EffectiveStatus(), mErr.Message, nil, "")
+		return result
+	}
+	record.StatusCode = http.StatusOK
+	output, renderErr := renderMaheshvaraChatResponse(fetched.maheshvara, inputFormat)
+	if renderErr != nil {
+		result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to render Maheshvara response: %v", renderErr), nil, "")
+		return result
+	}
+	c.JSON(200, output)
+	result = relayOutcome{committed: true, statusCode: 200}
+	return result
 }
 
-func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord, isLast bool) relayOutcome {
+func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
 	if relay.IsCustomPlatform(targetPlatform) {
 		return s.handleCustomStreamRequest(c, group, selectedModel, customRequest, targetPlatform, inputFormat, startTime, record, isLast)
 	}
@@ -1032,10 +880,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		record.StatusCode = http.StatusBadGateway
 	}
 
-	applyLocalResponseEstimate(record, writer.responseText.String(), s.config.GetUsageConfig())
-	// 流式成功路径同样累计日限额（与全部 8 条非流式/自定义路径对齐；
-	// 漏记会让 DailyLimitMaxTokens 对流式客户端形同虚设）。
-	s.adjustTokenUsage(group.ID, getInt(record.Usage.TotalTokens), startTime.Format("2006-01-02"))
+	s.settleStreamUsage(group, record, startTime)
 	s.logDebug("Stream request completed in %dms", time.Since(startTime).Milliseconds())
 	result = relayOutcome{committed: true, statusCode: record.StatusCode}
 	return result
@@ -1094,27 +939,12 @@ func ensureStreamFlagInTargetBody(
 	targetPlatform relay.Platform,
 ) ([]byte, error) {
 	if targetPlatform == relay.PlatformGemini {
+		// Gemini 原生接口经 URL action 决定流式,不注入 stream 字段。
 		return targetBody, nil
 	}
-
-	var req map[string]interface{}
-	if err := json.Unmarshal(targetBody, &req); err != nil {
-		return nil, err
-	}
-
-	req["stream"] = true
-
-	// OpenAI 兼容接口可附带 stream_options，帮助下游返回 usage chunk
-	if isOpenAICompatible(targetPlatform) {
-		streamOptions, ok := req["stream_options"].(map[string]interface{})
-		if !ok {
-			streamOptions = map[string]interface{}{}
-		}
-		streamOptions["include_usage"] = true
-		req["stream_options"] = streamOptions
-	}
-
-	return json.Marshal(req)
+	// 注入逻辑与透传路径同源(PassthroughBody):stream=true + OpenAI 系
+	// 补 stream_options.include_usage 帮助下游返回 usage chunk。
+	return relay.PassthroughBody(targetBody, "", true, isOpenAICompatible(targetPlatform))
 }
 
 // ginStreamWriter 实现 relay.StreamResponseWriter，封装 gin 的 ResponseWriter

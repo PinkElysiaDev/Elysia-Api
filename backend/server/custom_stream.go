@@ -146,8 +146,7 @@ func (s *Server) handleCustomStreamRequest(
 		_ = renderer.Abort(streamErr)
 	}
 
-	applyLocalResponseEstimate(record, writer.responseText.String(), s.config.GetUsageConfig())
-	s.adjustTokenUsage(group.ID, getInt(record.Usage.TotalTokens), startTime.Format("2006-01-02"))
+	s.settleStreamUsage(group, record, startTime)
 	record.StatusCode = http.StatusOK
 	if streamErr != nil {
 		record.StatusCode = http.StatusBadGateway

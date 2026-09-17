@@ -18,14 +18,8 @@ import (
 func (s *Server) responses(c *gin.Context) {
 	startTime := time.Now()
 
-	bodyBytes, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		msg := fmt.Sprintf("failed to read request body: %v", err)
-		if strings.Contains(err.Error(), "request body too large") {
-			msg = fmt.Sprintf("request body exceeds the configured limit (%d bytes)", s.config.GetMaxBodyBytes())
-		}
-		log.Printf("[Responses] error reading request body: %v", err)
-		writeProtocolError(c, relay.FormatResponses, &relay.MaheshvaraError{Class: relay.ErrorClassInvalidRequest, Message: msg})
+	bodyBytes, ok := s.readRequestBody(c)
+	if !ok {
 		return
 	}
 
@@ -59,7 +53,6 @@ func (s *Server) responses(c *gin.Context) {
 	}
 	group, candidates := plan.group, plan.candidates
 	filteredVision := plan.filtered
-	estimatedTokens := plan.estimatedTokens
 	defer plan.releaseLimiter()
 
 	s.runRelayAttempts(c, record, startTime, group, candidates, relay.FormatResponses,
@@ -136,13 +129,13 @@ func (s *Server) responses(c *gin.Context) {
 
 			if maheshvaraReq.Stream {
 				record.Stream = true
-				return relayAttemptStep{outcome: s.handleResponsesStream(c, group, selectedModel, targetBody, customRequest, targetPlatform, targetFormat, startTime, estimatedTokens, record, isLast)}
+				return relayAttemptStep{outcome: s.handleResponsesStream(c, group, selectedModel, targetBody, customRequest, targetPlatform, targetFormat, startTime, record, isLast)}
 			}
-			return relayAttemptStep{outcome: s.handleResponsesNormal(c, group, selectedModel, targetBody, customRequest, targetPlatform, targetFormat, startTime, estimatedTokens, record, isLast)}
+			return relayAttemptStep{outcome: s.handleResponsesNormal(c, group, selectedModel, targetBody, customRequest, targetPlatform, targetFormat, startTime, record, isLast)}
 		})
 }
 
-func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, targetFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord, isLast bool) relayOutcome {
+func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, targetFormat relay.FormatType, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
 	if relay.IsCustomPlatform(targetPlatform) {
 		return s.handleCustomResponsesNormal(c, group, selectedModel, customRequest, targetPlatform, startTime, record, isLast)
 	}
@@ -171,110 +164,28 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 		s.recordUsage(record)
 	}()
 
-	var maheshvaraResp *relay.MaheshvaraResponse
-
-	switch targetFormat {
-	case relay.FormatResponses:
-		responsesResp, respBody, upstreamStatus, err := s.openaiAdapter.SendResponsesRawWithBody(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
-		record.ProviderResponse = record.sanitizeBody(respBody)
-		if err != nil {
-			status := upstreamStatus
-			if status <= 0 {
-				status = http.StatusBadGateway
-			}
-			result = failResult(status, err.Error(), respBody)
-			return result
-		}
-		maheshvaraResp, err = relay.OpenAIResponsesResponseToMaheshvara(responsesResp)
-		if err != nil {
-			result = failResult(http.StatusInternalServerError, err.Error(), nil)
-			return result
-		}
-		record.ConversionChain = append(record.ConversionChain, "openai_responses_response")
-		updateRecordUsageFromMaheshvara(record, maheshvaraResp.Usage)
-		applyLocalResponseEstimate(record, extractOutputTextFromMaheshvaraResponse(maheshvaraResp), s.config.GetUsageConfig())
-		actualTokens := getInt(record.Usage.TotalTokens)
-		s.adjustTokenUsage(group.ID, actualTokens, startTime.Format("2006-01-02"))
-		record.StatusCode = http.StatusOK
-		c.Data(http.StatusOK, contentTypeJSON, respBody)
-		result = relayOutcome{committed: true, statusCode: http.StatusOK}
-		return result
-
-	case relay.FormatClaude:
-		httpResp, err := s.claudeAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody, false)
-		if err != nil {
-			result = failResult(http.StatusBadGateway, err.Error(), nil)
-			return result
-		}
-		defer httpResp.Body.Close()
-		if httpResp.StatusCode != http.StatusOK {
-			respBody, _ := io.ReadAll(httpResp.Body)
-			result = failResult(httpResp.StatusCode, string(respBody), respBody)
-			return result
-		}
-		var claudeResp relay.ClaudeResponse
-		respBody, err := readBodyAndJSON(httpResp, &claudeResp)
-		record.ProviderResponse = record.sanitizeBody(respBody)
-		if err != nil {
-			result = failResult(http.StatusInternalServerError, err.Error(), nil)
-			return result
-		}
-		maheshvaraResp, err = relay.AnthropicResponseToMaheshvara(&claudeResp)
-		if err != nil {
-			result = failResult(http.StatusInternalServerError, err.Error(), nil)
-			return result
-		}
-
-	case relay.FormatGemini:
-		httpResp, err := s.geminiAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, false)
-		if err != nil {
-			result = failResult(http.StatusBadGateway, err.Error(), nil)
-			return result
-		}
-		defer httpResp.Body.Close()
-		if httpResp.StatusCode != http.StatusOK {
-			respBody, _ := io.ReadAll(httpResp.Body)
-			result = failResult(httpResp.StatusCode, string(respBody), respBody)
-			return result
-		}
-		var geminiResp relay.GeminiResponse
-		respBody, err := readBodyAndJSON(httpResp, &geminiResp)
-		record.ProviderResponse = record.sanitizeBody(respBody)
-		if err != nil {
-			result = failResult(http.StatusInternalServerError, err.Error(), nil)
-			return result
-		}
-		maheshvaraResp, err = relay.GeminiResponseToMaheshvara(&geminiResp)
-		if err != nil {
-			result = failResult(http.StatusInternalServerError, err.Error(), nil)
-			return result
-		}
-
-	default:
-		openAIResp, respBody, statusCode, err := s.openaiAdapter.SendRequestRawWithBody(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
-		record.ProviderResponse = record.sanitizeBody(respBody)
-		if err != nil {
-			if statusCode <= 0 {
-				statusCode = http.StatusBadGateway
-			}
-			result = failResult(statusCode, err.Error(), respBody)
-			return result
-		}
-		maheshvaraResp, err = relay.OpenAIChatResponseToMaheshvara(openAIResp)
-		if err != nil {
-			result = failResult(http.StatusInternalServerError, err.Error(), nil)
-			return result
-		}
+	// 统一取回:四类上游分支的「发送→判错→非 2xx 读体→转 Maheshvara」
+	// 骨架收敛于 fetchAsMaheshvara(与 chat 入口同一实现)。
+	fetched, err := s.fetchAsMaheshvara(c.Request.Context(), selectedModel, targetFormat, targetBody)
+	if fetched.respBody != nil {
+		record.ProviderResponse = record.sanitizeBody(fetched.respBody)
 	}
+	if err != nil {
+		status := fetched.status
+		if status <= 0 {
+			status = http.StatusBadGateway
+		}
+		result = failResult(status, err.Error(), fetched.respBody)
+		return result
+	}
+	maheshvaraResp := fetched.maheshvara
+	record.ConversionChain = append(record.ConversionChain, string(targetFormat)+"_response")
 
 	if maheshvaraResp.Model == "" {
 		maheshvaraResp.Model = selectedModel.Name
 	}
-	record.ConversionChain = append(record.ConversionChain, string(targetFormat)+"_response", "maheshvara_response", "openai_responses_response")
-	updateRecordUsageFromMaheshvara(record, maheshvaraResp.Usage)
-	applyLocalResponseEstimate(record, extractOutputTextFromMaheshvaraResponse(maheshvaraResp), s.config.GetUsageConfig())
-	actualTokens := getInt(record.Usage.TotalTokens)
-	s.adjustTokenUsage(group.ID, actualTokens, startTime.Format("2006-01-02"))
+	record.ConversionChain = append(record.ConversionChain, "maheshvara_response", "openai_responses_response")
+	s.settleMaheshvaraUsage(group, record, startTime, maheshvaraResp)
 
 	responsesResp, err := relay.MaheshvaraToOpenAIResponsesResponse(maheshvaraResp)
 	if err != nil {
@@ -288,7 +199,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 	return result
 }
 
-func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, targetFormat relay.FormatType, startTime time.Time, estimatedTokens int, record *usageRecord, isLast bool) relayOutcome {
+func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, targetFormat relay.FormatType, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
 	if relay.IsCustomPlatform(targetPlatform) {
 		return s.handleCustomStreamRequest(c, group, selectedModel, customRequest, targetPlatform, relay.FormatResponses, startTime, record, isLast)
 	}
@@ -351,7 +262,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 	case relay.FormatResponses:
 		resp, err := s.openaiAdapter.SendResponsesStream(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		if err != nil {
-			result = connFail(upstreamErrorStatus(err, http.StatusBadGateway), err.Error(), nil)
+			result = connFail(upstreamErrorStatus(err, http.StatusBadGateway), err.Error(), upstreamErrorBody(err))
 			return result
 		}
 		startSSE()
@@ -431,9 +342,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		writeResponsesStreamError(writer, fmt.Errorf("upstream returned empty response"))
 	}
 
-	applyLocalResponseEstimate(record, writer.responseText.String(), s.config.GetUsageConfig())
-	actualTokens := getInt(record.Usage.TotalTokens)
-	s.adjustTokenUsage(group.ID, actualTokens, startTime.Format("2006-01-02"))
+	s.settleStreamUsage(group, record, startTime)
 	// SSE 已开始即无法再改 HTTP 状态码/换上游，本次必然提交（无论流中途是否出错）。
 	result = relayOutcome{committed: true, statusCode: record.StatusCode}
 	return result

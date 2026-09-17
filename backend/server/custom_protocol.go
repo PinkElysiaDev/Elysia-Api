@@ -135,21 +135,16 @@ func (s *Server) handleCustomNormal(
 	render func(*relay.MaheshvaraResponse) (any, error),
 	renderErrLabel string,
 ) relayOutcome {
-	// fail 在转发失败时决定是提交错误响应（最后一次尝试或不可重试），
-	// 还是返回 committed=false 让上层故障转移到下一个候选模型。
+	// fail 与其他 handler 的 failResult 同语义,经 relayFailOutcome 统一
+	//(retryable 显式传入:自定义协议按业务错误分类决定可否重试)。
 	fail := func(status int, message string, body []byte, retryable bool) relayOutcome {
-		if retryable && !isLast {
-			return relayOutcome{committed: false, statusCode: status, errMsg: message}
-		}
-		record.StatusCode = status
-		record.Error = message
-		record.ErrorKind = ErrorKindUpstream
-		if body != nil {
-			writeUpstreamError(c, inputFormat, targetPlatform, status, body, contentTypeJSON)
-		} else {
+		return relayFailOutcome(record, isLast, retryable, status, message, func() {
+			if body != nil {
+				writeUpstreamError(c, inputFormat, targetPlatform, status, body, contentTypeJSON)
+				return
+			}
 			writeProtocolError(c, inputFormat, &relay.MaheshvaraError{Class: relay.ErrorClassUpstream, Status: status, Message: message})
-		}
-		return relayOutcome{committed: true, statusCode: status, errMsg: message}
+		})
 	}
 	// 仅在 committed 时记录 usage；未提交（将要重试）时不记录，
 	// 由最终成功/失败的那次尝试统一记录。
@@ -195,9 +190,7 @@ func (s *Server) handleCustomNormal(
 	if maheshvaraResponse.Model == "" {
 		maheshvaraResponse.Model = selectedModel.Name
 	}
-	updateRecordUsageFromMaheshvara(record, maheshvaraResponse.Usage)
-	applyLocalResponseEstimate(record, extractOutputTextFromMaheshvaraResponse(maheshvaraResponse), s.config.GetUsageConfig())
-	s.adjustTokenUsage(group.ID, getInt(record.Usage.TotalTokens), startTime.Format("2006-01-02"))
+	s.settleMaheshvaraUsage(group, record, startTime, maheshvaraResponse)
 	output, err := render(maheshvaraResponse)
 	if err != nil {
 		result = fail(http.StatusInternalServerError, fmt.Sprintf("failed to render %s: %v", renderErrLabel, err), nil, false)
