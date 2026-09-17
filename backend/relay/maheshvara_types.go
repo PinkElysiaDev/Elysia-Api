@@ -898,3 +898,16 @@ func contentValueToString(value any) string {
 func newMaheshvaraResponseID(prefix string) string {
 	return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
 }
+
+// toolOutputsText 拼接消息里 tool_output parts 的载荷(工具结果的纯文本
+// 形态)。Chat role:"tool" 消息解析后 content 即单个 tool_output part,
+// maheshvaraText 只认 text part,需经此取回。
+func toolOutputsText(content []MaheshvaraContentPart) string {
+	var builder strings.Builder
+	for _, part := range content {
+		if part.Type == MaheshvaraContentToolOutput && part.ToolOutput != "" {
+			builder.WriteString(part.ToolOutput)
+		}
+	}
+	return builder.String()
+}

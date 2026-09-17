@@ -650,7 +650,7 @@ func MaheshvaraToOpenAIResponses(req *MaheshvaraRequest, original *OpenAIRespons
 		out["tools"] = maheshvaraToolsToResponses(req.Tools)
 	}
 	if req.ToolChoice != nil {
-		out["tool_choice"] = maheshvaraToolChoiceToOpenAI(req.ToolChoice)
+		out["tool_choice"] = maheshvaraToolChoiceToResponses(req.ToolChoice)
 	}
 	if req.ParallelToolCalls != nil {
 		out["parallel_tool_calls"] = *req.ParallelToolCalls
@@ -2003,13 +2003,32 @@ func maheshvaraInputToResponses(req *MaheshvaraRequest) any {
 			continue
 		case "tool", "function":
 			callID := strings.TrimSpace(msg.ToolCallID)
-			output := maheshvaraText(msg.Content)
+			// Chat 的 tool 消息经解析后 content 是 tool_output part(载荷在
+			// ToolOutput 字段),maheshvaraText 只认 text part 会得到空串。
+			output := firstNonEmptyString(maheshvaraText(msg.Content), toolOutputsText(msg.Content))
 			if callID == "" {
 				items = append(items, map[string]any{"role": "user", "content": []map[string]any{{"type": "input_text", "text": fmt.Sprintf("[tool_output_missing_call_id] %s", output)}}})
 				continue
 			}
 			items = append(items, map[string]any{"type": "function_call_output", "call_id": callID, "output": output})
 			continue
+		}
+
+		// Claude tool_result / Gemini functionResponse 解析进 user 角色消息的
+		// tool_output part:Responses 的配对靠 call_id(不挑角色),在进入
+		// content 转换前先抽出(该转换的 switch 无 ToolOutput 分支,否则被丢)。
+		for _, part := range msg.Content {
+			if part.Type != MaheshvaraContentToolOutput {
+				continue
+			}
+			callID := strings.TrimSpace(part.ToolCallID)
+			if callID == "" {
+				callID = strings.TrimSpace(msg.ToolCallID)
+			}
+			if callID == "" {
+				continue
+			}
+			items = append(items, map[string]any{"type": "function_call_output", "call_id": callID, "output": firstNonEmptyString(part.ToolOutput, "")})
 		}
 
 		content := maheshvaraContentToResponsesInputContent(role, msg.Content)
@@ -2284,7 +2303,10 @@ func maheshvaraToolsToGemini(tools []MaheshvaraTool) ([]map[string]any, error) {
 func maheshvaraToolsToResponses(tools []MaheshvaraTool) []map[string]any {
 	out := make([]map[string]any, 0, len(tools))
 	for _, tool := range tools {
-		if tool.Raw != nil {
+		// Raw 仅当其已是 Responses 扁平函数形状(Responses 客户端同线解析产物,
+		// 可能携带 strict 等扩展字段)时透传;Chat/Claude/Gemini 源形状(嵌套
+		// function / input_schema / 无 type)必须经类型化字段重建,否则上游 400。
+		if tool.Raw != nil && isResponsesFunctionShape(tool.Raw) {
 			out = append(out, tool.Raw)
 			continue
 		}
@@ -2818,6 +2840,14 @@ func OpenAIResponsesResponseToMaheshvara(resp *OpenAIResponsesResponse) (*Mahesh
 		IncompleteDetails: resp.IncompleteDetails,
 		Metadata:          resp.Metadata,
 		ServiceTier:       resp.ServiceTier,
+	}
+	// 输出含 function_call 即工具轮:置 StopReason=tool_calls,否则经
+	// maheshvaraStopTo* 塌缩成 stop/end_turn,依赖 finish 信号的客户端漏调度。
+	for _, item := range resp.Output {
+		if item.Type == "function_call" {
+			out.StopReason = "tool_calls"
+			break
+		}
 	}
 	if resp.Error != nil {
 		if object := mapValue(resp.Error); object != nil {
@@ -3629,4 +3659,16 @@ func jsonRawToAny(raw json.RawMessage) any {
 		return out
 	}
 	return map[string]any{}
+}
+
+// isResponsesFunctionShape 判断工具 Raw 是否已是 Responses 的扁平函数形状
+// ({type:"function", name, ...} 且无 Chat 的嵌套 function 键)。
+func isResponsesFunctionShape(raw map[string]any) bool {
+	if stringValue(raw["type"]) != MaheshvaraToolFunction {
+		return false
+	}
+	if _, nested := raw["function"]; nested {
+		return false
+	}
+	return strings.TrimSpace(stringValue(raw["name"])) != ""
 }

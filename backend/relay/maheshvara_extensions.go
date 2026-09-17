@@ -596,6 +596,70 @@ func maheshvaraToolChoiceToOpenAI(value any) any {
 	return value
 }
 
+// maheshvaraToolChoiceToResponses 把各源协议的 tool_choice 归一化为
+// Responses 的形状:字符串 auto/none/required 直通;指定工具用 Responses 的
+// 扁平 {type:"function",name}(Chat 用嵌套 {type,function:{name}},两者不通用);
+// Gemini 的 allowedFunctionNames 仅单名时可精确指定,多名时降级 required。
+func maheshvaraToolChoiceToResponses(value any) any {
+	if object, ok := value.(map[string]any); ok {
+		if config, ok := object["functionCallingConfig"].(map[string]any); ok {
+			mode := strings.ToLower(strings.TrimSpace(stringValue(config["mode"])))
+			normalized := "auto"
+			switch mode {
+			case "any", "required":
+				normalized = "required"
+			case "none":
+				normalized = "none"
+			}
+			var names []string
+			if raw, ok := config["allowedFunctionNames"].([]any); ok {
+				for _, item := range raw {
+					if s := stringValue(item); s != "" {
+						names = append(names, s)
+					}
+				}
+			} else if raw, ok := config["allowedFunctionNames"].([]string); ok {
+				names = raw
+			}
+			if len(names) == 1 {
+				return map[string]any{"type": "function", "name": names[0]}
+			}
+			return normalized
+		}
+		if function, ok := object["function"].(map[string]any); ok {
+			if name := stringValue(function["name"]); name != "" {
+				return map[string]any{"type": "function", "name": name}
+			}
+		}
+		choiceType := strings.ToLower(strings.TrimSpace(stringValue(object["type"])))
+		name := stringValue(object["name"])
+		switch choiceType {
+		case "auto":
+			return "auto"
+		case "none":
+			return "none"
+		case "any", "required":
+			return "required"
+		case "tool", "function":
+			if name != "" {
+				return map[string]any{"type": "function", "name": name}
+			}
+		}
+		// 已是 Responses 扁平形状则透传。
+		if choiceType == "function" || choiceType == "" {
+			return value
+		}
+	}
+	choice := strings.ToLower(strings.TrimSpace(stringValue(value)))
+	switch choice {
+	case "any", "required":
+		return "required"
+	case "none", "auto":
+		return choice
+	}
+	return value
+}
+
 func claudeDocumentBlockToPart(block map[string]any) MaheshvaraContentPart {
 	part := MaheshvaraContentPart{Type: MaheshvaraContentDocument, Raw: block}
 	if source, ok := block["source"].(map[string]any); ok {

@@ -65,7 +65,11 @@ func DetectPlatform(baseURL, platform string) Platform {
 	// 首先检查明确的 platform / apiFormat 字段。
 	// 同时识别新的 apiFormat 值（responses/chat_completions）与旧值（openai 等）。
 	switch strings.ToLower(strings.TrimSpace(platform)) {
-	case "openai", "chat_completions", "responses", "openai_responses", "openai-compatible":
+	case "responses", "openai_responses":
+		// Responses 型上游是独立线路:请求/响应走 Responses 协议端点
+		//(TargetFormatForPlatform 映射 FormatResponses),不并入 OpenAI 系。
+		return Platform("responses")
+	case "openai", "chat_completions", "openai-compatible":
 		return PlatformOpenAI
 	case "deepseek":
 		return PlatformDeepSeek
@@ -110,6 +114,12 @@ func CustomProtocolID(platform Platform) string {
 }
 
 func TargetFormatForPlatform(platform Platform) (FormatType, error) {
+	// responses 线路(apiFormat=responses 的模型源)原生走 Responses 协议,
+	// 而非静默降级为 Chat Completions——跨协议客户端的工具定义/结果回传
+	// 经 Maheshvara 转换内核在两条线制间等价互转。
+	if platform == Platform("responses") {
+		return FormatResponses, nil
+	}
 	if IsCustomPlatform(platform) {
 		return FormatUnknown, fmt.Errorf("custom platform %q requires a registered protocol renderer", platform)
 	}

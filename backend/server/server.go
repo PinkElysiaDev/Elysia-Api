@@ -683,6 +683,47 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 	// 2) 再按 inputFormat 渲染客户端响应
 	// 这样输入协议与下游平台彻底解耦，避免协议错配。
 	switch targetPlatform {
+	case relay.Platform("responses"):
+		// responses 型上游(apiFormat=responses):请求体已是 Responses 形状
+		//(TargetFormatForPlatform 返回 FormatResponses),响应经 Responses 解析
+		//器进 Maheshvara 后按客户端线制渲染。
+		responsesResp, respBody, upstreamStatus, err := s.openaiAdapter.SendResponsesRawWithBody(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
+		record.ProviderResponse = record.sanitizeBody(respBody)
+		if err != nil {
+			status := upstreamStatus
+			if status <= 0 {
+				status = http.StatusBadGateway
+			}
+			result = failResult(status, err.Error(), respBody, contentTypeJSON)
+			return result
+		}
+		maheshvaraResp, maheshvaraErr := relay.OpenAIResponsesResponseToMaheshvara(responsesResp)
+		if maheshvaraErr != nil {
+			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to convert Responses payload: %v", maheshvaraErr), nil, "")
+			return result
+		}
+		record.ConversionChain = append(record.ConversionChain, "openai_responses_response")
+		updateRecordUsageFromMaheshvara(record, maheshvaraResp.Usage)
+		applyLocalResponseEstimate(record, extractOutputTextFromMaheshvaraResponse(maheshvaraResp), s.config.GetUsageConfig())
+		actualTokens := getInt(record.Usage.TotalTokens)
+		s.adjustTokenUsage(group.ID, actualTokens)
+
+		if maheshvaraResp.Error != nil {
+			mErr := maheshvaraResp.Error
+			mErr.Class = mErr.Class.OrDefault()
+			result = failResult(mErr.EffectiveStatus(), mErr.Message, nil, "")
+			return result
+		}
+		record.StatusCode = http.StatusOK
+		output, renderErr := renderMaheshvaraChatResponse(maheshvaraResp, inputFormat)
+		if renderErr != nil {
+			result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to render Maheshvara response: %v", renderErr), nil, "")
+			return result
+		}
+		c.JSON(200, output)
+		result = relayOutcome{committed: true, statusCode: 200}
+		return result
+
 	case relay.PlatformAnthropic:
 		httpResp, err := s.claudeAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody, false)
 		if err != nil {
@@ -896,6 +937,20 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 	var forwardErr error
 
 	switch targetPlatform {
+	case relay.Platform("responses"):
+		resp, err := s.openaiAdapter.SendResponsesStream(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
+		if err != nil {
+			log.Printf("Error forwarding Responses stream request: %v", err)
+			result = failResult(upstreamErrorStatus(err, http.StatusBadGateway), fmt.Sprintf("Failed to forward request: %v", err), upstreamErrorBody(err))
+			return result
+		}
+
+		startSSE()
+		record.StatusCode = http.StatusOK
+		observeUpstreamUsage(resp, record, targetPlatform)
+
+		forwardErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatResponses, inputFormat, writer, selectedModel.Name)
+
 	case relay.PlatformAnthropic:
 		httpResp, err := s.claudeAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody, true)
 		if err != nil {
