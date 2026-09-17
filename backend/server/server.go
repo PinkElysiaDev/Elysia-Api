@@ -706,7 +706,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		updateRecordUsageFromMaheshvara(record, maheshvaraResp.Usage)
 		applyLocalResponseEstimate(record, extractOutputTextFromMaheshvaraResponse(maheshvaraResp), s.config.GetUsageConfig())
 		actualTokens := getInt(record.Usage.TotalTokens)
-		s.adjustTokenUsage(group.ID, actualTokens)
+		s.adjustTokenUsage(group.ID, actualTokens, startTime.Format("2006-01-02"))
 
 		if maheshvaraResp.Error != nil {
 			mErr := maheshvaraResp.Error
@@ -751,7 +751,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
 		applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(targetPlatform, "", respBody), s.config.GetUsageConfig())
 		actualTokens := getInt(record.Usage.TotalTokens)
-		s.adjustTokenUsage(group.ID, actualTokens)
+		s.adjustTokenUsage(group.ID, actualTokens, startTime.Format("2006-01-02"))
 
 		maheshvaraResp, maheshvaraErr := relay.AnthropicResponseToMaheshvara(&claudeResp)
 		if maheshvaraErr != nil {
@@ -809,7 +809,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
 		applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(targetPlatform, "", respBody), s.config.GetUsageConfig())
 		actualTokens := getInt(record.Usage.TotalTokens)
-		s.adjustTokenUsage(group.ID, actualTokens)
+		s.adjustTokenUsage(group.ID, actualTokens, startTime.Format("2006-01-02"))
 
 		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
 
@@ -852,7 +852,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		applyProviderUsageToRecord(record, extractProviderUsageFromBody(targetPlatform, "", respBody))
 		applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(targetPlatform, "", respBody), s.config.GetUsageConfig())
 		actualTokens := getInt(record.Usage.TotalTokens)
-		s.adjustTokenUsage(group.ID, actualTokens)
+		s.adjustTokenUsage(group.ID, actualTokens, startTime.Format("2006-01-02"))
 
 		s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
 
@@ -1035,7 +1035,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 	applyLocalResponseEstimate(record, writer.responseText.String(), s.config.GetUsageConfig())
 	// 流式成功路径同样累计日限额（与全部 8 条非流式/自定义路径对齐；
 	// 漏记会让 DailyLimitMaxTokens 对流式客户端形同虚设）。
-	s.adjustTokenUsage(group.ID, getInt(record.Usage.TotalTokens))
+	s.adjustTokenUsage(group.ID, getInt(record.Usage.TotalTokens), startTime.Format("2006-01-02"))
 	s.logDebug("Stream request completed in %dms", time.Since(startTime).Milliseconds())
 	result = relayOutcome{committed: true, statusCode: record.StatusCode}
 	return result
@@ -1201,6 +1201,10 @@ func (s *Server) acquireRateLimit(group *config.ModelGroupConfig, estimatedToken
 	if estimatedTokens > 0 {
 		state.Tokens += estimatedTokens
 	}
+	// 捕获 acquire 当日日期:午夜翻转后 state 的 Requests/Tokens 已被清零,
+	// 在途请求的结算若仍作用于新一天,会把新一天的预留/计数一并抹掉
+	// (Tokens 减成负数被钳 0)或把旧一天消耗计入新一天。
+	acquiredDate := state.Date
 
 	// release 是单一的「结算点」：无论成功还是失败，都释放一个在途计数并
 	// 退还本次预留的 estimatedTokens。实际消耗由成功路径的 adjustTokenUsage
@@ -1219,7 +1223,8 @@ func (s *Server) acquireRateLimit(group *config.ModelGroupConfig, estimatedToken
 		if current.Active > 0 {
 			current.Active--
 		}
-		if estimatedTokens > 0 {
+		if estimatedTokens > 0 && current.Date == acquiredDate {
+			// 跨日:旧一天的预留直接丢弃,不减新一天的计数。
 			current.Tokens -= estimatedTokens
 			if current.Tokens < 0 {
 				current.Tokens = 0
@@ -1230,8 +1235,9 @@ func (s *Server) acquireRateLimit(group *config.ModelGroupConfig, estimatedToken
 
 // adjustTokenUsage 在请求成功并拿到实际 token 数后，把实际消耗累加到每日计数。
 // 预留额度的退还由 acquireRateLimit 返回的 release 闭包统一负责，因此这里只加
-// 实际值、不再二次扣减预留。
-func (s *Server) adjustTokenUsage(groupID string, actualTokens int) {
+// 实际值、不再二次扣减预留。settledOn 为请求开始（acquire）所在日期:跨日的
+// 在途请求其实际消耗计入旧一天=直接丢弃,不污染新一天的计数。
+func (s *Server) adjustTokenUsage(groupID string, actualTokens int, settledOn string) {
 	if actualTokens <= 0 {
 		return
 	}
@@ -1239,6 +1245,9 @@ func (s *Server) adjustTokenUsage(groupID string, actualTokens int) {
 	defer s.rateLimitMu.Unlock()
 
 	state := s.getOrCreateRateLimitStateLocked(groupID)
+	if settledOn != "" && state.Date != settledOn {
+		return // 已跨日:丢弃(计入旧一天等价于不写)。
+	}
 	state.Tokens += actualTokens
 	if state.Tokens < 0 {
 		state.Tokens = 0

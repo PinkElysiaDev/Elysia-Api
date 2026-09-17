@@ -84,6 +84,10 @@ type customPathToken struct {
 	index *int
 }
 
+// customPathMaxIndex 限制 fieldMappings 目标路径中的数组下标:
+// setCustomPathValue 按需填充 nil 至目标下标,无界索引可在首个响应时 OOM。
+const customPathMaxIndex = 4096
+
 func parseCustomPath(path string) ([]customPathToken, error) {
 	path = strings.TrimSpace(path)
 	path = strings.TrimPrefix(path, "$")
@@ -328,6 +332,13 @@ func validateCustomResponseTarget(path string) error {
 	}
 	if tokens[0].index != nil {
 		return fmt.Errorf("target must start with a Maheshvara response field")
+	}
+	// 数组下标上限:setCustomPathValue 会按需填充 nil 到目标下标,无界索引
+	// (如 output[2000000000])在首个上游响应映射时即 OOM。
+	for _, token := range tokens {
+		if token.index != nil && *token.index > customPathMaxIndex {
+			return fmt.Errorf("array index %d exceeds the limit %d in target %q", *token.index, customPathMaxIndex, path)
+		}
 	}
 	switch tokens[0].name {
 	case "id", "model", "created_at", "status", "stop_reason", "incomplete_details", "metadata", "service_tier", "system_fingerprint", "output", "usage", "error":

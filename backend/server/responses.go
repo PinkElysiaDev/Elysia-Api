@@ -194,7 +194,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 		updateRecordUsageFromMaheshvara(record, maheshvaraResp.Usage)
 		applyLocalResponseEstimate(record, extractOutputTextFromMaheshvaraResponse(maheshvaraResp), s.config.GetUsageConfig())
 		actualTokens := getInt(record.Usage.TotalTokens)
-		s.adjustTokenUsage(group.ID, actualTokens)
+		s.adjustTokenUsage(group.ID, actualTokens, startTime.Format("2006-01-02"))
 		record.StatusCode = http.StatusOK
 		c.Data(http.StatusOK, contentTypeJSON, respBody)
 		result = relayOutcome{committed: true, statusCode: http.StatusOK}
@@ -274,7 +274,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 	updateRecordUsageFromMaheshvara(record, maheshvaraResp.Usage)
 	applyLocalResponseEstimate(record, extractOutputTextFromMaheshvaraResponse(maheshvaraResp), s.config.GetUsageConfig())
 	actualTokens := getInt(record.Usage.TotalTokens)
-	s.adjustTokenUsage(group.ID, actualTokens)
+	s.adjustTokenUsage(group.ID, actualTokens, startTime.Format("2006-01-02"))
 
 	responsesResp, err := relay.MaheshvaraToOpenAIResponsesResponse(maheshvaraResp)
 	if err != nil {
@@ -433,7 +433,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 
 	applyLocalResponseEstimate(record, writer.responseText.String(), s.config.GetUsageConfig())
 	actualTokens := getInt(record.Usage.TotalTokens)
-	s.adjustTokenUsage(group.ID, actualTokens)
+	s.adjustTokenUsage(group.ID, actualTokens, startTime.Format("2006-01-02"))
 	// SSE 已开始即无法再改 HTTP 状态码/换上游，本次必然提交（无论流中途是否出错）。
 	result = relayOutcome{committed: true, statusCode: record.StatusCode}
 	return result

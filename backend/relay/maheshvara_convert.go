@@ -65,6 +65,12 @@ func OpenAIChatToMaheshvara(body []byte) (*MaheshvaraRequest, error) {
 
 	if v, ok := numberValue(raw["max_completion_tokens"]); ok {
 		req.MaxOutputTokens = int(v)
+		// 记录原始字段名:出口按原字段回写——o 系列/gpt-5 等新模型严格拒绝
+		// max_tokens,降级书写会让这类上游 400。
+		if req.RawExtra == nil {
+			req.RawExtra = map[string]json.RawMessage{}
+		}
+		req.RawExtra["max_tokens_field"] = json.RawMessage(`"max_completion_tokens"`)
 	} else if v, ok := numberValue(raw["max_tokens"]); ok {
 		req.MaxOutputTokens = int(v)
 	}
@@ -294,7 +300,11 @@ func MaheshvaraToOpenAIChat(req *MaheshvaraRequest) ([]byte, error) {
 		"messages": maheshvaraMessagesToOpenAI(req),
 	}
 	if req.MaxOutputTokens > 0 {
-		out["max_tokens"] = req.MaxOutputTokens
+		field := "max_tokens"
+		if raw, ok := req.RawExtra["max_tokens_field"]; ok && strings.TrimSpace(string(raw)) == `"max_completion_tokens"` {
+			field = "max_completion_tokens"
+		}
+		out[field] = req.MaxOutputTokens
 	}
 	if req.Temperature != nil {
 		out["temperature"] = *req.Temperature
@@ -1446,6 +1456,28 @@ func maheshvaraMessagesToOpenAI(req *MaheshvaraRequest) []map[string]any {
 			if msg.CacheControl != nil {
 				out["cache_control"] = msg.CacheControl
 			}
+			// assistant 历史的消息级 audio 回写:解析时 audio 进 content parts,
+			// 读 message.audio 的客户端(而非 content 数组)需要原位对象。
+			if msg.Role == "assistant" {
+				for _, part := range visibleParts {
+					if part.Type == MaheshvaraContentAudio && part.AudioBase64 != "" {
+						audio := map[string]any{"data": part.AudioBase64}
+						if part.MediaType != "" {
+							audio["format"] = part.MediaType
+						}
+						if raw := mapValue(part.Raw); raw != nil {
+							if id := stringValue(raw["id"]); id != "" {
+								audio["id"] = id
+							}
+							if transcript := stringValue(raw["transcript"]); transcript != "" {
+								audio["transcript"] = transcript
+							}
+						}
+						out["audio"] = audio
+						break
+					}
+				}
+			}
 			if msg.ToolCallID != "" {
 				out["tool_call_id"] = msg.ToolCallID
 			}
@@ -2423,7 +2455,18 @@ func extractGeminiSystemInstruction(raw any) string {
 	if m == nil {
 		return ""
 	}
-	return extractTextFromContent(m["parts"])
+	// Gemini 的 Part 没有 type 判别字段(与 Claude content block 不同),
+	// extractTextFromContent 按 type=="text" 过滤会全部落空,需直接取 text 键。
+	parts, _ := m["parts"].([]any)
+	var builder strings.Builder
+	for _, part := range parts {
+		if partMap, ok := part.(map[string]any); ok {
+			if text, ok := partMap["text"].(string); ok {
+				builder.WriteString(text)
+			}
+		}
+	}
+	return builder.String()
 }
 
 func stringValue(v any) string {

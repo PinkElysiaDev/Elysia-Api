@@ -78,7 +78,9 @@ func (s *Server) runRelayAttempts(
 			committed = true
 			// 成功（2xx）时记录渠道亲和性，让后续同 key+group 请求优先复用本模型。
 			if outcome.statusCode >= 200 && outcome.statusCode < 300 {
-				s.affinity.set(record.KeyHash, group.ID, selectedModel.Name, startTime)
+				// TTL 基准用完成时刻而非请求开始:长流式(>=TTL)以 startTime 计算的
+			// 粘连写入即过期,上游 prompt 缓存收益最大的场景反而拿不到粘连。
+			s.affinity.set(record.KeyHash, group.ID, selectedModel.Name, time.Now())
 			}
 			break
 		}

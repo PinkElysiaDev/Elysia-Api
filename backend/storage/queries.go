@@ -180,6 +180,16 @@ func (s *Store) UpsertGroup(ctx context.Context, item ModelGroup) error {
 	if strings.TrimSpace(item.Name) == "" {
 		return errors.New("group name is required")
 	}
+	// 组名唯一:findGroupByName 按名路由永远命中首个,同名第二组的配置
+	// (限流/候选)全部静默失效。
+	var conflictingID string
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM model_groups WHERE name = ? AND id <> ? LIMIT 1`, item.Name, item.ID).Scan(&conflictingID)
+	if err == nil {
+		return fmt.Errorf("group name %q already used by group %q", item.Name, conflictingID)
+	}
+	if err != sql.ErrNoRows {
+		return err
+	}
 	if item.Strategy == "" {
 		item.Strategy = "round-robin"
 	}
@@ -639,7 +649,10 @@ func saveUsageRecordTx(ctx context.Context, tx *sql.Tx, payload []byte, summary 
 }
 
 func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageLogItem, error) {
-	total, err := s.usageCount(ctx, q)
+	// logs 的 total 必须与 items 同口径(raw 行):rollup 计数包含已被 retention
+	// 清理的历史行,分页数会永久大于实际可翻页数(筛选旧窗口时 total>0 页空)。
+	// stats/trend 等聚合端点维持 rollup 口径不变。
+	total, err := usageCountRaw(ctx, s.db, q)
 	if err != nil {
 		return 0, nil, err
 	}

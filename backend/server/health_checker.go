@@ -131,6 +131,36 @@ func (h *healthChecker) runOnce() {
 		h.server.logWarnf("health check: failed to list models: %v", err)
 		return
 	}
+	// 探测凭据与热路径(route_cache)同源:models 行的 baseURL/apiKey 是保存
+	// 时刻的快照,源换 key/地址后探测打旧目标 → 连续 401/连不上 → 可服务
+	// 的模型被自动下线。此处按源级最新值覆盖(legacy 空 baseURL 源保留行内值)。
+	if sources, err := h.server.store.ListSources(ctx); err == nil {
+		type sourceIdentity struct{ baseURL, apiKey string }
+		identity := make(map[string]sourceIdentity, len(sources))
+		for _, source := range sources {
+			if source.BaseURL == "" {
+				continue
+			}
+			key := ""
+			if effective := source.EffectiveKeys(); len(effective) > 0 {
+				key = effective[0].Value
+			}
+			identity[source.ID] = sourceIdentity{baseURL: source.BaseURL, apiKey: key}
+		}
+		if len(identity) > 0 {
+			overlaid := make([]storage.Model, len(models))
+			for i, model := range models {
+				if id, ok := identity[model.SourceID]; ok {
+					model.BaseURL = id.baseURL
+					if id.apiKey != "" {
+						model.APIKey = id.apiKey
+					}
+				}
+				overlaid[i] = model
+			}
+			models = overlaid
+		}
+	}
 	h.pruneStaleFailureKeys(models)
 
 	changed := false
@@ -140,12 +170,12 @@ func (h *healthChecker) runOnce() {
 		ok := h.probe(context.Background(), model, cfg.TimeoutSeconds)
 		if h.recordProbeResult(model, ok, cfg.FailureThreshold) {
 			changed = true
+			// 状态翻转立即失效路由缓存:整轮探测(串行,每模型独立超时)可达
+			// 分钟级,推迟失效会让轮首被禁用的模型继续接流量。
+			h.server.invalidateRouteCache()
 		}
 	}
-	if changed {
-		// 可用性变更后失效路由缓存，让转发立即感知。
-		h.server.invalidateRouteCache()
-	}
+	_ = changed // 状态翻转已在循环内即时失效路由缓存
 }
 
 // record 根据探测结果更新连续失败计数，并在跨过阈值时切换 available 状态。

@@ -200,6 +200,12 @@ func (s *Server) expandCandidatesByKeyStrategy(candidates []config.ModelRef) []c
 	for _, candidate := range candidates {
 		clone := candidate
 		clone.APIKeys = nil
+		if len(candidate.APIKeys) == 0 {
+			// config 直配路径可能声明了策略但没配 apiKeys:索引/随机会 panic
+			// (rand.Intn(0)),回落单 key 原样。
+			expanded = append(expanded, clone)
+			continue
+		}
 		switch storage.SourceKeyStrategy(candidate.KeyStrategy) {
 		case storage.KeyStrategyPriority:
 			for _, key := range candidate.APIKeys {

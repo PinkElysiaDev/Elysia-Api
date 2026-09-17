@@ -219,6 +219,9 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]
 			event.ChoiceIndex = choiceIndex
 			event.RefusalDelta = refusal
 			events = append(events, event)
+			// 累计已下发的 refusal:上游末尾用 choices[].message 快照回传完整
+			// refusal 时,该守卫字段防止二次下发(此前从未赋值导致守卫恒假)。
+			decoder.openAIChoiceText[choiceIndex] += refusal
 		}
 		if details, ok := delta["reasoning_details"].([]any); ok {
 			for _, detailValue := range details {

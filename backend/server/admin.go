@@ -356,6 +356,11 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 		}
 		if found {
 			item.APIKey = existing.APIKey
+			// 多 key 池同理:部分更新式 PUT(不回传 apiKeys)会把整池清空
+			// (UpsertSource 空列表=清空),静默降级为单 key。
+			if len(item.APIKeys) == 0 {
+				item.APIKeys = existing.APIKeys
+			}
 		}
 	}
 	// 保存前预校验出站地址(请求与拉取都会走该地址):内网/云元数据目标
@@ -1176,11 +1181,11 @@ func usageQueryFromRequest(c *gin.Context) storage.UsageQuery {
 		ModelName:  c.Query("modelName"),
 		Status:     status,
 		StatusCode: parsePositiveInt(c.Query("statusCode"), 0),
-		KeyNames:   c.QueryArray("keyName"),
-		GroupNames: firstNonEmptyArray(c.QueryArray("groupName"), c.QueryArray("modelGroup")),
-		ModelNames: c.QueryArray("modelName"),
+		KeyNames:   compactQueryArray(c.QueryArray("keyName")),
+		GroupNames: compactQueryArray(firstNonEmptyArray(c.QueryArray("groupName"), c.QueryArray("modelGroup"))),
+		ModelNames: compactQueryArray(c.QueryArray("modelName")),
 		SourceID:   c.Query("sourceId"),
-		SourceIDs:  c.QueryArray("sourceId"),
+		SourceIDs:  compactQueryArray(c.QueryArray("sourceId")),
 	}
 }
 
@@ -1233,4 +1238,16 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// compactQueryArray 过滤空串元素:客户端带 ?keyName= 的空值参数时
+// QueryArray 返回 [""],IN ('') 会恒空结果(旧语义是空=不过滤)。
+func compactQueryArray(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }

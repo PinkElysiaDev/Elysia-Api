@@ -810,13 +810,18 @@ func interfaceToContentParts(content any) []MaheshvaraContentPart {
 			}
 		case "image_url", "input_image", "image":
 			url := ""
+			detail := ""
 			if imageURL, ok := m["image_url"].(map[string]any); ok {
 				url, _ = imageURL["url"].(string)
+				detail, _ = imageURL["detail"].(string)
 			}
 			if url == "" {
 				url, _ = m["image_url"].(string)
 			}
-			parts = append(parts, MaheshvaraContentPart{Type: MaheshvaraContentImage, ImageURL: url, Raw: m})
+			if detail == "" {
+				detail, _ = m["detail"].(string)
+			}
+			parts = append(parts, MaheshvaraContentPart{Type: MaheshvaraContentImage, ImageURL: url, Detail: detail, Raw: m})
 		case "input_audio", "audio", "audio_url", "output_audio":
 			nested, _ := m["input_audio"].(map[string]any)
 			if nested == nil {

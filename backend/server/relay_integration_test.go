@@ -340,7 +340,7 @@ func TestRateLimitSettlesToActualOnSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("acquire should succeed: %v", err)
 	}
-	s.adjustTokenUsage("g1", 320) // 拿到实际值后累加
+	s.adjustTokenUsage("g1", 320, "") // 拿到实际值后累加
 	release()                     // 退还预留
 
 	if got := s.rateLimits["g1"].Tokens; got != 320 {

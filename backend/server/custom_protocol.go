@@ -197,7 +197,7 @@ func (s *Server) handleCustomNormal(
 	}
 	updateRecordUsageFromMaheshvara(record, maheshvaraResponse.Usage)
 	applyLocalResponseEstimate(record, extractOutputTextFromMaheshvaraResponse(maheshvaraResponse), s.config.GetUsageConfig())
-	s.adjustTokenUsage(group.ID, getInt(record.Usage.TotalTokens))
+	s.adjustTokenUsage(group.ID, getInt(record.Usage.TotalTokens), startTime.Format("2006-01-02"))
 	output, err := render(maheshvaraResponse)
 	if err != nil {
 		result = fail(http.StatusInternalServerError, fmt.Sprintf("failed to render %s: %v", renderErrLabel, err), nil, false)

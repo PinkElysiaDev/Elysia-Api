@@ -242,8 +242,19 @@ func ValidateCustomProtocol(config CustomProtocolConfig) error {
 		return fmt.Errorf("custom protocol %q uses unsupported method %q", config.ID, method)
 	}
 	if template != "" {
+		// 校验一(空上下文):空值嵌 null 后的合法性(既有行为)。
 		if _, err := renderCustomTemplate(template, maheshvaraTemplateContext(&MaheshvaraRequest{}), nil); err != nil {
 			return fmt.Errorf("custom protocol %q has invalid body template: %w", config.ID, err)
+		}
+		// 校验二(非空示例值):空值以字符串嵌入时仍是合法 JSON 字符串,会
+		// 放过「引号内占位符+其它文本」的缺陷模板(运行时非空字符串裸嵌
+		// 进字符串字面量 → rendered body is not valid JSON,每请求必炸)。
+		sample := maheshvaraTemplateContext(&MaheshvaraRequest{
+			Model: "x", Instructions: "x", Stream: true,
+			Messages: []MaheshvaraMessage{{Role: "user", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "x"}}}},
+		})
+		if _, err := renderCustomTemplate(template, sample, nil); err != nil {
+			return fmt.Errorf("custom protocol %q body template fails with non-empty sample values (quoted placeholder mixed with literal text?): %w", config.ID, err)
 		}
 	}
 	for _, path := range omitIfEmpty {
@@ -605,7 +616,11 @@ func customProtocolResponseToMaheshvaraValidated(body []byte, config CustomProto
 func maheshvaraTemplateContext(req *MaheshvaraRequest) map[string]any {
 	encoded, _ := json.Marshal(req)
 	var value map[string]any
-	_ = json.Unmarshal(encoded, &value)
+	// UseNumber:数字以 json.Number 进入上下文,避免 >2^53 的整数(如 seed)
+	// 经 float64 中转丢精度、>=1e21 被改写成科学计数法文本。
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	_ = decoder.Decode(&value)
 	if value == nil {
 		value = map[string]any{}
 	}
@@ -716,7 +731,7 @@ func parseCustomExpression(expression string) (string, any, bool, error) {
 				continue
 			}
 			if err := json.Unmarshal([]byte(literal), &defaultValue); err != nil {
-				defaultValue = strings.Trim(literal, "\"")
+				defaultValue = strings.Trim(strings.Trim(literal, "\""), "'")
 			}
 		default:
 			return "", nil, false, fmt.Errorf("unsupported template option %q", option)
@@ -865,8 +880,15 @@ func customUsageAt(root any, path string) *MaheshvaraUsage {
 func customInt(object map[string]any, keys ...string) int {
 	for _, key := range keys {
 		if number, ok := object[key].(json.Number); ok {
-			value, _ := number.Int64()
-			return int(value)
+			// 合法 JSON Number 可能带小数尾缀/科学计数(Java/Python 服务常见
+			// 187.0 / 1e3):Int64 失败回落 Float64 取整,而不是把整个计数归零。
+			if value, err := number.Int64(); err == nil {
+				return int(value)
+			}
+			if f, err := number.Float64(); err == nil {
+				return int(f)
+			}
+			continue
 		}
 		if value, ok := numberValue(object[key]); ok {
 			return int(value)

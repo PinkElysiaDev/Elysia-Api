@@ -194,11 +194,18 @@ func extractTextFromContent(content interface{}) string {
 	}
 	if arr, ok := content.([]interface{}); ok {
 		var textBuilder strings.Builder
+		wrote := false
 		for _, item := range arr {
 			if itemMap, ok := item.(map[string]interface{}); ok {
 				if itemMap["type"] == "text" {
 					if text, ok := itemMap["text"].(string); ok {
+						// 块间补空行分隔:与 Responses 侧多 system 消息的连接
+						// 一致——直接拼接会把相邻块的词粘连。
+						if wrote {
+							textBuilder.WriteString("\n\n")
+						}
 						textBuilder.WriteString(text)
+						wrote = true
 					}
 				}
 			}
