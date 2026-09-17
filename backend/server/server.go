@@ -785,7 +785,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 	var forwardErr error
 
 	switch targetPlatform {
-	case relay.Platform("responses"):
+	case relay.PlatformResponses:
 		resp, err := s.openaiAdapter.SendResponsesStream(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
 		if err != nil {
 			log.Printf("Error forwarding Responses stream request: %v", err)
@@ -893,7 +893,7 @@ func streamYieldedNothing(record *usageRecord, writer *observingStreamWriter) bo
 	if writer.responseText.Len() > 0 {
 		return false
 	}
-	if getInt(record.Usage.TotalTokens) > 0 || getInt(record.Usage.OutputTokens) > 0 {
+	if derefInt(record.Usage.TotalTokens) > 0 || derefInt(record.Usage.OutputTokens) > 0 {
 		return false
 	}
 	return true

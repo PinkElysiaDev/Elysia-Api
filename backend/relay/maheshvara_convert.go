@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+// ConvertRequestToMaheshvara 按输入线制解析请求体进 Maheshvara 核心请求;
+// Responses 输入额外返回原生请求供同线回放。
 func ConvertRequestToMaheshvara(body []byte, format FormatType, urlModel string) (*MaheshvaraRequest, *OpenAIResponsesRequest, error) {
 	var req *MaheshvaraRequest
 	var original *OpenAIResponsesRequest
@@ -31,6 +33,8 @@ func ConvertRequestToMaheshvara(body []byte, format FormatType, urlModel string)
 
 }
 
+// MaheshvaraToTargetRequest 把核心请求渲染为目标线制请求体;
+// originalResponses 供 Responses 目标对原生输入项保真回放。
 func MaheshvaraToTargetRequest(req *MaheshvaraRequest, format FormatType, originalResponses *OpenAIResponsesRequest) ([]byte, error) {
 	switch format {
 	case FormatClaude:
@@ -44,6 +48,7 @@ func MaheshvaraToTargetRequest(req *MaheshvaraRequest, format FormatType, origin
 	}
 }
 
+// OpenAIChatToMaheshvara 解析 OpenAI Chat Completions 请求体。
 func OpenAIChatToMaheshvara(body []byte) (*MaheshvaraRequest, error) {
 	var raw map[string]any
 	if err := json.Unmarshal(body, &raw); err != nil {
@@ -125,6 +130,7 @@ func OpenAIChatToMaheshvara(body []byte) (*MaheshvaraRequest, error) {
 	return req, nil
 }
 
+// AnthropicToMaheshvara 解析 Anthropic Messages 请求体。
 func AnthropicToMaheshvara(body []byte) (*MaheshvaraRequest, error) {
 	var raw map[string]any
 	if err := json.Unmarshal(body, &raw); err != nil {
@@ -183,6 +189,7 @@ func AnthropicToMaheshvara(body []byte) (*MaheshvaraRequest, error) {
 	return req, nil
 }
 
+// GeminiToMaheshvara 解析 Gemini generateContent 请求体。
 func GeminiToMaheshvara(body []byte, urlModel string) (*MaheshvaraRequest, error) {
 	var raw map[string]any
 	if err := json.Unmarshal(body, &raw); err != nil {
@@ -243,6 +250,8 @@ func GeminiToMaheshvara(body []byte, urlModel string) (*MaheshvaraRequest, error
 	return req, nil
 }
 
+// OpenAIResponsesToMaheshvara 解析 Responses 请求体;同时返回
+// 原生请求供同线回放与转换回退。
 func OpenAIResponsesToMaheshvara(body []byte) (*MaheshvaraRequest, *OpenAIResponsesRequest, error) {
 	var req OpenAIResponsesRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -291,6 +300,7 @@ func OpenAIResponsesToMaheshvara(body []byte) (*MaheshvaraRequest, *OpenAIRespon
 	return maheshvara, &req, nil
 }
 
+// MaheshvaraToOpenAIChat 渲染 Chat Completions 请求体。
 func MaheshvaraToOpenAIChat(req *MaheshvaraRequest) ([]byte, error) {
 	if err := validateMaheshvaraRequestForTarget(req, FormatOpenAIChat); err != nil {
 		return nil, err
@@ -376,6 +386,7 @@ func MaheshvaraToOpenAIChat(req *MaheshvaraRequest) ([]byte, error) {
 	return json.Marshal(out)
 }
 
+// MaheshvaraToAnthropic 渲染 Anthropic Messages 请求体。
 func MaheshvaraToAnthropic(req *MaheshvaraRequest) ([]byte, error) {
 	if err := validateMaheshvaraRequestForTarget(req, FormatClaude); err != nil {
 		return nil, err
@@ -445,6 +456,7 @@ func MaheshvaraToAnthropic(req *MaheshvaraRequest) ([]byte, error) {
 	return json.Marshal(out)
 }
 
+// MaheshvaraToGemini 渲染 Gemini generateContent 请求体。
 func MaheshvaraToGemini(req *MaheshvaraRequest) ([]byte, error) {
 	if err := validateMaheshvaraRequestForTarget(req, FormatGemini); err != nil {
 		return nil, err
@@ -626,6 +638,7 @@ func NormalizeOpenAIToolCallIDs(body []byte) ([]byte, error) {
 	return json.Marshal(root)
 }
 
+// MaheshvaraToOpenAIResponses 渲染 Responses 请求体(工具为扁平形状)。
 func MaheshvaraToOpenAIResponses(req *MaheshvaraRequest, original *OpenAIResponsesRequest) ([]byte, error) {
 	if err := validateMaheshvaraRequestForTarget(req, FormatResponses); err != nil {
 		return nil, err
@@ -901,29 +914,7 @@ func parseClaudeMessages(raw any) []MaheshvaraMessage {
 					}
 					msg.Content = append(msg.Content, part)
 				case "thinking":
-					thinking := stringValue(bm["thinking"])
-					signature := stringValue(bm["signature"])
-					part := MaheshvaraContentPart{
-						Type:              MaheshvaraContentReasoning,
-						Text:              thinking,
-						ReasoningText:     thinking,
-						Signature:         signature,
-						SignatureProvider: MaheshvaraSignatureProviderAnthropic,
-						Raw:               bm,
-					}
-					if envelope, ok := decodeMaheshvaraReasoningEnvelope(signature); ok {
-						part.Signature = ""
-						part.SignatureProvider = MaheshvaraSignatureProviderMaheshvara
-						part.EncryptedContent = envelope.EncryptedContent
-						part.EncryptedProvider = envelope.Provider
-						part.EncryptedModel = envelope.Model
-						part.ReasoningSummary = envelope.Summary
-						if part.Text == "" {
-							part.Text = envelope.Text
-							part.ReasoningText = envelope.Text
-						}
-					}
-					if strings.TrimSpace(part.ReasoningText) != "" || part.EncryptedContent != "" {
+					if part, ok := claudeThinkingBlockToPart(bm); ok {
 						msg.Content = append(msg.Content, part)
 					}
 				case "image":
@@ -935,42 +926,13 @@ func parseClaudeMessages(raw any) []MaheshvaraMessage {
 				case "video":
 					msg.Content = append(msg.Content, claudeMediaBlockToPart(bm, MaheshvaraContentVideo))
 				case "tool_use":
-					inputRaw, _ := json.Marshal(bm["input"])
-					if len(inputRaw) == 0 || string(inputRaw) == "null" {
-						inputRaw = json.RawMessage([]byte("{}"))
-					}
-					msg.ToolCalls = append(msg.ToolCalls, MaheshvaraToolCall{
-						ID:            stringValue(bm["id"]),
-						Type:          MaheshvaraToolFunction,
-						Name:          stringValue(bm["name"]),
-						Arguments:     inputRaw,
-						ArgumentsText: string(inputRaw),
-						Raw:           bm,
-					})
+					msg.ToolCalls = append(msg.ToolCalls, claudeToolUseBlockToCall(bm))
 				case "tool_result":
-					msg.Content = append(msg.Content, MaheshvaraContentPart{
-						Type:       MaheshvaraContentToolOutput,
-						ToolCallID: stringValue(bm["tool_use_id"]),
-						ToolOutput: contentValueToString(bm["content"]),
-						Raw:        bm,
-					})
+					msg.Content = append(msg.Content, claudeToolResultBlockToPart(bm))
 				case "redacted_thinking":
-					// Only Maheshvara-owned envelopes are decoded. Arbitrary provider
-					// ciphertext remains filtered and never becomes prompt text.
-					if envelope, ok := decodeMaheshvaraReasoningEnvelope(stringValue(bm["data"])); ok {
-						msg.Content = append(msg.Content, MaheshvaraContentPart{
-							Type:              MaheshvaraContentReasoning,
-							Text:              envelope.Text,
-							ReasoningText:     envelope.Text,
-							SignatureProvider: MaheshvaraSignatureProviderMaheshvara,
-							EncryptedContent:  envelope.EncryptedContent,
-							EncryptedProvider: envelope.Provider,
-							EncryptedModel:    envelope.Model,
-							ReasoningSummary:  envelope.Summary,
-							Raw:               bm,
-						})
+					if part, ok := claudeRedactedThinkingBlockToPart(bm); ok {
+						msg.Content = append(msg.Content, part)
 					}
-					continue
 				default:
 					// Unknown blocks are kept verbatim as raw parts (never
 					// reinterpreted as prompt text): same-wire targets replay
@@ -1456,26 +1418,11 @@ func maheshvaraMessagesToOpenAI(req *MaheshvaraRequest) []map[string]any {
 			if msg.CacheControl != nil {
 				out["cache_control"] = msg.CacheControl
 			}
-			// assistant 历史的消息级 audio 回写:解析时 audio 进 content parts,
-			// 读 message.audio 的客户端(而非 content 数组)需要原位对象。
+			// assistant 历史的消息级 audio 回写:读 message.audio 的客户端
+			// (而非 content 数组)需要原位对象。
 			if msg.Role == "assistant" {
-				for _, part := range visibleParts {
-					if part.Type == MaheshvaraContentAudio && part.AudioBase64 != "" {
-						audio := map[string]any{"data": part.AudioBase64}
-						if part.MediaType != "" {
-							audio["format"] = part.MediaType
-						}
-						if raw := mapValue(part.Raw); raw != nil {
-							if id := stringValue(raw["id"]); id != "" {
-								audio["id"] = id
-							}
-							if transcript := stringValue(raw["transcript"]); transcript != "" {
-								audio["transcript"] = transcript
-							}
-						}
-						out["audio"] = audio
-						break
-					}
+				if audio := messageAudioField(visibleParts); audio != nil {
+					out["audio"] = audio
 				}
 			}
 			if msg.ToolCallID != "" {
@@ -1627,6 +1574,82 @@ func completeInputItemCallIDs(items []MaheshvaraInputItem) {
 
 // claudeImageBlockToPart 把 Claude image block（{"source":{...}}）解析为 maheshvara
 // image part：base64 source → ImageBase64+MediaType；url source → ImageURL。
+// claudeToolUseBlockToCall 把 tool_use 块转为核心工具调用(input 缺失
+// 归一为空对象,与严格上游的参数必填约定一致)。
+func claudeToolUseBlockToCall(bm map[string]any) MaheshvaraToolCall {
+	inputRaw, _ := json.Marshal(bm["input"])
+	if len(inputRaw) == 0 || string(inputRaw) == "null" {
+		inputRaw = json.RawMessage([]byte("{}"))
+	}
+	return MaheshvaraToolCall{
+		ID:            stringValue(bm["id"]),
+		Type:          MaheshvaraToolFunction,
+		Name:          stringValue(bm["name"]),
+		Arguments:     inputRaw,
+		ArgumentsText: string(inputRaw),
+		Raw:           bm,
+	}
+}
+
+// claudeToolResultBlockToPart 把 tool_result 块转为 tool_output part
+// (块结构化 content 拍平为字符串形态,Claude API 语义等价)。
+func claudeToolResultBlockToPart(bm map[string]any) MaheshvaraContentPart {
+	return MaheshvaraContentPart{
+		Type:       MaheshvaraContentToolOutput,
+		ToolCallID: stringValue(bm["tool_use_id"]),
+		ToolOutput: contentValueToString(bm["content"]),
+		Raw:        bm,
+	}
+}
+
+// claudeRedactedThinkingBlockToPart 只解 Maheshvara 自有信封:任意厂商
+// 密文保持过滤,绝不成为 prompt 文本。
+func claudeRedactedThinkingBlockToPart(bm map[string]any) (MaheshvaraContentPart, bool) {
+	envelope, ok := decodeMaheshvaraReasoningEnvelope(stringValue(bm["data"]))
+	if !ok {
+		return MaheshvaraContentPart{}, false
+	}
+	return MaheshvaraContentPart{
+		Type:              MaheshvaraContentReasoning,
+		Text:              envelope.Text,
+		ReasoningText:     envelope.Text,
+		SignatureProvider: MaheshvaraSignatureProviderMaheshvara,
+		EncryptedContent:  envelope.EncryptedContent,
+		EncryptedProvider: envelope.Provider,
+		EncryptedModel:    envelope.Model,
+		ReasoningSummary:  envelope.Summary,
+		Raw:               bm,
+	}, true
+}
+
+// claudeThinkingBlockToPart 解析 Claude thinking 块:原生签名回放给
+// Anthropic 同线,Maheshvara 信封解密为跨线密文形态;空思考不产生 part。
+func claudeThinkingBlockToPart(bm map[string]any) (MaheshvaraContentPart, bool) {
+	thinking := stringValue(bm["thinking"])
+	signature := stringValue(bm["signature"])
+	part := MaheshvaraContentPart{
+		Type:              MaheshvaraContentReasoning,
+		Text:              thinking,
+		ReasoningText:     thinking,
+		Signature:         signature,
+		SignatureProvider: MaheshvaraSignatureProviderAnthropic,
+		Raw:               bm,
+	}
+	if envelope, ok := decodeMaheshvaraReasoningEnvelope(signature); ok {
+		part.Signature = ""
+		part.SignatureProvider = MaheshvaraSignatureProviderMaheshvara
+		part.EncryptedContent = envelope.EncryptedContent
+		part.EncryptedProvider = envelope.Provider
+		part.EncryptedModel = envelope.Model
+		part.ReasoningSummary = envelope.Summary
+		if part.Text == "" {
+			part.Text = envelope.Text
+			part.ReasoningText = envelope.Text
+		}
+	}
+	return part, strings.TrimSpace(part.ReasoningText) != "" || part.EncryptedContent != ""
+}
+
 func claudeImageBlockToPart(bm map[string]any) MaheshvaraContentPart {
 	part := MaheshvaraContentPart{Type: MaheshvaraContentImage, Raw: bm}
 	src, _ := bm["source"].(map[string]any)
@@ -2227,6 +2250,37 @@ func refusalTextFromRaw(raw any) string {
 	return stringValue(m["text"])
 }
 
+// messageAudioField 从消息 parts 中取首个音频 part 组装 OpenAI 消息级
+// audio 对象(id/transcript 经 Raw 回放);无音频返回 nil。
+func messageAudioField(parts []MaheshvaraContentPart) map[string]any {
+	for _, part := range parts {
+		if part.Type != MaheshvaraContentAudio || part.AudioBase64 == "" {
+			continue
+		}
+		audio := map[string]any{"data": part.AudioBase64}
+		if part.MediaType != "" {
+			audio["format"] = part.MediaType
+		}
+		if raw := mapValue(part.Raw); raw != nil {
+			if id := stringValue(raw["id"]); id != "" {
+				audio["id"] = id
+			}
+			if transcript := stringValue(raw["transcript"]); transcript != "" {
+				audio["transcript"] = transcript
+			}
+		}
+		return audio
+	}
+	return nil
+}
+
+// functionToolFields 汇出函数工具在四线渲染间共享的字段集:schema 取
+// Parameters 与 InputSchema 的先见者(两键分别是 Chat/Gemini 与 Claude 的
+// 源键名),strict 透传三态。
+func functionToolFields(tool MaheshvaraTool) (name, description string, schema map[string]any, strict *bool) {
+	return tool.Name, tool.Description, firstNonNilMap(tool.Parameters, tool.InputSchema), tool.Strict
+}
+
 func maheshvaraToolsToOpenAI(tools []MaheshvaraTool) ([]map[string]any, error) {
 	var out []map[string]any
 	for _, tool := range tools {
@@ -2237,17 +2291,14 @@ func maheshvaraToolsToOpenAI(tools []MaheshvaraTool) ([]map[string]any, error) {
 			// 遗留工具由调用方按 functions 形态分流，此处跳过。
 			continue
 		}
-		parameters := tool.Parameters
-		if parameters == nil {
-			parameters = tool.InputSchema
-		}
+		name, description, parameters, strict := functionToolFields(tool)
 		function := map[string]any{
-			"name":        tool.Name,
-			"description": tool.Description,
+			"name":        name,
+			"description": description,
 			"parameters":  parameters,
 		}
-		if tool.Strict != nil {
-			function["strict"] = *tool.Strict
+		if strict != nil {
+			function["strict"] = *strict
 		}
 		out = append(out, map[string]any{
 			"type":     "function",
@@ -2279,17 +2330,14 @@ func maheshvaraToolsToClaude(tools []MaheshvaraTool) ([]map[string]any, error) {
 		if tool.Type != MaheshvaraToolFunction {
 			return nil, fmt.Errorf("builtin tool %q cannot be transformed to Claude messages", tool.Type)
 		}
-		inputSchema := tool.InputSchema
-		if inputSchema == nil {
-			inputSchema = tool.Parameters
-		}
+		name, description, inputSchema, strict := functionToolFields(tool)
 		item := map[string]any{
-			"name":         tool.Name,
-			"description":  tool.Description,
+			"name":         name,
+			"description":  description,
 			"input_schema": inputSchema,
 		}
-		if tool.Strict != nil {
-			item["strict"] = *tool.Strict
+		if strict != nil {
+			item["strict"] = *strict
 		}
 		if tool.CacheControl != nil {
 			item["cache_control"] = tool.CacheControl
@@ -2310,17 +2358,14 @@ func maheshvaraToolsToGemini(tools []MaheshvaraTool) ([]map[string]any, error) {
 			}
 			return nil, fmt.Errorf("builtin tool %q cannot be transformed to Gemini without a native definition", tool.Type)
 		}
-		parameters := tool.Parameters
-		if parameters == nil {
-			parameters = tool.InputSchema
-		}
+		name, description, parameters, strict := functionToolFields(tool)
 		declaration := map[string]any{
-			"name":        tool.Name,
-			"description": tool.Description,
+			"name":        name,
+			"description": description,
 			"parameters":  parameters,
 		}
-		if tool.Strict != nil {
-			declaration["strict"] = *tool.Strict
+		if strict != nil {
+			declaration["strict"] = *strict
 		}
 		declarations = append(declarations, declaration)
 	}
@@ -2632,6 +2677,7 @@ func maheshvaraReasoningToOpenAIDetails(parts []MaheshvaraContentPart) []map[str
 	return details
 }
 
+// OpenAIChatResponseToMaheshvara 把 Chat 响应转换为核心响应。
 func OpenAIChatResponseToMaheshvara(resp *OpenAIResponse) (*MaheshvaraResponse, error) {
 	if resp == nil {
 		return nil, fmt.Errorf("nil OpenAI response")
@@ -2710,6 +2756,7 @@ func OpenAIChatResponseToMaheshvara(resp *OpenAIResponse) (*MaheshvaraResponse, 
 	return out, nil
 }
 
+// AnthropicResponseToMaheshvara 把 Claude 响应转换为核心响应。
 func AnthropicResponseToMaheshvara(resp *ClaudeResponse) (*MaheshvaraResponse, error) {
 	if resp == nil {
 		return nil, fmt.Errorf("nil Claude response")
@@ -2795,6 +2842,7 @@ func AnthropicResponseToMaheshvara(resp *ClaudeResponse) (*MaheshvaraResponse, e
 	return out, nil
 }
 
+// GeminiResponseToMaheshvara 把 Gemini 响应转换为核心响应。
 func GeminiResponseToMaheshvara(resp *GeminiResponse) (*MaheshvaraResponse, error) {
 	if resp == nil {
 		return nil, fmt.Errorf("nil Gemini response")
@@ -2870,6 +2918,8 @@ func GeminiResponseToMaheshvara(resp *GeminiResponse) (*MaheshvaraResponse, erro
 	return out, nil
 }
 
+// OpenAIResponsesResponseToMaheshvara 把 Responses 响应转换为核心
+// 响应;输出含 function_call 时置 StopReason=tool_calls。
 func OpenAIResponsesResponseToMaheshvara(resp *OpenAIResponsesResponse) (*MaheshvaraResponse, error) {
 	if resp == nil {
 		return nil, fmt.Errorf("nil Responses response")

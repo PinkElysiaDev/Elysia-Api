@@ -212,7 +212,7 @@ func (s *Server) settleMaheshvaraUsage(group *config.ModelGroupConfig, record *u
 	}
 	updateRecordUsageFromMaheshvara(record, resp.Usage)
 	applyLocalResponseEstimate(record, extractOutputTextFromMaheshvaraResponse(resp), s.config.GetUsageConfig())
-	s.adjustTokenUsage(group.ID, getInt(record.Usage.TotalTokens), usageDayKey(startTime))
+	s.adjustTokenUsage(group.ID, derefInt(record.Usage.TotalTokens), usageDayKey(startTime))
 }
 
 // settleProviderBodyUsage 与 settleMaheshvaraUsage 同语义,供未经 Maheshvara
@@ -220,7 +220,7 @@ func (s *Server) settleMaheshvaraUsage(group *config.ModelGroupConfig, record *u
 func (s *Server) settleProviderBodyUsage(group *config.ModelGroupConfig, record *usageRecord, startTime time.Time, platform relay.Platform, respBody []byte) {
 	applyProviderUsageToRecord(record, extractProviderUsageFromBody(platform, "", respBody))
 	applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(platform, "", respBody), s.config.GetUsageConfig())
-	s.adjustTokenUsage(group.ID, getInt(record.Usage.TotalTokens), usageDayKey(startTime))
+	s.adjustTokenUsage(group.ID, derefInt(record.Usage.TotalTokens), usageDayKey(startTime))
 }
 
 // settleStreamUsage 是流式收尾结算:下游观察流已累计文本与 usage,此处补
@@ -228,6 +228,6 @@ func (s *Server) settleProviderBodyUsage(group *config.ModelGroupConfig, record 
 func (s *Server) settleStreamUsage(group *config.ModelGroupConfig, record *usageRecord, startTime time.Time) {
 	applyLocalResponseEstimate(record, "", s.config.GetUsageConfig())
 	if group != nil {
-		s.adjustTokenUsage(group.ID, getInt(record.Usage.TotalTokens), usageDayKey(startTime))
+		s.adjustTokenUsage(group.ID, derefInt(record.Usage.TotalTokens), usageDayKey(startTime))
 	}
 }

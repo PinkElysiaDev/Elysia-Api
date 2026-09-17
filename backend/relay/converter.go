@@ -10,6 +10,10 @@ type Platform string
 
 const (
 	PlatformOpenAI    Platform = "openai"
+	// PlatformResponses 是 responses 线路(apiFormat=responses 的模型源)的
+	// 独立平台值:请求/响应走 Responses 协议端点(区别于 APIFormatResponses
+	// 这个 apiFormat 字符串)。
+	PlatformResponses Platform = "responses"
 	PlatformDeepSeek  Platform = "deepseek"
 	PlatformAnthropic Platform = "anthropic"
 	PlatformGemini    Platform = "gemini"
@@ -68,7 +72,7 @@ func DetectPlatform(baseURL, platform string) Platform {
 	case "responses", "openai_responses":
 		// Responses 型上游是独立线路:请求/响应走 Responses 协议端点
 		//(TargetFormatForPlatform 映射 FormatResponses),不并入 OpenAI 系。
-		return Platform("responses")
+		return PlatformResponses
 	case "openai", "chat_completions", "openai-compatible":
 		return PlatformOpenAI
 	case "deepseek":
@@ -117,7 +121,7 @@ func TargetFormatForPlatform(platform Platform) (FormatType, error) {
 	// responses 线路(apiFormat=responses 的模型源)原生走 Responses 协议,
 	// 而非静默降级为 Chat Completions——跨协议客户端的工具定义/结果回传
 	// 经 Maheshvara 转换内核在两条线制间等价互转。
-	if platform == Platform("responses") {
+	if platform == PlatformResponses {
 		return FormatResponses, nil
 	}
 	if IsCustomPlatform(platform) {
