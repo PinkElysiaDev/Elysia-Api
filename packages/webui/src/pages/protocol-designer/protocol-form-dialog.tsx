@@ -24,16 +24,18 @@ import { useToast } from '@/components/ui/use-toast'
 import { api, ApiError } from '@/lib/api'
 import { useModels, useSources } from '@/lib/hooks'
 import type { CustomProtocolConfig, CustomProtocolSchema } from '@/lib/types'
+import { ModelsDiscoveryEditor } from './models-discovery-editor'
 import { PreviewTestPanel } from './preview-panel'
 import { RequestBuilder } from './request-builder'
 import { ResponseBodyTreeEditor } from './body-tree-editor'
 
-type EditorTab = 'basic' | 'request' | 'response' | 'test' | 'json'
+type EditorTab = 'basic' | 'request' | 'response' | 'models' | 'test' | 'json'
 
 const TAB_OPTIONS: { value: EditorTab; label: string }[] = [
   { value: 'basic', label: '基本信息' },
   { value: 'request', label: '请求' },
   { value: 'response', label: '响应' },
+  { value: 'models', label: '模型拉取' },
   { value: 'test', label: '预览与测试' },
   { value: 'json', label: 'JSON' },
 ]
@@ -225,8 +227,7 @@ export function ProtocolFormDialog({
                   fields={schema?.responseFields ?? []}
                   transforms={schema?.transforms ?? []}
                 />
-              </SettingSection>
-              <SettingSection
+              </SettingSection>              <SettingSection
                 title="流式映射（可选）"
                 action={
                   <Switch
@@ -326,6 +327,8 @@ export function ProtocolFormDialog({
               </SettingSection>
             </div>
           )}
+
+          {tab === 'models' && <ModelsDiscoveryEditor protocol={draft} onChange={setDraft} />}
 
           {tab === 'test' && (
             <PreviewTestPanel

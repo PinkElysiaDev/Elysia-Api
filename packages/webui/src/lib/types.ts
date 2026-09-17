@@ -476,7 +476,19 @@ export interface CustomProtocolStreamMapping {
   mode?: string
   doneValues?: string[]
   events?: string[]
+  /** 异构帧逐帧映射（声明后优先于 events 白名单） */
+  frames?: CustomProtocolStreamFrame[]
   response?: CustomProtocolResponse
+}
+
+/** 异构流的一类帧的映射规则：按事件名匹配，命中即用该帧自己的映射。 */
+export interface CustomProtocolStreamFrame {
+  /** SSE event 字段，缺省取 JSON type/event 字段 */
+  event: string
+  payloadPath?: string
+  response?: CustomProtocolResponse
+  /** 命中即判定流终态（response.completed / message_stop 型收尾） */
+  terminal?: boolean
 }
 
 /** 返回体构造树叶子的映射标注 */
@@ -533,6 +545,27 @@ export interface CustomProtocolRequest {
   omitIfEmpty?: string[]
 }
 
+/**
+ * 模型列表发现端点：声明后 custom:<id> 模型源可开启自动拉取。请求构造与
+ * 鉴权注入复用协议管线（auth 缺省继承 request.auth），响应以 listPath 定位
+ * 模型数组，idPath/namePath 在元素内取标识与展示名。
+ */
+export interface CustomProtocolModels {
+  /** 默认 GET，仅 GET/POST */
+  method?: string
+  /** 相对源 baseUrl 的路径，如 /v1/models */
+  path: string
+  headers?: Record<string, string>
+  query?: Record<string, string>
+  auth?: CustomProtocolAuth
+  /** 点路径到模型数组，如 data / output.models */
+  listPath: string
+  /** 元素内标识路径，默认 id */
+  idPath?: string
+  /** 元素内展示名路径 */
+  namePath?: string
+}
+
 export interface CustomProtocolConfig {
   id: string
   name?: string
@@ -540,6 +573,7 @@ export interface CustomProtocolConfig {
   type?: CustomProtocolType
   request: CustomProtocolRequest
   response?: CustomProtocolResponse
+  models?: CustomProtocolModels
   metadata?: Record<string, unknown>
 }
 

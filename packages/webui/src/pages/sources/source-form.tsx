@@ -267,11 +267,13 @@ export function SourceFormDialog({
       toast.error('请填写自定义协议 ID', '该 ID 必须与 config.json 的 customProtocols[].id 一致')
       return
     }
+    // 协议未声明模型发现配置时，custom 源强制手动模型（后端保存校验同样拒绝）。
+    const autoFetch = custom && !customDiscovery ? false : form.autoFetchModels
     // b 方案：手动模式 + 多 key 时，把「模型 ↔ key」选择编译为每个 key 的显式
     // allowedModels（无 nil 歧义）；单 key 或自动模式保持原值（自动模式的面板已
     // 直接编辑 allowedModels）。选择状态下标基于未过滤的原始数组，这里保持一致。
     let payloadKeys = (form.apiKeys ?? []).filter((k) => k.value.trim())
-    const manualMode = custom || !form.autoFetchModels
+    const manualMode = !autoFetch
     if (manualMode && payloadKeys.length > 1) {
       const allManual = form.manualModels ?? []
       for (const [index, model] of allManual.entries()) {
@@ -297,8 +299,8 @@ export function SourceFormDialog({
       const payload: ModelSource = {
         ...form,
         platform: custom ? (`custom:${protocolID}` as Platform) : form.platform,
-        autoFetchModels: custom ? false : form.autoFetchModels,
-        manualModels: custom || !form.autoFetchModels ? (form.manualModels ?? []).filter((m) => m.id || m.name) : [],
+        autoFetchModels: autoFetch,
+        manualModels: autoFetch ? [] : (form.manualModels ?? []).filter((m) => m.id || m.name),
         // 关闭「自定义模型拉取地址」时不提交地址（后端空值 = 跟随 baseUrl）。
         fetchBaseUrl: customFetchEnabled ? form.fetchBaseUrl?.trim() ?? '' : '',
         // key 始终走列表（配一个 key 即单 key）；空列表 = 无鉴权源。
@@ -340,6 +342,10 @@ export function SourceFormDialog({
   }
 
   const custom = isCustomPlatform(form.platform)
+  // 所选自定义协议是否声明了模型发现配置（models.path）——决定能否自动拉取。
+  const customDiscovery = custom
+    ? !!registeredProtocols.find((item) => item.id === customProtocolID(form.platform))?.config.models?.path
+    : false
   const selectedStrategy = form.keyStrategy ?? 'round-robin'
 
   // 弹窗打开即拉取已注册协议：自定义协议直接并入主协议下拉，无需二级选择。
@@ -402,12 +408,20 @@ export function SourceFormDialog({
               <Select
                 value={form.platform}
                 onValueChange={(value) =>
-                  setForm((previous) => ({
-                    ...previous,
-                    platform: value as Platform,
-                    // 自定义协议不走自动拉取（无标准模型列表端点）。
-                    ...(isCustomPlatform(value) ? { autoFetchModels: false } : {}),
-                  }))
+                  setForm((previous) => {
+                    const nextPlatform = value as Platform
+                    // 切到未声明模型发现的自定义协议时关闭自动拉取
+                    //（无标准模型列表端点，后端保存校验同样拒绝）。
+                    const nextCustom = isCustomPlatform(nextPlatform)
+                    const nextDiscovery = nextCustom
+                      ? !!registeredProtocols.find((item) => item.id === customProtocolID(nextPlatform))?.config.models?.path
+                      : false
+                    return {
+                      ...previous,
+                      platform: nextPlatform,
+                      ...(nextCustom && !nextDiscovery ? { autoFetchModels: false } : {}),
+                    }
+                  })
                 }
               >
                 <SelectTrigger>
@@ -556,7 +570,7 @@ export function SourceFormDialog({
               <label className="flex items-center gap-3">
                 <Switch
                   checked={form.autoFetchModels}
-                  disabled={custom}
+                  disabled={custom && !customDiscovery}
                   onCheckedChange={(v) => update('autoFetchModels', v)}
                 />
                 <span className="text-sm font-medium">自动拉取模型</span>
@@ -575,8 +589,8 @@ export function SourceFormDialog({
                   onChange={(e) => update('fetchBaseUrl', e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  仅用于拉取模型列表，请求转发仍走上方 API 地址；按所选协议的约定拼接路径（OpenAI 系补
-                  /models、Claude 补 /v1/models、Gemini 补 /v1beta/models），无需单独配置协议。
+                  仅用于拉取模型列表，请求转发仍走上方 API 地址；内置协议按约定拼接路径（OpenAI 系补
+                  /models、Claude 补 /v1/models、Gemini 补 /v1beta/models），自定义协议按协议「模型拉取」页签声明的路径拼接。
                 </p>
               </div>
             )}

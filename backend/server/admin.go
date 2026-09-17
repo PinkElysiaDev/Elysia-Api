@@ -409,11 +409,12 @@ func validateCustomSourceProtocol(item *storage.ModelSource) error {
 		return nil
 	}
 	protocolID := strings.TrimPrefix(platform, "custom:")
-	if _, ok := relay.GetCustomProtocol(protocolID); !ok {
+	protocol, ok := relay.GetCustomProtocol(protocolID)
+	if !ok {
 		return fmt.Errorf("custom protocol %q is not registered", protocolID)
 	}
-	if item.AutoFetchModels {
-		return fmt.Errorf("custom protocol sources require autoFetchModels=false and manualModels")
+	if item.AutoFetchModels && protocol.Models == nil {
+		return fmt.Errorf("custom protocol %q does not define model discovery (models.path/listPath); disable autoFetchModels or declare models discovery in the protocol designer", protocolID)
 	}
 	item.Platform = platform
 	return nil

@@ -30,7 +30,28 @@ type CustomProtocolConfig struct {
 	Type     string                 `json:"type,omitempty"`
 	Request  CustomProtocolRequest  `json:"request"`
 	Response CustomProtocolResponse `json:"response,omitempty"`
+	Models   *CustomProtocolModels  `json:"models,omitempty"`
 	Metadata map[string]any         `json:"metadata,omitempty"`
+}
+
+// CustomProtocolModels 声明该协议的模型列表发现端点：配置后 custom:<id> 模型源
+// 可开启自动拉取。请求构造与鉴权注入复用自定义协议管线，响应侧以 listPath
+// 定位模型数组，idPath/namePath 在每个元素内取标识与展示名。
+type CustomProtocolModels struct {
+	Method   string              `json:"method,omitempty"` // 默认 GET，仅 GET/POST
+	Path     string              `json:"path"`             // 必填，相对源 baseUrl
+	Headers  map[string]string   `json:"headers,omitempty"`
+	Query    map[string]string   `json:"query,omitempty"`
+	Auth     *CustomProtocolAuth `json:"auth,omitempty"` // 缺省复用 request.auth
+	ListPath string              `json:"listPath"`           // 必填，点路径到模型数组
+	IDPath   string              `json:"idPath,omitempty"`   // 元素内，默认 "id"
+	NamePath string              `json:"namePath,omitempty"` // 元素内
+}
+
+// CustomProtocolModelInfo 是发现端点解析出的单个模型标识。
+type CustomProtocolModelInfo struct {
+	ID   string
+	Name string
 }
 
 // 协议任务类型的内置约定。当前运行时中转只实现 LLM 语义；reranker/embedding
@@ -279,29 +300,12 @@ func ValidateCustomProtocol(config CustomProtocolConfig) error {
 	if err := validateCustomStringTemplate(config.Request.PathTemplate); err != nil {
 		return fmt.Errorf("custom protocol %q request.path: %w", config.ID, err)
 	}
-	for key, value := range config.Request.Headers {
-		if err := validateCustomStringTemplate(value); err != nil {
-			return fmt.Errorf("custom protocol %q request.headers[%q]: %w", config.ID, key, err)
-		}
+	if err := validateCustomHeaders(config.ID, "request.headers", config.Request.Headers); err != nil {
+		return err
 	}
 	for key, value := range config.Request.Query {
 		if err := validateCustomStringTemplate(value); err != nil {
 			return fmt.Errorf("custom protocol %q request.query[%q]: %w", config.ID, key, err)
-		}
-	}
-	for key := range config.Request.Headers {
-		name := strings.TrimSpace(key)
-		if name == "" {
-			return fmt.Errorf("custom protocol %q contains an empty header name", config.ID)
-		}
-		if !isValidCustomHeaderName(name) {
-			return fmt.Errorf("custom protocol %q contains invalid header name %q", config.ID, key)
-		}
-		if isProtectedCustomHeader(name) {
-			return fmt.Errorf("custom protocol %q header %q is managed by the relay; use request.auth", config.ID, key)
-		}
-		if strings.ContainsAny(config.Request.Headers[key], "\r\n") {
-			return fmt.Errorf("custom protocol %q header %q contains a line break", config.ID, key)
 		}
 	}
 	if contentType := strings.TrimSpace(config.Request.ContentType); contentType != "" && strings.ContainsAny(contentType, "\r\n") {
@@ -310,7 +314,84 @@ func ValidateCustomProtocol(config CustomProtocolConfig) error {
 	if err := validateCustomAuth(config.Request.Auth); err != nil {
 		return fmt.Errorf("custom protocol %q auth: %w", config.ID, err)
 	}
+	if err := validateCustomProtocolModels(config.ID, config.Models); err != nil {
+		return err
+	}
 	return validateCustomProtocolResponse(config.ID, "response", config.Response, true)
+}
+
+// validateCustomHeaders 校验一处自定义协议头的模板语法与保护头规则
+// (request.headers 与 models.headers 共用)。
+func validateCustomHeaders(configID, location string, headers map[string]string) error {
+	for key, value := range headers {
+		if err := validateCustomStringTemplate(value); err != nil {
+			return fmt.Errorf("custom protocol %q %s[%q]: %w", configID, location, key, err)
+		}
+	}
+	for key := range headers {
+		name := strings.TrimSpace(key)
+		if name == "" {
+			return fmt.Errorf("custom protocol %q contains an empty header name", configID)
+		}
+		if !isValidCustomHeaderName(name) {
+			return fmt.Errorf("custom protocol %q contains invalid header name %q", configID, key)
+		}
+		if isProtectedCustomHeader(name) {
+			return fmt.Errorf("custom protocol %q header %q is managed by the relay; use auth", configID, key)
+		}
+		if strings.ContainsAny(headers[key], "\r\n") {
+			return fmt.Errorf("custom protocol %q header %q contains a line break", configID, key)
+		}
+	}
+	return nil
+}
+
+func validateCustomProtocolModels(configID string, models *CustomProtocolModels) error {
+	if models == nil {
+		return nil
+	}
+	if strings.TrimSpace(models.Path) == "" {
+		return fmt.Errorf("custom protocol %q models.path is required", configID)
+	}
+	if err := validateCustomStringTemplate(models.Path); err != nil {
+		return fmt.Errorf("custom protocol %q models.path: %w", configID, err)
+	}
+	method := strings.ToUpper(strings.TrimSpace(models.Method))
+	switch method {
+	case "", http.MethodGet, http.MethodPost:
+	default:
+		return fmt.Errorf("custom protocol %q models method %q is unsupported (GET or POST)", configID, models.Method)
+	}
+	if err := validateCustomHeaders(configID, "models.headers", models.Headers); err != nil {
+		return err
+	}
+	for key, value := range models.Query {
+		if err := validateCustomStringTemplate(value); err != nil {
+			return fmt.Errorf("custom protocol %q models.query[%q]: %w", configID, key, err)
+		}
+	}
+	if models.Auth != nil {
+		if err := validateCustomAuth(*models.Auth); err != nil {
+			return fmt.Errorf("custom protocol %q models.auth: %w", configID, err)
+		}
+	}
+	if strings.TrimSpace(models.ListPath) == "" {
+		return fmt.Errorf("custom protocol %q models.listPath is required", configID)
+	}
+	if _, err := parseCustomPath(models.ListPath); err != nil {
+		return fmt.Errorf("custom protocol %q models.listPath: %w", configID, err)
+	}
+	if idPath := strings.TrimSpace(models.IDPath); idPath != "" {
+		if _, err := parseCustomPath(idPath); err != nil {
+			return fmt.Errorf("custom protocol %q models.idPath: %w", configID, err)
+		}
+	}
+	if namePath := strings.TrimSpace(models.NamePath); namePath != "" {
+		if _, err := parseCustomPath(namePath); err != nil {
+			return fmt.Errorf("custom protocol %q models.namePath: %w", configID, err)
+		}
+	}
+	return nil
 }
 
 func validateCustomProtocolResponse(configID, location string, response CustomProtocolResponse, allowStream bool) error {
@@ -469,6 +550,83 @@ func RenderRegisteredCustomProtocolRequest(req *MaheshvaraRequest, id string) (*
 	}
 	// 入注册表时已整体校验（校验含模板空渲染，代价不低），热路径不再重复。
 	return renderCustomProtocolRequest(req, config)
+}
+
+// RenderCustomProtocolModelsRequest 构造模型列表发现请求。发现端点没有请求
+// 上下文可渲染，占位符按空值处理；鉴权缺省继承 request.auth，可被 models.auth
+// 覆盖（如转发走 bearer、拉取走 query 的双面供应商）。
+func RenderCustomProtocolModelsRequest(config CustomProtocolConfig) (*CustomProtocolRequestResult, error) {
+	models := config.Models
+	if models == nil {
+		return nil, fmt.Errorf("custom protocol %q does not define model discovery", config.ID)
+	}
+	method := strings.ToUpper(strings.TrimSpace(models.Method))
+	if method == "" {
+		method = http.MethodGet
+	}
+	auth := config.Request.Auth
+	if models.Auth != nil {
+		auth = *models.Auth
+	}
+	empty := map[string]any{"maheshvara": map[string]any{}, "request": map[string]any{}}
+	result := &CustomProtocolRequestResult{
+		Method:      method,
+		Path:        renderCustomString(models.Path, empty),
+		Headers:     make(map[string]string, len(models.Headers)+1),
+		Query:       make(map[string]string, len(models.Query)),
+		ContentType: "application/json",
+		Auth:        auth,
+	}
+	for key, value := range models.Headers {
+		result.Headers[key] = renderCustomString(value, empty)
+	}
+	for key, value := range models.Query {
+		result.Query[key] = renderCustomString(value, empty)
+	}
+	if strings.ContainsAny(result.Path, "\r\n") {
+		return nil, fmt.Errorf("custom protocol %q rendered models path contains a line break", config.ID)
+	}
+	return result, nil
+}
+
+// ParseCustomProtocolModels 解析模型列表响应：listPath 定位数组，idPath/
+// namePath 在每个元素内取标识与展示名（缺省 id）。无 id 的元素跳过。
+func ParseCustomProtocolModels(body []byte, config CustomProtocolConfig) ([]CustomProtocolModelInfo, error) {
+	models := config.Models
+	if models == nil {
+		return nil, fmt.Errorf("custom protocol %q does not define model discovery", config.ID)
+	}
+	var raw any
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if err := decoder.Decode(&raw); err != nil {
+		return nil, fmt.Errorf("parse models response: %w", err)
+	}
+	list, ok := customLookupPath(raw, models.ListPath)
+	if !ok {
+		return nil, fmt.Errorf("models list path %q not found in response", models.ListPath)
+	}
+	items, ok := list.([]any)
+	if !ok {
+		return nil, fmt.Errorf("models list path %q does not point to an array", models.ListPath)
+	}
+	idPath := firstNonEmptyString(strings.TrimSpace(models.IDPath), "id")
+	namePath := strings.TrimSpace(models.NamePath)
+	result := make([]CustomProtocolModelInfo, 0, len(items))
+	for _, item := range items {
+		id := customStringAt(item, idPath)
+		if id == "" {
+			continue
+		}
+		info := CustomProtocolModelInfo{ID: id, Name: id}
+		if namePath != "" {
+			if name := customStringAt(item, namePath); name != "" {
+				info.Name = name
+			}
+		}
+		result = append(result, info)
+	}
+	return result, nil
 }
 
 func (a *OpenAIAdapter) SendCustomProtocolRequest(ctx context.Context, baseURL, apiKey string, request *CustomProtocolRequestResult, stream bool) (*http.Response, error) {
