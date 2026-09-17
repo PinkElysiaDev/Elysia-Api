@@ -458,8 +458,17 @@ func sampleCustomProtocolStream(ctx context.Context, protocol relay.CustomProtoc
 	var decoded []json.RawMessage
 	var streamErr error
 	for len(events) < customProtocolTestMaxEvents {
-		wireEvent, hasMore, readErr := reader.Read(ctx, relay.DefaultSSEIdleTimeout)
+		// 与转发路径同款排水语义：终态后短窗等待 usage 尾帧与 doneValue，
+		// 让设计器能看到 finish 之后的滞后事件。
+		idle := relay.DefaultSSEIdleTimeout
+		if decoder.TerminalReceived() {
+			idle = relay.PostTerminalSSEIdleTimeout
+		}
+		wireEvent, hasMore, readErr := reader.Read(ctx, idle)
 		if readErr != nil {
+			if decoder.TerminalReceived() {
+				break
+			}
 			streamErr = readErr
 			break
 		}
@@ -467,12 +476,19 @@ func sampleCustomProtocolStream(ctx context.Context, protocol relay.CustomProtoc
 			break
 		}
 		events = append(events, customProtocolStreamSample{Event: wireEvent.Event, Data: truncateForDisplay(wireEvent.Data, 4096)})
+		terminalBeforeBatch := decoder.TerminalReceived()
 		maheshvaraEvents, done, decodeErr := decoder.Decode(wireEvent)
 		if decodeErr != nil {
+			if terminalBeforeBatch {
+				break
+			}
 			streamErr = decodeErr
 			break
 		}
 		for _, event := range maheshvaraEvents {
+			if terminalBeforeBatch && event.Usage == nil && event.Error == nil {
+				continue
+			}
 			if encoded, err := json.Marshal(event); err == nil {
 				decoded = append(decoded, encoded)
 			}

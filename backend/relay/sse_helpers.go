@@ -14,6 +14,13 @@ import (
 
 const DefaultSSEIdleTimeout = 5 * time.Minute
 
+// PostTerminalSSEIdleTimeout 是自定义协议流收到终态（finish reason / status
+// completed / doneValue）后继续排水的空闲窗口：只等 usage 尾帧、错误帧与
+// doneValue，窗内无新数据即视为干净结束——防上游 finish 后不关连接导致
+// DefaultSSEIdleTimeout 级别的长挂起（OpenAI 兼容流的 usage 尾帧在
+// finish_reason 帧之后下发，不排水会丢真实用量）。
+const PostTerminalSSEIdleTimeout = 2 * time.Second
+
 // SSEEvent is one fully assembled Server-Sent Event. Multiple data lines are
 // joined with a newline as required by the SSE specification.
 type SSEEvent struct {

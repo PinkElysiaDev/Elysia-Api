@@ -10,12 +10,14 @@ type CustomProtocolStreamDecoder struct {
 	mode              string
 	doneValues        map[string]struct{}
 	events            map[string]struct{}
+	frames            []CustomProtocolStreamFrame
 	previousText      map[string]string
 	previousReasoning map[string]string
 	previousArguments map[string]string
 	toolAdded         map[string]bool
 	terminal          bool
 	sawOutput         bool
+	sawFinish         bool
 }
 
 func NewCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtocolStreamDecoder, error) {
@@ -48,6 +50,10 @@ func NewCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtoco
 				decoder.events[eventName] = struct{}{}
 			}
 		}
+		for _, frame := range stream.Frames {
+			frame.Event = strings.TrimSpace(frame.Event)
+			decoder.frames = append(decoder.frames, frame)
+		}
 	}
 	return decoder, nil
 }
@@ -60,6 +66,15 @@ func (decoder *CustomProtocolStreamDecoder) SawOutput() bool {
 	return decoder != nil && decoder.sawOutput
 }
 
+// SawFinishReason 报告流中是否出现过非空 finish reason。空补全（零输出但
+// finish_reason 有值，如内容过滤 stop）据此与「[DONE] 兜底空流」区分开。
+func (decoder *CustomProtocolStreamDecoder) SawFinishReason() bool {
+	return decoder != nil && decoder.sawFinish
+}
+
+// Decode 解析一帧上游事件。第二个返回值仅在该帧命中 doneValues 时为 true
+// （数据此后不会再有）；映射出 finish reason / status completed 只置终态，
+// 不提前结束——调用方继续排水以接收 usage 尾帧等滞后事件。
 func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]MaheshvaraStreamEvent, bool, error) {
 	if decoder == nil {
 		return nil, false, fmt.Errorf("nil custom protocol stream decoder")
@@ -72,22 +87,39 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 		decoder.terminal = true
 		return []MaheshvaraStreamEvent{{Type: MaheshvaraEventResponseCompleted}}, true, nil
 	}
-	if len(decoder.events) > 0 {
-		eventName := strings.TrimSpace(wireEvent.Event)
-		if eventName == "" {
-			if raw, err := decodeSSEEventJSON(data); err == nil {
-				eventName = firstNonEmptyString(stringValue(raw["type"]), stringValue(raw["event"]))
-			}
+	config := decoder.config
+	terminalFrame := false
+	if len(decoder.frames) > 0 {
+		eventName := decoder.wireEventName(wireEvent, data)
+		frame := decoder.matchFrame(eventName)
+		if frame == nil {
+			// 异构流中未声明的帧型不属于本协议语义，跳过；需要兜底映射时
+			// 用 stream.response 声明默认映射。
+			return nil, false, nil
 		}
+		if frame.Response != nil || strings.TrimSpace(frame.PayloadPath) != "" {
+			config = customProtocolFrameConfig(decoder.config, *frame)
+		}
+		terminalFrame = frame.Terminal
+	} else if len(decoder.events) > 0 {
+		eventName := decoder.wireEventName(wireEvent, data)
 		if _, allowed := decoder.events[eventName]; !allowed {
 			return nil, false, nil
 		}
 	}
-	response, err := customProtocolStreamEventToMaheshvaraValidated([]byte(data), decoder.config)
+	response, err := customProtocolStreamEventToMaheshvaraValidated([]byte(data), config)
 	if err != nil {
 		return nil, false, err
 	}
 	events := decoder.responseEvents(response)
+	if terminalFrame {
+		decoder.terminal = true
+		if !decoder.sawFinish && response.Status != "completed" {
+			// 帧型终止：映射本身未产生终态事件时补一个空完成事件，
+			// 保证渲染侧仍能拿到 finish。
+			events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventResponseCompleted, ResponseID: response.ID, Model: response.Model})
+		}
+	}
 	for _, event := range events {
 		if maheshvaraStreamEventHasOutput(event) {
 			decoder.sawOutput = true
@@ -96,7 +128,52 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 			decoder.terminal = true
 		}
 	}
-	return events, decoder.terminal, nil
+	return events, false, nil
+}
+
+// wireEventName 取帧的事件名：优先 SSE event 字段，缺省时回落 JSON 载荷的
+// type/event 字段（Responses 型协议把类型写在数据里）。
+func (decoder *CustomProtocolStreamDecoder) wireEventName(wireEvent SSEEvent, data string) string {
+	if eventName := strings.TrimSpace(wireEvent.Event); eventName != "" {
+		return eventName
+	}
+	if raw, err := decodeSSEEventJSON(data); err == nil {
+		return firstNonEmptyString(stringValue(raw["type"]), stringValue(raw["event"]))
+	}
+	return ""
+}
+
+func (decoder *CustomProtocolStreamDecoder) matchFrame(eventName string) *CustomProtocolStreamFrame {
+	if eventName == "" {
+		return nil
+	}
+	for index := range decoder.frames {
+		if decoder.frames[index].Event == eventName {
+			frame := decoder.frames[index]
+			return &frame
+		}
+	}
+	return nil
+}
+
+// customProtocolFrameConfig 把命中的帧规则叠加到协议配置副本上：帧映射覆盖
+// 默认映射，payloadPath 缺省继承流级配置。帧内 response 不得再携带流配置
+// （校验已保证），置 nil 防止嵌套语义被运行时重复应用。
+func customProtocolFrameConfig(config CustomProtocolConfig, frame CustomProtocolStreamFrame) CustomProtocolConfig {
+	stream := CustomProtocolStreamMapping{}
+	if config.Response.Stream != nil {
+		stream = *config.Response.Stream
+	}
+	if payloadPath := strings.TrimSpace(frame.PayloadPath); payloadPath != "" {
+		stream.PayloadPath = payloadPath
+	}
+	if frame.Response != nil {
+		nested := *frame.Response
+		nested.Stream = nil
+		stream.Response = &nested
+	}
+	config.Response.Stream = &stream
+	return config
 }
 
 func (decoder *CustomProtocolStreamDecoder) responseEvents(response *MaheshvaraResponse) []MaheshvaraStreamEvent {
@@ -159,6 +236,9 @@ func (decoder *CustomProtocolStreamDecoder) responseEvents(response *MaheshvaraR
 		events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventUsageDelta, ResponseID: response.ID, Model: response.Model, Usage: response.Usage})
 	}
 	if response.StopReason != "" || response.Status == "completed" {
+		if response.StopReason != "" {
+			decoder.sawFinish = true
+		}
 		events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventResponseCompleted, ResponseID: response.ID, Model: response.Model, FinishReason: response.StopReason, Response: response})
 	}
 	return events

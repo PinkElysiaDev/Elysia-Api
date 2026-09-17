@@ -53,12 +53,46 @@ JSON 粘贴以下配置:
 - 多模态系列(qwen-vl 等)端点为 `.../multi-modal-generation/multimodal-conversation`,
   需把 `path` 换成对应端点。
 
+## 流式行为说明
+
+- **finish 后尾帧排水**:映射出 `finish_reason`/`status=completed` 后网关不会立刻断流,
+  而是继续读取(约 2 秒空闲窗口)以接收滞后下发的 usage 尾帧与 `doneValues` 终止字面量。
+  OpenAI 兼容流 `stream_options.include_usage` 的「末帧 usage」正是这一形态;
+- **空补全放行**:`finish_reason` 有值但零输出(如内容过滤 stop)按成功处理,与内置协议
+  路径一致;只有 `[DONE]` 兜底且从未出现 finish reason 的空流才报错。
+
+## 异构帧协议:stream.frames[]
+
+整条流共用一份映射无法覆盖「每类事件载荷形状不同」的协议(典型即 Responses 型类型化
+事件:`response.output_text.delta` 载荷是 `{delta}`,`response.completed` 载荷是
+`{response}`)。`stream.frames[]` 按事件名(SSE `event:` 字段,缺省取 JSON `type`/`event`
+字段)逐帧匹配,命中即用该帧自己的映射;未声明帧型的事件跳过(需要兜底时用
+`stream.response` 声明默认映射);`terminal: true` 命中即判定流终态,覆盖
+`response.completed`/`message_stop` 这类以事件名收尾的协议:
+
+```json
+"stream": {
+  "frames": [
+    { "event": "response.output_text.delta", "response": { "textPath": "delta" } },
+    { "event": "response.reasoning_text.delta", "response": { "reasoningPath": "delta" } },
+    { "event": "response.completed", "terminal": true, "payloadPath": "response",
+      "response": { "usagePath": "usage" } }
+  ]
+}
+```
+
+`frames` 存在时优先于 legacy `events` 白名单;帧内 `response` 不得再嵌套 `stream`。
+
 ## 已知不适用场景
 
 自定义协议流式映射的既有边界(与 dashscope 无关,列出备查):
 
-- 整条流共用一份映射,不能按帧类型切换路径(异构帧协议不可);
-- 终止条件仅支持 `data: [DONE]` 字面量、`finishReasonPath` 非空与 `status == completed`,
-  不支持任意字段级终止表达式;
+- 终止条件支持 `doneValues` 字面量、`finishReasonPath` 非空、`status == completed` 与
+  frames 的 `terminal` 帧型,不支持任意字段级终止表达式;
 - `mode` 是流级全局,不能文本累计、tool 参数增量混用;
-- 多 choice(n>1)只取第一个。
+- 多 choice(n>1)只取第一个;
+- 跨帧工具参数拼装(工具调用身份帧与参数增量帧分立的协议,如 Anthropic 式
+  `content_block_start`/`content_block_delta`)只能靠 completed 快照在结束时一次性还原,
+  无法增量下发;
+- 每帧必须是完整 JSON 或 `doneValues` 字面量——增量追加式部分 JSON
+  (read-completed 型分块拼接)与二进制帧不支持。

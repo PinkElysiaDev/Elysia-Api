@@ -84,16 +84,31 @@ func (s *Server) handleCustomStreamRequest(
 	var streamErr error
 	var terminalEvents []relay.MaheshvaraStreamEvent
 	for {
-		wireEvent, hasMore, readErr := reader.Read(c.Request.Context(), relay.DefaultSSEIdleTimeout)
+		// 终态后排水中：只等 usage 尾帧、错误帧与 doneValue，短窗防上游
+		// finish 后不关连接导致 DefaultSSEIdleTimeout 级长挂起。
+		idle := relay.DefaultSSEIdleTimeout
+		if decoder.TerminalReceived() {
+			idle = relay.PostTerminalSSEIdleTimeout
+		}
+		wireEvent, hasMore, readErr := reader.Read(c.Request.Context(), idle)
 		if readErr != nil {
+			if decoder.TerminalReceived() {
+				break // 排水窗耗尽视为干净收尾
+			}
 			streamErr = readErr
 			break
 		}
 		if !hasMore {
 			break
 		}
+		// 同帧常同时携带末段文本与 finish reason：终态判定必须取自 Decode
+		// 之前的快照，否则末段输出会被当成「终态后杂帧」丢弃。
+		terminalBeforeBatch := decoder.TerminalReceived()
 		events, done, decodeErr := decoder.Decode(wireEvent)
 		if decodeErr != nil {
+			if terminalBeforeBatch {
+				break // 终态后的坏帧不推翻已完成的流
+			}
 			streamErr = decodeErr
 			break
 		}
@@ -110,6 +125,17 @@ func (s *Server) handleCustomStreamRequest(
 				streamErr = fmt.Errorf("custom protocol stream failed")
 				break
 			}
+			if terminalBeforeBatch {
+				// 终态后尾帧：usage 结算入记录并渲染（客户端最终用量以此
+				// 为准），其余增量/重复完成帧视为完成后的杂帧丢弃。
+				if event.Usage != nil {
+					if renderErr := renderer.Write(&event); renderErr != nil {
+						streamErr = renderErr
+						break
+					}
+				}
+				continue
+			}
 			if event.Type == relay.MaheshvaraEventResponseCompleted {
 				terminalEvents = append(terminalEvents, event)
 				continue
@@ -124,11 +150,13 @@ func (s *Server) handleCustomStreamRequest(
 		}
 	}
 	if streamErr == nil {
-		// 终态校验按严重度排序：无终态 > 有终态但无可呈现输出。
+		// 终态校验按严重度排序：无终态 > 有终态但无可呈现输出。后者仅当
+		// 从未见过 finish reason 时报错——finish_reason 有值的空补全
+		// （内容过滤等）与内置路径一致放行，只有 [DONE] 兜底的空流才是异常。
 		switch {
 		case !decoder.TerminalReceived():
 			streamErr = fmt.Errorf("custom protocol stream ended before a configured terminal value or finish reason")
-		case !decoder.SawOutput():
+		case !decoder.SawOutput() && !decoder.SawFinishReason():
 			streamErr = fmt.Errorf("custom protocol stream completed without representable output")
 		}
 	}

@@ -109,11 +109,25 @@ type CustomProtocolFieldMapping struct {
 }
 
 type CustomProtocolStreamMapping struct {
+	PayloadPath string                      `json:"payloadPath,omitempty"`
+	Mode        string                      `json:"mode,omitempty"`
+	DoneValues  []string                    `json:"doneValues,omitempty"`
+	Events      []string                    `json:"events,omitempty"`
+	Frames      []CustomProtocolStreamFrame `json:"frames,omitempty"`
+	Response    *CustomProtocolResponse     `json:"response,omitempty"`
+}
+
+// CustomProtocolStreamFrame 是异构流的一类帧的映射规则：按事件名（SSE event
+// 字段，缺省时取 JSON type/event 字段）匹配，命中后以 frame.response 映射该
+// 帧（缺省回退流级默认映射）。terminal=true 时命中即判定流终态，覆盖
+// response.completed / message_stop 这类「以事件名收尾」的协议。frames 存在
+// 时优先于 legacy events 白名单；未匹配任何帧的事件跳过（需要兜底映射时用
+// stream.response 声明）。
+type CustomProtocolStreamFrame struct {
+	Event       string                  `json:"event"`
 	PayloadPath string                  `json:"payloadPath,omitempty"`
-	Mode        string                  `json:"mode,omitempty"`
-	DoneValues  []string                `json:"doneValues,omitempty"`
-	Events      []string                `json:"events,omitempty"`
 	Response    *CustomProtocolResponse `json:"response,omitempty"`
+	Terminal    bool                    `json:"terminal,omitempty"`
 }
 
 func (request CustomProtocolRequest) bodyTemplate() string {
@@ -368,6 +382,24 @@ func validateCustomProtocolResponse(configID, location string, response CustomPr
 	for _, doneValue := range stream.DoneValues {
 		if strings.ContainsAny(doneValue, "\r\n") {
 			return fmt.Errorf("custom protocol %q %s.stream done value contains a line break", configID, location)
+		}
+	}
+	for index, frame := range stream.Frames {
+		if strings.TrimSpace(frame.Event) == "" {
+			return fmt.Errorf("custom protocol %q %s.stream.frames[%d].event is required", configID, location, index)
+		}
+		if strings.ContainsAny(frame.Event, "\r\n") {
+			return fmt.Errorf("custom protocol %q %s.stream.frames[%d].event contains a line break", configID, location, index)
+		}
+		if payloadPath := strings.TrimSpace(frame.PayloadPath); payloadPath != "" {
+			if _, err := parseCustomPath(payloadPath); err != nil {
+				return fmt.Errorf("custom protocol %q %s.stream.frames[%d].payloadPath: %w", configID, location, index, err)
+			}
+		}
+		if frame.Response != nil {
+			if err := validateCustomProtocolResponse(configID, fmt.Sprintf("%s.stream.frames[%d].response", location, index), *frame.Response, false); err != nil {
+				return err
+			}
 		}
 	}
 	if stream.Response != nil {
