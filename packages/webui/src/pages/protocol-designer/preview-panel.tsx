@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { FlaskConical, Play } from 'lucide-react'
+import { FlaskConical, Play, RefreshCw } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
 import type {
   CustomProtocolConfig,
+  CustomProtocolModelsTestResult,
   CustomProtocolPreviewResult,
   CustomProtocolTestResult,
   Model,
   ModelSource,
 } from '@/lib/types'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Seg } from '@/components/ui/seg'
 import { SettingRow, SettingSection } from '@/components/ui/setting-card'
 import {
   Select,
@@ -46,15 +49,15 @@ function JSONBlock({ text, className }: { text: string; className?: string }) {
   )
 }
 
-/** 预览与测试：渲染预览（凭证打码）+ 向所选模型源真实发送一次请求并对照映射结果。 */
+type CredentialMode = 'ad-hoc' | 'source'
+
+/** 预览与测试：渲染预览（凭证打码）+ 临时凭据或已存模型源真实发送一次请求并对照映射结果。 */
 export function PreviewTestPanel({
   protocol,
-  onSaved,
   sources,
   models,
 }: {
   protocol: CustomProtocolConfig
-  onSaved: () => Promise<boolean>
   sources: ModelSource[]
   models: Model[]
 }) {
@@ -63,6 +66,13 @@ export function PreviewTestPanel({
   const [preview, setPreview] = useState<CustomProtocolPreviewResult | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [credentialMode, setCredentialMode] = useState<CredentialMode>('ad-hoc')
+  const [adhocBaseUrl, setAdhocBaseUrl] = useState('')
+  const [adhocApiKey, setAdhocApiKey] = useState('')
+  const [adhocModel, setAdhocModel] = useState('')
+  const [discoveredModels, setDiscoveredModels] = useState<CustomProtocolModelsTestResult['models'] | null>(null)
+  const [modelsLoading, setModelsLoading] = useState(false)
+  const [modelsError, setModelsError] = useState<string | null>(null)
   const [testSourceId, setTestSourceId] = useState('')
   const [testModel, setTestModel] = useState('')
   const [testStream, setTestStream] = useState(false)
@@ -77,6 +87,17 @@ export function PreviewTestPanel({
       return undefined
     }
   }, [sampleText])
+
+  // 引用本协议的模型源（platform = custom:<本协议 id>）。
+  const protocolSources = useMemo(() => {
+    const prefix = `custom:${protocol.id.trim().toLowerCase()}`
+    return sources.filter((source) => (source.platform ?? '').trim().toLowerCase() === prefix)
+  }, [sources, protocol.id])
+
+  const sourceModels = useMemo(
+    () => models.filter((model) => model.sourceId === testSourceId && model.enabled),
+    [models, testSourceId],
+  )
 
   // 代次守卫 + AbortController:防抖期间的连续触发若与手动点击并发,旧响应
   // 后到会覆盖新结果、先到方提前复位 loading;请求经 api.request 的 signal 取消。
@@ -116,24 +137,15 @@ export function PreviewTestPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [protocol, sampleText])
 
-  const sourceModels = useMemo(
-    () => models.filter((model) => model.sourceId === testSourceId && model.enabled),
-    [models, testSourceId],
-  )
-
-  const runTest = async () => {
-    if (!testSourceId || !testModel) {
-      toastError('请选择测试模型', '需要选择模型源与模型')
-      return
-    }
-    if (!(await onSaved())) return
+  const executeTest = async (target: { model: string; sourceId?: string; baseUrl?: string; apiKey?: string }) => {
     setTestLoading(true)
     setTestResult(null)
     try {
       const result = await api.testCustomProtocol({
         protocol,
-        sourceId: testSourceId,
-        model: testModel,
+        model: target.model,
+        ...(target.sourceId ? { sourceId: target.sourceId } : {}),
+        ...(target.baseUrl ? { baseUrl: target.baseUrl, ...(target.apiKey ? { apiKey: target.apiKey } : {}) } : {}),
         stream: testStream,
         ...(sampleRequest ? { sampleRequest } : {}),
       })
@@ -143,6 +155,56 @@ export function PreviewTestPanel({
       toastError('测试失败', error instanceof ApiError ? error.message : String(error))
     } finally {
       setTestLoading(false)
+    }
+  }
+
+  const runTest = async () => {
+    if (credentialMode === 'ad-hoc') {
+      if (!adhocBaseUrl.trim() || !adhocModel.trim()) {
+        toastError('请填写测试目标', '临时测试需要 baseUrl 与模型名')
+        return
+      }
+      await executeTest({
+        baseUrl: adhocBaseUrl.trim(),
+        ...(adhocApiKey.trim() ? { apiKey: adhocApiKey.trim() } : {}),
+        model: adhocModel.trim(),
+      })
+      return
+    }
+    if (!testSourceId || !testModel) {
+      toastError('请选择测试模型', '需要选择模型源与模型')
+      return
+    }
+    await executeTest({ sourceId: testSourceId, model: testModel })
+  }
+
+  // 模型发现试拉：按协议 models 配置请求上游，结果填充模型下拉候选。
+  const runModelsTest = async () => {
+    if (!adhocBaseUrl.trim()) {
+      toastError('请填写 baseUrl', '模型发现试拉需要临时 baseUrl')
+      return
+    }
+    setModelsLoading(true)
+    setModelsError(null)
+    try {
+      const result = await api.testCustomProtocolModels({
+        protocol,
+        baseUrl: adhocBaseUrl.trim(),
+        ...(adhocApiKey.trim() ? { apiKey: adhocApiKey.trim() } : {}),
+      })
+      setDiscoveredModels(result.models ?? [])
+      if (result.parseError) {
+        setModelsError(result.parseError)
+      } else if (!result.models?.length) {
+        setModelsError('未发现模型：检查 models.listPath 配置与上游返回结构')
+      } else {
+        toastSuccess('模型发现完成', `发现 ${result.models.length} 个模型，点击下方模型名填入`)
+      }
+    } catch (error) {
+      setDiscoveredModels(null)
+      setModelsError(error instanceof ApiError ? error.message : String(error))
+    } finally {
+      setModelsLoading(false)
     }
   }
 
@@ -189,41 +251,128 @@ export function PreviewTestPanel({
         )}
       </SettingSection>
 
-      <SettingSection title="真实测试" description="向所选模型源实际发送一次请求（产生真实用量）">
-        <SettingRow label="模型源">
-          <Select
-            value={testSourceId}
-            onValueChange={(value) => {
-              setTestSourceId(value)
-              setTestModel('')
-            }}
-          >
-            <SelectTrigger className="w-56" aria-label="测试模型源">
-              <SelectValue placeholder="选择模型源" />
-            </SelectTrigger>
-            <SelectContent>
-              {sources.map((source) => (
-                <SelectItem key={source.id} value={source.id}>
-                  {source.name || source.id}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <SettingSection
+        title="真实测试"
+        description="以临时凭据或所选模型源向上游实际发送一次请求（产生真实用量），无需先保存协议"
+      >
+        <SettingRow label="凭据来源">
+          <Seg
+            value={credentialMode}
+            options={[
+              { value: 'ad-hoc', label: '临时输入' },
+              { value: 'source', label: '已保存模型源' },
+            ]}
+            onChange={(value) => setCredentialMode(value as CredentialMode)}
+          />
         </SettingRow>
-        <SettingRow label="模型">
-          <Select value={testModel} onValueChange={setTestModel}>
-            <SelectTrigger className="w-56" aria-label="测试模型">
-              <SelectValue placeholder="选择模型" />
-            </SelectTrigger>
-            <SelectContent>
-              {sourceModels.map((model) => (
-                <SelectItem key={model.id} value={model.name || model.id}>
-                  {model.name || model.id}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </SettingRow>
+
+        {credentialMode === 'ad-hoc' ? (
+          <>
+            <SettingRow label="Base URL" required description="上游根地址，协议 path 与其拼接">
+              <Input
+                className="w-72 font-mono text-xs"
+                value={adhocBaseUrl}
+                placeholder="https://api.vendor.com"
+                onChange={(event) => setAdhocBaseUrl(event.target.value)}
+              />
+            </SettingRow>
+            <SettingRow label="API Key" description="仅本次测试使用，不落库">
+              <Input
+                className="w-72 font-mono text-xs"
+                type="password"
+                value={adhocApiKey}
+                placeholder="sk-…"
+                onChange={(event) => setAdhocApiKey(event.target.value)}
+              />
+            </SettingRow>
+            <SettingRow label="模型" required description="自由填写，或先试拉模型列表后点选">
+              <Input
+                className="w-72 font-mono text-xs"
+                value={adhocModel}
+                placeholder="vendor-model-name"
+                list="custom-protocol-test-models"
+                onChange={(event) => setAdhocModel(event.target.value)}
+              />
+              <datalist id="custom-protocol-test-models">
+                {(discoveredModels ?? []).map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name !== model.id ? model.name : undefined}
+                  </option>
+                ))}
+              </datalist>
+            </SettingRow>
+            {protocol.models?.path && (
+              <div className="space-y-2">
+                <Button type="button" variant="outline" size="sm" disabled={modelsLoading} onClick={() => void runModelsTest()}>
+                  <RefreshCw className="mr-1 h-3 w-3" /> {modelsLoading ? '拉取中…' : '拉取模型列表'}
+                </Button>
+                {modelsError && (
+                  <p className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs text-destructive">
+                    {modelsError}
+                  </p>
+                )}
+                {(discoveredModels ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {(discoveredModels ?? []).map((model) => (
+                      <button
+                        key={model.id}
+                        type="button"
+                        className="rounded-md border border-border bg-card px-2 py-0.5 font-mono text-2xs hover:bg-accent"
+                        title={model.name !== model.id ? model.name : undefined}
+                        onClick={() => setAdhocModel(model.id)}
+                      >
+                        {model.id}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <SettingRow label="模型源" description="仅列出引用本协议的源">
+              <Select
+                value={testSourceId}
+                onValueChange={(value) => {
+                  setTestSourceId(value)
+                  setTestModel('')
+                }}
+              >
+                <SelectTrigger className="w-56" aria-label="测试模型源">
+                  <SelectValue placeholder="选择模型源" />
+                </SelectTrigger>
+                <SelectContent>
+                  {protocolSources.map((source) => (
+                    <SelectItem key={source.id} value={source.id}>
+                      {source.name || source.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </SettingRow>
+            {protocolSources.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                没有引用本协议的模型源——请先在模型源页创建（API 协议选本协议），或改用「临时输入」。
+              </p>
+            )}
+            <SettingRow label="模型">
+              <Select value={testModel} onValueChange={setTestModel}>
+                <SelectTrigger className="w-56" aria-label="测试模型">
+                  <SelectValue placeholder="选择模型" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sourceModels.map((model) => (
+                    <SelectItem key={model.id} value={model.name || model.id}>
+                      {model.name || model.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </SettingRow>
+          </>
+        )}
+
         <SettingRow label="流式" description="按 SSE 发送并采样前 50 个事件">
           <Switch checked={testStream} onCheckedChange={setTestStream} />
         </SettingRow>

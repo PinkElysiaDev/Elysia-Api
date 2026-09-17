@@ -50,6 +50,7 @@ func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
 	admin.DELETE("/custom-protocols/:id", s.adminDeleteCustomProtocol)
 	admin.POST("/custom-protocols/preview", s.adminPreviewCustomProtocol)
 	admin.POST("/custom-protocols/test", s.adminTestCustomProtocol)
+	admin.POST("/custom-protocols/test-models", s.adminTestCustomProtocolModels)
 	admin.POST("/custom-protocols/assist", s.adminAssistCustomProtocol)
 	admin.GET("/models", s.adminListModels)
 	admin.POST("/models/refresh", s.adminRefreshModels)

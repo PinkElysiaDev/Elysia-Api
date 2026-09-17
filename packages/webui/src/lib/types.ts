@@ -633,6 +633,15 @@ export interface CustomProtocolTestResult {
   decoded?: unknown[]
 }
 
+/** 模型发现试拉结果（/custom-protocols/test-models）。 */
+export interface CustomProtocolModelsTestResult {
+  statusCode: number
+  durationMs: number
+  models?: { id: string; name: string }[]
+  rawBody?: string
+  parseError?: string
+}
+
 export interface CustomProtocolAssistDocument {
   name: string
   mime?: string

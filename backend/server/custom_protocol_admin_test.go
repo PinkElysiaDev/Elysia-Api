@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -309,6 +310,84 @@ func TestAdminTestCustomProtocolStream(t *testing.T) {
 	decoded, _ := json.Marshal(data["decoded"])
 	if !strings.Contains(string(decoded), "He") || !strings.Contains(string(decoded), "llo") {
 		t.Fatalf("decoded events missing text deltas: %s", decoded)
+	}
+}
+
+// 临时凭据测试：协议尚未落源时直接以 baseUrl/apiKey/模型名直连——不再要求
+// 先建源、先填手动模型。
+func TestAdminTestCustomProtocolAdHocCredentials(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	var gotAuth, gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("x-api-key")
+		body, _ := io.ReadAll(r.Body)
+		var parsed map[string]any
+		_ = json.Unmarshal(body, &parsed)
+		gotModel, _ = parsed["model"].(string)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"answer":{"text":"ad-hoc ok"},"finish":"stop","usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+	}))
+	defer upstream.Close()
+
+	payload := fmt.Sprintf(`{"protocol":%s,"baseUrl":%q,"apiKey":"sk-adhoc","model":"proto-model"}`, vendorProtocolJSON, upstream.URL)
+	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/custom-protocols/test", payload)
+	s.adminTestCustomProtocol(c)
+	data := decodeAdminData(t, rec)
+	if data["statusCode"] != float64(http.StatusOK) || data["targetModel"] != "proto-model" {
+		t.Fatalf("unexpected result: %#v (%s)", data, rec.Body.String())
+	}
+	if gotAuth != "sk-adhoc" {
+		t.Fatalf("ad-hoc key must be applied, got %q", gotAuth)
+	}
+	if gotModel != "proto-model" {
+		t.Fatalf("model name must come from the free-text field, got %q", gotModel)
+	}
+	maheshvara, _ := json.Marshal(data["maheshvara"])
+	if !strings.Contains(string(maheshvara), "ad-hoc ok") {
+		t.Fatalf("mapped result missing text: %s", maheshvara)
+	}
+}
+
+// 模型发现试拉：按协议 models 配置请求上游，返回 ID 列表与原文，不写库；
+// 协议未声明发现配置时给出可操作错误。
+func TestAdminTestCustomProtocolModels(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" || r.Method != http.MethodGet {
+			t.Errorf("unexpected discovery request: %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"m-a","display_name":"Model A"},{"id":"m-b"}]}`))
+	}))
+	defer upstream.Close()
+
+	protocol := `{
+      "id": "discovery-vendor",
+      "request": {"method": "POST", "path": "/v2/generate", "bodyTemplate": "{\"model\":\"{{maheshvara.model}}\"}"},
+      "models": {"path": "/v1/models", "listPath": "data", "namePath": "display_name"}
+    }`
+	payload := fmt.Sprintf(`{"protocol":%s,"baseUrl":%q,"apiKey":"sk-x"}`, protocol, upstream.URL)
+	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/custom-protocols/test-models", payload)
+	s.adminTestCustomProtocolModels(c)
+	data := decodeAdminData(t, rec)
+	if data["statusCode"] != float64(http.StatusOK) {
+		t.Fatalf("unexpected status: %#v (%s)", data, rec.Body.String())
+	}
+	models, _ := data["models"].([]any)
+	if len(models) != 2 {
+		t.Fatalf("expected 2 discovered models, got %#v", data["models"])
+	}
+	first, _ := models[0].(map[string]any)
+	if first["id"] != "m-a" || first["name"] != "Model A" {
+		t.Fatalf("unexpected first model: %#v", first)
+	}
+
+	// 未声明 models 的协议 → 可操作错误。
+	payload = fmt.Sprintf(`{"protocol":%s,"baseUrl":%q}`, vendorProtocolJSON, upstream.URL)
+	c, rec = adminProtocolContext(http.MethodPost, "/api/admin/custom-protocols/test-models", payload)
+	s.adminTestCustomProtocolModels(c)
+	if msg := decodeAdminError(t, rec); !strings.Contains(msg, "模型发现") {
+		t.Fatalf("expected discovery-missing error, got %q", msg)
 	}
 }
 

@@ -13,6 +13,7 @@ import type {
   CustomProtocolSchema,
   CustomProtocolSummary,
   CustomProtocolTestResult,
+  CustomProtocolModelsTestResult,
   Health,
   Model,
   ModelGroup,
@@ -321,14 +322,22 @@ export const api = {
   /** 用样例 Maheshvara 请求渲染协议，预览真实发送形态（凭证打码）。 */
   previewCustomProtocol: (body: { protocol: CustomProtocolConfig; sampleRequest?: unknown }, options?: { signal?: AbortSignal }) =>
     request<CustomProtocolPreviewResult>('/custom-protocols/preview', { method: 'POST', body, signal: options?.signal }),
-  /** 向所选模型源的上游真实发送渲染后的请求，返回原文与映射结果。 */
+  /** 向所选模型源或临时凭据（baseUrl+apiKey 直连）真实发送渲染后的请求。 */
   testCustomProtocol: (body: {
     protocol: CustomProtocolConfig
-    sourceId: string
+    sourceId?: string
     model: string
+    baseUrl?: string
+    apiKey?: string
     stream?: boolean
     sampleRequest?: unknown
   }) => request<CustomProtocolTestResult>('/custom-protocols/test', { method: 'POST', body }),
+  /** 按协议 models 发现配置试拉模型列表（临时凭据，不落库）。 */
+  testCustomProtocolModels: (body: {
+    protocol: CustomProtocolConfig
+    baseUrl: string
+    apiKey?: string
+  }) => request<CustomProtocolModelsTestResult>('/custom-protocols/test-models', { method: 'POST', body }),
   /** AI harness：读取文档/图片/文本生成草稿，服务端校验+自动修复+离线验证。 */
   assistCustomProtocol: (body: {
     sourceId: string

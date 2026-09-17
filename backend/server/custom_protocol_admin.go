@@ -349,8 +349,16 @@ type customProtocolTestPayload struct {
 	Protocol      json.RawMessage          `json:"protocol"`
 	SourceID      string                   `json:"sourceId"`
 	Model         string                   `json:"model"`
+	BaseURL       string                   `json:"baseUrl,omitempty"`
+	APIKey        string                   `json:"apiKey,omitempty"`
 	Stream        bool                     `json:"stream"`
 	SampleRequest *relay.MaheshvaraRequest `json:"sampleRequest,omitempty"`
+}
+
+type customProtocolModelsTestPayload struct {
+	Protocol json.RawMessage `json:"protocol"`
+	BaseURL  string          `json:"baseUrl"`
+	APIKey   string          `json:"apiKey,omitempty"`
 }
 
 type customProtocolStreamSample struct {
@@ -374,22 +382,33 @@ func (s *Server) adminTestCustomProtocol(c *gin.Context) {
 	if !okStore {
 		return
 	}
-	if strings.TrimSpace(payload.SourceID) == "" || strings.TrimSpace(payload.Model) == "" {
-		respondFail(c, http.StatusBadRequest, "missing_target", "必须指定测试使用的模型源与模型")
+	// 两种凭据来源：临时输入（baseUrl 直连，适合协议尚未落源时调试）或已保存
+	// 模型源 + 模型行（走入库快照的 baseUrl/key）。
+	adHoc := strings.TrimSpace(payload.BaseURL) != ""
+	modelName := strings.TrimSpace(payload.Model)
+	if modelName == "" || (!adHoc && strings.TrimSpace(payload.SourceID) == "") {
+		respondFail(c, http.StatusBadRequest, "missing_target", "必须指定测试使用的模型源与模型，或填入临时 baseUrl 与模型名")
 		return
 	}
-	model, found := findCustomProtocolTestModel(c.Request.Context(), store, payload.SourceID, payload.Model)
-	if !found {
-		respondFail(c, http.StatusNotFound, "model_not_found",
-			fmt.Sprintf("模型源 %q 下没有找到模型 %q", payload.SourceID, payload.Model))
-		return
+	var baseURL, apiKey string
+	if adHoc {
+		baseURL = strings.TrimSpace(payload.BaseURL)
+		apiKey = payload.APIKey
+	} else {
+		model, found := findCustomProtocolTestModel(c.Request.Context(), store, payload.SourceID, payload.Model)
+		if !found {
+			respondFail(c, http.StatusNotFound, "model_not_found",
+				fmt.Sprintf("模型源 %q 下没有找到模型 %q", payload.SourceID, payload.Model))
+			return
+		}
+		baseURL, apiKey, modelName = model.BaseURL, model.APIKey, model.Name
 	}
 
 	sample := payload.SampleRequest
 	if sample == nil {
 		sample = defaultCustomProtocolSampleRequest()
 	}
-	sample.Model = model.Name
+	sample.Model = modelName
 	sample.Stream = payload.Stream
 
 	rendered, err := relay.RenderCustomProtocolRequest(sample, protocol)
@@ -406,7 +425,7 @@ func (s *Server) adminTestCustomProtocol(c *gin.Context) {
 	defer cancel()
 
 	started := time.Now()
-	response, err := s.openaiAdapter.SendCustomProtocolRequest(ctx, model.BaseURL, model.APIKey, rendered, payload.Stream)
+	response, err := s.openaiAdapter.SendCustomProtocolRequest(ctx, baseURL, apiKey, rendered, payload.Stream)
 	if err != nil {
 		respondFail(c, http.StatusBadGateway, "send_failed", err.Error())
 		return
@@ -415,7 +434,7 @@ func (s *Server) adminTestCustomProtocol(c *gin.Context) {
 	result := gin.H{
 		"statusCode":  response.StatusCode,
 		"durationMs":  time.Since(started).Milliseconds(),
-		"targetModel": model.Name,
+		"targetModel": modelName,
 		"stream":      payload.Stream,
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
@@ -501,6 +520,69 @@ func sampleCustomProtocolStream(ctx context.Context, protocol relay.CustomProtoc
 		streamErr = fmt.Errorf("流结束前未收到配置的终止标记（doneValues/finish reason）")
 	}
 	return events, decoded, streamErr
+}
+
+// adminTestCustomProtocolModels 用临时凭据试拉模型列表：按协议 models 发现
+// 配置请求上游，返回发现的模型与原文供设计器对照，不写库——「一系列测试」的
+// 模型发现环节，也免去为试协议先建源。
+func (s *Server) adminTestCustomProtocolModels(c *gin.Context) {
+	var payload customProtocolModelsTestPayload
+	if err := bindAdminJSON(c, &payload); err != nil {
+		respondFail(c, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	protocol, ok := validateCustomProtocolRaw(c, payload.Protocol)
+	if !ok {
+		return
+	}
+	baseURL := strings.TrimSpace(payload.BaseURL)
+	if baseURL == "" {
+		respondFail(c, http.StatusBadRequest, "missing_target", "需要填写 baseUrl")
+		return
+	}
+	if protocol.Models == nil {
+		respondFail(c, http.StatusBadRequest, "no_discovery", "协议未声明模型发现配置（models.path / models.listPath）")
+		return
+	}
+	rendered, err := relay.RenderCustomProtocolModelsRequest(protocol)
+	if err != nil {
+		respondFail(c, http.StatusBadRequest, "render_failed", err.Error())
+		return
+	}
+
+	timeout := customProtocolTestTimeoutSec * time.Second
+	if seconds := s.config.GetHTTPTimeout(); seconds > 0 && time.Duration(seconds)*time.Second < timeout {
+		timeout = time.Duration(seconds) * time.Second
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
+	defer cancel()
+
+	started := time.Now()
+	response, err := s.openaiAdapter.SendCustomProtocolRequest(ctx, baseURL, payload.APIKey, rendered, false)
+	if err != nil {
+		respondFail(c, http.StatusBadGateway, "send_failed", err.Error())
+		return
+	}
+	defer response.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(response.Body, customProtocolTestBodyLimit))
+	result := gin.H{
+		"statusCode": response.StatusCode,
+		"durationMs": time.Since(started).Milliseconds(),
+		"rawBody":    truncateForDisplay(string(raw), customProtocolTestBodyEcho),
+	}
+	if response.StatusCode >= 200 && response.StatusCode < 300 {
+		infos, parseErr := relay.ParseCustomProtocolModels(raw, protocol)
+		if parseErr != nil {
+			result["parseError"] = parseErr.Error()
+		} else {
+			models := make([]gin.H, 0, len(infos))
+			for _, info := range infos {
+				models = append(models, gin.H{"id": info.ID, "name": info.Name})
+			}
+			result["models"] = models
+		}
+	}
+	respondOK(c, result)
 }
 
 func findCustomProtocolTestModel(ctx context.Context, store *storage.Store, sourceID, modelName string) (storage.Model, bool) {

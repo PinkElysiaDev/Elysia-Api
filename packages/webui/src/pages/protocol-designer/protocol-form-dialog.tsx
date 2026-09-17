@@ -333,7 +333,6 @@ export function ProtocolFormDialog({
           {tab === 'test' && (
             <PreviewTestPanel
               protocol={draft}
-              onSaved={() => save()}
               sources={sources}
               models={models}
             />
