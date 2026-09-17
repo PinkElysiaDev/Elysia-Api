@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Boxes,
@@ -29,7 +29,8 @@ import {
   useMinuteTick,
   POLL,
 } from '@/lib/hooks'
-import type { ModelSource } from '@/lib/types'
+import type { UsageStats,
+ ModelSource } from '@/lib/types'
 import { bucketedTimeISO, cn, compactNumber, formatHitRate, formatNumber, percent, startOfRange, USAGE_BUCKET_MS } from '@/lib/utils'
 import type { RangeKey } from '@/components/usage-filter-bar'
 import { TemporalTrendSection } from './overview-trends'
@@ -212,6 +213,34 @@ function SourceHealthScroller({
   )
 }
 
+/** hero 卡片的环比展示:错误/无基线/正常三分支的文案与色调一并给出,
+ * 替代此前 JSX 内的四层嵌套三元与并行的三层 tone 三元。 */
+function heroDelta(
+  todayError: boolean,
+  yesterdayError: boolean,
+  today: UsageStats | undefined,
+  yesterday: UsageStats | undefined,
+  deltaPct: number | null,
+): { delta?: ReactNode; deltaTone?: 'up' | 'down' | 'neutral' } {
+  if (todayError) return { delta: <em className="not-italic">加载失败</em>, deltaTone: 'down' }
+  if (!today) return {}
+  if (yesterdayError) return { delta: <em className="not-italic">昨日对比暂不可用</em>, deltaTone: 'down' }
+  if (!yesterday) return {}
+  if (deltaPct == null) return { delta: <em className="not-italic">— 无昨日基线</em>, deltaTone: 'neutral' }
+  return {
+    delta: (
+      <>
+        <span>{deltaPct >= 0 ? '▲' : '▼'} {Math.abs(deltaPct).toFixed(1)}%</span>
+        <span className="text-muted-foreground/70">对比昨日</span>
+      </>
+    ),
+    deltaTone: deltaPct >= 0 ? 'up' : 'down',
+  }
+}
+
+const TOP_MODELS = 5
+const RECENT_FAILURES = 3
+
 export function OverviewPage() {
   const minuteTick = useMinuteTick()
   const navigate = useNavigate()
@@ -290,9 +319,9 @@ export function OverviewPage() {
 
   const topModels = useMemo(() => {
     const sorted = byModel ?? []
-    const top = sorted.slice(0, 5).map((row) => ({ name: row.model || '—', count: row.requests, muted: false }))
+    const top = sorted.slice(0, TOP_MODELS).map((row) => ({ name: row.model || '—', count: row.requests, muted: false }))
     const rest = sorted.slice(5).reduce((sum, row) => sum + row.requests, 0)
-    if (rest > 0) top.push({ name: `其他 ${sorted.length - 5} 个模型`, count: rest, muted: true })
+    if (rest > 0) top.push({ name: `其他 ${sorted.length - TOP_MODELS} 个模型`, count: rest, muted: true })
     const max = top[0]?.count || 1
     return top.map((model) => ({ ...model, ratio: model.count / max }))
   }, [byModel])
@@ -305,7 +334,7 @@ export function OverviewPage() {
       from: localMidnight(0, new Date(nowMs)).toISOString(),
       to,
       status: 'failed' as const,
-      limit: 3,
+      limit: RECENT_FAILURES,
     }
   }, [minuteTick])
   const {
@@ -355,29 +384,7 @@ export function OverviewPage() {
               label="今日请求总数"
               value={today ? formatNumber(today.requests) : '—'}
               icon={<Flame className="h-4 w-4 text-rose" />}
-              delta={
-                todayError ? (
-                  <em className="not-italic">加载失败</em>
-                ) : !today ? undefined : yesterdayError ? (
-                  <em className="not-italic">昨日对比暂不可用</em>
-                ) : !yesterday ? undefined : deltaPct == null ? (
-                  <em className="not-italic">— 无昨日基线</em>
-                ) : (
-                  <>
-                    <span>{deltaPct >= 0 ? '▲' : '▼'} {Math.abs(deltaPct).toFixed(1)}%</span>
-                    <span className="text-muted-foreground/70">对比昨日</span>
-                  </>
-                )
-              }
-              deltaTone={
-                todayError || yesterdayError
-                  ? 'down'
-                  : deltaPct == null
-                    ? 'neutral'
-                    : deltaPct >= 0
-                      ? 'up'
-                      : 'down'
-              }
+              {...heroDelta(todayError, yesterdayError, today, yesterday, deltaPct)}
             />
 
             {/* 支撑指标 1：请求成功率 */}

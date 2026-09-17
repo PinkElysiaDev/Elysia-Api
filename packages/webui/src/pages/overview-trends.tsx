@@ -26,6 +26,7 @@ import { ModelBreakdownTooltip } from '@/components/model-breakdown-tooltip'
 import { useUsageByModelDaily, useUsageTrend } from '@/lib/hooks'
 import type { UsageModelDailyPoint } from '@/lib/types'
 import { bucketedTimeISO, CHART_TICK, cn, compactNumber, USAGE_BUCKET_MS } from '@/lib/utils'
+import { CHART_TOOLTIP_Z } from '@/lib/z-index'
 import { offsetDayKey, offsetDayStart } from './overview-time'
 
 type TrendPerspective = 'overview' | 'breakdown'
@@ -417,7 +418,7 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
                   <Tooltip
                     content={<ModelBreakdownTooltip />}
                     // 浮层逃出 ChartFrame 后需要抬高，避免被下方章节盖住
-                    wrapperStyle={{ zIndex: 50 }}
+                    wrapperStyle={{ zIndex: CHART_TOOLTIP_Z }}
                     cursor={{ fill: 'var(--wash)' }}
                   />
 
@@ -523,7 +524,7 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
                   axisLine={false}
                   width={OVERVIEW_CHART.yRightWidth}
                 />
-                <Tooltip content={<BreakdownTooltipContent />} wrapperStyle={{ zIndex: 50 }} cursor={{ fill: 'var(--wash)' }} />
+                <Tooltip content={<BreakdownTooltipContent />} wrapperStyle={{ zIndex: CHART_TOOLTIP_Z }} cursor={{ fill: 'var(--wash)' }} />
                 {/* 倒序渲染：先声明的序列在下层被后声明的覆盖，
                     让调用最多的模型面积位于最上层（图例首行与顶层序列对应）。 */}
                 {[...models].reverse().map((name, reversedIdx) => {

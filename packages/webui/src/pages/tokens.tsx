@@ -29,6 +29,8 @@ import { copyText } from '@/lib/clipboard'
 import { cn, formatDateTime } from '@/lib/utils'
 import type { ApiToken } from '@/lib/types'
 
+const COPY_RESET_MS = 1500
+
 export function TokensPage() {
   const { confirm, dialog } = useConfirm()
   const { data, isLoading, error, mutate } = useTokens()
@@ -209,7 +211,7 @@ function RevealCopyButton({ name, maskedToken }: { name: string; maskedToken: st
       const token = revealed ? revealedToken : (await api.revealToken(name)).token
       await copyText(token)
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      setTimeout(() => setCopied(false), COPY_RESET_MS)
     } catch (err) {
       toast.error('复制失败', (err as Error).message)
     } finally {

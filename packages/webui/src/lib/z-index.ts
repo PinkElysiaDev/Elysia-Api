@@ -16,5 +16,11 @@ export const Z_INDEX = {
   floating: 'z-[76]',
   arrivalEcho: 'z-[45]',
   toast: 'z-[90]',
+  /** Recharts tooltip:高于内容、低于 Sheet/Dialog(不遮挡抽屉与弹窗)。 */
+  chartTooltip: 'z-[50]',
   skipLink: 'z-[100]',
 } as const
+
+/** Recharts tooltip 的 inline zIndex(数字形态,JSX style 用):高于内容、
+ * 低于 Sheet/Dialog,不遮挡抽屉与弹窗。 */
+export const CHART_TOOLTIP_Z = 50

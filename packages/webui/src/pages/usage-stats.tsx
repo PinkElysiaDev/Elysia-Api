@@ -36,6 +36,9 @@ import { ModelBreakdownTooltip } from '@/components/model-breakdown-tooltip'
 import { useUsageStats, useUsageTrend, useUsageByModel, useMinuteTick } from '@/lib/hooks'
 import { useUsageFilters } from '@/lib/usage-filters'
 import { CHART_TICK, compactNumber, formatDuration, formatHitRate, formatNumber, percent } from '@/lib/utils'
+import { CHART_TOOLTIP_Z } from '@/lib/z-index'
+
+const TOP_MODELS_BAR = 8
 
 export function UsageStatsPage() {
   const filters = useUsageFilters()
@@ -221,7 +224,7 @@ export function UsageStatsPage() {
                         />
                         <Tooltip
                           content={<ModelBreakdownTooltip />}
-                          wrapperStyle={{ zIndex: 50 }}
+                          wrapperStyle={{ zIndex: CHART_TOOLTIP_Z }}
                           cursor={{ fill: 'var(--wash)' }}
                         />
                         {showTokBar && (
@@ -321,7 +324,7 @@ export function UsageStatsPage() {
                       <>
                         <div className="h-[220px]">
                           <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={byModel.slice(0, 8)} margin={{ top: 8, right: 8, bottom: 0, left: 4 }}>
+                            <BarChart data={byModel.slice(0, TOP_MODELS_BAR)} margin={{ top: 8, right: 8, bottom: 0, left: 4 }}>
                               <CartesianGrid stroke="hsl(var(--border) / 0.45)" strokeDasharray="3 3" vertical={false} />
                               <XAxis
                                 dataKey="model"
@@ -341,9 +344,9 @@ export function UsageStatsPage() {
                                 width={40}
                                 allowDecimals={false}
                               />
-                              <Tooltip cursor={{ fill: 'var(--wash)' }} wrapperStyle={{ zIndex: 50 }} content={<ModelBarTooltip />} />
+                              <Tooltip cursor={{ fill: 'var(--wash)' }} wrapperStyle={{ zIndex: CHART_TOOLTIP_Z }} content={<ModelBarTooltip />} />
                               <Bar dataKey="requests" name="请求数" radius={[4, 4, 0, 0]} maxBarSize={36}>
-                                {byModel.slice(0, 8).map((entry) => (
+                                {byModel.slice(0, TOP_MODELS_BAR).map((entry) => (
                                   <Cell key={entry.model || '__unknown__'} fill="var(--rose)" fillOpacity={0.65} />
                                 ))}
                               </Bar>
