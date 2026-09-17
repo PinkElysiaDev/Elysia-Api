@@ -23,35 +23,27 @@ import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { useTokens, useGroups, revalidate } from '@/lib/hooks'
 import { api } from '@/lib/api'
+import { useApiAction } from '@/lib/use-api-action'
+import { useEntityFormDialog } from '@/lib/use-entity-form-dialog'
 import { copyText } from '@/lib/clipboard'
 import { cn, formatDateTime } from '@/lib/utils'
 import type { ApiToken } from '@/lib/types'
 
 export function TokensPage() {
-  const toast = useToast()
   const { confirm, dialog } = useConfirm()
   const { data, isLoading, error, mutate } = useTokens()
   const { data: groups } = useGroups()
-  const [editing, setEditing] = useState<ApiToken | null>(null)
-  const [formOpen, setFormOpen] = useState(false)
-  const [switchBusy, setSwitchBusy] = useState<string | null>(null)
+  const form = useEntityFormDialog<ApiToken | null>(null)
+  const editing = form.item
+  const formOpen = form.open
+  const { openCreate, openEdit } = form
+  const { run, isBusy } = useApiAction()
 
   // 当前存在的模型组名集合，用于标记列表中已失效的组名。
   const validGroupNames = new Set((groups ?? []).map((g) => g.name))
 
-  function openCreate() {
-    setEditing(null)
-    setFormOpen(true)
-  }
-
-  function openEdit(token: ApiToken) {
-    setEditing(token)
-    setFormOpen(true)
-  }
-
-  async function toggleToken(token: ApiToken) {
-    setSwitchBusy(token.name)
-    try {
+  const toggleToken = (token: ApiToken) =>
+    run(token.name, async () => {
       // 只提交启停所需字段，绝不回传列表里的 token——那是脱敏值（abcd...wxyz），
       // 整体 PUT 会绕过「留空即不变」把真实密钥覆盖成掩码（密钥永久损坏）。
       await api.updateToken(token.name, {
@@ -59,14 +51,10 @@ export function TokensPage() {
         enabled: !token.enabled,
         allowedGroups: token.allowedGroups ?? [],
       })
-      await Promise.all([mutate(), revalidate.usage()])
-      toast.success(token.enabled ? '已停用 API Key' : '已启用 API Key', token.name)
-    } catch (err) {
-      toast.error('操作失败', (err as Error).message)
-    } finally {
-      setSwitchBusy(null)
-    }
-  }
+    }, {
+      success: { title: token.enabled ? '已停用 API Key' : '已启用 API Key', description: token.name },
+      refresh: [mutate, () => revalidate.usage()],
+    })
 
   async function handleDelete(token: ApiToken) {
     const okToDelete = await confirm({
@@ -75,13 +63,13 @@ export function TokensPage() {
       confirmText: '删除',
     })
     if (!okToDelete) return
-    try {
+    await run(token.name, async () => {
       await api.deleteToken(token.name)
-      await mutate()
-      toast.success('已删除 API Key')
-    } catch (err) {
-      toast.error('删除失败', (err as Error).message)
-    }
+    }, {
+      success: { title: '已删除 API Key' },
+      refresh: [mutate],
+      errorTitle: '删除失败',
+    })
   }
 
   return (
@@ -159,7 +147,7 @@ export function TokensPage() {
                     <TableCell className="py-3.5 text-center">
                       <Switch
                         checked={token.enabled}
-                        disabled={switchBusy === token.name}
+                        disabled={isBusy(token.name)}
                         onCheckedChange={() => toggleToken(token)}
                         aria-label={`${token.enabled ? '停用' : '启用'} ${token.name}`}
                       />
@@ -182,7 +170,7 @@ export function TokensPage() {
         )}
       </AsyncState>
 
-      <TokenFormDialog open={formOpen} onOpenChange={setFormOpen} token={editing} onSaved={() => mutate()} />
+      <TokenFormDialog open={formOpen} onOpenChange={form.setOpen} token={editing} onSaved={() => mutate()} />
       {dialog}
     </div>
     </>

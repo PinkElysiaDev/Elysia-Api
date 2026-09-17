@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FlaskConical, Play } from 'lucide-react'
-import { api, ApiError, request } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import type {
   CustomProtocolConfig,
   CustomProtocolPreviewResult,
@@ -90,11 +90,10 @@ export function PreviewTestPanel({
     setPreviewLoading(true)
     setPreviewError(null)
     try {
-      const result = await request<CustomProtocolPreviewResult>('/custom-protocols/preview', {
-        method: 'POST',
-        body: { protocol, ...(sampleRequest ? { sampleRequest } : {}) },
-        signal: controller.signal,
-      })
+      const result = await api.previewCustomProtocol(
+        { protocol, ...(sampleRequest ? { sampleRequest } : {}) },
+        { signal: controller.signal },
+      )
       if (gen !== previewGen.current) return
       setPreview(result)
     } catch (error) {

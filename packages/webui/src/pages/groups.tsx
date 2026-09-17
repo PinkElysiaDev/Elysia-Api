@@ -11,9 +11,10 @@ import { ExpandRow } from '@/components/expand-row'
 import { CapChip, Dot, StrategyBadge } from '@/components/badges'
 import { ToolbarSummary } from '@/components/toolbar-summary'
 import { useConfirm } from '@/components/ui/confirm-dialog'
-import { useToast } from '@/components/ui/use-toast'
 import { useGroups, revalidate } from '@/lib/hooks'
 import { api } from '@/lib/api'
+import { useApiAction } from '@/lib/use-api-action'
+import { useEntityFormDialog } from '@/lib/use-entity-form-dialog'
 import { cn, formatNumber } from '@/lib/utils'
 import type { ModelGroup, GroupStrategy } from '@/lib/types'
 import { GroupFormDialog } from './groups/group-form'
@@ -28,14 +29,15 @@ const STRATEGY_OPTIONS: { value: StrategyFilter; label: string }[] = [
 ]
 
 export function GroupsPage() {
-  const toast = useToast()
   const { confirm, dialog } = useConfirm()
   const { data, isLoading, error, mutate } = useGroups()
   const [strategyFilter, setStrategyFilter] = useState<StrategyFilter>('all')
-  const [editing, setEditing] = useState<ModelGroup | null>(null)
-  const [formOpen, setFormOpen] = useState(false)
+  const form = useEntityFormDialog<ModelGroup | null>(null)
+  const editing = form.item
+  const formOpen = form.open
+  const { openCreate, openEdit } = form
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  const [switchBusyId, setSwitchBusyId] = useState<string | null>(null)
+  const { run, isBusy } = useApiAction()
 
   const filtered = useMemo(
     () =>
@@ -46,38 +48,22 @@ export function GroupsPage() {
   )
   const enabledCount = (data ?? []).filter((g) => g.enabled).length
 
-  function openCreate() {
-    setEditing(null)
-    setFormOpen(true)
-  }
-
-  function openEdit(group: ModelGroup) {
-    setEditing(group)
-    setFormOpen(true)
-  }
-
-  async function toggleGroup(group: ModelGroup) {
-    setSwitchBusyId(group.id)
-    try {
+  const toggleGroup = (group: ModelGroup) =>
+    run(group.id, async () => {
       await api.updateGroup(group.id, { ...group, enabled: !group.enabled })
-      await mutate()
-      toast.success(group.enabled ? '已停用模型组' : '已启用模型组', group.name)
-    } catch (err) {
-      toast.error('操作失败', (err as Error).message)
-    } finally {
-      setSwitchBusyId(null)
-    }
-  }
+    }, {
+      success: { title: group.enabled ? '已停用模型组' : '已启用模型组', description: group.name },
+      refresh: [mutate],
+    })
 
-  async function removeMember(group: ModelGroup, model: string) {
-    try {
+  const removeMember = (group: ModelGroup, model: string) =>
+    run(`${group.id}:${model}`, async () => {
       await api.updateGroup(group.id, { ...group, models: group.models.filter((m) => m !== model) })
-      await Promise.all([mutate(), revalidate.models()])
-      toast.success('已移除成员', `${model} · ${group.name}`)
-    } catch (err) {
-      toast.error('移除失败', (err as Error).message)
-    }
-  }
+    }, {
+      success: { title: '已移除成员', description: `${model} · ${group.name}` },
+      refresh: [mutate, () => revalidate.models()],
+      errorTitle: '移除失败',
+    })
 
   async function handleDelete(group: ModelGroup) {
     const okToDelete = await confirm({
@@ -86,13 +72,13 @@ export function GroupsPage() {
       confirmText: '删除',
     })
     if (!okToDelete) return
-    try {
+    await run(group.id, async () => {
       await api.deleteGroup(group.id)
-      await mutate()
-      toast.success('已删除模型组')
-    } catch (err) {
-      toast.error('删除失败', (err as Error).message)
-    }
+    }, {
+      success: { title: '已删除模型组' },
+      refresh: [mutate],
+      errorTitle: '删除失败',
+    })
   }
 
   return (
@@ -215,7 +201,7 @@ export function GroupsPage() {
                           <TableCell className="py-3.5 text-center">
                             <Switch
                               checked={group.enabled}
-                              disabled={switchBusyId === group.id}
+                              disabled={isBusy(group.id)}
                               onCheckedChange={() => toggleGroup(group)}
                               aria-label={`${group.enabled ? '停用' : '启用'} ${group.name}`}
                             />
@@ -273,7 +259,7 @@ export function GroupsPage() {
         )}
       </AsyncState>
 
-      <GroupFormDialog open={formOpen} onOpenChange={setFormOpen} group={editing} />
+      <GroupFormDialog open={formOpen} onOpenChange={form.setOpen} group={editing} />
       {dialog}
     </div>
     </>

@@ -131,20 +131,16 @@ export function BodyTreeEditor({
           />
         )
       }
-      const current = isRequest
+      // kindOf 已保证:request 的 constant 只可能是 {value:X} 包装或标量;
+      // response 的 placeholder 只可能是标量。此前的多分支防御不可达。
+      const editableValue = isRequest
         ? isRequestConstant(node)
           ? node.value
-          : typeof node === 'object' && node !== null
-            ? null
-            : node
-        : typeof node === 'object' && node !== null && 'value' in node
-          ? (node as { value: unknown }).value
-          : typeof node === 'object'
-            ? null
-            : node
+          : node
+        : node
       return (
         <ScalarValueInput
-          value={current}
+          value={editableValue}
           onChange={(next) => setLeaf(isRequest ? { value: next } : next)}
           placeholder={isRequest ? '固定值，如 2026-01-01 / true / 0.7' : '示例值'}
         />

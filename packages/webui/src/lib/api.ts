@@ -319,8 +319,8 @@ export const api = {
       method: 'DELETE',
     }),
   /** 用样例 Maheshvara 请求渲染协议，预览真实发送形态（凭证打码）。 */
-  previewCustomProtocol: (body: { protocol: CustomProtocolConfig; sampleRequest?: unknown }) =>
-    request<CustomProtocolPreviewResult>('/custom-protocols/preview', { method: 'POST', body }),
+  previewCustomProtocol: (body: { protocol: CustomProtocolConfig; sampleRequest?: unknown }, options?: { signal?: AbortSignal }) =>
+    request<CustomProtocolPreviewResult>('/custom-protocols/preview', { method: 'POST', body, signal: options?.signal }),
   /** 向所选模型源的上游真实发送渲染后的请求，返回原文与映射结果。 */
   testCustomProtocol: (body: {
     protocol: CustomProtocolConfig
