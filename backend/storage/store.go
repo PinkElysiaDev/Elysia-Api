@@ -685,7 +685,7 @@ func (s *Store) ReplaceSourceModels(ctx context.Context, source ModelSource, mod
 	if _, err := tx.ExecContext(ctx, `DELETE FROM models WHERE source_id = ?`, source.ID); err != nil {
 		return err
 	}
-	stmt, err := tx.PrepareContext(ctx, `INSERT INTO models(id, source_id, name, source_name, base_url, api_key, platform, type, max_tokens, vision_capable, tools_capable, structured_output, thinking_mode, available, enabled, origin, capability_source, last_checked_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	stmt, err := tx.PrepareContext(ctx, insertModelSQL)
 	if err != nil {
 		return err
 	}
@@ -720,6 +720,10 @@ func firstEffectiveKey(source ModelSource) string {
 	}
 	return ""
 }
+
+// insertModelSQL 是 models 表 18 列的统一 INSERT(ReplaceSourceModels 与
+// MergeSourceModels 共用;列清单与 modelColumns 常量保持同步)。
+const insertModelSQL = `INSERT INTO models(id, source_id, name, source_name, base_url, api_key, platform, type, max_tokens, vision_capable, tools_capable, structured_output, thinking_mode, available, enabled, origin, capability_source, last_checked_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 // NormalizePlatform 把历史别名 openai-compatible 归一为 openai（server 侧
 // 同名逻辑已删除，统一从这里调用）。
@@ -786,7 +790,7 @@ func (s *Store) MergeSourceModels(ctx context.Context, source ModelSource, incom
 	if err != nil {
 		return result, err
 	}
-	insertStmt, err := tx.PrepareContext(ctx, `INSERT INTO models(id, source_id, name, source_name, base_url, api_key, platform, type, max_tokens, vision_capable, tools_capable, structured_output, thinking_mode, available, enabled, origin, capability_source, last_checked_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	insertStmt, err := tx.PrepareContext(ctx, insertModelSQL)
 	if err != nil {
 		return result, err
 	}

@@ -84,8 +84,6 @@ func rollupEdgeBounds(q UsageQuery, fromHour, toHour int64) (headFrom, headTo, t
 
 // usageRollupWhere 生成 rollup 表的筛选条件（与 usageWhere 的维度语义一致，
 // 但不含时间与 key_hash：时间由小时区间显式给出，keyHash 走 raw 回退）。
-// usageRollupWhere 生成 rollup 表的筛选条件（与 usageWhere 的维度语义一致，
-// 但不含时间与 key_hash：时间由小时区间显式给出，keyHash 走 raw 回退）。
 // 筛选链构造复用 usageFilterClauses（与 raw 表共享同一份判定逻辑）。
 func usageRollupWhere(q UsageQuery) (string, []any) {
 	clauses, args := usageFilterClauses(q, false, false)
@@ -255,58 +253,6 @@ func usageCountRaw(ctx context.Context, qe sqlQueryer, q UsageQuery) (int, error
 	return total, nil
 }
 
-func usageCountRollup(ctx context.Context, qe sqlQueryer, q UsageQuery, fromHour, toHour int64) (int, error) {
-	filters, filterArgs := usageRollupWhere(q)
-	args := append([]any{fromHour, toHour}, filterArgs...)
-	var total int
-	if err := qe.QueryRowContext(ctx, `SELECT COALESCE(SUM(cnt),0) FROM usage_rollup_hour WHERE hour_ms >= ? AND hour_ms < ?`+filters, args...).Scan(&total); err != nil {
-		return 0, err
-	}
-	return total, nil
-}
-
-// usageCount 是 logs 分页 total 的统一入口：rollup 就绪时中段走窄表、
-// 两侧边缘小时走 raw，否则整体 raw COUNT。
-func (s *Store) usageCount(ctx context.Context, q UsageQuery) (int, error) {
-	fromHour, toHour, ok := s.rollupSplit(q, true)
-	if !ok {
-		return usageCountRaw(ctx, s.db, q)
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback() }() // 只读事务，结束即弃
-	total := 0
-	headFrom, headTo, tailFrom, tailTo, hasHead, hasTail := rollupEdgeBounds(q, fromHour, toHour)
-	if hasHead {
-		n, err := usageCountRaw(ctx, tx, q.withBounds(headFrom, headTo))
-		if err != nil {
-			return 0, err
-		}
-		total += n
-	}
-	n, err := usageCountRollup(ctx, tx, q, fromHour, toHour)
-	if err != nil {
-		return 0, err
-	}
-	total += n
-	if hasTail {
-		n, err := usageCountRaw(ctx, tx, q.withBounds(tailFrom, tailTo))
-		if err != nil {
-			return 0, err
-		}
-		total += n
-	}
-	if q.From.IsZero() {
-		n, err := usageCountRaw(ctx, tx, q.orphansOnly())
-		if err != nil {
-			return 0, err
-		}
-		total += n
-	}
-	return total, nil
-}
 
 // sortUsageModelBuckets 按请求数降序、模型名升序（与旧版 SQL ORDER BY 一致）。
 func sortUsageModelBuckets(buckets []UsageModelBucket) {

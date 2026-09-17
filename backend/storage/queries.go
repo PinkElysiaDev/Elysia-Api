@@ -1277,7 +1277,7 @@ func (s *Store) DeleteUsageAssetRefs(ctx context.Context, requestIDs []string) (
 	}
 	var orphans []string
 	err := s.withTx(ctx, func(tx *sql.Tx) error {
-		for start := 0; start < len(requestIDs); start += 500 {
+		for start := 0; start < len(requestIDs); start += retentionDeleteBatchLimit {
 			end := start + 500
 			if end > len(requestIDs) {
 				end = len(requestIDs)
@@ -1530,32 +1530,6 @@ func (s *Store) UsageDBPageStats(ctx context.Context) (UsageDBStats, error) {
 	return st, err
 }
 
-// UsageRecordIDsExist 批量判断 request_id 是否仍存在于日志表（孤儿资产清扫用）。
-func (s *Store) UsageRecordIDsExist(ctx context.Context, ids []string) (map[string]bool, error) {
-	result := make(map[string]bool, len(ids))
-	if len(ids) == 0 {
-		return result, nil
-	}
-	where := usageInClause("request_id", len(ids))
-	args := make([]interface{}, len(ids))
-	for i, id := range ids {
-		args[i] = id
-	}
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT request_id FROM usage_records WHERE `+where, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		result[id] = true
-	}
-	return result, rows.Err()
-}
 
 // VacuumUsageDB 执行 VACUUM 回收空闲页并截断 WAL。需要短暂独占写锁、
 // 约双倍磁盘空间，调用方必须自行限频（见 usageRetention.maybeVacuum）。
@@ -1568,7 +1542,7 @@ func (s *Store) VacuumUsageDB(ctx context.Context) error {
 }
 
 func (s *Store) UsageTotals(ctx context.Context, q UsageQuery) (map[string]any, error) {
-	acc, err := s.usageTotalsAcc(ctx, q)
+	acc, err := s.computeUsageTotals(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -1617,7 +1591,8 @@ func (s *Store) UsageTotals(ctx context.Context, q UsageQuery) (map[string]any, 
 // usageTotalsAcc 计算 totals 的通用 accumulator：rollup 就绪时中段走预聚合
 // 表（单行聚合）、两侧边缘小时走 raw 单行聚合，在一个读事务内精确合并；
 // 否则整体 raw（阶段一的覆盖索引单行聚合路径）。
-func (s *Store) usageTotalsAcc(ctx context.Context, q UsageQuery) (*usageTotalsAcc, error) {
+// computeUsageTotals 在同读事务内聚合 totals(方法名曾与返回类型同名遮蔽)。
+func (s *Store) computeUsageTotals(ctx context.Context, q UsageQuery) (*usageTotalsAcc, error) {
 	acc := &usageTotalsAcc{}
 	fromHour, toHour, ok := s.rollupSplit(q, true)
 	if !ok {
