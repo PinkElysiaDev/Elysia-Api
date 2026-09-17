@@ -164,20 +164,32 @@ export function AssistantDialog({
     [models, sourceId],
   )
 
+  // 读取计数:文件尚在读取(file.text() 未完成)时禁用发送——否则材料
+  // 既没参与本次生成,setDocuments([]) 清空后读取完成又把文件追加回来。
+  const [readingFiles, setReadingFiles] = useState(0)
   const addFiles = async (files: FileList | File[]) => {
     const incoming = Array.from(files).slice(0, 20 - documents.length)
     if (incoming.length < Array.from(files).length) {
       toastError('附件数量超限', '单次最多 20 个材料')
     }
+    setReadingFiles((n) => n + incoming.length)
     try {
-      const docs = await Promise.all(incoming.map(fileToDocument))
-      setDocuments((current) => [...current, ...docs])
-    } catch (error) {
-      toastError('读取文件失败', String(error))
+      // allSettled:单个文件读失败不拖垮整批。
+      const settled = await Promise.allSettled(incoming.map(fileToDocument))
+      const docs = settled.flatMap((item) => (item.status === 'fulfilled' ? [item.value] : []))
+      if (docs.length) setDocuments((current) => [...current, ...docs])
+      const failed = settled.length - docs.length
+      if (failed > 0) toastError('部分文件读取失败', `${failed} 个文件无法读取,已跳过`)
+    } finally {
+      setReadingFiles((n) => Math.max(0, n - incoming.length))
     }
   }
 
   const send = async () => {
+    if (readingFiles > 0) {
+      toastError('材料仍在读取', '请等待文件读取完成后再生成')
+      return
+    }
     if (!sourceId || !modelName) {
       toastError('请先选择助手模型', '建议选择支持文档/视觉输入的模型')
       return
@@ -379,7 +391,8 @@ export function AssistantDialog({
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                if (loading || readingFiles > 0) return
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
                   event.preventDefault()
                   void send()
                 }
@@ -402,7 +415,7 @@ export function AssistantDialog({
                   }}
                 />
               </div>
-              <Button type="button" size="sm" disabled={loading} onClick={() => void send()}>
+              <Button type="button" size="sm" disabled={loading || readingFiles > 0} onClick={() => void send()}>
                 <Send className="mr-1 h-3 w-3" /> 生成
               </Button>
             </div>

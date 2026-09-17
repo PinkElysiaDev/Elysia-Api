@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,17 +31,28 @@ function KeyValueEditor({
   valuePlaceholder: string
 }) {
   const items = Object.entries(entries)
+  // 行 key 用自增行号:键名即数据身份,onChange 即改 key 会让整行每敲一键
+  // 重挂载、输入框失焦;键名经 RowKeyInput 本地缓冲、blur/Enter 提交。
+  const nextRowId = useRef(0)
+  const rowIds = useRef(new Map<string, number>())
   return (
     <div className="space-y-1.5">
-      {items.map(([key, value]) => (
-        <div key={key} className="flex items-center gap-1.5">
-          <Input
-            className="h-7 flex-1 font-mono text-xs"
-            value={key}
+      {items.map(([key, value]) => {
+        let rowId = rowIds.current.get(key)
+        if (rowId === undefined) {
+          rowId = nextRowId.current++
+          rowIds.current.set(key, rowId)
+        }
+        return (
+        <div key={rowId} className="flex items-center gap-1.5">
+          <RowKeyInput
+            rowKey={key}
             placeholder={keyPlaceholder}
-            onChange={(event) => {
+            exists={(candidate) => items.some(([k]) => k === candidate)}
+            onCommit={(newKey) => {
+              if (newKey === key || newKey === '') return
               const next: Record<string, string> = {}
-              for (const [k, v] of items) next[k === key ? event.target.value : k] = v
+              for (const [k, v] of items) next[k === key ? newKey : k] = v
               onChange(next)
             }}
           />
@@ -64,7 +76,8 @@ function KeyValueEditor({
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
-      ))}
+        )
+      })}
       <Button type="button" variant="outline" size="sm" onClick={() => onChange({ ...entries, '': '' })}>
         <Plus className="mr-1 h-3 w-3" /> 添加{title}
       </Button>
@@ -196,5 +209,49 @@ export function RequestBuilder({
       </SettingSection>
 
     </div>
+  )
+}
+
+// RowKeyInput:键名本地缓冲编辑,blur/Enter 提交;撞车(目标键已存在)静默
+// 回退——与 structure-tree 的 KeyInput 同一模式,适配 Record 键值对形态。
+function RowKeyInput({
+  rowKey,
+  placeholder,
+  exists,
+  onCommit,
+}: {
+  rowKey: string
+  placeholder: string
+  exists: (candidate: string) => boolean
+  onCommit: (next: string) => void
+}) {
+  const [buffer, setBuffer] = useState(rowKey)
+  const [conflict, setConflict] = useState(false)
+  const commit = () => {
+    const next = buffer.trim()
+    if (next === rowKey || next === '' || exists(next)) {
+      if (next && exists(next)) setConflict(true)
+      setBuffer(rowKey)
+      return
+    }
+    setConflict(false)
+    onCommit(next)
+  }
+  return (
+    <Input
+      className="h-7 flex-1 font-mono text-xs"
+      value={buffer}
+      placeholder={placeholder}
+      aria-invalid={conflict || undefined}
+      title={conflict ? '该键名已存在' : undefined}
+      onChange={(event) => { setConflict(false); setBuffer(event.target.value) }}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === 'Escape') {
+          event.preventDefault()
+          commit()
+        }
+      }}
+    />
   )
 }

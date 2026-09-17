@@ -85,7 +85,29 @@ export function ProtocolFormDialog({
 
   if (!draft) return null
 
+  // save 前检查 JSON 草稿:手改未「应用到编辑器」时先应用(可解析)或阻止
+  // 保存(语法错误),否则用户粘贴的配置被静默丢弃。
+  const applyPendingJsonDraft = (): boolean => {
+    if (tab !== 'json' || !jsonDraft) return true
+    if (jsonDraft === JSON.stringify(draft, null, 2)) return true
+    try {
+      const parsed = JSON.parse(jsonDraft) as CustomProtocolConfig
+      setDraft(parsed)
+      if (!parsed.id?.trim()) {
+        toastError('缺少协议 ID', 'id 是必填的短英文标识')
+        return false
+      }
+      return true
+    } catch {
+      toastError('JSON 源码有语法错误', '请修正后再保存,或切回其他标签页放弃修改')
+      return false
+    }
+  }
+
   const save = async (): Promise<boolean> => {
+    if (!applyPendingJsonDraft()) {
+      return false
+    }
     if (!draft.id.trim()) {
       toastError('缺少协议 ID', 'id 是必填的短英文标识')
       return false

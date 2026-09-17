@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FlaskConical, Play } from 'lucide-react'
-import { api, ApiError } from '@/lib/api'
+import { api, ApiError, request } from '@/lib/api'
 import type {
   CustomProtocolConfig,
   CustomProtocolPreviewResult,
@@ -78,20 +78,31 @@ export function PreviewTestPanel({
     }
   }, [sampleText])
 
+  // 代次守卫 + AbortController:防抖期间的连续触发若与手动点击并发,旧响应
+  // 后到会覆盖新结果、先到方提前复位 loading;请求经 api.request 的 signal 取消。
+  const previewAbort = useRef<AbortController | null>(null)
+  const previewGen = useRef(0)
   const runPreview = async () => {
+    previewAbort.current?.abort()
+    const controller = new AbortController()
+    previewAbort.current = controller
+    const gen = ++previewGen.current
     setPreviewLoading(true)
     setPreviewError(null)
     try {
-      const result = await api.previewCustomProtocol({
-        protocol,
-        ...(sampleRequest ? { sampleRequest } : {}),
+      const result = await request<CustomProtocolPreviewResult>('/custom-protocols/preview', {
+        method: 'POST',
+        body: { protocol, ...(sampleRequest ? { sampleRequest } : {}) },
+        signal: controller.signal,
       })
+      if (gen !== previewGen.current) return
       setPreview(result)
     } catch (error) {
+      if (gen !== previewGen.current || controller.signal.aborted) return
       setPreview(null)
       setPreviewError(error instanceof ApiError ? error.message : String(error))
     } finally {
-      setPreviewLoading(false)
+      if (gen === previewGen.current) setPreviewLoading(false)
     }
   }
 
