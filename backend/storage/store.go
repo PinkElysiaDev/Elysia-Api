@@ -749,8 +749,21 @@ type ModelMergeResult struct {
 //   - 能力字段（vision/tools/structured/thinking/maxTokens/type）：incoming 携带
 //     capability_source='manual'（用户在 UI 编辑过）的行保留现有值，否则用
 //     incoming 值（目录回填或上游解析）覆盖；
-//   - 上游消失的 fetched 行删除并同步清理组内引用；manual 行即使上游消失也保留。
+//   - 上游消失的 fetched 行删除并同步清理组内引用；manual 行即使上游消失也保留
+//     （手动同步路径用 SyncManualSourceModels，其 manual 语义不同）。
 func (s *Store) MergeSourceModels(ctx context.Context, source ModelSource, incoming []Model) (ModelMergeResult, error) {
+	return s.mergeSourceModels(ctx, source, incoming, false)
+}
+
+// SyncManualSourceModels 以源配置里的手动模型集为权威同步 models 表：
+// 除 MergeSourceModels 的合并语义外，缺席于 manual 集的 manual 行删除并清理
+// 组内引用——用户在源编辑里删除的手动模型必须从表中消失，外层页面读的正是
+// 这张表。空集合法（清空全部手动模型）。
+func (s *Store) SyncManualSourceModels(ctx context.Context, source ModelSource, manual []Model) (ModelMergeResult, error) {
+	return s.mergeSourceModels(ctx, source, manual, true)
+}
+
+func (s *Store) mergeSourceModels(ctx context.Context, source ModelSource, incoming []Model, deleteMissingManual bool) (ModelMergeResult, error) {
 	result := ModelMergeResult{Added: []string{}, Removed: []string{}}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -843,9 +856,13 @@ func (s *Store) MergeSourceModels(ctx context.Context, source ModelSource, incom
 		}
 	}
 
-	// 上游消失的 fetched 行删除（manual 行保留）；同步清理组内引用防悬空。
+	// 上游消失的 fetched 行删除；手动同步路径（deleteMissingManual）下，
+	// 缺席于权威集的 manual 行同样删除——fetch 路径维持 manual 行保留语义。
+	// 删除同步清理组内引用防悬空。
 	for id, prev := range existing {
-		if _, stillPresent := incomingIDs[id]; stillPresent || prev.origin == "manual" {
+		_, stillPresent := incomingIDs[id]
+		isManual := prev.origin == "manual"
+		if stillPresent || (isManual && !deleteMissingManual) {
 			continue
 		}
 		result.Removed = append(result.Removed, id)

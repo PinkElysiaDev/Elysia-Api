@@ -56,10 +56,9 @@ func (s *Server) refreshSourceByValue(ctx context.Context, source storage.ModelS
 			model.Enabled = true
 			models = append(models, model)
 		}
-		if len(models) == 0 {
-			return empty, nil
-		}
-		result, err := s.store.MergeSourceModels(ctx, source, models)
+		// 手动集即权威:用户在源编辑里删除的手动模型随之从表中删除(空集
+		// 合法——清空全部手动模型也必须落库生效,不再提前返回)。
+		result, err := s.store.SyncManualSourceModels(ctx, source, models)
 		return refreshSummary{Count: len(models), Added: result.Added, Removed: result.Removed}, err
 	}
 

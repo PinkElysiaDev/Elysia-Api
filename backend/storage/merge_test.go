@@ -365,3 +365,82 @@ func TestMergeSourceModelsSkipsLegacyIdentityRefresh(t *testing.T) {
 		t.Fatalf("legacy per-model url must survive merges, got %q", models[0].BaseURL)
 	}
 }
+
+// 手动同步语义:SyncManualSourceModels 以 manual 集为权威——缺席的 manual 行
+// 删除并清理组引用;空集清空全部;fetch 路径(MergeSourceModels)不受影响。
+func TestSyncManualSourceModelsDeletesMissing(t *testing.T) {
+	store := openMergeTestStore(t)
+	ctx := context.Background()
+	source := mergeTestSource()
+	seedSource(t, store, source)
+
+	seed := []Model{{ID: "keep-me", Origin: "manual"}, {ID: "drop-me", Origin: "manual"}, {ID: "fetch-keep", Origin: "fetched"}}
+	if _, err := store.SyncManualSourceModels(ctx, source, seed); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// 用户在源编辑里删除 drop-me:保存同步的 manual 集不再包含它。
+	result, err := store.SyncManualSourceModels(ctx, source, []Model{{ID: "keep-me", Origin: "manual"}, {ID: "fetch-keep"}})
+	if err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if len(result.Removed) != 1 || result.Removed[0] != "drop-me" {
+		t.Fatalf("drop-me must be reported removed: %+v", result.Removed)
+	}
+	models, err := store.ListModels(ctx)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	ids := map[string]bool{}
+	for _, m := range models {
+		ids[m.ID] = true
+	}
+	if ids["drop-me"] || !ids["keep-me"] || !ids["fetch-keep"] {
+		t.Fatalf("drop-me must be gone, others kept: %v", ids)
+	}
+
+	// 清空全部手动模型(空集)也要生效,而非提前返回跳过合并。
+	if _, err := store.SyncManualSourceModels(ctx, source, nil); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	models, _ = store.ListModels(ctx)
+	for _, m := range models {
+		if m.Origin == "manual" {
+			t.Fatalf("manual rows must all be cleared, found %s", m.ID)
+		}
+	}
+
+	// fetch 路径维持旧语义:上游缺席不删 manual 行。
+	if _, err := store.MergeSourceModels(ctx, source, []Model{{ID: "fetch-keep"}}); err != nil {
+		t.Fatalf("fetch merge: %v", err)
+	}
+}
+
+// 组引用清理:被同步删除的手动模型若已加入模型组,组内引用一并移除。
+func TestSyncManualSourceModelsCleansGroupRefs(t *testing.T) {
+	store := openMergeTestStore(t)
+	ctx := context.Background()
+	source := mergeTestSource()
+	seedSource(t, store, source)
+	if _, err := store.SyncManualSourceModels(ctx, source, []Model{{ID: "grp-manual", Origin: "manual"}}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := store.UpsertGroup(ctx, ModelGroup{ID: "g1", Name: "grp", Enabled: true, Models: []string{"src1:grp-manual"}}); err != nil {
+		t.Fatalf("seed group: %v", err)
+	}
+	if _, err := store.SyncManualSourceModels(ctx, source, nil); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	rows, err := store.db.QueryContext(ctx, `SELECT COUNT(*) FROM model_group_models WHERE model_id = 'grp-manual'`)
+	if err != nil {
+		t.Fatalf("count refs: %v", err)
+	}
+	defer rows.Close()
+	var count int
+	if rows.Next() {
+		_ = rows.Scan(&count)
+	}
+	if count != 0 {
+		t.Fatalf("group references must be cleaned, got %d", count)
+	}
+}
