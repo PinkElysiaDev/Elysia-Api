@@ -199,7 +199,7 @@ func RegisterCustomProtocol(config CustomProtocolConfig) error {
 	if err := ValidateCustomProtocol(config); err != nil {
 		return err
 	}
-	config.Type = NormalizeCustomProtocolType(config.Type)
+	config = normalizeCustomProtocol(config)
 	customProtocolRegistry.Lock()
 	customProtocolRegistry.items[strings.ToLower(strings.TrimSpace(config.ID))] = cloneCustomProtocol(config)
 	customProtocolRegistry.Unlock()
@@ -218,13 +218,27 @@ func ReplaceCustomProtocols(configs []CustomProtocolConfig) error {
 		if _, exists := next[id]; exists {
 			return fmt.Errorf("custom protocol %q is duplicated", config.ID)
 		}
-		config.Type = NormalizeCustomProtocolType(config.Type)
+		config = normalizeCustomProtocol(config)
 		next[id] = cloneCustomProtocol(config)
 	}
 	customProtocolRegistry.Lock()
 	customProtocolRegistry.items = next
 	customProtocolRegistry.Unlock()
 	return nil
+}
+
+// normalizeCustomProtocol 在入库/注册时净化已知的历史踩坑形态：设计器旧版
+// 「流式映射」开关写入的空嵌套映射会在运行时顶掉顶层映射，加载即改为
+// 「继承顶层」（与 effectiveCustomProtocolRuntimeMapping 的容错语义一致）。
+func normalizeCustomProtocol(config CustomProtocolConfig) CustomProtocolConfig {
+	config.Type = NormalizeCustomProtocolType(config.Type)
+	if stream := config.Response.Stream; stream != nil && stream.Response != nil &&
+		!customProtocolResponseHasMapping(*stream.Response) {
+		streamCopy := *stream
+		streamCopy.Response = nil
+		config.Response.Stream = &streamCopy
+	}
+	return config
 }
 
 func GetCustomProtocol(id string) (CustomProtocolConfig, bool) {

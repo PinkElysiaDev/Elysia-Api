@@ -655,9 +655,12 @@ func effectiveCustomProtocolRuntimeMapping(config CustomProtocolConfig, allowStr
 		}
 		mapping = compiled
 	}
-	if allowStreamEvent && mapping.Stream != nil && mapping.Stream.Response != nil {
+	// 空嵌套映射（设计器旧版开关写入的 {body:{}}）视为未声明：保留顶层映射，
+	// 否则流帧什么都映射不到，[DONE] 后必然 502「无可呈现输出」。
+	if allowStreamEvent && mapping.Stream != nil && mapping.Stream.Response != nil &&
+		customProtocolResponseHasMapping(*mapping.Stream.Response) {
 		nested := *mapping.Stream.Response
-		if len(nested.Fields) > 0 {
+		if len(nested.Fields) > 0 || len(nested.Body) > 0 {
 			compiled, err := effectiveCustomProtocolResponse("response.stream.response", nested)
 			if err != nil {
 				return mapping, err
@@ -667,4 +670,20 @@ func effectiveCustomProtocolRuntimeMapping(config CustomProtocolConfig, allowStr
 		mapping = nested
 	}
 	return mapping, nil
+}
+
+// customProtocolResponseHasMapping 判定一份响应映射是否声明了任何可产出的
+// 字段：九个直接路径 / mappings / fieldMappings / fields 任一非空，或 body
+// 构造树为非空 JSON（"{}"/null/空白视为空）。
+func customProtocolResponseHasMapping(response CustomProtocolResponse) bool {
+	if response.IDPath != "" || response.ModelPath != "" || response.StatusPath != "" ||
+		response.TextPath != "" || response.ReasoningPath != "" || response.ToolCallsPath != "" ||
+		response.UsagePath != "" || response.FinishReasonPath != "" || response.ErrorPath != "" {
+		return true
+	}
+	if len(response.Mappings) > 0 || len(response.FieldMappings) > 0 || len(response.Fields) > 0 {
+		return true
+	}
+	trimmed := strings.TrimSpace(string(response.Body))
+	return trimmed != "" && trimmed != "{}" && trimmed != "null"
 }

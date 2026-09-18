@@ -157,7 +157,7 @@ func (s *Server) handleCustomStreamRequest(
 		case !decoder.TerminalReceived():
 			streamErr = fmt.Errorf("custom protocol stream ended before a configured terminal value or finish reason")
 		case !decoder.SawOutput() && !decoder.SawFinishReason():
-			streamErr = fmt.Errorf("custom protocol stream completed without representable output")
+			streamErr = fmt.Errorf("custom protocol stream completed without representable output: no text, reasoning, or tool call was mapped from any stream event — check the stream mapping paths against upstream frames (the designer test tab shows raw events vs decoded)")
 		}
 	}
 	if streamErr == nil {

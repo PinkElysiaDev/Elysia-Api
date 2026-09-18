@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,65 @@ import (
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/relay"
 )
+
+// 复刻用户踩坑场景：设计器旧版「流式映射」开关写入的空嵌套映射
+// （stream.response = {body:{}}）曾把顶层已验证的映射整个顶掉——流帧零产出，
+// [DONE] 后 502「completed without representable output」。空嵌套现在运行时
+// 继承顶层映射，注册时也会被净化，存量配置无需重存即恢复。
+func TestCustomProtocolStreamEmptyNestedShadowingEndToEnd(t *testing.T) {
+	relay.ClearCustomProtocols()
+	t.Cleanup(relay.ClearCustomProtocols)
+	err := relay.RegisterCustomProtocol(relay.CustomProtocolConfig{
+		ID: "designer-trap",
+		Request: relay.CustomProtocolRequest{
+			Method:       http.MethodPost,
+			PathTemplate: "/v1/chat",
+			BodyTemplate: `{"model":{{maheshvara.model | json}},"stream":{{maheshvara.stream}}}`,
+		},
+		Response: relay.CustomProtocolResponse{
+			TextPath:         "text",
+			FinishReasonPath: "finish",
+			UsagePath:        "usage",
+			Stream: &relay.CustomProtocolStreamMapping{
+				Mode:     "delta",
+				Response: &relay.CustomProtocolResponse{Body: json.RawMessage(`{}`)},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"text\":\"Hel\"}\n\n")
+		_, _ = io.WriteString(w, "data: {\"text\":\"lo\",\"finish\":\"stop\",\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":6}}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer upstream.Close()
+
+	group := config.ModelGroupConfig{
+		ID: "g1", Name: "grp", Enabled: true,
+		Models: []config.ModelRef{{ID: "m1", Name: "vendor-model", BaseURL: upstream.URL, APIKey: "k", Platform: "custom:designer-trap"}},
+	}
+	s := newTestServer([]config.ModelGroupConfig{group})
+	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	s.chatCompletions(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("empty nested stream mapping must inherit the top-level mapping, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"content":"Hel"`) || !strings.Contains(body, `"content":"lo"`) {
+		t.Fatalf("text must come from the inherited top-level mapping: %s", body)
+	}
+	if !strings.Contains(body, `"finish_reason":"stop"`) || !strings.Contains(body, `"prompt_tokens":4`) || !strings.Contains(body, "data: [DONE]") {
+		t.Fatalf("finish/usage/[DONE] must all be present: %s", body)
+	}
+	if strings.Contains(body, "without representable output") {
+		t.Fatalf("the shadowing 502 must be gone: %s", body)
+	}
+}
 
 // OpenAI 兼容流的标准形态:finish_reason 帧之后还有独立的 usage 尾帧(即
 // stream_options.include_usage),最后才是 [DONE]。修复前解码器在
