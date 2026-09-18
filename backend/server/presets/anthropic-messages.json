@@ -3,49 +3,170 @@
   "name": "Anthropic Messages（预置）",
   "version": "1",
   "type": "llm",
-  "metadata": { "preset": true, "description": "Anthropic Messages 线制的预置定义；含 thinking 分块与分帧工具拼装" },
-  "aliases": { "toolCall": { "id": ["id"], "name": ["name"], "arguments": ["input"] } },
+  "metadata": {
+    "preset": true,
+    "description": "Anthropic Messages 线制的预置定义；含 thinking 分块与分帧工具拼装"
+  },
+  "aliases": {
+    "toolCall": {
+      "id": [
+        "id"
+      ],
+      "name": [
+        "name"
+      ],
+      "arguments": [
+        "input"
+      ]
+    },
+    "textKeys": [
+      "text",
+      "content",
+      "message",
+      "value",
+      "output",
+      "thinking"
+    ]
+  },
   "request": {
     "method": "POST",
     "path": "/v1/messages",
     "shape": "anthropic",
-    "headers": { "anthropic-version": "2023-06-01" },
-    "auth": { "mode": "header", "header": "x-api-key" },
+    "headers": {
+      "anthropic-version": "2023-06-01"
+    },
+    "auth": {
+      "mode": "header",
+      "header": "x-api-key"
+    },
     "body": {
-      "model": { "field": "model", "mode": "string" },
-      "messages": { "field": "messages" },
-      "system": { "field": "instructions", "mode": "string", "omitIfEmpty": true },
-      "max_tokens": { "field": "max_output_tokens", "default": 65536 },
-      "stream": { "field": "stream" },
-      "temperature": { "field": "temperature", "omitIfEmpty": true },
-      "top_p": { "field": "top_p", "omitIfEmpty": true },
-      "tools": { "field": "tools", "omitIfEmpty": true },
-      "tool_choice": { "field": "tool_choice", "omitIfEmpty": true }
+      "model": {
+        "field": "model",
+        "mode": "string"
+      },
+      "messages": {
+        "field": "messages"
+      },
+      "system": {
+        "field": "instructions",
+        "mode": "string",
+        "omitIfEmpty": true
+      },
+      "max_tokens": {
+        "field": "max_output_tokens",
+        "default": 65536
+      },
+      "stream": {
+        "field": "stream"
+      },
+      "temperature": {
+        "field": "temperature",
+        "omitIfEmpty": true
+      },
+      "top_p": {
+        "field": "top_p",
+        "omitIfEmpty": true
+      },
+      "tools": {
+        "field": "tools",
+        "omitIfEmpty": true
+      },
+      "tool_choice": {
+        "field": "tool_choice",
+        "omitIfEmpty": true
+      }
     }
   },
   "response": {
     "textPath": "content",
-    "textFilter": { "path": "type", "op": "equals", "value": "text" },
+    "textFilter": {
+      "path": "type",
+      "op": "equals",
+      "value": "text"
+    },
     "reasoningPath": "content",
-    "reasoningFilter": { "path": "type", "op": "equals", "value": "thinking" },
+    "reasoningFilter": {
+      "path": "type",
+      "op": "equals",
+      "value": "thinking"
+    },
     "toolCallsPath": "content",
     "usagePath": "usage",
     "finishReasonPath": "stop_reason",
     "stream": {
       "frames": [
-        { "event": "message_start", "response": { "usagePath": "message.usage" } },
-        { "event": "content_block_start", "match": { "path": "content_block.type", "op": "equals", "value": "tool_use" },
-          "tool": { "indexPath": "index", "idPath": "content_block.id", "namePath": "content_block.name" } },
-        { "event": "content_block_delta", "match": { "path": "delta.type", "op": "equals", "value": "text_delta" },
-          "response": { "textPath": "delta.text" } },
-        { "event": "content_block_delta", "match": { "path": "delta.type", "op": "equals", "value": "thinking_delta" },
-          "response": { "reasoningPath": "delta.thinking" } },
-        { "event": "content_block_delta", "match": { "path": "delta.type", "op": "equals", "value": "input_json_delta" },
-          "tool": { "indexPath": "index", "argumentsPath": "delta.partial_json" } },
-        { "event": "message_delta", "terminal": true,
-          "response": { "usagePath": "usage", "finishReasonPath": "delta.stop_reason" } }
+        {
+          "event": "error",
+          "response": {
+            "errorPath": "error"
+          }
+        },
+        {
+          "event": "message_start",
+          "response": {
+            "usagePath": "message.usage"
+          }
+        },
+        {
+          "event": "content_block_start",
+          "match": {
+            "path": "content_block.type",
+            "op": "equals",
+            "value": "tool_use"
+          },
+          "tool": {
+            "indexPath": "index",
+            "idPath": "content_block.id",
+            "namePath": "content_block.name"
+          }
+        },
+        {
+          "event": "content_block_delta",
+          "match": {
+            "path": "delta.type",
+            "op": "equals",
+            "value": "text_delta"
+          },
+          "response": {
+            "textPath": "delta.text"
+          }
+        },
+        {
+          "event": "content_block_delta",
+          "match": {
+            "path": "delta.type",
+            "op": "equals",
+            "value": "thinking_delta"
+          },
+          "response": {
+            "reasoningPath": "delta.thinking"
+          }
+        },
+        {
+          "event": "content_block_delta",
+          "match": {
+            "path": "delta.type",
+            "op": "equals",
+            "value": "input_json_delta"
+          },
+          "tool": {
+            "indexPath": "index",
+            "argumentsPath": "delta.partial_json"
+          }
+        },
+        {
+          "event": "message_delta",
+          "terminal": true,
+          "response": {
+            "usagePath": "usage",
+            "finishReasonPath": "delta.stop_reason"
+          }
+        }
       ]
     }
   },
-  "models": { "path": "/v1/models", "listPath": "data" }
+  "models": {
+    "path": "/v1/models",
+    "listPath": "data"
+  }
 }

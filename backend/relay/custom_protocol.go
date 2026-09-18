@@ -214,6 +214,9 @@ type CustomProtocolStreamFrame struct {
 // CustomProtocolStreamTool 是帧级工具调用拼装规则：路径相对帧原始 JSON。
 // argumentsMode 缺省 delta（片段原样追加），cumulative 时片段为累计快照。
 type CustomProtocolStreamTool struct {
+	// Path 指向工具对象数组（如 choices[0].delta.tool_calls）：设定时按元素
+	// 遍历（单帧多工具），以下路径相对每个元素；缺省时相对帧根，单工具。
+	Path          string `json:"path,omitempty"`
 	IDPath        string `json:"idPath,omitempty"`
 	IndexPath     string `json:"indexPath,omitempty"`
 	NamePath      string `json:"namePath,omitempty"`
@@ -687,7 +690,7 @@ func validateCustomProtocolResponse(configID, location string, response CustomPr
 // 合法；argumentsMode 仅 delta/cumulative。
 func validateCustomProtocolStreamTool(configID, location string, tool *CustomProtocolStreamTool) error {
 	paths := map[string]string{
-		"idPath": tool.IDPath, "indexPath": tool.IndexPath, "namePath": tool.NamePath, "argumentsPath": tool.ArgumentsPath,
+		"path": tool.Path, "idPath": tool.IDPath, "indexPath": tool.IndexPath, "namePath": tool.NamePath, "argumentsPath": tool.ArgumentsPath,
 	}
 	declared := 0
 	for field, value := range paths {
@@ -1129,6 +1132,10 @@ func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[
 			return err
 		}
 		root["messages"] = shapeValue(messages)
+		// tool_choice 同步转为目标形状(公共形状 "required" 等 Claude 不识别)。
+		if converted := applyClaudeDisableParallelToolUse(maheshvaraToolChoiceToClaude(req.ToolChoice), req.ParallelToolCalls); converted != nil {
+			root["tool_choice"] = shapeValue(converted)
+		}
 		return setTools(maheshvaraToolsToClaude(req.Tools))
 	case "gemini":
 		messages, err := maheshvaraMessagesToGemini(req)
@@ -1475,8 +1482,8 @@ func customUsageAtWithAliases(root any, path string, aliases map[string][]string
 	usage.InputTokens = customIntPath(object, effectiveKeys("input", "input_tokens", "inputTokens", "prompt_tokens", "promptTokenCount")...)
 	usage.OutputTokens = customIntPath(object, effectiveKeys("output", "output_tokens", "outputTokens", "completion_tokens", "candidatesTokenCount")...)
 	usage.TotalTokens = customIntPath(object, effectiveKeys("total", "total_tokens", "totalTokens", "totalTokenCount")...)
-	usage.CachedInputTokens = customIntPath(object, effectiveKeys("cached", "cached_input_tokens", "cachedInputTokens", "cached_tokens", "cachedContentTokenCount")...)
-	usage.ReasoningTokens = customIntPath(object, effectiveKeys("reasoning", "reasoning_tokens", "reasoningTokens", "thoughtsTokenCount")...)
+	usage.CachedInputTokens = customIntPath(object, effectiveKeys("cached", "cached_input_tokens", "cachedInputTokens", "cached_tokens", "cachedContentTokenCount", "prompt_tokens_details.cached_tokens", "input_tokens_details.cached_tokens", "cache_read_tokens")...)
+	usage.ReasoningTokens = customIntPath(object, effectiveKeys("reasoning", "reasoning_tokens", "reasoningTokens", "thoughtsTokenCount", "completion_tokens_details.reasoning_tokens")...)
 	usage.TotalTokens = valueOrSum(usage.TotalTokens, usage.InputTokens, usage.OutputTokens)
 	return usage
 }

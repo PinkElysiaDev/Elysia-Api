@@ -271,3 +271,84 @@ func TestCustomProtocolMappedErrorIsFailure(t *testing.T) {
 		t.Fatalf("empty-answer success shape must be gone: %s", rec.Body.String())
 	}
 }
+
+// DBG-009 回归:同一 delta 帧携带多个工具时全部产出(tool.path 数组遍历)。
+func TestPresetChatMultipleToolsInOneFrame(t *testing.T) {
+	relay.ClearCustomProtocols()
+	t.Cleanup(relay.ClearCustomProtocols)
+	registerPresetForTest(t, "openai-chat")
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_a\",\"function\":{\"name\":\"first\",\"arguments\":\"{}\"}},{\"index\":1,\"id\":\"call_b\",\"function\":{\"name\":\"second\",\"arguments\":\"{}\"}}]}}]}\n\n")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer upstream.Close()
+
+	s := newTestServer(presetGroup(t, "custom:openai-chat", upstream.URL))
+	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	s.chatCompletions(c)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"name":"first"`) || !strings.Contains(body, `"name":"second"`) {
+		t.Fatalf("both tools in one frame must be extracted: %s", body)
+	}
+}
+
+// DBG-010 回归:预设的失败帧必须映射为流失败,终止后错误同样生效。
+func TestPresetErrorFramesEndToEnd(t *testing.T) {
+	relay.ClearCustomProtocols()
+	t.Cleanup(relay.ClearCustomProtocols)
+	registerPresetForTest(t, "anthropic-messages")
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"partial\"}}\n\n")
+		_, _ = io.WriteString(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":2}}\n\n")
+		_, _ = io.WriteString(w, "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"overloaded\"}}\n\n")
+	}))
+	defer upstream.Close()
+
+	s := newTestServer(presetGroup(t, "custom:anthropic-messages", upstream.URL))
+	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	s.chatCompletions(c)
+	if !strings.Contains(rec.Body.String(), "overloaded") {
+		t.Fatalf("trailing error frame must surface as failure: %s", rec.Body.String())
+	}
+}
+
+// DBG-013 回归:shape=anthropic 时 tool_choice 转换为目标线制形状。
+func TestShapeAnthropicToolChoice(t *testing.T) {
+	protocol := relay.CustomProtocolConfig{
+		ID: "shape-toolchoice",
+		Request: relay.CustomProtocolRequest{
+			Method: "POST", PathTemplate: "/x", Shape: "anthropic",
+			BodyTemplate: `{"tool_choice":{{maheshvara.tool_choice | json}}}`,
+		},
+		Response: relay.CustomProtocolResponse{TextPath: "text"},
+	}
+	if err := relay.ValidateCustomProtocol(protocol); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	request := MaheshvaraRequestForTest()
+	rendered, err := relay.RenderCustomProtocolRequest(&request, protocol)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !strings.Contains(string(rendered.Body), `"tool_choice":{"type":"any"}`) {
+		t.Fatalf("shape=anthropic must convert tool_choice to the wire shape: %s", rendered.Body)
+	}
+}
+
+// MaheshvaraRequestForTest 组一个 required 工具选择请求。
+func MaheshvaraRequestForTest() relay.MaheshvaraRequest {
+	return relay.MaheshvaraRequest{
+		Model:      "m",
+		ToolChoice: "required",
+		Messages:   []relay.MaheshvaraMessage{{Role: "user", Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentText, Text: "hi"}}}},
+		Tools:      []relay.MaheshvaraTool{{Type: relay.MaheshvaraToolFunction, Name: "f", Parameters: map[string]any{"type": "object"}}},
+	}
+}

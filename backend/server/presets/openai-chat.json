@@ -69,14 +69,24 @@
       "frames": [
         {
           "match": {
+            "path": "error",
+            "op": "notNull"
+          },
+          "response": {
+            "errorPath": "error"
+          }
+        },
+        {
+          "match": {
             "path": "choices[0].delta.tool_calls",
             "op": "nonEmpty"
           },
           "tool": {
-            "indexPath": "choices[0].delta.tool_calls[0].index",
-            "idPath": "choices[0].delta.tool_calls[0].id",
-            "namePath": "choices[0].delta.tool_calls[0].function.name",
-            "argumentsPath": "choices[0].delta.tool_calls[0].function.arguments"
+            "path": "choices[0].delta.tool_calls",
+            "indexPath": "index",
+            "idPath": "id",
+            "namePath": "function.name",
+            "argumentsPath": "function.arguments"
           },
           "response": {
             "textPath": "choices[0].delta.content",
@@ -112,5 +122,6 @@
   "models": {
     "path": "/v1/models",
     "listPath": "data"
-  }
+  },
+  "aliases": {}
 }

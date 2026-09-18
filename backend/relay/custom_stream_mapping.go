@@ -179,9 +179,7 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 		return nil, false, err
 	}
 	if frameTool != nil {
-		if item, ok := decoder.frameToolItem(frameTool, frameRoot); ok {
-			response.Output = append(response.Output, item)
-		}
+		response.Output = append(response.Output, decoder.frameToolItems(frameTool, frameRoot)...)
 	}
 	events := decoder.contentEvents(response, decoder.frameArgsMode(frameTool))
 	// 终止判定：finishWhen/statusWhen 配置时按 Match 语义（载荷根为
@@ -304,18 +302,35 @@ func (decoder *CustomProtocolStreamDecoder) payloadEventName(wireEventName strin
 	return ""
 }
 
-// frameToolItem 从帧 JSON 组装工具调用增量：身份帧（id/name 可得）注册
-// index→身份；参数帧经 index 关联或直接携带 id。仅身份无参数时 Arguments
-// 留空（不产生参数增量，避免 "{}" 混入拼装流）。
-func (decoder *CustomProtocolStreamDecoder) frameToolItem(tool *CustomProtocolStreamTool, root any) (MaheshvaraOutputItem, bool) {
+// frameToolItems 从帧 JSON 组装工具调用增量（单帧可多工具）：身份帧
+// （id/name 可得）注册 index→身份；参数帧经 index 关联或直接携带 id。仅身份
+// 无参数时 Arguments 留空（不产生参数增量，避免 "{}" 混入拼装流）。tool.Path
+// 指向工具数组时按元素遍历，各路径相对元素；否则整帧视为单工具。
+func (decoder *CustomProtocolStreamDecoder) frameToolItems(tool *CustomProtocolStreamTool, root any) []MaheshvaraOutputItem {
 	if tool == nil || root == nil {
-		return MaheshvaraOutputItem{}, false
+		return nil
 	}
-	id := customStringAt(root, tool.IDPath)
-	name := customStringAt(root, tool.NamePath)
+	if strings.TrimSpace(tool.Path) == "" {
+		if item, ok := decoder.buildFrameToolItem(tool, root); ok {
+			return []MaheshvaraOutputItem{item}
+		}
+		return nil
+	}
+	var items []MaheshvaraOutputItem
+	for _, element := range customArrayAt(root, tool.Path) {
+		if item, ok := decoder.buildFrameToolItem(tool, element); ok {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+func (decoder *CustomProtocolStreamDecoder) buildFrameToolItem(tool *CustomProtocolStreamTool, element any) (MaheshvaraOutputItem, bool) {
+	id := customStringAt(element, tool.IDPath)
+	name := customStringAt(element, tool.NamePath)
 	index, hasIndex := 0.0, false
 	if strings.TrimSpace(tool.IndexPath) != "" {
-		if number, ok := numberValue(customValueAt(root, tool.IndexPath)); ok {
+		if number, ok := numberValue(customValueAt(element, tool.IndexPath)); ok {
 			index, hasIndex = number, true
 		}
 	}
@@ -339,7 +354,7 @@ func (decoder *CustomProtocolStreamDecoder) frameToolItem(tool *CustomProtocolSt
 		CallID: id, Name: name,
 	}
 	if strings.TrimSpace(tool.ArgumentsPath) != "" {
-		if arguments := customValueAt(root, tool.ArgumentsPath); arguments != nil {
+		if arguments := customValueAt(element, tool.ArgumentsPath); arguments != nil {
 			if text, ok := arguments.(string); ok {
 				// 参数片段按定义可能是不完整 JSON（input_json_delta 分片），
 				// 原样透传供拼接，不做「无效 JSON 加引号」保护。

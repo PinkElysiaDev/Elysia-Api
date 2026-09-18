@@ -99,6 +99,15 @@
       "frames": [
         {
           "match": {
+            "path": "error",
+            "op": "notNull"
+          },
+          "response": {
+            "errorPath": "error"
+          }
+        },
+        {
+          "match": {
             "path": "candidates[0].content.parts[0].functionCall",
             "op": "notNull"
           },
