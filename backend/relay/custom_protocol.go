@@ -92,8 +92,11 @@ func NormalizeCustomProtocolType(value string) string {
 }
 
 type CustomProtocolRequest struct {
-	Method       string             `json:"method,omitempty"`
-	PathTemplate string             `json:"path,omitempty"`
+	Method       string `json:"method,omitempty"`
+	PathTemplate string `json:"path,omitempty"`
+	// PathStream 流式请求的路径覆盖（Gemini :generateContent vs
+	// :streamGenerateContent?alt=sse 这类按流切换动词的端点）；缺省同 path。
+	PathStream   string             `json:"pathStream,omitempty"`
 	Headers      map[string]string  `json:"headers,omitempty"`
 	Query        map[string]string  `json:"query,omitempty"`
 	ContentType  string             `json:"contentType,omitempty"`
@@ -189,10 +192,27 @@ type CustomProtocolDoneValue struct {
 // 时优先于 legacy events 白名单；未匹配任何帧的事件跳过（需要兜底映射时用
 // stream.response 声明）。
 type CustomProtocolStreamFrame struct {
-	Event       string                  `json:"event"`
-	PayloadPath string                  `json:"payloadPath,omitempty"`
-	Response    *CustomProtocolResponse `json:"response,omitempty"`
-	Terminal    bool                    `json:"terminal,omitempty"`
+	// Event 按 SSE event 字段（或 eventKeys 判别键）匹配；Match 按帧 JSON
+	// 谓词匹配（无事件名协议如 Gemini data-only 帧）。两者都给出时须同时成立，
+	// 至少给一个。
+	Event       string               `json:"event,omitempty"`
+	Match       *CustomProtocolMatch `json:"match,omitempty"`
+	PayloadPath string               `json:"payloadPath,omitempty"`
+	// Tool 声明分帧工具拼装：身份帧给 id/name，参数帧给增量参数片段；按
+	// idPath 或 indexPath（关联身份帧）关联到同一工具调用。
+	Tool     *CustomProtocolStreamTool `json:"tool,omitempty"`
+	Response *CustomProtocolResponse   `json:"response,omitempty"`
+	Terminal bool                      `json:"terminal,omitempty"`
+}
+
+// CustomProtocolStreamTool 是帧级工具调用拼装规则：路径相对帧原始 JSON。
+// argumentsMode 缺省 delta（片段原样追加），cumulative 时片段为累计快照。
+type CustomProtocolStreamTool struct {
+	IDPath        string `json:"idPath,omitempty"`
+	IndexPath     string `json:"indexPath,omitempty"`
+	NamePath      string `json:"namePath,omitempty"`
+	ArgumentsPath string `json:"argumentsPath,omitempty"`
+	ArgumentsMode string `json:"argumentsMode,omitempty"`
 }
 
 func (request CustomProtocolRequest) bodyTemplate() string {
@@ -357,6 +377,9 @@ func ValidateCustomProtocol(config CustomProtocolConfig) error {
 	}
 	if err := validateCustomStringTemplate(config.Request.PathTemplate); err != nil {
 		return fmt.Errorf("custom protocol %q request.path: %w", config.ID, err)
+	}
+	if err := validateCustomStringTemplate(config.Request.PathStream); err != nil {
+		return fmt.Errorf("custom protocol %q request.pathStream: %w", config.ID, err)
 	}
 	if err := validateCustomHeaders(config.ID, "request.headers", config.Request.Headers); err != nil {
 		return err
@@ -616,11 +639,21 @@ func validateCustomProtocolResponse(configID, location string, response CustomPr
 		}
 	}
 	for index, frame := range stream.Frames {
-		if strings.TrimSpace(frame.Event) == "" {
-			return fmt.Errorf("custom protocol %q %s.stream.frames[%d].event is required", configID, location, index)
+		if strings.TrimSpace(frame.Event) == "" && frame.Match == nil {
+			return fmt.Errorf("custom protocol %q %s.stream.frames[%d] requires event or match", configID, location, index)
 		}
 		if strings.ContainsAny(frame.Event, "\r\n") {
 			return fmt.Errorf("custom protocol %q %s.stream.frames[%d].event contains a line break", configID, location, index)
+		}
+		if frame.Match != nil {
+			if err := validateCustomProtocolMatch(fmt.Sprintf("%s.stream.frames[%d].match", location, index), *frame.Match); err != nil {
+				return fmt.Errorf("custom protocol %q: %w", configID, err)
+			}
+		}
+		if frame.Tool != nil {
+			if err := validateCustomProtocolStreamTool(configID, fmt.Sprintf("%s.stream.frames[%d].tool", location, index), frame.Tool); err != nil {
+				return err
+			}
 		}
 		if payloadPath := strings.TrimSpace(frame.PayloadPath); payloadPath != "" {
 			if _, err := parseCustomPath(payloadPath); err != nil {
@@ -635,6 +668,33 @@ func validateCustomProtocolResponse(configID, location string, response CustomPr
 	}
 	if stream.Response != nil {
 		return validateCustomProtocolResponse(configID, location+".stream.response", *stream.Response, false)
+	}
+	return nil
+}
+
+// validateCustomProtocolStreamTool 校验帧级工具拼装规则：至少一条路径；路径
+// 合法；argumentsMode 仅 delta/cumulative。
+func validateCustomProtocolStreamTool(configID, location string, tool *CustomProtocolStreamTool) error {
+	paths := map[string]string{
+		"idPath": tool.IDPath, "indexPath": tool.IndexPath, "namePath": tool.NamePath, "argumentsPath": tool.ArgumentsPath,
+	}
+	declared := 0
+	for field, value := range paths {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		declared++
+		if _, err := parseCustomPath(value); err != nil {
+			return fmt.Errorf("custom protocol %q %s.%s: %w", configID, location, field, err)
+		}
+	}
+	if declared == 0 {
+		return fmt.Errorf("custom protocol %q %s requires at least one of idPath, indexPath, namePath, argumentsPath", configID, location)
+	}
+	switch mode := strings.ToLower(strings.TrimSpace(tool.ArgumentsMode)); mode {
+	case "", "delta", "cumulative":
+	default:
+		return fmt.Errorf("custom protocol %q %s.argumentsMode %q is unsupported", configID, location, tool.ArgumentsMode)
 	}
 	return nil
 }
@@ -664,9 +724,15 @@ func renderCustomProtocolRequest(req *MaheshvaraRequest, config CustomProtocolCo
 			return nil, fmt.Errorf("custom protocol %q request body: %w", config.ID, err)
 		}
 	}
+	// 流式请求切换到 pathStream（Gemini :generateContent vs
+	// :streamGenerateContent?alt=sse 这类按流切换动词的端点）。
+	pathTemplate := config.Request.PathTemplate
+	if req.Stream && strings.TrimSpace(config.Request.PathStream) != "" {
+		pathTemplate = config.Request.PathStream
+	}
 	result := &CustomProtocolRequestResult{
 		Method:      strings.ToUpper(strings.TrimSpace(config.Request.Method)),
-		Path:        renderCustomString(config.Request.PathTemplate, ctx),
+		Path:        renderCustomString(pathTemplate, ctx),
 		Headers:     make(map[string]string, len(config.Request.Headers)+1),
 		Query:       make(map[string]string, len(config.Request.Query)),
 		Body:        body,

@@ -514,11 +514,25 @@ export interface CustomProtocolStreamMapping {
   response?: CustomProtocolResponse
 }
 
-/** 异构流的一类帧的映射规则：按事件名匹配，命中即用该帧自己的映射。 */
+/** 帧级工具拼装规则：身份帧给 id/name，参数帧给增量参数片段；按 idPath 或 indexPath 关联。 */
+export interface CustomProtocolStreamTool {
+  idPath?: string
+  indexPath?: string
+  namePath?: string
+  argumentsPath?: string
+  /** delta（默认，片段原样追加）/ cumulative（片段为累计快照） */
+  argumentsMode?: string
+}
+
+/** 异构流的一类帧的映射规则：按事件名与/或 JSON 谓词匹配，命中即用该帧自己的映射。 */
 export interface CustomProtocolStreamFrame {
-  /** SSE event 字段，缺省取 JSON type/event 字段 */
-  event: string
+  /** SSE event 字段（或 eventKeys 判别键）；与 match 同给时须同时成立 */
+  event?: string
+  /** 帧 JSON 谓词（无事件名协议如 Gemini data-only 帧） */
+  match?: CustomProtocolMatch
   payloadPath?: string
+  /** 分帧工具调用拼装（content_block_start/input_json_delta 等） */
+  tool?: CustomProtocolStreamTool
   response?: CustomProtocolResponse
   /** 命中即判定流终态（response.completed / message_stop 型收尾） */
   terminal?: boolean
@@ -570,6 +584,8 @@ export interface CustomProtocolResponse {
 export interface CustomProtocolRequest {
   method?: string
   path?: string
+  /** 流式请求的路径覆盖（按流切换动词的端点，如 Gemini） */
+  pathStream?: string
   headers?: Record<string, string>
   query?: Record<string, string>
   contentType?: string

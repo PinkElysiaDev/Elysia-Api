@@ -23,9 +23,17 @@ type CustomProtocolStreamDecoder struct {
 	previousReasoning map[string]string
 	previousArguments map[string]string
 	toolAdded         map[string]bool
+	frameTools        map[float64]CustomProtocolStreamToolIdentity
 	terminal          bool
 	sawOutput         bool
 	sawFinish         bool
+}
+
+// CustomProtocolStreamToolIdentity 记录身份帧（content_block_start /
+// output_item.added）声明的工具身份，供仅携带 index 的参数帧关联。
+type CustomProtocolStreamToolIdentity struct {
+	ID   string
+	Name string
 }
 
 func NewCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtocolStreamDecoder, error) {
@@ -42,6 +50,7 @@ func NewCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtoco
 		previousReasoning: make(map[string]string),
 		previousArguments: make(map[string]string),
 		toolAdded:         make(map[string]bool),
+		frameTools:        make(map[float64]CustomProtocolStreamToolIdentity),
 	}
 	if stream := config.Response.Stream; stream != nil {
 		if mode := strings.ToLower(strings.TrimSpace(stream.Mode)); mode != "" {
@@ -134,9 +143,17 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 	}
 	config := decoder.config
 	terminalFrame := false
+	var frameTool *CustomProtocolStreamTool
+	var frameRoot any
 	if len(decoder.frames) > 0 {
-		eventName := decoder.wireEventName(wireEvent, data)
-		frame := decoder.matchFrame(eventName)
+		root, rootOK := customMatchValue(json.RawMessage(data))
+		eventName := ""
+		if rootOK {
+			eventName = decoder.payloadEventName(strings.TrimSpace(wireEvent.Event), root)
+		} else if trimmed := strings.TrimSpace(wireEvent.Event); trimmed != "" {
+			eventName = trimmed
+		}
+		frame := decoder.matchFrame(eventName, root, rootOK)
 		if frame == nil {
 			// 异构流中未声明的帧型不属于本协议语义，跳过；需要兜底映射时
 			// 用 stream.response 声明默认映射。
@@ -146,6 +163,8 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 			config = customProtocolFrameConfig(decoder.config, *frame)
 		}
 		terminalFrame = frame.Terminal
+		frameTool = frame.Tool
+		frameRoot = root
 	} else if len(decoder.events) > 0 {
 		eventName := decoder.wireEventName(wireEvent, data)
 		if _, allowed := decoder.events[eventName]; !allowed {
@@ -156,7 +175,12 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 	if err != nil {
 		return nil, false, err
 	}
-	events := decoder.contentEvents(response)
+	if frameTool != nil {
+		if item, ok := decoder.frameToolItem(frameTool, frameRoot); ok {
+			response.Output = append(response.Output, item)
+		}
+	}
+	events := decoder.contentEvents(response, decoder.frameArgsMode(frameTool))
 	// 终止判定：finishWhen/statusWhen 配置时按 Match 语义（载荷根为
 	// payloadPath 解包后的对象）；缺省沿用 legacy——finishReasonPath 字符串化
 	// 非空、status == "completed"。
@@ -235,26 +259,104 @@ func (decoder *CustomProtocolStreamDecoder) wireEventName(wireEvent SSEEvent, da
 		return eventName
 	}
 	if raw, err := decodeSSEEventJSON(data); err == nil {
-		for _, key := range decoder.eventKeys {
-			if name := stringValue(raw[key]); name != "" {
-				return name
+		return decoder.payloadEventName("", raw)
+	}
+	return ""
+}
+
+func (decoder *CustomProtocolStreamDecoder) matchFrame(eventName string, root any, rootOK bool) *CustomProtocolStreamFrame {
+	for index := range decoder.frames {
+		frame := decoder.frames[index]
+		if frame.Event != "" {
+			if eventName == "" || frame.Event != eventName {
+				continue
 			}
+		}
+		if frame.Match != nil {
+			if !rootOK || !customMatchEval(root, *frame.Match) {
+				continue
+			}
+		}
+		matched := frame
+		return &matched
+	}
+	return nil
+}
+
+// payloadEventName 在已解析的帧载荷上按 eventKeys 取事件名；SSE event 字段
+// 非空时优先。
+func (decoder *CustomProtocolStreamDecoder) payloadEventName(wireEventName string, root any) string {
+	if wireEventName != "" {
+		return wireEventName
+	}
+	object, _ := root.(map[string]any)
+	if object == nil {
+		return ""
+	}
+	for _, key := range decoder.eventKeys {
+		if name := stringValue(object[key]); name != "" {
+			return name
 		}
 	}
 	return ""
 }
 
-func (decoder *CustomProtocolStreamDecoder) matchFrame(eventName string) *CustomProtocolStreamFrame {
-	if eventName == "" {
-		return nil
+// frameToolItem 从帧 JSON 组装工具调用增量：身份帧（id/name 可得）注册
+// index→身份；参数帧经 index 关联或直接携带 id。仅身份无参数时 Arguments
+// 留空（不产生参数增量，避免 "{}" 混入拼装流）。
+func (decoder *CustomProtocolStreamDecoder) frameToolItem(tool *CustomProtocolStreamTool, root any) (MaheshvaraOutputItem, bool) {
+	if tool == nil || root == nil {
+		return MaheshvaraOutputItem{}, false
 	}
-	for index := range decoder.frames {
-		if decoder.frames[index].Event == eventName {
-			frame := decoder.frames[index]
-			return &frame
+	id := customStringAt(root, tool.IDPath)
+	name := customStringAt(root, tool.NamePath)
+	index, hasIndex := 0.0, false
+	if strings.TrimSpace(tool.IndexPath) != "" {
+		if number, ok := numberValue(customValueAt(root, tool.IndexPath)); ok {
+			index, hasIndex = number, true
 		}
 	}
-	return nil
+	if hasIndex {
+		if identity, found := decoder.frameTools[index]; found {
+			if id == "" {
+				id = identity.ID
+			}
+			if name == "" {
+				name = identity.Name
+			}
+		} else if id != "" || name != "" {
+			decoder.frameTools[index] = CustomProtocolStreamToolIdentity{ID: id, Name: name}
+		}
+	}
+	if id == "" && name == "" {
+		return MaheshvaraOutputItem{}, false // 无身份可关联（身份帧未到）
+	}
+	item := MaheshvaraOutputItem{
+		Type: MaheshvaraOutputFunctionCall, Status: "completed",
+		CallID: id, Name: name,
+	}
+	if strings.TrimSpace(tool.ArgumentsPath) != "" {
+		if arguments := customValueAt(root, tool.ArgumentsPath); arguments != nil {
+			if text, ok := arguments.(string); ok {
+				// 参数片段按定义可能是不完整 JSON（input_json_delta 分片），
+				// 原样透传供拼接，不做「无效 JSON 加引号」保护。
+				item.Arguments = json.RawMessage(text)
+			} else {
+				item.Arguments, _ = json.Marshal(arguments)
+			}
+		}
+	}
+	return item, true
+}
+
+// frameArgsMode 计算本帧工具参数的差分模式：帧级 argumentsMode 覆盖族级。
+func (decoder *CustomProtocolStreamDecoder) frameArgsMode(tool *CustomProtocolStreamTool) string {
+	if tool != nil {
+		if mode := strings.ToLower(strings.TrimSpace(tool.ArgumentsMode)); mode == "delta" || mode == "cumulative" {
+			return mode
+		}
+	}
+	return decoder.modeArgs
 }
 
 // customProtocolFrameConfig 把命中的帧规则叠加到协议配置副本上：帧映射覆盖
@@ -279,7 +381,7 @@ func customProtocolFrameConfig(config CustomProtocolConfig, frame CustomProtocol
 
 // contentEvents 产生一帧映射出的内容/工具/用量事件；终止事件由 Decode 统一
 // 判定（需要访问原始载荷以求值 Match）。
-func (decoder *CustomProtocolStreamDecoder) contentEvents(response *MaheshvaraResponse) []MaheshvaraStreamEvent {
+func (decoder *CustomProtocolStreamDecoder) contentEvents(response *MaheshvaraResponse, argsMode string) []MaheshvaraStreamEvent {
 	if response == nil {
 		return nil
 	}
@@ -298,7 +400,7 @@ func (decoder *CustomProtocolStreamDecoder) contentEvents(response *MaheshvaraRe
 			}
 			arguments := string(item.Arguments)
 			if arguments != "" {
-				delta := decoder.streamDelta(decoder.previousArguments, key, arguments, decoder.modeArgs)
+				delta := decoder.streamDelta(decoder.previousArguments, key, arguments, argsMode)
 				if delta != "" {
 					events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallArgumentsDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ToolCallIndex: outputIndex, ToolCallID: item.CallID, ToolName: item.Name, ToolArgumentsDelta: delta})
 				}

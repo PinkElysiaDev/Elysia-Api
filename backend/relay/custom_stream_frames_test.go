@@ -187,8 +187,8 @@ func TestValidateCustomProtocolStreamFrames(t *testing.T) {
 	}
 	if err := ValidateCustomProtocol(base(&CustomProtocolStreamMapping{
 		Frames: []CustomProtocolStreamFrame{{PayloadPath: "x"}},
-	})); err == nil || !strings.Contains(err.Error(), "event is required") {
-		t.Fatalf("frame without event must fail, got: %v", err)
+	})); err == nil || !strings.Contains(err.Error(), "requires event or match") {
+		t.Fatalf("frame without event/match must fail, got: %v", err)
 	}
 	if err := ValidateCustomProtocol(base(&CustomProtocolStreamMapping{
 		Frames: []CustomProtocolStreamFrame{{Event: "a", PayloadPath: "bad[path"}},
