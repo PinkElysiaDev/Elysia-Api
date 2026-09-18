@@ -1,12 +1,12 @@
 package server
 
 import (
-	"log"
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"encoding/json"
-	"context"
-	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"

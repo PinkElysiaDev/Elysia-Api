@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
@@ -42,6 +43,42 @@ func PresetProtocolConfigs() ([]relay.CustomProtocolConfig, error) {
 	return configs, nil
 }
 
+// presetProtocolAnthropicMessagesID 标记 AI 助手 few-shot 范例所用预置;
+// 改名/删除该预设时此常量是唯一需要同步的位置。
+const presetProtocolAnthropicMessagesID = "anthropic-messages"
+
+// cachedPresetConfigs 内嵌定义不可变:解析+整体校验只做一次,助手每请求
+// 复用(此前每次调用重读 embed 并校验四份)。
+var cachedPresetConfigs = sync.OnceValue(func() []relay.CustomProtocolConfig {
+	configs, err := PresetProtocolConfigs()
+	if err != nil {
+		log.Printf("custom protocol presets unavailable: %v", err)
+		return nil
+	}
+	return configs
+})
+
+// findPresetConfig 按 ID 查找内嵌预置定义。
+func findPresetConfig(id string) (relay.CustomProtocolConfig, bool) {
+	for _, config := range cachedPresetConfigs() {
+		if config.ID == id {
+			return config, true
+		}
+	}
+	return relay.CustomProtocolConfig{}, false
+}
+
+// customProtocolRow 由协议配置组装存储行(播种/迁移/管理写入共用)。
+func customProtocolRow(config relay.CustomProtocolConfig, rawJSON string) storage.CustomProtocol {
+	return storage.CustomProtocol{
+		ID:      config.ID,
+		Name:    config.Name,
+		Version: config.Version,
+		Type:    relay.NormalizeCustomProtocolType(config.Type),
+		Config:  rawJSON,
+	}
+}
+
 // seedPresetProtocols 在协议表为空（首次启动）时写入预置协议定义。用户此后
 // 可自由编辑/删除；仅当全部协议行被清空时，下次启动会重新播种。
 func (s *Server) seedPresetProtocols() {
@@ -65,15 +102,10 @@ func (s *Server) seedPresetProtocols() {
 	for _, config := range configs {
 		encoded, err := json.Marshal(config)
 		if err != nil {
+			log.Printf("custom protocol preset seed skipped %q: marshal: %v", config.ID, err)
 			continue
 		}
-		if err := s.store.UpsertCustomProtocol(context.Background(), storage.CustomProtocol{
-			ID:      config.ID,
-			Name:    config.Name,
-			Version: config.Version,
-			Type:    relay.NormalizeCustomProtocolType(config.Type),
-			Config:  string(encoded),
-		}); err != nil {
+		if err := s.store.UpsertCustomProtocol(context.Background(), customProtocolRow(config, string(encoded))); err != nil {
 			log.Printf("custom protocol preset seed failed for %q: %v", config.ID, err)
 			continue
 		}

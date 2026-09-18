@@ -748,19 +748,19 @@ func (s *Server) adminDeleteGroup(c *gin.Context) {
 	if !okStore {
 		return
 	}
-	disabled, err := store.DeleteGroup(c.Request.Context(), c.Param("id"))
+	disabledTokens, err := store.DeleteGroup(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		respondFail(c, 500, "delete_group_failed", err.Error())
 		return
 	}
 	s.invalidateRouteCache()
 	s.forgetGroupRuntimeState(c.Param("id"))
-	if len(disabled) > 0 {
+	if len(disabledTokens) > 0 {
 		// 授权列表被清空的 token 已随删除级联禁用（空列表=不限制，静默保留
 		// 会扩权），名单透出给管理员以便后续处置。
-		log.Printf("group %s deleted; disabled %d token(s) whose only allowed group it was: %v", c.Param("id"), len(disabled), disabled)
+		log.Printf("group %s deleted; disabled %d token(s) whose only allowed group it was: %v", c.Param("id"), len(disabledTokens), disabledTokens)
 	}
-	respondOK(c, gin.H{"deleted": true, "disabledTokens": disabled})
+	respondOK(c, gin.H{"deleted": true, "disabledTokens": disabledTokens})
 }
 
 func (s *Server) adminListTokens(c *gin.Context) {
@@ -1250,7 +1250,7 @@ func firstNonEmpty(values ...string) string {
 }
 
 // compactQueryArray 过滤空串元素:客户端带 ?keyName= 的空值参数时
-// QueryArray 返回 [""],IN ('') 会恒空结果(旧语义是空=不过滤)。
+// QueryArray 返回 [""],IN (”) 会恒空结果(旧语义是空=不过滤)。
 func compactQueryArray(values []string) []string {
 	out := make([]string, 0, len(values))
 	for _, value := range values {

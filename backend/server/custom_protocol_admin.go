@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
@@ -215,13 +217,7 @@ func (s *Server) migrateLegacyCustomProtocols() {
 		if id == "" || known[id] {
 			continue
 		}
-		if err := s.store.UpsertCustomProtocol(context.Background(), storage.CustomProtocol{
-			ID:      protocol.ID,
-			Name:    protocol.Name,
-			Version: protocol.Version,
-			Type:    relay.NormalizeCustomProtocolType(protocol.Type),
-			Config:  string(raw),
-		}); err != nil {
+		if err := s.store.UpsertCustomProtocol(context.Background(), customProtocolRow(protocol, string(raw))); err != nil {
 			log.Printf("custom protocol migration failed for %q: %v", protocol.ID, err)
 			continue
 		}
@@ -378,12 +374,9 @@ func (s *Server) adminTestCustomProtocol(c *gin.Context) {
 	if !ok {
 		return
 	}
-	store, okStore := s.requireStore(c)
-	if !okStore {
-		return
-	}
 	// 两种凭据来源：临时输入（baseUrl 直连，适合协议尚未落源时调试）或已保存
-	// 模型源 + 模型行（走入库快照的 baseUrl/key）。
+	// 模型源 + 模型行（走入库快照的 baseUrl/key）。临时模式不触碰库,store
+	// 仅在源模式需要。
 	adHoc := strings.TrimSpace(payload.BaseURL) != ""
 	modelName := strings.TrimSpace(payload.Model)
 	if modelName == "" || (!adHoc && strings.TrimSpace(payload.SourceID) == "") {
@@ -395,6 +388,10 @@ func (s *Server) adminTestCustomProtocol(c *gin.Context) {
 		baseURL = strings.TrimSpace(payload.BaseURL)
 		apiKey = payload.APIKey
 	} else {
+		store, okStore := s.requireStore(c)
+		if !okStore {
+			return
+		}
 		model, found := findCustomProtocolTestModel(c.Request.Context(), store, payload.SourceID, payload.Model)
 		if !found {
 			respondFail(c, http.StatusNotFound, "model_not_found",
@@ -417,10 +414,7 @@ func (s *Server) adminTestCustomProtocol(c *gin.Context) {
 		return
 	}
 
-	timeout := customProtocolTestTimeoutSec * time.Second
-	if seconds := s.config.GetHTTPTimeout(); seconds > 0 && time.Duration(seconds)*time.Second < timeout {
-		timeout = time.Duration(seconds) * time.Second
-	}
+	timeout := s.probeTimeout(customProtocolTestTimeoutSec * time.Second)
 	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 	defer cancel()
 
@@ -466,6 +460,12 @@ func (s *Server) adminTestCustomProtocol(c *gin.Context) {
 
 // sampleCustomProtocolStream 读取流式测试的上游响应：采样前 N 个原始 SSE 事件
 // 及其解码出的 Maheshvara 流事件，供设计器对照"上游原文 → 映射结果"。
+// errStreamSampleCapReached 让 ForEachBatch 干净收止(采样上限到达,非流错误)。
+var errStreamSampleCapReached = errors.New("stream sample cap reached")
+
+// customProtocolTestEventEchoBytes 是采样事件原文的展示截断上限。
+const customProtocolTestEventEchoBytes = 4096
+
 func sampleCustomProtocolStream(ctx context.Context, protocol relay.CustomProtocolConfig, body io.ReadCloser) ([]customProtocolStreamSample, []json.RawMessage, error) {
 	decoder, err := relay.NewCustomProtocolStreamDecoder(protocol)
 	if err != nil {
@@ -475,35 +475,12 @@ func sampleCustomProtocolStream(ctx context.Context, protocol relay.CustomProtoc
 	defer reader.Close()
 	var events []customProtocolStreamSample
 	var decoded []json.RawMessage
-	var streamErr error
-	for len(events) < customProtocolTestMaxEvents {
-		// 与转发路径同款排水语义：终态后短窗等待 usage 尾帧与 doneValue，
-		// 让设计器能看到 finish 之后的滞后事件。
-		idle := relay.DefaultSSEIdleTimeout
-		if decoder.TerminalReceived() {
-			idle = relay.PostTerminalSSEIdleTimeout
+	// 排水语义与转发路径共用 ForEachBatch;采样上限到达即以哨兵错误干净收止。
+	streamErr := decoder.ForEachBatch(ctx, reader, func(wire relay.SSEEvent, maheshvaraEvents []relay.MaheshvaraStreamEvent, terminalBeforeBatch bool) error {
+		if len(events) >= customProtocolTestMaxEvents {
+			return errStreamSampleCapReached
 		}
-		wireEvent, hasMore, readErr := reader.Read(ctx, idle)
-		if readErr != nil {
-			if decoder.TerminalReceived() {
-				break
-			}
-			streamErr = readErr
-			break
-		}
-		if !hasMore {
-			break
-		}
-		events = append(events, customProtocolStreamSample{Event: wireEvent.Event, Data: truncateForDisplay(wireEvent.Data, 4096)})
-		terminalBeforeBatch := decoder.TerminalReceived()
-		maheshvaraEvents, done, decodeErr := decoder.Decode(wireEvent)
-		if decodeErr != nil {
-			if terminalBeforeBatch {
-				break
-			}
-			streamErr = decodeErr
-			break
-		}
+		events = append(events, customProtocolStreamSample{Event: wire.Event, Data: truncateForDisplay(wire.Data, customProtocolTestEventEchoBytes)})
 		for _, event := range maheshvaraEvents {
 			if terminalBeforeBatch && event.Usage == nil && event.Error == nil {
 				continue
@@ -512,9 +489,10 @@ func sampleCustomProtocolStream(ctx context.Context, protocol relay.CustomProtoc
 				decoded = append(decoded, encoded)
 			}
 		}
-		if done {
-			break
-		}
+		return nil
+	})
+	if errors.Is(streamErr, errStreamSampleCapReached) {
+		streamErr = nil
 	}
 	if streamErr == nil && !decoder.TerminalReceived() {
 		streamErr = fmt.Errorf("流结束前未收到配置的终止标记（doneValues/finish reason）")
@@ -550,10 +528,7 @@ func (s *Server) adminTestCustomProtocolModels(c *gin.Context) {
 		return
 	}
 
-	timeout := customProtocolTestTimeoutSec * time.Second
-	if seconds := s.config.GetHTTPTimeout(); seconds > 0 && time.Duration(seconds)*time.Second < timeout {
-		timeout = time.Duration(seconds) * time.Second
-	}
+	timeout := s.probeTimeout(customProtocolTestTimeoutSec * time.Second)
 	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 	defer cancel()
 
@@ -613,9 +588,23 @@ func bindAdminJSON(c *gin.Context, target any) error {
 	return json.Unmarshal(body, target)
 }
 
+// probeTimeout 计算探活类请求(真实测试/试拉/助手)的超时:自定义基础值,
+// 被更短的 HTTP 全局超时钳制。
+func (s *Server) probeTimeout(base time.Duration) time.Duration {
+	if seconds := s.config.GetHTTPTimeout(); seconds > 0 && time.Duration(seconds)*time.Second < base {
+		return time.Duration(seconds) * time.Second
+	}
+	return base
+}
+
 func truncateForDisplay(value string, limit int) string {
 	if len(value) <= limit {
 		return value
 	}
-	return value[:limit] + fmt.Sprintf("\n…（已截断，共 %d 字节）", len(value))
+	// 按字节截断可能劈开多字节字符：回退到最近的 rune 边界再切。
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(value[cut]) {
+		cut--
+	}
+	return value[:cut] + fmt.Sprintf("\n…（已截断，共 %d 字节）", len(value))
 }

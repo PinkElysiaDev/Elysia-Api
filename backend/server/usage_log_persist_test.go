@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )

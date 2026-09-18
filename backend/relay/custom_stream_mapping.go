@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -496,5 +497,44 @@ func (decoder *CustomProtocolStreamDecoder) streamDelta(previous map[string]stri
 		return strings.TrimPrefix(current, before)
 	default:
 		return current
+	}
+}
+
+// ForEachBatch 以统一排水语义迭代解码批次:读循环、终态前快照、排水窗口与
+// 终态后坏帧容忍等协议细节单点化于此,转发路径与设计器流式采样共用;
+// 调用方只处理每批事件(terminalBeforeBatch 标识该批解码前是否已处终态,
+// 终态后仅应保留 usage/错误语义)。回调返回错误立即中止并原样返回。
+func (decoder *CustomProtocolStreamDecoder) ForEachBatch(ctx context.Context, reader *SSEEventReader, handleBatch func(wireEvent SSEEvent, events []MaheshvaraStreamEvent, terminalBeforeBatch bool) error) error {
+	for {
+		idle := DefaultSSEIdleTimeout
+		if decoder.TerminalReceived() {
+			// 终态后排水中:只等 usage 尾帧、错误帧与 doneValue,短窗防上游
+			// finish 后不关连接导致 DefaultSSEIdleTimeout 级长挂起。
+			idle = PostTerminalSSEIdleTimeout
+		}
+		wireEvent, hasMore, readErr := reader.Read(ctx, idle)
+		if readErr != nil {
+			if decoder.TerminalReceived() {
+				return nil // 排水窗耗尽视为干净收尾
+			}
+			return readErr
+		}
+		if !hasMore {
+			return nil
+		}
+		terminalBeforeBatch := decoder.TerminalReceived()
+		events, done, decodeErr := decoder.Decode(wireEvent)
+		if decodeErr != nil {
+			if terminalBeforeBatch {
+				return nil // 终态后的坏帧不推翻已完成的流
+			}
+			return decodeErr
+		}
+		if err := handleBatch(wireEvent, events, terminalBeforeBatch); err != nil {
+			return err
+		}
+		if done {
+			return nil
+		}
 	}
 }

@@ -78,10 +78,7 @@ func (s *Server) adminAssistCustomProtocol(c *gin.Context) {
 		return
 	}
 
-	timeout := customProtocolAssistTimeoutSec * time.Second
-	if seconds := s.config.GetHTTPTimeout(); seconds > 0 && time.Duration(seconds)*time.Second < timeout {
-		timeout = time.Duration(seconds) * time.Second
-	}
+	timeout := s.probeTimeout(customProtocolAssistTimeoutSec * time.Second)
 	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 	defer cancel()
 
@@ -340,13 +337,7 @@ func assistSystemPrompt() string {
 	b.WriteString("- 键名不符合内置别名表时用 aliases 声明（textKeys/usage/toolCall，支持点路径）；数组内按类型分块提取用 textFilter/reasoningFilter。\n")
 
 	// few-shot：内嵌预置协议作为完整范例（与首次启动播种的定义同源）。
-	if configs, err := PresetProtocolConfigs(); err == nil && len(configs) > 0 {
-		example := configs[0]
-		for _, candidate := range configs {
-			if candidate.ID == "anthropic-messages" {
-				example = candidate
-			}
-		}
+	if example, ok := findPresetConfig(presetProtocolAnthropicMessagesID); ok {
 		if encoded, err := json.Marshal(example); err == nil {
 			b.WriteString("\n## 完整范例（预置协议 " + example.ID + "，集中示范 shape/frames/match/tool/别名/元素过滤）\n```json\n" + string(encoded) + "\n```\n")
 		}

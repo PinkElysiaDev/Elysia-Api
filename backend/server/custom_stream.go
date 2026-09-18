@@ -81,57 +81,25 @@ func (s *Server) handleCustomStreamRequest(
 	renderer := relay.NewMaheshvaraStreamRenderer(inputFormat, writer, selectedModel.Name)
 	reader := relay.NewSSEEventReader(response.Body)
 	defer reader.Close()
-	var streamErr error
 	var terminalEvents []relay.MaheshvaraStreamEvent
-	for {
-		// 终态后排水中：只等 usage 尾帧、错误帧与 doneValue，短窗防上游
-		// finish 后不关连接导致 DefaultSSEIdleTimeout 级长挂起。
-		idle := relay.DefaultSSEIdleTimeout
-		if decoder.TerminalReceived() {
-			idle = relay.PostTerminalSSEIdleTimeout
-		}
-		wireEvent, hasMore, readErr := reader.Read(c.Request.Context(), idle)
-		if readErr != nil {
-			if decoder.TerminalReceived() {
-				break // 排水窗耗尽视为干净收尾
-			}
-			streamErr = readErr
-			break
-		}
-		if !hasMore {
-			break
-		}
-		// 同帧常同时携带末段文本与 finish reason：终态判定必须取自 Decode
-		// 之前的快照，否则末段输出会被当成「终态后杂帧」丢弃。
-		terminalBeforeBatch := decoder.TerminalReceived()
-		events, done, decodeErr := decoder.Decode(wireEvent)
-		if decodeErr != nil {
-			if terminalBeforeBatch {
-				break // 终态后的坏帧不推翻已完成的流
-			}
-			streamErr = decodeErr
-			break
-		}
+	streamErr := decoder.ForEachBatch(c.Request.Context(), reader, func(_ relay.SSEEvent, events []relay.MaheshvaraStreamEvent, terminalBeforeBatch bool) error {
 		for index := range events {
 			event := events[index]
 			if event.Usage != nil {
 				updateRecordUsageFromMaheshvara(record, event.Usage)
 			}
 			if event.Error != nil {
-				streamErr = event.Error
-				break
+				return event.Error
 			}
 			if event.Type == relay.MaheshvaraEventResponseFailed {
-				streamErr = fmt.Errorf("custom protocol stream failed")
-				break
+				return fmt.Errorf("custom protocol stream failed")
 			}
 			if terminalBeforeBatch {
 				// 终态后尾帧：usage 结算入记录并渲染（客户端最终用量以此
 				// 为准），其余增量/重复完成帧视为完成后的杂帧丢弃。
 				if event.Usage != nil {
 					if renderErr := renderer.Write(&event); renderErr != nil {
-						streamErr = renderErr
-						break
+						return renderErr
 					}
 				}
 				continue
@@ -141,14 +109,11 @@ func (s *Server) handleCustomStreamRequest(
 				continue
 			}
 			if renderErr := renderer.Write(&event); renderErr != nil {
-				streamErr = renderErr
-				break
+				return renderErr
 			}
 		}
-		if streamErr != nil || done {
-			break
-		}
-	}
+		return nil
+	})
 	if streamErr == nil {
 		// 终态校验按严重度排序：无终态 > 有终态但无可呈现输出。后者仅当
 		// 从未见过 finish reason 时报错——finish_reason 有值的空补全

@@ -14,11 +14,11 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"syscall"
 	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/elysia-api/backend/config"
@@ -519,7 +519,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		// 转换失败同样落 usage 记录（与 /v1/responses 路径对齐）：bodyOnErrorOnly
 		// 模式下这类记录恰恰是唯一保留请求体的排查样本。
 		s.failRequestError(c, record, startTime, inputFormat, &relay.MaheshvaraError{
-			Class: relay.ErrorClassInvalidRequest,
+			Class:   relay.ErrorClassInvalidRequest,
 			Message: fmt.Sprintf("failed to convert request: %v", maheshvaraErr),
 		})
 		return
