@@ -1,7 +1,9 @@
 # 阿里 dashscope(百炼)协议接入指南
 
 dashscope 有两种接入方式,**优先使用兼容模式**;native 模式经自定义协议无损支持(已由
-`TestChatCompletionsDashscopeNativeStreamingEndToEnd` 端到端验证)。
+`TestChatCompletionsDashscopeNativeStreamingEndToEnd` 端到端验证)。完整的协议定义
+语义(Match 条件、别名覆盖、frames 谓词帧、分帧工具拼装、request.shape、四协议
+预置)见 [protocol-definition-reference.md](./protocol-definition-reference.md)。
 
 ## 方式一(推荐):OpenAI 兼容模式,零配置
 
