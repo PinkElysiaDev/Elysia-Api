@@ -23,7 +23,6 @@ import type {
   RuntimeConfigUpdateResult,
   SystemLogsResult,
   UsageLogDetail,
-  UsageLogItem,
   UsageLogsResult,
   UsageQueryParams,
   UsageStats,
@@ -371,4 +370,3 @@ function serializeUsage(params: UsageQueryParams): Record<string, QueryValue> {
   }
 }
 
-export type { UsageLogItem }

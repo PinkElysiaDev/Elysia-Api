@@ -23,7 +23,7 @@ import { Textarea } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import { api, ApiError } from '@/lib/api'
 import { useModels, useSources } from '@/lib/hooks'
-import type { CustomProtocolConfig, CustomProtocolSchema } from '@/lib/types'
+import type { CustomProtocolConfig, CustomProtocolSchema, CustomProtocolStreamMapping } from '@/lib/types'
 import { ModelsDiscoveryEditor } from './models-discovery-editor'
 import { PreviewTestPanel } from './preview-panel'
 import { RequestBuilder } from './request-builder'
@@ -124,7 +124,7 @@ export function ProtocolFormDialog({
       if (result.warning) {
         toastError('已保存但注册失败', result.warning)
       } else {
-        toastSuccess('协议已保存', draft.id)
+        toastSuccess('协议已保存', effective.id)
       }
       await onSaved()
       return true
@@ -136,9 +136,15 @@ export function ProtocolFormDialog({
     }
   }
 
-  const typeValue = (draft.type || 'llm') as string
+  const typeValue = draft.type || 'llm'
   const isCustomType = typeValue.startsWith('x-')
   const stream = draft.response?.stream
+  // 流配置字段的统一更新入口:消灭六处 {...stream, x} 双层展开样板。
+  const updateStream = (patch: Partial<CustomProtocolStreamMapping>) =>
+    setDraft({
+      ...draft,
+      response: { ...(draft.response ?? {}), stream: { ...stream, ...patch } },
+    })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -259,10 +265,7 @@ export function ProtocolFormDialog({
                         className="w-52 font-mono text-xs"
                         value={stream.payloadPath ?? ''}
                         onChange={(event) =>
-                          setDraft({
-                            ...draft,
-                            response: { ...(draft.response ?? {}), stream: { ...stream, payloadPath: event.target.value } },
-                          })
+                          updateStream({ payloadPath: event.target.value })
                         }
                       />
                     </SettingRow>
@@ -270,10 +273,7 @@ export function ProtocolFormDialog({
                       <Select
                         value={stream.mode || 'delta'}
                         onValueChange={(value) =>
-                          setDraft({
-                            ...draft,
-                            response: { ...(draft.response ?? {}), stream: { ...stream, mode: value === 'delta' ? '' : value } },
-                          })
+                          updateStream({ mode: value === 'delta' ? '' : value })
                         }
                       >
                         <SelectTrigger className="w-44" aria-label="流模式">
@@ -291,15 +291,8 @@ export function ProtocolFormDialog({
                         value={(stream.events ?? []).join(', ')}
                         placeholder="message"
                         onChange={(event) =>
-                          setDraft({
-                            ...draft,
-                            response: {
-                              ...(draft.response ?? {}),
-                              stream: {
-                                ...stream,
-                                events: event.target.value.split(',').map((item) => item.trim()).filter(Boolean),
-                              },
-                            },
+                          updateStream({
+                            events: event.target.value.split(',').map((item) => item.trim()).filter(Boolean),
                           })
                         }
                       />
@@ -310,15 +303,8 @@ export function ProtocolFormDialog({
                         value={(stream.doneValues ?? []).join(', ')}
                         placeholder="[DONE]"
                         onChange={(event) =>
-                          setDraft({
-                            ...draft,
-                            response: {
-                              ...(draft.response ?? {}),
-                              stream: {
-                                ...stream,
-                                doneValues: event.target.value.split(',').map((item) => item.trim()).filter(Boolean),
-                              },
-                            },
+                          updateStream({
+                            doneValues: event.target.value.split(',').map((item) => item.trim()).filter(Boolean),
                           })
                         }
                       />
@@ -331,13 +317,7 @@ export function ProtocolFormDialog({
                       <Switch
                         checked={!!stream.response}
                         onCheckedChange={(checked) =>
-                          setDraft({
-                            ...draft,
-                            response: {
-                              ...(draft.response ?? {}),
-                              stream: { ...stream, response: checked ? { body: {} } : undefined },
-                            },
-                          })
+                          updateStream({ response: checked ? { body: {} } : undefined })
                         }
                       />
                     </SettingRow>
@@ -345,10 +325,7 @@ export function ProtocolFormDialog({
                       <ResponseBodyTreeEditor
                         response={stream.response}
                         onChange={(nested) =>
-                          setDraft({
-                            ...draft,
-                            response: { ...(draft.response ?? {}), stream: { ...stream, response: nested } },
-                          })
+                          updateStream({ response: nested })
                         }
                         fields={schema?.responseFields ?? []}
                         transforms={schema?.transforms ?? []}

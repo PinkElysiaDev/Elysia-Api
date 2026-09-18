@@ -23,6 +23,10 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
+import { customPlatformValue } from '@/lib/protocol'
+
+const PREVIEW_REFRESH_DEBOUNCE_MS = 800
+const TEST_MODEL_DATALIST_ID = 'custom-protocol-test-models'
 
 const DEFAULT_SAMPLE_REQUEST = JSON.stringify(
   {
@@ -90,8 +94,8 @@ export function PreviewTestPanel({
 
   // 引用本协议的模型源（platform = custom:<本协议 id>）。
   const protocolSources = useMemo(() => {
-    const prefix = `custom:${protocol.id.trim().toLowerCase()}`
-    return sources.filter((source) => (source.platform ?? '').trim().toLowerCase() === prefix)
+    const prefix = customPlatformValue(protocol.id.trim().toLowerCase())
+    return sources.filter((source) => source.platform.trim().toLowerCase() === prefix)
   }, [sources, protocol.id])
 
   const sourceModels = useMemo(
@@ -130,7 +134,7 @@ export function PreviewTestPanel({
   useEffect(() => {
     if (!preview && !previewError) return
     if (debounceRef.current) window.clearTimeout(debounceRef.current)
-    debounceRef.current = window.setTimeout(() => void runPreview(), 800)
+    debounceRef.current = window.setTimeout(() => void runPreview(), PREVIEW_REFRESH_DEBOUNCE_MS)
     return () => {
       if (debounceRef.current) window.clearTimeout(debounceRef.current)
     }
@@ -290,10 +294,10 @@ export function PreviewTestPanel({
                 className="w-72 font-mono text-xs"
                 value={adhocModel}
                 placeholder="vendor-model-name"
-                list="custom-protocol-test-models"
+                list={TEST_MODEL_DATALIST_ID}
                 onChange={(event) => setAdhocModel(event.target.value)}
               />
-              <datalist id="custom-protocol-test-models">
+              <datalist id={TEST_MODEL_DATALIST_ID}>
                 {(discoveredModels ?? []).map((model) => (
                   <option key={model.id} value={model.id}>
                     {model.name !== model.id ? model.name : undefined}

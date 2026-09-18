@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
+import { customPlatformValue, customProtocolID, isCustomPlatform } from '@/lib/protocol'
 import { api } from '@/lib/api'
 import { revalidate } from '@/lib/hooks'
 import { cn } from '@/lib/utils'
@@ -64,13 +65,6 @@ function normalizePlatform(raw: string | undefined): Platform {
   }
 }
 
-function isCustomPlatform(platform: string): platform is `custom:${string}` {
-  return platform.toLowerCase().startsWith('custom:')
-}
-
-function customProtocolID(platform: string): string {
-  return isCustomPlatform(platform) ? platform.slice('custom:'.length).trim() : ''
-}
 
 const KEY_STRATEGIES: { value: SourceKeyStrategy; label: string; hint: string }[] = [
   { value: 'round-robin', label: '轮询 Round-robin', hint: '每次请求按顺序轮换 Key' },
@@ -112,7 +106,7 @@ export function SourceFormDialog({
   const [form, setForm] = useState<ModelSource>(emptySource())
   const [saving, setSaving] = useState(false)
   // 「自定义模型拉取地址」开关（默认关闭）：关闭 = 拉取走 API 地址。
-  const [customFetchEnabled, setCustomFetchEnabled] = useState(false)
+  const [fetchUrlEnabled, setFetchUrlEnabled] = useState(false)
   // a 方案：展开显示某个 key 拉取到的模型勾选面板（多 key 时）。
   const [expandedKey, setExpandedKey] = useState<number | null>(null)
   // b 方案：手动模式下每个手动模型选中的 key 下标集合（key 数 >1 时）。
@@ -146,7 +140,7 @@ export function SourceFormDialog({
             }
           : emptySource(),
       )
-      setCustomFetchEnabled(!!(source?.fetchBaseUrl ?? '').trim())
+      setFetchUrlEnabled(!!(source?.fetchBaseUrl ?? '').trim())
       // b 方案初始化：手动模式的「模型 ↔ key」选择。任何 key 都有显式
       // allowedModels 时按其还原；否则视为未配置（全部 key 选中）。
       const allKeyIndexes = (source?.apiKeys ?? [])
@@ -298,11 +292,11 @@ export function SourceFormDialog({
     try {
       const payload: ModelSource = {
         ...form,
-        platform: custom ? (`custom:${protocolID}` as Platform) : form.platform,
+        platform: custom ? (customPlatformValue(protocolID) as Platform) : form.platform,
         autoFetchModels: autoFetch,
         manualModels: autoFetch ? [] : (form.manualModels ?? []).filter((m) => m.id || m.name),
         // 关闭「自定义模型拉取地址」时不提交地址（后端空值 = 跟随 baseUrl）。
-        fetchBaseUrl: customFetchEnabled ? form.fetchBaseUrl?.trim() ?? '' : '',
+        fetchBaseUrl: fetchUrlEnabled ? form.fetchBaseUrl?.trim() ?? '' : '',
         // key 始终走列表（配一个 key 即单 key）；空列表 = 无鉴权源。
         apiKeys: payloadKeys,
       }
@@ -342,10 +336,12 @@ export function SourceFormDialog({
   }
 
   const custom = isCustomPlatform(form.platform)
-  // 所选自定义协议是否声明了模型发现配置（models.path）——决定能否自动拉取。
-  const customDiscovery = custom
-    ? !!registeredProtocols.find((item) => item.id === customProtocolID(form.platform))?.config.models?.path
-    : false
+  // 协议是否声明模型发现配置(models.path):platform → 是否可自动拉取的唯一判据。
+  const hasDiscovery = (platform: string) =>
+    isCustomPlatform(platform)
+      ? !!registeredProtocols.find((item) => item.id === customProtocolID(platform))?.config.models?.path
+      : false
+  const customDiscovery = hasDiscovery(form.platform)
   const selectedStrategy = form.keyStrategy ?? 'round-robin'
 
   // 弹窗打开即拉取已注册协议：自定义协议直接并入主协议下拉，无需二级选择。
@@ -412,14 +408,11 @@ export function SourceFormDialog({
                     const nextPlatform = value as Platform
                     // 切到未声明模型发现的自定义协议时关闭自动拉取
                     //（无标准模型列表端点，后端保存校验同样拒绝）。
-                    const nextCustom = isCustomPlatform(nextPlatform)
-                    const nextDiscovery = nextCustom
-                      ? !!registeredProtocols.find((item) => item.id === customProtocolID(nextPlatform))?.config.models?.path
-                      : false
+                    const nextDiscovery = hasDiscovery(nextPlatform)
                     return {
                       ...previous,
                       platform: nextPlatform,
-                      ...(nextCustom && !nextDiscovery ? { autoFetchModels: false } : {}),
+                      ...(isCustomPlatform(nextPlatform) && !nextDiscovery ? { autoFetchModels: false } : {}),
                     }
                   })
                 }
@@ -576,11 +569,11 @@ export function SourceFormDialog({
                 <span className="text-sm font-medium">自动拉取模型</span>
               </label>
               <label className="flex items-center gap-3">
-                <Switch checked={customFetchEnabled} onCheckedChange={setCustomFetchEnabled} />
+                <Switch checked={fetchUrlEnabled} onCheckedChange={setFetchUrlEnabled} />
                 <span className="text-sm font-medium">自定义模型拉取地址</span>
               </label>
             </div>
-            {customFetchEnabled && (
+            {fetchUrlEnabled && (
               <div className="space-y-2">
                 <Label required>模型拉取 Base URL</Label>
                 <Input
