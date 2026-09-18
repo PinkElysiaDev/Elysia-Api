@@ -46,8 +46,9 @@ func TestSeedPresetProtocols(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	if len(rows) != 4 {
-		t.Fatalf("expected 4 seeded presets, got %d", len(rows))
+	presets, _ := PresetProtocolConfigs()
+	if len(rows) != len(presets) {
+		t.Fatalf("expected %d seeded presets, got %d", len(presets), len(rows))
 	}
 	s.syncCustomProtocolsQuiet()
 	if _, ok := relay.GetCustomProtocol("openai-chat"); !ok {
@@ -56,7 +57,7 @@ func TestSeedPresetProtocols(t *testing.T) {
 	// 已有行则不再播种。
 	s.seedPresetProtocols()
 	rows, _ = s.store.ListCustomProtocols(t.Context())
-	if len(rows) != 4 {
+	if len(rows) != len(presets) {
 		t.Fatalf("re-seed must be a no-op with existing rows, got %d", len(rows))
 	}
 }

@@ -114,14 +114,7 @@ func TestQueryAuthSecretSanitizedInTransportError(t *testing.T) {
 func TestStreamToolStableSlotIndices(t *testing.T) {
 	relay.ClearCustomProtocols()
 	t.Cleanup(relay.ClearCustomProtocols)
-	registerPresetForTest(t, "anthropic-messages")
-	configs, _ := PresetProtocolConfigs()
-	var anthropic relay.CustomProtocolConfig
-	for _, candidate := range configs {
-		if candidate.ID == "anthropic-messages" {
-			anthropic = candidate
-		}
-	}
+	anthropic := registerPresetForTest(t, "anthropic-messages")
 	decoder, err := relay.NewCustomProtocolStreamDecoder(anthropic)
 	if err != nil {
 		t.Fatalf("decoder: %v", err)

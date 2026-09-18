@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/relay"
 )
 
@@ -43,11 +42,7 @@ func TestCustomProtocolStreamFinishWhenBooleanEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	group := config.ModelGroupConfig{
-		ID: "g1", Name: "grp", Enabled: true,
-		Models: []config.ModelRef{{ID: "m1", Name: "vendor-model", BaseURL: upstream.URL, APIKey: "k", Platform: "custom:boolean-finish"}},
-	}
-	s := newTestServer([]config.ModelGroupConfig{group})
+	s := newTestServer(presetGroup(t, "custom:boolean-finish", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 
@@ -98,11 +93,7 @@ func TestCustomProtocolStreamEmptyNestedShadowingEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	group := config.ModelGroupConfig{
-		ID: "g1", Name: "grp", Enabled: true,
-		Models: []config.ModelRef{{ID: "m1", Name: "vendor-model", BaseURL: upstream.URL, APIKey: "k", Platform: "custom:designer-trap"}},
-	}
-	s := newTestServer([]config.ModelGroupConfig{group})
+	s := newTestServer(presetGroup(t, "custom:designer-trap", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 
@@ -155,11 +146,7 @@ func TestCustomProtocolStreamTrailingUsageAfterFinishEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	group := config.ModelGroupConfig{
-		ID: "g1", Name: "grp", Enabled: true,
-		Models: []config.ModelRef{{ID: "m1", Name: "vendor-model", BaseURL: upstream.URL, APIKey: "k", Platform: "custom:openai-compat"}},
-	}
-	s := newTestServer([]config.ModelGroupConfig{group})
+	s := newTestServer(presetGroup(t, "custom:openai-compat", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 
@@ -213,11 +200,7 @@ func TestCustomProtocolStreamDrainWindowEndsCleanly(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	group := config.ModelGroupConfig{
-		ID: "g1", Name: "grp", Enabled: true,
-		Models: []config.ModelRef{{ID: "m1", Name: "vendor-model", BaseURL: upstream.URL, APIKey: "k", Platform: "custom:hang-after-finish"}},
-	}
-	s := newTestServer([]config.ModelGroupConfig{group})
+	s := newTestServer(presetGroup(t, "custom:hang-after-finish", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	started := time.Now()
 	s.chatCompletions(c)
@@ -262,11 +245,7 @@ func TestCustomProtocolStreamEmptyCompletionWithFinishReasonEndToEnd(t *testing.
 	}))
 	defer upstream.Close()
 
-	group := config.ModelGroupConfig{
-		ID: "g1", Name: "grp", Enabled: true,
-		Models: []config.ModelRef{{ID: "m1", Name: "vendor-model", BaseURL: upstream.URL, APIKey: "k", Platform: "custom:finish-only"}},
-	}
-	s := newTestServer([]config.ModelGroupConfig{group})
+	s := newTestServer(presetGroup(t, "custom:finish-only", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 
@@ -313,11 +292,7 @@ func TestCustomProtocolResponsesStyleFramesEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	group := config.ModelGroupConfig{
-		ID: "g1", Name: "grp", Enabled: true,
-		Models: []config.ModelRef{{ID: "m1", Name: "vendor-model", BaseURL: upstream.URL, APIKey: "k", Platform: "custom:responses-style"}},
-	}
-	s := newTestServer([]config.ModelGroupConfig{group})
+	s := newTestServer(presetGroup(t, "custom:responses-style", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 
