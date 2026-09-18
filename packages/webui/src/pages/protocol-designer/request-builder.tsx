@@ -89,23 +89,19 @@ export function RequestBuilder({
   request,
   onChange,
   requestFields,
+  mappingMode = 'inline',
 }: {
   request: CustomProtocolRequest
   onChange: (next: CustomProtocolRequest) => void
   requestFields: MaheshvaraFieldSpec[]
+  /** badge:映射位只读徽标,分配集中在「映射关系」页签。 */
+  mappingMode?: 'inline' | 'badge'
 }) {
   const auth = request.auth ?? {}
   const authMode = auth.mode || 'bearer'
   return (
     <div className="space-y-8">
 
-      <SettingSection title="请求体" description="从零构造发往上游的 JSON，每个字段声明对应 Maheshvara 的哪个字段">
-        <RequestBodyTreeEditor
-          value={request.body}
-          onChange={(body) => onChange({ ...request, body })}
-          fields={requestFields}
-        />
-      </SettingSection>
       <SettingSection title="HTTP 请求">
         <SettingRow label="Method" description="默认 POST；GET/DELETE 可无请求体">
           <Select value={request.method || 'POST'} onValueChange={(value) => onChange({ ...request, method: value })}>
@@ -127,6 +123,14 @@ export function RequestBuilder({
             value={request.path ?? ''}
             placeholder="/chat/completions"
             onChange={(event) => onChange({ ...request, path: event.target.value })}
+          />
+        </SettingRow>
+        <SettingRow label="流式 Path" description="流式请求的路径覆盖（如 Gemini :streamGenerateContent?alt=sse）；留空同 Path">
+          <Input
+            className="font-mono text-xs sm:max-w-md"
+            value={request.pathStream ?? ''}
+            placeholder="留空 = 同 Path"
+            onChange={(event) => onChange({ ...request, pathStream: event.target.value })}
           />
         </SettingRow>
         <SettingRow label="Content-Type">
@@ -206,6 +210,18 @@ export function RequestBuilder({
             />
           </SettingRow>
         )}
+      </SettingSection>
+
+      <SettingSection
+        title="请求体结构"
+        description="发往上游的 JSON 结构；映射位的字段分配集中在「映射关系」页签"
+      >
+        <RequestBodyTreeEditor
+          value={request.body}
+          onChange={(body) => onChange({ ...request, body })}
+          fields={requestFields}
+          mappingMode={mappingMode}
+        />
       </SettingSection>
 
     </div>

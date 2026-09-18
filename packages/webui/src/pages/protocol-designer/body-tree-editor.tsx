@@ -81,6 +81,12 @@ export function BodyTreeEditor({
   /** 仅响应方向：存在映射行表时提供「转为构造树」。 */
   response,
   onResponseChange,
+  /**
+   * inline（默认）：映射位就地编辑字段/格式/transform——单页即完稿的旧形态。
+   * badge：映射位只读徽标（字段 · 格式），映射分配集中在「映射关系」页签
+   * ——结构页签保持纯结构编辑,页面更整齐。
+   */
+  mappingMode = 'inline',
 }: {
   direction: 'request' | 'response'
   value: unknown
@@ -89,6 +95,7 @@ export function BodyTreeEditor({
   transforms?: string[]
   response?: CustomProtocolResponse
   onResponseChange?: (next: CustomProtocolResponse) => void
+  mappingMode?: 'inline' | 'badge'
 }) {
   const isRequest = direction === 'request'
   const tree: unknown = value === undefined || value === null ? {} : value
@@ -122,6 +129,29 @@ export function BodyTreeEditor({
     },
     renderLeaf: (node, kind, setLeaf) => {
       if (kind === 'mapped') {
+        if (mappingMode === 'badge') {
+          const field = String(node?.field ?? '')
+          const detail = isRequest
+            ? String(node?.mode ?? 'json') === 'string'
+              ? '字符串'
+              : '原生 JSON'
+            : node?.transform
+              ? `转换:${node.transform}`
+              : ''
+          return (
+            <span
+              className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-2xs ${
+                field
+                  ? 'border-border bg-secondary/40 text-foreground'
+                  : 'border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+              }`}
+              title="映射分配集中在「映射关系」页签"
+            >
+              {field ? `↦ ${field}` : '未映射'}
+              {detail && <span className="text-muted-foreground">· {detail}</span>}
+            </span>
+          )
+        }
         return (
           <FieldSelect
             value={String(node?.field ?? '')}
@@ -147,7 +177,7 @@ export function BodyTreeEditor({
       )
     },
     renderLeafDetail: (node, kind, setLeaf) => {
-      if (kind !== 'mapped') return null
+      if (kind !== 'mapped' || mappingMode === 'badge') return null
       if (isRequest) {
         // 配置项纵向栈:每项一行、带固定标签,任何分辨率都不折行成多列。
         return (
@@ -279,10 +309,12 @@ export function RequestBodyTreeEditor({
   value,
   onChange,
   fields,
+  mappingMode = 'inline',
 }: {
   value: CustomProtocolBodyTree | undefined
   onChange: (next: CustomProtocolBodyTree) => void
   fields: MaheshvaraFieldSpec[]
+  mappingMode?: 'inline' | 'badge'
 }) {
   return (
     <BodyTreeEditor
@@ -290,6 +322,7 @@ export function RequestBodyTreeEditor({
       value={value}
       onChange={(next) => onChange(next as CustomProtocolBodyTree)}
       fields={fields}
+      mappingMode={mappingMode}
     />
   )
 }
@@ -300,11 +333,13 @@ export function ResponseBodyTreeEditor({
   onChange,
   fields,
   transforms,
+  mappingMode = 'inline',
 }: {
   response: CustomProtocolResponse
   onChange: (next: CustomProtocolResponse) => void
   fields: MaheshvaraFieldSpec[]
   transforms?: string[]
+  mappingMode?: 'inline' | 'badge'
 }) {
   return (
     <BodyTreeEditor
@@ -315,6 +350,7 @@ export function ResponseBodyTreeEditor({
       transforms={transforms}
       response={response}
       onResponseChange={onChange}
+      mappingMode={mappingMode}
     />
   )
 }

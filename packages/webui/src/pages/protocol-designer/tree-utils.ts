@@ -97,3 +97,72 @@ function mergeAtPath(target: Record<string, unknown>, segments: string[], leaf: 
   const child = isPlainObject(target[head]) ? (target[head] as Record<string, unknown>) : {}
   return { ...target, [head]: mergeAtPath(child, rest, leaf) }
 }
+
+/** 构造树中一个映射位叶子的定位信息:显示路径 + 写回用的键段序列。 */
+export interface MappedLeafLocator {
+  /** 展示用点路径(数组下标 [n]) */
+  displayPath: string
+  /** 写回用的键段序列(对象键或数组下标) */
+  segments: (string | number)[]
+  node: Record<string, unknown>
+}
+
+function collectMappedLeavesInto(
+  value: unknown,
+  segments: (string | number)[],
+  displayPath: string,
+  isMapped: (node: unknown) => boolean,
+  out: MappedLeafLocator[],
+) {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      collectMappedLeavesInto(item, [...segments, index], `${displayPath}[${index}]`, isMapped, out)
+    })
+    return
+  }
+  if (isPlainObject(value)) {
+    if (isMapped(value)) {
+      out.push({ displayPath: displayPath || '(根)', segments: [...segments], node: value })
+      return
+    }
+    for (const key of Object.keys(value)) {
+      collectMappedLeavesInto(value[key], [...segments, key], displayPath ? `${displayPath}.${key}` : key, isMapped, out)
+    }
+  }
+}
+
+/** 收集请求体构造树里的全部映射位叶子(常量/裸标量跳过)。 */
+export function collectRequestMappedLeaves(tree: unknown): MappedLeafLocator[] {
+  const out: MappedLeafLocator[] = []
+  collectMappedLeavesInto(tree, [], '', isRequestFieldRef, out)
+  return out
+}
+
+/** 收集返回体构造树里的全部映射位叶子(纯示例占位跳过)。 */
+export function collectResponseMappedLeaves(tree: unknown): MappedLeafLocator[] {
+  const out: MappedLeafLocator[] = []
+  collectMappedLeavesInto(tree, [], '', isResponseMappingLeaf, out)
+  return out
+}
+
+/**
+ * 按键段序列把更新后的叶子写回构造树(不可变更新,返回新树)。
+ * 段序列由 collect*MappedLeaves 产出,与树的真实形态一致。
+ */
+export function replaceLeafAtPath(
+  tree: unknown,
+  segments: (string | number)[],
+  nextLeaf: unknown,
+): unknown {
+  if (segments.length === 0) return nextLeaf
+  const [head, ...rest] = segments
+  if (typeof head === 'number') {
+    const array = Array.isArray(tree) ? tree : []
+    const copy = [...array]
+    copy[head] = replaceLeafAtPath(copy[head], rest, nextLeaf)
+    return copy
+  }
+  const object = isPlainObject(tree) ? { ...tree } : {}
+  object[head] = replaceLeafAtPath(object[head], rest, nextLeaf)
+  return object
+}
