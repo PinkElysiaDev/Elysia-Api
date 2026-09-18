@@ -84,10 +84,8 @@ func validateCustomProtocolMatch(location string, match CustomProtocolMatch) err
 	if len(match.Value) == 0 {
 		return fmt.Errorf("%s.op %q requires value", location, op)
 	}
-	var parsed any
-	decoder := json.NewDecoder(bytes.NewReader(match.Value))
-	decoder.UseNumber()
-	if err := decoder.Decode(&parsed); err != nil {
+	parsed, err := decodeJSONUseNumber(match.Value)
+	if err != nil {
 		return fmt.Errorf("%s.value is not valid JSON: %w", location, err)
 	}
 	if op == MatchOpIn || op == MatchOpNotIn {
@@ -137,13 +135,8 @@ func customMatchValue(raw json.RawMessage) (any, bool) {
 	if len(raw) == 0 {
 		return nil, false
 	}
-	var parsed any
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	if err := decoder.Decode(&parsed); err != nil {
-		return nil, false
-	}
-	return parsed, true
+	parsed, err := decodeJSONUseNumber(raw)
+	return parsed, err == nil
 }
 
 // customMatchEval 在载荷根上求值条件。root 为 nil 时仅 isNull/isEmpty 族为真。

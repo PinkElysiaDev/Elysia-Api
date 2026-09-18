@@ -874,10 +874,8 @@ func ParseCustomProtocolModels(body []byte, config CustomProtocolConfig) ([]Cust
 	if models == nil {
 		return nil, fmt.Errorf("custom protocol %q does not define model discovery", config.ID)
 	}
-	var raw any
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.UseNumber()
-	if err := decoder.Decode(&raw); err != nil {
+	raw, err := decodeJSONUseNumber(body)
+	if err != nil {
 		return nil, fmt.Errorf("parse models response: %w", err)
 	}
 	list, ok := customLookupPath(raw, models.ListPath)
@@ -1000,15 +998,6 @@ func CustomProtocolResponseToMaheshvaraRegistered(body []byte, config CustomProt
 	return customProtocolResponseToMaheshvaraValidated(body, config, false)
 }
 
-// CustomProtocolStreamEventToMaheshvara applies the same response mapping to a
-// single streaming event. Empty events are valid and are represented by an
-// otherwise empty Maheshvara response so callers can continue scanning until a
-// later event carries text, a tool call, usage, or a finish reason.
-
-func customProtocolStreamEventToMaheshvaraValidated(body []byte, config CustomProtocolConfig) (*MaheshvaraResponse, error) {
-	return customProtocolResponseToMaheshvaraValidated(body, config, true)
-}
-
 func customProtocolResponseToMaheshvara(body []byte, config CustomProtocolConfig, allowEmpty bool) (*MaheshvaraResponse, error) {
 	if err := ValidateCustomProtocol(config); err != nil {
 		return nil, err
@@ -1017,30 +1006,37 @@ func customProtocolResponseToMaheshvara(body []byte, config CustomProtocolConfig
 }
 
 func customProtocolResponseToMaheshvaraValidated(body []byte, config CustomProtocolConfig, allowEmpty bool) (*MaheshvaraResponse, error) {
-	var raw any
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.UseNumber()
-	if err := decoder.Decode(&raw); err != nil {
+	raw, err := decodeJSONUseNumber(body)
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse custom protocol %q response: %w", config.ID, err)
 	}
-	if allowEmpty && config.Response.Stream != nil {
-		if payloadPath := strings.TrimSpace(config.Response.Stream.PayloadPath); payloadPath != "" {
-			if payload, ok := customLookupPath(raw, payloadPath); ok {
-				raw = payload
-			}
-		}
-	}
-	mapping, err := effectiveCustomProtocolRuntimeMapping(config, allowEmpty)
+	resolved, err := resolveCustomMapping(config, allowEmpty)
 	if err != nil {
 		return nil, fmt.Errorf("custom protocol %q: %w", config.ID, err)
 	}
-	var textKeys []string
-	var usageAliases, toolAliases map[string][]string
-	if config.Aliases != nil {
-		textKeys = config.Aliases.TextKeys
-		usageAliases = config.Aliases.Usage
-		toolAliases = config.Aliases.ToolCall
+	return customProtocolResponseFromRoot(raw, resolved, config.Aliases, config.ID, allowEmpty)
+}
+
+// customResolvedMapping 是一次性解析完成的运行时映射:payloadPath 为流事件的
+// 载荷解包路径(非流式为空),mapping 为 legacy 合并后的生效映射。流解码器在
+// 构造时对默认路径与每个帧各预编译一份,事件循环零编译。
+type customResolvedMapping struct {
+	payloadPath string
+	mapping     CustomProtocolResponse
+}
+
+// resolveCustomMapping 解析运行时生效映射;须在整体校验通过后调用(编译
+// 错误此时不可能出现,仍防御性返回)。
+func resolveCustomMapping(config CustomProtocolConfig, allowStreamEvent bool) (customResolvedMapping, error) {
+	resolved := customResolvedMapping{}
+	if allowStreamEvent && config.Response.Stream != nil {
+		resolved.payloadPath = strings.TrimSpace(config.Response.Stream.PayloadPath)
 	}
+	mapping, err := effectiveCustomProtocolRuntimeMapping(config, allowStreamEvent)
+	if err != nil {
+		return resolved, err
+	}
+	// legacy mappings 键在此合并为直接路径(仅填补空缺)。
 	if mapping.Mappings != nil {
 		mapping.IDPath = firstNonEmptyString(mapping.IDPath, mapping.Mappings["id"])
 		mapping.ModelPath = firstNonEmptyString(mapping.ModelPath, mapping.Mappings["model"])
@@ -1052,12 +1048,31 @@ func customProtocolResponseToMaheshvaraValidated(body []byte, config CustomProto
 		mapping.FinishReasonPath = firstNonEmptyString(mapping.FinishReasonPath, mapping.Mappings["finish_reason"])
 		mapping.ErrorPath = firstNonEmptyString(mapping.ErrorPath, mapping.Mappings["error"])
 	}
+	resolved.mapping = mapping
+	return resolved, nil
+}
+
+// customProtocolResponseFromRoot 把已解析的载荷按预解析映射转为 Maheshvara。
+func customProtocolResponseFromRoot(root any, resolved customResolvedMapping, aliases *CustomProtocolAliases, configID string, allowEmpty bool) (*MaheshvaraResponse, error) {
+	if resolved.payloadPath != "" {
+		if payload, ok := customLookupPath(root, resolved.payloadPath); ok {
+			root = payload
+		}
+	}
+	mapping := resolved.mapping
+	var textKeys []string
+	var usageAliases, toolAliases map[string][]string
+	if aliases != nil {
+		textKeys = aliases.TextKeys
+		usageAliases = aliases.Usage
+		toolAliases = aliases.ToolCall
+	}
 	response := &MaheshvaraResponse{
-		ID:         customStringAt(raw, mapping.IDPath),
-		Model:      customStringAt(raw, mapping.ModelPath),
-		Status:     customStringAt(raw, mapping.StatusPath),
+		ID:         customStringAt(root, mapping.IDPath),
+		Model:      customStringAt(root, mapping.ModelPath),
+		Status:     customStringAt(root, mapping.StatusPath),
 		CreatedAt:  timeNowUnix(),
-		StopReason: customStringAt(raw, mapping.FinishReasonPath),
+		StopReason: customStringAt(root, mapping.FinishReasonPath),
 	}
 	if response.Status == "" {
 		if allowEmpty {
@@ -1067,24 +1082,24 @@ func customProtocolResponseToMaheshvaraValidated(body []byte, config CustomProto
 		}
 	}
 	if mapping.ErrorPath != "" {
-		if value := customValueAt(raw, mapping.ErrorPath); value != nil {
+		if value := customValueAt(root, mapping.ErrorPath); value != nil {
 			response.Error = &MaheshvaraError{Message: customValueString(value), Class: ErrorClassUpstream, Raw: customMap(value)}
 		}
 	}
-	if text := customTextAtFilter(raw, mapping.TextPath, textKeys, mapping.TextFilter); text != "" {
+	if text := customTextAtFilter(root, mapping.TextPath, textKeys, mapping.TextFilter); text != "" {
 		response.Output = append(response.Output, MaheshvaraOutputItem{
 			ID: newMaheshvaraResponseID("msg"), Type: MaheshvaraOutputMessage, Status: "completed", Role: "assistant",
 			Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: text}},
 		})
 	}
-	if reasoning := customTextAtFilter(raw, mapping.ReasoningPath, textKeys, mapping.ReasoningFilter); reasoning != "" {
+	if reasoning := customTextAtFilter(root, mapping.ReasoningPath, textKeys, mapping.ReasoningFilter); reasoning != "" {
 		response.Output = append(response.Output, MaheshvaraOutputItem{
 			ID: newMaheshvaraResponseID("rs"), Type: MaheshvaraOutputReasoning, Status: "completed",
 			Content: []MaheshvaraContentPart{{Type: MaheshvaraContentReasoning, Text: reasoning, ReasoningText: reasoning}},
 		})
 	}
 	if mapping.ToolCallsPath != "" {
-		for index, item := range customArrayAt(raw, mapping.ToolCallsPath) {
+		for index, item := range customArrayAt(root, mapping.ToolCallsPath) {
 			call := customToolCallWithAliases(item, index, toolAliases)
 			if call.Name == "" {
 				continue
@@ -1096,15 +1111,15 @@ func customProtocolResponseToMaheshvaraValidated(body []byte, config CustomProto
 		}
 	}
 	if mapping.UsagePath != "" {
-		response.Usage = customUsageAtWithAliases(raw, mapping.UsagePath, usageAliases)
+		response.Usage = customUsageAtWithAliases(root, mapping.UsagePath, usageAliases)
 	}
 	var mappingErr error
-	response, mappingErr = applyCustomFieldMappings(response, raw, mapping.FieldMappings)
+	response, mappingErr = applyCustomFieldMappings(response, root, mapping.FieldMappings)
 	if mappingErr != nil {
-		return nil, fmt.Errorf("custom protocol %q field mapping: %w", config.ID, mappingErr)
+		return nil, fmt.Errorf("custom protocol %q field mapping: %w", configID, mappingErr)
 	}
 	if len(response.Output) == 0 && response.Error == nil && !allowEmpty {
-		return nil, fmt.Errorf("custom protocol %q response has no mapped text, reasoning, or tool call", config.ID)
+		return nil, fmt.Errorf("custom protocol %q response has no mapped text, reasoning, or tool call", configID)
 	}
 	return response, nil
 }
@@ -1150,10 +1165,8 @@ func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[
 		if err != nil {
 			return value
 		}
-		decoder := json.NewDecoder(bytes.NewReader(encoded))
-		decoder.UseNumber()
-		var decoded any
-		if err := decoder.Decode(&decoded); err != nil {
+		decoded, decodeErr := decodeJSONUseNumber(encoded)
+		if decodeErr != nil {
 			return value
 		}
 		return decoded
@@ -1292,10 +1305,8 @@ func renderCustomJSON(template string, context map[string]any) (any, error) {
 		}
 		offset = end + 2
 	}
-	var value any
-	decoder := json.NewDecoder(strings.NewReader(builder.String()))
-	decoder.UseNumber()
-	if err := decoder.Decode(&value); err != nil {
+	value, err := decodeJSONUseNumber([]byte(builder.String()))
+	if err != nil {
 		return nil, fmt.Errorf("rendered body is not valid JSON: %w", err)
 	}
 	return value, nil
@@ -1439,8 +1450,13 @@ func customStringAt(root any, path string) string {
 	return customValueString(customValueAt(root, path))
 }
 
-func customTextAt(root any, path string) string {
-	return customTextAtFilter(root, path, nil, nil)
+// customAliasKeys 解析某类别的生效键列表:声明了非空覆盖即整体替换默认表
+// （usage/toolCall 提取共用）。
+func customAliasKeys(aliases map[string][]string, category string, defaults ...string) []string {
+	if custom, ok := aliases[category]; ok && len(custom) > 0 {
+		return custom
+	}
+	return defaults
 }
 
 // customTextAtFilter 提取文本并可按元素过滤：textPath 指向对象数组时先按
@@ -1473,22 +1489,12 @@ func customArrayAt(root any, path string) []any {
 	return nil
 }
 
-func customToolCall(value any, index int) MaheshvaraToolCall {
-	return customToolCallWithAliases(value, index, nil)
-}
-
 // customToolCallWithAliases 按别名表读取工具调用字段；别名条目支持点路径
 // （如 function.arguments）。类别缺省时用内置默认表。
 func customToolCallWithAliases(value any, index int, aliases map[string][]string) MaheshvaraToolCall {
 	object, _ := value.(map[string]any)
 	if object == nil {
 		return MaheshvaraToolCall{}
-	}
-	effectiveKeys := func(category string, defaults ...string) []string {
-		if custom, ok := aliases[category]; ok && len(custom) > 0 {
-			return custom
-		}
-		return defaults
 	}
 	lookupString := func(keys []string) string {
 		for _, key := range keys {
@@ -1501,12 +1507,12 @@ func customToolCallWithAliases(value any, index int, aliases map[string][]string
 		return ""
 	}
 	call := MaheshvaraToolCall{
-		ID:   firstNonEmptyString(lookupString(effectiveKeys("id", "id", "call_id", "tool_call_id", "function.id")), fmt.Sprintf("call_%d", index)),
-		Name: lookupString(effectiveKeys("name", "name", "function_name", "function.name")),
+		ID:   firstNonEmptyString(lookupString(customAliasKeys(aliases, "id", "id", "call_id", "tool_call_id", "function.id")), fmt.Sprintf("call_%d", index)),
+		Name: lookupString(customAliasKeys(aliases, "name", "name", "function_name", "function.name")),
 		Type: MaheshvaraToolFunction,
 	}
 	var arguments any
-	for _, key := range effectiveKeys("arguments", "arguments", "args", "input", "function.arguments", "function.args", "function.input") {
+	for _, key := range customAliasKeys(aliases, "arguments", "arguments", "args", "input", "function.arguments", "function.args", "function.input") {
 		if value, ok := customLookupPath(object, key); ok && value != nil {
 			arguments = value
 			break
@@ -1526,10 +1532,6 @@ func customToolCallWithAliases(value any, index int, aliases map[string][]string
 	return call
 }
 
-func customUsageAt(root any, path string) *MaheshvaraUsage {
-	return customUsageAtWithAliases(root, path, nil)
-}
-
 // customUsageAtWithAliases 按别名表读取用量；别名条目支持点路径（如
 // prompt_tokens_details.cached_tokens）。类别缺省时用内置默认表。
 func customUsageAtWithAliases(root any, path string, aliases map[string][]string) *MaheshvaraUsage {
@@ -1537,18 +1539,12 @@ func customUsageAtWithAliases(root any, path string, aliases map[string][]string
 	if object == nil {
 		return nil
 	}
-	effectiveKeys := func(category string, defaults ...string) []string {
-		if custom, ok := aliases[category]; ok && len(custom) > 0 {
-			return custom
-		}
-		return defaults
-	}
 	usage := &MaheshvaraUsage{Source: "provider_response"}
-	usage.InputTokens = customIntPath(object, effectiveKeys("input", "input_tokens", "inputTokens", "prompt_tokens", "promptTokenCount")...)
-	usage.OutputTokens = customIntPath(object, effectiveKeys("output", "output_tokens", "outputTokens", "completion_tokens", "candidatesTokenCount")...)
-	usage.TotalTokens = customIntPath(object, effectiveKeys("total", "total_tokens", "totalTokens", "totalTokenCount")...)
-	usage.CachedInputTokens = customIntPath(object, effectiveKeys("cached", "cached_input_tokens", "cachedInputTokens", "cached_tokens", "cachedContentTokenCount", "prompt_tokens_details.cached_tokens", "input_tokens_details.cached_tokens", "cache_read_tokens")...)
-	usage.ReasoningTokens = customIntPath(object, effectiveKeys("reasoning", "reasoning_tokens", "reasoningTokens", "thoughtsTokenCount", "completion_tokens_details.reasoning_tokens")...)
+	usage.InputTokens = customIntPath(object, customAliasKeys(aliases, "input", "input_tokens", "inputTokens", "prompt_tokens", "promptTokenCount")...)
+	usage.OutputTokens = customIntPath(object, customAliasKeys(aliases, "output", "output_tokens", "outputTokens", "completion_tokens", "candidatesTokenCount")...)
+	usage.TotalTokens = customIntPath(object, customAliasKeys(aliases, "total", "total_tokens", "totalTokens", "totalTokenCount")...)
+	usage.CachedInputTokens = customIntPath(object, customAliasKeys(aliases, "cached", "cached_input_tokens", "cachedInputTokens", "cached_tokens", "cachedContentTokenCount", "prompt_tokens_details.cached_tokens", "input_tokens_details.cached_tokens", "cache_read_tokens")...)
+	usage.ReasoningTokens = customIntPath(object, customAliasKeys(aliases, "reasoning", "reasoning_tokens", "reasoningTokens", "thoughtsTokenCount", "completion_tokens_details.reasoning_tokens")...)
 	usage.TotalTokens = valueOrSum(usage.TotalTokens, usage.InputTokens, usage.OutputTokens)
 	return usage
 }
@@ -1576,10 +1572,6 @@ func customIntPath(object map[string]any, keys ...string) int {
 		}
 	}
 	return 0
-}
-
-func customInt(object map[string]any, keys ...string) int {
-	return customIntPath(object, keys...)
 }
 
 func customValueString(value any) string {

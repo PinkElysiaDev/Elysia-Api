@@ -8,6 +8,9 @@ import (
 
 type CustomProtocolStreamDecoder struct {
 	config            CustomProtocolConfig
+	aliases           *CustomProtocolAliases
+	resolved          customResolvedMapping
+	frameResolved     []customResolvedMapping
 	mode              string
 	modeText          string
 	modeReasoning     string
@@ -44,17 +47,18 @@ func NewCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtoco
 	if err := ValidateCustomProtocol(config); err != nil {
 		return nil, err
 	}
-	return newCustomProtocolStreamDecoder(config), nil
+	return newCustomProtocolStreamDecoder(config)
 }
 
 // NewRegisteredCustomProtocolStreamDecoder 为注册表内协议构造流解码器:
 // 入库时已整体校验(含双模板渲染),热路径不再重复。
 func NewRegisteredCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtocolStreamDecoder, error) {
-	return newCustomProtocolStreamDecoder(config), nil
+	return newCustomProtocolStreamDecoder(config)
 }
 
-func newCustomProtocolStreamDecoder(config CustomProtocolConfig) *CustomProtocolStreamDecoder {
+func newCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtocolStreamDecoder, error) {
 	decoder := &CustomProtocolStreamDecoder{
+		aliases:           config.Aliases,
 		config:            config,
 		mode:              "delta",
 		doneValues:        map[string]struct{}{"[DONE]": {}},
@@ -120,7 +124,23 @@ func newCustomProtocolStreamDecoder(config CustomProtocolConfig) *CustomProtocol
 			decoder.frames = append(decoder.frames, frame)
 		}
 	}
-	return decoder
+	// 运行时映射在构造时对默认路径与每个帧各预编译一份,事件循环零编译。
+	resolved, err := resolveCustomMapping(config, true)
+	if err != nil {
+		return nil, err
+	}
+	decoder.resolved = resolved
+	decoder.frameResolved = make([]customResolvedMapping, len(decoder.frames))
+	for index, frame := range decoder.frames {
+		frameConfig := config
+		if frame.Response != nil || strings.TrimSpace(frame.PayloadPath) != "" {
+			frameConfig = customProtocolFrameConfig(config, frame)
+		}
+		if decoder.frameResolved[index], err = resolveCustomMapping(frameConfig, true); err != nil {
+			return nil, err
+		}
+	}
+	return decoder, nil
 }
 
 func (decoder *CustomProtocolStreamDecoder) TerminalReceived() bool {
@@ -148,63 +168,58 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 	if data == "" {
 		return nil, false, nil
 	}
+	// 帧载荷只解析一次:帧匹配、响应映射与终止判定共用同一 root。
+	root, parseErr := decodeJSONUseNumber([]byte(data))
+	rootOK := parseErr == nil
 	if _, done := decoder.doneValues[data]; done {
 		decoder.terminal = true
 		return []MaheshvaraStreamEvent{{Type: MaheshvaraEventResponseCompleted}}, true, nil
 	}
-	if len(decoder.doneJSON) > 0 && decoder.matchDoneJSON(data) {
+	if len(decoder.doneJSON) > 0 && rootOK && matchJSONDoneValue(root, decoder.doneJSON) {
 		decoder.terminal = true
 		return []MaheshvaraStreamEvent{{Type: MaheshvaraEventResponseCompleted}}, true, nil
 	}
-	config := decoder.config
+	resolved := decoder.resolved
 	terminalFrame := false
 	var frameTool *CustomProtocolStreamTool
-	var frameRoot any
 	if len(decoder.frames) > 0 {
-		root, rootOK := customMatchValue(json.RawMessage(data))
-		eventName := ""
-		if rootOK {
-			eventName = decoder.payloadEventName(strings.TrimSpace(wireEvent.Event), root)
-		} else if trimmed := strings.TrimSpace(wireEvent.Event); trimmed != "" {
-			eventName = trimmed
-		}
-		frame := decoder.matchFrame(eventName, root, rootOK)
-		if frame == nil {
+		eventName := decoder.effectiveEventName(wireEvent.Event, root, rootOK)
+		frameIndex := decoder.matchFrameIndex(eventName, root, rootOK)
+		if frameIndex < 0 {
 			// 异构流中未声明的帧型不属于本协议语义，跳过；需要兜底映射时
 			// 用 stream.response 声明默认映射。
 			return nil, false, nil
 		}
-		if frame.Response != nil || strings.TrimSpace(frame.PayloadPath) != "" {
-			config = customProtocolFrameConfig(decoder.config, *frame)
-		}
-		terminalFrame = frame.Terminal
-		frameTool = frame.Tool
-		frameRoot = root
+		resolved = decoder.frameResolved[frameIndex]
+		terminalFrame = decoder.frames[frameIndex].Terminal
+		frameTool = decoder.frames[frameIndex].Tool
 	} else if len(decoder.events) > 0 {
-		eventName := decoder.wireEventName(wireEvent, data)
+		eventName := decoder.effectiveEventName(wireEvent.Event, root, rootOK)
 		if _, allowed := decoder.events[eventName]; !allowed {
 			return nil, false, nil
 		}
 	}
-	response, err := customProtocolStreamEventToMaheshvaraValidated([]byte(data), config)
+	if !rootOK {
+		return nil, false, fmt.Errorf("failed to parse custom protocol stream event: %w", parseErr)
+	}
+	response, err := customProtocolResponseFromRoot(root, resolved, decoder.aliases, decoder.config.ID, true)
 	if err != nil {
 		return nil, false, err
 	}
 	if frameTool != nil {
-		response.Output = append(response.Output, decoder.frameToolItems(frameTool, frameRoot)...)
+		response.Output = append(response.Output, decoder.frameToolItems(frameTool, root)...)
 	}
 	events := decoder.contentEvents(response, decoder.frameArgsMode(frameTool))
-	// 终止判定：finishWhen/statusWhen 配置时按 Match 语义（载荷根为
-	// payloadPath 解包后的对象）；缺省沿用 legacy——finishReasonPath 字符串化
-	// 非空、status == "completed"。
-	root := decoder.matchRoot(data, config)
+	// 终止判定：finishWhen/statusWhen 配置时按 Match 语义（对帧原始载荷
+	// 求值）；缺省沿用 legacy——finishReasonPath 字符串化非空、
+	// status == "completed"。
 	finishHit := response.StopReason != ""
 	if decoder.finishWhen != nil {
-		finishHit = root != nil && customMatchEval(root, *decoder.finishWhen)
+		finishHit = customMatchEval(root, *decoder.finishWhen)
 	}
 	statusHit := response.Status == "completed"
 	if decoder.statusWhen != nil {
-		statusHit = root != nil && customMatchEval(root, *decoder.statusWhen)
+		statusHit = customMatchEval(root, *decoder.statusWhen)
 	}
 	if finishHit || statusHit {
 		if finishHit {
@@ -231,53 +246,20 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 	return events, false, nil
 }
 
-// matchDoneJSON 判定整帧载荷是否类型化等于任一配置的 done JSON 值。
-func (decoder *CustomProtocolStreamDecoder) matchDoneJSON(data string) bool {
-	parsed, ok := customMatchValue(json.RawMessage(data))
-	if !ok {
-		return false
-	}
-	for _, expected := range decoder.doneJSON {
-		if customJSONValuesEqual(parsed, expected) {
+// matchJSONDoneValue 判定整帧载荷是否类型化等于任一配置的 done JSON 值。
+func matchJSONDoneValue(root any, expectedValues []any) bool {
+	for _, expected := range expectedValues {
+		if customJSONValuesEqual(root, expected) {
 			return true
 		}
 	}
 	return false
 }
 
-// matchRoot 解析终止判定的求值根：payloadPath 解包后的载荷（与响应映射同根）。
-// 仅在配置了 finishWhen/statusWhen 时解析；解析失败返回 nil（Match 不成立）。
-func (decoder *CustomProtocolStreamDecoder) matchRoot(data string, config CustomProtocolConfig) any {
-	if decoder.finishWhen == nil && decoder.statusWhen == nil {
-		return nil
-	}
-	raw, ok := customMatchValue(json.RawMessage(data))
-	if !ok {
-		return nil
-	}
-	if stream := config.Response.Stream; stream != nil {
-		if payloadPath := strings.TrimSpace(stream.PayloadPath); payloadPath != "" {
-			if payload, found := customLookupPath(raw, payloadPath); found {
-				return payload
-			}
-		}
-	}
-	return raw
-}
-
-// wireEventName 取帧的事件名：优先 SSE event 字段，缺省时按 eventKeys（默认
-// type/event）回落 JSON 载荷字段（Responses 型协议把类型写在数据里）。
-func (decoder *CustomProtocolStreamDecoder) wireEventName(wireEvent SSEEvent, data string) string {
-	if eventName := strings.TrimSpace(wireEvent.Event); eventName != "" {
-		return eventName
-	}
-	if raw, err := decodeSSEEventJSON(data); err == nil {
-		return decoder.payloadEventName("", raw)
-	}
-	return ""
-}
-
-func (decoder *CustomProtocolStreamDecoder) matchFrame(eventName string, root any, rootOK bool) *CustomProtocolStreamFrame {
+// matchFrameIndex 选中首个匹配帧的下标（-1 表示未命中）：事件名与谓词（对
+// 帧原始 JSON 求值）都给出时须同时成立；二者至少配一个（校验保证）。
+// 返回下标而非拷贝,调用方直接引用构造期切片。
+func (decoder *CustomProtocolStreamDecoder) matchFrameIndex(eventName string, root any, rootOK bool) int {
 	for index := range decoder.frames {
 		frame := decoder.frames[index]
 		if frame.Event != "" {
@@ -290,16 +272,17 @@ func (decoder *CustomProtocolStreamDecoder) matchFrame(eventName string, root an
 				continue
 			}
 		}
-		matched := frame
-		return &matched
+		return index
 	}
-	return nil
+	return -1
 }
 
-// payloadEventName 在已解析的帧载荷上按 eventKeys 取事件名；SSE event 字段
-// 非空时优先。
-func (decoder *CustomProtocolStreamDecoder) payloadEventName(wireEventName string, root any) string {
-	if wireEventName != "" {
+// effectiveEventName 取帧的事件名：优先 SSE event 字段，缺省时按 eventKeys
+// （默认 type/event）回落已解析载荷内的字段（Responses 型协议把类型写在
+// 数据里）。与旧 wireEventName/payloadEventName 双实现统一于此。
+func (decoder *CustomProtocolStreamDecoder) effectiveEventName(wireEventName string, root any, rootOK bool) string {
+	wireEventName = strings.TrimSpace(wireEventName)
+	if wireEventName != "" || !rootOK {
 		return wireEventName
 	}
 	object, _ := root.(map[string]any)

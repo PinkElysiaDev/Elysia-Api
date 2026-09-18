@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -217,71 +218,6 @@ func setCustomPathValue(current any, tokens []customPathToken, value any) (any, 
 	return object, nil
 }
 
-func deleteCustomPath(root any, path string) any {
-	tokens, err := parseCustomPath(path)
-	if err != nil {
-		return root
-	}
-	updated, _ := deleteCustomPathValue(root, tokens)
-	return updated
-}
-
-// deleteCustomPathValue 按路径删除空值，返回（可能被替换的）新值与是否删除。
-// 删除数组元素会返回缩短后的新 slice——Go 无法原地缩短 slice 并让父容器感知，
-// 调用方必须用返回值替换旧值，否则 JSON 输出会留下 null 洞。
-func deleteCustomPathValue(current any, tokens []customPathToken) (any, bool) {
-	if len(tokens) == 0 {
-		return current, true
-	}
-	token := tokens[0]
-	if token.index != nil {
-		array, ok := current.([]any)
-		if !ok || *token.index >= len(array) {
-			return current, false
-		}
-		index := *token.index
-		if len(tokens) == 1 {
-			if customEmptyValue(array[index]) {
-				return append(array[:index], array[index+1:]...), true
-			}
-			return current, false
-		}
-		updated, ok := deleteCustomPathValue(array[index], tokens[1:])
-		if !ok {
-			return current, false
-		}
-		array[index] = updated
-		if customEmptyValue(array[index]) {
-			return append(array[:index], array[index+1:]...), true
-		}
-		return current, true
-	}
-	object, ok := current.(map[string]any)
-	if !ok {
-		return current, false
-	}
-	value, exists := object[token.name]
-	if !exists {
-		return current, false
-	}
-	if len(tokens) == 1 {
-		if customEmptyValue(value) {
-			delete(object, token.name)
-			return current, true
-		}
-		return current, false
-	}
-	updated, deleted := deleteCustomPathValue(value, tokens[1:])
-	if !deleted {
-		return current, false
-	}
-	object[token.name] = updated
-	if customEmptyValue(updated) {
-		delete(object, token.name)
-	}
-	return current, true
-}
-
 func applyCustomFieldMappings(response *MaheshvaraResponse, root any, mappings []CustomProtocolFieldMapping) (*MaheshvaraResponse, error) {
 	if response == nil || len(mappings) == 0 {
 		return response, nil
@@ -349,7 +285,7 @@ func validateCustomResponseTarget(path string) error {
 
 func customMappingValue(root any, mapping CustomProtocolFieldMapping) (any, bool, error) {
 	if len(mapping.Value) > 0 {
-		value, err := jsonRawToNumberValue(mapping.Value)
+		value, err := decodeJSONUseNumber(mapping.Value)
 		return value, err == nil, err
 	}
 	if source := strings.TrimSpace(mapping.Source); source != "" {
@@ -358,7 +294,7 @@ func customMappingValue(root any, mapping CustomProtocolFieldMapping) (any, bool
 		}
 	}
 	if len(mapping.Default) > 0 {
-		value, err := jsonRawToNumberValue(mapping.Default)
+		value, err := decodeJSONUseNumber(mapping.Default)
 		return value, err == nil, err
 	}
 	return nil, false, nil
@@ -404,7 +340,7 @@ func transformCustomMappingValue(value any, transform string) (any, error) {
 		return parsed, nil
 	case "json", "parse_json":
 		if text, ok := value.(string); ok {
-			return jsonRawToNumberValue(json.RawMessage(text))
+			return decodeJSONUseNumber(json.RawMessage(text))
 		}
 		return value, nil
 	case "json_string":
@@ -429,7 +365,7 @@ func transformCustomMappingValue(value any, transform string) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return jsonRawToNumberValue(encoded)
+		return decodeJSONUseNumber(encoded)
 	case "tool_calls":
 		return customToolOutputItems(value), nil
 	case "output_items":
@@ -563,10 +499,12 @@ func customArrayValue(value any) []any {
 	return []any{value}
 }
 
-func jsonRawToNumberValue(raw json.RawMessage) (any, error) {
-	var value any
-	decoder := json.NewDecoder(strings.NewReader(string(raw)))
+// decodeJSONUseNumber 是全引擎统一的 JSON→any 解码入口(UseNumber:大整数
+// 经 json.Number 保精度)。所有「解析载荷/规则值/渲染产物」的路径共用。
+func decodeJSONUseNumber(data []byte) (any, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
+	var value any
 	if err := decoder.Decode(&value); err != nil {
 		return nil, err
 	}
