@@ -83,6 +83,21 @@ JSON 粘贴以下配置:
 
 `frames` 存在时优先于 legacy `events` 白名单;帧内 `response` 不得再嵌套 `stream`。
 
+## 故障排查：502「completed without representable output」
+
+含义：流收到了终止标记（`[DONE]` 等），但整条流没有映射出任何输出，也没见到 finish reason。
+按概率排查：
+
+1. **空嵌套映射（历史版本设计器踩坑，已自愈）**：旧版「流式映射」开关会写入
+   `stream.response = {body:{}}`，运行时把顶层映射整个顶掉。现在空嵌套自动视为
+   「继承顶层映射」，注册时也会被净化——升级后存量配置无需重存即恢复；
+2. **映射路径与流帧形状不符**：最常见的是 `result_format` 缺省（dashscope native 的
+   text 格式正文在 `output.text`，与 message 格式的 `output.choices[0].message.content`
+   不同路径），或 `payloadPath` 指错。在设计器「预览与测试」开流式发送，对照
+   「上游流事件采样」与「解码出的 Maheshvara 流事件」即可定位是哪条路径没映射上；
+3. **finish 与终止标记都没映射到**：确认 `finishReasonPath`（或独立映射里的
+   `stop_reason` 字段位）与 `doneValues` 至少一个能命中上游帧。
+
 ## 已知不适用场景
 
 自定义协议流式映射的既有边界(与 dashscope 无关,列出备查):

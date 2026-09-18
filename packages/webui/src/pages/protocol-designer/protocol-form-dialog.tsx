@@ -237,9 +237,9 @@ export function ProtocolFormDialog({
                         ...draft,
                         response: {
                           ...(draft.response ?? {}),
-                          stream: checked
-                            ? { mode: 'delta', doneValues: ['[DONE]'], response: { body: {} } }
-                            : undefined,
+                          // 不附带嵌套 response：流帧默认复用上方返回体构造，
+                          // 仅帧形状与非流不同时再显式开启「独立映射」。
+                          stream: checked ? { mode: 'delta', doneValues: ['[DONE]'] } : undefined,
                         },
                       })
                     }
@@ -319,8 +319,39 @@ export function ProtocolFormDialog({
                         }
                       />
                     </SettingRow>
+                    <SettingRow
+                      label="独立映射"
+                      description="流帧与非流响应形状不同时单独配置；关闭则复用上方返回体构造"
+                      inline={false}
+                    >
+                      <Switch
+                        checked={!!stream.response}
+                        onCheckedChange={(checked) =>
+                          setDraft({
+                            ...draft,
+                            response: {
+                              ...(draft.response ?? {}),
+                              stream: { ...stream, response: checked ? { body: {} } : undefined },
+                            },
+                          })
+                        }
+                      />
+                    </SettingRow>
+                    {stream.response && (
+                      <ResponseBodyTreeEditor
+                        response={stream.response}
+                        onChange={(nested) =>
+                          setDraft({
+                            ...draft,
+                            response: { ...(draft.response ?? {}), stream: { ...stream, response: nested } },
+                          })
+                        }
+                        fields={schema?.responseFields ?? []}
+                        transforms={schema?.transforms ?? []}
+                      />
+                    )}
                     <p className="pt-2 text-2xs text-muted-foreground">
-                      流事件的独立映射在嵌套的 response 中配置（body 构造树或 fields，与主返回体同规则）。
+                      流事件默认复用上方返回体构造；仅当流帧的载荷形状与非流响应不同时开启独立映射。
                     </p>
                   </div>
                 )}
