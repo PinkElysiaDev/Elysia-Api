@@ -90,6 +90,7 @@
             "value": "function_call"
           },
           "tool": {
+            "indexPath": "output_index",
             "idPath": "item.call_id",
             "namePath": "item.name"
           }
@@ -97,7 +98,7 @@
         {
           "event": "response.function_call_arguments.delta",
           "tool": {
-            "idPath": "item_id",
+            "indexPath": "output_index",
             "argumentsPath": "delta"
           }
         },

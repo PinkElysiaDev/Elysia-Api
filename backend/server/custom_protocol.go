@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -185,6 +186,22 @@ func (s *Server) handleCustomNormal(
 	maheshvaraResponse, err := relay.CustomProtocolResponseToMaheshvaraRegistered(body, protocol)
 	if err != nil {
 		result = fail(http.StatusBadGateway, fmt.Sprintf("failed to parse custom protocol response: %v", err), nil, false)
+		return result
+	}
+	// HTTP 200 携带业务错误（ErrorPath 显式映射）时不得包装成空答案的成功
+	// 响应：按上游错误渲染协议化错误并落失败记录。原始错误对象原样透传，
+	// 不重试——业务语义错误重试无益。
+	if maheshvaraResponse.Error != nil {
+		status := maheshvaraResponse.Error.Class.HTTPStatus()
+		message := maheshvaraResponse.Error.Message
+		if message == "" {
+			message = "custom protocol upstream returned an error"
+		}
+		if raw, marshalErr := json.Marshal(maheshvaraResponse.Error.Raw); marshalErr == nil && len(maheshvaraResponse.Error.Raw) > 0 {
+			result = fail(status, message, raw, false)
+			return result
+		}
+		result = fail(status, message, nil, false)
 		return result
 	}
 	if maheshvaraResponse.Model == "" {

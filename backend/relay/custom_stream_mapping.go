@@ -23,6 +23,8 @@ type CustomProtocolStreamDecoder struct {
 	previousReasoning map[string]string
 	previousArguments map[string]string
 	toolAdded         map[string]bool
+	toolSlot          map[string]int
+	nextToolSlot      int
 	frameTools        map[float64]CustomProtocolStreamToolIdentity
 	terminal          bool
 	sawOutput         bool
@@ -50,6 +52,7 @@ func NewCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtoco
 		previousReasoning: make(map[string]string),
 		previousArguments: make(map[string]string),
 		toolAdded:         make(map[string]bool),
+		toolSlot:          make(map[string]int),
 		frameTools:        make(map[float64]CustomProtocolStreamToolIdentity),
 	}
 	if stream := config.Response.Stream; stream != nil {
@@ -394,15 +397,24 @@ func (decoder *CustomProtocolStreamDecoder) contentEvents(response *MaheshvaraRe
 		switch item.Type {
 		case MaheshvaraOutputFunctionCall:
 			key := firstNonEmptyString(item.CallID, item.Name, fmt.Sprintf("tool_%d", outputIndex))
+			// 下游渲染器按 ToolCallIndex 组装工具状态;本帧 Output 数组下标
+			// 是临时位置,跨帧的多个工具会全部撞在 0——改用流级稳定槽位
+			//(身份键首次出现时分配,此后不变)。
+			slot, seen := decoder.toolSlot[key]
+			if !seen {
+				slot = decoder.nextToolSlot
+				decoder.nextToolSlot++
+				decoder.toolSlot[key] = slot
+			}
 			if !decoder.toolAdded[key] {
 				decoder.toolAdded[key] = true
-				events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallAdded, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ToolCallIndex: outputIndex, ToolCallID: item.CallID, ToolName: item.Name})
+				events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallAdded, ResponseID: response.ID, Model: response.Model, OutputIndex: slot, ToolCallIndex: slot, ToolCallID: item.CallID, ToolName: item.Name})
 			}
 			arguments := string(item.Arguments)
 			if arguments != "" {
 				delta := decoder.streamDelta(decoder.previousArguments, key, arguments, argsMode)
 				if delta != "" {
-					events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallArgumentsDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ToolCallIndex: outputIndex, ToolCallID: item.CallID, ToolName: item.Name, ToolArgumentsDelta: delta})
+					events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallArgumentsDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: slot, ToolCallIndex: slot, ToolCallID: item.CallID, ToolName: item.Name, ToolArgumentsDelta: delta})
 				}
 			}
 		case MaheshvaraOutputReasoning:

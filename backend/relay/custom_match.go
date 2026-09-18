@@ -98,6 +98,40 @@ func validateCustomProtocolMatch(location string, match CustomProtocolMatch) err
 	return nil
 }
 
+// CustomProtocolMatchSet 兼容单条件对象与条件数组：数组语义为全部成立（AND），
+// 供 textFilter/reasoningFilter 等需要复合谓词的场合（如 Gemini 的
+// 「非 thought 且非 functionCall」正文过滤）。
+type CustomProtocolMatchSet []CustomProtocolMatch
+
+// UnmarshalJSON 接受单个 Match 对象或 Match 数组。
+func (set *CustomProtocolMatchSet) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) > 0 && trimmed[0] == '[' {
+		var matches []CustomProtocolMatch
+		if err := json.Unmarshal(data, &matches); err != nil {
+			return err
+		}
+		*set = matches
+		return nil
+	}
+	var single CustomProtocolMatch
+	if err := json.Unmarshal(data, &single); err != nil {
+		return err
+	}
+	*set = CustomProtocolMatchSet{single}
+	return nil
+}
+
+// eval 在载荷根上求值：全部条件成立才为真；空集恒真。
+func (set CustomProtocolMatchSet) eval(root any) bool {
+	for _, match := range set {
+		if !customMatchEval(root, match) {
+			return false
+		}
+	}
+	return true
+}
+
 // customMatchValue 把 JSON 原文解析为 UseNumber 的 any（比较前统一口径）。
 func customMatchValue(raw json.RawMessage) (any, bool) {
 	if len(raw) == 0 {

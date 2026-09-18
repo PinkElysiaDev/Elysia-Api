@@ -3,47 +3,177 @@
   "name": "Google Gemini generateContent（预置）",
   "version": "1",
   "type": "llm",
-  "metadata": { "preset": true, "description": "Gemini 线制的预置定义；双路径按流切换、thought 谓词分流" },
-  "aliases": { "toolCall": { "id": ["functionCall.name"], "name": ["functionCall.name"], "arguments": ["functionCall.args"] } },
+  "metadata": {
+    "preset": true,
+    "description": "Gemini 线制的预置定义；双路径按流切换、thought 谓词分流"
+  },
+  "aliases": {
+    "toolCall": {
+      "id": [
+        "functionCall.name"
+      ],
+      "name": [
+        "functionCall.name"
+      ],
+      "arguments": [
+        "functionCall.args"
+      ]
+    }
+  },
   "request": {
     "method": "POST",
     "path": "/v1beta/models/{{maheshvara.model}}:generateContent",
     "pathStream": "/v1beta/models/{{maheshvara.model}}:streamGenerateContent?alt=sse",
     "shape": "gemini",
-    "auth": { "mode": "header", "header": "x-goog-api-key" },
+    "auth": {
+      "mode": "header",
+      "header": "x-goog-api-key"
+    },
     "body": {
-      "contents": { "field": "messages" },
-      "systemInstruction": { "parts": [{ "text": { "field": "instructions", "mode": "string" } }] },
+      "contents": {
+        "field": "messages"
+      },
+      "systemInstruction": {
+        "parts": [
+          {
+            "text": {
+              "field": "instructions",
+              "mode": "string"
+            }
+          }
+        ]
+      },
       "generationConfig": {
-        "temperature": { "field": "temperature", "omitIfEmpty": true },
-        "maxOutputTokens": { "field": "max_output_tokens", "omitIfEmpty": true },
-        "topP": { "field": "top_p", "omitIfEmpty": true },
+        "temperature": {
+          "field": "temperature",
+          "omitIfEmpty": true
+        },
+        "maxOutputTokens": {
+          "field": "max_output_tokens",
+          "omitIfEmpty": true
+        },
+        "topP": {
+          "field": "top_p",
+          "omitIfEmpty": true
+        },
         "thinkingConfig": {
-          "includeThoughts": { "field": "thinking.enabled", "when": { "path": "thinking.enabled", "op": "isTrue" } }
+          "includeThoughts": {
+            "field": "thinking.enabled",
+            "when": {
+              "path": "thinking.enabled",
+              "op": "isTrue"
+            }
+          }
         }
       },
-      "tools": { "field": "tools", "omitIfEmpty": true }
+      "tools": {
+        "field": "tools",
+        "omitIfEmpty": true
+      }
     }
   },
   "response": {
     "textPath": "candidates[0].content.parts",
-    "textFilter": { "path": "thought", "op": "isFalse" },
+    "textFilter": [
+      {
+        "path": "thought",
+        "op": "isFalse"
+      },
+      {
+        "path": "functionCall",
+        "op": "isNull"
+      }
+    ],
     "reasoningPath": "candidates[0].content.parts",
-    "reasoningFilter": { "path": "thought", "op": "isTrue" },
+    "reasoningFilter": [
+      {
+        "path": "thought",
+        "op": "isTrue"
+      }
+    ],
     "toolCallsPath": "candidates[0].content.parts",
     "usagePath": "usageMetadata",
     "finishReasonPath": "candidates[0].finishReason",
     "stream": {
       "mode": "delta",
       "frames": [
-        { "match": { "path": "candidates[0].content.parts[0].thought", "op": "isTrue" },
-          "response": { "reasoningPath": "candidates[0].content.parts[0].text" } },
-        { "match": { "path": "candidates[0].content.parts[0].functionCall", "op": "notNull" },
-          "response": { "toolCallsPath": "candidates[0].content.parts[0]" } },
-        { "match": { "path": "candidates[0].finishReason", "op": "notNull" }, "terminal": true,
-          "response": { "usagePath": "usageMetadata", "finishReasonPath": "candidates[0].finishReason" } },
-        { "match": { "path": "candidates[0].content.parts[0].text", "op": "nonEmpty" },
-          "response": { "textPath": "candidates[0].content.parts[0].text" } }
+        {
+          "match": {
+            "path": "candidates[0].content.parts[0].functionCall",
+            "op": "notNull"
+          },
+          "response": {
+            "toolCallsPath": "candidates[0].content.parts",
+            "usagePath": "usageMetadata",
+            "finishReasonPath": "candidates[0].finishReason"
+          }
+        },
+        {
+          "match": {
+            "path": "candidates[0].finishReason",
+            "op": "notNull"
+          },
+          "terminal": true,
+          "response": {
+            "textPath": "candidates[0].content.parts",
+            "textFilter": [
+              {
+                "path": "thought",
+                "op": "isFalse"
+              },
+              {
+                "path": "functionCall",
+                "op": "isNull"
+              }
+            ],
+            "reasoningPath": "candidates[0].content.parts",
+            "reasoningFilter": [
+              {
+                "path": "thought",
+                "op": "isTrue"
+              }
+            ],
+            "usagePath": "usageMetadata",
+            "finishReasonPath": "candidates[0].finishReason"
+          }
+        },
+        {
+          "match": {
+            "path": "candidates[0]",
+            "op": "isNull"
+          },
+          "response": {
+            "usagePath": "usageMetadata"
+          }
+        },
+        {
+          "match": {
+            "path": "candidates",
+            "op": "nonEmpty"
+          },
+          "response": {
+            "textPath": "candidates[0].content.parts",
+            "textFilter": [
+              {
+                "path": "thought",
+                "op": "isFalse"
+              },
+              {
+                "path": "functionCall",
+                "op": "isNull"
+              }
+            ],
+            "reasoningPath": "candidates[0].content.parts",
+            "reasoningFilter": [
+              {
+                "path": "thought",
+                "op": "isTrue"
+              }
+            ],
+            "usagePath": "usageMetadata",
+            "finishReasonPath": "candidates[0].finishReason"
+          }
+        }
       ],
       "doneValuesReplace": true
     }

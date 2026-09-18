@@ -3,24 +3,59 @@
   "name": "OpenAI Chat Completions（预置）",
   "version": "1",
   "type": "llm",
-  "metadata": { "preset": true, "description": "OpenAI Chat Completions 线制的预置定义；复制后可定制端点/字段" },
+  "metadata": {
+    "preset": true,
+    "description": "OpenAI Chat Completions 线制的预置定义；复制后可定制端点/字段"
+  },
   "request": {
     "method": "POST",
     "path": "/v1/chat/completions",
     "shape": "openai-chat",
     "body": {
-      "model": { "field": "model", "mode": "string" },
-      "messages": { "field": "messages" },
-      "stream": { "field": "stream" },
-      "stream_options": {
-        "include_usage": { "field": "stream_options.include_usage", "default": true, "when": { "path": "stream", "op": "isTrue" } }
+      "model": {
+        "field": "model",
+        "mode": "string"
       },
-      "max_tokens": { "field": "max_output_tokens", "omitIfEmpty": true },
-      "temperature": { "field": "temperature", "omitIfEmpty": true },
-      "top_p": { "field": "top_p", "omitIfEmpty": true },
-      "tools": { "field": "tools", "omitIfEmpty": true },
-      "tool_choice": { "field": "tool_choice", "omitIfEmpty": true },
-      "response_format": { "field": "response_format", "omitIfEmpty": true }
+      "messages": {
+        "field": "messages"
+      },
+      "stream": {
+        "field": "stream"
+      },
+      "stream_options": {
+        "include_usage": {
+          "field": "stream_options.include_usage",
+          "default": true,
+          "when": {
+            "path": "stream",
+            "op": "isTrue"
+          }
+        }
+      },
+      "max_tokens": {
+        "field": "max_output_tokens",
+        "omitIfEmpty": true
+      },
+      "temperature": {
+        "field": "temperature",
+        "omitIfEmpty": true
+      },
+      "top_p": {
+        "field": "top_p",
+        "omitIfEmpty": true
+      },
+      "tools": {
+        "field": "tools",
+        "omitIfEmpty": true
+      },
+      "tool_choice": {
+        "field": "tool_choice",
+        "omitIfEmpty": true
+      },
+      "response_format": {
+        "field": "response_format",
+        "omitIfEmpty": true
+      }
     }
   },
   "response": {
@@ -32,23 +67,50 @@
     "stream": {
       "mode": "delta",
       "frames": [
-        { "match": { "path": "choices[0].delta.tool_calls", "op": "nonEmpty" },
+        {
+          "match": {
+            "path": "choices[0].delta.tool_calls",
+            "op": "nonEmpty"
+          },
           "tool": {
             "indexPath": "choices[0].delta.tool_calls[0].index",
             "idPath": "choices[0].delta.tool_calls[0].id",
             "namePath": "choices[0].delta.tool_calls[0].function.name",
             "argumentsPath": "choices[0].delta.tool_calls[0].function.arguments"
-          } },
-        { "match": { "path": "choices[0].delta.reasoning_content", "op": "nonEmpty" },
-          "response": { "reasoningPath": "choices[0].delta.reasoning_content" } },
-        { "match": { "path": "usage", "op": "nonEmpty" },
-          "response": { "usagePath": "usage" } },
-        { "match": { "path": "choices[0].finish_reason", "op": "notNull" }, "terminal": true,
-          "response": { "finishReasonPath": "choices[0].finish_reason" } },
-        { "match": { "path": "choices[0].delta.content", "op": "nonEmpty" },
-          "response": { "textPath": "choices[0].delta.content" } }
+          },
+          "response": {
+            "textPath": "choices[0].delta.content",
+            "reasoningPath": "choices[0].delta.reasoning_content",
+            "usagePath": "usage",
+            "finishReasonPath": "choices[0].finish_reason"
+          }
+        },
+        {
+          "match": {
+            "path": "choices[0]",
+            "op": "isNull"
+          },
+          "response": {
+            "usagePath": "usage"
+          }
+        },
+        {
+          "match": {
+            "path": "choices",
+            "op": "nonEmpty"
+          },
+          "response": {
+            "textPath": "choices[0].delta.content",
+            "reasoningPath": "choices[0].delta.reasoning_content",
+            "usagePath": "usage",
+            "finishReasonPath": "choices[0].finish_reason"
+          }
+        }
       ]
     }
   },
-  "models": { "path": "/v1/models", "listPath": "data" }
+  "models": {
+    "path": "/v1/models",
+    "listPath": "data"
+  }
 }

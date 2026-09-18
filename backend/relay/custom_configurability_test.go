@@ -98,9 +98,9 @@ func TestCustomProtocolTextFilter(t *testing.T) {
 		Request: CustomProtocolRequest{Method: "POST", PathTemplate: "/x", BodyTemplate: `{"m":{{maheshvara.model | json}}}`},
 		Response: CustomProtocolResponse{
 			TextPath:        "content",
-			TextFilter:      &CustomProtocolMatch{Path: "type", Op: MatchOpEquals, Value: []byte(`"text"`)},
+			TextFilter:      CustomProtocolMatchSet{{Path: "type", Op: MatchOpEquals, Value: []byte(`"text"`)}},
 			ReasoningPath:   "content",
-			ReasoningFilter: &CustomProtocolMatch{Path: "type", Op: MatchOpEquals, Value: []byte(`"thinking"`)},
+			ReasoningFilter: CustomProtocolMatchSet{{Path: "type", Op: MatchOpEquals, Value: []byte(`"thinking"`)}},
 		},
 	}
 	mapped, err := CustomProtocolResponseToMaheshvara([]byte(`{"content": [

@@ -129,10 +129,11 @@ type CustomProtocolResponse struct {
 	StatusPath string          `json:"statusPath,omitempty"`
 	TextPath   string          `json:"textPath,omitempty"`
 	// TextFilter 在 textPath 指向对象数组时按元素过滤（如 Anthropic 分离
-	// thinking/text 块、Gemini 分离 thought 部件）再提取文本。
-	TextFilter       *CustomProtocolMatch                 `json:"textFilter,omitempty"`
+	// thinking/text 块、Gemini 分离 thought 部件）再提取文本；接受单条件或
+	// 条件数组（数组=全部成立）。
+	TextFilter       CustomProtocolMatchSet               `json:"textFilter,omitempty"`
 	ReasoningPath    string                               `json:"reasoningPath,omitempty"`
-	ReasoningFilter  *CustomProtocolMatch                 `json:"reasoningFilter,omitempty"`
+	ReasoningFilter  CustomProtocolMatchSet               `json:"reasoningFilter,omitempty"`
 	ToolCallsPath    string                               `json:"toolCallsPath,omitempty"`
 	UsagePath        string                               `json:"usagePath,omitempty"`
 	FinishReasonPath string                               `json:"finishReasonPath,omitempty"`
@@ -549,13 +550,13 @@ func validateCustomProtocolResponse(configID, location string, response CustomPr
 			return fmt.Errorf("custom protocol %q %s.%s: %w", configID, location, field, err)
 		}
 	}
-	if response.TextFilter != nil {
-		if err := validateCustomProtocolMatch(fmt.Sprintf("%s.textFilter", location), *response.TextFilter); err != nil {
+	for index, match := range response.TextFilter {
+		if err := validateCustomProtocolMatch(fmt.Sprintf("%s.textFilter[%d]", location, index), match); err != nil {
 			return fmt.Errorf("custom protocol %q: %w", configID, err)
 		}
 	}
-	if response.ReasoningFilter != nil {
-		if err := validateCustomProtocolMatch(fmt.Sprintf("%s.reasoningFilter", location), *response.ReasoningFilter); err != nil {
+	for index, match := range response.ReasoningFilter {
+		if err := validateCustomProtocolMatch(fmt.Sprintf("%s.reasoningFilter[%d]", location, index), match); err != nil {
 			return fmt.Errorf("custom protocol %q: %w", configID, err)
 		}
 	}
@@ -924,7 +925,7 @@ func (a *OpenAIAdapter) SendCustomProtocolRequest(ctx context.Context, baseURL, 
 
 // sanitizeCustomTransportError 剥离传输错误里的 URL 查询串再放行错误:
 // query 鉴权的 API Key 会随 *url.Error 的文本形式流向下游客户端与日志
-//（如 `Post "http://host/path?api_key=SECRET": EOF`），凭据不得离开网关。
+// （如 `Post "http://host/path?api_key=SECRET": EOF`），凭据不得离开网关。
 func sanitizeCustomTransportError(err error) error {
 	if err == nil {
 		return nil
@@ -1371,14 +1372,15 @@ func customTextAt(root any, path string) string {
 }
 
 // customTextAtFilter 提取文本并可按元素过滤：textPath 指向对象数组时先按
-// filter 过滤元素（如仅保留 type=="text" 的块），再按 keys 提取。
-func customTextAtFilter(root any, path string, keys []string, filter *CustomProtocolMatch) string {
+// filter（单条件或 AND 条件集）过滤元素（如仅保留 type=="text" 的块），
+// 再按 keys 提取。
+func customTextAtFilter(root any, path string, keys []string, filter CustomProtocolMatchSet) string {
 	value := customValueAt(root, path)
-	if filter != nil {
+	if len(filter) > 0 {
 		if array, ok := value.([]any); ok {
 			kept := make([]any, 0, len(array))
 			for _, item := range array {
-				if customMatchEval(item, *filter) {
+				if filter.eval(item) {
 					kept = append(kept, item)
 				}
 			}
