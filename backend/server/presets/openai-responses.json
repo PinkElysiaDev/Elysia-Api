@@ -1,0 +1,126 @@
+{
+  "id": "openai-responses",
+  "name": "OpenAI Responses（预置）",
+  "version": "1",
+  "type": "llm",
+  "metadata": {
+    "preset": true,
+    "description": "OpenAI Responses 线制的预置定义；类型化事件流 + 分帧工具拼装"
+  },
+  "request": {
+    "method": "POST",
+    "path": "/v1/responses",
+    "shape": "responses",
+    "body": {
+      "model": {
+        "field": "model",
+        "mode": "string"
+      },
+      "input": {
+        "field": "input_items"
+      },
+      "instructions": {
+        "field": "instructions",
+        "mode": "string",
+        "omitIfEmpty": true
+      },
+      "stream": {
+        "field": "stream"
+      },
+      "max_output_tokens": {
+        "field": "max_output_tokens",
+        "omitIfEmpty": true
+      },
+      "temperature": {
+        "field": "temperature",
+        "omitIfEmpty": true
+      },
+      "top_p": {
+        "field": "top_p",
+        "omitIfEmpty": true
+      },
+      "tools": {
+        "field": "tools",
+        "omitIfEmpty": true
+      },
+      "tool_choice": {
+        "field": "tool_choice",
+        "omitIfEmpty": true
+      },
+      "reasoning": {
+        "field": "reasoning",
+        "omitIfEmpty": true
+      }
+    }
+  },
+  "response": {
+    "textPath": "output",
+    "textFilter": {
+      "path": "type",
+      "op": "equals",
+      "value": "message"
+    },
+    "reasoningPath": "output",
+    "reasoningFilter": {
+      "path": "type",
+      "op": "equals",
+      "value": "reasoning"
+    },
+    "toolCallsPath": "output",
+    "usagePath": "usage",
+    "stream": {
+      "frames": [
+        {
+          "event": "response.output_text.delta",
+          "response": {
+            "textPath": "delta"
+          }
+        },
+        {
+          "event": "response.reasoning_text.delta",
+          "response": {
+            "reasoningPath": "delta"
+          }
+        },
+        {
+          "event": "response.output_item.added",
+          "match": {
+            "path": "item.type",
+            "op": "equals",
+            "value": "function_call"
+          },
+          "tool": {
+            "idPath": "item.call_id",
+            "namePath": "item.name"
+          }
+        },
+        {
+          "event": "response.function_call_arguments.delta",
+          "tool": {
+            "idPath": "item_id",
+            "argumentsPath": "delta"
+          }
+        },
+        {
+          "event": "response.completed",
+          "terminal": true,
+          "payloadPath": "response",
+          "response": {
+            "usagePath": "usage"
+          }
+        }
+      ]
+    }
+  },
+  "models": {
+    "path": "/v1/models",
+    "listPath": "data"
+  },
+  "aliases": {
+    "textKeys": [
+      "text",
+      "content",
+      "summary"
+    ]
+  }
+}

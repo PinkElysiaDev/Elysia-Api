@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, FileJson, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Copy, FileJson, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { AsyncState } from '@/components/ui/states'
 import { Badge } from '@/components/ui/badge'
@@ -68,6 +68,21 @@ export function ProtocolDesignerPage() {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  // 预置协议以 metadata.preset 标记（首次启动播种的四线制定义）。
+  const isPreset = (summary: CustomProtocolSummary) => !!summary.config?.metadata?.preset
+
+  // 复制为新协议：剥离预置标记，ID 加后缀后直接进入新建编辑。
+  const copyAsNew = (summary: CustomProtocolSummary) => {
+    const config: CustomProtocolConfig = {
+      ...summary.config,
+      id: `${summary.config.id}-copy`,
+      metadata: { ...summary.config.metadata, preset: undefined },
+    }
+    setEditing(config)
+    setIsNew(true)
+    setFormOpen(true)
+  }
 
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase()
@@ -171,7 +186,12 @@ export function ProtocolDesignerPage() {
               <TableBody className="divide-y divide-border/30">
                 {filtered.map((summary) => (
                     <TableRow key={summary.id} className="cursor-pointer" onClick={() => openEdit(summary)}>
-                      <TableCell className="py-3 font-mono text-xs">{summary.id}</TableCell>
+                      <TableCell className="py-3 font-mono text-xs">
+                        {summary.id}
+                        {isPreset(summary) && (
+                          <Badge variant="secondary" className="ml-1.5 px-1.5 py-0 text-2xs">预置</Badge>
+                        )}
+                      </TableCell>
                       <TableCell className="max-w-48 truncate py-3 text-xs text-muted-foreground">
                         {summary.name || '—'}
                       </TableCell>
@@ -204,6 +224,9 @@ export function ProtocolDesignerPage() {
                         <span className="inline-flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
                           <Button variant="ghost" size="iconSm" aria-label="编辑" onClick={() => openEdit(summary)}>
                             <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="iconSm" aria-label="复制为新协议" title="复制为新协议" onClick={() => copyAsNew(summary)}>
+                            <Copy className="h-3.5 w-3.5" />
                           </Button>
                           <Button variant="ghost" size="iconSm" aria-label="删除" onClick={() => void remove(summary)}>
                             <Trash2 className="h-3.5 w-3.5" />

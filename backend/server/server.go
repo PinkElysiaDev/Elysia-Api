@@ -183,6 +183,8 @@ func New(cfg *config.Config) *Server {
 		}
 		// config.json 的 customProtocols 键已废弃：一次性导入 SQLite 后移除。
 		server.migrateLegacyCustomProtocols()
+		// 预置协议（四线制定义）在协议表为空时播种；已有用户数据不动。
+		server.seedPresetProtocols()
 	}
 	server.syncRelaySSRFPolicy()
 	server.syncCustomProtocols()

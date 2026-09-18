@@ -96,7 +96,11 @@ type CustomProtocolRequest struct {
 	PathTemplate string `json:"path,omitempty"`
 	// PathStream 流式请求的路径覆盖（Gemini :generateContent vs
 	// :streamGenerateContent?alt=sse 这类按流切换动词的端点）；缺省同 path。
-	PathStream   string             `json:"pathStream,omitempty"`
+	PathStream string `json:"pathStream,omitempty"`
+	// Shape 让模板上下文的 messages/tools（responses 另含 input/input_items）
+	// 切换为对应线制形状——复用内置四协议的整形器，自定义协议免费获得重型
+	// 消息整形。取值 openai-chat / anthropic / gemini / responses。
+	Shape        string             `json:"shape,omitempty"`
 	Headers      map[string]string  `json:"headers,omitempty"`
 	Query        map[string]string  `json:"query,omitempty"`
 	ContentType  string             `json:"contentType,omitempty"`
@@ -380,6 +384,11 @@ func ValidateCustomProtocol(config CustomProtocolConfig) error {
 	}
 	if err := validateCustomStringTemplate(config.Request.PathStream); err != nil {
 		return fmt.Errorf("custom protocol %q request.pathStream: %w", config.ID, err)
+	}
+	switch strings.ToLower(strings.TrimSpace(config.Request.Shape)) {
+	case "", "openai-chat", "anthropic", "gemini", "responses":
+	default:
+		return fmt.Errorf("custom protocol %q request.shape %q is unsupported (allowed: openai-chat, anthropic, gemini, responses)", config.ID, config.Request.Shape)
 	}
 	if err := validateCustomHeaders(config.ID, "request.headers", config.Request.Headers); err != nil {
 		return err
@@ -713,6 +722,9 @@ func renderCustomProtocolRequest(req *MaheshvaraRequest, config CustomProtocolCo
 		return nil, fmt.Errorf("cannot render custom protocol request from nil Maheshvara request")
 	}
 	ctx := maheshvaraTemplateContext(req)
+	if err := applyCustomProtocolShape(strings.ToLower(strings.TrimSpace(config.Request.Shape)), req, ctx); err != nil {
+		return nil, fmt.Errorf("custom protocol %q request.shape: %w", config.ID, err)
+	}
 	var body []byte
 	template, omitIfEmpty, omitRules, err := config.Request.effectiveBodyTemplate()
 	if err != nil {
@@ -1049,6 +1061,70 @@ func maheshvaraTemplateContext(req *MaheshvaraRequest) map[string]any {
 		"maheshvara": value,
 		"request":    value,
 	}
+}
+
+// applyCustomProtocolShape 把模板上下文中的 messages/tools（responses 另含
+// input/input_items）替换为对应线制形状，复用内置四协议的整形器——自定义
+// 协议作者不再需要手写消息/工具的字段级转换。
+func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[string]any) error {
+	if shape == "" {
+		return nil
+	}
+	root, _ := context["maheshvara"].(map[string]any)
+	if root == nil {
+		return nil
+	}
+	shapeValue := func(value any) any {
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return value
+		}
+		decoder := json.NewDecoder(bytes.NewReader(encoded))
+		decoder.UseNumber()
+		var decoded any
+		if err := decoder.Decode(&decoded); err != nil {
+			return value
+		}
+		return decoded
+	}
+	setTools := func(tools []map[string]any, err error) error {
+		if err != nil {
+			return err
+		}
+		if len(tools) > 0 {
+			root["tools"] = shapeValue(tools)
+		}
+		return nil
+	}
+	switch shape {
+	case "openai-chat":
+		root["messages"] = shapeValue(maheshvaraMessagesToOpenAI(req))
+		return setTools(maheshvaraToolsToOpenAI(req.Tools))
+	case "anthropic":
+		messages, err := maheshvaraMessagesToClaude(req)
+		if err != nil {
+			return err
+		}
+		root["messages"] = shapeValue(messages)
+		return setTools(maheshvaraToolsToClaude(req.Tools))
+	case "gemini":
+		messages, err := maheshvaraMessagesToGemini(req)
+		if err != nil {
+			return err
+		}
+		root["messages"] = shapeValue(messages)
+		return setTools(maheshvaraToolsToGemini(req.Tools))
+	case "responses":
+		input := shapeValue(maheshvaraInputToResponses(req))
+		root["input"] = input
+		root["input_items"] = input
+		root["messages"] = input
+		if tools := maheshvaraToolsToResponses(req.Tools); len(tools) > 0 {
+			root["tools"] = shapeValue(tools)
+		}
+		return nil
+	}
+	return fmt.Errorf("%q is unsupported", shape)
 }
 
 func renderCustomTemplate(template string, context map[string]any, omitIfEmpty []string, omitRules []customOmitRule) ([]byte, error) {

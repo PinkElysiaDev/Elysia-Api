@@ -586,6 +586,8 @@ export interface CustomProtocolRequest {
   path?: string
   /** 流式请求的路径覆盖（按流切换动词的端点，如 Gemini） */
   pathStream?: string
+  /** 消息/工具线制形状（openai-chat/anthropic/gemini/responses）——复用内置整形器 */
+  shape?: string
   headers?: Record<string, string>
   query?: Record<string, string>
   contentType?: string

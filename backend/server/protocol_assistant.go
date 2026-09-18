@@ -334,6 +334,23 @@ func assistSystemPrompt() string {
 	b.WriteString("- usage 整体对象直接用 field \"usage\"（键名自动识别）；只有结构特殊时才逐项映射 usage.input_tokens 等。\n")
 	b.WriteString("- 从示例响应/截图推断结构时，数组层级不能丢。\n")
 	b.WriteString("- 上游要求的固定参数（版本号、格式等）用常量 value 提供。\n")
+	b.WriteString("- 消息/工具与某线制同形时，request.shape（openai-chat/anthropic/gemini/responses）直接复用内置整形，不要手写字段级转换。\n")
+	b.WriteString("- 条件包含用叶子的 when（对请求求值的条件）与 omitIf（值等即省略）；流式终止判定用 stream.finishWhen/statusWhen，类型化终止值用 stream.done。\n")
+	b.WriteString("- 每类事件形状不同的流用 stream.frames（事件名或 match 谓词选帧）；工具调用分帧到达时用 frame.tool（身份帧给 id/name，参数帧给 argumentsPath，按 idPath 或 indexPath 关联）。\n")
+	b.WriteString("- 键名不符合内置别名表时用 aliases 声明（textKeys/usage/toolCall，支持点路径）；数组内按类型分块提取用 textFilter/reasoningFilter。\n")
+
+	// few-shot：内嵌预置协议作为完整范例（与首次启动播种的定义同源）。
+	if configs, err := PresetProtocolConfigs(); err == nil && len(configs) > 0 {
+		example := configs[0]
+		for _, candidate := range configs {
+			if candidate.ID == "anthropic-messages" {
+				example = candidate
+			}
+		}
+		if encoded, err := json.Marshal(example); err == nil {
+			b.WriteString("\n## 完整范例（预置协议 " + example.ID + "，集中示范 shape/frames/match/tool/别名/元素过滤）\n```json\n" + string(encoded) + "\n```\n")
+		}
+	}
 	return b.String()
 }
 
