@@ -89,34 +89,38 @@ export function ProtocolFormDialog({
 
   // save 前检查 JSON 草稿:手改未「应用到编辑器」时先应用(可解析)或阻止
   // 保存(语法错误),否则用户粘贴的配置被静默丢弃。
-  const applyPendingJsonDraft = (): boolean => {
-    if (tab !== 'json' || !jsonDraft) return true
-    if (jsonDraft === JSON.stringify(draft, null, 2)) return true
+  // 返回待保存的生效草稿(JSON 标签页有未应用修改时解析之);setState 只负责
+  // 同步 UI,保存请求必须用返回值——React 状态不会更新本轮闭包里的旧 draft,
+  // 此前首次保存会把旧版本发出去。校验失败返回 null。
+  const applyPendingJsonDraft = (): CustomProtocolConfig | null => {
+    if (tab !== 'json' || !jsonDraft) return draft
+    if (jsonDraft === JSON.stringify(draft, null, 2)) return draft
     try {
       const parsed = JSON.parse(jsonDraft) as CustomProtocolConfig
       setDraft(parsed)
       if (!parsed.id?.trim()) {
         toastError('缺少协议 ID', 'id 是必填的短英文标识')
-        return false
+        return null
       }
-      return true
+      return parsed
     } catch {
       toastError('JSON 源码有语法错误', '请修正后再保存,或切回其他标签页放弃修改')
-      return false
+      return null
     }
   }
 
   const save = async (): Promise<boolean> => {
-    if (!applyPendingJsonDraft()) {
+    const effective = applyPendingJsonDraft()
+    if (!effective) {
       return false
     }
-    if (!draft.id.trim()) {
+    if (!effective.id.trim()) {
       toastError('缺少协议 ID', 'id 是必填的短英文标识')
       return false
     }
     setSaving(true)
     try {
-      const result = await api.upsertCustomProtocol(draft)
+      const result = await api.upsertCustomProtocol(effective)
       if (result.warning) {
         toastError('已保存但注册失败', result.warning)
       } else {

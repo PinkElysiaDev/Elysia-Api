@@ -72,11 +72,17 @@ export function ProtocolDesignerPage() {
   // 预置协议以 metadata.preset 标记（首次启动播种的四线制定义）。
   const isPreset = (summary: CustomProtocolSummary) => !!summary.config?.metadata?.preset
 
-  // 复制为新协议：剥离预置标记，ID 加后缀后直接进入新建编辑。
+  // 复制为新协议：剥离预置标记，ID 取首个未占用的副本名（-copy、-copy-2…），
+  // 避免静默覆盖已存在的副本定制。
   const copyAsNew = (summary: CustomProtocolSummary) => {
+    const taken = new Set((items ?? []).map((item) => item.id))
+    let candidate = `${summary.config.id}-copy`
+    for (let suffix = 2; taken.has(candidate); suffix += 1) {
+      candidate = `${summary.config.id}-copy-${suffix}`
+    }
     const config: CustomProtocolConfig = {
       ...summary.config,
-      id: `${summary.config.id}-copy`,
+      id: candidate,
       metadata: { ...summary.config.metadata, preset: undefined },
     }
     setEditing(config)

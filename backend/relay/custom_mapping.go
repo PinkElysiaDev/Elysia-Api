@@ -445,7 +445,7 @@ func customTextValue(value any) string {
 }
 
 // customTextValueWithKeys 按给定魔键提取文本；keys 为空时用内置默认表
-//（可经 aliases.textKeys 整体替换）。
+// （可经 aliases.textKeys 整体替换）。
 func customTextValueWithKeys(value any, keys []string) string {
 	switch typed := value.(type) {
 	case nil:
@@ -574,26 +574,9 @@ func jsonRawToNumberValue(raw json.RawMessage) (any, error) {
 	return value, nil
 }
 
-// customOmitRuleHits 判定条件省略规则是否命中：when 条件对模板上下文求值
-// 不成立即命中；omitIf 与字段当前值类型化相等即命中。
-func customOmitRuleHits(rule customOmitRule, context map[string]any) bool {
-	if rule.When != nil && !customMatchEval(context, *rule.When) {
-		return true
-	}
-	if len(rule.OmitIf) > 0 {
-		if expected, ok := customMatchValue(rule.OmitIf); ok {
-			if resolved, found := customLookupPath(context, "maheshvara."+rule.Field); found {
-				if customJSONValuesEqual(resolved, expected) {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-// deleteCustomPathForce 无条件删除路径（条件省略规则用）：与 omitIfEmpty 的
-// 空值删除不同，命中即删，值非空也删。数组元素删除返回缩短后的新 slice。
+// deleteCustomPathForce 无条件删除路径（空值/条件省略统一删除阶段用）：
+// 命中即删，值非空也删；子项删除后为空的父容器一并修剪（与 legacy 空值
+// 删除的清理语义一致）。数组元素删除返回缩短后的新 slice。
 func deleteCustomPathForce(root any, path string) any {
 	tokens, err := parseCustomPath(path)
 	if err != nil {
@@ -622,6 +605,9 @@ func deleteCustomPathValueForce(current any, tokens []customPathToken) (any, boo
 			return current, false
 		}
 		array[index] = updated
+		if customEmptyValue(array[index]) {
+			return append(array[:index], array[index+1:]...), true
+		}
 		return array, true
 	}
 	object, ok := current.(map[string]any)
@@ -641,5 +627,8 @@ func deleteCustomPathValueForce(current any, tokens []customPathToken) (any, boo
 		return current, false
 	}
 	object[token.name] = updated
+	if customEmptyValue(updated) {
+		delete(object, token.name)
+	}
 	return current, true
 }

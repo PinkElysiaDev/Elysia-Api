@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -1165,13 +1166,33 @@ func renderCustomTemplate(template string, context map[string]any, omitIfEmpty [
 	if err != nil {
 		return nil, err
 	}
+	// 空值/条件省略统一在渲染结果上求值并删除：先收集全部命中（判定阶段
+	// 不改树），再按路径降序执行——同父数组先删高下标，防止删除位移导致
+	// 后续下标越界漏删。omitIf 对渲染后的最终值比较（default/过滤器生效后），
+	// when 仍对请求上下文求值。
+	deletions := make([]string, 0, len(omitIfEmpty)+len(omitRules))
 	for _, path := range omitIfEmpty {
-		value = deleteCustomPath(value, strings.TrimPrefix(strings.TrimSpace(path), "maheshvara."))
+		trimmed := strings.TrimPrefix(strings.TrimSpace(path), "maheshvara.")
+		if resolved, found := customLookupPath(value, trimmed); found && customEmptyValue(resolved) {
+			deletions = append(deletions, trimmed)
+		}
 	}
 	for _, rule := range omitRules {
-		if customOmitRuleHits(rule, context) {
-			value = deleteCustomPathForce(value, rule.Path)
+		hit := rule.When != nil && !customMatchEval(context, *rule.When)
+		if !hit && len(rule.OmitIf) > 0 {
+			if expected, ok := customMatchValue(rule.OmitIf); ok {
+				if resolved, found := customLookupPath(value, rule.Path); found && customJSONValuesEqual(resolved, expected) {
+					hit = true
+				}
+			}
 		}
+		if hit {
+			deletions = append(deletions, rule.Path)
+		}
+	}
+	sort.Strings(deletions)
+	for index := len(deletions) - 1; index >= 0; index-- {
+		value = deleteCustomPathForce(value, deletions[index])
 	}
 	if err := validateCustomJSONDepth(value, 0); err != nil {
 		return nil, err

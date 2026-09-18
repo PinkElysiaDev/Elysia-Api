@@ -233,3 +233,57 @@ func TestCustomProtocolStreamPerFamilyModes(t *testing.T) {
 		t.Fatalf("per-family modes must mix cumulative text with delta args: %#v", joined)
 	}
 }
+
+// DBG-016 回归:omitIf 对渲染后的最终值比较——default 生效的 0 也要被省略。
+func TestCustomProtocolOmitIfComparesRenderedValue(t *testing.T) {
+	protocol := CustomProtocolConfig{
+		ID: "omitif-rendered",
+		Request: CustomProtocolRequest{
+			Method: "POST", PathTemplate: "/x",
+			Body: json.RawMessage(`{"flag":{"field":"seed","default":0,"omitIf":0}}`),
+		},
+		Response: CustomProtocolResponse{TextPath: "text"},
+	}
+	if err := ValidateCustomProtocol(protocol); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	rendered, err := RenderCustomProtocolRequest(&MaheshvaraRequest{Model: "m"}, protocol)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(string(rendered.Body), "flag") {
+		t.Fatalf("omitIf must fire on the rendered default: %s", rendered.Body)
+	}
+}
+
+// DBG-017 回归:同父数组的多个条件项全部命中时,逆序删除不漏删。
+func TestCustomProtocolConditionalArrayDeletion(t *testing.T) {
+	protocol := CustomProtocolConfig{
+		ID: "cond-array",
+		Request: CustomProtocolRequest{
+			Method: "POST", PathTemplate: "/x",
+			Body: json.RawMessage(`{"items":[
+				{"field":"model","when":{"path":"stream","op":"isTrue"}},
+				{"field":"model","when":{"path":"stream","op":"isTrue"}}]}`),
+		},
+		Response: CustomProtocolResponse{TextPath: "text"},
+	}
+	rendered, err := RenderCustomProtocolRequest(&MaheshvaraRequest{Model: "m", Stream: false}, protocol)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(string(rendered.Body), "items") {
+		t.Fatalf("both conditional items must be removed in order: %s", rendered.Body)
+	}
+	if string(rendered.Body) != `{}` {
+		t.Fatalf("expected empty object, got %s", rendered.Body)
+	}
+	// 条件成立时全部保留。
+	rendered, err = RenderCustomProtocolRequest(&MaheshvaraRequest{Model: "m", Stream: true}, protocol)
+	if err != nil {
+		t.Fatalf("render 2: %v", err)
+	}
+	if !strings.Contains(string(rendered.Body), `"m"`) || strings.Count(string(rendered.Body), `"m"`) != 2 {
+		t.Fatalf("both items must survive when the condition holds: %s", rendered.Body)
+	}
+}
