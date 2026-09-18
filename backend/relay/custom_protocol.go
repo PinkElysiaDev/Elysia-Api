@@ -42,7 +42,7 @@ type CustomProtocolModels struct {
 	Path     string              `json:"path"`             // 必填，相对源 baseUrl
 	Headers  map[string]string   `json:"headers,omitempty"`
 	Query    map[string]string   `json:"query,omitempty"`
-	Auth     *CustomProtocolAuth `json:"auth,omitempty"` // 缺省复用 request.auth
+	Auth     *CustomProtocolAuth `json:"auth,omitempty"`     // 缺省复用 request.auth
 	ListPath string              `json:"listPath"`           // 必填，点路径到模型数组
 	IDPath   string              `json:"idPath,omitempty"`   // 元素内，默认 "id"
 	NamePath string              `json:"namePath,omitempty"` // 元素内
@@ -130,12 +130,29 @@ type CustomProtocolFieldMapping struct {
 }
 
 type CustomProtocolStreamMapping struct {
-	PayloadPath string                      `json:"payloadPath,omitempty"`
-	Mode        string                      `json:"mode,omitempty"`
-	DoneValues  []string                    `json:"doneValues,omitempty"`
-	Events      []string                    `json:"events,omitempty"`
-	Frames      []CustomProtocolStreamFrame `json:"frames,omitempty"`
-	Response    *CustomProtocolResponse     `json:"response,omitempty"`
+	PayloadPath string   `json:"payloadPath,omitempty"`
+	Mode        string   `json:"mode,omitempty"`
+	DoneValues  []string `json:"doneValues,omitempty"`
+	// Done 携带类型化终止值：Raw 为整串文本字面量（与 DoneValues 同语义），
+	// JSON 按解析后的载荷值做类型化匹配（如 {"json":true} 命中 data: true）。
+	Done              []CustomProtocolDoneValue `json:"done,omitempty"`
+	DoneValuesReplace bool                      `json:"doneValuesReplace,omitempty"` // 移除默认 [DONE]
+	Events            []string                  `json:"events,omitempty"`
+	// EventKeys 定义 JSON 载荷内事件名判别键（缺省 ["type","event"]）。
+	EventKeys []string `json:"eventKeys,omitempty"`
+	// FinishWhen/StatusWhen 覆盖终止判定：缺省沿用 legacy（finishReasonPath
+	// 字符串化非空 / status=="completed"）；配置后按 Match 语义判定。
+	FinishWhen *CustomProtocolMatch        `json:"finishWhen,omitempty"`
+	StatusWhen *CustomProtocolMatch        `json:"statusWhen,omitempty"`
+	Frames     []CustomProtocolStreamFrame `json:"frames,omitempty"`
+	Response   *CustomProtocolResponse     `json:"response,omitempty"`
+}
+
+// CustomProtocolDoneValue 是一个流终止值：Raw（文本字面量）与 JSON（类型化
+// 值）二选一。
+type CustomProtocolDoneValue struct {
+	Raw  string          `json:"raw,omitempty"`
+	JSON json.RawMessage `json:"json,omitempty"`
 }
 
 // CustomProtocolStreamFrame 是异构流的一类帧的映射规则：按事件名（SSE event
@@ -472,6 +489,33 @@ func validateCustomProtocolResponse(configID, location string, response CustomPr
 	for _, eventName := range stream.Events {
 		if strings.ContainsAny(eventName, "\r\n") {
 			return fmt.Errorf("custom protocol %q %s.stream event contains a line break", configID, location)
+		}
+	}
+	for _, key := range stream.EventKeys {
+		if strings.ContainsAny(key, "\r\n") || strings.TrimSpace(key) == "" {
+			return fmt.Errorf("custom protocol %q %s.stream.eventKeys entry is empty or contains a line break", configID, location)
+		}
+	}
+	if stream.FinishWhen != nil {
+		if err := validateCustomProtocolMatch(fmt.Sprintf("%s.stream.finishWhen", location), *stream.FinishWhen); err != nil {
+			return fmt.Errorf("custom protocol %q: %w", configID, err)
+		}
+	}
+	if stream.StatusWhen != nil {
+		if err := validateCustomProtocolMatch(fmt.Sprintf("%s.stream.statusWhen", location), *stream.StatusWhen); err != nil {
+			return fmt.Errorf("custom protocol %q: %w", configID, err)
+		}
+	}
+	for index, done := range stream.Done {
+		hasRaw := strings.TrimSpace(done.Raw) != ""
+		hasJSON := len(done.JSON) > 0
+		if hasRaw == hasJSON {
+			return fmt.Errorf("custom protocol %q %s.stream.done[%d] requires exactly one of raw or json", configID, location, index)
+		}
+		if hasJSON {
+			if _, ok := customMatchValue(done.JSON); !ok {
+				return fmt.Errorf("custom protocol %q %s.stream.done[%d].json is not valid JSON", configID, location, index)
+			}
 		}
 	}
 	for _, doneValue := range stream.DoneValues {

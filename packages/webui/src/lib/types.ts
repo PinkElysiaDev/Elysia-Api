@@ -470,12 +470,39 @@ export interface CustomProtocolResponseFieldMapping {
   transform?: string
 }
 
+/**
+ * 通用条件原语：在载荷上按点路径取值，与任意类型的预期值做类型化比较。
+ * op = nonEmpty(默认)/equals/notEquals/in/notIn/contains/isNull/notNull/
+ * isTrue/isFalse/gt/gte/lt/lte；isTrue/isFalse 对缺失字段按 false。
+ */
+export interface CustomProtocolMatch {
+  path: string
+  op?: string
+  value?: unknown
+}
+
+/** 流终止值：raw（文本字面量）与 json（类型化值）二选一。 */
+export interface CustomProtocolDoneValue {
+  raw?: string
+  json?: unknown
+}
+
 export interface CustomProtocolStreamMapping {
   payloadPath?: string
   /** delta（默认，事件即增量）/ cumulative（事件为累计全文） */
   mode?: string
   doneValues?: string[]
+  /** 类型化终止值（按解析后的载荷值匹配，如 {json: true}） */
+  done?: CustomProtocolDoneValue[]
+  /** 移除默认 [DONE] 终止值 */
+  doneValuesReplace?: boolean
   events?: string[]
+  /** JSON 载荷内事件名判别键，默认 ["type","event"] */
+  eventKeys?: string[]
+  /** 终止判定覆盖（缺省沿用 finishReasonPath 字符串化非空） */
+  finishWhen?: CustomProtocolMatch
+  /** 完成状态判定覆盖（缺省沿用 status=="completed"） */
+  statusWhen?: CustomProtocolMatch
   /** 异构帧逐帧映射（声明后优先于 events 白名单） */
   frames?: CustomProtocolStreamFrame[]
   response?: CustomProtocolResponse

@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -9,7 +10,11 @@ type CustomProtocolStreamDecoder struct {
 	config            CustomProtocolConfig
 	mode              string
 	doneValues        map[string]struct{}
+	doneJSON          []any
 	events            map[string]struct{}
+	eventKeys         []string
+	finishWhen        *CustomProtocolMatch
+	statusWhen        *CustomProtocolMatch
 	frames            []CustomProtocolStreamFrame
 	previousText      map[string]string
 	previousReasoning map[string]string
@@ -29,6 +34,7 @@ func NewCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtoco
 		mode:              "delta",
 		doneValues:        map[string]struct{}{"[DONE]": {}},
 		events:            make(map[string]struct{}),
+		eventKeys:         []string{"type", "event"},
 		previousText:      make(map[string]string),
 		previousReasoning: make(map[string]string),
 		previousArguments: make(map[string]string),
@@ -38,10 +44,23 @@ func NewCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtoco
 		if mode := strings.ToLower(strings.TrimSpace(stream.Mode)); mode != "" {
 			decoder.mode = mode
 		}
+		if stream.DoneValuesReplace {
+			decoder.doneValues = make(map[string]struct{})
+		}
 		for _, value := range stream.DoneValues {
 			value = strings.TrimSpace(value)
 			if value != "" {
 				decoder.doneValues[value] = struct{}{}
+			}
+		}
+		for _, done := range stream.Done {
+			if strings.TrimSpace(done.Raw) != "" {
+				decoder.doneValues[strings.TrimSpace(done.Raw)] = struct{}{}
+			}
+			if len(done.JSON) > 0 {
+				if parsed, ok := customMatchValue(done.JSON); ok {
+					decoder.doneJSON = append(decoder.doneJSON, parsed)
+				}
 			}
 		}
 		for _, eventName := range stream.Events {
@@ -50,6 +69,11 @@ func NewCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtoco
 				decoder.events[eventName] = struct{}{}
 			}
 		}
+		if len(stream.EventKeys) > 0 {
+			decoder.eventKeys = stream.EventKeys
+		}
+		decoder.finishWhen = stream.FinishWhen
+		decoder.statusWhen = stream.StatusWhen
 		for _, frame := range stream.Frames {
 			frame.Event = strings.TrimSpace(frame.Event)
 			decoder.frames = append(decoder.frames, frame)
@@ -72,8 +96,8 @@ func (decoder *CustomProtocolStreamDecoder) SawFinishReason() bool {
 	return decoder != nil && decoder.sawFinish
 }
 
-// Decode 解析一帧上游事件。第二个返回值仅在该帧命中 doneValues 时为 true
-// （数据此后不会再有）；映射出 finish reason / status completed 只置终态，
+// Decode 解析一帧上游事件。第二个返回值仅在该帧命中终止值（doneValues/done）
+// 时为 true（数据此后不会再有）；终止判定（finish reason / status）只置终态，
 // 不提前结束——调用方继续排水以接收 usage 尾帧等滞后事件。
 func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]MaheshvaraStreamEvent, bool, error) {
 	if decoder == nil {
@@ -84,6 +108,10 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 		return nil, false, nil
 	}
 	if _, done := decoder.doneValues[data]; done {
+		decoder.terminal = true
+		return []MaheshvaraStreamEvent{{Type: MaheshvaraEventResponseCompleted}}, true, nil
+	}
+	if len(decoder.doneJSON) > 0 && decoder.matchDoneJSON(data) {
 		decoder.terminal = true
 		return []MaheshvaraStreamEvent{{Type: MaheshvaraEventResponseCompleted}}, true, nil
 	}
@@ -111,10 +139,28 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 	if err != nil {
 		return nil, false, err
 	}
-	events := decoder.responseEvents(response)
+	events := decoder.contentEvents(response)
+	// 终止判定：finishWhen/statusWhen 配置时按 Match 语义（载荷根为
+	// payloadPath 解包后的对象）；缺省沿用 legacy——finishReasonPath 字符串化
+	// 非空、status == "completed"。
+	root := decoder.matchRoot(data, config)
+	finishHit := response.StopReason != ""
+	if decoder.finishWhen != nil {
+		finishHit = root != nil && customMatchEval(root, *decoder.finishWhen)
+	}
+	statusHit := response.Status == "completed"
+	if decoder.statusWhen != nil {
+		statusHit = root != nil && customMatchEval(root, *decoder.statusWhen)
+	}
+	if finishHit || statusHit {
+		if finishHit {
+			decoder.sawFinish = true
+		}
+		events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventResponseCompleted, ResponseID: response.ID, Model: response.Model, FinishReason: response.StopReason, Response: response})
+	}
 	if terminalFrame {
 		decoder.terminal = true
-		if !decoder.sawFinish && response.Status != "completed" {
+		if !finishHit && !statusHit {
 			// 帧型终止：映射本身未产生终态事件时补一个空完成事件，
 			// 保证渲染侧仍能拿到 finish。
 			events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventResponseCompleted, ResponseID: response.ID, Model: response.Model})
@@ -131,14 +177,52 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 	return events, false, nil
 }
 
-// wireEventName 取帧的事件名：优先 SSE event 字段，缺省时回落 JSON 载荷的
-// type/event 字段（Responses 型协议把类型写在数据里）。
+// matchDoneJSON 判定整帧载荷是否类型化等于任一配置的 done JSON 值。
+func (decoder *CustomProtocolStreamDecoder) matchDoneJSON(data string) bool {
+	parsed, ok := customMatchValue(json.RawMessage(data))
+	if !ok {
+		return false
+	}
+	for _, expected := range decoder.doneJSON {
+		if customJSONValuesEqual(parsed, expected) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchRoot 解析终止判定的求值根：payloadPath 解包后的载荷（与响应映射同根）。
+// 仅在配置了 finishWhen/statusWhen 时解析；解析失败返回 nil（Match 不成立）。
+func (decoder *CustomProtocolStreamDecoder) matchRoot(data string, config CustomProtocolConfig) any {
+	if decoder.finishWhen == nil && decoder.statusWhen == nil {
+		return nil
+	}
+	raw, ok := customMatchValue(json.RawMessage(data))
+	if !ok {
+		return nil
+	}
+	if stream := config.Response.Stream; stream != nil {
+		if payloadPath := strings.TrimSpace(stream.PayloadPath); payloadPath != "" {
+			if payload, found := customLookupPath(raw, payloadPath); found {
+				return payload
+			}
+		}
+	}
+	return raw
+}
+
+// wireEventName 取帧的事件名：优先 SSE event 字段，缺省时按 eventKeys（默认
+// type/event）回落 JSON 载荷字段（Responses 型协议把类型写在数据里）。
 func (decoder *CustomProtocolStreamDecoder) wireEventName(wireEvent SSEEvent, data string) string {
 	if eventName := strings.TrimSpace(wireEvent.Event); eventName != "" {
 		return eventName
 	}
 	if raw, err := decodeSSEEventJSON(data); err == nil {
-		return firstNonEmptyString(stringValue(raw["type"]), stringValue(raw["event"]))
+		for _, key := range decoder.eventKeys {
+			if name := stringValue(raw[key]); name != "" {
+				return name
+			}
+		}
 	}
 	return ""
 }
@@ -176,7 +260,9 @@ func customProtocolFrameConfig(config CustomProtocolConfig, frame CustomProtocol
 	return config
 }
 
-func (decoder *CustomProtocolStreamDecoder) responseEvents(response *MaheshvaraResponse) []MaheshvaraStreamEvent {
+// contentEvents 产生一帧映射出的内容/工具/用量事件；终止事件由 Decode 统一
+// 判定（需要访问原始载荷以求值 Match）。
+func (decoder *CustomProtocolStreamDecoder) contentEvents(response *MaheshvaraResponse) []MaheshvaraStreamEvent {
 	if response == nil {
 		return nil
 	}
@@ -234,12 +320,6 @@ func (decoder *CustomProtocolStreamDecoder) responseEvents(response *MaheshvaraR
 	}
 	if response.Usage != nil {
 		events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventUsageDelta, ResponseID: response.ID, Model: response.Model, Usage: response.Usage})
-	}
-	if response.StopReason != "" || response.Status == "completed" {
-		if response.StopReason != "" {
-			decoder.sawFinish = true
-		}
-		events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventResponseCompleted, ResponseID: response.ID, Model: response.Model, FinishReason: response.StopReason, Response: response})
 	}
 	return events
 }

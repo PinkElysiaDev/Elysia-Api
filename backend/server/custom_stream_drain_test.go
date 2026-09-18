@@ -13,6 +13,55 @@ import (
 	"github.com/elysia-api/backend/relay"
 )
 
+// finishWhen:每帧携带布尔 finish:false 的协议,legacy「字符串化非空即终止」
+// 会在首帧就断流;Match 语义(isTrue)只把真正的 true 当终止。
+func TestCustomProtocolStreamFinishWhenBooleanEndToEnd(t *testing.T) {
+	relay.ClearCustomProtocols()
+	t.Cleanup(relay.ClearCustomProtocols)
+	err := relay.RegisterCustomProtocol(relay.CustomProtocolConfig{
+		ID: "boolean-finish",
+		Request: relay.CustomProtocolRequest{
+			Method:       http.MethodPost,
+			PathTemplate: "/v1/chat",
+			BodyTemplate: `{"model":{{maheshvara.model | json}},"stream":{{maheshvara.stream}}}`,
+		},
+		Response: relay.CustomProtocolResponse{Stream: &relay.CustomProtocolStreamMapping{
+			FinishWhen: &relay.CustomProtocolMatch{Path: "finished", Op: relay.MatchOpIsTrue},
+			Response:   &relay.CustomProtocolResponse{TextPath: "chunk", UsagePath: "usage"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"chunk\":\"Hel\",\"finished\":false}\n\n")
+		_, _ = io.WriteString(w, "data: {\"chunk\":\"lo\",\"finished\":false}\n\n")
+		_, _ = io.WriteString(w, "data: {\"chunk\":\"!\",\"finished\":true,\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":3}}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer upstream.Close()
+
+	group := config.ModelGroupConfig{
+		ID: "g1", Name: "grp", Enabled: true,
+		Models: []config.ModelRef{{ID: "m1", Name: "vendor-model", BaseURL: upstream.URL, APIKey: "k", Platform: "custom:boolean-finish"}},
+	}
+	s := newTestServer([]config.ModelGroupConfig{group})
+	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	s.chatCompletions(c)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{`"content":"Hel"`, `"content":"lo"`, `"content":"!"`, `"completion_tokens":3`, "data: [DONE]"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("stream output missing %s: %s", want, body)
+		}
+	}
+}
+
 // 复刻用户踩坑场景：设计器旧版「流式映射」开关写入的空嵌套映射
 // （stream.response = {body:{}}）曾把顶层已验证的映射整个顶掉——流帧零产出，
 // [DONE] 后 502「completed without representable output」。空嵌套现在运行时
