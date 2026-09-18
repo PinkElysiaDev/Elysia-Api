@@ -7,3 +7,9 @@
 *.webp -text
 *.mp4 -text
 *.webm -text
+# gzip 等压缩流内的字节被 CRLF→LF 规范化即损坏(登录动效资源曾因此校验失败)。
+*.gz -text
+*.zip -text
+*.pdf -text
+*.woff -text
+*.woff2 -text

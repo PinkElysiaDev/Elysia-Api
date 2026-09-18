@@ -7,6 +7,8 @@ WORKDIR /workspace
 COPY package.json ./
 COPY packages/webui/package.json packages/webui/package.json
 RUN npm install --no-audit --no-fund --package-lock=false
+# 前端构建的 prebuild 校验依赖 scripts/login-trace（verify.mjs 及其标注文件）。
+COPY scripts/ scripts/
 COPY packages/webui/ packages/webui/
 RUN npm run build --workspace @root/webui
 
