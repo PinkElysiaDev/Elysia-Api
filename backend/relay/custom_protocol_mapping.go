@@ -193,6 +193,16 @@ func scanAnnotationNode(value any) bool {
 type customBodyCompileResult struct {
 	Template    string
 	OmitIfEmpty []string
+	OmitRules   []customOmitRule
+}
+
+// customOmitRule 是一条请求体的条件省略规则：when 条件不成立（对模板上下文
+// 求值）或字段值类型化等于 omitIf 时，渲染后强制删除该叶子路径。
+type customOmitRule struct {
+	Path   string
+	Field  string
+	When   *CustomProtocolMatch
+	OmitIf json.RawMessage
 }
 
 // compileCustomProtocolBody 把字段引用树编译为 bodyTemplate 文本与自动收集
@@ -205,17 +215,18 @@ func compileCustomProtocolBody(raw json.RawMessage) (customBodyCompileResult, er
 	}
 	var builder strings.Builder
 	var omit []string
-	if err := compileBodyNode(value, "", &builder, &omit); err != nil {
+	var rules []customOmitRule
+	if err := compileBodyNode(value, "", &builder, &omit, &rules); err != nil {
 		return customBodyCompileResult{}, err
 	}
-	return customBodyCompileResult{Template: builder.String(), OmitIfEmpty: omit}, nil
+	return customBodyCompileResult{Template: builder.String(), OmitIfEmpty: omit, OmitRules: rules}, nil
 }
 
-func compileBodyNode(value any, path string, builder *strings.Builder, omit *[]string) error {
+func compileBodyNode(value any, path string, builder *strings.Builder, omit *[]string, rules *[]customOmitRule) error {
 	switch typed := value.(type) {
 	case map[string]any:
 		if _, isRef := typed["field"]; isRef {
-			return compileBodyLeaf(typed, path, builder, omit)
+			return compileBodyLeaf(typed, path, builder, omit, rules)
 		}
 		if constant, isConst := typed["value"]; isConst && len(typed) == 1 {
 			encoded, err := json.Marshal(constant)
@@ -227,7 +238,7 @@ func compileBodyNode(value any, path string, builder *strings.Builder, omit *[]s
 		}
 		// 注解键出现但缺 field：几乎必是写错的字段引用，按错误处理而不是
 		// 静默落成字面量（确需含这些键名的常量对象可用 {"value": {...}} 表达）。
-		for _, suspicious := range []string{"mode", "default", "omitIfEmpty"} {
+		for _, suspicious := range []string{"mode", "default", "omitIfEmpty", "omitIf", "when"} {
 			if _, present := typed[suspicious]; present {
 				return fmt.Errorf("request.body node at %q has %q but is missing \"field\"", path, suspicious)
 			}
@@ -253,7 +264,7 @@ func compileBodyNode(value any, path string, builder *strings.Builder, omit *[]s
 			builder.Write(encoded)
 			builder.WriteString(": ")
 			childPath := joinBodyPath(path, key)
-			if err := compileBodyNode(typed[key], childPath, builder, omit); err != nil {
+			if err := compileBodyNode(typed[key], childPath, builder, omit, rules); err != nil {
 				return err
 			}
 		}
@@ -270,7 +281,7 @@ func compileBodyNode(value any, path string, builder *strings.Builder, omit *[]s
 				builder.WriteString(", ")
 			}
 			childPath := fmt.Sprintf("%s[%d]", path, index)
-			if err := compileBodyNode(item, childPath, builder, omit); err != nil {
+			if err := compileBodyNode(item, childPath, builder, omit, rules); err != nil {
 				return err
 			}
 		}
@@ -287,12 +298,12 @@ func compileBodyNode(value any, path string, builder *strings.Builder, omit *[]s
 	}
 }
 
-func compileBodyLeaf(node map[string]any, path string, builder *strings.Builder, omit *[]string) error {
+func compileBodyLeaf(node map[string]any, path string, builder *strings.Builder, omit *[]string, rules *[]customOmitRule) error {
 	for key := range node {
 		switch key {
-		case "field", "mode", "default", "omitIfEmpty":
+		case "field", "mode", "default", "omitIfEmpty", "omitIf", "when":
 		default:
-			return fmt.Errorf("request.body field reference at %q has unknown key %q (allowed: field, mode, default, omitIfEmpty)", path, key)
+			return fmt.Errorf("request.body field reference at %q has unknown key %q (allowed: field, mode, default, omitIfEmpty, omitIf, when)", path, key)
 		}
 	}
 	field, _ := node["field"].(string)
@@ -300,9 +311,18 @@ func compileBodyLeaf(node map[string]any, path string, builder *strings.Builder,
 	if field == "" {
 		return fmt.Errorf("request.body field reference at %q is missing \"field\"", path)
 	}
-	spec, ok := lookupRequestFieldSpec(field)
+	// field 允许「目录字段.子路径」（如 thinking.enabled）：基名必须在请求
+	// 字段目录中，子路径交给渲染引擎的点路径解析（嵌套访问此前仅 legacy
+	// 模板可用）。
+	base, subpath, _ := strings.Cut(field, ".")
+	spec, ok := lookupRequestFieldSpec(base)
 	if !ok {
 		return fmt.Errorf("request.body references unknown Maheshvara field %q at %q", field, path)
+	}
+	if subpath != "" {
+		if _, err := parseCustomPath(subpath); err != nil {
+			return fmt.Errorf("request.body field %q at %q has invalid subpath: %w", field, path, err)
+		}
 	}
 	mode, _ := node["mode"].(string)
 	switch strings.ToLower(strings.TrimSpace(mode)) {
@@ -334,6 +354,42 @@ func compileBodyLeaf(node map[string]any, path string, builder *strings.Builder,
 			return fmt.Errorf("request.body omitIfEmpty is not allowed at the root")
 		}
 		*omit = append(*omit, path)
+	}
+	rule := customOmitRule{Path: path, Field: field}
+	if when, has := node["when"]; has {
+		if path == "" {
+			return fmt.Errorf("request.body when is not allowed at the root")
+		}
+		encoded, err := json.Marshal(when)
+		if err != nil {
+			return fmt.Errorf("request.body when at %q: %w", path, err)
+		}
+		var match CustomProtocolMatch
+		if err := json.Unmarshal(encoded, &match); err != nil {
+			return fmt.Errorf("request.body when at %q is not a condition object: %w", path, err)
+		}
+		// 条件路径相对 Maheshvara 请求根（与字段引用一致）；显式 maheshvara./
+		// request. 前缀原样保留。
+		if !strings.HasPrefix(match.Path, "maheshvara.") && !strings.HasPrefix(match.Path, "request.") {
+			match.Path = "maheshvara." + match.Path
+		}
+		if err := validateCustomProtocolMatch(fmt.Sprintf("request.body when at %q", path), match); err != nil {
+			return err
+		}
+		rule.When = &match
+	}
+	if omitIf, has := node["omitIf"]; has {
+		if path == "" {
+			return fmt.Errorf("request.body omitIf is not allowed at the root")
+		}
+		encoded, err := json.Marshal(omitIf)
+		if err != nil {
+			return fmt.Errorf("request.body omitIf at %q: %w", path, err)
+		}
+		rule.OmitIf = encoded
+	}
+	if rule.When != nil || rule.OmitIf != nil {
+		*rules = append(*rules, rule)
 	}
 	if mode == "string" {
 		builder.WriteString("\"{{" + expression + "}}\"")

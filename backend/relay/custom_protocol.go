@@ -31,7 +31,19 @@ type CustomProtocolConfig struct {
 	Request  CustomProtocolRequest  `json:"request"`
 	Response CustomProtocolResponse `json:"response,omitempty"`
 	Models   *CustomProtocolModels  `json:"models,omitempty"`
+	// Aliases 覆盖提取阶段的键名别名表；提供即整体替换该类默认表。
+	Aliases  *CustomProtocolAliases `json:"aliases,omitempty"`
 	Metadata map[string]any         `json:"metadata,omitempty"`
+}
+
+// CustomProtocolAliases 让键名不符合内置别名表的供应商可声明自己的取值键：
+// textKeys 为文本提取魔键（默认 text/content/message/value/output）；usage 与
+// toolCall 按类别给出键列表，条目支持点路径（如 prompt_tokens_details.
+// cached_tokens、function.arguments），提供即替换该类默认。
+type CustomProtocolAliases struct {
+	TextKeys []string            `json:"textKeys,omitempty"`
+	Usage    map[string][]string `json:"usage,omitempty"`    // input/output/total/cached/reasoning
+	ToolCall map[string][]string `json:"toolCall,omitempty"` // id/name/arguments
 }
 
 // CustomProtocolModels 声明该协议的模型列表发现端点：配置后 custom:<id> 模型源
@@ -103,12 +115,16 @@ type CustomProtocolResponse struct {
 	// Body 是返回体构造树：容器为普通 JSON 对象/数组，叶子为
 	// {"field": "<响应字段>", "value"?: <示例值>, "transform"?} 映射标注或
 	// {"value": ...} / 裸标量结构占位。编译时从中提取字段映射。
-	Body             json.RawMessage                      `json:"body,omitempty"`
-	IDPath           string                               `json:"idPath,omitempty"`
-	ModelPath        string                               `json:"modelPath,omitempty"`
-	StatusPath       string                               `json:"statusPath,omitempty"`
-	TextPath         string                               `json:"textPath,omitempty"`
+	Body       json.RawMessage `json:"body,omitempty"`
+	IDPath     string          `json:"idPath,omitempty"`
+	ModelPath  string          `json:"modelPath,omitempty"`
+	StatusPath string          `json:"statusPath,omitempty"`
+	TextPath   string          `json:"textPath,omitempty"`
+	// TextFilter 在 textPath 指向对象数组时按元素过滤（如 Anthropic 分离
+	// thinking/text 块、Gemini 分离 thought 部件）再提取文本。
+	TextFilter       *CustomProtocolMatch                 `json:"textFilter,omitempty"`
 	ReasoningPath    string                               `json:"reasoningPath,omitempty"`
+	ReasoningFilter  *CustomProtocolMatch                 `json:"reasoningFilter,omitempty"`
 	ToolCallsPath    string                               `json:"toolCallsPath,omitempty"`
 	UsagePath        string                               `json:"usagePath,omitempty"`
 	FinishReasonPath string                               `json:"finishReasonPath,omitempty"`
@@ -142,10 +158,21 @@ type CustomProtocolStreamMapping struct {
 	EventKeys []string `json:"eventKeys,omitempty"`
 	// FinishWhen/StatusWhen 覆盖终止判定：缺省沿用 legacy（finishReasonPath
 	// 字符串化非空 / status=="completed"）；配置后按 Match 语义判定。
-	FinishWhen *CustomProtocolMatch        `json:"finishWhen,omitempty"`
-	StatusWhen *CustomProtocolMatch        `json:"statusWhen,omitempty"`
-	Frames     []CustomProtocolStreamFrame `json:"frames,omitempty"`
-	Response   *CustomProtocolResponse     `json:"response,omitempty"`
+	FinishWhen *CustomProtocolMatch `json:"finishWhen,omitempty"`
+	StatusWhen *CustomProtocolMatch `json:"statusWhen,omitempty"`
+	// Modes 按字段族（text/reasoning/arguments）覆盖全局 mode——文本累计、
+	// 工具参数增量可混用。
+	Modes    *CustomProtocolStreamModes  `json:"modes,omitempty"`
+	Frames   []CustomProtocolStreamFrame `json:"frames,omitempty"`
+	Response *CustomProtocolResponse     `json:"response,omitempty"`
+}
+
+// CustomProtocolStreamModes 是按字段族的 delta/cumulative 覆盖；未声明的
+// 族沿用流级全局 mode。
+type CustomProtocolStreamModes struct {
+	Text      string `json:"text,omitempty"`
+	Reasoning string `json:"reasoning,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
 }
 
 // CustomProtocolDoneValue 是一个流终止值：Raw（文本字面量）与 JSON（类型化
@@ -183,17 +210,17 @@ func (request CustomProtocolRequest) bodyTemplate() string {
 
 // effectiveBodyTemplate 返回生效的请求体模板与 omitIfEmpty 路径：字段引用树
 // （新模型）编译为模板并自动收集 omit 路径；否则维持 legacy 行为。
-func (request CustomProtocolRequest) effectiveBodyTemplate() (string, []string, error) {
+func (request CustomProtocolRequest) effectiveBodyTemplate() (string, []string, []customOmitRule, error) {
 	if !hasCustomProtocolAnnotationBody(request.Body) {
-		return request.bodyTemplate(), request.OmitIfEmpty, nil
+		return request.bodyTemplate(), request.OmitIfEmpty, nil, nil
 	}
 	compiled, err := compileCustomProtocolBody(request.Body)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	omit := append([]string(nil), request.OmitIfEmpty...)
 	omit = append(omit, compiled.OmitIfEmpty...)
-	return compiled.Template, omit, nil
+	return compiled.Template, omit, compiled.OmitRules, nil
 }
 
 type CustomProtocolRequestResult struct {
@@ -292,7 +319,7 @@ func ValidateCustomProtocol(config CustomProtocolConfig) error {
 	if method == "" {
 		method = http.MethodPost
 	}
-	template, omitIfEmpty, err := config.Request.effectiveBodyTemplate()
+	template, omitIfEmpty, omitRules, err := config.Request.effectiveBodyTemplate()
 	if err != nil {
 		return fmt.Errorf("custom protocol %q request.body: %w", config.ID, err)
 	}
@@ -309,7 +336,7 @@ func ValidateCustomProtocol(config CustomProtocolConfig) error {
 	}
 	if template != "" {
 		// 校验一(空上下文):空值嵌 null 后的合法性(既有行为)。
-		if _, err := renderCustomTemplate(template, maheshvaraTemplateContext(&MaheshvaraRequest{}), nil); err != nil {
+		if _, err := renderCustomTemplate(template, maheshvaraTemplateContext(&MaheshvaraRequest{}), nil, omitRules); err != nil {
 			return fmt.Errorf("custom protocol %q has invalid body template: %w", config.ID, err)
 		}
 		// 校验二(非空示例值):空值以字符串嵌入时仍是合法 JSON 字符串,会
@@ -319,7 +346,7 @@ func ValidateCustomProtocol(config CustomProtocolConfig) error {
 			Model: "x", Instructions: "x", Stream: true,
 			Messages: []MaheshvaraMessage{{Role: "user", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "x"}}}},
 		})
-		if _, err := renderCustomTemplate(template, sample, nil); err != nil {
+		if _, err := renderCustomTemplate(template, sample, nil, omitRules); err != nil {
 			return fmt.Errorf("custom protocol %q body template fails with non-empty sample values (quoted placeholder mixed with literal text?): %w", config.ID, err)
 		}
 	}
@@ -348,7 +375,52 @@ func ValidateCustomProtocol(config CustomProtocolConfig) error {
 	if err := validateCustomProtocolModels(config.ID, config.Models); err != nil {
 		return err
 	}
+	if err := validateCustomProtocolAliases(config.ID, config.Aliases); err != nil {
+		return err
+	}
 	return validateCustomProtocolResponse(config.ID, "response", config.Response, true)
+}
+
+// validateCustomProtocolAliases 校验别名覆盖：类别名受限，条目为合法点路径
+// 且非空。
+func validateCustomProtocolAliases(configID string, aliases *CustomProtocolAliases) error {
+	if aliases == nil {
+		return nil
+	}
+	for _, key := range aliases.TextKeys {
+		if strings.TrimSpace(key) == "" || strings.ContainsAny(key, ".[]{}\r\n") {
+			return fmt.Errorf("custom protocol %q aliases.textKeys entry %q must be a plain key", configID, key)
+		}
+	}
+	usageCategories := map[string]bool{"input": true, "output": true, "total": true, "cached": true, "reasoning": true}
+	for category, keys := range aliases.Usage {
+		if !usageCategories[category] {
+			return fmt.Errorf("custom protocol %q aliases.usage has unknown category %q (allowed: input, output, total, cached, reasoning)", configID, category)
+		}
+		if len(keys) == 0 {
+			return fmt.Errorf("custom protocol %q aliases.usage.%s is empty", configID, category)
+		}
+		for _, key := range keys {
+			if _, err := parseCustomPath(key); err != nil {
+				return fmt.Errorf("custom protocol %q aliases.usage.%s entry %q: %w", configID, category, key, err)
+			}
+		}
+	}
+	toolCategories := map[string]bool{"id": true, "name": true, "arguments": true}
+	for category, keys := range aliases.ToolCall {
+		if !toolCategories[category] {
+			return fmt.Errorf("custom protocol %q aliases.toolCall has unknown category %q (allowed: id, name, arguments)", configID, category)
+		}
+		if len(keys) == 0 {
+			return fmt.Errorf("custom protocol %q aliases.toolCall.%s is empty", configID, category)
+		}
+		for _, key := range keys {
+			if _, err := parseCustomPath(key); err != nil {
+				return fmt.Errorf("custom protocol %q aliases.toolCall.%s entry %q: %w", configID, category, key, err)
+			}
+		}
+	}
+	return nil
 }
 
 // validateCustomHeaders 校验一处自定义协议头的模板语法与保护头规则
@@ -444,6 +516,16 @@ func validateCustomProtocolResponse(configID, location string, response CustomPr
 			return fmt.Errorf("custom protocol %q %s.%s: %w", configID, location, field, err)
 		}
 	}
+	if response.TextFilter != nil {
+		if err := validateCustomProtocolMatch(fmt.Sprintf("%s.textFilter", location), *response.TextFilter); err != nil {
+			return fmt.Errorf("custom protocol %q: %w", configID, err)
+		}
+	}
+	if response.ReasoningFilter != nil {
+		if err := validateCustomProtocolMatch(fmt.Sprintf("%s.reasoningFilter", location), *response.ReasoningFilter); err != nil {
+			return fmt.Errorf("custom protocol %q: %w", configID, err)
+		}
+	}
 	for key, path := range response.Mappings {
 		if strings.TrimSpace(path) == "" {
 			continue
@@ -480,6 +562,16 @@ func validateCustomProtocolResponse(configID, location string, response CustomPr
 	mode := strings.ToLower(strings.TrimSpace(stream.Mode))
 	if mode != "" && mode != "delta" && mode != "cumulative" {
 		return fmt.Errorf("custom protocol %q %s.stream mode %q is unsupported", configID, location, stream.Mode)
+	}
+	if stream.Modes != nil {
+		families := map[string]string{"text": stream.Modes.Text, "reasoning": stream.Modes.Reasoning, "arguments": stream.Modes.Arguments}
+		for family, familyMode := range families {
+			switch strings.ToLower(strings.TrimSpace(familyMode)) {
+			case "", "delta", "cumulative":
+			default:
+				return fmt.Errorf("custom protocol %q %s.stream.modes.%s %q is unsupported", configID, location, family, familyMode)
+			}
+		}
 	}
 	if payloadPath := strings.TrimSpace(stream.PayloadPath); payloadPath != "" {
 		if _, err := parseCustomPath(payloadPath); err != nil {
@@ -562,12 +654,12 @@ func renderCustomProtocolRequest(req *MaheshvaraRequest, config CustomProtocolCo
 	}
 	ctx := maheshvaraTemplateContext(req)
 	var body []byte
-	template, omitIfEmpty, err := config.Request.effectiveBodyTemplate()
+	template, omitIfEmpty, omitRules, err := config.Request.effectiveBodyTemplate()
 	if err != nil {
 		return nil, fmt.Errorf("custom protocol %q request.body: %w", config.ID, err)
 	}
 	if template != "" {
-		body, err = renderCustomTemplate(template, ctx, omitIfEmpty)
+		body, err = renderCustomTemplate(template, ctx, omitIfEmpty, omitRules)
 		if err != nil {
 			return nil, fmt.Errorf("custom protocol %q request body: %w", config.ID, err)
 		}
@@ -793,6 +885,13 @@ func customProtocolResponseToMaheshvaraValidated(body []byte, config CustomProto
 	if err != nil {
 		return nil, fmt.Errorf("custom protocol %q: %w", config.ID, err)
 	}
+	var textKeys []string
+	var usageAliases, toolAliases map[string][]string
+	if config.Aliases != nil {
+		textKeys = config.Aliases.TextKeys
+		usageAliases = config.Aliases.Usage
+		toolAliases = config.Aliases.ToolCall
+	}
 	if mapping.Mappings != nil {
 		mapping.IDPath = firstNonEmptyString(mapping.IDPath, mapping.Mappings["id"])
 		mapping.ModelPath = firstNonEmptyString(mapping.ModelPath, mapping.Mappings["model"])
@@ -823,13 +922,13 @@ func customProtocolResponseToMaheshvaraValidated(body []byte, config CustomProto
 			response.Error = &MaheshvaraError{Message: customValueString(value), Class: ErrorClassUpstream, Raw: customMap(value)}
 		}
 	}
-	if text := customTextAt(raw, mapping.TextPath); text != "" {
+	if text := customTextAtFilter(raw, mapping.TextPath, textKeys, mapping.TextFilter); text != "" {
 		response.Output = append(response.Output, MaheshvaraOutputItem{
 			ID: newMaheshvaraResponseID("msg"), Type: MaheshvaraOutputMessage, Status: "completed", Role: "assistant",
 			Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: text}},
 		})
 	}
-	if reasoning := customTextAt(raw, mapping.ReasoningPath); reasoning != "" {
+	if reasoning := customTextAtFilter(raw, mapping.ReasoningPath, textKeys, mapping.ReasoningFilter); reasoning != "" {
 		response.Output = append(response.Output, MaheshvaraOutputItem{
 			ID: newMaheshvaraResponseID("rs"), Type: MaheshvaraOutputReasoning, Status: "completed",
 			Content: []MaheshvaraContentPart{{Type: MaheshvaraContentReasoning, Text: reasoning, ReasoningText: reasoning}},
@@ -837,7 +936,7 @@ func customProtocolResponseToMaheshvaraValidated(body []byte, config CustomProto
 	}
 	if mapping.ToolCallsPath != "" {
 		for index, item := range customArrayAt(raw, mapping.ToolCallsPath) {
-			call := customToolCall(item, index)
+			call := customToolCallWithAliases(item, index, toolAliases)
 			if call.Name == "" {
 				continue
 			}
@@ -848,7 +947,7 @@ func customProtocolResponseToMaheshvaraValidated(body []byte, config CustomProto
 		}
 	}
 	if mapping.UsagePath != "" {
-		response.Usage = customUsageAt(raw, mapping.UsagePath)
+		response.Usage = customUsageAtWithAliases(raw, mapping.UsagePath, usageAliases)
 	}
 	var mappingErr error
 	response, mappingErr = applyCustomFieldMappings(response, raw, mapping.FieldMappings)
@@ -886,7 +985,7 @@ func maheshvaraTemplateContext(req *MaheshvaraRequest) map[string]any {
 	}
 }
 
-func renderCustomTemplate(template string, context map[string]any, omitIfEmpty []string) ([]byte, error) {
+func renderCustomTemplate(template string, context map[string]any, omitIfEmpty []string, omitRules []customOmitRule) ([]byte, error) {
 	if len(template) > customProtocolMaxTemplateBytes {
 		return nil, fmt.Errorf("template exceeds %d bytes", customProtocolMaxTemplateBytes)
 	}
@@ -896,6 +995,11 @@ func renderCustomTemplate(template string, context map[string]any, omitIfEmpty [
 	}
 	for _, path := range omitIfEmpty {
 		value = deleteCustomPath(value, strings.TrimPrefix(strings.TrimSpace(path), "maheshvara."))
+	}
+	for _, rule := range omitRules {
+		if customOmitRuleHits(rule, context) {
+			value = deleteCustomPathForce(value, rule.Path)
+		}
 	}
 	if err := validateCustomJSONDepth(value, 0); err != nil {
 		return nil, err
@@ -924,13 +1028,16 @@ func renderCustomJSON(template string, context map[string]any) (any, error) {
 			return nil, fmt.Errorf("template contains more than %d placeholders", customProtocolMaxPlaceholders)
 		}
 		expression := strings.TrimSpace(template[start+2 : end])
-		path, defaultValue, forceJSON, err := parseCustomExpression(expression)
+		path, defaultValue, forceJSON, filter, err := parseCustomExpression(expression)
 		if err != nil {
 			return nil, err
 		}
 		resolved, ok := customLookupPath(context, path)
 		if !ok || customEmptyValue(resolved) {
 			resolved = defaultValue
+		}
+		if resolved, err = applyCustomTemplateFilter(resolved, filter); err != nil {
+			return nil, fmt.Errorf("placeholder %q: %w", expression, err)
 		}
 		prefix := template[:start]
 		suffix := template[end+2:]
@@ -957,14 +1064,15 @@ func renderCustomJSON(template string, context map[string]any) (any, error) {
 	return value, nil
 }
 
-func parseCustomExpression(expression string) (string, any, bool, error) {
+func parseCustomExpression(expression string) (string, any, bool, string, error) {
 	parts := strings.Split(expression, "|")
 	path := strings.TrimSpace(parts[0])
 	if path == "" {
-		return "", nil, false, fmt.Errorf("empty template path")
+		return "", nil, false, "", fmt.Errorf("empty template path")
 	}
 	var defaultValue any
 	forceJSON := false
+	filter := ""
 	for _, rawOption := range parts[1:] {
 		option := strings.TrimSpace(rawOption)
 		switch {
@@ -972,6 +1080,9 @@ func parseCustomExpression(expression string) (string, any, bool, error) {
 		// 带引号模板配 |json 则跳出字符串转义路径）。
 		case option == "json":
 			forceJSON = true
+		// |bool |int |string：解析后的值做类型收敛（nil 不动）。
+		case option == "bool" || option == "int" || option == "string":
+			filter = option
 		case strings.HasPrefix(option, "default:"):
 			literal := strings.TrimSpace(strings.TrimPrefix(option, "default:"))
 			if literal == "" {
@@ -982,10 +1093,37 @@ func parseCustomExpression(expression string) (string, any, bool, error) {
 				defaultValue = strings.Trim(strings.Trim(literal, "\""), "'")
 			}
 		default:
-			return "", nil, false, fmt.Errorf("unsupported template option %q", option)
+			return "", nil, false, "", fmt.Errorf("unsupported template option %q", option)
 		}
 	}
-	return path, defaultValue, forceJSON, nil
+	return path, defaultValue, forceJSON, filter, nil
+}
+
+// applyCustomTemplateFilter 对解析出的占位符值做类型收敛；nil 与转换失败
+// 保持原值（空上下文校验时占位符缺失不应因过滤器报错）。
+func applyCustomTemplateFilter(value any, filter string) (any, error) {
+	if value == nil || filter == "" {
+		return value, nil
+	}
+	switch filter {
+	case "bool":
+		if _, ok := value.(bool); ok {
+			return value, nil
+		}
+		parsed, err := strconv.ParseBool(strings.TrimSpace(customValueString(value)))
+		if err != nil {
+			return value, nil
+		}
+		return parsed, nil
+	case "int":
+		if number, ok := numberValue(value); ok {
+			return json.Number(strconv.Itoa(int(number))), nil
+		}
+		return value, nil
+	case "string":
+		return customValueString(value), nil
+	}
+	return value, nil
 }
 
 func renderCustomString(template string, context map[string]any) string {
@@ -1007,7 +1145,7 @@ func renderCustomString(template string, context map[string]any) string {
 			break
 		}
 		end += start + 2
-		path, defaultValue, _, err := parseCustomExpression(strings.TrimSpace(template[start+2 : end]))
+		path, defaultValue, _, filter, err := parseCustomExpression(strings.TrimSpace(template[start+2 : end]))
 		if err != nil {
 			builder.WriteString(template[start : end+2])
 			offset = end + 2
@@ -1017,7 +1155,11 @@ func renderCustomString(template string, context map[string]any) string {
 		if !ok || customEmptyValue(resolved) {
 			resolved = defaultValue
 		}
-		builder.WriteString(customValueString(resolved))
+		if resolved, err = applyCustomTemplateFilter(resolved, filter); err == nil {
+			builder.WriteString(customValueString(resolved))
+		} else {
+			builder.WriteString(customValueString(defaultValue))
+		}
 		offset = end + 2
 	}
 	return builder.String()
@@ -1040,7 +1182,7 @@ func validateCustomStringTemplate(template string) error {
 		if placeholders > customProtocolMaxPlaceholders {
 			return fmt.Errorf("template contains more than %d placeholders", customProtocolMaxPlaceholders)
 		}
-		if _, _, _, err := parseCustomExpression(strings.TrimSpace(template[start+2 : end])); err != nil {
+		if _, _, _, _, err := parseCustomExpression(strings.TrimSpace(template[start+2 : end])); err != nil {
 			return err
 		}
 		offset = end + 2
@@ -1061,7 +1203,25 @@ func customStringAt(root any, path string) string {
 }
 
 func customTextAt(root any, path string) string {
-	return customTextValue(customValueAt(root, path))
+	return customTextAtFilter(root, path, nil, nil)
+}
+
+// customTextAtFilter 提取文本并可按元素过滤：textPath 指向对象数组时先按
+// filter 过滤元素（如仅保留 type=="text" 的块），再按 keys 提取。
+func customTextAtFilter(root any, path string, keys []string, filter *CustomProtocolMatch) string {
+	value := customValueAt(root, path)
+	if filter != nil {
+		if array, ok := value.([]any); ok {
+			kept := make([]any, 0, len(array))
+			for _, item := range array {
+				if customMatchEval(item, *filter) {
+					kept = append(kept, item)
+				}
+			}
+			value = kept
+		}
+	}
+	return customTextValueWithKeys(value, keys)
 }
 
 func customArrayAt(root any, path string) []any {
@@ -1076,25 +1236,43 @@ func customArrayAt(root any, path string) []any {
 }
 
 func customToolCall(value any, index int) MaheshvaraToolCall {
+	return customToolCallWithAliases(value, index, nil)
+}
+
+// customToolCallWithAliases 按别名表读取工具调用字段；别名条目支持点路径
+// （如 function.arguments）。类别缺省时用内置默认表。
+func customToolCallWithAliases(value any, index int, aliases map[string][]string) MaheshvaraToolCall {
 	object, _ := value.(map[string]any)
 	if object == nil {
 		return MaheshvaraToolCall{}
 	}
-	function := customMap(object["function"])
+	effectiveKeys := func(category string, defaults ...string) []string {
+		if custom, ok := aliases[category]; ok && len(custom) > 0 {
+			return custom
+		}
+		return defaults
+	}
+	lookupString := func(keys []string) string {
+		for _, key := range keys {
+			if value, ok := customLookupPath(object, key); ok {
+				if text := stringValue(value); text != "" {
+					return text
+				}
+			}
+		}
+		return ""
+	}
 	call := MaheshvaraToolCall{
-		ID:   firstNonEmptyString(stringValue(object["id"]), stringValue(object["call_id"]), stringValue(object["tool_call_id"]), stringValue(function["id"]), fmt.Sprintf("call_%d", index)),
-		Name: firstNonEmptyString(stringValue(object["name"]), stringValue(object["function_name"]), stringValue(function["name"])),
+		ID:   firstNonEmptyString(lookupString(effectiveKeys("id", "id", "call_id", "tool_call_id", "function.id")), fmt.Sprintf("call_%d", index)),
+		Name: lookupString(effectiveKeys("name", "name", "function_name", "function.name")),
 		Type: MaheshvaraToolFunction,
 	}
-	arguments := object["arguments"]
-	if arguments == nil {
-		arguments = object["args"]
-	}
-	if arguments == nil {
-		arguments = object["input"]
-	}
-	if arguments == nil && function != nil {
-		arguments = firstNonNilValue(function["arguments"], function["args"], function["input"])
+	var arguments any
+	for _, key := range effectiveKeys("arguments", "arguments", "args", "input", "function.arguments", "function.args", "function.input") {
+		if value, ok := customLookupPath(object, key); ok && value != nil {
+			arguments = value
+			break
+		}
 	}
 	if text, ok := arguments.(string); ok {
 		call.Arguments = json.RawMessage(text)
@@ -1111,38 +1289,59 @@ func customToolCall(value any, index int) MaheshvaraToolCall {
 }
 
 func customUsageAt(root any, path string) *MaheshvaraUsage {
+	return customUsageAtWithAliases(root, path, nil)
+}
+
+// customUsageAtWithAliases 按别名表读取用量；别名条目支持点路径（如
+// prompt_tokens_details.cached_tokens）。类别缺省时用内置默认表。
+func customUsageAtWithAliases(root any, path string, aliases map[string][]string) *MaheshvaraUsage {
 	object, _ := customValueAt(root, path).(map[string]any)
 	if object == nil {
 		return nil
 	}
+	effectiveKeys := func(category string, defaults ...string) []string {
+		if custom, ok := aliases[category]; ok && len(custom) > 0 {
+			return custom
+		}
+		return defaults
+	}
 	usage := &MaheshvaraUsage{Source: "provider_response"}
-	usage.InputTokens = customInt(object, "input_tokens", "inputTokens", "prompt_tokens", "promptTokenCount")
-	usage.OutputTokens = customInt(object, "output_tokens", "outputTokens", "completion_tokens", "candidatesTokenCount")
-	usage.TotalTokens = customInt(object, "total_tokens", "totalTokens", "totalTokenCount")
-	usage.CachedInputTokens = customInt(object, "cached_input_tokens", "cachedInputTokens", "cached_tokens", "cachedContentTokenCount")
-	usage.ReasoningTokens = customInt(object, "reasoning_tokens", "reasoningTokens", "thoughtsTokenCount")
+	usage.InputTokens = customIntPath(object, effectiveKeys("input", "input_tokens", "inputTokens", "prompt_tokens", "promptTokenCount")...)
+	usage.OutputTokens = customIntPath(object, effectiveKeys("output", "output_tokens", "outputTokens", "completion_tokens", "candidatesTokenCount")...)
+	usage.TotalTokens = customIntPath(object, effectiveKeys("total", "total_tokens", "totalTokens", "totalTokenCount")...)
+	usage.CachedInputTokens = customIntPath(object, effectiveKeys("cached", "cached_input_tokens", "cachedInputTokens", "cached_tokens", "cachedContentTokenCount")...)
+	usage.ReasoningTokens = customIntPath(object, effectiveKeys("reasoning", "reasoning_tokens", "reasoningTokens", "thoughtsTokenCount")...)
 	usage.TotalTokens = valueOrSum(usage.TotalTokens, usage.InputTokens, usage.OutputTokens)
 	return usage
 }
 
-func customInt(object map[string]any, keys ...string) int {
+// customIntPath 按点路径键列表取第一个存在的数值（与 customInt 同语义，
+// 支持别名条目里的嵌套路径）。合法 JSON Number 可能带小数尾缀/科学计数
+// （Java/Python 服务常见 187.0 / 1e3）：Int64 失败回落 Float64 取整。
+func customIntPath(object map[string]any, keys ...string) int {
 	for _, key := range keys {
-		if number, ok := object[key].(json.Number); ok {
-			// 合法 JSON Number 可能带小数尾缀/科学计数(Java/Python 服务常见
-			// 187.0 / 1e3):Int64 失败回落 Float64 取整,而不是把整个计数归零。
-			if value, err := number.Int64(); err == nil {
-				return int(value)
+		value, ok := customLookupPath(object, key)
+		if !ok || value == nil {
+			continue
+		}
+		if number, ok := value.(json.Number); ok {
+			if converted, err := number.Int64(); err == nil {
+				return int(converted)
 			}
 			if f, err := number.Float64(); err == nil {
 				return int(f)
 			}
 			continue
 		}
-		if value, ok := numberValue(object[key]); ok {
-			return int(value)
+		if number, ok := numberValue(value); ok {
+			return int(number)
 		}
 	}
 	return 0
+}
+
+func customInt(object map[string]any, keys ...string) int {
+	return customIntPath(object, keys...)
 }
 
 func customValueString(value any) string {

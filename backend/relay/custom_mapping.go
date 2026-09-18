@@ -441,6 +441,12 @@ func transformCustomMappingValue(value any, transform string) (any, error) {
 }
 
 func customTextValue(value any) string {
+	return customTextValueWithKeys(value, nil)
+}
+
+// customTextValueWithKeys 按给定魔键提取文本；keys 为空时用内置默认表
+//（可经 aliases.textKeys 整体替换）。
+func customTextValueWithKeys(value any, keys []string) string {
 	switch typed := value.(type) {
 	case nil:
 		return ""
@@ -453,12 +459,12 @@ func customTextValue(value any) string {
 	case []any:
 		var builder strings.Builder
 		for _, item := range typed {
-			builder.WriteString(customTextValue(item))
+			builder.WriteString(customTextValueWithKeys(item, keys))
 		}
 		return builder.String()
 	case map[string]any:
-		for _, key := range []string{"text", "content", "message", "value", "output"} {
-			if text := customTextValue(typed[key]); text != "" {
+		for _, key := range customEffectiveTextKeys(keys) {
+			if text := customTextValueWithKeys(typed[key], keys); text != "" {
 				return text
 			}
 		}
@@ -467,6 +473,13 @@ func customTextValue(value any) string {
 	default:
 		return customValueString(typed)
 	}
+}
+
+func customEffectiveTextKeys(keys []string) []string {
+	if len(keys) > 0 {
+		return keys
+	}
+	return []string{"text", "content", "message", "value", "output"}
 }
 
 func customUsageMap(value any) map[string]any {
@@ -559,4 +572,74 @@ func jsonRawToNumberValue(raw json.RawMessage) (any, error) {
 		return nil, err
 	}
 	return value, nil
+}
+
+// customOmitRuleHits 判定条件省略规则是否命中：when 条件对模板上下文求值
+// 不成立即命中；omitIf 与字段当前值类型化相等即命中。
+func customOmitRuleHits(rule customOmitRule, context map[string]any) bool {
+	if rule.When != nil && !customMatchEval(context, *rule.When) {
+		return true
+	}
+	if len(rule.OmitIf) > 0 {
+		if expected, ok := customMatchValue(rule.OmitIf); ok {
+			if resolved, found := customLookupPath(context, "maheshvara."+rule.Field); found {
+				if customJSONValuesEqual(resolved, expected) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// deleteCustomPathForce 无条件删除路径（条件省略规则用）：与 omitIfEmpty 的
+// 空值删除不同，命中即删，值非空也删。数组元素删除返回缩短后的新 slice。
+func deleteCustomPathForce(root any, path string) any {
+	tokens, err := parseCustomPath(path)
+	if err != nil {
+		return root
+	}
+	updated, _ := deleteCustomPathValueForce(root, tokens)
+	return updated
+}
+
+func deleteCustomPathValueForce(current any, tokens []customPathToken) (any, bool) {
+	if len(tokens) == 0 {
+		return current, true
+	}
+	token := tokens[0]
+	if token.index != nil {
+		array, ok := current.([]any)
+		if !ok || *token.index >= len(array) {
+			return current, false
+		}
+		index := *token.index
+		if len(tokens) == 1 {
+			return append(array[:index], array[index+1:]...), true
+		}
+		updated, ok := deleteCustomPathValueForce(array[index], tokens[1:])
+		if !ok {
+			return current, false
+		}
+		array[index] = updated
+		return array, true
+	}
+	object, ok := current.(map[string]any)
+	if !ok {
+		return current, false
+	}
+	value, exists := object[token.name]
+	if !exists {
+		return current, false
+	}
+	if len(tokens) == 1 {
+		delete(object, token.name)
+		return current, true
+	}
+	updated, deleted := deleteCustomPathValueForce(value, tokens[1:])
+	if !deleted {
+		return current, false
+	}
+	object[token.name] = updated
+	return current, true
 }

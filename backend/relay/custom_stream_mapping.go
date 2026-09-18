@@ -9,6 +9,9 @@ import (
 type CustomProtocolStreamDecoder struct {
 	config            CustomProtocolConfig
 	mode              string
+	modeText          string
+	modeReasoning     string
+	modeArgs          string
 	doneValues        map[string]struct{}
 	doneJSON          []any
 	events            map[string]struct{}
@@ -43,6 +46,20 @@ func NewCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtoco
 	if stream := config.Response.Stream; stream != nil {
 		if mode := strings.ToLower(strings.TrimSpace(stream.Mode)); mode != "" {
 			decoder.mode = mode
+		}
+		decoder.modeText = decoder.mode
+		decoder.modeReasoning = decoder.mode
+		decoder.modeArgs = decoder.mode
+		if modes := stream.Modes; modes != nil {
+			if family := strings.ToLower(strings.TrimSpace(modes.Text)); family != "" {
+				decoder.modeText = family
+			}
+			if family := strings.ToLower(strings.TrimSpace(modes.Reasoning)); family != "" {
+				decoder.modeReasoning = family
+			}
+			if family := strings.ToLower(strings.TrimSpace(modes.Arguments)); family != "" {
+				decoder.modeArgs = family
+			}
 		}
 		if stream.DoneValuesReplace {
 			decoder.doneValues = make(map[string]struct{})
@@ -281,14 +298,14 @@ func (decoder *CustomProtocolStreamDecoder) contentEvents(response *MaheshvaraRe
 			}
 			arguments := string(item.Arguments)
 			if arguments != "" {
-				delta := decoder.streamDelta(decoder.previousArguments, key, arguments)
+				delta := decoder.streamDelta(decoder.previousArguments, key, arguments, decoder.modeArgs)
 				if delta != "" {
 					events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallArgumentsDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ToolCallIndex: outputIndex, ToolCallID: item.CallID, ToolName: item.Name, ToolArgumentsDelta: delta})
 				}
 			}
 		case MaheshvaraOutputReasoning:
 			text := maheshvaraReasoningText(item)
-			delta := decoder.streamDelta(decoder.previousReasoning, fmt.Sprintf("reasoning_%d", outputIndex), text)
+			delta := decoder.streamDelta(decoder.previousReasoning, fmt.Sprintf("reasoning_%d", outputIndex), text, decoder.modeReasoning)
 			if delta != "" {
 				events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventReasoningDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ItemID: item.ID, ReasoningDelta: delta})
 			}
@@ -297,17 +314,17 @@ func (decoder *CustomProtocolStreamDecoder) contentEvents(response *MaheshvaraRe
 				key := fmt.Sprintf("%d:%d", outputIndex, contentIndex)
 				switch part.Type {
 				case MaheshvaraContentText:
-					delta := decoder.streamDelta(decoder.previousText, key, part.Text)
+					delta := decoder.streamDelta(decoder.previousText, key, part.Text, decoder.modeText)
 					if delta != "" {
 						events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventTextDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, Delta: delta})
 					}
 				case MaheshvaraContentReasoning:
-					delta := decoder.streamDelta(decoder.previousReasoning, key, firstNonEmptyString(part.ReasoningText, part.Text))
+					delta := decoder.streamDelta(decoder.previousReasoning, key, firstNonEmptyString(part.ReasoningText, part.Text), decoder.modeReasoning)
 					if delta != "" {
 						events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventReasoningDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, ReasoningDelta: delta})
 					}
 				case MaheshvaraContentRefusal:
-					delta := decoder.streamDelta(decoder.previousText, "refusal:"+key, part.Text)
+					delta := decoder.streamDelta(decoder.previousText, "refusal:"+key, part.Text, decoder.modeText)
 					if delta != "" {
 						events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventRefusalDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, RefusalDelta: delta})
 					}
@@ -324,8 +341,8 @@ func (decoder *CustomProtocolStreamDecoder) contentEvents(response *MaheshvaraRe
 	return events
 }
 
-func (decoder *CustomProtocolStreamDecoder) streamDelta(previous map[string]string, key, current string) string {
-	if decoder.mode != "cumulative" {
+func (decoder *CustomProtocolStreamDecoder) streamDelta(previous map[string]string, key, current, mode string) string {
+	if mode != "cumulative" {
 		return current
 	}
 	before := previous[key]

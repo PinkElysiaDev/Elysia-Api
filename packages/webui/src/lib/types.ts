@@ -443,6 +443,10 @@ export interface CustomProtocolBodyFieldRef {
   default?: unknown
   /** 渲染后为空则删除该键 */
   omitIfEmpty?: boolean
+  /** 渲染后值类型化等于该字面量则删除该键（覆盖 false/0 场景） */
+  omitIf?: unknown
+  /** 条件成立才写入该键（对 Maheshvara 请求求值） */
+  when?: CustomProtocolMatch
 }
 
 /** 常量叶子：上游必填但 Maheshvara 无对应的固定值。 */
@@ -503,6 +507,8 @@ export interface CustomProtocolStreamMapping {
   finishWhen?: CustomProtocolMatch
   /** 完成状态判定覆盖（缺省沿用 status=="completed"） */
   statusWhen?: CustomProtocolMatch
+  /** 按字段族覆盖全局 mode（text/reasoning/arguments 各自 delta|cumulative） */
+  modes?: { text?: string; reasoning?: string; arguments?: string }
   /** 异构帧逐帧映射（声明后优先于 events 白名单） */
   frames?: CustomProtocolStreamFrame[]
   response?: CustomProtocolResponse
@@ -539,6 +545,10 @@ export type CustomProtocolResponseBodyTree =
 export interface CustomProtocolResponse {
   /** 返回体构造树（新模型，与 fields 二选一） */
   body?: CustomProtocolResponseBodyTree
+  /** textPath 指向对象数组时按元素过滤再提取（如分离 thinking/text 块） */
+  textFilter?: CustomProtocolMatch
+  /** reasoningPath 指向对象数组时按元素过滤再提取 */
+  reasoningFilter?: CustomProtocolMatch
   /** 字段级映射行表（新模型，UI 与 AI 产出；与 body 二选一） */
   fields?: CustomProtocolResponseFieldMapping[]
   /** 上游示例响应原文（供点选与离线验证） */
@@ -593,6 +603,16 @@ export interface CustomProtocolModels {
   namePath?: string
 }
 
+/** 提取阶段键名别名覆盖：提供即整体替换该类默认表；usage/toolCall 条目支持点路径。 */
+export interface CustomProtocolAliases {
+  /** 文本提取魔键（默认 text/content/message/value/output） */
+  textKeys?: string[]
+  /** input/output/total/cached/reasoning → 键列表 */
+  usage?: Record<string, string[]>
+  /** id/name/arguments → 键列表 */
+  toolCall?: Record<string, string[]>
+}
+
 export interface CustomProtocolConfig {
   id: string
   name?: string
@@ -601,6 +621,7 @@ export interface CustomProtocolConfig {
   request: CustomProtocolRequest
   response?: CustomProtocolResponse
   models?: CustomProtocolModels
+  aliases?: CustomProtocolAliases
   metadata?: Record<string, unknown>
 }
 
