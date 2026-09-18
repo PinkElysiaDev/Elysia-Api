@@ -358,7 +358,7 @@ func TestDeleteGroupRemovesTokenReferencesAndKeepsUsage(t *testing.T) {
 		t.Fatalf("SaveUsageRecordJSON: %v", err)
 	}
 
-	if err := store.DeleteGroup(ctx, "g1"); err != nil {
+	if _, err := store.DeleteGroup(ctx, "g1"); err != nil {
 		t.Fatalf("DeleteGroup: %v", err)
 	}
 

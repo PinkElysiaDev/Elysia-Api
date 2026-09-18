@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -914,9 +915,30 @@ func (a *OpenAIAdapter) SendCustomProtocolRequest(ctx context.Context, baseURL, 
 	}
 	if stream {
 		httpRequest.Header.Set("Accept", "text/event-stream")
-		return a.streamClient.Do(httpRequest)
+		response, err := a.streamClient.Do(httpRequest)
+		return response, sanitizeCustomTransportError(err)
 	}
-	return a.client.Do(httpRequest)
+	response, err := a.client.Do(httpRequest)
+	return response, sanitizeCustomTransportError(err)
+}
+
+// sanitizeCustomTransportError 剥离传输错误里的 URL 查询串再放行错误:
+// query 鉴权的 API Key 会随 *url.Error 的文本形式流向下游客户端与日志
+//（如 `Post "http://host/path?api_key=SECRET": EOF`），凭据不得离开网关。
+func sanitizeCustomTransportError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var urlErr *url.Error
+	if !errors.As(err, &urlErr) || urlErr.URL == "" {
+		return err
+	}
+	parsed, parseErr := url.Parse(urlErr.URL)
+	if parseErr != nil {
+		return fmt.Errorf("%s <redacted url>: %w", urlErr.Op, urlErr.Err)
+	}
+	parsed.RawQuery = ""
+	return fmt.Errorf("%s %q: %w", urlErr.Op, parsed.String(), urlErr.Err)
 }
 
 func CustomProtocolResponseToMaheshvara(body []byte, config CustomProtocolConfig) (*MaheshvaraResponse, error) {

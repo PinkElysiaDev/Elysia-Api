@@ -424,39 +424,89 @@ func (s *Store) resolveModelRef(ctx context.Context, tx *sql.Tx, ref string) (mo
 	return model.ID, model.SourceID, nil
 }
 
-func (s *Store) DeleteGroup(ctx context.Context, id string) error {
+// DeleteGroup 删除模型组并级联清理 token 的组授权。返回因授权列表被清空而
+// 一并禁用的 token 名单（见 removeGroupFromTokens）。
+func (s *Store) DeleteGroup(ctx context.Context, id string) ([]string, error) {
 	if strings.TrimSpace(id) == "" {
-		return errors.New("group id is required")
+		return nil, errors.New("group id is required")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback()
 
 	// 删除前读取组名，用于级联清理 token 的 allowed_groups_json 悬空引用。
 	var name string
 	if err := tx.QueryRowContext(ctx, `SELECT name FROM model_groups WHERE id = ?`, id).Scan(&name); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
+		return nil, err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM model_groups WHERE id = ?`, id); err != nil {
-		return err
+		return nil, err
 	}
+	disabled := []string{}
 	if name != "" {
-		if err := removeGroupFromTokens(ctx, tx, name); err != nil {
-			return err
+		disabled, err = removeGroupFromTokens(ctx, tx, name)
+		if err != nil {
+			return nil, err
 		}
 	}
-	return tx.Commit()
+	return disabled, tx.Commit()
 }
 
 // removeGroupFromTokens 在删除模型组后，把所有 token 的 allowed_groups_json 里的
 // 该组名移除，避免残留成悬空引用。仅在 JSON 实际包含该组名时写回；与
 // renameGroupInTokens 一样，必须在删除组的事务内调用以保证原子性。
-func removeGroupFromTokens(ctx context.Context, tx *sql.Tx, groupName string) error {
-	return updateTokenGroupsTx(ctx, tx, func(groups []string) ([]string, bool) {
-		return removeGroupName(groups, groupName)
-	})
+//
+// 授权列表因此被清空的 token 一并禁用：空列表在鉴权语义中表示「不限制」，
+// 静默保留会让受限 token 因删除组而扩权为全部组可用。返回被禁用的 token
+// 名单，由调用方透出给管理员。
+func removeGroupFromTokens(ctx context.Context, tx *sql.Tx, groupName string) ([]string, error) {
+	type pendingToken struct {
+		name    string
+		groups  []string
+		emptied bool
+	}
+	var pending []pendingToken
+	rows, err := tx.QueryContext(ctx, `SELECT name, allowed_groups_json FROM api_tokens`)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var name, raw string
+		if err := rows.Scan(&name, &raw); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		updated, changed := removeGroupName(decodeStringSlice(raw), groupName)
+		if changed {
+			pending = append(pending, pendingToken{name: name, groups: updated, emptied: len(updated) == 0})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+
+	now := nowString()
+	disabled := []string{}
+	for _, t := range pending {
+		payload, err := json.Marshal(t.groups)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE api_tokens SET allowed_groups_json = ?, updated_at = ? WHERE name = ?`, string(payload), now, t.name); err != nil {
+			return nil, err
+		}
+		if t.emptied {
+			if _, err := tx.ExecContext(ctx, `UPDATE api_tokens SET enabled = 0, updated_at = ? WHERE name = ?`, now, t.name); err != nil {
+				return nil, err
+			}
+			disabled = append(disabled, t.name)
+		}
+	}
+	return disabled, nil
 }
 
 // removeGroupName 从切片中移除指定组名并保持原有顺序，返回新切片与是否发生变更。

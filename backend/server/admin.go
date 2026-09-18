@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -747,13 +748,19 @@ func (s *Server) adminDeleteGroup(c *gin.Context) {
 	if !okStore {
 		return
 	}
-	if err := store.DeleteGroup(c.Request.Context(), c.Param("id")); err != nil {
+	disabled, err := store.DeleteGroup(c.Request.Context(), c.Param("id"))
+	if err != nil {
 		respondFail(c, 500, "delete_group_failed", err.Error())
 		return
 	}
 	s.invalidateRouteCache()
 	s.forgetGroupRuntimeState(c.Param("id"))
-	respondOK(c, gin.H{"deleted": true})
+	if len(disabled) > 0 {
+		// 授权列表被清空的 token 已随删除级联禁用（空列表=不限制，静默保留
+		// 会扩权），名单透出给管理员以便后续处置。
+		log.Printf("group %s deleted; disabled %d token(s) whose only allowed group it was: %v", c.Param("id"), len(disabled), disabled)
+	}
+	respondOK(c, gin.H{"deleted": true, "disabledTokens": disabled})
 }
 
 func (s *Server) adminListTokens(c *gin.Context) {
