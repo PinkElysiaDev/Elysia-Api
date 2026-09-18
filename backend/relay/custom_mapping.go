@@ -8,78 +8,6 @@ import (
 	"strings"
 )
 
-var protectedCustomHeaders = map[string]struct{}{
-	"authorization":       {},
-	"x-api-key":           {},
-	"x-goog-api-key":      {},
-	"host":                {},
-	"content-length":      {},
-	"transfer-encoding":   {},
-	"connection":          {},
-	"proxy-authorization": {},
-}
-
-func isValidCustomHeaderName(name string) bool {
-	if strings.TrimSpace(name) == "" {
-		return false
-	}
-	for _, char := range name {
-		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') {
-			continue
-		}
-		switch char {
-		case '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~':
-		default:
-			return false
-		}
-	}
-	return true
-}
-
-func isProtectedCustomHeader(name string) bool {
-	_, ok := protectedCustomHeaders[strings.ToLower(strings.TrimSpace(name))]
-	return ok
-}
-
-func validateCustomAuth(auth CustomProtocolAuth) error {
-	mode := strings.ToLower(strings.TrimSpace(auth.Mode))
-	if mode == "" {
-		mode = "bearer"
-	}
-	switch mode {
-	case "bearer", "none":
-		return nil
-	case "header":
-		header := firstNonEmptyString(strings.TrimSpace(auth.Header), "x-api-key")
-		if !isValidCustomHeaderName(header) || isUnsafeCustomAuthHeader(header) {
-			return fmt.Errorf("header auth requires a valid end-to-end header name")
-		}
-		if strings.ContainsAny(auth.Prefix, "\r\n") {
-			return fmt.Errorf("auth prefix contains a line break")
-		}
-		return nil
-	case "query":
-		if strings.TrimSpace(auth.Query) == "" {
-			return fmt.Errorf("query auth requires query")
-		}
-		if strings.ContainsAny(auth.Query, "\r\n") {
-			return fmt.Errorf("auth query contains a line break")
-		}
-		return nil
-	default:
-		return fmt.Errorf("unsupported auth mode %q", auth.Mode)
-	}
-}
-
-func isUnsafeCustomAuthHeader(name string) bool {
-	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "host", "content-length", "transfer-encoding", "connection", "proxy-authorization":
-		return true
-	default:
-		return false
-	}
-}
-
 type customPathToken struct {
 	name  string
 	index *int
@@ -233,7 +161,7 @@ func applyCustomFieldMappings(response *MaheshvaraResponse, root any, mappings [
 	for index, mapping := range mappings {
 		// 目标路径在注册/ValidateCustomProtocol 时已校验（两条入口均经校验），
 		// 逐事件重复校验属于双重保护。
-		targetPath := strings.TrimSpace(strings.TrimPrefix(mapping.Target, "maheshvara."))
+		targetPath := normalizeMaheshvaraPath(mapping.Target)
 		value, ok, err := customMappingValue(root, mapping)
 		if err != nil {
 			return nil, fmt.Errorf("fieldMappings[%d]: %w", index, err)
@@ -455,7 +383,7 @@ func customToolOutputItems(value any) []any {
 			continue
 		}
 		result = append(result, map[string]any{
-			"id": call.ID, "type": MaheshvaraOutputFunctionCall, "status": "completed", "call_id": call.ID,
+			"id": call.ID, "type": MaheshvaraOutputFunctionCall, "status": MaheshvaraStatusCompleted, "call_id": call.ID,
 			"name": call.Name, "arguments": jsonRawToAny(call.Arguments),
 		})
 	}
@@ -469,7 +397,7 @@ func customOutputItems(value any) []any {
 		object, _ := item.(map[string]any)
 		if object == nil {
 			if text := customTextValue(item); text != "" {
-				result = append(result, map[string]any{"type": MaheshvaraOutputMessage, "status": "completed", "role": "assistant", "content": []any{map[string]any{"type": MaheshvaraContentText, "text": text}}})
+				result = append(result, map[string]any{"type": MaheshvaraOutputMessage, "status": MaheshvaraStatusCompleted, "role": "assistant", "content": []any{map[string]any{"type": MaheshvaraContentText, "text": text}}})
 			}
 			continue
 		}
@@ -477,7 +405,7 @@ func customOutputItems(value any) []any {
 		if text != "" {
 			result = append(result, map[string]any{
 				"id":   firstNonEmptyString(stringValue(object["id"]), fmt.Sprintf("msg_%d", index)),
-				"type": MaheshvaraOutputMessage, "status": "completed", "role": "assistant",
+				"type": MaheshvaraOutputMessage, "status": MaheshvaraStatusCompleted, "role": "assistant",
 				"content": []any{map[string]any{"type": MaheshvaraContentText, "text": text}},
 			})
 		}

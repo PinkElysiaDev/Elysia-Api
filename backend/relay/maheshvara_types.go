@@ -39,6 +39,10 @@ const (
 	MaheshvaraInputItemReference      = "item_reference"
 
 	MaheshvaraToolFunction           = "function"
+
+	// Maheshvara 响应状态字面量(此前在自定义协议层以裸字符串散布)。
+	MaheshvaraStatusCompleted  = "completed"
+	MaheshvaraStatusInProgress = "in_progress"
 	MaheshvaraToolWebSearchPreview   = "web_search_preview"
 	MaheshvaraToolFileSearch         = "file_search"
 	MaheshvaraToolComputerUsePreview = "computer_use_preview"

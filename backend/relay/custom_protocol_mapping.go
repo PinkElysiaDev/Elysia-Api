@@ -427,61 +427,28 @@ func compileCustomProtocolResponseFields(location string, fields []CustomProtoco
 		if field.Transform != "" && !isSupportedCustomMappingTransform(field.Transform) {
 			return CustomProtocolResponse{}, fmt.Errorf("%s: unsupported transform %q", location, field.Transform)
 		}
-		assign := func(current *string) error {
-			if *current != "" {
-				return fmt.Errorf("%s: %s is mapped twice", location, name)
-			}
-			*current = path
-			return nil
+		targets := map[string]*string{
+			"text": &compiled.TextPath, "reasoning": &compiled.ReasoningPath, "tool_calls": &compiled.ToolCallsPath,
+			"usage": &compiled.UsagePath, "stop_reason": &compiled.FinishReasonPath, "id": &compiled.IDPath,
+			"model": &compiled.ModelPath, "status": &compiled.StatusPath, "error": &compiled.ErrorPath,
 		}
-		switch name {
-		case "text":
-			if err := assign(&compiled.TextPath); err != nil {
-				return CustomProtocolResponse{}, err
-			}
-		case "reasoning":
-			if err := assign(&compiled.ReasoningPath); err != nil {
-				return CustomProtocolResponse{}, err
-			}
-		case "tool_calls":
-			if err := assign(&compiled.ToolCallsPath); err != nil {
-				return CustomProtocolResponse{}, err
-			}
-		case "usage":
-			if err := assign(&compiled.UsagePath); err != nil {
-				return CustomProtocolResponse{}, err
-			}
-		case "stop_reason":
-			if err := assign(&compiled.FinishReasonPath); err != nil {
-				return CustomProtocolResponse{}, err
-			}
-		case "id":
-			if err := assign(&compiled.IDPath); err != nil {
-				return CustomProtocolResponse{}, err
-			}
-		case "model":
-			if err := assign(&compiled.ModelPath); err != nil {
-				return CustomProtocolResponse{}, err
-			}
-		case "status":
-			if err := assign(&compiled.StatusPath); err != nil {
-				return CustomProtocolResponse{}, err
-			}
-		case "error":
-			if err := assign(&compiled.ErrorPath); err != nil {
-				return CustomProtocolResponse{}, err
-			}
-		default:
-			if directSeen[name] {
+		if target, ok := targets[name]; ok {
+			if *target != "" {
 				return CustomProtocolResponse{}, fmt.Errorf("%s: %s is mapped twice", location, name)
 			}
-			directSeen[name] = true
-			mapping := CustomProtocolFieldMapping{Target: name, Source: path, Transform: strings.TrimSpace(field.Transform)}
-			if strings.HasPrefix(name, "usage.") && mapping.Transform == "" {
-				mapping.Transform = "int"
-			}
-			compiled.FieldMappings = append(compiled.FieldMappings, mapping)
+			*target = path
+			continue
 		}
+		// 其余目录字段(usage.*、metadata.* 等)落为 fieldMappings 行。
+		if directSeen[name] {
+			return CustomProtocolResponse{}, fmt.Errorf("%s: %s is mapped twice", location, name)
+		}
+		directSeen[name] = true
+		mapping := CustomProtocolFieldMapping{Target: name, Source: path, Transform: strings.TrimSpace(field.Transform)}
+		if strings.HasPrefix(name, "usage.") && mapping.Transform == "" {
+			mapping.Transform = "int"
+		}
+		compiled.FieldMappings = append(compiled.FieldMappings, mapping)
 	}
 	return compiled, nil
 }

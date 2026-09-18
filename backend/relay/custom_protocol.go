@@ -420,7 +420,7 @@ func ValidateCustomProtocol(config CustomProtocolConfig) error {
 		}
 	}
 	for _, path := range omitIfEmpty {
-		if _, err := parseCustomPath(strings.TrimPrefix(strings.TrimSpace(path), "maheshvara.")); err != nil {
+		if _, err := parseCustomPath(normalizeMaheshvaraPath(path)); err != nil {
 			return fmt.Errorf("custom protocol %q omitIfEmpty path %q: %w", config.ID, path, err)
 		}
 	}
@@ -500,8 +500,90 @@ func validateCustomProtocolAliases(configID string, aliases *CustomProtocolAlias
 	return nil
 }
 
+// 保护头清单与鉴权头校验:请求/模型发现两处的 headers 共用。
+var protectedCustomHeaders = map[string]struct{}{
+	"authorization":       {},
+	"x-api-key":           {},
+	"x-goog-api-key":      {},
+	"host":                {},
+	"content-length":      {},
+	"transfer-encoding":   {},
+	"connection":          {},
+	"proxy-authorization": {},
+}
+
+func isValidCustomHeaderName(name string) bool {
+	if strings.TrimSpace(name) == "" {
+		return false
+	}
+	for _, char := range name {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') {
+			continue
+		}
+		switch char {
+		case '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func isProtectedCustomHeader(name string) bool {
+	_, ok := protectedCustomHeaders[strings.ToLower(strings.TrimSpace(name))]
+	return ok
+}
+
+func validateCustomAuth(auth CustomProtocolAuth) error {
+	mode := strings.ToLower(strings.TrimSpace(auth.Mode))
+	if mode == "" {
+		mode = "bearer"
+	}
+	switch mode {
+	case "bearer", "none":
+		return nil
+	case "header":
+		header := firstNonEmptyString(strings.TrimSpace(auth.Header), "x-api-key")
+		if !isValidCustomHeaderName(header) || isUnsafeCustomAuthHeader(header) {
+			return fmt.Errorf("header auth requires a valid end-to-end header name")
+		}
+		if strings.ContainsAny(auth.Prefix, "\r\n") {
+			return fmt.Errorf("auth prefix contains a line break")
+		}
+		return nil
+	case "query":
+		if strings.TrimSpace(auth.Query) == "" {
+			return fmt.Errorf("query auth requires query")
+		}
+		if strings.ContainsAny(auth.Query, "\r\n") {
+			return fmt.Errorf("auth query contains a line break")
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported auth mode %q", auth.Mode)
+	}
+}
+
+func isUnsafeCustomAuthHeader(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "host", "content-length", "transfer-encoding", "connection", "proxy-authorization":
+		return true
+	default:
+		return false
+	}
+}
+
 // validateCustomHeaders 校验一处自定义协议头的模板语法与保护头规则
 // (request.headers 与 models.headers 共用)。
+// customMaheshvaraPrefix 是模板/映射路径的 Maheshvara 请求根前缀;规范化
+// 逻辑集中于此,防止校验与运行时两处各写一份而漂移。
+const customMaheshvaraPrefix = "maheshvara."
+
+// normalizeMaheshvaraPath 去空白并剥掉可选的 maheshvara. 前缀。
+func normalizeMaheshvaraPath(path string) string {
+	return strings.TrimPrefix(strings.TrimSpace(path), customMaheshvaraPrefix)
+}
+
 func validateCustomHeaders(configID, location string, headers map[string]string) error {
 	for key, value := range headers {
 		if err := validateCustomStringTemplate(value); err != nil {
@@ -692,7 +774,19 @@ func validateCustomProtocolResponse(configID, location string, response CustomPr
 			return fmt.Errorf("custom protocol %q %s.stream done value contains a line break", configID, location)
 		}
 	}
-	for index, frame := range stream.Frames {
+	if err := validateStreamFrames(configID, location, stream.Frames); err != nil {
+		return err
+	}
+	if stream.Response != nil {
+		return validateCustomProtocolResponse(configID, location+".stream.response", *stream.Response, false)
+	}
+	return nil
+}
+
+// validateStreamFrames 校验流帧声明:事件名/谓词二选一、谓词与工具规则
+// 合法、帧内 response 不得再嵌套流配置。
+func validateStreamFrames(configID, location string, frames []CustomProtocolStreamFrame) error {
+	for index, frame := range frames {
 		if strings.TrimSpace(frame.Event) == "" && frame.Match == nil {
 			return fmt.Errorf("custom protocol %q %s.stream.frames[%d] requires event or match", configID, location, index)
 		}
@@ -719,9 +813,6 @@ func validateCustomProtocolResponse(configID, location string, response CustomPr
 				return err
 			}
 		}
-	}
-	if stream.Response != nil {
-		return validateCustomProtocolResponse(configID, location+".stream.response", *stream.Response, false)
 	}
 	return nil
 }
@@ -1076,7 +1167,7 @@ func customProtocolResponseFromRoot(root any, resolved customResolvedMapping, al
 	}
 	if response.Status == "" {
 		if allowEmpty {
-			response.Status = "in_progress"
+			response.Status = MaheshvaraStatusInProgress
 		} else {
 			response.Status = "completed"
 		}
@@ -1088,13 +1179,13 @@ func customProtocolResponseFromRoot(root any, resolved customResolvedMapping, al
 	}
 	if text := customTextAtFilter(root, mapping.TextPath, textKeys, mapping.TextFilter); text != "" {
 		response.Output = append(response.Output, MaheshvaraOutputItem{
-			ID: newMaheshvaraResponseID("msg"), Type: MaheshvaraOutputMessage, Status: "completed", Role: "assistant",
+			ID: newMaheshvaraResponseID("msg"), Type: MaheshvaraOutputMessage, Status: MaheshvaraStatusCompleted, Role: "assistant",
 			Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: text}},
 		})
 	}
 	if reasoning := customTextAtFilter(root, mapping.ReasoningPath, textKeys, mapping.ReasoningFilter); reasoning != "" {
 		response.Output = append(response.Output, MaheshvaraOutputItem{
-			ID: newMaheshvaraResponseID("rs"), Type: MaheshvaraOutputReasoning, Status: "completed",
+			ID: newMaheshvaraResponseID("rs"), Type: MaheshvaraOutputReasoning, Status: MaheshvaraStatusCompleted,
 			Content: []MaheshvaraContentPart{{Type: MaheshvaraContentReasoning, Text: reasoning, ReasoningText: reasoning}},
 		})
 	}
@@ -1106,7 +1197,7 @@ func customProtocolResponseFromRoot(root any, resolved customResolvedMapping, al
 			}
 			response.Output = append(response.Output, MaheshvaraOutputItem{
 				ID: firstNonEmptyString(call.ID, newMaheshvaraResponseID("call")), Type: MaheshvaraOutputFunctionCall,
-				Status: "completed", CallID: call.ID, Name: call.Name, Arguments: call.Arguments,
+				Status: MaheshvaraStatusCompleted, CallID: call.ID, Name: call.Name, Arguments: call.Arguments,
 			})
 		}
 	}
@@ -1160,7 +1251,7 @@ func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[
 	if root == nil {
 		return nil
 	}
-	shapeValue := func(value any) any {
+	redecodeWithJSONNumbers := func(value any) any {
 		encoded, err := json.Marshal(value)
 		if err != nil {
 			return value
@@ -1176,23 +1267,23 @@ func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[
 			return err
 		}
 		if len(tools) > 0 {
-			root["tools"] = shapeValue(tools)
+			root["tools"] = redecodeWithJSONNumbers(tools)
 		}
 		return nil
 	}
 	switch shape {
 	case "openai-chat":
-		root["messages"] = shapeValue(maheshvaraMessagesToOpenAI(req))
+		root["messages"] = redecodeWithJSONNumbers(maheshvaraMessagesToOpenAI(req))
 		return setTools(maheshvaraToolsToOpenAI(req.Tools))
 	case "anthropic":
 		messages, err := maheshvaraMessagesToClaude(req)
 		if err != nil {
 			return err
 		}
-		root["messages"] = shapeValue(messages)
+		root["messages"] = redecodeWithJSONNumbers(messages)
 		// tool_choice 同步转为目标形状(公共形状 "required" 等 Claude 不识别)。
 		if converted := applyClaudeDisableParallelToolUse(maheshvaraToolChoiceToClaude(req.ToolChoice), req.ParallelToolCalls); converted != nil {
-			root["tool_choice"] = shapeValue(converted)
+			root["tool_choice"] = redecodeWithJSONNumbers(converted)
 		}
 		return setTools(maheshvaraToolsToClaude(req.Tools))
 	case "gemini":
@@ -1200,19 +1291,46 @@ func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[
 		if err != nil {
 			return err
 		}
-		root["messages"] = shapeValue(messages)
+		root["messages"] = redecodeWithJSONNumbers(messages)
 		return setTools(maheshvaraToolsToGemini(req.Tools))
 	case "responses":
-		input := shapeValue(maheshvaraInputToResponses(req))
+		input := redecodeWithJSONNumbers(maheshvaraInputToResponses(req))
 		root["input"] = input
 		root["input_items"] = input
 		root["messages"] = input
 		if tools := maheshvaraToolsToResponses(req.Tools); len(tools) > 0 {
-			root["tools"] = shapeValue(tools)
+			root["tools"] = redecodeWithJSONNumbers(tools)
 		}
 		return nil
 	}
 	return fmt.Errorf("%q is unsupported", shape)
+}
+
+// forEachCustomPlaceholder 遍历模板中的全部 {{...}} 占位符,回调收到去空白后的
+// 表达式原文。渲染/取串/校验三条扫描路径共用此骨架;回调返回错误立即中止。
+func forEachCustomPlaceholder(template string, fn func(expression string) error) error {
+	placeholders := 0
+	for offset := 0; offset < len(template); {
+		start := strings.Index(template[offset:], "{{")
+		if start < 0 {
+			return nil
+		}
+		start += offset
+		end := strings.Index(template[start+2:], "}}")
+		if end < 0 {
+			return fmt.Errorf("unterminated placeholder at byte %d", start)
+		}
+		end += start + 2
+		placeholders++
+		if placeholders > customProtocolMaxPlaceholders {
+			return fmt.Errorf("template contains more than %d placeholders", customProtocolMaxPlaceholders)
+		}
+		if err := fn(strings.TrimSpace(template[start+2 : end])); err != nil {
+			return err
+		}
+		offset = end + 2
+	}
+	return nil
 }
 
 func renderCustomTemplate(template string, context map[string]any, omitIfEmpty []string, omitRules []customOmitRule) ([]byte, error) {
@@ -1229,7 +1347,7 @@ func renderCustomTemplate(template string, context map[string]any, omitIfEmpty [
 	// when 仍对请求上下文求值。
 	deletions := make([]string, 0, len(omitIfEmpty)+len(omitRules))
 	for _, path := range omitIfEmpty {
-		trimmed := strings.TrimPrefix(strings.TrimSpace(path), "maheshvara.")
+		trimmed := normalizeMaheshvaraPath(path)
 		if resolved, found := customLookupPath(value, trimmed); found && customEmptyValue(resolved) {
 			deletions = append(deletions, trimmed)
 		}
@@ -1414,28 +1532,10 @@ func renderCustomString(template string, context map[string]any) string {
 }
 
 func validateCustomStringTemplate(template string) error {
-	placeholders := 0
-	for offset := 0; offset < len(template); {
-		start := strings.Index(template[offset:], "{{")
-		if start < 0 {
-			return nil
-		}
-		start += offset
-		end := strings.Index(template[start+2:], "}}")
-		if end < 0 {
-			return fmt.Errorf("unterminated placeholder at byte %d", start)
-		}
-		end += start + 2
-		placeholders++
-		if placeholders > customProtocolMaxPlaceholders {
-			return fmt.Errorf("template contains more than %d placeholders", customProtocolMaxPlaceholders)
-		}
-		if _, _, _, _, err := parseCustomExpression(strings.TrimSpace(template[start+2 : end])); err != nil {
-			return err
-		}
-		offset = end + 2
-	}
-	return nil
+	return forEachCustomPlaceholder(template, func(expression string) error {
+		_, _, _, _, err := parseCustomExpression(expression)
+		return err
+	})
 }
 
 func customValueAt(root any, path string) any {
@@ -1468,7 +1568,7 @@ func customTextAtFilter(root any, path string, keys []string, filter CustomProto
 		if array, ok := value.([]any); ok {
 			kept := make([]any, 0, len(array))
 			for _, item := range array {
-				if filter.eval(item) {
+				if filter.evalAll(item) {
 					kept = append(kept, item)
 				}
 			}

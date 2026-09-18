@@ -121,7 +121,7 @@ func (set *CustomProtocolMatchSet) UnmarshalJSON(data []byte) error {
 }
 
 // eval 在载荷根上求值：全部条件成立才为真；空集恒真。
-func (set CustomProtocolMatchSet) eval(root any) bool {
+func (set CustomProtocolMatchSet) evalAll(root any) bool {
 	for _, match := range set {
 		if !customMatchEval(root, match) {
 			return false

@@ -36,6 +36,16 @@ type CustomProtocolStreamDecoder struct {
 
 // CustomProtocolStreamToolIdentity 记录身份帧（content_block_start /
 // output_item.added）声明的工具身份，供仅携带 index 的参数帧关联。
+// 流增量差分的身份键格式:文本/推理/工具参数各自独立累计,键形状是拼装
+// 语义的一部分(跨帧身份关联依赖其稳定性)。
+const (
+	customStreamKeyTextFmt      = "%d:%d"
+	customStreamKeyRefusalFmt   = "refusal:%d:%d"
+	customStreamKeyReasoningFmt = "reasoning_%d"
+	customStreamKeyToolFmt      = "tool_%d"
+	customDoneSentinel          = "[DONE]"
+)
+
 type CustomProtocolStreamToolIdentity struct {
 	ID   string
 	Name string
@@ -209,7 +219,7 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 	if frameTool != nil {
 		response.Output = append(response.Output, decoder.frameToolItems(frameTool, root)...)
 	}
-	events := decoder.contentEvents(response, decoder.frameArgsMode(frameTool))
+	events := decoder.buildContentEvents(response, decoder.frameArgsMode(frameTool))
 	// 终止判定：finishWhen/statusWhen 配置时按 Match 语义（对帧原始载荷
 	// 求值）；缺省沿用 legacy——finishReasonPath 字符串化非空、
 	// status == "completed"。
@@ -217,7 +227,7 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 	if decoder.finishWhen != nil {
 		finishHit = customMatchEval(root, *decoder.finishWhen)
 	}
-	statusHit := response.Status == "completed"
+	statusHit := response.Status == MaheshvaraStatusCompleted
 	if decoder.statusWhen != nil {
 		statusHit = customMatchEval(root, *decoder.statusWhen)
 	}
@@ -345,7 +355,7 @@ func (decoder *CustomProtocolStreamDecoder) buildFrameToolItem(tool *CustomProto
 		return MaheshvaraOutputItem{}, false // 无身份可关联（身份帧未到）
 	}
 	item := MaheshvaraOutputItem{
-		Type: MaheshvaraOutputFunctionCall, Status: "completed",
+		Type: MaheshvaraOutputFunctionCall, Status: MaheshvaraStatusCompleted,
 		CallID: id, Name: name,
 	}
 	if strings.TrimSpace(tool.ArgumentsPath) != "" {
@@ -394,7 +404,7 @@ func customProtocolFrameConfig(config CustomProtocolConfig, frame CustomProtocol
 
 // contentEvents 产生一帧映射出的内容/工具/用量事件；终止事件由 Decode 统一
 // 判定（需要访问原始载荷以求值 Match）。
-func (decoder *CustomProtocolStreamDecoder) contentEvents(response *MaheshvaraResponse, argsMode string) []MaheshvaraStreamEvent {
+func (decoder *CustomProtocolStreamDecoder) buildContentEvents(response *MaheshvaraResponse, argsMode string) []MaheshvaraStreamEvent {
 	if response == nil {
 		return nil
 	}
@@ -406,7 +416,7 @@ func (decoder *CustomProtocolStreamDecoder) contentEvents(response *MaheshvaraRe
 	for outputIndex, item := range response.Output {
 		switch item.Type {
 		case MaheshvaraOutputFunctionCall:
-			key := firstNonEmptyString(item.CallID, item.Name, fmt.Sprintf("tool_%d", outputIndex))
+			key := firstNonEmptyString(item.CallID, item.Name, fmt.Sprintf(customStreamKeyToolFmt, outputIndex))
 			// 下游渲染器按 ToolCallIndex 组装工具状态;本帧 Output 数组下标
 			// 是临时位置,跨帧的多个工具会全部撞在 0——改用流级稳定槽位
 			//(身份键首次出现时分配,此后不变)。
@@ -429,38 +439,46 @@ func (decoder *CustomProtocolStreamDecoder) contentEvents(response *MaheshvaraRe
 			}
 		case MaheshvaraOutputReasoning:
 			text := maheshvaraReasoningText(item)
-			delta := decoder.streamDelta(decoder.previousReasoning, fmt.Sprintf("reasoning_%d", outputIndex), text, decoder.modeReasoning)
+			delta := decoder.streamDelta(decoder.previousReasoning, fmt.Sprintf(customStreamKeyReasoningFmt, outputIndex), text, decoder.modeReasoning)
 			if delta != "" {
 				events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventReasoningDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ItemID: item.ID, ReasoningDelta: delta})
 			}
 		default:
-			for contentIndex, part := range item.Content {
-				key := fmt.Sprintf("%d:%d", outputIndex, contentIndex)
-				switch part.Type {
-				case MaheshvaraContentText:
-					delta := decoder.streamDelta(decoder.previousText, key, part.Text, decoder.modeText)
-					if delta != "" {
-						events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventTextDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, Delta: delta})
-					}
-				case MaheshvaraContentReasoning:
-					delta := decoder.streamDelta(decoder.previousReasoning, key, firstNonEmptyString(part.ReasoningText, part.Text), decoder.modeReasoning)
-					if delta != "" {
-						events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventReasoningDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, ReasoningDelta: delta})
-					}
-				case MaheshvaraContentRefusal:
-					delta := decoder.streamDelta(decoder.previousText, "refusal:"+key, part.Text, decoder.modeText)
-					if delta != "" {
-						events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventRefusalDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, RefusalDelta: delta})
-					}
-				default:
-					partCopy := part
-					events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventContentPartAdded, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, ContentPart: &partCopy})
-				}
-			}
+			events = append(events, decoder.contentPartEvents(response, item, outputIndex)...)
 		}
 	}
 	if response.Usage != nil {
 		events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventUsageDelta, ResponseID: response.ID, Model: response.Model, Usage: response.Usage})
+	}
+	return events
+}
+
+// contentPartEvents 产生一条消息输出项的内容部件增量(文本/推理/拒费/其他),
+// 自 buildContentEvents 的部件循环提取以压平嵌套。
+func (decoder *CustomProtocolStreamDecoder) contentPartEvents(response *MaheshvaraResponse, item MaheshvaraOutputItem, outputIndex int) []MaheshvaraStreamEvent {
+	var events []MaheshvaraStreamEvent
+	for contentIndex, part := range item.Content {
+		key := fmt.Sprintf(customStreamKeyTextFmt, outputIndex, contentIndex)
+		switch part.Type {
+		case MaheshvaraContentText:
+			delta := decoder.streamDelta(decoder.previousText, key, part.Text, decoder.modeText)
+			if delta != "" {
+				events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventTextDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, Delta: delta})
+			}
+		case MaheshvaraContentReasoning:
+			delta := decoder.streamDelta(decoder.previousReasoning, key, firstNonEmptyString(part.ReasoningText, part.Text), decoder.modeReasoning)
+			if delta != "" {
+				events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventReasoningDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, ReasoningDelta: delta})
+			}
+		case MaheshvaraContentRefusal:
+			delta := decoder.streamDelta(decoder.previousText, fmt.Sprintf(customStreamKeyRefusalFmt, outputIndex, contentIndex), part.Text, decoder.modeText)
+			if delta != "" {
+				events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventRefusalDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, RefusalDelta: delta})
+			}
+		default:
+			partCopy := part
+			events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventContentPartAdded, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, ContentPart: &partCopy})
+		}
 	}
 	return events
 }
