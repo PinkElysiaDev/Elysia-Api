@@ -27,6 +27,7 @@ import { CapChip, Dot, PlatformBadge } from '@/components/badges'
 import { SearchInput } from '@/components/ui/search-input'
 import { ToolbarSummary } from '@/components/toolbar-summary'
 import { useConfirm } from '@/components/ui/confirm-dialog'
+import { useApiAction } from '@/lib/use-api-action'
 import { useToast } from '@/components/ui/use-toast'
 import { useSources, useModels, useModelCatalogStatus, useDebouncedValue, revalidate, POLL } from '@/lib/hooks'
 import { api } from '@/lib/api'
@@ -86,6 +87,7 @@ function buildModelGroups(source: ModelSource, sourceModels: Model[]): ModelGrou
 export function SourcesPage() {
   const toast = useToast()
   const { confirm, dialog } = useConfirm()
+  const { run, isBusy } = useApiAction()
   // 60s 自动刷新：拉取时间/检测时间/模型数所见即所得，无需手动刷新。
   const { data, isLoading, error, mutate } = useSources(POLL.LIST)
   const { data: models } = useModels(POLL.LIST)
@@ -93,8 +95,6 @@ export function SourcesPage() {
   const [keyword, setKeyword] = useState('')
   const [editing, setEditing] = useState<ModelSource | null>(null)
   const [formOpen, setFormOpen] = useState(false)
-  const [busyId, setBusyId] = useState<string | null>(null)
-  const [switchBusyId, setSwitchBusyId] = useState<string | null>(null)
   const [refreshingAll, setRefreshingAll] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   // 源内模型的选择状态、面板检索（跨组全局 + 组内）、分组折叠、单模型编辑。
@@ -301,35 +301,32 @@ export function SourcesPage() {
   }
 
   async function handleFetch(source: ModelSource) {
-    setBusyId(source.id)
-    try {
-      const result = await api.fetchSource(source.id)
-      setExpanded((prev) => ({ ...prev, [source.id]: true }))
-      await mutate()
-      if (result.alreadyRunning) {
-        toast.success('已在后台拉取中', `${source.name} 正在拉取，完成后会提示`)
-      } else {
-        toast.success('已在后台开始拉取', `${source.name} · 页面可继续其他操作`)
-      }
-    } catch (err) {
-      toast.error('发起拉取失败', (err as Error).message)
-    } finally {
-      setBusyId(null)
-    }
+    await run(
+      `fetch:${source.id}`,
+      async () => {
+        const result = await api.fetchSource(source.id)
+        setExpanded((prev) => ({ ...prev, [source.id]: true }))
+        await mutate()
+        if (result.alreadyRunning) {
+          toast.success('已在后台拉取中', `${source.name} 正在拉取，完成后会提示`)
+        } else {
+          toast.success('已在后台开始拉取', `${source.name} · 页面可继续其他操作`)
+        }
+      },
+      { errorTitle: '发起拉取失败' },
+    )
   }
 
   async function toggleSource(source: ModelSource) {
-    setSwitchBusyId(source.id)
-    try {
-      // 专用轻量端点：整源 PUT 会触发「保存后自动同步模型」（重拉上游），启停无需。
-      await api.setSourceEnabled(source.id, !source.enabled)
-      await Promise.all([mutate(), revalidate.models()])
-      toast.success(source.enabled ? '已停用模型源' : '已启用模型源', source.name)
-    } catch (err) {
-      toast.error('操作失败', (err as Error).message)
-    } finally {
-      setSwitchBusyId(null)
-    }
+    await run(
+      `toggle:${source.id}`,
+      async () => {
+        // 专用轻量端点：整源 PUT 会触发「保存后自动同步模型」（重拉上游），启停无需。
+        await api.setSourceEnabled(source.id, !source.enabled)
+        await Promise.all([mutate(), revalidate.models()])
+        toast.success(source.enabled ? '已停用模型源' : '已启用模型源', source.name)
+      },
+    )
   }
 
   async function handleDelete(source: ModelSource) {
@@ -339,14 +336,15 @@ export function SourcesPage() {
       confirmText: '删除',
     })
     if (!okToDelete) return
-    try {
-      await api.deleteSource(source.id)
-      await mutate()
-      await revalidate.models()
-      toast.success('已删除模型源')
-    } catch (err) {
-      toast.error('删除失败', (err as Error).message)
-    }
+    await run(
+      `delete:${source.id}`,
+      async () => {
+        await api.deleteSource(source.id)
+        await Promise.all([mutate(), revalidate.models()])
+        toast.success('已删除模型源')
+      },
+      { errorTitle: '删除失败' },
+    )
   }
 
   return (
@@ -498,7 +496,7 @@ export function SourcesPage() {
                           <TableCell className="py-3.5 text-center">
                             <Switch
                               checked={source.enabled}
-                              disabled={switchBusyId === source.id || busy}
+                              disabled={isBusy(`toggle:${source.id}`) || busy}
                               onCheckedChange={() => toggleSource(source)}
                               aria-label={`${source.enabled ? '停用' : '启用'} ${source.name}`}
                             />
@@ -510,10 +508,10 @@ export function SourcesPage() {
                                   variant="ghost"
                                   size="iconSm"
                                   title={busy ? '后台拉取进行中' : '拉取模型'}
-                                  disabled={busyId === source.id || !source.enabled || busy}
+                                  disabled={isBusy(`fetch:${source.id}`) || !source.enabled || busy}
                                   onClick={() => handleFetch(source)}
                                 >
-                                  <RefreshCw className={cn('h-3.5 w-3.5', (busy || busyId === source.id) && 'animate-spin')} />
+                                  <RefreshCw className={cn('h-3.5 w-3.5', (busy || isBusy(`fetch:${source.id}`)) && 'animate-spin')} />
                                 </Button>
                               )}
                               <Button

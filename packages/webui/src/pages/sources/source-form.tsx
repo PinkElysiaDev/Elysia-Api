@@ -92,6 +92,55 @@ function normalizeKeyStrategy(raw: string | undefined): SourceKeyStrategy {
   return raw === 'random' || raw === 'priority' ? raw : 'round-robin'
 }
 
+/** 手动模式多 key 时,把「模型 ↔ key」选择编译为每个 key 的显式 allowedModels
+ * (无 nil 歧义);单 key 或自动模式保持原值。返回错误文案表示校验未过。 */
+function compileApiKeysPayload(
+  form: ModelSource,
+  manualKeySelection: Record<number, number[]>,
+  autoFetch: boolean,
+): { keys: SourceAPIKey[] } | { error: string } {
+  const initialKeys = form.apiKeys ?? []
+  let payloadKeys = initialKeys.filter((k) => k.value.trim())
+  if (autoFetch || payloadKeys.length <= 1) return { keys: payloadKeys }
+  const allManual = form.manualModels ?? []
+  for (const [index, model] of allManual.entries()) {
+    if (!model.id.trim()) continue
+    if ((manualKeySelection[index] ?? []).length === 0) {
+      return { error: `模型「${model.id}」没有任何可用 Key` }
+    }
+  }
+  // 有效 key 在原数组中的下标（manualKeySelection 记录的是原数组下标）。
+  const keyOriginalIndexes = (form.apiKeys ?? [])
+    .map((k, i) => (k.value.trim() ? i : -1))
+    .filter((i) => i >= 0)
+  payloadKeys = keyOriginalIndexes.map((originalIndex) => ({
+    ...(form.apiKeys ?? [])[originalIndex],
+    allowedModels: allManual
+      .filter((m, i) => m.id.trim() && (manualKeySelection[i] ?? []).includes(originalIndex))
+      .map((m) => m.id.trim()),
+  }))
+  return { keys: payloadKeys }
+}
+
+/** 组装提交后端的源 payload:平台规范化、手动模型裁剪与拉取地址开关联动。 */
+function buildSourcePayload(
+  form: ModelSource,
+  resolved: { protocolID: string; autoFetch: boolean; fetchUrlEnabled: boolean; apiKeys: SourceAPIKey[] },
+): ModelSource {
+  return {
+    ...form,
+    platform: resolved.protocolID
+      ? (customPlatformValue(resolved.protocolID) as ModelSource['platform'])
+      : form.platform,
+    autoFetchModels: resolved.autoFetch,
+    manualModels: resolved.autoFetch ? [] : (form.manualModels ?? []).filter((m) => m.id || m.name),
+    // 关闭「自定义模型拉取地址」时不提交地址（后端空值 = 跟随 baseUrl）。
+    fetchBaseUrl: resolved.fetchUrlEnabled ? form.fetchBaseUrl?.trim() ?? '' : '',
+    // key 始终走列表（配一个 key 即单 key）；空列表 = 无鉴权源。
+    apiKeys: resolved.apiKeys,
+  }
+}
+
 export function SourceFormDialog({
   open,
   onOpenChange,
@@ -263,43 +312,19 @@ export function SourceFormDialog({
     }
     // 协议未声明模型发现配置时，custom 源强制手动模型（后端保存校验同样拒绝）。
     const autoFetch = custom && !customDiscovery ? false : form.autoFetchModels
-    // b 方案：手动模式 + 多 key 时，把「模型 ↔ key」选择编译为每个 key 的显式
-    // allowedModels（无 nil 歧义）；单 key 或自动模式保持原值（自动模式的面板已
-    // 直接编辑 allowedModels）。选择状态下标基于未过滤的原始数组，这里保持一致。
-    let payloadKeys = (form.apiKeys ?? []).filter((k) => k.value.trim())
-    const manualMode = !autoFetch
-    if (manualMode && payloadKeys.length > 1) {
-      const allManual = form.manualModels ?? []
-      for (const [index, model] of allManual.entries()) {
-        if (!model.id.trim()) continue
-        if ((manualKeySelection[index] ?? []).length === 0) {
-          toast.error('请为每个手动模型至少选择一个 Key', `模型「${model.id}」没有任何可用 Key`)
-          return
-        }
-      }
-      // 有效 key 在原数组中的下标（manualKeySelection 记录的是原数组下标）。
-      const keyOriginalIndexes = (form.apiKeys ?? [])
-        .map((k, i) => (k.value.trim() ? i : -1))
-        .filter((i) => i >= 0)
-      payloadKeys = keyOriginalIndexes.map((originalIndex) => ({
-        ...(form.apiKeys ?? [])[originalIndex],
-        allowedModels: allManual
-          .filter((m, i) => m.id.trim() && (manualKeySelection[i] ?? []).includes(originalIndex))
-          .map((m) => m.id.trim()),
-      }))
+    const keysResult = compileApiKeysPayload(form, manualKeySelection, autoFetch)
+    if ('error' in keysResult) {
+      toast.error('请为每个手动模型至少选择一个 Key', keysResult.error)
+      return
     }
     setSaving(true)
     try {
-      const payload: ModelSource = {
-        ...form,
-        platform: custom ? (customPlatformValue(protocolID) as Platform) : form.platform,
-        autoFetchModels: autoFetch,
-        manualModels: autoFetch ? [] : (form.manualModels ?? []).filter((m) => m.id || m.name),
-        // 关闭「自定义模型拉取地址」时不提交地址（后端空值 = 跟随 baseUrl）。
-        fetchBaseUrl: fetchUrlEnabled ? form.fetchBaseUrl?.trim() ?? '' : '',
-        // key 始终走列表（配一个 key 即单 key）；空列表 = 无鉴权源。
-        apiKeys: payloadKeys,
-      }
+      const payload = buildSourcePayload(form, {
+        protocolID: custom ? protocolID : '',
+        autoFetch,
+        fetchUrlEnabled,
+        apiKeys: keysResult.keys,
+      })
       // 编辑时若 apiKey 留空则不覆盖（作为旧数据的回退冗余字段，后端以 apiKeys 优先）。
       if (isEdit && !payload.apiKey) delete payload.apiKey
       if (isEdit && source) {

@@ -8,6 +8,7 @@ import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/compon
 import { ToolbarSummary } from '@/components/toolbar-summary'
 import { SearchInput } from '@/components/ui/search-input'
 import { useConfirm } from '@/components/ui/confirm-dialog'
+import { useApiAction } from '@/lib/use-api-action'
 import { useToast } from '@/components/ui/use-toast'
 import { api, ApiError } from '@/lib/api'
 import { useModels, useSources } from '@/lib/hooks'
@@ -42,8 +43,9 @@ function newProtocolDraft(): CustomProtocolConfig {
 }
 
 export function ProtocolDesignerPage() {
-  const { success: toastSuccess, error: toastError } = useToast()
+  const { success: toastSuccess } = useToast()
   const { confirm, dialog } = useConfirm()
+  const { run } = useApiAction()
   const schema = useCustomProtocolSchema()
   const { data: sources = [] } = useSources()
   const { data: models = [] } = useModels()
@@ -117,13 +119,15 @@ export function ProtocolDesignerPage() {
       confirmText: '删除',
     })
     if (!ok) return
-    try {
-      await api.deleteCustomProtocol(summary.id)
-      await refresh()
-      toastSuccess('协议已删除', summary.id)
-    } catch (error) {
-      toastError('删除失败', error instanceof ApiError ? error.message : String(error))
-    }
+    await run(
+      `delete:${summary.id}`,
+      async () => {
+        await api.deleteCustomProtocol(summary.id)
+        await refresh()
+        toastSuccess('协议已删除', summary.id)
+      },
+      { errorTitle: '删除失败' },
+    )
   }
 
   return (
