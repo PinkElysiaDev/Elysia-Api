@@ -263,10 +263,34 @@ type CustomProtocolRequestResult struct {
 	Auth        CustomProtocolAuth
 }
 
+// compiledCustomProtocol 在注册时一次性完成请求体构造树的编译,热路径直接
+// 取用(每请求的 hasCustomProtocolAnnotationBody+双重 unmarshal 由注册吸收)。
+type compiledCustomProtocol struct {
+	config       CustomProtocolConfig
+	bodyTemplate string
+	omitIfEmpty  []string
+	omitRules    []customOmitRule
+}
+
 var customProtocolRegistry = struct {
 	sync.RWMutex
-	items map[string]CustomProtocolConfig
-}{items: make(map[string]CustomProtocolConfig)}
+	items map[string]compiledCustomProtocol
+}{items: make(map[string]compiledCustomProtocol)}
+
+// compileCustomProtocol 编译请求体构造树;须在 ValidateCustomProtocol 通过后
+// 调用(编译错误此时不可能出现,仍以防御性错误返回)。
+func compileCustomProtocol(config CustomProtocolConfig) (compiledCustomProtocol, error) {
+	template, omitIfEmpty, omitRules, err := config.Request.effectiveBodyTemplate()
+	if err != nil {
+		return compiledCustomProtocol{}, err
+	}
+	return compiledCustomProtocol{
+		config:       config,
+		bodyTemplate: template,
+		omitIfEmpty:  append([]string(nil), omitIfEmpty...),
+		omitRules:    omitRules,
+	}, nil
+}
 
 // RegisterCustomProtocol validates and atomically installs a custom protocol.
 func RegisterCustomProtocol(config CustomProtocolConfig) error {
@@ -274,8 +298,12 @@ func RegisterCustomProtocol(config CustomProtocolConfig) error {
 		return err
 	}
 	config = normalizeCustomProtocol(config)
+	compiled, err := compileCustomProtocol(config)
+	if err != nil {
+		return err
+	}
 	customProtocolRegistry.Lock()
-	customProtocolRegistry.items[strings.ToLower(strings.TrimSpace(config.ID))] = cloneCustomProtocol(config)
+	customProtocolRegistry.items[strings.ToLower(strings.TrimSpace(config.ID))] = compiled
 	customProtocolRegistry.Unlock()
 	return nil
 }
@@ -283,7 +311,7 @@ func RegisterCustomProtocol(config CustomProtocolConfig) error {
 // ReplaceCustomProtocols validates the complete set and swaps it atomically.
 // A failed reload leaves the previously registered protocols untouched.
 func ReplaceCustomProtocols(configs []CustomProtocolConfig) error {
-	next := make(map[string]CustomProtocolConfig, len(configs))
+	next := make(map[string]compiledCustomProtocol, len(configs))
 	for _, config := range configs {
 		if err := ValidateCustomProtocol(config); err != nil {
 			return err
@@ -293,7 +321,11 @@ func ReplaceCustomProtocols(configs []CustomProtocolConfig) error {
 			return fmt.Errorf("custom protocol %q is duplicated", config.ID)
 		}
 		config = normalizeCustomProtocol(config)
-		next[id] = cloneCustomProtocol(config)
+		compiled, err := compileCustomProtocol(config)
+		if err != nil {
+			return err
+		}
+		next[id] = compiled
 	}
 	customProtocolRegistry.Lock()
 	customProtocolRegistry.items = next
@@ -317,17 +349,24 @@ func normalizeCustomProtocol(config CustomProtocolConfig) CustomProtocolConfig {
 
 func GetCustomProtocol(id string) (CustomProtocolConfig, bool) {
 	customProtocolRegistry.RLock()
-	config, ok := customProtocolRegistry.items[strings.ToLower(strings.TrimSpace(id))]
+	compiled, ok := customProtocolRegistry.items[strings.ToLower(strings.TrimSpace(id))]
 	customProtocolRegistry.RUnlock()
 	if !ok {
 		return CustomProtocolConfig{}, false
 	}
-	return cloneCustomProtocol(config), true
+	return cloneCustomProtocol(compiled.config), true
+}
+
+func getCompiledCustomProtocol(id string) (compiledCustomProtocol, bool) {
+	customProtocolRegistry.RLock()
+	compiled, ok := customProtocolRegistry.items[strings.ToLower(strings.TrimSpace(id))]
+	customProtocolRegistry.RUnlock()
+	return compiled, ok
 }
 
 func ClearCustomProtocols() {
 	customProtocolRegistry.Lock()
-	customProtocolRegistry.items = make(map[string]CustomProtocolConfig)
+	customProtocolRegistry.items = make(map[string]compiledCustomProtocol)
 	customProtocolRegistry.Unlock()
 }
 
@@ -724,6 +763,14 @@ func RenderCustomProtocolRequest(req *MaheshvaraRequest, config CustomProtocolCo
 }
 
 func renderCustomProtocolRequest(req *MaheshvaraRequest, config CustomProtocolConfig) (*CustomProtocolRequestResult, error) {
+	template, omitIfEmpty, omitRules, err := config.Request.effectiveBodyTemplate()
+	if err != nil {
+		return nil, fmt.Errorf("custom protocol %q request.body: %w", config.ID, err)
+	}
+	return renderCustomProtocolRequestWithBody(req, config, template, omitIfEmpty, omitRules)
+}
+
+func renderCustomProtocolRequestWithBody(req *MaheshvaraRequest, config CustomProtocolConfig, template string, omitIfEmpty []string, omitRules []customOmitRule) (*CustomProtocolRequestResult, error) {
 	if req == nil {
 		return nil, fmt.Errorf("cannot render custom protocol request from nil Maheshvara request")
 	}
@@ -732,10 +779,7 @@ func renderCustomProtocolRequest(req *MaheshvaraRequest, config CustomProtocolCo
 		return nil, fmt.Errorf("custom protocol %q request.shape: %w", config.ID, err)
 	}
 	var body []byte
-	template, omitIfEmpty, omitRules, err := config.Request.effectiveBodyTemplate()
-	if err != nil {
-		return nil, fmt.Errorf("custom protocol %q request.body: %w", config.ID, err)
-	}
+	var err error
 	if template != "" {
 		body, err = renderCustomTemplate(template, ctx, omitIfEmpty, omitRules)
 		if err != nil {
@@ -778,12 +822,12 @@ func renderCustomProtocolRequest(req *MaheshvaraRequest, config CustomProtocolCo
 }
 
 func RenderRegisteredCustomProtocolRequest(req *MaheshvaraRequest, id string) (*CustomProtocolRequestResult, error) {
-	config, ok := GetCustomProtocol(id)
+	compiled, ok := getCompiledCustomProtocol(id)
 	if !ok {
 		return nil, fmt.Errorf("custom protocol %q is not registered", id)
 	}
-	// 入注册表时已整体校验（校验含模板空渲染，代价不低），热路径不再重复。
-	return renderCustomProtocolRequest(req, config)
+	// 入注册表时已整体校验并预编译请求体构造树,热路径不再重复。
+	return renderCustomProtocolRequestWithBody(req, compiled.config, compiled.bodyTemplate, compiled.omitIfEmpty, compiled.omitRules)
 }
 
 // RenderCustomProtocolModelsRequest 构造模型列表发现请求。发现端点没有请求

@@ -38,10 +38,22 @@ type CustomProtocolStreamToolIdentity struct {
 	Name string
 }
 
+// NewCustomProtocolStreamDecoder 校验并构造流解码器(外部传入的协议配置:
+// 预览/测试/助手等非注册路径)。已注册协议走 NewRegisteredCustomProtocolStreamDecoder。
 func NewCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtocolStreamDecoder, error) {
 	if err := ValidateCustomProtocol(config); err != nil {
 		return nil, err
 	}
+	return newCustomProtocolStreamDecoder(config), nil
+}
+
+// NewRegisteredCustomProtocolStreamDecoder 为注册表内协议构造流解码器:
+// 入库时已整体校验(含双模板渲染),热路径不再重复。
+func NewRegisteredCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtocolStreamDecoder, error) {
+	return newCustomProtocolStreamDecoder(config), nil
+}
+
+func newCustomProtocolStreamDecoder(config CustomProtocolConfig) *CustomProtocolStreamDecoder {
 	decoder := &CustomProtocolStreamDecoder{
 		config:            config,
 		mode:              "delta",
@@ -108,7 +120,7 @@ func NewCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtoco
 			decoder.frames = append(decoder.frames, frame)
 		}
 	}
-	return decoder, nil
+	return decoder
 }
 
 func (decoder *CustomProtocolStreamDecoder) TerminalReceived() bool {

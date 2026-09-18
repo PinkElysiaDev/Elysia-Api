@@ -49,7 +49,7 @@ func (s *Server) handleCustomStreamRequest(
 	if !ok {
 		return fail(http.StatusInternalServerError, fmt.Sprintf("custom protocol %q is not registered", relay.CustomProtocolID(targetPlatform)), nil, false)
 	}
-	decoder, err := relay.NewCustomProtocolStreamDecoder(protocol)
+	decoder, err := relay.NewRegisteredCustomProtocolStreamDecoder(protocol)
 	if err != nil {
 		return fail(http.StatusInternalServerError, fmt.Sprintf("custom protocol stream config is invalid: %v", err), nil, false)
 	}

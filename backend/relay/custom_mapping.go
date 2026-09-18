@@ -295,10 +295,9 @@ func applyCustomFieldMappings(response *MaheshvaraResponse, root any, mappings [
 		return nil, fmt.Errorf("prepare mapped Maheshvara response: %w", err)
 	}
 	for index, mapping := range mappings {
+		// 目标路径在注册/ValidateCustomProtocol 时已校验（两条入口均经校验），
+		// 逐事件重复校验属于双重保护。
 		targetPath := strings.TrimSpace(strings.TrimPrefix(mapping.Target, "maheshvara."))
-		if err := validateCustomResponseTarget(targetPath); err != nil {
-			return nil, fmt.Errorf("fieldMappings[%d]: %w", index, err)
-		}
 		value, ok, err := customMappingValue(root, mapping)
 		if err != nil {
 			return nil, fmt.Errorf("fieldMappings[%d]: %w", index, err)
@@ -515,7 +514,7 @@ func customToolOutputItems(value any) []any {
 	array := customArrayValue(value)
 	result := make([]any, 0, len(array))
 	for index, item := range array {
-		call := customToolCall(item, index)
+		call := customToolCallWithAliases(item, index, nil)
 		if call.Name == "" {
 			continue
 		}
