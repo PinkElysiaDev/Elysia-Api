@@ -362,6 +362,129 @@ type customProtocolStreamSample struct {
 	Data  string `json:"data"`
 }
 
+// customProtocolLiveTestResult 是一次真实上游测试的完整结果（设计器测试
+// 面板与 Agent 的 test_upstream 工具共用）。
+type customProtocolLiveTestResult struct {
+	StatusCode   int                          `json:"statusCode"`
+	DurationMs   int64                        `json:"durationMs"`
+	TargetModel  string                       `json:"targetModel"`
+	Stream       bool                         `json:"stream"`
+	RawBody      string                       `json:"rawBody,omitempty"`
+	Events       []customProtocolStreamSample `json:"events,omitempty"`
+	Decoded      []json.RawMessage            `json:"decoded,omitempty"`
+	StreamError  string                       `json:"streamError,omitempty"`
+	Maheshvara   json.RawMessage              `json:"maheshvara,omitempty"`
+	MappingError string                       `json:"mappingError,omitempty"`
+}
+
+// customProtocolModelsTestResult 是模型发现 dry-run 的结果。
+type customProtocolModelsTestResult struct {
+	StatusCode int                             `json:"statusCode"`
+	DurationMs int64                           `json:"durationMs"`
+	RawBody    string                          `json:"rawBody"`
+	ParseError string                          `json:"parseError,omitempty"`
+	Models     []customProtocolDiscoveredModel `json:"models,omitempty"`
+}
+
+type customProtocolDiscoveredModel struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
+}
+
+// customProtocolTestTarget 是测试的发送目标（临时凭据或已存源解析结果）。
+type customProtocolTestTarget struct {
+	BaseURL   string
+	APIKey    string
+	ModelName string
+}
+
+// runCustomProtocolLiveTest 渲染并发送一次真实请求到上游，返回原文与映射
+// 结果。凭证由调用方解析（设计器面板：临时 baseUrl 或已存源；Agent 工具：
+// 会话测试目标）。超时由 ctx 控制（调用方负责 probeTimeout 包装）。
+func (s *Server) runCustomProtocolLiveTest(ctx context.Context, protocol relay.CustomProtocolConfig,
+	target customProtocolTestTarget, stream bool, sample *relay.MaheshvaraRequest) (*customProtocolLiveTestResult, error) {
+	if sample == nil {
+		sample = defaultCustomProtocolSampleRequest()
+	}
+	sample.Model = target.ModelName
+	sample.Stream = stream
+	rendered, err := relay.RenderCustomProtocolRequest(sample, protocol)
+	if err != nil {
+		return nil, err
+	}
+	started := time.Now()
+	response, err := s.openaiAdapter.SendCustomProtocolRequest(ctx, target.BaseURL, target.APIKey, rendered, stream)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	result := &customProtocolLiveTestResult{
+		StatusCode:  response.StatusCode,
+		DurationMs:  time.Since(started).Milliseconds(),
+		TargetModel: target.ModelName,
+		Stream:      stream,
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		raw, _ := io.ReadAll(io.LimitReader(response.Body, customProtocolTestBodyLimit))
+		result.RawBody = truncateForDisplay(string(raw), customProtocolTestBodyEcho)
+		return result, nil
+	}
+	if stream {
+		events, decoded, streamErr := sampleCustomProtocolStream(ctx, protocol, response.Body)
+		result.Events = events
+		result.Decoded = decoded
+		if streamErr != nil {
+			result.StreamError = streamErr.Error()
+		}
+		return result, nil
+	}
+	raw, _ := io.ReadAll(io.LimitReader(response.Body, customProtocolTestBodyLimit))
+	result.RawBody = truncateForDisplay(string(raw), customProtocolTestBodyEcho)
+	mapped, mappingErr := relay.CustomProtocolResponseToMaheshvara(raw, protocol)
+	if mappingErr != nil {
+		result.MappingError = mappingErr.Error()
+	} else if encoded, err := json.MarshalIndent(mapped, "", "  "); err == nil {
+		result.Maheshvara = encoded
+	}
+	return result, nil
+}
+
+// runCustomProtocolModelsTest 按协议 models 发现配置请求上游并解析模型列表。
+func (s *Server) runCustomProtocolModelsTest(ctx context.Context, protocol relay.CustomProtocolConfig,
+	target customProtocolTestTarget) (*customProtocolModelsTestResult, error) {
+	if protocol.Models == nil {
+		return nil, errors.New("协议未声明模型发现配置（models.path / models.listPath）")
+	}
+	rendered, err := relay.RenderCustomProtocolModelsRequest(protocol)
+	if err != nil {
+		return nil, err
+	}
+	started := time.Now()
+	response, err := s.openaiAdapter.SendCustomProtocolRequest(ctx, target.BaseURL, target.APIKey, rendered, false)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(response.Body, customProtocolTestBodyLimit))
+	result := &customProtocolModelsTestResult{
+		StatusCode: response.StatusCode,
+		DurationMs: time.Since(started).Milliseconds(),
+		RawBody:    truncateForDisplay(string(raw), customProtocolTestBodyEcho),
+	}
+	if response.StatusCode >= 200 && response.StatusCode < 300 {
+		infos, parseErr := relay.ParseCustomProtocolModels(raw, protocol)
+		if parseErr != nil {
+			result.ParseError = parseErr.Error()
+		} else {
+			result.Models = make([]customProtocolDiscoveredModel, 0, len(infos))
+			for _, info := range infos {
+				result.Models = append(result.Models, customProtocolDiscoveredModel{ID: info.ID, Name: info.Name})
+			}
+		}
+	}
+	return result, nil
+}
+
 // adminTestCustomProtocol 向所选模型源的上游真实发送一次渲染后的请求（用户
 // 在设计器中显式触发），返回上游原文与映射出的 Maheshvara 结果供对照。
 func (s *Server) adminTestCustomProtocol(c *gin.Context) {
@@ -383,10 +506,9 @@ func (s *Server) adminTestCustomProtocol(c *gin.Context) {
 		respondFail(c, http.StatusBadRequest, "missing_target", "必须指定测试使用的模型源与模型，或填入临时 baseUrl 与模型名")
 		return
 	}
-	var baseURL, apiKey string
+	var target customProtocolTestTarget
 	if adHoc {
-		baseURL = strings.TrimSpace(payload.BaseURL)
-		apiKey = payload.APIKey
+		target = customProtocolTestTarget{BaseURL: strings.TrimSpace(payload.BaseURL), APIKey: payload.APIKey, ModelName: modelName}
 	} else {
 		store, okStore := s.requireStore(c)
 		if !okStore {
@@ -398,62 +520,17 @@ func (s *Server) adminTestCustomProtocol(c *gin.Context) {
 				fmt.Sprintf("模型源 %q 下没有找到模型 %q", payload.SourceID, payload.Model))
 			return
 		}
-		baseURL, apiKey, modelName = model.BaseURL, model.APIKey, model.Name
-	}
-
-	sample := payload.SampleRequest
-	if sample == nil {
-		sample = defaultCustomProtocolSampleRequest()
-	}
-	sample.Model = modelName
-	sample.Stream = payload.Stream
-
-	rendered, err := relay.RenderCustomProtocolRequest(sample, protocol)
-	if err != nil {
-		respondFail(c, http.StatusBadRequest, "render_failed", err.Error())
-		return
+		target = customProtocolTestTarget{BaseURL: model.BaseURL, APIKey: model.APIKey, ModelName: model.Name}
 	}
 
 	timeout := s.probeTimeout(customProtocolTestTimeoutSec * time.Second)
 	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 	defer cancel()
 
-	started := time.Now()
-	response, err := s.openaiAdapter.SendCustomProtocolRequest(ctx, baseURL, apiKey, rendered, payload.Stream)
+	result, err := s.runCustomProtocolLiveTest(ctx, protocol, target, payload.Stream, payload.SampleRequest)
 	if err != nil {
 		respondFail(c, http.StatusBadGateway, "send_failed", err.Error())
 		return
-	}
-	defer response.Body.Close()
-	result := gin.H{
-		"statusCode":  response.StatusCode,
-		"durationMs":  time.Since(started).Milliseconds(),
-		"targetModel": modelName,
-		"stream":      payload.Stream,
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		raw, _ := io.ReadAll(io.LimitReader(response.Body, customProtocolTestBodyLimit))
-		result["rawBody"] = truncateForDisplay(string(raw), customProtocolTestBodyEcho)
-		respondOK(c, result)
-		return
-	}
-	if payload.Stream {
-		events, decoded, streamErr := sampleCustomProtocolStream(ctx, protocol, response.Body)
-		result["events"] = events
-		result["decoded"] = decoded
-		if streamErr != nil {
-			result["streamError"] = streamErr.Error()
-		}
-		respondOK(c, result)
-		return
-	}
-	raw, _ := io.ReadAll(io.LimitReader(response.Body, customProtocolTestBodyLimit))
-	result["rawBody"] = truncateForDisplay(string(raw), customProtocolTestBodyEcho)
-	mapped, mappingErr := relay.CustomProtocolResponseToMaheshvara(raw, protocol)
-	if mappingErr != nil {
-		result["mappingError"] = mappingErr.Error()
-	} else if encoded, err := json.MarshalIndent(mapped, "", "  "); err == nil {
-		result["maheshvara"] = json.RawMessage(encoded)
 	}
 	respondOK(c, result)
 }
@@ -522,40 +599,17 @@ func (s *Server) adminTestCustomProtocolModels(c *gin.Context) {
 		respondFail(c, http.StatusBadRequest, "no_discovery", "协议未声明模型发现配置（models.path / models.listPath）")
 		return
 	}
-	rendered, err := relay.RenderCustomProtocolModelsRequest(protocol)
-	if err != nil {
-		respondFail(c, http.StatusBadRequest, "render_failed", err.Error())
-		return
-	}
 
 	timeout := s.probeTimeout(customProtocolTestTimeoutSec * time.Second)
 	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 	defer cancel()
 
-	started := time.Now()
-	response, err := s.openaiAdapter.SendCustomProtocolRequest(ctx, baseURL, payload.APIKey, rendered, false)
+	result, err := s.runCustomProtocolModelsTest(ctx, protocol, customProtocolTestTarget{
+		BaseURL: baseURL, APIKey: payload.APIKey,
+	})
 	if err != nil {
-		respondFail(c, http.StatusBadGateway, "send_failed", err.Error())
+		respondFail(c, http.StatusBadRequest, "render_failed", err.Error())
 		return
-	}
-	defer response.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(response.Body, customProtocolTestBodyLimit))
-	result := gin.H{
-		"statusCode": response.StatusCode,
-		"durationMs": time.Since(started).Milliseconds(),
-		"rawBody":    truncateForDisplay(string(raw), customProtocolTestBodyEcho),
-	}
-	if response.StatusCode >= 200 && response.StatusCode < 300 {
-		infos, parseErr := relay.ParseCustomProtocolModels(raw, protocol)
-		if parseErr != nil {
-			result["parseError"] = parseErr.Error()
-		} else {
-			models := make([]gin.H, 0, len(infos))
-			for _, info := range infos {
-				models = append(models, gin.H{"id": info.ID, "name": info.Name})
-			}
-			result["models"] = models
-		}
 	}
 	respondOK(c, result)
 }
