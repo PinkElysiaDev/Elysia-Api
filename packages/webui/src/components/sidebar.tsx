@@ -1,19 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { useSWRConfig } from 'swr'
-import {
-  Activity,
-  Database,
-  Layers,
-  KeyRound,
-  BarChart3,
-  ScrollText,
-  Terminal,
-  Settings,
-  Stethoscope,
-  Puzzle,
-  LogOut,
-  type LucideIcon,
-} from 'lucide-react'
+import { Activity, BarChart3, Database, KeyRound, Layers, LogOut, Puzzle, ScrollText, Settings, Sparkles, Stethoscope, Terminal, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clearToken } from '@/lib/auth'
 import { clearAssetCache } from '@/lib/asset-blob-cache'
@@ -37,6 +24,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/tokens', label: '访问令牌', icon: KeyRound, group: '网关配置' },
   { to: '/usage', label: 'Usage 统计', icon: BarChart3, group: '观测' },
   { to: '/protocols', label: '协议设计器', icon: Puzzle, group: '系统' },
+  { to: '/agent', label: 'AI 助手', icon: Sparkles, group: '系统' },
   { to: '/logs', label: '系统日志', icon: Terminal, group: '系统' },
   { to: '/runtime', label: '运行配置', icon: Settings, group: '系统' },
   { to: '/diagnostics', label: '诊断', icon: Stethoscope, group: '系统' },

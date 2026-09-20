@@ -707,33 +707,3 @@ export interface CustomProtocolModelsTestResult {
   rawBody?: string
   parseError?: string
 }
-
-export interface CustomProtocolAssistDocument {
-  name: string
-  mime?: string
-  /** 纯文本输入（粘贴内容/文本文件） */
-  text?: string
-  /** data: URL（图片与 PDF 等二进制文档，交给模型原生多模态能力） */
-  dataUrl?: string
-}
-
-/** 离线验证结果：样例请求渲染 + 示例响应映射，不发起真实请求。 */
-export interface CustomProtocolAssistVerification {
-  request?: CustomProtocolPreviewResult
-  requestError?: string
-  mappedResponse?: unknown
-  mappingError?: string
-}
-
-export interface CustomProtocolAssistResult {
-  reply: string
-  model: string
-  durationMs: number
-  /** 生成轮次（含修复轮） */
-  rounds?: number
-  config?: CustomProtocolConfig
-  valid?: boolean
-  issues?: string
-  verification?: CustomProtocolAssistVerification
-  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }
-}

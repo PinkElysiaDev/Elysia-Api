@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR, { mutate as globalMutate, type SWRConfiguration } from 'swr'
 import { api } from './api'
+
+/** Agent 用量在统计页的 key_name 标签（与后端常量一致）。 */
+export const AGENT_USAGE_KEY_NAME = 'AI 协议助手'
 import type { UsageQueryParams } from './types'
 import { uniqueSorted } from './utils'
 
@@ -98,7 +101,10 @@ export function useUsageFilterOptions() {
   const { data: tokens } = useTokens()
   const groupOptions = useMemo(() => uniqueSorted((groups ?? []).map((g) => g.name)), [groups])
   const modelOptions = useMemo(() => uniqueSorted((models ?? []).map((m) => m.name)), [models])
-  const keyOptions = useMemo(() => uniqueSorted((tokens ?? []).map((t) => t.name)), [tokens])
+  const keyOptions = useMemo(
+    () => uniqueSorted([...(tokens ?? []).map((t) => t.name), AGENT_USAGE_KEY_NAME]),
+    [tokens],
+  )
   return { groupOptions, modelOptions, keyOptions }
 }
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Bot } from 'lucide-react'
 import { AlertTriangle, CheckCircle2, Copy, FileJson, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { AsyncState } from '@/components/ui/states'
@@ -11,10 +12,9 @@ import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useApiAction } from '@/lib/use-api-action'
 import { useToast } from '@/components/ui/use-toast'
 import { api, ApiError } from '@/lib/api'
-import { useModels, useSources } from '@/lib/hooks'
 import { formatRelative } from '@/lib/utils'
 import type { CustomProtocolConfig, CustomProtocolSummary } from '@/lib/types'
-import { AssistantDialog } from './assistant-panel'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { ProtocolFormDialog } from './protocol-form-dialog'
 import { protocolTypeLabel } from './schema'
 import { useCustomProtocolSchema } from './schema'
@@ -44,11 +44,11 @@ function newProtocolDraft(): CustomProtocolConfig {
 
 export function ProtocolDesignerPage() {
   const { success: toastSuccess } = useToast()
+  const navigate = useNavigate()
+  const location = useLocation()
   const { confirm, dialog } = useConfirm()
   const { run } = useApiAction()
   const schema = useCustomProtocolSchema()
-  const { data: sources = [] } = useSources()
-  const { data: models = [] } = useModels()
 
   const [items, setItems] = useState<CustomProtocolSummary[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -56,7 +56,6 @@ export function ProtocolDesignerPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<CustomProtocolConfig | null>(null)
   const [isNew, setIsNew] = useState(false)
-  const [assistantOpen, setAssistantOpen] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -70,6 +69,17 @@ export function ProtocolDesignerPage() {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  // AI 助手页「在编辑器中打开」：携带草稿跳转进来。
+  useEffect(() => {
+    const state = location.state as { draft?: CustomProtocolConfig } | null
+    if (state?.draft) {
+      setEditing(state.draft)
+      setIsNew(true)
+      setFormOpen(true)
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [location, navigate])
 
   // 预置协议以 metadata.preset 标记（首次启动播种的四线制定义）。
   const isPreset = (summary: CustomProtocolSummary) => !!summary.config?.metadata?.preset
@@ -136,8 +146,8 @@ export function ProtocolDesignerPage() {
         title="协议设计器"
         actions={
           <>
-            <Button variant="ghost" onClick={() => setAssistantOpen(true)}>
-              <Sparkles className="h-4 w-4" /> AI 助手
+            <Button variant="ghost" onClick={() => navigate('/agent?mode=create')}>
+              <Sparkles className="h-4 w-4" /> AI 生成
             </Button>
             <Button variant="primary" onClick={openCreate}>
               <Plus className="h-4 w-4" /> 新建协议
@@ -238,6 +248,15 @@ export function ProtocolDesignerPage() {
                           <Button variant="ghost" size="iconSm" aria-label="复制为新协议" title="复制为新协议" onClick={() => copyAsNew(summary)}>
                             <Copy className="h-3.5 w-3.5" />
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="iconSm"
+                            aria-label="AI 修改"
+                            title="交给 AI 助手修改此协议"
+                            onClick={() => navigate(`/agent?mode=edit&protocol=${encodeURIComponent(summary.id)}`)}
+                          >
+                            <Bot className="h-3.5 w-3.5" />
+                          </Button>
                           <Button variant="ghost" size="iconSm" aria-label="删除" onClick={() => void remove(summary)}>
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
@@ -260,20 +279,6 @@ export function ProtocolDesignerPage() {
         onSaved={refresh}
       />
 
-      <AssistantDialog
-        open={assistantOpen}
-        onOpenChange={setAssistantOpen}
-        sources={sources}
-        models={models}
-        protocolType={editing?.type || 'llm'}
-        currentConfig={formOpen ? editing : null}
-        onApplyDraft={(config) => {
-          setAssistantOpen(false)
-          setEditing(config)
-          setIsNew(true)
-          setFormOpen(true)
-        }}
-      />
       {dialog}
     </div>
   )

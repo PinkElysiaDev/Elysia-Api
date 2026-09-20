@@ -12,6 +12,7 @@ const ProtocolDesignerPage = lazy(() =>
   import('./pages/protocol-designer').then((m) => ({ default: m.ProtocolDesignerPage })),
 )
 const GroupsPage = lazy(() => import('./pages/groups').then((m) => ({ default: m.GroupsPage })))
+const AgentPage = lazy(() => import('./pages/agent').then((m) => ({ default: m.AgentPage })))
 const TokensPage = lazy(() => import('./pages/tokens').then((m) => ({ default: m.TokensPage })))
 const UsageStatsPage = lazy(() => import('./pages/usage-stats').then((m) => ({ default: m.UsageStatsPage })))
 const UsageLogsPage = lazy(() => import('./pages/usage-logs').then((m) => ({ default: m.UsageLogsPage })))
@@ -83,6 +84,7 @@ export function App() {
               <Route path="/overview" element={<OverviewPage />} />
               <Route path="/sources" element={<SourcesPage />} />
               <Route path="/protocols" element={<ProtocolDesignerPage />} />
+              <Route path="/agent" element={<AgentPage />} />
               <Route path="/groups" element={<GroupsPage />} />
               <Route path="/tokens" element={<TokensPage />} />
               <Route path="/usage" element={<UsageStatsPage />} />

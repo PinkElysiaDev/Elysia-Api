@@ -597,6 +597,12 @@ html.theme-transitioning :where(body, #root, #root *):not(.theme-sun):not(.theme
   .dot-off {
     background: hsl(var(--border));
   }
+  /* 待办/待审批态：amber 光环呼吸（与 dot-ok/err 同构）。 */
+  .dot-warn {
+    background: var(--amber);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 18%, transparent);
+    animation: breathe 2.6s ease-in-out infinite;
+  }
 
   /* JSON 高亮（lib/json-highlight.ts 输出）：j-k 键 / j-s 字符串 / j-n 数字 / j-b 布尔 */
   .j-k {
@@ -612,6 +618,50 @@ html.theme-transitioning :where(body, #root, #root *):not(.theme-sun):not(.theme
   .j-b {
     color: var(--ember);
     font-style: italic;
+  }
+
+  /* 聊天消息 markdown 排版（.agent-markdown 容器）：
+     容器由组件给 space-y-2，这里只补齐块级元素的项目内规范。 */
+  .agent-markdown h1, .agent-markdown h2, .agent-markdown h3, .agent-markdown h4 {
+    font-weight: 600;
+    line-height: 1.35;
+  }
+  .agent-markdown h1 { font-size: 1.05rem; margin-top: 0.6em; }
+  .agent-markdown h2 { font-size: 1rem; margin-top: 0.7em; }
+  .agent-markdown h3 { font-size: 0.9375rem; margin-top: 0.7em; }
+  .agent-markdown h4 { font-size: 0.875rem; margin-top: 0.7em; }
+  .agent-markdown ul, .agent-markdown ol {
+    padding-left: 1.25em;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25em;
+  }
+  .agent-markdown li > ul, .agent-markdown li > ol {
+    margin-top: 0.25em;
+  }
+  .agent-markdown table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+  .agent-markdown th, .agent-markdown td {
+    border: 1px solid hsl(var(--border) / 0.6);
+    padding: 0.35em 0.6em;
+    text-align: left;
+  }
+  .agent-markdown th {
+    font-weight: 600;
+    background: hsl(var(--muted) / 0.4);
+  }
+  .agent-markdown blockquote {
+    border-left: 2px solid hsl(var(--border));
+    padding-left: 0.75em;
+    color: hsl(var(--muted-foreground));
+  }
+  .agent-markdown a {
+    color: var(--rose);
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
 
   /* 立绘水印（总览 .deco .fig）：渐变底；mask 图片路径带 /ui/ base，由组件内联注入 */

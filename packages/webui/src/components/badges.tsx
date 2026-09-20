@@ -5,7 +5,7 @@ import { cn, isSuccessStatus } from '@/lib/utils'
 
 /* ---------- 状态点 ---------- */
 
-export function Dot({ state, className }: { state: 'ok' | 'err' | 'off'; className?: string }) {
+export function Dot({ state, className }: { state: 'ok' | 'err' | 'warn' | 'off'; className?: string }) {
   return <span aria-hidden className={cn('dot', `dot-${state}`, className)} />
 }
 

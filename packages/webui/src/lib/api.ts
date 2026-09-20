@@ -6,8 +6,6 @@ import type {
   UsagePulseResult,
   UsageModelDailyPoint,
   ApiToken,
-  CustomProtocolAssistDocument,
-  CustomProtocolAssistResult,
   CustomProtocolConfig,
   CustomProtocolPreviewResult,
   CustomProtocolSchema,
@@ -337,17 +335,6 @@ export const api = {
     baseUrl: string
     apiKey?: string
   }) => request<CustomProtocolModelsTestResult>('/custom-protocols/test-models', { method: 'POST', body }),
-  /** AI harness：读取文档/图片/文本生成草稿，服务端校验+自动修复+离线验证。 */
-  assistCustomProtocol: (body: {
-    sourceId: string
-    model: string
-    protocolType?: string
-    message?: string
-    documents?: CustomProtocolAssistDocument[]
-    currentConfig?: unknown
-    exampleResponse?: unknown
-    maxRepairRounds?: number
-  }) => request<CustomProtocolAssistResult>('/custom-protocols/assist', { method: 'POST', body }),
 }
 
 function serializeUsage(params: UsageQueryParams): Record<string, QueryValue> {
