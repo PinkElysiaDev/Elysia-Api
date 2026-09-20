@@ -1,6 +1,6 @@
 {
-  "id": "gemini-generate",
-  "name": "Google Gemini generateContent（预置）",
+  "id": "gemini-api",
+  "name": "Gemini API（预置）",
   "version": "1",
   "type": "llm",
   "metadata": {

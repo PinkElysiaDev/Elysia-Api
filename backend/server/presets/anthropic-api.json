@@ -1,6 +1,6 @@
 {
-  "id": "anthropic-messages",
-  "name": "Anthropic Messages（预置）",
+  "id": "anthropic-api",
+  "name": "Anthropic API（预置）",
   "version": "1",
   "type": "llm",
   "metadata": {

@@ -1,6 +1,6 @@
 {
-  "id": "openai-chat",
-  "name": "OpenAI Chat Completions（预置）",
+  "id": "chat-completions-api",
+  "name": "Chat Completions API（预置）",
   "version": "1",
   "type": "llm",
   "metadata": {

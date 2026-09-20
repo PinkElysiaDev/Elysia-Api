@@ -1,6 +1,6 @@
 {
-  "id": "openai-responses",
-  "name": "OpenAI Responses（预置）",
+  "id": "responses-api",
+  "name": "Responses API（预置）",
   "version": "1",
   "type": "llm",
   "metadata": {

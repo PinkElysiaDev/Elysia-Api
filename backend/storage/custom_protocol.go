@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
 	"time"
 )
@@ -67,4 +68,58 @@ func (s *Store) DeleteCustomProtocol(ctx context.Context, id string) (bool, erro
 		return false, err
 	}
 	return affected > 0, nil
+}
+
+// ProtocolRenamePair 是一次性 ID 迁移对（预置协议去厂商化重命名用）。
+type ProtocolRenamePair struct {
+	OldID string
+	NewID string
+}
+
+// MigratePresetProtocolRenames 在单事务里完成协议 ID 改名，并把
+// model_sources / models 两表 platform 列里的 custom:<旧> 引用同步重写
+//（大小写不敏感）。新旧 ID 并存（用户自建了同名协议）时跳过该对——自定义
+// 行优先，平台引用保持原样。幂等：旧 ID 不存在即无事发生。
+func (s *Store) MigratePresetProtocolRenames(ctx context.Context, pairs []ProtocolRenamePair) (renamed int, err error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, pair := range pairs {
+		oldID := strings.TrimSpace(pair.OldID)
+		newID := strings.TrimSpace(pair.NewID)
+		if oldID == "" || newID == "" || oldID == newID {
+			continue
+		}
+		var exists int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM custom_protocols WHERE id = ? COLLATE NOCASE`, oldID).Scan(&exists); err != nil {
+			return renamed, err
+		}
+		if exists == 0 {
+			continue
+		}
+		var conflict int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM custom_protocols WHERE id = ? COLLATE NOCASE AND id <> ? COLLATE NOCASE`, newID, oldID).Scan(&conflict); err != nil {
+			return renamed, err
+		}
+		if conflict > 0 {
+			log.Printf("[preset-rename] skip %q -> %q: target id already exists (user-defined row wins)", oldID, newID)
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE custom_protocols SET id = ?, updated_at = ? WHERE id = ? COLLATE NOCASE`, newID, nowString(), oldID); err != nil {
+			return renamed, err
+		}
+		oldPlatform := "custom:" + oldID
+		newPlatform := "custom:" + newID
+		if _, err := tx.ExecContext(ctx, `UPDATE model_sources SET platform = ? WHERE LOWER(platform) = ?`, newPlatform, strings.ToLower(oldPlatform)); err != nil {
+			return renamed, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE models SET platform = ? WHERE LOWER(platform) = ?`, newPlatform, strings.ToLower(oldPlatform)); err != nil {
+			return renamed, err
+		}
+		renamed++
+		log.Printf("[preset-rename] protocol %q renamed to %q (platform references rewritten)", oldID, newID)
+	}
+	return renamed, tx.Commit()
 }

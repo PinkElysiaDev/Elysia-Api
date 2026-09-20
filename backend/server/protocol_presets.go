@@ -12,9 +12,9 @@ import (
 	"github.com/elysia-api/backend/storage"
 )
 
-// 预置协议定义随二进制分发（沿 model_catalog 快照先例）；首次启动（协议表
-// 为空）时写入数据库，此后作为普通行加载——库中优先、升级不覆盖、完全可
-// 编辑，「引擎在代码里，协议在数据里」。
+// 预置协议定义随二进制分发（沿 model_catalog 快照先例）；启动时逐条补齐缺失
+// 的预置（ID 不在库中才写入），此后作为普通行加载——库中优先、升级不覆盖、
+// 完全可编辑，「引擎在代码里，协议在数据里」。
 //
 //go:embed presets/*.json
 var presetProtocolFS embed.FS
@@ -43,9 +43,9 @@ func PresetProtocolConfigs() ([]relay.CustomProtocolConfig, error) {
 	return configs, nil
 }
 
-// presetProtocolAnthropicMessagesID 标记 AI 助手 few-shot 范例所用预置;
+// presetProtocolAnthropicAPIID 标记 AI 助手 few-shot 范例所用预置;
 // 改名/删除该预设时此常量是唯一需要同步的位置。
-const presetProtocolAnthropicMessagesID = "anthropic-messages"
+const presetProtocolAnthropicAPIID = "anthropic-api"
 
 // cachedPresetConfigs 内嵌定义不可变:解析+整体校验只做一次,助手每请求
 // 复用(此前每次调用重读 embed 并校验四份)。
@@ -79,8 +79,9 @@ func customProtocolRow(config relay.CustomProtocolConfig, rawJSON string) storag
 	}
 }
 
-// seedPresetProtocols 在协议表为空（首次启动）时写入预置协议定义。用户此后
-// 可自由编辑/删除；仅当全部协议行被清空时，下次启动会重新播种。
+// seedPresetProtocols 逐条补齐缺失的预置协议：预置 ID 不在库中才写入——
+// 幂等；库中优先，升级不覆盖用户对已有预置的编辑；不触碰自定义协议。
+// 老库（已有自定义协议）升级后同样能拿到缺失的默认协议。
 func (s *Server) seedPresetProtocols() {
 	if s.store == nil {
 		return
@@ -95,11 +96,15 @@ func (s *Server) seedPresetProtocols() {
 		log.Printf("custom protocol preset seeding aborted: %v", err)
 		return
 	}
-	if len(existing) > 0 {
-		return
+	known := make(map[string]bool, len(existing))
+	for _, row := range existing {
+		known[row.ID] = true
 	}
 	seeded := 0
 	for _, config := range configs {
+		if known[config.ID] {
+			continue
+		}
 		encoded, err := json.Marshal(config)
 		if err != nil {
 			log.Printf("custom protocol preset seed skipped %q: marshal: %v", config.ID, err)
@@ -112,6 +117,26 @@ func (s *Server) seedPresetProtocols() {
 		seeded++
 	}
 	if seeded > 0 {
-		log.Printf("seeded %d preset protocol(s) into the database", seeded)
+		log.Printf("seeded %d missing preset protocol(s) into the database", seeded)
+	}
+}
+
+// presetProtocolRenames 是预置协议去厂商化的历史 ID 迁移表；新增预置改名时
+// 在此登记一对即可（幂等）。
+var presetProtocolRenames = []storage.ProtocolRenamePair{
+	{OldID: "openai-chat", NewID: "chat-completions-api"},
+	{OldID: "openai-responses", NewID: "responses-api"},
+	{OldID: "anthropic-messages", NewID: "anthropic-api"},
+	{OldID: "gemini-generate", NewID: "gemini-api"},
+}
+
+// migratePresetProtocolRenames 执行预置 ID 改名并同步重写 custom:<id> 平台
+// 引用，须在 seedPresetProtocols 之前调用（老库先改名，补齐逻辑再填新装库）。
+func (s *Server) migratePresetProtocolRenames() {
+	if s.store == nil {
+		return
+	}
+	if _, err := s.store.MigratePresetProtocolRenames(context.Background(), presetProtocolRenames); err != nil {
+		log.Printf("custom protocol preset rename migration failed: %v", err)
 	}
 }

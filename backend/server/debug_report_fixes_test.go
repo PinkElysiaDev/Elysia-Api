@@ -114,7 +114,7 @@ func TestQueryAuthSecretSanitizedInTransportError(t *testing.T) {
 func TestStreamToolStableSlotIndices(t *testing.T) {
 	relay.ClearCustomProtocols()
 	t.Cleanup(relay.ClearCustomProtocols)
-	anthropic := registerPresetForTest(t, "anthropic-messages")
+	anthropic := registerPresetForTest(t, "anthropic-api")
 	decoder, err := relay.NewCustomProtocolStreamDecoder(anthropic)
 	if err != nil {
 		t.Fatalf("decoder: %v", err)
@@ -187,7 +187,7 @@ func eventNameOf(frame string) string {
 func TestPresetCombinedFramesEndToEnd(t *testing.T) {
 	relay.ClearCustomProtocols()
 	t.Cleanup(relay.ClearCustomProtocols)
-	registerPresetForTest(t, "openai-chat")
+	registerPresetForTest(t, "chat-completions-api")
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -195,7 +195,7 @@ func TestPresetCombinedFramesEndToEnd(t *testing.T) {
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	}))
 	defer upstream.Close()
-	s := newTestServer(presetGroup(t, "custom:openai-chat", upstream.URL))
+	s := newTestServer(presetGroup(t, "custom:chat-completions-api", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if rec.Code != http.StatusOK {
@@ -209,13 +209,13 @@ func TestPresetCombinedFramesEndToEnd(t *testing.T) {
 	}
 
 	relay.ClearCustomProtocols()
-	registerPresetForTest(t, "gemini-generate")
+	registerPresetForTest(t, "gemini-api")
 	upstream = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = io.WriteString(w, "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"final answer\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":2,\"candidatesTokenCount\":3}}\n\n")
 	}))
 	defer upstream.Close()
-	s = newTestServer(presetGroup(t, "custom:gemini-generate", upstream.URL))
+	s = newTestServer(presetGroup(t, "custom:gemini-api", upstream.URL))
 	c, rec = chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if rec.Code != http.StatusOK {
@@ -269,7 +269,7 @@ func TestCustomProtocolMappedErrorIsFailure(t *testing.T) {
 func TestPresetChatMultipleToolsInOneFrame(t *testing.T) {
 	relay.ClearCustomProtocols()
 	t.Cleanup(relay.ClearCustomProtocols)
-	registerPresetForTest(t, "openai-chat")
+	registerPresetForTest(t, "chat-completions-api")
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -279,7 +279,7 @@ func TestPresetChatMultipleToolsInOneFrame(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(presetGroup(t, "custom:openai-chat", upstream.URL))
+	s := newTestServer(presetGroup(t, "custom:chat-completions-api", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if rec.Code != http.StatusOK {
@@ -295,7 +295,7 @@ func TestPresetChatMultipleToolsInOneFrame(t *testing.T) {
 func TestPresetErrorFramesEndToEnd(t *testing.T) {
 	relay.ClearCustomProtocols()
 	t.Cleanup(relay.ClearCustomProtocols)
-	registerPresetForTest(t, "anthropic-messages")
+	registerPresetForTest(t, "anthropic-api")
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -305,7 +305,7 @@ func TestPresetErrorFramesEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(presetGroup(t, "custom:anthropic-messages", upstream.URL))
+	s := newTestServer(presetGroup(t, "custom:anthropic-api", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if !strings.Contains(rec.Body.String(), "overloaded") {

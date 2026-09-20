@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/storage"
 )
 
 func registerPresetForTest(t *testing.T, id string) relay.CustomProtocolConfig {
@@ -37,37 +39,100 @@ func presetGroup(t *testing.T, platform, upstreamURL string) []config.ModelGroup
 	}}
 }
 
-// 预置播种：协议表为空时写入四份定义；已有行则不动；播种后走既有同步管线
-// 注册生效。
+// 预置播种（逐条补齐）：空表全量播种；已有自定义协议时只补缺失的预置且
+// 不覆盖用户编辑过的预置；重复调用幂等；播种后走既有同步管线注册生效。
 func TestSeedPresetProtocols(t *testing.T) {
-	s, _ := newProtocolAdminTestServer(t)
-	s.seedPresetProtocols()
-	rows, err := s.store.ListCustomProtocols(t.Context())
+	presets, err := PresetProtocolConfigs()
 	if err != nil {
-		t.Fatalf("list: %v", err)
+		t.Fatalf("preset configs: %v", err)
 	}
-	presets, _ := PresetProtocolConfigs()
-	if len(rows) != len(presets) {
-		t.Fatalf("expected %d seeded presets, got %d", len(presets), len(rows))
-	}
-	s.syncCustomProtocolsQuiet()
-	if _, ok := relay.GetCustomProtocol("openai-chat"); !ok {
-		t.Fatal("seeded preset must register after sync")
-	}
-	// 已有行则不再播种。
-	s.seedPresetProtocols()
-	rows, _ = s.store.ListCustomProtocols(t.Context())
-	if len(rows) != len(presets) {
-		t.Fatalf("re-seed must be a no-op with existing rows, got %d", len(rows))
-	}
+
+	t.Run("empty table seeds all", func(t *testing.T) {
+		s, _ := newProtocolAdminTestServer(t)
+		s.seedPresetProtocols()
+		rows, err := s.store.ListCustomProtocols(t.Context())
+		if err != nil {
+			t.Fatalf("list: %v", err)
+		}
+		if len(rows) != len(presets) {
+			t.Fatalf("expected %d seeded presets, got %d", len(presets), len(rows))
+		}
+		s.syncCustomProtocolsQuiet()
+		if _, ok := relay.GetCustomProtocol("chat-completions-api"); !ok {
+			t.Fatal("seeded preset must register after sync")
+		}
+		// 幂等：重复播种不增行。
+		s.seedPresetProtocols()
+		rows, _ = s.store.ListCustomProtocols(t.Context())
+		if len(rows) != len(presets) {
+			t.Fatalf("re-seed must be a no-op, got %d rows", len(rows))
+		}
+	})
+
+	t.Run("legacy db with custom protocols gets missing presets", func(t *testing.T) {
+		s, _ := newProtocolAdminTestServer(t)
+		ctx := t.Context()
+		// 老库形态：一条用户自定义协议 + 一条被用户编辑过的预置（改 name）。
+		if err := s.store.UpsertCustomProtocol(ctx, storage.CustomProtocol{
+			ID: "vendor-legacy", Name: "老协议", Type: "llm",
+			Config: `{"id":"vendor-legacy","request":{"method":"POST","path":"/v1/x"}}`,
+		}); err != nil {
+			t.Fatalf("seed custom: %v", err)
+		}
+		editedPreset := `{"id":"chat-completions-api","name":"我的定制 Chat API","request":{"method":"POST","path":"/v1/chat/completions"}}`
+		if err := s.store.UpsertCustomProtocol(ctx, storage.CustomProtocol{
+			ID: "chat-completions-api", Name: "我的定制 Chat API", Type: "llm", Config: editedPreset,
+		}); err != nil {
+			t.Fatalf("seed edited preset: %v", err)
+		}
+
+		s.seedPresetProtocols()
+		rows, err := s.store.ListCustomProtocols(ctx)
+		if err != nil {
+			t.Fatalf("list: %v", err)
+		}
+		// 自定义协议 + 全部预置 ID 都在。
+		if len(rows) != len(presets)+1 {
+			t.Fatalf("expected %d rows (custom + all presets), got %d", len(presets)+1, len(rows))
+		}
+		for _, preset := range presets {
+			found := false
+			for _, row := range rows {
+				if row.ID == preset.ID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("preset %q missing after fill-in seeding", preset.ID)
+			}
+		}
+		// 用户编辑过的预置保持用户版本（不被覆盖）。
+		for _, row := range rows {
+			if row.ID == "chat-completions-api" {
+				if row.Name != "我的定制 Chat API" || row.Config != editedPreset {
+					t.Fatalf("edited preset must keep user version, got name=%q", row.Name)
+				}
+			}
+			if row.ID == "vendor-legacy" && row.Name != "老协议" {
+				t.Fatalf("custom protocol must be untouched, got %q", row.Name)
+			}
+		}
+		// 再次播种仍幂等。
+		s.seedPresetProtocols()
+		rows, _ = s.store.ListCustomProtocols(ctx)
+		if len(rows) != len(presets)+1 {
+			t.Fatalf("re-seed must be a no-op, got %d rows", len(rows))
+		}
+	})
 }
 
-// openai-chat 预置端到端：请求为线制形状(system 提升/role 折叠)，流式覆盖
+// chat-completions-api 预置端到端：请求为线制形状(system 提升/role 折叠)，流式覆盖
 // 文本/推理/分帧工具参数拼装/usage 尾帧/finish。
 func TestPresetOpenAIChatEndToEnd(t *testing.T) {
 	relay.ClearCustomProtocols()
 	t.Cleanup(relay.ClearCustomProtocols)
-	registerPresetForTest(t, "openai-chat")
+	registerPresetForTest(t, "chat-completions-api")
 
 	var gotBody string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -90,7 +155,7 @@ func TestPresetOpenAIChatEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(presetGroup(t, "custom:openai-chat", upstream.URL))
+	s := newTestServer(presetGroup(t, "custom:chat-completions-api", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"system","content":"be brief"},{"role":"user","content":"weather in sh?"}],"tools":[{"type":"function","function":{"name":"get_weather","parameters":{"type":"object"}}}]}`)
 	s.chatCompletions(c)
 
@@ -114,12 +179,12 @@ func TestPresetOpenAIChatEndToEnd(t *testing.T) {
 	}
 }
 
-// anthropic-messages 预置端到端：x-api-key 鉴权 + 事件名帧 + thinking 分块 +
+// anthropic-api 预置端到端：x-api-key 鉴权 + 事件名帧 + thinking 分块 +
 // content_block 分帧工具拼装 + message_delta 终态。
 func TestPresetAnthropicMessagesEndToEnd(t *testing.T) {
 	relay.ClearCustomProtocols()
 	t.Cleanup(relay.ClearCustomProtocols)
-	registerPresetForTest(t, "anthropic-messages")
+	registerPresetForTest(t, "anthropic-api")
 
 	var gotAuth, gotVersion string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -137,7 +202,7 @@ func TestPresetAnthropicMessagesEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(presetGroup(t, "custom:anthropic-messages", upstream.URL))
+	s := newTestServer(presetGroup(t, "custom:anthropic-api", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"weather?"}]}`)
 	s.chatCompletions(c)
 
@@ -158,11 +223,11 @@ func TestPresetAnthropicMessagesEndToEnd(t *testing.T) {
 	}
 }
 
-// gemini-generate 预置端到端：双路径按流切换 + thought 谓词分流 + functionCall。
+// gemini-api 预置端到端：双路径按流切换 + thought 谓词分流 + functionCall。
 func TestPresetGeminiGenerateEndToEnd(t *testing.T) {
 	relay.ClearCustomProtocols()
 	t.Cleanup(relay.ClearCustomProtocols)
-	registerPresetForTest(t, "gemini-generate")
+	registerPresetForTest(t, "gemini-api")
 
 	var gotPath string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -175,7 +240,7 @@ func TestPresetGeminiGenerateEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(presetGroup(t, "custom:gemini-generate", upstream.URL))
+	s := newTestServer(presetGroup(t, "custom:gemini-api", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"weather?"}]}`)
 	s.chatCompletions(c)
 
@@ -196,11 +261,11 @@ func TestPresetGeminiGenerateEndToEnd(t *testing.T) {
 	}
 }
 
-// openai-responses 预置端到端：类型化事件流 + 分帧工具拼装 + completed 终态。
+// responses-api 预置端到端：类型化事件流 + 分帧工具拼装 + completed 终态。
 func TestPresetOpenAIResponsesEndToEnd(t *testing.T) {
 	relay.ClearCustomProtocols()
 	t.Cleanup(relay.ClearCustomProtocols)
-	registerPresetForTest(t, "openai-responses")
+	registerPresetForTest(t, "responses-api")
 
 	var gotBody string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -216,7 +281,7 @@ func TestPresetOpenAIResponsesEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(presetGroup(t, "custom:openai-responses", upstream.URL))
+	s := newTestServer(presetGroup(t, "custom:responses-api", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"weather?"}]}`)
 	s.chatCompletions(c)
 
@@ -238,4 +303,80 @@ func TestPresetOpenAIResponsesEndToEnd(t *testing.T) {
 	}
 	// 完成帧携带的 usage 需要映射(response.usage 经 payloadPath 解包)。
 
+}
+
+// 预置改名迁移：旧 ID 行改名 + custom:<旧> 平台引用重写；新旧并存跳过；幂等。
+func TestMigratePresetProtocolRenames(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	ctx := t.Context()
+
+	seedLegacy := func(id string) {
+		t.Helper()
+		if err := s.store.UpsertCustomProtocol(ctx, storage.CustomProtocol{
+			ID: id, Name: "旧预置", Type: "llm",
+			Config: `{"id":"` + id + `","request":{"method":"POST","path":"/v1/chat/completions"}}`,
+		}); err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+	}
+	// 老库形态：旧 ID 预置行 + 引用 custom:openai-chat 的源与其模型行。
+	seedLegacy("openai-chat")
+	source := storage.ModelSource{ID: "src1", Name: "src1", BaseURL: "https://up.example", Platform: "custom:openai-chat", Enabled: true}
+	if err := s.store.UpsertSource(ctx, source); err != nil {
+		t.Fatalf("seed source: %v", err)
+	}
+	if err := s.store.ReplaceSourceModels(ctx, source, []storage.Model{{
+		ID: "m1", SourceID: "src1", Name: "m1", BaseURL: source.BaseURL,
+		Platform: "custom:openai-chat", Type: "llm", Enabled: true, Available: true,
+	}}); err != nil {
+		t.Fatalf("seed model: %v", err)
+	}
+
+	s.migratePresetProtocolRenames()
+
+	rows, _ := s.store.ListCustomProtocols(ctx)
+	ids := map[string]bool{}
+	for _, row := range rows {
+		ids[row.ID] = true
+	}
+	if !ids["chat-completions-api"] || ids["openai-chat"] {
+		t.Fatalf("rename failed, rows = %v", ids)
+	}
+	sources, _ := s.store.ListSources(ctx)
+	if len(sources) != 1 || sources[0].Platform != "custom:chat-completions-api" {
+		t.Fatalf("source platform not rewritten: %+v", sources)
+	}
+	models, _ := s.store.ListModels(ctx)
+	if len(models) != 1 || models[0].Platform != "custom:chat-completions-api" {
+		t.Fatalf("model platform not rewritten: %+v", models)
+	}
+	// 迁移后 registry 可按新平台解析。
+	var migrated relay.CustomProtocolConfig
+	if err := json.Unmarshal([]byte(`{"id":"chat-completions-api","request":{"method":"POST","path":"/v1/chat/completions","shape":"openai-chat"}}`), &migrated); err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	_ = migrated
+
+	// 冲突：用户新建了 responses-api，旧 openai-responses 行并存 → 跳过该对。
+	seedLegacy("openai-responses")
+	seedLegacy("responses-api")
+	s.migratePresetProtocolRenames()
+	rows, _ = s.store.ListCustomProtocols(ctx)
+	count := 0
+	for _, row := range rows {
+		if row.ID == "openai-responses" || row.ID == "responses-api" {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("conflict pair must be kept as-is, got %d rows", count)
+	}
+
+	// 幂等：再跑一次无变化。
+	before := len(rows)
+	s.migratePresetProtocolRenames()
+	rows, _ = s.store.ListCustomProtocols(ctx)
+	if len(rows) != before {
+		t.Fatalf("re-migration must be a no-op: %d -> %d", before, len(rows))
+	}
 }

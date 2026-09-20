@@ -139,12 +139,12 @@ Elysia-Api 的转换核心是「引擎在代码里,协议在数据里」:一份�
 
 ## 预置协议
 
-- 四份预置(`openai-chat`/`anthropic-messages`/`gemini-generate`/`openai-responses`)
+- 四份预置(`chat-completions-api`/`responses-api`/`anthropic-api`/`gemini-api`,旧库中的厂商式 ID 会在启动时自动改名并重写 `custom:<id>` 引用)
   内嵌于二进制,**首次启动(协议表为空)时写入数据库**,此后作为普通协议行:
   可编辑、可删除、库中优先、升级不覆盖;全部行被清空时下次启动重新播种
 - 以 `custom:<id>` 平台被模型源引用;设计器列表显示「预置」徽标(metadata.preset),
   支持一键复制为新协议作为定制基底
-- AI 助手以 anthropic-messages 预置作为 few-shot 范例,并在提示词中说明全部
+- AI 助手以 anthropic-api 预置作为 few-shot 范例,并在提示词中说明全部
   新能力(shape/when/finishWhen/frames/frame.tool/aliases/过滤)
 
 ## 边界(设计如此,非缺陷)
