@@ -114,6 +114,42 @@ func (s *Store) migrate(ctx context.Context) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_usage_asset_refs_request ON usage_asset_refs(request_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_system_logs_created_at ON system_logs(created_at)`,
+		// AI 助手（协议 Agent）会话与消息：会话含设置/草稿/审批状态，
+		// 消息按 seq 单调排序完整保留轮次轨迹。test_api_key 走 secretCodec 加密。
+		`CREATE TABLE IF NOT EXISTS agent_sessions (
+			id TEXT PRIMARY KEY,
+			title TEXT NOT NULL DEFAULT '',
+			mode TEXT NOT NULL DEFAULT 'create',
+			protocol_id TEXT NOT NULL DEFAULT '',
+			seed_config TEXT NOT NULL DEFAULT '',
+			draft_config TEXT NOT NULL DEFAULT '',
+			test_base_url TEXT NOT NULL DEFAULT '',
+			test_api_key TEXT NOT NULL DEFAULT '',
+			model_source_id TEXT NOT NULL DEFAULT '',
+			model_name TEXT NOT NULL DEFAULT '',
+			thinking_enabled INTEGER NOT NULL DEFAULT 0,
+			thinking_effort TEXT NOT NULL DEFAULT '',
+			allow_live_test TEXT NOT NULL DEFAULT 'ask',
+			allow_save TEXT NOT NULL DEFAULT 'ask',
+			status TEXT NOT NULL DEFAULT 'idle',
+			pending_action TEXT,
+			plan_json TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS agent_messages (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			session_id TEXT NOT NULL,
+			seq INTEGER NOT NULL,
+			role TEXT NOT NULL,
+			content TEXT NOT NULL,
+			model TEXT NOT NULL DEFAULT '',
+			usage_json TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			UNIQUE(session_id, seq)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_agent_messages_session ON agent_messages(session_id, seq)`,
+		`CREATE INDEX IF NOT EXISTS idx_agent_sessions_updated_at ON agent_sessions(updated_at)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
@@ -134,6 +170,12 @@ func (s *Store) migrate(ctx context.Context) error {
 	}
 	// 为 token_hash 建唯一索引（WHERE token_hash != '' 保证空值不参与约束）。
 	if _, err := s.db.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash) WHERE token_hash != ''`); err != nil {
+		return err
+	}
+	// 增量迁移：agent_sessions 增加方案清单列（update_plan 工具维护）。
+	// 已存在的表不会因 CREATE TABLE IF NOT EXISTS 加列，容错 ALTER 幂等补齐。
+	if _, err := s.db.ExecContext(ctx, `ALTER TABLE agent_sessions ADD COLUMN plan_json TEXT NOT NULL DEFAULT ''`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column") {
 		return err
 	}
 	// 增量迁移：为 usage_records 增加 cache_hit_tokens 列（缓存命中 token 数）。

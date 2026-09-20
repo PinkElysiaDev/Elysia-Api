@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/elysia-api/backend/agent"
 	"io"
 	"io/fs"
 	"log"
@@ -115,6 +116,10 @@ type Server struct {
 	// 以便用 httptest 的 127.0.0.1 上游做端到端转发/故障转移测试。
 	// 生产路径恒为 false。
 	skipOutboundValidation bool
+
+	// 协议 Agent 引擎（agent_routes.go 惰性装配：store 就绪后首次使用时构建）。
+	agentEngineOnce sync.Once
+	agentEngineInst *agent.Engine
 }
 
 func New(cfg *config.Config) *Server {
@@ -183,6 +188,8 @@ func New(cfg *config.Config) *Server {
 		}
 		// config.json 的 customProtocols 键已废弃：一次性导入 SQLite 后移除。
 		server.migrateLegacyCustomProtocols()
+		// 预置协议去厂商化改名（一次性、幂等；custom:<id> 平台引用同步重写）。
+		server.migratePresetProtocolRenames()
 		// 预置协议（四线制定义）在协议表为空时播种；已有用户数据不动。
 		server.seedPresetProtocols()
 	}
@@ -273,6 +280,7 @@ func (s *Server) setupRoutes() {
 	admin.Use(s.dashboardAuthMiddleware())
 	{
 		s.setupAdminRoutes(admin)
+		s.setupAgentRoutes(admin)
 	}
 
 	s.engine.GET("/health", s.healthCheck)

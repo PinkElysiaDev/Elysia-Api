@@ -283,12 +283,18 @@ func TestStorageCapAdaptiveSmallOverage(t *testing.T) {
 	cfg.SetUsageLogConfig(config.UsageLogConfig{MaxStorageMB: &mb})
 
 	// 越过迟滞带一点（约数个页面）。
-	seedUntilLogical(t, s, 1024, limitBytes*101/100+8192)
-	logicalBefore := dbLogicalBytes(t, s)
+	// 均重用 seeding 全程增量测：库内有 agent 会话等固定 schema 开销，
+	// 绝对体积/条数会把固定开销摊进均值、低估最少删除条数。
+	logicalStart := dbLogicalBytes(t, s)
+	added := seedUntilLogical(t, s, 1024, limitBytes*101/100+8192)
+	logicalSeeded := dbLogicalBytes(t, s)
+	if added == 0 || logicalSeeded <= logicalStart {
+		t.Fatalf("seeding produced no measurable growth: added=%d logical %d→%d", added, logicalStart, logicalSeeded)
+	}
+	avgPerRecord := float64(logicalSeeded-logicalStart) / float64(added)
 	countBefore := usageRecordCount(t, s)
-	avgBefore := float64(logicalBefore) / float64(countBefore)
 	// 理论最少删除条数：把占用拉回迟滞带边缘所需。
-	minNeeded := int(float64(logicalBefore-limitBytes*101/100)/avgBefore) + 1
+	minNeeded := int(float64(logicalSeeded-limitBytes*101/100)/avgPerRecord) + 1
 
 	r := newUsageRetention(s)
 	r.runOnce()
@@ -297,7 +303,8 @@ func TestStorageCapAdaptiveSmallOverage(t *testing.T) {
 	if deleted == 0 {
 		t.Fatal("over-cap database must be cleaned")
 	}
-	if deleted > minNeeded+4 {
+	// 允许比理论值多删少量（页面量化 + 批处理粒度），但不应整批乱删。
+	if deleted > minNeeded+16 {
 		t.Fatalf("slight overage must delete near the volume-derived minimum: deleted=%d minNeeded=%d", deleted, minNeeded)
 	}
 	if got := dbLogicalBytes(t, s); got*100 > limitBytes*retentionCapHysteresisPercent {

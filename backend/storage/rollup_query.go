@@ -253,7 +253,6 @@ func usageCountRaw(ctx context.Context, qe sqlQueryer, q UsageQuery) (int, error
 	return total, nil
 }
 
-
 // sortUsageModelBuckets 按请求数降序、模型名升序（与旧版 SQL ORDER BY 一致）。
 func sortUsageModelBuckets(buckets []UsageModelBucket) {
 	sort.Slice(buckets, func(i, j int) bool {

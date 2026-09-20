@@ -25,12 +25,11 @@ func TestAdminRoutesRegisterWithProtocolEndpoints(t *testing.T) {
 			"/api/admin/custom-protocols/schema",
 			"/api/admin/custom-protocols/preview",
 			"/api/admin/custom-protocols/test",
-			"/api/admin/custom-protocols/assist",
 			"/api/admin/custom-protocols/:id":
 			found++
 		}
 	}
-	if found != 7 {
-		t.Fatalf("expected 7 custom-protocol route entries (PUT+DELETE share :id), got %d", found)
+	if found != 6 {
+		t.Fatalf("expected 6 custom-protocol route entries (PUT+DELETE share :id), got %d", found)
 	}
 }

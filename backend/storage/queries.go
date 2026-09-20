@@ -1580,7 +1580,6 @@ func (s *Store) UsageDBPageStats(ctx context.Context) (UsageDBStats, error) {
 	return st, err
 }
 
-
 // VacuumUsageDB 执行 VACUUM 回收空闲页并截断 WAL。需要短暂独占写锁、
 // 约双倍磁盘空间，调用方必须自行限频（见 usageRetention.maybeVacuum）。
 func (s *Store) VacuumUsageDB(ctx context.Context) error {

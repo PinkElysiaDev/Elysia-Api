@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	crand "crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -44,7 +45,7 @@ func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
 	admin.PATCH("/model-sources/:id/enabled", s.adminSetSourceEnabled)
 	admin.GET("/model-catalog/status", s.adminModelCatalogStatus)
 	admin.POST("/model-catalog/refresh", s.adminModelCatalogRefresh)
-	// 协议设计器：协议 CRUD（SQLite）+ 字段目录 + 渲染预览 + 真实测试 + AI 助手。
+	// 协议设计器：协议 CRUD（SQLite）+ 字段目录 + 渲染预览 + 真实测试（AI 助手见 agent 路由）。
 	admin.GET("/custom-protocols", s.adminListCustomProtocols)
 	admin.GET("/custom-protocols/schema", s.adminCustomProtocolSchema)
 	admin.PUT("/custom-protocols/:id", s.adminUpsertCustomProtocol)
@@ -52,7 +53,6 @@ func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
 	admin.POST("/custom-protocols/preview", s.adminPreviewCustomProtocol)
 	admin.POST("/custom-protocols/test", s.adminTestCustomProtocol)
 	admin.POST("/custom-protocols/test-models", s.adminTestCustomProtocolModels)
-	admin.POST("/custom-protocols/assist", s.adminAssistCustomProtocol)
 	admin.GET("/models", s.adminListModels)
 	admin.POST("/models/refresh", s.adminRefreshModels)
 	// modelId 走 query 而非路径段：模型 ID 常含 "/"（如 org/model），路径参数
@@ -1225,7 +1225,11 @@ func slugID(value string) string {
 	// 清洗后为空（例如纯中文/纯符号名称），回退到时间戳 id，
 	// 避免 item.ID 为空导致存储层误报 "id is required"。
 	if slug == "" {
-		return fmt.Sprintf("item-%d", time.Now().UnixNano())
+		// 兜底 id 加随机后缀：UnixNano 在时钟粒度内可能重复（Windows 粒度
+		// 更粗），同名非 ASCII 名称连续创建会静默合并。
+		var suffix [2]byte
+		_, _ = crand.Read(suffix[:])
+		return fmt.Sprintf("item-%d-%x", time.Now().UnixNano(), suffix)
 	}
 	return slug
 }
