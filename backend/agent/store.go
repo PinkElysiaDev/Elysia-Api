@@ -52,9 +52,10 @@ type Session struct {
 	Title         string          `json:"title"`
 	Mode          string          `json:"mode"` // create|edit
 	ProtocolID    string          `json:"protocolId,omitempty"`
-	SeedConfig    json.RawMessage `json:"seedConfig,omitempty"`  // 编辑模式的初始配置
-	DraftConfig   json.RawMessage `json:"draftConfig,omitempty"` // 最新草稿
-	Plan          []PlanStep      `json:"plan,omitempty"`        // 工作方案清单
+	SeedConfig    json.RawMessage `json:"seedConfig,omitempty"`   // 编辑模式的初始配置
+	DraftConfig   json.RawMessage `json:"draftConfig,omitempty"`  // 最新草稿
+	DraftRestore  json.RawMessage `json:"draftRestore,omitempty"` // 草稿还原点：最近一轮修改前的副本（单槽覆盖）
+	Plan          []PlanStep      `json:"plan,omitempty"`         // 工作方案清单
 	TestBaseURL   string          `json:"testBaseUrl,omitempty"`
 	TestAPIKey    string          `json:"testApiKey,omitempty"` // 已解密；不出引擎
 	Settings      Settings        `json:"settings"`
@@ -81,10 +82,11 @@ type SessionStateUpdate struct {
 	PendingAction *PendingAction  `json:"pendingAction,omitempty"` // nil 且 ClearPending 时清空
 	ClearPending  bool            `json:"clearPending,omitempty"`
 	DraftConfig   json.RawMessage `json:"draftConfig,omitempty"`
-	Plan          []PlanStep      `json:"plan,omitempty"`        // 非 nil 时整体替换
-	Title         string          `json:"title,omitempty"`       // 空串表示不改
-	TestBaseURL   string          `json:"testBaseUrl,omitempty"` // 非空时更新测试目标 baseUrl
-	TestAPIKey    string          `json:"testApiKey,omitempty"`  // 非空时更新测试目标 API key（存储层加密）
+	DraftRestore  json.RawMessage `json:"draftRestore,omitempty"` // 非 nil 时覆盖草稿还原点（单槽）
+	Plan          []PlanStep      `json:"plan,omitempty"`         // 非 nil 时整体替换
+	Title         string          `json:"title,omitempty"`        // 空串表示不改
+	TestBaseURL   string          `json:"testBaseUrl,omitempty"`  // 非空时更新测试目标 baseUrl
+	TestAPIKey    string          `json:"testApiKey,omitempty"`   // 非空时更新测试目标 API key（存储层加密）
 }
 
 // Store 是引擎依赖的持久化接口（由 storage 包实现）。

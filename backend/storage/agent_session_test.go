@@ -193,6 +193,37 @@ func TestAgentSessionThinkingRoundtrip(t *testing.T) {
 	}
 }
 
+func TestAgentSessionDraftRestoreRoundtrip(t *testing.T) {
+	ctx := context.Background()
+	store := newAgentTestStore(t)
+	created, _ := store.CreateAgentSession(ctx, AgentSessionUpsert{Mode: agent.ModeCreate})
+	if len(created.DraftRestore) != 0 {
+		t.Fatalf("restore point must start empty")
+	}
+	if err := store.UpdateSessionState(ctx, created.ID, agent.SessionStateUpdate{DraftConfig: []byte(`{"a":1}`)}); err != nil {
+		t.Fatalf("set draft: %v", err)
+	}
+	snapshot := []byte(`{"a":0}`)
+	if err := store.UpdateSessionState(ctx, created.ID, agent.SessionStateUpdate{DraftRestore: snapshot}); err != nil {
+		t.Fatalf("set restore point: %v", err)
+	}
+	got, err := store.GetSession(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if string(got.DraftRestore) != string(snapshot) || string(got.DraftConfig) != `{"a":1}` {
+		t.Fatalf("restore=%s draft=%s", got.DraftRestore, got.DraftConfig)
+	}
+	// nil 增量不覆盖还原点
+	if err := store.UpdateSessionState(ctx, created.ID, agent.SessionStateUpdate{Title: "t"}); err != nil {
+		t.Fatalf("touch title: %v", err)
+	}
+	got2, _ := store.GetSession(ctx, created.ID)
+	if string(got2.DraftRestore) != string(snapshot) {
+		t.Fatalf("restore point overwritten by nil update: %s", got2.DraftRestore)
+	}
+}
+
 func TestAgentSessionPlanModeRoundtrip(t *testing.T) {
 	ctx := context.Background()
 	store := newAgentTestStore(t)

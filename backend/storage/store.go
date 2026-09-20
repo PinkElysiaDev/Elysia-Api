@@ -117,13 +117,14 @@ func (s *Store) migrate(ctx context.Context) error {
 		// AI 助手（协议 Agent）会话与消息：会话含设置/草稿/审批状态，
 		// 消息按 seq 单调排序完整保留轮次轨迹。test_api_key 走 secretCodec 加密。
 		`CREATE TABLE IF NOT EXISTS agent_sessions (
-			id TEXT PRIMARY KEY,
-			title TEXT NOT NULL DEFAULT '',
-			mode TEXT NOT NULL DEFAULT 'create',
-			protocol_id TEXT NOT NULL DEFAULT '',
-			seed_config TEXT NOT NULL DEFAULT '',
-			draft_config TEXT NOT NULL DEFAULT '',
-			test_base_url TEXT NOT NULL DEFAULT '',
+				id TEXT PRIMARY KEY,
+				title TEXT NOT NULL DEFAULT '',
+				mode TEXT NOT NULL DEFAULT 'create',
+				protocol_id TEXT NOT NULL DEFAULT '',
+				seed_config TEXT NOT NULL DEFAULT '',
+				draft_config TEXT NOT NULL DEFAULT '',
+				draft_restore TEXT NOT NULL DEFAULT '',
+				test_base_url TEXT NOT NULL DEFAULT '',
 			test_api_key TEXT NOT NULL DEFAULT '',
 			model_source_id TEXT NOT NULL DEFAULT '',
 			model_name TEXT NOT NULL DEFAULT '',
@@ -181,6 +182,11 @@ func (s *Store) migrate(ctx context.Context) error {
 	}
 	// 增量迁移：agent_sessions 增加计划模式列（plan_mode，先出方案用户确认后再执行）。
 	if _, err := s.db.ExecContext(ctx, `ALTER TABLE agent_sessions ADD COLUMN plan_mode INTEGER NOT NULL DEFAULT 0`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
+	// 增量迁移：agent_sessions 增加草稿还原点列（每轮修改前的快照，单槽覆盖）。
+	if _, err := s.db.ExecContext(ctx, `ALTER TABLE agent_sessions ADD COLUMN draft_restore TEXT NOT NULL DEFAULT ''`); err != nil &&
 		!strings.Contains(err.Error(), "duplicate column") {
 		return err
 	}

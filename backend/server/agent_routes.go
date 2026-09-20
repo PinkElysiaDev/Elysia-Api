@@ -41,6 +41,7 @@ func (s *Server) setupAgentRoutes(admin *gin.RouterGroup) {
 	admin.POST("/agent/sessions/:id/messages", s.adminSendAgentMessage)
 	admin.POST("/agent/sessions/:id/approve", s.adminApproveAgentAction)
 	admin.POST("/agent/sessions/:id/stop", s.adminStopAgentTurn)
+	admin.POST("/agent/sessions/:id/restore-draft", s.adminRestoreAgentDraft)
 }
 
 // protocolAgentEngine 惰性装配引擎（store 就绪后首次调用时构建）。
@@ -84,6 +85,7 @@ func agentSessionView(session *agent.Session) gin.H {
 		"id": session.ID, "title": session.Title, "mode": session.Mode, "protocolId": session.ProtocolID,
 		"seedConfig":    json.RawMessage(session.SeedConfig),
 		"draftConfig":   json.RawMessage(session.DraftConfig),
+		"draftRestore":  json.RawMessage(session.DraftRestore),
 		"settings":      session.Settings,
 		"status":        session.Status,
 		"pendingAction": session.PendingAction,
@@ -237,6 +239,38 @@ func (s *Server) adminUpdateAgentSession(c *gin.Context) {
 		return
 	}
 	respondOK(c, agentSessionView(session))
+}
+
+// adminRestoreAgentDraft 把草稿回滚到最近一轮修改前的还原点。
+func (s *Server) adminRestoreAgentDraft(c *gin.Context) {
+	store, ok := s.requireStore(c)
+	if !ok {
+		return
+	}
+	id := strings.TrimSpace(c.Param("id"))
+	if engine := s.protocolAgentEngine(); engine != nil && engine.IsRunning(id) {
+		respondFail(c, http.StatusConflict, "session_running", "会话轮次进行中，无法还原草稿")
+		return
+	}
+	session, err := store.GetAgentSession(c.Request.Context(), id)
+	if err != nil {
+		respondFail(c, http.StatusNotFound, "not_found", fmt.Sprintf("会话 %q 不存在", id))
+		return
+	}
+	if len(session.DraftRestore) == 0 {
+		respondFail(c, http.StatusConflict, "no_restore_point", "本会话还没有可用的草稿还原点")
+		return
+	}
+	if err := store.UpdateSessionState(c.Request.Context(), id, agent.SessionStateUpdate{DraftConfig: session.DraftRestore}); err != nil {
+		respondFail(c, http.StatusInternalServerError, "restore_failed", err.Error())
+		return
+	}
+	updated, err := store.GetAgentSession(c.Request.Context(), id)
+	if err != nil {
+		respondFail(c, http.StatusInternalServerError, "restore_failed", err.Error())
+		return
+	}
+	respondOK(c, agentSessionView(updated))
 }
 
 func (s *Server) adminDeleteAgentSession(c *gin.Context) {

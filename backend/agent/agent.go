@@ -243,6 +243,14 @@ func (e *Engine) startTurn(ctx context.Context, sessionID string, handle *turnHa
 	// 新轮次作废旧审批；审批恢复路径随后自行清理。
 	e.setStatus(ctx, sessionID, StatusRunning, resume == nil, events)
 
+	// 新轮次开始前快照当前草稿：还原点单槽覆盖，用户可回滚到上一轮修改前。
+	if resume == nil && len(session.DraftConfig) > 0 {
+		snapshot := append(json.RawMessage(nil), session.DraftConfig...)
+		if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{DraftRestore: snapshot}); err == nil {
+			session.DraftRestore = snapshot
+		}
+	}
+
 	if input != nil && (strings.TrimSpace(input.Text) != "" || len(input.Documents) > 0) {
 		seq, err := e.store.AppendMessage(ctx, sessionID, RoleUser, *input, "", nil)
 		if err != nil {

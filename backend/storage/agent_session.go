@@ -63,7 +63,7 @@ func (s *Store) CreateAgentSession(ctx context.Context, input AgentSessionUpsert
 
 // ListAgentSessions 按更新时间倒序返回会话摘要（不含消息、不含凭证）。
 func (s *Store) ListAgentSessions(ctx context.Context) ([]agent.Session, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, title, mode, protocol_id, seed_config, draft_config, plan_json,
+	rows, err := s.db.QueryContext(ctx, `SELECT id, title, mode, protocol_id, seed_config, draft_config, draft_restore, plan_json,
 		test_base_url, model_source_id, model_name, thinking_enabled, thinking_effort, plan_mode, allow_live_test, allow_save,
 		status, pending_action, created_at, updated_at
 		FROM agent_sessions ORDER BY updated_at DESC, id`)
@@ -75,16 +75,16 @@ func (s *Store) ListAgentSessions(ctx context.Context) ([]agent.Session, error) 
 	for rows.Next() {
 		var session agent.Session
 		var mode, createdAt, updatedAt string
-		var seed, draft, plan, testBaseURL string
+		var seed, draft, restore, plan, testBaseURL string
 		var pending sql.NullString
 		var thinkingEnabled, planMode int
-		if err := rows.Scan(&session.ID, &session.Title, &mode, &session.ProtocolID, &seed, &draft, &plan,
+		if err := rows.Scan(&session.ID, &session.Title, &mode, &session.ProtocolID, &seed, &draft, &restore, &plan,
 			&testBaseURL, &session.Settings.ModelSourceID, &session.Settings.ModelName,
 			&thinkingEnabled, &session.Settings.ThinkingEffort, &planMode, &session.Settings.AllowLiveTest, &session.Settings.AllowSave,
 			&session.Status, &pending, &createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
-		item, err := s.assembleAgentSession(session, mode, seed, draft, plan, testBaseURL, "", pending.String, thinkingEnabled != 0, planMode != 0, createdAt, updatedAt, false)
+		item, err := s.assembleAgentSession(session, mode, seed, draft, restore, plan, testBaseURL, "", pending.String, thinkingEnabled != 0, planMode != 0, createdAt, updatedAt, false)
 		if err != nil {
 			return nil, err
 		}
@@ -104,7 +104,7 @@ func (s *Store) GetSession(ctx context.Context, id string) (*agent.Session, erro
 }
 
 func (s *Store) getAgentSession(ctx context.Context, id string, withSecret bool) (*agent.Session, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id, title, mode, protocol_id, seed_config, draft_config, plan_json,
+	row := s.db.QueryRowContext(ctx, `SELECT id, title, mode, protocol_id, seed_config, draft_config, draft_restore, plan_json,
 		test_base_url, test_api_key, model_source_id, model_name, thinking_enabled, thinking_effort, plan_mode, allow_live_test, allow_save,
 		status, pending_action, created_at, updated_at
 		FROM agent_sessions WHERE id = ?`, strings.TrimSpace(id))
@@ -123,19 +123,19 @@ type rowScanner interface {
 func (s *Store) scanAgentSessionRow(row rowScanner, withSecret bool) (*agent.Session, error) {
 	var session agent.Session
 	var mode, createdAt, updatedAt string
-	var seed, draft, plan, testBaseURL, testAPIKey string
+	var seed, draft, restore, plan, testBaseURL, testAPIKey string
 	var pending sql.NullString
 	var thinkingEnabled, planMode int
-	if err := row.Scan(&session.ID, &session.Title, &mode, &session.ProtocolID, &seed, &draft, &plan,
+	if err := row.Scan(&session.ID, &session.Title, &mode, &session.ProtocolID, &seed, &draft, &restore, &plan,
 		&testBaseURL, &testAPIKey, &session.Settings.ModelSourceID, &session.Settings.ModelName,
 		&thinkingEnabled, &session.Settings.ThinkingEffort, &planMode, &session.Settings.AllowLiveTest, &session.Settings.AllowSave,
 		&session.Status, &pending, &createdAt, &updatedAt); err != nil {
 		return nil, err
 	}
-	return s.assembleAgentSession(session, mode, seed, draft, plan, testBaseURL, testAPIKey, pending.String, thinkingEnabled != 0, planMode != 0, createdAt, updatedAt, withSecret)
+	return s.assembleAgentSession(session, mode, seed, draft, restore, plan, testBaseURL, testAPIKey, pending.String, thinkingEnabled != 0, planMode != 0, createdAt, updatedAt, withSecret)
 }
 
-func (s *Store) assembleAgentSession(session agent.Session, mode, seed, draft, plan, testBaseURL, testAPIKey, pending string,
+func (s *Store) assembleAgentSession(session agent.Session, mode, seed, draft, restore, plan, testBaseURL, testAPIKey, pending string,
 	thinkingEnabled, planMode bool, createdAt, updatedAt string, withSecret bool) (*agent.Session, error) {
 	session.Mode = mode
 	if seed != "" {
@@ -143,6 +143,9 @@ func (s *Store) assembleAgentSession(session agent.Session, mode, seed, draft, p
 	}
 	if draft != "" {
 		session.DraftConfig = json.RawMessage(draft)
+	}
+	if restore != "" {
+		session.DraftRestore = json.RawMessage(restore)
 	}
 	if plan != "" {
 		var steps []agent.PlanStep
@@ -268,6 +271,10 @@ func (s *Store) UpdateSessionState(ctx context.Context, id string, update agent.
 	if len(update.DraftConfig) > 0 {
 		sets = append(sets, "draft_config = ?")
 		args = append(args, string(update.DraftConfig))
+	}
+	if update.DraftRestore != nil {
+		sets = append(sets, "draft_restore = ?")
+		args = append(args, string(update.DraftRestore))
 	}
 	if update.Plan != nil {
 		encoded, err := json.Marshal(update.Plan)

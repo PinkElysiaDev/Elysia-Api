@@ -100,6 +100,9 @@ func (f *fakeStore) UpdateSessionState(ctx context.Context, id string, update Se
 	if len(update.DraftConfig) > 0 {
 		session.DraftConfig = update.DraftConfig
 	}
+	if update.DraftRestore != nil {
+		session.DraftRestore = update.DraftRestore
+	}
 	if update.Title != "" {
 		session.Title = update.Title
 	}
@@ -486,6 +489,33 @@ func TestRunTurn_PlanModeBlocksGatedTools(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("plan-mode denial not fed back to model")
+	}
+}
+
+func TestRunTurn_SnapshotsDraftRestorePoint(t *testing.T) {
+	draftV1 := json.RawMessage(`{"id":"p1","v":1}`)
+	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, DraftConfig: draftV1, Settings: Settings{ModelName: "m1"}})
+	caller := &fakeCaller{responses: []scriptedResponse{{result: &CallResult{Text: "第一轮"}}}}
+	engine := newTestEngine(caller, store)
+
+	events, _ := engine.RunTurn(context.Background(), "s1", &UserContent{Text: "go"})
+	collectEvents(t, events)
+	session, _ := store.GetSession(context.Background(), "s1")
+	if string(session.DraftRestore) != string(draftV1) {
+		t.Fatalf("restore point = %s, want %s", session.DraftRestore, draftV1)
+	}
+
+	// 草稿变化后进入下一轮：还原点更新为新一轮开始前的值（单槽覆盖）。
+	draftV2 := json.RawMessage(`{"id":"p1","v":2}`)
+	if err := store.UpdateSessionState(context.Background(), "s1", SessionStateUpdate{DraftConfig: draftV2}); err != nil {
+		t.Fatalf("set draft: %v", err)
+	}
+	caller2 := &fakeCaller{responses: []scriptedResponse{{result: &CallResult{Text: "第二轮"}}}}
+	events2, _ := newTestEngine(caller2, store).RunTurn(context.Background(), "s1", &UserContent{Text: "again"})
+	collectEvents(t, events2)
+	session2, _ := store.GetSession(context.Background(), "s1")
+	if string(session2.DraftRestore) != string(draftV2) {
+		t.Fatalf("restore point not overwritten: %s, want %s", session2.DraftRestore, draftV2)
 	}
 }
 
