@@ -1,6 +1,5 @@
 import { Check, ChevronDown, Gauge, Shield } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { Switch } from '@/components/ui/switch'
 import type { AgentPermission, AgentSettings, AgentThinkingEffort } from '@/lib/agent/types'
 import { cn } from '@/lib/utils'
 import { Z_INDEX } from '@/lib/z-index'
@@ -140,18 +139,12 @@ export function PermissionMenu({
     >
       {() => (
         <>
-          <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5">
-            <Switch
-              id="agent-plan-mode"
-              checked={planMode}
-              onCheckedChange={(value) => onChange({ settings: { planMode: value } })}
-              className="scale-90"
-            />
-            <label htmlFor="agent-plan-mode" className="min-w-0 cursor-pointer">
-              <span className="block text-xs leading-5">计划模式</span>
-              <span className="block text-2xs leading-4 text-muted-foreground">先形成方案，确认后才执行修改</span>
-            </label>
-          </div>
+          <MenuOption
+            selected={planMode}
+            label="计划模式"
+            hint="先形成方案，确认后才执行修改"
+            onClick={() => onChange({ settings: { planMode: !planMode } })}
+          />
           <div className="my-1 h-px bg-border/60" />
           {PERMISSION_LEVELS.map((item) => (
             <MenuOption
@@ -198,7 +191,7 @@ export function ThinkingMenu({
   return (
     <MenuShell
       icon={<Gauge className={cn('h-3.5 w-3.5 shrink-0', enabled ? 'text-amber' : 'text-muted-foreground')} />}
-      label={enabled ? `思考 · ${effortLabel(effort)}` : '思考关闭'}
+      label={enabled ? effortLabel(effort) : '思考关闭'}
       title="思考开关与推理强度"
       panelLabel="思考与推理强度"
       panelClassName="w-[min(220px,86vw)]"
@@ -218,7 +211,7 @@ export function ThinkingMenu({
             <MenuOption
               key={item.value || 'default'}
               selected={enabled && effort === item.value}
-              label={item.value === '' ? '思考 · 默认' : `思考 · ${item.label}`}
+              label={item.label}
               onClick={() => {
                 onChange({ settings: { thinkingEnabled: true, thinkingEffort: item.value } })
                 close()

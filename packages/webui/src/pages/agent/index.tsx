@@ -239,7 +239,7 @@ export function AgentPage() {
         onDelete={(id) => void handleDelete(id)}
       />
 
-      <div className={cn('flex min-w-0 flex-1 flex-col', !panelOpen && 'mx-auto w-full max-w-[880px]')}>
+      <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-2 px-4 pb-2 pt-1">
           <Sparkles className="h-4 w-4 text-rose" />
           <div className="min-w-0 flex-1">
@@ -295,19 +295,33 @@ export function AgentPage() {
         )}
       </div>
 
-      {session && panelOpen ? (
-        <ContextPanel
-          key={session.id}
-          session={session}
-          messages={messages}
-          live={live}
-          tabs={tabs}
-          activeTab={activeTab}
-          onTabSelect={setActiveTab}
-          onTabClose={closeContextTab}
-          onAutoOpen={(tab) => openContextTab(tab, false)}
-          onConfirmPlan={() => void handleConfirmPlan()}
-        />
+      {session ? (
+        <div
+          className={cn(
+            'h-full shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out',
+            panelOpen ? 'w-80' : 'w-0',
+          )}
+        >
+          <div
+            className={cn(
+              'h-full w-80 transition-opacity duration-300',
+              panelOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
+            )}
+          >
+            <ContextPanel
+              key={session.id}
+              session={session}
+              messages={messages}
+              live={live}
+              tabs={tabs}
+              activeTab={activeTab}
+              onTabSelect={setActiveTab}
+              onTabClose={closeContextTab}
+              onAutoOpen={(tab) => openContextTab(tab, false)}
+              onConfirmPlan={() => void handleConfirmPlan()}
+            />
+          </div>
+        </div>
       ) : null}
       {confirmDialog}
     </div>

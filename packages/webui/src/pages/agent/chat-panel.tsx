@@ -2,7 +2,9 @@ import { AlertTriangle, ArrowUp, FileText, Plus, Square, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/input'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useToast } from '@/components/ui/use-toast'
+import { useModels } from '@/lib/hooks'
 import type { Model, ModelSource } from '@/lib/types'
 import type {
   AgentContextTab,
@@ -74,6 +76,12 @@ export function ChatPanel({
   const approval = live.approvalPending
   const settings = session.settings
   const needsModel = !settings.modelSourceId || !settings.modelName
+
+  const { data: models } = useModels()
+  const selectedModel = (models ?? []).find(
+    (model) => model.sourceId === settings.modelSourceId && model.name === settings.modelName,
+  )
+  const contextLimit = selectedModel?.maxTokens ?? 0
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -227,11 +235,11 @@ export function ChatPanel({
         <div ref={bottomRef} />
       </div>
 
-      {/* ComposerDock：页面唯一抬升的容器——输入 + 全部会话设置。 */}
+      {/* ComposerDock：默认隐形，hover / 聚焦时卡片浮现。 */}
       <div className="px-4 pb-4">
-        <div className="rounded-xl border border-border bg-card transition-shadow focus-within:border-rose focus-within:ring-[3px] focus-within:ring-wash">
+        <div className="rounded-xl border border-transparent bg-transparent transition-colors duration-200 hover:border-border hover:bg-card focus-within:border-rose focus-within:bg-card focus-within:ring-[3px] focus-within:ring-wash">
           {editing ? (
-            <div className="border-b border-border/50 px-3 pb-2 pt-2.5">
+            <div className="px-3 pb-2 pt-2.5">
               <div className="mb-1.5 flex items-center gap-2 text-2xs text-muted-foreground">
                 编辑历史消息并在这里重发（之后的消息将被替换）
                 <button type="button" className="ml-auto rounded p-0.5 hover:text-foreground" onClick={() => setEditing(null)}>
@@ -260,7 +268,7 @@ export function ChatPanel({
           ) : null}
 
           {documents.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5 border-b border-border/50 px-3 py-2">
+            <div className="flex flex-wrap gap-1.5 px-3 py-2">
               {documents.map((doc, index) => (
                 <span key={index} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-2xs">
                   <FileText className="h-3 w-3 text-muted-foreground" />
@@ -304,8 +312,8 @@ export function ChatPanel({
             }}
           />
 
-          {/* 底部控制条：附加 / 权限 / 统计 / 模型 / 思考 / 发送。 */}
-          <div className="flex flex-wrap items-center gap-2 border-t border-border/50 px-2.5 py-2">
+          {/* 底部控制条：左侧 附加/权限；右侧 模型/思考/上下文占用/发送。 */}
+          <div className="flex flex-wrap items-center gap-2 px-2.5 py-2">
             <Button
               variant="ghost"
               size="icon"
@@ -317,54 +325,118 @@ export function ChatPanel({
               <Plus className="h-4 w-4" />
             </Button>
             <PermissionMenu settings={settings} disabled={busy} onChange={(patch) => void save(patch)} />
-            {usageStat ? (
-              <span
-                className="tnum whitespace-nowrap text-2xs text-muted-foreground"
-                title={`本会话累计：↑${usageStat.input} ↓${usageStat.output}${usageStat.cached > 0 ? ` · 缓存命中 ${usageStat.cached}` : ''} tokens`}
-              >
-                {compactNumber(usageStat.total)} tokens
-                {usageStat.hitRate != null ? ` · 命中 ${formatHitRate(usageStat.hitRate)}` : ''}
-              </span>
-            ) : null}
-            <ModelPicker
-              sourceId={settings.modelSourceId}
-              modelName={settings.modelName}
-              disabled={busy}
-              onSelect={handleModelSelect}
-            />
-            <ThinkingMenu settings={settings} disabled={busy} onChange={(patch) => void save(patch)} />
             <span
               className={cn(
-                'ml-auto text-2xs text-muted-foreground transition-opacity',
+                'text-2xs text-muted-foreground transition-opacity',
                 saving ? 'opacity-100' : 'opacity-0',
               )}
             >
               保存中…
             </span>
-            {busy ? (
-              <Button
-                variant="destructive"
-                size="icon"
-                className="h-8 w-8 shrink-0 rounded-full"
-                title="停止本轮"
-                onClick={onStop}
-              >
-                <Square className="h-3.5 w-3.5" />
-              </Button>
-            ) : (
-              <Button
-                size="icon"
-                className="h-8 w-8 shrink-0 rounded-full"
-                title={needsModel ? '请先选择模型' : '发送（Ctrl+Enter）'}
-                disabled={needsModel || (!text.trim() && documents.length === 0)}
-                onClick={submit}
-              >
-                <ArrowUp className="h-4 w-4" />
-              </Button>
-            )}
+            <div className="ml-auto flex items-center gap-2">
+              <ModelPicker
+                sourceId={settings.modelSourceId}
+                modelName={settings.modelName}
+                disabled={busy}
+                onSelect={handleModelSelect}
+              />
+              <ThinkingMenu settings={settings} disabled={busy} onChange={(patch) => void save(patch)} />
+              <ContextGauge usage={usageStat} contextLimit={contextLimit} />
+              {busy ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
+                  title="停止本轮"
+                  onClick={onStop}
+                >
+                  <Square className="h-3.5 w-3.5" />
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
+                  title={needsModel ? '请先选择模型' : '发送（Ctrl+Enter）'}
+                  disabled={needsModel || (!text.trim() && documents.length === 0)}
+                  onClick={submit}
+                >
+                  <ArrowUp className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
     </div>
+  )
+}
+
+interface SessionUsageStat {
+  input: number
+  output: number
+  cached: number
+  total: number
+  hitRate: number | null
+}
+
+/** 上下文占用指示器：环形进度 + 悬浮明细（会话累计 tokens / 缓存命中率）。 */
+function ContextGauge({ usage, contextLimit }: { usage: SessionUsageStat | null; contextLimit: number }) {
+  const hasUsage = !!usage && usage.total > 0
+  const ratio = hasUsage && contextLimit > 0 ? Math.min(1, usage.total / contextLimit) : 0
+  const color = ratio >= 0.9 ? 'var(--ember)' : ratio >= 0.7 ? 'var(--amber)' : 'var(--jade)'
+  const radius = 6
+  const circumference = 2 * Math.PI * radius
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label="会话用量与上下文占用"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-wash"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+            <circle cx="8" cy="8" r={radius} fill="none" strokeWidth="2" className="stroke-border" />
+            {hasUsage && contextLimit > 0 ? (
+              <circle
+                cx="8"
+                cy="8"
+                r={radius}
+                fill="none"
+                stroke={color}
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={circumference * (1 - ratio)}
+                transform="rotate(-90 8 8)"
+              />
+            ) : null}
+          </svg>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="space-y-0.5 text-2xs">
+        {hasUsage && usage ? (
+          <>
+            <p className="tnum">会话累计：↑{compactNumber(usage.input)} ↓{compactNumber(usage.output)} tokens</p>
+            {usage.cached > 0 ? (
+              <p className="tnum">
+                缓存命中：{compactNumber(usage.cached)}{usage.hitRate != null ? `（${formatHitRate(usage.hitRate)}）` : ''}
+              </p>
+            ) : null}
+            <p className="tnum">共 {compactNumber(usage.total)} tokens</p>
+            {contextLimit > 0 ? (
+              <p className="tnum text-muted-foreground">
+                上下文占用 {formatHitRate(ratio)}（按模型 MaxTokens {compactNumber(contextLimit)} 估算）
+              </p>
+            ) : (
+              <p className="text-muted-foreground">模型未设置 MaxTokens，无法估算上下文占用</p>
+            )}
+          </>
+        ) : (
+          <p>本会话暂无 token 消耗</p>
+        )}
+      </TooltipContent>
+    </Tooltip>
   )
 }
