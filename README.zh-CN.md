@@ -249,7 +249,7 @@ Vite dev server 默认代理到 `http://127.0.0.1:8765`。
 
 ### Maheshvara 与自定义协议
 
-跨协议转换统一经过 Maheshvara 核心请求/响应模型：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 和 Gemini GenerateContent 都先解析为 Maheshvara，再按上游协议渲染。模型源的 `platform` 可以写成 `custom:<协议ID>`（WebUI 可直接选择并填写 ID）；协议在 WebUI 的「协议设计器」页面以字段级映射可视化构建（请求体/返回体逐字段声明与 Maheshvara 的对应关系，AI 助手可读取文档自动生成并离线验证），保存即热生效。自定义协议源使用手动模型列表，不执行自动模型发现。协议配置结构示例：
+跨协议转换统一经过 Maheshvara 核心请求/响应模型：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 和 Gemini GenerateContent 都先解析为 Maheshvara，再按上游协议渲染。模型源的 `platform` 可以写成 `custom:<协议ID>`（WebUI 可直接选择并填写 ID）；协议在 WebUI 的「协议设计器」页面以字段级映射可视化构建（请求体/返回体逐字段声明与 Maheshvara 的对应关系），保存即热生效；「AI 助手」页内置通用智能体：上传 API 文档即可接入协议（草稿 → 离线自检 → 经审批真实测试 → 保存），也能新增/修改模型源与模型组、查询用量并生成图表、下钻分析失败请求——写操作与出站请求均需审批，会话历史可追溯，模型与思考等级可调，Agent 用量计入统计页。自定义协议源使用手动模型列表，不执行自动模型发现。协议配置结构示例：
 
 ```json
 {

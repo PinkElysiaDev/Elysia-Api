@@ -215,6 +215,58 @@ Returns log storage status: `db` (`totalBytes`, `logicalBytes`, `pageCount`, `pa
 
 Triggers one retention pass asynchronously (TTL / record-count / storage-cap cleanup plus orphan asset sweep). Returns `{ accepted }`; `false` means a pass is already running.
 
+## Protocol Agent (AI Assistant)
+
+The AI assistant (`/agent` page) is a general-purpose, server-side tool-calling agent for the gateway: protocol engineering (read API docs, draft custom protocol configs, offline preview, user-approved upstream tests, save), model source & model group management (create/update, user-approved), usage statistics with inline charts (```chart fenced specs rendered by the WebUI), and error/log analysis (failed-request drill-down with captured bodies). Test credentials are supplied in the
+conversation: the model passes them as `test_upstream` / `test_model_list` arguments (`baseUrl` / `apiKey`), they are
+shown masked on the approval card, and remembered (encrypted) for the rest of the session. A `update_plan` tool lets
+the agent maintain a step checklist surfaced live in the side panel (plan / draft / progress tabs). Sessions and messages persist in SQLite (`agent_sessions` / `agent_messages`); every model call is recorded into usage stats under key name `AI 协议助手` with `relayMode=agent-assist`.
+
+### `GET /api/admin/agent/sessions`
+
+Lists sessions (newest first). Each item: `id`, `title`, `mode` (`create`|`edit`), `protocolId`, `seedConfig`, `draftConfig`, `settings`, `status` (`idle`|`running`|`waiting_approval`), `pendingAction`, `createdAt`, `updatedAt`. The API key is never returned (only `settings.testApiKeySet`).
+
+### `POST /api/admin/agent/sessions`
+
+Creates a session: `{ title?, mode?: "create"|"edit", protocolId?, settings? }`. Edit mode requires an existing `protocolId` and seeds the draft with its stored config.
+
+### `GET /api/admin/agent/sessions/:id`
+
+Returns `{ session, messages }` — the full message history (`seq`-ordered; roles: `user` / `assistant` / `tool_result` / `approval` / `system`).
+
+### `PATCH /api/admin/agent/sessions/:id`
+
+Updates settings: `{ title?, settings?: { modelSourceId, modelName, thinkingEnabled, thinkingEffort ("low"|"medium"|"high"|"max"|"adaptive"), allowLiveTest, allowSave ("ask"|"always"|"never"), testBaseUrl }, apiKey?, clearApiKey? }`. The API key is encrypted at rest.
+
+### `DELETE /api/admin/agent/sessions/:id` · `DELETE /api/admin/agent/sessions/:id/messages?afterSeq=0`
+
+Deletes a session (stops a running turn first) or clears/truncates its messages while keeping the session, draft, and settings.
+
+### `POST /api/admin/agent/sessions/:id/messages`
+
+Sends a user message and streams the turn over SSE. Body: `{ content?, documents?: [{ name, mime?, text? | dataUrl? }], afterSeq? }` — `afterSeq` truncates messages with `seq > afterSeq` first, covering retry / edit-resend / regenerate. Responds `text/event-stream` with named events:
+
+- `status` — phase text (calling model / executing tool)
+- `text_delta` / `reasoning_delta` — streamed body / chain-of-thought increments
+- `tool_call` / `tool_result` — tool invocation and result (persisted)
+- `draft_updated` — the working config draft changed
+- `plan_updated` — the working plan checklist changed (`update_plan` tool)
+- `message` — a message was persisted (full message incl. `seq`)
+- `approval_required` — the turn paused on a gated action (test / save); payload carries the pending tool calls
+- `turn_done` — turn finished (aggregated usage, rounds, duration)
+- `error` — turn failed (`retryable` flag)
+
+Turns are detached from the HTTP request: closing the stream does not cancel the turn; results are persisted and visible on reconnect. `409` if a turn is already running.
+
+### `POST /api/admin/agent/sessions/:id/approve`
+
+Resolves a pending approval: `{ approved, baseUrl?, apiKey?, note? }` and streams the resumed turn over SSE (same event format). Denying synthesizes tool-result denials so the agent can adapt.
+
+### `POST /api/admin/agent/sessions/:id/stop`
+
+Cancels the running turn (partial output is persisted). Returns `{ stopped }`.
+
+
 ## Logs and Health
 
 - `GET /api/admin/logs?level=info&limit=100&offset=0`
