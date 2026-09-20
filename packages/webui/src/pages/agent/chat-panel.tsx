@@ -206,7 +206,7 @@ export function ChatPanel({
 
   return (
     <div
-      className="mx-auto flex min-h-0 w-4/5 min-w-0 flex-1 flex-col"
+      className="mx-auto flex min-h-0 w-4/5 min-w-0 flex-col"
       onDragOver={(event) => {
         event.preventDefault()
         setDragOver(true)
