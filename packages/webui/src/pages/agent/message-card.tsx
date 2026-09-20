@@ -54,7 +54,10 @@ function Collapse({
       <button
         type="button"
         className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-muted-foreground hover:text-foreground"
-        onClick={() => setOpen((value) => !value)}
+        onClick={(event) => {
+          event.stopPropagation()
+          setOpen((value) => !value)
+        }}
       >
         {icon}
         <span className="flex-1 truncate">{title}</span>
@@ -153,9 +156,12 @@ export interface MessageActions {
 export function MessageCard({
   message,
   actions,
+  onOpenActivity,
 }: {
   message: AgentMessage
   actions?: MessageActions
+  /** 点击工具执行行 → 打开侧栏动态页。 */
+  onOpenActivity?: () => void
 }) {
   if (message.role === 'user') {
     const content = message.content as AgentUserContent
@@ -228,7 +234,14 @@ export function MessageCard({
 
   if (message.role === 'tool_result') {
     return (
-      <div className="max-w-[92%] border-l-2 border-border/60 pl-3">
+      <div
+        className={cn(
+          'max-w-[92%] border-l-2 border-border/60 pl-3 transition-colors',
+          onOpenActivity && 'cursor-pointer hover:border-rose/40',
+        )}
+        title={onOpenActivity ? '在侧栏动态页查看详情' : undefined}
+        onClick={onOpenActivity}
+      >
         <ToolResultCard content={message.content as AgentToolResultContent} />
       </div>
     )
@@ -261,7 +274,7 @@ export function MessageCard({
 }
 
 /** 进行中的现场气泡（流式增量 + 工具卡片）。 */
-export function LiveAssistantView({ live }: { live: AgentLiveState }) {
+export function LiveAssistantView({ live, onOpenActivity }: { live: AgentLiveState; onOpenActivity?: () => void }) {
   const hasContent = live.text || live.reasoning
   return (
     <div className="flex flex-col gap-2">
@@ -277,7 +290,12 @@ export function LiveAssistantView({ live }: { live: AgentLiveState }) {
       {live.toolCards.map((card) => (
         <div
           key={card.callId}
-          className="flex max-w-[92%] items-center gap-1.5 border-l-2 border-border/60 pl-3 text-xs"
+          className={cn(
+            'flex max-w-[92%] items-center gap-1.5 border-l-2 border-border/60 pl-3 text-xs transition-colors',
+            onOpenActivity && 'cursor-pointer hover:border-rose/40',
+          )}
+          title={onOpenActivity ? '在侧栏动态页查看详情' : undefined}
+          onClick={onOpenActivity}
         >
           <Wrench className="h-3.5 w-3.5 text-muted-foreground/60" />
           <span className="font-medium">{agentToolLabel(card.name)}</span>

@@ -1,4 +1,4 @@
-import { PanelRightClose, PanelRightOpen, Sparkles } from 'lucide-react'
+import { Eraser, PanelRightClose, PanelRightOpen, Sparkles } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { TonePill } from '@/components/badges'
@@ -14,13 +14,22 @@ import {
   listAgentSessions,
   updateAgentSession,
 } from '@/lib/agent/api'
-import type { AgentDocument, AgentMessage, AgentSession, AgentSettings, AgentStreamEvent } from '@/lib/agent/types'
+import {
+  AGENT_CONTEXT_TAB_ORDER,
+  type AgentContextTab,
+  type AgentDocument,
+  type AgentMessage,
+  type AgentSession,
+  type AgentSettings,
+  type AgentStreamEvent,
+} from '@/lib/agent/types'
 import { useAgentStream } from '@/lib/agent/use-agent-stream'
+import { cn } from '@/lib/utils'
 import { ChatPanel } from './chat-panel'
 import { ContextPanel } from './context-panel'
 import { SessionList } from './session-list'
 
-/** AI 助手页：会话列表 | 聊天 | 多用途侧栏（方案/草稿/进展）。 */
+/** AI 助手页：会话列表 | 聊天 | 通用标签页侧栏（方案/配置/动态按需打开）。 */
 export function AgentPage() {
   const { toast } = useToast()
   const { confirm, dialog: confirmDialog } = useConfirm()
@@ -29,8 +38,10 @@ export function AgentPage() {
   const [activeId, setActiveId] = useState<string | undefined>()
   const [session, setSession] = useState<AgentSession | undefined>()
   const [messages, setMessages] = useState<AgentMessage[]>([])
-  const [draftOpen, setDraftOpen] = useState(true)
+  const [panelOpen, setPanelOpen] = useState(true)
   const [bootstrapped, setBootstrapped] = useState(false)
+  const [tabs, setTabs] = useState<AgentContextTab[]>([])
+  const [activeTab, setActiveTab] = useState<AgentContextTab | null>(null)
 
   const { data: sessions, mutate: mutateSessions } = useSWRSessionList()
 
@@ -81,6 +92,39 @@ export function AgentPage() {
     const timer = window.setInterval(() => void mutateSessions(), 3000)
     return () => window.clearInterval(timer)
   }, [live.running, mutateSessions])
+
+  /** 切换会话：标签页状态归零。 */
+  useEffect(() => {
+    setTabs([])
+    setActiveTab(null)
+  }, [activeId])
+
+  /** 打开（必要时追加）并激活一个侧栏标签；reveal 为 true 时同时展开侧栏。 */
+  const openContextTab = useCallback((tab: AgentContextTab, reveal = true) => {
+    setTabs((current) =>
+      current.includes(tab)
+        ? current
+        : [...current, tab].sort((a, b) => AGENT_CONTEXT_TAB_ORDER.indexOf(a) - AGENT_CONTEXT_TAB_ORDER.indexOf(b)),
+    )
+    setActiveTab(tab)
+    if (reveal) setPanelOpen(true)
+  }, [])
+
+  const closeContextTab = useCallback(
+    (tab: AgentContextTab) => {
+      const next = tabs.filter((item) => item !== tab)
+      setTabs(next)
+      setActiveTab((active) => (active === tab ? next[next.length - 1] ?? null : active))
+    },
+    [tabs],
+  )
+
+  const togglePanel = useCallback(() => {
+    setPanelOpen((value) => !value)
+    if (!panelOpen && activeTab == null && tabs.length > 0) {
+      setActiveTab(tabs[tabs.length - 1] ?? null)
+    }
+  }, [activeTab, panelOpen, tabs])
 
   const createSession = useCallback(
     async (input?: { mode: 'create' | 'edit'; protocolId?: string }) => {
@@ -144,6 +188,13 @@ export function AgentPage() {
     [mutateSessions, session, toast],
   )
 
+  /** 计划模式：确认执行 → 关闭计划模式并以用户消息通知助手开始执行。 */
+  const handleConfirmPlan = useCallback(async () => {
+    if (!session || live.running) return
+    await handleSettingsChange({ settings: { planMode: false } })
+    send({ content: '确认执行当前方案，请开始执行。' })
+  }, [handleSettingsChange, live.running, send, session])
+
   const handleClearHistory = useCallback(async () => {
     if (!session) return
     try {
@@ -174,8 +225,9 @@ export function AgentPage() {
     if (session?.status === 'waiting_approval' && live.approvalPending) {
       return { text: '待审批', color: 'var(--amber)' }
     }
+    if (session?.settings.planMode) return { text: '计划模式', color: 'var(--amber)' }
     return null
-  }, [live.approvalPending, live.running, session?.status])
+  }, [live.approvalPending, live.running, session?.settings.planMode, session?.status])
 
   return (
     <div className="flex h-[max(560px,calc(100dvh-102px))] min-h-0">
@@ -187,7 +239,7 @@ export function AgentPage() {
         onDelete={(id) => void handleDelete(id)}
       />
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className={cn('flex min-w-0 flex-1 flex-col', !panelOpen && 'mx-auto w-full max-w-[880px]')}>
         <div className="flex items-center gap-2 px-4 pb-2 pt-1">
           <Sparkles className="h-4 w-4 text-rose" />
           <div className="min-w-0 flex-1">
@@ -203,29 +255,39 @@ export function AgentPage() {
           {statusBadge ? (
             <TonePill color={statusBadge.color} className="text-2xs">{statusBadge.text}</TonePill>
           ) : null}
-          <Button variant="ghost" size="icon" className="h-8 w-8" title={draftOpen ? '收起侧栏' : '展开侧栏'} onClick={() => setDraftOpen((value) => !value)}>
-            {draftOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+          {session ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              title="清空本会话消息（保留草稿与设置）"
+              disabled={live.running || messages.length === 0}
+              onClick={() => void handleClearHistory()}
+            >
+              <Eraser className="h-4 w-4" />
+            </Button>
+          ) : null}
+          <Button variant="ghost" size="icon" className="h-8 w-8" title={panelOpen ? '收起侧栏' : '展开侧栏'} onClick={togglePanel}>
+            {panelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
           </Button>
         </div>
 
         {session ? (
-          <>
-            <ChatPanel
-              session={session}
-              messages={messages}
-              live={live}
-              onSettingsChange={handleSettingsChange}
-              onSend={(input: { content?: string; documents?: AgentDocument[]; afterSeq?: number }) => {
-                if (input.afterSeq != null) {
-                  setMessages((current) => current.filter((message) => message.seq <= input.afterSeq!))
-                }
-                send(input)
-              }}
-              onApprove={handleApprove}
-              onStop={handleStop}
-              onClearHistory={() => void handleClearHistory()}
-            />
-          </>
+          <ChatPanel
+            session={session}
+            messages={messages}
+            live={live}
+            onSettingsChange={handleSettingsChange}
+            onSend={(input: { content?: string; documents?: AgentDocument[]; afterSeq?: number }) => {
+              if (input.afterSeq != null) {
+                setMessages((current) => current.filter((message) => message.seq <= input.afterSeq!))
+              }
+              send(input)
+            }}
+            onApprove={handleApprove}
+            onStop={handleStop}
+            onOpenContextTab={(tab) => openContextTab(tab, true)}
+          />
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
             左侧选择一个会话，或点击「新会话」开始
@@ -233,7 +295,20 @@ export function AgentPage() {
         )}
       </div>
 
-      {session && draftOpen ? <ContextPanel session={session} messages={messages} live={live} /> : null}
+      {session && panelOpen ? (
+        <ContextPanel
+          key={session.id}
+          session={session}
+          messages={messages}
+          live={live}
+          tabs={tabs}
+          activeTab={activeTab}
+          onTabSelect={setActiveTab}
+          onTabClose={closeContextTab}
+          onAutoOpen={(tab) => openContextTab(tab, false)}
+          onConfirmPlan={() => void handleConfirmPlan()}
+        />
+      ) : null}
       {confirmDialog}
     </div>
   )

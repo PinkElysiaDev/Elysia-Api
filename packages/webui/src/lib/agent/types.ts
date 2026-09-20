@@ -5,11 +5,19 @@ export type AgentSessionStatus = 'idle' | 'running' | 'waiting_approval'
 export type AgentPermission = 'ask' | 'always' | 'never'
 export type AgentThinkingEffort = '' | 'low' | 'medium' | 'high' | 'max' | 'adaptive'
 
+/** 侧栏标签页（通用窗口：方案 / 配置详情 / 工具动态）。 */
+export type AgentContextTab = 'plan' | 'draft' | 'activity'
+
+/** 标签的规范排序（追加开页时保持稳定顺序）。 */
+export const AGENT_CONTEXT_TAB_ORDER: AgentContextTab[] = ['plan', 'draft', 'activity']
+
 export interface AgentSettings {
   modelSourceId: string
   modelName: string
   thinkingEnabled: boolean
   thinkingEffort?: AgentThinkingEffort
+  /** 计划模式：先产出方案，用户确认后才放行修改与出站。 */
+  planMode?: boolean
   allowLiveTest?: AgentPermission
   allowSave?: AgentPermission
   testBaseUrl?: string
@@ -95,6 +103,7 @@ export interface AgentUsage {
   output_tokens?: number
   total_tokens?: number
   reasoning_tokens?: number
+  /** 后端透传完整 MaheshvaraUsage；缓存命中经 index signature 读取（cached_input_tokens）。 */
   [key: string]: unknown
 }
 
