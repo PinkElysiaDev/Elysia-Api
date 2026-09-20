@@ -43,6 +43,11 @@ export async function deleteAgentSession(id: string): Promise<void> {
   await request(`/agent/sessions/${id}`, { method: 'DELETE' })
 }
 
+/** 把草稿回滚到最近一轮修改前的还原点（返回更新后的会话）。 */
+export async function restoreAgentDraft(id: string): Promise<AgentSession> {
+  return request<AgentSession>(`/agent/sessions/${id}/restore-draft`, { method: 'POST' })
+}
+
 /** 清空会话消息（afterSeq=0 全清，保留会话与草稿）。 */
 export async function clearAgentMessages(id: string, afterSeq = 0): Promise<void> {
   await request(`/agent/sessions/${id}/messages`, { method: 'DELETE', query: { afterSeq } })

@@ -44,6 +44,8 @@ export interface AgentSession {
   protocolId?: string
   seedConfig?: unknown
   draftConfig?: unknown
+  /** 草稿还原点：最近一轮修改前的副本（单槽覆盖，每轮更新）。 */
+  draftRestore?: unknown
   plan?: AgentPlanStep[]
   settings: AgentSettings
   status: AgentSessionStatus

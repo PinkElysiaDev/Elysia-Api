@@ -4,6 +4,7 @@ import {
   Circle,
   ExternalLink,
   FileCode2,
+  History,
   ListChecks,
   Loader2,
   Play,
@@ -49,6 +50,8 @@ export interface ContextPanelProps {
   onAutoOpen: (tab: AgentContextTab) => void
   /** 计划模式下确认执行当前方案（关闭计划模式并开始执行）。 */
   onConfirmPlan: () => void
+  /** 把草稿回滚到最近一轮修改前的还原点。 */
+  onRestoreDraft: () => void
 }
 
 export function ContextPanel({
@@ -61,6 +64,7 @@ export function ContextPanel({
   onTabClose,
   onAutoOpen,
   onConfirmPlan,
+  onRestoreDraft,
 }: ContextPanelProps) {
   const pinned = useRef(false)
   const wasRunning = useRef(false)
@@ -155,7 +159,7 @@ export function ContextPanel({
         ) : activeTab === 'plan' ? (
           <PlanView steps={plan} planMode={!!session.settings.planMode} busy={live.running} onConfirm={onConfirmPlan} />
         ) : activeTab === 'draft' ? (
-          <DraftView session={session} />
+          <DraftView session={session} busy={live.running} onRestore={onRestoreDraft} />
         ) : activeTab === 'activity' ? (
           <ActivityView messages={messages} live={live} />
         ) : null}
@@ -230,7 +234,7 @@ const DRAFT_SECTIONS: { key: string; label: string }[] = [
   { key: 'stream', label: '流式解析（SSE 帧）' },
 ]
 
-function DraftView({ session }: { session: AgentSession }) {
+function DraftView({ session, busy, onRestore }: { session: AgentSession; busy: boolean; onRestore: () => void }) {
   const navigate = useNavigate()
   const draft = session.draftConfig
   const draftText = draft == null ? '' : typeof draft === 'string' ? draft : JSON.stringify(draft, null, 2)
@@ -239,6 +243,9 @@ function DraftView({ session }: { session: AgentSession }) {
     : null
   const protocolId = draftObject ? String(draftObject.id ?? '') : ''
   const protocolName = draftObject ? String(draftObject.name ?? '') : ''
+  const restoreText = session.draftRestore == null ? '' : JSON.stringify(session.draftRestore)
+  const canRestore =
+    restoreText !== '' && draftText !== '' && restoreText !== JSON.stringify(draft ?? null) && !busy
 
   if (!draftText) {
     return (
@@ -275,7 +282,7 @@ function DraftView({ session }: { session: AgentSession }) {
           <JsonBlock value={draftText} />
         </SectionBlock>
       </div>
-      <div className="px-1 pt-2">
+      <div className="space-y-1.5 px-1 pt-2">
         <Button
           size="sm"
           variant="outline"
@@ -288,6 +295,17 @@ function DraftView({ session }: { session: AgentSession }) {
         >
           <ExternalLink className="h-3.5 w-3.5" /> 在协议设计器中打开
         </Button>
+        {canRestore ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full gap-1.5 text-xs"
+            title="把配置回滚到最近一轮对话修改前的状态"
+            onClick={onRestore}
+          >
+            <History className="h-3.5 w-3.5" /> 还原到上一轮修改前
+          </Button>
+        ) : null}
       </div>
     </div>
   )
