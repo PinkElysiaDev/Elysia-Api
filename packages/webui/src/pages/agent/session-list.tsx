@@ -19,7 +19,7 @@ export function SessionList({
   onDelete: (id: string) => void
 }) {
   return (
-    <div className="flex h-full w-64 shrink-0 flex-col border-r border-border bg-card/40 max-rail:hidden">
+    <div className="flex h-full w-60 shrink-0 flex-col pr-4 max-rail:hidden">
       <div className="flex items-center gap-2 px-3 py-2.5">
         <span className="text-sm font-semibold">会话</span>
         <Button size="sm" variant="outline" className="ml-auto h-7 gap-1 px-2 text-2xs" onClick={onCreate}>

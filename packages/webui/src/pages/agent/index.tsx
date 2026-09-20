@@ -19,7 +19,6 @@ import { useAgentStream } from '@/lib/agent/use-agent-stream'
 import { ChatPanel } from './chat-panel'
 import { ContextPanel } from './context-panel'
 import { SessionList } from './session-list'
-import { SettingsBar } from './settings-bar'
 
 /** AI 助手页：会话列表 | 聊天 | 多用途侧栏（方案/草稿/进展）。 */
 export function AgentPage() {
@@ -189,7 +188,7 @@ export function AgentPage() {
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+        <div className="flex items-center gap-2 px-4 pb-2 pt-1">
           <Sparkles className="h-4 w-4 text-rose" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">{session?.title || 'AI 助手'}</p>
@@ -211,11 +210,11 @@ export function AgentPage() {
 
         {session ? (
           <>
-            <SettingsBar session={session} disabled={live.running} onChange={handleSettingsChange} />
             <ChatPanel
               session={session}
               messages={messages}
               live={live}
+              onSettingsChange={handleSettingsChange}
               onSend={(input: { content?: string; documents?: AgentDocument[]; afterSeq?: number }) => {
                 if (input.afterSeq != null) {
                   setMessages((current) => current.filter((message) => message.seq <= input.afterSeq!))

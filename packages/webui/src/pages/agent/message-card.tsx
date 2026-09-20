@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
   AlertTriangle,
+  Bot,
   ChevronDown,
   FileText,
   Pencil,
@@ -12,7 +13,6 @@ import {
   X,
 } from 'lucide-react'
 import { CopyButton } from '@/components/copy-button'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { colorize } from '@/lib/json-highlight'
 import { ChartBlock } from './chart-block'
@@ -127,14 +127,10 @@ function ReasoningBlock({ text }: { text: string }) {
 function ToolResultCard({ content }: { content: AgentToolResultContent }) {
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center gap-2 text-xs">
-        <Wrench className="h-3.5 w-3.5 text-muted-foreground" />
+      <div className="flex items-center gap-1.5 text-xs">
+        <Wrench className="h-3.5 w-3.5 text-muted-foreground/60" />
         <span className="font-medium">{content.name}</span>
-        {content.ok ? (
-          <Badge variant="success" className="px-1.5 py-0 text-2xs">成功</Badge>
-        ) : (
-          <Badge variant="destructive" className="px-1.5 py-0 text-2xs">失败</Badge>
-        )}
+        <span className={cn('text-2xs', content.ok ? 'text-jade' : 'text-ember')}>{content.ok ? '成功' : '失败'}</span>
         {content.durationMs ? <span className="tnum text-2xs text-muted-foreground">{content.durationMs}ms</span> : null}
       </div>
       {content.summary ? <p className="text-2xs text-muted-foreground">{content.summary}</p> : null}
@@ -166,7 +162,7 @@ export function MessageCard({
     const text = content.text ?? ''
     return (
       <div className="group flex flex-col items-end gap-1">
-        <div className="max-w-[85%] space-y-1.5 rounded-xl rounded-br-sm bg-wash px-3.5 py-2.5 text-sm">
+        <div className="max-w-[85%] space-y-1.5 rounded-2xl rounded-br-md bg-wash px-4 py-2.5 text-sm">
           {text ? <p className="whitespace-pre-wrap break-words">{text}</p> : null}
           {(content.documents ?? []).length > 0 ? (
             <div className="flex flex-wrap gap-1">
@@ -200,30 +196,31 @@ export function MessageCard({
   if (message.role === 'assistant') {
     const content = message.content as AgentAssistantContent
     return (
-      <div className="group flex flex-col items-start gap-1.5">
-        <div className="max-w-[92%] space-y-2 rounded-xl rounded-bl-sm border border-border bg-card px-3.5 py-2.5">
+      <div className="group flex items-start gap-2.5">
+        <Bot className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/50" aria-hidden />
+        <div className="min-w-0 flex-1 space-y-2">
           <ReasoningBlock text={content.reasoning ?? ''} />
           {content.text ? <Markdown text={content.text} /> : null}
           {(content.toolCalls ?? []).length > 0 ? (
-            <div className="flex flex-wrap gap-1.5 text-2xs text-muted-foreground">
+            <div className="flex flex-wrap gap-1.5 pt-0.5 text-2xs text-muted-foreground">
               {(content.toolCalls ?? []).map((call, index) => (
-                <span key={index} className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5">
+                <span key={index} className="inline-flex items-center gap-1 text-muted-foreground/70">
                   <Wrench className="h-3 w-3" />
                   {call.name ?? '工具'}
                 </span>
               ))}
             </div>
           ) : null}
-        </div>
-        <div className="flex items-center gap-1.5 text-2xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-          {message.model ? <span>{message.model}</span> : null}
-          {message.usage ? <span>{formatUsage(message.usage)}</span> : null}
-          {content.text ? <CopyButton value={content.text} aria-label="复制" /> : null}
-          {actions ? (
-            <Button variant="ghost" size="iconSm" aria-label="重新生成本条回复" title="重新生成本条回复" onClick={() => actions.onRegenerate(message)}>
-              <RefreshCw className="h-3 w-3" />
-            </Button>
-          ) : null}
+          <div className="flex items-center gap-1.5 pt-0.5 text-2xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+            {message.model ? <span>{message.model}</span> : null}
+            {message.usage ? <span>{formatUsage(message.usage)}</span> : null}
+            {content.text ? <CopyButton value={content.text} aria-label="复制" /> : null}
+            {actions ? (
+              <Button variant="ghost" size="iconSm" aria-label="重新生成本条回复" title="重新生成本条回复" onClick={() => actions.onRegenerate(message)}>
+                <RefreshCw className="h-3 w-3" />
+              </Button>
+            ) : null}
+          </div>
         </div>
       </div>
     )
@@ -231,7 +228,7 @@ export function MessageCard({
 
   if (message.role === 'tool_result') {
     return (
-      <div className="max-w-[92%] rounded-lg border border-border/70 bg-muted/30 px-3 py-2.5">
+      <div className="max-w-[92%] border-l-2 border-border/60 pl-3">
         <ToolResultCard content={message.content as AgentToolResultContent} />
       </div>
     )
@@ -265,28 +262,31 @@ export function MessageCard({
 
 /** 进行中的现场气泡（流式增量 + 工具卡片）。 */
 export function LiveAssistantView({ live }: { live: AgentLiveState }) {
-  const hasContent = live.text || live.reasoning || live.toolCards.length > 0
+  const hasContent = live.text || live.reasoning
   return (
-    <div className="flex flex-col items-start gap-2">
+    <div className="flex flex-col gap-2">
       {hasContent ? (
-        <div className="max-w-[92%] space-y-2 rounded-xl rounded-bl-sm border border-border bg-card px-3.5 py-2.5">
-          <ReasoningBlock text={live.reasoning} />
-          {live.text ? <Markdown text={live.text} /> : null}
+        <div className="flex items-start gap-2.5">
+          <Bot className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/50" aria-hidden />
+          <div className="min-w-0 flex-1 space-y-2">
+            <ReasoningBlock text={live.reasoning} />
+            {live.text ? <Markdown text={live.text} /> : null}
+          </div>
         </div>
       ) : null}
       {live.toolCards.map((card) => (
         <div
           key={card.callId}
-          className="flex items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs"
+          className="flex max-w-[92%] items-center gap-1.5 border-l-2 border-border/60 pl-3 text-xs"
         >
-          <Wrench className="h-3.5 w-3.5 text-muted-foreground" />
+          <Wrench className="h-3.5 w-3.5 text-muted-foreground/60" />
           <span className="font-medium">{agentToolLabel(card.name)}</span>
           {card.status === 'running' ? (
-            <span className="ml-auto flex items-center gap-1 text-muted-foreground">
+            <span className="ml-auto flex items-center gap-1 text-2xs text-muted-foreground">
               <RefreshCw className="h-3 w-3 animate-spin" /> 执行中…
             </span>
           ) : (
-            <span className={cn('ml-auto', card.status === 'done' ? 'text-jade' : 'text-ember')}>
+            <span className={cn('ml-auto text-2xs', card.status === 'done' ? 'text-jade' : 'text-ember')}>
               {card.summary ?? (card.status === 'done' ? '完成' : '失败')}
             </span>
           )}
@@ -296,7 +296,6 @@ export function LiveAssistantView({ live }: { live: AgentLiveState }) {
   )
 }
 
-/** 审批卡片：纯展示确认——工具参数中的目标（key 脱敏）+ 允许/拒绝。 */
 export function ApprovalCard({
   approval,
   onApprove,

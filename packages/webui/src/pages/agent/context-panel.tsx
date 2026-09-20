@@ -11,8 +11,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Seg } from '@/components/ui/seg'
 import { colorize } from '@/lib/json-highlight'
+import { toolArgsPreview } from '@/lib/agent/mask'
 import {
   agentToolLabel,
   type AgentMessage,
@@ -23,16 +23,17 @@ import type { AgentLiveState } from '@/lib/agent/use-agent-stream'
 import { cn } from '@/lib/utils'
 
 /**
- * 多用途侧边栏：方案（update_plan 维护）/ 草稿（协议 JSON）/ 进展（工具执行
- * 时间线）。有更新时自动切换标签；用户手动选过则本 turn 不抢焦点。
+ * 多用途侧栏：跟随模型当前打开的内容——方案更新跟方案、草稿变化跟草稿、
+ * 其他工具活动跟动态；文本页签允许快速切换（点击后本 turn 固定，新 turn
+ * 恢复自动跟随）。
  */
 
-type PanelTab = 'plan' | 'draft' | 'progress'
+type PanelTab = 'activity' | 'plan' | 'draft'
 
-const TAB_OPTIONS: { value: PanelTab; label: string }[] = [
+const TABS: { value: PanelTab; label: string }[] = [
+  { value: 'activity', label: '动态' },
   { value: 'plan', label: '方案' },
   { value: 'draft', label: '草稿' },
-  { value: 'progress', label: '进展' },
 ]
 
 export function ContextPanel({
@@ -44,52 +45,87 @@ export function ContextPanel({
   messages: AgentMessage[]
   live: AgentLiveState
 }) {
-  const [tab, setTab] = useState<PanelTab>('plan')
-  const userPinned = useRef(false)
-  const runningRef = useRef(false)
-
-  // 轮次开始重置手动锁定。
-  useEffect(() => {
-    if (live.running) {
-      userPinned.current = false
-      runningRef.current = true
-    } else if (runningRef.current) {
-      runningRef.current = false
-    }
-  }, [live.running])
+  const [tab, setTab] = useState<PanelTab>('activity')
+  const pinned = useRef(false)
+  const wasRunning = useRef(false)
 
   const plan = session.plan ?? []
-  const planDirty = live.toolCards.some((card) => card.name === 'update_plan')
-  useEffect(() => {
-    if (planDirty && !userPinned.current) setTab('plan')
-  }, [planDirty])
+  const planJSON = JSON.stringify(plan)
+  const draftJSON = session.draftConfig == null ? '' : JSON.stringify(session.draftConfig)
+  const lastPlan = useRef(planJSON)
+  const lastDraft = useRef(draftJSON)
+  const lastToolCount = useRef(0)
 
-  // 首次出现草稿自动切到草稿页。
-  const hasDraft = session.draftConfig != null
-  const hadDraft = useRef(hasDraft)
+  const follow = (next: PanelTab) => {
+    if (!pinned.current) setTab(next)
+  }
+
+  // 新 turn 开始解除固定。
   useEffect(() => {
-    if (hasDraft && !hadDraft.current && !userPinned.current) setTab('draft')
-    hadDraft.current = hasDraft
-  }, [hasDraft])
+    if (live.running && !wasRunning.current) {
+      pinned.current = false
+    }
+    wasRunning.current = live.running
+  }, [live.running])
+
+  // 方案变化 → 跟方案。
+  useEffect(() => {
+    if (planJSON !== lastPlan.current) {
+      lastPlan.current = planJSON
+      follow('plan')
+    }
+  }, [planJSON])
+
+  // 草稿变化 → 跟草稿。
+  useEffect(() => {
+    if (draftJSON !== lastDraft.current) {
+      lastDraft.current = draftJSON
+      follow('draft')
+    }
+  }, [draftJSON])
+
+  // 其他工具活动（现场卡片数量变化）→ 跟动态（update_plan 除外，归方案）。
+  useEffect(() => {
+    const otherTools = live.toolCards.filter((card) => card.name !== 'update_plan').length
+    if (otherTools !== lastToolCount.current) {
+      lastToolCount.current = otherTools
+      if (otherTools > 0) follow('activity')
+    }
+  }, [live.toolCards])
 
   return (
-    <div className="flex h-full w-80 shrink-0 flex-col border-l border-border bg-card/40">
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <Seg<PanelTab>
-          size="sm"
-          aria-label="侧栏内容"
-          options={TAB_OPTIONS}
-          value={tab}
-          onChange={(value) => {
-            userPinned.current = true
-            setTab(value)
-          }}
-        />
+    <div className="flex h-full w-80 shrink-0 flex-col pl-4">
+      <div role="tablist" aria-label="侧栏内容" className="flex items-center gap-4 px-1 pb-2 pt-1">
+        {TABS.map((item) => (
+          <button
+            key={item.value}
+            type="button"
+            role="tab"
+            aria-selected={tab === item.value}
+            onClick={() => {
+              pinned.current = true
+              setTab(item.value)
+            }}
+            className={cn(
+              'relative pb-1.5 text-xs transition-colors',
+              tab === item.value
+                ? 'font-medium text-rose after:absolute after:inset-x-0 after:bottom-0 after:h-[2px] after:rounded-full after:bg-rose'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {item.label}
+            {item.value === 'plan' && plan.length > 0 ? (
+              <span className="tnum ml-1 text-2xs text-muted-foreground">
+                {plan.filter((step) => step.status === 'done').length}/{plan.length}
+              </span>
+            ) : null}
+          </button>
+        ))}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto pb-2">
         {tab === 'plan' ? <PlanView steps={plan} /> : null}
         {tab === 'draft' ? <DraftView session={session} /> : null}
-        {tab === 'progress' ? <ProgressView messages={messages} live={live} /> : null}
+        {tab === 'activity' ? <ActivityView messages={messages} live={live} /> : null}
       </div>
     </div>
   )
@@ -107,10 +143,8 @@ function PlanView({ steps }: { steps: { title: string; status: string }[] }) {
   }
   const done = steps.filter((step) => step.status === 'done').length
   return (
-    <div className="space-y-1 px-3 py-3">
-      <p className="px-1 pb-1 text-2xs text-muted-foreground tnum">
-        {done}/{steps.length} 已完成
-      </p>
+    <div className="space-y-1 px-1 py-1">
+      <p className="px-1 pb-1 tnum text-2xs text-muted-foreground">{done}/{steps.length} 已完成</p>
       {steps.map((step, index) => (
         <div
           key={index}
@@ -154,16 +188,16 @@ function DraftView({ session }: { session: AgentSession }) {
   }
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2 px-3 py-2.5">
+      <div className="flex items-center gap-2 px-1 py-1.5">
         {protocolId ? <Badge variant="outline" className="font-mono text-2xs">{protocolId}</Badge> : null}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-2">
         <pre
           className="rounded-[7px] border border-border bg-code px-3 py-2.5 font-mono text-xs leading-[1.7]"
           dangerouslySetInnerHTML={{ __html: colorize(draftText) }}
         />
       </div>
-      <div className="border-t border-border px-3 py-2.5">
+      <div className="px-1 pt-2">
         <Button
           size="sm"
           variant="outline"
@@ -176,7 +210,7 @@ function DraftView({ session }: { session: AgentSession }) {
         >
           <ExternalLink className="h-3.5 w-3.5" /> 在协议设计器中打开
         </Button>
-        <p className="mt-2 text-2xs leading-relaxed text-muted-foreground">
+        <p className="mt-1.5 text-2xs leading-relaxed text-muted-foreground">
           草稿经校验才会写入；保存为正式协议需经助手请求并获你批准。
         </p>
       </div>
@@ -184,78 +218,80 @@ function DraftView({ session }: { session: AgentSession }) {
   )
 }
 
-/** 进展页：工具执行时间线（历史 + 现场聚合）。 */
-function ProgressView({ messages, live }: { messages: AgentMessage[]; live: AgentLiveState }) {
+/** 动态页：最新工具执行详情 + 近期执行列表。 */
+function ActivityView({ messages, live }: { messages: AgentMessage[]; live: AgentLiveState }) {
   const history = messages
     .filter((message) => message.role === 'tool_result')
     .map((message) => message.content as AgentToolResultContent)
     .filter(Boolean)
 
-  if (history.length === 0 && live.toolCards.length === 0) {
+  const latest = history.length > 0 ? history[history.length - 1] : undefined
+  const runningCard = live.toolCards.find((card) => card.status === 'running')
+
+  if (!latest && !runningCard && live.toolCards.length === 0) {
     return (
       <EmptyHint
         icon={<Wrench className="h-4 w-4" />}
-        text="助手执行的工具（写草稿、查询、测试……）会在这里按时间线汇总。"
+        text="助手执行的工具（写草稿、查询、测试……）会在这里展示最新动态。"
       />
     )
   }
 
-  const liveEntries = live.toolCards.map((card) => ({
-    name: card.name,
-    ok: card.status !== 'failed',
-    running: card.status === 'running',
-    summary: card.summary,
-  }))
-
   return (
-    <div className="space-y-1.5 px-3 py-3">
-      {[...liveEntries].reverse().map((entry, index) => (
-        <TimelineRow
-          key={`live-${index}`}
-          name={agentToolLabel(entry.name)}
-          ok={entry.ok}
-          running={entry.running}
-          summary={entry.summary}
-        />
-      ))}
-      {[...history].reverse().map((entry, index) => (
-        <TimelineRow
-          key={`hist-${index}`}
-          name={agentToolLabel(entry.name)}
-          ok={entry.ok}
-          summary={entry.summary}
-          durationMs={entry.durationMs}
-        />
-      ))}
-    </div>
-  )
-}
+    <div className="space-y-3 px-1 py-1">
+      {/* 正在执行 / 最新完成 */}
+      {runningCard ? (
+        <div className="rounded-lg bg-wash px-3 py-2.5">
+          <div className="flex items-center gap-1.5 text-xs font-medium">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-jade" />
+            {agentToolLabel(runningCard.name)}
+            <span className="ml-auto text-2xs font-normal text-muted-foreground">执行中…</span>
+          </div>
+        </div>
+      ) : latest ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 text-xs">
+            <Wrench className="h-3.5 w-3.5 text-muted-foreground/60" />
+            <span className="font-medium">{latest.name}</span>
+            <span className={cn('text-2xs', latest.ok ? 'text-jade' : 'text-ember')}>{latest.ok ? '成功' : '失败'}</span>
+            {latest.durationMs ? <span className="tnum text-2xs text-muted-foreground">{latest.durationMs}ms</span> : null}
+          </div>
+          {latest.summary ? <p className="text-2xs leading-relaxed text-muted-foreground">{latest.summary}</p> : null}
+          {latest.input != null && toolArgsPreview(latest.input) ? (
+            <div>
+              <p className="mb-1 text-2xs font-medium text-muted-foreground">参数</p>
+              <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded-[7px] border border-border bg-code px-2.5 py-2 font-mono text-2xs leading-relaxed">
+                {toolArgsPreview(latest.input)}
+              </pre>
+            </div>
+          ) : null}
+          {latest.data != null ? (
+            <div>
+              <p className="mb-1 text-2xs font-medium text-muted-foreground">结果</p>
+              <pre
+                className="max-h-64 overflow-auto whitespace-pre rounded-[7px] border border-border bg-code px-2.5 py-2 font-mono text-2xs leading-[1.7]"
+                dangerouslySetInnerHTML={{
+                  __html: colorize(typeof latest.data === 'string' ? latest.data : JSON.stringify(latest.data, null, 2) ?? ''),
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
-function TimelineRow({
-  name,
-  ok,
-  running,
-  summary,
-  durationMs,
-}: {
-  name: string
-  ok: boolean
-  running?: boolean
-  summary?: string
-  durationMs?: number
-}) {
-  return (
-    <div className="rounded-lg border border-border/60 bg-card px-2.5 py-2 text-2xs">
-      <div className="flex items-center gap-1.5">
-        {running ? (
-          <Loader2 className="h-3 w-3 shrink-0 animate-spin text-jade" />
-        ) : (
-          <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', ok ? 'bg-jade' : 'bg-ember')} />
-        )}
-        <span className="min-w-0 flex-1 truncate font-medium">{name}</span>
-        {durationMs ? <span className="tnum text-muted-foreground">{durationMs}ms</span> : null}
-      </div>
-      {summary ? <p className="mt-1 line-clamp-2 text-muted-foreground">{summary}</p> : null}
+      {/* 近期执行（新→旧，不含最新一条） */}
+      {history.length > 1 ? (
+        <div className="space-y-1 border-t border-border/50 pt-2">
+          <p className="px-0.5 text-2xs font-medium text-muted-foreground">近期执行</p>
+          {[...history.slice(0, -1)].reverse().slice(0, 12).map((entry, index) => (
+            <div key={index} className="flex items-center gap-1.5 px-0.5 py-1 text-2xs">
+              <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', entry.ok ? 'bg-jade' : 'bg-ember')} />
+              <span className="min-w-0 flex-1 truncate">{agentToolLabel(entry.name)}</span>
+              {entry.durationMs ? <span className="tnum shrink-0 text-muted-foreground">{entry.durationMs}ms</span> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
