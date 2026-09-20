@@ -129,6 +129,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			model_name TEXT NOT NULL DEFAULT '',
 			thinking_enabled INTEGER NOT NULL DEFAULT 0,
 			thinking_effort TEXT NOT NULL DEFAULT '',
+			plan_mode INTEGER NOT NULL DEFAULT 0,
 			allow_live_test TEXT NOT NULL DEFAULT 'ask',
 			allow_save TEXT NOT NULL DEFAULT 'ask',
 			status TEXT NOT NULL DEFAULT 'idle',
@@ -175,6 +176,11 @@ func (s *Store) migrate(ctx context.Context) error {
 	// 增量迁移：agent_sessions 增加方案清单列（update_plan 工具维护）。
 	// 已存在的表不会因 CREATE TABLE IF NOT EXISTS 加列，容错 ALTER 幂等补齐。
 	if _, err := s.db.ExecContext(ctx, `ALTER TABLE agent_sessions ADD COLUMN plan_json TEXT NOT NULL DEFAULT ''`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
+	// 增量迁移：agent_sessions 增加计划模式列（plan_mode，先出方案用户确认后再执行）。
+	if _, err := s.db.ExecContext(ctx, `ALTER TABLE agent_sessions ADD COLUMN plan_mode INTEGER NOT NULL DEFAULT 0`); err != nil &&
 		!strings.Contains(err.Error(), "duplicate column") {
 		return err
 	}

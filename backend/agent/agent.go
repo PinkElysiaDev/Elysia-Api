@@ -423,6 +423,12 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 			continue
 		}
 		if tool.Gated() && !skipGating {
+			if session.Settings.PlanMode {
+				info := deniedToolResult(call, "计划模式已开启：修改与出站操作暂不执行。请先用 update_plan 给出完整方案，并等待用户确认后再执行")
+				e.persistToolResult(ctx, sessionID, info, events)
+				*conversation = append(*conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
+				continue
+			}
 			policy := PermissionFor(session.Settings, tool.PermissionKey())
 			if policy == PermissionNever {
 				info := deniedToolResult(call, "用户已在会话设置中禁止此操作，请改用其他方式完成任务")
@@ -589,13 +595,18 @@ func denialSuffix(note string) string {
 }
 
 func deniedToolResult(call relay.MaheshvaraToolCall, message string) ToolResultInfo {
+	// 拒绝理由随 Data 一起回传给模型（ToolOutput 只含 Data），模型才能据此调整行为。
+	encoded, err := json.Marshal(map[string]string{"error": "denied", "message": message})
+	if err != nil {
+		encoded = json.RawMessage(`{"error":"denied"}`)
+	}
 	return ToolResultInfo{
 		CallID:  call.ID,
 		Name:    call.Name,
 		Input:   call.Arguments,
 		OK:      false,
 		Summary: message,
-		Data:    json.RawMessage(`{"error":"denied"}`),
+		Data:    encoded,
 	}
 }
 

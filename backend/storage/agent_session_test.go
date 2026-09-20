@@ -193,6 +193,32 @@ func TestAgentSessionThinkingRoundtrip(t *testing.T) {
 	}
 }
 
+func TestAgentSessionPlanModeRoundtrip(t *testing.T) {
+	ctx := context.Background()
+	store := newAgentTestStore(t)
+	created, _ := store.CreateAgentSession(ctx, AgentSessionUpsert{Mode: agent.ModeCreate})
+	if created.Settings.PlanMode {
+		t.Fatalf("plan mode must default off")
+	}
+	on := true
+	updated, err := store.UpdateAgentSessionSettings(ctx, created.ID, nil, &agent.SettingsPatch{PlanMode: &on}, nil, false)
+	if err != nil {
+		t.Fatalf("enable plan mode: %v", err)
+	}
+	if !updated.Settings.PlanMode {
+		t.Fatalf("plan mode not persisted: %+v", updated.Settings)
+	}
+	// 关闭不带走其它设置
+	off := false
+	updated, err = store.UpdateAgentSessionSettings(ctx, created.ID, nil, &agent.SettingsPatch{PlanMode: &off}, nil, false)
+	if err != nil {
+		t.Fatalf("disable plan mode: %v", err)
+	}
+	if updated.Settings.PlanMode {
+		t.Fatalf("plan mode not cleared: %+v", updated.Settings)
+	}
+}
+
 // 回归：部分更新（只改思考等级）不得清空思考开关与模型选择——
 // 旧实现整组覆盖设置列导致「选等级后思考被关闭」。
 func TestAgentSessionPartialSettingsPatchKeepsUnmentionedFields(t *testing.T) {

@@ -46,13 +46,14 @@ func (s *Store) CreateAgentSession(ctx context.Context, input AgentSessionUpsert
 	draft := strings.TrimSpace(input.SeedConfig)
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO agent_sessions
 		(id, title, mode, protocol_id, seed_config, draft_config, test_base_url, test_api_key,
-		 model_source_id, model_name, thinking_enabled, thinking_effort, allow_live_test, allow_save,
+		 model_source_id, model_name, thinking_enabled, thinking_effort, plan_mode, allow_live_test, allow_save,
 		 status, pending_action, created_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
 		id, strings.TrimSpace(input.Title), mode, strings.TrimSpace(input.ProtocolID),
 		strings.TrimSpace(input.SeedConfig), draft, strings.TrimSpace(input.TestBaseURL), encryptedKey,
 		input.Settings.ModelSourceID, input.Settings.ModelName,
 		boolInt(input.Settings.ThinkingEnabled), strings.TrimSpace(input.Settings.ThinkingEffort),
+		boolInt(input.Settings.PlanMode),
 		agent.NormalizedPermission(input.Settings.AllowLiveTest), agent.NormalizedPermission(input.Settings.AllowSave),
 		agent.StatusIdle, now, now); err != nil {
 		return nil, err
@@ -63,7 +64,7 @@ func (s *Store) CreateAgentSession(ctx context.Context, input AgentSessionUpsert
 // ListAgentSessions 按更新时间倒序返回会话摘要（不含消息、不含凭证）。
 func (s *Store) ListAgentSessions(ctx context.Context) ([]agent.Session, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, title, mode, protocol_id, seed_config, draft_config, plan_json,
-		test_base_url, model_source_id, model_name, thinking_enabled, thinking_effort, allow_live_test, allow_save,
+		test_base_url, model_source_id, model_name, thinking_enabled, thinking_effort, plan_mode, allow_live_test, allow_save,
 		status, pending_action, created_at, updated_at
 		FROM agent_sessions ORDER BY updated_at DESC, id`)
 	if err != nil {
@@ -76,14 +77,14 @@ func (s *Store) ListAgentSessions(ctx context.Context) ([]agent.Session, error) 
 		var mode, createdAt, updatedAt string
 		var seed, draft, plan, testBaseURL string
 		var pending sql.NullString
-		var thinkingEnabled int
+		var thinkingEnabled, planMode int
 		if err := rows.Scan(&session.ID, &session.Title, &mode, &session.ProtocolID, &seed, &draft, &plan,
 			&testBaseURL, &session.Settings.ModelSourceID, &session.Settings.ModelName,
-			&thinkingEnabled, &session.Settings.ThinkingEffort, &session.Settings.AllowLiveTest, &session.Settings.AllowSave,
+			&thinkingEnabled, &session.Settings.ThinkingEffort, &planMode, &session.Settings.AllowLiveTest, &session.Settings.AllowSave,
 			&session.Status, &pending, &createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
-		item, err := s.assembleAgentSession(session, mode, seed, draft, plan, testBaseURL, "", pending.String, thinkingEnabled != 0, createdAt, updatedAt, false)
+		item, err := s.assembleAgentSession(session, mode, seed, draft, plan, testBaseURL, "", pending.String, thinkingEnabled != 0, planMode != 0, createdAt, updatedAt, false)
 		if err != nil {
 			return nil, err
 		}
@@ -104,7 +105,7 @@ func (s *Store) GetSession(ctx context.Context, id string) (*agent.Session, erro
 
 func (s *Store) getAgentSession(ctx context.Context, id string, withSecret bool) (*agent.Session, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT id, title, mode, protocol_id, seed_config, draft_config, plan_json,
-		test_base_url, test_api_key, model_source_id, model_name, thinking_enabled, thinking_effort, allow_live_test, allow_save,
+		test_base_url, test_api_key, model_source_id, model_name, thinking_enabled, thinking_effort, plan_mode, allow_live_test, allow_save,
 		status, pending_action, created_at, updated_at
 		FROM agent_sessions WHERE id = ?`, strings.TrimSpace(id))
 	session, err := s.scanAgentSessionRow(row, withSecret)
@@ -124,18 +125,18 @@ func (s *Store) scanAgentSessionRow(row rowScanner, withSecret bool) (*agent.Ses
 	var mode, createdAt, updatedAt string
 	var seed, draft, plan, testBaseURL, testAPIKey string
 	var pending sql.NullString
-	var thinkingEnabled int
+	var thinkingEnabled, planMode int
 	if err := row.Scan(&session.ID, &session.Title, &mode, &session.ProtocolID, &seed, &draft, &plan,
 		&testBaseURL, &testAPIKey, &session.Settings.ModelSourceID, &session.Settings.ModelName,
-		&thinkingEnabled, &session.Settings.ThinkingEffort, &session.Settings.AllowLiveTest, &session.Settings.AllowSave,
+		&thinkingEnabled, &session.Settings.ThinkingEffort, &planMode, &session.Settings.AllowLiveTest, &session.Settings.AllowSave,
 		&session.Status, &pending, &createdAt, &updatedAt); err != nil {
 		return nil, err
 	}
-	return s.assembleAgentSession(session, mode, seed, draft, plan, testBaseURL, testAPIKey, pending.String, thinkingEnabled != 0, createdAt, updatedAt, withSecret)
+	return s.assembleAgentSession(session, mode, seed, draft, plan, testBaseURL, testAPIKey, pending.String, thinkingEnabled != 0, planMode != 0, createdAt, updatedAt, withSecret)
 }
 
 func (s *Store) assembleAgentSession(session agent.Session, mode, seed, draft, plan, testBaseURL, testAPIKey, pending string,
-	thinkingEnabled bool, createdAt, updatedAt string, withSecret bool) (*agent.Session, error) {
+	thinkingEnabled, planMode bool, createdAt, updatedAt string, withSecret bool) (*agent.Session, error) {
 	session.Mode = mode
 	if seed != "" {
 		session.SeedConfig = json.RawMessage(seed)
@@ -151,6 +152,7 @@ func (s *Store) assembleAgentSession(session agent.Session, mode, seed, draft, p
 	}
 	session.TestBaseURL = testBaseURL
 	session.Settings.ThinkingEnabled = thinkingEnabled
+	session.Settings.PlanMode = planMode
 	session.Settings.AllowLiveTest = agent.NormalizedPermission(session.Settings.AllowLiveTest)
 	session.Settings.AllowSave = agent.NormalizedPermission(session.Settings.AllowSave)
 	if withSecret && testAPIKey != "" {
@@ -209,6 +211,10 @@ func (s *Store) UpdateAgentSessionSettings(ctx context.Context, id string, title
 		if patch.ThinkingEffort != nil {
 			sets = append(sets, "thinking_effort = ?")
 			args = append(args, strings.TrimSpace(*patch.ThinkingEffort))
+		}
+		if patch.PlanMode != nil {
+			sets = append(sets, "plan_mode = ?")
+			args = append(args, boolInt(*patch.PlanMode))
 		}
 		if patch.AllowLiveTest != nil {
 			sets = append(sets, "allow_live_test = ?")

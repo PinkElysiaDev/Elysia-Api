@@ -448,6 +448,47 @@ func TestRunTurn_NeverPermissionSynthesizesDenial(t *testing.T) {
 	}
 }
 
+func TestRunTurn_PlanModeBlocksGatedTools(t *testing.T) {
+	// 计划模式优先于 always 策略：gated 工具一律拒绝且不进入审批暂停。
+	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle,
+		Settings: Settings{ModelName: "m1", PlanMode: true, AllowLiveTest: PermissionAlways, AllowSave: PermissionAlways}})
+	caller := &fakeCaller{responses: []scriptedResponse{
+		{result: &CallResult{Text: "我来改配置", ToolCalls: []relay.MaheshvaraToolCall{toolCall("c1", "danger", `{"x":1}`)}}},
+		{result: &CallResult{Text: "好的，先给出方案"}},
+	}}
+	danger := &fakeTool{name: "danger", gated: true, permKey: "save", result: ToolResult{OK: true}}
+	engine := newTestEngine(caller, store, danger)
+
+	events, _ := engine.RunTurn(context.Background(), "s1", &UserContent{Text: "新增模型源"})
+	collected := collectEvents(t, events)
+	if hasEvent(collected, EventApprovalPending) {
+		t.Fatalf("plan mode must not pause for approval")
+	}
+	if !hasEvent(collected, EventTurnDone) {
+		t.Fatalf("turn should complete after synthesized plan-mode denial: %+v", collected)
+	}
+	if danger.executions != 0 {
+		t.Fatalf("plan mode must block gated tool execution")
+	}
+	session, _ := store.GetSession(context.Background(), "s1")
+	if session.Status != StatusIdle || session.PendingAction != nil {
+		t.Fatalf("session state = %+v", session)
+	}
+	// 计划模式拒绝理由回传给模型
+	last := caller.lastRequest()
+	found := false
+	for _, msg := range last.Messages {
+		for _, part := range msg.Content {
+			if part.Type == relay.MaheshvaraContentToolOutput && strings.Contains(part.ToolOutput, "计划模式") {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("plan-mode denial not fed back to model")
+	}
+}
+
 func TestRunTurn_ModelErrorEmitsRetryableError(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1"}})
 	caller := &fakeCaller{responses: []scriptedResponse{{err: errors.New("connection refused")}}}

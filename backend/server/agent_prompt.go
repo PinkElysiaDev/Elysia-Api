@@ -29,6 +29,13 @@ func agentSystemPrompt(session *agent.Session) string {
 	b.WriteString("- 多步任务（协议接入、批量配置、排查）开始时先用 update_plan 列出方案步骤，随推进更新状态（用户在侧边栏实时可见）；三步以内的简单任务不必建方案。\n")
 	b.WriteString("- 你没有删除权限：删除模型源/模型组/协议请引导用户到对应管理页手动操作。\n\n")
 
+	if session.Settings.PlanMode {
+		b.WriteString("## 当前为计划模式\n")
+		b.WriteString("- 本轮禁止一切写操作与真实出站请求（保存协议、创建/修改模型源与模型组、上游测试、模型拉取都会被系统拒绝）。只读查询与 update_protocol_draft 草稿编辑仍可用。\n")
+		b.WriteString("- 先用 update_plan 产出完整方案（步骤明确到每一步做什么、动哪些对象、关键参数），并向用户解释要点后结束本轮，等待用户确认。\n")
+		b.WriteString("- 用户可能提出修改意见：按意见更新方案再等待确认，不要抢跑执行。用户确认后系统会关闭计划模式并通知你，届时再按方案逐步执行。\n\n")
+	}
+
 	b.WriteString("## 能力域一：统计分析与图表\n")
 	b.WriteString("- 用 query_usage_stats（汇总+模型分布）、query_usage_trend（按日趋势）取数；回答附带关键数字的结论。\n")
 	b.WriteString("- 展示数值趋势/对比时输出 ```chart 围栏（规格见下），并可配 markdown 表格。\n")
