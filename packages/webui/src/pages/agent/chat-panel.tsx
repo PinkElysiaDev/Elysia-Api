@@ -173,7 +173,7 @@ export function ChatPanel({
 
   return (
     <div
-      className="flex min-w-0 flex-1 flex-col"
+      className="mx-auto flex min-h-0 w-full max-w-[720px] min-w-0 flex-1 flex-col"
       onDragOver={(event) => {
         event.preventDefault()
         setDragOver(true)
@@ -293,7 +293,7 @@ export function ChatPanel({
           />
           <Textarea
             className="max-h-56 min-h-[44px] w-full resize-none border-0 bg-transparent px-3.5 py-2.5 text-sm focus-visible:border-0 focus-visible:ring-0"
-            placeholder={needsModel ? '先在下方选择模型…' : '描述任务，Ctrl+Enter 发送；可直接粘贴或拖入附件'}
+            placeholder={needsModel ? '先在下方选择模型…' : '请描述您的任务'}
             value={text}
             disabled={busy}
             onChange={(event) => setText(event.target.value)}
@@ -334,6 +334,7 @@ export function ChatPanel({
               保存中…
             </span>
             <div className="ml-auto flex items-center gap-2">
+              <ContextGauge usage={usageStat} contextLimit={contextLimit} />
               <ModelPicker
                 sourceId={settings.modelSourceId}
                 modelName={settings.modelName}
@@ -341,7 +342,6 @@ export function ChatPanel({
                 onSelect={handleModelSelect}
               />
               <ThinkingMenu settings={settings} disabled={busy} onChange={(patch) => void save(patch)} />
-              <ContextGauge usage={usageStat} contextLimit={contextLimit} />
               {busy ? (
                 <Button
                   variant="ghost"

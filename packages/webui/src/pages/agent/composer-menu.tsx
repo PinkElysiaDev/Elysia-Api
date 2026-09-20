@@ -47,7 +47,7 @@ export function MenuShell({ icon, label, title, disabled, panelLabel, panelClass
         className={cn(
           'inline-flex h-7 items-center gap-1.5 rounded-md border border-input bg-card px-2.5 text-2xs transition-colors',
           'hover:bg-wash disabled:cursor-not-allowed disabled:opacity-50',
-          open && 'border-rose ring-[3px] ring-wash',
+          open && 'border-border bg-wash',
         )}
       >
         {icon}

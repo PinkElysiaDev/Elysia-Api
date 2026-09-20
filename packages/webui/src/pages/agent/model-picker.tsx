@@ -127,7 +127,7 @@ export function ModelPicker({
         className={cn(
           'inline-flex h-7 max-w-[220px] items-center gap-1.5 rounded-md border border-input bg-card px-2.5 text-xs transition-colors',
           'hover:bg-wash disabled:cursor-not-allowed disabled:opacity-50',
-          open && 'border-rose ring-[3px] ring-wash',
+          open && 'border-border bg-wash',
         )}
         title={selected ? `${selected.sourceName ?? sourceId} / ${modelName}` : '按模型源分组选择模型'}
       >
@@ -148,7 +148,7 @@ export function ModelPicker({
             'absolute bottom-[calc(100%+6px)] left-0 flex max-h-80 w-[min(320px,86vw)] flex-col overflow-hidden rounded-xl border border-border bg-popover shadow-lg',
           )}
         >
-          <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
+          <div className="mx-2 mt-2 flex items-center gap-2 rounded-full bg-[var(--well)] px-3 py-1.5">
             <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <input
               ref={searchRef}
@@ -161,7 +161,7 @@ export function ModelPicker({
               className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground"
             />
           </div>
-          <div ref={listRef} role="listbox" aria-label="模型列表" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
+          <div ref={listRef} role="listbox" aria-label="模型列表" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1 pt-1.5">
             {flat.length === 0 ? (
               <p role="status" className="px-3 py-5 text-center text-xs text-muted-foreground">
                 {(models ?? []).length === 0 ? '暂无模型：先在「模型源」页添加并拉取' : '没有匹配的模型'}
