@@ -158,7 +158,7 @@ export function ModelPicker({
                 setCursor(0)
               }}
               placeholder="搜索模型或源名…"
-              className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+              className="w-full bg-transparent text-xs outline-none focus-visible:outline-none placeholder:text-muted-foreground"
             />
           </div>
           <div ref={listRef} role="listbox" aria-label="模型列表" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1 pt-1.5">

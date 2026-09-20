@@ -46,6 +46,10 @@ export interface ChatPanelProps {
   onStop: () => void
   onOpenContextTab: (tab: AgentContextTab) => void
   onSettingsChange: (patch: { settings?: Partial<AgentSettings> }) => Promise<void> | void
+  /** 轮数条跳转目标：变化时滚动定位到对应消息（nonce 保证重复点击也生效）。 */
+  jumpTarget?: { seq: number; nonce: number } | null
+  /** 滚动时上报当前视口所在的轮（最近一条用户消息 seq）。 */
+  onActiveTurn?: (seq: number | null) => void
 }
 
 /**
@@ -62,6 +66,8 @@ export function ChatPanel({
   onStop,
   onOpenContextTab,
   onSettingsChange,
+  jumpTarget,
+  onActiveTurn,
 }: ChatPanelProps) {
   const { toast } = useToast()
   const [text, setText] = useState('')
@@ -70,6 +76,7 @@ export function ChatPanel({
   const [editing, setEditing] = useState<{ seq: number; text: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const busy = live.running
@@ -86,6 +93,32 @@ export function ChatPanel({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages.length, live.text, live.toolCards.length, approval])
+
+  /** 轮数条跳转：滚动到目标消息。 */
+  useEffect(() => {
+    if (!jumpTarget) return
+    const el = scrollRef.current?.querySelector(`[data-seq="${jumpTarget.seq}"]`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [jumpTarget])
+
+  /** 滚动时上报当前所在轮（最近一条未滚出顶部的用户消息）。 */
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container || !onActiveTurn) return
+    const userSeqs = new Set(messages.filter((message) => message.role === 'user').map((message) => message.seq))
+    const report = () => {
+      let active: number | null = null
+      const threshold = container.clientHeight / 2
+      for (const el of Array.from(container.querySelectorAll<HTMLElement>('[data-seq]'))) {
+        const seq = Number(el.dataset.seq)
+        if (userSeqs.has(seq) && el.offsetTop - container.scrollTop <= threshold) active = seq
+      }
+      onActiveTurn(active)
+    }
+    container.addEventListener('scroll', report, { passive: true })
+    report()
+    return () => container.removeEventListener('scroll', report)
+  }, [messages, onActiveTurn])
 
   /** 会话累计用量（含缓存命中），随助手消息持久化逐步累加。 */
   const usageStat = useMemo(() => {
@@ -173,7 +206,7 @@ export function ChatPanel({
 
   return (
     <div
-      className="mx-auto flex min-h-0 w-full max-w-[720px] min-w-0 flex-1 flex-col"
+      className="mx-auto flex min-h-0 w-4/5 min-w-0 flex-1 flex-col"
       onDragOver={(event) => {
         event.preventDefault()
         setDragOver(true)
@@ -186,14 +219,16 @@ export function ChatPanel({
       }}
     >
       {/* 扁平消息流：直接浮在页面背景上。 */}
-      <div className={cn('relative min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5', dragOver && 'bg-wash/40')}>
+      <div ref={scrollRef} className={cn('relative min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5', dragOver && 'bg-wash/40')}>
         {dragOver ? (
           <div className="pointer-events-none absolute inset-3 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-rose/40 text-sm text-muted-foreground">
             松开以添加附件（文档 / 图片 / PDF）
           </div>
         ) : null}
         {messages.map((message) => (
-          <MessageCard key={message.seq} message={message} actions={messageActions} onOpenActivity={() => onOpenContextTab('activity')} />
+          <div key={message.seq} data-seq={message.seq}>
+            <MessageCard message={message} actions={messageActions} onOpenActivity={() => onOpenContextTab('activity')} />
+          </div>
         ))}
         {live.running && live.statusText ? (
           <div className="flex items-center gap-2 pl-1 text-2xs text-muted-foreground">
