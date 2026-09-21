@@ -286,8 +286,14 @@ func (e *Engine) startTurn(ctx context.Context, sessionID string, handle *turnHa
 		}
 		if decision.BaseURL != "" || decision.APIKey != "" {
 			if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{TestBaseURL: decision.BaseURL, TestAPIKey: decision.APIKey}); err == nil {
+				// 内存副本必须同步两字段：本轮恢复路径马上用这个 session 构造
+				// 工具上下文（TestTarget），只同步 BaseURL 会让首次批准的实测
+				// 拿旧/空 key 跑（曾有这样的不对称 bug）。
 				if decision.BaseURL != "" {
 					session.TestBaseURL = decision.BaseURL
+				}
+				if decision.APIKey != "" {
+					session.TestAPIKey = decision.APIKey
 				}
 			}
 		}
@@ -296,8 +302,14 @@ func (e *Engine) startTurn(ctx context.Context, sessionID string, handle *turnHa
 			return
 		}
 		if decision.Approved {
-			// 已获用户明确批准：跳过门控直接执行待定调用。
-			paused, err := e.executeCalls(ctx, sessionID, session, &conversation, resume.Calls, "", true, events)
+			// 已获用户明确批准：批内调用跳过 ask 级暂停，但 PermissionNever 与
+			// 计划模式仍在 executeCalls 内逐调用复核（批准后策略可能已收紧，
+			// 例如批量 [test_upstream, save_protocol] 里 save 是 never）。
+			approved := make(map[string]bool, len(resume.Calls))
+			for _, call := range resume.Calls {
+				approved[call.ID] = true
+			}
+			paused, err := e.executeCalls(ctx, sessionID, session, &conversation, resume.Calls, "", approved, events)
 			if err != nil {
 				e.failTurn(ctx, sessionID, events, err.Error())
 				return
@@ -396,7 +408,7 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 		}
 		conversation = append(conversation, assistantToMaheshvara(content))
 
-		paused, err = e.executeCalls(ctx, sessionID, session, &conversation, result.ToolCalls, result.Text, false, events)
+		paused, err = e.executeCalls(ctx, sessionID, session, &conversation, result.ToolCalls, result.Text, nil, events)
 		if err != nil {
 			e.failTurn(ctx, sessionID, events, err.Error())
 			paused = false
@@ -414,10 +426,11 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 }
 
 // executeCalls 顺序执行一批工具调用。gating 生效时遇到首个需审批动作即暂停
-// （剩余调用连同当前调用存入 PendingAction）；skipGating 用于审批恢复路径
-// （动作已获用户明确批准）。
+// （剩余调用连同当前调用存入 PendingAction）。approvedIDs 是审批恢复路径传入
+// 的「已获用户批准的调用」集合：命中的调用跳过 ask 级暂停，但 PermissionNever
+// 与计划模式始终逐调用复核——批准动作只豁免 ask，不豁免显式禁令。
 // 每个结果都会持久化并回传事件，同时追加到 conversation。
-func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Session, conversation *[]relay.MaheshvaraMessage, calls []relay.MaheshvaraToolCall, reason string, skipGating bool, events chan Event) (bool, error) {
+func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Session, conversation *[]relay.MaheshvaraMessage, calls []relay.MaheshvaraToolCall, reason string, approvedIDs map[string]bool, events chan Event) (bool, error) {
 	for index, call := range calls {
 		tool := e.tools.Get(call.Name)
 		if tool == nil {
@@ -430,7 +443,7 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 			*conversation = append(*conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
 			continue
 		}
-		if tool.Gated() && !skipGating {
+		if tool.Gated() {
 			if session.Settings.PlanMode {
 				info := deniedToolResult(call, "计划模式已开启：修改与出站操作暂不执行。请先用 update_plan 给出完整方案，并等待用户确认后再执行")
 				e.persistToolResult(ctx, sessionID, info, events)
@@ -444,13 +457,13 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 				*conversation = append(*conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
 				continue
 			}
-			if policy == PermissionAsk {
+			if policy == PermissionAsk && !approvedIDs[call.ID] {
 				pending := &PendingAction{Calls: append([]relay.MaheshvaraToolCall(nil), calls[index:]...), Reason: reason}
 				waiting := StatusWaitingApproval
 				if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
 					return false, err
 				}
-				emitEvent(events, Event{Type: EventApprovalPending, Approval: pending})
+				emitTerminal(events, Event{Type: EventApprovalPending, Approval: pending})
 				return true, nil
 			}
 		}
@@ -768,17 +781,29 @@ func accumulateUsage(total *relay.MaheshvaraUsage, u *relay.MaheshvaraUsage) {
 	total.ReasoningTokens += u.ReasoningTokens
 }
 
-// clampJSON 在字节上限内截断 JSON 文本（rune 边界对齐 + 截断标记）。
+// clampJSON 在字节上限内截断超大 JSON 文档。截断产物必须是**合法 JSON**：
+// 它会作为 json.RawMessage 嵌进消息持久化与发往模型的对话，两边都要过
+// MarshalJSON 校验——旧实现「JSON 前缀 + 文本尾巴」让超限工具结果双双
+// 落库失败，历史留下无结果的 tool_calls，会话后续每轮被上游 400 拒绝。
+// 现改为 JSON 信封携带原文前缀（preview 取半量，为信封开销与转义膨胀留量）。
 func clampJSON(raw json.RawMessage, limit int) json.RawMessage {
 	if len(raw) <= limit {
 		return raw
 	}
 	value := string(raw)
-	cut := limit
+	cut := limit / 2
 	for cut > 0 && !utf8.RuneStart(value[cut]) {
 		cut--
 	}
-	return json.RawMessage(value[:cut] + fmt.Sprintf("\n…（已截断，共 %d 字节）", len(value)))
+	envelope := map[string]any{
+		"truncated": true,
+		"bytes":     len(value),
+		"preview":   value[:cut],
+	}
+	if encoded, err := json.Marshal(envelope); err == nil {
+		return encoded
+	}
+	return json.RawMessage(`{"truncated":true}`)
 }
 
 func truncateRunes(value string, limit int) string {

@@ -169,7 +169,8 @@ type fakeTool struct {
 	permKey    string
 	result     ToolResult
 	executions int
-	setDraft   json.RawMessage // 执行时写入的草稿
+	setDraft   json.RawMessage        // 执行时写入的草稿
+	onExecute  func(tctx ToolContext) // 可选：捕获工具上下文（如 TestTarget）
 }
 
 func (t *fakeTool) Name() string { return t.name }
@@ -183,6 +184,9 @@ func (t *fakeTool) Execute(ctx context.Context, tctx ToolContext, args json.RawM
 	t.executions++
 	if t.setDraft != nil {
 		_ = tctx.SetDraft(t.setDraft)
+	}
+	if t.onExecute != nil {
+		t.onExecute(tctx)
 	}
 	return t.result
 }
@@ -732,5 +736,160 @@ func TestRegistry(t *testing.T) {
 	}
 	if got := registry.GatedTools(); len(got) != 1 || got[0].Name() != "b" {
 		t.Fatalf("gated = %+v", got)
+	}
+}
+
+// 回归（W1-1）：clampJSON 截断产物必须是合法 JSON——旧实现「JSON 前缀 +
+// 文本尾巴」让超限工具结果 AppendMessage 时 Marshal 失败，历史留下无结果的
+// tool_calls，会话后续每轮被上游 400 拒绝。
+func TestClampJSON_TruncationStaysValidJSON(t *testing.T) {
+	huge := json.RawMessage(`{"data":"` + strings.Repeat("x", 200*1024) + `"}`)
+	clamped := clampJSON(huge, 64*1024)
+	if !json.Valid(clamped) {
+		t.Fatalf("clamped output must be valid JSON: %.80s", clamped)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(clamped, &envelope); err != nil || envelope["truncated"] != true {
+		t.Fatalf("envelope shape wrong: %.120s", clamped)
+	}
+	small := clampJSON(json.RawMessage(`{"a":1}`), 64*1024)
+	if string(small) != `{"a":1}` {
+		t.Fatalf("small payload must pass through untouched: %s", small)
+	}
+}
+
+// 回归（W1-1）：超限工具结果必须照常落库为 tool_result 消息（可再解析）。
+func TestRunTurn_OversizedToolResultPersists(t *testing.T) {
+	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1"}})
+	big := map[string]any{"data": strings.Repeat("x", 100*1024)}
+	caller := &fakeCaller{responses: []scriptedResponse{
+		{result: &CallResult{Text: "查", ToolCalls: []relay.MaheshvaraToolCall{toolCall("c1", "lookup", `{}`)}}},
+		{result: &CallResult{Text: "完成"}},
+	}}
+	lookup := &fakeTool{name: "lookup", result: ToolResult{OK: true, Summary: "大结果", Data: big}}
+	engine := newTestEngine(caller, store, lookup)
+
+	events, _ := engine.RunTurn(context.Background(), "s1", &UserContent{Text: "查"})
+	collected := collectEvents(t, events)
+	if !hasEvent(collected, EventToolResult) || !hasEvent(collected, EventTurnDone) {
+		t.Fatalf("tool result / turn_done missing: %+v", collected)
+	}
+	messages, _ := store.ListMessages(context.Background(), "s1")
+	var sawToolResult bool
+	for _, message := range messages {
+		if message.Role != RoleToolResult {
+			continue
+		}
+		sawToolResult = true
+		if !json.Valid(message.Content) {
+			t.Fatalf("persisted tool_result content is not valid JSON: %.80s", message.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("oversized tool result was never persisted (roles=%v)", store.roles("s1"))
+	}
+}
+
+// 回归（W1-2）：审批补交的 APIKey 必须同步进内存 session——恢复路径同轮用
+// 它构造工具上下文，只落库不同步会让首次批准的实测拿旧/空 key 跑。
+func TestResumeApproval_SuppliedAPIKeyVisibleToTool(t *testing.T) {
+	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1", AllowLiveTest: PermissionAsk}})
+	caller := &fakeCaller{responses: []scriptedResponse{
+		{result: &CallResult{Text: "要测", ToolCalls: []relay.MaheshvaraToolCall{toolCall("c1", "probe", `{}`)}}},
+		{result: &CallResult{Text: "完成"}},
+	}}
+	gotKey := ""
+	probe := &fakeTool{name: "probe", gated: true, permKey: "live_test", result: ToolResult{OK: true},
+		onExecute: func(tctx ToolContext) { _, gotKey = tctx.TestTarget() }}
+	engine := newTestEngine(caller, store, probe)
+
+	events, _ := engine.RunTurn(context.Background(), "s1", &UserContent{Text: "测"})
+	collectEvents(t, events)
+	resumeEvents, err := engine.ResumeApproval(context.Background(), "s1", ApprovalDecision{Approved: true, APIKey: "sk-approved"})
+	if err != nil {
+		t.Fatalf("ResumeApproval: %v", err)
+	}
+	collectEvents(t, resumeEvents)
+	if probe.executions != 1 {
+		t.Fatalf("approved tool not executed")
+	}
+	if gotKey != "sk-approved" {
+		t.Fatalf("tool saw stale key %q during resumed turn, want sk-approved", gotKey)
+	}
+}
+
+// 回归（W1-3）：审批恢复只豁免 ask 级暂停。批量 [ask 工具, never 工具] 一次
+// 批准后，never 的那个仍必须被拒绝并回传拒绝结果。
+func TestResumeApproval_BatchStillEnforcesNever(t *testing.T) {
+	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle,
+		Settings: Settings{ModelName: "m1", AllowLiveTest: PermissionAsk, AllowSave: PermissionNever}})
+	caller := &fakeCaller{responses: []scriptedResponse{
+		{result: &CallResult{Text: "一起做", ToolCalls: []relay.MaheshvaraToolCall{
+			toolCall("c1", "probe", `{}`),
+			toolCall("c2", "saver", `{}`),
+		}}},
+		{result: &CallResult{Text: "收到拒绝，改走只读路径"}},
+	}}
+	probe := &fakeTool{name: "probe", gated: true, permKey: "live_test", result: ToolResult{OK: true, Summary: "已测"}}
+	saver := &fakeTool{name: "saver", gated: true, permKey: "save", result: ToolResult{OK: true, Summary: "已保存"}}
+	engine := newTestEngine(caller, store, probe, saver)
+
+	events, _ := engine.RunTurn(context.Background(), "s1", &UserContent{Text: "做"})
+	collectEvents(t, events)
+	session, _ := store.GetSession(context.Background(), "s1")
+	if session.Status != StatusWaitingApproval || len(session.PendingAction.Calls) != 2 {
+		t.Fatalf("pending should capture both calls: %+v", session.PendingAction)
+	}
+
+	resumeEvents, err := engine.ResumeApproval(context.Background(), "s1", ApprovalDecision{Approved: true})
+	if err != nil {
+		t.Fatalf("ResumeApproval: %v", err)
+	}
+	resumed := collectEvents(t, resumeEvents)
+	if probe.executions != 1 {
+		t.Fatalf("approved ask-level tool must run")
+	}
+	if saver.executions != 0 {
+		t.Fatalf("never-level tool must NOT run even after batch approval")
+	}
+	if !hasEvent(resumed, EventTurnDone) {
+		t.Fatalf("turn must continue after mixed batch: %+v", resumed)
+	}
+	// 拒绝结果回传模型
+	last := caller.lastRequest()
+	foundDenied := false
+	for _, msg := range last.Messages {
+		for _, part := range msg.Content {
+			if part.Type == relay.MaheshvaraContentToolOutput && strings.Contains(part.ToolOutput, "denied") {
+				foundDenied = true
+			}
+		}
+	}
+	if !foundDenied {
+		t.Fatalf("never-denial not fed back to model")
+	}
+}
+
+// 回归（W1-3）：审批挂起期间开启计划模式，批准后旧批次仍被计划模式拒绝。
+func TestResumeApproval_PlanModeEnabledAfterPauseStillDenies(t *testing.T) {
+	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusWaitingApproval,
+		PendingAction: &PendingAction{Calls: []relay.MaheshvaraToolCall{toolCall("c1", "saver", `{}`)}},
+		Settings:      Settings{ModelName: "m1", AllowSave: PermissionAsk, PlanMode: true}})
+	caller := &fakeCaller{responses: []scriptedResponse{
+		{result: &CallResult{Text: "改走方案"}},
+	}}
+	saver := &fakeTool{name: "saver", gated: true, permKey: "save", result: ToolResult{OK: true}}
+	engine := newTestEngine(caller, store, saver)
+
+	events, err := engine.ResumeApproval(context.Background(), "s1", ApprovalDecision{Approved: true})
+	if err != nil {
+		t.Fatalf("ResumeApproval: %v", err)
+	}
+	collected := collectEvents(t, events)
+	if saver.executions != 0 {
+		t.Fatalf("plan mode must deny the approved call")
+	}
+	if !hasEvent(collected, EventTurnDone) {
+		t.Fatalf("turn must continue with denial: %+v", collected)
 	}
 }
