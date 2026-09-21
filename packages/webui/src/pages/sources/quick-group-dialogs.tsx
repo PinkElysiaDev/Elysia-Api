@@ -26,7 +26,7 @@ function deriveGroupCapabilities(models: Model[]): { visionCapable: boolean; too
   }
 }
 
-// 从源内选中的模型一键创建模型组（方向3）：组名默认取源名，能力按成员推导预填，
+// 从源内选中的模型一键创建模型组（快捷建组）：组名默认取源名，能力按成员推导预填，
 // 策略/重试用默认值；完整参数仍可在「模型组」页编辑。
 export function QuickCreateGroupDialog({
   open,
@@ -126,7 +126,7 @@ export function QuickCreateGroupDialog({
   )
 }
 
-// 把选中的模型批量加入现有模型组（方向3）：走原子 append 端点，去重由后端保证。
+// 把选中的模型批量加入现有模型组（快捷建组）：走原子 append 端点，去重由后端保证。
 export function AddToGroupDialog({
   open,
   onOpenChange,

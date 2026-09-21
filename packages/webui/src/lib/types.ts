@@ -137,7 +137,7 @@ export interface ManualModel {
   available?: boolean
 }
 
-/** 多 key 配置中的一条（方向6）。 */
+/** 多 key 配置中的一条（源级密钥集合）。 */
 export interface SourceAPIKey {
   value: string
   note?: string
@@ -168,9 +168,9 @@ export interface ModelSource {
   enabled: boolean
   autoFetchModels: boolean
   manualModels?: ManualModel[]
-  /** 模型列表拉取专用地址（方向5）：空 = 与 baseUrl 一致。 */
+  /** 模型列表拉取专用地址（手动启停开关）：空 = 与 baseUrl 一致。 */
   fetchBaseUrl?: string
-  /** 多 key 配置（方向6）：空 = 单 key（apiKey）。 */
+  /** 多 key 配置（源级密钥集合）：空 = 单 key（apiKey）。 */
   apiKeys?: SourceAPIKey[]
   keyStrategy?: SourceKeyStrategy
   /** 后台拉取任务状态（轮询进度与最近结果）。 */

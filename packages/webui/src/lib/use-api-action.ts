@@ -25,7 +25,7 @@ export interface ActionOptions {
  *
  * busy 的粒度由调用方给定 key(通常是 id):同一 key 重复触发直接忽略,
  * 不同 key 可并行(批量启停场景)。confirm 需要调用方把 useConfirm 的
- * confirm 注入(见 wrapConfirm),使弹窗 UI 与本 hook 解耦。
+ * confirm 注入(把 useConfirm 的 confirm 传入即可),使弹窗 UI 与本 hook 解耦。
  */
 export function useApiAction() {
   const toast = useToast()

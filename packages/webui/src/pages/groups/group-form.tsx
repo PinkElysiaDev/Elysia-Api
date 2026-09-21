@@ -116,7 +116,7 @@ export function GroupFormDialog({
       const selected = prev.models.includes(key)
         ? prev.models.filter((m) => m !== key)
         : [...prev.models, key]
-      // 未手动改过能力开关时，按新的选中集合推导预填（方向1）：
+      // 未手动改过能力开关时，按新的选中集合推导预填（分组路由）：
       // 视觉与工具均为「任一成员支持即开启」。
       if (capsTouched) return { ...prev, models: selected }
       const members = (models ?? []).filter((m) => selected.includes(modelKey(m)))

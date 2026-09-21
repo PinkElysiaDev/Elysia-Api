@@ -658,7 +658,7 @@ func mergeUsage(existing usageTokenUsage, next usageTokenUsage) usageTokenUsage 
 	return existing
 }
 
-// derefInt 解引用可空 int,零值兜底——usage 记录的数值字段全为指针。 */
+// derefInt 解引用可空 int,零值兜底——usage 记录的数值字段全为指针。
 func derefInt(v *int) int {
 	if v == nil {
 		return 0

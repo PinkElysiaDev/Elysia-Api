@@ -25,8 +25,7 @@ const (
 	// AgentUsageKeyName 是 Agent 模型调用在统计页的 key_name 标签。
 	AgentUsageKeyName = "AI 协议助手"
 	// agentRelayMode 是 Agent 用量记录的 relay_mode 标记。
-	agentRelayMode = "agent-assist"
-	// agentMaxSessions 会话数量上限（防滥用；超出删除旧会话）。
+	agentRelayMode    = "agent-assist"
 	agentMaxBodyBytes = 40 << 20 // 消息端点请求体上限（含附件 data URL）
 )
 

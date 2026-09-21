@@ -435,8 +435,6 @@ func customProtocolFrameConfig(config CustomProtocolConfig, frame CustomProtocol
 	return config
 }
 
-// contentEvents 产生一帧映射出的内容/工具/用量事件；终止事件由 Decode 统一
-// 判定（需要访问原始载荷以求值 Match）。
 // flushToolArgumentsDone 为单个工具合成参数完成事件（done 只发一次）。
 func (decoder *CustomProtocolStreamDecoder) flushToolArgumentsDone(response *MaheshvaraResponse, key string) []MaheshvaraStreamEvent {
 	if decoder.toolDoneSent[key] {

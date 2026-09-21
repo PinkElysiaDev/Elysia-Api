@@ -476,7 +476,7 @@ func (c *Config) GetEnablePprof() bool {
 }
 
 // GetOutboundConfig 返回出站网络策略。DeniedIPRanges 经归一化后恒非 nil
-//（未配置 = 默认预置；空列表 = 显式全放行）。
+// （未配置 = 默认预置；空列表 = 显式全放行）。
 func (c *Config) GetOutboundConfig() OutboundConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -484,7 +484,7 @@ func (c *Config) GetOutboundConfig() OutboundConfig {
 }
 
 // SetOutboundDeniedIPRanges 整体替换禁止出站 IP 段。nil 归一化为空列表
-//（显式全放行，与「未配置走默认」区分）。调用方负责校验条目为合法 CIDR、
+// （显式全放行，与「未配置走默认」区分）。调用方负责校验条目为合法 CIDR、
 // 同步下发到 relay 包（见 server.syncOutboundPolicy）与 Save 落盘。
 func (c *Config) SetOutboundDeniedIPRanges(ranges []string) {
 	if ranges == nil {

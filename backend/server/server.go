@@ -654,7 +654,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 
 func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
 	if relay.IsCustomPlatform(targetPlatform) {
-		return s.handleCustomNormalRequest(c, group, selectedModel, customRequest, targetPlatform, inputFormat, startTime, record, isLast)
+		return s.relayCustomChatNormal(c, group, selectedModel, customRequest, targetPlatform, inputFormat, startTime, record, isLast)
 	}
 	// failResult 在转发失败时决定是提交错误响应（最后一次尝试或不可重试），
 	// 还是返回 committed=false 让上层故障转移到下一个候选模型。

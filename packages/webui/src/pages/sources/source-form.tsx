@@ -159,9 +159,9 @@ export function SourceFormDialog({
   const [saving, setSaving] = useState(false)
   // 「自定义模型拉取地址」开关（默认关闭）：关闭 = 拉取走 API 地址。
   const [fetchUrlEnabled, setFetchUrlEnabled] = useState(false)
-  // a 方案：展开显示某个 key 拉取到的模型勾选面板（多 key 时）。
+  // 按 key 展开显示该 key 拉取到的模型勾选面板（多 key 时）。
   const [expandedKey, setExpandedKey] = useState<number | null>(null)
-  // b 方案：手动模式下每个手动模型选中的 key 下标集合（key 数 >1 时）。
+  // 手动模式下每个手动模型选中的 key 下标集合（key 数 >1 时）。
   const [manualKeySelection, setManualKeySelection] = useState<Record<number, number[]>>({})
   // 已注册的自定义协议（协议下拉选择用）；加载失败静默降级为纯手填。
   const [registeredProtocols, setRegisteredProtocols] = useState<CustomProtocolSummary[]>([])
@@ -193,7 +193,7 @@ export function SourceFormDialog({
           : emptySource(),
       )
       setFetchUrlEnabled(!!(source?.fetchBaseUrl ?? '').trim())
-      // b 方案初始化：手动模式的「模型 ↔ key」选择。任何 key 都有显式
+      // 初始化手动模式的「模型 ↔ key」选择。任何 key 都有显式
       // allowedModels 时按其还原；否则视为未配置（全部 key 选中）。
       const allKeyIndexes = (source?.apiKeys ?? [])
         .map((k, i) => (k.value.trim() ? i : -1))
@@ -274,7 +274,7 @@ export function SourceFormDialog({
     setForm((prev) => ({ ...prev, keyStrategy: strategy }))
   }
 
-  // ---- 手动模型（autoFetch=false / custom） ----
+  // ---- 手动模型（自动拉取关闭或自定义协议无发现端点时） ----
 
   function addManualModel() {
     update('manualModels', [

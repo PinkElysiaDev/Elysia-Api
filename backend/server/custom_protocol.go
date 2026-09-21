@@ -123,7 +123,7 @@ func rejectToolRequestsIfNeeded(group *config.ModelGroupConfig, request *relay.M
 // handleCustomNormal 处理自定义协议的非流式转发，两条线制（chat 与
 // Responses）共用：请求渲染/发送/读取/解析/用量合并完全一致，仅最终
 // 响应渲染不同（render 回调）。fail 的错误体格式随 typed 切换。
-func (s *Server) handleCustomNormal(
+func (s *Server) relayCustomNormal(
 	c *gin.Context,
 	group *config.ModelGroupConfig,
 	selectedModel config.ModelRef,
@@ -219,16 +219,16 @@ func (s *Server) handleCustomNormal(
 	return result
 }
 
-func (s *Server) handleCustomNormalRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, request *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
-	return s.handleCustomNormal(c, group, selectedModel, request, targetPlatform, startTime, record, isLast, inputFormat,
+func (s *Server) relayCustomChatNormal(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, request *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
+	return s.relayCustomNormal(c, group, selectedModel, request, targetPlatform, startTime, record, isLast, inputFormat,
 		func(resp *relay.MaheshvaraResponse) (any, error) {
 			return renderMaheshvaraChatResponse(resp, inputFormat)
 		},
 		"custom protocol response")
 }
 
-func (s *Server) handleCustomResponsesNormal(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, request *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
-	return s.handleCustomNormal(c, group, selectedModel, request, targetPlatform, startTime, record, isLast, relay.FormatResponses,
+func (s *Server) relayCustomResponsesNormal(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, request *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
+	return s.relayCustomNormal(c, group, selectedModel, request, targetPlatform, startTime, record, isLast, relay.FormatResponses,
 		func(resp *relay.MaheshvaraResponse) (any, error) {
 			return relay.MaheshvaraToOpenAIResponsesResponse(resp)
 		},

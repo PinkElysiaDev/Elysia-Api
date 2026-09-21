@@ -137,7 +137,7 @@ func (s *Server) responses(c *gin.Context) {
 
 func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, targetFormat relay.FormatType, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
 	if relay.IsCustomPlatform(targetPlatform) {
-		return s.handleCustomResponsesNormal(c, group, selectedModel, customRequest, targetPlatform, startTime, record, isLast)
+		return s.relayCustomResponsesNormal(c, group, selectedModel, customRequest, targetPlatform, startTime, record, isLast)
 	}
 	// failResult 决定：最后一次尝试或不可重试状态码 → 向客户端提交错误响应；
 	// 否则返回 committed=false 让上层故障转移到下一个候选。
