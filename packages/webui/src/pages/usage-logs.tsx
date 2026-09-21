@@ -256,7 +256,7 @@ export function UsageLogsPage() {
                       <TableCell className="py-3 num">
                         {log.firstByteMs > 0 ? formatDuration(log.firstByteMs) : '—'}
                       </TableCell>
-                      <TableCell className="py-3 num font-medium text-foreground">{formatDuration(log.durationMs)}</TableCell>
+                      <TableCell className="py-3 num font-medium text-foreground">{log.durationMs > 0 ? formatDuration(log.durationMs) : '—'}</TableCell>
                       <TableCell className="py-3 pr-4 num">
                         <span className="font-mono">↑{formatNumber(log.inputTokens)}</span>{' '}
                         <span className="text-muted-foreground font-mono">↓{formatNumber(log.outputTokens)}</span>

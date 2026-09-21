@@ -22,6 +22,9 @@ import { ApprovalCard, LiveAssistantView, MessageCard } from './message-card'
 /** 单文件 ≤8MiB、最多 20 个（与后端限制对齐）。 */
 const MAX_FILE_BYTES = 8 << 20
 const MAX_FILES = 20
+/** 请求体总预算：后端整个 JSON 上限 40MiB，dataUrl 约 4/3 膨胀 + 文本与
+ * JSON 开销，取 28MiB 保守值——单文件/个数限制拦不住「3 个 8MiB 文件」。 */
+const MAX_TOTAL_PAYLOAD = 28 << 20
 
 async function fileToDocument(file: File): Promise<AgentDocument> {
   const isTextLike = file.type.startsWith('text/') || /\.(txt|md|json|yaml|yml|xml|csv|html?)$/i.test(file.name)
@@ -45,7 +48,9 @@ export interface ChatPanelProps {
   onApprove: (decision: { approved: boolean }) => void
   onStop: () => void
   onOpenContextTab: (tab: AgentContextTab) => void
-  onSettingsChange: (patch: { settings?: Partial<AgentSettings> }) => Promise<void> | void
+  onSettingsChange: (patch: { settings?: Partial<AgentSettings> }) => Promise<boolean | void> | void
+  /** 关闭现场报错横幅（关闭后被抑制的落库红卡自然回归）。 */
+  onDismissError: () => void
   /** 轮数条跳转目标：变化时滚动定位到对应消息（nonce 保证重复点击也生效）。 */
   jumpTarget?: { seq: number; nonce: number } | null
   /** 滚动时上报当前视口所在的轮（最近一条用户消息 seq）。 */
@@ -66,6 +71,7 @@ export function ChatPanel({
   onStop,
   onOpenContextTab,
   onSettingsChange,
+  onDismissError,
   jumpTarget,
   onActiveTurn,
 }: ChatPanelProps) {
@@ -77,6 +83,7 @@ export function ChatPanel({
   const [saving, setSaving] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const lastSentRef = useRef<{ content: string; documents: AgentDocument[]; priorLastUserSeq: number } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const busy = live.running
@@ -143,6 +150,24 @@ export function ChatPanel({
     }
   }, [messages])
 
+  /** 发送失败恢复草稿：仅当错误来自预检阶段（没有新的用户消息落库）——
+   * 轮内模型错误时用户消息已持久化，恢复会造成内容双份。 */
+  useEffect(() => {
+    if (!live.error) {
+      if (!live.running) lastSentRef.current = null
+      return
+    }
+    const last = lastSentRef.current
+    if (!last) return
+    const lastUserSeq = messages.reduce((seq, message) => (message.role === 'user' ? message.seq : seq), 0)
+    if (lastUserSeq === last.priorLastUserSeq) {
+      setText(last.content)
+      setDocuments(last.documents)
+    }
+    lastSentRef.current = null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live.error, live.running])
+
   const save = async (patch: { settings?: Partial<AgentSettings> }) => {
     setSaving(true)
     try {
@@ -156,6 +181,9 @@ export function ChatPanel({
     void save({ settings: { modelSourceId: source.id, modelName: model.name } })
   }
 
+  /** 文档的传输体积估算：dataUrl 按其字符串长度（≈原始 4/3），文本按长度。 */
+  const docPayloadBytes = (doc: AgentDocument) => (doc.dataUrl ?? doc.text ?? '').length
+
   const addFiles = async (files: FileList | File[]) => {
     const next: AgentDocument[] = []
     for (const file of Array.from(files)) {
@@ -166,10 +194,26 @@ export function ChatPanel({
       next.push(await fileToDocument(file))
     }
     setDocuments((current) => {
-      const merged = [...current, ...next]
+      let merged = [...current, ...next]
       if (merged.length > MAX_FILES) {
         toast({ description: `附件最多 ${MAX_FILES} 个` })
-        return merged.slice(0, MAX_FILES)
+        merged = merged.slice(0, MAX_FILES)
+      }
+      const total = merged.reduce((sum, doc) => sum + docPayloadBytes(doc), 0)
+      if (total > MAX_TOTAL_PAYLOAD) {
+        // 按新到先裁：保住已有附件，超预算的后来者丢弃并提示。
+        const kept: AgentDocument[] = []
+        let budget = MAX_TOTAL_PAYLOAD
+        for (const doc of merged) {
+          const size = docPayloadBytes(doc)
+          if (size > budget) {
+            toast({ description: `${doc.name ?? '附件'} 超出总预算（约 28MiB），未添加` })
+            continue
+          }
+          kept.push(doc)
+          budget -= size
+        }
+        merged = kept
       }
       return merged
     })
@@ -178,6 +222,10 @@ export function ChatPanel({
   const submit = () => {
     const content = text.trim()
     if ((!content && documents.length === 0) || busy) return
+    // 记录发送前最后一条用户消息 seq：错误回来时若没有新的用户消息落库，
+    // 说明是预检失败（400 超限/409 占用），恢复草稿避免用户重打全稿。
+    const priorLastUserSeq = messages.reduce((seq, message) => (message.role === 'user' ? message.seq : seq), 0)
+    lastSentRef.current = { content, documents, priorLastUserSeq }
     onSend({ content, documents })
     setText('')
     setDocuments([])
@@ -273,6 +321,14 @@ export function ChatPanel({
           <div className="flex items-center gap-2 rounded-lg border-[color-mix(in_srgb,var(--ember)_35%,transparent)] bg-[color-mix(in_srgb,var(--ember)_7%,transparent)] px-3 py-2 text-xs text-ember">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <span className="min-w-0 flex-1">{live.error.text}</span>
+            <button
+              type="button"
+              aria-label="关闭错误提示"
+              className="rounded p-0.5 text-ember/70 transition-colors hover:bg-[color-mix(in_srgb,var(--ember)_12%,transparent)] hover:text-ember"
+              onClick={onDismissError}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
             {live.error.retryable && !busy ? (
               <Button
                 size="sm"

@@ -105,7 +105,10 @@ function compileApiKeysPayload(
   const allManual = form.manualModels ?? []
   for (const [index, model] of allManual.entries()) {
     if (!model.id.trim()) continue
-    if ((manualKeySelection[index] ?? []).length === 0) {
+    // 显式空勾选才报错；从未用过勾选面板的模型不参与编译——否则
+    // KeyModelsPanel 里手工维护的 per-key allowedModels 会被整体覆盖掉。
+    const selection = manualKeySelection[index]
+    if (selection !== undefined && selection.length === 0) {
       return { error: `模型「${model.id}」没有任何可用 Key` }
     }
   }

@@ -168,10 +168,10 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                 <SheetSectionTitle>耗时与用量</SheetSectionTitle>
                 <p className="tnum mb-2 flex flex-wrap gap-x-4 text-xs text-muted-foreground">
                   <span>
-                    首字 <b className="font-semibold text-foreground">{formatDuration(detail.firstByteMs)}</b>
+                    首字 <b className="font-semibold text-foreground">{detail.firstByteMs > 0 ? formatDuration(detail.firstByteMs) : '—'}</b>
                   </span>
                   <span>
-                    总耗时 <b className="font-semibold text-foreground">{formatDuration(detail.durationMs)}</b>
+                    总耗时 <b className="font-semibold text-foreground">{detail.durationMs > 0 ? formatDuration(detail.durationMs) : '—'}</b>
                   </span>
                   {outputRate && (
                     <span>

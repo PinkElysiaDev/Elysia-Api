@@ -51,8 +51,9 @@ export function AgentPage() {
   const [activeId, setActiveId] = useState<string | undefined>()
   const [session, setSession] = useState<AgentSession | undefined>()
   const [messages, setMessages] = useState<AgentMessage[]>([])
+  /** 入口引导只跑一次（ref 而非 state：StrictMode 双挂载下 state 守卫会双双通过）。 */
+  const bootstrapRef = useRef(false)
   const [panelOpen, setPanelOpen] = useState(true)
-  const [bootstrapped, setBootstrapped] = useState(false)
   const [tabs, setTabs] = useState<AgentContextTab[]>([])
   const [activeTab, setActiveTab] = useState<AgentContextTab | null>(null)
   const [activeTurnSeq, setActiveTurnSeq] = useState<number | null>(null)
@@ -103,7 +104,7 @@ export function AgentPage() {
     [],
   )
 
-  const { live, send, approve, stop, hydrateApproval } = useAgentStream(activeId, {
+  const { live, send, approve, stop, dismissError, hydrateApproval } = useAgentStream(activeId, {
     onMessage: (event: AgentStreamEvent) => {
       if (event.message) {
         setMessages((current) => [...current, event.message as AgentMessage])
@@ -127,8 +128,8 @@ export function AgentPage() {
 
   /** 入口跳转：?mode=create | ?mode=edit&protocol=<id> 自动建会话并进入工作区。 */
   useEffect(() => {
-    if (bootstrapped) return
-    setBootstrapped(true)
+    if (bootstrapRef.current) return
+    bootstrapRef.current = true
     const mode = searchParams.get('mode')
     if (mode === 'create' || mode === 'edit') {
       const protocolId = searchParams.get('protocol') ?? ''
@@ -137,7 +138,7 @@ export function AgentPage() {
       navigate('/agent', { replace: true })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bootstrapped])
+  }, [])
 
   /** 会话列表轻轮询：运行中状态可感知（断连后回来能看到轮次结束）。 */
   useEffect(() => {
@@ -233,24 +234,35 @@ export function AgentPage() {
   )
 
   const handleSettingsChange = useCallback(
-    async (patch: { settings?: Partial<AgentSettings>; title?: string }) => {
-      if (!session) return
+    async (patch: { settings?: Partial<AgentSettings>; title?: string }): Promise<boolean> => {
+      if (!session) return false
       try {
         const updated = await updateAgentSession(session.id, patch)
         setSession((current) => (current ? { ...current, settings: updated.settings } : updated))
         await mutateSessions()
+        return true
       } catch (error) {
         toast({ description: error instanceof Error ? error.message : '保存设置失败' })
+        return false
       }
     },
     [mutateSessions, session, toast],
   )
 
-  /** 计划模式：确认执行 → 关闭计划模式并以用户消息通知助手开始执行。 */
+  /** 计划模式：确认执行 → 关闭计划模式并以用户消息通知助手开始执行。
+   * ref 守卫挡住双击：live.running 在 PATCH 返回后才置位，期间第二次点击
+   * 会重启流（重置现场）然后吃一个假 409。 */
+  const confirmingPlanRef = useRef(false)
   const handleConfirmPlan = useCallback(async () => {
-    if (!session || live.running) return
-    await handleSettingsChange({ settings: { planMode: false } })
-    send({ content: '确认执行当前方案，请开始执行。' })
+    if (!session || live.running || confirmingPlanRef.current) return
+    confirmingPlanRef.current = true
+    try {
+      const ok = await handleSettingsChange({ settings: { planMode: false } })
+      if (!ok) return // PATCH 失败已提示；计划模式仍开启，直接发送只会被门控拒绝
+      send({ content: '确认执行当前方案，请开始执行。' })
+    } finally {
+      confirmingPlanRef.current = false
+    }
   }, [handleSettingsChange, live.running, send, session])
 
   /** 草稿还原：回滚到最近一轮修改前的还原点。 */
@@ -385,6 +397,7 @@ export function AgentPage() {
               messages={messages}
               live={live}
               onSettingsChange={handleSettingsChange}
+          onDismissError={dismissError}
               onSend={(input: { content?: string; documents?: AgentDocument[]; afterSeq?: number }) => {
                 if (input.afterSeq != null) {
                   setMessages((current) => current.filter((message) => message.seq <= input.afterSeq!))
