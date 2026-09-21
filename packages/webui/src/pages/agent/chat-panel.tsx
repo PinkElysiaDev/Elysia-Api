@@ -270,9 +270,9 @@ export function ChatPanel({
         <div ref={bottomRef} />
       </div>
 
-      {/* ComposerDock：默认隐形，hover / 聚焦时卡片浮现。 */}
+      {/* ComposerDock：默认有线无底（边框常显、内部透明），hover / 聚焦时填充浮现。 */}
       <div className="px-4 pb-4">
-        <div className="rounded-xl border border-transparent bg-transparent transition-colors duration-200 hover:border-border hover:bg-card focus-within:border-rose focus-within:bg-card focus-within:ring-[3px] focus-within:ring-wash">
+        <div className="rounded-xl border border-border bg-transparent transition-colors duration-200 hover:bg-card focus-within:border-rose focus-within:bg-card focus-within:ring-[3px] focus-within:ring-wash">
           {editing ? (
             <div className="px-3 pb-2 pt-2.5">
               <div className="mb-1.5 flex items-center gap-2 text-2xs text-muted-foreground">
