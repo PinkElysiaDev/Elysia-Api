@@ -707,7 +707,9 @@ func effectiveCustomProtocolRuntimeMapping(config CustomProtocolConfig, allowStr
 func customProtocolResponseHasMapping(response CustomProtocolResponse) bool {
 	if response.IDPath != "" || response.ModelPath != "" || response.StatusPath != "" ||
 		response.TextPath != "" || response.ReasoningPath != "" || response.ToolCallsPath != "" ||
-		response.UsagePath != "" || response.FinishReasonPath != "" || response.ErrorPath != "" {
+		response.UsagePath != "" || response.FinishReasonPath != "" || response.ErrorPath != "" ||
+		response.SignaturePath != "" || response.EncryptedContentPath != "" || response.RefusalPath != "" ||
+		response.CitationsPath != "" {
 		return true
 	}
 	if len(response.Mappings) > 0 || len(response.FieldMappings) > 0 || len(response.Fields) > 0 {

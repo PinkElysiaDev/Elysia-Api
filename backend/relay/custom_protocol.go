@@ -132,9 +132,19 @@ type CustomProtocolResponse struct {
 	// TextFilter 在 textPath 指向对象数组时按元素过滤（如 Anthropic 分离
 	// thinking/text 块、Gemini 分离 thought 部件）再提取文本；接受单条件或
 	// 条件数组（数组=全部成立）。
-	TextFilter       CustomProtocolMatchSet               `json:"textFilter,omitempty"`
-	ReasoningPath    string                               `json:"reasoningPath,omitempty"`
-	ReasoningFilter  CustomProtocolMatchSet               `json:"reasoningFilter,omitempty"`
+	TextFilter      CustomProtocolMatchSet `json:"textFilter,omitempty"`
+	ReasoningPath   string                 `json:"reasoningPath,omitempty"`
+	ReasoningFilter CustomProtocolMatchSet `json:"reasoningFilter,omitempty"`
+	// SignaturePath/SignatureProviderPath/EncryptedContentPath 填充 reasoning
+	// 项的思考签名与加密内容——跨轮思考回传（anthropic 签名 thinking 块 /
+	// Responses encrypted_content）的前提，缺了它们多轮思考必被上游拒绝。
+	SignaturePath         string `json:"signaturePath,omitempty"`
+	SignatureProviderPath string `json:"signatureProviderPath,omitempty"`
+	EncryptedContentPath  string `json:"encryptedContentPath,omitempty"`
+	// RefusalPath 映射拒答文本（流侧 RefusalDelta 事件的输入源）。
+	RefusalPath string `json:"refusalPath,omitempty"`
+	// CitationsPath 把引用/出处标注原样挂到文本部件（Claude citations 往返保真）。
+	CitationsPath    string                               `json:"citationsPath,omitempty"`
 	ToolCallsPath    string                               `json:"toolCallsPath,omitempty"`
 	UsagePath        string                               `json:"usagePath,omitempty"`
 	FinishReasonPath string                               `json:"finishReasonPath,omitempty"`
@@ -210,6 +220,11 @@ type CustomProtocolStreamFrame struct {
 	Tool     *CustomProtocolStreamTool `json:"tool,omitempty"`
 	Response *CustomProtocolResponse   `json:"response,omitempty"`
 	Terminal bool                      `json:"terminal,omitempty"`
+	// ToolDone 标记该帧是工具参数完成信号（content_block_stop /
+	// output_item.done 类帧）：按 tool 段解析目标身份，合成
+	// function_call_arguments.done 事件。此前自定义流从不发 done，渲染侧
+	// 拿不到完整参数的收尾信号。
+	ToolDone bool `json:"toolDone,omitempty"`
 }
 
 // CustomProtocolStreamTool 是帧级工具调用拼装规则：路径相对帧原始 JSON。
@@ -469,7 +484,7 @@ func validateCustomProtocolAliases(configID string, aliases *CustomProtocolAlias
 			return fmt.Errorf("custom protocol %q aliases.textKeys entry %q must be a plain key", configID, key)
 		}
 	}
-	usageCategories := map[string]bool{"input": true, "output": true, "total": true, "cached": true, "reasoning": true}
+	usageCategories := map[string]bool{"input": true, "output": true, "total": true, "cached": true, "reasoning": true, "cache_creation": true, "cache_read": true}
 	for category, keys := range aliases.Usage {
 		if !usageCategories[category] {
 			return fmt.Errorf("custom protocol %q aliases.usage has unknown category %q (allowed: input, output, total, cached, reasoning)", configID, category)
@@ -483,7 +498,7 @@ func validateCustomProtocolAliases(configID string, aliases *CustomProtocolAlias
 			}
 		}
 	}
-	toolCategories := map[string]bool{"id": true, "name": true, "arguments": true}
+	toolCategories := map[string]bool{"id": true, "name": true, "arguments": true, "signature": true, "signatureProvider": true}
 	for category, keys := range aliases.ToolCall {
 		if !toolCategories[category] {
 			return fmt.Errorf("custom protocol %q aliases.toolCall has unknown category %q (allowed: id, name, arguments)", configID, category)
@@ -666,6 +681,9 @@ func validateCustomProtocolResponse(configID, location string, response CustomPr
 		"idPath": response.IDPath, "modelPath": response.ModelPath, "statusPath": response.StatusPath,
 		"textPath": response.TextPath, "reasoningPath": response.ReasoningPath, "toolCallsPath": response.ToolCallsPath,
 		"usagePath": response.UsagePath, "finishReasonPath": response.FinishReasonPath, "errorPath": response.ErrorPath,
+		"signaturePath": response.SignaturePath, "signatureProviderPath": response.SignatureProviderPath,
+		"encryptedContentPath": response.EncryptedContentPath, "refusalPath": response.RefusalPath,
+		"citationsPath": response.CitationsPath,
 	}
 	for field, path := range paths {
 		if strings.TrimSpace(path) == "" {
@@ -812,6 +830,9 @@ func validateStreamFrames(configID, location string, frames []CustomProtocolStre
 			if err := validateCustomProtocolResponse(configID, fmt.Sprintf("%s.stream.frames[%d].response", location, index), *frame.Response, false); err != nil {
 				return err
 			}
+		}
+		if frame.ToolDone && frame.Tool == nil {
+			return fmt.Errorf("custom protocol %q %s.stream.frames[%d].toolDone requires a tool section to identify the target call", configID, location, index)
 		}
 	}
 	return nil
@@ -1178,15 +1199,37 @@ func customProtocolResponseFromRoot(root any, resolved customResolvedMapping, al
 		}
 	}
 	if text := customTextAtFilter(root, mapping.TextPath, textKeys, mapping.TextFilter); text != "" {
+		part := MaheshvaraContentPart{Type: MaheshvaraContentText, Text: text}
+		if mapping.CitationsPath != "" {
+			if value := customValueAt(root, mapping.CitationsPath); value != nil {
+				if encoded, err := json.Marshal(value); err == nil {
+					part.Citations = encoded
+				}
+			}
+		}
 		response.Output = append(response.Output, MaheshvaraOutputItem{
 			ID: newMaheshvaraResponseID("msg"), Type: MaheshvaraOutputMessage, Status: MaheshvaraStatusCompleted, Role: "assistant",
-			Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: text}},
+			Content: []MaheshvaraContentPart{part},
 		})
 	}
-	if reasoning := customTextAtFilter(root, mapping.ReasoningPath, textKeys, mapping.ReasoningFilter); reasoning != "" {
+	if refusal := customStringAt(root, mapping.RefusalPath); refusal != "" {
+		response.Output = append(response.Output, MaheshvaraOutputItem{
+			ID: newMaheshvaraResponseID("msg"), Type: MaheshvaraOutputMessage, Status: MaheshvaraStatusCompleted, Role: "assistant",
+			Content: []MaheshvaraContentPart{{Type: MaheshvaraContentRefusal, Text: refusal}},
+		})
+	}
+	reasoning := customTextAtFilter(root, mapping.ReasoningPath, textKeys, mapping.ReasoningFilter)
+	signature := customStringAt(root, mapping.SignaturePath)
+	encrypted := customStringAt(root, mapping.EncryptedContentPath)
+	if reasoning != "" || signature != "" || encrypted != "" {
+		part := MaheshvaraContentPart{Type: MaheshvaraContentReasoning, Text: reasoning, ReasoningText: reasoning,
+			Signature: signature, EncryptedContent: encrypted}
+		if provider := customStringAt(root, mapping.SignatureProviderPath); provider != "" {
+			part.SignatureProvider = provider
+		}
 		response.Output = append(response.Output, MaheshvaraOutputItem{
 			ID: newMaheshvaraResponseID("rs"), Type: MaheshvaraOutputReasoning, Status: MaheshvaraStatusCompleted,
-			Content: []MaheshvaraContentPart{{Type: MaheshvaraContentReasoning, Text: reasoning, ReasoningText: reasoning}},
+			Content: []MaheshvaraContentPart{part},
 		})
 	}
 	if mapping.ToolCallsPath != "" {
@@ -1198,6 +1241,9 @@ func customProtocolResponseFromRoot(root any, resolved customResolvedMapping, al
 			response.Output = append(response.Output, MaheshvaraOutputItem{
 				ID: firstNonEmptyString(call.ID, newMaheshvaraResponseID("call")), Type: MaheshvaraOutputFunctionCall,
 				Status: MaheshvaraStatusCompleted, CallID: call.ID, Name: call.Name, Arguments: call.Arguments,
+				// ToolCalls 原样携带（含 thoughtSignature/Provider）：Gemini
+				// 跨轮思考签名回传依赖它。
+				ToolCalls: []MaheshvaraToolCall{call},
 			})
 		}
 	}
@@ -1687,6 +1733,12 @@ func customToolCallWithAliases(value any, index int, aliases map[string][]string
 		ID:   firstNonEmptyString(lookupString(customAliasKeys(aliases, "id", "id", "call_id", "tool_call_id", "function.id")), fmt.Sprintf("call_%d", index)),
 		Name: lookupString(customAliasKeys(aliases, "name", "name", "function_name", "function.name")),
 		Type: MaheshvaraToolFunction,
+		// Gemini functionCall 携带 thoughtSignature：跨轮回放需要按 provider
+		// 门控，别名可整体替换键位。
+		ThoughtSignature: lookupString(customAliasKeys(aliases, "signature", "thought_signature", "thoughtSignature", "signature")),
+	}
+	if provider := lookupString(customAliasKeys(aliases, "signatureProvider", "thought_signature_provider", "signature_provider")); provider != "" {
+		call.ThoughtSignatureProvider = provider
 	}
 	var arguments any
 	for _, key := range customAliasKeys(aliases, "arguments", "arguments", "args", "input", "function.arguments", "function.args", "function.input") {
@@ -1722,6 +1774,10 @@ func customUsageAtWithAliases(root any, path string, aliases map[string][]string
 	usage.TotalTokens = customIntPath(object, customAliasKeys(aliases, "total", "total_tokens", "totalTokens", "totalTokenCount")...)
 	usage.CachedInputTokens = customIntPath(object, customAliasKeys(aliases, "cached", "cached_input_tokens", "cachedInputTokens", "cached_tokens", "cachedContentTokenCount", "prompt_tokens_details.cached_tokens", "input_tokens_details.cached_tokens", "cache_read_tokens")...)
 	usage.ReasoningTokens = customIntPath(object, customAliasKeys(aliases, "reasoning", "reasoning_tokens", "reasoningTokens", "thoughtsTokenCount", "completion_tokens_details.reasoning_tokens")...)
+	usage.CacheCreationInputTokens = customIntPath(object, customAliasKeys(aliases, "cache_creation", "cache_creation_input_tokens", "cacheCreationInputTokens", "cache_creation.ephemeral_5m_input_tokens", "cache_creation.ephemeral_1h_input_tokens")...)
+	if usage.CachedInputTokens == 0 {
+		usage.CachedInputTokens = customIntPath(object, customAliasKeys(aliases, "cache_read", "cache_read_input_tokens", "cacheReadInputTokens")...)
+	}
 	usage.TotalTokens = valueOrSum(usage.TotalTokens, usage.InputTokens, usage.OutputTokens)
 	return usage
 }

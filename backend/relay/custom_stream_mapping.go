@@ -30,9 +30,21 @@ type CustomProtocolStreamDecoder struct {
 	toolSlot          map[string]int
 	nextToolSlot      int
 	frameTools        map[float64]CustomProtocolStreamToolIdentity
-	terminal          bool
-	sawOutput         bool
-	sawFinish         bool
+	// toolMeta 记录已见工具的完整身份（key=流级身份键），参数完成冲刷与
+	// 签名去重共用；toolDoneSent 防重复 done；signatureSent 防签名帧重复。
+	toolMeta      map[string]customStreamToolMeta
+	toolArguments map[string]string
+	toolDoneSent  map[string]bool
+	signatureSent map[string]bool
+	terminal      bool
+	sawOutput     bool
+	sawFinish     bool
+}
+
+type customStreamToolMeta struct {
+	id   string
+	name string
+	slot int
 }
 
 // CustomProtocolStreamToolIdentity 记录身份帧（content_block_start /
@@ -81,6 +93,10 @@ func newCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtoco
 		toolAdded:         make(map[string]bool),
 		toolSlot:          make(map[string]int),
 		frameTools:        make(map[float64]CustomProtocolStreamToolIdentity),
+		toolMeta:          make(map[string]customStreamToolMeta),
+		toolArguments:     make(map[string]string),
+		toolDoneSent:      make(map[string]bool),
+		signatureSent:     make(map[string]bool),
 	}
 	if stream := config.Response.Stream; stream != nil {
 		if mode := strings.ToLower(strings.TrimSpace(stream.Mode)); mode != "" {
@@ -184,14 +200,17 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 	rootOK := parseErr == nil
 	if _, done := decoder.doneValues[data]; done {
 		decoder.terminal = true
-		return []MaheshvaraStreamEvent{{Type: MaheshvaraEventResponseCompleted}}, true, nil
+		flush := decoder.flushAllToolArgumentsDone(nil)
+		return append(flush, MaheshvaraStreamEvent{Type: MaheshvaraEventResponseCompleted}), true, nil
 	}
 	if len(decoder.doneJSON) > 0 && rootOK && matchJSONDoneValue(root, decoder.doneJSON) {
 		decoder.terminal = true
-		return []MaheshvaraStreamEvent{{Type: MaheshvaraEventResponseCompleted}}, true, nil
+		flush := decoder.flushAllToolArgumentsDone(nil)
+		return append(flush, MaheshvaraStreamEvent{Type: MaheshvaraEventResponseCompleted}), true, nil
 	}
 	resolved := decoder.resolved
 	terminalFrame := false
+	frameToolDone := false
 	var frameTool *CustomProtocolStreamTool
 	if len(decoder.frames) > 0 {
 		eventName := decoder.effectiveEventName(wireEvent.Event, root, rootOK)
@@ -204,6 +223,7 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 		resolved = decoder.frameResolved[frameIndex]
 		terminalFrame = decoder.frames[frameIndex].Terminal
 		frameTool = decoder.frames[frameIndex].Tool
+		frameToolDone = decoder.frames[frameIndex].ToolDone
 	} else if len(decoder.events) > 0 {
 		eventName := decoder.effectiveEventName(wireEvent.Event, root, rootOK)
 		if _, allowed := decoder.events[eventName]; !allowed {
@@ -221,6 +241,17 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 		response.Output = append(response.Output, decoder.frameToolItems(frameTool, root)...)
 	}
 	events := decoder.buildContentEvents(response, decoder.frameArgsMode(frameTool))
+	// toolDone 帧（content_block_stop / output_item.done 类）：按帧内身份
+	// 解析目标工具，立即补发参数完成。
+	if frameToolDone && frameTool != nil {
+		for _, item := range decoder.frameToolItems(frameTool, root) {
+			key := firstNonEmptyString(item.CallID, item.Name)
+			if key == "" {
+				continue
+			}
+			events = append(events, decoder.flushToolArgumentsDone(response, key)...)
+		}
+	}
 	// 终止判定：finishWhen/statusWhen 配置时按 Match 语义（对帧原始载荷
 	// 求值）；缺省沿用 legacy——finishReasonPath 字符串化非空、
 	// status == "completed"。
@@ -236,6 +267,7 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 		if finishHit {
 			decoder.sawFinish = true
 		}
+		events = append(events, decoder.flushAllToolArgumentsDone(response)...)
 		events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventResponseCompleted, ResponseID: response.ID, Model: response.Model, FinishReason: response.StopReason, Response: response})
 	}
 	if terminalFrame {
@@ -405,6 +437,37 @@ func customProtocolFrameConfig(config CustomProtocolConfig, frame CustomProtocol
 
 // contentEvents 产生一帧映射出的内容/工具/用量事件；终止事件由 Decode 统一
 // 判定（需要访问原始载荷以求值 Match）。
+// flushToolArgumentsDone 为单个工具合成参数完成事件（done 只发一次）。
+func (decoder *CustomProtocolStreamDecoder) flushToolArgumentsDone(response *MaheshvaraResponse, key string) []MaheshvaraStreamEvent {
+	if decoder.toolDoneSent[key] {
+		return nil
+	}
+	decoder.toolDoneSent[key] = true
+	meta, ok := decoder.toolMeta[key]
+	if !ok {
+		return nil
+	}
+	arguments := decoder.toolArguments[key]
+	if arguments == "" {
+		arguments = "{}"
+	}
+	return []MaheshvaraStreamEvent{{
+		Type: MaheshvaraEventFunctionCallArgumentsDone, ResponseID: response.ID, Model: response.Model,
+		OutputIndex: meta.slot, ToolCallIndex: meta.slot, ToolCallID: meta.id, ToolName: meta.name,
+		ToolArgumentsDone: arguments,
+	}}
+}
+
+// flushAllToolArgumentsDone 终态冲刷：内置线在 finish/[DONE] 处为所有未收尾
+// 工具补发 done（累计参数在 previousArguments），自定义协议此前完全缺失。
+func (decoder *CustomProtocolStreamDecoder) flushAllToolArgumentsDone(response *MaheshvaraResponse) []MaheshvaraStreamEvent {
+	var events []MaheshvaraStreamEvent
+	for key := range decoder.toolMeta {
+		events = append(events, decoder.flushToolArgumentsDone(response, key)...)
+	}
+	return events
+}
+
 func (decoder *CustomProtocolStreamDecoder) buildContentEvents(response *MaheshvaraResponse, argsMode string) []MaheshvaraStreamEvent {
 	if response == nil {
 		return nil
@@ -427,6 +490,7 @@ func (decoder *CustomProtocolStreamDecoder) buildContentEvents(response *Maheshv
 				decoder.nextToolSlot++
 				decoder.toolSlot[key] = slot
 			}
+			decoder.toolMeta[key] = customStreamToolMeta{id: item.CallID, name: item.Name, slot: slot}
 			if !decoder.toolAdded[key] {
 				decoder.toolAdded[key] = true
 				events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallAdded, ResponseID: response.ID, Model: response.Model, OutputIndex: slot, ToolCallIndex: slot, ToolCallID: item.CallID, ToolName: item.Name})
@@ -435,17 +499,57 @@ func (decoder *CustomProtocolStreamDecoder) buildContentEvents(response *Maheshv
 			if arguments != "" {
 				delta := decoder.streamDelta(decoder.previousArguments, key, arguments, argsMode)
 				if delta != "" {
+					// 参数完成事件需要全量参数：delta 模式下 streamDelta 不累计，
+					// 这里单独累计（cumulative 模式直接覆盖）。
+					if argsMode == "cumulative" {
+						decoder.toolArguments[key] = arguments
+					} else {
+						decoder.toolArguments[key] += delta
+					}
 					events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallArgumentsDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: slot, ToolCallIndex: slot, ToolCallID: item.CallID, ToolName: item.Name, ToolArgumentsDelta: delta})
 				}
 			}
+			// Gemini functionCall 的 thoughtSignature：跨轮回放按 provider 门控，
+			// 首见即发一次签名事件。
+			if len(item.ToolCalls) > 0 {
+				call := item.ToolCalls[0]
+				if call.ThoughtSignature != "" && !decoder.signatureSent["tool:"+key] {
+					decoder.signatureSent["tool:"+key] = true
+					events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventReasoningSignatureDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: slot, ToolCallIndex: slot, ToolCallID: item.CallID, ReasoningSignatureDelta: call.ThoughtSignature, ReasoningSignatureProvider: firstNonEmptyString(call.ThoughtSignatureProvider, MaheshvaraSignatureProviderGemini)})
+				}
+			}
 		case MaheshvaraOutputReasoning:
+			reasoningKey := fmt.Sprintf(customStreamKeyReasoningFmt, outputIndex)
+			for _, part := range item.Content {
+				if part.Signature != "" && !decoder.signatureSent[reasoningKey] {
+					decoder.signatureSent[reasoningKey] = true
+					events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventReasoningSignatureDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ItemID: item.ID, ReasoningSignatureDelta: part.Signature, ReasoningSignatureProvider: part.SignatureProvider})
+				}
+			}
 			text := maheshvaraReasoningText(item)
-			delta := decoder.streamDelta(decoder.previousReasoning, fmt.Sprintf(customStreamKeyReasoningFmt, outputIndex), text, decoder.modeReasoning)
+			delta := decoder.streamDelta(decoder.previousReasoning, reasoningKey, text, decoder.modeReasoning)
 			if delta != "" {
 				events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventReasoningDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ItemID: item.ID, ReasoningDelta: delta})
 			}
 		default:
 			events = append(events, decoder.contentPartEvents(response, item, outputIndex)...)
+			// 文本部件携带的引用/出处标注（citationsPath 映射）→ 注解事件，
+			// 与内置线 citations_delta/groundingMetadata 的携带方式一致。
+			if item.Type == MaheshvaraOutputMessage {
+				for _, part := range item.Content {
+					if part.Type != MaheshvaraContentText || len(part.Citations) == 0 {
+						continue
+					}
+					var citations []any
+					if err := json.Unmarshal(part.Citations, &citations); err == nil {
+						for _, citation := range citations {
+							if entry, ok := citation.(map[string]any); ok {
+								events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventAnnotationDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, Annotations: []map[string]any{entry}})
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 	if response.Usage != nil {

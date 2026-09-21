@@ -275,7 +275,7 @@ func TestGeminiToolRoundTripToResponses(t *testing.T) {
 }
 
 // Responses 上游返回 function_call 时 StopReason 应为 tool_calls
-//(否则 Chat 客户端 finish_reason 塌缩为 stop)。
+// (否则 Chat 客户端 finish_reason 塌缩为 stop)。
 func TestResponsesFunctionCallSetsStopReason(t *testing.T) {
 	var resp OpenAIResponsesResponse
 	if err := json.Unmarshal([]byte(`{
