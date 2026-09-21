@@ -262,6 +262,19 @@ func TestAgentCallerCustomProtocolPlatform(t *testing.T) {
 	if !strings.Contains(req.Body, `"fake-model"`) {
 		t.Fatalf("protocol-rendered body missing model name: %s", req.Body)
 	}
+
+	// 调用日志 ② 后端转发：custom 协议分支记录渲染产物的请求体。
+	_, logs, lErr := s.store.QueryUsageLogs(t.Context(), storage.UsageQuery{KeyName: AgentUsageKeyName, Limit: 5})
+	if lErr != nil || len(logs) != 1 {
+		t.Fatalf("usage records = %d (err %v), want 1", len(logs), lErr)
+	}
+	detail, _, dErr := s.store.GetUsageRecordJSON(t.Context(), logs[0].RequestID)
+	if dErr != nil {
+		t.Fatalf("usage detail: %v", dErr)
+	}
+	if !strings.Contains(string(detail), `"outgoingBody":{"content":"{`) || !strings.Contains(string(detail), `fake-model`) {
+		t.Fatalf("custom-protocol outgoing body not captured: %.200s", detail)
+	}
 }
 
 // 未注册的 custom 协议：调用前即失败并给出可读错误。

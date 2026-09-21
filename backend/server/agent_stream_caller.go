@@ -150,7 +150,12 @@ func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb 
 		bodyOpts:   usageBodyOptions{initialized: true, maxBytes: logCfg.BodyMaxBytes, externalize: logCfg.ExternalizeMedia},
 		assets:     newAssetSink(requestID),
 	}
-	record.OutgoingBody = record.sanitizeBody(plan.body)
+	// ② 后端转发：内置平台是 plan.body；custom 协议分支的实际请求体在渲染产物里。
+	outgoingBody := plan.body
+	if plan.customReq != nil {
+		outgoingBody = plan.customReq.Body
+	}
+	record.OutgoingBody = record.sanitizeBody(outgoingBody)
 
 	result, err := c.attemptCalls(ctx, model, plan, record, cb)
 
