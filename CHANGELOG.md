@@ -11,6 +11,27 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
 
 ## Unreleased
 
+### 预置协议完整能力（与内置四线等价）
+
+- **shape 全量整形**：自定义协议的 `request.shape` 除消息/工具外，现在把
+  思考/推理配置一并按平台整形进模板上下文——anthropic budget 量化与思考态
+  温度强制、chat reasoning_effort、gemini thinkingConfig、responses effort
+  省略规则与 encrypted_content include 联动。模板作者不再需要复述平台特例。
+- **DSL 新能力**：响应映射新增 signature/encryptedContent/refusal/citations
+  路径与 signatureProvider 常量；流帧新增 toolDone（参数完成信号，终态统一
+  补发）；签名/拒答/引用注解事件补全；工具别名支持 thoughtSignature；
+  用量别名支持 cache_creation/cache_read。思考签名跨轮回传自此可行。
+- **四份预置升到 v2**：chat +reasoning_effort/stop/parallel_tool_calls/user
+  与拒答/签名帧；anthropic +thinking/output_config/签名/引用/参数完成帧与
+  缓存用量；gemini +thinkingConfig/toolConfig/topK/stopSequences、
+  thoughtSignature、**模型发现配置**（此前完全缺失）；responses +include
+  联动与拒答/签名/参数完成帧。
+- **预置版本升级机制**：未被用户改动（内容哈希匹配上一版）的预置行启动时
+  自动升级；改过的保持不动，删除后重启即获新版。
+- **parity 金样测试**：全特征请求体、四平台流转录、非流响应在内置线与
+  预置协议之间逐项对照等价；agent 端到端覆盖 anthropic 预置工具轮与两轮
+  思考签名。
+
 ### 深度审计修复：24 项（引擎/调用方/前端/存储）
 
 **引擎正确性**
