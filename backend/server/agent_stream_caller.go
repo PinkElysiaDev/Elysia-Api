@@ -1,14 +1,13 @@
 package server
 
 import (
-	"log"
-
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -112,7 +111,6 @@ func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb 
 	if !found {
 		return nil, fmt.Errorf("模型源 %q 下没有找到模型 %q", req.ModelSourceID, req.Model)
 	}
-	format := relay.NormalizeAPIFormat(model.Platform)
 
 	maxTokens := req.MaxOutputTokens
 	if maxTokens <= 0 {
@@ -128,13 +126,11 @@ func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb 
 		Stream:          true,
 		MaxOutputTokens: maxTokens,
 	}
-	body, err := renderAgentRequestBody(maheshvara, format)
+	plan, err := renderAgentUpstreamPlan(maheshvara, model.Platform)
 	if err != nil {
-		return nil, fmt.Errorf("构建模型请求失败: %w", err)
+		return nil, err
 	}
-	endpoint := probeEndpoint(model)
 
-	client := &http.Client{Transport: relay.NewSecureTransport()}
 	timeout := c.server.probeTimeout(agentCallTimeoutSec * time.Second)
 	backoffs := []time.Duration{time.Second, 3 * time.Second}
 
@@ -148,7 +144,7 @@ func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb 
 			}
 		}
 		callCtx, cancel := context.WithTimeout(ctx, timeout)
-		result, retryable, err := c.callOnce(callCtx, cancel, client, endpoint, model, format, body, cb)
+		result, retryable, err := c.callOnce(callCtx, cancel, model, plan, cb)
 		if err == nil {
 			return result, nil
 		}
@@ -160,51 +156,162 @@ func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb 
 	return nil, fmt.Errorf("模型调用失败（已重试 %d 次）: %w", agentStreamMaxRetries, lastErr)
 }
 
+// agentUpstreamPlan 一次模型调用的发送计划：线格式请求体 + 平台路由。
+type agentUpstreamPlan struct {
+	format      string // NormalizeAPIFormat 结果；custom:<id> 走自定义协议分支
+	body        []byte // 线格式请求体（OpenAI 系已注入 stream/include_usage）
+	customReq   *relay.CustomProtocolRequestResult
+	protocolID  string // custom 分支的注册协议 ID
+}
+
+// renderAgentUpstreamPlan 渲染请求体并决定发送路由，全部复用 relay 转换内核
+// （MahshvaraToTargetRequest 的同套分发 + 转发路径的 stream 注入语义）。
+// custom:<id> 平台走注册协议渲染——修复了旧实现把自定义协议源错按 OpenAI
+// 线制发送的问题。
+func renderAgentUpstreamPlan(request *relay.MaheshvaraRequest, platform string) (*agentUpstreamPlan, error) {
+	format := relay.NormalizeAPIFormat(platform)
+	if strings.HasPrefix(format, "custom:") {
+		protocolID := strings.TrimPrefix(format, "custom:")
+		if _, ok := relay.GetCustomProtocol(protocolID); !ok {
+			return nil, fmt.Errorf("自定义协议 %q 未注册", protocolID)
+		}
+		rendered, err := relay.RenderRegisteredCustomProtocolRequest(request, protocolID)
+		if err != nil {
+			return nil, fmt.Errorf("构建自定义协议请求失败: %w", err)
+		}
+		return &agentUpstreamPlan{format: format, protocolID: protocolID, customReq: rendered}, nil
+	}
+
+	var body []byte
+	var err error
+	switch format {
+	case relay.APIFormatAnthropic:
+		body, err = relay.MaheshvaraToAnthropic(request)
+	case relay.APIFormatGemini:
+		body, err = relay.MaheshvaraToGemini(request)
+	case relay.APIFormatResponses:
+		body, err = relay.MaheshvaraToOpenAIResponses(request, nil)
+	default:
+		body, err = relay.MaheshvaraToOpenAIChat(request)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("构建模型请求失败: %w", err)
+	}
+	// stream 标志注入与转发热路径（ensureStreamFlagInTargetBody）同源：Gemini
+	// 经 URL action 决定流式不注入；OpenAI 系补 stream_options.include_usage
+	// 让上游回 usage 帧（agent 的 token 统计依赖它）。
+	switch format {
+	case relay.APIFormatGemini:
+	case relay.APIFormatAnthropic:
+		body, err = relay.PassthroughBody(body, "", true, false)
+	default:
+		body, err = relay.PassthroughBody(body, "", true, true)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("注入流式标志失败: %w", err)
+	}
+	return &agentUpstreamPlan{format: format, body: body}, nil
+}
+
+// sendAgentUpstream 按平台把请求交给 relay 适配器发送——端点拼接、鉴权头、
+// HTTP 客户端（共享连接池 + 动态超时 + 安全传输）与线上转发是同一实现，
+// 不再由 agent 侧自行拼 URL/设头/建客户端。流式返回原始响应（调用方负责
+// 关闭）；非 2xx 统一收敛为 *relay.UpstreamStatusError。
+func (c *agentStreamCaller) sendAgentUpstream(ctx context.Context, model storage.Model, plan *agentUpstreamPlan) (*http.Response, error) {
+	if plan.customReq != nil {
+		response, err := c.server.openaiAdapter.SendCustomProtocolRequest(ctx, model.BaseURL, model.APIKey, plan.customReq, true)
+		return agentNormalizeUpstreamResponse(response, err)
+	}
+	switch plan.format {
+	case relay.APIFormatAnthropic:
+		response, err := c.server.claudeAdapter.SendRequest(ctx, model.BaseURL, model.APIKey, plan.body, true)
+		return agentNormalizeUpstreamResponse(response, err)
+	case relay.APIFormatGemini:
+		response, err := c.server.geminiAdapter.SendRequest(ctx, model.BaseURL, model.APIKey, model.Name, plan.body, true)
+		return agentNormalizeUpstreamResponse(response, err)
+	case relay.APIFormatResponses:
+		// OpenAI 适配器的流式入口自带非 2xx → UpstreamStatusError 收敛。
+		return c.server.openaiAdapter.SendResponsesStream(ctx, model.BaseURL, model.APIKey, plan.body)
+	default:
+		return c.server.openaiAdapter.SendRequestStream(ctx, model.BaseURL, model.APIKey, plan.body)
+	}
+}
+
+// agentNormalizeUpstreamResponse 把「返回原始响应」的适配器（Claude/Gemini/
+// 自定义协议）的非 2xx 情况收敛成与 OpenAI 适配器一致的 UpstreamStatusError，
+// 供 callOnce 统一做重试分类与错误文案。
+func agentNormalizeUpstreamResponse(response *http.Response, err error) (*http.Response, error) {
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode >= 200 && response.StatusCode < 300 {
+		return response, nil
+	}
+	defer response.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(response.Body, agentStreamErrorBodyLimit))
+	return nil, &relay.UpstreamStatusError{StatusCode: response.StatusCode, Body: string(raw)}
+}
+
+// agentStreamDecoderFormat 把平台归一化格式映射为流解码器的 FormatType。
+// 两套常量字面量并不一致（APIFormatAnthropic="anthropic" vs FormatClaude=
+// "claude"），直接裸转会静默落进 OpenAI chat 解码器——旧实现即因此让
+// Anthropic/Gemini 上游的流被错误解码。
+func agentStreamDecoderFormat(format string) relay.FormatType {
+	switch format {
+	case relay.APIFormatAnthropic:
+		return relay.FormatClaude
+	case relay.APIFormatGemini:
+		return relay.FormatGemini
+	case relay.APIFormatResponses:
+		return relay.FormatResponses
+	default:
+		return relay.FormatOpenAIChat
+	}
+}
+
 // callOnce 发起一次流式调用。retryable 表示失败发生在收到任何流事件之前
 // 且状态值得重试（网络错/429/5xx）。
-func (c *agentStreamCaller) callOnce(ctx context.Context, cancel context.CancelFunc, client *http.Client,
-	endpoint string, model storage.Model, format string, body []byte, cb agent.StreamCallbacks) (result *agent.CallResult, retryable bool, err error) {
+func (c *agentStreamCaller) callOnce(ctx context.Context, cancel context.CancelFunc, model storage.Model, plan *agentUpstreamPlan, cb agent.StreamCallbacks) (result *agent.CallResult, retryable bool, err error) {
 	defer cancel()
-	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	response, err := c.sendAgentUpstream(ctx, model, plan)
 	if err != nil {
-		return nil, false, err
-	}
-	httpRequest.Header.Set("Content-Type", contentTypeJSON)
-	httpRequest.Header.Set("Accept", "text/event-stream")
-	applyProbeAuth(httpRequest, model)
-	response, err := client.Do(httpRequest)
-	if err != nil {
+		var statusErr *relay.UpstreamStatusError
+		if errors.As(err, &statusErr) {
+			retryable = statusErr.StatusCode == http.StatusTooManyRequests || statusErr.StatusCode >= 500
+			return nil, retryable, fmt.Errorf("上游模型返回 %d: %s", statusErr.StatusCode, truncateForDisplay(statusErr.Body, 2048))
+		}
 		return nil, true, err
 	}
 	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		raw, _ := io.ReadAll(io.LimitReader(response.Body, agentStreamErrorBodyLimit))
-		retryable := response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500
-		return nil, retryable, fmt.Errorf("上游模型返回 %d: %s", response.StatusCode, truncateForDisplay(string(raw), 2048))
-	}
 
 	acc := &agentStreamAccumulator{tools: map[string]*agentToolCallState{}}
-	reader := relay.NewSSEEventReader(response.Body)
-	defer reader.Close()
-	decoder := relay.NewMaheshvaraStreamDecoder(relay.FormatType(format))
-	for {
-		event, ok, readErr := reader.Read(ctx, relay.DefaultSSEIdleTimeout)
-		if readErr != nil {
+	if plan.customReq != nil {
+		if streamErr := c.drainCustomProtocolStream(ctx, plan, response.Body, acc, cb); streamErr != nil {
 			// 流中途故障：带部分结果返回（不重试，避免重复下发增量）。
-			return acc.result(), false, readErr
+			return acc.result(), false, streamErr
 		}
-		if !ok {
-			break
-		}
-		events, decodeErr := decoder.Decode(event)
-		if decodeErr != nil {
-			log.Printf("[agent-stream-debug] decode error: %v (data=%.200s)", decodeErr, event.Data)
-			continue // 单事件解码失败容忍（与转发路径一致）
-		}
-		for _, ev := range events {
-			log.Printf("[agent-stream-debug] ev=%s callID=%q name=%q delta=%.80q", ev.Type, ev.ToolCallID, ev.ToolName, ev.ToolArgumentsDelta)
-			if stop := acc.apply(ev, cb); stop {
-				return acc.result(), false, nil
+	} else {
+		reader := relay.NewSSEEventReader(response.Body)
+		defer reader.Close()
+		decoder := relay.NewMaheshvaraStreamDecoder(agentStreamDecoderFormat(plan.format))
+		for {
+			event, ok, readErr := reader.Read(ctx, relay.DefaultSSEIdleTimeout)
+			if readErr != nil {
+				// 流中途故障：带部分结果返回（不重试，避免重复下发增量）。
+				return acc.result(), false, readErr
+			}
+			if !ok {
+				break
+			}
+			events, decodeErr := decoder.Decode(event)
+			if decodeErr != nil {
+				log.Printf("[agent-stream] decode error: %v (data=%.200s)", decodeErr, event.Data)
+				continue // 单事件解码失败容忍（与转发路径一致）
+			}
+			for _, ev := range events {
+				if stop := acc.apply(ev, cb); stop {
+					return acc.result(), false, nil
+				}
 			}
 		}
 	}
@@ -215,6 +322,27 @@ func (c *agentStreamCaller) callOnce(ctx context.Context, cancel context.CancelF
 		return acc.result(), false, fmt.Errorf("%s", failed)
 	}
 	return acc.result(), false, nil
+}
+
+// drainCustomProtocolStream 用注册协议的流解码器排水 SSE（与自定义协议转发
+// 路径 ForEachBatch 同一套终态/排水语义），把每批事件喂给聚合器。
+func (c *agentStreamCaller) drainCustomProtocolStream(ctx context.Context, plan *agentUpstreamPlan, body io.Reader, acc *agentStreamAccumulator, cb agent.StreamCallbacks) error {
+	protocol, ok := relay.GetCustomProtocol(plan.protocolID)
+	if !ok {
+		return fmt.Errorf("自定义协议 %q 未注册", plan.protocolID)
+	}
+	decoder, err := relay.NewRegisteredCustomProtocolStreamDecoder(protocol)
+	if err != nil {
+		return fmt.Errorf("构造流解码器失败: %w", err)
+	}
+	reader := relay.NewSSEEventReader(body)
+	defer reader.Close()
+	return decoder.ForEachBatch(ctx, reader, func(_ relay.SSEEvent, events []relay.MaheshvaraStreamEvent, _ bool) error {
+		for _, ev := range events {
+			acc.apply(ev, cb) // 终态语义由 ForEachBatch 管理，聚合器无需中断
+		}
+		return nil
+	})
 }
 
 // apply 归并单个流事件；返回 true 表示终态已到，可停止读取。
@@ -293,20 +421,6 @@ func (a *agentStreamAccumulator) result() *agent.CallResult {
 		ToolCalls:    a.toolCalls(),
 		Usage:        a.usage,
 		FinishReason: a.finish,
-	}
-}
-
-// renderAgentRequestBody 按平台把 Maheshvara 请求渲染为线格式（四线同一套）。
-func renderAgentRequestBody(request *relay.MaheshvaraRequest, format string) ([]byte, error) {
-	switch format {
-	case relay.APIFormatAnthropic:
-		return relay.MaheshvaraToAnthropic(request)
-	case relay.APIFormatGemini:
-		return relay.MaheshvaraToGemini(request)
-	case relay.APIFormatResponses:
-		return relay.MaheshvaraToOpenAIResponses(request, nil)
-	default:
-		return relay.MaheshvaraToOpenAIChat(request)
 	}
 }
 

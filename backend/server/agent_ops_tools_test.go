@@ -7,11 +7,14 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/elysia-api/backend/agent"
+	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 )
@@ -370,6 +373,16 @@ func TestOpsTestUpstreamCredentialParams(t *testing.T) {
 // 出站策略工具：只读查询、整体替换、非法 CIDR 拒绝、恢复默认。
 func TestOutboundPolicyTool(t *testing.T) {
 	s := newOpsTestServer(t)
+	// 落盘需要真实 config.json：给集成服务器换上带路径的配置。
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(cfgPath, []byte(`{}`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	s.config = cfg
 	tool := &outboundPolicyTool{server: s}
 	t.Cleanup(func() { relay.SetDeniedIPRanges(relay.DefaultDeniedIPRanges) })
 
