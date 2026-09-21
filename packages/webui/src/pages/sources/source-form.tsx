@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
-import { customPlatformValue, customProtocolID, isCustomPlatform } from '@/lib/protocol'
+import { customPlatformValue, customProtocolID, isCustomPlatform, protocolLabel } from '@/lib/protocol'
 import { api } from '@/lib/api'
 import { revalidate } from '@/lib/hooks'
 import { cn } from '@/lib/utils'
@@ -379,28 +379,45 @@ export function SourceFormDialog({
         if (!cancelled) setRegisteredProtocols(items)
       })
       .catch(() => {
-        /* 静默：下拉仅剩内置协议 */
+        /* 静默：下拉回退内置协议 */
       })
     return () => {
       cancelled = true
     }
   }, [open])
 
-  // 协议选项 = 内置线路 + 已注册自定义协议（value 即 custom:<id>，选中即生效）。
-  const platformOptions: { value: string; label: string; hint: string }[] = [
-    ...PLATFORMS,
-    ...registeredProtocols.map((protocol) => ({
-      value: `custom:${protocol.id}`,
-      label: protocol.name?.trim() || protocol.id,
-      hint: `自定义协议 · ${protocol.id}${protocol.valid ? '' : '（校验失败）'}`,
-    })),
-  ]
-  // 编辑其协议已被删除的源：当前值不在选项中，追加占位项保证回显并提示重选。
-  if (custom && !platformOptions.some((option) => option.value === form.platform)) {
+  // 新建源：协议列表就绪后把内置默认（chat_completions）切到等价预置协议，
+  // 与「下拉仅展示注册协议」保持一致。用户已手动改过 platform 则不动。
+  useEffect(() => {
+    if (!open || isEdit || registeredProtocols.length === 0) return
+    setForm((previous) => {
+      if (previous.platform !== 'chat_completions') return previous
+      const preset = registeredProtocols.find((item) => item.id === 'chat-completions-api')
+      return preset
+        ? { ...previous, platform: customPlatformValue('chat-completions-api') as Platform }
+        : previous
+    })
+  }, [open, isEdit, registeredProtocols])
+
+  // 协议选项 = 已注册自定义协议（含四个预置，value 即 custom:<id>，选中即生效）。
+  // 四个预置与内置线路一一等价，不再并列展示内置项（用户反馈重复）；列表为空
+  // 或拉取失败时回退内置四项，保证表单可用。
+  const customOptions = registeredProtocols.map((protocol) => ({
+    value: `custom:${protocol.id}`,
+    label: protocol.name?.trim() || protocol.id,
+    hint: `自定义协议 · ${protocol.id}${protocol.valid ? '' : '（校验失败）'}`,
+  }))
+  const platformOptions: { value: string; label: string; hint: string }[] =
+    customOptions.length > 0 ? customOptions : PLATFORMS
+  // 当前值不在选项中（协议被删除，或存量源用内置/旧平台值）：追加占位项保证
+  // 回显并提示重选。
+  if (form.platform && !platformOptions.some((option) => option.value === form.platform)) {
     platformOptions.push({
       value: form.platform,
-      label: `自定义协议（未注册）· ${customProtocolID(form.platform)}`,
-      hint: '该协议已不在注册表中，请重新选择协议',
+      label: isCustomPlatform(form.platform)
+        ? `自定义协议（未注册）· ${customProtocolID(form.platform)}`
+        : `当前值 · ${protocolLabel(form.platform)}`,
+      hint: '该值不在可选项中，请重新选择协议',
     })
   }
 
