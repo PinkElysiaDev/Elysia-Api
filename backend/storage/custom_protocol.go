@@ -78,7 +78,7 @@ type ProtocolRenamePair struct {
 
 // MigratePresetProtocolRenames 在单事务里完成协议 ID 改名，并把
 // model_sources / models 两表 platform 列里的 custom:<旧> 引用同步重写
-//（大小写不敏感）。新旧 ID 并存（用户自建了同名协议）时跳过该对——自定义
+// （大小写不敏感）。新旧 ID 并存（用户自建了同名协议）时跳过该对——自定义
 // 行优先，平台引用保持原样。幂等：旧 ID 不存在即无事发生。
 func (s *Store) MigratePresetProtocolRenames(ctx context.Context, pairs []ProtocolRenamePair) (renamed int, err error) {
 	tx, err := s.db.BeginTx(ctx, nil)

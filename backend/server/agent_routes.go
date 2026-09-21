@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -61,6 +62,9 @@ func (s *Server) protocolAgentEngine() *agent.Engine {
 			agentSystemPrompt,
 			agent.Options{MaxModelCalls: 12, TurnTimeout: 10 * time.Minute},
 		)
+		// 启动对账：上一进程崩溃/被杀遗留的 running 会话复位为 idle，否则
+		// UI 会永远挡在不存在的轮次上（waiting_approval 保留可恢复）。
+		s.agentEngineInst.ReconcileInterruptedSessions(context.Background())
 	})
 	return s.agentEngineInst
 }

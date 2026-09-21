@@ -292,3 +292,39 @@ func TestAgentSessionPartialSettingsPatchKeepsUnmentionedFields(t *testing.T) {
 		t.Fatalf("effort lost: %+v", updated.Settings)
 	}
 }
+
+// 回归（W2-12）：启动对账只复位 running；waiting_approval（待批动作仍可恢复）保留。
+func TestResetRunningSessionsReconcilesCrashLeftovers(t *testing.T) {
+	ctx := context.Background()
+	store := newAgentTestStore(t)
+
+	running, err := store.CreateAgentSession(ctx, AgentSessionUpsert{Title: "崩溃轮次", Mode: agent.ModeCreate})
+	if err != nil {
+		t.Fatalf("create running: %v", err)
+	}
+	waiting, err := store.CreateAgentSession(ctx, AgentSessionUpsert{Title: "待审批", Mode: agent.ModeCreate})
+	if err != nil {
+		t.Fatalf("create waiting: %v", err)
+	}
+	runStatus := agent.StatusRunning
+	if err := store.UpdateSessionState(ctx, running.ID, agent.SessionStateUpdate{Status: &runStatus}); err != nil {
+		t.Fatalf("set running: %v", err)
+	}
+	waitStatus := agent.StatusWaitingApproval
+	pending := &agent.PendingAction{Calls: []relay.MaheshvaraToolCall{{ID: "c1", Type: "function", Name: "save_protocol"}}}
+	if err := store.UpdateSessionState(ctx, waiting.ID, agent.SessionStateUpdate{Status: &waitStatus, PendingAction: pending}); err != nil {
+		t.Fatalf("set waiting: %v", err)
+	}
+
+	if err := store.ResetRunningSessions(ctx); err != nil {
+		t.Fatalf("ResetRunningSessions: %v", err)
+	}
+	afterRun, _ := store.GetAgentSession(ctx, running.ID)
+	if afterRun.Status != agent.StatusIdle {
+		t.Fatalf("running session should reset to idle, got %q", afterRun.Status)
+	}
+	afterWait, _ := store.GetAgentSession(ctx, waiting.ID)
+	if afterWait.Status != agent.StatusWaitingApproval || afterWait.PendingAction == nil {
+		t.Fatalf("waiting_approval must be preserved: %+v", afterWait)
+	}
+}

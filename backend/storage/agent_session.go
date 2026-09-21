@@ -431,3 +431,10 @@ func newAgentSessionID() (string, error) {
 }
 
 var _ agent.Store = (*Store)(nil)
+
+// ResetRunningSessions 把崩溃遗留的 running 会话复位为 idle（agent.Store
+// 对账路径；waiting_approval 不动——待批动作仍可经审批恢复）。
+func (s *Store) ResetRunningSessions(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE agent_sessions SET status = ? WHERE status = ?`, agent.StatusIdle, agent.StatusRunning)
+	return err
+}

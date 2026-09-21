@@ -625,6 +625,13 @@ func (t *createSourceTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 		BaseURL: strings.TrimSpace(params.BaseURL), APIKey: params.APIKey,
 		Platform: platform, Enabled: true,
 	}
+	// slugID 撞 id 即静默覆盖既有源（UpsertSource 是纯 upsert，连 API key 一起
+	// 换掉）——「创建」审批卡实际产生破坏性修改。重名直接拒绝，改走 update。
+	if existing, found := agentFindSource(ctx, store, item.ID); found {
+		return agent.ToolResult{OK: false,
+			Summary: fmt.Sprintf("已存在同名模型源 %q（id=%s），如需修改请用 update_model_source", existing.Name, existing.ID),
+			Data:    map[string]any{"error": "duplicate_source", "id": existing.ID}}
+	}
 	if params.AutoFetchModels != nil {
 		item.AutoFetchModels = *params.AutoFetchModels
 	}

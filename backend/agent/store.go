@@ -101,6 +101,9 @@ type Store interface {
 	ListMessages(ctx context.Context, sessionID string) ([]Message, error)
 	// TruncateMessages 删除 seq > afterSeq 的消息。
 	TruncateMessages(ctx context.Context, sessionID string, afterSeq int) error
+	// ResetRunningSessions 把遗留的 running 会话复位为 idle（进程启动对账；
+	// waiting_approval 保留——待批动作仍可恢复）。
+	ResetRunningSessions(ctx context.Context) error
 }
 
 // SettingsPatch 是设置的部分更新载荷：全指针字段，仅非 nil 字段生效

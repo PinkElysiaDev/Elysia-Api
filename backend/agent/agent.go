@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -118,15 +119,19 @@ func (e *Engine) IsRunning(sessionID string) bool {
 	return running
 }
 
-func (e *Engine) begin(sessionID string) (*turnHandle, error) {
+func (e *Engine) begin(sessionID string, timeout time.Duration) (context.Context, *turnHandle, context.CancelFunc, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if _, exists := e.running[sessionID]; exists {
-		return nil, ErrSessionRunning
+		return nil, nil, nil, ErrSessionRunning
 	}
-	handle := &turnHandle{done: make(chan struct{})}
+	// turnCtx/cancel 在持锁段内构造并挂到 handle 再发布：旧实现先发布后无锁写
+	// handle.cancel，Stop 无锁读——数据竞争之外，Stop 在赋值前读到 nil 会
+	// 「假成功」，轮次照常跑完。
+	turnCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	handle := &turnHandle{done: make(chan struct{}), cancel: cancel}
 	e.running[sessionID] = handle
-	return handle, nil
+	return turnCtx, handle, cancel, nil
 }
 
 func (e *Engine) end(sessionID string, handle *turnHandle) {
@@ -167,14 +172,11 @@ func (e *Engine) RunTurn(ctx context.Context, sessionID string, input *UserConte
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	handle, err := e.begin(sessionID)
+	// 轮次脱离调用方 ctx 运行：SSE 断开不终止轮次，结果照常落库。
+	turnCtx, handle, cancel, err := e.begin(sessionID, e.opts.TurnTimeout)
 	if err != nil {
 		return nil, err
 	}
-	// 轮次脱离调用方 ctx 运行：SSE 断开不终止轮次，结果照常落库。
-	turnCtx, cancel := context.WithTimeout(context.Background(), e.opts.TurnTimeout)
-	handle.cancel = cancel
-
 	events := make(chan Event, e.opts.EventBuffer)
 	go func() {
 		defer e.end(sessionID, handle)
@@ -198,12 +200,10 @@ func (e *Engine) ResumeApproval(ctx context.Context, sessionID string, decision 
 	if session.Status != StatusWaitingApproval || session.PendingAction == nil || len(session.PendingAction.Calls) == 0 {
 		return nil, ErrNoPendingApproval
 	}
-	handle, err := e.begin(sessionID)
+	turnCtx, handle, cancel, err := e.begin(sessionID, e.opts.TurnTimeout)
 	if err != nil {
 		return nil, err
 	}
-	turnCtx, cancel := context.WithTimeout(context.Background(), e.opts.TurnTimeout)
-	handle.cancel = cancel
 
 	pending := session.PendingAction
 	events := make(chan Event, e.opts.EventBuffer)
@@ -234,6 +234,16 @@ func emitTerminal(events chan<- Event, event Event) {
 
 // startTurn 是轮次统一入口：新消息或审批恢复 → 模型循环 → 收尾。
 func (e *Engine) startTurn(ctx context.Context, sessionID string, handle *turnHandle, input *UserContent, resume *PendingAction, decision ApprovalDecision, events chan Event) {
+	// 整个轮次主体的 panic 防护（modelLoop 内已有 recover，这里覆盖其余
+	// 部分——如历史渲染/审批记录写入）：置回 idle 并发终态事件，避免进程
+	// 崩溃、以及会话在 DB 里永卡 running。
+	defer func() {
+		if r := recover(); r != nil {
+			emitTerminal(events, Event{Type: EventError, Text: fmt.Sprintf("引擎异常: %v", r), Retryable: true})
+			e.setStatus(context.Background(), sessionID, StatusIdle, true, events)
+			emitTerminal(events, Event{Type: EventTurnDone})
+		}
+	}()
 	started := time.Now()
 	session, err := e.store.GetSession(ctx, sessionID)
 	if err != nil {
@@ -812,4 +822,12 @@ func truncateRunes(value string, limit int) string {
 		return value
 	}
 	return string(runes[:limit]) + "…"
+}
+
+// ReconcileInterruptedSessions 进程启动对账：崩溃/被杀遗留的 running 会话
+// 复位为 idle（轮次已随进程消失，不复位会让 UI 永远挡在假轮次上）。
+func (e *Engine) ReconcileInterruptedSessions(ctx context.Context) {
+	if err := e.store.ResetRunningSessions(ctx); err != nil {
+		log.Printf("[agent] reconcile interrupted sessions: %v", err)
+	}
 }

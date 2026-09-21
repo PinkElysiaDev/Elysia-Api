@@ -893,3 +893,5 @@ func TestResumeApproval_PlanModeEnabledAfterPauseStillDenies(t *testing.T) {
 		t.Fatalf("turn must continue with denial: %+v", collected)
 	}
 }
+
+func (f *fakeStore) ResetRunningSessions(ctx context.Context) error { return nil }
