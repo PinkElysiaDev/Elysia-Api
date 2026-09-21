@@ -80,6 +80,13 @@ function reduce(state: AgentLiveState, event: AgentStreamEvent): AgentLiveState 
         ...state,
         running: false,
         statusText: '',
+        // 轮次结束即清空现场残留：终稿与工具结果都以落库行（refreshSession
+        // 拉回的 messages）呈现。不清的话 live 工具卡与落库 tool_result 行
+        // 会并排双渲染；若终稿 message 事件曾被丢（有损 emitEvent），live
+        // 文本也会与落库助手消息双份。
+        text: '',
+        reasoning: '',
+        toolCards: [],
         turnUsage: usage
           ? {
               inputTokens: usage.input_tokens ?? 0,
@@ -94,6 +101,10 @@ function reduce(state: AgentLiveState, event: AgentStreamEvent): AgentLiveState 
         ...state,
         running: false,
         statusText: '',
+        // 出错路径引擎会把部分终稿落库（turn_done 随后触发刷新），live 文本
+        // 同样让位给落库行，避免双份。
+        text: '',
+        reasoning: '',
         error: { text: event.text ?? '未知错误', retryable: event.retryable ?? false },
       }
     default:
@@ -193,5 +204,14 @@ export function useAgentStream(sessionId: string | undefined, options: UseAgentS
     setLive((state) => ({ ...state, error: null }))
   }, [])
 
-  return { live, send, approve, stop, dismissError }
+  /** 会话详情回灌审批卡：waiting_approval 状态在刷新/切会话后 SSE 现场已
+   * 丢失，不回灌的话待审批轮次从此无法在 UI 上批准。 */
+  const hydrateApproval = useCallback((approval: AgentPendingAction | null | undefined) => {
+    setLive((state) => {
+      if (!approval || state.approvalPending || state.running) return state
+      return { ...state, approvalPending: approval }
+    })
+  }, [])
+
+  return { live, send, approve, stop, dismissError, hydrateApproval }
 }

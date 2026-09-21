@@ -103,7 +103,7 @@ export function AgentPage() {
     [],
   )
 
-  const { live, send, approve, stop } = useAgentStream(activeId, {
+  const { live, send, approve, stop, hydrateApproval } = useAgentStream(activeId, {
     onMessage: (event: AgentStreamEvent) => {
       if (event.message) {
         setMessages((current) => [...current, event.message as AgentMessage])
@@ -116,6 +116,14 @@ export function AgentPage() {
       if (activeId) void refreshSession(activeId)
     },
   })
+
+  /** 审批卡回灌：waiting_approval 的轮次在刷新/切会话后 SSE 现场已丢，
+   * 用会话详情里的 pendingAction 重建审批卡，否则待批轮次永远无法批准。 */
+  useEffect(() => {
+    if (session?.status === 'waiting_approval' && session.pendingAction?.calls?.length) {
+      hydrateApproval(session.pendingAction)
+    }
+  }, [session, hydrateApproval])
 
   /** 入口跳转：?mode=create | ?mode=edit&protocol=<id> 自动建会话并进入工作区。 */
   useEffect(() => {

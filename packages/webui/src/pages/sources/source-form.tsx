@@ -233,15 +233,37 @@ export function SourceFormDialog({
 
   function removeApiKey(index: number) {
     setForm((prev) => ({ ...prev, apiKeys: (prev.apiKeys ?? []).filter((_, i) => i !== index) }))
+    // manualKeySelection 存的是 key 数组下标：删行后所有引用整体前移，
+    // 被删下标丢弃——否则模型会静默绑到用户从未勾选的 key（错凭证服务）。
+    setManualKeySelection((prev) => {
+      const next: Record<number, number[]> = {}
+      for (const [modelKey, keyIndexes] of Object.entries(prev)) {
+        const remapped = (keyIndexes as number[])
+          .filter((i) => i !== index)
+          .map((i) => (i > index ? i - 1 : i))
+        next[Number(modelKey)] = remapped
+      }
+      return next
+    })
   }
 
   function moveApiKey(index: number, delta: -1 | 1) {
+    const target = index + delta
     setForm((prev) => {
       const keys = [...(prev.apiKeys ?? [])]
-      const target = index + delta
       if (target < 0 || target >= keys.length) return prev
       ;[keys[index], keys[target]] = [keys[target], keys[index]]
       return { ...prev, apiKeys: keys }
+    })
+    // 行交换 = 两个下标互换，选择状态同步重映射。
+    setManualKeySelection((prev) => {
+      const next: Record<number, number[]> = {}
+      for (const [modelKey, keyIndexes] of Object.entries(prev)) {
+        next[Number(modelKey)] = (keyIndexes as number[]).map((i) =>
+          i === index ? target : i === target ? index : i,
+        )
+      }
+      return next
     })
   }
 
