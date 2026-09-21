@@ -94,14 +94,17 @@ func callerRequest() agent.CallRequest {
 }
 
 // OpenAI chat 平台：适配器拼 /chat/completions + Bearer 鉴权；请求体带
-// stream=true 与 stream_options.include_usage（usage 统计依赖）。
+// stream=true 与 stream_options.include_usage；usage 按规范以 finish_reason
+// 之后的独立尾帧到达（W1-4 回归：终态即 return 会丢掉整帧用量）。
 func TestAgentCallerOpenAIChatViaAdapter(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(openAIChunk("c1", map[string]any{"role": "assistant", "content": "你"}, "", nil)))
 		_, _ = w.Write([]byte(openAIChunk("c1", map[string]any{"content": "好"}, "", nil)))
-		_, _ = w.Write([]byte(openAIChunk("c1", map[string]any{}, "stop", map[string]any{"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5})))
+		_, _ = w.Write([]byte(openAIChunk("c1", map[string]any{}, "stop", nil)))
+		// 规范的 usage-only 尾帧（choices 为空）在 finish 之后、[DONE] 之前。
+		_, _ = w.Write([]byte(`data: {"id":"c1","choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}` + "\n\n"))
 		_, _ = w.Write([]byte(openAIDone()))
 	})
 	seedCallerModel(t, s, upstream.URL, "openai")
@@ -381,5 +384,61 @@ func TestAgentAttachmentBase64IsTextNotBinary(t *testing.T) {
 	}
 	if !strings.Contains(string(chatBody), "data:image/png;base64,"+pngPayload) {
 		t.Fatalf("openai image_url should keep the full data URL: %.120s", chatBody)
+	}
+}
+
+// 回归（W1-5）：Responses 平台不得注入 stream_options——该参数是 Chat 线
+// 专属，严格上游会对未知顶层参数直接 400（且不重试）。
+func TestAgentCallerResponsesNoStreamOptions(t *testing.T) {
+	s := newAgentIntegrationServer(t)
+	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"完成\"}\n\n"))
+		_, _ = w.Write([]byte("event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n"))
+	})
+	seedCallerModel(t, s, upstream.URL, "responses")
+
+	result, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if result.Text != "完成" {
+		t.Fatalf("text = %q", result.Text)
+	}
+	req := upstream.last()
+	if req.Path != "/responses" {
+		t.Fatalf("path = %q, want /responses", req.Path)
+	}
+	if strings.Contains(req.Body, "stream_options") {
+		t.Fatalf("responses body must not carry stream_options: %s", req.Body)
+	}
+	if !strings.Contains(req.Body, `"stream":true`) {
+		t.Fatalf("stream flag missing: %s", req.Body)
+	}
+}
+
+// 回归（W1-6）：custom 协议终态后的排水窗内，重复文本帧不得再计入结果
+// （旧实现对 terminalBeforeBatch 视而不见，会把"协议协议"这类重复发给用户）。
+func TestAgentCallerCustomProtocolPostTerminalTextIgnored(t *testing.T) {
+	s := newAgentIntegrationServer(t)
+	s.seedPresetProtocols()
+	s.syncCustomProtocols()
+
+	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(openAIChunk("c9", map[string]any{"role": "assistant", "content": "协议"}, "", nil)))
+		_, _ = w.Write([]byte(openAIChunk("c9", map[string]any{}, "stop", nil)))
+		// 终态后的迟到文本帧 + DONE（排水窗内到达）。
+		_, _ = w.Write([]byte(openAIChunk("c9", map[string]any{"content": "协议"}, "", nil)))
+		_, _ = w.Write([]byte(openAIDone()))
+	})
+	seedCallerModel(t, s, upstream.URL, "custom:chat-completions-api")
+
+	result, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if result.Text != "协议" {
+		t.Fatalf("post-terminal text leaked into result: %q", result.Text)
 	}
 }

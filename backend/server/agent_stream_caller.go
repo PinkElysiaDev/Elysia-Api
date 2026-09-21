@@ -242,11 +242,12 @@ func renderAgentUpstreamPlan(request *relay.MaheshvaraRequest, platform string) 
 		return nil, fmt.Errorf("构建模型请求失败: %w", err)
 	}
 	// stream 标志注入与转发热路径（ensureStreamFlagInTargetBody）同源：Gemini
-	// 经 URL action 决定流式不注入；OpenAI 系补 stream_options.include_usage
-	// 让上游回 usage 帧（agent 的 token 统计依赖它）。
+	// 经 URL action 决定流式不注入；OpenAI chat 补 stream_options.include_usage
+	// 让上游回 usage 帧（agent 的 token 统计依赖它）；Responses 线没有
+	// stream_options 概念，注入该参数会被严格上游 400 拒绝。
 	switch format {
 	case relay.APIFormatGemini:
-	case relay.APIFormatAnthropic:
+	case relay.APIFormatAnthropic, relay.APIFormatResponses:
 		body, err = relay.PassthroughBody(body, "", true, false)
 	default:
 		body, err = relay.PassthroughBody(body, "", true, true)
@@ -344,6 +345,7 @@ func (c *agentStreamCaller) callOnce(ctx context.Context, cancel context.CancelF
 		reader := relay.NewSSEEventReader(response.Body)
 		defer reader.Close()
 		decoder := relay.NewMaheshvaraStreamDecoder(agentStreamDecoderFormat(plan.format))
+		terminalSeen := false
 		for {
 			event, ok, readErr := reader.Read(ctx, relay.DefaultSSEIdleTimeout)
 			if readErr != nil {
@@ -359,8 +361,18 @@ func (c *agentStreamCaller) callOnce(ctx context.Context, cancel context.CancelF
 				continue // 单事件解码失败容忍（与转发路径一致）
 			}
 			for _, ev := range events {
+				if terminalSeen {
+					// 终态后继续排水到 EOF，只吸收 usage/错误语义：OpenAI 规范中
+					// include_usage 的用量帧在 finish_reason 之后的独立 chunk 里，
+					// 见终态即 return 会把 token 统计整个丢掉。
+					switch ev.Type {
+					case relay.MaheshvaraEventUsageDelta, relay.MaheshvaraEventResponseFailed:
+						acc.apply(ev, cb)
+					}
+					continue
+				}
 				if stop := acc.apply(ev, cb); stop {
-					return acc.result(), false, nil
+					terminalSeen = true
 				}
 			}
 		}
@@ -387,8 +399,18 @@ func (c *agentStreamCaller) drainCustomProtocolStream(ctx context.Context, plan 
 	}
 	reader := relay.NewSSEEventReader(body)
 	defer reader.Close()
-	return decoder.ForEachBatch(ctx, reader, func(_ relay.SSEEvent, events []relay.MaheshvaraStreamEvent, _ bool) error {
+	return decoder.ForEachBatch(ctx, reader, func(_ relay.SSEEvent, events []relay.MaheshvaraStreamEvent, terminalBeforeBatch bool) error {
 		for _, ev := range events {
+			if terminalBeforeBatch {
+				// 契约（同转发/设计器路径）：终态后仅保留 usage/错误语义——
+				// 排水窗内的重复文本帧不得再次计入结果或回传 UI，迟到的失败帧
+				// 也不得把已完成的流翻成错误。
+				switch ev.Type {
+				case relay.MaheshvaraEventUsageDelta:
+					acc.apply(ev, cb)
+				}
+				continue
+			}
 			acc.apply(ev, cb) // 终态语义由 ForEachBatch 管理，聚合器无需中断
 		}
 		return nil
