@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/relay"
@@ -227,10 +226,7 @@ func (t *testUpstreamTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 	if err := json.Unmarshal(draft, &protocol); err != nil {
 		return agent.ToolResult{OK: false, Summary: "草稿解析失败", Data: map[string]any{"error": err.Error()}}
 	}
-	timeout := t.server.probeTimeout(customProtocolTestTimeoutSec * time.Second)
-	testCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	result, err := t.server.runCustomProtocolLiveTest(testCtx, protocol, customProtocolTestTarget{
+	result, err := t.server.runCustomProtocolLiveTest(ctx, protocol, customProtocolTestTarget{
 		BaseURL: strings.TrimSpace(baseURL), APIKey: apiKey, ModelName: "test-model",
 	}, params.Stream, params.SampleRequest)
 	if err != nil {
@@ -298,10 +294,7 @@ func (t *testModelsTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 	if err := json.Unmarshal(draft, &protocol); err != nil {
 		return agent.ToolResult{OK: false, Summary: "草稿解析失败", Data: map[string]any{"error": err.Error()}}
 	}
-	timeout := t.server.probeTimeout(customProtocolTestTimeoutSec * time.Second)
-	testCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	result, err := t.server.runCustomProtocolModelsTest(testCtx, protocol, customProtocolTestTarget{
+	result, err := t.server.runCustomProtocolModelsTest(ctx, protocol, customProtocolTestTarget{
 		BaseURL: strings.TrimSpace(baseURL), APIKey: apiKey,
 	})
 	if err != nil {
@@ -351,9 +344,9 @@ func (t *saveProtocolTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 			Summary: fmt.Sprintf("编辑模式不允许改变协议 id（目标 %q，草稿 %q）", meta.ProtocolID, protocol.ID),
 			Data:    map[string]any{"error": "id_mismatch"}}
 	}
-	store := t.server.store
+	store, unavailable := toolStore(t.server)
 	if store == nil {
-		return agent.ToolResult{OK: false, Summary: "存储不可用", Data: map[string]any{"error": "store_unavailable"}}
+		return unavailable
 	}
 	existing, err := store.ListCustomProtocols(ctx)
 	if err != nil {
@@ -414,9 +407,9 @@ func (t *readProtocolTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 		encoded, _ := json.Marshal(config)
 		return agent.ToolResult{OK: true, Summary: "预置协议 " + id, Data: map[string]any{"id": id, "source": "preset", "config": json.RawMessage(encoded)}}
 	}
-	store := t.server.store
+	store, unavailable := toolStore(t.server)
 	if store == nil {
-		return agent.ToolResult{OK: false, Summary: "存储不可用", Data: map[string]any{"error": "store_unavailable"}}
+		return unavailable
 	}
 	rows, err := store.ListCustomProtocols(ctx)
 	if err != nil {

@@ -403,6 +403,9 @@ type customProtocolTestTarget struct {
 // 会话测试目标）。超时由 ctx 控制（调用方负责 probeTimeout 包装）。
 func (s *Server) runCustomProtocolLiveTest(ctx context.Context, protocol relay.CustomProtocolConfig,
 	target customProtocolTestTarget, stream bool, sample *relay.MaheshvaraRequest) (*customProtocolLiveTestResult, error) {
+	// 统一在此应用探测超时：设计器面板与 agent 工具共用同一条语义。
+	ctx, cancel := context.WithTimeout(ctx, s.probeTimeout(customProtocolTestTimeoutSec*time.Second))
+	defer cancel()
 	if sample == nil {
 		sample = defaultCustomProtocolSampleRequest()
 	}
@@ -452,6 +455,8 @@ func (s *Server) runCustomProtocolLiveTest(ctx context.Context, protocol relay.C
 // runCustomProtocolModelsTest 按协议 models 发现配置请求上游并解析模型列表。
 func (s *Server) runCustomProtocolModelsTest(ctx context.Context, protocol relay.CustomProtocolConfig,
 	target customProtocolTestTarget) (*customProtocolModelsTestResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.probeTimeout(customProtocolTestTimeoutSec*time.Second))
+	defer cancel()
 	if protocol.Models == nil {
 		return nil, errors.New("协议未声明模型发现配置（models.path / models.listPath）")
 	}

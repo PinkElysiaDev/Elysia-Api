@@ -53,6 +53,15 @@ func newAgentOpsTools(s *Server) []agent.Tool {
 	}
 }
 
+// toolStore 取存储并在不可用时返回统一的失败 ToolResult。
+// 14 处工具 Execute 开头的样板由此收敛为一行守卫。
+func toolStore(server *Server) (*storage.Store, agent.ToolResult) {
+	if server.store == nil {
+		return nil, agent.ToolResult{OK: false, Summary: "存储不可用", Data: map[string]any{"error": "store_unavailable"}}
+	}
+	return server.store, agent.ToolResult{}
+}
+
 // ---- 时间窗与查找辅助 ----
 
 // agentUsageWindow 解析查询时间窗：days（默认 7）或 from/to（RFC3339）。
@@ -232,9 +241,9 @@ func (t *listSourcesTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *listSourcesTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store := t.server.store
+	store, unavailable := toolStore(t.server)
 	if store == nil {
-		return agent.ToolResult{OK: false, Summary: "存储不可用", Data: map[string]any{"error": "store_unavailable"}}
+		return unavailable
 	}
 	sources, err := store.ListSources(ctx)
 	if err != nil {
@@ -278,9 +287,9 @@ func (t *listGroupsTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *listGroupsTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store := t.server.store
+	store, unavailable := toolStore(t.server)
 	if store == nil {
-		return agent.ToolResult{OK: false, Summary: "存储不可用", Data: map[string]any{"error": "store_unavailable"}}
+		return unavailable
 	}
 	groups, err := store.ListGroups(ctx)
 	if err != nil {
@@ -315,9 +324,9 @@ func (t *usageStatsTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *usageStatsTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store := t.server.store
+	store, unavailable := toolStore(t.server)
 	if store == nil {
-		return agent.ToolResult{OK: false, Summary: "存储不可用", Data: map[string]any{"error": "store_unavailable"}}
+		return unavailable
 	}
 	query, err := agentUsageQuery(args)
 	if err != nil {
@@ -369,9 +378,9 @@ func (t *usageTrendTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *usageTrendTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store := t.server.store
+	store, unavailable := toolStore(t.server)
 	if store == nil {
-		return agent.ToolResult{OK: false, Summary: "存储不可用", Data: map[string]any{"error": "store_unavailable"}}
+		return unavailable
 	}
 	query, err := agentUsageQuery(args)
 	if err != nil {
@@ -432,9 +441,9 @@ func (t *usageLogsTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *usageLogsTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store := t.server.store
+	store, unavailable := toolStore(t.server)
 	if store == nil {
-		return agent.ToolResult{OK: false, Summary: "存储不可用", Data: map[string]any{"error": "store_unavailable"}}
+		return unavailable
 	}
 	query, err := agentUsageQuery(args)
 	if err != nil {
@@ -491,9 +500,9 @@ func (t *usageLogDetailTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *usageLogDetailTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store := t.server.store
+	store, unavailable := toolStore(t.server)
 	if store == nil {
-		return agent.ToolResult{OK: false, Summary: "存储不可用", Data: map[string]any{"error": "store_unavailable"}}
+		return unavailable
 	}
 	var params struct {
 		RequestID string `json:"requestId"`
@@ -539,9 +548,9 @@ func (t *systemLogsTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *systemLogsTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store := t.server.store
+	store, unavailable := toolStore(t.server)
 	if store == nil {
-		return agent.ToolResult{OK: false, Summary: "存储不可用", Data: map[string]any{"error": "store_unavailable"}}
+		return unavailable
 	}
 	var params struct {
 		Level string `json:"level"`
@@ -597,9 +606,9 @@ func (t *createSourceTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *createSourceTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store := t.server.store
+	store, unavailable := toolStore(t.server)
 	if store == nil {
-		return agent.ToolResult{OK: false, Summary: "存储不可用", Data: map[string]any{"error": "store_unavailable"}}
+		return unavailable
 	}
 	var params struct {
 		Name            string   `json:"name"`
@@ -686,9 +695,9 @@ func (t *updateSourceTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *updateSourceTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store := t.server.store
+	store, unavailable := toolStore(t.server)
 	if store == nil {
-		return agent.ToolResult{OK: false, Summary: "存储不可用", Data: map[string]any{"error": "store_unavailable"}}
+		return unavailable
 	}
 	var params struct {
 		Source          string   `json:"source"`
@@ -793,9 +802,9 @@ func (t *refreshSourceTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *refreshSourceTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store := t.server.store
+	store, unavailable := toolStore(t.server)
 	if store == nil {
-		return agent.ToolResult{OK: false, Summary: "存储不可用", Data: map[string]any{"error": "store_unavailable"}}
+		return unavailable
 	}
 	var params struct {
 		Source string `json:"source"`
@@ -843,9 +852,9 @@ func (t *createGroupTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *createGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store := t.server.store
+	store, unavailable := toolStore(t.server)
 	if store == nil {
-		return agent.ToolResult{OK: false, Summary: "存储不可用", Data: map[string]any{"error": "store_unavailable"}}
+		return unavailable
 	}
 	var params struct {
 		Name                  string   `json:"name"`
@@ -907,9 +916,9 @@ func (t *updateGroupTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *updateGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store := t.server.store
+	store, unavailable := toolStore(t.server)
 	if store == nil {
-		return agent.ToolResult{OK: false, Summary: "存储不可用", Data: map[string]any{"error": "store_unavailable"}}
+		return unavailable
 	}
 	var params struct {
 		Group                 string   `json:"group"`
@@ -1018,6 +1027,7 @@ func (t *outboundPolicyTool) Execute(ctx context.Context, tctx agent.ToolContext
 		return agent.ToolResult{OK: false, Summary: "参数解析失败", Data: map[string]any{"error": err.Error()}}
 	}
 
+	var rollback func()
 	view := func(summary string) agent.ToolResult {
 		return agent.ToolResult{OK: true, Summary: summary, Data: map[string]any{
 			"deniedIpRanges":        t.server.config.GetOutboundConfig().DeniedIPRanges,
@@ -1025,10 +1035,8 @@ func (t *outboundPolicyTool) Execute(ctx context.Context, tctx agent.ToolContext
 		}}
 	}
 
-	previous := append([]string(nil), t.server.config.GetOutboundConfig().DeniedIPRanges...)
 	if params.ResetDefault {
-		defaults := append([]string(nil), relay.DefaultDeniedIPRanges...)
-		t.server.config.SetOutboundDeniedIPRanges(defaults)
+		rollback, _ = t.server.applyOutboundDeniedRanges(append([]string(nil), relay.DefaultDeniedIPRanges...))
 	} else if params.Ranges == nil {
 		// 只读查询，不落盘。
 		return view("当前出站禁止段如下（未修改）")
@@ -1044,14 +1052,14 @@ func (t *outboundPolicyTool) Execute(ctx context.Context, tctx agent.ToolContext
 			}
 			cleaned = append(cleaned, trimmed)
 		}
-		t.server.config.SetOutboundDeniedIPRanges(cleaned)
+		rollback, _ = t.server.applyOutboundDeniedRanges(cleaned)
 	}
-	t.server.syncOutboundPolicy()
 	if err := t.server.config.Save(); err != nil {
 		// 落盘失败回滚内存与 relay 下发：否则热重载会静默恢复旧策略，
 		// 而运行时行为已按新策略放行/拦截（内存与磁盘分叉）。
-		t.server.config.SetOutboundDeniedIPRanges(previous)
-		t.server.syncOutboundPolicy()
+		if rollback != nil {
+			rollback()
+		}
 		return agent.ToolResult{OK: false, Summary: "策略修改已回滚（落盘失败）: " + err.Error(), Data: map[string]any{"error": err.Error()}}
 	}
 	if params.ResetDefault {

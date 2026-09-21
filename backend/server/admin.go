@@ -97,6 +97,21 @@ func (s *Server) requireStore(c *gin.Context) (*storage.Store, bool) {
 	return s.store, true
 }
 
+// usageLogStatusJSON 把日志留存配置序列化为对外生效值（归一化后）：运行
+// 配置页与存储状态卡片共用同一形状。
+func usageLogStatusJSON(cfg config.UsageLogResolved) gin.H {
+	return gin.H{
+		"persistEnabled":         cfg.PersistEnabled,
+		"retentionDays":          cfg.RetentionDays,
+		"maxStorageMB":           cfg.MaxStorageBytes / 1024 / 1024,
+		"maxRecords":             cfg.MaxRecords,
+		"bodyMaxKB":              cfg.BodyMaxBytes / 1024,
+		"bodyOnErrorOnly":        cfg.BodyOnErrorOnly,
+		"externalizeMedia":       cfg.ExternalizeMedia,
+		"cleanupIntervalMinutes": int(cfg.CleanupInterval.Minutes()),
+	}
+}
+
 func (s *Server) adminRuntimeConfig(c *gin.Context) {
 	server := s.config.GetServer()
 	catalog := s.config.GetModelCatalog()
@@ -115,17 +130,8 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 			"deniedIpRanges":        s.config.GetOutboundConfig().DeniedIPRanges,
 			"defaultDeniedIpRanges": relay.DefaultDeniedIPRanges,
 		},
-		"usageLog": gin.H{
-			// 生效值（归一化后）：表单直接显示当前实际口径，保存时整体回写。
-			"persistEnabled":         usageLog.PersistEnabled,
-			"retentionDays":          usageLog.RetentionDays,
-			"maxStorageMB":           usageLog.MaxStorageBytes / 1024 / 1024,
-			"maxRecords":             usageLog.MaxRecords,
-			"bodyMaxKB":              usageLog.BodyMaxBytes / 1024,
-			"bodyOnErrorOnly":        usageLog.BodyOnErrorOnly,
-			"externalizeMedia":       usageLog.ExternalizeMedia,
-			"cleanupIntervalMinutes": int(usageLog.CleanupInterval.Minutes()),
-		},
+		// 生效值（归一化后）：表单直接显示当前实际口径，保存时整体回写。
+		"usageLog": usageLogStatusJSON(usageLog),
 		"modelCatalog": gin.H{
 			"enabled": catalogEnabled,
 			"url":     catalogResolveURL(catalog),
@@ -201,19 +207,11 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		// pprof 路由在进程启动时挂载，运行时修改只有重启后生效。
 		requestsRestart = true
 	}
-	var outboundPrevious []string
+	var outboundRollback func()
 	if payload.Outbound != nil {
-		// 整体替换禁止段列表，即时下发到 relay 包（连接时校验+预校验），无需重启。
-		// 记住旧值：Save 失败时回滚，防内存/磁盘分叉（热重载会按磁盘恢复）。
-		outboundPrevious = append([]string(nil), s.config.GetOutboundConfig().DeniedIPRanges...)
-		cleaned := make([]string, 0, len(payload.Outbound.DeniedIPRanges))
-		for _, entry := range payload.Outbound.DeniedIPRanges {
-			if trimmed := strings.TrimSpace(entry); trimmed != "" {
-				cleaned = append(cleaned, trimmed)
-			}
-		}
-		s.config.SetOutboundDeniedIPRanges(cleaned)
-		s.syncOutboundPolicy()
+		// 整体替换禁止段列表，即时下发（连接时校验+预校验），无需重启；
+		// Save 失败时回滚，防内存/磁盘分叉（热重载会按磁盘恢复）。
+		outboundRollback, _ = s.applyOutboundDeniedRanges(payload.Outbound.DeniedIPRanges)
 	}
 	if payload.UsageLog != nil {
 		// 局部更新：仅覆盖显式提供的字段。BodyMaxKB/开关对后续请求即时生效；
@@ -237,9 +235,8 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		s.markRestartRequired()
 	}
 	if err := s.config.Save(); err != nil {
-		if payload.Outbound != nil && outboundPrevious != nil {
-			s.config.SetOutboundDeniedIPRanges(outboundPrevious)
-			s.syncOutboundPolicy()
+		if outboundRollback != nil {
+			outboundRollback()
 		}
 		respondFail(c, 500, "save_config_failed", err.Error())
 		return
@@ -1149,16 +1146,7 @@ func (s *Server) adminUsageStorage(c *gin.Context) {
 		},
 		"recordCount": recordCount,
 		"assets":      s.usageAssetsUsage(),
-		"config": gin.H{
-			"persistEnabled":         cfg.PersistEnabled,
-			"retentionDays":          cfg.RetentionDays,
-			"maxStorageMB":           cfg.MaxStorageBytes / 1024 / 1024,
-			"maxRecords":             cfg.MaxRecords,
-			"bodyMaxKB":              cfg.BodyMaxBytes / 1024,
-			"bodyOnErrorOnly":        cfg.BodyOnErrorOnly,
-			"externalizeMedia":       cfg.ExternalizeMedia,
-			"cleanupIntervalMinutes": int(cfg.CleanupInterval.Minutes()),
-		},
+		"config":      usageLogStatusJSON(cfg),
 	}
 	if r := s.usageRetention; r != nil {
 		resp["lastCleanup"] = r.snapshotStats()

@@ -198,6 +198,25 @@ func New(cfg *config.Config) *Server {
 	return server
 }
 
+// applyOutboundDeniedRanges 校验并整体替换出站禁止段，返回回滚函数：
+// 调用方在配置落盘失败时调用回滚，恢复内存与 relay 下发，防内存/磁盘分叉。
+// admin PUT 与 agent update_outbound_policy 工具共用同一条语义。
+func (s *Server) applyOutboundDeniedRanges(candidates []string) (rollback func(), err error) {
+	previous := append([]string(nil), s.config.GetOutboundConfig().DeniedIPRanges...)
+	cleaned := make([]string, 0, len(candidates))
+	for _, entry := range candidates {
+		if trimmed := strings.TrimSpace(entry); trimmed != "" {
+			cleaned = append(cleaned, trimmed)
+		}
+	}
+	s.config.SetOutboundDeniedIPRanges(cleaned)
+	s.syncOutboundPolicy()
+	return func() {
+		s.config.SetOutboundDeniedIPRanges(previous)
+		s.syncOutboundPolicy()
+	}, nil
+}
+
 // syncOutboundPolicy 把出站禁止 IP 段列表下发给 relay 包（连接时校验与预校验
 // 共用）。在启动、热重载、admin/agent 改配置后调用，确保即时反映配置。
 func (s *Server) syncOutboundPolicy() {
