@@ -80,5 +80,5 @@ type GeminiUsageMeta struct {
 
 type GeminiTokenDetail struct {
 	Modality   string `json:"modality"`
-	TokenCount int `json:"tokenCount"`
+	TokenCount int    `json:"tokenCount"`
 }

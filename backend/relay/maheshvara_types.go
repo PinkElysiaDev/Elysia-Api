@@ -38,11 +38,11 @@ const (
 	MaheshvaraInputFunctionCallOutput = "function_call_output"
 	MaheshvaraInputItemReference      = "item_reference"
 
-	MaheshvaraToolFunction           = "function"
+	MaheshvaraToolFunction = "function"
 
 	// Maheshvara 响应状态字面量(此前在自定义协议层以裸字符串散布)。
-	MaheshvaraStatusCompleted  = "completed"
-	MaheshvaraStatusInProgress = "in_progress"
+	MaheshvaraStatusCompleted        = "completed"
+	MaheshvaraStatusInProgress       = "in_progress"
 	MaheshvaraToolWebSearchPreview   = "web_search_preview"
 	MaheshvaraToolFileSearch         = "file_search"
 	MaheshvaraToolComputerUsePreview = "computer_use_preview"
@@ -391,10 +391,10 @@ type MaheshvaraError struct {
 	Code    string `json:"code,omitempty"`
 	// Class 是错误的稳定分类(四线制渲染的权威来源,见 error_protocol.go);
 	// Status 为上游真实 HTTP 状态(跨协议翻译时携带,0 表示按分类推导)。
-	Class  ErrorClass     `json:"class,omitempty"`
-	Status int            `json:"status,omitempty"`
-	Details any           `json:"details,omitempty"`
-	Raw    map[string]any `json:"raw,omitempty"`
+	Class   ErrorClass     `json:"class,omitempty"`
+	Status  int            `json:"status,omitempty"`
+	Details any            `json:"details,omitempty"`
+	Raw     map[string]any `json:"raw,omitempty"`
 }
 
 type MaheshvaraStreamEvent struct {

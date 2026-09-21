@@ -1274,6 +1274,7 @@ func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[
 	switch shape {
 	case "openai-chat":
 		root["messages"] = redecodeWithJSONNumbers(maheshvaraMessagesToOpenAI(req))
+		shapeCustomThinking(shape, req, root)
 		return setTools(maheshvaraToolsToOpenAI(req.Tools))
 	case "anthropic":
 		messages, err := maheshvaraMessagesToClaude(req)
@@ -1285,6 +1286,7 @@ func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[
 		if converted := applyClaudeDisableParallelToolUse(maheshvaraToolChoiceToClaude(req.ToolChoice), req.ParallelToolCalls); converted != nil {
 			root["tool_choice"] = redecodeWithJSONNumbers(converted)
 		}
+		shapeCustomThinking(shape, req, root)
 		return setTools(maheshvaraToolsToClaude(req.Tools))
 	case "gemini":
 		messages, err := maheshvaraMessagesToGemini(req)
@@ -1292,6 +1294,10 @@ func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[
 			return err
 		}
 		root["messages"] = redecodeWithJSONNumbers(messages)
+		if converted := maheshvaraToolChoiceToGemini(req.ToolChoice); converted != nil {
+			root["tool_config"] = redecodeWithJSONNumbers(converted)
+		}
+		shapeCustomThinking(shape, req, root)
 		return setTools(maheshvaraToolsToGemini(req.Tools))
 	case "responses":
 		input := redecodeWithJSONNumbers(maheshvaraInputToResponses(req))
@@ -1301,9 +1307,80 @@ func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[
 		if tools := maheshvaraToolsToResponses(req.Tools); len(tools) > 0 {
 			root["tools"] = redecodeWithJSONNumbers(tools)
 		}
+		shapeCustomThinking(shape, req, root)
 		return nil
 	}
 	return fmt.Errorf("%q is unsupported", shape)
+}
+
+// shapeCustomThinking 把思考/推理配置按平台整形进模板上下文（body-tree 直接
+// 映射即可获得与内置线一致的思考行为）：budget 量化、effort 省略规则、
+// anthropic 思考态温度强制、gemini toolConfig、Responses include 联动——全部
+// 收进这里，模板作者不需要复述任何平台特例。
+func shapeCustomThinking(shape string, req *MaheshvaraRequest, root map[string]any) {
+	switch shape {
+	case "openai-chat":
+		// chat 线只认顶层 reasoning_effort 标量（Thinking 配置在该线无对应字段）。
+		if req.Reasoning != nil && strings.TrimSpace(req.Reasoning.Effort) != "" {
+			root["reasoning_effort"] = req.Reasoning.Effort
+		}
+	case "anthropic":
+		if req.Thinking == nil || !req.Thinking.Enabled {
+			return
+		}
+		if req.Thinking.Adaptive {
+			root["thinking"] = map[string]any{"type": "adaptive"}
+			if req.Thinking.Effort != "" {
+				root["output_config"] = map[string]any{"effort": req.Thinking.Effort}
+			}
+		} else {
+			budget := req.Thinking.BudgetTokens
+			if budget <= 0 {
+				budget = budgetFromEffort(req.Thinking.Effort)
+			}
+			root["thinking"] = map[string]any{"type": "enabled", "budget_tokens": budget}
+		}
+		// 思考态强制 temperature=1.0 且去掉 top_p（与 MaheshvaraToAnthropic 一致）。
+		root["temperature"] = 1.0
+		delete(root, "top_p")
+	case "gemini":
+		if req.Thinking == nil || !req.Thinking.Enabled {
+			return
+		}
+		thinkingConfig := map[string]any{"includeThoughts": true}
+		if req.Thinking.Effort != "" {
+			thinkingConfig["thinkingLevel"] = req.Thinking.Effort
+		}
+		if req.Thinking.BudgetTokens > 0 {
+			thinkingConfig["thinkingBudget"] = req.Thinking.BudgetTokens
+		}
+		root["thinking_config"] = thinkingConfig
+	case "responses":
+		if req.Reasoning == nil {
+			return
+		}
+		reasoning := map[string]any{}
+		for key, value := range req.Reasoning.Raw {
+			reasoning[key] = value
+		}
+		if strings.EqualFold(req.Reasoning.Effort, "none") {
+			// 上游会把 effort:"none" 静默当成 low 档执行，必须整个省略字段。
+			delete(reasoning, "effort")
+		} else if req.Reasoning.Effort != "" {
+			reasoning["effort"] = req.Reasoning.Effort
+		}
+		// 必须覆写（含清空删除）：上下文里序列化的原始 reasoning 可能带
+		// effort:"none"，模板若映射该字段会把上游拒绝的档位发出去。
+		if len(reasoning) > 0 {
+			root["reasoning"] = reasoning
+		} else {
+			delete(root, "reasoning")
+		}
+		// 携带加密思考历史时追加 include，跨轮续用才可行。
+		if maheshvaraRequestHasEncryptedReasoning(req) {
+			root["include"] = appendResponsesInclude(root["include"], "reasoning.encrypted_content")
+		}
+	}
 }
 
 // forEachCustomPlaceholder 遍历模板中的全部 {{...}} 占位符,回调收到去空白后的

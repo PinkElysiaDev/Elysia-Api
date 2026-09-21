@@ -309,4 +309,3 @@ func TestTargetFormatForResponsesPlatform(t *testing.T) {
 		t.Fatalf("responses platform -> %v, %v; want FormatResponses", format, err)
 	}
 }
-

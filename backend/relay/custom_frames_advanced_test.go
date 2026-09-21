@@ -9,7 +9,7 @@ import (
 // thought/text/functionCall 部件。
 func TestCustomProtocolPredicateFrames(t *testing.T) {
 	decoder, err := NewCustomProtocolStreamDecoder(CustomProtocolConfig{
-		ID: "predicate-frames",
+		ID:      "predicate-frames",
 		Request: CustomProtocolRequest{Method: "POST", PathTemplate: "/x", BodyTemplate: `{"m":{{maheshvara.model | json}}}`},
 		Aliases: &CustomProtocolAliases{ToolCall: map[string][]string{
 			"name":      {"functionCall.name"},
@@ -86,7 +86,7 @@ func TestCustomProtocolPredicateFrames(t *testing.T) {
 // 按 index 关联,参数片段按 delta 追加。
 func TestCustomProtocolSplitFrameToolAssembly(t *testing.T) {
 	decoder, err := NewCustomProtocolStreamDecoder(CustomProtocolConfig{
-		ID: "split-tool",
+		ID:      "split-tool",
 		Request: CustomProtocolRequest{Method: "POST", PathTemplate: "/x", BodyTemplate: `{"m":{{maheshvara.model | json}}}`},
 		Response: CustomProtocolResponse{Stream: &CustomProtocolStreamMapping{
 			Frames: []CustomProtocolStreamFrame{

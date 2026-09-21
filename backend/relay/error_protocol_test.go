@@ -35,8 +35,8 @@ func TestProtocolErrorBodyMatrix(t *testing.T) {
 				}
 				var parsed struct {
 					Error struct {
-						Message string `json:"message"`
-						Type    string `json:"type"`
+						Message string  `json:"message"`
+						Type    string  `json:"type"`
 						Param   *string `json:"param"`
 						Code    *string `json:"code"`
 					} `json:"error"`
@@ -180,6 +180,12 @@ func paramPtr(p *string) string {
 
 type bufferedStreamWriter struct{ data []byte }
 
-func (w *bufferedStreamWriter) Write(p []byte) (int, error)       { w.data = append(w.data, p...); return len(p), nil }
-func (w *bufferedStreamWriter) WriteString(s string) (int, error) { w.data = append(w.data, s...); return len(s), nil }
-func (w *bufferedStreamWriter) Flush() error                      { return nil }
+func (w *bufferedStreamWriter) Write(p []byte) (int, error) {
+	w.data = append(w.data, p...)
+	return len(p), nil
+}
+func (w *bufferedStreamWriter) WriteString(s string) (int, error) {
+	w.data = append(w.data, s...)
+	return len(s), nil
+}
+func (w *bufferedStreamWriter) Flush() error { return nil }

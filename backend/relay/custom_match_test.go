@@ -24,14 +24,14 @@ func TestCustomMatchEvalOps(t *testing.T) {
 		value string
 		want  bool
 	}{
-		{MatchOpNonEmpty, "", false},      // finish=false 视为空
-		{MatchOpNonEmpty, "", false},      // count=0 亦视为空
-		{MatchOpIsEmpty, "", true},        // false 是空
-		{MatchOpEquals, `false`, true},    // 类型化布尔相等
-		{MatchOpEquals, `"false"`, false}, // 字符串 "false" 不等于布尔
-		{MatchOpEquals, `4096`, true},     // 数字相等
-		{MatchOpEquals, `4096.0`, true},   // 数值比较
-		{MatchOpNotEquals, `"done"`, true},    // state=completed ≠ done
+		{MatchOpNonEmpty, "", false},       // finish=false 视为空
+		{MatchOpNonEmpty, "", false},       // count=0 亦视为空
+		{MatchOpIsEmpty, "", true},         // false 是空
+		{MatchOpEquals, `false`, true},     // 类型化布尔相等
+		{MatchOpEquals, `"false"`, false},  // 字符串 "false" 不等于布尔
+		{MatchOpEquals, `4096`, true},      // 数字相等
+		{MatchOpEquals, `4096.0`, true},    // 数值比较
+		{MatchOpNotEquals, `"done"`, true}, // state=completed ≠ done
 		{MatchOpIn, `["stop","length"]`, false},
 		{MatchOpIsNull, "", true},          // reason 为 null
 		{MatchOpNotNull, "", false},        // reason 为 null → notNull 假

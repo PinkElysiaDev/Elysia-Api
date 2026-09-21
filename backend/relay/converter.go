@@ -9,7 +9,7 @@ import (
 type Platform string
 
 const (
-	PlatformOpenAI    Platform = "openai"
+	PlatformOpenAI Platform = "openai"
 	// PlatformResponses 是 responses 线路(apiFormat=responses 的模型源)的
 	// 独立平台值:请求/响应走 Responses 协议端点(区别于 APIFormatResponses
 	// 这个 apiFormat 字符串)。

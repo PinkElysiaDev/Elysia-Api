@@ -55,7 +55,7 @@ func init() {
 }
 
 // SetDeniedIPRanges 整体替换禁止出站 IP 段。非法 CIDR 条目跳过并记日志
-//（不因个别坏条目让整份配置失效）；全部条目非法时列表为空 = 全放行，
+// （不因个别坏条目让整份配置失效）；全部条目非法时列表为空 = 全放行，
 // 调用方（admin/agent 工具）应在上游先做逐条校验避免这种情况静默发生。
 func SetDeniedIPRanges(ranges []string) {
 	parsed := make([]*net.IPNet, 0, len(ranges))

@@ -108,11 +108,11 @@ type Choice struct {
 }
 
 type Usage struct {
-	PromptTokens         int    `json:"prompt_tokens"`
-	CompletionTokens     int    `json:"completion_tokens"`
-	TotalTokens          int    `json:"total_tokens"`
-	CachedTokens         int    `json:"cached_tokens,omitempty"`
-	PromptCacheHitTokens int    `json:"prompt_cache_hit_tokens,omitempty"`
+	PromptTokens         int `json:"prompt_tokens"`
+	CompletionTokens     int `json:"completion_tokens"`
+	TotalTokens          int `json:"total_tokens"`
+	CachedTokens         int `json:"cached_tokens,omitempty"`
+	PromptCacheHitTokens int `json:"prompt_cache_hit_tokens,omitempty"`
 
 	// details 用指针：值结构体的 omitempty 不生效（永远序列化成 {}），
 	// 会覆盖 RawFields 透传的同键子对象。

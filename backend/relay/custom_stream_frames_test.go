@@ -168,7 +168,7 @@ func TestCustomProtocolStreamSawFinishReason(t *testing.T) {
 func TestValidateCustomProtocolStreamFrames(t *testing.T) {
 	base := func(stream *CustomProtocolStreamMapping) CustomProtocolConfig {
 		return CustomProtocolConfig{
-			ID:  "frames-validation",
+			ID: "frames-validation",
 			Request: CustomProtocolRequest{
 				Method:       "POST",
 				PathTemplate: "/v1/x",
