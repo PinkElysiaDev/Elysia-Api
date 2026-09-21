@@ -42,8 +42,7 @@ type Settings struct {
 	PlanMode        bool   `json:"planMode,omitempty"`       // 计划模式：先出方案，用户确认后才允许修改/出站
 	AllowLiveTest   string `json:"allowLiveTest,omitempty"`  // ask|always|never
 	AllowSave       string `json:"allowSave,omitempty"`      // ask|always|never
-	TestBaseURL     string `json:"testBaseUrl,omitempty"`
-	TestAPIKeySet   bool   `json:"testApiKeySet,omitempty"` // 只读标记：是否已配置 key（不回传明文）
+	TestAPIKeySet   bool   `json:"testApiKeySet,omitempty"`  // 只读标记：是否已配置 key（不回传明文）
 }
 
 // Session 是引擎视角的会话聚合。TestAPIKey 由存储层读出时解密。
@@ -99,8 +98,6 @@ type Store interface {
 	AppendMessage(ctx context.Context, sessionID string, role string, content any, model string, usage json.RawMessage) (int, error)
 	// ListMessages 按 seq 升序返回会话全部消息。
 	ListMessages(ctx context.Context, sessionID string) ([]Message, error)
-	// TruncateMessages 删除 seq > afterSeq 的消息。
-	TruncateMessages(ctx context.Context, sessionID string, afterSeq int) error
 	// ResetRunningSessions 把遗留的 running 会话复位为 idle（进程启动对账；
 	// waiting_approval 保留——待批动作仍可恢复）。
 	ResetRunningSessions(ctx context.Context) error

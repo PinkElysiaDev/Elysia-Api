@@ -163,19 +163,16 @@ func (h *healthChecker) runOnce() {
 	}
 	h.pruneStaleFailureKeys(models)
 
-	changed := false
 	for _, model := range models {
 		// 每次探测在 probe 内部独立限时：若整轮共享一个超时 ctx，一个慢上游
 		// 就会耗尽预算，导致本轮后续所有探测连锁失败、健康模型被误禁。
 		ok := h.probe(context.Background(), model, cfg.TimeoutSeconds)
 		if h.recordProbeResult(model, ok, cfg.FailureThreshold) {
-			changed = true
 			// 状态翻转立即失效路由缓存:整轮探测(串行,每模型独立超时)可达
 			// 分钟级,推迟失效会让轮首被禁用的模型继续接流量。
 			h.server.invalidateRouteCache()
 		}
 	}
-	_ = changed // 状态翻转已在循环内即时失效路由缓存
 }
 
 // record 根据探测结果更新连续失败计数，并在跨过阈值时切换 available 状态。

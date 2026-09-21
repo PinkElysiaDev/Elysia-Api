@@ -55,7 +55,7 @@ func (s *Server) runRelayAttempts(
 			lastErr = fmt.Sprintf("target baseUrl rejected: %v", err)
 			s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
 			if isLast {
-				s.commitLastAttemptFailure(c, record, startTime, format, &relay.MaheshvaraError{Class: relay.ErrorClassPermission, Status: lastStatus, Message: lastErr})
+				s.failRequestError(c, record, startTime, format, &relay.MaheshvaraError{Class: relay.ErrorClassPermission, Status: lastStatus, Message: lastErr})
 				committed = true
 			}
 			continue
@@ -67,7 +67,7 @@ func (s *Server) runRelayAttempts(
 			lastErr = step.skipErr.Error()
 			s.appendRetryEvent(record, attempt, selectedModel.Name, lastErr)
 			if isLast {
-				s.commitLastAttemptFailure(c, record, startTime, format, &relay.MaheshvaraError{Class: step.skipClass.OrDefault(), Status: lastStatus, Message: lastErr})
+				s.failRequestError(c, record, startTime, format, &relay.MaheshvaraError{Class: step.skipClass.OrDefault(), Status: lastStatus, Message: lastErr})
 				committed = true
 			}
 			continue

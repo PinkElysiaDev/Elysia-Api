@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/elysia-api/backend/relay"
@@ -106,14 +105,6 @@ func (r *Registry) Get(name string) Tool {
 	return r.tools[strings.TrimSpace(name)]
 }
 
-// Names 返回按注册顺序排列的工具名。
-func (r *Registry) Names() []string {
-	if r == nil {
-		return nil
-	}
-	return append([]string(nil), r.order...)
-}
-
 // Definitions 返回全部工具定义（顺序稳定，便于提示词与缓存友好）。
 func (r *Registry) Definitions() []relay.MaheshvaraTool {
 	if r == nil {
@@ -124,19 +115,4 @@ func (r *Registry) Definitions() []relay.MaheshvaraTool {
 		definitions = append(definitions, r.tools[name].Definition())
 	}
 	return definitions
-}
-
-// GatedTool 判定门控工具集合（审批卡片/权限说明用）。
-func (r *Registry) GatedTools() []Tool {
-	if r == nil {
-		return nil
-	}
-	var gated []Tool
-	for _, name := range r.order {
-		if tool := r.tools[name]; tool.Gated() {
-			gated = append(gated, tool)
-		}
-	}
-	sort.Slice(gated, func(i, j int) bool { return gated[i].Name() < gated[j].Name() })
-	return gated
 }

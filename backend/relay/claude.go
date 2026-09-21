@@ -8,6 +8,9 @@ import (
 	"time"
 )
 
+// anthropicAPIVersion 是 Anthropic Messages 协议要求的版本头。
+const anthropicAPIVersion = "2023-06-01"
+
 // ========== Claude Adapter ==========
 
 // ClaudeAdapter 用于向 Claude 原生 API 发送请求
@@ -34,7 +37,7 @@ func (a *ClaudeAdapter) SendRequest(ctx context.Context, baseUrl, apiKey string,
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("anthropic-version", anthropicAPIVersion)
 	if isStream {
 		req.Header.Set("Accept", "text/event-stream")
 		return a.streamClient.Do(req)

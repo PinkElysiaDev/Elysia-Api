@@ -119,17 +119,26 @@ func NewSecureTransport() *http.Transport {
 // newSecureTransport 构造带连接时 SSRF 校验的 http.Transport。
 // 所有上游适配器（OpenAI/Claude/Gemini）共用，确保出站连接的目标 IP
 // 在 connect 时被校验，杜绝 rebinding 绕过。
+// 出站连接池参数：全站共享传输层的调优锚点。
+const (
+	secureDialTimeout     = 30 * time.Second
+	secureDialKeepAlive   = 30 * time.Second
+	secureMaxIdleConns    = 100
+	secureIdlePerHost     = 10
+	secureIdleConnTimeout = 90 * time.Second
+)
+
 func newSecureTransport() *http.Transport {
 	dialer := &net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 30 * time.Second,
+		Timeout:   secureDialTimeout,
+		KeepAlive: secureDialKeepAlive,
 		Control:   secureControl,
 	}
 	return &http.Transport{
 		DialContext:         dialer.DialContext,
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 10,
-		IdleConnTimeout:     90 * time.Second,
+		MaxIdleConns:        secureMaxIdleConns,
+		MaxIdleConnsPerHost: secureIdlePerHost,
+		IdleConnTimeout:     secureIdleConnTimeout,
 	}
 }
 

@@ -3016,11 +3016,11 @@ func OpenAIResponsesResponseToMaheshvara(resp *OpenAIResponsesResponse) (*Mahesh
 		out.Output = append(out.Output, citem)
 		if out.Usage != nil {
 			switch item.Type {
-			case "web_search_call":
+			case MaheshvaraOutputWebSearchCall:
 				out.Usage.WebSearchCallCount++
-			case "file_search_call":
+			case MaheshvaraOutputFileSearchCall:
 				out.Usage.FileSearchCallCount++
-			case "image_generation_call":
+			case MaheshvaraOutputImageGenerationCall:
 				out.Usage.ImageGenerationCallCount++
 			}
 		}

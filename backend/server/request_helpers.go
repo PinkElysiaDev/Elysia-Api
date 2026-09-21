@@ -68,13 +68,6 @@ func (s *Server) abortRetryOnClientCancel(c *gin.Context, record *usageRecord, s
 	}
 }
 
-// commitLastAttemptFailure 提交末次尝试的失败：补全记录并按客户端线制写
-// 标准错误体。先写响应再落记录（错误体先进下游捕获器，第四段才有内容）。
-// 调用方负责置位 committed。
-func (s *Server) commitLastAttemptFailure(c *gin.Context, record *usageRecord, startTime time.Time, format relay.FormatType, mErr *relay.MaheshvaraError) {
-	s.failRequestError(c, record, startTime, format, mErr)
-}
-
 // upstreamErrorStatus 从错误中提取上游真实状态码（UpstreamStatusError），
 // 提取不到时用 fallback。流式与非流式的失败路径共用。
 func upstreamErrorStatus(err error, fallback int) int {
@@ -212,14 +205,6 @@ func (s *Server) settleMaheshvaraUsage(group *config.ModelGroupConfig, record *u
 	}
 	updateRecordUsageFromMaheshvara(record, resp.Usage)
 	applyLocalResponseEstimate(record, extractOutputTextFromMaheshvaraResponse(resp), s.config.GetUsageConfig())
-	s.adjustTokenUsage(group.ID, derefInt(record.Usage.TotalTokens), usageDayKey(startTime))
-}
-
-// settleProviderBodyUsage 与 settleMaheshvaraUsage 同语义,供未经 Maheshvara
-// 的线制原生响应(按平台解析响应体)使用。
-func (s *Server) settleProviderBodyUsage(group *config.ModelGroupConfig, record *usageRecord, startTime time.Time, platform relay.Platform, respBody []byte) {
-	applyProviderUsageToRecord(record, extractProviderUsageFromBody(platform, "", respBody))
-	applyLocalResponseEstimate(record, extractOutputTextFromProviderBody(platform, "", respBody), s.config.GetUsageConfig())
 	s.adjustTokenUsage(group.ID, derefInt(record.Usage.TotalTokens), usageDayKey(startTime))
 }
 

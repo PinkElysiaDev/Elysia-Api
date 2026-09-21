@@ -84,7 +84,7 @@ func newCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtoco
 		aliases:           config.Aliases,
 		config:            config,
 		mode:              "delta",
-		doneValues:        map[string]struct{}{"[DONE]": {}},
+		doneValues:        map[string]struct{}{customDoneSentinel: {}},
 		events:            make(map[string]struct{}),
 		eventKeys:         []string{"type", "event"},
 		previousText:      make(map[string]string),

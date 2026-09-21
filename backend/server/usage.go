@@ -337,7 +337,7 @@ func extractProviderUsageFromPayload(platform relay.Platform, format relay.Forma
 	switch platform {
 	default:
 		if format == relay.FormatResponses {
-			if result := usageResultFromResponsesPayload(payload, source, true); result.HasUsage {
+			if result := usageResultFromResponsesPayload(payload, source); result.HasUsage {
 				return result
 			}
 		}
@@ -423,16 +423,14 @@ func usageResultFromOpenAIUsage(raw map[string]interface{}, source string) provi
 	return providerUsageResult{Usage: usage, Detail: detail, Source: source, HasUsage: usageHasAnyTokens(usage)}
 }
 
-func usageResultFromResponsesPayload(payload map[string]interface{}, source string, includeOutputTools bool) providerUsageResult {
+func usageResultFromResponsesPayload(payload map[string]interface{}, source string) providerUsageResult {
 	result := providerUsageResult{Source: source}
 	if raw, ok := payload["usage"].(map[string]interface{}); ok {
 		result = usageResultFromOpenAIUsage(raw, source)
 	}
-	if includeOutputTools {
-		result.Builtin = builtinToolUsageFromResponsesOutput(payload["output"])
-		if result.Builtin != (builtinToolUsage{}) {
-			result.HasUsage = true
-		}
+	if builtin := builtinToolUsageFromResponsesOutput(payload["output"]); builtin != (builtinToolUsage{}) {
+		result.Builtin = builtin
+		result.HasUsage = true
 	}
 	if usageHasAnyTokens(result.Usage) {
 		result.HasUsage = true

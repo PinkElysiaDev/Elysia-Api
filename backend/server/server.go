@@ -913,14 +913,6 @@ func streamYieldedNothing(record *usageRecord, writer *observingStreamWriter) bo
 	return true
 }
 
-func readBodyAndJSON(resp *http.Response, v interface{}) ([]byte, error) {
-	body, err := io.ReadAll(io.LimitReader(resp.Body, relay.MaxUpstreamBodyBytes))
-	if err != nil {
-		return nil, err
-	}
-	return body, json.Unmarshal(body, v)
-}
-
 // writeUpstreamError 写上游失败:与客户端共用同一错误信封时原样透传
 // (保真),否则把上游错误体解析为核心错误后按客户端线制重渲染(自定义
 // 协议平台按 OpenAI 形态尽力解析,失败回退原文摘要)。

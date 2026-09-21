@@ -41,20 +41,18 @@ const (
 	MaheshvaraToolFunction = "function"
 
 	// Maheshvara 响应状态字面量(此前在自定义协议层以裸字符串散布)。
-	MaheshvaraStatusCompleted        = "completed"
-	MaheshvaraStatusInProgress       = "in_progress"
-	MaheshvaraToolWebSearchPreview   = "web_search_preview"
-	MaheshvaraToolFileSearch         = "file_search"
-	MaheshvaraToolComputerUsePreview = "computer_use_preview"
-	MaheshvaraToolCodeInterpreter    = "code_interpreter"
-	MaheshvaraToolImageGeneration    = "image_generation"
+	MaheshvaraStatusCompleted      = "completed"
+	MaheshvaraStatusInProgress     = "in_progress"
+	MaheshvaraToolWebSearchPreview = "web_search_preview"
+	MaheshvaraToolFileSearch       = "file_search"
+	MaheshvaraToolImageGeneration  = "image_generation"
 
 	MaheshvaraOutputMessage             = "message"
 	MaheshvaraOutputFunctionCall        = "function_call"
-	MaheshvaraOutputReasoning           = "reasoning"
 	MaheshvaraOutputWebSearchCall       = "web_search_call"
 	MaheshvaraOutputFileSearchCall      = "file_search_call"
 	MaheshvaraOutputImageGenerationCall = "image_generation_call"
+	MaheshvaraOutputReasoning           = "reasoning"
 
 	MaheshvaraEventResponseCreated            = "response.created"
 	MaheshvaraEventResponseInProgress         = "response.in_progress"

@@ -734,9 +734,6 @@ func TestRegistry(t *testing.T) {
 	if _, err := NewRegistry(a, a); err == nil {
 		t.Fatalf("duplicate registration should fail")
 	}
-	if got := registry.GatedTools(); len(got) != 1 || got[0].Name() != "b" {
-		t.Fatalf("gated = %+v", got)
-	}
 }
 
 // 回归（W1-1）：clampJSON 截断产物必须是合法 JSON——旧实现「JSON 前缀 +

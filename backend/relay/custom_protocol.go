@@ -143,8 +143,8 @@ type CustomProtocolResponse struct {
 	// SignatureProvider 直接声明签名的签发方（anthropic/gemini/openai）——
 	// 线缆不携带 provider 时（anthropic signature_delta）用常量注入，
 	// 跨轮回放按 provider 门控需要它。
-	SignatureProvider string `json:"signatureProvider,omitempty"`
-	EncryptedContentPath  string `json:"encryptedContentPath,omitempty"`
+	SignatureProvider    string `json:"signatureProvider,omitempty"`
+	EncryptedContentPath string `json:"encryptedContentPath,omitempty"`
 	// RefusalPath 映射拒答文本（流侧 RefusalDelta 事件的输入源）。
 	RefusalPath string `json:"refusalPath,omitempty"`
 	// CitationsPath 把引用/出处标注原样挂到文本部件（Claude citations 往返保真）。

@@ -161,7 +161,7 @@ func (e *Engine) Stop(sessionID string) bool {
 	}
 	select {
 	case <-handle.done:
-	case <-time.After(15 * time.Second):
+	case <-time.After(stopDrainWait):
 	}
 	return true
 }
@@ -224,11 +224,19 @@ func emitEvent(events chan<- Event, event Event) {
 	}
 }
 
+// 引擎内联时限与长度的具名锚点。
+const (
+	stopDrainWait     = 15 * time.Second // Stop 等待轮次收尾的窗口
+	terminalEmitWait  = 5 * time.Second  // 终态事件尽力送达窗口
+	titleMaxRunes     = 24               // 会话标题截断长度
+	previewHalfFactor = 2                // clampJSON 预览占限额的分之一
+)
+
 // emitTerminal 发送终态事件：尽力送达（5s 窗口），随后 channel 将被关闭。
 func emitTerminal(events chan<- Event, event Event) {
 	select {
 	case events <- event:
-	case <-time.After(5 * time.Second):
+	case <-time.After(terminalEmitWait):
 	}
 }
 
@@ -271,7 +279,7 @@ func (e *Engine) startTurn(ctx context.Context, sessionID string, handle *turnHa
 			emitEvent(events, Event{Type: EventMessage, Message: &Message{Seq: seq, Role: RoleUser, Content: encoded, CreatedAt: time.Now()}})
 		}
 		if strings.TrimSpace(session.Title) == "" && strings.TrimSpace(input.Text) != "" {
-			title := truncateRunes(strings.TrimSpace(input.Text), 24)
+			title := truncateRunes(strings.TrimSpace(input.Text), titleMaxRunes)
 			if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Title: title}); err == nil {
 				session.Title = title
 			}
@@ -850,7 +858,7 @@ func clampJSON(raw json.RawMessage, limit int) json.RawMessage {
 		return raw
 	}
 	value := string(raw)
-	cut := limit / 2
+	cut := limit / previewHalfFactor
 	for cut > 0 && !utf8.RuneStart(value[cut]) {
 		cut--
 	}
