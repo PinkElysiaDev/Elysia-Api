@@ -45,6 +45,12 @@ type ToolContext interface {
 	SetPlan(steps []PlanStep) error
 }
 
+// ToolError 构造统一的失败结果：summary 给用户看，code 进 Data.error
+// 供模型与前端程序化识别。
+func ToolError(summary string, code string) ToolResult {
+	return ToolResult{OK: false, Summary: summary, Data: map[string]any{"error": code}}
+}
+
 // ToolResult 是工具执行结果：Data 回传给模型（须精简），Summary 供 UI 展示。
 type ToolResult struct {
 	OK      bool

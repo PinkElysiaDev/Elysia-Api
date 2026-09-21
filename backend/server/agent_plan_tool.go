@@ -52,32 +52,32 @@ func (t *updatePlanTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 		Plan []agent.PlanStep `json:"plan"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
-		return agent.ToolResult{OK: false, Summary: "参数解析失败", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("参数解析失败", err.Error())
 	}
 	if len(params.Plan) == 0 {
-		return agent.ToolResult{OK: false, Summary: "plan 不能为空", Data: map[string]any{"error": "empty_plan"}}
+		return agent.ToolError("plan 不能为空", "empty_plan")
 	}
 	if len(params.Plan) > 12 {
-		return agent.ToolResult{OK: false, Summary: "方案步骤过多（上限 12 条），请合并", Data: map[string]any{"error": "too_many_steps"}}
+		return agent.ToolError("方案步骤过多（上限 12 条），请合并", "too_many_steps")
 	}
 	seen := map[string]bool{}
 	for _, step := range params.Plan {
 		title := strings.TrimSpace(step.Title)
 		if title == "" {
-			return agent.ToolResult{OK: false, Summary: "步骤标题不能为空", Data: map[string]any{"error": "empty_title"}}
+			return agent.ToolError("步骤标题不能为空", "empty_title")
 		}
 		switch step.Status {
 		case "pending", "in_progress", "done":
 		default:
-			return agent.ToolResult{OK: false, Summary: fmt.Sprintf("步骤 %q 的 status 非法（pending/in_progress/done）", title), Data: map[string]any{"error": "invalid_status"}}
+			return agent.ToolError(fmt.Sprintf("步骤 %q 的 status 非法（pending/in_progress/done）", title), "invalid_status")
 		}
 		if seen[title] {
-			return agent.ToolResult{OK: false, Summary: fmt.Sprintf("步骤 %q 重复", title), Data: map[string]any{"error": "duplicate_title"}}
+			return agent.ToolError(fmt.Sprintf("步骤 %q 重复", title), "duplicate_title")
 		}
 		seen[title] = true
 	}
 	if err := tctx.SetPlan(params.Plan); err != nil {
-		return agent.ToolResult{OK: false, Summary: "方案保存失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("方案保存失败: "+err.Error(), err.Error())
 	}
 	done := 0
 	for _, step := range params.Plan {

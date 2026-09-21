@@ -52,8 +52,8 @@ func (s *Store) CreateAgentSession(ctx context.Context, input AgentSessionUpsert
 		id, strings.TrimSpace(input.Title), mode, strings.TrimSpace(input.ProtocolID),
 		strings.TrimSpace(input.SeedConfig), draft, strings.TrimSpace(input.TestBaseURL), encryptedKey,
 		input.Settings.ModelSourceID, input.Settings.ModelName,
-		boolInt(input.Settings.ThinkingEnabled), strings.TrimSpace(input.Settings.ThinkingEffort),
-		boolInt(input.Settings.PlanMode),
+		sqlBoolToInt(input.Settings.ThinkingEnabled), strings.TrimSpace(input.Settings.ThinkingEffort),
+		sqlBoolToInt(input.Settings.PlanMode),
 		agent.NormalizedPermission(input.Settings.AllowLiveTest), agent.NormalizedPermission(input.Settings.AllowSave),
 		agent.StatusIdle, now, now); err != nil {
 		return nil, err
@@ -209,7 +209,7 @@ func (s *Store) UpdateAgentSessionSettings(ctx context.Context, id string, title
 		}
 		if patch.ThinkingEnabled != nil {
 			sets = append(sets, "thinking_enabled = ?")
-			args = append(args, boolInt(*patch.ThinkingEnabled))
+			args = append(args, sqlBoolToInt(*patch.ThinkingEnabled))
 		}
 		if patch.ThinkingEffort != nil {
 			sets = append(sets, "thinking_effort = ?")
@@ -217,7 +217,7 @@ func (s *Store) UpdateAgentSessionSettings(ctx context.Context, id string, title
 		}
 		if patch.PlanMode != nil {
 			sets = append(sets, "plan_mode = ?")
-			args = append(args, boolInt(*patch.PlanMode))
+			args = append(args, sqlBoolToInt(*patch.PlanMode))
 		}
 		if patch.AllowLiveTest != nil {
 			sets = append(sets, "allow_live_test = ?")
@@ -413,13 +413,6 @@ func (s *Store) DeleteAgentSession(ctx context.Context, id string) (bool, error)
 		return false, err
 	}
 	return affected > 0, nil
-}
-
-func boolInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
 }
 
 func newAgentSessionID() (string, error) {

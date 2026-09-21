@@ -57,7 +57,7 @@ func newAgentOpsTools(s *Server) []agent.Tool {
 // 14 处工具 Execute 开头的样板由此收敛为一行守卫。
 func toolStore(server *Server) (*storage.Store, agent.ToolResult) {
 	if server.store == nil {
-		return nil, agent.ToolResult{OK: false, Summary: "存储不可用", Data: map[string]any{"error": "store_unavailable"}}
+		return nil, agent.ToolError("存储不可用", "store_unavailable")
 	}
 	return server.store, agent.ToolResult{}
 }
@@ -247,7 +247,7 @@ func (t *listSourcesTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 	}
 	sources, err := store.ListSources(ctx)
 	if err != nil {
-		return agent.ToolResult{OK: false, Summary: "读取失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("读取失败: "+err.Error(), err.Error())
 	}
 	counts := agentSourceModelCounts(ctx, store)
 	items := make([]map[string]any, 0, len(sources))
@@ -293,7 +293,7 @@ func (t *listGroupsTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 	}
 	groups, err := store.ListGroups(ctx)
 	if err != nil {
-		return agent.ToolResult{OK: false, Summary: "读取失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("读取失败: "+err.Error(), err.Error())
 	}
 	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("共 %d 个模型组", len(groups)), Data: map[string]any{"groups": groups}}
 }
@@ -330,15 +330,15 @@ func (t *usageStatsTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 	}
 	query, err := agentUsageQuery(args)
 	if err != nil {
-		return agent.ToolResult{OK: false, Summary: err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError(err.Error(), err.Error())
 	}
 	totals, err := store.UsageTotals(ctx, query)
 	if err != nil {
-		return agent.ToolResult{OK: false, Summary: "统计查询失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("统计查询失败: "+err.Error(), err.Error())
 	}
 	byModel, err := store.UsageByModel(ctx, query)
 	if err != nil {
-		return agent.ToolResult{OK: false, Summary: "模型分布查询失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("模型分布查询失败: "+err.Error(), err.Error())
 	}
 	requests, _ := totals["requests"].(int64)
 	if requests == 0 {
@@ -384,11 +384,11 @@ func (t *usageTrendTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 	}
 	query, err := agentUsageQuery(args)
 	if err != nil {
-		return agent.ToolResult{OK: false, Summary: err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError(err.Error(), err.Error())
 	}
 	buckets, err := store.UsageDaily(ctx, query, agentLocalUTCOffset())
 	if err != nil {
-		return agent.ToolResult{OK: false, Summary: "趋势查询失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("趋势查询失败: "+err.Error(), err.Error())
 	}
 	// 直接给出图表 spec，模型侧可原样交给 ```chart 或自行组织。
 	dates := make([]string, 0, len(buckets))
@@ -447,7 +447,7 @@ func (t *usageLogsTool) Execute(ctx context.Context, tctx agent.ToolContext, arg
 	}
 	query, err := agentUsageQuery(args)
 	if err != nil {
-		return agent.ToolResult{OK: false, Summary: err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError(err.Error(), err.Error())
 	}
 	var params struct {
 		Limit int `json:"limit"`
@@ -464,7 +464,7 @@ func (t *usageLogsTool) Execute(ctx context.Context, tctx agent.ToolContext, arg
 	query.Limit = params.Limit
 	total, items, err := store.QueryUsageLogs(ctx, query)
 	if err != nil {
-		return agent.ToolResult{OK: false, Summary: "日志查询失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("日志查询失败: "+err.Error(), err.Error())
 	}
 	failed := 0
 	for _, item := range items {
@@ -508,17 +508,17 @@ func (t *usageLogDetailTool) Execute(ctx context.Context, tctx agent.ToolContext
 		RequestID string `json:"requestId"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
-		return agent.ToolResult{OK: false, Summary: "参数解析失败", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("参数解析失败", err.Error())
 	}
 	if strings.TrimSpace(params.RequestID) == "" {
-		return agent.ToolResult{OK: false, Summary: "缺少 requestId", Data: map[string]any{"error": "missing_request_id"}}
+		return agent.ToolError("缺少 requestId", "missing_request_id")
 	}
 	raw, found, err := store.GetUsageRecordJSON(ctx, strings.TrimSpace(params.RequestID))
 	if err != nil {
-		return agent.ToolResult{OK: false, Summary: "读取失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("读取失败: "+err.Error(), err.Error())
 	}
 	if !found {
-		return agent.ToolResult{OK: false, Summary: "记录不存在", Data: map[string]any{"error": "not_found"}}
+		return agent.ToolError("记录不存在", "not_found")
 	}
 	var record map[string]any
 	if err := json.Unmarshal(raw, &record); err != nil {
@@ -573,7 +573,7 @@ func (t *systemLogsTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 	}
 	total, items, err := store.QuerySystemLogs(ctx, params.Limit, 0, params.Level)
 	if err != nil {
-		return agent.ToolResult{OK: false, Summary: "查询失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("查询失败: "+err.Error(), err.Error())
 	}
 	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("共 %d 条，返回 %d 条", total, len(items)), Data: map[string]any{"items": items}}
 }
@@ -620,10 +620,10 @@ func (t *createSourceTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 		FetchBaseURL    string   `json:"fetchBaseUrl"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
-		return agent.ToolResult{OK: false, Summary: "参数解析失败", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("参数解析失败", err.Error())
 	}
 	if strings.TrimSpace(params.Name) == "" || strings.TrimSpace(params.BaseURL) == "" {
-		return agent.ToolResult{OK: false, Summary: "name 与 baseUrl 必填", Data: map[string]any{"error": "missing_fields"}}
+		return agent.ToolError("name 与 baseUrl 必填", "missing_fields")
 	}
 	platform := strings.TrimSpace(params.Platform)
 	if platform == "" {
@@ -648,10 +648,10 @@ func (t *createSourceTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 		item.FetchBaseURL = strings.TrimSpace(params.FetchBaseURL)
 	}
 	if err := t.server.validateAgentSource(ctx, &item, nil); err != nil {
-		return agent.ToolResult{OK: false, Summary: "校验失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("校验失败: "+err.Error(), err.Error())
 	}
 	if err := store.UpsertSource(ctx, item); err != nil {
-		return agent.ToolResult{OK: false, Summary: "保存失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("保存失败: "+err.Error(), err.Error())
 	}
 	created, _ := agentFindSource(ctx, store, item.ID)
 	if len(params.ManualModels) > 0 {
@@ -710,11 +710,11 @@ func (t *updateSourceTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 		ManualModels    []string `json:"manualModels"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
-		return agent.ToolResult{OK: false, Summary: "参数解析失败", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("参数解析失败", err.Error())
 	}
 	existing, found := agentFindSource(ctx, store, params.Source)
 	if !found {
-		return agent.ToolResult{OK: false, Summary: fmt.Sprintf("模型源 %q 不存在", params.Source), Data: map[string]any{"error": "not_found"}}
+		return agent.ToolError(fmt.Sprintf("模型源 %q 不存在", params.Source), "not_found")
 	}
 	item := existing
 	if params.Enabled != nil {
@@ -736,10 +736,10 @@ func (t *updateSourceTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 		item.AutoFetchModels = *params.AutoFetchModels
 	}
 	if err := t.server.validateAgentSource(ctx, &item, &existing); err != nil {
-		return agent.ToolResult{OK: false, Summary: "校验失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("校验失败: "+err.Error(), err.Error())
 	}
 	if err := store.UpsertSource(ctx, item); err != nil {
-		return agent.ToolResult{OK: false, Summary: "保存失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("保存失败: "+err.Error(), err.Error())
 	}
 	if params.ManualModels != nil {
 		updated, _ := agentFindSource(ctx, store, item.ID)
@@ -810,11 +810,11 @@ func (t *refreshSourceTool) Execute(ctx context.Context, tctx agent.ToolContext,
 		Source string `json:"source"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
-		return agent.ToolResult{OK: false, Summary: "参数解析失败", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("参数解析失败", err.Error())
 	}
 	source, found := agentFindSource(ctx, store, params.Source)
 	if !found {
-		return agent.ToolResult{OK: false, Summary: fmt.Sprintf("模型源 %q 不存在", params.Source), Data: map[string]any{"error": "not_found"}}
+		return agent.ToolError(fmt.Sprintf("模型源 %q 不存在", params.Source), "not_found")
 	}
 	summary, err := t.server.refreshSourceByValue(ctx, source)
 	t.server.invalidateRouteCache()
@@ -867,10 +867,10 @@ func (t *createGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 		DailyLimitMaxTokens   int      `json:"dailyLimitMaxTokens"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
-		return agent.ToolResult{OK: false, Summary: "参数解析失败", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("参数解析失败", err.Error())
 	}
 	if strings.TrimSpace(params.Name) == "" {
-		return agent.ToolResult{OK: false, Summary: "name 必填", Data: map[string]any{"error": "missing_name"}}
+		return agent.ToolError("name 必填", "missing_name")
 	}
 	group := storage.ModelGroup{
 		ID: slugID(params.Name), Name: strings.TrimSpace(params.Name), Enabled: true,
@@ -882,7 +882,7 @@ func (t *createGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 		group.Enabled = *params.Enabled
 	}
 	if err := store.UpsertGroup(ctx, group); err != nil {
-		return agent.ToolResult{OK: false, Summary: "创建失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("创建失败: "+err.Error(), err.Error())
 	}
 	t.server.invalidateRouteCache()
 	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("模型组 %q 已创建（%d 个成员）", group.Name, len(group.Models)), Data: map[string]any{"id": group.ID, "name": group.Name, "models": group.Models}}
@@ -932,21 +932,21 @@ func (t *updateGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 		DailyLimitMaxTokens   *int     `json:"dailyLimitMaxTokens"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
-		return agent.ToolResult{OK: false, Summary: "参数解析失败", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("参数解析失败", err.Error())
 	}
 	group, found := agentFindGroup(ctx, store, params.Group)
 	if !found {
-		return agent.ToolResult{OK: false, Summary: fmt.Sprintf("模型组 %q 不存在", params.Group), Data: map[string]any{"error": "not_found"}}
+		return agent.ToolError(fmt.Sprintf("模型组 %q 不存在", params.Group), "not_found")
 	}
 	// 成员增删走原子接口；其余字段整体覆盖。
 	if len(params.RemoveModels) > 0 {
 		if _, err := store.RemoveGroupMembers(ctx, group.ID, params.RemoveModels); err != nil {
-			return agent.ToolResult{OK: false, Summary: "移除成员失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+			return agent.ToolError("移除成员失败: "+err.Error(), err.Error())
 		}
 	}
 	if len(params.AddModels) > 0 {
 		if _, err := store.AddGroupMembers(ctx, group.ID, params.AddModels); err != nil {
-			return agent.ToolResult{OK: false, Summary: "添加成员失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+			return agent.ToolError("添加成员失败: "+err.Error(), err.Error())
 		}
 	}
 	fieldsChanged := false
@@ -981,7 +981,7 @@ func (t *updateGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 			group.Models = fresh.Models
 		}
 		if err := store.UpsertGroup(ctx, group); err != nil {
-			return agent.ToolResult{OK: false, Summary: "保存失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+			return agent.ToolError("保存失败: "+err.Error(), err.Error())
 		}
 	}
 	t.server.invalidateRouteCache()
@@ -1024,7 +1024,7 @@ func (t *outboundPolicyTool) Execute(ctx context.Context, tctx agent.ToolContext
 		ResetDefault bool     `json:"resetDefault"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
-		return agent.ToolResult{OK: false, Summary: "参数解析失败", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("参数解析失败", err.Error())
 	}
 
 	var rollback func()
@@ -1060,7 +1060,7 @@ func (t *outboundPolicyTool) Execute(ctx context.Context, tctx agent.ToolContext
 		if rollback != nil {
 			rollback()
 		}
-		return agent.ToolResult{OK: false, Summary: "策略修改已回滚（落盘失败）: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("策略修改已回滚（落盘失败）: "+err.Error(), err.Error())
 	}
 	if params.ResetDefault {
 		return view("出站禁止段已恢复预置默认")

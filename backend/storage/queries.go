@@ -843,37 +843,56 @@ func (s *Store) UsageDaily(ctx context.Context, q UsageQuery, utcOffsetMinutes i
 	return buckets, nil
 }
 
-func (s *Store) usageDailyRows(ctx context.Context, q UsageQuery, offsetMs int64) ([]usageDayRow, error) {
-	if fromHour, toHour, ok := s.rollupSplit(q, offsetMs%msPerHour == 0); ok {
-		tx, err := s.db.BeginTx(ctx, nil)
-		if err != nil {
-			return nil, err
-		}
-		defer func() { _ = tx.Rollback() }() // 只读事务，结束即弃
-		rows := []usageDayRow{}
-		headFrom, headTo, tailFrom, tailTo, hasHead, hasTail := rollupEdgeBounds(q, fromHour, toHour)
-		if hasHead {
-			head, err := scanUsageDailyRows(ctx, tx, q.withBounds(headFrom, headTo), offsetMs)
-			if err != nil {
-				return nil, err
-			}
-			rows = append(rows, head...)
-		}
-		middle, err := scanUsageDailyRollupRows(ctx, tx, q, fromHour, toHour, offsetMs)
-		if err != nil {
-			return nil, err
-		}
-		rows = append(rows, middle...)
-		if hasTail {
-			tail, err := scanUsageDailyRows(ctx, tx, q.withBounds(tailFrom, tailTo), offsetMs)
-			if err != nil {
-				return nil, err
-			}
-			rows = append(rows, tail...)
-		}
-		return rows, nil
+// mergeRawRollupSegments 执行「头 raw → 中 rollup → 尾 raw」三段合并扫描：
+// 窗口不跨 rollup 就绪边界时整体走 raw（ok=false）。三个聚合入口
+// （日表/模型分布/总计）共用此骨架，只有 scan 回调不同。
+func mergeRawRollupSegments[T any](ctx context.Context, s *Store, q UsageQuery,
+	rawScan func(ctx context.Context, qe sqlQueryer, q UsageQuery) ([]T, error),
+	rollupScan func(ctx context.Context, tx *sql.Tx, q UsageQuery, fromHour, toHour int64) ([]T, error),
+	hourAligned bool,
+) ([]T, error) {
+	fromHour, toHour, ok := s.rollupSplit(q, hourAligned)
+	if !ok {
+		return rawScan(ctx, s.db, q)
 	}
-	return scanUsageDailyRows(ctx, s.db, q, offsetMs)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }() // 只读事务，结束即弃
+	headFrom, headTo, tailFrom, tailTo, hasHead, hasTail := rollupEdgeBounds(q, fromHour, toHour)
+	var rows []T
+	if hasHead {
+		head, err := rawScan(ctx, tx, q.withBounds(headFrom, headTo))
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, head...)
+	}
+	middle, err := rollupScan(ctx, tx, q, fromHour, toHour)
+	if err != nil {
+		return nil, err
+	}
+	rows = append(rows, middle...)
+	if hasTail {
+		tail, err := rawScan(ctx, tx, q.withBounds(tailFrom, tailTo))
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, tail...)
+	}
+	return rows, nil
+}
+
+func (s *Store) usageDailyRows(ctx context.Context, q UsageQuery, offsetMs int64) ([]usageDayRow, error) {
+	// 日桶扫描多一个 offset 参数，闭包适配后共用三段合并骨架。
+	return mergeRawRollupSegments(ctx, s, q,
+		func(ctx context.Context, qe sqlQueryer, query UsageQuery) ([]usageDayRow, error) {
+			return scanUsageDailyRows(ctx, qe, query, offsetMs)
+		},
+		func(ctx context.Context, tx *sql.Tx, query UsageQuery, fromHour, toHour int64) ([]usageDayRow, error) {
+			return scanUsageDailyRollupRows(ctx, tx, query, fromHour, toHour, offsetMs)
+		}, offsetMs%msPerHour == 0)
 }
 
 // usageDayRow 是 (本地日, 模型) 粒度的聚合行，由 raw 扫描与 rollup 扫描共同产出，
@@ -930,46 +949,25 @@ func usageDayKeyDate(dayKey int64) string {
 // UsageByModel 按模型聚合（请求数 / 失败数 / tokens），按请求数降序、模型名升序。
 // rollup 就绪时中段走预聚合表、边缘小时走 raw，合并后统一排序。
 func (s *Store) UsageByModel(ctx context.Context, q UsageQuery) ([]UsageModelBucket, error) {
-	var rows []usageModelRow
-	if fromHour, toHour, ok := s.rollupSplit(q, true); ok {
-		tx, err := s.db.BeginTx(ctx, nil)
-		if err != nil {
-			return nil, err
-		}
-		defer func() { _ = tx.Rollback() }() // 只读事务，结束即弃
-		headFrom, headTo, tailFrom, tailTo, hasHead, hasTail := rollupEdgeBounds(q, fromHour, toHour)
-		if hasHead {
-			head, err := scanUsageByModelRawRows(ctx, tx, q.withBounds(headFrom, headTo))
-			if err != nil {
-				return nil, err
+	// 无界窗口在 rollup 段后补扫孤儿时间戳（rollup 无法安置的坏行）。
+	orphanFollowUp := q.From.IsZero()
+	rows, err := mergeRawRollupSegments(ctx, s, q,
+		func(ctx context.Context, qe sqlQueryer, query UsageQuery) ([]usageModelRow, error) {
+			return scanUsageByModelRawRows(ctx, qe, query)
+		},
+		func(ctx context.Context, tx *sql.Tx, query UsageQuery, fromHour, toHour int64) ([]usageModelRow, error) {
+			rows, err := scanUsageByModelRollupRows(ctx, tx, query, fromHour, toHour)
+			if err == nil && orphanFollowUp {
+				orphans, orphanErr := scanUsageByModelRawRows(ctx, tx, query.orphansOnly())
+				if orphanErr != nil {
+					return nil, orphanErr
+				}
+				rows = append(rows, orphans...)
 			}
-			rows = append(rows, head...)
-		}
-		middle, err := scanUsageByModelRollupRows(ctx, tx, q, fromHour, toHour)
-		if err != nil {
-			return nil, err
-		}
-		rows = append(rows, middle...)
-		if hasTail {
-			tail, err := scanUsageByModelRawRows(ctx, tx, q.withBounds(tailFrom, tailTo))
-			if err != nil {
-				return nil, err
-			}
-			rows = append(rows, tail...)
-		}
-		if q.From.IsZero() {
-			orphans, err := scanUsageByModelRawRows(ctx, tx, q.orphansOnly())
-			if err != nil {
-				return nil, err
-			}
-			rows = append(rows, orphans...)
-		}
-	} else {
-		raw, err := scanUsageByModelRawRows(ctx, s.db, q)
-		if err != nil {
-			return nil, err
-		}
-		rows = raw
+			return rows, err
+		}, true)
+	if err != nil {
+		return nil, err
 	}
 	byModel := make(map[string]*UsageModelBucket, len(rows))
 	for i := range rows {
@@ -1642,37 +1640,33 @@ func (s *Store) UsageTotals(ctx context.Context, q UsageQuery) (map[string]any, 
 // 否则整体 raw（阶段一的覆盖索引单行聚合路径）。
 // computeUsageTotals 在同读事务内聚合 totals(方法名曾与返回类型同名遮蔽)。
 func (s *Store) computeUsageTotals(ctx context.Context, q UsageQuery) (*usageTotalsAcc, error) {
+	// 总计是累加语义：骨架产出行后并入同一累加器。
 	acc := &usageTotalsAcc{}
-	fromHour, toHour, ok := s.rollupSplit(q, true)
-	if !ok {
-		if err := usageTotalsRawInto(ctx, s.db, q, acc); err != nil {
-			return nil, err
+	into := func(scan func(ctx context.Context, qe sqlQueryer, query UsageQuery) error) func(context.Context, sqlQueryer, UsageQuery) ([]*usageTotalsAcc, error) {
+		return func(ctx context.Context, qe sqlQueryer, query UsageQuery) ([]*usageTotalsAcc, error) {
+			if err := scan(ctx, qe, query); err != nil {
+				return nil, err
+			}
+			return nil, nil
 		}
-		return acc, nil
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	_, err := mergeRawRollupSegments(ctx, s, q,
+		into(func(ctx context.Context, qe sqlQueryer, query UsageQuery) error {
+			return usageTotalsRawInto(ctx, qe, query, acc)
+		}),
+		func(ctx context.Context, tx *sql.Tx, query UsageQuery, fromHour, toHour int64) ([]*usageTotalsAcc, error) {
+			if err := usageTotalsRollupInto(ctx, tx, query, fromHour, toHour, acc); err != nil {
+				return nil, err
+			}
+			if query.From.IsZero() {
+				if err := usageTotalsRawInto(ctx, tx, query.orphansOnly(), acc); err != nil {
+					return nil, err
+				}
+			}
+			return nil, nil
+		}, true)
 	if err != nil {
 		return nil, err
-	}
-	defer func() { _ = tx.Rollback() }() // 只读事务，结束即弃
-	headFrom, headTo, tailFrom, tailTo, hasHead, hasTail := rollupEdgeBounds(q, fromHour, toHour)
-	if hasHead {
-		if err := usageTotalsRawInto(ctx, tx, q.withBounds(headFrom, headTo), acc); err != nil {
-			return nil, err
-		}
-	}
-	if err := usageTotalsRollupInto(ctx, tx, q, fromHour, toHour, acc); err != nil {
-		return nil, err
-	}
-	if hasTail {
-		if err := usageTotalsRawInto(ctx, tx, q.withBounds(tailFrom, tailTo), acc); err != nil {
-			return nil, err
-		}
-	}
-	if q.From.IsZero() {
-		if err := usageTotalsRawInto(ctx, tx, q.orphansOnly(), acc); err != nil {
-			return nil, err
-		}
 	}
 	return acc, nil
 }

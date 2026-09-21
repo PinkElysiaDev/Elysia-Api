@@ -73,10 +73,10 @@ func (t *updateDraftTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 		ExampleResponse json.RawMessage `json:"exampleResponse,omitempty"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
-		return agent.ToolResult{OK: false, Summary: "参数解析失败", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("参数解析失败", err.Error())
 	}
 	if len(params.Config) == 0 {
-		return agent.ToolResult{OK: false, Summary: "缺少 config 参数", Data: map[string]any{"error": "missing config"}}
+		return agent.ToolError("缺少 config 参数", "missing config")
 	}
 	var protocol relay.CustomProtocolConfig
 	if err := json.Unmarshal(params.Config, &protocol); err != nil {
@@ -94,7 +94,7 @@ func (t *updateDraftTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 		compact = params.Config
 	}
 	if err := tctx.SetDraft(compact); err != nil {
-		return agent.ToolResult{OK: false, Summary: "草稿保存失败", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("草稿保存失败", err.Error())
 	}
 
 	summary := fmt.Sprintf("草稿已更新（id=%s）", protocol.ID)
@@ -147,11 +147,11 @@ func (t *previewRequestTool) Definition() relay.MaheshvaraTool {
 func (t *previewRequestTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
 	draft := tctx.Draft()
 	if len(draft) == 0 {
-		return agent.ToolResult{OK: false, Summary: "尚无草稿，先调用 update_protocol_draft", Data: map[string]any{"error": "no_draft"}}
+		return agent.ToolError("尚无草稿，先调用 update_protocol_draft", "no_draft")
 	}
 	var protocol relay.CustomProtocolConfig
 	if err := json.Unmarshal(draft, &protocol); err != nil {
-		return agent.ToolResult{OK: false, Summary: "草稿解析失败", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("草稿解析失败", err.Error())
 	}
 	var params struct {
 		SampleRequest *relay.MaheshvaraRequest `json:"sampleRequest,omitempty"`
@@ -165,7 +165,7 @@ func (t *previewRequestTool) Execute(ctx context.Context, tctx agent.ToolContext
 	}
 	preview, err := previewCustomProtocolRequest(protocol, sample)
 	if err != nil {
-		return agent.ToolResult{OK: false, Summary: "渲染失败（草稿可能不完整）", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("渲染失败（草稿可能不完整）", err.Error())
 	}
 	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("渲染成功：%s %s", preview.Method, preview.Path), Data: preview}
 }
@@ -198,7 +198,7 @@ func (t *testUpstreamTool) Definition() relay.MaheshvaraTool {
 func (t *testUpstreamTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
 	draft := tctx.Draft()
 	if len(draft) == 0 {
-		return agent.ToolResult{OK: false, Summary: "尚无草稿，先调用 update_protocol_draft", Data: map[string]any{"error": "no_draft"}}
+		return agent.ToolError("尚无草稿，先调用 update_protocol_draft", "no_draft")
 	}
 	var params struct {
 		Stream        bool                     `json:"stream"`
@@ -224,13 +224,13 @@ func (t *testUpstreamTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 	_ = tctx.SetTestTarget(baseURL, apiKey)
 	var protocol relay.CustomProtocolConfig
 	if err := json.Unmarshal(draft, &protocol); err != nil {
-		return agent.ToolResult{OK: false, Summary: "草稿解析失败", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("草稿解析失败", err.Error())
 	}
 	result, err := t.server.runCustomProtocolLiveTest(ctx, protocol, customProtocolTestTarget{
 		BaseURL: strings.TrimSpace(baseURL), APIKey: apiKey, ModelName: "test-model",
 	}, params.Stream, params.SampleRequest)
 	if err != nil {
-		return agent.ToolResult{OK: false, Summary: "测试发送失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("测试发送失败: "+err.Error(), err.Error())
 	}
 	summary := fmt.Sprintf("上游返回 %d（耗时 %dms）", result.StatusCode, result.DurationMs)
 	if result.MappingError != "" {
@@ -269,7 +269,7 @@ func (t *testModelsTool) Definition() relay.MaheshvaraTool {
 func (t *testModelsTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
 	draft := tctx.Draft()
 	if len(draft) == 0 {
-		return agent.ToolResult{OK: false, Summary: "尚无草稿，先调用 update_protocol_draft", Data: map[string]any{"error": "no_draft"}}
+		return agent.ToolError("尚无草稿，先调用 update_protocol_draft", "no_draft")
 	}
 	var credParams struct {
 		BaseURL string `json:"baseUrl"`
@@ -292,13 +292,13 @@ func (t *testModelsTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 	_ = tctx.SetTestTarget(baseURL, apiKey)
 	var protocol relay.CustomProtocolConfig
 	if err := json.Unmarshal(draft, &protocol); err != nil {
-		return agent.ToolResult{OK: false, Summary: "草稿解析失败", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("草稿解析失败", err.Error())
 	}
 	result, err := t.server.runCustomProtocolModelsTest(ctx, protocol, customProtocolTestTarget{
 		BaseURL: strings.TrimSpace(baseURL), APIKey: apiKey,
 	})
 	if err != nil {
-		return agent.ToolResult{OK: false, Summary: "模型发现请求失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("模型发现请求失败: "+err.Error(), err.Error())
 	}
 	summary := fmt.Sprintf("上游返回 %d", result.StatusCode)
 	if len(result.Models) > 0 {
@@ -329,14 +329,14 @@ func (t *saveProtocolTool) Definition() relay.MaheshvaraTool {
 func (t *saveProtocolTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
 	draft := tctx.Draft()
 	if len(draft) == 0 {
-		return agent.ToolResult{OK: false, Summary: "尚无草稿，先调用 update_protocol_draft", Data: map[string]any{"error": "no_draft"}}
+		return agent.ToolError("尚无草稿，先调用 update_protocol_draft", "no_draft")
 	}
 	var protocol relay.CustomProtocolConfig
 	if err := json.Unmarshal(draft, &protocol); err != nil {
-		return agent.ToolResult{OK: false, Summary: "草稿解析失败", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("草稿解析失败", err.Error())
 	}
 	if err := relay.ValidateCustomProtocol(protocol); err != nil {
-		return agent.ToolResult{OK: false, Summary: "草稿校验失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("草稿校验失败: "+err.Error(), err.Error())
 	}
 	meta := tctx.SessionMeta()
 	if meta.Mode == agent.ModeEdit && meta.ProtocolID != "" && !strings.EqualFold(protocol.ID, meta.ProtocolID) {
@@ -350,7 +350,7 @@ func (t *saveProtocolTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 	}
 	existing, err := store.ListCustomProtocols(ctx)
 	if err != nil {
-		return agent.ToolResult{OK: false, Summary: "读取现有协议失败", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("读取现有协议失败", err.Error())
 	}
 	for _, row := range existing {
 		if strings.EqualFold(row.ID, protocol.ID) && meta.Mode != agent.ModeEdit {
@@ -361,7 +361,7 @@ func (t *saveProtocolTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 	}
 	compact, _ := json.Marshal(protocol)
 	if err := store.UpsertCustomProtocol(ctx, customProtocolRow(protocol, string(compact))); err != nil {
-		return agent.ToolResult{OK: false, Summary: "保存失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("保存失败: "+err.Error(), err.Error())
 	}
 	syncErr := t.server.syncCustomProtocolsQuiet()
 	data := map[string]any{"saved": true, "id": protocol.ID, "synced": syncErr == nil}
@@ -396,11 +396,11 @@ func (t *readProtocolTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
-		return agent.ToolResult{OK: false, Summary: "参数解析失败", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("参数解析失败", err.Error())
 	}
 	id := strings.TrimSpace(params.ID)
 	if id == "" {
-		return agent.ToolResult{OK: false, Summary: "缺少 id", Data: map[string]any{"error": "missing_id"}}
+		return agent.ToolError("缺少 id", "missing_id")
 	}
 	// 预置协议优先（未落库也可读），其次查库。
 	if config, ok := findPresetConfig(id); ok {
@@ -413,7 +413,7 @@ func (t *readProtocolTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 	}
 	rows, err := store.ListCustomProtocols(ctx)
 	if err != nil {
-		return agent.ToolResult{OK: false, Summary: "读取失败", Data: map[string]any{"error": err.Error()}}
+		return agent.ToolError("读取失败", err.Error())
 	}
 	for _, row := range rows {
 		if strings.EqualFold(row.ID, id) {
@@ -431,5 +431,5 @@ func (t *readProtocolTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 			return agent.ToolResult{OK: true, Summary: "已读取协议 " + row.ID, Data: data}
 		}
 	}
-	return agent.ToolResult{OK: false, Summary: fmt.Sprintf("协议 %q 不存在", id), Data: map[string]any{"error": "not_found"}}
+	return agent.ToolError(fmt.Sprintf("协议 %q 不存在", id), "not_found")
 }

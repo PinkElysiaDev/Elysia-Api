@@ -452,27 +452,17 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 	for index, call := range calls {
 		tool := e.tools.Get(call.Name)
 		if tool == nil {
-			info := ToolResultInfo{
-				CallID: call.ID, Name: call.Name, Input: call.Arguments,
-				OK: false, Summary: fmt.Sprintf("未知工具 %q", call.Name),
-				Data: json.RawMessage(`{"error":"unknown_tool"}`),
-			}
-			e.persistToolResult(ctx, sessionID, info, events)
-			*conversation = append(*conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
+			e.denyCall(ctx, sessionID, conversation, call, fmt.Sprintf("未知工具 %q", call.Name), events)
 			continue
 		}
 		if tool.Gated() {
 			if session.Settings.PlanMode {
-				info := deniedToolResult(call, "计划模式已开启：修改与出站操作暂不执行。请先用 update_plan 给出完整方案，并等待用户确认后再执行")
-				e.persistToolResult(ctx, sessionID, info, events)
-				*conversation = append(*conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
+				e.denyCall(ctx, sessionID, conversation, call, "计划模式已开启：修改与出站操作暂不执行。请先用 update_plan 给出完整方案，并等待用户确认后再执行", events)
 				continue
 			}
 			policy := PermissionFor(session.Settings, tool.PermissionKey())
 			if policy == PermissionNever {
-				info := deniedToolResult(call, "用户已在会话设置中禁止此操作，请改用其他方式完成任务")
-				e.persistToolResult(ctx, sessionID, info, events)
-				*conversation = append(*conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
+				e.denyCall(ctx, sessionID, conversation, call, "用户已在会话设置中禁止此操作，请改用其他方式完成任务", events)
 				continue
 			}
 			if policy == PermissionAsk && !approvedIDs[call.ID] {
@@ -489,6 +479,21 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 		*conversation = append(*conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
 	}
 	return false, nil
+}
+
+// denyCall 合成一次被拒/未知的工具结果：落库 + 回传事件 + 追加到对话，
+// 三类拒绝（计划模式 / never 权限 / 未知工具）共用同一收尾。
+func (e *Engine) denyCall(ctx context.Context, sessionID string, conversation *[]relay.MaheshvaraMessage, call relay.MaheshvaraToolCall, message string, events chan Event) {
+	info := deniedToolResult(call, message)
+	if strings.Contains(message, "未知工具") {
+		info = ToolResultInfo{
+			CallID: call.ID, Name: call.Name, Input: call.Arguments,
+			OK: false, Summary: message,
+			Data: json.RawMessage(`{"error":"unknown_tool"}`),
+		}
+	}
+	e.persistToolResult(ctx, sessionID, info, events)
+	*conversation = append(*conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
 }
 
 // runOneTool 执行单个工具（带 panic 防护），落库并发出事件。
@@ -706,12 +711,16 @@ type engineToolContext struct {
 	session *Session
 }
 
-func (c *engineToolContext) SessionMeta() SessionMeta {
-	s := c.session
+// metaFromSession 构造工具上下文视角的会话元数据快照。
+func metaFromSession(s *Session) SessionMeta {
 	return SessionMeta{
 		ID: s.ID, Title: s.Title, Mode: s.Mode, ProtocolID: s.ProtocolID,
 		SeedConfig: s.SeedConfig, Draft: s.DraftConfig, Settings: s.Settings,
 	}
+}
+
+func (c *engineToolContext) SessionMeta() SessionMeta {
+	return metaFromSession(c.session)
 }
 
 func (c *engineToolContext) Draft() json.RawMessage { return c.session.DraftConfig }
@@ -785,10 +794,7 @@ func (e *Engine) loadConversation(ctx context.Context, session *Session) ([]rela
 			if err := json.Unmarshal(message.Content, &content); err != nil {
 				return nil, fmt.Errorf("用户消息 #%d 解析失败: %w", message.Seq, err)
 			}
-			meta := SessionMeta{
-				ID: session.ID, Title: session.Title, Mode: session.Mode, ProtocolID: session.ProtocolID,
-				SeedConfig: session.SeedConfig, Draft: session.DraftConfig, Settings: session.Settings,
-			}
+			meta := metaFromSession(session)
 			parts, err := e.render.RenderUserContent(meta, &content)
 			if err != nil {
 				return nil, fmt.Errorf("用户消息 #%d 渲染失败: %w", message.Seq, err)
