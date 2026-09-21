@@ -140,6 +140,10 @@ type CustomProtocolResponse struct {
 	// Responses encrypted_content）的前提，缺了它们多轮思考必被上游拒绝。
 	SignaturePath         string `json:"signaturePath,omitempty"`
 	SignatureProviderPath string `json:"signatureProviderPath,omitempty"`
+	// SignatureProvider 直接声明签名的签发方（anthropic/gemini/openai）——
+	// 线缆不携带 provider 时（anthropic signature_delta）用常量注入，
+	// 跨轮回放按 provider 门控需要它。
+	SignatureProvider string `json:"signatureProvider,omitempty"`
 	EncryptedContentPath  string `json:"encryptedContentPath,omitempty"`
 	// RefusalPath 映射拒答文本（流侧 RefusalDelta 事件的输入源）。
 	RefusalPath string `json:"refusalPath,omitempty"`
@@ -1198,18 +1202,21 @@ func customProtocolResponseFromRoot(root any, resolved customResolvedMapping, al
 			response.Error = &MaheshvaraError{Message: customValueString(value), Class: ErrorClassUpstream, Raw: customMap(value)}
 		}
 	}
-	if text := customTextAtFilter(root, mapping.TextPath, textKeys, mapping.TextFilter); text != "" {
-		part := MaheshvaraContentPart{Type: MaheshvaraContentText, Text: text}
-		if mapping.CitationsPath != "" {
-			if value := customValueAt(root, mapping.CitationsPath); value != nil {
-				if encoded, err := json.Marshal(value); err == nil {
-					part.Citations = encoded
-				}
+	text := customTextAtFilter(root, mapping.TextPath, textKeys, mapping.TextFilter)
+	var citations json.RawMessage
+	if mapping.CitationsPath != "" {
+		if value := customValueAt(root, mapping.CitationsPath); value != nil {
+			if encoded, err := json.Marshal(value); err == nil {
+				citations = encoded
 			}
 		}
+	}
+	// 纯引用帧（citations_delta）text 为空但引用存在，也要产出文本部件，
+	// 否则引用标注没有挂载点、注解事件无从发出。
+	if text != "" || citations != nil {
 		response.Output = append(response.Output, MaheshvaraOutputItem{
 			ID: newMaheshvaraResponseID("msg"), Type: MaheshvaraOutputMessage, Status: MaheshvaraStatusCompleted, Role: "assistant",
-			Content: []MaheshvaraContentPart{part},
+			Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: text, Citations: citations}},
 		})
 	}
 	if refusal := customStringAt(root, mapping.RefusalPath); refusal != "" {
@@ -1224,7 +1231,11 @@ func customProtocolResponseFromRoot(root any, resolved customResolvedMapping, al
 	if reasoning != "" || signature != "" || encrypted != "" {
 		part := MaheshvaraContentPart{Type: MaheshvaraContentReasoning, Text: reasoning, ReasoningText: reasoning,
 			Signature: signature, EncryptedContent: encrypted}
-		if provider := customStringAt(root, mapping.SignatureProviderPath); provider != "" {
+		provider := customStringAt(root, mapping.SignatureProviderPath)
+		if provider == "" {
+			provider = strings.TrimSpace(mapping.SignatureProvider)
+		}
+		if provider != "" {
 			part.SignatureProvider = provider
 		}
 		response.Output = append(response.Output, MaheshvaraOutputItem{
