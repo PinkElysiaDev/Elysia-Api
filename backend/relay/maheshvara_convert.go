@@ -10,6 +10,21 @@ import (
 
 // ConvertRequestToMaheshvara 按输入线制解析请求体进 Maheshvara 核心请求;
 // Responses 输入额外返回原生请求供同线回放。
+// normalizeMaheshvaraRole 统一消息角色：小写化去空白；system/developer 类
+// 角色在目标线制里通常单独承载（system 块/systemInstruction/instructions），
+// 返回 isSystem 供各整形器跳过或折叠；tool/function 折叠为 user（Claude/
+// Gemini 线制无 tool 角色）。
+func normalizeMaheshvaraRole(role string) (normalized string, isSystem bool) {
+	normalized = strings.ToLower(strings.TrimSpace(role))
+	switch normalized {
+	case "system", "developer":
+		return normalized, true
+	case "tool", "function":
+		return "user", false
+	}
+	return normalized, false
+}
+
 func ConvertRequestToMaheshvara(body []byte, format FormatType, urlModel string) (*MaheshvaraRequest, *OpenAIResponsesRequest, error) {
 	var req *MaheshvaraRequest
 	var original *OpenAIResponsesRequest
@@ -1572,8 +1587,6 @@ func completeInputItemCallIDs(items []MaheshvaraInputItem) {
 	}
 }
 
-// claudeImageBlockToPart 把 Claude image block（{"source":{...}}）解析为 maheshvara
-// image part：base64 source → ImageBase64+MediaType；url source → ImageURL。
 // claudeToolUseBlockToCall 把 tool_use 块转为核心工具调用(input 缺失
 // 归一为空对象,与严格上游的参数必填约定一致)。
 func claudeToolUseBlockToCall(bm map[string]any) MaheshvaraToolCall {
@@ -1604,6 +1617,22 @@ func claudeToolResultBlockToPart(bm map[string]any) MaheshvaraContentPart {
 
 // claudeRedactedThinkingBlockToPart 只解 Maheshvara 自有信封:任意厂商
 // 密文保持过滤,绝不成为 prompt 文本。
+// applyEnvelope 把 Maheshvara 思考密文信封的字段填进内容部件：签名让位
+// 给密文形态（同线按密文回放，跨线按 provider 门控），Text 空时回填信封内
+// 的明文思考。thinking/redacted 两类块的共同尾部。
+func (part *MaheshvaraContentPart) applyEnvelope(envelope maheshvaraReasoningEnvelope) {
+	part.Signature = ""
+	part.SignatureProvider = MaheshvaraSignatureProviderMaheshvara
+	part.EncryptedContent = envelope.EncryptedContent
+	part.EncryptedProvider = envelope.Provider
+	part.EncryptedModel = envelope.Model
+	part.ReasoningSummary = envelope.Summary
+	if part.Text == "" {
+		part.Text = envelope.Text
+		part.ReasoningText = envelope.Text
+	}
+}
+
 func claudeRedactedThinkingBlockToPart(bm map[string]any) (MaheshvaraContentPart, bool) {
 	envelope, ok := decodeMaheshvaraReasoningEnvelope(stringValue(bm["data"]))
 	if !ok {
@@ -1636,20 +1665,13 @@ func claudeThinkingBlockToPart(bm map[string]any) (MaheshvaraContentPart, bool) 
 		Raw:               bm,
 	}
 	if envelope, ok := decodeMaheshvaraReasoningEnvelope(signature); ok {
-		part.Signature = ""
-		part.SignatureProvider = MaheshvaraSignatureProviderMaheshvara
-		part.EncryptedContent = envelope.EncryptedContent
-		part.EncryptedProvider = envelope.Provider
-		part.EncryptedModel = envelope.Model
-		part.ReasoningSummary = envelope.Summary
-		if part.Text == "" {
-			part.Text = envelope.Text
-			part.ReasoningText = envelope.Text
-		}
+		part.applyEnvelope(envelope)
 	}
 	return part, strings.TrimSpace(part.ReasoningText) != "" || part.EncryptedContent != ""
 }
 
+// claudeImageBlockToPart 把 Claude image block（{"source":{...}}）解析为 maheshvara
+// image part：base64 source → ImageBase64+MediaType；url source → ImageURL。
 func claudeImageBlockToPart(bm map[string]any) MaheshvaraContentPart {
 	part := MaheshvaraContentPart{Type: MaheshvaraContentImage, Raw: bm}
 	src, _ := bm["source"].(map[string]any)
@@ -1757,8 +1779,8 @@ func maheshvaraMessagesToClaude(req *MaheshvaraRequest) ([]map[string]any, error
 		if strings.EqualFold(strings.TrimSpace(msg.Role), "system") || strings.EqualFold(strings.TrimSpace(msg.Role), "developer") {
 			continue
 		}
-		role := strings.ToLower(strings.TrimSpace(msg.Role))
-		if role == "tool" || role == "function" || role == "" {
+		role, _ := normalizeMaheshvaraRole(msg.Role)
+		if role == "" {
 			role = "user"
 		}
 		var content []map[string]any
@@ -1863,10 +1885,10 @@ func maheshvaraMessagesToGemini(req *MaheshvaraRequest) ([]map[string]any, error
 		if strings.EqualFold(strings.TrimSpace(msg.Role), "system") || strings.EqualFold(strings.TrimSpace(msg.Role), "developer") {
 			continue
 		}
-		role := strings.ToLower(strings.TrimSpace(msg.Role))
+		role, _ := normalizeMaheshvaraRole(msg.Role)
 		if role == "assistant" {
 			role = "model"
-		} else if role == "tool" || role == "function" || role == "developer" || role == "" {
+		} else if role == "" {
 			role = "user"
 		}
 		var parts []map[string]any
@@ -2016,8 +2038,7 @@ func maheshvaraResponsesInstructions(req *MaheshvaraRequest) string {
 		parts = append(parts, req.Instructions)
 	}
 	for _, msg := range req.Messages {
-		role := strings.ToLower(strings.TrimSpace(msg.Role))
-		if role != "system" && role != "developer" {
+		if _, isSystem := normalizeMaheshvaraRole(msg.Role); !isSystem {
 			continue
 		}
 		if text := strings.TrimSpace(maheshvaraText(msg.Content)); text != "" {

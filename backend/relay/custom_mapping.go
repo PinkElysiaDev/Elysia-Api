@@ -359,11 +359,11 @@ func customUsageMap(value any) map[string]any {
 			}
 		}
 	}
-	copyUsage("input_tokens", "input_tokens", "inputTokens", "prompt_tokens", "promptTokenCount")
-	copyUsage("output_tokens", "output_tokens", "outputTokens", "completion_tokens", "candidatesTokenCount")
-	copyUsage("total_tokens", "total_tokens", "totalTokens", "totalTokenCount")
-	copyUsage("cached_input_tokens", "cached_input_tokens", "cachedInputTokens", "cached_tokens", "cachedContentTokenCount")
-	copyUsage("reasoning_tokens", "reasoning_tokens", "reasoningTokens", "thoughtsTokenCount")
+	copyUsage("input_tokens", usageAliasTables.input...)
+	copyUsage("output_tokens", usageAliasTables.output...)
+	copyUsage("total_tokens", usageAliasTables.total...)
+	copyUsage("cached_input_tokens", usageAliasTables.cached...)
+	copyUsage("reasoning_tokens", usageAliasTables.reason...)
 	if _, ok := result["total_tokens"]; !ok {
 		input, _ := numberValue(result["input_tokens"])
 		output, _ := numberValue(result["output_tokens"])

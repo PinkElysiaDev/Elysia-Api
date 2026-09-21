@@ -681,13 +681,9 @@ func validateCustomProtocolResponse(configID, location string, response CustomPr
 		return fmt.Errorf("custom protocol %q %s: %w", configID, location, err)
 	}
 	response = effective
-	paths := map[string]string{
-		"idPath": response.IDPath, "modelPath": response.ModelPath, "statusPath": response.StatusPath,
-		"textPath": response.TextPath, "reasoningPath": response.ReasoningPath, "toolCallsPath": response.ToolCallsPath,
-		"usagePath": response.UsagePath, "finishReasonPath": response.FinishReasonPath, "errorPath": response.ErrorPath,
-		"signaturePath": response.SignaturePath, "signatureProviderPath": response.SignatureProviderPath,
-		"encryptedContentPath": response.EncryptedContentPath, "refusalPath": response.RefusalPath,
-		"citationsPath": response.CitationsPath,
+	paths := make(map[string]string, len(responseDirectFields))
+	for _, field := range responseDirectFields {
+		paths[field.name] = field.get(response)
 	}
 	for field, path := range paths {
 		if strings.TrimSpace(path) == "" {
@@ -1780,14 +1776,14 @@ func customUsageAtWithAliases(root any, path string, aliases map[string][]string
 		return nil
 	}
 	usage := &MaheshvaraUsage{Source: "provider_response"}
-	usage.InputTokens = customIntPath(object, customAliasKeys(aliases, "input", "input_tokens", "inputTokens", "prompt_tokens", "promptTokenCount")...)
-	usage.OutputTokens = customIntPath(object, customAliasKeys(aliases, "output", "output_tokens", "outputTokens", "completion_tokens", "candidatesTokenCount")...)
-	usage.TotalTokens = customIntPath(object, customAliasKeys(aliases, "total", "total_tokens", "totalTokens", "totalTokenCount")...)
-	usage.CachedInputTokens = customIntPath(object, customAliasKeys(aliases, "cached", "cached_input_tokens", "cachedInputTokens", "cached_tokens", "cachedContentTokenCount", "prompt_tokens_details.cached_tokens", "input_tokens_details.cached_tokens", "cache_read_tokens")...)
-	usage.ReasoningTokens = customIntPath(object, customAliasKeys(aliases, "reasoning", "reasoning_tokens", "reasoningTokens", "thoughtsTokenCount", "completion_tokens_details.reasoning_tokens")...)
-	usage.CacheCreationInputTokens = customIntPath(object, customAliasKeys(aliases, "cache_creation", "cache_creation_input_tokens", "cacheCreationInputTokens", "cache_creation.ephemeral_5m_input_tokens", "cache_creation.ephemeral_1h_input_tokens")...)
+	usage.InputTokens = customIntPath(object, customAliasKeys(aliases, "input", usageAliasTables.input...)...)
+	usage.OutputTokens = customIntPath(object, customAliasKeys(aliases, "output", usageAliasTables.output...)...)
+	usage.TotalTokens = customIntPath(object, customAliasKeys(aliases, "total", usageAliasTables.total...)...)
+	usage.CachedInputTokens = customIntPath(object, customAliasKeys(aliases, "cached", append(append([]string(nil), usageAliasTables.cached...), "prompt_tokens_details.cached_tokens", "input_tokens_details.cached_tokens", "cache_read_tokens")...)...)
+	usage.ReasoningTokens = customIntPath(object, customAliasKeys(aliases, "reasoning", append(append([]string(nil), usageAliasTables.reason...), "completion_tokens_details.reasoning_tokens")...)...)
+	usage.CacheCreationInputTokens = customIntPath(object, customAliasKeys(aliases, "cache_creation", append(append([]string(nil), usageAliasTables.cacheCre...), "cache_creation.ephemeral_5m_input_tokens", "cache_creation.ephemeral_1h_input_tokens")...)...)
 	if usage.CachedInputTokens == 0 {
-		usage.CachedInputTokens = customIntPath(object, customAliasKeys(aliases, "cache_read", "cache_read_input_tokens", "cacheReadInputTokens")...)
+		usage.CachedInputTokens = customIntPath(object, customAliasKeys(aliases, "cache_read", usageAliasTables.cacheRd...)...)
 	}
 	usage.TotalTokens = valueOrSum(usage.TotalTokens, usage.InputTokens, usage.OutputTokens)
 	return usage

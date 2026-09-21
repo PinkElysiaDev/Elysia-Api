@@ -13,11 +13,11 @@ func maheshvaraUsageFromRawMap(raw map[string]any) *MaheshvaraUsage {
 		return nil
 	}
 	usage := &MaheshvaraUsage{
-		InputTokens:       intValue(firstNonValue(raw, "input_tokens", "inputTokens", "prompt_tokens", "promptTokenCount")),
-		OutputTokens:      intValue(firstNonValue(raw, "output_tokens", "outputTokens", "completion_tokens", "candidatesTokenCount")),
-		TotalTokens:       intValue(firstNonValue(raw, "total_tokens", "totalTokens", "totalTokenCount")),
-		CachedInputTokens: intValue(firstNonValue(raw, "cached_tokens", "cachedInputTokens", "cachedContentTokenCount")),
-		ReasoningTokens:   intValue(firstNonValue(raw, "reasoning_tokens", "reasoningTokens", "thoughtsTokenCount")),
+		InputTokens:       intValue(firstNonValue(raw, usageAliasTables.input...)),
+		OutputTokens:      intValue(firstNonValue(raw, usageAliasTables.output...)),
+		TotalTokens:       intValue(firstNonValue(raw, usageAliasTables.total...)),
+		CachedInputTokens: intValue(firstNonValue(raw, usageAliasTables.cached...)),
+		ReasoningTokens:   intValue(firstNonValue(raw, usageAliasTables.reason...)),
 		Source:            "provider_stream",
 	}
 	if usage.TotalTokens == 0 {

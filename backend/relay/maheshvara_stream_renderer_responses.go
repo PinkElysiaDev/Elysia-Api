@@ -352,11 +352,7 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesTool(event *MaheshvaraSt
 	}
 	argumentDelta := event.ToolArgumentsDelta
 	if event.ToolArgumentsDone != "" {
-		delta, replaced := deltaVsAccumulated(state.arguments.String(), event.ToolArgumentsDone)
-		if replaced {
-			state.arguments.Reset()
-		}
-		argumentDelta = delta
+		argumentDelta = applyToolArgumentDelta(&state.arguments, *event)
 	}
 	if argumentDelta != "" {
 		state.arguments.WriteString(argumentDelta)

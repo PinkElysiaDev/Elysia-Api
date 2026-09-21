@@ -126,11 +126,7 @@ func (renderer *MaheshvaraStreamRenderer) writeGeminiToolEvent(event *Maheshvara
 		state.arguments.WriteString(event.ToolArgumentsDelta)
 	}
 	if event.ToolArgumentsDone != "" {
-		delta, replaced := deltaVsAccumulated(state.arguments.String(), event.ToolArgumentsDone)
-		if replaced {
-			state.arguments.Reset()
-		}
-		state.arguments.WriteString(delta)
+		state.arguments.WriteString(applyToolArgumentDelta(&state.arguments, *event))
 		return renderer.emitGeminiTool(state, event.ChoiceIndex)
 	}
 	return nil

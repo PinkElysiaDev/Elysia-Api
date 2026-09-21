@@ -592,14 +592,11 @@ func (decoder *CustomProtocolStreamDecoder) streamDelta(previous map[string]stri
 	}
 	before := previous[key]
 	previous[key] = current
-	switch {
-	case current == before:
-		return ""
-	case strings.HasPrefix(current, before):
-		return strings.TrimPrefix(current, before)
-	default:
+	delta, replaced := deltaVsAccumulated(before, current)
+	if replaced {
 		return current
 	}
+	return delta
 }
 
 // ForEachBatch 以统一排水语义迭代解码批次:读循环、终态前快照、排水窗口与

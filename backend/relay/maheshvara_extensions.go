@@ -547,53 +547,69 @@ func applyClaudeDisableParallelToolUse(toolChoice any, parallel *bool) any {
 	return object
 }
 
-func maheshvaraToolChoiceToOpenAI(value any) any {
+// normalizeToolChoice 把任意源形状的 tool_choice 归一化为
+// (mode, name, passthrough)：mode ∈ auto/none/required；name 非空表示
+// 指定具体工具；passthrough 为无法识别时的原值。OpenAI 与 Responses
+// 的目标形状差异由各自的薄整形器处理。
+func normalizeToolChoice(value any) (mode string, name string, passthrough any) {
+	passthrough = value
 	if object, ok := value.(map[string]any); ok {
 		if config, ok := object["functionCallingConfig"].(map[string]any); ok {
-			mode := strings.ToLower(strings.TrimSpace(stringValue(config["mode"])))
-			if mode == "any" {
+			geminiMode := strings.ToLower(strings.TrimSpace(stringValue(config["mode"])))
+			switch geminiMode {
+			case "any", "required":
 				mode = "required"
-			} else if mode == "none" {
+			case "none":
 				mode = "none"
-			} else {
+			default:
 				mode = "auto"
 			}
 			if names, ok := config["allowedFunctionNames"].([]any); ok && len(names) > 0 {
-				return map[string]any{"type": "function", "function": map[string]any{"name": stringValue(names[0])}}
+				if firstName := stringValue(names[0]); firstName != "" {
+					name = firstName
+				}
+			} else if names, ok := config["allowedFunctionNames"].([]string); ok && len(names) > 0 {
+				name = names[0]
 			}
-			if names, ok := config["allowedFunctionNames"].([]string); ok && len(names) > 0 {
-				return map[string]any{"type": "function", "function": map[string]any{"name": names[0]}}
-			}
-			return mode
+			return mode, name, nil
 		}
 		if function, ok := object["function"].(map[string]any); ok {
-			if name := stringValue(function["name"]); name != "" {
-				return map[string]any{"type": "function", "function": map[string]any{"name": name}}
+			if fnName := stringValue(function["name"]); fnName != "" {
+				return "", fnName, nil
 			}
 		}
-		choiceType := strings.ToLower(strings.TrimSpace(stringValue(object["type"])))
-		name := stringValue(object["name"])
-		switch choiceType {
+		switch strings.ToLower(strings.TrimSpace(stringValue(object["type"]))) {
 		case "auto":
-			return "auto"
+			return "auto", "", nil
 		case "none":
-			return "none"
+			return "none", "", nil
 		case "any", "required":
-			return "required"
+			return "required", "", nil
 		case "tool", "function":
-			if name != "" {
-				return map[string]any{"type": "function", "function": map[string]any{"name": name}}
+			if name = stringValue(object["name"]); name != "" {
+				return "", name, nil
 			}
 		}
+		return "", "", value
 	}
-	choice := strings.ToLower(strings.TrimSpace(stringValue(value)))
-	switch choice {
+	switch strings.ToLower(strings.TrimSpace(stringValue(value))) {
 	case "any", "required":
-		return "required"
+		return "required", "", nil
 	case "none", "auto":
-		return choice
+		return strings.ToLower(strings.TrimSpace(stringValue(value))), "", nil
 	}
-	return value
+	return "", "", value
+}
+
+func maheshvaraToolChoiceToOpenAI(value any) any {
+	mode, name, passthrough := normalizeToolChoice(value)
+	if name != "" {
+		return map[string]any{"type": "function", "function": map[string]any{"name": name}}
+	}
+	if mode != "" {
+		return mode
+	}
+	return passthrough
 }
 
 // maheshvaraToolChoiceToResponses 把各源协议的 tool_choice 归一化为
@@ -601,63 +617,14 @@ func maheshvaraToolChoiceToOpenAI(value any) any {
 // 扁平 {type:"function",name}(Chat 用嵌套 {type,function:{name}},两者不通用);
 // Gemini 的 allowedFunctionNames 仅单名时可精确指定,多名时降级 required。
 func maheshvaraToolChoiceToResponses(value any) any {
-	if object, ok := value.(map[string]any); ok {
-		if config, ok := object["functionCallingConfig"].(map[string]any); ok {
-			mode := strings.ToLower(strings.TrimSpace(stringValue(config["mode"])))
-			normalized := "auto"
-			switch mode {
-			case "any", "required":
-				normalized = "required"
-			case "none":
-				normalized = "none"
-			}
-			var names []string
-			if raw, ok := config["allowedFunctionNames"].([]any); ok {
-				for _, item := range raw {
-					if s := stringValue(item); s != "" {
-						names = append(names, s)
-					}
-				}
-			} else if raw, ok := config["allowedFunctionNames"].([]string); ok {
-				names = raw
-			}
-			if len(names) == 1 {
-				return map[string]any{"type": "function", "name": names[0]}
-			}
-			return normalized
-		}
-		if function, ok := object["function"].(map[string]any); ok {
-			if name := stringValue(function["name"]); name != "" {
-				return map[string]any{"type": "function", "name": name}
-			}
-		}
-		choiceType := strings.ToLower(strings.TrimSpace(stringValue(object["type"])))
-		name := stringValue(object["name"])
-		switch choiceType {
-		case "auto":
-			return "auto"
-		case "none":
-			return "none"
-		case "any", "required":
-			return "required"
-		case "tool", "function":
-			if name != "" {
-				return map[string]any{"type": "function", "name": name}
-			}
-		}
-		// 已是 Responses 扁平形状则透传。
-		if choiceType == "function" || choiceType == "" {
-			return value
-		}
+	mode, name, passthrough := normalizeToolChoice(value)
+	if name != "" {
+		return map[string]any{"type": "function", "name": name}
 	}
-	choice := strings.ToLower(strings.TrimSpace(stringValue(value)))
-	switch choice {
-	case "any", "required":
-		return "required"
-	case "none", "auto":
-		return choice
+	if mode != "" {
+		return mode
 	}
-	return value
+	return passthrough
 }
 
 func claudeDocumentBlockToPart(block map[string]any) MaheshvaraContentPart {

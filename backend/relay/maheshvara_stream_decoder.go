@@ -441,26 +441,21 @@ func (decoder *MaheshvaraStreamDecoder) openAIContentEvents(value any, choiceInd
 // 输出的前缀一致时只补缺失后缀；完全相同或分歧（非前缀）时不再重发，避免
 // 下游收到重复/冲突内容。
 func (decoder *MaheshvaraStreamDecoder) openAISnapshotTextSuffix(text string, choiceIndex, contentIndex int, raw map[string]any) []MaheshvaraStreamEvent {
-	streamed := decoder.openAIPartText[fmt.Sprintf("%d:%d", choiceIndex, contentIndex)]
-	if text == streamed || streamed == "" {
-		if streamed == "" {
-			decoder.openAIPartText[fmt.Sprintf("%d:%d", choiceIndex, contentIndex)] = text
-			event := decoder.baseEvent(MaheshvaraEventTextDelta, raw)
-			event.ChoiceIndex = choiceIndex
-			event.Delta = text
-			return []MaheshvaraStreamEvent{event}
-		}
+	key := fmt.Sprintf("%d:%d", choiceIndex, contentIndex)
+	streamed := decoder.openAIPartText[key]
+	decoder.openAIPartText[key] = text
+	delta, replaced := deltaVsAccumulated(streamed, text)
+	if streamed == "" || replaced {
+		// 首见直接输出全文；分歧快照按替换语义整段重发。
+		delta = text
+	}
+	if delta == "" {
 		return nil
 	}
-	if strings.HasPrefix(text, streamed) {
-		suffix := text[len(streamed):]
-		decoder.openAIPartText[fmt.Sprintf("%d:%d", choiceIndex, contentIndex)] = text
-		event := decoder.baseEvent(MaheshvaraEventTextDelta, raw)
-		event.ChoiceIndex = choiceIndex
-		event.Delta = suffix
-		return []MaheshvaraStreamEvent{event}
-	}
-	return nil
+	event := decoder.baseEvent(MaheshvaraEventTextDelta, raw)
+	event.ChoiceIndex = choiceIndex
+	event.Delta = delta
+	return []MaheshvaraStreamEvent{event}
 }
 
 func allMaheshvaraChoicesFinished(seen, finished map[int]bool) bool {

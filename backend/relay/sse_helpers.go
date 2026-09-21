@@ -64,23 +64,17 @@ func (reader *SSEEventReader) Read(ctx context.Context, idleTimeout time.Duratio
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if idleTimeout <= 0 {
-		select {
-		case <-ctx.Done():
-			return SSEEvent{}, false, ctx.Err()
-		case result, ok := <-reader.results:
-			if !ok {
-				return SSEEvent{}, false, nil
-			}
-			return result.event, result.err == nil, result.err
-		}
+	// 无超时时 timerCh 为 nil：select 永不命中该分支，单一 select 覆盖两种形态。
+	var timerCh <-chan time.Time
+	if idleTimeout > 0 {
+		timer := time.NewTimer(idleTimeout)
+		defer timer.Stop()
+		timerCh = timer.C
 	}
-	timer := time.NewTimer(idleTimeout)
-	defer timer.Stop()
 	select {
 	case <-ctx.Done():
 		return SSEEvent{}, false, ctx.Err()
-	case <-timer.C:
+	case <-timerCh:
 		return SSEEvent{}, false, fmt.Errorf("stream read timeout after %v", idleTimeout)
 	case result, ok := <-reader.results:
 		if !ok {

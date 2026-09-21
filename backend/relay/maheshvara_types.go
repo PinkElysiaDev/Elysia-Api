@@ -601,6 +601,22 @@ type ResponsesStreamResponse struct {
 	Part         any                      `json:"part,omitempty"`
 }
 
+// applyToolArgumentDelta 把 done/delta 事件应用到工具参数累积器：
+// done 携带终态全量时按前缀差分只补后缀、分叉则重置重写；返回本次增量。
+// 四个流渲染器（OpenAI/Anthropic/Gemini/Responses）共用同一语义。
+func applyToolArgumentDelta(state *strings.Builder, event MaheshvaraStreamEvent) string {
+	if event.ToolArgumentsDone == "" {
+		return event.ToolArgumentsDelta
+	}
+	delta, replaced := deltaVsAccumulated(state.String(), event.ToolArgumentsDone)
+	if replaced {
+		// 终态值与累计增量分叉：丢弃脏前缀改写完整值（不 Reset 会在下一次
+		// 终态事件时双份拼接出非法 JSON）。
+		state.Reset()
+	}
+	return delta
+}
+
 // deltaVsAccumulated 计算终态完整值相对已累计增量的差分：相等则无输出、
 // 是前缀则只补后缀、否则整体替换（调用方负责重置累计并输出 delta）。
 func deltaVsAccumulated(accumulated, complete string) (delta string, replaced bool) {

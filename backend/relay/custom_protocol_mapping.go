@@ -706,12 +706,10 @@ func effectiveCustomProtocolRuntimeMapping(config CustomProtocolConfig, allowStr
 // 字段：九个直接路径 / mappings / fieldMappings / fields 任一非空，或 body
 // 构造树为非空 JSON（"{}"/null/空白视为空）。
 func customProtocolResponseHasMapping(response CustomProtocolResponse) bool {
-	if response.IDPath != "" || response.ModelPath != "" || response.StatusPath != "" ||
-		response.TextPath != "" || response.ReasoningPath != "" || response.ToolCallsPath != "" ||
-		response.UsagePath != "" || response.FinishReasonPath != "" || response.ErrorPath != "" ||
-		response.SignaturePath != "" || response.EncryptedContentPath != "" || response.RefusalPath != "" ||
-		response.CitationsPath != "" {
-		return true
+	for _, field := range responseDirectFields {
+		if strings.TrimSpace(field.get(response)) != "" {
+			return true
+		}
 	}
 	if len(response.Mappings) > 0 || len(response.FieldMappings) > 0 || len(response.Fields) > 0 {
 		return true
