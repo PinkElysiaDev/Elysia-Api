@@ -114,7 +114,7 @@ export function ContextPanel({
   const doneCount = plan.filter((step) => step.status === 'done').length
 
   return (
-    <div className="flex h-full w-80 shrink-0 flex-col pl-4">
+    <div className="flex h-full w-full min-w-0 flex-col pl-4">
       <div role="tablist" aria-label="侧栏标签页" className="flex items-center gap-3 px-1 pb-2 pt-1">
         {tabs.map((tab) => (
           <div key={tab} className="group flex items-center">

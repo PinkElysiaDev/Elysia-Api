@@ -1,5 +1,5 @@
 import { ArrowLeft, Eraser, PanelRightClose, PanelRightOpen, Sparkles } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { TonePill } from '@/components/badges'
 import { Button } from '@/components/ui/button'
@@ -31,9 +31,16 @@ import { ContextPanel } from './context-panel'
 import { SessionOverview } from './session-overview'
 import { TurnRail } from './turn-rail'
 
+/** 侧栏宽度记忆键与范围（拖拽钳制，超范围回退默认 320）。 */
+const PANEL_WIDTH_KEY = 'agent:panel-width'
+const PANEL_WIDTH_MIN = 260
+const PANEL_WIDTH_MAX = 560
+const PANEL_WIDTH_DEFAULT = 320
+
 /**
  * AI 助手页：总览（会话卡片网格）⇄ 工作区（轮数条 | 聊天 | 标签页侧栏）。
  * 点击卡片或新建任务以过渡动画进入工作区；返回总览不中断进行中的轮次。
+ * 侧栏宽度可拖拽调整并记忆（localStorage）。
  */
 export function AgentPage() {
   const { toast } = useToast()
@@ -50,6 +57,36 @@ export function AgentPage() {
   const [activeTab, setActiveTab] = useState<AgentContextTab | null>(null)
   const [activeTurnSeq, setActiveTurnSeq] = useState<number | null>(null)
   const [jumpTarget, setJumpTarget] = useState<{ seq: number; nonce: number } | null>(null)
+  const [panelW, setPanelW] = useState<number>(() => {
+    const saved = Number(window.localStorage.getItem(PANEL_WIDTH_KEY))
+    return Number.isFinite(saved) && saved >= PANEL_WIDTH_MIN && saved <= PANEL_WIDTH_MAX
+      ? saved
+      : PANEL_WIDTH_DEFAULT
+  })
+  const [panelDragging, setPanelDragging] = useState(false)
+  const panelDragRef = useRef<{ startX: number; startW: number; latest: number } | null>(null)
+
+  const onPanelHandleDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!panelOpen) return
+    panelDragRef.current = { startX: event.clientX, startW: panelW, latest: panelW }
+    setPanelDragging(true)
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+  const onPanelHandleMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = panelDragRef.current
+    if (!drag) return
+    const next = Math.min(PANEL_WIDTH_MAX, Math.max(PANEL_WIDTH_MIN, drag.startW + (drag.startX - event.clientX)))
+    drag.latest = next
+    setPanelW(next)
+  }
+  const onPanelHandleUp = () => {
+    const drag = panelDragRef.current
+    if (!drag) return
+    panelDragRef.current = null
+    setPanelDragging(false)
+    // 从 ref 取最新宽度：pointerup 可能先于最后一次 move 的 state 提交。
+    window.localStorage.setItem(PANEL_WIDTH_KEY, String(Math.round(drag.latest)))
+  }
 
   const { data: sessions, mutate: mutateSessions } = useSWRSessionList()
 
@@ -354,13 +391,34 @@ export function AgentPage() {
             />
             <div
               className={cn(
-                'h-full shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out',
-                panelOpen ? 'w-80' : 'w-0',
+                'flex h-full shrink-0 overflow-hidden',
+                !panelDragging && 'transition-[width] duration-300 ease-in-out',
               )}
+              style={{ width: panelOpen ? panelW : 0 }}
             >
               <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="拖拽调整侧栏宽度"
+                onPointerDown={onPanelHandleDown}
+                onPointerMove={onPanelHandleMove}
+                onPointerUp={onPanelHandleUp}
+                onPointerCancel={onPanelHandleUp}
                 className={cn(
-                  'h-full w-80 transition-opacity duration-300',
+                  'group relative w-1 shrink-0 cursor-col-resize touch-none select-none',
+                  !panelOpen && 'pointer-events-none',
+                )}
+              >
+                <span
+                  className={cn(
+                    'absolute inset-y-2 left-1/2 w-px -translate-x-1/2 bg-border transition-colors group-hover:bg-rose/50',
+                    panelDragging && 'bg-rose/50',
+                  )}
+                />
+              </div>
+              <div
+                className={cn(
+                  'h-full min-w-0 flex-1 transition-opacity duration-300',
                   panelOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
                 )}
               >
