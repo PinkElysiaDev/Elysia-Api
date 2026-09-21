@@ -204,6 +204,20 @@ export function ChatPanel({
     [busy, onSend],
   )
 
+  // 与 live.error 同文案的最后一条系统错误消息 seq（渲染抑制用，见消息流注释）。
+  let suppressedErrorSeq: number | undefined
+  if (live.error) {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i]
+      if (message.role !== 'system') continue
+      const content = message.content as { kind?: string; text?: string } | null
+      if (content?.kind === 'error' && content.text === live.error.text) {
+        suppressedErrorSeq = message.seq
+        break
+      }
+    }
+  }
+
   return (
     <div
       className="mx-auto flex min-h-0 w-4/5 min-w-0 flex-col"
@@ -225,11 +239,19 @@ export function ChatPanel({
             松开以添加附件（文档 / 图片 / PDF）
           </div>
         ) : null}
-        {messages.map((message) => (
-          <div key={message.seq} data-seq={message.seq}>
-            <MessageCard message={message} actions={messageActions} onOpenActivity={() => onOpenContextTab('activity')} />
-          </div>
-        ))}
+        {/* 报错去重：引擎对失败既落库系统错误消息又发 error 事件，turn_done
+            刷新会把落库红卡拉回列表与 live 横幅同文案并排。live 横幅（带重试）
+            存在时跳过最后一条同文案的落库红卡；关闭横幅或刷新后红卡自然回归。 */}
+        {messages.map((message) => {
+          if (live.error && message.role === 'system' && message.seq === suppressedErrorSeq) {
+            return null
+          }
+          return (
+            <div key={message.seq} data-seq={message.seq}>
+              <MessageCard message={message} actions={messageActions} onOpenActivity={() => onOpenContextTab('activity')} />
+            </div>
+          )
+        })}
         {live.running && live.statusText ? (
           <div className="flex items-center gap-2 pl-1 text-2xs text-muted-foreground">
             <span className="dot dot-ok" />
