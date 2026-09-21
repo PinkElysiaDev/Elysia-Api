@@ -18,7 +18,7 @@ export const OVERVIEW_CHART = {
   xPadding: { left: 10, right: 10 },
 } as const
 
-export const MODEL_COLORS = [
+const MODEL_COLORS = [
   'var(--rose)',
   'var(--orchid)',
   'var(--jade)',

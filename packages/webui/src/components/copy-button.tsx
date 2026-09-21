@@ -1,5 +1,8 @@
 import { useState } from 'react'
 import { Check, Copy } from 'lucide-react'
+
+/** 复制成功指示的停留时长。 */
+const COPY_RESET_MS = 1500
 import { Button } from './ui/button'
 import type { ButtonProps } from './ui/button'
 import { useToast } from './ui/use-toast'
@@ -16,7 +19,7 @@ export function CopyButton({ value, ...props }: { value: string } & Omit<ButtonP
         try {
           await copyText(value)
           setCopied(true)
-          setTimeout(() => setCopied(false), 1500)
+          setTimeout(() => setCopied(false), COPY_RESET_MS)
         } catch {
           toast.error('复制失败', '当前环境剪贴板不可用，请手动选中复制')
         }

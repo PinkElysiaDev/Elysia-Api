@@ -39,7 +39,7 @@ function formatHm(ms: number) {
 }
 
 /** 相对 now 的本地日历日差：0=今天，-1=昨天。 */
-export function localDayDiff(ms: number, nowMs: number): number {
+function localDayDiff(ms: number, nowMs: number): number {
   const a = new Date(ms)
   const b = new Date(nowMs)
   a.setHours(0, 0, 0, 0)

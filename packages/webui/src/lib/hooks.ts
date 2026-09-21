@@ -3,7 +3,7 @@ import useSWR, { mutate as globalMutate, type SWRConfiguration } from 'swr'
 import { api } from './api'
 
 /** Agent 用量在统计页的 key_name 标签（与后端常量一致）。 */
-export const AGENT_USAGE_KEY_NAME = 'AI 协议助手'
+const AGENT_USAGE_KEY_NAME = 'AI 协议助手'
 import type { UsageQueryParams } from './types'
 import { uniqueSorted } from './utils'
 
@@ -17,6 +17,8 @@ export const POLL = {
   HEALTH_FAST: 15_000,
   SEQ: 2_000,
   SOURCE_FAST: 3_000,
+  /** 会话列表轻轮询：运行中轮次的状态可感知。 */
+  AGENT_SESSION_FAST: 3_000,
 } as const
 
 const defaultConfig: SWRConfiguration = {

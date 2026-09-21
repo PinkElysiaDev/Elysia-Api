@@ -2,7 +2,9 @@
 // 所有 admin 请求附带 Authorization: Bearer <token>。401 时清除并回到登录页。
 // Cookie 用于让浏览器直接访问的链接（如 pprof）也能携带认证信息。
 
-const STORAGE_KEY = 'elysia-webui.panel-token'
+import { STORAGE_KEYS } from './storage-keys'
+
+const STORAGE_KEY = STORAGE_KEYS.panelToken
 const COOKIE_NAME = 'panel_access_token'
 const COOKIE_MAX_AGE = 30 * 24 * 60 * 60
 

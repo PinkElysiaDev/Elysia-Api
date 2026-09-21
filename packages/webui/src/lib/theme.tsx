@@ -1,7 +1,12 @@
 import { createContext, useContext, useEffect, useRef, useMemo, useState, type ReactNode } from 'react'
 
 type Theme = 'light' | 'dark'
-const STORAGE_KEY = 'elysia-webui.theme'
+/** 主题切换过渡类的移除延时（见 index.css 的逐元素过渡时长）。 */
+const THEME_SWITCH_MS = 480
+
+import { STORAGE_KEYS } from './storage-keys'
+
+const STORAGE_KEY = STORAGE_KEYS.theme
 
 interface ThemeContextValue {
   theme: Theme
@@ -38,7 +43,7 @@ function flushTheme(theme: Theme) {
   }
   root.classList.add('theme-transitioning')
   window.clearTimeout(themeTransitionTimer)
-  themeTransitionTimer = window.setTimeout(() => root.classList.remove('theme-transitioning'), 480)
+  themeTransitionTimer = window.setTimeout(() => root.classList.remove('theme-transitioning'), THEME_SWITCH_MS)
   applyThemeToRoot(theme)
 }
 

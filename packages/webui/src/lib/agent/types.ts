@@ -177,11 +177,6 @@ export function agentToolLabel(name: string): string {
 }
 
 /** 从 tool_result 内容提取精简展示（工具卡片用）。 */
-export function toolResultBrief(content: AgentToolResultContent): string {
-  if (content.summary) return content.summary
-  return content.ok ? '执行完成' : '执行失败'
-}
-
 /** 累计用量格式化。 */
 export function formatUsage(usage: AgentUsage | undefined): string {
   if (!usage) return ''

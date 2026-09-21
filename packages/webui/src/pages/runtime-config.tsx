@@ -23,7 +23,7 @@ import { Switch } from '@/components/ui/switch'
 import { SettingSection, SettingRow } from '@/components/ui/setting-card'
 import { ErrorState, LoadingState } from '@/components/ui/states'
 import { useToast } from '@/components/ui/use-toast'
-import { useRuntimeConfig, useModelCatalogStatus, revalidate } from '@/lib/hooks'
+import { POLL, useRuntimeConfig, useModelCatalogStatus, revalidate } from '@/lib/hooks'
 import { api } from '@/lib/api'
 import { formatRelative, formatBytes } from '@/lib/utils'
 import type { LogLevel, RuntimeConfig, UsageLogRuntimeConfig, UsageStorageStatus } from '@/lib/types'
@@ -546,7 +546,7 @@ export function RuntimeConfigPage() {
                   if (result.accepted) {
                     toast.success('清理已触发', '后台正在执行一轮清理巡检，稍后刷新查看结果')
                     // 巡检是异步的，稍等后再拉取状态。
-                    setTimeout(refreshStorage, 3000)
+                    setTimeout(refreshStorage, POLL.SOURCE_FAST)
                   } else {
                     toast.success('清理已在进行中', '上一轮清理尚未结束，请稍后再试')
                   }

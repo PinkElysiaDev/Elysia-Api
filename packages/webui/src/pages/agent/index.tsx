@@ -5,6 +5,8 @@ import { TonePill } from '@/components/badges'
 import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
+import { POLL } from '@/lib/hooks'
+import { STORAGE_KEYS } from '@/lib/storage-keys'
 import useSWR from 'swr'
 import {
   clearAgentMessages,
@@ -32,7 +34,7 @@ import { SessionOverview } from './session-overview'
 import { TurnRail } from './turn-rail'
 
 /** 侧栏宽度记忆键与范围（拖拽钳制，超范围回退默认 320）。 */
-const PANEL_WIDTH_KEY = 'agent:panel-width'
+const PANEL_WIDTH_KEY = STORAGE_KEYS.agentPanelWidth
 const PANEL_WIDTH_MIN = 260
 const PANEL_WIDTH_MAX = 560
 const PANEL_WIDTH_DEFAULT = 320
@@ -143,7 +145,7 @@ export function AgentPage() {
   /** 会话列表轻轮询：运行中状态可感知（断连后回来能看到轮次结束）。 */
   useEffect(() => {
     if (!live.running) return
-    const timer = window.setInterval(() => void mutateSessions(), 3000)
+    const timer = window.setInterval(() => void mutateSessions(), POLL.AGENT_SESSION_FAST)
     return () => window.clearInterval(timer)
   }, [live.running, mutateSessions])
 
@@ -476,6 +478,6 @@ function useSWRSessionList() {
     revalidateOnFocus: false,
     shouldRetryOnError: false,
     dedupingInterval: 2000,
-    refreshInterval: 30_000,
+    refreshInterval: POLL.USAGE,
   })
 }

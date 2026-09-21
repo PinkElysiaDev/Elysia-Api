@@ -185,7 +185,7 @@ export interface Model {
   sourceId?: string
   sourceName?: string
   baseUrl: string
-  platform: Exclude<Platform, 'openai-compatible'> | Platform
+  platform: Platform
   type: ModelType
   maxTokens: number
   visionCapable: boolean

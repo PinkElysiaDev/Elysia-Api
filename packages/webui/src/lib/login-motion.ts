@@ -4,7 +4,9 @@ import mediaVersion from './login-media-version.json'
 
 export const LOGIN_VIDEO_URL = `${import.meta.env.BASE_URL}assets/elysia-login.mp4?v=${mediaVersion.video}`
 
-export const LOGIN_MOTION_KEY = 'elysia-webui.login-motion'
+import { STORAGE_KEYS } from './storage-keys'
+
+export const LOGIN_MOTION_KEY = STORAGE_KEYS.loginMotion
 
 function readPaused(): boolean {
   try { return localStorage.getItem(LOGIN_MOTION_KEY) === 'paused' } catch { return false }

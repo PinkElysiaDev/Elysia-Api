@@ -1,7 +1,6 @@
 import { request } from '../api'
 import type {
   AgentDocument,
-  AgentMessage,
   AgentSession,
   AgentSessionDetail,
   AgentSettings,
@@ -63,9 +62,4 @@ export interface AgentSendMessageInput {
 export async function stopAgentTurn(id: string): Promise<boolean> {
   const data = await request<{ stopped: boolean }>(`/agent/sessions/${id}/stop`, { method: 'POST' })
   return data.stopped
-}
-
-export async function listAgentMessagesFor(id: string): Promise<AgentMessage[]> {
-  const detail = await getAgentSession(id)
-  return detail.messages ?? []
 }

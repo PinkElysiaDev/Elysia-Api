@@ -70,7 +70,7 @@ export async function streamAgentEvents(
   if (buffer.trim()) dispatch(buffer)
 }
 
-export class AgentStreamError extends Error {
+class AgentStreamError extends Error {
   code: string
   status: number
   constructor(code: string, message: string, status: number) {

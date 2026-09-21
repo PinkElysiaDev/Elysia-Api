@@ -18,7 +18,7 @@ const PROTOCOL_ALIASES: Record<string, ProtocolAlias> = {
 }
 
 /** 自定义协议平台的 platform 值前缀(全仓唯一定义处)。 */
-export const CUSTOM_PLATFORM_PREFIX = 'custom:'
+const CUSTOM_PLATFORM_PREFIX = 'custom:'
 
 export function isCustomPlatform(platform: string): platform is `custom:${string}` {
   return platform.trim().toLowerCase().startsWith(CUSTOM_PLATFORM_PREFIX)

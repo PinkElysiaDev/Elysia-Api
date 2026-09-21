@@ -16,6 +16,7 @@ import { useNavigate } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { colorize } from '@/lib/json-highlight'
+import { tryParseJSON } from '@/lib/utils'
 import { toolArgsPreview } from '@/lib/agent/mask'
 import {
   agentToolLabel,
@@ -289,7 +290,7 @@ function DraftView({ session, busy, onRestore }: { session: AgentSession; busy: 
           className="w-full gap-1.5 text-xs"
           onClick={() =>
             navigate('/protocols', {
-              state: { draft: typeof draft === 'string' ? safeParse(draft) : draft },
+              state: { draft: typeof draft === 'string' ? tryParseJSON(draft) : draft },
             })
           }
         >
@@ -447,10 +448,3 @@ function EmptyHint({ icon, text }: { icon: React.ReactNode; text: string }) {
   )
 }
 
-function safeParse(text: string): unknown {
-  try {
-    return JSON.parse(text)
-  } catch {
-    return text
-  }
-}
