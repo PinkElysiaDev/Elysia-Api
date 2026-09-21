@@ -102,6 +102,9 @@ func (a *agentStreamAccumulator) toolCalls() []relay.MaheshvaraToolCall {
 }
 
 // Call 实现 agent.StreamCaller。取消路径下返回部分聚合结果 + ctx 错误。
+// 每次模型调用（含失败）都会写一条调用日志：key 统一为 AI 协议助手、
+// relay_mode=agent-assist，② 后端转发 = 实际线格式请求体、③ 上游回传 = 非 2xx
+// 时的错误响应体；① 下游请求 / ④ 返回下游是网关内部发起的调用，按约定留空。
 func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb agent.StreamCallbacks) (*agent.CallResult, error) {
 	store := c.server.store
 	if store == nil {
@@ -131,6 +134,42 @@ func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb 
 		return nil, err
 	}
 
+	started := time.Now()
+	logCfg := c.server.usageLogConfig()
+	requestID := usageRequestID(started)
+	record := &usageRecord{
+		RequestID:  requestID,
+		StartedAt:  started,
+		KeyName:    AgentUsageKeyName,
+		ModelName:  model.Name,
+		SourceID:   model.SourceID,
+		Platform:   model.Platform,
+		RelayMode:  agentRelayMode,
+		Stream:     true,
+		StatusCode: http.StatusOK,
+		bodyOpts:   usageBodyOptions{initialized: true, maxBytes: logCfg.BodyMaxBytes, externalize: logCfg.ExternalizeMedia},
+		assets:     newAssetSink(requestID),
+	}
+	record.OutgoingBody = record.sanitizeBody(plan.body)
+
+	result, err := c.attemptCalls(ctx, model, plan, record, cb)
+
+	record.EndedAt = time.Now()
+	record.DurationMs = record.EndedAt.Sub(started).Milliseconds()
+	if err != nil {
+		record.Error = truncateForDisplay(err.Error(), 2048)
+	}
+	if result != nil && result.Usage != nil {
+		record.Usage = usageTokenUsageFromMaheshvara(result.Usage)
+		record.UsageDetail = usageDetailFromMaheshvara(result.Usage)
+	}
+	c.server.recordUsage(record)
+	return result, err
+}
+
+// attemptCalls 运行「首事件前可重试」的调用循环；每次尝试的状态码/首字节/
+// 上游错误体写入 record（末次尝试为准）。
+func (c *agentStreamCaller) attemptCalls(ctx context.Context, model storage.Model, plan *agentUpstreamPlan, record *usageRecord, cb agent.StreamCallbacks) (*agent.CallResult, error) {
 	timeout := c.server.probeTimeout(agentCallTimeoutSec * time.Second)
 	backoffs := []time.Duration{time.Second, 3 * time.Second}
 
@@ -144,7 +183,7 @@ func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb 
 			}
 		}
 		callCtx, cancel := context.WithTimeout(ctx, timeout)
-		result, retryable, err := c.callOnce(callCtx, cancel, model, plan, cb)
+		result, retryable, err := c.callOnce(callCtx, cancel, model, plan, record, cb)
 		if err == nil {
 			return result, nil
 		}
@@ -158,10 +197,10 @@ func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb 
 
 // agentUpstreamPlan 一次模型调用的发送计划：线格式请求体 + 平台路由。
 type agentUpstreamPlan struct {
-	format      string // NormalizeAPIFormat 结果；custom:<id> 走自定义协议分支
-	body        []byte // 线格式请求体（OpenAI 系已注入 stream/include_usage）
-	customReq   *relay.CustomProtocolRequestResult
-	protocolID  string // custom 分支的注册协议 ID
+	format     string // NormalizeAPIFormat 结果；custom:<id> 走自定义协议分支
+	body       []byte // 线格式请求体（OpenAI 系已注入 stream/include_usage）
+	customReq  *relay.CustomProtocolRequestResult
+	protocolID string // custom 分支的注册协议 ID
 }
 
 // renderAgentUpstreamPlan 渲染请求体并决定发送路由，全部复用 relay 转换内核
@@ -270,19 +309,25 @@ func agentStreamDecoderFormat(format string) relay.FormatType {
 }
 
 // callOnce 发起一次流式调用。retryable 表示失败发生在收到任何流事件之前
-// 且状态值得重试（网络错/429/5xx）。
-func (c *agentStreamCaller) callOnce(ctx context.Context, cancel context.CancelFunc, model storage.Model, plan *agentUpstreamPlan, cb agent.StreamCallbacks) (result *agent.CallResult, retryable bool, err error) {
+// 且状态值得重试（网络错/429/5xx）。record 记录本次尝试的真实状态码、
+// 首字节耗时与非 2xx 的上游响应体（调用日志 ②/③ 段）。
+func (c *agentStreamCaller) callOnce(ctx context.Context, cancel context.CancelFunc, model storage.Model, plan *agentUpstreamPlan, record *usageRecord, cb agent.StreamCallbacks) (result *agent.CallResult, retryable bool, err error) {
 	defer cancel()
 	response, err := c.sendAgentUpstream(ctx, model, plan)
 	if err != nil {
 		var statusErr *relay.UpstreamStatusError
 		if errors.As(err, &statusErr) {
+			record.StatusCode = statusErr.StatusCode
+			record.ProviderResponse = record.sanitizeBody([]byte(statusErr.Body))
 			retryable = statusErr.StatusCode == http.StatusTooManyRequests || statusErr.StatusCode >= 500
 			return nil, retryable, fmt.Errorf("上游模型返回 %d: %s", statusErr.StatusCode, truncateForDisplay(statusErr.Body, 2048))
 		}
+		record.StatusCode = 0 // 网络层失败：无 HTTP 状态，日志按 failed 呈现
 		return nil, true, err
 	}
 	defer response.Body.Close()
+	record.StatusCode = response.StatusCode
+	record.FirstByteMs = time.Since(record.StartedAt).Milliseconds()
 
 	acc := &agentStreamAccumulator{tools: map[string]*agentToolCallState{}}
 	if plan.customReq != nil {

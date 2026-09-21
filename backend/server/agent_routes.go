@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/agent"
-	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
@@ -428,8 +426,8 @@ func bindAgentStreamJSON(c *gin.Context, target any) error {
 	return json.Unmarshal(body, target)
 }
 
-// streamAgentEvents 把引擎事件编码为 SSE 并转发；同时挂一个不随连接断开的
-// 观察者负责用量入账（每次模型调用一条记录，key_name 统一为 AI 协议助手）。
+// streamAgentEvents 把引擎事件编码为 SSE 并转发。用量入账在模型调用层
+// （agentStreamCaller.Call，成功与失败各记一条）；转发层不再重复观察。
 func (s *Server) streamAgentEvents(c *gin.Context, sessionID string, events <-chan agent.Event) {
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
@@ -458,45 +456,9 @@ func (s *Server) streamAgentEvents(c *gin.Context, sessionID string, events <-ch
 			if !ok {
 				return
 			}
-			s.observeAgentEvent(sessionID, event)
 			if !write(event) {
 				return
 			}
 		}
 	}
-}
-
-// observeAgentEvent 用量观察：assistant 消息携带一次模型调用的 usage。
-func (s *Server) observeAgentEvent(sessionID string, event agent.Event) {
-	if event.Type != agent.EventMessage || event.Message == nil || event.Message.Role != agent.RoleAssistant {
-		return
-	}
-	message := event.Message
-	if len(message.Usage) == 0 || s.store == nil {
-		return
-	}
-	var usage relay.MaheshvaraUsage
-	if err := json.Unmarshal(message.Usage, &usage); err != nil {
-		return
-	}
-	sourceID := ""
-	if session, err := s.store.GetSession(context.Background(), sessionID); err == nil {
-		sourceID = session.Settings.ModelSourceID
-	}
-	started := time.Now()
-	record := &usageRecord{
-		RequestID:   usageRequestID(started),
-		StartedAt:   started,
-		KeyName:     AgentUsageKeyName,
-		ModelName:   message.Model,
-		SourceID:    sourceID,
-		RelayMode:   agentRelayMode,
-		Stream:      true,
-		StatusCode:  http.StatusOK,
-		Usage:       usageTokenUsageFromMaheshvara(&usage),
-		UsageDetail: usageDetailFromMaheshvara(&usage),
-	}
-	record.EndedAt = started
-	record.DurationMs = 0 // 单次调用时长未单独计量；token 统计为主口径
-	s.recordUsage(record)
 }

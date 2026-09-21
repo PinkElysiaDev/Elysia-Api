@@ -980,8 +980,10 @@ func (t *updateGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 // 从列表移除对应段（如 127.0.0.0/8）放行。省略 ranges 时仅查询当前策略。
 type outboundPolicyTool struct{ server *Server }
 
-func (t *outboundPolicyTool) Name() string          { return agentToolOutbound }
-func (t *outboundPolicyTool) Description() string   { return "查询或修改出站禁止 IP 段（需审批）" }
+func (t *outboundPolicyTool) Name() string { return agentToolOutbound }
+func (t *outboundPolicyTool) Description() string {
+	return "查询或修改出站禁止 IP 段（需审批）"
+}
 func (t *outboundPolicyTool) Gated() bool           { return true }
 func (t *outboundPolicyTool) PermissionKey() string { return "save" }
 
@@ -1011,7 +1013,7 @@ func (t *outboundPolicyTool) Execute(ctx context.Context, tctx agent.ToolContext
 
 	view := func(summary string) agent.ToolResult {
 		return agent.ToolResult{OK: true, Summary: summary, Data: map[string]any{
-			"deniedIpRanges":       t.server.config.GetOutboundConfig().DeniedIPRanges,
+			"deniedIpRanges":        t.server.config.GetOutboundConfig().DeniedIPRanges,
 			"defaultDeniedIpRanges": relay.DefaultDeniedIPRanges,
 		}}
 	}

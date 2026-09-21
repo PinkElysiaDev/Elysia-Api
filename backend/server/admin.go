@@ -112,7 +112,7 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 		"httpTimeout":         s.config.GetHTTPTimeout(),
 		"enablePprof":         s.config.GetEnablePprof(),
 		"outbound": gin.H{
-			"deniedIpRanges":       s.config.GetOutboundConfig().DeniedIPRanges,
+			"deniedIpRanges":        s.config.GetOutboundConfig().DeniedIPRanges,
 			"defaultDeniedIpRanges": relay.DefaultDeniedIPRanges,
 		},
 		"usageLog": gin.H{
@@ -154,7 +154,7 @@ type runtimeConfigPayload struct {
 }
 
 // outboundConfigPayload 是出站策略的局部更新体：块存在即替换整个禁止段列表
-//（deniedIpRanges 数组，可为空数组 = 全放行；JSON null 视为空数组）。
+// （deniedIpRanges 数组，可为空数组 = 全放行；JSON null 视为空数组）。
 type outboundConfigPayload struct {
 	DeniedIPRanges []string `json:"deniedIpRanges"`
 }

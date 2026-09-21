@@ -133,6 +133,29 @@ func TestAgentCallerOpenAIChatViaAdapter(t *testing.T) {
 	if result.Usage == nil || result.Usage.TotalTokens != 5 {
 		t.Fatalf("usage not captured: %+v", result.Usage)
 	}
+
+	// 调用日志：成功调用一条，② 后端转发的请求体可查。
+	_, logs, err := s.store.QueryUsageLogs(t.Context(), storage.UsageQuery{KeyName: AgentUsageKeyName, Limit: 5})
+	if err != nil {
+		t.Fatalf("query usage: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("usage records = %d, want 1", len(logs))
+	}
+	log := logs[0]
+	if log.RelayMode != agentRelayMode || log.ModelName != "fake-model" {
+		t.Fatalf("log meta wrong: %+v", log)
+	}
+	if log.TotalTokens != 5 {
+		t.Fatalf("log tokens = %d", log.TotalTokens)
+	}
+	detail, _, err := s.store.GetUsageRecordJSON(t.Context(), log.RequestID)
+	if err != nil {
+		t.Fatalf("usage detail: %v", err)
+	}
+	if !strings.Contains(string(detail), `"outgoingBody"`) || !strings.Contains(string(detail), "fake-model") {
+		t.Fatalf("outgoing body missing from usage detail: %.200s", detail)
+	}
 }
 
 // Anthropic 平台：适配器拼 /v1/messages + x-api-key/anthropic-version；请求体
@@ -184,6 +207,25 @@ func TestAgentCallerUpstream400NotRetried(t *testing.T) {
 	}
 	if count := upstream.requestCount(); count != 1 {
 		t.Fatalf("upstream calls = %d, want 1 (400 must not retry)", count)
+	}
+
+	// 失败调用同样入账：statusCode=400、error 非空，③ 上游回传带错误体。
+	_, logs, qErr := s.store.QueryUsageLogs(t.Context(), storage.UsageQuery{KeyName: AgentUsageKeyName, Limit: 5})
+	if qErr != nil {
+		t.Fatalf("query usage: %v", qErr)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("usage records = %d, want 1 (failed calls must be logged)", len(logs))
+	}
+	if logs[0].StatusCode != 400 || logs[0].Error == "" {
+		t.Fatalf("failed log wrong: status=%d error=%q", logs[0].StatusCode, logs[0].Error)
+	}
+	detail, _, dErr := s.store.GetUsageRecordJSON(t.Context(), logs[0].RequestID)
+	if dErr != nil {
+		t.Fatalf("usage detail: %v", dErr)
+	}
+	if !strings.Contains(string(detail), "Invalid base64 data") || !strings.Contains(string(detail), `"outgoingBody"`) {
+		t.Fatalf("failed log missing bodies: %.200s", detail)
 	}
 }
 
