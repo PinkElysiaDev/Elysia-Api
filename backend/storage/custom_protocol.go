@@ -92,13 +92,11 @@ func (s *Store) MigratePresetProtocolRenames(ctx context.Context, pairs []Protoc
 		if oldID == "" || newID == "" || oldID == newID {
 			continue
 		}
-		var exists int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM custom_protocols WHERE id = ? COLLATE NOCASE`, oldID).Scan(&exists); err != nil {
-			return renamed, err
-		}
-		if exists == 0 {
-			continue
-		}
+		// platform 引用的重写不依赖协议行是否存在：用户删过旧预置行的话，
+		// 源上仍留着 custom:<old>——不重写它们会在播种新预置后变成永久悬空
+		// 引用（源无法编辑、调度失效）。
+		oldPlatform := "custom:" + oldID
+		newPlatform := "custom:" + newID
 		var conflict int
 		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM custom_protocols WHERE id = ? COLLATE NOCASE AND id <> ? COLLATE NOCASE`, newID, oldID).Scan(&conflict); err != nil {
 			return renamed, err
@@ -110,8 +108,6 @@ func (s *Store) MigratePresetProtocolRenames(ctx context.Context, pairs []Protoc
 		if _, err := tx.ExecContext(ctx, `UPDATE custom_protocols SET id = ?, updated_at = ? WHERE id = ? COLLATE NOCASE`, newID, nowString(), oldID); err != nil {
 			return renamed, err
 		}
-		oldPlatform := "custom:" + oldID
-		newPlatform := "custom:" + newID
 		if _, err := tx.ExecContext(ctx, `UPDATE model_sources SET platform = ? WHERE LOWER(platform) = ?`, newPlatform, strings.ToLower(oldPlatform)); err != nil {
 			return renamed, err
 		}

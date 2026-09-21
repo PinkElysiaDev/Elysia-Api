@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/elysia-api/backend/agent"
@@ -503,20 +504,43 @@ func (a *agentStreamAccumulator) result() *agent.CallResult {
 // base64（Claude/Gemini）。
 type agentUserContentRenderer struct {
 	server *Server
+	// 平台解析记忆化：loadConversation 每条历史消息每轮都要解析模型平台，
+	// 不缓存的话长会话是 O(消息数×轮数) 次全表查询。短 TTL 兜住换平台。
+	formatCache sync.Map // key "sourceID|model" -> agentCachedFormat
 }
+
+type agentCachedFormat struct {
+	format string
+	at     time.Time
+}
+
+const agentFormatCacheTTL = 30 * time.Second
 
 func newAgentUserContentRenderer(s *Server) *agentUserContentRenderer {
 	return &agentUserContentRenderer{server: s}
 }
 
-func (r *agentUserContentRenderer) RenderUserContent(meta agent.SessionMeta, content *agent.UserContent) ([]relay.MaheshvaraContentPart, error) {
-	format := relay.APIFormatChatCompletions
-	if r.server != nil && r.server.store != nil {
-		if model, ok := findCustomProtocolTestModel(context.Background(), r.server.store,
-			meta.Settings.ModelSourceID, meta.Settings.ModelName); ok {
-			format = relay.NormalizeAPIFormat(model.Platform)
+func (r *agentUserContentRenderer) resolveFormat(meta agent.SessionMeta) string {
+	if r.server == nil || r.server.store == nil {
+		return relay.APIFormatChatCompletions
+	}
+	key := meta.Settings.ModelSourceID + "|" + meta.Settings.ModelName
+	if cached, ok := r.formatCache.Load(key); ok {
+		if entry, ok := cached.(agentCachedFormat); ok && time.Since(entry.at) < agentFormatCacheTTL {
+			return entry.format
 		}
 	}
+	format := relay.APIFormatChatCompletions
+	if model, ok := findCustomProtocolTestModel(context.Background(), r.server.store,
+		meta.Settings.ModelSourceID, meta.Settings.ModelName); ok {
+		format = relay.NormalizeAPIFormat(model.Platform)
+	}
+	r.formatCache.Store(key, agentCachedFormat{format: format, at: time.Now()})
+	return format
+}
+
+func (r *agentUserContentRenderer) RenderUserContent(meta agent.SessionMeta, content *agent.UserContent) ([]relay.MaheshvaraContentPart, error) {
+	format := r.resolveFormat(meta)
 	var parts []relay.MaheshvaraContentPart
 	if text := strings.TrimSpace(content.Text); text != "" {
 		parts = append(parts, relay.MaheshvaraContentPart{Type: relay.MaheshvaraContentText, Text: text})

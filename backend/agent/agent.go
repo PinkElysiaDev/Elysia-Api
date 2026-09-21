@@ -521,14 +521,63 @@ func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Sess
 }
 
 func (e *Engine) persistToolResult(ctx context.Context, sessionID string, info ToolResultInfo, events chan Event) {
-	seq, err := e.store.AppendMessage(ctx, sessionID, RoleToolResult, info, "", nil)
+	// 落库副本脱敏调用参数里的密钥类字段（apiKey/api_key/token/secret）：
+	// test_upstream 等工具的 key 以参数传入，原样入库与「凭证加密存储」的
+	// 承诺矛盾。现场事件与审批恢复路径（PendingAction.Calls）保留原值——
+	// 恢复执行需要真实参数。
+	stored := info
+	stored.Input = maskSecretInputs(info.Input)
+	seq, err := e.store.AppendMessage(ctx, sessionID, RoleToolResult, stored, "", nil)
 	if err != nil {
 		emitEvent(events, Event{Type: EventStatus, Text: fmt.Sprintf("工具结果落库失败: %v", err)})
 		return
 	}
-	encoded, _ := json.Marshal(info)
-	result := info
+	encoded, _ := json.Marshal(stored)
+	result := stored
 	emitEvent(events, Event{Type: EventToolResult, CallID: info.CallID, Name: info.Name, Result: &result, Message: &Message{Seq: seq, Role: RoleToolResult, Content: encoded, CreatedAt: time.Now()}})
+}
+
+// maskSecretInputs 把输入 JSON 中密钥类字符串字段替换为 ***（递归遍历；
+// 解析失败则原样返回——脱敏尽力而为，不阻断落库）。
+func maskSecretInputs(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return raw
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return raw
+	}
+	if encoded, err := json.Marshal(maskSecretValue(value)); err == nil {
+		return encoded
+	}
+	return raw
+}
+
+func maskSecretValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, item := range typed {
+			if text, isString := item.(string); isString && text != "" && isSecretInputKey(key) {
+				typed[key] = "***"
+				continue
+			}
+			typed[key] = maskSecretValue(item)
+		}
+		return typed
+	case []any:
+		for index, item := range typed {
+			typed[index] = maskSecretValue(item)
+		}
+		return typed
+	default:
+		return value
+	}
+}
+
+func isSecretInputKey(key string) bool {
+	lower := strings.ToLower(key)
+	return strings.Contains(lower, "apikey") || strings.Contains(lower, "api_key") ||
+		lower == "token" || strings.Contains(lower, "secret") || strings.Contains(lower, "password")
 }
 
 func (e *Engine) persistAssistant(ctx context.Context, sessionID string, session *Session, content AssistantContent, usage *relay.MaheshvaraUsage, events chan Event) {

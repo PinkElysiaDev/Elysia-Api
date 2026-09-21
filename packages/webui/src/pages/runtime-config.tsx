@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
   Database,
@@ -119,11 +119,21 @@ export function RuntimeConfigPage() {
         },
         outbound: data.outbound ?? { deniedIpRanges: [] },
       })
+    pristineRef.current = null
+    setForm((prev) => {
+      if (prev) pristineRef.current = { ...prev }
+      return prev
+    })
   }, [data])
 
   function update<K extends keyof RuntimeConfig>(key: K, value: RuntimeConfig[K]) {
     setForm((prev) => (prev ? { ...prev, [key]: value } : prev))
   }
+
+  /** 脏块追踪：保存时只回传用户实际改过的块（outbound/usageLog/modelCatalog）。
+   * 旧实现每次保存都整块发送——页面开着期间 agent 工具或同事手改的配置会被
+   * 本页的旧快照悄悄覆盖回去。 */
+  const pristineRef = useRef<RuntimeConfigForm | null>(null)
 
   async function handleSave() {
     if (!form) return
@@ -152,15 +162,24 @@ export function RuntimeConfigPage() {
         panelAccessToken: form.panelAccessToken.trim() ? form.panelAccessToken : undefined,
         databasePath: form.databasePath,
         enablePprof: form.enablePprof,
-        outbound: {
-          deniedIpRanges: form.outbound.deniedIpRanges
-            .map((entry) => entry.trim())
-            .filter((entry) => entry !== ''),
-        },
-        // 日志管理：数值字段整体回写（GET 返回生效值，保存即显式化当前口径）。
-        usageLog: form.usageLog,
-        // 目录刷新周期：0 = 默认 24h；保存即生效（后台周期动态读取配置）。
-        modelCatalog: { syncIntervalMinutes: form.modelCatalog.syncIntervalMinutes },
+        // 块级脏检查：未改过的块不发送，避免用旧快照覆盖并发改动。
+        ...(pristineRef.current &&
+          JSON.stringify(pristineRef.current.outbound.deniedIpRanges) !== JSON.stringify(form.outbound.deniedIpRanges)
+          ? {
+              outbound: {
+                deniedIpRanges: form.outbound.deniedIpRanges
+                  .map((entry) => entry.trim())
+                  .filter((entry) => entry !== ''),
+              },
+            }
+          : {}),
+        ...(pristineRef.current && JSON.stringify(pristineRef.current.usageLog) !== JSON.stringify(form.usageLog)
+          ? { usageLog: form.usageLog }
+          : {}),
+        ...(pristineRef.current &&
+            pristineRef.current.modelCatalog.syncIntervalMinutes !== form.modelCatalog.syncIntervalMinutes
+          ? { modelCatalog: { syncIntervalMinutes: form.modelCatalog.syncIntervalMinutes } }
+          : {}),
       })
       await revalidate.runtimeConfig()
       refreshStorage()
@@ -209,6 +228,9 @@ export function RuntimeConfigPage() {
               onClick={async () => {
                 try {
                   await api.reload()
+                  // 热重载改的是后端内存配置，本页表单仍是旧快照——不刷新的话
+                  // 下一次保存会把刚重载进去的值用旧表单覆盖回去。
+                  await revalidate.runtimeConfig()
                   toast.success('已触发配置热重载')
                 } catch (err) {
                   toast.error('热重载失败', (err as Error).message)

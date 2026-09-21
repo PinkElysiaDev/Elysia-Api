@@ -895,3 +895,27 @@ func TestResumeApproval_PlanModeEnabledAfterPauseStillDenies(t *testing.T) {
 }
 
 func (f *fakeStore) ResetRunningSessions(ctx context.Context) error { return nil }
+
+// 回归（W2-20）：工具入参中的密钥字段落库前脱敏（apiKey/token/secret 等），
+// 非密钥字段与嵌套结构不受影响；非法 JSON 原样返回不阻断。
+func TestMaskSecretInputs(t *testing.T) {
+	masked := maskSecretInputs(json.RawMessage(`{"baseUrl":"http://x","apiKey":"sk-live-123","nested":{"api_key":"k2","name":"ok"},"token":"t1","note":"keep"}`))
+	var decoded map[string]any
+	if err := json.Unmarshal(masked, &decoded); err != nil {
+		t.Fatalf("masked output invalid: %s", masked)
+	}
+	if decoded["apiKey"] != "***" {
+		t.Fatalf("apiKey not masked: %v", decoded["apiKey"])
+	}
+	nested, _ := decoded["nested"].(map[string]any)
+	if nested == nil || nested["api_key"] != "***" || nested["name"] != "ok" {
+		t.Fatalf("nested masking wrong: %v", decoded["nested"])
+	}
+	if decoded["token"] != "***" || decoded["note"] != "keep" || decoded["baseUrl"] != "http://x" {
+		t.Fatalf("unexpected collateral masking: %s", masked)
+	}
+	broken := maskSecretInputs(json.RawMessage(`{oops`))
+	if string(broken) != `{oops` {
+		t.Fatalf("invalid JSON should pass through, got %s", broken)
+	}
+}

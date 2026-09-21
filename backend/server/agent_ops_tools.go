@@ -1025,6 +1025,7 @@ func (t *outboundPolicyTool) Execute(ctx context.Context, tctx agent.ToolContext
 		}}
 	}
 
+	previous := append([]string(nil), t.server.config.GetOutboundConfig().DeniedIPRanges...)
 	if params.ResetDefault {
 		defaults := append([]string(nil), relay.DefaultDeniedIPRanges...)
 		t.server.config.SetOutboundDeniedIPRanges(defaults)
@@ -1047,7 +1048,11 @@ func (t *outboundPolicyTool) Execute(ctx context.Context, tctx agent.ToolContext
 	}
 	t.server.syncOutboundPolicy()
 	if err := t.server.config.Save(); err != nil {
-		return agent.ToolResult{OK: false, Summary: "策略已生效但落盘失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+		// 落盘失败回滚内存与 relay 下发：否则热重载会静默恢复旧策略，
+		// 而运行时行为已按新策略放行/拦截（内存与磁盘分叉）。
+		t.server.config.SetOutboundDeniedIPRanges(previous)
+		t.server.syncOutboundPolicy()
+		return agent.ToolResult{OK: false, Summary: "策略修改已回滚（落盘失败）: " + err.Error(), Data: map[string]any{"error": err.Error()}}
 	}
 	if params.ResetDefault {
 		return view("出站禁止段已恢复预置默认")

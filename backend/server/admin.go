@@ -201,8 +201,11 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		// pprof 路由在进程启动时挂载，运行时修改只有重启后生效。
 		requestsRestart = true
 	}
+	var outboundPrevious []string
 	if payload.Outbound != nil {
 		// 整体替换禁止段列表，即时下发到 relay 包（连接时校验+预校验），无需重启。
+		// 记住旧值：Save 失败时回滚，防内存/磁盘分叉（热重载会按磁盘恢复）。
+		outboundPrevious = append([]string(nil), s.config.GetOutboundConfig().DeniedIPRanges...)
 		cleaned := make([]string, 0, len(payload.Outbound.DeniedIPRanges))
 		for _, entry := range payload.Outbound.DeniedIPRanges {
 			if trimmed := strings.TrimSpace(entry); trimmed != "" {
@@ -234,6 +237,10 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		s.markRestartRequired()
 	}
 	if err := s.config.Save(); err != nil {
+		if payload.Outbound != nil && outboundPrevious != nil {
+			s.config.SetOutboundDeniedIPRanges(outboundPrevious)
+			s.syncOutboundPolicy()
+		}
 		respondFail(c, 500, "save_config_failed", err.Error())
 		return
 	}
