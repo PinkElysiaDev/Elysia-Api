@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/agent"
+	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -41,14 +43,14 @@ func (c *opsTestContext) SetPlan(steps []agent.PlanStep) error       { return ni
 func TestOpsToolRegistry(t *testing.T) {
 	s := newOpsTestServer(t)
 	tools := newAgentOpsTools(s)
-	if len(tools) != 12 {
+	if len(tools) != 13 {
 		t.Fatalf("ops tools = %d", len(tools))
 	}
 	registry, err := agent.NewRegistry(tools...)
 	if err != nil {
 		t.Fatalf("registry: %v", err)
 	}
-	for _, name := range []string{agentToolListSources, agentToolCreateSource, agentToolCreateGroup, agentToolRefreshSource} {
+	for _, name := range []string{agentToolListSources, agentToolCreateSource, agentToolCreateGroup, agentToolRefreshSource, agentToolOutbound} {
 		if registry.Get(name) == nil {
 			t.Fatalf("missing tool %s", name)
 		}
@@ -362,5 +364,58 @@ func TestOpsTestUpstreamCredentialParams(t *testing.T) {
 	tctx2 := &sessionToolContext{ctx: context.Background(), store: s.store, session: session2}
 	if result := (&testUpstreamTool{server: s}).Execute(context.Background(), tctx2, json.RawMessage(`{}`)); !result.OK {
 		t.Fatalf("fallback to remembered credentials failed: %s", result.Summary)
+	}
+}
+
+// 出站策略工具：只读查询、整体替换、非法 CIDR 拒绝、恢复默认。
+func TestOutboundPolicyTool(t *testing.T) {
+	s := newOpsTestServer(t)
+	tool := &outboundPolicyTool{server: s}
+	t.Cleanup(func() { relay.SetDeniedIPRanges(relay.DefaultDeniedIPRanges) })
+
+	// 只读：返回当前（默认预置）与默认列表，且不下发改动。
+	read := opsExecute(t, tool, `{}`)
+	if !read.OK {
+		t.Fatalf("read-only call failed: %+v", read)
+	}
+	readData, _ := read.Data.(map[string]any)
+	if _, ok := readData["defaultDeniedIpRanges"]; !ok {
+		t.Fatalf("read-only result should include default ranges")
+	}
+
+	// 替换：移除环回段后 127.0.0.1 放行、私网仍拦；同步已下发到 relay。
+	trimmed := []string{}
+	for _, entry := range relay.DefaultDeniedIPRanges {
+		if entry != "127.0.0.0/8" {
+			trimmed = append(trimmed, entry)
+		}
+	}
+	encoded, _ := json.Marshal(trimmed)
+	replaced := opsExecute(t, tool, fmt.Sprintf(`{"ranges":%s}`, encoded))
+	if !replaced.OK {
+		t.Fatalf("replace failed: %+v", replaced)
+	}
+	if relay.IsDeniedIP(net.ParseIP("127.0.0.1")) {
+		t.Fatalf("loopback should be allowed after removing 127.0.0.0/8")
+	}
+	if !relay.IsDeniedIP(net.ParseIP("10.0.0.1")) {
+		t.Fatalf("private range should remain denied")
+	}
+	// 落盘检查：config.json 的 outbound 块同步更新。
+	if ranges := s.config.GetOutboundConfig().DeniedIPRanges; len(ranges) != len(trimmed) {
+		t.Fatalf("config not updated, got %d ranges", len(ranges))
+	}
+
+	// 非法 CIDR 拒绝且不产生副作用。
+	if bad := opsExecute(t, tool, `{"ranges":["10.0.0.0/not-a-cidr"]}`); bad.OK {
+		t.Fatalf("invalid CIDR must be rejected")
+	}
+
+	// 恢复默认。
+	if reset := opsExecute(t, tool, `{"resetDefault":true}`); !reset.OK {
+		t.Fatalf("reset failed: %+v", reset)
+	}
+	if !relay.IsDeniedIP(net.ParseIP("127.0.0.1")) {
+		t.Fatalf("loopback should be denied again after reset")
 	}
 }

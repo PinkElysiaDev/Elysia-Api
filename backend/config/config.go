@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/elysia-api/backend/relay"
 )
 
 type Config struct {
@@ -36,7 +38,8 @@ type Config struct {
 	UsagePersistEnabled    *bool              `json:"usagePersistEnabled,omitempty"`    // 持久化用量统计
 	UsagePersistMaxRecords int                `json:"usagePersistMaxRecords,omitempty"` // 最多保留的用量记录条数
 	HealthCheck            HealthCheckConfig  `json:"healthCheck,omitempty"`            // 可选的后台健康检测
-	AllowFakeIPOutbound    bool               `json:"allowFakeIPOutbound,omitempty"`    // 放行 Clash/Mihomo TUN fake-ip 段（198.18.0.0/15、240.0.0.0/4）出站，解决全局 TUN 代理下上游域名被解析为假 IP 遭 SSRF 守卫误杀
+	Outbound               OutboundConfig     `json:"outbound,omitempty"`               // 出站网络策略：禁止拨号的 IP 段（CIDR 列表，可编辑）
+	AllowFakeIPOutbound    bool               `json:"allowFakeIPOutbound,omitempty"`    // 已废弃：仅作加载迁移读取（见 normalizeOutboundLocked），不再下发/落盘
 	ModelCatalog           ModelCatalogConfig `json:"modelCatalog,omitempty"`           // 模型能力元数据目录（默认 models.dev）
 	mu                     sync.RWMutex
 	path                   string
@@ -75,6 +78,15 @@ type HealthCheckConfig struct {
 	IntervalSeconds  int  `json:"intervalSeconds,omitempty"`  // 探测间隔，默认 300s
 	TimeoutSeconds   int  `json:"timeoutSeconds,omitempty"`   // 单次探测超时，默认 10s
 	FailureThreshold int  `json:"failureThreshold,omitempty"` // 连续失败多少次后禁用，默认 3
+}
+
+// OutboundConfig 是出站网络策略：禁止拨号的 IP 段（CIDR）列表。
+// 默认 = relay.DefaultDeniedIPRanges（私网/环回/保留段全禁，即 SSRF 防护）；
+// 列表可整体替换（运行时配置页 / agent 工具）：删掉环回段即可用 127.0.0.1
+// 本机上游，清空 = 全放行。nil（未配置）与空列表语义不同：前者取默认预置，
+// 后者是显式的「不禁止任何段」，落盘为 "deniedIpRanges": []。
+type OutboundConfig struct {
+	DeniedIPRanges []string `json:"deniedIpRanges,omitempty"`
 }
 
 type ServerConfig struct {
@@ -254,6 +266,25 @@ func (c *Config) applyBootstrapDefaults(path string) {
 	if c.MaxBodyBytes <= 0 {
 		c.MaxBodyBytes = 32 * 1024 * 1024
 	}
+	c.normalizeOutboundLocked()
+}
+
+// normalizeOutboundLocked 归一化出站禁止段：未配置（nil）时物化默认预置；
+// 兼容旧 allowFakeIPOutbound 布尔开关——曾开启 TUN fake-ip 放行的部署在未
+// 显式配置 outbound 块时，默认列表去掉 198.18.0.0/15 与 240.0.0.0/4，
+// 保持其既有行为不变。必须持写锁（或构造期单线程）调用。
+func (c *Config) normalizeOutboundLocked() {
+	if c.Outbound.DeniedIPRanges != nil {
+		return
+	}
+	ranges := make([]string, 0, len(relay.DefaultDeniedIPRanges))
+	for _, entry := range relay.DefaultDeniedIPRanges {
+		if c.AllowFakeIPOutbound && (entry == "198.18.0.0/15" || entry == "240.0.0.0/4") {
+			continue
+		}
+		ranges = append(ranges, entry)
+	}
+	c.Outbound.DeniedIPRanges = ranges
 }
 
 func (c *Config) applyEnvironmentOverrides() {
@@ -291,7 +322,19 @@ func (c *Config) saveLocked() error {
 	raw["logLevel"] = c.LogLevel
 	raw["enablePprof"] = c.EnablePprof
 	raw["httpTimeout"] = c.HTTPTimeout
-	raw["allowFakeIPOutbound"] = c.AllowFakeIPOutbound
+	// outbound 块：列表非 nil 即写入（显式空列表 = 全放行，必须落成 [] 而非
+	// 被省略，否则重启后会被当作未配置重新套默认）；未配置（nil）删除键。
+	// 旧布尔键 allowFakeIPOutbound 已废弃，落盘时顺带清除。
+	delete(raw, "allowFakeIPOutbound")
+	if c.Outbound.DeniedIPRanges != nil {
+		ranges := c.Outbound.DeniedIPRanges
+		if ranges == nil {
+			ranges = []string{}
+		}
+		raw["outbound"] = map[string]interface{}{"deniedIpRanges": ranges}
+	} else {
+		delete(raw, "outbound")
+	}
 	// usageLog 块：全默认（所有指针字段为 nil，序列化为 {}）时删除键保持文件
 	// 干净；任一字段显式配置过才写入。旧扁平键（usagePersistEnabled 等）由
 	// 读合写原样保留，不在此处迁移。
@@ -432,19 +475,24 @@ func (c *Config) GetEnablePprof() bool {
 	return c.EnablePprof
 }
 
-// IsFakeIPOutboundAllowed 返回是否放行 fake-ip 段出站。默认 false（安全）。
-func (c *Config) IsFakeIPOutboundAllowed() bool {
+// GetOutboundConfig 返回出站网络策略。DeniedIPRanges 经归一化后恒非 nil
+//（未配置 = 默认预置；空列表 = 显式全放行）。
+func (c *Config) GetOutboundConfig() OutboundConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.AllowFakeIPOutbound
+	return c.Outbound
 }
 
-// SetAllowFakeIPOutbound 设置是否放行 fake-ip 段出站。调用方负责同步下发到
-// relay 包的包级开关（见 server.syncRelaySSRFPolicy）。
-func (c *Config) SetAllowFakeIPOutbound(v bool) {
+// SetOutboundDeniedIPRanges 整体替换禁止出站 IP 段。nil 归一化为空列表
+//（显式全放行，与「未配置走默认」区分）。调用方负责校验条目为合法 CIDR、
+// 同步下发到 relay 包（见 server.syncOutboundPolicy）与 Save 落盘。
+func (c *Config) SetOutboundDeniedIPRanges(ranges []string) {
+	if ranges == nil {
+		ranges = []string{}
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.AllowFakeIPOutbound = v
+	c.Outbound.DeniedIPRanges = ranges
 }
 
 func (c *Config) Reload() error {
@@ -495,7 +543,7 @@ func (c *Config) Reload() error {
 	c.UsagePersistEnabled = newCfg.UsagePersistEnabled
 	c.UsagePersistMaxRecords = newCfg.UsagePersistMaxRecords
 	c.HealthCheck = newCfg.HealthCheck
-	c.AllowFakeIPOutbound = newCfg.AllowFakeIPOutbound
+	c.Outbound = newCfg.Outbound
 
 	return nil
 }

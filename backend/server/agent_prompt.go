@@ -46,7 +46,8 @@ func agentSystemPrompt(session *agent.Session) string {
 	b.WriteString("## 能力域二：错误诊断\n")
 	b.WriteString("- query_usage_logs 可按 status=failed/statusCode/模型/key/时间窗过滤失败请求（含错误类别与重试链）。\n")
 	b.WriteString("- 深入单条请求用 get_usage_log_detail（四段捕获体：入站/出站/上游响应/回给客户端）。\n")
-	b.WriteString("- 网关自身问题查 query_system_logs。定位后给出修复建议（改配置/换模型/联系上游），需要改配置就转能力域三。\n\n")
+	b.WriteString("- 网关自身问题查 query_system_logs。定位后给出修复建议（改配置/换模型/联系上游），需要改配置就转能力域三。\n")
+	b.WriteString("- 报错含 \"refused to dial denied IP\" 是出站 SSRF 防护拦了上游 IP（本机 127.0.0.1/内网地址默认禁止）。上游确属用户自有服务时，用 update_outbound_policy 从禁止段中移除对应 CIDR（如 127.0.0.0/8）放行——修改前向用户说明。\n\n")
 
 	b.WriteString("## 能力域三：模型源与模型组管理\n")
 	b.WriteString("- 现状：list_sources（密钥脱敏）、list_model_groups。\n")

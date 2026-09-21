@@ -7,10 +7,11 @@ import (
 	"testing"
 )
 
-// secureControl 在 toggle 关闭时应拒绝私网/保留 IP（连接时校验，关掉 rebinding 窗口）。
+// secureControl 在禁止列表生效时应拒绝私网/保留 IP（连接时校验，关掉 rebinding 窗口）。
 func TestSecureControlRejectsPrivateWhenNotAllowed(t *testing.T) {
 	SetAllowPrivateDial(false)
 	defer SetAllowPrivateDial(true) // 还原供其余测试使用（TestMain 默认开）
+	t.Cleanup(func() { SetDeniedIPRanges(DefaultDeniedIPRanges) })
 
 	rejects := []string{
 		"127.0.0.1:443",
@@ -45,61 +46,93 @@ func TestSecureControlRejectsNonIP(t *testing.T) {
 	}
 }
 
-// SetAllowFakeIPRanges（生产开关）开启后仅放行 Clash/Mihomo TUN fake-ip 段，
-// 其余私网/元数据/环回/CGNAT 段仍拦截；关闭后 fake-ip 段恢复拦截。
-func TestIsPrivateOrRestrictedIP_FakeIPExemption(t *testing.T) {
-	t.Cleanup(func() { SetAllowFakeIPRanges(false) })
+// 预置默认列表等价于旧 IsPrivateOrRestrictedIP 的全部固定语义：
+// 逐段抽查各 CIDR 代表地址；公网地址放行。
+func TestIsDeniedIP_DefaultPresetSemantics(t *testing.T) {
+	t.Cleanup(func() { SetDeniedIPRanges(DefaultDeniedIPRanges) })
+	SetDeniedIPRanges(DefaultDeniedIPRanges)
 
-	mustIP := func(s string) net.IP {
-		ip := net.ParseIP(s)
-		if ip == nil {
-			t.Fatalf("bad ip literal %q", s)
-		}
-		return ip
-	}
-
-	fakeIPs := []string{
-		"198.18.0.5", "198.19.1.1", "198.18.255.254", // 198.18.0.0/15
-		"240.0.0.1", "255.255.255.255", // 240.0.0.0/4
-	}
-	stillRestricted := []string{
-		"10.0.0.1", "172.16.0.1", "192.168.1.1", // RFC1918 私网
-		"127.0.0.1",       // 环回
+	denied := []string{
+		"127.0.0.1", "127.255.255.255", // 环回 127.0.0.0/8
+		"10.0.0.1", "172.16.0.1", "172.31.255.255", "192.168.1.1", // RFC1918
 		"169.254.169.254", // 链路本地 / 云元数据
 		"100.64.0.1",      // CGNAT
 		"0.0.0.0",         // 未指定 / 0.0.0.0/8
 		"192.0.2.1",       // TEST-NET-1
 		"198.51.100.1",    // TEST-NET-2
 		"203.0.113.1",     // TEST-NET-3
+		"198.18.0.5", "198.19.1.1", // 基准/fake-ip 198.18.0.0/15
+		"240.0.0.1", "255.255.255.255", // 240.0.0.0/4
+		"224.0.0.1", "239.255.255.255", // 组播 224.0.0.0/4
 		"::1",             // IPv6 环回
-		"fc00::1",         // IPv6 ULA
+		"::",              // IPv6 未指定
+		"fc00::1", "fd12::1", // fc00::/7
 		"fe80::1",         // IPv6 链路本地
+		"ff02::1",         // IPv6 组播
+		"::ffff:127.0.0.1", // v4 映射环回
+	}
+	allowed := []string{
+		"8.8.8.8", "1.1.1.1", "93.184.216.34",
+		"2606:4700:4700::1111", "2001:4860:4860::8888",
 	}
 
-	// 默认（开关关闭）：fake-ip 段被视为受限。
-	SetAllowFakeIPRanges(false)
-	for _, s := range fakeIPs {
-		if !IsPrivateOrRestrictedIP(mustIP(s)) {
-			t.Fatalf("expected %s to be restricted when fake-ip exemption is OFF", s)
+	for _, s := range denied {
+		if !IsDeniedIP(net.ParseIP(s)) {
+			t.Fatalf("expected %s to be denied under default preset", s)
 		}
+	}
+	for _, s := range allowed {
+		if IsDeniedIP(net.ParseIP(s)) {
+			t.Fatalf("expected %s to be allowed under default preset", s)
+		}
+	}
+}
+
+// IPv6 过渡地址（6to4/NAT64/Teredo）内嵌的 IPv4 段按解包结果判定——
+// 静态 CIDR 覆盖不了的规避路径。
+func TestIsDeniedIP_IPv6TransitionUnwrap(t *testing.T) {
+	t.Cleanup(func() { SetDeniedIPRanges(DefaultDeniedIPRanges) })
+	SetDeniedIPRanges(DefaultDeniedIPRanges)
+
+	if !IsDeniedIP(net.ParseIP("2002:a9fe:a9fe::")) { // 6to4 内嵌 169.254.169.254
+		t.Fatalf("expected 6to4 address embedding cloud metadata IP to be denied")
+	}
+	if !IsDeniedIP(net.ParseIP("64:ff9b::7f00:1")) { // NAT64 内嵌 127.0.0.1
+		t.Fatalf("expected NAT64 address embedding loopback to be denied")
+	}
+	// 内嵌公网 IPv4 的过渡地址放行。
+	if IsDeniedIP(net.ParseIP("2002:0808:0808::")) {
+		t.Fatalf("expected 6to4 address embedding public 8.8.8.8 to be allowed")
+	}
+}
+
+// 列表整体可替换：移除环回段后 127.0.0.1 放行、其余段继续拦截；
+// 清空列表 = 全放行；非法条目跳过。
+func TestSetDeniedIPRanges_ReplaceAndEmpty(t *testing.T) {
+	t.Cleanup(func() { SetDeniedIPRanges(DefaultDeniedIPRanges) })
+
+	trimmed := []string{}
+	for _, entry := range DefaultDeniedIPRanges {
+		if entry == "127.0.0.0/8" {
+			continue
+		}
+		trimmed = append(trimmed, entry)
+	}
+	SetDeniedIPRanges(trimmed)
+	if IsDeniedIP(net.ParseIP("127.0.0.1")) {
+		t.Fatalf("expected loopback allowed after removing 127.0.0.0/8 from deny list")
+	}
+	if !IsDeniedIP(net.ParseIP("10.0.0.1")) {
+		t.Fatalf("expected private range still denied after trimming only loopback")
 	}
 
-	// 开启：仅放行 fake-ip 段，其余受限段仍拦截。
-	SetAllowFakeIPRanges(true)
-	for _, s := range fakeIPs {
-		if IsPrivateOrRestrictedIP(mustIP(s)) {
-			t.Fatalf("expected %s to be ALLOWED when fake-ip exemption is ON", s)
-		}
-	}
-	for _, s := range stillRestricted {
-		if !IsPrivateOrRestrictedIP(mustIP(s)) {
-			t.Fatalf("expected %s to remain restricted even with fake-ip exemption ON", s)
-		}
+	SetDeniedIPRanges(nil)
+	if IsDeniedIP(net.ParseIP("127.0.0.1")) || IsDeniedIP(net.ParseIP("192.168.1.1")) {
+		t.Fatalf("expected empty deny list to allow everything")
 	}
 
-	// 关回后恢复拦截。
-	SetAllowFakeIPRanges(false)
-	if !IsPrivateOrRestrictedIP(mustIP("198.18.0.5")) {
-		t.Fatalf("expected 198.18.0.5 to be restricted again after turning exemption OFF")
+	SetDeniedIPRanges([]string{"not-a-cidr", "10.0.0.0/8"})
+	if IsDeniedIP(net.ParseIP("10.0.0.1")) == false || IsDeniedIP(net.ParseIP("172.16.0.1")) {
+		t.Fatalf("expected invalid entries skipped, valid ones enforced")
 	}
 }

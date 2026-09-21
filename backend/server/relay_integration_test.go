@@ -402,19 +402,21 @@ func TestValidateOutboundBaseURLRejectsLoopbackAndPrivate(t *testing.T) {
 	}
 }
 
-func TestIsPrivateOrRestrictedIP(t *testing.T) {
+func TestIsDeniedIP(t *testing.T) {
 	// 含 RFC1918/环回/链路本地/CGNAT/0.0.0.0 以及保留文档与基准测试段
 	// （192.0.2/24、198.18/15、198.51.100/24、203.0.113/24、240/4）——
-	// 这些都不可路由，作为上游应一律拒绝（H3 收紧后的行为）。
+	// 这些都不可路由，作为上游应一律拒绝（预置默认禁止列表的语义）。
+	t.Cleanup(func() { relay.SetDeniedIPRanges(relay.DefaultDeniedIPRanges) })
+	relay.SetDeniedIPRanges(relay.DefaultDeniedIPRanges)
 	private := []string{"127.0.0.1", "10.1.2.3", "192.168.0.1", "172.16.0.1", "169.254.0.1", "100.64.0.1", "0.0.0.0", "::1", "fc00::1", "fe80::1", "192.0.2.10", "198.18.0.1", "198.51.100.5", "203.0.113.10", "240.0.0.1"}
 	public := []string{"8.8.8.8", "1.1.1.1", "9.9.9.9", "2606:4700:4700::1111"}
 	for _, ip := range private {
-		if !isPrivateOrRestrictedIP(parseTestIP(t, ip)) {
-			t.Fatalf("%s should be private/restricted", ip)
+		if !isDeniedIP(parseTestIP(t, ip)) {
+			t.Fatalf("%s should be denied under default preset", ip)
 		}
 	}
 	for _, ip := range public {
-		if isPrivateOrRestrictedIP(parseTestIP(t, ip)) {
+		if isDeniedIP(parseTestIP(t, ip)) {
 			t.Fatalf("%s should be considered public", ip)
 		}
 	}

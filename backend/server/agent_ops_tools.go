@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -30,6 +31,7 @@ const (
 	agentToolRefreshSource = "refresh_model_source"
 	agentToolCreateGroup   = "create_model_group"
 	agentToolUpdateGroup   = "update_model_group"
+	agentToolOutbound      = "update_outbound_policy"
 )
 
 // newAgentOpsTools 返回运维域全量工具。
@@ -47,6 +49,7 @@ func newAgentOpsTools(s *Server) []agent.Tool {
 		&refreshSourceTool{server: s},
 		&createGroupTool{server: s},
 		&updateGroupTool{server: s},
+		&outboundPolicyTool{server: s},
 	}
 }
 
@@ -968,4 +971,77 @@ func (t *updateGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 	t.server.invalidateRouteCache()
 	updated, _ := agentFindGroup(ctx, store, group.ID)
 	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("模型组 %q 已更新（%d 个成员）", updated.Name, len(updated.Models)), Data: updated}
+}
+
+// ---- update_outbound_policy（门控 save）----
+
+// outboundPolicyTool 维护出站禁止 IP 段列表（SSRF 防护策略）。典型场景：
+// 上游是用户本机/内网服务（如 127.0.0.1 的本地网关）被默认禁止段拦截时，
+// 从列表移除对应段（如 127.0.0.0/8）放行。省略 ranges 时仅查询当前策略。
+type outboundPolicyTool struct{ server *Server }
+
+func (t *outboundPolicyTool) Name() string          { return agentToolOutbound }
+func (t *outboundPolicyTool) Description() string   { return "查询或修改出站禁止 IP 段（需审批）" }
+func (t *outboundPolicyTool) Gated() bool           { return true }
+func (t *outboundPolicyTool) PermissionKey() string { return "save" }
+
+func (t *outboundPolicyTool) Definition() relay.MaheshvaraTool {
+	return relay.MaheshvaraTool{
+		Type: "function", Name: agentToolOutbound,
+		Description: "查询或整体替换出站禁止 IP 段列表（SSRF 防护）。不传参数 = 只读返回当前列表与预置默认；" +
+			"ranges = 整体替换（CIDR 数组，空数组 = 全放行）；resetDefault = 恢复预置默认。" +
+			"上游是本机/内网地址（如 127.0.0.1）被 \"refused to dial denied IP\" 拦截时，" +
+			"从 ranges 中去掉对应段（环回 127.0.0.0/8、私网 10.0.0.0/8、172.16.0.0/12、192.168.0.0/16）即可放行。" +
+			"修改全列表为高影响操作，先向用户说明改动范围再调用。",
+		Parameters: objectSchema(map[string]any{
+			"ranges":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "整体替换后的禁止段 CIDR 列表（空数组 = 放行所有地址）"},
+			"resetDefault": map[string]any{"type": "boolean", "description": "恢复预置默认禁止段（忽略 ranges）"},
+		}),
+	}
+}
+
+func (t *outboundPolicyTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
+	var params struct {
+		Ranges       []string `json:"ranges"`
+		ResetDefault bool     `json:"resetDefault"`
+	}
+	if err := json.Unmarshal(args, &params); err != nil {
+		return agent.ToolResult{OK: false, Summary: "参数解析失败", Data: map[string]any{"error": err.Error()}}
+	}
+
+	view := func(summary string) agent.ToolResult {
+		return agent.ToolResult{OK: true, Summary: summary, Data: map[string]any{
+			"deniedIpRanges":       t.server.config.GetOutboundConfig().DeniedIPRanges,
+			"defaultDeniedIpRanges": relay.DefaultDeniedIPRanges,
+		}}
+	}
+
+	if params.ResetDefault {
+		defaults := append([]string(nil), relay.DefaultDeniedIPRanges...)
+		t.server.config.SetOutboundDeniedIPRanges(defaults)
+	} else if params.Ranges == nil {
+		// 只读查询，不落盘。
+		return view("当前出站禁止段如下（未修改）")
+	} else {
+		cleaned := make([]string, 0, len(params.Ranges))
+		for _, entry := range params.Ranges {
+			trimmed := strings.TrimSpace(entry)
+			if trimmed == "" {
+				continue
+			}
+			if _, _, err := net.ParseCIDR(trimmed); err != nil {
+				return agent.ToolResult{OK: false, Summary: fmt.Sprintf("非法 CIDR: %q", trimmed), Data: map[string]any{"error": "invalid_cidr", "entry": trimmed}}
+			}
+			cleaned = append(cleaned, trimmed)
+		}
+		t.server.config.SetOutboundDeniedIPRanges(cleaned)
+	}
+	t.server.syncOutboundPolicy()
+	if err := t.server.config.Save(); err != nil {
+		return agent.ToolResult{OK: false, Summary: "策略已生效但落盘失败: " + err.Error(), Data: map[string]any{"error": err.Error()}}
+	}
+	if params.ResetDefault {
+		return view("出站禁止段已恢复预置默认")
+	}
+	return view(fmt.Sprintf("出站禁止段已更新（%d 段）", len(t.server.config.GetOutboundConfig().DeniedIPRanges)))
 }

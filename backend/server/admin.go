@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -110,7 +111,10 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 		"logLevel":            s.config.GetLogLevel(),
 		"httpTimeout":         s.config.GetHTTPTimeout(),
 		"enablePprof":         s.config.GetEnablePprof(),
-		"allowFakeIPOutbound": s.config.IsFakeIPOutboundAllowed(),
+		"outbound": gin.H{
+			"deniedIpRanges":       s.config.GetOutboundConfig().DeniedIPRanges,
+			"defaultDeniedIpRanges": relay.DefaultDeniedIPRanges,
+		},
 		"usageLog": gin.H{
 			// 生效值（归一化后）：表单直接显示当前实际口径，保存时整体回写。
 			"persistEnabled":         usageLog.PersistEnabled,
@@ -135,18 +139,24 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 // runtimeConfigPayload 是 PUT /runtime-config 的请求体：指针/空串字段
 // 表示「未提供（不修改）」。
 type runtimeConfigPayload struct {
-	Host                string                 `json:"host"`
-	Port                int                    `json:"port"`
-	LogLevel            string                 `json:"logLevel"`
-	HTTPTimeout         *int                   `json:"httpTimeout"`
-	PanelAccessToken    *string                `json:"panelAccessToken"`
-	DatabasePath        *string                `json:"databasePath"`
-	EnablePprof         *bool                  `json:"enablePprof"`
-	AllowFakeIPOutbound *bool                  `json:"allowFakeIPOutbound"`
-	UsageLog            *config.UsageLogConfig `json:"usageLog"`
-	ModelCatalog        *struct {
+	Host             string                 `json:"host"`
+	Port             int                    `json:"port"`
+	LogLevel         string                 `json:"logLevel"`
+	HTTPTimeout      *int                   `json:"httpTimeout"`
+	PanelAccessToken *string                `json:"panelAccessToken"`
+	DatabasePath     *string                `json:"databasePath"`
+	EnablePprof      *bool                  `json:"enablePprof"`
+	Outbound         *outboundConfigPayload `json:"outbound"`
+	UsageLog         *config.UsageLogConfig `json:"usageLog"`
+	ModelCatalog     *struct {
 		SyncIntervalMinutes *int `json:"syncIntervalMinutes"`
 	} `json:"modelCatalog"`
+}
+
+// outboundConfigPayload 是出站策略的局部更新体：块存在即替换整个禁止段列表
+//（deniedIpRanges 数组，可为空数组 = 全放行；JSON null 视为空数组）。
+type outboundConfigPayload struct {
+	DeniedIPRanges []string `json:"deniedIpRanges"`
 }
 
 func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
@@ -191,10 +201,16 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		// pprof 路由在进程启动时挂载，运行时修改只有重启后生效。
 		requestsRestart = true
 	}
-	if payload.AllowFakeIPOutbound != nil {
-		s.config.SetAllowFakeIPOutbound(*payload.AllowFakeIPOutbound)
-		// 即时下发到 relay 包级开关，无需重启。
-		s.syncRelaySSRFPolicy()
+	if payload.Outbound != nil {
+		// 整体替换禁止段列表，即时下发到 relay 包（连接时校验+预校验），无需重启。
+		cleaned := make([]string, 0, len(payload.Outbound.DeniedIPRanges))
+		for _, entry := range payload.Outbound.DeniedIPRanges {
+			if trimmed := strings.TrimSpace(entry); trimmed != "" {
+				cleaned = append(cleaned, trimmed)
+			}
+		}
+		s.config.SetOutboundDeniedIPRanges(cleaned)
+		s.syncOutboundPolicy()
 	}
 	if payload.UsageLog != nil {
 		// 局部更新：仅覆盖显式提供的字段。BodyMaxKB/开关对后续请求即时生效；
@@ -265,6 +281,16 @@ func validateRuntimeConfigPayload(p *runtimeConfigPayload) *runtimeConfigError {
 	}
 	if p.ModelCatalog != nil && p.ModelCatalog.SyncIntervalMinutes != nil && *p.ModelCatalog.SyncIntervalMinutes < 0 {
 		return &runtimeConfigError{400, "invalid_sync_interval", "syncIntervalMinutes must not be negative"}
+	}
+	if p.Outbound != nil {
+		for _, entry := range p.Outbound.DeniedIPRanges {
+			if strings.TrimSpace(entry) == "" {
+				return &runtimeConfigError{400, "invalid_outbound", "deniedIpRanges must not contain blank entries"}
+			}
+			if _, _, err := net.ParseCIDR(strings.TrimSpace(entry)); err != nil {
+				return &runtimeConfigError{400, "invalid_outbound", fmt.Sprintf("deniedIpRanges entry %q is not a valid CIDR", entry)}
+			}
+		}
 	}
 	if p.UsageLog != nil {
 		for _, check := range []struct {

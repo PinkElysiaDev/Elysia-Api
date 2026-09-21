@@ -57,10 +57,11 @@ const defaultUsageLog: UsageLogRuntimeConfig = {
   cleanupIntervalMinutes: 60,
 }
 
-/** 归一化后的表单类型：数据入口 effect 补齐 usageLog/modelCatalog 后二者必非空。 */
-type RuntimeConfigForm = Omit<RuntimeConfig, 'usageLog' | 'modelCatalog'> & {
+/** 归一化后的表单类型：数据入口 effect 补齐 usageLog/modelCatalog/outbound 后三者必非空。 */
+type RuntimeConfigForm = Omit<RuntimeConfig, 'usageLog' | 'modelCatalog' | 'outbound'> & {
   usageLog: UsageLogRuntimeConfig
   modelCatalog: NonNullable<RuntimeConfig['modelCatalog']>
+  outbound: NonNullable<RuntimeConfig['outbound']>
 }
 
 
@@ -94,6 +95,15 @@ export function RuntimeConfigPage() {
     setForm((prev) => (prev ? { ...prev, usageLog: { ...prev.usageLog, [key]: value } } : prev))
   }
 
+  /** 禁止段编辑：textarea 一行一段，保留原始输入（保存时后端 trim 清洗）。 */
+  function updateOutboundText(text: string) {
+    setForm((prev) =>
+      prev
+        ? { ...prev, outbound: { ...prev.outbound, deniedIpRanges: text === '' ? [] : text.split('\n') } }
+        : prev,
+    )
+  }
+
   useEffect(() => {
     // 数据入口一次性补默认块：后端省略 usageLog/modelCatalog 时就地归一化，
     // 表达式与保存路径都不再需要 ?? 兜底（旧实现三处兜底口径不一致：
@@ -107,6 +117,7 @@ export function RuntimeConfigPage() {
           url: '',
           syncIntervalMinutes: defaultCatalogSyncMinutes,
         },
+        outbound: data.outbound ?? { deniedIpRanges: [] },
       })
   }, [data])
 
@@ -121,6 +132,15 @@ export function RuntimeConfigPage() {
       toast.error('端口非法', 'port 不能超过 65535')
       return
     }
+    // 禁止段前端先逐条校验，非法条目直接拦截（后端同款校验兜底）。
+    const invalidEntries = form.outbound.deniedIpRanges.filter((entry) => {
+      const trimmed = entry.trim()
+      return trimmed !== '' && !/^[0-9a-fA-F:.]+\/\d{1,3}$/.test(trimmed)
+    })
+    if (invalidEntries.length > 0) {
+      toast.error('禁止出站 IP 段格式非法', `这些条目不是合法 CIDR：${invalidEntries.join('、')}`)
+      return
+    }
     setSaving(true)
     try {
       const result = await api.updateRuntimeConfig({
@@ -132,7 +152,11 @@ export function RuntimeConfigPage() {
         panelAccessToken: form.panelAccessToken.trim() ? form.panelAccessToken : undefined,
         databasePath: form.databasePath,
         enablePprof: form.enablePprof,
-        allowFakeIPOutbound: form.allowFakeIPOutbound,
+        outbound: {
+          deniedIpRanges: form.outbound.deniedIpRanges
+            .map((entry) => entry.trim())
+            .filter((entry) => entry !== ''),
+        },
         // 日志管理：数值字段整体回写（GET 返回生效值，保存即显式化当前口径）。
         usageLog: form.usageLog,
         // 目录刷新周期：0 = 默认 24h；保存即生效（后台周期动态读取配置）。
@@ -307,20 +331,53 @@ export function RuntimeConfigPage() {
             </SettingRow>
 
             <SettingRow
-              label="允许 Fake-IP 段出站"
-              description="放行 TUN 虚拟网卡 fake-ip 段（198.18.0.0/15、240.0.0.0/4），解决全局代理下域名解析被 SSRF 拦截的问题"
+              label="禁止出站 IP 段（CIDR）"
+              description="SSRF 防护的拨号黑名单，一行一段。默认预置私网/环回/保留段；上游是本机服务（如 127.0.0.1）被拦截时，删除对应段放行（如 127.0.0.0/8）"
+              inline={false}
             >
-              <Switch
-                checked={form.allowFakeIPOutbound}
-                onCheckedChange={(v) => update('allowFakeIPOutbound', v)}
-              />
-            </SettingRow>
-            {form.allowFakeIPOutbound && (
-              <div className="rounded-lg bg-[color-mix(in_srgb,var(--amber)_10%,transparent)] p-2.5 text-2xs text-amber flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 shrink-0" />
-                <span>已放宽 fake-ip SSRF 出站校验，真实内网与 169.254 元数据仍处于拦截保护中。</span>
+              <div className="w-full space-y-2">
+                <textarea
+                  className="min-h-[120px] w-full rounded-md border border-border bg-card px-3 py-2 font-mono text-xs outline-none transition-colors focus-visible:border-rose focus-visible:ring-[3px] focus-visible:ring-wash"
+                  spellCheck={false}
+                  value={form.outbound.deniedIpRanges.join('\n')}
+                  onChange={(e) => updateOutboundText(e.target.value)}
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    onClick={() =>
+                      setForm((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              outbound: {
+                                ...prev.outbound,
+                                deniedIpRanges: [...(prev.outbound.defaultDeniedIpRanges ?? [])],
+                              },
+                            }
+                          : prev,
+                      )
+                    }
+                  >
+                    <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                    恢复默认
+                  </Button>
+                  <span className="text-2xs text-soft">
+                    当前 {form.outbound.deniedIpRanges.filter((entry) => entry.trim() !== '').length} 段
+                    {form.outbound.deniedIpRanges.join('\n') !== (form.outbound.defaultDeniedIpRanges ?? []).join('\n') &&
+                      ' · 与默认不同'}
+                  </span>
+                </div>
+                {form.outbound.deniedIpRanges.every((entry) => entry.trim() === '') && (
+                  <div className="rounded-lg bg-[color-mix(in_srgb,var(--ember)_10%,transparent)] p-2.5 text-2xs text-ember flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <span>列表为空 = 放行所有出站地址（含环回、私网与云元数据端点），仅建议完全可信的内网环境使用。</span>
+                  </div>
+                )}
               </div>
-            )}
+            </SettingRow>
           </div>
         </SettingSection>
 

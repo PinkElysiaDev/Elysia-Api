@@ -193,15 +193,19 @@ func New(cfg *config.Config) *Server {
 		// 预置协议（四线制定义）在协议表为空时播种；已有用户数据不动。
 		server.seedPresetProtocols()
 	}
-	server.syncRelaySSRFPolicy()
+	server.syncOutboundPolicy()
 	server.syncCustomProtocols()
 	return server
 }
 
-// syncRelaySSRFPolicy 把 SSRF 相关运行时配置下发给 relay 包的包级开关。
-// 在启动、热重载、admin 改配置后调用，确保连接时校验与预校验即时反映配置。
-func (s *Server) syncRelaySSRFPolicy() {
-	relay.SetAllowFakeIPRanges(s.config.IsFakeIPOutboundAllowed())
+// syncOutboundPolicy 把出站禁止 IP 段列表下发给 relay 包（连接时校验与预校验
+// 共用）。在启动、热重载、admin/agent 改配置后调用，确保即时反映配置。
+func (s *Server) syncOutboundPolicy() {
+	ranges := s.config.GetOutboundConfig().DeniedIPRanges
+	if ranges == nil { // 防御：未归一化的配置不允许被解释成「全放行」
+		ranges = relay.DefaultDeniedIPRanges
+	}
+	relay.SetDeniedIPRanges(ranges)
 }
 
 // logDebug 仅在调试模式或 LogLevel=debug 时输出基本信息（模型组、选中模型、耗时）
@@ -446,9 +450,9 @@ func (s *Server) reloadConfig(c *gin.Context) {
 	}
 	// 配置热更新后失效路由缓存，下次请求按新配置重建（借鉴 SyncOptions）。
 	s.invalidateRouteCache()
-	// SSRF 放行策略可能随配置变更，同步到 relay 包级开关（即时生效）。
+	// 出站禁止 IP 段可能随配置变更，同步到 relay 包（即时生效）。
 	// 自定义协议存 SQLite，不随 config.json 热重载：管理端点写入时即时同步。
-	s.syncRelaySSRFPolicy()
+	s.syncOutboundPolicy()
 	if serverChanged {
 		log.Printf(
 			"Config hot-reloaded successfully, but server listen address change requires restart (old=%s:%d new=%s:%d)",
@@ -1156,9 +1160,9 @@ func validateOutboundBaseURL(raw string) error {
 	if hostname == "" {
 		return fmt.Errorf("missing hostname")
 	}
-	if strings.EqualFold(hostname, "localhost") {
-		return fmt.Errorf("loopback host is not allowed")
-	}
+	// localhost 主机名不做专门拒绝：环回段（127.0.0.0/8、::1/128）在默认禁止
+	// 列表里，DNS 解析后逐 IP 判定自然覆盖；用户从列表移除环回段后 localhost
+	// 随之放行，与拨号层（secureControl）语义保持一致。
 
 	ips, err := net.LookupIP(hostname)
 	if err != nil {
@@ -1169,19 +1173,19 @@ func validateOutboundBaseURL(raw string) error {
 	}
 
 	for _, ip := range ips {
-		if isPrivateOrRestrictedIP(ip) {
-			return fmt.Errorf("resolved IP %s is private or restricted", ip.String())
+		if isDeniedIP(ip) {
+			return fmt.Errorf("resolved IP %s is in the outbound deny list", ip.String())
 		}
 	}
 
 	return nil
 }
 
-// isPrivateOrRestrictedIP 委托到 relay 包的同名判定，保证「预校验」（这里，
-// 解析后逐个判 IP）与「连接时校验」（relay secureControl）用同一份网段清单，
+// isDeniedIP 委托到 relay 包的禁止列表判定，保证「预校验」（这里，
+// 解析后逐个判 IP）与「连接时校验」（relay secureControl）用同一份配置，
 // 不再各维护一份易漂移的列表。
-func isPrivateOrRestrictedIP(ip net.IP) bool {
-	return relay.IsPrivateOrRestrictedIP(ip)
+func isDeniedIP(ip net.IP) bool {
+	return relay.IsDeniedIP(ip)
 }
 
 func (s *Server) listModels(c *gin.Context) {
