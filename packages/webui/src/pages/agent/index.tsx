@@ -234,7 +234,7 @@ export function AgentPage() {
         failToast('删除失败')(error)
       }
     },
-    [activeId, confirm, mutateSessions, sessions, toast],
+    [activeId, confirm, failToast, mutateSessions, sessions, toast],
   )
 
   const handleSettingsChange = useCallback(
