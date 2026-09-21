@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -270,5 +271,102 @@ func TestAgentCallerUnregisteredCustomProtocol(t *testing.T) {
 	_, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
 	if err == nil || !strings.Contains(err.Error(), "未注册") {
 		t.Fatalf("err = %v, want 未注册", err)
+	}
+}
+
+// 附件 data URL 渲染：ImageBase64/FileData 必须是 base64 文本（可再解码、
+// 无 data: 前缀），不得是解码后的二进制——回归 ".messages[1]: Invalid base64
+// data"（上游按 base64 校验 source.data / inlineData.data 直接 400）。
+func TestAgentAttachmentBase64IsTextNotBinary(t *testing.T) {
+	s := newAgentIntegrationServer(t)
+	renderer := newAgentUserContentRenderer(s)
+	// 1x1 PNG 的 base64。
+	const pngPayload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+	dataURL := "data:image/png;base64," + pngPayload
+	content := &agent.UserContent{Text: "看图", Documents: []agent.Document{{Name: "shot.png", Mime: "image/png", DataURL: dataURL}}}
+
+	parts, err := renderer.RenderUserContent(agent.SessionMeta{}, content)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if len(parts) != 2 { // 文本块 + 图片块
+		t.Fatalf("parts = %d", len(parts))
+	}
+	var image *relay.MaheshvaraContentPart
+	for i := range parts {
+		if parts[i].Type == relay.MaheshvaraContentImage {
+			image = &parts[i]
+		}
+	}
+	if image == nil {
+		t.Fatalf("image part missing")
+	}
+	if image.ImageBase64 != pngPayload {
+		t.Fatalf("image base64 corrupted: %.60s", image.ImageBase64)
+	}
+	if _, decodeErr := base64.StdEncoding.DecodeString(image.ImageBase64); decodeErr != nil {
+		t.Fatalf("image base64 not decodable: %v", decodeErr)
+	}
+
+	// 各平台出口透传后仍是合法 base64。
+	request := &relay.MaheshvaraRequest{Model: "fake-model", Messages: []relay.MaheshvaraMessage{
+		{Role: "user", Content: []relay.MaheshvaraContentPart{*image}},
+	}}
+	anthropicBody, err := relay.MaheshvaraToAnthropic(request)
+	if err != nil {
+		t.Fatalf("anthropic convert: %v", err)
+	}
+	var claudeMsg struct {
+		Messages []struct {
+			Content []struct {
+				Source struct {
+					Data string `json:"data"`
+				} `json:"source"`
+			} `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(anthropicBody, &claudeMsg); err != nil {
+		t.Fatalf("anthropic body: %v", err)
+	}
+	if len(claudeMsg.Messages) == 0 || len(claudeMsg.Messages[0].Content) == 0 {
+		t.Fatalf("anthropic content missing: %s", anthropicBody)
+	}
+	sourceData := claudeMsg.Messages[0].Content[0].Source.Data
+	if strings.HasPrefix(sourceData, "data:") {
+		t.Fatalf("anthropic source.data keeps data: prefix")
+	}
+	if _, decodeErr := base64.StdEncoding.DecodeString(sourceData); decodeErr != nil {
+		t.Fatalf("anthropic source.data not valid base64 (this is the reported 400): %v", decodeErr)
+	}
+
+	geminiBody, err := relay.MaheshvaraToGemini(request)
+	if err != nil {
+		t.Fatalf("gemini convert: %v", err)
+	}
+	var geminiReq struct {
+		Contents []struct {
+			Parts []struct {
+				InlineData struct {
+					Data string `json:"data"`
+				} `json:"inlineData"`
+			} `json:"parts"`
+		} `json:"contents"`
+	}
+	if err := json.Unmarshal(geminiBody, &geminiReq); err != nil {
+		t.Fatalf("gemini body: %v", err)
+	}
+	if len(geminiReq.Contents) == 0 || len(geminiReq.Contents[0].Parts) == 0 {
+		t.Fatalf("gemini parts missing: %s", geminiBody)
+	}
+	if _, decodeErr := base64.StdEncoding.DecodeString(geminiReq.Contents[0].Parts[0].InlineData.Data); decodeErr != nil {
+		t.Fatalf("gemini inlineData.data not valid base64: %v", decodeErr)
+	}
+
+	chatBody, err := relay.MaheshvaraToOpenAIChat(request)
+	if err != nil {
+		t.Fatalf("chat convert: %v", err)
+	}
+	if !strings.Contains(string(chatBody), "data:image/png;base64,"+pngPayload) {
+		t.Fatalf("openai image_url should keep the full data URL: %.120s", chatBody)
 	}
 }

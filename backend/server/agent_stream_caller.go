@@ -517,14 +517,14 @@ func (r *agentUserContentRenderer) RenderUserContent(meta agent.SessionMeta, con
 			parts = append(parts, relay.MaheshvaraContentPart{Type: relay.MaheshvaraContentText,
 				Text: fmt.Sprintf("\n===== 材料 %d：%s =====\n%s\n===== 材料 %d 结束 =====", index+1, label, text, index+1)})
 		case dataURL != "":
-			mime, base64Data, err := parseAgentDataURL(dataURL)
+			mime, payload, decoded, err := parseAgentDataURL(dataURL)
 			if err != nil {
 				return nil, fmt.Errorf("材料 %d（%s）: %v", index+1, doc.Name, err)
 			}
-			if len(base64Data) > agentDocMaxFile {
+			if len(decoded) > agentDocMaxFile {
 				return nil, fmt.Errorf("材料 %d（%s）过大（上限 %d MiB）", index+1, doc.Name, agentDocMaxFile>>20)
 			}
-			total += len(base64Data)
+			total += len(decoded)
 			if mime == "" {
 				mime = doc.Mime
 			}
@@ -533,12 +533,17 @@ func (r *agentUserContentRenderer) RenderUserContent(meta agent.SessionMeta, con
 				label = fmt.Sprintf("attachment-%d", index+1)
 			}
 			if strings.HasPrefix(mime, "image/") {
+				// ImageBase64 期望 base64 文本（各出口原样透传给上游），
+				// 不能塞解码后的二进制——Anthropic source.data / Gemini
+				// inlineData.data 会被上游按 base64 校验并 400 拒绝。
 				parts = append(parts, relay.MaheshvaraContentPart{
-					Type: relay.MaheshvaraContentImage, ImageBase64: string(base64Data),
+					Type: relay.MaheshvaraContentImage, ImageBase64: payload,
 					MediaType: mime, FileName: label,
 				})
 			} else {
-				fileData := string(base64Data)
+				// 文档：OpenAI 系（chat/responses）要求 data: URL；Claude/Gemini
+				// 要求裸 base64 文本。
+				fileData := payload
 				switch format {
 				case relay.APIFormatChatCompletions, relay.APIFormatResponses:
 					fileData = dataURL
@@ -556,23 +561,26 @@ func (r *agentUserContentRenderer) RenderUserContent(meta agent.SessionMeta, con
 	return parts, nil
 }
 
-func parseAgentDataURL(dataURL string) (mime string, data []byte, err error) {
+// parseAgentDataURL 拆解 data:URL。payload 是 base64 文本（下游字段
+// ImageBase64/FileData 期望的形态），decoded 是解码字节（仅用于大小限额），
+// 解码同时校验 payload 合法性。
+func parseAgentDataURL(dataURL string) (mime string, payload string, decoded []byte, err error) {
 	if !strings.HasPrefix(dataURL, "data:") {
-		return "", nil, fmt.Errorf("dataUrl 必须以 data: 开头")
+		return "", "", nil, fmt.Errorf("dataUrl 必须以 data: 开头")
 	}
 	comma := strings.Index(dataURL, ",")
 	if comma < 0 {
-		return "", nil, fmt.Errorf("dataUrl 缺少逗号分隔符")
+		return "", "", nil, fmt.Errorf("dataUrl 缺少逗号分隔符")
 	}
 	header := dataURL[5:comma]
-	payload := dataURL[comma+1:]
+	payload = dataURL[comma+1:]
 	if !strings.HasSuffix(header, ";base64") {
-		return "", nil, fmt.Errorf("dataUrl 仅支持 base64 编码")
+		return "", "", nil, fmt.Errorf("dataUrl 仅支持 base64 编码")
 	}
 	mime = strings.TrimSuffix(header, ";base64")
-	data, err = base64.StdEncoding.DecodeString(payload)
+	decoded, err = base64.StdEncoding.DecodeString(payload)
 	if err != nil {
-		return "", nil, fmt.Errorf("base64 解码失败: %w", err)
+		return "", "", nil, fmt.Errorf("base64 解码失败: %w", err)
 	}
-	return mime, data, nil
+	return mime, payload, decoded, nil
 }
