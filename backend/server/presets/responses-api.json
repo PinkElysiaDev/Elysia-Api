@@ -1,11 +1,12 @@
 {
   "id": "responses-api",
   "name": "Responses API（预置）",
-  "version": "1",
+  "version": "2",
   "type": "llm",
   "metadata": {
     "preset": true,
-    "description": "OpenAI Responses 线制的预置定义；类型化事件流 + 分帧工具拼装"
+    "presetVersion": 2,
+    "description": "OpenAI Responses 线制的预置定义；v2：include 联动、签名/拒答帧、参数完成帧、parallel_tool_calls"
   },
   "request": {
     "method": "POST",
@@ -47,8 +48,21 @@
         "field": "tool_choice",
         "omitIfEmpty": true
       },
+      "parallel_tool_calls": {
+        "field": "parallel_tool_calls",
+        "omitIfEmpty": true
+      },
       "reasoning": {
         "field": "reasoning",
+        "omitIfEmpty": true
+      },
+      "include": {
+        "field": "include",
+        "omitIfEmpty": true
+      },
+      "user": {
+        "field": "user",
+        "mode": "string",
         "omitIfEmpty": true
       }
     }
@@ -84,9 +98,22 @@
           }
         },
         {
+          "event": "response.refusal.delta",
+          "response": {
+            "refusalPath": "delta"
+          }
+        },
+        {
           "event": "response.reasoning_text.delta",
           "response": {
             "reasoningPath": "delta"
+          }
+        },
+        {
+          "event": "response.reasoning_signature.delta",
+          "response": {
+            "signaturePath": "delta",
+            "signatureProvider": "openai"
           }
         },
         {
@@ -107,6 +134,13 @@
           "tool": {
             "indexPath": "output_index",
             "argumentsPath": "delta"
+          }
+        },
+        {
+          "event": "response.function_call_arguments.done",
+          "toolDone": true,
+          "tool": {
+            "indexPath": "output_index"
           }
         },
         {

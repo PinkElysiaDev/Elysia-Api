@@ -1,11 +1,12 @@
 {
   "id": "chat-completions-api",
   "name": "Chat Completions API（预置）",
-  "version": "1",
+  "version": "2",
   "type": "llm",
   "metadata": {
     "preset": true,
-    "description": "OpenAI Chat Completions 线制的预置定义；复制后可定制端点/字段"
+    "presetVersion": 2,
+    "description": "OpenAI Chat Completions 线制的预置定义；复制后可定制端点/字段。v2：reasoning_effort/stop/parallel_tool_calls/user、拒答与签名帧"
   },
   "request": {
     "method": "POST",
@@ -44,6 +45,15 @@
         "field": "top_p",
         "omitIfEmpty": true
       },
+      "stop": {
+        "field": "stop",
+        "omitIfEmpty": true
+      },
+      "reasoning_effort": {
+        "field": "reasoning_effort",
+        "mode": "string",
+        "omitIfEmpty": true
+      },
       "tools": {
         "field": "tools",
         "omitIfEmpty": true
@@ -52,8 +62,17 @@
         "field": "tool_choice",
         "omitIfEmpty": true
       },
+      "parallel_tool_calls": {
+        "field": "parallel_tool_calls",
+        "omitIfEmpty": true
+      },
       "response_format": {
         "field": "response_format",
+        "omitIfEmpty": true
+      },
+      "user": {
+        "field": "user",
+        "mode": "string",
         "omitIfEmpty": true
       }
     }
@@ -61,6 +80,7 @@
   "response": {
     "textPath": "choices[0].message.content",
     "reasoningPath": "choices[0].message.reasoning_content",
+    "refusalPath": "choices[0].message.refusal",
     "toolCallsPath": "choices[0].message.tool_calls",
     "usagePath": "usage",
     "finishReasonPath": "choices[0].finish_reason",
@@ -93,6 +113,25 @@
             "reasoningPath": "choices[0].delta.reasoning_content",
             "usagePath": "usage",
             "finishReasonPath": "choices[0].finish_reason"
+          }
+        },
+        {
+          "match": {
+            "path": "choices[0].delta.reasoning_signature",
+            "op": "notNull"
+          },
+          "response": {
+            "signaturePath": "choices[0].delta.reasoning_signature",
+            "signatureProvider": "openai"
+          }
+        },
+        {
+          "match": {
+            "path": "choices[0].delta.refusal",
+            "op": "notNull"
+          },
+          "response": {
+            "refusalPath": "choices[0].delta.refusal"
           }
         },
         {

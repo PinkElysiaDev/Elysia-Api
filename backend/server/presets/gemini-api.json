@@ -1,11 +1,12 @@
 {
   "id": "gemini-api",
   "name": "Gemini API（预置）",
-  "version": "1",
+  "version": "2",
   "type": "llm",
   "metadata": {
     "preset": true,
-    "description": "Gemini 线制的预置定义；双路径按流切换、thought 谓词分流"
+    "presetVersion": 2,
+    "description": "Gemini 线制的预置定义；v2：thinkingConfig/toolConfig 整形、thoughtSignature 别名、模型发现配置"
   },
   "aliases": {
     "toolCall": {
@@ -17,6 +18,12 @@
       ],
       "arguments": [
         "functionCall.args"
+      ],
+      "signature": [
+        "thoughtSignature"
+      ],
+      "signatureProvider": [
+        "thoughtSignatureProvider"
       ]
     }
   },
@@ -56,18 +63,25 @@
           "field": "top_p",
           "omitIfEmpty": true
         },
+        "topK": {
+          "field": "top_k",
+          "omitIfEmpty": true
+        },
+        "stopSequences": {
+          "field": "stop",
+          "omitIfEmpty": true
+        },
         "thinkingConfig": {
-          "includeThoughts": {
-            "field": "thinking.enabled",
-            "when": {
-              "path": "thinking.enabled",
-              "op": "isTrue"
-            }
-          }
+          "field": "thinking_config",
+          "omitIfEmpty": true
         }
       },
       "tools": {
         "field": "tools",
+        "omitIfEmpty": true
+      },
+      "toolConfig": {
+        "field": "tool_config",
         "omitIfEmpty": true
       }
     }
@@ -186,5 +200,11 @@
       ],
       "doneValuesReplace": true
     }
+  },
+  "models": {
+    "path": "/v1beta/models",
+    "listPath": "models",
+    "idPath": "name",
+    "namePath": "displayName"
   }
 }

@@ -380,3 +380,57 @@ func TestMigratePresetProtocolRenames(t *testing.T) {
 		t.Fatalf("re-migration must be a no-op: %d -> %d", before, len(rows))
 	}
 }
+
+// 预置版本升级：未被改动的 v1 预置行自动升级到 v2（哈希匹配）；用户改过的
+// 行保持不动。
+func TestUpgradeUnmodifiedLegacyPreset(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	ctx := t.Context()
+
+	// 构造与 v1 播种形态完全一致的行：unmarshal→marshal 的规范形态。
+	v1Configs := map[string]relay.CustomProtocolConfig{}
+	_ = v1Configs
+	legacyChat := `{"id":"chat-completions-api","name":"Chat Completions API（预置）","version":"1","type":"llm","metadata":{"preset":true},"request":{"method":"POST","path":"/v1/chat/completions","shape":"openai-chat","body":{"model":{"field":"model","mode":"string"},"messages":{"field":"messages"},"stream":{"field":"stream"}}},"response":{"textPath":"choices[0].message.content"}}`
+	// 用真实 v1 规范哈希需要完整 v1 文本；此处通过哈希表反向构造不可行，
+	// 改用「直接把 legacyPresetHashes 的哈希对上」最小路径：写入哈希表登记
+	// 的 v1 内容原文（从 git 提取后内联太长）——因此本测试改为验证机制：
+	// 手工构造一行，使其 marshal 哈希 == 登记哈希。做法：取登记哈希对应的
+	// v1 内容不可得时，跳过精确匹配，改为注入：临时把登记哈希指向本行。
+	originalHash := legacyPresetHashes["chat-completions-api"]
+	t.Cleanup(func() { legacyPresetHashes["chat-completions-api"] = originalHash })
+	legacyPresetHashes["chat-completions-api"] = presetContentHash(legacyChat)
+
+	if err := s.store.UpsertCustomProtocol(ctx, storage.CustomProtocol{
+		ID: "chat-completions-api", Name: "Chat Completions API（预置）", Type: "llm", Config: legacyChat,
+	}); err != nil {
+		t.Fatalf("seed legacy: %v", err)
+	}
+
+	s.seedPresetProtocols()
+	rows, _ := s.store.ListCustomProtocols(ctx)
+	var upgraded bool
+	for _, row := range rows {
+		if row.ID == "chat-completions-api" {
+			upgraded = row.Config != legacyChat && strings.Contains(row.Config, `"presetVersion":2`)
+		}
+	}
+	if !upgraded {
+		t.Fatalf("unmodified legacy preset must upgrade to v2")
+	}
+
+	// 用户改过的行不升级：登记哈希恢复为未改动的 v1 值，改过的行哈希对不上。
+	modified := strings.Replace(legacyChat, "/v1/chat/completions", "/custom/path", 1)
+	legacyPresetHashes["chat-completions-api"] = originalHash
+	if err := s.store.UpsertCustomProtocol(ctx, storage.CustomProtocol{
+		ID: "chat-completions-api", Name: "改过的预置", Type: "llm", Config: modified,
+	}); err != nil {
+		t.Fatalf("seed modified: %v", err)
+	}
+	s.seedPresetProtocols()
+	rows, _ = s.store.ListCustomProtocols(ctx)
+	for _, row := range rows {
+		if row.ID == "chat-completions-api" && row.Config != modified {
+			t.Fatalf("user-modified preset must not be overwritten")
+		}
+	}
+}

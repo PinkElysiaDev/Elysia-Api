@@ -85,6 +85,7 @@ var customProtocolRequestFieldCatalog = []MaheshvaraFieldSpec{
 	{Name: "reasoning_effort", Label: "推理力度（chat shape 整形产出）", Shape: "string", Group: "推理"},
 	{Name: "output_config", Label: "输出配置（anthropic shape 自适应思考档位）", Shape: "native", Group: "推理"},
 	{Name: "thinking_config", Label: "思考配置（gemini shape 整形产出）", Shape: "native", Group: "推理"},
+	{Name: "tool_config", Label: "工具选择配置（gemini shape 整形产出）", Shape: "native", Group: "工具"},
 	{Name: "modalities", Label: "输出模态", Shape: "native", Group: "多模态"},
 	{Name: "audio", Label: "音频配置", Shape: "native", Group: "多模态"},
 	{Name: "safety_settings", Label: "安全设置", Shape: "native", Group: "其他"},

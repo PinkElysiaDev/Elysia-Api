@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -82,6 +84,16 @@ func customProtocolRow(config relay.CustomProtocolConfig, rawJSON string) storag
 // seedPresetProtocols 逐条补齐缺失的预置协议：预置 ID 不在库中才写入——
 // 幂等；库中优先，升级不覆盖用户对已有预置的编辑；不触碰自定义协议。
 // 老库（已有自定义协议）升级后同样能拿到缺失的默认协议。
+// legacyPresetHashes 记录各预置「上一版内容」的规范化哈希
+// （json.Marshal(config) 后 sha256）：升级判断「行未被用户改动」的依据。
+// 每次发布新预置版本时，把上一版哈希登记进此表。
+var legacyPresetHashes = map[string]string{
+	"chat-completions-api": "86f959ef404dc7a9bf543851c9e14146a1e279ef3c3b01ade375bff0598eb415",
+	"anthropic-api":        "006284c9d72573d340434ac2378ff501bd506cac01da3cfaa0a3a60594bbc7d2",
+	"gemini-api":           "832c2a3ba8f9e21c65666426849a908a2c7e0762d9267a6fa59b3928ad1d433f",
+	"responses-api":        "cdbe42c33f03c0be4d4d8d69c4d2ec40ab5071a9577ff36d3e86b5cdf20dec75",
+}
+
 func (s *Server) seedPresetProtocols() {
 	if s.store == nil {
 		return
@@ -96,13 +108,26 @@ func (s *Server) seedPresetProtocols() {
 		log.Printf("custom protocol preset seeding aborted: %v", err)
 		return
 	}
-	known := make(map[string]bool, len(existing))
+	rows := make(map[string]string, len(existing))
 	for _, row := range existing {
-		known[row.ID] = true
+		rows[row.ID] = row.Config
 	}
-	seeded := 0
+	seeded, upgraded := 0, 0
 	for _, config := range configs {
-		if known[config.ID] {
+		stored, known := rows[config.ID]
+		if known {
+			// 已存在：仅当行内容仍是旧版预置原文（未被用户改动）时自动升级；
+			// 用户改过的预置不覆盖——删除后重启即可重新获得新版。
+			if legacy := legacyPresetHashes[config.ID]; legacy != "" && presetContentHash(stored) == legacy {
+				encoded, err := json.Marshal(config)
+				if err == nil {
+					if err := s.store.UpsertCustomProtocol(context.Background(), customProtocolRow(config, string(encoded))); err == nil {
+						upgraded++
+						continue
+					}
+					log.Printf("custom protocol preset upgrade failed for %q: %v", config.ID, err)
+				}
+			}
 			continue
 		}
 		encoded, err := json.Marshal(config)
@@ -119,6 +144,16 @@ func (s *Server) seedPresetProtocols() {
 	if seeded > 0 {
 		log.Printf("seeded %d missing preset protocol(s) into the database", seeded)
 	}
+	if upgraded > 0 {
+		log.Printf("upgraded %d unmodified preset protocol(s) to the latest version", upgraded)
+	}
+}
+
+// presetContentHash 计算存储行内容的规范化哈希：存储值本就是
+// json.Marshal(config) 的产物，直接对行文本取 sha256 与登记哈希可比。
+func presetContentHash(stored string) string {
+	sum := sha256.Sum256([]byte(stored))
+	return hex.EncodeToString(sum[:])
 }
 
 // presetProtocolRenames 是预置协议去厂商化的历史 ID 迁移表；新增预置改名时
