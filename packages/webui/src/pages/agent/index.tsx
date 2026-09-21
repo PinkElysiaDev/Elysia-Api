@@ -307,7 +307,7 @@ export function AgentPage() {
 
   if (view === 'list') {
     return (
-      <div className="flex h-[max(560px,calc(100dvh-102px))] min-h-0">
+      <div className="-mb-14 flex h-[max(560px,calc(100dvh-46px))] min-h-0">
         <div key="agent-overview" className="flex min-h-0 flex-1 animate-in fade-in duration-300 flex-col">
           <div className="flex items-center gap-2 px-6 pb-1 pt-1">
             <Sparkles className="h-4 w-4 text-rose" />
@@ -329,7 +329,7 @@ export function AgentPage() {
   }
 
   return (
-    <div className="flex h-[max(560px,calc(100dvh-102px))] min-h-0">
+    <div className="-mb-14 flex h-[max(560px,calc(100dvh-46px))] min-h-0">
       <div
         key={`agent-chat-${activeId ?? 'none'}`}
         className="flex min-h-0 flex-1 animate-in fade-in slide-in-from-bottom-2 duration-300 flex-col"
