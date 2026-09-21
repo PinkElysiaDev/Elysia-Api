@@ -1,10 +1,8 @@
-import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
   AlertTriangle,
   Bot,
-  ChevronDown,
   FileText,
   Pencil,
   RefreshCw,
@@ -16,6 +14,7 @@ import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import { colorize } from '@/lib/json-highlight'
 import { ChartBlock } from './chart-block'
+import { Collapse, JsonBlock } from './ui-blocks'
 import { parseChartSpec } from '@/lib/agent/chart'
 import { toolArgsPreview } from '@/lib/agent/mask'
 import type { AgentLiveState } from '@/lib/agent/use-agent-stream'
@@ -32,52 +31,6 @@ import {
 import { cn } from '@/lib/utils'
 
 /** 折叠块（思维链 / 工具结果共用）。 */
-function Collapse({
-  title,
-  icon,
-  children,
-  tone = 'muted',
-}: {
-  title: string
-  icon?: React.ReactNode
-  children: React.ReactNode
-  tone?: 'muted' | 'amber'
-}) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div
-      className={cn(
-        'rounded-md border text-xs',
-        tone === 'amber' ? 'border-amber/30 bg-amber/5' : 'border-border bg-muted/40',
-      )}
-    >
-      <button
-        type="button"
-        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-muted-foreground hover:text-foreground"
-        onClick={(event) => {
-          event.stopPropagation()
-          setOpen((value) => !value)
-        }}
-      >
-        {icon}
-        <span className="flex-1 truncate">{title}</span>
-        <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
-      </button>
-      {open && <div className="border-t border-border/60 px-2.5 py-2">{children}</div>}
-    </div>
-  )
-}
-
-function JsonBlock({ value }: { value: unknown }) {
-  const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2) ?? ''
-  return (
-    <pre
-      className="max-h-72 overflow-auto whitespace-pre rounded-[7px] border border-border bg-code px-3 py-2.5 font-mono text-2xs leading-[1.7]"
-      dangerouslySetInnerHTML={{ __html: colorize(text) }}
-    />
-  )
-}
-
 /** Markdown 渲染（代码块复用 JSON 高亮，chart 围栏渲染为图表）。 */
 function Markdown({ text }: { text: string }) {
   return (
@@ -120,7 +73,7 @@ function Markdown({ text }: { text: string }) {
 function ReasoningBlock({ text }: { text: string }) {
   if (!text.trim()) return null
   return (
-    <Collapse title="思考过程" tone="amber" icon={<span className="text-amber">💭</span>}>
+    <Collapse stopPropagation title="思考过程" tone="amber" icon={<span className="text-amber">💭</span>}>
       <p className="whitespace-pre-wrap text-2xs leading-relaxed text-muted-foreground">{text}</p>
     </Collapse>
   )
@@ -138,7 +91,7 @@ function ToolResultCard({ content }: { content: AgentToolResultContent }) {
       </div>
       {content.summary ? <p className="text-2xs text-muted-foreground">{content.summary}</p> : null}
       {content.data != null ? (
-        <Collapse title="结果详情">
+        <Collapse stopPropagation title="结果详情">
           <JsonBlock value={content.data} />
         </Collapse>
       ) : null}

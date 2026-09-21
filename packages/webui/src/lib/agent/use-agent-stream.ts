@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { streamAgentEvents } from './sse'
-import type { AgentPendingAction, AgentStreamEvent, AgentTurnUsage } from './types'
+import { agentUsageToTurn } from './types'
+import type {AgentPendingAction, AgentStreamEvent, AgentTurnUsage } from './types'
 
 export interface AgentToolCard {
   callId: string
@@ -87,13 +88,7 @@ function reduce(state: AgentLiveState, event: AgentStreamEvent): AgentLiveState 
         text: '',
         reasoning: '',
         toolCards: [],
-        turnUsage: usage
-          ? {
-              inputTokens: usage.input_tokens ?? 0,
-              outputTokens: usage.output_tokens ?? 0,
-              totalTokens: usage.total_tokens ?? (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0),
-            }
-          : null,
+        turnUsage: usage ? agentUsageToTurn(usage) : null,
       }
     }
     case 'error':

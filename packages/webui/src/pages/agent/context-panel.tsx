@@ -1,6 +1,5 @@
 import {
   CheckCircle2,
-  ChevronDown,
   Circle,
   ExternalLink,
   FileCode2,
@@ -15,8 +14,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { colorize } from '@/lib/json-highlight'
 import { tryParseJSON } from '@/lib/utils'
+import { Collapse, JsonBlock } from './ui-blocks'
 import { toolArgsPreview } from '@/lib/agent/mask'
 import {
   agentToolLabel,
@@ -270,18 +269,18 @@ function DraftView({ session, busy, onRestore }: { session: AgentSession; busy: 
       </div>
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-1 pb-2">
         {basicEntries.length > 0 ? (
-          <SectionBlock title="基本信息" defaultOpen>
+          <Collapse title="基本信息" defaultOpen>
             <JsonBlock value={Object.fromEntries(basicEntries)} maxHeight="max-h-44" />
-          </SectionBlock>
+          </Collapse>
         ) : null}
         {sections.map((section) => (
-          <SectionBlock key={section.key} title={section.label} defaultOpen>
+          <Collapse key={section.key} title={section.label} defaultOpen>
             <JsonBlock value={(draftObject as Record<string, unknown>)[section.key]} />
-          </SectionBlock>
+          </Collapse>
         ))}
-        <SectionBlock title="完整 JSON">
+        <Collapse title="完整 JSON">
           <JsonBlock value={draftText} />
-        </SectionBlock>
+        </Collapse>
       </div>
       <div className="space-y-1.5 px-1 pt-2">
         <Button
@@ -309,41 +308,6 @@ function DraftView({ session, busy, onRestore }: { session: AgentSession; busy: 
         ) : null}
       </div>
     </div>
-  )
-}
-
-function SectionBlock({
-  title,
-  defaultOpen = false,
-  children,
-}: {
-  title: string
-  defaultOpen?: boolean
-  children: React.ReactNode
-}) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <div className="rounded-md border border-border bg-muted/40 text-xs">
-      <button
-        type="button"
-        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-muted-foreground hover:text-foreground"
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span className="flex-1 truncate">{title}</span>
-        <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
-      </button>
-      {open && <div className="border-t border-border/60 px-2.5 py-2">{children}</div>}
-    </div>
-  )
-}
-
-function JsonBlock({ value, maxHeight = 'max-h-72' }: { value: unknown; maxHeight?: string }) {
-  const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2) ?? ''
-  return (
-    <pre
-      className={cn('overflow-auto whitespace-pre rounded-[7px] border border-border bg-code px-3 py-2.5 font-mono text-2xs leading-[1.7]', maxHeight)}
-      dangerouslySetInnerHTML={{ __html: colorize(text) }}
-    />
   )
 }
 

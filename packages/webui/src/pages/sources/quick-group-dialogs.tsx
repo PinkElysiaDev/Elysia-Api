@@ -16,7 +16,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
 import { revalidate, useGroups } from '@/lib/hooks'
 import { cn } from '@/lib/utils'
-import type { Model, ModelGroup } from '@/lib/types'
+import { defaultGroup, Model, ModelGroup } from '@/lib/types'
 
 /** 从选中成员推导组能力（方向1）：任一成员支持即开启（视觉与工具同语义）。 */
 function deriveGroupCapabilities(models: Model[]): { visionCapable: boolean; toolsCapable: boolean } {
@@ -59,18 +59,9 @@ export function QuickCreateGroupDialog({
     setSaving(true)
     try {
       const payload: ModelGroup = {
-        id: '',
+        ...defaultGroup(),
         name: name.trim(),
-        enabled: true,
         models: models.map((m) => `${m.sourceId ?? ''}:${m.id}`),
-        strategy: 'round-robin',
-        maxRetries: 3,
-        retryInterval: 1000,
-        maxConcurrency: 0,
-        dailyLimitMaxRequests: 0,
-        dailyLimitMaxTokens: 0,
-        type: 'llm',
-        maxTokens: 0,
         ...derived,
       }
       await api.createGroup(payload)

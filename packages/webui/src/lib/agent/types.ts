@@ -185,3 +185,12 @@ export function formatUsage(usage: AgentUsage | undefined): string {
   const total = usage.total_tokens ?? inTok + outTok
   return `↑${inTok} ↓${outTok} · ${total} tokens`
 }
+
+/** assistant 消息携带的 usage（snake_case）→ 轮次累计口径（camelCase）。 */
+export function agentUsageToTurn(u: AgentUsage): AgentTurnUsage {
+  return {
+    inputTokens: u.input_tokens ?? 0,
+    outputTokens: u.output_tokens ?? 0,
+    totalTokens: u.total_tokens ?? (u.input_tokens ?? 0) + (u.output_tokens ?? 0),
+  }
+}

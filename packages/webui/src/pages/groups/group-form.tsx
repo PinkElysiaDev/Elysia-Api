@@ -25,25 +25,11 @@ import { CapChip } from '@/components/badges'
 import { api } from '@/lib/api'
 import { revalidate, useModels, useSources } from '@/lib/hooks'
 import { cn, matchesModelKeyword } from '@/lib/utils'
-import type { GroupStrategy, Model, ModelGroup, ModelType } from '@/lib/types'
+import { defaultGroup } from '@/lib/types'
+import type { GroupStrategy, Model, ModelGroup, ModelType  } from '@/lib/types'
 
 function emptyGroup(): ModelGroup {
-  return {
-    id: '',
-    name: '',
-    enabled: true,
-    models: [],
-    strategy: 'round-robin',
-    maxRetries: 3,
-    retryInterval: 1000,
-    maxConcurrency: 0,
-    dailyLimitMaxRequests: 0,
-    dailyLimitMaxTokens: 0,
-    type: 'llm',
-    maxTokens: 0,
-    visionCapable: false,
-    toolsCapable: false,
-  }
+  return defaultGroup()
 }
 
 function sourceIdFromKey(key: string): string {

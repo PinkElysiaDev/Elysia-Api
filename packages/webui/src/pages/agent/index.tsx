@@ -47,6 +47,8 @@ const PANEL_WIDTH_DEFAULT = 320
 export function AgentPage() {
   const { toast } = useToast()
   const { confirm, dialog: confirmDialog } = useConfirm()
+  const failToast = (prefix: string) => (error: unknown) =>
+    toast({ description: error instanceof Error ? error.message : prefix })
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [view, setView] = useState<'list' | 'chat'>('list')
@@ -194,7 +196,7 @@ export function AgentPage() {
         setMessages([])
         setView('chat')
       } catch (error) {
-        toast({ description: error instanceof Error ? error.message : '创建会话失败' })
+        failToast('创建会话失败')(error)
       }
     },
     [mutateSessions, toast],
@@ -229,7 +231,7 @@ export function AgentPage() {
         }
         await mutateSessions()
       } catch (error) {
-        toast({ description: error instanceof Error ? error.message : '删除失败' })
+        failToast('删除失败')(error)
       }
     },
     [activeId, confirm, mutateSessions, sessions, toast],
@@ -281,7 +283,7 @@ export function AgentPage() {
       setSession(updated)
       toast({ description: '已还原到上一轮修改前的配置' })
     } catch (error) {
-      toast({ description: error instanceof Error ? error.message : '还原失败' })
+      failToast('还原失败')(error)
     }
   }, [confirm, live.running, session, toast])
 
@@ -293,7 +295,7 @@ export function AgentPage() {
       await refreshSession(session.id)
       toast({ description: '已清空会话消息' })
     } catch (error) {
-      toast({ description: error instanceof Error ? error.message : '清空失败' })
+      failToast('清空失败')(error)
     }
   }, [refreshSession, session, toast])
 

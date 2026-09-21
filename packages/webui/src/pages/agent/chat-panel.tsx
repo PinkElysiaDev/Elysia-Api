@@ -6,8 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useToast } from '@/components/ui/use-toast'
 import { useModels } from '@/lib/hooks'
 import type { Model, ModelSource } from '@/lib/types'
-import type {
-  AgentContextTab,
+import { agentUsageToTurn,AgentContextTab,
   AgentDocument,
   AgentMessage,
   AgentSession,
@@ -135,9 +134,10 @@ export function ChatPanel({
     let cached = 0
     for (const message of messages) {
       if (message.role !== 'assistant' || !message.usage) continue
-      input += Number(message.usage.input_tokens ?? 0)
-      output += Number(message.usage.output_tokens ?? 0)
-      total += Number(message.usage.total_tokens ?? 0)
+      const turn = agentUsageToTurn(message.usage)
+      input += turn.inputTokens
+      output += turn.outputTokens
+      total += turn.totalTokens
       cached += Number(message.usage.cached_input_tokens ?? 0)
     }
     if (total === 0 && input === 0 && output === 0) return null

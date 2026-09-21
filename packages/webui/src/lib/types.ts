@@ -714,3 +714,24 @@ export interface CustomProtocolModelsTestResult {
   rawBody?: string
   parseError?: string
 }
+
+/** 新建模型组的默认值：建组表单与快捷建组对话框共用，防两处漂移。 */
+export function defaultGroup(): ModelGroup {
+  return {
+    id: '',
+    name: '',
+    enabled: true,
+    models: [],
+    strategy: 'round-robin',
+    maxRetries: 3,
+    retryInterval: 1000,
+    maxConcurrency: 0,
+    dailyLimitMaxRequests: 0,
+    dailyLimitMaxTokens: 0,
+    type: 'llm',
+    maxTokens: 0,
+    visionCapable: false,
+    toolsCapable: false,
+  }
+}
+
