@@ -57,7 +57,9 @@ func TestRetentionTTLDeletesOldRecordsAndAssets(t *testing.T) {
 	s, cfg := newRetentionTestServer(t)
 	now := time.Now()
 	seedUsageRecord(t, s.store, "old-a", now.Add(-72*time.Hour), 64)
-	seedUsageRecord(t, s.store, "old-b", now.Add(-48*time.Hour), 64)
+	// 距边界留 1 分钟：播种与清理同毫秒执行时 started_ms == cutoff 会被
+	// 严格 < 语义保留（Windows 时钟粒度下可复现的偶发失败）。
+	seedUsageRecord(t, s.store, "old-b", now.Add(-48*time.Hour-time.Minute), 64)
 	seedUsageRecord(t, s.store, "fresh", now.Add(-1*time.Hour), 64)
 
 	// old-a 的资产文件（扁平布局）+ 引用：TTL 清理删记录后应联动删引用与文件。
