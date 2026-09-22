@@ -64,14 +64,16 @@ func agentSystemPrompt(session *agent.Session) string {
 	b.WriteString("4. 新协议要接入调用还需要配套的模型源（platform 填 custom:<协议id>）与模型组——用能力域三的工具完成，形成完整闭环。\n\n")
 
 	b.WriteString("## 配置结构附录（协议任务时参考）\n")
-	writeProtocolReference(&b)
+	// 已有草稿时引擎每轮都会附上草稿全文，完整 few-shot 范例只在首轮注入，
+	// 避免每轮重复消耗上下文。
+	writeProtocolReference(&b, len(session.DraftConfig) == 0)
 
 	return b.String()
 }
 
 // writeProtocolReference 输出协议配置结构参考与范例（字段目录与校验/下拉
 // 同源生成）。
-func writeProtocolReference(b *strings.Builder) {
+func writeProtocolReference(b *strings.Builder, includeExample bool) {
 	b.WriteString("顶层字段：id（必填，短的小写英文标识）、name、version、type（llm 默认 / reranker / embedding 预留 / x- 前缀扩展）、request（必填）、response。\n\n")
 
 	b.WriteString("### request（网关 → 上游）\n")
@@ -114,10 +116,12 @@ func writeProtocolReference(b *strings.Builder) {
 	b.WriteString("- 键名不符合内置别名表时用 aliases 声明；数组内按类型分块提取用 textFilter/reasoningFilter。\n")
 	b.WriteString("- 需要参考成熟写法时可先 read_protocol 读取内置预置协议（chat-completions-api / responses-api / anthropic-api / gemini-api）。\n")
 
-	// few-shot：内嵌预置协议作为完整范例（与启动播种同源）。
-	if example, ok := findPresetConfig(presetProtocolAnthropicAPIID); ok {
-		if encoded, err := json.Marshal(example); err == nil {
-			b.WriteString("\n完整范例（预置协议 " + example.ID + "）：\n```json\n" + string(encoded) + "\n```\n")
+	// few-shot：内嵌预置协议作为完整范例（与启动播种同源）。有草稿后省略。
+	if includeExample {
+		if example, ok := findPresetConfig(presetProtocolAnthropicAPIID); ok {
+			if encoded, err := json.Marshal(example); err == nil {
+				b.WriteString("\n完整范例（预置协议 " + example.ID + "）：\n```json\n" + string(encoded) + "\n```\n")
+			}
 		}
 	}
 }
