@@ -27,101 +27,13 @@ func (decoder *MaheshvaraStreamDecoder) decodeGemini(raw map[string]any) ([]Mahe
 		// 搜索/据实来源标注随 candidate 到达：挂到同 chunk 首个文本事件上，
 		// 渲染层据此回写 candidate.groundingMetadata。
 		grounding := mapValue(candidate["groundingMetadata"])
-		groundingEmitted := false
 		content := mapValue(candidate["content"])
 		parts, _ := content["parts"].([]any)
-		for partIndex, partValue := range parts {
-			part := mapValue(partValue)
-			if part == nil {
-				continue
-			}
-			if signature := firstNonEmptyString(stringValue(part["thoughtSignature"]), stringValue(part["thought_signature"])); signature != "" {
-				event := decoder.baseEvent(MaheshvaraEventReasoningSignatureDelta, raw)
-				event.ChoiceIndex = choiceIndex
-				event.ContentIndex = partIndex
-				event.ReasoningSignatureDelta = signature
-				event.ReasoningSignatureProvider = MaheshvaraSignatureProviderGemini
-				events = append(events, event)
-			}
-			if text := stringValue(part["text"]); text != "" {
-				event := decoder.baseEvent(MaheshvaraEventTextDelta, raw)
-				event.ChoiceIndex = choiceIndex
-				event.ContentIndex = partIndex
-				if boolValue(part["thought"]) {
-					event.Type = MaheshvaraEventReasoningDelta
-					event.ReasoningDelta = text
-				} else {
-					event.Delta = text
-					if !groundingEmitted && grounding != nil {
-						groundingEmitted = true
-						event.Annotations = []map[string]any{{MaheshvaraAnnotationGeminiGrounding: grounding}}
-					}
-				}
-				events = append(events, event)
-			}
-			if functionCall := mapValue(part["functionCall"]); functionCall != nil {
-				// 合成 id 用解码器级单调计数器：partIndex 是 chunk 内序号（每块
-				// 从 0 重新计），跨 chunk 的两个无 id 调用会撞成 call_0_0。
-				callID := firstNonEmptyString(stringValue(functionCall["id"]), fmt.Sprintf("call_syn_%d", decoder.nextSyntheticCallID))
-				decoder.nextSyntheticCallID++
-				name := stringValue(functionCall["name"])
-				added := decoder.baseEvent(MaheshvaraEventFunctionCallAdded, raw)
-				added.ChoiceIndex = choiceIndex
-				added.ContentIndex = partIndex
-				added.ToolCallIndex = partIndex
-				added.ToolCallID = callID
-				added.ToolName = name
-				events = append(events, added)
-				arguments, err := json.Marshal(firstNonNilValue(functionCall["args"], map[string]any{}))
-				if err != nil {
-					return nil, fmt.Errorf("encode Gemini function call arguments: %w", err)
-				}
-				done := decoder.baseEvent(MaheshvaraEventFunctionCallArgumentsDone, raw)
-				done.ChoiceIndex = choiceIndex
-				done.ContentIndex = partIndex
-				done.ToolCallIndex = partIndex
-				done.ToolCallID = callID
-				done.ToolName = name
-				done.ToolArgumentsDone = string(arguments)
-				events = append(events, done)
-			}
-			if functionResponse := mapValue(part["functionResponse"]); functionResponse != nil {
-				maheshvaraPart := MaheshvaraContentPart{
-					Type:       MaheshvaraContentToolOutput,
-					ToolCallID: firstNonEmptyString(stringValue(functionResponse["id"]), stringValue(functionResponse["name"])),
-					ToolOutput: contentValueToString(functionResponse["response"]),
-					Raw:        functionResponse,
-				}
-				event := decoder.baseEvent(MaheshvaraEventContentPartAdded, raw)
-				event.ChoiceIndex = choiceIndex
-				event.ContentIndex = partIndex
-				event.ContentPart = &maheshvaraPart
-				events = append(events, event)
-			}
-			if maheshvaraPart := geminiStreamMediaPart(part); maheshvaraPart != nil {
-				event := decoder.baseEvent(MaheshvaraEventContentPartAdded, raw)
-				event.ChoiceIndex = choiceIndex
-				event.ContentIndex = partIndex
-				event.ContentPart = maheshvaraPart
-				events = append(events, event)
-			}
-			if executable := mapValue(part["executableCode"]); executable != nil {
-				maheshvaraPart := MaheshvaraContentPart{Type: "executable_code", Text: stringValue(executable["code"]), Metadata: map[string]any{"language": executable["language"]}, Raw: part}
-				event := decoder.baseEvent(MaheshvaraEventContentPartAdded, raw)
-				event.ChoiceIndex = choiceIndex
-				event.ContentIndex = partIndex
-				event.ContentPart = &maheshvaraPart
-				events = append(events, event)
-			}
-			if execution := mapValue(part["codeExecutionResult"]); execution != nil {
-				maheshvaraPart := MaheshvaraContentPart{Type: "code_execution_result", Text: stringValue(execution["output"]), Metadata: map[string]any{"outcome": execution["outcome"]}, Raw: part}
-				event := decoder.baseEvent(MaheshvaraEventContentPartAdded, raw)
-				event.ChoiceIndex = choiceIndex
-				event.ContentIndex = partIndex
-				event.ContentPart = &maheshvaraPart
-				events = append(events, event)
-			}
+		partEvents, err := decoder.decodeGeminiParts(parts, choiceIndex, raw, grounding)
+		if err != nil {
+			return nil, err
 		}
+		events = append(events, partEvents...)
 		if finishReason := stringValue(candidate["finishReason"]); finishReason != "" {
 			decoder.sawFinishReason = true
 			decoder.finishedChoices[choiceIndex] = true
@@ -139,6 +51,107 @@ func (decoder *MaheshvaraStreamDecoder) decodeGemini(raw map[string]any) ([]Mahe
 			decoder.terminal = true
 			event := decoder.baseEvent(MaheshvaraEventResponseFailed, raw)
 			event.Error = &MaheshvaraError{Message: "Gemini request blocked: " + stringValue(feedback["blockReason"]), Type: "content_filter", Class: ErrorClassInvalidRequest, Raw: feedback}
+			events = append(events, event)
+		}
+	}
+	return events, nil
+}
+
+// decodeGeminiParts 把单个 candidate 的 parts 逐个事件化：thoughtSignature、
+// 文本（thought 分流 + 搜索标注挂载）、functionCall/functionResponse、媒体与
+// 代码执行 part。
+func (decoder *MaheshvaraStreamDecoder) decodeGeminiParts(parts []any, choiceIndex int, raw, grounding map[string]any) ([]MaheshvaraStreamEvent, error) {
+	var events []MaheshvaraStreamEvent
+	groundingEmitted := false
+	for partIndex, partValue := range parts {
+		part := mapValue(partValue)
+		if part == nil {
+			continue
+		}
+		if signature := firstNonEmptyString(stringValue(part["thoughtSignature"]), stringValue(part["thought_signature"])); signature != "" {
+			event := decoder.baseEvent(MaheshvaraEventReasoningSignatureDelta, raw)
+			event.ChoiceIndex = choiceIndex
+			event.ContentIndex = partIndex
+			event.ReasoningSignatureDelta = signature
+			event.ReasoningSignatureProvider = MaheshvaraSignatureProviderGemini
+			events = append(events, event)
+		}
+		if text := stringValue(part["text"]); text != "" {
+			event := decoder.baseEvent(MaheshvaraEventTextDelta, raw)
+			event.ChoiceIndex = choiceIndex
+			event.ContentIndex = partIndex
+			if boolValue(part["thought"]) {
+				event.Type = MaheshvaraEventReasoningDelta
+				event.ReasoningDelta = text
+			} else {
+				event.Delta = text
+				if !groundingEmitted && grounding != nil {
+					groundingEmitted = true
+					event.Annotations = []map[string]any{{MaheshvaraAnnotationGeminiGrounding: grounding}}
+				}
+			}
+			events = append(events, event)
+		}
+		if functionCall := mapValue(part["functionCall"]); functionCall != nil {
+			// 合成 id 用解码器级单调计数器：partIndex 是 chunk 内序号（每块
+			// 从 0 重新计），跨 chunk 的两个无 id 调用会撞成 call_0_0。
+			callID := firstNonEmptyString(stringValue(functionCall["id"]), fmt.Sprintf("call_syn_%d", decoder.nextSyntheticCallID))
+			decoder.nextSyntheticCallID++
+			name := stringValue(functionCall["name"])
+			added := decoder.baseEvent(MaheshvaraEventFunctionCallAdded, raw)
+			added.ChoiceIndex = choiceIndex
+			added.ContentIndex = partIndex
+			added.ToolCallIndex = partIndex
+			added.ToolCallID = callID
+			added.ToolName = name
+			events = append(events, added)
+			arguments, err := json.Marshal(firstNonNilValue(functionCall["args"], map[string]any{}))
+			if err != nil {
+				return nil, fmt.Errorf("encode Gemini function call arguments: %w", err)
+			}
+			done := decoder.baseEvent(MaheshvaraEventFunctionCallArgumentsDone, raw)
+			done.ChoiceIndex = choiceIndex
+			done.ContentIndex = partIndex
+			done.ToolCallIndex = partIndex
+			done.ToolCallID = callID
+			done.ToolName = name
+			done.ToolArgumentsDone = string(arguments)
+			events = append(events, done)
+		}
+		if functionResponse := mapValue(part["functionResponse"]); functionResponse != nil {
+			maheshvaraPart := MaheshvaraContentPart{
+				Type:       MaheshvaraContentToolOutput,
+				ToolCallID: firstNonEmptyString(stringValue(functionResponse["id"]), stringValue(functionResponse["name"])),
+				ToolOutput: contentValueToString(functionResponse["response"]),
+				Raw:        functionResponse,
+			}
+			event := decoder.baseEvent(MaheshvaraEventContentPartAdded, raw)
+			event.ChoiceIndex = choiceIndex
+			event.ContentIndex = partIndex
+			event.ContentPart = &maheshvaraPart
+			events = append(events, event)
+		}
+		if maheshvaraPart := geminiStreamMediaPart(part); maheshvaraPart != nil {
+			event := decoder.baseEvent(MaheshvaraEventContentPartAdded, raw)
+			event.ChoiceIndex = choiceIndex
+			event.ContentIndex = partIndex
+			event.ContentPart = maheshvaraPart
+			events = append(events, event)
+		}
+		if executable := mapValue(part["executableCode"]); executable != nil {
+			maheshvaraPart := MaheshvaraContentPart{Type: "executable_code", Text: stringValue(executable["code"]), Metadata: map[string]any{"language": executable["language"]}, Raw: part}
+			event := decoder.baseEvent(MaheshvaraEventContentPartAdded, raw)
+			event.ChoiceIndex = choiceIndex
+			event.ContentIndex = partIndex
+			event.ContentPart = &maheshvaraPart
+			events = append(events, event)
+		}
+		if execution := mapValue(part["codeExecutionResult"]); execution != nil {
+			maheshvaraPart := MaheshvaraContentPart{Type: "code_execution_result", Text: stringValue(execution["output"]), Metadata: map[string]any{"outcome": execution["outcome"]}, Raw: part}
+			event := decoder.baseEvent(MaheshvaraEventContentPartAdded, raw)
+			event.ChoiceIndex = choiceIndex
+			event.ContentIndex = partIndex
+			event.ContentPart = &maheshvaraPart
 			events = append(events, event)
 		}
 	}

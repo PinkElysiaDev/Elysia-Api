@@ -443,40 +443,10 @@ func (renderer *MaheshvaraStreamRenderer) completeResponses() error {
 			continue
 		}
 		pending = append(pending, deferredDone{index: message.outputIndex, run: func() error {
-			if message.textStarted && !message.textDone {
-				if err := renderer.finishResponsesText(choiceIndex, ""); err != nil {
-					return err
-				}
-			}
-			if message.refusalStarted && !message.refusalDone {
-				if err := renderer.finishResponsesRefusal(choiceIndex, ""); err != nil {
-					return err
-				}
-			}
-			content := make([]any, responsesMessageContentCount(message))
-			if message.textStarted {
-				part := map[string]any{"type": "output_text", "text": message.text.String(), "annotations": []any{}}
-				content[message.textIndex] = part
-				if err := renderer.writeResponsesEvent(MaheshvaraEventContentPartDone, map[string]any{"type": MaheshvaraEventContentPartDone, "item_id": message.id, "output_index": message.outputIndex, "content_index": message.textIndex, "part": part}); err != nil {
-					return err
-				}
-			}
-			if message.refusalStarted {
-				part := map[string]any{"type": "refusal", "refusal": message.refusal.String()}
-				content[message.refusalIndex] = part
-				if err := renderer.writeResponsesEvent(MaheshvaraEventContentPartDone, map[string]any{"type": MaheshvaraEventContentPartDone, "item_id": message.id, "output_index": message.outputIndex, "content_index": message.refusalIndex, "part": part}); err != nil {
-					return err
-				}
-			}
-			for index, part := range message.extraParts {
-				content[index] = part
-			}
-			content = compactResponsesContent(content)
-			item := map[string]any{"id": message.id, "type": MaheshvaraOutputMessage, "status": "completed", "role": "assistant", "content": content}
-			if err := renderer.writeResponsesEvent(MaheshvaraEventOutputItemDone, map[string]any{"type": MaheshvaraEventOutputItemDone, "output_index": message.outputIndex, "item": item}); err != nil {
+			item, err := renderer.finalizeResponsesMessage(choiceIndex, message)
+			if err != nil {
 				return err
 			}
-			message.done = true
 			outputs = append(outputs, maheshvaraResponsesRenderedOutput{index: message.outputIndex, item: item})
 			return nil
 		}})
@@ -486,20 +456,8 @@ func (renderer *MaheshvaraStreamRenderer) completeResponses() error {
 			continue
 		}
 		pending = append(pending, deferredDone{index: reasoning.outputIndex, run: func() error {
-			// finish 是幂等的：流中已正常收尾的 reasoning 直接跳过。
-			if err := renderer.finishResponsesReasoning(choiceIndex, ""); err != nil {
-				return err
-			}
-			part := map[string]any{"type": "summary_text", "text": reasoning.text.String()}
-			if err := renderer.writeResponsesEvent("response.reasoning_summary_part.done", map[string]any{"type": "response.reasoning_summary_part.done", "item_id": reasoning.id, "output_index": reasoning.outputIndex, "summary_index": 0, "part": part}); err != nil {
-				return err
-			}
-			item := map[string]any{"id": reasoning.id, "type": MaheshvaraOutputReasoning, "status": "completed", "summary": []any{part}}
-			if reasoning.encrypted != "" {
-				// 跨协议推理闭环：把加密思考随终态 item 回写，下游续轮原样带回。
-				item["encrypted_content"] = reasoning.encrypted
-			}
-			if err := renderer.writeResponsesEvent(MaheshvaraEventOutputItemDone, map[string]any{"type": MaheshvaraEventOutputItemDone, "output_index": reasoning.outputIndex, "item": item}); err != nil {
+			item, err := renderer.finalizeResponsesReasoning(choiceIndex, reasoning)
+			if err != nil {
 				return err
 			}
 			outputs = append(outputs, maheshvaraResponsesRenderedOutput{index: reasoning.outputIndex, item: item})
@@ -512,23 +470,10 @@ func (renderer *MaheshvaraStreamRenderer) completeResponses() error {
 			continue
 		}
 		pending = append(pending, deferredDone{index: tool.outputIndex, run: func() error {
-			if !tool.added {
-				if err := renderer.writeResponsesTool(&MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallAdded, ToolCallID: tool.callID, ToolName: tool.name, ToolCallIndex: tool.outputIndex}); err != nil {
-					return err
-				}
-			}
-			arguments := tool.arguments.String()
-			if arguments == "" {
-				arguments = "{}"
-			}
-			if err := renderer.writeResponsesEvent(MaheshvaraEventFunctionCallArgumentsDone, map[string]any{"type": MaheshvaraEventFunctionCallArgumentsDone, "item_id": tool.id, "output_index": tool.outputIndex, "arguments": arguments}); err != nil {
+			item, err := renderer.finalizeResponsesTool(tool)
+			if err != nil {
 				return err
 			}
-			item := map[string]any{"id": tool.id, "type": MaheshvaraOutputFunctionCall, "status": "completed", "call_id": tool.callID, "name": tool.name, "arguments": arguments}
-			if err := renderer.writeResponsesEvent(MaheshvaraEventOutputItemDone, map[string]any{"type": MaheshvaraEventOutputItemDone, "output_index": tool.outputIndex, "item": item}); err != nil {
-				return err
-			}
-			tool.done = true
 			outputs = append(outputs, maheshvaraResponsesRenderedOutput{index: tool.outputIndex, item: item})
 			return nil
 		}})
@@ -551,6 +496,90 @@ func (renderer *MaheshvaraStreamRenderer) completeResponses() error {
 	completed := map[string]any{"id": renderer.responseID, "object": "response", "created_at": renderer.createdAt, "status": "completed", "model": renderer.model, "output": outputItems, "usage": responsesUsageFromMaheshvara(usage)}
 	state.completed = true
 	return renderer.writeResponsesEvent(MaheshvaraEventResponseCompleted, map[string]any{"type": MaheshvaraEventResponseCompleted, "response": completed})
+}
+
+// finalizeResponsesMessage 补发未收尾的文本/refusal part done 帧并发出
+// message item 的 output_item.done，返回终态 item。
+func (renderer *MaheshvaraStreamRenderer) finalizeResponsesMessage(choiceIndex int, message *maheshvaraResponsesMessageState) (map[string]any, error) {
+	if message.textStarted && !message.textDone {
+		if err := renderer.finishResponsesText(choiceIndex, ""); err != nil {
+			return nil, err
+		}
+	}
+	if message.refusalStarted && !message.refusalDone {
+		if err := renderer.finishResponsesRefusal(choiceIndex, ""); err != nil {
+			return nil, err
+		}
+	}
+	content := make([]any, responsesMessageContentCount(message))
+	if message.textStarted {
+		part := map[string]any{"type": "output_text", "text": message.text.String(), "annotations": []any{}}
+		content[message.textIndex] = part
+		if err := renderer.writeResponsesEvent(MaheshvaraEventContentPartDone, map[string]any{"type": MaheshvaraEventContentPartDone, "item_id": message.id, "output_index": message.outputIndex, "content_index": message.textIndex, "part": part}); err != nil {
+			return nil, err
+		}
+	}
+	if message.refusalStarted {
+		part := map[string]any{"type": "refusal", "refusal": message.refusal.String()}
+		content[message.refusalIndex] = part
+		if err := renderer.writeResponsesEvent(MaheshvaraEventContentPartDone, map[string]any{"type": MaheshvaraEventContentPartDone, "item_id": message.id, "output_index": message.outputIndex, "content_index": message.refusalIndex, "part": part}); err != nil {
+			return nil, err
+		}
+	}
+	for index, part := range message.extraParts {
+		content[index] = part
+	}
+	content = compactResponsesContent(content)
+	item := map[string]any{"id": message.id, "type": MaheshvaraOutputMessage, "status": "completed", "role": "assistant", "content": content}
+	if err := renderer.writeResponsesEvent(MaheshvaraEventOutputItemDone, map[string]any{"type": MaheshvaraEventOutputItemDone, "output_index": message.outputIndex, "item": item}); err != nil {
+		return nil, err
+	}
+	message.done = true
+	return item, nil
+}
+
+// finalizeResponsesReasoning 收尾 reasoning item：finish 幂等（流中已正常
+// 收尾的直接跳过）、summary part done 与 output_item.done；跨协议时把加密
+// 思考随终态 item 回写，下游续轮原样带回。
+func (renderer *MaheshvaraStreamRenderer) finalizeResponsesReasoning(choiceIndex int, reasoning *maheshvaraResponsesReasoningState) (map[string]any, error) {
+	if err := renderer.finishResponsesReasoning(choiceIndex, ""); err != nil {
+		return nil, err
+	}
+	part := map[string]any{"type": "summary_text", "text": reasoning.text.String()}
+	if err := renderer.writeResponsesEvent("response.reasoning_summary_part.done", map[string]any{"type": "response.reasoning_summary_part.done", "item_id": reasoning.id, "output_index": reasoning.outputIndex, "summary_index": 0, "part": part}); err != nil {
+		return nil, err
+	}
+	item := map[string]any{"id": reasoning.id, "type": MaheshvaraOutputReasoning, "status": "completed", "summary": []any{part}}
+	if reasoning.encrypted != "" {
+		item["encrypted_content"] = reasoning.encrypted
+	}
+	if err := renderer.writeResponsesEvent(MaheshvaraEventOutputItemDone, map[string]any{"type": MaheshvaraEventOutputItemDone, "output_index": reasoning.outputIndex, "item": item}); err != nil {
+		return nil, err
+	}
+	return item, nil
+}
+
+// finalizeResponsesTool 收尾 function_call item：未宣告的先补 added 帧，再发
+// 参数 done（空参数归一为 "{}"）与 output_item.done。
+func (renderer *MaheshvaraStreamRenderer) finalizeResponsesTool(tool *maheshvaraResponsesToolState) (map[string]any, error) {
+	if !tool.added {
+		if err := renderer.writeResponsesTool(&MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallAdded, ToolCallID: tool.callID, ToolName: tool.name, ToolCallIndex: tool.outputIndex}); err != nil {
+			return nil, err
+		}
+	}
+	arguments := tool.arguments.String()
+	if arguments == "" {
+		arguments = "{}"
+	}
+	if err := renderer.writeResponsesEvent(MaheshvaraEventFunctionCallArgumentsDone, map[string]any{"type": MaheshvaraEventFunctionCallArgumentsDone, "item_id": tool.id, "output_index": tool.outputIndex, "arguments": arguments}); err != nil {
+		return nil, err
+	}
+	item := map[string]any{"id": tool.id, "type": MaheshvaraOutputFunctionCall, "status": "completed", "call_id": tool.callID, "name": tool.name, "arguments": arguments}
+	if err := renderer.writeResponsesEvent(MaheshvaraEventOutputItemDone, map[string]any{"type": MaheshvaraEventOutputItemDone, "output_index": tool.outputIndex, "item": item}); err != nil {
+		return nil, err
+	}
+	tool.done = true
+	return item, nil
 }
 
 func responsesMessageContentCount(state *maheshvaraResponsesMessageState) int {

@@ -259,46 +259,54 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]
 			events = append(events, decoder.decodeOpenAIToolCalls(toolCalls, choiceIndex, raw, snapshot)...)
 		}
 
-		finishReason := stringValue(choice["finish_reason"])
-		if finishReason != "" {
-			decoder.sawFinishReason = true
-			// finish_reason:"error" 是终态失败，不得伪装成正常 stop（DC5b）。
-			if strings.EqualFold(finishReason, "error") {
-				decoder.finishedChoices[choiceIndex] = true
-				event := decoder.baseEvent(MaheshvaraEventResponseFailed, raw)
-				message := firstNonEmptyString(stringValue(mapValue(raw["error"])["message"]), stringValue(delta["content"]))
-				if message == "" {
-					message = "upstream reported finish_reason=error"
-				}
-				event.Error = &MaheshvaraError{Type: "upstream_stream_error", Class: ErrorClassUpstream, Message: message}
-				terminalEvents = append(terminalEvents, event)
-				continue
-			}
-			decoder.finishedChoices[choiceIndex] = true
-			for _, toolIndex := range decoder.openAIToolOrder {
-				state := decoder.openAITools[toolIndex]
-				if state.arguments.Len() == 0 {
-					continue
-				}
-				event := decoder.baseEvent(MaheshvaraEventFunctionCallArgumentsDone, raw)
-				event.ChoiceIndex = choiceIndex
-				event.ToolCallIndex = toolIndex
-				event.ToolCallID = state.id
-				event.ToolName = state.name
-				event.ToolArgumentsDone = state.arguments.String()
-				terminalEvents = append(terminalEvents, event)
-			}
-			event := decoder.baseEvent(MaheshvaraEventResponseCompleted, raw)
-			event.ChoiceIndex = choiceIndex
-			event.FinishReason = finishReason
-			event.CreatedAt = createdAt
-			terminalEvents = append(terminalEvents, event)
-		}
+		terminalEvents = append(terminalEvents, decoder.decodeOpenAIChatFinish(choice, delta, choiceIndex, raw, createdAt)...)
 	}
 	if len(decoder.seenChoices) > 0 && allMaheshvaraChoicesFinished(decoder.seenChoices, decoder.finishedChoices) {
 		decoder.terminal = true
 	}
 	return append(events, terminalEvents...), nil
+}
+
+// decodeOpenAIChatFinish 处理单个 choice 的 finish_reason：终态失败
+// （finish_reason=error）或工具参数补发收尾 + ResponseCompleted。返回的事件
+// 由调用方延迟到全部 choice 处理完后再发出。
+func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChatFinish(choice, delta map[string]any, choiceIndex int, raw map[string]any, createdAt int64) []MaheshvaraStreamEvent {
+	finishReason := stringValue(choice["finish_reason"])
+	if finishReason == "" {
+		return nil
+	}
+	decoder.sawFinishReason = true
+	var events []MaheshvaraStreamEvent
+	// finish_reason:"error" 是终态失败，不得伪装成正常 stop（DC5b）。
+	if strings.EqualFold(finishReason, "error") {
+		decoder.finishedChoices[choiceIndex] = true
+		event := decoder.baseEvent(MaheshvaraEventResponseFailed, raw)
+		message := firstNonEmptyString(stringValue(mapValue(raw["error"])["message"]), stringValue(delta["content"]))
+		if message == "" {
+			message = "upstream reported finish_reason=error"
+		}
+		event.Error = &MaheshvaraError{Type: "upstream_stream_error", Class: ErrorClassUpstream, Message: message}
+		return append(events, event)
+	}
+	decoder.finishedChoices[choiceIndex] = true
+	for _, toolIndex := range decoder.openAIToolOrder {
+		state := decoder.openAITools[toolIndex]
+		if state.arguments.Len() == 0 {
+			continue
+		}
+		event := decoder.baseEvent(MaheshvaraEventFunctionCallArgumentsDone, raw)
+		event.ChoiceIndex = choiceIndex
+		event.ToolCallIndex = toolIndex
+		event.ToolCallID = state.id
+		event.ToolName = state.name
+		event.ToolArgumentsDone = state.arguments.String()
+		events = append(events, event)
+	}
+	event := decoder.baseEvent(MaheshvaraEventResponseCompleted, raw)
+	event.ChoiceIndex = choiceIndex
+	event.FinishReason = finishReason
+	event.CreatedAt = createdAt
+	return append(events, event)
 }
 
 func (decoder *MaheshvaraStreamDecoder) decodeOpenAIToolCalls(toolCalls []any, choiceIndex int, raw map[string]any, snapshot bool) []MaheshvaraStreamEvent {
