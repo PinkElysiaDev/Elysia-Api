@@ -10,9 +10,9 @@ import (
 )
 
 // prepareContext 在每次模型调用前估算水位。超过微压缩线时把较早的工具结果
-// 换成占位符（只改本次发送副本，库里原文不动）；超过摘要线且历史够长时，
-// 调模型把最早若干轮收成一条摘要消息并落库。
-func (e *Engine) prepareContext(ctx context.Context, sessionID string, session *Session, conversation []relay.MaheshvaraMessage, events chan Event) []relay.MaheshvaraMessage {
+// 换成占位符（只改本次发送副本，库里原文不动）。摘要压缩不在轮内做——
+// 见 maybeSummarize。
+func (e *Engine) prepareContext(conversation []relay.MaheshvaraMessage, events chan Event) []relay.MaheshvaraMessage {
 	window := e.opts.ContextWindowTokens
 	before := estimateTokens(conversation)
 	e.emitContext(events, before, window)
@@ -23,35 +23,61 @@ func (e *Engine) prepareContext(ctx context.Context, sessionID string, session *
 	compacted, cleared := microCompact(conversation)
 	if cleared > 0 {
 		emitEvent(events, Event{Type: EventContextCompacted, Compaction: &Compaction{Kind: "micro", Summarized: cleared, Kept: len(compacted) - cleared, BeforeTokens: before}})
-		conversation = compacted
-		before = estimateTokens(conversation)
+		return compacted
 	}
+	return conversation
+}
+
+// maybeSummarize 在轮次开始时（对话刚从库里加载、消息 seq 仍与元素一一对
+// 应时）决定是否做摘要压缩。摘要只覆盖切点之前的历史，boundary 记被摘要
+// 前缀最后一条消息的真实 seq——下一轮回放按它丢弃已摘要原文、保留其余。
+func (e *Engine) maybeSummarize(ctx context.Context, sessionID string, session *Session, conversation []relay.MaheshvaraMessage, seqs []int, events chan Event) []relay.MaheshvaraMessage {
+	window := e.opts.ContextWindowTokens
+	before := estimateTokens(conversation)
 	// 摘要有额外模型调用成本，短对话即使比例高也不值得。8k token 是下限。
 	if float64(before) < summaryCompactRatio*float64(window) || before < 8_000 || len(conversation) < 8 {
 		return conversation
 	}
-	summary, kept, summarized, err := e.summarizeHead(ctx, session, conversation)
+	cut := summaryCut(conversation)
+	if cut < 0 {
+		return conversation
+	}
+	summary, err := e.summarizeHead(ctx, session, conversation[:cut])
 	if err != nil || summary == "" {
 		return conversation
 	}
-	messages, err := e.store.ListMessages(ctx, sessionID)
-	if err != nil {
-		return conversation
-	}
-	boundary := 0
-	if len(messages) > 0 {
-		boundary = messages[len(messages)-1].Seq
-	}
-	if _, err := e.store.AppendMessage(ctx, sessionID, RoleSystem, SystemContent{Kind: "summary", Text: summary, BoundarySeq: boundary}, "", nil); err != nil {
+	if _, err := e.store.AppendMessage(ctx, sessionID, RoleSystem, SystemContent{Kind: "summary", Text: summary, BoundarySeq: seqs[cut-1]}, "", nil); err != nil {
 		return conversation
 	}
 	head := relay.MaheshvaraMessage{Role: "user", Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentText, Text: "以下是此前对话的摘要，请据此继续：\n" + summary}}}
-	next := append([]relay.MaheshvaraMessage{head}, kept...)
+	next := append([]relay.MaheshvaraMessage{head}, conversation[cut:]...)
 	emitEvent(events, Event{Type: EventContextCompacted, Compaction: &Compaction{
-		Kind: "summary", Summarized: summarized, Kept: len(kept), BeforeTokens: before, AfterTokens: estimateTokens(next),
+		Kind: "summary", Summarized: cut, Kept: len(conversation) - cut, BeforeTokens: before, AfterTokens: estimateTokens(next),
 	}})
 	e.emitContext(events, estimateTokens(next), window)
 	return next
+}
+
+// summaryCut 找摘要切点：从中点向前回退到最近的 user 消息边界。保留段以
+// user 开头才能保证 assistant 的 tool_calls 与其 tool 结果整批留在一起——
+// 从批中间切开会产生孤儿 tool 结果，下一次模型调用直接被上游 400。
+// 扇入区间 [2, len-4]：至少摘要 2 条、保留 4 条；找不到边界返回 -1（本轮
+// 放弃摘要，微压缩照常兜底）。
+func summaryCut(conversation []relay.MaheshvaraMessage) int {
+	maxCut := len(conversation) - 4
+	if maxCut < 2 {
+		return -1
+	}
+	center := len(conversation) / 2
+	if center > maxCut {
+		center = maxCut
+	}
+	for index := center; index >= 2; index-- {
+		if conversation[index].Role == "user" {
+			return index
+		}
+	}
+	return -1
 }
 
 func (e *Engine) emitContext(events chan Event, tokens, window int) {
@@ -95,14 +121,14 @@ func microCompact(conversation []relay.MaheshvaraMessage) ([]relay.MaheshvaraMes
 	return out, cleared
 }
 
-// summarizeHead 把最早一半对话交给模型摘要，保留后半。失败由调用方降级。
-func (e *Engine) summarizeHead(ctx context.Context, session *Session, conversation []relay.MaheshvaraMessage) (string, []relay.MaheshvaraMessage, int, error) {
-	cut := len(conversation) / 2
-	if cut < 2 {
-		return "", conversation, 0, nil
+// summarizeHead 把给定前缀交给模型生成结构化摘要（失败重试，最终由调用方
+// 降级放弃）。
+func (e *Engine) summarizeHead(ctx context.Context, session *Session, head []relay.MaheshvaraMessage) (string, error) {
+	if len(head) == 0 {
+		return "", fmt.Errorf("empty head")
 	}
 	var b strings.Builder
-	for _, message := range conversation[:cut] {
+	for _, message := range head {
 		b.WriteString(message.Role)
 		b.WriteString(": ")
 		b.WriteString(messageText(message))
@@ -118,14 +144,14 @@ func (e *Engine) summarizeHead(ctx context.Context, session *Session, conversati
 	for attempt := 0; attempt <= compactionRetries; attempt++ {
 		result, err := e.caller.Call(ctx, req, StreamCallbacks{})
 		if err == nil && result != nil && strings.TrimSpace(result.Text) != "" {
-			return strings.TrimSpace(result.Text), conversation[cut:], cut, nil
+			return strings.TrimSpace(result.Text), nil
 		}
 		last = err
 	}
 	if last == nil {
 		last = fmt.Errorf("empty summary")
 	}
-	return "", nil, 0, last
+	return "", last
 }
 
 func messageText(message relay.MaheshvaraMessage) string {

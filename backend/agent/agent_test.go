@@ -1188,3 +1188,157 @@ func TestMaskedPendingAction_PreservesKindQuestionPlan(t *testing.T) {
 		t.Fatalf("question lost: %+v", maskedQ)
 	}
 }
+
+// ---- 上下文摘要压缩（d134314 回归） ----
+
+func TestSummaryCut_LandsOnUserBoundary(t *testing.T) {
+	roles := func(values ...string) []relay.MaheshvaraMessage {
+		messages := make([]relay.MaheshvaraMessage, 0, len(values))
+		for _, value := range values {
+			messages = append(messages, relay.MaheshvaraMessage{Role: value})
+		}
+		return messages
+	}
+	if cut := summaryCut(roles("user", "assistant", "tool", "assistant", "user", "assistant", "tool", "assistant", "user")); cut != 4 {
+		t.Fatalf("cut = %d, want 4 (the user message at the midpoint)", cut)
+	}
+	// 中点附近没有 user 边界：放弃而不是切在批中间。
+	if cut := summaryCut(roles("user", "assistant", "tool", "assistant", "tool", "assistant", "user", "assistant", "user")); cut != -1 {
+		t.Fatalf("cut = %d, want -1 (no user boundary before midpoint)", cut)
+	}
+	if cut := summaryCut(roles("user", "assistant", "user")); cut != -1 {
+		t.Fatalf("short conversation must refuse: %d", cut)
+	}
+}
+
+// 轮首摘要：切点落在 user 边界、boundary 记被摘要前缀的真实 seq；下一轮
+// loadConversation 回放「摘要 + 保留半段原文」，被摘要内容不再出现。
+func TestTurnStartSummary_RecordsBoundaryAndReplaysKeptHalf(t *testing.T) {
+	ctx := context.Background()
+	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1"}})
+	bigData := json.RawMessage(`{"data":"` + strings.Repeat("x", 15_000) + `"}`)
+	mustAppend := func(role string, content any) int {
+		seq, err := store.AppendMessage(ctx, "s1", role, content, "", nil)
+		if err != nil {
+			t.Fatalf("append %s: %v", role, err)
+		}
+		return seq
+	}
+	seqFirst := mustAppend(RoleUser, UserContent{Text: "marker-first 第一轮问题"})
+	mustAppend(RoleAssistant, AssistantContent{ToolCalls: []relay.MaheshvaraToolCall{toolCall("c1", "lookup", `{}`)}})
+	mustAppend(RoleToolResult, ToolResultInfo{CallID: "c1", Name: "lookup", OK: true, Data: bigData})
+	seqMid := mustAppend(RoleAssistant, AssistantContent{Text: "第一轮结论"})
+	mustAppend(RoleUser, UserContent{Text: "marker-second 第二轮问题"})
+	mustAppend(RoleAssistant, AssistantContent{ToolCalls: []relay.MaheshvaraToolCall{toolCall("c2", "lookup", `{}`)}})
+	mustAppend(RoleToolResult, ToolResultInfo{CallID: "c2", Name: "lookup", OK: true, Data: bigData})
+	mustAppend(RoleAssistant, AssistantContent{Text: "第二轮结论"})
+	if seqFirst == 0 || seqMid == 0 {
+		t.Fatalf("seqs not assigned")
+	}
+
+	caller := &fakeCaller{responses: []scriptedResponse{
+		{result: &CallResult{Text: "摘要：目标是接入协议 marker-summary"}},
+		{result: &CallResult{Text: "继续完成"}},
+	}}
+	engine := newTestEngineWithOptions(caller, store, Options{ContextWindowTokens: 11_000, TurnTimeout: 5 * time.Second})
+
+	events, _ := engine.RunTurn(ctx, "s1", &UserContent{Text: "继续"})
+	collected := collectEvents(t, events)
+	if !hasEvent(collected, EventTurnDone) {
+		t.Fatalf("turn must complete: %+v", collected)
+	}
+
+	// 摘要消息已落库，boundary 是被摘要前缀（m1..m4）的最后一条 seq，
+	// 而不是压缩时刻的最新 seq——否则保留半段下一轮会被静默丢掉。
+	messages, _ := store.ListMessages(ctx, "s1")
+	var summary *Message
+	for index := range messages {
+		if messages[index].Role != RoleSystem {
+			continue
+		}
+		var content SystemContent
+		if json.Unmarshal(messages[index].Content, &content) == nil && content.Kind == "summary" {
+			summary = &messages[index]
+		}
+	}
+	if summary == nil {
+		t.Fatalf("summary message not persisted: %+v", messages)
+	}
+	var content SystemContent
+	if err := json.Unmarshal(summary.Content, &content); err != nil {
+		t.Fatalf("summary content: %v", err)
+	}
+	if content.BoundarySeq != seqMid {
+		t.Fatalf("boundary = %d, want seq of last summarized message = %d", content.BoundarySeq, seqMid)
+	}
+
+	// 本轮发给模型的对话：保留半段原文在、被摘要前缀不在、摘要在。
+	last := caller.lastRequest()
+	var sawKept, sawSummary, sawDropped bool
+	for _, message := range last.Messages {
+		for _, part := range message.Content {
+			if strings.Contains(part.Text, "marker-second") || strings.Contains(part.ToolOutput, "marker-second") {
+				sawKept = true
+			}
+			if strings.Contains(part.Text, "marker-summary") {
+				sawSummary = true
+			}
+			if strings.Contains(part.Text, "marker-first") {
+				sawDropped = true
+			}
+		}
+	}
+	if !sawKept || !sawSummary || sawDropped {
+		t.Fatalf("kept=%v summary=%v dropped=%v", sawKept, sawSummary, sawDropped)
+	}
+
+	// 下一轮回放：摘要替代前缀，保留半段仍在。
+	session, _ := store.GetSession(ctx, "s1")
+	replayed, _, err := engine.loadConversation(ctx, session)
+	if err != nil {
+		t.Fatalf("replay: %v", err)
+	}
+	var replayKept, replayDropped, replaySummary bool
+	for _, message := range replayed {
+		for _, part := range message.Content {
+			text := part.Text + part.ToolOutput
+			if strings.Contains(text, "marker-second") {
+				replayKept = true
+			}
+			if strings.Contains(text, "marker-first") {
+				replayDropped = true
+			}
+			if strings.Contains(text, "以下是此前对话的摘要") {
+				replaySummary = true
+			}
+		}
+	}
+	if !replayKept || replayDropped || !replaySummary {
+		t.Fatalf("replay kept=%v dropped=%v summary=%v", replayKept, replayDropped, replaySummary)
+	}
+	// 保留段的 tool 结果必须跟在自己的 assistant tool_calls 之后（无孤儿）。
+	firstTool := -1
+	firstAssistantWithCalls := -1
+	for index, message := range replayed {
+		if message.Role == "tool" && firstTool < 0 {
+			firstTool = index
+		}
+		if message.Role == "assistant" && len(message.ToolCalls) > 0 && firstAssistantWithCalls < 0 {
+			firstAssistantWithCalls = index
+		}
+	}
+	if firstTool >= 0 && firstAssistantWithCalls < 0 {
+		t.Fatalf("orphan tool message at %d without preceding tool_calls", firstTool)
+	}
+	if firstTool >= 0 && firstAssistantWithCalls >= firstTool {
+		t.Fatalf("tool message at %d precedes its tool_calls at %d", firstTool, firstAssistantWithCalls)
+	}
+}
+
+func newTestEngineWithOptions(caller StreamCaller, store Store, opts Options, tools ...Tool) *Engine {
+	registry, err := NewRegistry(tools...)
+	if err != nil {
+		panic(err)
+	}
+	return NewEngine(caller, store, registry, nil, func(*Session) string { return "test prompt" }, opts)
+}

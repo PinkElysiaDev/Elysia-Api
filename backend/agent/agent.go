@@ -285,11 +285,14 @@ func (e *Engine) startTurn(ctx context.Context, sessionID string, handle *turnHa
 		return
 	}
 
-	conversation, err := e.loadConversation(ctx, session)
+	conversation, seqs, err := e.loadConversation(ctx, session)
 	if err != nil {
 		e.failTurn(ctx, sessionID, events, err.Error())
 		return
 	}
+	// 摘要压缩只在轮首做：此刻消息 seq 与对话元素仍一一对应，切点边界可以
+	// 精确落库；轮内涨破水位由 prepareContext 的微压缩兜底。
+	conversation = e.maybeSummarize(ctx, sessionID, session, conversation, seqs, events)
 
 	// 审批恢复：记录裁决、（可选）补充测试凭证、执行或拒绝待定动作。
 	if resume != nil {
@@ -512,7 +515,7 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 		}
 		rounds = round + 1
 		emitEvent(events, Event{Type: EventStatus, Text: "正在调用模型…"})
-		conversation = e.prepareContext(ctx, sessionID, session, conversation, events)
+		conversation = e.prepareContext(conversation, events)
 
 		req := CallRequest{
 			Model:           session.Settings.ModelName,
@@ -1125,43 +1128,51 @@ func planStepsEqual(a, b []PlanStep) bool {
 
 // ---- 会话历史 → Maheshvara 对话 ----
 
-func (e *Engine) loadConversation(ctx context.Context, session *Session) ([]relay.MaheshvaraMessage, error) {
+// loadConversation 把持久化消息重建为发送对话。seqs 与 conversation 元素
+// 一一对应（来源消息的 seq；摘要边界产生的合成首条为 0），供摘要压缩记录
+// 覆盖边界。
+func (e *Engine) loadConversation(ctx context.Context, session *Session) ([]relay.MaheshvaraMessage, []int, error) {
 	messages, err := e.store.ListMessages(ctx, session.ID)
 	if err != nil {
-		return nil, fmt.Errorf("读取会话消息失败: %w", err)
+		return nil, nil, fmt.Errorf("读取会话消息失败: %w", err)
 	}
 	messages = applySummaryBoundary(messages)
 	conversation := make([]relay.MaheshvaraMessage, 0, len(messages))
+	seqs := make([]int, 0, len(messages))
+	add := func(seq int, message relay.MaheshvaraMessage) {
+		conversation = append(conversation, message)
+		seqs = append(seqs, seq)
+	}
 	for _, message := range messages {
 		switch message.Role {
 		case RoleUser:
 			var content UserContent
 			if err := json.Unmarshal(message.Content, &content); err != nil {
-				return nil, fmt.Errorf("用户消息 #%d 解析失败: %w", message.Seq, err)
+				return nil, nil, fmt.Errorf("用户消息 #%d 解析失败: %w", message.Seq, err)
 			}
 			meta := metaFromSession(session)
 			parts, err := e.render.RenderUserContent(meta, &content)
 			if err != nil {
-				return nil, fmt.Errorf("用户消息 #%d 渲染失败: %w", message.Seq, err)
+				return nil, nil, fmt.Errorf("用户消息 #%d 渲染失败: %w", message.Seq, err)
 			}
 			if len(parts) > 0 {
-				conversation = append(conversation, relay.MaheshvaraMessage{Role: "user", Content: parts})
+				add(message.Seq, relay.MaheshvaraMessage{Role: "user", Content: parts})
 			}
 		case RoleAssistant:
 			var content AssistantContent
 			if err := json.Unmarshal(message.Content, &content); err != nil {
-				return nil, fmt.Errorf("助手消息 #%d 解析失败: %w", message.Seq, err)
+				return nil, nil, fmt.Errorf("助手消息 #%d 解析失败: %w", message.Seq, err)
 			}
-			conversation = append(conversation, assistantToMaheshvara(content))
+			add(message.Seq, assistantToMaheshvara(content))
 		case RoleToolResult:
 			var info ToolResultInfo
 			if err := json.Unmarshal(message.Content, &info); err != nil {
-				return nil, fmt.Errorf("工具结果 #%d 解析失败: %w", message.Seq, err)
+				return nil, nil, fmt.Errorf("工具结果 #%d 解析失败: %w", message.Seq, err)
 			}
-			conversation = append(conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
+			add(message.Seq, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
 		}
 	}
-	return conversation, nil
+	return conversation, seqs, nil
 }
 
 func assistantToMaheshvara(content AssistantContent) relay.MaheshvaraMessage {
