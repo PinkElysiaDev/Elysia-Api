@@ -64,7 +64,7 @@ func (s *Store) CreateAgentSession(ctx context.Context, input AgentSessionUpsert
 // ListAgentSessions 按更新时间倒序返回会话摘要（不含消息、不含凭证）。
 func (s *Store) ListAgentSessions(ctx context.Context) ([]agent.Session, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, title, mode, protocol_id, seed_config, draft_config, draft_restore, plan_json,
-		test_base_url, model_source_id, model_name, thinking_enabled, thinking_effort, plan_mode, allow_live_test, allow_save,
+		test_base_url, test_api_key, model_source_id, model_name, thinking_enabled, thinking_effort, plan_mode, allow_live_test, allow_save,
 		status, pending_action, created_at, updated_at
 		FROM agent_sessions ORDER BY updated_at DESC, id`)
 	if err != nil {
@@ -73,18 +73,7 @@ func (s *Store) ListAgentSessions(ctx context.Context) ([]agent.Session, error) 
 	defer rows.Close()
 	items := []agent.Session{}
 	for rows.Next() {
-		var session agent.Session
-		var mode, createdAt, updatedAt string
-		var seed, draft, restore, plan, testBaseURL string
-		var pending sql.NullString
-		var thinkingEnabled, planMode int
-		if err := rows.Scan(&session.ID, &session.Title, &mode, &session.ProtocolID, &seed, &draft, &restore, &plan,
-			&testBaseURL, &session.Settings.ModelSourceID, &session.Settings.ModelName,
-			&thinkingEnabled, &session.Settings.ThinkingEffort, &planMode, &session.Settings.AllowLiveTest, &session.Settings.AllowSave,
-			&session.Status, &pending, &createdAt, &updatedAt); err != nil {
-			return nil, err
-		}
-		item, err := s.assembleAgentSession(session, mode, seed, draft, restore, plan, testBaseURL, "", pending.String, thinkingEnabled != 0, planMode != 0, createdAt, updatedAt, false)
+		item, err := s.scanAgentSessionRow(rows, false)
 		if err != nil {
 			return nil, err
 		}
@@ -235,7 +224,7 @@ func (s *Store) UpdateAgentSessionSettings(ctx context.Context, id string, title
 	if clearAPIKey {
 		sets = append(sets, "test_api_key = ''")
 	} else if apiKey != nil && strings.TrimSpace(*apiKey) != "" {
-		encrypted, err := s.codec.encrypt(strings.TrimSpace(*apiKey))
+		encrypted, err := s.encryptTestKey(*apiKey)
 		if err != nil {
 			return nil, err
 		}
@@ -293,7 +282,7 @@ func (s *Store) UpdateSessionState(ctx context.Context, id string, update agent.
 		args = append(args, strings.TrimSpace(update.TestBaseURL))
 	}
 	if strings.TrimSpace(update.TestAPIKey) != "" {
-		encrypted, err := s.codec.encrypt(strings.TrimSpace(update.TestAPIKey))
+		encrypted, err := s.encryptTestKey(update.TestAPIKey)
 		if err != nil {
 			return err
 		}
@@ -427,6 +416,11 @@ var _ agent.Store = (*Store)(nil)
 
 // ResetRunningSessions 把崩溃遗留的 running 会话复位为 idle（agent.Store
 // 对账路径；waiting_approval 不动——待批动作仍可经审批恢复）。
+// encryptTestKey 加密测试凭证；两个 UPDATE 构建器共用。
+func (s *Store) encryptTestKey(plain string) (string, error) {
+	return s.codec.encrypt(strings.TrimSpace(plain))
+}
+
 func (s *Store) ResetRunningSessions(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE agent_sessions SET status = ? WHERE status = ?`, agent.StatusIdle, agent.StatusRunning)
 	return err

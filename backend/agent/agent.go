@@ -169,10 +169,7 @@ func (e *Engine) Stop(sessionID string) bool {
 // RunTurn 开始一个新轮次。input 非 nil 时先追加用户消息；input 为 nil 表示
 // 从既有历史继续（重新生成）。返回的事件 channel 在轮次结束后关闭。
 func (e *Engine) RunTurn(ctx context.Context, sessionID string, input *UserContent) (<-chan Event, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	// 轮次脱离调用方 ctx 运行：SSE 断开不终止轮次，结果照常落库。
+	_ = ctx // 参数为 API 对称保留；轮次脱离调用方 ctx 运行（SSE 断开不终止，结果照常落库）
 	turnCtx, handle, cancel, err := e.begin(sessionID, e.opts.TurnTimeout)
 	if err != nil {
 		return nil, err
@@ -191,7 +188,7 @@ func (e *Engine) RunTurn(ctx context.Context, sessionID string, input *UserConte
 // 模型循环。
 func (e *Engine) ResumeApproval(ctx context.Context, sessionID string, decision ApprovalDecision) (<-chan Event, error) {
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = context.Background() // 仅测试直传 nil 时触发；HTTP 路径恒非 nil
 	}
 	session, err := e.store.GetSession(ctx, sessionID)
 	if err != nil {
@@ -669,11 +666,12 @@ func reasoningFromSettings(s Settings) *relay.MaheshvaraReasoning {
 
 // PermissionFor 取权限键的策略（未知键视为 ask）。
 func PermissionFor(s Settings, key string) string {
+	// 权限值在存储写入与读取（遗留行兼容）时已归一化，此处直接消费。
 	switch key {
 	case "live_test":
-		return NormalizedPermission(s.AllowLiveTest)
+		return s.AllowLiveTest
 	case "save":
-		return NormalizedPermission(s.AllowSave)
+		return s.AllowSave
 	default:
 		return PermissionAsk
 	}

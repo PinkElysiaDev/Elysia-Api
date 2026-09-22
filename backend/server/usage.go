@@ -350,7 +350,7 @@ func extractProviderUsageFromPayload(platform relay.Platform, format relay.Forma
 }
 
 func applyProviderUsageToRecord(record *usageRecord, result providerUsageResult) {
-	if record == nil || !result.HasUsage {
+	if !result.HasUsage {
 		return
 	}
 	record.Usage = mergeUsage(record.Usage, result.Usage)
@@ -738,7 +738,7 @@ func (s *Server) resetUsage(c *gin.Context) {
 				"rollup backfill is running; retry after it completes")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondFail(c, http.StatusInternalServerError, "clear_usage_failed", err.Error())
 		return
 	}
 	// 清库成功后，在 enqueue 仍被挡住时排空旧队列并递增 generation，
@@ -948,19 +948,18 @@ func detailFromTokenUsage(usage usageTokenUsage) usageDetail {
 
 func usageFromOpenAIUsage(raw map[string]interface{}) usageTokenUsage {
 	usage := usageTokenUsage{}
-	if rawValue, ok := raw["prompt_tokens"]; ok && rawValue != nil {
-		usage.InputTokens = intPtr(int(numberFromUsageMap(raw, "prompt_tokens")))
-	} else if rawValue, ok := raw["input_tokens"]; ok && rawValue != nil {
-		usage.InputTokens = intPtr(int(numberFromUsageMap(raw, "input_tokens")))
+	// 键别名序列依次取第一个出现的数值字段。
+	usageInt := func(target **int, keys ...string) {
+		for _, key := range keys {
+			if raw[key] != nil {
+				*target = intPtr(int(numberFromUsageMap(raw, key)))
+				return
+			}
+		}
 	}
-	if rawValue, ok := raw["completion_tokens"]; ok && rawValue != nil {
-		usage.OutputTokens = intPtr(int(numberFromUsageMap(raw, "completion_tokens")))
-	} else if rawValue, ok := raw["output_tokens"]; ok && rawValue != nil {
-		usage.OutputTokens = intPtr(int(numberFromUsageMap(raw, "output_tokens")))
-	}
-	if rawValue, ok := raw["total_tokens"]; ok && rawValue != nil {
-		usage.TotalTokens = intPtr(int(numberFromUsageMap(raw, "total_tokens")))
-	}
+	usageInt(&usage.InputTokens, "prompt_tokens", "input_tokens")
+	usageInt(&usage.OutputTokens, "completion_tokens", "output_tokens")
+	usageInt(&usage.TotalTokens, "total_tokens")
 	cacheHitTokens := maxInt(int(numberFromUsageMap(raw, "cached_tokens")), int(numberFromUsageMap(raw, "prompt_cache_hit_tokens")))
 	cacheFieldSeen := false
 	if rawValue, ok := raw["cached_tokens"]; ok && rawValue != nil {
@@ -1263,18 +1262,12 @@ func numberFromUsageMap(raw map[string]interface{}, key string) float64 {
 }
 
 func setRecordGroup(record *usageRecord, group *config.ModelGroupConfig) {
-	if record == nil || group == nil {
-		return
-	}
 	record.GroupID = group.ID
 	record.GroupName = group.Name
 	record.RequestedModelGroup = group.Name
 }
 
 func setRecordModel(record *usageRecord, model config.ModelRef, platform relay.Platform) {
-	if record == nil {
-		return
-	}
 	record.ModelID = model.ID
 	record.ModelName = model.Name
 	record.SourceID = model.SourceID

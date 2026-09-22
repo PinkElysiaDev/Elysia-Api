@@ -2552,31 +2552,16 @@ func boolValue(v any) bool {
 	return false
 }
 
+// numberValue 只覆盖解码产物实际会出现的类型：json.Unmarshal 的 float64、
+// decodeJSONUseNumber 的 json.Number，以及历史路径遗留的 string 数值。
+// 窄整型分支（int8/uint16 等）从未出现过，已删除。
 func numberValue(v any) (float64, bool) {
 	switch n := v.(type) {
 	case float64:
 		return n, true
-	case float32:
-		return float64(n), true
 	case int:
 		return float64(n), true
-	case int8:
-		return float64(n), true
-	case int16:
-		return float64(n), true
-	case int32:
-		return float64(n), true
 	case int64:
-		return float64(n), true
-	case uint:
-		return float64(n), true
-	case uint8:
-		return float64(n), true
-	case uint16:
-		return float64(n), true
-	case uint32:
-		return float64(n), true
-	case uint64:
 		return float64(n), true
 	case json.Number:
 		f, err := n.Float64()

@@ -561,9 +561,8 @@ func catalogTypeToStorageType(catalogType string) string {
 		return "embedding"
 	case "rerank", "reranker":
 		return "reranker"
-	case "", "chat", "llm":
-		return "llm"
 	default:
+		// 空串/chat/llm 与未知类型都归 LLM（历史行为）。
 		return "llm"
 	}
 }

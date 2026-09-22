@@ -950,30 +950,27 @@ func (t *updateGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 		}
 	}
 	fieldsChanged := false
-	if params.Enabled != nil {
-		group.Enabled = *params.Enabled
+	applyBool := func(patch *bool, target *bool) {
+		if patch != nil {
+			*target = *patch
+			fieldsChanged = true
+		}
+	}
+	applyInt := func(patch *int, target *int) {
+		if patch != nil {
+			*target = *patch
+			fieldsChanged = true
+		}
+	}
+	applyBool(params.Enabled, &group.Enabled)
+	if trimmed := strings.TrimSpace(params.Strategy); trimmed != "" {
+		group.Strategy = trimmed
 		fieldsChanged = true
 	}
-	if strings.TrimSpace(params.Strategy) != "" {
-		group.Strategy = strings.TrimSpace(params.Strategy)
-		fieldsChanged = true
-	}
-	if params.MaxRetries != nil {
-		group.MaxRetries = *params.MaxRetries
-		fieldsChanged = true
-	}
-	if params.MaxConcurrency != nil {
-		group.MaxConcurrency = *params.MaxConcurrency
-		fieldsChanged = true
-	}
-	if params.DailyLimitMaxRequests != nil {
-		group.DailyLimitMaxRequests = *params.DailyLimitMaxRequests
-		fieldsChanged = true
-	}
-	if params.DailyLimitMaxTokens != nil {
-		group.DailyLimitMaxTokens = *params.DailyLimitMaxTokens
-		fieldsChanged = true
-	}
+	applyInt(params.MaxRetries, &group.MaxRetries)
+	applyInt(params.MaxConcurrency, &group.MaxConcurrency)
+	applyInt(params.DailyLimitMaxRequests, &group.DailyLimitMaxRequests)
+	applyInt(params.DailyLimitMaxTokens, &group.DailyLimitMaxTokens)
 	if fieldsChanged {
 		// 成员以当前库内状态为准，避免用陈旧引用整体覆盖。
 		fresh, ok := agentFindGroup(ctx, store, group.ID)

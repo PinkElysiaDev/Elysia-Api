@@ -50,16 +50,8 @@ func OpenWithKey(path string, key []byte) (*Store, error) {
 }
 
 func (s *Store) Close() error {
-	if s == nil {
-		return nil
-	}
-	if s.rollupCancel != nil {
-		s.rollupCancel()
-	}
+	s.rollupCancel()
 	s.rollupWG.Wait()
-	if s.db == nil {
-		return nil
-	}
 	return s.db.Close()
 }
 
@@ -90,6 +82,16 @@ func (s *Store) init(ctx context.Context) error {
 		}
 	}
 	return s.migrate(ctx)
+}
+
+// addColumnIgnoreDup 执行幂等 ALTER：列已存在（duplicate column）视为成功。
+// migrate 里的容错性列补齐全部走这一条路径。
+func (s *Store) addColumnIgnoreDup(ctx context.Context, stmt string) error {
+	_, err := s.db.ExecContext(ctx, stmt)
+	if err != nil && strings.Contains(err.Error(), "duplicate column") {
+		return nil
+	}
+	return err
 }
 
 func (s *Store) migrate(ctx context.Context) error {
@@ -160,14 +162,12 @@ func (s *Store) migrate(ctx context.Context) error {
 	}
 	// 增量迁移：为 api_tokens 增加 allowed_groups_json 列（模型组级访问权限）。
 	// SQLite 无 ADD COLUMN IF NOT EXISTS，重复执行会报 duplicate column，忽略该错误即幂等。
-	if _, err := s.db.ExecContext(ctx, `ALTER TABLE api_tokens ADD COLUMN allowed_groups_json TEXT NOT NULL DEFAULT '[]'`); err != nil &&
-		!strings.Contains(err.Error(), "duplicate column") {
+	if err := s.addColumnIgnoreDup(ctx, `ALTER TABLE api_tokens ADD COLUMN allowed_groups_json TEXT NOT NULL DEFAULT '[]'`); err != nil {
 		return err
 	}
 	// 增量迁移：为 api_tokens 增加 token_hash 列（SHA256 哈希，用于去重检查）。
 	// 空 hash 不参与唯一约束，兼容历史数据过渡期（旧数据 hash 为空，下次编辑时补齐）。
-	if _, err := s.db.ExecContext(ctx, `ALTER TABLE api_tokens ADD COLUMN token_hash TEXT NOT NULL DEFAULT ''`); err != nil &&
-		!strings.Contains(err.Error(), "duplicate column") {
+	if err := s.addColumnIgnoreDup(ctx, `ALTER TABLE api_tokens ADD COLUMN token_hash TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}
 	// 为 token_hash 建唯一索引（WHERE token_hash != '' 保证空值不参与约束）。
@@ -176,25 +176,21 @@ func (s *Store) migrate(ctx context.Context) error {
 	}
 	// 增量迁移：agent_sessions 增加方案清单列（update_plan 工具维护）。
 	// 已存在的表不会因 CREATE TABLE IF NOT EXISTS 加列，容错 ALTER 幂等补齐。
-	if _, err := s.db.ExecContext(ctx, `ALTER TABLE agent_sessions ADD COLUMN plan_json TEXT NOT NULL DEFAULT ''`); err != nil &&
-		!strings.Contains(err.Error(), "duplicate column") {
+	if err := s.addColumnIgnoreDup(ctx, `ALTER TABLE agent_sessions ADD COLUMN plan_json TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}
 	// 增量迁移：agent_sessions 增加计划模式列（plan_mode，先出方案用户确认后再执行）。
-	if _, err := s.db.ExecContext(ctx, `ALTER TABLE agent_sessions ADD COLUMN plan_mode INTEGER NOT NULL DEFAULT 0`); err != nil &&
-		!strings.Contains(err.Error(), "duplicate column") {
+	if err := s.addColumnIgnoreDup(ctx, `ALTER TABLE agent_sessions ADD COLUMN plan_mode INTEGER NOT NULL DEFAULT 0`); err != nil {
 		return err
 	}
 	// 增量迁移：agent_sessions 增加草稿还原点列（每轮修改前的快照，单槽覆盖）。
-	if _, err := s.db.ExecContext(ctx, `ALTER TABLE agent_sessions ADD COLUMN draft_restore TEXT NOT NULL DEFAULT ''`); err != nil &&
-		!strings.Contains(err.Error(), "duplicate column") {
+	if err := s.addColumnIgnoreDup(ctx, `ALTER TABLE agent_sessions ADD COLUMN draft_restore TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}
 	// 增量迁移：为 usage_records 增加 cache_hit_tokens 列（缓存命中 token 数）。
 	// 用于统计接口直接 SUM 出缓存命中量与命中率，免去逐条解析 record_json。
 	// 历史数据该列为 0（可接受：旧记录缓存命中量不再回填）。
-	if _, err := s.db.ExecContext(ctx, `ALTER TABLE usage_records ADD COLUMN cache_hit_tokens INTEGER NOT NULL DEFAULT 0`); err != nil &&
-		!strings.Contains(err.Error(), "duplicate column") {
+	if err := s.addColumnIgnoreDup(ctx, `ALTER TABLE usage_records ADD COLUMN cache_hit_tokens INTEGER NOT NULL DEFAULT 0`); err != nil {
 		return err
 	}
 	// 回填历史数据的 token_hash：查所有 hash 为空的行，解密 → 计算 SHA256 → UPDATE。
@@ -240,8 +236,7 @@ func (s *Store) migrate(ctx context.Context) error {
 	// （…T00:00:00Z）与带毫秒的时间戳（…T00:00:00.123Z）按字符串比较时
 	// '.'(0x2E) < 'Z'(0x5A)，导致整秒边界的时间过滤漏记录、同秒内排序错乱。
 	// 时间过滤与排序改用整型列；started_at 保留用于展示。
-	if _, err := s.db.ExecContext(ctx, `ALTER TABLE usage_records ADD COLUMN started_ms INTEGER NOT NULL DEFAULT 0`); err != nil &&
-		!strings.Contains(err.Error(), "duplicate column") {
+	if err := s.addColumnIgnoreDup(ctx, `ALTER TABLE usage_records ADD COLUMN started_ms INTEGER NOT NULL DEFAULT 0`); err != nil {
 		return err
 	}
 	// 聚合覆盖索引：统计 KPI（UsageTotals）、按模型分组（UsageByModel）与按日趋势
@@ -251,8 +246,7 @@ func (s *Store) migrate(ctx context.Context) error {
 	// 幂等建索引，大表首次执行为一次性启动成本。
 	// 增量迁移：usage 记录持久化模型源 ID，来源筛选按 source_id 精确匹配，
 	// 不再把源名展开成模型名（同名跨源会串数据）。存量行默认为空，不会命中源筛选。
-	if _, err := s.db.ExecContext(ctx, `ALTER TABLE usage_records ADD COLUMN source_id TEXT NOT NULL DEFAULT ''`); err != nil &&
-		!strings.Contains(err.Error(), "duplicate column") {
+	if err := s.addColumnIgnoreDup(ctx, `ALTER TABLE usage_records ADD COLUMN source_id TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}
 	// 大库上首次建索引要扫全表胖行，可达分钟级且期间无任何输出——升级后首启

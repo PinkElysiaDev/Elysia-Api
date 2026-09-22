@@ -188,9 +188,6 @@ func (decoder *CustomProtocolStreamDecoder) SawFinishReason() bool {
 // 时为 true（数据此后不会再有）；终止判定（finish reason / status）只置终态，
 // 不提前结束——调用方继续排水以接收 usage 尾帧等滞后事件。
 func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]MaheshvaraStreamEvent, bool, error) {
-	if decoder == nil {
-		return nil, false, fmt.Errorf("nil custom protocol stream decoder")
-	}
 	data := strings.TrimSpace(wireEvent.Data)
 	if data == "" {
 		return nil, false, nil

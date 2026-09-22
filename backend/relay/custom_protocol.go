@@ -1301,9 +1301,6 @@ func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[
 		return nil
 	}
 	root, _ := context["maheshvara"].(map[string]any)
-	if root == nil {
-		return nil
-	}
 	redecodeWithJSONNumbers := func(value any) any {
 		encoded, err := json.Marshal(value)
 		if err != nil {

@@ -105,17 +105,11 @@ func NewRegistry(tools ...Tool) (*Registry, error) {
 
 // Get 按名查工具；不存在返回 nil。
 func (r *Registry) Get(name string) Tool {
-	if r == nil {
-		return nil
-	}
 	return r.tools[strings.TrimSpace(name)]
 }
 
 // Definitions 返回全部工具定义（顺序稳定，便于提示词与缓存友好）。
 func (r *Registry) Definitions() []relay.MaheshvaraTool {
-	if r == nil {
-		return nil
-	}
 	definitions := make([]relay.MaheshvaraTool, 0, len(r.order))
 	for _, name := range r.order {
 		definitions = append(definitions, r.tools[name].Definition())

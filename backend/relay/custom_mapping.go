@@ -147,7 +147,7 @@ func setCustomPathValue(current any, tokens []customPathToken, value any) (any, 
 }
 
 func applyCustomFieldMappings(response *MaheshvaraResponse, root any, mappings []CustomProtocolFieldMapping) (*MaheshvaraResponse, error) {
-	if response == nil || len(mappings) == 0 {
+	if len(mappings) == 0 {
 		return response, nil
 	}
 	encoded, err := json.Marshal(response)
