@@ -594,49 +594,7 @@ func (s *Server) chatCompletions(c *gin.Context) {
 				maheshvaraReq.Stream = true
 			}
 
-			var buildErr error
-			var targetBody []byte
-			var customRequest *relay.CustomProtocolRequestResult
-			if usePassthrough {
-				// Gemini：model 在 URL 里（adapter 单独接收 selectedModel.Name），原生
-				// generateContent 请求体不含顶层 model，故透传时不改写 model（传空），
-				// 也不向体内注入 stream（由 URL action 决定）。OpenAI/Claude 则改写 model；
-				// OpenAI 兼容线路补 stream_options.include_usage 以拿到 usage chunk。
-				passModelName := selectedModel.Name
-				addStreamOptions := false
-				ensureStream := false
-				if targetPlatform == relay.PlatformGemini {
-					passModelName = ""
-				} else {
-					ensureStream = isStream
-					addStreamOptions = isOpenAICompatible(targetPlatform)
-				}
-				targetBody, buildErr = relay.PassthroughBody(bodyBytes, passModelName, ensureStream, addStreamOptions)
-				if buildErr == nil {
-					record.RelayMode = RelayModePassthrough
-					// OpenAI 系透传同样补齐缺失的 tool call id：部分客户端重建历史时
-					// 会遗漏 tool_calls[].id，直接透传会被严格上游以 missing field id 拒绝。
-					if isOpenAICompatible(targetPlatform) {
-						targetBody, buildErr = relay.NormalizeOpenAIToolCallIDs(targetBody)
-					}
-				}
-			} else if relay.IsCustomPlatform(targetPlatform) {
-				customRequest, buildErr = relay.RenderRegisteredCustomProtocolRequest(maheshvaraReq, relay.CustomProtocolID(targetPlatform))
-				if buildErr == nil {
-					targetBody = customRequest.Body
-					record.RelayMode = RelayModeTransform
-				}
-			} else {
-				targetFormat, formatErr := relay.TargetFormatForPlatform(targetPlatform)
-				if formatErr != nil {
-					buildErr = formatErr
-				} else {
-					targetBody, buildErr = relay.MaheshvaraToTargetRequest(maheshvaraReq, targetFormat, nil)
-				}
-				if buildErr == nil {
-					record.RelayMode = RelayModeTransform
-				}
-			}
+			targetBody, customRequest, buildErr := s.buildChatTargetBody(bodyBytes, maheshvaraReq, selectedModel, targetPlatform, usePassthrough, isStream, record)
 			if buildErr != nil {
 				skip := fmt.Errorf("Failed to build upstream request: %w", buildErr)
 				return relayAttemptStep{
@@ -669,6 +627,55 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			}
 			return relayAttemptStep{outcome: s.handleNormalRequest(c, group, selectedModel, targetBody, customRequest, targetPlatform, inputFormat, startTime, record, isLast)}
 		})
+}
+
+// buildChatTargetBody 组装 chat 入口发往上游的请求体，三分叉：同源透传
+// （原始字节直发，保留 cache_control / thinking 等私有字段；vision 过滤改写
+// 过核心请求，usePassthrough 已为 false 只能走转换）、自定义协议渲染、
+// Maheshvara 转换。relayMode 随分支写入 record。
+func (s *Server) buildChatTargetBody(bodyBytes []byte, maheshvaraReq *relay.MaheshvaraRequest, selectedModel config.ModelRef, targetPlatform relay.Platform, usePassthrough, isStream bool, record *usageRecord) ([]byte, *relay.CustomProtocolRequestResult, error) {
+	if usePassthrough {
+		// Gemini：model 在 URL 里（adapter 单独接收 selectedModel.Name），原生
+		// generateContent 请求体不含顶层 model，故透传时不改写 model（传空），
+		// 也不向体内注入 stream（由 URL action 决定）。OpenAI/Claude 则改写 model；
+		// OpenAI 兼容线路补 stream_options.include_usage 以拿到 usage chunk。
+		passModelName := selectedModel.Name
+		addStreamOptions := false
+		ensureStream := false
+		if targetPlatform == relay.PlatformGemini {
+			passModelName = ""
+		} else {
+			ensureStream = isStream
+			addStreamOptions = isOpenAICompatible(targetPlatform)
+		}
+		targetBody, err := relay.PassthroughBody(bodyBytes, passModelName, ensureStream, addStreamOptions)
+		if err == nil {
+			record.RelayMode = RelayModePassthrough
+			// OpenAI 系透传同样补齐缺失的 tool call id：部分客户端重建历史时
+			// 会遗漏 tool_calls[].id，直接透传会被严格上游以 missing field id 拒绝。
+			if isOpenAICompatible(targetPlatform) {
+				targetBody, err = relay.NormalizeOpenAIToolCallIDs(targetBody)
+			}
+		}
+		return targetBody, nil, err
+	}
+	if relay.IsCustomPlatform(targetPlatform) {
+		customRequest, err := relay.RenderRegisteredCustomProtocolRequest(maheshvaraReq, relay.CustomProtocolID(targetPlatform))
+		if err != nil {
+			return nil, nil, err
+		}
+		record.RelayMode = RelayModeTransform
+		return customRequest.Body, customRequest, nil
+	}
+	targetFormat, err := relay.TargetFormatForPlatform(targetPlatform)
+	if err != nil {
+		return nil, nil, err
+	}
+	targetBody, err := relay.MaheshvaraToTargetRequest(maheshvaraReq, targetFormat, nil)
+	if err == nil {
+		record.RelayMode = RelayModeTransform
+	}
+	return targetBody, nil, err
 }
 
 func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
@@ -817,83 +824,33 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 	// 下调，否则中途断流/空响应会被统计与日志误判为成功。
 	var forwardErr error
 
-	switch targetPlatform {
-	case relay.PlatformResponses:
-		resp, err := s.openaiAdapter.SendResponsesStream(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
-		if err != nil {
-			log.Printf("Error forwarding Responses stream request: %v", err)
+	// 上游线制按平台推导（未知平台回退 OpenAI 系 chat）。
+	targetFormat := relay.FormatOpenAIChat
+	if f, formatErr := relay.TargetFormatForPlatform(targetPlatform); formatErr == nil {
+		targetFormat = f
+	}
+	conn, failure := s.openUpstreamStream(c.Request.Context(), targetFormat, selectedModel, targetBody)
+	if failure != nil {
+		if failure.transport {
+			log.Printf("Error forwarding stream request: %v", failure.err)
+			err := failure.err
 			result = failResult(upstreamErrorStatus(err, http.StatusBadGateway), fmt.Sprintf("Failed to forward request: %v", err), upstreamErrorBody(err))
 			return result
 		}
+		result = failResult(failure.status, string(failure.body), failure.body)
+		return result
+	}
 
-		startSSE()
-		record.StatusCode = http.StatusOK
-		observeUpstreamUsage(resp, record, targetPlatform)
+	startSSE()
+	record.StatusCode = http.StatusOK
+	observeUpstreamUsage(conn.resp, record, targetPlatform)
 
-		forwardErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatResponses, inputFormat, writer, selectedModel.Name)
-
-	case relay.PlatformAnthropic:
-		httpResp, err := s.claudeAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody, true)
-		if err != nil {
-			log.Printf("Error forwarding Claude stream request: %v", err)
-			result = failResult(http.StatusBadGateway, fmt.Sprintf("Failed to forward request: %v", err), nil)
-			return result
-		}
-		if httpResp.StatusCode != http.StatusOK {
-			defer httpResp.Body.Close()
-			respBody, _ := io.ReadAll(httpResp.Body)
-			result = failResult(httpResp.StatusCode, string(respBody), respBody)
-			return result
-		}
-
-		startSSE()
-		record.StatusCode = http.StatusOK
-		observeUpstreamUsage(httpResp, record, targetPlatform)
-
-		forwardErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), httpResp, relay.FormatClaude, inputFormat, writer, selectedModel.Name)
-
-	case relay.PlatformGemini:
-		httpResp, err := s.geminiAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, true)
-		if err != nil {
-			log.Printf("Error forwarding Gemini stream request: %v", err)
-			result = failResult(http.StatusBadGateway, fmt.Sprintf("Failed to forward request: %v", err), nil)
-			return result
-		}
-		if httpResp.StatusCode != http.StatusOK {
-			defer httpResp.Body.Close()
-			respBody, _ := io.ReadAll(httpResp.Body)
-			result = failResult(httpResp.StatusCode, string(respBody), respBody)
-			return result
-		}
-
-		startSSE()
-		record.StatusCode = http.StatusOK
-		observeUpstreamUsage(httpResp, record, targetPlatform)
-
-		forwardErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), httpResp, relay.FormatGemini, inputFormat, writer, selectedModel.Name)
-
-	default:
-		resp, err := s.openaiAdapter.SendRequestStream(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
-		if err != nil {
-			log.Printf("Error forwarding stream request: %v", err)
-			// 上游真实状态码保真：401/403/400 等永久错误不得洗白成 502
-			// 触发对全部候选的扇出重试;错误体经 UpstreamStatusError 携带,
-			// 交给 failResult 按信封解析渲染。
-			result = failResult(upstreamErrorStatus(err, http.StatusBadGateway), fmt.Sprintf("Failed to forward request: %v", err), upstreamErrorBody(err))
-			return result
-		}
-
-		startSSE()
-		record.StatusCode = http.StatusOK
-		observeUpstreamUsage(resp, record, targetPlatform)
-
-		if record.RelayMode == RelayModePassthrough {
-			// OpenAI 系同协议透传：原始转发上游 SSE，保留 tool call id、
-			// reasoning_content 等字段，不经过 Maheshvara 重渲染。
-			forwardErr = relay.ForwardOpenAIStream(c.Request.Context(), resp, writer)
-		} else {
-			forwardErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatOpenAIChat, inputFormat, writer, selectedModel.Name)
-		}
+	if record.RelayMode == RelayModePassthrough && conn.format == relay.FormatOpenAIChat {
+		// OpenAI 系同协议透传：原始转发上游 SSE，保留 tool call id、
+		// reasoning_content 等字段，不经过 Maheshvara 重渲染。
+		forwardErr = relay.ForwardOpenAIStream(c.Request.Context(), conn.resp, writer)
+	} else {
+		forwardErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), conn.resp, conn.format, inputFormat, writer, selectedModel.Name)
 	}
 
 	// 上游已建连、SSE 已开始后的转发/转换错误：HTTP 状态码已无法更改，

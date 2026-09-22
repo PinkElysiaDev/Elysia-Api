@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -98,29 +97,11 @@ func (s *Server) responses(c *gin.Context) {
 			record.ResponsesMode = responsesMode
 			record.ConversionChain = []string{"openai_responses_request", "maheshvara_request", string(targetFormat) + "_request"}
 
-			// 上游原生支持 Responses API（targetFormat == responses，即同协议）且未发生
-			// 视觉过滤时，以原始请求体为基底零转换透传，保留 reasoning/function_call 等富字段。
-			var targetBody []byte
-			var customRequest *relay.CustomProtocolRequestResult
-			if relay.IsCustomPlatform(targetPlatform) {
-				customRequest, err = relay.RenderRegisteredCustomProtocolRequest(maheshvaraReq, relay.CustomProtocolID(targetPlatform))
-				if customRequest != nil {
-					targetBody = customRequest.Body
-				}
-			} else if targetFormat == relay.FormatResponses && !filteredVision {
-				targetBody, err = relay.ResponsesPassthroughBody(bodyBytes, selectedModel.Name)
-				if err == nil {
-					record.RelayMode = RelayModePassthrough
-				}
-			} else {
-				targetBody, err = relay.MaheshvaraToTargetRequest(maheshvaraReq, targetFormat, originalResponsesReq)
-				if err == nil {
-					record.RelayMode = RelayModeTransform
-				}
-			}
-			if err != nil {
+			// 组装发往上游的请求体（自定义协议 / 同协议透传 / 按线制转换）。
+			targetBody, customRequest, buildErr := s.buildResponsesTargetBody(bodyBytes, maheshvaraReq, originalResponsesReq, selectedModel, targetPlatform, targetFormat, filteredVision, record)
+			if buildErr != nil {
 				return relayAttemptStep{
-					skipErr:    err,
+					skipErr:    buildErr,
 					skipStatus: http.StatusBadRequest,
 					skipClass:  relay.ErrorClassInvalidRequest,
 				}
@@ -199,6 +180,32 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 	return result
 }
 
+// buildResponsesTargetBody 组装 Responses 入口发往上游的请求体，三分叉：
+// 自定义协议渲染；上游原生 Responses 且未做视觉过滤时以原始请求体零转换
+// 透传（保留 reasoning/function_call 等富字段）；其余按目标线制转换。
+// relayMode 随分支写入 record（自定义协议保持调用方已设的 responsesMode）。
+func (s *Server) buildResponsesTargetBody(bodyBytes []byte, maheshvaraReq *relay.MaheshvaraRequest, originalResponsesReq *relay.OpenAIResponsesRequest, selectedModel config.ModelRef, targetPlatform relay.Platform, targetFormat relay.FormatType, filteredVision bool, record *usageRecord) ([]byte, *relay.CustomProtocolRequestResult, error) {
+	if relay.IsCustomPlatform(targetPlatform) {
+		customRequest, err := relay.RenderRegisteredCustomProtocolRequest(maheshvaraReq, relay.CustomProtocolID(targetPlatform))
+		if err != nil {
+			return nil, nil, err
+		}
+		return customRequest.Body, customRequest, nil
+	}
+	if targetFormat == relay.FormatResponses && !filteredVision {
+		targetBody, err := relay.ResponsesPassthroughBody(bodyBytes, selectedModel.Name)
+		if err == nil {
+			record.RelayMode = RelayModePassthrough
+		}
+		return targetBody, nil, err
+	}
+	targetBody, err := relay.MaheshvaraToTargetRequest(maheshvaraReq, targetFormat, originalResponsesReq)
+	if err == nil {
+		record.RelayMode = RelayModeTransform
+	}
+	return targetBody, nil, err
+}
+
 func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, targetFormat relay.FormatType, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
 	if relay.IsCustomPlatform(targetPlatform) {
 		return s.handleCustomStreamRequest(c, group, selectedModel, customRequest, targetPlatform, relay.FormatResponses, startTime, record, isLast)
@@ -258,64 +265,24 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 	}
 
 	var streamErr error
-	switch targetFormat {
-	case relay.FormatResponses:
-		resp, err := s.openaiAdapter.SendResponsesStream(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
-		if err != nil {
+	conn, failure := s.openUpstreamStream(c.Request.Context(), targetFormat, selectedModel, targetBody)
+	if failure != nil {
+		if failure.transport {
+			err := failure.err
 			result = connFail(upstreamErrorStatus(err, http.StatusBadGateway), err.Error(), upstreamErrorBody(err))
 			return result
 		}
-		startSSE()
-		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
-		if record.RelayMode == RelayModePassthrough {
-			// 同协议透传：原样转发上游 SSE，保留 reasoning_text 等
-			// provider 私有事件，不再经 Maheshvara 解码重渲染。
-			streamErr = relay.ForwardResponsesStream(c.Request.Context(), resp, writer)
-		} else {
-			streamErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatResponses, relay.FormatResponses, writer, selectedModel.Name)
-		}
-	case relay.FormatClaude:
-		resp, err := s.claudeAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody, true)
-		if err != nil {
-			result = connFail(http.StatusBadGateway, err.Error(), nil)
-			return result
-		}
-		// 上游非 200：body 是 JSON 错误而非 SSE，转换器会扫不到 data: 行、
-		// 发出伪造的空流并吞掉错误（R3）。SSE 尚未开始，可走 connFail 故障转移。
-		if resp.StatusCode != http.StatusOK {
-			respBody, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			result = connFail(resp.StatusCode, string(respBody), respBody)
-			return result
-		}
-		startSSE()
-		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
-		streamErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatClaude, relay.FormatResponses, writer, selectedModel.Name)
-	case relay.FormatGemini:
-		resp, err := s.geminiAdapter.SendRequest(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, selectedModel.Name, targetBody, true)
-		if err != nil {
-			result = connFail(http.StatusBadGateway, err.Error(), nil)
-			return result
-		}
-		if resp.StatusCode != http.StatusOK {
-			respBody, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			result = connFail(resp.StatusCode, string(respBody), respBody)
-			return result
-		}
-		startSSE()
-		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
-		streamErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatGemini, relay.FormatResponses, writer, selectedModel.Name)
-	default:
-		resp, err := s.openaiAdapter.SendRequestStream(c.Request.Context(), selectedModel.BaseURL, selectedModel.APIKey, targetBody)
-		if err != nil {
-			// 上游错误体经 UpstreamStatusError 携带,交给 connFail 解析渲染。
-			result = connFail(upstreamErrorStatus(err, http.StatusBadGateway), err.Error(), upstreamErrorBody(err))
-			return result
-		}
-		startSSE()
-		observeUpstreamUsage(resp, record, targetPlatform, targetFormat)
-		streamErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), resp, relay.FormatOpenAIChat, relay.FormatResponses, writer, selectedModel.Name)
+		result = connFail(failure.status, string(failure.body), failure.body)
+		return result
+	}
+	startSSE()
+	observeUpstreamUsage(conn.resp, record, targetPlatform, targetFormat)
+	if record.RelayMode == RelayModePassthrough && conn.format == relay.FormatResponses {
+		// 同协议透传：原样转发上游 SSE，保留 reasoning_text 等
+		// provider 私有事件，不再经 Maheshvara 解码重渲染。
+		streamErr = relay.ForwardResponsesStream(c.Request.Context(), conn.resp, writer)
+	} else {
+		streamErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), conn.resp, conn.format, relay.FormatResponses, writer, selectedModel.Name)
 	}
 
 	// 流式转发中途出错（如上游断流/空响应）：向下游写一个 SSE error 终止事件，让客户端能

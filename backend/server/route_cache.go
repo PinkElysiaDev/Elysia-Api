@@ -127,40 +127,10 @@ func (s *Server) assembleGroupsFromStore() ([]config.ModelGroupConfig, bool) {
 	for _, group := range groups {
 		refs := make([]config.ModelRef, 0, len(group.Models))
 		for _, modelRef := range group.Models {
-			// 可调度 = 健康可用（available，健康检测自动翻转）&& 用户启用（enabled，手动开关）。
-			model, ok := resolveModel(modelRef)
-			if !ok || !model.Available || !model.Enabled {
+			model, found := resolveModel(modelRef)
+			ref, ok := s.expandModelRef(model, found, keyMeta)
+			if !ok {
 				continue
-			}
-			ref := config.ModelRef{ID: model.ID, Name: model.Name, BaseURL: model.BaseURL, APIKey: model.APIKey, Platform: model.Platform,
-				VisionCapable: model.VisionCapable, ToolsCapable: model.ToolsCapable, SourceID: model.SourceID}
-			if meta, ok := keyMeta[model.SourceID]; ok {
-				// 源身份（地址/密钥）以源为准：models 行是保存时刻的快照，源
-				// url/key 变更后若合并未跑（手动源、自动拉取失败），快照滞后
-				// 会导致请求打到旧地址/旧 key。legacy 源（地址为空）仍用行内值。
-				if meta.baseURL != "" {
-					ref.BaseURL = meta.baseURL
-				}
-			}
-			if meta, ok := keyMeta[model.SourceID]; ok && len(meta.keys) > 0 {
-				// 按模型过滤可服务该模型的 key（多 key 权限发现）：不在任何 key 的
-				// 启用/拉取集合内的模型没有可用 key，该候选从组内剔除。
-				permitted := make([]string, 0, len(meta.keys))
-				for _, key := range meta.keys {
-					if key.KeyAllowsModel(model.ID) {
-						permitted = append(permitted, key.Value)
-					}
-				}
-				if len(permitted) == 0 {
-					s.logVerbose("[RouteCache] model %s (source %s) excluded: no api key in this source may serve it", model.ID, model.SourceID)
-					continue
-				}
-				// 单 key 源同样以源级最新 key 为准（旧实现此时用的是 models 行
-				// 快照，源换 key 后仍带旧 key 请求）；APIKey 仅供单 key 直连路径
-				// 消费，多 key 展开仍走 APIKeys + KeyStrategy。
-				ref.APIKey = permitted[0]
-				ref.APIKeys = permitted
-				ref.KeyStrategy = meta.strategy
 			}
 			refs = append(refs, ref)
 		}
@@ -175,6 +145,47 @@ func (s *Server) assembleGroupsFromStore() ([]config.ModelGroupConfig, bool) {
 		})
 	}
 	return converted, true
+}
+
+// expandModelRef 把组内一个模型引用展开为可调度的 ModelRef：健康+启用校验、
+// 源级地址/key 快照合并与按模型的多 key 权限过滤。返回 false 表示该候选
+// 应从组内剔除。
+func (s *Server) expandModelRef(model storage.Model, found bool, keyMeta map[string]sourceKeyMeta) (config.ModelRef, bool) {
+	// 可调度 = 健康可用（available，健康检测自动翻转）&& 用户启用（enabled，手动开关）。
+	if !found || !model.Available || !model.Enabled {
+		return config.ModelRef{}, false
+	}
+	ref := config.ModelRef{ID: model.ID, Name: model.Name, BaseURL: model.BaseURL, APIKey: model.APIKey, Platform: model.Platform,
+		VisionCapable: model.VisionCapable, ToolsCapable: model.ToolsCapable, SourceID: model.SourceID}
+	if meta, ok := keyMeta[model.SourceID]; ok {
+		// 源身份（地址/密钥）以源为准：models 行是保存时刻的快照，源
+		// url/key 变更后若合并未跑（手动源、自动拉取失败），快照滞后
+		// 会导致请求打到旧地址/旧 key。legacy 源（地址为空）仍用行内值。
+		if meta.baseURL != "" {
+			ref.BaseURL = meta.baseURL
+		}
+	}
+	if meta, ok := keyMeta[model.SourceID]; ok && len(meta.keys) > 0 {
+		// 按模型过滤可服务该模型的 key（多 key 权限发现）：不在任何 key 的
+		// 启用/拉取集合内的模型没有可用 key，该候选从组内剔除。
+		permitted := make([]string, 0, len(meta.keys))
+		for _, key := range meta.keys {
+			if key.KeyAllowsModel(model.ID) {
+				permitted = append(permitted, key.Value)
+			}
+		}
+		if len(permitted) == 0 {
+			s.logVerbose("[RouteCache] model %s (source %s) excluded: no api key in this source may serve it", model.ID, model.SourceID)
+			return config.ModelRef{}, false
+		}
+		// 单 key 源同样以源级最新 key 为准（旧实现此时用的是 models 行
+		// 快照，源换 key 后仍带旧 key 请求）；APIKey 仅供单 key 直连路径
+		// 消费，多 key 展开仍走 APIKeys + KeyStrategy。
+		ref.APIKey = permitted[0]
+		ref.APIKeys = permitted
+		ref.KeyStrategy = meta.strategy
+	}
+	return ref, true
 }
 
 // loadTokensFromStore 读取全部启用的 API token 到内存映射（token 明文 -> 元信息）。
