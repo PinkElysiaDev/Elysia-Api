@@ -31,7 +31,8 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
   openUpstreamStream/buildTargetBody/expandModelRef；agent 引擎拆出
   appendUserMessage/resumeApprovalPrefix/handleCallFailure；storage 按域拆出
   migrate/sources/models_groups/usage_logs/usage_aggregates/assets/system_logs；
-  webui 拆出 source-form 辅助层与 useDraggablePanelWidth。
+  webui 拆出 source-form 辅助层、log-detail 五模块与
+  useDraggablePanelWidth/useRuntimeConfigForm/useComposerAttachments 钩子。
 - **顺手修复**：usage reset 成功响应统一 admin 封套；agent 测试 fakeStore
   补齐 SessionStateUpdate.Plan 契约；retention TTL 边界测试去偶发（同毫秒
   平局被严格 `<` 保留）。
