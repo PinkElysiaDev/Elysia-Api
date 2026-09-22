@@ -84,7 +84,11 @@ export default {
         '2xl': ['1.875rem', { lineHeight: '1.15' }],
         display: ['2rem', { lineHeight: '1.25' }],
       },
-      transitionTimingFunction: {
+	maxWidth: {
+	  tool: '92%',
+	  bubble: '85%',
+	},
+	transitionTimingFunction: {
         // 抽屉、开关和展开行共用的平滑缓动。
         smooth: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
       },

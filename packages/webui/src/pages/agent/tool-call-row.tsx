@@ -1,0 +1,137 @@
+import { useEffect, useState } from "react";
+import { Check, ChevronDown, Copy, Wrench, X } from "lucide-react";
+import { agentToolLabel, toolStatusVerb } from "@/lib/agent/types";
+import { cn } from "@/lib/utils";
+
+export type ToolRowStatus = "running" | "done" | "failed" | "denied";
+
+/**
+ * 工具执行行：扁平竖线样式，一行说清动作、状态动词和耗时。
+ * 运行中用品牌渐变文字；完成后自动可折叠，失败保持展开并提供复制。
+ */
+export function ToolCallRow({
+  name,
+  status,
+  summary,
+  elapsedMs,
+  startedAt,
+  durationMs,
+  detail,
+  onOpen,
+}: {
+  name: string;
+  status: ToolRowStatus;
+  summary?: string;
+  elapsedMs?: number;
+  startedAt?: number;
+  durationMs?: number;
+  detail?: React.ReactNode;
+  onOpen?: () => void;
+}) {
+  const [open, setOpen] = useState(status === "failed" || status === "denied");
+  const [copied, setCopied] = useState(false);
+  const elapsed = useElapsed(status === "running", startedAt, elapsedMs);
+  const verb = toolStatusVerb(status);
+  const timing =
+    status === "running"
+      ? formatElapsed(elapsed)
+      : durationMs
+        ? `${durationMs}ms`
+        : "";
+
+  return (
+    <div className="max-w-tool border-l-2 border-border/60 pl-3">
+      <div className="flex items-center gap-1.5 text-xs">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+          aria-expanded={detail ? open : undefined}
+          onClick={() => {
+            if (detail) setOpen((value) => !value);
+            onOpen?.();
+          }}
+        >
+          <Wrench className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+          <span className="truncate font-medium">{agentToolLabel(name)}</span>
+          <span
+            className={cn(
+              "shrink-0",
+              status === "running" ? "tool-running-text" : statusTone(status),
+            )}
+          >
+            {verb}
+          </span>
+          {timing ? (
+            <span className="tnum shrink-0 text-2xs text-muted-foreground">
+              {timing}
+            </span>
+          ) : null}
+          {detail ? (
+            <ChevronDown
+              className={cn(
+                "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
+                open && "rotate-180",
+              )}
+            />
+          ) : null}
+        </button>
+        {status === "failed" || status === "denied" ? (
+          <button
+            type="button"
+            aria-label="复制错误"
+            className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              void navigator.clipboard.writeText(summary ?? verb).then(() => {
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1200);
+              });
+            }}
+          >
+            {copied ? (
+              <Check className="h-3 w-3 text-jade" />
+            ) : (
+              <Copy className="h-3 w-3" />
+            )}
+          </button>
+        ) : null}
+        {status === "failed" || status === "denied" ? (
+          <X className="h-3 w-3 shrink-0 text-ember" aria-hidden />
+        ) : null}
+      </div>
+      {summary && status !== "running" ? (
+        <p className="mt-1 line-clamp-2 text-2xs text-muted-foreground">
+          {summary}
+        </p>
+      ) : null}
+      {open && detail ? <div className="mt-1.5">{detail}</div> : null}
+    </div>
+  );
+}
+
+function statusTone(status: ToolRowStatus): string {
+  if (status === "done") return "text-jade";
+  if (status === "failed" || status === "denied") return "text-ember";
+  return "text-muted-foreground";
+}
+
+function formatElapsed(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+/** 运行中本地计时，心跳到达时以服务端耗时为准。 */
+function useElapsed(
+  running: boolean,
+  startedAt: number | undefined,
+  elapsedMs: number | undefined,
+): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running || !startedAt) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, [running, startedAt]);
+  if (elapsedMs != null) return elapsedMs;
+  if (!running || !startedAt) return 0;
+  return Math.max(0, now - startedAt);
+}

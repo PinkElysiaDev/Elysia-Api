@@ -664,7 +664,31 @@ html.theme-transitioning :where(body, #root, #root *):not(.theme-sun):not(.theme
     text-underline-offset: 2px;
   }
 
-  /* 立绘水印（总览 .deco .fig）：渐变底；mask 图片路径带 /ui/ base，由组件内联注入 */
+	/* 工具执行中的状态文字：品牌渐变流动，替代转圈图标。 */
+	.tool-running-text {
+	  background: linear-gradient(90deg, var(--rose), var(--amber), var(--rose));
+	  background-size: 200% 100%;
+	  -webkit-background-clip: text;
+	  background-clip: text;
+	  color: transparent;
+	  animation: tool-running 1.6s linear infinite;
+	}
+	.tone-ember {
+	  border-color: color-mix(in srgb, var(--ember) 35%, transparent);
+	  background: color-mix(in srgb, var(--ember) 7%, transparent);
+	  color: var(--ember);
+	}
+	.tone-amber {
+	  border-color: color-mix(in srgb, var(--amber) 35%, transparent);
+	  background: color-mix(in srgb, var(--amber) 7%, transparent);
+	}
+
+	@keyframes tool-running {
+	  from { background-position: 100% 0; }
+	  to { background-position: -100% 0; }
+	}
+
+	/* 立绘水印（总览 .deco .fig）：渐变底；mask 图片路径带 /ui/ base，由组件内联注入 */
   .role-fig {
     background: linear-gradient(172deg, var(--grad-a) 8%, var(--grad-b) 92%);
     -webkit-mask-size: contain;
