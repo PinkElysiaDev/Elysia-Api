@@ -328,3 +328,23 @@ func TestResetRunningSessionsReconcilesCrashLeftovers(t *testing.T) {
 		t.Fatalf("waiting_approval must be preserved: %+v", afterWait)
 	}
 }
+
+// 回归：plan 型待批动作没有 Calls，读回时不能被静默丢弃（否则确认永远 409）。
+func TestAgentSessionPendingActionWithoutCallsRoundtrip(t *testing.T) {
+	ctx := context.Background()
+	store := newAgentTestStore(t)
+	created, _ := store.CreateAgentSession(ctx, AgentSessionUpsert{Mode: agent.ModeCreate})
+
+	waiting := agent.StatusWaitingApproval
+	pending := &agent.PendingAction{Kind: "plan", Plan: []agent.PlanStep{{Title: "建源", Status: "pending"}}}
+	if err := store.UpdateSessionState(ctx, created.ID, agent.SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
+		t.Fatalf("update state: %v", err)
+	}
+	session, err := store.GetSession(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	if session.PendingAction == nil || session.PendingAction.Kind != "plan" || len(session.PendingAction.Plan) != 1 {
+		t.Fatalf("plan pending lost on read-back: %+v", session.PendingAction)
+	}
+}

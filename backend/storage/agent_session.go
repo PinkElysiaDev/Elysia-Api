@@ -156,7 +156,9 @@ func (s *Store) assembleAgentSession(session agent.Session, mode, seed, draft, r
 	}
 	if pending != "" {
 		var action agent.PendingAction
-		if err := json.Unmarshal([]byte(pending), &action); err == nil && len(action.Calls) > 0 {
+		// 方案/提问型待批可以没有 Calls（plan 只带步骤清单），不能在读回
+		// 时静默丢弃，否则确认按钮永远 409。
+		if err := json.Unmarshal([]byte(pending), &action); err == nil && (len(action.Calls) > 0 || action.Kind != "") {
 			session.PendingAction = &action
 		}
 	}

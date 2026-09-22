@@ -1012,3 +1012,179 @@ func TestMaskSecretInputs(t *testing.T) {
 		t.Fatalf("invalid JSON should pass through, got %s", broken)
 	}
 }
+
+// ---- ask_user / 方案确认链路（bb8bb98 回归） ----
+
+// stubAskParser 注入测试用 ask_user 解析器（生产装配在 protocolAgentEngine）。
+func stubAskParser(t *testing.T) {
+	t.Helper()
+	previous := ParseAsk
+	ParseAsk = func(call relay.MaheshvaraToolCall) (AskQuestion, bool) {
+		if call.Name != "ask_user" {
+			return AskQuestion{}, false
+		}
+		var payload struct {
+			Question    string `json:"question"`
+			AllowCustom bool   `json:"allow_custom"`
+		}
+		if err := json.Unmarshal(call.Arguments, &payload); err != nil || payload.Question == "" {
+			return AskQuestion{}, false
+		}
+		return AskQuestion{CallID: call.ID, Question: payload.Question, AllowCustom: payload.AllowCustom}, true
+	}
+	t.Cleanup(func() { ParseAsk = previous })
+}
+
+// ask_user 暂停后带作答恢复：答案要送进模型，同批其余调用必须有取消结果
+// （悬挂 tool_calls 会让下一次模型调用被上游 400）。
+func TestResumeApproval_QuestionAnswerFeedsModelAndCancelsRest(t *testing.T) {
+	stubAskParser(t)
+	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1"}})
+	caller := &fakeCaller{responses: []scriptedResponse{
+		{result: &CallResult{Text: "先确认方向", ToolCalls: []relay.MaheshvaraToolCall{
+			toolCall("q1", "ask_user", `{"question":"用哪个源？"}`),
+			toolCall("c2", "lookup", `{}`),
+		}}},
+		{result: &CallResult{Text: "好的，用源A继续"}},
+	}}
+	lookup := &fakeTool{name: "lookup", result: ToolResult{OK: true, Summary: "查询成功"}}
+	engine := newTestEngine(caller, store, lookup)
+
+	events, _ := engine.RunTurn(context.Background(), "s1", &UserContent{Text: "接入"})
+	collected := collectEvents(t, events)
+	if !hasEvent(collected, EventApprovalPending) {
+		t.Fatalf("missing approval_required: %+v", collected)
+	}
+	session, _ := store.GetSession(context.Background(), "s1")
+	if session.PendingAction == nil || session.PendingAction.Kind != pendingKindQuestion || session.PendingAction.Question == nil {
+		t.Fatalf("pending action = %+v", session.PendingAction)
+	}
+
+	resumeEvents, err := engine.ResumeApproval(context.Background(), "s1", ApprovalDecision{Approved: true, Answer: "源A"})
+	if err != nil {
+		t.Fatalf("ResumeApproval: %v", err)
+	}
+	resumed := collectEvents(t, resumeEvents)
+	if !hasEvent(resumed, EventTurnDone) {
+		t.Fatalf("resume missing turn_done: %+v", resumed)
+	}
+	if lookup.executions != 0 {
+		t.Fatalf("trailing call must be cancelled, not executed (%d times)", lookup.executions)
+	}
+	// 作答后的模型请求里：ask_user 有答案、尾随调用有取消结果。
+	last := caller.lastRequest()
+	toolOutputs := 0
+	sawAnswer, sawCancel := false, false
+	for _, message := range last.Messages {
+		if message.Role != "tool" {
+			continue
+		}
+		toolOutputs++
+		for _, part := range message.Content {
+			if strings.Contains(part.ToolOutput, "源A") {
+				sawAnswer = true
+			}
+			if strings.Contains(part.ToolOutput, "已取消") {
+				sawCancel = true
+			}
+		}
+	}
+	if toolOutputs != 2 || !sawAnswer || !sawCancel {
+		t.Fatalf("model request after resume: toolOutputs=%d answer=%v cancel=%v", toolOutputs, sawAnswer, sawCancel)
+	}
+	// 恢复完成后 pending 必须被清掉，避免二次批准。
+	after, _ := store.GetSession(context.Background(), "s1")
+	if after.PendingAction != nil {
+		t.Fatalf("pending action not cleared after resume: %+v", after.PendingAction)
+	}
+}
+
+// 方案定稿暂停（plan 型，无 Calls）→ 确认后关闭计划模式并续跑。
+func TestPlanReadyPausesAndApprovalClosesPlanMode(t *testing.T) {
+	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1", PlanMode: true}})
+	caller := &fakeCaller{responses: []scriptedResponse{
+		{result: &CallResult{Text: "方案如下", ToolCalls: []relay.MaheshvaraToolCall{
+			toolCall("p1", "update_plan", `{"plan":[{"title":"建源","status":"pending"},{"title":"测试","status":"pending"}],"ready_for_approval":true}`),
+		}}},
+		{result: &CallResult{Text: "开始执行"}},
+	}}
+	planTool := &fakeTool{name: "update_plan", result: ToolResult{OK: true, Summary: "方案已更新"},
+		onExecute: func(tctx ToolContext) {
+			_ = tctx.SetPlan([]PlanStep{{Title: "建源", Status: "pending"}, {Title: "测试", Status: "pending"}})
+		}}
+	engine := newTestEngine(caller, store, planTool)
+
+	events, _ := engine.RunTurn(context.Background(), "s1", &UserContent{Text: "接入"})
+	collected := collectEvents(t, events)
+	if !hasEvent(collected, EventApprovalPending) {
+		t.Fatalf("missing approval_required: %+v", collected)
+	}
+	session, _ := store.GetSession(context.Background(), "s1")
+	if session.PendingAction == nil || session.PendingAction.Kind != pendingKindPlan || len(session.PendingAction.Plan) != 2 {
+		t.Fatalf("plan pending = %+v", session.PendingAction)
+	}
+
+	resumeEvents, err := engine.ResumeApproval(context.Background(), "s1", ApprovalDecision{Approved: true})
+	if err != nil {
+		t.Fatalf("plan-kind resume must not be rejected by the Calls guard: %v", err)
+	}
+	resumed := collectEvents(t, resumeEvents)
+	if !hasEvent(resumed, EventTurnDone) {
+		t.Fatalf("resume missing turn_done: %+v", resumed)
+	}
+	after, _ := store.GetSession(context.Background(), "s1")
+	if after.Settings.PlanMode {
+		t.Fatalf("plan mode must be off after approval")
+	}
+	if after.PendingAction != nil {
+		t.Fatalf("pending action not cleared: %+v", after.PendingAction)
+	}
+}
+
+// 方案无变化但声明定稿：ready 标志仍要触发暂停（回归：notePlanReady 曾挂在
+// planStepsEqual 分支下，原样重发步骤时确认流程凭空消失）。
+func TestPlanReadyTriggersEvenWhenPlanUnchanged(t *testing.T) {
+	steps := []PlanStep{{Title: "建源", Status: "pending"}}
+	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Plan: steps, Settings: Settings{ModelName: "m1", PlanMode: true}})
+	caller := &fakeCaller{responses: []scriptedResponse{
+		{result: &CallResult{Text: "方案不变，请求确认", ToolCalls: []relay.MaheshvaraToolCall{
+			toolCall("p1", "update_plan", `{"plan":[{"title":"建源","status":"pending"}],"ready_for_approval":true}`),
+		}}},
+		{result: &CallResult{Text: "收到确认"}},
+	}}
+	planTool := &fakeTool{name: "update_plan", result: ToolResult{OK: true, Summary: "方案已更新"},
+		onExecute: func(tctx ToolContext) { _ = tctx.SetPlan(steps) }}
+	engine := newTestEngine(caller, store, planTool)
+
+	events, _ := engine.RunTurn(context.Background(), "s1", &UserContent{Text: "确认一下"})
+	collected := collectEvents(t, events)
+	if !hasEvent(collected, EventApprovalPending) {
+		t.Fatalf("ready_for_approval with unchanged plan must still pause: %+v", collected)
+	}
+}
+
+// maskedPendingAction 必须保留 Kind/Question/Plan——前端靠它们选卡型。
+func TestMaskedPendingAction_PreservesKindQuestionPlan(t *testing.T) {
+	plan := []PlanStep{{Title: "步骤", Status: "pending"}}
+	pending := &PendingAction{
+		Kind:  pendingKindPlan,
+		Plan:  plan,
+		Calls: []relay.MaheshvaraToolCall{toolCall("c1", "test_upstream", `{"apiKey":"sk-1"}`)},
+	}
+	masked := maskedPendingAction(pending)
+	if masked.Kind != pendingKindPlan || len(masked.Plan) != 1 || masked.Plan[0].Title != "步骤" {
+		t.Fatalf("kind/plan lost: %+v", masked)
+	}
+	if strings.Contains(string(masked.Calls[0].Arguments), "sk-1") {
+		t.Fatalf("arguments must stay masked: %s", masked.Calls[0].Arguments)
+	}
+	if strings.Contains(string(pending.Calls[0].Arguments), "***") {
+		t.Fatalf("original pending must stay unmasked for execution")
+	}
+
+	question := &PendingAction{Kind: pendingKindQuestion, Question: &AskQuestion{CallID: "q1", Question: "选哪个？", AllowCustom: false}}
+	maskedQ := maskedPendingAction(question)
+	if maskedQ.Kind != pendingKindQuestion || maskedQ.Question == nil || maskedQ.Question.CallID != "q1" {
+		t.Fatalf("question lost: %+v", maskedQ)
+	}
+}

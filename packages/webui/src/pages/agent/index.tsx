@@ -91,10 +91,15 @@ export function AgentPage() {
   })
 
   /** 审批卡回灌：waiting_approval 的轮次在刷新/切会话后 SSE 现场已丢，
-   * 用会话详情里的 pendingAction 重建审批卡，否则待批轮次永远无法批准。 */
+   * 用会话详情里的 pendingAction 重建审批卡，否则待批轮次永远无法批准。
+   * plan 型待批没有 calls，按 kind 放行。 */
   useEffect(() => {
-    if (session?.status === 'waiting_approval' && session.pendingAction?.calls?.length) {
-      hydrateApproval(session.pendingAction)
+    const pending = session?.pendingAction
+    const hydratable =
+      session?.status === 'waiting_approval' &&
+      (pending?.kind === 'plan' || pending?.kind === 'question' || Boolean(pending?.calls?.length))
+    if (hydratable && pending) {
+      hydrateApproval(pending)
     }
   }, [session, hydrateApproval])
 

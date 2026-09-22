@@ -202,7 +202,7 @@ func (e *Engine) ResumeApproval(ctx context.Context, sessionID string, decision 
 	if err != nil {
 		return nil, err
 	}
-	if session.Status != StatusWaitingApproval || session.PendingAction == nil || len(session.PendingAction.Calls) == 0 {
+	if session.Status != StatusWaitingApproval || !resumablePending(session.PendingAction) {
 		return nil, ErrNoPendingApproval
 	}
 	turnCtx, handle, cancel, err := e.begin(sessionID, e.opts.TurnTimeout)
@@ -302,6 +302,9 @@ func (e *Engine) startTurn(ctx context.Context, sessionID string, handle *turnHa
 		if paused {
 			return
 		}
+		// 待批动作已消费完毕：清掉 pending，避免恢复后残留的旧动作被二次
+		// 批准（paused 时不清——那时的 pending 是本次新写入的）。
+		_ = e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{ClearPending: true})
 	}
 
 	e.modelLoop(ctx, sessionID, session, handle, conversation, started, events)
@@ -338,7 +341,26 @@ const (
 	pendingKindPlan     = "plan"
 )
 
-// resumeQuestion 把用户作答合成 ask_user 的工具结果。
+// resumablePending 报告待批动作能否被 ResumeApproval 消费：审批型必须有
+// 调用列表；提问型必须带问题（作答要靠 Question.CallID 合成工具结果）；
+// 方案型只带步骤清单，Calls 为空是常态。
+func resumablePending(pending *PendingAction) bool {
+	if pending == nil {
+		return false
+	}
+	switch pending.Kind {
+	case pendingKindPlan:
+		return true
+	case pendingKindQuestion:
+		return pending.Question != nil && len(pending.Calls) > 0
+	default:
+		return len(pending.Calls) > 0
+	}
+}
+
+// resumeQuestion 把用户作答合成 ask_user 的工具结果；同批其余调用一律合成
+// 取消结果——整批 tool_calls 早已持久化在 assistant 消息里，缺任何一个的
+// 结果，下一次模型调用都会被上游以配对不完整拒绝（400）。
 func (e *Engine) resumeQuestion(ctx context.Context, sessionID string, resume *PendingAction, decision ApprovalDecision, conversation []relay.MaheshvaraMessage, events chan Event) ([]relay.MaheshvaraMessage, bool, error) {
 	answer := strings.TrimSpace(decision.Answer)
 	if answer == "" {
@@ -354,7 +376,16 @@ func (e *Engine) resumeQuestion(ctx context.Context, sessionID string, resume *P
 	encoded, _ := json.Marshal(map[string]string{"answer": answer})
 	info := ToolResultInfo{CallID: callID, Name: "ask_user", OK: true, Summary: "用户回答：" + truncateRunes(answer, 80), Data: encoded}
 	e.persistToolResult(ctx, sessionID, info, events)
-	return append(conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit)), false, nil
+	conversation = append(conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
+	for _, call := range resume.Calls {
+		if call.ID == callID {
+			continue
+		}
+		cancelled := deniedToolResult(call, "用户已回答提问，本批其余调用已取消；如仍需要请在后续步骤重新发起")
+		e.persistToolResult(ctx, sessionID, cancelled, events)
+		conversation = append(conversation, toolResultToMaheshvara(cancelled, e.opts.ToolResultModelLimit))
+	}
+	return conversation, false, nil
 }
 
 // resumePlan 处理方案定稿：确认关闭计划模式；否则把修改意见交回模型。
@@ -614,7 +645,7 @@ func (e *Engine) pauseForPlan(ctx context.Context, sessionID string, session *Se
 	if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
 		return
 	}
-	emitTerminal(events, Event{Type: EventApprovalPending, Approval: pending})
+	emitTerminal(events, Event{Type: EventApprovalPending, Approval: maskedPendingAction(pending)})
 }
 
 // pauseForQuestion 把 ask_user 变成 question 型暂停。参数不合法时返回 false，
@@ -750,6 +781,10 @@ func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Sess
 	if !planStepsEqual(planBefore, session.Plan) {
 		emitEvent(events, Event{Type: EventPlanUpdated, Plan: session.Plan})
 		session.PlanStale = 0
+	}
+	// ready 标志的判定不依赖「方案有变化」：模型原样重发步骤并声明定稿时，
+	// 方案内容不变但确认流程仍然要触发。
+	if call.Name == "update_plan" {
 		e.notePlanReady(session, call, result)
 	}
 	return info
@@ -842,15 +877,24 @@ func MaskedPendingAction(pending *PendingAction) *PendingAction {
 
 // maskedPendingAction 复制待批快照并遮盖调用参数里的密钥类字段。
 // 落库的 PendingAction 保持原文（批准后要按原参数执行），只有 SSE 事件
-// 与对外视图走这份副本。
+// 与对外视图走这份副本。Kind/Question/Plan 不含密钥，原样带上——前端
+// 靠它们区分审批卡 / 提问卡 / 方案确认卡。
 func maskedPendingAction(pending *PendingAction) *PendingAction {
 	if pending == nil {
 		return nil
 	}
-	masked := &PendingAction{Reason: pending.Reason, Calls: make([]relay.MaheshvaraToolCall, len(pending.Calls))}
+	masked := &PendingAction{Kind: pending.Kind, Reason: pending.Reason, Calls: make([]relay.MaheshvaraToolCall, len(pending.Calls))}
 	for index, call := range pending.Calls {
 		masked.Calls[index] = call
 		masked.Calls[index].Arguments = maskSecretInputs(call.Arguments)
+	}
+	if pending.Question != nil {
+		question := *pending.Question
+		question.Options = append([]AskOption(nil), pending.Question.Options...)
+		masked.Question = &question
+	}
+	if pending.Plan != nil {
+		masked.Plan = append([]PlanStep(nil), pending.Plan...)
 	}
 	return masked
 }

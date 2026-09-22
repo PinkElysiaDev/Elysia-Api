@@ -173,10 +173,12 @@ type PendingAction struct {
 
 // AskQuestion 是 ask_user 暂停时交给用户的问题。
 type AskQuestion struct {
-	CallID      string      `json:"callId"`
+	CallID string `json:"callId"`
+	// AllowCustom 不带 omitempty：前端以 `!== false` 判断是否显示自定义
+	// 作答框，false 被省略会让「禁止自定义」永远传不到前端。
 	Question    string      `json:"question"`
 	Options     []AskOption `json:"options,omitempty"`
-	AllowCustom bool        `json:"allowCustom,omitempty"`
+	AllowCustom bool        `json:"allowCustom"`
 }
 
 // AskOption 是提问的一个预设选项。

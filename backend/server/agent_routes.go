@@ -376,6 +376,8 @@ type agentApprovePayload struct {
 	BaseURL  string `json:"baseUrl,omitempty"`
 	APIKey   string `json:"apiKey,omitempty"`
 	Note     string `json:"note,omitempty"`
+	// Answer 是 ask_user 提问的用户作答（question 型暂停专用）。
+	Answer string `json:"answer,omitempty"`
 }
 
 // adminApproveAgentAction 审批待定动作并流式返回续跑事件（SSE）。
@@ -391,7 +393,7 @@ func (s *Server) adminApproveAgentAction(c *gin.Context) {
 	}
 	id := strings.TrimSpace(c.Param("id"))
 	events, err := engine.ResumeApproval(c.Request.Context(), id, agent.ApprovalDecision{
-		Approved: payload.Approved, BaseURL: payload.BaseURL, APIKey: payload.APIKey, Note: payload.Note,
+		Approved: payload.Approved, BaseURL: payload.BaseURL, APIKey: payload.APIKey, Note: payload.Note, Answer: payload.Answer,
 	})
 	if err != nil {
 		respondAgentTurnError(c, err)
