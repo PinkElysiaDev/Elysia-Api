@@ -192,40 +192,12 @@ func (r *usageRetention) runOnceInner() {
 
 	// 1. 过期清理。
 	if cfg.RetentionDays > 0 {
-		cutoff := time.Now().AddDate(0, 0, -cfg.RetentionDays).UnixMilli()
-		err := r.deleteInBatches(ctx, func() ([]string, error) {
-			return s.store.DeleteUsageOlderThan(ctx, cutoff, retentionBatchSize)
-		}, func(ids []string) {
-			// 每批即清资产目录：不把全量被删 id 累积在内存里——大库过期清理
-			// 可达百万行，累积的 id 切片本身就要几十 MB。
-			stats.DeletedByTTL += len(ids)
-			stats.AssetsRemoved += r.releaseAssets(ctx, assetsRoot, ids)
-			totalDeleted += len(ids)
-		})
-		if err != nil {
-			stats.LastError = "ttl: " + err.Error()
-		}
+		totalDeleted += r.runTTLCleanup(ctx, cfg.RetentionDays, assetsRoot, &stats)
 	}
 
 	// 2. 条数清理（单批有界，循环驱动直至收敛到上限内）。
 	if cfg.MaxRecords > 0 {
-		count, err := s.store.CountUsageRecords(ctx)
-		if err != nil {
-			if stats.LastError == "" {
-				stats.LastError = "count: " + err.Error()
-			}
-		} else if count > int64(cfg.MaxRecords) {
-			err := r.deleteInBatches(ctx, func() ([]string, error) {
-				return s.store.DeleteUsageBeyondCount(ctx, int64(cfg.MaxRecords))
-			}, func(ids []string) {
-				stats.DeletedByRecords += len(ids)
-				stats.AssetsRemoved += r.releaseAssets(ctx, assetsRoot, ids)
-				totalDeleted += len(ids)
-			})
-			if err != nil && stats.LastError == "" {
-				stats.LastError = "records: " + err.Error()
-			}
-		}
+		totalDeleted += r.runRecordCapCleanup(ctx, cfg.MaxRecords, assetsRoot, &stats)
 	}
 
 	// 3. 超量清理（按逻辑占用收敛，删过才限频 VACUUM）。
@@ -262,6 +234,52 @@ func (r *usageRetention) runOnceInner() {
 
 // deleteInBatches 循环调用批次删除直至无可删行；每批结果交 onBatch 处理
 // （计数/资产目录清理），不累积全量 id——百万行级清理时累积切片本身就是负担。
+// runTTLCleanup 清理阶段一：按保留天数删除过期记录，每批联动释放资产文件
+// （不把全量被删 id 累积在内存里——大库过期清理可达百万行，累积的 id 切片
+// 本身就要几十 MB）。返回删除条数；失败写入 stats.LastError。
+func (r *usageRetention) runTTLCleanup(ctx context.Context, days int, assetsRoot string, stats *retentionStats) int {
+	cutoff := time.Now().AddDate(0, 0, -days).UnixMilli()
+	totalDeleted := 0
+	err := r.deleteInBatches(ctx, func() ([]string, error) {
+		return r.server.store.DeleteUsageOlderThan(ctx, cutoff, retentionBatchSize)
+	}, func(ids []string) {
+		stats.DeletedByTTL += len(ids)
+		stats.AssetsRemoved += r.releaseAssets(ctx, assetsRoot, ids)
+		totalDeleted += len(ids)
+	})
+	if err != nil {
+		stats.LastError = "ttl: " + err.Error()
+	}
+	return totalDeleted
+}
+
+// runRecordCapCleanup 清理阶段二：条数超限时删最旧直至收敛到上限内。
+// 计数失败仅记录（不清扫），且不覆盖更早阶段的错误。返回删除条数。
+func (r *usageRetention) runRecordCapCleanup(ctx context.Context, maxRecords int, assetsRoot string, stats *retentionStats) int {
+	count, err := r.server.store.CountUsageRecords(ctx)
+	if err != nil {
+		if stats.LastError == "" {
+			stats.LastError = "count: " + err.Error()
+		}
+		return 0
+	}
+	if count <= int64(maxRecords) {
+		return 0
+	}
+	totalDeleted := 0
+	err = r.deleteInBatches(ctx, func() ([]string, error) {
+		return r.server.store.DeleteUsageBeyondCount(ctx, int64(maxRecords))
+	}, func(ids []string) {
+		stats.DeletedByRecords += len(ids)
+		stats.AssetsRemoved += r.releaseAssets(ctx, assetsRoot, ids)
+		totalDeleted += len(ids)
+	})
+	if err != nil && stats.LastError == "" {
+		stats.LastError = "records: " + err.Error()
+	}
+	return totalDeleted
+}
+
 func (r *usageRetention) deleteInBatches(ctx context.Context, batch func() ([]string, error), onBatch func([]string)) error {
 	for {
 		if err := ctx.Err(); err != nil {

@@ -479,30 +479,52 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 			e.denyCall(ctx, sessionID, conversation, call, fmt.Sprintf("未知工具 %q", call.Name), events)
 			continue
 		}
-		if tool.Gated() {
-			if session.Settings.PlanMode {
-				e.denyCall(ctx, sessionID, conversation, call, "计划模式已开启：修改与出站操作暂不执行。请先用 update_plan 给出完整方案，并等待用户确认后再执行", events)
-				continue
+		gate, denial := e.gateCall(session, call, tool, approvedIDs)
+		if gate == gateDeny {
+			e.denyCall(ctx, sessionID, conversation, call, denial, events)
+			continue
+		}
+		if gate == gatePause {
+			pending := &PendingAction{Calls: append([]relay.MaheshvaraToolCall(nil), calls[index:]...), Reason: reason}
+			waiting := StatusWaitingApproval
+			if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
+				return false, err
 			}
-			policy := PermissionFor(session.Settings, tool.PermissionKey())
-			if policy == PermissionNever {
-				e.denyCall(ctx, sessionID, conversation, call, "用户已在会话设置中禁止此操作，请改用其他方式完成任务", events)
-				continue
-			}
-			if policy == PermissionAsk && !approvedIDs[call.ID] {
-				pending := &PendingAction{Calls: append([]relay.MaheshvaraToolCall(nil), calls[index:]...), Reason: reason}
-				waiting := StatusWaitingApproval
-				if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
-					return false, err
-				}
-				emitTerminal(events, Event{Type: EventApprovalPending, Approval: pending})
-				return true, nil
-			}
+			emitTerminal(events, Event{Type: EventApprovalPending, Approval: pending})
+			return true, nil
 		}
 		info := e.runOneTool(ctx, sessionID, session, tool, call, events)
 		*conversation = append(*conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
 	}
 	return false, nil
+}
+
+// gateCall 复核单个调用的门禁（计划模式 → 显式禁令 → ask 级审批）。批准集
+// 命中只豁免 ask；never 与计划模式始终逐调用复核——批准后策略可能已收紧。
+type callGate int
+
+const (
+	gateAllow callGate = iota
+	gateDeny
+	gatePause
+)
+
+func (e *Engine) gateCall(session *Session, call relay.MaheshvaraToolCall, tool Tool, approvedIDs map[string]bool) (callGate, string) {
+	if !tool.Gated() {
+		return gateAllow, ""
+	}
+	if session.Settings.PlanMode {
+		return gateDeny, "计划模式已开启：修改与出站操作暂不执行。请先用 update_plan 给出完整方案，并等待用户确认后再执行"
+	}
+	switch PermissionFor(session.Settings, tool.PermissionKey()) {
+	case PermissionNever:
+		return gateDeny, "用户已在会话设置中禁止此操作，请改用其他方式完成任务"
+	case PermissionAsk:
+		if !approvedIDs[call.ID] {
+			return gatePause, ""
+		}
+	}
+	return gateAllow, ""
 }
 
 // denyCall 合成一次被拒/未知的工具结果：落库 + 回传事件 + 追加到对话，

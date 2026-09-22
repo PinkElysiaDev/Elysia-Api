@@ -229,76 +229,96 @@ func (s *Store) UsagePulse(ctx context.Context, q UsageQuery, utcOffsetMinutes, 
 	defer rows.Close()
 
 	out := []UsagePulsePoint{}
-	var (
-		curBucket    int64
-		have         bool
-		n            int
-		succN        int
-		sum          int64
-		tokenSum     int64
-		bucketSample int64Reservoir
-		windowSample int64Reservoir
-		windowN      int
-		windowSuccN  int
-		windowSum    int64
-		windowTok    int64
-	)
-	bucketSample.samples = make([]int64, 0, pulseP95Reservoir)
-	windowSample.samples = make([]int64, 0, pulseP95Reservoir)
+	var curBucket int64
+	have := false
+	bucket := newPulseAccumulator()
+	window := newPulseAccumulator()
 	flush := func() {
-		if !have || n == 0 {
+		if !have || bucket.requests == 0 {
 			return
-		}
-		avg := 0.0
-		if succN > 0 {
-			avg = float64(sum) / float64(succN)
 		}
 		out = append(out, UsagePulsePoint{
 			T:             curBucket*bucketMs - offsetMs,
-			Requests:      n,
-			AvgDurationMs: avg,
-			P95DurationMs: percentileInt64(append([]int64(nil), bucketSample.samples...), 0.95),
-			TotalTokens:   tokenSum,
+			Requests:      bucket.requests,
+			AvgDurationMs: bucket.avgDurationMs(),
+			P95DurationMs: percentileInt64(append([]int64(nil), bucket.p95Sample.samples...), 0.95),
+			TotalTokens:   bucket.tokens,
 		})
-		windowN += n
-		windowSuccN += succN
-		windowSum += sum
-		windowTok += tokenSum
+		window.mergeCounters(&bucket)
 	}
 	for rows.Next() {
-		var bucket, durationMs, tokens, success int64
-		if err := rows.Scan(&bucket, &durationMs, &tokens, &success); err != nil {
+		var bucketAt, durationMs, tokens, success int64
+		if err := rows.Scan(&bucketAt, &durationMs, &tokens, &success); err != nil {
 			return UsagePulseResult{}, err
 		}
-		if !have || bucket != curBucket {
+		if !have || bucketAt != curBucket {
 			flush()
-			curBucket = bucket
+			curBucket = bucketAt
 			have = true
-			n = 0
-			succN = 0
-			sum = 0
-			tokenSum = 0
-			bucketSample.reset()
+			bucket.reset()
 		}
-		n++
+		bucket.add(durationMs, tokens, success == 1)
 		if success == 1 {
-			succN++
-			sum += durationMs
-			tokenSum += tokens
-			bucketSample.add(durationMs)
-			windowSample.add(durationMs)
+			// 窗口采样逐行喂入：reservoir 无法跨实例合并，不随 flush 汇总。
+			window.p95Sample.add(durationMs)
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return UsagePulseResult{}, err
 	}
 	flush()
-	window := UsagePulseWindow{Requests: windowN, TotalTokens: windowTok}
-	if windowSuccN > 0 {
-		window.AvgDurationMs = float64(windowSum) / float64(windowSuccN)
-		window.P95DurationMs = percentileInt64(windowSample.samples, 0.95)
+	windowResult := UsagePulseWindow{Requests: window.requests, TotalTokens: window.tokens}
+	if window.successN > 0 {
+		windowResult.AvgDurationMs = window.avgDurationMs()
+		windowResult.P95DurationMs = percentileInt64(window.p95Sample.samples, 0.95)
 	}
-	return UsagePulseResult{Points: out, Window: window}, nil
+	return UsagePulseResult{Points: out, Window: windowResult}, nil
+}
+
+// pulseAccumulator 聚合脉冲统计：Requests 计全部记录；时延与 token 只累计
+// 成功记录（失败调用的时延无性能意义，token 存在断流部分估算等非 0 例外）。
+// 桶与全窗口各持一个实例，窗口计数器经 mergeCounters 并入、采样逐行喂入。
+type pulseAccumulator struct {
+	requests  int
+	successN  int
+	duration  int64
+	tokens    int64
+	p95Sample int64Reservoir
+}
+
+func newPulseAccumulator() pulseAccumulator {
+	return pulseAccumulator{p95Sample: int64Reservoir{samples: make([]int64, 0, pulseP95Reservoir)}}
+}
+
+func (a *pulseAccumulator) reset() {
+	a.requests, a.successN, a.duration, a.tokens = 0, 0, 0, 0
+	a.p95Sample.reset()
+}
+
+func (a *pulseAccumulator) add(durationMs, tokens int64, success bool) {
+	a.requests++
+	if !success {
+		return
+	}
+	a.successN++
+	a.duration += durationMs
+	a.tokens += tokens
+	a.p95Sample.add(durationMs)
+}
+
+func (a *pulseAccumulator) avgDurationMs() float64 {
+	if a.successN == 0 {
+		return 0
+	}
+	return float64(a.duration) / float64(a.successN)
+}
+
+// mergeCounters 并入另一累计器的计数（不含采样）。
+func (a *pulseAccumulator) mergeCounters(other *pulseAccumulator) {
+	a.requests += other.requests
+	a.successN += other.successN
+	a.duration += other.duration
+	a.tokens += other.tokens
 }
 
 func (r *int64Reservoir) add(v int64) {

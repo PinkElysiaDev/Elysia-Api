@@ -3,6 +3,7 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -211,6 +212,137 @@ func (s *Store) SyncManualSourceModels(ctx context.Context, source ModelSource, 
 	return s.mergeSourceModels(ctx, source, manual, true)
 }
 
+// existingModelRow 是合并时读入的既有模型行（仅参与合并判定的列）。
+type existingModelRow struct {
+	id, name, thinking, origin, capabilitySource string
+	maxTokens                                    int
+	vision, tools, structured                    bool
+}
+
+// loadExistingModelRows 读入某源的全量既有模型行（单连接库：先全部读进内存
+// 再写，避免游标占用连接死锁）。
+func loadExistingModelRows(ctx context.Context, tx *sql.Tx, sourceID string) (map[string]existingModelRow, error) {
+	existing := map[string]existingModelRow{}
+	rows, err := tx.QueryContext(ctx, `SELECT id, name, thinking_mode, origin, capability_source, max_tokens, vision_capable, tools_capable, structured_output FROM models WHERE source_id = ?`, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var r existingModelRow
+		var vision, tools, structured int
+		if err := rows.Scan(&r.id, &r.name, &r.thinking, &r.origin, &r.capabilitySource, &r.maxTokens, &vision, &tools, &structured); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		r.vision, r.tools, r.structured = sqlIntToBool(vision), sqlIntToBool(tools), sqlIntToBool(structured)
+		existing[r.id] = r
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	return existing, nil
+}
+
+// modelMerge 封装一次模型合并事务的共享材料：事务、预编译语句、加密 key、
+// 时间戳与源身份，供逐模型处理与缺席清扫共用。
+type modelMerge struct {
+	tx         *sql.Tx
+	source     ModelSource
+	storedKey  string
+	checked    string
+	insertStmt *sql.Stmt
+	updateStmt *sql.Stmt
+}
+
+func (s *Store) newModelMerge(ctx context.Context, tx *sql.Tx, source ModelSource) (*modelMerge, error) {
+	storedKey, err := s.codec.encrypt(firstEffectiveKey(source))
+	if err != nil {
+		return nil, err
+	}
+	insertStmt, err := tx.PrepareContext(ctx, insertModelSQL)
+	if err != nil {
+		return nil, err
+	}
+	updateStmt, err := tx.PrepareContext(ctx, `UPDATE models SET name = ?, source_name = ?, base_url = ?, api_key = ?, platform = ?, type = ?, max_tokens = ?, vision_capable = ?, tools_capable = ?, structured_output = ?, thinking_mode = ?, capability_source = ?, last_checked_at = ? WHERE id = ? AND source_id = ?`)
+	if err != nil {
+		insertStmt.Close()
+		return nil, err
+	}
+	return &modelMerge{tx: tx, source: source, storedKey: storedKey, checked: nowString(), insertStmt: insertStmt, updateStmt: updateStmt}, nil
+}
+
+func (m *modelMerge) close() {
+	m.insertStmt.Close()
+	m.updateStmt.Close()
+}
+
+// mergeOne 处理 incoming 中的一个模型，返回是否为新插入行：
+//   - manual 行保留能力与启停，只刷新源身份快照（base_url/api_key/platform
+//     随源保存刷新——产品面不存在逐模型覆盖地址/密钥的语义；源 BaseURL 为空
+//     的 legacy 导入源跳过，其 models 行携带逐模型地址，见 ImportLegacyConfig）；
+//   - 既有行按能力来源保留用户编辑（capability_source='manual' 的能力值不动），
+//     其余能力值随 incoming（目录回填/上游解析）更新；
+//   - 新行插入（新模型默认启用，available 初始为 true 由健康检测接管）。
+func (m *modelMerge) mergeOne(ctx context.Context, existing map[string]existingModelRow, model Model) (bool, error) {
+	prev, existed := existing[model.ID]
+	if existed && prev.origin == "manual" {
+		if m.source.BaseURL != "" {
+			if _, err := m.tx.ExecContext(ctx, `UPDATE models SET base_url = ?, api_key = ?, platform = ?, last_checked_at = ? WHERE id = ? AND source_id = ?`,
+				m.source.BaseURL, m.storedKey, NormalizePlatform(m.source.Platform), m.checked, model.ID, m.source.ID); err != nil {
+				return false, err
+			}
+		} else if _, err := m.tx.ExecContext(ctx, `UPDATE models SET last_checked_at = ? WHERE id = ? AND source_id = ?`, m.checked, model.ID, m.source.ID); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if existed {
+		// 用户编辑过的能力字段（capability_source='manual'）在刷新时保留，
+		// 其余能力值随 incoming（目录回填/上游解析）更新。
+		vision, tools, structured, thinking, maxTokens, modelType, capabilitySource :=
+			model.VisionCapable, model.ToolsCapable, model.StructuredOutput, model.ThinkingMode, model.MaxTokens, model.Type, model.CapabilitySource
+		if prev.capabilitySource == "manual" {
+			vision, tools, structured = prev.vision, prev.tools, prev.structured
+			thinking, maxTokens = prev.thinking, prev.maxTokens
+			capabilitySource = "manual"
+		}
+		if _, err := m.updateStmt.ExecContext(ctx, model.Name, m.source.Name, m.source.BaseURL, m.storedKey, NormalizePlatform(m.source.Platform), modelType, maxTokens, sqlBoolToInt(vision), sqlBoolToInt(tools), sqlBoolToInt(structured), thinking, capabilitySource, m.checked, model.ID, m.source.ID); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if _, err := m.insertStmt.ExecContext(ctx, model.ID, m.source.ID, model.Name, m.source.Name, m.source.BaseURL, m.storedKey, NormalizePlatform(m.source.Platform), model.Type, model.MaxTokens, sqlBoolToInt(model.VisionCapable), sqlBoolToInt(model.ToolsCapable), sqlBoolToInt(model.StructuredOutput), model.ThinkingMode, sqlBoolToInt(true), sqlBoolToInt(model.Enabled), model.Origin, model.CapabilitySource, m.checked); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// sweepMissing 清扫缺席行：上游消失的 fetched 行删除；手动同步路径
+// （deleteMissingManual）下，缺席于权威集的 manual 行同样删除——fetch 路径
+// 维持 manual 行保留语义。删除同步清理组内引用防悬空。
+func (m *modelMerge) sweepMissing(ctx context.Context, existing map[string]existingModelRow, incomingIDs map[string]struct{}, deleteMissingManual bool) ([]string, error) {
+	var removed []string
+	for id, prev := range existing {
+		_, stillPresent := incomingIDs[id]
+		isManual := prev.origin == "manual"
+		if stillPresent || (isManual && !deleteMissingManual) {
+			continue
+		}
+		removed = append(removed, id)
+		if _, err := m.tx.ExecContext(ctx, `DELETE FROM models WHERE id = ? AND source_id = ?`, id, m.source.ID); err != nil {
+			return removed, err
+		}
+		if _, err := m.tx.ExecContext(ctx, `DELETE FROM model_group_models WHERE model_id = ? AND source_id = ?`, id, m.source.ID); err != nil {
+			return removed, err
+		}
+	}
+	return removed, nil
+}
+
+// mergeSourceModels 把一份权威模型清单合并进库：新行插入、既有行按能力
+// 来源刷新、缺席行清扫，全部在同一事务内。
 func (s *Store) mergeSourceModels(ctx context.Context, source ModelSource, incoming []Model, deleteMissingManual bool) (ModelMergeResult, error) {
 	result := ModelMergeResult{Added: []string{}, Removed: []string{}}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -219,107 +351,31 @@ func (s *Store) mergeSourceModels(ctx context.Context, source ModelSource, incom
 	}
 	defer tx.Rollback()
 
-	// 读取现有行（单连接库：先全部读进内存再写，避免游标占用连接死锁）。
-	type existingRow struct {
-		id, name, thinking, origin, capabilitySource string
-		maxTokens                                    int
-		vision, tools, structured                    bool
-	}
-	existing := make(map[string]existingRow, len(incoming))
-	rows, err := tx.QueryContext(ctx, `SELECT id, name, thinking_mode, origin, capability_source, max_tokens, vision_capable, tools_capable, structured_output FROM models WHERE source_id = ?`, source.ID)
+	existing, err := loadExistingModelRows(ctx, tx, source.ID)
 	if err != nil {
 		return result, err
 	}
-	for rows.Next() {
-		var r existingRow
-		var vision, tools, structured int
-		if err := rows.Scan(&r.id, &r.name, &r.thinking, &r.origin, &r.capabilitySource, &r.maxTokens, &vision, &tools, &structured); err != nil {
-			rows.Close()
-			return result, err
-		}
-		r.vision, r.tools, r.structured = sqlIntToBool(vision), sqlIntToBool(tools), sqlIntToBool(structured)
-		existing[r.id] = r
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return result, err
-	}
-	rows.Close()
-
-	checked := nowString()
-	storedKey, err := s.codec.encrypt(firstEffectiveKey(source))
+	merge, err := s.newModelMerge(ctx, tx, source)
 	if err != nil {
 		return result, err
 	}
-	insertStmt, err := tx.PrepareContext(ctx, insertModelSQL)
-	if err != nil {
-		return result, err
-	}
-	defer insertStmt.Close()
-	updateStmt, err := tx.PrepareContext(ctx, `UPDATE models SET name = ?, source_name = ?, base_url = ?, api_key = ?, platform = ?, type = ?, max_tokens = ?, vision_capable = ?, tools_capable = ?, structured_output = ?, thinking_mode = ?, capability_source = ?, last_checked_at = ? WHERE id = ? AND source_id = ?`)
-	if err != nil {
-		return result, err
-	}
-	defer updateStmt.Close()
+	defer merge.close()
 
 	incomingIDs := make(map[string]struct{}, len(incoming))
 	for i := range incoming {
 		model := normalizeModelDefaults(incoming[i])
 		incomingIDs[model.ID] = struct{}{}
-		prev, existed := existing[model.ID]
-		if existed && prev.origin == "manual" {
-			// manual 行保留能力与启停，但 base_url/api_key/platform 是源身份的
-			// 快照（产品面不存在逐模型覆盖地址/密钥的语义），随源保存刷新——
-			// 否则改源 url/key 后既有手动模型仍按旧配置请求。源 BaseURL 为空的
-			// legacy 导入源跳过（其 models 行携带逐模型地址，见 ImportLegacyConfig）。
-			if source.BaseURL != "" {
-				if _, err := tx.ExecContext(ctx, `UPDATE models SET base_url = ?, api_key = ?, platform = ?, last_checked_at = ? WHERE id = ? AND source_id = ?`,
-					source.BaseURL, storedKey, NormalizePlatform(source.Platform), checked, model.ID, source.ID); err != nil {
-					return result, err
-				}
-			} else if _, err := tx.ExecContext(ctx, `UPDATE models SET last_checked_at = ? WHERE id = ? AND source_id = ?`, checked, model.ID, source.ID); err != nil {
-				return result, err
-			}
-			continue
-		}
-		if existed {
-			// 用户编辑过的能力字段（capability_source='manual'）在刷新时保留，
-			// 其余能力值随 incoming（目录回填/上游解析）更新。
-			vision, tools, structured, thinking, maxTokens, modelType, capabilitySource :=
-				model.VisionCapable, model.ToolsCapable, model.StructuredOutput, model.ThinkingMode, model.MaxTokens, model.Type, model.CapabilitySource
-			if prev.capabilitySource == "manual" {
-				vision, tools, structured = prev.vision, prev.tools, prev.structured
-				thinking, maxTokens = prev.thinking, prev.maxTokens
-				capabilitySource = "manual"
-			}
-			if _, err := updateStmt.ExecContext(ctx, model.Name, source.Name, source.BaseURL, storedKey, NormalizePlatform(source.Platform), modelType, maxTokens, sqlBoolToInt(vision), sqlBoolToInt(tools), sqlBoolToInt(structured), thinking, capabilitySource, checked, model.ID, source.ID); err != nil {
-				return result, err
-			}
-			continue
-		}
-		// 新模型默认启用（已确认的默认值），available 初始为 true 由健康检测接管。
-		result.Added = append(result.Added, model.ID)
-		if _, err := insertStmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, source.BaseURL, storedKey, NormalizePlatform(source.Platform), model.Type, model.MaxTokens, sqlBoolToInt(model.VisionCapable), sqlBoolToInt(model.ToolsCapable), sqlBoolToInt(model.StructuredOutput), model.ThinkingMode, sqlBoolToInt(true), sqlBoolToInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
+		added, err := merge.mergeOne(ctx, existing, model)
+		if err != nil {
 			return result, err
+		}
+		if added {
+			result.Added = append(result.Added, model.ID)
 		}
 	}
-
-	// 上游消失的 fetched 行删除；手动同步路径（deleteMissingManual）下，
-	// 缺席于权威集的 manual 行同样删除——fetch 路径维持 manual 行保留语义。
-	// 删除同步清理组内引用防悬空。
-	for id, prev := range existing {
-		_, stillPresent := incomingIDs[id]
-		isManual := prev.origin == "manual"
-		if stillPresent || (isManual && !deleteMissingManual) {
-			continue
-		}
-		result.Removed = append(result.Removed, id)
-		if _, err := tx.ExecContext(ctx, `DELETE FROM models WHERE id = ? AND source_id = ?`, id, source.ID); err != nil {
-			return result, err
-		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM model_group_models WHERE model_id = ? AND source_id = ?`, id, source.ID); err != nil {
-			return result, err
-		}
+	result.Removed, err = merge.sweepMissing(ctx, existing, incomingIDs, deleteMissingManual)
+	if err != nil {
+		return result, err
 	}
 	return result, tx.Commit()
 }
