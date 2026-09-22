@@ -281,6 +281,10 @@ func (s *Store) UpdateSessionState(ctx context.Context, id string, update agent.
 		sets = append(sets, "test_base_url = ?")
 		args = append(args, strings.TrimSpace(update.TestBaseURL))
 	}
+	if update.SettingsPlanMode != nil {
+		sets = append(sets, "plan_mode = ?")
+		args = append(args, sqlBoolToInt(*update.SettingsPlanMode))
+	}
 	if strings.TrimSpace(update.TestAPIKey) != "" {
 		encrypted, err := s.encryptTestKey(update.TestAPIKey)
 		if err != nil {

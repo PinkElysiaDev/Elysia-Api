@@ -21,6 +21,24 @@ const (
 	PermissionNever  = "never"
 )
 
+// 门控工具的权限键。工具的 PermissionKey() 与 PermissionFor 必须共用这组
+// 常量：注册表在装配时校验未知键直接报错，避免新增权限键漏改 switch 后
+// 静默按 ask 处理。
+const (
+	PermissionKeyLiveTest = "live_test"
+	PermissionKeySave     = "save"
+)
+
+// KnownPermissionKey 报告权限键是否属于引擎认识的集合。
+func KnownPermissionKey(key string) bool {
+	switch key {
+	case PermissionKeyLiveTest, PermissionKeySave:
+		return true
+	default:
+		return false
+	}
+}
+
 // 会话模式。
 const (
 	ModeCreate = "create"
@@ -60,6 +78,8 @@ type Session struct {
 	Settings      Settings        `json:"settings"`
 	Status        string          `json:"status"`
 	PendingAction *PendingAction  `json:"pendingAction,omitempty"`
+	PlanReady     bool            `json:"-"` // 本轮 update_plan 声明了定稿，工具批次结束后暂停确认
+	PlanStale     int             `json:"-"` // 连续多少次模型调用没有更新方案
 	CreatedAt     time.Time       `json:"createdAt"`
 	UpdatedAt     time.Time       `json:"updatedAt"`
 }
@@ -77,15 +97,16 @@ type SessionMeta struct {
 
 // SessionStateUpdate 是引擎运行中需要写回的会话状态增量。
 type SessionStateUpdate struct {
-	Status        *string         `json:"status,omitempty"`
-	PendingAction *PendingAction  `json:"pendingAction,omitempty"` // nil 且 ClearPending 时清空
-	ClearPending  bool            `json:"clearPending,omitempty"`
-	DraftConfig   json.RawMessage `json:"draftConfig,omitempty"`
-	DraftRestore  json.RawMessage `json:"draftRestore,omitempty"` // 非 nil 时覆盖草稿还原点（单槽）
-	Plan          []PlanStep      `json:"plan,omitempty"`         // 非 nil 时整体替换
-	Title         string          `json:"title,omitempty"`        // 空串表示不改
-	TestBaseURL   string          `json:"testBaseUrl,omitempty"`  // 非空时更新测试目标 baseUrl
-	TestAPIKey    string          `json:"testApiKey,omitempty"`   // 非空时更新测试目标 API key（存储层加密）
+	Status           *string         `json:"status,omitempty"`
+	PendingAction    *PendingAction  `json:"pendingAction,omitempty"` // nil 且 ClearPending 时清空
+	ClearPending     bool            `json:"clearPending,omitempty"`
+	DraftConfig      json.RawMessage `json:"draftConfig,omitempty"`
+	DraftRestore     json.RawMessage `json:"draftRestore,omitempty"` // 非 nil 时覆盖草稿还原点（单槽）
+	Plan             []PlanStep      `json:"plan,omitempty"`         // 非 nil 时整体替换
+	Title            string          `json:"title,omitempty"`        // 空串表示不改
+	TestBaseURL      string          `json:"testBaseUrl,omitempty"`  // 非空时更新测试目标 baseUrl
+	TestAPIKey       string          `json:"testApiKey,omitempty"`   // 非空时更新测试目标 API key（存储层加密）
+	SettingsPlanMode *bool           `json:"settingsPlanMode,omitempty"`
 }
 
 // Store 是引擎依赖的持久化接口（由 storage 包实现）。

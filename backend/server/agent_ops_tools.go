@@ -211,6 +211,19 @@ func agentSourceView(source storage.ModelSource, modelCount int) map[string]any 
 	}
 }
 
+// readOnlyMeta 只读查询工具的元数据：同批可并行，结果保留头部。
+func readOnlyMeta() agent.ToolMeta {
+	return agent.ToolMeta{ReadOnly: true, ConcurrentSafe: true, RiskLevel: "low", PreviewDirection: "head"}
+}
+
+func (t *listSourcesTool) Meta() agent.ToolMeta    { return readOnlyMeta() }
+func (t *listGroupsTool) Meta() agent.ToolMeta     { return readOnlyMeta() }
+func (t *usageStatsTool) Meta() agent.ToolMeta     { return readOnlyMeta() }
+func (t *usageTrendTool) Meta() agent.ToolMeta     { return readOnlyMeta() }
+func (t *usageLogsTool) Meta() agent.ToolMeta      { return readOnlyMeta() }
+func (t *usageLogDetailTool) Meta() agent.ToolMeta { return readOnlyMeta() }
+func (t *systemLogsTool) Meta() agent.ToolMeta     { return readOnlyMeta() }
+
 func agentSourceModelCounts(ctx context.Context, store *storage.Store) map[string]int {
 	models, err := store.ListModels(ctx)
 	if err != nil {
@@ -585,7 +598,10 @@ type createSourceTool struct{ server *Server }
 func (t *createSourceTool) Name() string          { return agentToolCreateSource }
 func (t *createSourceTool) Description() string   { return "创建模型源（需审批）" }
 func (t *createSourceTool) Gated() bool           { return true }
-func (t *createSourceTool) PermissionKey() string { return "save" }
+func (t *createSourceTool) PermissionKey() string { return agent.PermissionKeySave }
+func (t *createSourceTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: "head"}
+}
 
 func (t *createSourceTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
@@ -674,7 +690,10 @@ type updateSourceTool struct{ server *Server }
 func (t *updateSourceTool) Name() string          { return agentToolUpdateSource }
 func (t *updateSourceTool) Description() string   { return "修改模型源（需审批）" }
 func (t *updateSourceTool) Gated() bool           { return true }
-func (t *updateSourceTool) PermissionKey() string { return "save" }
+func (t *updateSourceTool) PermissionKey() string { return agent.PermissionKeySave }
+func (t *updateSourceTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: "head"}
+}
 
 func (t *updateSourceTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
@@ -788,7 +807,10 @@ func (t *refreshSourceTool) Description() string {
 	return "拉取模型列表（真实出站，需审批）"
 }
 func (t *refreshSourceTool) Gated() bool           { return true }
-func (t *refreshSourceTool) PermissionKey() string { return "live_test" }
+func (t *refreshSourceTool) PermissionKey() string { return agent.PermissionKeyLiveTest }
+func (t *refreshSourceTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: "tail", TimeoutMs: 60_000}
+}
 
 func (t *refreshSourceTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
@@ -831,7 +853,10 @@ type createGroupTool struct{ server *Server }
 func (t *createGroupTool) Name() string          { return agentToolCreateGroup }
 func (t *createGroupTool) Description() string   { return "创建模型组（需审批）" }
 func (t *createGroupTool) Gated() bool           { return true }
-func (t *createGroupTool) PermissionKey() string { return "save" }
+func (t *createGroupTool) PermissionKey() string { return agent.PermissionKeySave }
+func (t *createGroupTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{RiskLevel: "medium", PreviewDirection: "head"}
+}
 
 func (t *createGroupTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
@@ -895,7 +920,10 @@ type updateGroupTool struct{ server *Server }
 func (t *updateGroupTool) Name() string          { return agentToolUpdateGroup }
 func (t *updateGroupTool) Description() string   { return "修改模型组（需审批）" }
 func (t *updateGroupTool) Gated() bool           { return true }
-func (t *updateGroupTool) PermissionKey() string { return "save" }
+func (t *updateGroupTool) PermissionKey() string { return agent.PermissionKeySave }
+func (t *updateGroupTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{RiskLevel: "medium", PreviewDirection: "head"}
+}
 
 func (t *updateGroupTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
@@ -998,7 +1026,10 @@ func (t *outboundPolicyTool) Description() string {
 	return "查询或修改出站禁止 IP 段（需审批）"
 }
 func (t *outboundPolicyTool) Gated() bool           { return true }
-func (t *outboundPolicyTool) PermissionKey() string { return "save" }
+func (t *outboundPolicyTool) PermissionKey() string { return agent.PermissionKeySave }
+func (t *outboundPolicyTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: "head"}
+}
 
 func (t *outboundPolicyTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{

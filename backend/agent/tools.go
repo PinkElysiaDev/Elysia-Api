@@ -51,6 +51,37 @@ func ToolError(summary string, code string) ToolResult {
 	return ToolResult{OK: false, Summary: summary, Data: map[string]any{"error": code}}
 }
 
+// ToolMeta 是工具的执行与结果预算注解。以可选接口挂接：未实现 Meta()
+// 的工具取 ToolMeta 零值（不可并行、16KB 模型预算、保留头部）。
+type ToolMeta struct {
+	// ReadOnly 工具不改任何状态。
+	ReadOnly bool
+	// ConcurrentSafe 同批内可与其他 ConcurrentSafe 非门控工具并行。
+	ConcurrentSafe bool
+	// RiskLevel low|medium|high，供审批与日志分级。
+	RiskLevel string
+	// MaxModelBytes 回传模型的结果上限；0 取引擎默认。
+	MaxModelBytes int
+	// PreviewDirection 超限时保留 head 或 tail。
+	PreviewDirection string
+	// TimeoutMs 单次执行超时；0 不单独限时（随轮次超时）。
+	TimeoutMs int
+}
+
+// ToolWithMeta 是声明执行元数据的工具。
+type ToolWithMeta interface {
+	Tool
+	Meta() ToolMeta
+}
+
+// MetaOf 取工具元数据；未声明时返回默认。
+func MetaOf(tool Tool) ToolMeta {
+	if withMeta, ok := tool.(ToolWithMeta); ok {
+		return withMeta.Meta()
+	}
+	return ToolMeta{}
+}
+
 // ToolResult 是工具执行结果：Data 回传给模型（须精简），Summary 供 UI 展示。
 type ToolResult struct {
 	OK      bool
@@ -96,6 +127,12 @@ func NewRegistry(tools ...Tool) (*Registry, error) {
 		}
 		if _, exists := registry.tools[name]; exists {
 			return nil, fmt.Errorf("agent tool %q registered twice", name)
+		}
+		if tool.Gated() && !KnownPermissionKey(tool.PermissionKey()) {
+			return nil, fmt.Errorf("agent tool %q declares unknown permission key %q", name, tool.PermissionKey())
+		}
+		if !tool.Gated() && tool.PermissionKey() != "" {
+			return nil, fmt.Errorf("agent tool %q is not gated but declares permission key %q", name, tool.PermissionKey())
 		}
 		registry.tools[name] = tool
 		registry.order = append(registry.order, name)

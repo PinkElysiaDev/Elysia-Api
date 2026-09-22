@@ -115,6 +115,9 @@ func (f *fakeStore) UpdateSessionState(ctx context.Context, id string, update Se
 	if update.TestAPIKey != "" {
 		session.TestAPIKey = update.TestAPIKey
 	}
+	if update.SettingsPlanMode != nil {
+		session.Settings.PlanMode = *update.SettingsPlanMode
+	}
 	return nil
 }
 
@@ -742,9 +745,99 @@ func TestRegistry(t *testing.T) {
 // 回归（W1-1）：clampJSON 截断产物必须是合法 JSON——旧实现「JSON 前缀 +
 // 文本尾巴」让超限工具结果 AppendMessage 时 Marshal 失败，历史留下无结果的
 // tool_calls，会话后续每轮被上游 400 拒绝。
+type blockingTool struct {
+	fakeTool
+	started chan struct{}
+	release chan struct{}
+}
+
+func (b *blockingTool) Meta() ToolMeta { return ToolMeta{ReadOnly: true, ConcurrentSafe: true} }
+
+func (b *blockingTool) Execute(ctx context.Context, tctx ToolContext, args json.RawMessage) ToolResult {
+	select {
+	case <-b.started:
+	default:
+		close(b.started)
+	}
+	select {
+	case <-b.release:
+	case <-ctx.Done():
+		return ToolResult{OK: false, Summary: "canceled"}
+	}
+	return b.result
+}
+
+// 两个声明可并行的只读工具应重叠执行，而不是等第一个结束才开始第二个。
+func TestExecuteCalls_ParallelReadOnlyToolsOverlap(t *testing.T) {
+	release := make(chan struct{})
+	first := &blockingTool{fakeTool: fakeTool{name: "list_a", result: ToolResult{OK: true, Summary: "a"}}, started: make(chan struct{}), release: release}
+	second := &blockingTool{fakeTool: fakeTool{name: "list_b", result: ToolResult{OK: true, Summary: "b"}}, started: make(chan struct{}), release: release}
+	registry, err := NewRegistry(first, second)
+	if err != nil {
+		t.Fatalf("registry: %v", err)
+	}
+	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle})
+	engine := NewEngine(&fakeCaller{}, store, registry, nil, nil, Options{})
+	session, _ := store.GetSession(context.Background(), "s1")
+	conversation := []relay.MaheshvaraMessage{}
+	done := make(chan struct{})
+	go func() {
+		_, _ = engine.executeCalls(context.Background(), "s1", session, &conversation, []relay.MaheshvaraToolCall{
+			toolCall("c1", "list_a", `{}`), toolCall("c2", "list_b", `{}`),
+		}, "", nil, make(chan Event, 8))
+		close(done)
+	}()
+	select {
+	case <-first.started:
+	case <-time.After(time.Second):
+		t.Fatal("first tool did not start")
+	}
+	select {
+	case <-second.started:
+	case <-time.After(time.Second):
+		t.Fatal("second tool did not overlap the first")
+	}
+	close(release)
+	<-done
+}
+
+func TestClampJSON_TailKeepsEnding(t *testing.T) {
+	raw := json.RawMessage(`{"head":"` + strings.Repeat("a", 400) + `","tail":"ENDMARK"}`)
+	clamped := clampJSON(raw, 80, "tail")
+	if !json.Valid(clamped) || !strings.Contains(string(clamped), "ENDMARK") {
+		t.Fatalf("tail clamp lost the ending: %s", clamped)
+	}
+}
+
+func TestMaskSecretInputs_Authorization(t *testing.T) {
+	masked := maskSecretInputs(json.RawMessage(`{"authorization":"Bearer secret","name":"x"}`))
+	if strings.Contains(string(masked), "secret") || !strings.Contains(string(masked), `"name":"x"`) {
+		t.Fatalf("mask = %s", masked)
+	}
+}
+
+func TestMicroCompact_ClearsOldToolResults(t *testing.T) {
+	conversation := make([]relay.MaheshvaraMessage, 0, 6)
+	for index := 0; index < 6; index++ {
+		conversation = append(conversation, relay.MaheshvaraMessage{Role: "tool", Content: []relay.MaheshvaraContentPart{{
+			Type: relay.MaheshvaraContentToolOutput, ToolCallID: fmt.Sprintf("c%d", index), ToolOutput: strings.Repeat("x", 1000),
+		}}})
+	}
+	compacted, cleared := microCompact(conversation)
+	if cleared != 2 {
+		t.Fatalf("cleared = %d", cleared)
+	}
+	if !strings.Contains(compacted[0].Content[0].ToolOutput, "旧工具结果已清除") {
+		t.Fatalf("oldest result not cleared: %s", compacted[0].Content[0].ToolOutput)
+	}
+	if strings.Contains(compacted[5].Content[0].ToolOutput, "旧工具结果已清除") {
+		t.Fatal("newest result should be kept")
+	}
+}
+
 func TestClampJSON_TruncationStaysValidJSON(t *testing.T) {
 	huge := json.RawMessage(`{"data":"` + strings.Repeat("x", 200*1024) + `"}`)
-	clamped := clampJSON(huge, 64*1024)
+	clamped := clampJSON(huge, 64*1024, "head")
 	if !json.Valid(clamped) {
 		t.Fatalf("clamped output must be valid JSON: %.80s", clamped)
 	}
@@ -752,7 +845,7 @@ func TestClampJSON_TruncationStaysValidJSON(t *testing.T) {
 	if err := json.Unmarshal(clamped, &envelope); err != nil || envelope["truncated"] != true {
 		t.Fatalf("envelope shape wrong: %.120s", clamped)
 	}
-	small := clampJSON(json.RawMessage(`{"a":1}`), 64*1024)
+	small := clampJSON(json.RawMessage(`{"a":1}`), 64*1024, "head")
 	if string(small) != `{"a":1}` {
 		t.Fatalf("small payload must pass through untouched: %s", small)
 	}

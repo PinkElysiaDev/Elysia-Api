@@ -27,6 +27,9 @@ const (
 	// agentRelayMode 是 Agent 用量记录的 relay_mode 标记。
 	agentRelayMode    = "agent-assist"
 	agentMaxBodyBytes = 40 << 20 // 消息端点请求体上限（含附件 data URL）
+	// sseKeepaliveInterval 是 SSE 空闲时的注释帧间隔。工具执行最长可达
+	// 两分钟且期间零事件，中间代理会把静默连接掐断。
+	sseKeepaliveInterval = 15 * time.Second
 )
 
 func (s *Server) setupAgentRoutes(admin *gin.RouterGroup) {
@@ -48,7 +51,8 @@ func (s *Server) protocolAgentEngine() *agent.Engine {
 		if s.store == nil {
 			return
 		}
-		registry, err := agent.NewRegistry(append(append(newProtocolAgentTools(s), newAgentOpsTools(s)...), &updatePlanTool{})...)
+		agent.ParseAsk = parseAskQuestion
+		registry, err := agent.NewRegistry(append(append(newProtocolAgentTools(s), newAgentOpsTools(s)...), &updatePlanTool{}, &askUserTool{})...)
 		if err != nil {
 			log.Printf("agent engine tools unavailable: %v", err)
 			return
@@ -89,7 +93,7 @@ func agentSessionView(session *agent.Session) gin.H {
 		"draftRestore":  json.RawMessage(session.DraftRestore),
 		"settings":      session.Settings,
 		"status":        session.Status,
-		"pendingAction": session.PendingAction,
+		"pendingAction": agent.MaskedPendingAction(session.PendingAction),
 		"plan":          session.Plan,
 		"createdAt":     session.CreatedAt.UTC().Format(time.RFC3339),
 		"updatedAt":     session.UpdatedAt.UTC().Format(time.RFC3339),
@@ -449,12 +453,22 @@ func (s *Server) streamAgentEvents(c *gin.Context, sessionID string, events <-ch
 		}
 		return true
 	}
-	// 连接断开即停止转发（轮次在引擎侧继续，刷新即可见结果）。
+	// 连接断开即停止转发（轮次在引擎侧继续，刷新即可见结果）。空闲时
+	// 发 SSE 注释帧保活：注释行不以 event/data 开头，前端解析器直接忽略。
 	ctx := c.Request.Context()
+	keepalive := time.NewTicker(sseKeepaliveInterval)
+	defer keepalive.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-keepalive.C:
+			if _, err := fmt.Fprint(c.Writer, ": keepalive\n\n"); err != nil {
+				return
+			}
+			if canFlush {
+				flusher.Flush()
+			}
 		case event, ok := <-events:
 			if !ok {
 				return

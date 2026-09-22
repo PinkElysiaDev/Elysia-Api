@@ -9,17 +9,20 @@ import (
 
 // 事件类型：引擎只产出结构化事件，SSE 编码由 HTTP 层完成。
 const (
-	EventStatus          = "status"            // 阶段变化（调用模型/执行工具/重试中）
-	EventTextDelta       = "text_delta"        // 助手正文增量
-	EventReasoningDelta  = "reasoning_delta"   // 思维链增量
-	EventToolCall        = "tool_call"         // 模型发起工具调用
-	EventToolResult      = "tool_result"       // 工具执行结果
-	EventDraftUpdated    = "draft_updated"     // 会话草稿已更新
-	EventPlanUpdated     = "plan_updated"      // 工作方案已更新
-	EventApprovalPending = "approval_required" // 轮次暂停等待审批
-	EventMessage         = "message"           // 一条消息已持久化
-	EventTurnDone        = "turn_done"         // 轮次完成（含用量汇总）
-	EventError           = "error"             // 轮次失败（retryable 标记是否可重试）
+	EventStatus           = "status"            // 阶段变化（调用模型/执行工具/重试中）
+	EventTextDelta        = "text_delta"        // 助手正文增量
+	EventReasoningDelta   = "reasoning_delta"   // 思维链增量
+	EventToolCall         = "tool_call"         // 模型发起工具调用
+	EventToolProgress     = "tool_progress"     // 工具仍在执行（耗时心跳）
+	EventToolResult       = "tool_result"       // 工具执行结果
+	EventDraftUpdated     = "draft_updated"     // 会话草稿已更新
+	EventPlanUpdated      = "plan_updated"      // 工作方案已更新
+	EventApprovalPending  = "approval_required" // 轮次暂停等待审批
+	EventMessage          = "message"           // 一条消息已持久化
+	EventTurnDone         = "turn_done"         // 轮次完成（含用量汇总）
+	EventError            = "error"             // 轮次失败（retryable 标记是否可重试）
+	EventContextUpdated   = "context_updated"   // 本轮上下文水位
+	EventContextCompacted = "context_compacted" // 微压缩或摘要压缩完成
 )
 
 // Event 是引擎向外发布的唯一事件载体。字段按类型复用，未用字段为零值。
@@ -37,11 +40,13 @@ type Event struct {
 	// text_delta / reasoning_delta 的增量内容
 	Delta string `json:"delta,omitempty"`
 
-	// tool_call / tool_result
+	// tool_call / tool_progress / tool_result
 	CallID string          `json:"callId,omitempty"`
 	Name   string          `json:"name,omitempty"`
 	Input  json.RawMessage `json:"input,omitempty"`
 	Result *ToolResultInfo `json:"result,omitempty"`
+	// tool_progress：已执行毫秒数
+	ElapsedMs int64 `json:"elapsedMs,omitempty"`
 
 	// draft_updated
 	Draft json.RawMessage `json:"draft,omitempty"`
@@ -51,6 +56,10 @@ type Event struct {
 
 	// approval_required
 	Approval *PendingAction `json:"approval,omitempty"`
+
+	// context_updated / context_compacted
+	Context    *ContextUsage `json:"context,omitempty"`
+	Compaction *Compaction   `json:"compaction,omitempty"`
 
 	// turn_done
 	Usage      *relay.MaheshvaraUsage `json:"usage,omitempty"`
@@ -116,7 +125,9 @@ type ApprovalContent struct {
 // SystemContent 是 system 消息内容（错误提示等）。
 type SystemContent struct {
 	Text string `json:"text"`
-	Kind string `json:"kind,omitempty"` // error | info
+	Kind string `json:"kind,omitempty"` // error | info | summary
+	// BoundarySeq 摘要覆盖到的最后一条消息序号（含）。之后的消息仍原样回放。
+	BoundarySeq int `json:"boundarySeq,omitempty"`
 }
 
 // 角色常量。
@@ -128,14 +139,48 @@ const (
 	RoleSystem     = "system"
 )
 
+// ContextUsage 是一次模型调用后的上下文水位。
+type ContextUsage struct {
+	InputTokens  int     `json:"inputTokens"`
+	WindowTokens int     `json:"windowTokens"`
+	Ratio        float64 `json:"ratio"`
+}
+
+// Compaction 是一次上下文压缩的边界指标。
+type Compaction struct {
+	Kind         string `json:"kind"` // micro | summary
+	Summarized   int    `json:"summarized"`
+	Kept         int    `json:"kept"`
+	BeforeTokens int    `json:"beforeTokens,omitempty"`
+	AfterTokens  int    `json:"afterTokens,omitempty"`
+}
+
 // PlanStep 是工作方案清单的一项（update_plan 工具维护，侧边栏「方案」页展示）。
 type PlanStep struct {
 	Title  string `json:"title"`
 	Status string `json:"status"` // pending | in_progress | done
 }
 
-// PendingAction 是等待审批的动作快照：本轮剩余未执行的门控工具调用。
+// PendingAction 是等待用户的动作快照。Kind 为空或 approval 时是门控工具审批；
+// question 是 ask_user 的提问；plan 是方案定稿确认。
 type PendingAction struct {
-	Calls  []relay.MaheshvaraToolCall `json:"calls"`
-	Reason string                     `json:"reason,omitempty"` // 模型对动作意图的说明（取自正文）
+	Kind     string                     `json:"kind,omitempty"`
+	Calls    []relay.MaheshvaraToolCall `json:"calls"`
+	Reason   string                     `json:"reason,omitempty"` // 模型对动作意图的说明（取自正文）
+	Question *AskQuestion               `json:"question,omitempty"`
+	Plan     []PlanStep                 `json:"plan,omitempty"`
+}
+
+// AskQuestion 是 ask_user 暂停时交给用户的问题。
+type AskQuestion struct {
+	CallID      string      `json:"callId"`
+	Question    string      `json:"question"`
+	Options     []AskOption `json:"options,omitempty"`
+	AllowCustom bool        `json:"allowCustom,omitempty"`
+}
+
+// AskOption 是提问的一个预设选项。
+type AskOption struct {
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
 }

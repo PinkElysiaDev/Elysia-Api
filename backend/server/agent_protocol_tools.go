@@ -53,6 +53,9 @@ func (t *updateDraftTool) Description() string {
 }
 func (t *updateDraftTool) Gated() bool           { return false }
 func (t *updateDraftTool) PermissionKey() string { return "" }
+func (t *updateDraftTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{RiskLevel: "medium", PreviewDirection: "head"}
+}
 
 func (t *updateDraftTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
@@ -131,6 +134,9 @@ func (t *previewRequestTool) Name() string          { return agentToolPreview }
 func (t *previewRequestTool) Description() string   { return "离线渲染草稿请求（不发送）" }
 func (t *previewRequestTool) Gated() bool           { return false }
 func (t *previewRequestTool) PermissionKey() string { return "" }
+func (t *previewRequestTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{ReadOnly: true, ConcurrentSafe: true, RiskLevel: "low", PreviewDirection: "head"}
+}
 
 func (t *previewRequestTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
@@ -177,7 +183,10 @@ type testUpstreamTool struct{ server *Server }
 func (t *testUpstreamTool) Name() string          { return agentToolTestUpstream }
 func (t *testUpstreamTool) Description() string   { return "向真实上游发送一次测试请求" }
 func (t *testUpstreamTool) Gated() bool           { return true }
-func (t *testUpstreamTool) PermissionKey() string { return "live_test" }
+func (t *testUpstreamTool) PermissionKey() string { return agent.PermissionKeyLiveTest }
+func (t *testUpstreamTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: "tail", TimeoutMs: 120_000}
+}
 
 func (t *testUpstreamTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
@@ -251,7 +260,10 @@ func (t *testModelsTool) Description() string {
 	return "试拉上游模型列表（按草稿 models 发现配置）"
 }
 func (t *testModelsTool) Gated() bool           { return true }
-func (t *testModelsTool) PermissionKey() string { return "live_test" }
+func (t *testModelsTool) PermissionKey() string { return agent.PermissionKeyLiveTest }
+func (t *testModelsTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: "head", TimeoutMs: 60_000}
+}
 
 func (t *testModelsTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
@@ -314,7 +326,10 @@ type saveProtocolTool struct{ server *Server }
 func (t *saveProtocolTool) Name() string          { return agentToolSave }
 func (t *saveProtocolTool) Description() string   { return "把当前草稿保存为正式协议" }
 func (t *saveProtocolTool) Gated() bool           { return true }
-func (t *saveProtocolTool) PermissionKey() string { return "save" }
+func (t *saveProtocolTool) PermissionKey() string { return agent.PermissionKeySave }
+func (t *saveProtocolTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: "head"}
+}
 
 func (t *saveProtocolTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
@@ -379,6 +394,9 @@ func (t *readProtocolTool) Name() string          { return agentToolRead }
 func (t *readProtocolTool) Description() string   { return "读取已保存协议的完整配置" }
 func (t *readProtocolTool) Gated() bool           { return false }
 func (t *readProtocolTool) PermissionKey() string { return "" }
+func (t *readProtocolTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{ReadOnly: true, ConcurrentSafe: true, RiskLevel: "low", PreviewDirection: "head"}
+}
 
 func (t *readProtocolTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{

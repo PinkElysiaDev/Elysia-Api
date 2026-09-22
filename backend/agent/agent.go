@@ -12,6 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/elysia-api/backend/relay"
 )
 
@@ -42,6 +44,8 @@ type Options struct {
 	ToolResultModelLimit int
 	// ToolResultStoreLimit 持久化的工具结果字节上限（超出截断）。
 	ToolResultStoreLimit int
+	// ContextWindowTokens 上下文窗口；0 取默认 128k。
+	ContextWindowTokens int
 }
 
 func (o Options) withDefaults() Options {
@@ -59,6 +63,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.ToolResultStoreLimit <= 0 {
 		o.ToolResultStoreLimit = 64 << 10
+	}
+	if o.ContextWindowTokens <= 0 {
+		o.ContextWindowTokens = defaultContextWindow
 	}
 	return o
 }
@@ -80,12 +87,13 @@ func (TextUserContentRenderer) RenderUserContent(meta SessionMeta, content *User
 	return []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentText, Text: content.Text}}, nil
 }
 
-// ApprovalDecision 是用户对门控动作的裁决。
+// ApprovalDecision 是用户对暂停动作的裁决。Answer 用于 ask_user 的作答。
 type ApprovalDecision struct {
 	Approved bool   `json:"approved"`
 	BaseURL  string `json:"baseUrl,omitempty"` // 允许时可补充/更新测试目标
 	APIKey   string `json:"apiKey,omitempty"`
 	Note     string `json:"note,omitempty"`
+	Answer   string `json:"answer,omitempty"`
 }
 
 type turnHandle struct {
@@ -223,10 +231,17 @@ func emitEvent(events chan<- Event, event Event) {
 
 // 引擎内联时限与长度的具名锚点。
 const (
-	stopDrainWait     = 15 * time.Second // Stop 等待轮次收尾的窗口
-	terminalEmitWait  = 5 * time.Second  // 终态事件尽力送达窗口
-	titleMaxRunes     = 24               // 会话标题截断长度
-	previewHalfFactor = 2                // clampJSON 预览占限额的分之一
+	stopDrainWait        = 15 * time.Second // Stop 等待轮次收尾的窗口
+	terminalEmitWait     = 5 * time.Second  // 终态事件尽力送达窗口
+	titleMaxRunes        = 24               // 会话标题截断长度
+	toolParallelLimit    = 4                // 同批可并行工具的并发上限
+	toolProgressInterval = 5 * time.Second  // 长工具的进度心跳间隔
+	summaryModelLimit    = 2000             // 回传模型的工具摘要字符上限
+	defaultContextWindow = 128_000
+	microCompactRatio    = 0.75 // 超过窗口的这个比例时清较早工具结果
+	summaryCompactRatio  = 0.90 // 超过时对最早若干轮做摘要
+	compactionRetries    = 2
+	planStaleCalls       = 8 // 连续这么多次模型调用没更新方案就提醒
 )
 
 // emitTerminal 发送终态事件：尽力送达（5s 窗口），随后 channel 将被关闭。
@@ -318,7 +333,56 @@ func (e *Engine) appendUserMessage(ctx context.Context, sessionID string, sessio
 // resumeApprovalPrefix 处理审批恢复前缀：写入裁决记录、（可选）补测试
 // 凭证，批准则执行待定调用（再次暂停时返回 paused=true），拒绝则为每个
 // 待定调用合成拒绝结果。返回的 conversation 已追加相应消息。
+const (
+	pendingKindQuestion = "question"
+	pendingKindPlan     = "plan"
+)
+
+// resumeQuestion 把用户作答合成 ask_user 的工具结果。
+func (e *Engine) resumeQuestion(ctx context.Context, sessionID string, resume *PendingAction, decision ApprovalDecision, conversation []relay.MaheshvaraMessage, events chan Event) ([]relay.MaheshvaraMessage, bool, error) {
+	answer := strings.TrimSpace(decision.Answer)
+	if answer == "" {
+		answer = strings.TrimSpace(decision.Note)
+	}
+	if answer == "" {
+		answer = "用户没有作答"
+	}
+	callID := ""
+	if resume.Question != nil {
+		callID = resume.Question.CallID
+	}
+	encoded, _ := json.Marshal(map[string]string{"answer": answer})
+	info := ToolResultInfo{CallID: callID, Name: "ask_user", OK: true, Summary: "用户回答：" + truncateRunes(answer, 80), Data: encoded}
+	e.persistToolResult(ctx, sessionID, info, events)
+	return append(conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit)), false, nil
+}
+
+// resumePlan 处理方案定稿：确认关闭计划模式；否则把修改意见交回模型。
+func (e *Engine) resumePlan(ctx context.Context, sessionID string, session *Session, decision ApprovalDecision, conversation []relay.MaheshvaraMessage, events chan Event) ([]relay.MaheshvaraMessage, bool, error) {
+	if decision.Approved {
+		off := false
+		if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{SettingsPlanMode: &off}); err == nil {
+			session.Settings.PlanMode = false
+		}
+		note := "用户已确认方案，计划模式已关闭。请按方案逐步执行。"
+		_, _ = e.store.AppendMessage(ctx, sessionID, RoleSystem, SystemContent{Kind: "info", Text: note}, "", nil)
+		return append(conversation, relay.MaheshvaraMessage{Role: "user", Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentText, Text: note}}}), false, nil
+	}
+	feedback := strings.TrimSpace(decision.Note)
+	if feedback == "" {
+		feedback = "用户认为方案需要修改，请先询问具体意见。"
+	}
+	_, _ = e.store.AppendMessage(ctx, sessionID, RoleUser, UserContent{Text: feedback}, "", nil)
+	return append(conversation, relay.MaheshvaraMessage{Role: "user", Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentText, Text: feedback}}}), false, nil
+}
+
 func (e *Engine) resumeApprovalPrefix(ctx context.Context, sessionID string, session *Session, resume *PendingAction, decision ApprovalDecision, conversation []relay.MaheshvaraMessage, events chan Event) ([]relay.MaheshvaraMessage, bool, error) {
+	if resume.Kind == pendingKindQuestion {
+		return e.resumeQuestion(ctx, sessionID, resume, decision, conversation, events)
+	}
+	if resume.Kind == pendingKindPlan {
+		return e.resumePlan(ctx, sessionID, session, decision, conversation, events)
+	}
 	names := make([]string, 0, len(resume.Calls))
 	for _, call := range resume.Calls {
 		names = append(names, call.Name)
@@ -417,6 +481,7 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 		}
 		rounds = round + 1
 		emitEvent(events, Event{Type: EventStatus, Text: "正在调用模型…"})
+		conversation = e.prepareContext(ctx, sessionID, session, conversation, events)
 
 		req := CallRequest{
 			Model:           session.Settings.ModelName,
@@ -459,6 +524,12 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 		if paused {
 			return
 		}
+		if session.PlanReady {
+			session.PlanReady = false
+			e.pauseForPlan(ctx, sessionID, session, result.Text, events)
+			paused = true
+			return
+		}
 	}
 
 	// 到达循环上限：如实告知，等待用户指示。
@@ -467,21 +538,29 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 	emitEvent(events, Event{Type: EventStatus, Text: note})
 }
 
-// executeCalls 顺序执行一批工具调用。gating 生效时遇到首个需审批动作即暂停
-// （剩余调用连同当前调用存入 PendingAction）。approvedIDs 是审批恢复路径传入
-// 的「已获用户批准的调用」集合：命中的调用跳过 ask 级暂停，但 PermissionNever
-// 与计划模式始终逐调用复核——批准动作只豁免 ask，不豁免显式禁令。
-// 每个结果都会持久化并回传事件，同时追加到 conversation。
+// executeCalls 执行一批工具调用。门控与非并行工具保持原顺序：遇到首个需
+// 审批动作即暂停（剩余调用连同当前调用存入 PendingAction）。连续的非门控
+// ConcurrentSafe 工具合成一个并行组（上限 toolParallelLimit），结果按完成
+// 序回传、按原调用序追加进对话。approvedIDs 命中只豁免 ask 级暂停。
 func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Session, conversation *[]relay.MaheshvaraMessage, calls []relay.MaheshvaraToolCall, reason string, approvedIDs map[string]bool, events chan Event) (bool, error) {
-	for index, call := range calls {
+	index := 0
+	for index < len(calls) {
+		call := calls[index]
+		if call.Name == "ask_user" {
+			if e.pauseForQuestion(ctx, sessionID, calls[index:], reason, events) {
+				return true, nil
+			}
+		}
 		tool := e.tools.Get(call.Name)
 		if tool == nil {
 			e.denyCall(ctx, sessionID, conversation, call, fmt.Sprintf("未知工具 %q", call.Name), events)
+			index++
 			continue
 		}
 		gate, denial := e.gateCall(session, call, tool, approvedIDs)
 		if gate == gateDeny {
 			e.denyCall(ctx, sessionID, conversation, call, denial, events)
+			index++
 			continue
 		}
 		if gate == gatePause {
@@ -490,13 +569,103 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 			if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
 				return false, err
 			}
-			emitTerminal(events, Event{Type: EventApprovalPending, Approval: pending})
+			emitTerminal(events, Event{Type: EventApprovalPending, Approval: maskedPendingAction(pending)})
 			return true, nil
 		}
-		info := e.runOneTool(ctx, sessionID, session, tool, call, events)
-		*conversation = append(*conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
+		if !canRunParallel(tool) {
+			info := e.runOneTool(ctx, sessionID, session, tool, call, events)
+			*conversation = append(*conversation, toolResultToMaheshvara(info, modelResultLimit(tool, e.opts.ToolResultModelLimit)))
+			index++
+			continue
+		}
+		end := index + 1
+		for end < len(calls) && e.parallelEligible(session, calls[end], approvedIDs) {
+			end++
+		}
+		group := calls[index:end]
+		infos := e.runParallel(ctx, sessionID, session, group, events)
+		for _, info := range infos {
+			limit := e.opts.ToolResultModelLimit
+			if tool := e.tools.Get(info.Name); tool != nil {
+				limit = modelResultLimit(tool, limit)
+			}
+			*conversation = append(*conversation, toolResultToMaheshvara(info, limit))
+		}
+		index = end
 	}
 	return false, nil
+}
+
+// parallelEligible 报告调用能否并入当前并行组：必须存在、非门控且声明
+// ConcurrentSafe。门控调用留给顺序路径处理暂停。
+func (e *Engine) parallelEligible(session *Session, call relay.MaheshvaraToolCall, approvedIDs map[string]bool) bool {
+	tool := e.tools.Get(call.Name)
+	if tool == nil || !canRunParallel(tool) {
+		return false
+	}
+	gate, _ := e.gateCall(session, call, tool, approvedIDs)
+	return gate == gateAllow
+}
+
+// pauseForPlan 在计划模式方案定稿后暂停，等用户确认或给出修改意见。
+func (e *Engine) pauseForPlan(ctx context.Context, sessionID string, session *Session, reason string, events chan Event) {
+	pending := &PendingAction{Kind: pendingKindPlan, Reason: reason, Plan: append([]PlanStep(nil), session.Plan...)}
+	waiting := StatusWaitingApproval
+	if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
+		return
+	}
+	emitTerminal(events, Event{Type: EventApprovalPending, Approval: pending})
+}
+
+// pauseForQuestion 把 ask_user 变成 question 型暂停。参数不合法时返回 false，
+// 让后续路径按未知或普通工具处理。
+func (e *Engine) pauseForQuestion(ctx context.Context, sessionID string, remaining []relay.MaheshvaraToolCall, reason string, events chan Event) bool {
+	question, ok := ParseAsk(remaining[0])
+	if !ok {
+		return false
+	}
+	pending := &PendingAction{Kind: pendingKindQuestion, Calls: append([]relay.MaheshvaraToolCall(nil), remaining...), Reason: reason, Question: &question}
+	waiting := StatusWaitingApproval
+	if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
+		return false
+	}
+	emitTerminal(events, Event{Type: EventApprovalPending, Approval: maskedPendingAction(pending)})
+	return true
+}
+
+// ParseAsk 由宿主注入的提问解析器。引擎不认识工具参数形状，宿主在装配时设置。
+var ParseAsk = func(call relay.MaheshvaraToolCall) (AskQuestion, bool) {
+	return AskQuestion{}, false
+}
+
+func canRunParallel(tool Tool) bool {
+	return !tool.Gated() && MetaOf(tool).ConcurrentSafe
+}
+
+func modelResultLimit(tool Tool, fallback int) int {
+	if limit := MetaOf(tool).MaxModelBytes; limit > 0 {
+		return limit
+	}
+	return fallback
+}
+
+// runParallel 并行执行一组只读工具。每个调用拿到会话快照：并行工具声明
+// 了 ConcurrentSafe，其写入（若有）不会回写共享会话，避免数据竞争。
+func (e *Engine) runParallel(ctx context.Context, sessionID string, session *Session, calls []relay.MaheshvaraToolCall, events chan Event) []ToolResultInfo {
+	infos := make([]ToolResultInfo, len(calls))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(toolParallelLimit)
+	for index, call := range calls {
+		index, call := index, call
+		tool := e.tools.Get(call.Name)
+		group.Go(func() error {
+			snapshot := *session
+			infos[index] = e.runOneTool(groupCtx, sessionID, &snapshot, tool, call, events)
+			return nil
+		})
+	}
+	_ = group.Wait()
+	return infos
 }
 
 // gateCall 复核单个调用的门禁（计划模式 → 显式禁令 → ask 级审批）。批准集
@@ -544,28 +713,33 @@ func (e *Engine) denyCall(ctx context.Context, sessionID string, conversation *[
 
 // runOneTool 执行单个工具（带 panic 防护），落库并发出事件。
 func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Session, tool Tool, call relay.MaheshvaraToolCall, events chan Event) (info ToolResultInfo) {
-	emitEvent(events, Event{Type: EventToolCall, CallID: call.ID, Name: call.Name, Input: call.Arguments})
+	// 事件出口脱敏：模型回路与 PendingAction 落库保留原文（执行需要），
+	// 只有发往 SSE 的副本遮盖密钥类字段。
+	emitEvent(events, Event{Type: EventToolCall, CallID: call.ID, Name: call.Name, Input: maskSecretInputs(call.Arguments)})
 	started := time.Now()
 	draftBefore := append(json.RawMessage(nil), session.DraftConfig...)
 	planBefore := append([]PlanStep(nil), session.Plan...)
 
+	execCtx, stopProgress := e.watchToolProgress(ctx, call, MetaOf(tool), events)
 	var result ToolResult
 	func() {
+		defer stopProgress()
 		defer func() {
 			if r := recover(); r != nil {
 				result = ToolResult{OK: false, Summary: fmt.Sprintf("工具执行异常: %v", r), Data: map[string]any{"error": "tool_panic"}}
 			}
 		}()
-		result = tool.Execute(ctx, &engineToolContext{store: e.store, ctx: ctx, session: session}, call.Arguments)
+		result = tool.Execute(execCtx, &engineToolContext{store: e.store, ctx: execCtx, session: session}, call.Arguments)
 	}()
 
+	direction := MetaOf(tool).PreviewDirection
 	info = ToolResultInfo{
 		CallID:     call.ID,
 		Name:       call.Name,
 		Input:      call.Arguments,
 		OK:         result.OK,
-		Summary:    result.Summary,
-		Data:       clampJSON(result.MarshalData(), e.opts.ToolResultStoreLimit),
+		Summary:    clampSummary(result.Summary, summaryModelLimit),
+		Data:       clampJSON(result.MarshalData(), e.opts.ToolResultStoreLimit, direction),
 		DurationMs: time.Since(started).Milliseconds(),
 	}
 	e.persistToolResult(ctx, sessionID, info, events)
@@ -575,8 +749,56 @@ func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Sess
 	}
 	if !planStepsEqual(planBefore, session.Plan) {
 		emitEvent(events, Event{Type: EventPlanUpdated, Plan: session.Plan})
+		session.PlanStale = 0
+		e.notePlanReady(session, call, result)
 	}
 	return info
+}
+
+// notePlanReady 记住本批 update_plan 是否声明方案定稿。真正暂停放在整批
+// 工具结束之后，避免打断同批后续只读调用。
+func (e *Engine) notePlanReady(session *Session, call relay.MaheshvaraToolCall, result ToolResult) {
+	if call.Name != "update_plan" || !result.OK || !session.Settings.PlanMode {
+		return
+	}
+	var payload struct {
+		Ready bool `json:"ready_for_approval"`
+	}
+	if json.Unmarshal(call.Arguments, &payload) == nil && payload.Ready {
+		session.PlanReady = true
+	}
+}
+
+// watchToolProgress 给长工具发耗时心跳，并在工具声明了 TimeoutMs 时套上
+// 单独超时。返回的停止函数必须在执行结束后调用。
+func (e *Engine) watchToolProgress(ctx context.Context, call relay.MaheshvaraToolCall, meta ToolMeta, events chan Event) (context.Context, func()) {
+	execCtx := ctx
+	var cancel context.CancelFunc
+	if meta.TimeoutMs > 0 {
+		execCtx, cancel = context.WithTimeout(ctx, time.Duration(meta.TimeoutMs)*time.Millisecond)
+	}
+	started := time.Now()
+	stop := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(toolProgressInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-execCtx.Done():
+				return
+			case <-ticker.C:
+				emitEvent(events, Event{Type: EventToolProgress, CallID: call.ID, Name: call.Name, ElapsedMs: time.Since(started).Milliseconds()})
+			}
+		}
+	}()
+	return execCtx, func() {
+		close(stop)
+		if cancel != nil {
+			cancel()
+		}
+	}
 }
 
 func (e *Engine) persistToolResult(ctx context.Context, sessionID string, info ToolResultInfo, events chan Event) {
@@ -612,6 +834,27 @@ func maskSecretInputs(raw json.RawMessage) json.RawMessage {
 	return raw
 }
 
+// MaskedPendingAction 复制待批快照并遮盖调用参数里的密钥类字段，供会话
+// 视图与 SSE 事件使用。
+func MaskedPendingAction(pending *PendingAction) *PendingAction {
+	return maskedPendingAction(pending)
+}
+
+// maskedPendingAction 复制待批快照并遮盖调用参数里的密钥类字段。
+// 落库的 PendingAction 保持原文（批准后要按原参数执行），只有 SSE 事件
+// 与对外视图走这份副本。
+func maskedPendingAction(pending *PendingAction) *PendingAction {
+	if pending == nil {
+		return nil
+	}
+	masked := &PendingAction{Reason: pending.Reason, Calls: make([]relay.MaheshvaraToolCall, len(pending.Calls))}
+	for index, call := range pending.Calls {
+		masked.Calls[index] = call
+		masked.Calls[index].Arguments = maskSecretInputs(call.Arguments)
+	}
+	return masked
+}
+
 func maskSecretValue(value any) any {
 	switch typed := value.(type) {
 	case map[string]any:
@@ -636,7 +879,8 @@ func maskSecretValue(value any) any {
 func isSecretInputKey(key string) bool {
 	lower := strings.ToLower(key)
 	return strings.Contains(lower, "apikey") || strings.Contains(lower, "api_key") ||
-		lower == "token" || strings.Contains(lower, "secret") || strings.Contains(lower, "password")
+		lower == "token" || strings.Contains(lower, "secret") || strings.Contains(lower, "password") ||
+		strings.Contains(lower, "authorization") || strings.Contains(lower, "credential")
 }
 
 func (e *Engine) persistAssistant(ctx context.Context, sessionID string, session *Session, content AssistantContent, usage *relay.MaheshvaraUsage, events chan Event) {
@@ -678,6 +922,13 @@ func (e *Engine) composeInstructions(session *Session) string {
 	if e.prompt != nil {
 		b.WriteString(e.prompt(session))
 	}
+	if len(session.Plan) > 0 {
+		session.PlanStale++
+		if session.PlanStale >= planStaleCalls {
+			session.PlanStale = 0
+			b.WriteString("\n\n方案清单已连续多轮未更新。若步骤状态有变化，请调用 update_plan 同步；没有变化就忽略这条提醒。")
+		}
+	}
 	if len(session.DraftConfig) > 0 {
 		b.WriteString("\n\n## 当前工作草稿（工具 update_protocol_draft 的最新产物，后续修改以它为基准）\n```json\n")
 		b.Write(session.DraftConfig)
@@ -716,10 +967,12 @@ func reasoningFromSettings(s Settings) *relay.MaheshvaraReasoning {
 // PermissionFor 取权限键的策略（未知键视为 ask）。
 func PermissionFor(s Settings, key string) string {
 	// 权限值在存储写入与读取（遗留行兼容）时已归一化，此处直接消费。
+	// 键集合与 KnownPermissionKey 同源：未知键按 ask 只是运行时兜底，
+	// 注册表装配时已拒绝这类工具。
 	switch key {
-	case "live_test":
+	case PermissionKeyLiveTest:
 		return s.AllowLiveTest
-	case "save":
+	case PermissionKeySave:
 		return s.AllowSave
 	default:
 		return PermissionAsk
@@ -833,6 +1086,7 @@ func (e *Engine) loadConversation(ctx context.Context, session *Session) ([]rela
 	if err != nil {
 		return nil, fmt.Errorf("读取会话消息失败: %w", err)
 	}
+	messages = applySummaryBoundary(messages)
 	conversation := make([]relay.MaheshvaraMessage, 0, len(messages))
 	for _, message := range messages {
 		switch message.Role {
@@ -879,7 +1133,7 @@ func toolResultToMaheshvara(info ToolResultInfo, limit int) relay.MaheshvaraMess
 	if len(data) == 0 {
 		data = json.RawMessage(`{}`)
 	}
-	output := clampJSON(data, limit)
+	output := clampJSON(data, limit, "head")
 	return relay.MaheshvaraMessage{
 		Role:    "tool",
 		Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentToolOutput, ToolCallID: info.CallID, ToolOutput: string(output)}},
@@ -901,29 +1155,58 @@ func accumulateUsage(total *relay.MaheshvaraUsage, u *relay.MaheshvaraUsage) {
 	total.ReasoningTokens += u.ReasoningTokens
 }
 
-// clampJSON 在字节上限内截断超大 JSON 文档。截断产物必须是**合法 JSON**：
-// 它会作为 json.RawMessage 嵌进消息持久化与发往模型的对话，两边都要过
-// MarshalJSON 校验——旧实现「JSON 前缀 + 文本尾巴」让超限工具结果双双
-// 落库失败，历史留下无结果的 tool_calls，会话后续每轮被上游 400 拒绝。
-// 现改为 JSON 信封携带原文前缀（preview 取半量，为信封开销与转义膨胀留量）。
-func clampJSON(raw json.RawMessage, limit int) json.RawMessage {
-	if len(raw) <= limit {
+// clampJSON 在字节上限内截断超大 JSON 文档。截断产物必须是合法 JSON：
+// 它会作为 json.RawMessage 嵌进消息持久化与发往模型的对话。direction 为
+// tail 时保留尾部（日志类结果的结论通常在末尾），否则保留头部。
+func clampJSON(raw json.RawMessage, limit int, direction string) json.RawMessage {
+	if limit <= 0 || len(raw) <= limit {
 		return raw
 	}
 	value := string(raw)
-	cut := limit / previewHalfFactor
-	for cut > 0 && !utf8.RuneStart(value[cut]) {
-		cut--
+	cut := limit / 2
+	if cut > len(value) {
+		cut = len(value)
+	}
+	var preview string
+	if direction == "tail" {
+		start := len(value) - cut
+		for start < len(value) && !utf8.RuneStart(value[start]) {
+			start++
+		}
+		preview = value[start:]
+	} else {
+		end := cut
+		for end > 0 && !utf8.RuneStart(value[end]) {
+			end--
+		}
+		preview = value[:end]
 	}
 	envelope := map[string]any{
 		"truncated": true,
 		"bytes":     len(value),
-		"preview":   value[:cut],
+		"omitted":   len(value) - len(preview),
+		"direction": directionOrHead(direction),
+		"preview":   preview,
 	}
 	if encoded, err := json.Marshal(envelope); err == nil {
 		return encoded
 	}
 	return json.RawMessage(`{"truncated":true}`)
+}
+
+func directionOrHead(direction string) string {
+	if direction == "tail" {
+		return "tail"
+	}
+	return "head"
+}
+
+// clampSummary 截断回传模型与 UI 的工具摘要，避免单条说明撑爆上下文。
+func clampSummary(summary string, limit int) string {
+	if limit <= 0 || len([]rune(summary)) <= limit {
+		return summary
+	}
+	return truncateRunes(summary, limit) + "（摘要已截断）"
 }
 
 func truncateRunes(value string, limit int) string {
