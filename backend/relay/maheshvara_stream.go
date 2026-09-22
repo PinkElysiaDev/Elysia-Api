@@ -28,12 +28,3 @@ func maheshvaraUsageFromRawMap(raw map[string]any) *MaheshvaraUsage {
 	usage.Raw = raw
 	return usage
 }
-
-func firstNonValue(values map[string]any, keys ...string) any {
-	for _, key := range keys {
-		if values[key] != nil {
-			return values[key]
-		}
-	}
-	return nil
-}

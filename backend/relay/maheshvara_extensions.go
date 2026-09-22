@@ -418,32 +418,6 @@ func safetySettingsFromAny(value any) []MaheshvaraSafetySetting {
 	return result
 }
 
-func intValue(value any) int {
-	number, ok := numberValue(value)
-	if !ok {
-		return 0
-	}
-	return int(number)
-}
-
-func firstNonNilMap(values ...map[string]any) map[string]any {
-	for _, value := range values {
-		if value != nil {
-			return value
-		}
-	}
-	return nil
-}
-
-func firstNonNilValue(values ...any) any {
-	for _, value := range values {
-		if value != nil {
-			return value
-		}
-	}
-	return nil
-}
-
 func rawMessage(value any) json.RawMessage {
 	encoded, err := json.Marshal(value)
 	if err != nil {
