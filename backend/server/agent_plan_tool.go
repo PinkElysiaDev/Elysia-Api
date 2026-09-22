@@ -23,6 +23,9 @@ func (t *updatePlanTool) Description() string {
 }
 func (t *updatePlanTool) Gated() bool           { return false }
 func (t *updatePlanTool) PermissionKey() string { return "" }
+func (t *updatePlanTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{RiskLevel: "low", PreviewDirection: "head"}
+}
 
 func (t *updatePlanTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
@@ -43,13 +46,15 @@ func (t *updatePlanTool) Definition() relay.MaheshvaraTool {
 				},
 				"description": "完整步骤列表（整体替换当前方案）",
 			},
+			"ready_for_approval": map[string]any{"type": "boolean", "description": "方案已定稿、等待用户确认时置 true（仅计划模式）"},
 		}, "plan"),
 	}
 }
 
 func (t *updatePlanTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
 	var params struct {
-		Plan []agent.PlanStep `json:"plan"`
+		Plan             []agent.PlanStep `json:"plan"`
+		ReadyForApproval bool             `json:"ready_for_approval"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
 		return agent.ToolError("参数解析失败", err.Error())
@@ -85,5 +90,5 @@ func (t *updatePlanTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 			done++
 		}
 	}
-	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("方案已更新（%d/%d 完成）", done, len(params.Plan)), Data: map[string]any{"steps": len(params.Plan), "done": done}}
+	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("方案已更新（%d/%d 完成）", done, len(params.Plan)), Data: map[string]any{"steps": len(params.Plan), "done": done, "readyForApproval": params.ReadyForApproval}}
 }
