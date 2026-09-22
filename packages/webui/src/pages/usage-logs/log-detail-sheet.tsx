@@ -215,7 +215,7 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                 )}
               </section>
 
-              {detail.retryCount > 0 && detail.retryEvents && detail.retryEvents.length > 0 && (
+              {detail.retryCount > 0 && !!detail.retryEvents?.length && (
                 <section className="mb-5">
                   <SheetSectionTitle>重试事件</SheetSectionTitle>
                   <div className="flex flex-col gap-[7px] text-xs">

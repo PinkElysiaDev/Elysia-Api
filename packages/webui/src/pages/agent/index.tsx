@@ -47,8 +47,11 @@ const PANEL_WIDTH_DEFAULT = 320
 export function AgentPage() {
   const { toast } = useToast()
   const { confirm, dialog: confirmDialog } = useConfirm()
-  const failToast = (prefix: string) => (error: unknown) =>
-    toast({ description: error instanceof Error ? error.message : prefix })
+  const failToast = useCallback(
+    (prefix: string) => (error: unknown) =>
+      toast({ description: error instanceof Error ? error.message : prefix }),
+    [toast],
+  )
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [view, setView] = useState<'list' | 'chat'>('list')
@@ -199,7 +202,7 @@ export function AgentPage() {
         failToast('创建会话失败')(error)
       }
     },
-    [mutateSessions, toast],
+    [failToast, mutateSessions],
   )
 
   /** 总览卡片 → 进入工作区。 */
@@ -234,7 +237,7 @@ export function AgentPage() {
         failToast('删除失败')(error)
       }
     },
-    [activeId, confirm, failToast, mutateSessions, sessions, toast],
+    [activeId, confirm, failToast, mutateSessions, sessions],
   )
 
   const handleSettingsChange = useCallback(
@@ -285,7 +288,7 @@ export function AgentPage() {
     } catch (error) {
       failToast('还原失败')(error)
     }
-  }, [confirm, live.running, session, toast])
+  }, [confirm, failToast, live.running, session, toast])
 
   const handleClearHistory = useCallback(async () => {
     if (!session) return
@@ -297,7 +300,7 @@ export function AgentPage() {
     } catch (error) {
       failToast('清空失败')(error)
     }
-  }, [refreshSession, session, toast])
+  }, [failToast, refreshSession, session, toast])
 
   const handleStop = useCallback(() => {
     void stop()

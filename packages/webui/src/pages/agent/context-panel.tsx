@@ -256,7 +256,9 @@ function DraftView({ session, busy, onRestore }: { session: AgentSession; busy: 
     )
   }
 
-  const sections = DRAFT_SECTIONS.filter((section) => draftObject && draftObject[section.key] != null)
+  const sections = draftObject
+    ? DRAFT_SECTIONS.filter((section) => draftObject[section.key] != null)
+    : []
   const basicEntries = draftObject
     ? Object.entries(draftObject).filter(([key]) => !DRAFT_SECTIONS.some((section) => section.key === key))
     : []

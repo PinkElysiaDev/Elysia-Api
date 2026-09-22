@@ -34,6 +34,14 @@ import type {
   SourceKeyStrategy,
 } from '@/lib/types'
 
+// 表单态的源：apiKeys/manualModels/keyStrategy 在空态与回填（useEffect）时即
+// 归一化为有效值，编辑全程不可能为 undefined，读取侧无需逐处兜底。
+type SourceForm = Omit<ModelSource, 'apiKeys' | 'manualModels' | 'keyStrategy'> & {
+  apiKeys: SourceAPIKey[]
+  manualModels: ManualModel[]
+  keyStrategy: SourceKeyStrategy
+}
+
 // 按「线路 API 协议」命名，取代旧的厂商混称（openai/openai-compatible/claude/gemini）。
 // 选择 Responses API 表示上游端点类型；默认仍经过 Maheshvara，显式 relay.passthrough
 // 才会启用同协议透传。
@@ -72,7 +80,7 @@ const KEY_STRATEGIES: { value: SourceKeyStrategy; label: string; hint: string }[
   { value: 'priority', label: '优先级 Priority', hint: '按列表顺序优先，失败先轮换 Key 再换模型' },
 ]
 
-function emptySource(): ModelSource {
+function emptySource(): SourceForm {
   return {
     id: '',
     name: '',
@@ -95,14 +103,13 @@ function normalizeKeyStrategy(raw: string | undefined): SourceKeyStrategy {
 /** 手动模式多 key 时,把「模型 ↔ key」选择编译为每个 key 的显式 allowedModels
  * (无 nil 歧义);单 key 或自动模式保持原值。返回错误文案表示校验未过。 */
 function compileApiKeysPayload(
-  form: ModelSource,
+  form: SourceForm,
   manualKeySelection: Record<number, number[]>,
   autoFetch: boolean,
 ): { keys: SourceAPIKey[] } | { error: string } {
-  const initialKeys = form.apiKeys ?? []
-  let payloadKeys = initialKeys.filter((k) => k.value.trim())
-  if (autoFetch || payloadKeys.length <= 1) return { keys: payloadKeys }
-  const allManual = form.manualModels ?? []
+  const keys = form.apiKeys.filter((k) => k.value.trim())
+  if (autoFetch || keys.length <= 1) return { keys }
+  const allManual = form.manualModels
   for (const [index, model] of allManual.entries()) {
     if (!model.id.trim()) continue
     // 显式空勾选才报错；从未用过勾选面板的模型不参与编译——否则
@@ -113,21 +120,22 @@ function compileApiKeysPayload(
     }
   }
   // 有效 key 在原数组中的下标（manualKeySelection 记录的是原数组下标）。
-  const keyOriginalIndexes = (form.apiKeys ?? [])
+  const keyOriginalIndexes = form.apiKeys
     .map((k, i) => (k.value.trim() ? i : -1))
     .filter((i) => i >= 0)
-  payloadKeys = keyOriginalIndexes.map((originalIndex) => ({
-    ...(form.apiKeys ?? [])[originalIndex],
-    allowedModels: allManual
-      .filter((m, i) => m.id.trim() && (manualKeySelection[i] ?? []).includes(originalIndex))
-      .map((m) => m.id.trim()),
-  }))
-  return { keys: payloadKeys }
+  return {
+    keys: keyOriginalIndexes.map((originalIndex) => ({
+      ...form.apiKeys[originalIndex],
+      allowedModels: allManual
+        .filter((m, i) => m.id.trim() && (manualKeySelection[i] ?? []).includes(originalIndex))
+        .map((m) => m.id.trim()),
+    })),
+  }
 }
 
 /** 组装提交后端的源 payload:平台规范化、手动模型裁剪与拉取地址开关联动。 */
 function buildSourcePayload(
-  form: ModelSource,
+  form: SourceForm,
   resolved: { protocolID: string; autoFetch: boolean; fetchUrlEnabled: boolean; apiKeys: SourceAPIKey[] },
 ): ModelSource {
   return {
@@ -136,7 +144,7 @@ function buildSourcePayload(
       ? (customPlatformValue(resolved.protocolID) as ModelSource['platform'])
       : form.platform,
     autoFetchModels: resolved.autoFetch,
-    manualModels: resolved.autoFetch ? [] : (form.manualModels ?? []).filter((m) => m.id || m.name),
+    manualModels: resolved.autoFetch ? [] : form.manualModels.filter((m) => m.id || m.name),
     // 关闭「自定义模型拉取地址」时不提交地址（后端空值 = 跟随 baseUrl）。
     fetchBaseUrl: resolved.fetchUrlEnabled ? form.fetchBaseUrl?.trim() ?? '' : '',
     // key 始终走列表（配一个 key 即单 key）；空列表 = 无鉴权源。
@@ -155,7 +163,7 @@ export function SourceFormDialog({
 }) {
   const toast = useToast()
   const isEdit = !!source
-  const [form, setForm] = useState<ModelSource>(emptySource())
+  const [form, setForm] = useState<SourceForm>(emptySource())
   const [saving, setSaving] = useState(false)
   // 「自定义模型拉取地址」开关（默认关闭）：关闭 = 拉取走 API 地址。
   const [fetchUrlEnabled, setFetchUrlEnabled] = useState(false)
@@ -166,15 +174,17 @@ export function SourceFormDialog({
   // 已注册的自定义协议（协议下拉选择用）；加载失败静默降级为纯手填。
   const [registeredProtocols, setRegisteredProtocols] = useState<CustomProtocolSummary[]>([])
 
-  const keyCount = (form.apiKeys ?? []).filter((k) => k.value.trim()).length
+  const keyCount = form.apiKeys.filter((k) => k.value.trim()).length
 
   useEffect(() => {
     if (open) {
+      // 服务端数据边界归一化：可选列表字段只在这里兜底一次，之后全程为数组。
+      const sourceKeys = source?.apiKeys ?? []
+      const sourceModels = source?.manualModels ?? []
       // 单 key 存量源：把旧 apiKey 带进列表第一行，自然成为单 key 配置。
-      const existingKeys = source?.apiKeys ?? []
       const initialKeys =
-        existingKeys.length > 0
-          ? existingKeys.map((k) => ({ ...k }))
+        sourceKeys.length > 0
+          ? sourceKeys.map((k) => ({ ...k }))
           : source?.apiKey
             ? [{ value: source.apiKey }]
             : []
@@ -186,7 +196,7 @@ export function SourceFormDialog({
               ...source,
               platform: normalizePlatform(source.platform),
               apiKey: '',
-              manualModels: source.manualModels ?? [],
+              manualModels: sourceModels,
               apiKeys: initialKeys,
               keyStrategy: normalizeKeyStrategy(source.keyStrategy),
             }
@@ -195,14 +205,14 @@ export function SourceFormDialog({
       setFetchUrlEnabled(!!(source?.fetchBaseUrl ?? '').trim())
       // 初始化手动模式的「模型 ↔ key」选择。任何 key 都有显式
       // allowedModels 时按其还原；否则视为未配置（全部 key 选中）。
-      const allKeyIndexes = (source?.apiKeys ?? [])
+      const allKeyIndexes = sourceKeys
         .map((k, i) => (k.value.trim() ? i : -1))
         .filter((i) => i >= 0)
-      const hasRestriction = (source?.apiKeys ?? []).some((k) => Array.isArray(k.allowedModels))
+      const hasRestriction = sourceKeys.some((k) => Array.isArray(k.allowedModels))
       const initialSelection: Record<number, number[]> = {}
-      ;(source?.manualModels ?? []).forEach((model, index) => {
+      sourceModels.forEach((model, index) => {
         if (hasRestriction && model.id) {
-          const selected = (source?.apiKeys ?? [])
+          const selected = sourceKeys
             .map((k, ki) =>
               k.value.trim() && (k.allowedModels ?? []).includes(model.id) ? ki : -1,
             )
@@ -221,21 +231,21 @@ export function SourceFormDialog({
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
-  // ---- 多 key 编辑器（方向6） ----
+  // ---- 多 key 编辑器 ----
 
   function updateApiKey(index: number, patch: Partial<SourceAPIKey>) {
     setForm((prev) => {
-      const next = (prev.apiKeys ?? []).map((k, i) => (i === index ? { ...k, ...patch } : k))
+      const next = prev.apiKeys.map((k, i) => (i === index ? { ...k, ...patch } : k))
       return { ...prev, apiKeys: next }
     })
   }
 
   function addApiKey() {
-    setForm((prev) => ({ ...prev, apiKeys: [...(prev.apiKeys ?? []), { value: '' }] }))
+    setForm((prev) => ({ ...prev, apiKeys: [...prev.apiKeys, { value: '' }] }))
   }
 
   function removeApiKey(index: number) {
-    setForm((prev) => ({ ...prev, apiKeys: (prev.apiKeys ?? []).filter((_, i) => i !== index) }))
+    setForm((prev) => ({ ...prev, apiKeys: prev.apiKeys.filter((_, i) => i !== index) }))
     // manualKeySelection 存的是 key 数组下标：删行后所有引用整体前移，
     // 被删下标丢弃——否则模型会静默绑到用户从未勾选的 key（错凭证服务）。
     setManualKeySelection((prev) => {
@@ -253,7 +263,7 @@ export function SourceFormDialog({
   function moveApiKey(index: number, delta: -1 | 1) {
     const target = index + delta
     setForm((prev) => {
-      const keys = [...(prev.apiKeys ?? [])]
+      const keys = [...prev.apiKeys]
       if (target < 0 || target >= keys.length) return prev
       ;[keys[index], keys[target]] = [keys[target], keys[index]]
       return { ...prev, apiKeys: keys }
@@ -278,21 +288,21 @@ export function SourceFormDialog({
 
   function addManualModel() {
     update('manualModels', [
-      ...(form.manualModels ?? []),
+      ...form.manualModels,
       { id: '', name: '', type: 'llm', available: true },
     ])
-    // 新手动模型默认由全部 key 服务（b 方案）。
-    const allKeyIndexes = (form.apiKeys ?? [])
+    // 新手动模型默认由全部 key 服务。
+    const allKeyIndexes = form.apiKeys
       .map((k, i) => (k.value.trim() ? i : -1))
       .filter((i) => i >= 0)
     setManualKeySelection((prev) => ({
       ...prev,
-      [(form.manualModels ?? []).length]: allKeyIndexes,
+      [form.manualModels.length]: allKeyIndexes,
     }))
   }
 
   function updateManualModel(index: number, patch: Partial<ManualModel>) {
-    const next = [...(form.manualModels ?? [])]
+    const next = [...form.manualModels]
     next[index] = { ...next[index], ...patch }
     update('manualModels', next)
   }
@@ -310,7 +320,7 @@ export function SourceFormDialog({
   function removeManualModel(index: number) {
     update(
       'manualModels',
-      (form.manualModels ?? []).filter((_, i) => i !== index),
+      form.manualModels.filter((_, i) => i !== index),
     )
     // 选择状态下标随行删除整体前移。
     setManualKeySelection((prev) => {
@@ -392,7 +402,7 @@ export function SourceFormDialog({
       ? !!registeredProtocols.find((item) => item.id === customProtocolID(platform))?.config.models?.path
       : false
   const customDiscovery = hasDiscovery(form.platform)
-  const selectedStrategy = form.keyStrategy ?? 'round-robin'
+  const selectedStrategy = form.keyStrategy
 
   // 弹窗打开即拉取已注册协议：自定义协议直接并入主协议下拉，无需二级选择。
   useEffect(() => {
@@ -538,13 +548,13 @@ export function SourceFormDialog({
                 <Plus className="h-4 w-4" /> 添加 Key
               </Button>
             </div>
-            {(form.apiKeys ?? []).length === 0 && (
+            {form.apiKeys.length === 0 && (
               <p className="py-2 text-center text-sm text-muted-foreground">
                 尚无 Key（留空 = 无鉴权源）。列表顺序即优先级顺序（priority 策略）。
               </p>
             )}
             <div className="space-y-2">
-              {(form.apiKeys ?? []).map((key, index) => (
+              {form.apiKeys.map((key, index) => (
                 <div key={index} className="rounded-lg border border-border/60">
                   <div className="flex flex-wrap items-center gap-2 p-2">
                     <span className="w-6 shrink-0 text-center font-mono text-xs text-muted-foreground">
@@ -585,7 +595,7 @@ export function SourceFormDialog({
                         variant="ghost"
                         size="iconSm"
                         title="下移"
-                        disabled={index === (form.apiKeys ?? []).length - 1}
+                        disabled={index === form.apiKeys.length - 1}
                         onClick={() => moveApiKey(index, 1)}
                       >
                         <ArrowDown className="h-3.5 w-3.5" />
@@ -664,11 +674,11 @@ export function SourceFormDialog({
                   <Plus className="h-4 w-4" /> 添加
                 </Button>
               </div>
-              {(form.manualModels ?? []).length === 0 && (
+              {form.manualModels.length === 0 && (
                 <p className="py-3 text-center text-sm text-muted-foreground">尚无手动模型</p>
               )}
               <div className="space-y-2">
-                {(form.manualModels ?? []).map((model, index) => (
+                {form.manualModels.map((model, index) => (
                   <div key={index} className="space-y-1.5 rounded-lg border border-border/60 p-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <Input
@@ -741,7 +751,7 @@ export function SourceFormDialog({
                     {keyCount > 1 && (
                       <div className="flex flex-wrap items-center gap-2 px-1 pb-1">
                         <span className="text-xs text-muted-foreground">可用 Key：</span>
-                        {(form.apiKeys ?? []).map((sourceKey, keyIndex) =>
+                        {form.apiKeys.map((sourceKey, keyIndex) =>
                           sourceKey.value.trim() ? (
                             <button
                               key={keyIndex}
@@ -808,7 +818,7 @@ function KeyPermissionBadge({ apiKeyEntry }: { apiKeyEntry: SourceAPIKey }) {
   )
 }
 
-// KeyModelsPanel 是 a 方案的 per-key 模型勾选面板：展示该 key 独立拉取到的模型
+// KeyModelsPanel 是按 key 独立拉取的模型勾选面板：展示该 key 拉取到的模型
 // （权限自动发现结果），勾选 = allowedModels；搜索 + 全选/反选。勾选变动即写入
 // 显式 allowedModels（undefined → 显式列表），空数组 = 全部停用。
 function KeyModelsPanel({

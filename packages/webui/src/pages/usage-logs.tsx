@@ -260,7 +260,7 @@ export function UsageLogsPage() {
                       <TableCell className="py-3 pr-4 num">
                         <span className="font-mono">↑{formatNumber(log.inputTokens)}</span>{' '}
                         <span className="text-muted-foreground font-mono">↓{formatNumber(log.outputTokens)}</span>
-                        {log.cacheHitTokens != null && log.cacheHitTokens > 0 && log.inputTokens > 0 && (
+                        {!!log.cacheHitTokens && log.inputTokens > 0 && (
                           <span
                             className="ml-1.5 whitespace-nowrap font-mono text-xs text-amber"
                             title={`缓存命中 ${formatNumber(log.cacheHitTokens)} tokens`}
