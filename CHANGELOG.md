@@ -11,6 +11,31 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
 
 ## Unreleased
 
+### 全项目代码质量轮（行为保持重构）
+
+四波 14 个提交的可读性/可维护性治理，全部以「纯重构、测试全绿」为门禁：
+
+- **死代码与字面量常量化**：删除零引用的类型/字段/函数（Registry.Names、
+  SSEEvent.ID/Retry、chatUsageToResponsesUsage 等）；散落的超时/轮询/哨兵
+  字面量集中为命名常量；localStorage 键名统一进 storage-keys.ts。
+- **重复消除**：用量别名四表合一（usage_aliases.go）、九路径字段枚举表驱动
+  （response_direct_fields.go）、工具参数累积与 prefix-diff 共享实现、
+  normalizeToolChoice 合并两转换器；server 侧 failResult/drainUpstreamError/
+  newSSEWriter/toolStore 等样板收敛；agent.ToolError 替换 86 处手写字面量；
+  webui 提取 JsonBlock/Collapse/defaultGroup/agentUsageToTurn 等共享原子。
+- **兜底与守卫治理**：删除不可能触发的兜底（nil-receiver、恒真守卫、上游
+  已校验的下游重复校验）；八连 ALTER 与指针补丁链改表驱动/清单循环；权限
+  规范化收敛到写入单点；webui SourceForm 类型收窄一次性消除 20+ 处 `?? []`。
+- **长函数与文件重组**：maheshvara_convert.go（3767 行）按请求入/出、响应、
+  用量、共享助手五拆；四个流解码器按事件族方法化；server 提取
+  openUpstreamStream/buildTargetBody/expandModelRef；agent 引擎拆出
+  appendUserMessage/resumeApprovalPrefix/handleCallFailure；storage 按域拆出
+  migrate/sources/models_groups/usage_logs/usage_aggregates/assets/system_logs；
+  webui 拆出 source-form 辅助层与 useDraggablePanelWidth。
+- **顺手修复**：usage reset 成功响应统一 admin 封套；agent 测试 fakeStore
+  补齐 SessionStateUpdate.Plan 契约；retention TTL 边界测试去偶发（同毫秒
+  平局被严格 `<` 保留）。
+
 ### 预置协议完整能力（与内置四线等价）
 
 - **shape 全量整形**：自定义协议的 `request.shape` 除消息/工具外，现在把

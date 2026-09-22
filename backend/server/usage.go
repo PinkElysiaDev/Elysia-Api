@@ -758,7 +758,8 @@ func (s *Server) resetUsage(c *gin.Context) {
 	}
 	s.usageCache.flush()
 	s.usageSeq.Add(1)
-	c.JSON(http.StatusOK, gin.H{"reset": true})
+	// 与失败路径同用 admin 封套（respondFail），客户端按 ok 字段统一判读。
+	respondOK(c, gin.H{"reset": true})
 }
 
 func usageTimeRange(c *gin.Context) (time.Time, time.Time) {

@@ -106,6 +106,9 @@ func (f *fakeStore) UpdateSessionState(ctx context.Context, id string, update Se
 	if update.Title != "" {
 		session.Title = update.Title
 	}
+	if update.Plan != nil {
+		session.Plan = update.Plan
+	}
 	if update.TestBaseURL != "" {
 		session.TestBaseURL = update.TestBaseURL
 	}
