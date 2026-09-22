@@ -530,3 +530,92 @@ func TestAgentCallerAnthropicPresetSignatureRoundTrip(t *testing.T) {
 		t.Fatalf("second round path wrong: %q", upstream.last().Path)
 	}
 }
+
+// 多 key 源：助手必须用「拉到过该模型」的 key——models 行冗余列固定存首个
+// 有效 key，模型只被第二个 key 拉到时按行内 key 调用必失败。
+func TestAgentCallerPicksPermittedKey(t *testing.T) {
+	s := newAgentIntegrationServer(t)
+	// 上游只认 key-b：key-a 请求直接 401（capturing 包装先落账再回调，
+	// handler 里 last() 已是当前请求的鉴权头）。
+	var upstream *capturingUpstream
+	upstream = newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) {
+		if upstream.last().Auth != "Bearer key-b" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(openAIChunk("c1", map[string]any{"role": "assistant", "content": "好"}, "", nil)))
+		_, _ = w.Write([]byte(openAIChunk("c1", map[string]any{}, "stop", nil)))
+		_, _ = w.Write([]byte(openAIDone()))
+	})
+	source := storage.ModelSource{
+		ID: "cs1", Name: "multi-key-src", BaseURL: upstream.URL, Platform: "openai", Enabled: true,
+		APIKeys: []storage.SourceAPIKey{
+			{Value: "key-a", FetchedModels: []string{"other-model"}},
+			{Value: "key-b", FetchedModels: []string{"fake-model"}},
+		},
+	}
+	if err := s.store.UpsertSource(t.Context(), source); err != nil {
+		t.Fatalf("UpsertSource: %v", err)
+	}
+	if err := s.store.ReplaceSourceModels(t.Context(), source, []storage.Model{{
+		ID: "m1", SourceID: "cs1", Name: "fake-model", BaseURL: upstream.URL,
+		Platform: "openai", Type: "llm", Enabled: true, Available: true,
+	}}); err != nil {
+		t.Fatalf("ReplaceSourceModels: %v", err)
+	}
+
+	result, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if result.Text != "好" {
+		t.Fatalf("text = %q", result.Text)
+	}
+	if req := upstream.last(); req.Auth != "Bearer key-b" {
+		t.Fatalf("authorization = %q, want the permitted key-b", req.Auth)
+	}
+}
+
+// helper 直接单测：许可命中 / 零命中报错 / 无权限数据回落行内 key。
+func TestApplyAgentPermittedKey(t *testing.T) {
+	s := newAgentIntegrationServer(t)
+	source := storage.ModelSource{
+		ID: "src1", Name: "src", Platform: "openai", Enabled: true,
+		APIKeys: []storage.SourceAPIKey{
+			{Value: "key-a", FetchedModels: []string{"m1"}},
+			{Value: "key-b", FetchedModels: []string{"m2"}},
+		},
+	}
+	if err := s.store.UpsertSource(t.Context(), source); err != nil {
+		t.Fatalf("UpsertSource: %v", err)
+	}
+
+	permitted := storage.Model{SourceID: "src1", ID: "m2", Name: "m2", APIKey: "key-a"}
+	if err := applyAgentPermittedKey(t.Context(), s.store, &permitted); err != nil {
+		t.Fatalf("permitted: %v", err)
+	}
+	if permitted.APIKey != "key-b" {
+		t.Fatalf("key = %q, want key-b", permitted.APIKey)
+	}
+
+	shared := storage.Model{SourceID: "src1", ID: "m1", Name: "m1"}
+	if err := applyAgentPermittedKey(t.Context(), s.store, &shared); err != nil || shared.APIKey != "key-a" {
+		t.Fatalf("shared: key=%q err=%v", shared.APIKey, err)
+	}
+
+	none := storage.Model{SourceID: "src1", ID: "m3", Name: "m3"}
+	if err := applyAgentPermittedKey(t.Context(), s.store, &none); err == nil {
+		t.Fatalf("zero permitted must error")
+	}
+
+	// 无权限数据（从未逐 key 拉取）：回落行内 key。
+	legacy := storage.ModelSource{ID: "src2", Name: "legacy", APIKey: "row-key", Platform: "openai", Enabled: true}
+	if err := s.store.UpsertSource(t.Context(), legacy); err != nil {
+		t.Fatalf("UpsertSource: %v", err)
+	}
+	fallback := storage.Model{SourceID: "src2", ID: "mx", Name: "mx", APIKey: "row-key"}
+	if err := applyAgentPermittedKey(t.Context(), s.store, &fallback); err != nil || fallback.APIKey != "row-key" {
+		t.Fatalf("fallback: key=%q err=%v", fallback.APIKey, err)
+	}
+}

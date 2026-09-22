@@ -102,6 +102,38 @@ func (a *agentStreamAccumulator) toolCalls() []relay.MaheshvaraToolCall {
 	return calls
 }
 
+// applyAgentPermittedKey 把助手要用的 key 换成「可服务该模型」的许可 key。
+// models 行的 api_key 冗余列固定存首个有效 key（storage.firstEffectiveKey），
+// 多 key 源里目标模型可能只被其他 key 拉到——装配层（expandModelRef）会按
+// KeyAllowsModel 过滤候选，助手路径必须遵循同一判定：命中取首个许可 key；
+// 有 key 元数据但零命中报明确错误（比打到上游吃 403/404 可诊断）；源缺失
+// 或无 key 元数据回落行内 key（现行为）。
+func applyAgentPermittedKey(ctx context.Context, store *storage.Store, model *storage.Model) error {
+	sources, err := store.ListSources(ctx)
+	if err != nil {
+		return nil // 元数据读不到：保持行内 key，不让助手因此失败
+	}
+	for _, source := range sources {
+		if source.ID != model.SourceID {
+			continue
+		}
+		effective := source.EffectiveKeys()
+		if len(effective) == 0 {
+			return nil
+		}
+		for _, key := range effective {
+			// 权限集存的是拉取到的模型 ID；助手按 Name/ID 双匹配解析模型，
+			// 两个标识任一命中即可。
+			if key.KeyAllowsModel(model.ID) || key.KeyAllowsModel(model.Name) {
+				model.APIKey = key.Value
+				return nil
+			}
+		}
+		return fmt.Errorf("模型源 %q 的所有 key 都无权服务模型 %q（按 key 拉取分组）", source.Name, model.Name)
+	}
+	return nil
+}
+
 // Call 实现 agent.StreamCaller。取消路径下返回部分聚合结果 + ctx 错误。
 // 每次模型调用（含失败）都会写一条调用日志：key 统一为 AI 协议助手、
 // relay_mode=agent-assist，② 后端转发 = 实际线格式请求体、③ 上游回传 = 非 2xx
@@ -114,6 +146,9 @@ func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb 
 	model, found := findCustomProtocolTestModel(ctx, store, req.ModelSourceID, req.Model)
 	if !found {
 		return nil, fmt.Errorf("模型源 %q 下没有找到模型 %q", req.ModelSourceID, req.Model)
+	}
+	if err := applyAgentPermittedKey(ctx, store, &model); err != nil {
+		return nil, err
 	}
 
 	maxTokens := req.MaxOutputTokens
