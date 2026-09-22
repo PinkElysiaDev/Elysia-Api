@@ -117,7 +117,15 @@ func (s *Server) fetchSourceModelsByKey(ctx context.Context, source storage.Mode
 			key = effective[0].Value
 		}
 		models, err := s.fetchModelsFromSource(ctx, source, key)
-		return models, nil, err
+		if err != nil {
+			return models, nil, err
+		}
+		// 多 key 减为单 key 后，残留的 per-key 拉取集会把此后上游新增的模型
+		// 挡在组外（装配按 KeyAllowsModel 过滤）。单 key 语义是「不限制」
+		// （两字段 nil），拉取成功即清残留（含停用 key——重新启用后下次多
+		// key 刷新会重新发现）；失败不清，保留旧值优于清空。
+		s.clearStalePerKeyPermissions(ctx, source)
+		return models, nil, nil
 	}
 
 	jobs := s.fetchPerKey(ctx, source)
@@ -168,6 +176,28 @@ func (s *Server) fetchSourceModelsByKey(ctx context.Context, source storage.Mode
 		return nil, outcomes, fmt.Errorf("persist per-key model permissions: %w", err)
 	}
 	return union, outcomes, nil
+}
+
+// clearStalePerKeyPermissions 清掉源上残留的 per-key 拉取/勾选集（仅当存在
+// 残留时写库，避免每次单 key 刷新都空写）。见 fetchSourceModelsByKey 单 key
+// 分支注释。
+func (s *Server) clearStalePerKeyPermissions(ctx context.Context, source storage.ModelSource) {
+	stale := false
+	for index := range source.APIKeys {
+		if source.APIKeys[index].FetchedModels != nil || source.APIKeys[index].AllowedModels != nil {
+			source.APIKeys[index].FetchedModels = nil
+			source.APIKeys[index].AllowedModels = nil
+			stale = true
+		}
+	}
+	if !stale {
+		return
+	}
+	if err := s.store.UpdateSourceAPIKeys(ctx, source.ID, source.APIKeys); err != nil {
+		_ = s.store.InsertSystemLog(ctx, "warn", "failed to clear stale per-key model permissions", map[string]any{"sourceId": source.ID, "error": err.Error()})
+		return
+	}
+	_ = s.store.InsertSystemLog(ctx, "info", "cleared stale per-key model permissions (source now single-key)", map[string]any{"sourceId": source.ID, "sourceName": source.Name})
 }
 
 // enrichModelFromCatalog 用能力目录（models.dev）回填模型能力字段（方向1）。

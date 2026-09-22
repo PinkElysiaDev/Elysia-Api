@@ -201,3 +201,53 @@ func TestAssemblyFiltersModelsByPerKeyPermissions(t *testing.T) {
 		t.Fatalf("per-model key filtering wrong: %+v", refs)
 	}
 }
+
+// 多 key 减为单 key：剩余 key 残留的旧拉取集在下次单 key 刷新成功后被清除，
+// 此后上游新增的模型不再被挡在组外。
+func TestSingleKeyRefreshClearsStalePerKeyPermissions(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer only" {
+			w.WriteHeader(401)
+			return
+		}
+		w.Write([]byte(`{"data":[{"id":"m1"},{"id":"m2-new"}]}`))
+	}))
+	defer srv.Close()
+
+	s := newKeyPermissionTestServer(t)
+	ctx := context.Background()
+	source := storage.ModelSource{
+		ID: "src1", Name: "Shrunk", BaseURL: srv.URL, Platform: "openai",
+		Enabled: true, AutoFetchModels: true,
+		APIKeys: []storage.SourceAPIKey{
+			// 仅剩一个启用 key，但带着多 key 时代的旧拉取集（不含 m2-new）。
+			{Value: "only", FetchedModels: []string{"m1"}, AllowedModels: []string{"m1"}},
+			{Value: "gone", Disabled: true, FetchedModels: []string{"m1"}},
+		},
+	}
+	if err := s.store.UpsertSource(ctx, source); err != nil {
+		t.Fatalf("upsert source: %v", err)
+	}
+	if _, err := s.refreshSourceByValue(ctx, source); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	keys, err := s.store.ListSources(ctx)
+	if err != nil || len(keys) == 0 || len(keys[0].APIKeys) != 2 {
+		t.Fatalf("list sources: %v", err)
+	}
+	for index, key := range keys[0].APIKeys {
+		if key.FetchedModels != nil || key.AllowedModels != nil {
+			t.Fatalf("key %d must have stale permissions cleared: %+v", index, key)
+		}
+	}
+	// 新模型进组：装配不再被旧拉取集挡住。
+	if err := s.store.UpsertGroup(ctx, storage.ModelGroup{
+		ID: "g1", Name: "all", Enabled: true, Models: []string{"src1:m2-new"},
+	}); err != nil {
+		t.Fatalf("upsert group: %v", err)
+	}
+	groups, ok := s.assembleGroupsFromStore()
+	if !ok || len(groups) != 1 || len(groups[0].Models) != 1 {
+		t.Fatalf("m2-new must be schedulable after clearing stale permissions: ok=%v groups=%+v", ok, groups)
+	}
+}
