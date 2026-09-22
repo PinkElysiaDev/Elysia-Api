@@ -236,6 +236,7 @@ const (
 	titleMaxRunes        = 24               // 会话标题截断长度
 	toolParallelLimit    = 4                // 同批可并行工具的并发上限
 	toolProgressInterval = 5 * time.Second  // 长工具的进度心跳间隔
+	toolDefaultTimeoutMs = 120_000          // 未声明 TimeoutMs 工具的默认硬超时
 	summaryModelLimit    = 2000             // 回传模型的工具摘要字符上限
 	defaultContextWindow = 128_000
 	microCompactRatio    = 0.75 // 超过窗口的这个比例时清较早工具结果
@@ -683,8 +684,9 @@ func modelResultLimit(tool Tool, fallback int) int {
 	return fallback
 }
 
-// runParallel 并行执行一组只读工具。每个调用拿到会话快照：并行工具声明
-// 了 ConcurrentSafe，其写入（若有）不会回写共享会话，避免数据竞争。
+// runParallel 并行执行一组只读工具。每个调用拿到会话快照：ConcurrentSafe
+// 是硬契约——并行工具不得修改共享会话态（SetDraft/SetPlan 的写入只会落在
+// 快照上静默丢失）；需要写会话的工具必须保持不可并行。
 func (e *Engine) runParallel(ctx context.Context, sessionID string, session *Session, calls []relay.MaheshvaraToolCall, events chan Event) []ToolResultInfo {
 	infos := make([]ToolResultInfo, len(calls))
 	group, groupCtx := errgroup.WithContext(ctx)
@@ -807,14 +809,18 @@ func (e *Engine) notePlanReady(session *Session, call relay.MaheshvaraToolCall, 
 	}
 }
 
-// watchToolProgress 给长工具发耗时心跳，并在工具声明了 TimeoutMs 时套上
-// 单独超时。返回的停止函数必须在执行结束后调用。
+// watchToolProgress 给长工具发耗时心跳，并套上单独超时：声明了 TimeoutMs
+// 用声明值，否则给默认硬顶——无视 ctx 阻塞在 Execute 里的工具若没有上限，
+// 轮次 goroutine 永不返回，会话会卡在 running 直到进程重启。返回的停止
+// 函数必须在执行结束后调用。
 func (e *Engine) watchToolProgress(ctx context.Context, call relay.MaheshvaraToolCall, meta ToolMeta, events chan Event) (context.Context, func()) {
 	execCtx := ctx
 	var cancel context.CancelFunc
-	if meta.TimeoutMs > 0 {
-		execCtx, cancel = context.WithTimeout(ctx, time.Duration(meta.TimeoutMs)*time.Millisecond)
+	timeoutMs := meta.TimeoutMs
+	if timeoutMs <= 0 {
+		timeoutMs = toolDefaultTimeoutMs
 	}
+	execCtx, cancel = context.WithTimeout(ctx, time.Duration(timeoutMs)*time.Millisecond)
 	started := time.Now()
 	stop := make(chan struct{})
 	go func() {
