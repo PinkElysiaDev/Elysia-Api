@@ -266,21 +266,8 @@ func (e *Engine) startTurn(ctx context.Context, sessionID string, handle *turnHa
 		}
 	}
 
-	if input != nil && (strings.TrimSpace(input.Text) != "" || len(input.Documents) > 0) {
-		seq, err := e.store.AppendMessage(ctx, sessionID, RoleUser, *input, "", nil)
-		if err != nil {
-			e.failTurn(ctx, sessionID, events, fmt.Sprintf("写入用户消息失败: %v", err))
-			return
-		}
-		if encoded, err := json.Marshal(*input); err == nil {
-			emitEvent(events, Event{Type: EventMessage, Message: &Message{Seq: seq, Role: RoleUser, Content: encoded, CreatedAt: time.Now()}})
-		}
-		if strings.TrimSpace(session.Title) == "" && strings.TrimSpace(input.Text) != "" {
-			title := truncateRunes(strings.TrimSpace(input.Text), titleMaxRunes)
-			if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Title: title}); err == nil {
-				session.Title = title
-			}
-		}
+	if e.appendUserMessage(ctx, sessionID, session, input, events) {
+		return
 	}
 
 	conversation, err := e.loadConversation(ctx, session)
@@ -291,58 +278,114 @@ func (e *Engine) startTurn(ctx context.Context, sessionID string, handle *turnHa
 
 	// 审批恢复：记录裁决、（可选）补充测试凭证、执行或拒绝待定动作。
 	if resume != nil {
-		names := make([]string, 0, len(resume.Calls))
-		for _, call := range resume.Calls {
-			names = append(names, call.Name)
-		}
-		decisionText := "denied"
-		if decision.Approved {
-			decisionText = "approved"
-		}
-		if decision.BaseURL != "" || decision.APIKey != "" {
-			if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{TestBaseURL: decision.BaseURL, TestAPIKey: decision.APIKey}); err == nil {
-				// 内存副本必须同步两字段：本轮恢复路径马上用这个 session 构造
-				// 工具上下文（TestTarget），只同步 BaseURL 会让首次批准的实测
-				// 拿旧/空 key 跑（曾有这样的不对称 bug）。
-				if decision.BaseURL != "" {
-					session.TestBaseURL = decision.BaseURL
-				}
-				if decision.APIKey != "" {
-					session.TestAPIKey = decision.APIKey
-				}
-			}
-		}
-		if _, err := e.store.AppendMessage(ctx, sessionID, RoleApproval, ApprovalContent{Decision: decisionText, Names: names, Note: decision.Note}, "", nil); err != nil {
-			e.failTurn(ctx, sessionID, events, fmt.Sprintf("写入审批记录失败: %v", err))
+		var paused bool
+		conversation, paused, err = e.resumeApprovalPrefix(ctx, sessionID, session, resume, decision, conversation, events)
+		if err != nil {
+			e.failTurn(ctx, sessionID, events, err.Error())
 			return
 		}
-		if decision.Approved {
-			// 已获用户明确批准：批内调用跳过 ask 级暂停，但 PermissionNever 与
-			// 计划模式仍在 executeCalls 内逐调用复核（批准后策略可能已收紧，
-			// 例如批量 [test_upstream, save_protocol] 里 save 是 never）。
-			approved := make(map[string]bool, len(resume.Calls))
-			for _, call := range resume.Calls {
-				approved[call.ID] = true
-			}
-			paused, err := e.executeCalls(ctx, sessionID, session, &conversation, resume.Calls, "", approved, events)
-			if err != nil {
-				e.failTurn(ctx, sessionID, events, err.Error())
-				return
-			}
-			if paused {
-				return
-			}
-		} else {
-			// 拒绝：为每个待定调用合成拒绝结果，模型据此改道。
-			for _, call := range resume.Calls {
-				info := deniedToolResult(call, "用户拒绝了该操作"+denialSuffix(decision.Note))
-				e.persistToolResult(ctx, sessionID, info, events)
-				conversation = append(conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
-			}
+		if paused {
+			return
 		}
 	}
 
 	e.modelLoop(ctx, sessionID, session, handle, conversation, started, events)
+}
+
+// appendUserMessage 把本轮用户输入落库并回传事件；首条文本同时充当会话
+// 标题。返回 true 表示写入失败、轮次已按失败收尾。
+func (e *Engine) appendUserMessage(ctx context.Context, sessionID string, session *Session, input *UserContent, events chan Event) bool {
+	if input == nil || (strings.TrimSpace(input.Text) == "" && len(input.Documents) == 0) {
+		return false
+	}
+	seq, err := e.store.AppendMessage(ctx, sessionID, RoleUser, *input, "", nil)
+	if err != nil {
+		e.failTurn(ctx, sessionID, events, fmt.Sprintf("写入用户消息失败: %v", err))
+		return true
+	}
+	if encoded, err := json.Marshal(*input); err == nil {
+		emitEvent(events, Event{Type: EventMessage, Message: &Message{Seq: seq, Role: RoleUser, Content: encoded, CreatedAt: time.Now()}})
+	}
+	if strings.TrimSpace(session.Title) == "" && strings.TrimSpace(input.Text) != "" {
+		title := truncateRunes(strings.TrimSpace(input.Text), titleMaxRunes)
+		if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Title: title}); err == nil {
+			session.Title = title
+		}
+	}
+	return false
+}
+
+// resumeApprovalPrefix 处理审批恢复前缀：写入裁决记录、（可选）补测试
+// 凭证，批准则执行待定调用（再次暂停时返回 paused=true），拒绝则为每个
+// 待定调用合成拒绝结果。返回的 conversation 已追加相应消息。
+func (e *Engine) resumeApprovalPrefix(ctx context.Context, sessionID string, session *Session, resume *PendingAction, decision ApprovalDecision, conversation []relay.MaheshvaraMessage, events chan Event) ([]relay.MaheshvaraMessage, bool, error) {
+	names := make([]string, 0, len(resume.Calls))
+	for _, call := range resume.Calls {
+		names = append(names, call.Name)
+	}
+	decisionText := "denied"
+	if decision.Approved {
+		decisionText = "approved"
+	}
+	if decision.BaseURL != "" || decision.APIKey != "" {
+		if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{TestBaseURL: decision.BaseURL, TestAPIKey: decision.APIKey}); err == nil {
+			// 内存副本必须同步两字段：本轮恢复路径马上用这个 session 构造
+			// 工具上下文（TestTarget），只同步 BaseURL 会让首次批准的实测
+			// 拿旧/空 key 跑（曾有这样的不对称 bug）。
+			if decision.BaseURL != "" {
+				session.TestBaseURL = decision.BaseURL
+			}
+			if decision.APIKey != "" {
+				session.TestAPIKey = decision.APIKey
+			}
+		}
+	}
+	if _, err := e.store.AppendMessage(ctx, sessionID, RoleApproval, ApprovalContent{Decision: decisionText, Names: names, Note: decision.Note}, "", nil); err != nil {
+		return nil, false, fmt.Errorf("写入审批记录失败: %v", err)
+	}
+	if !decision.Approved {
+		// 拒绝：为每个待定调用合成拒绝结果，模型据此改道。
+		for _, call := range resume.Calls {
+			info := deniedToolResult(call, "用户拒绝了该操作"+denialSuffix(decision.Note))
+			e.persistToolResult(ctx, sessionID, info, events)
+			conversation = append(conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
+		}
+		return conversation, false, nil
+	}
+	// 已获用户明确批准：批内调用跳过 ask 级暂停，但 PermissionNever 与
+	// 计划模式仍在 executeCalls 内逐调用复核（批准后策略可能已收紧，
+	// 例如批量 [test_upstream, save_protocol] 里 save 是 never）。
+	approved := make(map[string]bool, len(resume.Calls))
+	for _, call := range resume.Calls {
+		approved[call.ID] = true
+	}
+	paused, err := e.executeCalls(ctx, sessionID, session, &conversation, resume.Calls, "", approved, events)
+	if err != nil {
+		return nil, false, err
+	}
+	return conversation, paused, nil
+}
+
+// handleCallFailure 收尾一次失败的模型调用：取消路径下 result 可能带部分
+// 聚合文本，照常落库保证可追溯；随后写入 system 错误记录并发出终态错误
+// 事件（区分轮次停止/超时/上游失败的可重试性）。
+func (e *Engine) handleCallFailure(ctx context.Context, sessionID string, session *Session, handle *turnHandle, result *CallResult, err error, events chan Event) {
+	if result != nil && (result.Text != "" || result.Reasoning != "") {
+		e.persistAssistant(ctx, sessionID, session, AssistantContent{Text: result.Text, Reasoning: result.Reasoning}, result.Usage, events)
+	}
+	reason := "模型调用失败"
+	retryable := true
+	if ctx.Err() != nil {
+		if handle.stopped.Load() {
+			reason, retryable = "轮次已停止", false
+		} else {
+			reason = "轮次超时"
+		}
+	}
+	if _, cerr := e.store.AppendMessage(ctx, sessionID, RoleSystem, SystemContent{Kind: "error", Text: fmt.Sprintf("%s: %v", reason, err)}, "", nil); cerr != nil { //nolint:staticcheck // 落库失败无从恢复，继续走错误回报
+	}
+	e.setStatus(ctx, sessionID, StatusIdle, false, events)
+	emitTerminal(events, Event{Type: EventError, Text: fmt.Sprintf("%s: %v", reason, err), Retryable: retryable})
 }
 
 // modelLoop 运行「模型调用 → 工具执行」循环直到模型给出终稿正文、暂停审批、
@@ -395,23 +438,7 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 			sawUsage = true
 		}
 		if err != nil {
-			// 取消路径下 result 可能带部分聚合文本，照常落库保证可追溯。
-			if result != nil && (result.Text != "" || result.Reasoning != "") {
-				e.persistAssistant(ctx, sessionID, session, AssistantContent{Text: result.Text, Reasoning: result.Reasoning}, result.Usage, events)
-			}
-			reason := "模型调用失败"
-			retryable := true
-			if ctx.Err() != nil {
-				if handle.stopped.Load() {
-					reason, retryable = "轮次已停止", false
-				} else {
-					reason = "轮次超时"
-				}
-			}
-			if _, cerr := e.store.AppendMessage(ctx, sessionID, RoleSystem, SystemContent{Kind: "error", Text: fmt.Sprintf("%s: %v", reason, err)}, "", nil); cerr != nil { //nolint:staticcheck // 落库失败无从恢复，继续走错误回报
-			}
-			e.setStatus(ctx, sessionID, StatusIdle, false, events)
-			emitTerminal(events, Event{Type: EventError, Text: fmt.Sprintf("%s: %v", reason, err), Retryable: retryable})
+			e.handleCallFailure(ctx, sessionID, session, handle, result, err, events)
 			return
 		}
 
