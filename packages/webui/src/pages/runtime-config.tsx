@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   AlertTriangle,
   Database,
@@ -23,10 +23,11 @@ import { Switch } from '@/components/ui/switch'
 import { SettingSection, SettingRow } from '@/components/ui/setting-card'
 import { ErrorState, LoadingState } from '@/components/ui/states'
 import { useToast } from '@/components/ui/use-toast'
+import { useRuntimeConfigForm } from './runtime-config/use-runtime-config-form'
 import { POLL, useRuntimeConfig, useModelCatalogStatus, revalidate } from '@/lib/hooks'
 import { api } from '@/lib/api'
 import { formatRelative, formatBytes } from '@/lib/utils'
-import type { LogLevel, RuntimeConfig, UsageLogRuntimeConfig, UsageStorageStatus } from '@/lib/types'
+import type { LogLevel, UsageStorageStatus } from '@/lib/types'
 
 // 目录数据来源的展示名。
 function catalogSourceLabel(source: string): string {
@@ -42,36 +43,12 @@ function catalogSourceLabel(source: string): string {
   }
 }
 
-/** 目录同步周期的表单默认（与后端 ResolveModelCatalogInterval 默认一致）。 */
-const defaultCatalogSyncMinutes = 1440
-
-// 日志管理表单缺省值（后端 GET 返回生效值，老版本无该块时兜底）。
-const defaultUsageLog: UsageLogRuntimeConfig = {
-  persistEnabled: true,
-  retentionDays: 0,
-  maxStorageMB: 0,
-  maxRecords: 0,
-  bodyMaxKB: 1024,
-  bodyOnErrorOnly: false,
-  externalizeMedia: true,
-  cleanupIntervalMinutes: 60,
-}
-
-/** 归一化后的表单类型：数据入口 effect 补齐 usageLog/modelCatalog/outbound 后三者必非空。 */
-type RuntimeConfigForm = Omit<RuntimeConfig, 'usageLog' | 'modelCatalog' | 'outbound'> & {
-  usageLog: UsageLogRuntimeConfig
-  modelCatalog: NonNullable<RuntimeConfig['modelCatalog']>
-  outbound: NonNullable<RuntimeConfig['outbound']>
-}
-
 
 export function RuntimeConfigPage() {
   const toast = useToast()
   const { data, isLoading, error, mutate } = useRuntimeConfig()
   const { data: catalogStatus } = useModelCatalogStatus()
-  // 归一化类型:数据入口 effect 已把 usageLog/modelCatalog 补齐为非空块,
-  // 渲染与保存路径直接取字段,不再 ?. / ?? 兜底(旧兜底口径不一曾致 UI 与落盘分叉)。
-  const [form, setForm] = useState<RuntimeConfigForm | null>(null)
+  const { form, update, updateUsageLog, updateOutboundText, resetOutboundDefaults, dirtyBlockPayload } = useRuntimeConfigForm(data)
   const [saving, setSaving] = useState(false)
   const [restartNotice, setRestartNotice] = useState(false)
   const [showToken, setShowToken] = useState(false)
@@ -90,50 +67,6 @@ export function RuntimeConfigPage() {
   useEffect(() => {
     refreshStorage()
   }, [refreshStorage])
-
-  function updateUsageLog<K extends keyof UsageLogRuntimeConfig>(key: K, value: UsageLogRuntimeConfig[K]) {
-    setForm((prev) => (prev ? { ...prev, usageLog: { ...prev.usageLog, [key]: value } } : prev))
-  }
-
-  /** 禁止段编辑：textarea 一行一段，保留原始输入（保存时后端 trim 清洗）。 */
-  function updateOutboundText(text: string) {
-    setForm((prev) =>
-      prev
-        ? { ...prev, outbound: { ...prev.outbound, deniedIpRanges: text === '' ? [] : text.split('\n') } }
-        : prev,
-    )
-  }
-
-  useEffect(() => {
-    // 数据入口一次性补默认块：后端省略 usageLog/modelCatalog 时就地归一化，
-    // 表达式与保存路径都不再需要 ?? 兜底（旧实现三处兜底口径不一致：
-    // 显示 1440、保存写 0，UI 与落盘会分叉）。
-    if (data)
-      setForm({
-        ...data,
-        usageLog: data.usageLog ?? defaultUsageLog,
-        modelCatalog: data.modelCatalog ?? {
-          enabled: true,
-          url: '',
-          syncIntervalMinutes: defaultCatalogSyncMinutes,
-        },
-        outbound: data.outbound ?? { deniedIpRanges: [] },
-      })
-    pristineRef.current = null
-    setForm((prev) => {
-      if (prev) pristineRef.current = { ...prev }
-      return prev
-    })
-  }, [data])
-
-  function update<K extends keyof RuntimeConfig>(key: K, value: RuntimeConfig[K]) {
-    setForm((prev) => (prev ? { ...prev, [key]: value } : prev))
-  }
-
-  /** 脏块追踪：保存时只回传用户实际改过的块（outbound/usageLog/modelCatalog）。
-   * 旧实现每次保存都整块发送——页面开着期间 agent 工具或同事手改的配置会被
-   * 本页的旧快照悄悄覆盖回去。 */
-  const pristineRef = useRef<RuntimeConfigForm | null>(null)
 
   async function handleSave() {
     if (!form) return
@@ -163,23 +96,7 @@ export function RuntimeConfigPage() {
         databasePath: form.databasePath,
         enablePprof: form.enablePprof,
         // 块级脏检查：未改过的块不发送，避免用旧快照覆盖并发改动。
-        ...(pristineRef.current &&
-          JSON.stringify(pristineRef.current.outbound.deniedIpRanges) !== JSON.stringify(form.outbound.deniedIpRanges)
-          ? {
-              outbound: {
-                deniedIpRanges: form.outbound.deniedIpRanges
-                  .map((entry) => entry.trim())
-                  .filter((entry) => entry !== ''),
-              },
-            }
-          : {}),
-        ...(pristineRef.current && JSON.stringify(pristineRef.current.usageLog) !== JSON.stringify(form.usageLog)
-          ? { usageLog: form.usageLog }
-          : {}),
-        ...(pristineRef.current &&
-            pristineRef.current.modelCatalog.syncIntervalMinutes !== form.modelCatalog.syncIntervalMinutes
-          ? { modelCatalog: { syncIntervalMinutes: form.modelCatalog.syncIntervalMinutes } }
-          : {}),
+        ...dirtyBlockPayload(),
       })
       await revalidate.runtimeConfig()
       refreshStorage()
@@ -369,19 +286,7 @@ export function RuntimeConfigPage() {
                     variant="outline"
                     size="sm"
                     type="button"
-                    onClick={() =>
-                      setForm((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              outbound: {
-                                ...prev.outbound,
-                                deniedIpRanges: [...(prev.outbound.defaultDeniedIpRanges ?? [])],
-                              },
-                            }
-                          : prev,
-                      )
-                    }
+                    onClick={resetOutboundDefaults}
                   >
                     <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
                     恢复默认
@@ -485,19 +390,7 @@ export function RuntimeConfigPage() {
                   value={form.modelCatalog.syncIntervalMinutes}
                   min={0}
                   className="font-mono text-xs"
-                  onCommit={(v) =>
-                    setForm((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            modelCatalog: {
-                              ...prev.modelCatalog,
-                              syncIntervalMinutes: v,
-                            },
-                          }
-                        : prev,
-                    )
-                  }
+                  onCommit={(v) => update('modelCatalog', { ...form.modelCatalog, syncIntervalMinutes: v })}
                 />
                 <span className="shrink-0 text-xs text-muted-foreground">分钟</span>
               </div>
