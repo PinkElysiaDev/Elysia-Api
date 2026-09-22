@@ -226,9 +226,6 @@ export const AGENT_TOOL_LABELS: Record<string, string> = {
   ask_user: "向你提问",
 };
 
-/** @deprecated 使用 AGENT_TOOL_LABELS。保留别名避免旧引用断裂。 */
-export const AGENT_GATED_TOOL_LABELS = AGENT_TOOL_LABELS;
-
 export function agentToolLabel(name: string): string {
   return AGENT_TOOL_LABELS[name] ?? name;
 }

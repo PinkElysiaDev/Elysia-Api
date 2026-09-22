@@ -29,6 +29,11 @@ export function ToolCallRow({
   onOpen?: () => void;
 }) {
   const [open, setOpen] = useState(status === "failed" || status === "denied");
+  // live 卡以 running 挂载、状态随后翻转：失败/被拒时要主动展开（初始值只
+  // 在挂载时生效，覆盖不到状态变化）。
+  useEffect(() => {
+    if (status === "failed" || status === "denied") setOpen(true);
+  }, [status]);
   const [copied, setCopied] = useState(false);
   const elapsed = useElapsed(status === "running", startedAt, elapsedMs);
   const verb = toolStatusVerb(status);
@@ -119,7 +124,7 @@ function formatElapsed(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-/** 运行中本地计时，心跳到达时以服务端耗时为准。 */
+/** 运行中优先本地计时（平滑走秒）；无 startedAt 时退回服务端心跳值。 */
 function useElapsed(
   running: boolean,
   startedAt: number | undefined,
@@ -131,7 +136,6 @@ function useElapsed(
     const timer = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(timer);
   }, [running, startedAt]);
-  if (elapsedMs != null) return elapsedMs;
-  if (!running || !startedAt) return 0;
-  return Math.max(0, now - startedAt);
+  if (running && startedAt) return Math.max(0, now - startedAt);
+  return elapsedMs ?? 0;
 }

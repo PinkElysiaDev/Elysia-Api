@@ -241,6 +241,10 @@ export function ChatPanel({
     onSend({ content, documents });
     setText("");
     setDocuments([]);
+    // 发送即回到跟随模式：新一轮输出应该跟着滚，否则用户上翻后发出的消息
+    // 不会自动滚入视野。
+    stickToBottomRef.current = true;
+    setShowJumpBottom(false);
   };
 
   const messageActions = useMemo(
@@ -303,14 +307,16 @@ export function ChatPanel({
           void addFiles(event.dataTransfer.files);
       }}
     >
-      {/* 扁平消息流：直接浮在页面背景上。 */}
-      <div
-        ref={scrollRef}
-        className={cn(
-          "relative min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5",
-          dragOver && "bg-wash/40",
-        )}
-      >
+      {/* 扁平消息流：直接浮在页面背景上。跳底浮标是滚动容器的兄弟节点——
+          放在滚动内容里会随内容滚走（absolute 的包含块是滚动区的内容坐标）。 */}
+      <div className="relative flex min-h-0 flex-1">
+        <div
+          ref={scrollRef}
+          className={cn(
+            "relative min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5",
+            dragOver && "bg-wash/40",
+          )}
+        >
         {dragOver ? (
           <div className="pointer-events-none absolute inset-3 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-rose/40 text-sm text-muted-foreground">
             松开以添加附件（文档 / 图片 / PDF）
@@ -449,7 +455,8 @@ export function ChatPanel({
             ) : null}
           </div>
         ) : null}
-        <div ref={bottomRef} />
+          <div ref={bottomRef} />
+        </div>
         {showJumpBottom ? (
           <button
             type="button"

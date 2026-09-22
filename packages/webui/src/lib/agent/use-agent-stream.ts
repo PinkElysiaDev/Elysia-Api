@@ -153,6 +153,7 @@ function reduce(
         reasoning: "",
         toolCards: [],
         planNotice: null,
+        compaction: null,
         turnUsage: usage ? agentUsageToTurn(usage) : null,
       };
     }

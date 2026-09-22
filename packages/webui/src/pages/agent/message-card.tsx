@@ -205,7 +205,7 @@ export function MessageCard({
                   className="inline-flex items-center gap-1 text-muted-foreground/70"
                 >
                   <Wrench className="h-3 w-3" />
-                  {call.name ?? "工具"}
+                  {agentToolLabel(call.name ?? "工具")}
                 </span>
               ))}
             </div>
@@ -505,7 +505,7 @@ export function PlanConfirmCard({
         <Button
           size="sm"
           variant="ghost"
-          disabled={busy || !note.trim()}
+          disabled={busy}
           onClick={() => onRevise(note.trim())}
         >
           需要修改
