@@ -940,22 +940,25 @@ func (t *updateGroupTool) Definition() relay.MaheshvaraTool {
 	}
 }
 
+// updateGroupParams 是 update_model_group 的参数集（成员增删 + 字段补丁）。
+type updateGroupParams struct {
+	Group                 string   `json:"group"`
+	AddModels             []string `json:"addModels"`
+	RemoveModels          []string `json:"removeModels"`
+	Enabled               *bool    `json:"enabled"`
+	Strategy              string   `json:"strategy"`
+	MaxRetries            *int     `json:"maxRetries"`
+	MaxConcurrency        *int     `json:"maxConcurrency"`
+	DailyLimitMaxRequests *int     `json:"dailyLimitMaxRequests"`
+	DailyLimitMaxTokens   *int     `json:"dailyLimitMaxTokens"`
+}
+
 func (t *updateGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
 	store, unavailable := toolStore(t.server)
 	if store == nil {
 		return unavailable
 	}
-	var params struct {
-		Group                 string   `json:"group"`
-		AddModels             []string `json:"addModels"`
-		RemoveModels          []string `json:"removeModels"`
-		Enabled               *bool    `json:"enabled"`
-		Strategy              string   `json:"strategy"`
-		MaxRetries            *int     `json:"maxRetries"`
-		MaxConcurrency        *int     `json:"maxConcurrency"`
-		DailyLimitMaxRequests *int     `json:"dailyLimitMaxRequests"`
-		DailyLimitMaxTokens   *int     `json:"dailyLimitMaxTokens"`
-	}
+	var params updateGroupParams
 	if err := json.Unmarshal(args, &params); err != nil {
 		return agent.ToolError("参数解析失败", err.Error())
 	}
@@ -974,6 +977,23 @@ func (t *updateGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 			return agent.ToolError("添加成员失败: "+err.Error(), err.Error())
 		}
 	}
+	if applyGroupPatch(&group, params) {
+		// 成员以当前库内状态为准，避免用陈旧引用整体覆盖。
+		fresh, ok := agentFindGroup(ctx, store, group.ID)
+		if ok {
+			group.Models = fresh.Models
+		}
+		if err := store.UpsertGroup(ctx, group); err != nil {
+			return agent.ToolError("保存失败: "+err.Error(), err.Error())
+		}
+	}
+	t.server.invalidateRouteCache()
+	updated, _ := agentFindGroup(ctx, store, group.ID)
+	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("模型组 %q 已更新（%d 个成员）", updated.Name, len(updated.Models)), Data: updated}
+}
+
+// applyGroupPatch 把参数里的字段补丁应用到组上，报告是否有任何字段变化。
+func applyGroupPatch(group *storage.ModelGroup, params updateGroupParams) bool {
 	fieldsChanged := false
 	applyBool := func(patch *bool, target *bool) {
 		if patch != nil {
@@ -996,19 +1016,7 @@ func (t *updateGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 	applyInt(params.MaxConcurrency, &group.MaxConcurrency)
 	applyInt(params.DailyLimitMaxRequests, &group.DailyLimitMaxRequests)
 	applyInt(params.DailyLimitMaxTokens, &group.DailyLimitMaxTokens)
-	if fieldsChanged {
-		// 成员以当前库内状态为准，避免用陈旧引用整体覆盖。
-		fresh, ok := agentFindGroup(ctx, store, group.ID)
-		if ok {
-			group.Models = fresh.Models
-		}
-		if err := store.UpsertGroup(ctx, group); err != nil {
-			return agent.ToolError("保存失败: "+err.Error(), err.Error())
-		}
-	}
-	t.server.invalidateRouteCache()
-	updated, _ := agentFindGroup(ctx, store, group.ID)
-	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("模型组 %q 已更新（%d 个成员）", updated.Name, len(updated.Models)), Data: updated}
+	return fieldsChanged
 }
 
 // ---- update_outbound_policy（门控 save）----

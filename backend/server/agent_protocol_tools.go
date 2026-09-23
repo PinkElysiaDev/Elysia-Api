@@ -136,14 +136,18 @@ func (t *updateDraftTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 	if err := tctx.SetDraft(compact); err != nil {
 		return agent.ToolError("草稿保存失败", err.Error())
 	}
+	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("草稿已更新（id=%s）", protocol.ID),
+		Data: offlineValidationData(tctx, protocol, params.ExampleResponse)}
+}
 
-	summary := fmt.Sprintf("草稿已更新（id=%s）", protocol.ID)
+// offlineValidationData 组装草稿的离线自检结果：编辑模式 id 提醒 + 样例请求
+// 渲染 + 示例响应映射（均不发出真实请求）。
+func offlineValidationData(tctx agent.ToolContext, protocol relay.CustomProtocolConfig, exampleResponse json.RawMessage) map[string]any {
 	data := map[string]any{"valid": true, "id": protocol.ID}
-	if tctx.SessionMeta().Mode == agent.ModeEdit && tctx.SessionMeta().ProtocolID != "" &&
-		!strings.EqualFold(protocol.ID, tctx.SessionMeta().ProtocolID) {
-		data["warning"] = fmt.Sprintf("当前为编辑模式，目标协议 id 为 %q，请保持 id 不变（save_protocol 会拒绝不一致的 id）", tctx.SessionMeta().ProtocolID)
+	meta := tctx.SessionMeta()
+	if meta.Mode == agent.ModeEdit && meta.ProtocolID != "" && !strings.EqualFold(protocol.ID, meta.ProtocolID) {
+		data["warning"] = fmt.Sprintf("当前为编辑模式，目标协议 id 为 %q，请保持 id 不变（save_protocol 会拒绝不一致的 id）", meta.ProtocolID)
 	}
-	// 离线验证：样例请求渲染 + 示例响应映射（均不发出真实请求）。
 	if preview, err := previewCustomProtocolRequest(protocol, defaultCustomProtocolSampleRequest()); err != nil {
 		data["previewError"] = err.Error()
 	} else {
@@ -153,14 +157,14 @@ func (t *updateDraftTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 			"body": preview.Body,
 		}
 	}
-	if len(params.ExampleResponse) > 0 {
-		if mapped, err := relay.CustomProtocolResponseToMaheshvara(params.ExampleResponse, protocol); err != nil {
+	if len(exampleResponse) > 0 {
+		if mapped, err := relay.CustomProtocolResponseToMaheshvara(exampleResponse, protocol); err != nil {
 			data["mappingError"] = err.Error()
 		} else {
 			data["mappedResponse"] = mapped
 		}
 	}
-	return agent.ToolResult{OK: true, Summary: summary, Data: data}
+	return data
 }
 
 // ---- preview_request ----
