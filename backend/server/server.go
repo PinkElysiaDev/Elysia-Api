@@ -682,16 +682,10 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 	if relay.IsCustomPlatform(targetPlatform) {
 		return s.relayCustomChatNormal(c, group, selectedModel, customRequest, targetPlatform, inputFormat, startTime, record, isLast)
 	}
-	// failResult 在转发失败时决定是提交错误响应（最后一次尝试或不可重试），
-	// 还是返回 committed=false 让上层故障转移到下一个候选模型。
-	failResult := func(statusCode int, errMsg string, respBody []byte, contentType string) relayOutcome {
-		return relayFailOutcome(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, func() {
-			if respBody != nil {
-				writeUpstreamError(c, inputFormat, targetPlatform, statusCode, respBody, contentType)
-				return
-			}
-			writeProtocolError(c, inputFormat, &relay.MaheshvaraError{Class: relay.ErrorClassUpstream, Status: statusCode, Message: errMsg})
-		})
+	// 转发失败：末次尝试或不可重试时提交错误响应，否则交还上层换候选。
+	failWriter := relayFailWriter{c: c, inputFormat: relay.FormatType(inputFormat), targetPlatform: relay.Platform(targetPlatform)}
+	failResult := func(statusCode int, errMsg string, respBody []byte) relayOutcome {
+		return failWriter.fail(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, respBody)
 	}
 
 	// 仅在 committed 时记录 usage；未提交（将要重试）时不记录，
@@ -727,7 +721,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 		if status <= 0 {
 			status = http.StatusBadGateway
 		}
-		result = failResult(status, err.Error(), fetched.respBody, contentTypeJSON)
+		result = failResult(status, err.Error(), fetched.respBody)
 		return result
 	}
 	switch targetFormat {
@@ -747,13 +741,13 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 	if fetched.maheshvara.Error != nil {
 		mErr := fetched.maheshvara.Error
 		mErr.Class = mErr.Class.OrDefault()
-		result = failResult(mErr.EffectiveStatus(), mErr.Message, nil, "")
+		result = failResult(mErr.EffectiveStatus(), mErr.Message, nil)
 		return result
 	}
 	record.StatusCode = http.StatusOK
 	output, renderErr := renderMaheshvaraChatResponse(fetched.maheshvara, inputFormat)
 	if renderErr != nil {
-		result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to render Maheshvara response: %v", renderErr), nil, "")
+		result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to render Maheshvara response: %v", renderErr), nil)
 		return result
 	}
 	c.JSON(200, output)
@@ -780,17 +774,9 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 	// 流式失败的可重试性判定。注意：一旦开始向客户端写出 SSE 字节，
 	// 就无法再重试（响应头已发出），因此重试只发生在"建立上游连接 +
 	// 读到上游首个状态码"之前。
+	failWriter := relayFailWriter{c: c, inputFormat: relay.FormatType(inputFormat), targetPlatform: relay.Platform(targetPlatform)}
 	failResult := func(statusCode int, errMsg string, respBody []byte) relayOutcome {
-		return relayFailOutcome(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, func() {
-			if respBody != nil {
-				// 透传真实上游状态码（failResult 的 statusCode 已经过
-				// upstreamErrorStatus 提取）：固定 502 会让客户端看到
-				// 502 而日志记的是 401/403 等永久错误。
-				writeUpstreamError(c, inputFormat, targetPlatform, statusCode, respBody, contentTypeJSON)
-				return
-			}
-			writeProtocolError(c, inputFormat, &relay.MaheshvaraError{Class: relay.ErrorClassUpstream, Status: statusCode, Message: errMsg})
-		})
+		return failWriter.fail(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, respBody)
 	}
 
 	flusher, ok := c.Writer.(http.Flusher)

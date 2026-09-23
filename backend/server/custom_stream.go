@@ -28,18 +28,9 @@ func (s *Server) handleCustomStreamRequest(
 		s.recordUsage(record)
 		return result
 	}
+	failWriter := relayFailWriter{c: c, inputFormat: inputFormat, targetPlatform: targetPlatform}
 	fail := func(status int, message string, body []byte, retryable bool) relayOutcome {
-		outcome := relayFailOutcome(record, isLast, retryable, status, message, func() {
-			if body != nil {
-				writeUpstreamError(c, inputFormat, targetPlatform, status, body, contentTypeJSON)
-				return
-			}
-			writeProtocolError(c, inputFormat, &relay.MaheshvaraError{Class: relay.ErrorClassUpstream, Status: status, Message: message})
-		})
-		if outcome.committed {
-			return finish(outcome)
-		}
-		return outcome
+		return finish(failWriter.fail(record, isLast, retryable, status, message, body))
 	}
 
 	if request == nil {

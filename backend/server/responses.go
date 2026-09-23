@@ -122,14 +122,9 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 	}
 	// failResult 决定：最后一次尝试或不可重试状态码 → 向客户端提交错误响应；
 	// 否则返回 committed=false 让上层故障转移到下一个候选。
+	failWriter := relayFailWriter{c: c, inputFormat: relay.FormatResponses, targetPlatform: relay.Platform(targetPlatform)}
 	failResult := func(statusCode int, errMsg string, respBody []byte) relayOutcome {
-		return relayFailOutcome(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, func() {
-			if respBody != nil {
-				writeUpstreamError(c, relay.FormatResponses, targetPlatform, statusCode, respBody, contentTypeJSON)
-				return
-			}
-			writeProtocolError(c, relay.FormatResponses, &relay.MaheshvaraError{Class: relay.ErrorClassUpstream, Status: statusCode, Message: errMsg})
-		})
+		return failWriter.fail(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, respBody)
 	}
 
 	var result relayOutcome
@@ -224,14 +219,9 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 	// 不得洗白成 502 触发全候选扇出重试。
 	// connFail 处理「SSE 尚未开始」的上游建连失败：可重试且非最后一次 →
 	// committed=false 让上层换下一个候选；否则写出 JSON 错误并提交。
+	connFailWriter := relayFailWriter{c: c, inputFormat: relay.FormatResponses, targetPlatform: relay.Platform(targetPlatform)}
 	connFail := func(statusCode int, errMsg string, respBody []byte) relayOutcome {
-		return relayFailOutcome(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, func() {
-			if respBody != nil {
-				writeUpstreamError(c, relay.FormatResponses, targetPlatform, statusCode, respBody, contentTypeJSON)
-				return
-			}
-			writeProtocolError(c, relay.FormatResponses, &relay.MaheshvaraError{Class: relay.ErrorClassUpstream, Status: statusCode, Message: errMsg})
-		})
+		return connFailWriter.fail(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, respBody)
 	}
 
 	flusher, ok := c.Writer.(http.Flusher)

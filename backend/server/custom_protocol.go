@@ -136,16 +136,11 @@ func (s *Server) relayCustomNormal(
 	render func(*relay.MaheshvaraResponse) (any, error),
 	renderErrLabel string,
 ) relayOutcome {
-	// fail 与其他 handler 的 failResult 同语义,经 relayFailOutcome 统一
-	//(retryable 显式传入:自定义协议按业务错误分类决定可否重试)。
+	// fail 与其他 handler 的 failResult 同语义（retryable 显式传入：自定义
+	// 协议按业务错误分类决定可否重试）。
+	failWriter := relayFailWriter{c: c, inputFormat: inputFormat, targetPlatform: targetPlatform}
 	fail := func(status int, message string, body []byte, retryable bool) relayOutcome {
-		return relayFailOutcome(record, isLast, retryable, status, message, func() {
-			if body != nil {
-				writeUpstreamError(c, inputFormat, targetPlatform, status, body, contentTypeJSON)
-				return
-			}
-			writeProtocolError(c, inputFormat, &relay.MaheshvaraError{Class: relay.ErrorClassUpstream, Status: status, Message: message})
-		})
+		return failWriter.fail(record, isLast, retryable, status, message, body)
 	}
 	// 仅在 committed 时记录 usage；未提交（将要重试）时不记录，
 	// 由最终成功/失败的那次尝试统一记录。

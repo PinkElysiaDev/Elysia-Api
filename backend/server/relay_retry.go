@@ -1,6 +1,8 @@
 package server
 
 import (
+	"github.com/gin-gonic/gin"
+
 	"math/rand"
 
 	"github.com/elysia-api/backend/config"
@@ -305,4 +307,23 @@ func relayFailOutcome(record *usageRecord, isLast, retryable bool, statusCode in
 		return relayOutcome{committed: true, statusCode: statusCode, errMsg: errMsg}
 	}
 	return relayOutcome{committed: false, statusCode: statusCode, errMsg: errMsg}
+}
+
+// relayFailWriter 绑定一次转发的写出口（客户端连接 + 输入/目标线制），
+// 是各 handler 此前人手一份的 failResult/connFail/fail 闭包的共享体：
+// 有上游原文透传原文，否则写协议错误；retryable 由调用方判定传入。
+type relayFailWriter struct {
+	c              *gin.Context
+	inputFormat    relay.FormatType
+	targetPlatform relay.Platform
+}
+
+func (w relayFailWriter) fail(record *usageRecord, isLast, retryable bool, status int, message string, body []byte) relayOutcome {
+	return relayFailOutcome(record, isLast, retryable, status, message, func() {
+		if body != nil {
+			writeUpstreamError(w.c, w.inputFormat, w.targetPlatform, status, body, contentTypeJSON)
+			return
+		}
+		writeProtocolError(w.c, w.inputFormat, &relay.MaheshvaraError{Class: relay.ErrorClassUpstream, Status: status, Message: message})
+	})
 }
