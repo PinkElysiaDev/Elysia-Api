@@ -1415,50 +1415,16 @@ func shapeCustomThinking(shape string, req *MaheshvaraRequest, root map[string]a
 			root["reasoning_effort"] = req.Reasoning.Effort
 		}
 	case "anthropic":
-		if req.Thinking == nil || !req.Thinking.Enabled {
-			return
-		}
-		if req.Thinking.Adaptive {
-			root["thinking"] = map[string]any{"type": "adaptive"}
-			if req.Thinking.Effort != "" {
-				root["output_config"] = map[string]any{"effort": req.Thinking.Effort}
-			}
-		} else {
-			budget := req.Thinking.BudgetTokens
-			if budget <= 0 {
-				budget = budgetFromEffort(req.Thinking.Effort)
-			}
-			root["thinking"] = map[string]any{"type": "enabled", "budget_tokens": budget}
-		}
-		// 思考态强制 temperature=1.0 且去掉 top_p（与 MaheshvaraToAnthropic 一致）。
-		root["temperature"] = 1.0
-		delete(root, "top_p")
+		applyAnthropicThinking(req, func(key string, value any) { root[key] = value }, func(key string) { delete(root, key) })
 	case "gemini":
-		if req.Thinking == nil || !req.Thinking.Enabled {
-			return
+		if thinkingConfig := buildGeminiThinkingConfig(req); thinkingConfig != nil {
+			root["thinking_config"] = thinkingConfig
 		}
-		thinkingConfig := map[string]any{"includeThoughts": true}
-		if req.Thinking.Effort != "" {
-			thinkingConfig["thinkingLevel"] = req.Thinking.Effort
-		}
-		if req.Thinking.BudgetTokens > 0 {
-			thinkingConfig["thinkingBudget"] = req.Thinking.BudgetTokens
-		}
-		root["thinking_config"] = thinkingConfig
 	case "responses":
 		if req.Reasoning == nil {
 			return
 		}
-		reasoning := map[string]any{}
-		for key, value := range req.Reasoning.Raw {
-			reasoning[key] = value
-		}
-		if strings.EqualFold(req.Reasoning.Effort, "none") {
-			// 上游会把 effort:"none" 静默当成 low 档执行，必须整个省略字段。
-			delete(reasoning, "effort")
-		} else if req.Reasoning.Effort != "" {
-			reasoning["effort"] = req.Reasoning.Effort
-		}
+		reasoning := buildResponsesReasoning(req)
 		// 必须覆写（含清空删除）：上下文里序列化的原始 reasoning 可能带
 		// effort:"none"，模板若映射该字段会把上游拒绝的档位发出去。
 		if len(reasoning) > 0 {

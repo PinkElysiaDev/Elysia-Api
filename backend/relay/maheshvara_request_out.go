@@ -157,23 +157,7 @@ func MaheshvaraToAnthropic(req *MaheshvaraRequest) ([]byte, error) {
 	if converted := applyClaudeDisableParallelToolUse(maheshvaraToolChoiceToClaude(req.ToolChoice), req.ParallelToolCalls); converted != nil {
 		out["tool_choice"] = converted
 	}
-	if req.Thinking != nil && req.Thinking.Enabled {
-		if req.Thinking.Adaptive {
-			// 自适应思考：无固定预算，档位走 output_config.effort。
-			out["thinking"] = map[string]any{"type": "adaptive"}
-			if req.Thinking.Effort != "" {
-				out["output_config"] = map[string]any{"effort": req.Thinking.Effort}
-			}
-		} else {
-			budget := req.Thinking.BudgetTokens
-			if budget <= 0 {
-				budget = budgetFromEffort(req.Thinking.Effort)
-			}
-			out["thinking"] = map[string]any{"type": "enabled", "budget_tokens": budget}
-		}
-		out["temperature"] = 1.0
-		delete(out, "top_p")
-	}
+	applyAnthropicThinking(req, func(key string, value any) { out[key] = value }, func(key string) { delete(out, key) })
 	applyClaudeRequestExtensionsToBody(out, req)
 	return json.Marshal(out)
 }
@@ -226,14 +210,7 @@ func MaheshvaraToGemini(req *MaheshvaraRequest) ([]byte, error) {
 			out["toolConfig"] = toolConfig
 		}
 	}
-	if req.Thinking != nil && req.Thinking.Enabled {
-		thinkingConfig := map[string]any{"includeThoughts": true}
-		if req.Thinking.Effort != "" {
-			thinkingConfig["thinkingLevel"] = req.Thinking.Effort
-		}
-		if req.Thinking.BudgetTokens > 0 {
-			thinkingConfig["thinkingBudget"] = req.Thinking.BudgetTokens
-		}
+	if thinkingConfig := buildGeminiThinkingConfig(req); thinkingConfig != nil {
 		if generationConfig, ok := out["generationConfig"].(map[string]any); ok {
 			generationConfig["thinkingConfig"] = thinkingConfig
 		} else {
@@ -408,17 +385,7 @@ func MaheshvaraToOpenAIResponses(req *MaheshvaraRequest, original *OpenAIRespons
 		out["text"] = map[string]any{"format": maheshvaraResponseFormatToResponses(req.ResponseFormat)}
 	}
 	if req.Reasoning != nil {
-		reasoning := map[string]any{}
-		for k, v := range req.Reasoning.Raw {
-			reasoning[k] = v
-		}
-		if strings.EqualFold(req.Reasoning.Effort, "none") {
-			// 上游会把 effort:"none" 静默当成 low 档执行，必须整个省略字段。
-			delete(reasoning, "effort")
-		} else if req.Reasoning.Effort != "" {
-			reasoning["effort"] = req.Reasoning.Effort
-		}
-		out["reasoning"] = reasoning
+		out["reasoning"] = buildResponsesReasoning(req)
 	}
 	// 携带加密思考历史的请求发给 Responses 上游时，追加 include 让上游
 	// 返回加密思考，跨轮续用才可行。
@@ -1445,4 +1412,60 @@ func maheshvaraReasoningToOpenAIDetails(parts []MaheshvaraContentPart) []map[str
 		}
 	}
 	return details
+}
+
+// applyAnthropicThinking 把思考配置按 Anthropic 线整形写入目标——内置请求
+// 体与自定义协议模板上下文共用（set/del 注入写入方式）。adaptive 走
+// output_config.effort；固定预算缺省按 effort 量化；思考态强制
+// temperature=1.0 且去掉 top_p。
+func applyAnthropicThinking(req *MaheshvaraRequest, set func(string, any), del func(string)) {
+	if req.Thinking == nil || !req.Thinking.Enabled {
+		return
+	}
+	if req.Thinking.Adaptive {
+		set("thinking", map[string]any{"type": "adaptive"})
+		if req.Thinking.Effort != "" {
+			set("output_config", map[string]any{"effort": req.Thinking.Effort})
+		}
+	} else {
+		budget := req.Thinking.BudgetTokens
+		if budget <= 0 {
+			budget = budgetFromEffort(req.Thinking.Effort)
+		}
+		set("thinking", map[string]any{"type": "enabled", "budget_tokens": budget})
+	}
+	set("temperature", 1.0)
+	del("top_p")
+}
+
+// buildGeminiThinkingConfig 构造 Gemini 的 thinkingConfig 内容；未启用思考
+// 返回 nil。内置线把它嵌进 generationConfig，自定义协议模板上下文按
+// thinking_config 顶层键映射——位置由各调用方决定，内容共用。
+func buildGeminiThinkingConfig(req *MaheshvaraRequest) map[string]any {
+	if req.Thinking == nil || !req.Thinking.Enabled {
+		return nil
+	}
+	thinkingConfig := map[string]any{"includeThoughts": true}
+	if req.Thinking.Effort != "" {
+		thinkingConfig["thinkingLevel"] = req.Thinking.Effort
+	}
+	if req.Thinking.BudgetTokens > 0 {
+		thinkingConfig["thinkingBudget"] = req.Thinking.BudgetTokens
+	}
+	return thinkingConfig
+}
+
+// buildResponsesReasoning 构造 Responses 线的 reasoning 对象：Raw 透传 +
+// effort 归一（"none" 整个省略——上游会静默按 low 档执行）。
+func buildResponsesReasoning(req *MaheshvaraRequest) map[string]any {
+	reasoning := map[string]any{}
+	for k, v := range req.Reasoning.Raw {
+		reasoning[k] = v
+	}
+	if strings.EqualFold(req.Reasoning.Effort, "none") {
+		delete(reasoning, "effort")
+	} else if req.Reasoning.Effort != "" {
+		reasoning["effort"] = req.Reasoning.Effort
+	}
+	return reasoning
 }
