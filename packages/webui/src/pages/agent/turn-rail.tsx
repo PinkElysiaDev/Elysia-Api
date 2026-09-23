@@ -24,7 +24,7 @@ export function TurnRail({
   return (
     <nav
       aria-label="对话轮次"
-      className="flex w-11 shrink-0 flex-col items-center gap-1 overflow-y-auto overflow-x-hidden py-3"
+      className="no-scrollbar flex w-11 shrink-0 flex-col items-center gap-1 overflow-y-auto overflow-x-hidden py-3"
     >
       {turns.map((turn, index) => {
         const active = activeSeq === turn.seq;

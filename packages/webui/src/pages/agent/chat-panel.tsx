@@ -124,7 +124,7 @@ export function ChatPanel({
   useEffect(() => {
     if (!stickToBottomRef.current) return;
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length, live.text, live.toolCards.length, approval]);
+  }, [messages.length, live.text, live.toolCards.length]);
 
   /** 轮数条跳转：滚动到目标消息。 */
   useEffect(() => {
@@ -313,148 +313,119 @@ export function ChatPanel({
         <div
           ref={scrollRef}
           className={cn(
-            "relative min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5",
+            "no-scrollbar relative min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5",
             dragOver && "bg-wash/40",
           )}
         >
-        {dragOver ? (
-          <div className="pointer-events-none absolute inset-3 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-rose/40 text-sm text-muted-foreground">
-            松开以添加附件（文档 / 图片 / PDF）
-          </div>
-        ) : null}
-        {/* 报错去重：引擎对失败既落库系统错误消息又发 error 事件，turn_done
+          {dragOver ? (
+            <div className="pointer-events-none absolute inset-3 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-rose/40 text-sm text-muted-foreground">
+              松开以添加附件（文档 / 图片 / PDF）
+            </div>
+          ) : null}
+          {/* 报错去重：引擎对失败既落库系统错误消息又发 error 事件，turn_done
             刷新会把落库红卡拉回列表与 live 横幅同文案并排。live 横幅（带重试）
             存在时跳过最后一条同文案的落库红卡；关闭横幅或刷新后红卡自然回归。 */}
-        {messages.length === 0 && !live.running ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-            <p className="text-sm text-foreground">
-              描述一个任务，助手会调用工具完成
-            </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              {[
-                "帮我设计一个 OpenAI 兼容协议",
-                "汇总今天的用量趋势",
-                "检查出站策略是否放行了内网",
-              ].map((example) => (
-                <button
-                  key={example}
-                  type="button"
-                  className="rounded-full border border-border px-3 py-1 text-2xs text-muted-foreground transition-colors hover:bg-wash hover:text-foreground"
-                  onClick={() => setText(example)}
-                >
-                  {example}
-                </button>
-              ))}
+          {messages.length === 0 && !live.running ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+              <p className="text-sm text-foreground">
+                描述一个任务，助手会调用工具完成
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {[
+                  "帮我设计一个 OpenAI 兼容协议",
+                  "汇总今天的用量趋势",
+                  "检查出站策略是否放行了内网",
+                ].map((example) => (
+                  <button
+                    key={example}
+                    type="button"
+                    className="rounded-full border border-border px-3 py-1 text-2xs text-muted-foreground transition-colors hover:bg-wash hover:text-foreground"
+                    onClick={() => setText(example)}
+                  >
+                    {example}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        ) : null}
-        {messages.map((message) => {
-          if (
-            live.error &&
-            message.role === "system" &&
-            message.seq === suppressedErrorSeq
-          ) {
-            return null;
-          }
-          return (
-            <div key={message.seq} data-seq={message.seq}>
-              <MessageCard
-                message={message}
-                actions={messageActions}
-                onOpenActivity={() => onOpenContextTab("activity")}
-              />
+          ) : null}
+          {messages.map((message) => {
+            if (
+              live.error &&
+              message.role === "system" &&
+              message.seq === suppressedErrorSeq
+            ) {
+              return null;
+            }
+            return (
+              <div key={message.seq} data-seq={message.seq}>
+                <MessageCard message={message} actions={messageActions} />
+              </div>
+            );
+          })}
+          {live.running && live.statusText ? (
+            <div className="flex items-center gap-2 pl-1 text-2xs text-muted-foreground">
+              <span className="dot dot-ok" />
+              {live.statusText}
             </div>
-          );
-        })}
-        {live.running && live.statusText ? (
-          <div className="flex items-center gap-2 pl-1 text-2xs text-muted-foreground">
-            <span className="dot dot-ok" />
-            {live.statusText}
-          </div>
-        ) : null}
-        {live.running ||
-        live.text ||
-        live.reasoning ||
-        live.toolCards.length > 0 ? (
-          <LiveAssistantView
-            live={live}
-            onOpenActivity={() => onOpenContextTab("activity")}
-          />
-        ) : null}
-        {live.planNotice ? (
-          <button
-            type="button"
-            className="self-start rounded-full border border-border px-3 py-1 text-2xs text-muted-foreground hover:bg-wash hover:text-foreground"
-            onClick={() => onOpenContextTab("plan")}
-          >
-            方案已更新 · {live.planNotice.done}/{live.planNotice.total}
-          </button>
-        ) : null}
-        {live.compaction ? (
-          <div className="self-start rounded-full bg-muted/60 px-3 py-1 text-2xs text-muted-foreground">
-            {live.compaction.kind === "summary"
-              ? "上下文已自动压缩"
-              : "较早的工具结果已压缩"}
-            {live.compaction.summarized
-              ? ` · 处理 ${live.compaction.summarized} 条`
-              : ""}
-          </div>
-        ) : null}
-        {approval?.kind === "question" && approval.question ? (
-          <QuestionCard
-            question={approval.question}
-            busy={busy}
-            onAnswer={(answer) => onApprove({ approved: true, answer })}
-          />
-        ) : null}
-        {approval?.kind === "plan" ? (
-          <PlanConfirmCard
-            plan={approval.plan ?? []}
-            busy={busy}
-            onConfirm={() => onApprove({ approved: true })}
-            onRevise={(note) => onApprove({ approved: false, note })}
-          />
-        ) : null}
-        {approval &&
-        approval.kind !== "question" &&
-        approval.kind !== "plan" ? (
-          <ApprovalCard
-            approval={approval}
-            busy={busy}
-            onApprove={(extra) => onApprove({ approved: true, ...extra })}
-            onDeny={(note) => onApprove({ approved: false, note })}
-          />
-        ) : null}
-        {live.error ? (
-          <div className="tone-ember flex items-center gap-2 rounded-lg border px-3 py-2 text-xs">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 flex-1">{live.error.text}</span>
+          ) : null}
+          {live.running ||
+          live.text ||
+          live.reasoning ||
+          live.toolCards.length > 0 ? (
+            <LiveAssistantView
+              live={live}
+              onOpenActivity={() => onOpenContextTab("activity")}
+            />
+          ) : null}
+          {live.planNotice ? (
             <button
               type="button"
-              aria-label="关闭错误提示"
-              className="rounded p-0.5 text-ember/70 transition-colors hover:bg-[color-mix(in_srgb,var(--ember)_12%,transparent)] hover:text-ember"
-              onClick={onDismissError}
+              className="self-start rounded-full border border-border px-3 py-1 text-2xs text-muted-foreground hover:bg-wash hover:text-foreground"
+              onClick={() => onOpenContextTab("plan")}
             >
-              <X className="h-3.5 w-3.5" />
+              方案已更新 · {live.planNotice.done}/{live.planNotice.total}
             </button>
-            {live.error.retryable && !busy ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 gap-1 px-2 text-2xs"
-                onClick={() => {
-                  const lastUser = [...messages]
-                    .reverse()
-                    .find((message) => message.role === "user");
-                  if (!lastUser) return;
-                  messageActions.onRetry(lastUser);
-                }}
+          ) : null}
+          {live.compaction ? (
+            <div className="self-start rounded-full bg-muted/60 px-3 py-1 text-2xs text-muted-foreground">
+              {live.compaction.kind === "summary"
+                ? "上下文已自动压缩"
+                : "较早的工具结果已压缩"}
+              {live.compaction.summarized
+                ? ` · 处理 ${live.compaction.summarized} 条`
+                : ""}
+            </div>
+          ) : null}
+          {live.error ? (
+            <div className="tone-ember flex items-center gap-2 rounded-lg border px-3 py-2 text-xs">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 flex-1">{live.error.text}</span>
+              <button
+                type="button"
+                aria-label="关闭错误提示"
+                className="rounded p-0.5 text-ember/70 transition-colors hover:bg-[color-mix(in_srgb,var(--ember)_12%,transparent)] hover:text-ember"
+                onClick={onDismissError}
               >
-                重试
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
+                <X className="h-3.5 w-3.5" />
+              </button>
+              {live.error.retryable && !busy ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 gap-1 px-2 text-2xs"
+                  onClick={() => {
+                    const lastUser = [...messages]
+                      .reverse()
+                      .find((message) => message.role === "user");
+                    if (!lastUser) return;
+                    messageActions.onRetry(lastUser);
+                  }}
+                >
+                  重试
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           <div ref={bottomRef} />
         </div>
         {showJumpBottom ? (
@@ -475,169 +446,195 @@ export function ChatPanel({
         ) : null}
       </div>
 
-      {/* ComposerDock：默认有线无底（边框常显、内部透明），hover / 聚焦时填充浮现。 */}
+      {/* ComposerDock：默认有线无底（边框常显、内部透明），hover / 聚焦时填充浮现。
+          待审批/提问/方案确认时输入框整块让位给确认卡——交互发生在输入位置。 */}
       <div className="px-4 pb-2">
-        <div className="rounded-xl border border-border bg-transparent transition-colors duration-200 hover:bg-card focus-within:border-rose focus-within:bg-card focus-within:ring-[3px] focus-within:ring-wash">
-          {editing ? (
-            <div className="px-3 pb-2 pt-2.5">
-              <div className="mb-1.5 flex items-center gap-2 text-2xs text-muted-foreground">
-                编辑历史消息并在这里重发（之后的消息将被替换）
-                <button
-                  type="button"
-                  className="ml-auto rounded p-0.5 hover:text-foreground"
-                  onClick={() => setEditing(null)}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <Textarea
-                className="min-h-[60px] border-0 bg-transparent px-0 text-sm focus-visible:border-0 focus-visible:ring-0"
-                value={editing.text}
-                onChange={(event) =>
-                  setEditing({ ...editing, text: event.target.value })
-                }
-              />
-              <div className="flex justify-end">
-                <Button
-                  size="sm"
-                  className="h-7"
-                  disabled={busy || !editing.text.trim()}
-                  onClick={() => {
-                    onSend({
-                      content: editing.text,
-                      afterSeq: editing.seq - 1,
-                    });
-                    setEditing(null);
-                  }}
-                >
-                  从这里重发
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
-          {documents.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5 px-3 py-2">
-              {documents.map((doc, index) => (
-                <span
-                  key={index}
-                  className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-2xs"
-                >
-                  <FileText className="h-3 w-3 text-muted-foreground" />
-                  {doc.name ?? `材料 ${index + 1}`}
+        {approval ? (
+          approval.kind === "question" && approval.question ? (
+            <QuestionCard
+              question={approval.question}
+              busy={busy}
+              onAnswer={(answer) => onApprove({ approved: true, answer })}
+            />
+          ) : approval.kind === "plan" ? (
+            <PlanConfirmCard
+              plan={approval.plan ?? []}
+              busy={busy}
+              onConfirm={() => onApprove({ approved: true })}
+              onRevise={(note) => onApprove({ approved: false, note })}
+            />
+          ) : (
+            <ApprovalCard
+              approval={approval}
+              busy={busy}
+              onApprove={(extra) => onApprove({ approved: true, ...extra })}
+              onDeny={(note) => onApprove({ approved: false, note })}
+            />
+          )
+        ) : (
+          <div className="rounded-xl border border-border bg-transparent transition-colors duration-200 hover:bg-card focus-within:border-rose focus-within:bg-card focus-within:ring-[3px] focus-within:ring-wash">
+            {editing ? (
+              <div className="px-3 pb-2 pt-2.5">
+                <div className="mb-1.5 flex items-center gap-2 text-2xs text-muted-foreground">
+                  编辑历史消息并在这里重发（之后的消息将被替换）
                   <button
                     type="button"
-                    aria-label={`移除附件 ${doc.name ?? index + 1}`}
-                    className="rounded p-0.5 hover:text-ember"
-                    onClick={() =>
-                      setDocuments((current) =>
-                        current.filter((_, i) => i !== index),
-                      )
-                    }
+                    className="ml-auto rounded p-0.5 hover:text-foreground"
+                    onClick={() => setEditing(null)}
                   >
-                    <X className="h-3 w-3" />
+                    <X className="h-3.5 w-3.5" />
                   </button>
-                </span>
-              ))}
-            </div>
-          ) : null}
+                </div>
+                <Textarea
+                  className="min-h-[60px] border-0 bg-transparent px-0 text-sm focus-visible:border-0 focus-visible:ring-0"
+                  value={editing.text}
+                  onChange={(event) =>
+                    setEditing({ ...editing, text: event.target.value })
+                  }
+                />
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    className="h-7"
+                    disabled={busy || !editing.text.trim()}
+                    onClick={() => {
+                      onSend({
+                        content: editing.text,
+                        afterSeq: editing.seq - 1,
+                      });
+                      setEditing(null);
+                    }}
+                  >
+                    从这里重发
+                  </Button>
+                </div>
+              </div>
+            ) : null}
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            hidden
-            onChange={(event) => {
-              if (event.target.files?.length) void addFiles(event.target.files);
-              event.target.value = "";
-            }}
-          />
-          <Textarea
-            className="max-h-56 min-h-[44px] w-full resize-none border-0 bg-transparent px-3.5 py-2.5 text-sm focus-visible:border-0 focus-visible:ring-0"
-            placeholder={needsModel ? "先在下方选择模型…" : "请描述您的任务"}
-            value={text}
-            disabled={busy}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-                event.preventDefault();
-                submit();
-              }
-            }}
-            onPaste={(event) => {
-              const files = Array.from(event.clipboardData.files ?? []);
-              if (files.length > 0) {
-                event.preventDefault();
-                void addFiles(files);
-              }
-            }}
-          />
+            {documents.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5 px-3 py-2">
+                {documents.map((doc, index) => (
+                  <span
+                    key={index}
+                    className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-2xs"
+                  >
+                    <FileText className="h-3 w-3 text-muted-foreground" />
+                    {doc.name ?? `材料 ${index + 1}`}
+                    <button
+                      type="button"
+                      aria-label={`移除附件 ${doc.name ?? index + 1}`}
+                      className="rounded p-0.5 hover:text-ember"
+                      onClick={() =>
+                        setDocuments((current) =>
+                          current.filter((_, i) => i !== index),
+                        )
+                      }
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
 
-          {/* 底部控制条：左侧 附加/权限；右侧 模型/思考/上下文占用/发送。 */}
-          <div className="flex flex-wrap items-center gap-2 px-2.5 py-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 shrink-0 rounded-full border border-input"
-              title="添加附件（文档 / 图片 / PDF）"
-              disabled={busy}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-            <PermissionMenu
-              settings={settings}
-              disabled={busy}
-              onChange={(patch) => void save(patch)}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              onChange={(event) => {
+                if (event.target.files?.length)
+                  void addFiles(event.target.files);
+                event.target.value = "";
+              }}
             />
-            <span
-              className={cn(
-                "text-2xs text-muted-foreground transition-opacity",
-                saving ? "opacity-100" : "opacity-0",
-              )}
-            >
-              保存中…
-            </span>
-            <div className="ml-auto flex items-center gap-2">
-              <ContextGauge usage={usageStat} contextLimit={contextLimit} />
-              <ModelPicker
-                sourceId={settings.modelSourceId}
-                modelName={settings.modelName}
+            <Textarea
+              className="max-h-56 min-h-[44px] w-full resize-none border-0 bg-transparent px-3.5 py-2.5 text-sm focus-visible:border-0 focus-visible:ring-0"
+              placeholder={needsModel ? "先在下方选择模型…" : "请描述您的任务"}
+              value={text}
+              disabled={busy}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                  event.preventDefault();
+                  submit();
+                }
+              }}
+              onPaste={(event) => {
+                const files = Array.from(event.clipboardData.files ?? []);
+                if (files.length > 0) {
+                  event.preventDefault();
+                  void addFiles(files);
+                }
+              }}
+            />
+
+            {/* 底部控制条：左侧 附加/权限；右侧 模型/思考/上下文占用/发送。 */}
+            <div className="flex flex-wrap items-center gap-2 px-2.5 py-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0 rounded-full border border-input"
+                title="添加附件（文档 / 图片 / PDF）"
                 disabled={busy}
-                onSelect={handleModelSelect}
-              />
-              <ThinkingMenu
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+              <PermissionMenu
                 settings={settings}
                 disabled={busy}
                 onChange={(patch) => void save(patch)}
               />
-              {busy ? (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
-                  title="停止本轮"
-                  onClick={onStop}
-                >
-                  <Square className="h-3.5 w-3.5" />
-                </Button>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
-                  title={needsModel ? "请先选择模型" : "发送（Ctrl+Enter）"}
-                  disabled={
-                    needsModel || (!text.trim() && documents.length === 0)
-                  }
-                  onClick={submit}
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </Button>
-              )}
+              <span
+                className={cn(
+                  "text-2xs text-muted-foreground transition-opacity",
+                  saving ? "opacity-100" : "opacity-0",
+                )}
+              >
+                保存中…
+              </span>
+              <div className="ml-auto flex items-center gap-2">
+                <ContextGauge usage={usageStat} contextLimit={contextLimit} />
+                <ModelPicker
+                  sourceId={settings.modelSourceId}
+                  modelName={settings.modelName}
+                  disabled={busy}
+                  onSelect={handleModelSelect}
+                />
+                <ThinkingMenu
+                  settings={settings}
+                  disabled={busy}
+                  onChange={(patch) => void save(patch)}
+                />
+                {busy ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
+                    title="停止本轮"
+                    onClick={onStop}
+                  >
+                    <Square className="h-3.5 w-3.5" />
+                  </Button>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
+                    title={needsModel ? "请先选择模型" : "发送（Ctrl+Enter）"}
+                    disabled={
+                      needsModel || (!text.trim() && documents.length === 0)
+                    }
+                    onClick={submit}
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

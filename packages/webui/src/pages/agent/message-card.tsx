@@ -8,7 +8,6 @@ import {
   Pencil,
   RefreshCw,
   ShieldCheck,
-  Wrench,
   X,
 } from "lucide-react";
 import { CopyButton } from "@/components/copy-button";
@@ -129,12 +128,9 @@ export interface MessageActions {
 export function MessageCard({
   message,
   actions,
-  onOpenActivity,
 }: {
   message: AgentMessage;
   actions?: MessageActions;
-  /** 点击工具执行行 → 打开侧栏动态页。 */
-  onOpenActivity?: () => void;
 }) {
   if (message.role === "user") {
     const content = message.content as AgentUserContent;
@@ -197,19 +193,8 @@ export function MessageCard({
         <div className="min-w-0 flex-1 space-y-2">
           <ReasoningBlock text={content.reasoning ?? ""} />
           {content.text ? <Markdown text={content.text} /> : null}
-          {(content.toolCalls ?? []).length > 0 ? (
-            <div className="flex flex-wrap gap-1.5 pt-0.5 text-2xs text-muted-foreground">
-              {(content.toolCalls ?? []).map((call, index) => (
-                <span
-                  key={index}
-                  className="inline-flex items-center gap-1 text-muted-foreground/70"
-                >
-                  <Wrench className="h-3 w-3" />
-                  {agentToolLabel(call.name ?? "工具")}
-                </span>
-              ))}
-            </div>
-          ) : null}
+          {/* 工具调用不在此重复展示：紧随其后的工具结果行（或流式期间的
+              live 卡）已完整表达，chips 只会加噪音。 */}
           <div className="flex items-center gap-1.5 pt-0.5 text-2xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
             {message.model ? <span>{message.model}</span> : null}
             {message.usage ? <span>{formatUsage(message.usage)}</span> : null}
@@ -235,18 +220,7 @@ export function MessageCard({
 
   if (message.role === "tool_result") {
     return (
-      <div title={onOpenActivity ? "在侧栏动态页查看详情" : undefined}>
-        <ToolResultCard content={message.content as AgentToolResultContent} />
-        {onOpenActivity ? (
-          <button
-            type="button"
-            className="mt-1 pl-3 text-2xs text-muted-foreground hover:text-foreground"
-            onClick={onOpenActivity}
-          >
-            在动态页查看
-          </button>
-        ) : null}
-      </div>
+      <ToolResultCard content={message.content as AgentToolResultContent} />
     );
   }
 
@@ -354,7 +328,7 @@ export function ApprovalCard({
     note: note.trim() || undefined,
   };
   return (
-    <div className="tone-amber w-full max-w-tool space-y-2.5 rounded-xl border px-3.5 py-3">
+    <div className="tone-amber w-full space-y-2.5 rounded-xl border px-3.5 py-3">
       <div className="flex items-center gap-2 text-sm font-medium">
         <ShieldCheck className="h-4 w-4 text-amber" />
         请求批准：
@@ -436,7 +410,7 @@ export function QuestionCard({
 }) {
   const [custom, setCustom] = useState("");
   return (
-    <div className="tone-amber w-full max-w-tool space-y-2 rounded-xl border px-3.5 py-3">
+    <div className="tone-amber w-full space-y-2 rounded-xl border px-3.5 py-3">
       <p className="text-sm font-medium">{question.question}</p>
       <div className="flex flex-wrap gap-1.5">
         {(question.options ?? []).map((option) => (
@@ -489,7 +463,7 @@ export function PlanConfirmCard({
 }) {
   const [note, setNote] = useState("");
   return (
-    <div className="tone-amber w-full max-w-tool space-y-2 rounded-xl border px-3.5 py-3">
+    <div className="tone-amber w-full space-y-2 rounded-xl border px-3.5 py-3">
       <p className="text-sm font-medium">方案已定稿，确认后开始执行</p>
       <ol className="space-y-1 text-xs text-muted-foreground">
         {plan.map((step, index) => (

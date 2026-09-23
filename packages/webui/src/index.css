@@ -577,6 +577,15 @@ html.theme-transitioning :where(body, #root, #root *):not(.theme-sun):not(.theme
     color: hsl(var(--muted-foreground));
   }
 
+  /* 工作区滚动容器隐藏滚动条（滚轮/拖拽仍可用）：会话聊天列、轮数条与
+     侧栏视图像 Zcode 一样以内容本身暗示可滚，不展示轨道。 */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   /* 状态点（状态视图 / 源健康表）：jade 呼吸光环 / ember / 熄灭 */
   .dot {
     width: 8px;
