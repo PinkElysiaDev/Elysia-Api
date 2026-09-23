@@ -491,20 +491,7 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 	rounds := 0
 	paused := false
 
-	defer func() {
-		if r := recover(); r != nil {
-			emitEvent(events, Event{Type: EventError, Text: fmt.Sprintf("引擎异常: %v", r), Retryable: true})
-		}
-		if !paused {
-			e.setStatus(ctx, sessionID, StatusIdle, false, events)
-			event := Event{Type: EventTurnDone, DurationMs: time.Since(started).Milliseconds(), Rounds: rounds, Model: session.Settings.ModelName}
-			if sawUsage {
-				usage := usageTotal
-				event.Usage = &usage
-			}
-			emitTerminal(events, event)
-		}
-	}()
+	defer e.finalizeTurn(ctx, sessionID, session, started, &usageTotal, &sawUsage, &rounds, &paused, events)
 
 	for round := 0; round < e.opts.MaxModelCalls; round++ {
 		if ctx.Err() != nil {
@@ -514,17 +501,7 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 		emitEvent(events, Event{Type: EventStatus, Text: "正在调用模型…"})
 		conversation = e.prepareContext(conversation, events)
 
-		req := CallRequest{
-			Model:         session.Settings.ModelName,
-			ModelSourceID: session.Settings.ModelSourceID,
-			Messages:      conversation,
-			Tools:         e.tools.Definitions(),
-			Thinking:      thinkingFromSettings(session.Settings),
-			Reasoning:     reasoningFromSettings(session.Settings),
-		}
-		req.Instructions = e.composeInstructions(session)
-
-		result, err := e.caller.Call(ctx, req, StreamCallbacks{
+		result, err := e.caller.Call(ctx, e.buildTurnRequest(session, conversation), StreamCallbacks{
 			OnText:      func(delta string) { emitEvent(events, Event{Type: EventTextDelta, Delta: delta}) },
 			OnReasoning: func(delta string) { emitEvent(events, Event{Type: EventReasoningDelta, Delta: delta}) },
 		})
@@ -566,6 +543,38 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 	note := fmt.Sprintf("已达到单轮工具循环上限（%d 次模型调用），请检查工具结果或继续对话", e.opts.MaxModelCalls)
 	_, _ = e.store.AppendMessage(ctx, sessionID, RoleSystem, SystemContent{Kind: "info", Text: note}, "", nil)
 	emitEvent(events, Event{Type: EventStatus, Text: note})
+}
+
+// buildTurnRequest 组装一次模型调用：会话设置映射为请求参数 + 系统提示词。
+func (e *Engine) buildTurnRequest(session *Session, conversation []relay.MaheshvaraMessage) CallRequest {
+	req := CallRequest{
+		Model:         session.Settings.ModelName,
+		ModelSourceID: session.Settings.ModelSourceID,
+		Messages:      conversation,
+		Tools:         e.tools.Definitions(),
+		Thinking:      thinkingFromSettings(session.Settings),
+		Reasoning:     reasoningFromSettings(session.Settings),
+	}
+	req.Instructions = e.composeInstructions(session)
+	return req
+}
+
+// finalizeTurn 是 modelLoop 的统一收尾：panic 防护 + 未暂停时置回 idle 并发
+// turn_done（含累计用量）。全部指针参数——defer 注册时求值会冻结布尔快照。
+func (e *Engine) finalizeTurn(ctx context.Context, sessionID string, session *Session, started time.Time, usageTotal *relay.MaheshvaraUsage, sawUsage *bool, rounds *int, paused *bool, events chan Event) {
+	if r := recover(); r != nil {
+		emitEvent(events, Event{Type: EventError, Text: fmt.Sprintf("引擎异常: %v", r), Retryable: true})
+	}
+	if *paused {
+		return
+	}
+	e.setStatus(ctx, sessionID, StatusIdle, false, events)
+	event := Event{Type: EventTurnDone, DurationMs: time.Since(started).Milliseconds(), Rounds: *rounds, Model: session.Settings.ModelName}
+	if *sawUsage {
+		usage := *usageTotal
+		event.Usage = &usage
+	}
+	emitTerminal(events, event)
 }
 
 // executeCalls 执行一批工具调用。门控与非并行工具保持原顺序：遇到首个需

@@ -577,66 +577,75 @@ func (r *agentUserContentRenderer) RenderUserContent(meta agent.SessionMeta, con
 	}
 	total := len(content.Text)
 	for index, doc := range content.Documents {
-		text := strings.TrimSpace(doc.Text)
-		dataURL := strings.TrimSpace(doc.DataURL)
-		if text == "" && dataURL == "" {
+		part, size, err := renderAgentDocument(format, index, doc)
+		if err != nil {
+			return nil, err
+		}
+		if part == nil {
 			continue
 		}
-		switch {
-		case text != "":
-			if len(text) > agentDocMaxText {
-				return nil, fmt.Errorf("材料 %d（%s）文本过长（上限 %d 字节）", index+1, doc.Name, agentDocMaxText)
-			}
-			total += len(text)
-			label := doc.Name
-			if label == "" {
-				label = fmt.Sprintf("材料 %d", index+1)
-			}
-			parts = append(parts, relay.MaheshvaraContentPart{Type: relay.MaheshvaraContentText,
-				Text: fmt.Sprintf("\n===== 材料 %d：%s =====\n%s\n===== 材料 %d 结束 =====", index+1, label, text, index+1)})
-		case dataURL != "":
-			mime, payload, decoded, err := parseAgentDataURL(dataURL)
-			if err != nil {
-				return nil, fmt.Errorf("材料 %d（%s）: %v", index+1, doc.Name, err)
-			}
-			if len(decoded) > agentDocMaxFile {
-				return nil, fmt.Errorf("材料 %d（%s）过大（上限 %d MiB）", index+1, doc.Name, agentDocMaxFile>>20)
-			}
-			total += len(decoded)
-			if mime == "" {
-				mime = doc.Mime
-			}
-			label := doc.Name
-			if label == "" {
-				label = fmt.Sprintf("attachment-%d", index+1)
-			}
-			if strings.HasPrefix(mime, "image/") {
-				// ImageBase64 期望 base64 文本（各出口原样透传给上游），
-				// 不能塞解码后的二进制——Anthropic source.data / Gemini
-				// inlineData.data 会被上游按 base64 校验并 400 拒绝。
-				parts = append(parts, relay.MaheshvaraContentPart{
-					Type: relay.MaheshvaraContentImage, ImageBase64: payload,
-					MediaType: mime, FileName: label,
-				})
-			} else {
-				// 文档：OpenAI 系（chat/responses）要求 data: URL；Claude/Gemini
-				// 要求裸 base64 文本。
-				fileData := payload
-				switch format {
-				case relay.APIFormatChatCompletions, relay.APIFormatResponses:
-					fileData = dataURL
-				}
-				parts = append(parts, relay.MaheshvaraContentPart{
-					Type: relay.MaheshvaraContentDocument, FileData: fileData,
-					MediaType: mime, FileName: label,
-				})
-			}
-		}
+		total += size
 		if total > agentDocMaxTotal {
 			return nil, fmt.Errorf("输入材料总量超过 %d MiB 上限", agentDocMaxTotal>>20)
 		}
+		parts = append(parts, *part)
 	}
 	return parts, nil
+}
+
+// renderAgentDocument 把一个附件渲染为内容块，返回字节数（计入总量预算）。
+// 空 part 表示该附件无内容可发。
+func renderAgentDocument(format string, index int, doc agent.Document) (*relay.MaheshvaraContentPart, int, error) {
+	text := strings.TrimSpace(doc.Text)
+	if text != "" {
+		if len(text) > agentDocMaxText {
+			return nil, 0, fmt.Errorf("材料 %d（%s）文本过长（上限 %d 字节）", index+1, doc.Name, agentDocMaxText)
+		}
+		label := doc.Name
+		if label == "" {
+			label = fmt.Sprintf("材料 %d", index+1)
+		}
+		return &relay.MaheshvaraContentPart{Type: relay.MaheshvaraContentText,
+			Text: fmt.Sprintf("\n===== 材料 %d：%s =====\n%s\n===== 材料 %d 结束 =====", index+1, label, text, index+1)}, len(text), nil
+	}
+	dataURL := strings.TrimSpace(doc.DataURL)
+	if dataURL == "" {
+		return nil, 0, nil
+	}
+	mime, payload, decoded, err := parseAgentDataURL(dataURL)
+	if err != nil {
+		return nil, 0, fmt.Errorf("材料 %d（%s）: %v", index+1, doc.Name, err)
+	}
+	if len(decoded) > agentDocMaxFile {
+		return nil, 0, fmt.Errorf("材料 %d（%s）过大（上限 %d MiB）", index+1, doc.Name, agentDocMaxFile>>20)
+	}
+	if mime == "" {
+		mime = doc.Mime
+	}
+	label := doc.Name
+	if label == "" {
+		label = fmt.Sprintf("attachment-%d", index+1)
+	}
+	if strings.HasPrefix(mime, "image/") {
+		// ImageBase64 期望 base64 文本（各出口原样透传给上游），不能塞解码后
+		// 的二进制——Anthropic source.data / Gemini inlineData.data 会被上游
+		// 按 base64 校验并 400 拒绝。
+		return &relay.MaheshvaraContentPart{
+			Type: relay.MaheshvaraContentImage, ImageBase64: payload,
+			MediaType: mime, FileName: label,
+		}, len(decoded), nil
+	}
+	// 文档：OpenAI 系（chat/responses）要求 data: URL；Claude/Gemini 要求裸
+	// base64 文本。
+	fileData := payload
+	switch format {
+	case relay.APIFormatChatCompletions, relay.APIFormatResponses:
+		fileData = dataURL
+	}
+	return &relay.MaheshvaraContentPart{
+		Type: relay.MaheshvaraContentDocument, FileData: fileData,
+		MediaType: mime, FileName: label,
+	}, len(decoded), nil
 }
 
 // parseAgentDataURL 拆解 data:URL。payload 是 base64 文本（下游字段
