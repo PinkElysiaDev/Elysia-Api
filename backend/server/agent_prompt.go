@@ -23,12 +23,12 @@ func agentSystemPrompt(session *agent.Session) string {
 
 	b.WriteString("## 通用行为准则\n")
 	b.WriteString("- 简体中文；先结论后细节，解释简明。\n")
-	b.WriteString("- 需要写操作（保存协议、创建/修改模型源与模型组）或真实出站（上游测试、模型拉取）时，直接发起对应工具调用——系统会暂停并请求用户审批，批准后你会拿到结果继续。被拒绝就换思路，不要反复重试被拒的操作。\n")
+	b.WriteString("- 需要写操作（保存协议、创建/修改模型源与模型组、管理 API Key）或真实出站（上游测试、模型拉取）时，直接发起对应工具调用——系统会暂停并请求用户审批，批准后你会拿到结果继续。被拒绝就换思路，不要反复重试被拒的操作。\n")
 	b.WriteString("- 信息不足（如缺少 baseUrl、密钥、目标模型名）时，直接在正文里向用户提问并结束本轮，不要臆测。用户在对话中给出的 baseUrl / API key 等测试凭证，作为工具参数传入即可；提供过的凭证本会话会自动记住，不要向用户重复索要。\n")
 	b.WriteString("- 只读查询工具随时可用，先查现状再动手：改配置前先 list，下结论前先 query。\n")
 	b.WriteString("- 多步任务（协议接入、批量配置、排查）开始时先用 update_plan 列出方案步骤，随推进更新状态（用户在侧边栏实时可见）；三步以内的简单任务不必建方案。\n")
 	b.WriteString("- 理解任务后用 update_title 把会话标题改成不超过 16 字的动宾短语，概括任务目标而不是复述用户原话（如「接入 Anthropic 协议」）；任务目标变化时再更新一次。\n")
-	b.WriteString("- 你没有删除权限：删除模型源/模型组/协议请引导用户到对应管理页手动操作。\n\n")
+	b.WriteString("- 删除类工具（delete_model_source / delete_model_group / delete_model / delete_api_key）不可逆且单独审批：发起前先向用户核对删除对象与级联影响（删源连带全部模型与组成员引用、删组可能级联禁用仅授权该组的 API Key、删 Key 后客户端立即无法调用）；删除协议仍请引导用户到协议设计器手动操作。\n\n")
 
 	if session.Settings.PlanMode {
 		b.WriteString("## 当前为计划模式\n")
@@ -50,11 +50,13 @@ func agentSystemPrompt(session *agent.Session) string {
 	b.WriteString("- 网关自身问题查 query_system_logs。定位后给出修复建议（改配置/换模型/联系上游），需要改配置就转能力域三。\n")
 	b.WriteString("- 报错含 \"refused to dial denied IP\" 是出站 SSRF 防护拦了上游 IP（本机 127.0.0.1/内网地址默认禁止）。上游确属用户自有服务时，用 update_outbound_policy 从禁止段中移除对应 CIDR（如 127.0.0.0/8）放行——修改前向用户说明。\n\n")
 
-	b.WriteString("## 能力域三：模型源与模型组管理\n")
-	b.WriteString("- 现状：list_sources（密钥脱敏）、list_model_groups。\n")
+	b.WriteString("## 能力域三：模型源、模型组与 API Key 管理\n")
+	b.WriteString("- 现状：list_sources（密钥脱敏）、list_models（可按源过滤）、list_model_groups、list_api_keys（明文脱敏）。\n")
 	b.WriteString("- 新建源：先向用户确认 baseUrl、平台（openai/anthropic/gemini/responses/custom:<协议ID>）与密钥，再 create_model_source；自动拉取的源创建后用 refresh_model_source（真实出站，需审批）取回模型，手动源直接在 manualModels 里给模型名。\n")
-	b.WriteString("- 修改源：update_model_source（API key 留空=保留原值；启停/换地址/换平台/改模型列表）。\n")
-	b.WriteString("- 模型组：create_model_group（成员用 sourceId:modelId 或模型名；重名会被拒绝，先查）、update_model_group（启停/策略/成员增删/限额）。\n")
+	b.WriteString("- 修改源：update_model_source（API key 留空=保留原值；启停/换地址/换平台/改模型列表）；删除源：delete_model_source（级联删模型与组成员引用，需审批）。\n")
+	b.WriteString("- 单模型：update_model（启停/改名/能力标记）、delete_model（临时下线优先 enabled=false）。\n")
+	b.WriteString("- 模型组：create_model_group（成员用 sourceId:modelId 或模型名；重名会被拒绝，先查）、update_model_group（启停/策略/成员增删/限额）、delete_model_group（可能级联禁用 API Key）。\n")
+	b.WriteString("- API Key（访问令牌，客户端调 /v1 接口的凭证）：create_api_key（secret 留空自动生成，明文仅返回一次，提醒用户立即保存）、update_api_key（newSecret 留空=保留原值；allowedGroups 空=不限制，调整前先确认授权范围）、delete_api_key。\n")
 	b.WriteString("- 模型组的名字就是客户端调用时的模型名；向用户说明清楚再创建。\n\n")
 
 	b.WriteString("## 能力域四：协议接入（自定义协议）\n")

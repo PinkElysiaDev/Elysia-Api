@@ -32,6 +32,12 @@ const (
 	agentToolCreateGroup   = "create_model_group"
 	agentToolUpdateGroup   = "update_model_group"
 	agentToolOutbound      = "update_outbound_policy"
+	// 删除类（门控 delete）与模型级管理。
+	agentToolDeleteSource = "delete_model_source"
+	agentToolDeleteGroup  = "delete_model_group"
+	agentToolListModels   = "list_models"
+	agentToolUpdateModel  = "update_model"
+	agentToolDeleteModel  = "delete_model"
 )
 
 // newAgentOpsTools 返回运维域全量工具。
@@ -50,6 +56,11 @@ func newAgentOpsTools(s *Server) []agent.Tool {
 		&createGroupTool{server: s},
 		&updateGroupTool{server: s},
 		&outboundPolicyTool{server: s},
+		&deleteSourceTool{server: s},
+		&deleteGroupTool{server: s},
+		&listModelsTool{server: s},
+		&updateModelTool{server: s},
+		&deleteModelTool{server: s},
 	}
 }
 
@@ -246,6 +257,7 @@ func (t *usageTrendTool) Meta() agent.ToolMeta     { return readOnlyMeta() }
 func (t *usageLogsTool) Meta() agent.ToolMeta      { return readOnlyMeta() }
 func (t *usageLogDetailTool) Meta() agent.ToolMeta { return readOnlyMeta() }
 func (t *systemLogsTool) Meta() agent.ToolMeta     { return readOnlyMeta() }
+func (t *listModelsTool) Meta() agent.ToolMeta     { return readOnlyMeta() }
 
 func agentSourceModelCounts(ctx context.Context, store *storage.Store) map[string]int {
 	models, err := store.ListModels(ctx)
@@ -855,6 +867,94 @@ func (t *refreshSourceTool) Execute(ctx context.Context, tctx agent.ToolContext,
 	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("拉取完成，共 %d 个模型", summary.Count), Data: summary}
 }
 
+// ---- delete_model_source（门控 delete）----
+
+type deleteSourceTool struct{ server *Server }
+
+func (t *deleteSourceTool) Name() string        { return agentToolDeleteSource }
+func (t *deleteSourceTool) Description() string { return "删除模型源（不可逆，需审批）" }
+func (t *deleteSourceTool) Gated() bool         { return true }
+func (t *deleteSourceTool) PermissionKey() string {
+	return agent.PermissionKeyDelete
+}
+func (t *deleteSourceTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: agent.ClampHead}
+}
+
+func (t *deleteSourceTool) Definition() relay.MaheshvaraTool {
+	return relay.MaheshvaraTool{
+		Type: "function", Name: agentToolDeleteSource,
+		Description: "删除模型源（用户审批后执行，不可逆）：源下全部模型与组内成员引用一并级联删除。source 用源 id 或名称指定。" +
+			"删除前先向用户核对对象与影响面（模型数、受影响的组）。",
+		Parameters: objectSchema(map[string]any{
+			"source": map[string]any{"type": "string", "description": "源 id 或名称"},
+		}, "source"),
+	}
+}
+
+func (t *deleteSourceTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
+	store, unavailableResult := toolStore(t.server)
+	if store == nil {
+		return unavailableResult
+	}
+	var params struct {
+		Source string `json:"source"`
+	}
+	if err := json.Unmarshal(args, &params); err != nil {
+		return agent.ToolError("参数解析失败", err.Error())
+	}
+	source, found := agentFindSource(ctx, store, params.Source)
+	if !found {
+		return agent.ToolError(fmt.Sprintf("模型源 %q 不存在", params.Source), "not_found")
+	}
+	modelCount, affectedGroups := agentSourceUsage(ctx, store, source.ID)
+	if err := t.server.deleteSourceCascade(ctx, store, source.ID); err != nil {
+		return agent.ToolError("删除失败: "+err.Error(), "persist_failed")
+	}
+	summary := fmt.Sprintf("模型源 %q 已删除，级联移除 %d 个模型", source.Name, modelCount)
+	if len(affectedGroups) > 0 {
+		summary += fmt.Sprintf("，并从 %d 个模型组移除成员引用: %s", len(affectedGroups), strings.Join(affectedGroups, "、"))
+	}
+	return agent.ToolResult{OK: true, Summary: summary,
+		Data: map[string]any{"id": source.ID, "name": source.Name, "removedModels": modelCount, "affectedGroups": affectedGroups}}
+}
+
+// agentSourceUsage 统计源的使用面：模型数与引用了该源成员的组名清单
+// （删除前的级联影响预告）。
+func agentSourceUsage(ctx context.Context, store *storage.Store, sourceID string) (int, []string) {
+	models, err := store.ListModelsFiltered(ctx, storage.ModelListFilter{SourceID: sourceID})
+	if err != nil {
+		return 0, nil
+	}
+	modelIDs := make(map[string]bool, len(models))
+	for _, model := range models {
+		modelIDs[model.ID] = true
+	}
+	groups, err := store.ListGroups(ctx)
+	if err != nil {
+		return len(models), nil
+	}
+	affected := []string{}
+	for _, group := range groups {
+		usesSource := false
+		for _, ref := range group.Models {
+			// 成员引用是 sourceId:modelId 复合键或裸模型 id。
+			if strings.HasPrefix(ref, sourceID+":") {
+				usesSource = true
+				break
+			}
+			if id := ref; !strings.Contains(ref, ":") && modelIDs[id] {
+				usesSource = true
+				break
+			}
+		}
+		if usesSource {
+			affected = append(affected, group.Name)
+		}
+	}
+	return len(models), affected
+}
+
 // ---- create_model_group（门控 save）----
 
 type createGroupTool struct{ server *Server }
@@ -1029,6 +1129,282 @@ func applyGroupPatch(group *storage.ModelGroup, params updateGroupParams) bool {
 	applyInt(params.DailyLimitMaxRequests, &group.DailyLimitMaxRequests)
 	applyInt(params.DailyLimitMaxTokens, &group.DailyLimitMaxTokens)
 	return fieldsChanged
+}
+
+// ---- delete_model_group（门控 delete）----
+
+type deleteGroupTool struct{ server *Server }
+
+func (t *deleteGroupTool) Name() string        { return agentToolDeleteGroup }
+func (t *deleteGroupTool) Description() string { return "删除模型组（不可逆，需审批）" }
+func (t *deleteGroupTool) Gated() bool         { return true }
+func (t *deleteGroupTool) PermissionKey() string {
+	return agent.PermissionKeyDelete
+}
+func (t *deleteGroupTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: agent.ClampHead}
+}
+
+func (t *deleteGroupTool) Definition() relay.MaheshvaraTool {
+	return relay.MaheshvaraTool{
+		Type: "function", Name: agentToolDeleteGroup,
+		Description: "删除模型组（用户审批后执行，不可逆）：客户端将无法再按该组名调用。" +
+			"若某些 API Key 只授权了这一个组，会随删除级联禁用（名单在结果里返回）。group 用组名或 id 指定。",
+		Parameters: objectSchema(map[string]any{
+			"group": map[string]any{"type": "string", "description": "组名或 id"},
+		}, "group"),
+	}
+}
+
+func (t *deleteGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
+	store, unavailableResult := toolStore(t.server)
+	if store == nil {
+		return unavailableResult
+	}
+	var params struct {
+		Group string `json:"group"`
+	}
+	if err := json.Unmarshal(args, &params); err != nil {
+		return agent.ToolError("参数解析失败", err.Error())
+	}
+	group, found := agentFindGroup(ctx, store, params.Group)
+	if !found {
+		return agent.ToolError(fmt.Sprintf("模型组 %q 不存在", params.Group), "not_found")
+	}
+	disabledTokens, err := t.server.deleteGroupCascade(ctx, store, group.ID)
+	if err != nil {
+		return agent.ToolError("删除失败: "+err.Error(), "persist_failed")
+	}
+	summary := fmt.Sprintf("模型组 %q 已删除（%d 个成员）", group.Name, len(group.Models))
+	if len(disabledTokens) > 0 {
+		summary += fmt.Sprintf("；%d 个仅授权该组的 API Key 已级联禁用: %s", len(disabledTokens), strings.Join(disabledTokens, "、"))
+	}
+	return agent.ToolResult{OK: true, Summary: summary,
+		Data: map[string]any{"id": group.ID, "name": group.Name, "disabledTokens": disabledTokens}}
+}
+
+// ---- 模型级管理：list_models / update_model / delete_model ----
+
+// agentModelView 模型的安全视图：剔除 api key 与 baseUrl 冗余快照。
+func agentModelView(model storage.Model) map[string]any {
+	return map[string]any{
+		"id": model.ID, "name": model.Name, "sourceId": model.SourceID, "sourceName": model.SourceName,
+		"platform": model.Platform, "type": model.Type, "maxTokens": model.MaxTokens,
+		"visionCapable": model.VisionCapable, "toolsCapable": model.ToolsCapable,
+		"structuredOutput": model.StructuredOutput, "thinkingMode": model.ThinkingMode,
+		"available": model.Available, "enabled": model.Enabled,
+		"origin": model.Origin, "capabilitySource": model.CapabilitySource,
+	}
+}
+
+type listModelsTool struct{ server *Server }
+
+func (t *listModelsTool) Name() string        { return agentToolListModels }
+func (t *listModelsTool) Description() string { return "查询模型列表（可按源过滤）" }
+func (t *listModelsTool) Gated() bool         { return false }
+func (t *listModelsTool) PermissionKey() string {
+	return ""
+}
+
+func (t *listModelsTool) Definition() relay.MaheshvaraTool {
+	return relay.MaheshvaraTool{
+		Type: "function", Name: agentToolListModels,
+		Description: "查询模型清单（默认全部源）。source 传源 id 或名称可按源过滤；search 按名称模糊匹配。" +
+			"建模型组前用它确认可用的模型 id。只给前 limit 条（默认 50、上限 200），总量在 summary 里。",
+		Parameters: objectSchema(map[string]any{
+			"source": map[string]any{"type": "string", "description": "源 id 或名称（可选）"},
+			"search": map[string]any{"type": "string", "description": "名称模糊匹配（可选）"},
+			"limit":  map[string]any{"type": "integer", "description": "返回条数（默认 50，上限 200）"},
+		}),
+	}
+}
+
+func (t *listModelsTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
+	store, unavailableResult := toolStore(t.server)
+	if store == nil {
+		return unavailableResult
+	}
+	var params struct {
+		Source string `json:"source"`
+		Search string `json:"search"`
+		Limit  int    `json:"limit"`
+	}
+	if err := json.Unmarshal(args, &params); err != nil {
+		return agent.ToolError("参数解析失败", err.Error())
+	}
+	filter := storage.ModelListFilter{Search: strings.TrimSpace(params.Search)}
+	if strings.TrimSpace(params.Source) != "" {
+		source, found := agentFindSource(ctx, store, params.Source)
+		if !found {
+			return agent.ToolError(fmt.Sprintf("模型源 %q 不存在", params.Source), "not_found")
+		}
+		filter.SourceID = source.ID
+	}
+	models, err := store.ListModelsFiltered(ctx, filter)
+	if err != nil {
+		return agent.ToolError("查询失败: "+err.Error(), "list_failed")
+	}
+	limit := defaultInt(params.Limit, agentModelsDefaultLimit, agentModelsMaxLimit)
+	views := make([]map[string]any, 0, min(limit, len(models)))
+	for _, model := range models {
+		if len(views) >= limit {
+			break
+		}
+		views = append(views, agentModelView(model))
+	}
+	summary := fmt.Sprintf("共 %d 个模型，返回 %d 个", len(models), len(views))
+	if filter.SourceID != "" {
+		summary += "（已按源过滤）"
+	}
+	return agent.ToolResult{OK: true, Summary: summary, Data: map[string]any{"items": views}}
+}
+
+// 模型清单查询的返回条数锚点。
+const (
+	agentModelsDefaultLimit = 50
+	agentModelsMaxLimit     = 200
+)
+
+// ---- update_model（门控 save）----
+
+type updateModelTool struct{ server *Server }
+
+func (t *updateModelTool) Name() string          { return agentToolUpdateModel }
+func (t *updateModelTool) Description() string   { return "修改单个模型（需审批）" }
+func (t *updateModelTool) Gated() bool           { return true }
+func (t *updateModelTool) PermissionKey() string { return agent.PermissionKeySave }
+func (t *updateModelTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{RiskLevel: "medium", PreviewDirection: agent.ClampHead}
+}
+
+func (t *updateModelTool) Definition() relay.MaheshvaraTool {
+	return relay.MaheshvaraTool{
+		Type: "function", Name: agentToolUpdateModel,
+		Description: "修改单个模型（用户审批后生效）：启停、改名、类型、maxTokens、能力标记（视觉/工具/结构化）、思考模式。" +
+			"能力字段被修改后刷新不再覆盖（capability_source=manual）。source 用源 id 或名称，model 是模型 id（先 list_models 查）。",
+		Parameters: objectSchema(map[string]any{
+			"source":           map[string]any{"type": "string", "description": "源 id 或名称"},
+			"model":            map[string]any{"type": "string", "description": "模型 id"},
+			"name":             map[string]any{"type": "string"},
+			"type":             map[string]any{"type": "string"},
+			"maxTokens":        map[string]any{"type": "integer"},
+			"visionCapable":    map[string]any{"type": "boolean"},
+			"toolsCapable":     map[string]any{"type": "boolean"},
+			"structuredOutput": map[string]any{"type": "boolean"},
+			"thinkingMode":     map[string]any{"type": "string"},
+			"enabled":          map[string]any{"type": "boolean"},
+		}, "source", "model"),
+	}
+}
+
+func (t *updateModelTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
+	store, unavailableResult := toolStore(t.server)
+	if store == nil {
+		return unavailableResult
+	}
+	var params struct {
+		Source           string  `json:"source"`
+		Model            string  `json:"model"`
+		Name             *string `json:"name"`
+		Type             *string `json:"type"`
+		MaxTokens        *int    `json:"maxTokens"`
+		VisionCapable    *bool   `json:"visionCapable"`
+		ToolsCapable     *bool   `json:"toolsCapable"`
+		StructuredOutput *bool   `json:"structuredOutput"`
+		ThinkingMode     *string `json:"thinkingMode"`
+		Enabled          *bool   `json:"enabled"`
+	}
+	if err := json.Unmarshal(args, &params); err != nil {
+		return agent.ToolError("参数解析失败", err.Error())
+	}
+	source, found := agentFindSource(ctx, store, params.Source)
+	if !found {
+		return agent.ToolError(fmt.Sprintf("模型源 %q 不存在", params.Source), "not_found")
+	}
+	modelID := strings.TrimSpace(params.Model)
+	if modelID == "" {
+		return agent.ToolError("model 必填", "missing_model")
+	}
+	if params.ThinkingMode != nil && strings.TrimSpace(*params.ThinkingMode) == "" {
+		return agent.ToolError("thinkingMode 不能为空串", "invalid_thinking_mode")
+	}
+	patch := storage.ModelPatch{
+		Name: params.Name, Type: params.Type, MaxTokens: params.MaxTokens,
+		VisionCapable: params.VisionCapable, ToolsCapable: params.ToolsCapable,
+		StructuredOutput: params.StructuredOutput, ThinkingMode: params.ThinkingMode,
+		Enabled: params.Enabled,
+	}
+	updated, err := store.UpdateModel(ctx, modelID, source.ID, patch)
+	if err != nil {
+		return agent.ToolError("保存失败: "+err.Error(), "persist_failed")
+	}
+	if !updated {
+		return agent.ToolError(fmt.Sprintf("模型 %q 不在源 %q 下", modelID, source.Name), "not_found")
+	}
+	t.server.invalidateRouteCache()
+	models, _ := store.ListModelsFiltered(ctx, storage.ModelListFilter{SourceID: source.ID, Search: modelID})
+	data := map[string]any{"source": source.Name, "model": modelID}
+	for _, model := range models {
+		if model.ID == modelID {
+			data = agentModelView(model)
+			break
+		}
+	}
+	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("模型 %q（源 %q）已更新", modelID, source.Name), Data: data}
+}
+
+// ---- delete_model（门控 delete）----
+
+type deleteModelTool struct{ server *Server }
+
+func (t *deleteModelTool) Name() string { return agentToolDeleteModel }
+func (t *deleteModelTool) Description() string {
+	return "删除单个模型（不可逆，需审批）"
+}
+func (t *deleteModelTool) Gated() bool           { return true }
+func (t *deleteModelTool) PermissionKey() string { return agent.PermissionKeyDelete }
+func (t *deleteModelTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: agent.ClampHead}
+}
+
+func (t *deleteModelTool) Definition() relay.MaheshvaraTool {
+	return relay.MaheshvaraTool{
+		Type: "function", Name: agentToolDeleteModel,
+		Description: "删除单个模型（用户审批后执行，不可逆）：组内引用一并清理。自动拉取的模型下次刷新可能重新出现；" +
+			"想临时下线优先用 update_model 的 enabled=false。source 用源 id 或名称，model 是模型 id。",
+		Parameters: objectSchema(map[string]any{
+			"source": map[string]any{"type": "string", "description": "源 id 或名称"},
+			"model":  map[string]any{"type": "string", "description": "模型 id"},
+		}, "source", "model"),
+	}
+}
+
+func (t *deleteModelTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
+	store, unavailableResult := toolStore(t.server)
+	if store == nil {
+		return unavailableResult
+	}
+	var params struct {
+		Source string `json:"source"`
+		Model  string `json:"model"`
+	}
+	if err := json.Unmarshal(args, &params); err != nil {
+		return agent.ToolError("参数解析失败", err.Error())
+	}
+	source, found := agentFindSource(ctx, store, params.Source)
+	if !found {
+		return agent.ToolError(fmt.Sprintf("模型源 %q 不存在", params.Source), "not_found")
+	}
+	modelID := strings.TrimSpace(params.Model)
+	deleted, err := store.DeleteModel(ctx, modelID, source.ID)
+	if err != nil {
+		return agent.ToolError("删除失败: "+err.Error(), "persist_failed")
+	}
+	if !deleted {
+		return agent.ToolError(fmt.Sprintf("模型 %q 不在源 %q 下", modelID, source.Name), "not_found")
+	}
+	t.server.invalidateRouteCache()
+	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("模型 %q 已从源 %q 删除", modelID, source.Name)}
 }
 
 // ---- update_outbound_policy（门控 save）----

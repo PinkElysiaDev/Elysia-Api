@@ -47,7 +47,7 @@ func (c *opsTestContext) SetTitle(title string) error                { return ni
 func TestOpsToolRegistry(t *testing.T) {
 	s := newOpsTestServer(t)
 	tools := newAgentOpsTools(s)
-	if len(tools) != 13 {
+	if len(tools) != 18 {
 		t.Fatalf("ops tools = %d", len(tools))
 	}
 	registry, err := agent.NewRegistry(tools...)
@@ -68,6 +68,13 @@ func TestOpsToolRegistry(t *testing.T) {
 	}
 	if registry.Get(agentToolListSources).Gated() || registry.Get(agentToolUsageStats).Gated() {
 		t.Fatalf("read tools must not be gated")
+	}
+	// 删除类单独门控 delete
+	for _, name := range []string{agentToolDeleteSource, agentToolDeleteGroup, agentToolDeleteModel} {
+		tool := registry.Get(name)
+		if tool == nil || !tool.Gated() || tool.PermissionKey() != "delete" {
+			t.Fatalf("%s gating wrong", name)
+		}
 	}
 }
 

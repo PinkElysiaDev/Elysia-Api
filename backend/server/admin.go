@@ -476,17 +476,25 @@ func (s *Server) adminDeleteSource(c *gin.Context) {
 	if !okStore {
 		return
 	}
-	if err := store.DeleteSource(c.Request.Context(), c.Param("id")); err != nil {
+	if err := s.deleteSourceCascade(c.Request.Context(), store, c.Param("id")); err != nil {
 		respondFail(c, 500, "delete_source_failed", err.Error())
 		return
 	}
-	// 源级多 key RR 游标一并清理：游标以 sourceID 为键，删除/重建循环下
-	// 不清理会让 map 随历史源数量无限增长。
+	respondOK(c, gin.H{"deleted": true})
+}
+
+// deleteSourceCascade 删除模型源并清理运行时残留（源级多 key RR 游标、路由
+// 缓存）。管理端点与 agent 工具共用，保证两条入口的清理语义一致。
+func (s *Server) deleteSourceCascade(ctx context.Context, store *storage.Store, id string) error {
+	if err := store.DeleteSource(ctx, id); err != nil {
+		return err
+	}
+	// 游标以 sourceID 为键，删除/重建循环下不清理会让 map 随历史源数量无限增长。
 	s.keyRRMutex.Lock()
-	delete(s.keyRRIndex, c.Param("id"))
+	delete(s.keyRRIndex, id)
 	s.keyRRMutex.Unlock()
 	s.invalidateRouteCache()
-	respondOK(c, gin.H{"deleted": true})
+	return nil
 }
 
 // adminFetchSource 发起指定源的后台模型拉取：**立即返回**，任务在后台执行
@@ -778,19 +786,29 @@ func (s *Server) adminDeleteGroup(c *gin.Context) {
 	if !okStore {
 		return
 	}
-	disabledTokens, err := store.DeleteGroup(c.Request.Context(), c.Param("id"))
+	disabledTokens, err := s.deleteGroupCascade(c.Request.Context(), store, c.Param("id"))
 	if err != nil {
 		respondFail(c, 500, "delete_group_failed", err.Error())
 		return
 	}
+	respondOK(c, gin.H{"deleted": true, "disabledTokens": disabledTokens})
+}
+
+// deleteGroupCascade 删除模型组并清理运行时状态（限流/RR 游标/亲和缓存、
+// 路由缓存）；返回授权被清空而级联禁用的令牌名单（空列表=无级联）。
+func (s *Server) deleteGroupCascade(ctx context.Context, store *storage.Store, id string) ([]string, error) {
+	disabledTokens, err := store.DeleteGroup(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 	s.invalidateRouteCache()
-	s.forgetGroupRuntimeState(c.Param("id"))
+	s.forgetGroupRuntimeState(id)
 	if len(disabledTokens) > 0 {
 		// 授权列表被清空的 token 已随删除级联禁用（空列表=不限制，静默保留
-		// 会扩权），名单透出给管理员以便后续处置。
-		log.Printf("group %s deleted; disabled %d token(s) whose only allowed group it was: %v", c.Param("id"), len(disabledTokens), disabledTokens)
+		// 会扩权），名单透出给调用方以便后续处置。
+		log.Printf("group %s deleted; disabled %d token(s) whose only allowed group it was: %v", id, len(disabledTokens), disabledTokens)
 	}
-	respondOK(c, gin.H{"deleted": true, "disabledTokens": disabledTokens})
+	return disabledTokens, nil
 }
 
 func (s *Server) adminListTokens(c *gin.Context) {
