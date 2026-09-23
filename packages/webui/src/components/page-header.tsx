@@ -4,14 +4,11 @@ import { cn } from '@/lib/utils'
 /** 页头：display 字体标题 + 描述 + 右侧操作槽。 */
 export function PageHeader({
   title,
-  titleContent,
   description,
   actions,
   className,
 }: {
   title: string
-  /** 自定义标题渲染；title 字符串仍用于浏览器标签。 */
-  titleContent?: ReactNode
   description?: string
   actions?: ReactNode
   className?: string
@@ -28,8 +25,8 @@ export function PageHeader({
       )}
     >
       <div className="min-w-0">
-        <h1 className={cn('font-display text-2xl leading-[1.15] tracking-[0.01em] [text-wrap:balance]', !titleContent && 'font-semibold')}>
-          {titleContent ?? title}
+        <h1 className="font-display text-2xl font-semibold leading-[1.15] tracking-[0.01em] [text-wrap:balance]">
+          {title}
         </h1>
         {description && (
           <p className="mt-[7px] max-w-[56ch] text-sm text-muted-foreground">{description}</p>

@@ -360,16 +360,7 @@ export function AgentPage() {
           key="agent-overview"
           className="flex min-h-0 flex-1 animate-in fade-in duration-300 flex-col"
         >
-          <PageHeader
-            title="AI 助手"
-            titleContent={
-              <>
-                {/* 「AI」用等宽拉丁：与控制台的代码语境一致，常规字重不压衬线
-                    中文；等宽字形天然偏小，略提一号对齐视觉高度。 */}
-                <span className="font-mono text-[1.06em]">AI</span> 助手
-              </>
-            }
-          />
+          <PageHeader title="AI 助手" />
           <SessionOverview
             sessions={sessions ?? []}
             draftSessions={draftSessions}
