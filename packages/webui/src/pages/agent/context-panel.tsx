@@ -244,7 +244,7 @@ function PlanView({
             disabled={busy}
             onClick={onConfirm}
           >
-            <Play className="h-3.5 w-3.5" /> 确认执行方案
+            <Play className="h-3.5 w-3.5" /> 执行方案
           </Button>
           <p className="text-2xs leading-relaxed text-muted-foreground">
             计划模式已开启：可在对话中对方案提出修改意见，确认后才会执行修改。

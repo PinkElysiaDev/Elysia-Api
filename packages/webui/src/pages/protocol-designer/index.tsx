@@ -104,8 +104,9 @@ export function ProtocolDesignerPage() {
 
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase()
-    if (!kw) return items ?? []
-    return (items ?? []).filter((item) => `${item.id} ${item.name ?? ''}`.toLowerCase().includes(kw))
+    const list = (items ?? []).filter((item) => !kw || `${item.id} ${item.name ?? ''}`.toLowerCase().includes(kw))
+    // 预置协议置顶，组内仍按 id 排序（与接口 ORDER BY id 一致）。
+    return [...list].sort((a, b) => Number(isPreset(b)) - Number(isPreset(a)) || a.id.localeCompare(b.id))
   }, [items, keyword])
 
   const validCount = useMemo(() => (items ?? []).filter((item) => item.valid).length, [items])
@@ -205,7 +206,7 @@ export function ProtocolDesignerPage() {
               </TableHeader>
               <TableBody className="divide-y divide-border/30">
                 {filtered.map((summary) => (
-                    <TableRow key={summary.id} className="cursor-pointer" onClick={() => openEdit(summary)}>
+                    <TableRow key={summary.id} className="cursor-pointer border-b-0" onClick={() => openEdit(summary)}>
                       <TableCell className="py-3 font-mono text-xs">
                         {summary.id}
                         {isPreset(summary) && (

@@ -41,6 +41,10 @@ import {
 
 export interface ChatPanelProps {
   session: AgentSession;
+  /** 本会话未发送的文本与附件（本机缓存，进入时回填）。 */
+  initialDraft?: { text: string; documents: AgentDocument[] } | null;
+  /** 文本或附件变化时回写本机缓存。 */
+  onDraftChange?: (draft: { text: string; documents: AgentDocument[] }) => void;
   messages: AgentMessage[];
   live: AgentLiveState;
   onSend: (input: {
@@ -75,6 +79,8 @@ export interface ChatPanelProps {
  */
 export function ChatPanel({
   session,
+  initialDraft,
+  onDraftChange,
   messages,
   live,
   onSend,
@@ -87,9 +93,9 @@ export function ChatPanel({
   onActiveTurn,
 }: ChatPanelProps) {
   const { toast } = useToast();
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialDraft?.text ?? "");
   const notify = (description: string) => toast({ description });
-  const { documents, setDocuments, addFiles } = useComposerAttachments(notify);
+  const { documents, setDocuments, addFiles } = useComposerAttachments(notify, initialDraft?.documents);
   const [dragOver, setDragOver] = useState(false);
   const [editing, setEditing] = useState<{ seq: number; text: string } | null>(
     null,
@@ -120,6 +126,17 @@ export function ChatPanel({
       model.name === settings.modelName,
   );
   const contextLimit = selectedModel?.maxTokens ?? 0;
+
+  // 未发送内容回写本机缓存。首次渲染跳过：那时的值就是刚读出的草稿。
+  const draftReady = useRef(false);
+  useEffect(() => {
+    if (!draftReady.current) {
+      draftReady.current = true;
+      return;
+    }
+    onDraftChange?.({ text, documents });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, documents]);
 
   useEffect(() => {
     if (!stickToBottomRef.current) return;
@@ -241,6 +258,7 @@ export function ChatPanel({
     onSend({ content, documents });
     setText("");
     setDocuments([]);
+    onDraftChange?.({ text: "", documents: [] });
     // 发送即回到跟随模式：新一轮输出应该跟着滚，否则用户上翻后发出的消息
     // 不会自动滚入视野。
     stickToBottomRef.current = true;

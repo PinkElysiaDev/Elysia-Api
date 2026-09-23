@@ -1,7 +1,7 @@
 import { Plus, Sparkles, Trash2 } from "lucide-react";
 import { Dot } from "@/components/badges";
 import type { AgentSession, AgentSessionStatus } from "@/lib/agent/types";
-import { formatRelative } from "@/lib/utils";
+import { compactNumber, formatRelative } from "@/lib/utils";
 
 /**
  * AI 助手总览页：会话卡片网格。不直接进入交互窗口——点击卡片或新建任务
@@ -9,11 +9,14 @@ import { formatRelative } from "@/lib/utils";
  */
 export function SessionOverview({
   sessions,
+  draftSessions,
   onOpen,
   onCreate,
   onDelete,
 }: {
   sessions: AgentSession[];
+  /** 本机留有未发送文本或附件的会话。 */
+  draftSessions?: Set<string>;
   onOpen: (id: string) => void;
   onCreate: () => void;
   onDelete: (id: string) => void;
@@ -51,9 +54,7 @@ export function SessionOverview({
                   {session.title || "未命名会话"}
                 </p>
                 <p className="mt-0.5 truncate text-2xs text-muted-foreground">
-                  {session.mode === "edit"
-                    ? `编辑协议 ${session.protocolId ?? ""}`
-                    : "网关运维 · 协议接入 · 统计分析"}
+                  <SessionSummary session={session} hasDraft={draftSessions?.has(session.id) ?? false} />
                 </p>
               </div>
             </div>
@@ -96,6 +97,22 @@ export function SessionOverview({
       ) : null}
     </div>
   );
+}
+
+/** 卡片副文案：状态 · 轮数 · 用量，替代原先的固定能力说明。 */
+function SessionSummary({ session, hasDraft }: { session: AgentSession; hasDraft: boolean }) {
+  const parts = [sessionStateLabel(session, hasDraft)]
+  if ((session.userTurns ?? 0) > 0) parts.push(`${session.userTurns} 轮`)
+  if ((session.totalTokens ?? 0) > 0) parts.push(`↑${compactNumber(session.totalTokens ?? 0)}`)
+  return <>{parts.join(' · ')}</>
+}
+
+function sessionStateLabel(session: AgentSession, hasDraft: boolean): string {
+  if (session.status === 'running') return '进行中'
+  if (session.status === 'waiting_approval') return '待确认'
+  if (hasDraft) return '有未发送内容'
+  if ((session.userTurns ?? 0) > 0) return '已完成'
+  return '未开始'
 }
 
 function SessionStatusDot({ status }: { status: AgentSessionStatus }) {

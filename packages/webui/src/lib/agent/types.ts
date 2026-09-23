@@ -55,6 +55,9 @@ export interface AgentSession {
   settings: AgentSettings;
   status: AgentSessionStatus;
   pendingAction?: AgentPendingAction | null;
+  /** 列表视图才有：用户消息条数与累计 token。 */
+  userTurns?: number;
+  totalTokens?: number;
   createdAt: string;
   updatedAt: string;
 }

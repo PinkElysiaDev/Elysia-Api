@@ -32,6 +32,13 @@ import {
   type AgentStreamEvent,
 } from "@/lib/agent/types";
 import { useAgentStream } from "@/lib/agent/use-agent-stream";
+import {
+  deleteComposerDraft,
+  loadComposerDraft,
+  saveComposerDraft,
+  sessionsWithDrafts,
+  type AgentComposerDraft,
+} from "@/lib/agent/draft-store";
 import { cn } from "@/lib/utils";
 import { ChatPanel } from "./chat-panel";
 import { ContextPanel } from "./context-panel";
@@ -68,6 +75,8 @@ export function AgentPage() {
     seq: number;
     nonce: number;
   } | null>(null);
+  const [composerDraft, setComposerDraft] = useState<AgentComposerDraft | null>(null);
+  const [draftSessions, setDraftSessions] = useState<Set<string>>(new Set());
   const {
     panelW,
     panelDragging,
@@ -77,6 +86,18 @@ export function AgentPage() {
   } = useDraggablePanelWidth();
 
   const { data: sessions, mutate: mutateSessions } = useSWRSessionList();
+
+  /** 总览打开时看哪些会话留有未发送内容（文本或附件）。 */
+  useEffect(() => {
+    if (view !== "list" || !sessions) return;
+    let cancelled = false;
+    void sessionsWithDrafts(sessions.map((item) => item.id)).then((found) => {
+      if (!cancelled) setDraftSessions(found);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [view, sessions]);
 
   const refreshSession = useCallback(async (id: string) => {
     try {
@@ -199,6 +220,32 @@ export function AgentPage() {
     [failToast, mutateSessions],
   );
 
+  /** 未发送内容（文本 + 附件）随会话进出：进入时回填，变化时回写本机。 */
+  useEffect(() => {
+    if (!activeId) return;
+    let cancelled = false;
+    void loadComposerDraft(activeId).then((draft) => {
+      if (!cancelled) setComposerDraft(draft);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId]);
+
+  const handleDraftChange = useCallback(
+    (draft: AgentComposerDraft) => {
+      if (!activeId) return;
+      void saveComposerDraft(activeId, draft);
+      setDraftSessions((current) => {
+        const next = new Set(current);
+        if (draft.text.trim() || draft.documents.length > 0) next.add(activeId);
+        else next.delete(activeId);
+        return next;
+      });
+    },
+    [activeId],
+  );
+
   /** 总览卡片 → 进入工作区。 */
   const handleOpen = useCallback(
     (id: string) => {
@@ -221,6 +268,7 @@ export function AgentPage() {
       if (!ok) return;
       try {
         await deleteAgentSession(id);
+        void deleteComposerDraft(id);
         if (id === activeId) {
           setActiveId(undefined);
           setSession(undefined);
@@ -349,10 +397,15 @@ export function AgentPage() {
         >
           <PageHeader
             title="AI 助手"
-            description="网关事务一句话：协议接入 · 模型配置 · 统计分析 · 报错诊断"
+            titleContent={
+              <>
+                <span className="font-sans font-medium">AI</span> 助手
+              </>
+            }
           />
           <SessionOverview
             sessions={sessions ?? []}
+            draftSessions={draftSessions}
             onOpen={handleOpen}
             onCreate={() => void createSession()}
             onDelete={(id) => void handleDelete(id)}
@@ -428,7 +481,10 @@ export function AgentPage() {
               onJump={handleJumpTurn}
             />
             <ChatPanel
+              key={session.id}
               session={session}
+              initialDraft={composerDraft}
+              onDraftChange={handleDraftChange}
               messages={messages}
               live={live}
               onSettingsChange={handleSettingsChange}

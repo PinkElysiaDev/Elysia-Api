@@ -44,10 +44,8 @@ export function TurnRail({
           >
             <span
               className={cn(
-                "tnum flex h-[18px] w-[18px] items-center justify-center rounded-full border text-[10px] leading-none transition-colors",
-                active
-                  ? "border-rose font-medium text-rose"
-                  : "border-border text-muted-foreground",
+                "tnum text-xs leading-none transition-colors",
+                active ? "font-medium text-rose" : "text-muted-foreground/70",
               )}
             >
               {index + 1}

@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   AlertTriangle,
-  Bot,
+  ArrowUp,
   FileText,
   Pencil,
   RefreshCw,
@@ -185,12 +185,8 @@ export function MessageCard({
   if (message.role === "assistant") {
     const content = message.content as AgentAssistantContent;
     return (
-      <div className="group flex items-start gap-2.5">
-        <Bot
-          className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/50"
-          aria-hidden
-        />
-        <div className="min-w-0 flex-1 space-y-2">
+      <div className="group">
+        <div className="min-w-0 space-y-2">
           <ReasoningBlock text={content.reasoning ?? ""} />
           {content.text ? <Markdown text={content.text} /> : null}
           {/* 工具调用不在此重复展示：紧随其后的工具结果行（或流式期间的
@@ -270,12 +266,8 @@ export function LiveAssistantView({
   return (
     <div className="flex flex-col gap-2">
       {hasContent ? (
-        <div className="flex items-start gap-2.5">
-          <Bot
-            className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/50"
-            aria-hidden
-          />
-          <div className="min-w-0 flex-1 space-y-2">
+        <div>
+          <div className="min-w-0 space-y-2">
             <ReasoningBlock text={live.reasoning} />
             {live.text ? <Markdown text={live.text} /> : null}
           </div>
@@ -474,23 +466,42 @@ export function PlanConfirmCard({
       </ol>
       <div className="flex items-center gap-2">
         <Button size="sm" disabled={busy} onClick={onConfirm}>
-          确认执行
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={busy}
-          onClick={() => onRevise(note.trim())}
-        >
-          需要修改
+          执行方案
         </Button>
       </div>
-      <input
-        className="w-full rounded-md border border-border bg-card px-2 py-1 text-xs"
-        placeholder="修改意见（可选）"
-        value={note}
-        onChange={(event) => setNote(event.target.value)}
-      />
+      {/* 有内容就一定是修改意见：空内容不发送，Ctrl/Cmd+Enter 与按钮等效。 */}
+      <form
+        className="flex items-center gap-1.5"
+        onSubmit={(event) => {
+          event.preventDefault()
+          const trimmed = note.trim()
+          if (!trimmed || busy) return
+          onRevise(trimmed)
+        }}
+      >
+        <input
+          className="min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1 text-xs"
+          placeholder="不同意见（Ctrl+Enter 发送）"
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+              event.preventDefault()
+              event.currentTarget.form?.requestSubmit()
+            }
+          }}
+        />
+        <Button
+          type="submit"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0 rounded-full text-muted-foreground hover:bg-primary hover:text-primary-foreground"
+          title="发送修改意见（Ctrl+Enter）"
+          disabled={busy || !note.trim()}
+        >
+          <ArrowUp className="h-3.5 w-3.5" />
+        </Button>
+      </form>
     </div>
   );
 }

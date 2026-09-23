@@ -32,8 +32,8 @@ function docPayloadBytes(doc: AgentDocument) {
  * 总量限约 28MiB、数量限 20，超限项丢弃并经 notify 提示（按新到先裁：
  * 保住已有附件，超预算的后来者丢弃）。
  */
-export function useComposerAttachments(notify: (description: string) => void) {
-  const [documents, setDocuments] = useState<AgentDocument[]>([])
+export function useComposerAttachments(notify: (description: string) => void, initial: AgentDocument[] = []) {
+  const [documents, setDocuments] = useState<AgentDocument[]>(initial)
 
   async function addFiles(files: FileList | File[]) {
     const next: AgentDocument[] = []
