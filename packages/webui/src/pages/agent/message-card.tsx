@@ -473,10 +473,10 @@ export function PlanConfirmCard({
       <form
         className="flex items-center gap-1.5"
         onSubmit={(event) => {
-          event.preventDefault()
-          const trimmed = note.trim()
-          if (!trimmed || busy) return
-          onRevise(trimmed)
+          event.preventDefault();
+          const trimmed = note.trim();
+          if (!trimmed || busy) return;
+          onRevise(trimmed);
         }}
       >
         <input
@@ -485,9 +485,12 @@ export function PlanConfirmCard({
           value={note}
           onChange={(event) => setNote(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-              event.preventDefault()
-              event.currentTarget.form?.requestSubmit()
+            if (event.key !== "Enter") return;
+            // 裸 Enter 是换行习惯，只有 Ctrl/Cmd+Enter 才发送（与主输入框一致）；
+            // 不拦的话表单会隐式提交，与提示语矛盾。
+            event.preventDefault();
+            if (event.ctrlKey || event.metaKey) {
+              event.currentTarget.form?.requestSubmit();
             }
           }}
         />
