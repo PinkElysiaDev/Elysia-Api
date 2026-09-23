@@ -95,7 +95,10 @@ export function ChatPanel({
   const { toast } = useToast();
   const [text, setText] = useState(initialDraft?.text ?? "");
   const notify = (description: string) => toast({ description });
-  const { documents, setDocuments, addFiles } = useComposerAttachments(notify, initialDraft?.documents);
+  const { documents, setDocuments, addFiles } = useComposerAttachments(
+    notify,
+    initialDraft?.documents,
+  );
   const [dragOver, setDragOver] = useState(false);
   const [editing, setEditing] = useState<{ seq: number; text: string } | null>(
     null,
@@ -127,16 +130,38 @@ export function ChatPanel({
   );
   const contextLimit = selectedModel?.maxTokens ?? 0;
 
-  // 未发送内容回写本机缓存。首次渲染跳过：那时的值就是刚读出的草稿。
+  // 未发送内容回写本机缓存：300ms 尾随防抖（附件可达数 MB，逐键全量
+  // structured clone + 写盘太重）。首次渲染跳过：那时的值就是刚读出的草稿。
   const draftReady = useRef(false);
+  const draftTimer = useRef<number | null>(null);
+  const draftLatest = useRef({ text, documents });
+  draftLatest.current = { text, documents };
+  const clearDraftTimer = () => {
+    if (draftTimer.current != null) {
+      window.clearTimeout(draftTimer.current);
+      draftTimer.current = null;
+    }
+  };
   useEffect(() => {
     if (!draftReady.current) {
       draftReady.current = true;
       return;
     }
-    onDraftChange?.({ text, documents });
+    clearDraftTimer();
+    draftTimer.current = window.setTimeout(() => {
+      draftTimer.current = null;
+      onDraftChange?.(draftLatest.current);
+    }, 300);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, documents]);
+  // 卸载时把挂起的最后一次变更落盘。
+  useEffect(
+    () => () => {
+      if (draftTimer.current != null) onDraftChange?.(draftLatest.current);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   useEffect(() => {
     if (!stickToBottomRef.current) return;
@@ -258,6 +283,8 @@ export function ChatPanel({
     onSend({ content, documents });
     setText("");
     setDocuments([]);
+    // 发送成功：取消挂起的防抖写并立即清空缓存（总览徽标即时消失）。
+    clearDraftTimer();
     onDraftChange?.({ text: "", documents: [] });
     // 发送即回到跟随模式：新一轮输出应该跟着滚，否则用户上翻后发出的消息
     // 不会自动滚入视野。

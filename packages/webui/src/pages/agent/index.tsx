@@ -75,8 +75,19 @@ export function AgentPage() {
     seq: number;
     nonce: number;
   } | null>(null);
-  const [composerDraft, setComposerDraft] = useState<AgentComposerDraft | null>(null);
+  const [composerDraft, setComposerDraft] = useState<{
+    sessionId: string;
+    draft: AgentComposerDraft;
+  } | null>(null);
+  /** 当前会话的草稿快照（仅归属匹配时才有值——防止上一会话的残留文本
+   * 播种进新会话的输入框并随击键写进新会话的草稿）。 */
+  const activeDraft =
+    composerDraft && composerDraft.sessionId === session?.id
+      ? composerDraft.draft
+      : null;
   const [draftSessions, setDraftSessions] = useState<Set<string>>(new Set());
+  /** 草稿读取已完成的会话：ChatPanel 等它就绪再挂载，避免先播空再补草稿。 */
+  const [draftLoadedFor, setDraftLoadedFor] = useState<string | null>(null);
   const {
     panelW,
     panelDragging,
@@ -99,9 +110,16 @@ export function AgentPage() {
     };
   }, [view, sessions]);
 
+  const activeIdRef = useRef(activeId);
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
+
   const refreshSession = useCallback(async (id: string) => {
     try {
       const detail = await getAgentSession(id);
+      // 快速 A→B 切换时 A 的慢响应不能覆盖已激活的 B。
+      if (activeIdRef.current !== id) return;
       setSession(detail.session);
       setMessages(detail.messages ?? []);
     } catch {
@@ -220,17 +238,21 @@ export function AgentPage() {
     [failToast, mutateSessions],
   );
 
-  /** 未发送内容（文本 + 附件）随会话进出：进入时回填，变化时回写本机。 */
+  /** 未发送内容（文本 + 附件）随会话进出：每次进入 chat 视图都重读——
+   * 只按 activeId 加载的话，重进同一会话会播种首次进入时的旧快照。 */
   useEffect(() => {
-    if (!activeId) return;
+    if (view !== "chat" || !activeId) return;
     let cancelled = false;
     void loadComposerDraft(activeId).then((draft) => {
-      if (!cancelled) setComposerDraft(draft);
+      if (!cancelled) {
+        setComposerDraft(draft ? { sessionId: activeId, draft } : null);
+        setDraftLoadedFor(activeId);
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [activeId]);
+  }, [view, activeId]);
 
   const handleDraftChange = useCallback(
     (draft: AgentComposerDraft) => {
@@ -472,7 +494,7 @@ export function AgentPage() {
           </Button>
         </div>
 
-        {session ? (
+        {session && draftLoadedFor === session.id ? (
           <div className="flex min-h-0 flex-1">
             <TurnRail
               messages={messages}
@@ -483,7 +505,7 @@ export function AgentPage() {
             <ChatPanel
               key={session.id}
               session={session}
-              initialDraft={composerDraft}
+              initialDraft={activeDraft}
               onDraftChange={handleDraftChange}
               messages={messages}
               live={live}

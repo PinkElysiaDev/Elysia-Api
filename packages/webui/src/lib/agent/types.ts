@@ -226,6 +226,7 @@ export const AGENT_TOOL_LABELS: Record<string, string> = {
   refresh_model_source: "从上游拉取模型列表",
   update_outbound_policy: "更新出站策略",
   update_plan: "更新方案",
+  update_title: "更新会话标题",
   ask_user: "向你提问",
 };
 
