@@ -43,6 +43,8 @@ type ToolContext interface {
 	SetTestTarget(baseURL, apiKey string) error
 	// SetPlan 更新工作方案清单（update_plan 工具用）。
 	SetPlan(steps []PlanStep) error
+	// SetTitle 改写会话标题（update_title 工具用；空串忽略）。
+	SetTitle(title string) error
 }
 
 // ToolError 构造统一的失败结果：summary 给用户看，code 进 Data.error

@@ -52,7 +52,7 @@ func (s *Server) protocolAgentEngine() *agent.Engine {
 			return
 		}
 		agent.ParseAsk = parseAskQuestion
-		registry, err := agent.NewRegistry(append(append(newProtocolAgentTools(s), newAgentOpsTools(s)...), &updatePlanTool{}, &askUserTool{})...)
+		registry, err := agent.NewRegistry(append(append(newProtocolAgentTools(s), newAgentOpsTools(s)...), &updatePlanTool{}, &askUserTool{}, &updateTitleTool{})...)
 		if err != nil {
 			log.Printf("agent engine tools unavailable: %v", err)
 			return
@@ -95,6 +95,8 @@ func agentSessionView(session *agent.Session) gin.H {
 		"status":        session.Status,
 		"pendingAction": agent.MaskedPendingAction(session.PendingAction),
 		"plan":          session.Plan,
+		"userTurns":     session.UserTurns,
+		"totalTokens":   session.TotalTokens,
 		"createdAt":     session.CreatedAt.UTC().Format(time.RFC3339),
 		"updatedAt":     session.UpdatedAt.UTC().Format(time.RFC3339),
 	}

@@ -42,6 +42,7 @@ func (c *opsTestContext) SetDraft(draft json.RawMessage) error       { return ni
 func (c *opsTestContext) TestTarget() (string, string)               { return "", "" }
 func (c *opsTestContext) SetTestTarget(baseURL, apiKey string) error { return nil }
 func (c *opsTestContext) SetPlan(steps []agent.PlanStep) error       { return nil }
+func (c *opsTestContext) SetTitle(title string) error                { return nil }
 
 func TestOpsToolRegistry(t *testing.T) {
 	s := newOpsTestServer(t)
@@ -321,6 +322,7 @@ func (c *sessionToolContext) SetTestTarget(baseURL, apiKey string) error {
 	}
 	return c.store.UpdateSessionState(c.ctx, c.session.ID, update)
 }
+func (c *sessionToolContext) SetTitle(title string) error { return nil }
 func (c *sessionToolContext) SetPlan(steps []agent.PlanStep) error {
 	if err := c.store.UpdateSessionState(c.ctx, c.session.ID, agent.SessionStateUpdate{Plan: steps}); err != nil {
 		return err

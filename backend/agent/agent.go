@@ -1106,6 +1106,18 @@ func (c *engineToolContext) SetTestTarget(baseURL, apiKey string) error {
 	return c.store.UpdateSessionState(c.ctx, c.session.ID, update)
 }
 
+func (c *engineToolContext) SetTitle(title string) error {
+	title = strings.TrimSpace(title)
+	if title == "" || title == c.session.Title {
+		return nil
+	}
+	if err := c.store.UpdateSessionState(c.ctx, c.session.ID, SessionStateUpdate{Title: title}); err != nil {
+		return err
+	}
+	c.session.Title = title
+	return nil
+}
+
 func (c *engineToolContext) SetPlan(steps []PlanStep) error {
 	if steps == nil {
 		steps = []PlanStep{}

@@ -79,7 +79,44 @@ func (s *Store) ListAgentSessions(ctx context.Context) ([]agent.Session, error) 
 		}
 		items = append(items, *item)
 	}
-	return items, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	s.attachSessionStats(ctx, items)
+	return items, nil
+}
+
+// attachSessionStats 给列表补每会话的用户轮数与 token 合计。单独一条聚合，
+// 不读消息正文：轮数按 user 消息计（与前端轮数条同一口径），用量取
+// assistant 消息 usage_json 的 total_tokens。
+func (s *Store) attachSessionStats(ctx context.Context, items []agent.Session) {
+	if len(items) == 0 {
+		return
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT session_id,
+			SUM(CASE WHEN role = 'user' THEN 1 ELSE 0 END),
+			COALESCE(SUM(CAST(json_extract(usage_json, '$.total_tokens') AS INTEGER)), 0)
+			FROM agent_messages GROUP BY session_id`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	type stat struct{ turns, tokens int }
+	stats := map[string]stat{}
+	for rows.Next() {
+		var id string
+		var item stat
+		if err := rows.Scan(&id, &item.turns, &item.tokens); err != nil {
+			return
+		}
+		stats[id] = item
+	}
+	for index := range items {
+		if item, ok := stats[items[index].ID]; ok {
+			items[index].UserTurns = item.turns
+			items[index].TotalTokens = item.tokens
+		}
+	}
 }
 
 // GetAgentSession 返回单个会话（管理面/详情用；测试凭证已解密）。

@@ -27,6 +27,7 @@ func agentSystemPrompt(session *agent.Session) string {
 	b.WriteString("- 信息不足（如缺少 baseUrl、密钥、目标模型名）时，直接在正文里向用户提问并结束本轮，不要臆测。用户在对话中给出的 baseUrl / API key 等测试凭证，作为工具参数传入即可；提供过的凭证本会话会自动记住，不要向用户重复索要。\n")
 	b.WriteString("- 只读查询工具随时可用，先查现状再动手：改配置前先 list，下结论前先 query。\n")
 	b.WriteString("- 多步任务（协议接入、批量配置、排查）开始时先用 update_plan 列出方案步骤，随推进更新状态（用户在侧边栏实时可见）；三步以内的简单任务不必建方案。\n")
+	b.WriteString("- 理解任务后用 update_title 把会话标题改成不超过 16 字的动宾短语，概括任务目标而不是复述用户原话（如「接入 Anthropic 协议」）；任务目标变化时再更新一次。\n")
 	b.WriteString("- 你没有删除权限：删除模型源/模型组/协议请引导用户到对应管理页手动操作。\n\n")
 
 	if session.Settings.PlanMode {

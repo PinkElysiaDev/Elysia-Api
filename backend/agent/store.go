@@ -73,6 +73,8 @@ type Session struct {
 	DraftConfig   json.RawMessage `json:"draftConfig,omitempty"`  // 最新草稿
 	DraftRestore  json.RawMessage `json:"draftRestore,omitempty"` // 草稿还原点：最近一轮修改前的副本（单槽覆盖）
 	Plan          []PlanStep      `json:"plan,omitempty"`         // 工作方案清单
+	UserTurns     int             `json:"userTurns,omitempty"`    // 列表视图：用户消息条数（一轮一条）
+	TotalTokens   int             `json:"totalTokens,omitempty"`  // 列表视图：assistant 用量合计
 	TestBaseURL   string          `json:"testBaseUrl,omitempty"`
 	TestAPIKey    string          `json:"testApiKey,omitempty"` // 已解密；不出引擎
 	Settings      Settings        `json:"settings"`
