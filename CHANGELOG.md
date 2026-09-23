@@ -11,29 +11,46 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
 
 ## Unreleased
 
-### 第二轮代码质量轮（第一波：agent 域 / 转发管线 / 前端守卫与常量）
+### 第二轮代码质量轮（全量：agent 域 / 转换引擎 / 转发管线 / storage / 前端）
 
-三路并行审查后的行为保持重构，九个提交，每步全量测试门禁：
+三路并行审查后的行为保持重构，十六个提交，每步全量测试门禁：
 
 - **agent 引擎**：工具名跨包常量（agent.ToolName*）；上下文压缩阈值上提 const；
   删只写不读的 ToolMeta.ReadOnly 与 CallResult.FinishReason；模型循环拆出
   buildTurnRequest/finalizeTurn；轮次启动块收敛为 spawnTurn；工具结果
   「落库+追加」单点化；denyCall 按显式类别而非文案嗅探；摘要头改 rune 截断
   （顺修 UTF-8 切碎问题）；恒真守卫（nil-cancel、Question 兜底、空 if）清除；
-  轮次错误按 404/500 分级。
+  轮次错误按 404/500 分级；截断方向类型化（ClampHead/ClampTail）；
+  PlanStale→PlanStaleRounds；ParseAsk 从包级全局移入 Options 构造期注入；
+  agent.go 拆出 tool_context.go / masking.go；工具错误码统一为稳定
+  snake_case（动态错误文本只留 Summary）。
 - **agent 工具层**：draftProtocol/resolveTestTarget 收敛四处重复前置；
   用量查询参数一次解码（原先同一段 JSON 解三次）；限额/天数/偏移常量化
-  并共用 clampInt。
+  并共用 clampInt；update_group 的字段补丁与草稿离线自检各自成函数。
+- **转换引擎**：八个百行级转换函数各自拆出分支辅助件（消息分类/工具调用
+  渲染/part 转换/单项转换/校验三段/根组装三段）；思考整形双实现合一
+  （applyAnthropicThinking / buildGeminiThinkingConfig / buildResponsesReasoning
+  同时服务内置线与自定义协议模板）；占位符扫描三合一（strict/lenient 保语义）；
+  responseDirectFields 的 legacy 列被 resolveCustomMapping 真正使用
+  （五个 mappings 简写键从静默忽略变为按表生效，无预置受影响）；
+  responses 渲染器 text/refusal 四胞胎参数化为统一槽位；Claude/Gemini
+  取回分支独立成函数。
 - **转发管线**：六个 handler 各自复制的失败闭包统一为 relayFailWriter；
   自定义协议测试路径的双重超时、四处不可达守卫、零引用函数删除；
   provider_response / Anthropic 版本头 / 缺省鉴权头改引常量；模型列表拉取
   复用共享 secure-transport 客户端；三处挂错的文档注释归位；用量别名
   校验文案与允许集对齐（顺修文案漂移）。
-- **前端**：删零引用的类型字段与导出（AgentSendMessageInput、seedConfig、
-  toolCalls 等）、z-index 登记表收缩到真实消费的三个、.dot-err 不可达变体
-  与空三元/转发包装/孤儿注释清除；上下文仪表不再重复求值守卫；
-  submit/save/editing 改意图命名；草稿防抖/滚动阈值/仪表阈值/计时间隔/
-  工作区布局类上提常量。
+- **storage**：removeGroupFromTokens 复用 updateTokenGroupsTx 骨架（清空
+  token 名单由骨架返回，禁用策略留在删除路径）；幂等 ALTER 链清单化；
+  回填拆为 ready 对账 / 分块回填两个相位。
+- **前端**：删零引用的类型字段与导出、z-index 登记表收缩、不可达 CSS 变体
+  与空三元/孤儿注释清除；守卫与命名收敛、时限与阈值常量化；agent 四个
+  大文件拆为十一 个聚焦模块（markdown/approval-cards/live-view/
+  use-chat-scroll/composer-dock/context-gauge/use-agent-drafts/
+  workspace-header/plan-view/draft-view/activity-view）；FieldSelect 与
+  useDismissable 跨文件合一（模型选择器补上 Escape 关闭）；工具行复用全局
+  CopyButton；runtime-config 内联异步闭包提为具名 handler；流式状态
+  role=status、错误横幅 role=alert、图标按钮补 aria-label、您/你统一。
 
 ### 缺陷修复（总览统计 / 本地草稿 / 交互一致性）
 
