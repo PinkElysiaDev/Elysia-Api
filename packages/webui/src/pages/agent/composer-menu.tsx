@@ -125,20 +125,23 @@ const PERMISSION_LEVELS: {
   hint: string;
   allowSave: AgentPermission;
   allowLiveTest: AgentPermission;
+  allowDelete: AgentPermission;
 }[] = [
   {
     value: "confirm",
     label: "变更前确认",
-    hint: "每次写入与出站都先询问",
+    hint: "每次写入、出站与删除都先询问",
     allowSave: "ask",
     allowLiveTest: "ask",
+    allowDelete: "ask",
   },
   {
     value: "auto",
     label: "自动编辑",
-    hint: "自动保存修改，真实出站仍需确认",
+    hint: "自动保存修改，真实出站与删除仍需确认",
     allowSave: "always",
     allowLiveTest: "ask",
+    allowDelete: "ask",
   },
   {
     value: "full",
@@ -146,11 +149,16 @@ const PERMISSION_LEVELS: {
     hint: "全部自动执行，无需确认",
     allowSave: "always",
     allowLiveTest: "always",
+    allowDelete: "always",
   },
 ];
 
 function levelFromSettings(settings: AgentSettings): PermissionLevel {
-  if (settings.allowSave === "always" && settings.allowLiveTest === "always")
+  if (
+    settings.allowSave === "always" &&
+    settings.allowLiveTest === "always" &&
+    settings.allowDelete === "always"
+  )
     return "full";
   if (settings.allowSave === "always") return "auto";
   return "confirm";
@@ -208,6 +216,7 @@ export function PermissionMenu({
                   settings: {
                     allowSave: item.allowSave,
                     allowLiveTest: item.allowLiveTest,
+                    allowDelete: item.allowDelete,
                   },
                 })
               }

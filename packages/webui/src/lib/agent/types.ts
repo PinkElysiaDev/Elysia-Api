@@ -25,6 +25,8 @@ export interface AgentSettings {
   planMode?: boolean;
   allowLiveTest?: AgentPermission;
   allowSave?: AgentPermission;
+  /** 删除类工具单独一档：不可逆操作即便放行保存也默认逐次确认。 */
+  allowDelete?: AgentPermission;
   testBaseUrl?: string;
   testApiKeySet?: boolean;
 }
@@ -221,8 +223,17 @@ export const AGENT_TOOL_LABELS: Record<string, string> = {
   query_system_logs: "查询系统日志",
   create_model_source: "创建模型源",
   update_model_source: "修改模型源",
+  delete_model_source: "删除模型源",
   create_model_group: "创建模型组",
   update_model_group: "修改模型组",
+  delete_model_group: "删除模型组",
+  list_models: "查询模型列表",
+  update_model: "修改模型",
+  delete_model: "删除模型",
+  list_api_keys: "列出 API Key",
+  create_api_key: "创建 API Key",
+  update_api_key: "修改 API Key",
+  delete_api_key: "删除 API Key",
   refresh_model_source: "从上游拉取模型列表",
   update_outbound_policy: "更新出站策略",
   update_plan: "更新方案",
