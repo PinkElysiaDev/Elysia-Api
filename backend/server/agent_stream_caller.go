@@ -373,41 +373,8 @@ func (c *agentStreamCaller) callOnce(ctx context.Context, cancel context.CancelF
 			// 流中途故障：带部分结果返回（不重试，避免重复下发增量）。
 			return acc.result(), false, streamErr
 		}
-	} else {
-		reader := relay.NewSSEEventReader(response.Body)
-		defer reader.Close()
-		decoder := relay.NewMaheshvaraStreamDecoder(agentStreamDecoderFormat(plan.format))
-		terminalSeen := false
-		for {
-			event, ok, readErr := reader.Read(ctx, relay.DefaultSSEIdleTimeout)
-			if readErr != nil {
-				// 流中途故障：带部分结果返回（不重试，避免重复下发增量）。
-				return acc.result(), false, readErr
-			}
-			if !ok {
-				break
-			}
-			events, decodeErr := decoder.Decode(event)
-			if decodeErr != nil {
-				log.Printf("[agent-stream] decode error: %v (data=%.200s)", decodeErr, event.Data)
-				continue // 单事件解码失败容忍（与转发路径一致）
-			}
-			for _, ev := range events {
-				if terminalSeen {
-					// 终态后继续排水到 EOF，只吸收 usage/错误语义：OpenAI 规范中
-					// include_usage 的用量帧在 finish_reason 之后的独立 chunk 里，
-					// 见终态即 return 会把 token 统计整个丢掉。
-					switch ev.Type {
-					case relay.MaheshvaraEventUsageDelta, relay.MaheshvaraEventResponseFailed:
-						acc.apply(ev, cb)
-					}
-					continue
-				}
-				if stop := acc.apply(ev, cb); stop {
-					terminalSeen = true
-				}
-			}
-		}
+	} else if streamErr := drainStandardStream(ctx, plan, response.Body, acc, cb); streamErr != nil {
+		return acc.result(), false, streamErr
 	}
 	if ctx.Err() != nil {
 		return acc.result(), false, ctx.Err()
@@ -416,6 +383,42 @@ func (c *agentStreamCaller) callOnce(ctx context.Context, cancel context.CancelF
 		return acc.result(), false, fmt.Errorf("%s", failed)
 	}
 	return acc.result(), false, nil
+}
+
+// drainStandardStream 用内置四线制的流解码器排水 SSE：终态后继续读到 EOF，
+// 只吸收 usage/错误语义（OpenAI 的 include_usage 用量帧在 finish_reason 之后
+// 的独立 chunk 里，见终态即返回会把 token 统计整个丢掉）。
+func drainStandardStream(ctx context.Context, plan *agentUpstreamPlan, body io.Reader, acc *agentStreamAccumulator, cb agent.StreamCallbacks) error {
+	reader := relay.NewSSEEventReader(body)
+	defer reader.Close()
+	decoder := relay.NewMaheshvaraStreamDecoder(agentStreamDecoderFormat(plan.format))
+	terminalSeen := false
+	for {
+		event, ok, readErr := reader.Read(ctx, relay.DefaultSSEIdleTimeout)
+		if readErr != nil {
+			return readErr
+		}
+		if !ok {
+			return nil
+		}
+		events, decodeErr := decoder.Decode(event)
+		if decodeErr != nil {
+			log.Printf("[agent-stream] decode error: %v (data=%.200s)", decodeErr, event.Data)
+			continue // 单事件解码失败容忍（与转发路径一致）
+		}
+		for _, ev := range events {
+			if terminalSeen {
+				switch ev.Type {
+				case relay.MaheshvaraEventUsageDelta, relay.MaheshvaraEventResponseFailed:
+					acc.apply(ev, cb)
+				}
+				continue
+			}
+			if stop := acc.apply(ev, cb); stop {
+				terminalSeen = true
+			}
+		}
+	}
 }
 
 // drainCustomProtocolStream 用注册协议的流解码器排水 SSE（与自定义协议转发
