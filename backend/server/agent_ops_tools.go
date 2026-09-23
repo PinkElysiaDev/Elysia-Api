@@ -64,81 +64,92 @@ func toolStore(server *Server) (*storage.Store, agent.ToolResult) {
 
 // ---- 时间窗与查找辅助 ----
 
-// agentUsageWindow 解析查询时间窗：days（默认 7）或 from/to（RFC3339）。
-func agentUsageWindow(args json.RawMessage) (from, to time.Time, err error) {
-	var params struct {
-		Days int    `json:"days"`
-		From string `json:"from"`
-		To   string `json:"to"`
-	}
+// 用量查询的窗口与限额锚点。
+const (
+	usageDefaultDays       = 7
+	usageMaxDays           = 366
+	usageLogsDefaultLimit  = 20
+	usageLogsMaxLimit      = 100
+	systemLogsDefaultLimit = 30
+	systemLogsMaxLimit     = 100
+	maxUTCOffsetMinutes    = 840 // UsageDaily 允许的最大时区偏移
+)
+
+// usageQueryParams 是用量类工具共享的参数集：一次解码，时间窗与过滤器共用。
+type usageQueryParams struct {
+	Days       int    `json:"days"`
+	From       string `json:"from"`
+	To         string `json:"to"`
+	ModelName  string `json:"modelName"`
+	KeyName    string `json:"keyName"`
+	GroupName  string `json:"groupName"`
+	Status     string `json:"status"`
+	StatusCode int    `json:"statusCode"`
+	Limit      int    `json:"limit"`
+}
+
+func decodeUsageQueryArgs(args json.RawMessage) usageQueryParams {
+	var params usageQueryParams
 	if len(args) > 0 {
 		_ = json.Unmarshal(args, &params)
 	}
+	return params
+}
+
+// usageWindow 解析查询时间窗：days（默认 7、上限 366）或 from/to（RFC3339）。
+func (p usageQueryParams) usageWindow() (from, to time.Time, err error) {
 	to = time.Now()
-	if strings.TrimSpace(params.To) != "" {
-		parsed, perr := time.Parse(time.RFC3339, strings.TrimSpace(params.To))
+	if strings.TrimSpace(p.To) != "" {
+		parsed, perr := time.Parse(time.RFC3339, strings.TrimSpace(p.To))
 		if perr != nil {
 			return time.Time{}, time.Time{}, fmt.Errorf("to 不是合法的 RFC3339 时间: %w", perr)
 		}
 		to = parsed
 	}
-	if strings.TrimSpace(params.From) != "" {
-		parsed, perr := time.Parse(time.RFC3339, strings.TrimSpace(params.From))
+	if strings.TrimSpace(p.From) != "" {
+		parsed, perr := time.Parse(time.RFC3339, strings.TrimSpace(p.From))
 		if perr != nil {
 			return time.Time{}, time.Time{}, fmt.Errorf("from 不是合法的 RFC3339 时间: %w", perr)
 		}
 		return parsed, to, nil
 	}
-	days := params.Days
-	if days <= 0 {
-		days = 7
-	}
-	if days > 366 {
-		days = 366
-	}
-	return to.AddDate(0, 0, -days), to, nil
+	return to.AddDate(0, 0, -clampInt(p.Days, usageDefaultDays, usageMaxDays)), to, nil
 }
 
-func agentUsageQuery(args json.RawMessage) (storage.UsageQuery, error) {
-	var params struct {
-		ModelName  string `json:"modelName"`
-		KeyName    string `json:"keyName"`
-		GroupName  string `json:"groupName"`
-		Status     string `json:"status"`
-		StatusCode int    `json:"statusCode"`
-	}
-	if len(args) > 0 {
-		_ = json.Unmarshal(args, &params)
-	}
-	from, to, err := agentUsageWindow(args)
+func (p usageQueryParams) usageQuery() (storage.UsageQuery, error) {
+	from, to, err := p.usageWindow()
 	if err != nil {
 		return storage.UsageQuery{}, err
 	}
-	status := strings.ToLower(strings.TrimSpace(params.Status))
+	status := strings.ToLower(strings.TrimSpace(p.Status))
 	if status != "success" && status != "failed" {
 		status = ""
 	}
 	return storage.UsageQuery{
 		From: from, To: to,
-		ModelName:  strings.TrimSpace(params.ModelName),
-		KeyName:    strings.TrimSpace(params.KeyName),
-		GroupName:  strings.TrimSpace(params.GroupName),
+		ModelName:  strings.TrimSpace(p.ModelName),
+		KeyName:    strings.TrimSpace(p.KeyName),
+		GroupName:  strings.TrimSpace(p.GroupName),
 		Status:     status,
-		StatusCode: params.StatusCode,
+		StatusCode: p.StatusCode,
 	}, nil
+}
+
+// clampInt 把 v 钳进 [min, max]；v 落在零值区（未传）时取 min。
+func clampInt(v, min, max int) int {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
 }
 
 // agentLocalUTCOffset 本地时区偏移（分钟，钳制到 UsageDaily 允许范围）。
 func agentLocalUTCOffset() int {
 	_, seconds := time.Now().Zone()
-	minutes := seconds / 60
-	if minutes > 840 {
-		minutes = 840
-	}
-	if minutes < -840 {
-		minutes = -840
-	}
-	return minutes
+	return clampInt(seconds/60, -maxUTCOffsetMinutes, maxUTCOffsetMinutes)
 }
 
 // agentFindSource 按 id 或名称查找模型源。
@@ -341,7 +352,8 @@ func (t *usageStatsTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 	if store == nil {
 		return unavailable
 	}
-	query, err := agentUsageQuery(args)
+	params := decodeUsageQueryArgs(args)
+	query, err := params.usageQuery()
 	if err != nil {
 		return agent.ToolError(err.Error(), err.Error())
 	}
@@ -395,7 +407,8 @@ func (t *usageTrendTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 	if store == nil {
 		return unavailable
 	}
-	query, err := agentUsageQuery(args)
+	params := decodeUsageQueryArgs(args)
+	query, err := params.usageQuery()
 	if err != nil {
 		return agent.ToolError(err.Error(), err.Error())
 	}
@@ -458,23 +471,12 @@ func (t *usageLogsTool) Execute(ctx context.Context, tctx agent.ToolContext, arg
 	if store == nil {
 		return unavailable
 	}
-	query, err := agentUsageQuery(args)
+	params := decodeUsageQueryArgs(args)
+	query, err := params.usageQuery()
 	if err != nil {
 		return agent.ToolError(err.Error(), err.Error())
 	}
-	var params struct {
-		Limit int `json:"limit"`
-	}
-	if len(args) > 0 {
-		_ = json.Unmarshal(args, &params)
-	}
-	if params.Limit <= 0 {
-		params.Limit = 20
-	}
-	if params.Limit > 100 {
-		params.Limit = 100
-	}
-	query.Limit = params.Limit
+	query.Limit = clampInt(params.Limit, usageLogsDefaultLimit, usageLogsMaxLimit)
 	total, items, err := store.QueryUsageLogs(ctx, query)
 	if err != nil {
 		return agent.ToolError("日志查询失败: "+err.Error(), err.Error())
@@ -578,12 +580,7 @@ func (t *systemLogsTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 	default:
 		params.Level = ""
 	}
-	if params.Limit <= 0 {
-		params.Limit = 30
-	}
-	if params.Limit > 100 {
-		params.Limit = 100
-	}
+	params.Limit = clampInt(params.Limit, systemLogsDefaultLimit, systemLogsMaxLimit)
 	total, items, err := store.QuerySystemLogs(ctx, params.Limit, 0, params.Level)
 	if err != nil {
 		return agent.ToolError("查询失败: "+err.Error(), err.Error())

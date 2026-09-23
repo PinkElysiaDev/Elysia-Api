@@ -43,6 +43,43 @@ func objectSchema(properties map[string]any, required ...string) map[string]any 
 	return schema
 }
 
+// 协议工具共享的取值与提示文案。
+const missingTestTargetSummary = "测试目标 baseUrl 未配置：请向用户询问上游 baseUrl（以及需要鉴权时的 API key）；用户在对话中给出后作为本工具参数传入"
+
+// testModelPlaceholder 是测试请求带的占位模型名（上游只关心请求形状）。
+const testModelPlaceholder = "test-model"
+
+// draftProtocol 取当前草稿并反序列化；四个协议工具共用的前置步骤。
+// ok=false 时返回值是给模型的失败结果。
+func draftProtocol(tctx agent.ToolContext) (relay.CustomProtocolConfig, agent.ToolResult, bool) {
+	draft := tctx.Draft()
+	if len(draft) == 0 {
+		return relay.CustomProtocolConfig{}, agent.ToolError("尚无草稿，先调用 update_protocol_draft", "no_draft"), false
+	}
+	var protocol relay.CustomProtocolConfig
+	if err := json.Unmarshal(draft, &protocol); err != nil {
+		return relay.CustomProtocolConfig{}, agent.ToolError("草稿解析失败", err.Error()), false
+	}
+	return protocol, agent.ToolResult{}, true
+}
+
+// resolveTestTarget 合成真实测试目标：参数凭证优先，缺失项回退会话记住的，
+// 拿到新凭证则记住（同会话复用）。baseUrl 仍为空时返回给模型的追问结果。
+func resolveTestTarget(tctx agent.ToolContext, paramBaseURL, paramAPIKey string) (baseURL, apiKey string, failure agent.ToolResult, ok bool) {
+	baseURL, apiKey = tctx.TestTarget()
+	if strings.TrimSpace(paramBaseURL) != "" {
+		baseURL = strings.TrimSpace(paramBaseURL)
+	}
+	if strings.TrimSpace(paramAPIKey) != "" {
+		apiKey = paramAPIKey
+	}
+	if strings.TrimSpace(baseURL) == "" {
+		return "", "", agent.ToolResult{OK: false, Summary: missingTestTargetSummary, Data: map[string]any{"error": "missing_test_target"}}, false
+	}
+	_ = tctx.SetTestTarget(baseURL, apiKey)
+	return baseURL, apiKey, agent.ToolResult{}, true
+}
+
 // ---- update_protocol_draft ----
 
 type updateDraftTool struct{}
@@ -151,13 +188,9 @@ func (t *previewRequestTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *previewRequestTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	draft := tctx.Draft()
-	if len(draft) == 0 {
-		return agent.ToolError("尚无草稿，先调用 update_protocol_draft", "no_draft")
-	}
-	var protocol relay.CustomProtocolConfig
-	if err := json.Unmarshal(draft, &protocol); err != nil {
-		return agent.ToolError("草稿解析失败", err.Error())
+	protocol, failure, ok := draftProtocol(tctx)
+	if !ok {
+		return failure
 	}
 	var params struct {
 		SampleRequest *relay.MaheshvaraRequest `json:"sampleRequest,omitempty"`
@@ -205,10 +238,6 @@ func (t *testUpstreamTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *testUpstreamTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	draft := tctx.Draft()
-	if len(draft) == 0 {
-		return agent.ToolError("尚无草稿，先调用 update_protocol_draft", "no_draft")
-	}
 	var params struct {
 		Stream        bool                     `json:"stream"`
 		SampleRequest *relay.MaheshvaraRequest `json:"sampleRequest,omitempty"`
@@ -218,25 +247,16 @@ func (t *testUpstreamTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 	if len(args) > 0 {
 		_ = json.Unmarshal(args, &params)
 	}
-	// 参数凭证优先；缺失项回退会话已记住的；拿到新凭证则记住（同会话复用）。
-	baseURL, apiKey := tctx.TestTarget()
-	if strings.TrimSpace(params.BaseURL) != "" {
-		baseURL = strings.TrimSpace(params.BaseURL)
+	baseURL, apiKey, failure, ok := resolveTestTarget(tctx, params.BaseURL, params.APIKey)
+	if !ok {
+		return failure
 	}
-	if strings.TrimSpace(params.APIKey) != "" {
-		apiKey = params.APIKey
-	}
-	if strings.TrimSpace(baseURL) == "" {
-		return agent.ToolResult{OK: false, Summary: "测试目标 baseUrl 未配置：请向用户询问上游 baseUrl（以及需要鉴权时的 API key）；用户在对话中给出后作为本工具参数传入",
-			Data: map[string]any{"error": "missing_test_target"}}
-	}
-	_ = tctx.SetTestTarget(baseURL, apiKey)
-	var protocol relay.CustomProtocolConfig
-	if err := json.Unmarshal(draft, &protocol); err != nil {
-		return agent.ToolError("草稿解析失败", err.Error())
+	protocol, failure, ok := draftProtocol(tctx)
+	if !ok {
+		return failure
 	}
 	result, err := t.server.runCustomProtocolLiveTest(ctx, protocol, customProtocolTestTarget{
-		BaseURL: strings.TrimSpace(baseURL), APIKey: apiKey, ModelName: "test-model",
+		BaseURL: strings.TrimSpace(baseURL), APIKey: apiKey, ModelName: testModelPlaceholder,
 	}, params.Stream, params.SampleRequest)
 	if err != nil {
 		return agent.ToolError("测试发送失败: "+err.Error(), err.Error())
@@ -279,10 +299,6 @@ func (t *testModelsTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *testModelsTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	draft := tctx.Draft()
-	if len(draft) == 0 {
-		return agent.ToolError("尚无草稿，先调用 update_protocol_draft", "no_draft")
-	}
 	var credParams struct {
 		BaseURL string `json:"baseUrl"`
 		APIKey  string `json:"apiKey"`
@@ -290,21 +306,13 @@ func (t *testModelsTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 	if len(args) > 0 {
 		_ = json.Unmarshal(args, &credParams)
 	}
-	baseURL, apiKey := tctx.TestTarget()
-	if strings.TrimSpace(credParams.BaseURL) != "" {
-		baseURL = strings.TrimSpace(credParams.BaseURL)
+	baseURL, apiKey, failure, ok := resolveTestTarget(tctx, credParams.BaseURL, credParams.APIKey)
+	if !ok {
+		return failure
 	}
-	if strings.TrimSpace(credParams.APIKey) != "" {
-		apiKey = credParams.APIKey
-	}
-	if strings.TrimSpace(baseURL) == "" {
-		return agent.ToolResult{OK: false, Summary: "测试目标 baseUrl 未配置：请向用户询问上游 baseUrl；用户在对话中给出后作为本工具参数传入",
-			Data: map[string]any{"error": "missing_test_target"}}
-	}
-	_ = tctx.SetTestTarget(baseURL, apiKey)
-	var protocol relay.CustomProtocolConfig
-	if err := json.Unmarshal(draft, &protocol); err != nil {
-		return agent.ToolError("草稿解析失败", err.Error())
+	protocol, failure, ok := draftProtocol(tctx)
+	if !ok {
+		return failure
 	}
 	result, err := t.server.runCustomProtocolModelsTest(ctx, protocol, customProtocolTestTarget{
 		BaseURL: strings.TrimSpace(baseURL), APIKey: apiKey,
@@ -342,13 +350,9 @@ func (t *saveProtocolTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *saveProtocolTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	draft := tctx.Draft()
-	if len(draft) == 0 {
-		return agent.ToolError("尚无草稿，先调用 update_protocol_draft", "no_draft")
-	}
-	var protocol relay.CustomProtocolConfig
-	if err := json.Unmarshal(draft, &protocol); err != nil {
-		return agent.ToolError("草稿解析失败", err.Error())
+	protocol, failure, ok := draftProtocol(tctx)
+	if !ok {
+		return failure
 	}
 	if err := relay.ValidateCustomProtocol(protocol); err != nil {
 		return agent.ToolError("草稿校验失败: "+err.Error(), err.Error())

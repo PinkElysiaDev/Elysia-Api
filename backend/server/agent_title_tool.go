@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -33,7 +34,7 @@ func (t *updateTitleTool) Meta() agent.ToolMeta {
 func (t *updateTitleTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
 		Type: "function", Name: agentToolUpdateTitle,
-		Description: "把会话标题改写成对任务目标的简洁概括（动宾短语，不超过 16 个字，不要复述用户原话）。理解任务后调用一次；任务目标变化时再更新。",
+		Description: fmt.Sprintf("把会话标题改写成对任务目标的简洁概括（动宾短语，不超过 %d 个字，不要复述用户原话）。理解任务后调用一次；任务目标变化时再更新。", titleRuneLimit),
 		Parameters: objectSchema(map[string]any{
 			"title": map[string]any{"type": "string", "description": "新标题，不超过 16 个字"},
 		}, "title"),
@@ -52,7 +53,7 @@ func (t *updateTitleTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 		return agent.ToolError("标题不能为空", "empty_title")
 	}
 	if utf8.RuneCountInString(title) > titleRuneLimit {
-		return agent.ToolError("标题超过 16 个字，请缩短到能一眼看懂任务目标", "title_too_long")
+		return agent.ToolError(fmt.Sprintf("标题超过 %d 个字，请缩短到能一眼看懂任务目标", titleRuneLimit), "title_too_long")
 	}
 	if err := tctx.SetTitle(title); err != nil {
 		return agent.ToolError("标题保存失败: "+err.Error(), "save_failed")
