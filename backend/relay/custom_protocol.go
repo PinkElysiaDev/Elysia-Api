@@ -684,6 +684,18 @@ func validateCustomProtocolResponse(configID, location string, response CustomPr
 		return fmt.Errorf("custom protocol %q %s: %w", configID, location, err)
 	}
 	response = effective
+	if err := validateCustomResponseDirectPaths(configID, location, response); err != nil {
+		return err
+	}
+	if err := validateCustomResponseMappings(configID, location, response); err != nil {
+		return err
+	}
+	return validateCustomResponseStream(configID, location, response, allowStream)
+}
+
+// validateCustomResponseDirectPaths 校验直接路径字段的点路径语法（键名集合
+// 来自 responseDirectFields 表）。
+func validateCustomResponseDirectPaths(configID, location string, response CustomProtocolResponse) error {
 	paths := make(map[string]string, len(responseDirectFields))
 	for _, field := range responseDirectFields {
 		paths[field.name] = field.get(response)
@@ -696,6 +708,12 @@ func validateCustomProtocolResponse(configID, location string, response CustomPr
 			return fmt.Errorf("custom protocol %q %s.%s: %w", configID, location, field, err)
 		}
 	}
+	return nil
+}
+
+// validateCustomResponseMappings 校验文本/推理过滤器、legacy mappings 简写
+// 与字段级 fieldMappings。
+func validateCustomResponseMappings(configID, location string, response CustomProtocolResponse) error {
 	for index, match := range response.TextFilter {
 		if err := validateCustomProtocolMatch(fmt.Sprintf("%s.textFilter[%d]", location, index), match); err != nil {
 			return fmt.Errorf("custom protocol %q: %w", configID, err)
@@ -731,7 +749,12 @@ func validateCustomProtocolResponse(configID, location string, response CustomPr
 			return fmt.Errorf("custom protocol %q %s.fieldMappings[%d] uses unsupported transform %q", configID, location, index, mapping.Transform)
 		}
 	}
+	return nil
+}
 
+// validateCustomResponseStream 校验流映射段：模式/事件键/终止值/帧规则，
+// 帧内 response 递归走 validateCustomProtocolResponse（禁止再嵌套流）。
+func validateCustomResponseStream(configID, location string, response CustomProtocolResponse, allowStream bool) error {
 	stream := response.Stream
 	if stream == nil {
 		return nil
@@ -1151,17 +1174,12 @@ func resolveCustomMapping(config CustomProtocolConfig, allowStreamEvent bool) (c
 	if err != nil {
 		return resolved, err
 	}
-	// legacy mappings 键在此合并为直接路径(仅填补空缺)。
+	// legacy mappings 键在此合并为直接路径(仅填补空缺)；键名取自
+	// responseDirectFields 的 legacy 列，与校验/编译共用同一份表。
 	if mapping.Mappings != nil {
-		mapping.IDPath = firstNonEmptyString(mapping.IDPath, mapping.Mappings["id"])
-		mapping.ModelPath = firstNonEmptyString(mapping.ModelPath, mapping.Mappings["model"])
-		mapping.StatusPath = firstNonEmptyString(mapping.StatusPath, mapping.Mappings["status"])
-		mapping.TextPath = firstNonEmptyString(mapping.TextPath, mapping.Mappings["text"])
-		mapping.ReasoningPath = firstNonEmptyString(mapping.ReasoningPath, mapping.Mappings["reasoning"])
-		mapping.ToolCallsPath = firstNonEmptyString(mapping.ToolCallsPath, mapping.Mappings["tool_calls"])
-		mapping.UsagePath = firstNonEmptyString(mapping.UsagePath, mapping.Mappings["usage"])
-		mapping.FinishReasonPath = firstNonEmptyString(mapping.FinishReasonPath, mapping.Mappings["finish_reason"])
-		mapping.ErrorPath = firstNonEmptyString(mapping.ErrorPath, mapping.Mappings["error"])
+		for _, field := range responseDirectFields {
+			field.set(&mapping, firstNonEmptyString(field.get(mapping), mapping.Mappings[field.legacy]))
+		}
 	}
 	resolved.mapping = mapping
 	return resolved, nil
@@ -1201,62 +1219,9 @@ func customProtocolResponseFromRoot(root any, resolved customResolvedMapping, al
 			response.Error = &MaheshvaraError{Message: customValueString(value), Class: ErrorClassUpstream, Raw: customMap(value)}
 		}
 	}
-	text := customTextAtFilter(root, mapping.TextPath, textKeys, mapping.TextFilter)
-	var citations json.RawMessage
-	if mapping.CitationsPath != "" {
-		if value := customValueAt(root, mapping.CitationsPath); value != nil {
-			if encoded, err := json.Marshal(value); err == nil {
-				citations = encoded
-			}
-		}
-	}
-	// 纯引用帧（citations_delta）text 为空但引用存在，也要产出文本部件，
-	// 否则引用标注没有挂载点、注解事件无从发出。
-	if text != "" || citations != nil {
-		response.Output = append(response.Output, MaheshvaraOutputItem{
-			ID: newMaheshvaraResponseID("msg"), Type: MaheshvaraOutputMessage, Status: MaheshvaraStatusCompleted, Role: "assistant",
-			Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: text, Citations: citations}},
-		})
-	}
-	if refusal := customStringAt(root, mapping.RefusalPath); refusal != "" {
-		response.Output = append(response.Output, MaheshvaraOutputItem{
-			ID: newMaheshvaraResponseID("msg"), Type: MaheshvaraOutputMessage, Status: MaheshvaraStatusCompleted, Role: "assistant",
-			Content: []MaheshvaraContentPart{{Type: MaheshvaraContentRefusal, Text: refusal}},
-		})
-	}
-	reasoning := customTextAtFilter(root, mapping.ReasoningPath, textKeys, mapping.ReasoningFilter)
-	signature := customStringAt(root, mapping.SignaturePath)
-	encrypted := customStringAt(root, mapping.EncryptedContentPath)
-	if reasoning != "" || signature != "" || encrypted != "" {
-		part := MaheshvaraContentPart{Type: MaheshvaraContentReasoning, Text: reasoning, ReasoningText: reasoning,
-			Signature: signature, EncryptedContent: encrypted}
-		provider := customStringAt(root, mapping.SignatureProviderPath)
-		if provider == "" {
-			provider = strings.TrimSpace(mapping.SignatureProvider)
-		}
-		if provider != "" {
-			part.SignatureProvider = provider
-		}
-		response.Output = append(response.Output, MaheshvaraOutputItem{
-			ID: newMaheshvaraResponseID("rs"), Type: MaheshvaraOutputReasoning, Status: MaheshvaraStatusCompleted,
-			Content: []MaheshvaraContentPart{part},
-		})
-	}
-	if mapping.ToolCallsPath != "" {
-		for index, item := range customArrayAt(root, mapping.ToolCallsPath) {
-			call := customToolCallWithAliases(item, index, toolAliases)
-			if call.Name == "" {
-				continue
-			}
-			response.Output = append(response.Output, MaheshvaraOutputItem{
-				ID: firstNonEmptyString(call.ID, newMaheshvaraResponseID("call")), Type: MaheshvaraOutputFunctionCall,
-				Status: MaheshvaraStatusCompleted, CallID: call.ID, Name: call.Name, Arguments: call.Arguments,
-				// ToolCalls 原样携带（含 thoughtSignature/Provider）：Gemini
-				// 跨轮思考签名回传依赖它。
-				ToolCalls: []MaheshvaraToolCall{call},
-			})
-		}
-	}
+	appendCustomTextOutput(response, root, mapping, textKeys)
+	appendCustomReasoningOutput(response, root, mapping, textKeys)
+	appendCustomToolCallOutputs(response, root, mapping, toolAliases)
 	if mapping.UsagePath != "" {
 		response.Usage = customUsageAtWithAliases(root, mapping.UsagePath, usageAliases)
 	}
@@ -1269,6 +1234,78 @@ func customProtocolResponseFromRoot(root any, resolved customResolvedMapping, al
 		return nil, fmt.Errorf("custom protocol %q response has no mapped text, reasoning, or tool call", configID)
 	}
 	return response, nil
+}
+
+// appendCustomTextOutput 汇总文本/引用/拒答为消息输出项。纯引用帧
+// （citations_delta）text 为空但引用存在，也要产出文本部件，否则引用标注
+// 没有挂载点、注解事件无从发出。
+func appendCustomTextOutput(response *MaheshvaraResponse, root any, mapping CustomProtocolResponse, textKeys []string) {
+	text := customTextAtFilter(root, mapping.TextPath, textKeys, mapping.TextFilter)
+	var citations json.RawMessage
+	if mapping.CitationsPath != "" {
+		if value := customValueAt(root, mapping.CitationsPath); value != nil {
+			if encoded, err := json.Marshal(value); err == nil {
+				citations = encoded
+			}
+		}
+	}
+	if text != "" || citations != nil {
+		response.Output = append(response.Output, MaheshvaraOutputItem{
+			ID: newMaheshvaraResponseID("msg"), Type: MaheshvaraOutputMessage, Status: MaheshvaraStatusCompleted, Role: "assistant",
+			Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: text, Citations: citations}},
+		})
+	}
+	if refusal := customStringAt(root, mapping.RefusalPath); refusal != "" {
+		response.Output = append(response.Output, MaheshvaraOutputItem{
+			ID: newMaheshvaraResponseID("msg"), Type: MaheshvaraOutputMessage, Status: MaheshvaraStatusCompleted, Role: "assistant",
+			Content: []MaheshvaraContentPart{{Type: MaheshvaraContentRefusal, Text: refusal}},
+		})
+	}
+}
+
+// appendCustomReasoningOutput 输出推理/思考项：文本、签名、加密内容任一
+// 非空即产出；签发方优先取路径值，缺省回落声明的常量。
+func appendCustomReasoningOutput(response *MaheshvaraResponse, root any, mapping CustomProtocolResponse, textKeys []string) {
+	reasoning := customTextAtFilter(root, mapping.ReasoningPath, textKeys, mapping.ReasoningFilter)
+	signature := customStringAt(root, mapping.SignaturePath)
+	encrypted := customStringAt(root, mapping.EncryptedContentPath)
+	if reasoning == "" && signature == "" && encrypted == "" {
+		return
+	}
+	part := MaheshvaraContentPart{Type: MaheshvaraContentReasoning, Text: reasoning, ReasoningText: reasoning,
+		Signature: signature, EncryptedContent: encrypted}
+	provider := customStringAt(root, mapping.SignatureProviderPath)
+	if provider == "" {
+		provider = strings.TrimSpace(mapping.SignatureProvider)
+	}
+	if provider != "" {
+		part.SignatureProvider = provider
+	}
+	response.Output = append(response.Output, MaheshvaraOutputItem{
+		ID: newMaheshvaraResponseID("rs"), Type: MaheshvaraOutputReasoning, Status: MaheshvaraStatusCompleted,
+		Content: []MaheshvaraContentPart{part},
+	})
+}
+
+// appendCustomToolCallOutputs 解析 toolCallsPath 数组为函数调用输出项
+// （无名称的条目跳过）。
+func appendCustomToolCallOutputs(response *MaheshvaraResponse, root any, mapping CustomProtocolResponse, toolAliases map[string][]string) {
+	if mapping.ToolCallsPath == "" {
+		return
+	}
+	for index, item := range customArrayAt(root, mapping.ToolCallsPath) {
+		call := customToolCallWithAliases(item, index, toolAliases)
+		if call.Name == "" {
+			continue
+		}
+		response.Output = append(response.Output, MaheshvaraOutputItem{
+			ID: firstNonEmptyString(call.ID, newMaheshvaraResponseID("call")), Type: MaheshvaraOutputFunctionCall,
+			Status: MaheshvaraStatusCompleted, CallID: call.ID, Name: call.Name, Arguments: call.Arguments,
+			// ToolCalls 原样携带（含 thoughtSignature/Provider）：Gemini
+			// 跨轮思考签名回传依赖它。
+			ToolCalls: []MaheshvaraToolCall{call},
+		})
+	}
 }
 
 func maheshvaraTemplateContext(req *MaheshvaraRequest) map[string]any {
@@ -1436,9 +1473,15 @@ func shapeCustomThinking(shape string, req *MaheshvaraRequest, root map[string]a
 	}
 }
 
-// forEachCustomPlaceholder 遍历模板中的全部 {{...}} 占位符,回调收到去空白后的
-// 表达式原文。渲染/取串/校验三条扫描路径共用此骨架;回调返回错误立即中止。
-func forEachCustomPlaceholder(template string, fn func(expression string) error) error {
+// forEachCustomPlaceholder 遍历模板中的全部 {{...}} 占位符，回调收到占位符的
+// 字节区间（start 为 "{{" 起点，end 为 "}}" 起点）与去空白后的表达式，返回
+// 错误立即中止。渲染/取串/校验三条扫描路径共用此骨架。
+//
+// strict（校验与 JSON 渲染）对未闭合占位符报错，并保留占位符计数上限；
+// 宽松（renderCustomString）不设上限，未闭合的 "{{" 段以
+// (start, len(template), "") 回调一次交调用方按字面量收尾——真实占位符的
+// end 至多为 len-2，end 越过模板末尾即未闭合段的标记。
+func forEachCustomPlaceholder(template string, strict bool, fn func(start, end int, expression string) error) error {
 	placeholders := 0
 	for offset := 0; offset < len(template); {
 		start := strings.Index(template[offset:], "{{")
@@ -1448,14 +1491,17 @@ func forEachCustomPlaceholder(template string, fn func(expression string) error)
 		start += offset
 		end := strings.Index(template[start+2:], "}}")
 		if end < 0 {
+			if !strict {
+				return fn(start, len(template), "")
+			}
 			return fmt.Errorf("unterminated placeholder at byte %d", start)
 		}
 		end += start + 2
 		placeholders++
-		if placeholders > customProtocolMaxPlaceholders {
+		if strict && placeholders > customProtocolMaxPlaceholders {
 			return fmt.Errorf("template contains more than %d placeholders", customProtocolMaxPlaceholders)
 		}
-		if err := fn(strings.TrimSpace(template[start+2 : end])); err != nil {
+		if err := fn(start, end, strings.TrimSpace(template[start+2:end])); err != nil {
 			return err
 		}
 		offset = end + 2
@@ -1507,35 +1553,20 @@ func renderCustomTemplate(template string, context map[string]any, omitIfEmpty [
 
 func renderCustomJSON(template string, context map[string]any) (any, error) {
 	var builder strings.Builder
-	placeholders := 0
-	for offset := 0; offset < len(template); {
-		start := strings.Index(template[offset:], "{{")
-		if start < 0 {
-			builder.WriteString(template[offset:])
-			break
-		}
-		start += offset
-		builder.WriteString(template[offset:start])
-		end := strings.Index(template[start+2:], "}}")
-		if end < 0 {
-			return nil, fmt.Errorf("unterminated placeholder at byte %d", start)
-		}
-		end += start + 2
-		placeholders++
-		if placeholders > customProtocolMaxPlaceholders {
-			return nil, fmt.Errorf("template contains more than %d placeholders", customProtocolMaxPlaceholders)
-		}
-		expression := strings.TrimSpace(template[start+2 : end])
+	consumed := 0
+	if err := forEachCustomPlaceholder(template, true, func(start, end int, expression string) error {
+		builder.WriteString(template[consumed:start])
+		consumed = end + 2
 		path, defaultValue, forceJSON, filter, err := parseCustomExpression(expression)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		resolved, ok := customLookupPath(context, path)
 		if !ok || customEmptyValue(resolved) {
 			resolved = defaultValue
 		}
 		if resolved, err = applyCustomTemplateFilter(resolved, filter); err != nil {
-			return nil, fmt.Errorf("placeholder %q: %w", expression, err)
+			return fmt.Errorf("placeholder %q: %w", expression, err)
 		}
 		prefix := template[:start]
 		suffix := template[end+2:]
@@ -1547,12 +1578,15 @@ func renderCustomJSON(template string, context map[string]any) (any, error) {
 		} else {
 			encoded, marshalErr := json.Marshal(resolved)
 			if marshalErr != nil {
-				return nil, fmt.Errorf("placeholder %q: %w", expression, marshalErr)
+				return fmt.Errorf("placeholder %q: %w", expression, marshalErr)
 			}
 			builder.Write(encoded)
 		}
-		offset = end + 2
+		return nil
+	}); err != nil {
+		return nil, err
 	}
+	builder.WriteString(template[consumed:])
 	value, err := decodeJSONUseNumber([]byte(builder.String()))
 	if err != nil {
 		return nil, fmt.Errorf("rendered body is not valid JSON: %w", err)
@@ -1627,25 +1661,20 @@ func renderCustomString(template string, context map[string]any) string {
 		return ""
 	}
 	var builder strings.Builder
-	for offset := 0; offset < len(template); {
-		start := strings.Index(template[offset:], "{{")
-		if start < 0 {
-			builder.WriteString(template[offset:])
-			break
-		}
-		start += offset
-		builder.WriteString(template[offset:start])
-		end := strings.Index(template[start+2:], "}}")
-		if end < 0 {
+	consumed := 0
+	_ = forEachCustomPlaceholder(template, false, func(start, end int, expression string) error {
+		builder.WriteString(template[consumed:start])
+		if end >= len(template) {
+			// 宽松扫描交出的未闭合段：整体按字面量输出并收尾。
 			builder.WriteString(template[start:])
-			break
+			consumed = len(template)
+			return nil
 		}
-		end += start + 2
-		path, defaultValue, _, filter, err := parseCustomExpression(strings.TrimSpace(template[start+2 : end]))
+		consumed = end + 2
+		path, defaultValue, _, filter, err := parseCustomExpression(expression)
 		if err != nil {
 			builder.WriteString(template[start : end+2])
-			offset = end + 2
-			continue
+			return nil
 		}
 		resolved, ok := customLookupPath(context, path)
 		if !ok || customEmptyValue(resolved) {
@@ -1656,13 +1685,14 @@ func renderCustomString(template string, context map[string]any) string {
 		} else {
 			builder.WriteString(customValueString(defaultValue))
 		}
-		offset = end + 2
-	}
+		return nil
+	})
+	builder.WriteString(template[consumed:])
 	return builder.String()
 }
 
 func validateCustomStringTemplate(template string) error {
-	return forEachCustomPlaceholder(template, func(expression string) error {
+	return forEachCustomPlaceholder(template, true, func(start, end int, expression string) error {
 		_, _, _, _, err := parseCustomExpression(expression)
 		return err
 	})

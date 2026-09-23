@@ -254,6 +254,10 @@ func MaheshvaraToGemini(req *MaheshvaraRequest) ([]byte, error) {
 // Responses API 线路）时，零转换透传最稳妥（借鉴 cc-switch 的 should_convert=false 分支）。
 //
 // modelName 为空时不覆盖 model。
+//
+// 注：主体逻辑与 PassthroughBody(originalBody, modelName, false, false) 完全一致，
+// 不直接委托是因为解析失败时的错误文案不同（此处特指 "Responses request"，
+// 通用版只写 "request"），错误文本是可观察行为，保留原文案。
 func ResponsesPassthroughBody(originalBody []byte, modelName string) ([]byte, error) {
 	out := map[string]any{}
 	if err := json.Unmarshal(originalBody, &out); err != nil {
@@ -472,32 +476,7 @@ func maheshvaraMessagesToOpenAI(req *MaheshvaraRequest) []map[string]any {
 		messages = append(messages, map[string]any{"role": "system", "content": req.Instructions})
 	}
 	for msgIndex, msg := range req.Messages {
-		visibleParts := make([]MaheshvaraContentPart, 0, len(msg.Content))
-		var toolOutputs []MaheshvaraContentPart
-		var reasoning strings.Builder
-		var refusal strings.Builder
-		reasoningParts := make([]MaheshvaraContentPart, 0, 2)
-		for _, part := range msg.Content {
-			if part.Type == MaheshvaraContentReasoning {
-				text := firstNonEmptyString(part.ReasoningText, part.Text)
-				if text != "" {
-					reasoning.WriteString(text)
-				}
-				reasoningParts = append(reasoningParts, part)
-				continue
-			}
-			if part.Type == MaheshvaraContentRefusal {
-				if part.Text != "" {
-					refusal.WriteString(part.Text)
-				}
-				continue
-			}
-			if part.Type == MaheshvaraContentToolOutput {
-				toolOutputs = append(toolOutputs, part)
-				continue
-			}
-			visibleParts = append(visibleParts, part)
-		}
+		visibleParts, toolOutputs, reasoningParts, reasoning, refusal := classifyMessageParts(msg.Content)
 		role := strings.ToLower(strings.TrimSpace(msg.Role))
 		if role == "" {
 			role = "user"
@@ -506,7 +485,7 @@ func maheshvaraMessagesToOpenAI(req *MaheshvaraRequest) []map[string]any {
 		// 纯 tool_result 消息（Claude user 轮里的 tool_result block）不生成空的
 		// user 消息，只输出下面的 role:"tool" 消息。避免 assistant 的 tool_calls
 		// 之后没有对应的 tool 消息而被上游拒（insufficient tool messages）。
-		hasRegularContent := len(visibleParts) > 0 || reasoning.Len() > 0 || refusal.Len() > 0 ||
+		hasRegularContent := len(visibleParts) > 0 || reasoning != "" || refusal != "" ||
 			len(msg.ToolCalls) > 0 || msg.Name != "" || msg.Metadata != nil || msg.CacheControl != nil || msg.ToolCallID != ""
 		if (role == "tool" || role == "function") && len(toolOutputs) > 0 {
 			// tool 角色消息的内容已全部由下方 toolOutputs 循环输出为 role:"tool" 消息，
@@ -516,22 +495,7 @@ func maheshvaraMessagesToOpenAI(req *MaheshvaraRequest) []map[string]any {
 
 		// OpenAI 要求 role:"tool" 消息紧跟带 tool_calls 的 assistant 消息；
 		// Claude user 轮 [tool_result, text] 混合时必须先输出 tool 结果，再输出剩余文本。
-		for _, to := range toolOutputs {
-			if strings.HasPrefix(to.ToolCallID, legacyFunctionCallIDPrefix) {
-				// 遗留 function 结果：role:"function" + name（无 tool_call_id）。
-				messages = append(messages, map[string]any{
-					"role":    "function",
-					"name":    strings.TrimPrefix(to.ToolCallID, legacyFunctionCallIDPrefix),
-					"content": to.ToolOutput,
-				})
-				continue
-			}
-			messages = append(messages, map[string]any{
-				"role":         "tool",
-				"tool_call_id": to.ToolCallID,
-				"content":      to.ToolOutput,
-			})
-		}
+		messages = appendToolOutputMessages(messages, toolOutputs)
 
 		if hasRegularContent {
 			out := map[string]any{
@@ -541,16 +505,16 @@ func maheshvaraMessagesToOpenAI(req *MaheshvaraRequest) []map[string]any {
 			if len(visibleParts) == 0 && len(msg.ToolCalls) > 0 {
 				out["content"] = nil
 			}
-			if reasoning.Len() > 0 {
-				out["reasoning_content"] = reasoning.String()
+			if reasoning != "" {
+				out["reasoning_content"] = reasoning
 			}
 			// OpenRouter 风格推理明细：逐条回放（含加密思考，provider 门控），
 			// 保真优于标量 reasoning_content。
 			if details := maheshvaraReasoningToOpenAIDetails(reasoningParts); len(details) > 0 {
 				out["reasoning_details"] = details
 			}
-			if refusal.Len() > 0 {
-				out["refusal"] = refusal.String()
+			if refusal != "" {
+				out["refusal"] = refusal
 			}
 			if msg.Name != "" {
 				out["name"] = msg.Name
@@ -572,48 +536,106 @@ func maheshvaraMessagesToOpenAI(req *MaheshvaraRequest) []map[string]any {
 				out["tool_call_id"] = msg.ToolCallID
 			}
 			if len(msg.ToolCalls) > 0 {
-				var calls []map[string]any
-				for callIndex, call := range msg.ToolCalls {
-					arguments := strings.TrimSpace(string(call.Arguments))
-					if arguments == "" {
-						arguments = call.ArgumentsText
-					}
-					if arguments == "" {
-						arguments = "{}"
-					}
-					if isLegacyFunctionCall(call) {
-						// 遗留 function_call：消息级单对象形态（每条 assistant
-						// 消息至多一个，旧客户端语义）。
-						out["function_call"] = map[string]any{
-							"name":      call.Name,
-							"arguments": arguments,
-						}
-						continue
-					}
-					callType := firstNonEmptyString(call.Type, MaheshvaraToolFunction)
-					wireCall := map[string]any{
-						// 即使上游输入遗漏 id，也绝不向 OpenAI 线格式输出空 id；
-						// 空串会被严格的上游校验器判为 "missing field id"。
-						"id":   ensureToolCallID(call.ID, msgIndex, callIndex),
-						"type": callType,
-						"function": map[string]any{
-							"name":      call.Name,
-							"arguments": arguments,
-						},
-					}
-					if signature := maheshvaraSignatureForProvider(call.ThoughtSignature, call.ThoughtSignatureProvider, MaheshvaraSignatureProviderGemini); signature != "" {
-						wireCall["extra_content"] = map[string]any{"google": map[string]any{"thought_signature": signature}}
-					}
-					calls = append(calls, wireCall)
-				}
-				if len(calls) > 0 {
-					out["tool_calls"] = calls
-				}
+				openAIToolCallsFromMessage(out, msg, msgIndex)
 			}
 			messages = append(messages, out)
 		}
 	}
 	return messages
+}
+
+// classifyMessageParts 把消息 parts 分类汇总：可见 parts、tool_outputs、
+// 推理 parts（保留原始条目供明细回放），以及拼接后的推理/拒答文本。
+func classifyMessageParts(content []MaheshvaraContentPart) (visibleParts, toolOutputs, reasoningParts []MaheshvaraContentPart, reasoning, refusal string) {
+	visibleParts = make([]MaheshvaraContentPart, 0, len(content))
+	reasoningParts = make([]MaheshvaraContentPart, 0, 2)
+	var reasoningBuilder strings.Builder
+	var refusalBuilder strings.Builder
+	for _, part := range content {
+		if part.Type == MaheshvaraContentReasoning {
+			text := firstNonEmptyString(part.ReasoningText, part.Text)
+			if text != "" {
+				reasoningBuilder.WriteString(text)
+			}
+			reasoningParts = append(reasoningParts, part)
+			continue
+		}
+		if part.Type == MaheshvaraContentRefusal {
+			if part.Text != "" {
+				refusalBuilder.WriteString(part.Text)
+			}
+			continue
+		}
+		if part.Type == MaheshvaraContentToolOutput {
+			toolOutputs = append(toolOutputs, part)
+			continue
+		}
+		visibleParts = append(visibleParts, part)
+	}
+	return visibleParts, toolOutputs, reasoningParts, reasoningBuilder.String(), refusalBuilder.String()
+}
+
+// appendToolOutputMessages 把 tool_output parts 输出为 role:"tool" 消息；
+// 遗留 function 结果（legacy_function: 前缀 ID）改发 role:"function" + name。
+func appendToolOutputMessages(messages []map[string]any, toolOutputs []MaheshvaraContentPart) []map[string]any {
+	for _, to := range toolOutputs {
+		if strings.HasPrefix(to.ToolCallID, legacyFunctionCallIDPrefix) {
+			// 遗留 function 结果：role:"function" + name（无 tool_call_id）。
+			messages = append(messages, map[string]any{
+				"role":    "function",
+				"name":    strings.TrimPrefix(to.ToolCallID, legacyFunctionCallIDPrefix),
+				"content": to.ToolOutput,
+			})
+			continue
+		}
+		messages = append(messages, map[string]any{
+			"role":         "tool",
+			"tool_call_id": to.ToolCallID,
+			"content":      to.ToolOutput,
+		})
+	}
+	return messages
+}
+
+// openAIToolCallsFromMessage 把 assistant 消息的工具调用渲染进 out：现代调用
+// 聚为 tool_calls 数组；遗留 function_call 按消息级单对象形态直写（每条
+// assistant 消息至多一个，旧客户端语义）。
+func openAIToolCallsFromMessage(out map[string]any, msg MaheshvaraMessage, msgIndex int) {
+	var calls []map[string]any
+	for callIndex, call := range msg.ToolCalls {
+		arguments := strings.TrimSpace(string(call.Arguments))
+		if arguments == "" {
+			arguments = call.ArgumentsText
+		}
+		if arguments == "" {
+			arguments = "{}"
+		}
+		if isLegacyFunctionCall(call) {
+			out["function_call"] = map[string]any{
+				"name":      call.Name,
+				"arguments": arguments,
+			}
+			continue
+		}
+		callType := firstNonEmptyString(call.Type, MaheshvaraToolFunction)
+		wireCall := map[string]any{
+			// 即使上游输入遗漏 id，也绝不向 OpenAI 线格式输出空 id；
+			// 空串会被严格的上游校验器判为 "missing field id"。
+			"id":   ensureToolCallID(call.ID, msgIndex, callIndex),
+			"type": callType,
+			"function": map[string]any{
+				"name":      call.Name,
+				"arguments": arguments,
+			},
+		}
+		if signature := maheshvaraSignatureForProvider(call.ThoughtSignature, call.ThoughtSignatureProvider, MaheshvaraSignatureProviderGemini); signature != "" {
+			wireCall["extra_content"] = map[string]any{"google": map[string]any{"thought_signature": signature}}
+		}
+		calls = append(calls, wireCall)
+	}
+	if len(calls) > 0 {
+		out["tool_calls"] = calls
+	}
 }
 
 // imagePartBase64 从图片 part 提取 (mediaType, base64)。优先用结构化的
@@ -775,16 +797,7 @@ func maheshvaraMessagesToGemini(req *MaheshvaraRequest) ([]map[string]any, error
 		return nil, fmt.Errorf("cannot convert request to Gemini: nil maheshvara request")
 	}
 
-	// 构建 tool_call_id → function_name 映射表：Gemini 的 functionResponse.name
-	// 必须是函数名（如 "Read"），而非 Anthropic 的 tool_use_id（如 "toolu_01ABC"）。
-	toolCallNames := make(map[string]string)
-	for _, msg := range req.Messages {
-		for _, call := range msg.ToolCalls {
-			if call.ID != "" && call.Name != "" {
-				toolCallNames[call.ID] = call.Name
-			}
-		}
-	}
+	toolCallNames := buildToolCallNames(req.Messages)
 
 	var contents []map[string]any
 	for msgIndex, msg := range req.Messages {
@@ -800,57 +813,12 @@ func maheshvaraMessagesToGemini(req *MaheshvaraRequest) ([]map[string]any, error
 		var parts []map[string]any
 		var firstFunctionCallPart map[string]any
 		for partIndex, part := range msg.Content {
-			switch part.Type {
-			case MaheshvaraContentText:
-				if part.Text != "" {
-					parts = append(parts, map[string]any{"text": part.Text})
-				}
-			case MaheshvaraContentImage:
-				if p := imagePartToGeminiPart(part); p != nil {
-					parts = append(parts, p)
-				}
-			case MaheshvaraContentAudio, MaheshvaraContentVideo, MaheshvaraContentFile, MaheshvaraContentDocument:
-				if p := maheshvaraPartToGeminiPart(part); p != nil {
-					parts = append(parts, p)
-				}
-			case MaheshvaraContentReasoning:
-				reasoningText := part.ReasoningText
-				if reasoningText == "" {
-					reasoningText = part.Text
-				}
-				if reasoningText != "" {
-					thought := map[string]any{"text": reasoningText, "thought": true}
-					if signature := maheshvaraSignatureForProvider(part.Signature, part.SignatureProvider, MaheshvaraSignatureProviderGemini); signature != "" {
-						thought["thoughtSignature"] = signature
-					}
-					parts = append(parts, thought)
-				}
-			case MaheshvaraContentRefusal:
-				if part.Text != "" {
-					parts = append(parts, map[string]any{"text": part.Text})
-				}
-			case MaheshvaraContentToolOutput:
-				responseMap := geminiFunctionResponsePayload(part.ToolOutput)
-
-				// functionResponse.name 必须是函数名，而非 tool_use_id；回查之前的 tool_use 获取函数名。
-				name, ok := toolCallNames[part.ToolCallID]
-				if !ok {
-					name = functionResponseNameFromRaw(part.Raw)
-					ok = name != ""
-				}
-				if !ok || strings.TrimSpace(name) == "" {
-					return nil, fmt.Errorf("cannot convert message %d part %d to Gemini: function response tool_use_id %q has no matching function name", msgIndex, partIndex, part.ToolCallID)
-				}
-
-				response := map[string]any{"name": name, "response": responseMap}
-				responseID := functionResponseIDFromRaw(part.Raw)
-				if responseID == "" && part.ToolCallID != "" && part.ToolCallID != name {
-					responseID = part.ToolCallID
-				}
-				if responseID != "" {
-					response["id"] = responseID
-				}
-				parts = append(parts, map[string]any{"functionResponse": response})
+			geminiPart, err := geminiPartFromContent(part, toolCallNames, msgIndex, partIndex)
+			if err != nil {
+				return nil, err
+			}
+			if geminiPart != nil {
+				parts = append(parts, geminiPart)
 			}
 		}
 		for callIndex, call := range msg.ToolCalls {
@@ -884,17 +852,92 @@ func maheshvaraMessagesToGemini(req *MaheshvaraRequest) ([]map[string]any, error
 		if len(parts) == 0 {
 			continue
 		}
-		if len(contents) > 0 && contents[len(contents)-1]["role"] == role {
-			previousParts, _ := contents[len(contents)-1]["parts"].([]map[string]any)
-			contents[len(contents)-1]["parts"] = append(previousParts, parts...)
-			continue
-		}
-		contents = append(contents, map[string]any{"role": role, "parts": parts})
+		contents = appendGeminiContent(contents, role, parts)
 	}
 	if len(contents) == 0 {
 		return nil, fmt.Errorf("cannot convert request to Gemini: no representable message content")
 	}
 	return contents, nil
+}
+
+// buildToolCallNames 构建 tool_call_id → function_name 映射表：Gemini 的
+// functionResponse.name 必须是函数名（如 "Read"），而非 Anthropic 的
+// tool_use_id（如 "toolu_01ABC"）。
+func buildToolCallNames(messages []MaheshvaraMessage) map[string]string {
+	toolCallNames := make(map[string]string)
+	for _, msg := range messages {
+		for _, call := range msg.ToolCalls {
+			if call.ID != "" && call.Name != "" {
+				toolCallNames[call.ID] = call.Name
+			}
+		}
+	}
+	return toolCallNames
+}
+
+// geminiPartFromContent 把单条消息 part 转为 Gemini part；无对应内容时返回
+// nil。tool_output 需要 toolCallNames 回查函数名，失败返回带位置的错误。
+func geminiPartFromContent(part MaheshvaraContentPart, toolCallNames map[string]string, msgIndex, partIndex int) (map[string]any, error) {
+	switch part.Type {
+	case MaheshvaraContentText:
+		if part.Text != "" {
+			return map[string]any{"text": part.Text}, nil
+		}
+	case MaheshvaraContentImage:
+		return imagePartToGeminiPart(part), nil
+	case MaheshvaraContentAudio, MaheshvaraContentVideo, MaheshvaraContentFile, MaheshvaraContentDocument:
+		return maheshvaraPartToGeminiPart(part), nil
+	case MaheshvaraContentReasoning:
+		reasoningText := part.ReasoningText
+		if reasoningText == "" {
+			reasoningText = part.Text
+		}
+		if reasoningText != "" {
+			thought := map[string]any{"text": reasoningText, "thought": true}
+			if signature := maheshvaraSignatureForProvider(part.Signature, part.SignatureProvider, MaheshvaraSignatureProviderGemini); signature != "" {
+				thought["thoughtSignature"] = signature
+			}
+			return thought, nil
+		}
+	case MaheshvaraContentRefusal:
+		if part.Text != "" {
+			return map[string]any{"text": part.Text}, nil
+		}
+	case MaheshvaraContentToolOutput:
+		responseMap := geminiFunctionResponsePayload(part.ToolOutput)
+
+		// functionResponse.name 必须是函数名，而非 tool_use_id；回查之前的 tool_use 获取函数名。
+		name, ok := toolCallNames[part.ToolCallID]
+		if !ok {
+			name = functionResponseNameFromRaw(part.Raw)
+			ok = name != ""
+		}
+		if !ok || strings.TrimSpace(name) == "" {
+			return nil, fmt.Errorf("cannot convert message %d part %d to Gemini: function response tool_use_id %q has no matching function name", msgIndex, partIndex, part.ToolCallID)
+		}
+
+		response := map[string]any{"name": name, "response": responseMap}
+		responseID := functionResponseIDFromRaw(part.Raw)
+		if responseID == "" && part.ToolCallID != "" && part.ToolCallID != name {
+			responseID = part.ToolCallID
+		}
+		if responseID != "" {
+			response["id"] = responseID
+		}
+		return map[string]any{"functionResponse": response}, nil
+	}
+	return nil, nil
+}
+
+// appendGeminiContent 追加一条 content；与上一条同角色时并入其 parts，
+// 避免相邻的同角色 content 重复。
+func appendGeminiContent(contents []map[string]any, role string, parts []map[string]any) []map[string]any {
+	if len(contents) > 0 && contents[len(contents)-1]["role"] == role {
+		previousParts, _ := contents[len(contents)-1]["parts"].([]map[string]any)
+		contents[len(contents)-1]["parts"] = append(previousParts, parts...)
+		return contents
+	}
+	return append(contents, map[string]any{"role": role, "parts": parts})
 }
 
 func functionResponseNameFromRaw(raw any) string {

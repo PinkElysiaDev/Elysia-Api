@@ -287,64 +287,11 @@ func OpenAIResponsesResponseToMaheshvara(resp *OpenAIResponsesResponse) (*Mahesh
 		}
 	}
 	for index, item := range resp.Output {
-		citem := MaheshvaraOutputItem{
-			ID:        item.ID,
-			Type:      item.Type,
-			Status:    item.Status,
-			Role:      item.Role,
-			CallID:    item.CallID,
-			Name:      item.Name,
-			Arguments: item.Arguments,
-			Raw:       map[string]any{"quality": item.Quality, "size": item.Size},
-		}
-		// 服务端工具项（web_search_call 等）没有类型化载荷字段：整项原始
-		// 对象挂到 Raw，Responses 目标渲染时原样回放，不再只剩空壳。
+		var rawOutput map[string]any
 		if index < len(resp.RawOutputs) {
-			switch item.Type {
-			case "message", "reasoning", "function_call", "custom_tool_call":
-			default:
-				citem.Raw = resp.RawOutputs[index]
-			}
+			rawOutput = resp.RawOutputs[index]
 		}
-		for _, content := range item.Content {
-			switch content.Type {
-			case "output_text", "text":
-				citem.Content = append(citem.Content, MaheshvaraContentPart{Type: MaheshvaraContentText, Text: content.Text, Annotations: content.Annotations})
-			case "refusal":
-				citem.Content = append(citem.Content, MaheshvaraContentPart{Type: MaheshvaraContentRefusal, Text: content.Refusal})
-			case "input_image", "image":
-				citem.Content = append(citem.Content, MaheshvaraContentPart{Type: MaheshvaraContentImage, ImageURL: content.ImageURL})
-			case "input_file", "file":
-				citem.Content = append(citem.Content, MaheshvaraContentPart{Type: MaheshvaraContentFile, FileID: content.FileID, URI: content.FileURL, FileName: content.Filename})
-			case "input_audio", "audio":
-				part := MaheshvaraContentPart{Type: MaheshvaraContentAudio, Raw: content.Audio}
-				if content.Audio != nil {
-					part.AudioBase64 = firstNonEmptyString(stringValue(content.Audio["data"]), stringValue(content.Audio["audio_data"]))
-					part.AudioURL = firstNonEmptyString(stringValue(content.Audio["url"]), stringValue(content.Audio["audio_url"]))
-					part.MediaType = firstNonEmptyString(stringValue(content.Audio["format"]), stringValue(content.Audio["mime_type"]))
-				}
-				citem.Content = append(citem.Content, part)
-			}
-		}
-		for _, summary := range item.Summary {
-			citem.Summary = append(citem.Summary, MaheshvaraReasoningSummary{Type: summary.Type, Text: summary.Text})
-		}
-		if item.Type == MaheshvaraOutputReasoning {
-			var summaryText strings.Builder
-			for _, summary := range citem.Summary {
-				summaryText.WriteString(summary.Text)
-			}
-			citem.Reasoning = &MaheshvaraReasoning{
-				Text:             summaryText.String(),
-				Summary:          summaryText.String(),
-				SummaryParts:     append([]MaheshvaraReasoningSummary(nil), citem.Summary...),
-				EncryptedContent: item.EncryptedContent,
-			}
-			if summaryText.Len() > 0 || item.EncryptedContent != "" {
-				citem.Content = append(citem.Content, MaheshvaraContentPart{Type: MaheshvaraContentReasoning, Text: summaryText.String(), ReasoningText: summaryText.String(), EncryptedContent: item.EncryptedContent, EncryptedProvider: MaheshvaraSignatureProviderOpenAI, EncryptedModel: resp.Model, ReasoningSummary: citem.Summary})
-			}
-		}
-		out.Output = append(out.Output, citem)
+		out.Output = append(out.Output, responsesItemToMaheshvara(item, rawOutput, resp.Model))
 		if out.Usage != nil {
 			switch item.Type {
 			case MaheshvaraOutputWebSearchCall:
@@ -357,6 +304,68 @@ func OpenAIResponsesResponseToMaheshvara(resp *OpenAIResponsesResponse) (*Mahesh
 		}
 	}
 	return out, nil
+}
+
+// responsesItemToMaheshvara 转换单个 Responses 输出项；rawOutput 为同位原始
+// 对象（可能为 nil），服务端工具项（web_search_call 等）没有类型化载荷字段，
+// 整项原始对象挂到 Raw，Responses 目标渲染时原样回放，不再只剩空壳。
+func responsesItemToMaheshvara(item ResponsesOutput, rawOutput map[string]any, model string) MaheshvaraOutputItem {
+	citem := MaheshvaraOutputItem{
+		ID:        item.ID,
+		Type:      item.Type,
+		Status:    item.Status,
+		Role:      item.Role,
+		CallID:    item.CallID,
+		Name:      item.Name,
+		Arguments: item.Arguments,
+		Raw:       map[string]any{"quality": item.Quality, "size": item.Size},
+	}
+	if rawOutput != nil {
+		switch item.Type {
+		case "message", "reasoning", "function_call", "custom_tool_call":
+		default:
+			citem.Raw = rawOutput
+		}
+	}
+	for _, content := range item.Content {
+		switch content.Type {
+		case "output_text", "text":
+			citem.Content = append(citem.Content, MaheshvaraContentPart{Type: MaheshvaraContentText, Text: content.Text, Annotations: content.Annotations})
+		case "refusal":
+			citem.Content = append(citem.Content, MaheshvaraContentPart{Type: MaheshvaraContentRefusal, Text: content.Refusal})
+		case "input_image", "image":
+			citem.Content = append(citem.Content, MaheshvaraContentPart{Type: MaheshvaraContentImage, ImageURL: content.ImageURL})
+		case "input_file", "file":
+			citem.Content = append(citem.Content, MaheshvaraContentPart{Type: MaheshvaraContentFile, FileID: content.FileID, URI: content.FileURL, FileName: content.Filename})
+		case "input_audio", "audio":
+			part := MaheshvaraContentPart{Type: MaheshvaraContentAudio, Raw: content.Audio}
+			if content.Audio != nil {
+				part.AudioBase64 = firstNonEmptyString(stringValue(content.Audio["data"]), stringValue(content.Audio["audio_data"]))
+				part.AudioURL = firstNonEmptyString(stringValue(content.Audio["url"]), stringValue(content.Audio["audio_url"]))
+				part.MediaType = firstNonEmptyString(stringValue(content.Audio["format"]), stringValue(content.Audio["mime_type"]))
+			}
+			citem.Content = append(citem.Content, part)
+		}
+	}
+	for _, summary := range item.Summary {
+		citem.Summary = append(citem.Summary, MaheshvaraReasoningSummary{Type: summary.Type, Text: summary.Text})
+	}
+	if item.Type == MaheshvaraOutputReasoning {
+		var summaryText strings.Builder
+		for _, summary := range citem.Summary {
+			summaryText.WriteString(summary.Text)
+		}
+		citem.Reasoning = &MaheshvaraReasoning{
+			Text:             summaryText.String(),
+			Summary:          summaryText.String(),
+			SummaryParts:     append([]MaheshvaraReasoningSummary(nil), citem.Summary...),
+			EncryptedContent: item.EncryptedContent,
+		}
+		if summaryText.Len() > 0 || item.EncryptedContent != "" {
+			citem.Content = append(citem.Content, MaheshvaraContentPart{Type: MaheshvaraContentReasoning, Text: summaryText.String(), ReasoningText: summaryText.String(), EncryptedContent: item.EncryptedContent, EncryptedProvider: MaheshvaraSignatureProviderOpenAI, EncryptedModel: model, ReasoningSummary: citem.Summary})
+		}
+	}
+	return citem
 }
 
 func MaheshvaraToOpenAIChatResponse(resp *MaheshvaraResponse) (*OpenAIResponse, error) {
@@ -437,71 +446,15 @@ func MaheshvaraToAnthropicResponse(resp *MaheshvaraResponse) (*ClaudeResponse, e
 		return nil, fmt.Errorf("nil Maheshvara response")
 	}
 	var content []ClaudeContent
-	appendMapContent := func(raw map[string]any) error {
-		if raw == nil {
-			return nil
-		}
-		encoded, err := json.Marshal(raw)
-		if err != nil {
-			return err
-		}
-		var block ClaudeContent
-		if err := json.Unmarshal(encoded, &block); err != nil {
-			return err
-		}
-		content = append(content, block)
-		return nil
-	}
 	for _, item := range resp.Output {
 		switch item.Type {
 		case MaheshvaraOutputMessage:
 			for _, part := range item.Content {
-				switch part.Type {
-				case MaheshvaraContentText:
-					if part.Text != "" {
-						content = append(content, ClaudeContent{Type: "text", Text: part.Text, Citations: part.Citations})
-					}
-				case MaheshvaraContentReasoning:
-					text := firstNonEmptyString(part.ReasoningText, part.Text)
-					if signature := claudeThinkingSignatureForPart(part, resp.Model); text != "" || signature != "" {
-						content = append(content, ClaudeContent{Type: "thinking", Thinking: text, Signature: signature})
-					}
-				case MaheshvaraContentRefusal:
-					if part.Text != "" {
-						content = append(content, ClaudeContent{Type: "text", Text: part.Text})
-					}
-				case MaheshvaraContentImage:
-					if source := imagePartToClaudeSource(part); source != nil {
-						if err := appendMapContent(map[string]any{"type": "image", "source": source}); err != nil {
-							return nil, err
-						}
-					}
-				case MaheshvaraContentDocument, MaheshvaraContentFile:
-					if block := maheshvaraDocumentToClaudeBlock(part); block != nil {
-						if err := appendMapContent(block); err != nil {
-							return nil, err
-						}
-					}
-				case MaheshvaraContentAudio, MaheshvaraContentVideo:
-					if block := maheshvaraMediaToClaudeBlock(part); block != nil {
-						if err := appendMapContent(block); err != nil {
-							return nil, err
-						}
-					}
-				case MaheshvaraContentToolOutput:
-					if part.ToolCallID != "" {
-						content = append(content, ClaudeContent{Type: "tool_result", ToolUseID: part.ToolCallID, Content: part.ToolOutput})
-					}
-				default:
-					// 服务端工具块与未知 Claude 块：整块原样回放。
-					if raw, ok := part.Raw.(map[string]any); ok {
-						if _, hasType := raw["type"]; hasType {
-							if err := appendMapContent(raw); err != nil {
-								return nil, err
-							}
-						}
-					}
+				blocks, err := claudeBlocksFromMessagePart(part, resp.Model)
+				if err != nil {
+					return nil, err
 				}
+				content = append(content, blocks...)
 			}
 		case MaheshvaraOutputReasoning:
 			text := maheshvaraReasoningText(item)
@@ -535,6 +488,80 @@ func MaheshvaraToAnthropicResponse(resp *MaheshvaraResponse) (*ClaudeResponse, e
 		StopReason: maheshvaraStopToClaude(resp.StopReason),
 		Usage:      claudeUsageFromMaheshvara(resp.Usage),
 	}, nil
+}
+
+// claudeContentFromMap 经 JSON 往返把 map 形态的块收敛为 ClaudeContent
+// （与既有 appendMapContent 行为一致，数字经反序列化归一）。
+func claudeContentFromMap(raw map[string]any) (ClaudeContent, error) {
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return ClaudeContent{}, err
+	}
+	var block ClaudeContent
+	if err := json.Unmarshal(encoded, &block); err != nil {
+		return ClaudeContent{}, err
+	}
+	return block, nil
+}
+
+// claudeBlocksFromMessagePart 把单条消息 part 渲染为 0 或 1 个 Claude
+// content 块；map 形态块走 JSON 往返保持数字归一行为。
+func claudeBlocksFromMessagePart(part MaheshvaraContentPart, model string) ([]ClaudeContent, error) {
+	switch part.Type {
+	case MaheshvaraContentText:
+		if part.Text != "" {
+			return []ClaudeContent{{Type: "text", Text: part.Text, Citations: part.Citations}}, nil
+		}
+	case MaheshvaraContentReasoning:
+		text := firstNonEmptyString(part.ReasoningText, part.Text)
+		if signature := claudeThinkingSignatureForPart(part, model); text != "" || signature != "" {
+			return []ClaudeContent{{Type: "thinking", Thinking: text, Signature: signature}}, nil
+		}
+	case MaheshvaraContentRefusal:
+		if part.Text != "" {
+			return []ClaudeContent{{Type: "text", Text: part.Text}}, nil
+		}
+	case MaheshvaraContentImage:
+		if source := imagePartToClaudeSource(part); source != nil {
+			block, err := claudeContentFromMap(map[string]any{"type": "image", "source": source})
+			if err != nil {
+				return nil, err
+			}
+			return []ClaudeContent{block}, nil
+		}
+	case MaheshvaraContentDocument, MaheshvaraContentFile:
+		if block := maheshvaraDocumentToClaudeBlock(part); block != nil {
+			converted, err := claudeContentFromMap(block)
+			if err != nil {
+				return nil, err
+			}
+			return []ClaudeContent{converted}, nil
+		}
+	case MaheshvaraContentAudio, MaheshvaraContentVideo:
+		if block := maheshvaraMediaToClaudeBlock(part); block != nil {
+			converted, err := claudeContentFromMap(block)
+			if err != nil {
+				return nil, err
+			}
+			return []ClaudeContent{converted}, nil
+		}
+	case MaheshvaraContentToolOutput:
+		if part.ToolCallID != "" {
+			return []ClaudeContent{{Type: "tool_result", ToolUseID: part.ToolCallID, Content: part.ToolOutput}}, nil
+		}
+	default:
+		// 服务端工具块与未知 Claude 块：整块原样回放。
+		if raw, ok := part.Raw.(map[string]any); ok {
+			if _, hasType := raw["type"]; hasType {
+				block, err := claudeContentFromMap(raw)
+				if err != nil {
+					return nil, err
+				}
+				return []ClaudeContent{block}, nil
+			}
+		}
+	}
+	return nil, nil
 }
 
 func MaheshvaraToGeminiResponse(resp *MaheshvaraResponse) (*GeminiResponse, error) {

@@ -332,32 +332,7 @@ func parseOpenAIChatMessages(raw any) []MaheshvaraMessage {
 			msg.Content = append(msg.Content, MaheshvaraContentPart{Type: MaheshvaraContentRefusal, Text: refusal, Raw: m})
 		}
 		if toolCalls, ok := m["tool_calls"].([]any); ok {
-			for _, tc := range toolCalls {
-				tcm, _ := tc.(map[string]any)
-				if tcm == nil {
-					continue
-				}
-				fn, _ := tcm["function"].(map[string]any)
-				arguments := stringValue(fn["arguments"])
-				if arguments == "" {
-					arguments = "{}"
-				}
-				thoughtSignature := openAIGoogleThoughtSignature(tcm)
-				thoughtSignatureProvider := ""
-				if thoughtSignature != "" {
-					thoughtSignatureProvider = MaheshvaraSignatureProviderGemini
-				}
-				msg.ToolCalls = append(msg.ToolCalls, MaheshvaraToolCall{
-					ID:                       stringValue(tcm["id"]),
-					Type:                     firstNonEmptyString(stringValue(tcm["type"]), MaheshvaraToolFunction),
-					Name:                     stringValue(fn["name"]),
-					Arguments:                json.RawMessage(arguments),
-					ArgumentsText:            arguments,
-					ThoughtSignature:         thoughtSignature,
-					ThoughtSignatureProvider: thoughtSignatureProvider,
-					Raw:                      tcm,
-				})
-			}
+			msg.ToolCalls = append(msg.ToolCalls, parseOpenAIToolCalls(toolCalls)...)
 		}
 		if msg.Role == "assistant" && m["audio"] != nil {
 			msg.Audio = audioConfigFromAny(m["audio"])
@@ -368,24 +343,68 @@ func parseOpenAIChatMessages(raw any) []MaheshvaraMessage {
 		// 遗留 function calling（PC2.9）：assistant 的 function_call 还原为
 		// 带 legacy 标记的工具调用，ID 与 role:"function" 结果消息对齐；
 		// chat 目标渲染时还原旧形态。
-		if fc, ok := m["function_call"].(map[string]any); ok && stringValue(fc["name"]) != "" {
-			arguments := stringValue(fc["arguments"])
-			if arguments == "" {
-				arguments = "{}"
-			}
-			name := stringValue(fc["name"])
-			msg.ToolCalls = append(msg.ToolCalls, MaheshvaraToolCall{
-				ID:            legacyFunctionCallIDPrefix + name,
-				Type:          MaheshvaraToolFunction,
-				Name:          name,
-				Arguments:     json.RawMessage(arguments),
-				ArgumentsText: arguments,
-				Raw:           map[string]any{"legacy_function": true},
-			})
+		if call, ok := parseOpenAILegacyFunctionCall(m); ok {
+			msg.ToolCalls = append(msg.ToolCalls, call)
 		}
 		messages = append(messages, msg)
 	}
 	return messages
+}
+
+// parseOpenAIToolCalls 解析 OpenAI tool_calls 数组为工具调用（含 Google
+// thought_signature 的 extra_content 回收）。
+func parseOpenAIToolCalls(toolCalls []any) []MaheshvaraToolCall {
+	var calls []MaheshvaraToolCall
+	for _, tc := range toolCalls {
+		tcm, _ := tc.(map[string]any)
+		if tcm == nil {
+			continue
+		}
+		fn, _ := tcm["function"].(map[string]any)
+		arguments := stringValue(fn["arguments"])
+		if arguments == "" {
+			arguments = "{}"
+		}
+		thoughtSignature := openAIGoogleThoughtSignature(tcm)
+		thoughtSignatureProvider := ""
+		if thoughtSignature != "" {
+			thoughtSignatureProvider = MaheshvaraSignatureProviderGemini
+		}
+		calls = append(calls, MaheshvaraToolCall{
+			ID:                       stringValue(tcm["id"]),
+			Type:                     firstNonEmptyString(stringValue(tcm["type"]), MaheshvaraToolFunction),
+			Name:                     stringValue(fn["name"]),
+			Arguments:                json.RawMessage(arguments),
+			ArgumentsText:            arguments,
+			ThoughtSignature:         thoughtSignature,
+			ThoughtSignatureProvider: thoughtSignatureProvider,
+			Raw:                      tcm,
+		})
+	}
+	return calls
+}
+
+// parseOpenAILegacyFunctionCall 还原 assistant 的遗留 function_call（PC2.9）：
+// 带 legacy 标记的单工具调用，ID 用 legacy_function:<name> 与 role:"function"
+// 结果消息对齐；无有效名称时返回 false。
+func parseOpenAILegacyFunctionCall(m map[string]any) (MaheshvaraToolCall, bool) {
+	fc, ok := m["function_call"].(map[string]any)
+	if !ok || stringValue(fc["name"]) == "" {
+		return MaheshvaraToolCall{}, false
+	}
+	arguments := stringValue(fc["arguments"])
+	if arguments == "" {
+		arguments = "{}"
+	}
+	name := stringValue(fc["name"])
+	return MaheshvaraToolCall{
+		ID:            legacyFunctionCallIDPrefix + name,
+		Type:          MaheshvaraToolFunction,
+		Name:          name,
+		Arguments:     json.RawMessage(arguments),
+		ArgumentsText: arguments,
+		Raw:           map[string]any{"legacy_function": true},
+	}, true
 }
 
 func openAIGoogleThoughtSignature(toolCall map[string]any) string {
@@ -506,95 +525,102 @@ func parseGeminiContents(raw any) []MaheshvaraMessage {
 			if pm == nil {
 				continue
 			}
-			if text := stringValue(pm["text"]); text != "" {
-				partType := MaheshvaraContentText
-				if boolValue(pm["thought"]) {
-					partType = MaheshvaraContentReasoning
-				}
-				msg.Content = append(msg.Content, MaheshvaraContentPart{Type: partType, Text: text, ReasoningText: text, Thought: boolValue(pm["thought"]), Signature: stringValue(pm["thoughtSignature"]), SignatureProvider: MaheshvaraSignatureProviderGemini, Raw: pm})
-			}
-			if fc, ok := pm["functionCall"].(map[string]any); ok {
-				argsRaw, _ := json.Marshal(fc["args"])
-				if len(argsRaw) == 0 || string(argsRaw) == "null" {
-					argsRaw = json.RawMessage([]byte("{}"))
-				}
-				msg.ToolCalls = append(msg.ToolCalls, MaheshvaraToolCall{
-					ID:                       firstNonEmptyString(stringValue(fc["id"]), stringValue(pm["id"]), fmt.Sprintf("call_%d_%d", messageIndex, partIndex)),
-					Type:                     MaheshvaraToolFunction,
-					Name:                     stringValue(fc["name"]),
-					Arguments:                argsRaw,
-					ArgumentsText:            string(argsRaw),
-					ThoughtSignature:         stringValue(pm["thoughtSignature"]),
-					ThoughtSignatureProvider: MaheshvaraSignatureProviderGemini,
-					Raw:                      pm,
-				})
-			}
-			if fr, ok := pm["functionResponse"].(map[string]any); ok {
-				respRaw, _ := json.Marshal(fr["response"])
-				msg.Content = append(msg.Content, MaheshvaraContentPart{
-					Type:       MaheshvaraContentToolOutput,
-					ToolCallID: firstNonEmptyString(stringValue(fr["id"]), stringValue(fr["name"])),
-					ToolOutput: string(respRaw),
-					Raw:        pm,
-				})
-			}
-			// 多模态：inlineData（base64）/ fileData（URI）→ maheshvara image part。
-			if inline, ok := pm["inlineData"].(map[string]any); ok {
-				mediaType := firstNonEmptyString(stringValue(inline["mimeType"]), stringValue(inline["mime_type"]))
-				partType := MaheshvaraContentImage
-				if strings.HasPrefix(strings.ToLower(mediaType), "audio/") {
-					partType = MaheshvaraContentAudio
-				} else if strings.HasPrefix(strings.ToLower(mediaType), "video/") {
-					partType = MaheshvaraContentVideo
-				}
-				data := stringValue(inline["data"])
-				part := MaheshvaraContentPart{Type: partType, MediaType: mediaType, Data: data, Raw: pm}
-				switch partType {
-				case MaheshvaraContentAudio:
-					part.AudioBase64 = data
-				case MaheshvaraContentVideo:
-					part.VideoBase64 = data
-				default:
-					part.ImageBase64 = data
-				}
-				msg.Content = append(msg.Content, part)
-			}
-			if fileData, ok := pm["fileData"].(map[string]any); ok {
-				mediaType := firstNonEmptyString(stringValue(fileData["mimeType"]), stringValue(fileData["mime_type"]))
-				partType := MaheshvaraContentFile
-				switch {
-				case strings.HasPrefix(strings.ToLower(mediaType), "image/"):
-					partType = MaheshvaraContentImage
-				case strings.HasPrefix(strings.ToLower(mediaType), "audio/"):
-					partType = MaheshvaraContentAudio
-				case strings.HasPrefix(strings.ToLower(mediaType), "video/"):
-					partType = MaheshvaraContentVideo
-				}
-				uri := firstNonEmptyString(stringValue(fileData["fileUri"]), stringValue(fileData["file_uri"]))
-				part := MaheshvaraContentPart{Type: partType, MediaType: mediaType, URI: uri, Raw: pm}
-				switch partType {
-				case MaheshvaraContentImage:
-					part.ImageURL = uri
-				case MaheshvaraContentAudio:
-					part.AudioURL = uri
-				case MaheshvaraContentVideo:
-					part.VideoURL = uri
-				}
-				msg.Content = append(msg.Content, part)
-			}
-			if code, ok := pm["executableCode"].(map[string]any); ok {
-				encoded, _ := json.Marshal(code)
-				msg.Content = append(msg.Content, MaheshvaraContentPart{Type: MaheshvaraContentFile, Text: string(encoded), Raw: pm})
-			}
-			if result, ok := pm["codeExecutionResult"].(map[string]any); ok {
-				encoded, _ := json.Marshal(result)
-				msg.Content = append(msg.Content, MaheshvaraContentPart{Type: MaheshvaraContentToolOutput, ToolOutput: string(encoded), Raw: pm})
-			}
+			geminiContentPartFromRaw(pm, &msg, messageIndex, partIndex)
 		}
 		messages = append(messages, msg)
 	}
 	alignGeminiFunctionResponses(messages)
 	return messages
+}
+
+// geminiContentPartFromRaw 解析单个 Gemini 原始 part 并追加进 msg 的
+// Content/ToolCalls；同一 part 上的多个键（text/functionCall/inlineData 等）
+// 独立判定、可同时产出。
+func geminiContentPartFromRaw(pm map[string]any, msg *MaheshvaraMessage, messageIndex, partIndex int) {
+	if text := stringValue(pm["text"]); text != "" {
+		partType := MaheshvaraContentText
+		if boolValue(pm["thought"]) {
+			partType = MaheshvaraContentReasoning
+		}
+		msg.Content = append(msg.Content, MaheshvaraContentPart{Type: partType, Text: text, ReasoningText: text, Thought: boolValue(pm["thought"]), Signature: stringValue(pm["thoughtSignature"]), SignatureProvider: MaheshvaraSignatureProviderGemini, Raw: pm})
+	}
+	if fc, ok := pm["functionCall"].(map[string]any); ok {
+		argsRaw, _ := json.Marshal(fc["args"])
+		if len(argsRaw) == 0 || string(argsRaw) == "null" {
+			argsRaw = json.RawMessage([]byte("{}"))
+		}
+		msg.ToolCalls = append(msg.ToolCalls, MaheshvaraToolCall{
+			ID:                       firstNonEmptyString(stringValue(fc["id"]), stringValue(pm["id"]), fmt.Sprintf("call_%d_%d", messageIndex, partIndex)),
+			Type:                     MaheshvaraToolFunction,
+			Name:                     stringValue(fc["name"]),
+			Arguments:                argsRaw,
+			ArgumentsText:            string(argsRaw),
+			ThoughtSignature:         stringValue(pm["thoughtSignature"]),
+			ThoughtSignatureProvider: MaheshvaraSignatureProviderGemini,
+			Raw:                      pm,
+		})
+	}
+	if fr, ok := pm["functionResponse"].(map[string]any); ok {
+		respRaw, _ := json.Marshal(fr["response"])
+		msg.Content = append(msg.Content, MaheshvaraContentPart{
+			Type:       MaheshvaraContentToolOutput,
+			ToolCallID: firstNonEmptyString(stringValue(fr["id"]), stringValue(fr["name"])),
+			ToolOutput: string(respRaw),
+			Raw:        pm,
+		})
+	}
+	// 多模态：inlineData（base64）/ fileData（URI）→ maheshvara image part。
+	if inline, ok := pm["inlineData"].(map[string]any); ok {
+		mediaType := firstNonEmptyString(stringValue(inline["mimeType"]), stringValue(inline["mime_type"]))
+		partType := MaheshvaraContentImage
+		if strings.HasPrefix(strings.ToLower(mediaType), "audio/") {
+			partType = MaheshvaraContentAudio
+		} else if strings.HasPrefix(strings.ToLower(mediaType), "video/") {
+			partType = MaheshvaraContentVideo
+		}
+		data := stringValue(inline["data"])
+		part := MaheshvaraContentPart{Type: partType, MediaType: mediaType, Data: data, Raw: pm}
+		switch partType {
+		case MaheshvaraContentAudio:
+			part.AudioBase64 = data
+		case MaheshvaraContentVideo:
+			part.VideoBase64 = data
+		default:
+			part.ImageBase64 = data
+		}
+		msg.Content = append(msg.Content, part)
+	}
+	if fileData, ok := pm["fileData"].(map[string]any); ok {
+		mediaType := firstNonEmptyString(stringValue(fileData["mimeType"]), stringValue(fileData["mime_type"]))
+		partType := MaheshvaraContentFile
+		switch {
+		case strings.HasPrefix(strings.ToLower(mediaType), "image/"):
+			partType = MaheshvaraContentImage
+		case strings.HasPrefix(strings.ToLower(mediaType), "audio/"):
+			partType = MaheshvaraContentAudio
+		case strings.HasPrefix(strings.ToLower(mediaType), "video/"):
+			partType = MaheshvaraContentVideo
+		}
+		uri := firstNonEmptyString(stringValue(fileData["fileUri"]), stringValue(fileData["file_uri"]))
+		part := MaheshvaraContentPart{Type: partType, MediaType: mediaType, URI: uri, Raw: pm}
+		switch partType {
+		case MaheshvaraContentImage:
+			part.ImageURL = uri
+		case MaheshvaraContentAudio:
+			part.AudioURL = uri
+		case MaheshvaraContentVideo:
+			part.VideoURL = uri
+		}
+		msg.Content = append(msg.Content, part)
+	}
+	if code, ok := pm["executableCode"].(map[string]any); ok {
+		encoded, _ := json.Marshal(code)
+		msg.Content = append(msg.Content, MaheshvaraContentPart{Type: MaheshvaraContentFile, Text: string(encoded), Raw: pm})
+	}
+	if result, ok := pm["codeExecutionResult"].(map[string]any); ok {
+		encoded, _ := json.Marshal(result)
+		msg.Content = append(msg.Content, MaheshvaraContentPart{Type: MaheshvaraContentToolOutput, ToolOutput: string(encoded), Raw: pm})
+	}
 }
 
 // alignGeminiFunctionResponses 把无 id 的 functionResponse 的 ToolCallID
