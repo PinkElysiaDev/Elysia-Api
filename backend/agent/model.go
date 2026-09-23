@@ -23,7 +23,6 @@ type CallRequest struct {
 	Tools           []relay.MaheshvaraTool
 	Thinking        *relay.MaheshvaraThinking
 	Reasoning       *relay.MaheshvaraReasoning // OpenAI 线 reasoning_effort 渲染路径
-	MaxOutputTokens int
 }
 
 // StreamCallbacks 增量回调（均可为 nil）。

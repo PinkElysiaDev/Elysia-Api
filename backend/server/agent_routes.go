@@ -175,11 +175,9 @@ func (s *Server) adminCreateAgentSession(c *gin.Context) {
 		ProtocolID: protocolID,
 		SeedConfig: seed,
 	}
+	// 模型字段可不带：首条消息前 UI 会引导选择。
 	if payload.Settings != nil {
 		upsert.Settings = *payload.Settings
-		if strings.TrimSpace(upsert.Settings.ModelSourceID) == "" || strings.TrimSpace(upsert.Settings.ModelName) == "" {
-			// 未显式给模型时保持空：首条消息前 UI 会引导选择。
-		}
 	}
 	session, err := store.CreateAgentSession(c.Request.Context(), upsert)
 	if err != nil {
@@ -420,8 +418,11 @@ func respondAgentTurnError(c *gin.Context, err error) {
 		respondFail(c, http.StatusConflict, "session_running", "会话已有轮次进行中")
 	case errors.Is(err, agent.ErrNoPendingApproval):
 		respondFail(c, http.StatusConflict, "no_pending_approval", "会话没有等待审批的动作")
-	default:
+	case strings.Contains(err.Error(), "not found"):
 		respondFail(c, http.StatusNotFound, "not_found", err.Error())
+	default:
+		// 存储故障等：500 而非把一切当作不存在。
+		respondFail(c, http.StatusInternalServerError, "turn_failed", err.Error())
 	}
 }
 

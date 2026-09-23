@@ -164,9 +164,7 @@ func (e *Engine) Stop(sessionID string) bool {
 		return false
 	}
 	handle.stopped.Store(true)
-	if handle.cancel != nil {
-		handle.cancel()
-	}
+	handle.cancel() // begin 恒挂非 nil cancel
 	select {
 	case <-handle.done:
 	case <-time.After(stopDrainWait):
@@ -182,14 +180,7 @@ func (e *Engine) RunTurn(ctx context.Context, sessionID string, input *UserConte
 	if err != nil {
 		return nil, err
 	}
-	events := make(chan Event, e.opts.EventBuffer)
-	go func() {
-		defer e.end(sessionID, handle)
-		defer cancel()
-		defer close(events)
-		e.startTurn(turnCtx, sessionID, handle, input, nil, ApprovalDecision{}, events)
-	}()
-	return events, nil
+	return e.spawnTurn(turnCtx, sessionID, handle, cancel, input, nil, ApprovalDecision{}), nil
 }
 
 // ResumeApproval 恢复一个等待审批的轮次：执行或拒绝待定动作，然后继续
@@ -209,16 +200,20 @@ func (e *Engine) ResumeApproval(ctx context.Context, sessionID string, decision 
 	if err != nil {
 		return nil, err
 	}
+	return e.spawnTurn(turnCtx, sessionID, handle, cancel, nil, session.PendingAction, decision), nil
+}
 
-	pending := session.PendingAction
+// spawnTurn 在后台 goroutine 里跑 startTurn 并负责收尾（释放会话锁、
+// 停表、关事件流）——RunTurn 与 ResumeApproval 的同型启动块。
+func (e *Engine) spawnTurn(turnCtx context.Context, sessionID string, handle *turnHandle, cancel context.CancelFunc, input *UserContent, resume *PendingAction, decision ApprovalDecision) <-chan Event {
 	events := make(chan Event, e.opts.EventBuffer)
 	go func() {
 		defer e.end(sessionID, handle)
 		defer cancel()
 		defer close(events)
-		e.startTurn(turnCtx, sessionID, handle, nil, pending, decision, events)
+		e.startTurn(turnCtx, sessionID, handle, input, resume, decision, events)
 	}()
-	return events, nil
+	return events
 }
 
 // emitEvent 非阻塞发送瞬态事件（缓冲满则丢弃——消息本身会持久化，丢增量无损）。
@@ -379,21 +374,17 @@ func (e *Engine) resumeQuestion(ctx context.Context, sessionID string, resume *P
 	if answer == "" {
 		answer = "用户没有作答"
 	}
-	callID := ""
-	if resume.Question != nil {
-		callID = resume.Question.CallID
-	}
+	// resumablePending 已保证 question 型待批必带 Question。
+	callID := resume.Question.CallID
 	encoded, _ := json.Marshal(map[string]string{"answer": answer})
 	info := ToolResultInfo{CallID: callID, Name: ToolNameAskUser, OK: true, Summary: "用户回答：" + truncateRunes(answer, answerSummaryRunes), Data: encoded}
-	e.persistToolResult(ctx, sessionID, info, events)
-	conversation = append(conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
+	conversation = e.appendToolResult(ctx, sessionID, conversation, info, e.opts.ToolResultModelLimit, events)
 	for _, call := range resume.Calls {
 		if call.ID == callID {
 			continue
 		}
 		cancelled := deniedToolResult(call, "用户已回答提问，本批其余调用已取消；如仍需要请在后续步骤重新发起")
-		e.persistToolResult(ctx, sessionID, cancelled, events)
-		conversation = append(conversation, toolResultToMaheshvara(cancelled, e.opts.ToolResultModelLimit))
+		conversation = e.appendToolResult(ctx, sessionID, conversation, cancelled, e.opts.ToolResultModelLimit, events)
 	}
 	return conversation, false, nil
 }
@@ -452,8 +443,7 @@ func (e *Engine) resumeApprovalPrefix(ctx context.Context, sessionID string, ses
 		// 拒绝：为每个待定调用合成拒绝结果，模型据此改道。
 		for _, call := range resume.Calls {
 			info := deniedToolResult(call, "用户拒绝了该操作"+denialSuffix(decision.Note))
-			e.persistToolResult(ctx, sessionID, info, events)
-			conversation = append(conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
+			conversation = e.appendToolResult(ctx, sessionID, conversation, info, e.opts.ToolResultModelLimit, events)
 		}
 		return conversation, false, nil
 	}
@@ -525,13 +515,12 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 		conversation = e.prepareContext(conversation, events)
 
 		req := CallRequest{
-			Model:           session.Settings.ModelName,
-			ModelSourceID:   session.Settings.ModelSourceID,
-			Messages:        conversation,
-			Tools:           e.tools.Definitions(),
-			Thinking:        thinkingFromSettings(session.Settings),
-			Reasoning:       reasoningFromSettings(session.Settings),
-			MaxOutputTokens: 0, // 由 caller 层决定默认
+			Model:         session.Settings.ModelName,
+			ModelSourceID: session.Settings.ModelSourceID,
+			Messages:      conversation,
+			Tools:         e.tools.Definitions(),
+			Thinking:      thinkingFromSettings(session.Settings),
+			Reasoning:     reasoningFromSettings(session.Settings),
 		}
 		req.Instructions = e.composeInstructions(session)
 
@@ -594,13 +583,13 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 		}
 		tool := e.tools.Get(call.Name)
 		if tool == nil {
-			e.denyCall(ctx, sessionID, conversation, call, fmt.Sprintf("未知工具 %q", call.Name), events)
+			e.denyCall(ctx, sessionID, conversation, call, fmt.Sprintf("未知工具 %q", call.Name), denyUnknown, events)
 			index++
 			continue
 		}
 		gate, denial := e.gateCall(session, call, tool, approvedIDs)
 		if gate == gateDeny {
-			e.denyCall(ctx, sessionID, conversation, call, denial, events)
+			e.denyCall(ctx, sessionID, conversation, call, denial, denyDenied, events)
 			index++
 			continue
 		}
@@ -615,7 +604,7 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 		}
 		if !canRunParallel(tool) {
 			info := e.runOneTool(ctx, sessionID, session, tool, call, events)
-			*conversation = append(*conversation, toolResultToMaheshvara(info, modelResultLimit(tool, e.opts.ToolResultModelLimit)))
+			appendToolOutput(conversation, info, modelResultLimit(tool, e.opts.ToolResultModelLimit))
 			index++
 			continue
 		}
@@ -630,11 +619,23 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 			if tool := e.tools.Get(info.Name); tool != nil {
 				limit = modelResultLimit(tool, limit)
 			}
-			*conversation = append(*conversation, toolResultToMaheshvara(info, limit))
+			appendToolOutput(conversation, info, limit)
 		}
 		index = end
 	}
 	return false, nil
+}
+
+// appendToolOutput 只把结果追加进对话（runOneTool 已落库发事件）。
+func appendToolOutput(conversation *[]relay.MaheshvaraMessage, info ToolResultInfo, limit int) {
+	*conversation = append(*conversation, toolResultToMaheshvara(info, limit))
+}
+
+// appendToolResult 落库一条工具结果（脱敏 + 事件）并追加进对话——
+// resume/deny 路径自己合成的结果走这里；runOneTool 已落库的结果只追加。
+func (e *Engine) appendToolResult(ctx context.Context, sessionID string, conversation []relay.MaheshvaraMessage, info ToolResultInfo, limit int, events chan Event) []relay.MaheshvaraMessage {
+	e.persistToolResult(ctx, sessionID, info, events)
+	return append(conversation, toolResultToMaheshvara(info, limit))
 }
 
 // parallelEligible 报告调用能否并入当前并行组：必须存在、非门控且声明
@@ -738,11 +739,20 @@ func (e *Engine) gateCall(session *Session, call relay.MaheshvaraToolCall, tool 
 	return gateAllow, ""
 }
 
+// denyKind 区分拒绝语义：unknown 保留参数与专用错误码（模型才能发现拼错
+// 的名字），denied 走通用拒绝结果。
+type denyKind int
+
+const (
+	denyDenied denyKind = iota
+	denyUnknown
+)
+
 // denyCall 合成一次被拒/未知的工具结果：落库 + 回传事件 + 追加到对话，
 // 三类拒绝（计划模式 / never 权限 / 未知工具）共用同一收尾。
-func (e *Engine) denyCall(ctx context.Context, sessionID string, conversation *[]relay.MaheshvaraMessage, call relay.MaheshvaraToolCall, message string, events chan Event) {
+func (e *Engine) denyCall(ctx context.Context, sessionID string, conversation *[]relay.MaheshvaraMessage, call relay.MaheshvaraToolCall, message string, kind denyKind, events chan Event) {
 	info := deniedToolResult(call, message)
-	if strings.Contains(message, "未知工具") {
+	if kind == denyUnknown {
 		info = ToolResultInfo{
 			CallID: call.ID, Name: call.Name, Input: call.Arguments,
 			OK: false, Summary: message,
@@ -750,7 +760,7 @@ func (e *Engine) denyCall(ctx context.Context, sessionID string, conversation *[
 		}
 	}
 	e.persistToolResult(ctx, sessionID, info, events)
-	*conversation = append(*conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
+	appendToolOutput(conversation, info, e.opts.ToolResultModelLimit)
 }
 
 // runOneTool 执行单个工具（带 panic 防护），落库并发出事件。
@@ -845,9 +855,7 @@ func (e *Engine) watchToolProgress(ctx context.Context, call relay.MaheshvaraToo
 	}()
 	return execCtx, func() {
 		close(stop)
-		if cancel != nil {
-			cancel()
-		}
+		cancel() // timeoutMs 已兜到默认值，WithTimeout 恒返回非 nil cancel
 	}
 }
 

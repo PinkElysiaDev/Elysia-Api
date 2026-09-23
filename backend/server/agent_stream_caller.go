@@ -150,10 +150,7 @@ func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb 
 		return nil, err
 	}
 
-	maxTokens := req.MaxOutputTokens
-	if maxTokens <= 0 {
-		maxTokens = agentStreamMaxOutputTokens
-	}
+	maxTokens := agentStreamMaxOutputTokens
 	maheshvara := &relay.MaheshvaraRequest{
 		Model:           model.Name,
 		Instructions:    req.Instructions,
