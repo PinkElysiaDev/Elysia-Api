@@ -52,6 +52,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			plan_mode INTEGER NOT NULL DEFAULT 0,
 			allow_live_test TEXT NOT NULL DEFAULT 'ask',
 			allow_save TEXT NOT NULL DEFAULT 'ask',
+			allow_delete TEXT NOT NULL DEFAULT 'ask',
 			status TEXT NOT NULL DEFAULT 'idle',
 			pending_action TEXT,
 			plan_json TEXT NOT NULL DEFAULT '',
@@ -84,10 +85,11 @@ func (s *Store) migrate(ctx context.Context) error {
 		// api_tokens：组级访问权限 + token 去重哈希（空 hash 不参与唯一约束）。
 		`ALTER TABLE api_tokens ADD COLUMN allowed_groups_json TEXT NOT NULL DEFAULT '[]'`,
 		`ALTER TABLE api_tokens ADD COLUMN token_hash TEXT NOT NULL DEFAULT ''`,
-		// agent_sessions：方案清单 / 计划模式 / 草稿还原点（单槽覆盖）。
+		// agent_sessions：方案清单 / 计划模式 / 草稿还原点（单槽覆盖）/ 删除类权限。
 		`ALTER TABLE agent_sessions ADD COLUMN plan_json TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE agent_sessions ADD COLUMN plan_mode INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE agent_sessions ADD COLUMN draft_restore TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE agent_sessions ADD COLUMN allow_delete TEXT NOT NULL DEFAULT 'ask'`,
 		// usage_records：缓存命中 token 数——统计接口直接 SUM，免逐条解析
 		// record_json；历史行为 0（旧记录不回填）。
 		`ALTER TABLE usage_records ADD COLUMN cache_hit_tokens INTEGER NOT NULL DEFAULT 0`,

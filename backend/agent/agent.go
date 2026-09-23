@@ -993,6 +993,8 @@ func PermissionFor(s Settings, key string) string {
 		return s.AllowLiveTest
 	case PermissionKeySave:
 		return s.AllowSave
+	case PermissionKeyDelete:
+		return s.AllowDelete
 	default:
 		return PermissionAsk
 	}

@@ -27,12 +27,15 @@ const (
 const (
 	PermissionKeyLiveTest = "live_test"
 	PermissionKeySave     = "save"
+	// PermissionKeyDelete 删除类工具单独成键：删除不可逆，即便用户放行了
+	// 保存（save=always）也默认逐次确认。
+	PermissionKeyDelete = "delete"
 )
 
 // KnownPermissionKey 报告权限键是否属于引擎认识的集合。
 func KnownPermissionKey(key string) bool {
 	switch key {
-	case PermissionKeyLiveTest, PermissionKeySave:
+	case PermissionKeyLiveTest, PermissionKeySave, PermissionKeyDelete:
 		return true
 	default:
 		return false
@@ -60,6 +63,7 @@ type Settings struct {
 	PlanMode        bool   `json:"planMode,omitempty"`       // 计划模式：先出方案，用户确认后才允许修改/出站
 	AllowLiveTest   string `json:"allowLiveTest,omitempty"`  // ask|always|never
 	AllowSave       string `json:"allowSave,omitempty"`      // ask|always|never
+	AllowDelete     string `json:"allowDelete,omitempty"`    // ask|always|never（删除类单独一档）
 	TestAPIKeySet   bool   `json:"testApiKeySet,omitempty"`  // 只读标记：是否已配置 key（不回传明文）
 }
 
@@ -136,6 +140,7 @@ type SettingsPatch struct {
 	PlanMode        *bool   `json:"planMode,omitempty"`
 	AllowLiveTest   *string `json:"allowLiveTest,omitempty"`
 	AllowSave       *string `json:"allowSave,omitempty"`
+	AllowDelete     *string `json:"allowDelete,omitempty"`
 	TestBaseURL     *string `json:"testBaseUrl,omitempty"`
 }
 
