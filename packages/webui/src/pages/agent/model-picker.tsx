@@ -1,4 +1,5 @@
 import { Bot, Check, ChevronDown, Eye, Search } from "lucide-react";
+import { useDismissable } from "./use-dismissable";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Z_INDEX } from "@/lib/z-index";
 import { useModels, useSources } from "@/lib/hooks";
@@ -81,17 +82,8 @@ export function ModelPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // 点击外部关闭。
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [open]);
+  // 点击外部 / Escape 关闭。
+  useDismissable(open, () => setOpen(false), rootRef);
 
   const pick = (index: number) => {
     const entry = flat[index];

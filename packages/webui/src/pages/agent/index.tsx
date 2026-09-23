@@ -1,13 +1,5 @@
-import {
-  ArrowLeft,
-  Eraser,
-  PanelRightClose,
-  PanelRightOpen,
-} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { TonePill } from "@/components/badges";
-import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/page-header";
@@ -22,6 +14,7 @@ import {
   restoreAgentDraft,
   updateAgentSession,
 } from "@/lib/agent/api";
+import { deleteComposerDraft } from "@/lib/agent/draft-store";
 import {
   AGENT_CONTEXT_TAB_ORDER,
   type AgentContextTab,
@@ -32,18 +25,13 @@ import {
   type AgentStreamEvent,
 } from "@/lib/agent/types";
 import { useAgentStream } from "@/lib/agent/use-agent-stream";
-import {
-  deleteComposerDraft,
-  loadComposerDraft,
-  saveComposerDraft,
-  sessionsWithDrafts,
-  type AgentComposerDraft,
-} from "@/lib/agent/draft-store";
 import { cn } from "@/lib/utils";
 import { ChatPanel } from "./chat-panel";
 import { ContextPanel } from "./context-panel";
 import { SessionOverview } from "./session-overview";
 import { TurnRail } from "./turn-rail";
+import { WorkspaceHeader } from "./workspace-header";
+import { useAgentDrafts } from "./use-agent-drafts";
 import { useDraggablePanelWidth } from "./use-draggable-panel-width";
 
 /**
@@ -78,19 +66,6 @@ export function AgentPage() {
     seq: number;
     nonce: number;
   } | null>(null);
-  const [composerDraft, setComposerDraft] = useState<{
-    sessionId: string;
-    draft: AgentComposerDraft;
-  } | null>(null);
-  /** 当前会话的草稿快照（仅归属匹配时才有值——防止上一会话的残留文本
-   * 播种进新会话的输入框并随击键写进新会话的草稿）。 */
-  const activeDraft =
-    composerDraft && composerDraft.sessionId === session?.id
-      ? composerDraft.draft
-      : null;
-  const [draftSessions, setDraftSessions] = useState<Set<string>>(new Set());
-  /** 草稿读取已完成的会话：ChatPanel 等它就绪再挂载，避免先播空再补草稿。 */
-  const [draftLoadedFor, setDraftLoadedFor] = useState<string | null>(null);
   const {
     panelW,
     panelDragging,
@@ -101,17 +76,14 @@ export function AgentPage() {
 
   const { data: sessions, mutate: mutateSessions } = useSWRSessionList();
 
-  /** 总览打开时看哪些会话留有未发送内容（文本或附件）。 */
-  useEffect(() => {
-    if (view !== "list" || !sessions) return;
-    let cancelled = false;
-    void sessionsWithDrafts(sessions.map((item) => item.id)).then((found) => {
-      if (!cancelled) setDraftSessions(found);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [view, sessions]);
+  const { composerDraft, draftSessions, draftLoadedFor, handleDraftChange } =
+    useAgentDrafts(view, activeId, sessions);
+  /** 当前会话的草稿快照（仅归属匹配时才有值——防止上一会话的残留文本
+   * 播种进新会话的输入框并随击键写进新会话的草稿）。 */
+  const activeDraft =
+    composerDraft && composerDraft.sessionId === session?.id
+      ? composerDraft.draft
+      : null;
 
   const activeIdRef = useRef(activeId);
   useEffect(() => {
@@ -237,36 +209,6 @@ export function AgentPage() {
       }
     },
     [failToast, mutateSessions],
-  );
-
-  /** 未发送内容（文本 + 附件）随会话进出：每次进入 chat 视图都重读——
-   * 只按 activeId 加载的话，重进同一会话会播种首次进入时的旧快照。 */
-  useEffect(() => {
-    if (view !== "chat" || !activeId) return;
-    let cancelled = false;
-    void loadComposerDraft(activeId).then((draft) => {
-      if (!cancelled) {
-        setComposerDraft(draft ? { sessionId: activeId, draft } : null);
-        setDraftLoadedFor(activeId);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [view, activeId]);
-
-  const handleDraftChange = useCallback(
-    (draft: AgentComposerDraft) => {
-      if (!activeId) return;
-      void saveComposerDraft(activeId, draft);
-      setDraftSessions((current) => {
-        const next = new Set(current);
-        if (draft.text.trim() || draft.documents.length > 0) next.add(activeId);
-        else next.delete(activeId);
-        return next;
-      });
-    },
-    [activeId],
   );
 
   /** 总览卡片 → 进入工作区。 */
@@ -445,55 +387,16 @@ export function AgentPage() {
         key={`agent-chat-${activeId ?? "none"}`}
         className="flex min-h-0 flex-1 animate-in fade-in slide-in-from-bottom-2 duration-300 flex-col"
       >
-        <div className="flex items-center gap-2 px-4 pb-2 pt-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            title="返回会话总览"
-            onClick={() => setView("list")}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <p className="min-w-0 flex-1 truncate text-sm font-semibold">
-            {session?.title || "AI 助手"}
-            {session?.mode === "edit" ? (
-              <span className="ml-2 font-normal text-muted-foreground">
-                编辑协议 {session.protocolId ?? ""}
-              </span>
-            ) : null}
-          </p>
-          {statusBadge ? (
-            <TonePill color={statusBadge.color} className="text-2xs">
-              {statusBadge.text}
-            </TonePill>
-          ) : null}
-          {session ? (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              title="清空本会话消息（保留草稿与设置）"
-              disabled={live.running || messages.length === 0}
-              onClick={() => void handleClearHistory()}
-            >
-              <Eraser className="h-4 w-4" />
-            </Button>
-          ) : null}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            title={panelOpen ? "收起侧栏" : "展开侧栏"}
-            onClick={togglePanel}
-          >
-            {panelOpen ? (
-              <PanelRightClose className="h-4 w-4" />
-            ) : (
-              <PanelRightOpen className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
+        <WorkspaceHeader
+          session={session}
+          running={live.running}
+          hasMessages={messages.length > 0}
+          statusBadge={statusBadge}
+          panelOpen={panelOpen}
+          onBack={() => setView("list")}
+          onClearHistory={() => void handleClearHistory()}
+          onTogglePanel={togglePanel}
+        />
 
         {session && draftLoadedFor === session.id ? (
           <div className="flex min-h-0 flex-1">

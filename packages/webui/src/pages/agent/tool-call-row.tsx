@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Check, ChevronDown, Copy, Wrench, X } from "lucide-react";
+import { ChevronDown, Wrench, X } from "lucide-react";
+import { CopyButton } from "@/components/copy-button";
 import { agentToolLabel, toolStatusVerb } from "@/lib/agent/types";
 import { cn } from "@/lib/utils";
 
 const ELAPSED_TICK_MS = 500; // 运行中本地计时刷新间隔
-const COPIED_RESET_MS = 1500; // 复制反馈复位（与全局 CopyButton 一致）
 
 export type ToolRowStatus = "running" | "done" | "failed" | "denied";
 
@@ -37,7 +37,6 @@ export function ToolCallRow({
   useEffect(() => {
     if (status === "failed" || status === "denied") setOpen(true);
   }, [status]);
-  const [copied, setCopied] = useState(false);
   const elapsed = useElapsed(status === "running", startedAt, elapsedMs);
   const verb = toolStatusVerb(status);
   const timing =
@@ -84,23 +83,11 @@ export function ToolCallRow({
           ) : null}
         </button>
         {status === "failed" || status === "denied" ? (
-          <button
-            type="button"
+          <CopyButton
+            value={summary ?? verb}
             aria-label="复制错误"
-            className="rounded p-0.5 text-muted-foreground hover:text-foreground"
-            onClick={() => {
-              void navigator.clipboard.writeText(summary ?? verb).then(() => {
-                setCopied(true);
-                window.setTimeout(() => setCopied(false), COPIED_RESET_MS);
-              });
-            }}
-          >
-            {copied ? (
-              <Check className="h-3 w-3 text-jade" />
-            ) : (
-              <Copy className="h-3 w-3" />
-            )}
-          </button>
+            className="h-5 w-5"
+          />
         ) : null}
         {status === "failed" || status === "denied" ? (
           <X className="h-3 w-3 shrink-0 text-ember" aria-hidden />

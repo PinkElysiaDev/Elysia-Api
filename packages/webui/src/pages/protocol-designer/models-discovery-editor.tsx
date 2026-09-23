@@ -4,7 +4,7 @@ import { SettingRow, SettingSection } from '@/components/ui/setting-card'
 import { Switch } from '@/components/ui/switch'
 import type { CustomProtocolConfig, CustomProtocolModels } from '@/lib/types'
 
-const AUTH_MODES = [
+const MODELS_AUTH_MODES = [
   { value: 'inherit', label: '继承请求' },
   { value: 'bearer', label: 'Bearer' },
   { value: 'header', label: 'Header' },
@@ -88,7 +88,7 @@ export function ModelsDiscoveryEditor({
           <SettingRow label="鉴权" description="拉取端点的鉴权方式，默认继承请求配置的 auth">
             <Seg
               value={authMode}
-              options={AUTH_MODES.map((mode) => ({ value: mode.value, label: mode.label }))}
+              options={MODELS_AUTH_MODES.map((mode) => ({ value: mode.value, label: mode.label }))}
               onChange={(value) =>
                 update({
                   auth:

@@ -10,7 +10,7 @@ export function useCustomProtocolSchema() {
   return data
 }
 
-export const AUTH_MODES = [
+export const REQUEST_AUTH_MODES = [
   { value: 'bearer', label: 'Bearer（默认）' },
   { value: 'header', label: '自定义 Header' },
   { value: 'query', label: 'Query 参数' },

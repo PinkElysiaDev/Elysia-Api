@@ -1,4 +1,4 @@
-import { Link2, Sparkles } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Seg } from '@/components/ui/seg'
@@ -17,6 +17,7 @@ import type {
   MaheshvaraFieldSpec,
 } from '@/lib/types'
 import { ScalarValueInput, StructureNode, type StructureNodeSpec } from './structure-tree'
+import { FieldSelect } from './field-select'
 import {
   isPlainObject,
   isRequestConstant,
@@ -32,44 +33,6 @@ import {
  * 常量/示例值（本组件内联编辑）。direction 仅决定叶子选项与文案：
  * 请求侧=映射位/常量；响应侧=映射位/示例值。
  */
-
-/** 映射位字段选择：datalist 补全 + 通俗解释 + 未知字段告警。 */
-function FieldSelect({
-  value,
-  onChange,
-  fields,
-  datalistId,
-}: {
-  value: string
-  onChange: (next: string) => void
-  fields: { name: string; label: string }[]
-  datalistId: string
-}) {
-  // 单一 Input 形态（datalist 补全）：避免已知/未知字段间切换 Select↔Input
-  // 导致组件卸载重建、输入中失焦。
-  const spec = fields.find((field) => field.name === value)
-  return (
-    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-      <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        <Link2 className="h-3 w-3 shrink-0 text-primary" />
-        <Input
-          list={datalistId}
-          className="h-7 w-full min-w-40 font-mono text-xs"
-          placeholder="映射到的大自在天字段"
-          value={value}
-          onChange={(event) => onChange(event.target.value.trim())}
-        />
-      </div>
-      {spec ? (
-        <span className="pl-[18px] text-2xs text-muted-foreground">{spec.label}</span>
-      ) : (
-        value !== '' && (
-          <span className="pl-[18px] text-2xs text-amber-600 dark:text-amber-400">未知字段，保存时将被拒绝</span>
-        )
-      )}
-    </div>
-  )
-}
 
 export function BodyTreeEditor({
   direction,

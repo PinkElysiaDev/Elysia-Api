@@ -1,5 +1,4 @@
-import { Link2 } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { FieldSelect } from "./field-select";
 import { Seg } from "@/components/ui/seg";
 import {
   Select,
@@ -27,46 +26,6 @@ import {
  * 行集自动跟随两侧结构树(请求/响应体页签增删节点,此处即时增减);
  * 结构树是唯一事实源,本页所有编辑按路径写回树的映射标注。
  */
-
-/** 映射位字段选择:datalist 补全 + 通俗解释 + 未知字段告警(与树编辑器同款语义)。 */
-function FieldSelect({
-  value,
-  onChange,
-  fields,
-  datalistId,
-}: {
-  value: string;
-  onChange: (next: string) => void;
-  fields: MaheshvaraFieldSpec[];
-  datalistId: string;
-}) {
-  const spec = fields.find((field) => field.name === value);
-  return (
-    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-      <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        <Link2 className="h-3 w-3 shrink-0 text-primary" />
-        <Input
-          list={datalistId}
-          className="h-7 w-full min-w-36 font-mono text-xs"
-          placeholder="映射到的 Maheshvara 字段"
-          value={value}
-          onChange={(event) => onChange(event.target.value.trim())}
-        />
-      </div>
-      {spec ? (
-        <span className="pl-[18px] text-2xs text-muted-foreground">
-          {spec.label}
-        </span>
-      ) : (
-        value !== "" && (
-          <span className="pl-[18px] text-2xs text-amber-600 dark:text-amber-400">
-            未知字段，保存时将被拒绝
-          </span>
-        )
-      )}
-    </div>
-  );
-}
 
 function LeafPathLabel({ locator }: { locator: MappedLeafLocator }) {
   const unmapped = String(locator.node.field ?? "") === "";

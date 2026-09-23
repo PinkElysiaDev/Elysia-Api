@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/select'
 import type { CustomProtocolRequest, MaheshvaraFieldSpec } from '@/lib/types'
 import { RequestBodyTreeEditor } from './body-tree-editor'
-import { AUTH_MODES } from './schema'
+import { REQUEST_AUTH_MODES } from './schema'
 
 const METHODS = ['POST', 'GET', 'PUT', 'PATCH', 'DELETE']
 
@@ -173,7 +173,7 @@ export function RequestBuilder({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {AUTH_MODES.map((mode) => (
+              {REQUEST_AUTH_MODES.map((mode) => (
                 <SelectItem key={mode.value} value={mode.value}>
                   {mode.label}
                 </SelectItem>

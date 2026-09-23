@@ -1,11 +1,12 @@
 import { Check, ChevronDown, Gauge, Shield } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import type {
   AgentPermission,
   AgentSettings,
   AgentThinkingEffort,
 } from "@/lib/agent/types";
 import { cn } from "@/lib/utils";
+import { useDismissable } from "./use-dismissable";
 import { Z_INDEX } from "@/lib/z-index";
 
 /** composer 控制条的浮层菜单外壳：胶囊触发器 + 向上弹出面板（点击外部/Escape 关闭）。 */
@@ -31,21 +32,7 @@ export function MenuShell({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
+  useDismissable(open, () => setOpen(false), rootRef);
 
   return (
     <div ref={rootRef} className="relative">

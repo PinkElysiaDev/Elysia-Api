@@ -1,20 +1,6 @@
-import {
-  AlertTriangle,
-  ArrowDown,
-  ArrowUp,
-  FileText,
-  Plus,
-  Square,
-  X,
-} from "lucide-react";
+import { AlertTriangle, ArrowDown, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/input";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/use-toast";
 import { useModels } from "@/lib/hooks";
 import type { Model, ModelSource } from "@/lib/types";
@@ -27,23 +13,20 @@ import {
   AgentSettings,
 } from "@/lib/agent/types";
 import type { AgentLiveState } from "@/lib/agent/use-agent-stream";
-import { cn, compactNumber, formatHitRate } from "@/lib/utils";
-import { PermissionMenu, ThinkingMenu } from "./composer-menu";
+import { cn } from "@/lib/utils";
+import { useComposerAttachments } from "./use-composer-attachments";
+import { MessageCard } from "./message-card";
+import { LiveAssistantView } from "./live-view";
+import {
+  ApprovalCard,
+  PlanConfirmCard,
+  QuestionCard,
+} from "./approval-cards";
+import { useChatScroll } from "./use-chat-scroll";
+import { ComposerDock } from "./composer-dock";
 
 /** 本文件的时限与阈值锚点。 */
 const DRAFT_DEBOUNCE_MS = 300; // 草稿回写防抖（附件可达数 MB）
-const SCROLL_STICKY_PX = 120; // 距底小于此值视为“贴底”，恢复自动跟随
-const GAUGE_WARN_RATIO = 0.7; // 上下文占用环的黄/绿分界
-const GAUGE_DANGER_RATIO = 0.9; // 红/黄分界
-import { useComposerAttachments } from "./use-composer-attachments";
-import { ModelPicker } from "./model-picker";
-import {
-  ApprovalCard,
-  LiveAssistantView,
-  MessageCard,
-  PlanConfirmCard,
-  QuestionCard,
-} from "./message-card";
 
 export interface ChatPanelProps {
   session: AgentSession;
@@ -81,7 +64,6 @@ export interface ChatPanelProps {
 /**
  * 聊天面板：扁平消息流 + ComposerDock（输入与全部会话设置一体）。
  * 输入容器是页面唯一刻意抬升的元素；消息直接浮在背景上。
- * 底部控制条从左到右：附加 / 权限控制 / 会话统计 / 模型 / 思考强度 / 发送。
  */
 export function ChatPanel({
   session,
@@ -111,18 +93,11 @@ export function ChatPanel({
     text: string;
   } | null>(null);
   const [saving, setSaving] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  // 用户上翻离开底部超过这个距离就停止自动跟随，避免流式增量把正在回看的
-  // 历史拽回底部。
-  const stickToBottomRef = useRef(true);
-  const [showJumpBottom, setShowJumpBottom] = useState(false);
   const lastSentRef = useRef<{
     content: string;
     documents: AgentDocument[];
     priorLastUserSeq: number;
   } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const busy = live.running;
   const approval = live.approvalPending;
@@ -170,52 +145,8 @@ export function ChatPanel({
     [],
   );
 
-  useEffect(() => {
-    if (!stickToBottomRef.current) return;
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length, live.text, live.toolCards.length]);
-
-  /** 轮数条跳转：滚动到目标消息。 */
-  useEffect(() => {
-    if (!jumpTarget) return;
-    const el = scrollRef.current?.querySelector(
-      `[data-seq="${jumpTarget.seq}"]`,
-    );
-    el?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [jumpTarget]);
-
-  /** 滚动时上报当前所在轮（最近一条未滚出顶部的用户消息）。 */
-  useEffect(() => {
-    const container = scrollRef.current;
-    if (!container || !onActiveTurn) return;
-    const userSeqs = new Set(
-      messages
-        .filter((message) => message.role === "user")
-        .map((message) => message.seq),
-    );
-    const report = () => {
-      let active: number | null = null;
-      const threshold = container.clientHeight / 2;
-      for (const el of Array.from(
-        container.querySelectorAll<HTMLElement>("[data-seq]"),
-      )) {
-        const seq = Number(el.dataset.seq);
-        if (
-          userSeqs.has(seq) &&
-          el.offsetTop - container.scrollTop <= threshold
-        )
-          active = seq;
-      }
-      onActiveTurn(active);
-      const distance =
-        container.scrollHeight - container.scrollTop - container.clientHeight;
-      stickToBottomRef.current = distance < SCROLL_STICKY_PX;
-      setShowJumpBottom(distance >= SCROLL_STICKY_PX);
-    };
-    container.addEventListener("scroll", report, { passive: true });
-    report();
-    return () => container.removeEventListener("scroll", report);
-  }, [messages, onActiveTurn]);
+  const { scrollRef, bottomRef, stickToBottomRef, showJumpBottom, setShowJumpBottom, jumpToBottom } =
+    useChatScroll({ messages, live, jumpTarget, onActiveTurn });
 
   /** 会话累计用量（含缓存命中），随助手消息持久化逐步累加。 */
   const usageStat = useMemo(() => {
@@ -486,22 +417,14 @@ export function ChatPanel({
           <button
             type="button"
             className="absolute bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-card px-3 py-1 text-2xs text-muted-foreground shadow-sm hover:text-foreground"
-            onClick={() => {
-              stickToBottomRef.current = true;
-              setShowJumpBottom(false);
-              bottomRef.current?.scrollIntoView({
-                behavior: "smooth",
-                block: "end",
-              });
-            }}
+            onClick={jumpToBottom}
           >
             <ArrowDown className="h-3 w-3" /> 回到底部
           </button>
         ) : null}
       </div>
 
-      {/* ComposerDock：默认有线无底（边框常显、内部透明），hover / 聚焦时填充浮现。
-          待审批/提问/方案确认时输入框整块让位给确认卡——交互发生在输入位置。 */}
+      {/* 待审批/提问/方案确认时输入框整块让位给确认卡——交互发生在输入位置。 */}
       <div className="px-4 pb-2">
         {approval ? (
           approval.kind === "question" && approval.question ? (
@@ -526,268 +449,28 @@ export function ChatPanel({
             />
           )
         ) : (
-          <div className="rounded-xl border border-border bg-transparent transition-colors duration-200 hover:bg-card focus-within:border-rose focus-within:bg-card focus-within:ring-[3px] focus-within:ring-wash">
-            {editingMessage ? (
-              <div className="px-3 pb-2 pt-2.5">
-                <div className="mb-1.5 flex items-center gap-2 text-2xs text-muted-foreground">
-                  编辑历史消息并在这里重发（之后的消息将被替换）
-                  <button
-                    type="button"
-                    className="ml-auto rounded p-0.5 hover:text-foreground"
-                    onClick={() => setEditingMessage(null)}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                <Textarea
-                  className="min-h-[60px] border-0 bg-transparent px-0 text-sm focus-visible:border-0 focus-visible:ring-0"
-                  value={editingMessage.text}
-                  onChange={(event) =>
-                    setEditingMessage({
-                      ...editingMessage,
-                      text: event.target.value,
-                    })
-                  }
-                />
-                <div className="flex justify-end">
-                  <Button
-                    size="sm"
-                    className="h-7"
-                    disabled={busy || !editingMessage.text.trim()}
-                    onClick={() => {
-                      onSend({
-                        content: editingMessage.text,
-                        afterSeq: editingMessage.seq - 1,
-                      });
-                      setEditingMessage(null);
-                    }}
-                  >
-                    从这里重发
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-
-            {documents.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5 px-3 py-2">
-                {documents.map((doc, index) => (
-                  <span
-                    key={index}
-                    className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-2xs"
-                  >
-                    <FileText className="h-3 w-3 text-muted-foreground" />
-                    {doc.name ?? `材料 ${index + 1}`}
-                    <button
-                      type="button"
-                      aria-label={`移除附件 ${doc.name ?? index + 1}`}
-                      className="rounded p-0.5 hover:text-ember"
-                      onClick={() =>
-                        setDocuments((current) =>
-                          current.filter((_, i) => i !== index),
-                        )
-                      }
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            ) : null}
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              hidden
-              onChange={(event) => {
-                if (event.target.files?.length)
-                  void addFiles(event.target.files);
-                event.target.value = "";
-              }}
-            />
-            <Textarea
-              className="max-h-56 min-h-[44px] w-full resize-none border-0 bg-transparent px-3.5 py-2.5 text-sm focus-visible:border-0 focus-visible:ring-0"
-              placeholder={needsModel ? "先在下方选择模型…" : "请描述您的任务"}
-              value={text}
-              disabled={busy}
-              onChange={(event) => setText(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-                  event.preventDefault();
-                  handleSubmit();
-                }
-              }}
-              onPaste={(event) => {
-                const files = Array.from(event.clipboardData.files ?? []);
-                if (files.length > 0) {
-                  event.preventDefault();
-                  void addFiles(files);
-                }
-              }}
-            />
-
-            {/* 底部控制条：左侧 附加/权限；右侧 模型/思考/上下文占用/发送。 */}
-            <div className="flex flex-wrap items-center gap-2 px-2.5 py-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 shrink-0 rounded-full border border-input"
-                title="添加附件（文档 / 图片 / PDF）"
-                disabled={busy}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-              <PermissionMenu
-                settings={settings}
-                disabled={busy}
-                onChange={(patch) => void handleSettingsSave(patch)}
-              />
-              <span
-                className={cn(
-                  "text-2xs text-muted-foreground transition-opacity",
-                  saving ? "opacity-100" : "opacity-0",
-                )}
-              >
-                保存中…
-              </span>
-              <div className="ml-auto flex items-center gap-2">
-                <ContextGauge usage={usageStat} contextLimit={contextLimit} />
-                <ModelPicker
-                  sourceId={settings.modelSourceId}
-                  modelName={settings.modelName}
-                  disabled={busy}
-                  onSelect={handleModelSelect}
-                />
-                <ThinkingMenu
-                  settings={settings}
-                  disabled={busy}
-                  onChange={(patch) => void handleSettingsSave(patch)}
-                />
-                {busy ? (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
-                    title="停止本轮"
-                    onClick={onStop}
-                  >
-                    <Square className="h-3.5 w-3.5" />
-                  </Button>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
-                    title={needsModel ? "请先选择模型" : "发送（Ctrl+Enter）"}
-                    disabled={
-                      needsModel || (!text.trim() && documents.length === 0)
-                    }
-                    onClick={handleSubmit}
-                  >
-                    <ArrowUp className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
+          <ComposerDock
+            text={text}
+            onTextChange={setText}
+            documents={documents}
+            setDocuments={setDocuments}
+            addFiles={addFiles}
+            busy={busy}
+            needsModel={needsModel}
+            saving={saving}
+            settings={settings}
+            usage={usageStat}
+            contextLimit={contextLimit}
+            editingMessage={editingMessage}
+            onEditMessageChange={setEditingMessage}
+            onSubmit={handleSubmit}
+            onStop={onStop}
+            onSend={onSend}
+            onSettingsSave={handleSettingsSave}
+            onModelSelect={handleModelSelect}
+          />
         )}
       </div>
     </div>
-  );
-}
-
-interface SessionUsageStat {
-  input: number;
-  output: number;
-  cached: number;
-  total: number;
-  hitRate: number | null;
-}
-
-/** 上下文占用指示器：环形进度 + 悬浮明细（会话累计 tokens / 缓存命中率）。 */
-function ContextGauge({
-  usage,
-  contextLimit,
-}: {
-  usage: SessionUsageStat | null;
-  contextLimit: number;
-}) {
-  const hasUsage = !!usage && usage.total > 0;
-  const showRing = hasUsage && contextLimit > 0;
-  const ratio = showRing ? Math.min(1, usage!.total / contextLimit) : 0;
-  const color =
-    ratio >= GAUGE_DANGER_RATIO
-      ? "var(--ember)"
-      : ratio >= GAUGE_WARN_RATIO
-        ? "var(--amber)"
-        : "var(--jade)";
-  const radius = 6;
-  const circumference = 2 * Math.PI * radius;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-label="会话用量与上下文占用"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-wash"
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-            <circle
-              cx="8"
-              cy="8"
-              r={radius}
-              fill="none"
-              strokeWidth="2"
-              className="stroke-border"
-            />
-            {showRing ? (
-              <circle
-                cx="8"
-                cy="8"
-                r={radius}
-                fill="none"
-                stroke={color}
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeDasharray={circumference}
-                strokeDashoffset={circumference * (1 - ratio)}
-                transform="rotate(-90 8 8)"
-              />
-            ) : null}
-          </svg>
-        </button>
-      </TooltipTrigger>
-      <TooltipContent className="space-y-0.5 text-2xs">
-        {hasUsage ? (
-          <>
-            <p className="tnum">
-              会话累计：↑{compactNumber(usage.input)} ↓
-              {compactNumber(usage.output)} tokens
-            </p>
-            {usage.cached > 0 ? (
-              <p className="tnum">
-                缓存命中：{compactNumber(usage.cached)}（
-                {formatHitRate(usage.hitRate ?? 0)}）
-              </p>
-            ) : null}
-            <p className="tnum">共 {compactNumber(usage.total)} tokens</p>
-            {contextLimit > 0 ? (
-              <p className="tnum text-muted-foreground">
-                上下文占用 {formatHitRate(ratio)}（按模型 MaxTokens{" "}
-                {compactNumber(contextLimit)} 估算）
-              </p>
-            ) : (
-              <p className="text-muted-foreground">
-                模型未设置 MaxTokens，无法估算上下文占用
-              </p>
-            )}
-          </>
-        ) : (
-          <p>本会话暂无 token 消耗</p>
-        )}
-      </TooltipContent>
-    </Tooltip>
   );
 }
