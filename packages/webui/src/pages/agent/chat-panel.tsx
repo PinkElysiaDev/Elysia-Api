@@ -29,6 +29,12 @@ import {
 import type { AgentLiveState } from "@/lib/agent/use-agent-stream";
 import { cn, compactNumber, formatHitRate } from "@/lib/utils";
 import { PermissionMenu, ThinkingMenu } from "./composer-menu";
+
+/** 本文件的时限与阈值锚点。 */
+const DRAFT_DEBOUNCE_MS = 300; // 草稿回写防抖（附件可达数 MB）
+const SCROLL_STICKY_PX = 120; // 距底小于此值视为“贴底”，恢复自动跟随
+const GAUGE_WARN_RATIO = 0.7; // 上下文占用环的黄/绿分界
+const GAUGE_DANGER_RATIO = 0.9; // 红/黄分界
 import { useComposerAttachments } from "./use-composer-attachments";
 import { ModelPicker } from "./model-picker";
 import {
@@ -100,9 +106,10 @@ export function ChatPanel({
     initialDraft?.documents,
   );
   const [dragOver, setDragOver] = useState(false);
-  const [editing, setEditing] = useState<{ seq: number; text: string } | null>(
-    null,
-  );
+  const [editingMessage, setEditingMessage] = useState<{
+    seq: number;
+    text: string;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -151,7 +158,7 @@ export function ChatPanel({
     draftTimer.current = window.setTimeout(() => {
       draftTimer.current = null;
       onDraftChange?.(draftLatest.current);
-    }, 300);
+    }, DRAFT_DEBOUNCE_MS);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, documents]);
   // 卸载时把挂起的最后一次变更落盘。
@@ -202,8 +209,8 @@ export function ChatPanel({
       onActiveTurn(active);
       const distance =
         container.scrollHeight - container.scrollTop - container.clientHeight;
-      stickToBottomRef.current = distance < 120;
-      setShowJumpBottom(distance >= 120);
+      stickToBottomRef.current = distance < SCROLL_STICKY_PX;
+      setShowJumpBottom(distance >= SCROLL_STICKY_PX);
     };
     container.addEventListener("scroll", report, { passive: true });
     report();
@@ -255,7 +262,9 @@ export function ChatPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live.error, live.running]);
 
-  const save = async (patch: { settings?: Partial<AgentSettings> }) => {
+  const handleSettingsSave = async (patch: {
+    settings?: Partial<AgentSettings>;
+  }) => {
     setSaving(true);
     try {
       await onSettingsChange(patch);
@@ -265,12 +274,12 @@ export function ChatPanel({
   };
 
   const handleModelSelect = (source: ModelSource, model: Model) => {
-    void save({
+    void handleSettingsSave({
       settings: { modelSourceId: source.id, modelName: model.name },
     });
   };
 
-  const submit = () => {
+  const handleSubmit = () => {
     const content = text.trim();
     if ((!content && documents.length === 0) || busy) return;
     // 记录发送前最后一条用户消息 seq：错误回来时若没有新的用户消息落库，
@@ -309,7 +318,7 @@ export function ChatPanel({
       onEditResend: (message: AgentMessage) => {
         if (busy) return;
         const content = message.content as { text?: string };
-        setEditing({ seq: message.seq, text: content.text ?? "" });
+        setEditingMessage({ seq: message.seq, text: content.text ?? "" });
       },
       onRegenerate: (message: AgentMessage) => {
         if (busy) return;
@@ -518,36 +527,39 @@ export function ChatPanel({
           )
         ) : (
           <div className="rounded-xl border border-border bg-transparent transition-colors duration-200 hover:bg-card focus-within:border-rose focus-within:bg-card focus-within:ring-[3px] focus-within:ring-wash">
-            {editing ? (
+            {editingMessage ? (
               <div className="px-3 pb-2 pt-2.5">
                 <div className="mb-1.5 flex items-center gap-2 text-2xs text-muted-foreground">
                   编辑历史消息并在这里重发（之后的消息将被替换）
                   <button
                     type="button"
                     className="ml-auto rounded p-0.5 hover:text-foreground"
-                    onClick={() => setEditing(null)}
+                    onClick={() => setEditingMessage(null)}
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
                 <Textarea
                   className="min-h-[60px] border-0 bg-transparent px-0 text-sm focus-visible:border-0 focus-visible:ring-0"
-                  value={editing.text}
+                  value={editingMessage.text}
                   onChange={(event) =>
-                    setEditing({ ...editing, text: event.target.value })
+                    setEditingMessage({
+                      ...editingMessage,
+                      text: event.target.value,
+                    })
                   }
                 />
                 <div className="flex justify-end">
                   <Button
                     size="sm"
                     className="h-7"
-                    disabled={busy || !editing.text.trim()}
+                    disabled={busy || !editingMessage.text.trim()}
                     onClick={() => {
                       onSend({
-                        content: editing.text,
-                        afterSeq: editing.seq - 1,
+                        content: editingMessage.text,
+                        afterSeq: editingMessage.seq - 1,
                       });
-                      setEditing(null);
+                      setEditingMessage(null);
                     }}
                   >
                     从这里重发
@@ -602,7 +614,7 @@ export function ChatPanel({
               onKeyDown={(event) => {
                 if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
                   event.preventDefault();
-                  submit();
+                  handleSubmit();
                 }
               }}
               onPaste={(event) => {
@@ -629,7 +641,7 @@ export function ChatPanel({
               <PermissionMenu
                 settings={settings}
                 disabled={busy}
-                onChange={(patch) => void save(patch)}
+                onChange={(patch) => void handleSettingsSave(patch)}
               />
               <span
                 className={cn(
@@ -650,7 +662,7 @@ export function ChatPanel({
                 <ThinkingMenu
                   settings={settings}
                   disabled={busy}
-                  onChange={(patch) => void save(patch)}
+                  onChange={(patch) => void handleSettingsSave(patch)}
                 />
                 {busy ? (
                   <Button
@@ -671,7 +683,7 @@ export function ChatPanel({
                     disabled={
                       needsModel || (!text.trim() && documents.length === 0)
                     }
-                    onClick={submit}
+                    onClick={handleSubmit}
                   >
                     <ArrowUp className="h-4 w-4" />
                   </Button>
@@ -702,12 +714,12 @@ function ContextGauge({
   contextLimit: number;
 }) {
   const hasUsage = !!usage && usage.total > 0;
-  const ratio =
-    hasUsage && contextLimit > 0 ? Math.min(1, usage.total / contextLimit) : 0;
+  const showRing = hasUsage && contextLimit > 0;
+  const ratio = showRing ? Math.min(1, usage!.total / contextLimit) : 0;
   const color =
-    ratio >= 0.9
+    ratio >= GAUGE_DANGER_RATIO
       ? "var(--ember)"
-      : ratio >= 0.7
+      : ratio >= GAUGE_WARN_RATIO
         ? "var(--amber)"
         : "var(--jade)";
   const radius = 6;
@@ -730,7 +742,7 @@ function ContextGauge({
               strokeWidth="2"
               className="stroke-border"
             />
-            {hasUsage && contextLimit > 0 ? (
+            {showRing ? (
               <circle
                 cx="8"
                 cy="8"
@@ -748,7 +760,7 @@ function ContextGauge({
         </button>
       </TooltipTrigger>
       <TooltipContent className="space-y-0.5 text-2xs">
-        {hasUsage && usage ? (
+        {hasUsage ? (
           <>
             <p className="tnum">
               会话累计：↑{compactNumber(usage.input)} ↓
@@ -756,10 +768,8 @@ function ContextGauge({
             </p>
             {usage.cached > 0 ? (
               <p className="tnum">
-                缓存命中：{compactNumber(usage.cached)}
-                {usage.hitRate != null
-                  ? `（${formatHitRate(usage.hitRate)}）`
-                  : ""}
+                缓存命中：{compactNumber(usage.cached)}（
+                {formatHitRate(usage.hitRate ?? 0)}）
               </p>
             ) : null}
             <p className="tnum">共 {compactNumber(usage.total)} tokens</p>

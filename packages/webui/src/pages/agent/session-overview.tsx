@@ -54,7 +54,10 @@ export function SessionOverview({
                   {session.title || "未命名会话"}
                 </p>
                 <p className="mt-0.5 truncate text-2xs text-muted-foreground">
-                  <SessionSummary session={session} hasDraft={draftSessions?.has(session.id) ?? false} />
+                  <SessionSummary
+                    session={session}
+                    hasDraft={draftSessions?.has(session.id) ?? false}
+                  />
                 </p>
               </div>
             </div>
@@ -100,20 +103,27 @@ export function SessionOverview({
 }
 
 /** 卡片副文案：状态 · 轮数 · 用量，替代原先的固定能力说明。 */
-function SessionSummary({ session, hasDraft }: { session: AgentSession; hasDraft: boolean }) {
-  const parts = [sessionStateLabel(session, hasDraft)]
-  if ((session.userTurns ?? 0) > 0) parts.push(`${session.userTurns} 轮`)
-  if ((session.totalTokens ?? 0) > 0) parts.push(`↑${compactNumber(session.totalTokens ?? 0)}`)
-  return <>{parts.join(' · ')}</>
+function SessionSummary({
+  session,
+  hasDraft,
+}: {
+  session: AgentSession;
+  hasDraft: boolean;
+}) {
+  const parts = [sessionStateLabel(session, hasDraft)];
+  if ((session.userTurns ?? 0) > 0) parts.push(`${session.userTurns} 轮`);
+  if ((session.totalTokens ?? 0) > 0)
+    parts.push(`↑${compactNumber(session.totalTokens ?? 0)}`);
+  return <>{parts.join(" · ")}</>;
 }
 
 function sessionStateLabel(session: AgentSession, hasDraft: boolean): string {
   // 审批、提问、方案确认都停在 waiting_approval，统一称待确认。
-  if (session.status === 'waiting_approval') return '待确认'
-  if (session.status === 'running') return '进行中'
-  if (hasDraft) return '有未发送内容'
-  if ((session.userTurns ?? 0) > 0) return '已结束'
-  return '空对话'
+  if (session.status === "waiting_approval") return "待确认";
+  if (session.status === "running") return "进行中";
+  if (hasDraft) return "有未发送内容";
+  if ((session.userTurns ?? 0) > 0) return "已结束";
+  return "空对话";
 }
 
 function SessionStatusDot({ status }: { status: AgentSessionStatus }) {

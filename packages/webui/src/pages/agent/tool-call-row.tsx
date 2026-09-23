@@ -3,6 +3,9 @@ import { Check, ChevronDown, Copy, Wrench, X } from "lucide-react";
 import { agentToolLabel, toolStatusVerb } from "@/lib/agent/types";
 import { cn } from "@/lib/utils";
 
+const ELAPSED_TICK_MS = 500; // 运行中本地计时刷新间隔
+const COPIED_RESET_MS = 1500; // 复制反馈复位（与全局 CopyButton 一致）
+
 export type ToolRowStatus = "running" | "done" | "failed" | "denied";
 
 /**
@@ -88,7 +91,7 @@ export function ToolCallRow({
             onClick={() => {
               void navigator.clipboard.writeText(summary ?? verb).then(() => {
                 setCopied(true);
-                window.setTimeout(() => setCopied(false), 1200);
+                window.setTimeout(() => setCopied(false), COPIED_RESET_MS);
               });
             }}
           >
@@ -133,7 +136,7 @@ function useElapsed(
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!running || !startedAt) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 500);
+    const timer = window.setInterval(() => setNow(Date.now()), ELAPSED_TICK_MS);
     return () => window.clearInterval(timer);
   }, [running, startedAt]);
   if (running && startedAt) return Math.max(0, now - startedAt);

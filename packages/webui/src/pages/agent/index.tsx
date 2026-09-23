@@ -51,6 +51,9 @@ import { useDraggablePanelWidth } from "./use-draggable-panel-width";
  * 点击卡片或新建任务以过渡动画进入工作区；返回总览不中断进行中的轮次。
  * 侧栏宽度可拖拽调整并记忆（localStorage）。
  */
+/** 两个视图共用的满高工作区布局（抵消页面容器的下内边距）。 */
+const WORKSPACE_CLASS = "-mb-14 flex h-[max(560px,calc(100dvh-46px))] min-h-0";
+
 export function AgentPage() {
   const { toast } = useToast();
   const { confirm, dialog: confirmDialog } = useConfirm();
@@ -152,9 +155,7 @@ export function AgentPage() {
       (pending?.kind === "plan" ||
         pending?.kind === "question" ||
         Boolean(pending?.calls?.length));
-    if (hydratable && pending) {
-      hydrateApproval(pending);
-    }
+    if (hydratable) hydrateApproval(pending);
   }, [session, hydrateApproval]);
 
   /** 入口跳转：?mode=create | ?mode=edit&protocol=<id> 自动建会话并进入工作区。 */
@@ -412,7 +413,7 @@ export function AgentPage() {
 
   if (view === "list") {
     return (
-      <div className="-mb-14 flex h-[max(560px,calc(100dvh-46px))] min-h-0">
+      <div className={WORKSPACE_CLASS}>
         <div
           key="agent-overview"
           className="flex min-h-0 flex-1 animate-in fade-in duration-300 flex-col"
@@ -439,7 +440,7 @@ export function AgentPage() {
   }
 
   return (
-    <div className="-mb-14 flex h-[max(560px,calc(100dvh-46px))] min-h-0">
+    <div className={WORKSPACE_CLASS}>
       <div
         key={`agent-chat-${activeId ?? "none"}`}
         className="flex min-h-0 flex-1 animate-in fade-in slide-in-from-bottom-2 duration-300 flex-col"

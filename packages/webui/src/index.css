@@ -599,10 +599,6 @@ html.theme-transitioning :where(body, #root, #root *):not(.theme-sun):not(.theme
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--jade) 18%, transparent);
     animation: breathe 2.6s ease-in-out infinite;
   }
-  .dot-err {
-    background: var(--ember);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ember) 18%, transparent);
-  }
   .dot-off {
     background: hsl(var(--border));
   }

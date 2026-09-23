@@ -33,7 +33,6 @@ import {
 } from "@/lib/agent/types";
 import { cn } from "@/lib/utils";
 
-/** 折叠块（思维链 / 工具结果共用）。 */
 /** Markdown 渲染（代码块复用 JSON 高亮，chart 围栏渲染为图表）。 */
 function Markdown({ text }: { text: string }) {
   return (

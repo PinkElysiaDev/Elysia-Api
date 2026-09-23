@@ -129,7 +129,7 @@ export interface AgentUsage {
   output_tokens?: number;
   total_tokens?: number;
   reasoning_tokens?: number;
-  /** 后端透传完整 MaheshvaraUsage；缓存命中经 index signature 读取（cached_input_tokens）。 */
+  /** 后端透传完整 MaheshvaraUsage；字段按需读取，未列字段经 index signature 访问。 */
   [key: string]: unknown;
 }
 
@@ -147,7 +147,7 @@ export interface AgentSessionDetail {
   messages: AgentMessage[];
 }
 
-/** SSE 事件（与后端 agent.Event 对齐，仅取前端关心的字段）。 */
+/** SSE 事件（与后端 agent.Event 对齐；未列的镜像字段前端不读，仅保持协议形状）。 */
 export interface AgentStreamEvent {
   type:
     | "status"
@@ -250,7 +250,6 @@ export function toolStatusVerb(
   }
 }
 
-/** 从 tool_result 内容提取精简展示（工具卡片用）。 */
 /** 累计用量格式化。 */
 export function formatUsage(usage: AgentUsage | undefined): string {
   if (!usage) return "";
