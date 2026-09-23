@@ -33,7 +33,8 @@ const (
 )
 
 func (s *Server) setupAgentRoutes(admin *gin.RouterGroup) {
-	admin.GET("/agent/sessions", s.adminListAgentSessions)
+	// 列表与远程 REST 面共用带过滤分页的内核；面板不带参数即全量。
+	admin.GET("/agent/sessions", s.listAgentSessionsFiltered)
 	admin.POST("/agent/sessions", s.adminCreateAgentSession)
 	admin.GET("/agent/sessions/:id", s.adminGetAgentSession)
 	admin.PATCH("/agent/sessions/:id", s.adminUpdateAgentSession)
@@ -99,28 +100,6 @@ func agentSessionView(session *agent.Session) gin.H {
 		"createdAt":     session.CreatedAt.UTC().Format(time.RFC3339),
 		"updatedAt":     session.UpdatedAt.UTC().Format(time.RFC3339),
 	}
-}
-
-func (s *Server) adminListAgentSessions(c *gin.Context) {
-	store, ok := s.requireStore(c)
-	if !ok {
-		return
-	}
-	sessions, err := store.ListAgentSessions(c.Request.Context())
-	if err != nil {
-		respondFail(c, http.StatusInternalServerError, "list_failed", err.Error())
-		return
-	}
-	engine := s.protocolAgentEngine()
-	items := make([]gin.H, 0, len(sessions))
-	for i := range sessions {
-		view := agentSessionView(&sessions[i])
-		if engine != nil && engine.IsRunning(sessions[i].ID) {
-			view["status"] = agent.StatusRunning
-		}
-		items = append(items, view)
-	}
-	respondOK(c, gin.H{"items": items})
 }
 
 type agentSessionCreatePayload struct {

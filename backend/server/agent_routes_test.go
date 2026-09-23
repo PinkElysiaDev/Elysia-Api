@@ -390,7 +390,7 @@ func TestAgentSessionLifecycle(t *testing.T) {
 	sessionID := decodeAdminData(t, rec)["id"].(string)
 
 	c, rec = adminProtocolContext(http.MethodGet, "/api/admin/agent/sessions", "")
-	s.adminListAgentSessions(c)
+	s.listAgentSessionsFiltered(c)
 	list := decodeAdminData(t, rec)["items"].([]any)
 	if len(list) != 1 {
 		t.Fatalf("sessions = %d", len(list))

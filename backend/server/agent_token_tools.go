@@ -40,7 +40,7 @@ func agentTokenView(item storage.APIToken) map[string]any {
 	return map[string]any{
 		"name": item.Name, "tokenMasked": maskSecret(item.Token),
 		"enabled": item.Enabled, "allowedGroups": item.AllowedGroups,
-		"createdAt": item.CreatedAt,
+		"scopes": item.Scopes, "createdAt": item.CreatedAt,
 	}
 }
 
@@ -105,12 +105,14 @@ func (t *createAPIKeyTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
 		Type: "function", Name: agentToolCreateAPIKey,
 		Description: "创建 API Key，即客户端调用 /v1 接口用的访问令牌（用户审批后生效）。secret 留空则自动生成随机明文，" +
-			"完整明文只在本次结果里返回一次，请提醒用户立即保存。allowedGroups 为空表示可访问全部模型组（扩权面大，创建前先向用户确认授权范围）。",
+			"完整明文只在本次结果里返回一次，请提醒用户立即保存。allowedGroups 为空表示可访问全部模型组（扩权面大，创建前先向用户确认授权范围）。" +
+			"scopes 传 [\"agent\"] 才允许该 Key 控制 AI 助手（远程配置），默认仅推理。",
 		Parameters: objectSchema(map[string]any{
 			"name":          map[string]any{"type": "string", "description": "Key 名称（主键，创建后不可改）"},
 			"secret":        map[string]any{"type": "string", "description": "Key 明文；留空自动生成随机值"},
 			"enabled":       map[string]any{"type": "boolean", "description": "默认 true"},
 			"allowedGroups": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "允许访问的模型组名称；空=不限制"},
+			"scopes":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "作用域；\"agent\"=可控制 AI 助手（远程配置），空=仅推理"},
 		}, "name"),
 	}
 }
@@ -125,6 +127,7 @@ func (t *createAPIKeyTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 		Secret        string   `json:"secret"`
 		Enabled       *bool    `json:"enabled"`
 		AllowedGroups []string `json:"allowedGroups"`
+		Scopes        []string `json:"scopes"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
 		return agent.ToolError("参数解析失败", err.Error())
@@ -143,7 +146,7 @@ func (t *createAPIKeyTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 		}
 		generated = true
 	}
-	item := storage.APIToken{Name: name, Token: secret, Enabled: true, AllowedGroups: params.AllowedGroups}
+	item := storage.APIToken{Name: name, Token: secret, Enabled: true, AllowedGroups: params.AllowedGroups, Scopes: params.Scopes}
 	if params.Enabled != nil {
 		item.Enabled = *params.Enabled
 	}
@@ -164,7 +167,8 @@ func (t *createAPIKeyTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 	return agent.ToolResult{OK: true,
 		Summary: fmt.Sprintf("API Key %q 已创建（%s），明文仅此一次显示：%s", name, origin, secret),
 		Data: map[string]any{"name": name, "token": secret, "enabled": item.Enabled,
-			"allowedGroups": item.AllowedGroups, "note": "明文仅此一次显示，请立即保存"}}
+			"allowedGroups": item.AllowedGroups, "scopes": storage.NormalizeScopes(item.Scopes),
+			"note": "明文仅此一次显示，请立即保存"}}
 }
 
 // ---- update_api_key（门控 save）----
@@ -182,12 +186,13 @@ func (t *updateAPIKeyTool) Meta() agent.ToolMeta {
 func (t *updateAPIKeyTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
 		Type: "function", Name: agentToolUpdateAPIKey,
-		Description: "修改已有 API Key（用户审批后生效）：启停、调整可访问的模型组、更换明文（newSecret 留空=保留原值）。" +
-			"名称是主键不可修改。allowedGroups 为空表示不限制（可访问全部模型组），调整前先向用户确认。",
+		Description: "修改已有 API Key（用户审批后生效）：启停、调整可访问的模型组、更换明文（newSecret 留空=保留原值）、" +
+			"调整作用域（scopes 未传=保留；传 [\"agent\"] 允许控制 AI 助手，传 [] 收回）。名称是主键不可修改。allowedGroups 为空表示不限制（可访问全部模型组），调整前先向用户确认。",
 		Parameters: objectSchema(map[string]any{
 			"name":          map[string]any{"type": "string", "description": "Key 名称"},
 			"enabled":       map[string]any{"type": "boolean"},
 			"allowedGroups": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "整体替换允许访问的模型组；空=不限制"},
+			"scopes":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "整体替换作用域；\"agent\"=可控制 AI 助手；未传=保留"},
 			"newSecret":     map[string]any{"type": "string", "description": "新明文；留空保留原值"},
 		}, "name"),
 	}
@@ -202,6 +207,7 @@ func (t *updateAPIKeyTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 		Name          string   `json:"name"`
 		Enabled       *bool    `json:"enabled"`
 		AllowedGroups []string `json:"allowedGroups"`
+		Scopes        []string `json:"scopes"`
 		NewSecret     string   `json:"newSecret"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
@@ -218,9 +224,12 @@ func (t *updateAPIKeyTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 	if params.Enabled != nil {
 		item.Enabled = *params.Enabled
 	}
-	// allowedGroups 未传（nil）保留原授权；传了（含空数组）整体替换。
+	// allowedGroups / scopes 未传（nil）保留原值；传了（含空数组）整体替换。
 	if params.AllowedGroups != nil {
 		item.AllowedGroups = params.AllowedGroups
+	}
+	if params.Scopes != nil {
+		item.Scopes = params.Scopes
 	}
 	if strings.TrimSpace(params.NewSecret) != "" {
 		item.Token = strings.TrimSpace(params.NewSecret)
