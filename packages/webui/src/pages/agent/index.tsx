@@ -364,7 +364,9 @@ export function AgentPage() {
             title="AI 助手"
             titleContent={
               <>
-                <span className="font-sans font-medium">AI</span> 助手
+                {/* 「AI」用等宽拉丁：与控制台的代码语境一致，常规字重不压衬线
+                    中文；等宽字形天然偏小，略提一号对齐视觉高度。 */}
+                <span className="font-mono text-[1.06em]">AI</span> 助手
               </>
             }
           />
