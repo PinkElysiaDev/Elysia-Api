@@ -82,9 +82,10 @@ func (s *Store) migrate(ctx context.Context) error {
 	// duplicate column，addColumnIgnoreDup 忽略该错误。新列一律追加到这里；
 	// 唯一索引等非 ALTER 步骤跟在清单之后。
 	incrementalColumns := []string{
-		// api_tokens：组级访问权限 + token 去重哈希（空 hash 不参与唯一约束）。
+		// api_tokens：组级访问权限 + token 去重哈希（空 hash 不参与唯一约束）+ 端点作用域。
 		`ALTER TABLE api_tokens ADD COLUMN allowed_groups_json TEXT NOT NULL DEFAULT '[]'`,
 		`ALTER TABLE api_tokens ADD COLUMN token_hash TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE api_tokens ADD COLUMN scopes TEXT NOT NULL DEFAULT '[]'`,
 		// agent_sessions：方案清单 / 计划模式 / 草稿还原点（单槽覆盖）/ 删除类权限。
 		`ALTER TABLE agent_sessions ADD COLUMN plan_json TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE agent_sessions ADD COLUMN plan_mode INTEGER NOT NULL DEFAULT 0`,

@@ -161,8 +161,40 @@ type APIToken struct {
 	Token         string    `json:"token,omitempty"`
 	Enabled       bool      `json:"enabled"`
 	AllowedGroups []string  `json:"allowedGroups"` // 允许访问的模型组名称；空表示不限制（可访问全部）
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	// Scopes 是端点级作用域（如 "agent"=可控制 AI 助手）。空表示只能
+	// 调用推理接口——与 allowedGroups（模型组维度）正交。
+	Scopes    []string  `json:"scopes"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// TokenScopeAgent 允许控制 AI 助手（REST/MCP/A2A 三个远程面）。
+const TokenScopeAgent = "agent"
+
+// NormalizeScopes 清洗作用域列表：去空白、去重、丢弃未知值——写路径统一
+// 调用，保证落库的 scopes 只含认识的键。
+func NormalizeScopes(scopes []string) []string {
+	seen := make(map[string]bool, len(scopes))
+	out := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		scope = strings.ToLower(strings.TrimSpace(scope))
+		if scope != TokenScopeAgent || seen[scope] {
+			continue
+		}
+		seen[scope] = true
+		out = append(out, scope)
+	}
+	return out
+}
+
+// HasScope 报告令牌是否具备指定作用域。
+func (t APIToken) HasScope(scope string) bool {
+	for _, item := range t.Scopes {
+		if item == scope {
+			return true
+		}
+	}
+	return false
 }
 
 type UsageQuery struct {

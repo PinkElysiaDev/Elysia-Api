@@ -60,6 +60,12 @@ type Server struct {
 	rateLimitMu sync.Mutex
 	rateLimits  map[string]*rateLimitState
 
+	// A2A 任务登记（a2a_server.go）：taskId -> 轮次条目（帧回放/快照），
+	// messageId -> taskId 幂等去重。单实例内存态，容量有界。
+	a2aMu         sync.Mutex
+	a2aTasks      map[string]*a2aTaskEntry
+	a2aMessageIDs map[string]string
+
 	store *storage.Store
 
 	// 异步 usage 写入：store 模式下，请求路径只把记录投递到 buffer channel，
@@ -306,6 +312,17 @@ func (s *Server) setupRoutes() {
 		s.setupAgentRoutes(admin)
 	}
 
+	// AI 助手远程面：REST + MCP + A2A，共用 Bearer API key（agent 作用域）
+	// 鉴权与 config.agentRemote 总开关。
+	remote := s.engine.Group("/api")
+	remote.Use(s.agentRemoteGate(), s.agentRemoteAuth())
+	{
+		s.setupAgentRemoteRoutes(remote)
+	}
+	s.engine.Any("/mcp", s.agentRemoteGate(), s.agentRemoteAuth(), s.handleMCP)
+	s.engine.GET("/.well-known/agent-card.json", s.agentRemoteGate(), s.handleAgentCard)
+	s.engine.POST("/a2a", s.agentRemoteGate(), s.agentRemoteAuth(), s.handleA2A)
+
 	s.engine.GET("/health", s.healthCheck)
 	s.engine.POST("/__reload", s.loopbackOnly(s.reloadConfig))
 	s.engine.POST("/__shutdown", s.loopbackOnly(s.shutdown))
@@ -393,6 +410,49 @@ func (s *Server) dashboardAuthMiddleware() gin.HandlerFunc {
 		}
 		c.Next()
 	}
+}
+
+// agentRemoteAuth 是 AI 助手三个远程面（/api/agent、/mcp、/a2a）共用的
+// 鉴权链：有效 API key 且带 agent 作用域。与 /v1 的 authMiddleware 分离——
+// 错误体走 JSON + WWW-Authenticate，不套客户端线制渲染。
+func (s *Server) agentRemoteAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := extractAccessToken(c.Request)
+		accessToken, ok := s.findAccessToken(token)
+		if !ok {
+			c.Header("WWW-Authenticate", `Bearer realm="elysia-agent"`)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or missing API key"})
+			return
+		}
+		if !accessTokenHasScope(accessToken, storage.TokenScopeAgent) {
+			c.Header("WWW-Authenticate", `Bearer realm="elysia-agent", scope="agent"`)
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "this API key does not carry the agent scope"})
+			return
+		}
+		c.Set("elysiaKeyName", accessToken.Name)
+		c.Next()
+	}
+}
+
+// agentRemoteGate 是远程面总开关：config.agentRemote.enabled=false 时整组
+// 404（不暴露端点存在性）。
+func (s *Server) agentRemoteGate() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !s.config.GetAgentRemote().AgentRemoteEnabled() {
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "agent remote surface is disabled"})
+			return
+		}
+		c.Next()
+	}
+}
+
+func accessTokenHasScope(token config.AccessToken, scope string) bool {
+	for _, item := range token.Scopes {
+		if item == scope {
+			return true
+		}
+	}
+	return false
 }
 
 func extractAccessToken(r *http.Request) string {

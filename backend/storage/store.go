@@ -140,20 +140,21 @@ func (s *Store) GetSetting(ctx context.Context, key string, target any) (bool, e
 func (s *Store) scanAPIToken(row interface{ Scan(dest ...any) error }) (APIToken, error) {
 	var item APIToken
 	var enabled int
-	var allowedGroups, created, updated string
-	if err := row.Scan(&item.Name, &item.Token, &enabled, &allowedGroups, &created, &updated); err != nil {
+	var allowedGroups, scopes, created, updated string
+	if err := row.Scan(&item.Name, &item.Token, &enabled, &allowedGroups, &scopes, &created, &updated); err != nil {
 		return APIToken{}, err
 	}
 	item.Token = s.decryptOrClear("api token", item.Name, item.Token)
 	item.Enabled = sqlIntToBool(enabled)
 	item.AllowedGroups = decodeStringSlice(allowedGroups)
+	item.Scopes = decodeStringSlice(scopes)
 	item.CreatedAt = parseTime(created)
 	item.UpdatedAt = parseTime(updated)
 	return item, nil
 }
 
 func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT name, token, enabled, allowed_groups_json, created_at, updated_at FROM api_tokens ORDER BY name`)
+	rows, err := s.db.QueryContext(ctx, `SELECT name, token, enabled, allowed_groups_json, scopes, created_at, updated_at FROM api_tokens ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -208,8 +209,15 @@ func (s *Store) UpsertAPIToken(ctx context.Context, item APIToken) error {
 	if err != nil {
 		return err
 	}
+	if item.Scopes == nil {
+		item.Scopes = []string{}
+	}
+	scopes, err := json.Marshal(NormalizeScopes(item.Scopes))
+	if err != nil {
+		return err
+	}
 	now := nowString()
-	_, err = s.db.ExecContext(ctx, `INSERT INTO api_tokens(name, token, token_hash, enabled, allowed_groups_json, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET token=excluded.token, token_hash=excluded.token_hash, enabled=excluded.enabled, allowed_groups_json=excluded.allowed_groups_json, updated_at=excluded.updated_at`, item.Name, stored, tokenHash, sqlBoolToInt(item.Enabled), string(allowedGroups), now, now)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO api_tokens(name, token, token_hash, enabled, allowed_groups_json, scopes, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET token=excluded.token, token_hash=excluded.token_hash, enabled=excluded.enabled, allowed_groups_json=excluded.allowed_groups_json, scopes=excluded.scopes, updated_at=excluded.updated_at`, item.Name, stored, tokenHash, sqlBoolToInt(item.Enabled), string(allowedGroups), string(scopes), now, now)
 	return err
 }
 
@@ -222,7 +230,7 @@ func (s *Store) DeleteAPIToken(ctx context.Context, name string) error {
 // 供「留空即不变」编辑时保留原 token 使用。
 func (s *Store) FindAPITokenByName(ctx context.Context, name string) (APIToken, bool, error) {
 	item, err := s.scanAPIToken(s.db.QueryRowContext(ctx,
-		`SELECT name, token, enabled, allowed_groups_json, created_at, updated_at FROM api_tokens WHERE name = ?`, name))
+		`SELECT name, token, enabled, allowed_groups_json, scopes, created_at, updated_at FROM api_tokens WHERE name = ?`, name))
 	if errors.Is(err, sql.ErrNoRows) {
 		return APIToken{}, false, nil
 	}

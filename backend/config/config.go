@@ -41,6 +41,7 @@ type Config struct {
 	Outbound               OutboundConfig     `json:"outbound,omitempty"`               // 出站网络策略：禁止拨号的 IP 段（CIDR 列表，可编辑）
 	AllowFakeIPOutbound    bool               `json:"allowFakeIPOutbound,omitempty"`    // 已废弃：仅作加载迁移读取（见 normalizeOutboundLocked），不再下发/落盘
 	ModelCatalog           ModelCatalogConfig `json:"modelCatalog,omitempty"`           // 模型能力元数据目录（默认 models.dev）
+	AgentRemote            AgentRemoteConfig  `json:"agentRemote,omitempty"`            // AI 助手远程暴露面（REST/MCP/A2A）
 	mu                     sync.RWMutex
 	path                   string
 }
@@ -56,6 +57,22 @@ type ModelCatalogConfig struct {
 	// **显式 0 = 不启用定期后台同步**（仅使用内置快照与本地缓存，管理页
 	// 「立即更新」仍可用）。指针类型用于区分「未配置」与「显式 0」。
 	SyncIntervalMinutes *int `json:"syncIntervalMinutes,omitempty"`
+}
+
+// AgentRemoteConfig 控制 AI 助手的三个远程暴露面（/api/agent/*、/mcp、/a2a）。
+// 面本身始终要求 Bearer API key 且带 agent 作用域；Enabled=false 是整组
+// 下线的总开关（默认启用）。
+type AgentRemoteConfig struct {
+	Enabled   *bool  `json:"enabled,omitempty"`   // 默认启用；false 时三个远程面全部 404
+	PublicURL string `json:"publicUrl,omitempty"` // 对外基础地址（如 https://gw.example.com），Agent Card 绝对 URL 用；空则按请求 Host 推导
+}
+
+// AgentRemoteEnabled 报告远程面是否启用（默认 true）。
+func (c AgentRemoteConfig) AgentRemoteEnabled() bool {
+	if c.Enabled == nil {
+		return true
+	}
+	return *c.Enabled
 }
 
 // ModelCatalogSyncInterval 返回生效的刷新周期与是否启用定期同步：
@@ -163,6 +180,7 @@ type AccessToken struct {
 	Name          string   `json:"name"`
 	Enabled       bool     `json:"enabled"`
 	AllowedGroups []string `json:"allowedGroups,omitempty"` // 允许访问的模型组；空表示不限制
+	Scopes        []string `json:"scopes,omitempty"`        // 端点作用域（agent=可控制 AI 助手）；空表示仅推理
 }
 
 type ModelGroupConfig struct {
@@ -565,6 +583,13 @@ func (c *Config) GetModelCatalog() ModelCatalogConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.ModelCatalog
+}
+
+// GetAgentRemote 返回 AI 助手远程暴露面配置（含读锁快照）。
+func (c *Config) GetAgentRemote() AgentRemoteConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.AgentRemote
 }
 
 // ResolveModelCatalogInterval 返回供管理页表单显示的周期值（分钟）：
