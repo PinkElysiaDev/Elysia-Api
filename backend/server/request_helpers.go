@@ -142,43 +142,9 @@ func (s *Server) fetchAsMaheshvara(ctx context.Context, model config.ModelRef, t
 		}
 		return &upstreamFetchResult{maheshvara: mResp, respBody: respBody, status: status}, nil
 	case relay.FormatClaude:
-		resp, err := s.claudeAdapter.SendRequest(ctx, model.BaseURL, model.APIKey, body, false)
-		if err != nil {
-			return &upstreamFetchResult{status: upstreamErrorStatus(err, http.StatusBadGateway), respBody: upstreamErrorBody(err)}, err
-		}
-		defer resp.Body.Close()
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, relay.MaxUpstreamBodyBytes))
-		if resp.StatusCode != http.StatusOK {
-			return &upstreamFetchResult{respBody: respBody, status: resp.StatusCode}, fmt.Errorf("upstream returned %s", resp.Status)
-		}
-		var claudeResp relay.ClaudeResponse
-		if err := json.Unmarshal(respBody, &claudeResp); err != nil {
-			return &upstreamFetchResult{respBody: respBody, status: resp.StatusCode}, err
-		}
-		mResp, convErr := relay.AnthropicResponseToMaheshvara(&claudeResp)
-		if convErr != nil {
-			return &upstreamFetchResult{respBody: respBody, status: resp.StatusCode}, convErr
-		}
-		return &upstreamFetchResult{maheshvara: mResp, respBody: respBody, status: resp.StatusCode}, nil
+		return s.fetchClaudeAsMaheshvara(ctx, model, body)
 	case relay.FormatGemini:
-		resp, err := s.geminiAdapter.SendRequest(ctx, model.BaseURL, model.APIKey, model.Name, body, false)
-		if err != nil {
-			return &upstreamFetchResult{status: upstreamErrorStatus(err, http.StatusBadGateway), respBody: upstreamErrorBody(err)}, err
-		}
-		defer resp.Body.Close()
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, relay.MaxUpstreamBodyBytes))
-		if resp.StatusCode != http.StatusOK {
-			return &upstreamFetchResult{respBody: respBody, status: resp.StatusCode}, fmt.Errorf("upstream returned %s", resp.Status)
-		}
-		var geminiResp relay.GeminiResponse
-		if err := json.Unmarshal(respBody, &geminiResp); err != nil {
-			return &upstreamFetchResult{respBody: respBody, status: resp.StatusCode}, err
-		}
-		mResp, convErr := relay.GeminiResponseToMaheshvara(&geminiResp)
-		if convErr != nil {
-			return &upstreamFetchResult{respBody: respBody, status: resp.StatusCode}, convErr
-		}
-		return &upstreamFetchResult{maheshvara: mResp, respBody: respBody, status: resp.StatusCode}, nil
+		return s.fetchGeminiAsMaheshvara(ctx, model, body)
 	default:
 		resp, respBody, status, err := s.openaiAdapter.SendRequestRawWithBody(ctx, model.BaseURL, model.APIKey, body)
 		if err != nil {
@@ -190,6 +156,50 @@ func (s *Server) fetchAsMaheshvara(ctx context.Context, model config.ModelRef, t
 		}
 		return &upstreamFetchResult{maheshvara: mResp, respBody: respBody, status: status}, nil
 	}
+}
+
+// fetchClaudeAsMaheshvara / fetchGeminiAsMaheshvara：两分支只差发送函数与
+// 反序列化目标，共用「发送 → 读体 → 非 200 → 解码 → 转换」骨架。
+func (s *Server) fetchClaudeAsMaheshvara(ctx context.Context, model config.ModelRef, body []byte) (*upstreamFetchResult, error) {
+	resp, err := s.claudeAdapter.SendRequest(ctx, model.BaseURL, model.APIKey, body, false)
+	if err != nil {
+		return &upstreamFetchResult{status: upstreamErrorStatus(err, http.StatusBadGateway), respBody: upstreamErrorBody(err)}, err
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, relay.MaxUpstreamBodyBytes))
+	if resp.StatusCode != http.StatusOK {
+		return &upstreamFetchResult{respBody: respBody, status: resp.StatusCode}, fmt.Errorf("upstream returned %s", resp.Status)
+	}
+	var claudeResp relay.ClaudeResponse
+	if err := json.Unmarshal(respBody, &claudeResp); err != nil {
+		return &upstreamFetchResult{respBody: respBody, status: resp.StatusCode}, err
+	}
+	mResp, convErr := relay.AnthropicResponseToMaheshvara(&claudeResp)
+	if convErr != nil {
+		return &upstreamFetchResult{respBody: respBody, status: resp.StatusCode}, convErr
+	}
+	return &upstreamFetchResult{maheshvara: mResp, respBody: respBody, status: resp.StatusCode}, nil
+}
+
+func (s *Server) fetchGeminiAsMaheshvara(ctx context.Context, model config.ModelRef, body []byte) (*upstreamFetchResult, error) {
+	resp, err := s.geminiAdapter.SendRequest(ctx, model.BaseURL, model.APIKey, model.Name, body, false)
+	if err != nil {
+		return &upstreamFetchResult{status: upstreamErrorStatus(err, http.StatusBadGateway), respBody: upstreamErrorBody(err)}, err
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, relay.MaxUpstreamBodyBytes))
+	if resp.StatusCode != http.StatusOK {
+		return &upstreamFetchResult{respBody: respBody, status: resp.StatusCode}, fmt.Errorf("upstream returned %s", resp.Status)
+	}
+	var geminiResp relay.GeminiResponse
+	if err := json.Unmarshal(respBody, &geminiResp); err != nil {
+		return &upstreamFetchResult{respBody: respBody, status: resp.StatusCode}, err
+	}
+	mResp, convErr := relay.GeminiResponseToMaheshvara(&geminiResp)
+	if convErr != nil {
+		return &upstreamFetchResult{respBody: respBody, status: resp.StatusCode}, convErr
+	}
+	return &upstreamFetchResult{maheshvara: mResp, respBody: respBody, status: resp.StatusCode}, nil
 }
 
 // usageDayKey 把时刻归一为日配额的日期键(acquire/adjust 的跨日守卫共用)。

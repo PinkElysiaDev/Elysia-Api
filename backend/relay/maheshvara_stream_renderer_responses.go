@@ -7,19 +7,45 @@ import (
 	"strings"
 )
 
+// maheshvaraResponsesPartState 是消息上一类内容槽（output_text 或 refusal）
+// 的流式状态。text/refusal 两槽形状完全同构，差异只在 part 与事件名。
+type maheshvaraResponsesPartState struct {
+	index   int
+	started bool
+	done    bool
+	text    strings.Builder
+}
+
+// 消息内容槽下标。
+const (
+	responsesPartText = iota
+	responsesPartRefusal
+)
+
+// responsesPartMeta 描述一个内容槽的线制形状。
+type responsesPartMeta struct {
+	partType string // ContentPartAdded 的 part.type
+	eventKey string // part 里取增量文本的键（text / refusal）
+	delta    string // 增量事件名
+	done     string // 完成事件名
+}
+
+var responsesPartMetas = map[int]responsesPartMeta{
+	responsesPartText:    {partType: "output_text", eventKey: "text", delta: MaheshvaraEventTextDelta, done: MaheshvaraEventTextDone},
+	responsesPartRefusal: {partType: "refusal", eventKey: "refusal", delta: MaheshvaraEventRefusalDelta, done: MaheshvaraEventRefusalDone},
+}
+
 type maheshvaraResponsesMessageState struct {
-	id             string
-	outputIndex    int
-	textIndex      int
-	refusalIndex   int
-	textStarted    bool
-	refusalStarted bool
-	textDone       bool
-	refusalDone    bool
-	text           strings.Builder
-	refusal        strings.Builder
-	extraParts     map[int]any
-	done           bool
+	id          string
+	outputIndex int
+	parts       [2]maheshvaraResponsesPartState
+	extraParts  map[int]any
+	done        bool
+}
+
+// slot 返回指定内容槽的便捷引用。
+func (s *maheshvaraResponsesMessageState) slot(part int) *maheshvaraResponsesPartState {
+	return &s.parts[part]
 }
 
 type maheshvaraResponsesReasoningState struct {
@@ -95,8 +121,8 @@ func (renderer *MaheshvaraStreamRenderer) writeResponses(event *MaheshvaraStream
 		if len(event.Annotations) == 0 {
 			return nil
 		}
-		if state := renderer.responses.messages[event.ChoiceIndex]; state != nil && state.textStarted {
-			if part, ok := state.extraParts[state.textIndex].(map[string]any); ok {
+		if state := renderer.responses.messages[event.ChoiceIndex]; state != nil && state.slot(responsesPartText).started {
+			if part, ok := state.extraParts[state.slot(responsesPartText).index].(map[string]any); ok {
 				annotations, _ := part["annotations"].([]any)
 				for _, citation := range event.Annotations {
 					annotations = append(annotations, citation)
@@ -140,7 +166,9 @@ func (renderer *MaheshvaraStreamRenderer) ensureResponsesMessage(choiceIndex int
 	if state != nil {
 		return state, nil
 	}
-	state = &maheshvaraResponsesMessageState{id: newMaheshvaraResponseID("msg"), outputIndex: renderer.responses.nextOutput, textIndex: -1, refusalIndex: -1, extraParts: make(map[int]any)}
+	state = &maheshvaraResponsesMessageState{id: newMaheshvaraResponseID("msg"), outputIndex: renderer.responses.nextOutput, extraParts: make(map[int]any)}
+	state.parts[responsesPartText].index = -1
+	state.parts[responsesPartRefusal].index = -1
 	renderer.responses.nextOutput++
 	renderer.responses.messages[choiceIndex] = state
 	item := map[string]any{"id": state.id, "type": MaheshvaraOutputMessage, "status": "in_progress", "role": "assistant", "content": []any{}}
@@ -151,38 +179,24 @@ func (renderer *MaheshvaraStreamRenderer) ensureResponsesMessage(choiceIndex int
 }
 
 func (renderer *MaheshvaraStreamRenderer) writeResponsesText(choiceIndex int, text string) error {
-	if text == "" {
-		return nil
-	}
-	state, err := renderer.ensureResponsesMessage(choiceIndex)
-	if err != nil {
-		return err
-	}
-	if !state.textStarted {
-		state.textStarted = true
-		state.textIndex = nextResponsesContentIndex(state)
-		part := map[string]any{"type": "output_text", "text": "", "annotations": []any{}}
-		if err := renderer.writeResponsesEvent(MaheshvaraEventContentPartAdded, map[string]any{"type": MaheshvaraEventContentPartAdded, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.textIndex, "part": part}); err != nil {
-			return err
-		}
-	}
-	state.text.WriteString(text)
-	return renderer.writeResponsesEvent(MaheshvaraEventTextDelta, map[string]any{"type": MaheshvaraEventTextDelta, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.textIndex, "delta": text})
+	return renderer.writeResponsesPart(choiceIndex, responsesPartText, text)
 }
 
 func (renderer *MaheshvaraStreamRenderer) finishResponsesText(choiceIndex int, text string) error {
-	state := renderer.responses.messages[choiceIndex]
-	if state == nil || !state.textStarted || state.textDone {
-		return nil
-	}
-	if text != "" && state.text.Len() == 0 {
-		state.text.WriteString(text)
-	}
-	state.textDone = true
-	return renderer.writeResponsesEvent(MaheshvaraEventTextDone, map[string]any{"type": MaheshvaraEventTextDone, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.textIndex, "text": state.text.String()})
+	return renderer.finishResponsesPart(choiceIndex, responsesPartText, text)
 }
 
 func (renderer *MaheshvaraStreamRenderer) writeResponsesRefusal(choiceIndex int, text string) error {
+	return renderer.writeResponsesPart(choiceIndex, responsesPartRefusal, text)
+}
+
+func (renderer *MaheshvaraStreamRenderer) finishResponsesRefusal(choiceIndex int, text string) error {
+	return renderer.finishResponsesPart(choiceIndex, responsesPartRefusal, text)
+}
+
+// writeResponsesPart 输出一类内容槽的增量：首帧先发 ContentPartAdded，
+// 之后逐帧 Delta。text 与 refusal 只是槽形状不同。
+func (renderer *MaheshvaraStreamRenderer) writeResponsesPart(choiceIndex, partIndex int, text string) error {
 	if text == "" {
 		return nil
 	}
@@ -190,28 +204,36 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesRefusal(choiceIndex int,
 	if err != nil {
 		return err
 	}
-	if !state.refusalStarted {
-		state.refusalStarted = true
-		state.refusalIndex = nextResponsesContentIndex(state)
-		part := map[string]any{"type": "refusal", "refusal": ""}
-		if err := renderer.writeResponsesEvent(MaheshvaraEventContentPartAdded, map[string]any{"type": MaheshvaraEventContentPartAdded, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.refusalIndex, "part": part}); err != nil {
+	meta := responsesPartMetas[partIndex]
+	slot := state.slot(partIndex)
+	if !slot.started {
+		slot.started = true
+		slot.index = nextResponsesContentIndex(state)
+		part := map[string]any{"type": meta.partType, meta.eventKey: "", "annotations": []any{}}
+		if err := renderer.writeResponsesEvent(MaheshvaraEventContentPartAdded, map[string]any{"type": MaheshvaraEventContentPartAdded, "item_id": state.id, "output_index": state.outputIndex, "content_index": slot.index, "part": part}); err != nil {
 			return err
 		}
 	}
-	state.refusal.WriteString(text)
-	return renderer.writeResponsesEvent(MaheshvaraEventRefusalDelta, map[string]any{"type": MaheshvaraEventRefusalDelta, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.refusalIndex, "delta": text})
+	slot.text.WriteString(text)
+	return renderer.writeResponsesEvent(meta.delta, map[string]any{"type": meta.delta, "item_id": state.id, "output_index": state.outputIndex, "content_index": slot.index, "delta": text})
 }
 
-func (renderer *MaheshvaraStreamRenderer) finishResponsesRefusal(choiceIndex int, text string) error {
+// finishResponsesPart 关闭一类内容槽：终帧补齐零增量场景的全文并发 Done。
+func (renderer *MaheshvaraStreamRenderer) finishResponsesPart(choiceIndex, partIndex int, text string) error {
 	state := renderer.responses.messages[choiceIndex]
-	if state == nil || !state.refusalStarted || state.refusalDone {
+	if state == nil {
 		return nil
 	}
-	if text != "" && state.refusal.Len() == 0 {
-		state.refusal.WriteString(text)
+	meta := responsesPartMetas[partIndex]
+	slot := state.slot(partIndex)
+	if !slot.started || slot.done {
+		return nil
 	}
-	state.refusalDone = true
-	return renderer.writeResponsesEvent(MaheshvaraEventRefusalDone, map[string]any{"type": MaheshvaraEventRefusalDone, "item_id": state.id, "output_index": state.outputIndex, "content_index": state.refusalIndex, "refusal": state.refusal.String()})
+	if text != "" && slot.text.Len() == 0 {
+		slot.text.WriteString(text)
+	}
+	slot.done = true
+	return renderer.writeResponsesEvent(meta.done, map[string]any{"type": meta.done, "item_id": state.id, "output_index": state.outputIndex, "content_index": slot.index, meta.eventKey: slot.text.String()})
 }
 
 func (renderer *MaheshvaraStreamRenderer) writeResponsesReasoning(choiceIndex int, text string) error {
@@ -312,10 +334,10 @@ func (renderer *MaheshvaraStreamRenderer) addResponsesExtraPart(choiceIndex int,
 
 func nextResponsesContentIndex(state *maheshvaraResponsesMessageState) int {
 	for index := 0; ; index++ {
-		if state.textStarted && state.textIndex == index {
+		if state.parts[responsesPartText].started && state.parts[responsesPartText].index == index {
 			continue
 		}
-		if state.refusalStarted && state.refusalIndex == index {
+		if state.parts[responsesPartRefusal].started && state.parts[responsesPartRefusal].index == index {
 			continue
 		}
 		if _, exists := state.extraParts[index]; exists {
@@ -501,28 +523,27 @@ func (renderer *MaheshvaraStreamRenderer) completeResponses() error {
 // finalizeResponsesMessage 补发未收尾的文本/refusal part done 帧并发出
 // message item 的 output_item.done，返回终态 item。
 func (renderer *MaheshvaraStreamRenderer) finalizeResponsesMessage(choiceIndex int, message *maheshvaraResponsesMessageState) (map[string]any, error) {
-	if message.textStarted && !message.textDone {
-		if err := renderer.finishResponsesText(choiceIndex, ""); err != nil {
-			return nil, err
-		}
-	}
-	if message.refusalStarted && !message.refusalDone {
-		if err := renderer.finishResponsesRefusal(choiceIndex, ""); err != nil {
-			return nil, err
+	for _, partIndex := range []int{responsesPartText, responsesPartRefusal} {
+		slot := message.slot(partIndex)
+		if slot.started && !slot.done {
+			if err := renderer.finishResponsesPart(choiceIndex, partIndex, ""); err != nil {
+				return nil, err
+			}
 		}
 	}
 	content := make([]any, responsesMessageContentCount(message))
-	if message.textStarted {
-		part := map[string]any{"type": "output_text", "text": message.text.String(), "annotations": []any{}}
-		content[message.textIndex] = part
-		if err := renderer.writeResponsesEvent(MaheshvaraEventContentPartDone, map[string]any{"type": MaheshvaraEventContentPartDone, "item_id": message.id, "output_index": message.outputIndex, "content_index": message.textIndex, "part": part}); err != nil {
-			return nil, err
+	for _, partIndex := range []int{responsesPartText, responsesPartRefusal} {
+		slot := message.slot(partIndex)
+		if !slot.started {
+			continue
 		}
-	}
-	if message.refusalStarted {
-		part := map[string]any{"type": "refusal", "refusal": message.refusal.String()}
-		content[message.refusalIndex] = part
-		if err := renderer.writeResponsesEvent(MaheshvaraEventContentPartDone, map[string]any{"type": MaheshvaraEventContentPartDone, "item_id": message.id, "output_index": message.outputIndex, "content_index": message.refusalIndex, "part": part}); err != nil {
+		meta := responsesPartMetas[partIndex]
+		part := map[string]any{"type": meta.partType, meta.eventKey: slot.text.String()}
+		if partIndex == responsesPartText {
+			part["annotations"] = []any{}
+		}
+		content[slot.index] = part
+		if err := renderer.writeResponsesEvent(MaheshvaraEventContentPartDone, map[string]any{"type": MaheshvaraEventContentPartDone, "item_id": message.id, "output_index": message.outputIndex, "content_index": slot.index, "part": part}); err != nil {
 			return nil, err
 		}
 	}
@@ -584,11 +605,11 @@ func (renderer *MaheshvaraStreamRenderer) finalizeResponsesTool(tool *maheshvara
 
 func responsesMessageContentCount(state *maheshvaraResponsesMessageState) int {
 	maxIndex := -1
-	if state.textStarted && state.textIndex > maxIndex {
-		maxIndex = state.textIndex
-	}
-	if state.refusalStarted && state.refusalIndex > maxIndex {
-		maxIndex = state.refusalIndex
+	for _, partIndex := range []int{responsesPartText, responsesPartRefusal} {
+		slot := state.slot(partIndex)
+		if slot.started && slot.index > maxIndex {
+			maxIndex = slot.index
+		}
 	}
 	for index := range state.extraParts {
 		if index > maxIndex {
