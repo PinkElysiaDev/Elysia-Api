@@ -51,7 +51,7 @@ func (s *Server) protocolAgentEngine() *agent.Engine {
 		if s.store == nil {
 			return
 		}
-		registry, err := agent.NewRegistry(append(append(newProtocolAgentTools(s), newAgentOpsTools(s)...), &updatePlanTool{}, &askUserTool{}, &updateTitleTool{})...)
+		registry, err := agent.NewRegistry(append(append(append(newProtocolAgentTools(s), newAgentOpsTools(s)...), newAgentTokenTools(s)...), &updatePlanTool{}, &askUserTool{}, &updateTitleTool{})...)
 		if err != nil {
 			log.Printf("agent engine tools unavailable: %v", err)
 			return
