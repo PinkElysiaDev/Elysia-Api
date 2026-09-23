@@ -224,6 +224,8 @@ export interface ApiToken {
   token?: string
   enabled: boolean
   allowedGroups?: string[]
+  /** 端点作用域：agent=可控制 AI 助手（远程配置）；空=仅推理。 */
+  scopes?: string[]
   createdAt?: string
   updatedAt?: string
 }

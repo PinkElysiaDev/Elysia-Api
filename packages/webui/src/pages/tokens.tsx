@@ -257,6 +257,7 @@ function TokenFormDialog({
   const [secret, setSecret] = useState('')
   const [enabled, setEnabled] = useState(true)
   const [allowedGroups, setAllowedGroups] = useState<string[]>([])
+  const [agentScope, setAgentScope] = useState(false)
   const [saving, setSaving] = useState(false)
 
   // 打开时初始化一次表单。deps 刻意不含 groups：对话框开着时任何
@@ -269,6 +270,7 @@ function TokenFormDialog({
       setEnabled(token?.enabled ?? true)
       const validNames = new Set((groups ?? []).map((g) => g.name))
       setAllowedGroups((token?.allowedGroups ?? []).filter((g) => validNames.has(g)))
+      setAgentScope((token?.scopes ?? []).includes('agent'))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, token])
@@ -290,7 +292,7 @@ function TokenFormDialog({
     }
     setSaving(true)
     try {
-      const payload: ApiToken = { name: name.trim(), enabled, allowedGroups }
+      const payload: ApiToken = { name: name.trim(), enabled, allowedGroups, scopes: agentScope ? ['agent'] : [] }
       if (secret.trim()) payload.token = secret.trim()
       if (isEdit && token) await api.updateToken(token.name, payload)
       else await api.createToken(payload)
@@ -366,6 +368,15 @@ function TokenFormDialog({
           <label className="flex items-center gap-3">
             <Switch checked={enabled} onCheckedChange={setEnabled} />
             <span className="text-sm font-medium">启用</span>
+          </label>
+          <label className="flex items-start gap-3">
+            <Switch checked={agentScope} onCheckedChange={setAgentScope} className="mt-0.5" />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">允许控制 AI 助手</span>
+              <span className="block text-xs text-muted-foreground">
+                开启后该 Key 可通过 /api/agent、MCP 与 A2A 接口远程驱动 AI 助手（含写配置），默认仅可调用推理接口。
+              </span>
+            </span>
           </label>
         </div>
         <DialogFooter>
