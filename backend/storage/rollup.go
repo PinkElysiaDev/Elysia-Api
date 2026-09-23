@@ -116,39 +116,44 @@ func (s *Store) RunRollupBackfill(ctx context.Context) error {
 
 	startedAt := time.Now()
 	if ready != 0 {
-		// 对账：按小时比较 raw 与 rollup 计数，重建不一致的区间
-		// （覆盖中途降级运行旧版二进制留下的缺口）。
-		rebuilt, err := s.auditRollupHours(ctx)
-		if err != nil {
-			return err
-		}
-		if rebuilt == 0 {
-			s.rollupReady.Store(true)
-			return nil
-		}
-		log.Printf("[usage-rollup] audit found stale hour ranges, rebuilt %d chunks", rebuilt)
-		s.rollupReady.Store(true)
-		log.Printf("[usage-rollup] audit + rebuild done in %s", time.Since(startedAt).Round(time.Millisecond))
-		return nil
+		return s.auditReadyRollup(ctx, startedAt)
 	}
+	return s.backfillRollup(ctx, through, until, startedAt)
+}
 
+// auditReadyRollup 是 ready 态的相位：按小时比较 raw 与 rollup 计数，重建
+// 不一致的区间（覆盖中途降级运行旧版二进制留下的缺口）。
+func (s *Store) auditReadyRollup(ctx context.Context, startedAt time.Time) error {
+	rebuilt, err := s.auditRollupHours(ctx)
+	if err != nil {
+		return err
+	}
+	if rebuilt > 0 {
+		log.Printf("[usage-rollup] audit found stale hour ranges, rebuilt %d chunks", rebuilt)
+	}
+	s.rollupReady.Store(true)
+	if rebuilt > 0 {
+		log.Printf("[usage-rollup] audit + rebuild done in %s", time.Since(startedAt).Round(time.Millisecond))
+	}
+	return nil
+}
+
+// backfillRollup 是未就绪态的相位：钳起点 → 分块重建 → 推进水位 → 置 ready。
+func (s *Store) backfillRollup(ctx context.Context, through, until int64, startedAt time.Time) error {
 	total := until - through
 	// 首次回填时把起点钳到最早数据所在小时：水位默认从 0（Unix 纪元）开始。
 	// 空库 MIN(started_ms) 为 NULL/0，若不短路会从 1970 空跑到现在
 	// （约 2 万天、数万个 6 小时空块，启动日志会卡在 0% 刷很久）。
 	if through == 0 && total > 0 {
-		var minMs sql.NullInt64
-		if err := s.db.QueryRowContext(ctx, `SELECT MIN(started_ms) FROM usage_records WHERE started_ms > 0`).Scan(&minMs); err != nil {
+		clamped, empty, err := s.earliestRollupStart(ctx)
+		if err != nil {
 			return err
 		}
-		if minMs.Valid && minMs.Int64 > 0 {
-			through = minMs.Int64 / msPerHour * msPerHour
-			total = until - through
+		if empty {
+			through, total = until, 0
 		} else {
-			// 空库：无任何记录可回填，直接就绪——否则会从纪元起空跑约 9 万个
-			// 6 小时空块（持续占用单连接 + 进度日志刷屏）。
-			through = until
-			total = 0
+			through = clamped
+			total = until - through
 		}
 	}
 	if total <= 0 {
@@ -164,7 +169,33 @@ func (s *Store) RunRollupBackfill(ctx context.Context) error {
 		}
 	}
 	log.Printf("[usage-rollup] backfilling %.1f days of history (one-time, queries stay on raw path until done)", float64(total)/float64(msPerDay))
+	if err := s.backfillRollupChunks(ctx, through, until, total); err != nil {
+		return err
+	}
+	if err := s.setRollupStateInt(ctx, rollupStateReady, 1); err != nil {
+		return err
+	}
+	s.rollupReady.Store(true)
+	log.Printf("[usage-rollup] backfill complete in %s — aggregates now served from rollup", time.Since(startedAt).Round(time.Millisecond))
+	return nil
+}
 
+// earliestRollupStart 返回最早记录所在小时的下界；空库时 empty=true。
+func (s *Store) earliestRollupStart(ctx context.Context) (startMs int64, empty bool, err error) {
+	var minMs sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, `SELECT MIN(started_ms) FROM usage_records WHERE started_ms > 0`).Scan(&minMs); err != nil {
+		return 0, false, err
+	}
+	if !minMs.Valid || minMs.Int64 <= 0 {
+		// 空库：无任何记录可回填，直接就绪——否则会从纪元起空跑约 9 万个
+		// 6 小时空块（持续占用单连接 + 进度日志刷屏）。
+		return 0, true, nil
+	}
+	return minMs.Int64 / msPerHour * msPerHour, false, nil
+}
+
+// backfillRollupChunks 按 rollupChunkMs 分块重建并推进水位，块间让出连接。
+func (s *Store) backfillRollupChunks(ctx context.Context, through, until, total int64) error {
 	chunks := 0
 	throughInitial := through
 	for through < until {
@@ -192,11 +223,6 @@ func (s *Store) RunRollupBackfill(ctx context.Context) error {
 		case <-timer.C:
 		}
 	}
-	if err := s.setRollupStateInt(ctx, rollupStateReady, 1); err != nil {
-		return err
-	}
-	s.rollupReady.Store(true)
-	log.Printf("[usage-rollup] backfill complete in %s — aggregates now served from rollup", time.Since(startedAt).Round(time.Millisecond))
 	return nil
 }
 

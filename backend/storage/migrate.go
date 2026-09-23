@@ -77,37 +77,28 @@ func (s *Store) migrate(ctx context.Context) error {
 			return err
 		}
 	}
-	// 增量迁移：为 api_tokens 增加 allowed_groups_json 列（模型组级访问权限）。
-	// SQLite 无 ADD COLUMN IF NOT EXISTS，重复执行会报 duplicate column，忽略该错误即幂等。
-	if err := s.addColumnIgnoreDup(ctx, `ALTER TABLE api_tokens ADD COLUMN allowed_groups_json TEXT NOT NULL DEFAULT '[]'`); err != nil {
-		return err
+	// 增量迁移（幂等 ALTER）：SQLite 无 ADD COLUMN IF NOT EXISTS，重复执行报
+	// duplicate column，addColumnIgnoreDup 忽略该错误。新列一律追加到这里；
+	// 唯一索引等非 ALTER 步骤跟在清单之后。
+	incrementalColumns := []string{
+		// api_tokens：组级访问权限 + token 去重哈希（空 hash 不参与唯一约束）。
+		`ALTER TABLE api_tokens ADD COLUMN allowed_groups_json TEXT NOT NULL DEFAULT '[]'`,
+		`ALTER TABLE api_tokens ADD COLUMN token_hash TEXT NOT NULL DEFAULT ''`,
+		// agent_sessions：方案清单 / 计划模式 / 草稿还原点（单槽覆盖）。
+		`ALTER TABLE agent_sessions ADD COLUMN plan_json TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE agent_sessions ADD COLUMN plan_mode INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE agent_sessions ADD COLUMN draft_restore TEXT NOT NULL DEFAULT ''`,
+		// usage_records：缓存命中 token 数——统计接口直接 SUM，免逐条解析
+		// record_json；历史行为 0（旧记录不回填）。
+		`ALTER TABLE usage_records ADD COLUMN cache_hit_tokens INTEGER NOT NULL DEFAULT 0`,
 	}
-	// 增量迁移：为 api_tokens 增加 token_hash 列（SHA256 哈希，用于去重检查）。
-	// 空 hash 不参与唯一约束，兼容历史数据过渡期（旧数据 hash 为空，下次编辑时补齐）。
-	if err := s.addColumnIgnoreDup(ctx, `ALTER TABLE api_tokens ADD COLUMN token_hash TEXT NOT NULL DEFAULT ''`); err != nil {
-		return err
+	for _, stmt := range incrementalColumns {
+		if err := s.addColumnIgnoreDup(ctx, stmt); err != nil {
+			return err
+		}
 	}
 	// 为 token_hash 建唯一索引（WHERE token_hash != '' 保证空值不参与约束）。
 	if _, err := s.db.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash) WHERE token_hash != ''`); err != nil {
-		return err
-	}
-	// 增量迁移：agent_sessions 增加方案清单列（update_plan 工具维护）。
-	// 已存在的表不会因 CREATE TABLE IF NOT EXISTS 加列，容错 ALTER 幂等补齐。
-	if err := s.addColumnIgnoreDup(ctx, `ALTER TABLE agent_sessions ADD COLUMN plan_json TEXT NOT NULL DEFAULT ''`); err != nil {
-		return err
-	}
-	// 增量迁移：agent_sessions 增加计划模式列（plan_mode，先出方案用户确认后再执行）。
-	if err := s.addColumnIgnoreDup(ctx, `ALTER TABLE agent_sessions ADD COLUMN plan_mode INTEGER NOT NULL DEFAULT 0`); err != nil {
-		return err
-	}
-	// 增量迁移：agent_sessions 增加草稿还原点列（每轮修改前的快照，单槽覆盖）。
-	if err := s.addColumnIgnoreDup(ctx, `ALTER TABLE agent_sessions ADD COLUMN draft_restore TEXT NOT NULL DEFAULT ''`); err != nil {
-		return err
-	}
-	// 增量迁移：为 usage_records 增加 cache_hit_tokens 列（缓存命中 token 数）。
-	// 用于统计接口直接 SUM 出缓存命中量与命中率，免去逐条解析 record_json。
-	// 历史数据该列为 0（可接受：旧记录缓存命中量不再回填）。
-	if err := s.addColumnIgnoreDup(ctx, `ALTER TABLE usage_records ADD COLUMN cache_hit_tokens INTEGER NOT NULL DEFAULT 0`); err != nil {
 		return err
 	}
 	// 回填历史数据的 token_hash：查所有 hash 为空的行，解密 → 计算 SHA256 → UPDATE。

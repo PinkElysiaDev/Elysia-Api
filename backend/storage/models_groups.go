@@ -223,8 +223,9 @@ func (s *Store) UpsertGroup(ctx context.Context, item ModelGroup) error {
 }
 
 // updateTokenGroupsTx 遍历全部 API token 的组授权，对每个 token 应用 transform
-// 并在变更时落库。重命名/移除组共用同一骨架，只差变换函数。
-func updateTokenGroupsTx(ctx context.Context, tx *sql.Tx, transform func(groups []string) (updated []string, changed bool)) error {
+// 并在变更时落库。重命名/移除组共用同一骨架，只差变换函数。返回授权列表被
+// 清空的 token 名单（移除场景据此禁用防扩权；重命名的替换不减元素，恒空）。
+func updateTokenGroupsTx(ctx context.Context, tx *sql.Tx, transform func(groups []string) (updated []string, changed bool)) ([]string, error) {
 	type pendingToken struct {
 		name   string
 		groups []string
@@ -232,13 +233,13 @@ func updateTokenGroupsTx(ctx context.Context, tx *sql.Tx, transform func(groups 
 	var pending []pendingToken
 	rows, err := tx.QueryContext(ctx, `SELECT name, allowed_groups_json FROM api_tokens`)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for rows.Next() {
 		var name, raw string
 		if err := rows.Scan(&name, &raw); err != nil {
 			rows.Close()
-			return err
+			return nil, err
 		}
 		updated, changed := transform(decodeStringSlice(raw))
 		if changed {
@@ -247,21 +248,25 @@ func updateTokenGroupsTx(ctx context.Context, tx *sql.Tx, transform func(groups 
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
-		return err
+		return nil, err
 	}
 	rows.Close()
 
 	now := nowString()
+	emptied := []string{}
 	for _, t := range pending {
 		payload, err := json.Marshal(t.groups)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE api_tokens SET allowed_groups_json = ?, updated_at = ? WHERE name = ?`, string(payload), now, t.name); err != nil {
-			return err
+			return nil, err
+		}
+		if len(t.groups) == 0 {
+			emptied = append(emptied, t.name)
 		}
 	}
-	return nil
+	return emptied, nil
 }
 
 // renameGroupInTokens 在组改名后，把所有 token 的 allowed_groups_json 里的旧组名
@@ -269,9 +274,10 @@ func updateTokenGroupsTx(ctx context.Context, tx *sql.Tx, transform func(groups 
 // 如 "gpt" 误伤 "gpt-4"）；替换时去重，防止新名已存在导致重复项。
 // 仅对实际包含旧名的 token 执行 UPDATE。必须在改名同一事务内调用以保证原子性。
 func renameGroupInTokens(ctx context.Context, tx *sql.Tx, oldName, newName string) error {
-	return updateTokenGroupsTx(ctx, tx, func(groups []string) ([]string, bool) {
+	_, err := updateTokenGroupsTx(ctx, tx, func(groups []string) ([]string, bool) {
 		return replaceGroupName(groups, oldName, newName)
 	})
+	return err
 }
 
 // replaceGroupName 把切片里的 oldName 替换为 newName 并去重，返回新切片与是否发生变更。
@@ -435,58 +441,25 @@ func (s *Store) DeleteGroup(ctx context.Context, id string) ([]string, error) {
 }
 
 // removeGroupFromTokens 在删除模型组后，把所有 token 的 allowed_groups_json 里的
-// 该组名移除，避免残留成悬空引用。仅在 JSON 实际包含该组名时写回；与
-// renameGroupInTokens 一样，必须在删除组的事务内调用以保证原子性。
+// 该组名移除，避免残留成悬空引用；复用 updateTokenGroupsTx 骨架。
 //
 // 授权列表因此被清空的 token 一并禁用：空列表在鉴权语义中表示「不限制」，
 // 静默保留会让受限 token 因删除组而扩权为全部组可用。返回被禁用的 token
 // 名单，由调用方透出给管理员。
 func removeGroupFromTokens(ctx context.Context, tx *sql.Tx, groupName string) ([]string, error) {
-	type pendingToken struct {
-		name    string
-		groups  []string
-		emptied bool
-	}
-	var pending []pendingToken
-	rows, err := tx.QueryContext(ctx, `SELECT name, allowed_groups_json FROM api_tokens`)
+	emptied, err := updateTokenGroupsTx(ctx, tx, func(groups []string) ([]string, bool) {
+		return removeGroupName(groups, groupName)
+	})
 	if err != nil {
 		return nil, err
 	}
-	for rows.Next() {
-		var name, raw string
-		if err := rows.Scan(&name, &raw); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		updated, changed := removeGroupName(decodeStringSlice(raw), groupName)
-		if changed {
-			pending = append(pending, pendingToken{name: name, groups: updated, emptied: len(updated) == 0})
-		}
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, err
-	}
-	rows.Close()
-
 	now := nowString()
-	disabled := []string{}
-	for _, t := range pending {
-		payload, err := json.Marshal(t.groups)
-		if err != nil {
+	for _, name := range emptied {
+		if _, err := tx.ExecContext(ctx, `UPDATE api_tokens SET enabled = 0, updated_at = ? WHERE name = ?`, now, name); err != nil {
 			return nil, err
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE api_tokens SET allowed_groups_json = ?, updated_at = ? WHERE name = ?`, string(payload), now, t.name); err != nil {
-			return nil, err
-		}
-		if t.emptied {
-			if _, err := tx.ExecContext(ctx, `UPDATE api_tokens SET enabled = 0, updated_at = ? WHERE name = ?`, now, t.name); err != nil {
-				return nil, err
-			}
-			disabled = append(disabled, t.name)
 		}
 	}
-	return disabled, nil
+	return emptied, nil
 }
 
 // removeGroupName 从切片中移除指定组名并保持原有顺序，返回新切片与是否发生变更。
