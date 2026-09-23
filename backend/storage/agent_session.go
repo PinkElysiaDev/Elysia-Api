@@ -93,10 +93,13 @@ func (s *Store) attachSessionStats(ctx context.Context, items []agent.Session) {
 	if len(items) == 0 {
 		return
 	}
+	// usage_json 为空串（非 assistant 消息落库值）时 json_extract 会抛
+	// malformed JSON 并中止整条聚合——必须先判空再提取（CASE 惰性求值短路），
+	// 否则统计整列静默归零。WHERE 顺带跳过两种都不是的行。
 	rows, err := s.db.QueryContext(ctx, `SELECT session_id,
 			SUM(CASE WHEN role = 'user' THEN 1 ELSE 0 END),
-			COALESCE(SUM(CAST(json_extract(usage_json, '$.total_tokens') AS INTEGER)), 0)
-			FROM agent_messages GROUP BY session_id`)
+			COALESCE(SUM(CASE WHEN usage_json != '' THEN CAST(json_extract(usage_json, '$.total_tokens') AS INTEGER) ELSE 0 END), 0)
+			FROM agent_messages WHERE role = 'user' OR usage_json != '' GROUP BY session_id`)
 	if err != nil {
 		return
 	}
@@ -110,6 +113,9 @@ func (s *Store) attachSessionStats(ctx context.Context, items []agent.Session) {
 			return
 		}
 		stats[id] = item
+	}
+	if err := rows.Err(); err != nil {
+		return
 	}
 	for index := range items {
 		if item, ok := stats[items[index].ID]; ok {
@@ -212,6 +218,19 @@ func (s *Store) decryptAgentKey(id, stored string) string {
 	return plaintext
 }
 
+// clampSessionTitle 钳制会话标题长度：update_title 工具限 16 字、首条消息
+// 兜底 24 字，但 PATCH 与引擎路径经此统一封顶，避免 API 调用方写入任意长
+// 标题（展示端只做 CSS 截断）。
+func clampSessionTitle(title string) string {
+	title = strings.TrimSpace(title)
+	runes := []rune(title)
+	const max = 64
+	if len(runes) <= max {
+		return title
+	}
+	return string(runes[:max])
+}
+
 // UpdateAgentSessionSettings 管理面设置更新（PATCH）。SettingsPatch 全指针
 // 字段：nil 不改、非 nil 覆盖——前端可安全发增量。
 func (s *Store) UpdateAgentSessionSettings(ctx context.Context, id string, title *string,
@@ -224,7 +243,7 @@ func (s *Store) UpdateAgentSessionSettings(ctx context.Context, id string, title
 	args := []any{nowString()}
 	if title != nil {
 		sets = append(sets, "title = ?")
-		args = append(args, strings.TrimSpace(*title))
+		args = append(args, clampSessionTitle(*title))
 	}
 	if patch != nil {
 		if patch.ModelSourceID != nil {
@@ -314,7 +333,7 @@ func (s *Store) UpdateSessionState(ctx context.Context, id string, update agent.
 	}
 	if strings.TrimSpace(update.Title) != "" {
 		sets = append(sets, "title = ?")
-		args = append(args, strings.TrimSpace(update.Title))
+		args = append(args, clampSessionTitle(update.Title))
 	}
 	if strings.TrimSpace(update.TestBaseURL) != "" {
 		sets = append(sets, "test_base_url = ?")

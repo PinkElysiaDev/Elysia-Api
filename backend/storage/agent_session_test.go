@@ -348,3 +348,84 @@ func TestAgentSessionPendingActionWithoutCallsRoundtrip(t *testing.T) {
 		t.Fatalf("plan pending lost on read-back: %+v", session.PendingAction)
 	}
 }
+
+// 回归：非 assistant 消息的 usage_json 落库为空串，json_extract(”) 会抛
+// malformed JSON 中止聚合——统计必须短路空串且正确计数。
+func TestAgentSessionStatsAggregation(t *testing.T) {
+	ctx := context.Background()
+	store := newAgentTestStore(t)
+	created, _ := store.CreateAgentSession(ctx, AgentSessionUpsert{Mode: agent.ModeCreate})
+	other, _ := store.CreateAgentSession(ctx, AgentSessionUpsert{Mode: agent.ModeCreate})
+
+	append := func(sessionID, role string, usage string) {
+		content := map[string]any{"text": "x"}
+		if role == agent.RoleToolResult {
+			content = map[string]any{"callId": "c", "name": "t", "ok": true}
+		}
+		encoded, _ := json.Marshal(content)
+		var usageJSON json.RawMessage
+		if usage != "" {
+			usageJSON = json.RawMessage(usage)
+		}
+		if _, err := store.AppendMessage(ctx, sessionID, role, json.RawMessage(encoded), "", usageJSON); err != nil {
+			t.Fatalf("append %s/%s: %v", sessionID, role, err)
+		}
+	}
+	append(created.ID, agent.RoleUser, "")                          // 轮 1
+	append(created.ID, agent.RoleAssistant, `{"total_tokens":120}`) // 用量
+	append(created.ID, agent.RoleToolResult, "")                    // 空串 usage
+	append(created.ID, agent.RoleSystem, "")                        // 空串 usage
+	append(created.ID, agent.RoleUser, "")                          // 轮 2
+	append(created.ID, agent.RoleAssistant, `{"total_tokens":30,"input_tokens":20,"output_tokens":10}`)
+	append(created.ID, agent.RoleAssistant, "") // assistant 无 usage（空串）
+	append(other.ID, agent.RoleUser, "")
+
+	sessions, err := store.ListAgentSessions(ctx)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	byID := map[string]agent.Session{}
+	for _, item := range sessions {
+		byID[item.ID] = item
+	}
+	if got := byID[created.ID].UserTurns; got != 2 {
+		t.Fatalf("userTurns = %d, want 2", got)
+	}
+	if got := byID[created.ID].TotalTokens; got != 150 {
+		t.Fatalf("totalTokens = %d, want 150", got)
+	}
+	if got := byID[other.ID].UserTurns; got != 1 {
+		t.Fatalf("other userTurns = %d, want 1", got)
+	}
+	if got := byID[other.ID].TotalTokens; got != 0 {
+		t.Fatalf("other totalTokens = %d, want 0", got)
+	}
+}
+
+// 标题写入统一钳制 64 字：PATCH 与引擎路径都不例外。
+func TestAgentSessionTitleClamp(t *testing.T) {
+	ctx := context.Background()
+	store := newAgentTestStore(t)
+	created, _ := store.CreateAgentSession(ctx, AgentSessionUpsert{Mode: agent.ModeCreate})
+
+	long := strings.Repeat("标", 80)
+	updated, err := store.UpdateAgentSessionSettings(ctx, created.ID, &long, nil, nil, false)
+	if err != nil {
+		t.Fatalf("patch title: %v", err)
+	}
+	if got := []rune(updated.Title); len(got) != 64 {
+		t.Fatalf("patched title runes = %d, want 64", len(got))
+	}
+
+	engineTitle := strings.Repeat("题", 100)
+	if err := store.UpdateSessionState(ctx, created.ID, agent.SessionStateUpdate{Title: engineTitle}); err != nil {
+		t.Fatalf("engine title: %v", err)
+	}
+	session, err := store.GetAgentSession(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got := []rune(session.Title); len(got) != 64 {
+		t.Fatalf("engine title runes = %d, want 64", len(got))
+	}
+}
