@@ -14,6 +14,9 @@ import (
 	"github.com/elysia-api/backend/storage"
 )
 
+// modelFetchTimeout 是模型列表拉取的单请求超时。
+const modelFetchTimeout = 30 * time.Second
+
 type openAIModelsResponse struct {
 	Data []struct {
 		ID string `json:"id"`
@@ -330,7 +333,7 @@ func (s *Server) fetchClaudeModels(ctx context.Context, source storage.ModelSour
 		func(r *http.Request) {
 			if apiKey != "" {
 				r.Header.Set("x-api-key", apiKey)
-				r.Header.Set("anthropic-version", "2023-06-01")
+				r.Header.Set("anthropic-version", relay.AnthropicAPIVersion)
 			}
 		},
 		func(r *http.Request) {
@@ -411,11 +414,13 @@ func (s *Server) fetchGeminiModels(ctx context.Context, source storage.ModelSour
 	return models, nil
 }
 
+// modelFetchClient 是模型列表拉取的共享客户端（secure transport 拨号级
+// SSRF 校验）。复用连接池：多 key 源逐 key 并行拉取时不再每请求一个
+// 新 Transport。
+var modelFetchClient = &http.Client{Timeout: modelFetchTimeout, Transport: relay.NewSecureTransport()}
+
 func fetchAndDecodeJSON(req *http.Request, target any) error {
-	// 模型列表拉取与转发路径同级的外部请求:必须走 secure transport
-	// (拨号级 SSRF 校验),否则拉取 URL 可被引向内网/云元数据端点。
-	client := &http.Client{Timeout: 30 * time.Second, Transport: relay.NewSecureTransport()}
-	resp, err := client.Do(req)
+	resp, err := modelFetchClient.Do(req)
 	if err != nil {
 		return err
 	}

@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 
@@ -26,13 +25,6 @@ type upstreamStreamFailure struct {
 	err       error
 	status    int
 	body      []byte
-}
-
-func (f *upstreamStreamFailure) Error() string {
-	if f.transport {
-		return f.err.Error()
-	}
-	return fmt.Sprintf("upstream returned status %d: %s", f.status, f.body)
 }
 
 // openUpstreamStream 按上游线制建立流式连接，把「发送 → 传输判错 → 非 200

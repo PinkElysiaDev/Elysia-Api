@@ -327,11 +327,7 @@ func (c *Config) saveLocked() error {
 	// 旧布尔键 allowFakeIPOutbound 已废弃，落盘时顺带清除。
 	delete(raw, "allowFakeIPOutbound")
 	if c.Outbound.DeniedIPRanges != nil {
-		ranges := c.Outbound.DeniedIPRanges
-		if ranges == nil {
-			ranges = []string{}
-		}
-		raw["outbound"] = map[string]interface{}{"deniedIpRanges": ranges}
+		raw["outbound"] = map[string]interface{}{"deniedIpRanges": c.Outbound.DeniedIPRanges}
 	} else {
 		delete(raw, "outbound")
 	}

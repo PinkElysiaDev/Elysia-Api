@@ -100,13 +100,9 @@ func (h *healthChecker) start() {
 	}()
 }
 
-// probeInterval 读取当前生效的探测周期（非法值回落默认 300s）。
+// probeInterval 读取当前生效的探测周期（config 层已保证 >0）。
 func (h *healthChecker) probeInterval() time.Duration {
-	cfg := h.server.config.GetHealthCheckConfig()
-	if cfg.IntervalSeconds <= 0 {
-		return 300 * time.Second
-	}
-	return time.Duration(cfg.IntervalSeconds) * time.Second
+	return time.Duration(h.server.config.GetHealthCheckConfig().IntervalSeconds) * time.Second
 }
 
 func (h *healthChecker) shutdown() {
@@ -282,7 +278,7 @@ func applyProbeAuth(req *http.Request, model storage.Model) {
 	switch relay.NormalizeAPIFormat(model.Platform) {
 	case relay.APIFormatAnthropic:
 		req.Header.Set("x-api-key", model.APIKey)
-		req.Header.Set("anthropic-version", "2023-06-01")
+		req.Header.Set("anthropic-version", relay.AnthropicAPIVersion)
 	case relay.APIFormatGemini:
 		req.Header.Set("x-goog-api-key", model.APIKey)
 	default:

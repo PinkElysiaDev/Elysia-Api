@@ -3,8 +3,6 @@ package relay
 
 import "strings"
 
-// ConvertRequestToMaheshvara 按输入线制解析请求体进 Maheshvara 核心请求;
-// Responses 输入额外返回原生请求供同线回放。
 // normalizeMaheshvaraRole 统一消息角色：小写化去空白；system/developer 类
 // 角色在目标线制里通常单独承载（system 块/systemInstruction/instructions），
 // 返回 isSystem 供各整形器跳过或折叠；tool/function 折叠为 user（Claude/
@@ -20,8 +18,6 @@ func normalizeMaheshvaraRole(role string) (normalized string, isSystem bool) {
 	return normalized, false
 }
 
-// claudeRedactedThinkingBlockToPart 只解 Maheshvara 自有信封:任意厂商
-// 密文保持过滤,绝不成为 prompt 文本。
 // applyEnvelope 把 Maheshvara 思考密文信封的字段填进内容部件：签名让位
 // 给密文形态（同线按密文回放，跨线按 provider 门控），Text 空时回填信封内
 // 的明文思考。thinking/redacted 两类块的共同尾部。

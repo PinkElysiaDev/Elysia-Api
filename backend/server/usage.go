@@ -299,7 +299,7 @@ func extractProviderUsageFromBody(platform relay.Platform, format relay.FormatTy
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return providerUsageResult{}
 	}
-	return extractProviderUsageFromPayload(platform, format, payload, "provider_response")
+	return extractProviderUsageFromPayload(platform, format, payload, relay.UsageSourceProviderResponse)
 }
 
 func extractProviderUsageFromStreamEvent(platform relay.Platform, format relay.FormatType, payload string) providerUsageResult {

@@ -30,7 +30,7 @@ func maheshvaraUsageFromOpenAIUsage(usage Usage) *MaheshvaraUsage {
 		AudioOutputTokens:        completionDetails.AudioTokens,
 		ImageOutputTokens:        completionDetails.ImageTokens,
 		Raw:                      usage.RawFields,
-		Source:                   usageSourceProviderResponse,
+		Source:                   UsageSourceProviderResponse,
 	}
 	if u.CachedInputTokens == 0 {
 		u.CachedInputTokens = max(promptDetails.CachedTokens, promptDetails.CacheReadTokens)
@@ -55,7 +55,7 @@ func maheshvaraUsageFromClaudeUsage(usage ClaudeUsage) *MaheshvaraUsage {
 		TotalTokens:              input + usage.OutputTokens,
 		CachedInputTokens:        usage.CacheReadInputTokens,
 		CacheCreationInputTokens: usage.CacheCreationInputTokens,
-		Source:                   usageSourceProviderResponse,
+		Source:                   UsageSourceProviderResponse,
 	}
 	if usage.CacheCreation != nil {
 		// 双 TTL 桶明细保真（ephemeral_5m / ephemeral_1h）。
@@ -76,7 +76,7 @@ func maheshvaraUsageFromGeminiUsage(usage GeminiUsageMeta) *MaheshvaraUsage {
 		CachedInputTokens: usage.CachedContentTokenCount,
 		ReasoningTokens:   usage.ThoughtsTokenCount,
 		ToolUseTokens:     usage.ToolUsePromptTokenCount,
-		Source:            usageSourceProviderResponse,
+		Source:            UsageSourceProviderResponse,
 	}
 	u.TotalTokens = valueOrSum(u.TotalTokens, u.InputTokens, u.OutputTokens)
 	for _, detail := range usage.PromptTokensDetails {
@@ -110,7 +110,7 @@ func maheshvaraUsageFromResponsesUsage(usage *ResponsesUsage) *MaheshvaraUsage {
 		InputTokens:  usage.InputTokens,
 		OutputTokens: usage.OutputTokens,
 		TotalTokens:  usage.TotalTokens,
-		Source:       usageSourceProviderResponse,
+		Source:       UsageSourceProviderResponse,
 	}
 	if usage.InputTokensDetails != nil {
 		u.CachedInputTokens = usage.InputTokensDetails.CachedTokens

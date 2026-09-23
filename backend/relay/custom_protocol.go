@@ -21,6 +21,9 @@ const (
 	customProtocolMaxPlaceholders  = 2048
 )
 
+// DefaultAuthHeaderName 是 header 鉴权模式的缺省头名。
+const DefaultAuthHeaderName = "x-api-key"
+
 // CustomProtocolConfig describes a provider-specific wire protocol without
 // adding provider logic to the Maheshvara core. The request body is a JSON
 // template; placeholders can insert either escaped strings or native JSON
@@ -491,7 +494,7 @@ func validateCustomProtocolAliases(configID string, aliases *CustomProtocolAlias
 	usageCategories := map[string]bool{"input": true, "output": true, "total": true, "cached": true, "reasoning": true, "cache_creation": true, "cache_read": true}
 	for category, keys := range aliases.Usage {
 		if !usageCategories[category] {
-			return fmt.Errorf("custom protocol %q aliases.usage has unknown category %q (allowed: input, output, total, cached, reasoning)", configID, category)
+			return fmt.Errorf("custom protocol %q aliases.usage has unknown category %q (allowed: input, output, total, cached, reasoning, cache_creation, cache_read)", configID, category)
 		}
 		if len(keys) == 0 {
 			return fmt.Errorf("custom protocol %q aliases.usage.%s is empty", configID, category)
@@ -522,7 +525,7 @@ func validateCustomProtocolAliases(configID string, aliases *CustomProtocolAlias
 // 保护头清单与鉴权头校验:请求/模型发现两处的 headers 共用。
 var protectedCustomHeaders = map[string]struct{}{
 	"authorization":       {},
-	"x-api-key":           {},
+	DefaultAuthHeaderName: {},
 	"x-goog-api-key":      {},
 	"host":                {},
 	"content-length":      {},
@@ -562,7 +565,7 @@ func validateCustomAuth(auth CustomProtocolAuth) error {
 	case "bearer", "none":
 		return nil
 	case "header":
-		header := firstNonEmptyString(strings.TrimSpace(auth.Header), "x-api-key")
+		header := firstNonEmptyString(strings.TrimSpace(auth.Header), DefaultAuthHeaderName)
 		if !isValidCustomHeaderName(header) || isUnsafeCustomAuthHeader(header) {
 			return fmt.Errorf("header auth requires a valid end-to-end header name")
 		}
@@ -1068,7 +1071,7 @@ func (a *OpenAIAdapter) SendCustomProtocolRequest(ctx context.Context, baseURL, 
 		httpRequest.Header.Set("Content-Type", request.ContentType)
 	}
 	if authMode == "header" && apiKey != "" {
-		header := firstNonEmptyString(auth.Header, "x-api-key")
+		header := firstNonEmptyString(auth.Header, DefaultAuthHeaderName)
 		prefix := auth.Prefix
 		httpRequest.Header.Set(header, prefix+apiKey)
 	}
@@ -1772,7 +1775,7 @@ func customUsageAtWithAliases(root any, path string, aliases map[string][]string
 	if object == nil {
 		return nil
 	}
-	usage := &MaheshvaraUsage{Source: "provider_response"}
+	usage := &MaheshvaraUsage{Source: UsageSourceProviderResponse}
 	usage.InputTokens = customIntPath(object, customAliasKeys(aliases, "input", usageAliasTables.input...)...)
 	usage.OutputTokens = customIntPath(object, customAliasKeys(aliases, "output", usageAliasTables.output...)...)
 	usage.TotalTokens = customIntPath(object, customAliasKeys(aliases, "total", usageAliasTables.total...)...)

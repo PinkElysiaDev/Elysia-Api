@@ -20,12 +20,3 @@ var usageAliasTables = struct {
 	cacheRd:  []string{"cache_read_input_tokens", "cacheReadInputTokens"},
 	reason:   []string{"reasoning_tokens", "reasoningTokens", "thoughtsTokenCount"},
 }
-
-// usageAliasKeysWithDefaults 在用户别名（可整体替换键位）之后拼接默认表，
-// 保持「用户优先、默认兜底」的既有语义。
-func usageAliasKeysWithDefaults(custom []string, defaults []string) []string {
-	if len(custom) > 0 {
-		return custom
-	}
-	return defaults
-}

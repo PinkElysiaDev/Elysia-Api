@@ -15,8 +15,8 @@ const (
 	effortBudgetMax    = 32000
 )
 
-// usageSourceProviderResponse 标记 usage 数据取自上游非流式响应体/流事件。
-const usageSourceProviderResponse = "provider_response"
+// UsageSourceProviderResponse 标记 usage 数据取自上游非流式响应体/流事件。
+const UsageSourceProviderResponse = "provider_response"
 
 // defaultImageMIME 是无法识别的图片数据的回退 MIME 类型。
 const defaultImageMIME = "image/png"

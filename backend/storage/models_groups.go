@@ -222,10 +222,6 @@ func (s *Store) UpsertGroup(ctx context.Context, item ModelGroup) error {
 	return tx.Commit()
 }
 
-// renameGroupInTokens 在组改名后，把所有 token 的 allowed_groups_json 里的旧组名
-// 替换为新名。逐行 JSON 解析后精确替换（不用 SQL REPLACE，避免误伤子串，
-// 如 "gpt" 误伤 "gpt-4"）；替换时去重，防止新名已存在导致重复项。
-// 仅对实际包含旧名的 token 执行 UPDATE。必须在改名同一事务内调用以保证原子性。
 // updateTokenGroupsTx 遍历全部 API token 的组授权，对每个 token 应用 transform
 // 并在变更时落库。重命名/移除组共用同一骨架，只差变换函数。
 func updateTokenGroupsTx(ctx context.Context, tx *sql.Tx, transform func(groups []string) (updated []string, changed bool)) error {
@@ -268,6 +264,10 @@ func updateTokenGroupsTx(ctx context.Context, tx *sql.Tx, transform func(groups 
 	return nil
 }
 
+// renameGroupInTokens 在组改名后，把所有 token 的 allowed_groups_json 里的旧组名
+// 替换为新名。逐行 JSON 解析后精确替换（不用 SQL REPLACE，避免误伤子串，
+// 如 "gpt" 误伤 "gpt-4"）；替换时去重，防止新名已存在导致重复项。
+// 仅对实际包含旧名的 token 执行 UPDATE。必须在改名同一事务内调用以保证原子性。
 func renameGroupInTokens(ctx context.Context, tx *sql.Tx, oldName, newName string) error {
 	return updateTokenGroupsTx(ctx, tx, func(groups []string) ([]string, bool) {
 		return replaceGroupName(groups, oldName, newName)

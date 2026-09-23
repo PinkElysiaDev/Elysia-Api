@@ -787,10 +787,8 @@ func maheshvaraStopToClaude(reason string) string {
 	case "content_filter", "refusal", "SAFETY", "RECITATION", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "LANGUAGE":
 		return "refusal"
 	default:
-		// 上游新增的未知枚举原样透传（native 保真）；空值保持 end_turn。
-		if reason == "" {
-			return "end_turn"
-		}
+		// 上游新增的未知枚举原样透传（native 保真）；空串在上方 case 已归一
+		// 为 end_turn，不会到达这里。
 		return reason
 	}
 }

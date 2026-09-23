@@ -315,7 +315,7 @@ func previewCustomProtocolRequest(protocol relay.CustomProtocolConfig, sample *r
 	case "header":
 		headerName := rendered.Auth.Header
 		if strings.TrimSpace(headerName) == "" {
-			headerName = "x-api-key"
+			headerName = relay.DefaultAuthHeaderName
 		}
 		headers[headerName] = rendered.Auth.Prefix + "<source-api-key>"
 		authPreview = fmt.Sprintf("%s: %s<模型源 API key>", headerName, rendered.Auth.Prefix)
@@ -528,11 +528,7 @@ func (s *Server) adminTestCustomProtocol(c *gin.Context) {
 		target = customProtocolTestTarget{BaseURL: model.BaseURL, APIKey: model.APIKey, ModelName: model.Name}
 	}
 
-	timeout := s.probeTimeout(customProtocolTestTimeoutSec * time.Second)
-	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
-	defer cancel()
-
-	result, err := s.runCustomProtocolLiveTest(ctx, protocol, target, payload.Stream, payload.SampleRequest)
+	result, err := s.runCustomProtocolLiveTest(c.Request.Context(), protocol, target, payload.Stream, payload.SampleRequest)
 	if err != nil {
 		respondFail(c, http.StatusBadGateway, "send_failed", err.Error())
 		return
@@ -605,11 +601,7 @@ func (s *Server) adminTestCustomProtocolModels(c *gin.Context) {
 		return
 	}
 
-	timeout := s.probeTimeout(customProtocolTestTimeoutSec * time.Second)
-	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
-	defer cancel()
-
-	result, err := s.runCustomProtocolModelsTest(ctx, protocol, customProtocolTestTarget{
+	result, err := s.runCustomProtocolModelsTest(c.Request.Context(), protocol, customProtocolTestTarget{
 		BaseURL: baseURL, APIKey: payload.APIKey,
 	})
 	if err != nil {
