@@ -26,7 +26,7 @@ export function FieldSelect({
         <Link2 className="h-3 w-3 shrink-0 text-primary" />
         <Input
           list={datalistId}
-          className="h-7 w-full min-w-36 font-mono text-xs"
+          className="h-7 w-full min-w-40 font-mono text-xs"
           placeholder={placeholder}
           value={value}
           onChange={(event) => onChange(event.target.value.trim())}

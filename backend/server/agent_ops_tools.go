@@ -113,7 +113,7 @@ func (p usageQueryParams) usageWindow() (from, to time.Time, err error) {
 		}
 		return parsed, to, nil
 	}
-	return to.AddDate(0, 0, -clampInt(p.Days, usageDefaultDays, usageMaxDays)), to, nil
+	return to.AddDate(0, 0, -defaultInt(p.Days, usageDefaultDays, usageMaxDays)), to, nil
 }
 
 func (p usageQueryParams) usageQuery() (storage.UsageQuery, error) {
@@ -135,10 +135,22 @@ func (p usageQueryParams) usageQuery() (storage.UsageQuery, error) {
 	}, nil
 }
 
-// clampInt 把 v 钳进 [min, max]；v 落在零值区（未传）时取 min。
+// clampInt 把 v 钳进 [min, max]（真区间钳制，如时区偏移）。
 func clampInt(v, min, max int) int {
 	if v < min {
 		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
+}
+
+// defaultInt 是「可选数值参数」语义：未传/非正（零值）取默认，超限钳到
+// 上限，其余原样保留——用户明确给的小值（如 days=3、limit=5）不得抬升。
+func defaultInt(v, def, max int) int {
+	if v <= 0 {
+		return def
 	}
 	if v > max {
 		return max
@@ -476,7 +488,7 @@ func (t *usageLogsTool) Execute(ctx context.Context, tctx agent.ToolContext, arg
 	if err != nil {
 		return agent.ToolError(err.Error(), "invalid_args")
 	}
-	query.Limit = clampInt(params.Limit, usageLogsDefaultLimit, usageLogsMaxLimit)
+	query.Limit = defaultInt(params.Limit, usageLogsDefaultLimit, usageLogsMaxLimit)
 	total, items, err := store.QueryUsageLogs(ctx, query)
 	if err != nil {
 		return agent.ToolError("日志查询失败: "+err.Error(), "query_failed")
@@ -580,7 +592,7 @@ func (t *systemLogsTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 	default:
 		params.Level = ""
 	}
-	params.Limit = clampInt(params.Limit, systemLogsDefaultLimit, systemLogsMaxLimit)
+	params.Limit = defaultInt(params.Limit, systemLogsDefaultLimit, systemLogsMaxLimit)
 	total, items, err := store.QuerySystemLogs(ctx, params.Limit, 0, params.Level)
 	if err != nil {
 		return agent.ToolError("查询失败: "+err.Error(), "query_failed")

@@ -251,11 +251,13 @@ func (t *testUpstreamTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 	if len(args) > 0 {
 		_ = json.Unmarshal(args, &params)
 	}
-	baseURL, apiKey, failure, ok := resolveTestTarget(tctx, params.BaseURL, params.APIKey)
+	// 先验草稿再解析凭证：草稿为空时不能先把用户带来的凭证落库，报错也要
+	// 指向「先建草稿」而不是「缺 baseUrl」。
+	protocol, failure, ok := draftProtocol(tctx)
 	if !ok {
 		return failure
 	}
-	protocol, failure, ok := draftProtocol(tctx)
+	baseURL, apiKey, failure, ok := resolveTestTarget(tctx, params.BaseURL, params.APIKey)
 	if !ok {
 		return failure
 	}
@@ -310,11 +312,12 @@ func (t *testModelsTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 	if len(args) > 0 {
 		_ = json.Unmarshal(args, &credParams)
 	}
-	baseURL, apiKey, failure, ok := resolveTestTarget(tctx, credParams.BaseURL, credParams.APIKey)
+	// 同 test_upstream：先草稿后凭证（草稿为空不落库凭证、报「先建草稿」）。
+	protocol, failure, ok := draftProtocol(tctx)
 	if !ok {
 		return failure
 	}
-	protocol, failure, ok := draftProtocol(tctx)
+	baseURL, apiKey, failure, ok := resolveTestTarget(tctx, credParams.BaseURL, credParams.APIKey)
 	if !ok {
 		return failure
 	}

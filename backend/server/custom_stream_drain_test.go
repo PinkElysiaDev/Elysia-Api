@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/relay"
 )
 
@@ -314,5 +315,51 @@ func TestCustomProtocolResponsesStyleFramesEndToEnd(t *testing.T) {
 	}
 	if strings.Contains(body, `"content":"pondering"`) {
 		t.Fatalf("reasoning must not leak into content: %s", body)
+	}
+}
+
+// 回归（质量轮 B2）：未提交（可重试）的流式失败不得记 usage——record 跨尝试
+// 共享，无条件 finish 会让「失败×N→最终提交」落 N+1 条记录。
+func TestCustomProtocolStreamRetryableFailureRecordsUsageOnce(t *testing.T) {
+	relay.ClearCustomProtocols()
+	t.Cleanup(relay.ClearCustomProtocols)
+	if err := relay.RegisterCustomProtocol(relay.CustomProtocolConfig{
+		ID: "always-500",
+		Request: relay.CustomProtocolRequest{
+			Method:       http.MethodPost,
+			PathTemplate: "/v1/chat",
+			BodyTemplate: `{"model":{{maheshvara.model | json}},"stream":{{maheshvara.stream}}}`,
+		},
+		Response: relay.CustomProtocolResponse{TextPath: "text"},
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	attempts := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = io.WriteString(w, `{"error":"boom"}`)
+	}))
+	defer upstream.Close()
+
+	groups := presetGroup(t, "custom:always-500", upstream.URL)
+	// 重试预算按「每个候选最多用一次」封顶：给两个同上游候选才有第二次尝试
+	// （首败未提交 → 末次提交错误）。
+	groups[0].Models = append(groups[0].Models, config.ModelRef{ID: "m2", Name: "preset-model", BaseURL: upstream.URL, APIKey: "k", Platform: "custom:always-500"})
+	groups[0].MaxRetries = 1
+	s := newTestServerWithStore(t, groups)
+	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	s.chatCompletions(c)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected upstream 500 passthrough, got %d body=%.200s", rec.Code, rec.Body.String())
+	}
+	if attempts != 2 {
+		t.Fatalf("upstream attempts = %d, want 2 (retry then last)", attempts)
+	}
+	// usage 落库是异步 writer，轮询等待冲刷（latestUsageRecords）。
+	logs := latestUsageRecords(t, s)
+	if len(logs) != 1 {
+		t.Fatalf("usage records = %d, want 1 (only the committed final failure): %+v", len(logs), logs)
 	}
 }

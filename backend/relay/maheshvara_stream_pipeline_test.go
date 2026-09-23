@@ -264,3 +264,32 @@ func decodeSSEDataObjects(t *testing.T, stream string) []map[string]any {
 	}
 	return result
 }
+
+// 回归（质量轮 B4）：refusal 的 content_part.added 部件不得带 annotations——
+// OpenAI 线制的 refusal part 无此键，统一槽位构造时曾误加。
+func TestResponsesRendererRefusalPartAddedHasNoAnnotations(t *testing.T) {
+	body := strings.Join([]string{
+		`data: {"id":"c1","choices":[{"index":0,"delta":{"role":"assistant","refusal":"不能"}}]}`,
+		``,
+		`data: {"id":"c1","choices":[{"index":0,"delta":{},"finish_reason":"content_filter"}]}`,
+		``,
+		`data: [DONE]`,
+		``,
+	}, "\n")
+	writer := &captureStreamWriter{}
+	if err := TransformStreamViaMaheshvara(context.Background(), sseResponse(body), FormatOpenAIChat, FormatResponses, writer, "responses-target"); err != nil {
+		t.Fatalf("transform stream: %v\n%s", err, writer.String())
+	}
+	output := writer.String()
+	for _, line := range strings.Split(output, "\n") {
+		if !strings.Contains(line, `"response.content_part.added"`) {
+			continue
+		}
+		if strings.Contains(line, `"type":"refusal"`) && strings.Contains(line, "annotations") {
+			t.Fatalf("refusal part-added carries annotations (wire drift):\n%s", line)
+		}
+	}
+	if !strings.Contains(output, `"type":"refusal"`) {
+		t.Fatalf("no refusal part rendered:\n%s", output)
+	}
+}

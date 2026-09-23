@@ -434,3 +434,21 @@ func TestOutboundPolicyTool(t *testing.T) {
 		t.Fatalf("loopback should be denied again after reset")
 	}
 }
+
+// 回归（质量轮 A2）：clampInt 曾把「小于默认值的合法入参」当未传抬升——
+// days=3 应保留 3 天窗口、limit=5 应保留 5 条。
+func TestDefaultIntKeepsSmallValues(t *testing.T) {
+	cases := []struct{ v, def, max, want int }{
+		{0, 7, 366, 7},     // 未传 → 默认
+		{-2, 7, 366, 7},    // 非正 → 默认
+		{3, 7, 366, 3},     // 合法小值保留
+		{1, 7, 366, 1},     // 边界最小合法值
+		{400, 7, 366, 366}, // 超限钳到上限
+		{5, 20, 100, 5},    // limit 语义同款
+	}
+	for _, tc := range cases {
+		if got := defaultInt(tc.v, tc.def, tc.max); got != tc.want {
+			t.Fatalf("defaultInt(%d,%d,%d) = %d, want %d", tc.v, tc.def, tc.max, got, tc.want)
+		}
+	}
+}

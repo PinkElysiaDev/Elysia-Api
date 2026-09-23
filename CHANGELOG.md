@@ -11,6 +11,25 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
 
 ## Unreleased
 
+### 质量轮回归修复
+
+对第二轮质量轮 18 个提交的回归审查，修复四处引入的缺陷：
+
+- **custom_stream 未提交失败也记账（P0）**：统一失败闭包时丢了 committed
+  守卫，「失败×N→成功」会落 N+1 条 usage 记录污染统计；恢复仅 committed
+  才收尾记账，并补双候选重试场景的回归测试。
+- **clampInt 抬升合法小值（P1）**：days=1..6 被抬成 7、日志 limit 小值被
+  抬到默认——「可选参数」语义改为 defaultInt（零值取默认、超限钳上限、
+  小值保留）。
+- **refusal 部件线制漂移**：Responses 流渲染统一槽位后 content_part.added
+  的 refusal part 多出 annotations 键，严格客户端可能拒绝；按槽条件加回。
+- **凭证持久化顺序**：test_upstream / test_model_list 的凭证解析被挪到
+  草稿校验之前，草稿为空时会先落库用户凭证且报错指向「缺 baseUrl」而非
+  「先建草稿」；恢复旧顺序。
+
+审查确认三项改动属有意修复不回改：legacy mappings 合并范围按表生效、
+摘要头 rune 截断、轮次错误 404/500 分级。另有 FieldSelect 统一宽度取宽侧。
+
 ### 第二轮代码质量轮（全量：agent 域 / 转换引擎 / 转发管线 / storage / 前端）
 
 三路并行审查后的行为保持重构，十六个提交，每步全量测试门禁：

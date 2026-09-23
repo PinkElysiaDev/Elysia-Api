@@ -30,7 +30,14 @@ func (s *Server) handleCustomStreamRequest(
 	}
 	failWriter := relayFailWriter{c: c, inputFormat: inputFormat, targetPlatform: targetPlatform}
 	fail := func(status int, message string, body []byte, retryable bool) relayOutcome {
-		return finish(failWriter.fail(record, isLast, retryable, status, message, body))
+		outcome := failWriter.fail(record, isLast, retryable, status, message, body)
+		// 只有 committed（已向客户端定论）才记 usage；未提交的重试失败交由
+		// 最终那次尝试统一记账——record 跨尝试共享，无条件 finish 会让
+		// 「失败×N→成功」落 N+1 条记录。
+		if outcome.committed {
+			return finish(outcome)
+		}
+		return outcome
 	}
 
 	if request == nil {

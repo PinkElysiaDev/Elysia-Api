@@ -209,7 +209,12 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesPart(choiceIndex, partIn
 	if !slot.started {
 		slot.started = true
 		slot.index = nextResponsesContentIndex(state)
-		part := map[string]any{"type": meta.partType, meta.eventKey: "", "annotations": []any{}}
+		part := map[string]any{"type": meta.partType, meta.eventKey: ""}
+		// annotations 只属于 output_text：线制里 refusal part 无此键，
+		// 多发会被严格客户端拒绝。
+		if partIndex == responsesPartText {
+			part["annotations"] = []any{}
+		}
 		if err := renderer.writeResponsesEvent(MaheshvaraEventContentPartAdded, map[string]any{"type": MaheshvaraEventContentPartAdded, "item_id": state.id, "output_index": state.outputIndex, "content_index": slot.index, "part": part}); err != nil {
 			return err
 		}
