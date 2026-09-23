@@ -108,11 +108,12 @@ function SessionSummary({ session, hasDraft }: { session: AgentSession; hasDraft
 }
 
 function sessionStateLabel(session: AgentSession, hasDraft: boolean): string {
-  if (session.status === 'running') return '进行中'
+  // 审批、提问、方案确认都停在 waiting_approval，统一称待确认。
   if (session.status === 'waiting_approval') return '待确认'
+  if (session.status === 'running') return '进行中'
   if (hasDraft) return '有未发送内容'
-  if ((session.userTurns ?? 0) > 0) return '已完成'
-  return '未开始'
+  if ((session.userTurns ?? 0) > 0) return '已结束'
+  return '空对话'
 }
 
 function SessionStatusDot({ status }: { status: AgentSessionStatus }) {
