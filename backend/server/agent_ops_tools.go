@@ -224,7 +224,7 @@ func agentSourceView(source storage.ModelSource, modelCount int) map[string]any 
 
 // readOnlyMeta 只读查询工具的元数据：同批可并行，结果保留头部。
 func readOnlyMeta() agent.ToolMeta {
-	return agent.ToolMeta{ConcurrentSafe: true, RiskLevel: "low", PreviewDirection: "head"}
+	return agent.ToolMeta{ConcurrentSafe: true, RiskLevel: "low", PreviewDirection: agent.ClampHead}
 }
 
 func (t *listSourcesTool) Meta() agent.ToolMeta    { return readOnlyMeta() }
@@ -265,13 +265,13 @@ func (t *listSourcesTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *listSourcesTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store, unavailable := toolStore(t.server)
+	store, unavailableResult := toolStore(t.server)
 	if store == nil {
-		return unavailable
+		return unavailableResult
 	}
 	sources, err := store.ListSources(ctx)
 	if err != nil {
-		return agent.ToolError("读取失败: "+err.Error(), err.Error())
+		return agent.ToolError("读取失败: "+err.Error(), "read_failed")
 	}
 	counts := agentSourceModelCounts(ctx, store)
 	items := make([]map[string]any, 0, len(sources))
@@ -311,13 +311,13 @@ func (t *listGroupsTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *listGroupsTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store, unavailable := toolStore(t.server)
+	store, unavailableResult := toolStore(t.server)
 	if store == nil {
-		return unavailable
+		return unavailableResult
 	}
 	groups, err := store.ListGroups(ctx)
 	if err != nil {
-		return agent.ToolError("读取失败: "+err.Error(), err.Error())
+		return agent.ToolError("读取失败: "+err.Error(), "read_failed")
 	}
 	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("共 %d 个模型组", len(groups)), Data: map[string]any{"groups": groups}}
 }
@@ -348,22 +348,22 @@ func (t *usageStatsTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *usageStatsTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store, unavailable := toolStore(t.server)
+	store, unavailableResult := toolStore(t.server)
 	if store == nil {
-		return unavailable
+		return unavailableResult
 	}
 	params := decodeUsageQueryArgs(args)
 	query, err := params.usageQuery()
 	if err != nil {
-		return agent.ToolError(err.Error(), err.Error())
+		return agent.ToolError(err.Error(), "invalid_args")
 	}
 	totals, err := store.UsageTotals(ctx, query)
 	if err != nil {
-		return agent.ToolError("统计查询失败: "+err.Error(), err.Error())
+		return agent.ToolError("统计查询失败: "+err.Error(), "query_failed")
 	}
 	byModel, err := store.UsageByModel(ctx, query)
 	if err != nil {
-		return agent.ToolError("模型分布查询失败: "+err.Error(), err.Error())
+		return agent.ToolError("模型分布查询失败: "+err.Error(), "query_failed")
 	}
 	requests, _ := totals["requests"].(int64)
 	if requests == 0 {
@@ -403,18 +403,18 @@ func (t *usageTrendTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *usageTrendTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store, unavailable := toolStore(t.server)
+	store, unavailableResult := toolStore(t.server)
 	if store == nil {
-		return unavailable
+		return unavailableResult
 	}
 	params := decodeUsageQueryArgs(args)
 	query, err := params.usageQuery()
 	if err != nil {
-		return agent.ToolError(err.Error(), err.Error())
+		return agent.ToolError(err.Error(), "invalid_args")
 	}
 	buckets, err := store.UsageDaily(ctx, query, agentLocalUTCOffset())
 	if err != nil {
-		return agent.ToolError("趋势查询失败: "+err.Error(), err.Error())
+		return agent.ToolError("趋势查询失败: "+err.Error(), "query_failed")
 	}
 	// 直接给出图表 spec，模型侧可原样交给 ```chart 或自行组织。
 	dates := make([]string, 0, len(buckets))
@@ -467,19 +467,19 @@ func (t *usageLogsTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *usageLogsTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store, unavailable := toolStore(t.server)
+	store, unavailableResult := toolStore(t.server)
 	if store == nil {
-		return unavailable
+		return unavailableResult
 	}
 	params := decodeUsageQueryArgs(args)
 	query, err := params.usageQuery()
 	if err != nil {
-		return agent.ToolError(err.Error(), err.Error())
+		return agent.ToolError(err.Error(), "invalid_args")
 	}
 	query.Limit = clampInt(params.Limit, usageLogsDefaultLimit, usageLogsMaxLimit)
 	total, items, err := store.QueryUsageLogs(ctx, query)
 	if err != nil {
-		return agent.ToolError("日志查询失败: "+err.Error(), err.Error())
+		return agent.ToolError("日志查询失败: "+err.Error(), "query_failed")
 	}
 	failed := 0
 	for _, item := range items {
@@ -515,9 +515,9 @@ func (t *usageLogDetailTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *usageLogDetailTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store, unavailable := toolStore(t.server)
+	store, unavailableResult := toolStore(t.server)
 	if store == nil {
-		return unavailable
+		return unavailableResult
 	}
 	var params struct {
 		RequestID string `json:"requestId"`
@@ -530,7 +530,7 @@ func (t *usageLogDetailTool) Execute(ctx context.Context, tctx agent.ToolContext
 	}
 	raw, found, err := store.GetUsageRecordJSON(ctx, strings.TrimSpace(params.RequestID))
 	if err != nil {
-		return agent.ToolError("读取失败: "+err.Error(), err.Error())
+		return agent.ToolError("读取失败: "+err.Error(), "read_failed")
 	}
 	if !found {
 		return agent.ToolError("记录不存在", "not_found")
@@ -563,9 +563,9 @@ func (t *systemLogsTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *systemLogsTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store, unavailable := toolStore(t.server)
+	store, unavailableResult := toolStore(t.server)
 	if store == nil {
-		return unavailable
+		return unavailableResult
 	}
 	var params struct {
 		Level string `json:"level"`
@@ -583,7 +583,7 @@ func (t *systemLogsTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 	params.Limit = clampInt(params.Limit, systemLogsDefaultLimit, systemLogsMaxLimit)
 	total, items, err := store.QuerySystemLogs(ctx, params.Limit, 0, params.Level)
 	if err != nil {
-		return agent.ToolError("查询失败: "+err.Error(), err.Error())
+		return agent.ToolError("查询失败: "+err.Error(), "query_failed")
 	}
 	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("共 %d 条，返回 %d 条", total, len(items)), Data: map[string]any{"items": items}}
 }
@@ -597,7 +597,7 @@ func (t *createSourceTool) Description() string   { return "创建模型源（�
 func (t *createSourceTool) Gated() bool           { return true }
 func (t *createSourceTool) PermissionKey() string { return agent.PermissionKeySave }
 func (t *createSourceTool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: "head"}
+	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: agent.ClampHead}
 }
 
 func (t *createSourceTool) Definition() relay.MaheshvaraTool {
@@ -619,9 +619,9 @@ func (t *createSourceTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *createSourceTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store, unavailable := toolStore(t.server)
+	store, unavailableResult := toolStore(t.server)
 	if store == nil {
-		return unavailable
+		return unavailableResult
 	}
 	var params struct {
 		Name            string   `json:"name"`
@@ -661,10 +661,10 @@ func (t *createSourceTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 		item.FetchBaseURL = strings.TrimSpace(params.FetchBaseURL)
 	}
 	if err := t.server.validateAgentSource(ctx, &item, nil); err != nil {
-		return agent.ToolError("校验失败: "+err.Error(), err.Error())
+		return agent.ToolError("校验失败: "+err.Error(), "validation_failed")
 	}
 	if err := store.UpsertSource(ctx, item); err != nil {
-		return agent.ToolError("保存失败: "+err.Error(), err.Error())
+		return agent.ToolError("保存失败: "+err.Error(), "persist_failed")
 	}
 	created, _ := agentFindSource(ctx, store, item.ID)
 	if len(params.ManualModels) > 0 {
@@ -689,7 +689,7 @@ func (t *updateSourceTool) Description() string   { return "修改模型源（�
 func (t *updateSourceTool) Gated() bool           { return true }
 func (t *updateSourceTool) PermissionKey() string { return agent.PermissionKeySave }
 func (t *updateSourceTool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: "head"}
+	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: agent.ClampHead}
 }
 
 func (t *updateSourceTool) Definition() relay.MaheshvaraTool {
@@ -711,9 +711,9 @@ func (t *updateSourceTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *updateSourceTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store, unavailable := toolStore(t.server)
+	store, unavailableResult := toolStore(t.server)
 	if store == nil {
-		return unavailable
+		return unavailableResult
 	}
 	var params struct {
 		Source          string   `json:"source"`
@@ -752,10 +752,10 @@ func (t *updateSourceTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 		item.AutoFetchModels = *params.AutoFetchModels
 	}
 	if err := t.server.validateAgentSource(ctx, &item, &existing); err != nil {
-		return agent.ToolError("校验失败: "+err.Error(), err.Error())
+		return agent.ToolError("校验失败: "+err.Error(), "validation_failed")
 	}
 	if err := store.UpsertSource(ctx, item); err != nil {
-		return agent.ToolError("保存失败: "+err.Error(), err.Error())
+		return agent.ToolError("保存失败: "+err.Error(), "persist_failed")
 	}
 	if params.ManualModels != nil {
 		updated, _ := agentFindSource(ctx, store, item.ID)
@@ -806,7 +806,7 @@ func (t *refreshSourceTool) Description() string {
 func (t *refreshSourceTool) Gated() bool           { return true }
 func (t *refreshSourceTool) PermissionKey() string { return agent.PermissionKeyLiveTest }
 func (t *refreshSourceTool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: "tail", TimeoutMs: 60_000}
+	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: agent.ClampTail, TimeoutMs: 60_000}
 }
 
 func (t *refreshSourceTool) Definition() relay.MaheshvaraTool {
@@ -821,9 +821,9 @@ func (t *refreshSourceTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *refreshSourceTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store, unavailable := toolStore(t.server)
+	store, unavailableResult := toolStore(t.server)
 	if store == nil {
-		return unavailable
+		return unavailableResult
 	}
 	var params struct {
 		Source string `json:"source"`
@@ -852,7 +852,7 @@ func (t *createGroupTool) Description() string   { return "创建模型组（需
 func (t *createGroupTool) Gated() bool           { return true }
 func (t *createGroupTool) PermissionKey() string { return agent.PermissionKeySave }
 func (t *createGroupTool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{RiskLevel: "medium", PreviewDirection: "head"}
+	return agent.ToolMeta{RiskLevel: "medium", PreviewDirection: agent.ClampHead}
 }
 
 func (t *createGroupTool) Definition() relay.MaheshvaraTool {
@@ -874,9 +874,9 @@ func (t *createGroupTool) Definition() relay.MaheshvaraTool {
 }
 
 func (t *createGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store, unavailable := toolStore(t.server)
+	store, unavailableResult := toolStore(t.server)
 	if store == nil {
-		return unavailable
+		return unavailableResult
 	}
 	var params struct {
 		Name                  string   `json:"name"`
@@ -904,7 +904,7 @@ func (t *createGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 		group.Enabled = *params.Enabled
 	}
 	if err := store.UpsertGroup(ctx, group); err != nil {
-		return agent.ToolError("创建失败: "+err.Error(), err.Error())
+		return agent.ToolError("创建失败: "+err.Error(), "persist_failed")
 	}
 	t.server.invalidateRouteCache()
 	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("模型组 %q 已创建（%d 个成员）", group.Name, len(group.Models)), Data: map[string]any{"id": group.ID, "name": group.Name, "models": group.Models}}
@@ -919,7 +919,7 @@ func (t *updateGroupTool) Description() string   { return "修改模型组（需
 func (t *updateGroupTool) Gated() bool           { return true }
 func (t *updateGroupTool) PermissionKey() string { return agent.PermissionKeySave }
 func (t *updateGroupTool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{RiskLevel: "medium", PreviewDirection: "head"}
+	return agent.ToolMeta{RiskLevel: "medium", PreviewDirection: agent.ClampHead}
 }
 
 func (t *updateGroupTool) Definition() relay.MaheshvaraTool {
@@ -954,9 +954,9 @@ type updateGroupParams struct {
 }
 
 func (t *updateGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	store, unavailable := toolStore(t.server)
+	store, unavailableResult := toolStore(t.server)
 	if store == nil {
-		return unavailable
+		return unavailableResult
 	}
 	var params updateGroupParams
 	if err := json.Unmarshal(args, &params); err != nil {
@@ -969,12 +969,12 @@ func (t *updateGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 	// 成员增删走原子接口；其余字段整体覆盖。
 	if len(params.RemoveModels) > 0 {
 		if _, err := store.RemoveGroupMembers(ctx, group.ID, params.RemoveModels); err != nil {
-			return agent.ToolError("移除成员失败: "+err.Error(), err.Error())
+			return agent.ToolError("移除成员失败: "+err.Error(), "members_update_failed")
 		}
 	}
 	if len(params.AddModels) > 0 {
 		if _, err := store.AddGroupMembers(ctx, group.ID, params.AddModels); err != nil {
-			return agent.ToolError("添加成员失败: "+err.Error(), err.Error())
+			return agent.ToolError("添加成员失败: "+err.Error(), "members_update_failed")
 		}
 	}
 	if applyGroupPatch(&group, params) {
@@ -984,7 +984,7 @@ func (t *updateGroupTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 			group.Models = fresh.Models
 		}
 		if err := store.UpsertGroup(ctx, group); err != nil {
-			return agent.ToolError("保存失败: "+err.Error(), err.Error())
+			return agent.ToolError("保存失败: "+err.Error(), "persist_failed")
 		}
 	}
 	t.server.invalidateRouteCache()
@@ -1033,7 +1033,7 @@ func (t *outboundPolicyTool) Description() string {
 func (t *outboundPolicyTool) Gated() bool           { return true }
 func (t *outboundPolicyTool) PermissionKey() string { return agent.PermissionKeySave }
 func (t *outboundPolicyTool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: "head"}
+	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: agent.ClampHead}
 }
 
 func (t *outboundPolicyTool) Definition() relay.MaheshvaraTool {
@@ -1093,7 +1093,7 @@ func (t *outboundPolicyTool) Execute(ctx context.Context, tctx agent.ToolContext
 		if rollback != nil {
 			rollback()
 		}
-		return agent.ToolError("策略修改已回滚（落盘失败）: "+err.Error(), err.Error())
+		return agent.ToolError("策略修改已回滚（落盘失败）: "+err.Error(), "persist_failed")
 	}
 	if params.ResetDefault {
 		return view("出站禁止段已恢复预置默认")

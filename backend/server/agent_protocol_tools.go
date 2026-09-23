@@ -91,7 +91,7 @@ func (t *updateDraftTool) Description() string {
 func (t *updateDraftTool) Gated() bool           { return false }
 func (t *updateDraftTool) PermissionKey() string { return "" }
 func (t *updateDraftTool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{RiskLevel: "medium", PreviewDirection: "head"}
+	return agent.ToolMeta{RiskLevel: "medium", PreviewDirection: agent.ClampHead}
 }
 
 func (t *updateDraftTool) Definition() relay.MaheshvaraTool {
@@ -176,7 +176,7 @@ func (t *previewRequestTool) Description() string   { return "离线渲染草稿
 func (t *previewRequestTool) Gated() bool           { return false }
 func (t *previewRequestTool) PermissionKey() string { return "" }
 func (t *previewRequestTool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{ConcurrentSafe: true, RiskLevel: "low", PreviewDirection: "head"}
+	return agent.ToolMeta{ConcurrentSafe: true, RiskLevel: "low", PreviewDirection: agent.ClampHead}
 }
 
 func (t *previewRequestTool) Definition() relay.MaheshvaraTool {
@@ -222,7 +222,7 @@ func (t *testUpstreamTool) Description() string   { return "向真实上游发�
 func (t *testUpstreamTool) Gated() bool           { return true }
 func (t *testUpstreamTool) PermissionKey() string { return agent.PermissionKeyLiveTest }
 func (t *testUpstreamTool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: "tail", TimeoutMs: 120_000}
+	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: agent.ClampTail, TimeoutMs: 120_000}
 }
 
 func (t *testUpstreamTool) Definition() relay.MaheshvaraTool {
@@ -263,7 +263,7 @@ func (t *testUpstreamTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 		BaseURL: strings.TrimSpace(baseURL), APIKey: apiKey, ModelName: testModelPlaceholder,
 	}, params.Stream, params.SampleRequest)
 	if err != nil {
-		return agent.ToolError("测试发送失败: "+err.Error(), err.Error())
+		return agent.ToolError("测试发送失败: "+err.Error(), "send_failed")
 	}
 	summary := fmt.Sprintf("上游返回 %d（耗时 %dms）", result.StatusCode, result.DurationMs)
 	if result.MappingError != "" {
@@ -286,7 +286,7 @@ func (t *testModelsTool) Description() string {
 func (t *testModelsTool) Gated() bool           { return true }
 func (t *testModelsTool) PermissionKey() string { return agent.PermissionKeyLiveTest }
 func (t *testModelsTool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: "head", TimeoutMs: 60_000}
+	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: agent.ClampHead, TimeoutMs: 60_000}
 }
 
 func (t *testModelsTool) Definition() relay.MaheshvaraTool {
@@ -322,7 +322,7 @@ func (t *testModelsTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 		BaseURL: strings.TrimSpace(baseURL), APIKey: apiKey,
 	})
 	if err != nil {
-		return agent.ToolError("模型发现请求失败: "+err.Error(), err.Error())
+		return agent.ToolError("模型发现请求失败: "+err.Error(), "models_fetch_failed")
 	}
 	summary := fmt.Sprintf("上游返回 %d", result.StatusCode)
 	if len(result.Models) > 0 {
@@ -340,7 +340,7 @@ func (t *saveProtocolTool) Description() string   { return "把当前草稿保�
 func (t *saveProtocolTool) Gated() bool           { return true }
 func (t *saveProtocolTool) PermissionKey() string { return agent.PermissionKeySave }
 func (t *saveProtocolTool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: "head"}
+	return agent.ToolMeta{RiskLevel: "high", PreviewDirection: agent.ClampHead}
 }
 
 func (t *saveProtocolTool) Definition() relay.MaheshvaraTool {
@@ -359,7 +359,7 @@ func (t *saveProtocolTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 		return failure
 	}
 	if err := relay.ValidateCustomProtocol(protocol); err != nil {
-		return agent.ToolError("草稿校验失败: "+err.Error(), err.Error())
+		return agent.ToolError("草稿校验失败: "+err.Error(), "validation_failed")
 	}
 	meta := tctx.SessionMeta()
 	if meta.Mode == agent.ModeEdit && meta.ProtocolID != "" && !strings.EqualFold(protocol.ID, meta.ProtocolID) {
@@ -367,9 +367,9 @@ func (t *saveProtocolTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 			Summary: fmt.Sprintf("编辑模式不允许改变协议 id（目标 %q，草稿 %q）", meta.ProtocolID, protocol.ID),
 			Data:    map[string]any{"error": "id_mismatch"}}
 	}
-	store, unavailable := toolStore(t.server)
+	store, unavailableResult := toolStore(t.server)
 	if store == nil {
-		return unavailable
+		return unavailableResult
 	}
 	existing, err := store.ListCustomProtocols(ctx)
 	if err != nil {
@@ -384,7 +384,7 @@ func (t *saveProtocolTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 	}
 	compact, _ := json.Marshal(protocol)
 	if err := store.UpsertCustomProtocol(ctx, customProtocolRow(protocol, string(compact))); err != nil {
-		return agent.ToolError("保存失败: "+err.Error(), err.Error())
+		return agent.ToolError("保存失败: "+err.Error(), "persist_failed")
 	}
 	syncErr := t.server.syncCustomProtocolsQuiet()
 	data := map[string]any{"saved": true, "id": protocol.ID, "synced": syncErr == nil}
@@ -403,7 +403,7 @@ func (t *readProtocolTool) Description() string   { return "读取已保存协�
 func (t *readProtocolTool) Gated() bool           { return false }
 func (t *readProtocolTool) PermissionKey() string { return "" }
 func (t *readProtocolTool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{ConcurrentSafe: true, RiskLevel: "low", PreviewDirection: "head"}
+	return agent.ToolMeta{ConcurrentSafe: true, RiskLevel: "low", PreviewDirection: agent.ClampHead}
 }
 
 func (t *readProtocolTool) Definition() relay.MaheshvaraTool {
@@ -433,9 +433,9 @@ func (t *readProtocolTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 		encoded, _ := json.Marshal(config)
 		return agent.ToolResult{OK: true, Summary: "预置协议 " + id, Data: map[string]any{"id": id, "source": "preset", "config": json.RawMessage(encoded)}}
 	}
-	store, unavailable := toolStore(t.server)
+	store, unavailableResult := toolStore(t.server)
 	if store == nil {
-		return unavailable
+		return unavailableResult
 	}
 	rows, err := store.ListCustomProtocols(ctx)
 	if err != nil {

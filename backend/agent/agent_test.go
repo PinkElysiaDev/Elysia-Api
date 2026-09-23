@@ -1015,12 +1015,12 @@ func TestMaskSecretInputs(t *testing.T) {
 
 // ---- ask_user / 方案确认链路（bb8bb98 回归） ----
 
-// stubAskParser 注入测试用 ask_user 解析器（生产装配在 protocolAgentEngine）。
-func stubAskParser(t *testing.T) {
+// stubAskParser 返回带测试用 ask_user 解析器的引擎 Options（生产经
+// protocolAgentEngine 的 Options.ParseAsk 注入）。
+func stubAskParser(t *testing.T) Options {
 	t.Helper()
-	previous := ParseAsk
-	ParseAsk = func(call relay.MaheshvaraToolCall) (AskQuestion, bool) {
-		if call.Name != "ask_user" {
+	return Options{ParseAsk: func(call relay.MaheshvaraToolCall) (AskQuestion, bool) {
+		if call.Name != ToolNameAskUser {
 			return AskQuestion{}, false
 		}
 		var payload struct {
@@ -1031,14 +1031,13 @@ func stubAskParser(t *testing.T) {
 			return AskQuestion{}, false
 		}
 		return AskQuestion{CallID: call.ID, Question: payload.Question, AllowCustom: payload.AllowCustom}, true
-	}
-	t.Cleanup(func() { ParseAsk = previous })
+	}, TurnTimeout: 5 * time.Second}
 }
 
 // ask_user 暂停后带作答恢复：答案要送进模型，同批其余调用必须有取消结果
 // （悬挂 tool_calls 会让下一次模型调用被上游 400）。
 func TestResumeApproval_QuestionAnswerFeedsModelAndCancelsRest(t *testing.T) {
-	stubAskParser(t)
+	opts := stubAskParser(t)
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1"}})
 	caller := &fakeCaller{responses: []scriptedResponse{
 		{result: &CallResult{Text: "先确认方向", ToolCalls: []relay.MaheshvaraToolCall{
@@ -1048,7 +1047,7 @@ func TestResumeApproval_QuestionAnswerFeedsModelAndCancelsRest(t *testing.T) {
 		{result: &CallResult{Text: "好的，用源A继续"}},
 	}}
 	lookup := &fakeTool{name: "lookup", result: ToolResult{OK: true, Summary: "查询成功"}}
-	engine := newTestEngine(caller, store, lookup)
+	engine := newTestEngineWithOptions(caller, store, opts, lookup)
 
 	events, _ := engine.RunTurn(context.Background(), "s1", &UserContent{Text: "接入"})
 	collected := collectEvents(t, events)

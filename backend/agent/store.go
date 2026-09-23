@@ -65,25 +65,25 @@ type Settings struct {
 
 // Session 是引擎视角的会话聚合。TestAPIKey 由存储层读出时解密。
 type Session struct {
-	ID            string          `json:"id"`
-	Title         string          `json:"title"`
-	Mode          string          `json:"mode"` // create|edit
-	ProtocolID    string          `json:"protocolId,omitempty"`
-	SeedConfig    json.RawMessage `json:"seedConfig,omitempty"`   // 编辑模式的初始配置
-	DraftConfig   json.RawMessage `json:"draftConfig,omitempty"`  // 最新草稿
-	DraftRestore  json.RawMessage `json:"draftRestore,omitempty"` // 草稿还原点：最近一轮修改前的副本（单槽覆盖）
-	Plan          []PlanStep      `json:"plan,omitempty"`         // 工作方案清单
-	UserTurns     int             `json:"userTurns,omitempty"`    // 列表视图：用户消息条数（一轮一条）
-	TotalTokens   int             `json:"totalTokens,omitempty"`  // 列表视图：assistant 用量合计
-	TestBaseURL   string          `json:"testBaseUrl,omitempty"`
-	TestAPIKey    string          `json:"testApiKey,omitempty"` // 已解密；不出引擎
-	Settings      Settings        `json:"settings"`
-	Status        string          `json:"status"`
-	PendingAction *PendingAction  `json:"pendingAction,omitempty"`
-	PlanReady     bool            `json:"-"` // 本轮 update_plan 声明了定稿，工具批次结束后暂停确认
-	PlanStale     int             `json:"-"` // 连续多少次模型调用没有更新方案
-	CreatedAt     time.Time       `json:"createdAt"`
-	UpdatedAt     time.Time       `json:"updatedAt"`
+	ID              string          `json:"id"`
+	Title           string          `json:"title"`
+	Mode            string          `json:"mode"` // create|edit
+	ProtocolID      string          `json:"protocolId,omitempty"`
+	SeedConfig      json.RawMessage `json:"seedConfig,omitempty"`   // 编辑模式的初始配置
+	DraftConfig     json.RawMessage `json:"draftConfig,omitempty"`  // 最新草稿
+	DraftRestore    json.RawMessage `json:"draftRestore,omitempty"` // 草稿还原点：最近一轮修改前的副本（单槽覆盖）
+	Plan            []PlanStep      `json:"plan,omitempty"`         // 工作方案清单
+	UserTurns       int             `json:"userTurns,omitempty"`    // 列表视图：用户消息条数（一轮一条）
+	TotalTokens     int             `json:"totalTokens,omitempty"`  // 列表视图：assistant 用量合计
+	TestBaseURL     string          `json:"testBaseUrl,omitempty"`
+	TestAPIKey      string          `json:"testApiKey,omitempty"` // 已解密；不出引擎
+	Settings        Settings        `json:"settings"`
+	Status          string          `json:"status"`
+	PendingAction   *PendingAction  `json:"pendingAction,omitempty"`
+	PlanReady       bool            `json:"-"` // 本轮 update_plan 声明了定稿，工具批次结束后暂停确认
+	PlanStaleRounds int             `json:"-"` // 连续多少次模型调用没有更新方案
+	CreatedAt       time.Time       `json:"createdAt"`
+	UpdatedAt       time.Time       `json:"updatedAt"`
 }
 
 // SessionMeta 是工具可见的会话元信息子集（不含凭证）。

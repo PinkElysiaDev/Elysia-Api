@@ -16,13 +16,13 @@ type StreamCaller interface {
 
 // CallRequest 一次模型调用的全部输入。
 type CallRequest struct {
-	Model           string
-	ModelSourceID   string // 模型源 id（实现层解析端点/凭据）
-	Instructions    string // 系统提示词
-	Messages        []relay.MaheshvaraMessage
-	Tools           []relay.MaheshvaraTool
-	Thinking        *relay.MaheshvaraThinking
-	Reasoning       *relay.MaheshvaraReasoning // OpenAI 线 reasoning_effort 渲染路径
+	Model         string
+	ModelSourceID string // 模型源 id（实现层解析端点/凭据）
+	Instructions  string // 系统提示词
+	Messages      []relay.MaheshvaraMessage
+	Tools         []relay.MaheshvaraTool
+	Thinking      *relay.MaheshvaraThinking
+	Reasoning     *relay.MaheshvaraReasoning // OpenAI 线 reasoning_effort 渲染路径
 }
 
 // StreamCallbacks 增量回调（均可为 nil）。

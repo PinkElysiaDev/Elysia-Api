@@ -51,7 +51,6 @@ func (s *Server) protocolAgentEngine() *agent.Engine {
 		if s.store == nil {
 			return
 		}
-		agent.ParseAsk = parseAskQuestion
 		registry, err := agent.NewRegistry(append(append(newProtocolAgentTools(s), newAgentOpsTools(s)...), &updatePlanTool{}, &askUserTool{}, &updateTitleTool{})...)
 		if err != nil {
 			log.Printf("agent engine tools unavailable: %v", err)
@@ -63,7 +62,7 @@ func (s *Server) protocolAgentEngine() *agent.Engine {
 			registry,
 			newAgentUserContentRenderer(s),
 			agentSystemPrompt,
-			agent.Options{MaxModelCalls: 12, TurnTimeout: 10 * time.Minute},
+			agent.Options{MaxModelCalls: 12, TurnTimeout: 10 * time.Minute, ParseAsk: parseAskQuestion},
 		)
 		// 启动对账：上一进程崩溃/被杀遗留的 running 会话复位为 idle，否则
 		// UI 会永远挡在不存在的轮次上（waiting_approval 保留可恢复）。

@@ -46,6 +46,9 @@ type Options struct {
 	ToolResultStoreLimit int
 	// ContextWindowTokens 上下文窗口；0 取默认 128k。
 	ContextWindowTokens int
+	// ParseAsk 把 ask_user 的调用参数解析为问题；宿主在装配时注入（引擎
+	// 不认识工具参数形状）。nil 时 ask_user 按普通工具执行并返回错误。
+	ParseAsk func(call relay.MaheshvaraToolCall) (AskQuestion, bool)
 }
 
 func (o Options) withDefaults() Options {
@@ -66,6 +69,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.ContextWindowTokens <= 0 {
 		o.ContextWindowTokens = defaultContextWindow
+	}
+	if o.ParseAsk == nil {
+		o.ParseAsk = func(relay.MaheshvaraToolCall) (AskQuestion, bool) { return AskQuestion{}, false }
 	}
 	return o
 }
@@ -671,7 +677,7 @@ func (e *Engine) pauseForPlan(ctx context.Context, sessionID string, session *Se
 // pauseForQuestion 把 ask_user 变成 question 型暂停。参数不合法时返回 false，
 // 让后续路径按未知或普通工具处理。
 func (e *Engine) pauseForQuestion(ctx context.Context, sessionID string, remaining []relay.MaheshvaraToolCall, reason string, events chan Event) bool {
-	question, ok := ParseAsk(remaining[0])
+	question, ok := e.opts.ParseAsk(remaining[0])
 	if !ok {
 		return false
 	}
@@ -682,11 +688,6 @@ func (e *Engine) pauseForQuestion(ctx context.Context, sessionID string, remaini
 	}
 	emitTerminal(events, Event{Type: EventApprovalPending, Approval: maskedPendingAction(pending)})
 	return true
-}
-
-// ParseAsk 由宿主注入的提问解析器。引擎不认识工具参数形状，宿主在装配时设置。
-var ParseAsk = func(call relay.MaheshvaraToolCall) (AskQuestion, bool) {
-	return AskQuestion{}, false
 }
 
 func canRunParallel(tool Tool) bool {
@@ -793,7 +794,7 @@ func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Sess
 		result = tool.Execute(execCtx, &engineToolContext{store: e.store, ctx: execCtx, session: session}, call.Arguments)
 	}()
 
-	direction := MetaOf(tool).PreviewDirection
+	direction := clampDirection(MetaOf(tool).PreviewDirection)
 	info = ToolResultInfo{
 		CallID:     call.ID,
 		Name:       call.Name,
@@ -810,7 +811,7 @@ func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Sess
 	}
 	if !planStepsEqual(planBefore, session.Plan) {
 		emitEvent(events, Event{Type: EventPlanUpdated, Plan: session.Plan})
-		session.PlanStale = 0
+		session.PlanStaleRounds = 0
 	}
 	// ready 标志的判定不依赖「方案有变化」：模型原样重发步骤并声明定稿时，
 	// 方案内容不变但确认流程仍然要触发。
@@ -901,64 +902,6 @@ func maskSecretInputs(raw json.RawMessage) json.RawMessage {
 	return raw
 }
 
-// MaskedPendingAction 复制待批快照并遮盖调用参数里的密钥类字段，供会话
-// 视图与 SSE 事件使用。
-func MaskedPendingAction(pending *PendingAction) *PendingAction {
-	return maskedPendingAction(pending)
-}
-
-// maskedPendingAction 复制待批快照并遮盖调用参数里的密钥类字段。
-// 落库的 PendingAction 保持原文（批准后要按原参数执行），只有 SSE 事件
-// 与对外视图走这份副本。Kind/Question/Plan 不含密钥，原样带上——前端
-// 靠它们区分审批卡 / 提问卡 / 方案确认卡。
-func maskedPendingAction(pending *PendingAction) *PendingAction {
-	if pending == nil {
-		return nil
-	}
-	masked := &PendingAction{Kind: pending.Kind, Reason: pending.Reason, Calls: make([]relay.MaheshvaraToolCall, len(pending.Calls))}
-	for index, call := range pending.Calls {
-		masked.Calls[index] = call
-		masked.Calls[index].Arguments = maskSecretInputs(call.Arguments)
-	}
-	if pending.Question != nil {
-		question := *pending.Question
-		question.Options = append([]AskOption(nil), pending.Question.Options...)
-		masked.Question = &question
-	}
-	if pending.Plan != nil {
-		masked.Plan = append([]PlanStep(nil), pending.Plan...)
-	}
-	return masked
-}
-
-func maskSecretValue(value any) any {
-	switch typed := value.(type) {
-	case map[string]any:
-		for key, item := range typed {
-			if text, isString := item.(string); isString && text != "" && isSecretInputKey(key) {
-				typed[key] = "***"
-				continue
-			}
-			typed[key] = maskSecretValue(item)
-		}
-		return typed
-	case []any:
-		for index, item := range typed {
-			typed[index] = maskSecretValue(item)
-		}
-		return typed
-	default:
-		return value
-	}
-}
-
-func isSecretInputKey(key string) bool {
-	lower := strings.ToLower(key)
-	return strings.Contains(lower, "apikey") || strings.Contains(lower, "api_key") ||
-		lower == "token" || strings.Contains(lower, "secret") || strings.Contains(lower, "password") ||
-		strings.Contains(lower, "authorization") || strings.Contains(lower, "credential")
-}
-
 func (e *Engine) persistAssistant(ctx context.Context, sessionID string, session *Session, content AssistantContent, usage *relay.MaheshvaraUsage, events chan Event) {
 	var usageJSON json.RawMessage
 	if usage != nil {
@@ -999,9 +942,9 @@ func (e *Engine) composeInstructions(session *Session) string {
 		b.WriteString(e.prompt(session))
 	}
 	if len(session.Plan) > 0 {
-		session.PlanStale++
-		if session.PlanStale >= planStaleCalls {
-			session.PlanStale = 0
+		session.PlanStaleRounds++
+		if session.PlanStaleRounds >= planStaleCalls {
+			session.PlanStaleRounds = 0
 			b.WriteString("\n\n方案清单已连续多轮未更新。若步骤状态有变化，请调用 update_plan 同步；没有变化就忽略这条提醒。")
 		}
 	}
@@ -1079,94 +1022,6 @@ func deniedToolResult(call relay.MaheshvaraToolCall, message string) ToolResultI
 	}
 }
 
-// engineToolContext 是引擎内置的 ToolContext 默认实现：直读会话、草稿
-// 写穿透到 Store。
-type engineToolContext struct {
-	store   Store
-	ctx     context.Context
-	session *Session
-}
-
-// metaFromSession 构造工具上下文视角的会话元数据快照。
-func metaFromSession(s *Session) SessionMeta {
-	return SessionMeta{
-		ID: s.ID, Title: s.Title, Mode: s.Mode, ProtocolID: s.ProtocolID,
-		SeedConfig: s.SeedConfig, Draft: s.DraftConfig, Settings: s.Settings,
-	}
-}
-
-func (c *engineToolContext) SessionMeta() SessionMeta {
-	return metaFromSession(c.session)
-}
-
-func (c *engineToolContext) Draft() json.RawMessage { return c.session.DraftConfig }
-
-func (c *engineToolContext) SetDraft(draft json.RawMessage) error {
-	if err := c.store.UpdateSessionState(c.ctx, c.session.ID, SessionStateUpdate{DraftConfig: draft}); err != nil {
-		return err
-	}
-	c.session.DraftConfig = append(json.RawMessage(nil), draft...)
-	return nil
-}
-
-func (c *engineToolContext) TestTarget() (string, string) {
-	return c.session.TestBaseURL, c.session.TestAPIKey
-}
-
-func (c *engineToolContext) SetTestTarget(baseURL, apiKey string) error {
-	update := SessionStateUpdate{}
-	if strings.TrimSpace(baseURL) != "" {
-		update.TestBaseURL = baseURL
-		c.session.TestBaseURL = baseURL
-	}
-	if strings.TrimSpace(apiKey) != "" {
-		update.TestAPIKey = apiKey
-		c.session.TestAPIKey = apiKey
-	}
-	if update.TestBaseURL == "" && update.TestAPIKey == "" {
-		return nil
-	}
-	return c.store.UpdateSessionState(c.ctx, c.session.ID, update)
-}
-
-func (c *engineToolContext) SetTitle(title string) error {
-	title = strings.TrimSpace(title)
-	if title == "" || title == c.session.Title {
-		return nil
-	}
-	if err := c.store.UpdateSessionState(c.ctx, c.session.ID, SessionStateUpdate{Title: title}); err != nil {
-		return err
-	}
-	c.session.Title = title
-	return nil
-}
-
-func (c *engineToolContext) SetPlan(steps []PlanStep) error {
-	if steps == nil {
-		steps = []PlanStep{}
-	}
-	if planStepsEqual(c.session.Plan, steps) {
-		return nil
-	}
-	if err := c.store.UpdateSessionState(c.ctx, c.session.ID, SessionStateUpdate{Plan: steps}); err != nil {
-		return err
-	}
-	c.session.Plan = steps
-	return nil
-}
-
-func planStepsEqual(a, b []PlanStep) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for index := range a {
-		if a[index].Title != b[index].Title || a[index].Status != b[index].Status {
-			return false
-		}
-	}
-	return true
-}
-
 // ---- 会话历史 → Maheshvara 对话 ----
 
 // loadConversation 把持久化消息重建为发送对话。seqs 与 conversation 元素
@@ -1229,7 +1084,7 @@ func toolResultToMaheshvara(info ToolResultInfo, limit int) relay.MaheshvaraMess
 	if len(data) == 0 {
 		data = json.RawMessage(`{}`)
 	}
-	output := clampJSON(data, limit, "head")
+	output := clampJSON(data, limit, ClampHead)
 	return relay.MaheshvaraMessage{
 		Role:    "tool",
 		Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentToolOutput, ToolCallID: info.CallID, ToolOutput: string(output)}},
@@ -1254,7 +1109,7 @@ func accumulateUsage(total *relay.MaheshvaraUsage, u *relay.MaheshvaraUsage) {
 // clampJSON 在字节上限内截断超大 JSON 文档。截断产物必须是合法 JSON：
 // 它会作为 json.RawMessage 嵌进消息持久化与发往模型的对话。direction 为
 // tail 时保留尾部（日志类结果的结论通常在末尾），否则保留头部。
-func clampJSON(raw json.RawMessage, limit int, direction string) json.RawMessage {
+func clampJSON(raw json.RawMessage, limit int, direction clampDirection) json.RawMessage {
 	if limit <= 0 || len(raw) <= limit {
 		return raw
 	}
@@ -1281,20 +1136,13 @@ func clampJSON(raw json.RawMessage, limit int, direction string) json.RawMessage
 		"truncated": true,
 		"bytes":     len(value),
 		"omitted":   len(value) - len(preview),
-		"direction": directionOrHead(direction),
+		"direction": direction,
 		"preview":   preview,
 	}
 	if encoded, err := json.Marshal(envelope); err == nil {
 		return encoded
 	}
 	return json.RawMessage(`{"truncated":true}`)
-}
-
-func directionOrHead(direction string) string {
-	if direction == "tail" {
-		return "tail"
-	}
-	return "head"
 }
 
 // clampSummary 截断回传模型与 UI 的工具摘要，避免单条说明撑爆上下文。

@@ -55,6 +55,15 @@ func ToolError(summary string, code string) ToolResult {
 
 // ToolMeta 是工具的执行与结果预算注解。以可选接口挂接：未实现 Meta()
 // 的工具取 ToolMeta 零值（不可并行、16KB 模型预算、保留头部）。
+// clampDirection 是超限截断的保留方向。
+type clampDirection string
+
+const (
+	// ClampHead / ClampTail 供工具 Meta 声明截断方向。
+	ClampHead clampDirection = "head"
+	ClampTail clampDirection = "tail"
+)
+
 type ToolMeta struct {
 	// ConcurrentSafe 同批内可与其他 ConcurrentSafe 非门控工具并行。
 	ConcurrentSafe bool
@@ -62,8 +71,8 @@ type ToolMeta struct {
 	RiskLevel string
 	// MaxModelBytes 回传模型的结果上限；0 取引擎默认。
 	MaxModelBytes int
-	// PreviewDirection 超限时保留 head 或 tail。
-	PreviewDirection string
+	// PreviewDirection 超限时保留头或尾（ClampHead/ClampTail）。
+	PreviewDirection clampDirection
 	// TimeoutMs 单次执行超时；0 不单独限时（随轮次超时）。
 	TimeoutMs int
 }
