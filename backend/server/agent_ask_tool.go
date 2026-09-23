@@ -11,21 +11,19 @@ import (
 // ask_user 不在这里执行提问：引擎看到这个工具调用就暂停轮次，把问题交给
 // 用户。这里的 Execute 只是兜底——正常路径到不了。
 
-const agentToolAskUser = "ask_user"
-
 type askUserTool struct{}
 
-func (t *askUserTool) Name() string          { return agentToolAskUser }
+func (t *askUserTool) Name() string          { return agent.ToolNameAskUser }
 func (t *askUserTool) Description() string   { return "向用户提出一个需要选择的问题" }
 func (t *askUserTool) Gated() bool           { return false }
 func (t *askUserTool) PermissionKey() string { return "" }
 func (t *askUserTool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{ReadOnly: true, RiskLevel: "low"}
+	return agent.ToolMeta{RiskLevel: "low"}
 }
 
 func (t *askUserTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
-		Type: "function", Name: agentToolAskUser,
+		Type: "function", Name: agent.ToolNameAskUser,
 		Description: "信息不足以继续、且有明确选项时，向用户提问并暂停本轮。用户作答后你会拿到 answer 继续。不要用它做开放式寒暄。",
 		Parameters: objectSchema(map[string]any{
 			"question":     map[string]any{"type": "string", "description": "要问用户的问题"},

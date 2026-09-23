@@ -751,7 +751,7 @@ type blockingTool struct {
 	release chan struct{}
 }
 
-func (b *blockingTool) Meta() ToolMeta { return ToolMeta{ReadOnly: true, ConcurrentSafe: true} }
+func (b *blockingTool) Meta() ToolMeta { return ToolMeta{ConcurrentSafe: true} }
 
 func (b *blockingTool) Execute(ctx context.Context, tctx ToolContext, args json.RawMessage) ToolResult {
 	select {

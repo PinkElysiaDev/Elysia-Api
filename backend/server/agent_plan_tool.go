@@ -13,11 +13,9 @@ import (
 // update_plan 工具：模型维护多步任务的工作方案清单，侧边栏「方案」页实时
 // 展示。不门控——它只改会话内的展示态，不产生任何外部效果。
 
-const agentToolUpdatePlan = "update_plan"
-
 type updatePlanTool struct{}
 
-func (t *updatePlanTool) Name() string { return agentToolUpdatePlan }
+func (t *updatePlanTool) Name() string { return agent.ToolNameUpdatePlan }
 func (t *updatePlanTool) Description() string {
 	return "更新工作方案清单（侧边栏实时展示）"
 }
@@ -30,7 +28,7 @@ func (t *updatePlanTool) Meta() agent.ToolMeta {
 func (t *updatePlanTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
 		Type: "function",
-		Name: agentToolUpdatePlan,
+		Name: agent.ToolNameUpdatePlan,
 		Description: "更新当前任务的工作方案清单（整体替换）。多步任务开始时先列出步骤（status=pending），" +
 			"推进到某步时置 in_progress，完成后置 done——用户在侧边栏实时可见。步骤应是具体可验证的动作，通常 3-7 条。",
 		Parameters: objectSchema(map[string]any{

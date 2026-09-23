@@ -56,8 +56,6 @@ func ToolError(summary string, code string) ToolResult {
 // ToolMeta 是工具的执行与结果预算注解。以可选接口挂接：未实现 Meta()
 // 的工具取 ToolMeta 零值（不可并行、16KB 模型预算、保留头部）。
 type ToolMeta struct {
-	// ReadOnly 工具不改任何状态。
-	ReadOnly bool
 	// ConcurrentSafe 同批内可与其他 ConcurrentSafe 非门控工具并行。
 	ConcurrentSafe bool
 	// RiskLevel low|medium|high，供审批与日志分级。

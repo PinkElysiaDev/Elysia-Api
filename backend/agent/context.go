@@ -9,6 +9,16 @@ import (
 	"github.com/elysia-api/backend/relay"
 )
 
+// 上下文压缩的阈值与长度锚点。
+const (
+	summaryMinTokens     = 8_000 // 摘要的最小对话规模：更短的对话即使比例高也不值得
+	summaryMinMessages   = 8     // 同上：消息条数下限
+	summaryMinCut        = 2     // 切点下界：至少摘要这么多条
+	summaryKeepTail      = 4     // 切点上界之外至少保留这么多条
+	microKeepToolResults = 4     // 微压缩保留最近几条工具结果
+	summaryHeadTextLimit = 1500  // 摘要输入里单条消息的字符上限
+)
+
 // prepareContext 在每次模型调用前估算水位。超过微压缩线时把较早的工具结果
 // 换成占位符（只改本次发送副本，库里原文不动）。摘要压缩不在轮内做——
 // 见 maybeSummarize。
@@ -34,8 +44,8 @@ func (e *Engine) prepareContext(conversation []relay.MaheshvaraMessage, events c
 func (e *Engine) maybeSummarize(ctx context.Context, sessionID string, session *Session, conversation []relay.MaheshvaraMessage, seqs []int, events chan Event) []relay.MaheshvaraMessage {
 	window := e.opts.ContextWindowTokens
 	before := estimateTokens(conversation)
-	// 摘要有额外模型调用成本，短对话即使比例高也不值得。8k token 是下限。
-	if float64(before) < summaryCompactRatio*float64(window) || before < 8_000 || len(conversation) < 8 {
+	// 摘要有额外模型调用成本，短对话即使比例高也不值得。
+	if float64(before) < summaryCompactRatio*float64(window) || before < summaryMinTokens || len(conversation) < summaryMinMessages {
 		return conversation
 	}
 	cut := summaryCut(conversation)
@@ -64,15 +74,15 @@ func (e *Engine) maybeSummarize(ctx context.Context, sessionID string, session *
 // 扇入区间 [2, len-4]：至少摘要 2 条、保留 4 条；找不到边界返回 -1（本轮
 // 放弃摘要，微压缩照常兜底）。
 func summaryCut(conversation []relay.MaheshvaraMessage) int {
-	maxCut := len(conversation) - 4
-	if maxCut < 2 {
+	maxCut := len(conversation) - summaryKeepTail
+	if maxCut < summaryMinCut {
 		return -1
 	}
 	center := len(conversation) / 2
 	if center > maxCut {
 		center = maxCut
 	}
-	for index := center; index >= 2; index-- {
+	for index := center; index >= summaryMinCut; index-- {
 		if conversation[index].Role == "user" {
 			return index
 		}
@@ -96,11 +106,11 @@ func microCompact(conversation []relay.MaheshvaraMessage) ([]relay.MaheshvaraMes
 			toolIndexes = append(toolIndexes, index)
 		}
 	}
-	if len(toolIndexes) <= 4 {
+	if len(toolIndexes) <= microKeepToolResults {
 		return conversation, 0
 	}
 	drop := map[int]bool{}
-	for _, index := range toolIndexes[:len(toolIndexes)-4] {
+	for _, index := range toolIndexes[:len(toolIndexes)-microKeepToolResults] {
 		drop[index] = true
 	}
 	cleared := 0
@@ -164,11 +174,8 @@ func messageText(message relay.MaheshvaraMessage) string {
 			parts = append(parts, part.ToolOutput)
 		}
 	}
-	text := strings.Join(parts, " ")
-	if len(text) > 1500 {
-		return text[:1500]
-	}
-	return text
+	// rune 截断：按字节切会把中文摘要前缀切成非法 UTF-8 进提示词。
+	return truncateRunes(strings.Join(parts, " "), summaryHeadTextLimit)
 }
 
 // applySummaryBoundary 丢弃最近一条摘要所覆盖的历史，并把摘要本身变成

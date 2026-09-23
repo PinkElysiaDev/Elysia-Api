@@ -50,7 +50,6 @@ type agentStreamAccumulator struct {
 	text      strings.Builder
 	reasoning strings.Builder
 	usage     *relay.MaheshvaraUsage
-	finish    string
 	failure   string
 
 	tools     map[string]*agentToolCallState
@@ -507,9 +506,6 @@ func (a *agentStreamAccumulator) apply(event relay.MaheshvaraStreamEvent, cb age
 		} else if event.Response != nil && event.Response.Usage != nil {
 			a.usage = event.Response.Usage
 		}
-		if event.FinishReason != "" {
-			a.finish = event.FinishReason
-		}
 		return true
 	case relay.MaheshvaraEventResponseFailed:
 		message := "上游流式响应失败"
@@ -524,11 +520,10 @@ func (a *agentStreamAccumulator) apply(event relay.MaheshvaraStreamEvent, cb age
 
 func (a *agentStreamAccumulator) result() *agent.CallResult {
 	return &agent.CallResult{
-		Text:         a.text.String(),
-		Reasoning:    a.reasoning.String(),
-		ToolCalls:    a.toolCalls(),
-		Usage:        a.usage,
-		FinishReason: a.finish,
+		Text:      a.text.String(),
+		Reasoning: a.reasoning.String(),
+		ToolCalls: a.toolCalls(),
+		Usage:     a.usage,
 	}
 }
 

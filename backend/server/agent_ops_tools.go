@@ -213,7 +213,7 @@ func agentSourceView(source storage.ModelSource, modelCount int) map[string]any 
 
 // readOnlyMeta 只读查询工具的元数据：同批可并行，结果保留头部。
 func readOnlyMeta() agent.ToolMeta {
-	return agent.ToolMeta{ReadOnly: true, ConcurrentSafe: true, RiskLevel: "low", PreviewDirection: "head"}
+	return agent.ToolMeta{ConcurrentSafe: true, RiskLevel: "low", PreviewDirection: "head"}
 }
 
 func (t *listSourcesTool) Meta() agent.ToolMeta    { return readOnlyMeta() }

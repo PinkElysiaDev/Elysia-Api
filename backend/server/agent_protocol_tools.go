@@ -26,8 +26,8 @@ const (
 // newProtocolAgentTools 返回协议领域全量工具（注册顺序即提示词顺序）。
 func newProtocolAgentTools(s *Server) []agent.Tool {
 	return []agent.Tool{
-		&updateDraftTool{server: s},
-		&previewRequestTool{server: s},
+		&updateDraftTool{},
+		&previewRequestTool{},
 		&testUpstreamTool{server: s},
 		&testModelsTool{server: s},
 		&saveProtocolTool{server: s},
@@ -45,7 +45,7 @@ func objectSchema(properties map[string]any, required ...string) map[string]any 
 
 // ---- update_protocol_draft ----
 
-type updateDraftTool struct{ server *Server }
+type updateDraftTool struct{}
 
 func (t *updateDraftTool) Name() string { return agentToolUpdateDraft }
 func (t *updateDraftTool) Description() string {
@@ -128,14 +128,14 @@ func (t *updateDraftTool) Execute(ctx context.Context, tctx agent.ToolContext, a
 
 // ---- preview_request ----
 
-type previewRequestTool struct{ server *Server }
+type previewRequestTool struct{}
 
 func (t *previewRequestTool) Name() string          { return agentToolPreview }
 func (t *previewRequestTool) Description() string   { return "离线渲染草稿请求（不发送）" }
 func (t *previewRequestTool) Gated() bool           { return false }
 func (t *previewRequestTool) PermissionKey() string { return "" }
 func (t *previewRequestTool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{ReadOnly: true, ConcurrentSafe: true, RiskLevel: "low", PreviewDirection: "head"}
+	return agent.ToolMeta{ConcurrentSafe: true, RiskLevel: "low", PreviewDirection: "head"}
 }
 
 func (t *previewRequestTool) Definition() relay.MaheshvaraTool {
@@ -395,7 +395,7 @@ func (t *readProtocolTool) Description() string   { return "读取已保存协�
 func (t *readProtocolTool) Gated() bool           { return false }
 func (t *readProtocolTool) PermissionKey() string { return "" }
 func (t *readProtocolTool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{ReadOnly: true, ConcurrentSafe: true, RiskLevel: "low", PreviewDirection: "head"}
+	return agent.ToolMeta{ConcurrentSafe: true, RiskLevel: "low", PreviewDirection: "head"}
 }
 
 func (t *readProtocolTool) Definition() relay.MaheshvaraTool {

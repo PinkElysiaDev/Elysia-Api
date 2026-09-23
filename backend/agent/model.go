@@ -34,9 +34,8 @@ type StreamCallbacks struct {
 
 // CallResult 一次调用的聚合产出。
 type CallResult struct {
-	Text         string
-	Reasoning    string
-	ToolCalls    []relay.MaheshvaraToolCall
-	Usage        *relay.MaheshvaraUsage
-	FinishReason string
+	Text      string
+	Reasoning string
+	ToolCalls []relay.MaheshvaraToolCall
+	Usage     *relay.MaheshvaraUsage
 }

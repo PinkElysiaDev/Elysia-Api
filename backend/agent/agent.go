@@ -234,6 +234,7 @@ const (
 	stopDrainWait        = 15 * time.Second // Stop 等待轮次收尾的窗口
 	terminalEmitWait     = 5 * time.Second  // 终态事件尽力送达窗口
 	titleMaxRunes        = 24               // 会话标题截断长度
+	answerSummaryRunes   = 80               // ask_user 作答在摘要里展示的上限
 	toolParallelLimit    = 4                // 同批可并行工具的并发上限
 	toolProgressInterval = 5 * time.Second  // 长工具的进度心跳间隔
 	toolDefaultTimeoutMs = 120_000          // 未声明 TimeoutMs 工具的默认硬超时
@@ -243,6 +244,19 @@ const (
 	summaryCompactRatio  = 0.90 // 超过时对最早若干轮做摘要
 	compactionRetries    = 2
 	planStaleCalls       = 8 // 连续这么多次模型调用没更新方案就提醒
+)
+
+// 暂停型工具名。引擎按名字分发（ask_user 暂停提问、update_plan 触发方案
+// 定稿检查），常量定义在本包供宿主注册时复用，避免两侧字面量漂移。
+const (
+	ToolNameAskUser    = "ask_user"
+	ToolNameUpdatePlan = "update_plan"
+)
+
+// 暂停型待批动作的类别（PendingAction.Kind；空串 = 经典门控审批）。
+const (
+	pendingKindQuestion = "question"
+	pendingKindPlan     = "plan"
 )
 
 // emitTerminal 发送终态事件：尽力送达（5s 窗口），随后 channel 将被关闭。
@@ -337,14 +351,6 @@ func (e *Engine) appendUserMessage(ctx context.Context, sessionID string, sessio
 	return false
 }
 
-// resumeApprovalPrefix 处理审批恢复前缀：写入裁决记录、（可选）补测试
-// 凭证，批准则执行待定调用（再次暂停时返回 paused=true），拒绝则为每个
-// 待定调用合成拒绝结果。返回的 conversation 已追加相应消息。
-const (
-	pendingKindQuestion = "question"
-	pendingKindPlan     = "plan"
-)
-
 // resumablePending 报告待批动作能否被 ResumeApproval 消费：审批型必须有
 // 调用列表；提问型必须带问题（作答要靠 Question.CallID 合成工具结果）；
 // 方案型只带步骤清单，Calls 为空是常态。
@@ -378,7 +384,7 @@ func (e *Engine) resumeQuestion(ctx context.Context, sessionID string, resume *P
 		callID = resume.Question.CallID
 	}
 	encoded, _ := json.Marshal(map[string]string{"answer": answer})
-	info := ToolResultInfo{CallID: callID, Name: "ask_user", OK: true, Summary: "用户回答：" + truncateRunes(answer, 80), Data: encoded}
+	info := ToolResultInfo{CallID: callID, Name: ToolNameAskUser, OK: true, Summary: "用户回答：" + truncateRunes(answer, answerSummaryRunes), Data: encoded}
 	e.persistToolResult(ctx, sessionID, info, events)
 	conversation = append(conversation, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
 	for _, call := range resume.Calls {
@@ -581,7 +587,7 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 	index := 0
 	for index < len(calls) {
 		call := calls[index]
-		if call.Name == "ask_user" {
+		if call.Name == ToolNameAskUser {
 			if e.pauseForQuestion(ctx, sessionID, calls[index:], reason, events) {
 				return true, nil
 			}
@@ -789,7 +795,7 @@ func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Sess
 	}
 	// ready 标志的判定不依赖「方案有变化」：模型原样重发步骤并声明定稿时，
 	// 方案内容不变但确认流程仍然要触发。
-	if call.Name == "update_plan" {
+	if call.Name == ToolNameUpdatePlan {
 		e.notePlanReady(session, call, result)
 	}
 	return info
@@ -798,7 +804,7 @@ func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Sess
 // notePlanReady 记住本批 update_plan 是否声明方案定稿。真正暂停放在整批
 // 工具结束之后，避免打断同批后续只读调用。
 func (e *Engine) notePlanReady(session *Session, call relay.MaheshvaraToolCall, result ToolResult) {
-	if call.Name != "update_plan" || !result.OK || !session.Settings.PlanMode {
+	if !result.OK || !session.Settings.PlanMode {
 		return
 	}
 	var payload struct {
