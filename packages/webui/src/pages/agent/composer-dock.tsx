@@ -3,10 +3,7 @@ import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import type { Model, ModelSource } from "@/lib/types";
-import type {
-  AgentDocument,
-  AgentSettings,
-} from "@/lib/agent/types";
+import type { AgentDocument, AgentSettings } from "@/lib/agent/types";
 import { cn } from "@/lib/utils";
 import { ContextGauge, type SessionUsageStat } from "./context-gauge";
 import { PermissionMenu, ThinkingMenu } from "./composer-menu";
@@ -150,7 +147,7 @@ export function ComposerDock({
       />
       <Textarea
         className="max-h-56 min-h-[44px] w-full resize-none border-0 bg-transparent px-3.5 py-2.5 text-sm focus-visible:border-0 focus-visible:ring-0"
-        placeholder={needsModel ? "先在下方选择模型…" : "请描述您的任务"}
+        placeholder={needsModel ? "先在下方选择模型…" : "请描述你的任务"}
         value={text}
         disabled={busy}
         onChange={(event) => onTextChange(event.target.value)}

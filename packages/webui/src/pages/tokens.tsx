@@ -226,12 +226,13 @@ function RevealCopyButton({ name, maskedToken }: { name: string; maskedToken: st
         variant="ghost"
         size="iconSm"
         title={revealed ? '隐藏' : '显示完整 Key'}
+        aria-label={revealed ? '隐藏完整 Key' : '显示完整 Key'}
         disabled={busy}
         onClick={handleReveal}
       >
         {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
       </Button>
-      <Button variant="ghost" size="iconSm" title="复制完整 Key" disabled={busy} onClick={handleCopy}>
+      <Button variant="ghost" size="iconSm" title="复制完整 Key" aria-label="复制完整 Key" disabled={busy} onClick={handleCopy}>
         {copied ? <Check className="h-3.5 w-3.5 text-jade" /> : <Copy className="h-3.5 w-3.5" />}
       </Button>
     </>

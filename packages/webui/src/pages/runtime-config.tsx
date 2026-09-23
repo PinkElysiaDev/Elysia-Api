@@ -339,6 +339,7 @@ export function RuntimeConfigPage() {
                     size="iconSm"
                     type="button"
                     title={showToken ? "隐藏明文" : "显示明文"}
+                    aria-label={showToken ? "隐藏访问令牌明文" : "显示访问令牌明文"}
                     onClick={() => setShowToken(!showToken)}
                   >
                     {showToken ? (

@@ -17,11 +17,7 @@ import { cn } from "@/lib/utils";
 import { useComposerAttachments } from "./use-composer-attachments";
 import { MessageCard } from "./message-card";
 import { LiveAssistantView } from "./live-view";
-import {
-  ApprovalCard,
-  PlanConfirmCard,
-  QuestionCard,
-} from "./approval-cards";
+import { ApprovalCard, PlanConfirmCard, QuestionCard } from "./approval-cards";
 import { useChatScroll } from "./use-chat-scroll";
 import { ComposerDock } from "./composer-dock";
 
@@ -145,8 +141,14 @@ export function ChatPanel({
     [],
   );
 
-  const { scrollRef, bottomRef, stickToBottomRef, showJumpBottom, setShowJumpBottom, jumpToBottom } =
-    useChatScroll({ messages, live, jumpTarget, onActiveTurn });
+  const {
+    scrollRef,
+    bottomRef,
+    stickToBottomRef,
+    showJumpBottom,
+    setShowJumpBottom,
+    jumpToBottom,
+  } = useChatScroll({ messages, live, jumpTarget, onActiveTurn });
 
   /** 会话累计用量（含缓存命中），随助手消息持久化逐步累加。 */
   const usageStat = useMemo(() => {
@@ -348,7 +350,7 @@ export function ChatPanel({
             );
           })}
           {live.running && live.statusText ? (
-            <div className="flex items-center gap-2 pl-1 text-2xs text-muted-foreground">
+            <div role="status" className="flex items-center gap-2 pl-1 text-2xs text-muted-foreground">
               <span className="dot dot-ok" />
               {live.statusText}
             </div>
@@ -382,7 +384,7 @@ export function ChatPanel({
             </div>
           ) : null}
           {live.error ? (
-            <div className="tone-ember flex items-center gap-2 rounded-lg border px-3 py-2 text-xs">
+            <div role="alert" className="tone-ember flex items-center gap-2 rounded-lg border px-3 py-2 text-xs">
               <AlertTriangle className="h-4 w-4 shrink-0" />
               <span className="min-w-0 flex-1">{live.error.text}</span>
               <button

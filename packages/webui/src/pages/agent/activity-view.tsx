@@ -143,7 +143,13 @@ export function ActivityView({
 }
 
 /** 三个视图共用的空态提示。 */
-export function EmptyHint({ icon, text }: { icon: React.ReactNode; text: string }) {
+export function EmptyHint({
+  icon,
+  text,
+}: {
+  icon: React.ReactNode;
+  text: string;
+}) {
   return (
     <div className="flex flex-col items-center gap-2 px-6 py-12 text-center text-2xs text-muted-foreground">
       <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
