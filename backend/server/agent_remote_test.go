@@ -199,10 +199,18 @@ func TestMCPLegacyHandshakeAndToolsList(t *testing.T) {
 		tool := item.(map[string]any)
 		names[tool["name"].(string)] = true
 	}
-	for _, want := range []string{"agent_send_message", "agent_respond", "agent_list_sessions", "agent_stop"} {
+	// 9 个 agent_* 工具全集（多退化为「存在即过」会漏删减面）。
+	for _, want := range []string{
+		"agent_send_message", "agent_respond", "agent_stop",
+		"agent_list_sessions", "agent_create_session", "agent_get_session",
+		"agent_update_session", "agent_delete_session", "agent_clear_messages",
+	} {
 		if !names[want] {
 			t.Fatalf("tools/list missing %s", want)
 		}
+	}
+	if len(names) != 9 {
+		t.Fatalf("tools/list must expose exactly 9 tools, got %d: %v", len(names), names)
 	}
 
 	// 未知方法/未知工具。

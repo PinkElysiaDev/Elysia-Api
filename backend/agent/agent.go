@@ -202,6 +202,13 @@ func (e *Engine) ResumeApproval(ctx context.Context, sessionID string, decision 
 	if session.Status != StatusWaitingApproval || !resumablePending(session.PendingAction) {
 		return nil, ErrNoPendingApproval
 	}
+	// 只有批准才真实执行调用：旧版本残留（工具已下线）在批准时明确报
+	// 过期；拒绝只合成结果续跑模型，无需注册表，永远放行以便收尾。
+	if decision.Approved {
+		if err := e.checkPendingTools(session.PendingAction); err != nil {
+			return nil, err
+		}
+	}
 	turnCtx, handle, cancel, err := e.begin(sessionID, e.opts.TurnTimeout)
 	if err != nil {
 		return nil, err
@@ -367,6 +374,22 @@ func resumablePending(pending *PendingAction) bool {
 	default:
 		return len(pending.Calls) > 0
 	}
+}
+
+// checkPendingTools 校验审批型待批动作里的工具仍在注册表中。跨版本升级
+// 会下线旧工具面（如 31 工具收敛为 bash 后留下的历史审批），此时批准只
+// 会把整批调用按未知工具拒绝——对用户呈现为「批准了却失败」，改为明确
+// 报过期并提示重新发起。提问/方案型不真实执行调用，无需校验。
+func (e *Engine) checkPendingTools(pending *PendingAction) error {
+	if pending.Kind != "" {
+		return nil
+	}
+	for _, call := range pending.Calls {
+		if e.tools.Get(call.Name) == nil {
+			return fmt.Errorf("%w: %s（该审批来自旧版本，请拒绝它并重新发起请求）", ErrStalePending, call.Name)
+		}
+	}
+	return nil
 }
 
 // resumeQuestion 把用户作答合成 ask_user 的工具结果；同批其余调用一律合成
@@ -1030,11 +1053,11 @@ func (e *Engine) composeInstructions(session *Session) string {
 		}
 	}
 	if len(session.DraftConfig) > 0 {
-		b.WriteString("\n\n## 当前工作草稿（工具 update_protocol_draft 的最新产物，后续修改以它为基准）\n```json\n")
+		b.WriteString("\n\n## 当前工作草稿（`elysia protocol draft` 的最新产物，后续修改以它为基准）\n```json\n")
 		b.Write(session.DraftConfig)
 		b.WriteString("\n```")
 	} else {
-		b.WriteString("\n\n## 当前工作草稿\n（尚无草稿——请先调用 update_protocol_draft 生成第一版。）")
+		b.WriteString("\n\n## 当前工作草稿\n（尚无草稿——请先用 `elysia protocol draft '<配置JSON>'` 生成第一版。）")
 	}
 	return b.String()
 }

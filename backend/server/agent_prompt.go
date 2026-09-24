@@ -104,7 +104,7 @@ func writeProtocolReference(b *strings.Builder, includeExample bool) {
 	b.WriteString("- 条件包含用叶子的 when 与 omitIf；流式终止判定用 stream.finishWhen/statusWhen，类型化终止值用 stream.done。\n")
 	b.WriteString("- 每类事件形状不同的流用 stream.frames（事件名或 match 谓词选帧）；工具调用分帧到达时用 frame.tool。\n")
 	b.WriteString("- 键名不符合内置别名表时用 aliases 声明；数组内按类型分块提取用 textFilter/reasoningFilter。\n")
-	b.WriteString("- 需要参考成熟写法时可先 read_protocol 读取内置预置协议（chat-completions-api / responses-api / anthropic-api / gemini-api）。\n")
+	b.WriteString("- 需要参考成熟写法时可先 `elysia protocol read --id <id>` 读取内置预置协议（chat-completions-api / responses-api / anthropic-api / gemini-api）。\n")
 
 	// few-shot：内嵌预置协议作为完整范例（与启动播种同源）。有草稿后省略。
 	if includeExample {

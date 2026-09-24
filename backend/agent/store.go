@@ -54,6 +54,10 @@ var ErrSessionRunning = errors.New("agent session already has a running turn")
 // ErrNoPendingApproval 会话不在等待审批状态。
 var ErrNoPendingApproval = errors.New("agent session has no pending approval")
 
+// ErrStalePending 待批动作引用了注册表中已不存在的工具（如跨版本升级把
+// 旧工具面下线后的历史审批残留）——恢复只会把整批调用按未知工具拒绝。
+var ErrStalePending = errors.New("agent pending action references a removed tool")
+
 // Settings 是会话级可调设置。
 type Settings struct {
 	ModelSourceID   string `json:"modelSourceId"`

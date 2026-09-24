@@ -389,6 +389,44 @@ func TestAgentApprovalReasonMaskingAndBatchScope(t *testing.T) {
 	}
 }
 
+// 旧版本 PendingAction（工具已下线）批准时明确报过期；拒绝仍可收尾。
+func TestAgentStalePendingApprovalRejected(t *testing.T) {
+	s := newAgentIntegrationServer(t)
+	fake := newFakeAgentModelServer(t, [][]string{
+		{openAIChunk("c1", map[string]any{"role": "assistant", "content": "旧审批已拒绝"}, "", nil),
+			openAIChunk("c1", map[string]any{}, "stop", nil),
+			openAIDone()},
+	})
+	seedAgentModel(t, s, fake.URL)
+	created, _ := s.store.CreateAgentSession(t.Context(), storage.AgentSessionUpsert{Mode: "create"})
+	sessionID := created.ID
+	waiting := agent.StatusWaitingApproval
+	pending := &agent.PendingAction{
+		Calls:  []relay.MaheshvaraToolCall{{ID: "call_1", Type: "function", Name: "update_model_source", Arguments: json.RawMessage(`{}`)}},
+		Reason: "legacy pending",
+	}
+	if err := s.store.UpdateSessionState(t.Context(), sessionID, agent.SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
+		t.Fatalf("seed pending: %v", err)
+	}
+
+	// 批准 → 409 stale_pending（而非静默 unknown_tool 执行失败）。
+	c, rec := agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":true}`)
+	s.adminApproveAgentAction(c)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "stale_pending") {
+		t.Fatalf("stale approve = %d %s", rec.Code, rec.Body.String())
+	}
+
+	// 拒绝 → 正常收尾（合成拒绝结果并续跑模型）。
+	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":false}`)
+	s.adminApproveAgentAction(c)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("deny stale pending = %d %s", rec.Code, rec.Body.String())
+	}
+	if !hasAgentEvent(parseSSEEvents(t, rec.Body.String()), "turn_done") {
+		t.Fatalf("deny must finish turn: %s", rec.Body.String())
+	}
+}
+
 func TestAgentDenyApprovalAdapts(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
@@ -492,9 +530,13 @@ func TestAgentThinkingSettingsMappedToRequest(t *testing.T) {
 	if len(fake.bodies) == 0 || !strings.Contains(fake.bodies[0], `"reasoning_effort":"high"`) {
 		t.Fatalf("reasoning_effort not mapped: %v", fake.bodies)
 	}
-	// 系统提示词与工具定义进入请求体
-	if !strings.Contains(fake.bodies[0], "update_protocol_draft") {
-		t.Fatalf("tools not sent")
+	// 系统提示词与工具定义进入请求体（bash 是模型可见的操作入口；旧工具
+	// 名不得再出现在提示词指令里）。
+	if !strings.Contains(fake.bodies[0], `"bash"`) {
+		t.Fatalf("tools not sent: %v", fake.bodies)
+	}
+	if strings.Contains(fake.bodies[0], "update_protocol_draft") {
+		t.Fatalf("prompt still references removed tool: %v", fake.bodies)
 	}
 }
 

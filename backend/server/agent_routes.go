@@ -399,6 +399,8 @@ func respondAgentTurnError(c *gin.Context, err error) {
 		respondFail(c, http.StatusConflict, "session_running", "会话已有轮次进行中")
 	case errors.Is(err, agent.ErrNoPendingApproval):
 		respondFail(c, http.StatusConflict, "no_pending_approval", "会话没有等待审批的动作")
+	case errors.Is(err, agent.ErrStalePending):
+		respondFail(c, http.StatusConflict, "stale_pending", err.Error())
 	case strings.Contains(err.Error(), "not found"):
 		respondFail(c, http.StatusNotFound, "not_found", err.Error())
 	default:

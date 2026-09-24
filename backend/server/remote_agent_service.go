@@ -185,6 +185,8 @@ func remoteTurnErrorInfo(err error) (string, string) {
 		return "session_running", "会话已有轮次进行中"
 	case errors.Is(err, agent.ErrNoPendingApproval):
 		return "no_pending_approval", "会话没有等待审批的动作"
+	case errors.Is(err, agent.ErrStalePending):
+		return "stale_pending", err.Error()
 	case strings.Contains(err.Error(), "not found"):
 		return "not_found", err.Error()
 	default:
