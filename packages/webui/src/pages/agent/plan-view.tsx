@@ -3,14 +3,16 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { EmptyHint } from "./activity-view";
 
-/** 方案页：update_plan 维护的步骤清单；计划模式下提供「确认执行」。 */
+/** 方案页：update_plan 维护的分析摘要 + 步骤清单；计划模式下提供「确认执行」。 */
 export function PlanView({
   steps,
+  summary,
   planMode,
   busy,
   onConfirm,
 }: {
   steps: { title: string; status: string }[];
+  summary?: string;
   planMode: boolean;
   busy: boolean;
   onConfirm: () => void;
@@ -19,7 +21,7 @@ export function PlanView({
     return (
       <EmptyHint
         icon={<ListChecks className="h-4 w-4" />}
-        text="多步任务开始时，助手会在这里给出方案步骤并随进度更新。"
+        text="多步任务开始时，助手会在这里给出分析摘要与方案步骤并随进度更新。"
       />
     );
   }
@@ -27,6 +29,16 @@ export function PlanView({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="no-scrollbar min-h-0 flex-1 space-y-1 overflow-y-auto px-1 py-1">
+        {summary ? (
+          <div className="mb-2 rounded-lg bg-wash px-2.5 py-2">
+            <p className="pb-0.5 text-2xs font-medium text-muted-foreground">
+              分析摘要
+            </p>
+            <p className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/90">
+              {summary}
+            </p>
+          </div>
+        ) : null}
         <p className="tnum px-1 pb-1 text-2xs text-muted-foreground">
           {done}/{steps.length} 已完成
         </p>

@@ -438,6 +438,7 @@ export function ChatPanel({
           ) : approval.kind === "plan" ? (
             <PlanConfirmCard
               plan={approval.plan ?? []}
+              summary={approval.planSummary}
               busy={busy}
               onConfirm={() => onApprove({ approved: true })}
               onRevise={(note) => onApprove({ approved: false, note })}

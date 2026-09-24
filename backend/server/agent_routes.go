@@ -95,6 +95,7 @@ func agentSessionView(session *agent.Session) gin.H {
 		"status":        session.Status,
 		"pendingAction": agent.MaskedPendingAction(session.PendingAction),
 		"plan":          session.Plan,
+		"planSummary":   session.PlanSummary,
 		"userTurns":     session.UserTurns,
 		"totalTokens":   session.TotalTokens,
 		"createdAt":     session.CreatedAt.UTC().Format(time.RFC3339),

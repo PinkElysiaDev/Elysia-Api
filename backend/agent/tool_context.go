@@ -82,6 +82,19 @@ func (c *engineToolContext) SetPlan(steps []PlanStep) error {
 	return nil
 }
 
+func (c *engineToolContext) SetPlanSummary(summary string) error {
+	summary = strings.TrimSpace(summary)
+	if summary == c.session.PlanSummary {
+		return nil
+	}
+	value := summary
+	if err := c.store.UpdateSessionState(c.ctx, c.session.ID, SessionStateUpdate{PlanSummary: &value}); err != nil {
+		return err
+	}
+	c.session.PlanSummary = summary
+	return nil
+}
+
 func planStepsEqual(a, b []PlanStep) bool {
 	if len(a) != len(b) {
 		return false

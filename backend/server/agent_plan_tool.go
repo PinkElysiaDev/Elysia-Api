@@ -29,9 +29,12 @@ func (t *updatePlanTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
 		Type: "function",
 		Name: agent.ToolNameUpdatePlan,
-		Description: "更新当前任务的工作方案清单（整体替换）。多步任务开始时先列出步骤（status=pending），" +
-			"推进到某步时置 in_progress，完成后置 done——用户在侧边栏实时可见。步骤应是具体可验证的动作，通常 3-7 条。",
+		Description: "更新工作方案（analysis 摘要与步骤清单都是整体替换）。方案分两部分：" +
+			"analysis 归纳已完成探索/查询/测试得到的结论与关键约束（不是步骤，执行中发现新结论就更新它）；" +
+			"plan 只列**尚未执行**的动作步骤（动宾短语、到对象、关键参数），把已完成的查询/分析列为步骤是错误用法。" +
+			"执行推进时把完成步骤标 done，新增发现只调整剩余步骤与 analysis。通常 3-7 条。",
 		Parameters: objectSchema(map[string]any{
+			"analysis": map[string]any{"type": "string", "description": "分析摘要：已做工作的结论归纳与约束（1-5 句话）"},
 			"plan": map[string]any{
 				"type": "array",
 				"items": map[string]any{
@@ -42,15 +45,16 @@ func (t *updatePlanTool) Definition() relay.MaheshvaraTool {
 					},
 					"required": []string{"title", "status"},
 				},
-				"description": "完整步骤列表（整体替换当前方案）",
+				"description": "待执行步骤列表（整体替换；已完成步骤标 done 保留）",
 			},
-			"ready_for_approval": map[string]any{"type": "boolean", "description": "方案已定稿、等待用户确认时置 true（仅计划模式）"},
+			"ready_for_approval": map[string]any{"type": "boolean", "description": "方案已定稿、等待用户确认时置 true（仅计划模式）。定稿要求：analysis 已归纳结论，plan 全部为待执行动作"},
 		}, "plan"),
 	}
 }
 
 func (t *updatePlanTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
 	var params struct {
+		Analysis         string           `json:"analysis"`
 		Plan             []agent.PlanStep `json:"plan"`
 		ReadyForApproval bool             `json:"ready_for_approval"`
 	}
@@ -62,6 +66,9 @@ func (t *updatePlanTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 	}
 	if len(params.Plan) > 12 {
 		return agent.ToolError("方案步骤过多（上限 12 条），请合并", "too_many_steps")
+	}
+	if len([]rune(strings.TrimSpace(params.Analysis))) > 2000 {
+		return agent.ToolError("analysis 过长（上限 2000 字），请精炼为结论要点", "analysis_too_long")
 	}
 	seen := map[string]bool{}
 	for _, step := range params.Plan {
@@ -82,11 +89,17 @@ func (t *updatePlanTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 	if err := tctx.SetPlan(params.Plan); err != nil {
 		return agent.ToolError("方案保存失败: "+err.Error(), err.Error())
 	}
+	if params.Analysis != "" {
+		if err := tctx.SetPlanSummary(params.Analysis); err != nil {
+			return agent.ToolError("分析摘要保存失败: "+err.Error(), err.Error())
+		}
+	}
 	done := 0
 	for _, step := range params.Plan {
 		if step.Status == "done" {
 			done++
 		}
 	}
-	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("方案已更新（%d/%d 完成）", done, len(params.Plan)), Data: map[string]any{"steps": len(params.Plan), "done": done, "readyForApproval": params.ReadyForApproval}}
+	return agent.ToolResult{OK: true, Summary: fmt.Sprintf("方案已更新（%d/%d 完成）", done, len(params.Plan)),
+		Data: map[string]any{"steps": len(params.Plan), "done": done, "readyForApproval": params.ReadyForApproval}}
 }

@@ -57,6 +57,8 @@ export interface AgentSession {
   settings: AgentSettings;
   status: AgentSessionStatus;
   pendingAction?: AgentPendingAction | null;
+  /** 工作方案的分析摘要（已做工作的结论归纳，与步骤清单分离）。 */
+  planSummary?: string;
   /** 列表视图才有：用户消息条数与累计 token。 */
   userTurns?: number;
   totalTokens?: number;
@@ -82,6 +84,8 @@ export interface AgentPendingAction {
   reason?: string;
   question?: AgentAskQuestion;
   plan?: AgentPlanStep[];
+  /** plan 型：方案的分析摘要（已做工作的结论归纳）。 */
+  planSummary?: string;
 }
 
 export type AgentMessageRole =
@@ -175,6 +179,7 @@ export interface AgentStreamEvent {
   result?: AgentToolResultContent;
   draft?: unknown;
   plan?: AgentPlanStep[];
+  planSummary?: string;
   approval?: AgentPendingAction;
   message?: AgentMessage;
   usage?: AgentUsage;

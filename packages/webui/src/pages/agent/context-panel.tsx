@@ -149,6 +149,7 @@ export function ContextPanel({
         ) : activeTab === "plan" ? (
           <PlanView
             steps={plan}
+            summary={session.planSummary}
             planMode={!!session.settings.planMode}
             busy={live.running}
             onConfirm={onConfirmPlan}

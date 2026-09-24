@@ -66,7 +66,7 @@ func (s *Store) CreateAgentSession(ctx context.Context, input AgentSessionUpsert
 func (s *Store) ListAgentSessions(ctx context.Context) ([]agent.Session, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, title, mode, protocol_id, seed_config, draft_config, draft_restore, plan_json,
 		test_base_url, test_api_key, model_source_id, model_name, thinking_enabled, thinking_effort, plan_mode, allow_live_test, allow_save, allow_delete,
-		status, pending_action, created_at, updated_at
+		status, pending_action, plan_summary, created_at, updated_at
 		FROM agent_sessions ORDER BY updated_at DESC, id`)
 	if err != nil {
 		return nil, err
@@ -139,7 +139,7 @@ func (s *Store) GetSession(ctx context.Context, id string) (*agent.Session, erro
 func (s *Store) getAgentSession(ctx context.Context, id string, withSecret bool) (*agent.Session, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT id, title, mode, protocol_id, seed_config, draft_config, draft_restore, plan_json,
 		test_base_url, test_api_key, model_source_id, model_name, thinking_enabled, thinking_effort, plan_mode, allow_live_test, allow_save, allow_delete,
-		status, pending_action, created_at, updated_at
+		status, pending_action, plan_summary, created_at, updated_at
 		FROM agent_sessions WHERE id = ?`, strings.TrimSpace(id))
 	session, err := s.scanAgentSessionRow(row, withSecret)
 	if err != nil {
@@ -163,7 +163,7 @@ func (s *Store) scanAgentSessionRow(row rowScanner, withSecret bool) (*agent.Ses
 		&testBaseURL, &testAPIKey, &session.Settings.ModelSourceID, &session.Settings.ModelName,
 		&thinkingEnabled, &session.Settings.ThinkingEffort, &planMode, &session.Settings.AllowLiveTest, &session.Settings.AllowSave,
 		&session.Settings.AllowDelete,
-		&session.Status, &pending, &createdAt, &updatedAt); err != nil {
+		&session.Status, &pending, &session.PlanSummary, &createdAt, &updatedAt); err != nil {
 		return nil, err
 	}
 	return s.assembleAgentSession(session, mode, seed, draft, restore, plan, testBaseURL, testAPIKey, pending.String, thinkingEnabled != 0, planMode != 0, createdAt, updatedAt, withSecret)
@@ -337,6 +337,10 @@ func (s *Store) UpdateSessionState(ctx context.Context, id string, update agent.
 		}
 		sets = append(sets, "plan_json = ?")
 		args = append(args, string(encoded))
+	}
+	if update.PlanSummary != nil {
+		sets = append(sets, "plan_summary = ?")
+		args = append(args, *update.PlanSummary)
 	}
 	if strings.TrimSpace(update.Title) != "" {
 		sets = append(sets, "title = ?")

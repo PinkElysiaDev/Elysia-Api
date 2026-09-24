@@ -52,7 +52,8 @@ type Event struct {
 	Draft json.RawMessage `json:"draft,omitempty"`
 
 	// plan_updated
-	Plan []PlanStep `json:"plan,omitempty"`
+	Plan        []PlanStep `json:"plan,omitempty"`
+	PlanSummary string     `json:"planSummary,omitempty"`
 
 	// approval_required
 	Approval *PendingAction `json:"approval,omitempty"`
@@ -164,11 +165,12 @@ type PlanStep struct {
 // PendingAction 是等待用户的动作快照。Kind 为空或 approval 时是门控工具审批；
 // question 是 ask_user 的提问；plan 是方案定稿确认。
 type PendingAction struct {
-	Kind     string                     `json:"kind,omitempty"`
-	Calls    []relay.MaheshvaraToolCall `json:"calls"`
-	Reason   string                     `json:"reason,omitempty"` // 模型对动作意图的说明（取自正文）
-	Question *AskQuestion               `json:"question,omitempty"`
-	Plan     []PlanStep                 `json:"plan,omitempty"`
+	Kind        string                     `json:"kind,omitempty"`
+	Calls       []relay.MaheshvaraToolCall `json:"calls"`
+	Reason      string                     `json:"reason,omitempty"` // 模型对动作意图的说明（取自正文）
+	Question    *AskQuestion               `json:"question,omitempty"`
+	Plan        []PlanStep                 `json:"plan,omitempty"`
+	PlanSummary string                     `json:"planSummary,omitempty"` // plan 型：方案的分析摘要
 }
 
 // AskQuestion 是 ask_user 暂停时交给用户的问题。

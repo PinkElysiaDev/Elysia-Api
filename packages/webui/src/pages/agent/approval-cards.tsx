@@ -164,11 +164,13 @@ export function QuestionCard({
 /** 方案定稿确认：确认后后端关闭计划模式并继续执行。 */
 export function PlanConfirmCard({
   plan,
+  summary,
   busy,
   onConfirm,
   onRevise,
 }: {
   plan: AgentPlanStep[];
+  summary?: string;
   busy?: boolean;
   onConfirm: () => void;
   onRevise: (note: string) => void;
@@ -177,6 +179,16 @@ export function PlanConfirmCard({
   return (
     <div className="tone-amber w-full space-y-2 rounded-xl border px-3.5 py-3">
       <p className="text-sm font-medium">方案已定稿，确认后开始执行</p>
+      {summary ? (
+        <div className="rounded-lg bg-wash px-2.5 py-2">
+          <p className="pb-0.5 text-2xs font-medium text-muted-foreground">
+            分析摘要
+          </p>
+          <p className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/90">
+            {summary}
+          </p>
+        </div>
+      ) : null}
       <ol className="space-y-1 text-xs text-muted-foreground">
         {plan.map((step, index) => (
           <li key={step.title}>

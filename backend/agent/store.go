@@ -76,7 +76,8 @@ type Session struct {
 	SeedConfig      json.RawMessage `json:"seedConfig,omitempty"`   // 编辑模式的初始配置
 	DraftConfig     json.RawMessage `json:"draftConfig,omitempty"`  // 最新草稿
 	DraftRestore    json.RawMessage `json:"draftRestore,omitempty"` // 草稿还原点：最近一轮修改前的副本（单槽覆盖）
-	Plan            []PlanStep      `json:"plan,omitempty"`         // 工作方案清单
+	Plan            []PlanStep      `json:"plan,omitempty"`         // 工作方案清单（仅待执行动作）
+	PlanSummary     string          `json:"planSummary,omitempty"`  // 方案的分析摘要（已做工作的结论归纳）
 	UserTurns       int             `json:"userTurns,omitempty"`    // 列表视图：用户消息条数（一轮一条）
 	TotalTokens     int             `json:"totalTokens,omitempty"`  // 列表视图：assistant 用量合计
 	TestBaseURL     string          `json:"testBaseUrl,omitempty"`
@@ -109,6 +110,7 @@ type SessionStateUpdate struct {
 	DraftConfig      json.RawMessage `json:"draftConfig,omitempty"`
 	DraftRestore     json.RawMessage `json:"draftRestore,omitempty"` // 非 nil 时覆盖草稿还原点（单槽）
 	Plan             []PlanStep      `json:"plan,omitempty"`         // 非 nil 时整体替换
+	PlanSummary      *string         `json:"planSummary,omitempty"`  // 非 nil 时替换（空串=清空）
 	Title            string          `json:"title,omitempty"`        // 空串表示不改
 	TestBaseURL      string          `json:"testBaseUrl,omitempty"`  // 非空时更新测试目标 baseUrl
 	TestAPIKey       string          `json:"testApiKey,omitempty"`   // 非空时更新测试目标 API key（存储层加密）

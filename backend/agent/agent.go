@@ -666,7 +666,7 @@ func (e *Engine) parallelEligible(session *Session, call relay.MaheshvaraToolCal
 
 // pauseForPlan 在计划模式方案定稿后暂停，等用户确认或给出修改意见。
 func (e *Engine) pauseForPlan(ctx context.Context, sessionID string, session *Session, reason string, events chan Event) {
-	pending := &PendingAction{Kind: pendingKindPlan, Reason: reason, Plan: append([]PlanStep(nil), session.Plan...)}
+	pending := &PendingAction{Kind: pendingKindPlan, Reason: reason, Plan: append([]PlanStep(nil), session.Plan...), PlanSummary: session.PlanSummary}
 	waiting := StatusWaitingApproval
 	if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
 		return
@@ -781,6 +781,7 @@ func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Sess
 	started := time.Now()
 	draftBefore := append(json.RawMessage(nil), session.DraftConfig...)
 	planBefore := append([]PlanStep(nil), session.Plan...)
+	planSummaryBefore := session.PlanSummary
 
 	execCtx, stopProgress := e.watchToolProgress(ctx, call, MetaOf(tool), events)
 	var result ToolResult
@@ -809,8 +810,8 @@ func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Sess
 	if len(session.DraftConfig) > 0 && !bytes.Equal(draftBefore, session.DraftConfig) {
 		emitEvent(events, Event{Type: EventDraftUpdated, Draft: session.DraftConfig})
 	}
-	if !planStepsEqual(planBefore, session.Plan) {
-		emitEvent(events, Event{Type: EventPlanUpdated, Plan: session.Plan})
+	if !planStepsEqual(planBefore, session.Plan) || planSummaryBefore != session.PlanSummary {
+		emitEvent(events, Event{Type: EventPlanUpdated, Plan: session.Plan, PlanSummary: session.PlanSummary})
 		session.PlanStaleRounds = 0
 	}
 	// ready 标志的判定不依赖「方案有变化」：模型原样重发步骤并声明定稿时，

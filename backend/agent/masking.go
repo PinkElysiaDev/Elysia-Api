@@ -33,6 +33,7 @@ func maskedPendingAction(pending *PendingAction) *PendingAction {
 	if pending.Plan != nil {
 		masked.Plan = append([]PlanStep(nil), pending.Plan...)
 	}
+	masked.PlanSummary = pending.PlanSummary
 	return masked
 }
 

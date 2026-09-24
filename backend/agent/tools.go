@@ -43,6 +43,9 @@ type ToolContext interface {
 	SetTestTarget(baseURL, apiKey string) error
 	// SetPlan 更新工作方案清单（update_plan 工具用）。
 	SetPlan(steps []PlanStep) error
+	// SetPlanSummary 更新方案的分析摘要（update_plan 工具用；已做工作
+	// 的结论归纳，与步骤清单分离）。
+	SetPlanSummary(summary string) error
 	// SetTitle 改写会话标题（update_title 工具用；空串忽略）。
 	SetTitle(title string) error
 }
