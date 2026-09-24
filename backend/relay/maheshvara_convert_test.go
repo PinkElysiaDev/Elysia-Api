@@ -6,6 +6,17 @@ import (
 	"testing"
 )
 
+// effort→budget 档位表：Anthropic 固定预算线按此量化（xhigh 与 max 共享上限）。
+func TestBudgetFromEffortTiers(t *testing.T) {
+	for effort, want := range map[string]int{
+		"low": 1024, "medium": 4096, "high": 16384, "xhigh": 32000, "max": 32000,
+	} {
+		if got := budgetFromEffort(effort); got != want {
+			t.Fatalf("budgetFromEffort(%q) = %d want %d", effort, got, want)
+		}
+	}
+}
+
 func TestOpenAIResponsesToMaheshvaraCoversResponsesSpecificFields(t *testing.T) {
 	body := []byte(`{
 		"model":"gpt-4.1",

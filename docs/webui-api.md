@@ -236,7 +236,7 @@ Returns `{ session, messages }` — the full message history (`seq`-ordered; rol
 
 ### `PATCH /api/admin/agent/sessions/:id`
 
-Updates settings: `{ title?, settings?: { modelSourceId, modelName, thinkingEnabled, thinkingEffort ("low"|"medium"|"high"|"max"|"adaptive"), allowLiveTest, allowSave ("ask"|"always"|"never"), testBaseUrl }, apiKey?, clearApiKey? }`. The API key is encrypted at rest.
+Updates settings: `{ title?, settings?: { modelSourceId, modelName, thinkingEnabled, thinkingEffort ("low"|"medium"|"high"|"xhigh"|"max"|"adaptive"), allowLiveTest, allowSave ("ask"|"always"|"never"), testBaseUrl }, apiKey?, clearApiKey? }`. The API key is encrypted at rest.
 
 ### `DELETE /api/admin/agent/sessions/:id` · `DELETE /api/admin/agent/sessions/:id/messages?afterSeq=0`
 

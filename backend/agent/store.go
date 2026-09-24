@@ -63,7 +63,7 @@ type Settings struct {
 	ModelSourceID   string `json:"modelSourceId"`
 	ModelName       string `json:"modelName"`
 	ThinkingEnabled bool   `json:"thinkingEnabled"`
-	ThinkingEffort  string `json:"thinkingEffort,omitempty"` // ''|low|medium|high|adaptive
+	ThinkingEffort  string `json:"thinkingEffort,omitempty"` // ''|low|medium|high|xhigh|max|adaptive
 	PlanMode        bool   `json:"planMode,omitempty"`       // 计划模式：先出方案，用户确认后才允许修改/出站
 	AllowLiveTest   string `json:"allowLiveTest,omitempty"`  // ask|always|never
 	AllowSave       string `json:"allowSave,omitempty"`      // ask|always|never

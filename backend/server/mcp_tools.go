@@ -332,7 +332,7 @@ func agentSettingsSchema() map[string]any {
 		"modelSourceId":   map[string]any{"type": "string"},
 		"modelName":       map[string]any{"type": "string"},
 		"thinkingEnabled": map[string]any{"type": "boolean"},
-		"thinkingEffort":  map[string]any{"type": "string", "enum": []string{"low", "medium", "high", "max", "adaptive"}},
+		"thinkingEffort":  map[string]any{"type": "string", "enum": []string{"low", "medium", "high", "xhigh", "max", "adaptive"}},
 		"planMode":        map[string]any{"type": "boolean"},
 		"allowLiveTest":   map[string]any{"type": "string", "enum": []string{"ask", "always", "never"}},
 		"allowSave":       map[string]any{"type": "string", "enum": []string{"ask", "always", "never"}},

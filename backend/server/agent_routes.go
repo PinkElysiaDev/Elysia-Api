@@ -211,10 +211,10 @@ func (s *Server) adminUpdateAgentSession(c *gin.Context) {
 	if payload.Settings != nil && payload.Settings.ThinkingEffort != nil {
 		effort := strings.ToLower(strings.TrimSpace(*payload.Settings.ThinkingEffort))
 		switch effort {
-		case "", "low", "medium", "high", "max", "adaptive":
+		case "", "low", "medium", "high", "xhigh", "max", "adaptive":
 			*payload.Settings.ThinkingEffort = effort
 		default:
-			respondFail(c, http.StatusBadRequest, "invalid_effort", "thinkingEffort 可选值：low/medium/high/max/adaptive")
+			respondFail(c, http.StatusBadRequest, "invalid_effort", "thinkingEffort 可选值：low/medium/high/xhigh/max/adaptive")
 			return
 		}
 	}

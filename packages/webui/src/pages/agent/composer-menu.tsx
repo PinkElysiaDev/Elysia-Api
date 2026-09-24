@@ -235,6 +235,7 @@ const THINKING_EFFORTS: { value: AgentThinkingEffort; label: string }[] = [
   { value: "low", label: "低" },
   { value: "medium", label: "中" },
   { value: "high", label: "高" },
+  { value: "xhigh", label: "极高" },
   { value: "max", label: "最高" },
   { value: "adaptive", label: "自适应" },
 ];

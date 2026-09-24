@@ -129,10 +129,10 @@ func (s *Server) updateRemoteAgentSession(ctx context.Context, id string, title 
 	if settings != nil && settings.ThinkingEffort != nil {
 		effort := strings.ToLower(strings.TrimSpace(*settings.ThinkingEffort))
 		switch effort {
-		case "", "low", "medium", "high", "max", "adaptive":
+		case "", "low", "medium", "high", "xhigh", "max", "adaptive":
 			*settings.ThinkingEffort = effort
 		default:
-			return nil, fmt.Errorf("thinkingEffort 可选值：low/medium/high/max/adaptive")
+			return nil, fmt.Errorf("thinkingEffort 可选值：low/medium/high/xhigh/max/adaptive")
 		}
 	}
 	return s.store.UpdateAgentSessionSettings(ctx, strings.TrimSpace(id), title, settings, nil, false)

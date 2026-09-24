@@ -496,37 +496,70 @@ func TestAgentSessionLifecycle(t *testing.T) {
 }
 
 func TestAgentThinkingSettingsMappedToRequest(t *testing.T) {
+	for _, effort := range []string{"high", "xhigh"} {
+		t.Run(effort, func(t *testing.T) {
+			s := newAgentIntegrationServer(t)
+			fake := newFakeAgentModelServer(t, [][]string{
+				{openAIChunk("c1", map[string]any{"role": "assistant", "content": "ok"}, "", nil),
+					openAIChunk("c1", map[string]any{}, "stop", nil),
+					openAIDone()},
+			})
+			seedAgentModel(t, s, fake.URL)
+
+			c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create"}`)
+			s.adminCreateAgentSession(c)
+			sessionID := decodeAdminData(t, rec)["id"].(string)
+			c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID,
+				fmt.Sprintf(`{"settings":{"modelSourceId":"s1","modelName":"fake-model","thinkingEnabled":true,"thinkingEffort":%q}}`, effort))
+			s.adminUpdateAgentSession(c)
+
+			c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/messages", sessionID, `{"content":"hi"}`)
+			s.adminSendAgentMessage(c)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("send: %d %s", rec.Code, rec.Body.String())
+			}
+			// OpenAI chat 线的思考映射为 reasoning_effort 原样档位。
+			want := fmt.Sprintf(`"reasoning_effort":%q`, effort)
+			if len(fake.bodies) == 0 || !strings.Contains(fake.bodies[0], want) {
+				t.Fatalf("reasoning_effort not mapped: want %s in %v", want, fake.bodies)
+			}
+			// 系统提示词与工具定义进入请求体（bash 是模型可见的操作入口；旧工具
+			// 名不得再出现在提示词指令里）。
+			if !strings.Contains(fake.bodies[0], `"bash"`) {
+				t.Fatalf("tools not sent: %v", fake.bodies)
+			}
+			if strings.Contains(fake.bodies[0], "update_protocol_draft") {
+				t.Fatalf("prompt still references removed tool: %v", fake.bodies)
+			}
+		})
+	}
+}
+
+// 白名单：xhigh 合法、未知档位 400。
+func TestAgentThinkingEffortWhitelist(t *testing.T) {
 	s := newAgentIntegrationServer(t)
-	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", map[string]any{"role": "assistant", "content": "ok"}, "", nil),
-			openAIChunk("c1", map[string]any{}, "stop", nil),
-			openAIDone()},
-	})
-	seedAgentModel(t, s, fake.URL)
+	created, err := s.store.CreateAgentSession(t.Context(), storage.AgentSessionUpsert{Mode: "create"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	sessionID := created.ID
 
-	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create"}`)
-	s.adminCreateAgentSession(c)
-	sessionID := decodeAdminData(t, rec)["id"].(string)
-	c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID,
-		`{"settings":{"modelSourceId":"s1","modelName":"fake-model","thinkingEnabled":true,"thinkingEffort":"high"}}`)
+	c, rec := agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID,
+		`{"settings":{"thinkingEffort":"ultra"}}`)
 	s.adminUpdateAgentSession(c)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "invalid_effort") {
+		t.Fatalf("unknown effort = %d %s", rec.Code, rec.Body.String())
+	}
 
-	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/messages", sessionID, `{"content":"hi"}`)
-	s.adminSendAgentMessage(c)
+	c, rec = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID,
+		`{"settings":{"thinkingEffort":"xhigh"}}`)
+	s.adminUpdateAgentSession(c)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("send: %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("xhigh patch = %d %s", rec.Code, rec.Body.String())
 	}
-	// OpenAI chat 线的思考映射为 reasoning_effort=high
-	if len(fake.bodies) == 0 || !strings.Contains(fake.bodies[0], `"reasoning_effort":"high"`) {
-		t.Fatalf("reasoning_effort not mapped: %v", fake.bodies)
-	}
-	// 系统提示词与工具定义进入请求体（bash 是模型可见的操作入口；旧工具
-	// 名不得再出现在提示词指令里）。
-	if !strings.Contains(fake.bodies[0], `"bash"`) {
-		t.Fatalf("tools not sent: %v", fake.bodies)
-	}
-	if strings.Contains(fake.bodies[0], "update_protocol_draft") {
-		t.Fatalf("prompt still references removed tool: %v", fake.bodies)
+	session, _ := s.store.GetSession(t.Context(), sessionID)
+	if session.Settings.ThinkingEffort != "xhigh" {
+		t.Fatalf("effort = %q", session.Settings.ThinkingEffort)
 	}
 }
 

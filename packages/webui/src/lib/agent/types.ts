@@ -4,7 +4,7 @@ export type AgentSessionMode = "create" | "edit";
 export type AgentSessionStatus = "idle" | "running" | "waiting_approval";
 export type AgentPermission = "ask" | "always" | "never";
 export type AgentThinkingEffort =
-  "" | "low" | "medium" | "high" | "max" | "adaptive";
+  "" | "low" | "medium" | "high" | "xhigh" | "max" | "adaptive";
 
 /** 侧栏标签页（通用窗口：方案 / 配置详情 / 工具动态）。 */
 export type AgentContextTab = "plan" | "draft" | "activity";
