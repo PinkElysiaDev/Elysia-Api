@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -363,6 +364,10 @@ func TestA2AAgentCard(t *testing.T) {
 	}
 }
 
+// a2aMessageSeq 保证每个测试消息的 messageId 唯一——幂等 probe 按 messageId
+// 命中，拼串碰撞会让恢复请求被误判为重发。
+var a2aMessageSeq atomic.Int64
+
 func a2aMessageParams(contextID, taskID, text string, data any) map[string]any {
 	parts := []map[string]any{}
 	if text != "" {
@@ -371,7 +376,7 @@ func a2aMessageParams(contextID, taskID, text string, data any) map[string]any {
 	if data != nil {
 		parts = append(parts, map[string]any{"kind": "data", "data": data})
 	}
-	message := map[string]any{"messageId": fmt.Sprintf("m-%d", len(text)+len(contextID)+len(taskID)), "role": "user", "parts": parts}
+	message := map[string]any{"messageId": fmt.Sprintf("m-%d", a2aMessageSeq.Add(1)), "role": "user", "parts": parts}
 	if contextID != "" {
 		message["contextId"] = contextID
 	}
@@ -627,4 +632,204 @@ func containsString(items []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// ---- 远程面缺陷回归（终态不被覆盖 / 悬空任务取代 / 显式裁决 / 负值拒绝）----
+
+// seedGatedAgentSession 造一个带门控工具暂停链路的会话（假模型第 1 脚本
+// 请求 test_upstream，第 2 脚本终稿），返回会话 id。
+func seedGatedAgentSession(t *testing.T, s *Server, fake *fakeAgentModelServer, vendorURL string) string {
+	t.Helper()
+	session, err := s.createRemoteAgentSession(context.Background(), "门控", "create", "", nil)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := s.updateRemoteAgentSession(context.Background(), session.ID, nil, &agent.SettingsPatch{
+		ModelSourceID: ptrString("s1"), ModelName: ptrString("fake-model"), TestBaseURL: ptrString(vendorURL),
+	}); err != nil {
+		t.Fatalf("patch: %v", err)
+	}
+	if err := s.store.UpdateSessionState(context.Background(), session.ID, stateUpdateWithDraft(json.RawMessage(agentTestConfig("gated-proto")))); err != nil {
+		t.Fatalf("draft: %v", err)
+	}
+	return session.ID
+}
+
+func newGatedVendor(t *testing.T) *httptest.Server {
+	t.Helper()
+	vendor := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"answer":{"text":"hi"},"finish":"stop"}`))
+	}))
+	t.Cleanup(vendor.Close)
+	return vendor
+}
+
+func taskState(t *testing.T, s *Server, taskID string) string {
+	t.Helper()
+	_, got, _ := a2aCall(t, s, "tasks/get", map[string]any{"id": taskID}, "")
+	result, ok := got["result"].(map[string]any)
+	if !ok {
+		return "missing"
+	}
+	status, _ := result["status"].(map[string]any)
+	state, _ := status["state"].(string)
+	return state
+}
+
+func waitForTaskState(t *testing.T, s *Server, taskID, want string) {
+	t.Helper()
+	for i := 0; i < 100; i++ {
+		if taskState(t, s, taskID) == want {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("task %s never reached %q (now %q)", taskID, want, taskState(t, s, taskID))
+}
+
+// 取消后的终态不得被后台轮次的迟到帧（完成/失败）改写。
+func TestA2ACancelFinalStateNotOverwritten(t *testing.T) {
+	s := newAgentIntegrationServer(t)
+	// 慢模型：轮次存活足够久，保证取消发生在运行中。
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(400 * time.Millisecond)
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, chunk := range []string{
+			openAIChunk("c1", map[string]any{"role": "assistant", "content": "慢响应"}, "", nil),
+			openAIChunk("c1", map[string]any{}, "stop", nil),
+			openAIDone(),
+		} {
+			_, _ = w.Write([]byte(chunk))
+		}
+	}))
+	t.Cleanup(slow.Close)
+	seedAgentModel(t, s, slow.URL)
+	session, err := s.createRemoteAgentSession(context.Background(), "取消", "create", "", &agent.Settings{ModelSourceID: "s1", ModelName: "fake-model"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	_, sent, _ := a2aCall(t, s, "message/send", a2aMessageParams(session.ID, "", "慢一点", nil), "")
+	taskID := sent["result"].(map[string]any)["id"].(string)
+	time.Sleep(80 * time.Millisecond) // 让轮次进入模型调用中
+	if state := taskState(t, s, taskID); state != a2aStateWorking {
+		t.Fatalf("pre-cancel state = %q, want working", state)
+	}
+
+	_, canceled, _ := a2aCall(t, s, "tasks/cancel", map[string]any{"id": taskID}, "")
+	if state := canceled["result"].(map[string]any)["status"].(map[string]any)["state"].(string); state != a2aStateCanceled {
+		t.Fatalf("cancel state = %q", state)
+	}
+	// 轮次被引擎停止后 watcher 会拿到失败事件并尝试 append——终态必须保持
+	// canceled 不被改写。等轮次收尾后再断言若干次。
+	waitForTaskState(t, s, taskID, a2aStateCanceled)
+	time.Sleep(300 * time.Millisecond)
+	if state := taskState(t, s, taskID); state != a2aStateCanceled {
+		t.Fatalf("terminal state overwritten: %q", state)
+	}
+	// 再次取消 → 不可取消错误。
+	_, again, _ := a2aCall(t, s, "tasks/cancel", map[string]any{"id": taskID}, "")
+	if again["error"] == nil {
+		t.Fatalf("cancel of terminal task must fail: %v", again)
+	}
+}
+
+// 不带 taskId 的新消息开启新轮次后，同会话悬空的 input-required 旧任务
+// 应转 failed（已被取代）。
+func TestA2ASupersedeStaleTask(t *testing.T) {
+	s := newAgentIntegrationServer(t)
+	fake := newFakeAgentModelServer(t, [][]string{
+		{openAIChunk("c1", toolCallDelta(0, "call_1", "test_upstream", `{"stream":false}`), "", nil),
+			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
+			openAIDone()},
+		{openAIChunk("c2", map[string]any{"role": "assistant", "content": "新任务完成"}, "", nil),
+			openAIChunk("c2", map[string]any{}, "stop", nil),
+			openAIDone()},
+	})
+	seedAgentModel(t, s, fake.URL)
+	vendor := newGatedVendor(t)
+	sessionID := seedGatedAgentSession(t, s, fake, vendor.URL)
+
+	_, first, _ := a2aCall(t, s, "message/send", a2aMessageParams(sessionID, "", "请测试", nil), "")
+	oldTask := first["result"].(map[string]any)["id"].(string)
+	waitForTaskState(t, s, oldTask, a2aStateInputRequired)
+
+	// 直接发新消息（不带 taskId）：引擎清待批开新轮次。
+	_, second, _ := a2aCall(t, s, "message/send", a2aMessageParams(sessionID, "", "换个任务", nil), "")
+	newTask := second["result"].(map[string]any)["id"].(string)
+	waitForTaskState(t, s, newTask, a2aStateCompleted)
+	waitForTaskState(t, s, oldTask, a2aStateFailed)
+	if newTask == oldTask {
+		t.Fatalf("new task must differ: %s", newTask)
+	}
+}
+
+// MCP agent_respond：审批型待批必须显式携带 approved，零值不得静默拒绝。
+func TestMCPRespondRequiresExplicitApproval(t *testing.T) {
+	s := newAgentIntegrationServer(t)
+	fake := newFakeAgentModelServer(t, [][]string{
+		{openAIChunk("c1", toolCallDelta(0, "call_1", "test_upstream", `{"stream":false}`), "", nil),
+			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
+			openAIDone()},
+		{openAIChunk("c2", map[string]any{"role": "assistant", "content": "已按拒绝继续"}, "", nil),
+			openAIChunk("c2", map[string]any{}, "stop", nil),
+			openAIDone()},
+	})
+	seedAgentModel(t, s, fake.URL)
+	vendor := newGatedVendor(t)
+	sessionID := seedGatedAgentSession(t, s, fake, vendor.URL)
+
+	// 驱动到 waiting_approval。
+	c, rec := remoteContext(http.MethodPost, "/mcp", mcpRequest(11, "tools/call", map[string]any{
+		"name": "agent_send_message", "arguments": map[string]any{"sessionId": sessionID, "text": "请测试"},
+	}), mcpHeaders(nil))
+	s.handleMCP(c)
+	frames := parseA2AFrames(t, rec.Body.String())
+	final := frames[len(frames)-1]["result"].(map[string]any)
+	structured := final["structuredContent"].(map[string]any)
+	if structured["status"] != agent.StatusWaitingApproval {
+		t.Fatalf("status = %v, want waiting_approval: %v", structured["status"], structured)
+	}
+
+	// 漏传 approved → isError，且会话保持待批。
+	c, rec = remoteContext(http.MethodPost, "/mcp", mcpRequest(12, "tools/call", map[string]any{
+		"name": "agent_respond", "arguments": map[string]any{"sessionId": sessionID},
+	}), mcpHeaders(nil))
+	s.handleMCP(c)
+	frames = parseA2AFrames(t, rec.Body.String())
+	final = frames[len(frames)-1]["result"].(map[string]any)
+	if final["isError"] != true {
+		t.Fatalf("missing approved must be isError: %v", final)
+	}
+	session, _, _ := s.getRemoteAgentSession(context.Background(), sessionID)
+	if session.Status != agent.StatusWaitingApproval {
+		t.Fatalf("session state = %q, still waiting expected", session.Status)
+	}
+
+	// 显式 approved:false → 正常拒绝收尾。
+	c, rec = remoteContext(http.MethodPost, "/mcp", mcpRequest(13, "tools/call", map[string]any{
+		"name": "agent_respond", "arguments": map[string]any{"sessionId": sessionID, "approved": false},
+	}), mcpHeaders(nil))
+	s.handleMCP(c)
+	frames = parseA2AFrames(t, rec.Body.String())
+	final = frames[len(frames)-1]["result"].(map[string]any)
+	if final["isError"] == true {
+		t.Fatalf("explicit deny failed: %v", final)
+	}
+	structured = final["structuredContent"].(map[string]any)
+	if structured["status"] != agent.StatusIdle || structured["reply"] != "已按拒绝继续" {
+		t.Fatalf("deny outcome wrong: %v", structured)
+	}
+}
+
+// afterSeq 负值直接拒绝。
+func TestMCPClearMessagesRejectsNegativeAfterSeq(t *testing.T) {
+	s := newOpsTestServer(t)
+	_, result, _ := mcpCall(t, s, mcpRequest(14, "tools/call", map[string]any{
+		"name": "agent_clear_messages", "arguments": map[string]any{"sessionId": "any", "afterSeq": -1},
+	}), nil)
+	payload := result["result"].(map[string]any)
+	if payload["isError"] != true {
+		t.Fatalf("negative afterSeq must be isError: %v", payload)
+	}
 }

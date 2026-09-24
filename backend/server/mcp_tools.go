@@ -246,6 +246,15 @@ func mcpToolset() []mcpTool {
 				if err := json.Unmarshal(args, &params); err != nil {
 					return nil, fmt.Errorf("参数解析失败: %w", err)
 				}
+				// 审批型/方案型必须显式给 approved：bool 零值是 false，漏传若
+				// 静默放行会把调用方的参数失误变成一次「拒绝」决策。
+				if session, _, err := s.getRemoteAgentSession(ctx, params.SessionID); err == nil &&
+					session.PendingAction != nil && session.PendingAction.Kind != "question" {
+					var probe map[string]json.RawMessage
+					if json.Unmarshal(args, &probe) != nil || probe["approved"] == nil {
+						return nil, fmt.Errorf("该会话等待审批/方案确认，必须在参数里显式携带 approved（true|false）")
+					}
+				}
 				events, err := s.respondRemoteApproval(ctx, params.SessionID, agent.ApprovalDecision{
 					Approved: params.Approved, BaseURL: params.BaseURL, APIKey: params.APIKey,
 					Note: params.Note, Answer: params.Answer,
@@ -296,6 +305,9 @@ func mcpToolset() []mcpTool {
 				}
 				if err := json.Unmarshal(args, &params); err != nil {
 					return nil, fmt.Errorf("参数解析失败: %w", err)
+				}
+				if params.AfterSeq < 0 {
+					return nil, fmt.Errorf("afterSeq 不能为负")
 				}
 				if s.store == nil {
 					return nil, fmt.Errorf("存储不可用")

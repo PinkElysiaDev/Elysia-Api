@@ -85,7 +85,6 @@ func (s *Server) handleMCP(c *gin.Context) {
 		if eraCode == mcpErrUnsupportedVersion {
 			data = map[string]any{"supported": mcpSupportedVersions}
 		}
-		c.Status(http.StatusBadRequest)
 		mcpWriteJSON(c, jsonrpcFailData(req.ID, eraCode, eraErr, data), http.StatusBadRequest)
 		return
 	}

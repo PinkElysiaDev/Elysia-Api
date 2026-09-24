@@ -6,6 +6,10 @@
   "logLevel": "info",
   "httpTimeout": 120,
   "secretKeyPath": ".master-key",
+  "agentRemote": {
+    "enabled": true,
+    "publicUrl": ""
+  },
   "outbound": {
     "deniedIpRanges": [
       "0.0.0.0/8",
