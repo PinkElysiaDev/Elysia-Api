@@ -617,6 +617,11 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 				}
 				pendingReason += pauseNotes
 			}
+			// 同批后续路由型调用的门控命令也在本次批准面内（恢复时
+			// approvedIDs 会一并放行），一并点名——用户所见即所批。
+			for _, later := range calls[index+1:] {
+				pendingReason = e.appendProbeNotes(session, later, pendingReason, approvedIDs)
+			}
 			pending := &PendingAction{Calls: append([]relay.MaheshvaraToolCall(nil), calls[index:]...), Reason: pendingReason}
 			waiting := StatusWaitingApproval
 			if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
@@ -763,8 +768,8 @@ func (e *Engine) gateCall(session *Session, call relay.MaheshvaraToolCall, tool 
 	return gateAllow, "", ""
 }
 
-// gateProbeDecision 聚合探针上报的子命令权限：任一 never 拒绝并点名命令；
-// 任一 ask 且未批准则暂停（notes 作为审批卡补充说明）。
+// gateProbeDecision 聚合探针上报的子命令权限：任一 never 拒绝并点名
+// 全部命中命令；任一 ask 且未批准则暂停（notes 作为审批卡补充说明）。
 func (e *Engine) gateProbeDecision(session *Session, call relay.MaheshvaraToolCall, notes []GateNote, approvedIDs map[string]bool) (callGate, string, string) {
 	if len(notes) == 0 {
 		return gateAllow, "", ""
@@ -772,21 +777,53 @@ func (e *Engine) gateProbeDecision(session *Session, call relay.MaheshvaraToolCa
 	if session.Settings.PlanMode {
 		return gateDeny, "计划模式已开启：修改与出站操作暂不执行。请先用 update_plan 给出完整方案，并等待用户确认后再执行", ""
 	}
-	var pauseNotes []string
+	var pauseNotes, deniedNotes []string
 	for _, note := range notes {
 		switch PermissionFor(session.Settings, note.PermissionKey) {
 		case PermissionNever:
-			return gateDeny, fmt.Sprintf("命令 %s 需要用户已禁止的权限（%s），请调整方案", note.Command, note.PermissionKey), ""
+			deniedNotes = append(deniedNotes, note.Command+"（权限档："+note.PermissionKey+"）")
 		case PermissionAsk:
 			if !approvedIDs[call.ID] {
 				pauseNotes = append(pauseNotes, note.Command+"（权限档："+note.PermissionKey+"）")
 			}
 		}
 	}
+	if len(deniedNotes) > 0 {
+		return gateDeny, "以下命令需要用户已禁止的权限，请调整方案：\n" + strings.Join(deniedNotes, "\n"), ""
+	}
 	if len(pauseNotes) > 0 {
 		return gatePause, "", "待批命令：\n" + strings.Join(pauseNotes, "\n")
 	}
 	return gateAllow, "", ""
+}
+
+// appendProbeNotes 把同批后续路由型调用（bash）的待批命令并入审批说明。
+// 只列 ask 级：never 级在恢复执行时会被逐调用拒绝，不属于用户批准面。
+func (e *Engine) appendProbeNotes(session *Session, call relay.MaheshvaraToolCall, reason string, approvedIDs map[string]bool) string {
+	if approvedIDs[call.ID] {
+		return reason
+	}
+	tool := e.tools.Get(call.Name)
+	if tool == nil || tool.Gated() {
+		return reason
+	}
+	probe, implements := tool.(GateProbe)
+	if !implements {
+		return reason
+	}
+	notes, ok := probe.ProbeGates(call.Arguments)
+	if !ok {
+		return reason
+	}
+	for _, note := range notes {
+		if PermissionFor(session.Settings, note.PermissionKey) == PermissionAsk {
+			if reason != "" {
+				reason += "\n"
+			}
+			reason += note.Command + "（权限档：" + note.PermissionKey + "）"
+		}
+	}
+	return reason
 }
 
 // denyKind 区分拒绝语义：unknown 保留参数与专用错误码（模型才能发现拼错

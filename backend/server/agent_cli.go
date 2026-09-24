@@ -988,32 +988,42 @@ type cliGateNote struct {
 }
 
 // probeAgentCLI 解析整批脚本，收集所有需要审批的命令（不执行）。
-// 解析失败返回 error——调用方按放行处理，让执行阶段产出可读错误。
+// 语句级解析失败不中断收集：已识别的门控命令必须照常上报，否则一条坏
+// 语句会挟带同批的门控命令绕过审批（`;` 批在执行侧仍会跑后续语句）。
+// 整批切分失败（如引号未闭合）返回 error——执行阶段同样切不开，调用方
+// 按放行处理即可。Command 一律打码：它会进审批卡说明等出站出口。
 func probeAgentCLI(script string) ([]cliGateNote, error) {
 	segments, err := cliSplitStatements(script)
 	if err != nil {
 		return nil, err
 	}
 	notes := []cliGateNote{}
+	var parseErr error
 	for _, segment := range segments {
 		statement, err := cliParseStatement(segment.raw)
 		if err != nil {
-			return nil, err
+			if parseErr == nil {
+				parseErr = err
+			}
+			continue
 		}
 		if len(statement.args) == 0 || statement.args[0] == "help" || statement.args[0] == "--help" {
 			continue
 		}
 		inv, err := cliResolve(statement.args)
 		if err != nil {
-			return nil, err
+			if parseErr == nil {
+				parseErr = err
+			}
+			continue
 		}
 		// 权限与目标工具同源：Gated/PermissionKey 不触碰 server，nil 实例安全。
 		tool := inv.command.tool(nil)
 		if tool.Gated() {
-			notes = append(notes, cliGateNote{Command: "$ " + segment.raw, Key: tool.PermissionKey()})
+			notes = append(notes, cliGateNote{Command: "$ " + agent.RedactCommandLine(segment.raw), Key: tool.PermissionKey()})
 		}
 	}
-	return notes, nil
+	return notes, parseErr
 }
 
 // ---- 执行 ----
@@ -1048,7 +1058,9 @@ func (s *Server) runAgentCLI(ctx context.Context, tctx agent.ToolContext, script
 // runOneCLIStatement 执行单条语句，返回渲染后的文本块与成败。
 func (s *Server) runOneCLIStatement(ctx context.Context, tctx agent.ToolContext, raw string) (string, bool) {
 	var block strings.Builder
-	block.WriteString("$ " + raw + "\n")
+	// 回显打码：输出会随 tool_result 落库并回放给模型，敏感 flag 的值
+	// 不允许经此二次出站（模型自己发的命令，原文在它的上下文里）。
+	block.WriteString("$ " + agent.RedactCommandLine(raw) + "\n")
 	statement, err := cliParseStatement(raw)
 	if err != nil {
 		block.WriteString("错误: " + err.Error() + "\n\n")

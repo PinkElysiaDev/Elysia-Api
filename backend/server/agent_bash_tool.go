@@ -57,7 +57,10 @@ func (t *bashTool) Execute(ctx context.Context, tctx agent.ToolContext, args jso
 }
 
 // ProbeGates 实现引擎的门控探针：解析批处理并把需要审批的命令上报。
-// 解析失败返回 ok=false，交给执行阶段产出可读错误。
+// 只要识别出任何门控命令就返回 ok=true 走聚合判定——即使批内还混着解
+// 析失败的语句（坏语句与门控命令共用同一解析器，执行时必失败，不会成
+// 为越权通道）。完全没有可识别的门控命令且存在解析错误时返回 ok=false，
+// 交给执行阶段产出可读错误。
 func (t *bashTool) ProbeGates(args json.RawMessage) ([]agent.GateNote, bool) {
 	var params struct {
 		Command string `json:"command"`
@@ -66,7 +69,7 @@ func (t *bashTool) ProbeGates(args json.RawMessage) ([]agent.GateNote, bool) {
 		return nil, false
 	}
 	notes, err := probeAgentCLI(params.Command)
-	if err != nil {
+	if len(notes) == 0 && err != nil {
 		return nil, false
 	}
 	gates := make([]agent.GateNote, 0, len(notes))

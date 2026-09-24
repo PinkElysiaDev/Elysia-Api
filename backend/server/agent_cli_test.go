@@ -155,6 +155,43 @@ func TestCLIProbeGates(t *testing.T) {
 	}
 }
 
+// 坏语句不得挟带同批门控命令绕过审批：语句级解析失败后继续收集，
+// ProbeGates 只要识别出门控命令就必须走聚合判定。
+func TestCLIProbePartialFailureKeepsGates(t *testing.T) {
+	notes, err := probeAgentCLI("elysia source ls --bogus ; elysia key delete --name prod")
+	if err == nil {
+		t.Fatalf("parse error must surface alongside notes")
+	}
+	if len(notes) != 1 || notes[0].Key != "delete" {
+		t.Fatalf("gated command must survive partial parse failure: %+v", notes)
+	}
+
+	s := newAgentIntegrationServer(t)
+	bash := &bashTool{server: s}
+	gates, ok := bash.ProbeGates(json.RawMessage(`{"command":"elysia source ls --bogus\nelysia source delete --source s1"}`))
+	if !ok || len(gates) != 1 || gates[0].PermissionKey != "delete" {
+		t.Fatalf("probe must gate despite partial parse failure: ok=%v gates=%+v", ok, gates)
+	}
+	// 完全没有可识别门控命令且解析失败：ok=false（执行阶段报可读错误）。
+	if gates, ok := bash.ProbeGates(json.RawMessage(`{"command":"elysia source ls --bogus"}`)); ok || len(gates) != 0 {
+		t.Fatalf("clean parse failure must defer to execution: ok=%v gates=%+v", ok, gates)
+	}
+}
+
+// 探针上报的命令文本必须打码：它会进审批卡说明等出站出口。
+func TestCLIProbeNotesMasked(t *testing.T) {
+	notes, err := probeAgentCLI(`elysia source create --name x --base-url https://u.io --api-key sk-live-123`)
+	if err != nil || len(notes) != 1 {
+		t.Fatalf("probe: notes=%+v err=%v", notes, err)
+	}
+	if strings.Contains(notes[0].Command, "sk-live-123") {
+		t.Fatalf("note leaked secret: %s", notes[0].Command)
+	}
+	if !strings.Contains(notes[0].Command, "--api-key ***") {
+		t.Fatalf("note missing mask: %s", notes[0].Command)
+	}
+}
+
 func TestCLIBashCommandMasking(t *testing.T) {
 	raw := json.RawMessage(`{"command":"elysia protocol test --api-key sk-secret-1 --stream"}`)
 	masked := agent.MaskSecretInputs(raw)
@@ -228,6 +265,19 @@ func TestCLIRunEquivalence(t *testing.T) {
 	}
 	if strings.Contains(cliOutputText(t, result), "$ elysia source ls") {
 		t.Fatalf("&& must stop after failure")
+	}
+
+	// 回显打码：输出随 tool_result 落库回放，敏感 flag 值不得明文出现。
+	result = s.runAgentCLI(ctx, tctx, "elysia source create --name src2 --base-url "+upstream.URL+" --manual-models m-b --api-key sk-live-456")
+	if !result.OK {
+		t.Fatalf("masked echo batch failed: %s", result.Summary)
+	}
+	maskedOutput := cliOutputText(t, result)
+	if strings.Contains(maskedOutput, "sk-live-456") {
+		t.Fatalf("echo leaked secret:\n%s", maskedOutput)
+	}
+	if !strings.Contains(maskedOutput, "--api-key ***") {
+		t.Fatalf("echo missing mask:\n%s", maskedOutput)
 	}
 
 	// session title 委托真实会话上下文。

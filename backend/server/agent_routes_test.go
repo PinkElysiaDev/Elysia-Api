@@ -345,6 +345,50 @@ func TestAgentGatedToolApprovalFlow(t *testing.T) {
 	}
 }
 
+// 审批卡出口：待批命令打码（敏感 flag 不得经 Reason 泄露），同批多个
+// bash 调用的门控命令全部点名（用户所见即所批）。
+func TestAgentApprovalReasonMaskingAndBatchScope(t *testing.T) {
+	s := newAgentIntegrationServer(t)
+	fake := newFakeAgentModelServer(t, [][]string{
+		{openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia source create --name x --base-url https://u.io --api-key sk-live-789"}`), "", nil),
+			openAIChunk("c1", toolCallDelta(1, "call_2", "bash", `{"command":"elysia key delete --name prod-key"}`), "", nil),
+			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
+			openAIDone()},
+	})
+	seedAgentModel(t, s, fake.URL)
+
+	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create"}`)
+	s.adminCreateAgentSession(c)
+	sessionID := decodeAdminData(t, rec)["id"].(string)
+	c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID, `{"settings":{"modelSourceId":"s1","modelName":"fake-model"}}`)
+	s.adminUpdateAgentSession(c)
+
+	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/messages", sessionID, `{"content":"配好并清掉旧Key"}`)
+	s.adminSendAgentMessage(c)
+	events := parseSSEEvents(t, rec.Body.String())
+	found := false
+	for _, event := range events {
+		if event.Type != "approval_required" {
+			continue
+		}
+		found = true
+		body := string(event.Data)
+		if strings.Contains(body, "sk-live-789") {
+			t.Fatalf("approval reason leaked secret: %s", body)
+		}
+		if !strings.Contains(body, "--api-key ***") {
+			t.Fatalf("approval reason missing mask: %s", body)
+		}
+		// 同批第二个 bash 调用的门控命令也在批准面内，必须点名。
+		if !strings.Contains(body, "key delete --name prod-key") {
+			t.Fatalf("approval reason missing later gated command: %s", body)
+		}
+	}
+	if !found {
+		t.Fatalf("missing approval_required: %s", rec.Body.String())
+	}
+}
+
 func TestAgentDenyApprovalAdapts(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{

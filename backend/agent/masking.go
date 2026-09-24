@@ -50,7 +50,7 @@ func maskSecretValue(value any) any {
 			//（键名本身不含 secret 词根，通用规则拦不到）。
 			if key == "command" {
 				if text, isString := item.(string); isString {
-					typed[key] = redactCommandLine(text)
+					typed[key] = RedactCommandLine(text)
 					continue
 				}
 			}
@@ -80,7 +80,9 @@ func isSecretInputKey(key string) bool {
 var cliSecretFlagPattern = regexp.MustCompile(
 	`(?i)(--(?:api-key|secret|new-secret|token)(?:=|\s+))("[^"]*"|'[^']*'|[^\s&;|]+)`)
 
-// redactCommandLine 把命令行中敏感 flag 的值替换为 ***。
-func redactCommandLine(command string) string {
+// RedactCommandLine 把命令行中敏感 flag 的值替换为 ***。审批卡说明、
+// CLI 回显等一切会把命令行文本带出执行路径的出口共用此函数——密钥值
+// 只允许留在落库原文里（批准后按原文执行）。
+func RedactCommandLine(command string) string {
 	return cliSecretFlagPattern.ReplaceAllString(command, "${1}***")
 }
