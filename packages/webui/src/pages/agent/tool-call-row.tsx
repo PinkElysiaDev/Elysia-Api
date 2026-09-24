@@ -16,6 +16,7 @@ export function ToolCallRow({
   name,
   status,
   summary,
+  command,
   elapsedMs,
   startedAt,
   durationMs,
@@ -25,6 +26,8 @@ export function ToolCallRow({
   name: string;
   status: ToolRowStatus;
   summary?: string;
+  /** bash 工具的命令回显（出口已脱敏）。 */
+  command?: string;
   elapsedMs?: number;
   startedAt?: number;
   durationMs?: number;
@@ -93,6 +96,11 @@ export function ToolCallRow({
           <X className="h-3 w-3 shrink-0 text-ember" aria-hidden />
         ) : null}
       </div>
+      {command ? (
+        <p className="mt-1 line-clamp-2 truncate font-mono text-2xs text-muted-foreground">
+          $ {command}
+        </p>
+      ) : null}
       {summary && status !== "running" ? (
         <p className="mt-1 line-clamp-2 text-2xs text-muted-foreground">
           {summary}

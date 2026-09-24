@@ -15,6 +15,8 @@ export interface AgentToolCard {
   name: string;
   status: "running" | "done" | "failed";
   summary?: string;
+  /** bash 工具的命令回显（出口已脱敏），工具行直接展示。 */
+  command?: string;
   /** 执行中由 tool_progress 心跳刷新的已耗时。 */
   elapsedMs?: number;
   startedAt?: number;
@@ -72,6 +74,7 @@ function reduce(
       return { ...state, reasoning: state.reasoning + (event.delta ?? "") };
     case "tool_call": {
       const callId = event.callId ?? `live-${state.toolCards.length}`;
+      const input = event.input as { command?: string } | undefined;
       return {
         ...state,
         toolCards: [
@@ -81,6 +84,10 @@ function reduce(
             name: event.name ?? callId,
             status: "running",
             startedAt: Date.now(),
+            command:
+              event.name === "bash" && typeof input?.command === "string"
+                ? input.command
+                : undefined,
           },
         ],
       };

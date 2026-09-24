@@ -213,6 +213,7 @@ export interface AgentTurnUsage {
 
 /** 工具名 → 工作过程里的中文动作名。门控工具用审批卡能看懂的完整说法。 */
 export const AGENT_TOOL_LABELS: Record<string, string> = {
+  bash: "执行 elysia 命令",
   update_protocol_draft: "更新协议草稿",
   preview_request: "预览请求",
   test_upstream: "向真实上游发送测试请求",
