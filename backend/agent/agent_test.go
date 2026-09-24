@@ -810,7 +810,7 @@ func TestClampJSON_TailKeepsEnding(t *testing.T) {
 }
 
 func TestMaskSecretInputs_Authorization(t *testing.T) {
-	masked := maskSecretInputs(json.RawMessage(`{"authorization":"Bearer secret","name":"x"}`))
+	masked := MaskSecretInputs(json.RawMessage(`{"authorization":"Bearer secret","name":"x"}`))
 	if strings.Contains(string(masked), "secret") || !strings.Contains(string(masked), `"name":"x"`) {
 		t.Fatalf("mask = %s", masked)
 	}
@@ -992,7 +992,7 @@ func (f *fakeStore) ResetRunningSessions(ctx context.Context) error { return nil
 // 回归（W2-20）：工具入参中的密钥字段落库前脱敏（apiKey/token/secret 等），
 // 非密钥字段与嵌套结构不受影响；非法 JSON 原样返回不阻断。
 func TestMaskSecretInputs(t *testing.T) {
-	masked := maskSecretInputs(json.RawMessage(`{"baseUrl":"http://x","apiKey":"sk-live-123","nested":{"api_key":"k2","name":"ok"},"token":"t1","note":"keep"}`))
+	masked := MaskSecretInputs(json.RawMessage(`{"baseUrl":"http://x","apiKey":"sk-live-123","nested":{"api_key":"k2","name":"ok"},"token":"t1","note":"keep"}`))
 	var decoded map[string]any
 	if err := json.Unmarshal(masked, &decoded); err != nil {
 		t.Fatalf("masked output invalid: %s", masked)
@@ -1007,7 +1007,7 @@ func TestMaskSecretInputs(t *testing.T) {
 	if decoded["token"] != "***" || decoded["note"] != "keep" || decoded["baseUrl"] != "http://x" {
 		t.Fatalf("unexpected collateral masking: %s", masked)
 	}
-	broken := maskSecretInputs(json.RawMessage(`{oops`))
+	broken := MaskSecretInputs(json.RawMessage(`{oops`))
 	if string(broken) != `{oops` {
 		t.Fatalf("invalid JSON should pass through, got %s", broken)
 	}
@@ -1055,7 +1055,7 @@ func TestResumeApproval_QuestionAnswerFeedsModelAndCancelsRest(t *testing.T) {
 		t.Fatalf("missing approval_required: %+v", collected)
 	}
 	session, _ := store.GetSession(context.Background(), "s1")
-	if session.PendingAction == nil || session.PendingAction.Kind != pendingKindQuestion || session.PendingAction.Question == nil {
+	if session.PendingAction == nil || session.PendingAction.Kind != PendingKindQuestion || session.PendingAction.Question == nil {
 		t.Fatalf("pending action = %+v", session.PendingAction)
 	}
 
@@ -1119,7 +1119,7 @@ func TestPlanReadyPausesAndApprovalClosesPlanMode(t *testing.T) {
 		t.Fatalf("missing approval_required: %+v", collected)
 	}
 	session, _ := store.GetSession(context.Background(), "s1")
-	if session.PendingAction == nil || session.PendingAction.Kind != pendingKindPlan || len(session.PendingAction.Plan) != 2 {
+	if session.PendingAction == nil || session.PendingAction.Kind != PendingKindPlan || len(session.PendingAction.Plan) != 2 {
 		t.Fatalf("plan pending = %+v", session.PendingAction)
 	}
 
@@ -1166,12 +1166,12 @@ func TestPlanReadyTriggersEvenWhenPlanUnchanged(t *testing.T) {
 func TestMaskedPendingAction_PreservesKindQuestionPlan(t *testing.T) {
 	plan := []PlanStep{{Title: "步骤", Status: "pending"}}
 	pending := &PendingAction{
-		Kind:  pendingKindPlan,
+		Kind:  PendingKindPlan,
 		Plan:  plan,
 		Calls: []relay.MaheshvaraToolCall{toolCall("c1", "test_upstream", `{"apiKey":"sk-1"}`)},
 	}
-	masked := maskedPendingAction(pending)
-	if masked.Kind != pendingKindPlan || len(masked.Plan) != 1 || masked.Plan[0].Title != "步骤" {
+	masked := MaskedPendingAction(pending)
+	if masked.Kind != PendingKindPlan || len(masked.Plan) != 1 || masked.Plan[0].Title != "步骤" {
 		t.Fatalf("kind/plan lost: %+v", masked)
 	}
 	if strings.Contains(string(masked.Calls[0].Arguments), "sk-1") {
@@ -1181,9 +1181,9 @@ func TestMaskedPendingAction_PreservesKindQuestionPlan(t *testing.T) {
 		t.Fatalf("original pending must stay unmasked for execution")
 	}
 
-	question := &PendingAction{Kind: pendingKindQuestion, Question: &AskQuestion{CallID: "q1", Question: "选哪个？", AllowCustom: false}}
-	maskedQ := maskedPendingAction(question)
-	if maskedQ.Kind != pendingKindQuestion || maskedQ.Question == nil || maskedQ.Question.CallID != "q1" {
+	question := &PendingAction{Kind: PendingKindQuestion, Question: &AskQuestion{CallID: "q1", Question: "选哪个？", AllowCustom: false}}
+	maskedQ := MaskedPendingAction(question)
+	if maskedQ.Kind != PendingKindQuestion || maskedQ.Question == nil || maskedQ.Question.CallID != "q1" {
 		t.Fatalf("question lost: %+v", maskedQ)
 	}
 }

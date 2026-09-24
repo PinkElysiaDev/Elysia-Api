@@ -177,21 +177,11 @@ func (s *Server) stopRemoteTurn(sessionID string) bool {
 	return engine.Stop(strings.TrimSpace(sessionID))
 }
 
-// remoteTurnFailed 把引擎轮次错误归一化为 (code, message)，MCP/A2A/REST
-// 的错误出口共用（respondAgentTurnError 的非 gin 版本）。
+// remoteTurnErrorInfo 把引擎轮次错误归一化为 (code, message)——A2A 出口
+// 使用（MCP 原样透传 error）；状态码与映射表见 agentTurnErrorInfo。
 func remoteTurnErrorInfo(err error) (string, string) {
-	switch {
-	case errors.Is(err, agent.ErrSessionRunning):
-		return "session_running", "会话已有轮次进行中"
-	case errors.Is(err, agent.ErrNoPendingApproval):
-		return "no_pending_approval", "会话没有等待审批的动作"
-	case errors.Is(err, agent.ErrStalePending):
-		return "stale_pending", err.Error()
-	case strings.Contains(err.Error(), "not found"):
-		return "not_found", err.Error()
-	default:
-		return "turn_failed", err.Error()
-	}
+	_, code, message := agentTurnErrorInfo(err)
+	return code, message
 }
 
 // remoteTurnOutcome 聚合一轮的终态，MCP/A2A 的最终响应都从这里取材。

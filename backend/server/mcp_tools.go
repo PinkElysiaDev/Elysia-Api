@@ -249,7 +249,7 @@ func mcpToolset() []mcpTool {
 				// 审批型/方案型必须显式给 approved：bool 零值是 false，漏传若
 				// 静默放行会把调用方的参数失误变成一次「拒绝」决策。
 				if session, _, err := s.getRemoteAgentSession(ctx, params.SessionID); err == nil &&
-					session.PendingAction != nil && session.PendingAction.Kind != "question" {
+					session.PendingAction != nil && session.PendingAction.Kind != agent.PendingKindQuestion {
 					var probe map[string]json.RawMessage
 					if json.Unmarshal(args, &probe) != nil || probe["approved"] == nil {
 						return nil, fmt.Errorf("该会话等待审批/方案确认，必须在参数里显式携带 approved（true|false）")

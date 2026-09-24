@@ -394,18 +394,25 @@ func (s *Server) adminStopAgentTurn(c *gin.Context) {
 }
 
 func respondAgentTurnError(c *gin.Context, err error) {
+	status, code, message := agentTurnErrorInfo(err)
+	respondFail(c, status, code, message)
+}
+
+// agentTurnErrorInfo 把引擎轮次错误归一化为 (HTTP 状态码, 错误码, 文案)。
+// 管理面（gin）与 A2A 远程出口共用这一张映射表，新增引擎错误只改这里。
+func agentTurnErrorInfo(err error) (int, string, string) {
 	switch {
 	case errors.Is(err, agent.ErrSessionRunning):
-		respondFail(c, http.StatusConflict, "session_running", "会话已有轮次进行中")
+		return http.StatusConflict, "session_running", "会话已有轮次进行中"
 	case errors.Is(err, agent.ErrNoPendingApproval):
-		respondFail(c, http.StatusConflict, "no_pending_approval", "会话没有等待审批的动作")
+		return http.StatusConflict, "no_pending_approval", "会话没有等待审批的动作"
 	case errors.Is(err, agent.ErrStalePending):
-		respondFail(c, http.StatusConflict, "stale_pending", err.Error())
+		return http.StatusConflict, "stale_pending", err.Error()
 	case strings.Contains(err.Error(), "not found"):
-		respondFail(c, http.StatusNotFound, "not_found", err.Error())
+		return http.StatusNotFound, "not_found", err.Error()
 	default:
 		// 存储故障等：500 而非把一切当作不存在。
-		respondFail(c, http.StatusInternalServerError, "turn_failed", err.Error())
+		return http.StatusInternalServerError, "turn_failed", err.Error()
 	}
 }
 

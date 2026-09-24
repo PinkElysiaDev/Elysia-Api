@@ -472,7 +472,7 @@ func a2aResumeDecision(session *agent.Session, message a2aIncomingMessage) (agen
 			decision.Note = message.Decision.Note
 		}
 	}
-	if kind == "question" {
+	if kind == agent.PendingKindQuestion {
 		if decision.Answer == "" {
 			decision.Answer = strings.TrimSpace(message.Text)
 		}
@@ -545,7 +545,7 @@ func a2aPendingSummary(pending *agent.PendingAction) string {
 		return "等待输入"
 	}
 	switch pending.Kind {
-	case "question":
+	case agent.PendingKindQuestion:
 		if pending.Question == nil {
 			return "等待回答（问题详情缺失）"
 		}
@@ -558,7 +558,7 @@ func a2aPendingSummary(pending *agent.PendingAction) string {
 			summary += "（选项：" + strings.Join(labels, " / ") + "）"
 		}
 		return summary
-	case "plan":
+	case agent.PendingKindPlan:
 		return fmt.Sprintf("等待方案确认（%d 步）：用 data part {\"approved\": true|false} 回复；拒绝可在文本里附修改意见", len(pending.Plan))
 	default:
 		names := make([]string, 0, len(pending.Calls))

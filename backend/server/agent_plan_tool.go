@@ -22,7 +22,7 @@ func (t *updatePlanTool) Description() string {
 func (t *updatePlanTool) Gated() bool           { return false }
 func (t *updatePlanTool) PermissionKey() string { return "" }
 func (t *updatePlanTool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{RiskLevel: "low", PreviewDirection: "head"}
+	return agent.ToolMeta{RiskLevel: "low", PreviewDirection: agent.ClampHead}
 }
 
 func (t *updatePlanTool) Definition() relay.MaheshvaraTool {

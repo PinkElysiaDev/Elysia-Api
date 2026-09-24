@@ -65,7 +65,8 @@ type GateNote struct {
 
 // GateProbe 是路由型工具的可选门控探针：单一工具入口承载多条子命令时，
 // 引擎在执行前调用探针获知「这次调用实际需要哪些权限」。未实现（或
-// 返回 ok=false）时按工具自身的 Gated()/PermissionKey() 兜底。
+// 返回 ok=false）时按工具自身的 Gated()/PermissionKey() 兜底——对不门控
+// 的路由工具即放行，安全性由执行阶段对同一解析器的失败兜底保证。
 type GateProbe interface {
 	ProbeGates(args json.RawMessage) (notes []GateNote, ok bool)
 }

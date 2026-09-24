@@ -261,10 +261,15 @@ const (
 	ToolNameUpdatePlan = "update_plan"
 )
 
-// 暂停型待批动作的类别（PendingAction.Kind；空串 = 经典门控审批）。
+// 暂停型待批动作的类别（PendingAction.Kind）。导出供远程面（MCP/A2A/REST）
+// 与存储层判别，避免裸串漂移。
 const (
-	pendingKindQuestion = "question"
-	pendingKindPlan     = "plan"
+	// PendingKindApproval 是经典门控审批（Kind 零值）。
+	PendingKindApproval = ""
+	// PendingKindQuestion 是 ask_user 提问暂停。
+	PendingKindQuestion = "question"
+	// PendingKindPlan 是计划模式方案定稿暂停。
+	PendingKindPlan = "plan"
 )
 
 // emitTerminal 发送终态事件：尽力送达（5s 窗口），随后 channel 将被关闭。
@@ -367,9 +372,9 @@ func resumablePending(pending *PendingAction) bool {
 		return false
 	}
 	switch pending.Kind {
-	case pendingKindPlan:
+	case PendingKindPlan:
 		return true
-	case pendingKindQuestion:
+	case PendingKindQuestion:
 		return pending.Question != nil && len(pending.Calls) > 0
 	default:
 		return len(pending.Calls) > 0
@@ -381,7 +386,7 @@ func resumablePending(pending *PendingAction) bool {
 // 会把整批调用按未知工具拒绝——对用户呈现为「批准了却失败」，改为明确
 // 报过期并提示重新发起。提问/方案型不真实执行调用，无需校验。
 func (e *Engine) checkPendingTools(pending *PendingAction) error {
-	if pending.Kind != "" {
+	if pending.Kind != PendingKindApproval {
 		return nil
 	}
 	for _, call := range pending.Calls {
@@ -438,10 +443,10 @@ func (e *Engine) resumePlan(ctx context.Context, sessionID string, session *Sess
 }
 
 func (e *Engine) resumeApprovalPrefix(ctx context.Context, sessionID string, session *Session, resume *PendingAction, decision ApprovalDecision, conversation []relay.MaheshvaraMessage, events chan Event) ([]relay.MaheshvaraMessage, bool, error) {
-	if resume.Kind == pendingKindQuestion {
+	if resume.Kind == PendingKindQuestion {
 		return e.resumeQuestion(ctx, sessionID, resume, decision, conversation, events)
 	}
-	if resume.Kind == pendingKindPlan {
+	if resume.Kind == PendingKindPlan {
 		return e.resumePlan(ctx, sessionID, session, decision, conversation, events)
 	}
 	names := make([]string, 0, len(resume.Calls))
@@ -527,10 +532,13 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 			return
 		}
 		rounds = round + 1
+		// 方案陈旧计数在轮次入口推进（composeInstructions 保持纯函数，
+		// 调试/预览复用它不会污染计数）。
+		nudgePlan := advancePlanStaleRounds(session)
 		emitEvent(events, Event{Type: EventStatus, Text: "正在调用模型…"})
 		conversation = e.prepareContext(conversation, events)
 
-		result, err := e.caller.Call(ctx, e.buildTurnRequest(session, conversation), StreamCallbacks{
+		result, err := e.caller.Call(ctx, e.buildTurnRequest(session, conversation, nudgePlan), StreamCallbacks{
 			OnText:      func(delta string) { emitEvent(events, Event{Type: EventTextDelta, Delta: delta}) },
 			OnReasoning: func(delta string) { emitEvent(events, Event{Type: EventReasoningDelta, Delta: delta}) },
 		})
@@ -575,7 +583,7 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 }
 
 // buildTurnRequest 组装一次模型调用：会话设置映射为请求参数 + 系统提示词。
-func (e *Engine) buildTurnRequest(session *Session, conversation []relay.MaheshvaraMessage) CallRequest {
+func (e *Engine) buildTurnRequest(session *Session, conversation []relay.MaheshvaraMessage, nudgePlan bool) CallRequest {
 	req := CallRequest{
 		Model:         session.Settings.ModelName,
 		ModelSourceID: session.Settings.ModelSourceID,
@@ -584,8 +592,22 @@ func (e *Engine) buildTurnRequest(session *Session, conversation []relay.Maheshv
 		Thinking:      thinkingFromSettings(session.Settings),
 		Reasoning:     reasoningFromSettings(session.Settings),
 	}
-	req.Instructions = e.composeInstructions(session)
+	req.Instructions = e.composeInstructions(session, nudgePlan)
 	return req
+}
+
+// advancePlanStaleRounds 推进「方案清单连续未更新」计数（每轮模型调用一
+// 次），返回本轮是否应提醒模型同步方案。update_plan 执行时计数归零。
+func advancePlanStaleRounds(session *Session) bool {
+	if len(session.Plan) == 0 {
+		return false
+	}
+	session.PlanStaleRounds++
+	if session.PlanStaleRounds >= planStaleCalls {
+		session.PlanStaleRounds = 0
+		return true
+	}
+	return false
 }
 
 // finalizeTurn 是 modelLoop 的统一收尾：panic 防护 + 未暂停时置回 idle 并发
@@ -609,7 +631,9 @@ func (e *Engine) finalizeTurn(ctx context.Context, sessionID string, session *Se
 // executeCalls 执行一批工具调用。门控与非并行工具保持原顺序：遇到首个需
 // 审批动作即暂停（剩余调用连同当前调用存入 PendingAction）。连续的非门控
 // ConcurrentSafe 工具合成一个并行组（上限 toolParallelLimit），结果按完成
-// 序回传、按原调用序追加进对话。approvedIDs 命中只豁免 ask 级暂停。
+// 序回传、按原调用序追加进对话。approvedIDs 命中只豁免 ask 级暂停；非 nil
+// 时必覆盖 calls 全体 ID（恢复路径的既定语义），故 gatePause 分支只会在
+// 新轮次（approvedIDs=nil）到达。
 func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Session, conversation *[]relay.MaheshvaraMessage, calls []relay.MaheshvaraToolCall, reason string, approvedIDs map[string]bool, events chan Event) (bool, error) {
 	index := 0
 	for index < len(calls) {
@@ -632,26 +656,7 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 			continue
 		}
 		if gate == gatePause {
-			pendingReason := reason
-			if pauseNotes != "" {
-				// bash 类路由工具：把待批子命令清单并入审批卡说明。
-				if pendingReason != "" {
-					pendingReason += "\n"
-				}
-				pendingReason += pauseNotes
-			}
-			// 同批后续路由型调用的门控命令也在本次批准面内（恢复时
-			// approvedIDs 会一并放行），一并点名——用户所见即所批。
-			for _, later := range calls[index+1:] {
-				pendingReason = e.appendProbeNotes(session, later, pendingReason, approvedIDs)
-			}
-			pending := &PendingAction{Calls: append([]relay.MaheshvaraToolCall(nil), calls[index:]...), Reason: pendingReason}
-			waiting := StatusWaitingApproval
-			if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
-				return false, err
-			}
-			emitTerminal(events, Event{Type: EventApprovalPending, Approval: maskedPendingAction(pending)})
-			return true, nil
+			return e.pauseForApproval(ctx, sessionID, session, calls, index, reason, pauseNotes, events)
 		}
 		if !canRunParallel(tool) {
 			info := e.runOneTool(ctx, sessionID, session, tool, call, events)
@@ -663,18 +668,34 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 		for end < len(calls) && e.parallelEligible(session, calls[end], approvedIDs) {
 			end++
 		}
-		group := calls[index:end]
-		infos := e.runParallel(ctx, sessionID, session, group, events)
+		infos := e.runParallel(ctx, sessionID, session, calls[index:end], events)
 		for _, info := range infos {
-			limit := e.opts.ToolResultModelLimit
-			if tool := e.tools.Get(info.Name); tool != nil {
-				limit = modelResultLimit(tool, limit)
-			}
-			appendToolOutput(conversation, info, limit)
+			appendToolOutput(conversation, info, e.modelLimitFor(info.Name))
 		}
 		index = end
 	}
 	return false, nil
+}
+
+// pauseForApproval 把 calls[index:] 存为审批型 PendingAction 并暂停轮次。
+// bash 类路由工具的待批子命令清单（pauseNotes）连同同批后续调用的门控
+// 命令一并并入 Reason——用户所见即所批（恢复时 approvedIDs 会放行整批）。
+func (e *Engine) pauseForApproval(ctx context.Context, sessionID string, session *Session, calls []relay.MaheshvaraToolCall, index int, reason, pauseNotes string, events chan Event) (bool, error) {
+	pendingReason := reason
+	if pendingReason != "" && pauseNotes != "" {
+		pendingReason += "\n"
+	}
+	pendingReason += pauseNotes
+	for _, later := range calls[index+1:] {
+		pendingReason = e.appendProbeNotes(session, later, pendingReason)
+	}
+	pending := &PendingAction{Calls: append([]relay.MaheshvaraToolCall(nil), calls[index:]...), Reason: pendingReason}
+	waiting := StatusWaitingApproval
+	if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
+		return false, err
+	}
+	emitTerminal(events, Event{Type: EventApprovalPending, Approval: MaskedPendingAction(pending)})
+	return true, nil
 }
 
 // appendToolOutput 只把结果追加进对话（runOneTool 已落库发事件）。
@@ -702,12 +723,12 @@ func (e *Engine) parallelEligible(session *Session, call relay.MaheshvaraToolCal
 
 // pauseForPlan 在计划模式方案定稿后暂停，等用户确认或给出修改意见。
 func (e *Engine) pauseForPlan(ctx context.Context, sessionID string, session *Session, reason string, events chan Event) {
-	pending := &PendingAction{Kind: pendingKindPlan, Reason: reason, Plan: append([]PlanStep(nil), session.Plan...), PlanSummary: session.PlanSummary}
+	pending := &PendingAction{Kind: PendingKindPlan, Reason: reason, Plan: append([]PlanStep(nil), session.Plan...), PlanSummary: session.PlanSummary}
 	waiting := StatusWaitingApproval
 	if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
 		return
 	}
-	emitTerminal(events, Event{Type: EventApprovalPending, Approval: maskedPendingAction(pending)})
+	emitTerminal(events, Event{Type: EventApprovalPending, Approval: MaskedPendingAction(pending)})
 }
 
 // pauseForQuestion 把 ask_user 变成 question 型暂停。参数不合法时返回 false，
@@ -717,12 +738,12 @@ func (e *Engine) pauseForQuestion(ctx context.Context, sessionID string, remaini
 	if !ok {
 		return false
 	}
-	pending := &PendingAction{Kind: pendingKindQuestion, Calls: append([]relay.MaheshvaraToolCall(nil), remaining...), Reason: reason, Question: &question}
+	pending := &PendingAction{Kind: PendingKindQuestion, Calls: append([]relay.MaheshvaraToolCall(nil), remaining...), Reason: reason, Question: &question}
 	waiting := StatusWaitingApproval
 	if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
 		return false
 	}
-	emitTerminal(events, Event{Type: EventApprovalPending, Approval: maskedPendingAction(pending)})
+	emitTerminal(events, Event{Type: EventApprovalPending, Approval: MaskedPendingAction(pending)})
 	return true
 }
 
@@ -735,6 +756,14 @@ func modelResultLimit(tool Tool, fallback int) int {
 		return limit
 	}
 	return fallback
+}
+
+// modelLimitFor 按工具名取模型回传上限（并行路径用——结果只带名字）。
+func (e *Engine) modelLimitFor(name string) int {
+	if tool := e.tools.Get(name); tool != nil {
+		return modelResultLimit(tool, e.opts.ToolResultModelLimit)
+	}
+	return e.opts.ToolResultModelLimit
 }
 
 // runParallel 并行执行一组只读工具。每个调用拿到会话快照：ConcurrentSafe
@@ -757,8 +786,7 @@ func (e *Engine) runParallel(ctx context.Context, sessionID string, session *Ses
 	return infos
 }
 
-// gateCall 复核单个调用的门禁（计划模式 → 显式禁令 → ask 级审批）。批准集
-// 命中只豁免 ask；never 与计划模式始终逐调用复核——批准后策略可能已收紧。
+// callGate 是单次工具调用的门禁判定结果。
 type callGate int
 
 const (
@@ -767,28 +795,55 @@ const (
 	gatePause
 )
 
-func (e *Engine) gateCall(session *Session, call relay.MaheshvaraToolCall, tool Tool, approvedIDs map[string]bool) (callGate, string, string) {
+// gateCall 复核单个调用的门禁（计划模式 → 显式禁令 → ask 级审批），返回
+// 判定、拒绝文案与审批卡补充说明。批准集命中只豁免 ask；never 与计划模式
+// 始终逐调用复核——批准后策略可能已收紧。
+func (e *Engine) gateCall(session *Session, call relay.MaheshvaraToolCall, tool Tool, approvedIDs map[string]bool) (gate callGate, denial, pauseNotes string) {
 	if !tool.Gated() {
-		// 路由型工具（如 bash）自身不门控：按解析出的子命令判定。
-		if probe, implements := tool.(GateProbe); implements {
-			if notes, ok := probe.ProbeGates(call.Arguments); ok {
-				return e.gateProbeDecision(session, call, notes, approvedIDs)
-			}
+		// 路由型工具（如 bash）自身不门控：按解析出的子命令判定。探针
+		// 未实现或解析失败（ok=false）时放行——安全性由执行阶段对同一
+		// 解析器的失败兜底保证（见 bashTool.ProbeGates 注释）。
+		if notes, probed := probeGatesFor(tool, call); probed {
+			return e.gateProbeDecision(session, call, notes, approvedIDs)
 		}
 		return gateAllow, "", ""
 	}
+	return permissionGate(session, tool.PermissionKey(), call.ID, approvedIDs)
+}
+
+// permissionGate 是单权限键的判定阶梯：计划模式 → never → ask。
+func permissionGate(session *Session, key, callID string, approvedIDs map[string]bool) (callGate, string, string) {
 	if session.Settings.PlanMode {
-		return gateDeny, "计划模式已开启：修改与出站操作暂不执行。请先用 update_plan 给出完整方案，并等待用户确认后再执行", ""
+		return gateDeny, planModeDenialMessage, ""
 	}
-	switch PermissionFor(session.Settings, tool.PermissionKey()) {
+	switch PermissionFor(session.Settings, key) {
 	case PermissionNever:
 		return gateDeny, "用户已在会话设置中禁止此操作，请改用其他方式完成任务", ""
 	case PermissionAsk:
-		if !approvedIDs[call.ID] {
+		if !approvedIDs[callID] {
 			return gatePause, "", ""
 		}
 	}
 	return gateAllow, "", ""
+}
+
+// planModeDenialMessage 计划模式统一拒绝文案（普通与探针路径共用）。
+const planModeDenialMessage = "计划模式已开启：修改与出站操作暂不执行。请先用 update_plan 给出完整方案，并等待用户确认后再执行"
+
+// formatGateNote 把一条待批命令渲染为审批卡行（命令 + 权限档）。
+func formatGateNote(note GateNote) string {
+	return note.Command + "（权限档：" + note.PermissionKey + "）"
+}
+
+// probeGatesFor 取路由型工具的探针结果；未实现 GateProbe 或解析失败
+// （ok=false）时 probed=false，调用方按放行处理。
+func probeGatesFor(tool Tool, call relay.MaheshvaraToolCall) (notes []GateNote, probed bool) {
+	probe, implements := tool.(GateProbe)
+	if !implements {
+		return nil, false
+	}
+	notes, probed = probe.ProbeGates(call.Arguments)
+	return notes, probed
 }
 
 // gateProbeDecision 聚合探针上报的子命令权限：任一 never 拒绝并点名
@@ -798,16 +853,16 @@ func (e *Engine) gateProbeDecision(session *Session, call relay.MaheshvaraToolCa
 		return gateAllow, "", ""
 	}
 	if session.Settings.PlanMode {
-		return gateDeny, "计划模式已开启：修改与出站操作暂不执行。请先用 update_plan 给出完整方案，并等待用户确认后再执行", ""
+		return gateDeny, planModeDenialMessage, ""
 	}
 	var pauseNotes, deniedNotes []string
 	for _, note := range notes {
 		switch PermissionFor(session.Settings, note.PermissionKey) {
 		case PermissionNever:
-			deniedNotes = append(deniedNotes, note.Command+"（权限档："+note.PermissionKey+"）")
+			deniedNotes = append(deniedNotes, formatGateNote(note))
 		case PermissionAsk:
 			if !approvedIDs[call.ID] {
-				pauseNotes = append(pauseNotes, note.Command+"（权限档："+note.PermissionKey+"）")
+				pauseNotes = append(pauseNotes, formatGateNote(note))
 			}
 		}
 	}
@@ -822,20 +877,14 @@ func (e *Engine) gateProbeDecision(session *Session, call relay.MaheshvaraToolCa
 
 // appendProbeNotes 把同批后续路由型调用（bash）的待批命令并入审批说明。
 // 只列 ask 级：never 级在恢复执行时会被逐调用拒绝，不属于用户批准面。
-func (e *Engine) appendProbeNotes(session *Session, call relay.MaheshvaraToolCall, reason string, approvedIDs map[string]bool) string {
-	if approvedIDs[call.ID] {
-		return reason
-	}
+// 只在新轮次的暂停路径被调用（此时门控判定尚未批准任何调用）。
+func (e *Engine) appendProbeNotes(session *Session, call relay.MaheshvaraToolCall, reason string) string {
 	tool := e.tools.Get(call.Name)
 	if tool == nil || tool.Gated() {
 		return reason
 	}
-	probe, implements := tool.(GateProbe)
-	if !implements {
-		return reason
-	}
-	notes, ok := probe.ProbeGates(call.Arguments)
-	if !ok {
+	notes, probed := probeGatesFor(tool, call)
+	if !probed {
 		return reason
 	}
 	for _, note := range notes {
@@ -843,7 +892,7 @@ func (e *Engine) appendProbeNotes(session *Session, call relay.MaheshvaraToolCal
 			if reason != "" {
 				reason += "\n"
 			}
-			reason += note.Command + "（权限档：" + note.PermissionKey + "）"
+			reason += formatGateNote(note)
 		}
 	}
 	return reason
@@ -877,7 +926,7 @@ func (e *Engine) denyCall(ctx context.Context, sessionID string, conversation *[
 func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Session, tool Tool, call relay.MaheshvaraToolCall, events chan Event) (info ToolResultInfo) {
 	// 事件出口脱敏：模型回路与 PendingAction 落库保留原文（执行需要），
 	// 只有发往 SSE 的副本遮盖密钥类字段。
-	emitEvent(events, Event{Type: EventToolCall, CallID: call.ID, Name: call.Name, Input: maskSecretInputs(call.Arguments)})
+	emitEvent(events, Event{Type: EventToolCall, CallID: call.ID, Name: call.Name, Input: MaskSecretInputs(call.Arguments)})
 	started := time.Now()
 	draftBefore := append(json.RawMessage(nil), session.DraftConfig...)
 	planBefore := append([]PlanStep(nil), session.Plan...)
@@ -976,7 +1025,7 @@ func (e *Engine) persistToolResult(ctx context.Context, sessionID string, info T
 	// 承诺矛盾。现场事件与审批恢复路径（PendingAction.Calls）保留原值——
 	// 恢复执行需要真实参数。
 	stored := info
-	stored.Input = maskSecretInputs(info.Input)
+	stored.Input = MaskSecretInputs(info.Input)
 	seq, err := e.store.AppendMessage(ctx, sessionID, RoleToolResult, stored, "", nil)
 	if err != nil {
 		emitEvent(events, Event{Type: EventStatus, Text: fmt.Sprintf("工具结果落库失败: %v", err)})
@@ -1003,8 +1052,6 @@ func MaskSecretInputs(raw json.RawMessage) json.RawMessage {
 	}
 	return raw
 }
-
-func maskSecretInputs(raw json.RawMessage) json.RawMessage { return MaskSecretInputs(raw) }
 
 func (e *Engine) persistAssistant(ctx context.Context, sessionID string, session *Session, content AssistantContent, usage *relay.MaheshvaraUsage, events chan Event) {
 	var usageJSON json.RawMessage
@@ -1038,19 +1085,15 @@ func (e *Engine) failTurn(ctx context.Context, sessionID string, events chan Eve
 	emitTerminal(events, Event{Type: EventError, Text: message, Retryable: true})
 }
 
-// composeInstructions 组装每次模型调用的系统提示词：宿主领域提示 + 当前草稿
-// 状态块（草稿随工具调用演进，模型每轮都看最新状态）。
-func (e *Engine) composeInstructions(session *Session) string {
+// composeInstructions 组装每次模型调用的系统提示词：宿主领域提示 + 方案
+// 陈旧提醒 + 当前草稿状态块。纯函数——计数推进在 modelLoop 轮次入口。
+func (e *Engine) composeInstructions(session *Session, nudgePlan bool) string {
 	var b strings.Builder
 	if e.prompt != nil {
 		b.WriteString(e.prompt(session))
 	}
-	if len(session.Plan) > 0 {
-		session.PlanStaleRounds++
-		if session.PlanStaleRounds >= planStaleCalls {
-			session.PlanStaleRounds = 0
-			b.WriteString("\n\n方案清单已连续多轮未更新。若步骤状态有变化，请调用 update_plan 同步；没有变化就忽略这条提醒。")
-		}
+	if nudgePlan {
+		b.WriteString("\n\n方案清单已连续多轮未更新。若步骤状态有变化，请调用 update_plan 同步；没有变化就忽略这条提醒。")
 	}
 	if len(session.DraftConfig) > 0 {
 		b.WriteString("\n\n## 当前工作草稿（`elysia protocol draft` 的最新产物，后续修改以它为基准）\n```json\n")
@@ -1171,6 +1214,9 @@ func (e *Engine) loadConversation(ctx context.Context, session *Session) ([]rela
 			if err := json.Unmarshal(message.Content, &info); err != nil {
 				return nil, nil, fmt.Errorf("工具结果 #%d 解析失败: %w", message.Seq, err)
 			}
+			// 历史回放统一用默认上限而非 per-tool 预算：落库内容本已过
+			// Store 截断，且跨版本升级后旧工具可能已不在注册表（查不到
+			// MaxModelBytes），按名字回退默认值是稳妥口径。
 			add(message.Seq, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
 		}
 	}

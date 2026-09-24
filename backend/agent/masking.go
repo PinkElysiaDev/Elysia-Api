@@ -8,23 +8,17 @@ import (
 )
 
 // MaskedPendingAction 复制待批快照并遮盖调用参数里的密钥类字段，供会话
-// 视图与 SSE 事件使用。
+// 视图与 SSE 事件使用。落库的 PendingAction 保持原文（批准后要按原参数
+// 执行），只有 SSE 事件与对外视图走这份副本。Kind/Question/Plan 不含
+// 密钥，原样带上——前端靠它们区分审批卡 / 提问卡 / 方案确认卡。
 func MaskedPendingAction(pending *PendingAction) *PendingAction {
-	return maskedPendingAction(pending)
-}
-
-// maskedPendingAction 复制待批快照并遮盖调用参数里的密钥类字段。
-// 落库的 PendingAction 保持原文（批准后要按原参数执行），只有 SSE 事件
-// 与对外视图走这份副本。Kind/Question/Plan 不含密钥，原样带上——前端
-// 靠它们区分审批卡 / 提问卡 / 方案确认卡。
-func maskedPendingAction(pending *PendingAction) *PendingAction {
 	if pending == nil {
 		return nil
 	}
 	masked := &PendingAction{Kind: pending.Kind, Reason: pending.Reason, Calls: make([]relay.MaheshvaraToolCall, len(pending.Calls))}
 	for index, call := range pending.Calls {
 		masked.Calls[index] = call
-		masked.Calls[index].Arguments = maskSecretInputs(call.Arguments)
+		masked.Calls[index].Arguments = MaskSecretInputs(call.Arguments)
 	}
 	if pending.Question != nil {
 		question := *pending.Question
@@ -67,11 +61,25 @@ func maskSecretValue(value any) any {
 	}
 }
 
+// secretKeyMarkers 按子串匹配键名；secretKeyExact 按全等匹配。"token" 刻意
+// 用全等而非子串：max_tokens / prompt_tokens 等计数字段含 "token" 子串，
+// 子串匹配会把它们误打码。
+var (
+	secretKeyMarkers = []string{"apikey", "api_key", "secret", "password", "authorization", "credential"}
+	secretKeyExact   = map[string]bool{"token": true}
+)
+
 func isSecretInputKey(key string) bool {
 	lower := strings.ToLower(key)
-	return strings.Contains(lower, "apikey") || strings.Contains(lower, "api_key") ||
-		lower == "token" || strings.Contains(lower, "secret") || strings.Contains(lower, "password") ||
-		strings.Contains(lower, "authorization") || strings.Contains(lower, "credential")
+	if secretKeyExact[lower] {
+		return true
+	}
+	for _, marker := range secretKeyMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // cliSecretFlagPattern 匹配命令行中的敏感 flag 及其值（--api-key、
