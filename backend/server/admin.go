@@ -884,20 +884,33 @@ func (s *Server) adminUpsertToken(c *gin.Context) {
 	if !okStore {
 		return
 	}
-	var item storage.APIToken
-	if err := c.ShouldBindJSON(&item); err != nil {
+	var payload struct {
+		storage.APIToken
+		// NewName 非空且 ≠ 路径名时执行重命名（其余字段照常更新）。
+		NewName string `json:"newName,omitempty"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
 		respondFail(c, 400, "invalid_json", err.Error())
 		return
 	}
+	item := payload.APIToken
 	if name := c.Param("name"); name != "" {
 		item.Name = name
 	}
-	// 「留空即不变」：编辑时若未填 token，保留原值（不清空）。
+	// 「留空即不变」：编辑时未提供的字段保留原值（token 明文、绑定组、
+	// 作用域）——否则仅改名的局部更新会顺手清掉远程访问 Key 的作用域。
+	// 显式传空数组仍是合法的「清空」语义（前端总是显式携带完整值）。
 	isNew := true
-	if strings.TrimSpace(item.Token) == "" {
-		if existing, found, err := store.FindAPITokenByName(c.Request.Context(), item.Name); err == nil && found {
+	if existing, found, err := store.FindAPITokenByName(c.Request.Context(), item.Name); err == nil && found {
+		isNew = false
+		if strings.TrimSpace(item.Token) == "" {
 			item.Token = existing.Token
-			isNew = false
+		}
+		if item.AllowedGroups == nil {
+			item.AllowedGroups = existing.AllowedGroups
+		}
+		if item.Scopes == nil {
+			item.Scopes = existing.Scopes
 		}
 	}
 	// 新建时空 token 是死行（hash 为空、认证永远不命中）：直接拒绝而不是
@@ -909,6 +922,14 @@ func (s *Server) adminUpsertToken(c *gin.Context) {
 	if err := store.UpsertAPIToken(c.Request.Context(), item); err != nil {
 		respondFail(c, 400, "save_token_failed", err.Error())
 		return
+	}
+	// 重命名放在字段更新之后（改名失败不影响已保存的属性改动）。
+	if newName := strings.TrimSpace(payload.NewName); newName != "" && newName != item.Name {
+		if err := store.RenameAPIToken(c.Request.Context(), item.Name, newName); err != nil {
+			respondFail(c, 409, "rename_token_failed", err.Error())
+			return
+		}
+		item.Name = newName
 	}
 	s.invalidateRouteCache()
 	item.Token = maskSecret(item.Token)

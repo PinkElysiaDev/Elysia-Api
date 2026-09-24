@@ -26,15 +26,16 @@ func agentSystemPrompt(session *agent.Session) string {
 	b.WriteString("- 需要写操作（保存协议、创建/修改模型源与模型组、管理 API Key）或真实出站（上游测试、模型拉取）时，直接发起对应工具调用——系统会暂停并请求用户审批，批准后你会拿到结果继续。被拒绝就换思路，不要反复重试被拒的操作。\n")
 	b.WriteString("- 信息不足（如缺少 baseUrl、密钥、目标模型名）时，直接在正文里向用户提问并结束本轮，不要臆测。用户在对话中给出的 baseUrl / API key 等测试凭证，作为工具参数传入即可；提供过的凭证本会话会自动记住，不要向用户重复索要。\n")
 	b.WriteString("- 只读查询工具随时可用，先查现状再动手：改配置前先 list，下结论前先 query。\n")
-	b.WriteString("- 多步任务（协议接入、批量配置、排查）开始时先用 update_plan 列出方案步骤，随推进更新状态（用户在侧边栏实时可见）；三步以内的简单任务不必建方案。\n")
+	b.WriteString("- 多步任务（协议接入、批量配置、排查）先用 update_plan 建方案：analysis 归纳已完成探索的结论，plan 只列尚未执行的步骤；推进时把完成步骤标 done，新发现更新 analysis 与剩余步骤（用户侧边栏实时可见）。禁止把已完成的查询/分析列为待执行步骤；三步以内的简单任务不必建方案。\n")
 	b.WriteString("- 理解任务后用 update_title 把会话标题改成不超过 16 字的动宾短语，概括任务目标而不是复述用户原话（如「接入 Anthropic 协议」）；任务目标变化时再更新一次。\n")
 	b.WriteString("- 删除类工具（delete_model_source / delete_model_group / delete_model / delete_api_key）不可逆且单独审批：发起前先向用户核对删除对象与级联影响（删源连带全部模型与组成员引用、删组可能级联禁用仅授权该组的 API Key、删 Key 后客户端立即无法调用）；删除协议仍请引导用户到协议设计器手动操作。\n\n")
 
 	if session.Settings.PlanMode {
 		b.WriteString("## 当前为计划模式\n")
 		b.WriteString("- 本轮禁止一切写操作与真实出站请求（保存协议、创建/修改模型源与模型组、上游测试、模型拉取都会被系统拒绝）。只读查询与 update_protocol_draft 草稿编辑仍可用。\n")
-		b.WriteString("- 先用 update_plan 产出完整方案（步骤明确到每一步做什么、动哪些对象、关键参数），并向用户解释要点后结束本轮，等待用户确认。\n")
-		b.WriteString("- 用户可能提出修改意见：按意见更新方案再等待确认，不要抢跑执行。用户确认后系统会关闭计划模式并通知你，届时再按方案逐步执行。\n\n")
+		b.WriteString("- 先用只读工具调研现状，再用 update_plan 产出方案：analysis 写调研结论（已确认的现状、关键约束、风险），plan 只列将要执行的动作（每步：做什么、动哪些对象、关键参数）。已完成的调研分析绝不能列为待执行步骤——它们属于 analysis。\n")
+		b.WriteString("- 向用户解释方案要点后结束本轮，等待确认。\n")
+		b.WriteString("- 用户可能提出修改意见：按意见更新方案再等待确认，不要抢跑执行。用户确认后系统会关闭计划模式并通知你，届时按步骤执行，完成的步骤标 done、新发现更新 analysis。\n\n")
 	}
 
 	b.WriteString("## 能力域一：统计分析与图表\n")
@@ -56,7 +57,7 @@ func agentSystemPrompt(session *agent.Session) string {
 	b.WriteString("- 修改源：update_model_source（API key 留空=保留原值；启停/换地址/换平台/改模型列表）；删除源：delete_model_source（级联删模型与组成员引用，需审批）。\n")
 	b.WriteString("- 单模型：update_model（启停/改名/能力标记）、delete_model（临时下线优先 enabled=false）。\n")
 	b.WriteString("- 模型组：create_model_group（成员用 sourceId:modelId 或模型名；重名会被拒绝，先查）、update_model_group（启停/策略/成员增删/限额）、delete_model_group（可能级联禁用 API Key）。\n")
-	b.WriteString("- API Key（访问令牌，客户端调 /v1 接口的凭证）：create_api_key（secret 留空自动生成，明文仅返回一次，提醒用户立即保存）、update_api_key（newSecret 留空=保留原值；allowedGroups 空=不限制，调整前先确认授权范围）、delete_api_key。\n")
+	b.WriteString("- API Key（访问令牌，客户端调 /v1 接口的推理凭证）：create_api_key（secret 留空自动生成，明文仅返回一次，提醒用户立即保存）、update_api_key（newSecret 留空=保留原值；allowedGroups 空=不限制，调整前先确认授权范围）、delete_api_key。列表里带 agent 作用域的是远程访问 Key（驱动 AI 助手专用、不参与推理），由用户在「运行配置」页管理——不要创建或改动它们。\n")
 	b.WriteString("- 模型组的名字就是客户端调用时的模型名；向用户说明清楚再创建。\n\n")
 
 	b.WriteString("## 能力域四：协议接入（自定义协议）\n")
