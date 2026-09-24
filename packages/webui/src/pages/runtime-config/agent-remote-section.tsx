@@ -74,7 +74,7 @@ export function AgentRemoteSection({
               <EndpointRow label="Agent Card" path="/.well-known/agent-card.json" base={publicBase} />
               <EndpointRow label="REST" path="/api/agent" base={publicBase} />
               <p className="text-2xs text-muted-foreground/70">
-                调用以上端点需携带下方远程访问 Key（Bearer）；助手自身的写操作仍按会话权限档逐次确认。
+                调用以上端点需携带下方远程访问 Key（Bearer）。
               </p>
             </>
           ) : (
@@ -275,8 +275,7 @@ function AgentRemoteTokens() {
         </Button>
       </div>
       <p className="text-2xs text-muted-foreground/70">
-        远程访问 Key 专用于驱动 AI 助手（不参与模型推理），明文可随时在列表中查看；普通推理
-        Key 在「API Key」页管理。
+        远程访问 Key 专用于驱动 AI 助手。
       </p>
 
       {dialog}

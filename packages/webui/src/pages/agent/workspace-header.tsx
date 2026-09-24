@@ -35,11 +35,11 @@ export function WorkspaceHeader({
   onTogglePanel,
 }: WorkspaceHeaderProps) {
   return (
-    <div className="flex items-center gap-2 px-4 pb-2 pt-1">
+    <div className="flex items-center gap-2 pr-4 pb-2 pt-1">
       <Button
         variant="ghost"
         size="icon"
-        className="h-8 w-8"
+        className="h-8 w-11"
         title="返回会话总览"
         onClick={onBack}
       >
