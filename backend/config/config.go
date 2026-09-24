@@ -364,6 +364,13 @@ func (c *Config) saveLocked() error {
 	} else {
 		delete(raw, "modelCatalog")
 	}
+	// agentRemote 块：管理页运行时可改（enabled/publicUrl），显式配置过才
+	// 写入——全默认（enabled nil + 空 url 序列化为 {}）删除键保持文件干净。
+	if encoded, err := json.Marshal(c.AgentRemote); err == nil && string(encoded) != "{}" {
+		raw["agentRemote"] = c.AgentRemote
+	} else {
+		delete(raw, "agentRemote")
+	}
 
 	out, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
@@ -607,6 +614,14 @@ func (c *Config) SetModelCatalogSyncInterval(minutes int) {
 	c.mu.Lock()
 	value := minutes
 	c.ModelCatalog.SyncIntervalMinutes = &value
+	c.mu.Unlock()
+}
+
+// SetAgentRemote 运行时修改 AI 助手远程暴露面（REST/MCP/A2A）配置。
+// 每请求读内存配置，写入即热生效（无需重启）。
+func (c *Config) SetAgentRemote(remote AgentRemoteConfig) {
+	c.mu.Lock()
+	c.AgentRemote = remote
 	c.mu.Unlock()
 }
 

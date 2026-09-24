@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -139,6 +140,10 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 			// 未配置（nil）时回填默认 1440 供表单显示；显式 0 = 不启用定期同步。
 			"syncIntervalMinutes": config.ResolveModelCatalogInterval(catalog),
 		},
+		"agentRemote": gin.H{
+			"enabled":   s.config.GetAgentRemote().AgentRemoteEnabled(),
+			"publicUrl": s.config.GetAgentRemote().PublicURL,
+		},
 	})
 }
 
@@ -157,6 +162,15 @@ type runtimeConfigPayload struct {
 	ModelCatalog     *struct {
 		SyncIntervalMinutes *int `json:"syncIntervalMinutes"`
 	} `json:"modelCatalog"`
+	AgentRemote *agentRemoteConfigPayload `json:"agentRemote"`
+}
+
+// agentRemoteConfigPayload 是 AI 助手远程暴露面的增量更新体：块存在即
+// 合并进当前配置（未提供的子字段保持原值；publicUrl 显式空串 = 清空，
+// 回退按请求 Host 推导）。
+type agentRemoteConfigPayload struct {
+	Enabled   *bool   `json:"enabled"`
+	PublicURL *string `json:"publicUrl"`
 }
 
 // outboundConfigPayload 是出站策略的局部更新体：块存在即替换整个禁止段列表
@@ -222,6 +236,18 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		// 周期检查是动态的，写入配置即生效（0 = 默认 24h），无需重启。
 		s.config.SetModelCatalogSyncInterval(*payload.ModelCatalog.SyncIntervalMinutes)
 	}
+	if payload.AgentRemote != nil {
+		// 远程面鉴权链每请求读内存配置，写入即热生效（无需重启）。
+		remote := s.config.GetAgentRemote()
+		if payload.AgentRemote.Enabled != nil {
+			value := *payload.AgentRemote.Enabled
+			remote.Enabled = &value
+		}
+		if payload.AgentRemote.PublicURL != nil {
+			remote.PublicURL = strings.TrimSpace(*payload.AgentRemote.PublicURL)
+		}
+		s.config.SetAgentRemote(remote)
+	}
 	// host/port：此前只用于计算 restartRequired 而从未应用——设置页保存后
 	// 表单闪回旧值、重启后监听也没变。现在即时应用到配置并随 Save() 落盘；
 	// 监听套接字仍需重启切换（restartRequired 语义不变）。
@@ -285,6 +311,13 @@ func validateRuntimeConfigPayload(p *runtimeConfigPayload) *runtimeConfigError {
 	}
 	if p.ModelCatalog != nil && p.ModelCatalog.SyncIntervalMinutes != nil && *p.ModelCatalog.SyncIntervalMinutes < 0 {
 		return &runtimeConfigError{400, "invalid_sync_interval", "syncIntervalMinutes must not be negative"}
+	}
+	if p.AgentRemote != nil && p.AgentRemote.PublicURL != nil {
+		if raw := strings.TrimSpace(*p.AgentRemote.PublicURL); raw != "" {
+			if parsed, err := url.Parse(raw); err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+				return &runtimeConfigError{400, "invalid_public_url", "publicUrl must be an absolute http(s) URL (e.g. https://gw.example.com)"}
+			}
+		}
 	}
 	if p.Outbound != nil {
 		for _, entry := range p.Outbound.DeniedIPRanges {
