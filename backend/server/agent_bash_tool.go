@@ -26,8 +26,9 @@ func (t *bashTool) PermissionKey() string {
 
 func (t *bashTool) Meta() agent.ToolMeta {
 	// 批处理可能串联多条长命令（如真实测试 120s），预算取批级上限；单条
-	// 命令仍按各自目标工具的超时在执行器内约束。
-	return agent.ToolMeta{RiskLevel: "medium", TimeoutMs: 600_000, PreviewDirection: agent.ClampTail}
+	// 命令仍按各自目标工具的超时在执行器内约束。模型回传上限覆盖 CLI 的
+	// 32KB 输出预算 + JSON 转义膨胀，避免落进引擎默认 16KB 的 preview 信封。
+	return agent.ToolMeta{RiskLevel: "medium", TimeoutMs: 600_000, PreviewDirection: agent.ClampTail, MaxModelBytes: 48 * 1024}
 }
 
 func (t *bashTool) Definition() relay.MaheshvaraTool {
@@ -35,7 +36,8 @@ func (t *bashTool) Definition() relay.MaheshvaraTool {
 		Type: "function", Name: agentToolBash,
 		Description: "在网关内置 CLI 中执行 elysia 命令，完成全部网关操作（模型源/模型/模型组/API Key/协议设计/用量统计/日志/出站策略）。" +
 			"不确定命令或参数时先运行 elysia help、elysia help <组> 或 elysia help <组> <命令> 查看参考——不要臆测参数。" +
-			"支持批处理：命令用 && 连接则前一条失败后停止，用 ; 或换行分隔则继续执行；尾管道支持 | grep <子串> 与 | head <n>。" +
+			"支持批处理：命令用 && 连接则前一条失败后跳过所在链的剩余命令，用 ; 或换行分隔则继续执行；" +
+			"尾管道支持 | grep <子串>（大小写不敏感）与 | head <n>。" +
 			"涉及写入、真实出站、删除的命令会触发用户审批（命令与权限档会在确认卡展示）。输出超出预算会被截断并标注。",
 		Parameters: objectSchema(map[string]any{
 			"command": map[string]any{"type": "string", "description": "要执行的 elysia 命令（可多行批处理）"},

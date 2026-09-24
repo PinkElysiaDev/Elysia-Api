@@ -78,15 +78,22 @@ func helpOverview(table []*cliCommand) string {
 	b.WriteString("命令组：\n")
 	for _, name := range groupNames(table) {
 		commands := commandsOfGroup(table, name)
-		summaries := make([]string, 0, len(commands))
+		labels := make([]string, 0, len(commands))
 		for _, command := range commands {
-			summaries = append(summaries, command.name)
+			if command.name != "" {
+				labels = append(labels, command.name)
+			}
 		}
-		b.WriteString(fmt.Sprintf("  %-10s %s（%s）\n", name, groupSummary(name), strings.Join(summaries, ", ")))
+		if len(labels) > 0 {
+			b.WriteString(fmt.Sprintf("  %-10s %s（%s）\n", name, groupSummary(name), strings.Join(labels, ", ")))
+		} else {
+			// 组级命令（如 syslog）：命令本身就是组名，不再列括号。
+			b.WriteString(fmt.Sprintf("  %-10s %s\n", name, groupSummary(name)))
+		}
 	}
 	b.WriteString("\n分级帮助：elysia help <组>（flag 全表）/ elysia help <组> <命令>（完整语义与示例）。\n")
-	b.WriteString("\n语法：支持 '引号'、--flag value 或 --flag=value、批处理（&& 失败即停；; 或换行继续）、\n")
-	b.WriteString("尾管道（| grep <子串> 过滤、| head <n> 截前 n 行）。\n")
+	b.WriteString("\n语法：支持 '引号'（'' 表示空值）、--flag value 或 --flag=value、批处理（&& 失败即跳过所在链，; 或换行继续）、\n")
+	b.WriteString("尾管道（| grep <子串> 大小写不敏感过滤、| head <n> 截前 n 行，head 也支持 -n N / -N 写法）。\n")
 	b.WriteString("\n常用组合示例：\n")
 	b.WriteString("  elysia source ls && elysia model ls --source 主源 --limit 20\n")
 	b.WriteString("  elysia usage logs --days 1 --status failed | head 10\n")

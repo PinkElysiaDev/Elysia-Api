@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/elysia-api/backend/agent"
 )
@@ -16,11 +17,12 @@ import (
 // 超时均取自目标工具——CLI 只是外观，不引入第二套语义。
 //
 // 支持的脚本语法（轻量 shell 子集）：
-//   - 引号：'...'（原样）与 "..."（支持 \" 转义）；
+//   - 引号：'...'（原样）与 "..."（支持 \" 转义）；'' / "" 表示空串；
 //   - flag：--name value / --name=value；布尔 flag 单独出现即 true；
 //     列表型 flag 可重复出现或逗号分隔；
-//   - 批处理：`&&` 失败即停、`;` 或换行 继续执行；
-//   - 尾管道：| grep <子串> 与 | head <n>。
+//   - 批处理：`&&` 失败即跳过其所在链的剩余命令，`;` 或换行 继续执行
+//     （`a && b; c` 中 a 失败时 b 被跳过、c 照常执行）；
+//   - 尾管道：| grep <子串>（大小写不敏感）与 | head <n>（支持 -n N / -N）。
 
 const (
 	cliOutputBudgetBytes = 32 * 1024
@@ -29,24 +31,40 @@ const (
 
 // ---- 解析 ----
 
-// cliStatement 是一条待执行语句（命令 + 尾管道）。
-type cliStatement struct {
-	raw     string
-	args    []string
-	grep    string
-	head    int
-	hasGrep bool
+// cliPipeKind 尾管道类型（按书写顺序应用）。
+type cliPipeKind int
+
+const (
+	pipeGrep cliPipeKind = iota
+	pipeHead
+)
+
+// cliPipe 一条尾管道：grep 记子串，head 记行数。
+type cliPipe struct {
+	kind cliPipeKind
+	text string
+	n    int
 }
 
-// cliTokenize 把单条命令切成参数（处理引号与转义）。
+// cliStatement 是一条待执行语句（命令 + 尾管道）。
+type cliStatement struct {
+	raw   string
+	args  []string
+	pipes []cliPipe
+}
+
+// cliTokenize 把单条命令切成参数（处理引号与转义）。空引号（'' / ""）
+// 产出空 token——`--secret ''` 依赖它表达空值。
 func cliTokenize(line string) ([]string, error) {
 	var tokens []string
 	var current strings.Builder
 	inSingle, inDouble := false, false
+	quoted := false // 当前 token 是否含过引号（空引号也要产出 token）
 	flush := func() {
-		if current.Len() > 0 {
+		if current.Len() > 0 || quoted {
 			tokens = append(tokens, current.String())
 			current.Reset()
+			quoted = false
 		}
 	}
 	for i := 0; i < len(line); i++ {
@@ -54,8 +72,10 @@ func cliTokenize(line string) ([]string, error) {
 		switch {
 		case ch == '\'' && !inDouble:
 			inSingle = !inSingle
+			quoted = true
 		case ch == '"' && !inSingle:
 			inDouble = !inDouble
+			quoted = true
 		case ch == '\\' && inDouble && i+1 < len(line) && (line[i+1] == '"' || line[i+1] == '\\'):
 			current.WriteByte(line[i+1])
 			i++
@@ -73,25 +93,36 @@ func cliTokenize(line string) ([]string, error) {
 }
 
 // cliSegment 是一条语句及其分隔语义：mustSucceed=true（`&&` 分隔）时
-// 前一条失败即停止整批。
+// 本条失败即跳过其 && 链；fromAnd=true 表示本条由 `&&` 连接（是链的
+// 后续成员，前驱失败时会被跳过）。
 type cliSegment struct {
 	raw         string
 	mustSucceed bool
+	fromAnd     bool
 }
 
-// cliSplitStatements 按顶层 `&&` / `;` / 换行切分脚本（引号内不切分）。
+// cliSplitStatements 按顶层 `&&` / `;` / 换行切分脚本（引号内不切分，
+// 双引号内 \" 与 \\ 不改变引号态——与 tokenizer 同一规则）。
 func cliSplitStatements(script string) ([]cliSegment, error) {
 	var parts []cliSegment
 	var current strings.Builder
 	inSingle, inDouble := false, false
+	pendingFromAnd := false // 下一段是否由 && 引入
 	flush := func(mustSucceed bool) {
 		if trimmed := strings.TrimSpace(current.String()); trimmed != "" {
-			parts = append(parts, cliSegment{raw: trimmed, mustSucceed: mustSucceed})
+			parts = append(parts, cliSegment{raw: trimmed, mustSucceed: mustSucceed, fromAnd: pendingFromAnd})
 		}
+		pendingFromAnd = false
 		current.Reset()
 	}
 	for i := 0; i < len(script); i++ {
 		ch := script[i]
+		if ch == '\\' && inDouble && i+1 < len(script) && (script[i+1] == '"' || script[i+1] == '\\') {
+			current.WriteByte(ch)
+			current.WriteByte(script[i+1])
+			i++
+			continue
+		}
 		switch {
 		case ch == '\'' && !inDouble:
 			inSingle = !inSingle
@@ -106,9 +137,13 @@ func cliSplitStatements(script string) ([]cliSegment, error) {
 			flush(false)
 			continue
 		}
-		if ch == '&' && i+1 < len(script) && script[i+1] == '&' {
-			// `&&`：本条 mustSucceed、失败即停。
+		if ch == '&' {
+			if i+1 >= len(script) || script[i+1] != '&' {
+				return nil, fmt.Errorf("不支持单个 &（批处理请用 && 连接）")
+			}
+			// `&&`：本条失败即跳过所在链；右侧段标记 fromAnd。
 			flush(true)
+			pendingFromAnd = true
 			i++
 			continue
 		}
@@ -149,17 +184,20 @@ func cliParseStatement(raw string) (cliStatement, error) {
 			if len(pipeTokens) != 2 {
 				return statement, fmt.Errorf("grep 管道只接受一个子串参数")
 			}
-			statement.hasGrep = true
-			statement.grep = pipeTokens[1]
+			statement.pipes = append(statement.pipes, cliPipe{kind: pipeGrep, text: pipeTokens[1]})
 		case "head":
-			if len(pipeTokens) != 2 {
-				return statement, fmt.Errorf("head 管道只接受一个行数参数")
+			// head <n> / head -n <n> / head -n 三种习惯写法。
+			arg := ""
+			if len(pipeTokens) == 2 {
+				arg = strings.TrimPrefix(pipeTokens[1], "-")
+			} else if len(pipeTokens) == 3 && pipeTokens[1] == "-n" {
+				arg = pipeTokens[2]
 			}
-			n, err := strconv.Atoi(pipeTokens[1])
-			if err != nil || n <= 0 {
-				return statement, fmt.Errorf("head 行数必须是正整数")
+			n, convErr := strconv.Atoi(arg)
+			if arg == "" || convErr != nil || n <= 0 {
+				return statement, fmt.Errorf("head 行数必须是正整数（| head <n> 或 | head -n <n>）")
 			}
-			statement.head = n
+			statement.pipes = append(statement.pipes, cliPipe{kind: pipeHead, n: n})
 		default:
 			return statement, fmt.Errorf("只支持 | grep <子串> 与 | head <n> 管道（不支持 %q）", pipeTokens[0])
 		}
@@ -167,13 +205,19 @@ func cliParseStatement(raw string) (cliStatement, error) {
 	return statement, nil
 }
 
-// splitPipe 按顶层 | 切分（引号内不切）。
+// splitPipe 按顶层 | 切分（引号内不切分，双引号内 \" 与 \\ 不改变引号态）。
 func splitPipe(raw string) []string {
 	var segments []string
 	var current strings.Builder
 	inSingle, inDouble := false, false
 	for i := 0; i < len(raw); i++ {
 		ch := raw[i]
+		if ch == '\\' && inDouble && i+1 < len(raw) && (raw[i+1] == '"' || raw[i+1] == '\\') {
+			current.WriteByte(ch)
+			current.WriteByte(raw[i+1])
+			i++
+			continue
+		}
 		switch {
 		case ch == '\'' && !inDouble:
 			inSingle = !inSingle
@@ -241,7 +285,12 @@ func (inv *cliInvocation) setBool(m map[string]any, flag, key string) bool {
 	if !inv.present[flag] {
 		return false
 	}
-	m[key] = inv.flags[flag] == "true" || inv.flags[flag] == "1" || inv.flags[flag] == ""
+	switch strings.ToLower(inv.flags[flag]) {
+	case "", "true", "1", "yes":
+		m[key] = true
+	default: // "false" / "0" / "no"（inline 值已在 resolve 层校验）
+		m[key] = false
+	}
 	return true
 }
 
@@ -304,8 +353,8 @@ type cliCommand struct {
 	mapper      func(inv *cliInvocation) (map[string]any, error)
 }
 
-// Path 返回完整命令路径（如 "source create"）。
-func (c *cliCommand) Path() string { return c.group + " " + c.name }
+// Path 返回完整命令路径（如 "source create"；组级命令如 "syslog"）。
+func (c *cliCommand) Path() string { return strings.TrimSpace(c.group + " " + c.name) }
 
 func (c *cliCommand) flagByName(name string) *cliFlagSpec {
 	for i := range c.flags {
@@ -839,7 +888,7 @@ func cliCommandTable() []*cliCommand {
 		// ---- outbound ----
 		&cliCommand{group: "outbound", name: "get", summary: "查看出站禁止 IP 段（SSRF 防护）",
 			usage: "elysia outbound get", example: "elysia outbound get",
-			tool:   func(s *Server) agent.Tool { return &outboundPolicyTool{server: s} },
+			tool:   func(s *Server) agent.Tool { return &outboundPolicyViewTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) { return map[string]any{}, nil }},
 		&cliCommand{group: "outbound", name: "set", summary: "整体替换出站禁止段（需审批；高影响）",
 			usage:   "elysia outbound set --ranges <CIDR,...>   # 空列表 = 全放行",
@@ -851,7 +900,13 @@ func cliCommandTable() []*cliCommand {
 				if !inv.present["ranges"] {
 					return nil, cliMissing("ranges")
 				}
-				m["ranges"] = inv.List("ranges")
+				// 空列表必须表达为 [] 而非 null——null 在工具端是
+				// 「未修改」只读分支，[] 才是「全放行」。
+				ranges := inv.List("ranges")
+				if ranges == nil {
+					ranges = []string{}
+				}
+				m["ranges"] = ranges
 				return m, nil
 			}},
 		&cliCommand{group: "outbound", name: "reset", summary: "恢复出站禁止段为预置默认（需审批）",
@@ -940,6 +995,9 @@ func cliResolve(args []string) (*cliInvocation, error) {
 			break
 		}
 		if !strings.HasPrefix(token, "--") {
+			if token == "" {
+				return nil, fmt.Errorf("位置参数不能为空（检查引号内容）")
+			}
 			inv.args = append(inv.args, token)
 			continue
 		}
@@ -958,11 +1016,17 @@ func cliResolve(args []string) (*cliInvocation, error) {
 		if !hasInline {
 			if spec.boolean {
 				value = "true"
-			} else if i+1 < len(rest) && !strings.HasPrefix(rest[i+1], "--") {
+			} else if i+1 < len(rest) && (rest[i+1] == "" || !strings.HasPrefix(rest[i+1], "--")) {
 				value = rest[i+1]
 				i++
 			} else {
-				return nil, fmt.Errorf("--%s 需要一个值（--%s <值>）", name, name)
+				return nil, fmt.Errorf("--%s 需要一个值（--%s <值> 或 --%s=，空值用引号 ''）", name, name, name)
+			}
+		} else if spec.boolean {
+			switch strings.ToLower(value) {
+			case "", "true", "1", "yes", "false", "0", "no":
+			default:
+				return nil, fmt.Errorf("--%s 需要布尔值（当前 %q）", name, value)
 			}
 		}
 		if spec.list {
@@ -1036,23 +1100,34 @@ func (s *Server) runAgentCLI(ctx context.Context, tctx agent.ToolContext, script
 	}
 	var output strings.Builder
 	succeeded, failed := 0, 0
+	skipChain := false // && 链跳过模式：直到 ;/换行 边界恢复执行
 	for _, segment := range segments {
+		if skipChain {
+			if segment.fromAnd {
+				continue
+			}
+			skipChain = false
+		}
 		cmdOutput, ok := s.runOneCLIStatement(ctx, tctx, segment.raw)
 		output.WriteString(cmdOutput)
 		if ok {
 			succeeded++
 		} else {
 			failed++
-			// `&&` 分隔的批在首个失败后停止（`;` 继续执行余下命令）。
+			// `&&` 分隔：失败跳过所在链的剩余命令；`;`/换行边界照常执行。
 			if segment.mustSucceed {
-				break
+				skipChain = true
 			}
 		}
 	}
 	summary := fmt.Sprintf("执行 %d 条命令：%d 成功、%d 失败", succeeded+failed, succeeded, failed)
 	text := clampCLIOutput(output.String())
+	exitCode := 0
+	if failed > 0 {
+		exitCode = 1
+	}
 	return agent.ToolResult{OK: failed == 0, Summary: summary,
-		Data: map[string]any{"output": text, "exitCode": failed == 0}}
+		Data: map[string]any{"output": text, "exitCode": exitCode}}
 }
 
 // runOneCLIStatement 执行单条语句，返回渲染后的文本块与成败。
@@ -1067,7 +1142,8 @@ func (s *Server) runOneCLIStatement(ctx context.Context, tctx agent.ToolContext,
 		return block.String(), false
 	}
 	if len(statement.args) == 0 || statement.args[0] == "help" || statement.args[0] == "--help" {
-		block.WriteString(renderCLIHelp(statement.args[1:]) + "\n\n")
+		// help 输出同样支持 grep/head 管道（help 文本可能上百行）。
+		block.WriteString(applyCLIPipes(renderCLIHelp(statement.args[1:]), statement) + "\n\n")
 		return block.String(), true
 	}
 	inv, err := cliResolve(statement.args)
@@ -1115,11 +1191,18 @@ func renderCLIResult(result agent.ToolResult, statement cliStatement) string {
 			text += "\n" + string(encoded)
 		}
 	}
-	if statement.hasGrep {
-		text = filterLines(text, statement.grep)
-	}
-	if statement.head > 0 {
-		text = headLines(text, statement.head)
+	return applyCLIPipes(text, statement)
+}
+
+// applyCLIPipes 按书写顺序应用尾管道。
+func applyCLIPipes(text string, statement cliStatement) string {
+	for _, pipe := range statement.pipes {
+		switch pipe.kind {
+		case pipeGrep:
+			text = filterLines(text, pipe.text)
+		case pipeHead:
+			text = headLines(text, pipe.n)
+		}
 	}
 	return text
 }
@@ -1149,6 +1232,13 @@ func clampCLIOutput(text string) string {
 		return text
 	}
 	head := cliOutputBudgetBytes - 8*1024
-	tail := 4 * 1024
-	return text[:head] + "\n…[输出超限，中间已截断]…\n" + text[len(text)-tail:]
+	tailStart := len(text) - 4*1024
+	// 字节切点对齐 UTF-8 边界，避免截断出乱码。
+	for head > 0 && !utf8.RuneStart(text[head]) {
+		head--
+	}
+	for tailStart < len(text) && !utf8.RuneStart(text[tailStart]) {
+		tailStart++
+	}
+	return text[:head] + "\n…[输出超限，中间已截断]…\n" + text[tailStart:]
 }

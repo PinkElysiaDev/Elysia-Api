@@ -1488,3 +1488,30 @@ func (t *outboundPolicyTool) Execute(ctx context.Context, tctx agent.ToolContext
 	}
 	return view(fmt.Sprintf("出站禁止段已更新（%d 段）", len(t.server.config.GetOutboundConfig().DeniedIPRanges)))
 }
+
+// outboundPolicyViewTool 是 outbound get 的只读形态：同一个 outboundPolicyTool
+// 在无参时本就只读，但它是读写合一的门控工具（CLI 探针按工具整体判权限），
+// 纯查询没有理由触发审批或被计划模式拦截。
+type outboundPolicyViewTool struct{ server *Server }
+
+func (t *outboundPolicyViewTool) Name() string        { return agentToolOutbound }
+func (t *outboundPolicyViewTool) Description() string { return "查看出站禁止 IP 段（只读）" }
+func (t *outboundPolicyViewTool) Gated() bool         { return false }
+func (t *outboundPolicyViewTool) PermissionKey() string {
+	return ""
+}
+func (t *outboundPolicyViewTool) Meta() agent.ToolMeta {
+	return agent.ToolMeta{RiskLevel: "low"}
+}
+
+func (t *outboundPolicyViewTool) Definition() relay.MaheshvaraTool {
+	return relay.MaheshvaraTool{
+		Type: "function", Name: agentToolOutbound,
+		Description: "查看出站禁止 IP 段列表与预置默认（只读，不修改）。",
+		Parameters:  objectSchema(map[string]any{}),
+	}
+}
+
+func (t *outboundPolicyViewTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
+	return (&outboundPolicyTool{server: t.server}).Execute(ctx, tctx, json.RawMessage("{}"))
+}

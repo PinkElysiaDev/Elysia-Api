@@ -30,26 +30,62 @@ func TestCLIParser(t *testing.T) {
 		}
 	}
 
-	// 批处理切分：&& 与 ; 的语义标记。
+	// 批处理切分：&& 与 ; 的语义标记（&& 右侧段标 fromAnd）。
 	segments, err := cliSplitStatements("elysia source ls && elysia group ls;\nelysia key ls")
 	if err != nil {
 		t.Fatalf("split: %v", err)
 	}
-	if len(segments) != 3 || !segments[0].mustSucceed || segments[1].mustSucceed || segments[2].mustSucceed {
+	if len(segments) != 3 || !segments[0].mustSucceed || segments[1].mustSucceed || segments[2].mustSucceed ||
+		segments[0].fromAnd || !segments[1].fromAnd || segments[2].fromAnd {
 		t.Fatalf("segments = %+v", segments)
 	}
 
-	// 管道。
+	// 管道（按书写顺序）与 head 的三种习惯写法。
 	statement, err := cliParseStatement("elysia usage logs --status failed | grep timeout | head 5")
 	if err != nil {
 		t.Fatalf("pipe: %v", err)
 	}
-	if !statement.hasGrep || statement.grep != "timeout" || statement.head != 5 {
-		t.Fatalf("statement = %+v", statement)
+	if len(statement.pipes) != 2 || statement.pipes[0].kind != pipeGrep || statement.pipes[0].text != "timeout" ||
+		statement.pipes[1].kind != pipeHead || statement.pipes[1].n != 5 {
+		t.Fatalf("statement pipes = %+v", statement.pipes)
+	}
+	for _, form := range []string{"elysia source ls | head -n 7", "elysia source ls | head -7"} {
+		statement, err = cliParseStatement(form)
+		if err != nil || statement.pipes[0].n != 7 {
+			t.Fatalf("head form %q: err=%v pipes=%+v", form, err, statement.pipes)
+		}
+	}
+	// 管道顺序按书写执行：先 head 后 grep 时，第 n 行之外的匹配行不保留。
+	statement, _ = cliParseStatement("elysia source ls | head 1 | grep zz")
+	if len(statement.pipes) != 2 || statement.pipes[0].kind != pipeHead {
+		t.Fatalf("pipes must follow written order: %+v", statement.pipes)
 	}
 	// 不支持的管道。
 	if _, err := cliParseStatement("elysia source ls | awk '{print $1}'"); err == nil {
 		t.Fatalf("unsupported pipe must fail")
+	}
+	// 空引号 token 与空位置参数报错。
+	tokens, err = cliTokenize(`--secret '' keep`)
+	if err != nil || len(tokens) != 3 || tokens[1] != "" {
+		t.Fatalf("empty-quoted token: %v err=%v", tokens, err)
+	}
+	if _, err := cliResolve(mustArgs(t, "elysia session title ''")); err == nil {
+		t.Fatalf("empty positional must fail")
+	}
+	// 双引号内 \" 不改变引号态：; 与 | 不被误切。
+	segments, err = cliSplitStatements(`elysia session title "a\"; elysia session title b" ; elysia session title c`)
+	if err != nil {
+		t.Fatalf("escaped quote split: %v", err)
+	}
+	if len(segments) != 2 || !strings.HasSuffix(segments[0].raw, `session title b"`) {
+		t.Fatalf("segments = %+v", segments)
+	}
+	if _, err := cliParseStatement(`elysia source ls --name "x\"| y"`); err != nil {
+		t.Fatalf("escaped quote must survive pipe split: %v", err)
+	}
+	// 裸 & 明确报错。
+	if _, err := cliSplitStatements("elysia source ls & elysia group ls"); err == nil {
+		t.Fatalf("single & must fail")
 	}
 }
 
@@ -113,7 +149,23 @@ func TestCLIResolveMappers(t *testing.T) {
 	}
 	m = encode(resolve(`elysia group member add --group g --models s1:m1`))
 	if list, ok := m["addModels"].([]string); !ok || list[0] != "s1:m1" {
-		t.Fatalf("addModels = %v", m)
+		t.Fatalf("addModels = %v", m["addModels"])
+	}
+
+	// outbound set 空列表表达「全放行」（[] 而非 null——null 是工具端的只读分支）。
+	m = encode(resolve(`elysia outbound set --ranges=`))
+	if list, ok := m["ranges"].([]string); !ok || len(list) != 0 {
+		t.Fatalf("empty ranges must encode as []: %#v", m["ranges"])
+	}
+	m = encode(resolve(`elysia outbound set --ranges 10.0.0.0/8,172.16.0.0/12`))
+	if list, ok := m["ranges"].([]string); !ok || len(list) != 2 {
+		t.Fatalf("ranges = %v", m["ranges"])
+	}
+
+	// 组级命令（syslog）可达。
+	inv := resolve(`elysia syslog --level error --limit 5`)
+	if inv.command.Path() != "syslog" {
+		t.Fatalf("syslog path = %q", inv.command.Path())
 	}
 
 	// 必填缺失（mapper 层校验）与未知 flag（resolver 层）报错。
@@ -136,6 +188,61 @@ func mustArgs(t *testing.T, line string) []string {
 	return statement.args
 }
 
+// 全部 33 条命令：路径必须可被自身组词 resolve（防「syslog 尾随空格」类
+// 不可达回归），带最小合法参数时 mapper 必须成功（防 flag 键名拼写回归）。
+func TestCLIAllCommandsResolve(t *testing.T) {
+	for _, command := range cliCommandTable() {
+		path := command.Path()
+		statement, err := cliParseStatement("elysia " + path)
+		if err != nil {
+			t.Fatalf("path %q: parse: %v", path, err)
+		}
+		inv, err := cliResolve(statement.args)
+		if err != nil {
+			t.Fatalf("path %q does not resolve: %v", path, err)
+		}
+		if inv.command.Path() != path {
+			t.Fatalf("path %q resolved to %q", path, inv.command.Path())
+		}
+	}
+	// 最小参数 mapper 冒烟（覆盖其余测试没碰到的命令）。
+	for _, line := range []string{
+		`elysia source refresh --source s1`,
+		`elysia model ls --source s1 --search gpt --limit 20`,
+		`elysia model set --source s1 --model m1 --vision --max-tokens 4096 --enabled=false`,
+		`elysia model rm --source s1 --model m1`,
+		`elysia group update --group g1 --add-models s1:m1 --remove-models s1:m2 --strategy random --daily-limit-requests 10`,
+		`elysia group delete --group g1`,
+		`elysia group member rm --group g1 --models s1:m1`,
+		`elysia key ls`,
+		`elysia key create --name k1 --allowed-groups g1`,
+		`elysia key delete --name k1`,
+		`elysia protocol preview --sample '{"model":"m"}'`,
+		`elysia protocol test --base-url https://u.io --api-key sk --stream`,
+		`elysia protocol models --base-url https://u.io`,
+		`elysia protocol save`,
+		`elysia protocol read --id anthropic-api`,
+		`elysia usage stats --days 7 --group g1`,
+		`elysia usage trend --days 30`,
+		`elysia usage logs --days 1 --status failed --limit 5`,
+		`elysia outbound get`,
+		`elysia outbound reset`,
+		`elysia syslog --level error --limit 5`,
+	} {
+		statement, err := cliParseStatement(line)
+		if err != nil {
+			t.Fatalf("%s: parse: %v", line, err)
+		}
+		inv, err := cliResolve(statement.args)
+		if err != nil {
+			t.Fatalf("%s: resolve: %v", line, err)
+		}
+		if _, err := inv.command.mapper(inv); err != nil {
+			t.Fatalf("%s: mapper: %v", line, err)
+		}
+	}
+}
+
 func TestCLIProbeGates(t *testing.T) {
 	notes, err := probeAgentCLI("elysia source ls && elysia source create --name a --base-url https://x.io ; elysia key delete --name k")
 	if err != nil {
@@ -148,6 +255,19 @@ func TestCLIProbeGates(t *testing.T) {
 	notes, err = probeAgentCLI("elysia help source\nelysia usage stats --days 1")
 	if err != nil || len(notes) != 0 {
 		t.Fatalf("read-only notes = %+v err=%v", notes, err)
+	}
+	// outbound get 是只读查询，不门控；set/reset 仍按 save 门控。
+	notes, err = probeAgentCLI("elysia outbound get")
+	if err != nil || len(notes) != 0 {
+		t.Fatalf("outbound get must not gate: %+v err=%v", notes, err)
+	}
+	notes, err = probeAgentCLI("elysia outbound set --ranges 10.0.0.0/8 ; elysia outbound reset")
+	if err != nil || len(notes) != 2 || notes[0].Key != "save" || notes[1].Key != "save" {
+		t.Fatalf("outbound set/reset must gate: %+v err=%v", notes, err)
+	}
+	// 模型回传预算必须覆盖 CLI 输出预算（否则落进引擎 16KB preview 信封）。
+	if meta := agent.MetaOf(&bashTool{}); meta.MaxModelBytes < cliOutputBudgetBytes {
+		t.Fatalf("bash model budget %d must cover output budget %d", meta.MaxModelBytes, cliOutputBudgetBytes)
 	}
 	// 解析失败：ok=false 语义由调用方兜底。
 	if _, err := probeAgentCLI("elysia source ls --bogus"); err == nil {
@@ -258,13 +378,48 @@ func TestCLIRunEquivalence(t *testing.T) {
 		t.Fatalf("group not created: %+v", groups)
 	}
 
-	// && 失败即停：失败命令之后的命令不执行（失败命令自身仍会回显错误）。
+	// && 失败即停：失败命令之后的链上命令不执行（失败命令自身仍会回显错误）。
 	result = s.runAgentCLI(ctx, tctx, "elysia source delete && elysia source ls")
 	if result.OK {
 		t.Fatalf("batch with error must fail")
 	}
 	if strings.Contains(cliOutputText(t, result), "$ elysia source ls") {
 		t.Fatalf("&& must stop after failure")
+	}
+
+	// && 链跳过但 ; 边界恢复：`a && b; c` 中 a 失败时 c 照常执行。
+	created2, _ := s.store.CreateAgentSession(ctx, storage.AgentSessionUpsert{Mode: "create"})
+	session2, _ := s.store.GetSession(ctx, created2.ID)
+	realTctx2 := &sessionToolContext{ctx: ctx, store: s.store, session: session2}
+	result = s.runAgentCLI(ctx, realTctx2, "elysia source delete && elysia source ls ; elysia session title 链恢复")
+	if result.OK {
+		t.Fatalf("batch with failed && must fail overall")
+	}
+	chainOut := cliOutputText(t, result)
+	if strings.Contains(chainOut, "$ elysia source ls") || !strings.Contains(chainOut, "$ elysia session title") {
+		t.Fatalf("&& chain skip / ; resume wrong:\n%s", chainOut)
+	}
+	if session2.Title != "链恢复" {
+		t.Fatalf("title after chain skip = %q", session2.Title)
+	}
+
+	// 组级命令 syslog 真实执行；exitCode 为整数 0。
+	result = s.runAgentCLI(ctx, tctx, "elysia syslog --limit 5")
+	if !result.OK {
+		t.Fatalf("syslog failed: %s", result.Summary)
+	}
+	if data, ok := result.Data.(map[string]any); !ok || data["exitCode"] != 0 {
+		t.Fatalf("syslog exitCode = %#v", result.Data)
+	}
+
+	// help 输出支持 grep 管道。
+	result = s.runAgentCLI(ctx, tctx, "elysia help | grep syslog")
+	if !result.OK {
+		t.Fatalf("help pipe failed: %s", result.Summary)
+	}
+	helpOut := cliOutputText(t, result)
+	if !strings.Contains(helpOut, "系统日志") || strings.Contains(helpOut, "模型源管理") {
+		t.Fatalf("help pipe output wrong:\n%s", helpOut)
 	}
 
 	// 回显打码：输出随 tool_result 落库回放，敏感 flag 值不得明文出现。
