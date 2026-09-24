@@ -205,14 +205,18 @@ func (s *Store) UpsertAPIToken(ctx context.Context, item APIToken) error {
 	if item.AllowedGroups == nil {
 		item.AllowedGroups = []string{}
 	}
+	item.Scopes = NormalizeScopes(item.Scopes)
+	// 不变式：远程访问 Key（agent 作用域）的绑定组强制为 ["agent"]——
+	// 纯展示值，判定与隔离都不依赖它（推理隔离在 /v1 鉴权层显式拒绝）。
+	// 普通 Key 绑定真实存在的 "agent" 组完全合法，互不影响。
+	if len(item.Scopes) > 0 {
+		item.AllowedGroups = []string{TokenScopeAgent}
+	}
 	allowedGroups, err := json.Marshal(item.AllowedGroups)
 	if err != nil {
 		return err
 	}
-	if item.Scopes == nil {
-		item.Scopes = []string{}
-	}
-	scopes, err := json.Marshal(NormalizeScopes(item.Scopes))
+	scopes, err := json.Marshal(item.Scopes)
 	if err != nil {
 		return err
 	}
@@ -224,6 +228,28 @@ func (s *Store) UpsertAPIToken(ctx context.Context, item APIToken) error {
 func (s *Store) DeleteAPIToken(ctx context.Context, name string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM api_tokens WHERE name = ?`, name)
 	return err
+}
+
+// RenameAPIToken 重命名令牌（name 是主键）：目标名已占用时报错，其余
+// 字段（凭证/启停/绑定/作用域）原样保留。
+func (s *Store) RenameAPIToken(ctx context.Context, oldName, newName string) error {
+	newName = strings.TrimSpace(newName)
+	if newName == "" {
+		return errors.New("token name is required")
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE api_tokens SET name = ?, updated_at = ? WHERE name = ?`, newName, nowString(), oldName)
+	if err != nil {
+		// SQLite 主键冲突表现为 UNIQUE constraint failed。
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return fmt.Errorf("token %q not found", oldName)
+	}
+	return nil
 }
 
 // FindAPITokenByName 按名称查找单个 token（含解密后的明文），

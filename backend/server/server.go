@@ -392,6 +392,16 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 			})
 			return
 		}
+		if accessTokenHasScope(accessToken, storage.TokenScopeAgent) {
+			// 远程访问 Key 与推理隔离：agent 作用域 Key 只能驱动 AI 助手
+			//（/mcp、/a2a、/api/agent），不得调用 /v1 推理接口。
+			c.Abort()
+			writeProtocolError(c, inputFormatFromPath(c.Request.URL.Path), &relay.MaheshvaraError{
+				Class:   relay.ErrorClassAuthentication,
+				Message: "This API key is reserved for AI assistant remote control",
+			})
+			return
+		}
 		c.Set("elysiaKeyName", accessToken.Name)
 		c.Set("elysiaKeyHash", shortTokenHash(token))
 		c.Set("elysiaAllowedGroups", accessToken.AllowedGroups)
