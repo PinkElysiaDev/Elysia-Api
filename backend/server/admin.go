@@ -932,6 +932,10 @@ func (s *Server) adminUpsertToken(c *gin.Context) {
 		item.Name = newName
 	}
 	s.invalidateRouteCache()
+	// 回读落库值（不变式可能改写过绑定组），避免回显请求体造成口径差。
+	if stored, found, err := store.FindAPITokenByName(c.Request.Context(), item.Name); err == nil && found {
+		item = stored
+	}
 	item.Token = maskSecret(item.Token)
 	respondOK(c, item)
 }
