@@ -11,6 +11,7 @@ import { ToolCallRow } from "./tool-call-row";
 import { Collapse, JsonBlock } from "./ui-blocks";
 import { Markdown, ReasoningBlock } from "./markdown";
 import {
+  agentToolLabel,
   formatUsage,
   type AgentApprovalContent,
   type AgentAssistantContent,
@@ -21,6 +22,13 @@ import {
 } from "@/lib/agent/types";
 import { cn } from "@/lib/utils";
 
+/** bash 调用的命令行回显（与流式 live 卡同一提取逻辑，历史回放一致）。 */
+function bashCommand(content: AgentToolResultContent): string | undefined {
+  if (content.name !== "bash") return undefined;
+  const input = content.input as { command?: unknown } | null | undefined;
+  return typeof input?.command === "string" ? input.command : undefined;
+}
+
 /** 工具结果行（持久化消息形态）。失败保持展开，成功默认折叠详情。 */
 function ToolResultCard({ content }: { content: AgentToolResultContent }) {
   const denied = !content.ok && isDenied(content.data);
@@ -30,6 +38,7 @@ function ToolResultCard({ content }: { content: AgentToolResultContent }) {
       status={denied ? "denied" : content.ok ? "done" : "failed"}
       summary={content.summary}
       durationMs={content.durationMs}
+      command={bashCommand(content)}
       detail={
         content.data != null ? (
           <Collapse stopPropagation title="结果详情" defaultOpen={!content.ok}>
@@ -159,7 +168,7 @@ export function MessageCard({
           )}
         />
         {content.decision === "approved" ? "已允许" : "已拒绝"}：
-        {content.names?.join("、") ?? ""}
+        {(content.names ?? []).map((name) => agentToolLabel(name)).join("、")}
       </div>
     );
   }

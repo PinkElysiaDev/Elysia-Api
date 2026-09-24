@@ -217,9 +217,9 @@ Triggers one retention pass asynchronously (TTL / record-count / storage-cap cle
 
 ## Protocol Agent (AI Assistant)
 
-The AI assistant (`/agent` page) is a general-purpose, server-side tool-calling agent for the gateway: protocol engineering (read API docs, draft custom protocol configs, offline preview, user-approved upstream tests, save), model source & model group management (create/update, user-approved), usage statistics with inline charts (```chart fenced specs rendered by the WebUI), and error/log analysis (failed-request drill-down with captured bodies). Test credentials are supplied in the
-conversation: the model passes them as `test_upstream` / `test_model_list` arguments (`baseUrl` / `apiKey`), they are
-shown masked on the approval card, and remembered (encrypted) for the rest of the session. A `update_plan` tool lets
+The AI assistant (`/agent` page) is a general-purpose, server-side tool-calling agent for the gateway: protocol engineering (read API docs, draft custom protocol configs, offline preview, user-approved upstream tests, save), model source & model group management (create/update, user-approved), usage statistics with inline charts (```chart fenced specs rendered by the WebUI), and error/log analysis (failed-request drill-down with captured bodies). The model operates through a single `bash` tool running the built-in `elysia` CLI (all gateway operations as commands; `elysia help` for the reference, batching via `&&`/`;`, `| grep`/`| head` pipes). Test credentials are supplied in the
+conversation: the model passes them as flags of `elysia protocol test` / `elysia protocol models` (`--base-url` / `--api-key`), they are
+shown masked on the approval card and in the echoed command, and remembered (encrypted) for the rest of the session. An `update_plan` tool lets
 the agent maintain a step checklist surfaced live in the side panel (plan / draft / progress tabs). Sessions and messages persist in SQLite (`agent_sessions` / `agent_messages`); every model call is recorded into usage stats under key name `AI 协议助手` with `relayMode=agent-assist`.
 
 ### `GET /api/admin/agent/sessions`

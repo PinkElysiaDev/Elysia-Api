@@ -97,7 +97,7 @@ export function ToolCallRow({
         ) : null}
       </div>
       {command ? (
-        <p className="mt-1 line-clamp-2 truncate font-mono text-2xs text-muted-foreground">
+        <p className="mt-1 line-clamp-2 whitespace-pre-wrap break-all font-mono text-2xs text-muted-foreground">
           $ {command}
         </p>
       ) : null}

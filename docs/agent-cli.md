@@ -4,7 +4,7 @@
 
 ## 语法
 
-支持单/双引号、`--flag value` 与 `--flag=value`、布尔 flag 单独出现即 true、列表 flag 逗号分隔或重复出现；批处理 `&&`（失败即停）与 `;`/换行（继续）；尾管道 `| grep <子串>`、`| head <n>`。输出总预算 32KB（超限保头尾截断）。
+支持单/双引号（`''` 表示空值）、`--flag value` 与 `--flag=value`、布尔 flag 单独出现即 true、列表 flag 逗号分隔或重复出现；批处理 `&&`（失败即跳过所在链的剩余命令）与 `;`/换行（继续）；尾管道 `| grep <子串>`（大小写不敏感）与 `| head <n>`（支持 `-n N` / `-N`）。help 输出同样支持管道。输出总预算 32KB（超限保头尾截断）。
 
 ## 总览
 
@@ -18,19 +18,20 @@ elysia —— 网关运维 CLI（全部操作经 bash 工具执行）
   key        API Key（推理访问令牌）管理（create, delete, ls, update）
   protocol   自定义协议设计（草稿/离线预览/真实测试/保存）（draft, models, preview, read, save, test）
   usage      用量统计与调用日志（log, logs, stats, trend）
-  syslog     系统日志（）
+  syslog     系统日志
   outbound   出站禁止 IP 段（SSRF 防护）（get, reset, set）
   session    会话操作（title）
 
 分级帮助：elysia help <组>（flag 全表）/ elysia help <组> <命令>（完整语义与示例）。
 
-语法：支持 '引号'、--flag value 或 --flag=value、批处理（&& 失败即停；; 或换行继续）、
-尾管道（| grep <子串> 过滤、| head <n> 截前 n 行）。
+语法：支持 '引号'（'' 表示空值）、--flag value 或 --flag=value、批处理（&& 失败即跳过所在链，; 或换行继续）、
+尾管道（| grep <子串> 大小写不敏感过滤、| head <n> 截前 n 行，head 也支持 -n N / -N 写法）。
 
 常用组合示例：
   elysia source ls && elysia model ls --source 主源 --limit 20
   elysia usage logs --days 1 --status failed | head 10
   elysia group create --name 主力 --models s1:gpt-4o
+
 ```
 
 ## source
@@ -71,6 +72,7 @@ elysia source — 模型源管理
       --manual-models          整体替换手动模型列表
 
 完整语义与示例：elysia help source <命令>。
+
 ```
 
 ## model
@@ -103,6 +105,7 @@ elysia model — 单模型管理
       --enabled                启停
 
 完整语义与示例：elysia help model <命令>。
+
 ```
 
 ## group
@@ -151,6 +154,7 @@ elysia group — 模型组管理与成员维护
       --daily-limit-tokens     每日 token 上限
 
 完整语义与示例：elysia help group <命令>。
+
 ```
 
 ## key
@@ -180,6 +184,7 @@ elysia key — API Key（推理访问令牌）管理
       --new-secret             新明文；留空保留原值
 
 完整语义与示例：elysia help key <命令>。
+
 ```
 
 ## protocol
@@ -216,6 +221,7 @@ elysia protocol — 自定义协议设计（草稿/离线预览/真实测试/保
       --sample                 自定义样例请求 JSON
 
 完整语义与示例：elysia help protocol <命令>。
+
 ```
 
 ## usage
@@ -258,6 +264,7 @@ elysia usage — 用量统计与调用日志
       --group                  按模型组过滤
 
 完整语义与示例：elysia help usage <命令>。
+
 ```
 
 ## syslog
@@ -271,6 +278,7 @@ elysia syslog — 系统日志
       --limit                  返回条数（默认 30，最大 100）
 
 完整语义与示例：elysia help syslog <命令>。
+
 ```
 
 ## outbound
@@ -289,6 +297,7 @@ elysia outbound — 出站禁止 IP 段（SSRF 防护）
       --ranges                 禁止段 CIDR 列表（逗号分隔；空=放行所有）
 
 完整语义与示例：elysia help outbound <命令>。
+
 ```
 
 ## session
@@ -301,5 +310,5 @@ elysia session — 会话操作
       <title>                  新标题
 
 完整语义与示例：elysia help session <命令>。
-```
 
+```
