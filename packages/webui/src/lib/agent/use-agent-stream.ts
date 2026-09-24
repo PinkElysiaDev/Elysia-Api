@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { streamAgentEvents } from "./sse";
-import { agentUsageToTurn } from "./types";
+import { agentUsageToTurn, bashCommandOf } from "./types";
 import type {
   AgentCompaction,
   AgentContextUsage,
@@ -74,7 +74,6 @@ function reduce(
       return { ...state, reasoning: state.reasoning + (event.delta ?? "") };
     case "tool_call": {
       const callId = event.callId ?? `live-${state.toolCards.length}`;
-      const input = event.input as { command?: string } | undefined;
       return {
         ...state,
         toolCards: [
@@ -84,10 +83,7 @@ function reduce(
             name: event.name ?? callId,
             status: "running",
             startedAt: Date.now(),
-            command:
-              event.name === "bash" && typeof input?.command === "string"
-                ? input.command
-                : undefined,
+            command: bashCommandOf(event.name, event.input),
           },
         ],
       };

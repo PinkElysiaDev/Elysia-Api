@@ -251,6 +251,18 @@ export function agentToolLabel(name: string): string {
   return AGENT_TOOL_LABELS[name] ?? name;
 }
 
+/** bash 调用的命令行（工具行 `$ 命令` 回显；流式 live 卡与历史回放共用）。
+ *  input 可能缺省：后端 input 是 omitempty，且旧版本落库的 tool_result
+ *  没有该字段——保持 unknown 入参 + 可选链。 */
+export function bashCommandOf(
+  name: string | undefined,
+  input: unknown,
+): string | undefined {
+  if (name !== "bash") return undefined;
+  const parsed = input as { command?: unknown } | null | undefined;
+  return typeof parsed?.command === "string" ? parsed.command : undefined;
+}
+
 /** 工具行状态动词：进行中用现在时，结束后用完成时。 */
 export function toolStatusVerb(
   status: "running" | "done" | "failed" | "denied",

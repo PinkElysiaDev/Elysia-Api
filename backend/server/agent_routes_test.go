@@ -316,7 +316,8 @@ func TestAgentGatedToolApprovalFlow(t *testing.T) {
 		t.Fatalf("status = %v", session["status"])
 	}
 
-	// 批准 → 续跑（工具真实执行：vendor 上游收到请求）→ 终稿
+	// 批准 → 续跑（工具真实执行：vendor 上游收到请求）→ 终稿。
+	// SSE 结果正文经截断，不逐字断言；以事件面与状态为准。
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":true}`)
 	s.adminApproveAgentAction(c)
 	if rec.Code != http.StatusOK {
@@ -326,17 +327,6 @@ func TestAgentGatedToolApprovalFlow(t *testing.T) {
 	if !hasAgentEvent(events, "tool_result") || !hasAgentEvent(events, "turn_done") {
 		t.Fatalf("resume missing events: %s", rec.Body.String())
 	}
-	// 工具结果里应看到 vendor 的 200 响应
-	foundVendor := false
-	for _, event := range events {
-		if event.Type == "tool_result" {
-			if strings.Contains(string(event.Data), "vendor-key") {
-				foundVendor = true
-			}
-		}
-	}
-	_ = foundVendor // SSE 结果经截断，不强制断言正文；以状态为准
-	session = nil
 	c, rec = agentContextWithID(http.MethodGet, "/api/admin/agent/sessions/"+sessionID, sessionID, "")
 	s.adminGetAgentSession(c)
 	session = decodeAdminData(t, rec)["session"].(map[string]any)
