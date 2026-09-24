@@ -144,11 +144,7 @@ func helpGroup(table []*cliCommand, group string) string {
 	b.WriteString(fmt.Sprintf("elysia %s — %s\n\n", group, groupSummary(group)))
 	for _, command := range commandsOfGroup(table, group) {
 		b.WriteString(fmt.Sprintf("  %s\n    %s\n", command.usage, command.summary))
-		if len(command.flags) > 0 {
-			for _, flag := range command.flags {
-				b.WriteString(fmt.Sprintf("      --%-22s %s\n", flag.name, flag.usage))
-			}
-		}
+		writeFlagSpecs(&b, command.flags, "      ")
 		for _, positional := range command.positionals {
 			b.WriteString(fmt.Sprintf("      %-24s %s\n", "<"+positional.name+">", positional.usage))
 		}
@@ -158,15 +154,20 @@ func helpGroup(table []*cliCommand, group string) string {
 	return b.String()
 }
 
+// writeFlagSpecs 输出 flag 规格（组级与命令级帮助共用的渲染块）。
+func writeFlagSpecs(b *strings.Builder, flags []cliFlagSpec, indent string) {
+	for _, flag := range flags {
+		b.WriteString(fmt.Sprintf("%s--%-22s %s\n", indent, flag.name, flag.usage))
+	}
+}
+
 // helpCommand 命令级帮助：用法 + flag + 位置参数 + 示例 + 目标工具完整描述。
 func helpCommand(command *cliCommand) string {
 	var b strings.Builder
 	b.WriteString(command.usage + "\n" + command.summary + "\n\n")
 	if len(command.flags) > 0 {
 		b.WriteString("参数：\n")
-		for _, flag := range command.flags {
-			b.WriteString(fmt.Sprintf("  --%-22s %s\n", flag.name, flag.usage))
-		}
+		writeFlagSpecs(&b, command.flags, "  ")
 	}
 	for _, positional := range command.positionals {
 		b.WriteString(fmt.Sprintf("  %-24s %s\n", "<"+positional.name+">", positional.usage))

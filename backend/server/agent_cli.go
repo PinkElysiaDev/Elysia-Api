@@ -53,12 +53,41 @@ type cliStatement struct {
 	pipes []cliPipe
 }
 
-// cliTokenize 把单条命令切成参数（处理引号与转义）。空引号（'' / ""）
-// 产出空 token——`--secret ''` 依赖它表达空值。
+// cliQuotes 是三个扫描器（tokenizer / 批切分 / 管道切分）共享的引号状态
+// 机：' 与 " 互斥，双引号内 \" 与 \\ 是转义序列、不改变引号态。转义规则
+// 集中在此——修引号相关的 bug 只需改这一处。
+type cliQuotes struct {
+	inSingle, inDouble bool
+}
+
+// toggle 消费一个字符并维护引号态，返回它是否为引号开闭字符。
+func (q *cliQuotes) toggle(ch byte) bool {
+	switch {
+	case ch == '\'' && !q.inDouble:
+		q.inSingle = !q.inSingle
+		return true
+	case ch == '"' && !q.inSingle:
+		q.inDouble = !q.inDouble
+		return true
+	}
+	return false
+}
+
+// inside 报告当前是否处于引号内（顶层扫描器据此跳过分隔符）。
+func (q *cliQuotes) inside() bool { return q.inSingle || q.inDouble }
+
+// escaped 报告 s[i] 是否为双引号内转义序列（\" 或 \\）的开头；调用方应
+// 保留 s[i] 与 s[i+1] 并跳过两字节（tokenizer 只保留转义后的字符）。
+func (q *cliQuotes) escaped(s string, i int) bool {
+	return q.inDouble && s[i] == '\\' && i+1 < len(s) && (s[i+1] == '"' || s[i+1] == '\\')
+}
+
+// cliTokenize 把单条命令切成参数（处理引号与转义）。空引号（” / ""）
+// 产出空 token——`--secret ”` 依赖它表达空值。
 func cliTokenize(line string) ([]string, error) {
 	var tokens []string
 	var current strings.Builder
-	inSingle, inDouble := false, false
+	var quotes cliQuotes
 	quoted := false // 当前 token 是否含过引号（空引号也要产出 token）
 	flush := func() {
 		if current.Len() > 0 || quoted {
@@ -69,24 +98,23 @@ func cliTokenize(line string) ([]string, error) {
 	}
 	for i := 0; i < len(line); i++ {
 		ch := line[i]
-		switch {
-		case ch == '\'' && !inDouble:
-			inSingle = !inSingle
-			quoted = true
-		case ch == '"' && !inSingle:
-			inDouble = !inDouble
-			quoted = true
-		case ch == '\\' && inDouble && i+1 < len(line) && (line[i+1] == '"' || line[i+1] == '\\'):
+		if quotes.escaped(line, i) {
 			current.WriteByte(line[i+1])
 			i++
-		case (ch == ' ' || ch == '\t') && !inSingle && !inDouble:
-			flush()
-		default:
-			current.WriteByte(ch)
+			continue
 		}
+		if quotes.toggle(ch) {
+			quoted = true
+			continue
+		}
+		if (ch == ' ' || ch == '\t') && !quotes.inside() {
+			flush()
+			continue
+		}
+		current.WriteByte(ch)
 	}
 	flush()
-	if inSingle || inDouble {
+	if quotes.inside() {
 		return nil, fmt.Errorf("引号未闭合")
 	}
 	return tokens, nil
@@ -106,7 +134,7 @@ type cliSegment struct {
 func cliSplitStatements(script string) ([]cliSegment, error) {
 	var parts []cliSegment
 	var current strings.Builder
-	inSingle, inDouble := false, false
+	var quotes cliQuotes
 	pendingFromAnd := false // 下一段是否由 && 引入
 	flush := func(mustSucceed bool) {
 		if trimmed := strings.TrimSpace(current.String()); trimmed != "" {
@@ -117,19 +145,14 @@ func cliSplitStatements(script string) ([]cliSegment, error) {
 	}
 	for i := 0; i < len(script); i++ {
 		ch := script[i]
-		if ch == '\\' && inDouble && i+1 < len(script) && (script[i+1] == '"' || script[i+1] == '\\') {
+		if quotes.escaped(script, i) {
 			current.WriteByte(ch)
 			current.WriteByte(script[i+1])
 			i++
 			continue
 		}
-		switch {
-		case ch == '\'' && !inDouble:
-			inSingle = !inSingle
-		case ch == '"' && !inSingle:
-			inDouble = !inDouble
-		}
-		if inSingle || inDouble {
+		quotes.toggle(ch)
+		if quotes.inside() {
 			current.WriteByte(ch)
 			continue
 		}
@@ -150,7 +173,7 @@ func cliSplitStatements(script string) ([]cliSegment, error) {
 		current.WriteByte(ch)
 	}
 	flush(false)
-	if inSingle || inDouble {
+	if quotes.inside() {
 		return nil, fmt.Errorf("引号未闭合")
 	}
 	if len(parts) == 0 {
@@ -171,60 +194,64 @@ func cliParseStatement(raw string) (cliStatement, error) {
 		return statement, fmt.Errorf("命令必须以 %s 开头（当前 %q）", cliName, firstWord(segments[0]))
 	}
 	statement.args = tokens[1:]
-	for _, pipe := range segments[1:] {
-		pipeTokens, err := cliTokenize(pipe)
+	for _, segment := range segments[1:] {
+		pipe, err := parseCLIPipe(segment)
 		if err != nil {
 			return statement, err
 		}
-		if len(pipeTokens) == 0 {
-			return statement, fmt.Errorf("空管道段")
-		}
-		switch pipeTokens[0] {
-		case "grep":
-			if len(pipeTokens) != 2 {
-				return statement, fmt.Errorf("grep 管道只接受一个子串参数")
-			}
-			statement.pipes = append(statement.pipes, cliPipe{kind: pipeGrep, text: pipeTokens[1]})
-		case "head":
-			// head <n> / head -n <n> / head -n 三种习惯写法。
-			arg := ""
-			if len(pipeTokens) == 2 {
-				arg = strings.TrimPrefix(pipeTokens[1], "-")
-			} else if len(pipeTokens) == 3 && pipeTokens[1] == "-n" {
-				arg = pipeTokens[2]
-			}
-			n, convErr := strconv.Atoi(arg)
-			if arg == "" || convErr != nil || n <= 0 {
-				return statement, fmt.Errorf("head 行数必须是正整数（| head <n> 或 | head -n <n>）")
-			}
-			statement.pipes = append(statement.pipes, cliPipe{kind: pipeHead, n: n})
-		default:
-			return statement, fmt.Errorf("只支持 | grep <子串> 与 | head <n> 管道（不支持 %q）", pipeTokens[0])
-		}
+		statement.pipes = append(statement.pipes, pipe)
 	}
 	return statement, nil
+}
+
+// parseCLIPipe 解析一条尾管道段（已切掉 | 的文本）：grep <子串> 或
+// head <n>（head 也接受 -n N / -N 习惯写法）。
+func parseCLIPipe(segment string) (cliPipe, error) {
+	tokens, err := cliTokenize(segment)
+	if err != nil {
+		return cliPipe{}, err
+	}
+	if len(tokens) == 0 {
+		return cliPipe{}, fmt.Errorf("空管道段")
+	}
+	switch tokens[0] {
+	case "grep":
+		if len(tokens) != 2 {
+			return cliPipe{}, fmt.Errorf("grep 管道只接受一个子串参数")
+		}
+		return cliPipe{kind: pipeGrep, text: tokens[1]}, nil
+	case "head":
+		arg := ""
+		if len(tokens) == 2 {
+			arg = strings.TrimPrefix(tokens[1], "-")
+		} else if len(tokens) == 3 && tokens[1] == "-n" {
+			arg = tokens[2]
+		}
+		n, convErr := strconv.Atoi(arg)
+		if arg == "" || convErr != nil || n <= 0 {
+			return cliPipe{}, fmt.Errorf("head 行数必须是正整数（| head <n> 或 | head -n <n>）")
+		}
+		return cliPipe{kind: pipeHead, n: n}, nil
+	default:
+		return cliPipe{}, fmt.Errorf("只支持 | grep <子串> 与 | head <n> 管道（不支持 %q）", tokens[0])
+	}
 }
 
 // splitPipe 按顶层 | 切分（引号内不切分，双引号内 \" 与 \\ 不改变引号态）。
 func splitPipe(raw string) []string {
 	var segments []string
 	var current strings.Builder
-	inSingle, inDouble := false, false
+	var quotes cliQuotes
 	for i := 0; i < len(raw); i++ {
 		ch := raw[i]
-		if ch == '\\' && inDouble && i+1 < len(raw) && (raw[i+1] == '"' || raw[i+1] == '\\') {
+		if quotes.escaped(raw, i) {
 			current.WriteByte(ch)
 			current.WriteByte(raw[i+1])
 			i++
 			continue
 		}
-		switch {
-		case ch == '\'' && !inDouble:
-			inSingle = !inSingle
-		case ch == '"' && !inSingle:
-			inDouble = !inDouble
-		}
-		if ch == '|' && !inSingle && !inDouble {
+		quotes.toggle(ch)
+		if ch == '|' && !quotes.inside() {
 			segments = append(segments, current.String())
 			current.Reset()
 			continue
@@ -242,16 +269,19 @@ func firstWord(text string) string {
 	return fields[0]
 }
 
-// cliInvocation 是一条命令解析后的调用形状。
+// cliInvocation 是一条命令解析后的调用形状。flag 是否出现由 flags 的键
+// 存在性表达（值可为空串——`--secret ”` 是合法的空值）。
 type cliInvocation struct {
 	command *cliCommand
 	args    []string          // 位置参数
 	flags   map[string]string // flag 名（不含 --）→ 值；布尔为 "true"；重复/逗号列表已合并
-	present map[string]bool
 }
 
-// Has 报告 flag 是否出现。
-func (inv *cliInvocation) Has(name string) bool { return inv.present[name] }
+// Has 报告 flag 是否出现（值可为空串）。
+func (inv *cliInvocation) Has(name string) bool {
+	_, ok := inv.flags[name]
+	return ok
+}
 
 // Str 返回 flag 字符串值（未出现为空串）。
 func (inv *cliInvocation) Str(name string) string { return inv.flags[name] }
@@ -271,56 +301,78 @@ func (inv *cliInvocation) List(name string) []string {
 	return items
 }
 
-// setStr/setBool/setInt/setList 把 flag 值写进参数 map（出现才写，保持
-// 目标工具的「未传=保留」语义）。返回值报告是否出现。
-func (inv *cliInvocation) setStr(m map[string]any, flag, key string) bool {
-	if !inv.present[flag] {
-		return false
-	}
-	m[key] = inv.flags[flag]
-	return true
-}
-
-func (inv *cliInvocation) setBool(m map[string]any, flag, key string) bool {
-	if !inv.present[flag] {
-		return false
-	}
-	switch strings.ToLower(inv.flags[flag]) {
+// cliBoolValue 解析布尔 flag 值（大小写不敏感）。裸布尔 flag 的值为 ""，
+// 视为 true。resolve 层用它做 inline 值校验，setBool 用它做取值。
+func cliBoolValue(value string) (result, ok bool) {
+	switch strings.ToLower(value) {
 	case "", "true", "1", "yes":
-		m[key] = true
-	default: // "false" / "0" / "no"（inline 值已在 resolve 层校验）
-		m[key] = false
+		return true, true
+	case "false", "0", "no":
+		return false, true
 	}
-	return true
+	return false, false
 }
 
-func (inv *cliInvocation) setInt(m map[string]any, flag, key string) (bool, error) {
-	if !inv.present[flag] {
-		return false, nil
+// requireStr 写入必填字符串 flag；缺失返回带 flag 名的错误。
+func (inv *cliInvocation) requireStr(params map[string]any, flag, key string) error {
+	if !inv.Has(flag) {
+		return cliMissing(flag)
 	}
-	value, err := strconv.Atoi(inv.flags[flag])
+	params[key] = inv.flags[flag]
+	return nil
+}
+
+// requirePositional 返回首个位置参数（必须存在且非空白）。
+func (inv *cliInvocation) requirePositional(name string) (string, error) {
+	if len(inv.args) == 0 || strings.TrimSpace(inv.args[0]) == "" {
+		return "", fmt.Errorf("缺少位置参数 <%s>", name)
+	}
+	return inv.args[0], nil
+}
+
+// setStr/setBool/setInt/setList 把可选 flag 值写进参数 map（出现才写，
+// 保持目标工具的「未传=保留」语义）。
+func (inv *cliInvocation) setStr(params map[string]any, flag, key string) {
+	if value, ok := inv.flags[flag]; ok {
+		params[key] = value
+	}
+}
+
+func (inv *cliInvocation) setBool(params map[string]any, flag, key string) {
+	if _, ok := inv.flags[flag]; !ok {
+		return
+	}
+	// inline 值已在 resolve 层校验过，这里只会拿到合法值或裸 flag 的 ""。
+	value, _ := cliBoolValue(inv.flags[flag])
+	params[key] = value
+}
+
+func (inv *cliInvocation) setInt(params map[string]any, flag, key string) error {
+	value, ok := inv.flags[flag]
+	if !ok {
+		return nil
+	}
+	parsed, err := strconv.Atoi(value)
 	if err != nil {
-		return true, fmt.Errorf("--%s 需要整数（当前 %q）", flag, inv.flags[flag])
+		return fmt.Errorf("--%s 需要整数（当前 %q）", flag, value)
 	}
-	m[key] = value
-	return true, nil
+	params[key] = parsed
+	return nil
 }
 
-func (inv *cliInvocation) setList(m map[string]any, flag, key string) bool {
-	if !inv.present[flag] {
-		return false
+func (inv *cliInvocation) setList(params map[string]any, flag, key string) {
+	if _, ok := inv.flags[flag]; ok {
+		params[key] = inv.List(flag)
 	}
-	m[key] = inv.List(flag)
-	return true
 }
 
-// setJSON 把 flag/位置参数里的 JSON 文本原样放入参数 map。
-func (inv *cliInvocation) setJSONText(m map[string]any, key, text string) error {
+// setJSONText 把 flag/位置参数里的 JSON 文本原样放入参数 map。
+func (inv *cliInvocation) setJSONText(params map[string]any, key, text string) error {
 	trimmed := strings.TrimSpace(text)
 	if !json.Valid([]byte(trimmed)) {
 		return fmt.Errorf("%s 需要合法 JSON 文本", key)
 	}
-	m[key] = json.RawMessage(trimmed)
+	params[key] = json.RawMessage(trimmed)
 	return nil
 }
 
@@ -365,11 +417,25 @@ func (c *cliCommand) flagByName(name string) *cliFlagSpec {
 	return nil
 }
 
-// cliCommandGroups 是命令表（顺序即 help 顺序）。
+// cliCommandTable 是命令表（顺序即 help 顺序）；条目按域分函数维护，
+// 新命令加进对应域函数即可。
 func cliCommandTable() []*cliCommand {
 	table := []*cliCommand{}
-	table = append(table,
-		// ---- source ----
+	table = append(table, sourceCommands()...)
+	table = append(table, modelCommands()...)
+	table = append(table, groupCommands()...)
+	table = append(table, keyCommands()...)
+	table = append(table, protocolCommands()...)
+	table = append(table, usageCommands()...)
+	table = append(table, syslogCommands()...)
+	table = append(table, outboundCommands()...)
+	table = append(table, sessionCommands()...)
+	return table
+}
+
+// sourceCommands 模型源管理命令。
+func sourceCommands() []*cliCommand {
+	return []*cliCommand{
 		&cliCommand{group: "source", name: "ls", summary: "列出全部模型源（密钥脱敏）",
 			usage: "elysia source ls", example: "elysia source ls",
 			tool:   func(s *Server) agent.Tool { return &listSourcesTool{server: s} },
@@ -388,19 +454,19 @@ func cliCommandTable() []*cliCommand {
 			},
 			tool: func(s *Server) agent.Tool { return &createSourceTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				if !inv.setStr(m, "name", "name") {
-					return nil, cliMissing("name")
+				params := map[string]any{}
+				if err := inv.requireStr(params, "name", "name"); err != nil {
+					return nil, err
 				}
-				if !inv.setStr(m, "base-url", "baseUrl") {
-					return nil, cliMissing("base-url")
+				if err := inv.requireStr(params, "base-url", "baseUrl"); err != nil {
+					return nil, err
 				}
-				inv.setStr(m, "platform", "platform")
-				inv.setStr(m, "api-key", "apiKey")
-				inv.setBool(m, "auto-fetch", "autoFetchModels")
-				inv.setList(m, "manual-models", "manualModels")
-				inv.setStr(m, "fetch-base-url", "fetchBaseUrl")
-				return m, nil
+				inv.setStr(params, "platform", "platform")
+				inv.setStr(params, "api-key", "apiKey")
+				inv.setBool(params, "auto-fetch", "autoFetchModels")
+				inv.setList(params, "manual-models", "manualModels")
+				inv.setStr(params, "fetch-base-url", "fetchBaseUrl")
+				return params, nil
 			}},
 		&cliCommand{group: "source", name: "update", summary: "修改模型源（需审批；api-key 留空=保留）",
 			usage:   "elysia source update --source <id|名> [--enabled] [--name <名>] [--base-url <URL>] [--platform <平台>] [--api-key <新key>] [--auto-fetch[=false]] [--manual-models a,b]",
@@ -417,18 +483,18 @@ func cliCommandTable() []*cliCommand {
 			},
 			tool: func(s *Server) agent.Tool { return &updateSourceTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				if !inv.setStr(m, "source", "source") {
-					return nil, cliMissing("source")
+				params := map[string]any{}
+				if err := inv.requireStr(params, "source", "source"); err != nil {
+					return nil, err
 				}
-				inv.setBool(m, "enabled", "enabled")
-				inv.setStr(m, "name", "name")
-				inv.setStr(m, "base-url", "baseUrl")
-				inv.setStr(m, "platform", "platform")
-				inv.setStr(m, "api-key", "apiKey")
-				inv.setBool(m, "auto-fetch", "autoFetchModels")
-				inv.setList(m, "manual-models", "manualModels")
-				return m, nil
+				inv.setBool(params, "enabled", "enabled")
+				inv.setStr(params, "name", "name")
+				inv.setStr(params, "base-url", "baseUrl")
+				inv.setStr(params, "platform", "platform")
+				inv.setStr(params, "api-key", "apiKey")
+				inv.setBool(params, "auto-fetch", "autoFetchModels")
+				inv.setList(params, "manual-models", "manualModels")
+				return params, nil
 			}},
 		&cliCommand{group: "source", name: "delete", summary: "删除模型源（不可逆，需审批；级联删模型与组引用）",
 			usage:   "elysia source delete --source <id|名>",
@@ -436,11 +502,11 @@ func cliCommandTable() []*cliCommand {
 			flags:   []cliFlagSpec{{"source", "源 id 或名称", false, false}},
 			tool:    func(s *Server) agent.Tool { return &deleteSourceTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				if !inv.setStr(m, "source", "source") {
-					return nil, cliMissing("source")
+				params := map[string]any{}
+				if err := inv.requireStr(params, "source", "source"); err != nil {
+					return nil, err
 				}
-				return m, nil
+				return params, nil
 			}},
 		&cliCommand{group: "source", name: "refresh", summary: "从上游拉取模型列表（真实出站，需审批）",
 			usage:   "elysia source refresh --source <id|名>",
@@ -448,15 +514,19 @@ func cliCommandTable() []*cliCommand {
 			flags:   []cliFlagSpec{{"source", "源 id 或名称", false, false}},
 			tool:    func(s *Server) agent.Tool { return &refreshSourceTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				if !inv.setStr(m, "source", "source") {
-					return nil, cliMissing("source")
+				params := map[string]any{}
+				if err := inv.requireStr(params, "source", "source"); err != nil {
+					return nil, err
 				}
-				return m, nil
+				return params, nil
 			}},
-	)
-	table = append(table,
 		// ---- model ----
+	}
+}
+
+// modelCommands 单模型管理命令。
+func modelCommands() []*cliCommand {
+	return []*cliCommand{
 		&cliCommand{group: "model", name: "ls", summary: "查询模型清单（可按源过滤）",
 			usage:   "elysia model ls [--source <id|名>] [--search <子串>] [--limit <n>]",
 			example: `elysia model ls --source 主源 --search gpt --limit 20`,
@@ -467,13 +537,13 @@ func cliCommandTable() []*cliCommand {
 			},
 			tool: func(s *Server) agent.Tool { return &listModelsTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				inv.setStr(m, "source", "source")
-				inv.setStr(m, "search", "search")
-				if _, err := inv.setInt(m, "limit", "limit"); err != nil {
+				params := map[string]any{}
+				inv.setStr(params, "source", "source")
+				inv.setStr(params, "search", "search")
+				if err := inv.setInt(params, "limit", "limit"); err != nil {
 					return nil, err
 				}
-				return m, nil
+				return params, nil
 			}},
 		&cliCommand{group: "model", name: "set", summary: "修改单个模型（需审批）",
 			usage:   "elysia model set --source <id|名> --model <模型id> [--name <名>] [--type <类型>] [--max-tokens <n>] [--vision] [--tools] [--structured] [--thinking <模式>] [--enabled[=false]]",
@@ -492,24 +562,24 @@ func cliCommandTable() []*cliCommand {
 			},
 			tool: func(s *Server) agent.Tool { return &updateModelTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				if !inv.setStr(m, "source", "source") {
-					return nil, cliMissing("source")
-				}
-				if !inv.setStr(m, "model", "model") {
-					return nil, cliMissing("model")
-				}
-				inv.setStr(m, "name", "name")
-				inv.setStr(m, "type", "type")
-				if _, err := inv.setInt(m, "max-tokens", "maxTokens"); err != nil {
+				params := map[string]any{}
+				if err := inv.requireStr(params, "source", "source"); err != nil {
 					return nil, err
 				}
-				inv.setBool(m, "vision", "visionCapable")
-				inv.setBool(m, "tools", "toolsCapable")
-				inv.setBool(m, "structured", "structuredOutput")
-				inv.setStr(m, "thinking", "thinkingMode")
-				inv.setBool(m, "enabled", "enabled")
-				return m, nil
+				if err := inv.requireStr(params, "model", "model"); err != nil {
+					return nil, err
+				}
+				inv.setStr(params, "name", "name")
+				inv.setStr(params, "type", "type")
+				if err := inv.setInt(params, "max-tokens", "maxTokens"); err != nil {
+					return nil, err
+				}
+				inv.setBool(params, "vision", "visionCapable")
+				inv.setBool(params, "tools", "toolsCapable")
+				inv.setBool(params, "structured", "structuredOutput")
+				inv.setStr(params, "thinking", "thinkingMode")
+				inv.setBool(params, "enabled", "enabled")
+				return params, nil
 			}},
 		&cliCommand{group: "model", name: "rm", summary: "删除单个模型（不可逆，需审批）",
 			usage:   "elysia model rm --source <id|名> --model <模型id>",
@@ -520,18 +590,22 @@ func cliCommandTable() []*cliCommand {
 			},
 			tool: func(s *Server) agent.Tool { return &deleteModelTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				if !inv.setStr(m, "source", "source") {
-					return nil, cliMissing("source")
+				params := map[string]any{}
+				if err := inv.requireStr(params, "source", "source"); err != nil {
+					return nil, err
 				}
-				if !inv.setStr(m, "model", "model") {
-					return nil, cliMissing("model")
+				if err := inv.requireStr(params, "model", "model"); err != nil {
+					return nil, err
 				}
-				return m, nil
+				return params, nil
 			}},
-	)
-	table = append(table,
 		// ---- group ----
+	}
+}
+
+// groupCommands 模型组管理与成员维护命令。
+func groupCommands() []*cliCommand {
+	return []*cliCommand{
 		&cliCommand{group: "group", name: "ls", summary: "列出全部模型组及成员",
 			usage: "elysia group ls", example: "elysia group ls",
 			tool:   func(s *Server) agent.Tool { return &listGroupsTool{server: s} },
@@ -551,26 +625,26 @@ func cliCommandTable() []*cliCommand {
 			},
 			tool: func(s *Server) agent.Tool { return &createGroupTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				if !inv.setStr(m, "name", "name") {
-					return nil, cliMissing("name")
-				}
-				inv.setList(m, "models", "models")
-				inv.setStr(m, "strategy", "strategy")
-				if _, err := inv.setInt(m, "max-retries", "maxRetries"); err != nil {
+				params := map[string]any{}
+				if err := inv.requireStr(params, "name", "name"); err != nil {
 					return nil, err
 				}
-				inv.setBool(m, "enabled", "enabled")
-				if _, err := inv.setInt(m, "max-concurrency", "maxConcurrency"); err != nil {
+				inv.setList(params, "models", "models")
+				inv.setStr(params, "strategy", "strategy")
+				if err := inv.setInt(params, "max-retries", "maxRetries"); err != nil {
 					return nil, err
 				}
-				if _, err := inv.setInt(m, "daily-limit-requests", "dailyLimitMaxRequests"); err != nil {
+				inv.setBool(params, "enabled", "enabled")
+				if err := inv.setInt(params, "max-concurrency", "maxConcurrency"); err != nil {
 					return nil, err
 				}
-				if _, err := inv.setInt(m, "daily-limit-tokens", "dailyLimitMaxTokens"); err != nil {
+				if err := inv.setInt(params, "daily-limit-requests", "dailyLimitMaxRequests"); err != nil {
 					return nil, err
 				}
-				return m, nil
+				if err := inv.setInt(params, "daily-limit-tokens", "dailyLimitMaxTokens"); err != nil {
+					return nil, err
+				}
+				return params, nil
 			}},
 		&cliCommand{group: "group", name: "update", summary: "修改模型组（需审批；成员增删/策略/限额）",
 			usage:   "elysia group update --group <组名|id> [--add-models <列表>] [--remove-models <列表>] [--enabled[=false]] [--strategy <策略>] [--max-retries <n>] [--max-concurrency <n>] [--daily-limit-requests <n>] [--daily-limit-tokens <n>]",
@@ -588,27 +662,27 @@ func cliCommandTable() []*cliCommand {
 			},
 			tool: func(s *Server) agent.Tool { return &updateGroupTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				if !inv.setStr(m, "group", "group") {
-					return nil, cliMissing("group")
-				}
-				inv.setList(m, "add-models", "addModels")
-				inv.setList(m, "remove-models", "removeModels")
-				inv.setBool(m, "enabled", "enabled")
-				inv.setStr(m, "strategy", "strategy")
-				if _, err := inv.setInt(m, "max-retries", "maxRetries"); err != nil {
+				params := map[string]any{}
+				if err := inv.requireStr(params, "group", "group"); err != nil {
 					return nil, err
 				}
-				if _, err := inv.setInt(m, "max-concurrency", "maxConcurrency"); err != nil {
+				inv.setList(params, "add-models", "addModels")
+				inv.setList(params, "remove-models", "removeModels")
+				inv.setBool(params, "enabled", "enabled")
+				inv.setStr(params, "strategy", "strategy")
+				if err := inv.setInt(params, "max-retries", "maxRetries"); err != nil {
 					return nil, err
 				}
-				if _, err := inv.setInt(m, "daily-limit-requests", "dailyLimitMaxRequests"); err != nil {
+				if err := inv.setInt(params, "max-concurrency", "maxConcurrency"); err != nil {
 					return nil, err
 				}
-				if _, err := inv.setInt(m, "daily-limit-tokens", "dailyLimitMaxTokens"); err != nil {
+				if err := inv.setInt(params, "daily-limit-requests", "dailyLimitMaxRequests"); err != nil {
 					return nil, err
 				}
-				return m, nil
+				if err := inv.setInt(params, "daily-limit-tokens", "dailyLimitMaxTokens"); err != nil {
+					return nil, err
+				}
+				return params, nil
 			}},
 		&cliCommand{group: "group", name: "delete", summary: "删除模型组（不可逆，需审批；可能级联禁用 Key）",
 			usage:   "elysia group delete --group <组名|id>",
@@ -616,11 +690,11 @@ func cliCommandTable() []*cliCommand {
 			flags:   []cliFlagSpec{{"group", "组名或 id", false, false}},
 			tool:    func(s *Server) agent.Tool { return &deleteGroupTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				if !inv.setStr(m, "group", "group") {
-					return nil, cliMissing("group")
+				params := map[string]any{}
+				if err := inv.requireStr(params, "group", "group"); err != nil {
+					return nil, err
 				}
-				return m, nil
+				return params, nil
 			}},
 		&cliCommand{group: "group", name: "member add", summary: "向模型组追加成员（需审批）",
 			usage:   "elysia group member add --group <组名|id> --models <列表>",
@@ -631,16 +705,16 @@ func cliCommandTable() []*cliCommand {
 			},
 			tool: func(s *Server) agent.Tool { return &updateGroupTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				if !inv.setStr(m, "group", "group") {
-					return nil, cliMissing("group")
+				params := map[string]any{}
+				if err := inv.requireStr(params, "group", "group"); err != nil {
+					return nil, err
 				}
 				models := inv.List("models")
 				if len(models) == 0 {
 					return nil, cliMissing("models")
 				}
-				m["addModels"] = models
-				return m, nil
+				params["addModels"] = models
+				return params, nil
 			}},
 		&cliCommand{group: "group", name: "member rm", summary: "从模型组移除成员（需审批）",
 			usage:   "elysia group member rm --group <组名|id> --models <列表>",
@@ -651,20 +725,24 @@ func cliCommandTable() []*cliCommand {
 			},
 			tool: func(s *Server) agent.Tool { return &updateGroupTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				if !inv.setStr(m, "group", "group") {
-					return nil, cliMissing("group")
+				params := map[string]any{}
+				if err := inv.requireStr(params, "group", "group"); err != nil {
+					return nil, err
 				}
 				models := inv.List("models")
 				if len(models) == 0 {
 					return nil, cliMissing("models")
 				}
-				m["removeModels"] = models
-				return m, nil
+				params["removeModels"] = models
+				return params, nil
 			}},
-	)
-	table = append(table,
 		// ---- key ----
+	}
+}
+
+// keyCommands API Key（推理访问令牌）管理命令。
+func keyCommands() []*cliCommand {
+	return []*cliCommand{
 		&cliCommand{group: "key", name: "ls", summary: "查询 API Key 列表（脱敏）",
 			usage: "elysia key ls", example: "elysia key ls",
 			tool:   func(s *Server) agent.Tool { return &listAPIKeysTool{server: s} },
@@ -680,14 +758,14 @@ func cliCommandTable() []*cliCommand {
 			},
 			tool: func(s *Server) agent.Tool { return &createAPIKeyTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				if !inv.setStr(m, "name", "name") {
-					return nil, cliMissing("name")
+				params := map[string]any{}
+				if err := inv.requireStr(params, "name", "name"); err != nil {
+					return nil, err
 				}
-				inv.setStr(m, "secret", "secret")
-				inv.setList(m, "allowed-groups", "allowedGroups")
-				inv.setBool(m, "enabled", "enabled")
-				return m, nil
+				inv.setStr(params, "secret", "secret")
+				inv.setList(params, "allowed-groups", "allowedGroups")
+				inv.setBool(params, "enabled", "enabled")
+				return params, nil
 			}},
 		&cliCommand{group: "key", name: "update", summary: "修改 API Key（需审批；new-secret 留空=保留；远程访问 Key 拒绝）",
 			usage:   "elysia key update --name <名> [--enabled[=false]] [--allowed-groups <组,...>] [--new-secret <新明文>]",
@@ -700,14 +778,14 @@ func cliCommandTable() []*cliCommand {
 			},
 			tool: func(s *Server) agent.Tool { return &updateAPIKeyTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				if !inv.setStr(m, "name", "name") {
-					return nil, cliMissing("name")
+				params := map[string]any{}
+				if err := inv.requireStr(params, "name", "name"); err != nil {
+					return nil, err
 				}
-				inv.setBool(m, "enabled", "enabled")
-				inv.setList(m, "allowed-groups", "allowedGroups")
-				inv.setStr(m, "new-secret", "newSecret")
-				return m, nil
+				inv.setBool(params, "enabled", "enabled")
+				inv.setList(params, "allowed-groups", "allowedGroups")
+				inv.setStr(params, "new-secret", "newSecret")
+				return params, nil
 			}},
 		&cliCommand{group: "key", name: "delete", summary: "删除 API Key（不可逆，需审批；远程访问 Key 拒绝）",
 			usage:   "elysia key delete --name <名>",
@@ -715,15 +793,19 @@ func cliCommandTable() []*cliCommand {
 			flags:   []cliFlagSpec{{"name", "Key 名称", false, false}},
 			tool:    func(s *Server) agent.Tool { return &deleteAPIKeyTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				if !inv.setStr(m, "name", "name") {
-					return nil, cliMissing("name")
+				params := map[string]any{}
+				if err := inv.requireStr(params, "name", "name"); err != nil {
+					return nil, err
 				}
-				return m, nil
+				return params, nil
 			}},
-	)
-	table = append(table,
 		// ---- protocol ----
+	}
+}
+
+// protocolCommands 自定义协议设计命令。
+func protocolCommands() []*cliCommand {
+	return []*cliCommand{
 		&cliCommand{group: "protocol", name: "draft", summary: "写入/更新协议配置草稿（立即校验并离线验证）",
 			usage:   "elysia protocol draft '<完整配置 JSON>' [--example '<响应示例 JSON>']",
 			example: `elysia protocol draft '{"id":"my-api","request":{...}}' --example '{"text":"hi"}'`,
@@ -735,19 +817,19 @@ func cliCommandTable() []*cliCommand {
 			},
 			tool: func(s *Server) agent.Tool { return &updateDraftTool{} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
+				params := map[string]any{}
 				if len(inv.args) == 0 || strings.TrimSpace(inv.args[0]) == "" {
 					return nil, fmt.Errorf("缺少位置参数 <config>（完整协议配置 JSON）")
 				}
-				if err := inv.setJSONText(m, "config", inv.args[0]); err != nil {
+				if err := inv.setJSONText(params, "config", inv.args[0]); err != nil {
 					return nil, err
 				}
 				if inv.Has("example") {
-					if err := inv.setJSONText(m, "exampleResponse", inv.Str("example")); err != nil {
+					if err := inv.setJSONText(params, "exampleResponse", inv.Str("example")); err != nil {
 						return nil, err
 					}
 				}
-				return m, nil
+				return params, nil
 			}},
 		&cliCommand{group: "protocol", name: "preview", summary: "离线渲染草稿请求（不发送）",
 			usage:   "elysia protocol preview [--sample '<样例 Maheshvara 请求 JSON>']",
@@ -755,13 +837,13 @@ func cliCommandTable() []*cliCommand {
 			flags:   []cliFlagSpec{{"sample", "自定义样例请求 JSON", false, false}},
 			tool:    func(s *Server) agent.Tool { return &previewRequestTool{} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
+				params := map[string]any{}
 				if inv.Has("sample") {
-					if err := inv.setJSONText(m, "sampleRequest", inv.Str("sample")); err != nil {
+					if err := inv.setJSONText(params, "sampleRequest", inv.Str("sample")); err != nil {
 						return nil, err
 					}
 				}
-				return m, nil
+				return params, nil
 			}},
 		&cliCommand{group: "protocol", name: "test", summary: "向真实上游发送一次测试请求（需审批）",
 			usage:   "elysia protocol test [--base-url <URL>] [--api-key <key>] [--stream] [--sample '<样例请求 JSON>']",
@@ -774,16 +856,16 @@ func cliCommandTable() []*cliCommand {
 			},
 			tool: func(s *Server) agent.Tool { return &testUpstreamTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				inv.setStr(m, "base-url", "baseUrl")
-				inv.setStr(m, "api-key", "apiKey")
-				inv.setBool(m, "stream", "stream")
+				params := map[string]any{}
+				inv.setStr(params, "base-url", "baseUrl")
+				inv.setStr(params, "api-key", "apiKey")
+				inv.setBool(params, "stream", "stream")
 				if inv.Has("sample") {
-					if err := inv.setJSONText(m, "sampleRequest", inv.Str("sample")); err != nil {
+					if err := inv.setJSONText(params, "sampleRequest", inv.Str("sample")); err != nil {
 						return nil, err
 					}
 				}
-				return m, nil
+				return params, nil
 			}},
 		&cliCommand{group: "protocol", name: "models", summary: "按草稿 models 配置试拉上游模型列表（需审批）",
 			usage:   "elysia protocol models [--base-url <URL>] [--api-key <key>]",
@@ -794,10 +876,10 @@ func cliCommandTable() []*cliCommand {
 			},
 			tool: func(s *Server) agent.Tool { return &testModelsTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				inv.setStr(m, "base-url", "baseUrl")
-				inv.setStr(m, "api-key", "apiKey")
-				return m, nil
+				params := map[string]any{}
+				inv.setStr(params, "base-url", "baseUrl")
+				inv.setStr(params, "api-key", "apiKey")
+				return params, nil
 			}},
 		&cliCommand{group: "protocol", name: "save", summary: "把当前草稿保存为正式协议（需审批）",
 			usage: "elysia protocol save", example: "elysia protocol save",
@@ -809,15 +891,19 @@ func cliCommandTable() []*cliCommand {
 			flags:   []cliFlagSpec{{"id", "协议 id（含内置预置协议）", false, false}},
 			tool:    func(s *Server) agent.Tool { return &readProtocolTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				if !inv.setStr(m, "id", "id") {
-					return nil, cliMissing("id")
+				params := map[string]any{}
+				if err := inv.requireStr(params, "id", "id"); err != nil {
+					return nil, err
 				}
-				return m, nil
+				return params, nil
 			}},
-	)
-	table = append(table,
 		// ---- usage ----
+	}
+}
+
+// usageCommands 用量统计、调用日志与系统日志命令。
+func usageCommands() []*cliCommand {
+	return []*cliCommand{
 		&cliCommand{group: "usage", name: "stats", summary: "查询用量汇总与模型分布",
 			usage:   "elysia usage stats [--days <n>] [--from <RFC3339>] [--to <RFC3339>] [--model <名>] [--key <名>] [--group <名>]",
 			example: `elysia usage stats --days 7 --group 主力`,
@@ -839,18 +925,18 @@ func cliCommandTable() []*cliCommand {
 				cliFlagSpec{"limit", "返回条数（默认 20，最大 100）", false, false}),
 			tool: func(s *Server) agent.Tool { return &usageLogsTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m, err := cliWindowMapper(inv)
+				params, err := cliWindowMapper(inv)
 				if err != nil {
 					return nil, err
 				}
-				inv.setStr(m, "status", "status")
-				if _, err := inv.setInt(m, "code", "statusCode"); err != nil {
+				inv.setStr(params, "status", "status")
+				if err := inv.setInt(params, "code", "statusCode"); err != nil {
 					return nil, err
 				}
-				if _, err := inv.setInt(m, "limit", "limit"); err != nil {
+				if err := inv.setInt(params, "limit", "limit"); err != nil {
 					return nil, err
 				}
-				return m, nil
+				return params, nil
 			}},
 		&cliCommand{group: "usage", name: "log", summary: "读取单条调用日志详情（含四段捕获体）",
 			usage:   "elysia usage log <requestId>",
@@ -860,13 +946,20 @@ func cliCommandTable() []*cliCommand {
 			},
 			tool: func(s *Server) agent.Tool { return &usageLogDetailTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				if len(inv.args) == 0 || strings.TrimSpace(inv.args[0]) == "" {
-					return nil, fmt.Errorf("缺少位置参数 <requestId>")
+				params := map[string]any{}
+				requestId, err := inv.requirePositional("requestId")
+				if err != nil {
+					return nil, err
 				}
-				m["requestId"] = inv.args[0]
-				return m, nil
+				params["requestId"] = requestId
+				return params, nil
 			}},
+	}
+}
+
+// syslogCommands 系统日志命令（组级）。
+func syslogCommands() []*cliCommand {
+	return []*cliCommand{
 		&cliCommand{group: "syslog", name: "", summary: "查询系统日志",
 			usage:   "elysia syslog [--level info|warn|error] [--limit <n>]",
 			example: `elysia syslog --level error --limit 50`,
@@ -876,16 +969,20 @@ func cliCommandTable() []*cliCommand {
 			},
 			tool: func(s *Server) agent.Tool { return &systemLogsTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				inv.setStr(m, "level", "level")
-				if _, err := inv.setInt(m, "limit", "limit"); err != nil {
+				params := map[string]any{}
+				inv.setStr(params, "level", "level")
+				if err := inv.setInt(params, "limit", "limit"); err != nil {
 					return nil, err
 				}
-				return m, nil
+				return params, nil
 			}},
-	)
-	table = append(table,
 		// ---- outbound ----
+	}
+}
+
+// outboundCommands 出站禁止 IP 段命令。
+func outboundCommands() []*cliCommand {
+	return []*cliCommand{
 		&cliCommand{group: "outbound", name: "get", summary: "查看出站禁止 IP 段（SSRF 防护）",
 			usage: "elysia outbound get", example: "elysia outbound get",
 			tool:   func(s *Server) agent.Tool { return &outboundPolicyViewTool{server: s} },
@@ -896,8 +993,8 @@ func cliCommandTable() []*cliCommand {
 			flags:   []cliFlagSpec{{"ranges", "禁止段 CIDR 列表（逗号分隔；空=放行所有）", false, true}},
 			tool:    func(s *Server) agent.Tool { return &outboundPolicyTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
-				if !inv.present["ranges"] {
+				params := map[string]any{}
+				if !inv.Has("ranges") {
 					return nil, cliMissing("ranges")
 				}
 				// 空列表必须表达为 [] 而非 null——null 在工具端是
@@ -906,8 +1003,8 @@ func cliCommandTable() []*cliCommand {
 				if ranges == nil {
 					ranges = []string{}
 				}
-				m["ranges"] = ranges
-				return m, nil
+				params["ranges"] = ranges
+				return params, nil
 			}},
 		&cliCommand{group: "outbound", name: "reset", summary: "恢复出站禁止段为预置默认（需审批）",
 			usage: "elysia outbound reset", example: "elysia outbound reset",
@@ -915,22 +1012,26 @@ func cliCommandTable() []*cliCommand {
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				return map[string]any{"resetDefault": true}, nil
 			}},
-		// ---- session ----
+	}
+}
+
+// sessionCommands 会话操作命令。
+func sessionCommands() []*cliCommand {
+	return []*cliCommand{
 		&cliCommand{group: "session", name: "title", summary: "把会话标题改成任务概括（≤16 字动宾短语）",
 			usage:       "elysia session title <文本>",
 			example:     `elysia session title 接入Anthropic协议`,
 			positionals: []cliPositionalSpec{{"title", "新标题"}},
 			tool:        func(s *Server) agent.Tool { return &updateTitleTool{} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				m := map[string]any{}
+				params := map[string]any{}
 				if len(inv.args) == 0 || strings.TrimSpace(strings.Join(inv.args, " ")) == "" {
 					return nil, fmt.Errorf("缺少位置参数 <title>")
 				}
-				m["title"] = strings.Join(inv.args, " ")
-				return m, nil
+				params["title"] = strings.Join(inv.args, " ")
+				return params, nil
 			}},
-	)
-	return table
+	}
 }
 
 // cliWindowFlags / cliWindowMapper 是用量类命令共享的时间窗与过滤参数。
@@ -946,48 +1047,33 @@ func cliWindowFlags() []cliFlagSpec {
 }
 
 func cliWindowMapper(inv *cliInvocation) (map[string]any, error) {
-	m := map[string]any{}
-	if _, err := inv.setInt(m, "days", "days"); err != nil {
+	params := map[string]any{}
+	if err := inv.setInt(params, "days", "days"); err != nil {
 		return nil, err
 	}
-	inv.setStr(m, "from", "from")
-	inv.setStr(m, "to", "to")
-	inv.setStr(m, "model", "modelName")
-	inv.setStr(m, "key", "keyName")
-	inv.setStr(m, "group", "groupName")
-	return m, nil
+	inv.setStr(params, "from", "from")
+	inv.setStr(params, "to", "to")
+	inv.setStr(params, "model", "modelName")
+	inv.setStr(params, "key", "keyName")
+	inv.setStr(params, "group", "groupName")
+	return params, nil
 }
 
 func cliMissing(flag string) error {
 	return fmt.Errorf("缺少必填参数 --%s", flag)
 }
 
+// cliMaxCommandWords 是命令路径的最大词数（当前最深是 "group member add"）。
+// 新增更深路径须同步调整，否则会静默解析为未知命令。
+const cliMaxCommandWords = 3
+
 // cliResolve 在命令表里解析调用（flag 规格驱动解析）。
 func cliResolve(args []string) (*cliInvocation, error) {
-	table := cliCommandTable()
-	// 先按最长前缀匹配命令路径（组 [命令 [二级]]）。
-	var matched *cliCommand
-	var rest []string
-	for depth := 3; depth >= 1; depth-- {
-		if len(args) < depth {
-			continue
-		}
-		path := strings.Join(args[:depth], " ")
-		for _, command := range table {
-			if command.Path() == path {
-				matched = command
-				rest = args[depth:]
-				break
-			}
-		}
-		if matched != nil {
-			break
-		}
-	}
+	matched, rest := lookupCLICommand(args)
 	if matched == nil {
 		return nil, fmt.Errorf("未知命令 %q（运行 elysia help 查看全部命令）", strings.Join(args, " "))
 	}
-	inv := &cliInvocation{command: matched, flags: map[string]string{}, present: map[string]bool{}}
+	inv := &cliInvocation{command: matched, flags: map[string]string{}}
 	for i := 0; i < len(rest); i++ {
 		token := rest[i]
 		if token == "--" {
@@ -1023,9 +1109,7 @@ func cliResolve(args []string) (*cliInvocation, error) {
 				return nil, fmt.Errorf("--%s 需要一个值（--%s <值> 或 --%s=，空值用引号 ''）", name, name, name)
 			}
 		} else if spec.boolean {
-			switch strings.ToLower(value) {
-			case "", "true", "1", "yes", "false", "0", "no":
-			default:
+			if _, ok := cliBoolValue(value); !ok {
 				return nil, fmt.Errorf("--%s 需要布尔值（当前 %q）", name, value)
 			}
 		}
@@ -1035,7 +1119,6 @@ func cliResolve(args []string) (*cliInvocation, error) {
 			}
 		}
 		inv.flags[name] = value
-		inv.present[name] = true
 	}
 	if extra := len(inv.args) - len(matched.positionals); extra > 0 {
 		return nil, fmt.Errorf("命令 %s 最多接受 %d 个位置参数", matched.Path(), len(matched.positionals))
@@ -1043,12 +1126,28 @@ func cliResolve(args []string) (*cliInvocation, error) {
 	return inv, nil
 }
 
+// lookupCLICommand 按最长前缀在命令表里匹配路径（组 [命令 [二级]]），
+// 返回命中的命令与余下的 flag/位置参数词。
+func lookupCLICommand(args []string) (*cliCommand, []string) {
+	for depth := cliMaxCommandWords; depth >= 1; depth-- {
+		if len(args) < depth {
+			continue
+		}
+		path := strings.Join(args[:depth], " ")
+		for _, command := range cliCommandTable() {
+			if command.Path() == path {
+				return command, args[depth:]
+			}
+		}
+	}
+	return nil, nil
+}
+
 // ---- 门控探针 ----
 
-// cliGateNote 是探针产出的待批描述：哪条命令需要哪个权限键。
-type cliGateNote struct {
-	Command string
-	Key     string
+// isCLIHelpArgs 报告语句参数是否为 help 调用（探针与执行器共用短路）。
+func isCLIHelpArgs(args []string) bool {
+	return len(args) == 0 || args[0] == "help" || args[0] == "--help"
 }
 
 // probeAgentCLI 解析整批脚本，收集所有需要审批的命令（不执行）。
@@ -1056,35 +1155,36 @@ type cliGateNote struct {
 // 语句会挟带同批的门控命令绕过审批（`;` 批在执行侧仍会跑后续语句）。
 // 整批切分失败（如引号未闭合）返回 error——执行阶段同样切不开，调用方
 // 按放行处理即可。Command 一律打码：它会进审批卡说明等出站出口。
-func probeAgentCLI(script string) ([]cliGateNote, error) {
+func probeAgentCLI(script string) ([]agent.GateNote, error) {
 	segments, err := cliSplitStatements(script)
 	if err != nil {
 		return nil, err
 	}
-	notes := []cliGateNote{}
+	notes := []agent.GateNote{}
 	var parseErr error
+	keepFirst := func(err error) {
+		if parseErr == nil {
+			parseErr = err
+		}
+	}
 	for _, segment := range segments {
 		statement, err := cliParseStatement(segment.raw)
 		if err != nil {
-			if parseErr == nil {
-				parseErr = err
-			}
+			keepFirst(err)
 			continue
 		}
-		if len(statement.args) == 0 || statement.args[0] == "help" || statement.args[0] == "--help" {
+		if isCLIHelpArgs(statement.args) {
 			continue
 		}
 		inv, err := cliResolve(statement.args)
 		if err != nil {
-			if parseErr == nil {
-				parseErr = err
-			}
+			keepFirst(err)
 			continue
 		}
 		// 权限与目标工具同源：Gated/PermissionKey 不触碰 server，nil 实例安全。
 		tool := inv.command.tool(nil)
 		if tool.Gated() {
-			notes = append(notes, cliGateNote{Command: "$ " + agent.RedactCommandLine(segment.raw), Key: tool.PermissionKey()})
+			notes = append(notes, agent.GateNote{Command: "$ " + agent.RedactCommandLine(segment.raw), PermissionKey: tool.PermissionKey()})
 		}
 	}
 	return notes, parseErr
@@ -1132,39 +1232,42 @@ func (s *Server) runAgentCLI(ctx context.Context, tctx agent.ToolContext, script
 
 // runOneCLIStatement 执行单条语句，返回渲染后的文本块与成败。
 func (s *Server) runOneCLIStatement(ctx context.Context, tctx agent.ToolContext, raw string) (string, bool) {
-	var block strings.Builder
+	var out strings.Builder
 	// 回显打码：输出会随 tool_result 落库并回放给模型，敏感 flag 的值
 	// 不允许经此二次出站（模型自己发的命令，原文在它的上下文里）。
-	block.WriteString("$ " + agent.RedactCommandLine(raw) + "\n")
+	out.WriteString("$ " + agent.RedactCommandLine(raw) + "\n")
 	statement, err := cliParseStatement(raw)
 	if err != nil {
-		block.WriteString("错误: " + err.Error() + "\n\n")
-		return block.String(), false
+		out.WriteString("错误: " + err.Error() + "\n\n")
+		return out.String(), false
 	}
-	if len(statement.args) == 0 || statement.args[0] == "help" || statement.args[0] == "--help" {
+	if isCLIHelpArgs(statement.args) {
 		// help 输出同样支持 grep/head 管道（help 文本可能上百行）。
-		block.WriteString(applyCLIPipes(renderCLIHelp(statement.args[1:]), statement) + "\n\n")
-		return block.String(), true
+		out.WriteString(applyCLIPipes(renderCLIHelp(statement.args[1:]), statement) + "\n\n")
+		return out.String(), true
 	}
 	inv, err := cliResolve(statement.args)
 	if err != nil {
-		block.WriteString("错误: " + err.Error() + "\n\n")
-		return block.String(), false
+		out.WriteString("错误: " + err.Error() + "\n\n")
+		return out.String(), false
 	}
 	args, err := inv.command.mapper(inv)
 	if err != nil {
-		block.WriteString("错误: " + err.Error() + "\n\n")
-		return block.String(), false
+		out.WriteString("错误: " + err.Error() + "\n\n")
+		return out.String(), false
 	}
 	encoded, err := json.Marshal(args)
 	if err != nil {
-		block.WriteString("错误: 参数序列化失败: " + err.Error() + "\n\n")
-		return block.String(), false
+		out.WriteString("错误: 参数序列化失败: " + err.Error() + "\n\n")
+		return out.String(), false
 	}
 	tool := inv.command.tool(s)
+	// 语句级超时：批级（bash 600s）之内再按目标工具收紧。未声明
+	// TimeoutMs 的工具（readOnlyMeta 全家）落到引擎默认值，防止一条
+	// 只读命令吃光整批预算。
 	toolTimeout := agent.MetaOf(tool).TimeoutMs
 	if toolTimeout <= 0 {
-		toolTimeout = 120_000
+		toolTimeout = agent.DefaultToolTimeoutMs
 	}
 	execCtx := ctx
 	if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > time.Duration(toolTimeout)*time.Millisecond {
@@ -1174,8 +1277,8 @@ func (s *Server) runOneCLIStatement(ctx context.Context, tctx agent.ToolContext,
 	}
 	result := tool.Execute(execCtx, tctx, encoded)
 	text := renderCLIResult(result, statement)
-	block.WriteString(text + "\n\n")
-	return block.String(), result.OK
+	out.WriteString(text + "\n\n")
+	return out.String(), result.OK
 }
 
 // renderCLIResult 把单条命令的 ToolResult 渲染为文本（含管道过滤）。
@@ -1187,6 +1290,8 @@ func renderCLIResult(result agent.ToolResult, statement cliStatement) string {
 		text = "失败: " + result.Summary
 	}
 	if result.Data != nil {
+		// Data 仅在 chan/func/NaN 等极端类型时无法编码；CLI 命令的
+		// 返回值都是普通 JSON 形状，静默省略 Data 分支是有意的降级。
 		if encoded, err := json.Marshal(result.Data); err == nil {
 			text += "\n" + string(encoded)
 		}
@@ -1208,10 +1313,11 @@ func applyCLIPipes(text string, statement cliStatement) string {
 }
 
 func filterLines(text, pattern string) string {
+	needle := strings.ToLower(pattern) // grep 大小写不敏感
 	lines := strings.Split(text, "\n")
 	kept := make([]string, 0, len(lines))
 	for _, line := range lines {
-		if strings.Contains(strings.ToLower(line), strings.ToLower(pattern)) {
+		if strings.Contains(strings.ToLower(line), needle) {
 			kept = append(kept, line)
 		}
 	}
@@ -1226,13 +1332,20 @@ func headLines(text string, n int) string {
 	return strings.Join(lines[:n], "\n") + "\n…（已截断）"
 }
 
-// clampCLIOutput 把总输出压进预算：保头部 24KB + 截断标记 + 尾部 4KB。
+const (
+	// cliOutputHeadBytes / cliOutputTailBytes 是输出超预算时保留的头尾
+	// 体量；两者之和须小于 cliOutputBudgetBytes。
+	cliOutputHeadBytes = 24 * 1024
+	cliOutputTailBytes = 4 * 1024
+)
+
+// clampCLIOutput 把总输出压进预算：保头尾、截中间并标注。
 func clampCLIOutput(text string) string {
 	if len(text) <= cliOutputBudgetBytes {
 		return text
 	}
-	head := cliOutputBudgetBytes - 8*1024
-	tailStart := len(text) - 4*1024
+	head := cliOutputHeadBytes
+	tailStart := len(text) - cliOutputTailBytes
 	// 字节切点对齐 UTF-8 边界，避免截断出乱码。
 	for head > 0 && !utf8.RuneStart(text[head]) {
 		head--

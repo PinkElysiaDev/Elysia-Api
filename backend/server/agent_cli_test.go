@@ -188,9 +188,15 @@ func mustArgs(t *testing.T, line string) []string {
 	return statement.args
 }
 
-// 全部 33 条命令：路径必须可被自身组词 resolve（防「syslog 尾随空格」类
-// 不可达回归），带最小合法参数时 mapper 必须成功（防 flag 键名拼写回归）。
+// 全部命令：路径必须可被自身组词 resolve（防「syslog 尾随空格」类不可
+// 达回归），带最小合法参数时 mapper 必须成功（防 flag 键名拼写回归）。
 func TestCLIAllCommandsResolve(t *testing.T) {
+	// 路径词数不得超出 lookupCLICommand 的搜索深度，否则静默不可达。
+	for _, command := range cliCommandTable() {
+		if words := len(strings.Fields(command.Path())); words > cliMaxCommandWords {
+			t.Fatalf("path %q has %d words, exceeds cliMaxCommandWords=%d", command.Path(), words, cliMaxCommandWords)
+		}
+	}
 	for _, command := range cliCommandTable() {
 		path := command.Path()
 		statement, err := cliParseStatement("elysia " + path)
@@ -248,7 +254,7 @@ func TestCLIProbeGates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("probe: %v", err)
 	}
-	if len(notes) != 2 || notes[0].Key != "save" || notes[1].Key != "delete" {
+	if len(notes) != 2 || notes[0].PermissionKey != "save" || notes[1].PermissionKey != "delete" {
 		t.Fatalf("notes = %+v", notes)
 	}
 	// help 与只读命令不产生门控。
@@ -262,7 +268,7 @@ func TestCLIProbeGates(t *testing.T) {
 		t.Fatalf("outbound get must not gate: %+v err=%v", notes, err)
 	}
 	notes, err = probeAgentCLI("elysia outbound set --ranges 10.0.0.0/8 ; elysia outbound reset")
-	if err != nil || len(notes) != 2 || notes[0].Key != "save" || notes[1].Key != "save" {
+	if err != nil || len(notes) != 2 || notes[0].PermissionKey != "save" || notes[1].PermissionKey != "save" {
 		t.Fatalf("outbound set/reset must gate: %+v err=%v", notes, err)
 	}
 	// 模型回传预算必须覆盖 CLI 输出预算（否则落进引擎 16KB preview 信封）。
@@ -282,7 +288,7 @@ func TestCLIProbePartialFailureKeepsGates(t *testing.T) {
 	if err == nil {
 		t.Fatalf("parse error must surface alongside notes")
 	}
-	if len(notes) != 1 || notes[0].Key != "delete" {
+	if len(notes) != 1 || notes[0].PermissionKey != "delete" {
 		t.Fatalf("gated command must survive partial parse failure: %+v", notes)
 	}
 

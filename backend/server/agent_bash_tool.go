@@ -45,11 +45,14 @@ func (t *bashTool) Definition() relay.MaheshvaraTool {
 	}
 }
 
+// bashToolParams 是 bash 工具唯一的模型入参形态。
+type bashToolParams struct {
+	Command string `json:"command"`
+}
+
 func (t *bashTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
-	var params struct {
-		Command string `json:"command"`
-	}
-	if err := json.Unmarshal(args, &params); err != nil {
+	params, err := parseBashToolParams(args)
+	if err != nil {
 		return agent.ToolError("参数解析失败", err.Error())
 	}
 	if strings.TrimSpace(params.Command) == "" {
@@ -64,19 +67,19 @@ func (t *bashTool) Execute(ctx context.Context, tctx agent.ToolContext, args jso
 // 为越权通道）。完全没有可识别的门控命令且存在解析错误时返回 ok=false，
 // 交给执行阶段产出可读错误。
 func (t *bashTool) ProbeGates(args json.RawMessage) ([]agent.GateNote, bool) {
-	var params struct {
-		Command string `json:"command"`
-	}
-	if err := json.Unmarshal(args, &params); err != nil || strings.TrimSpace(params.Command) == "" {
+	params, err := parseBashToolParams(args)
+	if err != nil || strings.TrimSpace(params.Command) == "" {
 		return nil, false
 	}
 	notes, err := probeAgentCLI(params.Command)
 	if len(notes) == 0 && err != nil {
 		return nil, false
 	}
-	gates := make([]agent.GateNote, 0, len(notes))
-	for _, note := range notes {
-		gates = append(gates, agent.GateNote{Command: note.Command, PermissionKey: note.Key})
-	}
-	return gates, true
+	return notes, true
+}
+
+func parseBashToolParams(args json.RawMessage) (bashToolParams, error) {
+	var params bashToolParams
+	err := json.Unmarshal(args, &params)
+	return params, err
 }

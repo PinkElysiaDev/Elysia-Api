@@ -245,7 +245,7 @@ const (
 	answerSummaryRunes   = 80               // ask_user 作答在摘要里展示的上限
 	toolParallelLimit    = 4                // 同批可并行工具的并发上限
 	toolProgressInterval = 5 * time.Second  // 长工具的进度心跳间隔
-	toolDefaultTimeoutMs = 120_000          // 未声明 TimeoutMs 工具的默认硬超时
+	DefaultToolTimeoutMs = 120_000          // 未声明 TimeoutMs 工具的默认硬超时（CLI 语句级超时也用它）
 	summaryModelLimit    = 2000             // 回传模型的工具摘要字符上限
 	defaultContextWindow = 128_000
 	microCompactRatio    = 0.75 // 超过窗口的这个比例时清较早工具结果
@@ -945,7 +945,7 @@ func (e *Engine) watchToolProgress(ctx context.Context, call relay.MaheshvaraToo
 	var cancel context.CancelFunc
 	timeoutMs := meta.TimeoutMs
 	if timeoutMs <= 0 {
-		timeoutMs = toolDefaultTimeoutMs
+		timeoutMs = DefaultToolTimeoutMs
 	}
 	execCtx, cancel = context.WithTimeout(ctx, time.Duration(timeoutMs)*time.Millisecond)
 	started := time.Now()
