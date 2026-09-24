@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -35,12 +36,19 @@ const (
 
 // a2aTaskEntry 是一轮的登记条目：最新任务快照 + 已产生的流帧（resubscribe
 // 回放用）。帧由轮次消费路径（send 的后台 watcher 或 stream 的写循环）追加。
+//
+// 两个终结标志语义不同，不可合并：
+//   - closed：input-required（中断，可恢复）或真终态——当前流到此关闭；
+//   - terminal：仅 completed/failed/canceled——任务终结，此后 append 一律
+//     忽略（否则 tasks/cancel 的拒绝续跑会把 canceled 改写成 completed）。
 type a2aTaskEntry struct {
-	mu     sync.Mutex
-	task   a2aTask
-	done   bool
-	frames []a2aStreamFrame
-	woke   chan struct{} // 容量 1：新帧信号（非阻塞投递）
+	mu        sync.Mutex
+	task      a2aTask
+	closed    bool
+	terminal  bool
+	createdAt time.Time
+	frames    []a2aStreamFrame
+	woke      chan struct{} // 容量 1：新帧信号（非阻塞投递）
 }
 
 func (e *a2aTaskEntry) snapshot() a2aTask {
@@ -49,15 +57,24 @@ func (e *a2aTaskEntry) snapshot() a2aTask {
 	return e.task
 }
 
-func (e *a2aTaskEntry) isDone() bool {
+func (e *a2aTaskEntry) isTerminal() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.done
+	return e.terminal
 }
 
-// append 追加一帧并更新任务状态快照。
+// isTerminalState 报告状态是否为不可恢复的任务终态。
+func isTerminalState(state string) bool {
+	return state == a2aStateCompleted || state == a2aStateFailed || state == a2aStateCanceled
+}
+
+// append 追加一帧并更新任务状态快照；任务已终结后忽略（迟到帧不改写终态）。
 func (e *a2aTaskEntry) append(frame a2aStreamFrame) {
 	e.mu.Lock()
+	if e.terminal {
+		e.mu.Unlock()
+		return
+	}
 	e.frames = append(e.frames, frame)
 	if frame.Kind == a2aFrameStatus && frame.State != "" {
 		e.task.Status.State = frame.State
@@ -70,13 +87,9 @@ func (e *a2aTaskEntry) append(frame a2aStreamFrame) {
 	if frame.Kind == a2aFrameArtifact {
 		e.task.Artifacts = append(e.task.Artifacts, frame.Artifact)
 	}
-	terminal := frame.Final && (frame.Kind != a2aFrameStatus || frame.State != a2aStateWorking)
-	if frame.State == a2aStateCompleted || frame.State == a2aStateFailed ||
-		frame.State == a2aStateCanceled || frame.State == a2aStateInputRequired {
-		terminal = true
-	}
-	if terminal {
-		e.done = true
+	if state := frame.State; isTerminalState(state) || state == a2aStateInputRequired {
+		e.closed = true
+		e.terminal = e.terminal || isTerminalState(state)
 	}
 	e.mu.Unlock()
 	// 唤醒监听者（无监听时丢弃信号）。
@@ -185,28 +198,49 @@ func (s *Server) a2aRegistry() (map[string]*a2aTaskEntry, map[string]string) {
 }
 
 func (s *Server) a2aRegisterEntry(taskID, contextID string) *a2aTaskEntry {
-	tasks, messages := s.a2aRegistry()
+	tasks, _ := s.a2aRegistry()
 	s.a2aMu.Lock()
 	defer s.a2aMu.Unlock()
 	if len(tasks) >= a2aRegistryLimit {
-		// 容量有界：淘汰若干最旧条目（map 无序，按到达粗略淘汰即可，
-		// 老任务早可由 tasks/get 之外重建——实际上仅影响回放）。
-		dropped := 0
-		for id := range tasks {
-			if dropped >= 64 {
-				break
-			}
-			delete(tasks, id)
-			dropped++
-		}
+		s.a2aEvictLocked(tasks)
 	}
-	entry := &a2aTaskEntry{woke: make(chan struct{}, 1), task: a2aTask{
+	entry := &a2aTaskEntry{woke: make(chan struct{}, 1), createdAt: time.Now(), task: a2aTask{
 		ID: taskID, ContextID: contextID,
 		Status: a2aTaskStatus{State: a2aStateWorking, Timestamp: a2aNowTime()},
 	}}
 	tasks[taskID] = entry
-	_ = messages
 	return entry
+}
+
+// a2aEvictLocked 容量有界淘汰（调用方持 a2aMu）：优先丢最旧的已终结条目，
+// 全部在飞时才按最旧淘汰——避免误删运行中任务的登记（否则其 tasks/get
+// 中途 404、重订阅断流）。
+func (s *Server) a2aEvictLocked(tasks map[string]*a2aTaskEntry) {
+	type candidate struct {
+		id        string
+		createdAt time.Time
+	}
+	terminal, inFlight := []candidate{}, []candidate{}
+	for id, entry := range tasks {
+		item := candidate{id: id, createdAt: entry.createdAt}
+		if entry.isTerminal() {
+			terminal = append(terminal, item)
+		} else {
+			inFlight = append(inFlight, item)
+		}
+	}
+	pool := terminal
+	if len(pool) == 0 {
+		pool = inFlight
+	}
+	sort.Slice(pool, func(i, j int) bool { return pool[i].createdAt.Before(pool[j].createdAt) })
+	drop := len(tasks) - a2aRegistryLimit + 1
+	if drop > len(pool) {
+		drop = len(pool)
+	}
+	for _, item := range pool[:drop] {
+		delete(tasks, item.id)
+	}
 }
 
 func (s *Server) a2aFindEntry(taskID string) *a2aTaskEntry {
@@ -295,6 +329,25 @@ func (s *Server) a2aRememberMessageProbe(messageID string) string {
 	return messages[messageID]
 }
 
+// a2aSupersedeStale 把同会话里未终结的旧任务标记为 failed（已被新任务
+// 取代）。新轮次能启动说明旧任务不可能仍在运行（引擎单轮约束），这里
+// 只收掉悬空的 input-required/孤儿条目。
+func (s *Server) a2aSupersedeStale(sessionID, keepTaskID string) {
+	tasks, _ := s.a2aRegistry()
+	s.a2aMu.Lock()
+	stale := make([]*a2aTaskEntry, 0, 2)
+	for id, entry := range tasks {
+		if id != keepTaskID && !entry.isTerminal() && entry.snapshot().ContextID == sessionID {
+			stale = append(stale, entry)
+		}
+	}
+	s.a2aMu.Unlock()
+	for _, entry := range stale {
+		entry.append(a2aStreamFrame{Kind: a2aFrameStatus, State: a2aStateFailed,
+			Message: "已被同会话的新任务取代", Final: true})
+	}
+}
+
 // a2aStartTurn 开新一轮：定位（或创建）会话 → 启动轮次 → 注册任务。
 func (s *Server) a2aStartTurn(c *gin.Context, req jsonrpcRequest, wire a2aWire, message a2aIncomingMessage, stream bool) {
 	sessionID := strings.TrimSpace(message.ContextID)
@@ -330,6 +383,9 @@ func (s *Server) a2aStartTurn(c *gin.Context, req jsonrpcRequest, wire a2aWire, 
 		c.JSON(http.StatusOK, jsonrpcFail(req.ID, jsonrpcInternalError, "turn ended before user message persisted"))
 		return
 	}
+	// 不带 taskId 的新消息会清掉会话的待批动作（引擎侧语义）——同会话里
+	// 未终结的旧任务据此收尾，否则 tasks/get 永远悬空在 input-required。
+	s.a2aSupersedeStale(sessionID, entry.task.ID)
 	s.a2aRememberMessage(message.MessageID, entry.task.ID)
 	if stream {
 		s.a2aStreamLive(c, req, wire, entry, events)
@@ -490,6 +546,9 @@ func a2aPendingSummary(pending *agent.PendingAction) string {
 	}
 	switch pending.Kind {
 	case "question":
+		if pending.Question == nil {
+			return "等待回答（问题详情缺失）"
+		}
 		summary := "等待回答：" + pending.Question.Question
 		if len(pending.Question.Options) > 0 {
 			labels := make([]string, 0, len(pending.Question.Options))
@@ -576,14 +635,16 @@ func (s *Server) a2aStreamReplay(c *gin.Context, req jsonrpcRequest, wire a2aWir
 	for {
 		entry.mu.Lock()
 		frames := append([]a2aStreamFrame(nil), entry.frames...)
-		done := entry.done
+		terminal := entry.terminal
 		entry.mu.Unlock()
 		for ; cursor < len(frames); cursor++ {
 			if !writeResult(wire.frame(entry.task.ID, entry.task.ContextID, frames[cursor])) {
 				return
 			}
 		}
-		if done {
+		// 只在任务真终态时关流：input-required 是中断态，重订阅继续跟随
+		// 后续恢复轮次（规范语义）。
+		if terminal {
 			return
 		}
 		select {
@@ -630,7 +691,7 @@ func (s *Server) a2aHandleCancel(c *gin.Context, req jsonrpcRequest, wire a2aWir
 			map[string]any{"reason": "TASK_NOT_FOUND", "domain": "a2a-protocol.org"}))
 		return
 	}
-	if entry.isDone() && entry.snapshot().Status.State != a2aStateInputRequired {
+	if entry.isTerminal() {
 		c.JSON(http.StatusOK, jsonrpcFailData(req.ID, a2aErrTaskNotCancelable, "task already in terminal state",
 			map[string]any{"reason": "TASK_NOT_CANCELABLE", "domain": "a2a-protocol.org"}))
 		return
@@ -680,7 +741,7 @@ func (s *Server) a2aHandleListTasks(c *gin.Context, req jsonrpcRequest, wire a2a
 		ids = append(ids, id)
 	}
 	s.a2aMu.Unlock()
-	sortStrings(ids)
+	sort.Strings(ids)
 	offset := 0
 	if params.Cursor != "" {
 		for i, id := range ids {
@@ -720,14 +781,4 @@ func firstLine(text string) string {
 		return text[:at]
 	}
 	return text
-}
-
-// sortStrings 简单字典序（避免引入 sort 之外的依赖顾虑——sort 是标准库，
-// 这里直接内联小工具保持文件自包含）。
-func sortStrings(items []string) {
-	for i := 1; i < len(items); i++ {
-		for j := i; j > 0 && items[j] < items[j-1]; j-- {
-			items[j], items[j-1] = items[j-1], items[j]
-		}
-	}
 }
