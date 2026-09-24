@@ -16,11 +16,18 @@ const defaultUsageLog: UsageLogRuntimeConfig = {
   cleanupIntervalMinutes: 60,
 }
 
-/** 归一化后的表单类型：数据入口 effect 补齐 usageLog/modelCatalog/outbound 后三者必非空。 */
-export type RuntimeConfigForm = Omit<RuntimeConfig, 'usageLog' | 'modelCatalog' | 'outbound'> & {
+// 远程访问表单缺省值（后端 enabled 缺省视为 true）。
+const defaultAgentRemote = { enabled: true, publicUrl: '' }
+
+/** 归一化后的表单类型：数据入口 effect 补齐 usageLog/modelCatalog/outbound/agentRemote 后必非空。 */
+export type RuntimeConfigForm = Omit<
+  RuntimeConfig,
+  'usageLog' | 'modelCatalog' | 'outbound' | 'agentRemote'
+> & {
   usageLog: UsageLogRuntimeConfig
   modelCatalog: NonNullable<RuntimeConfig['modelCatalog']>
   outbound: NonNullable<RuntimeConfig['outbound']>
+  agentRemote: { enabled: boolean; publicUrl: string }
 }
 
 /**
@@ -44,6 +51,10 @@ export function useRuntimeConfigForm(data: RuntimeConfig | undefined) {
           syncIntervalMinutes: defaultCatalogSyncMinutes,
         },
         outbound: data.outbound ?? { deniedIpRanges: [] },
+        agentRemote: {
+          enabled: data.agentRemote?.enabled ?? defaultAgentRemote.enabled,
+          publicUrl: data.agentRemote?.publicUrl ?? defaultAgentRemote.publicUrl,
+        },
       })
     pristineRef.current = null
     setForm((prev) => {
@@ -67,6 +78,14 @@ export function useRuntimeConfigForm(data: RuntimeConfig | undefined) {
         ? { ...prev, outbound: { ...prev.outbound, deniedIpRanges: text === '' ? [] : text.split('\n') } }
         : prev,
     )
+  }
+
+  /** 远程访问子字段更新。 */
+  function updateAgentRemote<K extends 'enabled' | 'publicUrl'>(
+    key: K,
+    value: RuntimeConfigForm['agentRemote'][K],
+  ) {
+    setForm((prev) => (prev ? { ...prev, agentRemote: { ...prev.agentRemote, [key]: value } } : prev))
   }
 
   /** 恢复出站禁止段为服务端下发的默认段。 */
@@ -96,8 +115,20 @@ export function useRuntimeConfigForm(data: RuntimeConfig | undefined) {
       ...(pristine.modelCatalog.syncIntervalMinutes !== form.modelCatalog.syncIntervalMinutes
         ? { modelCatalog: { syncIntervalMinutes: form.modelCatalog.syncIntervalMinutes } }
         : {}),
+      ...(pristine.agentRemote.enabled !== form.agentRemote.enabled ||
+      pristine.agentRemote.publicUrl.trim() !== form.agentRemote.publicUrl.trim()
+        ? { agentRemote: { enabled: form.agentRemote.enabled, publicUrl: form.agentRemote.publicUrl.trim() } }
+        : {}),
     }
   }
 
-  return { form, update, updateUsageLog, updateOutboundText, resetOutboundDefaults, dirtyBlockPayload }
+  return {
+    form,
+    update,
+    updateUsageLog,
+    updateOutboundText,
+    updateAgentRemote,
+    resetOutboundDefaults,
+    dirtyBlockPayload,
+  }
 }

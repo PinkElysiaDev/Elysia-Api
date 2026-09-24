@@ -60,6 +60,15 @@ export interface RuntimeConfig {
   outbound?: OutboundConfig
   usageLog?: UsageLogRuntimeConfig
   modelCatalog?: ModelCatalogInfo
+  agentRemote?: AgentRemoteRuntimeConfig
+}
+
+/** AI 助手远程暴露面（REST/MCP/A2A）的运行时配置。 */
+export interface AgentRemoteRuntimeConfig {
+  /** 三面总开关（false = 全部 404）；缺省视为 true。 */
+  enabled?: boolean
+  /** 对外基础地址（反代后填），Agent Card 绝对 URL 用；空 = 按访问地址推导。 */
+  publicUrl?: string
 }
 
 /** 日志管理配置（/api/admin/usage 留存策略，运行配置页「日志管理」卡片）。 */
@@ -94,6 +103,11 @@ export interface RuntimeConfigUpdate {
   usageLog?: Partial<UsageLogRuntimeConfig>
   modelCatalog?: {
     syncIntervalMinutes?: number
+  }
+  agentRemote?: {
+    enabled?: boolean
+    /** 显式空串 = 清空 publicUrl；undefined = 不修改。 */
+    publicUrl?: string
   }
 }
 

@@ -30,6 +30,7 @@ import { SettingSection, SettingRow } from "@/components/ui/setting-card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/use-toast";
 import { useRuntimeConfigForm } from "./runtime-config/use-runtime-config-form";
+import { AgentRemoteSection } from "./runtime-config/agent-remote-section";
 import {
   POLL,
   useRuntimeConfig,
@@ -63,6 +64,7 @@ export function RuntimeConfigPage() {
     update,
     updateUsageLog,
     updateOutboundText,
+    updateAgentRemote,
     resetOutboundDefaults,
     dirtyBlockPayload,
   } = useRuntimeConfigForm(data);
@@ -528,7 +530,14 @@ export function RuntimeConfigPage() {
             </div>
           </SettingSection>
 
-          {/* 章节 5: 日志管理 */}
+          {/* 章节 5: AI 助手远程访问 */}
+          <AgentRemoteSection
+            form={form}
+            onToggle={(enabled) => updateAgentRemote("enabled", enabled)}
+            onPublicUrlChange={(url) => updateAgentRemote("publicUrl", url)}
+          />
+
+          {/* 章节 6: 日志管理 */}
           <SettingSection
             icon={HardDrive}
             title="日志管理"
