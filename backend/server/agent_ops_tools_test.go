@@ -330,7 +330,13 @@ func (c *sessionToolContext) SetTestTarget(baseURL, apiKey string) error {
 	}
 	return c.store.UpdateSessionState(c.ctx, c.session.ID, update)
 }
-func (c *sessionToolContext) SetTitle(title string) error { return nil }
+func (c *sessionToolContext) SetTitle(title string) error {
+	if err := c.store.UpdateSessionState(c.ctx, c.session.ID, agent.SessionStateUpdate{Title: title}); err != nil {
+		return err
+	}
+	c.session.Title = title
+	return nil
+}
 func (c *sessionToolContext) SetPlan(steps []agent.PlanStep) error {
 	if err := c.store.UpdateSessionState(c.ctx, c.session.ID, agent.SessionStateUpdate{Plan: steps}); err != nil {
 		return err

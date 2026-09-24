@@ -390,7 +390,7 @@ func TestA2AStreamApprovalResumeFlow(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	// 第 1 次：请求门控工具 → input-required；第 2 次：终稿。
 	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", toolCallDelta(0, "call_1", "test_upstream", `{"stream":false}`), "", nil),
+		{openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia protocol test"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{openAIChunk("c2", map[string]any{"role": "assistant", "content": "测试通过，接入完成"}, "", nil),
@@ -739,7 +739,7 @@ func TestA2ACancelFinalStateNotOverwritten(t *testing.T) {
 func TestA2ASupersedeStaleTask(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", toolCallDelta(0, "call_1", "test_upstream", `{"stream":false}`), "", nil),
+		{openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia protocol test"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{openAIChunk("c2", map[string]any{"role": "assistant", "content": "新任务完成"}, "", nil),
@@ -768,7 +768,7 @@ func TestA2ASupersedeStaleTask(t *testing.T) {
 func TestMCPRespondRequiresExplicitApproval(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", toolCallDelta(0, "call_1", "test_upstream", `{"stream":false}`), "", nil),
+		{openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia protocol test"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{openAIChunk("c2", map[string]any{"role": "assistant", "content": "已按拒绝继续"}, "", nil),

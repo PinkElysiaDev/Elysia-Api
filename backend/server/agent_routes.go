@@ -52,7 +52,9 @@ func (s *Server) protocolAgentEngine() *agent.Engine {
 		if s.store == nil {
 			return
 		}
-		registry, err := agent.NewRegistry(append(append(append(newProtocolAgentTools(s), newAgentOpsTools(s)...), newAgentTokenTools(s)...), &updatePlanTool{}, &askUserTool{}, &updateTitleTool{})...)
+		// 工具面收敛：bash（elysia CLI 外壳）+ 两个引擎拦截型交互原语。
+		// 旧 28 个工具实现保留为 CLI 命令处理器（见 agent_cli.go 命令表）。
+		registry, err := agent.NewRegistry(&bashTool{server: s}, &updatePlanTool{}, &askUserTool{})
 		if err != nil {
 			log.Printf("agent engine tools unavailable: %v", err)
 			return

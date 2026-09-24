@@ -180,10 +180,11 @@ func hasAgentEvent(events []agentSSEEvent, eventType string) bool {
 
 func TestAgentFullTurnWithDraftTool(t *testing.T) {
 	s := newAgentIntegrationServer(t)
-	// 第 1 次调用：工具调用（update_protocol_draft）；第 2 次：终稿文本。
+	// 第 1 次调用：bash 写协议草稿；第 2 次：终稿文本。
+	draftCommand := `{"command":"elysia protocol draft '{\"id\":\"agent-proto\",\"request\":{\"method\":\"POST\",\"path\":\"/v1/x\",\"bodyTemplate\":\"{\\\"model\\\":\\\"{{maheshvara.model}}\\\"}\"}}'"}`
 	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{"index": 0, "id": "call_1", "type": "function", "function": map[string]any{"name": "update_protocol_draft", "arguments": ""}}}}, "", nil),
-			openAIChunk("c1", toolCallDelta(0, "", "", `{"config":{"id":"agent-proto","request":{"method":"POST","path":"/v1/x","bodyTemplate":"{\"model\":\"{{maheshvara.model}}\"}"}}}`), "", nil),
+		{openAIChunk("c1", map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{"index": 0, "id": "call_1", "type": "function", "function": map[string]any{"name": "bash", "arguments": ""}}}}, "", nil),
+			openAIChunk("c1", toolCallDelta(0, "", "", draftCommand), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", map[string]any{"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}),
 			openAIDone()},
 		{openAIChunk("c2", map[string]any{"role": "assistant", "content": "配置"}, "", nil),
@@ -269,7 +270,7 @@ func TestAgentGatedToolApprovalFlow(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	// 第 1 次：请求 test_upstream（门控）；恢复后第 2 次：终稿。
 	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", toolCallDelta(0, "call_1", "test_upstream", `{"stream":false}`), "", nil),
+		{openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia protocol test"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{openAIChunk("c2", map[string]any{"role": "assistant", "content": "测试完成"}, "", nil),
@@ -347,7 +348,7 @@ func TestAgentGatedToolApprovalFlow(t *testing.T) {
 func TestAgentDenyApprovalAdapts(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", toolCallDelta(0, "call_1", "save_protocol", `{}`), "", nil),
+		{openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia protocol save"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{openAIChunk("c2", map[string]any{"role": "assistant", "content": "好的，先不保存"}, "", nil),
@@ -478,7 +479,7 @@ func stateUpdateWithDraft(draft json.RawMessage) agent.SessionStateUpdate {
 func TestAgentFullTurnWithOpsTool(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", toolCallDelta(0, "call_1", "list_model_groups", `{}`), "", nil),
+		{openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia group ls"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{openAIChunk("c2", map[string]any{"role": "assistant", "content": "当前没有任何模型组"}, "", nil),
