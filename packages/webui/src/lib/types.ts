@@ -238,8 +238,10 @@ export interface ApiToken {
   token?: string
   enabled: boolean
   allowedGroups?: string[]
-  /** 端点作用域：agent=可控制 AI 助手（远程配置）；空=仅推理。 */
+  /** 端点作用域：agent=远程访问 Key（AI 助手专用，不参与推理）；空=仅推理。 */
   scopes?: string[]
+  /** 仅重命名请求携带：非空且 ≠ name 时服务端执行改名（请求专用字段）。 */
+  newName?: string
   createdAt?: string
   updatedAt?: string
 }

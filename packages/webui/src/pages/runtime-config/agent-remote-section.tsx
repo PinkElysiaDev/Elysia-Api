@@ -1,26 +1,20 @@
 import { useState } from 'react'
-import { KeyRound, PlugZap, Plus, Trash2 } from 'lucide-react'
+import { KeyRound, Pencil, PlugZap, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { SettingSection, SettingRow } from '@/components/ui/setting-card'
 import { CopyButton } from '@/components/copy-button'
+import { RevealCopyButton } from '@/components/reveal-copy-button'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { useTokens } from '@/lib/hooks'
 import { api } from '@/lib/api'
+import type { ApiToken } from '@/lib/types'
 import type { RuntimeConfigForm } from './use-runtime-config-form'
 
 /** AI 助手远程访问配置区（运行配置页）：开关/对外地址 + 接入信息 +
- * agent 作用域访问令牌的集中管理。 */
+ * 远程访问 Key 的集中管理（新增/删除/启停/改名/查看均在此）。 */
 
 // 与后端 generateAPIKeySecret 同口径：32 字节 URL-safe base64。
 function generateRemoteKeySecret(): string {
@@ -80,8 +74,7 @@ export function AgentRemoteSection({
               <EndpointRow label="Agent Card" path="/.well-known/agent-card.json" base={publicBase} />
               <EndpointRow label="REST" path="/api/agent" base={publicBase} />
               <p className="text-2xs text-muted-foreground/70">
-                调用以上端点需携带开启「允许控制 AI 助手」作用的 API
-                Key（Bearer）；助手自身的写操作仍按会话权限档逐次确认。
+                调用以上端点需携带下方远程访问 Key（Bearer）；助手自身的写操作仍按会话权限档逐次确认。
               </p>
             </>
           ) : (
@@ -110,14 +103,15 @@ function EndpointRow({ label, path, base }: { label: string; path: string; base:
   )
 }
 
-/** agent 作用域访问令牌的集中管理：列表 / 启停 / 删除 / 快捷创建。 */
+/** 远程访问 Key 的集中管理：创建 / 启停 / 改名 / 删除 / 查看明文。 */
 function AgentRemoteTokens() {
   const toast = useToast()
   const { confirm, dialog } = useConfirm()
   const { data: tokens, mutate } = useTokens()
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
-  const [createdSecret, setCreatedSecret] = useState<{ name: string; secret: string } | null>(null)
+  const [renaming, setRenaming] = useState<ApiToken | null>(null)
+  const [renameValue, setRenameValue] = useState('')
 
   const agentKeys = (tokens ?? []).filter((token) => (token.scopes ?? []).includes('agent'))
 
@@ -129,11 +123,16 @@ function AgentRemoteTokens() {
     }
     setCreating(true)
     try {
-      const secret = generateRemoteKeySecret()
-      await api.createToken({ name, token: secret, enabled: true, scopes: ['agent'] })
+      await api.createToken({
+        name,
+        token: generateRemoteKeySecret(),
+        enabled: true,
+        allowedGroups: ['agent'],
+        scopes: ['agent'],
+      })
       await mutate()
       setNewName('')
-      setCreatedSecret({ name, secret })
+      toast.success('远程访问 Key 已创建', '可在列表中随时查看明文')
     } catch (err) {
       toast.error('创建失败', (err as Error).message)
     } finally {
@@ -141,26 +140,54 @@ function AgentRemoteTokens() {
     }
   }
 
-  async function handleToggle(name: string, enabled: boolean, scopes: string[]) {
+  async function handleToggle(token: ApiToken, enabled: boolean) {
     try {
-      await api.updateToken(name, { name, enabled, scopes, allowedGroups: [] })
+      await api.updateToken(token.name, {
+        name: token.name,
+        enabled,
+        allowedGroups: ['agent'],
+        scopes: ['agent'],
+      })
       await mutate()
     } catch (err) {
       toast.error('更新失败', (err as Error).message)
     }
   }
 
+  async function handleRename() {
+    const name = renameValue.trim()
+    if (!name || !renaming) return
+    if (name === renaming.name) {
+      setRenaming(null)
+      return
+    }
+    try {
+      await api.updateToken(renaming.name, {
+        name: renaming.name,
+        enabled: renaming.enabled,
+        allowedGroups: ['agent'],
+        scopes: ['agent'],
+        newName: name,
+      })
+      await mutate()
+      toast.success('已重命名')
+      setRenaming(null)
+    } catch (err) {
+      toast.error('重命名失败', (err as Error).message)
+    }
+  }
+
   async function handleDelete(name: string) {
     const okToDelete = await confirm({
-      title: `删除 API Key「${name}」？`,
-      description: '使用该 Key 的外部客户端将立即失去远程访问能力（推理调用一并失效）。',
+      title: `删除远程访问 Key「${name}」？`,
+      description: '使用该 Key 的外部客户端将立即失去远程访问能力。',
       confirmText: '删除',
     })
     if (!okToDelete) return
     try {
       await api.deleteToken(name)
       await mutate()
-      toast.success('API Key 已删除')
+      toast.success('远程访问 Key 已删除')
     } catch (err) {
       toast.error('删除失败', (err as Error).message)
     }
@@ -168,38 +195,68 @@ function AgentRemoteTokens() {
 
   return (
     <div className="border-t border-border/40 pt-3 space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-          <KeyRound className="h-3.5 w-3.5" /> 远程访问 Key（{agentKeys.length}）
-        </p>
-      </div>
+      <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <KeyRound className="h-3.5 w-3.5" /> 远程访问 Key（{agentKeys.length}）
+      </p>
 
       {agentKeys.length === 0 ? (
         <p className="text-2xs text-muted-foreground">
-          还没有可远程控制的 API Key。创建一个，或在「API Key」页为现有 Key 开启作用域。
+          还没有远程访问 Key。创建一个，外部客户端即可凭它驱动 AI 助手。
         </p>
       ) : (
         <div className="space-y-1.5">
-          {agentKeys.map((token) => (
-            <div key={token.name} className="flex items-center gap-2">
-              <Switch
-                checked={token.enabled}
-                onCheckedChange={(v) => void handleToggle(token.name, v, token.scopes ?? ['agent'])}
-              />
-              <span className="w-28 shrink-0 truncate text-xs font-medium">{token.name}</span>
-              <code className="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">
-                {token.token}
-              </code>
-              <Button
-                variant="ghost"
-                size="iconSm"
-                title="删除"
-                onClick={() => void handleDelete(token.name)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          ))}
+          {agentKeys.map((token) =>
+            renaming?.name === token.name ? (
+              <div key={token.name} className="flex items-center gap-2">
+                <Input
+                  autoFocus
+                  className="h-8 flex-1 text-xs"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void handleRename()
+                    if (e.key === 'Escape') setRenaming(null)
+                  }}
+                />
+                <Button variant="primary" size="sm" onClick={() => void handleRename()}>
+                  保存
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setRenaming(null)}>
+                  取消
+                </Button>
+              </div>
+            ) : (
+              <div key={token.name} className="flex items-center gap-2">
+                <Switch
+                  checked={token.enabled}
+                  onCheckedChange={(v) => void handleToggle(token, v)}
+                />
+                <span className="w-24 shrink-0 truncate text-xs font-medium">{token.name}</span>
+                <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                  <RevealCopyButton name={token.name} maskedToken={token.token || '••••'} />
+                </span>
+                <Button
+                  variant="ghost"
+                  size="iconSm"
+                  title="重命名"
+                  onClick={() => {
+                    setRenaming(token)
+                    setRenameValue(token.name)
+                  }}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="iconSm"
+                  title="删除"
+                  onClick={() => void handleDelete(token.name)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ),
+          )}
         </div>
       )}
 
@@ -218,33 +275,11 @@ function AgentRemoteTokens() {
         </Button>
       </div>
       <p className="text-2xs text-muted-foreground/70">
-        完整 Key 管理（模型组授权、明文录入）在「API Key」页。
+        远程访问 Key 专用于驱动 AI 助手（不参与模型推理），明文可随时在列表中查看；普通推理
+        Key 在「API Key」页管理。
       </p>
 
       {dialog}
-
-      <Dialog open={createdSecret !== null} onOpenChange={(open) => !open && setCreatedSecret(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>远程访问 Key 已创建</DialogTitle>
-            <DialogDescription>
-              明文仅此一次显示，请立即复制保存（「{createdSecret?.name}」，已授予控制 AI
-              助手的作用域）。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex items-center gap-2">
-            <code className="min-w-0 flex-1 truncate rounded bg-muted px-2.5 py-2 font-mono text-xs">
-              {createdSecret?.secret}
-            </code>
-            <CopyButton value={createdSecret?.secret ?? ''} title="复制" />
-          </div>
-          <DialogFooter>
-            <Button variant="primary" onClick={() => setCreatedSecret(null)}>
-              已保存
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

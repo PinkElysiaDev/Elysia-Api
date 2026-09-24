@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, Copy, Eye, EyeOff, KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
+import { KeyRound, Pencil, PlugZap, Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { RoleWatermark } from '@/components/role-watermark'
 import { Button } from '@/components/ui/button'
@@ -19,17 +19,20 @@ import { AsyncState } from '@/components/ui/states'
 import { CapChip } from '@/components/badges'
 import { SecretInput } from '@/components/secret-input'
 import { CopyButton } from '@/components/copy-button'
+import { RevealCopyButton } from '@/components/reveal-copy-button'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { useTokens, useGroups, revalidate } from '@/lib/hooks'
 import { api } from '@/lib/api'
 import { useApiAction } from '@/lib/use-api-action'
 import { useEntityFormDialog } from '@/lib/use-entity-form-dialog'
-import { copyText } from '@/lib/clipboard'
 import { cn, formatDateTime } from '@/lib/utils'
 import type { ApiToken } from '@/lib/types'
 
-const COPY_RESET_MS = 1500
+/** 判定是否为远程访问 Key（驱动 AI 助手专用）：只看 scopes，不看组名。 */
+function isAgentKey(token: ApiToken): boolean {
+  return (token.scopes ?? []).includes('agent')
+}
 
 export function TokensPage() {
   const { confirm, dialog } = useConfirm()
@@ -116,7 +119,9 @@ export function TokensPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-border/30">
-                {tokens.map((token) => (
+                {tokens.map((token) => {
+                  const agentKey = isAgentKey(token)
+                  return (
                   <TableRow key={token.name} className="border-b-0">
                     <TableCell className="py-3.5 pl-4 font-medium text-foreground">{token.name}</TableCell>
                     <TableCell className="py-3.5 font-mono text-xs text-muted-foreground">
@@ -125,7 +130,14 @@ export function TokensPage() {
                       </span>
                     </TableCell>
                     <TableCell className="py-3.5">
-                      {token.allowedGroups && token.allowedGroups.length > 0 ? (
+                      {agentKey ? (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full border border-jade/40 bg-jade/10 px-2 py-0.5 text-2xs font-medium text-jade"
+                          title="远程访问专用：驱动 AI 助手（不参与推理），在运行配置页管理"
+                        >
+                          <PlugZap className="h-3 w-3" /> AI 助手
+                        </span>
+                      ) : token.allowedGroups && token.allowedGroups.length > 0 ? (
                         <div className="flex flex-wrap gap-1.5">
                           {token.allowedGroups.map((g) => (
                             <CapChip
@@ -149,23 +161,31 @@ export function TokensPage() {
                     <TableCell className="py-3.5 text-center">
                       <Switch
                         checked={token.enabled}
-                        disabled={isBusy(token.name)}
-                        onCheckedChange={() => toggleToken(token)}
-                        aria-label={`${token.enabled ? '停用' : '启用'} ${token.name}`}
+                        disabled={agentKey || isBusy(token.name)}
+                        onCheckedChange={agentKey ? undefined : () => toggleToken(token)}
+                        aria-label={agentKey ? '远程访问 Key 请在运行配置页启停' : `${token.enabled ? '停用' : '启用'} ${token.name}`}
                       />
                     </TableCell>
                     <TableCell className="py-3.5 pr-4 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="iconSm" title="编辑" onClick={() => openEdit(token)}>
+                        <Button
+                          variant="ghost"
+                          size="iconSm"
+                          title={agentKey ? '重命名' : '编辑'}
+                          onClick={() => openEdit(token)}
+                        >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="danger" size="iconSm" title="删除" onClick={() => handleDelete(token)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        {!agentKey && (
+                          <Button variant="danger" size="iconSm" title="删除" onClick={() => handleDelete(token)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
               </TableBody>
             </table>
           </div>
@@ -175,66 +195,6 @@ export function TokensPage() {
       <TokenFormDialog open={formOpen} onOpenChange={form.setOpen} token={editing} onSaved={() => mutate()} />
       {dialog}
     </div>
-    </>
-  )
-}
-
-// RevealCopyButton 支持显示/隐藏和复制完整 Key。
-function RevealCopyButton({ name, maskedToken }: { name: string; maskedToken: string }) {
-  const toast = useToast()
-  const [copied, setCopied] = useState(false)
-  const [revealed, setRevealed] = useState(false)
-  const [revealedToken, setRevealedToken] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  async function handleReveal() {
-    if (revealed) {
-      setRevealed(false)
-      setRevealedToken('')
-      return
-    }
-    setBusy(true)
-    try {
-      const { token } = await api.revealToken(name)
-      setRevealedToken(token)
-      setRevealed(true)
-    } catch (err) {
-      toast.error('获取失败', (err as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function handleCopy() {
-    setBusy(true)
-    try {
-      const token = revealed ? revealedToken : (await api.revealToken(name)).token
-      await copyText(token)
-      setCopied(true)
-      setTimeout(() => setCopied(false), COPY_RESET_MS)
-    } catch (err) {
-      toast.error('复制失败', (err as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <>
-      <span className="font-mono text-xs">{revealed ? revealedToken : maskedToken}</span>
-      <Button
-        variant="ghost"
-        size="iconSm"
-        title={revealed ? '隐藏' : '显示完整 Key'}
-        aria-label={revealed ? '隐藏完整 Key' : '显示完整 Key'}
-        disabled={busy}
-        onClick={handleReveal}
-      >
-        {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-      </Button>
-      <Button variant="ghost" size="iconSm" title="复制完整 Key" aria-label="复制完整 Key" disabled={busy} onClick={handleCopy}>
-        {copied ? <Check className="h-3.5 w-3.5 text-jade" /> : <Copy className="h-3.5 w-3.5" />}
-      </Button>
     </>
   )
 }
@@ -253,11 +213,12 @@ function TokenFormDialog({
   const toast = useToast()
   const { data: groups } = useGroups()
   const isEdit = !!token
+  // 远程访问 Key 在本页只读 + 改名（增删与启停在运行配置页）。
+  const agentKey = isAgentKey(token ?? { name: '', enabled: true })
   const [name, setName] = useState('')
   const [secret, setSecret] = useState('')
   const [enabled, setEnabled] = useState(true)
   const [allowedGroups, setAllowedGroups] = useState<string[]>([])
-  const [agentScope, setAgentScope] = useState(false)
   const [saving, setSaving] = useState(false)
 
   // 打开时初始化一次表单。deps 刻意不含 groups：对话框开着时任何
@@ -270,7 +231,6 @@ function TokenFormDialog({
       setEnabled(token?.enabled ?? true)
       const validNames = new Set((groups ?? []).map((g) => g.name))
       setAllowedGroups((token?.allowedGroups ?? []).filter((g) => validNames.has(g)))
-      setAgentScope((token?.scopes ?? []).includes('agent'))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, token])
@@ -286,20 +246,35 @@ function TokenFormDialog({
       toast.error('请填写名称')
       return
     }
+    if (agentKey && name.trim() === token?.name) {
+      onOpenChange(false)
+      return
+    }
     if (!isEdit && !secret.trim()) {
       toast.error('请填写 Key 明文')
       return
     }
     setSaving(true)
     try {
-      const payload: ApiToken = { name: name.trim(), enabled, allowedGroups, scopes: agentScope ? ['agent'] : [] }
-      if (secret.trim()) payload.token = secret.trim()
-      if (isEdit && token) await api.updateToken(token.name, payload)
-      else await api.createToken(payload)
+      if (agentKey && token) {
+        // 远程访问 Key：仅重命名（其余属性由服务端不变式锁定）。
+        await api.updateToken(token.name, {
+          name: token.name,
+          enabled: token.enabled,
+          allowedGroups: token.allowedGroups ?? [],
+          scopes: token.scopes ?? ['agent'],
+          newName: name.trim(),
+        })
+      } else {
+        const payload: ApiToken = { name: name.trim(), enabled, allowedGroups }
+        if (secret.trim()) payload.token = secret.trim()
+        if (isEdit && token) await api.updateToken(token.name, payload)
+        else await api.createToken(payload)
+      }
       // 保存后立即清空明文输入框
       setSecret('')
       onSaved()
-      toast.success(isEdit ? 'API Key 已更新' : 'API Key 已创建')
+      toast.success(isEdit ? (agentKey ? '已重命名' : 'API Key 已更新') : 'API Key 已创建')
       onOpenChange(false)
     } catch (err) {
       toast.error('保存失败', (err as Error).message)
@@ -312,8 +287,14 @@ function TokenFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{isEdit ? '编辑访问令牌' : '新增访问令牌'}</DialogTitle>
-          <DialogDescription>明文 Key 仅在此处录入，保存后不再展示完整值。</DialogDescription>
+          <DialogTitle>
+            {agentKey ? '重命名远程访问 Key' : isEdit ? '编辑访问令牌' : '新增访问令牌'}
+          </DialogTitle>
+          <DialogDescription>
+            {agentKey
+              ? '远程访问 Key（AI 助手专用）的其余属性在「运行配置」页管理。'
+              : '明文 Key 仅在此处录入，保存后不再展示完整值。'}
+          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
           <div className="space-y-2">
@@ -321,63 +302,58 @@ function TokenFormDialog({
             <Input
               value={name}
               placeholder="default"
-              disabled={isEdit}
+              disabled={isEdit && !agentKey}
               onChange={(e) => setName(e.target.value)}
             />
           </div>
-          <div className="space-y-2">
-            <Label required={!isEdit}>Key 明文</Label>
-            <div className="flex items-center gap-2">
-              <SecretInput
-                className="flex-1"
-                value={secret}
-                placeholder={isEdit ? '留空则保持原 Key' : 'client-key'}
-                onChange={(e) => setSecret(e.target.value)}
-              />
-              {secret.trim() && <CopyButton value={secret.trim()} title="复制" />}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>可访问模型组</Label>
-            <p className="text-xs text-muted-foreground">不选则可访问全部模型组；选择后仅限所选组。</p>
-            <div className="flex flex-wrap gap-2">
-              {(groups ?? []).length === 0 ? (
-                <span className="text-xs text-muted-foreground">暂无模型组</span>
-              ) : (
-                (groups ?? []).map((g) => {
-                  const active = allowedGroups.includes(g.name)
-                  return (
-                    <button
-                      key={g.id}
-                      type="button"
-                      onClick={() => toggleGroup(g.name)}
-                      className={cn(
-                        'inline-flex h-[29px] items-center gap-1.5 rounded-full border px-3 text-xs transition-colors',
-                        active
-                          ? 'border-rose bg-wash font-semibold text-rose'
-                          : 'border-border bg-card text-muted-foreground hover:text-foreground',
-                      )}
-                    >
-                      {g.name}
-                    </button>
-                  )
-                })
-              )}
-            </div>
-          </div>
-          <label className="flex items-center gap-3">
-            <Switch checked={enabled} onCheckedChange={setEnabled} />
-            <span className="text-sm font-medium">启用</span>
-          </label>
-          <label className="flex items-start gap-3">
-            <Switch checked={agentScope} onCheckedChange={setAgentScope} className="mt-0.5" />
-            <span className="min-w-0">
-              <span className="block text-sm font-medium">允许控制 AI 助手</span>
-              <span className="block text-xs text-muted-foreground">
-                开启后该 Key 可通过 /api/agent、MCP 与 A2A 接口远程驱动 AI 助手（含写配置），默认仅可调用推理接口。
-              </span>
-            </span>
-          </label>
+          {!agentKey && (
+            <>
+              <div className="space-y-2">
+                <Label required={!isEdit}>Key 明文</Label>
+                <div className="flex items-center gap-2">
+                  <SecretInput
+                    className="flex-1"
+                    value={secret}
+                    placeholder={isEdit ? '留空则保持原 Key' : 'client-key'}
+                    onChange={(e) => setSecret(e.target.value)}
+                  />
+                  {secret.trim() && <CopyButton value={secret.trim()} title="复制" />}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>可访问模型组</Label>
+                <p className="text-xs text-muted-foreground">不选则可访问全部模型组；选择后仅限所选组。</p>
+                <div className="flex flex-wrap gap-2">
+                  {(groups ?? []).length === 0 ? (
+                    <span className="text-xs text-muted-foreground">暂无模型组</span>
+                  ) : (
+                    (groups ?? []).map((g) => {
+                      const active = allowedGroups.includes(g.name)
+                      return (
+                        <button
+                          key={g.id}
+                          type="button"
+                          onClick={() => toggleGroup(g.name)}
+                          className={cn(
+                            'inline-flex h-[29px] items-center gap-1.5 rounded-full border px-3 text-xs transition-colors',
+                            active
+                              ? 'border-rose bg-wash font-semibold text-rose'
+                              : 'border-border bg-card text-muted-foreground hover:text-foreground',
+                          )}
+                        >
+                          {g.name}
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+              <label className="flex items-center gap-3">
+                <Switch checked={enabled} onCheckedChange={setEnabled} />
+                <span className="text-sm font-medium">启用</span>
+              </label>
+            </>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
