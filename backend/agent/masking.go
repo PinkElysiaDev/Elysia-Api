@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/elysia-api/backend/relay"
@@ -45,6 +46,14 @@ func maskSecretValue(value any) any {
 				typed[key] = "***"
 				continue
 			}
+			// bash 类工具的 command 字段：命令行里的敏感 flag 值单独打码
+			//（键名本身不含 secret 词根，通用规则拦不到）。
+			if key == "command" {
+				if text, isString := item.(string); isString {
+					typed[key] = redactCommandLine(text)
+					continue
+				}
+			}
 			typed[key] = maskSecretValue(item)
 		}
 		return typed
@@ -63,4 +72,15 @@ func isSecretInputKey(key string) bool {
 	return strings.Contains(lower, "apikey") || strings.Contains(lower, "api_key") ||
 		lower == "token" || strings.Contains(lower, "secret") || strings.Contains(lower, "password") ||
 		strings.Contains(lower, "authorization") || strings.Contains(lower, "credential")
+}
+
+// cliSecretFlagPattern 匹配命令行中的敏感 flag 及其值（--api-key、
+// --secret、--new-secret、--token；--key 是用量过滤的 Key 名，非密钥，
+// 刻意不在列）。值支持引号包裹或裸串。
+var cliSecretFlagPattern = regexp.MustCompile(
+	`(?i)(--(?:api-key|secret|new-secret|token)(?:=|\s+))("[^"]*"|'[^']*'|[^\s&;|]+)`)
+
+// redactCommandLine 把命令行中敏感 flag 的值替换为 ***。
+func redactCommandLine(command string) string {
+	return cliSecretFlagPattern.ReplaceAllString(command, "${1}***")
 }

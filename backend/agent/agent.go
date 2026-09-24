@@ -602,14 +602,22 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 			index++
 			continue
 		}
-		gate, denial := e.gateCall(session, call, tool, approvedIDs)
+		gate, denial, pauseNotes := e.gateCall(session, call, tool, approvedIDs)
 		if gate == gateDeny {
 			e.denyCall(ctx, sessionID, conversation, call, denial, denyDenied, events)
 			index++
 			continue
 		}
 		if gate == gatePause {
-			pending := &PendingAction{Calls: append([]relay.MaheshvaraToolCall(nil), calls[index:]...), Reason: reason}
+			pendingReason := reason
+			if pauseNotes != "" {
+				// bash 类路由工具：把待批子命令清单并入审批卡说明。
+				if pendingReason != "" {
+					pendingReason += "\n"
+				}
+				pendingReason += pauseNotes
+			}
+			pending := &PendingAction{Calls: append([]relay.MaheshvaraToolCall(nil), calls[index:]...), Reason: pendingReason}
 			waiting := StatusWaitingApproval
 			if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
 				return false, err
@@ -660,7 +668,7 @@ func (e *Engine) parallelEligible(session *Session, call relay.MaheshvaraToolCal
 	if tool == nil || !canRunParallel(tool) {
 		return false
 	}
-	gate, _ := e.gateCall(session, call, tool, approvedIDs)
+	gate, _, _ := e.gateCall(session, call, tool, approvedIDs)
 	return gate == gateAllow
 }
 
@@ -731,22 +739,54 @@ const (
 	gatePause
 )
 
-func (e *Engine) gateCall(session *Session, call relay.MaheshvaraToolCall, tool Tool, approvedIDs map[string]bool) (callGate, string) {
+func (e *Engine) gateCall(session *Session, call relay.MaheshvaraToolCall, tool Tool, approvedIDs map[string]bool) (callGate, string, string) {
 	if !tool.Gated() {
-		return gateAllow, ""
+		// 路由型工具（如 bash）自身不门控：按解析出的子命令判定。
+		if probe, implements := tool.(GateProbe); implements {
+			if notes, ok := probe.ProbeGates(call.Arguments); ok {
+				return e.gateProbeDecision(session, call, notes, approvedIDs)
+			}
+		}
+		return gateAllow, "", ""
 	}
 	if session.Settings.PlanMode {
-		return gateDeny, "计划模式已开启：修改与出站操作暂不执行。请先用 update_plan 给出完整方案，并等待用户确认后再执行"
+		return gateDeny, "计划模式已开启：修改与出站操作暂不执行。请先用 update_plan 给出完整方案，并等待用户确认后再执行", ""
 	}
 	switch PermissionFor(session.Settings, tool.PermissionKey()) {
 	case PermissionNever:
-		return gateDeny, "用户已在会话设置中禁止此操作，请改用其他方式完成任务"
+		return gateDeny, "用户已在会话设置中禁止此操作，请改用其他方式完成任务", ""
 	case PermissionAsk:
 		if !approvedIDs[call.ID] {
-			return gatePause, ""
+			return gatePause, "", ""
 		}
 	}
-	return gateAllow, ""
+	return gateAllow, "", ""
+}
+
+// gateProbeDecision 聚合探针上报的子命令权限：任一 never 拒绝并点名命令；
+// 任一 ask 且未批准则暂停（notes 作为审批卡补充说明）。
+func (e *Engine) gateProbeDecision(session *Session, call relay.MaheshvaraToolCall, notes []GateNote, approvedIDs map[string]bool) (callGate, string, string) {
+	if len(notes) == 0 {
+		return gateAllow, "", ""
+	}
+	if session.Settings.PlanMode {
+		return gateDeny, "计划模式已开启：修改与出站操作暂不执行。请先用 update_plan 给出完整方案，并等待用户确认后再执行", ""
+	}
+	var pauseNotes []string
+	for _, note := range notes {
+		switch PermissionFor(session.Settings, note.PermissionKey) {
+		case PermissionNever:
+			return gateDeny, fmt.Sprintf("命令 %s 需要用户已禁止的权限（%s），请调整方案", note.Command, note.PermissionKey), ""
+		case PermissionAsk:
+			if !approvedIDs[call.ID] {
+				pauseNotes = append(pauseNotes, note.Command+"（权限档："+note.PermissionKey+"）")
+			}
+		}
+	}
+	if len(pauseNotes) > 0 {
+		return gatePause, "", "待批命令：\n" + strings.Join(pauseNotes, "\n")
+	}
+	return gateAllow, "", ""
 }
 
 // denyKind 区分拒绝语义：unknown 保留参数与专用错误码（模型才能发现拼错
@@ -887,9 +927,10 @@ func (e *Engine) persistToolResult(ctx context.Context, sessionID string, info T
 	emitEvent(events, Event{Type: EventToolResult, CallID: info.CallID, Name: info.Name, Result: &result, Message: &Message{Seq: seq, Role: RoleToolResult, Content: encoded, CreatedAt: time.Now()}})
 }
 
-// maskSecretInputs 把输入 JSON 中密钥类字符串字段替换为 ***（递归遍历；
-// 解析失败则原样返回——脱敏尽力而为，不阻断落库）。
-func maskSecretInputs(raw json.RawMessage) json.RawMessage {
+// MaskSecretInputs 把输入 JSON 中密钥类字符串字段替换为 ***（递归遍历；
+// 解析失败则原样返回——脱敏尽力而为，不阻断落库）。bash 的 command 字段
+// 走命令行感知的 flag 级打码（见 masking.go）。
+func MaskSecretInputs(raw json.RawMessage) json.RawMessage {
 	if len(raw) == 0 {
 		return raw
 	}
@@ -902,6 +943,8 @@ func maskSecretInputs(raw json.RawMessage) json.RawMessage {
 	}
 	return raw
 }
+
+func maskSecretInputs(raw json.RawMessage) json.RawMessage { return MaskSecretInputs(raw) }
 
 func (e *Engine) persistAssistant(ctx context.Context, sessionID string, session *Session, content AssistantContent, usage *relay.MaheshvaraUsage, events chan Event) {
 	var usageJSON json.RawMessage

@@ -56,6 +56,20 @@ func ToolError(summary string, code string) ToolResult {
 	return ToolResult{OK: false, Summary: summary, Data: map[string]any{"error": code}}
 }
 
+// GateNote 是路由型工具（如 bash）上报的一条待批描述：哪条子命令需要
+// 哪个权限键。引擎据此做与普通工具一致的 ask/always/never 判定。
+type GateNote struct {
+	Command       string `json:"command"`
+	PermissionKey string `json:"permissionKey"`
+}
+
+// GateProbe 是路由型工具的可选门控探针：单一工具入口承载多条子命令时，
+// 引擎在执行前调用探针获知「这次调用实际需要哪些权限」。未实现（或
+// 返回 ok=false）时按工具自身的 Gated()/PermissionKey() 兜底。
+type GateProbe interface {
+	ProbeGates(args json.RawMessage) (notes []GateNote, ok bool)
+}
+
 // ToolMeta 是工具的执行与结果预算注解。以可选接口挂接：未实现 Meta()
 // 的工具取 ToolMeta 零值（不可并行、16KB 模型预算、保留头部）。
 // clampDirection 是超限截断的保留方向。
