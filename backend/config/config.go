@@ -575,6 +575,10 @@ func (c *Config) Reload() error {
 	c.UsagePersistMaxRecords = newCfg.UsagePersistMaxRecords
 	c.HealthCheck = newCfg.HealthCheck
 	c.Outbound = newCfg.Outbound
+	c.AgentRemote = newCfg.AgentRemote
+	// openBrowserOnStart 也走 bootstrap 键：reload 后 Save 才不会把用户
+	// 手写的值当 nil 删掉（saveLocked 对 nil 是删键语义）。
+	c.OpenBrowserOnStart = newCfg.OpenBrowserOnStart
 
 	return nil
 }

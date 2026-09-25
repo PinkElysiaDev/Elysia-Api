@@ -221,7 +221,6 @@ func TestIsValidPanelAccessToken(t *testing.T) {
 	}
 }
 
-
 // openBrowserOnStart 三态：不写键 = nil（默认尝试）、显式 true/false 原样读回，
 // Save 后落盘不丢失；nil 时 Save 不写键。
 func TestOpenBrowserOnStartTriState(t *testing.T) {
@@ -257,5 +256,36 @@ func TestOpenBrowserOnStartTriState(t *testing.T) {
 	}
 	if reloaded.OpenBrowserOnStart == nil || *reloaded.OpenBrowserOnStart {
 		t.Fatalf("explicit false must round-trip: %#v", reloaded.OpenBrowserOnStart)
+	}
+
+	// Reload 必须传播该键：否则 /__reload 后内存仍是 nil，之后任何 Save
+	// 都会按「nil 删键」把用户手写的值从 config.json 抹掉。
+	reloaded2, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reloaded2.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	if reloaded2.OpenBrowserOnStart == nil || *reloaded2.OpenBrowserOnStart {
+		t.Fatalf("Reload must propagate explicit false: %#v", reloaded2.OpenBrowserOnStart)
+	}
+	if err := reloaded2.Save(); err != nil {
+		t.Fatal(err)
+	}
+	persisted, _ := os.ReadFile(path)
+	if !strings.Contains(string(persisted), `"openBrowserOnStart": false`) {
+		t.Fatalf("explicit false must survive reload + save: %s", persisted)
+	}
+
+	// 删键 → Reload → 内存归 nil（下次 Save 不复活旧键）。
+	if err := os.WriteFile(path, []byte(`{"port": 8765}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := reloaded2.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	if reloaded2.OpenBrowserOnStart != nil {
+		t.Fatalf("removed key must reload as nil, got %v", *reloaded2.OpenBrowserOnStart)
 	}
 }
