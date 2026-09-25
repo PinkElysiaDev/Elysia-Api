@@ -1330,6 +1330,13 @@ func (s *Server) ListenAndServe() error {
 	// 显式持有 http.Server，便于 /__shutdown 与信号(SIGTERM/SIGINT)优雅关停。
 	s.httpServer = &http.Server{Addr: addr, Handler: s.engine}
 
+	// 先绑定再 Serve：监听失败（端口占用等）时不拉起浏览器。
+	listener, listenErr := net.Listen("tcp", addr)
+	if listenErr != nil {
+		return listenErr
+	}
+	launchConsoleBrowser(s.config.OpenBrowserOnStart, s.config.Server.Host, s.config.Server.Port)
+
 	// 信号到达时在与 /__shutdown 相同的关停序列上收尾:冲刷 usage 队列、
 	// 停后台任务,再退出主 goroutine(ListenAndServe 已在关停序列内被 Close)。
 	sigErr := make(chan error, 1)
@@ -1343,7 +1350,7 @@ func (s *Server) ListenAndServe() error {
 		sigErr <- nil
 	}()
 
-	err := s.httpServer.ListenAndServe()
+	err := s.httpServer.Serve(listener)
 	if err == http.ErrServerClosed {
 		// 主动关停(信号或 /__shutdown)属正常退出;等待关停序列完成。
 		<-sigErr

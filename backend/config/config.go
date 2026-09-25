@@ -42,8 +42,12 @@ type Config struct {
 	AllowFakeIPOutbound    bool               `json:"allowFakeIPOutbound,omitempty"`    // 已废弃：仅作加载迁移读取（见 normalizeOutboundLocked），不再下发/落盘
 	ModelCatalog           ModelCatalogConfig `json:"modelCatalog,omitempty"`           // 模型能力元数据目录（默认 models.dev）
 	AgentRemote            AgentRemoteConfig  `json:"agentRemote,omitempty"`            // AI 助手远程暴露面（REST/MCP/A2A）
-	mu                     sync.RWMutex
-	path                   string
+	// OpenBrowserOnStart 控制启动时是否在系统默认浏览器打开控制台。
+	// nil = 默认尝试（桌面开箱即用；无桌面环境命令缺失时静默跳过），
+	// false = 不打开（子进程托管场景），true = 强制尝试。
+	OpenBrowserOnStart *bool `json:"openBrowserOnStart,omitempty"`
+	mu                 sync.RWMutex
+	path               string
 }
 
 // ModelCatalogConfig 控制模型能力元数据目录：模型刷新时按模型 id 匹配目录条目，
@@ -335,6 +339,12 @@ func (c *Config) saveLocked() error {
 
 	raw["host"] = c.Host
 	raw["port"] = c.Port
+	// openBrowserOnStart：显式配置过才落盘（nil 删键），热重载保存不丢失。
+	if c.OpenBrowserOnStart != nil {
+		raw["openBrowserOnStart"] = *c.OpenBrowserOnStart
+	} else {
+		delete(raw, "openBrowserOnStart")
+	}
 	raw["panelAccessToken"] = c.PanelAccessToken
 	raw["databasePath"] = c.DatabasePath
 	raw["logLevel"] = c.LogLevel

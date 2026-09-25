@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -217,5 +218,44 @@ func TestIsValidPanelAccessToken(t *testing.T) {
 	}
 	if empty.IsValidPanelAccessToken("") {
 		t.Fatal("unconfigured panel token must reject empty token too")
+	}
+}
+
+
+// openBrowserOnStart 三态：不写键 = nil（默认尝试）、显式 true/false 原样读回，
+// Save 后落盘不丢失；nil 时 Save 不写键。
+func TestOpenBrowserOnStartTriState(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	if err := os.WriteFile(path, []byte(`{"port": 8765}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.OpenBrowserOnStart != nil {
+		t.Fatalf("absent key must load as nil, got %v", *cfg.OpenBrowserOnStart)
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(path)
+	if strings.Contains(string(raw), "openBrowserOnStart") {
+		t.Fatalf("nil must not persist the key: %s", raw)
+	}
+
+	closed := false
+	cfg.OpenBrowserOnStart = &closed
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.OpenBrowserOnStart == nil || *reloaded.OpenBrowserOnStart {
+		t.Fatalf("explicit false must round-trip: %#v", reloaded.OpenBrowserOnStart)
 	}
 }
