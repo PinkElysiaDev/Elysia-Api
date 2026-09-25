@@ -98,6 +98,11 @@ export interface AgentDocument {
   dataUrl?: string;
 }
 
+/** 是否为可预览的图片附件（与后端 renderAgentDocument 的 image/* 判定一致）。 */
+export function isImageDocument(doc: AgentDocument): boolean {
+  return !!doc.dataUrl && (doc.mime ?? "").startsWith("image/");
+}
+
 export interface AgentUserContent {
   text?: string;
   documents?: AgentDocument[];
