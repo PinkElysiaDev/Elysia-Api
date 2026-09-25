@@ -888,3 +888,76 @@ func TestRemoteThinkingEffortWhitelistAndSchema(t *testing.T) {
 		}
 	}
 }
+
+
+// 远程面建会话继承最近会话的模型/思考设置；显式指定的模型不被覆盖。
+func TestRemoteSessionInheritsRecentSettings(t *testing.T) {
+	s := newAgentIntegrationServer(t)
+	ctx := t.Context()
+
+	// 无历史会话：保持空设置（webui 首条消息前引导选择）。
+	// 独立库验证——同库先建的其他会话会在 Windows 时钟粒度下与种子
+	// 会话同 updated_at，干扰「最近会话」的选取。
+	t.Run("no history stays empty", func(t *testing.T) {
+		empty := newAgentIntegrationServer(t)
+		fresh, err := empty.createRemoteAgentSession(t.Context(), "", "", "", nil)
+		if err != nil {
+			t.Fatalf("fresh create: %v", err)
+		}
+		if fresh.Settings.ModelName != "" {
+			t.Fatalf("no history must stay empty, got %q", fresh.Settings.ModelName)
+		}
+	})
+
+	// 用户在 webui（管理端）建会话并选好模型/思考/权限档。
+	seeded, err := s.store.CreateAgentSession(ctx, storage.AgentSessionUpsert{
+		Mode: "create",
+		Settings: agent.Settings{
+			ModelSourceID: "src-1", ModelName: "gpt-x", ThinkingEnabled: true, ThinkingEffort: "xhigh",
+			AllowSave: "always",
+		},
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// 远程 create 不带 settings：整体继承（含权限档），凭证标记不带。
+	inherited, err := s.createRemoteAgentSession(ctx, "", "", "", nil)
+	if err != nil {
+		t.Fatalf("inherit create: %v", err)
+	}
+	if inherited.Settings.ModelSourceID != "src-1" || inherited.Settings.ModelName != "gpt-x" ||
+		!inherited.Settings.ThinkingEnabled || inherited.Settings.ThinkingEffort != "xhigh" {
+		t.Fatalf("settings not inherited: %+v", inherited.Settings)
+	}
+	if inherited.Settings.AllowSave != "always" {
+		t.Fatalf("permissions not inherited: %+v", inherited.Settings)
+	}
+	if inherited.Settings.TestAPIKeySet {
+		t.Fatal("credential marker must not be inherited")
+	}
+
+	// 显式 settings 模型为空：只补模型/思考，其余显式字段保留。
+	explicit := agent.Settings{ModelSourceID: "", ModelName: "", AllowSave: "never"}
+	merged, err := s.createRemoteAgentSession(ctx, "", "", "", &explicit)
+	if err != nil {
+		t.Fatalf("merge create: %v", err)
+	}
+	if merged.Settings.ModelName != "gpt-x" || !merged.Settings.ThinkingEnabled {
+		t.Fatalf("model/thinking must be filled in: %+v", merged.Settings)
+	}
+	if merged.Settings.AllowSave != "never" {
+		t.Fatalf("explicit fields must win: %+v", merged.Settings)
+	}
+
+	// 显式指定了模型：完全不覆盖。
+	own := agent.Settings{ModelSourceID: "src-2", ModelName: "own-model"}
+	kept, err := s.createRemoteAgentSession(ctx, "", "", "", &own)
+	if err != nil {
+		t.Fatalf("own create: %v", err)
+	}
+	if kept.Settings.ModelName != "own-model" || kept.Settings.ThinkingEnabled {
+		t.Fatalf("explicit model must not be overridden: %+v", kept.Settings)
+	}
+	_ = seeded
+}

@@ -118,7 +118,34 @@ func (s *Server) createRemoteAgentSession(ctx context.Context, title, mode, prot
 	if settings != nil {
 		upsert.Settings = *settings
 	}
+	s.inheritRecentSessionSettings(ctx, &upsert.Settings, settings == nil)
 	return s.store.CreateAgentSession(ctx, upsert)
+}
+
+// inheritRecentSessionSettings 在远程面建会话时继承「最近更新的会话」的
+// 模型/思考设置（调用方未显式给出时）。远程客户端（MCP create、A2A 新
+// 线程）通常不了解模型配置；用户在 webui 选过一次后，后续远程会话开箱
+// 即用，不再撞「模型源 "" 下没有找到模型」。settings 完全缺省
+// （inheritAll）时连同权限档一起继承（单用户偏好）；显式传入时只补空缺
+// 的模型/思考字段。
+func (s *Server) inheritRecentSessionSettings(ctx context.Context, settings *agent.Settings, inheritAll bool) {
+	recent, err := s.store.ListAgentSessions(ctx)
+	if err != nil || len(recent) == 0 {
+		return
+	}
+	base := recent[0].Settings
+	base.TestAPIKeySet = false // 只读凭证标记，新会话没有测试凭证
+	if inheritAll {
+		*settings = base
+		return
+	}
+	if settings.ModelSourceID != "" || settings.ModelName != "" {
+		return // 调用方显式指定了模型，其余字段尊重传入值
+	}
+	settings.ModelSourceID = base.ModelSourceID
+	settings.ModelName = base.ModelName
+	settings.ThinkingEnabled = base.ThinkingEnabled
+	settings.ThinkingEffort = base.ThinkingEffort
 }
 
 // updateRemoteAgentSession 标题/设置增量更新（思考等级校验同管理端点）。
