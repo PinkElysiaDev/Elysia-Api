@@ -841,3 +841,50 @@ func TestMCPClearMessagesRejectsNegativeAfterSeq(t *testing.T) {
 		t.Fatalf("negative afterSeq must be isError: %v", payload)
 	}
 }
+
+// 远程面思考档位白名单与管理端同口径（MCP/A2A/远程 REST 共用）：xhigh
+// 合法、未知值拒绝；agent_update_session 的 schema enum 与之同步。
+func TestRemoteThinkingEffortWhitelistAndSchema(t *testing.T) {
+	s := newAgentIntegrationServer(t)
+	created, err := s.store.CreateAgentSession(t.Context(), storage.AgentSessionUpsert{Mode: "create"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	xhigh := "xhigh"
+	if _, err := s.updateRemoteAgentSession(t.Context(), created.ID, nil, &agent.SettingsPatch{ThinkingEffort: &xhigh}); err != nil {
+		t.Fatalf("xhigh must pass the remote whitelist: %v", err)
+	}
+	ultra := "ultra"
+	if _, err := s.updateRemoteAgentSession(t.Context(), created.ID, nil, &agent.SettingsPatch{ThinkingEffort: &ultra}); err == nil {
+		t.Fatal("unknown effort must be rejected on the remote surface")
+	}
+
+	// MCP schema enum 内容（此前只断言工具名，enum 漂移无人守护）。
+	ops := newOpsTestServer(t)
+	_, listed, _ := mcpCall(t, ops, mcpRequest(1, "tools/list", nil), nil)
+	tools := listed["result"].(map[string]any)["tools"].([]any)
+	var enum []any
+	for _, item := range tools {
+		tool := item.(map[string]any)
+		if tool["name"] != "agent_update_session" {
+			continue
+		}
+		schema := tool["inputSchema"].(map[string]any)
+		props := schema["properties"].(map[string]any)
+		settings := props["settings"].(map[string]any)
+		effort := settings["properties"].(map[string]any)["thinkingEffort"].(map[string]any)
+		enum = effort["enum"].([]any)
+	}
+	if enum == nil {
+		t.Fatal("agent_update_session schema missing thinkingEffort enum")
+	}
+	values := map[string]bool{}
+	for _, item := range enum {
+		values[item.(string)] = true
+	}
+	for _, want := range []string{"low", "medium", "high", "xhigh", "max", "adaptive"} {
+		if !values[want] {
+			t.Fatalf("thinkingEffort enum missing %q: %v", want, enum)
+		}
+	}
+}

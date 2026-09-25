@@ -11,6 +11,20 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
 
 ## Unreleased
 
+### 近期改动（待发版整理）
+
+- **启动自动打开控制台**：监听建立后在系统默认浏览器打开 `http://<host>:<port>/ui/`，
+  通配监听地址归一回环、IPv6 自动加方括号；config.json 顶层 `openBrowserOnStart`
+  （缺省尝试 / false 关闭）随 Save 持久化并经 Reload 传播。
+- **AI 助手思考档位新增 xhigh（极高）**：管理端/远程面/MCP schema/前端五处收口，
+  relay 预算映射与 max 共享 32000 上限。
+- **AI 助手消息图片缩略图与灯箱**：气泡内图片附件渲染缩略网格（单图保比例、
+  多图限宽方格），点击进入全屏灯箱（缩放/拖拽/翻页/键盘）；交互核心提取为共享
+  LightboxStage，用量日志详情灯箱行为不变；编辑重发不再丢失附件。
+- **bug 修复**：`Config.Reload` 漏拷 openBrowserOnStart/agentRemote 导致热重载后
+  保存抹掉手写配置；data: URL 隐藏「新标签打开」（Chromium 禁止顶层导航）；
+  灯箱关闭动画期标题/工具栏边缘闪烁；isImageDocument 与后端文本优先判定对齐。
+
 ### 质量轮回归修复
 
 对第二轮质量轮 18 个提交的回归审查，修复四处引入的缺陷：

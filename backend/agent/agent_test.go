@@ -1341,3 +1341,27 @@ func newTestEngineWithOptions(caller StreamCaller, store Store, opts Options, to
 	}
 	return NewEngine(caller, store, registry, nil, func(*Session) string { return "test prompt" }, opts)
 }
+
+// 方案陈旧计数节奏：第 planStaleCalls 轮提醒一次并复位，空方案恒不提醒；
+// update_plan 归零（外部置 0）后重新累计。
+func TestAdvancePlanStaleRoundsCadence(t *testing.T) {
+	session := &Session{Plan: []PlanStep{{Title: "步骤"}}}
+	for round := 1; round < planStaleCalls; round++ {
+		if advancePlanStaleRounds(session) {
+			t.Fatalf("round %d must not nudge before planStaleCalls", round)
+		}
+	}
+	if !advancePlanStaleRounds(session) {
+		t.Fatalf("round %d must nudge", planStaleCalls)
+	}
+	if session.PlanStaleRounds != 0 {
+		t.Fatalf("counter must reset after nudge, got %d", session.PlanStaleRounds)
+	}
+	if advancePlanStaleRounds(session) {
+		t.Fatal("round right after nudge must not nudge again")
+	}
+	empty := &Session{}
+	if advancePlanStaleRounds(empty) || empty.PlanStaleRounds != 0 {
+		t.Fatal("empty plan must never advance or nudge")
+	}
+}

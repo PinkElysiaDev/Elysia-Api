@@ -96,7 +96,7 @@ Put `elysia-api-windows-amd64.exe` in a directory and run it:
 .\elysia-api-windows-amd64.exe --config .\config.json
 ```
 
-If `config.json` is in the same directory as the exe, double-clicking the exe also works because the default config path is `config.json` in the current working directory. When `config.json` is absent on first launch, a default with a random `panelAccessToken` is created automatically — check the startup log for the generated token.
+If `config.json` is in the same directory as the exe, double-clicking the exe also works because the default config path is `config.json` in the current working directory. When `config.json` is absent on first launch, a default with a random `panelAccessToken` is created automatically — check the startup log for the generated token. After the listener is bound, the console opens in the system's default browser; set `"openBrowserOnStart": false` in config.json to disable this (headless hosts are skipped silently when no opener command exists).
 
 ### Linux
 

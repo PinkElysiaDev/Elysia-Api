@@ -6,6 +6,7 @@
   "logLevel": "info",
   "httpTimeout": 120,
   "secretKeyPath": ".master-key",
+  "openBrowserOnStart": true,
   "agentRemote": {
     "enabled": true,
     "publicUrl": ""

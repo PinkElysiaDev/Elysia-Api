@@ -73,11 +73,14 @@ elysia-api/
   "databasePath": "elysia-api.sqlite3",
   "logLevel": "info",
   "httpTimeout": 120,
-  "secretKeyPath": ".master-key"
+  "secretKeyPath": ".master-key",
+  "openBrowserOnStart": true
 }
 ```
 
 `databasePath` 和 `secretKeyPath` 使用相对路径时，会按 `config.json` 所在目录解析。
+`openBrowserOnStart` 控制启动时是否自动在系统默认浏览器打开控制台（缺省为尝试打开；
+被其他程序托管或无桌面环境时可设 `false`，打开命令缺失时静默跳过）。
 
 ### Windows
 
@@ -87,7 +90,7 @@ elysia-api/
 .\elysia-api-windows-amd64.exe --config .\config.json
 ```
 
-如果 `config.json` 与 exe 位于同一目录，也可以直接双击 exe；未传 `--config` 时程序会读取当前目录下的 `config.json`。首次启动若该文件不存在会自动创建（带随机 `panelAccessToken`，见启动日志）。
+如果 `config.json` 与 exe 位于同一目录，也可以直接双击 exe；未传 `--config` 时程序会读取当前目录下的 `config.json`。首次启动若该文件不存在会自动创建（带随机 `panelAccessToken`，见启动日志），随后自动在默认浏览器打开控制台（`openBrowserOnStart: false` 可关闭）。
 
 ### Linux
 

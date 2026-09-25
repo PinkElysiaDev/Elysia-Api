@@ -73,7 +73,8 @@ Create the runtime configuration from `config.json.example` in the repository ro
   "databasePath": "elysia-api.sqlite3",
   "logLevel": "info",
   "httpTimeout": 120,
-  "secretKeyPath": ".master-key"
+  "secretKeyPath": ".master-key",
+  "openBrowserOnStart": true
 }
 ```
 
@@ -87,7 +88,7 @@ Place `elysia-api-windows-amd64.exe` and `config.json` in the same directory, th
 .\elysia-api-windows-amd64.exe --config .\config.json
 ```
 
-If `config.json` is in the same directory as the executable, you can also double-click the executable. Without `--config`, the program reads `config.json` from the current directory. If the file does not exist on first startup, it is created automatically with a random `panelAccessToken` (see the startup log).
+If `config.json` is in the same directory as the executable, you can also double-click the executable. Without `--config`, the program reads `config.json` from the current directory. If the file does not exist on first startup, it is created automatically with a random `panelAccessToken` (see the startup log), and the console is then opened in the default browser (set `openBrowserOnStart: false` to disable).
 
 ### Linux
 
