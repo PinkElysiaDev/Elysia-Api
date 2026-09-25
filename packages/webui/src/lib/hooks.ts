@@ -19,6 +19,9 @@ export const POLL = {
   SOURCE_FAST: 3_000,
   /** 会话列表轻轮询：运行中轮次的状态可感知。 */
   AGENT_SESSION_FAST: 3_000,
+  /** 打开中会话的外部更新轮询（远程面/插件驱动的轮次不经过 webui 的 SSE，
+   *  只能靠拉取感知）；会话自身在跑时用 AGENT_SESSION_FAST 加速。 */
+  AGENT_SESSION_IDLE: 15_000,
 } as const
 
 const defaultConfig: SWRConfiguration = {

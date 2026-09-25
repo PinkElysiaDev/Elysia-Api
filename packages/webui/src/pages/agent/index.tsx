@@ -154,6 +154,22 @@ export function AgentPage() {
     return () => window.clearInterval(timer);
   }, [live.running, mutateSessions]);
 
+  /** 外部更新轮询：MCP/A2A/插件等远程面驱动的轮次不经过本页的 SSE，
+   *  消息与待批动作只落库不推送——打开中的会话定时拉取详情感知它们
+   *  （refreshSession 会顺带触发审批卡回灌）。自己的轮次走 SSE，跳过
+   *  轮询以免全量替换与流式 append 竞争；远程在跑（会话 running）时
+   *  加速到快档。 */
+  useEffect(() => {
+    if (!activeId || live.running) return;
+    const interval = session?.status === "running"
+      ? POLL.AGENT_SESSION_FAST
+      : POLL.AGENT_SESSION_IDLE;
+    const timer = window.setInterval(() => {
+      void refreshSession(activeId);
+    }, interval);
+    return () => window.clearInterval(timer);
+  }, [activeId, live.running, session?.status, refreshSession]);
+
   /** 切换会话：标签页与轮次定位状态归零。 */
   useEffect(() => {
     setTabs([]);
