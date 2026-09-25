@@ -8,20 +8,23 @@ package server
 import (
 	"fmt"
 	"log"
+	"net"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
 // consoleLaunchURL 由监听地址推导浏览器可访问的控制台地址：通配监听
-// （空/0.0.0.0/::/localhost）归一为回环，避免浏览器解析到未监听的栈。
+// （空/0.0.0.0/::/localhost）归一为回环，避免浏览器解析到未监听的栈；
+// host:port 用 JoinHostPort 拼接——IPv6 字面量会自动加方括号。
 func consoleLaunchURL(host string, port int) string {
 	browserHost := strings.TrimSpace(host)
 	switch strings.ToLower(browserHost) {
 	case "", "0.0.0.0", "::", "[::]", "localhost":
 		browserHost = "127.0.0.1"
 	}
-	return fmt.Sprintf("http://%s:%d/ui/", browserHost, port)
+	return fmt.Sprintf("http://%s/ui/", net.JoinHostPort(browserHost, strconv.Itoa(port)))
 }
 
 // launchBrowser 尽力打开系统默认浏览器；命令缺失（典型为无桌面服务器）
@@ -45,13 +48,16 @@ func launchBrowser(url string) bool {
 }
 
 // launchConsoleBrowser 按配置打开控制台（nil = 默认尝试）。必须在监听
-// 建立之后调用——起不来就不弹窗。
+// 建立之后调用——起不来就不弹窗。打开是尽力而为（Start 成功不代表真的
+// 打开了），日志措辞与失败分支都保持可排查。
 func launchConsoleBrowser(openBrowser *bool, host string, port int) {
 	if openBrowser != nil && !*openBrowser {
 		return
 	}
 	url := consoleLaunchURL(host, port)
 	if launchBrowser(url) {
-		log.Printf("已在默认浏览器打开控制台: %s（config.json 可设 openBrowserOnStart: false 关闭）", url)
+		log.Printf("已尝试在默认浏览器打开控制台: %s（config.json 可设 openBrowserOnStart: false 关闭）", url)
+	} else {
+		log.Printf("未拉起浏览器（无可用打开命令或启动失败），控制台地址: %s", url)
 	}
 }

@@ -18,6 +18,9 @@ func TestConsoleLaunchURL(t *testing.T) {
 		{"127.0.0.1", 8765, "http://127.0.0.1:8765/ui/"},
 		{"192.168.1.10", 8765, "http://192.168.1.10:8765/ui/"},
 		{"gw.example.com", 8765, "http://gw.example.com:8765/ui/"},
+		// 显式 IPv6 字面量必须加方括号，否则浏览器无法解析。
+		{"::1", 8765, "http://[::1]:8765/ui/"},
+		{"2001:db8::1", 8765, "http://[2001:db8::1]:8765/ui/"},
 	} {
 		if got := consoleLaunchURL(tc.host, tc.port); got != tc.want {
 			t.Fatalf("consoleLaunchURL(%q, %d) = %q want %q", tc.host, tc.port, got, tc.want)
