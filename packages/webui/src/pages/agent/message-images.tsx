@@ -10,6 +10,7 @@ export function MessageImages({ documents }: { documents: AgentDocument[] }) {
   const [preview, setPreview] = useState<number | null>(null);
   if (images.length === 0) return null;
   const current = preview != null ? images[preview] : null;
+  const multiColumn = images.length > 1;
   return (
     <>
       {/* 单图保比例展示（截长图不裁切）；多图方格裁切缩略、点击看原图。
@@ -18,9 +19,9 @@ export function MessageImages({ documents }: { documents: AgentDocument[] }) {
       <div
         className={cn(
           "grid gap-1.5",
-          images.length === 1
-            ? "grid-cols-1"
-            : "max-w-[300px] " + (images.length <= 4 ? "grid-cols-2" : "grid-cols-3"),
+          multiColumn
+            ? `max-w-[300px] ${images.length <= 4 ? "grid-cols-2" : "grid-cols-3"}`
+            : "grid-cols-1",
         )}
       >
         {images.map((doc, index) => (
@@ -39,7 +40,7 @@ export function MessageImages({ documents }: { documents: AgentDocument[] }) {
               draggable={false}
               className={cn(
                 "w-full object-cover",
-                images.length === 1 ? "max-h-56 object-contain" : "aspect-square",
+                multiColumn ? "aspect-square" : "max-h-56 object-contain",
               )}
             />
           </button>
@@ -48,7 +49,7 @@ export function MessageImages({ documents }: { documents: AgentDocument[] }) {
       <LightboxStage
         open={preview != null}
         src={current?.dataUrl ?? null}
-        name={current?.name ?? `图片 ${(preview ?? 0) + 1}`}
+        name={current?.name ?? (preview != null ? `图片 ${preview + 1}` : "")}
         index={preview}
         total={images.length}
         onNavigate={setPreview}

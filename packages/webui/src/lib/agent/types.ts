@@ -98,9 +98,10 @@ export interface AgentDocument {
   dataUrl?: string;
 }
 
-/** 是否为可预览的图片附件（与后端 renderAgentDocument 的 image/* 判定一致）。 */
+/** 是否为可预览的图片附件（与后端 renderAgentDocument 的 image/* 判定一致；
+ *  同时带 text 的文档后端按文本材料发给模型，前端同样不当图片渲染）。 */
 export function isImageDocument(doc: AgentDocument): boolean {
-  return !!doc.dataUrl && (doc.mime ?? "").startsWith("image/");
+  return !doc.text && !!doc.dataUrl && (doc.mime ?? "").startsWith("image/");
 }
 
 export interface AgentUserContent {

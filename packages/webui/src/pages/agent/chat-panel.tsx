@@ -89,6 +89,8 @@ export function ChatPanel({
     text: string;
   } | null>(null);
   const [saving, setSaving] = useState(false);
+  // 编辑重发期间的草稿附件备份（取消编辑时恢复）。
+  const editDraftBackupRef = useRef<AgentDocument[] | null>(null);
   const lastSentRef = useRef<{
     content: string;
     documents: AgentDocument[];
@@ -234,6 +236,29 @@ export function ChatPanel({
     setShowJumpBottom(false);
   };
 
+  // 取消编辑：恢复进入编辑前暂存的草稿附件。
+  const handleEditMessageChange = (next: {
+    seq: number;
+    text: string;
+  } | null) => {
+    if (next == null && editDraftBackupRef.current != null) {
+      setDocuments(editDraftBackupRef.current);
+      editDraftBackupRef.current = null;
+    }
+    setEditingMessage(next);
+  };
+
+  // 编辑重发：附件随消息一起重发（原消息附件已在进入编辑时灌入 composer）。
+  const handleEditSend = (payload: {
+    content?: string;
+    documents?: AgentDocument[];
+    afterSeq?: number;
+  }) => {
+    onSend({ ...payload, documents });
+    editDraftBackupRef.current = null;
+    setDocuments([]);
+  };
+
   const messageActions = useMemo(
     () => ({
       onRetry: (message: AgentMessage) => {
@@ -250,7 +275,14 @@ export function ChatPanel({
       },
       onEditResend: (message: AgentMessage) => {
         if (busy) return;
-        const content = message.content as { text?: string };
+        const content = message.content as {
+          text?: string;
+          documents?: AgentDocument[];
+        };
+        // 暂存当前草稿附件：编辑态把原消息的附件灌进 composer 供增删，
+        // 取消编辑时恢复，避免静默丢掉未发送的草稿。
+        editDraftBackupRef.current = documents;
+        setDocuments(content.documents ?? []);
         setEditingMessage({ seq: message.seq, text: content.text ?? "" });
       },
       onRegenerate: (message: AgentMessage) => {
@@ -259,7 +291,7 @@ export function ChatPanel({
         onSend({ afterSeq: message.seq - 1 });
       },
     }),
-    [busy, onSend],
+    [busy, onSend, documents, setDocuments],
   );
 
   // 与 live.error 同文案的最后一条系统错误消息 seq（渲染抑制用，见消息流注释）。
@@ -465,10 +497,10 @@ export function ChatPanel({
             usage={usageStat}
             contextLimit={contextLimit}
             editingMessage={editingMessage}
-            onEditMessageChange={setEditingMessage}
+            onEditMessageChange={handleEditMessageChange}
             onSubmit={handleSubmit}
             onStop={onStop}
-            onSend={onSend}
+            onSend={handleEditSend}
             onSettingsSave={handleSettingsSave}
             onModelSelect={handleModelSelect}
           />

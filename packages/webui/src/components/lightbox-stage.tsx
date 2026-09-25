@@ -269,7 +269,7 @@ export function LightboxStage({
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center gap-2.5 bg-gradient-to-t from-black/70 via-black/30 to-transparent pb-4 pt-10">
           {total > 1 && bottomBar}
           <div className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-white/15 bg-black/50 px-1 py-1 shadow-lg backdrop-blur">
-            {src ? (
+            {src && index != null ? (
               <>
                 <button
                   type="button"
@@ -309,9 +309,13 @@ export function LightboxStage({
                 <a href={src} download={name} title={`下载 ${name}`} aria-label="下载" className={LIGHTBOX_TOOL_CLS}>
                   <Download className="h-4 w-4" aria-hidden />
                 </a>
-                <a href={src} target="_blank" rel="noreferrer" title="在新标签页打开" aria-label="在新标签页打开" className={LIGHTBOX_TOOL_CLS}>
-                  <ExternalLink className="h-4 w-4" aria-hidden />
-                </a>
+                {/* Chromium 禁止顶层导航到 data: URL——agent 消息图片全是
+                    dataUrl，该入口只在 http(s)/blob 源下展示。 */}
+                {!src.startsWith("data:") && (
+                  <a href={src} target="_blank" rel="noreferrer" title="在新标签页打开" aria-label="在新标签页打开" className={LIGHTBOX_TOOL_CLS}>
+                    <ExternalLink className="h-4 w-4" aria-hidden />
+                  </a>
+                )}
               </>
             ) : (
               <span className="px-3.5 py-1.5 text-2xs text-white/60">{failed ? '图片获取失败' : '加载中…'}</span>

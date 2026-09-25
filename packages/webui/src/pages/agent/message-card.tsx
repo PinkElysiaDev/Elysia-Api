@@ -69,7 +69,10 @@ export function MessageCard({
     const content = message.content as AgentUserContent;
     const text = content.text ?? "";
     const documents = content.documents ?? [];
-    const files = documents.filter((doc) => !isImageDocument(doc));
+    // chip 回退编号沿用原始 documents 下标（与图片附件共存的场景编号不断层）。
+    const files = documents
+      .map((doc, index) => ({ doc, index }))
+      .filter((item) => !isImageDocument(item.doc));
     return (
       <div className="group flex flex-col items-end gap-1">
         <div className="max-w-bubble space-y-1.5 rounded-2xl rounded-br-md bg-wash px-4 py-2.5 text-sm">
@@ -79,7 +82,7 @@ export function MessageCard({
           <MessageImages documents={documents} />
           {files.length > 0 ? (
             <div className="flex flex-wrap gap-1">
-              {files.map((doc, index) => (
+              {files.map(({ doc, index }) => (
                 <span
                   key={index}
                   className="inline-flex items-center gap-1 rounded-md bg-card px-1.5 py-0.5 text-2xs text-muted-foreground"
