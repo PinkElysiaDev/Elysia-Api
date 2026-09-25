@@ -17,11 +17,15 @@ import (
 
 // consoleLaunchURL 由监听地址推导浏览器可访问的控制台地址：通配监听
 // （空/0.0.0.0/::/localhost）归一为回环，避免浏览器解析到未监听的栈；
-// host:port 用 JoinHostPort 拼接——IPv6 字面量会自动加方括号。
+// Go 监听地址的 "[::1]" 方括号写法先剥掉，host:port 统一交给 JoinHostPort
+// 拼接——IPv6 字面量会自动加回方括号（直接拼会双重包裹）。
 func consoleLaunchURL(host string, port int) string {
 	browserHost := strings.TrimSpace(host)
+	if strings.HasPrefix(browserHost, "[") && strings.HasSuffix(browserHost, "]") {
+		browserHost = browserHost[1 : len(browserHost)-1]
+	}
 	switch strings.ToLower(browserHost) {
-	case "", "0.0.0.0", "::", "[::]", "localhost":
+	case "", "0.0.0.0", "::", "localhost":
 		browserHost = "127.0.0.1"
 	}
 	return fmt.Sprintf("http://%s/ui/", net.JoinHostPort(browserHost, strconv.Itoa(port)))
