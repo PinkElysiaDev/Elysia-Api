@@ -121,10 +121,10 @@ func microCompact(conversation []relay.MaheshvaraMessage) ([]relay.MaheshvaraMes
 			continue
 		}
 		part := message.Content[0]
-		if part.ToolOutput == "" || strings.Contains(part.ToolOutput, "旧工具结果已清除") {
+		if part.ToolOutput == "" || strings.Contains(part.ToolOutput, "旧命令结果已清除") {
 			continue
 		}
-		part.ToolOutput = `{"note":"[旧工具结果已清除，需要时请重新调用]"}`
+		part.ToolOutput = `{"note":"[旧命令结果已清除，需要时请重新运行]"}`
 		out[index].Content = []relay.MaheshvaraContentPart{part}
 		cleared++
 	}

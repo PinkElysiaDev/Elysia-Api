@@ -183,7 +183,7 @@ func mcpToolset() []mcpTool {
 		{
 			name:        "agent_send_message",
 			title:       "发送消息（驱动一轮）",
-			description: "向会话发送用户消息并驱动 AI 助手完整一轮（可能包含多次模型调用与工具执行）。期间推送进度通知；最终返回助手终稿、轮次状态（waiting_approval=有待批动作）、用量。轮次可能持续数分钟。",
+			description: "向会话发送用户消息并驱动 AI 助手完整一轮（可能包含多次模型调用与命令执行）。期间推送进度通知；最终返回助手终稿、轮次状态（waiting_approval=有待批动作）、用量。轮次可能持续数分钟。内置助手经 bash 运行 elysia CLI 完成网关管理（模型组/API Key/模型源/协议等）——把运维意图作为消息文本直接下发即可，无需你具备对应工具。",
 			schema: objectSchema(map[string]any{
 				"sessionId": map[string]any{"type": "string", "description": "会话 id"},
 				"text":      map[string]any{"type": "string", "description": "消息正文"},

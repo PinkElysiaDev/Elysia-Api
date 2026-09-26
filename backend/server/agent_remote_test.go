@@ -889,7 +889,6 @@ func TestRemoteThinkingEffortWhitelistAndSchema(t *testing.T) {
 	}
 }
 
-
 // 远程面建会话继承最近会话的模型/思考设置；显式指定的模型不被覆盖。
 func TestRemoteSessionInheritsRecentSettings(t *testing.T) {
 	s := newAgentIntegrationServer(t)

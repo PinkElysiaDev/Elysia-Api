@@ -577,7 +577,7 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 	}
 
 	// 到达循环上限：如实告知，等待用户指示。
-	note := fmt.Sprintf("已达到单轮工具循环上限（%d 次模型调用），请检查工具结果或继续对话", e.opts.MaxModelCalls)
+	note := fmt.Sprintf("已达到单轮命令循环上限（%d 次模型调用），请检查命令结果或继续对话", e.opts.MaxModelCalls)
 	_, _ = e.store.AppendMessage(ctx, sessionID, RoleSystem, SystemContent{Kind: "info", Text: note}, "", nil)
 	emitEvent(events, Event{Type: EventStatus, Text: note})
 }
@@ -832,7 +832,21 @@ const planModeDenialMessage = "计划模式已开启：修改与出站操作暂�
 
 // formatGateNote 把一条待批命令渲染为审批卡行（命令 + 权限档）。
 func formatGateNote(note GateNote) string {
-	return note.Command + "（权限档：" + note.PermissionKey + "）"
+	return note.Command + "（权限档：" + permissionKeyLabel(note.PermissionKey) + "）"
+}
+
+// permissionKeyLabel 给内部权限键配中文释义——审批卡模型与用户同见，
+// 裸键名（save/live_test/delete）读不出含义。
+func permissionKeyLabel(key string) string {
+	switch key {
+	case PermissionKeySave:
+		return "save=写入"
+	case PermissionKeyLiveTest:
+		return "live_test=真实出站"
+	case PermissionKeyDelete:
+		return "delete=删除"
+	}
+	return key
 }
 
 // probeGatesFor 取路由型工具的探针结果；未实现 GateProbe 或解析失败

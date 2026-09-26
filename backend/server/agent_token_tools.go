@@ -105,9 +105,9 @@ func (t *createAPIKeyTool) Meta() agent.ToolMeta {
 func (t *createAPIKeyTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
 		Type: "function", Name: agentToolCreateAPIKey,
-		Description: "创建 API Key，即客户端调用 /v1 接口用的推理访问令牌（用户审批后生效）。secret 留空则自动生成随机明文，" +
-			"完整明文只在本次结果里返回一次，请提醒用户立即保存。allowedGroups 为空表示可访问全部模型组（扩权面大，创建前先向用户确认授权范围）。" +
-			"远程访问 Key（驱动 AI 助手的那类）由用户在运行配置页管理，elysia key 命令不能创建。",
+		Description: "创建 API Key，即客户端调用 /v1 接口用的推理访问令牌（用户审批后生效）。用户给定 secret 明文就按给定值原样创建" +
+			"（弱口令可提醒风险，但不代为拒绝）；留空则自动生成随机明文。完整明文只在本次结果里返回一次，请提醒用户立即保存。" +
+			"allowedGroups 为空表示可访问全部模型组（扩权面大，创建前先向用户确认授权范围）。远程访问 Key（驱动 AI 助手的那类）由用户在运行配置页管理，elysia key 命令不能创建。",
 		Parameters: objectSchema(map[string]any{
 			"name":          map[string]any{"type": "string", "description": "Key 名称（主键，创建后不可改）"},
 			"secret":        map[string]any{"type": "string", "description": "Key 明文；留空自动生成随机值"},

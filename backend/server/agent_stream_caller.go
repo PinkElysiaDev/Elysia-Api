@@ -144,7 +144,11 @@ func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb 
 	}
 	model, found := findCustomProtocolTestModel(ctx, store, req.ModelSourceID, req.Model)
 	if !found {
-		return nil, fmt.Errorf("模型源 %q 下没有找到模型 %q", req.ModelSourceID, req.Model)
+		if strings.TrimSpace(req.ModelSourceID) == "" || strings.TrimSpace(req.Model) == "" {
+			// 会话未配置模型：给模型可行动的指引，而不是渲染成一串空引号。
+			return nil, fmt.Errorf("会话未配置模型（模型源/模型名为空）——请提醒用户在会话设置中选择模型源与模型后重试")
+		}
+		return nil, fmt.Errorf("模型源 %q 下没有找到模型 %q（源不存在或模型清单未刷新；可用 elysia source ls / elysia model ls 核对，必要时 elysia source refresh 拉取）", req.ModelSourceID, req.Model)
 	}
 	if err := applyAgentPermittedKey(ctx, store, &model); err != nil {
 		return nil, err

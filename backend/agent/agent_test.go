@@ -827,10 +827,10 @@ func TestMicroCompact_ClearsOldToolResults(t *testing.T) {
 	if cleared != 2 {
 		t.Fatalf("cleared = %d", cleared)
 	}
-	if !strings.Contains(compacted[0].Content[0].ToolOutput, "旧工具结果已清除") {
+	if !strings.Contains(compacted[0].Content[0].ToolOutput, "旧命令结果已清除") {
 		t.Fatalf("oldest result not cleared: %s", compacted[0].Content[0].ToolOutput)
 	}
-	if strings.Contains(compacted[5].Content[0].ToolOutput, "旧工具结果已清除") {
+	if strings.Contains(compacted[5].Content[0].ToolOutput, "旧命令结果已清除") {
 		t.Fatal("newest result should be kept")
 	}
 }

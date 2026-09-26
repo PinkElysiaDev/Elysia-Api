@@ -453,7 +453,7 @@ func sourceCommands() []*cliCommand {
 				{"base-url", "上游 baseUrl（http/https）", false, false},
 				{"platform", "openai（默认）/anthropic/gemini/responses/custom:<协议ID>", false, false},
 				{"api-key", "API key（加密存储）", false, false},
-				{"auto-fetch", "自动拉取模型列表", true, false},
+				{"auto-fetch", "标记为自动源（模型列表创建后仍需 elysia source refresh 拉取一次）", true, false},
 				{"manual-models", "手动模型名列表（逗号分隔）", false, true},
 				{"fetch-base-url", "模型列表拉取地址（缺省同 base-url）", false, false},
 			},
@@ -483,7 +483,7 @@ func sourceCommands() []*cliCommand {
 				{"base-url", "换 baseUrl", false, false},
 				{"platform", "换平台", false, false},
 				{"api-key", "新 API key（留空=保留原值）", false, false},
-				{"auto-fetch", "自动拉取开关", true, false},
+				{"auto-fetch", "自动源标记开关", true, false},
 				{"manual-models", "整体替换手动模型列表", false, true},
 			},
 			tool: func(s *Server) agent.Tool { return &updateSourceTool{server: s} },
@@ -532,7 +532,7 @@ func sourceCommands() []*cliCommand {
 // modelCommands 单模型管理命令。
 func modelCommands() []*cliCommand {
 	return []*cliCommand{
-		&cliCommand{group: "model", name: "ls", summary: "查询模型清单（可按源过滤）",
+		&cliCommand{group: "model", name: "ls", summary: "查询本地缓存的模型清单（可按源过滤；上游实时列表走 source refresh）",
 			usage:   "elysia model ls [--source <id|名>] [--search <子串>] [--limit <n>]",
 			example: `elysia model ls --source 主源 --search gpt --limit 20`,
 			flags: []cliFlagSpec{
@@ -557,12 +557,12 @@ func modelCommands() []*cliCommand {
 				{"source", "源 id 或名称", false, false},
 				{"model", "模型 id", false, false},
 				{"name", "改名", false, false},
-				{"type", "类型", false, false},
+				{"type", "类型（llm 默认 / reranker / embedding 预留）", false, false},
 				{"max-tokens", "maxTokens", false, false},
 				{"vision", "视觉能力标记", true, false},
 				{"tools", "工具能力标记", true, false},
 				{"structured", "结构化输出标记", true, false},
-				{"thinking", "思考模式", false, false},
+				{"thinking", "思考模式（disabled 默认 / enabled / adaptive）", false, false},
 				{"enabled", "启停", true, false},
 			},
 			tool: func(s *Server) agent.Tool { return &updateModelTool{server: s} },
@@ -621,7 +621,7 @@ func groupCommands() []*cliCommand {
 			flags: []cliFlagSpec{
 				{"name", "组名（客户端调用时用的模型名）", false, false},
 				{"models", "成员模型引用（sourceId:modelId 或模型名，逗号分隔）", false, true},
-				{"strategy", "round-robin（默认）/random/sequential", false, false},
+				{"strategy", "调度策略：sequential=失败回退（按序调用，前败后补）/ random=随机起点环绕 / round-robin=游标轮询（默认）", false, false},
 				{"max-retries", "失败重试次数（默认 3）", false, false},
 				{"enabled", "默认 true", true, false},
 				{"max-concurrency", "并发上限（0=不限）", false, false},
@@ -659,7 +659,7 @@ func groupCommands() []*cliCommand {
 				{"add-models", "追加成员", false, true},
 				{"remove-models", "移除成员", false, true},
 				{"enabled", "启停", true, false},
-				{"strategy", "调度策略", false, false},
+				{"strategy", "调度策略：sequential=失败回退 / random=随机起点环绕 / round-robin=游标轮询（默认）", false, false},
 				{"max-retries", "重试次数", false, false},
 				{"max-concurrency", "并发上限", false, false},
 				{"daily-limit-requests", "每日请求上限", false, false},
@@ -757,7 +757,7 @@ func keyCommands() []*cliCommand {
 			example: `elysia key create --name mobile-app --allowed-groups 主力`,
 			flags: []cliFlagSpec{
 				{"name", "Key 名称（主键，创建后不可改）", false, false},
-				{"secret", "Key 明文；留空自动生成随机值", false, false},
+				{"secret", "Key 明文——用户给定就用给定值（弱口令可提醒但不拒绝）；留空自动生成随机值", false, false},
 				{"allowed-groups", "允许访问的模型组（逗号分隔；空=不限制）", false, true},
 				{"enabled", "默认 true", true, false},
 			},
@@ -1017,7 +1017,7 @@ func outboundCommands() []*cliCommand {
 			}},
 		&cliCommand{group: "outbound", name: "reset", summary: "恢复出站禁止段为预置默认（需审批）",
 			usage: "elysia outbound reset", example: "elysia outbound reset",
-			tool:  func(s *Server) agent.Tool { return &outboundPolicyTool{server: s} },
+			tool: func(s *Server) agent.Tool { return &outboundPolicyTool{server: s} },
 			detail: func() string {
 				return "把出站禁止 IP 段恢复为内置预置默认（环回/私网/链路本地/组播等，SSRF 防护基线）。丢弃当前自定义列表，执行前先向用户确认。"
 			},
