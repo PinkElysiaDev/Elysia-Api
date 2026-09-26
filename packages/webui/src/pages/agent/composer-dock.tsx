@@ -6,8 +6,9 @@ import type { Model, ModelSource } from "@/lib/types";
 import type { AgentDocument, AgentSettings } from "@/lib/agent/types";
 import { cn } from "@/lib/utils";
 import { ContextGauge, type SessionUsageStat } from "./context-gauge";
-import { PermissionMenu, ThinkingMenu } from "./composer-menu";
+import { PermissionMenu, SendKeyMenu, ThinkingMenu } from "./composer-menu";
 import { ModelPicker } from "./model-picker";
+import { isSendKeyEvent, sendKeyHint, useSendKeyMode } from "./send-key";
 
 export interface ComposerDockProps {
   /** 输入框文本（状态由 ChatPanel 持有：草稿回写与发送都依赖它）。 */
@@ -65,6 +66,17 @@ export function ComposerDock({
   onModelSelect,
 }: ComposerDockProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sendMode = useSendKeyMode();
+
+  /** 按发送键偏好提交主输入/编辑重发（IME 组词回车不触发）。 */
+  const submitOnKey = (
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
+    submit: () => void,
+  ) => {
+    if (!isSendKeyEvent(event, sendMode)) return;
+    event.preventDefault();
+    submit();
+  };
 
   return (
     <div className="rounded-xl border border-border bg-transparent transition-colors duration-200 hover:bg-card focus-within:border-rose focus-within:bg-card focus-within:ring-[3px] focus-within:ring-wash">
@@ -87,6 +99,16 @@ export function ComposerDock({
               onEditMessageChange({
                 ...editingMessage,
                 text: event.target.value,
+              })
+            }
+            onKeyDown={(event) =>
+              submitOnKey(event, () => {
+                if (busy || !editingMessage.text.trim()) return;
+                onSend({
+                  content: editingMessage.text,
+                  afterSeq: editingMessage.seq - 1,
+                });
+                onEditMessageChange(null);
               })
             }
           />
@@ -151,12 +173,7 @@ export function ComposerDock({
         value={text}
         disabled={busy}
         onChange={(event) => onTextChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-            event.preventDefault();
-            onSubmit();
-          }
-        }}
+        onKeyDown={(event) => submitOnKey(event, onSubmit)}
         onPaste={(event) => {
           const files = Array.from(event.clipboardData.files ?? []);
           if (files.length > 0) {
@@ -204,6 +221,7 @@ export function ComposerDock({
             disabled={busy}
             onChange={(patch) => void onSettingsSave(patch)}
           />
+          <SendKeyMenu mode={sendMode} />
           {busy ? (
             <Button
               variant="ghost"
@@ -219,7 +237,11 @@ export function ComposerDock({
               variant="ghost"
               size="icon"
               className="h-8 w-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
-              title={needsModel ? "请先选择模型" : "发送（Ctrl+Enter）"}
+              title={
+                needsModel
+                  ? "请先选择模型"
+                  : `发送（${sendKeyHint(sendMode)}；Shift+Enter 换行）`
+              }
               disabled={needsModel || (!text.trim() && documents.length === 0)}
               onClick={onSubmit}
             >

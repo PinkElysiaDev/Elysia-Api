@@ -4,4 +4,6 @@ export const STORAGE_KEYS = {
   theme: 'elysia-webui.theme',
   loginMotion: 'elysia-webui.login-motion',
   agentPanelWidth: 'elysia-webui.agent-panel-width',
+  /** agent 输入的发送键模式：enter | ctrl-enter。 */
+  agentSendKey: 'elysia-webui.agent-send-key',
 } as const

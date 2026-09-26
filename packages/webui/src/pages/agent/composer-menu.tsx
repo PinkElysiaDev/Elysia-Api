@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Gauge, Shield } from "lucide-react";
+import { Check, ChevronDown, Gauge, Keyboard, Shield } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import type {
   AgentPermission,
@@ -7,6 +7,7 @@ import type {
 } from "@/lib/agent/types";
 import { cn } from "@/lib/utils";
 import { useDismissable } from "./use-dismissable";
+import { setSendKeyMode } from "./send-key";
 import { Z_INDEX } from "@/lib/z-index";
 
 /** composer 控制条的浮层菜单外壳：胶囊触发器 + 向上弹出面板（点击外部/Escape 关闭）。 */
@@ -301,6 +302,43 @@ export function ThinkingMenu({
               }}
             />
           ))}
+        </>
+      )}
+    </MenuShell>
+  );
+}
+
+
+/** ---- 发送键偏好：Enter 直发（默认）/ Ctrl+Enter 发送 ---- */
+
+export function SendKeyMenu({ mode }: { mode: "enter" | "ctrl-enter" }) {
+  return (
+    <MenuShell
+      icon={<Keyboard className="h-3.5 w-3.5" />}
+      label={mode === "enter" ? "Enter" : "Ctrl+Enter"}
+      title="发送键设置"
+      panelLabel="发送键设置"
+    >
+      {(close) => (
+        <>
+          <MenuOption
+            selected={mode === "enter"}
+            label="Enter 发送"
+            hint="Enter 发送消息，Shift+Enter 换行（输入法组词回车不触发）"
+            onClick={() => {
+              setSendKeyMode("enter");
+              close();
+            }}
+          />
+          <MenuOption
+            selected={mode === "ctrl-enter"}
+            label="Ctrl+Enter 发送"
+            hint="Ctrl/Cmd+Enter 发送消息，Enter 换行"
+            onClick={() => {
+              setSendKeyMode("ctrl-enter");
+              close();
+            }}
+          />
         </>
       )}
     </MenuShell>

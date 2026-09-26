@@ -7,6 +7,7 @@ import {
   type AgentAskQuestion,
   type AgentPlanStep,
 } from "@/lib/agent/types";
+import { isSendKeyEvent, sendKeyHint, useSendKeyMode } from "./send-key";
 
 export function ApprovalCard({
   approval,
@@ -121,6 +122,7 @@ export function QuestionCard({
   onAnswer: (answer: string) => void;
 }) {
   const [custom, setCustom] = useState("");
+  const sendMode = useSendKeyMode();
   return (
     <div className="tone-amber w-full space-y-2 rounded-xl border px-3.5 py-3">
       <p className="text-sm font-medium">{question.question}</p>
@@ -148,9 +150,18 @@ export function QuestionCard({
         >
           <input
             className="min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1 text-xs"
-            placeholder="或者输入你的答案"
+            placeholder={`或者输入你的答案（${sendKeyHint(sendMode)} 发送）`}
             value={custom}
             onChange={(event) => setCustom(event.target.value)}
+            onKeyDown={(event) => {
+              // 单行输入：非发送键的 Enter 一律拦下（防隐式提交），发送键
+              // 交给表单提交；IME 组词回车不触发。
+              if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              if (isSendKeyEvent(event, sendMode)) {
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
           />
           <Button size="sm" type="submit" disabled={busy || !custom.trim()}>
             回答
@@ -176,6 +187,7 @@ export function PlanConfirmCard({
   onRevise: (note: string) => void;
 }) {
   const [note, setNote] = useState("");
+  const sendMode = useSendKeyMode();
   return (
     <div className="tone-amber w-full space-y-2 rounded-xl border px-3.5 py-3">
       <p className="text-sm font-medium">方案已定稿，确认后开始执行</p>
@@ -201,7 +213,7 @@ export function PlanConfirmCard({
           执行方案
         </Button>
       </div>
-      {/* 有内容就一定是修改意见：空内容不发送，Ctrl/Cmd+Enter 与按钮等效。 */}
+      {/* 有内容就一定是修改意见：空内容不发送，发送键与按钮等效（按偏好）。 */}
       <form
         className="flex items-center gap-1.5"
         onSubmit={(event) => {
@@ -213,15 +225,15 @@ export function PlanConfirmCard({
       >
         <input
           className="min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1 text-xs"
-          placeholder="不同意见（Ctrl+Enter 发送）"
+          placeholder={`不同意见（${sendKeyHint(sendMode)} 发送）`}
           value={note}
           onChange={(event) => setNote(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key !== "Enter") return;
-            // 裸 Enter 是换行习惯，只有 Ctrl/Cmd+Enter 才发送（与主输入框一致）；
-            // 不拦的话表单会隐式提交，与提示语矛盾。
+            // 单行输入：发送键提交，其余 Enter 一律拦下（防表单隐式提交
+            // 与提示语矛盾）；IME 组词回车不触发。
+            if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
             event.preventDefault();
-            if (event.ctrlKey || event.metaKey) {
+            if (isSendKeyEvent(event, sendMode)) {
               event.currentTarget.form?.requestSubmit();
             }
           }}
@@ -231,7 +243,7 @@ export function PlanConfirmCard({
           variant="ghost"
           size="icon"
           className="h-7 w-7 shrink-0 rounded-full text-muted-foreground hover:bg-primary hover:text-primary-foreground"
-          title="发送修改意见（Ctrl+Enter）"
+          title={`发送修改意见（${sendKeyHint(sendMode)}）`}
           disabled={busy || !note.trim()}
         >
           <ArrowUp className="h-3.5 w-3.5" />
