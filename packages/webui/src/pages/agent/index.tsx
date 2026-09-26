@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { ChatPanel } from "./chat-panel";
 import { ContextPanel } from "./context-panel";
 import { SessionOverview } from "./session-overview";
+import { ShortcutSettingsDialog } from "./shortcut-settings";
 import { TurnRail } from "./turn-rail";
 import { WorkspaceHeader } from "./workspace-header";
 import { useAgentDrafts } from "./use-agent-drafts";
@@ -376,7 +377,10 @@ export function AgentPage() {
           key="agent-overview"
           className="flex min-h-0 flex-1 animate-in fade-in duration-300 flex-col"
         >
-          <PageHeader title="AI 助手" />
+          <PageHeader
+            title="AI 助手"
+            actions={<ShortcutSettingsDialog />}
+          />
           <SessionOverview
             sessions={sessions ?? []}
             draftSessions={draftSessions}

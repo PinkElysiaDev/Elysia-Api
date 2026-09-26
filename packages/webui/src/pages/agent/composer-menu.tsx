@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Gauge, Keyboard, Shield } from "lucide-react";
+import { Check, ChevronDown, Gauge, Shield } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import type {
   AgentPermission,
@@ -7,7 +7,6 @@ import type {
 } from "@/lib/agent/types";
 import { cn } from "@/lib/utils";
 import { useDismissable } from "./use-dismissable";
-import { setEscActionMode, setSendKeyMode } from "./send-key";
 import { Z_INDEX } from "@/lib/z-index";
 
 /** composer 控制条的浮层菜单外壳：胶囊触发器 + 向上弹出面板（点击外部/Escape 关闭）。 */
@@ -308,70 +307,3 @@ export function ThinkingMenu({
   );
 }
 
-
-/** ---- 快捷键设置：发送键（Enter 直发默认 / Ctrl+Enter）+ 卡片 Esc ---- */
-
-export function SendKeyMenu({
-  mode,
-  escMode,
-}: {
-  mode: "enter" | "ctrl-enter";
-  escMode: "on" | "off";
-}) {
-  return (
-    <MenuShell
-      icon={<Keyboard className="h-3.5 w-3.5" />}
-      label={mode === "enter" ? "Enter" : "Ctrl+Enter"}
-      title="快捷键设置"
-      panelLabel="快捷键设置"
-    >
-      {(close) => (
-        <>
-          <p className="px-2.5 pb-0.5 pt-1 text-2xs text-muted-foreground">
-            发送键
-          </p>
-          <MenuOption
-            selected={mode === "enter"}
-            label="Enter 发送"
-            hint="Enter 发送消息，Shift+Enter 换行（输入法组词回车不触发）"
-            onClick={() => {
-              setSendKeyMode("enter");
-              close();
-            }}
-          />
-          <MenuOption
-            selected={mode === "ctrl-enter"}
-            label="Ctrl+Enter 发送"
-            hint="Ctrl/Cmd+Enter 发送消息，Enter 换行"
-            onClick={() => {
-              setSendKeyMode("ctrl-enter");
-              close();
-            }}
-          />
-          <div className="my-1 border-t border-border/60" />
-          <p className="px-2.5 pb-0.5 pt-1 text-2xs text-muted-foreground">
-            审批卡快捷键
-          </p>
-          <MenuOption
-            selected={escMode === "on"}
-            label="Esc 拒绝 / 跳过"
-            hint="审批卡 Esc=拒绝，提问卡 Esc=跳过作答（输入中有内容时不触发）"
-            onClick={() => {
-              setEscActionMode("on");
-              close();
-            }}
-          />
-          <MenuOption
-            selected={escMode === "off"}
-            label="关闭 Esc 快捷键"
-            hint="Esc 不触发卡片动作"
-            onClick={() => {
-              setEscActionMode("off");
-              close();
-            }}
-          />
-        </>
-      )}
-    </MenuShell>
-  );
-}
