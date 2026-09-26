@@ -4,6 +4,15 @@ import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+
+// 后端版本标识：取最近 git tag（publish-npm-binaries 的 worktree HEAD 即发布 tag），
+// 未打 tag 的开发构建回落 dev；经 ldflags 注入 server.AppVersion，/health 上报。
+function resolveAppVersion() {
+  const result = spawnSync('git', ['describe', '--tags', '--abbrev=0'], { cwd: repoRoot, encoding: 'utf8' })
+  const tag = result.status === 0 ? result.stdout.trim() : ''
+  return tag.replace(/^v/, '') || 'dev'
+}
+const appVersion = resolveAppVersion()
 const releaseDir = join(repoRoot, 'dist', 'standalone')
 const backendDir = join(repoRoot, 'backend')
 const webuiDist = join(repoRoot, 'packages', 'webui', 'dist')
@@ -77,7 +86,7 @@ mkdirSync(releaseDir, { recursive: true })
 
 for (const target of targets) {
   log(`Building ${target.output} (${target.goos}/${target.goarch})`)
-  run('go', ['build', '-ldflags', '-s -w', '-o', join(releaseDir, target.output), '.'], {
+  run('go', ['build', '-ldflags', `-s -w -X github.com/elysia-api/backend/server.AppVersion=${appVersion}`, '-o', join(releaseDir, target.output), '.'], {
     cwd: backendDir,
     env: {
       ...process.env,

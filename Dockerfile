@@ -20,7 +20,9 @@ COPY backend/ ./
 COPY --from=frontend-builder /workspace/packages/webui/dist ./webui/dist
 ARG TARGETOS
 ARG TARGETARCH
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -trimpath -ldflags="-s -w" -o /out/elysia-api .
+# 版本标识经 ldflags 注入 /health 上报；未传时为 dev。
+ARG APP_VERSION=dev
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -trimpath -ldflags="-s -w -X github.com/elysia-api/backend/server.AppVersion=${APP_VERSION}" -o /out/elysia-api .
 
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates \

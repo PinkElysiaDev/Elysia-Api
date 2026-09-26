@@ -1313,7 +1313,7 @@ func (s *Server) healthCheck(c *gin.Context) {
 		status = "degraded"
 		code = http.StatusServiceUnavailable
 	}
-	c.JSON(code, gin.H{"status": status, "database": dbOK})
+	c.JSON(code, gin.H{"status": status, "database": dbOK, "version": AppVersion})
 }
 
 func (s *Server) ListenAndServe() error {

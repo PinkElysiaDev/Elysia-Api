@@ -13,6 +13,7 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
 
 ### 近期改动（待发版整理）
 
+- **后端版本上报**：`/health` 新增 `version` 字段——构建脚本（build-standalone / Dockerfile `APP_VERSION`）从最近 git tag 经 ldflags 注入 `server.AppVersion`，开发构建为 `dev`。供 Koishi 插件的版本检查/更新指令与运维探测使用。
 - **启动自动打开控制台**：监听建立后在系统默认浏览器打开 `http://<host>:<port>/ui/`，
   通配监听地址归一回环、IPv6 自动加方括号；config.json 顶层 `openBrowserOnStart`
   （缺省尝试 / false 关闭）随 Save 持久化并经 Reload 传播。
