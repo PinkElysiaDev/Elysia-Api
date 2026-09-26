@@ -45,7 +45,7 @@ elysia source — 模型源管理
       --base-url               上游 baseUrl（http/https）
       --platform               openai（默认）/anthropic/gemini/responses/custom:<协议ID>
       --api-key                API key（加密存储）
-      --auto-fetch             自动拉取模型列表
+      --auto-fetch             标记为自动源（模型列表创建后仍需 elysia source refresh 拉取一次）
       --manual-models          手动模型名列表（逗号分隔）
       --fetch-base-url         模型列表拉取地址（缺省同 base-url）
 
@@ -68,7 +68,7 @@ elysia source — 模型源管理
       --base-url               换 baseUrl
       --platform               换平台
       --api-key                新 API key（留空=保留原值）
-      --auto-fetch             自动拉取开关
+      --auto-fetch             自动源标记开关
       --manual-models          整体替换手动模型列表
 
 完整语义与示例：elysia help source <命令>。
@@ -81,7 +81,7 @@ elysia source — 模型源管理
 elysia model — 单模型管理
 
   elysia model ls [--source <id|名>] [--search <子串>] [--limit <n>]
-    查询模型清单（可按源过滤）
+    查询本地缓存的模型清单（可按源过滤；上游实时列表走 source refresh）
       --source                 源 id 或名称
       --search                 名称模糊匹配
       --limit                  返回条数（默认 50，上限 200）
@@ -96,12 +96,12 @@ elysia model — 单模型管理
       --source                 源 id 或名称
       --model                  模型 id
       --name                   改名
-      --type                   类型
+      --type                   类型（llm 默认 / reranker / embedding 预留）
       --max-tokens             maxTokens
       --vision                 视觉能力标记
       --tools                  工具能力标记
       --structured             结构化输出标记
-      --thinking               思考模式
+      --thinking               思考模式（disabled 默认 / enabled / adaptive）
       --enabled                启停
 
 完整语义与示例：elysia help model <命令>。
@@ -117,7 +117,7 @@ elysia group — 模型组管理与成员维护
     创建模型组（需审批）
       --name                   组名（客户端调用时用的模型名）
       --models                 成员模型引用（sourceId:modelId 或模型名，逗号分隔）
-      --strategy               round-robin（默认）/random/sequential
+      --strategy               调度策略：sequential=失败回退（按序调用，前败后补）/ random=随机起点环绕 / round-robin=游标轮询（默认）
       --max-retries            失败重试次数（默认 3）
       --enabled                默认 true
       --max-concurrency        并发上限（0=不限）
@@ -147,7 +147,7 @@ elysia group — 模型组管理与成员维护
       --add-models             追加成员
       --remove-models          移除成员
       --enabled                启停
-      --strategy               调度策略
+      --strategy               调度策略：sequential=失败回退 / random=随机起点环绕 / round-robin=游标轮询（默认）
       --max-retries            重试次数
       --max-concurrency        并发上限
       --daily-limit-requests   每日请求上限
@@ -165,7 +165,7 @@ elysia key — API Key（推理访问令牌）管理
   elysia key create --name <名> [--secret <明文>] [--allowed-groups <组,...>] [--enabled[=false]]
     创建推理 API Key（需审批；secret 留空自动生成，明文仅返回一次）
       --name                   Key 名称（主键，创建后不可改）
-      --secret                 Key 明文；留空自动生成随机值
+      --secret                 Key 明文——用户给定就用给定值（弱口令可提醒但不拒绝）；留空自动生成随机值
       --allowed-groups         允许访问的模型组（逗号分隔；空=不限制）
       --enabled                默认 true
 

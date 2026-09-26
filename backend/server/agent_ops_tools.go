@@ -1256,6 +1256,11 @@ func (t *listModelsTool) Execute(ctx context.Context, tctx agent.ToolContext, ar
 	if filter.SourceID != "" {
 		summary += "（已按源过滤）"
 	}
+	// 空清单 + 指定了源：本地缓存没有该源模型——给模型可行动的指引，
+	// 否则「共 0 个」容易被读成「读不到模型清单」。
+	if len(models) == 0 && filter.SourceID != "" {
+		summary += "。这是本地缓存清单为空，不是无法读取：上游模型需 elysia source refresh --source <源> 拉取（真实出站，需审批）后才会出现"
+	}
 	return agent.ToolResult{OK: true, Summary: summary, Data: map[string]any{"items": views}}
 }
 

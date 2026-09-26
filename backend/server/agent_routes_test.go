@@ -614,3 +614,98 @@ func TestAgentFullTurnWithOpsTool(t *testing.T) {
 		t.Fatalf("read-only tool must not require approval")
 	}
 }
+
+
+// bash 全链运维 e2e：空清单补救文案 → 批处理建组（失败回退策略）+ 建指定
+// 明文的 Key（审批暂停）→ 批准续跑 → 验证组与 Key 落库。锁住提示词重构
+// 后模型可见的运行时行为（空结果指引、明文照建、策略语义、审批面）。
+func TestAgentCLIOpsChainE2E(t *testing.T) {
+	s := newAgentIntegrationServer(t)
+	ctx := t.Context()
+	// 预置两个源：s0 空（测空清单补救文案）、s1 带手动模型 m1。
+	if err := s.store.UpsertSource(ctx, storage.ModelSource{ID: "s0", Name: "空源", BaseURL: "https://s0.example", Platform: "openai", Enabled: true}); err != nil {
+		t.Fatalf("seed s0: %v", err)
+	}
+	if err := s.store.UpsertSource(ctx, storage.ModelSource{ID: "s1", Name: "主力", BaseURL: "https://s1.example", Platform: "openai", Enabled: true,
+		ManualModels: []storage.Model{{SourceID: "s1", Name: "m1"}}}); err != nil {
+		t.Fatalf("seed s1: %v", err)
+	}
+
+	fake := newFakeAgentModelServer(t, [][]string{
+		{ // 第 1 轮：查空源模型清单
+			openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia model ls --source s0"}`), "", nil),
+			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
+			openAIDone()},
+		{ // 第 2 轮：批处理建组（失败回退）+ 建指定明文 Key → 触发审批暂停
+			openAIChunk("c2", toolCallDelta(0, "call_2", "bash", `{"command":"elysia group create --name test123 --models s1:m1 --strategy sequential ; elysia key create --name k1 --secret 123 --allowed-groups test123"}`), "", nil),
+			openAIChunk("c2", map[string]any{}, "tool_calls", nil),
+			openAIDone()},
+		{ // 第 3 轮：验证
+			openAIChunk("c3", toolCallDelta(0, "call_3", "bash", `{"command":"elysia group ls | grep test123 && elysia key ls"}`), "", nil),
+			openAIChunk("c3", map[string]any{}, "tool_calls", nil),
+			openAIDone()},
+		{ // 终稿
+			openAIChunk("c4", map[string]any{"role": "assistant", "content": "组与 Key 已建好"}, "", nil),
+			openAIChunk("c4", map[string]any{}, "stop", nil),
+			openAIDone()},
+	})
+	seedAgentModel(t, s, fake.URL)
+
+	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create"}`)
+	s.adminCreateAgentSession(c)
+	sessionID := decodeAdminData(t, rec)["id"].(string)
+	c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID,
+		`{"settings":{"modelSourceId":"s1","modelName":"fake-model"}}`)
+	s.adminUpdateAgentSession(c)
+
+	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/messages", sessionID, `{"content":"建组建Key"}`)
+	s.adminSendAgentMessage(c)
+	events := parseSSEEvents(t, rec.Body.String())
+	// 第 1 轮结果：空清单补救文案进对话。
+	foundEmptyHint := false
+	for _, event := range events {
+		if event.Type == "tool_result" && strings.Contains(string(event.Data), "本地缓存清单为空") {
+			foundEmptyHint = true
+		}
+	}
+	if !foundEmptyHint {
+		t.Fatalf("empty-catalog hint missing: %s", rec.Body.String())
+	}
+	if !hasAgentEvent(events, "approval_required") {
+		t.Fatalf("batch must pause for approval: %s", rec.Body.String())
+	}
+
+	// 批准 → 批处理执行 → 验证轮 → 终稿。
+	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":true}`)
+	s.adminApproveAgentAction(c)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("approve: %d %s", rec.Code, rec.Body.String())
+	}
+	events = parseSSEEvents(t, rec.Body.String())
+	if !hasAgentEvent(events, "turn_done") {
+		t.Fatalf("turn must finish: %s", rec.Body.String())
+	}
+
+	// 组：名称/策略/成员。
+	groups, _ := s.store.ListGroups(ctx)
+	var group *storage.ModelGroup
+	for i := range groups {
+		if groups[i].Name == "test123" {
+			group = &groups[i]
+		}
+	}
+	if group == nil || group.Strategy != "sequential" || len(group.Models) != 1 || group.Models[0] != "s1:m1" {
+		t.Fatalf("group wrong: %+v", group)
+	}
+	// Key：明文按给定值创建、组限定正确。
+	token, ok, err := s.store.FindAPITokenByName(ctx, "k1")
+	if err != nil || !ok {
+		t.Fatalf("key k1 missing: %v %v", ok, err)
+	}
+	if token.Token != "123" {
+		t.Fatalf("plaintext must be as-given, got %q", token.Token)
+	}
+	if len(token.AllowedGroups) != 1 || token.AllowedGroups[0] != "test123" {
+		t.Fatalf("allowedGroups = %v", token.AllowedGroups)
+	}
+}
