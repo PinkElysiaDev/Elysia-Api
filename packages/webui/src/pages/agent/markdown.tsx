@@ -15,6 +15,13 @@ export function Markdown({ text }: { text: string }) {
           pre: ({ children }) => (
             <div className="overflow-x-auto text-xs">{children}</div>
           ),
+          // 表格自带横向滚动包裹：宽表格在包裹内滚，不撑破消息列
+          //（消息流容器 overflow-x-hidden，无包裹会被整块裁切）。
+          table: ({ children }) => (
+            <div className="overflow-x-auto">
+              <table>{children}</table>
+            </div>
+          ),
           code: ({ className, children, ...props }) => {
             const raw = String(children ?? "");
             const isBlock = /language-/.test(className ?? "");
@@ -57,7 +64,7 @@ export function ReasoningBlock({ text }: { text: string }) {
       tone="amber"
       icon={<span className="text-amber">💭</span>}
     >
-      <p className="whitespace-pre-wrap text-2xs leading-relaxed text-muted-foreground">
+      <p className="whitespace-pre-wrap break-words text-2xs leading-relaxed text-muted-foreground">
         {text}
       </p>
     </Collapse>

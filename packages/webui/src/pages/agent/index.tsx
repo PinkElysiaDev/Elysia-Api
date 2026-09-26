@@ -394,7 +394,7 @@ export function AgentPage() {
     <div className={WORKSPACE_CLASS}>
       <div
         key={`agent-chat-${activeId ?? "none"}`}
-        className="flex min-h-0 flex-1 animate-in fade-in slide-in-from-bottom-2 duration-300 flex-col"
+        className="flex min-h-0 min-w-0 flex-1 animate-in fade-in slide-in-from-bottom-2 duration-300 flex-col"
       >
         <WorkspaceHeader
           session={session}
@@ -408,7 +408,7 @@ export function AgentPage() {
         />
 
         {session && draftLoadedFor === session.id ? (
-          <div className="flex min-h-0 flex-1">
+          <div className="flex min-h-0 flex-1 overflow-hidden">
             <TurnRail
               messages={messages}
               live={live}
@@ -447,7 +447,14 @@ export function AgentPage() {
                 "flex h-full shrink-0 overflow-hidden",
                 !panelDragging && "transition-[width] duration-300 ease-in-out",
               )}
-              style={{ width: panelOpen ? panelW : 0 }}
+                style={{
+                  width: panelOpen ? panelW : 0,
+                  // 侧栏按视口余量自动收窄：保证聊天列 ≥ ~400px，极窄时
+                  // 侧栏退化到 160px 下限，而不是把聊天列挤成 0。
+                  maxWidth: panelOpen
+                    ? "max(160px, calc(100% - 444px))"
+                    : 0,
+                }}
             >
               <div
                 role="separator"

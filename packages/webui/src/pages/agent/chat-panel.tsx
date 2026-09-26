@@ -313,7 +313,7 @@ export function ChatPanel({
 
   return (
     <div
-      className="mx-auto flex min-h-0 w-4/5 min-w-0 flex-col"
+      className="mx-auto flex min-h-0 w-4/5 min-w-[300px] flex-col"
       onDragOver={(event) => {
         event.preventDefault();
         setDragOver(true);
@@ -332,7 +332,7 @@ export function ChatPanel({
         <div
           ref={scrollRef}
           className={cn(
-            "no-scrollbar relative min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5",
+            "no-scrollbar relative min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-4 py-5",
             dragOver && "bg-wash/40",
           )}
         >
