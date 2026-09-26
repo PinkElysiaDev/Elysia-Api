@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { ContextGauge, type SessionUsageStat } from "./context-gauge";
 import { PermissionMenu, SendKeyMenu, ThinkingMenu } from "./composer-menu";
 import { ModelPicker } from "./model-picker";
-import { isSendKeyEvent, sendKeyHint, useSendKeyMode } from "./send-key";
+import { isSendKeyEvent, sendKeyHint, useEscActionMode, useSendKeyMode } from "./send-key";
 
 export interface ComposerDockProps {
   /** 输入框文本（状态由 ChatPanel 持有：草稿回写与发送都依赖它）。 */
@@ -67,6 +67,7 @@ export function ComposerDock({
 }: ComposerDockProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sendMode = useSendKeyMode();
+  const escMode = useEscActionMode();
 
   /** 按发送键偏好提交主输入/编辑重发（IME 组词回车不触发）。 */
   const submitOnKey = (
@@ -221,7 +222,7 @@ export function ComposerDock({
             disabled={busy}
             onChange={(patch) => void onSettingsSave(patch)}
           />
-          <SendKeyMenu mode={sendMode} />
+          <SendKeyMenu mode={sendMode} escMode={escMode} />
           {busy ? (
             <Button
               variant="ghost"

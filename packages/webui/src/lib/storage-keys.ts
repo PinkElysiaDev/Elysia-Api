@@ -6,4 +6,6 @@ export const STORAGE_KEYS = {
   agentPanelWidth: 'elysia-webui.agent-panel-width',
   /** agent 输入的发送键模式：enter | ctrl-enter。 */
   agentSendKey: 'elysia-webui.agent-send-key',
+  /** 审批/提问卡的 Esc 快捷键：on | off。 */
+  agentEscAction: 'elysia-webui.agent-esc-action',
 } as const

@@ -7,7 +7,7 @@ import {
   type AgentAskQuestion,
   type AgentPlanStep,
 } from "@/lib/agent/types";
-import { isSendKeyEvent, sendKeyHint, useSendKeyMode } from "./send-key";
+import { isSendKeyEvent, sendKeyHint, useEscapeAction, useEscActionMode, useSendKeyMode } from "./send-key";
 
 export function ApprovalCard({
   approval,
@@ -27,6 +27,11 @@ export function ApprovalCard({
   onDeny: (note?: string) => void;
   busy?: boolean;
 }) {
+  // Esc = 拒绝（可在快捷键面板关闭；busy 请求中不触发）。
+  const escEnabled = useEscActionMode() === "on" && !busy;
+  useEscapeAction(
+    escEnabled ? () => onDeny() : null,
+  );
   const argsPreview = approval.calls
     .map((call) => toolArgsPreview(call.arguments))
     .filter(Boolean)
@@ -123,6 +128,11 @@ export function QuestionCard({
 }) {
   const [custom, setCustom] = useState("");
   const sendMode = useSendKeyMode();
+  // Esc = 跳过作答（空答案 → 后端合成「用户没有作答」回给模型，轮次继续）。
+  const escEnabled = useEscActionMode() === "on" && !busy;
+  useEscapeAction(
+    escEnabled ? () => onAnswer("") : null,
+  );
   return (
     <div className="tone-amber w-full space-y-2 rounded-xl border px-3.5 py-3">
       <p className="text-sm font-medium">{question.question}</p>
