@@ -823,3 +823,77 @@ func TestAgentPlanModeReadOnlySelfRescueE2E(t *testing.T) {
 		t.Fatalf("group plan-e2e not created: %+v", groups)
 	}
 }
+
+// 停止链路 e2e（真 SQLite）：模型流式中 POST /stop → 后端同步收尾且
+// 落库成功（状态回 idle、「轮次已停止」系统消息可查）——收尾写库走
+// WithoutCancel，不再随轮次取消一起失败。
+func TestAgentStopTurnLandsIdleAndMessage(t *testing.T) {
+	s := newAgentIntegrationServer(t)
+	// 伪模型：第一块响应后挂住不结束（模拟长流），靠 stop 的 ctx 取消断开。
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher := w.(http.Flusher)
+		w.Header().Set("Content-Type", "text/event-stream")
+		payload := `{"choices":[{"delta":{"role":"assistant","content":"正在"}}]}`
+		fmt.Fprint(w, "data: "+payload+"\n\n")
+		flusher.Flush()
+		<-r.Context().Done() // 客户端断开（stop 取消出站请求）才结束
+	}))
+	defer fake.Close()
+	seedAgentModel(t, s, fake.URL)
+
+	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create"}`)
+	s.adminCreateAgentSession(c)
+	sessionID := decodeAdminData(t, rec)["id"].(string)
+	c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID,
+		`{"settings":{"modelSourceId":"s1","modelName":"fake-model"}}`)
+	s.adminUpdateAgentSession(c)
+
+	// 异步发消息开轮次（SSE 流会挂住直到停止）。
+	go func() {
+		c, rec := agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/messages", sessionID, `{"content":"慢点答"}`)
+		s.adminSendAgentMessage(c)
+		_ = rec
+	}()
+	// 等轮次真正跑起来（DB 状态 running）。
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		session, err := s.store.GetSession(t.Context(), sessionID)
+		if err == nil && session.Status == agent.StatusRunning {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("turn never started: %+v", session)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/stop", sessionID, "")
+	s.adminStopAgentTurn(c)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("stop: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// 收尾落库成功：状态回 idle + 「轮次已停止」系统消息存在。
+	deadline = time.Now().Add(5 * time.Second)
+	var session *agent.Session
+	for {
+		session, _ = s.store.GetSession(t.Context(), sessionID)
+		if session != nil && session.Status == agent.StatusIdle {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("session stuck in %q after stop", session.Status)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	messages, _ := s.store.ListMessages(t.Context(), sessionID)
+	stoppedMsg := false
+	for _, message := range messages {
+		if message.Role == agent.RoleSystem && strings.Contains(string(message.Content), "轮次已停止") {
+			stoppedMsg = true
+		}
+	}
+	if !stoppedMsg {
+		t.Fatalf("stopped system message missing: %+v", messages)
+	}
+}

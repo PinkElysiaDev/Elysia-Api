@@ -1224,6 +1224,10 @@ func (s *Server) runAgentCLI(ctx context.Context, tctx agent.ToolContext, script
 			}
 			skipChain = false
 		}
+		// 停止/超时取消后不再起下一条命令（执行中的由各工具自身 ctx 中断）。
+		if ctx.Err() != nil {
+			break
+		}
 		if hasProgress {
 			reporter.ReportProgress(fmt.Sprintf("正在执行（%d/%d）：%s", index+1, total, agent.RedactCommandLine(segment.raw)))
 		}

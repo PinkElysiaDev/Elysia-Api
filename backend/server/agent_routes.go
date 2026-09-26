@@ -185,8 +185,14 @@ func (s *Server) adminGetAgentSession(c *gin.Context) {
 		return
 	}
 	view := agentSessionView(session)
-	if engine := s.protocolAgentEngine(); engine != nil && engine.IsRunning(id) {
-		view["status"] = agent.StatusRunning
+	if engine := s.protocolAgentEngine(); engine != nil {
+		// 内存口径对账：DB=running 但引擎已无此轮（Stop 收尾曾因 ctx 取消
+		// 写库失败留下的脏状态）时按 idle 呈现，让卡住的会话自愈。
+		if engine.IsRunning(id) {
+			view["status"] = agent.StatusRunning
+		} else if view["status"] == agent.StatusRunning {
+			view["status"] = agent.StatusIdle
+		}
 	}
 	respondOK(c, gin.H{"session": view, "messages": messages})
 }

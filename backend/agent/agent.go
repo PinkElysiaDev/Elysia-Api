@@ -497,10 +497,13 @@ func (e *Engine) resumeApprovalPrefix(ctx context.Context, sessionID string, ses
 
 // handleCallFailure 收尾一次失败的模型调用：取消路径下 result 可能带部分
 // 聚合文本，照常落库保证可追溯；随后写入 system 错误记录并发出终态错误
-// 事件（区分轮次停止/超时/上游失败的可重试性）。
+// 事件（区分轮次停止/超时/上游失败的可重试性）。落库一律走 WithoutCancel
+// ——Stop 取消 turnCtx 只应打断模型调用与工具执行，收尾写库（部分稿、
+// 错误记录、状态回 idle）若也被取消，会话将永卡 running。
 func (e *Engine) handleCallFailure(ctx context.Context, sessionID string, session *Session, handle *turnHandle, result *CallResult, err error, events chan Event) {
+	finCtx := context.WithoutCancel(ctx)
 	if result != nil && (result.Text != "" || result.Reasoning != "") {
-		e.persistAssistant(ctx, sessionID, session, AssistantContent{Text: result.Text, Reasoning: result.Reasoning}, result.Usage, events)
+		e.persistAssistant(finCtx, sessionID, session, AssistantContent{Text: result.Text, Reasoning: result.Reasoning}, result.Usage, events)
 	}
 	reason := "模型调用失败"
 	retryable := true
@@ -511,9 +514,9 @@ func (e *Engine) handleCallFailure(ctx context.Context, sessionID string, sessio
 			reason = "轮次超时"
 		}
 	}
-	if _, cerr := e.store.AppendMessage(ctx, sessionID, RoleSystem, SystemContent{Kind: "error", Text: fmt.Sprintf("%s: %v", reason, err)}, "", nil); cerr != nil { //nolint:staticcheck // 落库失败无从恢复，继续走错误回报
+	if _, cerr := e.store.AppendMessage(finCtx, sessionID, RoleSystem, SystemContent{Kind: "error", Text: fmt.Sprintf("%s: %v", reason, err)}, "", nil); cerr != nil { //nolint:staticcheck // 落库失败无从恢复，继续走错误回报
 	}
-	e.setStatus(ctx, sessionID, StatusIdle, false, events)
+	e.setStatus(finCtx, sessionID, StatusIdle, false, events)
 	emitTerminal(events, Event{Type: EventError, Text: fmt.Sprintf("%s: %v", reason, err), Retryable: retryable})
 }
 
@@ -612,6 +615,7 @@ func advancePlanStaleRounds(session *Session) bool {
 
 // finalizeTurn 是 modelLoop 的统一收尾：panic 防护 + 未暂停时置回 idle 并发
 // turn_done（含累计用量）。全部指针参数——defer 注册时求值会冻结布尔快照。
+// 写库走 WithoutCancel：Stop/超时取消 turnCtx 后收尾（状态回 idle）仍要落库。
 func (e *Engine) finalizeTurn(ctx context.Context, sessionID string, session *Session, started time.Time, usageTotal *relay.MaheshvaraUsage, sawUsage *bool, rounds *int, paused *bool, events chan Event) {
 	if r := recover(); r != nil {
 		emitEvent(events, Event{Type: EventError, Text: fmt.Sprintf("引擎异常: %v", r), Retryable: true})
@@ -619,7 +623,7 @@ func (e *Engine) finalizeTurn(ctx context.Context, sessionID string, session *Se
 	if *paused {
 		return
 	}
-	e.setStatus(ctx, sessionID, StatusIdle, false, events)
+	e.setStatus(context.WithoutCancel(ctx), sessionID, StatusIdle, false, events)
 	event := Event{Type: EventTurnDone, DurationMs: time.Since(started).Milliseconds(), Rounds: *rounds, Model: session.Settings.ModelName}
 	if *sawUsage {
 		usage := *usageTotal
@@ -1107,8 +1111,10 @@ func (e *Engine) setStatus(ctx context.Context, sessionID, status string, clearP
 }
 
 func (e *Engine) failTurn(ctx context.Context, sessionID string, events chan Event, message string) {
-	_, _ = e.store.AppendMessage(ctx, sessionID, RoleSystem, SystemContent{Kind: "error", Text: message}, "", nil)
-	e.setStatus(ctx, sessionID, StatusIdle, false, events)
+	// 收尾写库不随轮次取消（failTurn 也会在取消路径上被调到）。
+	finCtx := context.WithoutCancel(ctx)
+	_, _ = e.store.AppendMessage(finCtx, sessionID, RoleSystem, SystemContent{Kind: "error", Text: message}, "", nil)
+	e.setStatus(finCtx, sessionID, StatusIdle, false, events)
 	emitTerminal(events, Event{Type: EventError, Text: message, Retryable: true})
 }
 

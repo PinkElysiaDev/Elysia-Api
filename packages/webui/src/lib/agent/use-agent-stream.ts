@@ -259,6 +259,14 @@ export function useAgentStream(
             : state,
         );
         optionsRef.current.onSessionDirty?.();
+      }).then(() => {
+        // 兜底：流结束（reader done / 连接断）但没收到 turn_done/error 终态
+        // 时也必须退出 running，否则界面永卡「进行中」。
+        setLive((state) =>
+          state.running
+            ? { ...state, running: false, statusText: "", toolCards: [] }
+            : state,
+        );
       });
     },
     [sessionId],
@@ -287,12 +295,23 @@ export function useAgentStream(
 
   const stop = useCallback(async () => {
     if (!sessionId) return;
-    abortRef.current?.abort();
-    abortRef.current = null;
     try {
+      // 先等后端 Stop 同步收尾（期间 error/turn_done 终态事件可经 SSE 到达
+      // 并正常 reduce），再断开连接——反过来（先 abort）终态永远到不了，
+      // live.running 挂死、界面卡「进行中」。
       const { stopAgentTurn } = await import("./api");
       await stopAgentTurn(sessionId);
+    } catch {
+      /* 停止请求失败也要复位本地状态（onSessionDirty 会拉回真实状态） */
     } finally {
+      abortRef.current?.abort();
+      abortRef.current = null;
+      // 兜底复位：流可能已断（终态事件没到），不主动清 running 会永挂。
+      setLive((state) =>
+        state.running
+          ? { ...state, running: false, statusText: "", toolCards: [] }
+          : state,
+      );
       optionsRef.current.onSessionDirty?.();
     }
   }, [sessionId]);
