@@ -454,10 +454,10 @@ export function AgentPage() {
                 style={{
                   width: panelOpen ? panelW : 0,
                   // 侧栏按视口余量自动收窄：保证聊天列 ≥ ~400px，极窄时
-                  // 侧栏退化到 160px 下限，而不是把聊天列挤成 0。
-                  maxWidth: panelOpen
-                    ? "max(160px, calc(100% - 444px))"
-                    : 0,
+                  // 侧栏退化到 160px 下限，而不是把聊天列挤成 0。maxWidth
+                  // 必须恒定——它不在 transition-[width] 清单里，若随
+                  // panelOpen 切 0 会瞬间钳死宽度，收起动画就没了。
+                  maxWidth: "max(160px, calc(100% - 444px))",
                 }}
             >
               <div
