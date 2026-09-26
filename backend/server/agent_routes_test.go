@@ -673,6 +673,18 @@ func TestAgentCLIOpsChainE2E(t *testing.T) {
 	if !hasAgentEvent(events, "approval_required") {
 		t.Fatalf("batch must pause for approval: %s", rec.Body.String())
 	}
+	// 批内逐命令进度：tool_progress 事件带 Text（第 N/M 条 + 脱敏命令），
+	// 前端据此实时显示执行到哪条命令。
+	progressTexts := []string{}
+	for _, event := range events {
+		if event.Type == "tool_progress" {
+			progressTexts = append(progressTexts, string(event.Data))
+		}
+	}
+	joined := strings.Join(progressTexts, "|")
+	if !strings.Contains(joined, `"text":"正在执行（1/1）：elysia model ls --source s0"`) {
+		t.Fatalf("per-command progress missing: %s", joined)
+	}
 
 	// 批准 → 批处理执行 → 验证轮 → 终稿。
 	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":true}`)

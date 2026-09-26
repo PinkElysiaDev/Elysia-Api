@@ -6,12 +6,38 @@ import (
 	"strings"
 )
 
+// ProgressReporter 是 ToolContext 的可选扩展：批处理型工具（如 bash/CLI）
+// 逐子步骤执行时上报人类可读进度，引擎把它转成 tool_progress 事件（带
+// Text），前端实时展示「正在执行（2/3）：elysia …」。未实现的上下文
+// （宿主自定义/测试直调）对工具是静默 no-op。
+type ProgressReporter interface {
+	ReportProgress(text string)
+}
+
 // engineToolContext 是引擎内置的 ToolContext 默认实现：直读会话、草稿
 // 写穿透到 Store。
 type engineToolContext struct {
 	store   Store
 	ctx     context.Context
 	session *Session
+	// progress 逐子步骤进度出口（bash 批内命令）；nil 时 ReportProgress
+	// 静默丢弃（测试直调路径）。
+	progress func(text string)
+}
+
+// WithProgress 返回带进度出口的副本（runOneTool 构造时注入 events）。
+func (c *engineToolContext) WithProgress(report func(text string)) *engineToolContext {
+	next := *c
+	next.progress = report
+	return &next
+}
+
+// ReportProgress 实现 ProgressReporter：非阻塞尽力送达（缓冲满丢弃，
+// 与其他瞬态事件一致——进度丢了只影响实时性，不影响结果）。
+func (c *engineToolContext) ReportProgress(text string) {
+	if c.progress != nil {
+		c.progress(text)
+	}
 }
 
 // metaFromSession 构造工具上下文视角的会话元数据快照。

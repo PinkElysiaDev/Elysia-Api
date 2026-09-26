@@ -1213,12 +1213,19 @@ func (s *Server) runAgentCLI(ctx context.Context, tctx agent.ToolContext, script
 	var output strings.Builder
 	succeeded, failed := 0, 0
 	skipChain := false // && 链跳过模式：直到 ;/换行 边界恢复执行
-	for _, segment := range segments {
+	// 批内逐命令进度：批处理对模型是一次 bash 调用，没有逐条上报时前端
+	// 只有一行「执行中」挂全程（旧每工具一行的过程可见性丢失）。
+	reporter, hasProgress := tctx.(agent.ProgressReporter)
+	total := len(segments)
+	for index, segment := range segments {
 		if skipChain {
 			if segment.fromAnd {
 				continue
 			}
 			skipChain = false
+		}
+		if hasProgress {
+			reporter.ReportProgress(fmt.Sprintf("正在执行（%d/%d）：%s", index+1, total, agent.RedactCommandLine(segment.raw)))
 		}
 		cmdOutput, ok := s.runOneCLIStatement(ctx, tctx, segment.raw)
 		output.WriteString(cmdOutput)

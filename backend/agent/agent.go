@@ -953,6 +953,13 @@ func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Sess
 	planSummaryBefore := session.PlanSummary
 
 	execCtx, stopProgress := e.watchToolProgress(ctx, call, MetaOf(tool), events)
+	// 批处理型工具（bash/CLI）经 ProgressReporter 逐子步骤上报进度，
+	// 复用 tool_progress 事件并携带 Text（心跳只有 ElapsedMs）。
+	progressStarted := time.Now()
+	tctx := (&engineToolContext{store: e.store, ctx: execCtx, session: session}).WithProgress(func(text string) {
+		emitEvent(events, Event{Type: EventToolProgress, CallID: call.ID, Name: call.Name,
+			Text: text, ElapsedMs: time.Since(progressStarted).Milliseconds()})
+	})
 	var result ToolResult
 	func() {
 		defer stopProgress()
@@ -961,7 +968,7 @@ func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Sess
 				result = ToolResult{OK: false, Summary: fmt.Sprintf("工具执行异常: %v", r), Data: map[string]any{"error": "tool_panic"}}
 			}
 		}()
-		result = tool.Execute(execCtx, &engineToolContext{store: e.store, ctx: execCtx, session: session}, call.Arguments)
+		result = tool.Execute(execCtx, tctx, call.Arguments)
 	}()
 
 	direction := clampDirection(MetaOf(tool).PreviewDirection)

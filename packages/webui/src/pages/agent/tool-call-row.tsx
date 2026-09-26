@@ -17,6 +17,7 @@ export function ToolCallRow({
   status,
   summary,
   command,
+  progressText,
   elapsedMs,
   startedAt,
   durationMs,
@@ -28,6 +29,8 @@ export function ToolCallRow({
   summary?: string;
   /** bash 工具的命令回显（出口已脱敏）。 */
   command?: string;
+  /** CLI 批内逐命令进度（运行中显示「正在执行（2/3）：elysia …」）。 */
+  progressText?: string;
   elapsedMs?: number;
   startedAt?: number;
   durationMs?: number;
@@ -99,6 +102,11 @@ export function ToolCallRow({
       {command ? (
         <p className="mt-1 line-clamp-2 whitespace-pre-wrap break-all font-mono text-2xs text-muted-foreground">
           $ {command}
+        </p>
+      ) : null}
+      {progressText && status === "running" ? (
+        <p className="mt-1 line-clamp-2 whitespace-pre-wrap break-all font-mono text-2xs tool-running-text">
+          {progressText}
         </p>
       ) : null}
       {summary && status !== "running" ? (

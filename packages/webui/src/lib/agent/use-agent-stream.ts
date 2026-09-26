@@ -19,6 +19,8 @@ export interface AgentToolCard {
   command?: string;
   /** 执行中由 tool_progress 心跳刷新的已耗时。 */
   elapsedMs?: number;
+  /** CLI 批内逐命令进度（「正在执行（2/3）：elysia …」）；心跳无 text。 */
+  progressText?: string;
   startedAt?: number;
 }
 
@@ -94,7 +96,13 @@ function reduce(
         ...state,
         toolCards: state.toolCards.map((card) =>
           card.callId === callId
-            ? { ...card, elapsedMs: event.elapsedMs }
+            ? {
+                ...card,
+                elapsedMs: event.elapsedMs,
+                // CLI 批内逐命令进度（引擎 ProgressReporter 上报）；纯耗时
+                // 心跳不带 text，保留上一条进度不清空。
+                ...(event.text ? { progressText: event.text } : {}),
+              }
             : card,
         ),
       };
@@ -109,6 +117,7 @@ function reduce(
                 ...card,
                 status: event.result?.ok === false ? "failed" : "done",
                 summary: event.result?.summary,
+                progressText: undefined,
               }
             : card,
         ),

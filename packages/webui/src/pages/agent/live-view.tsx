@@ -30,6 +30,7 @@ export function LiveAssistantView({
           command={card.command}
           elapsedMs={card.elapsedMs}
           startedAt={card.startedAt}
+          progressText={card.progressText}
           onOpen={onOpenActivity}
         />
       ))}
