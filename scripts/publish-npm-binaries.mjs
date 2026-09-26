@@ -87,7 +87,7 @@ rmSync(packagesRoot, { recursive: true, force: true })
 mkdirSync(packagesRoot, { recursive: true })
 
 for (const target of targets) {
-  const name = `elysia-api-backend-${target.suffix}`
+  const name = `elysia-api-${target.suffix}`
   const dir = join(packagesRoot, name)
   mkdirSync(join(dir, 'bin'), { recursive: true })
   cpSync(join(standaloneDir, target.source), join(dir, 'bin', target.binary))
@@ -112,7 +112,7 @@ for (const target of targets) {
 
 const dryRunArgs = publish ? ['publish'] : ['publish', '--dry-run']
 for (const target of targets) {
-  const name = `elysia-api-backend-${target.suffix}`
+  const name = `elysia-api-${target.suffix}`
   if (publish) {
     const view = runQuiet('npm', ['view', `${name}@${version}`, 'version'])
     if (view.status === 0 && view.stdout.trim() === version) {
