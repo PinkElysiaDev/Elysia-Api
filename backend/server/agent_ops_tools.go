@@ -1037,9 +1037,11 @@ func (t *updateGroupTool) Meta() agent.ToolMeta {
 func (t *updateGroupTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
 		Type: "function", Name: agentToolUpdateGroup,
-		Description: "修改已有模型组（用户审批后生效）：启停、策略、重试、并发/限额、成员增删。group 用组名或 id 指定。",
+		Description: "修改已有模型组（用户审批后生效）：改名、启停、策略、重试、并发/限额、成员增删。group 用组名或 id 指定。" +
+			"改名注意：组名是客户端调用的模型名，改名后客户端调用名随之变化；引用旧组名的 API Key 授权（allowedGroups）不会自动迁移，改名前先向用户确认影响。",
 		Parameters: objectSchema(map[string]any{
 			"group":                 map[string]any{"type": "string", "description": "组名或 id"},
+			"name":                  map[string]any{"type": "string", "description": "新组名（改名用；组名唯一，冲突会报错）"},
 			"addModels":             map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 			"removeModels":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 			"enabled":               map[string]any{"type": "boolean"},
@@ -1055,6 +1057,7 @@ func (t *updateGroupTool) Definition() relay.MaheshvaraTool {
 // updateGroupParams 是 update_model_group 的参数集（成员增删 + 字段补丁）。
 type updateGroupParams struct {
 	Group                 string   `json:"group"`
+	Name                  string   `json:"name"`
 	AddModels             []string `json:"addModels"`
 	RemoveModels          []string `json:"removeModels"`
 	Enabled               *bool    `json:"enabled"`
@@ -1120,6 +1123,12 @@ func applyGroupPatch(group *storage.ModelGroup, params updateGroupParams) bool {
 		}
 	}
 	applyBool(params.Enabled, &group.Enabled)
+	if trimmed := strings.TrimSpace(params.Name); trimmed != "" {
+		if trimmed != group.Name {
+			group.Name = trimmed
+			fieldsChanged = true
+		}
+	}
 	if trimmed := strings.TrimSpace(params.Strategy); trimmed != "" {
 		group.Strategy = trimmed
 		fieldsChanged = true

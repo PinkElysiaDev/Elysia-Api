@@ -185,10 +185,11 @@ func (t *updateAPIKeyTool) Meta() agent.ToolMeta {
 func (t *updateAPIKeyTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
 		Type: "function", Name: agentToolUpdateAPIKey,
-		Description: "修改已有 API Key（用户审批后生效）：启停、调整可访问的模型组、更换明文（newSecret 留空=保留原值）。" +
-			"名称是主键不可修改；远程访问 Key（agent 作用域）由用户在运行配置页管理，elysia key 命令不可修改。allowedGroups 为空表示不限制（可访问全部模型组），调整前先向用户确认。",
+		Description: "修改已有 API Key（用户审批后生效）：改名（newName，目标名被占用会报错）、启停、调整可访问的模型组、更换明文（newSecret 留空=保留原值）。" +
+			"远程访问 Key（agent 作用域）由用户在运行配置页管理，elysia key 命令不可修改。allowedGroups 为空表示不限制（可访问全部模型组），调整前先向用户确认。",
 		Parameters: objectSchema(map[string]any{
 			"name":          map[string]any{"type": "string", "description": "Key 名称"},
+			"newName":       map[string]any{"type": "string", "description": "新名称（改名用）"},
 			"enabled":       map[string]any{"type": "boolean"},
 			"allowedGroups": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "整体替换允许访问的模型组；空=不限制"},
 			"newSecret":     map[string]any{"type": "string", "description": "新明文；留空保留原值"},
@@ -203,6 +204,7 @@ func (t *updateAPIKeyTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 	}
 	var params struct {
 		Name          string   `json:"name"`
+		NewName       string   `json:"newName"`
 		Enabled       *bool    `json:"enabled"`
 		AllowedGroups []string `json:"allowedGroups"`
 		NewSecret     string   `json:"newSecret"`
@@ -219,6 +221,13 @@ func (t *updateAPIKeyTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 	}
 	if existing.HasScope(storage.TokenScopeAgent) {
 		return agent.ToolError(fmt.Sprintf("%q 是远程访问 Key（AI 助手专用），请在运行配置页管理", params.Name), "agent_key_managed_elsewhere")
+	}
+	// 改名先行：目标名被占用即报错返回，其余字段都未动。
+	if newName := strings.TrimSpace(params.NewName); newName != "" && newName != existing.Name {
+		if err := store.RenameAPIToken(ctx, existing.Name, newName); err != nil {
+			return agent.ToolError("改名失败: "+err.Error(), "rename_failed")
+		}
+		existing.Name = newName
 	}
 	item := existing
 	if params.Enabled != nil {

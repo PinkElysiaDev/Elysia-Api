@@ -129,6 +129,16 @@ func TestCLIResolveMappers(t *testing.T) {
 	}
 
 	// 重复列表 flag 与整数。
+	// 改名 flag 映射（组与 Key）。
+	params = mapCLI(t, `elysia group update --group g1 --name 新名`)
+	if params["name"] != "新名" {
+		t.Fatalf("group rename args = %v", params)
+	}
+	params = mapCLI(t, `elysia key update --name old --new-name fresh --enabled=false`)
+	if params["newName"] != "fresh" || params["enabled"] != false {
+		t.Fatalf("key rename args = %v", params)
+	}
+
 	params = mapCLI(t, `elysia group create --name g --models a --models b,c --max-retries 5`)
 	if list, ok := params["models"].([]string); !ok || len(list) != 3 {
 		t.Fatalf("models = %v", params["models"])

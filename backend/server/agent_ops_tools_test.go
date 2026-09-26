@@ -475,3 +475,30 @@ func TestDefaultIntKeepsSmallValues(t *testing.T) {
 		}
 	}
 }
+
+// agent 侧改名：模型组 --name 落库 + 组名冲突报错。
+func TestOpsRenameGroupViaUpdate(t *testing.T) {
+	s := newOpsTestServer(t)
+	ctx := t.Context()
+	if err := s.store.UpsertGroup(ctx, storage.ModelGroup{ID: "g1", Name: "旧名", Enabled: true, Models: []string{"s1:m1"}}); err != nil {
+		t.Fatalf("seed g1: %v", err)
+	}
+	if err := s.store.UpsertGroup(ctx, storage.ModelGroup{ID: "g2", Name: "占用名", Enabled: true}); err != nil {
+		t.Fatalf("seed g2: %v", err)
+	}
+
+	tool := &updateGroupTool{server: s}
+	renamed := tool.Execute(ctx, &sessionToolContext{}, json.RawMessage(`{"group":"旧名","name":"新名"}`))
+	if !renamed.OK {
+		t.Fatalf("rename failed: %+v", renamed)
+	}
+	group, ok := agentFindGroup(ctx, s.store, "新名")
+	if !ok || group.ID != "g1" {
+		t.Fatalf("rename not landed: %+v", group)
+	}
+
+	conflict := tool.Execute(ctx, &sessionToolContext{}, json.RawMessage(`{"group":"新名","name":"占用名"}`))
+	if conflict.OK {
+		t.Fatal("duplicate group name must fail")
+	}
+}

@@ -651,11 +651,12 @@ func groupCommands() []*cliCommand {
 				}
 				return params, nil
 			}},
-		&cliCommand{group: "group", name: "update", summary: "修改模型组（需审批；成员增删/策略/限额）",
-			usage:   "elysia group update --group <组名|id> [--add-models <列表>] [--remove-models <列表>] [--enabled[=false]] [--strategy <策略>] [--max-retries <n>] [--max-concurrency <n>] [--daily-limit-requests <n>] [--daily-limit-tokens <n>]",
+		&cliCommand{group: "group", name: "update", summary: "修改模型组（需审批；改名/成员增删/策略/限额）",
+			usage:   "elysia group update --group <组名|id> [--name <新组名>] [--add-models <列表>] [--remove-models <列表>] [--enabled[=false]] [--strategy <策略>] [--max-retries <n>] [--max-concurrency <n>] [--daily-limit-requests <n>] [--daily-limit-tokens <n>]",
 			example: `elysia group update --group 主力 --add-models s1:o1 --enabled=false`,
 			flags: []cliFlagSpec{
 				{"group", "组名或 id", false, false},
+				{"name", "改名（组名即客户端调用的模型名；引用旧名的 Key 授权不会自动迁移）", false, false},
 				{"add-models", "追加成员", false, true},
 				{"remove-models", "移除成员", false, true},
 				{"enabled", "启停", true, false},
@@ -671,6 +672,7 @@ func groupCommands() []*cliCommand {
 				if err := inv.requireStr(params, "group", "group"); err != nil {
 					return nil, err
 				}
+				inv.setStr(params, "name", "name")
 				inv.setList(params, "add-models", "addModels")
 				inv.setList(params, "remove-models", "removeModels")
 				inv.setBool(params, "enabled", "enabled")
@@ -772,11 +774,12 @@ func keyCommands() []*cliCommand {
 				inv.setBool(params, "enabled", "enabled")
 				return params, nil
 			}},
-		&cliCommand{group: "key", name: "update", summary: "修改 API Key（需审批；new-secret 留空=保留；远程访问 Key 拒绝）",
-			usage:   "elysia key update --name <名> [--enabled[=false]] [--allowed-groups <组,...>] [--new-secret <新明文>]",
+		&cliCommand{group: "key", name: "update", summary: "修改 API Key（需审批；改名/启停/授权/换明文；远程访问 Key 拒绝）",
+			usage:   "elysia key update --name <名> [--new-name <新名>] [--enabled[=false]] [--allowed-groups <组,...>] [--new-secret <新明文>]",
 			example: `elysia key update --name mobile-app --allowed-groups 主力,备用`,
 			flags: []cliFlagSpec{
 				{"name", "Key 名称", false, false},
+				{"new-name", "改名（目标名被占用会报错）", false, false},
 				{"enabled", "启停", true, false},
 				{"allowed-groups", "整体替换允许访问的模型组", false, true},
 				{"new-secret", "新明文；留空保留原值", false, false},
@@ -787,6 +790,7 @@ func keyCommands() []*cliCommand {
 				if err := inv.requireStr(params, "name", "name"); err != nil {
 					return nil, err
 				}
+				inv.setStr(params, "new-name", "newName")
 				inv.setBool(params, "enabled", "enabled")
 				inv.setList(params, "allowed-groups", "allowedGroups")
 				inv.setStr(params, "new-secret", "newSecret")

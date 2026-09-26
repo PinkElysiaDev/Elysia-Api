@@ -92,14 +92,32 @@ func TestAPIKeyToolsLifecycle(t *testing.T) {
 		t.Fatalf("rotation not applied: %q", stored.Token)
 	}
 
-	// 删除后消失。
-	if result := opsExecute(t, &deleteAPIKeyTool{server: s}, `{"name":"k1"}`); !result.OK {
+	// 改名：newName 落库、旧名消失、可与其余更新同批；目标名占用报错。
+	if result := opsExecute(t, &updateAPIKeyTool{server: s}, `{"name":"k1","newName":"k1-renamed","enabled":true}`); !result.OK {
+		t.Fatalf("rename: %s", result.Summary)
+	}
+	renamed, found, _ := s.store.FindAPITokenByName(ctx, "k1-renamed")
+	if !found || !renamed.Enabled || renamed.Token != "sk-replacement-9" {
+		t.Fatalf("rename not landed: found=%v %+v", found, renamed)
+	}
+	if _, oldFound, _ := s.store.FindAPITokenByName(ctx, "k1"); oldFound {
+		t.Fatal("old name must be gone after rename")
+	}
+	if created := opsExecute(t, &createAPIKeyTool{server: s}, `{"name":"blocker"}`); !created.OK {
+		t.Fatalf("seed blocker: %s", created.Summary)
+	}
+	if result := opsExecute(t, &updateAPIKeyTool{server: s}, `{"name":"k1-renamed","newName":"blocker"}`); result.OK {
+		t.Fatal("rename onto existing name must fail")
+	}
+
+	// 删除后消失（改名单已把 k1 变成 k1-renamed；blocker 留着验证改名占用）。
+	if result := opsExecute(t, &deleteAPIKeyTool{server: s}, `{"name":"k1-renamed"}`); !result.OK {
 		t.Fatalf("delete: %s", result.Summary)
 	}
-	if _, found, _ := s.store.FindAPITokenByName(ctx, "k1"); found {
+	if _, found, _ := s.store.FindAPITokenByName(ctx, "k1-renamed"); found {
 		t.Fatalf("token must be gone")
 	}
-	if result := opsExecute(t, &deleteAPIKeyTool{server: s}, `{"name":"k1"}`); result.OK {
+	if result := opsExecute(t, &deleteAPIKeyTool{server: s}, `{"name":"k1-renamed"}`); result.OK {
 		t.Fatalf("delete missing must fail")
 	}
 }

@@ -141,9 +141,10 @@ elysia group — 模型组管理与成员维护
       --group                  组名或 id
       --models                 成员引用
 
-  elysia group update --group <组名|id> [--add-models <列表>] [--remove-models <列表>] [--enabled[=false]] [--strategy <策略>] [--max-retries <n>] [--max-concurrency <n>] [--daily-limit-requests <n>] [--daily-limit-tokens <n>]
-    修改模型组（需审批；成员增删/策略/限额）
+  elysia group update --group <组名|id> [--name <新组名>] [--add-models <列表>] [--remove-models <列表>] [--enabled[=false]] [--strategy <策略>] [--max-retries <n>] [--max-concurrency <n>] [--daily-limit-requests <n>] [--daily-limit-tokens <n>]
+    修改模型组（需审批；改名/成员增删/策略/限额）
       --group                  组名或 id
+      --name                   改名（组名即客户端调用的模型名；引用旧名的 Key 授权不会自动迁移）
       --add-models             追加成员
       --remove-models          移除成员
       --enabled                启停
@@ -176,9 +177,10 @@ elysia key — API Key（推理访问令牌）管理
   elysia key ls
     查询 API Key 列表（脱敏）
 
-  elysia key update --name <名> [--enabled[=false]] [--allowed-groups <组,...>] [--new-secret <新明文>]
-    修改 API Key（需审批；new-secret 留空=保留；远程访问 Key 拒绝）
+  elysia key update --name <名> [--new-name <新名>] [--enabled[=false]] [--allowed-groups <组,...>] [--new-secret <新明文>]
+    修改 API Key（需审批；改名/启停/授权/换明文；远程访问 Key 拒绝）
       --name                   Key 名称
+      --new-name               改名（目标名被占用会报错）
       --enabled                启停
       --allowed-groups         整体替换允许访问的模型组
       --new-secret             新明文；留空保留原值
