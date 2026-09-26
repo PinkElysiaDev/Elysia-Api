@@ -78,6 +78,9 @@ type Server struct {
 	usageSeq       atomic.Uint64
 	usagePersistMu sync.Mutex
 	shutdownOnce   sync.Once
+	// shutdownDone 在关停序列（信号或 /__shutdown 触发）完成后 close，
+	// ListenAndServe 据此等待收尾后再返回，避免进程驻留。
+	shutdownDone chan struct{}
 
 	// usage 只读端点的短 TTL 响应缓存 + 并发合并（usage_cache.go）。
 	usageCache usageResponseCache
@@ -1337,39 +1340,42 @@ func (s *Server) ListenAndServe() error {
 	}
 	launchConsoleBrowser(s.config.OpenBrowserOnStart, s.config.Server.Host, s.config.Server.Port)
 
-	// 信号到达时在与 /__shutdown 相同的关停序列上收尾:冲刷 usage 队列、
-	// 停后台任务,再退出主 goroutine(ListenAndServe 已在关停序列内被 Close)。
-	sigErr := make(chan error, 1)
+	// 信号与 /__shutdown 共用同一关停序列（shutdownOnce 去重），完成后 close
+	// shutdownDone；ListenAndServe 返回 ErrServerClosed 时等待它，确保两种触发
+	// 方式下进程都能真正退出（此前仅信号路径会通知，/__shutdown 会永久阻塞主
+	// goroutine，表现为端口已关但进程驻留）。
+	s.shutdownDone = make(chan struct{})
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	defer signal.Stop(sigCh)
 	go func() {
 		<-sigCh
 		log.Printf("Shutdown signal received, draining...")
-		s.doShutdown()
-		sigErr <- nil
+		s.shutdownOnce.Do(s.runShutdownSequence)
 	}()
 
 	err := s.httpServer.Serve(listener)
 	if err == http.ErrServerClosed {
 		// 主动关停(信号或 /__shutdown)属正常退出;等待关停序列完成。
-		<-sigErr
+		<-s.shutdownDone
 		log.Printf("Server stopped gracefully")
 		return nil
 	}
 	// ListenAndServe 其他错误(端口占用等):关停序列未跑,直接返回。
-	select {
-	case <-sigErr:
-	default:
-	}
 	return err
+}
+
+// runShutdownSequence 执行优雅关停并 close shutdownDone（只能经 shutdownOnce 调用一次）。
+func (s *Server) runShutdownSequence() {
+	defer close(s.shutdownDone)
+	s.doShutdown()
 }
 
 // shutdown 处理 /__shutdown：优雅关停 http.Server（给在途请求一个超时窗口），
 // 仅允许本机回环调用。供本地管理工具或用户手动优雅停止进程。
 func (s *Server) shutdown(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"shuttingDown": true})
-	go s.shutdownOnce.Do(s.doShutdown)
+	go s.shutdownOnce.Do(s.runShutdownSequence)
 }
 
 func (s *Server) doShutdown() {

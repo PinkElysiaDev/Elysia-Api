@@ -13,6 +13,7 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
 
 ### 近期改动（待发版整理）
 
+- **修复 `__shutdown` 后进程不退出**：此前仅信号路径会通知 `ListenAndServe` 收尾，`POST /__shutdown` 触发的关停在端口关闭后永久阻塞主 goroutine（进程驻留、二进制文件锁不释放）。两条触发路径统一经 `shutdownOnce` 收尾并 close `shutdownDone`，`ListenAndServe` 等待该信号后真正返回；顺带消除信号+HTTP 双触发时关停序列跑两次的竞态。
 - **后端版本上报**：`/health` 新增 `version` 字段——构建脚本（build-standalone / Dockerfile `APP_VERSION`）从最近 git tag 经 ldflags 注入 `server.AppVersion`，开发构建为 `dev`。供 Koishi 插件的版本检查/更新指令与运维探测使用。
 - **启动自动打开控制台**：监听建立后在系统默认浏览器打开 `http://<host>:<port>/ui/`，
   通配监听地址归一回环、IPv6 自动加方括号；config.json 顶层 `openBrowserOnStart`
