@@ -107,7 +107,7 @@ func (t *createAPIKeyTool) Definition() relay.MaheshvaraTool {
 		Type: "function", Name: agentToolCreateAPIKey,
 		Description: "创建 API Key，即客户端调用 /v1 接口用的推理访问令牌（用户审批后生效）。secret 留空则自动生成随机明文，" +
 			"完整明文只在本次结果里返回一次，请提醒用户立即保存。allowedGroups 为空表示可访问全部模型组（扩权面大，创建前先向用户确认授权范围）。" +
-			"远程访问 Key（驱动 AI 助手的那类）由用户在运行配置页管理，不由此工具创建。",
+			"远程访问 Key（驱动 AI 助手的那类）由用户在运行配置页管理，elysia key 命令不能创建。",
 		Parameters: objectSchema(map[string]any{
 			"name":          map[string]any{"type": "string", "description": "Key 名称（主键，创建后不可改）"},
 			"secret":        map[string]any{"type": "string", "description": "Key 明文；留空自动生成随机值"},
@@ -151,7 +151,7 @@ func (t *createAPIKeyTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 	}
 	if existing, found, _ := store.FindAPITokenByName(ctx, name); found {
 		return agent.ToolResult{OK: false,
-			Summary: fmt.Sprintf("已存在同名 API Key %q，如需修改请用 update_api_key", existing.Name),
+			Summary: fmt.Sprintf("已存在同名 API Key %q，如需修改请用 elysia key update", existing.Name),
 			Data:    map[string]any{"error": "duplicate_name", "name": existing.Name}}
 	}
 	if err := store.UpsertAPIToken(ctx, item); err != nil {
@@ -186,7 +186,7 @@ func (t *updateAPIKeyTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
 		Type: "function", Name: agentToolUpdateAPIKey,
 		Description: "修改已有 API Key（用户审批后生效）：启停、调整可访问的模型组、更换明文（newSecret 留空=保留原值）。" +
-			"名称是主键不可修改；远程访问 Key（agent 作用域）由用户在运行配置页管理，此工具不可修改。allowedGroups 为空表示不限制（可访问全部模型组），调整前先向用户确认。",
+			"名称是主键不可修改；远程访问 Key（agent 作用域）由用户在运行配置页管理，elysia key 命令不可修改。allowedGroups 为空表示不限制（可访问全部模型组），调整前先向用户确认。",
 		Parameters: objectSchema(map[string]any{
 			"name":          map[string]any{"type": "string", "description": "Key 名称"},
 			"enabled":       map[string]any{"type": "boolean"},

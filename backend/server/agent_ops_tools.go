@@ -475,7 +475,7 @@ func (t *usageLogsTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
 		Type: "function", Name: agentToolUsageLogs,
 		Description: "查询调用日志列表（新→旧）：状态码、错误与错误类别、模型、key、耗时、token。status=failed 只看失败请求；" +
-			"需要深入某个请求时用 get_usage_log_detail 取捕获的请求/响应体。",
+			"需要深入某个请求时用 elysia usage log <requestId> 取捕获的请求/响应体。",
 		Parameters: objectSchema(map[string]any{
 			"status":     map[string]any{"type": "string", "description": "success | failed"},
 			"statusCode": map[string]any{"type": "integer", "description": "精确状态码过滤"},
@@ -628,7 +628,7 @@ func (t *createSourceTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
 		Type: "function", Name: agentToolCreateSource,
 		Description: "创建模型源（用户审批后生效）。platform 支持 openai/anthropic/gemini/responses 或 custom:<协议ID>；" +
-			"autoFetchModels=true 自动拉取模型列表（创建后需另经 refresh_model_source 拉取，或用户在页面手动拉取）；" +
+			"autoFetchModels=true 标记为自动源（模型列表仍需创建后运行 elysia source refresh 拉取，或用户在页面手动拉取）；" +
 			"手动模型用手动列表或 manualModels。创建前先向用户确认 baseUrl、平台与密钥来源。",
 		Parameters: objectSchema(map[string]any{
 			"name":            map[string]any{"type": "string", "description": "源名称（显示用）"},
@@ -675,7 +675,7 @@ func (t *createSourceTool) Execute(ctx context.Context, tctx agent.ToolContext, 
 	// 换掉）——「创建」审批卡实际产生破坏性修改。重名直接拒绝，改走 update。
 	if existing, found := agentFindSource(ctx, store, item.ID); found {
 		return agent.ToolResult{OK: false,
-			Summary: fmt.Sprintf("已存在同名模型源 %q（id=%s），如需修改请用 update_model_source", existing.Name, existing.ID),
+			Summary: fmt.Sprintf("已存在同名模型源 %q（id=%s），如需修改请用 elysia source update", existing.Name, existing.ID),
 			Data:    map[string]any{"error": "duplicate_source", "id": existing.ID}}
 	}
 	if params.AutoFetchModels != nil {
@@ -837,7 +837,7 @@ func (t *refreshSourceTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
 		Type: "function", Name: agentToolRefreshSource,
 		Description: "从上游拉取某模型源的模型列表（用户审批后执行，真实出站请求）。手动源则会同步手动模型列表。" +
-			"新建自动拉取源后用这个工具取回模型。",
+			"新建自动拉取源后用它（elysia source refresh）取回模型。",
 		Parameters: objectSchema(map[string]any{
 			"source": map[string]any{"type": "string", "description": "源 id 或名称"},
 		}, "source"),
@@ -971,7 +971,7 @@ func (t *createGroupTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
 		Type: "function", Name: agentToolCreateGroup,
 		Description: "创建模型组（用户审批后生效）：模型引用列表（sourceId:modelId 或模型名）、调度策略、重试。" +
-			"名称需唯一；创建前先 list_sources / list_model_groups 确认可用模型与重名。",
+			"名称需唯一；创建前先 elysia source ls / elysia group ls 确认可用模型与重名。",
 		Parameters: objectSchema(map[string]any{
 			"name":                  map[string]any{"type": "string", "description": "组名（客户端调用时用的模型名）"},
 			"models":                map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "成员模型引用（sourceId:modelId 或模型名）"},
@@ -1281,7 +1281,7 @@ func (t *updateModelTool) Definition() relay.MaheshvaraTool {
 	return relay.MaheshvaraTool{
 		Type: "function", Name: agentToolUpdateModel,
 		Description: "修改单个模型（用户审批后生效）：启停、改名、类型、maxTokens、能力标记（视觉/工具/结构化）、思考模式。" +
-			"能力字段被修改后刷新不再覆盖（capability_source=manual）。source 用源 id 或名称，model 是模型 id（先 list_models 查）。",
+			"能力字段被修改后刷新不再覆盖（capability_source=manual）。source 用源 id 或名称，model 是模型 id（先 elysia model ls 查）。",
 		Parameters: objectSchema(map[string]any{
 			"source":           map[string]any{"type": "string", "description": "源 id 或名称"},
 			"model":            map[string]any{"type": "string", "description": "模型 id"},

@@ -175,7 +175,11 @@ func helpCommand(command *cliCommand) string {
 	if command.example != "" {
 		b.WriteString("\n示例：" + command.example + "\n")
 	}
-	if detail := command.tool(nil).Definition().Description; detail != "" {
+	detail := command.detail
+	if detail == "" {
+		detail = command.tool(nil).Definition().Description
+	}
+	if detail != "" {
 		b.WriteString("\n详细说明：" + detail + "\n")
 	}
 	// 门控提示与目标工具同源。

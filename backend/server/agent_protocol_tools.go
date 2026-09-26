@@ -54,7 +54,7 @@ const testModelPlaceholder = "test-model"
 func draftProtocol(tctx agent.ToolContext) (relay.CustomProtocolConfig, agent.ToolResult, bool) {
 	draft := tctx.Draft()
 	if len(draft) == 0 {
-		return relay.CustomProtocolConfig{}, agent.ToolError("尚无草稿，先调用 update_protocol_draft", "no_draft"), false
+		return relay.CustomProtocolConfig{}, agent.ToolError("尚无草稿，先运行 elysia protocol draft '<配置JSON>'", "no_draft"), false
 	}
 	var protocol relay.CustomProtocolConfig
 	if err := json.Unmarshal(draft, &protocol); err != nil {
@@ -146,7 +146,7 @@ func offlineValidationData(tctx agent.ToolContext, protocol relay.CustomProtocol
 	data := map[string]any{"valid": true, "id": protocol.ID}
 	meta := tctx.SessionMeta()
 	if meta.Mode == agent.ModeEdit && meta.ProtocolID != "" && !strings.EqualFold(protocol.ID, meta.ProtocolID) {
-		data["warning"] = fmt.Sprintf("当前为编辑模式，目标协议 id 为 %q，请保持 id 不变（save_protocol 会拒绝不一致的 id）", meta.ProtocolID)
+		data["warning"] = fmt.Sprintf("当前为编辑模式，目标协议 id 为 %q，请保持 id 不变（elysia protocol save 会拒绝不一致的 id）", meta.ProtocolID)
 	}
 	if preview, err := previewCustomProtocolRequest(protocol, defaultCustomProtocolSampleRequest()); err != nil {
 		data["previewError"] = err.Error()
