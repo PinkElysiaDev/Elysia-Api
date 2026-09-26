@@ -135,6 +135,9 @@ func (s *Server) inheritRecentSessionSettings(ctx context.Context, settings *age
 	}
 	base := recent[0].Settings
 	base.TestAPIKeySet = false // 只读凭证标记，新会话没有测试凭证
+	// PlanMode 是「本会话当前工作流状态」（等方案确认），不是用户偏好——
+	// 继承它会让计划模式缠上之后所有远程新建的会话（写入永远被拒）。
+	base.PlanMode = false
 	if inheritAll {
 		*settings = base
 		return

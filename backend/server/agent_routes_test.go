@@ -615,7 +615,6 @@ func TestAgentFullTurnWithOpsTool(t *testing.T) {
 	}
 }
 
-
 // bash 全链运维 e2e：空清单补救文案 → 批处理建组（失败回退策略）+ 建指定
 // 明文的 Key（审批暂停）→ 批准续跑 → 验证组与 Key 落库。锁住提示词重构
 // 后模型可见的运行时行为（空结果指引、明文照建、策略语义、审批面）。
@@ -707,5 +706,108 @@ func TestAgentCLIOpsChainE2E(t *testing.T) {
 	}
 	if len(token.AllowedGroups) != 1 || token.AllowedGroups[0] != "test123" {
 		t.Fatalf("allowedGroups = %v", token.AllowedGroups)
+	}
+}
+
+// 计划模式全链：只读批放行 → 混合批被拒且点名被拒命令与只读连带提示 →
+// 按提示拆分重发只读批成功 → update_plan 定稿暂停 → 用户确认关闭计划模式
+// → 写入批走 save 审批 → 批准建成。锁住模型在计划模式下的自救闭环。
+func TestAgentPlanModeReadOnlySelfRescueE2E(t *testing.T) {
+	s := newAgentIntegrationServer(t)
+	fake := newFakeAgentModelServer(t, [][]string{
+		{ // 第 1 轮：纯只读批 → 计划模式下放行
+			openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia source ls"}`), "", nil),
+			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
+			openAIDone()},
+		{ // 第 2 轮：混合批（只读 + 门控 refresh）→ 整批拒绝，文案点名
+			openAIChunk("c2", toolCallDelta(0, "call_2", "bash", `{"command":"elysia model ls --source s1 ; elysia source refresh --source s1"}`), "", nil),
+			openAIChunk("c2", map[string]any{}, "tool_calls", nil),
+			openAIDone()},
+		{ // 第 3 轮：按提示拆分，重发纯只读 → 成功
+			openAIChunk("c3", toolCallDelta(0, "call_3", "bash", `{"command":"elysia model ls --source s1"}`), "", nil),
+			openAIChunk("c3", map[string]any{}, "tool_calls", nil),
+			openAIDone()},
+		{ // 第 4 轮：方案定稿 → plan 型暂停
+			openAIChunk("c4", toolCallDelta(0, "call_4", "update_plan", `{"analysis":"源与模型清单已确认","plan":[{"title":"建组 plan-e2e","status":"pending"}],"ready_for_approval":true}`), "", nil),
+			openAIChunk("c4", map[string]any{}, "tool_calls", nil),
+			openAIDone()},
+		{ // 第 5 轮（方案确认后）：写入 → save 审批暂停
+			openAIChunk("c5", toolCallDelta(0, "call_5", "bash", `{"command":"elysia group create --name plan-e2e --models s1:fake-model"}`), "", nil),
+			openAIChunk("c5", map[string]any{}, "tool_calls", nil),
+			openAIDone()},
+		{ // 终稿
+			openAIChunk("c6", map[string]any{"role": "assistant", "content": "已建成"}, "", nil),
+			openAIChunk("c6", map[string]any{}, "stop", nil),
+			openAIDone()},
+	})
+	seedAgentModel(t, s, fake.URL)
+
+	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create"}`)
+	s.adminCreateAgentSession(c)
+	sessionID := decodeAdminData(t, rec)["id"].(string)
+	// 开计划模式 + 配模型
+	c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID,
+		`{"settings":{"modelSourceId":"s1","modelName":"fake-model","planMode":true}}`)
+	s.adminUpdateAgentSession(c)
+
+	// 第 1 轮：只读放行；第 2 轮：混合批拒绝 → 第 4 轮方案暂停（两次流）。
+	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/messages", sessionID, `{"content":"帮我建组"}`)
+	s.adminSendAgentMessage(c)
+	events := parseSSEEvents(t, rec.Body.String())
+
+	results := ""
+	for _, event := range events {
+		if event.Type == "tool_result" {
+			results += string(event.Data)
+		}
+	}
+	if !strings.Contains(results, "执行 1 条命令") {
+		t.Fatalf("read-only batch must run in plan mode: %s", results)
+	}
+	if !strings.Contains(results, "source refresh") || !strings.Contains(results, "只读命令也被连带跳过") {
+		t.Fatalf("mixed batch denial must name the blocked command and the read-only side effect: %s", results)
+	}
+	if !strings.Contains(results, "fake-model") {
+		t.Fatalf("resplit read-only batch must return models: %s", results)
+	}
+	// plan 型暂停
+	pausedForPlan := false
+	for _, event := range events {
+		if event.Type == "approval_required" && strings.Contains(string(event.Data), `"kind":"plan"`) {
+			pausedForPlan = true
+		}
+	}
+	if !pausedForPlan {
+		t.Fatalf("ready_for_approval must pause with plan pending: %s", rec.Body.String())
+	}
+
+	// 确认方案 → 关闭计划模式 → 第 5 轮写入触发 save 审批。
+	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":true}`)
+	s.adminApproveAgentAction(c)
+	events = parseSSEEvents(t, rec.Body.String())
+	if !hasAgentEvent(events, "approval_required") {
+		t.Fatalf("write after plan approval must pause on save: %s", rec.Body.String())
+	}
+	session, _ := s.store.GetSession(t.Context(), sessionID)
+	if session.Settings.PlanMode {
+		t.Fatal("plan mode must be off after plan approval")
+	}
+
+	// 批准写入 → 组建成。
+	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":true}`)
+	s.adminApproveAgentAction(c)
+	events = parseSSEEvents(t, rec.Body.String())
+	if !hasAgentEvent(events, "turn_done") {
+		t.Fatalf("turn must finish: %s", rec.Body.String())
+	}
+	groups, _ := s.store.ListGroups(t.Context())
+	found := false
+	for _, group := range groups {
+		if group.Name == "plan-e2e" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("group plan-e2e not created: %+v", groups)
 	}
 }

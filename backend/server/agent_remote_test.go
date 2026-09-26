@@ -908,12 +908,13 @@ func TestRemoteSessionInheritsRecentSettings(t *testing.T) {
 		}
 	})
 
-	// 用户在 webui（管理端）建会话并选好模型/思考/权限档。
+	// 用户在 webui（管理端）建会话并选好模型/思考/权限档；开着计划模式
+	//（工作流状态，不应被新会话继承）。
 	seeded, err := s.store.CreateAgentSession(ctx, storage.AgentSessionUpsert{
 		Mode: "create",
 		Settings: agent.Settings{
 			ModelSourceID: "src-1", ModelName: "gpt-x", ThinkingEnabled: true, ThinkingEffort: "xhigh",
-			AllowSave: "always",
+			AllowSave: "always", PlanMode: true,
 		},
 	})
 	if err != nil {
@@ -934,6 +935,9 @@ func TestRemoteSessionInheritsRecentSettings(t *testing.T) {
 	}
 	if inherited.Settings.TestAPIKeySet {
 		t.Fatal("credential marker must not be inherited")
+	}
+	if inherited.Settings.PlanMode {
+		t.Fatal("plan mode is a per-session workflow state and must not be inherited")
 	}
 
 	// 显式 settings 模型为空：只补模型/思考，其余显式字段保留。

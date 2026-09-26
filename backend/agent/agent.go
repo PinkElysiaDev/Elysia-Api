@@ -814,7 +814,7 @@ func (e *Engine) gateCall(session *Session, call relay.MaheshvaraToolCall, tool 
 // permissionGate 是单权限键的判定阶梯：计划模式 → never → ask。
 func permissionGate(session *Session, key, callID string, approvedIDs map[string]bool) (callGate, string, string) {
 	if session.Settings.PlanMode {
-		return gateDeny, planModeDenialMessage, ""
+		return gateDeny, "计划模式已开启：" + permissionKeyLabel(key) + " 类操作暂不执行。只读查询照常可用；修改类动作请先用 update_plan 给出完整方案，用户确认后系统会关闭计划模式再执行", ""
 	}
 	switch PermissionFor(session.Settings, key) {
 	case PermissionNever:
@@ -826,9 +826,6 @@ func permissionGate(session *Session, key, callID string, approvedIDs map[string
 	}
 	return gateAllow, "", ""
 }
-
-// planModeDenialMessage 计划模式统一拒绝文案（普通与探针路径共用）。
-const planModeDenialMessage = "计划模式已开启：修改与出站操作暂不执行。请先用 update_plan 给出完整方案，并等待用户确认后再执行"
 
 // formatGateNote 把一条待批命令渲染为审批卡行（命令 + 权限档）。
 func formatGateNote(note GateNote) string {
@@ -867,7 +864,16 @@ func (e *Engine) gateProbeDecision(session *Session, call relay.MaheshvaraToolCa
 		return gateAllow, "", ""
 	}
 	if session.Settings.PlanMode {
-		return gateDeny, planModeDenialMessage, ""
+		// 点名批内被拒命令并说明只读可拆分重发——否则模型把「整批零
+		// 输出」泛化成「没有这个能力」，探索调查都不敢做。
+		blocked := make([]string, 0, len(notes))
+		for _, note := range notes {
+			blocked = append(blocked, formatGateNote(note))
+		}
+		return gateDeny, "计划模式已开启，本批暂不执行。批内含修改/出站/删除命令：\n" +
+			strings.Join(blocked, "\n") +
+			"\n批内只读命令也被连带跳过了——把只读查询（ls / help / usage 等）单独重发即可执行；" +
+			"修改类动作请先用 update_plan 给出完整方案，用户确认后系统会关闭计划模式再执行", ""
 	}
 	var pauseNotes, deniedNotes []string
 	for _, note := range notes {
