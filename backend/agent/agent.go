@@ -1099,8 +1099,9 @@ func (e *Engine) composeInstructions(session *Session, nudgePlan bool) string {
 		b.WriteString("\n\n## 当前工作草稿（`elysia protocol draft` 的最新产物，后续修改以它为基准）\n```json\n")
 		b.Write(session.DraftConfig)
 		b.WriteString("\n```")
-	} else {
-		b.WriteString("\n\n## 当前工作草稿\n（尚无草稿——请先用 `elysia protocol draft '<配置JSON>'` 生成第一版。）")
+	} else if session.ProtocolID != "" || session.Mode == ModeEdit {
+		// 协议向会话才引导建草稿；通用运维会话不注入本节。
+		b.WriteString("\n\n## 当前工作草稿\n（尚无草稿——用 `elysia protocol draft '<配置JSON>'` 生成第一版，工作流与字段目录见 `elysia help protocol draft`。）")
 	}
 	return b.String()
 }

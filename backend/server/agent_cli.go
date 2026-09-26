@@ -405,8 +405,9 @@ type cliCommand struct {
 	mapper      func(inv *cliInvocation) (map[string]any, error)
 	// detail 覆盖命令级 help 的「详细说明」（缺省回退目标工具的
 	// Description）。共用处理器的读写合一命令（如 outbound）靠它拿到
-	// 各自语义，避免只读描述误入 set/reset 的帮助。
-	detail string
+	// 各自语义，避免只读描述误入 set/reset 的帮助；惰性函数——协议
+	// draft 的目录含 schema 生成与 few-shot 序列化，不能每次建表都跑。
+	detail func() string
 }
 
 // Path 返回完整命令路径（如 "source create"；组级命令如 "syslog"）。
@@ -813,6 +814,7 @@ func protocolCommands() []*cliCommand {
 		&cliCommand{group: "protocol", name: "draft", summary: "写入/更新协议配置草稿（立即校验并离线验证）",
 			usage:   "elysia protocol draft '<完整配置 JSON>' [--example '<响应示例 JSON>']",
 			example: `elysia protocol draft '{"id":"my-api","request":{...}}' --example '{"text":"hi"}'`,
+			detail:  protocolDraftDetail,
 			positionals: []cliPositionalSpec{
 				{"config", "完整 CustomProtocolConfig JSON（建议用单引号包裹）"},
 			},
@@ -996,7 +998,9 @@ func outboundCommands() []*cliCommand {
 			example: `elysia outbound set --ranges 10.0.0.0/8,172.16.0.0/12`,
 			flags:   []cliFlagSpec{{"ranges", "禁止段 CIDR 列表（逗号分隔；空=放行所有）", false, true}},
 			tool:    func(s *Server) agent.Tool { return &outboundPolicyTool{server: s} },
-			detail: "整体替换出站禁止 IP 段列表（SSRF 防护）。--ranges 给出替换后的完整 CIDR 列表——是整体替换而非增量增删；空列表 = 放行所有地址。上游是本机/内网地址（如 127.0.0.1）被 \"refused to dial denied IP\" 拦截时，从列表去掉对应段（环回 127.0.0.0/8、私网 10.0.0.0/8、172.16.0.0/12、192.168.0.0/16）即可放行。修改全列表为高影响操作，先向用户说明改动范围再执行。",
+			detail: func() string {
+				return "整体替换出站禁止 IP 段列表（SSRF 防护）。--ranges 给出替换后的完整 CIDR 列表——是整体替换而非增量增删；空列表 = 放行所有地址。上游是本机/内网地址（如 127.0.0.1）被 \"refused to dial denied IP\" 拦截时，从列表去掉对应段（环回 127.0.0.0/8、私网 10.0.0.0/8、172.16.0.0/12、192.168.0.0/16）即可放行。修改全列表为高影响操作，先向用户说明改动范围再执行。"
+			},
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if !inv.Has("ranges") {
@@ -1014,7 +1018,9 @@ func outboundCommands() []*cliCommand {
 		&cliCommand{group: "outbound", name: "reset", summary: "恢复出站禁止段为预置默认（需审批）",
 			usage: "elysia outbound reset", example: "elysia outbound reset",
 			tool:  func(s *Server) agent.Tool { return &outboundPolicyTool{server: s} },
-			detail: "把出站禁止 IP 段恢复为内置预置默认（环回/私网/链路本地/组播等，SSRF 防护基线）。丢弃当前自定义列表，执行前先向用户确认。",
+			detail: func() string {
+				return "把出站禁止 IP 段恢复为内置预置默认（环回/私网/链路本地/组播等，SSRF 防护基线）。丢弃当前自定义列表，执行前先向用户确认。"
+			},
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				return map[string]any{"resetDefault": true}, nil
 			}},

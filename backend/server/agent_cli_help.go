@@ -175,8 +175,10 @@ func helpCommand(command *cliCommand) string {
 	if command.example != "" {
 		b.WriteString("\n示例：" + command.example + "\n")
 	}
-	detail := command.detail
-	if detail == "" {
+	detail := ""
+	if command.detail != nil {
+		detail = command.detail()
+	} else {
 		detail = command.tool(nil).Definition().Description
 	}
 	if detail != "" {
