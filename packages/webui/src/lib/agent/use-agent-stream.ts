@@ -321,16 +321,31 @@ export function useAgentStream(
   }, []);
 
   /** 会话详情回灌审批卡：waiting_approval 状态在刷新/切会话后 SSE 现场已
-   * 丢失，不回灌的话待审批轮次从此无法在 UI 上批准。 */
+   *  丢失，不回灌的话待审批轮次从此无法在 UI 上批准。
+   *  以轮询到的后端状态为准：远程面（插件/MCP/A2A）批准或轮次结束后
+   *  pendingAction 已清空或换成了下一张卡，本地旧卡必须同步清除/替换，
+   *  否则会僵尸占据交互区；仅本地流式进行中以 SSE 事件为准不覆盖。 */
   const hydrateApproval = useCallback(
     (approval: AgentPendingAction | null | undefined) => {
       setLive((state) => {
-        if (!approval || state.approvalPending || state.running) return state;
-        return { ...state, approvalPending: approval };
-      });
+        if (state.running) return state
+        if (!approval) {
+          return state.approvalPending ? { ...state, approvalPending: null } : state
+        }
+        if (state.approvalPending && samePendingAction(state.approvalPending, approval)) return state
+        return { ...state, approvalPending: approval }
+      })
     },
     [],
   );
 
   return { live, send, approve, stop, dismissError, hydrateApproval };
+}
+
+/** 两张待批卡是否指向同一动作（类型 + 调用集合一致）。 */
+function samePendingAction(a: AgentPendingAction, b: AgentPendingAction) {
+  if ((a.kind ?? "") !== (b.kind ?? "")) return false
+  const callIds = (pending: AgentPendingAction) =>
+    pending.calls.map((call) => call.id ?? call.name ?? "").join(",")
+  return callIds(a) === callIds(b)
 }
