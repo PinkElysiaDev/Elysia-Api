@@ -1,16 +1,16 @@
 {
   "id": "chat-completions-api",
   "name": "Chat Completions API（预置）",
-  "version": "2",
+  "version": "3",
   "type": "llm",
   "metadata": {
     "preset": true,
-    "presetVersion": 2,
-    "description": "OpenAI Chat Completions 线制的预置定义；复制后可定制端点/字段。v2：reasoning_effort/stop/parallel_tool_calls/user、拒答与签名帧"
+    "presetVersion": 3,
+    "description": "OpenAI Chat Completions 线制的预置定义；复制后可定制端点/字段。v3：path 相对化——base 填到 /v1 为止（对齐 OpenAI 官方约定），端点路径不含版本前缀"
   },
   "request": {
     "method": "POST",
-    "path": "/v1/chat/completions",
+    "path": "/chat/completions",
     "shape": "openai-chat",
     "body": {
       "model": {
@@ -159,7 +159,7 @@
     }
   },
   "models": {
-    "path": "/v1/models",
+    "path": "/models",
     "listPath": "data"
   },
   "aliases": {}

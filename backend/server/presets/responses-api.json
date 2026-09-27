@@ -1,16 +1,16 @@
 {
   "id": "responses-api",
   "name": "Responses API（预置）",
-  "version": "2",
+  "version": "3",
   "type": "llm",
   "metadata": {
     "preset": true,
-    "presetVersion": 2,
-    "description": "OpenAI Responses 线制的预置定义；v2：include 联动、签名/拒答帧、参数完成帧、parallel_tool_calls"
+    "presetVersion": 3,
+    "description": "OpenAI Responses 线制的预置定义；v3：path 相对化——base 填到 /v1 为止（对齐 OpenAI 官方约定），端点路径不含版本前缀"
   },
   "request": {
     "method": "POST",
-    "path": "/v1/responses",
+    "path": "/responses",
     "shape": "responses",
     "body": {
       "model": {
@@ -155,7 +155,7 @@
     }
   },
   "models": {
-    "path": "/v1/models",
+    "path": "/models",
     "listPath": "data"
   },
   "aliases": {

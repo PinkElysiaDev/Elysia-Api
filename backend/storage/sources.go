@@ -399,3 +399,71 @@ func normalizeModelDefaults(model Model) Model {
 	model.Enabled = true
 	return model
 }
+
+// appendBaseSuffix 给去尾斜杠后的 base 补单段版本后缀;base 为空或末段已与
+// 后缀相同(大小写不敏感)时原样返回。
+func appendBaseSuffix(base, suffix string) string {
+	trimmed := strings.TrimSpace(base)
+	if trimmed == "" {
+		return base
+	}
+	trimmed = strings.TrimRight(trimmed, "/")
+	segment := strings.Trim(suffix, "/")
+	if last := trimmed[strings.LastIndex(trimmed, "/")+1:]; strings.EqualFold(last, segment) {
+		return base
+	}
+	return trimmed + "/" + segment
+}
+
+// AppendSourceBaseURLSuffix 给平台匹配(大小写不敏感)的所有源补齐 base 的
+// 版本段后缀(base_url 与 fetch_base_url 分别判断,已以后缀结尾或为空则跳过),
+// base_url 变化时同步重写该源 models 行的 base_url 快照。幂等;返回补齐的
+// 源数。供预置协议 path 语义切换(端点路径相对化、base 需含版本段)时一次性
+// 归一存量源地址使用。
+func (s *Store) AppendSourceBaseURLSuffix(ctx context.Context, platform, suffix string) (int, error) {
+	suffix = strings.Trim(strings.TrimSpace(suffix), "/")
+	if suffix == "" || strings.Contains(suffix, "/") {
+		return 0, errors.New("suffix must be a single path segment")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx, `SELECT id, base_url, fetch_base_url FROM model_sources WHERE LOWER(platform) = ?`, strings.ToLower(strings.TrimSpace(platform)))
+	if err != nil {
+		return 0, err
+	}
+	type pendingUpdate struct {
+		id, base, fetch string
+	}
+	pending := []pendingUpdate{}
+	for rows.Next() {
+		var id, base, fetchBase string
+		if err := rows.Scan(&id, &base, &fetchBase); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		nextBase := appendBaseSuffix(base, suffix)
+		nextFetch := appendBaseSuffix(fetchBase, suffix)
+		if nextBase == base && nextFetch == fetchBase {
+			continue
+		}
+		pending = append(pending, pendingUpdate{id: id, base: nextBase, fetch: nextFetch})
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, err
+	}
+	rows.Close()
+	now := nowString()
+	for _, item := range pending {
+		if _, err := tx.ExecContext(ctx, `UPDATE model_sources SET base_url = ?, fetch_base_url = ?, updated_at = ? WHERE id = ?`, item.base, item.fetch, now, item.id); err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE models SET base_url = ? WHERE source_id = ? AND base_url <> ?`, item.base, item.id, item.base); err != nil {
+			return 0, err
+		}
+	}
+	return len(pending), tx.Commit()
+}

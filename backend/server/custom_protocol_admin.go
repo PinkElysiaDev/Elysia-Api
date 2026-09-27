@@ -166,8 +166,11 @@ func (s *Server) adminDeleteCustomProtocol(c *gin.Context) {
 	respondOK(c, gin.H{"deleted": true, "synced": syncErr == nil})
 }
 
-// syncCustomProtocolsQuiet 从 SQLite 读取协议并原子替换注册表；失败以 error
-// 返回——管理端点需要把"已保存但未生效"如实回传给前端。
+// syncCustomProtocolsQuiet 从 SQLite 读取协议并原子替换注册表；读库或注册
+// 失败以 error 返回——管理端点需要把"已保存但未生效"如实回传给前端。注册键
+// 以行 id 列为准（config 内部 id 脱节的行按行 id 注册，与平台引用 custom:<行id>
+// 对齐）；无法解析或校验不过的行跳过并记日志——一行脏数据不再打挂全部协议，
+// 坏行在 /protocols 列表上仍以 valid=false 展示。
 func (s *Server) syncCustomProtocolsQuiet() error {
 	if s.store == nil {
 		return fmt.Errorf("sqlite store is unavailable")
@@ -177,11 +180,28 @@ func (s *Server) syncCustomProtocolsQuiet() error {
 		return err
 	}
 	configs := make([]relay.CustomProtocolConfig, 0, len(rows))
+	seen := make(map[string]bool, len(rows))
 	for _, row := range rows {
 		var protocol relay.CustomProtocolConfig
 		if err := json.Unmarshal([]byte(row.Config), &protocol); err != nil {
-			return fmt.Errorf("custom protocol %q is invalid JSON: %w", row.ID, err)
+			log.Printf("custom protocol %q not registered: invalid JSON: %v", row.ID, err)
+			continue
 		}
+		rowID := strings.TrimSpace(row.ID)
+		if strings.ToLower(strings.TrimSpace(protocol.ID)) != strings.ToLower(rowID) {
+			log.Printf("custom protocol %q config id %q overridden by row id", rowID, protocol.ID)
+			protocol.ID = rowID
+		}
+		if err := relay.ValidateCustomProtocol(protocol); err != nil {
+			log.Printf("custom protocol %q not registered: %v", row.ID, err)
+			continue
+		}
+		key := strings.ToLower(rowID)
+		if seen[key] {
+			log.Printf("custom protocol %q not registered: duplicate id (case-insensitive)", row.ID)
+			continue
+		}
+		seen[key] = true
 		configs = append(configs, protocol)
 	}
 	return relay.ReplaceCustomProtocols(configs)

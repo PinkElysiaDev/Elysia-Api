@@ -246,7 +246,7 @@ func TestAgentCallerCustomProtocolPlatform(t *testing.T) {
 		_, _ = w.Write([]byte(openAIChunk("c9", map[string]any{}, "stop", nil)))
 		_, _ = w.Write([]byte(openAIDone()))
 	})
-	seedCallerModel(t, s, upstream.URL, "custom:chat-completions-api")
+	seedCallerModel(t, s, upstream.URL+"/v1", "custom:chat-completions-api")
 
 	result, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
 	if err != nil {
@@ -432,7 +432,7 @@ func TestAgentCallerCustomProtocolPostTerminalTextIgnored(t *testing.T) {
 		_, _ = w.Write([]byte(openAIChunk("c9", map[string]any{"content": "协议"}, "", nil)))
 		_, _ = w.Write([]byte(openAIDone()))
 	})
-	seedCallerModel(t, s, upstream.URL, "custom:chat-completions-api")
+	seedCallerModel(t, s, upstream.URL+"/v1", "custom:chat-completions-api")
 
 	result, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
 	if err != nil {

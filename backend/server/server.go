@@ -199,8 +199,12 @@ func New(cfg *config.Config) *Server {
 		server.migrateLegacyCustomProtocols()
 		// 预置协议去厂商化改名（一次性、幂等；custom:<id> 平台引用同步重写）。
 		server.migratePresetProtocolRenames()
-		// 预置协议（四线制定义）在协议表为空时播种；已有用户数据不动。
-		server.seedPresetProtocols()
+		// 对账兜底：修复旧版改名迁移遗留的「行 id 列与 config 内部 id 脱节」
+		//（注册键错位会让 custom:<行id> 引用解析报 not registered）。
+		server.reconcileCustomProtocolConfigIDs()
+		// 预置协议（四线制定义）逐条补齐/按哈希链升级；path 相对化预置升级后
+		// 一次性把存量源 base 补上版本段（v1→v3 语义切换的配套迁移）。
+		server.migratePresetRelativePathBases(server.seedPresetProtocols())
 	}
 	server.syncOutboundPolicy()
 	server.syncCustomProtocols()

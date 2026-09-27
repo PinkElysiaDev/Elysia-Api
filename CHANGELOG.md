@@ -9,6 +9,24 @@
 v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.1.1 起的全部
 发布说明已合并进来，根目录不再保留按版本拆散的 `RELEASE_NOTES_v*.md`。
 
+## v1.5.1 - 2026-09-27
+
+修复版：解决旧库升级后自定义协议全部报「not registered」、以及 OpenAI 系预置协议按站点文档填地址会拼出 `/v1/v1/...` 两个问题。
+
+### 修复
+
+- **旧库迁移后协议「not registered」**：预置协议改名迁移此前只改行 ID 与平台引用、不改协议 JSON 内嵌的 ID，运行时注册表按内嵌 ID 建键导致错位——切协议/保存源时报 `custom protocol "xxx" is not registered`。现在改名迁移在同事务内同步改写内嵌 ID，启动时新增对账步骤自动修复已被旧版迁移过的库；注册表装配改为以行 ID 为准，且坏行只跳过自身、不再拖垮全部协议。
+- **OpenAI 系预置的 base 语义对齐官方约定（预置 v3）**：`chat-completions-api` 与 `responses-api` 的端点路径相对化——**Base URL 按官方习惯填到 `/v1` 为止**（如 `https://api.openai.com/v1`），网关拼 `/chat/completions`、`/responses`、`/models`。复制中转站文档地址直接可用，不再出现 `/v1/v1/models`。升级时自动迁移存量源地址（已含 `/v1` 或已填根的都归一到新语义）；用户改过预置定义的源保持原样不动。`anthropic-api` / `gemini-api` 语义不变（本就与各自官方约定一致）。
+
+<!-- release-details -->
+
+### 技术细节
+
+- `chat-completions-api` / `responses-api` 预置升至 v3：`request.path` 去掉 `/v1` 前缀、`models.path` 改为 `/models`；`anthropic-api`、`gemini-api` 维持 v2。
+- 预置升级哈希链由单代改为多代（`map[string][]string`）：登记 v1/v2 两代哈希，停在任意旧版原文的库一步升到最新；用户改过的行依旧不覆盖。
+- 新增启动迁移 `AppendSourceBaseURLSuffix`：仅在预置行本次实际发生「旧版原文 → v3」升级时，为该协议的源 `base_url` / `fetch_base_url` 补 `/v1` 版本段并同步模型行快照；幂等，不会反复纠正之后新建的源。
+- 改名迁移同步改写协议 JSON 内嵌 ID；新增 `ReconcileCustomProtocolConfigIDs` 启动对账，修复历史库「行 ID 与内嵌 ID 脱节」；注册表按行 ID 注册、坏行跳过并记日志。
+
 ## v1.5.0 - 2026-09-27
 
 这个版本的主题是「**AI 助手长大成人**」：它从一个「帮你设计协议的对话助手」，进化成**能直接管理这座网关的通用智能体**——聊天就能建模型源、调模型组、管 API Key、查用量、修出站策略，每个写操作都先弹卡等你批准；你不在电脑前时，还能用专用 Key、MCP 或 A2A 远程指挥它。此外，四大预置协议补齐了全部高级能力，全项目完成两轮代码质量治理，并修复了大量正确性与安全问题（共 160 个提交）。
