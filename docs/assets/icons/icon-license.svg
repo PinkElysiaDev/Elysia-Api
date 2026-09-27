@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="ribbon seal">
+<style>.i{fill:#D6337F}.a{fill:#F08AC8}.si{stroke:#D6337F;fill:none}.sa{stroke:#F08AC8;fill:none}
+@media (prefers-color-scheme: light){.i{fill:#C2186B}.a{fill:#E86FB4}.si{stroke:#C2186B}.sa{stroke:#E86FB4}}
+@media (prefers-color-scheme: dark){.i{fill:#F2A7DE}.a{fill:#FFC4E8}.si{stroke:#F2A7DE}.sa{stroke:#FFC4E8}}</style>
+<path class="a" d="M9.6 11.6 L7 21.2 L12 18.5 L17 21.2 L14.4 11.6 L12 13.4 Z"/>
+<path class="i" d="M12 2.8 L16.2 8.2 L12 13.6 L7.8 8.2 Z"/>
+</svg>

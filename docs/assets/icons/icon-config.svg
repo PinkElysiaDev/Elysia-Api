@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="sliders with crystal knobs">
+<style>.i{fill:#D6337F}.a{fill:#F08AC8}.si{stroke:#D6337F;fill:none}.sa{stroke:#F08AC8;fill:none}
+@media (prefers-color-scheme: light){.i{fill:#C2186B}.a{fill:#E86FB4}.si{stroke:#C2186B}.sa{stroke:#E86FB4}}
+@media (prefers-color-scheme: dark){.i{fill:#F2A7DE}.a{fill:#FFC4E8}.si{stroke:#F2A7DE}.sa{stroke:#FFC4E8}}</style>
+<path class="i" d="M3 6.4 L14.2 6.4 L14.2 8.4 L3 8.4 Z M9.8 15.6 L21 15.6 L21 17.6 L9.8 17.6 Z"/>
+<path class="a" d="M17.4 4.8 L20.6 7.4 L17.4 10 L14.6 7.4 Z M6.6 14 L9.4 16.6 L6.6 19.2 L3.8 16.6 Z"/>
+</svg>

@@ -21,11 +21,11 @@
 
 ---
 
-## ✨ Features
+## <img src="docs/assets/icons/icon-features.svg" width="20" alt=""> Features
 
 The WebUI is embedded into the backend binary through `//go:embed` and served at `/ui/` by default. Runtime configuration uses a bootstrap `config.json`; model sources, model groups, Relay API Tokens, Usage data, and system logs are stored in SQLite.
 
-### 🌐 Gateway Core
+### <img src="docs/assets/icons/icon-gateway.svg" width="16" alt=""> Gateway Core
 
 - Model groups and load balancing: supports round-robin, sequential, random, and model-group-level permission strategies.
 - Multi-format conversion: uses Maheshvara Request / Response / Usage as the single core representation, converting between OpenAI Chat Completions, OpenAI Responses, Claude Messages, and Gemini GenerateContent.
@@ -36,27 +36,27 @@ The WebUI is embedded into the backend binary through `//go:embed` and served at
 - Traffic limits: supports model-group-level concurrency and daily request/token limits.
 - Operations and diagnostics: includes health checks, system logs, pprof, a WebUI usage dashboard, and hot-reload endpoints.
 
-### 🤖 Management Agent
+### <img src="docs/assets/icons/icon-agent.svg" width="16" alt=""> Management Agent
 
 - The WebUI "AI Assistant" page hosts a built-in general-purpose agent: upload API docs to onboard a protocol (draft → offline verification → approved real tests → save), or ask it to create/update model sources and model groups, query usage with inline charts, drill into failed requests, and maintain outbound security policies.
 - Writes and outbound calls are approval-gated (approval cards + plan-mode pause points); session history is traceable, model and thinking effort are configurable, and agent token usage lands in the stats page.
 - `elysia` CLI: drive the same engine from the terminal (see [docs/agent-cli.md](docs/agent-cli.md)).
 
-### 🧩 No-Code Protocol DSL
+### <img src="docs/assets/icons/icon-dsl.svg" width="16" alt=""> No-Code Protocol DSL
 
 - Protocol Designer: build protocols visually with field-level mappings — every field in the request/response body declares which Maheshvara field it corresponds to; saves take effect instantly.
 - Preset protocols: the four standard protocols are themselves data definitions from the same source, viewable, copyable, and editable in the designer.
 - AI generation: hand API docs to the AI assistant to produce a protocol draft and run it through verification.
 - Model discovery: a custom protocol can declare a model-list endpoint; once declared, model sources referencing it can enable automatic fetching.
 
-### 📡 Remote Orchestration
+### <img src="docs/assets/icons/icon-remote.svg" width="16" alt=""> Remote Orchestration
 
 - REST: `/api/agent/*` management surface (session and message management, SSE streaming responses).
 - MCP: `POST /mcp` exposes 9 agent tools (session list/create/get/update/delete, message send, approval respond, stop, clear messages, and more).
 - A2A: `POST /a2a` message endpoint + `GET /.well-known/agent-card.json` standard Agent Card.
 - Dedicated remote keys: agent-scoped Bearer keys can only drive the AI assistant (`/api/agent`, `/mcp`, `/a2a`), never the `/v1` inference endpoints; `config.agentRemote` master switch (enabled by default).
 
-### 🔋 Supporting Capabilities
+### <img src="docs/assets/icons/icon-support.svg" width="16" alt=""> Supporting Capabilities
 
 - Multi-key scheduling: a model source can configure multiple API keys and schedule them by round-robin / random / priority; **per-key permission auto-discovery** independently requests the model list with each key, automatically obtains each key's available model set (which can be enabled or disabled per key in the panel), and ensures scheduling never switches to a key without permission.
 - Model capability catalog: includes a models.dev snapshot for zero-configuration use, periodically updates it online, and persists a cache (automatically falling back to a jsDelivr mirror when models.dev is unavailable); model fetching fills in capabilities such as vision / tools / structured output / reasoning mode / context length. Model-group capabilities are derived from members and enforced (groups without vision automatically remove images; groups without tool support reject tool requests).
@@ -65,7 +65,7 @@ The WebUI is embedded into the backend binary through `//go:embed` and served at
 - Model-level management: fetched models support individual editing / enabling / disabling / deletion and search; refresh uses a preserving merge, so manually added models and user edits are never lost.
 - Security hardening: encrypts sensitive fields at rest, compares tokens in constant time, and protects against SSRF with a configurable CIDR deny list (`outbound.deniedIpRanges`, editable from the runtime config page and the agent tools).
 
-## 🖼️ UI Preview
+## <img src="docs/assets/icons/icon-preview.svg" width="20" alt=""> UI Preview
 
 Login page opening animation (character trace motion + background video):
 
@@ -79,9 +79,9 @@ Login page opening animation (character trace motion + background video):
 | :---: | :---: |
 | ![AI assistant](docs/assets/webui-agent.png) | ![Runtime config](docs/assets/webui-runtime.png) |
 
-## 🚀 Quick Start
+## <img src="docs/assets/icons/icon-quickstart.svg" width="20" alt=""> Quick Start
 
-Prebuilt binaries are published through [GitHub Releases](https://github.com/PinkElysiaDev/Elysia-Api/releases/latest). Download the program for your platform and `SHA256SUMS`; to rebuild from source, see the [Build](#-build) section below.
+Prebuilt binaries are published through [GitHub Releases](https://github.com/PinkElysiaDev/Elysia-Api/releases/latest). Download the program for your platform and `SHA256SUMS`; to rebuild from source, see the [Build](#build) section below.
 
 | Platform | Release file |
 | --- | --- |
@@ -217,7 +217,7 @@ curl http://127.0.0.1:8765/v1/chat/completions \
   -d '{"model":"default","messages":[{"role":"user","content":"hi"}]}'
 ```
 
-## 🧩 Maheshvara and the No-Code Protocol DSL
+## <img src="docs/assets/icons/icon-dsl.svg" width="20" alt=""> Maheshvara and the No-Code Protocol DSL
 
 Cross-protocol conversion uniformly passes through the Maheshvara core request / response model: OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, and Gemini GenerateContent are all first parsed into Maheshvara and then rendered for the upstream protocol. A model source's `platform` can be `custom:<protocolID>` (the WebUI lets you select and enter the ID directly); protocols are built visually in the WebUI Protocol Designer page with field-level mappings, and saves take effect instantly. Protocol config example:
 
@@ -255,7 +255,7 @@ Both the request and response body use field-level mappings: every leaf declares
 - Protocol definition field reference: [docs/protocol-definition-reference.md](docs/protocol-definition-reference.md)
 - Real-world case — Alibaba DashScope onboarding guide: [docs/custom-protocol-dashscope.md](docs/custom-protocol-dashscope.md)
 
-## 🤖 Management Agent and Remote Orchestration
+## <img src="docs/assets/icons/icon-agent.svg" width="20" alt=""> Management Agent and Remote Orchestration
 
 Beyond chatting in the WebUI, the management agent can be driven by remote programs—scripts, MCP clients (e.g. Claude Desktop, Cursor), or other A2A-capable agents can all treat Elysia-API as a schedulable operations agent:
 
@@ -271,7 +271,7 @@ The three remote surfaces share agent-scoped Bearer API key authentication and t
 - Full agent tool catalog: [docs/agent-tools-catalog.md](docs/agent-tools-catalog.md)
 - `elysia` CLI command reference: [docs/agent-cli.md](docs/agent-cli.md)
 
-## ⚙️ Configuration
+## <img src="docs/assets/icons/icon-config.svg" width="20" alt=""> Configuration
 
 `config.json` stores only the bootstrap fields required for startup. Model sources, model groups, Relay API Tokens, Usage data, and system logs are stored in SQLite.
 
@@ -298,7 +298,7 @@ You can also provide the master key through the `ELYSIA_API_MASTER_KEY` environm
 
 `tokens` and `modelGroups` in legacy configuration are imported into SQLite as compatibility data at startup. New installations should keep only bootstrap fields in `config.json`, such as host, port, database path, panel access token, logging, and diagnostic settings.
 
-## 🛡️ Operations, Endpoints, and Data Backup
+## <img src="docs/assets/icons/icon-ops.svg" width="20" alt=""> Operations, Endpoints, and Data Backup
 
 ### Operations Endpoints
 
@@ -340,7 +340,7 @@ The SQLite database uses WAL mode. You will normally see:
 
 For backups, use the SQLite backup tool, or stop the backend before copying all of the database files above together. If the key file is enabled, also back up and protect the `.master-key` referenced by `secretKeyPath`. If the master key is lost, upstream API keys and Relay API Tokens encrypted in SQLite cannot be decrypted.
 
-## 🔨 Build
+## <img src="docs/assets/icons/icon-build.svg" width="20" alt=""> Build
 
 Install dependencies before the first build or after dependency changes:
 
@@ -387,7 +387,7 @@ npm run dev
 
 The Vite dev server proxies to `http://127.0.0.1:8765` by default.
 
-## 📚 Documentation
+## <img src="docs/assets/icons/icon-docs.svg" width="20" alt=""> Documentation
 
 | Topic | Docs |
 | --- | --- |
@@ -396,7 +396,7 @@ The Vite dev server proxies to `http://127.0.0.1:8765` by default.
 | AI Assistant | [Remote interfaces (REST / MCP / A2A)](docs/remote-agent-api.md) · [Tool catalog](docs/agent-tools-catalog.md) · [elysia CLI](docs/agent-cli.md) |
 | WebUI & API | [Backend API reference](docs/webui-api.md) · [Data model](docs/webui-data-model.md) · [Frontend spec](docs/webui-frontend-spec.md) · [Acceptance checklist](docs/webui-acceptance.md) |
 
-## 🗺️ Project Structure
+## <img src="docs/assets/icons/icon-structure.svg" width="20" alt=""> Project Structure
 
 ```text
 elysia-api/
@@ -413,6 +413,6 @@ elysia-api/
 └── config.json.example     # Minimal bootstrap configuration template
 ```
 
-## 🤝 License
+## <img src="docs/assets/icons/icon-license.svg" width="20" alt=""> License
 
 This project is released under the [MIT License](package.json).

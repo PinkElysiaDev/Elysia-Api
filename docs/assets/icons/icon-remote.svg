@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="crystal broadcast">
+<style>.i{fill:#D6337F}.a{fill:#F08AC8}.si{stroke:#D6337F;fill:none}.sa{stroke:#F08AC8;fill:none}
+@media (prefers-color-scheme: light){.i{fill:#C2186B}.a{fill:#E86FB4}.si{stroke:#C2186B}.sa{stroke:#E86FB4}}
+@media (prefers-color-scheme: dark){.i{fill:#F2A7DE}.a{fill:#FFC4E8}.si{stroke:#F2A7DE}.sa{stroke:#FFC4E8}}</style>
+<path class="i" d="M12 8 L14 10.6 L12 13.2 L10 10.6 Z M12 14 L15.4 21 L8.6 21 Z"/>
+<path class="sa" stroke-width="2.4" stroke-linecap="square" d="M7.4 6.6 A 6 6 0 0 1 16.6 6.6 M4.4 3.4 A 10 10 0 0 1 19.6 3.4"/>
+</svg>

@@ -21,11 +21,11 @@
 
 ---
 
-## ✨ 特性
+## <img src="docs/assets/icons/icon-features.svg" width="20" alt=""> 特性
 
 WebUI 通过 `//go:embed` 嵌入后端二进制，默认在 `/ui/` 提供；运行时配置使用 bootstrap `config.json`，模型源、模型组、Relay API Token、Usage 与系统日志存储在 SQLite 中。
 
-### 🌐 网关核心
+### <img src="docs/assets/icons/icon-gateway.svg" width="16" alt=""> 网关核心
 
 - 模型组与负载均衡：支持轮询、顺序、随机策略和模型组级权限。
 - 多格式互转：以 Maheshvara Request / Response / Usage 为唯一核心表示，在 OpenAI Chat Completions、OpenAI Responses、Claude Messages、Gemini GenerateContent 之间转换。
@@ -36,27 +36,27 @@ WebUI 通过 `//go:embed` 嵌入后端二进制，默认在 `/ui/` 提供；运�
 - 流量限制：支持模型组级并发和每日请求/token 限制。
 - 运维诊断：内置健康检查、系统日志、pprof、WebUI 用量面板和热重载端点。
 
-### 🤖 管理智能体
+### <img src="docs/assets/icons/icon-agent.svg" width="16" alt=""> 管理智能体
 
 - WebUI「AI 助手」页内置通用智能体：上传 API 文档即可接入协议（草稿 → 离线自检 → 经审批真实测试 → 保存），也能新增/修改模型源与模型组、查询用量并生成图表、下钻分析失败请求、维护出站安全策略。
 - 写操作与出站请求均需审批（审批卡 + 计划模式暂停点），会话历史可追溯，模型与思考等级可调，Agent 用量计入统计页。
 - `elysia` CLI：在终端以同一引擎驱动网关运维（见 [docs/agent-cli.md](docs/agent-cli.md)）。
 
-### 🧩 无代码协议 DSL
+### <img src="docs/assets/icons/icon-dsl.svg" width="16" alt=""> 无代码协议 DSL
 
 - 协议设计器：请求体/返回体逐字段声明与 Maheshvara 字段的对应关系，可视化构建、保存即热生效。
 - 预置协议：四大标准协议本身也是同源的数据定义，可在设计器中查看、复制、编辑。
 - AI 生成：把 API 文档交给 AI 助手，直接产出协议草稿并走完验证流程。
 - 模型发现：自定义协议可声明模型列表端点，声明后引用该协议的模型源即可开启自动拉取。
 
-### 📡 远程调度
+### <img src="docs/assets/icons/icon-remote.svg" width="16" alt=""> 远程调度
 
 - REST：`/api/agent/*` 管理面（会话与消息管理，SSE 流式响应）。
 - MCP：`POST /mcp` 暴露 9 个 agent 工具（会话列举/创建/查询/更新、消息发送、审批应答、停止、清空消息等）。
 - A2A：`POST /a2a` 消息端点 + `GET /.well-known/agent-card.json` 标准 Agent Card。
 - 专用远程 Key：agent 作用域 Bearer Key 只能驱动 AI 助手（`/api/agent`、`/mcp`、`/a2a`），不能调用 `/v1` 推理接口；`config.agentRemote` 总开关（默认启用）。
 
-### 🔋 支撑能力
+### <img src="docs/assets/icons/icon-support.svg" width="16" alt=""> 支撑能力
 
 - 多 Key 调度：一个模型源可配置多个 API Key，按轮询 / 随机 / 优先级策略调度；**逐 Key 权限自动发现**——拉取时每个 Key 独立请求模型列表，自动得到各自分组的可用模型集（可在面板按 Key 勾选启停），调度时保证不会切到无权限的 Key。
 - 模型能力目录：内置 models.dev 快照（零配置开箱即用），后台定期在线更新并落盘缓存（models.dev 不可达时自动回退 jsDelivr 镜像）；拉取模型时自动回填视觉 / 工具 / 结构化输出 / 思考模式 / 上下文长度等能力。模型组按成员推导能力并实际生效（不支持视觉的组自动剥离图片，不支持工具的组拒绝工具请求）。
@@ -65,7 +65,7 @@ WebUI 通过 `//go:embed` 嵌入后端二进制，默认在 `/ui/` 提供；运�
 - 模型级管理：拉取的模型支持单个编辑 / 启停 / 删除与检索，刷新采用保留式合并（手动模型与用户编辑永不丢失）。
 - 安全加固：敏感字段加密存储、常量时间 token 比较、SSRF 防护（可配置 CIDR 禁止列表 `outbound.deniedIpRanges`，运行时配置页与 agent 工具均可修改）。
 
-## 🖼️ 界面预览
+## <img src="docs/assets/icons/icon-preview.svg" width="20" alt=""> 界面预览
 
 登录页开场动画（角色轨迹动效 + 背景视频）：
 
@@ -79,7 +79,7 @@ WebUI 通过 `//go:embed` 嵌入后端二进制，默认在 `/ui/` 提供；运�
 | :---: | :---: |
 | ![AI 助手](docs/assets/webui-agent.png) | ![运行配置](docs/assets/webui-runtime.png) |
 
-## 🚀 快速开始
+## <img src="docs/assets/icons/icon-quickstart.svg" width="20" alt=""> 快速开始
 
 预编译二进制通过 [GitHub Releases](https://github.com/PinkElysiaDev/Elysia-Api/releases/latest) 发布。下载对应平台的程序和 `SHA256SUMS`；如需从源码重建，参考下文「构建」一节。
 
@@ -217,7 +217,7 @@ curl http://127.0.0.1:8765/v1/chat/completions \
   -d '{"model":"default","messages":[{"role":"user","content":"hi"}]}'
 ```
 
-## 🧩 Maheshvara 与无代码协议 DSL
+## <img src="docs/assets/icons/icon-dsl.svg" width="20" alt=""> Maheshvara 与无代码协议 DSL
 
 跨协议转换统一经过 Maheshvara 核心请求/响应模型：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 和 Gemini GenerateContent 都先解析为 Maheshvara，再按上游协议渲染。模型源的 `platform` 可以写成 `custom:<协议ID>`（WebUI 可直接选择并填写 ID）；协议在 WebUI 的「协议设计器」页面以字段级映射可视化构建，保存即热生效。协议配置结构示例：
 
@@ -255,7 +255,7 @@ curl http://127.0.0.1:8765/v1/chat/completions \
 - 协议定义字段参考：[docs/protocol-definition-reference.md](docs/protocol-definition-reference.md)
 - 真实案例——阿里 DashScope（百炼）接入指南：[docs/custom-protocol-dashscope.md](docs/custom-protocol-dashscope.md)
 
-## 🤖 管理智能体与远程调度
+## <img src="docs/assets/icons/icon-agent.svg" width="20" alt=""> 管理智能体与远程调度
 
 除了在 WebUI 中直接对话，管理智能体还可以被远程程序驱动——无论是脚本、MCP 客户端（如 Claude Desktop、Cursor）还是支持 A2A 的其他 agent，都能把 Elysia-API 当作一个可调度的运维 agent 使用：
 
@@ -271,7 +271,7 @@ curl http://127.0.0.1:8765/v1/chat/completions \
 - 智能体工具全量目录：[docs/agent-tools-catalog.md](docs/agent-tools-catalog.md)
 - `elysia` CLI 命令参考：[docs/agent-cli.md](docs/agent-cli.md)
 
-## ⚙️ 配置
+## <img src="docs/assets/icons/icon-config.svg" width="20" alt=""> 配置
 
 `config.json` 只保存启动所需 bootstrap 字段。模型源、模型组、Relay API Token、Usage 和系统日志存储在 SQLite。
 
@@ -298,7 +298,7 @@ curl http://127.0.0.1:8765/v1/chat/completions \
 
 旧配置中包含的 `tokens` 和 `modelGroups` 会作为兼容数据在启动时导入 SQLite。新安装只应在 `config.json` 中保留 bootstrap 字段，例如 host、port、database path、panel access token、日志和诊断配置。
 
-## 🛡️ 运维、端点与数据备份
+## <img src="docs/assets/icons/icon-ops.svg" width="20" alt=""> 运维、端点与数据备份
 
 ### 运维端点
 
@@ -340,7 +340,7 @@ SQLite 数据库使用 WAL 模式。运行后通常会看到：
 
 备份时应使用 SQLite backup 工具，或先停止后端，再同时复制上述数据库文件。若启用了密钥文件，也必须备份并保护 `secretKeyPath` 指向的 `.master-key`。丢失主密钥后，SQLite 中加密保存的上游 API key 和 Relay API Token 无法解密。
 
-## 🔨 构建
+## <img src="docs/assets/icons/icon-build.svg" width="20" alt=""> 构建
 
 首次构建或依赖变更后先安装依赖：
 
@@ -387,7 +387,7 @@ npm run dev
 
 Vite dev server 默认代理到 `http://127.0.0.1:8765`。
 
-## 📚 文档
+## <img src="docs/assets/icons/icon-docs.svg" width="20" alt=""> 文档
 
 | 主题 | 文档 |
 | --- | --- |
@@ -396,7 +396,7 @@ Vite dev server 默认代理到 `http://127.0.0.1:8765`。
 | AI 助手 | [远程接口（REST / MCP / A2A）](docs/remote-agent-api.md) · [工具目录](docs/agent-tools-catalog.md) · [elysia CLI](docs/agent-cli.md) |
 | WebUI 与 API | [后端 API 参考](docs/webui-api.md) · [数据模型](docs/webui-data-model.md) · [前端规格](docs/webui-frontend-spec.md) · [验收清单](docs/webui-acceptance.md) |
 
-## 🗺️ 项目结构
+## <img src="docs/assets/icons/icon-structure.svg" width="20" alt=""> 项目结构
 
 ```text
 elysia-api/
@@ -413,6 +413,6 @@ elysia-api/
 └── config.json.example     # 最小 bootstrap 配置模板
 ```
 
-## 🤝 许可
+## <img src="docs/assets/icons/icon-license.svg" width="20" alt=""> 许可
 
 本项目基于 [MIT License](package.json) 发布。
