@@ -1070,6 +1070,28 @@ func TestResumeApproval_QuestionAnswerFeedsModelAndCancelsRest(t *testing.T) {
 	if lookup.executions != 0 {
 		t.Fatalf("trailing call must be cancelled, not executed (%d times)", lookup.executions)
 	}
+	// 提问恢复走专用路径，也必须保存并推送原始参数供界面回看。
+	storedMessages, _ := store.ListMessages(context.Background(), "s1")
+	var storedQuestion, streamedQuestion *ToolResultInfo
+	for _, message := range storedMessages {
+		if message.Role != RoleToolResult {
+			continue
+		}
+		var info ToolResultInfo
+		if json.Unmarshal(message.Content, &info) == nil && info.CallID == "q1" {
+			storedQuestion = &info
+		}
+	}
+	for _, event := range resumed {
+		if event.Type == EventToolResult && event.CallID == "q1" {
+			streamedQuestion = event.Result
+		}
+	}
+	for source, info := range map[string]*ToolResultInfo{"store": storedQuestion, "stream": streamedQuestion} {
+		if info == nil || !strings.Contains(string(info.Input), "用哪个源？") {
+			t.Errorf("%s ask_user result lost original input: %+v", source, info)
+		}
+	}
 	// 作答后的模型请求里：ask_user 有答案、尾随调用有取消结果。
 	last := caller.lastRequest()
 	toolOutputs := 0

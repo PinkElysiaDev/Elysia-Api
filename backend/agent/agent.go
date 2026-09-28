@@ -412,6 +412,12 @@ func (e *Engine) resumeQuestion(ctx context.Context, sessionID string, resume *P
 	callID := resume.Question.CallID
 	encoded, _ := json.Marshal(map[string]string{"answer": answer})
 	info := ToolResultInfo{CallID: callID, Name: ToolNameAskUser, OK: true, Summary: "用户回答：" + truncateRunes(answer, answerSummaryRunes), Data: encoded}
+	for _, call := range resume.Calls {
+		if call.ID == callID && call.Name == ToolNameAskUser {
+			info.Input = call.Arguments
+			break
+		}
+	}
 	conversation = e.appendToolResult(ctx, sessionID, conversation, info, e.opts.ToolResultModelLimit, events)
 	for _, call := range resume.Calls {
 		if call.ID == callID {
