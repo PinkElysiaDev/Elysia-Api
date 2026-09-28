@@ -81,7 +81,7 @@ export interface UsageLogRuntimeConfig {
   maxStorageMB: number
   /** 保留记录条数上限；0 = 不限。 */
   maxRecords: number
-  /** 单段请求体落库上限（KB）；0 = 不保存任何请求体。 */
+  /** 单段请求/响应正文落库上限（KB）；默认 0 不保存正文，正数显式开启。 */
   bodyMaxKB: number
   /** 仅失败请求保留请求体。 */
   bodyOnErrorOnly: boolean

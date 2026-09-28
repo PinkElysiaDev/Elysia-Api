@@ -10,11 +10,13 @@ export function NumberField({
   onCommit,
   min,
   className,
+  'aria-label': ariaLabel,
 }: {
   value: number
   onCommit: (v: number) => void
   min?: number
   className?: string
+  'aria-label'?: string
 }) {
   const [text, setText] = useState<string>(String(value))
   useEffect(() => {
@@ -25,6 +27,7 @@ export function NumberField({
       type="number"
       min={min}
       className={className}
+      aria-label={ariaLabel}
       value={text}
       onChange={(e) => {
         const raw = e.target.value.trim()

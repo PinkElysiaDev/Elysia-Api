@@ -10,7 +10,7 @@ const defaultUsageLog: UsageLogRuntimeConfig = {
   retentionDays: 0,
   maxStorageMB: 0,
   maxRecords: 0,
-  bodyMaxKB: 1024,
+  bodyMaxKB: 0,
   bodyOnErrorOnly: false,
   externalizeMedia: true,
   cleanupIntervalMinutes: 60,
@@ -39,8 +39,11 @@ export type RuntimeConfigForm = Omit<
 export function useRuntimeConfigForm(data: RuntimeConfig | undefined) {
   const [form, setForm] = useState<RuntimeConfigForm | null>(null)
   const pristineRef = useRef<RuntimeConfigForm | null>(null)
+  const lastBodyMaxKB = useRef(1024)
 
   useEffect(() => {
+    const savedBodyMaxKB = data?.usageLog?.bodyMaxKB ?? 0
+    lastBodyMaxKB.current = savedBodyMaxKB > 0 ? savedBodyMaxKB : 1024
     if (data)
       setForm({
         ...data,
@@ -69,6 +72,11 @@ export function useRuntimeConfigForm(data: RuntimeConfig | undefined) {
 
   function updateUsageLog<K extends keyof UsageLogRuntimeConfig>(key: K, value: UsageLogRuntimeConfig[K]) {
     setForm((prev) => (prev ? { ...prev, usageLog: { ...prev.usageLog, [key]: value } } : prev))
+  }
+
+  function toggleUsageBody(enabled: boolean) {
+    if (form && form.usageLog.bodyMaxKB > 0) lastBodyMaxKB.current = form.usageLog.bodyMaxKB
+    updateUsageLog('bodyMaxKB', enabled ? lastBodyMaxKB.current : 0)
   }
 
   /** 禁止段编辑：textarea 一行一段，保留原始输入（保存时后端 trim 清洗）。 */
@@ -126,6 +134,7 @@ export function useRuntimeConfigForm(data: RuntimeConfig | undefined) {
     form,
     update,
     updateUsageLog,
+    toggleUsageBody,
     updateOutboundText,
     updateAgentRemote,
     resetOutboundDefaults,

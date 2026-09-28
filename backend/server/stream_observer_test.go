@@ -38,6 +38,27 @@ func TestStreamEventsKeepTailAndMaterialize(t *testing.T) {
 	}
 }
 
+func TestStreamBodyCaptureDisabledStillCountsTokens(t *testing.T) {
+	record := &usageRecord{bodyOpts: usageBodyOptions{initialized: true, maxBytes: 0}}
+	resp := &http.Response{Body: io.NopCloser(strings.NewReader(
+		openAIChunk("c1", map[string]any{"content": "private-response"}, "", nil) +
+			`data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}` + "\n\n" + openAIDone()))}
+	observeUpstreamUsage(resp, record, relay.PlatformOpenAI)
+	if _, err := io.ReadAll(resp.Body); err != nil {
+		t.Fatal(err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if len(record.pendingStreamEvents) != 0 {
+		t.Fatal("disabled body capture must not retain stream events")
+	}
+	record.materializeStreamEvents()
+	if record.ProviderResponse.Content != "" || derefInt(record.Usage.TotalTokens) != 5 {
+		t.Fatalf("body=%q, usage=%+v", record.ProviderResponse.Content, record.Usage)
+	}
+}
+
 func buildSSEStream(n int) string {
 	var b strings.Builder
 	for i := 0; i < n; i++ {

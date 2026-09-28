@@ -235,7 +235,7 @@ func truncateUsageBody(content string, maxBytes int) usageBody {
 // 序列化推迟到 recordUsage 一次性物化：旧实现每事件重编组整个数组并完整
 // 清洗，CPU 随事件数平方增长。
 func (r *usageRecord) appendStreamEvent(payload string) {
-	if !json.Valid([]byte(payload)) {
+	if r.bodyOpts.effectiveMaxBytes() == 0 || !json.Valid([]byte(payload)) {
 		return
 	}
 	if len(r.pendingStreamEvents) >= StreamEventsCacheMax {

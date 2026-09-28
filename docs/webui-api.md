@@ -70,7 +70,7 @@ Accepts an optional `usageLog` block (all fields partial; numeric `0` is an expl
     "retentionDays": 30,
     "maxStorageMB": 1024,
     "maxRecords": 0,
-    "bodyMaxKB": 1024,
+    "bodyMaxKB": 0,
     "bodyOnErrorOnly": false,
     "externalizeMedia": true,
     "cleanupIntervalMinutes": 60
@@ -78,7 +78,7 @@ Accepts an optional `usageLog` block (all fields partial; numeric `0` is an expl
 }
 ```
 
-`usageLog` changes apply immediately: body cap / switches take effect for subsequent requests, retention parameters are re-read by the background cleanup loop on its next tick. Returns `restartRequired: true` when host or port changes. Persisting bootstrap config to disk is handled by the backend `config.Save()` path; process restarts should be handled by the operator or service manager.
+`usageLog` changes apply immediately: body cap / switches take effect for subsequent requests, retention parameters are re-read by the background cleanup loop on its next tick. `bodyMaxKB` defaults to `0` (metadata only, for both successful and failed requests); a positive value explicitly enables request/response body capture. Existing explicit limits and historical logs are preserved. The WebUI's body capture switch maps to this field; it does not disable `persistEnabled` or token statistics. Returns `restartRequired: true` when host or port changes. Persisting bootstrap config to disk is handled by the backend `config.Save()` path; process restarts should be handled by the operator or service manager.
 
 ## Model Sources
 

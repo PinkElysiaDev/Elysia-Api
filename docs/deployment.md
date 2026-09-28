@@ -52,7 +52,7 @@ Relative `databasePath`, `secretKeyPath`, and `webuiDir` values are resolved fro
 
 ## Request Log Management
 
-The `usageLog` block controls how request logs (usage records and their four captured bodies) are retained. **Automatic cleanup is disabled by default** — logs accumulate exactly like older versions until you opt in. All values can also be changed at runtime from the WebUI settings page (`运行配置` → `日志管理`).
+The `usageLog` block controls request log content and retention. **Only metadata is saved by default**: request counts, models, status codes, timing and token usage remain available, while request/response bodies and their media assets are not stored. Enable **保存请求与响应正文** in `运行配置` → `日志管理` to capture bodies for troubleshooting (initial cap: 1024 KB per body). Saving applies the policy to subsequent requests; existing logs remain available. **Automatic cleanup is disabled by default** until you opt in.
 
 ```json
 {
@@ -61,7 +61,7 @@ The `usageLog` block controls how request logs (usage records and their four cap
     "retentionDays": 0,
     "maxStorageMB": 0,
     "maxRecords": 0,
-    "bodyMaxKB": 1024,
+    "bodyMaxKB": 0,
     "bodyOnErrorOnly": false,
     "externalizeMedia": true,
     "cleanupIntervalMinutes": 60
@@ -75,7 +75,7 @@ The `usageLog` block controls how request logs (usage records and their four cap
 | `retentionDays` | `0` (off) | Auto-delete records older than N days. |
 | `maxStorageMB` | `0` (off) | Cap on SQLite logical size; oldest records are deleted when exceeded (a rate-limited `VACUUM` reclaims disk space afterwards). |
 | `maxRecords` | `0` (off) | Keep at most N records, deleting the oldest beyond the cap. |
-| `bodyMaxKB` | `1024` | Per-body capture cap for each of the four logged bodies. `0` saves no bodies at all (metadata only). |
+| `bodyMaxKB` | `0` (off) | Per-body capture cap in KB for each of the four logged bodies. Missing or `0` saves metadata only, including failed requests. A positive value enables capture. |
 | `bodyOnErrorOnly` | `false` | When enabled, only failed requests keep their bodies; successful requests store metadata only. |
 | `externalizeMedia` | `true` | Base64 media (images / audio / video / files) inside logged bodies are written as separate files under `<db dir>/usage-assets/<requestId>/`, and the body keeps a `__ELYSIA_ASSET__:<requestId>/<hash>.<ext>` placeholder instead. |
 | `cleanupIntervalMinutes` | `60` | How often the background cleanup pass runs (minimum 5). |
@@ -85,6 +85,7 @@ Notes:
 - Cleanup only deletes raw `usage_records` rows; hourly rollups (aggregate statistics) are untouched, so historical usage reports survive log cleanup.
 - Externalized assets are served through the admin-authenticated endpoint `GET /api/admin/usage/assets/:requestId/:file` and are removed together with their records (on cleanup or `POST /api/admin/usage/reset`).
 - The legacy flat keys `usagePersistEnabled` / `usagePersistMaxRecords` still work: they are honored when the `usageLog` block does not configure the corresponding field.
+- Existing explicit `bodyMaxKB` values are preserved on upgrade, including positive values saved by older versions. Only unconfigured installations adopt the new metadata-only default; historical logs and media are not deleted.
 
 ## Run
 

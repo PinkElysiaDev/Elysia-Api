@@ -17,7 +17,7 @@ func TestUsageLogDefaultsCleanupDisabled(t *testing.T) {
 	if res.RetentionDays != 0 || res.MaxStorageBytes != 0 || res.MaxRecords != 0 {
 		t.Fatalf("auto cleanup must be disabled by default: %+v", res)
 	}
-	if res.BodyMaxBytes != DefaultUsageBodyMaxKB*1024 {
+	if res.BodyMaxBytes != 0 || DefaultUsageLogResolved().BodyMaxBytes != 0 {
 		t.Fatalf("bodyMaxBytes default = %d", res.BodyMaxBytes)
 	}
 	if res.ExternalizeMedia != true {
@@ -28,6 +28,44 @@ func TestUsageLogDefaultsCleanupDisabled(t *testing.T) {
 	}
 	if res.CleanupInterval != 60*time.Minute {
 		t.Fatalf("cleanup interval default = %s", res.CleanupInterval)
+	}
+}
+
+func TestUsageBodyPolicySurvivesSaveAndReload(t *testing.T) {
+	for _, tc := range []struct {
+		name, raw string
+		wantKB    int
+	}{
+		{"unconfigured", `{}`, 0},
+		{"disabled", `{"usageLog":{"bodyMaxKB":0}}`, 0},
+		{"existing custom limit", `{"usageLog":{"bodyMaxKB":256}}`, 256},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.json")
+			if err := os.WriteFile(path, []byte(tc.raw), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := cfg.GetUsageLogConfig().BodyMaxBytes; got != tc.wantKB*1024 {
+				t.Fatalf("loaded body limit=%d, want %d", got, tc.wantKB*1024)
+			}
+			for _, kb := range []int{tc.wantKB, 1024, 0} {
+				cfg.SetUsageLogConfig(UsageLogConfig{BodyMaxKB: &kb})
+				if err := cfg.Save(); err != nil {
+					t.Fatal(err)
+				}
+				cfg, err = Load(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := cfg.GetUsageLogConfig().BodyMaxBytes; got != kb*1024 {
+					t.Fatalf("reloaded body limit=%d, want %d", got, kb*1024)
+				}
+			}
+		})
 	}
 }
 
