@@ -60,11 +60,9 @@ export function ReasoningBlock({ text }: { text: string }) {
   return (
     <Collapse
       stopPropagation
-      title="思考过程"
-      tone="amber"
-      icon={<span className="text-amber">💭</span>}
+      title="已思考"
     >
-      <p className="whitespace-pre-wrap break-words text-2xs leading-relaxed text-muted-foreground">
+      <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground">
         {text}
       </p>
     </Collapse>

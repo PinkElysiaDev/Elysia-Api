@@ -130,9 +130,9 @@ export function ModelPicker({
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          "inline-flex h-7 max-w-[220px] items-center gap-1.5 rounded-md border border-input bg-card px-2.5 text-xs transition-colors",
-          "hover:bg-wash disabled:cursor-not-allowed disabled:opacity-50",
-          open && "border-border bg-wash",
+          "inline-flex h-7 max-w-[220px] items-center gap-1.5 rounded-full border-0 bg-transparent px-2.5 text-xs text-muted-foreground transition-colors",
+          "enabled:hover:bg-wash enabled:hover:text-foreground enabled:active:bg-wash outline-none focus-visible:bg-wash focus-visible:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
+          open && "bg-wash text-foreground",
         )}
         title={
           selected
@@ -212,7 +212,7 @@ export function ModelPicker({
                         onClick={() => pick(index)}
                         onMouseEnter={() => setCursor(index)}
                         className={cn(
-                          "flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs transition-colors",
+                          "flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs transition-colors focus-visible:bg-wash",
                           active ? "bg-wash" : "hover:bg-wash/60",
                           isSelected && "font-medium text-rose",
                         )}

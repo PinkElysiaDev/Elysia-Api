@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { streamAgentEvents } from "./sse";
-import { agentUsageToTurn, bashCommandOf } from "./types";
+import { agentUsageToTurn } from "./types";
 import type {
   AgentCompaction,
   AgentContextUsage,
@@ -15,13 +15,12 @@ export interface AgentToolCard {
   name: string;
   status: "running" | "done" | "failed";
   summary?: string;
-  /** bash 工具的命令回显（出口已脱敏），工具行直接展示。 */
-  command?: string;
+  input?: unknown;
+  result?: unknown;
   /** 执行中由 tool_progress 心跳刷新的已耗时。 */
   elapsedMs?: number;
   /** CLI 批内逐命令进度（「正在执行（2/3）：elysia …」）；心跳无 text。 */
   progressText?: string;
-  startedAt?: number;
 }
 
 export interface AgentLiveState {
@@ -84,8 +83,7 @@ function reduce(
             callId,
             name: event.name ?? callId,
             status: "running",
-            startedAt: Date.now(),
-            command: bashCommandOf(event.name, event.input),
+            input: event.input,
           },
         ],
       };
@@ -117,6 +115,8 @@ function reduce(
                 ...card,
                 status: event.result?.ok === false ? "failed" : "done",
                 summary: event.result?.summary,
+                input: event.result?.input ?? card.input,
+                result: event.result?.data,
                 progressText: undefined,
               }
             : card,
@@ -232,7 +232,9 @@ export function useAgentStream(
         `/api/admin/agent/sessions/${sessionId}${path}`,
         body,
         (event) => {
-          if (event.type === "message") optionsRef.current.onMessage?.(event);
+          // tool_result 事件直接携带落库消息，并不会再发送单独的 message
+          // 事件。所有带消息的事件都即时并入时间线，不能等 turn_done 刷新。
+          if (event.message) optionsRef.current.onMessage?.(event);
           if (
             event.type === "draft_updated" ||
             event.type === "plan_updated" ||
@@ -240,7 +242,13 @@ export function useAgentStream(
           ) {
             optionsRef.current.onSessionDirty?.();
           }
-          setLive((state) => reduce(state, event));
+          setLive((state) => {
+            const next = reduce(state, event);
+            // 落库与清理现场使用同一套逻辑，保留不带消息的旧事件兼容性。
+            return event.message && event.type !== "message"
+              ? reduce(next, { type: "message", message: event.message })
+              : next;
+          });
         },
         controller.signal,
       ).catch((err: unknown) => {

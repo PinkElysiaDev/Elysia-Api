@@ -6,15 +6,8 @@ export type AgentPermission = "ask" | "always" | "never";
 export type AgentThinkingEffort =
   "" | "low" | "medium" | "high" | "xhigh" | "max" | "adaptive";
 
-/** 侧栏标签页（通用窗口：方案 / 配置详情 / 工具动态）。 */
-export type AgentContextTab = "plan" | "draft" | "activity";
-
-/** 标签的规范排序（追加开页时保持稳定顺序）。 */
-export const AGENT_CONTEXT_TAB_ORDER: AgentContextTab[] = [
-  "plan",
-  "draft",
-  "activity",
-];
+/** 可按需查看的任务资料；工具调用详情留在对话中。 */
+export type AgentContextTab = "plan" | "draft";
 
 export interface AgentSettings {
   modelSourceId: string;
@@ -267,31 +260,6 @@ export function bashCommandOf(
   if (name !== "bash") return undefined;
   const parsed = input as { command?: unknown } | null | undefined;
   return typeof parsed?.command === "string" ? parsed.command : undefined;
-}
-
-/** 工具行状态动词：进行中用现在时，结束后用完成时。 */
-export function toolStatusVerb(
-  status: "running" | "done" | "failed" | "denied",
-): string {
-  switch (status) {
-    case "running":
-      return "正在执行";
-    case "failed":
-      return "执行失败";
-    case "denied":
-      return "已拒绝";
-    default:
-      return "已执行";
-  }
-}
-
-/** 累计用量格式化。 */
-export function formatUsage(usage: AgentUsage | undefined): string {
-  if (!usage) return "";
-  const inTok = usage.input_tokens ?? 0;
-  const outTok = usage.output_tokens ?? 0;
-  const total = usage.total_tokens ?? inTok + outTok;
-  return `↑${inTok} ↓${outTok} · ${total} tokens`;
 }
 
 /** assistant 消息携带的 usage（snake_case）→ 轮次累计口径（camelCase）。 */

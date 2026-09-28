@@ -1,14 +1,11 @@
 import type { AgentLiveState } from "@/lib/agent/use-agent-stream";
 import { Markdown, ReasoningBlock } from "./markdown";
-import { ToolCallRow } from "./tool-call-row";
 
-/** 进行中的现场气泡（流式增量 + 工具卡片）。 */
+/** 进行中的正文与思考；工具由消息流统一分组。 */
 export function LiveAssistantView({
   live,
-  onOpenActivity,
 }: {
   live: AgentLiveState;
-  onOpenActivity?: () => void;
 }) {
   const hasContent = live.text || live.reasoning;
   return (
@@ -21,19 +18,6 @@ export function LiveAssistantView({
           </div>
         </div>
       ) : null}
-      {live.toolCards.map((card) => (
-        <ToolCallRow
-          key={card.callId}
-          name={card.name}
-          status={card.status}
-          summary={card.summary}
-          command={card.command}
-          elapsedMs={card.elapsedMs}
-          startedAt={card.startedAt}
-          progressText={card.progressText}
-          onOpen={onOpenActivity}
-        />
-      ))}
     </div>
   );
 }

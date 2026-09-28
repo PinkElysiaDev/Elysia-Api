@@ -1,6 +1,5 @@
 import { AlertTriangle, ArrowDown, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useModels } from "@/lib/hooks";
 import type { Model, ModelSource } from "@/lib/types";
@@ -15,8 +14,7 @@ import {
 import type { AgentLiveState } from "@/lib/agent/use-agent-stream";
 import { cn } from "@/lib/utils";
 import { useComposerAttachments } from "./use-composer-attachments";
-import { MessageCard } from "./message-card";
-import { LiveAssistantView } from "./live-view";
+import { MessageStream } from "./message-stream";
 import { ApprovalCard, PlanConfirmCard, QuestionCard } from "./approval-cards";
 import { useChatScroll } from "./use-chat-scroll";
 import { ComposerDock } from "./composer-dock";
@@ -55,6 +53,7 @@ export interface ChatPanelProps {
   jumpTarget?: { seq: number; nonce: number } | null;
   /** 滚动时上报当前视口所在的轮（最近一条用户消息 seq）。 */
   onActiveTurn?: (seq: number | null) => void;
+  turnRail?: React.ReactNode;
 }
 
 /**
@@ -75,6 +74,7 @@ export function ChatPanel({
   onDismissError,
   jumpTarget,
   onActiveTurn,
+  turnRail,
 }: ChatPanelProps) {
   const { toast } = useToast();
   const [text, setText] = useState(initialDraft?.text ?? "");
@@ -98,6 +98,7 @@ export function ChatPanel({
   } | null>(null);
 
   const busy = live.running;
+  const turnPending = busy || Boolean(live.approvalPending) || session.status === "running" || session.status === "waiting_approval";
   const approval = live.approvalPending;
   const settings = session.settings;
   const needsModel = !settings.modelSourceId || !settings.modelName;
@@ -144,6 +145,7 @@ export function ChatPanel({
   );
 
   const {
+    regionRef,
     scrollRef,
     bottomRef,
     stickToBottomRef,
@@ -158,6 +160,7 @@ export function ChatPanel({
     let output = 0;
     let total = 0;
     let cached = 0;
+    let contextTokens: number | undefined;
     for (const message of messages) {
       if (message.role !== "assistant" || !message.usage) continue;
       const turn = agentUsageToTurn(message.usage);
@@ -165,6 +168,7 @@ export function ChatPanel({
       output += turn.outputTokens;
       total += turn.totalTokens;
       cached += Number(message.usage.cached_input_tokens ?? 0);
+      if (message.model === settings.modelName) contextTokens = turn.inputTokens;
     }
     if (total === 0 && input === 0 && output === 0) return null;
     return {
@@ -173,8 +177,9 @@ export function ChatPanel({
       cached,
       total: total || input + output,
       hitRate: input > 0 ? cached / input : null,
+      contextTokens: live.running ? live.context?.inputTokens ?? contextTokens : contextTokens,
     };
-  }, [messages]);
+  }, [messages, live.context, live.running, settings.modelName]);
 
   /** 发送失败恢复草稿：仅当错误来自预检阶段（没有新的用户消息落库）——
    * 轮内模型错误时用户消息已持久化，恢复会造成内容双份。 */
@@ -262,7 +267,7 @@ export function ChatPanel({
   const messageActions = useMemo(
     () => ({
       onRetry: (message: AgentMessage) => {
-        if (busy) return;
+        if (turnPending) return;
         const content = message.content as {
           text?: string;
           documents?: AgentDocument[];
@@ -285,13 +290,8 @@ export function ChatPanel({
         setDocuments(content.documents ?? []);
         setEditingMessage({ seq: message.seq, text: content.text ?? "" });
       },
-      onRegenerate: (message: AgentMessage) => {
-        if (busy) return;
-        // 截断到该助手消息之前，从上一条用户消息重新生成。
-        onSend({ afterSeq: message.seq - 1 });
-      },
     }),
-    [busy, onSend, documents, setDocuments],
+    [busy, turnPending, onSend, documents, setDocuments],
   );
 
   // 与 live.error 同文案的最后一条系统错误消息 seq（渲染抑制用，见消息流注释）。
@@ -313,7 +313,8 @@ export function ChatPanel({
 
   return (
     <div
-      className="mx-auto flex min-h-0 w-4/5 min-w-[300px] flex-col"
+      ref={regionRef}
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
       onDragOver={(event) => {
         event.preventDefault();
         setDragOver(true);
@@ -331,122 +332,89 @@ export function ChatPanel({
       <div className="relative flex min-h-0 flex-1">
         <div
           ref={scrollRef}
+          aria-label="对话消息"
           className={cn(
-            "no-scrollbar relative min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-4 py-5",
+            "no-scrollbar relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain",
             dragOver && "bg-wash/40",
           )}
         >
-          {dragOver ? (
-            <div className="pointer-events-none absolute inset-3 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-rose/40 text-sm text-muted-foreground">
-              松开以添加附件（文档 / 图片 / PDF）
-            </div>
-          ) : null}
-          {/* 报错去重：引擎对失败既落库系统错误消息又发 error 事件，turn_done
-            刷新会把落库红卡拉回列表与 live 横幅同文案并排。live 横幅（带重试）
-            存在时跳过最后一条同文案的落库红卡；关闭横幅或刷新后红卡自然回归。 */}
-          {messages.length === 0 && !live.running ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-              <p className="text-sm text-foreground">
-                描述一个任务，助手会调用工具完成
-              </p>
-              <div className="flex flex-wrap justify-center gap-2">
-                {[
-                  "帮我设计一个 OpenAI 兼容协议",
-                  "汇总今天的用量趋势",
-                  "检查出站策略是否放行了内网",
-                ].map((example) => (
-                  <button
-                    key={example}
-                    type="button"
-                    className="rounded-full border border-border px-3 py-1 text-2xs text-muted-foreground transition-colors hover:bg-wash hover:text-foreground"
-                    onClick={() => setText(example)}
-                  >
-                    {example}
-                  </button>
-                ))}
+          <div className="mx-auto min-h-full w-[calc(100%-3.5rem)] space-y-3 px-4 py-5 md:w-4/5">
+            {dragOver ? (
+              <div className="pointer-events-none absolute inset-3 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-rose/40 text-sm text-muted-foreground">
+                松开以添加附件（文档 / 图片 / PDF）
               </div>
-            </div>
-          ) : null}
-          {messages.map((message) => {
-            if (
-              live.error &&
-              message.role === "system" &&
-              message.seq === suppressedErrorSeq
-            ) {
-              return null;
-            }
-            return (
-              <div key={message.seq} data-seq={message.seq}>
-                <MessageCard message={message} actions={messageActions} />
+            ) : null}
+            {/* 报错去重：引擎对失败既落库系统错误消息又发 error 事件，turn_done
+              刷新会把落库红卡拉回列表与 live 横幅同文案并排。live 横幅（带重试）
+              存在时跳过最后一条同文案的落库红卡；关闭横幅或刷新后红卡自然回归。 */}
+            {messages.length === 0 && !live.running ? (
+              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                <p className="text-sm text-foreground">
+                  描述一个任务，助手会调用工具完成
+                </p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {[
+                    "帮我设计一个 OpenAI 兼容协议",
+                    "汇总今天的用量趋势",
+                    "检查出站策略是否放行了内网",
+                  ].map((example) => (
+                    <button
+                      key={example}
+                      type="button"
+                      className="rounded-full border border-border px-3 py-1 text-2xs text-muted-foreground transition-colors hover:bg-wash hover:text-foreground"
+                      onClick={() => setText(example)}
+                    >
+                      {example}
+                    </button>
+                  ))}
+                </div>
               </div>
-            );
-          })}
-          {live.running && live.statusText ? (
-            <div role="status" className="flex items-center gap-2 pl-1 text-2xs text-muted-foreground">
-              <span className="dot dot-ok" />
-              {live.statusText}
-            </div>
-          ) : null}
-          {live.running ||
-          live.text ||
-          live.reasoning ||
-          live.toolCards.length > 0 ? (
-            <LiveAssistantView
+            ) : null}
+            <MessageStream
+              messages={messages}
               live={live}
-              onOpenActivity={() => onOpenContextTab("activity")}
-            />
-          ) : null}
-          {live.planNotice ? (
-            <button
-              type="button"
-              className="self-start rounded-full border border-border px-3 py-1 text-2xs text-muted-foreground hover:bg-wash hover:text-foreground"
-              onClick={() => onOpenContextTab("plan")}
+              actions={messageActions}
+              suppressedErrorSeq={suppressedErrorSeq}
+              turnPending={turnPending}
             >
-              方案已更新 · {live.planNotice.done}/{live.planNotice.total}
-            </button>
-          ) : null}
-          {live.compaction ? (
-            <div className="self-start rounded-full bg-muted/60 px-3 py-1 text-2xs text-muted-foreground">
-              {live.compaction.kind === "summary"
-                ? "上下文已自动压缩"
-                : "较早的工具结果已压缩"}
-              {live.compaction.summarized
-                ? ` · 处理 ${live.compaction.summarized} 条`
-                : ""}
-            </div>
-          ) : null}
-          {live.error ? (
-            <div role="alert" className="tone-ember flex items-center gap-2 rounded-lg border px-3 py-2 text-xs">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              <span className="min-w-0 flex-1">{live.error.text}</span>
-              <button
-                type="button"
-                aria-label="关闭错误提示"
-                className="rounded p-0.5 text-ember/70 transition-colors hover:bg-[color-mix(in_srgb,var(--ember)_12%,transparent)] hover:text-ember"
-                onClick={onDismissError}
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-              {live.error.retryable && !busy ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 gap-1 px-2 text-2xs"
-                  onClick={() => {
-                    const lastUser = [...messages]
-                      .reverse()
-                      .find((message) => message.role === "user");
-                    if (!lastUser) return;
-                    messageActions.onRetry(lastUser);
-                  }}
+              {live.planNotice ? (
+                <button
+                  type="button"
+                  className="self-start rounded-full border border-border px-3 py-1 text-2xs text-muted-foreground hover:bg-wash hover:text-foreground"
+                  onClick={() => onOpenContextTab("plan")}
                 >
-                  重试
-                </Button>
+                  方案已更新 · {live.planNotice.done}/{live.planNotice.total}
+                </button>
               ) : null}
-            </div>
-          ) : null}
-          <div ref={bottomRef} />
+              {live.compaction ? (
+                <div className="self-start rounded-full bg-muted/60 px-3 py-1 text-2xs text-muted-foreground">
+                  {live.compaction.kind === "summary"
+                    ? "上下文已自动压缩"
+                    : "较早的工具结果已压缩"}
+                  {live.compaction.summarized
+                    ? ` · 处理 ${live.compaction.summarized} 条`
+                    : ""}
+                </div>
+              ) : null}
+              {live.error ? (
+                <div role="alert" className="tone-ember flex items-center gap-2 rounded-lg border px-3 py-2 text-xs">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 flex-1">{live.error.text}</span>
+                  <button
+                    type="button"
+                    aria-label="关闭错误提示"
+                    className="rounded p-0.5 text-ember/70 transition-colors hover:bg-[color-mix(in_srgb,var(--ember)_12%,transparent)] hover:text-ember"
+                    onClick={onDismissError}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : null}
+            </MessageStream>
+            <div ref={bottomRef} />
+          </div>
         </div>
+        {turnRail ? <div className="absolute inset-y-0 left-1 flex w-11">{turnRail}</div> : null}
         {showJumpBottom ? (
           <button
             type="button"
@@ -459,7 +427,7 @@ export function ChatPanel({
       </div>
 
       {/* 待审批/提问/方案确认时输入框整块让位给确认卡——交互发生在输入位置。 */}
-      <div className="px-4 pb-2">
+      <div className="mx-auto w-[calc(100%-3.5rem)] px-4 pb-2 md:w-4/5">
         {approval ? (
           approval.kind === "question" && approval.question ? (
             <QuestionCard
