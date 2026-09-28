@@ -52,9 +52,10 @@ func (s *Server) protocolAgentEngine() *agent.Engine {
 		if s.store == nil {
 			return
 		}
-		// 工具面收敛：bash（elysia CLI 外壳）+ 两个引擎拦截型交互原语。
-		// 旧 28 个工具实现保留为 CLI 命令处理器（见 agent_cli.go 命令表）。
-		registry, err := agent.NewRegistry(&bashTool{server: s}, &updatePlanTool{}, &askUserTool{})
+		// 工具面收敛：elysia_cli（elysia CLI 外壳）+ 两个引擎拦截型交互原语。
+		// 业务处理器由独立 CLI 命令表复用；内置 Agent 只公布 elysia_cli
+		// 以及 ask_user/update_plan 等会话专用工具。
+		registry, err := agent.NewRegistry(&elysiaCLITool{server: s}, &updatePlanTool{}, &askUserTool{})
 		if err != nil {
 			log.Printf("agent engine tools unavailable: %v", err)
 			return

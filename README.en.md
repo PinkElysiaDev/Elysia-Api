@@ -52,9 +52,9 @@ The WebUI is embedded into the backend binary through `//go:embed` and served at
 ### <img src="docs/assets/icons/icon-remote.svg" width="16" alt=""> Remote Orchestration
 
 - REST: `/api/agent/*` management surface (session and message management, SSE streaming responses).
-- MCP: `POST /mcp` exposes 9 agent tools (session list/create/get/update/delete, message send, approval respond, stop, clear messages, and more).
+- MCP: `POST /mcp` exposes only the stateless `elysia_cli` tool for direct gateway operations.
 - A2A: `POST /a2a` message endpoint + `GET /.well-known/agent-card.json` standard Agent Card.
-- Dedicated remote keys: agent-scoped Bearer keys can only drive the AI assistant (`/api/agent`, `/mcp`, `/a2a`), never the `/v1` inference endpoints; `config.agentRemote` master switch (enabled by default).
+- Dedicated remote keys: agent-scoped Bearer keys can drive the built-in assistant (`/api/agent`, `/a2a`) or run operations directly through `/mcp`'s `elysia_cli`, but cannot call `/v1` inference endpoints; `config.agentRemote` master switch (enabled by default).
 
 ### <img src="docs/assets/icons/icon-support.svg" width="16" alt=""> Supporting Capabilities
 
@@ -262,10 +262,12 @@ Beyond chatting in the WebUI, the management agent can be driven by remote progr
 | Interface | Endpoint | Description |
 | --- | --- | --- |
 | REST | `/api/agent/*` | Session and message management, SSE streaming responses |
-| MCP | `POST /mcp` | 9 tools: `agent_list` / `agent_create` / `agent_get` / `agent_update` / `agent_delete_sessions` / `agent_send_message` / `agent_respond` / `agent_stop` / `agent_clear_messages` |
+| MCP | `POST /mcp` | The stateless `elysia_cli` tool for direct gateway operations |
 | A2A | `POST /a2a`, `GET /.well-known/agent-card.json` | Standard Agent Card and message endpoint |
 
-The three remote surfaces share agent-scoped Bearer API key authentication and the `config.agentRemote` master switch (enabled by default; `publicUrl` advertises the endpoint externally). Remote keys are fully isolated from inference Relay API Tokens: they can only drive the AI assistant, never the `/v1` inference endpoints. All agent writes and outbound calls go through approval gating; remote callers answer approval cards through the `agent_respond` tool.
+The three remote surfaces share agent-scoped Bearer API key authentication and the `config.agentRemote` master switch (enabled by default; `publicUrl` advertises the endpoint externally). Create a dedicated key under Runtime Configuration → AI Assistant Remote Access. It can drive the built-in assistant through REST/A2A or run operations directly through MCP, but cannot call `/v1` inference endpoints.
+
+Call `elysia_cli` over MCP with just `{"command":"elysia source ls"}` and an agent-scoped key. Commands execute directly without a built-in model or Agent session. Each MCP call has a temporary CLI context, so protocol drafts, test targets, and credentials live only for that call; combine commands that reuse this state in one `command` batch. Driving the built-in assistant through REST/A2A still follows session approval settings and plan mode.
 
 - Remote interface protocol details: [docs/remote-agent-api.md](docs/remote-agent-api.md)
 - Full agent tool catalog: [docs/agent-tools-catalog.md](docs/agent-tools-catalog.md)

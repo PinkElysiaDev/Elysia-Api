@@ -8,13 +8,11 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
-
-	"github.com/elysia-api/backend/agent"
 )
 
-// elysia CLI：把既有工具面收敛为单一 bash 入口的命令路由层。命令表里的
-// 每条命令委托一个既有 Tool 实现（行为与直接调用完全一致），权限/风险/
-// 超时均取自目标工具——CLI 只是外观，不引入第二套语义。
+// elysia CLI：把既有工具面收敛为单一 elysia_cli 入口的命令路由层。命令表里的
+// 每条命令委托一个中立 CLI handler（行为与管理端业务实现一致）；权限/风险/
+// 超时均由 handler 元数据描述，CLI 服务本身不执行审批。
 //
 // 支持的脚本语法（轻量 shell 子集）：
 //   - 引号：'...'（原样）与 "..."（支持 \" 转义）；'' / "" 表示空串；
@@ -331,7 +329,7 @@ func (inv *cliInvocation) requirePositional(name string) (string, error) {
 }
 
 // setStr/setBool/setInt/setList 把可选 flag 值写进参数 map（出现才写，
-// 保持目标工具的「未传=保留」语义）。
+// 保持目标 CLI handler的「未传=保留」语义）。
 func (inv *cliInvocation) setStr(params map[string]any, flag, key string) {
 	if value, ok := inv.flags[flag]; ok {
 		params[key] = value
@@ -392,7 +390,7 @@ type cliPositionalSpec struct {
 	usage string
 }
 
-// cliCommand 是命令表的一条：路径 + flag 规格 + 参数映射器 + 目标工具。
+// cliCommand 是命令表的一条：路径 + flag 规格 + 参数映射器 + 目标 CLI handler。
 type cliCommand struct {
 	group       string
 	name        string // 组内命令名（二级命令用空格连接，如 "member add"）
@@ -401,9 +399,9 @@ type cliCommand struct {
 	example     string
 	flags       []cliFlagSpec
 	positionals []cliPositionalSpec
-	tool        func(s *Server) agent.Tool
+	handler     func(s *Server) CLIHandler
 	mapper      func(inv *cliInvocation) (map[string]any, error)
-	// detail 覆盖命令级 help 的「详细说明」（缺省回退目标工具的
+	// detail 覆盖命令级 help 的「详细说明」（缺省回退目标 CLI handler的
 	// Description）。共用处理器的读写合一命令（如 outbound）靠它拿到
 	// 各自语义，避免只读描述误入 set/reset 的帮助；惰性函数——协议
 	// draft 的目录含 schema 生成与 few-shot 序列化，不能每次建表都跑。
@@ -434,7 +432,6 @@ func cliCommandTable() []*cliCommand {
 	table = append(table, usageCommands()...)
 	table = append(table, syslogCommands()...)
 	table = append(table, outboundCommands()...)
-	table = append(table, sessionCommands()...)
 	return table
 }
 
@@ -443,9 +440,9 @@ func sourceCommands() []*cliCommand {
 	return []*cliCommand{
 		&cliCommand{group: "source", name: "ls", summary: "列出全部模型源（密钥脱敏）",
 			usage: "elysia source ls", example: "elysia source ls",
-			tool:   func(s *Server) agent.Tool { return &listSourcesTool{server: s} },
-			mapper: func(inv *cliInvocation) (map[string]any, error) { return map[string]any{}, nil }},
-		&cliCommand{group: "source", name: "create", summary: "创建模型源（需审批）",
+			handler: func(s *Server) CLIHandler { return &listSourcesTool{server: s} },
+			mapper:  func(inv *cliInvocation) (map[string]any, error) { return map[string]any{}, nil }},
+		&cliCommand{group: "source", name: "create", summary: "创建模型源（受权限策略控制）",
 			usage:   "elysia source create --name <名> --base-url <URL> [--platform openai|anthropic|gemini|responses|custom:<id>] [--api-key <key>] [--auto-fetch] [--manual-models a,b] [--fetch-base-url <URL>]",
 			example: `elysia source create --name 主源 --base-url https://api.example.com --api-key sk-xxx`,
 			flags: []cliFlagSpec{
@@ -453,11 +450,11 @@ func sourceCommands() []*cliCommand {
 				{"base-url", "上游 baseUrl（http/https）", false, false},
 				{"platform", "openai（默认）/anthropic/gemini/responses/custom:<协议ID>", false, false},
 				{"api-key", "API key（加密存储）", false, false},
-				{"auto-fetch", "标记为自动源（模型列表创建后仍需 elysia source refresh 拉取一次）", true, false},
+				{"auto-fetch", "标记为自动源（创建后如需上游实时模型列表，执行 elysia source refresh）", true, false},
 				{"manual-models", "手动模型名列表（逗号分隔）", false, true},
 				{"fetch-base-url", "模型列表拉取地址（缺省同 base-url）", false, false},
 			},
-			tool: func(s *Server) agent.Tool { return &createSourceTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &createSourceTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if err := inv.requireStr(params, "name", "name"); err != nil {
@@ -473,7 +470,7 @@ func sourceCommands() []*cliCommand {
 				inv.setStr(params, "fetch-base-url", "fetchBaseUrl")
 				return params, nil
 			}},
-		&cliCommand{group: "source", name: "update", summary: "修改模型源（需审批；api-key 留空=保留）",
+		&cliCommand{group: "source", name: "update", summary: "修改模型源（受权限策略控制；api-key 留空=保留）",
 			usage:   "elysia source update --source <id|名> [--enabled] [--name <名>] [--base-url <URL>] [--platform <平台>] [--api-key <新key>] [--auto-fetch[=false]] [--manual-models a,b]",
 			example: `elysia source update --source 主源 --enabled=false`,
 			flags: []cliFlagSpec{
@@ -486,7 +483,7 @@ func sourceCommands() []*cliCommand {
 				{"auto-fetch", "自动源标记开关", true, false},
 				{"manual-models", "整体替换手动模型列表", false, true},
 			},
-			tool: func(s *Server) agent.Tool { return &updateSourceTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &updateSourceTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if err := inv.requireStr(params, "source", "source"); err != nil {
@@ -501,11 +498,11 @@ func sourceCommands() []*cliCommand {
 				inv.setList(params, "manual-models", "manualModels")
 				return params, nil
 			}},
-		&cliCommand{group: "source", name: "delete", summary: "删除模型源（不可逆，需审批；级联删模型与组引用）",
+		&cliCommand{group: "source", name: "delete", summary: "删除模型源（不可逆，受权限策略控制；级联删模型与组引用）",
 			usage:   "elysia source delete --source <id|名>",
 			example: `elysia source delete --source 主源`,
 			flags:   []cliFlagSpec{{"source", "源 id 或名称", false, false}},
-			tool:    func(s *Server) agent.Tool { return &deleteSourceTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &deleteSourceTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if err := inv.requireStr(params, "source", "source"); err != nil {
@@ -513,11 +510,11 @@ func sourceCommands() []*cliCommand {
 				}
 				return params, nil
 			}},
-		&cliCommand{group: "source", name: "refresh", summary: "从上游拉取模型列表（真实出站，需审批）",
+		&cliCommand{group: "source", name: "refresh", summary: "从上游拉取模型列表（真实出站，受权限策略控制）",
 			usage:   "elysia source refresh --source <id|名>",
 			example: `elysia source refresh --source 主源`,
 			flags:   []cliFlagSpec{{"source", "源 id 或名称", false, false}},
-			tool:    func(s *Server) agent.Tool { return &refreshSourceTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &refreshSourceTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if err := inv.requireStr(params, "source", "source"); err != nil {
@@ -540,7 +537,7 @@ func modelCommands() []*cliCommand {
 				{"search", "名称模糊匹配", false, false},
 				{"limit", "返回条数（默认 50，上限 200）", false, false},
 			},
-			tool: func(s *Server) agent.Tool { return &listModelsTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &listModelsTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				inv.setStr(params, "source", "source")
@@ -550,7 +547,7 @@ func modelCommands() []*cliCommand {
 				}
 				return params, nil
 			}},
-		&cliCommand{group: "model", name: "set", summary: "修改单个模型（需审批）",
+		&cliCommand{group: "model", name: "set", summary: "修改单个模型（受权限策略控制）",
 			usage:   "elysia model set --source <id|名> --model <模型id> [--name <名>] [--type <类型>] [--max-tokens <n>] [--vision] [--tools] [--structured] [--thinking <模式>] [--enabled[=false]]",
 			example: `elysia model set --source 主源 --model gpt-4o --vision --enabled=false`,
 			flags: []cliFlagSpec{
@@ -565,7 +562,7 @@ func modelCommands() []*cliCommand {
 				{"thinking", "思考模式（disabled 默认 / enabled / adaptive）", false, false},
 				{"enabled", "启停", true, false},
 			},
-			tool: func(s *Server) agent.Tool { return &updateModelTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &updateModelTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if err := inv.requireStr(params, "source", "source"); err != nil {
@@ -586,14 +583,14 @@ func modelCommands() []*cliCommand {
 				inv.setBool(params, "enabled", "enabled")
 				return params, nil
 			}},
-		&cliCommand{group: "model", name: "rm", summary: "删除单个模型（不可逆，需审批）",
+		&cliCommand{group: "model", name: "rm", summary: "删除单个模型（不可逆，受权限策略控制）",
 			usage:   "elysia model rm --source <id|名> --model <模型id>",
 			example: `elysia model rm --source 主源 --model gpt-4o`,
 			flags: []cliFlagSpec{
 				{"source", "源 id 或名称", false, false},
 				{"model", "模型 id", false, false},
 			},
-			tool: func(s *Server) agent.Tool { return &deleteModelTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &deleteModelTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if err := inv.requireStr(params, "source", "source"); err != nil {
@@ -613,9 +610,9 @@ func groupCommands() []*cliCommand {
 	return []*cliCommand{
 		&cliCommand{group: "group", name: "ls", summary: "列出全部模型组及成员",
 			usage: "elysia group ls", example: "elysia group ls",
-			tool:   func(s *Server) agent.Tool { return &listGroupsTool{server: s} },
-			mapper: func(inv *cliInvocation) (map[string]any, error) { return map[string]any{}, nil }},
-		&cliCommand{group: "group", name: "create", summary: "创建模型组（需审批）",
+			handler: func(s *Server) CLIHandler { return &listGroupsTool{server: s} },
+			mapper:  func(inv *cliInvocation) (map[string]any, error) { return map[string]any{}, nil }},
+		&cliCommand{group: "group", name: "create", summary: "创建模型组（受权限策略控制）",
 			usage:   "elysia group create --name <组名> [--models <src:model,...>] [--strategy round-robin|random|sequential] [--max-retries <n>] [--enabled[=false]] [--max-concurrency <n>] [--daily-limit-requests <n>] [--daily-limit-tokens <n>]",
 			example: `elysia group create --name 主力 --models s1:gpt-4o,s1:gpt-4o-mini`,
 			flags: []cliFlagSpec{
@@ -628,7 +625,7 @@ func groupCommands() []*cliCommand {
 				{"daily-limit-requests", "每日请求上限（0=不限）", false, false},
 				{"daily-limit-tokens", "每日 token 上限（0=不限）", false, false},
 			},
-			tool: func(s *Server) agent.Tool { return &createGroupTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &createGroupTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if err := inv.requireStr(params, "name", "name"); err != nil {
@@ -651,7 +648,7 @@ func groupCommands() []*cliCommand {
 				}
 				return params, nil
 			}},
-		&cliCommand{group: "group", name: "update", summary: "修改模型组（需审批；改名/成员增删/策略/限额）",
+		&cliCommand{group: "group", name: "update", summary: "修改模型组（受权限策略控制；改名/成员增删/策略/限额）",
 			usage:   "elysia group update --group <组名|id> [--name <新组名>] [--add-models <列表>] [--remove-models <列表>] [--enabled[=false]] [--strategy <策略>] [--max-retries <n>] [--max-concurrency <n>] [--daily-limit-requests <n>] [--daily-limit-tokens <n>]",
 			example: `elysia group update --group 主力 --add-models s1:o1 --enabled=false`,
 			flags: []cliFlagSpec{
@@ -666,7 +663,7 @@ func groupCommands() []*cliCommand {
 				{"daily-limit-requests", "每日请求上限", false, false},
 				{"daily-limit-tokens", "每日 token 上限", false, false},
 			},
-			tool: func(s *Server) agent.Tool { return &updateGroupTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &updateGroupTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if err := inv.requireStr(params, "group", "group"); err != nil {
@@ -691,11 +688,11 @@ func groupCommands() []*cliCommand {
 				}
 				return params, nil
 			}},
-		&cliCommand{group: "group", name: "delete", summary: "删除模型组（不可逆，需审批；可能级联禁用 Key）",
+		&cliCommand{group: "group", name: "delete", summary: "删除模型组（不可逆，受权限策略控制；可能级联禁用 Key）",
 			usage:   "elysia group delete --group <组名|id>",
 			example: `elysia group delete --group 退役组`,
 			flags:   []cliFlagSpec{{"group", "组名或 id", false, false}},
-			tool:    func(s *Server) agent.Tool { return &deleteGroupTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &deleteGroupTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if err := inv.requireStr(params, "group", "group"); err != nil {
@@ -703,14 +700,14 @@ func groupCommands() []*cliCommand {
 				}
 				return params, nil
 			}},
-		&cliCommand{group: "group", name: "member add", summary: "向模型组追加成员（需审批）",
+		&cliCommand{group: "group", name: "member add", summary: "向模型组追加成员（受权限策略控制）",
 			usage:   "elysia group member add --group <组名|id> --models <列表>",
 			example: `elysia group member add --group 主力 --models s1:o1,s1:o2`,
 			flags: []cliFlagSpec{
 				{"group", "组名或 id", false, false},
 				{"models", "成员引用（sourceId:modelId 或模型名）", false, true},
 			},
-			tool: func(s *Server) agent.Tool { return &updateGroupTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &updateGroupTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if err := inv.requireStr(params, "group", "group"); err != nil {
@@ -723,14 +720,14 @@ func groupCommands() []*cliCommand {
 				params["addModels"] = models
 				return params, nil
 			}},
-		&cliCommand{group: "group", name: "member rm", summary: "从模型组移除成员（需审批）",
+		&cliCommand{group: "group", name: "member rm", summary: "从模型组移除成员（受权限策略控制）",
 			usage:   "elysia group member rm --group <组名|id> --models <列表>",
 			example: `elysia group member rm --group 主力 --models s1:o2`,
 			flags: []cliFlagSpec{
 				{"group", "组名或 id", false, false},
 				{"models", "成员引用", false, true},
 			},
-			tool: func(s *Server) agent.Tool { return &updateGroupTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &updateGroupTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if err := inv.requireStr(params, "group", "group"); err != nil {
@@ -752,9 +749,9 @@ func keyCommands() []*cliCommand {
 	return []*cliCommand{
 		&cliCommand{group: "key", name: "ls", summary: "查询 API Key 列表（脱敏）",
 			usage: "elysia key ls", example: "elysia key ls",
-			tool:   func(s *Server) agent.Tool { return &listAPIKeysTool{server: s} },
-			mapper: func(inv *cliInvocation) (map[string]any, error) { return map[string]any{}, nil }},
-		&cliCommand{group: "key", name: "create", summary: "创建推理 API Key（需审批；secret 留空自动生成，明文仅返回一次）",
+			handler: func(s *Server) CLIHandler { return &listAPIKeysTool{server: s} },
+			mapper:  func(inv *cliInvocation) (map[string]any, error) { return map[string]any{}, nil }},
+		&cliCommand{group: "key", name: "create", summary: "创建推理 API Key（受权限策略控制；secret 留空自动生成，明文仅返回一次）",
 			usage:   "elysia key create --name <名> [--secret <明文>] [--allowed-groups <组,...>] [--enabled[=false]]",
 			example: `elysia key create --name mobile-app --allowed-groups 主力`,
 			flags: []cliFlagSpec{
@@ -763,7 +760,7 @@ func keyCommands() []*cliCommand {
 				{"allowed-groups", "允许访问的模型组（逗号分隔；空=不限制）", false, true},
 				{"enabled", "默认 true", true, false},
 			},
-			tool: func(s *Server) agent.Tool { return &createAPIKeyTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &createAPIKeyTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if err := inv.requireStr(params, "name", "name"); err != nil {
@@ -774,7 +771,7 @@ func keyCommands() []*cliCommand {
 				inv.setBool(params, "enabled", "enabled")
 				return params, nil
 			}},
-		&cliCommand{group: "key", name: "update", summary: "修改 API Key（需审批；改名/启停/授权/换明文；远程访问 Key 拒绝）",
+		&cliCommand{group: "key", name: "update", summary: "修改 API Key（受权限策略控制；改名/启停/授权/换明文；远程访问 Key 拒绝）",
 			usage:   "elysia key update --name <名> [--new-name <新名>] [--enabled[=false]] [--allowed-groups <组,...>] [--new-secret <新明文>]",
 			example: `elysia key update --name mobile-app --allowed-groups 主力,备用`,
 			flags: []cliFlagSpec{
@@ -784,7 +781,7 @@ func keyCommands() []*cliCommand {
 				{"allowed-groups", "整体替换允许访问的模型组", false, true},
 				{"new-secret", "新明文；留空保留原值", false, false},
 			},
-			tool: func(s *Server) agent.Tool { return &updateAPIKeyTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &updateAPIKeyTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if err := inv.requireStr(params, "name", "name"); err != nil {
@@ -796,11 +793,11 @@ func keyCommands() []*cliCommand {
 				inv.setStr(params, "new-secret", "newSecret")
 				return params, nil
 			}},
-		&cliCommand{group: "key", name: "delete", summary: "删除 API Key（不可逆，需审批；远程访问 Key 拒绝）",
+		&cliCommand{group: "key", name: "delete", summary: "删除 API Key（不可逆，受权限策略控制；远程访问 Key 拒绝）",
 			usage:   "elysia key delete --name <名>",
 			example: `elysia key delete --name mobile-app`,
 			flags:   []cliFlagSpec{{"name", "Key 名称", false, false}},
-			tool:    func(s *Server) agent.Tool { return &deleteAPIKeyTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &deleteAPIKeyTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if err := inv.requireStr(params, "name", "name"); err != nil {
@@ -825,7 +822,7 @@ func protocolCommands() []*cliCommand {
 			flags: []cliFlagSpec{
 				{"example", "上游响应示例 JSON，用于离线检验 response 映射", false, false},
 			},
-			tool: func(s *Server) agent.Tool { return &updateDraftTool{} },
+			handler: func(s *Server) CLIHandler { return &updateDraftTool{} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if len(inv.args) == 0 || strings.TrimSpace(inv.args[0]) == "" {
@@ -845,7 +842,7 @@ func protocolCommands() []*cliCommand {
 			usage:   "elysia protocol preview [--sample '<样例 Maheshvara 请求 JSON>']",
 			example: `elysia protocol preview`,
 			flags:   []cliFlagSpec{{"sample", "自定义样例请求 JSON", false, false}},
-			tool:    func(s *Server) agent.Tool { return &previewRequestTool{} },
+			handler: func(s *Server) CLIHandler { return &previewRequestTool{} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if inv.Has("sample") {
@@ -855,16 +852,16 @@ func protocolCommands() []*cliCommand {
 				}
 				return params, nil
 			}},
-		&cliCommand{group: "protocol", name: "test", summary: "向真实上游发送一次测试请求（需审批）",
+		&cliCommand{group: "protocol", name: "test", summary: "向真实上游发送一次测试请求（受权限策略控制）",
 			usage:   "elysia protocol test [--base-url <URL>] [--api-key <key>] [--stream] [--sample '<样例请求 JSON>']",
 			example: `elysia protocol test --base-url https://api.example.com --api-key sk-xxx`,
 			flags: []cliFlagSpec{
-				{"base-url", "用户提供的上游 baseUrl（缺省用会话已记住的）", false, false},
-				{"api-key", "用户提供的 API key（缺省用会话已记住的）", false, false},
+				{"base-url", "用户提供的上游 baseUrl（缺省用当前 CLI 上下文已记录的）", false, false},
+				{"api-key", "用户提供的 API key（缺省用当前 CLI 上下文已记录的）", false, false},
 				{"stream", "按流式（SSE）测试", true, false},
 				{"sample", "自定义样例请求 JSON", false, false},
 			},
-			tool: func(s *Server) agent.Tool { return &testUpstreamTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &testUpstreamTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				inv.setStr(params, "base-url", "baseUrl")
@@ -877,29 +874,38 @@ func protocolCommands() []*cliCommand {
 				}
 				return params, nil
 			}},
-		&cliCommand{group: "protocol", name: "models", summary: "按草稿 models 配置试拉上游模型列表（需审批）",
+		&cliCommand{group: "protocol", name: "models", summary: "按草稿 models 配置试拉上游模型列表（受权限策略控制）",
 			usage:   "elysia protocol models [--base-url <URL>] [--api-key <key>]",
 			example: `elysia protocol models --base-url https://api.example.com`,
 			flags: []cliFlagSpec{
-				{"base-url", "上游 baseUrl（缺省用会话已记住的）", false, false},
-				{"api-key", "API key（缺省用会话已记住的）", false, false},
+				{"base-url", "上游 baseUrl（缺省用当前 CLI 上下文已记录的）", false, false},
+				{"api-key", "API key（缺省用当前 CLI 上下文已记录的）", false, false},
 			},
-			tool: func(s *Server) agent.Tool { return &testModelsTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &testModelsTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				inv.setStr(params, "base-url", "baseUrl")
 				inv.setStr(params, "api-key", "apiKey")
 				return params, nil
 			}},
-		&cliCommand{group: "protocol", name: "save", summary: "把当前草稿保存为正式协议（需审批）",
-			usage: "elysia protocol save", example: "elysia protocol save",
-			tool:   func(s *Server) agent.Tool { return &saveProtocolTool{server: s} },
-			mapper: func(inv *cliInvocation) (map[string]any, error) { return map[string]any{}, nil }},
+		&cliCommand{group: "protocol", name: "save", summary: "把当前草稿保存为正式协议（受权限策略控制）",
+			usage: "elysia protocol save [--update <协议id>]", example: "elysia protocol save",
+			flags:   []cliFlagSpec{{"update", "显式更新已有协议；目标必须存在且与草稿 id 一致", false, false}},
+			handler: func(s *Server) CLIHandler { return &saveProtocolTool{server: s} },
+			mapper: func(inv *cliInvocation) (map[string]any, error) {
+				params := map[string]any{}
+				if inv.Has("update") {
+					if err := inv.requireStr(params, "update", "updateId"); err != nil {
+						return nil, err
+					}
+				}
+				return params, nil
+			}},
 		&cliCommand{group: "protocol", name: "read", summary: "读取已保存协议的完整配置",
 			usage:   "elysia protocol read --id <协议id>",
 			example: `elysia protocol read --id anthropic-api`,
 			flags:   []cliFlagSpec{{"id", "协议 id（含内置预置协议）", false, false}},
-			tool:    func(s *Server) agent.Tool { return &readProtocolTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &readProtocolTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				if err := inv.requireStr(params, "id", "id"); err != nil {
@@ -918,13 +924,13 @@ func usageCommands() []*cliCommand {
 			usage:   "elysia usage stats [--days <n>] [--from <RFC3339>] [--to <RFC3339>] [--model <名>] [--key <名>] [--group <名>]",
 			example: `elysia usage stats --days 7 --group 主力`,
 			flags:   cliWindowFlags(),
-			tool:    func(s *Server) agent.Tool { return &usageStatsTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &usageStatsTool{server: s} },
 			mapper:  cliWindowMapper},
 		&cliCommand{group: "usage", name: "trend", summary: "查询用量按日趋势",
 			usage:   "elysia usage trend [--days <n>] [--from <RFC3339>] [--to <RFC3339>] [--model <名>] [--key <名>] [--group <名>]",
 			example: `elysia usage trend --days 30`,
 			flags:   cliWindowFlags(),
-			tool:    func(s *Server) agent.Tool { return &usageTrendTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &usageTrendTool{server: s} },
 			mapper:  cliWindowMapper},
 		&cliCommand{group: "usage", name: "logs", summary: "查询调用日志列表（可过滤错误）",
 			usage:   "elysia usage logs [--days <n>] [--from <RFC3339>] [--to <RFC3339>] [--model <名>] [--key <名>] [--group <名>] [--status success|failed] [--code <状态码>] [--limit <n>]",
@@ -933,7 +939,7 @@ func usageCommands() []*cliCommand {
 				cliFlagSpec{"status", "success | failed", false, false},
 				cliFlagSpec{"code", "精确状态码", false, false},
 				cliFlagSpec{"limit", "返回条数（默认 20，最大 100）", false, false}),
-			tool: func(s *Server) agent.Tool { return &usageLogsTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &usageLogsTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params, err := cliWindowMapper(inv)
 				if err != nil {
@@ -954,7 +960,7 @@ func usageCommands() []*cliCommand {
 			positionals: []cliPositionalSpec{
 				{"requestId", "调用日志的 requestId"},
 			},
-			tool: func(s *Server) agent.Tool { return &usageLogDetailTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &usageLogDetailTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				requestId, err := inv.requirePositional("requestId")
@@ -977,7 +983,7 @@ func syslogCommands() []*cliCommand {
 				{"level", "info | warn | error（缺省全部）", false, false},
 				{"limit", "返回条数（默认 30，最大 100）", false, false},
 			},
-			tool: func(s *Server) agent.Tool { return &systemLogsTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &systemLogsTool{server: s} },
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
 				inv.setStr(params, "level", "level")
@@ -995,15 +1001,15 @@ func outboundCommands() []*cliCommand {
 	return []*cliCommand{
 		&cliCommand{group: "outbound", name: "get", summary: "查看出站禁止 IP 段（SSRF 防护）",
 			usage: "elysia outbound get", example: "elysia outbound get",
-			tool:   func(s *Server) agent.Tool { return &outboundPolicyViewTool{server: s} },
-			mapper: func(inv *cliInvocation) (map[string]any, error) { return map[string]any{}, nil }},
-		&cliCommand{group: "outbound", name: "set", summary: "整体替换出站禁止段（需审批；高影响）",
+			handler: func(s *Server) CLIHandler { return &outboundPolicyViewTool{server: s} },
+			mapper:  func(inv *cliInvocation) (map[string]any, error) { return map[string]any{}, nil }},
+		&cliCommand{group: "outbound", name: "set", summary: "整体替换出站禁止段（受权限策略控制；高影响）",
 			usage:   "elysia outbound set --ranges <CIDR,...>   # 空列表 = 全放行",
 			example: `elysia outbound set --ranges 10.0.0.0/8,172.16.0.0/12`,
 			flags:   []cliFlagSpec{{"ranges", "禁止段 CIDR 列表（逗号分隔；空=放行所有）", false, true}},
-			tool:    func(s *Server) agent.Tool { return &outboundPolicyTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &outboundPolicyTool{server: s} },
 			detail: func() string {
-				return "整体替换出站禁止 IP 段列表（SSRF 防护）。--ranges 给出替换后的完整 CIDR 列表——是整体替换而非增量增删；空列表 = 放行所有地址。上游是本机/内网地址（如 127.0.0.1）被 \"refused to dial denied IP\" 拦截时，从列表去掉对应段（环回 127.0.0.0/8、私网 10.0.0.0/8、172.16.0.0/12、192.168.0.0/16）即可放行。修改全列表为高影响操作，先向用户说明改动范围再执行。"
+				return "整体替换出站禁止 IP 段列表（SSRF 防护）。--ranges 给出替换后的完整 CIDR 列表——是整体替换而非增量增删；空列表 = 放行所有地址。上游是本机/内网地址（如 127.0.0.1）被 \"refused to dial denied IP\" 拦截时，先核实目标地址、服务归属及用户授权，再说明拟变更的具体 CIDR、影响范围和风险；不要仅因请求被拦截就放宽策略。保留无关禁止段，按授权决定是否修改。"
 			},
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				params := map[string]any{}
@@ -1019,33 +1025,14 @@ func outboundCommands() []*cliCommand {
 				params["ranges"] = ranges
 				return params, nil
 			}},
-		&cliCommand{group: "outbound", name: "reset", summary: "恢复出站禁止段为预置默认（需审批）",
+		&cliCommand{group: "outbound", name: "reset", summary: "恢复出站禁止段为预置默认（受权限策略控制）",
 			usage: "elysia outbound reset", example: "elysia outbound reset",
-			tool: func(s *Server) agent.Tool { return &outboundPolicyTool{server: s} },
+			handler: func(s *Server) CLIHandler { return &outboundPolicyTool{server: s} },
 			detail: func() string {
 				return "把出站禁止 IP 段恢复为内置预置默认（环回/私网/链路本地/组播等，SSRF 防护基线）。丢弃当前自定义列表，执行前先向用户确认。"
 			},
 			mapper: func(inv *cliInvocation) (map[string]any, error) {
 				return map[string]any{"resetDefault": true}, nil
-			}},
-	}
-}
-
-// sessionCommands 会话操作命令。
-func sessionCommands() []*cliCommand {
-	return []*cliCommand{
-		&cliCommand{group: "session", name: "title", summary: "把会话标题改成任务概括（≤16 字动宾短语）",
-			usage:       "elysia session title <文本>",
-			example:     `elysia session title 接入Anthropic协议`,
-			positionals: []cliPositionalSpec{{"title", "新标题"}},
-			tool:        func(s *Server) agent.Tool { return &updateTitleTool{} },
-			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				params := map[string]any{}
-				if len(inv.args) == 0 || strings.TrimSpace(strings.Join(inv.args, " ")) == "" {
-					return nil, fmt.Errorf("缺少位置参数 <title>")
-				}
-				params["title"] = strings.Join(inv.args, " ")
-				return params, nil
 			}},
 	}
 }
@@ -1159,67 +1146,32 @@ func lookupCLICommand(args []string) (*cliCommand, []string) {
 	return nil, nil
 }
 
-// ---- 门控探针 ----
+// ---- 执行 ----
 
-// isCLIHelpArgs 报告语句参数是否为 help 调用（探针与执行器共用短路）。
+// isCLIHelpArgs reports whether a statement is a help request. Help is handled
+// by the CLI service before command resolution, so it has no handler effect.
 func isCLIHelpArgs(args []string) bool {
 	return len(args) == 0 || args[0] == "help" || args[0] == "--help"
 }
 
-// probeAgentCLI 解析整批脚本，收集所有需要审批的命令（不执行）。
-// 语句级解析失败不中断收集：已识别的门控命令必须照常上报，否则一条坏
-// 语句会挟带同批的门控命令绕过审批（`;` 批在执行侧仍会跑后续语句）。
-// 整批切分失败（如引号未闭合）返回 error——执行阶段同样切不开，调用方
-// 按放行处理即可。Command 一律打码：它会进审批卡说明等出站出口。
-func probeAgentCLI(script string) ([]agent.GateNote, error) {
-	segments, err := cliSplitStatements(script)
-	if err != nil {
-		return nil, err
-	}
-	notes := []agent.GateNote{}
-	var parseErr error
-	keepFirst := func(err error) {
-		if parseErr == nil {
-			parseErr = err
-		}
-	}
-	for _, segment := range segments {
-		statement, err := cliParseStatement(segment.raw)
-		if err != nil {
-			keepFirst(err)
-			continue
-		}
-		if isCLIHelpArgs(statement.args) {
-			continue
-		}
-		inv, err := cliResolve(statement.args)
-		if err != nil {
-			keepFirst(err)
-			continue
-		}
-		// 权限与目标工具同源：Gated/PermissionKey 不触碰 server，nil 实例安全。
-		tool := inv.command.tool(nil)
-		if tool.Gated() {
-			notes = append(notes, agent.GateNote{Command: "$ " + agent.RedactCommandLine(segment.raw), PermissionKey: tool.PermissionKey()})
-		}
-	}
-	return notes, parseErr
+// runCLI 解析并执行一段 elysia 脚本，返回模型可读的结果。
+func (s *Server) runCLI(ctx context.Context, tctx CLIContext, script string) CLIResult {
+	return s.runCLIWithOptions(ctx, tctx, script, false)
 }
 
-// ---- 执行 ----
-
-// runAgentCLI 解析并执行一段 elysia 脚本，返回模型可读的结果。
-func (s *Server) runAgentCLI(ctx context.Context, tctx agent.ToolContext, script string) agent.ToolResult {
+// runCLIWithOptions is kept private so only the built-in Agent adapter can
+// opt into its session-title command. MCP always uses the generic CLI path.
+func (s *Server) runCLIWithOptions(ctx context.Context, tctx CLIContext, script string, allowInternal bool) CLIResult {
 	segments, err := cliSplitStatements(script)
 	if err != nil {
-		return agent.ToolError("脚本解析失败: "+err.Error(), "parse_failed")
+		return CLIError("脚本解析失败: "+err.Error(), "parse_failed")
 	}
 	var output strings.Builder
 	succeeded, failed := 0, 0
 	skipChain := false // && 链跳过模式：直到 ;/换行 边界恢复执行
-	// 批内逐命令进度：批处理对模型是一次 bash 调用，没有逐条上报时前端
+	// 批内逐命令进度：批处理对模型是一次 elysia_cli 调用，没有逐条上报时前端
 	// 只有一行「执行中」挂全程（旧每工具一行的过程可见性丢失）。
-	reporter, hasProgress := tctx.(agent.ProgressReporter)
+	reporter, hasProgress := tctx.(interface{ ReportProgress(string) })
 	total := len(segments)
 	for index, segment := range segments {
 		if skipChain {
@@ -1233,9 +1185,9 @@ func (s *Server) runAgentCLI(ctx context.Context, tctx agent.ToolContext, script
 			break
 		}
 		if hasProgress {
-			reporter.ReportProgress(fmt.Sprintf("正在执行（%d/%d）：%s", index+1, total, agent.RedactCommandLine(segment.raw)))
+			reporter.ReportProgress(fmt.Sprintf("正在执行（%d/%d）：%s", index+1, total, redactCLICommandLine(segment.raw)))
 		}
-		cmdOutput, ok := s.runOneCLIStatement(ctx, tctx, segment.raw)
+		cmdOutput, ok := s.runOneCLIStatement(ctx, tctx, segment.raw, allowInternal)
 		output.WriteString(cmdOutput)
 		if ok {
 			succeeded++
@@ -1250,19 +1202,22 @@ func (s *Server) runAgentCLI(ctx context.Context, tctx agent.ToolContext, script
 	summary := fmt.Sprintf("执行 %d 条命令：%d 成功、%d 失败", succeeded+failed, succeeded, failed)
 	text := clampCLIOutput(output.String())
 	exitCode := 0
-	if failed > 0 {
+	if ctx.Err() != nil {
+		summary += "；执行已取消或超时，部分命令可能已完成"
+	}
+	if failed > 0 || ctx.Err() != nil {
 		exitCode = 1
 	}
-	return agent.ToolResult{OK: failed == 0, Summary: summary,
+	return CLIResult{OK: exitCode == 0, Summary: summary,
 		Data: map[string]any{"output": text, "exitCode": exitCode}}
 }
 
 // runOneCLIStatement 执行单条语句，返回渲染后的文本块与成败。
-func (s *Server) runOneCLIStatement(ctx context.Context, tctx agent.ToolContext, raw string) (string, bool) {
+func (s *Server) runOneCLIStatement(ctx context.Context, tctx CLIContext, raw string, allowInternal bool) (string, bool) {
 	var out strings.Builder
 	// 回显打码：输出会随 tool_result 落库并回放给模型，敏感 flag 的值
 	// 不允许经此二次出站（模型自己发的命令，原文在它的上下文里）。
-	out.WriteString("$ " + agent.RedactCommandLine(raw) + "\n")
+	out.WriteString("$ " + redactCLICommandLine(raw) + "\n")
 	statement, err := cliParseStatement(raw)
 	if err != nil {
 		out.WriteString("错误: " + err.Error() + "\n\n")
@@ -1270,8 +1225,18 @@ func (s *Server) runOneCLIStatement(ctx context.Context, tctx agent.ToolContext,
 	}
 	if isCLIHelpArgs(statement.args) {
 		// help 输出同样支持 grep/head 管道（help 文本可能上百行）。
-		out.WriteString(applyCLIPipes(renderCLIHelp(statement.args[1:]), statement) + "\n\n")
+		helpArgs := statement.args
+		if len(helpArgs) > 0 {
+			helpArgs = helpArgs[1:]
+		}
+		out.WriteString(applyCLIPipes(renderCLIHelp(helpArgs), statement) + "\n\n")
 		return out.String(), true
+	}
+	if allowInternal && len(statement.args) >= 3 && statement.args[0] == "session" && statement.args[1] == "title" && len(statement.pipes) == 0 {
+		encoded, _ := json.Marshal(map[string]any{"title": strings.Join(statement.args[2:], " ")})
+		result := (&updateTitleTool{}).Execute(ctx, tctx, encoded)
+		out.WriteString(renderCLIResult(result, statement) + "\n\n")
+		return out.String(), result.OK
 	}
 	inv, err := cliResolve(statement.args)
 	if err != nil {
@@ -1288,28 +1253,23 @@ func (s *Server) runOneCLIStatement(ctx context.Context, tctx agent.ToolContext,
 		out.WriteString("错误: 参数序列化失败: " + err.Error() + "\n\n")
 		return out.String(), false
 	}
-	tool := inv.command.tool(s)
-	// 语句级超时：批级（bash 600s）之内再按目标工具收紧。未声明
-	// TimeoutMs 的工具（readOnlyMeta 全家）落到引擎默认值，防止一条
-	// 只读命令吃光整批预算。
-	toolTimeout := agent.MetaOf(tool).TimeoutMs
-	if toolTimeout <= 0 {
-		toolTimeout = agent.DefaultToolTimeoutMs
-	}
+	handler := inv.command.handler(s)
+	// 语句级超时：批级预算内按 handler 配置收紧，未声明时使用默认值。
+	toolTimeout := cliMetaOf(handler).Timeout
 	execCtx := ctx
-	if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > time.Duration(toolTimeout)*time.Millisecond {
+	if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > toolTimeout {
 		var cancel context.CancelFunc
-		execCtx, cancel = context.WithTimeout(ctx, time.Duration(toolTimeout)*time.Millisecond)
+		execCtx, cancel = context.WithTimeout(ctx, toolTimeout)
 		defer cancel()
 	}
-	result := tool.Execute(execCtx, tctx, encoded)
+	result := handler.Execute(execCtx, tctx, encoded)
 	text := renderCLIResult(result, statement)
 	out.WriteString(text + "\n\n")
 	return out.String(), result.OK
 }
 
-// renderCLIResult 把单条命令的 ToolResult 渲染为文本（含管道过滤）。
-func renderCLIResult(result agent.ToolResult, statement cliStatement) string {
+// renderCLIResult 把单条命令的 CLIResult 渲染为文本（含管道过滤）。
+func renderCLIResult(result CLIResult, statement cliStatement) string {
 	var text string
 	if result.OK {
 		text = result.Summary

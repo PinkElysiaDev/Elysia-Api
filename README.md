@@ -52,9 +52,9 @@ WebUI 通过 `//go:embed` 嵌入后端二进制，默认在 `/ui/` 提供；运�
 ### <img src="docs/assets/icons/icon-remote.svg" width="16" alt=""> 远程调度
 
 - REST：`/api/agent/*` 管理面（会话与消息管理，SSE 流式响应）。
-- MCP：`POST /mcp` 暴露 9 个 agent 工具（会话列举/创建/查询/更新、消息发送、审批应答、停止、清空消息等）。
+- MCP：`POST /mcp` 只暴露无状态的 `elysia_cli`，直接执行网关运维命令。
 - A2A：`POST /a2a` 消息端点 + `GET /.well-known/agent-card.json` 标准 Agent Card。
-- 专用远程 Key：agent 作用域 Bearer Key 只能驱动 AI 助手（`/api/agent`、`/mcp`、`/a2a`），不能调用 `/v1` 推理接口；`config.agentRemote` 总开关（默认启用）。
+- 专用远程 Key：agent 作用域 Bearer Key 可驱动内置助手（`/api/agent`、`/a2a`），或通过 `/mcp` 的 `elysia_cli` 直接运维，不能调用 `/v1` 推理接口；`config.agentRemote` 总开关（默认启用）。
 
 ### <img src="docs/assets/icons/icon-support.svg" width="16" alt=""> 支撑能力
 
@@ -262,10 +262,12 @@ curl http://127.0.0.1:8765/v1/chat/completions \
 | 接口 | 端点 | 说明 |
 | --- | --- | --- |
 | REST | `/api/agent/*` | 会话与消息管理，SSE 流式响应 |
-| MCP | `POST /mcp` | 9 个工具：`agent_list` / `agent_create` / `agent_get` / `agent_update` / `agent_delete_sessions` / `agent_send_message` / `agent_respond` / `agent_stop` / `agent_clear_messages` |
+| MCP | `POST /mcp` | 仅提供无状态的 `elysia_cli`，直接执行网关运维命令 |
 | A2A | `POST /a2a`、`GET /.well-known/agent-card.json` | 标准 Agent Card 与消息端点 |
 
-三个远程面共用 agent 作用域的 Bearer API Key 鉴权与 `config.agentRemote` 总开关（默认启用；`publicUrl` 用于对外通告端点地址）。远程 Key 与推理用的 Relay API Token 完全隔离：只能驱动 AI 助手，不能调用 `/v1` 推理接口。智能体所有写操作与出站请求都会走审批门控，远程侧通过 `agent_respond` 工具应答审批卡。
+三个远程面共用 agent 作用域的 Bearer API Key 鉴权与 `config.agentRemote` 总开关（默认启用；`publicUrl` 用于对外通告端点地址）。在「运行配置 → AI 助手远程访问」创建专用 Key；它可通过 REST/A2A 驱动内置助手，或通过 MCP 直接运维，不能调用 `/v1` 推理接口。
+
+通过 MCP 调用 `elysia_cli` 时只需 `{"command":"elysia source ls"}`，持 `agent` 作用域 Key 直接执行，无需内置模型或 Agent 会话。MCP 每次调用都会创建临时 CLI 上下文，协议草稿、测试目标和测试凭证只在当前调用内有效；需要复用这些状态时，请把命令合并到同一次 `command` 批处理中。通过 REST/A2A 驱动内置助手时仍遵循会话审批档和计划模式。
 
 - 远程接口协议细节：[docs/remote-agent-api.md](docs/remote-agent-api.md)
 - 智能体工具全量目录：[docs/agent-tools-catalog.md](docs/agent-tools-catalog.md)

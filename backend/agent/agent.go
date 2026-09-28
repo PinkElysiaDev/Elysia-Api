@@ -382,7 +382,7 @@ func resumablePending(pending *PendingAction) bool {
 }
 
 // checkPendingTools 校验审批型待批动作里的工具仍在注册表中。跨版本升级
-// 会下线旧工具面（如 31 工具收敛为 bash 后留下的历史审批），此时批准只
+// 会下线旧工具面（如 31 工具收敛为 elysia_cli 后留下的历史审批），此时批准只
 // 会把整批调用按未知工具拒绝——对用户呈现为「批准了却失败」，改为明确
 // 报过期并提示重新发起。提问/方案型不真实执行调用，无需校验。
 func (e *Engine) checkPendingTools(pending *PendingAction) error {
@@ -688,7 +688,7 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 }
 
 // pauseForApproval 把 calls[index:] 存为审批型 PendingAction 并暂停轮次。
-// bash 类路由工具的待批子命令清单（pauseNotes）连同同批后续调用的门控
+// elysia_cli 类路由工具的待批子命令清单（pauseNotes）连同同批后续调用的门控
 // 命令一并并入 Reason——用户所见即所批（恢复时 approvedIDs 会放行整批）。
 func (e *Engine) pauseForApproval(ctx context.Context, sessionID string, session *Session, calls []relay.MaheshvaraToolCall, index int, reason, pauseNotes string, events chan Event) (bool, error) {
 	pendingReason := reason
@@ -810,9 +810,9 @@ const (
 // 始终逐调用复核——批准后策略可能已收紧。
 func (e *Engine) gateCall(session *Session, call relay.MaheshvaraToolCall, tool Tool, approvedIDs map[string]bool) (gate callGate, denial, pauseNotes string) {
 	if !tool.Gated() {
-		// 路由型工具（如 bash）自身不门控：按解析出的子命令判定。探针
+		// 路由型工具（如 elysia_cli）自身不门控：按解析出的子命令判定。探针
 		// 未实现或解析失败（ok=false）时放行——安全性由执行阶段对同一
-		// 解析器的失败兜底保证（见 bashTool.ProbeGates 注释）。
+		// 解析器的失败兜底保证（见 elysiaCLITool.ProbeGates 注释）。
 		if notes, probed := probeGatesFor(tool, call); probed {
 			return e.gateProbeDecision(session, call, notes, approvedIDs)
 		}
@@ -905,7 +905,7 @@ func (e *Engine) gateProbeDecision(session *Session, call relay.MaheshvaraToolCa
 	return gateAllow, "", ""
 }
 
-// appendProbeNotes 把同批后续路由型调用（bash）的待批命令并入审批说明。
+// appendProbeNotes 把同批后续路由型调用（elysia_cli）的待批命令并入审批说明。
 // 只列 ask 级：never 级在恢复执行时会被逐调用拒绝，不属于用户批准面。
 // 只在新轮次的暂停路径被调用（此时门控判定尚未批准任何调用）。
 func (e *Engine) appendProbeNotes(session *Session, call relay.MaheshvaraToolCall, reason string) string {
@@ -963,7 +963,7 @@ func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Sess
 	planSummaryBefore := session.PlanSummary
 
 	execCtx, stopProgress := e.watchToolProgress(ctx, call, MetaOf(tool), events)
-	// 批处理型工具（bash/CLI）经 ProgressReporter 逐子步骤上报进度，
+	// 批处理型工具（elysia_cli/CLI）经 ProgressReporter 逐子步骤上报进度，
 	// 复用 tool_progress 事件并携带 Text（心跳只有 ElapsedMs）。
 	progressStarted := time.Now()
 	tctx := (&engineToolContext{store: e.store, ctx: execCtx, session: session}).WithProgress(func(text string) {
@@ -1080,7 +1080,7 @@ func (e *Engine) persistToolResult(ctx context.Context, sessionID string, info T
 }
 
 // MaskSecretInputs 把输入 JSON 中密钥类字符串字段替换为 ***（递归遍历；
-// 解析失败则原样返回——脱敏尽力而为，不阻断落库）。bash 的 command 字段
+// 解析失败则原样返回——脱敏尽力而为，不阻断落库）。elysia_cli 的 command 字段
 // 走命令行感知的 flag 级打码（见 masking.go）。
 func MaskSecretInputs(raw json.RawMessage) json.RawMessage {
 	if len(raw) == 0 {

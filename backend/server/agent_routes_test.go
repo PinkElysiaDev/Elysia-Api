@@ -180,10 +180,10 @@ func hasAgentEvent(events []agentSSEEvent, eventType string) bool {
 
 func TestAgentFullTurnWithDraftTool(t *testing.T) {
 	s := newAgentIntegrationServer(t)
-	// 第 1 次调用：bash 写协议草稿；第 2 次：终稿文本。
+	// 第 1 次调用：elysia_cli 写协议草稿；第 2 次：终稿文本。
 	draftCommand := `{"command":"elysia protocol draft '{\"id\":\"agent-proto\",\"request\":{\"method\":\"POST\",\"path\":\"/v1/x\",\"bodyTemplate\":\"{\\\"model\\\":\\\"{{maheshvara.model}}\\\"}\"}}'"}`
 	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{"index": 0, "id": "call_1", "type": "function", "function": map[string]any{"name": "bash", "arguments": ""}}}}, "", nil),
+		{openAIChunk("c1", map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{"index": 0, "id": "call_1", "type": "function", "function": map[string]any{"name": "elysia_cli", "arguments": ""}}}}, "", nil),
 			openAIChunk("c1", toolCallDelta(0, "", "", draftCommand), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", map[string]any{"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}),
 			openAIDone()},
@@ -270,7 +270,7 @@ func TestAgentGatedToolApprovalFlow(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	// 第 1 次：请求 test_upstream（门控）；恢复后第 2 次：终稿。
 	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia protocol test"}`), "", nil),
+		{openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia protocol test"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{openAIChunk("c2", map[string]any{"role": "assistant", "content": "测试完成"}, "", nil),
@@ -336,12 +336,12 @@ func TestAgentGatedToolApprovalFlow(t *testing.T) {
 }
 
 // 审批卡出口：待批命令打码（敏感 flag 不得经 Reason 泄露），同批多个
-// bash 调用的门控命令全部点名（用户所见即所批）。
+// elysia_cli 调用的门控命令全部点名（用户所见即所批）。
 func TestAgentApprovalReasonMaskingAndBatchScope(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia source create --name x --base-url https://u.io --api-key sk-live-789"}`), "", nil),
-			openAIChunk("c1", toolCallDelta(1, "call_2", "bash", `{"command":"elysia key delete --name prod-key"}`), "", nil),
+		{openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia source create --name x --base-url https://u.io --api-key sk-live-789"}`), "", nil),
+			openAIChunk("c1", toolCallDelta(1, "call_2", "elysia_cli", `{"command":"elysia key delete --name prod-key"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 	})
@@ -369,7 +369,7 @@ func TestAgentApprovalReasonMaskingAndBatchScope(t *testing.T) {
 		if !strings.Contains(body, "--api-key ***") {
 			t.Fatalf("approval reason missing mask: %s", body)
 		}
-		// 同批第二个 bash 调用的门控命令也在批准面内，必须点名。
+		// 同批第二个 elysia_cli 调用的门控命令也在批准面内，必须点名。
 		if !strings.Contains(body, "key delete --name prod-key") {
 			t.Fatalf("approval reason missing later gated command: %s", body)
 		}
@@ -381,46 +381,55 @@ func TestAgentApprovalReasonMaskingAndBatchScope(t *testing.T) {
 
 // 旧版本 PendingAction（工具已下线）批准时明确报过期；拒绝仍可收尾。
 func TestAgentStalePendingApprovalRejected(t *testing.T) {
-	s := newAgentIntegrationServer(t)
-	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", map[string]any{"role": "assistant", "content": "旧审批已拒绝"}, "", nil),
-			openAIChunk("c1", map[string]any{}, "stop", nil),
-			openAIDone()},
-	})
-	seedAgentModel(t, s, fake.URL)
-	created, _ := s.store.CreateAgentSession(t.Context(), storage.AgentSessionUpsert{Mode: "create"})
-	sessionID := created.ID
-	waiting := agent.StatusWaitingApproval
-	pending := &agent.PendingAction{
-		Calls:  []relay.MaheshvaraToolCall{{ID: "call_1", Type: "function", Name: "update_model_source", Arguments: json.RawMessage(`{}`)}},
-		Reason: "legacy pending",
-	}
-	if err := s.store.UpdateSessionState(t.Context(), sessionID, agent.SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
-		t.Fatalf("seed pending: %v", err)
-	}
+	for _, oldName := range []string{"update_model_source", "bash"} {
+		t.Run(oldName, func(t *testing.T) {
+			s := newAgentIntegrationServer(t)
+			fake := newFakeAgentModelServer(t, [][]string{
+				{openAIChunk("c1", map[string]any{"role": "assistant", "content": "旧审批已拒绝"}, "", nil),
+					openAIChunk("c1", map[string]any{}, "stop", nil),
+					openAIDone()},
+			})
+			seedAgentModel(t, s, fake.URL)
+			created, _ := s.store.CreateAgentSession(t.Context(), storage.AgentSessionUpsert{Mode: "create"})
+			sessionID := created.ID
+			waiting := agent.StatusWaitingApproval
+			pending := &agent.PendingAction{
+				Calls:  []relay.MaheshvaraToolCall{{ID: "call_1", Type: "function", Name: oldName, Arguments: json.RawMessage(`{"command":"elysia group create --name legacy-side-effect"}`)}},
+				Reason: "legacy pending",
+			}
+			if err := s.store.UpdateSessionState(t.Context(), sessionID, agent.SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
+				t.Fatalf("seed pending: %v", err)
+			}
 
-	// 批准 → 409 stale_pending（而非静默 unknown_tool 执行失败）。
-	c, rec := agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":true}`)
-	s.adminApproveAgentAction(c)
-	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "stale_pending") {
-		t.Fatalf("stale approve = %d %s", rec.Code, rec.Body.String())
-	}
+			// 批准 → 409 stale_pending（而非静默 unknown_tool 执行失败）。
+			c, rec := agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":true}`)
+			s.adminApproveAgentAction(c)
+			if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "stale_pending") {
+				t.Fatalf("stale approve = %d %s", rec.Code, rec.Body.String())
+			}
 
-	// 拒绝 → 正常收尾（合成拒绝结果并续跑模型）。
-	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":false}`)
-	s.adminApproveAgentAction(c)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("deny stale pending = %d %s", rec.Code, rec.Body.String())
-	}
-	if !hasAgentEvent(parseSSEEvents(t, rec.Body.String()), "turn_done") {
-		t.Fatalf("deny must finish turn: %s", rec.Body.String())
+			groups, _ := s.store.ListGroups(t.Context())
+			if len(groups) != 0 || fake.calls.Load() != 0 {
+				t.Fatal("stale approval produced side effects")
+			}
+
+			// 拒绝 → 正常收尾（合成拒绝结果并续跑模型）。
+			c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":false}`)
+			s.adminApproveAgentAction(c)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("deny stale pending = %d %s", rec.Code, rec.Body.String())
+			}
+			if !hasAgentEvent(parseSSEEvents(t, rec.Body.String()), "turn_done") {
+				t.Fatalf("deny must finish turn: %s", rec.Body.String())
+			}
+		})
 	}
 }
 
 func TestAgentDenyApprovalAdapts(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia protocol save"}`), "", nil),
+		{openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia protocol save"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{openAIChunk("c2", map[string]any{"role": "assistant", "content": "好的，先不保存"}, "", nil),
@@ -523,9 +532,9 @@ func TestAgentThinkingSettingsMappedToRequest(t *testing.T) {
 			if len(fake.bodies) == 0 || !strings.Contains(fake.bodies[0], want) {
 				t.Fatalf("reasoning_effort not mapped: want %s in %v", want, fake.bodies)
 			}
-			// 系统提示词与工具定义进入请求体（bash 是模型可见的操作入口；旧工具
+			// 系统提示词与工具定义进入请求体（elysia_cli 是模型可见的操作入口；旧工具
 			// 名不得再出现在提示词指令里）。
-			if !strings.Contains(fake.bodies[0], `"bash"`) {
+			if !strings.Contains(fake.bodies[0], `"elysia_cli"`) || strings.Contains(fake.bodies[0], `"bash"`) {
 				t.Fatalf("tools not sent: %v", fake.bodies)
 			}
 			if strings.Contains(fake.bodies[0], "update_protocol_draft") {
@@ -588,7 +597,7 @@ func stateUpdateWithDraft(draft json.RawMessage) agent.SessionStateUpdate {
 func TestAgentFullTurnWithOpsTool(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia group ls"}`), "", nil),
+		{openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia group ls"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{openAIChunk("c2", map[string]any{"role": "assistant", "content": "当前没有任何模型组"}, "", nil),
@@ -615,7 +624,7 @@ func TestAgentFullTurnWithOpsTool(t *testing.T) {
 	}
 }
 
-// bash 全链运维 e2e：空清单补救文案 → 批处理建组（失败回退策略）+ 建指定
+// elysia_cli 全链运维 e2e：空清单补救文案 → 批处理建组（失败回退策略）+ 建指定
 // 明文的 Key（审批暂停）→ 批准续跑 → 验证组与 Key 落库。锁住提示词重构
 // 后模型可见的运行时行为（空结果指引、明文照建、策略语义、审批面）。
 func TestAgentCLIOpsChainE2E(t *testing.T) {
@@ -632,15 +641,15 @@ func TestAgentCLIOpsChainE2E(t *testing.T) {
 
 	fake := newFakeAgentModelServer(t, [][]string{
 		{ // 第 1 轮：查空源模型清单
-			openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia model ls --source s0"}`), "", nil),
+			openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia model ls --source s0"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{ // 第 2 轮：批处理建组（失败回退）+ 建指定明文 Key → 触发审批暂停
-			openAIChunk("c2", toolCallDelta(0, "call_2", "bash", `{"command":"elysia group create --name test123 --models s1:m1 --strategy sequential ; elysia key create --name k1 --secret 123 --allowed-groups test123"}`), "", nil),
+			openAIChunk("c2", toolCallDelta(0, "call_2", "elysia_cli", `{"command":"elysia group create --name test123 --models s1:m1 --strategy sequential ; elysia key create --name k1 --secret 123 --allowed-groups test123"}`), "", nil),
 			openAIChunk("c2", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{ // 第 3 轮：验证
-			openAIChunk("c3", toolCallDelta(0, "call_3", "bash", `{"command":"elysia group ls | grep test123 && elysia key ls"}`), "", nil),
+			openAIChunk("c3", toolCallDelta(0, "call_3", "elysia_cli", `{"command":"elysia group ls | grep test123 && elysia key ls"}`), "", nil),
 			openAIChunk("c3", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{ // 终稿
@@ -728,15 +737,15 @@ func TestAgentPlanModeReadOnlySelfRescueE2E(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
 		{ // 第 1 轮：纯只读批 → 计划模式下放行
-			openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia source ls"}`), "", nil),
+			openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia source ls"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{ // 第 2 轮：混合批（只读 + 门控 refresh）→ 整批拒绝，文案点名
-			openAIChunk("c2", toolCallDelta(0, "call_2", "bash", `{"command":"elysia model ls --source s1 ; elysia source refresh --source s1"}`), "", nil),
+			openAIChunk("c2", toolCallDelta(0, "call_2", "elysia_cli", `{"command":"elysia model ls --source s1 ; elysia source refresh --source s1"}`), "", nil),
 			openAIChunk("c2", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{ // 第 3 轮：按提示拆分，重发纯只读 → 成功
-			openAIChunk("c3", toolCallDelta(0, "call_3", "bash", `{"command":"elysia model ls --source s1"}`), "", nil),
+			openAIChunk("c3", toolCallDelta(0, "call_3", "elysia_cli", `{"command":"elysia model ls --source s1"}`), "", nil),
 			openAIChunk("c3", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{ // 第 4 轮：方案定稿 → plan 型暂停
@@ -744,7 +753,7 @@ func TestAgentPlanModeReadOnlySelfRescueE2E(t *testing.T) {
 			openAIChunk("c4", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{ // 第 5 轮（方案确认后）：写入 → save 审批暂停
-			openAIChunk("c5", toolCallDelta(0, "call_5", "bash", `{"command":"elysia group create --name plan-e2e --models s1:fake-model"}`), "", nil),
+			openAIChunk("c5", toolCallDelta(0, "call_5", "elysia_cli", `{"command":"elysia group create --name plan-e2e --models s1:fake-model"}`), "", nil),
 			openAIChunk("c5", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{ // 终稿

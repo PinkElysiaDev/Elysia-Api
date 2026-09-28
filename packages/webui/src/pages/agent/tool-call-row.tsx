@@ -1,4 +1,4 @@
-import { bashCommandOf } from "@/lib/agent/types";
+import { cliCommandOf } from "@/lib/agent/types";
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { CopyButton } from "@/components/copy-button";
@@ -100,9 +100,9 @@ function formatParameters(name: string, input: unknown): string {
   const safe = toolArgsPreview(input);
   if (!safe) return "无参数记录";
   if (typeof input !== "object" || input == null || Array.isArray(input)) return safe;
-  // 沿用参数脱敏，bash 直接展示命令，其余参数使用紧凑的 key=value。
+  // 沿用参数脱敏，elysia_cli 直接展示命令，其余参数使用紧凑的 key=value。
   const fields = JSON.parse(safe) as Record<string, unknown>;
-  const command = bashCommandOf(name, fields) ?? "";
+  const command = cliCommandOf(name, fields) ?? "";
   if (command) delete fields.command;
   const rest = Object.entries(fields).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join("  ");
   return [command, rest].filter(Boolean).join("\n") || "无参数";

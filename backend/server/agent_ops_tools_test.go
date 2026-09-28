@@ -27,54 +27,58 @@ func newOpsTestServer(t *testing.T) *Server {
 	return newAgentIntegrationServer(t)
 }
 
-func opsExecute(t *testing.T, tool agent.Tool, args string) agent.ToolResult {
-	t.Helper()
-	result := tool.Execute(context.Background(), &opsTestContext{}, json.RawMessage(args))
-	return result
+type testToolResult struct {
+	OK      bool
+	Summary string
+	Data    any
 }
 
-// opsTestContext 最小 ToolContext 桩（ops 工具不依赖会话状态）。
+func opsExecute(t *testing.T, tool any, args string) testToolResult {
+	t.Helper()
+	switch typed := tool.(type) {
+	case CLIHandler:
+		result := typed.Execute(context.Background(), &opsTestContext{}, json.RawMessage(args))
+		return testToolResult{OK: result.OK, Summary: result.Summary, Data: result.Data}
+	case agent.Tool:
+		result := typed.Execute(context.Background(), &opsTestContext{}, json.RawMessage(args))
+		return testToolResult{OK: result.OK, Summary: result.Summary, Data: result.Data}
+	default:
+		t.Fatalf("unsupported test tool %T", tool)
+		return testToolResult{}
+	}
+}
+
+// opsTestContext 最小 CLIContext 桩（ops 工具不依赖会话状态）。
 type opsTestContext struct{}
 
-func (c *opsTestContext) SessionMeta() agent.SessionMeta             { return agent.SessionMeta{} }
 func (c *opsTestContext) Draft() json.RawMessage                     { return nil }
 func (c *opsTestContext) SetDraft(draft json.RawMessage) error       { return nil }
 func (c *opsTestContext) TestTarget() (string, string)               { return "", "" }
 func (c *opsTestContext) SetTestTarget(baseURL, apiKey string) error { return nil }
-func (c *opsTestContext) SetPlan(steps []agent.PlanStep) error       { return nil }
-func (c *opsTestContext) SetPlanSummary(summary string) error        { return nil }
-func (c *opsTestContext) SetTitle(title string) error                { return nil }
+func (c *opsTestContext) EditProtocolID() string                     { return "" }
+func (c *opsTestContext) ReportProgress(string)                      {}
+func (c *opsTestContext) SessionMeta() agent.SessionMeta             { return agent.SessionMeta{} }
+func (c *opsTestContext) SetPlan([]agent.PlanStep) error             { return nil }
+func (c *opsTestContext) SetPlanSummary(string) error                { return nil }
+func (c *opsTestContext) SetTitle(string) error                      { return nil }
 
 func TestOpsToolRegistry(t *testing.T) {
 	s := newOpsTestServer(t)
-	tools := newAgentOpsTools(s)
+	tools := cliOpsHandlers(s)
 	if len(tools) != 18 {
-		t.Fatalf("ops tools = %d", len(tools))
+		t.Fatalf("ops handlers = %d", len(tools))
 	}
-	registry, err := agent.NewRegistry(tools...)
-	if err != nil {
-		t.Fatalf("registry: %v", err)
+	seen := map[string]string{}
+	for _, handler := range tools {
+		name := cliHandlerName(handler)
+		seen[name] = cliEffectOf(handler)
 	}
-	for _, name := range []string{agentToolListSources, agentToolCreateSource, agentToolCreateGroup, agentToolRefreshSource, agentToolOutbound} {
-		if registry.Get(name) == nil {
-			t.Fatalf("missing tool %s", name)
-		}
+	if seen[agentToolCreateSource] != CLIEffectWrite || seen[agentToolRefreshSource] != CLIEffectOutbound {
+		t.Fatalf("neutral effects wrong: %v", seen)
 	}
-	// 门控划分
-	if !registry.Get(agentToolCreateSource).Gated() || registry.Get(agentToolCreateSource).PermissionKey() != "save" {
-		t.Fatalf("create_source gating wrong")
-	}
-	if !registry.Get(agentToolRefreshSource).Gated() || registry.Get(agentToolRefreshSource).PermissionKey() != "live_test" {
-		t.Fatalf("refresh_source gating wrong")
-	}
-	if registry.Get(agentToolListSources).Gated() || registry.Get(agentToolUsageStats).Gated() {
-		t.Fatalf("read tools must not be gated")
-	}
-	// 删除类单独门控 delete
 	for _, name := range []string{agentToolDeleteSource, agentToolDeleteGroup, agentToolDeleteModel} {
-		tool := registry.Get(name)
-		if tool == nil || !tool.Gated() || tool.PermissionKey() != "delete" {
-			t.Fatalf("%s gating wrong", name)
+		if seen[name] != CLIEffectDelete {
+			t.Fatalf("%s effect wrong: %v", name, seen[name])
 		}
 	}
 }
@@ -240,7 +244,7 @@ func TestOpsUsageQueryTools(t *testing.T) {
 func TestOpsRefreshSourceGatedLiveTest(t *testing.T) {
 	s := newOpsTestServer(t)
 	tool := &refreshSourceTool{server: s}
-	if !tool.Gated() || tool.PermissionKey() != "live_test" {
+	if cliEffectOf(tool) != CLIEffectOutbound {
 		t.Fatalf("refresh gating wrong")
 	}
 	// 不存在的源直接报错
@@ -330,6 +334,13 @@ func (c *sessionToolContext) SetTestTarget(baseURL, apiKey string) error {
 	}
 	return c.store.UpdateSessionState(c.ctx, c.session.ID, update)
 }
+func (c *sessionToolContext) EditProtocolID() string {
+	if c.session.Mode == agent.ModeEdit {
+		return c.session.ProtocolID
+	}
+	return ""
+}
+func (c *sessionToolContext) ReportProgress(string) {}
 func (c *sessionToolContext) SetTitle(title string) error {
 	if err := c.store.UpdateSessionState(c.ctx, c.session.ID, agent.SessionStateUpdate{Title: title}); err != nil {
 		return err

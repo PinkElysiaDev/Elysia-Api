@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import type { AgentMessage, AgentStreamEvent } from '../src/lib/agent/types'
+import { cliCommandOf, type AgentMessage, type AgentStreamEvent } from '../src/lib/agent/types'
 
 type StreamWindow = Window & {
   pushAgentEvent: (event: AgentStreamEvent) => void
@@ -61,6 +61,14 @@ async function push(page: Page, ...events: AgentStreamEvent[]) {
 
 const bars = '.recharts-bar-rectangle path.recharts-rectangle'
 
+test('only elysia_cli exposes a CLI command preview', () => {
+  const input = { command: 'elysia source ls' }
+  expect(cliCommandOf('elysia_cli', input)).toBe(input.command)
+  expect(cliCommandOf('bash', input)).toBeUndefined()
+  expect(cliCommandOf('ask_user', input)).toBeUndefined()
+  expect(cliCommandOf('elysia_cli', undefined)).toBeUndefined()
+})
+
 async function readyChart(page: Page) {
   await openAgent(page, [message(1, 'user', { text: '显示用量' }), message(2, 'assistant', { text: chart })])
   await expect(page.locator(bars)).toHaveCount(2)
@@ -77,17 +85,17 @@ test('tool_result embedded messages stay between assistant replies during the st
   await page.waitForFunction(() => Boolean((window as StreamWindow).pushAgentEvent))
   persisted.push(message(1, 'user', { text: '分析用量' }), message(2, 'assistant', {
     text: '先读取日志。', reasoning: '第一阶段思考',
-    toolCalls: [{ id: 'a', name: 'bash', arguments: { command: 'elysia usage logs --days 1 --status failed --limit 10' } }],
+    toolCalls: [{ id: 'a', name: 'elysia_cli', arguments: { command: 'elysia usage logs --days 1 --status failed --limit 10' } }],
   }))
   await push(page, ...persisted.map((message): AgentStreamEvent => ({ type: 'message', message })),
-    { type: 'tool_call', callId: 'a', name: 'bash', input: { command: 'elysia usage logs --days 1 --status failed --limit 10' } })
+    { type: 'tool_call', callId: 'a', name: 'elysia_cli', input: { command: 'elysia usage logs --days 1 --status failed --limit 10' } })
   const groups = page.getByRole('button', { name: /^调用工具/ })
   await groups.first().click()
-  const firstTool = page.getByRole('button', { name: '查看 bash 调用详情' }).first()
+  const firstTool = page.getByRole('button', { name: '查看 elysia_cli 调用详情' }).first()
   await expect(firstTool).toContainText('elysia usage logs --days 1 --status failed --limit 10')
   await expect(firstTool).not.toContainText('command=')
   await firstTool.click()
-  const result = { callId: 'a', name: 'bash', ok: true, input: { command: 'elysia usage logs --days 1 --status failed --limit 10' }, data: { output: '日志结果', exitCode: 0 } }
+  const result = { callId: 'a', name: 'elysia_cli', ok: true, input: { command: 'elysia usage logs --days 1 --status failed --limit 10' }, data: { output: '日志结果', exitCode: 0 } }
   persisted.push(message(3, 'tool_result', result))
   // This matches Engine.persistToolResult: there is no separate `message` event.
   await push(page, { type: 'tool_result', callId: 'a', result, message: persisted[2] },
@@ -98,16 +106,16 @@ test('tool_result embedded messages stay between assistant replies during the st
   expect(await groups.first().evaluate((tool, text) => !!(tool.compareDocumentPosition(text!) & Node.DOCUMENT_POSITION_FOLLOWING), await liveText.elementHandle())).toBe(true)
   persisted.push(message(4, 'assistant', { text: '接着按模型汇总。', reasoning: '第二阶段思考' }))
   await push(page, { type: 'message', message: persisted[3] },
-    { type: 'tool_call', callId: 'b', name: 'bash', input: { command: 'elysia usage stats --days 1' } })
+    { type: 'tool_call', callId: 'b', name: 'elysia_cli', input: { command: 'elysia usage stats --days 1' } })
   await expect(groups).toHaveCount(2)
   await expect(groups.first()).toHaveAttribute('aria-expanded', 'true')
   await expect(groups.nth(1)).toContainText('执行中')
-  const secondResult = { callId: 'b', name: 'bash', ok: true, input: { command: 'elysia usage stats --days 1' }, data: { requests: 100 } }
+  const secondResult = { callId: 'b', name: 'elysia_cli', ok: true, input: { command: 'elysia usage stats --days 1' }, data: { requests: 100 } }
   persisted.push(message(5, 'tool_result', secondResult))
   await push(page, { type: 'tool_result', callId: 'b', result: secondResult, message: persisted[4] },
-    { type: 'tool_call', callId: 'c', name: 'bash', input: { command: 'elysia model ls' } })
+    { type: 'tool_call', callId: 'c', name: 'elysia_cli', input: { command: 'elysia model ls' } })
   await expect(groups.nth(1)).toContainText('2 次')
-  const thirdResult = { callId: 'c', name: 'bash', ok: true, input: { command: 'elysia model ls' }, data: ['test-model'] }
+  const thirdResult = { callId: 'c', name: 'elysia_cli', ok: true, input: { command: 'elysia model ls' }, data: ['test-model'] }
   persisted.push(message(6, 'tool_result', thirdResult), message(7, 'assistant', { text: '分析完毕。' }))
   await push(page, { type: 'tool_result', callId: 'c', result: thirdResult, message: persisted[5] },
     { type: 'message', message: persisted[6] })

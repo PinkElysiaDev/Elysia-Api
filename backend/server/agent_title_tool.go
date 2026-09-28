@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
-
-	"github.com/elysia-api/backend/agent"
-	"github.com/elysia-api/backend/relay"
 )
 
 // update_title：模型在理解任务后把会话标题改成对目标的简短概括。总览卡片
@@ -21,42 +18,33 @@ const (
 
 type updateTitleTool struct{}
 
-func (t *updateTitleTool) Name() string { return agentToolUpdateTitle }
+func (t *updateTitleTool) Name() string      { return agentToolUpdateTitle }
+func (t *updateTitleTool) CLIEffect() string { return "" }
+
 func (t *updateTitleTool) Description() string {
-	return "用一句话概括当前任务并设为会话标题"
-}
-func (t *updateTitleTool) Gated() bool           { return false }
-func (t *updateTitleTool) PermissionKey() string { return "" }
-func (t *updateTitleTool) Meta() agent.ToolMeta {
-	return agent.ToolMeta{RiskLevel: "low"}
+	return fmt.Sprintf("把会话标题改写成对任务目标的简洁概括（动宾短语，不超过 %d 个字，不要复述用户原话）。理解任务后调用一次；任务目标变化时再更新。", titleRuneLimit)
 }
 
-func (t *updateTitleTool) Definition() relay.MaheshvaraTool {
-	return relay.MaheshvaraTool{
-		Type: "function", Name: agentToolUpdateTitle,
-		Description: fmt.Sprintf("把会话标题改写成对任务目标的简洁概括（动宾短语，不超过 %d 个字，不要复述用户原话）。理解任务后调用一次；任务目标变化时再更新。", titleRuneLimit),
-		Parameters: objectSchema(map[string]any{
-			"title": map[string]any{"type": "string", "description": "新标题，不超过 16 个字"},
-		}, "title"),
-	}
-}
-
-func (t *updateTitleTool) Execute(ctx context.Context, tctx agent.ToolContext, args json.RawMessage) agent.ToolResult {
+func (t *updateTitleTool) Execute(ctx context.Context, tctx CLIContext, args json.RawMessage) CLIResult {
 	var params struct {
 		Title string `json:"title"`
 	}
 	if err := json.Unmarshal(args, &params); err != nil {
-		return agent.ToolError("参数解析失败", "invalid_args")
+		return CLIError("参数解析失败", "invalid_args")
 	}
 	title := strings.TrimSpace(params.Title)
 	if title == "" {
-		return agent.ToolError("标题不能为空", "empty_title")
+		return CLIError("标题不能为空", "empty_title")
 	}
 	if utf8.RuneCountInString(title) > titleRuneLimit {
-		return agent.ToolError(fmt.Sprintf("标题超过 %d 个字，请缩短到能一眼看懂任务目标", titleRuneLimit), "title_too_long")
+		return CLIError(fmt.Sprintf("标题超过 %d 个字，请缩短到能一眼看懂任务目标", titleRuneLimit), "title_too_long")
 	}
-	if err := tctx.SetTitle(title); err != nil {
-		return agent.ToolError("标题保存失败: "+err.Error(), "save_failed")
+	setter, ok := tctx.(interface{ SetTitle(string) error })
+	if !ok {
+		return CLIError("当前 CLI 上下文不支持会话标题", "title_unavailable")
 	}
-	return agent.ToolResult{OK: true, Summary: "标题已更新为「" + title + "」"}
+	if err := setter.SetTitle(title); err != nil {
+		return CLIError("标题保存失败: "+err.Error(), "save_failed")
+	}
+	return CLIResult{OK: true, Summary: "标题已更新为「" + title + "」"}
 }

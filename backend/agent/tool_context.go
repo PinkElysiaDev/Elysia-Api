@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// ProgressReporter 是 ToolContext 的可选扩展：批处理型工具（如 bash/CLI）
+// ProgressReporter 是 ToolContext 的可选扩展：批处理型工具（如 elysia_cli/CLI）
 // 逐子步骤执行时上报人类可读进度，引擎把它转成 tool_progress 事件（带
 // Text），前端实时展示「正在执行（2/3）：elysia …」。未实现的上下文
 // （宿主自定义/测试直调）对工具是静默 no-op。
@@ -20,7 +20,7 @@ type engineToolContext struct {
 	store   Store
 	ctx     context.Context
 	session *Session
-	// progress 逐子步骤进度出口（bash 批内命令）；nil 时 ReportProgress
+	// progress 逐子步骤进度出口（elysia_cli 批内命令）；nil 时 ReportProgress
 	// 静默丢弃（测试直调路径）。
 	progress func(text string)
 }

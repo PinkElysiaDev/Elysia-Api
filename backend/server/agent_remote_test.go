@@ -199,18 +199,8 @@ func TestMCPLegacyHandshakeAndToolsList(t *testing.T) {
 		tool := item.(map[string]any)
 		names[tool["name"].(string)] = true
 	}
-	// 9 个 agent_* 工具全集（多退化为「存在即过」会漏删减面）。
-	for _, want := range []string{
-		"agent_send_message", "agent_respond", "agent_stop",
-		"agent_list_sessions", "agent_create_session", "agent_get_session",
-		"agent_update_session", "agent_delete_session", "agent_clear_messages",
-	} {
-		if !names[want] {
-			t.Fatalf("tools/list missing %s", want)
-		}
-	}
-	if len(names) != 9 {
-		t.Fatalf("tools/list must expose exactly 9 tools, got %d: %v", len(names), names)
+	if !names["elysia_cli"] || len(names) != 1 {
+		t.Fatalf("tools/list must expose only elysia_cli, got %d: %v", len(names), names)
 	}
 
 	// 未知方法/未知工具。
@@ -237,72 +227,23 @@ func TestMCPLegacyHandshakeAndToolsList(t *testing.T) {
 	}
 }
 
-func TestMCPQuickToolsCall(t *testing.T) {
+func TestMCPRemovedAgentTools(t *testing.T) {
 	s := newAgentIntegrationServer(t)
-	// 建两个会话，过滤 + 会话创建工具。
-	if _, err := s.createRemoteAgentSession(context.Background(), "甲", "create", "", nil); err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	if _, err := s.createRemoteAgentSession(context.Background(), "乙", "create", "", nil); err != nil {
-		t.Fatalf("create: %v", err)
-	}
 	_, result, _ := mcpCall(t, s, mcpRequest(1, "tools/call", map[string]any{
-		"name": "agent_list_sessions", "arguments": map[string]any{"limit": 1},
+		"name": "agent_list_sessions", "arguments": map[string]any{},
 	}), nil)
-	payload := result["result"].(map[string]any)
-	if payload["isError"] == true {
-		t.Fatalf("list errored: %v", payload)
-	}
-	structured := payload["structuredContent"].(map[string]any)
-	if structured["total"] != float64(2) {
-		t.Fatalf("total = %v", structured["total"])
-	}
-	if len(structured["items"].([]any)) != 1 {
-		t.Fatalf("limit not applied: %v", structured)
+	if result["error"] == nil {
+		t.Fatalf("removed agent tool unexpectedly available: %v", result)
 	}
 }
 
-func TestMCPSendMessageStreaming(t *testing.T) {
+func TestMCPRemovedAgentMessageTool(t *testing.T) {
 	s := newAgentIntegrationServer(t)
-	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", map[string]any{"role": "assistant", "content": "远程接入成功"}, "", nil),
-			openAIChunk("c1", map[string]any{}, "stop", nil),
-			openAIDone()},
-	})
-	seedAgentModel(t, s, fake.URL)
-	session, err := s.createRemoteAgentSession(context.Background(), "远程", "create", "", &agent.Settings{ModelSourceID: "s1", ModelName: "fake-model"})
-	if err != nil {
-		t.Fatalf("create: %v", err)
-	}
-
-	c, rec := remoteContext(http.MethodPost, "/mcp", mcpRequest(7, "tools/call", map[string]any{
-		"name":      "agent_send_message",
-		"arguments": map[string]any{"sessionId": session.ID, "text": "你好"},
-		"_meta":     map[string]any{"progressToken": "tok-1"},
-	}), mcpHeaders(nil))
-	s.handleMCP(c)
-	body := rec.Body.String()
-	frames := parseA2AFrames(t, body)
-	if len(frames) < 2 {
-		t.Fatalf("expected progress + final frames: %s", body)
-	}
-	// progress 通知帧 + 终帧响应。
-	sawProgress := false
-	for _, frame := range frames {
-		if method, ok := frame["method"].(string); ok && method == "notifications/progress" {
-			sawProgress = true
-		}
-	}
-	if !sawProgress {
-		t.Fatalf("missing progress notification: %s", body)
-	}
-	final := frames[len(frames)-1]["result"].(map[string]any)
-	if final["isError"] == true {
-		t.Fatalf("tool errored: %v", final)
-	}
-	structured := final["structuredContent"].(map[string]any)
-	if structured["reply"] != "远程接入成功" || structured["status"] != agent.StatusIdle {
-		t.Fatalf("outcome wrong: %v", structured)
+	_, result, _ := mcpCall(t, s, mcpRequest(1, "tools/call", map[string]any{
+		"name": "agent_send_message", "arguments": map[string]any{"sessionId": "missing", "text": "你好"},
+	}), nil)
+	if result["error"] == nil {
+		t.Fatalf("removed agent message tool unexpectedly available: %v", result)
 	}
 }
 
@@ -398,7 +339,7 @@ func TestA2AStreamApprovalResumeFlow(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	// 第 1 次：请求门控工具 → input-required；第 2 次：终稿。
 	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia protocol test"}`), "", nil),
+		{openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia protocol test"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{openAIChunk("c2", map[string]any{"role": "assistant", "content": "测试通过，接入完成"}, "", nil),
@@ -747,7 +688,7 @@ func TestA2ACancelFinalStateNotOverwritten(t *testing.T) {
 func TestA2ASupersedeStaleTask(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia protocol test"}`), "", nil),
+		{openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia protocol test"}`), "", nil),
 			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
 			openAIDone()},
 		{openAIChunk("c2", map[string]any{"role": "assistant", "content": "新任务完成"}, "", nil),
@@ -773,72 +714,24 @@ func TestA2ASupersedeStaleTask(t *testing.T) {
 }
 
 // MCP agent_respond：审批型待批必须显式携带 approved，零值不得静默拒绝。
-func TestMCPRespondRequiresExplicitApproval(t *testing.T) {
+func TestMCPRespondToolRemoved(t *testing.T) {
 	s := newAgentIntegrationServer(t)
-	fake := newFakeAgentModelServer(t, [][]string{
-		{openAIChunk("c1", toolCallDelta(0, "call_1", "bash", `{"command":"elysia protocol test"}`), "", nil),
-			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
-			openAIDone()},
-		{openAIChunk("c2", map[string]any{"role": "assistant", "content": "已按拒绝继续"}, "", nil),
-			openAIChunk("c2", map[string]any{}, "stop", nil),
-			openAIDone()},
-	})
-	seedAgentModel(t, s, fake.URL)
-	vendor := newGatedVendor(t)
-	sessionID := seedGatedAgentSession(t, s, fake, vendor.URL)
-
-	// 驱动到 waiting_approval。
-	c, rec := remoteContext(http.MethodPost, "/mcp", mcpRequest(11, "tools/call", map[string]any{
-		"name": "agent_send_message", "arguments": map[string]any{"sessionId": sessionID, "text": "请测试"},
-	}), mcpHeaders(nil))
-	s.handleMCP(c)
-	frames := parseA2AFrames(t, rec.Body.String())
-	final := frames[len(frames)-1]["result"].(map[string]any)
-	structured := final["structuredContent"].(map[string]any)
-	if structured["status"] != agent.StatusWaitingApproval {
-		t.Fatalf("status = %v, want waiting_approval: %v", structured["status"], structured)
-	}
-
-	// 漏传 approved → isError，且会话保持待批。
-	c, rec = remoteContext(http.MethodPost, "/mcp", mcpRequest(12, "tools/call", map[string]any{
-		"name": "agent_respond", "arguments": map[string]any{"sessionId": sessionID},
-	}), mcpHeaders(nil))
-	s.handleMCP(c)
-	frames = parseA2AFrames(t, rec.Body.String())
-	final = frames[len(frames)-1]["result"].(map[string]any)
-	if final["isError"] != true {
-		t.Fatalf("missing approved must be isError: %v", final)
-	}
-	session, _, _ := s.getRemoteAgentSession(context.Background(), sessionID)
-	if session.Status != agent.StatusWaitingApproval {
-		t.Fatalf("session state = %q, still waiting expected", session.Status)
-	}
-
-	// 显式 approved:false → 正常拒绝收尾。
-	c, rec = remoteContext(http.MethodPost, "/mcp", mcpRequest(13, "tools/call", map[string]any{
-		"name": "agent_respond", "arguments": map[string]any{"sessionId": sessionID, "approved": false},
-	}), mcpHeaders(nil))
-	s.handleMCP(c)
-	frames = parseA2AFrames(t, rec.Body.String())
-	final = frames[len(frames)-1]["result"].(map[string]any)
-	if final["isError"] == true {
-		t.Fatalf("explicit deny failed: %v", final)
-	}
-	structured = final["structuredContent"].(map[string]any)
-	if structured["status"] != agent.StatusIdle || structured["reply"] != "已按拒绝继续" {
-		t.Fatalf("deny outcome wrong: %v", structured)
+	_, result, _ := mcpCall(t, s, mcpRequest(11, "tools/call", map[string]any{
+		"name": "agent_respond", "arguments": map[string]any{"sessionId": "any", "approved": true},
+	}), nil)
+	if result["error"] == nil {
+		t.Fatalf("agent_respond must not be exposed through MCP: %v", result)
 	}
 }
 
-// afterSeq 负值直接拒绝。
-func TestMCPClearMessagesRejectsNegativeAfterSeq(t *testing.T) {
+// 已移除的会话控制工具统一走未知工具路径；REST/A2A 继续覆盖其业务校验。
+func TestMCPClearMessagesToolRemoved(t *testing.T) {
 	s := newOpsTestServer(t)
 	_, result, _ := mcpCall(t, s, mcpRequest(14, "tools/call", map[string]any{
 		"name": "agent_clear_messages", "arguments": map[string]any{"sessionId": "any", "afterSeq": -1},
 	}), nil)
-	payload := result["result"].(map[string]any)
-	if payload["isError"] != true {
-		t.Fatalf("negative afterSeq must be isError: %v", payload)
+	if result["error"] == nil {
+		t.Fatalf("agent_clear_messages must not be exposed through MCP: %v", result)
 	}
 }
 
@@ -859,33 +752,12 @@ func TestRemoteThinkingEffortWhitelistAndSchema(t *testing.T) {
 		t.Fatal("unknown effort must be rejected on the remote surface")
 	}
 
-	// MCP schema enum 内容（此前只断言工具名，enum 漂移无人守护）。
+	// MCP 只暴露独立 CLI；会话设置仍由 REST/A2A 管理。
 	ops := newOpsTestServer(t)
 	_, listed, _ := mcpCall(t, ops, mcpRequest(1, "tools/list", nil), nil)
 	tools := listed["result"].(map[string]any)["tools"].([]any)
-	var enum []any
-	for _, item := range tools {
-		tool := item.(map[string]any)
-		if tool["name"] != "agent_update_session" {
-			continue
-		}
-		schema := tool["inputSchema"].(map[string]any)
-		props := schema["properties"].(map[string]any)
-		settings := props["settings"].(map[string]any)
-		effort := settings["properties"].(map[string]any)["thinkingEffort"].(map[string]any)
-		enum = effort["enum"].([]any)
-	}
-	if enum == nil {
-		t.Fatal("agent_update_session schema missing thinkingEffort enum")
-	}
-	values := map[string]bool{}
-	for _, item := range enum {
-		values[item.(string)] = true
-	}
-	for _, want := range []string{"low", "medium", "high", "xhigh", "max", "adaptive"} {
-		if !values[want] {
-			t.Fatalf("thinkingEffort enum missing %q: %v", want, enum)
-		}
+	if len(tools) != 1 || tools[0].(map[string]any)["name"] != "elysia_cli" {
+		t.Fatalf("MCP tool surface drifted: %v", tools)
 	}
 }
 

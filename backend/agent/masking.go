@@ -40,7 +40,7 @@ func maskSecretValue(value any) any {
 				typed[key] = "***"
 				continue
 			}
-			// bash 类工具的 command 字段：命令行里的敏感 flag 值单独打码
+			// elysia_cli 类工具的 command 字段：命令行里的敏感 flag 值单独打码
 			//（键名本身不含 secret 词根，通用规则拦不到）。
 			if key == "command" {
 				if text, isString := item.(string); isString {
