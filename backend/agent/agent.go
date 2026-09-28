@@ -991,7 +991,10 @@ func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Sess
 		Data:       clampJSON(result.MarshalData(), e.opts.ToolResultStoreLimit, direction),
 		DurationMs: time.Since(started).Milliseconds(),
 	}
-	e.persistToolResult(ctx, sessionID, info, events)
+	// 调用取消后仍记录实际结果，避免会话回放只剩一条未结束的工具调用。
+	recordCtx, stopRecord := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	e.persistToolResult(recordCtx, sessionID, info, events)
+	stopRecord()
 
 	if len(session.DraftConfig) > 0 && !bytes.Equal(draftBefore, session.DraftConfig) {
 		emitEvent(events, Event{Type: EventDraftUpdated, Draft: session.DraftConfig})
@@ -1036,7 +1039,9 @@ func (e *Engine) watchToolProgress(ctx context.Context, call relay.MaheshvaraToo
 	execCtx, cancel = context.WithTimeout(ctx, time.Duration(timeoutMs)*time.Millisecond)
 	started := time.Now()
 	stop := make(chan struct{})
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		ticker := time.NewTicker(toolProgressInterval)
 		defer ticker.Stop()
 		for {
@@ -1053,6 +1058,7 @@ func (e *Engine) watchToolProgress(ctx context.Context, call relay.MaheshvaraToo
 	return execCtx, func() {
 		close(stop)
 		cancel() // timeoutMs 已兜到默认值，WithTimeout 恒返回非 nil cancel
+		<-done   // 确保调用方关闭 events 前心跳已经退出。
 	}
 }
 
