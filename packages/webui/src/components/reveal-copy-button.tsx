@@ -10,14 +10,16 @@ const COPY_RESET_MS = 1500;
 
 /**
  * RevealCopyButton：令牌凭证的显示/隐藏 + 复制（明文经 reveal 端点按需
- * 取回，可无限次查看）。API Key 页与运行配置页共用。
+ * 取回）。远程访问配置可通过 hideReveal 关闭明文显示，只保留复制。
  */
 export function RevealCopyButton({
   name,
   maskedToken,
+  hideReveal = false,
 }: {
   name: string;
   maskedToken: string;
+  hideReveal?: boolean;
 }) {
   const toast = useToast();
   const [copied, setCopied] = useState(false);
@@ -62,20 +64,22 @@ export function RevealCopyButton({
       <span className="font-mono text-xs">
         {revealed ? revealedToken : maskedToken}
       </span>
-      <Button
-        variant="ghost"
-        size="iconSm"
-        title={revealed ? "隐藏" : "显示完整 Key"}
-        aria-label={revealed ? "隐藏完整 Key" : "显示完整 Key"}
-        disabled={busy}
-        onClick={handleReveal}
-      >
-        {revealed ? (
-          <EyeOff className="h-3.5 w-3.5" />
-        ) : (
-          <Eye className="h-3.5 w-3.5" />
-        )}
-      </Button>
+      {!hideReveal && (
+        <Button
+          variant="ghost"
+          size="iconSm"
+          title={revealed ? "隐藏" : "显示完整 Key"}
+          aria-label={revealed ? "隐藏完整 Key" : "显示完整 Key"}
+          disabled={busy}
+          onClick={handleReveal}
+        >
+          {revealed ? (
+            <EyeOff className="h-3.5 w-3.5" />
+          ) : (
+            <Eye className="h-3.5 w-3.5" />
+          )}
+        </Button>
+      )}
       <Button
         variant="ghost"
         size="iconSm"

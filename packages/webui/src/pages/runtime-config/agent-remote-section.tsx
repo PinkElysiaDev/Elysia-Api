@@ -12,9 +12,10 @@ import { useTokens } from '@/lib/hooks'
 import { api } from '@/lib/api'
 import type { ApiToken } from '@/lib/types'
 import type { RuntimeConfigForm } from './use-runtime-config-form'
+import { MCPConfigCopyButton } from './mcp-config-copy-button'
 
 /** AI 助手远程访问配置区（运行配置页）：开关/对外地址 + 接入信息 +
- * 远程访问 Key 的集中管理（新增/删除/启停/改名/查看均在此）。 */
+ * 远程访问 Key 的集中管理（新增/删除/启停/改名均在此；明文仅按需复制）。 */
 
 // 与后端 generateAPIKeySecret 同口径：32 字节 URL-safe base64。
 function generateRemoteKeySecret(): string {
@@ -42,7 +43,7 @@ export function AgentRemoteSection({
     <SettingSection
       icon={PlugZap}
       title="AI 助手远程访问"
-      description="通过 REST / MCP / A2A 把内置 AI 助手暴露给外部程序远程驱动与配置"
+      description="通过 REST / MCP / A2A 远程驱动内置助手，或通过 MCP 直接执行运维命令"
     >
       <div className="space-y-4">
         <SettingRow
@@ -54,7 +55,7 @@ export function AgentRemoteSection({
 
         <SettingRow
           label="对外基础地址"
-          description="反向代理后填写（如 https://gw.example.com），供 Agent Card 生成绝对地址；留空按当前访问地址推导"
+          description="用于生成 MCP 配置与远程接入地址（如 https://gw.example.com）；留空使用当前访问地址"
           inline={false}
         >
           <Input
@@ -84,14 +85,14 @@ export function AgentRemoteSection({
           )}
         </div>
 
-        <AgentRemoteTokens />
+        <AgentRemoteTokens baseUrl={publicBase} remoteEnabled={enabled} />
       </div>
     </SettingSection>
   )
 }
 
 function EndpointRow({ label, path, base }: { label: string; path: string; base: string }) {
-  const value = `${base.replace(/\/$/, '')}${path}`
+  const value = `${base.replace(/\/+$/, '')}${path}`
   return (
     <div className="flex items-center gap-2">
       <span className="w-20 shrink-0 text-xs text-muted-foreground">{label}</span>
@@ -103,8 +104,8 @@ function EndpointRow({ label, path, base }: { label: string; path: string; base:
   )
 }
 
-/** 远程访问 Key 的集中管理：创建 / 启停 / 改名 / 删除 / 查看明文。 */
-function AgentRemoteTokens() {
+/** 远程访问 Key 的集中管理：创建 / 启停 / 改名 / 删除。 */
+function AgentRemoteTokens({ baseUrl, remoteEnabled }: { baseUrl: string; remoteEnabled: boolean }) {
   const toast = useToast()
   const { confirm, dialog } = useConfirm()
   const { data: tokens, mutate } = useTokens()
@@ -132,7 +133,7 @@ function AgentRemoteTokens() {
       })
       await mutate()
       setNewName('')
-      toast.success('远程访问 Key 已创建', '可在列表中随时查看明文')
+      toast.success('远程访问 Key 已创建', '可在列表中复制完整 Key 或 MCP 配置')
     } catch (err) {
       toast.error('创建失败', (err as Error).message)
     } finally {
@@ -196,12 +197,12 @@ function AgentRemoteTokens() {
   return (
     <div className="border-t border-border/40 pt-3 space-y-3">
       <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-        <KeyRound className="h-3.5 w-3.5" /> 远程访问 Key（{agentKeys.length}）
+        <KeyRound className="h-3.5 w-3.5" /> 远程访问 Key
       </p>
 
       {agentKeys.length === 0 ? (
         <p className="text-2xs text-muted-foreground">
-          还没有远程访问 Key。创建一个，外部客户端即可凭它驱动 AI 助手。
+          还没有远程访问 Key。创建后，外部客户端可驱动 AI 助手或通过 MCP 执行运维命令。
         </p>
       ) : (
         <div className="space-y-1.5">
@@ -226,15 +227,20 @@ function AgentRemoteTokens() {
                 </Button>
               </div>
             ) : (
-              <div key={token.name} className="flex items-center gap-2">
+              <div key={token.name} className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
                 <Switch
                   checked={token.enabled}
                   onCheckedChange={(v) => void handleToggle(token, v)}
                 />
                 <span className="w-24 shrink-0 truncate text-xs font-medium">{token.name}</span>
-                <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                  <RevealCopyButton name={token.name} maskedToken={token.token || '••••'} />
+                <span className="flex min-w-44 flex-1 items-center gap-1.5 [&>span]:truncate">
+                  <RevealCopyButton name={token.name} maskedToken={token.token || '••••'} hideReveal />
                 </span>
+                <MCPConfigCopyButton
+                  name={token.name}
+                  baseUrl={baseUrl}
+                  disabledReason={!remoteEnabled ? '请先启用远程访问并保存' : !token.enabled ? '请先启用此 Key' : undefined}
+                />
                 <Button
                   variant="ghost"
                   size="iconSm"
@@ -275,7 +281,10 @@ function AgentRemoteTokens() {
         </Button>
       </div>
       <p className="text-2xs text-muted-foreground/70">
-        远程访问 Key 专用于驱动 AI 助手。
+        复制 MCP JSON 包含接入地址和对应 Key，可用于支持 mcpServers 格式的客户端。
+      </p>
+      <p className="text-2xs text-muted-foreground/70">
+        MCP 的 elysia_cli 持此 Key 直接执行运维命令，每次调用无状态。
       </p>
 
       {dialog}
