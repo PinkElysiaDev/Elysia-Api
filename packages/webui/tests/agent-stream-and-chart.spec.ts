@@ -6,6 +6,10 @@ type StreamWindow = Window & {
   finishAgentStream: () => void
 }
 
+const chart = '```chart\n' + JSON.stringify({
+  type: 'bar', title: '模型用量', x: ['模型 A', '模型 B'],
+  series: [{ name: '请求数', data: [100, 50] }],
+}) + '\n```'
 const message = (seq: number, role: AgentMessage['role'], content: unknown): AgentMessage => ({
   seq, role, content, createdAt: '2026-09-27T12:00:00Z',
 })
@@ -53,6 +57,16 @@ async function openAgent(page: Page, messages: AgentMessage[] = []) {
 
 async function push(page: Page, ...events: AgentStreamEvent[]) {
   await page.evaluate((events) => events.forEach((event) => (window as StreamWindow).pushAgentEvent(event)), events)
+}
+
+const bars = '.recharts-bar-rectangle path.recharts-rectangle'
+
+async function readyChart(page: Page) {
+  await openAgent(page, [message(1, 'user', { text: '显示用量' }), message(2, 'assistant', { text: chart })])
+  await expect(page.locator(bars)).toHaveCount(2)
+  // Recharts' first entrance takes 1500 ms; measure only after it has settled.
+  await expect.poll(() => page.locator(bars).first().evaluate((el) => (el as SVGGraphicsElement).getBBox().height)).toBeGreaterThan(180)
+  await page.waitForTimeout(200)
 }
 
 test('tool_result embedded messages stay between assistant replies during the stream', async ({ page }) => {
@@ -114,4 +128,55 @@ test('tool_result embedded messages stay between assistant replies during the st
   await expect(firstTool).not.toContainText('command=')
   await firstTool.click()
   await expect(page.locator('[data-seq="3"] pre')).toContainText('日志结果')
+})
+
+test('typing in the composer preserves the existing chart and its bars', async ({ page }) => {
+  await readyChart(page)
+  const original = await page.locator('.recharts-wrapper').elementHandle()
+  await page.getByPlaceholder('请描述你的任务').fill('准备下一条消息')
+  expect(await original!.evaluate((el) => el.isConnected)).toBe(true)
+  expect(await page.locator(bars).first().evaluate((el) => (el as SVGGraphicsElement).getBBox().height)).toBeGreaterThan(180)
+})
+
+test('streaming text after a chart preserves that chart instance', async ({ page }) => {
+  await openAgent(page)
+  const composer = page.getByPlaceholder('请描述你的任务')
+  await composer.fill('显示用量')
+  await composer.press('Enter')
+  await page.waitForFunction(() => Boolean((window as StreamWindow).pushAgentEvent))
+  await push(page, { type: 'message', message: message(1, 'user', { text: '显示用量' }) },
+    { type: 'text_delta', delta: chart })
+  await expect(page.locator(bars)).toHaveCount(2)
+  const original = await page.locator('.recharts-wrapper').elementHandle()
+  await push(page, { type: 'text_delta', delta: '\n\n这是按模型分组的用量统计。' })
+  await expect(page.getByText('这是按模型分组的用量统计。', { exact: true })).toBeVisible()
+  expect(await original!.evaluate((el) => el.isConnected)).toBe(true)
+})
+
+test('resizing changes chart width without replaying its entrance animation', async ({ page }) => {
+  await readyChart(page)
+  const original = await page.locator('.recharts-wrapper').elementHandle()
+  await page.getByRole('button', { name: '任务方案', exact: true }).click()
+  expect(await original!.evaluate((el) => el.isConnected)).toBe(true)
+  const originalWidth = (await page.locator('.recharts-wrapper').boundingBox())!.width
+  const samples = page.evaluate(async (selector) => {
+    const heights: number[] = []
+    const start = performance.now()
+    while (performance.now() - start < 1800) {
+      await new Promise(requestAnimationFrame)
+      heights.push((document.querySelector(selector) as SVGGraphicsElement | null)?.getBBox().height ?? 0)
+    }
+    return heights
+  }, bars)
+  const handle = await page.getByRole('separator', { name: '拖拽调整侧栏宽度' }).boundingBox()
+  await page.mouse.move(handle!.x + 3, handle!.y + 100)
+  await page.mouse.down()
+  await page.mouse.move(handle!.x - 100, handle!.y + 100, { steps: 12 })
+  await page.mouse.up()
+  expect(await original!.evaluate((el) => el.isConnected)).toBe(true)
+  await page.getByRole('button', { name: '收起任务资料', exact: true }).click()
+  await page.setViewportSize({ width: 850, height: 900 })
+  const heights = await samples
+  expect((await page.locator('.recharts-wrapper').boundingBox())!.width).toBeLessThan(originalWidth)
+  expect(Math.min(...heights)).toBeGreaterThan(180)
 })
