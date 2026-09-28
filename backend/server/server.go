@@ -400,7 +400,7 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 			return
 		}
 		if accessTokenHasScope(accessToken, storage.TokenScopeAgent) {
-			// 远程访问 Key 与推理隔离：agent 作用域 Key 只能驱动 AI 助手
+			// 远程访问 Key 与推理隔离：agent 作用域 Key 用于助手与 MCP 运维
 			//（/mcp、/a2a、/api/agent），不得调用 /v1 推理接口。
 			c.Abort()
 			writeProtocolError(c, inputFormatFromPath(c.Request.URL.Path), &relay.MaheshvaraError{

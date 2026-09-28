@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/elysia-api/backend/agent"
+	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 )
@@ -98,6 +99,8 @@ func callerRequest() agent.CallRequest {
 // 之后的独立尾帧到达（W1-4 回归：终态即 return 会丢掉整帧用量）。
 func TestAgentCallerOpenAIChatViaAdapter(t *testing.T) {
 	s := newAgentIntegrationServer(t)
+	bodyMaxKB := 1024
+	s.config.SetUsageLogConfig(config.UsageLogConfig{BodyMaxKB: &bodyMaxKB})
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(openAIChunk("c1", map[string]any{"role": "assistant", "content": "你"}, "", nil)))
@@ -157,7 +160,7 @@ func TestAgentCallerOpenAIChatViaAdapter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("usage detail: %v", err)
 	}
-	if !strings.Contains(string(detail), `"outgoingBody"`) || !strings.Contains(string(detail), "fake-model") {
+	if !strings.Contains(string(detail), `"outgoingBody":{"content":"{`) || !strings.Contains(string(detail), "fake-model") {
 		t.Fatalf("outgoing body missing from usage detail: %.200s", detail)
 	}
 }
@@ -199,6 +202,8 @@ func TestAgentCallerAnthropicViaAdapter(t *testing.T) {
 // 上游 400（永久错误）：不重试、错误文案带状态码，一次调用即返回。
 func TestAgentCallerUpstream400NotRetried(t *testing.T) {
 	s := newAgentIntegrationServer(t)
+	bodyMaxKB := 1024
+	s.config.SetUsageLogConfig(config.UsageLogConfig{BodyMaxKB: &bodyMaxKB})
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"error":{"message":".messages[1]: Invalid base64 data"}}`))
@@ -228,7 +233,7 @@ func TestAgentCallerUpstream400NotRetried(t *testing.T) {
 	if dErr != nil {
 		t.Fatalf("usage detail: %v", dErr)
 	}
-	if !strings.Contains(string(detail), "Invalid base64 data") || !strings.Contains(string(detail), `"outgoingBody"`) {
+	if !strings.Contains(string(detail), `"providerResponse":{"content":"{`) || !strings.Contains(string(detail), `"outgoingBody":{"content":"{`) {
 		t.Fatalf("failed log missing bodies: %.200s", detail)
 	}
 }
@@ -237,6 +242,8 @@ func TestAgentCallerUpstream400NotRetried(t *testing.T) {
 // 请求路径与请求体由协议定义（预置 chat-completions-api 即 OpenAI chat 形状）。
 func TestAgentCallerCustomProtocolPlatform(t *testing.T) {
 	s := newAgentIntegrationServer(t)
+	bodyMaxKB := 1024
+	s.config.SetUsageLogConfig(config.UsageLogConfig{BodyMaxKB: &bodyMaxKB})
 	s.seedPresetProtocols()
 	s.syncCustomProtocols()
 

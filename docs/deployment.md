@@ -52,7 +52,7 @@ Relative `databasePath`, `secretKeyPath`, and `webuiDir` values are resolved fro
 
 ## Request Log Management
 
-The `usageLog` block controls how request logs (usage records and their four captured bodies) are retained. **Automatic cleanup is disabled by default** — logs accumulate exactly like older versions until you opt in. All values can also be changed at runtime from the WebUI settings page (`运行配置` → `日志管理`).
+The `usageLog` block controls request log content and retention. **Only metadata is saved by default**: request counts, models, status codes, timing and token usage remain available, while request/response bodies and their media assets are not stored. Enable **保存请求与响应正文** in `运行配置` → `日志管理` to capture bodies for troubleshooting (initial cap: 1024 KB per body). Saving applies the policy to subsequent requests; existing logs remain available. **Automatic cleanup is disabled by default** until you opt in.
 
 ```json
 {
@@ -61,7 +61,7 @@ The `usageLog` block controls how request logs (usage records and their four cap
     "retentionDays": 0,
     "maxStorageMB": 0,
     "maxRecords": 0,
-    "bodyMaxKB": 1024,
+    "bodyMaxKB": 0,
     "bodyOnErrorOnly": false,
     "externalizeMedia": true,
     "cleanupIntervalMinutes": 60
@@ -75,7 +75,7 @@ The `usageLog` block controls how request logs (usage records and their four cap
 | `retentionDays` | `0` (off) | Auto-delete records older than N days. |
 | `maxStorageMB` | `0` (off) | Cap on SQLite logical size; oldest records are deleted when exceeded (a rate-limited `VACUUM` reclaims disk space afterwards). |
 | `maxRecords` | `0` (off) | Keep at most N records, deleting the oldest beyond the cap. |
-| `bodyMaxKB` | `1024` | Per-body capture cap for each of the four logged bodies. `0` saves no bodies at all (metadata only). |
+| `bodyMaxKB` | `0` (off) | Per-body capture cap in KB for each of the four logged bodies. Missing or `0` saves metadata only, including failed requests. A positive value enables capture. |
 | `bodyOnErrorOnly` | `false` | When enabled, only failed requests keep their bodies; successful requests store metadata only. |
 | `externalizeMedia` | `true` | Base64 media (images / audio / video / files) inside logged bodies are written as separate files under `<db dir>/usage-assets/<requestId>/`, and the body keeps a `__ELYSIA_ASSET__:<requestId>/<hash>.<ext>` placeholder instead. |
 | `cleanupIntervalMinutes` | `60` | How often the background cleanup pass runs (minimum 5). |
@@ -85,6 +85,7 @@ Notes:
 - Cleanup only deletes raw `usage_records` rows; hourly rollups (aggregate statistics) are untouched, so historical usage reports survive log cleanup.
 - Externalized assets are served through the admin-authenticated endpoint `GET /api/admin/usage/assets/:requestId/:file` and are removed together with their records (on cleanup or `POST /api/admin/usage/reset`).
 - The legacy flat keys `usagePersistEnabled` / `usagePersistMaxRecords` still work: they are honored when the `usageLog` block does not configure the corresponding field.
+- Existing explicit `bodyMaxKB` values are preserved on upgrade, including positive values saved by older versions. Only unconfigured installations adopt the new metadata-only default; historical logs and media are not deleted.
 
 ## Run
 
@@ -126,6 +127,7 @@ The WebUI is embedded in the backend binary, so `/ui/` works without a separate 
 
 - The app runs the backend as a child process and shows the WebUI login page in its own window on first use. Copy the panel token from the menu bar's **Copy panel access token** (「复制面板访问令牌」) action and paste it to sign in. The wrapper does not inject credentials; WebUI saves the token and cookie after manual login, retaining the session across window and app restarts until the user signs out or authentication fails.
 - First launch writes a config with a randomly generated `panelAccessToken`. All runtime data lives in `~/Library/Application Support/ElysiaApi/` (`config.json`, SQLite database, `.master-key`, `elysia-api.log`) and survives app updates.
+- Every backend launch, including login startup and automatic recovery, uses `ELYSIA_API_OPEN_BROWSER=false` so the native app does not also open a browser. This process-only override takes precedence over `openBrowserOnStart` without changing the file. The **Open panel in browser** menu action remains available; standalone binaries retain their configured startup behavior.
 - The menu bar icon stays a bare logo in every state (no text ever; status lives in the tooltip and the menu). Opening the menu reveals a branded header widget — app name, running state with a colored dot, the actual address and version, and a smooth pulse curve of the last 24 hours of request volume with token totals (fetched on demand from the admin usage API, styled in the panel's rose accent) — plus quick actions: start/stop the backend and copy the API base URL.
 - The default port is `8765`; if it is occupied the app automatically picks a free port starting from `8799`. The actual port is shown in the menu bar status line and the panel address.
 - Closing the window keeps the backend running in the background (Dock icon hidden, menu bar item only). Reopen from the menu bar or a pinned Dock/Launchpad icon to open Overview when signed in, or the login page otherwise, with the saved frame and theme. Showing an already open window keeps its current page. Opening a manually stopped service shows a **Start service** action. Quitting gracefully stops the backend, with bounded TERM/KILL escalation if it hangs.

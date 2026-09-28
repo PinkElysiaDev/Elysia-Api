@@ -73,7 +73,7 @@ func (s *Server) saveUsageRecordToStore(record *usageRecord) error {
 }
 
 // usageLogConfig 返回本服务生效的日志策略；无 config 的裸 Server（测试）
-// 走全默认，保持与历史行为一致。
+// 走全默认，仅保存元数据。
 func (s *Server) usageLogConfig() config.UsageLogResolved {
 	if s.config == nil {
 		return config.DefaultUsageLogResolved()

@@ -24,11 +24,34 @@ export function useChatScroll({
   onActiveTurn?: (seq: number | null) => void;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const regionRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   // 用户上翻离开底部超过这个距离就停止自动跟随，避免流式增量把正在回看的
   // 历史拽回底部。
   const stickToBottomRef = useRef(true);
   const [showJumpBottom, setShowJumpBottom] = useState(false);
+
+  // 消息区原生滚动覆盖两侧留白；输入区与轮数条的空白也转交给消息区。
+  // 文本框、菜单和轮数条自身可滚动时优先使用它们，不劫持内部滚动。
+  useEffect(() => {
+    const region = regionRef.current;
+    if (!region) return;
+    const onWheel = (event: WheelEvent) => {
+      const container = scrollRef.current;
+      if (!container || event.ctrlKey || event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+      if (!(event.target instanceof Element) || container.contains(event.target)) return;
+      for (let node: Element | null = event.target; node && node !== region; node = node.parentElement) {
+        if (!/(auto|scroll)/.test(getComputedStyle(node).overflowY)) continue;
+        if (node.scrollHeight <= node.clientHeight) continue;
+        if (event.deltaY < 0 ? node.scrollTop > 0 : node.scrollTop + node.clientHeight < node.scrollHeight - 1) return;
+      }
+      event.preventDefault();
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? container.clientHeight : 1;
+      container.scrollTop += event.deltaY * unit;
+    };
+    region.addEventListener("wheel", onWheel, { passive: false });
+    return () => region.removeEventListener("wheel", onWheel);
+  }, []);
 
   useEffect(() => {
     if (!stickToBottomRef.current) return;
@@ -62,7 +85,7 @@ export function useChatScroll({
         const seq = Number(el.dataset.seq);
         if (
           userSeqs.has(seq) &&
-          el.offsetTop - container.scrollTop <= threshold
+          el.getBoundingClientRect().top - container.getBoundingClientRect().top <= threshold
         )
           active = seq;
       }
@@ -88,6 +111,7 @@ export function useChatScroll({
   };
 
   return {
+    regionRef,
     scrollRef,
     bottomRef,
     stickToBottomRef,

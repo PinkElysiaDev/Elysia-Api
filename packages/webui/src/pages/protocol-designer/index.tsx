@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Bot } from 'lucide-react'
-import { AlertTriangle, CheckCircle2, Copy, FileJson, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, FileJson, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
+import { CopyButton } from '@/components/copy-button'
 import { AsyncState } from '@/components/ui/states'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -83,24 +84,6 @@ export function ProtocolDesignerPage() {
 
   // 预置协议以 metadata.preset 标记（首次启动播种的四线制定义）。
   const isPreset = (summary: CustomProtocolSummary) => !!summary.config?.metadata?.preset
-
-  // 复制为新协议：剥离预置标记，ID 取首个未占用的副本名（-copy、-copy-2…），
-  // 避免静默覆盖已存在的副本定制。
-  const copyAsNew = (summary: CustomProtocolSummary) => {
-    const taken = new Set((items ?? []).map((item) => item.id))
-    let candidate = `${summary.config.id}-copy`
-    for (let suffix = 2; taken.has(candidate); suffix += 1) {
-      candidate = `${summary.config.id}-copy-${suffix}`
-    }
-    const config: CustomProtocolConfig = {
-      ...summary.config,
-      id: candidate,
-      metadata: { ...summary.config.metadata, preset: undefined },
-    }
-    setEditing(config)
-    setIsNew(true)
-    setFormOpen(true)
-  }
 
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase()
@@ -246,9 +229,11 @@ export function ProtocolDesignerPage() {
                           <Button variant="ghost" size="iconSm" aria-label="编辑" onClick={() => openEdit(summary)}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button variant="ghost" size="iconSm" aria-label="复制为新协议" title="复制为新协议" onClick={() => copyAsNew(summary)}>
-                            <Copy className="h-3.5 w-3.5" />
-                          </Button>
+                          <CopyButton
+                            value={JSON.stringify(summary.config, null, 2)}
+                            aria-label="复制协议 JSON"
+                            title="复制协议 JSON"
+                          />
                           <Button
                             variant="ghost"
                             size="iconSm"

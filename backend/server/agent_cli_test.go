@@ -260,6 +260,10 @@ func TestCLIProbeGates(t *testing.T) {
 	if len(notes) != 2 || notes[0].PermissionKey != "save" || notes[1].PermissionKey != "delete" {
 		t.Fatalf("notes = %+v", notes)
 	}
+	notes, err = probeAgentCLI("elysia protocol save --update existing")
+	if err != nil || len(notes) != 1 || notes[0].PermissionKey != "save" {
+		t.Fatalf("explicit protocol updates must require save permission: %+v err=%v", notes, err)
+	}
 	// help 与只读命令不产生门控。
 	notes, err = probeAgentCLI("elysia help source\nelysia usage stats --days 1")
 	if err != nil || len(notes) != 0 {
@@ -275,8 +279,8 @@ func TestCLIProbeGates(t *testing.T) {
 		t.Fatalf("outbound set/reset must gate: %+v err=%v", notes, err)
 	}
 	// 模型回传预算必须覆盖 CLI 输出预算（否则落进引擎 16KB preview 信封）。
-	if meta := agent.MetaOf(&bashTool{}); meta.MaxModelBytes < cliOutputBudgetBytes {
-		t.Fatalf("bash model budget %d must cover output budget %d", meta.MaxModelBytes, cliOutputBudgetBytes)
+	if meta := agent.MetaOf(&elysiaCLITool{}); meta.MaxModelBytes < cliOutputBudgetBytes {
+		t.Fatalf("elysia_cli model budget %d must cover output budget %d", meta.MaxModelBytes, cliOutputBudgetBytes)
 	}
 	// 解析失败：ok=false 语义由调用方兜底。
 	if _, err := probeAgentCLI("elysia source ls --bogus"); err == nil {
@@ -296,13 +300,13 @@ func TestCLIProbePartialFailureKeepsGates(t *testing.T) {
 	}
 
 	s := newAgentIntegrationServer(t)
-	bash := &bashTool{server: s}
-	gates, ok := bash.ProbeGates(json.RawMessage(`{"command":"elysia source ls --bogus\nelysia source delete --source s1"}`))
+	cli := &elysiaCLITool{server: s}
+	gates, ok := cli.ProbeGates(json.RawMessage(`{"command":"elysia source ls --bogus\nelysia source delete --source s1"}`))
 	if !ok || len(gates) != 1 || gates[0].PermissionKey != "delete" {
 		t.Fatalf("probe must gate despite partial parse failure: ok=%v gates=%+v", ok, gates)
 	}
 	// 完全没有可识别门控命令且解析失败：ok=false（执行阶段报可读错误）。
-	if gates, ok := bash.ProbeGates(json.RawMessage(`{"command":"elysia source ls --bogus"}`)); ok || len(gates) != 0 {
+	if gates, ok := cli.ProbeGates(json.RawMessage(`{"command":"elysia source ls --bogus"}`)); ok || len(gates) != 0 {
 		t.Fatalf("clean parse failure must defer to execution: ok=%v gates=%+v", ok, gates)
 	}
 }
@@ -321,7 +325,7 @@ func TestCLIProbeNotesMasked(t *testing.T) {
 	}
 }
 
-func TestCLIBashCommandMasking(t *testing.T) {
+func TestCLICommandMasking(t *testing.T) {
 	raw := json.RawMessage(`{"command":"elysia protocol test --api-key sk-secret-1 --stream"}`)
 	masked := agent.MaskSecretInputs(raw)
 	if strings.Contains(string(masked), "sk-secret-1") {
@@ -340,7 +344,7 @@ func TestCLIBashCommandMasking(t *testing.T) {
 
 func TestCLIHelp(t *testing.T) {
 	overview := renderCLIHelp(nil)
-	for _, group := range []string{"source", "model", "group", "key", "protocol", "usage", "outbound", "session"} {
+	for _, group := range []string{"source", "model", "group", "key", "protocol", "usage", "outbound"} {
 		if !strings.Contains(overview, group) {
 			t.Fatalf("overview missing group %s", group)
 		}
@@ -350,7 +354,7 @@ func TestCLIHelp(t *testing.T) {
 		t.Fatalf("group help incomplete: %s", group)
 	}
 	command := renderCLIHelp([]string{"protocol", "test"})
-	if !strings.Contains(command, "--api-key") || !strings.Contains(command, "审批门控") || !strings.Contains(command, "示例") {
+	if !strings.Contains(command, "--api-key") || !strings.Contains(command, "服务端权限与业务策略") || !strings.Contains(command, "示例") {
 		t.Fatalf("command help incomplete: %s", command)
 	}
 	if !strings.Contains(renderCLIHelp([]string{"bogus"}), "没有命令组") {
@@ -432,6 +436,24 @@ func TestCLIRunEquivalence(t *testing.T) {
 			t.Fatalf("help pipe failed: %s", result.Summary)
 		}
 		requireOutput(t, result, "系统日志", "模型源管理")
+	})
+
+	t.Run("bare_help", func(t *testing.T) {
+		result := s.runAgentCLI(ctx, tctx, "elysia")
+		if !result.OK {
+			t.Fatalf("bare help failed: %s", result.Summary)
+		}
+		requireOutput(t, result, "网关运维 CLI")
+	})
+
+	t.Run("update_preserves_edit_target", func(t *testing.T) {
+		draftArgs := mapCLI(t, mcpTestProtocolDraft)
+		draft, _ := json.Marshal(draftArgs["config"])
+		tctx := &sessionToolContext{session: &agent.Session{Mode: agent.ModeEdit, ProtocolID: "original", DraftConfig: draft}}
+		result := s.runCLI(ctx, tctx, "elysia protocol save --update mcp-draft")
+		if result.OK || !strings.Contains(string(result.MarshalData()), "id_mismatch") {
+			t.Fatalf("explicit update bypassed edit target: %s", result.MarshalData())
+		}
 	})
 
 	t.Run("echo_masking", func(t *testing.T) {

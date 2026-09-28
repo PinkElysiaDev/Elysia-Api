@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// newExternalizeRecord 构造一个启用外置的记录（1MiB 上限，与线上默认一致）。
+// newExternalizeRecord 构造一个显式启用正文与外置的记录（1MiB 上限）。
 func newExternalizeRecord(requestID string) *usageRecord {
 	return &usageRecord{
 		RequestID: requestID,

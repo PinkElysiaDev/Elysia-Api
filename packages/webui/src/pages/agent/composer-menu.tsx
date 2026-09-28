@@ -44,9 +44,9 @@ export function MenuShell({
         onClick={() => setOpen((value) => !value)}
         title={title}
         className={cn(
-          "inline-flex h-7 items-center gap-1.5 rounded-md border border-input bg-card px-2.5 text-2xs transition-colors",
-          "hover:bg-wash disabled:cursor-not-allowed disabled:opacity-50",
-          open && "border-border bg-wash",
+          "inline-flex h-7 items-center gap-1.5 rounded-full border-0 bg-transparent px-2.5 text-2xs text-muted-foreground transition-colors",
+          "enabled:hover:bg-wash enabled:hover:text-foreground enabled:active:bg-wash outline-none focus-visible:bg-wash focus-visible:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
+          open && "bg-wash text-foreground",
         )}
       >
         {icon}
@@ -88,7 +88,7 @@ function MenuOption({
       role="menuitemradio"
       aria-checked={selected}
       onClick={onClick}
-      className="flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-wash"
+      className="flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-wash focus-visible:bg-wash"
     >
       <Check
         className={cn(
@@ -306,4 +306,3 @@ export function ThinkingMenu({
     </MenuShell>
   );
 }
-

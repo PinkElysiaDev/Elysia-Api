@@ -145,8 +145,8 @@ type UsageLogConfig struct {
 	MaxStorageMB *int `json:"maxStorageMB,omitempty"`
 	// MaxRecords>0 时限制保留记录条数，超出删最旧；0=不限。
 	MaxRecords *int `json:"maxRecords,omitempty"`
-	// BodyMaxKB 是单段请求体（四段链路各一）落库上限；nil=默认 1024（1MiB），
-	// 显式 0=不保存任何请求体（仅保留元数据）。
+	// BodyMaxKB 是单段请求/响应正文（四段链路各一）落库上限；nil/0 默认
+	// 不保存正文，仅保留元数据；正数显式开启正文保存（KB）。
 	BodyMaxKB *int `json:"bodyMaxKB,omitempty"`
 	// BodyOnErrorOnly 开启后仅失败请求（error 非空）保留请求体，成功请求
 	// 四段 body 与外置媒体资产全部不落。默认 false。
@@ -158,10 +158,9 @@ type UsageLogConfig struct {
 	CleanupIntervalMinutes *int `json:"cleanupIntervalMinutes,omitempty"`
 }
 
-// 日志管理默认值。DefaultUsageBodyMaxKB 与 server.UsageBodyMaxBytes（1MiB）
-// 保持一致：历史版本的硬编码上限即 1MiB。
+// 日志管理默认值：正文保存需显式开启。
 const (
-	DefaultUsageBodyMaxKB        = 1024
+	DefaultUsageBodyMaxKB        = 0
 	DefaultUsageCleanupIntervalM = 60
 	MinUsageCleanupIntervalM     = 5
 )
@@ -853,9 +852,8 @@ func (c *Config) GetUsageConfig() UsageConfig {
 	return cfg
 }
 
-// DefaultUsageLogResolved 返回全默认的日志策略：持久化开启、请求体上限
-// 1MiB、媒体外置开启、自动清理关闭。供无 config 的 Server（裸构造的测试）
-// 兜底，与历史版本行为一致。
+// DefaultUsageLogResolved 返回全默认的日志策略：持久化开启、正文保存关闭、
+// 开启正文保存时默认外置媒体、自动清理关闭。供无 config 的 Server 兜底。
 func DefaultUsageLogResolved() UsageLogResolved {
 	return UsageLogResolved{
 		PersistEnabled:   true,

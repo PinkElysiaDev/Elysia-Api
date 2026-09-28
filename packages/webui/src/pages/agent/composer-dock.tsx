@@ -1,5 +1,4 @@
-import { ArrowUp, FileText, Plus, Square, X } from "lucide-react";
-import { useRef } from "react";
+import { ArrowUp, FileText, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import type { Model, ModelSource } from "@/lib/types";
@@ -43,7 +42,7 @@ export interface ComposerDockProps {
 /**
  * ComposerDock：输入与全部会话设置一体的输入容器。默认有线无底（边框常显、
  * 内部透明），hover / 聚焦时填充浮现。底部控制条从左到右：
- * 附加 / 权限控制 / 会话统计 / 模型 / 思考强度 / 发送。
+ * 权限控制 / 会话统计 / 模型 / 思考强度 / 发送。
  */
 export function ComposerDock({
   text,
@@ -65,7 +64,6 @@ export function ComposerDock({
   onSettingsSave,
   onModelSelect,
 }: ComposerDockProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const sendMode = useSendKeyMode();
 
   /** 按发送键偏好提交主输入/编辑重发（IME 组词回车不触发）。 */
@@ -79,7 +77,7 @@ export function ComposerDock({
   };
 
   return (
-    <div className="rounded-xl border border-border bg-transparent transition-colors duration-200 hover:bg-card focus-within:border-rose focus-within:bg-card focus-within:ring-[3px] focus-within:ring-wash">
+    <div className="rounded-xl border border-border bg-transparent transition-colors duration-200 hover:bg-card focus-within:bg-card [&_button]:outline-none [&_button]:focus-visible:ring-0 [&_button]:focus-visible:ring-offset-0">
       {editingMessage ? (
         <div className="px-3 pb-2 pt-2.5">
           <div className="mb-1.5 flex items-center gap-2 text-2xs text-muted-foreground">
@@ -115,7 +113,7 @@ export function ComposerDock({
           <div className="flex justify-end">
             <Button
               size="sm"
-              className="h-7"
+              className="h-7 focus-visible:bg-wash"
               disabled={busy || !editingMessage.text.trim()}
               onClick={() => {
                 onSend({
@@ -157,16 +155,6 @@ export function ComposerDock({
         </div>
       ) : null}
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        hidden
-        onChange={(event) => {
-          if (event.target.files?.length) void addFiles(event.target.files);
-          event.target.value = "";
-        }}
-      />
       <Textarea
         className="max-h-56 min-h-[44px] w-full resize-none border-0 bg-transparent px-3.5 py-2.5 text-sm focus-visible:border-0 focus-visible:ring-0"
         placeholder={needsModel ? "先在下方选择模型…" : "请描述你的任务"}
@@ -183,18 +171,8 @@ export function ComposerDock({
         }}
       />
 
-      {/* 底部控制条：左侧 附加/权限；右侧 模型/思考/上下文占用/发送。 */}
+      {/* 底部控制条：左侧 权限；右侧 模型/思考/上下文占用/发送。 */}
       <div className="flex flex-wrap items-center gap-2 px-2.5 py-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 shrink-0 rounded-full border border-input"
-          title="添加附件（文档 / 图片 / PDF）"
-          disabled={busy}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
         <PermissionMenu
           settings={settings}
           disabled={busy}
@@ -225,7 +203,7 @@ export function ComposerDock({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
+              className="h-8 w-8 shrink-0 rounded-full border-0 text-muted-foreground transition-colors hover:bg-destructive hover:text-white focus-visible:bg-wash"
               title="停止本轮"
               onClick={onStop}
             >
@@ -233,9 +211,9 @@ export function ComposerDock({
             </Button>
           ) : (
             <Button
-              variant="ghost"
+              variant="primary"
               size="icon"
-              className="h-8 w-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
+              className="h-8 w-8 shrink-0 rounded-full border-0 bg-primary text-primary-foreground [box-shadow:none] hover:bg-primary/90 hover:text-primary-foreground focus-visible:brightness-110"
               title={
                 needsModel
                   ? "请先选择模型"

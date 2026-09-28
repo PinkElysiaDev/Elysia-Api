@@ -70,7 +70,7 @@ Accepts an optional `usageLog` block (all fields partial; numeric `0` is an expl
     "retentionDays": 30,
     "maxStorageMB": 1024,
     "maxRecords": 0,
-    "bodyMaxKB": 1024,
+    "bodyMaxKB": 0,
     "bodyOnErrorOnly": false,
     "externalizeMedia": true,
     "cleanupIntervalMinutes": 60
@@ -78,7 +78,7 @@ Accepts an optional `usageLog` block (all fields partial; numeric `0` is an expl
 }
 ```
 
-`usageLog` changes apply immediately: body cap / switches take effect for subsequent requests, retention parameters are re-read by the background cleanup loop on its next tick. Returns `restartRequired: true` when host or port changes. Persisting bootstrap config to disk is handled by the backend `config.Save()` path; process restarts should be handled by the operator or service manager.
+`usageLog` changes apply immediately: body cap / switches take effect for subsequent requests, retention parameters are re-read by the background cleanup loop on its next tick. `bodyMaxKB` defaults to `0` (metadata only, for both successful and failed requests); a positive value explicitly enables request/response body capture. Existing explicit limits and historical logs are preserved. The WebUI's body capture switch maps to this field; it does not disable `persistEnabled` or token statistics. Returns `restartRequired: true` when host or port changes. Persisting bootstrap config to disk is handled by the backend `config.Save()` path; process restarts should be handled by the operator or service manager.
 
 ## Model Sources
 
@@ -217,9 +217,9 @@ Triggers one retention pass asynchronously (TTL / record-count / storage-cap cle
 
 ## Protocol Agent (AI Assistant)
 
-The AI assistant (`/agent` page) is a general-purpose, server-side tool-calling agent for the gateway: protocol engineering (read API docs, draft custom protocol configs, offline preview, user-approved upstream tests, save), model source & model group management (create/update, user-approved), usage statistics with inline charts (```chart fenced specs rendered by the WebUI), and error/log analysis (failed-request drill-down with captured bodies). The model operates through a single `bash` tool running the built-in `elysia` CLI (all gateway operations as commands; `elysia help` for the reference, batching via `&&`/`;`, `| grep`/`| head` pipes). Test credentials are supplied in the
+The AI assistant (`/agent` page) is a general-purpose, server-side tool-calling agent for the gateway: protocol engineering (read API docs, draft custom protocol configs, offline preview, policy-controlled upstream tests, save), model source & model group management (create/update under server permission and approval policies), usage statistics with inline charts (```chart fenced specs rendered by the WebUI), and error/log analysis (failed-request drill-down with captured bodies). The model operates through a single `elysia_cli` tool running the built-in `elysia` CLI (all gateway operations as commands; `elysia help` for the reference, batching via `&&`/`;`, `| grep`/`| head` pipes). Test credentials are supplied in the
 conversation: the model passes them as flags of `elysia protocol test` / `elysia protocol models` (`--base-url` / `--api-key`), they are
-shown masked on the approval card and in the echoed command, and remembered (encrypted) for the rest of the session. An `update_plan` tool lets
+shown masked on the approval card and in the echoed command, and stored encrypted as the session's test target for reuse by those two protocol commands. Other commands do not share this credential reuse. An `update_plan` tool lets
 the agent maintain a step checklist surfaced live in the side panel (plan / draft / progress tabs). Sessions and messages persist in SQLite (`agent_sessions` / `agent_messages`); every model call is recorded into usage stats under key name `AI 协议助手` with `relayMode=agent-assist`.
 
 ### `GET /api/admin/agent/sessions`

@@ -63,6 +63,7 @@ export function RuntimeConfigPage() {
     form,
     update,
     updateUsageLog,
+    toggleUsageBody,
     updateOutboundText,
     updateAgentRemote,
     resetOutboundDefaults,
@@ -541,7 +542,7 @@ export function RuntimeConfigPage() {
           <SettingSection
             icon={HardDrive}
             title="日志管理"
-            description="请求日志的留存策略、请求体保存上限与媒体外置"
+            description="调用日志的留存策略与请求、响应正文保存设置"
             action={
               <Button
                 variant="outline"
@@ -559,6 +560,7 @@ export function RuntimeConfigPage() {
                 description="关闭后新请求完全不落库（统计与日志面板不再更新）"
               >
                 <Switch
+                  aria-label="启用日志持久化"
                   checked={form.usageLog.persistEnabled}
                   onCheckedChange={(v) => updateUsageLog("persistEnabled", v)}
                 />
@@ -616,41 +618,61 @@ export function RuntimeConfigPage() {
               </SettingRow>
 
               <SettingRow
-                label="请求体保存上限"
-                description="每段链路（请求/转发/回传）落库的最大体积（0 = 不保存任何请求体）"
-              >
-                <div className="flex w-full items-center gap-2 sm:w-48">
-                  <NumberField
-                    value={form.usageLog.bodyMaxKB}
-                    min={0}
-                    className="font-mono text-xs"
-                    onCommit={(v) => updateUsageLog("bodyMaxKB", v)}
-                  />
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    KB
+                label="保存请求与响应正文"
+                description={
+                  <span id="usage-body-description">
+                    用于排障，可能包含对话内容和上传文件。默认关闭，基础调用统计仍会保留。
+                    保存后对后续请求生效，历史日志保留。
                   </span>
-                </div>
-              </SettingRow>
-
-              <SettingRow
-                label="仅保存出错请求体"
-                description="开启后成功请求不保留请求体（仅元数据），失败请求完整保留以便排查"
+                }
               >
                 <Switch
-                  checked={form.usageLog.bodyOnErrorOnly}
-                  onCheckedChange={(v) => updateUsageLog("bodyOnErrorOnly", v)}
+                  aria-label="保存请求与响应正文"
+                  aria-describedby="usage-body-description"
+                  checked={form.usageLog.bodyMaxKB > 0}
+                  onCheckedChange={toggleUsageBody}
                 />
               </SettingRow>
 
-              <SettingRow
-                label="媒体外置保存"
-                description="请求体中的 base64 媒体（图片/音频/视频/文件）存为独立文件，正文以占位符替代"
-              >
-                <Switch
-                  checked={form.usageLog.externalizeMedia}
-                  onCheckedChange={(v) => updateUsageLog("externalizeMedia", v)}
-                />
-              </SettingRow>
+              {form.usageLog.bodyMaxKB > 0 && (
+                <>
+                  <SettingRow
+                    label="正文保存上限"
+                    description="四段链路分别限制保存体积，超出部分截断"
+                  >
+                    <div className="flex w-full items-center gap-2 sm:w-48">
+                      <NumberField
+                        aria-label="正文保存上限"
+                        value={form.usageLog.bodyMaxKB}
+                        min={1}
+                        className="font-mono text-xs"
+                        onCommit={(v) => updateUsageLog("bodyMaxKB", v)}
+                      />
+                      <span className="shrink-0 text-xs text-muted-foreground">KB</span>
+                    </div>
+                  </SettingRow>
+                  <SettingRow
+                    label="仅保存失败请求正文"
+                    description="成功请求仅保留元数据，失败请求按正文保存上限记录"
+                  >
+                    <Switch
+                      aria-label="仅保存失败请求正文"
+                      checked={form.usageLog.bodyOnErrorOnly}
+                      onCheckedChange={(v) => updateUsageLog("bodyOnErrorOnly", v)}
+                    />
+                  </SettingRow>
+                  <SettingRow
+                    label="媒体外置保存"
+                    description="正文中的 base64 媒体（图片/音频/视频/文件）存为独立文件，正文以占位符替代"
+                  >
+                    <Switch
+                      aria-label="媒体外置保存"
+                      checked={form.usageLog.externalizeMedia}
+                      onCheckedChange={(v) => updateUsageLog("externalizeMedia", v)}
+                    />
+                  </SettingRow>
+                </>
+              )}
 
               <SettingRow
                 label="清理巡检周期"

@@ -56,7 +56,7 @@ func ToolError(summary string, code string) ToolResult {
 	return ToolResult{OK: false, Summary: summary, Data: map[string]any{"error": code}}
 }
 
-// GateNote 是路由型工具（如 bash）上报的一条待批描述：哪条子命令需要
+// GateNote 是路由型工具（如 elysia_cli）上报的一条待批描述：哪条子命令需要
 // 哪个权限键。引擎据此做与普通工具一致的 ask/always/never 判定。
 type GateNote struct {
 	Command       string `json:"command"`

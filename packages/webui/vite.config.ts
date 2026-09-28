@@ -37,6 +37,10 @@ export default defineConfig(({ command }) => {
         '/api': proxy,
         '/v1': proxy,
         '/health': proxy,
+        // 接入配置默认使用当前页面地址，开发服务器也需转发远程端点。
+        '/mcp': proxy,
+        '/a2a': proxy,
+        '/.well-known/agent-card.json': proxy,
         // 诊断页的 pprof 链接是绝对路径，开发期也要能打开。
         '/debug': proxy,
       },

@@ -16,7 +16,6 @@ import {
 } from "@/lib/agent/api";
 import { deleteComposerDraft } from "@/lib/agent/draft-store";
 import {
-  AGENT_CONTEXT_TAB_ORDER,
   type AgentContextTab,
   type AgentDocument,
   type AgentMessage,
@@ -25,7 +24,6 @@ import {
   type AgentStreamEvent,
 } from "@/lib/agent/types";
 import { useAgentStream } from "@/lib/agent/use-agent-stream";
-import { cn } from "@/lib/utils";
 import { ChatPanel } from "./chat-panel";
 import { ContextPanel } from "./context-panel";
 import { SessionOverview } from "./session-overview";
@@ -33,10 +31,9 @@ import { ShortcutSettingsDialog } from "./shortcut-settings";
 import { TurnRail } from "./turn-rail";
 import { WorkspaceHeader } from "./workspace-header";
 import { useAgentDrafts } from "./use-agent-drafts";
-import { useDraggablePanelWidth } from "./use-draggable-panel-width";
 
 /**
- * AI 助手页：总览（会话卡片网格）⇄ 工作区（轮数条 | 聊天 | 标签页侧栏）。
+ * AI 助手页：总览（会话卡片网格）⇄ 工作区（轮数条 | 聊天 | 按需打开的任务资料）。
  * 点击卡片或新建任务以过渡动画进入工作区；返回总览不中断进行中的轮次。
  * 侧栏宽度可拖拽调整并记忆（localStorage）。
  */
@@ -59,21 +56,12 @@ export function AgentPage() {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   /** 入口引导只跑一次（ref 而非 state：StrictMode 双挂载下 state 守卫会双双通过）。 */
   const bootstrapRef = useRef(false);
-  const [panelOpen, setPanelOpen] = useState(true);
-  const [tabs, setTabs] = useState<AgentContextTab[]>([]);
   const [activeTab, setActiveTab] = useState<AgentContextTab | null>(null);
   const [activeTurnSeq, setActiveTurnSeq] = useState<number | null>(null);
   const [jumpTarget, setJumpTarget] = useState<{
     seq: number;
     nonce: number;
   } | null>(null);
-  const {
-    panelW,
-    panelDragging,
-    onPanelHandleDown,
-    onPanelHandleMove,
-    onPanelHandleUp,
-  } = useDraggablePanelWidth();
 
   const { data: sessions, mutate: mutateSessions } = useSWRSessionList();
 
@@ -171,46 +159,22 @@ export function AgentPage() {
     return () => window.clearInterval(timer);
   }, [activeId, live.running, session?.status, refreshSession]);
 
-  /** 切换会话：标签页与轮次定位状态归零。 */
+  /** 切换会话：收起任务资料，重置轮次定位。 */
   useEffect(() => {
-    setTabs([]);
     setActiveTab(null);
     setActiveTurnSeq(null);
     setJumpTarget(null);
   }, [activeId]);
 
-  /** 打开（必要时追加）并激活一个侧栏标签；reveal 为 true 时同时展开侧栏。 */
-  const openContextTab = useCallback((tab: AgentContextTab, reveal = true) => {
-    setTabs((current) =>
-      current.includes(tab)
-        ? current
-        : [...current, tab].sort(
-            (a, b) =>
-              AGENT_CONTEXT_TAB_ORDER.indexOf(a) -
-              AGENT_CONTEXT_TAB_ORDER.indexOf(b),
-          ),
-    );
-    setActiveTab(tab);
-    if (reveal) setPanelOpen(true);
-  }, []);
+  const availablePanels: AgentContextTab[] = [];
+  if (session?.plan?.length || session?.planSummary?.trim()) availablePanels.push("plan");
+  if (session?.draftConfig != null && session.draftConfig !== "") availablePanels.push("draft");
+  const visiblePanel = activeTab && availablePanels.includes(activeTab) ? activeTab : null;
 
-  const closeContextTab = useCallback(
-    (tab: AgentContextTab) => {
-      const next = tabs.filter((item) => item !== tab);
-      setTabs(next);
-      setActiveTab((active) =>
-        active === tab ? (next[next.length - 1] ?? null) : active,
-      );
-    },
-    [tabs],
-  );
-
-  const togglePanel = useCallback(() => {
-    setPanelOpen((value) => !value);
-    if (!panelOpen && activeTab == null && tabs.length > 0) {
-      setActiveTab(tabs[tabs.length - 1] ?? null);
-    }
-  }, [activeTab, panelOpen, tabs]);
+  const closeContextPanel = useCallback(() => {
+    setActiveTab(null);
+    document.getElementById(`agent-context-trigger-${activeTab}`)?.focus();
+  }, [activeTab]);
 
   const createSession = useCallback(
     async (input?: { mode: "create" | "edit"; protocolId?: string }) => {
@@ -405,23 +369,21 @@ export function AgentPage() {
           running={live.running}
           hasMessages={messages.length > 0}
           statusBadge={statusBadge}
-          panelOpen={panelOpen}
+          availablePanels={availablePanels}
+          activePanel={visiblePanel}
           onBack={() => setView("list")}
           onClearHistory={() => void handleClearHistory()}
-          onTogglePanel={togglePanel}
+          onSelectPanel={(tab) => setActiveTab((current) => current === tab ? null : tab)}
         />
 
         {session && draftLoadedFor === session.id ? (
-          <div className="flex min-h-0 flex-1 overflow-hidden">
-            <TurnRail
-              messages={messages}
-              live={live}
-              activeSeq={activeTurnSeq}
-              onJump={handleJumpTurn}
-            />
+          <div className="-mx-6 flex min-h-0 flex-1 overflow-hidden max-rail:-mx-4">
             <ChatPanel
               key={session.id}
               session={session}
+              turnRail={
+                <TurnRail messages={messages} live={live} activeSeq={activeTurnSeq} onJump={handleJumpTurn} />
+              }
               initialDraft={activeDraft}
               onDraftChange={handleDraftChange}
               messages={messages}
@@ -442,65 +404,21 @@ export function AgentPage() {
               }}
               onApprove={handleApprove}
               onStop={handleStop}
-              onOpenContextTab={(tab) => openContextTab(tab, true)}
+              onOpenContextTab={setActiveTab}
               jumpTarget={jumpTarget}
               onActiveTurn={handleActiveTurn}
             />
-            <div
-              className={cn(
-                "flex h-full shrink-0 overflow-hidden",
-                !panelDragging && "transition-[width] duration-300 ease-in-out",
-              )}
-                style={{
-                  width: panelOpen ? panelW : 0,
-                  // 侧栏按视口余量自动收窄：保证聊天列 ≥ ~400px，极窄时
-                  // 侧栏退化到 160px 下限，而不是把聊天列挤成 0。maxWidth
-                  // 必须恒定——它不在 transition-[width] 清单里，若随
-                  // panelOpen 切 0 会瞬间钳死宽度，收起动画就没了。
-                  maxWidth: "max(160px, calc(100% - 444px))",
-                }}
-            >
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="拖拽调整侧栏宽度"
-                onPointerDown={(event) => onPanelHandleDown(event, panelOpen)}
-                onPointerMove={onPanelHandleMove}
-                onPointerUp={onPanelHandleUp}
-                onPointerCancel={onPanelHandleUp}
-                className={cn(
-                  "group relative w-1 shrink-0 cursor-col-resize touch-none select-none",
-                  !panelOpen && "pointer-events-none",
-                )}
-              >
-                <span
-                  className={cn(
-                    "absolute inset-y-2 left-1/2 w-px -translate-x-1/2 bg-border transition-colors group-hover:bg-rose/50",
-                    panelDragging && "bg-rose/50",
-                  )}
-                />
-              </div>
-              <div
-                className={cn(
-                  "h-full min-w-0 flex-1 transition-opacity duration-300",
-                  panelOpen ? "opacity-100" : "pointer-events-none opacity-0",
-                )}
-              >
-                <ContextPanel
-                  key={session.id}
-                  session={session}
-                  messages={messages}
-                  live={live}
-                  tabs={tabs}
-                  activeTab={activeTab}
-                  onTabSelect={setActiveTab}
-                  onTabClose={closeContextTab}
-                  onAutoOpen={(tab) => openContextTab(tab, false)}
-                  onConfirmPlan={() => void handleConfirmPlan()}
-                  onRestoreDraft={() => void handleRestoreDraft()}
-                />
-              </div>
-            </div>
+            {visiblePanel ? (
+              <ContextPanel
+                key={session.id}
+                session={session}
+                activePanel={visiblePanel}
+                busy={live.running || session.status !== "idle"}
+                onClose={closeContextPanel}
+                onConfirmPlan={() => void handleConfirmPlan()}
+                onRestoreDraft={() => void handleRestoreDraft()}
+              />
+            ) : null}
           </div>
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">

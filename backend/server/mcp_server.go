@@ -29,6 +29,7 @@ const (
 	mcpMetaProtocolVersion   = "io.modelcontextprotocol/protocolVersion"
 	mcpErrHeaderMismatch     = -32020
 	mcpErrUnsupportedVersion = -32022
+	mcpInstructions          = "MCP 只提供 elysia_cli，用于执行 Elysia API 网关运维命令。首次使用先查 elysia help。每次调用无状态；需要复用协议草稿或测试目标时，请把相关命令放在同一次 command 批处理中。"
 )
 
 // mcpSupportedVersions 是本服务端认识的全部协议版本（协商用）。
@@ -180,7 +181,7 @@ func (s *Server) mcpHandleInitialize(c *gin.Context, req jsonrpcRequest, era mcp
 		"protocolVersion": negotiated,
 		"capabilities":    gin.H{"tools": gin.H{"listChanged": false}},
 		"serverInfo":      gin.H{"name": mcpServerName, "title": "Elysia API Gateway Agent", "version": mcpServerVersion},
-		"instructions":    "通过 agent_* 工具驱动网关内置 AI 助手：先 agent_list_sessions/agent_create_session，再 agent_send_message 驱动一轮；等待审批时用 agent_respond 处理。会话内权限档（allowSave 等）决定哪些工具调用需要人工确认。",
+		"instructions":    mcpInstructions,
 	}
 	if era == mcpEraModern {
 		result["resultType"] = "complete"
@@ -194,7 +195,7 @@ func (s *Server) mcpHandleDiscover(c *gin.Context, req jsonrpcRequest) {
 		"supportedVersions": mcpSupportedVersions,
 		"capabilities":      gin.H{"tools": gin.H{"listChanged": false}},
 		"serverInfo":        gin.H{"name": mcpServerName, "title": "Elysia API Gateway Agent", "version": mcpServerVersion},
-		"instructions":      "通过 agent_* 工具驱动网关内置 AI 助手（会话/消息/审批三原语）。",
+		"instructions":      mcpInstructions,
 		"resultType":        "complete",
 	}), http.StatusOK)
 }
@@ -218,8 +219,8 @@ func (s *Server) mcpHandleToolsList(c *gin.Context, req jsonrpcRequest, era mcpE
 	mcpWriteJSON(c, jsonrpcOK(req.ID, result), http.StatusOK)
 }
 
-// mcpHandleToolsCall 工具调用：短工具纯 JSON 响应；流式工具（send/respond）
-// 回 SSE——progress 通知逐帧推送，最后一帧是 JSON-RPC response。
+// mcpHandleToolsCall 工具调用：elysia_cli 通过 SSE 返回 progress 通知和终帧
+// JSON-RPC response。
 func (s *Server) mcpHandleToolsCall(c *gin.Context, req jsonrpcRequest, era mcpEra) {
 	var params struct {
 		Name      string          `json:"name"`
@@ -250,12 +251,26 @@ func (s *Server) mcpHandleToolsCall(c *gin.Context, req jsonrpcRequest, era mcpE
 // mcpToolCallResult 组装工具调用的响应（业务失败 → isError:true 而非
 // JSON-RPC error，让客户端模型可自我纠正）。
 func mcpToolCallResult(id json.RawMessage, era mcpEra, result any, err error) jsonrpcResponse {
-	content := gin.H{"type": "text", "text": "done"}
-	if err != nil {
-		content = gin.H{"type": "text", "text": err.Error()}
+	content := []gin.H{}
+	if result != nil {
+		encoded, encodeErr := json.Marshal(result)
+		if encodeErr != nil {
+			result = nil
+			err = fmt.Errorf("encode tool result: %w", encodeErr)
+		} else {
+			// 同时提供文本与结构化结果，兼容只读取 content 的 MCP 客户端。
+			content = append(content, gin.H{"type": "text", "text": string(encoded)})
+		}
 	}
-	payload := gin.H{"content": []gin.H{content}, "isError": err != nil}
-	if err == nil {
+	if err != nil {
+		content = append(content, gin.H{"type": "text", "text": err.Error()})
+	}
+	if len(content) == 0 {
+		content = append(content, gin.H{"type": "text", "text": "done"})
+	}
+	payload := gin.H{"content": content, "isError": err != nil}
+	// 批处理部分失败时仍返回已经完成的结果与错误明细。
+	if result != nil {
 		payload["structuredContent"] = result
 	}
 	if era == mcpEraModern {
@@ -264,8 +279,9 @@ func mcpToolCallResult(id json.RawMessage, era mcpEra, result any, err error) js
 	return jsonrpcOK(id, payload)
 }
 
-// mcpStreamToolCall 流式工具的 SSE 响应：progress 通知（progressToken 存在
-// 时）→ 终帧 JSON-RPC response（含 structuredContent）。
+// mcpStreamToolCall 的 SSE 响应：progress 通知（progressToken 存在时）→
+// 终帧 JSON-RPC response（含 structuredContent）。CLI 直接继承 HTTP context，
+// 断流或取消会停止当前批处理，不查找也不停止任何 Agent 会话。
 func (s *Server) mcpStreamToolCall(c *gin.Context, req jsonrpcRequest, era mcpEra, tool *mcpTool, args json.RawMessage, progressToken json.RawMessage) {
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
@@ -296,22 +312,6 @@ func (s *Server) mcpStreamToolCall(c *gin.Context, req jsonrpcRequest, era mcpEr
 			"progress":      step, "message": message,
 		}))
 	}
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-c.Request.Context().Done():
-			// Modern：断流即取消。从参数里抠 sessionId 尽力停轮次（引擎侧
-			// 收尾最多 15s，异步执行不阻塞出口）。
-			var probe struct {
-				SessionID string `json:"sessionId"`
-			}
-			if json.Unmarshal(args, &probe) == nil && probe.SessionID != "" {
-				go s.stopRemoteTurn(probe.SessionID)
-			}
-		case <-done:
-		}
-	}()
-	defer close(done)
 	result, err := tool.invoke(c.Request.Context(), s, args, progress)
 	write(mcpToolCallResult(req.ID, era, result, err))
 }

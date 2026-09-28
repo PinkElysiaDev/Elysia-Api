@@ -1,10 +1,9 @@
-import { ExternalLink, FileCode2, History } from "lucide-react";
+import { ExternalLink, History } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { tryParseJSON } from "@/lib/utils";
 import { Collapse, JsonBlock } from "./ui-blocks";
-import { EmptyHint } from "./activity-view";
 import type { AgentSession } from "@/lib/agent/types";
 
 /** 配置页：协议草稿的结构化详情（请求/响应/流式映射 + 完整 JSON）+ 跳转设计器。 */
@@ -45,14 +44,7 @@ export function DraftView({
     restoreText !== JSON.stringify(draft ?? null) &&
     !busy;
 
-  if (!draftText) {
-    return (
-      <EmptyHint
-        icon={<FileCode2 className="h-4 w-4" />}
-        text="助手提交协议草稿后，可在这里查看配置详情与映射关系。"
-      />
-    );
-  }
+  if (!draftText) return null;
 
   const sections = draftObject
     ? DRAFT_SECTIONS.filter((section) => draftObject[section.key] != null)
@@ -67,7 +59,7 @@ export function DraftView({
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex min-w-0 items-center gap-2 px-1 py-1.5">
         {protocolId ? (
-          <Badge variant="outline" className="shrink-0 font-mono text-2xs">
+          <Badge variant="outline" className="max-w-full shrink-0 truncate font-mono text-2xs">
             {protocolId}
           </Badge>
         ) : null}
@@ -77,9 +69,9 @@ export function DraftView({
           </span>
         ) : null}
       </div>
-      <div className="no-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto px-1 pb-2">
+      <div className="no-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-1 pb-4">
         {basicEntries.length > 0 ? (
-          <Collapse title="基本信息" defaultOpen>
+          <Collapse title="基本信息">
             <JsonBlock
               value={Object.fromEntries(basicEntries)}
               maxHeight="max-h-44"
@@ -87,7 +79,7 @@ export function DraftView({
           </Collapse>
         ) : null}
         {sections.map((section) => (
-          <Collapse key={section.key} title={section.label} defaultOpen>
+          <Collapse key={section.key} title={section.label}>
             <JsonBlock
               value={(draftObject as Record<string, unknown>)[section.key]}
             />
@@ -97,11 +89,11 @@ export function DraftView({
           <JsonBlock value={draftText} />
         </Collapse>
       </div>
-      <div className="space-y-1.5 px-1 pt-2">
+      <div className="space-y-1.5 border-t border-border/50 px-1 pt-3">
         <Button
           size="sm"
-          variant="outline"
-          className="w-full gap-1.5 text-xs"
+          variant="primary"
+          className="w-full gap-1.5 text-xs focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:brightness-110"
           onClick={() =>
             navigate("/protocols", {
               state: {
@@ -115,8 +107,8 @@ export function DraftView({
         {canRestore ? (
           <Button
             size="sm"
-            variant="outline"
-            className="w-full gap-1.5 text-xs"
+            variant="ghost"
+            className="w-full gap-1.5 text-xs focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:brightness-110"
             title="把配置回滚到最近一轮对话修改前的状态"
             onClick={onRestore}
           >

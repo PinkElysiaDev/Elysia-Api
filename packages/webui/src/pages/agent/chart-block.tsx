@@ -14,6 +14,7 @@ import {
   YAxis,
 } from "recharts";
 import { BarChart3 } from "lucide-react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { modelColor } from "@/components/usage-chart-model";
 import type { AgentChartSpec } from "@/lib/agent/chart";
 
@@ -40,8 +41,11 @@ function toRows(spec: AgentChartSpec) {
   return rows;
 }
 
-export function ChartBlock({ spec }: { spec: AgentChartSpec }) {
-  const rows = toRows(spec);
+export const ChartBlock = memo(function ChartBlock({ spec }: { spec: AgentChartSpec }) {
+  const rows = useMemo(() => toRows(spec), [spec]);
+  // 入场只播放一次；之后的窗口/侧栏尺寸变化直接更新几何，避免反复入场。
+  const [animateEntrance, setAnimateEntrance] = useState(true);
+  const finishEntrance = useCallback(() => setAnimateEntrance(false), []);
   const seriesNames = (spec.series ?? []).map(
     (series, index) => series.name || `系列${index + 1}`,
   );
@@ -68,6 +72,8 @@ export function ChartBlock({ spec }: { spec: AgentChartSpec }) {
                 }}
               />
               <Pie
+                isAnimationActive={animateEntrance}
+                onAnimationEnd={finishEntrance}
                 data={rows.map((row) => ({
                   name: String(row.name),
                   value: Number(row[seriesNames[0]] ?? 0),
@@ -112,6 +118,8 @@ export function ChartBlock({ spec }: { spec: AgentChartSpec }) {
               {seriesNames.map((name, index) => (
                 <Line
                   key={name}
+                  isAnimationActive={animateEntrance}
+                  onAnimationEnd={finishEntrance}
                   dataKey={name}
                   type="monotone"
                   stroke={modelColor(index)}
@@ -149,6 +157,8 @@ export function ChartBlock({ spec }: { spec: AgentChartSpec }) {
               {seriesNames.map((name, index) => (
                 <Bar
                   key={name}
+                  isAnimationActive={animateEntrance}
+                  onAnimationEnd={finishEntrance}
                   dataKey={name}
                   fill={modelColor(index)}
                   fillOpacity={0.75}
@@ -162,4 +172,4 @@ export function ChartBlock({ spec }: { spec: AgentChartSpec }) {
       </div>
     </div>
   );
-}
+});

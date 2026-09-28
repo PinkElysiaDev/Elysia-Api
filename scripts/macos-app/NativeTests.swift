@@ -142,7 +142,7 @@ enum NativeTests {
         try malformed.write(to: configURL)
         let loaded = loadOrCreateConfig(), bytes = try Data(contentsOf: configURL)
         try expect(loaded == nil && bytes == malformed, "malformed configuration is reported and never overwritten")
-        let contents: [String: Any] = ["host": "127.0.0.1", "port": 8765, "panelAccessToken": "fixture-token", "custom": ["keep": true]]
+        let contents: [String: Any] = ["host": "127.0.0.1", "port": 8765, "panelAccessToken": "fixture-token", "openBrowserOnStart": true, "custom": ["keep": true]]
         try JSONSerialization.data(withJSONObject: contents).write(to: configURL)
         try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configPath)
         try persistPort(8799, at: configURL)
@@ -198,6 +198,12 @@ enum NativeTests {
 
     static func lifecycle(_ delegate: AppDelegate) async throws {
         let root = URL(fileURLWithPath: dataDirPath)
+        let previousBrowserPolicy = ProcessInfo.processInfo.environment["ELYSIA_API_OPEN_BROWSER"]
+        setenv("ELYSIA_API_OPEN_BROWSER", "true", 1)
+        defer {
+            if let previousBrowserPolicy { setenv("ELYSIA_API_OPEN_BROWSER", previousBrowserPolicy, 1) }
+            else { unsetenv("ELYSIA_API_OPEN_BROWSER") }
+        }
         // Occupy a free local port to exercise fallback without disturbing any existing service.
         let port = (31000...32000).first { portIsFree($0) }!
         let fd = socket(AF_INET, SOCK_STREAM, 0)
@@ -213,6 +219,8 @@ enum NativeTests {
         delegate.startBackend()
         try expect(await wait { delegate.pollForTests(); return delegate.backendState == .running }, "backend becomes healthy without a WebView")
         try expect(delegate.backendPort != port && delegate.window == nil, "port fallback and menu-only startup")
+        let browserAction = NSApp.mainMenu?.items.first(where: { $0.submenu?.title == "视图" })?.submenu?.item(withTitle: "在浏览器中打开面板")
+        try expect(browserAction?.action == NSSelectorFromString("openPanelInBrowser") && delegate.validateMenuItem(browserAction!), "manual browser action remains available")
         let copyToken = delegate.statusItem.menu?.item(withTitle: "复制面板访问令牌")
         try expect(copyToken?.action == NSSelectorFromString("copyPanelToken") && copyToken?.target === delegate && delegate.validateMenuItem(copyToken!), "menu bar exposes the enabled panel token copy action")
         try await downloadTests(port: delegate.backendPort)
@@ -261,6 +269,8 @@ enum NativeTests {
         try expect(await wait { delegate.pollForTests(); return delegate.backendState == .restarting }, "sustained health failure initiates recovery")
         try FileManager.default.removeItem(at: mode)
         try expect(await wait(12) { delegate.pollForTests(); return delegate.backendState == .running && delegate.backend?.processIdentifier != initialPID }, "health recovery replaces only the owned child process")
+        let savedConfig = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: configPath))) as! [String: Any]
+        try expect(savedConfig["openBrowserOnStart"] as? Bool == true && ProcessInfo.processInfo.environment["ELYSIA_API_OPEN_BROWSER"] == "true", "native launches preserve the configured browser preference and parent environment")
         delegate.stopBackend()
         try expect(delegate.backendState == .stopping && !delegate.validateMenuItem(delegate.toggleItem), "stop disables conflicting service actions")
         try expect(await wait { delegate.backendState == .stopped && delegate.backend == nil }, "normal stop completes without automatic restart")

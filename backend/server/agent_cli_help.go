@@ -11,7 +11,7 @@ import (
 //	elysia help               → 组级一览 + 常用组合示例
 //	elysia help <group>       → 组内命令 + flag 全表
 //	elysia help <group> <cmd> → 用法行、flag/位置参数全说明、示例与完整语义
-//	  （完整语义直接复用目标工具的 Definition().Description——比旧工具描述
+//	  （完整语义直接复用目标工具的 Description()——比旧工具描述
 //	   更详尽的细节放在这一层，而不是常驻提示词。）
 
 // renderCLIHelp 按 help 参数层级渲染（args 为 help 之后的词）。
@@ -28,6 +28,11 @@ func renderCLIHelp(args []string) string {
 		}
 		if !hasGroup(table, group) {
 			return unknownGroupMessage(table, group)
+		}
+		for _, command := range table {
+			if command.group == group && command.name == "" {
+				return helpCommand(command)
+			}
 		}
 		return helpGroup(table, group)
 	}
@@ -74,7 +79,7 @@ func groupNames(table []*cliCommand) []string {
 // helpOverview 组级一览。
 func helpOverview(table []*cliCommand) string {
 	var b strings.Builder
-	b.WriteString("elysia —— 网关运维 CLI（全部操作经 bash 工具执行）\n\n")
+	b.WriteString("elysia —— 网关运维 CLI（全部操作经 elysia_cli 工具执行）\n\n")
 	b.WriteString("命令组：\n")
 	for _, name := range groupNames(table) {
 		commands := commandsOfGroup(table, name)
@@ -93,10 +98,13 @@ func helpOverview(table []*cliCommand) string {
 	}
 	b.WriteString("\n分级帮助：elysia help <组>（flag 全表）/ elysia help <组> <命令>（完整语义与示例）。\n")
 	b.WriteString("\n语法：支持 '引号'（'' 表示空值）、--flag value 或 --flag=value、批处理（&& 失败即跳过所在链，; 或换行继续）、\n")
-	b.WriteString("尾管道（| grep <子串> 大小写不敏感过滤、| head <n> 截前 n 行，head 也支持 -n N / -N 写法）。\n")
+	b.WriteString("尾管道（| grep <子串> 大小写不敏感过滤、| head <n> 截前 n 个文本行，不代表记录数量；head 也支持 -n N / -N 写法）。\n")
+	b.WriteString("批处理无整体事务或自动回滚；仅合并参数已知、无需观察中间结果的操作。需要根据返回结果决定参数或后续操作时，应分次调用。\n")
+	b.WriteString("查询优先使用命令自身的过滤参数和 --limit；输出可能被截断，应依据实际返回结果判断操作状态。\n")
+	b.WriteString("修改、真实出站和删除受服务端权限与业务策略控制。\n")
 	b.WriteString("\n常用组合示例：\n")
 	b.WriteString("  elysia source ls && elysia model ls --source 主源 --limit 20\n")
-	b.WriteString("  elysia usage logs --days 1 --status failed | head 10\n")
+	b.WriteString("  elysia usage logs --days 1 --status failed --limit 10\n")
 	b.WriteString("  elysia group create --name 主力 --models s1:gpt-4o\n")
 	return b.String()
 }
@@ -161,7 +169,7 @@ func writeFlagSpecs(b *strings.Builder, flags []cliFlagSpec, indent string) {
 	}
 }
 
-// helpCommand 命令级帮助：用法 + flag + 位置参数 + 示例 + 目标工具完整描述。
+// helpCommand 命令级帮助：用法 + flag + 位置参数 + 示例 + handler 说明。
 func helpCommand(command *cliCommand) string {
 	var b strings.Builder
 	b.WriteString(command.usage + "\n" + command.summary + "\n\n")
@@ -179,14 +187,10 @@ func helpCommand(command *cliCommand) string {
 	if command.detail != nil {
 		detail = command.detail()
 	} else {
-		detail = command.tool(nil).Definition().Description
+		detail = cliDescriptionOf(command.handler(nil))
 	}
 	if detail != "" {
 		b.WriteString("\n详细说明：" + detail + "\n")
-	}
-	// 门控提示与目标工具同源。
-	if tool := command.tool(nil); tool.Gated() {
-		b.WriteString(fmt.Sprintf("\n此命令受审批门控（权限键 %s），执行前会暂停等待用户确认。\n", tool.PermissionKey()))
 	}
 	return b.String()
 }

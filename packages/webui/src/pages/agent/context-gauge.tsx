@@ -3,7 +3,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { compactNumber, formatHitRate } from "@/lib/utils";
+import { compactNumber, formatHitRate, formatNumber } from "@/lib/utils";
 
 const GAUGE_WARN_RATIO = 0.7; // 上下文占用环的黄/绿分界
 const GAUGE_DANGER_RATIO = 0.9; // 红/黄分界
@@ -14,6 +14,8 @@ export interface SessionUsageStat {
   cached: number;
   total: number;
   hitRate: number | null;
+  /** 最近一次调用的输入 token；不能用会话累计用量代替上下文水位。 */
+  contextTokens?: number;
 }
 
 /** 上下文占用指示器：环形进度 + 悬浮明细（会话累计 tokens / 缓存命中率）。 */
@@ -25,8 +27,9 @@ export function ContextGauge({
   contextLimit: number;
 }) {
   const hasUsage = !!usage && usage.total > 0;
-  const showRing = hasUsage && contextLimit > 0;
-  const ratio = showRing ? Math.min(1, usage!.total / contextLimit) : 0;
+  const hasLimit = Number.isFinite(contextLimit) && contextLimit > 0;
+  const showRing = hasLimit && usage?.contextTokens != null;
+  const ratio = showRing ? Math.min(1, usage.contextTokens! / contextLimit) : 0;
   const color =
     ratio >= GAUGE_DANGER_RATIO
       ? "var(--ember)"
@@ -42,7 +45,7 @@ export function ContextGauge({
         <button
           type="button"
           aria-label="会话用量与上下文占用"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-wash"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full outline-none transition-colors hover:bg-wash focus-visible:bg-wash"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
             <circle
@@ -84,20 +87,20 @@ export function ContextGauge({
               </p>
             ) : null}
             <p className="tnum">共 {compactNumber(usage.total)} tokens</p>
-            {contextLimit > 0 ? (
-              <p className="tnum text-muted-foreground">
-                上下文占用 {formatHitRate(ratio)}（按模型 MaxTokens{" "}
-                {compactNumber(contextLimit)} 估算）
-              </p>
-            ) : (
-              <p className="text-muted-foreground">
-                模型未设置 MaxTokens，无法估算上下文占用
-              </p>
-            )}
           </>
         ) : (
           <p>本会话暂无 token 消耗</p>
         )}
+        {hasLimit ? (
+          <p className="tnum text-muted-foreground">
+            模型 MaxTokens：{formatNumber(contextLimit)}
+          </p>
+        ) : null}
+        {showRing ? (
+          <p className="tnum text-muted-foreground">
+            上下文占用：{formatHitRate(ratio)}
+          </p>
+        ) : null}
       </TooltipContent>
     </Tooltip>
   );

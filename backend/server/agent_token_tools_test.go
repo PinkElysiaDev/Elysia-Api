@@ -18,22 +18,16 @@ import (
 
 func TestTokenToolRegistry(t *testing.T) {
 	s := newOpsTestServer(t)
-	tools := newAgentTokenTools(s)
+	tools := cliTokenHandlers(s)
 	if len(tools) != 4 {
 		t.Fatalf("token tools = %d", len(tools))
 	}
-	registry, err := agent.NewRegistry(tools...)
-	if err != nil {
-		t.Fatalf("registry: %v", err)
+	seen := map[string]string{}
+	for _, handler := range tools {
+		seen[cliHandlerName(handler)] = cliEffectOf(handler)
 	}
-	if registry.Get(agentToolListAPIKeys).Gated() {
-		t.Fatalf("list_api_keys must not be gated")
-	}
-	if !registry.Get(agentToolCreateAPIKey).Gated() || registry.Get(agentToolCreateAPIKey).PermissionKey() != "save" {
-		t.Fatalf("create_api_key gating wrong")
-	}
-	if !registry.Get(agentToolDeleteAPIKey).Gated() || registry.Get(agentToolDeleteAPIKey).PermissionKey() != "delete" {
-		t.Fatalf("delete_api_key gating wrong")
+	if seen[agentToolListAPIKeys] != CLIEffectRead || seen[agentToolCreateAPIKey] != CLIEffectWrite || seen[agentToolDeleteAPIKey] != CLIEffectDelete {
+		t.Fatalf("neutral effects wrong: %v", seen)
 	}
 }
 

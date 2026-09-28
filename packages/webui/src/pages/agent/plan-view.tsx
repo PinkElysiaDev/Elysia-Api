@@ -1,7 +1,6 @@
-import { CheckCircle2, Circle, ListChecks, Loader2, Play } from "lucide-react";
+import { Check, Circle, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { EmptyHint } from "./activity-view";
 
 /** 方案页：update_plan 维护的分析摘要 + 步骤清单；计划模式下提供「确认执行」。 */
 export function PlanView({
@@ -17,63 +16,63 @@ export function PlanView({
   busy: boolean;
   onConfirm: () => void;
 }) {
-  if (steps.length === 0) {
-    return (
-      <EmptyHint
-        icon={<ListChecks className="h-4 w-4" />}
-        text="多步任务开始时，助手会在这里给出分析摘要与方案步骤并随进度更新。"
-      />
-    );
-  }
   const done = steps.filter((step) => step.status === "done").length;
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="no-scrollbar min-h-0 flex-1 space-y-1 overflow-y-auto px-1 py-1">
+      <div className="no-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-1 pb-4">
         {summary ? (
-          <div className="mb-2 rounded-lg bg-wash px-2.5 py-2">
-            <p className="pb-0.5 text-2xs font-medium text-muted-foreground">
-              分析摘要
-            </p>
+          <div className="rounded-xl bg-wash px-3 py-3">
             <p className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/90">
               {summary}
             </p>
           </div>
         ) : null}
-        <p className="tnum px-1 pb-1 text-2xs text-muted-foreground">
-          {done}/{steps.length} 已完成
-        </p>
+        {steps.length > 0 ? (
+          <div className="space-y-2 px-1">
+            <div className="flex items-center justify-between text-2xs text-muted-foreground">
+              <span>{done === steps.length ? "全部完成" : "任务进度"}</span>
+              <span className="tnum">{done} / {steps.length}</span>
+            </div>
+            <div role="progressbar" aria-label="方案完成进度" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={done} className="h-1 overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full bg-primary/60 transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${done / steps.length * 100}%` }} />
+            </div>
+          </div>
+        ) : null}
+        <ol className="space-y-1">
         {steps.map((step, index) => (
-          <div
+          <li
             key={index}
             className={cn(
-              "flex items-start gap-2 rounded-lg px-2.5 py-2 text-xs",
+              "flex items-start gap-3 rounded-xl px-2.5 py-3 text-xs",
               step.status === "in_progress" && "bg-wash",
               step.status === "done" && "text-muted-foreground",
             )}
           >
             {step.status === "done" ? (
-              <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-jade" />
+              <Check aria-label="已完成" className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             ) : step.status === "in_progress" ? (
-              <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-jade" />
+              <span aria-label="进行中" className="tnum mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">{index + 1}</span>
             ) : (
-              <Circle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+              <Circle aria-label="待开始" className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/40" />
             )}
             <span
               className={cn(
                 "leading-relaxed",
-                step.status === "done" && "line-through decoration-border",
+                step.status === "in_progress" && "font-medium",
               )}
             >
               {step.title}
             </span>
-          </div>
+          </li>
         ))}
+        </ol>
       </div>
-      {planMode ? (
+      {planMode && steps.length > 0 ? (
         <div className="space-y-1.5 border-t border-border/50 px-1 pt-2.5">
           <Button
             size="sm"
-            className="w-full gap-1.5 text-xs"
+            variant="primary"
+            className="w-full gap-1.5 text-xs focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:brightness-110"
             disabled={busy}
             onClick={onConfirm}
           >

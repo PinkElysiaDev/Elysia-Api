@@ -6,15 +6,8 @@ export type AgentPermission = "ask" | "always" | "never";
 export type AgentThinkingEffort =
   "" | "low" | "medium" | "high" | "xhigh" | "max" | "adaptive";
 
-/** 侧栏标签页（通用窗口：方案 / 配置详情 / 工具动态）。 */
-export type AgentContextTab = "plan" | "draft" | "activity";
-
-/** 标签的规范排序（追加开页时保持稳定顺序）。 */
-export const AGENT_CONTEXT_TAB_ORDER: AgentContextTab[] = [
-  "plan",
-  "draft",
-  "activity",
-];
+/** 可按需查看的任务资料；工具调用详情留在对话中。 */
+export type AgentContextTab = "plan" | "draft";
 
 export interface AgentSettings {
   modelSourceId: string;
@@ -219,7 +212,7 @@ export interface AgentTurnUsage {
 
 /** 工具名 → 工作过程里的中文动作名。门控工具用审批卡能看懂的完整说法。 */
 export const AGENT_TOOL_LABELS: Record<string, string> = {
-  bash: "执行 elysia 命令",
+  elysia_cli: "执行 elysia 命令",
   update_protocol_draft: "更新协议草稿",
   preview_request: "预览请求",
   test_upstream: "向真实上游发送测试请求",
@@ -257,41 +250,16 @@ export function agentToolLabel(name: string): string {
   return AGENT_TOOL_LABELS[name] ?? name;
 }
 
-/** bash 调用的命令行（工具行 `$ 命令` 回显；流式 live 卡与历史回放共用）。
+/** elysia_cli 调用的命令行（工具行 `$ 命令` 回显；流式 live 卡与历史回放共用）。
  *  input 可能缺省：后端 input 是 omitempty，且旧版本落库的 tool_result
  *  没有该字段——保持 unknown 入参 + 可选链。 */
-export function bashCommandOf(
+export function cliCommandOf(
   name: string | undefined,
   input: unknown,
 ): string | undefined {
-  if (name !== "bash") return undefined;
+  if (name !== "elysia_cli") return undefined;
   const parsed = input as { command?: unknown } | null | undefined;
   return typeof parsed?.command === "string" ? parsed.command : undefined;
-}
-
-/** 工具行状态动词：进行中用现在时，结束后用完成时。 */
-export function toolStatusVerb(
-  status: "running" | "done" | "failed" | "denied",
-): string {
-  switch (status) {
-    case "running":
-      return "正在执行";
-    case "failed":
-      return "执行失败";
-    case "denied":
-      return "已拒绝";
-    default:
-      return "已执行";
-  }
-}
-
-/** 累计用量格式化。 */
-export function formatUsage(usage: AgentUsage | undefined): string {
-  if (!usage) return "";
-  const inTok = usage.input_tokens ?? 0;
-  const outTok = usage.output_tokens ?? 0;
-  const total = usage.total_tokens ?? inTok + outTok;
-  return `↑${inTok} ↓${outTok} · ${total} tokens`;
 }
 
 /** assistant 消息携带的 usage（snake_case）→ 轮次累计口径（camelCase）。 */

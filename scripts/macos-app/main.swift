@@ -1089,6 +1089,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             let process = Process()
             process.executableURL = URL(fileURLWithPath: backendPath)
             process.arguments = ["--config", configPath]
+            process.environment = ProcessInfo.processInfo.environment.merging(["ELYSIA_API_OPEN_BROWSER": "false"]) { _, value in value }
             process.currentDirectoryURL = URL(fileURLWithPath: dataDirPath)
             process.standardOutput = handle
             process.standardError = handle
