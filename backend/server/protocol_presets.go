@@ -92,16 +92,20 @@ var legacyPresetHashes = map[string][]string{
 	"chat-completions-api": {
 		"86f959ef404dc7a9bf543851c9e14146a1e279ef3c3b01ade375bff0598eb415", // v1
 		"295485921fa104e0ca507371bfe71dd2587cb92de3ddd9f38bfcae92a111220f", // v2
+		"327ca4b2dbc1b9564af48700418d2ef27ad0ef9a7d0602a74312bfed0013a22f", // v3
 	},
 	"anthropic-api": {
 		"006284c9d72573d340434ac2378ff501bd506cac01da3cfaa0a3a60594bbc7d2", // v1
+		"db954c7442472fdd8540b19c423fa6c7eaba2c12d934325345078b54541c889d", // v2
 	},
 	"gemini-api": {
 		"832c2a3ba8f9e21c65666426849a908a2c7e0762d9267a6fa59b3928ad1d433f", // v1
+		"9e4687a486228f0e6a3ac6cc37db561d014e147dd11025693ffe50821aa306a6", // v2
 	},
 	"responses-api": {
 		"cdbe42c33f03c0be4d4d8d69c4d2ec40ab5071a9577ff36d3e86b5cdf20dec75", // v1
 		"166fc489e972d4a07f33deffde41397c4d9072ef6aae57aa3c105a7bd9f62489", // v2
+		"8c7a575502904cd0cb773e0ef66a1118aa5076d2a7e58dd05d484f6048b76d24", // v3
 	},
 }
 
@@ -203,6 +207,18 @@ func (s *Server) migratePresetProtocolRenames() {
 	}
 	if _, err := s.store.MigratePresetProtocolRenames(context.Background(), presetProtocolRenames); err != nil {
 		log.Printf("custom protocol preset rename migration failed: %v", err)
+	}
+}
+
+// stripGeminiModelIDPrefixes 一次性剥离历史拉取入库的 Gemini 系模型 ID 的
+// "models/" 集合前缀（内置 gemini 与 gemini-api 预置的旧拉取 bug 存量修复），
+// 须在 syncCustomProtocols 之前调用；幂等。
+func (s *Server) stripGeminiModelIDPrefixes() {
+	if s.store == nil {
+		return
+	}
+	if _, err := s.store.StripGeminiModelIDPrefixes(context.Background()); err != nil {
+		log.Printf("gemini model id prefix migration failed: %v", err)
 	}
 }
 

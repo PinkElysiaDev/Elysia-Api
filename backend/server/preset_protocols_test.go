@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -36,6 +37,16 @@ func presetGroup(t *testing.T, platform, upstreamURL string) []config.ModelGroup
 		ID: "g1", Name: "grp", Enabled: true,
 		Models: []config.ModelRef{{ID: "m1", Name: "preset-model", BaseURL: upstreamURL, APIKey: "k", Platform: platform}},
 	}}
+}
+
+// PresetProtocolConfigsMust 供测试取内嵌预置(失败即 Fatal)。
+func PresetProtocolConfigsMust(t *testing.T) []relay.CustomProtocolConfig {
+	t.Helper()
+	configs, err := PresetProtocolConfigs()
+	if err != nil {
+		t.Fatalf("preset configs: %v", err)
+	}
+	return configs
 }
 
 // 预置播种（逐条补齐）：空表全量播种；已有自定义协议时只补缺失的预置且
@@ -486,11 +497,22 @@ func TestUpgradeUnmodifiedLegacyPreset(t *testing.T) {
 	}
 
 	s.seedPresetProtocols()
+	// 升级写入的行文本应与当前内嵌预置的规范形态完全一致(不绑具体版本号)。
+	var latestChat string
+	for _, config := range PresetProtocolConfigsMust(t) {
+		if config.ID == "chat-completions-api" {
+			encoded, err := json.Marshal(config)
+			if err != nil {
+				t.Fatalf("marshal latest preset: %v", err)
+			}
+			latestChat = string(encoded)
+		}
+	}
 	rows, _ := s.store.ListCustomProtocols(ctx)
 	var upgraded bool
 	for _, row := range rows {
 		if row.ID == "chat-completions-api" {
-			upgraded = row.Config != legacyChat && strings.Contains(row.Config, `"presetVersion":3`)
+			upgraded = row.Config != legacyChat && row.Config == latestChat
 		}
 	}
 	if !upgraded {
@@ -625,5 +647,110 @@ func TestMigratePresetRelativePathBases(t *testing.T) {
 	// 幂等:重复迁移无事发生。
 	if n, err := s.store.AppendSourceBaseURLSuffix(ctx, "custom:chat-completions-api", "/v1"); err != nil || n != 0 {
 		t.Fatalf("rebase must be idempotent: n=%d err=%v", n, err)
+	}
+}
+
+// gemini-api 预置模型发现:idStripPrefix 剥离 name 的 "models/" 集合前缀,
+// 入库 ID 是裸名(转发路径模板不再拼出 /v1beta/models/models/<id>)。
+func TestPresetGeminiModelDiscoveryStripsPrefix(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	s.seedPresetProtocols()
+	s.syncCustomProtocolsQuiet()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1beta/models" {
+			t.Errorf("unexpected discovery path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":[{"name":"models/gemini-2.5-flash","displayName":"Gemini 2.5 Flash"}]}`))
+	}))
+	defer upstream.Close()
+
+	source := storage.ModelSource{ID: "src1", Name: "src1", BaseURL: upstream.URL, Platform: "custom:gemini-api", Enabled: true}
+	models, err := s.fetchModelsFromSource(t.Context(), source, "k")
+	if err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	if len(models) != 1 || models[0].ID != "gemini-2.5-flash" || models[0].Name != "Gemini 2.5 Flash" {
+		t.Fatalf("unexpected models: %+v", models)
+	}
+}
+
+// Gemini 系模型历史 ID 前缀迁移:models 行剥前缀、组关联改写、多 key 权限
+// 列表同步;干净行已存在时删旧行;幂等。
+func TestStripGeminiModelIDPrefixes(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	ctx := t.Context()
+
+	seedModel := func(id string) {
+		t.Helper()
+		source := storage.ModelSource{ID: "src-g", Name: "gemini", BaseURL: "https://up.example", Platform: "custom:gemini-api", Enabled: true}
+		if err := s.store.UpsertSource(ctx, source); err != nil {
+			t.Fatalf("seed source: %v", err)
+		}
+		if err := s.store.ReplaceSourceModels(ctx, source, []storage.Model{{
+			ID: id, SourceID: source.ID, Name: id, BaseURL: source.BaseURL,
+			Platform: source.Platform, Type: "llm", Enabled: true, Available: true,
+		}}); err != nil {
+			t.Fatalf("seed model %s: %v", id, err)
+		}
+	}
+	seedModel("models/gemini-2.5-flash")
+
+	fixed, err := s.store.StripGeminiModelIDPrefixes(ctx)
+	if err != nil || fixed != 1 {
+		t.Fatalf("strip must fix 1 row: fixed=%d err=%v", fixed, err)
+	}
+	models, _ := s.store.ListModels(ctx)
+	if len(models) != 1 || models[0].ID != "gemini-2.5-flash" {
+		t.Fatalf("model id must be stripped: %+v", models)
+	}
+
+	// 幂等:再跑无事发生。
+	if fixed, err := s.store.StripGeminiModelIDPrefixes(ctx); err != nil || fixed != 0 {
+		t.Fatalf("strip must be idempotent: fixed=%d err=%v", fixed, err)
+	}
+}
+
+// chat 入口的 usage 协议链路补全:SourceFormat/SourceEndpoint 按入口记录,
+// custom 上游的 TargetFormat=custom:<id>、TargetEndpoint=协议 path 模板,
+// 转换链三段——与 responses 入口对齐,前端据此两端同名显示同线制对。
+func TestChatUsageRecordProtocolChain(t *testing.T) {
+	relay.ClearCustomProtocols()
+	t.Cleanup(relay.ClearCustomProtocols)
+	registerPresetForTest(t, "chat-completions-api")
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
+	}))
+	defer upstream.Close()
+
+	s := newTestServerWithStore(t, presetGroup(t, "custom:chat-completions-api", upstream.URL+"/v1"))
+	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hi"}]}`)
+	s.chatCompletions(c)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	items := latestUsageRecords(t, s)
+	if len(items) != 1 {
+		t.Fatalf("expected 1 usage record, got %d", len(items))
+	}
+	payload, found, err := s.store.GetUsageRecordJSON(t.Context(), items[0].RequestID)
+	if err != nil || !found {
+		t.Fatalf("record json: found=%v err=%v", found, err)
+	}
+	detail := string(payload)
+	for _, want := range []string{
+		`"sourceFormat":"openai"`,
+		`"sourceEndpoint":"/v1/chat/completions"`,
+		`"targetFormat":"custom:chat-completions-api"`,
+		`"targetEndpoint":"/chat/completions"`,
+		`"conversionChain":["openai_request","maheshvara_request","custom:chat-completions-api_request"]`,
+	} {
+		if !strings.Contains(detail, want) {
+			t.Fatalf("usage record missing %s: %.400s", want, detail)
+		}
 	}
 }

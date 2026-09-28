@@ -444,6 +444,9 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 		return
 	}
 	s.invalidateRouteCache()
+	s.logSystemEvent("info", "model source saved", map[string]any{
+		"sourceId": item.ID, "sourceName": item.Name, "platform": item.Platform, "autoFetch": item.AutoFetchModels,
+	})
 
 	// 保存后自动同步该源的模型到模型缓存，省去用户额外手动刷新：
 	//   - 手动源：同步写入（不涉网络），保证保存响应返回后前端立即能读到新模型；
@@ -522,6 +525,7 @@ func (s *Server) deleteSourceCascade(ctx context.Context, store *storage.Store, 
 	if err := store.DeleteSource(ctx, id); err != nil {
 		return err
 	}
+	s.logSystemEvent("warn", "model source deleted", map[string]any{"sourceId": id})
 	// 游标以 sourceID 为键，删除/重建循环下不清理会让 map 随历史源数量无限增长。
 	s.keyRRMutex.Lock()
 	delete(s.keyRRIndex, id)
@@ -610,6 +614,9 @@ func (s *Server) adminSetSourceEnabled(c *gin.Context) {
 	}
 	// 路由装配按源 enabled 过滤模型（ListModels 的 join 条件），必须失效。
 	s.invalidateRouteCache()
+	s.logSystemEvent("info", "model source "+map[bool]string{true: "enabled", false: "disabled"}[*payload.Enabled], map[string]any{
+		"sourceId": c.Param("id"),
+	})
 	respondOK(c, gin.H{"updated": true, "enabled": *payload.Enabled})
 }
 
@@ -811,6 +818,7 @@ func (s *Server) adminUpsertGroup(c *gin.Context) {
 		return
 	}
 	s.invalidateRouteCache()
+	s.logSystemEvent("info", "model group saved", map[string]any{"groupId": item.ID, "groupName": item.Name})
 	respondOK(c, item)
 }
 
@@ -841,6 +849,9 @@ func (s *Server) deleteGroupCascade(ctx context.Context, store *storage.Store, i
 		// 会扩权），名单透出给调用方以便后续处置。
 		log.Printf("group %s deleted; disabled %d token(s) whose only allowed group it was: %v", id, len(disabledTokens), disabledTokens)
 	}
+	s.logSystemEvent("warn", "model group deleted", map[string]any{
+		"groupId": id, "disabledTokens": disabledTokens,
+	})
 	return disabledTokens, nil
 }
 
@@ -876,6 +887,7 @@ func (s *Server) adminRevealToken(c *gin.Context) {
 		respondFail(c, 404, "token_not_found", "api key not found")
 		return
 	}
+	s.logSystemEvent("info", "api token plaintext revealed (audit)", map[string]any{"tokenName": item.Name})
 	respondOK(c, gin.H{"name": item.Name, "token": item.Token})
 }
 
@@ -937,6 +949,8 @@ func (s *Server) adminUpsertToken(c *gin.Context) {
 		item = stored
 	}
 	item.Token = maskSecret(item.Token)
+	action := map[bool]string{true: "created", false: "updated"}[isNew]
+	s.logSystemEvent("info", "api token "+action, map[string]any{"tokenName": item.Name})
 	respondOK(c, item)
 }
 
@@ -950,6 +964,7 @@ func (s *Server) adminDeleteToken(c *gin.Context) {
 		return
 	}
 	s.invalidateRouteCache()
+	s.logSystemEvent("warn", "api token deleted", map[string]any{"tokenName": c.Param("name")})
 	respondOK(c, gin.H{"deleted": true})
 }
 

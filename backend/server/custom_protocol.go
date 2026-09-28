@@ -19,6 +19,7 @@ import (
 func (s *Server) syncCustomProtocols() {
 	if err := s.syncCustomProtocolsQuiet(); err != nil {
 		log.Printf("custom protocol registry sync failed; keeping the previous registry: %v", err)
+		s.logSystemEvent("warn", "custom protocol registry sync failed", map[string]any{"error": err.Error()})
 	}
 }
 

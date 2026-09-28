@@ -140,6 +140,7 @@ func (s *Server) adminUpsertCustomProtocol(c *gin.Context) {
 		return
 	}
 	syncErr := s.syncCustomProtocolsQuiet()
+	s.logSystemEvent("info", "custom protocol saved", map[string]any{"protocolId": pathID, "synced": syncErr == nil})
 	response := gin.H{"saved": true, "id": pathID, "valid": true, "synced": syncErr == nil}
 	if syncErr != nil {
 		response["warning"] = fmt.Sprintf("已保存，但注册表同步失败（运行中的旧协议保持不变）: %v", syncErr)
@@ -163,6 +164,7 @@ func (s *Server) adminDeleteCustomProtocol(c *gin.Context) {
 		return
 	}
 	syncErr := s.syncCustomProtocolsQuiet()
+	s.logSystemEvent("warn", "custom protocol deleted", map[string]any{"protocolId": pathID})
 	respondOK(c, gin.H{"deleted": true, "synced": syncErr == nil})
 }
 

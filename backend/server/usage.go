@@ -758,6 +758,7 @@ func (s *Server) resetUsage(c *gin.Context) {
 	}
 	s.usageCache.flush()
 	s.usageSeq.Add(1)
+	s.logSystemEvent("warn", "usage statistics and logs reset", nil)
 	// 与失败路径同用 admin 封套（respondFail），客户端按 ok 字段统一判读。
 	respondOK(c, gin.H{"reset": true})
 }

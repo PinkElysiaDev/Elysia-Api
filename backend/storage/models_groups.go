@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -650,4 +651,99 @@ type ModelPatch struct {
 	StructuredOutput *bool
 	ThinkingMode     *string
 	Enabled          *bool
+}
+
+// StripGeminiModelIDPrefixes 一次性修复历史自动拉取入库的 Gemini 系模型 ID 带
+// "models/" 集合前缀的问题（内置 gemini 平台与 gemini-api 预置的旧拉取都曾
+// 原样入库，转发路径模板会拼出 /v1beta/models/models/<id> 的双前缀 404）：
+// 剥前缀并同步改写 model_group_models 关联与多 key 权限列表。目标 id 已存在
+// （用户重新拉取过）时删除带前缀的旧行；幂等。
+func (s *Store) StripGeminiModelIDPrefixes(ctx context.Context) (fixed int, err error) {
+	const prefix = "models/"
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT source_id, id FROM models WHERE (LOWER(platform) = 'gemini' OR LOWER(platform) = 'custom:gemini-api') AND id LIKE ?`, prefix+"%")
+	if err != nil {
+		return 0, err
+	}
+	type pendingRename struct{ sourceID, oldID, newID string }
+	pending := []pendingRename{}
+	for rows.Next() {
+		var sourceID, id string
+		if err := rows.Scan(&sourceID, &id); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		pending = append(pending, pendingRename{sourceID: sourceID, oldID: id, newID: strings.TrimPrefix(id, prefix)})
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, err
+	}
+	rows.Close()
+	if len(pending) == 0 {
+		return 0, nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, item := range pending {
+		var exists int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM models WHERE source_id = ? AND id = ?`, item.sourceID, item.newID).Scan(&exists); err != nil {
+			return fixed, err
+		}
+		if exists > 0 {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM models WHERE source_id = ? AND id = ?`, item.sourceID, item.oldID); err != nil {
+				return fixed, err
+			}
+		} else if _, err := tx.ExecContext(ctx, `UPDATE models SET id = ? WHERE source_id = ? AND id = ?`, item.newID, item.sourceID, item.oldID); err != nil {
+			return fixed, err
+		}
+		// 组关联改写到新 id；同键已有新 id 时（UPDATE OR IGNORE 未生效）删除旧关联。
+		if _, err := tx.ExecContext(ctx, `UPDATE OR IGNORE model_group_models SET model_id = ? WHERE model_id = ? AND source_id = ?`, item.newID, item.oldID, item.sourceID); err != nil {
+			return fixed, err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM model_group_models WHERE model_id = ? AND source_id = ?`, item.oldID, item.sourceID); err != nil {
+			return fixed, err
+		}
+		fixed++
+	}
+	if err := tx.Commit(); err != nil {
+		return fixed, err
+	}
+	log.Printf("[gemini-id-fix] stripped models/ prefix from %d gemini model row(s)", fixed)
+
+	// 多 key 权限列表（fetched/allowed models 为裸模型 id）同步剥前缀。
+	sources, err := s.ListSources(ctx)
+	if err != nil {
+		return fixed, err
+	}
+	for _, source := range sources {
+		platform := strings.ToLower(strings.TrimSpace(source.Platform))
+		if platform != "gemini" && platform != "custom:gemini-api" {
+			continue
+		}
+		changed := false
+		for index := range source.APIKeys {
+			for _, field := range []*[]string{&source.APIKeys[index].FetchedModels, &source.APIKeys[index].AllowedModels} {
+				if *field == nil {
+					continue
+				}
+				for i, entry := range *field {
+					if trimmed := strings.TrimPrefix(entry, prefix); trimmed != entry {
+						(*field)[i] = trimmed
+						changed = true
+					}
+				}
+			}
+		}
+		if !changed {
+			continue
+		}
+		if err := s.UpdateSourceAPIKeys(ctx, source.ID, source.APIKeys); err != nil {
+			log.Printf("[gemini-id-fix] failed to rewrite key permissions for source %q: %v", source.ID, err)
+		}
+	}
+	return fixed, nil
 }

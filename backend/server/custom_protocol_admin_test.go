@@ -440,3 +440,22 @@ func TestAdminCustomProtocolSchema(t *testing.T) {
 		}
 	}
 }
+
+// 系统日志写入 helper:运营事件落 system_logs(store 缺失时静默)。
+func TestSystemLogWrite(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	s.logSystemEvent("info", "server started", map[string]any{"version": "test", "port": 8765})
+	total, logs, err := s.store.QuerySystemLogs(t.Context(), 10, 0, "")
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if total != 1 || len(logs) != 1 || logs[0].Level != "info" || logs[0].Message != "server started" {
+		t.Fatalf("unexpected logs: %+v total=%d", logs, total)
+	}
+	if !strings.Contains(logs[0].Fields, `"version":"test"`) {
+		t.Fatalf("fields must persist: %s", logs[0].Fields)
+	}
+	// store 为 nil 时静默不 panic。
+	bare := &Server{}
+	bare.logSystemEvent("info", "no store", nil)
+}

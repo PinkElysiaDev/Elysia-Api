@@ -105,3 +105,30 @@ func TestParseCustomProtocolModels(t *testing.T) {
 		t.Fatalf("non-array list path must fail, got %v", err)
 	}
 }
+
+// idStripPrefix：Gemini listModels 的 name 是 "models/<id>" 集合前缀形态，
+// 入库 ID 必须剥前缀（否则转发路径模板拼出双前缀 404）；不含前缀的取值原样。
+func TestParseCustomProtocolModelsStripPrefix(t *testing.T) {
+	config := modelsProtocol(func(m *CustomProtocolModels) {
+		m.ListPath = "models"
+		m.IDPath = "name"
+		m.NamePath = "displayName"
+		m.IDStripPrefix = "models/"
+	})
+	infos, err := ParseCustomProtocolModels([]byte(`{"models":[
+		{"name":"models/gemini-2.5-flash","displayName":"Gemini 2.5 Flash"},
+		{"name":"models/gemini-2.5-pro"},
+		{"name":"bare-model"},
+		{"name":"models/"}
+	]}`), config)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(infos) != 3 || infos[0].ID != "gemini-2.5-flash" || infos[0].Name != "Gemini 2.5 Flash" ||
+		infos[1].ID != "gemini-2.5-pro" || infos[2].ID != "bare-model" {
+		t.Fatalf("unexpected parse result: %#v", infos)
+	}
+	if err := ValidateCustomProtocol(modelsProtocol(func(m *CustomProtocolModels) { m.IDStripPrefix = "bad prefix" })); err == nil || !strings.Contains(err.Error(), "idStripPrefix") {
+		t.Fatalf("whitespace strip prefix must fail, got %v", err)
+	}
+}

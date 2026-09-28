@@ -202,12 +202,20 @@ func New(cfg *config.Config) *Server {
 		// 对账兜底：修复旧版改名迁移遗留的「行 id 列与 config 内部 id 脱节」
 		//（注册键错位会让 custom:<行id> 引用解析报 not registered）。
 		server.reconcileCustomProtocolConfigIDs()
+		// Gemini 系模型历史 ID 前缀一次性剥离（旧拉取入库 ID 带 models/ 前缀，
+		// 转发路径双前缀 404）。
+		server.stripGeminiModelIDPrefixes()
 		// 预置协议（四线制定义）逐条补齐/按哈希链升级；path 相对化预置升级后
 		// 一次性把存量源 base 补上版本段（v1→v3 语义切换的配套迁移）。
 		server.migratePresetRelativePathBases(server.seedPresetProtocols())
 	}
 	server.syncOutboundPolicy()
 	server.syncCustomProtocols()
+	if server.store != nil {
+		server.logSystemEvent("info", "server started", map[string]any{
+			"version": AppVersion, "host": cfg.Server.Host, "port": cfg.Server.Port,
+		})
+	}
 	return server
 }
 
@@ -518,6 +526,18 @@ func (s *Server) loopbackOnly(handler gin.HandlerFunc) gin.HandlerFunc {
 	}
 }
 
+// logSystemEvent 落一条系统日志(运营/审计事件)。store 不可用或写失败时静默
+// 降级为控制台输出——运营日志不得阻断业务路径。与模型调用日志(usage_records)
+// 分表分查询面,互不混流。
+func (s *Server) logSystemEvent(level, message string, fields map[string]any) {
+	if s.store == nil {
+		return
+	}
+	if err := s.store.InsertSystemLog(context.Background(), level, message, fields); err != nil {
+		log.Printf("system log write failed (%s %s): %v", level, message, err)
+	}
+}
+
 func (s *Server) reloadConfig(c *gin.Context) {
 	oldServer := s.config.GetServer()
 	oldHost := oldServer.Host
@@ -526,12 +546,14 @@ func (s *Server) reloadConfig(c *gin.Context) {
 
 	if err := s.config.Reload(); err != nil {
 		log.Printf("Config reload failed: %v", err)
+		s.logSystemEvent("warn", "config reload failed", map[string]any{"error": err.Error()})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"reloaded": false,
 			"error":    err.Error(),
 		})
 		return
 	}
+	s.logSystemEvent("info", "config reloaded", nil)
 
 	newServer := s.config.GetServer()
 	serverChanged := oldHost != newServer.Host || oldPort != newServer.Port
@@ -613,6 +635,8 @@ func (s *Server) chatCompletions(c *gin.Context) {
 	// 根据请求路径判断客户端期望的输入/输出格式
 	inputFormat := inputFormatFromPath(c.Request.URL.Path)
 	record := s.initUsageRecord(c, startTime, bodyBytes, inputFormat)
+	record.SourceFormat = string(inputFormat)
+	record.SourceEndpoint = c.Request.URL.Path
 	installDownstreamCapture(c, record, downstreamCaptureLimit(s.usageLogConfig()))
 	s.logVerbose("[Input Format] %s", inputFormat)
 
@@ -662,6 +686,26 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			// 的 should_convert=false 分支。vision 过滤改写了 maheshvaraReq 而非原始字节，
 			// 故 filtered=true 时必须回退到转换路径，否则被过滤的图片会随原始字节漏给上游。
 			usePassthrough := !filtered && relay.FormatMatchesPlatform(inputFormat, targetPlatform)
+
+			// usage 记录补全（与 responses 入口对齐）：custom 平台记 custom:<id> 与
+			// 协议 path 模板，内置平台归到线制 FormatType 与端点；透传链两段、
+			// 转换链三段。
+			if relay.IsCustomPlatform(targetPlatform) {
+				record.TargetFormat = string(targetPlatform)
+				if protocol, exists := relay.GetCustomProtocol(relay.CustomProtocolID(targetPlatform)); exists {
+					record.TargetEndpoint = protocol.Request.PathTemplate
+				}
+			} else if targetFormat, formatErr := relay.TargetFormatForPlatform(targetPlatform); formatErr == nil {
+				record.TargetFormat = string(targetFormat)
+				record.TargetEndpoint = targetEndpointForFormat(targetFormat)
+			}
+			if record.TargetFormat != "" {
+				if usePassthrough {
+					record.ConversionChain = []string{string(inputFormat) + "_request", string(record.TargetFormat) + "_request"}
+				} else {
+					record.ConversionChain = []string{string(inputFormat) + "_request", "maheshvara_request", string(record.TargetFormat) + "_request"}
+				}
+			}
 
 			// 流式意图取自客户端原始请求：OpenAI/Claude 看请求体 stream 字段，
 			// Gemini 看 URL action（:streamGenerateContent）。
@@ -1378,6 +1422,7 @@ func (s *Server) runShutdownSequence() {
 // shutdown 处理 /__shutdown：优雅关停 http.Server（给在途请求一个超时窗口），
 // 仅允许本机回环调用。供本地管理工具或用户手动优雅停止进程。
 func (s *Server) shutdown(c *gin.Context) {
+	s.logSystemEvent("info", "server shutdown requested", nil)
 	c.JSON(http.StatusOK, gin.H{"shuttingDown": true})
 	go s.shutdownOnce.Do(s.runShutdownSequence)
 }

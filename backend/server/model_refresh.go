@@ -395,9 +395,11 @@ func (s *Server) fetchGeminiModels(ctx context.Context, source storage.ModelSour
 			continue
 		}
 		// 不再用 supportedGenerationMethods 过滤（对照 new-api）：中转站常不返回该字段，
-		// 过滤会漏掉可用模型。仅剥离 models/ 前缀。
+		// 过滤会漏掉可用模型。剥离 models/ 集合前缀——ID 与展示名都用裸名：入库 ID
+		// 带 models/ 前缀会让转发路径拼出 /v1beta/models/models/<id> 的双前缀 404
+		//（与入站 geminiModelFromAction 的「线上带前缀、内部用裸名」约定一致）。
 		name := strings.TrimPrefix(rawName, "models/")
-		model := inferredModel(source, rawName, name)
+		model := inferredModel(source, name, name)
 		model.Platform = "gemini"
 		model.Type = "llm"
 		// Gemini /v1beta/models 会返回 inputTokenLimit/outputTokenLimit，

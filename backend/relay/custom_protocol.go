@@ -63,6 +63,10 @@ type CustomProtocolModels struct {
 	ListPath string              `json:"listPath"`           // 必填，点路径到模型数组
 	IDPath   string              `json:"idPath,omitempty"`   // 元素内，默认 "id"
 	NamePath string              `json:"namePath,omitempty"` // 元素内
+	// IDStripPrefix 从 idPath 取值后剥掉的固定前缀：Gemini listModels 的 name
+	// 是 "models/gemini-2.5-flash" 这类带集合前缀的形态，入库 ID 需剥前缀，
+	// 否则转发路径模板会拼出 /v1beta/models/models/<id> 这类双前缀 404。
+	IDStripPrefix string `json:"idStripPrefix,omitempty"`
 }
 
 // CustomProtocolModelInfo 是发现端点解析出的单个模型标识。
@@ -675,6 +679,9 @@ func validateCustomProtocolModels(configID string, models *CustomProtocolModels)
 			return fmt.Errorf("custom protocol %q models.namePath: %w", configID, err)
 		}
 	}
+	if prefix := strings.TrimSpace(models.IDStripPrefix); prefix != "" && strings.ContainsAny(prefix, " \t\r\n") {
+		return fmt.Errorf("custom protocol %q models.idStripPrefix must be a literal prefix without whitespace", configID)
+	}
 	return nil
 }
 
@@ -1026,9 +1033,13 @@ func ParseCustomProtocolModels(body []byte, config CustomProtocolConfig) ([]Cust
 	}
 	idPath := firstNonEmptyString(strings.TrimSpace(models.IDPath), "id")
 	namePath := strings.TrimSpace(models.NamePath)
+	stripPrefix := strings.TrimSpace(models.IDStripPrefix)
 	result := make([]CustomProtocolModelInfo, 0, len(items))
 	for _, item := range items {
 		id := customStringAt(item, idPath)
+		if stripPrefix != "" {
+			id = strings.TrimPrefix(id, stripPrefix)
+		}
 		if id == "" {
 			continue
 		}

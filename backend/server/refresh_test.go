@@ -114,6 +114,9 @@ func TestFetchGeminiModelsViaV1BetaModels(t *testing.T) {
 	if models[0].Name != "gemini-1.5-flash" {
 		t.Fatalf("expected name gemini-1.5-flash (models/ prefix stripped), got %q", models[0].Name)
 	}
+	if models[0].ID != "gemini-1.5-flash" {
+		t.Fatalf("expected id gemini-1.5-flash (models/ prefix stripped), got %q", models[0].ID)
+	}
 	if models[0].Platform != "gemini" {
 		t.Fatalf("expected platform gemini, got %q", models[0].Platform)
 	}

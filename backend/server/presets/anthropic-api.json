@@ -1,12 +1,12 @@
 {
   "id": "anthropic-api",
   "name": "Anthropic API（预置）",
-  "version": "2",
+  "version": "3",
   "type": "llm",
   "metadata": {
     "preset": true,
-    "presetVersion": 2,
-    "description": "Anthropic Messages 线制的预置定义；v2：thinking/output_config 整形、signature 与 citations 帧、参数完成帧、缓存用量别名"
+    "presetVersion": 3,
+    "description": "Anthropic API 线制的预置定义；v3：命名去厂商化；v2：thinking/output_config 整形、signature 与 citations 帧、参数完成帧、缓存用量别名"
   },
   "aliases": {
     "toolCall": {
