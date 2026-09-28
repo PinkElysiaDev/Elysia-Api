@@ -28,7 +28,7 @@ The WebUI is embedded into the backend binary through `//go:embed` and served at
 ### <img src="docs/assets/icons/icon-gateway.svg" width="16" alt=""> Gateway Core
 
 - Model groups and load balancing: supports round-robin, sequential, random, and model-group-level permission strategies.
-- Multi-format conversion: uses Maheshvara Request / Response / Usage as the single core representation, converting between OpenAI Chat Completions, OpenAI Responses, Claude Messages, and Gemini GenerateContent.
+- Multi-format conversion: uses Maheshvara Request / Response / Usage as the single core representation, converting between Chat Completions API, Responses API, Anthropic API, and Gemini API.
 - Responses API: `/v1/responses` can be forwarded natively or converted to Chat / Claude / Gemini upstreams.
 - Streaming responses: all four built-in protocols and custom protocols are converted to SSE through stateful Maheshvara decoders / renderers.
 - Same-protocol passthrough: when the client and upstream route use the same protocol, requests automatically pass through with zero conversion; only the model name is rewritten and all other fields are preserved.
@@ -210,7 +210,7 @@ Open the WebUI after starting the backend:
 http://127.0.0.1:8765/ui/
 ```
 
-Sign in with `panelAccessToken`, then add model sources, fetch models, create model groups, and create a Relay API Token in the WebUI. You can then call a model group through the OpenAI-compatible endpoint:
+Sign in with `panelAccessToken`, then add model sources, fetch models, create model groups, and create a Relay API Token in the WebUI. You can then call a model group through the Chat Completions-compatible endpoint:
 
 ```bash
 curl http://127.0.0.1:8765/v1/chat/completions \
@@ -221,7 +221,7 @@ curl http://127.0.0.1:8765/v1/chat/completions \
 
 ## <img src="docs/assets/icons/icon-dsl.svg" width="20" alt=""> Maheshvara and the No-Code Protocol DSL
 
-Cross-protocol conversion uniformly passes through the Maheshvara core request / response model: OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, and Gemini GenerateContent are all first parsed into Maheshvara and then rendered for the upstream protocol. A model source's `platform` can be `custom:<protocolID>` (the WebUI lets you select and enter the ID directly); protocols are built visually in the WebUI Protocol Designer page with field-level mappings, and saves take effect instantly. Protocol config example:
+Cross-protocol conversion uniformly passes through the Maheshvara core request / response model: Chat Completions API, Responses API, Anthropic API, and Gemini API are all first parsed into Maheshvara and then rendered for the upstream protocol. A model source's `platform` can be `custom:<protocolID>` (the WebUI lets you select and enter the ID directly); protocols are built visually in the WebUI Protocol Designer page with field-level mappings, and saves take effect instantly. Protocol config example:
 
 ```json
 {
@@ -318,9 +318,9 @@ Changing `host`, `port`, `databasePath`, or `enablePprof` usually requires a res
 
 | Endpoint | Description | Authentication |
 | --- | --- | --- |
-| `POST /v1/chat/completions` | OpenAI Chat Completions entrypoint | Relay API Token |
-| `POST /v1/responses` | OpenAI Responses API entrypoint | Relay API Token |
-| `POST /v1/messages` | Native Claude Messages entrypoint | Relay API Token |
+| `POST /v1/chat/completions` | Chat Completions API entrypoint | Relay API Token |
+| `POST /v1/responses` | Responses API entrypoint | Relay API Token |
+| `POST /v1/messages` | Native Anthropic API entrypoint | Relay API Token |
 | `POST /v1/messages/count_tokens` | Claude-compatible token counting | Relay API Token |
 | `GET /v1/models` | List available model groups | Relay API Token |
 | `GET /v1beta/models` / `POST /v1beta/models/*` | Gemini-compatible entrypoints | Relay API Token |

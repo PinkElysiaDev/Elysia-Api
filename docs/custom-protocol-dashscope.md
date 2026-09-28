@@ -5,7 +5,7 @@ dashscope 有两种接入方式,**优先使用兼容模式**;native 模式经自
 语义(Match 条件、别名覆盖、frames 谓词帧、分帧工具拼装、request.shape、四协议
 预置)见 [protocol-definition-reference.md](./protocol-definition-reference.md)。
 
-## 方式一(推荐):OpenAI 兼容模式,零配置
+## 方式一(推荐):Chat Completions 兼容模式,零配置
 
 直接新建模型源,协议选 **Chat Completions API**,Base URL 填:
 

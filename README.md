@@ -28,7 +28,7 @@ WebUI 通过 `//go:embed` 嵌入后端二进制，默认在 `/ui/` 提供；运�
 ### <img src="docs/assets/icons/icon-gateway.svg" width="16" alt=""> 网关核心
 
 - 模型组与负载均衡：支持轮询、顺序、随机策略和模型组级权限。
-- 多格式互转：以 Maheshvara Request / Response / Usage 为唯一核心表示，在 OpenAI Chat Completions、OpenAI Responses、Claude Messages、Gemini GenerateContent 之间转换。
+- 多格式互转：以 Maheshvara Request / Response / Usage 为唯一核心表示，在 Chat Completions API、Responses API、Anthropic API、Gemini API 之间转换。
 - Responses API：`/v1/responses` 可原生转发，也可转换到 Chat / Claude / Gemini 上游。
 - 流式响应：四种内建协议和自定义协议均通过 Maheshvara 状态化 decoder / renderer 转换 SSE。
 - 同协议透传：四种协议在客户端与上游线路协议同源时自动零转换透传，仅改写 model 名，其余字段原样保留。
@@ -210,7 +210,7 @@ volumes:
 http://127.0.0.1:8765/ui/
 ```
 
-使用 `panelAccessToken` 登录后，在 WebUI 中添加模型源、拉取模型、创建模型组并创建 Relay API Token。随后可通过 OpenAI 兼容端点调用模型组：
+使用 `panelAccessToken` 登录后，在 WebUI 中添加模型源、拉取模型、创建模型组并创建 Relay API Token。随后可通过 Chat Completions 兼容端点调用模型组：
 
 ```bash
 curl http://127.0.0.1:8765/v1/chat/completions \
@@ -221,7 +221,7 @@ curl http://127.0.0.1:8765/v1/chat/completions \
 
 ## <img src="docs/assets/icons/icon-dsl.svg" width="20" alt=""> Maheshvara 与无代码协议 DSL
 
-跨协议转换统一经过 Maheshvara 核心请求/响应模型：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 和 Gemini GenerateContent 都先解析为 Maheshvara，再按上游协议渲染。模型源的 `platform` 可以写成 `custom:<协议ID>`（WebUI 可直接选择并填写 ID）；协议在 WebUI 的「协议设计器」页面以字段级映射可视化构建，保存即热生效。协议配置结构示例：
+跨协议转换统一经过 Maheshvara 核心请求/响应模型：Chat Completions API、Responses API、Anthropic API 和 Gemini API 都先解析为 Maheshvara，再按上游协议渲染。模型源的 `platform` 可以写成 `custom:<协议ID>`（WebUI 可直接选择并填写 ID）；协议在 WebUI 的「协议设计器」页面以字段级映射可视化构建，保存即热生效。协议配置结构示例：
 
 ```json
 {
@@ -318,9 +318,9 @@ curl http://127.0.0.1:8765/v1/chat/completions \
 
 | 端点 | 说明 | 鉴权 |
 | --- | --- | --- |
-| `POST /v1/chat/completions` | OpenAI Chat Completions 入口 | Relay API Token |
-| `POST /v1/responses` | OpenAI Responses API 入口 | Relay API Token |
-| `POST /v1/messages` | Claude Messages 原生入口 | Relay API Token |
+| `POST /v1/chat/completions` | Chat Completions API 入口 | Relay API Token |
+| `POST /v1/responses` | Responses API 入口 | Relay API Token |
+| `POST /v1/messages` | Anthropic API 原生入口 | Relay API Token |
 | `POST /v1/messages/count_tokens` | Claude 兼容 token 统计 | Relay API Token |
 | `GET /v1/models` | 列出可用模型组 | Relay API Token |
 | `GET /v1beta/models` / `POST /v1beta/models/*` | Gemini 兼容入口 | Relay API Token |

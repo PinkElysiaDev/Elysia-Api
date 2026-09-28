@@ -12,10 +12,10 @@ client wire protocol
 
 当前支持的四种内建 wire protocol：
 
-- OpenAI Chat Completions（扩展兼容型，而非只接受严格官方字段）
-- Anthropic Messages
-- Gemini GenerateContent
-- OpenAI Responses
+- Chat Completions API（扩展兼容型，而非只接受严格官方字段）
+- Anthropic API
+- Gemini API
+- Responses API
 
 全部类型与函数已统一使用 `Maheshvara*` 命名（历史上的 `Canonical*` 别名已移除）。协议版本常量为 `MaheshvaraProtocolVersion = "2"`（v2 引入推理走私信封；v1 信封保持只读兼容）。
 
@@ -90,7 +90,7 @@ Maheshvara request 的主要结构如下。以下为说明性结构，不是独�
 
 系统和 developer 消息在渲染目标协议时按目标能力聚合：
 
-- OpenAI Chat：`system` / `developer` message
+- Chat Completions：`system` / `developer` message
 - Anthropic：顶层 `system`
 - Gemini：`systemInstruction`
 - Responses：`instructions`
@@ -198,7 +198,7 @@ reasoning 使用非空 `text` + `thought: true`；`thought` 是属性，不是�
 
 ## 6. 四协议请求映射
 
-| Maheshvara | Chat Completions | Anthropic Messages | Gemini GenerateContent | OpenAI Responses |
+| Maheshvara | Chat Completions | Anthropic API | Gemini API | Responses API |
 | --- | --- | --- | --- | --- |
 | `model` | `model` | `model` | URL model | `model` |
 | `instructions` | system/developer message | `system` | `systemInstruction` | `instructions` |
