@@ -224,6 +224,8 @@ func TestIsValidPanelAccessToken(t *testing.T) {
 // openBrowserOnStart 三态：不写键 = nil（默认尝试）、显式 true/false 原样读回，
 // Save 后落盘不丢失；nil 时 Save 不写键。
 func TestOpenBrowserOnStartTriState(t *testing.T) {
+	// 宿主的进程级覆盖不能改变配置文件中的偏好。
+	t.Setenv("ELYSIA_API_OPEN_BROWSER", "false")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 
@@ -243,6 +245,17 @@ func TestOpenBrowserOnStartTriState(t *testing.T) {
 	raw, _ := os.ReadFile(path)
 	if strings.Contains(string(raw), "openBrowserOnStart") {
 		t.Fatalf("nil must not persist the key: %s", raw)
+	}
+	opened := true
+	cfg.OpenBrowserOnStart = &opened
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.OpenBrowserOnStart == nil || !*cfg.OpenBrowserOnStart {
+		t.Fatal("process override must not persist over configured true")
 	}
 
 	closed := false

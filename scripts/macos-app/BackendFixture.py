@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 root = Path(os.environ['ELYSIA_NATIVE_TEST_DATA'])
+assert os.environ.get('ELYSIA_API_OPEN_BROWSER') == 'false', 'native host must suppress automatic browser launch on every start'
 config = json.loads((root / 'config.json').read_text())
 count = root / 'starts.txt'
 count.write_text(str(int(count.read_text() if count.exists() else '0') + 1))

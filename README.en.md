@@ -113,6 +113,8 @@ Create the runtime configuration from `config.json.example` in the repository ro
 When `databasePath` and `secretKeyPath` use relative paths, they are resolved relative to the directory containing `config.json`.
 `openBrowserOnStart` controls whether the console opens automatically in the system default browser on startup (defaults to attempting it; set `false` when managed by another process or in headless environments—missing open commands are silently skipped).
 
+The `ELYSIA_API_OPEN_BROWSER` environment variable overrides this setting for the current process without changing the configuration file. It accepts standard boolean values such as `true` / `false`; invalid values produce a warning and fall back to the configuration. The macOS app sets it to `false` for its backend and uses the embedded panel; opening the panel in a browser remains available from the menu.
+
 ### Windows
 
 Place `elysia-api-windows-amd64.exe` and `config.json` in the same directory, then run:

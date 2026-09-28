@@ -113,6 +113,8 @@ WebUI 通过 `//go:embed` 嵌入后端二进制，默认在 `/ui/` 提供；运�
 `databasePath` 和 `secretKeyPath` 使用相对路径时，会按 `config.json` 所在目录解析。
 `openBrowserOnStart` 控制启动时是否自动在系统默认浏览器打开控制台（缺省为尝试打开；被其他程序托管或无桌面环境时可设 `false`，打开命令缺失时静默跳过）。
 
+环境变量 `ELYSIA_API_OPEN_BROWSER` 可临时覆盖该设置（标准布尔值，如 `true` / `false`；无效值会提示并回退到配置），不会写入配置文件。macOS App 自动为后端设置 `false`，使用内嵌面板；仍可通过菜单手动在浏览器中打开。
+
 ### Windows
 
 将 `elysia-api-windows-amd64.exe` 和 `config.json` 放在同一目录后运行：
