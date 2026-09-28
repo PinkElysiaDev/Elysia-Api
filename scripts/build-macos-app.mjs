@@ -78,7 +78,10 @@ function verifyApp(bundle) {
   for (const name of ['ElysiaApi', 'elysia-api']) {
     const executable = join(bundle, 'Contents', 'MacOS', name)
     if (!(statSync(executable).mode & 0o111)) throw new Error(`Not executable: ${executable}`)
-    run('lipo', [executable, '-verify_arch', 'arm64', 'x86_64'])
+    const architectures = capture('lipo', ['-archs', executable]).split(/\s+/)
+    for (const arch of ['arm64', 'x86_64']) {
+      if (!architectures.includes(arch)) throw new Error('Missing ' + arch + ' architecture: ' + executable)
+    }
   }
   run('codesign', ['--verify', '--deep', '--strict', '--verbose=2', bundle])
 }
