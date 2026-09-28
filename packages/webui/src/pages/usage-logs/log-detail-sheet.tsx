@@ -105,7 +105,11 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                   <span
                     className={cn(
                       'max-w-full break-all rounded-full border px-2.5 py-[3px] font-mono text-2xs',
-                      detail.sourceFormat && detail.targetFormat && detail.sourceFormat !== detail.targetFormat
+                      // 归一化后比较:预置协议与等价内置线(如 gemini ↔ custom:gemini-api)
+                      // 显示同名、不标红;仅真实跨线制转换才强调。
+                      detail.sourceFormat &&
+                        detail.targetFormat &&
+                        protocolLabel(detail.sourceFormat, 'long') !== protocolLabel(detail.targetFormat, 'long')
                         ? 'border-rose bg-wash text-rose'
                         : 'border-input bg-card text-muted-foreground',
                     )}

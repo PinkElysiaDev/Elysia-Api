@@ -21,7 +21,7 @@ export type SourceForm = Omit<ModelSource, 'apiKeys' | 'manualModels' | 'keyStra
 // 才会启用同协议透传。
 export const PLATFORMS: { value: string; label: string; hint: string }[] = [
   { value: 'responses', label: 'Responses API', hint: '上游原生 Responses（默认经过 Maheshvara）' },
-  { value: 'chat_completions', label: 'Chat Completions API', hint: 'OpenAI 兼容协议，最通用' },
+  { value: 'chat_completions', label: 'Chat Completions API', hint: 'Chat Completions 兼容协议，最通用' },
   { value: 'anthropic', label: 'Anthropic API', hint: 'Claude /v1/messages' },
   { value: 'gemini', label: 'Gemini API', hint: 'Gemini /v1beta generateContent' },
 ]

@@ -354,7 +354,7 @@ export function ChatPanel({
                 </p>
                 <div className="flex flex-wrap justify-center gap-2">
                   {[
-                    "帮我设计一个 OpenAI 兼容协议",
+                    "帮我设计一个 Chat Completions 兼容协议",
                     "汇总今天的用量趋势",
                     "检查出站策略是否放行了内网",
                   ].map((example) => (

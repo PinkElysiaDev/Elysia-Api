@@ -175,7 +175,7 @@ export function MultiSelect({
             bottom: panelPosition.above ? 'calc(100% + 6px)' : undefined,
             maxHeight: panelPosition.maxHeight,
           }}
-          className={cn("absolute flex w-72 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg transition-none animate-in fade-in-0 duration-150", Z_INDEX.multiSelectPanel)}
+          className={cn("absolute flex w-72 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg transition-none animate-in fade-in-0 slide-in-from-bottom-1 duration-150", Z_INDEX.multiSelectPanel)}
         >
           <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-3 py-2.5">
             <Search aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -230,13 +230,15 @@ export function MultiSelect({
                     searchRef.current?.focus()
                   }}
                   className={cn(
-                    'flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors max-rail:min-h-11',
-                    checked ? 'font-medium text-rose' : 'text-foreground',
-                    index === activeIndex ? 'bg-wash ring-1 ring-inset ring-ring/30' : 'hover:bg-wash',
+                    // 与全站 Select 选项行同视觉语言（左侧 checkmark、pl-7 让位、
+                    // focus/bg-wash、选中 font-medium）；hint 副标题是多选特有。
+                    'relative flex w-full cursor-pointer select-none items-center rounded-md py-1.5 pl-7 pr-2 text-sm outline-none transition-colors max-rail:min-h-11',
+                    checked ? 'font-medium' : 'text-foreground',
+                    index === activeIndex ? 'bg-wash text-rose' : 'hover:bg-wash',
                   )}
                 >
-                  <span aria-hidden className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded border', checked ? 'border-primary bg-primary text-primary-foreground' : 'border-input')}>
-                    {checked && <Check className="h-3 w-3" strokeWidth={3} />}
+                  <span aria-hidden className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+                    {checked && <Check className="h-3.5 w-3.5" />}
                   </span>
                   <span className="min-w-0 flex-1 break-words">
                     {option.label}

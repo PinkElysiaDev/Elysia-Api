@@ -77,6 +77,14 @@ export function ModelsDiscoveryEditor({
               onChange={(event) => update({ idPath: event.target.value })}
             />
           </SettingRow>
+          <SettingRow label="ID 剥离前缀" description="ID 取值后剥掉的固定前缀，如 Gemini 的 models/">
+            <Input
+              className="w-64 font-mono text-xs"
+              value={models.idStripPrefix ?? ''}
+              placeholder="models/"
+              onChange={(event) => update({ idStripPrefix: event.target.value })}
+            />
+          </SettingRow>
           <SettingRow label="名称路径" description="元素内展示名字段，缺省用 ID">
             <Input
               className="w-64 font-mono text-xs"

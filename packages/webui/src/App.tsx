@@ -1,6 +1,8 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { getToken, subscribeToken, syncCookieFromStorage } from './lib/auth'
+import { api } from './lib/api'
+import { setCustomProtocolDisplayNames } from './lib/protocol'
 import { AppLayout } from './components/app-layout'
 
 // 页面按路由拆包：recharts 等重组件只随用到它的页面下载，
@@ -71,9 +73,30 @@ function usePreloadRoutes(enabled: boolean) {
   }, [enabled])
 }
 
+/**
+ * 登录后拉取协议注册名注入 protocolLabel——非预置的自定义协议在 usage 链路
+ * 等处以注册名显示（预置四条已静态映射）。失败静默：拿不到注册名回退 id 展示。
+ */
+function useCustomProtocolNames(enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return
+    let cancelled = false
+    void api.listCustomProtocols().then((items) => {
+      if (cancelled || !items.length) return
+      const names: Record<string, string> = {}
+      for (const item of items) names[item.id] = item.name || item.id
+      setCustomProtocolDisplayNames(names)
+    }).catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [enabled])
+}
+
 export function App() {
   const token = useAuthState()
   usePreloadRoutes(!!token)
+  useCustomProtocolNames(!!token)
 
   return (
     <HashRouter>

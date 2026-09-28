@@ -212,17 +212,15 @@ export function ModelPicker({
                         onClick={() => pick(index)}
                         onMouseEnter={() => setCursor(index)}
                         className={cn(
-                          "flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs transition-colors focus-visible:bg-wash",
+                          // 与全站 Select 选项行同视觉语言（左侧 checkmark 定位、pl-7 让位）。
+                          "relative flex w-full items-center rounded-md py-1.5 pl-7 pr-2 text-left text-xs transition-colors focus-visible:bg-wash",
                           active ? "bg-wash" : "hover:bg-wash/60",
-                          isSelected && "font-medium text-rose",
+                          isSelected && "font-medium",
                         )}
                       >
-                        <Check
-                          className={cn(
-                            "h-3 w-3 shrink-0",
-                            isSelected ? "opacity-100" : "opacity-0",
-                          )}
-                        />
+                        <span aria-hidden className="absolute left-2 flex h-3 w-3 items-center justify-center">
+                          {isSelected && <Check className="h-3 w-3" />}
+                        </span>
                         <span className="min-w-0 flex-1 truncate">
                           {model.name}
                         </span>

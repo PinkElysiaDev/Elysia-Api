@@ -644,6 +644,8 @@ export interface CustomProtocolModels {
   idPath?: string
   /** 元素内展示名路径 */
   namePath?: string
+  /** ID 取值后剥掉的固定前缀，如 Gemini listModels 的 name 带 models/ 集合前缀 */
+  idStripPrefix?: string
 }
 
 /** 提取阶段键名别名覆盖：提供即整体替换该类默认表；usage/toolCall 条目支持点路径。 */
