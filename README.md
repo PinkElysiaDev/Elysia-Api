@@ -14,7 +14,7 @@
 
 ## 特性
 
-- 多协议兼容：支持 OpenAI Chat Completions / Responses、Anthropic Messages、Gemini GenerateContent，流式转换与同协议透传
+- 多协议兼容：支持 Chat Completions API / Responses API、Anthropic API、Gemini API，流式转换与同协议透传
 - 流量调度：模型组负载均衡、多 Key 调度、并发/配额限制、Key 权限自动探测
 - 无代码扩展：可视化字段映射自定义上游协议，保存后生效，无需修改源码
 - AI 运维：内置管控助手，支持协议自动接入、用量分析、故障排查，写操作按会话权限审批

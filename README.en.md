@@ -14,7 +14,7 @@
 
 ## Features
 
-- Protocols: OpenAI Chat Completions / Responses, Anthropic Messages, and Gemini GenerateContent; streaming conversion and same-protocol passthrough
+- Protocols: Chat Completions API / Responses API, Anthropic API, and Gemini API; streaming conversion and same-protocol passthrough
 - Routing: model groups, load balancing, multiple API keys, concurrency and quota limits, per-key model discovery
 - Protocol extensions: visual field mappings for upstream APIs; saved definitions take effect without source changes
 - AI operations: protocol onboarding, usage analysis, and troubleshooting; writes follow session approval policies

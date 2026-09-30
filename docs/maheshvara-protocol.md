@@ -13,7 +13,7 @@ client wire → Maheshvara → routing / filtering → upstream wire
 upstream wire → Maheshvara → client wire
 ```
 
-支持 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages、Gemini GenerateContent。同协议满足条件时自动透传，不应将上述转换图理解为每条请求都重写协议。
+支持 Chat Completions API、Responses API、Anthropic API、Gemini API。同协议满足条件时自动透传，不应将上述转换图理解为每条请求都重写协议。
 
 转换原则：保留目标协议可表达的数据；无法表达的语义明确报错或按已定义规则过滤；不将未知块、签名和密文伪装为普通提示词。自定义协议仅执行受限数据映射。
 

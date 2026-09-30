@@ -13,7 +13,7 @@ client wire → Maheshvara → routing / filtering → upstream wire
 upstream wire → Maheshvara → client wire
 ```
 
-Supported wires are OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, and Gemini GenerateContent. Matching protocols can use automatic passthrough, so the diagram does not imply every request is rewritten.
+Supported wires are Chat Completions API, Responses API, Anthropic API, and Gemini API. Matching protocols can use automatic passthrough, so the diagram does not imply every request is rewritten.
 
 Conversion preserves what the target can represent. Unsupported semantics produce explicit errors or defined filtering. Unknown blocks, signatures, and ciphertext are not fabricated into ordinary prompts. Custom protocols use restricted data mapping.
 
