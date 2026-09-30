@@ -254,13 +254,11 @@ func TransformStreamViaMaheshvara(ctx context.Context, response *http.Response, 
 		return streamErr
 	}
 	for {
-		idle := DefaultSSEIdleTimeout
-		if decoder.TerminalReceived() {
-			idle = PostTerminalSSEIdleTimeout
-		}
-		wireEvent, ok, err := reader.Read(ctx, idle)
+		wireEvent, ok, err := reader.Read(ctx, PostTerminalDrainIdle(decoder.TerminalReceived()))
 		if err != nil {
-			if decoder.TerminalReceived() && errors.Is(err, ErrSSEIdleTimeout) {
+			// 终态后排水窗内的取消/超时都是良性收尾(见 benignPostTerminalErr),
+			// 不把已完成的流记 499。
+			if BenignPostTerminalErr(decoder.TerminalReceived(), err) {
 				break
 			}
 			return abort(err)
@@ -296,7 +294,7 @@ func TransformStreamViaMaheshvara(ctx context.Context, response *http.Response, 
 		return abort(fmt.Errorf("upstream returned an empty event stream"))
 	}
 	if !decoder.TerminalReceived() {
-		return abort(fmt.Errorf("upstream stream ended before a terminal event"))
+		return abort(ErrNoTerminalEvent)
 	}
 	// 上游发了真实 finish_reason 的空完成（content_filter 拒答、空工具轮等）
 	// 是合法响应：只在终态为合成（无 finish 的 [DONE]）时才要求有可表达输出。

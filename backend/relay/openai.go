@@ -322,13 +322,9 @@ func forwardSSELines(ctx context.Context, resp *http.Response, writer StreamResp
 		return done, nil
 	}
 	for {
-		idle := DefaultSSEIdleTimeout
-		if completed {
-			idle = PostTerminalSSEIdleTimeout
-		}
-		line, hasMore, err := scanSSEWithTimeout(ctx, scanner, idle)
+		line, hasMore, err := scanSSEWithTimeout(ctx, scanner, PostTerminalDrainIdle(completed))
 		if err != nil {
-			if completed && (errors.Is(err, context.Canceled) || errors.Is(err, ErrSSEIdleTimeout)) {
+			if BenignPostTerminalErr(completed, err) {
 				return nil
 			}
 			return err
@@ -366,7 +362,7 @@ func forwardSSELines(ctx context.Context, resp *http.Response, writer StreamResp
 		}
 	}
 	if !completed {
-		return fmt.Errorf("upstream stream ended before a terminal event")
+		return ErrNoTerminalEvent
 	}
 	return nil
 }

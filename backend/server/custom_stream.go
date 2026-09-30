@@ -55,6 +55,9 @@ func (s *Server) handleCustomStreamRequest(
 	if err != nil {
 		return fail(http.StatusBadGateway, fmt.Sprintf("failed to forward custom protocol stream: %v", err), nil, true)
 	}
+	// 注意:Close 必须在 observeUpstreamUsage 包装 response.Body 之后再 defer——
+	// defer 参数即时求值,提前写会捕获包装前的原始 body,观察器的 flushRemainder
+	//（末行 usage/事件冲刷）将永不执行。
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		body, _ := io.ReadAll(response.Body)
@@ -75,6 +78,7 @@ func (s *Server) handleCustomStreamRequest(
 	// 事件捕获/usage 提取统一由上游观察者承担（下游观察者只做首字节计时），此前由下游观察者以 observeUsage 兼任——记录的是渲染后
 	// 的下游格式而非上游原文，且与上游双写 ProviderResponse 取决于读写交错。
 	observeUpstreamUsage(response, record, targetPlatform)
+	defer response.Body.Close()
 	renderer := relay.NewMaheshvaraStreamRenderer(inputFormat, writer, selectedModel.Name)
 	reader := relay.NewSSEEventReader(response.Body)
 	defer reader.Close()

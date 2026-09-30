@@ -24,6 +24,26 @@ var ErrSSEIdleTimeout = errors.New("stream read timeout")
 // finish_reason 帧之后下发，不排水会丢真实用量）。
 const PostTerminalSSEIdleTimeout = 2 * time.Second
 
+// ErrNoTerminalEvent 表示流在读尽/中断前未收到任何终态事件(五种流式
+// 路径共用的哨兵,判断「流是否完整」)。
+var ErrNoTerminalEvent = errors.New("upstream stream ended before a terminal event")
+
+// postTerminalIdle 返回流读取的空闲超时:终态已到用短排水窗(只等 usage
+// 尾帧/错误帧),否则用默认长空闲窗。
+func PostTerminalDrainIdle(terminalSeen bool) time.Duration {
+	if terminalSeen {
+		return PostTerminalSSEIdleTimeout
+	}
+	return DefaultSSEIdleTimeout
+}
+
+// benignPostTerminalErr 判定终态后排水窗内的读取错误是否良性:客户端
+// 断开(context.Canceled)与短窗超时都视为流已完成的干净收尾,调用方
+// 应静默结束而非把已完成的流翻成错误。
+func BenignPostTerminalErr(terminalSeen bool, err error) bool {
+	return terminalSeen && (errors.Is(err, context.Canceled) || errors.Is(err, ErrSSEIdleTimeout))
+}
+
 // SSEEvent is one fully assembled Server-Sent Event. Multiple data lines are
 // joined with a newline as required by the SSE specification.
 type SSEEvent struct {

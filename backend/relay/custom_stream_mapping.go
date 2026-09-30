@@ -3,7 +3,6 @@ package relay
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 )
@@ -603,16 +602,11 @@ func (decoder *CustomProtocolStreamDecoder) streamDelta(previous map[string]stri
 // 终态后仅应保留 usage/错误语义)。回调返回错误立即中止并原样返回。
 func (decoder *CustomProtocolStreamDecoder) ForEachBatch(ctx context.Context, reader *SSEEventReader, handleBatch func(wireEvent SSEEvent, events []MaheshvaraStreamEvent, terminalBeforeBatch bool) error) error {
 	for {
-		idle := DefaultSSEIdleTimeout
-		if decoder.TerminalReceived() {
-			// 终态后排水中:只等 usage 尾帧、错误帧与 doneValue,短窗防上游
-			// finish 后不关连接导致 DefaultSSEIdleTimeout 级长挂起。
-			idle = PostTerminalSSEIdleTimeout
-		}
-		wireEvent, hasMore, readErr := reader.Read(ctx, idle)
+		// 终态后短窗排水:只等 usage 尾帧、错误帧与 doneValue(见 postTerminalIdle)。
+		wireEvent, hasMore, readErr := reader.Read(ctx, PostTerminalDrainIdle(decoder.TerminalReceived()))
 		if readErr != nil {
-			if decoder.TerminalReceived() && (errors.Is(readErr, context.Canceled) || errors.Is(readErr, ErrSSEIdleTimeout)) {
-				return nil // 排水窗耗尽视为干净收尾
+			if BenignPostTerminalErr(decoder.TerminalReceived(), readErr) {
+				return nil // 排水窗耗尽/客户端断开视为干净收尾
 			}
 			return readErr
 		}

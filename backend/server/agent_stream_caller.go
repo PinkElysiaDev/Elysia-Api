@@ -62,6 +62,17 @@ type agentToolCallState struct {
 	arguments strings.Builder
 }
 
+// updateIdentity 用事件里的非空 id/name 修正工具调用身份（分帧流中身份帧
+// 与参数帧可能交错携带元信息）。
+func (s *agentToolCallState) updateIdentity(event relay.MaheshvaraStreamEvent) {
+	if event.ToolCallID != "" {
+		s.id = event.ToolCallID
+	}
+	if event.ToolName != "" {
+		s.name = event.ToolName
+	}
+}
+
 func (a *agentStreamAccumulator) toolState(key string) *agentToolCallState {
 	if state, ok := a.tools[key]; ok {
 		return state
@@ -381,7 +392,7 @@ func (c *agentStreamCaller) callOnce(ctx context.Context, cancel context.CancelF
 			record.StatusCode = statusErr.StatusCode
 			record.ProviderResponse = record.sanitizeBody([]byte(statusErr.Body))
 			retryable = statusErr.StatusCode == http.StatusTooManyRequests || statusErr.StatusCode >= 500
-			return nil, retryable, fmt.Errorf("上游模型返回 %d: %s", statusErr.StatusCode, truncateForDisplay(statusErr.Body, 2048))
+			return nil, retryable, fmt.Errorf("上游模型返回 %d: %s", statusErr.StatusCode, truncateForDisplay(statusErr.Body, errorDetailTruncateBytes))
 		}
 		record.StatusCode = 0 // 网络层失败：无 HTTP 状态，日志按 failed 呈现
 		return nil, true, err
@@ -415,13 +426,9 @@ func drainStandardStream(ctx context.Context, plan *agentUpstreamPlan, body io.R
 	decoder := relay.NewMaheshvaraStreamDecoder(agentStreamDecoderFormat(plan.format))
 	terminalSeen := false
 	for {
-		idle := relay.DefaultSSEIdleTimeout
-		if terminalSeen {
-			idle = relay.PostTerminalSSEIdleTimeout
-		}
-		event, ok, readErr := reader.Read(ctx, idle)
+		event, ok, readErr := reader.Read(ctx, relay.PostTerminalDrainIdle(terminalSeen))
 		if readErr != nil {
-			if terminalSeen && (errors.Is(readErr, context.Canceled) || errors.Is(readErr, relay.ErrSSEIdleTimeout)) {
+			if relay.BenignPostTerminalErr(terminalSeen, readErr) {
 				return nil
 			}
 			return readErr
@@ -430,7 +437,7 @@ func drainStandardStream(ctx context.Context, plan *agentUpstreamPlan, body io.R
 			if terminalSeen {
 				return nil
 			}
-			return fmt.Errorf("upstream stream ended before a terminal event")
+			return relay.ErrNoTerminalEvent
 		}
 		events, decodeErr := decoder.Decode(event)
 		if decodeErr != nil {
@@ -441,11 +448,11 @@ func drainStandardStream(ctx context.Context, plan *agentUpstreamPlan, body io.R
 			if terminalSeen {
 				switch ev.Type {
 				case relay.MaheshvaraEventUsageDelta, relay.MaheshvaraEventResponseFailed:
-					acc.apply(ev, cb)
+					acc.applyEvent(ev, cb)
 				}
 				continue
 			}
-			acc.apply(ev, cb)
+			acc.applyEvent(ev, cb)
 		}
 		if acc.failure != "" {
 			return fmt.Errorf("%s", acc.failure)
@@ -474,26 +481,27 @@ func (c *agentStreamCaller) drainCustomProtocolStream(ctx context.Context, plan 
 		for _, ev := range events {
 			if terminalBeforeBatch {
 				// 契约（同转发/设计器路径）：终态后仅保留 usage/错误语义——
-				// 排水窗内的重复文本帧不得再次计入结果或回传 UI，迟到的失败帧
-				// 也不得把已完成的流翻成错误。
+				// 排水窗内的重复文本帧不得再次计入结果或回传 UI；迟到的失败帧
+				// 与标准线路径（drainStandardStream）一致保留错误语义。
 				switch ev.Type {
-				case relay.MaheshvaraEventUsageDelta:
-					acc.apply(ev, cb)
+				case relay.MaheshvaraEventUsageDelta, relay.MaheshvaraEventResponseFailed:
+					acc.applyEvent(ev, cb)
 				}
 				continue
 			}
-			acc.apply(ev, cb) // 终态语义由 ForEachBatch 管理，聚合器无需中断
+			acc.applyEvent(ev, cb) // 终态语义由 ForEachBatch 管理，聚合器无需中断
 		}
 		return nil
 	})
 	if err == nil && !decoder.TerminalReceived() {
-		err = fmt.Errorf("upstream stream ended before a terminal event")
+		err = relay.ErrNoTerminalEvent
 	}
 	return err
 }
 
-// apply 归并单个流事件；返回 true 表示终态已到，可停止读取。
-func (a *agentStreamAccumulator) apply(event relay.MaheshvaraStreamEvent, cb agent.StreamCallbacks) bool {
+// applyEvent 归并单个流事件（文本/思维链/工具/usage/错误）到聚合器并转发
+// 回调；终态语义由调用方的 decoder/terminalSeen 判定，聚合器不中断。
+func (a *agentStreamAccumulator) applyEvent(event relay.MaheshvaraStreamEvent, cb agent.StreamCallbacks) {
 	switch event.Type {
 	case relay.MaheshvaraEventTextDelta:
 		if event.Delta != "" {
@@ -511,29 +519,14 @@ func (a *agentStreamAccumulator) apply(event relay.MaheshvaraStreamEvent, cb age
 		}
 	case relay.MaheshvaraEventFunctionCallAdded:
 		state := a.toolState(a.keyOf(event))
-		if event.ToolCallID != "" {
-			state.id = event.ToolCallID
-		}
-		if event.ToolName != "" {
-			state.name = event.ToolName
-		}
+		state.updateIdentity(event)
 	case relay.MaheshvaraEventFunctionCallArgumentsDelta:
 		state := a.toolState(a.keyOf(event))
-		if event.ToolCallID != "" {
-			state.id = event.ToolCallID
-		}
-		if event.ToolName != "" {
-			state.name = event.ToolName
-		}
+		state.updateIdentity(event)
 		state.arguments.WriteString(event.ToolArgumentsDelta)
 	case relay.MaheshvaraEventFunctionCallArgumentsDone:
 		state := a.toolState(a.keyOf(event))
-		if event.ToolCallID != "" {
-			state.id = event.ToolCallID
-		}
-		if event.ToolName != "" {
-			state.name = event.ToolName
-		}
+		state.updateIdentity(event)
 		state.arguments.Reset()
 		state.arguments.WriteString(event.ToolArgumentsDone)
 	case relay.MaheshvaraEventUsageDelta:
@@ -546,16 +539,13 @@ func (a *agentStreamAccumulator) apply(event relay.MaheshvaraStreamEvent, cb age
 		} else if event.Response != nil && event.Response.Usage != nil {
 			a.usage = event.Response.Usage
 		}
-		return true
 	case relay.MaheshvaraEventResponseFailed:
 		message := "上游流式响应失败"
 		if event.Error != nil && event.Error.Message != "" {
 			message = event.Error.Message
 		}
 		a.failure = message
-		return true
 	}
-	return false
 }
 
 func (a *agentStreamAccumulator) result() *agent.CallResult {
