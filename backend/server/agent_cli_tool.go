@@ -55,14 +55,14 @@ func (t *elysiaCLITool) Execute(ctx context.Context, tctx agent.ToolContext, arg
 	return agentResultFromCLI(t.server.runCLIWithOptions(ctx, adapter, params.Command, true))
 }
 
-// runAgentCLI is retained as an adapter entry point for the existing Agent
-// integration tests and HTTP path. No CLI implementation depends on it.
+// runAgentCLI 仅供既有集成测试直接驱动批处理;生产工具面走
+// elysiaCLITool.Execute(同一 runCLIWithOptions 实现)。
 func (s *Server) runAgentCLI(ctx context.Context, tctx agent.ToolContext, script string) agent.ToolResult {
 	return agentResultFromCLI(s.runCLIWithOptions(ctx, &agentCLIContext{inner: tctx}, script, true))
 }
 
 func agentResultFromCLI(result CLIResult) agent.ToolResult {
-	return agent.ToolResult{OK: result.OK, Summary: result.Summary, Data: result.Data}
+	return agent.ToolResult{OK: result.OK, Summary: result.Summary, Data: result.Data, SecretValues: result.SecretValues}
 }
 
 type agentCLIContext struct{ inner agent.ToolContext }

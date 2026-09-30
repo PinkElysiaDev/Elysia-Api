@@ -228,3 +228,13 @@ func TestDeletePermissionMapping(t *testing.T) {
 		t.Fatalf("delete key must be known")
 	}
 }
+
+// cliTokenHandlers 返回 API Key 管理域全量工具。
+func cliTokenHandlers(s *Server) []CLIHandler {
+	return []CLIHandler{
+		&listAPIKeysTool{server: s},
+		&createAPIKeyTool{server: s},
+		&updateAPIKeyTool{server: s},
+		&deleteAPIKeyTool{server: s},
+	}
+}

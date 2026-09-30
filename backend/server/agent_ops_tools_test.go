@@ -513,3 +513,27 @@ func TestOpsRenameGroupViaUpdate(t *testing.T) {
 		t.Fatal("duplicate group name must fail")
 	}
 }
+
+// cliOpsHandlers 返回运维域全量工具(仅测试遍历用;生产面经 cliCommandTable 构造)。
+func cliOpsHandlers(s *Server) []CLIHandler {
+	return []CLIHandler{
+		&listSourcesTool{server: s},
+		&listGroupsTool{server: s},
+		&usageStatsTool{server: s},
+		&usageTrendTool{server: s},
+		&usageLogsTool{server: s},
+		&usageLogDetailTool{server: s},
+		&systemLogsTool{server: s},
+		&createSourceTool{server: s},
+		&updateSourceTool{server: s},
+		&refreshSourceTool{server: s},
+		&createGroupTool{server: s},
+		&updateGroupTool{server: s},
+		&outboundPolicyTool{server: s},
+		&deleteSourceTool{server: s},
+		&deleteGroupTool{server: s},
+		&listModelsTool{server: s},
+		&updateModelTool{server: s},
+		&deleteModelTool{server: s},
+	}
+}

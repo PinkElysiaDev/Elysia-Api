@@ -84,8 +84,8 @@ func (t *updateDraftTool) Execute(ctx context.Context, tctx CLIContext, args jso
 		Config          json.RawMessage `json:"config"`
 		ExampleResponse json.RawMessage `json:"exampleResponse,omitempty"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
-		return CLIError("参数解析失败", err.Error())
+	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
+		return badRequest
 	}
 	if len(params.Config) == 0 {
 		return CLIError("缺少 config 参数", "missing config")
@@ -361,8 +361,8 @@ func (t *readProtocolTool) Execute(ctx context.Context, tctx CLIContext, args js
 	var params struct {
 		ID string `json:"id"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
-		return CLIError("参数解析失败", err.Error())
+	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
+		return badRequest
 	}
 	id := strings.TrimSpace(params.ID)
 	if id == "" {

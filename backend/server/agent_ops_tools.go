@@ -38,37 +38,43 @@ const (
 	agentToolDeleteModel  = "delete_model"
 )
 
-// cliOpsHandlers 返回运维域全量工具。
-func cliOpsHandlers(s *Server) []CLIHandler {
-	return []CLIHandler{
-		&listSourcesTool{server: s},
-		&listGroupsTool{server: s},
-		&usageStatsTool{server: s},
-		&usageTrendTool{server: s},
-		&usageLogsTool{server: s},
-		&usageLogDetailTool{server: s},
-		&systemLogsTool{server: s},
-		&createSourceTool{server: s},
-		&updateSourceTool{server: s},
-		&refreshSourceTool{server: s},
-		&createGroupTool{server: s},
-		&updateGroupTool{server: s},
-		&outboundPolicyTool{server: s},
-		&deleteSourceTool{server: s},
-		&deleteGroupTool{server: s},
-		&listModelsTool{server: s},
-		&updateModelTool{server: s},
-		&deleteModelTool{server: s},
-	}
-}
-
 // toolStore 取存储并在不可用时返回统一的失败 CLIResult。
 // 14 处工具 Execute 开头的样板由此收敛为一行守卫。
+// sourceRefreshTimeout 是模型源拉取类 CLI 命令的语句级超时。
+const sourceRefreshTimeout = 60 * time.Second
+
 func toolStore(server *Server) (*storage.Store, CLIResult) {
 	if server.store == nil {
 		return nil, CLIError("存储不可用", "store_unavailable")
 	}
 	return server.store, CLIResult{}
+}
+
+// decodeCLIArgs 解析命令的 JSON 参数;失败时返回统一的「参数解析失败」
+// CLIResult(ok=false),调用方直接透传。
+func decodeCLIArgs(args json.RawMessage, target any) (CLIResult, bool) {
+	if err := json.Unmarshal(args, target); err != nil {
+		return CLIError("参数解析失败", err.Error()), false
+	}
+	return CLIResult{}, true
+}
+
+// requireSource 按 id/名称查找模型源;未找到时返回统一的 not_found 失败结果。
+func requireSource(ctx context.Context, store *storage.Store, ref string) (storage.ModelSource, CLIResult) {
+	source, ok := agentFindSource(ctx, store, ref)
+	if !ok {
+		return storage.ModelSource{}, CLIError(fmt.Sprintf("模型源 %q 不存在", ref), "not_found")
+	}
+	return source, CLIResult{}
+}
+
+// requireGroup 按 id/名称查找模型组;未找到时返回统一的 not_found 失败结果。
+func requireGroup(ctx context.Context, store *storage.Store, ref string) (storage.ModelGroup, CLIResult) {
+	group, ok := agentFindGroup(ctx, store, ref)
+	if !ok {
+		return storage.ModelGroup{}, CLIError(fmt.Sprintf("模型组 %q 不存在", ref), "not_found")
+	}
+	return group, CLIResult{}
 }
 
 // ---- 时间窗与查找辅助 ----
@@ -348,13 +354,8 @@ func (t *usageStatsTool) Execute(ctx context.Context, tctx CLIContext, args json
 	if err != nil {
 		return CLIError("模型分布查询失败: "+err.Error(), "query_failed")
 	}
-	requests, _ := totals["requests"].(int64)
-	if requests == 0 {
-		if v, ok := totals["requests"].(int); ok {
-			requests = int64(v)
-		}
-	}
-	summary := fmt.Sprintf("窗口内 %v 次请求", requests)
+	requests, _ := totals["requests"].(int)
+	summary := fmt.Sprintf("窗口内 %d 次请求", requests)
 	return CLIResult{OK: true, Summary: summary, Data: map[string]any{
 		"window": map[string]any{"from": query.From.Format(time.RFC3339), "to": query.To.Format(time.RFC3339)},
 		"totals": totals, "byModel": byModel,
@@ -466,8 +467,8 @@ func (t *usageLogDetailTool) Execute(ctx context.Context, tctx CLIContext, args 
 	var params struct {
 		RequestID string `json:"requestId"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
-		return CLIError("参数解析失败", err.Error())
+	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
+		return badRequest
 	}
 	if strings.TrimSpace(params.RequestID) == "" {
 		return CLIError("缺少 requestId", "missing_request_id")
@@ -550,8 +551,8 @@ func (t *createSourceTool) Execute(ctx context.Context, tctx CLIContext, args js
 		ManualModels    []string `json:"manualModels"`
 		FetchBaseURL    string   `json:"fetchBaseUrl"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
-		return CLIError("参数解析失败", err.Error())
+	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
+		return badRequest
 	}
 	if strings.TrimSpace(params.Name) == "" || strings.TrimSpace(params.BaseURL) == "" {
 		return CLIError("name 与 baseUrl 必填", "missing_fields")
@@ -625,12 +626,12 @@ func (t *updateSourceTool) Execute(ctx context.Context, tctx CLIContext, args js
 		AutoFetchModels *bool    `json:"autoFetchModels"`
 		ManualModels    []string `json:"manualModels"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
-		return CLIError("参数解析失败", err.Error())
+	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
+		return badRequest
 	}
-	existing, found := agentFindSource(ctx, store, params.Source)
-	if !found {
-		return CLIError(fmt.Sprintf("模型源 %q 不存在", params.Source), "not_found")
+	existing, missingSource := requireSource(ctx, store, params.Source)
+	if existing.ID == "" {
+		return missingSource
 	}
 	item := existing
 	if params.Enabled != nil {
@@ -718,12 +719,12 @@ func (t *refreshSourceTool) Execute(ctx context.Context, tctx CLIContext, args j
 	var params struct {
 		Source string `json:"source"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
-		return CLIError("参数解析失败", err.Error())
+	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
+		return badRequest
 	}
-	source, found := agentFindSource(ctx, store, params.Source)
-	if !found {
-		return CLIError(fmt.Sprintf("模型源 %q 不存在", params.Source), "not_found")
+	source, missingSource := requireSource(ctx, store, params.Source)
+	if source.ID == "" {
+		return missingSource
 	}
 	summary, err := t.server.refreshSourceByValue(ctx, source)
 	t.server.invalidateRouteCache()
@@ -755,12 +756,12 @@ func (t *deleteSourceTool) Execute(ctx context.Context, tctx CLIContext, args js
 	var params struct {
 		Source string `json:"source"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
-		return CLIError("参数解析失败", err.Error())
+	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
+		return badRequest
 	}
-	source, found := agentFindSource(ctx, store, params.Source)
-	if !found {
-		return CLIError(fmt.Sprintf("模型源 %q 不存在", params.Source), "not_found")
+	source, missingSource := requireSource(ctx, store, params.Source)
+	if source.ID == "" {
+		return missingSource
 	}
 	modelCount, affectedGroups := agentSourceUsage(ctx, store, source.ID)
 	if err := t.server.deleteSourceCascade(ctx, store, source.ID); err != nil {
@@ -837,8 +838,8 @@ func (t *createGroupTool) Execute(ctx context.Context, tctx CLIContext, args jso
 		DailyLimitMaxRequests int      `json:"dailyLimitMaxRequests"`
 		DailyLimitMaxTokens   int      `json:"dailyLimitMaxTokens"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
-		return CLIError("参数解析失败", err.Error())
+	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
+		return badRequest
 	}
 	if strings.TrimSpace(params.Name) == "" {
 		return CLIError("name 必填", "missing_name")
@@ -891,12 +892,12 @@ func (t *updateGroupTool) Execute(ctx context.Context, tctx CLIContext, args jso
 		return unavailableResult
 	}
 	var params updateGroupParams
-	if err := json.Unmarshal(args, &params); err != nil {
-		return CLIError("参数解析失败", err.Error())
+	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
+		return badRequest
 	}
-	group, found := agentFindGroup(ctx, store, params.Group)
-	if !found {
-		return CLIError(fmt.Sprintf("模型组 %q 不存在", params.Group), "not_found")
+	group, missingGroup := requireGroup(ctx, store, params.Group)
+	if group.ID == "" {
+		return missingGroup
 	}
 	// 成员增删走原子接口；其余字段整体覆盖。
 	if len(params.RemoveModels) > 0 {
@@ -979,12 +980,12 @@ func (t *deleteGroupTool) Execute(ctx context.Context, tctx CLIContext, args jso
 	var params struct {
 		Group string `json:"group"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
-		return CLIError("参数解析失败", err.Error())
+	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
+		return badRequest
 	}
-	group, found := agentFindGroup(ctx, store, params.Group)
-	if !found {
-		return CLIError(fmt.Sprintf("模型组 %q 不存在", params.Group), "not_found")
+	group, missingGroup := requireGroup(ctx, store, params.Group)
+	if group.ID == "" {
+		return missingGroup
 	}
 	disabledTokens, err := t.server.deleteGroupCascade(ctx, store, group.ID)
 	if err != nil {
@@ -1035,8 +1036,8 @@ func (t *listModelsTool) Execute(ctx context.Context, tctx CLIContext, args json
 		Search string `json:"search"`
 		Limit  int    `json:"limit"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
-		return CLIError("参数解析失败", err.Error())
+	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
+		return badRequest
 	}
 	filter := storage.ModelListFilter{Search: strings.TrimSpace(params.Search)}
 	if strings.TrimSpace(params.Source) != "" {
@@ -1105,12 +1106,12 @@ func (t *updateModelTool) Execute(ctx context.Context, tctx CLIContext, args jso
 		ThinkingMode     *string `json:"thinkingMode"`
 		Enabled          *bool   `json:"enabled"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
-		return CLIError("参数解析失败", err.Error())
+	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
+		return badRequest
 	}
-	source, found := agentFindSource(ctx, store, params.Source)
-	if !found {
-		return CLIError(fmt.Sprintf("模型源 %q 不存在", params.Source), "not_found")
+	source, missingSource := requireSource(ctx, store, params.Source)
+	if source.ID == "" {
+		return missingSource
 	}
 	modelID := strings.TrimSpace(params.Model)
 	if modelID == "" {
@@ -1165,12 +1166,12 @@ func (t *deleteModelTool) Execute(ctx context.Context, tctx CLIContext, args jso
 		Source string `json:"source"`
 		Model  string `json:"model"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
-		return CLIError("参数解析失败", err.Error())
+	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
+		return badRequest
 	}
-	source, found := agentFindSource(ctx, store, params.Source)
-	if !found {
-		return CLIError(fmt.Sprintf("模型源 %q 不存在", params.Source), "not_found")
+	source, missingSource := requireSource(ctx, store, params.Source)
+	if source.ID == "" {
+		return missingSource
 	}
 	modelID := strings.TrimSpace(params.Model)
 	deleted, err := store.DeleteModel(ctx, modelID, source.ID)
@@ -1206,8 +1207,8 @@ func (t *outboundPolicyTool) Execute(ctx context.Context, tctx CLIContext, args 
 		Ranges       []string `json:"ranges"`
 		ResetDefault bool     `json:"resetDefault"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
-		return CLIError("参数解析失败", err.Error())
+	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
+		return badRequest
 	}
 
 	var rollback func()

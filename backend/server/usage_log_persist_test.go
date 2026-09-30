@@ -91,9 +91,9 @@ func TestBodyOnErrorOnlyKeepsFailedBodiesAndWritesAssets(t *testing.T) {
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("asset file must be written for kept body: %v", err)
 	}
-	refs, err := s.store.ReferencedAssetFiles(context.Background())
-	if err != nil || !refs[item.Hash+"."+item.Ext] {
-		t.Fatalf("asset ref must be recorded: refs=%v err=%v", refs, err)
+	refs := referencedAssetFiles(t, s.store)
+	if !refs[item.Hash+"."+item.Ext] {
+		t.Fatalf("asset ref must be recorded: refs=%v", refs)
 	}
 	if !containsWarning(failed, "externalized") {
 		t.Fatalf("RequestWarnings must note externalization: %v", failed.RequestWarnings)

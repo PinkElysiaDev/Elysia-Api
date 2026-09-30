@@ -19,6 +19,23 @@ import (
 // 占位符都能取到文件；删其中一个记录文件保留，两个都删文件才删除。
 // 旧布局 usage-assets/<requestId>/ 只在单请求内去重，多轮对话重发历史
 // 图片会线性放大存储。
+// referencedAssetFiles 汇总仍被引用的资产文件集合(测试断言用,替代已删的
+// Store.ReferencedAssetFiles——生产清扫走 UsageAssets 全量形态)。
+func referencedAssetFiles(t *testing.T, store *storage.Store) map[string]bool {
+	t.Helper()
+	assets, err := store.UsageAssets(t.Context())
+	if err != nil {
+		t.Fatalf("usage assets: %v", err)
+	}
+	files := map[string]bool{}
+	for _, asset := range assets {
+		if asset.Referenced {
+			files[asset.File] = true
+		}
+	}
+	return files
+}
+
 func TestAssetDedupAcrossRequests(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store, err := storage.Open(filepath.Join(t.TempDir(), "dedup.sqlite3"))
@@ -59,8 +76,8 @@ func TestAssetDedupAcrossRequests(t *testing.T) {
 	}
 
 	// 引用计数：两条记录各持一个引用。
-	refs, err := store.ReferencedAssetFiles(ctx)
-	if err != nil || !refs[name] {
+	refs := referencedAssetFiles(t, store)
+	if !refs[name] {
 		t.Fatalf("file must be referenced: %v %v", refs, err)
 	}
 
@@ -140,10 +157,7 @@ func TestMigrateUsageAssetsLayout(t *testing.T) {
 		}
 	}
 	// 引用重建：仅 req-a 的引用存在。
-	refs, err := store.ReferencedAssetFiles(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	refs := referencedAssetFiles(t, store)
 	if !refs["0123456789abcdef.png"] {
 		t.Fatal("referenced file must have its ref rebuilt")
 	}

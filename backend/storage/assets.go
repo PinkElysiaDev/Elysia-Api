@@ -49,23 +49,6 @@ func (s *Store) ForgetUnusedAsset(ctx context.Context, file string) error {
 	return err
 }
 
-func (s *Store) ReferencedAssetFiles(ctx context.Context) (map[string]bool, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT asset_file FROM usage_asset_refs`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	files := map[string]bool{}
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			return nil, err
-		}
-		files[name] = true
-	}
-	return files, rows.Err()
-}
-
 func (s *Store) UsageAssetsRoot() string { return filepath.Join(filepath.Dir(s.path), "usage-assets") }
 func (s *Store) HasUsageAsset(ctx context.Context, requestID, file string) (bool, error) {
 	var exists bool

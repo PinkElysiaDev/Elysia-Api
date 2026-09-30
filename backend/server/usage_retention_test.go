@@ -400,9 +400,9 @@ func TestConcurrentAssetPersistenceAndMaintenance(t *testing.T) {
 	}
 	wg.Wait()
 	r.runOnce()
-	refs, err := s.store.ReferencedAssetFiles(context.Background())
-	if err != nil || len(refs) != 1 {
-		t.Fatalf("refs: %v %v", refs, err)
+	refs := referencedAssetFiles(t, s.store)
+	if len(refs) != 1 {
+		t.Fatalf("refs: %v", refs)
 	}
 	for file := range refs {
 		if _, err := os.Stat(filepath.Join(s.usageAssetsRoot(), file)); err != nil {
