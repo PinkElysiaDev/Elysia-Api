@@ -23,16 +23,6 @@ const (
 	agentKeySecretBytes   = 32
 )
 
-// cliTokenHandlers 返回 API Key 管理域全量工具。
-func cliTokenHandlers(s *Server) []CLIHandler {
-	return []CLIHandler{
-		&listAPIKeysTool{server: s},
-		&createAPIKeyTool{server: s},
-		&updateAPIKeyTool{server: s},
-		&deleteAPIKeyTool{server: s},
-	}
-}
-
 // agentTokenView 令牌的安全视图（明文脱敏）。
 func agentTokenView(item storage.APIToken) map[string]any {
 	return map[string]any{
@@ -105,8 +95,8 @@ func (t *createAPIKeyTool) Execute(ctx context.Context, tctx CLIContext, args js
 		Enabled       *bool    `json:"enabled"`
 		AllowedGroups []string `json:"allowedGroups"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
-		return CLIError("参数解析失败", err.Error())
+	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
+		return badRequest
 	}
 	name := strings.TrimSpace(params.Name)
 	if name == "" {
@@ -135,7 +125,9 @@ func (t *createAPIKeyTool) Execute(ctx context.Context, tctx CLIContext, args js
 		return CLIError("创建失败: "+err.Error(), "persist_failed")
 	}
 	t.server.invalidateRouteCache()
-	// 明文是本次操作的交付物，仅在结果里完整返回这一次；此后所有出口脱敏。
+	// 明文是本次操作的交付物，仅在结果里完整返回这一次；SecretValues 声明后
+	// 现场事件保留原值交付，落库/回放出口按值打码（此前明文会永久存进会话
+	// 历史并逐轮回传模型，与「仅此一次」的承诺矛盾）。
 	origin := "用户指定"
 	if generated {
 		origin = "自动生成"
@@ -144,7 +136,8 @@ func (t *createAPIKeyTool) Execute(ctx context.Context, tctx CLIContext, args js
 		Summary: fmt.Sprintf("API Key %q 已创建（%s），明文仅此一次显示：%s", name, origin, secret),
 		Data: map[string]any{"name": name, "token": secret, "enabled": item.Enabled,
 			"allowedGroups": item.AllowedGroups,
-			"note":          "明文仅此一次显示，请立即保存"}}
+			"note":          "明文仅此一次显示，请立即保存"},
+		SecretValues: []string{secret}}
 }
 
 // ---- update_api_key（门控 save）----
@@ -171,8 +164,8 @@ func (t *updateAPIKeyTool) Execute(ctx context.Context, tctx CLIContext, args js
 		AllowedGroups []string `json:"allowedGroups"`
 		NewSecret     string   `json:"newSecret"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
-		return CLIError("参数解析失败", err.Error())
+	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
+		return badRequest
 	}
 	existing, found, err := store.FindAPITokenByName(ctx, strings.TrimSpace(params.Name))
 	if err != nil {
@@ -229,8 +222,8 @@ func (t *deleteAPIKeyTool) Execute(ctx context.Context, tctx CLIContext, args js
 	var params struct {
 		Name string `json:"name"`
 	}
-	if err := json.Unmarshal(args, &params); err != nil {
-		return CLIError("参数解析失败", err.Error())
+	if badRequest, ok := decodeCLIArgs(args, &params); !ok {
+		return badRequest
 	}
 	name := strings.TrimSpace(params.Name)
 	existing, found, _ := store.FindAPITokenByName(ctx, name)

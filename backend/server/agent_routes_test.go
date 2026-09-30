@@ -906,3 +906,61 @@ func TestAgentStopTurnLandsIdleAndMessage(t *testing.T) {
 		t.Fatalf("stopped system message missing: %+v", messages)
 	}
 }
+
+// key create 的明文「仅此一次」：现场 tool_result 事件携带原值交付，落库的
+// 会话消息按值打码——明文不得永久进入会话历史并逐轮回传模型。
+func TestAgentKeyCreateSecretOnlyInLiveEvent(t *testing.T) {
+	s := newAgentIntegrationServer(t)
+	ctx := t.Context()
+	if err := s.store.UpsertSource(ctx, storage.ModelSource{ID: "s1", Name: "主力", BaseURL: "https://s1.example", Platform: "openai", Enabled: true,
+		ManualModels: []storage.Model{{SourceID: "s1", Name: "m1"}}}); err != nil {
+		t.Fatalf("seed s1: %v", err)
+	}
+	fake := newFakeAgentModelServer(t, [][]string{
+		{ // 发起建 Key（指定明文）→ 审批暂停
+			openAIChunk("c1", toolCallDelta(0, "call_1", "elysia_cli", `{"command":"elysia key create --name smoke-key --secret sk-live-abc123"}`), "", nil),
+			openAIChunk("c1", map[string]any{}, "tool_calls", nil),
+			openAIDone()},
+		{ // 终稿
+			openAIChunk("c2", map[string]any{"role": "assistant", "content": "Key 已建好"}, "", nil),
+			openAIChunk("c2", map[string]any{}, "stop", nil),
+			openAIDone()},
+	})
+	seedAgentModel(t, s, fake.URL)
+
+	c, rec := adminProtocolContext(http.MethodPost, "/api/admin/agent/sessions", `{"mode":"create"}`)
+	s.adminCreateAgentSession(c)
+	sessionID := decodeAdminData(t, rec)["id"].(string)
+	c, _ = agentContextWithID(http.MethodPatch, "/api/admin/agent/sessions/"+sessionID, sessionID,
+		`{"settings":{"modelSourceId":"s1","modelName":"fake-model"}}`)
+	s.adminUpdateAgentSession(c)
+
+	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/messages", sessionID, `{"content":"帮我建个 Key"}`)
+	s.adminSendAgentMessage(c)
+	if !hasAgentEvent(parseSSEEvents(t, rec.Body.String()), "approval_required") {
+		t.Fatalf("key create must pause for approval: %s", rec.Body.String())
+	}
+	c, rec = agentContextWithID(http.MethodPost, "/api/admin/agent/sessions/"+sessionID+"/approve", sessionID, `{"approved":true}`)
+	s.adminApproveAgentAction(c)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("approve: %d %s", rec.Code, rec.Body.String())
+	}
+	// 现场事件：明文原值交付一次。
+	if !strings.Contains(rec.Body.String(), "sk-live-abc123") {
+		t.Fatalf("live tool_result must carry the secret once: %s", truncateForDisplay(rec.Body.String(), 800))
+	}
+	// 落库的 tool_result 消息：明文按值打码。（assistant 消息里模型自发的
+	// 命令原文是既有语义——模型是命令作者，原文本就在其上下文中。）
+	messages, err := s.store.ListMessages(ctx, sessionID)
+	if err != nil {
+		t.Fatalf("list messages: %v", err)
+	}
+	for _, message := range messages {
+		if message.Role != agent.RoleToolResult {
+			continue
+		}
+		if strings.Contains(string(message.Content), "sk-live-abc123") {
+			t.Fatalf("persisted message seq=%d leaks the secret: %.200s", message.Seq, string(message.Content))
+		}
+	}
+}

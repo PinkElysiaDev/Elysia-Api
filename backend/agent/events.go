@@ -78,6 +78,9 @@ type ToolResultInfo struct {
 	Summary    string          `json:"summary,omitempty"`
 	Data       json.RawMessage `json:"data,omitempty"`
 	DurationMs int64           `json:"durationMs,omitempty"`
+	// SecretValues 是仅在现场事件保留的明文密钥清单（见 ToolResult 同名字段），
+	// 不参与任何序列化。
+	SecretValues []string `json:"-"`
 }
 
 // Message 是持久化的会话消息。Content 按 Role 有不同结构：

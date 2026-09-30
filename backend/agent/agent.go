@@ -983,13 +983,14 @@ func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Sess
 
 	direction := clampDirection(MetaOf(tool).PreviewDirection)
 	info = ToolResultInfo{
-		CallID:     call.ID,
-		Name:       call.Name,
-		Input:      call.Arguments,
-		OK:         result.OK,
-		Summary:    clampSummary(result.Summary, summaryModelLimit),
-		Data:       clampJSON(result.MarshalData(), e.opts.ToolResultStoreLimit, direction),
-		DurationMs: time.Since(started).Milliseconds(),
+		CallID:       call.ID,
+		Name:         call.Name,
+		Input:        call.Arguments,
+		OK:           result.OK,
+		Summary:      clampSummary(result.Summary, summaryModelLimit),
+		Data:         clampJSON(result.MarshalData(), e.opts.ToolResultStoreLimit, direction),
+		DurationMs:   time.Since(started).Milliseconds(),
+		SecretValues: result.SecretValues,
 	}
 	// 调用取消后仍记录实际结果，避免会话回放只剩一条未结束的工具调用。
 	recordCtx, stopRecord := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -1067,15 +1068,27 @@ func (e *Engine) persistToolResult(ctx context.Context, sessionID string, info T
 	// test_upstream 等工具的 key 以参数传入，原样入库与「凭证加密存储」的
 	// 承诺矛盾。现场事件与审批恢复路径（PendingAction.Calls）保留原值——
 	// 恢复执行需要真实参数。
+	//
+	// 结果侧的明文密钥（SecretValues，key create 等创建类工具声明）同理：
+	// 现场事件保留原值完成「明文仅此一次」交付，落库与回放按值精确打码，
+	// 防止明文永久进入会话历史并逐轮回传模型。
 	stored := info
 	stored.Input = MaskSecretInputs(info.Input)
+	if len(info.SecretValues) > 0 {
+		stored.Summary = MaskSecretText(info.Summary, info.SecretValues)
+		stored.Data = MaskSecretData(info.Data, info.SecretValues)
+		stored.SecretValues = nil
+	}
 	seq, err := e.store.AppendMessage(ctx, sessionID, RoleToolResult, stored, "", nil)
 	if err != nil {
 		emitEvent(events, Event{Type: EventStatus, Text: fmt.Sprintf("工具结果落库失败: %v", err)})
 		return
 	}
+	live := info
+	live.Input = MaskSecretInputs(info.Input)
+	live.SecretValues = nil
 	encoded, _ := json.Marshal(stored)
-	result := stored
+	result := live
 	emitEvent(events, Event{Type: EventToolResult, CallID: info.CallID, Name: info.Name, Result: &result, Message: &Message{Seq: seq, Role: RoleToolResult, Content: encoded, CreatedAt: time.Now()}})
 }
 

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"regexp"
 	"strings"
 
@@ -93,4 +94,54 @@ var cliSecretFlagPattern = regexp.MustCompile(
 // 只允许留在落库原文里（批准后按原文执行）。
 func RedactCommandLine(command string) string {
 	return cliSecretFlagPattern.ReplaceAllString(command, "${1}***")
+}
+
+// secretValueMask 是按值精确打码的替换文本。
+const secretValueMask = "***"
+
+// MaskSecretText 把文本里出现的已知明文密钥值替换为 ***（值来自工具自身
+// 产物，见 ToolResult.SecretValues——精确按值匹配，不会误伤其它内容）。
+func MaskSecretText(text string, secrets []string) string {
+	for _, secret := range secrets {
+		if secret != "" {
+			text = strings.ReplaceAll(text, secret, secretValueMask)
+		}
+	}
+	return text
+}
+
+// MaskSecretData 对 JSON 数据做同样的按值打码：解析后递归替换字符串里的
+// 明文密钥再序列化；解析/序列化失败原样返回（打码尽力而为，不阻断落库）。
+func MaskSecretData(raw []byte, secrets []string) []byte {
+	if len(raw) == 0 || len(secrets) == 0 {
+		return raw
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return raw
+	}
+	masked, err := json.Marshal(maskSecretTextInValue(value, secrets))
+	if err != nil {
+		return raw
+	}
+	return masked
+}
+
+func maskSecretTextInValue(value any, secrets []string) any {
+	switch typed := value.(type) {
+	case string:
+		return MaskSecretText(typed, secrets)
+	case map[string]any:
+		for key, item := range typed {
+			typed[key] = maskSecretTextInValue(item, secrets)
+		}
+		return typed
+	case []any:
+		for index, item := range typed {
+			typed[index] = maskSecretTextInValue(item, secrets)
+		}
+		return typed
+	default:
+		return value
+	}
 }

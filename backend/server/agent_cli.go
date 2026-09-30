@@ -128,7 +128,8 @@ type cliSegment struct {
 }
 
 // cliSplitStatements 按顶层 `&&` / `;` / 换行切分脚本（引号内不切分，
-// 双引号内 \" 与 \\ 不改变引号态——与 tokenizer 同一规则）。
+// 双引号内 \" 与 \\ 不改变引号态——与 tokenizer 同一规则）。`&&` 后的换行
+// 视为续行（空段不清除链标记），`a &&\nb` 与 `a && b` 同义。
 func cliSplitStatements(script string) ([]cliSegment, error) {
 	var parts []cliSegment
 	var current strings.Builder
@@ -137,8 +138,10 @@ func cliSplitStatements(script string) ([]cliSegment, error) {
 	flush := func(mustSucceed bool) {
 		if trimmed := strings.TrimSpace(current.String()); trimmed != "" {
 			parts = append(parts, cliSegment{raw: trimmed, mustSucceed: mustSucceed, fromAnd: pendingFromAnd})
+			// 仅实际产出语句段时清链标记：`&&` 右侧的空段（换行/分号前）
+			// 表示链还在等右操作数，跨换行保持 fromAnd。
+			pendingFromAnd = false
 		}
-		pendingFromAnd = false
 		current.Reset()
 	}
 	for i := 0; i < len(script); i++ {
@@ -1130,14 +1133,16 @@ func cliResolve(args []string) (*cliInvocation, error) {
 }
 
 // lookupCLICommand 按最长前缀在命令表里匹配路径（组 [命令 [二级]]），
-// 返回命中的命令与余下的 flag/位置参数词。
+// 返回命中的命令与余下的 flag/位置参数词。命令表只构建一次——表内含闭包
+// 与惰性 detail 函数,放进 depth 循环会每条语句最多重建 3 次。
 func lookupCLICommand(args []string) (*cliCommand, []string) {
+	table := cliCommandTable()
 	for depth := cliMaxCommandWords; depth >= 1; depth-- {
 		if len(args) < depth {
 			continue
 		}
 		path := strings.Join(args[:depth], " ")
-		for _, command := range cliCommandTable() {
+		for _, command := range table {
 			if command.Path() == path {
 				return command, args[depth:]
 			}
@@ -1173,6 +1178,7 @@ func (s *Server) runCLIWithOptions(ctx context.Context, tctx CLIContext, script 
 	// 只有一行「执行中」挂全程（旧每工具一行的过程可见性丢失）。
 	reporter, hasProgress := tctx.(interface{ ReportProgress(string) })
 	total := len(segments)
+	var batchSecrets []string
 	for index, segment := range segments {
 		if skipChain {
 			if segment.fromAnd {
@@ -1187,8 +1193,9 @@ func (s *Server) runCLIWithOptions(ctx context.Context, tctx CLIContext, script 
 		if hasProgress {
 			reporter.ReportProgress(fmt.Sprintf("正在执行（%d/%d）：%s", index+1, total, redactCLICommandLine(segment.raw)))
 		}
-		cmdOutput, ok := s.runOneCLIStatement(ctx, tctx, segment.raw, allowInternal)
+		cmdOutput, ok, statementSecrets := s.runOneCLIStatement(ctx, tctx, segment.raw, allowInternal)
 		output.WriteString(cmdOutput)
+		batchSecrets = append(batchSecrets, statementSecrets...)
 		if ok {
 			succeeded++
 		} else {
@@ -1209,11 +1216,13 @@ func (s *Server) runCLIWithOptions(ctx context.Context, tctx CLIContext, script 
 		exitCode = 1
 	}
 	return CLIResult{OK: exitCode == 0, Summary: summary,
-		Data: map[string]any{"output": text, "exitCode": exitCode}}
+		Data:         map[string]any{"output": text, "exitCode": exitCode},
+		SecretValues: batchSecrets,
+	}
 }
 
 // runOneCLIStatement 执行单条语句，返回渲染后的文本块与成败。
-func (s *Server) runOneCLIStatement(ctx context.Context, tctx CLIContext, raw string, allowInternal bool) (string, bool) {
+func (s *Server) runOneCLIStatement(ctx context.Context, tctx CLIContext, raw string, allowInternal bool) (string, bool, []string) {
 	var out strings.Builder
 	// 回显打码：输出会随 tool_result 落库并回放给模型，敏感 flag 的值
 	// 不允许经此二次出站（模型自己发的命令，原文在它的上下文里）。
@@ -1221,7 +1230,7 @@ func (s *Server) runOneCLIStatement(ctx context.Context, tctx CLIContext, raw st
 	statement, err := cliParseStatement(raw)
 	if err != nil {
 		out.WriteString("错误: " + err.Error() + "\n\n")
-		return out.String(), false
+		return out.String(), false, nil
 	}
 	if isCLIHelpArgs(statement.args) {
 		// help 输出同样支持 grep/head 管道（help 文本可能上百行）。
@@ -1230,28 +1239,28 @@ func (s *Server) runOneCLIStatement(ctx context.Context, tctx CLIContext, raw st
 			helpArgs = helpArgs[1:]
 		}
 		out.WriteString(applyCLIPipes(renderCLIHelp(helpArgs), statement) + "\n\n")
-		return out.String(), true
+		return out.String(), true, nil
 	}
 	if allowInternal && len(statement.args) >= 3 && statement.args[0] == "session" && statement.args[1] == "title" && len(statement.pipes) == 0 {
 		encoded, _ := json.Marshal(map[string]any{"title": strings.Join(statement.args[2:], " ")})
 		result := (&updateTitleTool{}).Execute(ctx, tctx, encoded)
 		out.WriteString(renderCLIResult(result, statement) + "\n\n")
-		return out.String(), result.OK
+		return out.String(), result.OK, nil
 	}
 	inv, err := cliResolve(statement.args)
 	if err != nil {
 		out.WriteString("错误: " + err.Error() + "\n\n")
-		return out.String(), false
+		return out.String(), false, nil
 	}
 	args, err := inv.command.mapper(inv)
 	if err != nil {
 		out.WriteString("错误: " + err.Error() + "\n\n")
-		return out.String(), false
+		return out.String(), false, nil
 	}
 	encoded, err := json.Marshal(args)
 	if err != nil {
 		out.WriteString("错误: 参数序列化失败: " + err.Error() + "\n\n")
-		return out.String(), false
+		return out.String(), false, nil
 	}
 	handler := inv.command.handler(s)
 	// 语句级超时：批级预算内按 handler 配置收紧，未声明时使用默认值。
@@ -1265,7 +1274,7 @@ func (s *Server) runOneCLIStatement(ctx context.Context, tctx CLIContext, raw st
 	result := handler.Execute(execCtx, tctx, encoded)
 	text := renderCLIResult(result, statement)
 	out.WriteString(text + "\n\n")
-	return out.String(), result.OK
+	return out.String(), result.OK, result.SecretValues
 }
 
 // renderCLIResult 把单条命令的 CLIResult 渲染为文本（含管道过滤）。

@@ -114,6 +114,10 @@ type ToolResult struct {
 	OK      bool
 	Summary string
 	Data    any // 会被 json.Marshal；字符串原样传递
+	// SecretValues 声明结果文本/数据里出现的明文密钥（如 key create 生成的
+	// token）：现场 SSE 事件保留原值（明文仅此一次交付给用户），落库与回放
+	// 出口按值精确打码，防止明文永久存进会话历史并逐轮回传模型。
+	SecretValues []string
 }
 
 // ToolResultJSON 把 Data 序列化为回传模型的原始 JSON（引擎在截断前调用）。

@@ -40,6 +40,16 @@ func TestCLIParser(t *testing.T) {
 		t.Fatalf("segments = %+v", segments)
 	}
 
+	// `&&` 后换行视为续行：右侧段仍标 fromAnd（空段不得清掉链标记，否则
+	// `a &&\nb` 里 b 会逃脱失败跳过语义）。
+	segments, err = cliSplitStatements("elysia group create --name g9 &&\nelysia group ls")
+	if err != nil {
+		t.Fatalf("split continuation: %v", err)
+	}
+	if len(segments) != 2 || !segments[0].mustSucceed || !segments[1].fromAnd {
+		t.Fatalf("continuation segments = %+v", segments)
+	}
+
 	// 管道（按书写顺序）与 head 的三种习惯写法。
 	statement, err := cliParseStatement("elysia usage logs --status failed | grep timeout | head 5")
 	if err != nil {
