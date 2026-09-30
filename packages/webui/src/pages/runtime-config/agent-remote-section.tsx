@@ -45,20 +45,22 @@ export function AgentRemoteSection({
       title="AI 助手远程访问"
       description="通过 REST / MCP / A2A 远程驱动内置助手，或通过 MCP 直接执行运维命令"
     >
-      <div className="space-y-4">
+      <div className="space-y-1">
         <SettingRow
           label="启用远程访问"
+          htmlFor="runtime-remote-enabled"
           description="关闭后 /api/agent、/mcp、/a2a 三个入口全部下线（404）；保存后即时生效"
         >
-          <Switch checked={enabled} onCheckedChange={onToggle} />
+          <Switch id="runtime-remote-enabled" aria-describedby="runtime-remote-enabled-description" checked={enabled} onCheckedChange={onToggle} />
         </SettingRow>
 
         <SettingRow
           label="对外基础地址"
+          htmlFor="runtime-public-url"
           description="用于生成 MCP 配置与远程接入地址（如 https://gw.example.com）；留空使用当前访问地址"
           inline={false}
         >
-          <Input
+          <Input id="runtime-public-url" aria-describedby="runtime-public-url-description"
             className="w-full font-mono text-xs"
             value={form.agentRemote.publicUrl}
             placeholder={window.location.origin}
@@ -96,10 +98,10 @@ function EndpointRow({ label, path, base }: { label: string; path: string; base:
   return (
     <div className="flex items-center gap-2">
       <span className="w-20 shrink-0 text-xs text-muted-foreground">{label}</span>
-      <code className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-2xs text-foreground">
+      <code title={value} className="min-w-0 flex-1 break-all rounded bg-muted px-2 py-1 font-mono text-2xs text-foreground">
         {value}
       </code>
-      <CopyButton value={value} size="iconSm" variant="outline" title="复制地址" />
+      <CopyButton value={value} size="iconSm" variant="outline" title={`复制 ${label} 地址`} />
     </div>
   )
 }
@@ -198,6 +200,7 @@ function AgentRemoteTokens({ baseUrl, remoteEnabled }: { baseUrl: string; remote
     <div className="border-t border-border/40 pt-3 space-y-3">
       <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         <KeyRound className="h-3.5 w-3.5" /> 远程访问 Key
+        <span className="ml-auto text-2xs font-normal">操作立即生效</span>
       </p>
 
       {agentKeys.length === 0 ? (
@@ -210,8 +213,9 @@ function AgentRemoteTokens({ baseUrl, remoteEnabled }: { baseUrl: string; remote
             renaming?.name === token.name ? (
               <div key={token.name} className="flex items-center gap-2">
                 <Input
+                  aria-label="远程 Key 新名称"
                   autoFocus
-                  className="h-8 flex-1 text-xs"
+                  className="h-8 min-w-0 flex-1 text-xs"
                   value={renameValue}
                   onChange={(e) => setRenameValue(e.target.value)}
                   onKeyDown={(e) => {
@@ -229,11 +233,12 @@ function AgentRemoteTokens({ baseUrl, remoteEnabled }: { baseUrl: string; remote
             ) : (
               <div key={token.name} className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
                 <Switch
+                  aria-label={`启用远程 Key ${token.name}`}
                   checked={token.enabled}
                   onCheckedChange={(v) => void handleToggle(token, v)}
                 />
                 <span className="w-24 shrink-0 truncate text-xs font-medium">{token.name}</span>
-                <span className="flex min-w-44 flex-1 items-center gap-1.5 [&>span]:truncate">
+                <span className="flex min-w-0 basis-44 flex-1 items-center gap-1.5 [&>span]:truncate">
                   <RevealCopyButton name={token.name} maskedToken={token.token || '••••'} hideReveal />
                 </span>
                 <MCPConfigCopyButton
@@ -245,6 +250,7 @@ function AgentRemoteTokens({ baseUrl, remoteEnabled }: { baseUrl: string; remote
                   variant="ghost"
                   size="iconSm"
                   title="重命名"
+                  aria-label={`重命名远程 Key ${token.name}`}
                   onClick={() => {
                     setRenaming(token)
                     setRenameValue(token.name)
@@ -256,6 +262,7 @@ function AgentRemoteTokens({ baseUrl, remoteEnabled }: { baseUrl: string; remote
                   variant="ghost"
                   size="iconSm"
                   title="删除"
+                  aria-label={`删除远程 Key ${token.name}`}
                   onClick={() => void handleDelete(token.name)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -268,8 +275,9 @@ function AgentRemoteTokens({ baseUrl, remoteEnabled }: { baseUrl: string; remote
 
       <div className="flex items-center gap-2">
         <Input
-          className="h-8 flex-1 text-xs"
+          className="h-8 min-w-0 flex-1 text-xs"
           value={newName}
+          aria-label="新 Key 名称"
           placeholder="新 Key 名称（如 cursor、ops-agent）"
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => {

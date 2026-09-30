@@ -54,6 +54,7 @@ export interface SettingRowProps {
   /** 左右横排布局 (适合 Switch, Select, 短输入框)；false 为上下纵排 (适合多行或宽表单) */
   inline?: boolean
   required?: boolean
+  htmlFor?: string
   className?: string
 }
 
@@ -66,6 +67,7 @@ export function SettingRow({
   children,
   inline = true,
   required,
+  htmlFor,
   className,
 }: SettingRowProps) {
   if (inline) {
@@ -78,11 +80,11 @@ export function SettingRow({
         )}
       >
         <div className="max-w-md space-y-0.5">
-          <label className="text-sm font-medium text-foreground">
+          <label htmlFor={htmlFor} className="text-sm font-medium text-foreground">
             {label}
             {required && <span className="ml-1 text-destructive">*</span>}
           </label>
-          {description && <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>}
+          {description && <p id={htmlFor ? `${htmlFor}-description` : undefined} className="text-xs leading-relaxed text-muted-foreground">{description}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-2 sm:justify-end">{children}</div>
       </div>
@@ -97,11 +99,11 @@ export function SettingRow({
       )}
     >
       <div className="space-y-0.5">
-        <label className="text-sm font-medium text-foreground">
+        <label htmlFor={htmlFor} className="text-sm font-medium text-foreground">
           {label}
           {required && <span className="ml-1 text-destructive">*</span>}
         </label>
-        {description && <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>}
+        {description && <p id={htmlFor ? `${htmlFor}-description` : undefined} className="text-xs leading-relaxed text-muted-foreground">{description}</p>}
       </div>
       <div className="pt-1">{children}</div>
     </div>

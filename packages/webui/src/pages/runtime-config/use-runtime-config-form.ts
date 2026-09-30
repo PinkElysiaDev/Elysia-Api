@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RuntimeConfig, UsageLogRuntimeConfig, LogRetentionConfig } from '@/lib/types'
 
 /** 目录同步周期的表单默认（与后端 ResolveModelCatalogInterval 默认一致）。 */
@@ -29,30 +29,26 @@ export function useRuntimeConfigForm(data: RuntimeConfig | undefined) {
   const pristineRef = useRef<RuntimeConfigForm | null>(null)
   const lastBodyMaxKB = useRef(1024)
 
+  const reset = useCallback((saved: RuntimeConfig) => {
+    const normalized: RuntimeConfigForm = {
+      ...saved,
+      modelCatalog: saved.modelCatalog ?? {
+        enabled: true, url: '', syncIntervalMinutes: defaultCatalogSyncMinutes,
+      },
+      outbound: saved.outbound ?? { deniedIpRanges: [] },
+      agentRemote: {
+        enabled: saved.agentRemote?.enabled ?? defaultAgentRemote.enabled,
+        publicUrl: saved.agentRemote?.publicUrl ?? defaultAgentRemote.publicUrl,
+      },
+    }
+    lastBodyMaxKB.current = saved.usageLog.bodyMaxKB > 0 ? saved.usageLog.bodyMaxKB : 1024
+    pristineRef.current = normalized
+    setForm(normalized)
+  }, [])
+
   useEffect(() => {
-    const savedBodyMaxKB = data?.usageLog?.bodyMaxKB ?? 0
-    lastBodyMaxKB.current = savedBodyMaxKB > 0 ? savedBodyMaxKB : 1024
-    if (data)
-      setForm({
-        ...data,
-        usageLog: data.usageLog,
-        modelCatalog: data.modelCatalog ?? {
-          enabled: true,
-          url: '',
-          syncIntervalMinutes: defaultCatalogSyncMinutes,
-        },
-        outbound: data.outbound ?? { deniedIpRanges: [] },
-        agentRemote: {
-          enabled: data.agentRemote?.enabled ?? defaultAgentRemote.enabled,
-          publicUrl: data.agentRemote?.publicUrl ?? defaultAgentRemote.publicUrl,
-        },
-      })
-    pristineRef.current = null
-    setForm((prev) => {
-      if (prev) pristineRef.current = { ...prev }
-      return prev
-    })
-  }, [data])
+    if (data) reset(data)
+  }, [data, reset])
 
   function update<K extends keyof RuntimeConfig>(key: K, value: RuntimeConfig[K]) {
     setForm((prev) => (prev ? { ...prev, [key]: value } : prev))
@@ -123,8 +119,18 @@ export function useRuntimeConfigForm(data: RuntimeConfig | undefined) {
     }
   }
 
+  const pristine = pristineRef.current
+  const isDirty = Boolean(form && pristine && (
+    (['host', 'port', 'logLevel', 'httpTimeout', 'databasePath', 'enablePprof'] as const)
+      .some((key) => form[key] !== pristine[key]) ||
+    (form.panelAccessToken.trim() !== '' && form.panelAccessToken !== pristine.panelAccessToken) ||
+    Object.keys(dirtyBlockPayload()).length > 0
+  ))
+
   return {
     form,
+    reset,
+    isDirty,
     update,
     updateUsageLog,
     updateSystemLog,
