@@ -43,8 +43,10 @@ export function buildExportPayload(detail: UsageLogDetail) {
     overview: {
       requestId: detail.requestId,
       api: detail.platform,
+      requestedModelGroup: detail.requestedModelGroup,
       groupName: detail.groupName,
       modelName: detail.modelName,
+      sourceId: detail.sourceId,
       conversion: {
         from: detail.sourceFormat || detail.inputFormat || '',
         to: detail.targetFormat || detail.platform || '',
@@ -77,6 +79,8 @@ export function buildExportPayload(detail: UsageLogDetail) {
 
 export function errorKindLabel(kind: string): string {
   switch (kind) {
+    case 'client_canceled':
+      return '客户端取消'
     case 'conversion':
       return '协议转换失败' // 历史值域,现归入 invalid_request
     case 'invalid_request':

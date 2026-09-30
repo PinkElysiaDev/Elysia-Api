@@ -1245,7 +1245,6 @@ func numberFromUsageMap(raw map[string]interface{}, key string) float64 {
 func setRecordGroup(record *usageRecord, group *config.ModelGroupConfig) {
 	record.GroupID = group.ID
 	record.GroupName = group.Name
-	record.RequestedModelGroup = group.Name
 }
 
 func setRecordModel(record *usageRecord, model config.ModelRef, platform relay.Platform) {

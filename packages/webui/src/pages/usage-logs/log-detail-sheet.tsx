@@ -1,23 +1,24 @@
 
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import {
   AlertTriangle,
   Download,
   MoveRight,
 } from 'lucide-react'
-import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetSectionTitle, SheetTitle } from '@/components/ui/sheet'
 import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
+import { useSources } from '@/lib/hooks'
 import { protocolLabel } from '@/lib/protocol'
 import type { UsageLogDetail } from '@/lib/types'
-import { cn, downloadJSON, formatDateTime, formatDuration, formatNumber } from '@/lib/utils'
+import { downloadJSON, formatDateTime, formatDuration, formatNumber } from '@/lib/utils'
 import { ChainBodies } from './log-detail/body-sections'
 import { buildExportPayload, errorKindLabel } from './log-detail/body-helpers'
 
 export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: () => void }) {
   const toast = useToast()
+  const { data: sources } = useSources()
   const [detail, setDetail] = useState<UsageLogDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -54,6 +55,13 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
     toast.success('已导出完整日志', filename)
   }
 
+  const internal = detail?.relayMode === 'agent-assist'
+  const targetProtocol = protocolLabel(detail?.targetFormat || detail?.platform || '', 'long')
+  const protocols = [...new Set([
+    internal ? '' : protocolLabel(detail?.sourceFormat || detail?.inputFormat || '', 'long'),
+    targetProtocol,
+  ].filter(Boolean))]
+  const sourceName = sources?.find((source) => source.id === detail?.sourceId)?.name || detail?.sourceId
   const usage = detail?.usage
   // tokbar 三段：缓存命中 rose-soft / 未命中输入 rose / 输出 jade
   const cacheHit = usage?.cacheHitTokens ?? 0
@@ -89,8 +97,8 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                 <div className="mb-5 flex items-start gap-2 rounded-[7px] border border-[color-mix(in_srgb,var(--ember)_35%,transparent)] bg-[color-mix(in_srgb,var(--ember)_7%,transparent)] p-3 text-sm text-ember">
                   <AlertTriangle className="mt-0.5 h-[15px] w-[15px] shrink-0" />
                   <span className="min-w-0 break-all">
-                    HTTP {detail.statusCode}
-                    {detail.errorKind && ` · ${errorKindLabel(detail.errorKind)}`} · {detail.error}
+                    {detail.statusCode === 499 ? '客户端取消（499）' : `调用失败（${detail.statusCode}）`}
+                    {detail.errorKind && detail.errorKind !== 'client_canceled' && ` · ${errorKindLabel(detail.errorKind)}`} · {detail.error}
                   </span>
                 </div>
               )}
@@ -98,39 +106,27 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
               <section className="mb-5">
                 <SheetSectionTitle>协议链路</SheetSectionTitle>
                 <div className="flex flex-wrap items-center gap-[7px]">
-                  <span className="max-w-full break-all rounded-full border border-input bg-card px-2.5 py-[3px] font-mono text-2xs text-muted-foreground">
-                    {protocolLabel(detail.sourceFormat || detail.inputFormat || '', 'long') || '—'}
-                  </span>
-                  <MoveRight className="h-3 w-3 text-muted-foreground" aria-hidden />
-                  <span
-                    className={cn(
-                      'max-w-full break-all rounded-full border px-2.5 py-[3px] font-mono text-2xs',
-                      // 归一化后比较:预置协议与等价内置线(如 gemini ↔ custom:gemini-api)
-                      // 显示同名、不标红;仅真实跨线制转换才强调。
-                      detail.sourceFormat &&
-                        detail.targetFormat &&
-                        protocolLabel(detail.sourceFormat, 'long') !== protocolLabel(detail.targetFormat, 'long')
-                        ? 'border-rose bg-wash text-rose'
-                        : 'border-input bg-card text-muted-foreground',
-                    )}
-                  >
-                    {protocolLabel(detail.targetFormat || detail.platform, 'long') || '—'}
-                  </span>
-                  <span className="ml-2 inline-flex items-center gap-1 font-mono text-2xs text-muted-foreground">
-                    <CopyButton value={detail.requestId} />
-                  </span>
+                  {protocols.map((protocol, index) => (
+                    <Fragment key={protocol}>
+                      {index > 0 && <MoveRight className="h-3 w-3 text-muted-foreground" aria-hidden />}
+                      <span className="max-w-full break-all rounded-full border border-input bg-card px-2.5 py-[3px] font-mono text-2xs text-muted-foreground">
+                        {protocol}
+                      </span>
+                    </Fragment>
+                  ))}
+                  {(internal || (!detail.modelName && !targetProtocol)) && (
+                    <span className="text-2xs text-muted-foreground">{internal ? '内部调用' : '未转发'}</span>
+                  )}
                 </div>
                 <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-[7px] text-xs">
                   <dt className="whitespace-nowrap text-muted-foreground">调用方</dt>
                   <dd className="tnum min-w-0 break-all">{detail.keyName || '—'}</dd>
-                  <dt className="whitespace-nowrap text-muted-foreground">模型组 → 命中</dt>
-                  <dd className="tnum min-w-0 break-all">
-                    {detail.groupName || '—'} → <span className="font-mono">{detail.modelName || '—'}</span>
-                  </dd>
-                  <dt className="whitespace-nowrap text-muted-foreground">平台协议</dt>
-                  <dd className="min-w-0 break-all font-mono text-xs">
-                    {protocolLabel(detail.platform || '', 'long') || '—'}
-                  </dd>
+                  <dt className="whitespace-nowrap text-muted-foreground">请求模型</dt>
+                  <dd className="min-w-0 break-all font-mono">{detail.requestedModelGroup || '—'}</dd>
+                  <dt className="whitespace-nowrap text-muted-foreground">实际模型</dt>
+                  <dd className="min-w-0 break-all font-mono">{detail.modelName || '未路由'}</dd>
+                  <dt className="whitespace-nowrap text-muted-foreground">模型源</dt>
+                  <dd className="min-w-0 break-all">{sourceName || '—'}</dd>
                   <dt className="whitespace-nowrap text-muted-foreground">传输方式</dt>
                   <dd className="tnum">{detail.stream ? '流式' : '缓冲'}</dd>
                   <dt className="whitespace-nowrap text-muted-foreground">用量来源</dt>

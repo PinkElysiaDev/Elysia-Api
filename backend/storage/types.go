@@ -275,30 +275,31 @@ type UsageModelDailyBucket struct {
 }
 
 type UsageLogItem struct {
-	RequestID         string    `json:"requestId"`
-	StartedAt         time.Time `json:"startedAt"`
-	KeyName           string    `json:"keyName"`
-	KeyHash           string    `json:"keyHash"`
-	GroupName         string    `json:"groupName"`
-	ModelName         string    `json:"modelName"`
-	SourceID          string    `json:"sourceId,omitempty"`
-	Platform          string    `json:"platform"`
-	SourceFormat      string    `json:"sourceFormat"`
-	TargetFormat      string    `json:"targetFormat"`
-	RelayMode         string    `json:"relayMode"`
-	ResponsesMode     string    `json:"responsesMode"`
-	UsageSource       string    `json:"usageSource"`
-	Stream            bool      `json:"stream"`
-	StatusCode        int       `json:"statusCode"`
-	Error             string    `json:"error,omitempty"`
-	FirstByteMs       int64     `json:"firstByteMs"`
-	DurationMs        int64     `json:"durationMs"`
-	InputTokens       int       `json:"inputTokens"`
-	OutputTokens      int       `json:"outputTokens"`
-	TotalTokens       int       `json:"totalTokens"`
-	CacheHitTokens    int       `json:"cacheHitTokens"`
-	RequestTruncated  bool      `json:"incomingBodyTruncated"`
-	ResponseTruncated bool      `json:"providerResponseTruncated"`
+	RequestID           string    `json:"requestId"`
+	StartedAt           time.Time `json:"startedAt"`
+	KeyName             string    `json:"keyName"`
+	KeyHash             string    `json:"keyHash"`
+	RequestedModelGroup string    `json:"requestedModelGroup"`
+	GroupName           string    `json:"groupName"`
+	ModelName           string    `json:"modelName"`
+	SourceID            string    `json:"sourceId,omitempty"`
+	Platform            string    `json:"platform"`
+	SourceFormat        string    `json:"sourceFormat"`
+	TargetFormat        string    `json:"targetFormat"`
+	RelayMode           string    `json:"relayMode"`
+	ResponsesMode       string    `json:"responsesMode"`
+	UsageSource         string    `json:"usageSource"`
+	Stream              bool      `json:"stream"`
+	StatusCode          int       `json:"statusCode"`
+	Error               string    `json:"error,omitempty"`
+	FirstByteMs         int64     `json:"firstByteMs"`
+	DurationMs          int64     `json:"durationMs"`
+	InputTokens         int       `json:"inputTokens"`
+	OutputTokens        int       `json:"outputTokens"`
+	TotalTokens         int       `json:"totalTokens"`
+	CacheHitTokens      int       `json:"cacheHitTokens"`
+	RequestTruncated    bool      `json:"incomingBodyTruncated"`
+	ResponseTruncated   bool      `json:"providerResponseTruncated"`
 }
 
 type SystemLog struct {

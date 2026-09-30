@@ -229,7 +229,7 @@ func TestAgentFullTurnWithDraftTool(t *testing.T) {
 			t.Fatalf("missing %s event; types=%v first-error=%v", want, summaries, errorText(events))
 		}
 	}
-	// 用量入账：两次模型调用各一条，key_name = AI 协议助手
+	// 用量入账：两次模型调用各一条，key_name = AI 助手
 	_, logs, err := s.store.QueryUsageLogs(t.Context(), storage.UsageQuery{KeyName: AgentUsageKeyName, Limit: 10})
 	if err != nil {
 		t.Fatalf("query usage: %v", err)

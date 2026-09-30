@@ -260,6 +260,7 @@ export interface UsageStats {
 }
 
 export interface UsageLogItem {
+  requestedModelGroup: string
   requestId: string
   startedAt: string
   keyName: string
@@ -366,12 +367,13 @@ export interface UsageRetryEvent {
 
 /** GET /usage/logs/:id 返回的完整记录，含四段链路原文。 */
 export interface UsageLogDetail {
+  sourceId?: string
   requestId: string
   startedAt: string
   endedAt: string
   keyName: string
   keyHash: string
-  requestedModelGroup?: string
+  requestedModelGroup: string
   groupId?: string
   groupName: string
   modelId?: string
@@ -390,7 +392,7 @@ export interface UsageLogDetail {
   stream: boolean
   statusCode: number
   error?: string
-  /** 错误归类：conversion=协议转换失败、upstream=上游失败；空表示未归类。 */
+  /** 错误归类：client_canceled=客户端取消、upstream=上游失败；空表示未归类。 */
   errorKind?: string
   firstByteMs: number
   durationMs: number

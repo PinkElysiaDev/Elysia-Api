@@ -8,6 +8,7 @@ async function mockAdmin(page: Page) {
   await page.route('**/api/admin/**', async (route) => {
     const path = new URL(route.request().url()).pathname
     const data = path.endsWith('/seq') ? { seq: 1 }
+      : /\/usage\/(trend|by-model|by-model-daily)$/.test(path) ? []
       : path.endsWith('/model-groups') ? { items: [{ id: 'one', name: 'Alpha', models: [] }, { id: 'two', name: 'Beta', models: [] }] }
         : { items: [], total: 0 }
     await route.fulfill({ json: { ok: true, data } })

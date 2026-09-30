@@ -124,7 +124,7 @@ func TestAgentCallerDefaultLogsMetadataOnly(t *testing.T) {
 			if err := json.Unmarshal([]byte(storedRecordJSON(t, s.store, logs[0].RequestID)), &record); err != nil {
 				t.Fatal(err)
 			}
-			if record.OutgoingBody.Content != "" || record.ProviderResponse.Content != "" {
+			if record.IncomingBody.Content != "" || record.OutgoingBody.Content != "" || record.ProviderResponse.Content != "" || record.DownstreamResponse.Content != "" {
 				t.Fatalf("agent retained bodies: %+v", record)
 			}
 		})
