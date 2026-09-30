@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="node tree">
-<style>.i{fill:#D6337F}.a{fill:#F08AC8}.si{stroke:#D6337F;fill:none}.sa{stroke:#F08AC8;fill:none}
-@media (prefers-color-scheme: light){.i{fill:#C2186B}.a{fill:#E86FB4}.si{stroke:#C2186B}.sa{stroke:#E86FB4}}
-@media (prefers-color-scheme: dark){.i{fill:#F2A7DE}.a{fill:#FFC4E8}.si{stroke:#F2A7DE}.sa{stroke:#FFC4E8}}</style>
-<path class="si" stroke-width="2.4" stroke-linecap="square" d="M12 8.4 V11.2 M12 11.2 L6.4 15.4 M12 11.2 L17.6 15.4"/>
-<path class="i" d="M12 3.4 L14 5.9 L12 8.4 L10 5.9 Z"/>
-<path class="a" d="M6.2 14.2 L8.2 16.7 L6.2 19.2 L4.2 16.7 Z M17.8 14.2 L19.8 16.7 L17.8 19.2 L15.8 16.7 Z"/>
-</svg>

@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="open book">
-<style>.i{fill:#D6337F}.a{fill:#F08AC8}.si{stroke:#D6337F;fill:none}.sa{stroke:#F08AC8;fill:none}
-@media (prefers-color-scheme: light){.i{fill:#C2186B}.a{fill:#E86FB4}.si{stroke:#C2186B}.sa{stroke:#E86FB4}}
-@media (prefers-color-scheme: dark){.i{fill:#F2A7DE}.a{fill:#FFC4E8}.si{stroke:#F2A7DE}.sa{stroke:#FFC4E8}}</style>
-<path class="i" d="M3.2 4.8 L11 3.8 L11 19.2 L3.2 20.2 Z"/>
-<path class="a" d="M13 3.8 L20.8 4.8 L20.8 20.2 L13 19.2 Z"/>
-</svg>

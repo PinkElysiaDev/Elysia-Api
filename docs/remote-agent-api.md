@@ -1,62 +1,106 @@
-# AI 助手远程暴露面（REST / MCP / A2A）
+# 远程 Agent 接口
 
-外部程序可以通过 REST / A2A 驱动内置 AI 助手（会话 / 消息 / 审批三原语），也可以通过 MCP 的 `elysia_cli` 直接执行运维命令。REST/A2A 共用会话引擎和审批规则；MCP 复用 CLI 解析器与业务处理器，不调用内置模型。
+[文档索引](README.md) · **简体中文** · [English](remote-agent-api.en.md)
 
-| 协议面 | 端点 | 适用客户端 |
-|---|---|---|
-| REST | `/api/agent/*` | 脚本、curl、第三方面板 |
-| MCP（Model Context Protocol） | `POST /mcp` | Claude Desktop / Cursor / 各类 agent 框架 |
-| A2A（Agent2Agent） | `POST /a2a` + `GET /.well-known/agent-card.json` | 其他 agent（LangChain、CrewAI、a2a-go 客户端等） |
+REST / A2A 驱动内置助手，使用持久化会话、模型调用和审批。MCP 直接执行 `elysia_cli` 运维命令，不调用内置模型、不创建助手会话。
 
-## 鉴权与总开关
+| 接口 | 端点 | 用途 |
+| --- | --- | --- |
+| REST | `/api/agent/*` | 脚本、面板、会话管理 |
+| MCP | `POST /mcp` | 外部 Agent 直接运维 |
+| A2A | `POST /a2a` | 任务与 Agent 协作 |
+| Agent Card | `GET /.well-known/agent-card.json` | 公开发现信息，受远程总开关控制 |
 
-- 三个面统一要求 **Bearer API Key 且带 `agent` 作用域**：在「运行配置 → AI 助手远程访问」创建远程访问 Key，并通过 `Authorization: Bearer <Key>` 传入。普通网关调用 Key 不具备该作用域；无作用域返回 403，无效或未提供 Key 返回 401（带 `WWW-Authenticate`）。
-- `config.json` 的 `agentRemote.enabled`（默认 `true`）为总开关，`false` 时三个面全部 404；`agentRemote.publicUrl` 用于反向代理后 Agent Card 的绝对地址（缺省按请求 Host 推导）。
-- `allowedGroups`（模型组维度）与 `scopes`（端点维度）正交：控制助手不要求任何模型组授权。
+## 鉴权
 
-## REST：`/api/agent/*`
+在运行配置的远程访问区域创建带 `agent` 作用域的 Key：
 
-与 `/api/admin/agent/*` 完全同语义（同一组 handler），仅鉴权链不同。响应信封 `{ok, data}` / `{ok, error:{code,message}}`。
+```http
+Authorization: Bearer <AGENT_KEY>
+```
 
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| GET | `/api/agent/sessions?status=&limit=&offset=` | 会话列表；`status` 取 `idle/running/waiting_approval`（引擎运行态口径），`limit` ≤ 200，返回 `{items, total}`（管理面板不带参数即全量） |
-| POST | `/api/agent/sessions` | 建会话 `{title?, mode?, protocolId?, settings?}` |
-| GET | `/api/agent/sessions/:id` | 详情 + 全部消息 |
-| PATCH | `/api/agent/sessions/:id` | 标题/设置增量（含权限档 allowLiveTest/allowSave/allowDelete） |
-| DELETE | `/api/agent/sessions/:id` | 删除（先停轮次） |
-| POST | `/api/agent/sessions/:id/messages` | 发送消息，**SSE 事件流**（与管理面板同 14 种事件，15s 心跳） |
-| POST | `/api/agent/sessions/:id/approve` | 审批/作答/方案确认 `{approved, answer?, note?, apiKey?, baseUrl?}`，SSE 续跑 |
-| POST | `/api/agent/sessions/:id/stop` | 停止轮次 |
-| DELETE | `/api/agent/sessions/:id/messages?afterSeq=` | 清空/截断消息 |
-| POST | `/api/agent/sessions/:id/restore-draft` | 草稿回滚 |
+| 凭证 | 使用范围 |
+| --- | --- |
+| 面板令牌 `panelAccessToken` | `/api/admin/*` 管理面 |
+| 无 `agent` 作用域的推理令牌 | `/v1/*`、`/v1beta/*`，受模型组授权约束 |
+| 带 `agent` 作用域的 Key | `/api/agent/*`、`/mcp`、`/a2a`；推理端点拒绝此类 Key |
 
-轮次与 HTTP 连接解耦：SSE 断开不终止轮次，结果持续落库，可重连或轮询列表获取终态。
+无效或未提供远程 Key 返回 401，无 `agent` 作用域返回 403，均提供 `WWW-Authenticate`。Agent Card 本身不要求 Key。模型组授权 `allowedGroups` 与端点作用域 `scopes` 是不同维度。
 
-## MCP：`POST /mcp`（Streamable HTTP）
+`agentRemote.enabled` 缺省 `true`；设为 `false` 后上述远程端点及 Agent Card 返回 404。`agentRemote.publicUrl` 设置反向代理后的基础地址；空时根据请求地址生成 Agent Card。
 
-无状态单端点，双世代并存：
+## REST
 
-- **Legacy（initialize 握手，2024-11-05 ~ 2025-11-25 语义）**——存量客户端（Claude Desktop、Cursor 等）：`initialize`（版本回显协商）→ `notifications/initialized` → `ping` / `tools/list` / `tools/call`。不签发 `Mcp-Session-Id`（无状态合法）；GET/DELETE 返回 405；`MCP-Protocol-Version` 头非法返回 400。
-- **Modern（2026-07-28）**：无握手，每请求 `params._meta` 携带 `io.modelcontextprotocol/protocolVersion`；`MCP-Protocol-Version` 头与 body 一致（否则 `-32020`）、镜像头 `Mcp-Method`/`Mcp-Name` 校验、`server/discover`、所有 result 带 `resultType`、`tools/list` 带 `ttlMs/cacheScope`；**SSE 断流即取消**当前 CLI 批处理。
+除鉴权外，与 `/api/admin/agent/*` 共用 handler。普通响应使用 `{ok,data}` / `{ok,error:{code,message}}`；消息和审批返回 SSE。
 
-约束：POST 的 `Accept` 必须同时含 `application/json` 与 `text/event-stream`（否则 406）；带 `Origin` 头的浏览器请求须同源或回环（防 DNS rebinding）；批量请求不支持（2025-06-18 起已从规范移除）。
+下表路径前缀为 `/api/agent`：
 
-### 工具集（1 个）
+| 方法 | 路径 | 请求 / 行为 |
+| --- | --- | --- |
+| GET | `/sessions` | 可选 `status`、`limit`、`offset`；返回 `{items,total}`，不传分页参数返回全量 |
+| POST | `/sessions` | `{title?,mode?,protocolId?,settings?}`；`mode` 为 `create` 或 `edit`，编辑需已有协议 ID |
+| GET | `/sessions/:id` | 返回 `{session,messages}`，消息按 `seq` 排序 |
+| PATCH | `/sessions/:id` | `{title?,settings?,apiKey?,clearApiKey?}` 增量更新 |
+| DELETE | `/sessions/:id` | 先停止轮次，再删除会话 |
+| POST | `/sessions/:id/messages` | `{content?,documents?,afterSeq?}`；`afterSeq` 先截断后续消息 |
+| POST | `/sessions/:id/approve` | `{approved,answer?,note?,apiKey?,baseUrl?}`，审批或作答后 SSE 续跑 |
+| POST | `/sessions/:id/stop` | 停止当前轮次，返回 `{stopped}` |
+| DELETE | `/sessions/:id/messages?afterSeq=0` | 清空消息；正数按序号截断，保留会话和设置 |
+| POST | `/sessions/:id/restore-draft` | 恢复草稿快照 |
 
-MCP 只公布 `elysia_cli`。内置 Agent 的会话、消息和审批工具不通过 MCP 暴露；它们仍由上面的 REST 接口和 A2A 接口提供。
+状态为 `idle`、`running`、`waiting_approval`；`limit` 必须为正数，最大生效值 200，`offset` 非负。已有轮次运行时再次发消息返回 409。
 
-| 工具 | 说明 |
-|---|---|
-| `elysia_cli` | **流式工具**：执行 `elysia` 网关运维命令，每次调用无状态 |
+`settings` 包括 `modelSourceId`、`modelName`、`thinkingEnabled`、`thinkingEffort`、`planMode`、`allowSave`、`allowLiveTest`、`allowDelete`、`testBaseUrl`。权限值为 `ask` / `always` / `never`；计划模式阻止受控操作。测试密钥加密存储，会话视图只给出设置标记，不返回明文。
 
-工具执行的业务失败以 `isError: true` 返回（可自我纠正），协议级错误（未知工具等）走 JSON-RPC error。
+创建会话示例：
 
-### 外部 Agent 直接运维
+```bash
+curl http://127.0.0.1:8765/api/agent/sessions \
+  -H "Authorization: Bearer <AGENT_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Gateway inspection","settings":{"modelSourceId":"<SOURCE_ID>","modelName":"<MODEL_ID>"}}'
+```
 
-在「运行配置 → AI 助手远程访问」的每个已启用 Key 旁点击「复制 MCP JSON」，即可取得包含 MCP 地址与该 Key 的配置。地址优先使用「对外基础地址」，留空时使用当前访问地址。复制时才按需读取真实 Key；远程访问或 Key 停用时不可复制。
+取得返回的会话 ID 后发送消息。此操作调用模型，会产生上游用量：
 
-生成的配置使用常见的 `mcpServers` 格式，适用于支持此结构和 HTTP 传输的客户端；客户端若有自己的配置格式，使用其中的 `url` 与 `headers` 填入对应项：
+```bash
+curl -N "http://127.0.0.1:8765/api/agent/sessions/<SESSION_ID>/messages" \
+  -H "Authorization: Bearer <AGENT_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"List model sources without changing configuration."}'
+```
+
+`documents` 条目为 `{name,mime?,text?,dataUrl?}`。使用文本或数据 URL 传文档，不把服务器本地文件路径当作上传内容。
+
+### SSE 与生命周期
+
+| 事件 | 内容 |
+| --- | --- |
+| `status` | 调用模型、执行工具等阶段 |
+| `text_delta` / `reasoning_delta` | 模型返回的正文 / 推理文本增量 |
+| `tool_call` / `tool_progress` / `tool_result` | 工具调用、进度与结果 |
+| `draft_updated` / `plan_updated` | 草稿 / 工作计划变化 |
+| `approval_required` | 等待审批、作答或方案确认 |
+| `message` | 已持久化消息，含 `seq` |
+| `context_updated` / `context_compacted` | 上下文水位 / 压缩结果 |
+| `turn_done` / `error` | 完成汇总 / 失败，错误可包含 `retryable` |
+
+流每 15 秒发送保活。REST 的 HTTP 断开不会停止轮次；结果继续落库，可读取会话详情和列表确认终态。主动停止使用 `/stop`。拒绝审批会生成工具拒绝结果，供助手继续处理。
+
+## MCP
+
+本实现接受两组交互方式：
+
+| 模式 | 契约 |
+| --- | --- |
+| Legacy | 接受版本 `2024-11-05`、`2025-03-26`、`2025-06-18`、`2025-11-25`；`initialize` → `notifications/initialized` → 工具调用；不签发会话 ID |
+| Modern | 版本 `2026-07-28`；每请求在 `params._meta` 传 `io.modelcontextprotocol/protocolVersion`；支持 `server/discover`，result 包含 `resultType` |
+
+POST 的 `Accept` 必须包含 `application/json` 和 `text/event-stream`，否则 406。GET / DELETE 返回 405；不支持 JSON-RPC batch。浏览器 `Origin` 需同源或符合回环规则。版本头与 Modern body 不一致返回 `-32020`；提供 `Mcp-Method` / `Mcp-Name` 镜像头时必须与请求一致。Modern `tools/list` 还返回 `ttlMs` / `cacheScope`。
+
+### 客户端配置
+
+在运行配置中点击已启用远程 Key 的“复制 MCP JSON”。地址优先用 `publicUrl`，否则用当前访问地址；复制时按需读取明文 Key。常见 HTTP 客户端配置：
 
 ```json
 {
@@ -64,83 +108,67 @@ MCP 只公布 `elysia_cli`。内置 Agent 的会话、消息和审批工具不�
     "elysia": {
       "type": "http",
       "url": "https://gw.example.com/mcp",
-      "headers": {"Authorization": "Bearer <远程访问 Key>"}
+      "headers": {"Authorization": "Bearer <AGENT_KEY>"}
     }
   }
 }
 ```
 
-客户端使用 Streamable HTTP 连接网关的 `/mcp`，携带远程访问 Key。`tools/list` 包含 `elysia_cli`，最小调用为：
+客户端格式不同时，迁移其中的 `url` 和 `headers`。MCP 只公布一个工具 `elysia_cli`，参数为必填字符串 `command`。Legacy 初始化后最小调用：
 
 ```json
 {
   "jsonrpc": "2.0",
   "id": 1,
   "method": "tools/call",
-  "params": {
-    "name": "elysia_cli",
-    "arguments": {"command": "elysia source ls"}
-  }
+  "params": {"name": "elysia_cli", "arguments": {"command": "elysia source ls"}}
 }
 ```
 
-该入口直接执行查询、修改、真实出站和删除，出站策略、命令校验和业务约束仍然生效。需要驱动内置模型时，请使用 REST/A2A 会话接口，它们遵循会话审批规则。
+### 执行边界
 
-参数：
+- 每条业务命令以 `elysia` 开头；通过 `elysia help` 查询语法。它不是系统 shell，也不是独立终端可执行文件。
+- MCP 持 Agent Key 直接执行查询、写入、真实测试和删除，**不经过内置助手审批**；命令校验、出站策略和业务限制仍然生效。
+- 每次调用独立，草稿、测试目标和凭证只在同一次 `command` 内复用，结束即丢弃；显式传 `sessionId` 会报错。
+- 更新协议需在同一批处理中准备完整草稿，再用 `elysia protocol save --update <id>`；ID 必须匹配已有协议，不指定 `--update` 不覆盖同名记录。
+- `&&` 失败后跳过所在链，`;` 继续执行。批处理无整体事务，断开或超时取消剩余执行，已完成操作不回滚。
+- 工具返回 SSE；提供 `params._meta.progressToken` 时逐命令发送进度。结果含 JSON 文本 `content` 与 `structuredContent`，结构为 `{ok,summary,output,exitCode}`。
+- 业务失败以 `isError: true` 返回，协议错误使用 JSON-RPC error；验证失败可能只有错误文本。查询优先用 `--limit`；`head` 只截文本行，输出仍可能被截断。
 
-| 参数 | 必填 | 说明 |
-|---|---|---|
-| `command` | 是 | 每条业务命令以 `elysia` 开头；通过 `elysia help`、`elysia help <组>`、`elysia help <组> <命令>` 按需查询 |
+完整语义见 [CLI 手册](agent-cli.md)。
 
-MCP 每次调用创建一次临时 CLI 上下文。`elysia protocol draft ; elysia protocol preview ; elysia protocol test` 可以在同一次 `command` 中复用草稿、测试目标和凭证；调用结束后这些状态立即丢弃，下一次调用无法读取。若请求显式传入 `sessionId`，服务端返回无状态参数错误，并提示将依赖命令合并到同一次批处理中。
+## A2A
 
-更新已有协议时，在同一次批处理中先提交完整草稿，再执行 `elysia protocol save --update <协议id>`。目标必须存在且与草稿 ID 一致；不传 `--update` 时仍按新建处理，同名协议不会被覆盖。
+`A2A-Version` 缺省 `0.3.0`，还支持 `1.0.0`；未知版本返回 400。Agent Card 随版本头返回对应结构。
 
-CLI 响应为 SSE。提供 `params._meta.progressToken` 时逐命令发送 `notifications/progress`；最终结果同时包含 JSON 文本 `content` 和 `structuredContent`，便于只支持文本的客户端读取：
+| v0.3 方法 | v1.0 方法 | 行为 |
+| --- | --- | --- |
+| `message/send` | `SendMessage` | 非阻塞创建轮次并返回快照 |
+| `message/stream` | `SendStreamingMessage` | SSE 跟踪任务至终态或等待输入 |
+| `tasks/get` | `GetTask` | 读取任务 |
+| `tasks/cancel` | `CancelTask` | 停止运行轮次；等待输入时以拒绝结束 |
+| `tasks/resubscribe` | `SubscribeToTask` | 回放并跟随 |
+| — | `ListTasks` | 游标分页 |
+
+`contextId` 对应会话；缺省或未知时新建。一个任务对应一轮，`taskId` 为 `会话ID:用户消息seq`。运行、等待输入、完成、失败、取消分别映射至 `working`、`input-required`、`completed`、`failed`、`canceled`；v1.0 使用 `TASK_STATE_*` 枚举。完成产物包含最终文本及 `{rounds,model,durationMs}`。
+
+恢复等待输入的任务时携带同一 `taskId`：审批或方案确认必须提供 data part 的 `approved`；提问可用文本作答，`data.answer` 优先。方案拒绝的文本作为 `note`。v0.3 决策片段：
 
 ```json
-{
-  "ok": true,
-  "summary": "执行 1 条命令：1 成功、0 失败",
-  "output": "$ elysia source ls\n…",
-  "exitCode": 0
-}
+{"parts":[{"kind":"data","data":{"approved":true}}]}
 ```
 
-批处理部分失败返回 `isError: true`，同时保留已执行命令的输出；参数验证失败可能只有错误文本。断开连接或超时会取消当前 CLI 调用，已经完成的操作不会回滚。输出可能截断，限制查询记录数优先使用命令的 `--limit`，`head` 仅截取文本行。完整命令参考与运行时 help 同源，见 [CLI 文档](agent-cli.md)。
+v1.0 的 part 不使用 `kind`。审批缺少 data part 返回 `-32602`。不带 `taskId` 则在该会话创建新一轮。消息按 `messageId` 在单实例内存 LRU 中去重，不提供跨重启的持久幂等保证。Push notifications 与扩展卡未实现。
 
-## A2A：`POST /a2a` + Agent Card
+## 排障与权限
 
-双线格式按 `A2A-Version` 头分派（缺省 `0.3.0`；`1.0.0` 用 PascalCase 方法名与 `TASK_STATE_*` 枚举）；未知版本 400。Agent Card 在 `GET /.well-known/agent-card.json`（按版本头返回对应形态）。
+| 现象 | 检查 |
+| --- | --- |
+| 401 / 403 | Key 是否启用，是否含 `agent` 作用域 |
+| 404 | `agentRemote.enabled` 及代理路径 |
+| MCP 406 | `Accept` 是否同时包含两种类型 |
+| 调用结束后找不到草稿 | MCP 无状态，合并依赖操作到同一调用 |
+| REST 断开后仍在执行 | 轮次独立于连接，调用 `/stop` |
+| 等待审批不继续 | 权限档、计划模式及明确的恢复决策 |
 
-### 任务模型
-
-- `contextId` = 会话 id（不传或未知时服务端新建会话）；**task = 一轮**（`taskId = 会话id:用户消息seq`）。
-- 状态映射：轮次中 → `working`；`waiting_approval`（审批/提问/方案三型）→ **`input-required`**；完成 → `completed`（产物 = 助手终稿 TextPart + DataPart{rounds,model,durationMs}）；失败 → `failed`；取消 → `canceled`。
-
-### 方法
-
-- `message/send` / `SendMessage`：**非阻塞**——落库消息即返回 `working` 快照，终态用 `tasks/get` 轮询或 `message/stream` 跟踪。
-- `message/stream` / `SendStreamingMessage`：SSE 全程跟踪（每帧一个 JSON-RPC response：Task 快照 → statusUpdate → 终态/中断态关流；v0.3 终帧 `final: true`）。
-- `tasks/get` / `GetTask`；`tasks/cancel` / `CancelTask`（运行中停止轮次，暂停中以拒绝收尾）；`tasks/resubscribe` / `SubscribeToTask`（帧回放 + 跟随）；`ListTasks`（v1.0，游标分页）。
-- pushNotificationConfig 系列与扩展卡：规范可选，本实现声明不支持（专用错误码）。
-
-### 审批恢复约定（多轮核心）
-
-任务进入 `input-required` 后，客户端**带同一 `taskId` 重发消息**即恢复：
-
-- **审批 / 方案确认型**：必须带 data part 显式决策——`{"parts":[{"kind":"data","data":{"approved": true}}]}`（v1.0 part 无 `kind` 字段）；方案拒绝时文本作为修改意见（`note`）。缺 data part 报 `-32602`。
-- **提问型**：文本即作答（`data.answer` 优先）。
-
-不带 `taskId` 的消息在同一 `contextId` 下开新一轮。
-
-### 幂等
-
-按 `messageId` 去重（单实例内存 LRU）：同 id 重发返回已建任务，不重复执行副作用。
-
-## 安全要点
-
-- 作用域即最小权限面：无 `agent` 作用域的 Key 与三者完全隔离。
-- 通过 REST / A2A 远程驱动内置助手时，三层权限（save / live_test / delete 的 ask|always|never）与计划模式仍然生效；审批暂停以 `waiting_approval` / `input-required` 暴露给外部调用方。
-- MCP `elysia_cli` 持 `agent` 作用域 Key 直接执行；该调用不创建 Agent 会话、不写入消息或 pending action。
-- 所有出口（会话视图、pendingAction、工具结果）密钥脱敏，与面板同口径。
+保护 Agent Key，按管理凭证对待。真实测试和助手调用可能产生费用；会话输出与工具输出会脱敏已知秘密字段，但不要上传不必要的凭证或把完整对话作为公开排障材料。

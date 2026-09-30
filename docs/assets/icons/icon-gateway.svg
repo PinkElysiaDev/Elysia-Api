@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="hub">
-<style>.i{fill:#D6337F}.a{fill:#F08AC8}.si{stroke:#D6337F;fill:none}.sa{stroke:#F08AC8;fill:none}
-@media (prefers-color-scheme: light){.i{fill:#C2186B}.a{fill:#E86FB4}.si{stroke:#C2186B}.sa{stroke:#E86FB4}}
-@media (prefers-color-scheme: dark){.i{fill:#F2A7DE}.a{fill:#FFC4E8}.si{stroke:#F2A7DE}.sa{stroke:#FFC4E8}}</style>
-<path class="i" d="M12 8.6 L15.4 12 L12 15.4 L8.6 12 Z"/>
-<path class="a" d="M10.4 6.8 L13.6 6.8 L12 9.8 Z M10.4 17.2 L12 14.2 L13.6 17.2 Z M6.8 10.4 L9.8 12 L6.8 13.6 Z M17.2 10.4 L17.2 13.6 L14.2 12 Z"/>
-</svg>

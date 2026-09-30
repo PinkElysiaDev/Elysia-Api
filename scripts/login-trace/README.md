@@ -1,12 +1,14 @@
 # 登录角色轨迹制作与审校
 
+[文档首页](../../docs/README.md) · **简体中文** · [English](README.en.md)
+
 本目录只用于开发期素材制作。页面使用随项目交付的逐帧轨迹，不安装 Python、OpenCV 或视觉模型，也不调用外部模型 API。
 
-## 复现
+## 前提与复现
 
 在仓库根目录执行：
 
-```powershell
+```sh
 python -m pip install --target .tmp-dev/vision-python -r scripts/login-trace/requirements.txt
 python scripts/login-trace/extract.py
 node scripts/login-trace/verify.mjs
@@ -16,7 +18,7 @@ Python 3.12；依赖安装在已忽略的 `.tmp-dev/vision-python`，不修改�
 
 快速检查首帧而不覆盖发布资产：
 
-```powershell
+```sh
 python scripts/login-trace/extract.py --limit 1
 ```
 
@@ -24,7 +26,7 @@ python scripts/login-trace/extract.py --limit 1
 
 ## 视觉标注与纠错
 
-实际审查轮次、已发现问题及验收边界见 `review-log.md`；自动生成报告不会宣称已经完成手工语义验收。
+重新生成后，结合审图器与 `report.json` 复查受影响帧及邻帧。自动指标不能代替人工语义验收。
 
 - `annotations.json` 包含四类语义区域：头发／发饰、面部、手部、服饰／其余装饰。
 - `sourceRegions`、`sourceExclusions` 是原始视频像素坐标；`targetRegions` 是 760 × 808 目标线稿像素坐标。
@@ -66,6 +68,8 @@ python scripts/login-trace/extract.py --limit 1
 
 ## 前端验证
 
+以下为 Windows PowerShell 命令；macOS/Linux 使用 `npm` 替代 `npm.cmd`，省略 `$env:` 行以使用 Playwright Chromium。
+
 ```powershell
 npm.cmd run build:webui
 npm.cmd run lint --workspace @root/webui
@@ -81,7 +85,7 @@ npm.cmd run test:e2e --workspace @root/webui -- --workers=1
 
 ## 浏览器实景与性能复现
 
-在另一个终端运行 `npm.cmd run dev --workspace @root/webui -- --port 5274 --strictPort` 后：
+在另一个终端运行 `npm run dev --workspace @root/webui -- --port 5274 --strictPort` 后，Windows PowerShell 执行以下命令；其他平台省略 `$env:` 行：
 
 ```powershell
 $env:PLAYWRIGHT_CHANNEL = 'msedge'
@@ -90,3 +94,13 @@ node scripts/login-trace/capture.mjs --measure
 ```
 
 输出位于 `.tmp-dev/login-browser-review`：明暗桌面与触屏移动端的登录页、四个过场阶段、交接截图及 JSON 报告。移动端用 15 秒开始，验证循环接缝；另覆盖 DPR 1／2。性能单独测量，不在过场中截图，记录实际画布回调频率和间隔。它不等同于物理移动设备的 GPU 帧率保证；真机 60／30fps 仍需在目标设备上复核。默认桌面 1600 粒子、移动端 650 粒子，画布 DPR 上限分别为 2／1.5；合成绘制分别限为 60／30Hz，避免高刷新屏空耗。视频帧回调独立运行，每次合成仍使用最新呈现帧的准确轨迹，不使用低频关键帧插值。
+
+## 故障处理
+
+| 现象 | 处理 |
+| --- | --- |
+| Python 依赖无法导入 | 使用 Python 3.12，确认依赖安装到 `.tmp-dev/vision-python`，从仓库根目录运行 |
+| 解码、PTS 或尺寸检查失败 | 检查源视频完整性与标注尺寸；不要跳过时间戳验证 |
+| 构建哈希校验失败 | 完整重新提取并一起更新 JSON、二进制和版本文件；`--limit` 不是发布导出 |
+| 描边错抓或错位 | 修正语义区域，重新提取并审查受影响帧及邻帧；不要加粗线条掩盖误差 |
+| 浏览器捕获无法连接 | 检查 5274 开发服务与浏览器 channel；自定义地址可用 `LOGIN_REVIEW_URL` |

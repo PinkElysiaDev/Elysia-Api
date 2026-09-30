@@ -1,156 +1,200 @@
-# 自定义协议定义参考
+# 自定义协议参考
 
-Elysia-Api 的转换核心是「引擎在代码里,协议在数据里」:一份协议定义(JSON)声明
-某上游线制的请求渲染与响应/流式映射,引擎负责与内部统一格式 Maheshvara 互转。
-四大标准线制(Chat Completions / Responses / Anthropic / Gemini)本身也是以此
-模型表达的**预置定义**(首次启动播种入库,可编辑、可复制)。
+[文档索引](README.md) · **简体中文** · [English](protocol-definition-reference.en.md)
 
-本文是全部可配置语义的参考。字段目录与校验约束见设计器「预览与测试」所用的
-`GET /api/admin/custom-protocols/schema`。
+协议定义描述上游请求、响应、流式事件和可选模型发现。定义保存在 SQLite，通过协议设计器或管理 API 保存，验证成功后更新注册表。模型源用 `custom:<id>` 引用。
 
-## 顶层结构
+字段目录：`GET /api/admin/custom-protocols/schema`。实现见 [custom_protocol.go](../backend/relay/custom_protocol.go) 与[映射编译器](../backend/relay/custom_protocol_mapping.go)。
+
+## 最小定义
+
+以下是虚构 JSON 上游的完整配置示例；路径和响应字段需按实际 API 修改：
 
 ```json
 {
-  "id": "vendor-x",            // 必填,短小写英文
-  "name": "Vendor X", "version": "1", "type": "llm",
-  "request":  { ... },          // 网关 → 上游
-  "response": { ... },          // 上游 → Maheshvara(非流式 + 流式默认)
-  "models":   { ... },          // 可选:模型列表发现端点
-  "aliases":  { ... },          // 可选:提取阶段键名别名覆盖
-  "metadata": { ... }           // 自由元数据(metadata.preset 标记预置)
+  "id": "vendor-json",
+  "name": "Vendor JSON",
+  "version": "1",
+  "type": "llm",
+  "request": {
+    "method": "POST",
+    "path": "/generate",
+    "shape": "openai-chat",
+    "auth": {"mode": "bearer"},
+    "body": {
+      "model": {"field": "model", "mode": "string"},
+      "messages": {"field": "messages", "mode": "json"},
+      "stream": {"field": "stream"}
+    }
+  },
+  "response": {
+    "textPath": "result.text",
+    "usagePath": "usage",
+    "finishReasonPath": "finish_reason"
+  }
 }
 ```
 
-## 条件原语 Match
+## 顶层结构
 
-多处配置共用同一条件语义:`{"path": "<点路径>", "op": "<操作符>", "value": <任意 JSON>}`。
+| 字段 | 说明 |
+| --- | --- |
+| `id`、`name`、`version` | 协议标识、显示名、定义版本；ID 需通过注册校验 |
+| `type` | 缺省 `llm`；`embedding` / `reranker` 仅为声明式预留；`x-` 前缀扩展不由核心解释 |
+| `request` | 上游请求构造 |
+| `response` | 响应与 `response.stream` 流式映射 |
+| `models` | 可选模型发现端点 |
+| `aliases` | 提取键名覆盖 |
+| `metadata` | 自定义元数据；`preset` 用于预置标识 |
 
-- 操作符:`nonEmpty`(默认)/`isEmpty`/`equals`/`notEquals`/`in`/`notIn`/
-  `contains`/`isNull`/`notNull`/`isTrue`/`isFalse`/`gt`/`gte`/`lt`/`lte`
-- 类型化比较:数字按数值(`4096 == 4096.0`)、布尔按布尔(字符串 `"false"` 不等于
-  布尔 `false`)、对象/数组按规范化 JSON 文本(键序无关)
-- `nonEmpty` 语境下的「空」:空串/空白、`false`、`0`、`[]`、`{}`、null/缺失
-- `isTrue`/`isFalse` 对缺失字段按 `false` 处理(`isFalse` 对缺失为真)
+## 条件 Match
 
-## request(网关 → 上游)
-
-- `method`(默认 POST)/`path`(相对源 baseUrl,支持 `{{maheshvara.<字段>}}` 插值)
-  /`pathStream`(流式请求的路径覆盖,如 Gemini `:generateContent` vs
-  `:streamGenerateContent?alt=sse`)/`headers`/`query`/`contentType`
-- `auth`:`bearer`(默认)/`header`(默认 `x-api-key`,可配 `prefix`)/`query`/`none`
-- `shape`:`openai-chat`/`anthropic`/`gemini`/`responses`——模板上下文的
-  `messages`/`tools`(responses 另含 `input`/`input_items`)切换为对应线制形状,
-  复用内置整形器。与标准线制同形的供应商不要再手写字段级消息转换。
-- `body`:字段级构造树。容器为普通 JSON;叶子:
-  - 字段引用 `{"field", "mode", "default", "omitIfEmpty", "omitIf", "when"}`
-    - `field` 允许「目录字段.子路径」(如 `thinking.enabled`)
-    - `omitIfEmpty`:渲染后为空则删键;`omitIf`:渲染后值类型化等于给定字面量
-      则删键(覆盖 `false`/`0` 场景);`when`:Match 对 Maheshvara 请求求值,
-      不成立则整键省略(「enable_thinking 仅在开启思考时携带」)
-  - 常量 `{"value": <任意 JSON>}`
-- `bodyTemplate`(legacy 自由文本):占位符 `{{maheshvara.<路径>}}`,过滤器
-  `|json` / `|default:<json>` / `|bool` / `|int` / `|string`
-
-## response(上游 → Maheshvara)
-
-- 直接路径:`idPath`/`modelPath`/`statusPath`/`textPath`/`reasoningPath`/
-  `toolCallsPath`/`usagePath`/`finishReasonPath`/`errorPath`(点路径,支持下标
-  `choices[0].delta.content`)
-- `textFilter`/`reasoningFilter`:Match。路径指向对象数组时按元素过滤再提取
-  (Anthropic 分离 thinking/text 块、Gemini 分离 thought 部件)
-- 或 `body` 构造树 / `fields` 行列表(映射标注,见字段目录)
-- 非流式要求至少映射出一个输出(text/reasoning/tool_calls)
-
-## stream(流式映射)
+结构为 `path`、`op`、可选 `value`：
 
 ```json
-"stream": {
-  "payloadPath": "output",          // 事件 JSON 内载荷路径(先解包再映射)
-  "mode": "delta|cumulative",       // 全局差分模式
-  "modes": { "text": "...", "reasoning": "...", "arguments": "..." },  // 按族覆盖
-  "doneValues": ["[DONE]"],          // 整串文本终止值(默认 [DONE])
-  "done": [{ "raw": "END" }, { "json": true }],  // 类型化终止值
-  "doneValuesReplace": true,         // 移除默认 [DONE]
-  "eventKeys": ["type", "event"],    // JSON 载荷内事件名判别键
-  "finishWhen": { "path": "finished", "op": "isTrue" },   // 终止判定覆盖
-  "statusWhen": { "path": "phase", "op": "equals", "value": "DONE" },
-  "frames": [ ... ],                 // 异构帧逐帧映射(优先于 events)
-  "events": ["message"],             // legacy 事件名白名单
-  "response": { ... }                // 流帧默认映射(帧未带 response 时回退)
+{"path":"thinking.enabled","op":"isTrue"}
+```
+
+支持 `nonEmpty`（缺省）、`isEmpty`、`equals`、`notEquals`、`in`、`notIn`、`contains`、`isNull`、`notNull`、`isTrue`、`isFalse`、`gt`、`gte`、`lt`、`lte`。
+
+比较保留类型：数值按数值比较，字符串 `"false"` 不等于布尔值 `false`，对象不受键顺序影响。空白文本、`false`、`0`、空数组/对象、null 和缺失值均视为 `nonEmpty` 的空值；缺失值的 `isFalse` 为真。
+
+## 请求构造
+
+| 字段 | 说明 |
+| --- | --- |
+| `method` | 缺省 POST |
+| `path` / `pathStream` | 相对源 `baseUrl` 的路径；流式可覆盖；不允许独立 scheme |
+| `headers` / `query` / `contentType` | 静态或插值后的请求头、查询、内容类型 |
+| `shape` | `openai-chat`、`anthropic`、`gemini`、`responses`；使消息和工具采用目标线路形状 |
+| `body` | 推荐的字段构造树 |
+| `bodyTemplate` / `submitBody` | 兼容文本模板；前者优先 |
+| `omitIfEmpty` | 渲染后删除指定空路径 |
+
+`body` 的容器为 JSON 对象/数组。叶子为字段引用或常量；`field` 可含子路径，`mode` 为 `json` 或 `string`：
+
+```json
+{
+  "temperature": {"field":"temperature","default":0.7,"omitIfEmpty":true},
+  "enable_thinking": {"field":"thinking.enabled","when":{"path":"thinking.enabled","op":"isTrue"}},
+  "api_version": {"value":"2026-01-01"}
 }
 ```
 
-- 缺省终止语义:`finishReasonPath` 映射值字符串化非空、`status == "completed"`、
-  doneValue 字面量;`finishWhen`/`statusWhen` 配置后按 Match 语义判定
-- 终态后约 2 秒排水窗:继续接收 usage 尾帧与错误帧,其余丢弃;窗内无数据视为
-  干净结束
-- 空补全(finish_reason 有值但零输出)按成功处理;仅 `[DONE]` 兜底的空流报错
+上例为 `request.body` 片段。`omitIf` 在渲染值等于指定字面量时删键；`when` 不成立时省略整键。`shape: responses` 还提供 `input` / `input_items`。
 
-### frames(异构帧)
+模板上下文为 `maheshvara.*`，兼容别名 `request.*`。可访问生成参数、消息、工具、reasoning、metadata、stream 和 `raw_extra`。字符串内占位符转义为 JSON 字符串，未加引号的占位符插入原生 JSON；支持 `json`、`default:<JSON>`、`bool`、`int`、`string` 过滤器。模板语法片段（不是可直接提交的 JSON）：
 
-```json
-{ "event": "content_block_delta",      // 事件名(SSE event 字段或 eventKeys 判别键)
-  "match": { "path": "delta.type", "op": "equals", "value": "text_delta" },
-  "payloadPath": "...",                 // 帧级载荷路径(缺省继承流级)
-  "tool": { ... },                      // 分帧工具拼装
-  "response": { ... },                  // 该帧自己的映射
-  "terminal": true }                    // 命中即判流终态
+```text
+{"model": {{maheshvara.model | json}}, "messages": {{maheshvara.messages | json}}}
 ```
 
-- `event` 与 `match` 至少一个;同时给出须同时成立;首个命中生效
-- 无事件名协议(Gemini data-only 帧)用 `match` 谓词选帧;末位放一个通用谓词帧
-  作为兜底(如 `{"path": "candidates[0].content.parts[0].text", "op": "nonEmpty"}`)
-- 未命中任何帧的事件跳过
+模板最大 4 MiB、2048 个占位符，渲染 JSON 深度最大 64。注册和运行时均检查结果合法性，不执行任意代码。
 
-### frame.tool(分帧工具拼装)
+### 鉴权
+
+`auth.mode` 支持 `bearer`（缺省）、`header`、`query`、`none`。`header` 缺省名为 `x-api-key`，可指定 `prefix`；`query` 指定参数名。密钥来自模型源。
+
+静态头不能覆盖受 relay 管理的认证/传输头。自定义认证头拒绝 `Host`、`Content-Length`、`Transfer-Encoding`、`Connection`、`Proxy-Authorization` 等传输头；头名、值、插值结果和认证 prefix 拒绝 CR/LF。
+
+## 响应映射
+
+路径支持点号、数组下标及括号键名，例如 `output[0].content[0].text`、`$['data'][0].text`。
+
+| 字段 | 目标 |
+| --- | --- |
+| `idPath` / `modelPath` / `statusPath` | 标识、模型、状态 |
+| `textPath` / `reasoningPath` / `refusalPath` | 文本、推理文本、拒答 |
+| `signaturePath` / `signatureProviderPath` / `signatureProvider` | 签名及其来源；线制无来源字段时使用常量 |
+| `encryptedContentPath` / `citationsPath` | 加密推理、引用标注 |
+| `toolCallsPath` / `usagePath` / `finishReasonPath` / `errorPath` | 工具调用、用量、终止原因、错误 |
+| `textFilter` / `reasoningFilter` | 对路径指向的对象数组先按 Match 过滤；条件数组要求全部成立 |
+| `body` / `fields` | 示例结构树或行式映射，二选一 |
+| `sample` | 用于预览的上游示例响应 |
+
+`response.body` 叶子为 `{"field":"text","value":"example"}` 等映射标注，路径从树位置提取。只含 `value` 的叶子是结构示例，不产生字段映射。`fields` 行为 `{path,field,transform?}`，不允许重复映射同一字段；`usage.*` 缺省按整数处理。
+
+兼容写法 `mappings` 提供直接路径别名；`fieldMappings` 每项使用 `target` 与 `source` / 固定 `value` / `default`，支持 `omitIfEmpty`。受控目标包括 `id`、`model`、`created_at`、`status`、`stop_reason`、`incomplete_details`、`metadata`、`service_tier`、`system_fingerprint`、`output`、`usage`、`error`。
+
+转换函数：`identity` / `raw`、`string` / `text` / `join`、`int` / `integer` / `number` / `float` / `timestamp_ms`、`bool` / `boolean`、`json` / `parse_json` / `json_string`、`first`、`usage` / `content_parts` / `tool_calls` / `output_items`。路径、目标和 transform 在注册时校验。
+
+## 流式映射
+
+流配置位于 **`response.stream`**。以下为该对象的示例，不是完整协议：
 
 ```json
-{ "indexPath": "index", "idPath": "content_block.id", "namePath": "content_block.name" }
-{ "indexPath": "index", "argumentsPath": "delta.partial_json" }
-```
-
-- 身份帧(content_block_start / output_item.added)声明 `idPath`/`namePath`,
-  可选 `indexPath` 注册「下标 → 身份」关联
-- 参数帧(input_json_delta / function_call_arguments.delta)只带 `argumentsPath`
-  (+`indexPath` 或直接 `idPath`),片段**原样**追加拼接(delta 模式)或按累计
-  快照差分(`argumentsMode: "cumulative"`)
-- 仅身份无参数的帧不产生参数增量
-
-## aliases(提取键名覆盖)
-
-提供即整体替换该类默认表;`usage`/`toolCall` 条目支持点路径。
-
-```json
-"aliases": {
-  "textKeys": ["text", "content", "summary"],
-  "usage":   { "input": ["inTokens"], "cached": ["prompt_tokens_details.cached_tokens"] },
-  "toolCall": { "id": ["ref"], "name": ["fn"], "arguments": ["params"] }
+{
+  "mode": "delta",
+  "modes": {"text":"cumulative","reasoning":"delta","arguments":"delta"},
+  "doneValues": ["[DONE]"],
+  "eventKeys": ["type","event"],
+  "finishWhen": {"path":"finished","op":"isTrue"},
+  "response": {"textPath":"text","usagePath":"usage"}
 }
 ```
 
-## models(模型列表发现)
+| 字段 | 语义 |
+| --- | --- |
+| `payloadPath` | 事件内的实际载荷路径 |
+| `mode` | 缺省 `delta`；`cumulative` 将累计快照转换为后缀增量 |
+| `modes` | 按 `text`、`reasoning`、`arguments` 覆盖全局模式 |
+| `doneValues` / `done` | 原始终止字面量 / 类型化终止值；`done` 使用 `{raw: ...}` 或 `{json: ...}` |
+| `doneValuesReplace` | 清除默认 `[DONE]` 后再加入显式值 |
+| `eventKeys` | JSON 事件名字段，缺省 `type`、`event` |
+| `finishWhen` / `statusWhen` | Match 终止条件，覆盖对应缺省判断 |
+| `frames` | 异构帧规则，优先于旧 `events` 白名单 |
+| `response` | 流级响应映射；未配置时继承外层 |
+
+累计快照回退或改写时，decoder 可输出当前值；不能承诺所有上游改写都能无损转换。默认终止条件包括非空 finish reason、`status == completed`、终止字面量。显式 finish reason 的空补全可成功；仅 `[DONE]` 且从未输出、也无 finish reason 时失败。终态后约 2 秒空闲排水窗口继续接收 usage 与错误尾帧。
+
+### 异构帧
+
+每帧至少有 `event` 或 `match`，两者都有时须同时成立；首个命中生效。无事件名的协议使用 Match。未命中规则的帧跳过，需要通用兜底时在末尾配置匹配规则。
+
+帧支持 `payloadPath`、`response`、`terminal`、`tool`、`toolDone`。帧内响应不能再嵌套 `stream`；匹配帧省略响应时使用流级映射。
+
+### 工具调用分帧
+
+`tool` 支持 `path`、`idPath`、`indexPath`、`namePath`、`argumentsPath`、`argumentsMode`。`path` 可指向工具数组，此时其余路径相对数组元素；否则相对原始帧。
+
+身份帧登记 ID、名称及下标；参数帧按 ID 或下标关联。`argumentsMode` 缺省 `delta`，片段原样追加；`cumulative` 按快照差分。身份帧本身不产生参数增量；`toolDone: true` 标记参数完成。支持一帧多个工具及跨帧拼接，不要沿用旧文档中的“不支持”限制。
+
+## 提取别名
+
+提供某类别的别名即替换该类别默认表。`usage` 与 `toolCall` 支持点路径。以下为顶层片段：
 
 ```json
-"models": { "method": "GET", "path": "/v1/models", "listPath": "data", "idPath": "id", "namePath": "display_name" }
+{
+  "aliases": {
+    "textKeys": ["text","content","summary"],
+    "usage": {"input":["inTokens"],"cached":["prompt_tokens_details.cached_tokens"]},
+    "toolCall": {"id":["ref"],"name":["fn"],"arguments":["params"]}
+  }
+}
 ```
 
-声明后引用本协议的模型源可开启自动拉取;`auth` 缺省继承 `request.auth`。
+## 模型发现
 
-## 预置协议
+定义 `models` 后，引用此协议的源可开启自动发现；否则使用手工模型。该对象支持 `method`（GET/POST，缺省 GET）、`path`、`headers`、`query`、`auth`、`listPath`、`idPath`（缺省 `id`）、`namePath`。鉴权缺省继承 `request.auth`。
 
-- 四份预置(`chat-completions-api`/`responses-api`/`anthropic-api`/`gemini-api`,旧库中的厂商式 ID 会在启动时自动改名并重写 `custom:<id>` 引用)
-  内嵌于二进制,**首次启动(协议表为空)时写入数据库**,此后作为普通协议行:
-  可编辑、可删除、库中优先、升级不覆盖;全部行被清空时下次启动重新播种
-- 以 `custom:<id>` 平台被模型源引用;设计器列表显示「预置」徽标(metadata.preset),
-  支持一键复制为新协议作为定制基底
-- AI 助手以 anthropic-api 预置作为 few-shot 范例,并在提示词中说明全部
-  新能力(shape/when/finishWhen/frames/frame.tool/aliases/过滤)
+顶层片段：
 
-## 边界(设计如此,非缺陷)
+```json
+{"models":{"method":"GET","path":"/v1/models","listPath":"data","idPath":"id","namePath":"display_name"}}
+```
 
-- 客户端侧(网关对四大协议客户端的 SSE 渲染)为引擎本体,保持代码实现
-- 四大标准平台值(chat_completions/responses/anthropic/gemini)仍走内置 Go 快速
-  路径;预置是等价性的验证台与定制基底
-- SSE 传输层解析遵循规范(多行 data 拼接、未知字段忽略、裸行 JSON 兜底);
-  空闲/排水超时为运维参数;transform 目录为代码能力
+## 预置与维护
+
+协议表为空时播种 `chat-completions-api`、`responses-api`、`anthropic-api`、`gemini-api`。已有数据库记录优先，升级不覆盖用户修改；清空全部协议后，下次启动会重新播种。旧厂商式预置 ID 的迁移同时更新 `custom:<id>` 引用。
+
+标准平台 `chat_completions` / `responses` / `anthropic` / `gemini` 仍使用内置路径；预置定义用于自定义基底和等价性测试，不意味着所有流量都由 JSON 定义处理。客户端侧 SSE 渲染、传输解析和转换函数仍是 Go 实现。
+
+## 接入与验证
+
+1. 复制接近的预置或从最小定义开始，按上游样例填写字段。
+2. 在设计器执行离线预览，检查请求和响应映射；它不发起真实上游调用。
+3. 用测试模型源执行非流式、流式、工具、错误和终止帧测试。真实测试可能收费。
+4. 保存协议，创建 `custom:<id>` 模型源；仅在配置模型发现时开启自动拉取。
+5. 通过模型组发起客户端请求，对照 usage、终止原因、日志和预期输出。
+
+AI 助手使用同一协议与 CLI 工具完成草稿、预览、测试和保存，受会话权限控制。实现不再提供旧文档中的 `/custom-protocols/assist` 独立端点。转换边界见 [Maheshvara](maheshvara-protocol.md)。
