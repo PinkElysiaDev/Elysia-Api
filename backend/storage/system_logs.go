@@ -31,7 +31,10 @@ func (s *Store) QuerySystemLogs(ctx context.Context, limit, offset int, level st
 		return 0, nil, err
 	}
 	args = append(args, limit, offset)
-	rows, err := s.db.QueryContext(ctx, `SELECT id, created_at, level, message, fields_json FROM system_logs `+where+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, args...)
+	// 按 created_ms(毫秒列)排序而非 RFC3339Nano 字符串:整秒时间戳与同秒内
+	// 带小数者的字符串序会颠倒,分页顺序不稳定;且毫秒列有 idx_system_time
+	// 索引可直接服务排序(usage_records 的 started_ms 修过同款问题)。
+	rows, err := s.db.QueryContext(ctx, `SELECT id, created_at, level, message, fields_json FROM system_logs `+where+` ORDER BY created_ms DESC, id DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return 0, nil, err
 	}

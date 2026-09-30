@@ -113,8 +113,23 @@ func (s *Store) MigratePresetProtocolRenames(ctx context.Context, pairs []Protoc
 		if err := rewriteProtocolConfigIDs(ctx, tx, oldID, newID); err != nil {
 			return renamed, err
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE custom_protocols SET id = ?, updated_at = ? WHERE id = ? COLLATE NOCASE`, newID, nowString(), oldID); err != nil {
+		result, err := tx.ExecContext(ctx, `UPDATE custom_protocols SET id = ?, updated_at = ? WHERE id = ? COLLATE NOCASE`, newID, nowString(), oldID)
+		if err != nil {
 			return renamed, err
+		}
+		// 旧 ID 行不存在(全新库/已改过名)时不算改名:否则每次启动都会打
+		// 误导性的 "renamed" 日志;platform 引用的悬空重写照常执行(见上)。
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return renamed, err
+		}
+		if affected == 0 {
+			if srcResult, err := tx.ExecContext(ctx, `UPDATE model_sources SET platform = ? WHERE LOWER(platform) = ?`, newPlatform, strings.ToLower(oldPlatform)); err == nil {
+				if rows, rowsErr := srcResult.RowsAffected(); err == nil && rowsErr == nil && rows > 0 {
+					log.Printf("[preset-rename] rewrote %d dangling custom:%s platform reference(s) to custom:%s", rows, oldID, newID)
+				}
+			}
+			continue
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE model_sources SET platform = ? WHERE LOWER(platform) = ?`, newPlatform, strings.ToLower(oldPlatform)); err != nil {
 			return renamed, err

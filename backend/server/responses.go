@@ -84,15 +84,7 @@ func (s *Server) responses(c *gin.Context) {
 				responsesMode = ResponsesModeTransformed
 			}
 
-			if relay.IsCustomPlatform(targetPlatform) {
-				record.TargetFormat = string(targetPlatform)
-				if protocol, exists := relay.GetCustomProtocol(relay.CustomProtocolID(targetPlatform)); exists {
-					record.TargetEndpoint = protocol.Request.PathTemplate
-				}
-			} else {
-				record.TargetFormat = string(targetFormat)
-				record.TargetEndpoint = targetEndpointForFormat(targetFormat)
-			}
+			setRecordTargetRoute(record, targetPlatform, targetFormat)
 			record.RelayMode = responsesMode
 			record.ResponsesMode = responsesMode
 			record.ConversionChain = []string{"openai_responses_request", "maheshvara_request", string(targetFormat) + "_request"}
@@ -128,17 +120,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 	}
 
 	var result relayOutcome
-	defer func() {
-		if !result.committed {
-			return
-		}
-		if record.FirstByteMs == 0 {
-			record.FirstByteMs = time.Since(startTime).Milliseconds()
-		}
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-	}()
+	defer s.commitUsageWhenDone(&result, record, startTime, true)()
 
 	// 统一取回:四类上游分支的「发送→判错→非 2xx 读体→转 Maheshvara」
 	// 骨架收敛于 fetchAsMaheshvara(与 chat 入口同一实现)。
@@ -206,14 +188,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		return s.handleCustomStreamRequest(c, group, selectedModel, customRequest, targetPlatform, relay.FormatResponses, startTime, record, isLast)
 	}
 	var result relayOutcome
-	defer func() {
-		if !result.committed {
-			return
-		}
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-	}()
+	defer s.commitUsageWhenDone(&result, record, startTime, false)()
 
 	// upstreamErrorStatus 从错误中提取上游真实状态码：永久错误（401/403/400）
 	// 不得洗白成 502 触发全候选扇出重试。

@@ -688,15 +688,11 @@ func (s *Server) chatCompletions(c *gin.Context) {
 
 			// usage 记录补全（与 responses 入口对齐）：custom 平台记 custom:<id> 与
 			// 协议 path 模板，内置平台归到线制 FormatType 与端点；透传链两段、
-			// 转换链三段。
-			if relay.IsCustomPlatform(targetPlatform) {
-				record.TargetFormat = string(targetPlatform)
-				if protocol, exists := relay.GetCustomProtocol(relay.CustomProtocolID(targetPlatform)); exists {
-					record.TargetEndpoint = protocol.Request.PathTemplate
-				}
-			} else if targetFormat, formatErr := relay.TargetFormatForPlatform(targetPlatform); formatErr == nil {
-				record.TargetFormat = string(targetFormat)
-				record.TargetEndpoint = targetEndpointForFormat(targetFormat)
+			// 转换链三段。RelayMode 随本尝试清空重写（成功路径由 buildChatTargetBody
+			// 写入正确值），失败落库时不残留上一次尝试的模式。
+			record.RelayMode = ""
+			if targetFormat, formatErr := relay.TargetFormatForPlatform(targetPlatform); formatErr == nil || relay.IsCustomPlatform(targetPlatform) {
+				setRecordTargetRoute(record, targetPlatform, targetFormat)
 			}
 			if record.TargetFormat != "" {
 				if usePassthrough {
@@ -811,17 +807,7 @@ func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupCon
 	// 仅在 committed 时记录 usage；未提交（将要重试）时不记录，
 	// 由最终成功/失败的那次尝试统一记录。
 	var result relayOutcome
-	defer func() {
-		if !result.committed {
-			return
-		}
-		if record.FirstByteMs == 0 {
-			record.FirstByteMs = time.Since(startTime).Milliseconds()
-		}
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-	}()
+	defer s.commitUsageWhenDone(&result, record, startTime, true)()
 	// 设计原则：
 	// 1) 先按 targetPlatform 获取并解析上游响应
 	// 2) 再按 inputFormat 渲染客户端响应
@@ -880,14 +866,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		return s.handleCustomStreamRequest(c, group, selectedModel, customRequest, targetPlatform, inputFormat, startTime, record, isLast)
 	}
 	var result relayOutcome
-	defer func() {
-		if !result.committed {
-			return
-		}
-		record.EndedAt = time.Now()
-		record.DurationMs = time.Since(startTime).Milliseconds()
-		s.recordUsage(record)
-	}()
+	defer s.commitUsageWhenDone(&result, record, startTime, false)()
 
 	// upstreamErrorStatus 从错误中提取上游真实状态码（UpstreamStatusError），
 	// 无则回退 fallback——永久错误（401/403/400）不得洗白成可重试的 502。

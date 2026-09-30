@@ -114,9 +114,12 @@ func updateRecordUsageFromMaheshvara(record *usageRecord, usage *relay.Maheshvar
 	if record == nil || usage == nil {
 		return
 	}
+	// 三段都走合并而非整体替换:custom 流里观察器的行级解析与解码器事件双写
+	// 同一条记录,后到者若整体替换会把先到者已合并的明细(如缓存用量、内置
+	// 工具计数,解码映射可能不覆盖)清空。
 	record.Usage = mergeUsage(record.Usage, usageTokenUsageFromMaheshvara(usage))
-	record.UsageDetail = usageDetailFromMaheshvara(usage)
-	record.BuiltinToolUsage = builtinToolUsageFromMaheshvara(usage)
+	record.UsageDetail = mergeUsageDetail(record.UsageDetail, usageDetailFromMaheshvara(usage))
+	record.BuiltinToolUsage = mergeBuiltinToolUsage(record.BuiltinToolUsage, builtinToolUsageFromMaheshvara(usage))
 	if usage.Source != "" {
 		record.UsageSource = usage.Source
 	}
@@ -127,10 +130,8 @@ func estimateMaheshvaraRequestUsage(req *relay.MaheshvaraRequest, cfg config.Usa
 		return &relay.MaheshvaraUsage{Estimated: true, Source: "maheshvara_estimate"}
 	}
 
+	// CharsPerToken 由 GetUsageConfig 归一化为正数,此处不再兜底。
 	charsPerToken := cfg.CharsPerToken
-	if charsPerToken <= 0 {
-		charsPerToken = DefaultCharsPerToken
-	}
 
 	textChars := len([]rune(req.Instructions))
 	imageTokens := 0
