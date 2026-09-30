@@ -188,3 +188,19 @@ test('resizing changes chart width without replaying its entrance animation', as
   expect((await page.locator('.recharts-wrapper').boundingBox())!.width).toBeLessThan(originalWidth)
   expect(Math.min(...heights)).toBeGreaterThan(180)
 })
+
+test('agent list and chat enter directly without a page fade or slide', async ({ page }) => {
+  await openAgent(page)
+  const animationsOnParents = (element: Element) => {
+    const animations: string[] = []
+    for (let parent: Element | null = element; parent; parent = parent.parentElement) {
+      const name = getComputedStyle(parent).animationName
+      if (name !== 'none') animations.push(name)
+    }
+    return animations
+  }
+  expect(await page.getByPlaceholder('请描述你的任务').evaluate(animationsOnParents)).toEqual([])
+  await page.goto('/#/logs')
+  await page.getByRole('link', { name: 'AI 助手', exact: true }).click()
+  expect(await page.getByRole('heading', { name: 'AI 助手', exact: true }).evaluate(animationsOnParents)).toEqual([])
+})
