@@ -206,11 +206,13 @@ export function useAgentStream(
 ) {
   const [live, setLive] = useState<AgentLiveState>(initialState);
   const abortRef = useRef<AbortController | null>(null);
+  const activeSessionRef = useRef<string | undefined>(sessionId);
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
   useEffect(() => {
     // 会话切换重置现场。
+    activeSessionRef.current = sessionId;
     setLive(initialState);
     return () => {
       abortRef.current?.abort();
@@ -232,6 +234,9 @@ export function useAgentStream(
         `/api/admin/agent/sessions/${sessionId}${path}`,
         body,
         (event) => {
+          // 会话归属守卫：abort 只断流，已解析入队的事件还会派发一次——
+          // 快速 A→B 切换的毫秒窗口内，A 的尾部事件不得混进 B 的现场/消息列表。
+          if (activeSessionRef.current !== sessionId) return;
           // tool_result 事件直接携带落库消息，并不会再发送单独的 message
           // 事件。所有带消息的事件都即时并入时间线，不能等 turn_done 刷新。
           if (event.message) optionsRef.current.onMessage?.(event);
