@@ -16,6 +16,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// errorDetailTruncateBytes 是错误详情入库的展示截断上限。
+const errorDetailTruncateBytes = 2048
+
 // inputFormatFromPath 按 URL 推导客户端线制。错误出口可能出现在协议解析
 // 之前的阶段（鉴权中间件、读请求体），与入口处的格式推导共用本函数。
 func inputFormatFromPath(path string) relay.FormatType {
@@ -69,7 +72,7 @@ func (s *Server) abortRetryOnClientCancel(c *gin.Context, record *usageRecord, s
 
 // setUsageError 区分调用方取消与上游失败。已成功结束的调用不经过此入口。
 func setUsageError(record *usageRecord, ctx context.Context, err error) {
-	record.Error = truncateForDisplay(err.Error(), 2048)
+	record.Error = truncateForDisplay(err.Error(), errorDetailTruncateBytes)
 	record.ErrorKind = ErrorKindUpstream
 	if record.StatusCode > 0 && record.StatusCode < 400 {
 		record.StatusCode = http.StatusBadGateway

@@ -128,6 +128,49 @@ type usageBodyOptions struct {
 	externalize bool
 }
 
+// hasNonNullField 判断 map 中任一键存在且值非 nil(缓存计数字段「上游
+// 显式返回 0」与「未返回」的区分依据)。
+// setRecordTargetRoute 写 usage 记录的目标线制与端点:custom 平台记
+// custom:<id> 与协议声明的 path 模板;内置平台按调用方给定的线制
+// (responses 入口可能是 endpoint capability 覆盖后的值)归到端点映射。
+func setRecordTargetRoute(record *usageRecord, targetPlatform relay.Platform, targetFormat relay.FormatType) {
+	if relay.IsCustomPlatform(targetPlatform) {
+		record.TargetFormat = string(targetPlatform)
+		if protocol, exists := relay.GetCustomProtocol(relay.CustomProtocolID(targetPlatform)); exists {
+			record.TargetEndpoint = protocol.Request.PathTemplate
+		}
+		return
+	}
+	record.TargetFormat = string(targetFormat)
+	record.TargetEndpoint = targetEndpointForFormat(targetFormat)
+}
+
+// commitUsageWhenDone 包一层「结果已提交则落 usage」的 defer。非流式路径
+// (trackFirstByte=true)在响应完成时补记首字节耗时;流式路径的首字节由流
+// 事件先行写入,恒传 false。用法: defer s.commitUsageWhenDone(&result, ...)()。
+func (s *Server) commitUsageWhenDone(result *relayOutcome, record *usageRecord, startTime time.Time, trackFirstByte bool) func() {
+	return func() {
+		if !result.committed {
+			return
+		}
+		if trackFirstByte && record.FirstByteMs == 0 {
+			record.FirstByteMs = time.Since(startTime).Milliseconds()
+		}
+		record.EndedAt = time.Now()
+		record.DurationMs = time.Since(startTime).Milliseconds()
+		s.recordUsage(record)
+	}
+}
+
+func hasNonNullField(raw map[string]interface{}, keys ...string) bool {
+	for _, key := range keys {
+		if value, ok := raw[key]; ok && value != nil {
+			return true
+		}
+	}
+	return false
+}
+
 func shortTokenHash(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])[:8]
@@ -934,30 +977,14 @@ func usageFromOpenAIUsage(raw map[string]interface{}) usageTokenUsage {
 	usageInt(&usage.OutputTokens, "completion_tokens", "output_tokens")
 	usageInt(&usage.TotalTokens, "total_tokens")
 	cacheHitTokens := maxInt(int(numberFromUsageMap(raw, "cached_tokens")), int(numberFromUsageMap(raw, "prompt_cache_hit_tokens")))
-	cacheFieldSeen := false
-	if rawValue, ok := raw["cached_tokens"]; ok && rawValue != nil {
-		cacheFieldSeen = true
-	}
-	if rawValue, ok := raw["prompt_cache_hit_tokens"]; ok && rawValue != nil {
-		cacheFieldSeen = true
-	}
-	if details, ok := raw["prompt_tokens_details"].(map[string]interface{}); ok {
+	cacheFieldSeen := hasNonNullField(raw, "cached_tokens", "prompt_cache_hit_tokens")
+	for _, detailsKey := range []string{"prompt_tokens_details", "input_tokens_details"} {
+		details, ok := raw[detailsKey].(map[string]interface{})
+		if !ok {
+			continue
+		}
 		cacheHitTokens = maxInt(cacheHitTokens, int(numberFromUsageMap(details, "cached_tokens")), int(numberFromUsageMap(details, "cache_read_tokens")))
-		if rawValue, ok := details["cached_tokens"]; ok && rawValue != nil {
-			cacheFieldSeen = true
-		}
-		if rawValue, ok := details["cache_read_tokens"]; ok && rawValue != nil {
-			cacheFieldSeen = true
-		}
-	}
-	if details, ok := raw["input_tokens_details"].(map[string]interface{}); ok {
-		cacheHitTokens = maxInt(cacheHitTokens, int(numberFromUsageMap(details, "cached_tokens")), int(numberFromUsageMap(details, "cache_read_tokens")))
-		if rawValue, ok := details["cached_tokens"]; ok && rawValue != nil {
-			cacheFieldSeen = true
-		}
-		if rawValue, ok := details["cache_read_tokens"]; ok && rawValue != nil {
-			cacheFieldSeen = true
-		}
+		cacheFieldSeen = cacheFieldSeen || hasNonNullField(details, "cached_tokens", "cache_read_tokens")
 	}
 	if cacheFieldSeen || cacheHitTokens > 0 {
 		usage.CacheHitTokens = intPtr(cacheHitTokens)
@@ -1069,10 +1096,8 @@ func applyLocalResponseEstimate(record *usageRecord, responseText string, cfg co
 }
 
 func estimateTextTokens(text string, cfg config.UsageConfig) int {
+	// CharsPerToken 由 GetUsageConfig 归一化为正数,此处不再兜底。
 	charsPerToken := cfg.CharsPerToken
-	if charsPerToken <= 0 {
-		charsPerToken = DefaultCharsPerToken
-	}
 	chars := len([]rune(text))
 	if chars == 0 {
 		return 0
