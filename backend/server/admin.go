@@ -230,13 +230,24 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		// Save 失败时回滚，防内存/磁盘分叉（热重载会按磁盘恢复）。
 		outboundRollback, _ = s.applyOutboundDeniedRanges(payload.Outbound.DeniedIPRanges)
 	}
+	retentionTightened := false
 	if payload.UsageLog != nil {
-		// 局部更新：仅覆盖显式提供的字段。BodyMaxKB/开关对后续请求即时生效；
-		// 清理参数由后台巡检在下一 tick 重新读取。无需重启。
+		// 局部更新：仅覆盖显式提供的字段。BodyMaxKB/开关对后续请求即时生效。
+		before := s.config.GetUsageLogConfig()
 		s.config.SetUsageLogConfig(*payload.UsageLog)
+		after := s.config.GetUsageLogConfig()
+		// 清理参数收紧后立即唤醒巡检，免去最长一个 CleanupInterval 的空窗；
+		// 放宽则无需动作（下一 tick 自然按新阈值执行）。
+		retentionTightened = after.RetentionDays < before.RetentionDays || after.MaxContentBytes < before.MaxContentBytes || after.MaxRecords < before.MaxRecords
 	}
 	if payload.SystemLog != nil {
+		before := s.config.GetSystemLogConfig()
 		s.config.SetSystemLogConfig(*payload.SystemLog)
+		after := s.config.GetSystemLogConfig()
+		retentionTightened = retentionTightened || after.RetentionDays < before.RetentionDays || after.MaxRecords < before.MaxRecords || after.MaxContentMB < before.MaxContentMB
+	}
+	if retentionTightened {
+		s.usageRetention.triggerAsync()
 	}
 	if payload.ModelCatalog != nil && payload.ModelCatalog.SyncIntervalMinutes != nil {
 		// 周期检查是动态的，写入配置即生效（0 = 默认 24h），无需重启。

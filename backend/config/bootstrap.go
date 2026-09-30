@@ -52,16 +52,19 @@ func generateRandomToken() (string, error) {
 // writeDefaultConfig writes a minimal bootstrap config to path, mirroring the
 // field set of config.json.example but with the provided token in place of the
 // insecure "change-me" placeholder. The file is written with 0o600 to protect the
-// freshly generated credential.
+// freshly generated credential. logLifecycleVersion is stamped at birth so the
+// pristine default never triggers the (otherwise harmless) pre-log-lifecycle
+// backup on first load.
 func writeDefaultConfig(path, token string) error {
 	defaults := map[string]any{
-		"host":             "127.0.0.1",
-		"port":             8765,
-		"panelAccessToken": token,
-		"databasePath":     "elysia-api.sqlite3",
-		"logLevel":         "info",
-		"httpTimeout":      120,
-		"secretKeyPath":    ".master-key",
+		"host":                "127.0.0.1",
+		"port":                8765,
+		"panelAccessToken":    token,
+		"databasePath":        "elysia-api.sqlite3",
+		"logLevel":            "info",
+		"httpTimeout":         120,
+		"secretKeyPath":       ".master-key",
+		"logLifecycleVersion": 1,
 	}
 	out, err := json.MarshalIndent(defaults, "", "  ")
 	if err != nil {

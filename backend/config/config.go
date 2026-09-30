@@ -147,7 +147,9 @@ type UsageLogConfig struct {
 	// 不保存正文，仅保留元数据；正数显式开启正文保存（KB）。
 	BodyMaxKB *int `json:"bodyMaxKB,omitempty"`
 	// BodyOnErrorOnly 开启后仅失败请求（error 非空）保留请求体，成功请求
-	// 四段 body 与外置媒体资产全部不落。默认 false。
+	// 四段 body 与外置媒体资产全部不落。默认 false。注意：它依赖 BodyMaxKB
+	// 显式为正——正文捕获整体默认关闭（BodyMaxKB nil/0）时，本开关即便为
+	// true 也不会让失败请求留下正文。
 	BodyOnErrorOnly *bool `json:"bodyOnErrorOnly,omitempty"`
 	// ExternalizeMedia 开启后请求体中的 base64 媒体（图片/音频/视频/文件）
 	// 外置为独立文件，body 内以 __ELYSIA_ASSET__ 占位符替代。默认 true。
