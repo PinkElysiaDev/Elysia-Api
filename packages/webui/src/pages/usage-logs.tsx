@@ -103,9 +103,10 @@ export function UsageLogsPage() {
     })
     if (!okToReset) return
     try {
-      await api.usageReset()
+      const result = await api.usageReset()
       await Promise.all([mutate(), revalidate.usage()])
-      toast.success('Usage 已重置')
+      if (result.reclaimQueued) toast.success('用量数据已重置', '空间回收将在后台完成')
+      else toast.error('用量数据已重置，空间回收未提交', '请稍后在设置页触发立即清理')
       setPage(0)
     } catch (err) {
       toast.error('重置失败', (err as Error).message)

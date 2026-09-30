@@ -51,8 +51,8 @@ func TestAuditSkipsRetentionCleanedHoursButRepairsMissedWrites(t *testing.T) {
 	}
 
 	// 留存清理删掉最旧的一条（同小时部分删除）。
-	if ids, err := s.DeleteUsageOlderThan(ctx, base.Add(-15*time.Minute).UnixMilli(), 500); err != nil || len(ids) != 1 {
-		t.Fatalf("DeleteUsageOlderThan ids=%v err=%v", ids, err)
+	if ids, err := s.PruneLogBatch(ctx, false, LogPrunePolicy{CutoffMS: base.Add(-15 * time.Minute).UnixMilli()}); err != nil || ids.ByTTL != 1 {
+		t.Fatalf("PruneLogBatch deleted=%v err=%v", ids, err)
 	}
 
 	// 审计：rollup(3) > raw(2) → 视为留存漂移，跳过重建，计数保持。

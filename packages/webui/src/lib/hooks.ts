@@ -170,6 +170,15 @@ export function useUsageLogs(params: UsageQueryParams) {
   return useSWR(['usage-logs', params], () => api.usageLogs(params), usageConfig)
 }
 
+/** Maintenance progress is deliberately separate from disk/accounting scans. */
+export function useLogMaintenance() {
+  return useSWR('log-maintenance', api.logMaintenance, { ...defaultConfig, refreshInterval: POLL.SOURCE_FAST })
+}
+
+export function useUsageStorage() {
+  return useSWR('usage-storage', api.usageStorage, { ...defaultConfig, refreshInterval: POLL.USAGE })
+}
+
 /** 系统日志分页。 */
 export function useSystemLogs(params: { limit?: number; offset?: number; level?: string }) {
   return useSWR(['system-logs', params], () => api.systemLogs(params), {

@@ -31,11 +31,16 @@ async function mockTokenAPI(page: Page, initial: ApiToken[]) {
         databasePath: '', defaultDatabasePath: '', logLevel: 'info',
         httpTimeout: 120, enablePprof: false,
         agentRemote: { enabled: true, publicUrl: '' },
+        usageLog: { persistEnabled: true, retentionDays: 7, maxContentMB: 0, maxRecords: 0,
+          bodyMaxKB: 0, bodyOnErrorOnly: true, externalizeMedia: false, cleanupIntervalMinutes: 5 },
+        systemLog: { retentionDays: 0, maxRecords: 0, maxContentMB: 0 },
       }
     } else if (path.endsWith('/model-groups')) {
       data = { items: [{ id: 'agent', name: 'agent', enabled: true, models: [] }] }
     } else if (path.endsWith('/usage/storage')) {
       data = null
+    } else if (path.endsWith('/usage/maintenance')) {
+      data = { state: 'idle', phase: 'idle' }
     } else if (path.endsWith('/seq')) {
       data = { seq: 1 }
     }

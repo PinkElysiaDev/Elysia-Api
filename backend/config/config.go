@@ -17,31 +17,30 @@ import (
 )
 
 type Config struct {
-	Host                   string             `json:"host,omitempty"`
-	Port                   int                `json:"port,omitempty"`
-	PanelAccessToken       string             `json:"panelAccessToken,omitempty"`
-	DatabasePath           string             `json:"databasePath,omitempty"`
-	LogLevel               string             `json:"logLevel,omitempty"`
-	SecretKeyPath          string             `json:"secretKeyPath,omitempty"`
-	WebUIDir               string             `json:"webuiDir,omitempty"`
-	EnablePprof            bool               `json:"enablePprof,omitempty"`
-	MaxBodyBytes           int64              `json:"maxBodyBytes,omitempty"`
-	Server                 ServerConfig       `json:"server"`
-	Tokens                 []AccessToken      `json:"-"`                                // 运行时字段：仅用于 store-nil 回退与测试；不再从 config.json 读取（模型/token 走 SQLite）
-	Groups                 []ModelGroupConfig `json:"-"`                                // 同上：旧 config.json 的 modelGroups 字段已废弃，数据走 SQLite
-	Responses              ResponsesConfig    `json:"responses,omitempty"`              // Responses API 兼容策略
-	Usage                  UsageConfig        `json:"usage,omitempty"`                  // 用量估算配置
-	UsageLog               UsageLogConfig     `json:"usageLog,omitempty"`               // 请求日志留存与内容策略（清理默认关闭）
-	HTTPTimeout            int                `json:"httpTimeout,omitempty"`            // HTTP 请求超时时间（秒），0 为不限制
-	DebugMode              bool               `json:"debugMode,omitempty"`              // 调试模式
-	VerboseLog             bool               `json:"verboseLog,omitempty"`             // 详细日志模式
-	UsagePersistEnabled    *bool              `json:"usagePersistEnabled,omitempty"`    // 持久化用量统计
-	UsagePersistMaxRecords int                `json:"usagePersistMaxRecords,omitempty"` // 最多保留的用量记录条数
-	HealthCheck            HealthCheckConfig  `json:"healthCheck,omitempty"`            // 可选的后台健康检测
-	Outbound               OutboundConfig     `json:"outbound,omitempty"`               // 出站网络策略：禁止拨号的 IP 段（CIDR 列表，可编辑）
-	AllowFakeIPOutbound    bool               `json:"allowFakeIPOutbound,omitempty"`    // 已废弃：仅作加载迁移读取（见 normalizeOutboundLocked），不再下发/落盘
-	ModelCatalog           ModelCatalogConfig `json:"modelCatalog,omitempty"`           // 模型能力元数据目录（默认 models.dev）
-	AgentRemote            AgentRemoteConfig  `json:"agentRemote,omitempty"`            // AI 助手远程暴露面（REST/MCP/A2A）
+	Host                string             `json:"host,omitempty"`
+	Port                int                `json:"port,omitempty"`
+	PanelAccessToken    string             `json:"panelAccessToken,omitempty"`
+	DatabasePath        string             `json:"databasePath,omitempty"`
+	LogLevel            string             `json:"logLevel,omitempty"`
+	SecretKeyPath       string             `json:"secretKeyPath,omitempty"`
+	WebUIDir            string             `json:"webuiDir,omitempty"`
+	EnablePprof         bool               `json:"enablePprof,omitempty"`
+	MaxBodyBytes        int64              `json:"maxBodyBytes,omitempty"`
+	Server              ServerConfig       `json:"server"`
+	Tokens              []AccessToken      `json:"-"`                   // 运行时字段：仅用于 store-nil 回退与测试；不再从 config.json 读取（模型/token 走 SQLite）
+	Groups              []ModelGroupConfig `json:"-"`                   // 同上：旧 config.json 的 modelGroups 字段已废弃，数据走 SQLite
+	Responses           ResponsesConfig    `json:"responses,omitempty"` // Responses API 兼容策略
+	Usage               UsageConfig        `json:"usage,omitempty"`     // 用量估算配置
+	SystemLog           LogRetentionConfig `json:"systemLog,omitempty"`
+	UsageLog            UsageLogConfig     `json:"usageLog,omitempty"`            // 请求日志留存与内容策略（清理默认关闭）
+	HTTPTimeout         int                `json:"httpTimeout,omitempty"`         // HTTP 请求超时时间（秒），0 为不限制
+	DebugMode           bool               `json:"debugMode,omitempty"`           // 调试模式
+	VerboseLog          bool               `json:"verboseLog,omitempty"`          // 详细日志模式
+	HealthCheck         HealthCheckConfig  `json:"healthCheck,omitempty"`         // 可选的后台健康检测
+	Outbound            OutboundConfig     `json:"outbound,omitempty"`            // 出站网络策略：禁止拨号的 IP 段（CIDR 列表，可编辑）
+	AllowFakeIPOutbound bool               `json:"allowFakeIPOutbound,omitempty"` // 已废弃：仅作加载迁移读取（见 normalizeOutboundLocked），不再下发/落盘
+	ModelCatalog        ModelCatalogConfig `json:"modelCatalog,omitempty"`        // 模型能力元数据目录（默认 models.dev）
+	AgentRemote         AgentRemoteConfig  `json:"agentRemote,omitempty"`         // AI 助手远程暴露面（REST/MCP/A2A）
 	// OpenBrowserOnStart 控制启动时是否在系统默认浏览器打开控制台。
 	// nil = 默认尝试（桌面开箱即用；无桌面环境命令缺失时静默跳过），
 	// false = 不打开（子进程托管场景），true = 强制尝试。
@@ -129,20 +128,19 @@ type UsageConfig struct {
 }
 
 // UsageLogConfig 控制请求日志（usage_records）的留存与内容策略。
-// 三个清理上限（RetentionDays/MaxStorageMB/MaxRecords）均为 nil/0 = 不启用：
+// 三个清理上限（RetentionDays/MaxContentMB/MaxRecords）均为 nil/0 = 不启用：
 // 开箱默认与历史版本一致——日志持续累积，不做自动清理。
 //
 // 字段全部用指针以区分「未配置（走默认）」与「显式 0（关闭/不保存）」，
-// 管理端 PUT runtime-config 据此实现局部更新。旧扁平键 usagePersistEnabled /
-// usagePersistMaxRecords 仅在显式设置且块内对应字段未配置时作为回退。
+// 管理端 PUT runtime-config 据此实现局部更新。旧键仅在版本迁移时读取。
 type UsageLogConfig struct {
 	// PersistEnabled 是日志持久化总开关，默认 true；false 时完全不落库。
 	PersistEnabled *bool `json:"persistEnabled,omitempty"`
 	// RetentionDays>0 时自动清理 started_at 早于该天数的记录。
 	RetentionDays *int `json:"retentionDays,omitempty"`
-	// MaxStorageMB>0 时按 SQLite 逻辑大小（page_count×page_size）限额，
+	// MaxContentMB>0 时按日志 JSON 与去重媒体的内容字节数限额，
 	// 超限按最旧优先删除记录；0=不限。
-	MaxStorageMB *int `json:"maxStorageMB,omitempty"`
+	MaxContentMB *int `json:"maxContentMB,omitempty"`
 	// MaxRecords>0 时限制保留记录条数，超出删最旧；0=不限。
 	MaxRecords *int `json:"maxRecords,omitempty"`
 	// BodyMaxKB 是单段请求/响应正文（四段链路各一）落库上限；nil/0 默认
@@ -170,7 +168,7 @@ const (
 type UsageLogResolved struct {
 	PersistEnabled   bool
 	RetentionDays    int
-	MaxStorageBytes  int64 // MaxStorageMB 换算后的字节限额；0=不限
+	MaxContentBytes  int64 // MaxContentMB 换算后的字节限额；0=不限
 	MaxRecords       int   // 0=不限
 	BodyMaxBytes     int   // 0=不保存任何请求体
 	BodyOnErrorOnly  bool
@@ -237,6 +235,10 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	data, err = migrateLogConfig(path, data)
+	if err != nil {
+		return nil, err
+	}
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, err
@@ -359,12 +361,16 @@ func (c *Config) saveLocked() error {
 		delete(raw, "outbound")
 	}
 	// usageLog 块：全默认（所有指针字段为 nil，序列化为 {}）时删除键保持文件
-	// 干净；任一字段显式配置过才写入。旧扁平键（usagePersistEnabled 等）由
-	// 读合写原样保留，不在此处迁移。
+	// 干净；任一字段显式配置过才写入。
 	if encoded, err := json.Marshal(c.UsageLog); err == nil && string(encoded) != "{}" {
 		raw["usageLog"] = c.UsageLog
 	} else {
 		delete(raw, "usageLog")
+	}
+	if encoded, err := json.Marshal(c.SystemLog); err == nil && string(encoded) != "{}" {
+		raw["systemLog"] = c.SystemLog
+	} else {
+		delete(raw, "systemLog")
 	}
 	// modelCatalog 块：管理页可改 syncIntervalMinutes（url/proxy/enabled 走
 	// 手编 config.json），必须随 Save 落盘，否则重启后静默回退默认值。
@@ -563,6 +569,7 @@ func (c *Config) Reload() error {
 	c.Responses = newCfg.Responses
 	c.Usage = newCfg.Usage
 	c.UsageLog = newCfg.UsageLog
+	c.SystemLog = newCfg.SystemLog
 	// ModelCatalog 必须随热重载更新：目录子系统按「周期动态读取配置」设计
 	//（runPeriodic 每轮重读 getter），漏拷会让 url/proxy/enabled/周期在
 	// 重载后维持旧值直到进程重启。
@@ -570,8 +577,6 @@ func (c *Config) Reload() error {
 	c.HTTPTimeout = newCfg.HTTPTimeout
 	c.DebugMode = newCfg.DebugMode
 	c.VerboseLog = newCfg.VerboseLog
-	c.UsagePersistEnabled = newCfg.UsagePersistEnabled
-	c.UsagePersistMaxRecords = newCfg.UsagePersistMaxRecords
 	c.HealthCheck = newCfg.HealthCheck
 	c.Outbound = newCfg.Outbound
 	c.AgentRemote = newCfg.AgentRemote
@@ -883,10 +888,7 @@ func positiveOr(p *int, def int) int {
 	return def
 }
 
-// GetUsageLogConfig 返回归一化后的日志管理生效值：nil 指针走默认、
-// 显式 0 保留其「关闭」语义、负数钳为 0。旧扁平键仅在显式设置且新块
-// 对应字段未配置时回退（usagePersistMaxRecords 不套用历史 getter 的
-// 10000 默认——只有配置文件里真实写过的值才生效）。
+// GetUsageLogConfig 返回唯一的新日志策略；旧配置由启动迁移归一化。
 func (c *Config) GetUsageLogConfig() UsageLogResolved {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -903,17 +905,10 @@ func (c *Config) resolveUsageLogLocked() UsageLogResolved {
 		CleanupInterval:  time.Duration(DefaultUsageCleanupIntervalM) * time.Minute,
 	}
 	res.RetentionDays = positiveOr(cfg.RetentionDays, 0)
-	if mb := positiveOr(cfg.MaxStorageMB, 0); mb > 0 {
-		res.MaxStorageBytes = int64(mb) * 1024 * 1024
+	if mb := positiveOr(cfg.MaxContentMB, 0); mb > 0 {
+		res.MaxContentBytes = int64(mb) * 1024 * 1024
 	}
 	res.MaxRecords = positiveOr(cfg.MaxRecords, 0)
-	// 旧扁平键回退（仅显式设置时）。
-	if cfg.PersistEnabled == nil && c.UsagePersistEnabled != nil {
-		res.PersistEnabled = *c.UsagePersistEnabled
-	}
-	if cfg.MaxRecords == nil && c.UsagePersistMaxRecords > 0 {
-		res.MaxRecords = c.UsagePersistMaxRecords
-	}
 	if cfg.BodyMaxKB == nil {
 		res.BodyMaxBytes = DefaultUsageBodyMaxKB * 1024
 	} else if *cfg.BodyMaxKB > 0 {
@@ -944,8 +939,8 @@ func (c *Config) SetUsageLogConfig(patch UsageLogConfig) {
 	if patch.RetentionDays != nil {
 		c.UsageLog.RetentionDays = clampIntPtr(patch.RetentionDays)
 	}
-	if patch.MaxStorageMB != nil {
-		c.UsageLog.MaxStorageMB = clampIntPtr(patch.MaxStorageMB)
+	if patch.MaxContentMB != nil {
+		c.UsageLog.MaxContentMB = clampIntPtr(patch.MaxContentMB)
 	}
 	if patch.MaxRecords != nil {
 		c.UsageLog.MaxRecords = clampIntPtr(patch.MaxRecords)

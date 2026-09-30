@@ -183,10 +183,10 @@ func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb 
 		RelayMode:           agentRelayMode,
 		Stream:              true,
 		StatusCode:          http.StatusOK,
-		bodyOpts:            usageBodyOptions{initialized: true, maxBytes: logCfg.BodyMaxBytes, externalize: logCfg.ExternalizeMedia},
+		bodyOpts:            usageBodyOptions{maxBytes: logCfg.BodyMaxBytes, externalize: logCfg.ExternalizeMedia},
 		assets:              newAssetSink(requestID),
 	}
-	if record.bodyOpts.effectiveMaxBytes() > 0 {
+	if record.bodyOpts.maxBytes > 0 {
 		if body, err := json.Marshal(req); err == nil {
 			record.IncomingBody = record.sanitizeBody(body)
 		}
@@ -208,7 +208,7 @@ func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb 
 	if result != nil && result.Usage != nil {
 		updateRecordUsageFromMaheshvara(record, result.Usage)
 	}
-	if record.bodyOpts.effectiveMaxBytes() > 0 {
+	if record.bodyOpts.maxBytes > 0 {
 		if body, marshalErr := json.Marshal(struct {
 			Result *agent.CallResult `json:"result"`
 			Error  string            `json:"error,omitempty"`

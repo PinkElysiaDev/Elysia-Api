@@ -66,7 +66,8 @@ type Server struct {
 	a2aTasks      map[string]*a2aTaskEntry
 	a2aMessageIDs map[string]string
 
-	store *storage.Store
+	store      *storage.Store
+	startupErr error
 
 	// 异步 usage 写入：store 模式下，请求路径只把记录投递到 buffer channel，
 	// 由单个 writer goroutine 落库，避免请求在 SQLite 写入（单连接串行）上阻塞。
@@ -91,7 +92,7 @@ type Server struct {
 	// 可选的后台健康检测器（config.HealthCheck.Enabled 控制）。
 	healthChecker *healthChecker
 
-	// 后台日志清理器（usageLog.retentionDays/maxStorageMB/maxRecords 控制，
+	// 后台日志清理器（usageLog.retentionDays/maxContentMB/maxRecords 控制，
 	// 默认全关；孤儿资产清扫作为卫生活常开）。
 	usageRetention *usageRetention
 
@@ -165,10 +166,9 @@ func New(cfg *config.Config) *Server {
 			return filepath.Join(filepath.Dir(dbPath), "model-catalog.json")
 		}),
 	}
-	// 目录定期后台更新（周期动态读取配置，管理页修改即时生效）。
-	go server.catalog.runPeriodic()
 	if store, err := storage.OpenWithKey(cfg.DatabasePath, cfg.GetDBEncryptionKey()); err != nil {
-		log.Printf("failed to open sqlite store: %v", err)
+		server.startupErr = fmt.Errorf("open sqlite store: %w", err)
+		return server
 	} else {
 		server.store = store
 		// 密钥完整性探测：master-key 丢失/更换会让全部密文行解不开——路由
@@ -186,9 +186,6 @@ func New(cfg *config.Config) *Server {
 			log.Printf("so they can be re-entered from the panel once the key is restored.")
 			log.Printf("========================================================================")
 		}
-		// 一次性资产布局迁移：旧的按请求分目录 → 扁平内容寻址 + 引用重建。
-		// 幂等（无子目录即跳过）；失败只告警，交给孤儿清扫兜底。
-		server.migrateUsageAssetsLayout()
 		// 历史数据回填进小时级 rollup 预聚合表（后台、幂等、可断点续跑）；
 		// 完成前聚合查询自动走 raw 路径，功能不受影响。
 		store.StartRollupBackfill()
@@ -209,6 +206,8 @@ func New(cfg *config.Config) *Server {
 		// 一次性把存量源 base 补上版本段（v1→v3 语义切换的配套迁移）。
 		server.migratePresetRelativePathBases(server.seedPresetProtocols())
 	}
+	// 存储迁移成功后才启动后台工作。
+	go server.catalog.runPeriodic()
 	server.syncOutboundPolicy()
 	server.syncCustomProtocols()
 	if server.store != nil {
@@ -1354,6 +1353,9 @@ func (s *Server) healthCheck(c *gin.Context) {
 }
 
 func (s *Server) ListenAndServe() error {
+	if s.startupErr != nil {
+		return s.startupErr
+	}
 	s.setupRoutes()
 	s.startUsageWriter()
 	s.healthChecker = newHealthChecker(s)

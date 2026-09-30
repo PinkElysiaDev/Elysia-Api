@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   Database,
@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Trash2,
 } from "lucide-react";
+import { LogMaintenanceStatus } from "@/components/log-maintenance-status";
 import { PageHeader } from "@/components/page-header";
 import { RoleWatermark } from "@/components/role-watermark";
 import { Button } from "@/components/ui/button";
@@ -32,14 +33,15 @@ import { useToast } from "@/components/ui/use-toast";
 import { useRuntimeConfigForm } from "./runtime-config/use-runtime-config-form";
 import { AgentRemoteSection } from "./runtime-config/agent-remote-section";
 import {
-  POLL,
+  useUsageStorage,
+  useLogMaintenance,
   useRuntimeConfig,
   useModelCatalogStatus,
   revalidate,
 } from "@/lib/hooks";
 import { api } from "@/lib/api";
 import { formatRelative, formatBytes } from "@/lib/utils";
-import type { LogLevel, UsageStorageStatus } from "@/lib/types";
+import type { LogLevel } from "@/lib/types";
 
 // 目录数据来源的展示名。
 function catalogSourceLabel(source: string): string {
@@ -63,6 +65,7 @@ export function RuntimeConfigPage() {
     form,
     update,
     updateUsageLog,
+    updateSystemLog,
     toggleUsageBody,
     updateOutboundText,
     updateAgentRemote,
@@ -73,20 +76,10 @@ export function RuntimeConfigPage() {
   const [restartNotice, setRestartNotice] = useState(false);
   const [showToken, setShowToken] = useState(false);
   const [catalogRefreshing, setCatalogRefreshing] = useState(false);
-  const [storage, setStorage] = useState<UsageStorageStatus | null>(null);
+  const { data: storage, error: storageError, mutate: refreshStorage } = useUsageStorage();
+  const { data: maintenance, error: maintenanceError, mutate: refreshMaintenance } = useLogMaintenance();
   const [cleaning, setCleaning] = useState(false);
-
-  const refreshStorage = useCallback(async () => {
-    try {
-      setStorage(await api.usageStorage());
-    } catch {
-      // 占用状态展示尽力而为：失败保持旧值，不打断设置页。
-    }
-  }, []);
-
-  useEffect(() => {
-    refreshStorage();
-  }, [refreshStorage]);
+  useEffect(() => { void refreshStorage(); }, [maintenance?.finishedAt, refreshStorage]);
 
   async function handleCatalogRefresh() {
     setCatalogRefreshing(true);
@@ -116,12 +109,11 @@ export function RuntimeConfigPage() {
       if (result.accepted) {
         toast.success(
           "清理已触发",
-          "后台正在执行一轮清理巡检，稍后刷新查看结果",
+          "后台按留存策略清理并回收空间，可在下方查看进度",
         );
-        // 巡检是异步的，稍等后再拉取状态。
-        setTimeout(refreshStorage, POLL.SOURCE_FAST);
+        await refreshMaintenance();
       } else {
-        toast.success("清理已在进行中", "上一轮清理尚未结束，请稍后再试");
+        toast.error("维护任务不可用", "服务可能正在关闭");
       }
     } catch (err) {
       toast.error("触发清理失败", (err as Error).message);
@@ -584,15 +576,15 @@ export function RuntimeConfigPage() {
               </SettingRow>
 
               <SettingRow
-                label="最大占用"
-                description="数据库体积超限时按最旧优先自动清理（0 = 不限）"
+                label="请求日志内容预算"
+                description="日志 JSON 与去重媒体合计超限时删最旧记录；不含用量汇总、索引及其他业务数据（0 = 不限）"
               >
                 <div className="flex w-full items-center gap-2 sm:w-48">
                   <NumberField
-                    value={form.usageLog.maxStorageMB}
+                    value={form.usageLog.maxContentMB}
                     min={0}
                     className="font-mono text-xs"
-                    onCommit={(v) => updateUsageLog("maxStorageMB", v)}
+                    onCommit={(v) => updateUsageLog("maxContentMB", v)}
                   />
                   <span className="shrink-0 text-xs text-muted-foreground">
                     MB
@@ -693,54 +685,46 @@ export function RuntimeConfigPage() {
                 </div>
               </SettingRow>
 
-              {/* 当前占用与最近清理结果 */}
+              <div className="border-t border-border/40 pt-3 space-y-4">
+                <h3 className="text-sm font-medium">系统日志留存</h3>
+                {([
+                  ['retentionDays', '系统日志保留天数', '天'],
+                  ['maxRecords', '系统日志保留条数', '条'],
+                  ['maxContentMB', '系统日志内容预算', 'MiB'],
+                ] as const).map(([key, label, unit]) => (
+                  <SettingRow key={key} label={label} description="0 = 不限；与请求日志独立清理">
+                    <div className="flex w-full items-center gap-2 sm:w-48">
+                      <NumberField aria-label={label} value={form.systemLog[key]} min={0}
+                        className="font-mono text-xs" onCommit={(value) => updateSystemLog(key, value)} />
+                      <span className="shrink-0 text-xs text-muted-foreground">{unit}</span>
+                    </div>
+                  </SettingRow>
+                ))}
+              </div>
               <div className="border-t border-border/40 pt-3 text-xs space-y-2">
-                <div className="flex items-center justify-between text-muted-foreground">
-                  <span>数据库占用</span>
-                  <span className="font-semibold text-foreground">
-                    {storage
-                      ? `${formatBytes(storage.db.totalBytes)}（逻辑 ${formatBytes(storage.db.logicalBytes)}）`
-                      : "—"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-muted-foreground">
-                  <span>日志记录</span>
-                  <span className="font-semibold text-foreground">
-                    {storage
-                      ? `${storage.recordCount.toLocaleString()} 条`
-                      : "—"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-muted-foreground">
-                  <span>外置媒体</span>
-                  <span className="font-semibold text-foreground">
-                    {storage
-                      ? `${storage.assets.files.toLocaleString()} 个 · ${formatBytes(storage.assets.bytes)}`
-                      : "—"}
-                  </span>
-                </div>
-                {storage?.lastCleanup?.lastRunAt && (
-                  <div className="flex items-center justify-between text-muted-foreground">
-                    <span>最近清理</span>
-                    <span className="font-mono text-2xs">
-                      {formatRelative(storage.lastCleanup.lastRunAt)}
-                      {storage.lastCleanup.deletedByTTL +
-                        storage.lastCleanup.deletedByRecords +
-                        storage.lastCleanup.deletedBySize >
-                      0
-                        ? ` · 删 ${storage.lastCleanup.deletedByTTL + storage.lastCleanup.deletedByRecords + storage.lastCleanup.deletedBySize} 条`
-                        : " · 无删除"}
-                    </span>
+                {storageError && <p role="alert" className="text-ember">无法更新存储占用：{storageError.message}</p>}
+                {([
+                  ['数据库文件', storage?.db.fileBytes],
+                  ['有效数据页（含索引）', storage?.db.usedBytes],
+                  ['可回收空闲页', storage?.db.freeBytes],
+                  ['WAL 文件', storage?.db.walBytes],
+                  ['请求日志 JSON', storage?.content.usageBytes],
+                  ['引用中的去重媒体', storage?.content.mediaBytes],
+                  ['待删除媒体', storage?.content.pendingMediaBytes],
+                  ['媒体目录实际占用（含孤儿文件）', storage?.assets.bytes],
+                  ['系统日志内容', storage?.content.systemBytes],
+                  ['长期保存的用量汇总', storage?.db.rollupBytes],
+                  ['数据库索引', storage?.db.indexBytes],
+                  ['页结构与页内空隙（含索引页，不与上项相加）', storage?.db.pageOverheadBytes],
+                ] as const).map(([label, bytes]) => (
+                  <div key={label} className="flex items-center justify-between text-muted-foreground gap-3">
+                    <span>{label}</span><span className="font-semibold text-foreground">{bytes === undefined ? '—' : formatBytes(bytes)}</span>
                   </div>
-                )}
-                {storage?.lastCleanup?.lastError && (
-                  <p className="mt-2 text-2xs text-ember flex items-center gap-1">
-                    <AlertTriangle className="h-3 w-3 shrink-0" /> 清理异常：
-                    {storage.lastCleanup.lastError}
-                  </p>
-                )}
+                ))}
+                <p className="text-muted-foreground">请求日志 {storage?.content.usageRecords.toLocaleString() ?? '—'} 条 · 系统日志 {storage?.content.systemRecords.toLocaleString() ?? '—'} 条</p>
+                <LogMaintenanceStatus status={maintenance} error={maintenanceError} />
                 <p className="pt-1 text-2xs text-muted-foreground/70">
-                  统计聚合（小时/日汇总）在日志清理后仍完整保留，历史用量报表不受影响。
+                  内容预算不是磁盘硬上限。历史用量汇总长期保留，只有重置用量才删除；即使留存不限，也会回收已删除数据的空闲页。升级备份不自动删除、不计入上述占用。
                 </p>
               </div>
             </div>

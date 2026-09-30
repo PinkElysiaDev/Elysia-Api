@@ -4,11 +4,17 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"time"
 )
 
 func (s *Store) InsertSystemLog(ctx context.Context, level, message string, fields any) error {
-	payload, _ := json.Marshal(fields)
-	_, err := s.db.ExecContext(ctx, `INSERT INTO system_logs(created_at, level, message, fields_json) VALUES(?, ?, ?, ?)`, nowString(), level, message, string(payload))
+	payload, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	created := now.UTC().Format(time.RFC3339Nano)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO system_logs(created_at, created_ms, level, message, fields_json, content_bytes) VALUES(?, ?, ?, ?, ?, ?)`, created, now.UnixMilli(), level, message, string(payload), len(created)+len(level)+len(message)+len(payload))
 	return err
 }
 

@@ -1,20 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import type { RuntimeConfig, UsageLogRuntimeConfig } from '@/lib/types'
+import type { RuntimeConfig, UsageLogRuntimeConfig, LogRetentionConfig } from '@/lib/types'
 
 /** 目录同步周期的表单默认（与后端 ResolveModelCatalogInterval 默认一致）。 */
 const defaultCatalogSyncMinutes = 1440
-
-// 日志管理表单缺省值（后端 GET 返回生效值，老版本无该块时兜底）。
-const defaultUsageLog: UsageLogRuntimeConfig = {
-  persistEnabled: true,
-  retentionDays: 0,
-  maxStorageMB: 0,
-  maxRecords: 0,
-  bodyMaxKB: 0,
-  bodyOnErrorOnly: false,
-  externalizeMedia: true,
-  cleanupIntervalMinutes: 60,
-}
 
 // 远程访问表单缺省值（后端 enabled 缺省视为 true）。
 const defaultAgentRemote = { enabled: true, publicUrl: '' }
@@ -47,7 +35,7 @@ export function useRuntimeConfigForm(data: RuntimeConfig | undefined) {
     if (data)
       setForm({
         ...data,
-        usageLog: data.usageLog ?? defaultUsageLog,
+        usageLog: data.usageLog,
         modelCatalog: data.modelCatalog ?? {
           enabled: true,
           url: '',
@@ -72,6 +60,10 @@ export function useRuntimeConfigForm(data: RuntimeConfig | undefined) {
 
   function updateUsageLog<K extends keyof UsageLogRuntimeConfig>(key: K, value: UsageLogRuntimeConfig[K]) {
     setForm((prev) => (prev ? { ...prev, usageLog: { ...prev.usageLog, [key]: value } } : prev))
+  }
+
+  function updateSystemLog<K extends keyof LogRetentionConfig>(key: K, value: LogRetentionConfig[K]) {
+    setForm((prev) => (prev ? { ...prev, systemLog: { ...prev.systemLog, [key]: value } } : prev))
   }
 
   function toggleUsageBody(enabled: boolean) {
@@ -119,6 +111,7 @@ export function useRuntimeConfigForm(data: RuntimeConfig | undefined) {
             },
           }
         : {}),
+      ...(JSON.stringify(pristine.systemLog) !== JSON.stringify(form.systemLog) ? { systemLog: form.systemLog } : {}),
       ...(JSON.stringify(pristine.usageLog) !== JSON.stringify(form.usageLog) ? { usageLog: form.usageLog } : {}),
       ...(pristine.modelCatalog.syncIntervalMinutes !== form.modelCatalog.syncIntervalMinutes
         ? { modelCatalog: { syncIntervalMinutes: form.modelCatalog.syncIntervalMinutes } }
@@ -134,6 +127,7 @@ export function useRuntimeConfigForm(data: RuntimeConfig | undefined) {
     form,
     update,
     updateUsageLog,
+    updateSystemLog,
     toggleUsageBody,
     updateOutboundText,
     updateAgentRemote,

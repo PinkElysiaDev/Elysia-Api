@@ -12,6 +12,7 @@ import (
 type Store struct {
 	db    *sql.DB
 	codec *secretCodec
+	path  string
 
 	// rollupReady：小时级预聚合已完成回填，聚合查询可走 rollup 路径。
 	rollupReady atomic.Bool
@@ -157,10 +158,10 @@ type ModelGroup struct {
 }
 
 type APIToken struct {
-	Name          string    `json:"name"`
-	Token         string    `json:"token,omitempty"`
-	Enabled       bool      `json:"enabled"`
-	AllowedGroups []string  `json:"allowedGroups"` // 允许访问的模型组名称；空表示不限制（可访问全部）
+	Name          string   `json:"name"`
+	Token         string   `json:"token,omitempty"`
+	Enabled       bool     `json:"enabled"`
+	AllowedGroups []string `json:"allowedGroups"` // 允许访问的模型组名称；空表示不限制（可访问全部）
 	// Scopes 是端点级作用域（如 "agent"=可控制 AI 助手）。空表示只能
 	// 调用推理接口——与 allowedGroups（模型组维度）正交。
 	Scopes    []string  `json:"scopes"`

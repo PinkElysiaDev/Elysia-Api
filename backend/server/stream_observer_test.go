@@ -13,7 +13,7 @@ import (
 // 回归：流事件须保留「最后」N 条（终态事件在流尾部），且非法 JSON 不得
 // 混入（会让整个事件数组的序列化永远失败）。物化推迟到 recordUsage 一次完成。
 func TestStreamEventsKeepTailAndMaterialize(t *testing.T) {
-	record := &usageRecord{}
+	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: UsageBodyMaxBytes}}
 	resp := &http.Response{Body: io.NopCloser(strings.NewReader(buildSSEStream(120)))}
 	observeUpstreamUsage(resp, record, relay.PlatformOpenAI)
 	if _, err := io.ReadAll(resp.Body); err != nil {
@@ -39,7 +39,7 @@ func TestStreamEventsKeepTailAndMaterialize(t *testing.T) {
 }
 
 func TestStreamBodyCaptureDisabledStillCountsTokens(t *testing.T) {
-	record := &usageRecord{bodyOpts: usageBodyOptions{initialized: true, maxBytes: 0}}
+	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: 0}}
 	resp := &http.Response{Body: io.NopCloser(strings.NewReader(
 		openAIChunk("c1", map[string]any{"content": "private-response"}, "", nil) +
 			`data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}` + "\n\n" + openAIDone()))}
