@@ -14,7 +14,7 @@ func TestUsageLogDefaultsCleanupDisabled(t *testing.T) {
 	if !res.PersistEnabled {
 		t.Fatal("persistEnabled must default to true")
 	}
-	if res.RetentionDays != 0 || res.MaxStorageBytes != 0 || res.MaxRecords != 0 {
+	if res.RetentionDays != 0 || res.MaxContentBytes != 0 || res.MaxRecords != 0 {
 		t.Fatalf("auto cleanup must be disabled by default: %+v", res)
 	}
 	if res.BodyMaxBytes != 0 || DefaultUsageLogResolved().BodyMaxBytes != 0 {
@@ -69,23 +69,41 @@ func TestUsageBodyPolicySurvivesSaveAndReload(t *testing.T) {
 	}
 }
 
-func TestUsageLogLegacyFlatFallback(t *testing.T) {
-	off := false
-	cfg := &Config{UsagePersistEnabled: &off, UsagePersistMaxRecords: 5000}
+func TestUsageLogLegacyConfigMigratesOnce(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	original := []byte(`{"usagePersistEnabled":false,"usagePersistMaxRecords":5000,"usageLog":{"maxStorageMB":0,"maxRecords":0}}`)
+	if err := os.WriteFile(path, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	res := cfg.GetUsageLogConfig()
-	if res.PersistEnabled {
-		t.Fatal("legacy usagePersistEnabled=false must be honored")
+	if res.PersistEnabled || res.MaxRecords != 0 || res.MaxContentBytes != 0 {
+		t.Fatalf("migration lost explicit values: %+v", res)
 	}
-	if res.MaxRecords != 5000 {
-		t.Fatalf("legacy usagePersistMaxRecords=5000 must be honored, got %d", res.MaxRecords)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	// 新块显式设置后不再回退旧键。
-	offNew := true
-	five := 100
-	cfg.SetUsageLogConfig(UsageLogConfig{PersistEnabled: &offNew, MaxRecords: &five})
-	res = cfg.GetUsageLogConfig()
-	if res.MaxRecords != 100 {
-		t.Fatalf("explicit usageLog block must override legacy, got %d", res.MaxRecords)
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw["usagePersistEnabled"] != nil || raw["usagePersistMaxRecords"] != nil {
+		t.Fatal("legacy fields survived")
+	}
+	backup, err := os.ReadFile(path + ".pre-log-lifecycle")
+	if err != nil || string(backup) != string(original) {
+		t.Fatalf("backup=%s err=%v", backup, err)
+	}
+	if _, err := Load(path); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := os.ReadFile(path)
+	if string(after) != string(data) {
+		t.Fatal("repeat load changed migrated config")
 	}
 }
 
@@ -105,9 +123,9 @@ func TestUsageLogExplicitZeroSemantics(t *testing.T) {
 func TestUsageLogNegativeClamped(t *testing.T) {
 	cfg := &Config{}
 	neg := -5
-	cfg.SetUsageLogConfig(UsageLogConfig{RetentionDays: &neg, MaxStorageMB: &neg, BodyMaxKB: &neg})
+	cfg.SetUsageLogConfig(UsageLogConfig{RetentionDays: &neg, MaxContentMB: &neg, BodyMaxKB: &neg})
 	res := cfg.GetUsageLogConfig()
-	if res.RetentionDays != 0 || res.MaxStorageBytes != 0 || res.BodyMaxBytes != 0 {
+	if res.RetentionDays != 0 || res.MaxContentBytes != 0 || res.BodyMaxBytes != 0 {
 		t.Fatalf("negative values must clamp to 0: %+v", res)
 	}
 }

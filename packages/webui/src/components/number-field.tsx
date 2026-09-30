@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type InputHTMLAttributes } from 'react'
 import { Input } from '@/components/ui/input'
 
 /** 数字输入：清空时保持空串展示、失焦还原旧值，只在输入有效数字时提交。
@@ -10,14 +10,13 @@ export function NumberField({
   onCommit,
   min,
   className,
-  'aria-label': ariaLabel,
+  ...inputProps
 }: {
   value: number
   onCommit: (v: number) => void
   min?: number
   className?: string
-  'aria-label'?: string
-}) {
+} & Pick<InputHTMLAttributes<HTMLInputElement>, 'id' | 'aria-label' | 'aria-describedby'>) {
   const [text, setText] = useState<string>(String(value))
   useEffect(() => {
     setText(String(value))
@@ -27,7 +26,7 @@ export function NumberField({
       type="number"
       min={min}
       className={className}
-      aria-label={ariaLabel}
+      {...inputProps}
       value={text}
       onChange={(e) => {
         const raw = e.target.value.trim()

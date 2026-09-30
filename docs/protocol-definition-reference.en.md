@@ -1,0 +1,200 @@
+# Custom protocol reference
+
+[Documentation](README.en.md) · [简体中文](protocol-definition-reference.md) · **English**
+
+A definition describes upstream requests, responses, stream events, and optional model discovery. Definitions are stored in SQLite through the designer or management API; successful validation updates the registry. Sources reference them as `custom:<id>`.
+
+Field catalog: `GET /api/admin/custom-protocols/schema`. Implementations: [custom_protocol.go](../backend/relay/custom_protocol.go) and the [mapping compiler](../backend/relay/custom_protocol_mapping.go).
+
+## Minimal definition
+
+This complete example targets a fictional JSON API. Adjust paths and response fields to the actual upstream:
+
+```json
+{
+  "id": "vendor-json",
+  "name": "Vendor JSON",
+  "version": "1",
+  "type": "llm",
+  "request": {
+    "method": "POST",
+    "path": "/generate",
+    "shape": "openai-chat",
+    "auth": {"mode": "bearer"},
+    "body": {
+      "model": {"field": "model", "mode": "string"},
+      "messages": {"field": "messages", "mode": "json"},
+      "stream": {"field": "stream"}
+    }
+  },
+  "response": {
+    "textPath": "result.text",
+    "usagePath": "usage",
+    "finishReasonPath": "finish_reason"
+  }
+}
+```
+
+## Top-level fields
+
+| Field | Meaning |
+| --- | --- |
+| `id`, `name`, `version` | Identifier, display name, definition version; the ID must pass registration validation |
+| `type` | Defaults to `llm`; `embedding` / `reranker` are declarative reservations; the core does not interpret `x-` extensions |
+| `request` | Upstream request construction |
+| `response` | Response and `response.stream` mappings |
+| `models` | Optional discovery endpoint |
+| `aliases` | Extraction-key overrides |
+| `metadata` | Custom metadata; `preset` marks bundled definitions |
+
+## Match conditions
+
+A condition has `path`, `op`, and optional `value`:
+
+```json
+{"path":"thinking.enabled","op":"isTrue"}
+```
+
+Supported operators: `nonEmpty` (default), `isEmpty`, `equals`, `notEquals`, `in`, `notIn`, `contains`, `isNull`, `notNull`, `isTrue`, `isFalse`, `gt`, `gte`, `lt`, `lte`.
+
+Comparisons preserve types: numeric values compare numerically, string `"false"` differs from boolean `false`, and object key order does not matter. Blank text, `false`, `0`, empty arrays/objects, null, and absent values are empty for `nonEmpty`; `isFalse` is true for absent values.
+
+## Request construction
+
+| Field | Meaning |
+| --- | --- |
+| `method` | Defaults to POST |
+| `path` / `pathStream` | Relative to source `baseUrl`; optional streaming override; no independent scheme |
+| `headers` / `query` / `contentType` | Static or interpolated headers, query, and content type |
+| `shape` | `openai-chat`, `anthropic`, `gemini`, `responses`; shapes messages and tools for that wire format |
+| `body` | Recommended field construction tree |
+| `bodyTemplate` / `submitBody` | Legacy text templates; the former takes precedence |
+| `omitIfEmpty` | Remove specified empty paths after rendering |
+
+`body` containers are JSON objects/arrays. Leaves reference fields or provide constants. `field` accepts subpaths; `mode` is `json` or `string`:
+
+```json
+{
+  "temperature": {"field":"temperature","default":0.7,"omitIfEmpty":true},
+  "enable_thinking": {"field":"thinking.enabled","when":{"path":"thinking.enabled","op":"isTrue"}},
+  "api_version": {"value":"2026-01-01"}
+}
+```
+
+The example is a `request.body` fragment. `omitIf` removes a key when the rendered value equals its literal; a false `when` omits the whole key. `shape: responses` also provides `input` / `input_items`.
+
+The template context is `maheshvara.*`, with legacy alias `request.*`. It exposes generation settings, messages, tools, reasoning, metadata, stream, and `raw_extra`. Quoted placeholders receive JSON string escaping; unquoted placeholders insert native JSON. Filters are `json`, `default:<JSON>`, `bool`, `int`, and `string`. Template syntax fragment, not directly submittable JSON:
+
+```text
+{"model": {{maheshvara.model | json}}, "messages": {{maheshvara.messages | json}}}
+```
+
+Templates are limited to 4 MiB, 2048 placeholders, and a rendered JSON depth of 64. Registration and runtime both validate output; templates do not execute arbitrary code.
+
+### Authentication
+
+`auth.mode` supports `bearer` (default), `header`, `query`, and `none`. The default header name is `x-api-key`, with optional `prefix`; query mode specifies a parameter name. The key comes from the model source.
+
+Static headers cannot replace relay-managed authentication/transport headers. Custom auth rejects transport headers such as `Host`, `Content-Length`, `Transfer-Encoding`, `Connection`, and `Proxy-Authorization`. Names, values, interpolation output, and auth prefixes reject CR/LF.
+
+## Response mapping
+
+Paths support dots, array indexes, and bracket keys, such as `output[0].content[0].text` and `$['data'][0].text`.
+
+| Field | Target |
+| --- | --- |
+| `idPath` / `modelPath` / `statusPath` | Identifier, model, status |
+| `textPath` / `reasoningPath` / `refusalPath` | Text, reasoning text, refusal |
+| `signaturePath` / `signatureProviderPath` / `signatureProvider` | Signature and issuer; use a constant when the wire lacks an issuer field |
+| `encryptedContentPath` / `citationsPath` | Encrypted reasoning and citations |
+| `toolCallsPath` / `usagePath` / `finishReasonPath` / `errorPath` | Calls, usage, finish reason, error |
+| `textFilter` / `reasoningFilter` | Match-filter object arrays before extraction; arrays of conditions require every condition |
+| `body` / `fields` | Annotated sample tree or mapping rows; mutually exclusive |
+| `sample` | Sample upstream response for preview |
+
+A `response.body` leaf such as `{"field":"text","value":"example"}` derives its path from its tree position. A value-only leaf illustrates structure and creates no mapping. `fields` rows use `{path,field,transform?}`; duplicate mappings to the same field are invalid. `usage.*` defaults to integer conversion.
+
+Legacy `mappings` supplies direct-path aliases. Each `fieldMappings` item uses `target` and `source` / fixed `value` / `default`, with optional `omitIfEmpty`. Controlled targets include `id`, `model`, `created_at`, `status`, `stop_reason`, `incomplete_details`, `metadata`, `service_tier`, `system_fingerprint`, `output`, `usage`, and `error`.
+
+Transforms: `identity` / `raw`, `string` / `text` / `join`, `int` / `integer` / `number` / `float` / `timestamp_ms`, `bool` / `boolean`, `json` / `parse_json` / `json_string`, `first`, `usage` / `content_parts` / `tool_calls` / `output_items`. Paths, targets, and transforms are checked at registration.
+
+## Streaming
+
+Configure streams under **`response.stream`**. This object is an example of that section, not a complete protocol:
+
+```json
+{
+  "mode": "delta",
+  "modes": {"text":"cumulative","reasoning":"delta","arguments":"delta"},
+  "doneValues": ["[DONE]"],
+  "eventKeys": ["type","event"],
+  "finishWhen": {"path":"finished","op":"isTrue"},
+  "response": {"textPath":"text","usagePath":"usage"}
+}
+```
+
+| Field | Semantics |
+| --- | --- |
+| `payloadPath` | Actual payload within an event |
+| `mode` | Defaults to `delta`; `cumulative` converts snapshots into suffix deltas |
+| `modes` | Override global mode for `text`, `reasoning`, `arguments` |
+| `doneValues` / `done` | Raw terminal literals / typed values; `done` uses `{raw: ...}` or `{json: ...}` |
+| `doneValuesReplace` | Clear default `[DONE]` before adding explicit values |
+| `eventKeys` | JSON event-name fields, default `type`, `event` |
+| `finishWhen` / `statusWhen` | Match terminal conditions overriding corresponding defaults |
+| `frames` | Heterogeneous frame rules, taking precedence over legacy `events` |
+| `response` | Stream-level mapping; inherits the outer mapping when absent |
+
+If a cumulative snapshot regresses or changes, the decoder may emit its current value; arbitrary upstream revisions are not guaranteed to convert losslessly. Default completion includes a nonempty finish reason, `status == completed`, or a terminal literal. An empty completion with an explicit finish reason can succeed; `[DONE]` alone with no output or finish reason fails. After completion, an approximately 2-second idle drain window collects usage and error tail frames.
+
+### Heterogeneous frames
+
+Each frame requires `event` or `match`; both must hold when both are present. The first match wins. Use Match for protocols without event names. Unmatched frames are skipped; add a final matching rule for a general fallback.
+
+Frames support `payloadPath`, `response`, `terminal`, `tool`, and `toolDone`. Frame responses cannot nest `stream`; a matching frame without a response uses the stream-level mapping.
+
+### Split tool calls
+
+`tool` supports `path`, `idPath`, `indexPath`, `namePath`, `argumentsPath`, and `argumentsMode`. `path` may select a tool array, making the other paths relative to each element; otherwise paths are relative to the original frame.
+
+Identity frames register IDs, names, and indexes; argument frames associate by ID or index. `argumentsMode` defaults to `delta` and appends fragments verbatim; `cumulative` differences snapshots. Identity-only frames emit no argument delta. `toolDone: true` marks argument completion. Multiple tools per frame and cross-frame assembly are supported, contrary to older documented limits.
+
+## Extraction aliases
+
+Providing aliases for a category replaces that category's defaults. `usage` and `toolCall` support dot paths. Top-level fragment:
+
+```json
+{
+  "aliases": {
+    "textKeys": ["text","content","summary"],
+    "usage": {"input":["inTokens"],"cached":["prompt_tokens_details.cached_tokens"]},
+    "toolCall": {"id":["ref"],"name":["fn"],"arguments":["params"]}
+  }
+}
+```
+
+## Model discovery
+
+Defining `models` enables automatic discovery for sources using the protocol; otherwise use manual models. Supported fields: `method` (GET/POST, default GET), `path`, `headers`, `query`, `auth`, `listPath`, `idPath` (default `id`), and `namePath`. Authentication inherits `request.auth` when omitted.
+
+Top-level fragment:
+
+```json
+{"models":{"method":"GET","path":"/v1/models","listPath":"data","idPath":"id","namePath":"display_name"}}
+```
+
+## Presets and maintenance
+
+An empty protocol table is seeded with `chat-completions-api`, `responses-api`, `anthropic-api`, and `gemini-api`. Existing database rows take precedence and upgrades do not overwrite edits. Deleting every protocol causes seeding on the next startup. Migration of old vendor-style preset IDs also updates `custom:<id>` references.
+
+Canonical platforms `chat_completions` / `responses` / `anthropic` / `gemini` still use built-in paths. Presets are customization bases and equivalence-test targets, not proof that every request uses JSON definitions. Client-side SSE rendering, transport parsing, and transforms remain Go implementations.
+
+## Integration and validation
+
+1. Copy a suitable preset or start from the minimal definition, using real upstream examples.
+2. Run offline designer previews and inspect request/response mappings; this does not call the upstream.
+3. Test non-streaming, streaming, tools, errors, and completion using a test source. Live tests may incur charges.
+4. Save the protocol and create a `custom:<id>` source. Enable discovery only when `models` is configured.
+5. Send a client request through a group and compare usage, finish reason, logs, and expected output.
+
+The AI assistant uses the same protocol and CLI tools for drafting, previewing, testing, and saving under session permissions. The old standalone `/custom-protocols/assist` endpoint is no longer provided. See [Maheshvara](maheshvara-protocol.en.md) for conversion limits.

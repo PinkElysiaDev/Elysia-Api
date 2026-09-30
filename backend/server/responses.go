@@ -224,7 +224,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 		return connFailWriter.fail(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, respBody)
 	}
 
-	flusher, ok := c.Writer.(http.Flusher)
+	_, ok := c.Writer.(http.Flusher)
 	if !ok {
 		record.StatusCode = http.StatusInternalServerError
 		record.Error = "Streaming not supported"
@@ -249,7 +249,7 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 	}
 
 	writer := &observingStreamWriter{
-		inner:     &ginStreamWriter{writer: c.Writer, flusher: flusher},
+		inner:     &ginStreamWriter{writer: c.Writer},
 		record:    record,
 		startTime: startTime,
 	}
@@ -279,24 +279,13 @@ func (s *Server) handleResponsesStream(c *gin.Context, group *config.ModelGroupC
 	// 明确感知"出错了"，而非看到连接莫名中断、无任何收尾。
 	if streamErr != nil {
 		log.Printf("Error forwarding Responses stream: %v", streamErr)
-		record.Error = streamErr.Error()
-		// 转发中途出错必须反映为失败状态码，否则会被统计/日志误判为成功（200）。
-		// 上游已成功建连但流中断属上游侧问题，记 502。
-		if record.StatusCode < 400 {
-			record.StatusCode = http.StatusBadGateway
-		}
+		setUsageError(record, c.Request.Context(), streamErr)
 		// 转换路径的 renderer.Abort 已写出规范收尾帧(error + response.failed,
 		// 事件携带 sequence_number),重复补写会打乱事件序;仅纯转发失败需要补帧。
 		var rendered *relay.MaheshvaraError
-		if !errors.As(streamErr, &rendered) {
+		if record.StatusCode != statusClientClosedRequest && !errors.As(streamErr, &rendered) {
 			writeResponsesStreamError(writer, streamErr)
 		}
-	} else if streamYieldedNothing(record, writer) {
-		// 上游返回 200 但既无输出文本也无 usage —— 实际空响应，纠正为失败。
-		log.Printf("Upstream Responses stream returned empty response (no content, no usage)")
-		record.Error = "upstream returned empty response"
-		record.StatusCode = http.StatusBadGateway
-		writeResponsesStreamError(writer, fmt.Errorf("upstream returned empty response"))
 	}
 
 	s.settleStreamUsage(group, record, startTime)

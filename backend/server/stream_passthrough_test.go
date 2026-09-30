@@ -1,13 +1,19 @@
 package server
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/elysia-api/backend/config"
+	"github.com/gin-gonic/gin"
 )
 
 // 回归：OpenAI 系同协议透传时，上游 SSE 必须原样转发，provider 私有字段
@@ -119,5 +125,165 @@ func TestResponsesPassthroughStreamPreservesReasoningText(t *testing.T) {
 	last := records[len(records)-1]
 	if got := last.TotalTokens; got != 6 {
 		t.Fatalf("usage total tokens = %d, want 6", got)
+	}
+}
+
+// 取消发生在下游 flush 时，重现客户端看到终态就立即关闭连接的时序。
+type cancelAfterFlushWriter struct {
+	gin.ResponseWriter
+	body   *httptest.ResponseRecorder
+	marker string
+	cancel context.CancelFunc
+	ctx    context.Context
+}
+
+func (w *cancelAfterFlushWriter) Write(b []byte) (int, error) {
+	if err := w.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *cancelAfterFlushWriter) WriteString(s string) (int, error) {
+	return w.Write([]byte(s))
+}
+
+func (w *cancelAfterFlushWriter) Flush() {
+	w.ResponseWriter.Flush()
+	if strings.Contains(w.body.Body.String(), w.marker) {
+		w.cancel()
+	}
+}
+
+func TestStreamCancellationUsage(t *testing.T) {
+	for _, endpoint := range []string{"chat", "responses", "converted", "custom"} {
+		for _, completed := range []bool{false, true} {
+			t.Run(endpoint+fmt.Sprint(completed), func(t *testing.T) {
+				body := openAIChunk("c1", map[string]any{"content": "partial"}, "", nil)
+				terminal := openAIChunk("c1", map[string]any{}, "stop", map[string]any{"prompt_tokens": 2, "completion_tokens": 1, "total_tokens": 3})
+				marker := `"finish_reason":"stop"`
+				platform := "openai"
+				if endpoint == "custom" {
+					platform = "custom:chat-completions-api"
+				}
+				if endpoint == "responses" || endpoint == "converted" {
+					platform = "responses"
+					body = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n"
+					terminal = "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":2,\"output_tokens\":1,\"total_tokens\":3}}}\n\n"
+					if endpoint == "responses" {
+						marker = "response.completed"
+					}
+				}
+				upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					io.Copy(io.Discard, r.Body)
+					w.Header().Set("Content-Type", "text/event-stream")
+					io.WriteString(w, body)
+					w.(http.Flusher).Flush()
+					if completed {
+						io.WriteString(w, terminal)
+						if endpoint == "custom" {
+							io.WriteString(w, openAIDone())
+						}
+						w.(http.Flusher).Flush()
+					}
+					<-r.Context().Done()
+				}))
+				defer upstream.Close()
+				model := openAIModel("actual", upstream.URL)
+				model.Platform = platform
+				s := newTestServerWithStore(t, []config.ModelGroupConfig{{ID: "g", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 1, Models: []config.ModelRef{model}}})
+				if endpoint == "custom" {
+					s.seedPresetProtocols()
+					s.syncCustomProtocols()
+				}
+				c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+				if endpoint == "responses" {
+					rec = httptest.NewRecorder()
+					c, _ = newResponsesContext(rec, `{"model":"grp","stream":true,"input":"hi"}`)
+				}
+				ctx, cancel := context.WithCancel(c.Request.Context())
+				defer cancel()
+				c.Request = c.Request.WithContext(ctx)
+				if !completed {
+					marker = "partial"
+				}
+				c.Writer = &cancelAfterFlushWriter{c.Writer, rec, marker, cancel, ctx}
+				if endpoint == "responses" {
+					s.responses(c)
+				} else {
+					s.chatCompletions(c)
+				}
+				logs := latestUsageRecords(t, s)
+				want := 499
+				if completed {
+					want = 200
+				}
+				if len(logs) != 1 || logs[0].StatusCode != want {
+					t.Fatalf("want %d: %+v", want, logs)
+				}
+				var record usageRecord
+				if err := json.Unmarshal([]byte(storedRecordJSON(t, s.store, logs[0].RequestID)), &record); err != nil {
+					t.Fatal(err)
+				}
+				if completed {
+					if record.Error != "" || strings.Contains(rec.Body.String(), "context canceled") {
+						t.Fatalf("completed stream reported error: %+v", record)
+					}
+				} else if record.ErrorKind != ErrorKindClientCanceled {
+					t.Fatalf("errorKind=%q", record.ErrorKind)
+				}
+			})
+		}
+	}
+}
+
+type flushErrorResponseWriter struct{ *httptest.ResponseRecorder }
+
+func (w *flushErrorResponseWriter) FlushError() error { return io.ErrClosedPipe }
+
+func TestStreamFlushErrorThroughGinAndCapture(t *testing.T) {
+	c, _ := gin.CreateTestContext(&flushErrorResponseWriter{httptest.NewRecorder()})
+	installDownstreamCapture(c, &usageRecord{}, 0)
+	w := &ginStreamWriter{writer: c.Writer}
+	if err := w.Flush(); !errors.Is(err, io.ErrClosedPipe) {
+		t.Fatalf("lost underlying flush error: %v", err)
+	}
+}
+
+func TestToolOnlyStreamWithoutUsageSucceeds(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, `data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}`+"\n\ndata: [DONE]\n\n")
+	}))
+	defer upstream.Close()
+	s := newTestServerWithStore(t, []config.ModelGroupConfig{{ID: "g", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 1, Models: []config.ModelRef{openAIModel("m", upstream.URL)}}})
+	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	s.chatCompletions(c)
+	logs := latestUsageRecords(t, s)
+	if len(logs) != 1 || logs[0].StatusCode != 200 || !strings.Contains(rec.Body.String(), "call_1") {
+		t.Fatalf("tool completion: %+v", logs)
+	}
+}
+
+func TestCanceledConnectionDoesNotRetry(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var calls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		io.Copy(io.Discard, r.Body)
+		cancel()
+		<-r.Context().Done()
+	}))
+	defer upstream.Close()
+	model := openAIModel("m", upstream.URL)
+	model.Platform = "responses"
+	s := newTestServerWithStore(t, []config.ModelGroupConfig{{ID: "g", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 2, Models: []config.ModelRef{model}}})
+	c, _ := newResponsesContext(httptest.NewRecorder(), `{"model":"grp","stream":true,"input":"hi"}`)
+	c.Request = c.Request.WithContext(ctx)
+	s.responses(c)
+	logs := latestUsageRecords(t, s)
+	if len(logs) != 1 || logs[0].StatusCode != 499 || calls.Load() != 1 {
+		t.Fatalf("calls=%d logs=%+v", calls.Load(), logs)
 	}
 }

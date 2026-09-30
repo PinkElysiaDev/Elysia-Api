@@ -1,10 +1,12 @@
-# elysia CLI 参考（Agent elysia_cli 工具）
+# elysia CLI 参考
 
-> 内置模型可见工具：`elysia_cli`、`ask_user`、`update_plan`。本文件由工具定义、命令表与 help 渲染器生成。
+[文档首页](README.md) · **简体中文** · [English](agent-cli.en.md)
 
-System prompt 负责角色、决策、交互与会话约束；工具描述负责用途、命令前缀与帮助入口；help 负责命令参数、批处理与管道语法、业务约束、示例和流程。
+本页由工具定义、命令表和运行时帮助生成。`elysia` 是 `elysia_cli` 的命令语法，不是独立终端程序。下文 `text` 块中的尖括号和省略号表示待替换内容；不是可直接粘贴到 shell 的脚本。
 
-MCP 也提供 `elysia_cli`：持 `agent` 作用域 Key 直接执行。每次调用无状态；协议草稿和测试目标需要在同一次 command 批处理中复用，接入见 [远程 API 文档](remote-agent-api.md)。
+内置助手还提供 `ask_user` 和 `update_plan`，职责及权限见[工具目录](agent-tools-catalog.md)。REST/A2A 遵循会话审批；MCP 持 `agent` 作用域 Key 直接执行，不进入该审批链。MCP 每次调用无状态，草稿和测试目标须在同一次 `command` 批处理中复用，见[远程接入](remote-agent-api.md)。
+
+帮助原文保持运行时内容。阅读时注意：`key create` 的名称提示仍写有“创建后不可改”，但 `key update --new-name` 支持改名；“加密存储”以主密钥成功加载为前提；调用日志正文取决于[捕获策略](deployment.md#请求日志)，默认不保存。`--thinking` 的旧帮助档位也不等同于当前模型能力值 `both` / `non-thinking-only` / `thinking-only`；它与 Agent 的 `thinkingEffort` 是不同字段。协议完整字段以[定义参考](protocol-definition-reference.md)为准。
 
 ## 调用契约
 
@@ -910,8 +912,13 @@ elysia outbound set --ranges <CIDR,...>   # 空列表 = 全放行
 详细说明：整体替换出站禁止 IP 段列表（SSRF 防护）。--ranges 给出替换后的完整 CIDR 列表——是整体替换而非增量增删；空列表 = 放行所有地址。上游是本机/内网地址（如 127.0.0.1）被 "refused to dial denied IP" 拦截时，先核实目标地址、服务归属及用户授权，再说明拟变更的具体 CIDR、影响范围和风险；不要仅因请求被拦截就放宽策略。保留无关禁止段，按授权决定是否修改。
 ````
 
-更新方式（在 backend 目录执行）：
+## 文档同步
+
+中文内容由本测试生成；排版修改应落在生成模板，不直接编辑生成文件。英文完整译本人工维护，命令、参数、默认值、约束和示例必须与同次中文生成结果逐项同步。运行时帮助仍使用中文。
+
+在 `backend` 目录重新生成中文，再检查一致性：
 
 ```sh
 UPDATE_AGENT_CLI_DOCS=1 go test ./server -run '^TestCLIReferenceUpToDate$' -count=1
+go test ./server -run '^TestCLIReferenceUpToDate$' -count=1
 ```

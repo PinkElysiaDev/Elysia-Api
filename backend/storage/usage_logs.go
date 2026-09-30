@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func (s *Store) SaveUsageRecordJSON(ctx context.Context, payload []byte, summary UsageLogItem, endedAt time.Time) error {
+func (s *Store) SaveUsageRecordJSON(ctx context.Context, payload []byte, summary UsageLogItem, endedAt time.Time, assets ...UsageAsset) error {
 	if endedAt.IsZero() {
 		endedAt = time.Now()
 	}
@@ -18,12 +18,12 @@ func (s *Store) SaveUsageRecordJSON(ctx context.Context, payload []byte, summary
 	}
 	// 原始行与 rollup 增量同事务：任一失败整体回滚，两表保持一致。
 	return s.withTx(ctx, func(tx *sql.Tx) error {
-		return saveUsageRecordTx(ctx, tx, payload, summary, endedAt)
+		return saveUsageRecordTx(ctx, tx, payload, summary, endedAt, assets)
 	})
 }
 
-func saveUsageRecordTx(ctx context.Context, tx *sql.Tx, payload []byte, summary UsageLogItem, endedAt time.Time) error {
-	res, err := tx.ExecContext(ctx, `INSERT INTO usage_records(request_id, started_at, started_ms, ended_at, key_name, key_hash, group_name, model_name, source_id, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated, record_json) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(request_id) DO NOTHING`, summary.RequestID, summary.StartedAt.UTC().Format(time.RFC3339Nano), summary.StartedAt.UnixMilli(), endedAt.UTC().Format(time.RFC3339Nano), summary.KeyName, summary.KeyHash, summary.GroupName, summary.ModelName, summary.SourceID, summary.Platform, summary.SourceFormat, summary.TargetFormat, summary.RelayMode, summary.ResponsesMode, summary.UsageSource, sqlBoolToInt(summary.Stream), summary.StatusCode, summary.Error, summary.FirstByteMs, summary.DurationMs, summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, sqlBoolToInt(summary.RequestTruncated), sqlBoolToInt(summary.ResponseTruncated), string(payload))
+func saveUsageRecordTx(ctx context.Context, tx *sql.Tx, payload []byte, summary UsageLogItem, endedAt time.Time, assets []UsageAsset) error {
+	res, err := tx.ExecContext(ctx, `INSERT INTO usage_records(request_id, started_at, started_ms, ended_at, key_name, key_hash, requested_model_group, group_name, model_name, source_id, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated, record_json, content_bytes) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(request_id) DO NOTHING`, summary.RequestID, summary.StartedAt.UTC().Format(time.RFC3339Nano), summary.StartedAt.UnixMilli(), endedAt.UTC().Format(time.RFC3339Nano), summary.KeyName, summary.KeyHash, summary.RequestedModelGroup, summary.GroupName, summary.ModelName, summary.SourceID, summary.Platform, summary.SourceFormat, summary.TargetFormat, summary.RelayMode, summary.ResponsesMode, summary.UsageSource, sqlBoolToInt(summary.Stream), summary.StatusCode, summary.Error, summary.FirstByteMs, summary.DurationMs, summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, sqlBoolToInt(summary.RequestTruncated), sqlBoolToInt(summary.ResponseTruncated), string(payload), len(payload))
 	if err != nil {
 		return err
 	}
@@ -34,6 +34,11 @@ func saveUsageRecordTx(ctx context.Context, tx *sql.Tx, payload []byte, summary 
 	if inserted == 0 {
 		// 同 request_id 已落库：禁止覆盖。覆盖会让 rollup 再 +1 而旧桶不回退。
 		return nil
+	}
+	for _, asset := range assets {
+		if err := saveUsageAssetTx(ctx, tx, summary.RequestID, asset); err != nil {
+			return err
+		}
 	}
 	return upsertUsageRollupTx(ctx, tx, summary)
 }
@@ -52,7 +57,7 @@ func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageL
 	// 排序只用 started_ms：索引可直接反向游走取前 offset+limit 条窄索引项、
 	// 仅对页内行回表。若追加 started_at 次级排序，任何索引都无法满足复合顺序，
 	// SQLite 会退化为全窗口临时 B-tree 排序并逐行回表读取 record_json 胖行。
-	rows, err := s.db.QueryContext(ctx, `SELECT request_id, started_at, key_name, key_hash, group_name, model_name, source_id, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated FROM usage_records `+where+` ORDER BY started_ms DESC LIMIT ? OFFSET ?`, args...)
+	rows, err := s.db.QueryContext(ctx, `SELECT request_id, started_at, key_name, key_hash, requested_model_group, group_name, model_name, source_id, platform, source_format, target_format, relay_mode, responses_mode, usage_source, stream, status_code, error, first_byte_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_hit_tokens, request_truncated, response_truncated FROM usage_records `+where+` ORDER BY started_ms DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -62,7 +67,7 @@ func (s *Store) QueryUsageLogs(ctx context.Context, q UsageQuery) (int, []UsageL
 		var item UsageLogItem
 		var started string
 		var stream, reqTrunc, respTrunc int
-		if err := rows.Scan(&item.RequestID, &started, &item.KeyName, &item.KeyHash, &item.GroupName, &item.ModelName, &item.SourceID, &item.Platform, &item.SourceFormat, &item.TargetFormat, &item.RelayMode, &item.ResponsesMode, &item.UsageSource, &stream, &item.StatusCode, &item.Error, &item.FirstByteMs, &item.DurationMs, &item.InputTokens, &item.OutputTokens, &item.TotalTokens, &item.CacheHitTokens, &reqTrunc, &respTrunc); err != nil {
+		if err := rows.Scan(&item.RequestID, &started, &item.KeyName, &item.KeyHash, &item.RequestedModelGroup, &item.GroupName, &item.ModelName, &item.SourceID, &item.Platform, &item.SourceFormat, &item.TargetFormat, &item.RelayMode, &item.ResponsesMode, &item.UsageSource, &stream, &item.StatusCode, &item.Error, &item.FirstByteMs, &item.DurationMs, &item.InputTokens, &item.OutputTokens, &item.TotalTokens, &item.CacheHitTokens, &reqTrunc, &respTrunc); err != nil {
 			return 0, nil, err
 		}
 		item.StartedAt = parseTime(started)
@@ -186,109 +191,6 @@ func (s *Store) ClearUsage(ctx context.Context) error {
 	return nil
 }
 
-func deleteUsageByIDsTx(ctx context.Context, tx *sql.Tx, ids []string) error {
-	where := usageInClause("request_id", len(ids))
-	args := make([]interface{}, len(ids))
-	for i, id := range ids {
-		args[i] = id
-	}
-	_, err := tx.ExecContext(ctx, `DELETE FROM usage_records WHERE `+where, args...)
-	return err
-}
-
-func deleteUsageSelectTx(ctx context.Context, tx *sql.Tx, selectSQL string, args ...interface{}) ([]string, error) {
-	rows, err := tx.QueryContext(ctx, selectSQL, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
-}
-
-// DeleteUsageOlderThan 删除 started_ms 早于 cutoffMs 的最旧一批记录（至多
-// limit 条），返回被删 request_id；空切片表示已无可删。
-func (s *Store) DeleteUsageOlderThan(ctx context.Context, cutoffMs int64, limit int) ([]string, error) {
-	return s.deleteUsageOldest(ctx, cutoffMs, limit)
-}
-
-// DeleteUsageOldest 删除全局最旧的一批记录（至多 limit 条），超量清理用。
-func (s *Store) DeleteUsageOldest(ctx context.Context, limit int) ([]string, error) {
-	return s.deleteUsageOldest(ctx, 0, limit)
-}
-
-// deleteUsageOldest 按 started_ms 升序删除一批最旧记录：cutoffMs>0 时仅删
-// 早于该时间戳的行（过期清理），0 表示不限（超量清理）。空切片表示无可删。
-func (s *Store) deleteUsageOldest(ctx context.Context, cutoffMs int64, limit int) ([]string, error) {
-	if limit <= 0 {
-		limit = retentionDeleteBatchLimit
-	}
-	var ids []string
-	err := s.withTx(ctx, func(tx *sql.Tx) error {
-		query := `SELECT request_id FROM usage_records`
-		args := []any{}
-		if cutoffMs > 0 {
-			query += ` WHERE started_ms > 0 AND started_ms < ?`
-			args = append(args, cutoffMs)
-		}
-		query += ` ORDER BY started_ms ASC LIMIT ?`
-		args = append(args, limit)
-		selected, err := deleteUsageSelectTx(ctx, tx, query, args...)
-		if err != nil {
-			return err
-		}
-		if len(selected) == 0 {
-			return nil
-		}
-		if err := deleteUsageByIDsTx(ctx, tx, selected); err != nil {
-			return err
-		}
-		ids = selected
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return ids, nil
-}
-
-func (s *Store) DeleteUsageBeyondCount(ctx context.Context, keep int64) ([]string, error) {
-	var ids []string
-	err := s.withTx(ctx, func(tx *sql.Tx) error {
-		selected, err := deleteUsageSelectTx(ctx, tx,
-			`SELECT request_id FROM usage_records ORDER BY started_ms DESC LIMIT ? OFFSET ?`, retentionBeyondCountBatch, keep)
-		if err != nil {
-			return err
-		}
-		if len(selected) == 0 {
-			return nil
-		}
-		// 事务内按 500 一块删除，避免超长 IN 列表。
-		for start := 0; start < len(selected); start += retentionDeleteBatchLimit {
-			end := start + retentionDeleteBatchLimit
-			if end > len(selected) {
-				end = len(selected)
-			}
-			if err := deleteUsageByIDsTx(ctx, tx, selected[start:end]); err != nil {
-				return err
-			}
-		}
-		ids = selected
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return ids, nil
-}
-
 // CountUsageRecords 返回当前日志记录总数。
 func (s *Store) CountUsageRecords(ctx context.Context) (int64, error) {
 	var count int64
@@ -305,8 +207,7 @@ func (st UsageDBStats) LogicalBytes() int64 {
 }
 
 // UsageDBPageStats 单条语句原子读取 page_count/page_size/freelist_count：
-// 三次独立 PRAGMA 之间夹着并发写入时，(page_count - freelist_count) 可能
-// 基于两个不同快照计算（理论上可为负），超量清理据此会误判收敛。
+// 并发写入时保持一致快照；只用于物理占用和回收，不参与内容配额判断。
 func (s *Store) UsageDBPageStats(ctx context.Context) (UsageDBStats, error) {
 	var st UsageDBStats
 	err := s.db.QueryRowContext(ctx,
@@ -317,26 +218,8 @@ func (s *Store) UsageDBPageStats(ctx context.Context) (UsageDBStats, error) {
 	return st, err
 }
 
-// VacuumUsageDB 执行 VACUUM 回收空闲页并截断 WAL。需要短暂独占写锁、
-// 约双倍磁盘空间，调用方必须自行限频（见 usageRetention.maybeVacuum）。
-func (s *Store) VacuumUsageDB(ctx context.Context) error {
-	if _, err := s.db.ExecContext(ctx, `VACUUM`); err != nil {
-		return err
-	}
-	_, err := s.db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`)
-	return err
-}
-
-// retentionDeleteBatchLimit 是单批删除的默认行数上限。
-const retentionDeleteBatchLimit = 500
-
-// retentionBeyondCountBatch 是条数清理单次选择的上限：有界选择避免大表
-// 一次性把数百万 id 读进内存、并在单个事务里持长写锁。
-const retentionBeyondCountBatch = 2000
-
 // UsageDBStats 是数据库页面统计：LogicalBytes = (PageCount-FreePages)*PageSize，
-// 近似「扣掉空闲页后的实际占用」，超量清理按它收敛（删除会释放整页进空闲
-// 链表，页总数要等 VACUUM 才下降）。
+// 近似「扣掉空闲页后的实际占用」。删除释放整页进空闲链表，维护任务增量归还磁盘。
 type UsageDBStats struct {
 	PageCount int64 `json:"pageCount"`
 	PageSize  int64 `json:"pageSize"`

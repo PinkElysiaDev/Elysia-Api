@@ -53,6 +53,8 @@ func (s *Server) prepareRelayPlan(
 	failer relayFailer,
 	applyGroupMaxTokens bool,
 ) (*relayPlan, bool) {
+	record.RequestedModelGroup = maheshvaraReq.Model
+	record.Stream = maheshvaraReq.Stream
 	// 模型组级访问权限：先于 validateModelGroup 校验请求的模型组名，
 	// 这样即使目标组为空/未配置，越权访问也返回 403（而非泄露组的存在性/状态）。
 	if !s.tokenAllowsGroup(c, maheshvaraReq.Model) {

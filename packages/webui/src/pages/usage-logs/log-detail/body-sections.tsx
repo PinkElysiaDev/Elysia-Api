@@ -1,5 +1,5 @@
 // 详情抽屉的正文区组件与导出/展示辅助。
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import {
   ChevronRight,
 } from 'lucide-react'
@@ -10,20 +10,33 @@ import { AssetGallery } from './asset-lightbox'
 import { extractAssetRefs } from './asset-refs'
 import { prettyPrintBody } from './body-helpers'
 
+// 折叠时不处理正文；展开其它段落时也不重复格式化、高亮已有正文。
+const BodyContent = memo(function BodyContent({ content }: { content: string }) {
+  const assets = extractAssetRefs(content)
+  return (
+    <>
+      <pre
+        className="mb-3.5 max-h-[clamp(300px,42vh,560px)] overflow-auto whitespace-pre rounded-[7px] border border-border bg-code px-3.5 py-3 font-mono text-xs leading-[1.7]"
+        dangerouslySetInnerHTML={{ __html: colorize(prettyPrintBody(content)) }}
+      />
+      {assets.length > 0 && <AssetGallery assets={assets} />}
+    </>
+  )
+})
+
 export function ChainBodies({ detail }: { detail: UsageLogDetail }) {
-  const [openSegments, setOpenSegments] = useState<Set<string>>(() => new Set(['incoming']))
+  const internal = detail.relayMode === 'agent-assist'
+  const [openSegments, setOpenSegments] = useState<Set<string>>(() => new Set())
   const segments: { key: string; title: string; body: UsageBody | undefined }[] = [
-    { key: 'incoming', title: '① 下游请求', body: detail.incomingBody },
+    { key: 'incoming', title: internal ? '① 助手内部请求' : '① 下游请求', body: detail.incomingBody },
     { key: 'outgoing', title: '② 后端转发', body: detail.outgoingBody },
     { key: 'provider', title: '③ 上游回传', body: detail.providerResponse },
-    { key: 'downstream', title: '④ 返回下游', body: detail.downstreamResponse },
+    { key: 'downstream', title: internal ? '④ 返回助手引擎' : '④ 返回下游', body: detail.downstreamResponse },
   ]
   return (
     <>
       {segments.map((seg) => {
         const content = seg.body?.content ?? ''
-        const pretty = prettyPrintBody(content)
-        const assets = extractAssetRefs(content)
         const open = content.length > 0 && openSegments.has(seg.key)
         const panelId = `chain-body-${seg.key}`
         const triggerId = `chain-trigger-${seg.key}`
@@ -56,7 +69,7 @@ export function ChainBodies({ detail }: { detail: UsageLogDetail }) {
               {seg.title}
               <span className="ml-auto inline-flex items-center gap-1.5 font-normal text-muted-foreground">
                 <span className="tnum font-mono text-2xs">
-                  {content ? `${(new Blob([content]).size / 1024).toFixed(1)} KB` : '空'}
+                  {content ? `${(new Blob([content]).size / 1024).toFixed(1)} KB` : '未记录正文'}
                 </span>
                 {seg.body?.truncated && (
                   <span className="rounded border border-[color-mix(in_srgb,var(--amber)_35%,transparent)] px-[5px] font-mono text-2xs text-amber">
@@ -76,13 +89,7 @@ export function ChainBodies({ detail }: { detail: UsageLogDetail }) {
               )}
             >
               <div className="min-h-0 overflow-hidden">
-                {content && (
-                  <pre
-                    className="mb-3.5 max-h-[clamp(300px,42vh,560px)] overflow-auto whitespace-pre rounded-[7px] border border-border bg-code px-3.5 py-3 font-mono text-xs leading-[1.7]"
-                    dangerouslySetInnerHTML={{ __html: colorize(pretty) }}
-                  />
-                )}
-                {open && assets.length > 0 && <AssetGallery assets={assets} />}
+                {open && <BodyContent content={content} />}
               </div>
             </div>
           </div>

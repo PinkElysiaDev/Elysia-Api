@@ -194,9 +194,6 @@ html {
    * 插值配比：16 = 0.8125×16 + 0.1953125%×1536，18 = 0.8125×16 + 0.1953125%×2560。
    * 幅度刻意保守（+12.5% 封顶）：大屏易读即可，不能让熟客觉得「字变大变松」。 */
   font-size: clamp(1rem, 0.8125rem + 0.1953125vw, 1.125rem);
-  /* 立绘水印右缘出血会撑出 8px 横向滚动：clip 必须设在根元素上——
-   * Chrome 不把 body 的 overflow 传播到视口。clip 不产生滚动容器，sticky 侧栏不受影响 */
-  overflow-x: clip;
 }
 html::-webkit-scrollbar {
   display: none;
@@ -214,6 +211,12 @@ body,
   height: 100%;
 }
 
+#root {
+  /* 在内容层裁剪水印的横向溢出；html/body 保持默认 overflow，让弹层的
+   * body 滚动锁作用于视口，不改变 sticky 侧栏的滚动参照。clip 不创建滚动容器。 */
+  overflow-x: clip;
+}
+
 body {
   margin: 0;
   background-color: hsl(var(--background));
@@ -221,8 +224,6 @@ body {
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  /* 立绘水印向内容画布右缘出血，clip 掉横向溢出（不产生滚动条，也不破坏 sticky） */
-  overflow-x: clip;
 }
 
 /* 页面光晕：左上瑰梅 + 右下靛蓝 + 中右角色光环，极轻量 radial 挂在 fixed 伪元素上，不污染正文 */

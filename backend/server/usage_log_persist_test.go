@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -213,4 +214,35 @@ func TestAdminUsageAssetServesFileAndRejectsTraversal(t *testing.T) {
 	}
 	_ = cfg
 	_ = store
+}
+
+func TestMissingModelKeepsRequestMetadataWithoutBodies(t *testing.T) {
+	for _, endpoint := range []string{"chat", "responses"} {
+		t.Run(endpoint, func(t *testing.T) {
+			s := newTestServerWithStore(t, nil)
+			zero := 0
+			s.config.SetUsageLogConfig(config.UsageLogConfig{BodyMaxKB: &zero})
+			c, rec := chatRequestContext(`{"model":"missing-model","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+			if endpoint == "responses" {
+				rec = httptest.NewRecorder()
+				c, _ = newResponsesContext(rec, `{"model":"missing-model","stream":true,"input":"hi"}`)
+			}
+			if endpoint == "responses" {
+				s.responses(c)
+			} else {
+				s.chatCompletions(c)
+			}
+			logs := latestUsageRecords(t, s)
+			if rec.Code != 404 || len(logs) != 1 || logs[0].RequestedModelGroup != "missing-model" || !logs[0].Stream || logs[0].ModelName != "" {
+				t.Fatalf("status=%d logs=%+v", rec.Code, logs)
+			}
+			var record usageRecord
+			if err := json.Unmarshal([]byte(storedRecordJSON(t, s.store, logs[0].RequestID)), &record); err != nil {
+				t.Fatal(err)
+			}
+			if record.RequestedModelGroup != "missing-model" || !record.Stream || record.IncomingBody.Content != "" {
+				t.Fatalf("record=%+v", record)
+			}
+		})
+	}
 }

@@ -1,105 +1,74 @@
-// usage 资产引用：请求与资产文件的关联登记、释放与全量引用扫描。
+// Attachment metadata belongs to the same transaction as its request record.
 package storage
 
 import (
 	"context"
 	"database/sql"
-	"strings"
+	"fmt"
+	"path/filepath"
 )
 
-// InsertUsageAssetRef 登记一条「记录 → 资产文件」引用（幂等）。文件按内容
-// 哈希全局去重，多个记录可引用同一文件；能否删文件由引用计数决定。
-func (s *Store) InsertUsageAssetRef(ctx context.Context, requestID, assetFile string) error {
-	_, err := s.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO usage_asset_refs(asset_file, request_id) VALUES(?, ?)`, assetFile, requestID)
+type UsageAsset struct {
+	File       string `json:"file"`
+	SizeBytes  int64  `json:"sizeBytes"`
+	Referenced bool   `json:"referenced"`
+}
+
+func saveUsageAssetTx(ctx context.Context, tx *sql.Tx, requestID string, a UsageAsset) error {
+	if !assetNamePattern.MatchString(a.File) || a.SizeBytes < 0 {
+		return fmt.Errorf("invalid usage asset: %q", a.File)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO usage_assets(asset_file,size_bytes) VALUES(?,?) ON CONFLICT(asset_file) DO UPDATE SET size_bytes=excluded.size_bytes`, a.File, a.SizeBytes); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO usage_asset_refs(asset_file,request_id) VALUES(?,?)`, a.File, requestID)
 	return err
 }
 
-// DeleteUsageAssetRefs 删除一组记录的资产引用，返回因此不再被任何记录
-// 引用（可安全删除文件）的资产文件名。仍在被其他记录引用的不返回。
-func (s *Store) DeleteUsageAssetRefs(ctx context.Context, requestIDs []string) ([]string, error) {
-	if len(requestIDs) == 0 {
-		return nil, nil
-	}
-	var orphans []string
-	err := s.withTx(ctx, func(tx *sql.Tx) error {
-		for start := 0; start < len(requestIDs); start += retentionDeleteBatchLimit {
-			end := start + 500
-			if end > len(requestIDs) {
-				end = len(requestIDs)
-			}
-			batch := requestIDs[start:end]
-			placeholders := make([]string, len(batch))
-			args := make([]any, len(batch))
-			for i, id := range batch {
-				placeholders[i] = "?"
-				args[i] = id
-			}
-			in := strings.Join(placeholders, ",")
-			// 先收集这批请求涉及的文件，删引用后再筛出零引用的。
-			rows, err := tx.QueryContext(ctx,
-				`SELECT DISTINCT asset_file FROM usage_asset_refs WHERE request_id IN (`+in+`)`, args...)
-			if err != nil {
-				return err
-			}
-			var touched []string
-			for rows.Next() {
-				var file string
-				if err := rows.Scan(&file); err != nil {
-					rows.Close()
-					return err
-				}
-				touched = append(touched, file)
-			}
-			if err := rows.Err(); err != nil {
-				rows.Close()
-				return err
-			}
-			rows.Close()
-			if _, err := tx.ExecContext(ctx,
-				`DELETE FROM usage_asset_refs WHERE request_id IN (`+in+`)`, args...); err != nil {
-				return err
-			}
-			for _, file := range touched {
-				var remaining int
-				if err := tx.QueryRowContext(ctx,
-					`SELECT COUNT(*) FROM usage_asset_refs WHERE asset_file = ?`, file).Scan(&remaining); err != nil {
-					return err
-				}
-				if remaining == 0 {
-					orphans = append(orphans, file)
-				}
-			}
-		}
-		return nil
-	})
+func (s *Store) UsageAssets(ctx context.Context) ([]UsageAsset, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT asset_file,size_bytes,EXISTS(SELECT 1 FROM usage_asset_refs r WHERE r.asset_file=a.asset_file) FROM usage_assets a`)
 	if err != nil {
 		return nil, err
 	}
-	return orphans, nil
+	defer rows.Close()
+	var assets []UsageAsset
+	for rows.Next() {
+		var a UsageAsset
+		if err := rows.Scan(&a.File, &a.SizeBytes, &a.Referenced); err != nil {
+			return nil, err
+		}
+		assets = append(assets, a)
+	}
+	return assets, rows.Err()
 }
 
-// ReferencedAssetFiles 返回当前仍被引用的全部资产文件名（孤儿清扫用）。
+// The caller holds the same file-lifecycle lock as the writer until deletion and
+// ForgetUnusedAsset have both completed. A failed unlink leaves metadata for retry.
+func (s *Store) ForgetUnusedAsset(ctx context.Context, file string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM usage_assets WHERE asset_file=? AND NOT EXISTS(SELECT 1 FROM usage_asset_refs r WHERE r.asset_file=usage_assets.asset_file)`, file)
+	return err
+}
+
 func (s *Store) ReferencedAssetFiles(ctx context.Context) (map[string]bool, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT asset_file FROM usage_asset_refs`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	result := map[string]bool{}
+	files := map[string]bool{}
 	for rows.Next() {
-		var file string
-		if err := rows.Scan(&file); err != nil {
+		var name string
+		if err := rows.Scan(&name); err != nil {
 			return nil, err
 		}
-		result[file] = true
+		files[name] = true
 	}
-	return result, rows.Err()
+	return files, rows.Err()
 }
 
-// QueryRecordBodiesWithAssets 流式返回 (request_id, record_json)，仅取
-// 含资产占位符的记录（LIKE 预过滤）。资产布局迁移重建引用表用。
-func (s *Store) QueryRecordBodiesWithAssets(ctx context.Context) (*sql.Rows, error) {
-	return s.db.QueryContext(ctx,
-		`SELECT request_id, record_json FROM usage_records WHERE record_json LIKE '%__ELYSIA_ASSET__%'`)
+func (s *Store) UsageAssetsRoot() string { return filepath.Join(filepath.Dir(s.path), "usage-assets") }
+func (s *Store) HasUsageAsset(ctx context.Context, requestID, file string) (bool, error) {
+	var exists bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM usage_asset_refs WHERE request_id=? AND asset_file=?)`, requestID, file).Scan(&exists)
+	return exists, err
 }

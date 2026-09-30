@@ -39,7 +39,12 @@ func OpenWithKey(path string, key []byte) (*Store, error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	store := &Store{db: db, codec: codec, rollupCtx: ctx, rollupCancel: cancel}
+	store := &Store{db: db, codec: codec, path: path, rollupCtx: ctx, rollupCancel: cancel}
+	if err := store.prepareLogLifecycle(context.Background()); err != nil {
+		cancel()
+		db.Close()
+		return nil, err
+	}
 	if err := store.init(context.Background()); err != nil {
 		cancel()
 		db.Close()
@@ -80,7 +85,10 @@ func (s *Store) init(ctx context.Context) error {
 			return fmt.Errorf("%s: %w", stmt, err)
 		}
 	}
-	return s.migrate(ctx)
+	if err := s.migrate(ctx); err != nil {
+		return err
+	}
+	return s.migrateLogLifecycle(ctx)
 }
 
 // addColumnIgnoreDup 执行幂等 ALTER：列已存在（duplicate column）视为成功。

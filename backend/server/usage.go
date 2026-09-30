@@ -9,9 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -124,21 +122,10 @@ type usageRecord struct {
 	pendingStreamEvents []json.RawMessage `json:"-"`
 }
 
-// usageBodyOptions 是单条请求生效的日志内容策略。initialized=false 表示
-// 未初始化（直接构造的裸记录，多见于测试），按历史默认 1MiB、不外置处理——
-// 不能靠 maxBytes 零值判断，因为 0 是显式的「不保存任何请求体」。
+// usageBodyOptions snapshots capture policy once per request; zero disables capture.
 type usageBodyOptions struct {
-	initialized bool
 	maxBytes    int
 	externalize bool
-}
-
-// effectiveMaxBytes 归一化上限：未初始化走 UsageBodyMaxBytes 历史默认。
-func (o usageBodyOptions) effectiveMaxBytes() int {
-	if !o.initialized {
-		return UsageBodyMaxBytes
-	}
-	return o.maxBytes
 }
 
 func shortTokenHash(token string) string {
@@ -156,7 +143,7 @@ func (s *Server) initUsageRecord(c *gin.Context, start time.Time, body []byte, i
 		KeyHash:     c.GetString("elysiaKeyHash"),
 		InputFormat: string(inputFormat),
 		StatusCode:  http.StatusOK,
-		bodyOpts:    usageBodyOptions{initialized: true, maxBytes: cfg.BodyMaxBytes, externalize: cfg.ExternalizeMedia},
+		bodyOpts:    usageBodyOptions{maxBytes: cfg.BodyMaxBytes, externalize: cfg.ExternalizeMedia},
 		assets:      newAssetSink(requestID),
 	}
 	record.IncomingBody = record.sanitizeBody(body)
@@ -178,7 +165,7 @@ func usageRequestID(start time.Time) string {
 // base64 媒体也永远提不出来。maxBytes 显式为 0（不保存请求体）时返回空体；
 // JSON 不可解析（非 JSON body）时退化为字节截断，保持历史语义。
 func (r *usageRecord) sanitizeBody(data []byte) usageBody {
-	maxBytes := r.bodyOpts.effectiveMaxBytes()
+	maxBytes := r.bodyOpts.maxBytes
 	if maxBytes == 0 || len(data) == 0 {
 		return usageBody{}
 	}
@@ -202,7 +189,7 @@ func (r *usageRecord) sanitizeBody(data []byte) usageBody {
 // 这里按「整体 JSON → SSE 逐行 → 字节截断」三级降级做外置与截断。
 // 与前三段不同，下游内容不做脱敏（沿用 downstreamBody 的既定语义）。
 func (r *usageRecord) finalizeDownstreamBody(body usageBody) usageBody {
-	maxBytes := r.bodyOpts.effectiveMaxBytes()
+	maxBytes := r.bodyOpts.maxBytes
 	if maxBytes == 0 || body.Content == "" {
 		return usageBody{}
 	}
@@ -235,7 +222,7 @@ func truncateUsageBody(content string, maxBytes int) usageBody {
 // 序列化推迟到 recordUsage 一次性物化：旧实现每事件重编组整个数组并完整
 // 清洗，CPU 随事件数平方增长。
 func (r *usageRecord) appendStreamEvent(payload string) {
-	if r.bodyOpts.effectiveMaxBytes() == 0 || !json.Valid([]byte(payload)) {
+	if r.bodyOpts.maxBytes == 0 || !json.Valid([]byte(payload)) {
 		return
 	}
 	if len(r.pendingStreamEvents) >= StreamEventsCacheMax {
@@ -745,13 +732,6 @@ func (s *Server) resetUsage(c *gin.Context) {
 	// 避免「先加 generation 再 drain」把 reset 之后、drain 之前入队的新记录丢掉。
 	s.drainUsageQueueFrom(w)
 	s.usageWriteGen.Add(1)
-	// 记录已全清：外置媒体资产目录一并清空。必须在 persist/write 锁释放前
-	// 执行——之后放行的新请求会重建自己的资产目录，不会误删。
-	if root := s.usageAssetsRoot(); root != "" {
-		if err := os.RemoveAll(root); err != nil {
-			log.Printf("usage reset: failed to remove assets root %s: %v", root, err)
-		}
-	}
 	s.usagePersistMu.Unlock()
 	if w != nil {
 		w.mu.Unlock()
@@ -760,7 +740,11 @@ func (s *Server) resetUsage(c *gin.Context) {
 	s.usageSeq.Add(1)
 	s.logSystemEvent("warn", "usage statistics and logs reset", nil)
 	// 与失败路径同用 admin 封套（respondFail），客户端按 ok 字段统一判读。
-	respondOK(c, gin.H{"reset": true})
+	reclaimQueued := false
+	if s.usageRetention != nil {
+		reclaimQueued = s.usageRetention.triggerAsync()
+	}
+	respondOK(c, gin.H{"reset": true, "reclaimQueued": reclaimQueued})
 }
 
 func usageTimeRange(c *gin.Context) (time.Time, time.Time) {
@@ -788,15 +772,13 @@ func parsePositiveInt(raw string, fallback int) int {
 }
 
 // observingStreamWriter 是下游观察者：包裹写回客户端的流式 writer，仅负责
-// 首字节计时与输出文本累积（本地 token 估算用）。事件捕获与 usage 提取由
+// 首字节计时。事件捕获与 usage 提取由
 // 上游观察者（upstreamUsageObservingBody）承担——若两者都写 ProviderResponse，
 // transform 模式下最终值取决于读写交错且记录的是下游渲染格式而非上游原文。
 type observingStreamWriter struct {
-	inner        relay.StreamResponseWriter
-	record       *usageRecord
-	startTime    time.Time
-	responseText strings.Builder
-	lines        sseLineSplitter
+	inner     relay.StreamResponseWriter
+	record    *usageRecord
+	startTime time.Time
 }
 
 func (w *observingStreamWriter) Write(data []byte) (int, error) {
@@ -810,8 +792,6 @@ func (w *observingStreamWriter) WriteString(data string) (int, error) {
 }
 
 func (w *observingStreamWriter) Flush() error {
-	// SSE 以空行分帧，Flush 时行必完整；冲刷残余缓冲防止最后一行丢失。
-	w.lines.flushRemainder(w.observeLine)
 	return w.inner.Flush()
 }
 
@@ -822,9 +802,6 @@ func (w *observingStreamWriter) observe(data []byte) {
 	if w.record.FirstByteMs == 0 && len(strings.TrimSpace(string(data))) > 0 {
 		w.record.FirstByteMs = time.Since(w.startTime).Milliseconds()
 	}
-	// 行缓冲：data: 载荷可能跨多次 Write 到达，按单次调用切行会把半截 JSON
-	// 当完整事件处理（详见 sseLineSplitter 注释）。
-	w.lines.feed(data, w.observeLine)
 }
 
 // sseDataPayload 解析 SSE 的 data: 行:返回净载荷;空行/[DONE]/非 data 行
@@ -839,12 +816,6 @@ func sseDataPayload(line string) (string, bool) {
 		return "", false
 	}
 	return payload, true
-}
-
-func (w *observingStreamWriter) observeLine(line string) {
-	if payload, ok := sseDataPayload(line); ok {
-		w.responseText.WriteString(extractOutputTextFromStreamPayload(payload))
-	}
 }
 
 // sseLineSplitter 缓冲跨 Read/Write 到达的字节，按完整行回调 onLine。
@@ -1134,14 +1105,6 @@ func extractOutputTextFromProviderBody(platform relay.Platform, format relay.For
 	return extractOutputTextFromPayload(payload)
 }
 
-func extractOutputTextFromStreamPayload(payload string) string {
-	var event map[string]interface{}
-	if err := json.Unmarshal([]byte(payload), &event); err != nil {
-		return ""
-	}
-	return extractOutputTextFromPayload(event)
-}
-
 // geminiTextFromCandidates 拼接 Gemini candidates[].content.parts[].text。
 func geminiTextFromCandidates(payload map[string]interface{}) string {
 	candidates, ok := payload["candidates"].([]interface{})
@@ -1266,7 +1229,6 @@ func numberFromUsageMap(raw map[string]interface{}, key string) float64 {
 func setRecordGroup(record *usageRecord, group *config.ModelGroupConfig) {
 	record.GroupID = group.ID
 	record.GroupName = group.Name
-	record.RequestedModelGroup = group.Name
 }
 
 func setRecordModel(record *usageRecord, model config.ModelRef, platform relay.Platform) {

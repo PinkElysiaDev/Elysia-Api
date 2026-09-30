@@ -339,7 +339,7 @@ export function AgentPage() {
       <div className={WORKSPACE_CLASS}>
         <div
           key="agent-overview"
-          className="flex min-h-0 flex-1 animate-in fade-in duration-300 flex-col"
+          className="flex min-h-0 flex-1 flex-col"
         >
           <PageHeader
             title="AI 助手"
@@ -362,7 +362,7 @@ export function AgentPage() {
     <div className={WORKSPACE_CLASS}>
       <div
         key={`agent-chat-${activeId ?? "none"}`}
-        className="flex min-h-0 min-w-0 flex-1 animate-in fade-in slide-in-from-bottom-2 duration-300 flex-col"
+        className="flex min-h-0 min-w-0 flex-1 flex-col"
       >
         <WorkspaceHeader
           session={session}

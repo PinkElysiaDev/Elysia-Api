@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="crystal arrow">
-<style>.i{fill:#D6337F}.a{fill:#F08AC8}.si{stroke:#D6337F;fill:none}.sa{stroke:#F08AC8;fill:none}
-@media (prefers-color-scheme: light){.i{fill:#C2186B}.a{fill:#E86FB4}.si{stroke:#C2186B}.sa{stroke:#E86FB4}}
-@media (prefers-color-scheme: dark){.i{fill:#F2A7DE}.a{fill:#FFC4E8}.si{stroke:#F2A7DE}.sa{stroke:#FFC4E8}}</style>
-<path class="i" d="M12.6 3.4 L20.6 3.4 L20.6 11.4 L17.4 8.2 L13.6 12 L11.2 9.6 L15 5.8 Z"/>
-<path class="a" d="M13.1 10.9 L15.5 13.3 L6.1 20.3 L3.7 17.9 Z"/>
-</svg>

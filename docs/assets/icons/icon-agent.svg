@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="crystal spark with orbit">
-<style>.i{fill:#D6337F}.a{fill:#F08AC8}.si{stroke:#D6337F;fill:none}.sa{stroke:#F08AC8;fill:none}
-@media (prefers-color-scheme: light){.i{fill:#C2186B}.a{fill:#E86FB4}.si{stroke:#C2186B}.sa{stroke:#E86FB4}}
-@media (prefers-color-scheme: dark){.i{fill:#F2A7DE}.a{fill:#FFC4E8}.si{stroke:#F2A7DE}.sa{stroke:#FFC4E8}}</style>
-<path class="i" d="M12 3.6 L16.6 11 L12 18.4 L7.4 11 Z"/>
-<path class="sa" stroke-width="2.4" stroke-linecap="square" d="M3.4 13.4 A 9 9 0 0 1 8.6 4.2 M20.6 8.6 A 9 9 0 0 1 15.4 17.8"/>
-<path class="a" d="M18.6 3.2 L19.9 4.6 L18.6 6 L17.3 4.6 Z"/>
-</svg>

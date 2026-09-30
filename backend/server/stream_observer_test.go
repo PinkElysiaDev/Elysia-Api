@@ -13,7 +13,7 @@ import (
 // 回归：流事件须保留「最后」N 条（终态事件在流尾部），且非法 JSON 不得
 // 混入（会让整个事件数组的序列化永远失败）。物化推迟到 recordUsage 一次完成。
 func TestStreamEventsKeepTailAndMaterialize(t *testing.T) {
-	record := &usageRecord{}
+	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: UsageBodyMaxBytes}}
 	resp := &http.Response{Body: io.NopCloser(strings.NewReader(buildSSEStream(120)))}
 	observeUpstreamUsage(resp, record, relay.PlatformOpenAI)
 	if _, err := io.ReadAll(resp.Body); err != nil {
@@ -39,7 +39,7 @@ func TestStreamEventsKeepTailAndMaterialize(t *testing.T) {
 }
 
 func TestStreamBodyCaptureDisabledStillCountsTokens(t *testing.T) {
-	record := &usageRecord{bodyOpts: usageBodyOptions{initialized: true, maxBytes: 0}}
+	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: 0}}
 	resp := &http.Response{Body: io.NopCloser(strings.NewReader(
 		openAIChunk("c1", map[string]any{"content": "private-response"}, "", nil) +
 			`data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}` + "\n\n" + openAIDone()))}
@@ -66,25 +66,6 @@ func buildSSEStream(n int) string {
 	}
 	b.WriteString("data: [DONE]\n")
 	return b.String()
-}
-
-// 回归：data: 载荷跨多次 Write 到达时，观察者必须缓冲到行完整才处理。
-// 旧行为按单次 Write 切行，半截 JSON 混进事件数组后序列化永久失败。
-func TestDownstreamObserverBuffersSplitLines(t *testing.T) {
-	record := &usageRecord{}
-	writer := &observingStreamWriter{inner: nopStreamWriter{}, record: record}
-	// 同一 JSON 事件拆成三次写出。
-	chunk1 := "data: {\"choices\":[{\"delta\":{\"con"
-	chunk2 := "tent\":\"hello"
-	chunk3 := "\"}}]}\n\n"
-	for _, chunk := range []string{chunk1, chunk2, chunk3} {
-		if _, err := writer.WriteString(chunk); err != nil {
-			t.Fatalf("write: %v", err)
-		}
-	}
-	if got := writer.responseText.String(); got != "hello" {
-		t.Fatalf("split-line payload must be reassembled before parsing, got %q", got)
-	}
 }
 
 // 回归：重试事件超限后保尾淘汰（最后的错误最接近根因），首条被挤出。

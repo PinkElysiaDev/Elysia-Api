@@ -134,9 +134,7 @@ func applyAgentPermittedKey(ctx context.Context, store *storage.Store, model *st
 }
 
 // Call 实现 agent.StreamCaller。取消路径下返回部分聚合结果 + ctx 错误。
-// 每次模型调用（含失败）都会写一条调用日志：key 统一为 AI 协议助手、
-// relay_mode=agent-assist，② 后端转发 = 实际线格式请求体、③ 上游回传 = 非 2xx
-// 时的错误响应体；① 下游请求 / ④ 返回下游是网关内部发起的调用，按约定留空。
+// 四段日志依次记录引擎输入、线格式请求、上游事件与返回引擎的聚合结果。
 func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb agent.StreamCallbacks) (*agent.CallResult, error) {
 	store := c.server.store
 	if store == nil {
@@ -174,17 +172,24 @@ func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb 
 	logCfg := c.server.usageLogConfig()
 	requestID := usageRequestID(started)
 	record := &usageRecord{
-		RequestID:  requestID,
-		StartedAt:  started,
-		KeyName:    AgentUsageKeyName,
-		ModelName:  model.Name,
-		SourceID:   model.SourceID,
-		Platform:   model.Platform,
-		RelayMode:  agentRelayMode,
-		Stream:     true,
-		StatusCode: http.StatusOK,
-		bodyOpts:   usageBodyOptions{initialized: true, maxBytes: logCfg.BodyMaxBytes, externalize: logCfg.ExternalizeMedia},
-		assets:     newAssetSink(requestID),
+		RequestID:           requestID,
+		StartedAt:           started,
+		KeyName:             AgentUsageKeyName,
+		RequestedModelGroup: req.Model,
+		ModelName:           model.Name,
+		SourceID:            model.SourceID,
+		Platform:            model.Platform,
+		TargetFormat:        plan.format,
+		RelayMode:           agentRelayMode,
+		Stream:              true,
+		StatusCode:          http.StatusOK,
+		bodyOpts:            usageBodyOptions{maxBytes: logCfg.BodyMaxBytes, externalize: logCfg.ExternalizeMedia},
+		assets:              newAssetSink(requestID),
+	}
+	if record.bodyOpts.maxBytes > 0 {
+		if body, err := json.Marshal(req); err == nil {
+			record.IncomingBody = record.sanitizeBody(body)
+		}
 	}
 	// ② 后端转发：内置平台是 plan.body；custom 协议分支的实际请求体在渲染产物里。
 	outgoingBody := plan.body
@@ -198,11 +203,18 @@ func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb 
 	record.EndedAt = time.Now()
 	record.DurationMs = record.EndedAt.Sub(started).Milliseconds()
 	if err != nil {
-		record.Error = truncateForDisplay(err.Error(), 2048)
+		setUsageError(record, ctx, err)
 	}
 	if result != nil && result.Usage != nil {
-		record.Usage = usageTokenUsageFromMaheshvara(result.Usage)
-		record.UsageDetail = usageDetailFromMaheshvara(result.Usage)
+		updateRecordUsageFromMaheshvara(record, result.Usage)
+	}
+	if record.bodyOpts.maxBytes > 0 {
+		if body, marshalErr := json.Marshal(struct {
+			Result *agent.CallResult `json:"result"`
+			Error  string            `json:"error,omitempty"`
+		}{result, record.Error}); marshalErr == nil {
+			record.DownstreamResponse = record.sanitizeBody(body)
+		}
 	}
 	c.server.recordUsage(record)
 	return result, err
@@ -222,6 +234,7 @@ func (c *agentStreamCaller) attemptCalls(ctx context.Context, model storage.Mode
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			}
+			c.server.appendRetryEvent(record, attempt, model.Name, lastErr.Error())
 		}
 		callCtx, cancel := context.WithTimeout(ctx, timeout)
 		result, retryable, err := c.callOnce(callCtx, cancel, model, plan, record, cb)
@@ -352,9 +365,15 @@ func agentStreamDecoderFormat(format string) relay.FormatType {
 
 // callOnce 发起一次流式调用。retryable 表示失败发生在收到任何流事件之前
 // 且状态值得重试（网络错/429/5xx）。record 记录本次尝试的真实状态码、
-// 首字节耗时与非 2xx 的上游响应体（调用日志 ②/③ 段）。
+// 首字节耗时与本次上游响应（调用日志 ②/③ 段）。
 func (c *agentStreamCaller) callOnce(ctx context.Context, cancel context.CancelFunc, model storage.Model, plan *agentUpstreamPlan, record *usageRecord, cb agent.StreamCallbacks) (result *agent.CallResult, retryable bool, err error) {
 	defer cancel()
+	record.ProviderResponse = usageBody{}
+	record.pendingStreamEvents = nil
+	record.FirstByteMs = 0
+	record.Usage = usageTokenUsage{}
+	record.UsageDetail = usageDetail{}
+	record.UsageSource = ""
 	response, err := c.sendAgentUpstream(ctx, model, plan)
 	if err != nil {
 		var statusErr *relay.UpstreamStatusError
@@ -367,6 +386,7 @@ func (c *agentStreamCaller) callOnce(ctx context.Context, cancel context.CancelF
 		record.StatusCode = 0 // 网络层失败：无 HTTP 状态，日志按 failed 呈现
 		return nil, true, err
 	}
+	observeUpstreamUsage(response, record, relay.Platform(model.Platform), agentStreamDecoderFormat(plan.format))
 	defer response.Body.Close()
 	record.StatusCode = response.StatusCode
 	record.FirstByteMs = time.Since(record.StartedAt).Milliseconds()
@@ -380,16 +400,13 @@ func (c *agentStreamCaller) callOnce(ctx context.Context, cancel context.CancelF
 	} else if streamErr := drainStandardStream(ctx, plan, response.Body, acc, cb); streamErr != nil {
 		return acc.result(), false, streamErr
 	}
-	if ctx.Err() != nil {
-		return acc.result(), false, ctx.Err()
-	}
 	if failed := acc.failure; failed != "" {
 		return acc.result(), false, fmt.Errorf("%s", failed)
 	}
 	return acc.result(), false, nil
 }
 
-// drainStandardStream 用内置四线制的流解码器排水 SSE：终态后继续读到 EOF，
+// drainStandardStream 用内置四线制的流解码器排水 SSE：Chat 终态后短窗等待尾帧，
 // 只吸收 usage/错误语义（OpenAI 的 include_usage 用量帧在 finish_reason 之后
 // 的独立 chunk 里，见终态即返回会把 token 统计整个丢掉）。
 func drainStandardStream(ctx context.Context, plan *agentUpstreamPlan, body io.Reader, acc *agentStreamAccumulator, cb agent.StreamCallbacks) error {
@@ -398,12 +415,22 @@ func drainStandardStream(ctx context.Context, plan *agentUpstreamPlan, body io.R
 	decoder := relay.NewMaheshvaraStreamDecoder(agentStreamDecoderFormat(plan.format))
 	terminalSeen := false
 	for {
-		event, ok, readErr := reader.Read(ctx, relay.DefaultSSEIdleTimeout)
+		idle := relay.DefaultSSEIdleTimeout
+		if terminalSeen {
+			idle = relay.PostTerminalSSEIdleTimeout
+		}
+		event, ok, readErr := reader.Read(ctx, idle)
 		if readErr != nil {
+			if terminalSeen && (errors.Is(readErr, context.Canceled) || errors.Is(readErr, relay.ErrSSEIdleTimeout)) {
+				return nil
+			}
 			return readErr
 		}
 		if !ok {
-			return nil
+			if terminalSeen {
+				return nil
+			}
+			return fmt.Errorf("upstream stream ended before a terminal event")
 		}
 		events, decodeErr := decoder.Decode(event)
 		if decodeErr != nil {
@@ -418,9 +445,14 @@ func drainStandardStream(ctx context.Context, plan *agentUpstreamPlan, body io.R
 				}
 				continue
 			}
-			if stop := acc.apply(ev, cb); stop {
-				terminalSeen = true
-			}
+			acc.apply(ev, cb)
+		}
+		if acc.failure != "" {
+			return fmt.Errorf("%s", acc.failure)
+		}
+		terminalSeen = decoder.TerminalReceived()
+		if terminalSeen && (agentStreamDecoderFormat(plan.format) != relay.FormatOpenAIChat || strings.TrimSpace(event.Data) == "[DONE]") {
+			return nil
 		}
 	}
 }
@@ -438,7 +470,7 @@ func (c *agentStreamCaller) drainCustomProtocolStream(ctx context.Context, plan 
 	}
 	reader := relay.NewSSEEventReader(body)
 	defer reader.Close()
-	return decoder.ForEachBatch(ctx, reader, func(_ relay.SSEEvent, events []relay.MaheshvaraStreamEvent, terminalBeforeBatch bool) error {
+	err = decoder.ForEachBatch(ctx, reader, func(_ relay.SSEEvent, events []relay.MaheshvaraStreamEvent, terminalBeforeBatch bool) error {
 		for _, ev := range events {
 			if terminalBeforeBatch {
 				// 契约（同转发/设计器路径）：终态后仅保留 usage/错误语义——
@@ -454,6 +486,10 @@ func (c *agentStreamCaller) drainCustomProtocolStream(ctx context.Context, plan 
 		}
 		return nil
 	})
+	if err == nil && !decoder.TerminalReceived() {
+		err = fmt.Errorf("upstream stream ended before a terminal event")
+	}
+	return err
 }
 
 // apply 归并单个流事件；返回 true 表示终态已到，可停止读取。

@@ -66,14 +66,20 @@ func TestAssetDedupAcrossRequests(t *testing.T) {
 
 	// 删一条记录：文件保留（另一条还在引用）。
 	r := newUsageRetention(s)
-	if n := r.releaseAssets(ctx, root, []string{"req-one"}); n != 0 {
+	if _, err := store.PruneLogBatch(ctx, false, storage.LogPrunePolicy{MaxRecords: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := r.sweepAssets(ctx); err != nil || n != 0 {
 		t.Fatalf("file still referenced by req-two must survive, removed %d", n)
 	}
 	if _, err := os.Stat(filepath.Join(root, name)); err != nil {
 		t.Fatalf("file must survive partial deletion: %v", err)
 	}
 	// 删第二条：零引用 → 文件删除。
-	if n := r.releaseAssets(ctx, root, []string{"req-two"}); n != 1 {
+	if _, err := store.PruneLogBatch(ctx, false, storage.LogPrunePolicy{CutoffMS: time.Now().Add(time.Hour).UnixMilli()}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := r.sweepAssets(ctx); err != nil || n != 1 {
 		t.Fatalf("last reference removal must delete the file, got %d", n)
 	}
 	if _, err := os.Stat(filepath.Join(root, name)); !os.IsNotExist(err) {
@@ -85,13 +91,14 @@ func TestAssetDedupAcrossRequests(t *testing.T) {
 // 记录已删除的遗留文件不误删（交孤儿清扫宽限回收）。
 func TestMigrateUsageAssetsLayout(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	store, err := storage.Open(filepath.Join(t.TempDir(), "migrate.sqlite3"))
+	dbPath := filepath.Join(t.TempDir(), "migrate.sqlite3")
+	store, err := storage.Open(dbPath)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	defer store.Close()
+	defer func() { store.Close() }()
 	cfg := &config.Config{}
-	cfg.SetDatabasePath(filepath.Join(t.TempDir(), "migrate-config.sqlite3"))
+	cfg.SetDatabasePath(dbPath)
 	s := &Server{store: store, config: cfg}
 	ctx := context.Background()
 
@@ -113,7 +120,15 @@ func TestMigrateUsageAssetsLayout(t *testing.T) {
 		}
 	}
 
-	s.migrateUsageAssetsLayout()
+	if err := store.ExecRaw(ctx, "DELETE FROM schema_migrations WHERE version=2026092901"); err != nil {
+		t.Fatal(err)
+	}
+	store.Close()
+	store, err = storage.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.store = store
 
 	// 子目录消失，文件上移到根。
 	if _, err := os.Stat(oldA); !os.IsNotExist(err) {
@@ -137,7 +152,12 @@ func TestMigrateUsageAssetsLayout(t *testing.T) {
 	}
 
 	// 幂等：再次运行无子目录可迁移、引用不重复。
-	s.migrateUsageAssetsLayout()
+	store.Close()
+	store, err = storage.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.store = store
 	// 端点按扁平路径可取。
 	router := gin.New()
 	s.setupAdminRoutes(router.Group("/api/admin"))

@@ -15,7 +15,7 @@ func newExternalizeRecord(requestID string) *usageRecord {
 	return &usageRecord{
 		RequestID: requestID,
 		StartedAt: time.Now(),
-		bodyOpts:  usageBodyOptions{initialized: true, maxBytes: 1024 * 1024, externalize: true},
+		bodyOpts:  usageBodyOptions{maxBytes: 1024 * 1024, externalize: true},
 		assets:    newAssetSink(requestID),
 	}
 }
@@ -127,7 +127,7 @@ func TestAssetSinkDedupesIdenticalContent(t *testing.T) {
 
 func TestSanitizeBodyTruncatesAfterExtraction(t *testing.T) {
 	record := newExternalizeRecord("req_trunc")
-	record.bodyOpts = usageBodyOptions{initialized: true, maxBytes: 200, externalize: true}
+	record.bodyOpts = usageBodyOptions{maxBytes: 200, externalize: true}
 	payload := base64Len(600)
 	// 巨量文本 + 图片：先外置再截断，图片不能被拦腰截断丢失。
 	body := []byte(`{"url":"data:image/png;base64,` + payload + `","pad":"` + strings.Repeat("x", 4096) + `"}`)
@@ -142,25 +142,18 @@ func TestSanitizeBodyTruncatesAfterExtraction(t *testing.T) {
 
 func TestSanitizeBodyZeroMaxBytesDropsContent(t *testing.T) {
 	record := newExternalizeRecord("req_zero")
-	record.bodyOpts = usageBodyOptions{initialized: true, maxBytes: 0, externalize: true}
+	record.bodyOpts = usageBodyOptions{maxBytes: 0, externalize: true}
 	got := record.sanitizeBody([]byte(`{"a":1}`))
 	if got.Content != "" || got.Truncated {
 		t.Fatalf("maxBytes=0 must drop body entirely, got %+v", got)
 	}
 }
 
-func TestSanitizeBodyKeepsLegacyDefaultForBareRecord(t *testing.T) {
-	// 直接构造的记录（未走 initUsageRecord）bodyOpts 为零值：
-	// 上限按历史 1MiB 默认、不外置。
+func TestSanitizeBodyZeroPolicyDisablesCapture(t *testing.T) {
 	record := &usageRecord{RequestID: "bare", StartedAt: time.Now()}
-	payload := base64Len(600)
-	body := []byte(`{"url":"data:image/png;base64,` + payload + `"}`)
-	got := record.sanitizeBody(body)
-	if !strings.Contains(got.Content, payload) {
-		t.Fatal("bare record must not externalize (legacy behavior)")
-	}
-	if got.Truncated {
-		t.Fatal("small body must not truncate")
+	body := record.sanitizeBody([]byte(`{"private":"message"}`))
+	if body.Content != "" || body.Truncated || record.assets.count() != 0 {
+		t.Fatal("zero policy must not capture bodies")
 	}
 }
 
@@ -227,8 +220,8 @@ func TestWriteUsageAssetsAndSkipExisting(t *testing.T) {
 		t.Fatal("register failed")
 	}
 	n, err := writeUsageAssets(root, sink.items)
-	if err != nil || n != 1 {
-		t.Fatalf("writeUsageAssets = %d, %v", n, err)
+	if err != nil || len(n) != 1 {
+		t.Fatalf("writeUsageAssets = %v, %v", n, err)
 	}
 	item := sink.items[0]
 	path := filepath.Join(root, item.Hash+"."+item.Ext)
@@ -236,8 +229,8 @@ func TestWriteUsageAssetsAndSkipExisting(t *testing.T) {
 		t.Fatalf("asset file must exist: %v", err)
 	}
 	// 第二次写（同哈希，无论哪个请求）跳过——扁平内容寻址全局去重。
-	if n, err := writeUsageAssets(root, sink.items); err != nil || n != 0 {
-		t.Fatalf("re-write should skip existing: %d, %v", n, err)
+	if n, err := writeUsageAssets(root, sink.items); err != nil || len(n) != 1 {
+		t.Fatalf("re-write should skip existing: %v, %v", n, err)
 	}
 	_ = data
 }

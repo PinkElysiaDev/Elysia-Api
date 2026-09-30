@@ -66,7 +66,8 @@ type Server struct {
 	a2aTasks      map[string]*a2aTaskEntry
 	a2aMessageIDs map[string]string
 
-	store *storage.Store
+	store      *storage.Store
+	startupErr error
 
 	// 异步 usage 写入：store 模式下，请求路径只把记录投递到 buffer channel，
 	// 由单个 writer goroutine 落库，避免请求在 SQLite 写入（单连接串行）上阻塞。
@@ -91,7 +92,7 @@ type Server struct {
 	// 可选的后台健康检测器（config.HealthCheck.Enabled 控制）。
 	healthChecker *healthChecker
 
-	// 后台日志清理器（usageLog.retentionDays/maxStorageMB/maxRecords 控制，
+	// 后台日志清理器（usageLog.retentionDays/maxContentMB/maxRecords 控制，
 	// 默认全关；孤儿资产清扫作为卫生活常开）。
 	usageRetention *usageRetention
 
@@ -165,10 +166,9 @@ func New(cfg *config.Config) *Server {
 			return filepath.Join(filepath.Dir(dbPath), "model-catalog.json")
 		}),
 	}
-	// 目录定期后台更新（周期动态读取配置，管理页修改即时生效）。
-	go server.catalog.runPeriodic()
 	if store, err := storage.OpenWithKey(cfg.DatabasePath, cfg.GetDBEncryptionKey()); err != nil {
-		log.Printf("failed to open sqlite store: %v", err)
+		server.startupErr = fmt.Errorf("open sqlite store: %w", err)
+		return server
 	} else {
 		server.store = store
 		// 密钥完整性探测：master-key 丢失/更换会让全部密文行解不开——路由
@@ -186,9 +186,6 @@ func New(cfg *config.Config) *Server {
 			log.Printf("so they can be re-entered from the panel once the key is restored.")
 			log.Printf("========================================================================")
 		}
-		// 一次性资产布局迁移：旧的按请求分目录 → 扁平内容寻址 + 引用重建。
-		// 幂等（无子目录即跳过）；失败只告警，交给孤儿清扫兜底。
-		server.migrateUsageAssetsLayout()
 		// 历史数据回填进小时级 rollup 预聚合表（后台、幂等、可断点续跑）；
 		// 完成前聚合查询自动走 raw 路径，功能不受影响。
 		store.StartRollupBackfill()
@@ -209,6 +206,8 @@ func New(cfg *config.Config) *Server {
 		// 一次性把存量源 base 补上版本段（v1→v3 语义切换的配套迁移）。
 		server.migratePresetRelativePathBases(server.seedPresetProtocols())
 	}
+	// 存储迁移成功后才启动后台工作。
+	go server.catalog.runPeriodic()
 	server.syncOutboundPolicy()
 	server.syncCustomProtocols()
 	if server.store != nil {
@@ -900,7 +899,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		return failWriter.fail(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, respBody)
 	}
 
-	flusher, ok := c.Writer.(http.Flusher)
+	_, ok := c.Writer.(http.Flusher)
 	if !ok {
 		log.Printf("Streaming not supported")
 		writeProtocolError(c, inputFormat, &relay.MaheshvaraError{Class: relay.ErrorClassServer, Message: "streaming is not supported on this connection"})
@@ -921,7 +920,7 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 	}
 
 	writer := &observingStreamWriter{
-		inner:     &ginStreamWriter{writer: c.Writer, flusher: flusher},
+		inner:     &ginStreamWriter{writer: c.Writer},
 		record:    record,
 		startTime: startTime,
 	}
@@ -960,40 +959,16 @@ func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupCon
 		forwardErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), conn.resp, conn.format, inputFormat, writer, selectedModel.Name)
 	}
 
-	// 上游已建连、SSE 已开始后的转发/转换错误：HTTP 状态码已无法更改，
-	// 但必须把 record.StatusCode 从 200 下调为 502 并记录错误，否则中途断流/
-	// 空响应会在 usage 日志与统计里被误判为成功。
+	// SSE 开始后 HTTP 状态码已无法更改；日志区分客户端取消与上游失败。
 	if forwardErr != nil {
 		log.Printf("Error forwarding stream after SSE started: %v", forwardErr)
-		record.Error = forwardErr.Error()
-		if record.StatusCode < 400 {
-			record.StatusCode = http.StatusBadGateway
-		}
-	} else if streamYieldedNothing(record, writer) {
-		// 上游返回 200 但既无任何输出文本、也无 usage —— 实际是空响应。
-		// 这类"看似成功实则空结构体"必须记为失败，否则日志/统计误判为成功。
-		log.Printf("Upstream stream returned empty response (no content, no usage)")
-		record.Error = "upstream returned empty response"
-		record.StatusCode = http.StatusBadGateway
+		setUsageError(record, c.Request.Context(), forwardErr)
 	}
 
 	s.settleStreamUsage(group, record, startTime)
 	s.logDebug("Stream request completed in %dms", time.Since(startTime).Milliseconds())
 	result = relayOutcome{committed: true, statusCode: record.StatusCode}
 	return result
-}
-
-// streamYieldedNothing 判断一次"无错误"的流式转发是否实际为空响应：
-// 既没有任何输出文本，也没有捕获到任何 usage token。用于把上游 200 空响应
-// 从"成功"纠正为失败。
-func streamYieldedNothing(record *usageRecord, writer *observingStreamWriter) bool {
-	if writer.responseText.Len() > 0 {
-		return false
-	}
-	if derefInt(record.Usage.TotalTokens) > 0 || derefInt(record.Usage.OutputTokens) > 0 {
-		return false
-	}
-	return true
 }
 
 // writeUpstreamError 写上游失败:与客户端共用同一错误信封时原样透传
@@ -1038,8 +1013,7 @@ func ensureStreamFlagInTargetBody(
 
 // ginStreamWriter 实现 relay.StreamResponseWriter，封装 gin 的 ResponseWriter
 type ginStreamWriter struct {
-	writer  http.ResponseWriter
-	flusher http.Flusher
+	writer http.ResponseWriter
 }
 
 func (w *ginStreamWriter) Write(data []byte) (int, error) {
@@ -1051,8 +1025,19 @@ func (w *ginStreamWriter) WriteString(data string) (int, error) {
 }
 
 func (w *ginStreamWriter) Flush() error {
-	w.flusher.Flush()
-	return nil
+	// Gin 的 Flush 不返回错误；穿过捕获器和 Gin，读取底层 FlushError。
+	writer := w.writer
+	for {
+		if _, ok := writer.(interface{ FlushError() error }); ok {
+			break
+		}
+		unwrapper, ok := writer.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			break
+		}
+		writer = unwrapper.Unwrap()
+	}
+	return http.NewResponseController(writer).Flush()
 }
 
 // tokenAllowsGroup 校验当前请求的 API key 是否被允许访问指定模型组。
@@ -1368,6 +1353,9 @@ func (s *Server) healthCheck(c *gin.Context) {
 }
 
 func (s *Server) ListenAndServe() error {
+	if s.startupErr != nil {
+		return s.startupErr
+	}
 	s.setupRoutes()
 	s.startUsageWriter()
 	s.healthChecker = newHealthChecker(s)

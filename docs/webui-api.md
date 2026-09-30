@@ -1,275 +1,196 @@
-﻿# WebUI Backend API Reference
+# 管理 API
 
-Elysia-API now exposes a backend-first WebUI API under `/api/admin`. The WebUI can be developed independently and only needs to call these REST endpoints.
+[文档索引](README.md) · **简体中文** · [English](webui-api.en.md)
 
-## Authentication
+WebUI 使用 `/api/admin` 管理网关。路由定义见 [admin.go](../backend/server/admin.go)，数据语义见[数据模型](webui-data-model.md)。本文中的路径均相对于运行中的网关。
 
-All `/api/admin/*` endpoints require:
+## 鉴权
+
+请求使用面板令牌：
 
 ```http
-Authorization: Bearer <panelAccessToken>
+Authorization: Bearer <PANEL_TOKEN>
 ```
 
-`panelAccessToken` is read from bootstrap `config.json`. API relay tokens for `/v1/*` are managed separately through `/api/admin/api-tokens`.
+面板令牌来自 `config.json`。浏览器还可通过 `panel_access_token` Cookie 认证。推理令牌与 Agent Key 不代替面板令牌。请求通常使用 `Content-Type: application/json`。
 
-## Response Envelope
+## 响应
 
-Successful responses use:
+管理 handler 通常返回以下信封：
 
 ```json
-{ "ok": true, "data": {} }
+{"ok": true, "data": {}}
 ```
-
-Errors use:
 
 ```json
-{ "ok": false, "error": { "code": "invalid_json", "message": "..." } }
+{"ok": false, "error": {"code": "invalid_json", "message": "Invalid request body"}}
 ```
 
-Common error codes: `store_unavailable`, `invalid_json`, `list_sources_failed`, `save_source_failed`, `fetch_source_failed`, `list_models_failed`, `save_group_failed`, `save_token_failed`, `usage_logs_failed`, `usage_log_not_found`.
+列表通常在 `data.items`，分页列表另含 `data.total`。鉴权中间件的 401 为 `{"error":"..."}`，重载和 SSE 使用各自格式；不要假设所有响应都有 `ok`。
 
-## Bootstrap `config.json`
+常见失败：400 参数校验失败；401 面板令牌无效；404 对象不存在；409 冲突或任务进行中；503 `store_unavailable`。`error.code` 还包括 `save_source_failed`、`save_group_failed`、`save_token_failed`、`usage_log_not_found` 等操作相关错误。
+
+## 启动配置
+
+配置字段、环境变量及数据路径见[部署指南](deployment.md#配置)。模型源和令牌使用 SQLite；当前配置解析不导入旧 `tokens`、`modelGroups` 或 `dashboardToken` 字段。
+
+## 运行配置
+
+| 方法 | 路径 | 返回 / 行为 |
+| --- | --- | --- |
+| GET | `/api/admin/runtime-config` | 当前配置及生效策略，**含明文 `panelAccessToken`**，仅限管理端 |
+| PUT | `/api/admin/runtime-config` | 更新指定字段，返回 `{updated, restartRequired}` |
+| POST | `/api/admin/reload` | 重新读取配置；独立响应包含 `reloaded`、`debugMode`、`verboseLog`、`serverChangedRequiresRestart` 及新旧监听地址 `server` |
+| POST | `/api/admin/restart-required/check` | 返回重启提示状态 |
+
+增量更新示例：
 
 ```json
 {
-  "host": "127.0.0.1",
-  "port": 8765,
-  "panelAccessToken": "change-me",
-  "databasePath": "elysia-api.sqlite3",
-  "logLevel": "info",
   "httpTimeout": 120,
-  "secretKeyPath": ".master-key",
-  "webuiDir": "",
-  "enablePprof": false,
-  "maxBodyBytes": 33554432
+  "usageLog": {"bodyMaxKB": 0, "retentionDays": 30},
+  "agentRemote": {"enabled": true, "publicUrl": "https://gw.example.com"}
 }
 ```
 
-`webuiDir` 为可选项：**留空时后端使用内嵌的 WebUI**（`//go:embed`，开箱即用，启动后访问 `/ui/` 即可），仅在需要用外部目录覆盖内嵌版本时才填写。
+可更新字段：`host`、`port`、`logLevel`、`httpTimeout`、`panelAccessToken`、`databasePath`、`enablePprof`、`outbound.deniedIpRanges`、`usageLog`、`systemLog`、`modelCatalog.syncIntervalMinutes`、`agentRemote`。
 
-Legacy `server`, `dashboardToken`, `tokens`, and `modelGroups` fields are still imported for compatibility, but new WebUI data should live in SQLite.
+省略字段保持原值。`usageLog` 支持逐字段更新，`0` 是有效值；`outbound` 替换整个禁止段列表，空列表全部放行。`agentRemote.publicUrl: ""` 清空对外地址。`webuiDir`、`secretKeyPath`、`maxBodyBytes` 不在此更新接口中。
 
-## Runtime Config
+监听地址、端口、数据库路径和 pprof 变更要求重启；HTTP 超时、日志正文策略等可对后续请求生效。`bodyMaxKB` 默认 0，保存正文需显式开启；清理参数在后台下一轮巡检读取。不要记录或公开运行配置响应中的令牌。
 
-### `GET /api/admin/runtime-config`
+## 模型源
 
-Returns current bootstrap runtime values. Tokens are not returned in plaintext. `webuiDir`, `enablePprof`, and `maxBodyBytes` are bootstrap-only fields and normally changed by restarting the backend.
+| 方法 | 路径 | 行为 |
+| --- | --- | --- |
+| GET | `/api/admin/model-sources` | 返回 `items`，包含 `refreshState` |
+| POST | `/api/admin/model-sources` | 保存模型源；缺省 ID 从名称生成 |
+| PUT | `/api/admin/model-sources/:id` | 按路径 ID 保存模型源 |
+| PATCH | `/api/admin/model-sources/:id/enabled` | `{enabled: boolean}`，仅切换启停，不重新拉取 |
+| DELETE | `/api/admin/model-sources/:id` | 删除源及相关数据 |
+| POST | `/api/admin/model-sources/:id/fetch` | 启动后台拉取，返回 `{started, alreadyRunning?}` |
+| POST | `/api/admin/models/refresh` | 为启用的源启动拉取，返回 `{started, total}` |
+| GET | `/api/admin/model-catalog/status` | 模型能力目录状态 |
+| POST | `/api/admin/model-catalog/refresh` | 立即刷新目录，返回 `{refreshed, status}` |
 
-### `PUT /api/admin/runtime-config`
-
-```json
-{ "host": "127.0.0.1", "port": 8765, "logLevel": "debug", "httpTimeout": 120 }
-```
-
-Accepts an optional `usageLog` block (all fields partial; numeric `0` is an explicit value):
-
-```json
-{
-  "usageLog": {
-    "persistEnabled": true,
-    "retentionDays": 30,
-    "maxStorageMB": 1024,
-    "maxRecords": 0,
-    "bodyMaxKB": 0,
-    "bodyOnErrorOnly": false,
-    "externalizeMedia": true,
-    "cleanupIntervalMinutes": 60
-  }
-}
-```
-
-`usageLog` changes apply immediately: body cap / switches take effect for subsequent requests, retention parameters are re-read by the background cleanup loop on its next tick. `bodyMaxKB` defaults to `0` (metadata only, for both successful and failed requests); a positive value explicitly enables request/response body capture. Existing explicit limits and historical logs are preserved. The WebUI's body capture switch maps to this field; it does not disable `persistEnabled` or token statistics. Returns `restartRequired: true` when host or port changes. Persisting bootstrap config to disk is handled by the backend `config.Save()` path; process restarts should be handled by the operator or service manager.
-
-## Model Sources
-
-A source describes an upstream provider and either auto-fetches models or stores manual models.
+手工模型源示例，替换地址、密钥和模型 ID 后保存：
 
 ```json
 {
-  "id": "openai-main",
-  "name": "OpenAI Main",
-  "baseUrl": "https://api.openai.com/v1",
-  "apiKey": "sk-...",
-  "platform": "openai",
-  "enabled": true,
-  "autoFetchModels": true,
-  "manualModels": []
-}
-```
-
-Supported `platform` values: `openai`, `openai-compatible`, `claude`, `gemini`.
-
-- `GET /api/admin/model-sources`
-- `POST /api/admin/model-sources`
-- `PUT /api/admin/model-sources/:id`
-- `DELETE /api/admin/model-sources/:id`
-- `POST /api/admin/model-sources/:id/fetch`
-- `POST /api/admin/models/refresh`
-
-Manual source example:
-
-```json
-{
-  "id": "local",
-  "name": "Local Provider",
-  "baseUrl": "http://127.0.0.1:8000/v1",
-  "apiKey": "local-key",
-  "platform": "openai-compatible",
+  "id": "upstream-main",
+  "name": "Main upstream",
+  "baseUrl": "https://api.example.com/v1",
+  "apiKey": "<UPSTREAM_API_KEY>",
+  "platform": "chat_completions",
   "enabled": true,
   "autoFetchModels": false,
-  "manualModels": [
-    { "id": "local-model", "name": "Local Model", "type": "llm", "available": true }
-  ]
+  "manualModels": [{"id": "provider-model", "name": "Provider model", "type": "llm", "available": true}]
 }
 ```
 
-## Models
+协议标识使用 `chat_completions`、`responses`、`anthropic`、`gemini`、`custom:<id>`；旧 `openai`、`openai-compatible`、`claude` 仍有兼容处理。`fetchBaseUrl` 可单独设置模型发现地址。自动发现源设置 `autoFetchModels: true`。
 
-### `GET /api/admin/models`
+`apiKeys` 支持多 Key 与逐 Key 模型权限，`keyStrategy` 支持 `single`、`round-robin`、`random`、`priority`。拉取接口返回不代表任务完成；轮询源的 `refreshState`。拉取期间部分写操作返回冲突。刷新保留手工模型和用户编辑的能力字段。
 
-Returns cached models aggregated from sources. Each model includes `id`, `name`, `sourceId`, `sourceName`, `baseUrl`, `platform`, `type`, `maxTokens`, capability booleans, `thinkingMode`, `available`, and `lastCheckedAt`.
+## 模型
 
-## Model Groups
+| 方法 | 路径 | 行为 |
+| --- | --- | --- |
+| GET | `/api/admin/models?sourceId=&search=` | 按源和文本筛选，返回 `items` |
+| PATCH | `/api/admin/models/:sourceId?modelId=` | 更新名称、类型、能力、`maxTokens`、`thinkingMode`、`enabled` |
+| DELETE | `/api/admin/models/:sourceId?modelId=` | 删除模型并清理组引用 |
 
-Model groups are the public model IDs shown to relay clients through `/v1/models`.
+模型 ID 可能包含 `/`，因此必须放在 URL 编码后的 `modelId` 查询参数中。以 `(sourceId, id)` 区分不同源的同名模型。
+
+## 模型组
+
+客户端请求的 `model` 使用组名。成员优先使用 `sourceId:modelId`，避免同名歧义：
 
 ```json
 {
-  "id": "default-chat",
-  "name": "gpt-default",
+  "id": "default",
+  "name": "default",
   "enabled": true,
-  "models": ["gpt-4.1-mini", "local-model"],
+  "models": ["upstream-main:provider-model"],
   "strategy": "round-robin",
   "maxRetries": 3,
   "retryInterval": 1000,
   "maxConcurrency": 10,
   "dailyLimitMaxRequests": 0,
   "dailyLimitMaxTokens": 0,
-  "type": "llm",
-  "maxTokens": 0,
-  "visionCapable": true,
-  "toolsCapable": true
+  "type": "llm"
 }
 ```
 
-- `GET /api/admin/model-groups`
-- `POST /api/admin/model-groups`
-- `PUT /api/admin/model-groups/:id`
-- `DELETE /api/admin/model-groups/:id`
+| 方法 | 路径 | 行为 |
+| --- | --- | --- |
+| GET / POST | `/api/admin/model-groups` | 列表 / 保存 |
+| PUT / DELETE | `/api/admin/model-groups/:id` | 保存 / 删除 |
+| POST / DELETE | `/api/admin/model-groups/:id/models` | `{models: ["source:model"]}`，增加 / 移除成员 |
 
-Supported strategy values: `round-robin`, `sequential`, `random`.
+策略：`round-robin`、`sequential`、`random`；`retryInterval` 单位为毫秒；并发和日限额为 `0` 时不限。删除组可能级联禁用仅获该组授权的令牌，返回 `disabledTokens`，避免空授权列表意外扩大权限。
 
-## API Tokens
-
-Relay clients use these tokens for `/v1/*` and `/v1beta/*`.
+## 访问令牌
 
 ```json
-{ "name": "default", "token": "client-token", "enabled": true }
+{"name":"client-main","token":"<RANDOM_RELAY_TOKEN>","enabled":true,"allowedGroups":["default"],"scopes":[]}
 ```
 
-- `GET /api/admin/api-tokens`
-- `POST /api/admin/api-tokens`
-- `PUT /api/admin/api-tokens/:name`
-- `DELETE /api/admin/api-tokens/:name`
+| 方法 | 路径 | 行为 |
+| --- | --- | --- |
+| GET / POST | `/api/admin/api-tokens` | 脱敏列表 / 保存 |
+| PUT / DELETE | `/api/admin/api-tokens/:name` | 更新 / 删除 |
+| GET | `/api/admin/api-tokens/:name/reveal` | 按需读取明文 `{name, token}` |
 
-List responses mask tokens; create/update accepts plaintext.
+创建要求非空 token；更新时 token 为空保留原密钥，省略 `allowedGroups` / `scopes` 保留原值，显式空数组清空。改名通过 `newName`；改名失败不回滚此前已保存的属性。普通令牌的空 `allowedGroups` 表示不限制模型组。带 `agent` 作用域的 Key 用于远程运维，被推理端点拒绝。
 
-## Usage
+## 用量
 
-### `GET /api/admin/usage/stats`
+查询时间使用 RFC3339，范围为 `[from, to)`。`keyName`、`groupName`、`modelName`、`sourceId` 支持重复参数，多选不是逗号拼接。还支持 `keyHash`、`statusCode`、`status=success|failed`，`modelGroup` 为组名兼容参数。
 
-Query params: `from`, `to` as RFC3339 timestamps; optional `keyName`, `keyHash`, `groupName`, `modelGroup`, `modelName`, `sourceId`, `statusCode`. Repeated params (`keyName`, `groupName`, `modelName`, `sourceId`) are treated as multi-select.
+| GET 路径（前缀 `/api/admin/usage`） | 内容 |
+| --- | --- |
+| `/stats` | 请求、成功/失败、token、缓存命中率与平均耗时 |
+| `/trend` | 按本地日聚合，`utcOffsetMinutes` 为本地时间减 UTC 的分钟数 |
+| `/by-model` | `{model, requests, failed, tokens}` 列表 |
+| `/by-model-daily` | `top` 为 1–20，默认 8；返回 `{date, model, requests, isOther}` 列表 |
+| `/pulse` | `from` 必填，窗口最多 48 小时；`bucketMinutes` 为 1、5 或 15；返回 `{points, window}` |
+| `/logs` | `limit` / `offset` 分页，返回 `{items, total}` |
+| `/logs/:id` | 存储的请求详情，正文是否存在由捕获策略决定 |
+| `/seq` | 用量序列，用于刷新检测 |
+| `/assets/:requestId/:file` | 受管理鉴权保护的媒体；文件名为 `<16-hex>.<ext>` |
+| `/storage` | 数据库文件/WAL/空闲页、请求/系统日志内容、媒体/汇总/索引占用与维护状态 |
 
-### `GET /api/admin/usage/pulse`
+`pulse.points[].t` 为 Unix 毫秒；P95 在最多 16384 个样本时精确，超出后使用蓄水池估算；窗口 P95 不是各桶 P95 均值。`by-model-daily` 的其他模型行使用 `isOther: true` 与空 `model`，由客户端显示名称。
 
-Query params: same time filters as stats, plus `utcOffsetMinutes` and `bucketMinutes` (`1`, `5`, or `15`).
-`from` is required; `[from, to)` must be at most 48 hours (`to` omitted uses now).
-Returns `{ points, window }` where `points` is `{ t, requests, avgDurationMs, p95DurationMs }[]` (`t` is the bucket start in Unix milliseconds) and `window` is `{ requests, avgDurationMs, p95DurationMs, totalTokens }`. Window `requests` / `avgDurationMs` are exact. Window and bucket `p95DurationMs` are exact up to 16384 samples, then a reservoir-sampling estimate. They are not a mean of bucket P95s.
+`POST /api/admin/usage/cleanup` 触发日志留存和空间回收任务，返回排队结果。`GET /api/admin/usage/maintenance` 返回阶段、阻塞及失败状态。`POST /api/admin/usage/reset` 同步清除请求日志、汇总和附件引用，返回 `{reset, reclaimQueued}`；附件文件删除和数据库空间回收在后台进行。正文捕获及留存说明见[部署指南](deployment.md#请求日志)。
 
-### `GET /api/admin/usage/by-model-daily`
+## 协议与助手
 
-Query params: same time filters as stats, plus `utcOffsetMinutes` and optional `top` (1–20, default 8).
-Returns `{ date, model, requests, isOther }[]`. Models outside the top-N by request count are merged into one row with `isOther: true` and empty `model`; the client chooses the display label.
+| 方法 | 路径 | 行为 |
+| --- | --- | --- |
+| GET | `/api/admin/custom-protocols` | 协议列表 |
+| GET | `/api/admin/custom-protocols/schema` | 字段目录与校验约束 |
+| PUT / DELETE | `/api/admin/custom-protocols/:id` | 保存 / 删除定义 |
+| POST | `/api/admin/custom-protocols/preview` | 离线映射预览 |
+| POST | `/api/admin/custom-protocols/test` | 真实上游测试，可能产生费用 |
+| POST | `/api/admin/custom-protocols/test-models` | 真实模型发现测试 |
 
-### `GET /api/admin/usage/logs`
+请求结构见[协议定义](protocol-definition-reference.md)及前端类型 `CustomProtocolPreviewResult`、`CustomProtocolTestResult`。
 
-Adds pagination params `limit` and `offset`.
+`/api/admin/agent/*` 与[远程 REST](remote-agent-api.md#rest)共用会话 handler，但使用面板令牌。创建／编辑会话、消息、审批、停止、截断和草稿恢复均见该文档。助手通过 `elysia_cli` 执行运维，另有 `ask_user`、`update_plan`；模型调用计入用量，`relayMode=agent-assist`。凭证在会话视图中脱敏，测试凭证的复用限协议测试相关命令。
 
-### `GET /api/admin/usage/logs/:id`
+## 系统日志与健康
 
-Returns the full stored usage record JSON.
+- `GET /api/admin/logs?level=info&limit=100&offset=0`：分页系统日志。
+- `GET /api/admin/health`：数据库状态、内存分配、系统内存和 GC 计数。
+- `GET /health`：公开存活检查，与管理端详细诊断不同。
 
-### `POST /api/admin/usage/reset`
+## 最小检查
 
-Deletes all usage records. Externalized media assets under the `usage-assets/` directory are removed as well.
+```bash
+curl http://127.0.0.1:8765/api/admin/health \
+  -H "Authorization: Bearer <PANEL_TOKEN>"
+```
 
-### `GET /api/admin/usage/assets/:requestId/:file`
-
-Serves an externalized media asset for a usage record (images / audio / video / files captured from logged bodies; the body itself stores a `__ELYSIA_ASSET__:<requestId>/<hash>.<ext>` placeholder instead of the base64 payload). `file` must match `<16-hex>.<ext>`; requests are admin-authenticated like all other admin endpoints.
-
-### `GET /api/admin/usage/storage`
-
-Returns log storage status: `db` (`totalBytes`, `logicalBytes`, `pageCount`, `pageSize`, `freePages`), `recordCount`, `assets` (`bytes`, `files`, `dirs`), the effective `config` (usageLog block), and `lastCleanup` (result of the most recent retention pass).
-
-### `POST /api/admin/usage/cleanup`
-
-Triggers one retention pass asynchronously (TTL / record-count / storage-cap cleanup plus orphan asset sweep). Returns `{ accepted }`; `false` means a pass is already running.
-
-## Protocol Agent (AI Assistant)
-
-The AI assistant (`/agent` page) is a general-purpose, server-side tool-calling agent for the gateway: protocol engineering (read API docs, draft custom protocol configs, offline preview, policy-controlled upstream tests, save), model source & model group management (create/update under server permission and approval policies), usage statistics with inline charts (```chart fenced specs rendered by the WebUI), and error/log analysis (failed-request drill-down with captured bodies). The model operates through a single `elysia_cli` tool running the built-in `elysia` CLI (all gateway operations as commands; `elysia help` for the reference, batching via `&&`/`;`, `| grep`/`| head` pipes). Test credentials are supplied in the
-conversation: the model passes them as flags of `elysia protocol test` / `elysia protocol models` (`--base-url` / `--api-key`), they are
-shown masked on the approval card and in the echoed command, and stored encrypted as the session's test target for reuse by those two protocol commands. Other commands do not share this credential reuse. An `update_plan` tool lets
-the agent maintain a step checklist surfaced live in the side panel (plan / draft / progress tabs). Sessions and messages persist in SQLite (`agent_sessions` / `agent_messages`); every model call is recorded into usage stats under key name `AI 协议助手` with `relayMode=agent-assist`.
-
-### `GET /api/admin/agent/sessions`
-
-Lists sessions (newest first). Each item: `id`, `title`, `mode` (`create`|`edit`), `protocolId`, `seedConfig`, `draftConfig`, `settings`, `status` (`idle`|`running`|`waiting_approval`), `pendingAction`, `createdAt`, `updatedAt`. The API key is never returned (only `settings.testApiKeySet`).
-
-### `POST /api/admin/agent/sessions`
-
-Creates a session: `{ title?, mode?: "create"|"edit", protocolId?, settings? }`. Edit mode requires an existing `protocolId` and seeds the draft with its stored config.
-
-### `GET /api/admin/agent/sessions/:id`
-
-Returns `{ session, messages }` — the full message history (`seq`-ordered; roles: `user` / `assistant` / `tool_result` / `approval` / `system`).
-
-### `PATCH /api/admin/agent/sessions/:id`
-
-Updates settings: `{ title?, settings?: { modelSourceId, modelName, thinkingEnabled, thinkingEffort ("low"|"medium"|"high"|"xhigh"|"max"|"adaptive"), allowLiveTest, allowSave ("ask"|"always"|"never"), testBaseUrl }, apiKey?, clearApiKey? }`. The API key is encrypted at rest.
-
-### `DELETE /api/admin/agent/sessions/:id` · `DELETE /api/admin/agent/sessions/:id/messages?afterSeq=0`
-
-Deletes a session (stops a running turn first) or clears/truncates its messages while keeping the session, draft, and settings.
-
-### `POST /api/admin/agent/sessions/:id/messages`
-
-Sends a user message and streams the turn over SSE. Body: `{ content?, documents?: [{ name, mime?, text? | dataUrl? }], afterSeq? }` — `afterSeq` truncates messages with `seq > afterSeq` first, covering retry / edit-resend / regenerate. Responds `text/event-stream` with named events:
-
-- `status` — phase text (calling model / executing tool)
-- `text_delta` / `reasoning_delta` — streamed body / chain-of-thought increments
-- `tool_call` / `tool_result` — tool invocation and result (persisted)
-- `draft_updated` — the working config draft changed
-- `plan_updated` — the working plan checklist changed (`update_plan` tool)
-- `message` — a message was persisted (full message incl. `seq`)
-- `approval_required` — the turn paused on a gated action (test / save); payload carries the pending tool calls
-- `turn_done` — turn finished (aggregated usage, rounds, duration)
-- `error` — turn failed (`retryable` flag)
-
-Turns are detached from the HTTP request: closing the stream does not cancel the turn; results are persisted and visible on reconnect. `409` if a turn is already running.
-
-### `POST /api/admin/agent/sessions/:id/approve`
-
-Resolves a pending approval: `{ approved, baseUrl?, apiKey?, note? }` and streams the resumed turn over SSE (same event format). Denying synthesizes tool-result denials so the agent can adapt.
-
-### `POST /api/admin/agent/sessions/:id/stop`
-
-Cancels the running turn (partial output is persisted). Returns `{ stopped }`.
-
-
-## Logs and Health
-
-- `GET /api/admin/logs?level=info&limit=100&offset=0`
-- `GET /api/admin/health`
-
-Health includes basic runtime memory fields so the WebUI can surface memory diagnostics.
+成功时检查 `ok` 与 `data`；401 时先核对令牌类型与配置路径。

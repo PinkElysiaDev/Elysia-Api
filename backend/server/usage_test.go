@@ -145,7 +145,7 @@ func TestGeminiStreamUsageMetadata(t *testing.T) {
 }
 
 func TestConvertedStreamWriterDoesNotRecordPlaceholderUsage(t *testing.T) {
-	record := &usageRecord{}
+	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: UsageBodyMaxBytes}}
 	writer := &observingStreamWriter{
 		inner:  nopStreamWriter{},
 		record: record,
@@ -164,7 +164,7 @@ func TestConvertedStreamWriterDoesNotRecordPlaceholderUsage(t *testing.T) {
 }
 
 func TestUpstreamObserverRecordsRawUsage(t *testing.T) {
-	record := &usageRecord{}
+	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: UsageBodyMaxBytes}}
 	resp := &http.Response{Body: io.NopCloser(strings.NewReader("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":9,\"total_tokens\":21}}\n\n"))}
 	observeUpstreamUsage(resp, record, relay.PlatformOpenAI)
 	if _, err := io.ReadAll(resp.Body); err != nil {
@@ -183,7 +183,7 @@ func TestUpstreamObserverRecordsRawUsage(t *testing.T) {
 }
 
 func TestUpstreamObserverParsesDataWithoutSpace(t *testing.T) {
-	record := &usageRecord{}
+	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: UsageBodyMaxBytes}}
 	resp := &http.Response{Body: io.NopCloser(strings.NewReader("data:{\"choices\":[],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":9,\"total_tokens\":21}}\n\n"))}
 	observeUpstreamUsage(resp, record, relay.PlatformOpenAI)
 	if _, err := io.ReadAll(resp.Body); err != nil {
@@ -198,7 +198,7 @@ func TestUpstreamObserverParsesDataWithoutSpace(t *testing.T) {
 }
 
 func TestUpstreamObserverFlushesFinalLineWithoutNewline(t *testing.T) {
-	record := &usageRecord{}
+	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: UsageBodyMaxBytes}}
 	resp := &http.Response{Body: io.NopCloser(strings.NewReader("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":9,\"total_tokens\":21}}"))}
 	observeUpstreamUsage(resp, record, relay.PlatformOpenAI)
 	if _, err := io.ReadAll(resp.Body); err != nil {
@@ -213,7 +213,7 @@ func TestUpstreamObserverFlushesFinalLineWithoutNewline(t *testing.T) {
 }
 
 func TestUpstreamObserverKeepsUsageAfterNullUsageChunks(t *testing.T) {
-	record := &usageRecord{}
+	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: UsageBodyMaxBytes}}
 	resp := &http.Response{Body: io.NopCloser(strings.NewReader("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}],\"usage\":null}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":9,\"total_tokens\":21}}\n\n"))}
 	observeUpstreamUsage(resp, record, relay.PlatformOpenAI)
 	if _, err := io.ReadAll(resp.Body); err != nil {
@@ -291,7 +291,7 @@ func TestUsageDetailAndBuiltinToolUsageFromMaheshvara(t *testing.T) {
 		t.Fatalf("expected builtin tool usage mapping, got %+v", builtin)
 	}
 
-	record := &usageRecord{}
+	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: UsageBodyMaxBytes}}
 	updateRecordUsageFromMaheshvara(record, maheshvara)
 	if record.UsageSource != "provider_response" || record.Usage.InputTokens == nil || *record.Usage.InputTokens != 100 || record.BuiltinToolUsage.WebSearchCalls != 1 {
 		t.Fatalf("expected record to be updated from maheshvara usage, got %+v", record)

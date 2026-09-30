@@ -58,7 +58,8 @@ export interface RuntimeConfig {
   httpTimeout: number
   enablePprof: boolean
   outbound?: OutboundConfig
-  usageLog?: UsageLogRuntimeConfig
+  usageLog: UsageLogRuntimeConfig
+  systemLog: LogRetentionConfig
   modelCatalog?: ModelCatalogInfo
   agentRemote?: AgentRemoteRuntimeConfig
 }
@@ -77,8 +78,8 @@ export interface UsageLogRuntimeConfig {
   persistEnabled: boolean
   /** 过期清理天数；0 = 不启用。 */
   retentionDays: number
-  /** 数据库占用上限（MB）；0 = 不限。 */
-  maxStorageMB: number
+  /** 日志内容与去重媒体的预算（MiB）；0 = 不限，不含汇总和索引。 */
+  maxContentMB: number
   /** 保留记录条数上限；0 = 不限。 */
   maxRecords: number
   /** 单段请求/响应正文落库上限（KB）；默认 0 不保存正文，正数显式开启。 */
@@ -101,6 +102,7 @@ export interface RuntimeConfigUpdate {
   enablePprof?: boolean
   outbound?: { deniedIpRanges: string[] }
   usageLog?: Partial<UsageLogRuntimeConfig>
+  systemLog?: Partial<LogRetentionConfig>
   modelCatalog?: {
     syncIntervalMinutes?: number
   }
@@ -111,27 +113,50 @@ export interface RuntimeConfigUpdate {
   }
 }
 
-/** /api/admin/usage/storage：日志占用状态（设置页展示）。 */
+export interface LogRetentionConfig {
+  retentionDays: number
+  maxRecords: number
+  maxContentMB: number
+}
+
+export interface LogMaintenance {
+  state: 'idle' | 'queued' | 'running' | 'waiting' | 'completed' | 'failed'
+  phase: 'idle' | 'retention' | 'assets' | 'reclaim' | 'checkpoint'
+  pending: boolean
+  lastRunAt: string
+  finishedAt?: string
+  usageDeleted: { byTTL: number; byRecords: number; byContent: number }
+  systemDeleted: { byTTL: number; byRecords: number; byContent: number }
+  assetsRemoved: number
+  remainingFreePages: number
+  checkpointBlocked: boolean
+  lastError?: string
+}
+
 export interface UsageStorageStatus {
   db: {
-    totalBytes: number
-    logicalBytes: number
-    pageCount: number
-    pageSize: number
+    fileBytes: number
+    usedBytes: number
+    freeBytes: number
+    walBytes: number
+    rollupBytes: number
+    indexBytes: number
+    pageOverheadBytes: number
     freePages: number
   }
-  recordCount: number
-  assets: { bytes: number; files: number; dirs: number }
-  config: UsageLogRuntimeConfig
-  lastCleanup?: {
-    lastRunAt: string
-    deletedByTTL: number
-    deletedByRecords: number
-    deletedBySize: number
-    assetsRemoved: number
-    vacuumed: boolean
-    lastError?: string
+  content: {
+    usageBytes: number
+    usageRecords: number
+    systemBytes: number
+    systemRecords: number
+    mediaBytes: number
+    pendingMediaBytes: number
+    mediaFiles: number
   }
+  assets: { bytes: number; files: number; dirs: number }
+  usageLog: UsageLogRuntimeConfig
+  systemLog: LogRetentionConfig
+  maintenance?: LogMaintenance
 }
 
 export interface RuntimeConfigUpdateResult {
@@ -260,6 +285,7 @@ export interface UsageStats {
 }
 
 export interface UsageLogItem {
+  requestedModelGroup: string
   requestId: string
   startedAt: string
   keyName: string
@@ -366,12 +392,13 @@ export interface UsageRetryEvent {
 
 /** GET /usage/logs/:id 返回的完整记录，含四段链路原文。 */
 export interface UsageLogDetail {
+  sourceId?: string
   requestId: string
   startedAt: string
   endedAt: string
   keyName: string
   keyHash: string
-  requestedModelGroup?: string
+  requestedModelGroup: string
   groupId?: string
   groupName: string
   modelId?: string
@@ -390,7 +417,7 @@ export interface UsageLogDetail {
   stream: boolean
   statusCode: number
   error?: string
-  /** 错误归类：conversion=协议转换失败、upstream=上游失败；空表示未归类。 */
+  /** 错误归类：client_canceled=客户端取消、upstream=上游失败；空表示未归类。 */
   errorKind?: string
   firstByteMs: number
   durationMs: number

@@ -2,10 +2,15 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"github.com/gin-gonic/gin"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -70,7 +75,7 @@ func TestRetentionTTLDeletesOldRecordsAndAssets(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(assetsRoot, "0123456789abcdef.png"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.store.InsertUsageAssetRef(context.Background(), "old-a", "0123456789abcdef.png"); err != nil {
+	if err := registerTestAsset(s.store, "old-a", "0123456789abcdef.png", 1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -116,21 +121,21 @@ func TestRetentionStorageCapConverges(t *testing.T) {
 		seedUsageRecord(t, s.store, fmt.Sprintf("cap-%02d", i), now.Add(time.Duration(i)*time.Minute), 300*1024)
 	}
 	mb := 1
-	cfg.SetUsageLogConfig(config.UsageLogConfig{MaxStorageMB: &mb})
+	cfg.SetUsageLogConfig(config.UsageLogConfig{MaxContentMB: &mb})
 	r := newUsageRetention(s)
 	r.runOnce()
 
-	stats, err := s.store.UsageDBPageStats(context.Background())
+	stats, err := s.store.LogContentStats(context.Background())
 	if err != nil {
 		t.Fatalf("page stats: %v", err)
 	}
 	ids := usageIDs(t, s.store)
 	// 断言收敛或删光：日志删光后剩余占用来自其他表时停止挣扎。
-	if stats.LogicalBytes() > int64(mb)*1024*1024 && len(ids) > 0 {
-		t.Fatalf("storage cap did not converge: logical=%d records=%d", stats.LogicalBytes(), len(ids))
+	if (stats.UsageBytes+stats.MediaBytes) > int64(mb)*1024*1024 && len(ids) > 0 {
+		t.Fatalf("storage cap did not converge: logical=%d records=%d", (stats.UsageBytes + stats.MediaBytes), len(ids))
 	}
 	snapshot := r.snapshotStats()
-	if snapshot.DeletedBySize == 0 {
+	if snapshot.UsageDeleted.ByContent == 0 {
 		t.Fatal("size-based deletion must have run")
 	}
 }
@@ -139,7 +144,6 @@ func TestRetentionOrphanSweepRespectsGrace(t *testing.T) {
 	s, _ := newRetentionTestServer(t)
 	now := time.Now()
 	seedUsageRecord(t, s.store, "live", now, 64)
-	ctx := context.Background()
 
 	assetsRoot := s.usageAssetsRoot()
 	// 三个文件：被 live 引用（保留）、无引用但新（宽限保留）、无引用且旧（删除）。
@@ -158,7 +162,7 @@ func TestRetentionOrphanSweepRespectsGrace(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := s.store.InsertUsageAssetRef(ctx, "live", "3333333333333333.png"); err != nil {
+	if err := registerTestAsset(s.store, "live", "3333333333333333.png", 1); err != nil {
 		t.Fatal(err)
 	}
 	oldTime := time.Now().Add(-48 * time.Hour)
@@ -205,12 +209,13 @@ func TestTriggerAsyncActuallyRuns(t *testing.T) {
 	cfg.SetUsageLogConfig(config.UsageLogConfig{RetentionDays: &days})
 
 	r := newUsageRetention(s)
+	defer r.shutdown()
 	if !r.triggerAsync() {
 		t.Fatal("idle retention must accept manual trigger")
 	}
-	// 已有轮次在跑时拒绝重入。
-	if r.triggerAsync() {
-		t.Fatal("concurrent trigger must be rejected while a round is running")
+	// Maintenance wakeups coalesce instead of being dropped.
+	if !r.triggerAsync() {
+		t.Fatal("concurrent trigger must be queued")
 	}
 
 	deadline := time.Now().Add(2 * time.Second)
@@ -223,210 +228,200 @@ func TestTriggerAsyncActuallyRuns(t *testing.T) {
 	t.Fatal("triggerAsync must perform real cleanup work")
 }
 
-// 引用释放的穿越防护：非法文件名（parseAssetFileName 拒绝）不会被执行删除。
-func TestReleaseAssetsRejectsBadFileNames(t *testing.T) {
+func registerTestAsset(store *storage.Store, id, file string, size int64) error {
+	return store.ExecRaw(context.Background(), fmt.Sprintf("INSERT INTO usage_assets(asset_file,size_bytes) VALUES('%s',%d) ON CONFLICT DO NOTHING; INSERT INTO usage_asset_refs(asset_file,request_id) VALUES('%s','%s')", file, size, file, id))
+}
+
+func TestMaintenanceReclaimsDeletedPagesWithoutRetention(t *testing.T) {
 	s, _ := newRetentionTestServer(t)
 	ctx := context.Background()
-	if err := s.store.InsertUsageAssetRef(ctx, "req-x", "0123456789abcdef.png"); err != nil {
+	for i := 0; i < 12; i++ {
+		seedUsageRecord(t, s.store, fmt.Sprint(i), time.Now(), 256*1024)
+	}
+	if _, err := s.store.Checkpoint(ctx, true); err != nil {
 		t.Fatal(err)
 	}
-	// 引用被删但文件名非法（模拟脏数据）：releaseAssets 跳过文件删除、不报错。
-	if err := s.store.ExecRaw(ctx, "DELETE FROM usage_asset_refs WHERE request_id = 'req-x'"); err != nil {
+	before, err := s.store.LogStorageStats(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.ClearUsage(ctx); err != nil {
 		t.Fatal(err)
 	}
 	r := newUsageRetention(s)
-	if n := r.releaseAssets(ctx, t.TempDir(), []string{"req-x"}); n != 0 {
-		t.Fatalf("no deletable files expected, got %d", n)
-	}
-}
-
-// ---- 超量清理自适应批量 ----
-
-func dbLogicalBytes(t *testing.T, s *Server) int64 {
-	t.Helper()
-	st, err := s.store.UsageDBPageStats(context.Background())
+	r.runOnce()
+	state := r.snapshotStats()
+	after, err := s.store.LogStorageStats(ctx)
 	if err != nil {
-		t.Fatalf("page stats: %v", err)
+		t.Fatal(err)
 	}
-	return st.LogicalBytes()
-}
-
-func usageRecordCount(t *testing.T, s *Server) int64 {
-	t.Helper()
-	count, err := s.store.CountUsageRecords(context.Background())
-	if err != nil {
-		t.Fatalf("count: %v", err)
-	}
-	return count
-}
-
-// seedUntilLogical 持续插入记录直至逻辑占用超过 threshold，返回插入条数。
-func seedUntilLogical(t *testing.T, s *Server, pad int, threshold int64) int {
-	t.Helper()
-	now := time.Now()
-	added := 0
-	for i := 0; i < 20000; i++ {
-		if dbLogicalBytes(t, s) > threshold {
-			return added
-		}
-		seedUsageRecord(t, s.store, fmt.Sprintf("cap-adaptive-%06d", i), now.Add(time.Duration(i)*time.Millisecond), pad)
-		added++
-	}
-	t.Fatal("seeding did not reach threshold")
-	return 0
-}
-
-// 回归（v2 全区间自适应）：轻微超限只删按体积推算的最少条数
-// （旧实现固定 500 整批，v1 下限 16），且收敛进迟滞带内。
-func TestStorageCapAdaptiveSmallOverage(t *testing.T) {
-	s, cfg := newRetentionTestServer(t)
-	limitBytes := int64(1024 * 1024) // 1 MiB
-	mb := 1
-	cfg.SetUsageLogConfig(config.UsageLogConfig{MaxStorageMB: &mb})
-
-	// 越过迟滞带一点（约数个页面）。
-	// 均重用 seeding 全程增量测：库内有 agent 会话等固定 schema 开销，
-	// 绝对体积/条数会把固定开销摊进均值、低估最少删除条数。
-	logicalStart := dbLogicalBytes(t, s)
-	added := seedUntilLogical(t, s, 1024, limitBytes*101/100+8192)
-	logicalSeeded := dbLogicalBytes(t, s)
-	if added == 0 || logicalSeeded <= logicalStart {
-		t.Fatalf("seeding produced no measurable growth: added=%d logical %d→%d", added, logicalStart, logicalSeeded)
-	}
-	avgPerRecord := float64(logicalSeeded-logicalStart) / float64(added)
-	countBefore := usageRecordCount(t, s)
-	// 理论最少删除条数：把占用拉回迟滞带边缘所需。
-	minNeeded := int(float64(logicalSeeded-limitBytes*101/100)/avgPerRecord) + 1
-
-	r := newUsageRetention(s)
-	r.runOnce()
-
-	deleted := int(countBefore - usageRecordCount(t, s))
-	if deleted == 0 {
-		t.Fatal("over-cap database must be cleaned")
-	}
-	// 允许比理论值多删少量（页面量化 + 批处理粒度），但不应整批乱删。
-	if deleted > minNeeded+16 {
-		t.Fatalf("slight overage must delete near the volume-derived minimum: deleted=%d minNeeded=%d", deleted, minNeeded)
-	}
-	if got := dbLogicalBytes(t, s); got*100 > limitBytes*retentionCapHysteresisPercent {
-		t.Fatalf("must converge into hysteresis band, logical=%d limit=%d", got, limitBytes)
+	if state.State != "completed" || after.FreePages != 0 || after.FileBytes >= before.FileBytes/2 || after.WALBytes != 0 {
+		t.Fatalf("no-policy reclaim: %+v before=%+v after=%+v err=%v", state, before, after, err)
 	}
 }
 
-// 回归：大幅超限时按 1000 上限分批、多轮收敛。
-func TestStorageCapAdaptiveLargeOverage(t *testing.T) {
-	s, cfg := newRetentionTestServer(t)
-	mb := 1
-	cfg.SetUsageLogConfig(config.UsageLogConfig{MaxStorageMB: &mb})
-	limitBytes := int64(1024 * 1024)
-
-	// 小记录（1KB pad）堆到 4 倍超限：需删数千条，必然跨多个 1000 上限批。
-	seedUntilLogical(t, s, 1024, limitBytes*4)
-	before := usageRecordCount(t, s)
-
-	r := newUsageRetention(s)
-	r.runOnce()
-
-	deleted := before - usageRecordCount(t, s)
-	if deleted <= retentionCapBatchMax {
-		t.Fatalf("large overage must span multiple max-size batches, deleted %d", deleted)
-	}
-	if got := dbLogicalBytes(t, s); got*100 > limitBytes*retentionCapHysteresisPercent {
-		t.Fatalf("must converge into hysteresis band, logical=%d limit=%d", got, limitBytes)
-	}
-}
-
-// 实测修正：记录大小严重不均（最旧一批极小、其后大记录）时，全局均值
-// 估算必然偏小；逐批实测均摊应自动放大后续批量，总量仍收敛进带内。
-func TestStorageCapAdaptiveCorrectsUndershoot(t *testing.T) {
-	s, cfg := newRetentionTestServer(t)
-	limitBytes := int64(1024 * 1024)
-	mb := 1
-	cfg.SetUsageLogConfig(config.UsageLogConfig{MaxStorageMB: &mb})
-
-	// 先放一批「最旧的小记录」（删除时先消耗它们，均摊远低于全局均值），
-	// 再放大记录把总占用顶过 4 倍上限。
-	now := time.Now()
-	for i := 0; i < 400; i++ {
-		seedUsageRecord(t, s.store, fmt.Sprintf("cap-tiny-%03d", i), now.Add(time.Duration(i)*time.Millisecond), 128)
-	}
-	seedUntilLogical(t, s, 4096, limitBytes*4)
-	before := usageRecordCount(t, s)
-	logicalBeforeUd := dbLogicalBytes(t, s)
-	avgBeforeUd := float64(logicalBeforeUd) / float64(before)
-
-	r := newUsageRetention(s)
-	r.runOnce()
-	deleted := int(before - usageRecordCount(t, s))
-	if deleted == 0 {
-		t.Fatal("over-cap database must be cleaned")
-	}
-	logicalAfter := dbLogicalBytes(t, s)
-	if logicalAfter*100 > limitBytes*retentionCapHysteresisPercent {
-		t.Fatalf("measured-avg correction must converge into band, logical=%d limit=%d", logicalAfter, limitBytes)
-	}
-	// 删除效率属性：均摊每条删除记录的实测释放量不低于全局均摊的 60%
-	//——证明批量估算贴合实际（没有为凑字节反复小批空转，也没有巨量超删）。
-	freedPerDeleted := float64(logicalBeforeUd-logicalAfter) / float64(deleted)
-	if freedPerDeleted < 0.6*avgBeforeUd {
-		t.Fatalf("deletion efficiency too low: freed/record=%.0fB global avg=%.0fB", freedPerDeleted, avgBeforeUd)
-	}
-}
-
-// 迟滞带内（100%~101%）不清理：避免上限附近删删停停。
-func TestStorageCapHysteresisNoop(t *testing.T) {
-	s, cfg := newRetentionTestServer(t)
-	mb := 1
-	cfg.SetUsageLogConfig(config.UsageLogConfig{MaxStorageMB: &mb})
-	limitBytes := int64(1024 * 1024)
-
-	// 小步长插入，恰好越过 100% 但停在 1% 带内。
-	seedUntilLogical(t, s, 512, limitBytes)
-	if got := dbLogicalBytes(t, s); got*100 > limitBytes*retentionCapHysteresisPercent {
-		t.Skipf("page granularity overshot the band (logical=%d); band check inconclusive", got)
-	}
-	before := usageRecordCount(t, s)
-
-	r := newUsageRetention(s)
-	r.runOnce()
-
-	if deleted := before - usageRecordCount(t, s); deleted != 0 {
-		t.Fatalf("within hysteresis band must not delete, deleted %d", deleted)
-	}
-}
-
-// capBatchSize 估算器：实测路径、全局均值回落、上下限钳制与除零保护。
-func TestCapBatchSizeEstimate(t *testing.T) {
+func TestMaintenanceQueuesWakeDuringRunAndShutdownWaits(t *testing.T) {
 	s, _ := newRetentionTestServer(t)
-	now := time.Now()
-	for i := 0; i < 32; i++ {
-		seedUsageRecord(t, s.store, fmt.Sprintf("est-%02d", i), now, 2048)
+	r := newUsageRetention(s)
+	s.usagePersistMu.Lock()
+	r.start()
+	waitMaintenance(t, r, func(st retentionStats) bool { return st.State == "running" })
+	initial := r.snapshotStats().LastRunAt
+	for i := 0; i < 20; i++ {
+		if !r.triggerAsync() {
+			t.Fatal("wakeup dropped")
+		}
+	}
+	s.usagePersistMu.Unlock()
+	waitMaintenance(t, r, func(st retentionStats) bool {
+		return st.State == "completed" && st.LastRunAt.After(initial) && !st.Pending
+	})
+	r.shutdown()
+	select {
+	case <-r.done:
+	default:
+		t.Fatal("shutdown did not wait")
+	}
+	if r.triggerAsync() {
+		t.Fatal("stopped worker accepted maintenance")
+	}
+}
+
+func TestMaintenanceRetriesAttachmentFailure(t *testing.T) {
+	s, _ := newRetentionTestServer(t)
+	ctx := context.Background()
+	root := s.usageAssetsRoot()
+	file := "0123456789abcdef.png"
+	// A non-empty directory guarantees unlink failure even under elevated test users.
+	if err := os.MkdirAll(filepath.Join(root, file), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, file, "blocked"), []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	seedUsageRecord(t, s.store, "old", time.Now(), 100)
+	if err := registerTestAsset(s.store, "old", file, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.ClearUsage(ctx); err != nil {
+		t.Fatal(err)
 	}
 	r := newUsageRetention(s)
-	const limit = int64(1024 * 1024)
-	logical := dbLogicalBytes(t, s)
+	r.runOnce()
+	stats, _ := s.store.LogContentStats(ctx)
+	if r.snapshotStats().State != "failed" || stats.PendingMediaBytes != 1 {
+		t.Fatalf("failed file deletion lost pending metadata: %+v %+v", r.snapshotStats(), stats)
+	}
+	if err := os.Remove(filepath.Join(root, file, "blocked")); err != nil {
+		t.Fatal(err)
+	}
+	r.runOnce()
+	stats, _ = s.store.LogContentStats(ctx)
+	if r.snapshotStats().State != "completed" || stats.PendingMediaBytes != 0 {
+		t.Fatalf("retry failed: %+v %+v", r.snapshotStats(), stats)
+	}
+}
 
-	// 目标是迟滞带边缘：带内（即使超过上限本身不多）→ 0。
-	bandEdge := limit * retentionCapHysteresisPercent / 100
-	if got, err := r.capBatchSize(context.Background(), bandEdge, limit, 0); err != nil || got != 0 {
-		t.Fatalf("inside band must return 0, got %d", got)
-	}
-	// 实测路径：需释放约 1MiB、实测均摊 1KB → need≈1127 → 钳到上限 1000。
-	if got, err := r.capBatchSize(context.Background(), bandEdge+1024*1024, limit, 1024); err != nil || got != retentionCapBatchMax {
-		t.Fatalf("huge need must clamp to max, got %d", got)
-	}
-	// 实测路径：需释放 100B、实测均摊 10KB → need≈1 → 下限 1。
-	if got, err := r.capBatchSize(context.Background(), bandEdge+100, limit, 10*1024); err != nil || got != retentionCapBatchMin {
-		t.Fatalf("tiny need must clamp to min 1, got %d", got)
-	}
-	// 全局均值回落：刚过带边缘一个页面 → 小批量而非 0/负数。
-	small, err := r.capBatchSize(context.Background(), bandEdge+4096, limit, 0)
+func TestMaintenanceLongReaderWaitsThenRecovers(t *testing.T) {
+	s, cfg := newRetentionTestServer(t)
+	ctx := context.Background()
+	seedUsageRecord(t, s.store, "old", time.Now().Add(-48*time.Hour), 1024*1024)
+	reader, err := sql.Open("sqlite", filepath.Join(filepath.Dir(s.usageAssetsRoot()), "retention.sqlite3"))
 	if err != nil {
-		t.Fatalf("slight overage estimate failed: %v", err)
+		t.Fatal(err)
 	}
-	if small <= 0 || small > 64 {
-		t.Fatalf("slight overage via global avg must be a small batch, got %d", small)
+	defer reader.Close()
+	tx, err := reader.Begin()
+	if err != nil {
+		t.Fatal(err)
 	}
-	_ = logical
+	defer tx.Rollback()
+	var count int
+	if err := tx.QueryRow(`SELECT count(*) FROM usage_records`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	day := 1
+	cfg.SetUsageLogConfig(config.UsageLogConfig{RetentionDays: &day})
+	r := newUsageRetention(s)
+	r.runOnce()
+	if st := r.snapshotStats(); st.State != "waiting" || !st.CheckpointBlocked {
+		t.Fatalf("reader blockage hidden: %+v", st)
+	}
+	tx.Rollback()
+	r.runOnce()
+	if st := r.snapshotStats(); st.State != "completed" || st.CheckpointBlocked {
+		t.Fatalf("retry failed: %+v", st)
+	}
+	records, _ := s.store.CountUsageRecords(ctx)
+	if records != 0 {
+		t.Fatal("retention did not delete")
+	}
+}
+
+func TestResetSchedulesReclaimAndPreservesNewRequests(t *testing.T) {
+	s, _ := newRetentionTestServer(t)
+	seedUsageRecord(t, s.store, "old", time.Now(), 1024*1024)
+	s.usageRetention = newUsageRetention(s)
+	defer s.usageRetention.shutdown()
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/reset", nil)
+	s.resetUsage(c)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"reclaimQueued":true`) {
+		t.Fatalf("reset response: %d %s", rec.Code, rec.Body)
+	}
+	s.recordUsage(&usageRecord{RequestID: "after", StartedAt: time.Now(), StatusCode: 200})
+	waitMaintenance(t, s.usageRetention, func(st retentionStats) bool { return st.State == "completed" && !st.Pending })
+	ids := usageIDs(t, s.store)
+	if len(ids) != 1 || !ids["after"] {
+		t.Fatalf("reset/new record boundary: %v", ids)
+	}
+}
+
+func TestConcurrentAssetPersistenceAndMaintenance(t *testing.T) {
+	s, cfg := newRetentionTestServer(t)
+	keep := 2
+	cfg.SetUsageLogConfig(config.UsageLogConfig{MaxRecords: &keep})
+	r := newUsageRetention(s)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 10; i++ {
+			r.runOnce()
+		}
+	}()
+	for i := 0; i < 30; i++ {
+		record := newExternalizeRecord(fmt.Sprintf("shared-%02d", i))
+		record.StartedAt = time.Now()
+		record.StatusCode = 200
+		record.IncomingBody = record.sanitizeBody([]byte(`{"url":"data:image/png;base64,` + strings.Repeat("A", 600) + `"}`))
+		s.persistUsageRecord(record)
+	}
+	wg.Wait()
+	r.runOnce()
+	refs, err := s.store.ReferencedAssetFiles(context.Background())
+	if err != nil || len(refs) != 1 {
+		t.Fatalf("refs: %v %v", refs, err)
+	}
+	for file := range refs {
+		if _, err := os.Stat(filepath.Join(s.usageAssetsRoot(), file)); err != nil {
+			t.Fatal("live shared file deleted", err)
+		}
+	}
+	if len(usageIDs(t, s.store)) != 2 {
+		t.Fatal("retention did not converge")
+	}
+}
+
+func waitMaintenance(t *testing.T, r *usageRetention, done func(retentionStats) bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if done(r.snapshotStats()) {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("maintenance timeout: %+v", r.snapshotStats())
 }

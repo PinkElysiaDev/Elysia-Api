@@ -85,6 +85,7 @@ func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
 	// 日志管理：外置媒体文件、占用状态、手动触发清理巡检。
 	admin.GET("/usage/assets/:requestId/:file", s.adminUsageAsset)
 	admin.GET("/usage/storage", s.adminUsageStorage)
+	admin.GET("/usage/maintenance", s.adminLogMaintenance)
 	admin.POST("/usage/cleanup", s.adminUsageCleanup)
 	admin.GET("/logs", s.adminSystemLogs)
 	admin.GET("/health", s.adminHealth)
@@ -104,7 +105,7 @@ func usageLogStatusJSON(cfg config.UsageLogResolved) gin.H {
 	return gin.H{
 		"persistEnabled":         cfg.PersistEnabled,
 		"retentionDays":          cfg.RetentionDays,
-		"maxStorageMB":           cfg.MaxStorageBytes / 1024 / 1024,
+		"maxContentMB":           cfg.MaxContentBytes / 1024 / 1024,
 		"maxRecords":             cfg.MaxRecords,
 		"bodyMaxKB":              cfg.BodyMaxBytes / 1024,
 		"bodyOnErrorOnly":        cfg.BodyOnErrorOnly,
@@ -132,7 +133,8 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 			"defaultDeniedIpRanges": relay.DefaultDeniedIPRanges,
 		},
 		// 生效值（归一化后）：表单直接显示当前实际口径，保存时整体回写。
-		"usageLog": usageLogStatusJSON(usageLog),
+		"usageLog":  usageLogStatusJSON(usageLog),
+		"systemLog": s.config.GetSystemLogConfig(),
 		"modelCatalog": gin.H{
 			"enabled": catalogEnabled,
 			"url":     catalogResolveURL(catalog),
@@ -150,15 +152,16 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 // runtimeConfigPayload 是 PUT /runtime-config 的请求体：指针/空串字段
 // 表示「未提供（不修改）」。
 type runtimeConfigPayload struct {
-	Host             string                 `json:"host"`
-	Port             int                    `json:"port"`
-	LogLevel         string                 `json:"logLevel"`
-	HTTPTimeout      *int                   `json:"httpTimeout"`
-	PanelAccessToken *string                `json:"panelAccessToken"`
-	DatabasePath     *string                `json:"databasePath"`
-	EnablePprof      *bool                  `json:"enablePprof"`
-	Outbound         *outboundConfigPayload `json:"outbound"`
-	UsageLog         *config.UsageLogConfig `json:"usageLog"`
+	Host             string                     `json:"host"`
+	Port             int                        `json:"port"`
+	LogLevel         string                     `json:"logLevel"`
+	HTTPTimeout      *int                       `json:"httpTimeout"`
+	PanelAccessToken *string                    `json:"panelAccessToken"`
+	DatabasePath     *string                    `json:"databasePath"`
+	EnablePprof      *bool                      `json:"enablePprof"`
+	Outbound         *outboundConfigPayload     `json:"outbound"`
+	UsageLog         *config.UsageLogConfig     `json:"usageLog"`
+	SystemLog        *config.LogRetentionConfig `json:"systemLog"`
 	ModelCatalog     *struct {
 		SyncIntervalMinutes *int `json:"syncIntervalMinutes"`
 	} `json:"modelCatalog"`
@@ -231,6 +234,9 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		// 局部更新：仅覆盖显式提供的字段。BodyMaxKB/开关对后续请求即时生效；
 		// 清理参数由后台巡检在下一 tick 重新读取。无需重启。
 		s.config.SetUsageLogConfig(*payload.UsageLog)
+	}
+	if payload.SystemLog != nil {
+		s.config.SetSystemLogConfig(*payload.SystemLog)
 	}
 	if payload.ModelCatalog != nil && payload.ModelCatalog.SyncIntervalMinutes != nil {
 		// 周期检查是动态的，写入配置即生效（0 = 默认 24h），无需重启。
@@ -329,13 +335,20 @@ func validateRuntimeConfigPayload(p *runtimeConfigPayload) *runtimeConfigError {
 			}
 		}
 	}
+	if p.SystemLog != nil {
+		for _, v := range []*int{p.SystemLog.RetentionDays, p.SystemLog.MaxRecords, p.SystemLog.MaxContentMB} {
+			if v != nil && *v < 0 {
+				return &runtimeConfigError{400, "invalid_system_log", "systemLog limits must not be negative"}
+			}
+		}
+	}
 	if p.UsageLog != nil {
 		for _, check := range []struct {
 			name  string
 			value *int
 		}{
 			{"retentionDays", p.UsageLog.RetentionDays},
-			{"maxStorageMB", p.UsageLog.MaxStorageMB},
+			{"maxContentMB", p.UsageLog.MaxContentMB},
 			{"maxRecords", p.UsageLog.MaxRecords},
 			{"bodyMaxKB", p.UsageLog.BodyMaxKB},
 			{"cleanupIntervalMinutes", p.UsageLog.CleanupIntervalMinutes},
@@ -1128,13 +1141,25 @@ func (s *Server) adminUsageReset(c *gin.Context) { s.resetUsage(c) }
 
 // adminUsageAsset 下发外置媒体文件。资产是捕获的用户内容，必须留在管理
 // 鉴权之后，绝不做公开静态目录。存储为扁平内容寻址（usage-assets/<hash>.<ext>，
-// 同一图片全局一份）；URL 保留 /:requestId/ 段仅为占位符格式兼容，不参与
-// 寻址。文件名格式严格校验（16 位 hex + 白名单扩展名）防穿越。
+// 同一图片全局一份）；请求 ID 必须拥有有效引用。文件名严格校验防穿越。
 func (s *Server) adminUsageAsset(c *gin.Context) {
 	fileName := c.Param("file")
 	hash, ext, ok := parseAssetFileName(fileName)
 	if !ok {
 		respondFail(c, 400, "invalid_asset_name", "invalid asset file name")
+		return
+	}
+	store, okStore := s.requireStore(c)
+	if !okStore {
+		return
+	}
+	exists, err := store.HasUsageAsset(c.Request.Context(), c.Param("requestId"), fileName)
+	if err != nil {
+		respondFail(c, 500, "asset_lookup_failed", err.Error())
+		return
+	}
+	if !exists {
+		respondFail(c, 404, "asset_not_found", "asset reference not found")
 		return
 	}
 	data, err := os.ReadFile(filepath.Join(s.usageAssetsRoot(), hash+"."+ext))
@@ -1220,27 +1245,19 @@ func (s *Server) adminUsageStorage(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	dbStats, dbErr := store.UsageDBPageStats(ctx)
-	recordCount, countErr := store.CountUsageRecords(ctx)
-	if dbErr != nil || countErr != nil {
-		respondFail(c, 500, "storage_stats_failed", firstErrMsg(dbErr, countErr))
+	db, err := store.LogStorageStats(ctx)
+	if err != nil {
+		respondFail(c, 500, "storage_stats_failed", err.Error())
 		return
 	}
-	cfg := s.config.GetUsageLogConfig()
-	resp := gin.H{
-		"db": gin.H{
-			"totalBytes":   dbStats.TotalBytes(),
-			"logicalBytes": dbStats.LogicalBytes(),
-			"pageCount":    dbStats.PageCount,
-			"pageSize":     dbStats.PageSize,
-			"freePages":    dbStats.FreePages,
-		},
-		"recordCount": recordCount,
-		"assets":      s.usageAssetsUsage(),
-		"config":      usageLogStatusJSON(cfg),
+	content, err := store.LogContentStats(ctx)
+	if err != nil {
+		respondFail(c, 500, "storage_stats_failed", err.Error())
+		return
 	}
+	resp := gin.H{"db": db, "content": content, "assets": s.usageAssetsUsage(), "usageLog": usageLogStatusJSON(s.config.GetUsageLogConfig()), "systemLog": s.config.GetSystemLogConfig()}
 	if r := s.usageRetention; r != nil {
-		resp["lastCleanup"] = r.snapshotStats()
+		resp["maintenance"] = r.snapshotStats()
 	}
 	respondOK(c, resp)
 }
@@ -1375,4 +1392,12 @@ func compactQueryArray(values []string) []string {
 		}
 	}
 	return out
+}
+
+func (s *Server) adminLogMaintenance(c *gin.Context) {
+	if s.usageRetention == nil {
+		respondOK(c, retentionStats{State: "idle", Phase: "idle"})
+		return
+	}
+	respondOK(c, s.usageRetention.snapshotStats())
 }

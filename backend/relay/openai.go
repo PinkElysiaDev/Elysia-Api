@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -278,35 +279,94 @@ type StreamResponseWriter interface {
 
 // ForwardOpenAIStream 直接转发 OpenAI SSE 流（不做格式转换）。
 func ForwardOpenAIStream(ctx context.Context, resp *http.Response, writer StreamResponseWriter) error {
-	return forwardSSELines(ctx, resp, writer, false)
+	return forwardSSELines(ctx, resp, writer, FormatOpenAIChat)
 }
 
-// forwardSSELines 逐行转发 SSE 流，在空行处 flush。
-// finalFlush=true 时在 EOF 后额外 flush 一次（Responses 协议需要此行为）。
-// 使用 context 和超时保护避免长工作流中的连接静默断开。
-func forwardSSELines(ctx context.Context, resp *http.Response, writer StreamResponseWriter, finalFlush bool) error {
+// forwardSSELines 保留原始 SSE，只旁路解码终态；成功写出终态后不再把收尾取消记为失败。
+func forwardSSELines(ctx context.Context, resp *http.Response, writer StreamResponseWriter, format FormatType) error {
 	defer resp.Body.Close()
-
 	scanner := newSSEScanner(resp.Body)
-	// 5分钟流式读超时：Claude 思考模式可能长时间不吐 token，但正常不应超过 5 分钟无响应。
-	// 每成功读取一行后重置超时，防止长工作流被 IdleConnTimeout 断开。
-	streamTimeout := DefaultSSEIdleTimeout
-
-	for {
-		line, hasMore, err := scanSSEWithTimeout(ctx, scanner, streamTimeout)
+	decoder := NewMaheshvaraStreamDecoder(format)
+	var event SSEEvent
+	var data []string
+	completed := false
+	flushEvent := func() (bool, error) {
+		if err := writer.Flush(); err != nil {
+			if completed && errors.Is(ctx.Err(), context.Canceled) {
+				return true, nil
+			}
+			return false, err
+		}
+		event.Data = strings.Join(data, "\n")
+		events, err := decoder.Decode(event)
 		if err != nil {
+			return false, err
+		}
+		for _, ev := range events {
+			if ev.Error != nil {
+				return false, ev.Error
+			}
+			if ev.Type == MaheshvaraEventResponseFailed {
+				return false, fmt.Errorf("upstream stream failed")
+			}
+			if ev.Type == MaheshvaraEventResponseCompleted && decoder.TerminalReceived() {
+				completed = true
+			}
+		}
+		if completed && !decoder.SawOutput() && !decoder.SawFinishReason() {
+			return false, fmt.Errorf("upstream stream completed without representable output")
+		}
+		done := completed && (format == FormatResponses || strings.TrimSpace(event.Data) == "[DONE]")
+		event = SSEEvent{}
+		data = nil
+		return done, nil
+	}
+	for {
+		idle := DefaultSSEIdleTimeout
+		if completed {
+			idle = PostTerminalSSEIdleTimeout
+		}
+		line, hasMore, err := scanSSEWithTimeout(ctx, scanner, idle)
+		if err != nil {
+			if completed && (errors.Is(err, context.Canceled) || errors.Is(err, ErrSSEIdleTimeout)) {
+				return nil
+			}
 			return err
 		}
 		if !hasMore {
 			break
 		}
-		_, _ = writer.WriteString(line + "\n")
+		if n, err := writer.WriteString(line + "\n"); err != nil {
+			if completed && errors.Is(ctx.Err(), context.Canceled) {
+				return nil
+			}
+			return err
+		} else if n != len(line)+1 {
+			return io.ErrShortWrite
+		}
+		field, value, _ := strings.Cut(line, ":")
+		value = strings.TrimPrefix(value, " ")
+		switch field {
+		case "event":
+			event.Event = value
+		case "data":
+			data = append(data, value)
+		}
 		if strings.TrimSpace(line) == "" {
-			_ = writer.Flush()
+			if done, err := flushEvent(); err != nil {
+				return err
+			} else if done {
+				return nil
+			}
 		}
 	}
-	if finalFlush {
-		_ = writer.Flush()
+	if len(data) > 0 || event.Event != "" {
+		if _, err := flushEvent(); err != nil {
+			return err
+		}
+	}
+	if !completed {
+		return fmt.Errorf("upstream stream ended before a terminal event")
 	}
 	return nil
 }

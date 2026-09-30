@@ -103,9 +103,10 @@ export function UsageLogsPage() {
     })
     if (!okToReset) return
     try {
-      await api.usageReset()
+      const result = await api.usageReset()
       await Promise.all([mutate(), revalidate.usage()])
-      toast.success('Usage 已重置')
+      if (result.reclaimQueued) toast.success('用量数据已重置', '空间回收将在后台完成')
+      else toast.error('用量数据已重置，空间回收未提交', '请稍后在设置页触发立即清理')
       setPage(0)
     } catch (err) {
       toast.error('重置失败', (err as Error).message)
@@ -212,7 +213,7 @@ export function UsageLogsPage() {
                     <TableRow className="border-b border-border/60 hover:bg-transparent">
                       <TableHead className="py-3.5 pl-4">请求时间</TableHead>
                       <TableHead className="py-3.5">调用凭证</TableHead>
-                      <TableHead className="py-3.5">实际模型 / 路由组</TableHead>
+                      <TableHead className="py-3.5">请求模型 / 路由</TableHead>
                       <TableHead className="py-3.5 text-center">流式</TableHead>
                       <TableHead className="py-3.5 text-center">状态码</TableHead>
                       <TableHead className="py-3.5 num">首字耗时</TableHead>
@@ -221,7 +222,12 @@ export function UsageLogsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody className="divide-y divide-border/30">
-                  {items.map((log) => (
+                  {items.map((log) => {
+                    const source = log.sourceId ? sourceLabelById.get(log.sourceId) || log.sourceId : ''
+                    const route = !log.modelName ? '未路由' : [
+                      log.modelName !== log.requestedModelGroup ? `→ ${log.modelName}` : '', source,
+                    ].filter(Boolean).join(' · ')
+                    return (
                     <TableRow
                       key={log.requestId}
                       role="button"
@@ -240,12 +246,9 @@ export function UsageLogsPage() {
                         {formatDateTime(log.startedAt)}
                       </TableCell>
                       <TableCell className="py-3 max-w-[120px] truncate text-xs font-mono text-foreground">{log.keyName || '—'}</TableCell>
-                      <TableCell className="py-3">
-                        <span className="block truncate text-xs font-semibold text-foreground">{log.modelName || '—'}</span>
-                        <span className="sub font-mono">
-                          {log.groupName || '—'}
-                          {log.sourceId ? ` · ${sourceLabelById.get(log.sourceId) || log.sourceId}` : ''}
-                        </span>
+                      <TableCell className="py-3 max-w-[280px]">
+                        <span className="block truncate text-xs font-semibold text-foreground" title={log.requestedModelGroup}>{log.requestedModelGroup || '—'}</span>
+                        {route && <span className="mt-1 block truncate font-mono text-2xs text-muted-foreground" title={route}>{route}</span>}
                       </TableCell>
                       <TableCell className="py-3 text-center">
                         <StreamIcon streaming={log.stream} />
@@ -271,7 +274,7 @@ export function UsageLogsPage() {
                         )}
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )})}
                 </TableBody>
               </table>
             </div>

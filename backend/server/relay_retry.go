@@ -319,6 +319,10 @@ type relayFailWriter struct {
 }
 
 func (w relayFailWriter) fail(record *usageRecord, isLast, retryable bool, status int, message string, body []byte) relayOutcome {
+	if err := w.c.Request.Context().Err(); err != nil {
+		setUsageError(record, w.c.Request.Context(), err)
+		return relayOutcome{committed: true, statusCode: record.StatusCode, errMsg: record.Error}
+	}
 	return relayFailOutcome(record, isLast, retryable, status, message, func() {
 		if body != nil {
 			writeUpstreamError(w.c, w.inputFormat, w.targetPlatform, status, body, contentTypeJSON)

@@ -36,12 +36,17 @@
   "usageLog": {
     "persistEnabled": true,
     "retentionDays": 0,
-    "maxStorageMB": 0,
+    "maxContentMB": 0,
     "maxRecords": 0,
     "bodyMaxKB": 0,
     "bodyOnErrorOnly": false,
     "externalizeMedia": true,
     "cleanupIntervalMinutes": 60
+  },
+  "systemLog": {
+    "retentionDays": 0,
+    "maxRecords": 0,
+    "maxContentMB": 0
   },
   "modelCatalog": {
     "enabled": true,

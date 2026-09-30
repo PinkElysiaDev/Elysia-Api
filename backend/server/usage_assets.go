@@ -1,15 +1,15 @@
 package server
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"log"
+	"fmt"
+	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/storage"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -20,7 +20,7 @@ import (
 //   - 捕获期（请求路径上）：assetSink.extractFromValue 只解码、按内容哈希去重、
 //     登记到 record.assets，并把原字符串替换为占位符——零文件 IO；
 //   - 落库期（writer goroutine）：persistUsageRecord 判定该记录的 body 会被
-//     保留后，才把登记的资产写入 <DB目录>/usage-assets/<requestId>/。
+//     保留后，才把登记的资产写入 <DB目录>/usage-assets/。
 //
 // 这样 bodyOnErrorOnly 开启时，成功请求不产生任何磁盘写。
 
@@ -338,128 +338,34 @@ const usageAssetsDirName = "usage-assets"
 // writeUsageAssets 把登记的媒体写入 <DB目录>/usage-assets/（扁平内容寻址：
 // 文件名即内容哈希）。同名文件已存在则跳过——同一图片无论出现在多少个
 // 请求里（多轮对话每轮重发全部历史是常态）都只占一份磁盘；能否删除由
-// usage_asset_refs 引用计数决定（见 DeleteUsageAssetRefs）。
-func writeUsageAssets(root string, items []mediaAsset) (int, error) {
+// usage_asset_refs 引用计数决定（由外键级联删除引用）。
+func writeUsageAssets(root string, items []mediaAsset) ([]storage.UsageAsset, error) {
 	if root == "" || len(items) == 0 {
-		return 0, nil
+		return nil, nil
 	}
-	written := 0
-	if err := os.MkdirAll(root, 0o755); err != nil {
-		return written, err
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return nil, err
 	}
+	var saved []storage.UsageAsset
 	for _, item := range items {
-		path := filepath.Join(root, item.Hash+"."+item.Ext)
-		if _, err := os.Stat(path); err == nil {
-			continue
+		name := item.Hash + "." + item.Ext
+		if _, _, ok := parseAssetFileName(name); !ok {
+			return saved, fmt.Errorf("invalid asset name %q", name)
 		}
-		if err := os.WriteFile(path, item.Data, 0o644); err != nil {
-			return written, err
+		path := filepath.Join(root, name)
+		info, err := os.Lstat(path)
+		if err == nil && !info.Mode().IsRegular() {
+			return saved, fmt.Errorf("asset is not a regular file: %s", name)
 		}
-		written++
-	}
-	return written, nil
-}
-
-// migrateUsageAssetsLayout 把旧的按请求分目录布局迁移到扁平内容寻址布局，
-// 并从存留记录的 record_json 重建 usage_asset_refs 引用表。幂等：目录里
-// 没有子目录即视为已迁移（每启动一次廉价检查）。迁移失败的文件留在原地
-// 交给孤儿清扫宽限回收，绝不因迁移异常阻塞启动。
-//
-// 背景：旧布局 usage-assets/<requestId>/<hash>.<ext> 只在单请求内去重，
-// 多轮对话每轮重发历史图片会线性放大存储；扁平布局全局一份，删除时机
-// 改由引用计数决定。
-func (s *Server) migrateUsageAssetsLayout() {
-	root := s.usageAssetsRoot()
-	if root == "" || s.store == nil {
-		return
-	}
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			log.Printf("usage assets migration: read root failed: %v", err)
+		if err != nil && !os.IsNotExist(err) {
+			return saved, err
 		}
-		return
-	}
-	hasSubdirs := false
-	for _, entry := range entries {
-		if entry.IsDir() {
-			hasSubdirs = true
-			break
-		}
-	}
-	if !hasSubdirs {
-		return
-	}
-	log.Printf("usage assets migration: flattening legacy per-request layout under %s", root)
-	ctx := context.Background()
-	moved := 0
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		dir := filepath.Join(root, entry.Name())
-		files, err := os.ReadDir(dir)
-		if err != nil {
-			log.Printf("usage assets migration: read %s failed: %v", dir, err)
-			continue
-		}
-		for _, file := range files {
-			if file.IsDir() {
-				continue
+		if os.IsNotExist(err) || info.Size() != int64(len(item.Data)) {
+			if err := config.WriteFileAtomic(path, item.Data, 0o600); err != nil {
+				return saved, err
 			}
-			name := file.Name()
-			if _, _, ok := parseAssetFileName(name); !ok {
-				continue
-			}
-			src := filepath.Join(dir, name)
-			dst := filepath.Join(root, name)
-			if _, err := os.Stat(dst); err == nil {
-				// 同内容文件已存在（其他请求目录先迁移过）：直接删源。
-				_ = os.Remove(src)
-				moved++
-				continue
-			}
-			if err := os.Rename(src, dst); err != nil {
-				log.Printf("usage assets migration: move %s failed: %v", src, err)
-				continue
-			}
-			moved++
 		}
-		_ = os.Remove(dir) // 空目录（或仅剩非法名文件）整体清理
+		saved = append(saved, storage.UsageAsset{File: name, SizeBytes: int64(len(item.Data))})
 	}
-	// 从存留记录重建引用：LIKE 预过滤让绝大多数不含占位符的记录零成本跳过。
-	// store 是单连接池——必须先把行全部读进内存、释放连接后再写，边读边写
-	// 会等待连接死锁（与 rollup 回填同约束）。
-	rows, err := s.store.QueryRecordBodiesWithAssets(ctx)
-	if err != nil {
-		log.Printf("usage assets migration: scan records failed: %v", err)
-		return
-	}
-	type assetRef struct{ requestID, file string }
-	var pending []assetRef
-	pattern := regexp.MustCompile(`__ELYSIA_ASSET__:([\w-]+)/([0-9a-f]{16}\.[a-z0-9]{1,5})`)
-	for rows.Next() {
-		var requestID, body string
-		if err := rows.Scan(&requestID, &body); err != nil {
-			rows.Close()
-			log.Printf("usage assets migration: scan row failed: %v", err)
-			return
-		}
-		for _, match := range pattern.FindAllStringSubmatch(body, -1) {
-			pending = append(pending, assetRef{requestID, match[2]})
-		}
-	}
-	if err := rows.Err(); err != nil {
-		log.Printf("usage assets migration: scan rows failed: %v", err)
-	}
-	rows.Close()
-	refs := 0
-	for _, ref := range pending {
-		if err := s.store.InsertUsageAssetRef(ctx, ref.requestID, ref.file); err != nil {
-			log.Printf("usage assets migration: insert ref failed: %v", err)
-			continue
-		}
-		refs++
-	}
-	log.Printf("usage assets migration: moved %d file(s), rebuilt %d reference(s)", moved, refs)
+	return saved, nil
 }

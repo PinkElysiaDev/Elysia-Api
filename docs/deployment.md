@@ -1,40 +1,113 @@
-# Elysia-API Deployment Guide
+# 部署与运维
 
-## Build
+[文档索引](README.md) · **简体中文** · [English](deployment.en.md)
 
-Install dependencies first when building from a fresh checkout or after dependency changes:
+从首次启动到升级、备份与故障处理。源码构建见[开发指南](development.md)，首次模型调用见[快速开始](../README.md#快速开始)。
+
+## 安装与启动
+
+从 [Releases](https://github.com/PinkElysiaDev/Elysia-Api/releases/latest) 下载对应架构产物和 `SHA256SUMS`。Windows / Linux 提供 amd64、arm64；macOS 提供通用 DMG。核对下载文件的 SHA256，再启动程序。
+
+### Windows / Linux
+
+在下载目录启动。以下为 Linux amd64 示例：
 
 ```bash
-yarn install
+chmod +x ./elysia-api-linux-amd64
+./elysia-api-linux-amd64 --config ./config.json
 ```
 
-Build the embedded WebUI and standalone backend binaries:
+Windows 使用 `.\elysia-api-windows-amd64.exe --config .\config.json`；ARM64 使用对应的 arm64 文件名。
 
-```bash
-yarn build
-```
+- 不传 `--config` 时，配置路径为**当前工作目录**下的 `config.json`，不一定是可执行文件所在目录。
+- 仅文件不存在时自动创建配置，并在日志输出随机面板令牌。配置损坏时启动失败，不覆盖原文件。
+- 默认监听 `127.0.0.1:8765`；普通二进制遇到端口占用直接报错，不自动选择其他端口。
+- 启动后访问 `/ui/`，使用面板令牌登录。首次登录后轮换令牌，保护配置和启动日志。
+- 默认尝试打开浏览器；无桌面环境可设置 `openBrowserOnStart: false`。
 
-The standalone binaries are emitted to `dist/standalone/`:
+### macOS App
 
-| Platform | File |
+将 DMG 内的 ElysiaApi 拖入 Applications。支持 macOS 12+、Intel 和 Apple Silicon；运行和更新不需要 Xcode。
+
+| 操作 | 行为 |
 | --- | --- |
-| Windows amd64 | `elysia-api-windows-amd64.exe` |
-| Linux amd64 | `elysia-api-linux-amd64` |
-| macOS Intel (local builds only) | `elysia-api-darwin-amd64` |
-| macOS Apple Silicon (local builds only) | `elysia-api-darwin-arm64` |
-| macOS app image (universal) | `elysia-api-macos.dmg` |
+| 首次登录 | 从菜单栏复制面板令牌；应用不会自动注入凭证 |
+| 数据目录 | `~/Library/Application Support/ElysiaApi/`，包含配置、数据库、主密钥和运行日志 |
+| 端口占用 | 尝试配置端口；占用时在 `8799–8899` 寻找可用端口，以菜单栏显示地址为准 |
+| 关闭窗口 | 服务继续运行；重开时保留登录态、窗口位置和主题 |
+| 退出应用 | 请求后端优雅退出，超时后终止子进程 |
+| 服务恢复 | 持续健康检查失败时自动重启，最多连续尝试 3 次，再提供手动重试 |
+| 开机启动 | 默认关闭；启用后登录系统时仅驻留菜单栏 |
+| 通知 | 重要通知默认开启，首次发送或显式启用时请求系统授权 |
+| 更新 | 下载 DMG，校验摘要、完整性及签名；替换失败时回滚；保留配置和数据库 |
 
-`config.json.example` stays at the repository root and is not copied into `dist/standalone/`.
+菜单提供服务启停、API 地址和令牌复制、日志、偏好设置、浏览器打开和检查更新。应用托管的后端使用 `ELYSIA_API_OPEN_BROWSER=false`。手动登录后 WebKit 保存 Cookie 与登录状态；主动退出登录后需要重新认证。
 
-On a macOS host with Xcode Command Line Tools installed, `npm run build:macos-app` additionally assembles `ElysiaApi.app` (universal arm64 + amd64) into `dist/standalone/` from the binaries produced by `npm run build`, and packs it into `elysia-api-macos.dmg`.
+CI 产物使用 ad-hoc 签名，未等同于 Developer ID 公证。确认文件来自项目 Release 后，如遇 Gatekeeper 拦截，可执行：
 
-Releases only ship the DMG for macOS; the standalone darwin binaries above are intended for local builds and command-line use.
+```bash
+xattr -d com.apple.quarantine /Applications/ElysiaApi.app
+```
 
-## Configuration
+详细行为与验收见 [macOS 验证](macos-testing.md)。
 
-If `config.json` does not exist next to the binary on first launch, the backend automatically writes a default one with a **randomly generated `panelAccessToken`** (not the `change-me` placeholder) to the default config path and continues starting up. The generated token and the config path are printed once to the startup log — copy that token to log in, then rotate it from the panel. You do not need to create the file by hand; the manual template below is only for reference.
+### Docker
 
-To create `config.json` manually instead, copy it from the root `config.json.example`, place it next to the backend binary, and change at least `panelAccessToken`:
+在仓库根目录构建镜像。容器内必须监听 `0.0.0.0`，宿主机端口仍绑定回环地址：
+
+```bash
+docker build -t elysia-api:local .
+docker run -d --name elysia-api \
+  --restart unless-stopped --init \
+  --read-only --tmpfs /tmp:size=64m,mode=1777 \
+  --security-opt no-new-privileges:true --cap-drop ALL \
+  -p 127.0.0.1:8765:8765 \
+  -e ELYSIA_API_HOST=0.0.0.0 \
+  -v elysia-data:/data \
+  elysia-api:local
+docker logs elysia-api
+```
+
+镜像以 UID/GID `65532` 运行，配置为 `/data/config.json`。命名卷保留配置、数据库和密钥。使用宿主目录挂载时，需为该用户提供写权限。
+
+也可将以下内容保存为仓库根目录的 `compose.yaml`：
+
+```yaml
+services:
+  elysia-api:
+    build: .
+    image: elysia-api:local
+    container_name: elysia-api
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "127.0.0.1:8765:8765"
+    environment:
+      ELYSIA_API_HOST: 0.0.0.0
+      ELYSIA_API_OPEN_BROWSER: "false"
+    volumes:
+      - elysia-data:/data
+volumes:
+  elysia-data:
+```
+
+```bash
+docker compose up -d --build
+docker compose logs elysia-api
+```
+
+使用反向代理提供 TLS 和外部访问；仅为需要访问的网段开放端口。若更改容器内端口，需同时调整映射和镜像内固定 `8765` 的健康检查、关闭探针。
+
+## 配置
+
+以下为首次启动写入的主要字段；示例令牌必须替换，不要将 `change-me` 用于部署：
 
 ```json
 {
@@ -42,24 +115,62 @@ To create `config.json` manually instead, copy it from the root `config.json.exa
   "port": 8765,
   "panelAccessToken": "change-me",
   "databasePath": "elysia-api.sqlite3",
+  "secretKeyPath": ".master-key",
   "logLevel": "info",
   "httpTimeout": 120,
-  "secretKeyPath": ".master-key"
+  "openBrowserOnStart": true
 }
 ```
 
-Relative `databasePath`, `secretKeyPath`, and `webuiDir` values are resolved from the directory containing `config.json`.
+| 字段 | 默认与用途 |
+| --- | --- |
+| `host` / `port` | `127.0.0.1` / `8765`；改变监听需重启 |
+| `panelAccessToken` | 首次创建时生成；保护管理 API，不是推理令牌 |
+| `databasePath` | `elysia-api.sqlite3`；模型、令牌、会话和日志存储 |
+| `secretKeyPath` | `.master-key`；SQLite 敏感字段的加密密钥 |
+| `logLevel` | `info`；可选 `debug`、`info`、`warn`、`error` |
+| `httpTimeout` | 自动创建配置时为 120 秒；显式 `0` 或字段缺省为不限制 |
+| `openBrowserOnStart` | 缺省尝试打开浏览器 |
+| `webuiDir` | 空时使用嵌入资源；非空时覆盖 WebUI 文件目录 |
+| `enablePprof` | `false`；启用受管理鉴权保护的 `/debug/pprof` 路由，修改需重启 |
+| `maxBodyBytes` | `33554432`（32 MiB）；请求体大小上限 |
+| `debugMode` / `verboseLog` | 默认关闭；详细日志要求两者同时开启 |
 
-## Request Log Management
+`databasePath`、`secretKeyPath`、`webuiDir` 的相对路径按配置文件目录解析。模型源、模型组和访问令牌通过管理 API 保存在 SQLite，不写入此文件。
 
-The `usageLog` block controls request log content and retention. **Only metadata is saved by default**: request counts, models, status codes, timing and token usage remain available, while request/response bodies and their media assets are not stored. Enable **保存请求与响应正文** in `运行配置` → `日志管理` to capture bodies for troubleshooting (initial cap: 1024 KB per body). Saving applies the policy to subsequent requests; existing logs remain available. **Automatic cleanup is disabled by default** until you opt in.
+### 环境变量与优先级
+
+| 变量 | 作用 |
+| --- | --- |
+| `ELYSIA_API_HOST` | 覆盖配置中的监听地址，加载及热重载均应用 |
+| `ELYSIA_API_OPEN_BROWSER` | 覆盖浏览器启动设置，不写回文件；无效布尔值记录提示并回退 |
+| `ELYSIA_API_MASTER_KEY` | 优先于密钥文件；应由受保护的运行环境注入 |
+
+密钥读取顺序：环境变量 → `secretKeyPath` → 数据库目录中的旧 `.db-key` → 自动创建随机密钥。旧密钥存在时会继续使用，避免升级后无法解密。密钥创建失败会记录告警；检查启动日志，不要将服务启动成功视为加密已建立的证明。
+
+### 运行策略
+
+| 配置块 | 字段与默认行为 |
+| --- | --- |
+| `responses` | `enabled: true`，`upstreamMode: "auto"`；模式支持 `native`、`transform`、`auto` |
+| `usage` | 缺少上游用量时默认估算；`charsPerToken: 4`、`defaultOutputTokenEstimate: 1024`、`imageInputTokenEstimate: 300`、`fileInputTokenEstimatePerKB: 128`；`estimateWhenMissing: false` 关闭估算 |
+| `healthCheck` | 默认关闭；`intervalSeconds: 300`、`timeoutSeconds: 10`、`failureThreshold: 3`；探测可能产生上游请求费用 |
+| `modelCatalog` | 默认启用 models.dev 目录；内置快照及本地缓存，在线失败可回退镜像；`url`、`proxy` 可覆盖，`syncIntervalMinutes` 缺省 1440，显式 `0` 停止定时同步 |
+| `agentRemote` | `enabled` 缺省为 `true`；`publicUrl` 用于反向代理后的 Agent Card 地址；详见[远程接口](remote-agent-api.md) |
+| `outbound` | `deniedIpRanges` 缺省使用私网、回环与保留段预置；显式 `[]` 表示全部放行 |
+
+本机或内网模型源需要按实际地址调整出站禁止段。只移除必要的 CIDR；源访问和目录更新的代理配置不是同一设置。完整默认列表见根目录 [config.json.example](../config.json.example)。
+
+## 请求日志
+
+默认记录请求元数据和用量，不保存请求／响应正文，包括失败请求。需要排障正文时，将 `usageLog.bodyMaxKB` 设为正数；WebUI 开关初次启用设置为 1024 KB。自动清理默认关闭。
 
 ```json
 {
   "usageLog": {
     "persistEnabled": true,
     "retentionDays": 0,
-    "maxStorageMB": 0,
+    "maxContentMB": 0,
     "maxRecords": 0,
     "bodyMaxKB": 0,
     "bodyOnErrorOnly": false,
@@ -69,95 +180,34 @@ The `usageLog` block controls request log content and retention. **Only metadata
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `persistEnabled` | `true` | Master switch for persisting request logs. `false` stops recording entirely. |
-| `retentionDays` | `0` (off) | Auto-delete records older than N days. |
-| `maxStorageMB` | `0` (off) | Cap on SQLite logical size; oldest records are deleted when exceeded (a rate-limited `VACUUM` reclaims disk space afterwards). |
-| `maxRecords` | `0` (off) | Keep at most N records, deleting the oldest beyond the cap. |
-| `bodyMaxKB` | `0` (off) | Per-body capture cap in KB for each of the four logged bodies. Missing or `0` saves metadata only, including failed requests. A positive value enables capture. |
-| `bodyOnErrorOnly` | `false` | When enabled, only failed requests keep their bodies; successful requests store metadata only. |
-| `externalizeMedia` | `true` | Base64 media (images / audio / video / files) inside logged bodies are written as separate files under `<db dir>/usage-assets/<requestId>/`, and the body keeps a `__ELYSIA_ASSET__:<requestId>/<hash>.<ext>` placeholder instead. |
-| `cleanupIntervalMinutes` | `60` | How often the background cleanup pass runs (minimum 5). |
+| 字段 | 含义 |
+| --- | --- |
+| `persistEnabled` | 默认 `true`；`false` 停止请求日志持久化 |
+| `retentionDays` / `maxRecords` | 按天数或记录数清理，`0` 不限制 |
+| `maxContentMB` | 按请求日志 JSON 与去重媒体内容大小限制，`0` 不限制；数据库空闲页独立回收 |
+| `bodyMaxKB` | 四段链路正文分别应用的 KB 上限；`0` 不保存正文 |
+| `bodyOnErrorOnly` | 仅失败请求保存正文，仍需 `bodyMaxKB > 0` |
+| `externalizeMedia` | 将正文内 base64 媒体去重写至数据库目录下的 `usage-assets/`，正文保存占位符 |
+| `cleanupIntervalMinutes` | 默认 60 分钟，正值最低 5 分钟 |
 
-Notes:
+策略作用于后续请求，不追溯删除旧正文。留存清理保留小时聚合统计；外置媒体随日志删除。现有显式限制在升级时保留。旧键只在一次性迁移时读取，迁移后不再运行时兼容。
 
-- Cleanup only deletes raw `usage_records` rows; hourly rollups (aggregate statistics) are untouched, so historical usage reports survive log cleanup.
-- Externalized assets are served through the admin-authenticated endpoint `GET /api/admin/usage/assets/:requestId/:file` and are removed together with their records (on cleanup or `POST /api/admin/usage/reset`).
-- The legacy flat keys `usagePersistEnabled` / `usagePersistMaxRecords` still work: they are honored when the `usageLog` block does not configure the corresponding field.
-- Existing explicit `bodyMaxKB` values are preserved on upgrade, including positive values saved by older versions. Only unconfigured installations adopt the new metadata-only default; historical logs and media are not deleted.
+`systemLog.retentionDays`、`systemLog.maxRecords` 和 `systemLog.maxContentMB` 分别限制系统日志的时间、条数及内容字节数，默认均为 `0`（不限）。请求日志预算不包含系统日志、用量汇总、模型配置或 Agent 会话。内容预算不是 SQLite 文件的磁盘硬上限，索引、空闲页和 WAL 单独显示。首次升级会在数据目录保留数据库与配置的 `.pre-log-lifecycle` 备份，不会自动删除；留存清理保留历史用量汇总，只有“重置用量”清除汇总。
 
-## Run
+## 服务托管
 
-### Windows
-
-Put `elysia-api-windows-amd64.exe` in a directory and run it:
-
-```powershell
-.\elysia-api-windows-amd64.exe --config .\config.json
-```
-
-If `config.json` is in the same directory as the exe, double-clicking the exe also works because the default config path is `config.json` in the current working directory. When `config.json` is absent on first launch, a default with a random `panelAccessToken` is created automatically — check the startup log for the generated token. After the listener is bound, the console opens in the system's default browser; set `"openBrowserOnStart": false` in config.json to disable this (headless hosts are skipped silently when no opener command exists).
-
-### Linux
-
-Put `elysia-api-linux-amd64` in a directory and run it:
-
-```bash
-chmod +x ./elysia-api-linux-amd64
-./elysia-api-linux-amd64 --config ./config.json
-```
-
-### macOS
-
-For command-line use, build from source (`npm run build`) and run the matching binary — `elysia-api-darwin-arm64` on Apple Silicon, `elysia-api-darwin-amd64` on Intel:
-
-```bash
-chmod +x ./elysia-api-darwin-arm64
-./elysia-api-darwin-arm64 --config ./config.json
-```
-
-Open the WebUI at `http://127.0.0.1:8765/ui/` and authenticate with `panelAccessToken`.
-
-The WebUI is embedded in the backend binary, so `/ui/` works without a separate frontend deployment. To override it with a custom build, set `webuiDir` in `config.json` to a directory containing the built assets.
-
-### macOS app bundle
-
-`elysia-api-macos.dmg` (attached to each release) contains `ElysiaApi.app`, a native wrapper around the same universal backend binary (requires macOS 12 or newer, matching the Go-built backend). Open the DMG and drag ElysiaApi onto the Applications shortcut, then launch it from the Applications folder or Launchpad:
-
-- The app runs the backend as a child process and shows the WebUI login page in its own window on first use. Copy the panel token from the menu bar's **Copy panel access token** (「复制面板访问令牌」) action and paste it to sign in. The wrapper does not inject credentials; WebUI saves the token and cookie after manual login, retaining the session across window and app restarts until the user signs out or authentication fails.
-- First launch writes a config with a randomly generated `panelAccessToken`. All runtime data lives in `~/Library/Application Support/ElysiaApi/` (`config.json`, SQLite database, `.master-key`, `elysia-api.log`) and survives app updates.
-- Every backend launch, including login startup and automatic recovery, uses `ELYSIA_API_OPEN_BROWSER=false` so the native app does not also open a browser. This process-only override takes precedence over `openBrowserOnStart` without changing the file. The **Open panel in browser** menu action remains available; standalone binaries retain their configured startup behavior.
-- The menu bar icon stays a bare logo in every state (no text ever; status lives in the tooltip and the menu). Opening the menu reveals a branded header widget — app name, running state with a colored dot, the actual address and version, and a smooth pulse curve of the last 24 hours of request volume with token totals (fetched on demand from the admin usage API, styled in the panel's rose accent) — plus quick actions: start/stop the backend and copy the API base URL.
-- The default port is `8765`; if it is occupied the app automatically picks a free port starting from `8799`. The actual port is shown in the menu bar status line and the panel address.
-- Closing the window keeps the backend running in the background (Dock icon hidden, menu bar item only). Reopen from the menu bar or a pinned Dock/Launchpad icon to open Overview when signed in, or the login page otherwise, with the saved frame and theme. Showing an already open window keeps its current page. Opening a manually stopped service shows a **Start service** action. Quitting gracefully stops the backend, with bounded TERM/KILL escalation if it hangs.
-- Health checks continue with the window closed. The menu distinguishes starting, running, stopping, restarting, stopped and failed states. Continuous health failures trigger recovery; automatic restarts are limited to three until the service has stayed healthy for 60 seconds or the user retries.
-- Launch at login is disabled by default. Enable it in **Preferences…** (the menu bar only surfaces a system-settings shortcut when macOS asks for approval). macOS 13+ uses `SMAppService.mainApp`; macOS 12 uses the fixed per-user `~/Library/LaunchAgents/dev.pinkelysiadev.ElysiaApi.login.plist`. Existing legacy registrations are migrated/repaired on launch, and a missing app cleans its legacy registration at the next login. Login startup does not open the panel window.
-- Important notifications default to enabled; authorization is requested at the first notification or explicit enable action. Denied authorization and pending login-item approval expose system-settings shortcuts. Clicking a notification opens the window (and the update bar for update events).
-- Updates: an update banner appears in the bottom-left corner of the window when a newer release is published. Clicking **Update now** downloads the new DMG, verifies its SHA-256 digest (refused if the release publishes no digest), checks DMG integrity and the universal app signature, atomically renames the new bundle into place with rollback on failure, and relaunches — config and database are untouched. Download progress, cancellation and failure retry appear in the update bar; checking and installation are separate actions. Also available from the menu bar item (**Check for Updates**).
-
-Native preferences use `ElysiaApi.launchAtLogin`, `ElysiaApi.notificationsEnabled`, and `ElysiaApi.webTheme` in `UserDefaults`; the frame autosave name remains `ElysiaApiPanel`. The legacy `ElysiaApi.lastRoute` preference is removed on startup. WebKit uses its persistent default store for the WebUI's normal localStorage and cookie authentication, while closing the window still releases the WebView and its script handlers. API routes and data models are unchanged.
-
-The updater checks both executable architectures through CoreFoundation, so running and updating the app does not require Xcode or Command Line Tools. Building the universal app still requires a toolchain capable of linking Swift for both arm64 and x86_64 with a macOS 12 deployment target. Run `npm run build:macos-app -- --check-toolchain` to check this without replacing existing outputs; see [toolchain troubleshooting](macos-testing.md#工具链与双架构构建).
-
-**View runtime log** opens `elysia-api.log`. Native lifecycle and updater events also use OSLog: `log stream --predicate 'subsystem == "dev.pinkelysiadev.ElysiaApi"' --level info`. See [macOS validation](macos-testing.md) for tests and keyboard shortcuts.
-
-The bundle is ad-hoc signed by CI. If Gatekeeper blocks a freshly downloaded copy, run `xattr -d com.apple.quarantine /Applications/ElysiaApi.app` and open it again.
-
-## Process Supervision
-
-The backend is a normal long-running process. In production, run it under a platform service manager such as systemd, Windows Service wrappers, supervisord, Docker, or another supervisor.
-
-Minimal systemd example:
+普通二进制是长驻进程，可由 systemd、Windows 服务包装器或容器托管。以下 unit 假设已创建系统用户 `elysia`，程序位于 `/opt/elysia-api/`，且该用户可写配置和数据目录：
 
 ```ini
 [Unit]
-Description=Elysia-API Backend
+Description=Elysia API
 After=network.target
 
 [Service]
+User=elysia
 WorkingDirectory=/opt/elysia-api
 ExecStart=/opt/elysia-api/elysia-api-linux-amd64 --config /opt/elysia-api/config.json
+Environment=ELYSIA_API_OPEN_BROWSER=false
 Restart=on-failure
 RestartSec=3
 
@@ -165,54 +215,44 @@ RestartSec=3
 WantedBy=multi-user.target
 ```
 
-## SQLite and WAL
+保存为 `/etc/systemd/system/elysia-api.service` 后执行 `sudo systemctl daemon-reload` 和 `sudo systemctl enable --now elysia-api`。用 `journalctl -u elysia-api` 查看启动日志。
 
-The backend stores runtime data in SQLite at `databasePath`. On startup it applies:
+## 升级、备份与恢复
 
-- `PRAGMA journal_mode=WAL`
-- `PRAGMA busy_timeout=5000`
-- `PRAGMA foreign_keys=ON`
-- `PRAGMA synchronous=NORMAL`
+SQLite 使用 WAL、5000 ms busy timeout、外键和 `synchronous=NORMAL`。
 
-Expect these files beside the configured database:
+1. 升级前停止服务，备份 `config.json`、数据库及仍存在的 `-wal` / `-shm` 文件、`usage-assets/`。
+2. 单独保护并备份实际使用的加密密钥；若来自环境变量，记录其安全恢复方式。数据库和密钥一同泄漏会使静态加密失去保护。
+3. 保留旧程序版本，替换二进制或镜像，使用原配置与数据启动。
+4. 检查 `/health`、面板登录、模型列表和一次推理请求。真实推理会产生上游费用。
+5. 恢复时停止服务，将同一备份的配置、数据库、媒体和匹配密钥放回，并恢复权限，再启动兼容版本。不要仅替换数据库主文件或重新生成密钥。
 
-- `elysia-api.sqlite3`
-- `elysia-api.sqlite3-wal`
-- `elysia-api.sqlite3-shm`
+在线备份应使用 SQLite 备份工具取得一致数据库，并协调媒体文件快照；不要直接复制仍在写入的数据库主文件。数据库目录不可写或磁盘已满会导致写入失败。
 
-For backup, use SQLite backup tooling or stop the backend before copying all three files. If `secretKeyPath` points to a file, back it up separately and protect it.
+## 令牌恢复
 
-## Access Token Reset
+面板令牌丢失时，停止服务，修改配置中的 `panelAccessToken` 为新的随机值，再启动并重新登录。推理令牌存于 SQLite，恢复面板访问后通过管理页修改。
 
-If the panel token is lost, stop the backend, edit `panelAccessToken` in bootstrap `config.json`, then restart the backend.
+## 热重载
 
-Relay API tokens are stored in SQLite and can be changed through `/api/admin/api-tokens` after panel access is restored.
+`POST /api/admin/reload` 要求面板鉴权；运行配置更新接口见 [API 参考](webui-api.md#运行配置)。监听地址、端口、数据库路径和 pprof 路由变化需要重启，热重载不会重建这些资源。
 
-## Runtime Changes
+`POST /__reload`、`POST /__shutdown` 只允许回环来源；代理转发时不要将这两个端点公开。
 
-`POST /api/admin/reload` reloads hot-reloadable bootstrap fields. Changes to `host`, `port`, `databasePath`, or `enablePprof` normally require a process restart.
+## 旧版本迁移
 
-Local-only management endpoints are also available:
+- `server.host` / `server.port` 仅在对应顶层字段缺省时作为回退。
+- 当前配置解析不再读取 `tokens`、`modelGroups`，也不把 `dashboardToken` 当作面板令牌。不要依赖旧文档所述的自动迁移；在兼容旧版本导出数据或通过管理接口重建，并保留原备份。
+- 已废弃的 `customProtocols` 字段由启动迁移处理并从配置移除。先备份，启动后在协议设计器检查结果。
+- 模型能力目录、流式转换和自定义协议的限制见 [Maheshvara](maheshvara-protocol.md) 与[协议定义](protocol-definition-reference.md)。
 
-- `POST /__reload`
-- `POST /__shutdown`
+## 故障处理
 
-Both endpoints are restricted to loopback callers.
-
-## Migration Notes
-
-Legacy configs containing `tokens` and `modelGroups` are imported into SQLite on startup as compatibility data. New installations should only keep bootstrap fields in `config.json`.
-
-Custom Maheshvara protocols are stored in SQLite and managed from the WebUI
-Protocol Designer page (`/ui/#/protocols`) or the admin API; set a model
-source's `platform` to `custom:<protocol-id>` to use one. Request and response
-bodies are field-level mappings: every field declares which Maheshvara field
-it corresponds to (`model`, `messages`, `tools`, generation parameters,
-`raw_extra` on the request side; text, tool calls, usage, finish reason,
-errors on the response side). The deprecated `customProtocols` bootstrap field
-in `config.json` is imported into the database once on startup and removed
-from the file.
-
-See `docs/maheshvara-protocol.md` for the complete Maheshvara v1 field model,
-four-protocol mapping matrix, streaming contract, security rules, and a full
-custom protocol example.
+| 现象 | 检查 |
+| --- | --- |
+| 连接被拒绝 | 服务日志、实际端口；Docker 内是否设置 `ELYSIA_API_HOST=0.0.0.0` |
+| 面板 401 | 使用面板令牌；检查配置路径，避免误用推理或 Agent Key |
+| 上游连接被拦截 | 出站 CIDR 策略、DNS 解析结果和代理配置 |
+| 用量日志没有正文 | `bodyMaxKB` 是否为正；历史请求不会补采集 |
+| 升级后密钥不可解密 | 是否使用原主密钥或旧 `.db-key`，环境变量是否改变 |
+| 模型列表为空 | 上游模型发现端点、逐 Key 权限、自定义协议的 `models` 定义 |

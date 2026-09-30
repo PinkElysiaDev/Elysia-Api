@@ -47,13 +47,6 @@ func (s *Store) withTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	return tx.Commit()
 }
 
-// ---- 日志留存清理（usage_retention.go 使用）----
-//
-// 与 ClearUsage 的全清不同：以下删除只动 usage_records 原始行，不触
-// usage_rollup_hour/水位表——小时聚合在写入时已累加进 rollup，清理原始
-// 记录不影响历史统计口径（仅查询窗口边界小时的 raw 补扫可能少算，可接受）。
-// 每批删除返回被删 request_id，供调用方联动删除外置媒体目录。
-
 // ExecRaw 执行裸 SQL（仅限测试与一次性迁移使用）。
 func (s *Store) ExecRaw(ctx context.Context, query string) error {
 	_, err := s.db.ExecContext(ctx, query)

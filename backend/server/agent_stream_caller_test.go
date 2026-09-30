@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -162,6 +163,73 @@ func TestAgentCallerOpenAIChatViaAdapter(t *testing.T) {
 	}
 	if !strings.Contains(string(detail), `"outgoingBody":{"content":"{`) || !strings.Contains(string(detail), "fake-model") {
 		t.Fatalf("outgoing body missing from usage detail: %.200s", detail)
+	}
+	var record usageRecord
+	if err := json.Unmarshal(detail, &record); err != nil {
+		t.Fatal(err)
+	}
+	if record.RequestedModelGroup != "fake-model" || record.TargetFormat == "" || record.UsageSource == "" || record.KeyName != "AI 助手" {
+		t.Fatalf("missing metadata: %+v", record)
+	}
+	for name, body := range map[string]usageBody{"internal request": record.IncomingBody, "forward": record.OutgoingBody, "upstream": record.ProviderResponse, "engine result": record.DownstreamResponse} {
+		if body.Content == "" {
+			t.Errorf("%s was not captured", name)
+		}
+	}
+	if !strings.Contains(record.ProviderResponse.Content, "completion_tokens") || !strings.Contains(record.DownstreamResponse.Content, "你好") {
+		t.Fatal("missing upstream usage or engine result")
+	}
+}
+
+func TestAgentCallerRetryAndCancelLogs(t *testing.T) {
+	for _, scenario := range []string{"retry", "cancel", "incomplete"} {
+		t.Run(scenario, func(t *testing.T) {
+			s := newAgentIntegrationServer(t)
+			limit := 1024
+			s.config.SetUsageLogConfig(config.UsageLogConfig{BodyMaxKB: &limit})
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, attempt int) {
+				if scenario == "retry" && attempt == 1 {
+					w.WriteHeader(502)
+					io.WriteString(w, `{"error":"first-attempt-error"}`)
+					return
+				}
+				w.Header().Set("Content-Type", "text/event-stream")
+				io.WriteString(w, openAIChunk("c1", map[string]any{"content": "partial"}, "", nil))
+				if scenario == "retry" {
+					io.WriteString(w, openAIChunk("c1", map[string]any{}, "stop", nil)+openAIDone())
+				}
+			})
+			seedCallerModel(t, s, upstream.URL, "openai")
+			result, err := newAgentStreamCaller(s).Call(ctx, callerRequest(), agent.StreamCallbacks{OnText: func(string) {
+				if scenario == "cancel" {
+					cancel()
+				}
+			}})
+			logs := latestUsageRecords(t, s)
+			if len(logs) != 1 {
+				t.Fatalf("logs=%d", len(logs))
+			}
+			var record usageRecord
+			json.Unmarshal([]byte(storedRecordJSON(t, s.store, logs[0].RequestID)), &record)
+			if scenario == "retry" {
+				if err != nil || record.StatusCode != 200 || record.RetryCount != 1 || len(record.RetryEvents) != 1 || strings.Contains(record.ProviderResponse.Content, "first-attempt-error") {
+					t.Fatalf("retry log: %+v, err=%v", record, err)
+				}
+			} else {
+				want := 502
+				if scenario == "cancel" {
+					want = 499
+				}
+				if err == nil || result == nil || result.Text != "partial" || record.StatusCode != want || !strings.Contains(record.DownstreamResponse.Content, "partial") || !strings.Contains(record.DownstreamResponse.Content, `"error"`) {
+					t.Fatalf("partial log: %+v, err=%v", record, err)
+				}
+				if scenario == "cancel" && record.ErrorKind != ErrorKindClientCanceled {
+					t.Fatalf("errorKind=%q", record.ErrorKind)
+				}
+			}
+		})
 	}
 }
 

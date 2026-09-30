@@ -1,43 +1,68 @@
-# Agent 工具与提示职责
+# Agent 工具与权限
 
-内置助手的模型只接收以下三个工具定义：
+[文档首页](README.md) · **简体中文** · [English](agent-tools-catalog.en.md)
 
-| 工具 | 职责 |
+## 工具契约
+
+内置助手向模型公布三个工具。`elysia` 是 `elysia_cli` 内的命令语法，不是可安装的终端程序。
+
+| 工具 | 用途 |
 | --- | --- |
-| `elysia_cli` | 执行 Elysia API 网关运维命令，唯一业务操作入口 |
-| `ask_user` | 向用户提出带选项的问题，并等待回答 |
-| `update_plan` | 记录分析、步骤及执行进度 |
+| `elysia_cli` | 执行网关管理命令 |
+| `ask_user` | 提问并等待用户选择或输入 |
+| `update_plan` | 记录任务步骤与进度 |
 
-`elysia_cli` 的参数保持为 `{"command":"elysia source ls"}`。不提供旧工具名别名，也不迁移历史消息；旧待审批调用走现有过期处理，须重新发起任务。
+调用参数：
+
+```json
+{"command":"elysia source ls"}
+```
+
+旧工具名没有别名兼容。历史消息不迁移；旧待审批调用过期后需要重新发起任务。
 
 ## 提示内容的职责
 
-| 位置 | 内容 | 实现 |
-| --- | --- | --- |
-| System prompt | 角色、决策规则、中文交互、计划与提问、标题和图表；动态注入计划模式及编辑目标 ID | [agent_prompt.go](../backend/server/agent_prompt.go) |
-| `elysia_cli` 工具描述 | 用途、命令前缀和分级帮助入口 | [agent_cli_tool.go](../backend/server/agent_cli_tool.go) |
-| `elysia help` | 命令与参数、批处理及管道语法、业务约束、示例和协议接入流程 | [agent_cli_help.go](../backend/server/agent_cli_help.go) |
+| 来源 | 内容 |
+| --- | --- |
+| [System prompt](../backend/server/agent_prompt.go) | 角色、中文交互、计划、提问、标题和图表；动态加入计划模式与编辑目标 ID |
+| [工具描述](../backend/server/agent_cli_tool.go) | 用途、命令前缀和帮助入口 |
+| [命令帮助](../backend/server/agent_cli_help.go) | 参数、批处理、管道、业务约束和接入示例 |
 
-工具描述引导首次使用时先查 help，已知用法可直接执行；详细规则按需从帮助读取，不要求每次调用前重复查询，也不依赖内置助手的 system prompt。完整参考见 [自动生成的 CLI 文档](agent-cli.md)，与命令表和运行时 help 同源，不再另行维护内部工具参数手册。
+首次使用先查 `elysia help`，具体命令用 `elysia help <组> [命令]`。已知用法可直接执行。完整命令参考见 [CLI 手册](agent-cli.md)。
 
 ## 执行与权限
 
-[agent_cli.go](../backend/server/agent_cli.go) 继续使用现有解析器和业务处理器。内部处理器名只用于路由实现，不作为模型可调用工具公布。批次门控按解析出的实际命令聚合判定。
+[CLI 解析器](../backend/server/agent_cli.go) 将命令交给业务处理器。内部处理器名不是模型工具。批次按实际解析出的命令聚合权限要求。
 
-内置助手的权限键为 `save`、`live_test`、`delete`，分别受会话的 `ask`（暂停确认）、`always`（自动放行）、`never`（拒绝）控制；计划模式阻止受控操作。通过 REST/A2A 远程驱动内置助手时，同样遵循这些规则；MCP 的 `elysia_cli` 不进入该审批链。
+| 入口 | 权限与状态 |
+| --- | --- |
+| WebUI 内置助手、REST、A2A | 使用会话权限 `save`、`live_test`、`delete`；`ask` 暂停确认，`always` 放行，`never` 拒绝；计划模式阻止受控操作 |
+| MCP | 只公布 `elysia_cli`；持 `agent` 作用域 Key 直接执行，不调用模型，不进入内置助手审批链，也不使用会话计划模式 |
 
-MCP 只提供直接执行的 `elysia_cli`，复用相同描述中的语法契约、解析器和业务处理器。此入口持 `agent` 作用域 Key 直接执行，不调用内置模型，也不使用会话审批档或计划模式。MCP 每次调用创建临时 CLI 上下文，普通运维只需 `command`；协议草稿、测试目标和凭证需要在同一次 `command` 批处理中复用。REST/A2A 的内置助手会话仍由远程 Agent 服务管理，接入示例见 [远程 API 文档](remote-agent-api.md)。
+MCP 每次调用创建临时 CLI 上下文。协议草稿、测试地址和凭证需要在同一次 `command` 批处理中复用。REST/A2A 的会话由远程 Agent 服务管理，见 [远程接入](remote-agent-api.md)。
 
-两个入口都仅合并参数已知、无需观察中间结果的命令，批处理不提供整体事务或自动回滚。
+两个入口的批处理均不提供整体事务或自动回滚。仅合并参数已知、不依赖中间结果的操作。真实上游测试可能产生费用；日志正文是否可读取取决于[捕获策略](deployment.md#请求日志)。
 
 ## 验证
 
-在 `backend` 目录运行 `go test ./agent ./server`，覆盖解析器、业务处理器、工具公布、审批恢复、权限模式、旧名称失效，以及 MCP 直接执行、作用域鉴权、无状态批处理、调用隔离和取消。前端的 `agent-stream-and-chart.spec.ts` 覆盖实时命令展示与历史回放。
+在 `backend` 目录运行：
 
-真实模型任务默认跳过。显式提供包含 `source`（`storage.ModelSource`）和 `model`（`storage.Model`）的受保护 JSON 文件后，可运行：
+```sh
+go test ./agent ./server
+```
+
+现有测试覆盖解析、工具公布、权限模式、审批恢复、旧名称失效，以及 MCP 鉴权、调用隔离、批处理和取消。前端 `agent-stream-and-chart.spec.ts` 验证实时命令展示与历史回放。
+
+真实模型测试默认跳过。只有明确需要验证实际模型行为时，准备包含 `source`（`storage.ModelSource`）和 `model`（`storage.Model`）的私有 JSON 文件，再运行以下可选命令。此命令产生真实模型用量：
 
 ```sh
 ELYSIA_AGENT_EVAL_MODEL_FILE=/path/to/private-model-fixture.json go test ./server -run '^TestCLILivePromptTasks$' -count=1 -v -timeout 12m
 ```
 
-此测试产生真实模型用量，但运维数据全部位于临时数据库，模型列表上游为本地合成服务；覆盖失败日志、创建模型组、空模型列表和协议草稿修改。检查测试日志中的命令顺序、help 查询和最终报告；测试完成后删除凭证文件。
+运维数据写入临时数据库，模型列表上游使用本地合成服务。检查失败日志、模型组创建、空模型列表和协议草稿修改任务的命令顺序、帮助查询及最终报告。凭证文件不要提交，测试完成后删除。
+
+## 故障处理
+
+- 命令被拒绝：先检查入口、Key 作用域、会话权限和计划模式。
+- MCP 找不到草稿或测试目标：将相关操作放进同一次调用；跨调用不保留上下文。
+- 批次中途失败：查看已完成操作，再决定补偿或重试；不要假定之前的写入已回滚。

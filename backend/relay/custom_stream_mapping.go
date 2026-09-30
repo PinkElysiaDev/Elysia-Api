@@ -3,6 +3,7 @@ package relay
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -610,7 +611,7 @@ func (decoder *CustomProtocolStreamDecoder) ForEachBatch(ctx context.Context, re
 		}
 		wireEvent, hasMore, readErr := reader.Read(ctx, idle)
 		if readErr != nil {
-			if decoder.TerminalReceived() {
+			if decoder.TerminalReceived() && (errors.Is(readErr, context.Canceled) || errors.Is(readErr, ErrSSEIdleTimeout)) {
 				return nil // 排水窗耗尽视为干净收尾
 			}
 			return readErr

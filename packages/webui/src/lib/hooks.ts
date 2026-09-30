@@ -3,7 +3,7 @@ import useSWR, { mutate as globalMutate, type SWRConfiguration } from 'swr'
 import { api } from './api'
 
 /** Agent 用量在统计页的 key_name 标签（与后端常量一致）。 */
-const AGENT_USAGE_KEY_NAME = 'AI 协议助手'
+const AGENT_USAGE_KEY_NAME = 'AI 助手'
 import type { UsageQueryParams } from './types'
 import { uniqueSorted } from './utils'
 
@@ -168,6 +168,15 @@ export function useUsageByModelDaily(params: UsageQueryParams & { utcOffsetMinut
 /** Usage 调用日志分页（params 含 limit/offset）。 */
 export function useUsageLogs(params: UsageQueryParams) {
   return useSWR(['usage-logs', params], () => api.usageLogs(params), usageConfig)
+}
+
+/** Maintenance progress is deliberately separate from disk/accounting scans. */
+export function useLogMaintenance() {
+  return useSWR('log-maintenance', api.logMaintenance, { ...defaultConfig, refreshInterval: POLL.SOURCE_FAST })
+}
+
+export function useUsageStorage() {
+  return useSWR('usage-storage', api.usageStorage, { ...defaultConfig, refreshInterval: POLL.USAGE })
 }
 
 /** 系统日志分页。 */

@@ -1,14 +1,16 @@
 # macOS 原生体验验证
 
+[文档首页](README.md) · **简体中文** · [English](macos-testing.en.md)
+
+本指南用于验证原生壳、更新器和内嵌面板。以下命令均在仓库根目录执行；先按[开发指南](development.md)安装项目依赖。
+
+## 前提
+
 App 运行目标为 macOS 12+。构建机需要与其 macOS 版本兼容的 Command Line Tools（或完整 Xcode）、Node.js 和 Go 1.25+；工具链还必须能够链接 arm64 和 x86_64 的 macOS 12 Swift 程序。原生壳仅使用系统框架，测试使用 Swift、AppKit、WebKit、Python 标准库及由 Clang 生成的架构校验夹具。运行及更新已打包的 App 不需要开发工具。
 
 ## 工具链与双架构构建
 
-截至 2026-09-14 核对的 Apple 官方文档：
-
-- [安装 Command Line Tools](https://developer.apple.com/documentation/xcode/installing-the-command-line-tools)：该包可以替代完整 Xcode，包含 macOS SDK 和工具链；系统同一时间只安装一个 CLT 版本，更新会替换旧版本。
-- [Xcode 支持表](https://developer.apple.com/support/xcode/)：选择与构建机系统兼容的工具链。当前表中的 Xcode 26.6 支持 macOS Tahoe 26.2 至 26.x，并支持 macOS 11 至 26.5 部署目标。
-- [Xcode 27 发布说明](https://developer.apple.com/documentation/xcode-release-notes/xcode-27-release-notes#Intel-Deprecation)：Xcode 本身只在 Apple Silicon 上运行，但 macOS 27 SDK 仍支持部署到 macOS 12+ 的 Intel + Apple Silicon 通用应用。不能将本机缺少 Intel 库误判为官方取消 universal 支持。
+按 Apple 的[安装说明](https://developer.apple.com/documentation/xcode/installing-the-command-line-tools)配置 Command Line Tools，或使用完整 Xcode。通过 [Xcode 支持表](https://developer.apple.com/support/xcode/)核对构建机系统与部署目标的兼容性。
 
 先运行独立检查，不需要预先生成后端二进制：
 
@@ -21,9 +23,7 @@ npm run build:macos-app -- --check-toolchain
 
 构建脚本通过 `xcrun --sdk macosx` 选择 Swift 编译器，并实际链接两种架构的最小 AppKit 程序。检查失败时立即退出，不删除旧 App 或 DMG；正常构建也会先执行同一检查。
 
-本机 CLT `27.0.0.0.1788430756` / Swift 6.4 的 `libswiftCompatibility56.a` 和 `libswiftCompatibilityPacks.a` 只有 arm64/arm64e，缺少 x86_64，导致 macOS 12 Intel 链接失败。旧提交在同一环境也失败；只切换到 SDK 26.5 仍失败，因为兼容库属于编译器工具链。该结论针对这套本机安装，不代表所有 Xcode 27 安装都有同样问题。
-
-遇到这种错误，应从 Apple 的 [More Downloads](https://developer.apple.com/download/all/?q=command%20line%20tools) 登录并下载安装兼容的 **Universal** CLT 包，再重跑检查。下载页的 CLT 26.6 稳定版分为 Apple silicon 与 Universal 两个安装包，本项目双架构构建应选择 `Command_Line_Tools_26.6_Universal.dmg`。本机安装后版本为 `26.6.0.0.1781586589`，上述 Swift 兼容库包含 x86_64、arm64 和 arm64e，双架构链接预检查通过。CLT 替换会影响这台机器上使用默认工具链的其他项目。若已有另一套完整 Xcode，可以只为本次命令选择它：
+如果 Intel 链接提示缺少 Swift 兼容库，检查编译器工具链中的库是否包含 x86_64 与 arm64。只切换 SDK 不一定能解决编译器兼容库缺失的问题。通过 Apple 的 [More Downloads](https://developer.apple.com/download/all/?q=command%20line%20tools)选择与构建机兼容、包含两种架构库的工具链（例如 Universal CLT），安装后重新运行检查。替换默认 CLT 会影响本机其他项目；已有另一套完整 Xcode 时，可以只为本次命令选择它：
 
 ```sh
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer npm run build:macos-app
@@ -84,8 +84,6 @@ PLAYWRIGHT_CHANNEL=chrome npm run test:e2e --workspace @root/webui
 | 更新 | 无新版本、离线、缺少 DMG、摘要错误、取消下载、只读安装目录、替换失败及成功更新；旧版本或可恢复备份保留，更新后进入总览，窗口、主题、配置、数据库和密钥保留；未安装 CLT 的机器也能完成更新校验。 |
 | WebKit 导出 | 日志导出、取消保存、关闭窗口期间下载，确认导出仍完成或给出明确错误，外部链接交给默认浏览器。 |
 
-2026-09-14 在 Apple Silicon / macOS 26.6.2 上安装 CLT 26.6 Universal 后，通过 69 项原生集成检查、19 项真实后端面板检查、7 个浏览器回归用例和 WebUI lint。`npm run build` 与 `npm run build:macos-app` 均通过，产出包含最新 WebUI 的双架构后端及原生壳，并完成签名、DMG 完整性和挂载内容校验。此前已复现工具链缺库时的提前失败与旧产物保留。浏览器回归覆盖网络错误与无效令牌的不同提示、失败后焦点恢复及使用同一令牌重试；桌面与手机截图确认协议设计器位于系统分组首位且标题说明已移除。macOS 12/Intel 真机、登录注销、系统通知权限、VoiceOver 和真实发布版本的完整自更新重启需按上表补充验收。
-
 ## 键盘与日志
 
 | 动作 | 快捷键 |
@@ -103,3 +101,14 @@ PLAYWRIGHT_CHANNEL=chrome npm run test:e2e --workspace @root/webui
 ```sh
 log stream --predicate 'subsystem == "dev.pinkelysiadev.ElysiaApi"' --level info
 ```
+
+## 故障处理
+
+| 现象 | 处理 |
+| --- | --- |
+| Intel 链接缺少 Swift 兼容库 | 运行工具链检查，选择含两种架构库的 CLT/Xcode；保留 macOS 12 部署目标 |
+| `--panel` 找不到应用 | 先执行 `npm run build` 和 `npm run build:macos-app` |
+| 无显示环境的快照不更新 | 使用测试提供的最终布局快照；动画与交互在解锁后的显示环境单独验收 |
+| 更新验证失败 | 查看 OSLog 和运行日志，检查 DMG、摘要、目录权限和恢复备份，不跳过校验 |
+
+部署与数据恢复见[部署指南](deployment.md)。

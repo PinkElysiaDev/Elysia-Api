@@ -25,6 +25,7 @@ import type {
   UsageQueryParams,
   UsageStats,
   UsageStorageStatus,
+  LogMaintenance,
 } from './types'
 
 export class ApiError extends Error {
@@ -273,9 +274,10 @@ export const api = {
   usageLogs: (params: UsageQueryParams) => request<UsageLogsResult>('/usage/logs', { query: serializeUsage(params) }),
   usageLogDetail: (id: string) => request<UsageLogDetail>(`/usage/logs/${encodeURIComponent(id)}`),
   usageSeq: () => request<{ seq: number }>('/usage/seq'),
-  usageReset: () => request<unknown>('/usage/reset', { method: 'POST' }),
+  usageReset: () => request<{ reset: boolean; reclaimQueued: boolean }>('/usage/reset', { method: 'POST' }),
 
   /** 日志占用状态：DB 体积/记录数/外置资产/最近一轮清理结果（设置页展示）。 */
+  logMaintenance: () => request<LogMaintenance>('/usage/maintenance'),
   usageStorage: () => request<UsageStorageStatus>('/usage/storage'),
   /** 手动触发一轮日志清理巡检（异步执行；已在跑时后端返回 accepted=false）。 */
   usageCleanup: () => request<{ accepted: boolean }>('/usage/cleanup', { method: 'POST' }),

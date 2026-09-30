@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -18,6 +19,7 @@ type MaheshvaraStreamRenderer struct {
 	createdAt  int64
 	usage      *MaheshvaraUsage
 	finished   bool
+	completed  bool // 完成事件已经成功写出并刷新。
 	aborted    bool
 	hasOutput  bool
 
@@ -83,6 +85,9 @@ func (renderer *MaheshvaraStreamRenderer) Write(event *MaheshvaraStreamEvent) er
 	}
 	if err == nil && maheshvaraStreamEventHasOutput(*event) {
 		renderer.hasOutput = true
+	}
+	if err == nil && event.Type == MaheshvaraEventResponseCompleted {
+		renderer.completed = true
 	}
 	return err
 }
@@ -166,7 +171,7 @@ func (renderer *MaheshvaraStreamRenderer) writeMaheshvaraResponseContent(respons
 	return nil
 }
 
-func (renderer *MaheshvaraStreamRenderer) Finish() error {
+func (renderer *MaheshvaraStreamRenderer) Finish(ctx context.Context) error {
 	if renderer == nil || renderer.finished {
 		return nil
 	}
@@ -181,11 +186,11 @@ func (renderer *MaheshvaraStreamRenderer) Finish() error {
 	default:
 		err = renderer.finishOpenAIChat()
 	}
+	if renderer.completed && errors.Is(ctx.Err(), context.Canceled) {
+		err = nil // 客户端已收到终态，取消只会影响收尾标记。
+	}
 	if err == nil {
 		renderer.finished = true
-		if renderer.writer != nil {
-			err = renderer.writer.Flush()
-		}
 	}
 	return err
 }
@@ -249,8 +254,15 @@ func TransformStreamViaMaheshvara(ctx context.Context, response *http.Response, 
 		return streamErr
 	}
 	for {
-		wireEvent, ok, err := reader.Read(ctx, DefaultSSEIdleTimeout)
+		idle := DefaultSSEIdleTimeout
+		if decoder.TerminalReceived() {
+			idle = PostTerminalSSEIdleTimeout
+		}
+		wireEvent, ok, err := reader.Read(ctx, idle)
 		if err != nil {
+			if decoder.TerminalReceived() && errors.Is(err, ErrSSEIdleTimeout) {
+				break
+			}
 			return abort(err)
 		}
 		if !ok {
@@ -276,6 +288,9 @@ func TransformStreamViaMaheshvara(ctx context.Context, response *http.Response, 
 				return abort(err)
 			}
 		}
+		if decoder.TerminalReceived() && (sourceFormat == FormatResponses || sourceFormat == FormatClaude || strings.TrimSpace(wireEvent.Data) == "[DONE]") {
+			break
+		}
 	}
 	if !decoder.SawWireEvent() {
 		return abort(fmt.Errorf("upstream returned an empty event stream"))
@@ -293,7 +308,7 @@ func TransformStreamViaMaheshvara(ctx context.Context, response *http.Response, 
 			return abort(err)
 		}
 	}
-	return renderer.Finish()
+	return renderer.Finish(ctx)
 }
 
 func mergeMaheshvaraStreamUsage(current, update *MaheshvaraUsage) *MaheshvaraUsage {
