@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import {
   Area,
   Bar,
@@ -9,7 +9,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { Layers, TrendingUp, type LucideIcon } from 'lucide-react'
+import { Layers, TrendingUp } from 'lucide-react'
 import { ChartFrame, ChartTooltip } from '@/components/usage-charts'
 import {
   CHART_ENTER_MS,
@@ -20,12 +20,14 @@ import {
   useEnterAnimation,
 } from '@/components/usage-chart-model'
 import { LegendChip } from '@/components/ui/legend-chip'
+import * as Tabs from '@radix-ui/react-tabs'
+import { TitleTabs } from '@/components/ui/title-tabs'
 import { Seg } from '@/components/ui/seg'
 import { ErrorState } from '@/components/ui/states'
 import { ModelBreakdownTooltip } from '@/components/model-breakdown-tooltip'
 import { useUsageByModelDaily, useUsageTrend } from '@/lib/hooks'
 import type { UsageModelDailyPoint } from '@/lib/types'
-import { bucketedTimeISO, CHART_TICK, cn, compactNumber, USAGE_BUCKET_MS } from '@/lib/utils'
+import { bucketedTimeISO, CHART_TICK, compactNumber, USAGE_BUCKET_MS } from '@/lib/utils'
 import { CHART_TOOLTIP_Z } from '@/lib/z-index'
 import { offsetDayKey, offsetDayStart } from './overview-time'
 
@@ -69,81 +71,6 @@ function BreakdownTooltipContent({
     // 与覆盖层级一致：调用次数多的模型排前面。
     .sort((a, b) => b.value - a.value)
   return <ChartTooltip active={active && items.length > 0} payload={items} label={label} />
-}
-
-/** 标题即 Tab：无边框文字切换，底部 2px 瑰梅游标平滑滑移。 */
-function TitleTabs<T extends string>({
-  options,
-  value,
-  onChange,
-  'aria-label': ariaLabel,
-}: {
-  options: { value: T; label: ReactNode; icon: LucideIcon }[]
-  value: T
-  onChange: (value: T) => void
-  'aria-label'?: string
-}) {
-  const listRef = useRef<HTMLDivElement>(null)
-  const btnRefs = useRef(new Map<T, HTMLButtonElement>())
-  const [bar, setBar] = useState({ left: 0, width: 0 })
-
-  const measure = useCallback(() => {
-    const list = listRef.current
-    const btn = btnRefs.current.get(value)
-    if (!list || !btn) return
-    const lr = list.getBoundingClientRect()
-    const br = btn.getBoundingClientRect()
-    setBar({ left: br.left - lr.left, width: br.width })
-  }, [value])
-
-  const optionKey = options.map((o) => `${o.value}:${String(o.label)}`).join('|')
-  useLayoutEffect(() => {
-    measure()
-    const list = listRef.current
-    if (!list) return
-    const observer = new ResizeObserver(measure)
-    observer.observe(list)
-    for (const btn of btnRefs.current.values()) observer.observe(btn)
-    return () => observer.disconnect()
-  }, [measure, optionKey])
-
-  return (
-    <div className="relative min-w-0">
-      <div ref={listRef} role="tablist" aria-label={ariaLabel} className="flex items-center gap-8">
-        {options.map((opt) => {
-          const on = opt.value === value
-          const Icon = opt.icon
-          return (
-            <button
-              key={opt.value}
-              type="button"
-              role="tab"
-              aria-selected={on}
-              ref={(el) => {
-                if (el) btnRefs.current.set(opt.value, el)
-                else btnRefs.current.delete(opt.value)
-              }}
-              onClick={() => onChange(opt.value)}
-              className={cn(
-                'inline-flex items-center gap-2 pb-2.5 text-sm tracking-tight transition-colors duration-200',
-                on
-                  ? 'font-semibold text-foreground'
-                  : 'font-medium text-muted-foreground hover:text-foreground',
-              )}
-            >
-              <Icon className={cn('h-4 w-4', on ? 'text-primary' : 'text-muted-foreground/80')} />
-              {opt.label}
-            </button>
-          )
-        })}
-      </div>
-      <span
-        aria-hidden
-        className="pointer-events-none absolute bottom-[-1px] h-0.5 rounded-full bg-rose transition-[left,width] duration-300 ease-out"
-        style={{ left: bar.left, width: bar.width }}
-      />
-    </div>
-  )
 }
 
 /**
@@ -303,15 +230,16 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
     <section className="space-y-4 pt-1" aria-label="时序洞察与趋势">
       {/* 顶部控制栏：标题即 Tab，瑰梅游标滑移；右侧图例与时间窗 */}
       <div className="flex flex-row flex-wrap items-end justify-between gap-x-6 gap-y-2 border-b border-border/50">
-        <TitleTabs
-          aria-label="透视维度"
-          value={perspective}
-          onChange={setPerspective}
-          options={[
-            { value: 'overview', label: '请求与 Token 趋势', icon: TrendingUp },
-            { value: 'breakdown', label: '模型调用日分布', icon: Layers },
-          ]}
-        />
+        <Tabs.Root value={perspective} onValueChange={(value) => setPerspective(value as TrendPerspective)} className="min-w-0">
+          <TitleTabs
+            aria-label="透视维度"
+            value={perspective}
+            options={[
+              { value: 'overview', label: '请求与 Token 趋势', icon: TrendingUp },
+              { value: 'breakdown', label: '模型调用日分布', icon: Layers },
+            ]}
+          />
+        </Tabs.Root>
 
         <div className="flex flex-wrap items-center gap-2.5 pb-2.5">
           {/* 占位保持顶栏高度：分流态隐藏开关但不收走空间，避免图表上下跳。 */}
