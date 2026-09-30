@@ -184,7 +184,7 @@ func TestGeminiStreamRendererNormalizesFunctionResponse(t *testing.T) {
 	if err := renderer.Write(&MaheshvaraStreamEvent{Type: MaheshvaraEventContentPartAdded, ContentPart: &part}); err != nil {
 		t.Fatalf("render function response: %v", err)
 	}
-	if err := renderer.Finish(); err != nil {
+	if err := renderer.Finish(context.Background()); err != nil {
 		t.Fatalf("finish Gemini stream: %v", err)
 	}
 	payloads := decodeSSEDataObjects(t, writer.String())

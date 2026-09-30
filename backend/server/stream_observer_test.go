@@ -68,25 +68,6 @@ func buildSSEStream(n int) string {
 	return b.String()
 }
 
-// 回归：data: 载荷跨多次 Write 到达时，观察者必须缓冲到行完整才处理。
-// 旧行为按单次 Write 切行，半截 JSON 混进事件数组后序列化永久失败。
-func TestDownstreamObserverBuffersSplitLines(t *testing.T) {
-	record := &usageRecord{}
-	writer := &observingStreamWriter{inner: nopStreamWriter{}, record: record}
-	// 同一 JSON 事件拆成三次写出。
-	chunk1 := "data: {\"choices\":[{\"delta\":{\"con"
-	chunk2 := "tent\":\"hello"
-	chunk3 := "\"}}]}\n\n"
-	for _, chunk := range []string{chunk1, chunk2, chunk3} {
-		if _, err := writer.WriteString(chunk); err != nil {
-			t.Fatalf("write: %v", err)
-		}
-	}
-	if got := writer.responseText.String(); got != "hello" {
-		t.Fatalf("split-line payload must be reassembled before parsing, got %q", got)
-	}
-}
-
 // 回归：重试事件超限后保尾淘汰（最后的错误最接近根因），首条被挤出。
 func TestAppendRetryEventCapsAtLimit(t *testing.T) {
 	record := &usageRecord{}

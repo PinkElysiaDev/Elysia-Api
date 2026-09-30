@@ -3,6 +3,7 @@ package relay
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -283,8 +284,11 @@ func (renderer *MaheshvaraStreamRenderer) writeSSEDataString(payload string) err
 	if renderer.writer == nil {
 		return fmt.Errorf("nil stream writer")
 	}
-	if _, err := renderer.writer.WriteString("data: " + payload + "\n\n"); err != nil {
+	wire := "data: " + payload + "\n\n"
+	if n, err := renderer.writer.WriteString(wire); err != nil {
 		return err
+	} else if n != len(wire) {
+		return io.ErrShortWrite
 	}
 	return renderer.writer.Flush()
 }
@@ -297,11 +301,11 @@ func (renderer *MaheshvaraStreamRenderer) writeSSEEvent(eventType string, payloa
 	if renderer.writer == nil {
 		return fmt.Errorf("nil stream writer")
 	}
-	if _, err := renderer.writer.WriteString("event: " + eventType + "\n"); err != nil {
+	wire := "event: " + eventType + "\ndata: " + string(body) + "\n\n"
+	if n, err := renderer.writer.WriteString(wire); err != nil {
 		return err
-	}
-	if _, err := renderer.writer.WriteString("data: " + string(body) + "\n\n"); err != nil {
-		return err
+	} else if n != len(wire) {
+		return io.ErrShortWrite
 	}
 	return renderer.writer.Flush()
 }

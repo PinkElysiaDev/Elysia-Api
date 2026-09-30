@@ -57,14 +57,28 @@ func (s *Server) failRequestError(c *gin.Context, record *usageRecord, startTime
 func (s *Server) abortRetryOnClientCancel(c *gin.Context, record *usageRecord, startTime time.Time) bool {
 	select {
 	case <-c.Request.Context().Done():
-		record.StatusCode = statusClientClosedRequest
-		record.Error = "client canceled during retry wait"
+		setUsageError(record, c.Request.Context(), c.Request.Context().Err())
 		record.EndedAt = time.Now()
 		record.DurationMs = time.Since(startTime).Milliseconds()
 		s.recordUsage(record)
 		return true
 	default:
 		return false
+	}
+}
+
+// setUsageError 区分调用方取消与上游失败。已成功结束的调用不经过此入口。
+func setUsageError(record *usageRecord, ctx context.Context, err error) {
+	record.Error = truncateForDisplay(err.Error(), 2048)
+	record.ErrorKind = ErrorKindUpstream
+	if record.StatusCode > 0 && record.StatusCode < 400 {
+		record.StatusCode = http.StatusBadGateway
+	}
+	if errors.Is(ctx.Err(), context.Canceled) {
+		record.StatusCode = statusClientClosedRequest
+		record.ErrorKind = ErrorKindClientCanceled
+	} else if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
+		record.StatusCode = http.StatusGatewayTimeout
 	}
 }
 

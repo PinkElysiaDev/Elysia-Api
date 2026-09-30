@@ -61,19 +61,18 @@ func (s *Server) handleCustomStreamRequest(
 		return fail(response.StatusCode, string(body), body, shouldRetryStatus(response.StatusCode))
 	}
 
-	flusher, ok := c.Writer.(http.Flusher)
+	_, ok = c.Writer.(http.Flusher)
 	if !ok {
 		return fail(http.StatusInternalServerError, "streaming is not supported", nil, false)
 	}
 	writeSSEHeaders(c.Writer)
 
 	writer := &observingStreamWriter{
-		inner:     &ginStreamWriter{writer: c.Writer, flusher: flusher},
+		inner:     &ginStreamWriter{writer: c.Writer},
 		record:    record,
 		startTime: startTime,
 	}
-	// 事件捕获/usage 提取统一由上游观察者承担（下游观察者只做首字节计时与
-	// 输出文本累积），此前由下游观察者以 observeUsage 兼任——记录的是渲染后
+	// 事件捕获/usage 提取统一由上游观察者承担（下游观察者只做首字节计时），此前由下游观察者以 observeUsage 兼任——记录的是渲染后
 	// 的下游格式而非上游原文，且与上游双写 ProviderResponse 取决于读写交错。
 	observeUpstreamUsage(response, record, targetPlatform)
 	renderer := relay.NewMaheshvaraStreamRenderer(inputFormat, writer, selectedModel.Name)
@@ -132,7 +131,7 @@ func (s *Server) handleCustomStreamRequest(
 		}
 	}
 	if streamErr == nil {
-		streamErr = renderer.Finish()
+		streamErr = renderer.Finish(c.Request.Context())
 	} else {
 		_ = renderer.Abort(streamErr)
 	}
@@ -140,9 +139,7 @@ func (s *Server) handleCustomStreamRequest(
 	s.settleStreamUsage(group, record, startTime)
 	record.StatusCode = http.StatusOK
 	if streamErr != nil {
-		record.StatusCode = http.StatusBadGateway
-		record.ErrorKind = ErrorKindUpstream
-		record.Error = streamErr.Error()
+		setUsageError(record, c.Request.Context(), streamErr)
 	}
 	return finish(relayOutcome{committed: true, statusCode: record.StatusCode, errMsg: record.Error})
 }

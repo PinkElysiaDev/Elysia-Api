@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -13,6 +14,8 @@ import (
 )
 
 const DefaultSSEIdleTimeout = 5 * time.Minute
+
+var ErrSSEIdleTimeout = errors.New("stream read timeout")
 
 // PostTerminalSSEIdleTimeout 是自定义协议流收到终态（finish reason / status
 // completed / doneValue）后继续排水的空闲窗口：只等 usage 尾帧、错误帧与
@@ -75,7 +78,7 @@ func (reader *SSEEventReader) Read(ctx context.Context, idleTimeout time.Duratio
 	case <-ctx.Done():
 		return SSEEvent{}, false, ctx.Err()
 	case <-timerCh:
-		return SSEEvent{}, false, fmt.Errorf("stream read timeout after %v", idleTimeout)
+		return SSEEvent{}, false, fmt.Errorf("%w after %v", ErrSSEIdleTimeout, idleTimeout)
 	case result, ok := <-reader.results:
 		if !ok {
 			return SSEEvent{}, false, nil
@@ -201,7 +204,7 @@ func scanSSEWithTimeout(ctx context.Context, scanner *bufio.Scanner, timeout tim
 	case <-ctx.Done():
 		return "", false, ctx.Err()
 	case <-timer.C:
-		return "", false, fmt.Errorf("stream read timeout after %v", timeout)
+		return "", false, fmt.Errorf("%w after %v", ErrSSEIdleTimeout, timeout)
 	case result := <-resultCh:
 		if !result.hasMore {
 			if err := scanner.Err(); err != nil {

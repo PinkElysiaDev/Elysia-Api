@@ -198,7 +198,7 @@ func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb 
 	record.EndedAt = time.Now()
 	record.DurationMs = record.EndedAt.Sub(started).Milliseconds()
 	if err != nil {
-		record.Error = truncateForDisplay(err.Error(), 2048)
+		setUsageError(record, ctx, err)
 	}
 	if result != nil && result.Usage != nil {
 		record.Usage = usageTokenUsageFromMaheshvara(result.Usage)
@@ -380,16 +380,13 @@ func (c *agentStreamCaller) callOnce(ctx context.Context, cancel context.CancelF
 	} else if streamErr := drainStandardStream(ctx, plan, response.Body, acc, cb); streamErr != nil {
 		return acc.result(), false, streamErr
 	}
-	if ctx.Err() != nil {
-		return acc.result(), false, ctx.Err()
-	}
 	if failed := acc.failure; failed != "" {
 		return acc.result(), false, fmt.Errorf("%s", failed)
 	}
 	return acc.result(), false, nil
 }
 
-// drainStandardStream 用内置四线制的流解码器排水 SSE：终态后继续读到 EOF，
+// drainStandardStream 用内置四线制的流解码器排水 SSE：Chat 终态后短窗等待尾帧，
 // 只吸收 usage/错误语义（OpenAI 的 include_usage 用量帧在 finish_reason 之后
 // 的独立 chunk 里，见终态即返回会把 token 统计整个丢掉）。
 func drainStandardStream(ctx context.Context, plan *agentUpstreamPlan, body io.Reader, acc *agentStreamAccumulator, cb agent.StreamCallbacks) error {
@@ -398,12 +395,22 @@ func drainStandardStream(ctx context.Context, plan *agentUpstreamPlan, body io.R
 	decoder := relay.NewMaheshvaraStreamDecoder(agentStreamDecoderFormat(plan.format))
 	terminalSeen := false
 	for {
-		event, ok, readErr := reader.Read(ctx, relay.DefaultSSEIdleTimeout)
+		idle := relay.DefaultSSEIdleTimeout
+		if terminalSeen {
+			idle = relay.PostTerminalSSEIdleTimeout
+		}
+		event, ok, readErr := reader.Read(ctx, idle)
 		if readErr != nil {
+			if terminalSeen && (errors.Is(readErr, context.Canceled) || errors.Is(readErr, relay.ErrSSEIdleTimeout)) {
+				return nil
+			}
 			return readErr
 		}
 		if !ok {
-			return nil
+			if terminalSeen {
+				return nil
+			}
+			return fmt.Errorf("upstream stream ended before a terminal event")
 		}
 		events, decodeErr := decoder.Decode(event)
 		if decodeErr != nil {
@@ -418,9 +425,14 @@ func drainStandardStream(ctx context.Context, plan *agentUpstreamPlan, body io.R
 				}
 				continue
 			}
-			if stop := acc.apply(ev, cb); stop {
-				terminalSeen = true
-			}
+			acc.apply(ev, cb)
+		}
+		if acc.failure != "" {
+			return fmt.Errorf("%s", acc.failure)
+		}
+		terminalSeen = decoder.TerminalReceived()
+		if terminalSeen && (agentStreamDecoderFormat(plan.format) != relay.FormatOpenAIChat || strings.TrimSpace(event.Data) == "[DONE]") {
+			return nil
 		}
 	}
 }
@@ -438,7 +450,7 @@ func (c *agentStreamCaller) drainCustomProtocolStream(ctx context.Context, plan 
 	}
 	reader := relay.NewSSEEventReader(body)
 	defer reader.Close()
-	return decoder.ForEachBatch(ctx, reader, func(_ relay.SSEEvent, events []relay.MaheshvaraStreamEvent, terminalBeforeBatch bool) error {
+	err = decoder.ForEachBatch(ctx, reader, func(_ relay.SSEEvent, events []relay.MaheshvaraStreamEvent, terminalBeforeBatch bool) error {
 		for _, ev := range events {
 			if terminalBeforeBatch {
 				// 契约（同转发/设计器路径）：终态后仅保留 usage/错误语义——
@@ -454,6 +466,10 @@ func (c *agentStreamCaller) drainCustomProtocolStream(ctx context.Context, plan 
 		}
 		return nil
 	})
+	if err == nil && !decoder.TerminalReceived() {
+		err = fmt.Errorf("upstream stream ended before a terminal event")
+	}
+	return err
 }
 
 // apply 归并单个流事件；返回 true 表示终态已到，可停止读取。

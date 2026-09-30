@@ -1,6 +1,8 @@
 package server
 
 import (
+	"net/http"
+
 	"github.com/elysia-api/backend/config"
 	"github.com/gin-gonic/gin"
 )
@@ -21,6 +23,10 @@ type downstreamCaptureWriter struct {
 
 func newDownstreamCaptureWriter(inner gin.ResponseWriter, limit int) *downstreamCaptureWriter {
 	return &downstreamCaptureWriter{ResponseWriter: inner, limit: limit}
+}
+
+func (w *downstreamCaptureWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
 }
 
 func (w *downstreamCaptureWriter) capture(data []byte) {
