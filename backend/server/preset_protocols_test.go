@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -397,7 +398,7 @@ func TestMigratePresetProtocolRenames(t *testing.T) {
 }
 
 // 旧版迁移留下的现场：行 id 列与平台引用已是新 ID，config 内部 id 仍是旧 ID
-//（注册键错位 → 保存源/切换协议报 not registered）。启动序列的对账步骤修复。
+// （注册键错位 → 保存源/切换协议报 not registered）。启动序列的对账步骤修复。
 func TestReconcileCustomProtocolConfigIDsFixesLegacyRenameGap(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
 	ctx := t.Context()
@@ -751,6 +752,74 @@ func TestChatUsageRecordProtocolChain(t *testing.T) {
 	} {
 		if !strings.Contains(detail, want) {
 			t.Fatalf("usage record missing %s: %.400s", want, detail)
+		}
+	}
+}
+
+// Gemini 迁移半收敛自愈:模型行已剥过前缀(首跑提交成功)、per-key 权限
+// 列表仍带前缀(首跑后半段失败)时,再跑迁移必须补写 per-key——提前返回
+// 会把多 key 源永久挡在 fail-closed。
+func TestStripGeminiModelIDPrefixesRecoversHalfConverged(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	ctx := t.Context()
+
+	source := storage.ModelSource{
+		ID: "src-g", Name: "gemini", BaseURL: "https://up.example", Platform: "custom:gemini-api", Enabled: true,
+		APIKeys: []storage.SourceAPIKey{{
+			Value:         "k1",
+			FetchedModels: []string{"models/gemini-2.5-flash", "models/gemini-2.5-pro"},
+			AllowedModels: []string{"models/gemini-2.5-flash"},
+		}},
+	}
+	if err := s.store.UpsertSource(ctx, source); err != nil {
+		t.Fatalf("seed source: %v", err)
+	}
+	// 模型行已是裸名(首跑的模型行修复已提交)。
+	if err := s.store.ReplaceSourceModels(ctx, source, []storage.Model{{
+		ID: "gemini-2.5-flash", SourceID: source.ID, Name: "gemini-2.5-flash", BaseURL: source.BaseURL,
+		Platform: source.Platform, Type: "llm", Enabled: true, Available: true,
+	}}); err != nil {
+		t.Fatalf("seed model: %v", err)
+	}
+
+	fixed, err := s.store.StripGeminiModelIDPrefixes(ctx)
+	if err != nil || fixed != 0 {
+		t.Fatalf("no model rows to fix expected: fixed=%d err=%v", fixed, err)
+	}
+	sources, _ := s.store.ListSources(ctx)
+	var keys []storage.SourceAPIKey
+	for _, src := range sources {
+		if src.ID == source.ID {
+			keys = src.APIKeys
+		}
+	}
+	if len(keys) != 1 {
+		t.Fatalf("expected 1 key, got %d", len(keys))
+	}
+	wantFetched := []string{"gemini-2.5-flash", "gemini-2.5-pro"}
+	wantAllowed := []string{"gemini-2.5-flash"}
+	if strings.Join(keys[0].FetchedModels, ",") != strings.Join(wantFetched, ",") ||
+		strings.Join(keys[0].AllowedModels, ",") != strings.Join(wantAllowed, ",") {
+		t.Fatalf("key permission lists must be stripped: fetched=%v allowed=%v", keys[0].FetchedModels, keys[0].AllowedModels)
+	}
+}
+
+// 哈希链代数一致性:每条预置登记的历史哈希数必须等于当前版本号-1(v1 起
+// 每代一条),防止发新版时漏登记——漏登的那一代老库会被误判为「用户改过」
+// 而永远不升级(连带 rebase 迁移不触发)。
+func TestLegacyPresetHashChainCoversEveryGeneration(t *testing.T) {
+	configs := PresetProtocolConfigsMust(t)
+	for _, config := range configs {
+		version := 0
+		if v, err := strconv.Atoi(strings.TrimSpace(config.Version)); err == nil {
+			version = v
+		}
+		chain := legacyPresetHashes[config.ID]
+		if version > 1 && len(chain) != version-1 {
+			t.Fatalf("preset %s version=%d but hash chain has %d entr(y|ies); register the previous version's hash when bumping", config.ID, version, len(chain))
+		}
+		if version <= 1 && len(chain) != 0 {
+			t.Fatalf("preset %s version=%d must not carry legacy hashes", config.ID, version)
 		}
 	}
 }

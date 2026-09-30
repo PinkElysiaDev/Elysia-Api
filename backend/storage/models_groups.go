@@ -653,15 +653,42 @@ type ModelPatch struct {
 	Enabled          *bool
 }
 
+// geminiModelIDPrefix 是 Gemini listModels 返回的 name 集合前缀形态。
+const geminiModelIDPrefix = "models/"
+
+// isGeminiLikePlatform 判断平台是否 Gemini 系（内置 gemini 与 gemini-api 预置）。
+func isGeminiLikePlatform(platform string) bool {
+	switch strings.ToLower(strings.TrimSpace(platform)) {
+	case "gemini", "custom:gemini-api":
+		return true
+	}
+	return false
+}
+
 // StripGeminiModelIDPrefixes 一次性修复历史自动拉取入库的 Gemini 系模型 ID 带
 // "models/" 集合前缀的问题（内置 gemini 平台与 gemini-api 预置的旧拉取都曾
 // 原样入库，转发路径模板会拼出 /v1beta/models/models/<id> 的双前缀 404）：
 // 剥前缀并同步改写 model_group_models 关联与多 key 权限列表。目标 id 已存在
-// （用户重新拉取过）时删除带前缀的旧行；幂等。
+// （用户重新拉取过）时删除带前缀的旧行。幂等；两段互相独立收敛——模型行
+// 修复已提交而 per-key 修复失败时，下次启动仍会进入 per-key 补写（不做
+// 「无模型行待修即提前返回」的短路，否则半收敛状态永远无法自愈）。
 func (s *Store) StripGeminiModelIDPrefixes(ctx context.Context) (fixed int, err error) {
-	const prefix = "models/"
+	fixed, err = s.stripGeminiModelIDRows(ctx)
+	if err != nil {
+		return fixed, err
+	}
+	if err := s.stripGeminiKeyPermissionLists(ctx); err != nil {
+		// per-key 失败不回滚已提交的模型行修复（下次启动重入收敛），也不让
+		// 启动迁移整体报错——记日志即可。
+		log.Printf("[gemini-id-fix] key permission rewrite deferred to next start: %v", err)
+	}
+	return fixed, nil
+}
+
+// stripGeminiModelIDRows 剥离模型行的 "models/" 前缀并改写组关联，单事务。
+func (s *Store) stripGeminiModelIDRows(ctx context.Context) (fixed int, err error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT source_id, id FROM models WHERE (LOWER(platform) = 'gemini' OR LOWER(platform) = 'custom:gemini-api') AND id LIKE ?`, prefix+"%")
+		`SELECT source_id, id FROM models WHERE (LOWER(platform) = 'gemini' OR LOWER(platform) = 'custom:gemini-api') AND id LIKE ?`, geminiModelIDPrefix+"%")
 	if err != nil {
 		return 0, err
 	}
@@ -673,7 +700,7 @@ func (s *Store) StripGeminiModelIDPrefixes(ctx context.Context) (fixed int, err 
 			rows.Close()
 			return 0, err
 		}
-		pending = append(pending, pendingRename{sourceID: sourceID, oldID: id, newID: strings.TrimPrefix(id, prefix)})
+		pending = append(pending, pendingRename{sourceID: sourceID, oldID: id, newID: strings.TrimPrefix(id, geminiModelIDPrefix)})
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -713,15 +740,19 @@ func (s *Store) StripGeminiModelIDPrefixes(ctx context.Context) (fixed int, err 
 		return fixed, err
 	}
 	log.Printf("[gemini-id-fix] stripped models/ prefix from %d gemini model row(s)", fixed)
+	return fixed, nil
+}
 
-	// 多 key 权限列表（fetched/allowed models 为裸模型 id）同步剥前缀。
+// stripGeminiKeyPermissionLists 剥离 Gemini 系源各 key 权限列表
+// （fetchedModels/allowedModels 为裸模型 id）中的 "models/" 前缀；独立于模型
+// 行修复执行，保证半收敛状态可自愈。单源失败即中止（下次启动重入）。
+func (s *Store) stripGeminiKeyPermissionLists(ctx context.Context) error {
 	sources, err := s.ListSources(ctx)
 	if err != nil {
-		return fixed, err
+		return err
 	}
 	for _, source := range sources {
-		platform := strings.ToLower(strings.TrimSpace(source.Platform))
-		if platform != "gemini" && platform != "custom:gemini-api" {
+		if !isGeminiLikePlatform(source.Platform) {
 			continue
 		}
 		changed := false
@@ -731,7 +762,7 @@ func (s *Store) StripGeminiModelIDPrefixes(ctx context.Context) (fixed int, err 
 					continue
 				}
 				for i, entry := range *field {
-					if trimmed := strings.TrimPrefix(entry, prefix); trimmed != entry {
+					if trimmed := strings.TrimPrefix(entry, geminiModelIDPrefix); trimmed != entry {
 						(*field)[i] = trimmed
 						changed = true
 					}
@@ -742,8 +773,9 @@ func (s *Store) StripGeminiModelIDPrefixes(ctx context.Context) (fixed int, err 
 			continue
 		}
 		if err := s.UpdateSourceAPIKeys(ctx, source.ID, source.APIKeys); err != nil {
-			log.Printf("[gemini-id-fix] failed to rewrite key permissions for source %q: %v", source.ID, err)
+			return fmt.Errorf("source %q: %w", source.ID, err)
 		}
+		log.Printf("[gemini-id-fix] stripped models/ prefix from key permission lists of source %q", source.ID)
 	}
-	return fixed, nil
+	return nil
 }
