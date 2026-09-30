@@ -141,7 +141,7 @@ test('failed page loads can be retried without losing the requested page', async
   await expect(page.getByText(/第 2\/2 页/)).toBeVisible()
 })
 
-test('login supports keyboard secret visibility and announces validation errors', async ({ page }) => {
+test('login supports keyboard secret visibility and announces validation errors', async ({ page, browserName }) => {
   await page.goto('/#/logs')
   await page.route('**/api/admin/health', (route) => route.fulfill({ status: 401, json: { error: 'unauthorized' } }))
   await page.getByRole('button', { name: '退出登录', exact: true }).click()
@@ -149,7 +149,8 @@ test('login supports keyboard secret visibility and announces validation errors'
   await expect(page.getByRole('heading', { name: 'Elysia API' })).toBeVisible()
   const token = page.getByLabel(/Panel Access Token/)
   await token.fill('test-invalid-token')
-  await token.press('Tab')
+  // macOS WebKit 默认用 Option+Tab 遍历按钮等非文本控件。
+  await token.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab')
   await expect(page.getByRole('button', { name: '显示', exact: true })).toBeFocused()
   await page.keyboard.press('Space')
   await expect(token).toHaveAttribute('type', 'text')

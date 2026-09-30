@@ -78,6 +78,10 @@ test('protocol routes stay consistent and status codes stay compact', async ({ p
     await expect(sheet.getByText('Chat Completions API', { exact: true })).toHaveCount(1)
     await expect(sheet.getByText('Responses API', { exact: true })).toHaveCount(id === 'mapped' ? 1 : 0)
     await expect(sheet.getByText('Gemini API', { exact: true })).toHaveCount(id === 'gemini' ? 1 : 0)
+    if (id === 'gemini') {
+      const colors = await sheet.locator('section').filter({ hasText: '协议链路' }).locator('span.rounded-full').evaluateAll((pills) => pills.map((pill) => getComputedStyle(pill).borderColor))
+      expect(new Set(colors).size).toBe(1)
+    }
     await expect(sheet.getByText('未转发', { exact: true })).toHaveCount(0)
     await expect(sheet.locator('section').filter({ hasText: '协议链路' }).getByRole('button')).toHaveCount(0)
     if (id === 'cancelled') await expect(sheet.getByText('客户端取消（499）', { exact: false })).toBeVisible()
@@ -95,6 +99,7 @@ test('assistant has four labelled bodies, exports metadata, and uses the new fil
   await expect(sheet.getByText('Chat Completions API', { exact: true })).toHaveCount(1)
   for (const title of ['① 助手内部请求', '② 后端转发', '③ 上游回传', '④ 返回助手引擎']) {
     await expect(sheet.getByRole('button', { name: new RegExp(title) })).toBeEnabled()
+    await expect(sheet.getByRole('button', { name: new RegExp(title) })).toHaveAttribute('aria-expanded', 'false')
   }
   await sheet.getByRole('button', { name: /④ 返回助手引擎/ }).click()
   await expect(sheet.locator('#chain-body-downstream')).toHaveAttribute('aria-hidden', 'false')
@@ -112,4 +117,76 @@ test('assistant has four labelled bodies, exports metadata, and uses the new fil
   await page.getByRole('option', { name: 'AI 助手', exact: true }).click()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: /^查看请求 .* 详情$/ })).toHaveCount(1)
+})
+
+for (const viewport of [{ width: 1440, height: 800 }, { width: 1440, height: 500 }, { width: 375, height: 812 }]) {
+  test(`opening log details preserves page and sidebar position at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    const rows = Array.from({ length: 20 }, (_, index) => ({ ...details[3], requestId: `row-${index}`, keyName: 'test-key', relayMode: 'transform', sourceFormat: 'openai', targetFormat: 'gemini', platform: 'gemini' }))
+    await page.route('**/api/admin/usage/logs?**', (route) => route.fulfill({ json: { ok: true, data: { items: rows, total: rows.length } } }))
+    await page.route('**/api/admin/usage/logs/row-*', (route) => route.fulfill({ json: { ok: true, data: rows.find((row) => route.request().url().endsWith(`/${row.requestId}`)) } }))
+    await page.reload()
+    const row = page.getByRole('button', { name: '查看请求 row-18 详情', exact: true })
+    await row.scrollIntoViewIfNeeded()
+    const scrollY = await page.evaluate(() => window.scrollY)
+    expect(scrollY).toBeGreaterThan(500)
+    const sidebar = page.locator('aside').first()
+    const sidebarBox = await sidebar.boundingBox()
+    const nav = sidebar.locator('nav')
+    const navScroll = await nav.evaluate((el) => { el.scrollTop = el.scrollHeight; return el.scrollTop })
+    await row.click()
+    const sheet = page.getByRole('dialog', { name: '调用详情' })
+    await expect(sheet.getByText('Gemini API', { exact: true })).toBeVisible()
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scrollY)
+    await expect.poll(() => sidebar.boundingBox()).toEqual(sidebarBox)
+    await expect.poll(() => nav.evaluate((el) => el.scrollTop)).toBe(navScroll)
+    await page.mouse.move(10, viewport.height / 2)
+    await page.mouse.wheel(0, -400)
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    expect(await page.evaluate(() => window.scrollY)).toBe(scrollY)
+    expect(await sidebar.boundingBox()).toEqual(sidebarBox)
+    for (const segment of ['incoming', 'outgoing', 'provider', 'downstream']) {
+      await expect(sheet.locator(`#chain-trigger-${segment}`)).toHaveAttribute('aria-expanded', 'false')
+    }
+    await sheet.locator('#chain-trigger-incoming').click()
+    await expect(sheet.locator('#chain-trigger-incoming')).toHaveAttribute('aria-expanded', 'true')
+    await page.keyboard.press('Escape')
+    await expect(sheet).not.toBeVisible()
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scrollY)
+    await expect.poll(() => sidebar.boundingBox()).toEqual(sidebarBox)
+    await expect.poll(() => nav.evaluate((el) => el.scrollTop)).toBe(navScroll)
+    await row.press('Enter')
+    await expect(sheet.locator('#chain-trigger-incoming')).toHaveAttribute('aria-expanded', 'false')
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scrollY)
+    await expect.poll(() => sidebar.boundingBox()).toEqual(sidebarBox)
+    await expect.poll(() => nav.evaluate((el) => el.scrollTop)).toBe(navScroll)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  })
+}
+
+test('large bodies render only when expanded and preserve JSON and SSE contents', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  const messages = Array.from({ length: 6000 }, (_, index) => ({ role: 'user', content: `message ${index} <script>sample</script>` }))
+  const request = { model: 'test-model', messages }
+  const jsonBody = { ...emptyBody, content: JSON.stringify(request) }
+  const sseBody = { ...emptyBody, content: messages.map((message) => `data: ${JSON.stringify({ choices: [{ delta: message }] })}\n\n`).join('') + 'data: [DONE]\n\n' }
+  await page.route('**/api/admin/usage/logs/agent', (route) => route.fulfill({ json: { ok: true, data: {
+    ...details[3], incomingBody: jsonBody, outgoingBody: jsonBody, providerResponse: sseBody, downstreamResponse: sseBody,
+  } } }))
+  await page.getByRole('button', { name: '查看请求 agent 详情', exact: true }).click()
+  const sheet = page.getByRole('dialog', { name: '调用详情' })
+  await expect(sheet.locator('#chain-trigger-downstream')).toBeVisible()
+  await expect(sheet.locator('pre')).toHaveCount(0)
+  await sheet.locator('#chain-trigger-incoming').click()
+  await expect(sheet.locator('pre')).toHaveCount(1)
+  expect(JSON.parse((await sheet.locator('#chain-body-incoming pre').textContent())!)).toEqual(request)
+  await expect(sheet.locator('#chain-body-incoming script')).toHaveCount(0)
+  await sheet.locator('#chain-trigger-provider').click()
+  await expect(sheet.locator('pre')).toHaveCount(2)
+  await expect(sheet.locator('#chain-body-provider pre')).toContainText('message 5999 <script>sample</script>')
+  await expect(sheet.locator('#chain-body-provider pre')).toContainText('[DONE]')
+  await sheet.locator('#chain-trigger-incoming').click()
+  await expect(sheet.locator('#chain-body-incoming pre')).toHaveCount(0)
+  await expect(sheet.locator('#chain-body-provider pre')).toBeVisible()
 })
