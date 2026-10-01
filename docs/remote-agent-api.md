@@ -50,7 +50,7 @@ Authorization: Bearer <AGENT_KEY>
 
 状态为 `idle`、`running`、`waiting_approval`；`limit` 必须为正数，最大生效值 200，`offset` 非负。已有轮次运行时再次发消息返回 409。
 
-`settings` 包括 `modelSourceId`、`modelName`、`thinkingEnabled`、`thinkingEffort`、`planMode`、`allowSave`、`allowLiveTest`、`allowDelete`、`testBaseUrl`。权限值为 `ask` / `always` / `never`；计划模式阻止受控操作。测试密钥加密存储，会话视图只给出设置标记，不返回明文。
+`settings` 包括 `modelSourceId`、`modelName`、`thinkingEnabled`、`thinkingEffort`、`planMode`、`allowSave`、`allowLiveTest`、`allowDelete`、`testBaseUrl`、`maxModelCalls`（单轮工具循环的模型调用上限，0-100，0=默认 30）。权限值为 `ask` / `always` / `never`；计划模式阻止受控操作。测试密钥加密存储，会话视图只给出设置标记，不返回明文。
 
 创建会话示例：
 

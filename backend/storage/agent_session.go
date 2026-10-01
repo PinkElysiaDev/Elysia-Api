@@ -46,16 +46,16 @@ func (s *Store) CreateAgentSession(ctx context.Context, input AgentSessionUpsert
 	draft := strings.TrimSpace(input.SeedConfig)
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO agent_sessions
 		(id, title, mode, protocol_id, seed_config, draft_config, test_base_url, test_api_key,
-		 model_source_id, model_name, thinking_enabled, thinking_effort, plan_mode, allow_live_test, allow_save, allow_delete,
+		 model_source_id, model_name, thinking_enabled, thinking_effort, plan_mode, allow_live_test, allow_save, allow_delete, max_model_calls,
 		 status, pending_action, created_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
 		id, strings.TrimSpace(input.Title), mode, strings.TrimSpace(input.ProtocolID),
 		strings.TrimSpace(input.SeedConfig), draft, strings.TrimSpace(input.TestBaseURL), encryptedKey,
 		input.Settings.ModelSourceID, input.Settings.ModelName,
 		sqlBoolToInt(input.Settings.ThinkingEnabled), strings.TrimSpace(input.Settings.ThinkingEffort),
 		sqlBoolToInt(input.Settings.PlanMode),
 		agent.NormalizedPermission(input.Settings.AllowLiveTest), agent.NormalizedPermission(input.Settings.AllowSave),
-		agent.NormalizedPermission(input.Settings.AllowDelete),
+		agent.NormalizedPermission(input.Settings.AllowDelete), agent.NormalizedMaxModelCalls(input.Settings.MaxModelCalls),
 		agent.StatusIdle, now, now); err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func (s *Store) CreateAgentSession(ctx context.Context, input AgentSessionUpsert
 // ListAgentSessions 按更新时间倒序返回会话摘要（不含消息、不含凭证）。
 func (s *Store) ListAgentSessions(ctx context.Context) ([]agent.Session, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, title, mode, protocol_id, seed_config, draft_config, draft_restore, plan_json,
-		test_base_url, test_api_key, model_source_id, model_name, thinking_enabled, thinking_effort, plan_mode, allow_live_test, allow_save, allow_delete,
+		test_base_url, test_api_key, model_source_id, model_name, thinking_enabled, thinking_effort, plan_mode, allow_live_test, allow_save, allow_delete, max_model_calls,
 		status, pending_action, plan_summary, created_at, updated_at
 		FROM agent_sessions ORDER BY updated_at DESC, id`)
 	if err != nil {
@@ -138,7 +138,7 @@ func (s *Store) GetSession(ctx context.Context, id string) (*agent.Session, erro
 
 func (s *Store) getAgentSession(ctx context.Context, id string, withSecret bool) (*agent.Session, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT id, title, mode, protocol_id, seed_config, draft_config, draft_restore, plan_json,
-		test_base_url, test_api_key, model_source_id, model_name, thinking_enabled, thinking_effort, plan_mode, allow_live_test, allow_save, allow_delete,
+		test_base_url, test_api_key, model_source_id, model_name, thinking_enabled, thinking_effort, plan_mode, allow_live_test, allow_save, allow_delete, max_model_calls,
 		status, pending_action, plan_summary, created_at, updated_at
 		FROM agent_sessions WHERE id = ?`, strings.TrimSpace(id))
 	session, err := s.scanAgentSessionRow(row, withSecret)
@@ -162,7 +162,7 @@ func (s *Store) scanAgentSessionRow(row rowScanner, withSecret bool) (*agent.Ses
 	if err := row.Scan(&session.ID, &session.Title, &mode, &session.ProtocolID, &seed, &draft, &restore, &plan,
 		&testBaseURL, &testAPIKey, &session.Settings.ModelSourceID, &session.Settings.ModelName,
 		&thinkingEnabled, &session.Settings.ThinkingEffort, &planMode, &session.Settings.AllowLiveTest, &session.Settings.AllowSave,
-		&session.Settings.AllowDelete,
+		&session.Settings.AllowDelete, &session.Settings.MaxModelCalls,
 		&session.Status, &pending, &session.PlanSummary, &createdAt, &updatedAt); err != nil {
 		return nil, err
 	}
@@ -284,6 +284,10 @@ func (s *Store) UpdateAgentSessionSettings(ctx context.Context, id string, title
 		if patch.TestBaseURL != nil {
 			sets = append(sets, "test_base_url = ?")
 			args = append(args, strings.TrimSpace(*patch.TestBaseURL))
+		}
+		if patch.MaxModelCalls != nil {
+			sets = append(sets, "max_model_calls = ?")
+			args = append(args, agent.NormalizedMaxModelCalls(*patch.MaxModelCalls))
 		}
 	}
 	if clearAPIKey {

@@ -66,7 +66,7 @@ func (s *Server) protocolAgentEngine() *agent.Engine {
 			registry,
 			newAgentUserContentRenderer(s),
 			agentSystemPrompt,
-			agent.Options{MaxModelCalls: 12, TurnTimeout: 10 * time.Minute, ParseAsk: parseAskQuestion},
+			agent.Options{MaxModelCalls: 30, TurnTimeout: 10 * time.Minute, ParseAsk: parseAskQuestion},
 		)
 		// 启动对账：上一进程崩溃/被杀遗留的 running 会话复位为 idle，否则
 		// UI 会永远挡在不存在的轮次上（waiting_approval 保留可恢复）。
@@ -214,6 +214,13 @@ func (s *Server) adminUpdateAgentSession(c *gin.Context) {
 	if err := bindAdminJSON(c, &payload); err != nil {
 		respondFail(c, http.StatusBadRequest, "invalid_json", err.Error())
 		return
+	}
+	if payload.Settings != nil && payload.Settings.MaxModelCalls != nil {
+		value := *payload.Settings.MaxModelCalls
+		if value < 0 || value > 100 {
+			respondFail(c, http.StatusBadRequest, "invalid_max_model_calls", "maxModelCalls 取值 0-100（0=默认）")
+			return
+		}
 	}
 	if payload.Settings != nil && payload.Settings.ThinkingEffort != nil {
 		effort := strings.ToLower(strings.TrimSpace(*payload.Settings.ThinkingEffort))

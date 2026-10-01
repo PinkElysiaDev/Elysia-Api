@@ -53,6 +53,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			allow_live_test TEXT NOT NULL DEFAULT 'ask',
 			allow_save TEXT NOT NULL DEFAULT 'ask',
 			allow_delete TEXT NOT NULL DEFAULT 'ask',
+			max_model_calls INTEGER NOT NULL DEFAULT 0,
 			status TEXT NOT NULL DEFAULT 'idle',
 			pending_action TEXT,
 			plan_json TEXT NOT NULL DEFAULT '',
@@ -93,6 +94,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		`ALTER TABLE agent_sessions ADD COLUMN draft_restore TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE agent_sessions ADD COLUMN allow_delete TEXT NOT NULL DEFAULT 'ask'`,
 		`ALTER TABLE agent_sessions ADD COLUMN plan_summary TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE agent_sessions ADD COLUMN max_model_calls INTEGER NOT NULL DEFAULT 0`,
 		// usage_records：缓存命中 token 数——统计接口直接 SUM，免逐条解析
 		// record_json；历史行为 0（旧记录不回填）。
 		`ALTER TABLE usage_records ADD COLUMN cache_hit_tokens INTEGER NOT NULL DEFAULT 0`,

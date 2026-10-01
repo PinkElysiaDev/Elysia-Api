@@ -429,3 +429,29 @@ func TestAgentSessionTitleClamp(t *testing.T) {
 		t.Fatalf("engine title runes = %d, want 64", len(got))
 	}
 }
+
+// maxModelCalls 会话设置:创建回读、PATCH 增量与越界钳制(0=默认,1..100)。
+func TestAgentSessionMaxModelCalls(t *testing.T) {
+	store := newAgentTestStore(t)
+	ctx := t.Context()
+	created, err := store.CreateAgentSession(ctx, AgentSessionUpsert{Title: "轮数", Settings: agent.Settings{MaxModelCalls: 45}})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if created.Settings.MaxModelCalls != 45 {
+		t.Fatalf("roundtrip = %d, want 45", created.Settings.MaxModelCalls)
+	}
+	over := 150
+	updated, err := store.UpdateAgentSessionSettings(ctx, created.ID, nil, &agent.SettingsPatch{MaxModelCalls: &over}, nil, false)
+	if err != nil {
+		t.Fatalf("patch: %v", err)
+	}
+	if updated.Settings.MaxModelCalls != 100 {
+		t.Fatalf("clamp = %d, want 100", updated.Settings.MaxModelCalls)
+	}
+	reset := 0
+	updated, err = store.UpdateAgentSessionSettings(ctx, created.ID, nil, &agent.SettingsPatch{MaxModelCalls: &reset}, nil, false)
+	if err != nil || updated.Settings.MaxModelCalls != 0 {
+		t.Fatalf("reset = %d err=%v, want 0", updated.Settings.MaxModelCalls, err)
+	}
+}

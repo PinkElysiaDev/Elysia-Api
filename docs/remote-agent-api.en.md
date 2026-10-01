@@ -50,7 +50,7 @@ Paths below use the prefix `/api/agent`:
 
 Statuses are `idle`, `running`, and `waiting_approval`. `limit` must be positive and is capped at 200; `offset` is nonnegative. Sending another message during an active turn returns 409.
 
-`settings` includes `modelSourceId`, `modelName`, `thinkingEnabled`, `thinkingEffort`, `planMode`, `allowSave`, `allowLiveTest`, `allowDelete`, and `testBaseUrl`. Permissions are `ask` / `always` / `never`; plan mode blocks gated operations. Test keys are encrypted at rest; session views expose a configured flag rather than plaintext.
+`settings` includes `modelSourceId`, `modelName`, `thinkingEnabled`, `thinkingEffort`, `planMode`, `allowSave`, `allowLiveTest`, `allowDelete`, `testBaseUrl`, and `maxModelCalls` (per-turn model-call cap for the tool loop, 0-100, 0 = default 30). Permissions are `ask` / `always` / `never`; plan mode blocks gated operations. Test keys are encrypted at rest; session views expose a configured flag rather than plaintext.
 
 Create a session:
 

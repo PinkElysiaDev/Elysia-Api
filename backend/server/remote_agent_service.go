@@ -165,6 +165,11 @@ func (s *Server) updateRemoteAgentSession(ctx context.Context, id string, title 
 			return nil, fmt.Errorf("thinkingEffort 可选值：low/medium/high/xhigh/max/adaptive")
 		}
 	}
+	if settings != nil && settings.MaxModelCalls != nil {
+		if v := *settings.MaxModelCalls; v < 0 || v > 100 {
+			return nil, fmt.Errorf("maxModelCalls 取值 0-100（0=默认）")
+		}
+	}
 	return s.store.UpdateAgentSessionSettings(ctx, strings.TrimSpace(id), title, settings, nil, false)
 }
 

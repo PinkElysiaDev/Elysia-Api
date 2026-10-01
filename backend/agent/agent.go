@@ -51,9 +51,12 @@ type Options struct {
 	ParseAsk func(call relay.MaheshvaraToolCall) (AskQuestion, bool)
 }
 
+// DefaultMaxModelCalls 是单轮工具循环的默认模型调用上限。
+const DefaultMaxModelCalls = 30
+
 func (o Options) withDefaults() Options {
 	if o.MaxModelCalls <= 0 {
-		o.MaxModelCalls = 12
+		o.MaxModelCalls = DefaultMaxModelCalls
 	}
 	if o.TurnTimeout <= 0 {
 		o.TurnTimeout = 5 * time.Minute
@@ -536,7 +539,11 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 
 	defer e.finalizeTurn(ctx, sessionID, session, started, &usageTotal, &sawUsage, &rounds, &paused, events)
 
-	for round := 0; round < e.opts.MaxModelCalls; round++ {
+	maxModelCalls := e.opts.MaxModelCalls
+	if session.Settings.MaxModelCalls > 0 {
+		maxModelCalls = session.Settings.MaxModelCalls
+	}
+	for round := 0; round < maxModelCalls; round++ {
 		if ctx.Err() != nil {
 			return
 		}
@@ -586,7 +593,7 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 	}
 
 	// 到达循环上限：如实告知，等待用户指示。
-	note := fmt.Sprintf("已达到单轮命令循环上限（%d 次模型调用），请检查命令结果或继续对话", e.opts.MaxModelCalls)
+	note := fmt.Sprintf("已达到单轮命令循环上限（%d 次模型调用），请检查命令结果或继续对话", maxModelCalls)
 	_, _ = e.store.AppendMessage(ctx, sessionID, RoleSystem, SystemContent{Kind: "info", Text: note}, "", nil)
 	emitEvent(events, Event{Type: EventStatus, Text: note})
 }

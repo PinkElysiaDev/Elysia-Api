@@ -69,6 +69,9 @@ type Settings struct {
 	AllowSave       string `json:"allowSave,omitempty"`      // ask|always|never
 	AllowDelete     string `json:"allowDelete,omitempty"`    // ask|always|never（删除类单独一档）
 	TestAPIKeySet   bool   `json:"testApiKeySet,omitempty"`  // 只读标记：是否已配置 key（不回传明文）
+	// MaxModelCalls 是单轮工具循环的模型调用上限（覆盖引擎默认）;
+	// 0=用默认,取值 1..100。
+	MaxModelCalls int `json:"maxModelCalls,omitempty"`
 }
 
 // Session 是引擎视角的会话聚合。TestAPIKey 由存储层读出时解密。
@@ -148,6 +151,19 @@ type SettingsPatch struct {
 	AllowSave       *string `json:"allowSave,omitempty"`
 	AllowDelete     *string `json:"allowDelete,omitempty"`
 	TestBaseURL     *string `json:"testBaseUrl,omitempty"`
+	MaxModelCalls   *int    `json:"maxModelCalls,omitempty"`
+}
+
+// NormalizedMaxModelCalls 归一化单轮工具循环上限:0=用默认,有效区间 1..100
+// (越界取边界)。
+func NormalizedMaxModelCalls(value int) int {
+	if value <= 0 {
+		return 0
+	}
+	if value > 100 {
+		return 100
+	}
+	return value
 }
 
 // NormalizedPermission 归一化权限值（空值视为 ask）。
