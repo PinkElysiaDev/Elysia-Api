@@ -43,6 +43,12 @@ func (value Value) IsNull() bool {
 	return bytes.Equal(bytes.TrimSpace([]byte(value.raw)), []byte("null"))
 }
 
+// IsObject reports the JSON container kind without decoding its fields.
+func (value Value) IsObject() bool {
+	trimmed := bytes.TrimSpace([]byte(value.raw))
+	return len(trimmed) > 0 && trimmed[0] == '{'
+}
+
 // Bytes returns a copy of the original JSON representation.
 func (value Value) Bytes() []byte { return []byte(value.raw) }
 

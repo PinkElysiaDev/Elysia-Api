@@ -39,11 +39,18 @@ type MaheshvaraFieldSpec struct {
 // CustomProtocolSchema 是协议设计器的字段目录与约束，供 WebUI 下拉、AI
 // harness 提示词与校验共用（GET /api/admin/custom-protocols/schema）。
 type CustomProtocolSchema struct {
+	WireAdapters   []CustomWireAdapterSpec  `json:"wireAdapters"`
 	RequestFields  []MaheshvaraFieldSpec    `json:"requestFields"`
 	ResponseFields []MaheshvaraFieldSpec    `json:"responseFields"`
 	Transforms     []string                 `json:"transforms"`
 	Modes          []string                 `json:"modes"`
 	Types          []CustomProtocolTypeSpec `json:"types"`
+}
+
+// CustomWireAdapterSpec advertises independently selectable wire modules.
+type CustomWireAdapterSpec struct {
+	Name       string   `json:"name"`
+	Directions []string `json:"directions"`
 }
 
 type CustomProtocolTypeSpec struct {
@@ -133,7 +140,12 @@ var customProtocolTransformCatalog = []string{
 
 // CustomProtocolSchemaFor 返回协议设计器的完整目录（单一事实来源）。
 func CustomProtocolSchemaFor() CustomProtocolSchema {
+	adapters := make([]CustomWireAdapterSpec, 0, len(builtinWireAdapters))
+	for _, adapter := range builtinWireAdapters {
+		adapters = append(adapters, CustomWireAdapterSpec{Name: adapter.name, Directions: []string{"decode_request", "encode_request", "decode_response", "encode_response", "decode_event", "encode_event"}})
+	}
 	return CustomProtocolSchema{
+		WireAdapters:   adapters,
 		RequestFields:  append([]MaheshvaraFieldSpec(nil), customProtocolRequestFieldCatalog...),
 		ResponseFields: append([]MaheshvaraFieldSpec(nil), customProtocolResponseFieldCatalog...),
 		Transforms:     append([]string(nil), customProtocolTransformCatalog...),
@@ -710,6 +722,9 @@ func effectiveCustomProtocolRuntimeMapping(config CustomProtocolConfig, allowStr
 // 字段：九个直接路径 / mappings / fieldMappings / fields 任一非空，或 body
 // 构造树为非空 JSON（"{}"/null/空白视为空）。
 func customProtocolResponseHasMapping(response CustomProtocolResponse) bool {
+	if response.Adapter != "" {
+		return true
+	}
 	for _, field := range responseDirectFields {
 		if strings.TrimSpace(field.get(response)) != "" {
 			return true

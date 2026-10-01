@@ -229,3 +229,16 @@ Chat 兼容扩展中的文本、图片、文档和工具缓存标记在适用目
 5. 通过模型组发起客户端请求，对照 usage、终止原因、日志和预期输出。
 
 AI 助手使用同一协议与 CLI 工具完成草稿、预览、测试和保存，受会话权限控制。实现不再提供旧文档中的 `/custom-protocols/assist` 独立端点。转换边界见 [Maheshvara](maheshvara-protocol.md)。
+# 完整响应和事件适配器
+
+`request.shape`、`response.adapter` 和 `response.stream.adapter` 分别选择请求整形、非流式响应解码和流事件解码。可选值由 schema 接口的 `wireAdapters` 返回，目前包含 `openai-chat`、`anthropic`、`gemini`、`responses`。协议 ID 不参与转换逻辑。
+
+例如，已编辑的 Responses 副本可以将 `response` 替换为以下配置，并移除只服务于旧内容提取的 `aliases.textKeys` / `aliases.toolCall`：
+
+```json
+{"adapter":"responses","stream":{"adapter":"responses"}}
+```
+
+选择完整适配器时，同一方向不能再配置旧内容映射或流事件规则；`usagePath` 和用量别名可用于明确的统计覆盖。原生工具、自由文本输入及未知扩展由共用适配器保留；跨协议无法表达的工具明确报错。请求模板仍仅输出作者声明的字段。
+
+未编辑预置自动升级：Chat/Responses v6，Anthropic/Gemini v5；用户修改过的协议保留原内容。旧流模板对无法表达的自由文本和服务端工具事件保持阻断；使用上述事件适配器可保留这些事件。该配置变化还不是协议定义 v2 或其启用验证门槛。

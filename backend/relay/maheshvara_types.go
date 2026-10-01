@@ -81,8 +81,9 @@ const (
 )
 
 type MaheshvaraRequest struct {
-	Model        string `json:"model"`
-	Instructions string `json:"instructions,omitempty"`
+	sourceResponsesRequest *OpenAIResponsesRequest
+	Model                  string `json:"model"`
+	Instructions           string `json:"instructions,omitempty"`
 
 	Messages   []MaheshvaraMessage   `json:"messages,omitempty"`
 	InputItems []MaheshvaraInputItem `json:"input_items,omitempty"`
@@ -297,10 +298,11 @@ type MaheshvaraResponseFormat struct {
 }
 
 type MaheshvaraResponse struct {
-	ID        string `json:"id"`
-	Model     string `json:"model"`
-	CreatedAt int64  `json:"created_at"`
-	Status    string `json:"status"`
+	nativeSnapshot *wireResponseSnapshot
+	ID             string `json:"id"`
+	Model          string `json:"model"`
+	CreatedAt      int64  `json:"created_at"`
+	Status         string `json:"status"`
 
 	Output []MaheshvaraOutputItem `json:"output,omitempty"`
 
@@ -516,19 +518,19 @@ type OpenAIResponsesResponse struct {
 func (r *OpenAIResponsesResponse) UnmarshalJSON(data []byte) error {
 	type alias OpenAIResponsesResponse
 	var typed alias
-	if err := json.Unmarshal(data, &typed); err != nil {
+	if err := decodeWireJSON(data, &typed); err != nil {
 		return err
 	}
 	*r = OpenAIResponsesResponse(typed)
 	var raw struct {
 		Output []json.RawMessage `json:"output"`
 	}
-	if err := json.Unmarshal(data, &raw); err != nil {
+	if err := decodeWireJSON(data, &raw); err != nil {
 		return nil
 	}
 	for _, rawItem := range raw.Output {
 		var item map[string]any
-		if json.Unmarshal(rawItem, &item) == nil {
+		if decodeWireJSON(rawItem, &item) == nil {
 			r.RawOutputs = append(r.RawOutputs, item)
 		}
 	}

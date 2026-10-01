@@ -8,6 +8,7 @@ import (
 )
 
 type CustomProtocolStreamDecoder struct {
+	native            *MaheshvaraStreamDecoder
 	usage             *MaheshvaraUsage
 	config            CustomProtocolConfig
 	aliases           *CustomProtocolAliases
@@ -81,6 +82,13 @@ func NewRegisteredCustomProtocolStreamDecoder(config CustomProtocolConfig) (*Cus
 }
 
 func newCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtocolStreamDecoder, error) {
+	if config.Response.Stream != nil && config.Response.Stream.Adapter != "" {
+		adapter, err := findWireAdapter(config.Response.Stream.Adapter)
+		if err != nil {
+			return nil, err
+		}
+		return &CustomProtocolStreamDecoder{native: NewMaheshvaraStreamDecoder(adapter.format), config: config, aliases: config.Aliases}, nil
+	}
 	decoder := &CustomProtocolStreamDecoder{
 		aliases:           config.Aliases,
 		config:            config,
@@ -172,16 +180,25 @@ func newCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtoco
 }
 
 func (decoder *CustomProtocolStreamDecoder) TerminalReceived() bool {
+	if decoder != nil && decoder.native != nil {
+		return decoder.native.TerminalReceived()
+	}
 	return decoder != nil && decoder.terminal
 }
 
 func (decoder *CustomProtocolStreamDecoder) SawOutput() bool {
+	if decoder != nil && decoder.native != nil {
+		return decoder.native.SawOutput()
+	}
 	return decoder != nil && decoder.sawOutput
 }
 
 // SawFinishReason 报告流中是否出现过非空 finish reason。空补全（零输出但
 // finish_reason 有值，如内容过滤 stop）据此与「[DONE] 兜底空流」区分开。
 func (decoder *CustomProtocolStreamDecoder) SawFinishReason() bool {
+	if decoder != nil && decoder.native != nil {
+		return decoder.native.SawFinishReason()
+	}
 	return decoder != nil && decoder.sawFinish
 }
 
@@ -189,6 +206,9 @@ func (decoder *CustomProtocolStreamDecoder) SawFinishReason() bool {
 // 时为 true（数据此后不会再有）；终止判定（finish reason / status）只置终态，
 // 不提前结束——调用方继续排水以接收 usage 尾帧等滞后事件。
 func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]MaheshvaraStreamEvent, bool, error) {
+	if decoder.native != nil {
+		return decoder.decodeNativeEvent(wireEvent)
+	}
 	data := strings.TrimSpace(wireEvent.Data)
 	if data == "" {
 		return nil, false, nil

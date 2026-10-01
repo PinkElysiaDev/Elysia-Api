@@ -226,18 +226,13 @@ func (s *Server) relayCustomChatNormal(c *gin.Context, group *config.ModelGroupC
 func (s *Server) relayCustomResponsesNormal(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, request *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
 	return s.relayCustomNormal(c, group, selectedModel, request, targetPlatform, startTime, record, isLast, relay.FormatResponses,
 		func(resp *relay.MaheshvaraResponse) (any, error) {
-			return relay.MaheshvaraToOpenAIResponsesResponse(resp)
+			body, err := relay.EncodeMaheshvaraResponse(resp, relay.FormatResponses)
+			return json.RawMessage(body), err
 		},
 		"custom Responses response")
 }
 
 func renderMaheshvaraChatResponse(response *relay.MaheshvaraResponse, inputFormat relay.FormatType) (any, error) {
-	switch inputFormat {
-	case relay.FormatClaude:
-		return relay.MaheshvaraToAnthropicResponse(response)
-	case relay.FormatGemini:
-		return relay.MaheshvaraToGeminiResponse(response)
-	default:
-		return relay.MaheshvaraToOpenAIChatResponse(response)
-	}
+	body, err := relay.EncodeMaheshvaraResponse(response, inputFormat)
+	return json.RawMessage(body), err
 }

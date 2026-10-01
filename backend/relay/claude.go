@@ -82,12 +82,12 @@ type ClaudeContent struct {
 func (c *ClaudeContent) UnmarshalJSON(data []byte) error {
 	type alias ClaudeContent
 	var typed alias
-	if err := json.Unmarshal(data, &typed); err != nil {
+	if err := decodeWireJSON(data, &typed); err != nil {
 		return err
 	}
 	*c = ClaudeContent(typed)
 	var raw map[string]any
-	if json.Unmarshal(data, &raw) == nil {
+	if decodeWireJSON(data, &raw) == nil {
 		c.RawFields = raw
 	}
 	return nil

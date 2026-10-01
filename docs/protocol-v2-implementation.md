@@ -10,7 +10,7 @@ This ledger records implemented and verified work; unchecked stages are not deli
 | C02 Tool definitions and lifecycle | Complete with documented interim boundary | Full backend tests and vet passed; native/preset/arbitrary-ID HTTP regression and native stream fidelity passed; legacy custom streams block unsupported tools pending C05/C06 |
 | C03 Ordered model and provenance | Complete | protocol/relay tests passed: presence, long integers, native JSON, call order/association, scopes, contract roundtrip and transitional snapshots |
 | C04 Native preservation and diagnostics | Complete | Full backend tests and vet passed; transactional edits, native/scoped isolation, capability and association failures covered; native tool renderer uses shared preservation |
-| C05 Shared wire adapters | Pending | |
+| C05 Shared wire adapters | Shared wiring complete; semantic cutover remains | Full backend tests/vet/type check passed; independent adapters, native extension and usage-alias preservation, preset hash upgrades and arbitrary-ID stream/HTTP tests. Modules still use the transitional Maheshvara boundary until v2 runtime integration/removal. |
 | C06 Stream and accounting | Pending | |
 | C07 Bidirectional compiler | Pending | |
 | C08 Capability verification | Pending | |
@@ -33,3 +33,16 @@ Observed Chat CPU variation was checked against an isolated C01 archive on the
 same host: C01 28.6–30.5 us, current 23.2–27.8 us, three runs each. This did not
 reproduce a regression relative to the baseline. Native mutation/validation
 benchmarks and final engine comparisons remain part of C17.
+
+C05 uses one wire module implementation for native and custom decoding/encoding
+and removes duplicated custom request shaping and preset event rules. The
+generic adapter contract permits the current legacy semantic boundary during
+the staged migration; it is not evidence that C07–C16 are complete. Native
+response snapshots preserve unknown fields and exact numbers when unchanged;
+model/ID/usage updates overlay them. Other legacy response edits fail explicitly
+until they are expressed through the new ordered model's mutation rules.
+
+C05 benchmark check: 20.3–23.6 us/op in one four-target run. Preserving numbers
+at the wire JSON boundary adds 7 allocations and about 880 bytes versus C04;
+this is the decoder buffer/number representation cost, with no observed CPU
+regression in this run. Final comparisons require the C17 benchmark suite.

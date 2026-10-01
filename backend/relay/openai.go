@@ -133,12 +133,12 @@ type Usage struct {
 func (u *Usage) UnmarshalJSON(data []byte) error {
 	type alias Usage
 	var typed alias
-	if err := json.Unmarshal(data, &typed); err != nil {
+	if err := decodeWireJSON(data, &typed); err != nil {
 		return err
 	}
 	*u = Usage(typed)
 	var raw map[string]any
-	if json.Unmarshal(data, &raw) == nil {
+	if decodeWireJSON(data, &raw) == nil {
 		u.RawFields = raw
 	}
 	return nil
@@ -214,7 +214,7 @@ func (a *OpenAIAdapter) SendResponsesRawWithBody(ctx context.Context, baseUrl, a
 // IsStreamRequest 检查请求体是否为流式请求
 func IsStreamRequest(body []byte) bool {
 	var req map[string]interface{}
-	if err := json.Unmarshal(body, &req); err != nil {
+	if err := decodeWireJSON(body, &req); err != nil {
 		return false
 	}
 	if stream, ok := req["stream"].(bool); ok {

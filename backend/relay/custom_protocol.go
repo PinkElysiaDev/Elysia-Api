@@ -128,6 +128,10 @@ type CustomProtocolAuth struct {
 }
 
 type CustomProtocolResponse struct {
+	// Adapter selects a complete wire decoder independently of request.shape.
+	// Explicit usage aliases may override its counters; content mappings must
+	// use either this adapter or the declarative mapping fields.
+	Adapter string `json:"adapter,omitempty"`
 	// Body 是返回体构造树：容器为普通 JSON 对象/数组，叶子为
 	// {"field": "<响应字段>", "value"?: <示例值>, "transform"?} 映射标注或
 	// {"value": ...} / 裸标量结构占位。编译时从中提取字段映射。
@@ -177,6 +181,8 @@ type CustomProtocolFieldMapping struct {
 }
 
 type CustomProtocolStreamMapping struct {
+	// Adapter selects the same native event decoder as the builtin path.
+	Adapter     string   `json:"adapter,omitempty"`
 	PayloadPath string   `json:"payloadPath,omitempty"`
 	Mode        string   `json:"mode,omitempty"`
 	DoneValues  []string `json:"doneValues,omitempty"`
@@ -686,6 +692,21 @@ func validateCustomProtocolModels(configID string, models *CustomProtocolModels)
 }
 
 func validateCustomProtocolResponse(configID, location string, response CustomProtocolResponse, allowStream bool) error {
+	if response.Adapter != "" {
+		if _, err := findWireAdapter(response.Adapter); err != nil {
+			return fmt.Errorf("%s.adapter: %w", location, err)
+		}
+		mapping := response
+		mapping.Adapter, mapping.UsagePath = "", ""
+		mapping.Stream, mapping.Sample = nil, nil
+		encoded, err := json.Marshal(mapping)
+		if err != nil {
+			return err
+		}
+		if string(encoded) != "{}" {
+			return fmt.Errorf("%s.adapter cannot be combined with content mappings; usagePath and usage aliases remain supported", location)
+		}
+	}
 	effective, err := effectiveCustomProtocolResponse(location, response)
 	if err != nil {
 		return fmt.Errorf("custom protocol %q %s: %w", configID, location, err)
@@ -768,6 +789,21 @@ func validateCustomResponseStream(configID, location string, response CustomProt
 	}
 	if !allowStream {
 		return fmt.Errorf("custom protocol %q %s.stream cannot contain another stream mapping", configID, location)
+	}
+	if stream.Adapter != "" {
+		if _, err := findWireAdapter(stream.Adapter); err != nil {
+			return fmt.Errorf("%s.stream.adapter: %w", location, err)
+		}
+		mapping := *stream
+		mapping.Adapter = ""
+		encoded, err := json.Marshal(mapping)
+		if err != nil {
+			return err
+		}
+		if string(encoded) != "{}" {
+			return fmt.Errorf("%s.stream.adapter cannot be combined with legacy stream rules", location)
+		}
+		return nil
 	}
 	mode := strings.ToLower(strings.TrimSpace(stream.Mode))
 	if mode != "" && mode != "delta" && mode != "cumulative" {
@@ -1190,6 +1226,9 @@ func customProtocolResponseToMaheshvara(body []byte, config CustomProtocolConfig
 }
 
 func customProtocolResponseToMaheshvaraValidated(body []byte, config CustomProtocolConfig, allowEmpty bool) (*MaheshvaraResponse, error) {
+	if config.Response.Adapter != "" {
+		return decodeCustomWireResponse(body, config)
+	}
 	raw, err := decodeJSONUseNumber(body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse custom protocol %q response: %w", config.ID, err)
@@ -1400,126 +1439,68 @@ func maheshvaraTemplateContext(req *MaheshvaraRequest) map[string]any {
 	}
 }
 
-// applyCustomProtocolShape 把模板上下文中的 messages/tools（responses 另含
-// input/input_items）替换为对应线制形状，复用内置四协议的整形器——自定义
-// 协议作者不再需要手写消息/工具的字段级转换。
+// applyCustomProtocolShape projects the shared encoder output into declared
+// template fields. Templates still decide which fields reach the upstream.
 func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[string]any) error {
 	if shape == "" {
 		return nil
 	}
-	target := map[string]FormatType{"openai-chat": FormatOpenAIChat, "anthropic": FormatClaude, "gemini": FormatGemini, "responses": FormatResponses}[shape]
-	if err := validateToolHistory(req, target); err != nil {
+	adapter, err := findWireAdapter(shape)
+	if err != nil {
 		return err
 	}
-	root, _ := context["maheshvara"].(map[string]any)
-	redecodeWithJSONNumbers := func(value any) any {
-		encoded, err := json.Marshal(value)
-		if err != nil {
-			return value
-		}
-		decoded, decodeErr := decodeJSONUseNumber(encoded)
-		if decodeErr != nil {
-			return value
-		}
-		return decoded
+	encoded, err := adapter.EncodeRequest(req)
+	if err != nil {
+		return err
 	}
-	setTools := func(tools []map[string]any, err error) error {
-		if err != nil {
-			return err
-		}
-		if len(tools) > 0 {
-			root["tools"] = redecodeWithJSONNumbers(tools)
+	decoded, err := decodeJSONUseNumber(encoded)
+	if err != nil {
+		return err
+	}
+	wire := decoded.(map[string]any)
+	root := context["maheshvara"].(map[string]any)
+	copyField := func(field, wireField string) {
+		if value, hasValue := wire[wireField]; hasValue {
+			root[field] = value
 		} else {
-			delete(root, "tools")
+			delete(root, field)
 		}
-		return nil
 	}
-	switch shape {
-	case "openai-chat":
-		root["cache_control"] = cacheControlObject(req.CacheControl)
-		root["messages"] = redecodeWithJSONNumbers(maheshvaraMessagesToOpenAI(req))
-		shapeCustomThinking(shape, req, root)
-		return setTools(maheshvaraToolsToOpenAI(req.Tools))
-	case "anthropic":
-		root["anthropic_system"] = redecodeWithJSONNumbers(maheshvaraAnthropicSystem(req))
+	copyField("tools", "tools")
+	copyField("cache_control", "cache_control")
+	copyField("tool_choice", "tool_choice")
+	switch adapter.format {
+	case FormatOpenAIChat:
+		copyField("messages", "messages")
+		copyField("reasoning_effort", "reasoning_effort")
+	case FormatClaude:
+		copyField("messages", "messages")
+		copyField("anthropic_system", "system")
 		root["instructions"] = maheshvaraResponsesInstructions(req)
-		root["cache_control"] = cacheControlObject(req.CacheControl)
-		messages, err := maheshvaraMessagesToClaude(req)
-		if err != nil {
-			return err
+		for _, field := range []string{"thinking", "output_config", "temperature", "top_p"} {
+			copyField(field, field)
 		}
-		root["messages"] = redecodeWithJSONNumbers(messages)
-		// tool_choice 同步转为目标形状(公共形状 "required" 等 Claude 不识别)。
-		if converted := applyClaudeDisableParallelToolUse(maheshvaraToolChoiceToClaude(req.ToolChoice), req.ParallelToolCalls); converted != nil {
-			root["tool_choice"] = redecodeWithJSONNumbers(converted)
-		}
-		shapeCustomThinking(shape, req, root)
-		return setTools(maheshvaraToolsToClaude(req.Tools))
-	case "gemini":
+	case FormatGemini:
+		copyField("messages", "contents")
+		copyField("gemini_system", "systemInstruction")
+		copyField("cache_control", "cachedContent")
+		copyField("tool_config", "toolConfig")
 		root["instructions"] = maheshvaraResponsesInstructions(req)
-		if instructions := maheshvaraResponsesInstructions(req); instructions != "" {
-			root["gemini_system"] = map[string]any{"parts": []any{map[string]any{"text": instructions}}}
-		}
-		root["cache_control"] = cachedContentReference(req.CacheControl)
-		messages, err := maheshvaraMessagesToGemini(req)
-		if err != nil {
-			return err
-		}
-		root["messages"] = redecodeWithJSONNumbers(messages)
-		if converted := maheshvaraToolChoiceToGemini(req.ToolChoice); converted != nil {
-			root["tool_config"] = redecodeWithJSONNumbers(converted)
-		}
-		shapeCustomThinking(shape, req, root)
-		return setTools(maheshvaraToolsToGemini(req.Tools))
-	case "responses":
-		root["instructions"] = maheshvaraResponsesInstructions(req)
-		input := redecodeWithJSONNumbers(maheshvaraInputToResponses(req))
-		root["input"] = input
-		root["input_items"] = input
-		root["messages"] = input
-		if req.ToolChoice != nil {
-			root["tool_choice"] = redecodeWithJSONNumbers(maheshvaraToolChoiceToResponses(req.ToolChoice))
-		}
-		shapeCustomThinking(shape, req, root)
-		return setTools(maheshvaraToolsToResponses(req.Tools))
-	}
-	return fmt.Errorf("%q is unsupported", shape)
-}
-
-// shapeCustomThinking 把思考/推理配置按平台整形进模板上下文（body-tree 直接
-// 映射即可获得与内置线一致的思考行为）：budget 量化、effort 省略规则、
-// anthropic 思考态温度强制、gemini toolConfig、Responses include 联动——全部
-// 收进这里，模板作者不需要复述任何平台特例。
-func shapeCustomThinking(shape string, req *MaheshvaraRequest, root map[string]any) {
-	switch shape {
-	case "openai-chat":
-		// chat 线只认顶层 reasoning_effort 标量（Thinking 配置在该线无对应字段）。
-		if req.Reasoning != nil && strings.TrimSpace(req.Reasoning.Effort) != "" {
-			root["reasoning_effort"] = req.Reasoning.Effort
-		}
-	case "anthropic":
-		applyAnthropicThinking(req, func(key string, value any) { root[key] = value }, func(key string) { delete(root, key) })
-	case "gemini":
-		if thinkingConfig := buildGeminiThinkingConfig(req); thinkingConfig != nil {
-			root["thinking_config"] = thinkingConfig
-		}
-	case "responses":
-		if req.Reasoning == nil {
-			return
-		}
-		reasoning := buildResponsesReasoning(req)
-		// 必须覆写（含清空删除）：上下文里序列化的原始 reasoning 可能带
-		// effort:"none"，模板若映射该字段会把上游拒绝的档位发出去。
-		if len(reasoning) > 0 {
-			root["reasoning"] = reasoning
+		generation := mapValue(wire["generationConfig"])
+		if thinking, hasThinking := generation["thinkingConfig"]; hasThinking {
+			root["thinking_config"] = thinking
 		} else {
-			delete(root, "reasoning")
+			delete(root, "thinking_config")
 		}
-		// 携带加密思考历史时追加 include，跨轮续用才可行。
-		if maheshvaraRequestHasEncryptedReasoning(req) {
-			root["include"] = appendResponsesInclude(root["include"], "reasoning.encrypted_content")
+	case FormatResponses:
+		for _, field := range []string{"input", "input_items", "messages"} {
+			copyField(field, "input")
+		}
+		for _, field := range []string{"instructions", "reasoning", "include"} {
+			copyField(field, field)
 		}
 	}
+	return nil
 }
 
 // forEachCustomPlaceholder 遍历模板中的全部 {{...}} 占位符，回调收到占位符的

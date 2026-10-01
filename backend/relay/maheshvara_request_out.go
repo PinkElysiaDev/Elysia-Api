@@ -10,16 +10,14 @@ import (
 // MaheshvaraToTargetRequest 把核心请求渲染为目标线制请求体;
 // originalResponses 供 Responses 目标对原生输入项保真回放。
 func MaheshvaraToTargetRequest(req *MaheshvaraRequest, format FormatType, originalResponses *OpenAIResponsesRequest) ([]byte, error) {
-	switch format {
-	case FormatClaude:
-		return MaheshvaraToAnthropic(req)
-	case FormatGemini:
-		return MaheshvaraToGemini(req)
-	case FormatResponses:
+	if format == FormatResponses && originalResponses != nil {
 		return MaheshvaraToOpenAIResponses(req, originalResponses)
-	default:
-		return MaheshvaraToOpenAIChat(req)
 	}
+	adapter, err := wireAdapterForFormat(format)
+	if err != nil {
+		return nil, err
+	}
+	return adapter.EncodeRequest(req)
 }
 
 // MaheshvaraToOpenAIChat 渲染 Chat Completions 请求体。
@@ -1111,7 +1109,7 @@ func rawResponsesInputItem(rawExtra map[string]json.RawMessage) map[string]any {
 		return nil
 	}
 	var item map[string]any
-	if err := json.Unmarshal(rawExtra["raw"], &item); err != nil {
+	if err := decodeWireJSON(rawExtra["raw"], &item); err != nil {
 		return nil
 	}
 	return item

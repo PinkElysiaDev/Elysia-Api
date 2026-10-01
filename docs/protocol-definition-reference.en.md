@@ -229,3 +229,16 @@ Canonical platforms `chat_completions` / `responses` / `anthropic` / `gemini` st
 5. Send a client request through a group and compare usage, finish reason, logs, and expected output.
 
 The AI assistant uses the same protocol and CLI tools for drafting, previewing, testing, and saving under session permissions. The old standalone `/custom-protocols/assist` endpoint is no longer provided. See [Maheshvara](maheshvara-protocol.en.md) for conversion limits.
+# Complete response and event adapters
+
+`request.shape`, `response.adapter` and `response.stream.adapter` independently select request shaping, non-streaming response decoding and event decoding. The schema endpoint's `wireAdapters` currently lists `openai-chat`, `anthropic`, `gemini` and `responses`. Conversion does not depend on a preset ID.
+
+For an edited Responses copy, replace `response` with the following and remove `aliases.textKeys` / `aliases.toolCall` entries used only by the previous content mappings:
+
+```json
+{"adapter":"responses","stream":{"adapter":"responses"}}
+```
+
+A complete adapter cannot be combined with legacy content/event rules for the same direction. Explicit `usagePath` and usage aliases remain available for counter overrides. Shared adapters preserve native tools, free text inputs and native extensions; unsupported cross-protocol tools produce errors. Request templates still emit only declared fields.
+
+Unedited presets upgrade to Chat/Responses v6 and Anthropic/Gemini v5. Edited definitions keep their content. Legacy stream mappings continue to reject free text and hosted tool events they cannot express; selecting the native event adapter preserves those events. These adapter references do not yet constitute definition v2 or its verification gate.

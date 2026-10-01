@@ -10,11 +10,20 @@ import (
 )
 
 func TestCachePresetUpgradeFromRealPreviousDefinitions(t *testing.T) {
+	testPresetUpgradeFromFixtures(t, "testdata/cache-presets-before")
+}
+
+func TestAdapterPresetUpgradeFromRealPreviousDefinitions(t *testing.T) {
+	testPresetUpgradeFromFixtures(t, "testdata/adapter-presets-before")
+}
+
+func testPresetUpgradeFromFixtures(t *testing.T, directory string) {
+	t.Helper()
 	relay.ClearCustomProtocols()
 	t.Cleanup(relay.ClearCustomProtocols)
 	s, _ := newProtocolAdminTestServer(t)
 	for _, latest := range PresetProtocolConfigsMust(t) {
-		data, err := os.ReadFile("testdata/cache-presets-before/" + latest.ID + ".json")
+		data, err := os.ReadFile(directory + "/" + latest.ID + ".json")
 		if err != nil {
 			t.Fatal(err)
 		}

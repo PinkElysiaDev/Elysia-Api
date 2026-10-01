@@ -234,13 +234,17 @@ export function ProtocolFormDialog({
           {tab === 'response' && (
             <div className="space-y-8">
               <SettingSection title="返回体构造" description="按上游响应示例搭建结构；映射位就地选择对应的大自在天字段">
-                <ResponseBodyTreeEditor
+                {draft.response?.adapter ? (
+                  <p className="text-sm text-muted-foreground">
+                    使用 {draft.response.adapter} 完整响应适配器，保留原生内容和工具。可在 JSON 页切换为声明式映射。
+                  </p>
+                ) : <ResponseBodyTreeEditor
                   response={draft.response ?? {}}
                   onChange={(response) => setDraft({ ...draft, response })}
                   fields={schema?.responseFields ?? []}
                   transforms={schema?.transforms ?? []}
                   mappingMode="badge"
-                />
+                />}
               </SettingSection>              <SettingSection
                 title="流式映射（可选）"
                 action={
@@ -262,6 +266,10 @@ export function ProtocolFormDialog({
               >
                 {!stream ? (
                   <p className="py-2 text-xs text-muted-foreground">上游为 SSE 流式接口时开启。</p>
+                ) : stream.adapter ? (
+                  <p className="py-2 text-sm text-muted-foreground">
+                    使用 {stream.adapter} 完整事件适配器，处理工具事件、结束状态和用量。可在 JSON 页切换为声明式事件规则。
+                  </p>
                 ) : (
                   <div>
                     <SettingRow label="payloadPath" description="事件 JSON 内载荷路径">

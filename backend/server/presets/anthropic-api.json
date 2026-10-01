@@ -1,33 +1,12 @@
 {
   "id": "anthropic-api",
   "name": "Anthropic API（预置）",
-  "version": "4",
+  "version": "5",
   "type": "llm",
   "metadata": {
     "preset": true,
-    "presetVersion": 4,
-    "description": "Anthropic API 线制的预置定义；v3：命名去厂商化；v2：thinking/output_config 整形、signature 与 citations 帧、参数完成帧、缓存用量别名; v4: preserve cache semantics and cache field mappings"
-  },
-  "aliases": {
-    "toolCall": {
-      "id": [
-        "id"
-      ],
-      "name": [
-        "name"
-      ],
-      "arguments": [
-        "input"
-      ]
-    },
-    "textKeys": [
-      "text",
-      "content",
-      "message",
-      "value",
-      "output",
-      "thinking"
-    ]
+    "presetVersion": 5,
+    "description": "Anthropic API 线制的预置定义；v3：命名去厂商化；v2：thinking/output_config 整形、signature 与 citations 帧、参数完成帧、缓存用量别名; v4: preserve cache semantics and cache field mappings; v5: share native response and event adapters"
   },
   "request": {
     "method": "POST",
@@ -98,121 +77,9 @@
     }
   },
   "response": {
-    "textPath": "content",
-    "textFilter": {
-      "path": "type",
-      "op": "equals",
-      "value": "text"
-    },
-    "reasoningPath": "content",
-    "reasoningFilter": {
-      "path": "type",
-      "op": "equals",
-      "value": "thinking"
-    },
-    "toolCallsPath": "content",
-    "usagePath": "usage",
-    "finishReasonPath": "stop_reason",
+    "adapter": "anthropic",
     "stream": {
-      "frames": [
-        {
-          "event": "error",
-          "response": {
-            "errorPath": "error"
-          }
-        },
-        {
-          "event": "message_start",
-          "response": {
-            "usagePath": "message.usage"
-          }
-        },
-        {
-          "event": "content_block_start",
-          "match": {
-            "path": "content_block.type",
-            "op": "equals",
-            "value": "tool_use"
-          },
-          "tool": {
-            "indexPath": "index",
-            "idPath": "content_block.id",
-            "namePath": "content_block.name"
-          }
-        },
-        {
-          "event": "content_block_delta",
-          "match": {
-            "path": "delta.type",
-            "op": "equals",
-            "value": "text_delta"
-          },
-          "response": {
-            "textPath": "delta.text"
-          }
-        },
-        {
-          "event": "content_block_delta",
-          "match": {
-            "path": "delta.type",
-            "op": "equals",
-            "value": "thinking_delta"
-          },
-          "response": {
-            "reasoningPath": "delta.thinking"
-          }
-        },
-        {
-          "event": "content_block_delta",
-          "match": {
-            "path": "delta.type",
-            "op": "equals",
-            "value": "signature_delta"
-          },
-          "response": {
-            "signaturePath": "delta.signature",
-            "signatureProvider": "anthropic"
-          }
-        },
-        {
-          "event": "content_block_delta",
-          "match": {
-            "path": "delta.type",
-            "op": "equals",
-            "value": "citations_delta"
-          },
-          "response": {
-            "citationsPath": "delta.citation"
-          }
-        },
-        {
-          "event": "content_block_delta",
-          "match": {
-            "path": "delta.type",
-            "op": "equals",
-            "value": "input_json_delta"
-          },
-          "tool": {
-            "indexPath": "index",
-            "argumentsPath": "delta.partial_json"
-          }
-        },
-        {
-          "event": "content_block_stop",
-          "toolDone": true,
-          "tool": {
-            "indexPath": "index"
-          }
-        },
-        {
-          "event": "message_delta",
-          "terminal": true,
-          "response": {
-            "usagePath": "usage",
-            "finishReasonPath": "delta.stop_reason"
-          }
-        }
-      ]
+      "adapter": "anthropic"
     }
   },
   "models": {

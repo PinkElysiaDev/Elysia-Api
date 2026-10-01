@@ -544,6 +544,8 @@ export interface CustomProtocolDoneValue {
 }
 
 export interface CustomProtocolStreamMapping {
+  /** Reuse the native event decoder, including hosted and free text tools. */
+  adapter?: 'openai-chat' | 'anthropic' | 'gemini' | 'responses'
   payloadPath?: string
   /** delta（默认，事件即增量）/ cumulative（事件为累计全文） */
   mode?: string
@@ -609,6 +611,8 @@ export type CustomProtocolResponseBodyTree =
   | CustomProtocolResponseBodyTree[]
 
 export interface CustomProtocolResponse {
+  /** Reuse a complete native response decoder independently of request shaping. */
+  adapter?: 'openai-chat' | 'anthropic' | 'gemini' | 'responses'
   /** 返回体构造树（新模型，与 fields 二选一） */
   body?: CustomProtocolResponseBodyTree
   /** textPath 指向对象数组时按元素过滤再提取（如分离 thinking/text 块） */
@@ -707,6 +711,8 @@ export interface MaheshvaraFieldSpec {
 }
 
 export interface CustomProtocolSchema {
+  /** Available shared wire modules and independently supported directions. */
+  wireAdapters?: { name: string; directions: string[] }[]
   requestFields: MaheshvaraFieldSpec[]
   responseFields: MaheshvaraFieldSpec[]
   transforms: string[]
@@ -781,4 +787,3 @@ export function defaultGroup(): ModelGroup {
     toolsCapable: false,
   }
 }
-

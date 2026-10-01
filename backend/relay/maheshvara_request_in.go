@@ -5,35 +5,29 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/elysia-api/backend/protocol"
 )
 
 func ConvertRequestToMaheshvara(body []byte, format FormatType, urlModel string) (*MaheshvaraRequest, *OpenAIResponsesRequest, error) {
-	var req *MaheshvaraRequest
-	var original *OpenAIResponsesRequest
-	var err error
-	switch format {
-	case FormatClaude:
-		req, err = AnthropicToMaheshvara(body)
-	case FormatGemini:
-		req, err = GeminiToMaheshvara(body, urlModel)
-	case FormatResponses:
-		req, original, err = OpenAIResponsesToMaheshvara(body)
-	default:
-		req, err = OpenAIChatToMaheshvara(body)
-	}
+	adapter, err := wireAdapterForFormat(format)
 	if err != nil {
-		return nil, original, err
+		return nil, nil, err
+	}
+	req, err := adapter.DecodeRequest(body, protocol.DecodeOptions{Model: urlModel})
+	if err != nil {
+		return nil, nil, err
 	}
 	// 直接调用方（含测试）依赖此处补齐；经 ConvertRequestToMaheshvara 进入时幂等。
 	completeMaheshvaraToolCallIDs(req)
-	return req, original, nil
+	return req, req.sourceResponsesRequest, nil
 
 }
 
 // OpenAIChatToMaheshvara 解析 OpenAI Chat Completions 请求体。
 func OpenAIChatToMaheshvara(body []byte) (*MaheshvaraRequest, error) {
 	var raw map[string]any
-	if err := json.Unmarshal(body, &raw); err != nil {
+	if err := decodeWireJSON(body, &raw); err != nil {
 		return nil, fmt.Errorf("failed to parse OpenAI chat request: %w", err)
 	}
 
@@ -115,7 +109,7 @@ func OpenAIChatToMaheshvara(body []byte) (*MaheshvaraRequest, error) {
 // AnthropicToMaheshvara 解析 Anthropic Messages 请求体。
 func AnthropicToMaheshvara(body []byte) (*MaheshvaraRequest, error) {
 	var raw map[string]any
-	if err := json.Unmarshal(body, &raw); err != nil {
+	if err := decodeWireJSON(body, &raw); err != nil {
 		return nil, fmt.Errorf("failed to parse Claude request: %w", err)
 	}
 
@@ -174,7 +168,7 @@ func AnthropicToMaheshvara(body []byte) (*MaheshvaraRequest, error) {
 // GeminiToMaheshvara 解析 Gemini generateContent 请求体。
 func GeminiToMaheshvara(body []byte, urlModel string) (*MaheshvaraRequest, error) {
 	var raw map[string]any
-	if err := json.Unmarshal(body, &raw); err != nil {
+	if err := decodeWireJSON(body, &raw); err != nil {
 		return nil, fmt.Errorf("failed to parse Gemini request: %w", err)
 	}
 
@@ -191,12 +185,8 @@ func GeminiToMaheshvara(body []byte, urlModel string) (*MaheshvaraRequest, error
 
 	var thinkingConfig map[string]any
 	if cfg, ok := raw["generationConfig"].(map[string]any); ok {
-		if v, ok := cfg["temperature"].(float64); ok {
-			req.Temperature = &v
-		}
-		if v, ok := cfg["topP"].(float64); ok {
-			req.TopP = &v
-		}
+		req.Temperature = floatPointer(cfg["temperature"])
+		req.TopP = floatPointer(cfg["topP"])
 		if v, ok := numberValue(cfg["topK"]); ok {
 			topK := int(v)
 			req.TopK = &topK
@@ -236,7 +226,7 @@ func GeminiToMaheshvara(body []byte, urlModel string) (*MaheshvaraRequest, error
 // 原生请求供同线回放与转换回退。
 func OpenAIResponsesToMaheshvara(body []byte) (*MaheshvaraRequest, *OpenAIResponsesRequest, error) {
 	var req OpenAIResponsesRequest
-	if err := json.Unmarshal(body, &req); err != nil {
+	if err := decodeWireJSON(body, &req); err != nil {
 		return nil, nil, fmt.Errorf("failed to parse Responses request: %w", err)
 	}
 
@@ -274,11 +264,12 @@ func OpenAIResponsesToMaheshvara(body []byte) (*MaheshvaraRequest, *OpenAIRespon
 	maheshvara.Tools = parseResponsesTools(req.Tools)
 	maheshvara.InputItems, maheshvara.Messages = parseResponsesInput(req.Input)
 	var raw map[string]any
-	if err := json.Unmarshal(body, &raw); err == nil {
+	if err := decodeWireJSON(body, &raw); err == nil {
 		applyResponsesRequestExtensions(raw, maheshvara)
 	}
 
 	completeMaheshvaraToolCallIDs(maheshvara)
+	maheshvara.sourceResponsesRequest = &req
 	return maheshvara, &req, validateToolDefinitions(maheshvara.Tools)
 }
 
@@ -686,7 +677,7 @@ func parseResponsesInput(raw json.RawMessage) ([]MaheshvaraInputItem, []Maheshva
 	}
 
 	var arr []any
-	if err := json.Unmarshal(raw, &arr); err != nil {
+	if err := decodeWireJSON(raw, &arr); err != nil {
 		return nil, nil
 	}
 

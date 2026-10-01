@@ -65,6 +65,7 @@ func writeProtocolReference(b *strings.Builder, includeExample bool) {
 	b.WriteString("- 每类事件形状不同的流用 stream.frames（事件名或 match 谓词选帧）；工具调用分帧到达时用 frame.tool。\n")
 	b.WriteString("- 键名不符合内置别名表时用 aliases 声明；数组内按类型分块提取用 textFilter/reasoningFilter。\n")
 	b.WriteString("- 需要参考成熟写法时可先 `elysia protocol read --id <id>` 读取内置预置协议（chat-completions-api / responses-api / anthropic-api / gemini-api）。\n")
+	b.WriteString("- `response.adapter` 与 `response.stream.adapter` 可分别选择 schema.wireAdapters 中的完整适配器；选择后不混用对应方向的旧内容/事件映射。usage 别名仍可显式覆盖；自定义协议 ID 不影响适配器能力。\n")
 
 	// few-shot：内嵌预置协议作为完整范例（与启动播种同源）。
 	if includeExample {
