@@ -1,10 +1,10 @@
 // 按 key 独立拉取的模型勾选面板与权限徽标（多 key 源编辑用）。
 import { useState } from 'react'
-import { Check, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ToggleChip } from '@/components/ui/toggle-chip'
 import type { SourceAPIKey } from '@/lib/types'
-import { cn } from '@/lib/utils'
 
 // KeyPermissionBadge 显示 key 的模型权限状态：
 // 已拉取 → 「已启用 x/y」；未做过按 key 拉取 → 「未拉取 · 不限制」。
@@ -43,7 +43,7 @@ export function KeyModelsPanel({
   }
 
   return (
-    <div className="space-y-2 border-t border-border/60 p-3">
+    <div className="space-y-2 pb-1 pt-2">
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-44">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -80,30 +80,11 @@ export function KeyModelsPanel({
         <p className="py-2 text-center text-xs text-muted-foreground">没有匹配的模型</p>
       ) : (
         <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
-          {visible.map((id) => {
-            const checked = enabled.includes(id)
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => toggle(id)}
-                className={cn(
-                  'flex items-center gap-2 rounded-md border px-2 py-1 text-left text-xs transition-colors',
-                  checked ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border/60 hover:bg-accent',
-                )}
-              >
-                <span
-                  className={cn(
-                    'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border',
-                    checked ? 'border-primary bg-primary text-primary-foreground' : 'border-border',
-                  )}
-                >
-                  {checked && <Check className="h-2.5 w-2.5" />}
-                </span>
-                <span className="truncate font-mono">{id}</span>
-              </button>
-            )
-          })}
+          {visible.map((id) => (
+            <ToggleChip key={id} selected={enabled.includes(id)} onToggle={() => toggle(id)}>
+              <span className="truncate font-mono">{id}</span>
+            </ToggleChip>
+          ))}
         </div>
       )}
     </div>

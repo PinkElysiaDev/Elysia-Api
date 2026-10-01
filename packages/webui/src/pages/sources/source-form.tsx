@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowDown, ArrowUp, Check, ChevronDown, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, Plus, Trash2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -20,6 +20,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Seg } from '@/components/ui/seg'
+import { FormSection } from '@/components/ui/form-section'
+import { ToggleChip } from '@/components/ui/toggle-chip'
 import { useToast } from '@/components/ui/use-toast'
 import { customPlatformValue, customProtocolID, isCustomPlatform, protocolLabel } from '@/lib/protocol'
 import { api } from '@/lib/api'
@@ -415,41 +418,32 @@ export function SourceFormDialog({
 
           <div className="space-y-2">
             <Label>Key 调度策略</Label>
-            <Select value={selectedStrategy} onValueChange={(v) => setKeyStrategy(v as SourceKeyStrategy)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {KEY_STRATEGIES.map((k) => (
-                  <SelectItem key={k.value} value={k.value}>
-                    {k.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              {KEY_STRATEGIES.find((k) => k.value === selectedStrategy)?.hint}
-            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <Seg
+                aria-label="Key 调度策略"
+                options={KEY_STRATEGIES.map((k) => ({ value: k.value, label: k.label }))}
+                value={selectedStrategy}
+                onChange={(v) => setKeyStrategy(v as SourceKeyStrategy)}
+              />
+              <p className="text-2xs text-muted-foreground">
+                {KEY_STRATEGIES.find((k) => k.value === selectedStrategy)?.hint}
+              </p>
+            </div>
           </div>
 
-          <div className="space-y-2 rounded-xl border border-border/70 bg-background/40 p-4">
-            <div className="flex items-center justify-between">
-              <Label>
-                API Keys{selectedStrategy === 'priority' ? '（按优先级从上到下）' : ''}
-              </Label>
+          <FormSection
+            title={`API Keys${selectedStrategy === 'priority' ? '（按优先级从上到下）' : ''}`}
+            hint={form.apiKeys.length === 0 ? '尚无 Key · 留空 = 无鉴权源' : undefined}
+            action={
               <Button type="button" variant="outline" size="sm" onClick={addApiKey}>
                 <Plus className="h-4 w-4" /> 添加 Key
               </Button>
-            </div>
-            {form.apiKeys.length === 0 && (
-              <p className="py-2 text-center text-sm text-muted-foreground">
-                尚无 Key（留空 = 无鉴权源）。列表顺序即优先级顺序（priority 策略）。
-              </p>
-            )}
-            <div className="space-y-2">
+            }
+          >
+            <div className="divide-y divide-border/40">
               {form.apiKeys.map((key, index) => (
-                <div key={index} className="rounded-lg border border-border/60">
-                  <div className="flex flex-wrap items-center gap-2 p-2">
+                <div key={index} className="py-2.5 first:pt-1 last:pb-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="w-6 shrink-0 text-center font-mono text-xs text-muted-foreground">
                       {index + 1}
                     </span>
@@ -502,7 +496,7 @@ export function SourceFormDialog({
                     <>
                       <button
                         type="button"
-                        className="flex w-full items-center gap-2 border-t border-border/60 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
+                        className="mt-1.5 flex w-full items-center gap-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
                         onClick={() => setExpandedKey((prev) => (prev === index ? null : index))}
                       >
                         <ChevronDown
@@ -522,10 +516,10 @@ export function SourceFormDialog({
                 </div>
               ))}
             </div>
-          </div>
+          </FormSection>
 
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-6">
+          <FormSection title="行为">
+            <div className="flex flex-wrap gap-x-6 gap-y-3">
               <label className="flex items-center gap-3">
                 <Switch checked={form.enabled} onCheckedChange={(v) => update('enabled', v)} />
                 <span className="text-sm font-medium">启用此源</span>
@@ -544,7 +538,7 @@ export function SourceFormDialog({
               </label>
             </div>
             {fetchUrlEnabled && (
-              <div className="space-y-2">
+              <div className="space-y-2 pt-1">
                 <Label required>模型拉取 Base URL</Label>
                 <Input
                   value={form.fetchBaseUrl ?? ''}
@@ -557,23 +551,22 @@ export function SourceFormDialog({
                 </p>
               </div>
             )}
-          </div>
+          </FormSection>
 
           {!form.autoFetchModels && (
-            <div className="space-y-2 rounded-xl border border-border/70 bg-background/40 p-4">
-              <div className="flex items-center justify-between">
-                <Label>手动模型</Label>
+            <FormSection
+              title="手动模型"
+              hint={form.manualModels.length === 0 ? '尚无手动模型' : undefined}
+              action={
                 <Button type="button" variant="outline" size="sm" onClick={addManualModel}>
                   <Plus className="h-4 w-4" /> 添加
                 </Button>
-              </div>
-              {form.manualModels.length === 0 && (
-                <p className="py-3 text-center text-sm text-muted-foreground">尚无手动模型</p>
-              )}
-              <div className="space-y-2">
+              }
+            >
+              <div className="divide-y divide-border/40">
                 {form.manualModels.map((model, index) => (
-                  <div key={index} className="space-y-1.5 rounded-lg border border-border/60 p-2">
-                    <div className="flex flex-wrap items-center gap-2">
+                  <div key={index} className="space-y-2 py-3 first:pt-1 last:pb-0">
+                    <div className="flex items-center gap-2">
                       <Input
                         className="min-w-[140px] flex-1"
                         value={model.id}
@@ -586,92 +579,73 @@ export function SourceFormDialog({
                         placeholder="显示名称"
                         onChange={(e) => updateManualModel(index, { name: e.target.value })}
                       />
-                      <Select
-                        value={model.type ?? 'llm'}
-                        onValueChange={(v) => updateManualModel(index, { type: v as ManualModel['type'] })}
-                      >
-                        <SelectTrigger className="w-[130px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="llm">LLM</SelectItem>
-                          <SelectItem value="embedding">Embedding</SelectItem>
-                          <SelectItem value="reranker">Reranker</SelectItem>
-                        </SelectContent>
-                      </Select>
                       <Button
                         type="button"
                         variant="ghost"
                         size="iconSm"
+                        title="删除模型"
                         onClick={() => removeManualModel(index)}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
-                    <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 px-1">
-                      <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Switch
-                          checked={!!model.visionCapable}
-                          onCheckedChange={(v) => updateManualModel(index, { visionCapable: v })}
-                        />
-                        视觉
-                      </label>
-                      <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Switch
-                          checked={!!model.toolsCapable}
-                          onCheckedChange={(v) => updateManualModel(index, { toolsCapable: v })}
-                        />
-                        工具
-                      </label>
-                      <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Switch
-                          checked={!!model.structuredOutput}
-                          onCheckedChange={(v) => updateManualModel(index, { structuredOutput: v })}
-                        />
-                        结构化输出
-                      </label>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                      <Seg
+                        size="sm"
+                        aria-label="模型类型"
+                        options={[
+                          { value: 'llm', label: 'LLM' },
+                          { value: 'embedding', label: 'Embedding' },
+                          { value: 'reranker', label: 'Reranker' },
+                        ]}
+                        value={model.type ?? 'llm'}
+                        onChange={(v) => updateManualModel(index, { type: v as ManualModel['type'] })}
+                      />
                       <Input
-                        className="h-7 w-28"
+                        className="h-7 w-24 text-xs"
                         type="number"
                         min={0}
                         value={model.maxTokens ?? 0}
                         placeholder="MaxTokens"
+                        title="最大上下文 tokens（0 = 未设置）"
                         onChange={(e) =>
                           updateManualModel(index, { maxTokens: Math.max(0, Number(e.target.value) || 0) })
                         }
                       />
                     </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <ToggleChip
+                        selected={!!model.visionCapable}
+                        onToggle={() => updateManualModel(index, { visionCapable: !model.visionCapable })}
+                      >
+                        视觉
+                      </ToggleChip>
+                      <ToggleChip
+                        selected={!!model.toolsCapable}
+                        onToggle={() => updateManualModel(index, { toolsCapable: !model.toolsCapable })}
+                      >
+                        工具
+                      </ToggleChip>
+                      <ToggleChip
+                        selected={!!model.structuredOutput}
+                        onToggle={() => updateManualModel(index, { structuredOutput: !model.structuredOutput })}
+                      >
+                        结构化输出
+                      </ToggleChip>
+                    </div>
                     {keyCount > 1 && (
-                      <div className="flex flex-wrap items-center gap-2 px-1 pb-1">
-                        <span className="text-xs text-muted-foreground">可用 Key：</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-2xs text-muted-foreground">可用 Key</span>
                         {form.apiKeys.map((sourceKey, keyIndex) =>
                           sourceKey.value.trim() ? (
-                            <button
+                            <ToggleChip
                               key={keyIndex}
-                              type="button"
-                              onClick={() => toggleManualKeySelection(index, keyIndex)}
-                              className={cn(
-                                'flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors',
-                                (manualKeySelection[index] ?? []).includes(keyIndex)
-                                  ? 'border-primary/50 bg-primary/10 text-primary'
-                                  : 'border-border/60 text-muted-foreground hover:bg-accent',
-                              )}
+                              selected={(manualKeySelection[index] ?? []).includes(keyIndex)}
+                              onToggle={() => toggleManualKeySelection(index, keyIndex)}
                             >
-                              <span
-                                className={cn(
-                                  'flex h-3 w-3 items-center justify-center rounded border',
-                                  (manualKeySelection[index] ?? []).includes(keyIndex)
-                                    ? 'border-primary bg-primary text-primary-foreground'
-                                    : 'border-border',
-                                )}
-                              >
-                                {(manualKeySelection[index] ?? []).includes(keyIndex) && (
-                                  <Check className="h-2 w-2" />
-                                )}
-                              </span>
                               Key {keyIndex + 1}
                               {sourceKey.note ? ` · ${sourceKey.note}` : ''}
-                            </button>
+                            </ToggleChip>
                           ) : null,
                         )}
                       </div>
@@ -679,7 +653,7 @@ export function SourceFormDialog({
                   </div>
                 ))}
               </div>
-            </div>
+            </FormSection>
           )}
         </div>
 
