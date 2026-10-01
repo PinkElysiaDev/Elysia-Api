@@ -18,6 +18,10 @@ const logLifecycleVersion = 2026092901
 // 驱动在大正文行与快段之间输出更均匀)。
 const migrationProgressInterval = 10 * time.Second
 
+// vacuumHeartbeatInterval 是无进度回调的长耗时语句(一次性 VACUUM)的心跳
+// 间隔——没有总量可算百分比,心跳只证明仍在推进。
+const vacuumHeartbeatInterval = 30 * time.Second
+
 func (s *Store) logLifecycleReady(ctx context.Context) (bool, error) {
 	var tables, version int
 	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_schema WHERE name='schema_migrations'`).Scan(&tables); err != nil {
@@ -81,6 +85,31 @@ func (s *Store) prepareLogLifecycle(ctx context.Context) error {
 
 var assetNamePattern = regexp.MustCompile(`^[0-9a-f]{16}\.[a-z0-9]{1,5}$`)
 var assetRefPattern = regexp.MustCompile(`__ELYSIA_ASSET__:[\w-]+/([0-9a-f]{16}\.[a-z0-9]{1,5})`)
+
+// runWithHeartbeat 在无进度回调的长耗时 SQL(一次性 VACUUM)执行期间按
+// vacuumHeartbeatInterval 打心跳(带累计时长)——这类语句既无总量可算百分比
+// 也无逐行回调,心跳至少让"还在推进"可观测,不再被误判卡死。
+func (s *Store) runWithHeartbeat(ctx context.Context, label string, run func() error) error {
+	done := make(chan struct{})
+	go func() {
+		started := time.Now()
+		timer := time.NewTimer(vacuumHeartbeatInterval)
+		defer timer.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-timer.C:
+				elapsed := time.Since(started).Round(time.Second)
+				log.Printf("[migration] %s still running (%s elapsed)", label, elapsed)
+				timer.Reset(vacuumHeartbeatInterval)
+			}
+		}
+	}()
+	err := run()
+	close(done)
+	return err
+}
 
 // Schema, content accounting, and attachment references commit together. The final
 // marker is written only after the native SQLite format conversion succeeds.
@@ -253,7 +282,10 @@ func (s *Store) migrateLogLifecycle(ctx context.Context) error {
 		if _, err := s.db.ExecContext(ctx, `PRAGMA auto_vacuum=INCREMENTAL`); err != nil {
 			return err
 		}
-		if _, err := s.db.ExecContext(ctx, `VACUUM`); err != nil {
+		if err := s.runWithHeartbeat(ctx, "database vacuum", func() error {
+			_, err := s.db.ExecContext(ctx, `VACUUM`)
+			return err
+		}); err != nil {
 			return err
 		}
 	}
@@ -272,7 +304,7 @@ func (s *Store) migrateLogLifecycle(ctx context.Context) error {
 	}
 	_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(?,?)`, logLifecycleVersion, nowString())
 	if err == nil {
-		log.Printf("[migration] log lifecycle upgrade complete — will not run again on next start")
+		log.Printf("[migration] log lifecycle upgrade complete")
 	}
 	return err
 }
