@@ -88,12 +88,18 @@ export function ContextPanel({
     );
   }
 
+  // 展开过渡:挂载后下一帧从 0 宽/透明过渡到目标宽(关闭由父级卸载,瞬收)。
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setExpanded(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
   return (
     <aside
       id="agent-context-panel"
       aria-labelledby="agent-context-title"
-      className="relative flex h-full shrink-0 flex-col border-l border-border/50"
-      style={{ width: panelW, maxWidth: "45%" }}
+      className="relative flex h-full shrink-0 flex-col overflow-hidden border-l border-border/50 transition-[width,max-width,opacity] duration-300 ease-out motion-reduce:transition-none"
+      style={{ width: expanded ? panelW : 0, maxWidth: expanded ? "45%" : 0, opacity: expanded ? 1 : 0 }}
       onKeyDown={(event) => {
         if (event.key === "Escape" && !event.defaultPrevented) {
           event.preventDefault();

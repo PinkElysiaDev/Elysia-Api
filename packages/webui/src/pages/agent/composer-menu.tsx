@@ -1,10 +1,11 @@
-import { Check, ChevronDown, Gauge, Shield } from "lucide-react";
+import { Check, ChevronDown, Gauge, RefreshCw, Shield } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import type {
   AgentPermission,
   AgentSettings,
   AgentThinkingEffort,
 } from "@/lib/agent/types";
+import { NumberField } from "@/components/number-field";
 import { cn } from "@/lib/utils";
 import { useDismissable } from "./use-dismissable";
 import { Z_INDEX } from "@/lib/z-index";
@@ -302,6 +303,56 @@ export function ThinkingMenu({
             />
           ))}
         </>
+      )}
+    </MenuShell>
+  );
+}
+
+/** 单轮工具循环上限(模型调用次数)。0=默认 30;范围 0-100。 */
+export function ToolRoundsMenu({
+  settings,
+  disabled,
+  onChange,
+}: {
+  settings: AgentSettings;
+  disabled?: boolean;
+  onChange: (patch: { settings: Partial<AgentSettings> }) => void;
+}) {
+  const value = settings.maxModelCalls ?? 0;
+  return (
+    <MenuShell
+      icon={
+        <RefreshCw className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      }
+      label={`工具轮数 ${value === 0 ? "默认" : value}`}
+      title="单轮工具循环的模型调用上限"
+      panelLabel="工具轮数上限"
+      panelClassName="w-[min(260px,86vw)]"
+      disabled={disabled}
+    >
+      {() => (
+        <div className="flex flex-col gap-2 p-3">
+          <p className="text-xs text-muted-foreground">
+            单轮内「模型调用 → 工具 → 回传」的循环上限(一批命令算 1 轮)。0 =
+            默认 30;范围 0-100。达到上限后轮次正常收尾,继续对话即开始新一轮。
+          </p>
+          <div className="flex items-center gap-2">
+            <NumberField
+              value={value}
+              min={0}
+              className="w-20 font-mono text-xs"
+              aria-label="工具轮数上限"
+              onCommit={(v) =>
+                onChange({
+                  settings: {
+                    maxModelCalls: Math.max(0, Math.min(100, Math.round(v))),
+                  },
+                })
+              }
+            />
+            <span className="text-xs text-muted-foreground">次 / 轮</span>
+          </div>
+        </div>
       )}
     </MenuShell>
   );

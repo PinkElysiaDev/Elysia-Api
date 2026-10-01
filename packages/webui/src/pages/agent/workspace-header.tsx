@@ -38,7 +38,7 @@ export function WorkspaceHeader({
   onSelectPanel,
 }: WorkspaceHeaderProps) {
   return (
-    <div className="flex items-center gap-2 pr-4 pb-2 pt-1">
+    <div className="flex items-center gap-2 -ml-5 pb-2 pr-4 pt-1 max-rail:-ml-3">
       <Button
         variant="ghost"
         size="icon"

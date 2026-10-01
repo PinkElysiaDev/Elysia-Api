@@ -5,7 +5,7 @@ import type { Model, ModelSource } from "@/lib/types";
 import type { AgentDocument, AgentSettings } from "@/lib/agent/types";
 import { cn } from "@/lib/utils";
 import { ContextGauge, type SessionUsageStat } from "./context-gauge";
-import { PermissionMenu, ThinkingMenu } from "./composer-menu";
+import { PermissionMenu, ThinkingMenu, ToolRoundsMenu } from "./composer-menu";
 import { ModelPicker } from "./model-picker";
 import { isSendKeyEvent, sendKeyHint, useSendKeyMode } from "./send-key";
 
@@ -195,6 +195,11 @@ export function ComposerDock({
             onSelect={onModelSelect}
           />
           <ThinkingMenu
+            settings={settings}
+            disabled={busy}
+            onChange={(patch) => void onSettingsSave(patch)}
+          />
+          <ToolRoundsMenu
             settings={settings}
             disabled={busy}
             onChange={(patch) => void onSettingsSave(patch)}

@@ -14,6 +14,8 @@ export interface AgentSettings {
   modelName: string;
   thinkingEnabled: boolean;
   thinkingEffort?: AgentThinkingEffort;
+  /** 单轮工具循环的模型调用上限;0=默认(30)。 */
+  maxModelCalls?: number;
   /** 计划模式：先产出方案，用户确认后才放行修改与出站。 */
   planMode?: boolean;
   allowLiveTest?: AgentPermission;
