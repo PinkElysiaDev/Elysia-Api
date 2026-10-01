@@ -40,5 +40,32 @@ the new adapters will parse those bytes directly. Both transitional helpers are
 scheduled for removal when production callers move to the new engine.
 
 The versioned decoder rejects unknown contract keys and extra JSON documents.
-Semantic capability and association validation is a separate compilation and
-verification responsibility, not implied by successful JSON decoding.
+Semantic capability and association validation is separate from JSON decoding.
+
+## Preservation and diagnostics (C04)
+
+`PreserveNative` requires matching nonempty family/wire version and compatible
+decode/encode directions. Definition IDs and revisions may differ when the wire
+contract matches. Scoped native content additionally requires matching resource
+restrictions. Cross-wire adapters construct declared mappings; they cannot use
+this API to forward opaque payloads.
+
+`ApplyMutations` is transactional: `set` may create a final object key, `replace`
+and `delete` require an existing target, and parents must already exist. Paths
+are RFC 6901 JSON pointers. Array deletions retain remaining element order; set
+and replace require valid existing array indices. No-op replay returns the
+original JSON. Failed edits return no partial result. Edits never modify the
+original snapshot. Depth, node count, patch count and bytes are bounded by the
+engine limits.
+
+`CheckRequest` checks capabilities, opaque provenance, cache/resource scopes,
+input kinds and call/result association. A text-only target rejects tool data;
+it does not strip it. Account resources require provider/account provenance.
+These checks now have structured `ConversionIssue` results with stable code,
+direction, stage, capability and semantic field path. The C02 native tool path
+already consumes this shared preservation implementation; other relay paths
+move to it in C05.
+
+Verification reports carry separate offline/upstream kind and bind definition,
+compiler and sample hashes. This is the report contract, not the C08 verifier or
+C09 activation gate; those remain tracked as pending in the implementation log.

@@ -4,12 +4,20 @@ import (
 	"fmt"
 	"maps"
 	"strings"
+
+	"github.com/elysia-api/backend/protocol"
 )
+
+const legacyWireContractVersion = "legacy-v1"
+
+func toolNativeTarget(format FormatType) protocol.Target {
+	return protocol.Target{Protocol: protocol.Identity{Family: string(format), WireVersion: legacyWireContractVersion}, Direction: protocol.EncodeRequest}
+}
 
 // Native tool schemas are wire-specific, even when vendors reuse a type name.
 func renderNativeTool(tool MaheshvaraTool, target FormatType) (map[string]any, error) {
-	if tool.sourceFormat != target || tool.Raw == nil {
-		return nil, fmt.Errorf("unsupported_tool: %q from %q has no equivalent in %s", tool.Type, tool.sourceFormat, target)
+	if tool.Raw == nil {
+		return nil, fmt.Errorf("unsupported_tool: %q has no native definition", tool.Type)
 	}
 	if strings.TrimSpace(tool.Type) == "" {
 		return nil, fmt.Errorf("invalid_tool: tools[].type is required")
@@ -17,9 +25,22 @@ func renderNativeTool(tool MaheshvaraTool, target FormatType) (map[string]any, e
 	if target == FormatResponses && tool.Type == "custom" && strings.TrimSpace(tool.Name) == "" {
 		return nil, fmt.Errorf("invalid_tool: tools[].name is required for custom tools")
 	}
-	output := maps.Clone(tool.Raw)
-	if tool.Name != "" || output["name"] != nil {
-		output["name"] = tool.Name
+	nativeValue, err := protocol.EncodeValue(tool.Raw)
+	if err != nil {
+		return nil, err
+	}
+	native := protocol.Native{Source: protocol.Provenance{Protocol: toolNativeTarget(tool.sourceFormat).Protocol, Direction: protocol.DecodeRequest, Path: "/tools"}, Value: nativeValue}
+	var mutations []protocol.Mutation
+	if tool.Name != stringValue(tool.Raw["name"]) {
+		mutations = append(mutations, protocol.Mutation{Op: protocol.SetValue, Path: "/name", Value: protocol.StringValue(tool.Name)})
+	}
+	preserved, issues := protocol.PreserveNative(native, toolNativeTarget(target), mutations, protocol.DefaultLimits())
+	if err := protocol.IssuesError(issues); err != nil {
+		return nil, err
+	}
+	var output map[string]any
+	if err := preserved.Decode(&output); err != nil {
+		return nil, err
 	}
 	return output, nil
 }
