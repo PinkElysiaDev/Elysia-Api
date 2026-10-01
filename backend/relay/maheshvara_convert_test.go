@@ -153,12 +153,9 @@ func TestMaheshvaraToOpenAIResponsesRequestPreservesRawBuiltinToolsAndReasoning(
 		MaxOutputTokens: 99,
 		Stream:          true,
 		Messages:        []MaheshvaraMessage{{Role: "user", Content: []MaheshvaraContentPart{{Type: MaheshvaraContentText, Text: "hello"}}}},
-		Tools: []MaheshvaraTool{{
-			Type: MaheshvaraToolWebSearchPreview,
-			Raw:  map[string]any{"type": "web_search_preview", "search_context_size": "medium"},
-		}},
-		Reasoning:      &MaheshvaraReasoning{Effort: "low", Raw: map[string]any{"summary": "auto"}},
-		ResponseFormat: &MaheshvaraResponseFormat{Type: "json_schema", Name: "answer", Schema: map[string]any{"type": "object"}},
+		Tools:           parseResponsesTools([]map[string]any{{"type": "web_search_preview", "search_context_size": "medium"}}),
+		Reasoning:       &MaheshvaraReasoning{Effort: "low", Raw: map[string]any{"summary": "auto"}},
+		ResponseFormat:  &MaheshvaraResponseFormat{Type: "json_schema", Name: "answer", Schema: map[string]any{"type": "object"}},
 	}
 
 	body, err := MaheshvaraToOpenAIResponses(req, original)

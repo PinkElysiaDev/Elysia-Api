@@ -1267,7 +1267,9 @@ func customProtocolResponseFromRoot(root any, resolved customResolvedMapping, al
 	}
 	appendCustomTextOutput(response, root, mapping, textKeys)
 	appendCustomReasoningOutput(response, root, mapping, textKeys)
-	appendCustomToolCallOutputs(response, root, mapping, toolAliases)
+	if err := appendCustomToolCallOutputs(response, root, mapping, toolAliases); err != nil {
+		return nil, fmt.Errorf("custom protocol %q: %w", configID, err)
+	}
 	if mapping.UsagePath != "" {
 		response.Usage = customUsageAtWithAliases(root, mapping.UsagePath, usageAliases)
 	}
@@ -1333,15 +1335,33 @@ func appendCustomReasoningOutput(response *MaheshvaraResponse, root any, mapping
 	})
 }
 
-// appendCustomToolCallOutputs 解析 toolCallsPath 数组为函数调用输出项
-// （无名称的条目跳过）。
-func appendCustomToolCallOutputs(response *MaheshvaraResponse, root any, mapping CustomProtocolResponse, toolAliases map[string][]string) {
+// appendCustomToolCallOutputs separates free text inputs from JSON arguments.
+func appendCustomToolCallOutputs(response *MaheshvaraResponse, root any, mapping CustomProtocolResponse, toolAliases map[string][]string) error {
 	if mapping.ToolCallsPath == "" {
-		return
+		return nil
 	}
 	for index, item := range customArrayAt(root, mapping.ToolCallsPath) {
+		object := mapValue(item)
+		typeName := stringValue(object["type"])
 		call := customToolCallWithAliases(item, index, toolAliases)
+		if typeName == "custom_tool_call" {
+			input, hasInput := object["input"].(string)
+			if !hasInput || strings.TrimSpace(call.Name) == "" {
+				return fmt.Errorf("invalid_tool_output: %s[%d] requires name and string input", mapping.ToolCallsPath, index)
+			}
+			response.Output = append(response.Output, MaheshvaraOutputItem{
+				ID: stringValue(object["id"]), Type: typeName, CallID: call.ID, Name: call.Name,
+				Input: input, Status: stringValue(object["status"]),
+			})
+			continue
+		}
+		if strings.HasSuffix(typeName, "_call") && typeName != "function_call" {
+			return fmt.Errorf("unsupported_tool_output: %s[%d] type %q requires a native adapter", mapping.ToolCallsPath, index, typeName)
+		}
 		if call.Name == "" {
+			if typeName == "function_call" || typeName == "function" || typeName == "tool_use" {
+				return fmt.Errorf("invalid_tool_output: %s[%d].name is required", mapping.ToolCallsPath, index)
+			}
 			continue
 		}
 		response.Output = append(response.Output, MaheshvaraOutputItem{
@@ -1352,6 +1372,7 @@ func appendCustomToolCallOutputs(response *MaheshvaraResponse, root any, mapping
 			ToolCalls: []MaheshvaraToolCall{call},
 		})
 	}
+	return nil
 }
 
 func maheshvaraTemplateContext(req *MaheshvaraRequest) map[string]any {
@@ -1386,6 +1407,10 @@ func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[
 	if shape == "" {
 		return nil
 	}
+	target := map[string]FormatType{"openai-chat": FormatOpenAIChat, "anthropic": FormatClaude, "gemini": FormatGemini, "responses": FormatResponses}[shape]
+	if err := validateToolHistory(req, target); err != nil {
+		return err
+	}
 	root, _ := context["maheshvara"].(map[string]any)
 	redecodeWithJSONNumbers := func(value any) any {
 		encoded, err := json.Marshal(value)
@@ -1404,6 +1429,8 @@ func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[
 		}
 		if len(tools) > 0 {
 			root["tools"] = redecodeWithJSONNumbers(tools)
+		} else {
+			delete(root, "tools")
 		}
 		return nil
 	}
@@ -1450,11 +1477,11 @@ func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[
 		root["input"] = input
 		root["input_items"] = input
 		root["messages"] = input
-		if tools := maheshvaraToolsToResponses(req.Tools); len(tools) > 0 {
-			root["tools"] = redecodeWithJSONNumbers(tools)
+		if req.ToolChoice != nil {
+			root["tool_choice"] = redecodeWithJSONNumbers(maheshvaraToolChoiceToResponses(req.ToolChoice))
 		}
 		shapeCustomThinking(shape, req, root)
-		return nil
+		return setTools(maheshvaraToolsToResponses(req.Tools))
 	}
 	return fmt.Errorf("%q is unsupported", shape)
 }
@@ -1789,7 +1816,7 @@ func customToolCallWithAliases(value any, index int, aliases map[string][]string
 		return ""
 	}
 	call := MaheshvaraToolCall{
-		ID:   firstNonEmptyString(lookupString(customAliasKeys(aliases, "id", "id", "call_id", "tool_call_id", "function.id")), fmt.Sprintf("call_%d", index)),
+		ID:   firstNonEmptyString(lookupString(customAliasKeys(aliases, "id", "call_id", "id", "tool_call_id", "function.id")), fmt.Sprintf("call_%d", index)),
 		Name: lookupString(customAliasKeys(aliases, "name", "name", "function_name", "function.name")),
 		Type: MaheshvaraToolFunction,
 		// Gemini functionCall 携带 thoughtSignature：跨轮回放需要按 provider

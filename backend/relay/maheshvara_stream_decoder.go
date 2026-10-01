@@ -171,7 +171,7 @@ func maheshvaraStreamEventHasOutput(event MaheshvaraStreamEvent) bool {
 }
 
 func (decoder *MaheshvaraStreamDecoder) baseEvent(typeName string, raw map[string]any) MaheshvaraStreamEvent {
-	return MaheshvaraStreamEvent{Type: typeName, ResponseID: decoder.responseID, Model: decoder.model, Raw: raw}
+	return MaheshvaraStreamEvent{sourceFormat: decoder.format, Type: typeName, ResponseID: decoder.responseID, Model: decoder.model, Raw: raw}
 }
 
 func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]MaheshvaraStreamEvent, error) {

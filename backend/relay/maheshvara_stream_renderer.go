@@ -54,6 +54,9 @@ func (renderer *MaheshvaraStreamRenderer) Write(event *MaheshvaraStreamEvent) er
 	if renderer == nil || event == nil || renderer.finished || renderer.aborted {
 		return nil
 	}
+	if err := validateToolEvent(event, renderer.format); err != nil {
+		return err
+	}
 	if event.ResponseID != "" {
 		renderer.responseID = event.ResponseID
 	}
@@ -65,6 +68,23 @@ func (renderer *MaheshvaraStreamRenderer) Write(event *MaheshvaraStreamEvent) er
 	}
 	if event.Usage != nil {
 		renderer.usage = mergeMaheshvaraStreamUsage(renderer.usage, event.Usage)
+	}
+	// Replay only parser-identified native events. Internal usage events derived
+	// from a completion frame must not replay that frame a second time.
+	if event.sourceFormat == FormatResponses && renderer.format == FormatResponses {
+		if stringValue(event.Raw["type"]) != event.Type {
+			return nil
+		}
+		if err := renderer.writeSSEEvent(event.Type, event.Raw); err != nil {
+			return err
+		}
+		renderer.responses.started = true
+		renderer.hasOutput = renderer.hasOutput || maheshvaraStreamEventHasOutput(*event)
+		if event.Type == MaheshvaraEventResponseCompleted {
+			renderer.completed = true
+			renderer.responses.completed = true
+		}
+		return nil
 	}
 	if event.Response != nil && !renderer.hasOutput && len(event.Response.Output) > 0 {
 		if err := renderer.writeMaheshvaraResponseContent(event.Response); err != nil {
@@ -96,6 +116,9 @@ func (renderer *MaheshvaraStreamRenderer) WriteResponse(response *MaheshvaraResp
 	if renderer == nil || response == nil {
 		return fmt.Errorf("nil Maheshvara stream response")
 	}
+	if err := validateToolResponse(response, renderer.format); err != nil {
+		return err
+	}
 	if response.Error != nil {
 		return renderer.AbortWithError(response.Error)
 	}
@@ -125,6 +148,12 @@ func (renderer *MaheshvaraStreamRenderer) WriteResponse(response *MaheshvaraResp
 func (renderer *MaheshvaraStreamRenderer) writeMaheshvaraResponseContent(response *MaheshvaraResponse) error {
 	for outputIndex := range response.Output {
 		item := response.Output[outputIndex]
+		if item.Type == "custom_tool_call" || (item.sourceFormat == FormatResponses && item.Type != MaheshvaraOutputMessage && item.Type != MaheshvaraOutputFunctionCall && item.Type != MaheshvaraOutputReasoning) {
+			if err := renderer.Write(&MaheshvaraStreamEvent{Type: MaheshvaraEventOutputItemDone, OutputIndex: outputIndex, OutputItem: &item}); err != nil {
+				return err
+			}
+			continue
+		}
 		switch item.Type {
 		case MaheshvaraOutputFunctionCall:
 			if err := renderer.Write(&MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallAdded, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ToolCallIndex: outputIndex, ToolCallID: item.CallID, ToolName: item.Name, OutputItem: &item}); err != nil {

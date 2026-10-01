@@ -223,6 +223,8 @@ type MaheshvaraInputItem struct {
 }
 
 type MaheshvaraTool struct {
+	// Parser-assigned wire identity; provider labels cannot authorize Raw replay.
+	sourceFormat FormatType
 	Type         string         `json:"type"`
 	Name         string         `json:"name,omitempty"`
 	Description  string         `json:"description,omitempty"`
@@ -315,10 +317,12 @@ type MaheshvaraResponse struct {
 }
 
 type MaheshvaraOutputItem struct {
-	ID     string `json:"id,omitempty"`
-	Type   string `json:"type"`
-	Status string `json:"status,omitempty"`
-	Role   string `json:"role,omitempty"`
+	sourceFormat FormatType
+	Input        string `json:"input,omitempty"`
+	ID           string `json:"id,omitempty"`
+	Type         string `json:"type"`
+	Status       string `json:"status,omitempty"`
+	Role         string `json:"role,omitempty"`
 
 	Content []MaheshvaraContentPart `json:"content,omitempty"`
 
@@ -405,7 +409,8 @@ type MaheshvaraError struct {
 }
 
 type MaheshvaraStreamEvent struct {
-	Type string `json:"type"`
+	sourceFormat FormatType
+	Type         string `json:"type"`
 
 	ResponseID string `json:"response_id,omitempty"`
 	ItemID     string `json:"item_id,omitempty"`

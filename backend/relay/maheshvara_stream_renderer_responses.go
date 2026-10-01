@@ -68,27 +68,29 @@ type maheshvaraResponsesToolState struct {
 }
 
 type maheshvaraResponsesRenderState struct {
-	started    bool
-	completed  bool
-	sequence   int64
-	responseID string
-	model      string
-	createdAt  int64
-	nextOutput int
-	messages   map[int]*maheshvaraResponsesMessageState
-	reasoning  map[int]*maheshvaraResponsesReasoningState
-	tools      map[string]*maheshvaraResponsesToolState
-	toolOrder  []string
+	started     bool
+	completed   bool
+	sequence    int64
+	responseID  string
+	model       string
+	createdAt   int64
+	nextOutput  int
+	messages    map[int]*maheshvaraResponsesMessageState
+	reasoning   map[int]*maheshvaraResponsesReasoningState
+	tools       map[string]*maheshvaraResponsesToolState
+	toolOrder   []string
+	opaqueItems map[int]map[string]any
 }
 
 func newMaheshvaraResponsesRenderState(responseID, model string, createdAt int64) *maheshvaraResponsesRenderState {
 	return &maheshvaraResponsesRenderState{
-		responseID: responseID,
-		model:      model,
-		createdAt:  createdAt,
-		messages:   make(map[int]*maheshvaraResponsesMessageState),
-		reasoning:  make(map[int]*maheshvaraResponsesReasoningState),
-		tools:      make(map[string]*maheshvaraResponsesToolState),
+		responseID:  responseID,
+		model:       model,
+		createdAt:   createdAt,
+		messages:    make(map[int]*maheshvaraResponsesMessageState),
+		reasoning:   make(map[int]*maheshvaraResponsesReasoningState),
+		tools:       make(map[string]*maheshvaraResponsesToolState),
+		opaqueItems: make(map[int]map[string]any),
 	}
 }
 
@@ -396,6 +398,8 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesOutputItem(event *Mahesh
 		return nil
 	}
 	switch item.Type {
+	case "custom_tool_call":
+		return renderer.writeResponsesOpaqueItem(event)
 	case MaheshvaraOutputFunctionCall:
 		added := &MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallAdded, ToolCallIndex: event.OutputIndex, ToolCallID: item.CallID, ToolName: item.Name}
 		if err := renderer.writeResponsesTool(added); err != nil {
@@ -416,6 +420,9 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesOutputItem(event *Mahesh
 		}
 		return renderer.writeResponsesReasoning(event.ChoiceIndex, maheshvaraReasoningText(*item))
 	default:
+		if item.sourceFormat == FormatResponses && item.Type != MaheshvaraOutputMessage {
+			return renderer.writeResponsesOpaqueItem(event)
+		}
 		for index := range item.Content {
 			part := item.Content[index]
 			switch part.Type {
@@ -441,6 +448,34 @@ func (renderer *MaheshvaraStreamRenderer) writeResponsesOutputItem(event *Mahesh
 	return nil
 }
 
+func (renderer *MaheshvaraStreamRenderer) writeResponsesOpaqueItem(event *MaheshvaraStreamEvent) error {
+	response, err := MaheshvaraToOpenAIResponsesResponse(&MaheshvaraResponse{Output: []MaheshvaraOutputItem{*event.OutputItem}})
+	if err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(response.Output[0])
+	if err != nil {
+		return err
+	}
+	decoded, err := decodeJSONUseNumber(encoded)
+	if err != nil {
+		return err
+	}
+	item := decoded.(map[string]any)
+	state := renderer.responses
+	if _, hasItem := state.opaqueItems[event.OutputIndex]; !hasItem {
+		if err := renderer.writeResponsesEvent(MaheshvaraEventOutputItemAdded, map[string]any{"type": MaheshvaraEventOutputItemAdded, "output_index": event.OutputIndex, "item": item}); err != nil {
+			return err
+		}
+	}
+	state.opaqueItems[event.OutputIndex] = item
+	state.nextOutput = max(state.nextOutput, event.OutputIndex+1)
+	if event.Type == MaheshvaraEventOutputItemDone {
+		return renderer.writeResponsesEvent(MaheshvaraEventOutputItemDone, map[string]any{"type": MaheshvaraEventOutputItemDone, "output_index": event.OutputIndex, "item": item})
+	}
+	return nil
+}
+
 type maheshvaraResponsesRenderedOutput struct {
 	index int
 	item  map[string]any
@@ -455,6 +490,9 @@ func (renderer *MaheshvaraStreamRenderer) completeResponses() error {
 		return err
 	}
 	var outputs []maheshvaraResponsesRenderedOutput
+	for index, item := range state.opaqueItems {
+		outputs = append(outputs, maheshvaraResponsesRenderedOutput{index: index, item: item})
+	}
 	// 各类 item 的收尾事件先收集、统一按 outputIndex 排序后发出。
 	// 按类别顺序（message→reasoning→tool）发出时，多 choice 场景下
 	// output_item.done 事件次序与 output_index 不一致，逐事件消费的

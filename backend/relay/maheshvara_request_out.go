@@ -370,9 +370,15 @@ func MaheshvaraToOpenAIResponses(req *MaheshvaraRequest, original *OpenAIRespons
 	if req.Stream {
 		out["stream"] = true
 	}
-	if len(req.Tools) > 0 {
-		out["tools"] = maheshvaraToolsToResponses(req.Tools)
+	tools, err := maheshvaraToolsToResponses(req.Tools)
+	if err != nil {
+		return nil, err
 	}
+	delete(out, "tools")
+	if len(tools) > 0 {
+		out["tools"] = tools
+	}
+	delete(out, "tool_choice")
 	if req.ToolChoice != nil {
 		out["tool_choice"] = maheshvaraToolChoiceToResponses(req.ToolChoice)
 	}
@@ -1241,133 +1247,6 @@ func messageAudioField(parts []MaheshvaraContentPart) map[string]any {
 		return audio
 	}
 	return nil
-}
-
-// functionToolFields 汇出函数工具在四线渲染间共享的字段集:schema 取
-// Parameters 与 InputSchema 的先见者(两键分别是 Chat/Gemini 与 Claude 的
-// 源键名),strict 透传三态。
-func functionToolFields(tool MaheshvaraTool) (name, description string, schema map[string]any, strict *bool) {
-	return tool.Name, tool.Description, firstNonNilMap(tool.Parameters, tool.InputSchema), tool.Strict
-}
-
-func maheshvaraToolsToOpenAI(tools []MaheshvaraTool) ([]map[string]any, error) {
-	var out []map[string]any
-	for _, tool := range tools {
-		if tool.Type != MaheshvaraToolFunction {
-			return nil, fmt.Errorf("builtin tool %q cannot be transformed to OpenAI chat completions", tool.Type)
-		}
-		if isLegacyFunctionTool(tool) {
-			// 遗留工具由调用方按 functions 形态分流，此处跳过。
-			continue
-		}
-		name, description, parameters, strict := functionToolFields(tool)
-		function := map[string]any{
-			"name":        name,
-			"description": description,
-			"parameters":  parameters,
-		}
-		if strict != nil {
-			function["strict"] = *strict
-		}
-		out = append(out, withCacheControl(map[string]any{
-			"type":     "function",
-			"function": function,
-		}, tool.CacheControl))
-	}
-	return out, nil
-}
-
-// legacyFunctionCallIDPrefix 是遗留 function calling 的调用 ID 前缀：
-// role:"function" 结果消息没有 tool_call_id，用该前缀 + 函数名合成，
-// 与 assistant function_call 的 ID 对齐。
-const legacyFunctionCallIDPrefix = "legacy_function:"
-
-func isLegacyFunctionTool(tool MaheshvaraTool) bool {
-	return tool.Raw != nil && tool.Raw["legacy_function"] == true
-}
-
-func isLegacyFunctionCall(call MaheshvaraToolCall) bool {
-	// 只认解析器打的显式标记，不按 ID 前缀猜测——真实工具调用的 id 可能
-	// 恰好以 "legacy_function:" 开头（客户端可造），前缀猜测会把它错误地
-	// 降级成旧形态。
-	return call.Raw != nil && call.Raw["legacy_function"] == true
-}
-
-func maheshvaraToolsToClaude(tools []MaheshvaraTool) ([]map[string]any, error) {
-	var out []map[string]any
-	for _, tool := range tools {
-		if tool.Type != MaheshvaraToolFunction {
-			return nil, fmt.Errorf("builtin tool %q cannot be transformed to Claude messages", tool.Type)
-		}
-		name, description, inputSchema, strict := functionToolFields(tool)
-		item := map[string]any{
-			"name":         name,
-			"description":  description,
-			"input_schema": inputSchema,
-		}
-		if strict != nil {
-			item["strict"] = *strict
-		}
-		if tool.CacheControl != nil {
-			item["cache_control"] = tool.CacheControl
-		}
-		out = append(out, item)
-	}
-	return out, nil
-}
-
-func maheshvaraToolsToGemini(tools []MaheshvaraTool) ([]map[string]any, error) {
-	var declarations []map[string]any
-	var nativeTools []map[string]any
-	for _, tool := range tools {
-		if tool.Type != MaheshvaraToolFunction {
-			if tool.Raw != nil {
-				nativeTools = append(nativeTools, tool.Raw)
-				continue
-			}
-			return nil, fmt.Errorf("builtin tool %q cannot be transformed to Gemini without a native definition", tool.Type)
-		}
-		name, description, parameters, strict := functionToolFields(tool)
-		declaration := map[string]any{
-			"name":        name,
-			"description": description,
-			"parameters":  parameters,
-		}
-		if strict != nil {
-			declaration["strict"] = *strict
-		}
-		declarations = append(declarations, declaration)
-	}
-	var out []map[string]any
-	if len(declarations) > 0 {
-		out = append(out, map[string]any{"functionDeclarations": declarations})
-	}
-	out = append(out, nativeTools...)
-	return out, nil
-}
-
-func maheshvaraToolsToResponses(tools []MaheshvaraTool) []map[string]any {
-	out := make([]map[string]any, 0, len(tools))
-	for _, tool := range tools {
-		// Raw 仅当其已是 Responses 扁平函数形状(Responses 客户端同线解析产物,
-		// 可能携带 strict 等扩展字段)时透传;Chat/Claude/Gemini 源形状(嵌套
-		// function / input_schema / 无 type)必须经类型化字段重建,否则上游 400。
-		if tool.Raw != nil && isResponsesFunctionShape(tool.Raw) {
-			out = append(out, tool.Raw)
-			continue
-		}
-		m := map[string]any{"type": tool.Type}
-		if tool.Type == MaheshvaraToolFunction {
-			m["name"] = tool.Name
-			m["description"] = tool.Description
-			m["parameters"] = firstNonNilMap(tool.Parameters, tool.InputSchema)
-			if tool.Strict != nil {
-				m["strict"] = *tool.Strict
-			}
-		}
-		out = append(out, m)
-	}
-	return out
 }
 
 func maheshvaraResponseFormatToOpenAI(f *MaheshvaraResponseFormat) map[string]any {

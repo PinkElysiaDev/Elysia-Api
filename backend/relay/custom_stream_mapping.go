@@ -196,6 +196,11 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 	// 帧载荷只解析一次:帧匹配、响应映射与终止判定共用同一 root。
 	root, parseErr := decodeJSONUseNumber([]byte(data))
 	rootOK := parseErr == nil
+	if rootOK {
+		if err := validateLegacyToolFrame(mapValue(root)); err != nil {
+			return nil, false, err
+		}
+	}
 	if _, done := decoder.doneValues[data]; done {
 		decoder.terminal = true
 		flush := decoder.flushAllToolArgumentsDone(nil)

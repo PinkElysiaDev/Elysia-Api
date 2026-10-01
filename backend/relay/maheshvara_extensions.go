@@ -450,7 +450,7 @@ func validateMaheshvaraRequestForTarget(req *MaheshvaraRequest, format FormatTyp
 	if strings.TrimSpace(req.Model) == "" && format != FormatGemini {
 		return fmt.Errorf("cannot render %s request without model", format)
 	}
-	return nil
+	return validateToolHistory(req, format)
 }
 
 func maheshvaraToolChoiceToGemini(value any) any {

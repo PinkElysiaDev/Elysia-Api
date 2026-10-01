@@ -268,7 +268,7 @@ func OpenAIResponsesResponseToMaheshvara(resp *OpenAIResponsesResponse) (*Mahesh
 	// 输出含 function_call 即工具轮:置 StopReason=tool_calls,否则经
 	// maheshvaraStopTo* 塌缩成 stop/end_turn,依赖 finish 信号的客户端漏调度。
 	for _, item := range resp.Output {
-		if item.Type == "function_call" {
+		if item.Type == "function_call" || item.Type == "custom_tool_call" {
 			out.StopReason = "tool_calls"
 			break
 		}
@@ -311,18 +311,20 @@ func OpenAIResponsesResponseToMaheshvara(resp *OpenAIResponsesResponse) (*Mahesh
 // 整项原始对象挂到 Raw，Responses 目标渲染时原样回放，不再只剩空壳。
 func responsesItemToMaheshvara(item ResponsesOutput, rawOutput map[string]any, model string) MaheshvaraOutputItem {
 	citem := MaheshvaraOutputItem{
-		ID:        item.ID,
-		Type:      item.Type,
-		Status:    item.Status,
-		Role:      item.Role,
-		CallID:    item.CallID,
-		Name:      item.Name,
-		Arguments: item.Arguments,
-		Raw:       map[string]any{"quality": item.Quality, "size": item.Size},
+		sourceFormat: FormatResponses,
+		Input:        item.Input,
+		ID:           item.ID,
+		Type:         item.Type,
+		Status:       item.Status,
+		Role:         item.Role,
+		CallID:       item.CallID,
+		Name:         item.Name,
+		Arguments:    item.Arguments,
+		Raw:          map[string]any{"quality": item.Quality, "size": item.Size},
 	}
 	if rawOutput != nil {
 		switch item.Type {
-		case "message", "reasoning", "function_call", "custom_tool_call":
+		case "message", "reasoning", "function_call":
 		default:
 			citem.Raw = rawOutput
 		}
@@ -369,8 +371,8 @@ func responsesItemToMaheshvara(item ResponsesOutput, rawOutput map[string]any, m
 }
 
 func MaheshvaraToOpenAIChatResponse(resp *MaheshvaraResponse) (*OpenAIResponse, error) {
-	if resp == nil {
-		return nil, fmt.Errorf("nil Maheshvara response")
+	if err := validateToolResponse(resp, FormatOpenAIChat); err != nil {
+		return nil, err
 	}
 	msg := Message{Role: "assistant", Content: ""}
 	var toolCalls []OpenAIToolCall
@@ -442,8 +444,8 @@ func MaheshvaraToOpenAIChatResponse(resp *MaheshvaraResponse) (*OpenAIResponse, 
 }
 
 func MaheshvaraToAnthropicResponse(resp *MaheshvaraResponse) (*ClaudeResponse, error) {
-	if resp == nil {
-		return nil, fmt.Errorf("nil Maheshvara response")
+	if err := validateToolResponse(resp, FormatClaude); err != nil {
+		return nil, err
 	}
 	var content []ClaudeContent
 	for _, item := range resp.Output {
@@ -565,8 +567,8 @@ func claudeBlocksFromMessagePart(part MaheshvaraContentPart, model string) ([]Cl
 }
 
 func MaheshvaraToGeminiResponse(resp *MaheshvaraResponse) (*GeminiResponse, error) {
-	if resp == nil {
-		return nil, fmt.Errorf("nil Maheshvara response")
+	if err := validateToolResponse(resp, FormatGemini); err != nil {
+		return nil, err
 	}
 	var parts []GeminiPart
 	firstFunctionCallIndex := -1
@@ -704,6 +706,7 @@ func MaheshvaraToOpenAIResponsesResponse(resp *MaheshvaraResponse) (*OpenAIRespo
 	}
 	for _, item := range resp.Output {
 		ritem := ResponsesOutput{
+			Input:     item.Input,
 			ID:        item.ID,
 			Type:      item.Type,
 			Status:    item.Status,

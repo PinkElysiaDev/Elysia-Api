@@ -109,7 +109,7 @@ func OpenAIChatToMaheshvara(body []byte) (*MaheshvaraRequest, error) {
 	req.ResponseFormat = parseOpenAIResponseFormat(raw["response_format"])
 	applyOpenAIRequestExtensions(raw, req)
 
-	return req, nil
+	return req, validateToolDefinitions(req.Tools)
 }
 
 // AnthropicToMaheshvara 解析 Anthropic Messages 请求体。
@@ -168,7 +168,7 @@ func AnthropicToMaheshvara(body []byte) (*MaheshvaraRequest, error) {
 	}
 	applyClaudeRequestExtensions(raw, req)
 
-	return req, nil
+	return req, validateToolDefinitions(req.Tools)
 }
 
 // GeminiToMaheshvara 解析 Gemini generateContent 请求体。
@@ -229,7 +229,7 @@ func GeminiToMaheshvara(body []byte, urlModel string) (*MaheshvaraRequest, error
 		return nil, err
 	}
 
-	return req, nil
+	return req, validateToolDefinitions(req.Tools)
 }
 
 // OpenAIResponsesToMaheshvara 解析 Responses 请求体;同时返回
@@ -279,7 +279,7 @@ func OpenAIResponsesToMaheshvara(body []byte) (*MaheshvaraRequest, *OpenAIRespon
 	}
 
 	completeMaheshvaraToolCallIDs(maheshvara)
-	return maheshvara, &req, nil
+	return maheshvara, &req, validateToolDefinitions(maheshvara.Tools)
 }
 
 func parseOpenAIChatMessages(raw any) []MaheshvaraMessage {
@@ -783,8 +783,12 @@ func parseOpenAIChatTools(raw any) []MaheshvaraTool {
 		}
 		if stringValue(m["type"]) == "function" {
 			fn, _ := m["function"].(map[string]any)
+			if fn == nil {
+				fn = m
+			}
 			strict := boolPointer(fn["strict"])
 			tools = append(tools, MaheshvaraTool{
+				sourceFormat: FormatOpenAIChat,
 				Type:         MaheshvaraToolFunction,
 				Name:         stringValue(fn["name"]),
 				Description:  stringValue(fn["description"]),
@@ -798,10 +802,12 @@ func parseOpenAIChatTools(raw any) []MaheshvaraTool {
 			continue
 		}
 		tools = append(tools, MaheshvaraTool{
-			Type:     stringValue(m["type"]),
-			Provider: stringValue(m["provider"]),
-			Config:   m,
-			Raw:      m,
+			sourceFormat: FormatOpenAIChat,
+			Name:         stringValue(m["name"]),
+			Type:         stringValue(m["type"]),
+			Provider:     stringValue(m["provider"]),
+			Config:       m,
+			Raw:          m,
 		})
 	}
 	return tools
@@ -815,8 +821,13 @@ func parseClaudeTools(raw any) []MaheshvaraTool {
 		if m == nil {
 			continue
 		}
+		toolType := stringValue(m["type"])
+		if toolType == "" || toolType == "custom" {
+			toolType = MaheshvaraToolFunction
+		}
 		tools = append(tools, MaheshvaraTool{
-			Type:         MaheshvaraToolFunction,
+			sourceFormat: FormatClaude,
+			Type:         toolType,
 			Name:         stringValue(m["name"]),
 			Description:  stringValue(m["description"]),
 			Parameters:   mapValue(m["input_schema"]),
@@ -844,13 +855,14 @@ func parseGeminiTools(raw any) []MaheshvaraTool {
 				continue
 			}
 			tools = append(tools, MaheshvaraTool{
-				Type:        MaheshvaraToolFunction,
-				Name:        stringValue(fn["name"]),
-				Description: stringValue(fn["description"]),
-				Parameters:  mapValue(fn["parameters"]),
-				InputSchema: mapValue(fn["parameters"]),
-				Strict:      boolPointer(fn["strict"]),
-				Raw:         fn,
+				sourceFormat: FormatGemini,
+				Type:         MaheshvaraToolFunction,
+				Name:         stringValue(fn["name"]),
+				Description:  stringValue(fn["description"]),
+				Parameters:   mapValue(fn["parameters"]),
+				InputSchema:  mapValue(fn["parameters"]),
+				Strict:       boolPointer(fn["strict"]),
+				Raw:          fn,
 			})
 		}
 		if len(fns) == 0 {
@@ -861,7 +873,7 @@ func parseGeminiTools(raw any) []MaheshvaraTool {
 					break
 				}
 			}
-			tools = append(tools, MaheshvaraTool{Type: toolType, Config: m, Raw: m})
+			tools = append(tools, MaheshvaraTool{sourceFormat: FormatGemini, Type: toolType, Config: m, Raw: m})
 		}
 	}
 	return tools
@@ -871,7 +883,7 @@ func parseResponsesTools(raw []map[string]any) []MaheshvaraTool {
 	tools := make([]MaheshvaraTool, 0, len(raw))
 	for _, tool := range raw {
 		t := stringValue(tool["type"])
-		ct := MaheshvaraTool{Type: t, Raw: tool, CacheControl: cacheControlObject(tool["cache_control"])}
+		ct := MaheshvaraTool{sourceFormat: FormatResponses, Type: t, Name: stringValue(tool["name"]), Raw: tool, CacheControl: cacheControlObject(tool["cache_control"])}
 		if t == MaheshvaraToolFunction {
 			ct.Name = stringValue(tool["name"])
 			ct.Description = stringValue(tool["description"])
@@ -1183,16 +1195,4 @@ func openAIReasoningDetailsToParts(raw any) []MaheshvaraContentPart {
 		parts = append(parts, part)
 	}
 	return parts
-}
-
-// isResponsesFunctionShape 判断工具 Raw 是否已是 Responses 的扁平函数形状
-// ({type:"function", name, ...} 且无 Chat 的嵌套 function 键)。
-func isResponsesFunctionShape(raw map[string]any) bool {
-	if stringValue(raw["type"]) != MaheshvaraToolFunction {
-		return false
-	}
-	if _, nested := raw["function"]; nested {
-		return false
-	}
-	return strings.TrimSpace(stringValue(raw["name"])) != ""
 }
