@@ -7,13 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/elysia-api/backend/agent"
+	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 )
@@ -84,10 +84,7 @@ func (a *agentStreamAccumulator) toolState(key string) *agentToolCallState {
 }
 
 func (a *agentStreamAccumulator) keyOf(event relay.MaheshvaraStreamEvent) string {
-	if event.ToolCallID != "" {
-		return "id:" + event.ToolCallID
-	}
-	return fmt.Sprintf("idx:%d", event.ToolCallIndex)
+	return fmt.Sprintf("choice:%d/tool:%d", event.ChoiceIndex, event.ToolCallIndex)
 }
 
 func (a *agentStreamAccumulator) toolCalls() []relay.MaheshvaraToolCall {
@@ -101,9 +98,6 @@ func (a *agentStreamAccumulator) toolCalls() []relay.MaheshvaraToolCall {
 			continue
 		}
 		arguments := state.arguments.String()
-		if !json.Valid([]byte(arguments)) {
-			arguments = "{}"
-		}
 		calls = append(calls, relay.MaheshvaraToolCall{
 			ID: state.id, Type: "function", Name: state.name,
 			Arguments: json.RawMessage(arguments),
@@ -424,44 +418,22 @@ func drainStandardStream(ctx context.Context, plan *agentUpstreamPlan, body io.R
 	reader := relay.NewSSEEventReader(body)
 	defer reader.Close()
 	decoder := relay.NewMaheshvaraStreamDecoder(agentStreamDecoderFormat(plan.format))
-	terminalSeen := false
-	for {
-		event, ok, readErr := reader.Read(ctx, relay.PostTerminalDrainIdle(terminalSeen))
-		if readErr != nil {
-			if relay.BenignPostTerminalErr(terminalSeen, readErr) {
-				return nil
-			}
-			return readErr
-		}
-		if !ok {
-			if terminalSeen {
-				return nil
-			}
-			return relay.ErrNoTerminalEvent
-		}
-		events, decodeErr := decoder.Decode(event)
-		if decodeErr != nil {
-			log.Printf("[agent-stream] decode error: %v (data=%.200s)", decodeErr, event.Data)
-			continue // 单事件解码失败容忍（与转发路径一致）
-		}
-		for _, ev := range events {
-			if terminalSeen {
-				switch ev.Type {
-				case relay.MaheshvaraEventUsageDelta, relay.MaheshvaraEventResponseFailed:
-					acc.applyEvent(ev, cb)
-				}
+	err := decoder.ForEachBatch(ctx, reader, func(_ relay.SSEEvent, events []relay.MaheshvaraStreamEvent, wasTerminal bool) error {
+		for _, event := range events {
+			if wasTerminal && event.Type == relay.MaheshvaraEventResponseCompleted {
 				continue
 			}
-			acc.applyEvent(ev, cb)
+			acc.applyEvent(event, cb)
 		}
 		if acc.failure != "" {
 			return fmt.Errorf("%s", acc.failure)
 		}
-		terminalSeen = decoder.TerminalReceived()
-		if terminalSeen && (agentStreamDecoderFormat(plan.format) != relay.FormatOpenAIChat || strings.TrimSpace(event.Data) == "[DONE]") {
-			return nil
-		}
+		return nil
+	})
+	if err == nil && !decoder.TerminalReceived() {
+		return relay.ErrNoTerminalEvent
 	}
+	return err
 }
 
 // drainCustomProtocolStream 用注册协议的流解码器排水 SSE（与自定义协议转发
@@ -502,7 +474,22 @@ func (c *agentStreamCaller) drainCustomProtocolStream(ctx context.Context, plan 
 // applyEvent 归并单个流事件（文本/思维链/工具/usage/错误）到聚合器并转发
 // 回调；终态语义由调用方的 decoder/terminalSeen 判定，聚合器不中断。
 func (a *agentStreamAccumulator) applyEvent(event relay.MaheshvaraStreamEvent, cb agent.StreamCallbacks) {
+	defer func() {
+		bytes := a.text.Len() + a.reasoning.Len()
+		for _, tool := range a.tools {
+			bytes += tool.arguments.Len()
+		}
+		limits := protocol.DefaultLimits()
+		if bytes > limits.BufferBytes || len(a.tools) > limits.StateItems {
+			a.failure = "limit_exceeded: Agent response exceeds the configured stream buffer or item limit"
+		}
+	}()
 	switch event.Type {
+	case relay.MaheshvaraEventOutputItemAdded:
+		if event.OutputItem != nil && event.OutputItem.Type == relay.MaheshvaraOutputFunctionCall {
+			state := a.toolState(a.keyOf(event))
+			state.updateIdentity(event)
+		}
 	case relay.MaheshvaraEventTextDelta:
 		if event.Delta != "" {
 			a.text.WriteString(event.Delta)
@@ -531,13 +518,13 @@ func (a *agentStreamAccumulator) applyEvent(event relay.MaheshvaraStreamEvent, c
 		state.arguments.WriteString(event.ToolArgumentsDone)
 	case relay.MaheshvaraEventUsageDelta:
 		if event.Usage != nil {
-			a.usage = event.Usage
+			a.usage = relay.MergeUsageSnapshots(a.usage, event.Usage)
 		}
 	case relay.MaheshvaraEventResponseCompleted:
 		if event.Usage != nil {
-			a.usage = event.Usage
+			a.usage = relay.MergeUsageSnapshots(a.usage, event.Usage)
 		} else if event.Response != nil && event.Response.Usage != nil {
-			a.usage = event.Response.Usage
+			a.usage = relay.MergeUsageSnapshots(a.usage, event.Response.Usage)
 		}
 	case relay.MaheshvaraEventResponseFailed:
 		message := "上游流式响应失败"

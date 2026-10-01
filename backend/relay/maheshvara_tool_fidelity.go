@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"strings"
@@ -105,6 +106,9 @@ func validateToolResponse(resp *MaheshvaraResponse, target FormatType) error {
 		return fmt.Errorf("nil Maheshvara response")
 	}
 	for index, item := range resp.Output {
+		if item.Type == MaheshvaraOutputFunctionCall && !json.Valid(item.Arguments) {
+			return fmt.Errorf("invalid_tool_input: output[%d].arguments is missing or invalid JSON", index)
+		}
 		if err := validateToolOutput(item, target); err != nil {
 			return fmt.Errorf("output[%d]: %w", index, err)
 		}

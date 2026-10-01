@@ -492,9 +492,8 @@ func TestAgentCallerResponsesNoStreamOptions(t *testing.T) {
 	}
 }
 
-// 回归（W1-6）：custom 协议终态后的排水窗内，重复文本帧不得再计入结果
-// （旧实现对 terminalBeforeBatch 视而不见，会把"协议协议"这类重复发给用户）。
-func TestAgentCallerCustomProtocolPostTerminalTextIgnored(t *testing.T) {
+// Late content cannot change a completed result or be silently discarded.
+func TestAgentCallerCustomProtocolPostTerminalTextRejected(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	s.seedPresetProtocols()
 	s.syncCustomProtocols()
@@ -509,12 +508,9 @@ func TestAgentCallerCustomProtocolPostTerminalTextIgnored(t *testing.T) {
 	})
 	seedCallerModel(t, s, upstream.URL+"/v1", "custom:chat-completions-api")
 
-	result, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
-	if err != nil {
-		t.Fatalf("Call: %v", err)
-	}
-	if result.Text != "协议" {
-		t.Fatalf("post-terminal text leaked into result: %q", result.Text)
+	_, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
+	if err == nil || !strings.Contains(err.Error(), "content arrived after the response terminal") {
+		t.Fatalf("late content must fail the stream: %v", err)
 	}
 }
 

@@ -82,8 +82,7 @@ func (s *Server) handleCustomStreamRequest(
 	renderer := relay.NewMaheshvaraStreamRenderer(inputFormat, writer, selectedModel.Name)
 	reader := relay.NewSSEEventReader(response.Body)
 	defer reader.Close()
-	var terminalEvents []relay.MaheshvaraStreamEvent
-	streamErr := decoder.ForEachBatch(c.Request.Context(), reader, func(_ relay.SSEEvent, events []relay.MaheshvaraStreamEvent, terminalBeforeBatch bool) error {
+	streamErr := decoder.ForEachBatch(c.Request.Context(), reader, func(_ relay.SSEEvent, events []relay.MaheshvaraStreamEvent, _ bool) error {
 		for index := range events {
 			event := events[index]
 			if event.Usage != nil {
@@ -95,21 +94,7 @@ func (s *Server) handleCustomStreamRequest(
 			if event.Type == relay.MaheshvaraEventResponseFailed {
 				return fmt.Errorf("custom protocol stream failed")
 			}
-			if terminalBeforeBatch {
-				// 终态后尾帧：usage 结算入记录并渲染（客户端最终用量以此
-				// 为准），其余增量/重复完成帧视为完成后的杂帧丢弃。
-				if event.Usage != nil {
-					if renderErr := renderer.Write(&event); renderErr != nil {
-						return renderErr
-					}
-				}
-				continue
-			}
-			if event.Type == relay.MaheshvaraEventResponseCompleted {
-				terminalEvents = append(terminalEvents, event)
-				continue
-			}
-			if renderErr := renderer.Write(&event); renderErr != nil {
+			if renderErr := renderer.Consume(&event); renderErr != nil {
 				return renderErr
 			}
 		}
@@ -124,14 +109,6 @@ func (s *Server) handleCustomStreamRequest(
 			streamErr = fmt.Errorf("custom protocol stream ended before a configured terminal value or finish reason")
 		case !decoder.SawOutput() && !decoder.SawFinishReason():
 			streamErr = fmt.Errorf("custom protocol stream completed without representable output: no text, reasoning, or tool call was mapped from any stream event — check the stream mapping paths against upstream frames (the designer test tab shows raw events vs decoded)")
-		}
-	}
-	if streamErr == nil {
-		for index := range terminalEvents {
-			if renderErr := renderer.Write(&terminalEvents[index]); renderErr != nil {
-				streamErr = renderErr
-				break
-			}
 		}
 	}
 	if streamErr == nil {

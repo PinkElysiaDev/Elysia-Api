@@ -101,6 +101,7 @@ func (c ClaudeContent) MarshalJSON() ([]byte, error) {
 }
 
 type ClaudeUsage struct {
+	semantic                 *MaheshvaraUsage
 	InputTokens              int                       `json:"input_tokens"`
 	OutputTokens             int                       `json:"output_tokens"`
 	CacheCreationInputTokens int                       `json:"cache_creation_input_tokens,omitempty"`

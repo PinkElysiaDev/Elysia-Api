@@ -114,6 +114,7 @@ func (reader *SSEEventReader) scan(source io.Reader) {
 	var eventID string
 	var retry time.Duration
 	var dataLines []string
+	frameBytes := 0
 	hasFields := false
 
 	emit := func() bool {
@@ -131,6 +132,7 @@ func (reader *SSEEventReader) scan(source io.Reader) {
 		retry = 0
 		dataLines = nil
 		hasFields = false
+		frameBytes = 0
 		select {
 		case <-reader.done:
 			return false
@@ -149,6 +151,14 @@ func (reader *SSEEventReader) scan(source io.Reader) {
 		}
 		if strings.HasPrefix(line, ":") {
 			continue
+		}
+		frameBytes += len(line) + 1
+		if err := checkStreamSize(0, frameBytes); err != nil {
+			select {
+			case <-reader.done:
+			case reader.results <- sseReadResult{err: err}:
+			}
+			return
 		}
 
 		field, value, found := strings.Cut(line, ":")

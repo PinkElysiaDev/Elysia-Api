@@ -346,8 +346,13 @@ type MaheshvaraReasoningSummary struct {
 }
 
 type MaheshvaraUsage struct {
-	rawInputTokens      *int
-	cacheInputExclusive bool
+	present                  map[string]bool
+	rawInputTokens           *int
+	cacheInputExclusive      bool
+	cacheCreationInferred    bool
+	rawOutputTokens          *int
+	toolInputExclusive       bool
+	reasoningOutputExclusive bool
 	// Internal provenance: a total inferred from a partial SSE frame must be
 	// recomputed after merging with the preceding input/output counters.
 	TotalTokensInferred bool `json:"-"`
@@ -590,6 +595,7 @@ type ResponsesReasoningSummaryPart struct {
 }
 
 type ResponsesUsage struct {
+	semantic     *MaheshvaraUsage
 	InputTokens  int `json:"input_tokens"`
 	OutputTokens int `json:"output_tokens"`
 	TotalTokens  int `json:"total_tokens"`
@@ -617,33 +623,12 @@ type ResponsesStreamResponse struct {
 	Part         any                      `json:"part,omitempty"`
 }
 
-// applyToolArgumentDelta 把 done/delta 事件应用到工具参数累积器：
-// done 携带终态全量时按前缀差分只补后缀、分叉则重置重写；返回本次增量。
-// 四个流渲染器（OpenAI/Anthropic/Gemini/Responses）共用同一语义。
+// applyToolArgumentDelta projects arguments already validated by StreamState.
 func applyToolArgumentDelta(state *strings.Builder, event MaheshvaraStreamEvent) string {
 	if event.ToolArgumentsDone == "" {
 		return event.ToolArgumentsDelta
 	}
-	delta, replaced := deltaVsAccumulated(state.String(), event.ToolArgumentsDone)
-	if replaced {
-		// 终态值与累计增量分叉：丢弃脏前缀改写完整值（不 Reset 会在下一次
-		// 终态事件时双份拼接出非法 JSON）。
-		state.Reset()
-	}
-	return delta
-}
-
-// deltaVsAccumulated 计算终态完整值相对已累计增量的差分：相等则无输出、
-// 是前缀则只补后缀、否则整体替换（调用方负责重置累计并输出 delta）。
-func deltaVsAccumulated(accumulated, complete string) (delta string, replaced bool) {
-	switch {
-	case complete == accumulated:
-		return "", false
-	case strings.HasPrefix(complete, accumulated):
-		return strings.TrimPrefix(complete, accumulated), false
-	default:
-		return complete, true
-	}
+	return strings.TrimPrefix(event.ToolArgumentsDone, state.String())
 }
 
 // mergeRawOverTyped 把类型化值序列化后与原始对象合并：原始对象为底、

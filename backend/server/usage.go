@@ -67,6 +67,7 @@ type retryEvent struct {
 }
 
 type usageRecord struct {
+	observedUsage       *relay.MaheshvaraUsage
 	RequestID           string    `json:"requestId"`
 	StartedAt           time.Time `json:"startedAt"`
 	EndedAt             time.Time `json:"endedAt"`
@@ -128,8 +129,6 @@ type usageBodyOptions struct {
 	externalize bool
 }
 
-// hasNonNullField 判断 map 中任一键存在且值非 nil(缓存计数字段「上游
-// 显式返回 0」与「未返回」的区分依据)。
 // setRecordTargetRoute 写 usage 记录的目标线制与端点:custom 平台记
 // custom:<id> 与协议声明的 path 模板;内置平台按调用方给定的线制
 // (responses 入口可能是 endpoint capability 覆盖后的值)归到端点映射。
@@ -160,15 +159,6 @@ func (s *Server) commitUsageWhenDone(result *relayOutcome, record *usageRecord, 
 		record.DurationMs = time.Since(startTime).Milliseconds()
 		s.recordUsage(record)
 	}
-}
-
-func hasNonNullField(raw map[string]interface{}, keys ...string) bool {
-	for _, key := range keys {
-		if value, ok := raw[key]; ok && value != nil {
-			return true
-		}
-	}
-	return false
 }
 
 func shortTokenHash(token string) string {
@@ -317,11 +307,12 @@ func intPtr(v int) *int {
 }
 
 type providerUsageResult struct {
-	Usage    usageTokenUsage
-	Detail   usageDetail
-	Builtin  builtinToolUsage
-	Source   string
-	HasUsage bool
+	Canonical *relay.MaheshvaraUsage
+	Usage     usageTokenUsage
+	Detail    usageDetail
+	Builtin   builtinToolUsage
+	Source    string
+	HasUsage  bool
 }
 
 func extractProviderUsageFromBody(platform relay.Platform, format relay.FormatType, body []byte) providerUsageResult {
@@ -383,6 +374,11 @@ func applyProviderUsageToRecord(record *usageRecord, result providerUsageResult)
 	if !result.HasUsage {
 		return
 	}
+	if result.Canonical != nil {
+		record.observedUsage = relay.MergeUsageSnapshots(record.observedUsage, result.Canonical)
+		result.Usage = usageTokenUsageFromMaheshvara(record.observedUsage)
+		result.Detail = usageDetailFromMaheshvara(record.observedUsage)
+	}
 	record.Usage = mergeUsage(record.Usage, result.Usage)
 	record.UsageDetail = mergeUsageDetail(record.UsageDetail, result.Detail)
 	record.BuiltinToolUsage = mergeBuiltinToolUsage(record.BuiltinToolUsage, result.Builtin)
@@ -424,6 +420,7 @@ func usageResultFromOpenAICompatiblePayload(payload map[string]interface{}, sour
 		result.Usage.CacheHitTokens = intPtr(cacheHitTokens)
 		result.Detail.CachedInputTokens = intPtr(cacheHitTokens)
 		result.HasUsage = true
+		result.Canonical = relay.MergeUsageSnapshots(result.Canonical, relay.DecodeUsageObject(map[string]any{"cached_tokens": cacheHitTokens}, source))
 	}
 	if usageHasAnyTokens(result.Usage) {
 		result.HasUsage = true
@@ -432,25 +429,16 @@ func usageResultFromOpenAICompatiblePayload(payload map[string]interface{}, sour
 }
 
 func usageResultFromOpenAIUsage(raw map[string]interface{}, source string) providerUsageResult {
-	usage := usageFromOpenAIUsage(raw)
-	detail := detailFromTokenUsage(usage)
-	// completion/output 两个键是同一明细的两种命名（Responses 与 chat 兼容上游各用其一）。
-	for _, key := range []string{"completion_tokens_details", "output_tokens_details"} {
-		if details, ok := raw[key].(map[string]interface{}); ok {
-			setDetailInt(&detail.ReasoningTokens, details, "reasoning_tokens")
-			setDetailInt(&detail.TextOutputTokens, details, "text_tokens")
-			setDetailInt(&detail.AudioOutputTokens, details, "audio_tokens")
-			setDetailInt(&detail.ImageOutputTokens, details, "image_tokens")
-		}
+	return usageResultFromCanonical(relay.DecodeUsageObject(raw, source))
+}
+
+func usageResultFromCanonical(canonical *relay.MaheshvaraUsage) providerUsageResult {
+	usage := usageTokenUsageFromMaheshvara(canonical)
+	if canonical.TotalTokensInferred && canonical.HasCounter("input") && canonical.HasCounter("output") {
+		usage.TotalTokens = intPtr(canonical.TotalTokens)
 	}
-	for _, key := range []string{"prompt_tokens_details", "input_tokens_details"} {
-		if details, ok := raw[key].(map[string]interface{}); ok {
-			setDetailInt(&detail.TextInputTokens, details, "text_tokens")
-			setDetailInt(&detail.AudioInputTokens, details, "audio_tokens")
-			setDetailInt(&detail.ImageInputTokens, details, "image_tokens")
-		}
-	}
-	return providerUsageResult{Usage: usage, Detail: detail, Source: source, HasUsage: usageHasAnyTokens(usage)}
+	builtin := builtinToolUsageFromMaheshvara(canonical)
+	return providerUsageResult{Canonical: canonical, Usage: usage, Detail: usageDetailFromMaheshvara(canonical), Builtin: builtin, Source: canonical.Source, HasUsage: usageHasAnyTokens(usage) || canonical.HasCounter("cache_creation") || canonical.HasCounter("reasoning") || canonical.HasCounter("tool_use") || builtin != (builtinToolUsage{})}
 }
 
 func usageResultFromResponsesPayload(payload map[string]interface{}, source string) providerUsageResult {
@@ -494,82 +482,15 @@ func usageFromResponsesStreamPayload(payload map[string]interface{}, source stri
 }
 
 func usageResultFromGeminiUsageMetadata(raw map[string]interface{}, source string) providerUsageResult {
-	usage := usageFromGeminiUsageMetadata(raw)
-	detail := detailFromTokenUsage(usage)
-	if rawValue, ok := raw["thoughtsTokenCount"]; ok && rawValue != nil {
-		detail.ReasoningTokens = intPtr(int(numberFromUsageMap(raw, "thoughtsTokenCount")))
-	}
-	addGeminiTokenDetails(raw, "promptTokensDetails", &detail.TextInputTokens, &detail.ImageInputTokens, &detail.AudioInputTokens)
-	addGeminiTokenDetails(raw, "toolUsePromptTokensDetails", &detail.TextInputTokens, &detail.ImageInputTokens, &detail.AudioInputTokens)
-	addGeminiTokenDetails(raw, "candidatesTokensDetails", &detail.TextOutputTokens, &detail.ImageOutputTokens, &detail.AudioOutputTokens)
-	return providerUsageResult{Usage: usage, Detail: detail, Source: source, HasUsage: usageHasAnyTokens(usage)}
+	return usageResultFromCanonical(relay.DecodeUsageObject(raw, source))
 }
 
 func usageResultFromClaudeUsage(raw map[string]interface{}, source string) providerUsageResult {
-	usage := usageFromClaudeUsage(raw)
-	detail := detailFromTokenUsage(usage)
-	cacheCreation := int(numberFromUsageMap(raw, "cache_creation_input_tokens"))
-	if creation, ok := raw["cache_creation"].(map[string]interface{}); ok && cacheCreation == 0 {
-		cacheCreation = int(numberFromUsageMap(creation, "ephemeral_5m_input_tokens")) + int(numberFromUsageMap(creation, "ephemeral_1h_input_tokens"))
-	}
-	if cacheCreation > 0 {
-		detail.CacheCreationInputTokens = intPtr(cacheCreation)
-	}
-	builtin := builtinToolUsage{}
-	if tool, ok := raw["server_tool_use"].(map[string]interface{}); ok {
-		builtin.WebSearchCalls = int(numberFromUsageMap(tool, "web_search_requests"))
-	}
-	return providerUsageResult{Usage: usage, Detail: detail, Builtin: builtin, Source: source, HasUsage: usageHasAnyTokens(usage) || builtin != (builtinToolUsage{})}
+	return usageResultFromCanonical(relay.DecodeUsageObject(raw, source))
 }
 
 func usageHasAnyTokens(usage usageTokenUsage) bool {
 	return usage.InputTokens != nil || usage.OutputTokens != nil || usage.TotalTokens != nil || usage.CacheHitTokens != nil
-}
-
-func setDetailInt(target **int, raw map[string]interface{}, key string) {
-	if rawValue, ok := raw[key]; ok && rawValue != nil {
-		*target = intPtr(int(numberFromUsageMap(raw, key)))
-	}
-}
-
-func addGeminiTokenDetails(raw map[string]interface{}, key string, textTokens **int, imageTokens **int, audioTokens **int) {
-	details, ok := raw[key].([]interface{})
-	if !ok {
-		return
-	}
-	textTotal := derefInt(*textTokens)
-	imageTotal := derefInt(*imageTokens)
-	audioTotal := derefInt(*audioTokens)
-	seenText := *textTokens != nil
-	seenImage := *imageTokens != nil
-	seenAudio := *audioTokens != nil
-	for _, item := range details {
-		detail, ok := item.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		count := int(numberFromUsageMap(detail, "tokenCount"))
-		switch strings.ToUpper(stringValueFromMap(detail, "modality")) {
-		case "TEXT":
-			textTotal += count
-			seenText = true
-		case "IMAGE":
-			imageTotal += count
-			seenImage = true
-		case "AUDIO":
-			audioTotal += count
-			seenAudio = true
-		}
-	}
-	if seenText {
-		*textTokens = intPtr(textTotal)
-	}
-	if seenImage {
-		*imageTokens = intPtr(imageTotal)
-	}
-	if seenAudio {
-		*audioTokens = intPtr(audioTotal)
-	}
 }
 
 func builtinToolUsageFromResponsesOutput(raw interface{}) builtinToolUsage {
@@ -960,119 +881,6 @@ func detailFromTokenUsage(usage usageTokenUsage) usageDetail {
 		detail.CachedInputTokens = intPtr(derefInt(usage.CacheHitTokens))
 	}
 	return detail
-}
-
-func usageFromOpenAIUsage(raw map[string]interface{}) usageTokenUsage {
-	usage := usageTokenUsage{}
-	// 键别名序列依次取第一个出现的数值字段。
-	usageInt := func(target **int, keys ...string) {
-		for _, key := range keys {
-			if raw[key] != nil {
-				*target = intPtr(int(numberFromUsageMap(raw, key)))
-				return
-			}
-		}
-	}
-	usageInt(&usage.InputTokens, "prompt_tokens", "input_tokens")
-	usageInt(&usage.OutputTokens, "completion_tokens", "output_tokens")
-	usageInt(&usage.TotalTokens, "total_tokens")
-	cacheHitTokens := maxInt(int(numberFromUsageMap(raw, "cached_tokens")), int(numberFromUsageMap(raw, "prompt_cache_hit_tokens")))
-	cacheFieldSeen := hasNonNullField(raw, "cached_tokens", "prompt_cache_hit_tokens")
-	for _, detailsKey := range []string{"prompt_tokens_details", "input_tokens_details"} {
-		details, ok := raw[detailsKey].(map[string]interface{})
-		if !ok {
-			continue
-		}
-		cacheHitTokens = maxInt(cacheHitTokens, int(numberFromUsageMap(details, "cached_tokens")), int(numberFromUsageMap(details, "cache_read_tokens")))
-		cacheFieldSeen = cacheFieldSeen || hasNonNullField(details, "cached_tokens", "cache_read_tokens")
-	}
-	if cacheFieldSeen || cacheHitTokens > 0 {
-		usage.CacheHitTokens = intPtr(cacheHitTokens)
-	}
-	if usage.TotalTokens == nil && usage.InputTokens != nil && usage.OutputTokens != nil {
-		usage.TotalTokens = intPtr(derefInt(usage.InputTokens) + derefInt(usage.OutputTokens))
-	}
-	return usage
-}
-
-func usageFromGeminiUsageMetadata(raw map[string]interface{}) usageTokenUsage {
-	usage := usageTokenUsage{}
-	inputTokens := 0
-	inputSeen := false
-	if rawValue, ok := raw["promptTokenCount"]; ok && rawValue != nil {
-		inputTokens += int(numberFromUsageMap(raw, "promptTokenCount"))
-		inputSeen = true
-	}
-	if rawValue, ok := raw["toolUsePromptTokenCount"]; ok && rawValue != nil {
-		inputTokens += int(numberFromUsageMap(raw, "toolUsePromptTokenCount"))
-		inputSeen = true
-	}
-	if inputSeen {
-		usage.InputTokens = intPtr(inputTokens)
-	}
-
-	outputTokens := 0
-	outputSeen := false
-	if rawValue, ok := raw["candidatesTokenCount"]; ok && rawValue != nil {
-		outputTokens += int(numberFromUsageMap(raw, "candidatesTokenCount"))
-		outputSeen = true
-	}
-	if rawValue, ok := raw["thoughtsTokenCount"]; ok && rawValue != nil {
-		outputTokens += int(numberFromUsageMap(raw, "thoughtsTokenCount"))
-		outputSeen = true
-	}
-	if outputSeen {
-		usage.OutputTokens = intPtr(outputTokens)
-	}
-
-	if rawValue, ok := raw["totalTokenCount"]; ok && rawValue != nil {
-		usage.TotalTokens = intPtr(int(numberFromUsageMap(raw, "totalTokenCount")))
-	}
-	if rawValue, ok := raw["cachedContentTokenCount"]; ok && rawValue != nil {
-		usage.CacheHitTokens = intPtr(int(numberFromUsageMap(raw, "cachedContentTokenCount")))
-	}
-	if usage.TotalTokens == nil && usage.InputTokens != nil && usage.OutputTokens != nil {
-		usage.TotalTokens = intPtr(derefInt(usage.InputTokens) + derefInt(usage.OutputTokens))
-	}
-	return usage
-}
-
-func usageFromClaudeUsage(raw map[string]interface{}) usageTokenUsage {
-	usage := usageTokenUsage{}
-	inputTokens := 0
-	inputSeen := false
-	if rawValue, ok := raw["input_tokens"]; ok && rawValue != nil {
-		inputTokens += int(numberFromUsageMap(raw, "input_tokens"))
-		inputSeen = true
-	}
-	cacheReadTokens := 0
-	if rawValue, ok := raw["cache_read_input_tokens"]; ok && rawValue != nil {
-		cacheReadTokens = int(numberFromUsageMap(raw, "cache_read_input_tokens"))
-		usage.CacheHitTokens = intPtr(cacheReadTokens)
-		inputTokens += cacheReadTokens
-		inputSeen = true
-	}
-	cacheCreationTokens := 0
-	if rawValue, ok := raw["cache_creation_input_tokens"]; ok && rawValue != nil {
-		cacheCreationTokens = int(numberFromUsageMap(raw, "cache_creation_input_tokens"))
-	}
-	if creation, ok := raw["cache_creation"].(map[string]interface{}); ok && cacheCreationTokens == 0 {
-		cacheCreationTokens = int(numberFromUsageMap(creation, "ephemeral_5m_input_tokens")) + int(numberFromUsageMap(creation, "ephemeral_1h_input_tokens"))
-	}
-	if cacheCreationTokens > 0 {
-		inputTokens += cacheCreationTokens
-		inputSeen = true
-	}
-	if inputSeen {
-		usage.InputTokens = intPtr(inputTokens)
-	}
-	if rawValue, ok := raw["output_tokens"]; ok && rawValue != nil {
-		usage.OutputTokens = intPtr(int(numberFromUsageMap(raw, "output_tokens")))
-	}
-	if usage.InputTokens != nil && usage.OutputTokens != nil {
-		usage.TotalTokens = intPtr(derefInt(usage.InputTokens) + derefInt(usage.OutputTokens))
-	}
-	return usage
 }
 
 func applyLocalResponseEstimate(record *usageRecord, responseText string, cfg config.UsageConfig) {

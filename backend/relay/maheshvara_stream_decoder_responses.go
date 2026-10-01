@@ -145,7 +145,12 @@ func responsesMapToMaheshvara(raw map[string]any) (*MaheshvaraResponse, error) {
 	if err := json.Unmarshal(encoded, &response); err != nil {
 		return nil, fmt.Errorf("decode Responses stream response: %w", err)
 	}
-	return OpenAIResponsesResponseToMaheshvara(&response)
+	converted, err := OpenAIResponsesResponseToMaheshvara(&response)
+	if err != nil {
+		return nil, err
+	}
+	converted.Usage = maheshvaraUsageFromRawMap(mapValue(raw["usage"]))
+	return converted, nil
 }
 
 func responsesOutputMapToMaheshvara(raw map[string]any) (*MaheshvaraOutputItem, error) {

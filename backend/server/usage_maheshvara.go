@@ -10,7 +10,7 @@ import (
 
 // totalOrSum 上游未回报 total 时按 input+output 合成;全 0 保持 0(不写指针)。
 func totalOrSum(u *relay.MaheshvaraUsage) int {
-	if u.TotalTokens > 0 {
+	if u.HasCounter("total") {
 		return u.TotalTokens
 	}
 	return u.InputTokens + u.OutputTokens
@@ -28,16 +28,16 @@ func usageTokenUsageFromMaheshvara(u *relay.MaheshvaraUsage) usageTokenUsage {
 		usage.Estimated = true
 		return usage
 	}
-	if u.InputTokens > 0 {
+	if u.HasCounter("input") {
 		usage.InputTokens = intPtr(u.InputTokens)
 	}
-	if u.OutputTokens > 0 {
+	if u.HasCounter("output") {
 		usage.OutputTokens = intPtr(u.OutputTokens)
 	}
-	if total := totalOrSum(u); total > 0 && !u.TotalTokensInferred {
+	if total := totalOrSum(u); (u.HasCounter("total") || total > 0) && !u.TotalTokensInferred {
 		usage.TotalTokens = intPtr(total)
 	}
-	if u.CachedInputTokens > 0 {
+	if u.HasCounter("cached") {
 		usage.CacheHitTokens = intPtr(u.CachedInputTokens)
 	}
 	if u.EstimatedTotalTokens > 0 {
@@ -55,43 +55,43 @@ func usageDetailFromMaheshvara(u *relay.MaheshvaraUsage) usageDetail {
 	if u.Estimated && (u.Source == "" || strings.Contains(u.Source, "estimate")) {
 		return detail
 	}
-	if u.InputTokens > 0 {
+	if u.HasCounter("input") {
 		detail.InputTokens = intPtr(u.InputTokens)
 	}
-	if u.OutputTokens > 0 {
+	if u.HasCounter("output") {
 		detail.OutputTokens = intPtr(u.OutputTokens)
 	}
-	if total := totalOrSum(u); total > 0 {
+	if total := totalOrSum(u); u.HasCounter("total") || total > 0 {
 		detail.TotalTokens = intPtr(total)
 	}
-	if u.CachedInputTokens > 0 {
+	if u.HasCounter("cached") {
 		detail.CachedInputTokens = intPtr(u.CachedInputTokens)
 	}
-	if u.CacheCreationInputTokens > 0 {
+	if u.HasCounter("cache_creation") {
 		detail.CacheCreationInputTokens = intPtr(u.CacheCreationInputTokens)
 	}
-	if u.ReasoningTokens > 0 {
+	if u.HasCounter("reasoning") {
 		detail.ReasoningTokens = intPtr(u.ReasoningTokens)
 	}
-	if u.TextInputTokens > 0 {
+	if u.HasCounter("text_input") {
 		detail.TextInputTokens = intPtr(u.TextInputTokens)
 	}
-	if u.TextOutputTokens > 0 {
+	if u.HasCounter("text_output") {
 		detail.TextOutputTokens = intPtr(u.TextOutputTokens)
 	}
-	if u.ImageInputTokens > 0 {
+	if u.HasCounter("image_input") {
 		detail.ImageInputTokens = intPtr(u.ImageInputTokens)
 	}
-	if u.ImageOutputTokens > 0 {
+	if u.HasCounter("image_output") {
 		detail.ImageOutputTokens = intPtr(u.ImageOutputTokens)
 	}
-	if u.AudioInputTokens > 0 {
+	if u.HasCounter("audio_input") {
 		detail.AudioInputTokens = intPtr(u.AudioInputTokens)
 	}
-	if u.AudioOutputTokens > 0 {
+	if u.HasCounter("audio_output") {
 		detail.AudioOutputTokens = intPtr(u.AudioOutputTokens)
 	}
-	if u.ToolUseTokens > 0 {
+	if u.HasCounter("tool_use") {
 		detail.ToolUseTokens = intPtr(u.ToolUseTokens)
 	}
 	return detail

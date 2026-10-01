@@ -83,6 +83,20 @@ func (adapter builtinWireAdapter) DecodeResponse(body []byte) (*MaheshvaraRespon
 	if err != nil {
 		return nil, err
 	}
+	if raw, exists := fields[wireUsagePath(adapter.format)]; exists && !raw.IsNull() {
+		var usageObject map[string]any
+		if err := raw.Decode(&usageObject); err != nil {
+			return nil, err
+		}
+		parsed := customUsageAtWithAliases(map[string]any{"usage": usageObject}, "usage", nil)
+		// Hosted calls counted from output items are independent of usage JSON.
+		if response.Usage != nil {
+			parsed.WebSearchCallCount = response.Usage.WebSearchCallCount
+			parsed.FileSearchCallCount = response.Usage.FileSearchCallCount
+			parsed.ImageGenerationCallCount = response.Usage.ImageGenerationCallCount
+		}
+		response.Usage = parsed
+	}
 	if err := captureWireResponse(response, body, adapter); err != nil {
 		return nil, err
 	}

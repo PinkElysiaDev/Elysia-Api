@@ -140,15 +140,12 @@ func (renderer *MaheshvaraStreamRenderer) emitGeminiTool(state *maheshvaraGemini
 		return fmt.Errorf("cannot render Gemini functionCall without a function name")
 	}
 	argumentsText := strings.TrimSpace(state.arguments.String())
-	if argumentsText == "" {
-		argumentsText = "{}"
-	}
 	var arguments any
 	if err := json.Unmarshal([]byte(argumentsText), &arguments); err != nil {
 		return fmt.Errorf("cannot render Gemini functionCall %q: invalid JSON arguments: %w", state.name, err)
 	}
 	if _, ok := arguments.(map[string]any); !ok {
-		arguments = map[string]any{"value": arguments}
+		return fmt.Errorf("cannot render Gemini functionCall %q: arguments must be a JSON object", state.name)
 	}
 	functionCall := map[string]any{"name": state.name, "args": arguments}
 	if state.id != "" {

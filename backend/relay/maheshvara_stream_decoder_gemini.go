@@ -96,12 +96,13 @@ func (decoder *MaheshvaraStreamDecoder) decodeGeminiParts(parts []any, choiceInd
 			// 合成 id 用解码器级单调计数器：partIndex 是 chunk 内序号（每块
 			// 从 0 重新计），跨 chunk 的两个无 id 调用会撞成 call_0_0。
 			callID := firstNonEmptyString(stringValue(functionCall["id"]), fmt.Sprintf("call_syn_%d", decoder.nextSyntheticCallID))
+			toolIndex := decoder.nextSyntheticCallID
 			decoder.nextSyntheticCallID++
 			name := stringValue(functionCall["name"])
 			added := decoder.baseEvent(MaheshvaraEventFunctionCallAdded, raw)
 			added.ChoiceIndex = choiceIndex
 			added.ContentIndex = partIndex
-			added.ToolCallIndex = partIndex
+			added.ToolCallIndex = toolIndex
 			added.ToolCallID = callID
 			added.ToolName = name
 			events = append(events, added)
@@ -112,7 +113,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeGeminiParts(parts []any, choiceInd
 			done := decoder.baseEvent(MaheshvaraEventFunctionCallArgumentsDone, raw)
 			done.ChoiceIndex = choiceIndex
 			done.ContentIndex = partIndex
-			done.ToolCallIndex = partIndex
+			done.ToolCallIndex = toolIndex
 			done.ToolCallID = callID
 			done.ToolName = name
 			done.ToolArgumentsDone = string(arguments)

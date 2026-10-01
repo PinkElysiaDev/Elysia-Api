@@ -4,34 +4,37 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
+
+	"github.com/elysia-api/backend/protocol"
 )
 
 type CustomProtocolStreamDecoder struct {
-	native            *MaheshvaraStreamDecoder
-	usage             *MaheshvaraUsage
-	config            CustomProtocolConfig
-	aliases           *CustomProtocolAliases
-	resolved          customResolvedMapping
-	frameResolved     []customResolvedMapping
-	mode              string
-	modeText          string
-	modeReasoning     string
-	modeArgs          string
-	doneValues        map[string]struct{}
-	doneJSON          []any
-	events            map[string]struct{}
-	eventKeys         []string
-	finishWhen        *CustomProtocolMatch
-	statusWhen        *CustomProtocolMatch
-	frames            []CustomProtocolStreamFrame
-	previousText      map[string]string
-	previousReasoning map[string]string
-	previousArguments map[string]string
-	toolAdded         map[string]bool
-	toolSlot          map[string]int
-	nextToolSlot      int
-	frameTools        map[float64]CustomProtocolStreamToolIdentity
+	state         *protocol.StreamState
+	textState     *protocol.StreamState
+	decodeError   error
+	native        *MaheshvaraStreamDecoder
+	usage         *MaheshvaraUsage
+	config        CustomProtocolConfig
+	aliases       *CustomProtocolAliases
+	resolved      customResolvedMapping
+	frameResolved []customResolvedMapping
+	mode          string
+	modeText      string
+	modeReasoning string
+	modeArgs      string
+	doneValues    map[string]struct{}
+	doneJSON      []any
+	events        map[string]struct{}
+	eventKeys     []string
+	finishWhen    *CustomProtocolMatch
+	statusWhen    *CustomProtocolMatch
+	frames        []CustomProtocolStreamFrame
+	toolAdded     map[string]bool
+	toolSlot      map[string]int
+	nextToolSlot  int
+	frameTools    map[float64]CustomProtocolStreamToolIdentity
 	// toolMeta 记录已见工具的完整身份（key=流级身份键），参数完成冲刷与
 	// 签名去重共用；toolDoneSent 防重复 done；signatureSent 防签名帧重复。
 	toolMeta      map[string]customStreamToolMeta
@@ -90,22 +93,21 @@ func newCustomProtocolStreamDecoder(config CustomProtocolConfig) (*CustomProtoco
 		return &CustomProtocolStreamDecoder{native: NewMaheshvaraStreamDecoder(adapter.format), config: config, aliases: config.Aliases}, nil
 	}
 	decoder := &CustomProtocolStreamDecoder{
-		aliases:           config.Aliases,
-		config:            config,
-		mode:              "delta",
-		doneValues:        map[string]struct{}{customDoneSentinel: {}},
-		events:            make(map[string]struct{}),
-		eventKeys:         []string{"type", "event"},
-		previousText:      make(map[string]string),
-		previousReasoning: make(map[string]string),
-		previousArguments: make(map[string]string),
-		toolAdded:         make(map[string]bool),
-		toolSlot:          make(map[string]int),
-		frameTools:        make(map[float64]CustomProtocolStreamToolIdentity),
-		toolMeta:          make(map[string]customStreamToolMeta),
-		toolArguments:     make(map[string]string),
-		toolDoneSent:      make(map[string]bool),
-		signatureSent:     make(map[string]bool),
+		state:         newStreamState(),
+		textState:     newStreamState(),
+		aliases:       config.Aliases,
+		config:        config,
+		mode:          "delta",
+		doneValues:    map[string]struct{}{customDoneSentinel: {}},
+		events:        make(map[string]struct{}),
+		eventKeys:     []string{"type", "event"},
+		toolAdded:     make(map[string]bool),
+		toolSlot:      make(map[string]int),
+		frameTools:    make(map[float64]CustomProtocolStreamToolIdentity),
+		toolMeta:      make(map[string]customStreamToolMeta),
+		toolArguments: make(map[string]string),
+		toolDoneSent:  make(map[string]bool),
+		signatureSent: make(map[string]bool),
 	}
 	if stream := config.Response.Stream; stream != nil {
 		if mode := strings.ToLower(strings.TrimSpace(stream.Mode)); mode != "" {
@@ -205,11 +207,28 @@ func (decoder *CustomProtocolStreamDecoder) SawFinishReason() bool {
 // Decode 解析一帧上游事件。第二个返回值仅在该帧命中终止值（doneValues/done）
 // 时为 true（数据此后不会再有）；终止判定（finish reason / status）只置终态，
 // 不提前结束——调用方继续排水以接收 usage 尾帧等滞后事件。
-func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]MaheshvaraStreamEvent, bool, error) {
+func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) (events []MaheshvaraStreamEvent, isDone bool, err error) {
 	if decoder.native != nil {
 		return decoder.decodeNativeEvent(wireEvent)
 	}
+	defer func() {
+		if err == nil {
+			err = decoder.checkBuffers()
+		}
+		if err == nil {
+			err = decoder.decodeError
+		}
+		if err == nil {
+			err = validateStreamBatch(decoder.state, events, decoder.terminal)
+		}
+		if err != nil {
+			events = nil
+		}
+	}()
 	data := strings.TrimSpace(wireEvent.Data)
+	if err := checkStreamSize(0, len(data)); err != nil {
+		return nil, false, err
+	}
 	if data == "" {
 		return nil, false, nil
 	}
@@ -263,7 +282,7 @@ func (decoder *CustomProtocolStreamDecoder) Decode(wireEvent SSEEvent) ([]Mahesh
 	if frameTool != nil {
 		response.Output = append(response.Output, decoder.frameToolItems(frameTool, root)...)
 	}
-	events := decoder.buildContentEvents(response, decoder.frameArgsMode(frameTool))
+	events = decoder.buildContentEvents(response, decoder.frameArgsMode(frameTool))
 	// toolDone 帧（content_block_stop / output_item.done 类）：按帧内身份
 	// 解析目标工具，立即补发参数完成。
 	if frameToolDone && frameTool != nil {
@@ -469,9 +488,6 @@ func (decoder *CustomProtocolStreamDecoder) flushToolArgumentsDone(response *Mah
 		return nil
 	}
 	arguments := decoder.toolArguments[key]
-	if arguments == "" {
-		arguments = "{}"
-	}
 	event := MaheshvaraStreamEvent{
 		Type:        MaheshvaraEventFunctionCallArgumentsDone,
 		OutputIndex: meta.slot, ToolCallIndex: meta.slot, ToolCallID: meta.id, ToolName: meta.name,
@@ -490,7 +506,14 @@ func (decoder *CustomProtocolStreamDecoder) flushToolArgumentsDone(response *Mah
 // 工具补发 done（累计参数在 previousArguments），自定义协议此前完全缺失。
 func (decoder *CustomProtocolStreamDecoder) flushAllToolArgumentsDone(response *MaheshvaraResponse) []MaheshvaraStreamEvent {
 	var events []MaheshvaraStreamEvent
+	keys := make([]string, 0, len(decoder.toolMeta))
 	for key := range decoder.toolMeta {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(left, right int) bool {
+		return decoder.toolMeta[keys[left]].slot < decoder.toolMeta[keys[right]].slot
+	})
+	for _, key := range keys {
 		events = append(events, decoder.flushToolArgumentsDone(response, key)...)
 	}
 	return events
@@ -525,7 +548,7 @@ func (decoder *CustomProtocolStreamDecoder) buildContentEvents(response *Maheshv
 			}
 			arguments := string(item.Arguments)
 			if arguments != "" {
-				delta := decoder.streamDelta(decoder.previousArguments, key, arguments, argsMode)
+				delta := decoder.streamDelta("arguments", key, arguments, argsMode)
 				if delta != "" {
 					// 参数完成事件需要全量参数：delta 模式下 streamDelta 不累计，
 					// 这里单独累计（cumulative 模式直接覆盖）。
@@ -555,7 +578,7 @@ func (decoder *CustomProtocolStreamDecoder) buildContentEvents(response *Maheshv
 				}
 			}
 			text := maheshvaraReasoningText(item)
-			delta := decoder.streamDelta(decoder.previousReasoning, reasoningKey, text, decoder.modeReasoning)
+			delta := decoder.streamDelta("reasoning", reasoningKey, text, decoder.modeReasoning)
 			if delta != "" {
 				events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventReasoningDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ItemID: item.ID, ReasoningDelta: delta})
 			}
@@ -598,17 +621,17 @@ func (decoder *CustomProtocolStreamDecoder) contentPartEvents(response *Maheshva
 		key := fmt.Sprintf(customStreamKeyTextFmt, outputIndex, contentIndex)
 		switch part.Type {
 		case MaheshvaraContentText:
-			delta := decoder.streamDelta(decoder.previousText, key, part.Text, decoder.modeText)
+			delta := decoder.streamDelta("text", key, part.Text, decoder.modeText)
 			if delta != "" {
 				events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventTextDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, Delta: delta})
 			}
 		case MaheshvaraContentReasoning:
-			delta := decoder.streamDelta(decoder.previousReasoning, key, firstNonEmptyString(part.ReasoningText, part.Text), decoder.modeReasoning)
+			delta := decoder.streamDelta("reasoning", key, firstNonEmptyString(part.ReasoningText, part.Text), decoder.modeReasoning)
 			if delta != "" {
 				events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventReasoningDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, ReasoningDelta: delta})
 			}
 		case MaheshvaraContentRefusal:
-			delta := decoder.streamDelta(decoder.previousText, fmt.Sprintf(customStreamKeyRefusalFmt, outputIndex, contentIndex), part.Text, decoder.modeText)
+			delta := decoder.streamDelta("text", fmt.Sprintf(customStreamKeyRefusalFmt, outputIndex, contentIndex), part.Text, decoder.modeText)
 			if delta != "" {
 				events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventRefusalDelta, ResponseID: response.ID, Model: response.Model, OutputIndex: outputIndex, ContentIndex: contentIndex, ItemID: item.ID, RefusalDelta: delta})
 			}
@@ -620,15 +643,11 @@ func (decoder *CustomProtocolStreamDecoder) contentPartEvents(response *Maheshva
 	return events
 }
 
-func (decoder *CustomProtocolStreamDecoder) streamDelta(previous map[string]string, key, current, mode string) string {
-	if mode != "cumulative" {
-		return current
-	}
-	before := previous[key]
-	previous[key] = current
-	delta, replaced := deltaVsAccumulated(before, current)
-	if replaced {
-		return current
+func (decoder *CustomProtocolStreamDecoder) streamDelta(family, key, current, mode string) string {
+	delta, err := decoder.textState.TrackText(family+"/"+key, current, mode == "cumulative")
+	if err != nil {
+		decoder.decodeError = err
+		return ""
 	}
 	return delta
 }
@@ -638,31 +657,5 @@ func (decoder *CustomProtocolStreamDecoder) streamDelta(previous map[string]stri
 // 调用方只处理每批事件(terminalBeforeBatch 标识该批解码前是否已处终态,
 // 终态后仅应保留 usage/错误语义)。回调返回错误立即中止并原样返回。
 func (decoder *CustomProtocolStreamDecoder) ForEachBatch(ctx context.Context, reader *SSEEventReader, handleBatch func(wireEvent SSEEvent, events []MaheshvaraStreamEvent, terminalBeforeBatch bool) error) error {
-	for {
-		// 终态后短窗排水:只等 usage 尾帧、错误帧与 doneValue(见 postTerminalIdle)。
-		wireEvent, hasMore, readErr := reader.Read(ctx, PostTerminalDrainIdle(decoder.TerminalReceived()))
-		if readErr != nil {
-			if BenignPostTerminalErr(decoder.TerminalReceived(), readErr) {
-				return nil // 排水窗耗尽/客户端断开视为干净收尾
-			}
-			return readErr
-		}
-		if !hasMore {
-			return nil
-		}
-		terminalBeforeBatch := decoder.TerminalReceived()
-		events, done, decodeErr := decoder.Decode(wireEvent)
-		if decodeErr != nil {
-			if terminalBeforeBatch {
-				return nil // 终态后的坏帧不推翻已完成的流
-			}
-			return decodeErr
-		}
-		if err := handleBatch(wireEvent, events, terminalBeforeBatch); err != nil {
-			return err
-		}
-		if done {
-			return nil
-		}
-	}
+	return readStreamBatches(ctx, reader, decoder, handleBatch)
 }

@@ -5,23 +5,27 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
+
+	"github.com/elysia-api/backend/protocol"
 )
 
 // MaheshvaraStreamRenderer renders protocol-neutral stream events to one of
 // the four supported downstream wire protocols.
 type MaheshvaraStreamRenderer struct {
-	format     FormatType
-	writer     StreamResponseWriter
-	responseID string
-	model      string
-	createdAt  int64
-	usage      *MaheshvaraUsage
-	finished   bool
-	completed  bool // 完成事件已经成功写出并刷新。
-	aborted    bool
-	hasOutput  bool
+	state         *protocol.StreamState
+	terminals     map[int]MaheshvaraStreamEvent
+	terminalOrder []int
+	format        FormatType
+	writer        StreamResponseWriter
+	responseID    string
+	model         string
+	createdAt     int64
+	usage         *MaheshvaraUsage
+	finished      bool
+	completed     bool // 完成事件已经成功写出并刷新。
+	aborted       bool
+	hasOutput     bool
 
 	openAI    *maheshvaraOpenAIRenderState
 	claude    *maheshvaraClaudeRenderState
@@ -33,6 +37,8 @@ func NewMaheshvaraStreamRenderer(format FormatType, writer StreamResponseWriter,
 	createdAt := time.Now().Unix()
 	responseID := newMaheshvaraResponseID("resp")
 	renderer := &MaheshvaraStreamRenderer{
+		state:      newStreamState(),
+		terminals:  make(map[int]MaheshvaraStreamEvent),
 		format:     normalizeMaheshvaraStreamFormat(format),
 		writer:     writer,
 		responseID: responseID,
@@ -50,11 +56,30 @@ func (renderer *MaheshvaraStreamRenderer) HasOutput() bool {
 	return renderer != nil && renderer.hasOutput
 }
 
+// Consume defers translated terminals until usage tails have been read. Native
+// Responses events retain their original ordering, including post-terminal
+// extensions; their wire contract already supplies the final response object.
+func (renderer *MaheshvaraStreamRenderer) Consume(event *MaheshvaraStreamEvent) error {
+	if event.Type != MaheshvaraEventResponseCompleted || (event.sourceFormat == FormatResponses && renderer.format == FormatResponses) {
+		return renderer.Write(event)
+	}
+	if _, exists := renderer.terminals[event.ChoiceIndex]; exists {
+		return nil
+	}
+	renderer.usage = mergeMaheshvaraStreamUsage(renderer.usage, event.Usage)
+	renderer.terminals[event.ChoiceIndex] = *event
+	renderer.terminalOrder = append(renderer.terminalOrder, event.ChoiceIndex)
+	return nil
+}
+
 func (renderer *MaheshvaraStreamRenderer) Write(event *MaheshvaraStreamEvent) error {
 	if renderer == nil || event == nil || renderer.finished || renderer.aborted {
 		return nil
 	}
 	if err := validateToolEvent(event, renderer.format); err != nil {
+		return err
+	}
+	if err := validateStreamBatch(renderer.state, []MaheshvaraStreamEvent{*event}, false); err != nil {
 		return err
 	}
 	if event.ResponseID != "" {
@@ -91,6 +116,11 @@ func (renderer *MaheshvaraStreamRenderer) Write(event *MaheshvaraStreamEvent) er
 			return err
 		}
 	}
+	if event.Type == MaheshvaraEventResponseCompleted {
+		if err := renderer.state.ValidateComplete(); err != nil {
+			return err
+		}
+	}
 
 	var err error
 	switch renderer.format {
@@ -102,6 +132,9 @@ func (renderer *MaheshvaraStreamRenderer) Write(event *MaheshvaraStreamEvent) er
 		err = renderer.writeResponses(event)
 	default:
 		err = renderer.writeOpenAIChat(event)
+	}
+	if err == nil {
+		err = renderer.checkBuffers()
 	}
 	if err == nil && maheshvaraStreamEventHasOutput(*event) {
 		renderer.hasOutput = true
@@ -204,6 +237,22 @@ func (renderer *MaheshvaraStreamRenderer) Finish(ctx context.Context) error {
 	if renderer == nil || renderer.finished {
 		return nil
 	}
+	for _, choice := range renderer.terminalOrder {
+		event := renderer.terminals[choice]
+		event.Usage = nil // Usage was merged on receipt; a tail may supersede it.
+		if event.Response != nil {
+			response := *event.Response
+			response.Usage = renderer.usage
+			event.Response = &response
+		}
+		if err := renderer.Write(&event); err != nil {
+			return err
+		}
+	}
+	renderer.terminalOrder = nil
+	if err := renderer.state.Finish(); err != nil {
+		return err
+	}
 	var err error
 	switch renderer.format {
 	case FormatClaude:
@@ -274,7 +323,6 @@ func TransformStreamViaMaheshvara(ctx context.Context, response *http.Response, 
 	defer reader.Close()
 	decoder := NewMaheshvaraStreamDecoder(sourceFormat)
 	renderer := NewMaheshvaraStreamRenderer(targetFormat, writer, model)
-	var terminalEvents []MaheshvaraStreamEvent
 
 	abort := func(streamErr error) error {
 		if renderErr := renderer.Abort(streamErr); renderErr != nil {
@@ -282,42 +330,23 @@ func TransformStreamViaMaheshvara(ctx context.Context, response *http.Response, 
 		}
 		return streamErr
 	}
-	for {
-		wireEvent, ok, err := reader.Read(ctx, PostTerminalDrainIdle(decoder.TerminalReceived()))
-		if err != nil {
-			// 终态后排水窗内的取消/超时都是良性收尾(见 benignPostTerminalErr),
-			// 不把已完成的流记 499。
-			if BenignPostTerminalErr(decoder.TerminalReceived(), err) {
-				break
-			}
-			return abort(err)
-		}
-		if !ok {
-			break
-		}
-		events, err := decoder.Decode(wireEvent)
-		if err != nil {
-			return abort(err)
-		}
+	batchDecoder := &CustomProtocolStreamDecoder{native: decoder}
+	if err := readStreamBatches(ctx, reader, batchDecoder, func(_ SSEEvent, events []MaheshvaraStreamEvent, _ bool) error {
 		for index := range events {
-			event := events[index]
-			if event.Type == MaheshvaraEventResponseFailed || event.Error != nil {
-				if event.Error != nil {
-					return abort(event.Error)
-				}
-				return abort(fmt.Errorf("upstream stream failed"))
+			event := &events[index]
+			if event.Error != nil {
+				return event.Error
 			}
-			if event.Type == MaheshvaraEventResponseCompleted {
-				terminalEvents = append(terminalEvents, event)
-				continue
+			if event.Type == MaheshvaraEventResponseFailed {
+				return fmt.Errorf("upstream stream failed")
 			}
-			if err := renderer.Write(&event); err != nil {
-				return abort(err)
+			if err := renderer.Consume(event); err != nil {
+				return err
 			}
 		}
-		if decoder.TerminalReceived() && (sourceFormat == FormatResponses || sourceFormat == FormatClaude || strings.TrimSpace(wireEvent.Data) == "[DONE]") {
-			break
-		}
+		return nil
+	}); err != nil {
+		return abort(err)
 	}
 	if !decoder.SawWireEvent() {
 		return abort(fmt.Errorf("upstream returned an empty event stream"))
@@ -330,69 +359,8 @@ func TransformStreamViaMaheshvara(ctx context.Context, response *http.Response, 
 	if !decoder.SawOutput() && !renderer.HasOutput() && !decoder.SawFinishReason() {
 		return abort(fmt.Errorf("upstream stream completed without representable output"))
 	}
-	for index := range terminalEvents {
-		if err := renderer.Write(&terminalEvents[index]); err != nil {
-			return abort(err)
-		}
+	if err := renderer.Finish(ctx); err != nil {
+		return abort(err)
 	}
-	return renderer.Finish(ctx)
-}
-
-func mergeMaheshvaraStreamUsage(current, update *MaheshvaraUsage) *MaheshvaraUsage {
-	if update == nil {
-		return current
-	}
-	if current == nil {
-		copy := *update
-		return &copy
-	}
-	mergeInt := func(target *int, value int) {
-		if value != 0 {
-			*target = value
-		}
-	}
-	mergeInt(&current.InputTokens, update.InputTokens)
-	mergeInt(&current.OutputTokens, update.OutputTokens)
-	mergeInt(&current.CachedInputTokens, update.CachedInputTokens)
-	mergeInt(&current.CacheCreationInputTokens, update.CacheCreationInputTokens)
-	mergeInt(&current.CacheCreation5mTokens, update.CacheCreation5mTokens)
-	mergeInt(&current.CacheCreation1hTokens, update.CacheCreation1hTokens)
-	mergeInt(&current.ToolPromptTokens, update.ToolPromptTokens)
-	mergeInt(&current.ReasoningTokens, update.ReasoningTokens)
-	mergeInt(&current.AcceptedPredictionTokens, update.AcceptedPredictionTokens)
-	mergeInt(&current.RejectedPredictionTokens, update.RejectedPredictionTokens)
-	if update.rawInputTokens != nil {
-		current.rawInputTokens = update.rawInputTokens
-	}
-	current.cacheInputExclusive = current.cacheInputExclusive || update.cacheInputExclusive
-	if current.cacheInputExclusive && current.rawInputTokens != nil {
-		current.InputTokens = *current.rawInputTokens + current.CachedInputTokens + current.CacheCreationInputTokens
-	}
-	if update.TotalTokensInferred {
-		current.TotalTokens = current.InputTokens + current.OutputTokens
-	} else {
-		mergeInt(&current.TotalTokens, update.TotalTokens)
-	}
-	current.TotalTokensInferred = update.TotalTokensInferred
-	if current.TotalTokens == 0 {
-		current.TotalTokens = current.InputTokens + current.OutputTokens
-	}
-	if update.Source != "" {
-		current.Source = update.Source
-	}
-	if update.Provider != "" {
-		current.Provider = update.Provider
-	}
-	if update.Raw != nil {
-		if current.Raw == nil {
-			current.Raw = update.Raw
-		} else {
-			for key, value := range update.Raw {
-				if _, exists := current.Raw[key]; !exists {
-					current.Raw[key] = value
-				}
-			}
-		}
-	}
-	return current
+	return nil
 }

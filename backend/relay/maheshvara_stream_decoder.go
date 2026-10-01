@@ -5,7 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/elysia-api/backend/protocol"
 )
+
+type streamToolSlot struct{ choice, index int }
 
 type maheshvaraStreamToolState struct {
 	id        string
@@ -15,15 +19,20 @@ type maheshvaraStreamToolState struct {
 }
 
 type maheshvaraAnthropicBlock struct {
-	typeName  string
-	id        string
-	name      string
-	arguments strings.Builder
+	initialInput json.RawMessage
+	typeName     string
+	id           string
+	name         string
+	arguments    strings.Builder
 }
 
 // MaheshvaraStreamDecoder is stateful because tool calls and content blocks
 // are commonly split across multiple upstream events.
 type MaheshvaraStreamDecoder struct {
+	state        *protocol.StreamState
+	textState    *protocol.StreamState
+	decodeError  error
+	sequences    *protocol.SequenceTracker
 	usage        *MaheshvaraUsage
 	format       FormatType
 	responseID   string
@@ -35,18 +44,10 @@ type MaheshvaraStreamDecoder struct {
 	//（Claude）/finishReason（Gemini）/终态 status（Responses）。空但合法的
 	// 完成（content_filter 拒答）据此与残缺流区分。
 	sawFinishReason bool
-	openAITools     map[int]*maheshvaraStreamToolState
-	openAIToolOrder []int
+	openAITools     map[streamToolSlot]*maheshvaraStreamToolState
+	openAIToolOrder []streamToolSlot
 	finishedChoices map[int]bool
 	seenChoices     map[int]bool
-	// chat 线的终态快照语义（PC7f）：部分上游在终态 chunk 里回传完整 message，
-	// 只允许补发缺失后缀，不得把已流式输出过的内容再发一遍。
-	openAIChoiceText     map[int]string
-	openAIChoiceReasoned map[int]bool
-	// openAIPartText 按 (choice, contentIndex) 分桶累计快照文本：终态 message
-	// 的多 text part 各自独立差分，后续 part 不因前一个 part 的累计而误判
-	// 前缀不匹配被丢弃。
-	openAIPartText map[string]string
 	// nextSyntheticCallID：无 id 工具调用的合成 id 单调计数器（跨 chunk 不撞）。
 	nextSyntheticCallID int
 	anthropicBlocks     map[int]*maheshvaraAnthropicBlock
@@ -54,14 +55,14 @@ type MaheshvaraStreamDecoder struct {
 
 func NewMaheshvaraStreamDecoder(format FormatType) *MaheshvaraStreamDecoder {
 	return &MaheshvaraStreamDecoder{
-		format:               normalizeMaheshvaraStreamFormat(format),
-		openAITools:          make(map[int]*maheshvaraStreamToolState),
-		finishedChoices:      make(map[int]bool),
-		seenChoices:          make(map[int]bool),
-		openAIChoiceText:     make(map[int]string),
-		openAIChoiceReasoned: make(map[int]bool),
-		openAIPartText:       make(map[string]string),
-		anthropicBlocks:      make(map[int]*maheshvaraAnthropicBlock),
+		state:           newStreamState(),
+		textState:       newStreamState(),
+		sequences:       protocol.NewSequenceTracker(streamLimits),
+		format:          normalizeMaheshvaraStreamFormat(format),
+		openAITools:     make(map[streamToolSlot]*maheshvaraStreamToolState),
+		finishedChoices: make(map[int]bool),
+		seenChoices:     make(map[int]bool),
+		anthropicBlocks: make(map[int]*maheshvaraAnthropicBlock),
 	}
 }
 
@@ -82,11 +83,28 @@ func (decoder *MaheshvaraStreamDecoder) SawFinishReason() bool {
 	return decoder != nil && decoder.sawFinishReason
 }
 
-func (decoder *MaheshvaraStreamDecoder) Decode(event SSEEvent) ([]MaheshvaraStreamEvent, error) {
+func (decoder *MaheshvaraStreamDecoder) Decode(event SSEEvent) (events []MaheshvaraStreamEvent, err error) {
 	if decoder == nil {
 		return nil, fmt.Errorf("nil Maheshvara stream decoder")
 	}
+	defer func() {
+		if err == nil {
+			err = decoder.checkBuffers()
+		}
+		if err == nil {
+			err = decoder.decodeError
+		}
+		if err == nil {
+			err = validateStreamBatch(decoder.state, events, decoder.terminal)
+		}
+		if err != nil {
+			events = nil
+		}
+	}()
 	data := strings.TrimSpace(event.Data)
+	if err := checkStreamSize(0, len(data)); err != nil {
+		return nil, err
+	}
 	if data == "" {
 		return nil, nil
 	}
@@ -109,11 +127,30 @@ func (decoder *MaheshvaraStreamDecoder) Decode(event SSEEvent) ([]MaheshvaraStre
 	if err != nil {
 		return nil, err
 	}
+	if decoder.format == FormatResponses {
+		if sequence, exists := raw["sequence_number"]; exists {
+			number, ok := sequence.(json.Number)
+			if !ok {
+				return nil, fmt.Errorf("invalid Responses event sequence number")
+			}
+			index, err := number.Int64()
+			if err != nil {
+				return nil, fmt.Errorf("invalid Responses event sequence number: %w", err)
+			}
+			payload, err := json.Marshal(raw)
+			if err != nil {
+				return nil, err
+			}
+			isNew, err := decoder.sequences.Accept(index, payload)
+			if err != nil || !isNew {
+				return nil, err
+			}
+		}
+	}
 	if stringValue(raw["type"]) == "" && strings.TrimSpace(event.Event) != "" {
 		raw["type"] = strings.TrimSpace(event.Event)
 	}
 
-	var events []MaheshvaraStreamEvent
 	switch decoder.format {
 	case FormatClaude:
 		events, err = decoder.decodeAnthropic(raw)
@@ -213,21 +250,20 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChat(raw map[string]any) ([]
 		events = append(events, decoder.openAIContentEvents(delta["content"], choiceIndex, raw, snapshot)...)
 
 		reasoning := firstNonEmptyString(stringValue(delta["reasoning_content"]), stringValue(delta["reasoning"]), stringValue(delta["thinking"]))
-		if reasoning != "" && !(snapshot && decoder.openAIChoiceReasoned[choiceIndex]) {
-			decoder.openAIChoiceReasoned[choiceIndex] = true
+		if reasoning != "" {
+			reasoning = decoder.trackText(fmt.Sprintf("reasoning/%d", choiceIndex), reasoning, snapshot)
 			event := decoder.baseEvent(MaheshvaraEventReasoningDelta, raw)
 			event.ChoiceIndex = choiceIndex
 			event.ReasoningDelta = reasoning
 			events = append(events, event)
 		}
-		if refusal := stringValue(delta["refusal"]); refusal != "" && !(snapshot && decoder.openAIChoiceText[choiceIndex] != "") {
+		if refusal := stringValue(delta["refusal"]); refusal != "" {
+			refusal = decoder.trackText(fmt.Sprintf("refusal/%d", choiceIndex), refusal, snapshot)
 			event := decoder.baseEvent(MaheshvaraEventRefusalDelta, raw)
 			event.ChoiceIndex = choiceIndex
 			event.RefusalDelta = refusal
 			events = append(events, event)
-			// 累计已下发的 refusal:上游末尾用 choices[].message 快照回传完整
-			// refusal 时,该守卫字段防止二次下发(此前从未赋值导致守卫恒假)。
-			decoder.openAIChoiceText[choiceIndex] += refusal
+
 		}
 		if details, ok := delta["reasoning_details"].([]any); ok {
 			for _, detailValue := range details {
@@ -295,14 +331,17 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIChatFinish(choice, delta map
 		return append(events, event)
 	}
 	decoder.finishedChoices[choiceIndex] = true
-	for _, toolIndex := range decoder.openAIToolOrder {
-		state := decoder.openAITools[toolIndex]
+	for _, slot := range decoder.openAIToolOrder {
+		if slot.choice != choiceIndex {
+			continue
+		}
+		state := decoder.openAITools[slot]
 		if state.arguments.Len() == 0 {
 			continue
 		}
 		event := decoder.baseEvent(MaheshvaraEventFunctionCallArgumentsDone, raw)
 		event.ChoiceIndex = choiceIndex
-		event.ToolCallIndex = toolIndex
+		event.ToolCallIndex = slot.index
 		event.ToolCallID = state.id
 		event.ToolName = state.name
 		event.ToolArgumentsDone = state.arguments.String()
@@ -323,11 +362,12 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIToolCalls(toolCalls []any, c
 			continue
 		}
 		toolIndex := intValue(tool["index"])
-		state := decoder.openAITools[toolIndex]
+		slot := streamToolSlot{choice: choiceIndex, index: toolIndex}
+		state := decoder.openAITools[slot]
 		if state == nil {
 			state = &maheshvaraStreamToolState{}
-			decoder.openAITools[toolIndex] = state
-			decoder.openAIToolOrder = append(decoder.openAIToolOrder, toolIndex)
+			decoder.openAITools[slot] = state
+			decoder.openAIToolOrder = append(decoder.openAIToolOrder, slot)
 		}
 		function := mapValue(tool["function"])
 		if signature := openAIGoogleThoughtSignature(tool); signature != "" {
@@ -358,7 +398,7 @@ func (decoder *MaheshvaraStreamDecoder) decodeOpenAIToolCalls(toolCalls []any, c
 				}
 				rewritten := &maheshvaraStreamToolState{id: state.id, name: state.name, added: true}
 				rewritten.arguments.WriteString(arguments)
-				decoder.openAITools[toolIndex] = rewritten
+				decoder.openAITools[slot] = rewritten
 				event := decoder.baseEvent(MaheshvaraEventFunctionCallArgumentsDone, raw)
 				event.ChoiceIndex = choiceIndex
 				event.ToolCallIndex = toolIndex
@@ -407,7 +447,7 @@ func (decoder *MaheshvaraStreamDecoder) openAIContentEvents(value any, choiceInd
 		if snapshot {
 			return decoder.openAISnapshotTextSuffix(text, choiceIndex, 0, raw)
 		}
-		decoder.openAIPartText[fmt.Sprintf("%d:%d", choiceIndex, 0)] += text
+		decoder.trackText(fmt.Sprintf("%d:%d", choiceIndex, 0), text, false)
 		event := decoder.baseEvent(MaheshvaraEventTextDelta, raw)
 		event.ChoiceIndex = choiceIndex
 		event.Delta = text
@@ -440,10 +480,9 @@ func (decoder *MaheshvaraStreamDecoder) openAIContentEvents(value any, choiceInd
 		}
 		if maheshvaraStreamEventHasOutput(event) {
 			if event.Type == MaheshvaraEventTextDelta {
-				decoder.openAIPartText[fmt.Sprintf("%d:%d", choiceIndex, index)] += event.Delta
+				decoder.trackText(fmt.Sprintf("%d:%d", choiceIndex, index), event.Delta, false)
 			}
 			if event.Type == MaheshvaraEventReasoningDelta {
-				decoder.openAIChoiceReasoned[choiceIndex] = true
 			}
 			events = append(events, event)
 		}
@@ -451,17 +490,13 @@ func (decoder *MaheshvaraStreamDecoder) openAIContentEvents(value any, choiceInd
 	return events
 }
 
-// openAISnapshotTextSuffix 应用终态快照的后缀语义（PC7f）：完整文本与已流式
-// 输出的前缀一致时只补缺失后缀；完全相同或分歧（非前缀）时不再重发，避免
-// 下游收到重复/冲突内容。
+// openAISnapshotTextSuffix forwards only a verified cumulative suffix.
 func (decoder *MaheshvaraStreamDecoder) openAISnapshotTextSuffix(text string, choiceIndex, contentIndex int, raw map[string]any) []MaheshvaraStreamEvent {
 	key := fmt.Sprintf("%d:%d", choiceIndex, contentIndex)
-	streamed := decoder.openAIPartText[key]
-	decoder.openAIPartText[key] = text
-	delta, replaced := deltaVsAccumulated(streamed, text)
-	if streamed == "" || replaced {
-		// 首见直接输出全文；分歧快照按替换语义整段重发。
-		delta = text
+	delta, err := decoder.textState.TrackText(key, text, true)
+	if err != nil {
+		decoder.decodeError = err
+		return nil
 	}
 	if delta == "" {
 		return nil
@@ -479,4 +514,13 @@ func allMaheshvaraChoicesFinished(seen, finished map[int]bool) bool {
 		}
 	}
 	return true
+}
+
+func (decoder *MaheshvaraStreamDecoder) trackText(key, text string, isSnapshot bool) string {
+	delta, err := decoder.textState.TrackText(key, text, isSnapshot)
+	if err != nil {
+		decoder.decodeError = err
+		return ""
+	}
+	return delta
 }

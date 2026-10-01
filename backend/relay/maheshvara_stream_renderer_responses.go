@@ -623,8 +623,7 @@ func (renderer *MaheshvaraStreamRenderer) finalizeResponsesReasoning(choiceIndex
 	return item, nil
 }
 
-// finalizeResponsesTool 收尾 function_call item：未宣告的先补 added 帧，再发
-// 参数 done（空参数归一为 "{}"）与 output_item.done。
+// finalizeResponsesTool emits the completed input already checked by stream state.
 func (renderer *MaheshvaraStreamRenderer) finalizeResponsesTool(tool *maheshvaraResponsesToolState) (map[string]any, error) {
 	if !tool.added {
 		if err := renderer.writeResponsesTool(&MaheshvaraStreamEvent{Type: MaheshvaraEventFunctionCallAdded, ToolCallID: tool.callID, ToolName: tool.name, ToolCallIndex: tool.outputIndex}); err != nil {
@@ -632,9 +631,6 @@ func (renderer *MaheshvaraStreamRenderer) finalizeResponsesTool(tool *maheshvara
 		}
 	}
 	arguments := tool.arguments.String()
-	if arguments == "" {
-		arguments = "{}"
-	}
 	if err := renderer.writeResponsesEvent(MaheshvaraEventFunctionCallArgumentsDone, map[string]any{"type": MaheshvaraEventFunctionCallArgumentsDone, "item_id": tool.id, "output_index": tool.outputIndex, "arguments": arguments}); err != nil {
 		return nil, err
 	}

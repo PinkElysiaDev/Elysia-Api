@@ -38,7 +38,7 @@ func maheshvaraUsageFromOpenAIUsage(usage Usage) *MaheshvaraUsage {
 	if u.CacheCreationInputTokens == 0 {
 		u.CacheCreationInputTokens = promptDetails.CachedCreationTokens
 	}
-	u.TotalTokens = valueOrSum(u.TotalTokens, u.InputTokens, u.OutputTokens)
+	u.TotalTokens = maheshvaraUsageTotal(u)
 	return u
 }
 
@@ -78,7 +78,7 @@ func maheshvaraUsageFromGeminiUsage(usage GeminiUsageMeta) *MaheshvaraUsage {
 		ToolUseTokens:     usage.ToolUsePromptTokenCount,
 		Source:            UsageSourceProviderResponse,
 	}
-	u.TotalTokens = valueOrSum(u.TotalTokens, u.InputTokens, u.OutputTokens)
+	u.TotalTokens = maheshvaraUsageTotal(u)
 	for _, detail := range usage.PromptTokensDetails {
 		switch strings.ToUpper(detail.Modality) {
 		case "TEXT":
@@ -118,7 +118,7 @@ func maheshvaraUsageFromResponsesUsage(usage *ResponsesUsage) *MaheshvaraUsage {
 	if usage.OutputTokensDetails != nil {
 		u.ReasoningTokens = usage.OutputTokensDetails.ReasoningTokens
 	}
-	u.TotalTokens = valueOrSum(u.TotalTokens, u.InputTokens, u.OutputTokens)
+	u.TotalTokens = maheshvaraUsageTotal(u)
 	return u
 }
 
@@ -129,7 +129,7 @@ func openAIUsageFromMaheshvara(u *MaheshvaraUsage) Usage {
 	// details 仅在有值时输出（指针 omitempty）——空对象会覆盖 RawFields
 	// 透传的同键子对象。
 	var promptDetails *PromptTokensDetails
-	if u.CachedInputTokens > 0 || u.CacheCreationInputTokens > 0 || u.TextInputTokens > 0 || u.AudioInputTokens > 0 || u.ImageInputTokens > 0 {
+	if u.HasCounter("cached") || u.HasCounter("cache_creation") || u.TextInputTokens > 0 || u.AudioInputTokens > 0 || u.ImageInputTokens > 0 {
 		promptDetails = &PromptTokensDetails{
 			CachedTokens:         u.CachedInputTokens,
 			CachedCreationTokens: u.CacheCreationInputTokens,
@@ -139,7 +139,7 @@ func openAIUsageFromMaheshvara(u *MaheshvaraUsage) Usage {
 		}
 	}
 	var completionDetails *CompletionTokensDetails
-	if u.ReasoningTokens > 0 || u.TextOutputTokens > 0 || u.AudioOutputTokens > 0 || u.ImageOutputTokens > 0 || u.AcceptedPredictionTokens > 0 || u.RejectedPredictionTokens > 0 {
+	if u.HasCounter("reasoning") || u.TextOutputTokens > 0 || u.AudioOutputTokens > 0 || u.ImageOutputTokens > 0 || u.AcceptedPredictionTokens > 0 || u.RejectedPredictionTokens > 0 {
 		completionDetails = &CompletionTokensDetails{
 			ReasoningTokens:          u.ReasoningTokens,
 			TextTokens:               u.TextOutputTokens,
@@ -150,9 +150,10 @@ func openAIUsageFromMaheshvara(u *MaheshvaraUsage) Usage {
 		}
 	}
 	return Usage{
+		semantic:                u,
 		PromptTokens:            u.InputTokens,
 		CompletionTokens:        u.OutputTokens,
-		TotalTokens:             valueOrSum(u.TotalTokens, u.InputTokens, u.OutputTokens),
+		TotalTokens:             maheshvaraUsageTotal(u),
 		CachedTokens:            u.CachedInputTokens,
 		PromptTokensDetails:     promptDetails,
 		CompletionTokensDetails: completionDetails,
@@ -173,6 +174,7 @@ func claudeUsageFromMaheshvara(u *MaheshvaraUsage) ClaudeUsage {
 		input = u.InputTokens
 	}
 	usage := ClaudeUsage{
+		semantic:                 u,
 		InputTokens:              input,
 		OutputTokens:             u.OutputTokens,
 		CacheReadInputTokens:     u.CachedInputTokens,
@@ -206,10 +208,11 @@ func geminiUsageFromMaheshvara(u *MaheshvaraUsage) GeminiUsageMeta {
 		candidateTokens = u.OutputTokens
 	}
 	meta := GeminiUsageMeta{
+		semantic:                u,
 		PromptTokenCount:        promptTokens,
 		ToolUsePromptTokenCount: u.ToolUseTokens,
 		CandidatesTokenCount:    candidateTokens,
-		TotalTokenCount:         valueOrSum(u.TotalTokens, u.InputTokens, u.OutputTokens),
+		TotalTokenCount:         maheshvaraUsageTotal(u),
 		ThoughtsTokenCount:      u.ReasoningTokens,
 		CachedContentTokenCount: u.CachedInputTokens,
 	}
@@ -233,14 +236,15 @@ func responsesUsageFromMaheshvara(u *MaheshvaraUsage) *ResponsesUsage {
 		return nil
 	}
 	out := &ResponsesUsage{
+		semantic:     u,
 		InputTokens:  u.InputTokens,
 		OutputTokens: u.OutputTokens,
-		TotalTokens:  valueOrSum(u.TotalTokens, u.InputTokens, u.OutputTokens),
+		TotalTokens:  maheshvaraUsageTotal(u),
 	}
-	if u.CachedInputTokens > 0 {
+	if u.HasCounter("cached") {
 		out.InputTokensDetails = &ResponsesInputTokensDetails{CachedTokens: u.CachedInputTokens}
 	}
-	if u.ReasoningTokens > 0 {
+	if u.HasCounter("reasoning") {
 		out.OutputTokensDetails = &ResponsesOutputTokensDetails{ReasoningTokens: u.ReasoningTokens}
 	}
 	return out
@@ -255,9 +259,9 @@ func nonEmptyJSONArgs(args string) string {
 	return args
 }
 
-func valueOrSum(total, input, output int) int {
-	if total > 0 {
-		return total
+func maheshvaraUsageTotal(usage *MaheshvaraUsage) int {
+	if usage.HasCounter("total") {
+		return usage.TotalTokens
 	}
-	return input + output
+	return usage.InputTokens + usage.OutputTokens
 }

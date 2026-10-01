@@ -16,7 +16,7 @@ type maheshvaraOpenAIToolRenderState struct {
 type maheshvaraOpenAIRenderState struct {
 	roleSent                map[int]bool
 	finishSent              map[int]bool
-	tools                   map[int]*maheshvaraOpenAIToolRenderState
+	tools                   map[streamToolSlot]*maheshvaraOpenAIToolRenderState
 	pendingGeminiSignatures map[int]string
 	doneSent                bool
 }
@@ -25,7 +25,7 @@ func newMaheshvaraOpenAIRenderState() *maheshvaraOpenAIRenderState {
 	return &maheshvaraOpenAIRenderState{
 		roleSent:                make(map[int]bool),
 		finishSent:              make(map[int]bool),
-		tools:                   make(map[int]*maheshvaraOpenAIToolRenderState),
+		tools:                   make(map[streamToolSlot]*maheshvaraOpenAIToolRenderState),
 		pendingGeminiSignatures: make(map[int]string),
 	}
 }
@@ -107,10 +107,11 @@ func (renderer *MaheshvaraStreamRenderer) writeOpenAIToolEvent(event *Maheshvara
 	if index == 0 && event.OutputIndex != 0 {
 		index = event.OutputIndex
 	}
-	state := renderer.openAI.tools[index]
+	slot := streamToolSlot{choice: event.ChoiceIndex, index: index}
+	state := renderer.openAI.tools[slot]
 	if state == nil {
 		state = &maheshvaraOpenAIToolRenderState{}
-		renderer.openAI.tools[index] = state
+		renderer.openAI.tools[slot] = state
 	}
 	state.id = firstNonEmptyString(event.ToolCallID, state.id)
 	if state.id == "" {

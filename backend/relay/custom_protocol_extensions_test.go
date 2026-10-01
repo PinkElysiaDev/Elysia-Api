@@ -131,6 +131,7 @@ func TestCustomStreamDoneSignatureRefusal(t *testing.T) {
 	if !containsEvent(eventTypes(argsEvents), MaheshvaraEventFunctionCallArgumentsDelta) {
 		t.Fatalf("args delta missing: %v", eventTypes(argsEvents))
 	}
+	decodeSSELineNamed(t, decoder, "tool_args", `{"index":0,"args":"1}"}`)
 	// toolDone 帧身份只带 index → 经 frameTools 关联到 call_1
 	stopEvents := decodeSSELineNamed(t, decoder, "tool_stop", `{"index":0}`)
 	foundDone := false
@@ -244,6 +245,7 @@ func TestCustomStreamDoneValueFlushesPendingToolsSafely(t *testing.T) {
 		t.Fatalf("args delta missing: %v", delta)
 	}
 	// 直接以 doneValue 收尾(无 finish/status/toolStop 帧)——nil 冲刷路径。
+	decodeSSELineNamed(t, decoder, "tool_args", `{"index":0,"args":"1}"}`)
 	terminal := decodeSSELineNamed(t, decoder, "", "[DONE]")
 	foundDone, foundCompleted := false, false
 	for _, event := range terminal {

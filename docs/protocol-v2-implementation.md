@@ -11,7 +11,7 @@ This ledger records implemented and verified work; unchecked stages are not deli
 | C03 Ordered model and provenance | Complete | protocol/relay tests passed: presence, long integers, native JSON, call order/association, scopes, contract roundtrip and transitional snapshots |
 | C04 Native preservation and diagnostics | Complete | Full backend tests and vet passed; transactional edits, native/scoped isolation, capability and association failures covered; native tool renderer uses shared preservation |
 | C05 Shared wire adapters | Shared wiring complete; semantic cutover remains | Full backend tests/vet/type check passed; independent adapters, native extension and usage-alias preservation, preset hash upgrades and arbitrary-ID stream/HTTP tests. Modules still use the transitional Maheshvara boundary until v2 runtime integration/removal. |
-| C06 Stream and accounting | Pending | |
+| C06 Stream and accounting | Shared runtime rules complete; semantic cutover remains | Full backend tests and vet passed. 16 tail-frame combinations, zero/presence and TTL merges, persisted counters, tool input/association, cumulative rewrite, bounded state and sequence checks. See stream fidelity audit; local race blocked by C toolchain. |
 | C07 Bidirectional compiler | Pending | |
 | C08 Capability verification | Pending | |
 | C09 Revisions and activation | Pending | |
@@ -46,3 +46,12 @@ C05 benchmark check: 20.3–23.6 us/op in one four-target run. Preserving number
 at the wire JSON boundary adds 7 allocations and about 880 bytes versus C04;
 this is the decoder buffer/number representation cost, with no observed CPU
 regression in this run. Final comparisons require the C17 benchmark suite.
+
+C06 stream evidence: [stream audit](stream-fidelity-audit-2026-10-02.md).
+Shared stream state, native/custom/Agent drain rules, and provider accounting
+are wired into runtime. Legacy Maheshvara projections still remain for C07–C16.
+The 64 KiB stream decode benchmark decreased from about 9.98 MB to 1.02 MB
+allocated per operation and from 1.96–2.32 ms to 0.83–0.94 ms on this host.
+Request conversion allocation counts are unchanged from C05. Local race could
+not build: CGO is disabled by default; installed clang uses an incompatible
+MSVC target. Linux CI validation remains outstanding.

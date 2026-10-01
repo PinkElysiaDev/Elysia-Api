@@ -1320,6 +1320,11 @@ func customProtocolResponseFromRoot(root any, resolved customResolvedMapping, al
 	if len(response.Output) == 0 && response.Error == nil && !allowEmpty {
 		return nil, fmt.Errorf("custom protocol %q response has no mapped text, reasoning, or tool call", configID)
 	}
+	if !allowEmpty {
+		if err := validateToolResponse(response, FormatResponses); err != nil {
+			return nil, err
+		}
+	}
 	return response, nil
 }
 
@@ -1816,75 +1821,10 @@ func customToolCallWithAliases(value any, index int, aliases map[string][]string
 	}
 	if text, ok := arguments.(string); ok {
 		call.Arguments = json.RawMessage(text)
-		if !json.Valid(call.Arguments) {
-			call.Arguments = json.RawMessage(strconv.Quote(text))
-		}
 	} else if arguments != nil {
 		call.Arguments, _ = json.Marshal(arguments)
 	}
-	if len(call.Arguments) == 0 {
-		call.Arguments = json.RawMessage(`{}`)
-	}
 	return call
-}
-
-// customUsageAtWithAliases 按别名表读取用量；别名条目支持点路径（如
-// prompt_tokens_details.cached_tokens）。类别缺省时用内置默认表。
-func customUsageAtWithAliases(root any, path string, aliases map[string][]string) *MaheshvaraUsage {
-	object, _ := customValueAt(root, path).(map[string]any)
-	if object == nil {
-		return nil
-	}
-	usage := &MaheshvaraUsage{Source: UsageSourceProviderResponse}
-	usage.InputTokens = customIntPath(object, customAliasKeys(aliases, "input", usageAliasTables.input...)...)
-	usage.OutputTokens = customIntPath(object, customAliasKeys(aliases, "output", usageAliasTables.output...)...)
-	usage.TotalTokens = customIntPath(object, customAliasKeys(aliases, "total", usageAliasTables.total...)...)
-	usage.CachedInputTokens = customIntPath(object, customAliasKeys(aliases, "cached", append(append([]string(nil), usageAliasTables.cached...), "prompt_tokens_details.cached_tokens", "input_tokens_details.cached_tokens", "cache_read_tokens")...)...)
-	usage.ReasoningTokens = customIntPath(object, customAliasKeys(aliases, "reasoning", append(append([]string(nil), usageAliasTables.reason...), "completion_tokens_details.reasoning_tokens")...)...)
-	usage.CacheCreationInputTokens = customIntPath(object, customAliasKeys(aliases, "cache_creation", usageAliasTables.cacheCre...)...)
-	if usage.CachedInputTokens == 0 && len(aliases["cached"]) == 0 {
-		// Some compatible providers emit a zero placeholder at the root and the
-		// actual reading in details. Explicit aliases retain first-present semantics.
-		for _, key := range []string{"prompt_tokens_details.cached_tokens", "input_tokens_details.cached_tokens", "prompt_tokens_details.cache_read_tokens", "input_tokens_details.cache_read_tokens"} {
-			usage.CachedInputTokens = max(usage.CachedInputTokens, customIntPath(object, key))
-		}
-		if usage.CachedInputTokens == 0 {
-			usage.CachedInputTokens = customIntPath(object, customAliasKeys(aliases, "cache_read", usageAliasTables.cacheRd...)...)
-		}
-	}
-	usage.CacheCreation5mTokens = customIntPath(object, "cache_creation.ephemeral_5m_input_tokens")
-	usage.CacheCreation1hTokens = customIntPath(object, "cache_creation.ephemeral_1h_input_tokens")
-	if len(aliases["cache_creation"]) == 0 && usage.CacheCreationInputTokens == 0 {
-		usage.CacheCreationInputTokens = usage.CacheCreation5mTokens + usage.CacheCreation1hTokens
-		if usage.CacheCreationInputTokens == 0 {
-			usage.CacheCreationInputTokens = customIntPath(object, "prompt_tokens_details.cached_creation_tokens", "input_tokens_details.cached_creation_tokens")
-		}
-	}
-	// Canonical Anthropic input_tokens excludes cache reads/writes. An explicit
-	// input alias is already a user-defined normalized count and must not be reinterpreted.
-	_, hasRead := object["cache_read_input_tokens"]
-	_, hasCreation := object["cache_creation_input_tokens"]
-	_, hasTiers := object["cache_creation"]
-	if len(aliases["input"]) == 0 {
-		usage.cacheInputExclusive = hasRead || hasCreation || hasTiers
-		if value, present := object["input_tokens"]; present && value != nil {
-			input := customIntPath(object, "input_tokens")
-			usage.rawInputTokens = &input
-			if usage.cacheInputExclusive {
-				usage.InputTokens += usage.CachedInputTokens + usage.CacheCreationInputTokens
-			}
-		}
-	}
-	if _, gemini := object["promptTokenCount"]; gemini && len(aliases["input"]) == 0 {
-		usage.ToolUseTokens = customIntPath(object, "toolUsePromptTokenCount")
-		usage.InputTokens += usage.ToolUseTokens
-	}
-	if _, gemini := object["candidatesTokenCount"]; gemini && len(aliases["output"]) == 0 {
-		usage.OutputTokens += customIntPath(object, "thoughtsTokenCount")
-	}
-	usage.TotalTokensInferred = usage.TotalTokens == 0
-	usage.TotalTokens = valueOrSum(usage.TotalTokens, usage.InputTokens, usage.OutputTokens)
-	return usage
 }
 
 // customIntPath 按点路径键列表取第一个存在的数值（与 customInt 同语义，

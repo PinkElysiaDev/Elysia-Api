@@ -109,6 +109,7 @@ type Choice struct {
 }
 
 type Usage struct {
+	semantic             *MaheshvaraUsage
 	PromptTokens         int `json:"prompt_tokens"`
 	CompletionTokens     int `json:"completion_tokens"`
 	TotalTokens          int `json:"total_tokens"`
@@ -148,7 +149,11 @@ func (u *Usage) UnmarshalJSON(data []byte) error {
 // 原样透传；常规路径退化为普通结构体序列化。
 func (u Usage) MarshalJSON() ([]byte, error) {
 	type alias Usage
-	return mergeRawOverTyped(u.RawFields, alias(u))
+	fields := []usageWireField{{"input", "prompt_tokens", u.PromptTokens}, {"output", "completion_tokens", u.CompletionTokens}, {"total", "total_tokens", u.TotalTokens}}
+	if u.semantic != nil {
+		fields = append(fields, usageWireField{"cached", "cached_tokens", u.CachedTokens}, usageWireField{"cached", "prompt_tokens_details.cached_tokens", u.semantic.CachedInputTokens}, usageWireField{"cache_creation", "prompt_tokens_details.cached_creation_tokens", u.semantic.CacheCreationInputTokens}, usageWireField{"reasoning", "completion_tokens_details.reasoning_tokens", u.semantic.ReasoningTokens})
+	}
+	return marshalUsagePresence(alias(u), u.RawFields, u.semantic, fields)
 }
 
 type PromptTokensDetails struct {

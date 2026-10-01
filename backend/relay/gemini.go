@@ -67,6 +67,7 @@ type GeminiCandidate struct {
 }
 
 type GeminiUsageMeta struct {
+	semantic                   *MaheshvaraUsage
 	PromptTokenCount           int                 `json:"promptTokenCount"`
 	ToolUsePromptTokenCount    int                 `json:"toolUsePromptTokenCount,omitempty"`
 	CandidatesTokenCount       int                 `json:"candidatesTokenCount"`

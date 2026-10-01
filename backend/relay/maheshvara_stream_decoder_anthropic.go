@@ -1,5 +1,7 @@
 package relay
 
+import "encoding/json"
+
 // decodeAnthropic 将 Anthropic SSE 事件解码为 Maheshvara 流事件；各族事件的
 // 具体解码在各自的分支方法中完成。
 func (decoder *MaheshvaraStreamDecoder) decodeAnthropic(raw map[string]any) ([]MaheshvaraStreamEvent, error) {
@@ -58,6 +60,9 @@ func (decoder *MaheshvaraStreamDecoder) decodeAnthropicBlockStart(raw map[string
 		name:     stringValue(blockValue["name"]),
 	}
 	decoder.anthropicBlocks[index] = block
+	if input, exists := blockValue["input"]; exists {
+		block.initialInput, _ = json.Marshal(input)
+	}
 	var events []MaheshvaraStreamEvent
 	switch block.typeName {
 	case "tool_use", "server_tool_use":
@@ -165,7 +170,10 @@ func (decoder *MaheshvaraStreamDecoder) decodeAnthropicBlockStop(raw map[string]
 		event.ToolCallIndex = index
 		event.ToolCallID = block.id
 		event.ToolName = block.name
-		event.ToolArgumentsDone = firstNonEmptyString(block.arguments.String(), "{}")
+		event.ToolArgumentsDone = block.arguments.String()
+		if block.arguments.Len() == 0 {
+			event.ToolArgumentsDone = string(block.initialInput)
+		}
 		events = append(events, event)
 	}
 	event := decoder.baseEvent(MaheshvaraEventOutputItemDone, raw)

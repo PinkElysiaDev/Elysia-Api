@@ -113,10 +113,10 @@ func (renderer *MaheshvaraStreamRenderer) startClaude() error {
 	if renderer.usage != nil {
 		usage["input_tokens"] = claudeUsageFromMaheshvara(renderer.usage).InputTokens
 		usage["output_tokens"] = renderer.usage.OutputTokens
-		if renderer.usage.CachedInputTokens != 0 {
+		if renderer.usage.HasCounter("cached") {
 			usage["cache_read_input_tokens"] = renderer.usage.CachedInputTokens
 		}
-		if renderer.usage.CacheCreationInputTokens != 0 {
+		if renderer.usage.HasCounter("cache_creation") {
 			usage["cache_creation_input_tokens"] = renderer.usage.CacheCreationInputTokens
 		}
 	}
@@ -276,10 +276,10 @@ func (renderer *MaheshvaraStreamRenderer) completeClaude(reason, stopSequence st
 		// Usage often arrives after message_start (including on other wires).
 		// Include final cache counters instead of silently losing late readings.
 		usage["input_tokens"] = claudeUsageFromMaheshvara(renderer.usage).InputTokens
-		if renderer.usage.CachedInputTokens > 0 {
+		if renderer.usage.HasCounter("cached") {
 			usage["cache_read_input_tokens"] = renderer.usage.CachedInputTokens
 		}
-		if renderer.usage.CacheCreationInputTokens > 0 {
+		if renderer.usage.HasCounter("cache_creation") {
 			usage["cache_creation_input_tokens"] = renderer.usage.CacheCreationInputTokens
 		}
 	}
