@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -290,7 +291,8 @@ func (e *Engine) startTurn(ctx context.Context, sessionID string, handle *turnHa
 	// 崩溃、以及会话在 DB 里永卡 running。
 	defer func() {
 		if r := recover(); r != nil {
-			emitTerminal(events, Event{Type: EventError, Text: fmt.Sprintf("引擎异常: %v", r), Retryable: true})
+			message := e.reportTurnPanic(context.Background(), sessionID, r, "startTurn")
+			emitTerminal(events, Event{Type: EventError, Text: message, Retryable: true})
 			e.setStatus(context.Background(), sessionID, StatusIdle, true, events)
 			emitTerminal(events, Event{Type: EventTurnDone})
 		}
@@ -299,6 +301,10 @@ func (e *Engine) startTurn(ctx context.Context, sessionID string, handle *turnHa
 	session, err := e.store.GetSession(ctx, sessionID)
 	if err != nil {
 		emitTerminal(events, Event{Type: EventError, Text: fmt.Sprintf("读取会话失败: %v", err)})
+		return
+	}
+	if session == nil {
+		e.failTurn(ctx, sessionID, events, "读取会话失败: 存储返回空会话")
 		return
 	}
 	// 新轮次作废旧审批；审批恢复路径随后自行清理。
@@ -566,6 +572,12 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 			e.handleCallFailure(ctx, sessionID, session, handle, result, err, events)
 			return
 		}
+		if result == nil {
+			// 契约上 err==nil 时 result 恒非 nil,但 StreamCaller 是接口——
+			// 新实现返回 (nil, nil) 会在这里空指针 panic,显式走失败路径。
+			e.handleCallFailure(ctx, sessionID, session, handle, nil, fmt.Errorf("模型调用返回空结果"), events)
+			return
+		}
 
 		content := AssistantContent{Text: result.Text, Reasoning: result.Reasoning, ToolCalls: result.ToolCalls}
 		e.persistAssistant(ctx, sessionID, session, content, result.Usage, events)
@@ -631,7 +643,7 @@ func advancePlanStaleRounds(session *Session) bool {
 // 写库走 WithoutCancel：Stop/超时取消 turnCtx 后收尾（状态回 idle）仍要落库。
 func (e *Engine) finalizeTurn(ctx context.Context, sessionID string, session *Session, started time.Time, usageTotal *relay.MaheshvaraUsage, sawUsage *bool, rounds *int, paused *bool, events chan Event) {
 	if r := recover(); r != nil {
-		emitEvent(events, Event{Type: EventError, Text: fmt.Sprintf("引擎异常: %v", r), Retryable: true})
+		emitEvent(events, Event{Type: EventError, Text: e.reportTurnPanic(context.Background(), sessionID, r, "modelLoop"), Retryable: true})
 	}
 	if *paused {
 		return
@@ -793,7 +805,20 @@ func (e *Engine) runParallel(ctx context.Context, sessionID string, session *Ses
 	for index, call := range calls {
 		index, call := index, call
 		tool := e.tools.Get(call.Name)
-		group.Go(func() error {
+		group.Go(func() (err error) {
+			// errgroup 不 recover——runOneTool 外壳(进度/落库/截断)一旦 panic
+			// 会直接崩进程;这里降级为该工具的失败结果(与 runOneTool 内对
+			// tool.Execute 的防护同语义)。
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[agent] parallel tool panic session=%s tool=%s: %v\n%s", sessionID, call.Name, r, debug.Stack())
+					infos[index] = ToolResultInfo{
+						CallID: call.ID, Name: call.Name, OK: false,
+						Summary: fmt.Sprintf("工具执行异常(并行): %v", r),
+						Data:    json.RawMessage(`{"error":"tool_panic"}`),
+					}
+				}
+			}()
 			snapshot := *session
 			infos[index] = e.runOneTool(groupCtx, sessionID, &snapshot, tool, call, events)
 			return nil
@@ -1140,6 +1165,44 @@ func (e *Engine) setStatus(ctx context.Context, sessionID, status string, clearP
 	if err := e.store.UpdateSessionState(ctx, sessionID, update); err != nil {
 		emitEvent(events, Event{Type: EventStatus, Text: fmt.Sprintf("会话状态更新失败: %v", err)})
 	}
+}
+
+// reportTurnPanic 记录轮次 panic 的完整栈(控制台)并落库一条含栈顶摘录的
+// 错误消息,返回带同样摘录的用户可见文本——此前两处 recover 只回传 panic
+// 值,栈完全丢失且不落库,偶发 panic(SSE 断开时)事后零痕迹、永远无法定位。
+func (e *Engine) reportTurnPanic(ctx context.Context, sessionID string, r any, stage string) string {
+	stack := debug.Stack()
+	log.Printf("[agent] turn panic session=%s stage=%s: %v\n%s", sessionID, stage, r, stack)
+	message := fmt.Sprintf("引擎异常(%s): %v", stage, r)
+	if excerpt := panicStackExcerpt(stack); excerpt != "" {
+		message += "\n" + excerpt
+	}
+	finCtx := context.WithoutCancel(ctx)
+	finCtx, cancel := context.WithTimeout(finCtx, 5*time.Second)
+	defer cancel()
+	_, _ = e.store.AppendMessage(finCtx, sessionID, RoleSystem, SystemContent{Kind: "error", Text: message}, "", nil)
+	return message
+}
+
+// panicStackExcerpt 从 panic 栈里摘出最顶部的 3 帧用户代码行(过滤 runtime
+// 帧与过长的参数),供错误文本携带——完整栈在控制台日志。
+func panicStackExcerpt(stack []byte) string {
+	lines := strings.Split(string(stack), "\n")
+	var picked []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "github.com/elysia-api/") {
+			continue
+		}
+		if len(trimmed) > 160 {
+			trimmed = trimmed[:160] + "..."
+		}
+		picked = append(picked, trimmed)
+		if len(picked) >= 3 {
+			break
+		}
+	}
+	return strings.Join(picked, "\n")
 }
 
 func (e *Engine) failTurn(ctx context.Context, sessionID string, events chan Event, message string) {
