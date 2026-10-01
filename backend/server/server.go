@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 	"github.com/elysia-api/backend/webui"
@@ -130,6 +131,10 @@ type Server struct {
 	// 协议 Agent 引擎（agent_routes.go 惰性装配：store 就绪后首次使用时构建）。
 	agentEngineOnce sync.Once
 	agentEngineInst *agent.Engine
+
+	protocolServiceOnce sync.Once
+	protocolServiceInst *protocol.Service
+	protocolServiceErr  error
 }
 
 func New(cfg *config.Config) *Server {
@@ -210,6 +215,9 @@ func New(cfg *config.Config) *Server {
 	go server.catalog.runPeriodic()
 	server.syncOutboundPolicy()
 	server.syncCustomProtocols()
+	if _, err := server.protocolService(); err != nil {
+		log.Printf("protocol revision service unavailable: %v", err)
+	}
 	if server.store != nil {
 		server.logSystemEvent("info", "server started", map[string]any{
 			"version": AppVersion, "host": cfg.Server.Host, "port": cfg.Server.Port,

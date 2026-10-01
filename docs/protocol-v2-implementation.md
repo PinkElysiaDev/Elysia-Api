@@ -14,7 +14,7 @@ This ledger records implemented and verified work; unchecked stages are not deli
 | C06 Stream and accounting | Shared runtime rules complete; semantic cutover remains | Full backend tests and vet passed. 16 tail-frame combinations, zero/presence and TTL merges, persisted counters, tool input/association, cumulative rewrite, bounded state and sequence checks. See stream fidelity audit; local race blocked by C toolchain. |
 | C07 Bidirectional compiler | Compiler and typed mappings complete; staged integration remains | Strict bounded v2 compiler, schema/catalog, native edit rules, four HTTP modules, conservative legacy import; two standalone protocol definitions, 16 request and 16 response combinations; full backend tests/vet. See definition reference for stateful module and migration boundaries. |
 | C08 Capability verification | Complete; activation service follows in C09 | Shared offline verifier, direction-specific capability evidence, tool-history/event replay, native probes, hash-bound activation prerequisite and paired protocol verification. Full backend tests/vet; see verification reference. |
-| C09 Revisions and activation | Pending | |
+| C09 Revisions and activation | Complete; gateway consumption follows in C10 | SQLite drafts/revisions/reports/active pointers, optimistic concurrency, atomic registry, pinned requests, guarded rollback/reverification and authenticated management API. Persistence/concurrency/restart and API tests plus full backend tests/vet. |
 | C10 Custom ingress and routing | Pending | |
 | C11 WebSocket sessions | Pending | |
 | C12 Persistent async jobs | Pending | |

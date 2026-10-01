@@ -35,6 +35,7 @@ func respondFail(c *gin.Context, status int, code, message string) {
 }
 
 func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
+	s.setupProtocolRevisionRoutes(admin)
 	admin.GET("/runtime-config", s.adminRuntimeConfig)
 	admin.PUT("/runtime-config", s.adminUpdateRuntimeConfig)
 	admin.POST("/reload", s.adminReload)

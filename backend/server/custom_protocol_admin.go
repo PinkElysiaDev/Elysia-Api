@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
@@ -117,6 +118,22 @@ func (s *Server) adminUpsertCustomProtocol(c *gin.Context) {
 	var compact bytes.Buffer
 	if err := json.Compact(&compact, body); err != nil {
 		respondFail(c, http.StatusBadRequest, "invalid_json", fmt.Sprintf("协议必须是合法 JSON: %v", err))
+		return
+	}
+	var header map[string]json.RawMessage
+	if err := json.Unmarshal(compact.Bytes(), &header); err != nil {
+		respondProtocolError(c, err)
+		return
+	}
+	if _, isVersioned := header["schemaVersion"]; isVersioned {
+		s.saveProtocolDraft(c, pathID, compact.Bytes())
+		return
+	}
+	if _, err := store.ReadProtocolDraft(c.Request.Context(), pathID); err == nil {
+		respondFail(c, http.StatusConflict, "versioned_protocol", "此协议已有 v2 草稿，请通过修订接口编辑、验证和启用")
+		return
+	} else if !errors.Is(err, protocol.ErrNotFound) {
+		respondProtocolError(c, err)
 		return
 	}
 	protocol, ok := validateCustomProtocolRaw(c, compact.Bytes())
