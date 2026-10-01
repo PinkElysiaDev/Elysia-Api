@@ -56,6 +56,8 @@ type CustomProtocolTypeSpec struct {
 var customProtocolRequestFieldCatalog = []MaheshvaraFieldSpec{
 	{Name: "model", Label: "模型名（路由后实际使用的上游模型）", Shape: "string", Group: "基础"},
 	{Name: "instructions", Label: "系统指令", Shape: "string", Group: "基础"},
+	{Name: "anthropic_system", Label: "Anthropic 系统内容（保留缓存块）", Shape: "native", Group: "基础"},
+	{Name: "gemini_system", Label: "Gemini 系统内容（未提供时省略）", Shape: "native", Group: "基础"},
 	{Name: "messages", Label: "消息数组（role + content）", Shape: "native", Group: "基础"},
 	{Name: "input_items", Label: "Responses 风格输入项", Shape: "native", Group: "基础"},
 	{Name: "stream", Label: "是否流式", Shape: "scalar", Group: "基础"},
@@ -94,6 +96,8 @@ var customProtocolRequestFieldCatalog = []MaheshvaraFieldSpec{
 	{Name: "user", Label: "终端用户标识", Shape: "string", Group: "其他"},
 	{Name: "include", Label: "Responses include 列表（shape 会联动追加加密思考）", Shape: "native", Group: "其他"},
 	{Name: "prompt_cache_key", Label: "提示缓存键", Shape: "string", Group: "其他"},
+	{Name: "prompt_cache_retention", Label: "提示缓存保留期", Shape: "native", Group: "其他"},
+	{Name: "cache_control", Label: "缓存控制（按目标协议整形）", Shape: "native", Group: "其他"},
 	{Name: "metadata", Label: "元数据", Shape: "native", Group: "其他"},
 	{Name: "raw_extra", Label: "客户端透传的未知字段（别名 extra）", Shape: "native", Group: "其他"},
 }

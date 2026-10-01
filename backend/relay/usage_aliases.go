@@ -15,7 +15,7 @@ var usageAliasTables = struct {
 	input:    []string{"input_tokens", "inputTokens", "prompt_tokens", "promptTokenCount"},
 	output:   []string{"output_tokens", "outputTokens", "completion_tokens", "candidatesTokenCount"},
 	total:    []string{"total_tokens", "totalTokens", "totalTokenCount"},
-	cached:   []string{"cached_tokens", "cachedInputTokens", "cached_input_tokens", "cachedContentTokenCount"},
+	cached:   []string{"cached_tokens", "cachedInputTokens", "cached_input_tokens", "cachedContentTokenCount", "prompt_cache_hit_tokens"},
 	cacheCre: []string{"cache_creation_input_tokens", "cacheCreationInputTokens"},
 	cacheRd:  []string{"cache_read_input_tokens", "cacheReadInputTokens"},
 	reason:   []string{"reasoning_tokens", "reasoningTokens", "thoughtsTokenCount"},

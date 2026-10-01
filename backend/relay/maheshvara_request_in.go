@@ -311,10 +311,11 @@ func parseOpenAIChatMessages(raw any) []MaheshvaraMessage {
 				callID = legacyFunctionCallIDPrefix + msg.Name
 			}
 			msg.Content = []MaheshvaraContentPart{{
-				Type:       MaheshvaraContentToolOutput,
-				ToolCallID: callID,
-				ToolOutput: output,
-				Raw:        m,
+				Type:         MaheshvaraContentToolOutput,
+				ToolCallID:   callID,
+				ToolOutput:   output,
+				CacheControl: cacheControlObject(m["cache_control"]),
+				Raw:          m,
 			}}
 		}
 		// reasoning 前插：Anthropic 要求启用 thinking 时 assistant 消息的 thinking
@@ -378,6 +379,7 @@ func parseOpenAIToolCalls(toolCalls []any) []MaheshvaraToolCall {
 			ArgumentsText:            arguments,
 			ThoughtSignature:         thoughtSignature,
 			ThoughtSignatureProvider: thoughtSignatureProvider,
+			CacheControl:             cacheControlObject(tcm["cache_control"]),
 			Raw:                      tcm,
 		})
 	}
@@ -456,11 +458,12 @@ func parseClaudeMessages(raw any) []MaheshvaraMessage {
 		msg.CacheControl = m["cache_control"]
 		msg.Metadata = mapValue(m["metadata"])
 		if blocks, ok := m["content"].([]any); ok {
-			for _, block := range blocks {
+			for blockIndex, block := range blocks {
 				bm, _ := block.(map[string]any)
 				if bm == nil {
 					continue
 				}
+				partStart, callStart := len(msg.Content), len(msg.ToolCalls)
 				switch stringValue(bm["type"]) {
 				case "text":
 					part := MaheshvaraContentPart{Type: MaheshvaraContentText, Text: stringValue(bm["text"]), CacheControl: bm["cache_control"], Raw: bm}
@@ -496,6 +499,12 @@ func parseClaudeMessages(raw any) []MaheshvaraMessage {
 					// them byte-for-byte, cross-wire targets keep their
 					// existing unknown-part handling.
 					msg.Content = append(msg.Content, MaheshvaraContentPart{Type: stringValue(bm["type"]), Raw: bm})
+				}
+				for i := partStart; i < len(msg.Content); i++ {
+					msg.Content[i].claudeIndex = &blockIndex
+				}
+				for i := callStart; i < len(msg.ToolCalls); i++ {
+					msg.ToolCalls[i].claudeIndex = &blockIndex
 				}
 			}
 		} else {
@@ -776,14 +785,15 @@ func parseOpenAIChatTools(raw any) []MaheshvaraTool {
 			fn, _ := m["function"].(map[string]any)
 			strict := boolPointer(fn["strict"])
 			tools = append(tools, MaheshvaraTool{
-				Type:        MaheshvaraToolFunction,
-				Name:        stringValue(fn["name"]),
-				Description: stringValue(fn["description"]),
-				Parameters:  mapValue(fn["parameters"]),
-				InputSchema: mapValue(fn["parameters"]),
-				Strict:      strict,
-				Provider:    stringValue(m["provider"]),
-				Raw:         m,
+				Type:         MaheshvaraToolFunction,
+				Name:         stringValue(fn["name"]),
+				Description:  stringValue(fn["description"]),
+				Parameters:   mapValue(fn["parameters"]),
+				InputSchema:  mapValue(fn["parameters"]),
+				Strict:       strict,
+				Provider:     stringValue(m["provider"]),
+				CacheControl: cacheControlObject(m["cache_control"]),
+				Raw:          m,
 			})
 			continue
 		}
@@ -861,7 +871,7 @@ func parseResponsesTools(raw []map[string]any) []MaheshvaraTool {
 	tools := make([]MaheshvaraTool, 0, len(raw))
 	for _, tool := range raw {
 		t := stringValue(tool["type"])
-		ct := MaheshvaraTool{Type: t, Raw: tool}
+		ct := MaheshvaraTool{Type: t, Raw: tool, CacheControl: cacheControlObject(tool["cache_control"])}
 		if t == MaheshvaraToolFunction {
 			ct.Name = stringValue(tool["name"])
 			ct.Description = stringValue(tool["description"])
@@ -989,18 +999,20 @@ func claudeToolUseBlockToCall(bm map[string]any) MaheshvaraToolCall {
 		Name:          stringValue(bm["name"]),
 		Arguments:     inputRaw,
 		ArgumentsText: string(inputRaw),
+		CacheControl:  cacheControlObject(bm["cache_control"]),
 		Raw:           bm,
 	}
 }
 
 // claudeToolResultBlockToPart 把 tool_result 块转为 tool_output part
-// (块结构化 content 拍平为字符串形态,Claude API 语义等价)。
+// ToolOutput 提供跨协议文本表示；Raw 保留结构化内容供原生回放，避免改变缓存前缀。
 func claudeToolResultBlockToPart(bm map[string]any) MaheshvaraContentPart {
 	return MaheshvaraContentPart{
-		Type:       MaheshvaraContentToolOutput,
-		ToolCallID: stringValue(bm["tool_use_id"]),
-		ToolOutput: contentValueToString(bm["content"]),
-		Raw:        bm,
+		Type:         MaheshvaraContentToolOutput,
+		ToolCallID:   stringValue(bm["tool_use_id"]),
+		ToolOutput:   contentValueToString(bm["content"]),
+		CacheControl: cacheControlObject(bm["cache_control"]),
+		Raw:          bm,
 	}
 }
 
@@ -1044,7 +1056,7 @@ func claudeThinkingBlockToPart(bm map[string]any) (MaheshvaraContentPart, bool) 
 // claudeImageBlockToPart 把 Claude image block（{"source":{...}}）解析为 maheshvara
 // image part：base64 source → ImageBase64+MediaType；url source → ImageURL。
 func claudeImageBlockToPart(bm map[string]any) MaheshvaraContentPart {
-	part := MaheshvaraContentPart{Type: MaheshvaraContentImage, Raw: bm}
+	part := MaheshvaraContentPart{Type: MaheshvaraContentImage, Raw: bm, CacheControl: cacheControlObject(bm["cache_control"])}
 	src, _ := bm["source"].(map[string]any)
 	if src == nil {
 		return part

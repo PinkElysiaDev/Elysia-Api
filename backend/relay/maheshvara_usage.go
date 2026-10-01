@@ -43,12 +43,12 @@ func maheshvaraUsageFromOpenAIUsage(usage Usage) *MaheshvaraUsage {
 }
 
 func maheshvaraUsageFromClaudeUsage(usage ClaudeUsage) *MaheshvaraUsage {
-	input := usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
 	if usage.CacheCreationInputTokens == 0 && usage.CacheCreation != nil {
 		// Anthropic 官方响应里 cache_creation.ephemeral_* 是 cache_creation_input_tokens
 		// 的明细拆分，两者同时返回且相等；只在总数缺失时才用明细求和，避免双重计入。
-		input += usage.CacheCreation.Ephemeral5mInputTokens + usage.CacheCreation.Ephemeral1hInputTokens
+		usage.CacheCreationInputTokens = usage.CacheCreation.Ephemeral5mInputTokens + usage.CacheCreation.Ephemeral1hInputTokens
 	}
+	input := usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
 	u := &MaheshvaraUsage{
 		InputTokens:              input,
 		OutputTokens:             usage.OutputTokens,
@@ -129,12 +129,13 @@ func openAIUsageFromMaheshvara(u *MaheshvaraUsage) Usage {
 	// details 仅在有值时输出（指针 omitempty）——空对象会覆盖 RawFields
 	// 透传的同键子对象。
 	var promptDetails *PromptTokensDetails
-	if u.CachedInputTokens > 0 || u.TextInputTokens > 0 || u.AudioInputTokens > 0 || u.ImageInputTokens > 0 {
+	if u.CachedInputTokens > 0 || u.CacheCreationInputTokens > 0 || u.TextInputTokens > 0 || u.AudioInputTokens > 0 || u.ImageInputTokens > 0 {
 		promptDetails = &PromptTokensDetails{
-			CachedTokens: u.CachedInputTokens,
-			TextTokens:   u.TextInputTokens,
-			AudioTokens:  u.AudioInputTokens,
-			ImageTokens:  u.ImageInputTokens,
+			CachedTokens:         u.CachedInputTokens,
+			CachedCreationTokens: u.CacheCreationInputTokens,
+			TextTokens:           u.TextInputTokens,
+			AudioTokens:          u.AudioInputTokens,
+			ImageTokens:          u.ImageInputTokens,
 		}
 	}
 	var completionDetails *CompletionTokensDetails

@@ -8,6 +8,7 @@ import (
 )
 
 type CustomProtocolStreamDecoder struct {
+	usage             *MaheshvaraUsage
 	config            CustomProtocolConfig
 	aliases           *CustomProtocolAliases
 	resolved          customResolvedMapping
@@ -555,7 +556,11 @@ func (decoder *CustomProtocolStreamDecoder) buildContentEvents(response *Maheshv
 		}
 	}
 	if response.Usage != nil {
-		events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventUsageDelta, ResponseID: response.ID, Model: response.Model, Usage: response.Usage})
+		decoder.usage = mergeMaheshvaraStreamUsage(decoder.usage, response.Usage)
+		// Emit snapshots: a cache-only/input-only tail must be normalized against
+		// preceding frames before both accounting and downstream rendering see it.
+		snapshot := *decoder.usage
+		events = append(events, MaheshvaraStreamEvent{Type: MaheshvaraEventUsageDelta, ResponseID: response.ID, Model: response.Model, Usage: &snapshot})
 	}
 	return events
 }

@@ -83,6 +83,37 @@
 
 上例为 `request.body` 片段。`omitIf` 在渲染值等于指定字面量时删键；`when` 不成立时省略整键。`shape: responses` 还提供 `input` / `input_items`。
 
+### 缓存字段与系统内容
+
+`shape` 整形消息、工具和可供引用的字段；最终发送哪些字段仍由 `body` 决定。省略映射不会自动启用缓存，也不会自动透传所有客户端字段。复制最新预置可以获得完整的标准映射；自定义路径同样可引用下表字段。
+
+| 字段 | 形态与用途 |
+| --- | --- |
+| `anthropic_system` | `native`；仅 Anthropic shape 生成，保留原生 system 块及 Chat system/developer 的缓存断点；无标记时兼容字符串形态 |
+| `gemini_system` | `native`；仅 Gemini shape 生成 systemInstruction 对象，未提供系统内容时为空；避免使用显式缓存时凭空注入空系统指令 |
+| `cache_control` | `native`；Anthropic/Chat shape 中为缓存控制对象；Gemini shape 中为 cachedContent 资源名称；其他协议的值不会混用 |
+| `prompt_cache_key` | `string`；Chat/Responses 的缓存路由键 |
+| `prompt_cache_retention` | `native`；Chat/Responses 缓存保留期，保留客户端 JSON 值 |
+
+Anthropic 目标的 `request.body` 缓存相关片段如下。不要为 `anthropic_system` 设置 `mode: string`，否则数组会变成字符串。
+
+```json
+{
+  "system": {"field":"anthropic_system","omitIfEmpty":true},
+  "messages": {"field":"messages"},
+  "tools": {"field":"tools","omitIfEmpty":true},
+  "cache_control": {"field":"cache_control","omitIfEmpty":true}
+}
+```
+
+Chat/Responses 在现有 body 中增加 `prompt_cache_key`、`prompt_cache_retention` 两个同名字段引用，并设 `omitIfEmpty: true`。Gemini 使用 `"cachedContent":{"field":"cache_control","omitIfEmpty":true}` 与 `"systemInstruction":{"field":"gemini_system","omitIfEmpty":true}`。这些机制不等价：Gemini 资源引用不能转换成 Anthropic 缓存控制，OpenAI 缓存键也不会被解释为 Anthropic 缓存断点。
+
+Chat 兼容扩展中的文本、图片、文档和工具缓存标记在适用目标上保留；消息级标记转为 Anthropic 最后一个可缓存内容块的标记。只保留已有意图，不为无标记请求创建断点，也不为 thinking 块制造缓存标记。
+
+缓存用量默认识别四种标准响应，包括嵌套 cached_tokens 与 Anthropic 读写计数。统一 `usage.input_tokens` 包含缓存读写；Anthropic 原始 input_tokens 不包含它们，因此标准响应会做加法归一化。自定义 `aliases.usage.input` 按作者提供的**总输入量**解释，不再自动相加。显式 `cached` 别名的零值不会被默认缓存计数覆盖。创建缓存和读取缓存分别统计；流式缺失字段不会清除之前的计数。
+
+本次预置版本为 Chat/Responses v5、Anthropic/Gemini v4。启动时自动升级哈希匹配的未编辑预置；用户修改过的定义和自定义副本不被覆盖，需要手动合并上述 body 片段。旧 Anthropic `system → instructions` 映射保留兼容回放，新协议应使用 `anthropic_system`。标准 Anthropic 预置不再需要旧的 `aliases.usage.cache_creation/cache_read` 声明；使用默认解析可同时支持 cache_creation 的双 TTL 桶兜底。
+
 模板上下文为 `maheshvara.*`，兼容别名 `request.*`。可访问生成参数、消息、工具、reasoning、metadata、stream 和 `raw_extra`。字符串内占位符转义为 JSON 字符串，未加引号的占位符插入原生 JSON；支持 `json`、`default:<JSON>`、`bool`、`int`、`string` 过滤器。模板语法片段（不是可直接提交的 JSON）：
 
 ```text

@@ -16,6 +16,7 @@ Elysia API 的部署、协议、接口和开发参考。首次使用从[快速�
 | --- | --- |
 | [Maheshvara](maheshvara-protocol.md) | 内部模型、协议映射、流式和能力边界 |
 | [自定义协议](protocol-definition-reference.md) | JSON 定义、字段映射、条件、流式帧和模型发现 |
+| [缓存语义审计](cache-fidelity-audit-2026-10-01.md) | 四协议历史对照、通用修复、验证证据与自定义协议迁移 |
 
 ## 管理接口
 

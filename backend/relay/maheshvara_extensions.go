@@ -7,6 +7,7 @@ import (
 )
 
 func applyOpenAIRequestExtensions(raw map[string]any, req *MaheshvaraRequest) {
+	req.CacheControl = cacheControlObject(raw["cache_control"])
 	if value, ok := numberValue(raw["n"]); ok {
 		v := int(value)
 		req.N = &v
@@ -149,6 +150,9 @@ func applyResponsesRequestExtensions(raw map[string]any, req *MaheshvaraRequest)
 }
 
 func applyOpenAIRequestExtensionsToBody(out map[string]any, req *MaheshvaraRequest) {
+	if cc := cacheControlObject(req.CacheControl); cc != nil {
+		out["cache_control"] = cc
+	}
 	if req.N != nil {
 		out["n"] = *req.N
 	}
@@ -227,8 +231,8 @@ func applyClaudeRequestExtensionsToBody(out map[string]any, req *MaheshvaraReque
 	if req.ServiceTier != "" {
 		out["service_tier"] = req.ServiceTier
 	}
-	if req.CacheControl != nil {
-		out["cache_control"] = req.CacheControl
+	if control := cacheControlObject(req.CacheControl); control != nil {
+		out["cache_control"] = control
 	}
 }
 
@@ -254,8 +258,8 @@ func applyGeminiRequestExtensionsToBody(out map[string]any, req *MaheshvaraReque
 			out["safetySettings"] = settings
 		}
 	}
-	if req.CacheControl != nil {
-		out["cachedContent"] = req.CacheControl
+	if reference := cachedContentReference(req.CacheControl); reference != "" {
+		out["cachedContent"] = reference
 	}
 	cfg, _ := out["generationConfig"].(map[string]any)
 	if cfg == nil {
@@ -602,7 +606,7 @@ func maheshvaraToolChoiceToResponses(value any) any {
 }
 
 func claudeDocumentBlockToPart(block map[string]any) MaheshvaraContentPart {
-	part := MaheshvaraContentPart{Type: MaheshvaraContentDocument, Raw: block}
+	part := MaheshvaraContentPart{Type: MaheshvaraContentDocument, Raw: block, CacheControl: cacheControlObject(block["cache_control"])}
 	if source, ok := block["source"].(map[string]any); ok {
 		part.MediaType = firstNonEmptyString(stringValue(source["media_type"]), stringValue(source["mimeType"]))
 		part.MimeType = part.MediaType
@@ -627,6 +631,15 @@ func claudeMediaBlockToPart(block map[string]any, partType string) MaheshvaraCon
 }
 
 func maheshvaraDocumentToClaudeBlock(part MaheshvaraContentPart) map[string]any {
+	// Native documents can have text/content sources and metadata not expressible
+	// as FileData/URI. Rebuilding them as base64 changes the cached prompt.
+	if raw, ok := part.Raw.(map[string]any); ok && raw["type"] == "document" {
+		block := make(map[string]any, len(raw))
+		for key, value := range raw {
+			block[key] = value
+		}
+		return block
+	}
 	if part.FileData != "" {
 		mediaType := firstNonEmptyString(part.MediaType, part.MimeType, "application/octet-stream")
 		return map[string]any{"type": "document", "source": map[string]any{"type": "base64", "media_type": mediaType, "data": part.FileData}}

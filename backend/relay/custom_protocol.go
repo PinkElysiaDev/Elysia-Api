@@ -918,9 +918,14 @@ func renderCustomProtocolRequest(req *MaheshvaraRequest, config CustomProtocolCo
 // overrideRequestBodySystem 把已渲染的请求体 JSON 根上的 "system" 键替换为
 // Claude 客户端的原始 system 块数组(保住块级 cache_control)。body 不是
 // JSON 对象时原样返回。
-func overrideRequestBodySystem(body []byte, rawBlocks json.RawMessage) ([]byte, error) {
+func overrideRequestBodySystem(body []byte, rawBlocks json.RawMessage, instructions string) ([]byte, error) {
 	var root map[string]any
 	if err := json.Unmarshal(body, &root); err != nil || root == nil {
+		return body, nil
+	}
+	// Compatibility for legacy templates which flatten system. A shape must
+	// never inject fields omitted by the template or rewrite a native mapping.
+	if value, legacyString := root["system"].(string); !legacyString || value != instructions {
 		return body, nil
 	}
 	root["system"] = jsonRawToAny(rawBlocks)
@@ -955,7 +960,7 @@ func renderCustomProtocolRequestWithBody(req *MaheshvaraRequest, config CustomPr
 	// 线制客户端)不覆写,保留 body 树渲染的文本形态。
 	if strings.ToLower(strings.TrimSpace(config.Request.Shape)) == "anthropic" {
 		if rawBlocks := req.RawExtra["claude_system_blocks"]; len(rawBlocks) > 0 && len(body) > 0 {
-			body, err = overrideRequestBodySystem(body, rawBlocks)
+			body, err = overrideRequestBodySystem(body, rawBlocks, maheshvaraResponsesInstructions(req))
 			if err != nil {
 				return nil, fmt.Errorf("custom protocol %q request body system replay: %w", config.ID, err)
 			}
@@ -1404,10 +1409,14 @@ func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[
 	}
 	switch shape {
 	case "openai-chat":
+		root["cache_control"] = cacheControlObject(req.CacheControl)
 		root["messages"] = redecodeWithJSONNumbers(maheshvaraMessagesToOpenAI(req))
 		shapeCustomThinking(shape, req, root)
 		return setTools(maheshvaraToolsToOpenAI(req.Tools))
 	case "anthropic":
+		root["anthropic_system"] = redecodeWithJSONNumbers(maheshvaraAnthropicSystem(req))
+		root["instructions"] = maheshvaraResponsesInstructions(req)
+		root["cache_control"] = cacheControlObject(req.CacheControl)
 		messages, err := maheshvaraMessagesToClaude(req)
 		if err != nil {
 			return err
@@ -1420,6 +1429,11 @@ func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[
 		shapeCustomThinking(shape, req, root)
 		return setTools(maheshvaraToolsToClaude(req.Tools))
 	case "gemini":
+		root["instructions"] = maheshvaraResponsesInstructions(req)
+		if instructions := maheshvaraResponsesInstructions(req); instructions != "" {
+			root["gemini_system"] = map[string]any{"parts": []any{map[string]any{"text": instructions}}}
+		}
+		root["cache_control"] = cachedContentReference(req.CacheControl)
 		messages, err := maheshvaraMessagesToGemini(req)
 		if err != nil {
 			return err
@@ -1431,6 +1445,7 @@ func applyCustomProtocolShape(shape string, req *MaheshvaraRequest, context map[
 		shapeCustomThinking(shape, req, root)
 		return setTools(maheshvaraToolsToGemini(req.Tools))
 	case "responses":
+		root["instructions"] = maheshvaraResponsesInstructions(req)
 		input := redecodeWithJSONNumbers(maheshvaraInputToResponses(req))
 		root["input"] = input
 		root["input_items"] = input
@@ -1818,10 +1833,48 @@ func customUsageAtWithAliases(root any, path string, aliases map[string][]string
 	usage.TotalTokens = customIntPath(object, customAliasKeys(aliases, "total", usageAliasTables.total...)...)
 	usage.CachedInputTokens = customIntPath(object, customAliasKeys(aliases, "cached", append(append([]string(nil), usageAliasTables.cached...), "prompt_tokens_details.cached_tokens", "input_tokens_details.cached_tokens", "cache_read_tokens")...)...)
 	usage.ReasoningTokens = customIntPath(object, customAliasKeys(aliases, "reasoning", append(append([]string(nil), usageAliasTables.reason...), "completion_tokens_details.reasoning_tokens")...)...)
-	usage.CacheCreationInputTokens = customIntPath(object, customAliasKeys(aliases, "cache_creation", append(append([]string(nil), usageAliasTables.cacheCre...), "cache_creation.ephemeral_5m_input_tokens", "cache_creation.ephemeral_1h_input_tokens")...)...)
-	if usage.CachedInputTokens == 0 {
-		usage.CachedInputTokens = customIntPath(object, customAliasKeys(aliases, "cache_read", usageAliasTables.cacheRd...)...)
+	usage.CacheCreationInputTokens = customIntPath(object, customAliasKeys(aliases, "cache_creation", usageAliasTables.cacheCre...)...)
+	if usage.CachedInputTokens == 0 && len(aliases["cached"]) == 0 {
+		// Some compatible providers emit a zero placeholder at the root and the
+		// actual reading in details. Explicit aliases retain first-present semantics.
+		for _, key := range []string{"prompt_tokens_details.cached_tokens", "input_tokens_details.cached_tokens", "prompt_tokens_details.cache_read_tokens", "input_tokens_details.cache_read_tokens"} {
+			usage.CachedInputTokens = max(usage.CachedInputTokens, customIntPath(object, key))
+		}
+		if usage.CachedInputTokens == 0 {
+			usage.CachedInputTokens = customIntPath(object, customAliasKeys(aliases, "cache_read", usageAliasTables.cacheRd...)...)
+		}
 	}
+	usage.CacheCreation5mTokens = customIntPath(object, "cache_creation.ephemeral_5m_input_tokens")
+	usage.CacheCreation1hTokens = customIntPath(object, "cache_creation.ephemeral_1h_input_tokens")
+	if len(aliases["cache_creation"]) == 0 && usage.CacheCreationInputTokens == 0 {
+		usage.CacheCreationInputTokens = usage.CacheCreation5mTokens + usage.CacheCreation1hTokens
+		if usage.CacheCreationInputTokens == 0 {
+			usage.CacheCreationInputTokens = customIntPath(object, "prompt_tokens_details.cached_creation_tokens", "input_tokens_details.cached_creation_tokens")
+		}
+	}
+	// Canonical Anthropic input_tokens excludes cache reads/writes. An explicit
+	// input alias is already a user-defined normalized count and must not be reinterpreted.
+	_, hasRead := object["cache_read_input_tokens"]
+	_, hasCreation := object["cache_creation_input_tokens"]
+	_, hasTiers := object["cache_creation"]
+	if len(aliases["input"]) == 0 {
+		usage.cacheInputExclusive = hasRead || hasCreation || hasTiers
+		if value, present := object["input_tokens"]; present && value != nil {
+			input := customIntPath(object, "input_tokens")
+			usage.rawInputTokens = &input
+			if usage.cacheInputExclusive {
+				usage.InputTokens += usage.CachedInputTokens + usage.CacheCreationInputTokens
+			}
+		}
+	}
+	if _, gemini := object["promptTokenCount"]; gemini && len(aliases["input"]) == 0 {
+		usage.ToolUseTokens = customIntPath(object, "toolUsePromptTokenCount")
+		usage.InputTokens += usage.ToolUseTokens
+	}
+	if _, gemini := object["candidatesTokenCount"]; gemini && len(aliases["output"]) == 0 {
+		usage.OutputTokens += customIntPath(object, "thoughtsTokenCount")
+	}
+	usage.TotalTokensInferred = usage.TotalTokens == 0
 	usage.TotalTokens = valueOrSum(usage.TotalTokens, usage.InputTokens, usage.OutputTokens)
 	return usage
 }

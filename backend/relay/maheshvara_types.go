@@ -164,7 +164,9 @@ type MaheshvaraMessage struct {
 }
 
 type MaheshvaraContentPart struct {
-	Type string `json:"type"`
+	// Native Claude content order must survive splitting tool_use into ToolCalls.
+	claudeIndex *int
+	Type        string `json:"type"`
 
 	Text string `json:"text,omitempty"`
 
@@ -238,6 +240,8 @@ type MaheshvaraTool struct {
 }
 
 type MaheshvaraToolCall struct {
+	claudeIndex              *int
+	CacheControl             any             `json:"cache_control,omitempty"`
 	ID                       string          `json:"id,omitempty"`
 	Type                     string          `json:"type"`
 	Name                     string          `json:"name,omitempty"`
@@ -336,9 +340,14 @@ type MaheshvaraReasoningSummary struct {
 }
 
 type MaheshvaraUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
-	TotalTokens  int `json:"total_tokens"`
+	rawInputTokens      *int
+	cacheInputExclusive bool
+	// Internal provenance: a total inferred from a partial SSE frame must be
+	// recomputed after merging with the preceding input/output counters.
+	TotalTokensInferred bool `json:"-"`
+	InputTokens         int  `json:"input_tokens"`
+	OutputTokens        int  `json:"output_tokens"`
+	TotalTokens         int  `json:"total_tokens"`
 
 	CachedInputTokens        int `json:"cached_input_tokens,omitempty"`
 	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
@@ -667,11 +676,12 @@ func contentPartsToInterface(parts []MaheshvaraContentPart) any {
 	if len(parts) == 0 {
 		return ""
 	}
-	if len(parts) == 1 && parts[0].Type == MaheshvaraContentText && len(parts[0].Annotations) == 0 {
+	if len(parts) == 1 && parts[0].Type == MaheshvaraContentText && len(parts[0].Annotations) == 0 && contentPartCacheControl(parts[0]) == nil {
 		return parts[0].Text
 	}
 	out := make([]any, 0, len(parts))
 	for _, part := range parts {
+		start := len(out)
 		switch part.Type {
 		case MaheshvaraContentText:
 			textPart := map[string]any{"type": "text", "text": part.Text}
@@ -752,6 +762,11 @@ func contentPartsToInterface(parts []MaheshvaraContentPart) any {
 				out = append(out, raw)
 			}
 		}
+		for _, emitted := range out[start:] {
+			if block, ok := emitted.(map[string]any); ok {
+				withCacheControl(block, contentPartCacheControl(part))
+			}
+		}
 	}
 	return out
 }
@@ -816,6 +831,7 @@ func interfaceToContentParts(content any) []MaheshvaraContentPart {
 		if !ok {
 			continue
 		}
+		start := len(parts)
 		t, _ := m["type"].(string)
 		switch t {
 		case "text", "input_text", "output_text":
@@ -889,6 +905,9 @@ func interfaceToContentParts(content any) []MaheshvaraContentPart {
 			parts = append(parts, MaheshvaraContentPart{Type: MaheshvaraContentToolOutput, ToolCallID: firstNonEmptyString(stringValue(m["tool_call_id"]), stringValue(m["call_id"])), ToolOutput: firstNonEmptyString(contentValueToString(m["content"]), contentValueToString(m["output"]), contentValueToString(m["response"])), Raw: m})
 		default:
 			parts = append(parts, MaheshvaraContentPart{Type: t, Raw: m})
+		}
+		for i := start; i < len(parts); i++ {
+			parts[i].CacheControl = cacheControlObject(m["cache_control"])
 		}
 	}
 	return parts

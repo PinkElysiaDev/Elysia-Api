@@ -324,7 +324,6 @@ func mergeMaheshvaraStreamUsage(current, update *MaheshvaraUsage) *MaheshvaraUsa
 	}
 	mergeInt(&current.InputTokens, update.InputTokens)
 	mergeInt(&current.OutputTokens, update.OutputTokens)
-	mergeInt(&current.TotalTokens, update.TotalTokens)
 	mergeInt(&current.CachedInputTokens, update.CachedInputTokens)
 	mergeInt(&current.CacheCreationInputTokens, update.CacheCreationInputTokens)
 	mergeInt(&current.CacheCreation5mTokens, update.CacheCreation5mTokens)
@@ -333,6 +332,19 @@ func mergeMaheshvaraStreamUsage(current, update *MaheshvaraUsage) *MaheshvaraUsa
 	mergeInt(&current.ReasoningTokens, update.ReasoningTokens)
 	mergeInt(&current.AcceptedPredictionTokens, update.AcceptedPredictionTokens)
 	mergeInt(&current.RejectedPredictionTokens, update.RejectedPredictionTokens)
+	if update.rawInputTokens != nil {
+		current.rawInputTokens = update.rawInputTokens
+	}
+	current.cacheInputExclusive = current.cacheInputExclusive || update.cacheInputExclusive
+	if current.cacheInputExclusive && current.rawInputTokens != nil {
+		current.InputTokens = *current.rawInputTokens + current.CachedInputTokens + current.CacheCreationInputTokens
+	}
+	if update.TotalTokensInferred {
+		current.TotalTokens = current.InputTokens + current.OutputTokens
+	} else {
+		mergeInt(&current.TotalTokens, update.TotalTokens)
+	}
+	current.TotalTokensInferred = update.TotalTokensInferred
 	if current.TotalTokens == 0 {
 		current.TotalTokens = current.InputTokens + current.OutputTokens
 	}

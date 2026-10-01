@@ -34,7 +34,7 @@ func usageTokenUsageFromMaheshvara(u *relay.MaheshvaraUsage) usageTokenUsage {
 	if u.OutputTokens > 0 {
 		usage.OutputTokens = intPtr(u.OutputTokens)
 	}
-	if total := totalOrSum(u); total > 0 {
+	if total := totalOrSum(u); total > 0 && !u.TotalTokensInferred {
 		usage.TotalTokens = intPtr(total)
 	}
 	if u.CachedInputTokens > 0 {
@@ -119,6 +119,9 @@ func updateRecordUsageFromMaheshvara(record *usageRecord, usage *relay.Maheshvar
 	// 工具计数,解码映射可能不覆盖)清空。
 	record.Usage = mergeUsage(record.Usage, usageTokenUsageFromMaheshvara(usage))
 	record.UsageDetail = mergeUsageDetail(record.UsageDetail, usageDetailFromMaheshvara(usage))
+	if usage.TotalTokensInferred && record.Usage.TotalTokens != nil {
+		record.UsageDetail.TotalTokens = intPtr(*record.Usage.TotalTokens)
+	}
 	record.BuiltinToolUsage = mergeBuiltinToolUsage(record.BuiltinToolUsage, builtinToolUsageFromMaheshvara(usage))
 	if usage.Source != "" {
 		record.UsageSource = usage.Source

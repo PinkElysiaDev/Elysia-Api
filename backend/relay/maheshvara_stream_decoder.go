@@ -24,6 +24,7 @@ type maheshvaraAnthropicBlock struct {
 // MaheshvaraStreamDecoder is stateful because tool calls and content blocks
 // are commonly split across multiple upstream events.
 type MaheshvaraStreamDecoder struct {
+	usage        *MaheshvaraUsage
 	format       FormatType
 	responseID   string
 	model        string
@@ -127,6 +128,11 @@ func (decoder *MaheshvaraStreamDecoder) Decode(event SSEEvent) ([]MaheshvaraStre
 		return nil, err
 	}
 	for index := range events {
+		if events[index].Usage != nil {
+			decoder.usage = mergeMaheshvaraStreamUsage(decoder.usage, events[index].Usage)
+			snapshot := *decoder.usage
+			events[index].Usage = &snapshot
+		}
 		if events[index].ResponseID == "" {
 			events[index].ResponseID = decoder.responseID
 		}

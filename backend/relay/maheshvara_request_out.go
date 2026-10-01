@@ -130,10 +130,8 @@ func MaheshvaraToAnthropic(req *MaheshvaraRequest) ([]byte, error) {
 	}
 	// 优先原样回放 Claude 客户端的 system 块数组（保住块级 cache_control
 	// 标记——拍平成纯文本会让缓存省钱设置静默失效）；无原始块时退回拼接文本。
-	if rawBlocks := req.RawExtra["claude_system_blocks"]; len(rawBlocks) > 0 {
-		out["system"] = jsonRawToAny(rawBlocks)
-	} else if instructions := maheshvaraResponsesInstructions(req); instructions != "" {
-		out["system"] = instructions
+	if system := maheshvaraAnthropicSystem(req); system != nil {
+		out["system"] = system
 	}
 	if req.Temperature != nil {
 		out["temperature"] = *req.Temperature
@@ -440,7 +438,11 @@ func appendResponsesInclude(current any, value string) []string {
 func maheshvaraMessagesToOpenAI(req *MaheshvaraRequest) []map[string]any {
 	messages := make([]map[string]any, 0, len(req.Messages)+1)
 	if req.Instructions != "" {
-		messages = append(messages, map[string]any{"role": "system", "content": req.Instructions})
+		var system any = req.Instructions
+		if raw := req.RawExtra["claude_system_blocks"]; len(raw) > 0 {
+			system = jsonRawToAny(raw)
+		}
+		messages = append(messages, map[string]any{"role": "system", "content": system})
 	}
 	for msgIndex, msg := range req.Messages {
 		visibleParts, toolOutputs, reasoningParts, reasoning, refusal := classifyMessageParts(msg.Content)
@@ -555,11 +557,11 @@ func appendToolOutputMessages(messages []map[string]any, toolOutputs []Maheshvar
 			})
 			continue
 		}
-		messages = append(messages, map[string]any{
+		messages = append(messages, withCacheControl(map[string]any{
 			"role":         "tool",
 			"tool_call_id": to.ToolCallID,
 			"content":      to.ToolOutput,
-		})
+		}, contentPartCacheControl(to)))
 	}
 	return messages
 }
@@ -598,7 +600,7 @@ func openAIToolCallsFromMessage(out map[string]any, msg MaheshvaraMessage, msgIn
 		if signature := maheshvaraSignatureForProvider(call.ThoughtSignature, call.ThoughtSignatureProvider, MaheshvaraSignatureProviderGemini); signature != "" {
 			wireCall["extra_content"] = map[string]any{"google": map[string]any{"thought_signature": signature}}
 		}
-		calls = append(calls, wireCall)
+		calls = append(calls, withCacheControl(wireCall, toolCallCacheControl(call)))
 	}
 	if len(calls) > 0 {
 		out["tool_calls"] = calls
@@ -679,16 +681,16 @@ func maheshvaraMessagesToClaude(req *MaheshvaraRequest) ([]map[string]any, error
 			role = "user"
 		}
 		var content []map[string]any
+		var indexes []*int
 		for _, part := range msg.Content {
+			start := len(content)
 			switch part.Type {
 			case MaheshvaraContentText:
 				if part.Text == "" {
 					continue
 				}
 				block := map[string]any{"type": "text", "text": part.Text}
-				if part.CacheControl != nil {
-					block["cache_control"] = part.CacheControl
-				}
+				withCacheControl(block, contentPartCacheControl(part))
 				if len(part.Citations) > 0 {
 					block["citations"] = json.RawMessage(part.Citations)
 				}
@@ -701,23 +703,31 @@ func maheshvaraMessagesToClaude(req *MaheshvaraRequest) ([]map[string]any, error
 				}
 			case MaheshvaraContentImage:
 				if src := imagePartToClaudeSource(part); src != nil {
-					content = append(content, map[string]any{"type": "image", "source": src})
+					content = append(content, withCacheControl(map[string]any{"type": "image", "source": src}, contentPartCacheControl(part)))
 				}
 			case MaheshvaraContentToolOutput:
 				if part.ToolCallID != "" {
 					block := map[string]any{"type": "tool_result", "tool_use_id": part.ToolCallID, "content": part.ToolOutput}
-					if cc := rawBlockCacheControl(part.Raw); cc != nil {
-						block["cache_control"] = cc
+					// Preserve native structured results (including nested cache
+					// breakpoints), rather than stringify the content array.
+					if raw, ok := part.Raw.(map[string]any); ok && raw["type"] == "tool_result" {
+						if value, exists := raw["content"]; exists && contentValueToString(value) == part.ToolOutput {
+							block["content"] = value
+						}
+						if value, exists := raw["is_error"]; exists {
+							block["is_error"] = value
+						}
 					}
+					withCacheControl(block, contentPartCacheControl(part))
 					content = append(content, block)
 				}
 			case MaheshvaraContentRefusal:
 				if part.Text != "" {
 					content = append(content, map[string]any{"type": "text", "text": part.Text})
 				}
-			case MaheshvaraContentDocument:
+			case MaheshvaraContentDocument, MaheshvaraContentFile:
 				if block := maheshvaraDocumentToClaudeBlock(part); block != nil {
-					content = append(content, block)
+					content = append(content, withCacheControl(block, contentPartCacheControl(part)))
 				}
 			case MaheshvaraContentAudio, MaheshvaraContentVideo:
 				if block := maheshvaraMediaToClaudeBlock(part); block != nil {
@@ -732,6 +742,9 @@ func maheshvaraMessagesToClaude(req *MaheshvaraRequest) ([]map[string]any, error
 					}
 				}
 			}
+			for range content[start:] {
+				indexes = append(indexes, part.claudeIndex)
+			}
 		}
 		for _, call := range msg.ToolCalls {
 			var input any = map[string]any{}
@@ -744,20 +757,31 @@ func maheshvaraMessagesToClaude(req *MaheshvaraRequest) ([]map[string]any, error
 				"name":  call.Name,
 				"input": input,
 			}
-			if cc := rawBlockCacheControl(call.Raw); cc != nil {
-				block["cache_control"] = cc
-			}
+			withCacheControl(block, toolCallCacheControl(call))
 			content = append(content, block)
+			indexes = append(indexes, call.claudeIndex)
 		}
+		restoreClaudeBlockOrder(content, indexes)
 		if len(content) == 0 {
 			continue
+		}
+		// Chat-compatible message-level markers denote the end of this message.
+		// Anthropic accepts them on content blocks, not on the message envelope.
+		if control := cacheControlObject(msg.CacheControl); control != nil {
+		markMessageEnd:
+			for i := len(content) - 1; i >= 0; i-- {
+				switch content[i]["type"] {
+				case "text", "image", "document", "tool_use", "tool_result":
+					if content[i]["cache_control"] == nil {
+						content[i]["cache_control"] = control
+					}
+					break markMessageEnd
+				}
+			}
 		}
 		message := map[string]any{"role": role, "content": content}
 		if msg.Name != "" {
 			message["name"] = msg.Name
-		}
-		if msg.CacheControl != nil {
-			message["cache_control"] = msg.CacheControl
 		}
 		if msg.Metadata != nil {
 			message["metadata"] = msg.Metadata
@@ -1245,10 +1269,10 @@ func maheshvaraToolsToOpenAI(tools []MaheshvaraTool) ([]map[string]any, error) {
 		if strict != nil {
 			function["strict"] = *strict
 		}
-		out = append(out, map[string]any{
+		out = append(out, withCacheControl(map[string]any{
 			"type":     "function",
 			"function": function,
-		})
+		}, tool.CacheControl))
 	}
 	return out, nil
 }

@@ -682,7 +682,7 @@ func mergeUsage(existing usageTokenUsage, next usageTokenUsage) usageTokenUsage 
 	if next.Estimated {
 		existing.Estimated = true
 	}
-	if existing.TotalTokens == nil && existing.InputTokens != nil && existing.OutputTokens != nil {
+	if (existing.TotalTokens == nil || (next.TotalTokens == nil && (next.InputTokens != nil || next.OutputTokens != nil))) && (existing.InputTokens != nil || existing.OutputTokens != nil) {
 		existing.TotalTokens = intPtr(derefInt(existing.InputTokens) + derefInt(existing.OutputTokens))
 	}
 	return existing
