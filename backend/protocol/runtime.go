@@ -2,12 +2,14 @@ package protocol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
 // DecodeRequest executes this revision's request decoder, stamps its source
 // identity and validates actual requested capabilities before routing.
-func (compiled *Compiled) DecodeRequest(ctx context.Context, body []byte, options EvaluationContext) (*Request, error) {
+func (compiled *Compiled) DecodeRequest(ctx context.Context, body []byte, options EvaluationContext) (result *Request, err error) {
+	defer func() { err = compiled.runtimeError(DecodeRequest, err) }()
 	input, err := ParseValue(body)
 	if err != nil {
 		return nil, err
@@ -28,7 +30,8 @@ func (compiled *Compiled) DecodeRequest(ctx context.Context, body []byte, option
 	if err := stampResourceScopes(&request, options.Scope); err != nil {
 		return nil, err
 	}
-	target := Target{Protocol: compiled.identity, Direction: EncodeRequest, Scope: options.Scope, Capabilities: compiled.capabilities}
+	target := compiled.target(DecodeRequest, options)
+	target.Direction = EncodeRequest
 	if err := IssuesError(CheckRequest(&request, target, compiled.limits)); err != nil {
 		return nil, err
 	}
@@ -38,8 +41,9 @@ func (compiled *Compiled) DecodeRequest(ctx context.Context, body []byte, option
 // EncodeRequest validates capabilities and evaluates only the author's declared
 // mapping. Native replay and explicit edits are handled by the preservation
 // layer; unknown fields are never copied to a foreign protocol by this method.
-func (compiled *Compiled) EncodeRequest(ctx context.Context, request *Request, options EvaluationContext) ([]byte, error) {
-	target := Target{Protocol: compiled.identity, Direction: EncodeRequest, Scope: options.Scope, Capabilities: compiled.capabilities}
+func (compiled *Compiled) EncodeRequest(ctx context.Context, request *Request, options EvaluationContext) (result []byte, err error) {
+	defer func() { err = compiled.runtimeError(EncodeRequest, err) }()
+	target := compiled.target(EncodeRequest, options)
 	if err := IssuesError(CheckRequest(request, target, compiled.limits)); err != nil {
 		return nil, err
 	}
@@ -59,7 +63,8 @@ func (compiled *Compiled) EncodeRequest(ctx context.Context, request *Request, o
 }
 
 // DecodeResponse executes the independent upstream response mapping.
-func (compiled *Compiled) DecodeResponse(ctx context.Context, body []byte, options EvaluationContext) (*Response, error) {
+func (compiled *Compiled) DecodeResponse(ctx context.Context, body []byte, options EvaluationContext) (result *Response, err error) {
+	defer func() { err = compiled.runtimeError(DecodeResponse, err) }()
 	input, err := ParseValue(body)
 	if err != nil {
 		return nil, err
@@ -80,14 +85,17 @@ func (compiled *Compiled) DecodeResponse(ctx context.Context, body []byte, optio
 	if err := stampNodeScopes(response.Content, options.Scope); err != nil {
 		return nil, err
 	}
-	if err := IssuesError(CheckResponse(&response, compiled.target(EncodeResponse, options), compiled.limits)); err != nil {
+	target := compiled.target(DecodeResponse, options)
+	target.Direction = EncodeResponse
+	if err := IssuesError(CheckResponse(&response, target, compiled.limits)); err != nil {
 		return nil, err
 	}
 	return &response, nil
 }
 
 // EncodeResponse executes the independently authored client response mapping.
-func (compiled *Compiled) EncodeResponse(ctx context.Context, response *Response, options EvaluationContext) ([]byte, error) {
+func (compiled *Compiled) EncodeResponse(ctx context.Context, response *Response, options EvaluationContext) (result []byte, err error) {
+	defer func() { err = compiled.runtimeError(EncodeResponse, err) }()
 	if err := IssuesError(CheckResponse(response, compiled.target(EncodeResponse, options), compiled.limits)); err != nil {
 		return nil, err
 	}
@@ -109,7 +117,8 @@ func (compiled *Compiled) EncodeResponse(ctx context.Context, response *Response
 // DecodeEvents maps a wire frame to ordered semantic events. Lifecycle and
 // association validation belongs to one per-stream state, outside this immutable
 // compiled object.
-func (compiled *Compiled) DecodeEvents(ctx context.Context, frame Value, options EvaluationContext) ([]Event, error) {
+func (compiled *Compiled) DecodeEvents(ctx context.Context, frame Value, options EvaluationContext) (result []Event, err error) {
+	defer func() { err = compiled.runtimeError(DecodeEvent, err) }()
 	output, issues := compiled.Execute(ctx, DecodeEvent, frame, options)
 	if err := IssuesError(issues); err != nil {
 		return nil, err
@@ -136,7 +145,9 @@ func (compiled *Compiled) DecodeEvents(ctx context.Context, frame Value, options
 		if compiled.native.Preserve {
 			event.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: DecodeEvent, Scope: options.Scope}, Value: frame}
 		}
-		if err := IssuesError(CheckEvent(event, compiled.target(EncodeEvent, options), compiled.limits)); err != nil {
+		target := compiled.target(DecodeEvent, options)
+		target.Direction = EncodeEvent
+		if err := IssuesError(CheckEvent(event, target, compiled.limits)); err != nil {
 			return nil, err
 		}
 		events = append(events, event)
@@ -145,7 +156,8 @@ func (compiled *Compiled) DecodeEvents(ctx context.Context, frame Value, options
 }
 
 // EncodeEvent emits a declared event body; transport framing remains separate.
-func (compiled *Compiled) EncodeEvent(ctx context.Context, event Event, options EvaluationContext) (Value, error) {
+func (compiled *Compiled) EncodeEvent(ctx context.Context, event Event, options EvaluationContext) (result Value, err error) {
+	defer func() { err = compiled.runtimeError(EncodeEvent, err) }()
 	if err := IssuesError(CheckEvent(event, compiled.target(EncodeEvent, options), compiled.limits)); err != nil {
 		return Value{}, err
 	}
@@ -158,6 +170,21 @@ func (compiled *Compiled) EncodeEvent(ctx context.Context, event Event, options 
 		return Value{}, err
 	}
 	return compiled.preserveMappedNative(ctx, EncodeEvent, event.Native, output, options)
+}
+
+func (compiled *Compiled) runtimeError(direction Direction, err error) error {
+	if err == nil {
+		return nil
+	}
+	var conversion *ConversionError
+	if errors.As(err, &conversion) {
+		return err
+	}
+	code := InvalidInput
+	if direction == DecodeResponse || direction == DecodeEvent {
+		code = UpstreamContractViolation
+	}
+	return IssuesError([]ConversionIssue{{Code: code, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "runtime", Path: "/", Reason: err.Error(), Suggestion: "Correct the wire input or semantic mapping and verify the revision again."}})
 }
 
 func stampResourceScopes(request *Request, scope Scope) error {
@@ -214,7 +241,7 @@ func stampResourceScope(resource *Resource, scope Scope) error {
 }
 
 func (compiled *Compiled) target(direction Direction, options EvaluationContext) Target {
-	return Target{Protocol: compiled.identity, Direction: direction, Scope: options.Scope, Capabilities: compiled.capabilities}
+	return Target{Protocol: compiled.identity, Direction: direction, Scope: options.Scope, Capabilities: compiled.mappings[direction].capabilities}
 }
 
 func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Direction, native *Native, output Value, options EvaluationContext) (Value, error) {

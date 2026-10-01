@@ -77,8 +77,20 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 		check.add(InvalidInput, "/type", "", fmt.Sprintf("unknown event type %q", event.Type))
 	}
 	check.usage(event.Usage, "/usage")
-	if event.Item != nil && event.Item.Kind != ToolResultNode {
-		check.content([]Node{*event.Item}, "/item", 1)
+	if event.Item != nil {
+		if event.Item.Kind == ToolCallNode && event.Type != ItemFinished {
+			if event.Item.Input == nil || (event.Item.Input.Kind != JSONInput && event.Item.Input.Kind != TextInput) {
+				check.add(InvalidInput, "/item/input/kind", "", "streamed tool item requires an input kind")
+			} else if event.Item.Input.Kind == JSONInput {
+				check.require(FunctionToolsCapability, "/item")
+			} else {
+				check.require(FreeTextToolsCapability, "/item")
+			}
+			check.cache(event.Item.Cache, "/item/cache")
+			check.resources(event.Item.Resources, "/item/resources")
+		} else if event.Item.Kind != ToolResultNode {
+			check.content([]Node{*event.Item}, "/item", 1)
+		}
 	}
 	if event.Response != nil {
 		check.issues = append(check.issues, CheckResponse(event.Response, target, limits)...)

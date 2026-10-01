@@ -5,7 +5,7 @@ package protocol
 const DefinitionSchemaVersion = 2
 
 // CompilerVersion binds verification evidence to execution semantics.
-const CompilerVersion = "2.0.0-dev.1"
+const CompilerVersion = "2.0.0-dev.2"
 
 // Transport identifies framing and connection lifecycle, never content shape.
 type Transport string
@@ -41,13 +41,14 @@ type Definition struct {
 // adapter; Transform is independently authored and is never mechanically
 // inverted to implement another direction.
 type Mapping struct {
-	Module       string       `json:"module,omitempty"`
-	After        *Expression  `json:"after,omitempty"`
-	Transform    *Expression  `json:"transform,omitempty"`
-	Input        *ValueSchema `json:"input,omitempty"`
-	Output       *ValueSchema `json:"output,omitempty"`
-	Rules        []EventRule  `json:"rules,omitempty"`
-	UnknownEvent string       `json:"unknownEvent,omitempty"`
+	Capabilities CapabilitySet `json:"capabilities,omitzero"`
+	Module       string        `json:"module,omitempty"`
+	After        *Expression   `json:"after,omitempty"`
+	Transform    *Expression   `json:"transform,omitempty"`
+	Input        *ValueSchema  `json:"input,omitempty"`
+	Output       *ValueSchema  `json:"output,omitempty"`
+	Rules        []EventRule   `json:"rules,omitempty"`
+	UnknownEvent string        `json:"unknownEvent,omitempty"`
 }
 
 // EventRule maps a matching wire frame to one event or an ordered event array.
@@ -119,6 +120,8 @@ type Sample struct {
 	Expected      Value        `json:"expected,omitzero"`
 	ExpectedIssue IssueCode    `json:"expectedIssue,omitempty"`
 	Context       Object       `json:"context,omitempty"`
+	Scope         Scope        `json:"scope,omitzero"`
+	Sequence      bool         `json:"sequence,omitempty"`
 }
 
 // Identity returns the wire identity associated with this definition revision.

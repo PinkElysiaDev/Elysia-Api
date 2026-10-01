@@ -61,6 +61,7 @@ func NewCompiler(limits Limits, modules []Module, features []string) (*Compiler,
 }
 
 type compiledMapping struct {
+	capabilities  CapabilitySet
 	module        Module
 	transform     *compiledExpression
 	after         *compiledExpression
@@ -126,6 +127,16 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 		entry, err := compiler.compileMapping(mapping, path, direction, expressions)
 		if err != nil {
 			return fail(path, err)
+		}
+		entry.capabilities = compiled.capabilities
+		if mapping.Capabilities != nil {
+			entry.capabilities = make(CapabilitySet)
+			for capability, supported := range mapping.Capabilities {
+				if !definition.Capabilities[capability] {
+					return fail(path+"/capabilities", fmt.Errorf("direction capability %q is not declared by this definition", capability))
+				}
+				entry.capabilities[capability] = supported
+			}
 		}
 		compiled.mappings[direction] = entry
 	}
@@ -290,6 +301,9 @@ func (compiler *Compiler) checkDefinition(definition Definition) error {
 		}
 	}
 	seen := make(map[string]bool)
+	if len(definition.Samples) > compiler.limits.StateItems {
+		return fmt.Errorf("sample count exceeds engine fixture limit")
+	}
 	for _, sample := range definition.Samples {
 		if sample.ID == "" || seen[sample.ID] {
 			return fmt.Errorf("samples require unique nonempty IDs")
@@ -298,8 +312,11 @@ func (compiler *Compiler) checkDefinition(definition Definition) error {
 		if _, exists := definition.Directions[sample.Direction]; !exists {
 			return fmt.Errorf("sample %q references an unimplemented direction", sample.ID)
 		}
-		if sample.Input.IsZero() || (sample.Expected.IsZero() && sample.ExpectedIssue == "") {
+		if sample.Input.IsZero() || (sample.Expected.IsZero() == (sample.ExpectedIssue == "")) {
 			return fmt.Errorf("sample %q requires input and expected output or issue", sample.ID)
+		}
+		if sample.Sequence && sample.Direction != DecodeEvent && sample.Direction != EncodeEvent {
+			return fmt.Errorf("sample %q sequence requires an event direction", sample.ID)
 		}
 		for _, capability := range sample.Capabilities {
 			if !definition.Capabilities[capability] {
@@ -396,6 +413,15 @@ func (compiled *Compiled) Definition() Definition {
 func (compiled *Compiled) Supports(direction Direction) bool {
 	_, exists := compiled.mappings[direction]
 	return exists
+}
+
+// Capabilities returns a copy of a direction's declared semantic features.
+func (compiled *Compiled) Capabilities(direction Direction) CapabilitySet {
+	result := CapabilitySet{}
+	for capability, supported := range compiled.mappings[direction].capabilities {
+		result[capability] = supported
+	}
+	return result
 }
 
 // Execute evaluates a compiled mapping with finite resources and structured

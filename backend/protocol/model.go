@@ -74,7 +74,7 @@ const (
 // ToolInput carries the actual input value; free text is always a JSON string.
 type ToolInput struct {
 	Kind  InputKind `json:"kind"`
-	Value Value     `json:"value"`
+	Value Value     `json:"value,omitzero"`
 }
 
 // Resource identifies a provider-scoped file, cache, session or signature.

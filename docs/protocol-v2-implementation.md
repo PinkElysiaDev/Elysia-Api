@@ -13,7 +13,7 @@ This ledger records implemented and verified work; unchecked stages are not deli
 | C05 Shared wire adapters | Shared wiring complete; semantic cutover remains | Full backend tests/vet/type check passed; independent adapters, native extension and usage-alias preservation, preset hash upgrades and arbitrary-ID stream/HTTP tests. Modules still use the transitional Maheshvara boundary until v2 runtime integration/removal. |
 | C06 Stream and accounting | Shared runtime rules complete; semantic cutover remains | Full backend tests and vet passed. 16 tail-frame combinations, zero/presence and TTL merges, persisted counters, tool input/association, cumulative rewrite, bounded state and sequence checks. See stream fidelity audit; local race blocked by C toolchain. |
 | C07 Bidirectional compiler | Compiler and typed mappings complete; staged integration remains | Strict bounded v2 compiler, schema/catalog, native edit rules, four HTTP modules, conservative legacy import; two standalone protocol definitions, 16 request and 16 response combinations; full backend tests/vet. See definition reference for stateful module and migration boundaries. |
-| C08 Capability verification | Pending | |
+| C08 Capability verification | Complete; activation service follows in C09 | Shared offline verifier, direction-specific capability evidence, tool-history/event replay, native probes, hash-bound activation prerequisite and paired protocol verification. Full backend tests/vet; see verification reference. |
 | C09 Revisions and activation | Pending | |
 | C10 Custom ingress and routing | Pending | |
 | C11 WebSocket sessions | Pending | |

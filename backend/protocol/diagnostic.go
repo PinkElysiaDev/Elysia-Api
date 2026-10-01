@@ -26,6 +26,8 @@ const (
 	InvalidMutation           IssueCode = "invalid_mutation"
 	LimitExceeded             IssueCode = "limit_exceeded"
 	VerificationRequired      IssueCode = "verification_required"
+	VerificationMismatch      IssueCode = "verification_mismatch"
+	IncompleteCoverage        IssueCode = "incomplete_coverage"
 	UpstreamContractViolation IssueCode = "upstream_contract_violation"
 )
 
@@ -83,15 +85,24 @@ const (
 
 // VerificationReport binds evidence to the exact definition, engine and suite.
 type VerificationReport struct {
-	DefinitionHash  string            `json:"definitionHash"`
-	CompilerVersion string            `json:"compilerVersion"`
-	SamplesHash     string            `json:"samplesHash"`
-	Kind            VerificationKind  `json:"kind"`
-	VerifiedAt      time.Time         `json:"verifiedAt"`
-	Passed          bool              `json:"passed"`
-	Covered         []Capability      `json:"covered"`
-	Issues          []ConversionIssue `json:"issues"`
-	Target          *Scope            `json:"target,omitempty"`
+	DefinitionHash  string              `json:"definitionHash"`
+	CompilerVersion string              `json:"compilerVersion"`
+	SamplesHash     string              `json:"samplesHash"`
+	Kind            VerificationKind    `json:"kind"`
+	VerifiedAt      time.Time           `json:"verifiedAt"`
+	Passed          bool                `json:"passed"`
+	Covered         []Capability        `json:"covered"`
+	Issues          []ConversionIssue   `json:"issues"`
+	Target          *Scope              `json:"target,omitempty"`
+	Checks          []VerificationCheck `json:"checks,omitempty"`
+}
+
+// VerificationCheck records reproducible sample evidence without payloads.
+type VerificationCheck struct {
+	SampleID     string       `json:"sampleId"`
+	Direction    Direction    `json:"direction"`
+	Passed       bool         `json:"passed"`
+	Capabilities []Capability `json:"capabilities,omitempty"`
 }
 
 // IsCurrent checks evidence binding, not whether verification was successful.

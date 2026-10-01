@@ -58,3 +58,13 @@ func CapabilityCatalog() []Capability {
 func DirectionCatalog() []Direction {
 	return []Direction{DecodeRequest, EncodeRequest, DecodeResponse, EncodeResponse, DecodeEvent, EncodeEvent}
 }
+
+// EventCatalog lists the supported semantic event vocabulary.
+func EventCatalog() []EventType {
+	return []EventType{SessionStarted, SessionConfigured, ResponseStarted, ItemStarted, ItemDelta, ItemSnapshot, ItemFinished, UsageUpdated, ResponseFinished, OperationFailed, OperationCancelled, MediaReceived, NativeEvent}
+}
+
+// DiagnosticCatalog lists stable machine-readable compiler/runtime codes.
+func DiagnosticCatalog() []IssueCode {
+	return []IssueCode{InvalidDefinition, InvalidInput, UnsupportedCapability, UnsupportedNative, ResourceScopeMismatch, InvalidAssociation, InvalidMutation, LimitExceeded, VerificationRequired, VerificationMismatch, IncompleteCoverage, UpstreamContractViolation}
+}
