@@ -915,6 +915,22 @@ func renderCustomProtocolRequest(req *MaheshvaraRequest, config CustomProtocolCo
 	return renderCustomProtocolRequestWithBody(req, config, template, omitIfEmpty, omitRules)
 }
 
+// overrideRequestBodySystem 把已渲染的请求体 JSON 根上的 "system" 键替换为
+// Claude 客户端的原始 system 块数组(保住块级 cache_control)。body 不是
+// JSON 对象时原样返回。
+func overrideRequestBodySystem(body []byte, rawBlocks json.RawMessage) ([]byte, error) {
+	var root map[string]any
+	if err := json.Unmarshal(body, &root); err != nil || root == nil {
+		return body, nil
+	}
+	root["system"] = jsonRawToAny(rawBlocks)
+	encoded, err := json.Marshal(root)
+	if err != nil {
+		return nil, err
+	}
+	return encoded, nil
+}
+
 func renderCustomProtocolRequestWithBody(req *MaheshvaraRequest, config CustomProtocolConfig, template string, omitIfEmpty []string, omitRules []customOmitRule) (*CustomProtocolRequestResult, error) {
 	if req == nil {
 		return nil, fmt.Errorf("cannot render custom protocol request from nil Maheshvara request")
@@ -929,6 +945,20 @@ func renderCustomProtocolRequestWithBody(req *MaheshvaraRequest, config CustomPr
 		body, err = renderCustomTemplate(template, ctx, omitIfEmpty, omitRules)
 		if err != nil {
 			return nil, fmt.Errorf("custom protocol %q request body: %w", config.ID, err)
+		}
+	}
+	// Claude 客户端的原始 system 块数组优先回放(与内置 MaheshvaraToAnthropic
+	// 同语义):块级 cache_control 打点在 system 上最常见,body 树把 system
+	// 映射成 instructions 纯文本会让缓存标记静默失效(上游命中率恒 0)。
+	// 覆写发生在最终请求体上——shape 写的是模板命名空间,body 字段引用的是
+	// instructions 变量,命名空间里放块数组不会被引用。无原始块(非 Claude
+	// 线制客户端)不覆写,保留 body 树渲染的文本形态。
+	if strings.ToLower(strings.TrimSpace(config.Request.Shape)) == "anthropic" {
+		if rawBlocks := req.RawExtra["claude_system_blocks"]; len(rawBlocks) > 0 && len(body) > 0 {
+			body, err = overrideRequestBodySystem(body, rawBlocks)
+			if err != nil {
+				return nil, fmt.Errorf("custom protocol %q request body system replay: %w", config.ID, err)
+			}
 		}
 	}
 	// 流式请求切换到 pathStream（Gemini :generateContent vs

@@ -61,6 +61,18 @@ func mapValue(v any) map[string]any {
 	return m
 }
 
+// rawBlockCacheControl 从入站保留的原始线制块(tool_result 的 part.Raw /
+// tool_use 的 call.Raw)读取 cache_control 标记——Claude 客户端在这些块上的
+// 缓存打点靠它往返保真;thinking 块的打点属罕见形态,当前不回放(已知边界)。
+func rawBlockCacheControl(raw any) any {
+	if blocks, ok := raw.(map[string]any); ok {
+		if cc, present := blocks["cache_control"]; present && cc != nil {
+			return cc
+		}
+	}
+	return nil
+}
+
 func jsonRawToAny(raw json.RawMessage) any {
 	var out any
 	if len(raw) > 0 && json.Unmarshal(raw, &out) == nil {

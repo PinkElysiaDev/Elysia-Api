@@ -12,6 +12,7 @@ import (
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
+	"github.com/gin-gonic/gin"
 )
 
 func registerPresetForTest(t *testing.T, id string) relay.CustomProtocolConfig {
@@ -821,5 +822,76 @@ func TestLegacyPresetHashChainCoversEveryGeneration(t *testing.T) {
 		if version <= 1 && len(chain) != 0 {
 			t.Fatalf("preset %s version=%d must not carry legacy hashes", config.ID, version)
 		}
+	}
+}
+
+// 字段保真矩阵(防线):Claude 客户端的私有字段经 custom:anthropic-api 预置
+// 转发必须原样到达上游——system 块 / tool_use 块 / tool_result 块的
+// cache_control 打点(缓存命中率的前提)。同源透传路径由 passthrough_test
+// 覆盖;thinking 块的 cache_control 属罕见打点,当前为已知边界不回放。
+func TestPresetAnthropicCacheControlFidelity(t *testing.T) {
+	relay.ClearCustomProtocols()
+	t.Cleanup(relay.ClearCustomProtocols)
+	registerPresetForTest(t, "anthropic-api")
+
+	var gotBody string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/messages" {
+			t.Errorf("unexpected upstream path %s", r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		gotBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"m1","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`))
+	}))
+	defer upstream.Close()
+
+	s := newTestServer(presetGroup(t, "custom:anthropic-api", upstream.URL))
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{
+		"model":"grp","max_tokens":64,"stream":false,
+		"system":[{"type":"text","text":"You are helpful.","cache_control":{"type":"ephemeral"}}],
+		"messages":[
+			{"role":"user","content":"hi"},
+			{"role":"assistant","content":[{"type":"tool_use","id":"tu_1","name":"get_weather","input":{},"cache_control":{"type":"ephemeral"}}]},
+			{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu_1","content":"sunny","cache_control":{"type":"ephemeral"}}]}
+		]}`))
+	req.Header.Set("Content-Type", "application/json")
+	c.Request = req
+	s.chatCompletions(c)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(gotBody), &payload); err != nil {
+		t.Fatalf("upstream body not json: %s", gotBody)
+	}
+	// system 必须是原始块数组(而非压扁字符串),且块上 cache_control 保留。
+	system, ok := payload["system"].([]any)
+	if !ok || len(system) != 1 {
+		t.Fatalf("system must stay the original block array, got %T %#v", payload["system"], payload["system"])
+	}
+	sysBlock, _ := system[0].(map[string]any)
+	if sysBlock["cache_control"] == nil {
+		t.Fatalf("system block lost cache_control: %s", gotBody)
+	}
+	messages, _ := payload["messages"].([]any)
+	if len(messages) != 3 {
+		t.Fatalf("expected 3 messages, got %d: %s", len(messages), gotBody)
+	}
+	assistantBlocks, _ := messages[1].(map[string]any)["content"].([]any)
+	if len(assistantBlocks) != 1 {
+		t.Fatalf("expected 1 assistant block: %s", gotBody)
+	}
+	toolUse, _ := assistantBlocks[0].(map[string]any)
+	if toolUse["type"] != "tool_use" || toolUse["cache_control"] == nil {
+		t.Fatalf("tool_use block lost cache_control: %s", gotBody)
+	}
+	userBlocks, _ := messages[2].(map[string]any)["content"].([]any)
+	toolResult, _ := userBlocks[0].(map[string]any)
+	if toolResult["type"] != "tool_result" || toolResult["cache_control"] == nil {
+		t.Fatalf("tool_result block lost cache_control: %s", gotBody)
 	}
 }

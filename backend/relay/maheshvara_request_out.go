@@ -705,7 +705,11 @@ func maheshvaraMessagesToClaude(req *MaheshvaraRequest) ([]map[string]any, error
 				}
 			case MaheshvaraContentToolOutput:
 				if part.ToolCallID != "" {
-					content = append(content, map[string]any{"type": "tool_result", "tool_use_id": part.ToolCallID, "content": part.ToolOutput})
+					block := map[string]any{"type": "tool_result", "tool_use_id": part.ToolCallID, "content": part.ToolOutput}
+					if cc := rawBlockCacheControl(part.Raw); cc != nil {
+						block["cache_control"] = cc
+					}
+					content = append(content, block)
 				}
 			case MaheshvaraContentRefusal:
 				if part.Text != "" {
@@ -734,12 +738,16 @@ func maheshvaraMessagesToClaude(req *MaheshvaraRequest) ([]map[string]any, error
 			if len(call.Arguments) > 0 {
 				_ = json.Unmarshal(call.Arguments, &input)
 			}
-			content = append(content, map[string]any{
+			block := map[string]any{
 				"type":  "tool_use",
 				"id":    call.ID,
 				"name":  call.Name,
 				"input": input,
-			})
+			}
+			if cc := rawBlockCacheControl(call.Raw); cc != nil {
+				block["cache_control"] = cc
+			}
+			content = append(content, block)
 		}
 		if len(content) == 0 {
 			continue
