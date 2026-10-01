@@ -13,6 +13,9 @@ import (
 
 const logLifecycleVersion = 2026092901
 
+// assetScanProgressRows 是迁移扫描的进度日志粒度(每处理约这么多行打一条)。
+const assetScanProgressRows = 50000
+
 func (s *Store) logLifecycleReady(ctx context.Context) (bool, error) {
 	var tables, version int
 	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_schema WHERE name='schema_migrations'`).Scan(&tables); err != nil {
@@ -51,9 +54,22 @@ func (s *Store) prepareLogLifecycle(ctx context.Context) error {
 	if err := os.Remove(tmp); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	log.Printf("[migration] backing up log database to %s", backup)
+	// 备份是整库压实复制,耗时与库大小成正比且无进度回调——先把规模与
+	// 「可安全中断」说清楚,避免大库升级时被误判卡死(此时尚未做任何
+	// schema 修改,中断只留下 tmp 残留,下次启动自动清理重试)。
+	var dbSize, walSize int64
+	if info, err := os.Stat(s.path); err == nil {
+		dbSize = info.Size()
+	}
+	if info, err := os.Stat(s.path + "-wal"); err == nil {
+		walSize = info.Size()
+	}
+	log.Printf("[migration] log lifecycle upgrade: backing up database to %s (db %.1f MiB, wal %.1f MiB; duration scales with size — interrupting here is safe and retried)", backup, float64(dbSize)/(1<<20), float64(walSize)/(1<<20))
 	if _, err := s.db.ExecContext(ctx, `VACUUM INTO ?`, tmp); err != nil {
 		return fmt.Errorf("backup log database: %w", err)
+	}
+	if info, err := os.Stat(tmp); err == nil {
+		log.Printf("[migration] backup complete (%.1f MiB)", float64(info.Size())/(1<<20))
 	}
 	if err := os.Chmod(tmp, 0o600); err != nil {
 		return err
@@ -75,6 +91,10 @@ func (s *Store) migrateLogLifecycle(ctx context.Context) error {
 	if err := migrateAssetDirectories(root); err != nil {
 		return err
 	}
+	// 全表回填 + 附件引用重建在同一事务里,大库上耗时且无中间输出——先声明
+	// 阶段与代价,并明确「中途停止会整体回滚、下次重来」,防止被误判卡死后
+	// 反复中断(每次回滚本身也要付出同等代价)。
+	log.Printf("[migration] rebuilding content accounting and asset references in one transaction (full table scan; may take a long while on large databases — stopping midway rolls everything back and restarts from scratch next boot)")
 	err = s.withTx(ctx, func(tx *sql.Tx) error {
 		for _, col := range []struct{ table, name, definition string }{
 			{"usage_records", "content_bytes", "INTEGER NOT NULL DEFAULT 0"},
@@ -109,6 +129,7 @@ func (s *Store) migrateLogLifecycle(ctx context.Context) error {
 		}
 		// Keyset batches bound migration memory even with multi-megabyte bodies.
 		var last int64
+		scanned := 0
 		for {
 			rows, err := tx.QueryContext(ctx, `SELECT rowid, request_id, record_json FROM usage_records WHERE rowid>? ORDER BY rowid LIMIT 16`, last)
 			if err != nil {
@@ -136,13 +157,19 @@ func (s *Store) migrateLogLifecycle(ctx context.Context) error {
 			if n == 0 {
 				break
 			}
+			scanned += n
+			if scanned%assetScanProgressRows < n {
+				log.Printf("[migration] content accounting scan: %d record(s) processed", scanned)
+			}
 			for _, ref := range refs {
 				if err := migrateAssetRef(ctx, tx, root, ref.id, ref.file); err != nil {
 					return err
 				}
 			}
 		}
+		log.Printf("[migration] content accounting scan finished (%d record(s))", scanned)
 		last = 0
+		migratedRefs := 0
 		for {
 			rows, err := tx.QueryContext(ctx, `SELECT r.rowid,r.request_id,r.asset_file FROM log_migration_refs r JOIN usage_records u ON u.request_id=r.request_id WHERE r.rowid>? ORDER BY r.rowid LIMIT 500`, last)
 			if err != nil {
@@ -166,12 +193,17 @@ func (s *Store) migrateLogLifecycle(ctx context.Context) error {
 			if len(refs) == 0 {
 				break
 			}
+			migratedRefs += len(refs)
+			if migratedRefs%assetScanProgressRows < len(refs) {
+				log.Printf("[migration] asset reference rebuild: %d reference(s) processed", migratedRefs)
+			}
 			for _, v := range refs {
 				if err := migrateAssetRef(ctx, tx, root, v.id, v.file); err != nil {
 					return err
 				}
 			}
 		}
+		log.Printf("[migration] asset reference rebuild finished (%d reference(s))", migratedRefs)
 		if _, err := tx.ExecContext(ctx, `DROP TABLE log_migration_refs`); err != nil {
 			return err
 		}
@@ -186,7 +218,7 @@ func (s *Store) migrateLogLifecycle(ctx context.Context) error {
 		return err
 	}
 	if mode != 2 {
-		log.Printf("[migration] enabling incremental database reclamation")
+		log.Printf("[migration] enabling incremental database reclamation (one-time VACUUM, duration scales with database size)")
 		if _, err := s.db.ExecContext(ctx, `PRAGMA auto_vacuum=INCREMENTAL`); err != nil {
 			return err
 		}
@@ -208,6 +240,9 @@ func (s *Store) migrateLogLifecycle(ctx context.Context) error {
 		return fmt.Errorf("log migration checkpoint blocked by another database user")
 	}
 	_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(?,?)`, logLifecycleVersion, nowString())
+	if err == nil {
+		log.Printf("[migration] log lifecycle upgrade complete — will not run again on next start")
+	}
 	return err
 }
 
