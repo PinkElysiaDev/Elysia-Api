@@ -1,9 +1,7 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/elysia-api/backend/config"
@@ -29,18 +27,16 @@ func (f relayFailer) fail(class relay.ErrorClass, errMsg string) {
 // relayPlan 是前置阶段（鉴权→组校验→候选→能力约束→预估→限流）全部
 // 就绪后的转发计划。releaseLimiter 由调用方 defer 释放。
 type relayPlan struct {
-	group              *config.ModelGroupConfig
-	candidates         []config.ModelRef
-	filtered           bool
-	filteredModalities []string
-	estimatedTokens    int
-	releaseLimiter     func()
+	group           *config.ModelGroupConfig
+	candidates      []config.ModelRef
+	estimatedTokens int
+	releaseLimiter  func()
 }
 
 // prepareRelayPlan 完成 chatCompletions 与 responses 共用的前置阶段：
 //
 //	组级鉴权 → 组校验 → 候选构建/亲和置顶/能力软过滤/多 key 展开 →
-//	组级约束（MaxTokens 覆盖[chat 线制]、tools 拒绝、多模态过滤）→
+//	组级约束（MaxTokens 覆盖[chat 线制]、tools/多模态拒绝）→
 //	用量预估 → 组级限流。
 //
 // 任一步失败经 failer 写响应并落库后返回 ok=false。两入口此前各持一份
@@ -101,16 +97,9 @@ func (s *Server) prepareRelayPlan(
 			fmt.Sprintf("model group '%s' does not support tool calling, but the request contains tools or tool messages", group.Name))
 		return nil, false
 	}
-	filtered, filteredParts, filteredModalities := filterMaheshvaraMultimodalInputsIfNeeded(group, maheshvaraReq)
-	if filtered {
-		s.logVerbose("[Maheshvara Multimodal Filter] group=%s filteredParts=%d modalities=%v", group.Name, filteredParts, filteredModalities)
-		// 过滤是原地变更：dump 变更后的请求，否则排查时只能看到未过滤版
-		//（入口处的 [Maheshvara Request] dump 于此无效）。
-		if maheshvaraJSON, err := json.Marshal(maheshvaraReq); err == nil {
-			s.logVerbose("[Maheshvara Request After Multimodal Filter] %s", compactLogJSON(maheshvaraJSON))
-		}
-		// 让客户端可感知剥离行为（非纯静默）：形如 "image,audio"。
-		c.Writer.Header().Set("X-Elysia-Filtered-Modalities", strings.Join(filteredModalities, ","))
+	if rejectMultimodalRequest(group, maheshvaraReq) {
+		failer.fail(relay.ErrorClassInvalidRequest, fmt.Sprintf("model group '%s' does not support the request's media content", group.Name))
+		return nil, false
 	}
 
 	estimatedUsage := estimateMaheshvaraRequestUsage(maheshvaraReq, s.config.GetUsageConfig())
@@ -124,11 +113,9 @@ func (s *Server) prepareRelayPlan(
 		return nil, false
 	}
 	return &relayPlan{
-		group:              group,
-		candidates:         candidates,
-		filtered:           filtered,
-		filteredModalities: filteredModalities,
-		estimatedTokens:    estimatedUsage.EstimatedTotalTokens,
-		releaseLimiter:     releaseLimiter,
+		group:           group,
+		candidates:      candidates,
+		estimatedTokens: estimatedUsage.EstimatedTotalTokens,
+		releaseLimiter:  releaseLimiter,
 	}, true
 }

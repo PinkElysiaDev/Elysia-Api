@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -20,6 +21,9 @@ var definitionIdentifier = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}
 type EvaluationContext struct {
 	Scope  Scope
 	Values Object
+	// ResolveRequestScope is supplied by the gateway after model/authorization
+	// lookup. Definitions cannot execute it or replace its returned binding.
+	ResolveRequestScope func(*Request) (Scope, error)
 }
 
 // Module is a registered, thread-safe adapter implementation. Definitions can
@@ -82,6 +86,7 @@ type Compiled struct {
 	capabilities CapabilitySet
 	native       NativePolicy
 	mappings     map[Direction]compiledMapping
+	operations   map[string]Operation
 }
 
 // Compile strictly parses one v2 definition and compiles every direction.
@@ -113,7 +118,7 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 	if definition.Limits != nil {
 		limits = *definition.Limits
 	}
-	compiled := &Compiled{identity: identity, definition: value, limits: limits, native: definition.Native, capabilities: make(CapabilitySet), mappings: make(map[Direction]compiledMapping)}
+	compiled := &Compiled{identity: identity, definition: value, limits: limits, native: definition.Native, capabilities: make(CapabilitySet), mappings: make(map[Direction]compiledMapping), operations: definition.Operations}
 	for capability, supported := range definition.Capabilities {
 		compiled.capabilities[capability] = supported
 	}
@@ -370,6 +375,15 @@ func (compiler *Compiler) checkOperation(name string, operation Operation, defin
 	if operation.Auth.Location != "none" && strings.TrimSpace(operation.Auth.Name) == "" {
 		return fmt.Errorf("operation %q requires an auth field name", name)
 	}
+	if operation.Framing != nil && strings.ContainsAny(operation.Framing.EventName, "\r\n") {
+		return fmt.Errorf("operation %q has an invalid SSE event name", name)
+	}
+	if operation.Request != "" && operation.Request != DecodeRequest && operation.Request != EncodeRequest {
+		return fmt.Errorf("operation %q request must select a request direction", name)
+	}
+	if operation.Response != "" && operation.Response != DecodeResponse && operation.Response != EncodeResponse && operation.Response != DecodeEvent && operation.Response != EncodeEvent {
+		return fmt.Errorf("operation %q response must select a response/event direction", name)
+	}
 	for key, value := range operation.Headers {
 		if strings.ContainsAny(key+value, "\r\n") || strings.Contains(key, ":") {
 			return fmt.Errorf("operation %q has invalid HTTP headers", name)
@@ -401,6 +415,27 @@ func (compiled *Compiled) Hash() string { return compiled.hash }
 
 // SamplesHash identifies the exact offline fixture collection.
 func (compiled *Compiled) SamplesHash() string { return compiled.samplesHash }
+
+// Operations copies compiled transport metadata without reparsing expressions
+// or fixtures. Callers may customize their copy for one pinned request.
+func (compiled *Compiled) Operations() map[string]Operation {
+	operations := make(map[string]Operation, len(compiled.operations))
+	for name, operation := range compiled.operations {
+		operation.Headers, operation.Query = maps.Clone(operation.Headers), maps.Clone(operation.Query)
+		if operation.Framing != nil {
+			framing := *operation.Framing
+			framing.Done = append([]string(nil), framing.Done...)
+			operation.Framing = &framing
+		}
+		if operation.Task != nil {
+			task := *operation.Task
+			task.States = maps.Clone(task.States)
+			operation.Task = &task
+		}
+		operations[name] = operation
+	}
+	return operations
+}
 
 // Definition returns an independent copy suitable for editing or persistence.
 func (compiled *Compiled) Definition() Definition {

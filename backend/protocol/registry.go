@@ -37,6 +37,22 @@ func (service *Service) Pin(id string) (*Compiled, bool) {
 	return compiled, exists
 }
 
+// RegistryView pins all active definitions at one instant. In-flight routing
+// can inspect multiple candidates without mixing snapshots during hot reload.
+type RegistryView struct{ snapshot *registrySnapshot }
+
+// View obtains an immutable registry view without copying compiled definitions.
+func (service *Service) View() RegistryView { return RegistryView{snapshot: service.snapshot.Load()} }
+
+// Pin returns one definition from the captured view.
+func (view RegistryView) Pin(id string) (*Compiled, bool) {
+	compiled, exists := view.snapshot.entries[id]
+	return compiled, exists
+}
+
+// IDs lists the captured revisions in deterministic order for binding checks.
+func (view RegistryView) IDs() []string { return sortedKeys(view.snapshot.entries) }
+
 // Schema exposes the installed compiler contract used by every authoring path.
 func (service *Service) Schema() SchemaCatalog { return service.compiler.Schema() }
 

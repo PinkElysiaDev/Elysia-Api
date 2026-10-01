@@ -38,7 +38,7 @@ func TestGatewayUsageBodyPolicy(t *testing.T) {
 					})
 					model := openAIModel("m", upstream.URL)
 					model.VisionCapable = true
-					s := newTestServerWithStore(t, []config.ModelGroupConfig{{ID: "g", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 1, Models: []config.ModelRef{model}}})
+					s := newTestServerWithStore(t, []config.ModelGroupConfig{{ID: "g", Name: "grp", Enabled: true, VisionCapable: boolPtr(true), Strategy: "sequential", MaxRetries: 1, Models: []config.ModelRef{model}}})
 					defer s.stopUsageWriter()
 					s.config.SetDatabasePath(filepath.Join(t.TempDir(), "usage.sqlite3"))
 					s.config.SetUsageLogConfig(config.UsageLogConfig{BodyMaxKB: policy.limit})

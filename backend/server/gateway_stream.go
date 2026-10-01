@@ -1,0 +1,103 @@
+package server
+
+import (
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/elysia-api/backend/protocol"
+	"github.com/gin-gonic/gin"
+)
+
+const gatewayStreamErrorTrailer = "X-Elysia-Stream-Error"
+
+func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan *gatewayPlan, candidate gatewayCandidate, response *http.Response) error {
+	limits := protocol.DefaultLimits()
+	options := protocol.EvaluationContext{Scope: candidate.scope}
+	target := protocol.Target{Protocol: plan.ingress.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: plan.ingress.Capabilities(protocol.EncodeEvent)}
+	replay, err := protocol.NewEventReplay(target, limits)
+	if err != nil {
+		return err
+	}
+	defer func() { updateRecordProtocolUsage(record, replay.Usage()) }()
+	c.Header("Content-Type", protocol.TransportContentType(plan.operation.Transport))
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Trailer", gatewayStreamErrorTrailer)
+	emit := func(value protocol.Value) error {
+		if record.FirstByteMs == 0 {
+			record.FirstByteMs = time.Since(record.StartedAt).Milliseconds()
+		}
+		if err := protocol.WriteFrame(c.Writer, plan.operation, value); err != nil {
+			return err
+		}
+		c.Writer.Flush()
+		return nil
+	}
+	err = protocol.ReadFrames(c.Request.Context(), response.Body, candidate.operation, limits.BufferBytes, func(frame protocol.Value, metadata protocol.Object) error {
+		record.appendStreamEvent(string(frame.Bytes()))
+		options.Values = metadata
+		events, err := candidate.compiled.DecodeEvents(c.Request.Context(), frame, options)
+		if err != nil {
+			return err
+		}
+		for _, event := range events {
+			updateRecordProtocolUsage(record, event.Usage)
+			if event.Response != nil {
+				updateRecordProtocolUsage(record, event.Response.Usage)
+			}
+			if err := protocol.IssuesError(protocol.CheckModelEvent(event, candidate.compiled, candidate.binding, candidate.scope)); err != nil {
+				return err
+			}
+			accepted, err := replay.Consume(event)
+			if err != nil {
+				return err
+			}
+			if !accepted {
+				continue
+			}
+			wire, err := plan.ingress.EncodeEvent(c.Request.Context(), event, options)
+			if err != nil {
+				return err
+			}
+			if err := emit(wire); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err == nil {
+		err = replay.Finish()
+	}
+	if err != nil {
+		// Never replay a generation after any downstream frame. A trailer also
+		// exposes a late mapping failure when the target has no error event.
+		if c.Writer.Written() {
+			c.Header(gatewayStreamErrorTrailer, "protocol_stream_error")
+			errorValue, encodeErr := protocol.EncodeValue(map[string]string{"code": "protocol_stream_error", "message": err.Error()})
+			if encodeErr == nil {
+				failure := protocol.Event{SchemaVersion: protocol.SemanticSchemaVersion, Type: protocol.OperationFailed, Error: errorValue}
+				if frame, encodeErr := plan.ingress.EncodeEvent(c.Request.Context(), failure, options); encodeErr == nil {
+					if writeErr := emit(frame); writeErr != nil {
+						return fmt.Errorf("%w; downstream error frame: %v", err, writeErr)
+					}
+				}
+			}
+		}
+		return err
+	}
+	if plan.operation.Framing != nil {
+		for _, marker := range plan.operation.Framing.Done {
+			if plan.operation.Transport == protocol.SSE {
+				if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", marker); err != nil {
+					return err
+				}
+			} else if _, err := fmt.Fprintln(c.Writer, marker); err != nil {
+				return err
+			}
+			// Done lists accepted alternatives; output uses the first canonical marker.
+			break
+		}
+	}
+	c.Writer.Flush()
+	return nil
+}

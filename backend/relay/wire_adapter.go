@@ -96,6 +96,10 @@ func (adapter builtinWireAdapter) DecodeResponse(body []byte) (*MaheshvaraRespon
 			parsed.ImageGenerationCallCount = response.Usage.ImageGenerationCallCount
 		}
 		response.Usage = parsed
+	} else {
+		// Typed provider response structs have zero-valued usage members even
+		// when the wire omitted usage. Absence must survive canonical decoding.
+		response.Usage = nil
 	}
 	if err := captureWireResponse(response, body, adapter); err != nil {
 		return nil, err
@@ -110,7 +114,21 @@ func (adapter builtinWireAdapter) EncodeResponse(response *MaheshvaraResponse) (
 		_, body := ProtocolErrorBody(adapter.format, response.Error)
 		return body, nil
 	}
-	return adapter.encodeResponse(response)
+	body, err := adapter.encodeResponse(response)
+	if err != nil || response.Usage != nil {
+		return body, err
+	}
+	value, err := protocol.ParseValue(body)
+	if err != nil {
+		return nil, err
+	}
+	fields, err := value.ReadObject()
+	if err != nil {
+		return nil, err
+	}
+	delete(fields, wireUsagePath(adapter.format))
+	encoded, err := protocol.EncodeValue(fields)
+	return encoded.Bytes(), err
 }
 
 // EncodeMaheshvaraResponse uses the same encoder for native and custom paths.

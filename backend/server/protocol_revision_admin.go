@@ -59,6 +59,8 @@ func (s *Server) setupProtocolRevisionRoutes(admin *gin.RouterGroup) {
 	group.POST("/preview", s.adminProtocolPreviewV2)
 	group.POST("/reload", s.adminProtocolReload)
 	group.POST("/combinations", s.adminProtocolCombination)
+	group.GET("/bindings", s.adminProtocolBindings)
+	group.PUT("/bindings", s.adminSaveProtocolBinding)
 	group.GET("/:id/draft", s.adminProtocolDraft)
 	group.PUT("/:id/draft", s.adminProtocolSaveDraft)
 	group.POST("/:id/verify", s.adminProtocolVerifyDraft)

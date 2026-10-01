@@ -30,7 +30,13 @@ func (module builtinProtocolModule) Convert(ctx context.Context, direction proto
 	}
 	switch direction {
 	case protocol.DecodeRequest:
-		request, err := DecodeProtocolSnapshot(input.Bytes(), module.adapter.format, options.Scope.Model, module.adapter.Identity(), options.Scope)
+		model := options.Scope.Model
+		if pathModel := options.Values["model"]; !pathModel.IsZero() {
+			if err := pathModel.Decode(&model); err != nil {
+				return protocol.Value{}, err
+			}
+		}
+		request, err := DecodeProtocolSnapshot(input.Bytes(), module.adapter.format, model, module.adapter.Identity(), options.Scope)
 		if err != nil {
 			return protocol.Value{}, err
 		}

@@ -182,6 +182,14 @@ func (builder protocolSnapshotBuilder) part(part MaheshvaraContentPart, path str
 	if part.Type == MaheshvaraContentText {
 		node.Payload = protocol.StringValue(part.Text)
 		delete(fields, "text")
+		// Legacy Gemini parsing duplicates plain text into its reasoning slot.
+		// That implementation detail is not a second semantic content field.
+		if part.ReasoningText == part.Text {
+			delete(fields, "reasoning_text")
+		}
+	}
+	if part.Signature == "" {
+		delete(fields, "signature_provider")
 	}
 	if kind == protocol.ToolResultNode {
 		node.CallID = protocol.StringValue(part.ToolCallID)

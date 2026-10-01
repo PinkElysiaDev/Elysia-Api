@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
@@ -67,6 +68,10 @@ type retryEvent struct {
 }
 
 type usageRecord struct {
+	IngressRevision     string                     `json:"ingressRevision,omitempty"`
+	UpstreamRevision    string                     `json:"upstreamRevision,omitempty"`
+	ProtocolUsage       *protocol.Usage            `json:"protocolUsage,omitempty"`
+	ConversionIssues    []protocol.ConversionIssue `json:"conversionIssues,omitempty"`
 	observedUsage       *relay.MaheshvaraUsage
 	RequestID           string    `json:"requestId"`
 	StartedAt           time.Time `json:"startedAt"`

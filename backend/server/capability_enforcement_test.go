@@ -170,35 +170,17 @@ func TestRejectToolRequestsIfNeeded(t *testing.T) {
 	}
 }
 
-// vision=false：image/audio/video 全部剥离，返回被剥离的模态集合；vision=true 不动。
-func TestFilterMaheshvaraMultimodalInputsIfNeeded(t *testing.T) {
-	group := &config.ModelGroupConfig{Name: "g", VisionCapable: boolPtr(false)}
-	request := &relay.MaheshvaraRequest{Model: "m", Messages: []relay.MaheshvaraMessage{{
-		Role: "user",
-		Content: []relay.MaheshvaraContentPart{
-			{Type: relay.MaheshvaraContentText},
-			{Type: relay.MaheshvaraContentImage},
-			{Type: relay.MaheshvaraContentAudio},
-			{Type: relay.MaheshvaraContentVideo},
-		},
-	}}}
-	changed, parts, modalities := filterMaheshvaraMultimodalInputsIfNeeded(group, request)
-	if !changed || parts != 3 {
-		t.Fatalf("expected 3 stripped parts, changed=%v parts=%d", changed, parts)
+// An incapable group rejects media; no content is removed or reordered.
+func TestRejectMultimodalRequestPreservesContent(t *testing.T) {
+	request := &relay.MaheshvaraRequest{Messages: []relay.MaheshvaraMessage{{Role: "user", Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentText}, {Type: relay.MaheshvaraContentImage}, {Type: relay.MaheshvaraContentAudio}, {Type: relay.MaheshvaraContentVideo}}}}}
+	if !rejectMultimodalRequest(&config.ModelGroupConfig{VisionCapable: boolPtr(false)}, request) {
+		t.Fatal("incapable group accepted media")
 	}
-	if len(modalities) != 3 || modalities[0] != "audio" || modalities[1] != "image" || modalities[2] != "video" {
-		t.Fatalf("modalities wrong: %v", modalities)
+	if len(request.Messages[0].Content) != 4 {
+		t.Fatal("media was deleted")
 	}
-	if len(request.Messages[0].Content) != 1 || request.Messages[0].Content[0].Type != relay.MaheshvaraContentText {
-		t.Fatalf("text part must be kept, got %+v", request.Messages[0].Content)
-	}
-
-	visionGroup := &config.ModelGroupConfig{Name: "g", VisionCapable: boolPtr(true)}
-	request2 := &relay.MaheshvaraRequest{Messages: []relay.MaheshvaraMessage{{
-		Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentImage}},
-	}}}
-	if changed, _, _ := filterMaheshvaraMultimodalInputsIfNeeded(visionGroup, request2); changed {
-		t.Fatalf("vision-capable group must not strip")
+	if rejectMultimodalRequest(&config.ModelGroupConfig{VisionCapable: boolPtr(true)}, request) {
+		t.Fatal("capable group rejected media")
 	}
 }
 

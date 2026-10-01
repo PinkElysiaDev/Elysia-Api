@@ -15,7 +15,7 @@ This ledger records implemented and verified work; unchecked stages are not deli
 | C07 Bidirectional compiler | Compiler and typed mappings complete; staged integration remains | Strict bounded v2 compiler, schema/catalog, native edit rules, four HTTP modules, conservative legacy import; two standalone protocol definitions, 16 request and 16 response combinations; full backend tests/vet. See definition reference for stateful module and migration boundaries. |
 | C08 Capability verification | Complete; activation service follows in C09 | Shared offline verifier, direction-specific capability evidence, tool-history/event replay, native probes, hash-bound activation prerequisite and paired protocol verification. Full backend tests/vet; see verification reference. |
 | C09 Revisions and activation | Complete; gateway consumption follows in C10 | SQLite drafts/revisions/reports/active pointers, optimistic concurrency, atomic registry, pinned requests, guarded rollback/reverification and authenticated management API. Persistence/concurrency/restart and API tests plus full backend tests/vet. |
-| C10 Custom ingress and routing | Pending | |
+| C10 Custom ingress and routing | Runtime integrated; final preset cutover remains | Verified custom HTTP/SSE/NDJSON forwarding, public endpoint dispatch to active revisions, persistent model/group bindings with hash-bound paired evidence, actual input/output capability checks, scoped provenance, cancellation and usage persistence. Full backend tests/vet, framing/HTTP/API regressions and stable legacy conversion benchmark. See gateway reference for remaining built-in event-module/migration boundary. |
 | C11 WebSocket sessions | Pending | |
 | C12 Persistent async jobs | Pending | |
 | C13 Protocol editor | Pending | |

@@ -49,7 +49,12 @@ type ConversionIssue struct {
 // ConversionError carries machine-readable diagnostics through Go error APIs.
 type ConversionError struct {
 	Issues []ConversionIssue `json:"issues"`
+	cause  error
 }
+
+// Unwrap retains transport/authorization/cancellation causes without exposing
+// them as serialized configuration or payload data.
+func (failure *ConversionError) Unwrap() error { return failure.cause }
 
 // Error renders the first blocking diagnostic; Issues contains the full report.
 func (failure *ConversionError) Error() string {
@@ -103,6 +108,8 @@ type VerificationCheck struct {
 	Direction    Direction    `json:"direction"`
 	Passed       bool         `json:"passed"`
 	Capabilities []Capability `json:"capabilities,omitempty"`
+	Skipped      bool         `json:"skipped,omitempty"`
+	Reason       string       `json:"reason,omitempty"`
 }
 
 // IsCurrent checks evidence binding, not whether verification was successful.

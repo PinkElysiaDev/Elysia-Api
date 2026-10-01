@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"sort"
 	"time"
 
 	"github.com/elysia-api/backend/config"
@@ -23,52 +22,9 @@ func (s *Server) syncCustomProtocols() {
 	}
 }
 
-// filterMaheshvaraMultimodalInputsIfNeeded 在模型组声明不支持多模态输入
-// （vision=false，语义为「视觉/多模态」）时，剥离请求中的 image/audio/video part：
-// 文本请求仍可正常服务（与工具拒绝不同，图片剥离不会让对话语义崩坏）。
-// 返回是否发生剥离、剥离的 part 数与涉及的模态集合（用于响应头
-// X-Elysia-Filtered-Modalities，让客户端可感知而非纯静默）。
-func filterMaheshvaraMultimodalInputsIfNeeded(group *config.ModelGroupConfig, request *relay.MaheshvaraRequest) (changed bool, filteredParts int, filteredModalities []string) {
-	if request == nil || group == nil || group.VisionCapable == nil || *group.VisionCapable {
-		return false, 0, nil
-	}
-	seen := map[string]struct{}{}
-	strip := func(parts []relay.MaheshvaraContentPart) []relay.MaheshvaraContentPart {
-		kept := parts[:0]
-		for _, part := range parts {
-			if isMultimodalContentPart(part.Type) {
-				changed = true
-				filteredParts++
-				seen[part.Type] = struct{}{}
-				continue
-			}
-			kept = append(kept, part)
-		}
-		return kept
-	}
-	for index := range request.Messages {
-		message := &request.Messages[index]
-		message.Content = strip(message.Content)
-	}
-	for index := range request.InputItems {
-		item := &request.InputItems[index]
-		before := filteredParts
-		item.Content = strip(item.Content)
-		if filteredParts > before {
-			// The raw Responses item may still contain the removed media. Force
-			// the target renderer to rebuild this item from maheshvara content.
-			item.RawExtra = nil
-		}
-	}
-	if changed {
-		modalities := make([]string, 0, len(seen))
-		for modality := range seen {
-			modalities = append(modalities, modality)
-		}
-		sort.Strings(modalities)
-		filteredModalities = modalities
-	}
-	return changed, filteredParts, filteredModalities
+// rejectMultimodalRequest checks the group contract without mutating content.
+func rejectMultimodalRequest(group *config.ModelGroupConfig, request *relay.MaheshvaraRequest) bool {
+	return group != nil && group.VisionCapable != nil && !*group.VisionCapable && maheshvaraRequestHasMultimodalInput(request)
 }
 
 // isMultimodalContentPart 判断内容块是否为多模态输入（image/audio/video）。

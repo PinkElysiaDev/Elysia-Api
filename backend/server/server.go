@@ -309,6 +309,7 @@ func (s *Server) setupRoutes() {
 		v1beta.GET("/models", s.listGeminiModels)
 		v1beta.POST("/models/*action", s.chatCompletions)
 	}
+	s.engine.Any("/gateway/:protocolId/*path", s.authMiddleware(), s.gatewayProtocol)
 
 	s.mountWebUI()
 	if s.config.EnablePprof {
@@ -624,6 +625,9 @@ func geminiModelFromAction(action string) string {
 }
 
 func (s *Server) chatCompletions(c *gin.Context) {
+	if s.serveVersionedPublicIngress(c) {
+		return
+	}
 	s.logVerbose("[REQUEST ENTER] path=%s method=%s remote=%s contentType=%s", c.Request.URL.Path, c.Request.Method, c.Request.RemoteAddr, c.Request.Header.Get("Content-Type"))
 	// 生产转换路径统一为 Maheshvara：
 	//   非流式：client wire -> MaheshvaraRequest -> target wire；provider response -> MaheshvaraResponse -> client wire。
@@ -676,7 +680,6 @@ func (s *Server) chatCompletions(c *gin.Context) {
 		return
 	}
 	group, candidates := plan.group, plan.candidates
-	filtered := plan.filtered
 	defer plan.releaseLimiter()
 
 	s.runRelayAttempts(c, record, startTime, group, candidates, inputFormat,
@@ -686,13 +689,8 @@ func (s *Server) chatCompletions(c *gin.Context) {
 			setRecordModel(record, selectedModel, targetPlatform)
 			s.logDebug("Request model group: '%s' attempt %d/%d, selected: %s", group.Name, attempt+1, maxAttempts(group.MaxRetries, len(candidates)), selectedModel.Name)
 
-			// 同源透传判定：客户端输入格式与所选上游线路 API 一致（Claude→Anthropic、
-			// Gemini→Gemini、OpenAI→OpenAI 系），且本次未因 vision 过滤改写过请求体时，
-			// 以原始请求字节直发上游，跳过 Maheshvara 往返——保留尚未纳入核心协议的私有字段
-			// （cache_control / thinking / 各类未知扩展）。借鉴 Responses 透传与 new-api
-			// 的 should_convert=false 分支。vision 过滤改写了 maheshvaraReq 而非原始字节，
-			// 故 filtered=true 时必须回退到转换路径，否则被过滤的图片会随原始字节漏给上游。
-			usePassthrough := !filtered && relay.FormatMatchesPlatform(inputFormat, targetPlatform)
+			// Compatible native requests retain fields unknown to the semantic adapter.
+			usePassthrough := relay.FormatMatchesPlatform(inputFormat, targetPlatform)
 
 			// usage 记录补全（与 responses 入口对齐）：custom 平台记 custom:<id> 与
 			// 协议 path 模板，内置平台归到线制 FormatType 与端点；透传链两段、

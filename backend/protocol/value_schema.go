@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -172,12 +172,12 @@ func checkValueSchema(value Value, schema *ValueSchema, path string, depth int, 
 	return nil
 }
 
-func sortedKeys[V any](object map[string]V) []string {
-	keys := make([]string, 0, len(object))
+func sortedKeys[K ~string, V any](object map[K]V) []K {
+	keys := make([]K, 0, len(object))
 	for key := range object {
 		keys = append(keys, key)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 	return keys
 }
 

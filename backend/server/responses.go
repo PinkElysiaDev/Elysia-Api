@@ -15,6 +15,9 @@ import (
 )
 
 func (s *Server) responses(c *gin.Context) {
+	if s.serveVersionedPublicIngress(c) {
+		return
+	}
 	startTime := time.Now()
 
 	bodyBytes, ok := s.readRequestBody(c)
@@ -51,7 +54,6 @@ func (s *Server) responses(c *gin.Context) {
 		return
 	}
 	group, candidates := plan.group, plan.candidates
-	filteredVision := plan.filtered
 	defer plan.releaseLimiter()
 
 	s.runRelayAttempts(c, record, startTime, group, candidates, relay.FormatResponses,
@@ -70,19 +72,6 @@ func (s *Server) responses(c *gin.Context) {
 					skipClass:  relay.ErrorClassInvalidRequest,
 				}
 			}
-			if filteredVision && targetFormat == relay.FormatResponses {
-				transformedFormat, ok := transformedResponsesTargetFormat(selectedModel, targetPlatform)
-				if !ok || transformedFormat == relay.FormatResponses {
-					skipErr := fmt.Errorf("Responses target cannot represent the filtered maheshvara vision input")
-					return relayAttemptStep{
-						skipErr:    skipErr,
-						skipStatus: http.StatusBadRequest,
-						skipClass:  relay.ErrorClassInvalidRequest,
-					}
-				}
-				targetFormat = transformedFormat
-				responsesMode = ResponsesModeTransformed
-			}
 
 			setRecordTargetRoute(record, targetPlatform, targetFormat)
 			record.RelayMode = responsesMode
@@ -90,7 +79,7 @@ func (s *Server) responses(c *gin.Context) {
 			record.ConversionChain = []string{"openai_responses_request", "maheshvara_request", string(targetFormat) + "_request"}
 
 			// 组装发往上游的请求体（自定义协议 / 同协议透传 / 按线制转换）。
-			targetBody, customRequest, buildErr := s.buildResponsesTargetBody(bodyBytes, maheshvaraReq, originalResponsesReq, selectedModel, targetPlatform, targetFormat, filteredVision, record)
+			targetBody, customRequest, buildErr := s.buildResponsesTargetBody(bodyBytes, maheshvaraReq, originalResponsesReq, selectedModel, targetPlatform, targetFormat, record)
 			if buildErr != nil {
 				return relayAttemptStep{
 					skipErr:    buildErr,
@@ -161,7 +150,7 @@ func (s *Server) handleResponsesNormal(c *gin.Context, group *config.ModelGroupC
 // 自定义协议渲染；上游原生 Responses 且未做视觉过滤时以原始请求体零转换
 // 透传（保留 reasoning/function_call 等富字段）；其余按目标线制转换。
 // relayMode 随分支写入 record（自定义协议保持调用方已设的 responsesMode）。
-func (s *Server) buildResponsesTargetBody(bodyBytes []byte, maheshvaraReq *relay.MaheshvaraRequest, originalResponsesReq *relay.OpenAIResponsesRequest, selectedModel config.ModelRef, targetPlatform relay.Platform, targetFormat relay.FormatType, filteredVision bool, record *usageRecord) ([]byte, *relay.CustomProtocolRequestResult, error) {
+func (s *Server) buildResponsesTargetBody(bodyBytes []byte, maheshvaraReq *relay.MaheshvaraRequest, originalResponsesReq *relay.OpenAIResponsesRequest, selectedModel config.ModelRef, targetPlatform relay.Platform, targetFormat relay.FormatType, record *usageRecord) ([]byte, *relay.CustomProtocolRequestResult, error) {
 	if relay.IsCustomPlatform(targetPlatform) {
 		customRequest, err := relay.RenderRegisteredCustomProtocolRequest(maheshvaraReq, relay.CustomProtocolID(targetPlatform))
 		if err != nil {
@@ -169,7 +158,7 @@ func (s *Server) buildResponsesTargetBody(bodyBytes []byte, maheshvaraReq *relay
 		}
 		return customRequest.Body, customRequest, nil
 	}
-	if targetFormat == relay.FormatResponses && !filteredVision {
+	if targetFormat == relay.FormatResponses {
 		targetBody, err := relay.ResponsesPassthroughBody(bodyBytes, selectedModel.Name)
 		if err == nil {
 			record.RelayMode = RelayModePassthrough

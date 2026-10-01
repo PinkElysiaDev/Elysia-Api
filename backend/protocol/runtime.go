@@ -24,12 +24,21 @@ func (compiled *Compiled) DecodeRequest(ctx context.Context, body []byte, option
 	}
 	request.SchemaVersion = SemanticSchemaVersion
 	request.Source = compiled.identity
+	if options.ResolveRequestScope != nil {
+		scope, err := options.ResolveRequestScope(&request)
+		if err != nil {
+			return nil, err
+		}
+		options.Scope = scope
+	}
+	request.Native = nil
 	if compiled.native.Preserve {
 		request.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: DecodeRequest, Scope: options.Scope}, Value: input}
 	}
 	if err := stampResourceScopes(&request, options.Scope); err != nil {
 		return nil, err
 	}
+	compiled.stampRequestProvenance(&request, options.Scope)
 	target := compiled.target(DecodeRequest, options)
 	target.Direction = EncodeRequest
 	if err := IssuesError(CheckRequest(&request, target, compiled.limits)); err != nil {
@@ -79,12 +88,14 @@ func (compiled *Compiled) DecodeResponse(ctx context.Context, body []byte, optio
 	}
 	response.SchemaVersion = SemanticSchemaVersion
 	response.Source = compiled.identity
+	response.Native = nil
 	if compiled.native.Preserve {
 		response.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: DecodeResponse, Scope: options.Scope}, Value: input}
 	}
 	if err := stampNodeScopes(response.Content, options.Scope); err != nil {
 		return nil, err
 	}
+	compiled.stampNodeProvenance(response.Content, DecodeResponse, options.Scope)
 	target := compiled.target(DecodeResponse, options)
 	target.Direction = EncodeResponse
 	if err := IssuesError(CheckResponse(&response, target, compiled.limits)); err != nil {
@@ -142,6 +153,10 @@ func (compiled *Compiled) DecodeEvents(ctx context.Context, frame Value, options
 		}
 		event.SchemaVersion = SemanticSchemaVersion
 		event.Source = compiled.identity
+		if err := compiled.stampEventProvenance(&event, options.Scope); err != nil {
+			return nil, err
+		}
+		event.Native = nil
 		if compiled.native.Preserve {
 			event.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: DecodeEvent, Scope: options.Scope}, Value: frame}
 		}
@@ -153,6 +168,48 @@ func (compiled *Compiled) DecodeEvents(ctx context.Context, frame Value, options
 		events = append(events, event)
 	}
 	return events, nil
+}
+
+func (compiled *Compiled) stampRequestProvenance(request *Request, scope Scope) {
+	compiled.stampNodeProvenance(request.Content, DecodeRequest, scope)
+	for index := range request.Tools {
+		compiled.stampNative(request.Tools[index].Native, DecodeRequest, scope)
+	}
+}
+
+func (compiled *Compiled) stampNodeProvenance(nodes []Node, direction Direction, scope Scope) {
+	for index := range nodes {
+		compiled.stampNative(nodes[index].Native, direction, scope)
+		compiled.stampNodeProvenance(nodes[index].Children, direction, scope)
+	}
+}
+
+func (compiled *Compiled) stampNative(native *Native, direction Direction, scope Scope) {
+	if native != nil {
+		native.Source.Protocol, native.Source.Direction, native.Source.Scope = compiled.identity, direction, scope
+	}
+}
+
+func (compiled *Compiled) stampEventProvenance(event *Event, scope Scope) error {
+	if event.Item != nil {
+		if err := stampNodeScope(event.Item, scope); err != nil {
+			return err
+		}
+		compiled.stampNative(event.Item.Native, DecodeEvent, scope)
+		compiled.stampNodeProvenance(event.Item.Children, DecodeEvent, scope)
+	}
+	if event.Response != nil {
+		event.Response.SchemaVersion, event.Response.Source = SemanticSchemaVersion, compiled.identity
+		compiled.stampNative(event.Response.Native, DecodeEvent, scope)
+		if err := stampNodeScopes(event.Response.Content, scope); err != nil {
+			return err
+		}
+		compiled.stampNodeProvenance(event.Response.Content, DecodeEvent, scope)
+	}
+	if event.Media != nil {
+		return stampResourceScope(&event.Media.Reference, scope)
+	}
+	return nil
 }
 
 // EncodeEvent emits a declared event body; transport framing remains separate.
@@ -184,7 +241,7 @@ func (compiled *Compiled) runtimeError(direction Direction, err error) error {
 	if direction == DecodeResponse || direction == DecodeEvent {
 		code = UpstreamContractViolation
 	}
-	return IssuesError([]ConversionIssue{{Code: code, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "runtime", Path: "/", Reason: err.Error(), Suggestion: "Correct the wire input or semantic mapping and verify the revision again."}})
+	return &ConversionError{cause: err, Issues: []ConversionIssue{{Code: code, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "runtime", Path: "/", Reason: err.Error(), Suggestion: "Correct the wire input or semantic mapping and verify the revision again."}}}
 }
 
 func stampResourceScopes(request *Request, scope Scope) error {
@@ -206,19 +263,23 @@ func stampResourceScopes(request *Request, scope Scope) error {
 
 func stampNodeScopes(nodes []Node, scope Scope) error {
 	for index := range nodes {
-		for resource := range nodes[index].Resources {
-			if err := stampResourceScope(&nodes[index].Resources[resource], scope); err != nil {
-				return err
-			}
-		}
-		if err := stampCacheScopes(nodes[index].Cache, scope); err != nil {
-			return err
-		}
-		if err := stampNodeScopes(nodes[index].Children, scope); err != nil {
+		if err := stampNodeScope(&nodes[index], scope); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func stampNodeScope(node *Node, scope Scope) error {
+	for index := range node.Resources {
+		if err := stampResourceScope(&node.Resources[index], scope); err != nil {
+			return err
+		}
+	}
+	if err := stampCacheScopes(node.Cache, scope); err != nil {
+		return err
+	}
+	return stampNodeScopes(node.Children, scope)
 }
 
 func stampCacheScopes(intents []CacheIntent, scope Scope) error {
@@ -245,6 +306,9 @@ func (compiled *Compiled) target(direction Direction, options EvaluationContext)
 }
 
 func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Direction, native *Native, output Value, options EvaluationContext) (Value, error) {
+	// Reconciliation replays a decoder with an already pinned binding. It must
+	// never repeat authorization/routing or choose a new source account.
+	options.ResolveRequestScope = nil
 	target := compiled.target(direction, options)
 	if !compiled.native.Preserve || native == nil || !CanPreserveNative(native.Source, target) {
 		return output, nil

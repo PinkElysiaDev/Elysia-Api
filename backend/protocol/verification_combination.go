@@ -12,6 +12,7 @@ type CombinationReport struct {
 	Passed          bool                `json:"passed"`
 	Checks          []VerificationCheck `json:"checks"`
 	Issues          []ConversionIssue   `json:"issues"`
+	Capabilities    CapabilitySet       `json:"capabilities,omitempty"`
 }
 
 // VerifyCombination replays ingress request and upstream response fixtures
@@ -19,7 +20,24 @@ type CombinationReport struct {
 // A partial adapter needs its own positive expected-wire fixtures; independent
 // semantic roundtrip checks are added whenever its inverse direction exists.
 func VerifyCombination(ctx context.Context, ingress, upstream *Compiled) CombinationReport {
+	return verifyCombination(ctx, ingress, upstream, nil)
+}
+
+// VerifyBindingCombination verifies the explicitly restricted model contract.
+// Samples outside that contract are reported as skipped; missing evidence for
+// any promised capability still blocks the binding.
+func VerifyBindingCombination(ctx context.Context, ingress, upstream *Compiled, capabilities CapabilitySet) CombinationReport {
+	return verifyCombination(ctx, ingress, upstream, capabilities)
+}
+
+func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabilities CapabilitySet) CombinationReport {
 	report := CombinationReport{SourceHash: ingress.hash, TargetHash: upstream.hash, CompilerVersion: CompilerVersion, Kind: OfflineVerification, Checks: []VerificationCheck{}, Issues: []ConversionIssue{}}
+	if capabilities != nil {
+		report.Capabilities = CapabilitySet{}
+		for capability, supported := range capabilities {
+			report.Capabilities[capability] = supported
+		}
+	}
 	for _, binding := range []struct {
 		compiled  *Compiled
 		direction Direction
@@ -36,8 +54,12 @@ func VerifyCombination(ctx context.Context, ingress, upstream *Compiled) Combina
 			continue
 		}
 		check := VerificationCheck{SampleID: sample.ID, Direction: EncodeRequest}
+		if skipBindingSample(ctx, ingress, sample, capabilities, &report, EncodeRequest) {
+			continue
+		}
 		err := verifyRequestCombination(ctx, ingress, upstream, sample)
 		check.Passed = err == nil
+		check.Capabilities = sample.Capabilities
 		if err != nil {
 			report.Issues = append(report.Issues, sampleIssues(upstream, sample, "/combination/request", err)...)
 		}
@@ -48,8 +70,12 @@ func VerifyCombination(ctx context.Context, ingress, upstream *Compiled) Combina
 			continue
 		}
 		check := VerificationCheck{SampleID: sample.ID, Direction: EncodeResponse}
+		if skipBindingSample(ctx, upstream, sample, capabilities, &report, EncodeResponse) {
+			continue
+		}
 		err := verifyResponseCombination(ctx, ingress, upstream, sample)
 		check.Passed = err == nil
+		check.Capabilities = sample.Capabilities
 		if err != nil {
 			report.Issues = append(report.Issues, sampleIssues(ingress, sample, "/combination/response", err)...)
 		}
@@ -61,8 +87,11 @@ func VerifyCombination(ctx context.Context, ingress, upstream *Compiled) Combina
 			if sample.Direction != DecodeEvent || !sample.Sequence || sample.ExpectedIssue != "" {
 				continue
 			}
+			if skipBindingSample(ctx, upstream, sample, capabilities, &report, EncodeEvent) {
+				continue
+			}
 			err := verifyEventCombination(ctx, ingress, upstream, sample)
-			report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Direction: EncodeEvent, Passed: err == nil})
+			report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Direction: EncodeEvent, Passed: err == nil, Capabilities: sample.Capabilities})
 			if err != nil {
 				report.Issues = append(report.Issues, sampleIssues(ingress, sample, "/combination/events", err)...)
 			} else {
@@ -81,8 +110,43 @@ func VerifyCombination(ctx context.Context, ingress, upstream *Compiled) Combina
 	if !hasRequest || !hasResponse {
 		report.Issues = append(report.Issues, verificationIssue(ingress, "", "/combination", IncompleteCoverage, "composition requires passing request and response fixtures", ""))
 	}
+	for _, capability := range sortedKeys(capabilities) {
+		if !capabilities[capability] {
+			continue
+		}
+		hasEvidence := false
+		for _, check := range report.Checks {
+			if !check.Passed {
+				continue
+			}
+			for _, observed := range check.Capabilities {
+				hasEvidence = hasEvidence || observed == capability
+			}
+		}
+		if !hasEvidence {
+			report.Issues = append(report.Issues, verificationIssue(upstream, "", "/binding/capabilities/"+string(capability), IncompleteCoverage, "model binding has no successful paired fixture for this capability", ""))
+		}
+	}
 	report.Passed = IssuesError(report.Issues) == nil
 	return report
+}
+
+func skipBindingSample(ctx context.Context, compiled *Compiled, sample Sample, allowed CapabilitySet, report *CombinationReport, direction Direction) bool {
+	if allowed == nil {
+		return false
+	}
+	result, err := executeVerificationSample(ctx, compiled, sample)
+	if err != nil {
+		return false
+	} // The normal replay reports the failure.
+	for capability := range observeCapabilities(result.semantic).observed {
+		if allowed[capability] {
+			continue
+		}
+		report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Direction: direction, Skipped: true, Reason: "sample exceeds the model binding's declared capabilities"})
+		return true
+	}
+	return false
 }
 
 func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sample Sample) error {

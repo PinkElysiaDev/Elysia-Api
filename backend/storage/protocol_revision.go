@@ -14,6 +14,7 @@ var _ protocol.Repository = (*Store)(nil)
 
 func (s *Store) migrateProtocolRevisions(ctx context.Context) error {
 	statements := []string{
+		`CREATE TABLE IF NOT EXISTS protocol_bindings (binding_key TEXT PRIMARY KEY, binding TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS protocol_drafts (
 			protocol_id TEXT PRIMARY KEY, content_hash TEXT NOT NULL,
 			definition TEXT NOT NULL, updated_at TEXT NOT NULL)`,
