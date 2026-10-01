@@ -9,12 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"time"
 )
 
 const logLifecycleVersion = 2026092901
 
-// assetScanProgressRows 是迁移扫描的进度日志粒度(每处理约这么多行打一条)。
-const assetScanProgressRows = 50000
+// migrationProgressInterval 是迁移进度日志的最小间隔(时间驱动,比行数
+// 驱动在大正文行与快段之间输出更均匀)。
+const migrationProgressInterval = 10 * time.Second
 
 func (s *Store) logLifecycleReady(ctx context.Context) (bool, error) {
 	var tables, version int
@@ -111,8 +113,10 @@ func (s *Store) migrateLogLifecycle(ctx context.Context) error {
 				}
 			}
 		}
+		// usage_records 的 content_bytes 回填挪进下方 keyset 扫描逐批执行——
+		// 单条全表 UPDATE 在大库上以小时计且无行级进度;system_logs 通常很小,
+		// 保留单条语句。
 		for _, stmt := range []string{
-			`UPDATE usage_records SET content_bytes=length(CAST(record_json AS BLOB))`,
 			`UPDATE system_logs SET content_bytes=length(CAST(created_at||level||message||fields_json AS BLOB)), created_ms=CAST(round((julianday(created_at)-2440587.5)*86400000) AS INTEGER)`,
 			`CREATE INDEX IF NOT EXISTS idx_usage_content ON usage_records(content_bytes)`,
 			`CREATE INDEX IF NOT EXISTS idx_system_content ON system_logs(content_bytes)`,
@@ -128,15 +132,24 @@ func (s *Store) migrateLogLifecycle(ctx context.Context) error {
 			}
 		}
 		// Keyset batches bound migration memory even with multi-megabyte bodies.
+		// 批大小 32:查询往返比 16 减半;批内存上限 = 32 行正文之和(极端多兆
+		// 正文时峰值约百余 MB,常规 KB 级记录远低于此)。
+		var totalRecords int
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM usage_records`).Scan(&totalRecords); err != nil {
+			return err
+		}
+		log.Printf("[migration] content accounting: %d record(s) to scan", totalRecords)
 		var last int64
 		scanned := 0
+		lastProgressAt := time.Time{}
 		for {
-			rows, err := tx.QueryContext(ctx, `SELECT rowid, request_id, record_json FROM usage_records WHERE rowid>? ORDER BY rowid LIMIT 16`, last)
+			rows, err := tx.QueryContext(ctx, `SELECT rowid, request_id, record_json FROM usage_records WHERE rowid>? ORDER BY rowid LIMIT 32`, last)
 			if err != nil {
 				return err
 			}
 			type ref struct{ id, file string }
 			var refs []ref
+			first, batchEnd := int64(0), last
 			n := 0
 			for rows.Next() {
 				var id, body string
@@ -144,6 +157,10 @@ func (s *Store) migrateLogLifecycle(ctx context.Context) error {
 					rows.Close()
 					return err
 				}
+				if n == 0 {
+					first = last
+				}
+				batchEnd = last
 				n++
 				for _, match := range assetRefPattern.FindAllStringSubmatch(body, -1) {
 					refs = append(refs, ref{id, match[1]})
@@ -157,9 +174,14 @@ func (s *Store) migrateLogLifecycle(ctx context.Context) error {
 			if n == 0 {
 				break
 			}
+			// 批内回填 content_bytes(原单条全表 UPDATE 的分批等价物)。
+			if _, err := tx.ExecContext(ctx, `UPDATE usage_records SET content_bytes=length(CAST(record_json AS BLOB)) WHERE rowid>=? AND rowid<=?`, first, batchEnd); err != nil {
+				return err
+			}
 			scanned += n
-			if scanned%assetScanProgressRows < n {
-				log.Printf("[migration] content accounting scan: %d record(s) processed", scanned)
+			if time.Since(lastProgressAt) >= migrationProgressInterval {
+				log.Printf("[migration] content accounting: %d/%d (%.1f%%)", scanned, totalRecords, float64(scanned)/float64(totalRecords)*100)
+				lastProgressAt = time.Now()
 			}
 			for _, ref := range refs {
 				if err := migrateAssetRef(ctx, tx, root, ref.id, ref.file); err != nil {
@@ -167,9 +189,17 @@ func (s *Store) migrateLogLifecycle(ctx context.Context) error {
 				}
 			}
 		}
-		log.Printf("[migration] content accounting scan finished (%d record(s))", scanned)
+		log.Printf("[migration] content accounting finished (%d record(s))", scanned)
 		last = 0
 		migratedRefs := 0
+		var totalRefs int
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM log_migration_refs`).Scan(&totalRefs); err != nil {
+			return err
+		}
+		if totalRefs > 0 {
+			log.Printf("[migration] asset reference rebuild: %d reference(s) to process", totalRefs)
+		}
+		lastProgressAt = time.Time{}
 		for {
 			rows, err := tx.QueryContext(ctx, `SELECT r.rowid,r.request_id,r.asset_file FROM log_migration_refs r JOIN usage_records u ON u.request_id=r.request_id WHERE r.rowid>? ORDER BY r.rowid LIMIT 500`, last)
 			if err != nil {
@@ -194,8 +224,9 @@ func (s *Store) migrateLogLifecycle(ctx context.Context) error {
 				break
 			}
 			migratedRefs += len(refs)
-			if migratedRefs%assetScanProgressRows < len(refs) {
-				log.Printf("[migration] asset reference rebuild: %d reference(s) processed", migratedRefs)
+			if time.Since(lastProgressAt) >= migrationProgressInterval {
+				log.Printf("[migration] asset reference rebuild: %d/%d", migratedRefs, totalRefs)
+				lastProgressAt = time.Now()
 			}
 			for _, v := range refs {
 				if err := migrateAssetRef(ctx, tx, root, v.id, v.file); err != nil {
