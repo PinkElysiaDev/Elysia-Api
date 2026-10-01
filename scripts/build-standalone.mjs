@@ -16,7 +16,7 @@ const appVersion = resolveAppVersion()
 
 // 构建对应的 git 短哈希：版本号在两次发版间不变，靠它区分构建新旧。
 const result = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' })
-const appCommit = result.status === 0 ? result.stdout.trim() : 
+const appCommit = result.status === 0 ? result.stdout.trim() : ''
 const releaseDir = join(repoRoot, 'dist', 'standalone')
 const backendDir = join(repoRoot, 'backend')
 const webuiDist = join(repoRoot, 'packages', 'webui', 'dist')
