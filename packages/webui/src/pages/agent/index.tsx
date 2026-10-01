@@ -150,9 +150,10 @@ export function AgentPage() {
    *  加速到快档。 */
   useEffect(() => {
     if (!activeId || live.running) return;
-    const interval = session?.status === "running"
-      ? POLL.AGENT_SESSION_FAST
-      : POLL.AGENT_SESSION_IDLE;
+    const interval =
+      session?.status === "running"
+        ? POLL.AGENT_SESSION_FAST
+        : POLL.AGENT_SESSION_IDLE;
     const timer = window.setInterval(() => {
       void refreshSession(activeId);
     }, interval);
@@ -167,9 +168,26 @@ export function AgentPage() {
   }, [activeId]);
 
   const availablePanels: AgentContextTab[] = [];
-  if (session?.plan?.length || session?.planSummary?.trim()) availablePanels.push("plan");
-  if (session?.draftConfig != null && session.draftConfig !== "") availablePanels.push("draft");
-  const visiblePanel = activeTab && availablePanels.includes(activeTab) ? activeTab : null;
+  if (session?.plan?.length || session?.planSummary?.trim())
+    availablePanels.push("plan");
+  if (session?.draftConfig != null && session.draftConfig !== "")
+    availablePanels.push("draft");
+  const visiblePanel =
+    activeTab && availablePanels.includes(activeTab) ? activeTab : null;
+  // 面板收拢过渡:关闭时保持挂载传 open=false,由面板播放宽度收拢,过渡
+  // 结束再卸载(320ms = 面板 300ms 过渡 + 余量)——避免"点收起瞬间消失"。
+  const [lastPanel, setLastPanel] = useState<AgentContextTab | null>(null);
+  const [panelMounted, setPanelMounted] = useState(visiblePanel != null);
+  useEffect(() => {
+    if (visiblePanel != null) {
+      setLastPanel(visiblePanel);
+      setPanelMounted(true);
+      return;
+    }
+    if (!panelMounted) return;
+    const timer = setTimeout(() => setPanelMounted(false), 320);
+    return () => clearTimeout(timer);
+  }, [visiblePanel, panelMounted]);
 
   const closeContextPanel = useCallback(() => {
     setActiveTab(null);
@@ -337,14 +355,8 @@ export function AgentPage() {
   if (view === "list") {
     return (
       <div className={WORKSPACE_CLASS}>
-        <div
-          key="agent-overview"
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          <PageHeader
-            title="AI 助手"
-            actions={<ShortcutSettingsDialog />}
-          />
+        <div key="agent-overview" className="flex min-h-0 flex-1 flex-col">
+          <PageHeader title="AI 助手" actions={<ShortcutSettingsDialog />} />
           <SessionOverview
             sessions={sessions ?? []}
             draftSessions={draftSessions}
@@ -373,7 +385,9 @@ export function AgentPage() {
           activePanel={visiblePanel}
           onBack={() => setView("list")}
           onClearHistory={() => void handleClearHistory()}
-          onSelectPanel={(tab) => setActiveTab((current) => current === tab ? null : tab)}
+          onSelectPanel={(tab) =>
+            setActiveTab((current) => (current === tab ? null : tab))
+          }
         />
 
         {session && draftLoadedFor === session.id ? (
@@ -382,7 +396,12 @@ export function AgentPage() {
               key={session.id}
               session={session}
               turnRail={
-                <TurnRail messages={messages} live={live} activeSeq={activeTurnSeq} onJump={handleJumpTurn} />
+                <TurnRail
+                  messages={messages}
+                  live={live}
+                  activeSeq={activeTurnSeq}
+                  onJump={handleJumpTurn}
+                />
               }
               initialDraft={activeDraft}
               onDraftChange={handleDraftChange}
@@ -408,11 +427,12 @@ export function AgentPage() {
               jumpTarget={jumpTarget}
               onActiveTurn={handleActiveTurn}
             />
-            {visiblePanel ? (
+            {panelMounted && lastPanel ? (
               <ContextPanel
                 key={session.id}
                 session={session}
-                activePanel={visiblePanel}
+                open={visiblePanel != null}
+                activePanel={visiblePanel ?? lastPanel}
                 busy={live.running || session.status !== "idle"}
                 onClose={closeContextPanel}
                 onConfirmPlan={() => void handleConfirmPlan()}
