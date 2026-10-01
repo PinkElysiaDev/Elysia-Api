@@ -65,20 +65,3 @@ func effortFromBudget(budget int) string {
 	}
 	return "xhigh"
 }
-
-// budgetFromEffort 把 effort 档位量化回固定预算（low/medium/high/xhigh →
-// Claude 官方档位预算；xhigh 与 max 共享 32000 上限）。
-func budgetFromEffort(effort string) int {
-	switch strings.ToLower(strings.TrimSpace(effort)) {
-	case "low", "minimal", "min":
-		return effortBudgetLow
-	case "medium":
-		return effortBudgetMedium
-	case "high":
-		return effortBudgetHigh
-	case "xhigh", "max":
-		return effortBudgetMax
-	default:
-		return EffortBudgetDefault
-	}
-}

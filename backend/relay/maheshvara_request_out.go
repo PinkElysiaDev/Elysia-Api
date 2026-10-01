@@ -1423,24 +1423,17 @@ func maheshvaraReasoningToOpenAIDetails(parts []MaheshvaraContentPart) []map[str
 }
 
 // applyAnthropicThinking 把思考配置按 Anthropic 线整形写入目标——内置请求
-// 体与自定义协议模板上下文共用（set/del 注入写入方式）。adaptive 走
-// output_config.effort；固定预算缺省按 effort 量化；思考态强制
-// temperature=1.0 且去掉 top_p。
+// 体与自定义协议模板上下文共用（set/del 注入写入方式）。统一输出新规范
+// adaptive 形态（4-5/5 系模型只认 adaptive+output_config.effort 或省略；
+// 旧模型的 enabled+budget_tokens 预算形态不再兼容——2026-10 用户决策）。
+// 思考态强制 temperature=1.0 且去掉 top_p。
 func applyAnthropicThinking(req *MaheshvaraRequest, set func(string, any), del func(string)) {
 	if req.Thinking == nil || !req.Thinking.Enabled {
 		return
 	}
-	if req.Thinking.Adaptive {
-		set("thinking", map[string]any{"type": "adaptive"})
-		if req.Thinking.Effort != "" {
-			set("output_config", map[string]any{"effort": req.Thinking.Effort})
-		}
-	} else {
-		budget := req.Thinking.BudgetTokens
-		if budget <= 0 {
-			budget = budgetFromEffort(req.Thinking.Effort)
-		}
-		set("thinking", map[string]any{"type": "enabled", "budget_tokens": budget})
+	set("thinking", map[string]any{"type": "adaptive"})
+	if req.Thinking.Effort != "" {
+		set("output_config", map[string]any{"effort": req.Thinking.Effort})
 	}
 	set("temperature", 1.0)
 	del("top_p")

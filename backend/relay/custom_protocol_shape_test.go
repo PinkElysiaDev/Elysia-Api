@@ -24,12 +24,14 @@ func renderShapeFixture(t *testing.T, shape, template string, req *MaheshvaraReq
 }
 
 func TestShapeThinkingAnthropicBudgetAndForcedTemperature(t *testing.T) {
-	high := 16384 // budgetFromEffort("high")
 	req := &MaheshvaraRequest{Model: "m", Stream: true,
 		Thinking: &MaheshvaraThinking{Enabled: true, Effort: "high"}}
-	body := renderShapeFixture(t, "anthropic", `{"thinking":{{maheshvara.thinking}},"temperature":{{maheshvara.temperature}},"top_p":{{maheshvara.top_p|default:null}}}`, req)
-	if got, _ := body["thinking"].(map[string]any); got["type"] != "enabled" || got["budget_tokens"] != float64(high) {
-		t.Fatalf("thinking = %v", body["thinking"])
+	body := renderShapeFixture(t, "anthropic", `{"thinking":{{maheshvara.thinking}},"output_config":{{maheshvara.output_config}},"temperature":{{maheshvara.temperature}},"top_p":{{maheshvara.top_p|default:null}}}`, req)
+	if got, _ := body["thinking"].(map[string]any); got["type"] != "adaptive" || got["budget_tokens"] != nil {
+		t.Fatalf("thinking must be adaptive without budget (new wire only), got %v", body["thinking"])
+	}
+	if got, _ := body["output_config"].(map[string]any); got["effort"] != "high" {
+		t.Fatalf("output_config = %v", body["output_config"])
 	}
 	if body["temperature"] != 1.0 {
 		t.Fatalf("thinking mode must force temperature=1.0, got %v", body["temperature"])

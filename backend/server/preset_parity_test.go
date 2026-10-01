@@ -98,8 +98,8 @@ func TestPresetParityRequestBody(t *testing.T) {
 			builtin:  func() ([]byte, error) { return relay.MaheshvaraToAnthropic(req) },
 			checks: func(t *testing.T, body map[string]any) {
 				thinking, _ := body["thinking"].(map[string]any)
-				if thinking == nil || thinking["type"] != "enabled" || thinking["budget_tokens"] == nil {
-					t.Fatalf("thinking = %v", body["thinking"])
+				if thinking == nil || thinking["type"] != "adaptive" || thinking["budget_tokens"] != nil {
+					t.Fatalf("thinking must be the adaptive-only form, got %v", body["thinking"])
 				}
 				if body["temperature"] != 1.0 {
 					t.Fatalf("thinking mode must force temperature=1.0, got %v", body["temperature"])
