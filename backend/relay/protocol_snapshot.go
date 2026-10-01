@@ -26,7 +26,7 @@ func SnapshotProtocolRequest(req *MaheshvaraRequest, source protocol.Identity, s
 		Model: fields["model"], ToolChoice: fields["tool_choice"], Content: []protocol.Node{}, Parameters: fields}
 	if system := req.RawExtra["claude_system_blocks"]; len(system) > 0 {
 		var blocks []any
-		if err := json.Unmarshal(system, &blocks); err != nil {
+		if err := decodeWireJSON(system, &blocks); err != nil {
 			return nil, err
 		}
 		node, err := builder.message(MaheshvaraMessage{Role: "system", Content: interfaceToContentParts(blocks)}, "/system")
@@ -70,7 +70,7 @@ func SnapshotProtocolRequest(req *MaheshvaraRequest, source protocol.Identity, s
 		if entry.field == "cache_control" && cachedContentReference(req.CacheControl) != "" {
 			intent.Kind = "resource"
 			intent.Value = protocol.Value{}
-			intent.Resource = &protocol.Resource{Kind: "cache", ID: value, Scope: scope}
+			intent.Resource = &protocol.Resource{Kind: "cache", ID: protocol.StringValue(cachedContentReference(req.CacheControl)), Scope: scope}
 		}
 		request.Cache = append(request.Cache, intent)
 		delete(fields, entry.field)
@@ -82,8 +82,9 @@ func SnapshotProtocolRequest(req *MaheshvaraRequest, source protocol.Identity, s
 }
 
 type protocolSnapshotBuilder struct {
-	source protocol.Identity
-	scope  protocol.Scope
+	source    protocol.Identity
+	scope     protocol.Scope
+	direction protocol.Direction
 }
 
 func snapshotObject(value any) (protocol.Object, error) {
@@ -99,11 +100,25 @@ func (builder protocolSnapshotBuilder) native(value any, path string) (*protocol
 	if err != nil {
 		return nil, err
 	}
-	return &protocol.Native{Source: protocol.Provenance{Protocol: builder.source, Direction: protocol.DecodeRequest, Path: path, Scope: builder.scope}, Value: encoded}, nil
+	if encoded.IsNull() {
+		return nil, nil
+	}
+	direction := builder.direction
+	if direction == "" {
+		direction = protocol.DecodeRequest
+	}
+	return &protocol.Native{Source: protocol.Provenance{Protocol: builder.source, Direction: direction, Path: path, Scope: builder.scope}, Value: encoded}, nil
 }
 
 func (builder protocolSnapshotBuilder) message(message MaheshvaraMessage, path string) (protocol.Node, error) {
 	node := protocol.Node{Kind: protocol.MessageNode, Role: protocol.StringValue(message.Role)}
+	if message.CacheControl != nil {
+		value, err := protocol.EncodeValue(message.CacheControl)
+		if err != nil {
+			return node, err
+		}
+		node.Cache = []protocol.CacheIntent{{Kind: "breakpoint", Location: "message", Value: value}}
+	}
 	type orderedNode struct {
 		index int
 		node  protocol.Node

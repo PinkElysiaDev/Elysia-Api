@@ -753,7 +753,7 @@ func maheshvaraMessagesToClaude(req *MaheshvaraRequest) ([]map[string]any, error
 		for _, call := range msg.ToolCalls {
 			var input any = map[string]any{}
 			if len(call.Arguments) > 0 {
-				_ = json.Unmarshal(call.Arguments, &input)
+				_ = decodeWireJSON(call.Arguments, &input)
 			}
 			block := map[string]any{
 				"type":  "tool_use",
@@ -830,9 +830,9 @@ func maheshvaraMessagesToGemini(req *MaheshvaraRequest) ([]map[string]any, error
 			}
 			var args any = map[string]any{}
 			if len(call.Arguments) > 0 {
-				if err := json.Unmarshal(call.Arguments, &args); err != nil {
+				if err := decodeWireJSON(call.Arguments, &args); err != nil {
 					if call.ArgumentsText != "" {
-						_ = json.Unmarshal([]byte(call.ArgumentsText), &args)
+						_ = decodeWireJSON([]byte(call.ArgumentsText), &args)
 					}
 				}
 			}

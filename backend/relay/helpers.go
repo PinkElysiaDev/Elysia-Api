@@ -75,7 +75,7 @@ func rawBlockCacheControl(raw any) any {
 
 func jsonRawToAny(raw json.RawMessage) any {
 	var out any
-	if len(raw) > 0 && json.Unmarshal(raw, &out) == nil {
+	if len(raw) > 0 && decodeWireJSON(raw, &out) == nil {
 		return out
 	}
 	return map[string]any{}

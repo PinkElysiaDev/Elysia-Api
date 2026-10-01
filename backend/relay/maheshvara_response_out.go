@@ -500,7 +500,7 @@ func claudeContentFromMap(raw map[string]any) (ClaudeContent, error) {
 		return ClaudeContent{}, err
 	}
 	var block ClaudeContent
-	if err := json.Unmarshal(encoded, &block); err != nil {
+	if err := decodeWireJSON(encoded, &block); err != nil {
 		return ClaudeContent{}, err
 	}
 	return block, nil
@@ -583,7 +583,7 @@ func MaheshvaraToGeminiResponse(resp *MaheshvaraResponse) (*GeminiResponse, erro
 			return err
 		}
 		var part GeminiPart
-		if err := json.Unmarshal(encoded, &part); err != nil {
+		if err := decodeWireJSON(encoded, &part); err != nil {
 			return err
 		}
 		parts = append(parts, part)

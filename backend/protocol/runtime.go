@@ -1,0 +1,268 @@
+package protocol
+
+import (
+	"context"
+	"fmt"
+)
+
+// DecodeRequest executes this revision's request decoder, stamps its source
+// identity and validates actual requested capabilities before routing.
+func (compiled *Compiled) DecodeRequest(ctx context.Context, body []byte, options EvaluationContext) (*Request, error) {
+	input, err := ParseValue(body)
+	if err != nil {
+		return nil, err
+	}
+	output, issues := compiled.Execute(ctx, DecodeRequest, input, options)
+	if err := IssuesError(issues); err != nil {
+		return nil, err
+	}
+	var request Request
+	if err := decodeContract(output.Bytes(), &request); err != nil {
+		return nil, err
+	}
+	request.SchemaVersion = SemanticSchemaVersion
+	request.Source = compiled.identity
+	if compiled.native.Preserve {
+		request.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: DecodeRequest, Scope: options.Scope}, Value: input}
+	}
+	if err := stampResourceScopes(&request, options.Scope); err != nil {
+		return nil, err
+	}
+	target := Target{Protocol: compiled.identity, Direction: EncodeRequest, Scope: options.Scope, Capabilities: compiled.capabilities}
+	if err := IssuesError(CheckRequest(&request, target, compiled.limits)); err != nil {
+		return nil, err
+	}
+	return &request, nil
+}
+
+// EncodeRequest validates capabilities and evaluates only the author's declared
+// mapping. Native replay and explicit edits are handled by the preservation
+// layer; unknown fields are never copied to a foreign protocol by this method.
+func (compiled *Compiled) EncodeRequest(ctx context.Context, request *Request, options EvaluationContext) ([]byte, error) {
+	target := Target{Protocol: compiled.identity, Direction: EncodeRequest, Scope: options.Scope, Capabilities: compiled.capabilities}
+	if err := IssuesError(CheckRequest(request, target, compiled.limits)); err != nil {
+		return nil, err
+	}
+	input, err := EncodeValue(request)
+	if err != nil {
+		return nil, err
+	}
+	output, issues := compiled.Execute(ctx, EncodeRequest, input, options)
+	if err := IssuesError(issues); err != nil {
+		return nil, err
+	}
+	output, err = compiled.preserveMappedNative(ctx, EncodeRequest, request.Native, output, options)
+	if err != nil {
+		return nil, err
+	}
+	return output.Bytes(), nil
+}
+
+// DecodeResponse executes the independent upstream response mapping.
+func (compiled *Compiled) DecodeResponse(ctx context.Context, body []byte, options EvaluationContext) (*Response, error) {
+	input, err := ParseValue(body)
+	if err != nil {
+		return nil, err
+	}
+	output, issues := compiled.Execute(ctx, DecodeResponse, input, options)
+	if err := IssuesError(issues); err != nil {
+		return nil, err
+	}
+	var response Response
+	if err := decodeContract(output.Bytes(), &response); err != nil {
+		return nil, err
+	}
+	response.SchemaVersion = SemanticSchemaVersion
+	response.Source = compiled.identity
+	if compiled.native.Preserve {
+		response.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: DecodeResponse, Scope: options.Scope}, Value: input}
+	}
+	if err := stampNodeScopes(response.Content, options.Scope); err != nil {
+		return nil, err
+	}
+	if err := IssuesError(CheckResponse(&response, compiled.target(EncodeResponse, options), compiled.limits)); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
+// EncodeResponse executes the independently authored client response mapping.
+func (compiled *Compiled) EncodeResponse(ctx context.Context, response *Response, options EvaluationContext) ([]byte, error) {
+	if err := IssuesError(CheckResponse(response, compiled.target(EncodeResponse, options), compiled.limits)); err != nil {
+		return nil, err
+	}
+	input, err := EncodeValue(response)
+	if err != nil {
+		return nil, err
+	}
+	output, issues := compiled.Execute(ctx, EncodeResponse, input, options)
+	if err := IssuesError(issues); err != nil {
+		return nil, err
+	}
+	output, err = compiled.preserveMappedNative(ctx, EncodeResponse, response.Native, output, options)
+	if err != nil {
+		return nil, err
+	}
+	return output.Bytes(), nil
+}
+
+// DecodeEvents maps a wire frame to ordered semantic events. Lifecycle and
+// association validation belongs to one per-stream state, outside this immutable
+// compiled object.
+func (compiled *Compiled) DecodeEvents(ctx context.Context, frame Value, options EvaluationContext) ([]Event, error) {
+	output, issues := compiled.Execute(ctx, DecodeEvent, frame, options)
+	if err := IssuesError(issues); err != nil {
+		return nil, err
+	}
+	items := []Value{output}
+	if valueType(output) == ArrayType {
+		var err error
+		items, err = readArray(output)
+		if err != nil {
+			return nil, err
+		}
+	}
+	events := make([]Event, 0, len(items))
+	if compiled.native.Preserve && len(items) > 1 {
+		return nil, IssuesError([]ConversionIssue{{Code: UnsupportedNative, Severity: SeverityError, Protocol: compiled.identity, Direction: DecodeEvent, Stage: "decode", Path: "/directions/decode_event", Reason: "native frame preservation requires a single semantic event per frame", Suggestion: "Use a compound response/item event or disable native replay and verify the explicit event mappings."}})
+	}
+	for _, item := range items {
+		var event Event
+		if err := decodeContract(item.Bytes(), &event); err != nil {
+			return nil, err
+		}
+		event.SchemaVersion = SemanticSchemaVersion
+		event.Source = compiled.identity
+		if compiled.native.Preserve {
+			event.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: DecodeEvent, Scope: options.Scope}, Value: frame}
+		}
+		if err := IssuesError(CheckEvent(event, compiled.target(EncodeEvent, options), compiled.limits)); err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	return events, nil
+}
+
+// EncodeEvent emits a declared event body; transport framing remains separate.
+func (compiled *Compiled) EncodeEvent(ctx context.Context, event Event, options EvaluationContext) (Value, error) {
+	if err := IssuesError(CheckEvent(event, compiled.target(EncodeEvent, options), compiled.limits)); err != nil {
+		return Value{}, err
+	}
+	input, err := EncodeValue(event)
+	if err != nil {
+		return Value{}, err
+	}
+	output, issues := compiled.Execute(ctx, EncodeEvent, input, options)
+	if err := IssuesError(issues); err != nil {
+		return Value{}, err
+	}
+	return compiled.preserveMappedNative(ctx, EncodeEvent, event.Native, output, options)
+}
+
+func stampResourceScopes(request *Request, scope Scope) error {
+	for index := range request.Resources {
+		if err := stampResourceScope(&request.Resources[index], scope); err != nil {
+			return err
+		}
+	}
+	if err := stampCacheScopes(request.Cache, scope); err != nil {
+		return err
+	}
+	for index := range request.Tools {
+		if err := stampCacheScopes(request.Tools[index].Cache, scope); err != nil {
+			return err
+		}
+	}
+	return stampNodeScopes(request.Content, scope)
+}
+
+func stampNodeScopes(nodes []Node, scope Scope) error {
+	for index := range nodes {
+		for resource := range nodes[index].Resources {
+			if err := stampResourceScope(&nodes[index].Resources[resource], scope); err != nil {
+				return err
+			}
+		}
+		if err := stampCacheScopes(nodes[index].Cache, scope); err != nil {
+			return err
+		}
+		if err := stampNodeScopes(nodes[index].Children, scope); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func stampCacheScopes(intents []CacheIntent, scope Scope) error {
+	for index := range intents {
+		if intents[index].Resource != nil {
+			if err := stampResourceScope(intents[index].Resource, scope); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func stampResourceScope(resource *Resource, scope Scope) error {
+	if resource.Scope != (Scope{}) && resource.Scope != scope {
+		return fmt.Errorf("resource_scope_mismatch: mapping cannot replace gateway-owned scope")
+	}
+	resource.Scope = scope
+	return nil
+}
+
+func (compiled *Compiled) target(direction Direction, options EvaluationContext) Target {
+	return Target{Protocol: compiled.identity, Direction: direction, Scope: options.Scope, Capabilities: compiled.capabilities}
+}
+
+func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Direction, native *Native, output Value, options EvaluationContext) (Value, error) {
+	target := compiled.target(direction, options)
+	if !compiled.native.Preserve || native == nil || !CanPreserveNative(native.Source, target) {
+		return output, nil
+	}
+	original, issues := PreserveNative(*native, target, nil, compiled.limits)
+	if err := IssuesError(issues); err != nil {
+		return Value{}, err
+	}
+	var baseline any
+	switch direction {
+	case EncodeRequest:
+		request, err := compiled.DecodeRequest(ctx, original.Bytes(), options)
+		if err != nil {
+			return Value{}, err
+		}
+		baseline = request
+	case EncodeResponse:
+		response, err := compiled.DecodeResponse(ctx, original.Bytes(), options)
+		if err != nil {
+			return Value{}, err
+		}
+		baseline = response
+	case EncodeEvent:
+		events, err := compiled.DecodeEvents(ctx, original, options)
+		if err != nil {
+			return Value{}, err
+		}
+		if len(events) != 1 {
+			return Value{}, fmt.Errorf("native frame must map to exactly one event")
+		}
+		baseline = events[0]
+	default:
+		return Value{}, fmt.Errorf("native reconciliation requires a request or response direction")
+	}
+	value, err := EncodeValue(baseline)
+	if err != nil {
+		return Value{}, err
+	}
+	before, issues := compiled.Execute(ctx, direction, value, options)
+	if err := IssuesError(issues); err != nil {
+		return Value{}, err
+	}
+	result, err := reconcileNative(ctx, original, before, output, compiled.native, compiled.limits)
+	if err != nil {
+		return Value{}, IssuesError([]ConversionIssue{{Code: InvalidMutation, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "preserve", Path: native.Source.Path, Reason: err.Error(), Suggestion: "Declare stable array identities or apply an explicit native replacement."}})
+	}
+	return result, nil
+}
