@@ -118,14 +118,11 @@ export default {
           from: { opacity: '1', transform: 'translateY(0) scale(1)' },
           to: { opacity: '0', transform: 'translateY(8px) scale(0.98)' },
         },
-        shimmer: { '100%': { transform: 'translateX(100%)' } },        breathe: {
-          '50%': { boxShadow: '0 0 0 5px color-mix(in srgb, var(--jade) 8%, transparent)' },
-        },
+        shimmer: { '100%': { transform: 'translateX(100%)' } },
       },
       animation: {
         'toast-in': 'toast-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1)',
         'toast-out': 'toast-out 0.2s ease-in forwards',
-        breathe: 'breathe 2.6s ease-in-out infinite',
       },
     },
   },
