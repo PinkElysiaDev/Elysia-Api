@@ -8,7 +8,7 @@ This ledger records implemented and verified work; unchecked stages are not deli
 | --- | --- | --- |
 | C01 Cache fidelity | Complete | Backend full tests, vet, WebUI type check; cache audit and 96-case HTTP matrix; conversion benchmark baseline |
 | C02 Tool definitions and lifecycle | Complete with documented interim boundary | Full backend tests and vet passed; native/preset/arbitrary-ID HTTP regression and native stream fidelity passed; legacy custom streams block unsupported tools pending C05/C06 |
-| C03 Ordered model and provenance | Pending | |
+| C03 Ordered model and provenance | Complete | protocol/relay tests passed: presence, long integers, native JSON, call order/association, scopes, contract roundtrip and transitional snapshots |
 | C04 Native preservation and diagnostics | Pending | |
 | C05 Shared wire adapters | Pending | |
 | C06 Stream and accounting | Pending | |
