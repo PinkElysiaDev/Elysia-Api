@@ -83,7 +83,7 @@ export function MessageCard({
     const content = message.content as AgentAssistantContent;
     if (!content.text?.trim() && !content.reasoning?.trim()) return null;
     return (
-      <div className="min-w-0 space-y-2">
+      <div className="min-w-0 space-y-2 max-w-[80ch]">
         <ReasoningBlock text={content.reasoning ?? ""} />
         {content.text ? <Markdown text={content.text} /> : null}
         {/* 工具调用不在此重复展示：紧随其后的工具结果行（或流式期间的
