@@ -212,3 +212,52 @@ func TestCustomUsageCacheCreationAlias(t *testing.T) {
 		t.Fatalf("aliased cache_creation = %+v", aliased)
 	}
 }
+
+// doneValue 终止帧的终态冲刷传 nil 响应对象——若此前有未收尾工具,
+// flushToolArgumentsDone 曾对 nil 解引用 response.ID 而 panic(agent 会话
+// 「引擎异常(modelLoop)」的根因,栈摘录定位)。终态前未收到 toolDone 帧
+// 的工具必须在 [DONE] 处安全补发参数完成,身份字段完整、ResponseID 留空。
+func TestCustomStreamDoneValueFlushesPendingToolsSafely(t *testing.T) {
+	config := CustomProtocolConfig{ID: "done-flush", Type: "llm",
+		Request: CustomProtocolRequest{Method: "POST", PathTemplate: "/x", BodyTemplate: `{"model":"{{maheshvara.model}}"}`},
+		Response: CustomProtocolResponse{
+			Stream: &CustomProtocolStreamMapping{
+				Mode:       "delta",
+				DoneValues: []string{"[DONE]"},
+				Frames: []CustomProtocolStreamFrame{
+					{Event: "tool_start", Tool: &CustomProtocolStreamTool{IndexPath: "index", IDPath: "id", NamePath: "name"}},
+					{Event: "tool_args", Tool: &CustomProtocolStreamTool{IndexPath: "index", ArgumentsPath: "args"}},
+				},
+			},
+		},
+	}
+	decoder, err := NewCustomProtocolStreamDecoder(config)
+	if err != nil {
+		t.Fatalf("decoder: %v", err)
+	}
+	added := decodeSSELineNamed(t, decoder, "tool_start", `{"index":0,"id":"call_9","name":"lookup"}`)
+	if !containsEvent(eventTypes(added), MaheshvaraEventFunctionCallAdded) {
+		t.Fatalf("tool added missing: %v", added)
+	}
+	delta := decodeSSELineNamed(t, decoder, "tool_args", `{"index":0,"args":"{\"q\":"}`)
+	if !containsEvent(eventTypes(delta), MaheshvaraEventFunctionCallArgumentsDelta) {
+		t.Fatalf("args delta missing: %v", delta)
+	}
+	// 直接以 doneValue 收尾(无 finish/status/toolStop 帧)——nil 冲刷路径。
+	terminal := decodeSSELineNamed(t, decoder, "", "[DONE]")
+	foundDone, foundCompleted := false, false
+	for _, event := range terminal {
+		if event.Type == MaheshvaraEventFunctionCallArgumentsDone {
+			foundDone = true
+			if event.ToolCallID != "call_9" || !strings.HasPrefix(event.ToolArgumentsDone, `{"q":`) || event.ToolName != "lookup" {
+				t.Fatalf("flushed done event lost identity: %+v", event)
+			}
+		}
+		if event.Type == MaheshvaraEventResponseCompleted {
+			foundCompleted = true
+		}
+	}
+	if !foundDone || !foundCompleted {
+		t.Fatalf("doneValue must safely flush pending tools and complete: %+v", terminal)
+	}
+}

@@ -446,11 +446,18 @@ func (decoder *CustomProtocolStreamDecoder) flushToolArgumentsDone(response *Mah
 	if arguments == "" {
 		arguments = "{}"
 	}
-	return []MaheshvaraStreamEvent{{
-		Type: MaheshvaraEventFunctionCallArgumentsDone, ResponseID: response.ID, Model: response.Model,
+	event := MaheshvaraStreamEvent{
+		Type:        MaheshvaraEventFunctionCallArgumentsDone,
 		OutputIndex: meta.slot, ToolCallIndex: meta.slot, ToolCallID: meta.id, ToolName: meta.name,
 		ToolArgumentsDone: arguments,
-	}}
+	}
+	// doneValue 终止帧的终态冲刷没有响应对象可引用(调用方传 nil)——
+	// ResponseID/Model 留空;消费方按 ToolCallIndex/ToolCallID 组装工具。
+	if response != nil {
+		event.ResponseID = response.ID
+		event.Model = response.Model
+	}
+	return []MaheshvaraStreamEvent{event}
 }
 
 // flushAllToolArgumentsDone 终态冲刷：内置线在 finish/[DONE] 处为所有未收尾
