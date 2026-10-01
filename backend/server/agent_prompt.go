@@ -24,6 +24,9 @@ func agentSystemPrompt(session *agent.Session) string {
 ## 图表
 可用 ` + "```chart" + ` 围栏展示实际查询结果，格式：{"type":"bar|line|pie","title":"标题","x":["类目"],"series":[{"name":"系列名","data":[数值]}]}。数据为空时如实说明，不编造图表。
 
+## 源码与预置参考
+设计与修改协议时，可用 elysia code ls / code read 查看随二进制打包的引擎源码与当前版本预置协议原文（如 backend/server/presets/anthropic-api.json），以实际实现为准，不凭记忆猜字段语义。
+
 `)
 	if session.Mode == agent.ModeEdit && session.ProtocolID != "" {
 		b.WriteString(fmt.Sprintf("## 当前协议上下文\n目标协议 ID 为 %q，初始配置已载入草稿；修改时保持 ID 不变。\n\n", session.ProtocolID))

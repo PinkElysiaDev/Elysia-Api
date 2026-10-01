@@ -512,3 +512,36 @@ func cliOutputText(t *testing.T, result agent.ToolResult) string {
 	text, _ := data["output"].(string)
 	return text
 }
+
+// elysia code 命令:命令表注册齐 + 读路径/非法路径行为。快照是否随构建
+// 同步取决于环境(构建脚本同步 vs 纯 go build 占位),断言两态自适应——
+// 有快照时预置原文可读,占位时返回打包提示而非报错堆栈。
+func TestCLICodeSnapshotCommands(t *testing.T) {
+	if command, rest := lookupCLICommand([]string{"code", "read"}); command == nil || len(rest) != 0 {
+		t.Fatalf("code read must resolve: %+v", command)
+	}
+	if command, _ := lookupCLICommand([]string{"code", "ls"}); command == nil {
+		t.Fatal("code ls must resolve")
+	}
+	read := &codeReadTool{}
+	result := read.Execute(t.Context(), nil, json.RawMessage(`{"path":"../etc/passwd"}`))
+	if result.OK || result.Data.(map[string]any)["error"] != "invalid_path" {
+		t.Fatalf("path traversal must be rejected: %+v", result)
+	}
+	result = read.Execute(t.Context(), nil, json.RawMessage(`{"path":"backend/server/presets/anthropic-api.json"}`))
+	if snapshotAvailable() {
+		if !result.OK || !strings.Contains(result.Data.(map[string]any)["content"].(string), `"anthropic-api"`) {
+			t.Fatalf("preset original must be readable from the snapshot: %+v", result.Summary)
+		}
+	} else if result.OK || result.Data.(map[string]any)["error"] != "snapshot_unavailable" {
+		t.Fatalf("placeholder build must surface the notice: %+v", result)
+	}
+	list := &codeListTool{}
+	result = list.Execute(t.Context(), nil, json.RawMessage(`{}`))
+	if !result.OK {
+		t.Fatalf("code ls must not fail: %+v", result)
+	}
+	if !snapshotAvailable() && !strings.Contains(result.Summary, "未打包源码快照") {
+		t.Fatalf("placeholder notice expected: %+v", result)
+	}
+}

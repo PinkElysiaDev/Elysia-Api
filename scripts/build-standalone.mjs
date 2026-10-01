@@ -84,6 +84,35 @@ stripTrailingWhitespace(embeddedWebuiDist)
 // 恢复 embed 占位文件：go:embed all:dist 依赖目录非空，该文件被 git 跟踪。
 writeFileSync(join(embeddedWebuiDist, '.gitkeep'), '')
 
+// 源码快照：backend 的 Go 与预置 JSON、webui 的 src 同步进 embed 目录，
+// 随二进制分发给 elysia code 命令（agent/MCP 查看引擎实现与预置原文）。
+// 排除 snapshot 自身（防递归嵌套）与 webui 构建产物（dist 不算源码）。
+log('Syncing source snapshot for elysia code')
+const snapshotRoot = join(repoRoot, 'backend', 'server', '_snapshot')
+const snapshotKeep = join(snapshotRoot, 'README.md')
+const snapshotSkip = new Set([join(repoRoot, 'backend', 'server', '_snapshot'), join(repoRoot, 'backend', 'webui')])
+const snapshotKeepContent = readFileSync(snapshotKeep, 'utf8')
+rmSync(snapshotRoot, { recursive: true, force: true })
+mkdirSync(snapshotRoot, { recursive: true })
+function copyTreeIntoSnapshot(absDir, relDir) {
+  if (snapshotSkip.has(absDir)) return
+  for (const entry of readdirSync(absDir, { withFileTypes: true })) {
+    const abs = join(absDir, entry.name)
+    if (snapshotSkip.has(abs)) continue
+    const rel = `${relDir}/${entry.name}`
+    if (entry.isDirectory()) {
+      copyTreeIntoSnapshot(abs, rel)
+      continue
+    }
+    if (!entry.name.endsWith('.go') && !entry.name.endsWith('.json')) continue
+    mkdirSync(dirname(join(snapshotRoot, rel)), { recursive: true })
+    cpSync(abs, join(snapshotRoot, rel))
+  }
+}
+copyTreeIntoSnapshot(join(repoRoot, 'backend'), 'backend')
+copyTreeIntoSnapshot(join(repoRoot, 'packages', 'webui', 'src'), 'packages/webui/src')
+writeFileSync(snapshotKeep, snapshotKeepContent)
+
 log('Preparing standalone release directory')
 rmSync(releaseDir, { recursive: true, force: true })
 mkdirSync(releaseDir, { recursive: true })

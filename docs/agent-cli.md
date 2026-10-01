@@ -22,6 +22,7 @@
 elysia —— 网关运维 CLI（全部操作经 elysia_cli 工具执行）
 
 命令组：
+  code       code（ls, read）
   source     模型源管理（create, delete, ls, refresh, update）
   model      单模型管理（ls, rm, set）
   group      模型组管理与成员维护（create, delete, ls, member add, member rm, update）
@@ -44,6 +45,48 @@ elysia —— 网关运维 CLI（全部操作经 elysia_cli 工具执行）
   elysia usage logs --days 1 --status failed --limit 10
   elysia group create --name 主力 --models s1:gpt-4o
 ```
+
+## code
+
+````text
+elysia code — code
+
+  elysia code ls [前缀]
+    列出源码快照文件(引擎与预置协议的参考实现)
+      <prefix>                 路径前缀过滤(可选,如 backend/relay/ 或 packages/webui/src/lib/)
+
+  elysia code read <路径>
+    读取源码快照中的一个文件
+      <path>                   仓库相对路径(先 code ls 浏览)
+
+完整语义与示例：elysia help code <命令>。
+````
+
+### code ls
+
+````text
+elysia code ls [前缀]
+列出源码快照文件(引擎与预置协议的参考实现)
+
+  <prefix>                 路径前缀过滤(可选,如 backend/relay/ 或 packages/webui/src/lib/)
+
+示例：elysia code ls backend/server/presets
+
+详细说明：列出随二进制打包的源码快照文件(仓库相对路径,可加路径前缀过滤;配合 grep/head 管道使用)。
+````
+
+### code read
+
+````text
+elysia code read <路径>
+读取源码快照中的一个文件
+
+  <path>                   仓库相对路径(先 code ls 浏览)
+
+示例：elysia code read backend/server/presets/anthropic-api.json
+
+详细说明：读取源码快照中的一个文件(仓库相对路径,如 backend/server/custom_protocol.go 或 packages/webui/src/lib/types.ts);输出较长时配合 grep/head 管道截取。预置协议原文在 backend/server/presets/ 下。
+````
 
 ## source
 

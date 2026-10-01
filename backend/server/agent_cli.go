@@ -427,6 +427,7 @@ func (c *cliCommand) flagByName(name string) *cliFlagSpec {
 // 新命令加进对应域函数即可。
 func cliCommandTable() []*cliCommand {
 	table := []*cliCommand{}
+	table = append(table, codeCommands()...)
 	table = append(table, sourceCommands()...)
 	table = append(table, modelCommands()...)
 	table = append(table, groupCommands()...)
@@ -977,6 +978,41 @@ func usageCommands() []*cliCommand {
 }
 
 // syslogCommands 系统日志命令（组级）。
+func codeCommands() []*cliCommand {
+	return []*cliCommand{
+		&cliCommand{group: "code", name: "ls", summary: "列出源码快照文件(引擎与预置协议的参考实现)",
+			usage:   "elysia code ls [前缀]",
+			example: `elysia code ls backend/server/presets`,
+			positionals: []cliPositionalSpec{
+				{"prefix", "路径前缀过滤(可选,如 backend/relay/ 或 packages/webui/src/lib/)"},
+			},
+			handler: func(s *Server) CLIHandler { return &codeListTool{server: s} },
+			mapper: func(inv *cliInvocation) (map[string]any, error) {
+				params := map[string]any{}
+				if len(inv.args) > 0 {
+					params["prefix"] = inv.args[0]
+				}
+				return params, nil
+			}},
+		&cliCommand{group: "code", name: "read", summary: "读取源码快照中的一个文件",
+			usage:   "elysia code read <路径>",
+			example: `elysia code read backend/server/presets/anthropic-api.json`,
+			positionals: []cliPositionalSpec{
+				{"path", "仓库相对路径(先 code ls 浏览)"},
+			},
+			handler: func(s *Server) CLIHandler { return &codeReadTool{server: s} },
+			mapper: func(inv *cliInvocation) (map[string]any, error) {
+				params := map[string]any{}
+				target, err := inv.requirePositional("path")
+				if err != nil {
+					return nil, err
+				}
+				params["path"] = target
+				return params, nil
+			}},
+	}
+}
+
 func syslogCommands() []*cliCommand {
 	return []*cliCommand{
 		&cliCommand{group: "syslog", name: "", summary: "查询系统日志",
