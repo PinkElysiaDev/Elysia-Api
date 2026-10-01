@@ -5,6 +5,15 @@ export interface TracePath {
   points: Float32Array
 }
 
+export interface TraceChunk {
+  file: string
+  firstFrame: number
+  frameCount: number
+  decodedBytes: number
+  sha256: string
+  decodedSha256: string
+}
+
 export interface CharacterTraceAsset {
   version: 1
   coordinateEncoding: 'pixel-delta-i16'
@@ -18,6 +27,7 @@ export interface CharacterTraceAsset {
   decodedBytes: number
   frameTimes: number[]
   frameOffsets: number[]
+  chunks?: TraceChunk[]
 }
 
 export function frameAtTime(times: readonly number[], duration: number, mediaTime: number): number {
@@ -38,7 +48,8 @@ export class CharacterTrace {
   private cachedPaths: TracePath[] = []
   readonly targetPaths: TracePath[]
 
-  constructor(readonly manifest: CharacterTraceAsset, payload: ArrayBuffer, readonly targetImage: HTMLImageElement) {
+  constructor(readonly manifest: CharacterTraceAsset, payload: ArrayBuffer, readonly targetImage: HTMLImageElement,
+    private readonly frameReady?: (frame: number) => boolean) {
     if (manifest.version !== 1 || manifest.coordinateEncoding !== 'pixel-delta-i16' || payload.byteLength !== manifest.decodedBytes || !manifest.frameTimes.length
       || manifest.frameTimes.length !== manifest.frameOffsets.length || manifest.source.duration <= 0) {
       throw new Error('Invalid character trace asset')
@@ -55,6 +66,7 @@ export class CharacterTrace {
 
   sampleCharacterPaths(mediaTime: number): TracePath[] {
     const frame = frameAtTime(this.manifest.frameTimes, this.manifest.source.duration, mediaTime)
+    if (this.frameReady && !this.frameReady(frame)) throw new Error('Character trace frame is still loading')
     if (frame === this.cachedFrame) return this.cachedPaths
     let offset = this.manifest.frameOffsets[frame]
     const count = this.bytes.getUint32(offset, true)
