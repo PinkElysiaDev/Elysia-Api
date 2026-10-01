@@ -13,6 +13,10 @@ function resolveAppVersion() {
   return tag.replace(/^v/, '') || 'dev'
 }
 const appVersion = resolveAppVersion()
+
+// 构建对应的 git 短哈希：版本号在两次发版间不变，靠它区分构建新旧。
+const result = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' })
+const appCommit = result.status === 0 ? result.stdout.trim() : 
 const releaseDir = join(repoRoot, 'dist', 'standalone')
 const backendDir = join(repoRoot, 'backend')
 const webuiDist = join(repoRoot, 'packages', 'webui', 'dist')
@@ -86,7 +90,7 @@ mkdirSync(releaseDir, { recursive: true })
 
 for (const target of targets) {
   log(`Building ${target.output} (${target.goos}/${target.goarch})`)
-  run('go', ['build', '-ldflags', `-s -w -X github.com/elysia-api/backend/server.AppVersion=${appVersion}`, '-o', join(releaseDir, target.output), '.'], {
+  run('go', ['build', '-ldflags', `-s -w -X github.com/elysia-api/backend/server.AppVersion=${appVersion} -X github.com/elysia-api/backend/server.AppCommit=${appCommit}`, '-o', join(releaseDir, target.output), '.'], {
     cwd: backendDir,
     env: {
       ...process.env,

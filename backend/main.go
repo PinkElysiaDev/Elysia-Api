@@ -14,7 +14,8 @@ func main() {
 
 	srv := server.New(config.GlobalConfig)
 
-	log.Printf("Starting Elysia-API backend on %s:%d",
+	log.Printf("Starting Elysia-API backend %s on %s:%d",
+		server.BuildIdentity(),
 		config.GlobalConfig.Server.Host,
 		config.GlobalConfig.Server.Port)
 
