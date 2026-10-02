@@ -37,7 +37,7 @@ try {
   cpSync(previewOnly ? join(repo, 'dist', 'standalone', 'ElysiaApi.app', 'Contents', 'MacOS', 'elysia-api') : join(source, 'BackendFixture.py'), join(macos, 'elysia-api'))
   chmodSync(join(macos, 'elysia-api'), 0o755)
   run('xcrun', ['--sdk', 'macosx', 'swiftc', '-D', 'NATIVE_TESTS', '-target', `${process.arch === 'arm64' ? 'arm64' : 'x86_64'}-apple-macos12.0`,
-    '-o', join(macos, 'ElysiaApi'), join(source, 'MacSupport.swift'), join(source, 'NativeTests.swift'), join(source, 'main.swift')])
+    '-o', join(macos, 'ElysiaApi'), join(source, 'MacSupport.swift'), join(source, 'UpdateCapsuleView.swift'), join(source, 'NativeTests.swift'), join(source, 'main.swift')])
   run('codesign', ['--force', '--sign', '-', '--deep', app])
   run(join(macos, 'ElysiaApi'), previewOnly ? ['--panel'] : [], { timeout: 120000, env: { ...process.env, ELYSIA_NATIVE_TEST_DATA: data, ELYSIA_NATIVE_SCREENSHOT: join(repo, 'dist', 'macos-panel-preview.png') } })
 } finally {

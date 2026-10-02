@@ -235,16 +235,7 @@ enum NativeTests {
         let jsState = try await delegate.webView.evaluateJavaScript("localStorage.getItem('elysia-webui.theme') === 'dark' && localStorage.getItem('elysia-webui.panel-token') === null && !document.cookie.includes('panel_access_token=')") as? Bool
         try expect(jsState == true, "theme is restored without injecting a token or authentication cookie")
         try expect(delegate.webView.configuration.websiteDataStore.isPersistent, "WebKit persists the user's manual login")
-        delegate.updatePhase = .downloading; delegate.updateMessage = "正在下载测试更新 · 50%"; delegate.updateFraction = 0.5
-        delegate.updateUIForTests()
-        delegate.window.contentView?.layoutSubtreeIfNeeded()
-        try expect(!delegate.updateCancelButton.isHidden && delegate.updateProgress.doubleValue == 50, "download exposes progress and cancellation")
-        try expect(delegate.webView.frame.maxY == delegate.window.contentView!.bounds.maxY && delegate.webView.frame.minY >= 27, "panel is full-bleed to the window top and reserves update bar space")
-        delegate.updatePhase = .checking; delegate.checkingUpdates = true; delegate.updateUIForTests()
-        try expect(delegate.updateButton.isHidden && !delegate.validateMenuItem(delegate.updateCheckItem), "checking never enables installation or concurrent checks")
-        delegate.checkingUpdates = false; delegate.updatePhase = .failed; delegate.updateUIForTests()
-        try expect(delegate.updateButton.title == "重试更新" && !delegate.updateButton.isHidden, "update failures expose retry")
-        delegate.updatePhase = .idle; delegate.updateUIForTests()
+        try await updateCapsuleTests(delegate)
         _ = try await delegate.webView.evaluateJavaScript("location.hash = '#/protocols'")
         try expect(await wait { delegate.webView.url?.fragment == "/protocols" }, "panel can navigate away from overview")
         delegate.showMainWindow()
@@ -287,6 +278,86 @@ enum NativeTests {
         try expect(delegate.restartCount == 0, "manual retry resets restart budget")
     }
 
+    /// 同一相位状态机的两个 UI 投影（胶囊 / 状态栏动态更新项）：
+    /// 每个相位只刻画各自的控件语义，是平台级的「快照组」。
+    static func updateCapsuleTests(_ delegate: AppDelegate) async throws {
+        // (1) idle：启动即无胶囊，webView 全幅（不再预留 27pt 更新条区）。
+        delegate.updatePhase = .idle
+        delegate.updateUIForTests()
+        delegate.window.contentView?.layoutSubtreeIfNeeded()
+        try expect(delegate.updateCapsule.isHidden && !delegate.updateCapsuleVisible, "idle phase keeps the update capsule hidden from launch")
+        let content = delegate.window.contentView!
+        try expect(delegate.webView.frame.maxY == content.bounds.maxY && delegate.webView.frame.minY == 0,
+                   "panel remains full-bleed after dropping the bottom update bar")
+        try expect(delegate.updateCapsule.superview === content
+                   && content.subviews.firstIndex(of: delegate.updateCapsule)! > content.subviews.firstIndex(of: delegate.webView)!,
+                   "capsule floats above the WebView as a sibling overlay")
+        try expect(delegate.updateCapsule.frame.origin == NSPoint(x: 16, y: 16), "capsule anchors bottom-left inside the window")
+        // (2) checking：相位不应弹出胶囊（估 24ms 离手动检查 menuItem 仍变体）。
+        delegate.checkingUpdates = true
+        delegate.updatePhase = .checking
+        delegate.updateUIForTests()
+        try expect(delegate.updateCapsule.isHidden && !delegate.updateCheckItem.isEnabled
+                   && delegate.updateCheckItem.title == "正在检查更新…",
+                   "checking leaves the capsule hidden and the menu item disabled until it settles")
+        delegate.checkingUpdates = false
+        // (3) available：胶囊出现、行动按钮+关闭共存。
+        delegate.latestRelease = ReleaseInfo(tag: "v99.0.0", dmgURL: "https://example.com/unused.dmg", dmgDigest: "sha256:00")
+        delegate.updatePhase = .available
+        delegate.updateMessage = "发现新版本 v99.0.0"
+        delegate.updateDetail = "1.0.0 → v99.0.0 · 安装需要重启"
+        delegate.updateCapsuleVisible = true
+        delegate.updateUIForTests()
+        let capsule = delegate.updateCapsule!
+        try expect(!capsule.isHidden && capsule.titleField.stringValue == "发现新版本 v99.0.0"
+                   && capsule.detailField.stringValue.contains("安装需要重启"),
+                   "available phase surfaces the capsule with version detail")
+        try expect(!capsule.primaryButton.isHidden && capsule.primaryButton.title == "立即更新"
+                   && !capsule.dismissButton.isHidden && capsule.cancelButton.isHidden,
+                   "available phase offers update-and-dismiss actions")
+        try expect(delegate.updateCheckItem.title == "安装更新…" && delegate.validateMenuItem(delegate.updateCheckItem),
+                   "menu bar updates to the install action")
+        // 关闭 × 钉在胶囊右上角，且与主操作按钮互不交叠（回防截图里的按钮重叠）。
+        capsule.layoutSubtreeIfNeeded()
+        let closeBox = capsule.dismissButton.frame
+        try expect(closeBox.maxY > capsule.bounds.height - 30 && !closeBox.intersects(capsule.primaryButton.frame),
+                   "dismiss control pins to the capsule top-right clear of the action buttons")
+        // (4) downloading：环形进度条取代图标，主按钮隐去，只剩取消。
+        delegate.updatePhase = .downloading
+        delegate.updateMessage = "下载 v99.0.0"
+        delegate.updateDetail = "已接收 9.2 MB · 50%"
+        delegate.updateFraction = 0.5
+        delegate.updateUIForTests()
+        try expect(!capsule.isHidden && !capsule.ringView.isHidden && abs(capsule.ringView.fraction - 0.5) < 0.001
+                   && capsule.primaryButton.isHidden && !capsule.cancelButton.isHidden,
+                   "downloading switches the icon slot to determinate ring progress")
+        try expect(delegate.updateCheckItem.title == "取消更新下载" && delegate.validateMenuItem(delegate.updateCheckItem),
+                   "menu item turns into the download cancel action")
+        // (5) failed：相位复用胶囊、提供重试。
+        delegate.updatePhase = .failed
+        delegate.updateMessage = "更新失败"
+        delegate.updateDetail = "下载已取消"
+        delegate.updateUIForTests()
+        try expect(!capsule.isHidden && capsule.primaryButton.title == "重试" && !capsule.primaryButton.isHidden,
+                   "failed phase re-exposes the retry action in place")
+        // (6) dismiss：关闭只是视觉遮蔽，状态机不变，菜单仍可从同一相位进入下一步。
+        delegate.dismissUpdatePrompt()
+        try expect(delegate.updateCapsule.isHidden && !delegate.updateCapsuleVisible && delegate.updatePhase == .failed
+                   && delegate.updateCheckItem.title == "重试更新…",
+                   "dismissing the capsule is visual only and never disturbs the phase machine")
+        // (7) readyToRelaunch：不可关闭，唯一出路是重启。
+        delegate.updatePhase = .readyToRelaunch
+        delegate.updateMessage = "更新已就绪"
+        delegate.updateDetail = "即将自动重启…"
+        delegate.updateCapsuleVisible = true
+        delegate.updateUIForTests()
+        try expect(!delegate.updateCapsule.isHidden && delegate.updateCapsule.primaryButton.title == "重新启动"
+                   && delegate.updateCapsule.dismissButton.isHidden,
+                   "ready-to-relaunch phase only offers the final restart")
+        delegate.updatePhase = .idle
+        delegate.updateUIForTests()
+    }
+
     /// Use the actual universal Go binary + embedded React UI against a temporary data directory.
     static func realPanel(_ delegate: AppDelegate) async throws {
         delegate.windowState.save(theme: "dark")
@@ -314,9 +385,11 @@ enum NativeTests {
         delegate.showMainWindow()
         try expect(await wait { delegate.pollForTests(); return delegate.panelLoaded && !delegate.webView.isLoading }, "reopened window loads the real panel")
         try expect(await webMatches(delegate, overviewReady), "reopening the window keeps the manual login")
-        delegate.latestRelease = ReleaseInfo(tag: "v99.0.0", dmgURL: "https://example.com/unused.dmg", dmgDigest: "")
+        delegate.latestRelease = ReleaseInfo(tag: "v99.0.0", dmgURL: "https://example.com/unused.dmg", dmgDigest: "sha256:00")
         delegate.updatePhase = .available
-        delegate.updateMessage = "可更新到 v99.0.0 · 原生更新条预览"
+        delegate.updateMessage = "发现新版本 v99.0.0 · 原生更新胶囊预览"
+        delegate.updateDetail = "1.0.0 → v99.0.0 · 安装需要重启"
+        delegate.updateCapsuleVisible = true
         delegate.updateUIForTests()
         delegate.window.contentView?.layoutSubtreeIfNeeded()
         // Locked/headless Macs pause the document timeline. Finish finite entrance animations

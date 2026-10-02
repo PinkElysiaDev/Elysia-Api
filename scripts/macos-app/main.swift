@@ -6,7 +6,7 @@
 // - 数据全部放在 ~/Library/Application Support/ElysiaApi(配置/数据库/日志)
 // - 首次运行自动生成配置:随机面板令牌 + 空闲端口探测(8765→8799→8800…)
 // - 状态栏:模板图标 + 端口号/状态,菜单提供快捷操作
-// - 有新版本时窗口左下角出现更新条,一键完成 下载→sha256 校验→整包替换→自动重启
+// - 有新版本时窗口左下角浮出更新胶囊,一键完成 下载→sha256 校验→整包替换→自动重启
 
 import Cocoa
 import CryptoKit
@@ -375,10 +375,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var overlaySpinner: NSProgressIndicator!
     var overlayLabel: NSTextField!
     var overlayButton: NSButton!
-    var updateBar: NSView!
-    var updateLabel: NSTextField!
-    var updateButton: NSButton!
-    var updateSpinner: NSProgressIndicator!
+    // 更新提示：左下角悬浮胶囊。与旧底栏不同，胶囊只改变透明度与位移，
+    // WebUI 排版保持静止——布局不再被顶起。
+    var updateCapsule: UpdateCapsuleView!
+    var updateCapsuleVisible = false
+    var updateCapsuleAnimating = false
     var statusItem: NSStatusItem!
     var toggleItem: NSMenuItem!
     var pulseItem: NSMenuItem!
@@ -409,17 +410,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var loginSettingsItem: NSMenuItem!
     var lastErrorItem: NSMenuItem!
     var updateCheckItem: NSMenuItem!
-    var updateInstallItem: NSMenuItem!
-    var updateStatusItem: NSMenuItem!
-    var updateCancelItem: NSMenuItem!
-    var updateBarConstraint: NSLayoutConstraint!
+    /// 更新动作项（单一菜单位置）：由 phase 决定标题（安装/重试/重启完成）。
+    /// 空闲时也是唯一的「检查更新…」入口——检查动作挪到此项，视觉上合并更新职能。
+    var updateActionItem: NSMenuItem!
     var overlayHelp: NSStackView!
     var healthFailedSince: Date?
     var recoveryTerminating = false
-    var updateCancelButton: NSButton!
     var checkingUpdates = false
     var updatePhase: UpdatePhase = .idle
     var updateMessage = ""
+    var updateDetail = ""
     var updateFraction: Double?
     var cancellingUpdate = false
     var notificationDenied = false
@@ -431,10 +431,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     let windowState = WindowStateStore()
     let launchAtLogin = LaunchAtLoginManager()
     let notifications = NotificationManager()
-    var updateProgress: NSProgressIndicator!
     var updateTask: URLSessionDownloadTask?
     var updateSession: URLSession?
     var updateDownloadDelegate: UpdateDownloadDelegate?
+
 
     let healthSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
@@ -526,7 +526,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     // MARK: 主窗口与界面
 
-    private static let updateBarHeight: CGFloat = 56
     private static let titleBarHeight: CGFloat = 28
 
     /// 最小主菜单:编辑菜单项是 WKWebView 复制/粘贴/全选等快捷键的依赖
@@ -660,33 +659,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         dragStrip.setAccessibilityLabel("窗口标题栏，可拖动以移动窗口")
         content.addSubview(dragStrip)
 
-        updateBar = NSView()
-        updateBar.wantsLayer = true
-        content.addSubview(updateBar)
-        let hairline = NSBox()
-        hairline.boxType = .separator
-        updateBar.addSubview(hairline)
-        updateSpinner = NSProgressIndicator()
-        updateSpinner.controlSize = .small
-        updateSpinner.style = .spinning
-        updateSpinner.isDisplayedWhenStopped = false
-        updateLabel = NSTextField(labelWithString: "")
-        updateLabel.font = .systemFont(ofSize: 12)
-        updateLabel.lineBreakMode = .byTruncatingMiddle
-        updateLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        updateButton = NSButton(title: "立即更新", target: self, action: #selector(runUpdate))
-        updateCancelButton = NSButton(title: "取消下载", target: self, action: #selector(cancelUpdate))
-        for button in [updateButton!, updateCancelButton!] { button.bezelStyle = .rounded; button.controlSize = .small }
-        let updateRow = NSStackView(views: [updateSpinner, updateLabel, updateButton, updateCancelButton])
-        updateRow.spacing = 12
-        updateRow.distribution = .fill
-        updateLabel.setContentHuggingPriority(.init(249), for: .horizontal)
-        updateBar.addSubview(updateRow)
-        updateProgress = NSProgressIndicator()
-        updateProgress.style = .bar
-        updateProgress.maxValue = 100
-        updateProgress.setAccessibilityLabel("更新下载进度")
-        updateBar.addSubview(updateProgress)
+        // 更新胶囊：悬浮于 WebUI 之上，不挤压布局；初始隐藏；动画只改透明度与位移。
+        updateCapsule = UpdateCapsuleView(frame: .zero)
+        updateCapsule.isHidden = true
+        updateCapsule.onPrimaryAction = { [weak self] in self?.runUpdate() }
+        updateCapsule.onCancelAction = { [weak self] in self?.cancelUpdate() }
+        updateCapsule.onDismiss = { [weak self] in self?.dismissUpdatePrompt() }
+        content.addSubview(updateCapsule)
 
         overlay = NSView()
         overlay.wantsLayer = true
@@ -711,32 +690,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         overlayStack.alignment = .centerX
         overlayStack.spacing = 18
         overlay.addSubview(overlayStack)
-        for view in [webView!, dragStrip, updateBar!, hairline, updateRow, updateProgress!, overlay!, overlayStack] {
+        for view in [webView!, dragStrip, updateCapsule!, overlay!, overlayStack] {
             view.translatesAutoresizingMaskIntoConstraints = false
         }
-        updateBarConstraint = updateBar.heightAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
             dragStrip.topAnchor.constraint(equalTo: content.topAnchor),
             dragStrip.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             dragStrip.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             dragStrip.heightAnchor.constraint(equalToConstant: Self.titleBarHeight),
-            // 面板通铺到窗口顶（红绿灯悬浮在页面留白上），拖拽带以透明层覆盖在最上方负责移动窗口。
+            // 面板通铺到窗口底（更新胶囊悬浮其上，webView 布局保持不动）。
             webView.topAnchor.constraint(equalTo: content.topAnchor),
             webView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            webView.bottomAnchor.constraint(equalTo: updateBar.topAnchor),
-            updateBar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            updateBar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            updateBar.bottomAnchor.constraint(equalTo: content.bottomAnchor), updateBarConstraint,
-            hairline.topAnchor.constraint(equalTo: updateBar.topAnchor),
-            hairline.leadingAnchor.constraint(equalTo: updateBar.leadingAnchor),
-            hairline.trailingAnchor.constraint(equalTo: updateBar.trailingAnchor),
-            updateRow.leadingAnchor.constraint(equalTo: updateBar.leadingAnchor, constant: 16),
-            updateRow.trailingAnchor.constraint(equalTo: updateBar.trailingAnchor, constant: -16),
-            updateRow.topAnchor.constraint(equalTo: updateBar.topAnchor, constant: 8),
-            updateProgress.leadingAnchor.constraint(equalTo: updateRow.leadingAnchor),
-            updateProgress.trailingAnchor.constraint(equalTo: updateRow.trailingAnchor),
-            updateProgress.topAnchor.constraint(equalTo: updateRow.bottomAnchor, constant: 4),
+            webView.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            // 更新胶囊：左下悬浮，固定尺寸位置，宽/高跟 intrinsicContentSize 一致
+            updateCapsule.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
+            updateCapsule.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16),
+            updateCapsule.widthAnchor.constraint(equalToConstant: UpdateCapsuleView.width),
+            updateCapsule.heightAnchor.constraint(equalToConstant: UpdateCapsuleView.height),
             overlay.leadingAnchor.constraint(equalTo: webView.leadingAnchor),
             overlay.trailingAnchor.constraint(equalTo: webView.trailingAnchor),
             overlay.topAnchor.constraint(equalTo: webView.topAnchor),
@@ -792,13 +763,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         overlaySpinner = nil
         overlayButton = nil
         overlayHelp = nil
-        updateBarConstraint = nil
-        updateBar = nil
-        updateLabel = nil
-        updateButton = nil
-        updateCancelButton = nil
-        updateProgress = nil
-        updateSpinner = nil
+        updateCapsule?.removeFromSuperview()
+        updateCapsule = nil
         panelLoaded = false
         loadedPort = 0
         refreshStatusUI()
@@ -832,32 +798,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         } else { startBackend() }
     }
 
-    private func setUpdateBarVisible(_ visible: Bool) {
-        guard window != nil else { return }
-        updateBar.isHidden = !visible
-        updateBarConstraint.constant = visible ? Self.updateBarHeight : 0
+    /// 用户点击胶囊的关闭 ×：仅收起提示，状态机保留；菜单可重新触发安装。
+    @objc func dismissUpdatePrompt() {
+        updateCapsuleVisible = false
+        // 关闭是单向交互、无层级竞争：直接同步隐藏，不走退场动画的快闪窗口
+        updateCapsuleAnimating = false
+        updateCapsule?.isHidden = true
+        refreshUpdateUI(animated: false)
     }
 
-    private func refreshUpdateUI() {
-        updateCheckItem?.title = checkingUpdates ? "正在检查更新…" : "检查更新…"
-        updateCheckItem?.isEnabled = !checkingUpdates && !updatePhase.busy && updatePhase != .readyToRelaunch
+    /// 给定 phase 是否值得显示胶囊：检查期/空闲期一律不显示（修报启动闪现）。
+    private func capsuleShouldBeVisible(for phase: UpdatePhase) -> Bool {
+        switch phase {
+        case .checking, .idle: return false
+        case .available, .downloading, .installing, .failed, .readyToRelaunch: return true
+        }
+    }
+
+    /// 刷新胶囊与状态栏动态更新项。
+    private func refreshUpdateUI(animated: Bool = false) {
         refreshStatusUI()
-        guard window != nil else { return }
-        setUpdateBarVisible(updatePhase != .idle)
-        updateLabel.stringValue = updateMessage
-        updateLabel.toolTip = updateMessage
-        updateButton.title = updatePhase == .failed ? "重试更新" : (updatePhase == .readyToRelaunch ? "重新启动" : "立即更新")
-        updateButton.isHidden = ![.available, .failed, .readyToRelaunch].contains(updatePhase)
-        updateButton.isEnabled = latestRelease != nil || updatePhase == .readyToRelaunch
-        updateCancelButton.isHidden = updatePhase != .downloading
-        updateCancelButton.isEnabled = !cancellingUpdate
-        updateProgress.isHidden = updatePhase != .downloading
-        updateProgress.isIndeterminate = updateFraction == nil
-        updateProgress.doubleValue = (updateFraction ?? 0) * 100
-        if updatePhase == .downloading && updateFraction == nil { updateProgress.startAnimation(nil) }
-        else { updateProgress.stopAnimation(nil) }
-        if updatePhase == .installing || updatePhase == .checking { updateSpinner.startAnimation(nil) }
-        else { updateSpinner.stopAnimation(nil) }
+
+        // 显隐：phase 决定常态可见性，用户手动关 × 在特定 phase 中遮蔽
+        let shouldShow = capsuleShouldBeVisible(for: updatePhase) && updateCapsuleVisible
+        guard updateCapsule != nil else { return }
+        updateCapsule.configure(phase: updatePhase, title: updateMessage,
+                                detail: updateDetail.isEmpty ? updateMessage : updateDetail,
+                                fraction: updateFraction)
+        if shouldShow {
+            guard updateCapsule.isHidden else { return }
+            updateCapsule.isHidden = false
+            if animated { updateCapsule.animateEntrance() }
+        } else {
+            guard !updateCapsule.isHidden, !updateCapsuleAnimating else { return }
+            if animated {
+                updateCapsuleAnimating = true
+                updateCapsule.animateExit { [weak self] in self?.updateCapsuleAnimating = false }
+            } else {
+                updateCapsule.isHidden = true
+            }
+        }
     }
 
     // MARK: 状态栏
@@ -874,35 +854,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private func buildStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let logo = Bundle.main.bundlePath + "/Contents/Resources/logo.png"
-        statusItem.button?.image = templateIcon(from: logo, size: 18) ?? NSImage(systemSymbolName: "shippingbox", accessibilityDescription: "Elysia API")
+        let base = templateIcon(from: logo, size: 18)
+            ?? NSImage(systemSymbolName: "shippingbox", accessibilityDescription: "Elysia API")?.withSymbolConfiguration(.init(pointSize: 15, weight: .medium))
+        statusItem.button?.image = base
         let menu = NSMenu()
         menu.delegate = self
-        lastErrorItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         // 菜单项视图不会按 intrinsicContentSize 自动布局，必须显式给定 frame。
         pulseView = PulseMenuView(frame: NSRect(x: 0, y: 0, width: PulseMenuView.width, height: PulseMenuView.height))
         pulseItem = NSMenuItem()
         pulseItem.view = pulseView
         menu.addItem(pulseItem)
+        lastErrorItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         menu.addItem(lastErrorItem)
+
+        // —— 服务操作 ——
         menu.addItem(.separator())
         addAction(menu, "显示主窗口", #selector(showMainWindow as () -> Void), "0")
+            .image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)
         toggleItem = addAction(menu, "启动服务", #selector(toggleBackend), "s", [.command, .option])
-        addAction(menu, "复制 API 地址", #selector(copyAPIURL), "c", [.command, .option])
-        addAction(menu, "复制面板访问令牌", #selector(copyPanelToken), "c", [.command, .option, .shift])
+        toggleItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
+
+        // —— 快速复制 ——
         menu.addItem(.separator())
-        updateStatusItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        menu.addItem(updateStatusItem)
-        updateCheckItem = addAction(menu, "检查更新…", #selector(checkForUpdatesFromMenu), "u", [.command, .shift])
-        updateInstallItem = addAction(menu, "安装更新…", #selector(updateFromMenu))
-        updateCancelItem = addAction(menu, "取消更新下载", #selector(cancelUpdate))
+        addAction(menu, "复制 API 地址", #selector(copyAPIURL), "c", [.command, .option])
+            .image = NSImage(systemSymbolName: "link", accessibilityDescription: nil)
+        addAction(menu, "复制面板访问令牌", #selector(copyPanelToken), "c", [.command, .option, .shift])
+            .image = NSImage(systemSymbolName: "key", accessibilityDescription: nil)
+
+        // —— 更新（单一动作入口，标题随 phase 变化） ——
+        menu.addItem(.separator())
+        updateActionItem = addAction(menu, "检查更新…", #selector(performUpdateAction), "u", [.command, .shift])
+        updateCheckItem = updateActionItem // 共用同一 NSMenuItem，避免双份入口
+
+        // —— 偏好与诊断 ——
         menu.addItem(.separator())
         addAction(menu, "偏好设置…", #selector(showPreferences), ",")
+            .image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
         // 开机启动与通知开关只在偏好设置里提供；这里仅保留系统要求人工批准/授权时的修复入口。
         loginSettingsItem = addAction(menu, "开机启动待批准：打开系统设置…", #selector(openLoginSettings))
         notificationSettingsItem = addAction(menu, "通知被系统禁用：打开系统设置…", #selector(openNotificationSettings))
         addAction(menu, "打开数据文件夹", #selector(openDataFolder))
+            .image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
         addAction(menu, "查看运行日志", #selector(openLog))
+            .image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)
         addAction(menu, "关于 ElysiaApi", #selector(showAbout))
+            .image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: nil)
         menu.addItem(.separator())
         addAction(menu, "退出 ElysiaApi", #selector(quit), "q")
         statusItem.menu = menu
@@ -932,8 +928,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     private func refreshStatusUI() {
         guard statusItem != nil else { return }
-        // 图标旁永不显示文字：状态只通过 tooltip（同步无障碍标签）与菜单头部部件传达。
-        let description = "Elysia API · \(backendStateText) · \(apiBaseURL) · \(currentVersion)"
+        // 图标旁永不显示文字：状态经 tooltip 与菜单头部传达。
+        let description = "Elysia API · \(backendStateText) · \(apiBaseURL)"
         statusItem.button?.title = ""
         statusItem.button?.toolTip = description
         statusItem.button?.setAccessibilityLabel(description)
@@ -943,13 +939,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         toggleItem.title = backend != nil ? "停止服务" : (backendState == .failed ? "重试启动服务" : "启动服务")
         toggleItem.isEnabled = canToggleBackend
         reloadPanelItem?.isEnabled = webView != nil && backendState == .running
-        updateStatusItem.title = updateMessage
-        updateStatusItem.toolTip = updateMessage
-        updateStatusItem.isHidden = updateMessage.isEmpty
-        updateInstallItem.title = updatePhase == .failed ? "重试更新…" : (updatePhase == .readyToRelaunch ? "重新启动以完成更新" : "安装更新…")
-        updateInstallItem.isHidden = ![.available, .failed, .readyToRelaunch].contains(updatePhase)
-        updateCancelItem.isHidden = updatePhase != .downloading
+        // 单一更新动作项的标题/使能由 phase 决定
+        updateActionItem?.title = updateActionMenuTitle
+        updateActionItem?.isEnabled = updateActionMenuIsEnabled()
         renderHeader()
+    }
+
+    /// 单一更新动作项的标题（空闲=检查…；可用=安装…；下载中=取消；就绪=重启）
+    private var updateActionMenuTitle: String {
+        switch updatePhase {
+        case .idle: return "检查更新…"
+        case .checking: return "正在检查更新…"
+        case .available: return "安装更新…"
+        case .downloading: return "取消更新下载"
+        case .installing: return "正在安装更新…"
+        case .failed: return "重试更新…"
+        case .readyToRelaunch: return "重新启动以完成更新"
+        }
+    }
+
+    private func updateActionMenuIsEnabled() -> Bool {
+        if cancellingUpdate { return false }
+        switch updatePhase {
+        case .idle, .checking:
+            return !checkingUpdates && !updatePhase.busy                // 空闲 & 手动查
+        case .available:
+            return latestRelease != nil
+        case .downloading:
+            return true
+        case .installing:
+            return false
+        case .failed, .readyToRelaunch:
+            return latestRelease != nil || updatePhase == .readyToRelaunch
+        }
+    }
+
+    /// 更新菜单项动作统一入口：.phase 决定下一步是检查、安装、取消还是重启。
+    @objc private func performUpdateAction() {
+        switch updatePhase {
+        case .idle: checkForUpdates(silent: false)
+        case .downloading: cancelUpdate()
+        case .available, .failed, .readyToRelaunch: runUpdate()
+        case .checking, .installing: break
+        }
     }
 
     /// 用当前状态与缓存的脉冲数据重绘菜单头部部件。
@@ -976,8 +1008,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         case #selector(checkForUpdatesFromMenu):
             item.title = checkingUpdates ? "正在检查更新…" : "检查更新…"
             return !checkingUpdates && !updatePhase.busy && updatePhase != .readyToRelaunch
-        case #selector(updateFromMenu): return [.available, .failed, .readyToRelaunch].contains(updatePhase)
-        case #selector(cancelUpdate): return updatePhase == .downloading && !cancellingUpdate
+        // 状态栏的动态更新项与主菜单启停项同名快捷键：分派给同一语义。
+        case #selector(performUpdateAction): return updateActionMenuIsEnabled()
         case #selector(quit): return updatePhase != .installing
         default: return item.action != nil
         }
@@ -1460,15 +1492,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         window.backgroundColor = background
         overlay.layer?.backgroundColor = background.cgColor
-        updateBar.layer?.backgroundColor = background.cgColor
-        updateLabel.textColor = dark ? .white : .black
+        // 胶囊自己监听 appearance 并在 updateLayer 里取 window.backgroundColor——无需显式赋值。
+        updateCapsule?.needsDisplay = true
         webView.underPageBackgroundColor = background
     }
 
     // MARK: 更新
 
     @objc private func checkForUpdatesFromMenu() { checkForUpdates(silent: false) }
-    @objc private func updateFromMenu() { showMainWindow(); runUpdate() }
 
     private func checkForUpdates(silent: Bool) {
         guard !checkingUpdates, !updatePhase.busy, updatePhase != .readyToRelaunch, !terminating,
@@ -1476,6 +1507,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         checkingUpdates = true
         updatePhase = .checking
         updateMessage = "正在检查更新…"
+        updateDetail = "与 GitHub 发布同步"
+        // 静默检查不弹胶囊；手动查不闪胶囊（idle 穿梭时胶囊隐藏）
         refreshUpdateUI()
         var request = URLRequest(url: url)
         request.setValue("ElysiaApi/\(currentVersion)", forHTTPHeaderField: "User-Agent")
@@ -1486,29 +1519,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 guard status == 200, let data, error == nil, let info = Self.parseRelease(data) else {
                     self.updatePhase = self.latestRelease == nil ? .idle : .available
-                    self.updateMessage = Self.updateCheckFailure(error: error, status: status)
-                    appLogger.error("\(self.updateMessage, privacy: .public)")
+                    self.updateMessage = "检查更新失败"
+                    self.updateDetail = Self.updateCheckFailure(error: error, status: status)
+                    appLogger.error("\(self.updateDetail, privacy: .public)")
                     self.refreshUpdateUI()
-                    if !silent { self.alert(self.updateMessage) }
+                    if !silent { self.alert(self.updateDetail) }
                     return
                 }
                 guard isNewer(info.tag, than: self.currentVersion) else {
                     self.latestRelease = nil
                     self.updatePhase = .idle
-                    self.updateMessage = "已是最新版本 \(self.currentVersion)"
+                    self.updateMessage = "版本 \(self.currentVersion)"
+                    self.updateDetail = "已是最新版本"
                     self.refreshUpdateUI()
-                    if !silent { self.alert(self.updateMessage) }
+                    if !silent { self.alert("已是最新版本\n\(self.currentVersion)") }
                     return
                 }
                 let isNewRelease = self.latestRelease?.tag != info.tag
                 self.latestRelease = info
                 self.updatePhase = .available
-                self.updateMessage = "可更新到 \(info.tag)"
-                self.refreshUpdateUI()
+                self.updateMessage = "发现新版本 \(info.tag)"
+                self.updateDetail = "\(self.currentVersion) → \(info.tag) · 安装需要重启"
+                // 新可用版本切换到提示态：弹出胶囊
+                self.updateCapsuleVisible = true
+                self.refreshUpdateUI(animated: true)
                 appLogger.info("Update available: \(info.tag, privacy: .public)")
                 if isNewRelease {
                     self.notifications.requestAndSend(title: "Elysia API 有新版本", body: "\(info.tag) 已发布，点击打开应用更新。", identifier: "update-available")
                 }
+                // 手动检查发现新版本时，把窗口带出来像旧版「开始下载」可见一样显式
                 if !silent { self.showMainWindow() }
             }
         }.resume()
@@ -1540,16 +1579,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         catch { updateFailed(error.localizedDescription); return }
         guard let remote = URL(string: release.dmgURL), remote.scheme == "https" else { return }
         updatePhase = .downloading
-        updateMessage = "正在下载 \(release.tag)…"
+        updateMessage = "下载 \(release.tag)"
+        updateDetail = "准备下载"
         updateFraction = nil
         cancellingUpdate = false
-        refreshUpdateUI()
+        // 主动/自动进入下载时也走上提示态（胶囊装呈现进度）
+        updateCapsuleVisible = true
+        refreshUpdateUI(animated: true)
         appLogger.info("Downloading update \(release.tag, privacy: .public)")
         let delegate = UpdateDownloadDelegate(onProgress: { [weak self] written, expected in
             guard let self, self.updatePhase == .downloading, !self.cancellingUpdate else { return }
             self.updateFraction = expected > 0 ? Double(written) / Double(expected) : nil
             let size = ByteCountFormatter.string(fromByteCount: written, countStyle: .file)
-            self.updateMessage = "正在下载 \(release.tag) · \(size)" + (expected > 0 ? " · \(Int(100 * Double(written) / Double(expected)))%" : "")
+            let percent = expected > 0 ? " · \(Int(100 * Double(written) / Double(expected)))%" : ""
+            self.updateMessage = "下载 \(release.tag)"
+            self.updateDetail = "已接收 \(size)\(percent)"
             self.refreshUpdateUI()
         }, onFinished: { [weak self] localURL, error in
             guard let self else { if let localURL { try? FileManager.default.removeItem(at: localURL) }; return }
@@ -1560,7 +1604,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             if self.terminating || (error as NSError?)?.code == NSURLErrorCancelled {
                 if let localURL { try? FileManager.default.removeItem(at: localURL) }
                 self.updatePhase = .available
-                self.updateMessage = "下载已取消 · 可更新到 \(release.tag)"
+                self.updateMessage = "发现新版本 \(release.tag)"
+                self.updateDetail = "下载已取消"
                 self.refreshUpdateUI()
                 return
             }
@@ -1570,7 +1615,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 return
             }
             self.updatePhase = .installing
-            self.updateMessage = "正在校验并安装，完成后自动重启…"
+            self.updateMessage = "安装 \(release.tag)"
+            self.updateDetail = "正在校验并替换应用，完成后自动重启…"
             self.refreshUpdateUI()
             let current = Bundle.main.bundleURL
             DispatchQueue.global(qos: .userInitiated).async {
@@ -1582,7 +1628,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                     try UpdateInstaller.replace(staged: staged, current: current)
                     DispatchQueue.main.async {
                         self.updatePhase = .readyToRelaunch
-                        self.updateMessage = "更新已安装，正在重启…"
+                        self.updateMessage = "更新已安装"
+                        self.updateDetail = "即将自动重启…"
                         self.refreshUpdateUI()
                         self.relaunchAfterUpdate()
                     }
@@ -1606,7 +1653,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         cancellingUpdate = true
         updateMessage = "正在取消下载…"
         refreshUpdateUI()
-        updateCancelButton?.isEnabled = false
         updateTask?.cancel()
     }
 
@@ -1629,9 +1675,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     private func updateFailed(_ message: String) {
         updatePhase = .failed
-        updateMessage = "更新失败：\(message)"
-        appLogger.error("\(self.updateMessage, privacy: .public)")
-        refreshUpdateUI()
+        updateMessage = "更新失败"
+        var detail = message
+        if updateDetail.hasPrefix("已接收") || updateDetail.hasPrefix("正在校验") {
+            detail = "\(message)"
+        }
+        updateDetail = detail
+        // 失败值得重新唤起胶囊（用户之前手关过 ×，也要再看到失败事实）
+        updateCapsuleVisible = true
+        appLogger.error("更新失败：\(message, privacy: .public)")
+        refreshUpdateUI(animated: true)
         notifications.requestAndSend(title: "Elysia API 更新失败", body: "\(message) 点击打开应用重试。", identifier: "update-failed")
     }
 
