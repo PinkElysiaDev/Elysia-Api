@@ -65,6 +65,9 @@ enum NativeTests {
                 try support()
                 delegate.prepareForTests()
                 try await lifecycle(delegate)
+                try await LifecycleTests.run(delegate)
+                try await ResourceTests.run(delegate)
+                try await UpdateTests.run()
             }
             if delegate.backend != nil { delegate.stopBackend(); _ = await wait { delegate.backend == nil } }
             delegate.window?.close()
@@ -219,6 +222,16 @@ enum NativeTests {
         delegate.startBackend()
         try expect(await wait { delegate.pollForTests(); return delegate.backendState == .running }, "backend becomes healthy without a WebView")
         try expect(delegate.backendPort != port && delegate.window == nil, "port fallback and menu-only startup")
+        let restartAction = NSSelectorFromString("restartBackend")
+        try expect(delegate.restartItem.title == "重启服务" && delegate.restartItem.action == restartAction
+                   && delegate.restartItem.keyEquivalent == "s" && delegate.restartItem.keyEquivalentModifierMask == [.command, .option],
+                   "running service menu offers restart with its existing shortcut")
+        try expect(!delegate.responds(to: NSSelectorFromString("showDashboard"))
+                   && !delegate.statusItem.menu!.items.contains { $0.keyEquivalent == "d" },
+                   "the removed dashboard has no menu entry, shortcut or action handler")
+        let viewServiceAction = NSApp.mainMenu?.items.first(where: { $0.submenu?.title == "视图" })?.submenu?.items.first(where: { $0.action == restartAction })
+        try expect(viewServiceAction != nil && delegate.validateMenuItem(viewServiceAction!) && viewServiceAction?.title == "重启服务",
+                   "main menu and status menu share the same restart action")
         let browserAction = NSApp.mainMenu?.items.first(where: { $0.submenu?.title == "视图" })?.submenu?.item(withTitle: "在浏览器中打开面板")
         try expect(browserAction?.action == NSSelectorFromString("openPanelInBrowser") && delegate.validateMenuItem(browserAction!), "manual browser action remains available")
         let copyToken = delegate.statusItem.menu?.item(withTitle: "复制面板访问令牌")
@@ -262,18 +275,33 @@ enum NativeTests {
         try expect(await wait(12) { delegate.pollForTests(); return delegate.backendState == .running && delegate.backend?.processIdentifier != initialPID }, "health recovery replaces only the owned child process")
         let savedConfig = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: configPath))) as! [String: Any]
         try expect(savedConfig["openBrowserOnStart"] as? Bool == true && ProcessInfo.processInfo.environment["ELYSIA_API_OPEN_BROWSER"] == "true", "native launches preserve the configured browser preference and parent environment")
+        let beforeRestart = delegate.backend!
+        let restartPort = delegate.backendPort
+        try expect(NSApp.sendAction(delegate.restartItem.action!, to: delegate.restartItem.target, from: delegate.restartItem),
+                   "the actual service menu dispatches its restart action")
+        try expect(delegate.pendingBackendRestart && delegate.backendState == .stopping && !delegate.validateMenuItem(delegate.restartItem),
+                   "restart waits for the owned backend to stop and disables repeated actions")
+        try expect(await wait(12) {
+            delegate.pollForTests()
+            return delegate.backendState == .running && delegate.backend?.processIdentifier != beforeRestart.processIdentifier
+        }, "service menu restart automatically relaunches a healthy backend")
+        try expect(!beforeRestart.isRunning && delegate.backendPort == restartPort && !delegate.pendingBackendRestart,
+                   "service restart releases the old process and preserves its port")
         delegate.stopBackend()
-        try expect(delegate.backendState == .stopping && !delegate.validateMenuItem(delegate.toggleItem), "stop disables conflicting service actions")
+        try expect(delegate.backendState == .stopping && !delegate.validateMenuItem(delegate.restartItem), "stop disables conflicting service actions")
         try expect(await wait { delegate.backendState == .stopped && delegate.backend == nil }, "normal stop completes without automatic restart")
+        try expect(delegate.restartItem.title == "启动服务" && delegate.validateMenuItem(delegate.restartItem),
+                   "a stopped service still offers the start action")
         delegate.showMainWindow()
         try expect(delegate.backend == nil && delegate.overlayButton.title == "启动服务", "opening stopped service preserves manual stop intent")
         delegate.window.close()
         try Data("crash".utf8).write(to: mode)
         delegate.retryForTests()
         try expect(await wait(16) { delegate.backendState == .failed && delegate.restartCount == 3 && delegate.backend == nil }, "three failed automatic restarts stop at failure state")
-        try expect(delegate.validateMenuItem(delegate.toggleItem), "failed service allows manual retry")
+        try expect(delegate.validateMenuItem(delegate.restartItem), "failed service allows manual retry")
         try FileManager.default.removeItem(at: mode)
-        delegate.retryForTests()
+        try expect(NSApp.sendAction(delegate.restartItem.action!, to: delegate.restartItem.target, from: delegate.restartItem),
+                   "the service menu starts a backend after failure")
         try expect(await wait { delegate.pollForTests(); return delegate.backendState == .running }, "manual retry recovers after repeated failures")
         try expect(delegate.restartCount == 0, "manual retry resets restart budget")
     }
@@ -415,10 +443,13 @@ enum NativeTests {
         let root = URL(fileURLWithPath: dataDirPath)
         let keyBefore = try Data(contentsOf: root.appendingPathComponent(".master-key"))
         let oldPort = delegate.backendPort
-        delegate.stopBackend()
-        try expect(await wait(12) { delegate.backend == nil }, "real backend exits through graceful shutdown")
-        delegate.startBackend()
-        try expect(await wait(15) { delegate.pollForTests(); return delegate.backendState == .running }, "real backend restarts with existing data")
+        let oldBackend = delegate.backend!
+        try expect(NSApp.sendAction(delegate.restartItem.action!, to: delegate.restartItem.target, from: delegate.restartItem),
+                   "real service menu dispatches restart")
+        try expect(await wait(15) {
+            delegate.pollForTests()
+            return delegate.backendState == .running && delegate.backend?.processIdentifier != oldBackend.processIdentifier && !oldBackend.isRunning
+        }, "real backend restarts after graceful shutdown with existing data")
         let configAfter = try Data(contentsOf: URL(fileURLWithPath: configPath))
         let keyAfter = try Data(contentsOf: root.appendingPathComponent(".master-key"))
         try expect(delegate.backendPort == oldPort, "recently closed sockets do not cause spurious port changes")

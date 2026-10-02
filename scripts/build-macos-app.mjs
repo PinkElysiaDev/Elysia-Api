@@ -146,7 +146,7 @@ log('Compiling native wrapper (swiftc, universal)')
 // 目标系统版本与后端二进制对齐:Go 1.25 构建的 darwin 二进制最低要求 macOS 12
 const wrapperArm = join(releaseDir, 'wrapper-arm64')
 const wrapperAmd = join(releaseDir, 'wrapper-amd64')
-const wrapperSources = [join(sourceDir, 'MacSupport.swift'), join(sourceDir, 'UpdateCapsuleView.swift'), join(sourceDir, 'main.swift')]
+const wrapperSources = [join(sourceDir, 'MacSupport.swift'), join(sourceDir, 'PanelBridge.swift'), join(sourceDir, 'UpdateCapsuleView.swift'), join(sourceDir, 'main.swift')]
 run('xcrun', ['--sdk', 'macosx', 'swiftc', '-O', '-target', 'arm64-apple-macos12.0', '-o', wrapperArm, ...wrapperSources])
 run('xcrun', ['--sdk', 'macosx', 'swiftc', '-O', '-target', 'x86_64-apple-macos12.0', '-o', wrapperAmd, ...wrapperSources])
 run('lipo', ['-create', '-output', join(macosDir, 'ElysiaApi'), wrapperArm, wrapperAmd])
