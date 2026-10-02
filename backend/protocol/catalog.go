@@ -59,6 +59,14 @@ func DirectionCatalog() []Direction {
 	return []Direction{DecodeRequest, EncodeRequest, DecodeResponse, EncodeResponse, DecodeEvent, EncodeEvent, DecodeClientEvent, EncodeUpstreamEvent}
 }
 
+// TransportCatalog describes installed wire framing vocabulary.
+func TransportCatalog() []Transport { return []Transport{HTTPJSON, SSE, NDJSON, WebSocket} }
+
+// OperationKindCatalog describes declarative gateway operations.
+func OperationKindCatalog() []string {
+	return []string{"generate", "session", "submit", "status", "result", "cancel", "models"}
+}
+
 // EventCatalog lists the supported semantic event vocabulary.
 func EventCatalog() []EventType {
 	return []EventType{SessionStarted, SessionConfigured, ResponseStarted, ItemStarted, ItemDelta, ItemSnapshot, ItemFinished, UsageUpdated, ResponseFinished, OperationFailed, OperationCancelled, MediaReceived, NativeEvent, SessionConfigure, InputAppend, InputCommit, ResponseCreate, ResponseCancel, ToolResultSubmitted, SessionClose}

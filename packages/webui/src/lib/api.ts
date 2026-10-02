@@ -31,11 +31,13 @@ import type {
 export class ApiError extends Error {
   code: string
   status: number
-  constructor(code: string, message: string, status: number) {
+  details?: unknown
+  constructor(code: string, message: string, status: number, details?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.code = code
     this.status = status
+    this.details = details
   }
 }
 
@@ -54,6 +56,9 @@ interface RequestOptions {
   body?: unknown
   query?: Record<string, QueryValue>
   signal?: AbortSignal
+  rawBody?: string
+  rawResponse?: boolean
+  headers?: Record<string, string>
 }
 
 function buildUrl(path: string, query?: RequestOptions['query']): string {
@@ -78,16 +83,16 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = getToken()
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = { ...options.headers }
   if (token) headers.Authorization = `Bearer ${token}`
-  if (options.body !== undefined) headers['Content-Type'] = 'application/json'
+  if (options.body !== undefined || options.rawBody !== undefined) headers['Content-Type'] = 'application/json'
 
   let response: Response
   try {
     response = await fetch(buildUrl(path, options.query), {
       method: options.method ?? 'GET',
       headers,
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      body: options.rawBody ?? (options.body !== undefined ? JSON.stringify(options.body) : undefined),
       signal: options.signal,
     })
   } catch (err) {
@@ -111,9 +116,9 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 
   if (payload && typeof payload === 'object' && 'ok' in payload) {
-    if (payload.ok) return (payload as { data: T }).data
+    if (payload.ok) return options.rawResponse ? text as T : (payload as { data: T }).data
     const err = (payload as { error: { code: string; message: string } }).error
-    throw new ApiError(err?.code ?? 'error', err?.message ?? '请求失败', response.status)
+    throw new ApiError(err?.code ?? 'error', err?.message ?? '请求失败', response.status, err)
   }
 
   if (!response.ok) {
@@ -358,4 +363,3 @@ function serializeUsage(params: UsageQueryParams): Record<string, QueryValue> {
     ...(params.sourceIds?.length ? { sourceId: params.sourceIds } : {}),
   }
 }
-

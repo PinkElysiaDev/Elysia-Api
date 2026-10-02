@@ -362,7 +362,7 @@ func (compiler *Compiler) checkOperation(name string, operation Operation, defin
 	if !definitionIdentifier.MatchString(name) {
 		return fmt.Errorf("invalid operation name %q", name)
 	}
-	if !slices.Contains([]string{"generate", "session", "submit", "status", "result", "cancel", "models"}, operation.Kind) {
+	if !slices.Contains(OperationKindCatalog(), operation.Kind) {
 		return fmt.Errorf("operation %q has unsupported kind", name)
 	}
 	if !slices.Contains([]string{http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodPut, http.MethodPatch}, operation.Method) {
@@ -372,7 +372,7 @@ func (compiler *Compiler) checkOperation(name string, operation Operation, defin
 	if err != nil || path.IsAbs() || path.Host != "" || !strings.HasPrefix(operation.Path, "/") || strings.HasPrefix(operation.Path, "//") || path.Fragment != "" || strings.Contains(operation.Path, "\\") {
 		return fmt.Errorf("operation %q requires a relative absolute-path endpoint", name)
 	}
-	if !slices.Contains([]Transport{HTTPJSON, SSE, NDJSON, WebSocket}, operation.Transport) {
+	if !slices.Contains(TransportCatalog(), operation.Transport) {
 		return fmt.Errorf("operation %q has unknown transport", name)
 	}
 	limits := compiler.limits

@@ -43,7 +43,9 @@ function newProtocolDraft(): CustomProtocolConfig {
   }
 }
 
-export function ProtocolDesignerPage() {
+export { ProtocolDesignerPage } from './v2-page'
+
+export function LegacyProtocolDesignerPage() {
   const { success: toastSuccess } = useToast()
   const navigate = useNavigate()
   const location = useLocation()

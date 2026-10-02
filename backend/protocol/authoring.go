@@ -13,6 +13,68 @@ type PreviewResult struct {
 	Issues   []ConversionIssue `json:"issues"`
 }
 
+// PreviewInput selects a conversion or a complete declared workflow fixture.
+// Both editor and Agent send this contract to the same authoring service.
+type PreviewInput struct {
+	Definition Value     `json:"definition"`
+	Direction  Direction `json:"direction,omitempty"`
+	Input      Value     `json:"input,omitzero"`
+	Sequence   bool      `json:"sequence,omitempty"`
+	Mode       string    `json:"mode,omitempty"`
+	Sample     string    `json:"sample,omitempty"`
+	Operation  string    `json:"operation,omitempty"`
+	Kind       string    `json:"kind,omitempty"`
+	Purpose    string    `json:"purpose,omitempty"`
+}
+
+// PreviewWorkflow executes request/response/event mappings, a mixed session
+// trace, or one task mapping without saving or enabling a protocol revision.
+func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput) PreviewResult {
+	if input.Mode == "" || input.Mode == "mapping" {
+		return service.Preview(ctx, input.Definition.Bytes(), input.Direction, input.Input, input.Sequence, EvaluationContext{})
+	}
+	compiled, issues := service.compiler.Compile(input.Definition.Bytes())
+	if IssuesError(issues) != nil {
+		return PreviewResult{Issues: issues}
+	}
+	var semantic any
+	var output Value
+	var err error
+	switch input.Mode {
+	case "task":
+		output, err = executeTaskSample(ctx, compiled, TaskSample{ID: "preview", Operation: input.Operation, Kind: input.Kind, Purpose: input.Purpose, Input: input.Input})
+		semantic = input.Input
+	case "session":
+		var sample *SessionSample
+		for _, entry := range compiled.Definition().SessionSamples {
+			if entry.ID == input.Sample {
+				sample = &entry
+				break
+			}
+		}
+		if sample == nil {
+			err = fmt.Errorf("session preview requires an existing sample")
+			break
+		}
+		var evidence sessionEvidence
+		evidence, err = executeSessionSample(ctx, compiled, *sample)
+		semantic = evidence.events
+		if err == nil {
+			output, err = EncodeValue(evidence.checks)
+		}
+	default:
+		err = fmt.Errorf("unknown preview mode")
+	}
+	if err != nil {
+		return PreviewResult{Issues: sampleIssues(compiled, Sample{ID: input.Sample}, "/preview", err)}
+	}
+	value, err := EncodeValue(semantic)
+	if err != nil {
+		return PreviewResult{Issues: sampleIssues(compiled, Sample{}, "/preview", err)}
+	}
+	return PreviewResult{Output: output, Semantic: value, Issues: []ConversionIssue{}}
+}
+
 // Preview validates an unsaved definition and executes its typed adapter.
 func (service *Service) Preview(ctx context.Context, raw []byte, direction Direction, input Value, isSequence bool, options EvaluationContext) PreviewResult {
 	compiled, issues := service.compiler.Compile(raw)

@@ -11,6 +11,8 @@ type SchemaCatalog struct {
 	SchemaVersion   int             `json:"schemaVersion"`
 	CompilerVersion string          `json:"compilerVersion"`
 	Directions      []Direction     `json:"directions"`
+	Transports      []Transport     `json:"transports"`
+	OperationKinds  []string        `json:"operationKinds"`
 	Capabilities    []Capability    `json:"capabilities"`
 	Events          []EventType     `json:"events"`
 	Diagnostics     []IssueCode     `json:"diagnostics"`
@@ -51,7 +53,7 @@ func DescribeSchema() SchemaCatalog {
 	binding := schemaForType(reflect.TypeFor[Binding](), bindingDefinitions)
 	binding["$defs"] = bindingDefinitions
 	semantic := map[string]any{"$schema": "https://json-schema.org/draft/2020-12/schema", "request": schemaForType(reflect.TypeFor[Request](), semanticDefinitions), "response": schemaForType(reflect.TypeFor[Response](), semanticDefinitions), "event": schemaForType(reflect.TypeFor[Event](), semanticDefinitions), "task": schemaForType(reflect.TypeFor[Task](), semanticDefinitions), "$defs": semanticDefinitions}
-	return SchemaCatalog{SchemaVersion: DefinitionSchemaVersion, CompilerVersion: CompilerVersion, Directions: DirectionCatalog(), Capabilities: CapabilityCatalog(), Events: EventCatalog(), Diagnostics: DiagnosticCatalog(), Operations: ExpressionCatalog(), Definition: root, Semantic: semantic, Binding: binding, Limits: DefaultLimits()}
+	return SchemaCatalog{SchemaVersion: DefinitionSchemaVersion, CompilerVersion: CompilerVersion, Directions: DirectionCatalog(), Transports: TransportCatalog(), OperationKinds: OperationKindCatalog(), Capabilities: CapabilityCatalog(), Events: EventCatalog(), Diagnostics: DiagnosticCatalog(), Operations: ExpressionCatalog(), Definition: root, Semantic: semantic, Binding: binding, Limits: DefaultLimits()}
 }
 
 func schemaForType(kind reflect.Type, definitions map[string]any) map[string]any {

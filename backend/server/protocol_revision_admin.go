@@ -331,17 +331,12 @@ func (s *Server) adminProtocolPreviewV2(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var input struct {
-		Definition json.RawMessage    `json:"definition"`
-		Direction  protocol.Direction `json:"direction"`
-		Input      protocol.Value     `json:"input"`
-		Sequence   bool               `json:"sequence"`
-	}
+	var input protocol.PreviewInput
 	if err := decodeProtocolAdminBody(c, &input); err != nil {
 		respondProtocolError(c, err)
 		return
 	}
-	respondOK(c, service.Preview(c.Request.Context(), input.Definition, input.Direction, input.Input, input.Sequence, protocol.EvaluationContext{}))
+	respondOK(c, service.PreviewWorkflow(c.Request.Context(), input))
 }
 
 func (s *Server) adminProtocolCombination(c *gin.Context) {
