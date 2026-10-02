@@ -35,6 +35,9 @@ func (s *Server) gatewayProtocol(c *gin.Context) {
 		respondFail(c, http.StatusNotFound, "inactive_protocol", "protocol has no verified active revision")
 		return
 	}
+	if s.serveGatewayJobControl(c, service, ingress) {
+		return
+	}
 	if operation, exists := gatewaySessionOperation(ingress, c.Request.Method, c.Param("path")); exists {
 		handshake, err := protocol.ReadSessionHandshake(c.Request, operation)
 		if err != nil {
@@ -58,10 +61,19 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 	record.IngressRevision, record.SourceEndpoint, record.SourceFormat = ingress.Hash(), c.Request.URL.Path, ingress.Identity().DefinitionID
 	record.RelayMode = "protocol_v2"
 	installDownstreamCapture(c, record, downstreamCaptureLimit(s.usageLogConfig()))
-	defer s.recordUsage(record)
+	isTaskOwned := false
+	defer func() {
+		if !isTaskOwned {
+			s.recordUsage(record)
+		}
+	}()
 	plan, err := s.prepareGatewayPlan(c, view, ingress, path, body, record)
 	if err != nil {
 		s.failGateway(c, record, http.StatusBadRequest, err)
+		return
+	}
+	if plan.candidates[0].operation.Kind == "submit" {
+		isTaskOwned = s.submitGatewayJob(c, record, plan, plan.candidates[0])
 		return
 	}
 	record.Stream = plan.operation.Transport != protocol.HTTPJSON

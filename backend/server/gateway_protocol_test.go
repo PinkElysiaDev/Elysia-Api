@@ -80,7 +80,7 @@ func setupGatewayModel(t *testing.T, server *Server, upstream *protocol.Compiled
 	}
 	transports := []protocol.Transport{}
 	for _, operation := range upstream.Operations() {
-		if operation.Kind == "generate" || operation.Kind == "session" {
+		if operation.Kind == "generate" || operation.Kind == "session" || operation.Kind == "submit" {
 			transports = append(transports, operation.Transport)
 		}
 	}

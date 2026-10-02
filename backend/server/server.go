@@ -136,6 +136,7 @@ type Server struct {
 	protocolServiceInst *protocol.Service
 	protocolServiceErr  error
 	gatewaySessions     gatewaySessionSet
+	gatewayJobs         gatewayJobService
 }
 
 func New(cfg *config.Config) *Server {
@@ -1344,6 +1345,9 @@ func (s *Server) ListenAndServe() error {
 	}
 	s.setupRoutes()
 	s.startUsageWriter()
+	if err := s.startGatewayJobs(); err != nil {
+		return err
+	}
 	s.healthChecker = newHealthChecker(s)
 	s.healthChecker.start()
 	s.usageRetention = newUsageRetention(s)
@@ -1405,6 +1409,7 @@ func (s *Server) doShutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	s.gatewaySessions.stop()
+	s.gatewayJobs.stop()
 	if s.httpServer != nil {
 		if err := s.httpServer.Shutdown(ctx); err != nil {
 			log.Printf("graceful shutdown error: %v", err)

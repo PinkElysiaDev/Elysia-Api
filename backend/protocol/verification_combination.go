@@ -124,6 +124,7 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 	if hasSession {
 		hasSessionEvidence = verifySessionCombination(ctx, ingress, upstream, &report)
 	}
+	verifyTaskCombination(ctx, ingress, upstream, capabilities, &report)
 	hasRequest, hasResponse := false, false
 	for _, check := range report.Checks {
 		hasRequest = hasRequest || (check.Passed && check.Direction == EncodeRequest)
@@ -253,7 +254,7 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 
 func hasHTTPGeneration(compiled *Compiled) bool {
 	for _, operation := range compiled.operations {
-		if operation.Kind == "generate" && operation.Transport != WebSocket {
+		if (operation.Kind == "generate" || operation.Kind == "submit") && operation.Transport != WebSocket {
 			return true
 		}
 	}

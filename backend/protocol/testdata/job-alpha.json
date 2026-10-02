@@ -1,0 +1,890 @@
+{
+  "schemaVersion": 2,
+  "id": "job-alpha",
+  "name": "job-alpha",
+  "version": "1",
+  "family": "job-alpha",
+  "wireVersion": "1",
+  "capabilities": {
+    "text": true,
+    "tasks.async": true,
+    "usage": true
+  },
+  "directions": {
+    "decode_request": {
+      "transform": {
+        "op": "object",
+        "fields": {
+          "model": {
+            "op": "read",
+            "from": "input",
+            "path": "/deployment"
+          },
+          "content": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/turns"
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "kind": {
+                  "op": "literal",
+                  "value": "message"
+                },
+                "role": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/actor"
+                },
+                "children": {
+                  "op": "map",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/segments"
+                  },
+                  "body": {
+                    "op": "object",
+                    "fields": {
+                      "kind": {
+                        "op": "literal",
+                        "value": "text"
+                      },
+                      "payload": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "capabilities": {
+        "text": true
+      }
+    },
+    "encode_request": {
+      "transform": {
+        "op": "object",
+        "fields": {
+          "deployment": {
+            "op": "read",
+            "from": "input",
+            "path": "/model"
+          },
+          "turns": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/content"
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "actor": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/role"
+                },
+                "segments": {
+                  "op": "map",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/children"
+                  },
+                  "body": {
+                    "op": "object",
+                    "fields": {
+                      "text": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/payload"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "capabilities": {
+        "text": true
+      }
+    },
+    "decode_response": {
+      "transform": {
+        "op": "object",
+        "fields": {
+          "id": {
+            "op": "read",
+            "from": "input",
+            "path": "/requestId"
+          },
+          "status": {
+            "op": "literal",
+            "value": "completed"
+          },
+          "content": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/answer"
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "kind": {
+                  "op": "literal",
+                  "value": "message"
+                },
+                "role": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/actor"
+                },
+                "children": {
+                  "op": "map",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/segments"
+                  },
+                  "body": {
+                    "op": "object",
+                    "fields": {
+                      "kind": {
+                        "op": "literal",
+                        "value": "text"
+                      },
+                      "payload": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "usage": {
+            "op": "read",
+            "from": "input",
+            "path": "/meter"
+          }
+        }
+      },
+      "capabilities": {
+        "text": true,
+        "usage": true
+      }
+    },
+    "encode_response": {
+      "transform": {
+        "op": "object",
+        "fields": {
+          "requestId": {
+            "op": "read",
+            "from": "input",
+            "path": "/id"
+          },
+          "answer": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/content"
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "actor": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/role"
+                },
+                "segments": {
+                  "op": "map",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/children"
+                  },
+                  "body": {
+                    "op": "object",
+                    "fields": {
+                      "text": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/payload"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "meter": {
+            "op": "read",
+            "from": "input",
+            "path": "/usage"
+          }
+        }
+      },
+      "capabilities": {
+        "text": true,
+        "usage": true
+      }
+    }
+  },
+  "operations": {
+    "submit": {
+      "kind": "submit",
+      "method": "POST",
+      "path": "/jobs",
+      "transport": "http_json",
+      "auth": {
+        "location": "none"
+      },
+      "task": {
+        "status": "status",
+        "result": "result",
+        "cancel": "cancel",
+        "idempotencyHeader": "Idempotency-Key",
+        "decode": {
+          "transform": {
+            "op": "object",
+            "fields": {
+              "id": {
+                "op": "read",
+                "from": "input",
+                "path": "/ticket"
+              },
+              "status": {
+                "op": "read",
+                "from": "input",
+                "path": "/phase"
+              },
+              "usage": {
+                "op": "read",
+                "from": "input",
+                "path": "/meter"
+              },
+              "error": {
+                "op": "read",
+                "from": "input",
+                "path": "/problem"
+              }
+            }
+          }
+        },
+        "encode": {
+          "transform": {
+            "op": "object",
+            "fields": {
+              "ticket": {
+                "op": "read",
+                "from": "input",
+                "path": "/id"
+              },
+              "phase": {
+                "op": "read",
+                "from": "input",
+                "path": "/status"
+              },
+              "meter": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage"
+              },
+              "problem": {
+                "op": "read",
+                "from": "input",
+                "path": "/error"
+              }
+            }
+          }
+        },
+        "control": {
+          "transform": {
+            "op": "object",
+            "fields": {
+              "query": {
+                "op": "object",
+                "fields": {
+                  "ticket": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/id"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "status": {
+      "kind": "status",
+      "method": "GET",
+      "path": "/jobs/{taskId}",
+      "transport": "http_json",
+      "auth": {
+        "location": "none"
+      }
+    },
+    "result": {
+      "kind": "result",
+      "method": "GET",
+      "path": "/jobs/{taskId}/result",
+      "transport": "http_json",
+      "auth": {
+        "location": "none"
+      }
+    },
+    "cancel": {
+      "kind": "cancel",
+      "method": "DELETE",
+      "path": "/jobs/{taskId}",
+      "transport": "http_json",
+      "auth": {
+        "location": "none"
+      }
+    }
+  },
+  "native": {
+    "preserve": true
+  },
+  "samples": [
+    {
+      "id": "request.decode",
+      "direction": "decode_request",
+      "capabilities": [
+        "text"
+      ],
+      "input": {
+        "deployment": "m",
+        "turns": [
+          {
+            "actor": "user",
+            "segments": [
+              {
+                "text": "hello"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "request.encode",
+      "direction": "encode_request",
+      "capabilities": [
+        "text"
+      ],
+      "input": {
+        "schemaVersion": 1,
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "deployment": "m",
+        "turns": [
+          {
+            "actor": "user",
+            "segments": [
+              {
+                "text": "hello"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "response.decode",
+      "direction": "decode_response",
+      "capabilities": [
+        "text",
+        "usage"
+      ],
+      "input": {
+        "requestId": "r",
+        "answer": [
+          {
+            "actor": "assistant",
+            "segments": [
+              {
+                "text": "answer"
+              }
+            ]
+          }
+        ],
+        "meter": {
+          "input": {
+            "count": 100,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 5,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 40,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 0,
+            "origin": "observed"
+          }
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "id": "r",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "answer"
+              }
+            ]
+          }
+        ],
+        "usage": {
+          "input": {
+            "count": 100,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 5,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 40,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 0,
+            "origin": "observed"
+          }
+        }
+      }
+    },
+    {
+      "id": "response.encode",
+      "direction": "encode_response",
+      "capabilities": [
+        "text",
+        "usage"
+      ],
+      "input": {
+        "schemaVersion": 1,
+        "id": "r",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "answer"
+              }
+            ]
+          }
+        ],
+        "usage": {
+          "input": {
+            "count": 100,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 5,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 40,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 0,
+            "origin": "observed"
+          }
+        }
+      },
+      "expected": {
+        "requestId": "r",
+        "answer": [
+          {
+            "actor": "assistant",
+            "segments": [
+              {
+                "text": "answer"
+              }
+            ]
+          }
+        ],
+        "meter": {
+          "input": {
+            "count": 100,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 5,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 40,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 0,
+            "origin": "observed"
+          }
+        }
+      }
+    }
+  ],
+  "requires": [
+    "tasks.async"
+  ],
+  "taskSamples": [
+    {
+      "id": "encode.submitting",
+      "operation": "submit",
+      "kind": "encode",
+      "purpose": "status",
+      "input": {
+        "id": "job-1",
+        "status": "submitting"
+      },
+      "expected": {
+        "ticket": "job-1",
+        "phase": "submitting"
+      }
+    },
+    {
+      "id": "encode.uncertain",
+      "operation": "submit",
+      "kind": "encode",
+      "purpose": "status",
+      "input": {
+        "id": "job-1",
+        "status": "uncertain"
+      },
+      "expected": {
+        "ticket": "job-1",
+        "phase": "uncertain"
+      }
+    },
+    {
+      "id": "encode.queued",
+      "operation": "submit",
+      "kind": "encode",
+      "purpose": "submit",
+      "input": {
+        "id": "job-1",
+        "status": "queued"
+      },
+      "expected": {
+        "ticket": "job-1",
+        "phase": "queued"
+      }
+    },
+    {
+      "id": "decode.queued",
+      "operation": "submit",
+      "kind": "decode",
+      "purpose": "submit",
+      "input": {
+        "ticket": "job-1",
+        "phase": "queued"
+      },
+      "expected": {
+        "id": "job-1",
+        "status": "queued"
+      }
+    },
+    {
+      "id": "encode.running",
+      "operation": "submit",
+      "kind": "encode",
+      "purpose": "status",
+      "input": {
+        "id": "job-1",
+        "status": "running"
+      },
+      "expected": {
+        "ticket": "job-1",
+        "phase": "running"
+      }
+    },
+    {
+      "id": "decode.running",
+      "operation": "submit",
+      "kind": "decode",
+      "purpose": "status",
+      "input": {
+        "ticket": "job-1",
+        "phase": "running"
+      },
+      "expected": {
+        "id": "job-1",
+        "status": "running"
+      }
+    },
+    {
+      "id": "encode.completed",
+      "operation": "submit",
+      "kind": "encode",
+      "purpose": "status",
+      "input": {
+        "id": "job-1",
+        "status": "completed",
+        "usage": {
+          "input": {
+            "count": 100,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 5,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 40,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 0,
+            "origin": "observed"
+          }
+        }
+      },
+      "expected": {
+        "ticket": "job-1",
+        "phase": "completed",
+        "meter": {
+          "input": {
+            "count": 100,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 5,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 40,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 0,
+            "origin": "observed"
+          }
+        }
+      }
+    },
+    {
+      "id": "decode.completed",
+      "operation": "submit",
+      "kind": "decode",
+      "purpose": "status",
+      "input": {
+        "ticket": "job-1",
+        "phase": "completed",
+        "meter": {
+          "input": {
+            "count": 100,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 5,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 40,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 0,
+            "origin": "observed"
+          }
+        }
+      },
+      "expected": {
+        "id": "job-1",
+        "status": "completed",
+        "usage": {
+          "input": {
+            "count": 100,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 5,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 40,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 0,
+            "origin": "observed"
+          }
+        }
+      }
+    },
+    {
+      "id": "encode.failed",
+      "operation": "submit",
+      "kind": "encode",
+      "purpose": "status",
+      "input": {
+        "id": "job-1",
+        "status": "failed",
+        "error": {
+          "code": "failed"
+        }
+      },
+      "expected": {
+        "ticket": "job-1",
+        "phase": "failed",
+        "problem": {
+          "code": "failed"
+        }
+      }
+    },
+    {
+      "id": "decode.failed",
+      "operation": "submit",
+      "kind": "decode",
+      "purpose": "status",
+      "input": {
+        "ticket": "job-1",
+        "phase": "failed",
+        "problem": {
+          "code": "failed"
+        }
+      },
+      "expected": {
+        "id": "job-1",
+        "status": "failed",
+        "error": {
+          "code": "failed"
+        }
+      }
+    },
+    {
+      "id": "encode.cancelled",
+      "operation": "submit",
+      "kind": "encode",
+      "purpose": "cancel",
+      "input": {
+        "id": "job-1",
+        "status": "cancelled"
+      },
+      "expected": {
+        "ticket": "job-1",
+        "phase": "cancelled"
+      }
+    },
+    {
+      "id": "decode.cancelled",
+      "operation": "submit",
+      "kind": "decode",
+      "purpose": "cancel",
+      "input": {
+        "ticket": "job-1",
+        "phase": "cancelled"
+      },
+      "expected": {
+        "id": "job-1",
+        "status": "cancelled"
+      }
+    },
+    {
+      "id": "control.status",
+      "operation": "submit",
+      "kind": "control",
+      "purpose": "status",
+      "input": {
+        "id": "job-1"
+      },
+      "expected": {
+        "query": {
+          "ticket": "job-1"
+        }
+      }
+    },
+    {
+      "id": "control.result",
+      "operation": "submit",
+      "kind": "control",
+      "purpose": "result",
+      "input": {
+        "id": "job-1"
+      },
+      "expected": {
+        "query": {
+          "ticket": "job-1"
+        }
+      }
+    },
+    {
+      "id": "control.cancel",
+      "operation": "submit",
+      "kind": "control",
+      "purpose": "cancel",
+      "input": {
+        "id": "job-1"
+      },
+      "expected": {
+        "query": {
+          "ticket": "job-1"
+        }
+      }
+    }
+  ]
+}

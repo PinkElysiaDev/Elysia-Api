@@ -87,6 +87,7 @@ type Compiled struct {
 	native       NativePolicy
 	mappings     map[Direction]compiledMapping
 	operations   map[string]Operation
+	taskMappings map[string]map[string]compiledMapping
 }
 
 // Compile strictly parses one v2 definition and compiles every direction.
@@ -145,6 +146,9 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 		}
 		compiled.mappings[direction] = entry
 	}
+	if err := compiler.compileTaskMappings(compiled, definition, expressions); err != nil {
+		return fail("/operations", err)
+	}
 	for _, reference := range sortedKeys(definition.Expressions) {
 		if !expressions.used[reference] {
 			return fail("/expressions/"+reference, fmt.Errorf("unreachable named expression"))
@@ -158,7 +162,8 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 	samples, err := EncodeValue(struct {
 		Samples  []Sample        `json:"samples"`
 		Sessions []SessionSample `json:"sessions"`
-	}{definition.Samples, definition.SessionSamples})
+		Tasks    []TaskSample    `json:"tasks"`
+	}{definition.Samples, definition.SessionSamples, definition.TaskSamples})
 	if err != nil {
 		return fail("/samples", err)
 	}
@@ -309,7 +314,7 @@ func (compiler *Compiler) checkDefinition(definition Definition) error {
 		}
 	}
 	seen := make(map[string]bool)
-	if len(definition.Samples)+len(definition.SessionSamples) > compiler.limits.StateItems {
+	if len(definition.Samples)+len(definition.SessionSamples)+len(definition.TaskSamples) > compiler.limits.StateItems {
 		return fmt.Errorf("sample count exceeds engine fixture limit")
 	}
 	for _, sample := range definition.Samples {
@@ -457,7 +462,9 @@ func (compiled *Compiled) Operations() map[string]Operation {
 		}
 		if operation.Task != nil {
 			task := *operation.Task
-			task.States = maps.Clone(task.States)
+			// Deep copy expressions so callers cannot mutate the pinned revision.
+			value, _ := EncodeValue(task)
+			_ = value.Decode(&task)
 			operation.Task = &task
 		}
 		if operation.Session != nil {

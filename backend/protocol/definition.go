@@ -5,7 +5,7 @@ package protocol
 const DefinitionSchemaVersion = 2
 
 // CompilerVersion binds verification evidence to execution semantics.
-const CompilerVersion = "2.0.0-dev.4"
+const CompilerVersion = "2.0.0-dev.5"
 
 // Transport identifies framing and connection lifecycle, never content shape.
 type Transport string
@@ -34,6 +34,7 @@ type Definition struct {
 	Native         NativePolicy          `json:"native"`
 	Limits         *Limits               `json:"limits,omitempty"`
 	Samples        []Sample              `json:"samples"`
+	TaskSamples    []TaskSample          `json:"taskSamples,omitempty"`
 	SessionSamples []SessionSample       `json:"sessionSamples,omitempty"`
 	Extensions     Object                `json:"extensions,omitempty"`
 }
@@ -103,13 +104,24 @@ type Framing struct {
 // TaskFlow links separately declared submit/status/result/cancel operations.
 // Uncertain submission behavior is owned by the transport, not expressions.
 type TaskFlow struct {
-	Status            string                `json:"status"`
-	Result            string                `json:"result"`
-	Cancel            string                `json:"cancel,omitempty"`
-	IDPath            string                `json:"idPath"`
-	StatusPath        string                `json:"statusPath"`
-	States            map[string]TaskStatus `json:"states"`
-	IdempotencyHeader string                `json:"idempotencyHeader,omitempty"`
+	Status            string  `json:"status"`
+	Result            string  `json:"result"`
+	Cancel            string  `json:"cancel,omitempty"`
+	IdempotencyHeader string  `json:"idempotencyHeader,omitempty"`
+	Decode            Mapping `json:"decode"`
+	Encode            Mapping `json:"encode"`
+	Control           Mapping `json:"control"`
+}
+
+// TaskSample asserts status, receipt or control conversion for a linked flow.
+// Purpose is submit/status/result/cancel; Kind is decode/encode/control.
+type TaskSample struct {
+	ID        string `json:"id"`
+	Operation string `json:"operation"`
+	Kind      string `json:"kind"`
+	Purpose   string `json:"purpose"`
+	Input     Value  `json:"input"`
+	Expected  Value  `json:"expected"`
 }
 
 // Sample supplies offline evidence for an explicit direction and capability.

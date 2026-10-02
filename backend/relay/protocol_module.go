@@ -14,7 +14,7 @@ func NewProtocolCompiler(limits protocol.Limits) (*protocol.Compiler, error) {
 	for _, adapter := range builtinWireAdapters {
 		modules = append(modules, builtinProtocolModule{adapter: adapter})
 	}
-	return protocol.NewCompiler(limits, modules, []string{"transport.websocket"})
+	return protocol.NewCompiler(limits, modules, []string{"transport.websocket", "tasks.async"})
 }
 
 type builtinProtocolModule struct{ adapter builtinWireAdapter }

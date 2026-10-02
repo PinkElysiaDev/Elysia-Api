@@ -13,6 +13,14 @@ type Binding struct {
 	Capabilities CapabilitySet `json:"capabilities"`
 	Transports   []Transport   `json:"transports"`
 	Operation    string        `json:"operation,omitempty"`
+	Wait         *JobWait      `json:"wait,omitempty"`
+}
+
+// JobWait explicitly opts a synchronous ingress into bounded async waiting.
+// OnTimeout is cancel or continue and also governs disconnected waiters.
+type JobWait struct {
+	TimeoutMillis int    `json:"timeoutMillis"`
+	OnTimeout     string `json:"onTimeout"`
 }
 
 // CheckBinding rejects a model promise that its pinned adapter cannot fulfill.
@@ -57,6 +65,14 @@ func checkBinding(binding Binding, compiled *Compiled, requestDirection, respons
 		}
 	}
 	operations := compiled.Operations()
+	if binding.Wait != nil {
+		operation := operations[binding.Operation]
+		wait := binding.Wait
+		if operation.Kind != "submit" || wait.TimeoutMillis <= 0 || wait.TimeoutMillis > DefaultSessionIdleMillis || (wait.OnTimeout != "cancel" && wait.OnTimeout != "continue") || (wait.OnTimeout == "cancel" && (operation.Task == nil || operation.Task.Cancel == "")) {
+			issue.Reason = "async waiting requires an explicit submit operation, bounded timeout and supported cancel/continue policy"
+			issues = append(issues, issue)
+		}
+	}
 	for _, transport := range binding.Transports {
 		required := []Direction{responseDirection}
 		switch transport {

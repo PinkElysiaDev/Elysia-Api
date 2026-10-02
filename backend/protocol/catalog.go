@@ -66,5 +66,5 @@ func EventCatalog() []EventType {
 
 // DiagnosticCatalog lists stable machine-readable compiler/runtime codes.
 func DiagnosticCatalog() []IssueCode {
-	return []IssueCode{InvalidDefinition, InvalidInput, UnsupportedCapability, UnsupportedNative, ResourceScopeMismatch, InvalidAssociation, InvalidMutation, LimitExceeded, VerificationRequired, VerificationMismatch, IncompleteCoverage, UpstreamContractViolation}
+	return []IssueCode{InvalidDefinition, InvalidInput, UnsupportedCapability, UnsupportedNative, ResourceScopeMismatch, InvalidAssociation, InvalidMutation, LimitExceeded, VerificationRequired, VerificationMismatch, IncompleteCoverage, UpstreamContractViolation, TaskOperationFailed, TaskSubmissionUncertain}
 }

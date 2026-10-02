@@ -91,6 +91,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 		report.Checks = append(report.Checks, check)
 	}
 	verifySessionSamples(ctx, compiled, &report, coverage, hasSample, hasSequence, hasLifecycle)
+	hasTaskEvidence := verifyTaskSamples(ctx, compiled, &report)
 	for _, direction := range DirectionCatalog() {
 		if !compiled.Supports(direction) {
 			continue
@@ -122,7 +123,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 		if !compiled.capabilities[capability] {
 			continue
 		}
-		isCovered := false
+		isCovered := capability == AsyncJobsCapability && hasTaskEvidence
 		for _, direction := range DirectionCatalog() {
 			isCovered = isCovered || coverage[direction][capability]
 		}
@@ -286,6 +287,8 @@ func comparableExpected(sample Sample) (Value, error) {
 func capabilityApplies(capability Capability, direction Direction) bool {
 	isRequest := direction == DecodeRequest || direction == EncodeRequest
 	switch capability {
+	case AsyncJobsCapability:
+		return false // Task workflows have independent mapping fixtures.
 	case UsageCapability:
 		return !isRequest && direction != DecodeClientEvent && direction != EncodeUpstreamEvent
 	case CacheKeysCapability, CacheRetentionCapability, CacheResourcesCapability, CacheBreakpointsCapability:

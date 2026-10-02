@@ -17,12 +17,13 @@ import (
 )
 
 type gatewayCandidate struct {
-	model        config.ModelRef
-	compiled     *protocol.Compiled
-	binding      protocol.Binding
-	operation    protocol.Operation
-	scope        protocol.Scope
-	combinations []protocol.CombinationReport
+	model         config.ModelRef
+	compiled      *protocol.Compiled
+	binding       protocol.Binding
+	operation     protocol.Operation
+	operationName string
+	scope         protocol.Scope
+	combinations  []protocol.CombinationReport
 }
 
 type gatewayPlan struct {
@@ -99,7 +100,7 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 	return plan, nil
 }
 
-func makeGatewayCandidate(view protocol.RegistryView, bindings []storage.ProtocolBinding, model config.ModelRef, transport protocol.Transport) (gatewayCandidate, *protocol.ConversionError) {
+func makeGatewayCandidate(view protocol.RegistryView, bindings []storage.ProtocolBinding, model config.ModelRef, transport protocol.Transport, kind string) (gatewayCandidate, *protocol.ConversionError) {
 	candidate := gatewayCandidate{model: model}
 	entry, exists := selectProtocolBinding(bindings, model)
 	if !exists {
@@ -111,9 +112,8 @@ func makeGatewayCandidate(view protocol.RegistryView, bindings []storage.Protoco
 		return candidate, &protocol.ConversionError{Issues: issues}
 	}
 	var operation *protocol.Operation
-	kind := "generate"
-	if transport == protocol.WebSocket {
-		kind = "session"
+	if kind == "generate" && binding.Wait != nil && compiled.Operations()[binding.Operation].Kind == "submit" {
+		kind = "submit"
 	}
 	for name, entry := range compiled.Operations() {
 		isCompatibleStream := (transport == protocol.SSE || transport == protocol.NDJSON) && (entry.Transport == protocol.SSE || entry.Transport == protocol.NDJSON)
@@ -125,6 +125,7 @@ func makeGatewayCandidate(view protocol.RegistryView, bindings []storage.Protoco
 		}
 		value := entry
 		operation = &value
+		candidate.operationName = name
 	}
 	if operation == nil {
 		return candidate, gatewayIssue(compiled.Identity(), protocol.UnsupportedCapability, "/operations", "upstream has no operation for the requested transport")
@@ -211,7 +212,7 @@ func selectGatewayIngressOperation(compiled *protocol.Compiled, method, path str
 	var choices []protocol.Operation
 	for _, operation := range compiled.Operations() {
 		_, isMatch := protocol.MatchOperationPath(operation.Path, path)
-		if operation.Method == method && isMatch && (operation.Kind == "generate" || operation.Kind == "session") {
+		if operation.Method == method && isMatch && (operation.Kind == "generate" || operation.Kind == "session" || operation.Kind == "submit") {
 			choices = append(choices, operation)
 		}
 	}
@@ -293,7 +294,7 @@ func (s *Server) collectGatewayCandidates(view protocol.RegistryView, bindings [
 	models = s.expandCandidatesByKeyStrategy(models)
 	var diagnostics []protocol.ConversionIssue
 	for _, model := range models {
-		candidate, err := makeGatewayCandidate(view, bindings, model, plan.operation.Transport)
+		candidate, err := makeGatewayCandidate(view, bindings, model, plan.operation.Transport, plan.operation.Kind)
 		if err != nil {
 			diagnostics = append(diagnostics, err.Issues...)
 			continue

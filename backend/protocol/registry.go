@@ -14,10 +14,13 @@ type registrySnapshot struct{ entries map[string]*Compiled }
 // Service is shared by the editor, Agent and gateway. Administrative mutations
 // are serialized; request reads pin a compiled pointer without locking or SQL.
 type Service struct {
-	compiler   *Compiler
-	repository Repository
-	mu         sync.Mutex
-	snapshot   atomic.Pointer[registrySnapshot]
+	compiler      *Compiler
+	repository    Repository
+	mu            sync.Mutex
+	snapshot      atomic.Pointer[registrySnapshot]
+	retained      map[string]*Compiled
+	retainedOrder []string
+	retainedBytes int
 }
 
 // NewService creates an empty registry. Reload validates persisted activations

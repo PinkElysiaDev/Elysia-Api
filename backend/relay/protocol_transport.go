@@ -20,6 +20,13 @@ func (adapter *OpenAIAdapter) SendProtocolRequest(ctx context.Context, baseURL, 
 	if operation.Transport == protocol.SSE || operation.Transport == protocol.NDJSON {
 		client = adapter.streamClient
 	}
+	if operation.Kind == "submit" || operation.Kind == "status" || operation.Kind == "result" || operation.Kind == "cancel" {
+		adapter.client.mu.RLock()
+		copy := *adapter.client.client
+		adapter.client.mu.RUnlock()
+		copy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		client = &copy
+	}
 	response, err := client.Do(request)
 	return response, sanitizeCustomTransportError(err)
 }
