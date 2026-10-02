@@ -53,10 +53,12 @@ type modelCatalog struct {
 	lastTry    time.Time
 	lastError  string
 	refreshing bool
-	// stop/done 提供周期循环的停机通道：此前裸 for+sleep 无人能停，进程内
-	// 多次构造 Server（测试场景）会泄漏 goroutine。
-	stop chan struct{}
-	done chan struct{}
+	// The lifecycle context owns both the periodic loop and in-flight fetches.
+	done      chan struct{}
+	ctx       context.Context
+	cancel    context.CancelFunc
+	fetchWG   sync.WaitGroup
+	startOnce sync.Once
 	// origin 记录当前数据来源：snapshot（内置快照）/ cache（落盘缓存）/ network
 	// （在线更新）/ empty，供状态接口诊断。
 	origin string
@@ -105,7 +107,8 @@ func (m *modelCatalog) syncIntervalDue() bool {
 }
 
 func newModelCatalog(getter func() config.ModelCatalogConfig, cachePathGetter func() string) *modelCatalog {
-	catalog := &modelCatalog{getter: getter, cachePathGetter: cachePathGetter, entries: map[string]*catalogEntry{}, origin: "empty", stop: make(chan struct{}), done: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	catalog := &modelCatalog{getter: getter, cachePathGetter: cachePathGetter, entries: map[string]*catalogEntry{}, origin: "empty", done: make(chan struct{}), ctx: ctx, cancel: cancel}
 	catalog.loadFromSnapshot()
 	catalog.loadFromCache()
 	return catalog
@@ -241,15 +244,17 @@ func (m *modelCatalog) runPeriodic() {
 	if m == nil {
 		return
 	}
-	defer close(m.done)
-	for {
-		select {
-		case <-m.stop:
-			return
-		case <-time.After(modelCatalogPeriodicTick):
-			m.triggerRefreshIfNeeded(false)
+	m.startOnce.Do(func() {
+		defer close(m.done)
+		for {
+			select {
+			case <-m.ctx.Done():
+				return
+			case <-time.After(modelCatalogPeriodicTick):
+				m.triggerRefreshIfNeeded(false)
+			}
 		}
-	}
+	})
 }
 
 // shutdown 停止周期循环并等待退出（幂等）。
@@ -257,19 +262,18 @@ func (m *modelCatalog) shutdown() {
 	if m == nil {
 		return
 	}
-	select {
-	case <-m.stop:
-		// already closed
-	default:
-		close(m.stop)
-	}
+	m.mu.Lock()
+	m.cancel()
+	m.mu.Unlock()
+	go m.runPeriodic()
+	m.fetchWG.Wait()
 	<-m.done
 }
 
 // triggerRefreshIfNeeded 判定是否需要刷新（force=true 绕过周期与退避）并按需启动
 // 后台（异步）拉取。返回是否已启动。
 func (m *modelCatalog) triggerRefreshIfNeeded(force bool) bool {
-	if m == nil {
+	if m == nil || m.ctx.Err() != nil {
 		return false
 	}
 	cfg := config.ModelCatalogConfig{}
@@ -282,10 +286,8 @@ func (m *modelCatalog) triggerRefreshIfNeeded(force bool) bool {
 	// 先在锁外计算到期判定（syncIntervalDue 自身取读锁，避免递归加锁）。
 	syncDue := m.syncIntervalDue()
 	m.mu.RLock()
-	shouldFetch := force ||
-		(syncDue &&
-			time.Since(m.lastTry) >= modelCatalogRetryBackoff &&
-			!m.refreshing)
+	shouldFetch := !m.refreshing && (force ||
+		(syncDue && time.Since(m.lastTry) >= modelCatalogRetryBackoff))
 	m.mu.RUnlock()
 	if !shouldFetch {
 		return false
@@ -293,20 +295,20 @@ func (m *modelCatalog) triggerRefreshIfNeeded(force bool) bool {
 
 	m.mu.Lock()
 	// 双检：可能已有后台拉取在进行。
-	shouldFetch = force ||
-		(syncDue &&
-			time.Since(m.lastTry) >= modelCatalogRetryBackoff &&
-			!m.refreshing)
-	if !shouldFetch {
+	shouldFetch = !m.refreshing && (force ||
+		(syncDue && time.Since(m.lastTry) >= modelCatalogRetryBackoff))
+	if !shouldFetch || m.ctx.Err() != nil {
 		m.mu.Unlock()
 		return false
 	}
 	m.refreshing = true
+	m.fetchWG.Add(1)
 	m.mu.Unlock()
 
 	// 后台拉取：独立 context，不跟随请求生命周期（请求结束不应中止目录加载）。
 	go func() {
-		backgroundCtx, cancel := context.WithTimeout(context.Background(), modelCatalogFetchTimeout+5*time.Second)
+		defer m.fetchWG.Done()
+		backgroundCtx, cancel := context.WithTimeout(m.ctx, modelCatalogFetchTimeout+5*time.Second)
 		defer cancel()
 		m.performRefresh(backgroundCtx, cfg)
 	}()
@@ -339,18 +341,24 @@ func (m *modelCatalog) Refresh() (map[string]any, bool) {
 			if !refreshing || time.Now().After(deadline) {
 				return m.Status(), false
 			}
-			time.Sleep(100 * time.Millisecond)
+			select {
+			case <-m.ctx.Done():
+				return m.Status(), false
+			case <-time.After(100 * time.Millisecond):
+			}
 		}
 	}
 	m.mu.Lock()
-	if m.refreshing { // 双检（等待窗口外的并发）
+	if m.refreshing || m.ctx.Err() != nil { // 双检（等待窗口外的并发）
 		m.mu.Unlock()
 		return m.Status(), false
 	}
 	m.refreshing = true
+	m.fetchWG.Add(1)
 	m.mu.Unlock()
+	defer m.fetchWG.Done()
 
-	ctx, cancel := context.WithTimeout(context.Background(), modelCatalogFetchTimeout+5*time.Second)
+	ctx, cancel := context.WithTimeout(m.ctx, modelCatalogFetchTimeout+5*time.Second)
 	defer cancel()
 	m.performRefresh(ctx, cfg)
 	return m.Status(), true
@@ -427,8 +435,12 @@ func catalogSourceURLs(cfg config.ModelCatalogConfig) []string {
 // 数据源。全部失败时返回最后一个错误。
 func (m *modelCatalog) fetch(ctx context.Context, cfg config.ModelCatalogConfig) (*catalogDataset, []byte, string, error) {
 	client := catalogHTTPClient(cfg.Proxy)
+	defer client.CloseIdleConnections()
 	var lastErr error
 	for _, sourceURL := range catalogSourceURLs(cfg) {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, "", err
+		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
 		if err != nil {
 			lastErr = err

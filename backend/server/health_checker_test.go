@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -198,4 +199,62 @@ func TestHealthCheckerDisabledByDefault(t *testing.T) {
 	hc := newHealthChecker(s)
 	hc.start()
 	<-hc.done // 应立即返回，不阻塞
+}
+
+func TestHealthCheckerShutdownCancelsActiveProbe(t *testing.T) {
+	s := newHealthTestServer(t)
+	s.config.HealthCheck.TimeoutSeconds = 30
+	s.config.HealthCheck.FailureThreshold = 1
+	started := make(chan struct{}, 2)
+	release := make(chan struct{})
+	var calls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		started <- struct{}{}
+		select {
+		case <-r.Context().Done():
+		case <-release:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer upstream.Close()
+
+	source := storage.ModelSource{ID: "slow", Name: "slow", BaseURL: upstream.URL, Platform: "openai", Enabled: true}
+	if err := s.store.UpsertSource(context.Background(), source); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.ReplaceSourceModels(context.Background(), source, []storage.Model{{ID: "first", Name: "first"}, {ID: "second", Name: "second"}}); err != nil {
+		t.Fatal(err)
+	}
+	hc := newHealthChecker(s)
+	hc.start()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		close(release)
+		hc.shutdown()
+		t.Fatal("health checker did not start its first probe")
+	}
+
+	done := make(chan struct{})
+	go func() { hc.shutdown(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Error("shutdown must cancel the active probe instead of waiting for its 30s timeout")
+	}
+	close(release)
+	<-done
+	if got := calls.Load(); got != 1 {
+		t.Errorf("shutdown must not probe subsequent models: got %d requests", got)
+	}
+	models, err := s.store.ListModels(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range models {
+		if !model.Available {
+			t.Errorf("shutdown cancellation must not disable model %s", model.ID)
+		}
+	}
 }
