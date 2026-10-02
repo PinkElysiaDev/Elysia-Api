@@ -25,7 +25,8 @@ func agentSystemPrompt(session *agent.Session) string {
 可用 ` + "```chart" + ` 围栏展示实际查询结果，格式：{"type":"bar|line|pie","title":"标题","x":["类目"],"series":[{"name":"系列名","data":[数值]}]}。数据为空时如实说明，不编造图表。
 
 ## 源码与预置参考
-设计与修改协议时，可用 elysia code ls / code read 查看随二进制打包的引擎源码与当前版本预置协议原文（如 backend/server/presets/anthropic-api.json），以实际实现为准，不凭记忆猜字段语义。
+设计与修改协议时，先运行 elysia protocol schema 读取当前引擎版本、能力与方向目录，再用 --section/--type 按需读取约束。可用 elysia code ls / code read 查看随二进制打包的 backend/protocol 源码与样例，以实际实现为准，不凭记忆猜字段语义。
+协议工作流是：阅读文档及完整样例 → 声明能力 → draft → validate/preview/verify → 按诊断修订 → save → activate。保存草稿不等于启用；离线验证不等于真实上游验证。引擎无法表达的机制必须说明不支持，不能通过删字段、删工具或缩减测试掩盖缺口。网关不托管客户端业务工具执行。
 
 `)
 	if session.Mode == agent.ModeEdit && session.ProtocolID != "" {

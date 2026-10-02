@@ -115,7 +115,7 @@ func (a *agentStreamAccumulator) toolCalls() []relay.MaheshvaraToolCall {
 func applyAgentPermittedKey(ctx context.Context, store *storage.Store, model *storage.Model) error {
 	sources, err := store.ListSources(ctx)
 	if err != nil {
-		return nil // 元数据读不到：保持行内 key，不让助手因此失败
+		return fmt.Errorf("read model source permissions: %w", err)
 	}
 	for _, source := range sources {
 		if source.ID != model.SourceID {
@@ -167,6 +167,9 @@ func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb 
 		Reasoning:       req.Reasoning,
 		Stream:          true,
 		MaxOutputTokens: maxTokens,
+	}
+	if result, isBound, err := c.callBoundProtocol(ctx, req, model, maheshvara, cb); isBound || err != nil {
+		return result, err
 	}
 	plan, err := renderAgentUpstreamPlan(maheshvara, model.Platform)
 	if err != nil {

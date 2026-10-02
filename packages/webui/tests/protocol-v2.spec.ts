@@ -3,6 +3,23 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { ProtocolDocument } from '../src/lib/protocol-document'
 
+test('Agent edit session opens exact v2 draft in the editor', async ({ page, request }) => {
+  test.skip(!process.env.PROTOCOL_E2E_URL, 'requires an isolated real backend')
+  const token = 'local-protocol-e2e'
+  const fixture = JSON.parse(readFileSync(resolve('../../backend/protocol/testdata/text-alpha.json'), 'utf8'))
+  fixture.id = `agent-browser-${Date.now()}`
+  fixture.family = fixture.id
+  const source = new ProtocolDocument(JSON.stringify(fixture)).set('/extensions', '{"long":900719925474099312345}')
+  const saved = await request.put(`${process.env.PROTOCOL_E2E_URL}/api/admin/protocols/${fixture.id}/draft`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, data: source })
+  expect(saved.ok()).toBeTruthy()
+  await page.addInitScript((value) => localStorage.setItem('elysia-webui.panel-token', value), token)
+  await page.goto(`/#/agent?mode=edit&protocol=${fixture.id}`)
+  await page.getByRole('button', { name: '协议草稿', exact: true }).click()
+  await page.getByRole('button', { name: '在协议设计器中打开' }).click()
+  await page.getByRole('tab', { name: '完整 JSON', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: '完整协议 JSON', exact: true })).toHaveValue(source)
+})
+
 test('raw protocol edits preserve presence, numeric spelling and ordered extensions', () => {
   const source = '{"name":"first","long":900719925474099312345,"negative":-0,"exp":1e99,"array":[null,false,0,{},[]],"nested":{"a/b":{"~x":null}}}'
   const document = new ProtocolDocument(source)

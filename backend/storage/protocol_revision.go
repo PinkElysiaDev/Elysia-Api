@@ -12,6 +12,30 @@ import (
 
 var _ protocol.Repository = (*Store)(nil)
 
+const protocolReportHistoryLimit = 20
+
+// ListProtocolUpstreamReports returns bounded target evidence, never activation evidence.
+func (s *Store) ListProtocolUpstreamReports(ctx context.Context, id, hash string) ([]protocol.VerificationReport, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT report FROM protocol_verification_reports WHERE protocol_id=? AND revision_hash=? AND kind=? ORDER BY id DESC LIMIT ?`, id, hash, protocol.UpstreamVerification, protocolReportHistoryLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	reports := []protocol.VerificationReport{}
+	for rows.Next() {
+		var encoded string
+		if err := rows.Scan(&encoded); err != nil {
+			return nil, err
+		}
+		var report protocol.VerificationReport
+		if err := json.Unmarshal([]byte(encoded), &report); err != nil {
+			return nil, err
+		}
+		reports = append(reports, report)
+	}
+	return reports, rows.Err()
+}
+
 func (s *Store) migrateProtocolRevisions(ctx context.Context) error {
 	statements := []string{
 		`CREATE TABLE IF NOT EXISTS protocol_bindings (binding_key TEXT PRIMARY KEY, binding TEXT NOT NULL)`,

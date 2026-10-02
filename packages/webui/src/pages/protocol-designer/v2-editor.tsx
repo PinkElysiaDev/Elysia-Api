@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ProtocolProbe } from './v2-probe'
 import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
 import { ApiError } from '@/lib/api'
@@ -149,7 +150,8 @@ export function ProtocolV2Editor({ schema, draft, activeHash, initialSource, onS
         <pre aria-label="转换链路结果" className="max-h-96 overflow-auto rounded bg-secondary/30 p-3 text-xs">{output === undefined ? '预览将显示语义模型、输出与诊断。' : typeof output === 'string' ? output : JSON.stringify(output, null, 2)}</pre>
       </>}
       {tab === 'verification' && <>
-        <p role="status">离线验证：{report && verifiedSource === source ? (report.passed ? '通过' : '未通过') : '当前草稿尚未验证'} · 真实上游：未验证</p>
+        <p role="status">离线验证：{report && verifiedSource === source ? (report.passed ? '通过' : '未通过') : '当前草稿尚未验证'}</p>
+        <ProtocolProbe source={source} id={id} hash={verifiedSource === source ? report?.definitionHash : undefined} />
         <p className="text-xs text-muted-foreground">离线报告绑定定义、样例和编译器版本；修改内容后需要重新验证。真实上游验证是独立证据。</p>
         <div className="overflow-x-auto"><table className="w-full text-xs"><thead><tr><th className="text-left">能力</th>{[...(mappings?.children.keys() ?? [])].map((name) => <th key={name}>{name}</th>)}<th>样例证据</th></tr></thead><tbody>{schema.capabilities.filter((capability) => document?.read(`/capabilities/${capability}`) === 'true').map((capability) => <tr key={capability}><td>{capability}</td>{[...(mappings?.children.keys() ?? [])].map((name) => <td key={name} className="text-center">{document?.locate(`/directions/${name}/capabilities`) ? document.read(`/directions/${name}/capabilities/${capability}`) === 'true' ? '支持' : '—' : '继承声明'}</td>)}<td>{verifiedSource === source && report?.covered?.includes(capability) ? '已验证' : '待验证'}</td></tr>)}</tbody></table></div>
         <ul className="space-y-1 text-xs">{report?.checks?.map((check, index) => <li key={index}>{check.passed ? '✓' : '×'} {check.sampleId} {check.direction}</li>)}</ul>

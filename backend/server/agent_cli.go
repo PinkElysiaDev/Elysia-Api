@@ -815,7 +815,7 @@ func keyCommands() []*cliCommand {
 
 // protocolCommands 自定义协议设计命令。
 func protocolCommands() []*cliCommand {
-	return []*cliCommand{
+	commands := []*cliCommand{
 		&cliCommand{group: "protocol", name: "draft", summary: "写入/更新协议配置草稿（立即校验并离线验证）",
 			usage:   "elysia protocol draft '<完整配置 JSON>' [--example '<响应示例 JSON>']",
 			example: `elysia protocol draft '{"id":"my-api","request":{...}}' --example '{"text":"hi"}'`,
@@ -919,6 +919,7 @@ func protocolCommands() []*cliCommand {
 			}},
 		// ---- usage ----
 	}
+	return extendProtocolAuthoringCommands(commands)
 }
 
 // usageCommands 用量统计、调用日志与系统日志命令。

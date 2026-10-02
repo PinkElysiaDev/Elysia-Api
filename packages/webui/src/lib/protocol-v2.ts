@@ -43,4 +43,6 @@ export const protocolAPI = {
   preview: (definition: string, direction: string, input: string, sequence: boolean) => previewRequest(`{"definition":${definition},"direction":${JSON.stringify(direction)},"input":${input},"sequence":${sequence}}`),
   workflow: (definition: string, options: { mode: string; sample?: string; operation?: string; kind?: string; purpose?: string }, input: string) => previewRequest(`{"definition":${definition},"input":${input},${JSON.stringify(options).slice(1)}`),
   combine: (ingress: string, upstream: string) => request<{ passed: boolean; checks: unknown[]; issues: ConversionIssue[] }>(`${base}/combinations`, { method: 'POST', rawBody: `{"ingress":${ingress},"upstream":${upstream}}` }),
+  probe: (definition: string, semanticRequest: string, target: { operation: string; baseUrl: string; apiKey: string }) => request<{ report: VerificationReport }>(`${base}/test`, { method: 'POST', rawBody: `{"definition":${definition},"request":${semanticRequest},${JSON.stringify(target).slice(1)}` }),
+  upstreamReports: (id: string, hash: string) => request<VerificationReport[]>(`${base}/${identifier(id)}/revisions/${identifier(hash)}/upstream-reports`),
 }

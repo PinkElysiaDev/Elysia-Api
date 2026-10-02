@@ -2,7 +2,6 @@ import { ExternalLink, History } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { tryParseJSON } from "@/lib/utils";
 import { Collapse, JsonBlock } from "./ui-blocks";
 import type { AgentSession } from "@/lib/agent/types";
 
@@ -11,6 +10,12 @@ const DRAFT_SECTIONS: { key: string; label: string }[] = [
   { key: "request", label: "请求构造（网关 → 上游）" },
   { key: "response", label: "响应解析（上游 → 网关）" },
   { key: "stream", label: "流式解析（SSE 帧）" },
+  { key: "directions", label: "独立方向与映射" },
+  { key: "capabilities", label: "声明能力" },
+  { key: "operations", label: "传输与操作" },
+  { key: "samples", label: "离线验证样例" },
+  { key: "sessionSamples", label: "会话验证样例" },
+  { key: "taskSamples", label: "任务验证样例" },
 ];
 
 export function DraftView({
@@ -24,24 +29,24 @@ export function DraftView({
 }) {
   const navigate = useNavigate();
   const draft = session.draftConfig;
-  const draftText =
+  const draftText = session.definitionJSON ?? (
     draft == null
       ? ""
       : typeof draft === "string"
         ? draft
-        : JSON.stringify(draft, null, 2);
+        : JSON.stringify(draft, null, 2));
   const draftObject =
     draft && typeof draft === "object" && !Array.isArray(draft)
       ? (draft as Record<string, unknown>)
       : null;
   const protocolId = draftObject ? String(draftObject.id ?? "") : "";
   const protocolName = draftObject ? String(draftObject.name ?? "") : "";
-  const restoreText =
-    session.draftRestore == null ? "" : JSON.stringify(session.draftRestore);
+  const restoreText = session.restoreJSON ?? (
+    session.draftRestore == null ? "" : JSON.stringify(session.draftRestore));
   const canRestore =
     restoreText !== "" &&
     draftText !== "" &&
-    restoreText !== JSON.stringify(draft ?? null) &&
+    restoreText !== draftText &&
     !busy;
 
   if (!draftText) return null;
@@ -97,7 +102,7 @@ export function DraftView({
           onClick={() =>
             navigate("/protocols", {
               state: {
-                draft: typeof draft === "string" ? tryParseJSON(draft) : draft,
+                ...(draftObject?.schemaVersion === 2 ? { definitionJSON: draftText } : { draft }),
               },
             })
           }

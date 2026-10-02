@@ -46,6 +46,9 @@ export interface AgentSession {
   protocolId?: string;
   seedConfig?: unknown;
   draftConfig?: unknown;
+  /** Exact draft JSON; editing must not round long JSON numbers through Number. */
+  definitionJSON?: string;
+  restoreJSON?: string;
   /** 草稿还原点：最近一轮修改前的副本（单槽覆盖，每轮更新）。 */
   draftRestore?: unknown;
   plan?: AgentPlanStep[];
