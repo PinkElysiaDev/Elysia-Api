@@ -13,7 +13,7 @@ const gatewayStreamErrorTrailer = "X-Elysia-Stream-Error"
 
 func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan *gatewayPlan, candidate gatewayCandidate, response *http.Response) error {
 	limits := protocol.DefaultLimits()
-	options := protocol.EvaluationContext{Scope: candidate.scope}
+	options := protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState()}
 	target := protocol.Target{Protocol: plan.ingress.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: plan.ingress.Capabilities(protocol.EncodeEvent)}
 	replay, err := protocol.NewEventReplay(target, limits)
 	if err != nil {
@@ -36,11 +36,12 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 	err = protocol.ReadFrames(c.Request.Context(), response.Body, candidate.operation, limits.BufferBytes, func(frame protocol.Value, metadata protocol.Object) error {
 		record.appendStreamEvent(string(frame.Bytes()))
 		options.Values = metadata
-		events, err := candidate.compiled.DecodeEvents(c.Request.Context(), frame, options)
+		decoded, err := candidate.compiled.DecodeFrame(c.Request.Context(), frame, options)
 		if err != nil {
 			return err
 		}
-		for _, event := range events {
+		acceptedEvents := []protocol.Event{}
+		for _, event := range decoded.Events {
 			updateRecordProtocolUsage(record, event.Usage)
 			if event.Response != nil {
 				updateRecordProtocolUsage(record, event.Response.Usage)
@@ -55,10 +56,17 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 			if !accepted {
 				continue
 			}
-			wire, err := plan.ingress.EncodeEvent(c.Request.Context(), event, options)
-			if err != nil {
-				return err
-			}
+			acceptedEvents = append(acceptedEvents, event)
+		}
+		if len(decoded.Events) > 0 && len(acceptedEvents) == 0 {
+			return nil
+		}
+		decoded.Events = acceptedEvents
+		frames, err := plan.ingress.EncodeFrame(c.Request.Context(), decoded, options)
+		if err != nil {
+			return err
+		}
+		for _, wire := range frames {
 			if err := emit(wire); err != nil {
 				return err
 			}
@@ -68,6 +76,18 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 	if err == nil {
 		err = replay.Finish()
 	}
+	if err == nil {
+		var frames []protocol.Value
+		frames, err = plan.ingress.FinishEvents(c.Request.Context(), options)
+		if err == nil {
+			for _, frame := range frames {
+				if writeErr := emit(frame); writeErr != nil {
+					err = writeErr
+					break
+				}
+			}
+		}
+	}
 	if err != nil {
 		// Never replay a generation after any downstream frame. A trailer also
 		// exposes a late mapping failure when the target has no error event.
@@ -76,9 +96,11 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 			errorValue, encodeErr := protocol.EncodeValue(map[string]string{"code": "protocol_stream_error", "message": err.Error()})
 			if encodeErr == nil {
 				failure := protocol.Event{SchemaVersion: protocol.SemanticSchemaVersion, Type: protocol.OperationFailed, Error: errorValue}
-				if frame, encodeErr := plan.ingress.EncodeEvent(c.Request.Context(), failure, options); encodeErr == nil {
-					if writeErr := emit(frame); writeErr != nil {
-						return fmt.Errorf("%w; downstream error frame: %v", err, writeErr)
+				if frames, encodeErr := plan.ingress.EncodeFrames(c.Request.Context(), failure, options); encodeErr == nil {
+					for _, frame := range frames {
+						if writeErr := emit(frame); writeErr != nil {
+							return fmt.Errorf("%w; downstream error frame: %v", err, writeErr)
+						}
 					}
 				}
 			}

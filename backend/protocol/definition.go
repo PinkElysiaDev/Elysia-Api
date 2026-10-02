@@ -5,7 +5,7 @@ package protocol
 const DefinitionSchemaVersion = 2
 
 // CompilerVersion binds verification evidence to execution semantics.
-const CompilerVersion = "2.0.0-dev.5"
+const CompilerVersion = "2.0.0-dev.6"
 
 // Transport identifies framing and connection lifecycle, never content shape.
 type Transport string
@@ -51,6 +51,7 @@ type Mapping struct {
 	Output       *ValueSchema  `json:"output,omitempty"`
 	Rules        []EventRule   `json:"rules,omitempty"`
 	UnknownEvent string        `json:"unknownEvent,omitempty"`
+	FrameBatch   bool          `json:"frameBatch,omitempty"`
 }
 
 // EventRule maps a matching wire frame to one event or an ordered event array.
@@ -96,9 +97,10 @@ type Credential struct {
 // Framing defines end markers and optional SSE event names. JSON event bodies
 // still use the same expression compiler as HTTP requests and responses.
 type Framing struct {
-	Done        []string `json:"done,omitempty"`
-	EventName   string   `json:"eventName,omitempty"`
-	BinaryMedia bool     `json:"binaryMedia,omitempty"`
+	Done          []string `json:"done,omitempty"`
+	EventName     string   `json:"eventName,omitempty"`
+	EventNamePath string   `json:"eventNamePath,omitempty"`
+	BinaryMedia   bool     `json:"binaryMedia,omitempty"`
 }
 
 // TaskFlow links separately declared submit/status/result/cancel operations.

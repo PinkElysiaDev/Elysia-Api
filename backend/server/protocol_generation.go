@@ -20,7 +20,7 @@ func (s *Server) collectProtocolGeneration(ctx context.Context, candidate gatewa
 	if err := s.validateOutbound(candidate.model.BaseURL); err != nil {
 		return nil, err
 	}
-	options := protocol.EvaluationContext{Scope: candidate.scope}
+	options := protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState()}
 	body, err := candidate.compiled.EncodeRequest(ctx, request, options)
 	if err != nil {
 		return nil, err
@@ -66,11 +66,11 @@ func (s *Server) collectProtocolGeneration(ctx context.Context, candidate gatewa
 			record.appendStreamEvent(string(frame.Bytes()))
 		}
 		options.Values = metadata
-		events, err := candidate.compiled.DecodeEvents(ctx, frame, options)
+		decoded, err := candidate.compiled.DecodeFrame(ctx, frame, options)
 		if err != nil {
 			return err
 		}
-		for _, event := range events {
+		for _, event := range decoded.Events {
 			if err := protocol.IssuesError(protocol.CheckModelEvent(event, candidate.compiled, candidate.binding, candidate.scope)); err != nil {
 				return err
 			}

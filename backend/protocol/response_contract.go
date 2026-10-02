@@ -1,6 +1,9 @@
 package protocol
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // CheckResponse validates observable response semantics before client encoding.
 // Tool input and usage validation share the same rules as request and event paths.
@@ -20,6 +23,9 @@ func (check *capabilityCheck) usage(usage *Usage, path string) {
 		return
 	}
 	check.require(UsageCapability, path)
+	if usage.Input != nil && usage.Output != nil && usage.Output.Count >= 0 && usage.Input.Count > math.MaxInt64-usage.Output.Count {
+		check.add(LimitExceeded, path, UsageCapability, "combined token count exceeds the supported integer range")
+	}
 	validate := func(counter *Counter, location string) {
 		if counter != nil && (counter.Count < 0 || (counter.Origin != ObservedCount && counter.Origin != InferredCount)) {
 			check.add(InvalidInput, location, UsageCapability, "usage counters require a nonnegative count and observed/inferred origin")
@@ -45,6 +51,10 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 	if event.SchemaVersion != SemanticSchemaVersion {
 		check.add(InvalidInput, "/schemaVersion", "", "unsupported semantic event version")
 		return check.issues
+	}
+	if event.Unmapped != nil {
+		check.require(NativeExtensionsCapability, "/unmapped")
+		check.native(event.Unmapped, "/unmapped")
 	}
 	switch event.Type {
 	case SessionStarted, SessionConfigured, SessionConfigure, InputCommit, ResponseCreate, ResponseCancel, SessionClose:

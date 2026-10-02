@@ -43,6 +43,9 @@ func (s *Store) ListModelsFiltered(ctx context.Context, filter ModelListFilter) 
 
 func (s *Store) listModelsFiltered(ctx context.Context, filter ModelListFilter) ([]Model, error) {
 	where := "WHERE (m.source_id = '' OR ms.enabled = 1 OR ms.id IS NULL)"
+	if filter.ShouldIncludeDisabledSources {
+		where = "WHERE 1=1"
+	}
 	args := []any{}
 	if filter.SourceID != "" {
 		where += " AND m.source_id = ?"
@@ -639,6 +642,9 @@ func (s *Store) ImportLegacyConfig(ctx context.Context, tokens []APIToken, group
 type ModelListFilter struct {
 	SourceID string
 	Search   string
+	// ShouldIncludeDisabledSources is used by whole-database migrations, which
+	// must preserve contracts even for sources that are currently disabled.
+	ShouldIncludeDisabledSources bool
 }
 
 // ModelPatch 是单个模型的部分更新（方向4）：nil 字段表示不修改。

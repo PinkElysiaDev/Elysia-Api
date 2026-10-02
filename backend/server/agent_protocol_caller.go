@@ -24,6 +24,9 @@ func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input ag
 	ref := config.ModelRef{ID: model.ID, Name: model.Name, SourceID: model.SourceID, BaseURL: model.BaseURL, APIKey: model.APIKey, Platform: model.Platform, ToolsCapable: model.ToolsCapable, VisionCapable: model.VisionCapable}
 	entry, isBound := selectProtocolBinding(bindings, ref)
 	if !isBound {
+		if caller.server.isProtocolRuntimeRequired.Load() {
+			return nil, true, gatewayIssue(protocol.Identity{}, protocol.VerificationRequired, "/binding", "Agent model requires a verified protocol binding")
+		}
 		return nil, false, nil
 	} // Removed after atomic legacy migration.
 	service, err := caller.server.protocolService()

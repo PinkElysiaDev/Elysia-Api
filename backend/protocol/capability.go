@@ -134,6 +134,12 @@ func (check *capabilityCheck) content(nodes []Node, path string, depth int) {
 			check.require(DocumentsCapability, location)
 		case ReasoningNode:
 			check.require(ReasoningCapability, location)
+			if node.ReasoningForm != "" && node.ReasoningForm != "summary" {
+				check.add(InvalidInput, location+"/reasoningForm", ReasoningCapability, "unknown reasoning representation")
+			}
+			if node.ReasoningForm == "summary" && !node.Payload.IsZero() {
+				check.add(InvalidInput, location+"/payload", ReasoningCapability, "reasoning summary text belongs to ordered children")
+			}
 		case ToolCallNode:
 			check.call(node, location)
 		case ToolResultNode:

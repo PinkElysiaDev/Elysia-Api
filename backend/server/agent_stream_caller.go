@@ -141,6 +141,9 @@ func applyAgentPermittedKey(ctx context.Context, store *storage.Store, model *st
 // Call 实现 agent.StreamCaller。取消路径下返回部分聚合结果 + ctx 错误。
 // 四段日志依次记录引擎输入、线格式请求、上游事件与返回引擎的聚合结果。
 func (c *agentStreamCaller) Call(ctx context.Context, req agent.CallRequest, cb agent.StreamCallbacks) (*agent.CallResult, error) {
+	if err := c.server.protocolRuntimeError(); err != nil {
+		return nil, err
+	}
 	store := c.server.store
 	if store == nil {
 		return nil, fmt.Errorf("sqlite store is unavailable")

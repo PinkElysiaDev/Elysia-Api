@@ -19,12 +19,19 @@ var definitionIdentifier = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}
 // EvaluationContext contains gateway-owned metadata. Scope is supplied by the
 // selected model/account binding and cannot be changed by a mapping expression.
 type EvaluationContext struct {
-	Scope  Scope
-	Values Object
+	Scope         Scope
+	Values        Object
+	State         *EvaluationState
+	identity      Identity
+	compoundFrame bool
 	// ResolveRequestScope is supplied by the gateway after model/authorization
 	// lookup. Definitions cannot execute it or replace its returned binding.
 	ResolveRequestScope func(*Request) (Scope, error)
 }
+
+// Identity returns the immutable definition identity stamped by execution.
+// Callers and mapping expressions cannot impersonate another wire revision.
+func (options EvaluationContext) Identity() Identity { return options.identity }
 
 // Module is a registered, thread-safe adapter implementation. Definitions can
 // reference modules but cannot register executable code.
@@ -65,12 +72,14 @@ func NewCompiler(limits Limits, modules []Module, features []string) (*Compiler,
 }
 
 type compiledMapping struct {
-	capabilities  CapabilitySet
-	module        Module
-	transform     *compiledExpression
-	after         *compiledExpression
-	input, output *ValueSchema
-	rules         []compiledEventRule
+	capabilities   CapabilitySet
+	module         Module
+	transform      *compiledExpression
+	after          *compiledExpression
+	input, output  *ValueSchema
+	rules          []compiledEventRule
+	frameBatch     bool
+	definitionHash string
 }
 
 type compiledEventRule struct{ when, emit *compiledExpression }
@@ -172,7 +181,15 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 }
 
 func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction Direction, expressions *expressionCompiler) (compiledMapping, error) {
-	entry := compiledMapping{input: mapping.Input, output: mapping.Output}
+	entry := compiledMapping{input: mapping.Input, output: mapping.Output, frameBatch: mapping.FrameBatch}
+	definition, err := EncodeValue(mapping)
+	if err != nil {
+		return entry, err
+	}
+	entry.definitionHash = hashValue(definition)
+	if mapping.FrameBatch && direction != EncodeEvent && direction != EncodeUpstreamEvent {
+		return entry, fmt.Errorf("frameBatch requires an event encoder")
+	}
 	if err := validateSchema(mapping.Input, path+"/input", 1, expressions.limits); err != nil {
 		return entry, err
 	}
@@ -411,6 +428,14 @@ func (compiler *Compiler) checkOperation(name string, operation Operation, defin
 	if operation.Framing != nil && strings.ContainsAny(operation.Framing.EventName, "\r\n") {
 		return fmt.Errorf("operation %q has an invalid SSE event name", name)
 	}
+	if framing := operation.Framing; framing != nil && framing.EventNamePath != "" {
+		if operation.Transport != SSE || framing.EventName != "" {
+			return fmt.Errorf("operation %q must select one SSE event name source", name)
+		}
+		if _, err := parsePointer(framing.EventNamePath); err != nil {
+			return fmt.Errorf("operation %q has an invalid event name pointer: %w", name, err)
+		}
+	}
 	if operation.Request != "" && operation.Request != DecodeRequest && operation.Request != EncodeRequest {
 		return fmt.Errorf("operation %q request must select a request direction", name)
 	}
@@ -543,7 +568,12 @@ func (compiled *Compiled) Execute(ctx context.Context, direction Direction, inpu
 	var output Value
 	switch {
 	case mapping.module != nil:
-		output, err = mapping.module.Convert(ctx, direction, input, options)
+		options.identity = compiled.identity
+		instance, resolveErr := options.State.resolve(compiled, direction, mapping.module)
+		if resolveErr != nil {
+			return fail(resolveErr)
+		}
+		output, err = instance.Convert(ctx, direction, input, options)
 	case mapping.transform != nil:
 		output, err = mapping.transform.evaluate(state)
 	default:

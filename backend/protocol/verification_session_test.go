@@ -109,6 +109,72 @@ func TestVerifyInterleavedSessionDirections(t *testing.T) {
 	}
 }
 
+func TestCompoundSessionFramesShareOfflineAndLivePreservation(t *testing.T) {
+	definition := sessionVerificationDefinition(t)
+	decode := readExpression("input", "/events")
+	encode := objectExpression(map[string]Expression{"events": {Op: "array", Items: []Expression{readExpression("input", "")}}})
+	for _, direction := range []Direction{DecodeClientEvent, DecodeEvent} {
+		mapping := definition.Directions[direction]
+		mapping.Transform = &decode
+		definition.Directions[direction] = mapping
+	}
+	for _, direction := range []Direction{EncodeUpstreamEvent, EncodeEvent} {
+		mapping := definition.Directions[direction]
+		mapping.Transform = &encode
+		definition.Directions[direction] = mapping
+	}
+	sample := definition.SessionSamples[0]
+	sample.Scope = Scope{Model: "m"}
+	var steps []SessionStep
+	for _, step := range sample.Steps {
+		var events []Event
+		if err := step.Expected.Decode(&events); err != nil {
+			t.Fatal(err)
+		}
+		if len(steps) > 0 && steps[len(steps)-1].Direction == step.Direction {
+			previous := &steps[len(steps)-1]
+			var before []Event
+			if err := previous.Expected.Decode(&before); err != nil {
+				t.Fatal(err)
+			}
+			events = append(before, events...)
+			steps = steps[:len(steps)-1]
+		}
+		step.Input = fixtureValue(t, map[string]any{"events": events, "vendor": map[string]any{"zero": 0, "flag": false}})
+		step.Expected = fixtureValue(t, events)
+		steps = append(steps, step)
+	}
+	sample.Steps = steps
+	definition.SessionSamples = []SessionSample{sample}
+	compiled := compileSessionDefinition(t, definition)
+	evidence, err := executeSessionSample(t.Context(), compiled, sample)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation := compiled.Operations()["session"]
+	if err := replaySessionCombination(t.Context(), compiled, operation, sample, evidence); err != nil {
+		t.Fatal("offline compound replay", err)
+	}
+	binding := Binding{ProtocolID: definition.ID, RevisionHash: compiled.Hash(), Capabilities: definition.Capabilities, Transports: []Transport{WebSocket}}
+	adapter, err := NewSessionAdapter(compiled, compiled, operation, operation, binding, sample.Scope, sample.Model)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range sample.Steps {
+		frames, err := adapter.Convert(t.Context(), eventOrigin(step.Direction), SessionFrame{Payload: step.Input.Bytes()})
+		if err != nil || len(frames) != 1 {
+			t.Fatal("live compound frame was expanded or rejected", frames, err)
+		}
+		actual, err := ParseValue(frames[0].Payload)
+		if err != nil || !equalValues(actual, step.Input) {
+			t.Fatal("live compound native fields changed", actual, err)
+		}
+	}
+	if err := adapter.Finish(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSessionVerificationRejectsMissingAndInvalidTraces(t *testing.T) {
 	for _, mode := range []string{"missing", "orphan-result", "truncated", "lost-model", "missing-tool-definition"} {
 		t.Run(mode, func(t *testing.T) {

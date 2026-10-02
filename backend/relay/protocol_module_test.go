@@ -2,6 +2,7 @@ package relay
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -15,7 +16,7 @@ func compileBuiltinModule(t *testing.T, name string) *protocol.Compiled {
 		t.Fatal(err)
 	}
 	definition := protocol.Definition{SchemaVersion: 2, ID: "arbitrary-" + name, Name: name, Version: "1", Family: string(adapter.format), WireVersion: legacyWireContractVersion, Native: protocol.NativePolicy{Preserve: true}, Directions: map[protocol.Direction]protocol.Mapping{}, Capabilities: protocol.CapabilitySet{}, Operations: map[string]protocol.Operation{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: protocol.HTTPJSON, Auth: protocol.Credential{Location: "none"}}}}
-	for _, direction := range (builtinProtocolModule{adapter: adapter}).Directions() {
+	for _, direction := range []protocol.Direction{protocol.DecodeRequest, protocol.EncodeRequest, protocol.DecodeResponse, protocol.EncodeResponse} {
 		definition.Directions[direction] = protocol.Mapping{Module: name}
 	}
 	for _, capability := range protocol.CapabilityCatalog() {
@@ -53,6 +54,13 @@ func TestCompiledBuiltinRequestMatrix(t *testing.T) {
 					t.Fatal(err)
 				}
 				body, err := encoder.EncodeRequest(t.Context(), request, options)
+				if (source == "gemini") != (target == "gemini") {
+					var conversion *protocol.ConversionError
+					if !errors.As(err, &conversion) || conversion.Issues[0].Code != protocol.UnsupportedCapability {
+						t.Fatalf("non-equivalent text/object tool result must be diagnosed: %v", err)
+					}
+					return
+				}
 				if err != nil {
 					t.Fatal(err)
 				}

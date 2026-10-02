@@ -11,6 +11,7 @@ import (
 type verificationResult struct {
 	output   Value
 	semantic any
+	frames   []*EventFrame
 }
 
 // Verify executes the revision's offline fixtures through the typed runtime,
@@ -83,6 +84,12 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 				check.Capabilities = append(check.Capabilities, capability)
 			}
 		}
+		// The frame roundtrip above executes the pinned target encoder's native
+		// preservation path. It is also positive output evidence for extensions;
+		// fabricating a stand-alone semantic event cannot exercise compound frames.
+		if isEventDecoder(sample.Direction) && compiled.native.Preserve && evidence.observed[NativeExtensionsCapability] && compiled.Supports(eventEncoder(sample.Direction)) {
+			coverage[eventEncoder(sample.Direction)][NativeExtensionsCapability] = true
+		}
 		hasSample[sample.Direction] = true
 		hasSequence[sample.Direction] = hasSequence[sample.Direction] || sample.Sequence
 		hasLifecycle[sample.Direction][FunctionToolsCapability] = hasLifecycle[sample.Direction][FunctionToolsCapability] || evidence.hasFunctionLifecycle
@@ -140,7 +147,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 }
 
 func executeVerificationSample(ctx context.Context, compiled *Compiled, sample Sample) (verificationResult, error) {
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context}
+	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
 	var result verificationResult
 	var err error
 	switch sample.Direction {
@@ -185,7 +192,11 @@ func executeVerificationSample(ctx context.Context, compiled *Compiled, sample S
 }
 
 func executeEventFixture(ctx context.Context, compiled *Compiled, sample Sample) (verificationResult, error) {
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context}
+	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	return executeEventFixtureWithState(ctx, compiled, sample, options)
+}
+
+func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sample Sample, options EvaluationContext) (verificationResult, error) {
 	inputs := []Value{sample.Input}
 	if sample.Sequence {
 		var err error
@@ -196,13 +207,16 @@ func executeEventFixture(ctx context.Context, compiled *Compiled, sample Sample)
 	}
 	var events []Event
 	var outputs []Value
+	var frames []*EventFrame
 	buffered := 0
 	for _, input := range inputs {
 		if isEventDecoder(sample.Direction) {
-			batch, err := compiled.decodeEvents(ctx, sample.Direction, input, options)
+			frame, err := compiled.decodeFrame(ctx, sample.Direction, input, options)
 			if err != nil {
 				return verificationResult{}, err
 			}
+			frames = append(frames, frame)
+			batch := frame.Events
 			encoded, err := EncodeValue(batch)
 			if err != nil {
 				return verificationResult{}, err
@@ -214,12 +228,15 @@ func executeEventFixture(ctx context.Context, compiled *Compiled, sample Sample)
 			if err := decodeContract(input.Bytes(), &event); err != nil {
 				return verificationResult{}, err
 			}
-			wire, err := compiled.encodeEvent(ctx, eventEncoder(sample.Direction), event, options)
+			wire, err := compiled.encodeFrames(ctx, eventEncoder(sample.Direction), event, options)
 			if err != nil {
 				return verificationResult{}, err
 			}
-			buffered += len(wire.raw) + len(input.raw)
-			outputs = append(outputs, wire)
+			buffered += len(input.raw)
+			for _, frame := range wire {
+				buffered += len(frame.raw)
+			}
+			outputs = append(outputs, wire...)
 			events = append(events, event)
 		}
 		if buffered > compiled.limits.BufferBytes {
@@ -247,11 +264,24 @@ func executeEventFixture(ctx context.Context, compiled *Compiled, sample Sample)
 			return verificationResult{}, err
 		}
 	}
-	result := verificationResult{semantic: events}
+	if sample.Sequence && !isEventDecoder(sample.Direction) {
+		tail, err := compiled.finishEvents(ctx, eventEncoder(sample.Direction), options)
+		if err != nil {
+			return verificationResult{}, err
+		}
+		for _, frame := range tail {
+			buffered += len(frame.raw)
+		}
+		if buffered > compiled.limits.BufferBytes {
+			return verificationResult{}, streamIssue(LimitExceeded, "/samples", "event fixture exceeds replay buffer limit")
+		}
+		outputs = append(outputs, tail...)
+	}
+	result := verificationResult{semantic: events, frames: frames}
 	var err error
 	if isEventDecoder(sample.Direction) {
 		result.output, err = comparableSemantic(events)
-	} else if sample.Sequence {
+	} else if sample.Sequence || compiled.mappings[sample.Direction].frameBatch {
 		result.output, err = EncodeValue(outputs)
 	} else {
 		result.output = outputs[0]

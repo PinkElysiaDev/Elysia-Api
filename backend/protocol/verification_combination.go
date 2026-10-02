@@ -1,6 +1,9 @@
 package protocol
 
-import "context"
+import (
+	"context"
+	"slices"
+)
 
 // CombinationReport binds offline conversion evidence to both immutable
 // revisions. It must be recalculated when either endpoint changes.
@@ -109,6 +112,10 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 				continue
 			}
 			err := verifyEventCombination(ctx, ingress, upstream, sample)
+			if err != nil && !hasSameWire(ingress, upstream) && slices.Contains(observed, NativeExtensionsCapability) && hasIssueCode(err, UnsupportedNative) {
+				report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Direction: EncodeEvent, Passed: true, Reason: "foreign native event extensions were explicitly rejected"})
+				continue
+			}
 			report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Direction: EncodeEvent, Passed: err == nil, Capabilities: observed})
 			if err != nil {
 				report.Issues = append(report.Issues, sampleIssues(ingress, sample, "/combination/events", err)...)
@@ -125,6 +132,9 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 		hasSessionEvidence = verifySessionCombination(ctx, ingress, upstream, &report)
 	}
 	verifyTaskCombination(ctx, ingress, upstream, capabilities, &report)
+	if capabilities == nil || capabilities[NativeExtensionsCapability] {
+		verifyCombinationNative(ctx, ingress, upstream, &report)
+	}
 	hasRequest, hasResponse := false, false
 	for _, check := range report.Checks {
 		hasRequest = hasRequest || (check.Passed && check.Direction == EncodeRequest)
@@ -135,6 +145,9 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 	}
 	for _, capability := range sortedKeys(capabilities) {
 		if !capabilities[capability] {
+			continue
+		}
+		if capability == NativeExtensionsCapability && !hasSameWire(ingress, upstream) {
 			continue
 		}
 		hasEvidence := false
@@ -178,26 +191,39 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 	if err != nil {
 		return err
 	}
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context}
+	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	var frames []Value
 	var decoded []Event
-	for _, event := range result.semantic.([]Event) {
-		wire, err := ingress.EncodeEvent(ctx, event, options)
+	for _, frame := range result.frames {
+		wire, err := ingress.EncodeFrame(ctx, frame, options)
 		if err != nil {
 			return err
 		}
-		if ingress.Supports(DecodeEvent) {
-			batch, err := ingress.DecodeEvents(ctx, wire, options)
-			if err != nil {
-				return err
-			}
-			decoded = append(decoded, batch...)
-		}
+		frames = append(frames, wire...)
 	}
+	tail, err := ingress.FinishEvents(ctx, options)
+	if err != nil {
+		return err
+	}
+	frames = append(frames, tail...)
 	if !ingress.Supports(DecodeEvent) {
 		return nil
 	}
-	if err := compareRoundTrip(ingress, sample, result.semantic, decoded); err != nil {
-		return err
+	for _, wire := range frames {
+		frame, err := ingress.DecodeFrame(ctx, wire, options)
+		if err != nil {
+			return err
+		}
+		decoded = append(decoded, frame.Events...)
+	}
+	var comparison error
+	if hasSameWire(ingress, upstream) && ingress.native.Preserve && upstream.native.Preserve {
+		comparison = compareRoundTrip(ingress, sample, result.semantic, decoded)
+	} else {
+		comparison = compareEventSequence(ingress, sample, result.semantic.([]Event), decoded)
+	}
+	if comparison != nil {
+		return comparison
 	}
 	target := ingress.target(EncodeEvent, options)
 	replay, err := NewEventReplay(target, ingress.limits)
@@ -213,7 +239,7 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 }
 
 func verifyRequestCombination(ctx context.Context, ingress, upstream *Compiled, sample Sample) error {
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context}
+	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
 	request, err := ingress.DecodeRequest(ctx, sample.Input.Bytes(), options)
 	if err != nil {
 		return err
@@ -229,11 +255,11 @@ func verifyRequestCombination(ctx context.Context, ingress, upstream *Compiled, 
 	if err != nil {
 		return err
 	}
-	return compareRoundTrip(upstream, sample, request, decoded)
+	return compareRoundTrip(upstream, sample, equivalentRequest(request), equivalentRequest(decoded))
 }
 
 func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled, sample Sample) error {
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context}
+	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
 	response, err := upstream.DecodeResponse(ctx, sample.Input.Bytes(), options)
 	if err != nil {
 		return err
@@ -249,7 +275,7 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 	if err != nil {
 		return err
 	}
-	return compareRoundTrip(ingress, sample, response, decoded)
+	return compareRoundTrip(ingress, sample, equivalentResponse(response), equivalentResponse(decoded))
 }
 
 func hasHTTPGeneration(compiled *Compiled) bool {

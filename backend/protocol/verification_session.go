@@ -9,17 +9,17 @@ type sessionEvidence struct {
 	checks   []VerificationCheck
 	coverage map[Direction]CapabilitySet
 	events   []Event
-	trace    []sessionTraceEvent
+	trace    []sessionTraceFrame
 }
 
-type sessionTraceEvent struct {
+type sessionTraceFrame struct {
 	direction Direction
-	event     Event
+	frame     *EventFrame
 }
 
 func executeSessionSample(ctx context.Context, compiled *Compiled, sample SessionSample) (sessionEvidence, error) {
 	result := sessionEvidence{coverage: map[Direction]CapabilitySet{}}
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context}
+	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
 	operation := compiled.operations[sample.Operation]
 	replay, err := NewSessionReplay(sessionLaneTarget(compiled, ClientEvent, options), sessionLaneTarget(compiled, UpstreamEvent, options), compiled.limits, SessionPolicy{Model: sample.Model, CanGenerateAutomatically: operation.Session.CanGenerateAutomatically})
 	if err != nil {
@@ -28,7 +28,7 @@ func executeSessionSample(ctx context.Context, compiled *Compiled, sample Sessio
 	buffered := 0
 	for index, step := range sample.Steps {
 		fixture := Sample{ID: fmt.Sprintf("%s/steps/%d", sample.ID, index), Direction: step.Direction, Input: step.Input, Expected: step.Expected, Context: sample.Context, Scope: sample.Scope}
-		value, err := executeEventFixture(ctx, compiled, fixture)
+		value, err := executeEventFixtureWithState(ctx, compiled, fixture, options)
 		if err != nil {
 			return result, err
 		}
@@ -47,7 +47,13 @@ func executeSessionSample(ctx context.Context, compiled *Compiled, sample Sessio
 			if _, err := replay.Consume(eventOrigin(step.Direction), event); err != nil {
 				return result, err
 			}
-			result.trace = append(result.trace, sessionTraceEvent{direction: step.Direction, event: event})
+		}
+		frames := value.frames
+		if len(frames) == 0 {
+			frames = []*EventFrame{{Events: events}}
+		}
+		for _, frame := range frames {
+			result.trace = append(result.trace, sessionTraceFrame{direction: step.Direction, frame: frame})
 		}
 		encoded, err := EncodeValue(events)
 		if err != nil {

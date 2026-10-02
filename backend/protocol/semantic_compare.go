@@ -20,6 +20,11 @@ func comparableSemantic(input any) (Value, error) {
 		return EncodeValue(copy)
 	case Event:
 		value.Source, value.SchemaVersion, value.Native = Identity{}, 0, nil
+		if value.Unmapped != nil {
+			copy := *value.Unmapped
+			copy.Source = Provenance{}
+			value.Unmapped = &copy
+		}
 		if value.Item != nil {
 			item := comparableNodes([]Node{*value.Item})[0]
 			value.Item = &item
@@ -60,6 +65,7 @@ func comparableNodes(nodes []Node) []Node {
 	copy := append([]Node(nil), nodes...)
 	for index := range copy {
 		copy[index].Native = nil
+		copy[index].Source = nil
 		copy[index].Children = comparableNodes(copy[index].Children)
 	}
 	return copy
@@ -124,6 +130,9 @@ func observeCapabilities(value any) capabilityEvidence {
 		}
 	case []Event:
 		for _, event := range semantic {
+			if event.Unmapped != nil {
+				evidence.observed[NativeExtensionsCapability] = true
+			}
 			if event.Request != nil {
 				requestEvidence := observeCapabilities(event.Request)
 				for capability, supported := range requestEvidence.observed {

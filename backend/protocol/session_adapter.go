@@ -23,7 +23,7 @@ func NewSessionAdapter(ingress, upstream *Compiled, clientOperation, upstreamOpe
 	if err := CheckSessionCompatibility(clientOperation, upstreamOperation); err != nil {
 		return nil, err
 	}
-	options := EvaluationContext{Scope: scope}
+	options := EvaluationContext{Scope: scope, State: NewEvaluationState()}
 	limits := ingress.limits
 	limits.StateItems = min(limits.StateItems, upstream.limits.StateItems)
 	limits.BufferBytes = min(limits.BufferBytes, upstream.limits.BufferBytes)
@@ -48,12 +48,12 @@ func (adapter *SessionAdapter) Convert(ctx context.Context, origin EventOrigin, 
 	if origin == ClientEvent {
 		source, target, decoder, encoder = adapter.ingress, adapter.upstream, DecodeClientEvent, EncodeUpstreamEvent
 	}
-	events, err := source.decodeEvents(ctx, decoder, value, adapter.options)
+	decoded, err := source.decodeFrame(ctx, decoder, value, adapter.options)
 	if err != nil {
 		return nil, err
 	}
-	frames := make([]SessionFrame, 0, len(events))
-	for _, event := range events {
+	acceptedEvents := make([]Event, 0, len(decoded.Events))
+	for _, event := range decoded.Events {
 		if err := adapter.checkModel(origin, event); err != nil {
 			return nil, err
 		}
@@ -74,11 +74,19 @@ func (adapter *SessionAdapter) Convert(ctx context.Context, origin EventOrigin, 
 		if event.Response != nil && !event.Response.Model.IsZero() {
 			event.Response.Model = adapter.model
 		}
-		encoded, err := target.encodeEvent(ctx, encoder, event, adapter.options)
-		if err != nil {
-			return nil, err
-		}
-		frames = append(frames, SessionFrame{Payload: encoded.Bytes()})
+		acceptedEvents = append(acceptedEvents, event)
+	}
+	if len(decoded.Events) > 0 && len(acceptedEvents) == 0 {
+		return nil, nil
+	}
+	decoded.Events = acceptedEvents
+	encoded, err := target.encodeFrame(ctx, encoder, decoded, adapter.options)
+	if err != nil {
+		return nil, err
+	}
+	frames := make([]SessionFrame, 0, len(encoded))
+	for _, value := range encoded {
+		frames = append(frames, SessionFrame{Payload: value.Bytes()})
 	}
 	return frames, nil
 }

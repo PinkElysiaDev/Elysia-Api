@@ -82,25 +82,29 @@ func verifySessionCombination(ctx context.Context, ingress, upstream *Compiled, 
 }
 
 func replaySessionCombination(ctx context.Context, target *Compiled, operation Operation, sample SessionSample, evidence sessionEvidence) error {
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context}
+	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
 	replay, err := NewSessionReplay(sessionLaneTarget(target, ClientEvent, options), sessionLaneTarget(target, UpstreamEvent, options), target.limits, SessionPolicy{Model: sample.Model, CanGenerateAutomatically: operation.Session.CanGenerateAutomatically})
 	if err != nil {
 		return err
 	}
 	for _, entry := range evidence.trace {
 		direction := eventEncoder(entry.direction)
-		decoded := []Event{entry.event}
+		decoded := entry.frame.Events
 		if target.Supports(direction) {
-			wire, err := target.encodeEvent(ctx, direction, entry.event, options)
+			wire, err := target.encodeFrame(ctx, direction, entry.frame, options)
 			if err != nil {
 				return err
 			}
 			if target.Supports(eventDecoder(direction)) {
-				decoded, err = target.decodeEvents(ctx, eventDecoder(direction), wire, options)
-				if err != nil {
-					return err
+				decoded = nil
+				for _, value := range wire {
+					frame, err := target.decodeFrame(ctx, eventDecoder(direction), value, options)
+					if err != nil {
+						return err
+					}
+					decoded = append(decoded, frame.Events...)
 				}
-				if err := compareRoundTrip(target, Sample{ID: sample.ID, Direction: direction}, []Event{entry.event}, decoded); err != nil {
+				if err := compareRoundTrip(target, Sample{ID: sample.ID, Direction: direction}, entry.frame.Events, decoded); err != nil {
 					return err
 				}
 			}

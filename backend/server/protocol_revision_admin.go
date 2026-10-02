@@ -55,6 +55,9 @@ func (s *Server) setupProtocolRevisionRoutes(admin *gin.RouterGroup) {
 	group := admin.Group("/protocols")
 	group.GET("", s.adminProtocolDrafts)
 	group.GET("/schema", s.adminProtocolSchemaV2)
+	group.GET("/migration", s.adminProtocolUpgradeStatus)
+	group.POST("/migration/preview", s.adminProtocolUpgradePreview)
+	group.POST("/migration/apply", s.adminProtocolUpgradeApply)
 	group.POST("/validate", s.adminProtocolValidate)
 	group.POST("/preview", s.adminProtocolPreviewV2)
 	group.POST("/test", s.adminProtocolProbe)
@@ -304,11 +307,7 @@ func (s *Server) adminProtocolActivate(c *gin.Context) {
 }
 
 func (s *Server) adminProtocolReload(c *gin.Context) {
-	service, ok := s.requireProtocolService(c)
-	if !ok {
-		return
-	}
-	if err := service.Reload(c.Request.Context()); err != nil {
+	if err := s.reloadProtocolRuntime(c.Request.Context()); err != nil {
 		respondProtocolError(c, err)
 		return
 	}

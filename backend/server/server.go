@@ -132,14 +132,17 @@ type Server struct {
 	agentEngineOnce sync.Once
 	agentEngineInst *agent.Engine
 
-	protocolServiceOnce sync.Once
-	protocolServiceInst *protocol.Service
-	protocolServiceErr  error
-	gatewaySessions     gatewaySessionSet
-	gatewayJobs         gatewayJobService
+	protocolServiceOnce       sync.Once
+	protocolServiceInst       *protocol.Service
+	protocolServiceErr        error
+	isProtocolRuntimeRequired atomic.Bool
+	protocolRuntimeReady      atomic.Bool
+	gatewaySessions           gatewaySessionSet
+	gatewayJobs               gatewayJobService
 }
 
 func New(cfg *config.Config) *Server {
+	var protocolPreparationErr error
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	engine.Use(gin.Recovery())
@@ -196,29 +199,37 @@ func New(cfg *config.Config) *Server {
 		// 历史数据回填进小时级 rollup 预聚合表（后台、幂等、可断点续跑）；
 		// 完成前聚合查询自动走 raw 路径，功能不受影响。
 		store.StartRollupBackfill()
-		if err := server.importLegacyConfig(); err != nil {
-			log.Printf("failed to import legacy config into sqlite: %v", err)
+		protocolPreparationErr = store.PrepareProtocolUpgradeBackup(context.Background())
+		if protocolPreparationErr == nil {
+			if err := server.importLegacyConfig(); err != nil {
+				log.Printf("failed to import legacy config into sqlite: %v", err)
+			}
+			// config.json 的 customProtocols 键已废弃：一次性导入 SQLite 后移除。
+			server.migrateLegacyCustomProtocols()
+			// 预置协议去厂商化改名（一次性、幂等；custom:<id> 平台引用同步重写）。
+			server.migratePresetProtocolRenames()
+			// 对账兜底：修复旧版改名迁移遗留的「行 id 列与 config 内部 id 脱节」
+			//（注册键错位会让 custom:<行id> 引用解析报 not registered）。
+			server.reconcileCustomProtocolConfigIDs()
+			// Gemini 系模型历史 ID 前缀一次性剥离（旧拉取入库 ID 带 models/ 前缀，
+			// 转发路径双前缀 404）。
+			server.stripGeminiModelIDPrefixes()
+			// 预置协议（四线制定义）逐条补齐/按哈希链升级；path 相对化预置升级后
+			// 一次性把存量源 base 补上版本段（v1→v3 语义切换的配套迁移）。
+			server.migratePresetRelativePathBases(server.seedPresetProtocols())
 		}
-		// config.json 的 customProtocols 键已废弃：一次性导入 SQLite 后移除。
-		server.migrateLegacyCustomProtocols()
-		// 预置协议去厂商化改名（一次性、幂等；custom:<id> 平台引用同步重写）。
-		server.migratePresetProtocolRenames()
-		// 对账兜底：修复旧版改名迁移遗留的「行 id 列与 config 内部 id 脱节」
-		//（注册键错位会让 custom:<行id> 引用解析报 not registered）。
-		server.reconcileCustomProtocolConfigIDs()
-		// Gemini 系模型历史 ID 前缀一次性剥离（旧拉取入库 ID 带 models/ 前缀，
-		// 转发路径双前缀 404）。
-		server.stripGeminiModelIDPrefixes()
-		// 预置协议（四线制定义）逐条补齐/按哈希链升级；path 相对化预置升级后
-		// 一次性把存量源 base 补上版本段（v1→v3 语义切换的配套迁移）。
-		server.migratePresetRelativePathBases(server.seedPresetProtocols())
 	}
 	// 存储迁移成功后才启动后台工作。
 	go server.catalog.runPeriodic()
 	server.syncOutboundPolicy()
 	server.syncCustomProtocols()
-	if _, err := server.protocolService(); err != nil {
-		log.Printf("protocol revision service unavailable: %v", err)
+	if protocolPreparationErr == nil {
+		protocolPreparationErr = server.initializeProtocolRuntime(context.Background())
+	} else {
+		server.isProtocolRuntimeRequired.Store(true)
+	}
+	if protocolPreparationErr != nil {
+		log.Printf("protocol migration requires repair; generation is disabled: %v", protocolPreparationErr)
 	}
 	if server.store != nil {
 		server.logSystemEvent("info", "server started", map[string]any{

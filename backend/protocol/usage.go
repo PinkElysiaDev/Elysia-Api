@@ -1,5 +1,7 @@
 package protocol
 
+import "math"
+
 // MergeUsage merges counter snapshots, never treating an observed zero as an
 // absent value. Inferred totals cannot replace a provider's observed total.
 // The result owns its counters and does not mutate either input.
@@ -28,14 +30,9 @@ func MergeUsage(current, update *Usage) *Usage {
 		}
 	}
 	if merged.Total == nil || merged.Total.Origin == InferredCount {
-		if merged.Input != nil || merged.Output != nil {
-			merged.Total = &Counter{Origin: InferredCount}
-			if merged.Input != nil {
-				merged.Total.Count += merged.Input.Count
-			}
-			if merged.Output != nil {
-				merged.Total.Count += merged.Output.Count
-			}
+		merged.Total = nil
+		if merged.Input != nil && merged.Output != nil && merged.Input.Count <= math.MaxInt64-merged.Output.Count {
+			merged.Total = &Counter{Count: merged.Input.Count + merged.Output.Count, Origin: InferredCount}
 		}
 	}
 	return merged

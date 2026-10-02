@@ -24,6 +24,9 @@ func gatewayIssue(identity protocol.Identity, code protocol.IssueCode, path, rea
 }
 
 func (s *Server) gatewayProtocol(c *gin.Context) {
+	if !s.requireProtocolRuntime(c) {
+		return
+	}
 	service, err := s.protocolService()
 	if err != nil {
 		respondProtocolError(c, err)

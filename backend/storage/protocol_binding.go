@@ -26,8 +26,10 @@ func (binding ProtocolBinding) key() (string, error) {
 			return "", fmt.Errorf("source binding requires only sourceId")
 		}
 	case "model":
-		if binding.SourceID == "" || binding.ModelID == "" || binding.GroupID != "" {
-			return "", fmt.Errorf("model binding requires sourceId and modelId")
+		// Historical manually configured models have no source. The pair still
+		// identifies them unambiguously and uses the same lookup as routing.
+		if binding.ModelID == "" || binding.GroupID != "" {
+			return "", fmt.Errorf("model binding requires modelId and an optional sourceId")
 		}
 	case "group":
 		if binding.GroupID == "" || binding.SourceID != "" || binding.ModelID != "" {
@@ -42,6 +44,10 @@ func (binding ProtocolBinding) key() (string, error) {
 
 // SaveProtocolBinding persists a contract checked by the shared protocol service.
 func (store *Store) SaveProtocolBinding(ctx context.Context, binding ProtocolBinding) error {
+	return saveProtocolBinding(ctx, store.db, binding)
+}
+
+func saveProtocolBinding(ctx context.Context, executor protocolSQLExecutor, binding ProtocolBinding) error {
 	key, err := binding.key()
 	if err != nil {
 		return err
@@ -50,7 +56,7 @@ func (store *Store) SaveProtocolBinding(ctx context.Context, binding ProtocolBin
 	if err != nil {
 		return err
 	}
-	_, err = store.db.ExecContext(ctx, `INSERT INTO protocol_bindings(binding_key, binding) VALUES(?,?) ON CONFLICT(binding_key) DO UPDATE SET binding=excluded.binding`, key, string(raw))
+	_, err = executor.ExecContext(ctx, `INSERT INTO protocol_bindings(binding_key, binding) VALUES(?,?) ON CONFLICT(binding_key) DO UPDATE SET binding=excluded.binding`, key, string(raw))
 	return err
 }
 

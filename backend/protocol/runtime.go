@@ -151,11 +151,11 @@ func (compiled *Compiled) decodeEvents(ctx context.Context, direction Direction,
 			return nil, err
 		}
 	}
-	if len(items) == 0 {
+	if len(items) == 0 && !options.compoundFrame {
 		return nil, streamIssue(UpstreamContractViolation, "/events", "a wire event must produce at least one semantic event")
 	}
 	events := make([]Event, 0, len(items))
-	if compiled.native.Preserve && len(items) > 1 {
+	if compiled.native.Preserve && len(items) > 1 && !options.compoundFrame {
 		return nil, IssuesError([]ConversionIssue{{Code: UnsupportedNative, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "decode", Path: "/directions/" + string(direction), Reason: "native frame preservation requires a single semantic event per frame", Suggestion: "Use a compound response/item event or disable native replay and verify the explicit event mappings."}})
 	}
 	for _, item := range items {
@@ -169,7 +169,7 @@ func (compiled *Compiled) decodeEvents(ctx context.Context, direction Direction,
 			return nil, err
 		}
 		event.Native = nil
-		if compiled.native.Preserve {
+		if compiled.native.Preserve && (!options.compoundFrame || event.Type == NativeEvent) {
 			event.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: direction, Scope: options.Scope}, Value: frame}
 		}
 		target := compiled.target(direction, options)
@@ -191,8 +191,20 @@ func (compiled *Compiled) stampRequestProvenance(request *Request, scope Scope) 
 
 func (compiled *Compiled) stampNodeProvenance(nodes []Node, direction Direction, scope Scope) {
 	for index := range nodes {
-		compiled.stampNative(nodes[index].Native, direction, scope)
+		compiled.stampNodeOrigin(&nodes[index], direction, scope)
 		compiled.stampNodeProvenance(nodes[index].Children, direction, scope)
+	}
+}
+
+func (compiled *Compiled) stampNodeOrigin(node *Node, direction Direction, scope Scope) {
+	compiled.stampNative(node.Native, direction, scope)
+	if node.Native != nil {
+		origin := node.Native.Source
+		node.Source = &origin
+	} else if node.Source != nil {
+		origin := *node.Source
+		origin.Protocol, origin.Direction, origin.Scope = compiled.identity, direction, scope
+		node.Source = &origin
 	}
 }
 
@@ -203,6 +215,7 @@ func (compiled *Compiled) stampNative(native *Native, direction Direction, scope
 }
 
 func (compiled *Compiled) stampEventProvenance(event *Event, direction Direction, scope Scope) error {
+	compiled.stampNative(event.Unmapped, direction, scope)
 	if event.Request != nil {
 		event.Request.SchemaVersion, event.Request.Source = SemanticSchemaVersion, compiled.identity
 		compiled.stampNative(event.Request.Native, direction, scope)
@@ -218,7 +231,7 @@ func (compiled *Compiled) stampEventProvenance(event *Event, direction Direction
 		if err := stampNodeScope(event.Item, scope); err != nil {
 			return err
 		}
-		compiled.stampNative(event.Item.Native, direction, scope)
+		compiled.stampNodeOrigin(event.Item, direction, scope)
 		compiled.stampNodeProvenance(event.Item.Children, direction, scope)
 	}
 	if event.Response != nil {

@@ -19,6 +19,9 @@ var publicProtocolIDs = map[relay.FormatType]string{
 // serveVersionedPublicIngress is the staged cutover point. C15 installs the
 // verified public revisions; C16 removes callers' legacy branch entirely.
 func (s *Server) serveVersionedPublicIngress(c *gin.Context) bool {
+	if !s.requireProtocolRuntime(c) {
+		return true
+	}
 	if s.store == nil {
 		return false
 	}
@@ -34,6 +37,10 @@ func (s *Server) serveVersionedPublicIngress(c *gin.Context) bool {
 	view := service.View()
 	ingress, exists := view.Pin(publicProtocolIDs[format])
 	if !exists {
+		if s.isProtocolRuntimeRequired.Load() {
+			respondFail(c, http.StatusServiceUnavailable, "inactive_protocol", "public endpoint requires its verified active protocol revision")
+			return true
+		}
 		return false
 	}
 	if ingress.Identity().Family != string(format) {

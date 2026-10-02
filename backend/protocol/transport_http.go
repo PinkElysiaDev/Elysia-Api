@@ -211,9 +211,29 @@ func WriteFrame(writer io.Writer, operation Operation, value Value) error {
 	if operation.Transport != SSE {
 		return fmt.Errorf("operation is not an HTTP event stream")
 	}
-	if operation.Framing != nil && operation.Framing.EventName != "" {
-		if _, err := fmt.Fprintf(writer, "event: %s\n", operation.Framing.EventName); err != nil {
-			return err
+	if operation.Framing != nil {
+		name := operation.Framing.EventName
+		if path := operation.Framing.EventNamePath; path != "" {
+			pointer, err := parsePointer(path)
+			if err != nil {
+				return err
+			}
+			field, err := readValuePointer(value, pointer)
+			if err != nil {
+				return err
+			}
+			name, err = readString(field)
+			if err != nil || name == "" {
+				return fmt.Errorf("SSE event name path must resolve to a nonempty string")
+			}
+		}
+		if strings.ContainsAny(name, "\r\n\x00") {
+			return fmt.Errorf("invalid SSE event name")
+		}
+		if name != "" {
+			if _, err := fmt.Fprintf(writer, "event: %s\n", name); err != nil {
+				return err
+			}
 		}
 	}
 	_, err := fmt.Fprintf(writer, "data: %s\n\n", compact.Bytes())

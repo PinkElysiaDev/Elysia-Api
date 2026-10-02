@@ -14,6 +14,10 @@ var _ protocol.Repository = (*Store)(nil)
 
 const protocolReportHistoryLimit = 20
 
+type protocolSQLExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
 // ListProtocolUpstreamReports returns bounded target evidence, never activation evidence.
 func (s *Store) ListProtocolUpstreamReports(ctx context.Context, id, hash string) ([]protocol.VerificationReport, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT report FROM protocol_verification_reports WHERE protocol_id=? AND revision_hash=? AND kind=? ORDER BY id DESC LIMIT ?`, id, hash, protocol.UpstreamVerification, protocolReportHistoryLimit)
@@ -128,7 +132,11 @@ func (s *Store) ListProtocolDrafts(ctx context.Context) ([]protocol.Draft, error
 
 // SaveProtocolRevision inserts immutable content; an existing hash is never edited.
 func (s *Store) SaveProtocolRevision(ctx context.Context, revision protocol.Revision) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO protocol_revisions(protocol_id, content_hash, definition, created_at)
+	return saveProtocolRevision(ctx, s.db, revision)
+}
+
+func saveProtocolRevision(ctx context.Context, executor protocolSQLExecutor, revision protocol.Revision) error {
+	_, err := executor.ExecContext(ctx, `INSERT INTO protocol_revisions(protocol_id, content_hash, definition, created_at)
 		VALUES(?,?,?,?) ON CONFLICT(protocol_id, content_hash) DO NOTHING`, revision.ProtocolID, revision.Hash, string(revision.Definition.Bytes()), revision.CreatedAt.UTC().Format(time.RFC3339Nano))
 	return err
 }
@@ -172,6 +180,10 @@ func (s *Store) ListProtocolRevisions(ctx context.Context, id string) ([]protoco
 
 // SaveProtocolReport appends audit evidence without rewriting older reports.
 func (s *Store) SaveProtocolReport(ctx context.Context, id, hash string, report protocol.VerificationReport) error {
+	return saveProtocolReport(ctx, s.db, id, hash, report)
+}
+
+func saveProtocolReport(ctx context.Context, executor protocolSQLExecutor, id, hash string, report protocol.VerificationReport) error {
 	if hash != report.DefinitionHash {
 		return errors.New("verification report does not match revision hash")
 	}
@@ -179,7 +191,7 @@ func (s *Store) SaveProtocolReport(ctx context.Context, id, hash string, report 
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO protocol_verification_reports(protocol_id, revision_hash, compiler_version, samples_hash, kind, report, verified_at)
+	_, err = executor.ExecContext(ctx, `INSERT INTO protocol_verification_reports(protocol_id, revision_hash, compiler_version, samples_hash, kind, report, verified_at)
 		VALUES(?,?,?,?,?,?,?)`, id, hash, report.CompilerVersion, report.SamplesHash, report.Kind, string(encoded), report.VerifiedAt.UTC().Format(time.RFC3339Nano))
 	return err
 }

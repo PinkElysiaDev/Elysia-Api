@@ -3,7 +3,7 @@ package protocol
 import "context"
 
 func verifyRoundTrip(ctx context.Context, compiled *Compiled, sample Sample, result verificationResult) error {
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context}
+	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
 	var semantic any
 	var wire Value
 	switch sample.Direction {
@@ -118,15 +118,22 @@ func verifyEventRoundTrip(ctx context.Context, compiled *Compiled, sample Sample
 	if !compiled.Supports(eventDecoder(sample.Direction)) || !compiled.Supports(eventEncoder(sample.Direction)) {
 		return nil
 	}
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context}
+	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
 	var frames []Value
 	if isEventDecoder(sample.Direction) {
-		for _, event := range result.semantic.([]Event) {
-			frame, err := compiled.encodeEvent(ctx, eventEncoder(sample.Direction), event, options)
+		for _, frame := range result.frames {
+			encoded, err := compiled.encodeFrame(ctx, eventEncoder(sample.Direction), frame, options)
 			if err != nil {
 				return err
 			}
-			frames = append(frames, frame)
+			frames = append(frames, encoded...)
+		}
+		if sample.Sequence {
+			tail, err := compiled.finishEvents(ctx, eventEncoder(sample.Direction), options)
+			if err != nil {
+				return err
+			}
+			frames = append(frames, tail...)
 		}
 		if compiled.native.Preserve {
 			var preserved Value
@@ -143,7 +150,7 @@ func verifyEventRoundTrip(ctx context.Context, compiled *Compiled, sample Sample
 				return IssuesError([]ConversionIssue{verificationIssue(compiled, sample.Direction, "/native", VerificationMismatch, "same-wire event roundtrip changed frame values or count", sample.ID)})
 			}
 		}
-	} else if sample.Sequence {
+	} else if sample.Sequence || compiled.mappings[sample.Direction].frameBatch {
 		var err error
 		frames, err = readArray(result.output)
 		if err != nil {
@@ -154,13 +161,16 @@ func verifyEventRoundTrip(ctx context.Context, compiled *Compiled, sample Sample
 	}
 	events := []Event{}
 	for _, frame := range frames {
-		batch, err := compiled.decodeEvents(ctx, eventDecoder(sample.Direction), frame, options)
+		decoded, err := compiled.decodeFrame(ctx, eventDecoder(sample.Direction), frame, options)
 		if err != nil {
 			return err
 		}
-		events = append(events, batch...)
+		events = append(events, decoded.Events...)
 	}
-	return compareRoundTrip(compiled, sample, result.semantic, events)
+	if compiled.native.Preserve && isEventDecoder(sample.Direction) {
+		return compareRoundTrip(compiled, sample, result.semantic, events)
+	}
+	return compareEventSequence(compiled, sample, result.semantic.([]Event), events)
 }
 
 func compareRoundTrip(compiled *Compiled, sample Sample, expected, actual any) error {

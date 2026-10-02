@@ -64,13 +64,9 @@ func (s *Server) checkProtocolBindingTarget(ctx context.Context, binding storage
 			if group.ID != binding.GroupID {
 				continue
 			}
-			if group.ToolsCapable != nil && !*group.ToolsCapable && hasToolCapability(binding.Binding.Capabilities) {
-				return fmt.Errorf("group does not support tools")
-			}
-			if group.VisionCapable != nil && !*group.VisionCapable && hasMediaCapability(binding.Binding.Capabilities) {
-				return fmt.Errorf("group does not support media")
-			}
-			return nil
+			canUseTools := group.ToolsCapable == nil || *group.ToolsCapable
+			canUseMedia := group.VisionCapable == nil || *group.VisionCapable
+			return checkBindingCapabilities(binding.Binding.Capabilities, canUseTools, canUseMedia)
 		}
 		return fmt.Errorf("model group does not exist")
 	}
@@ -86,7 +82,7 @@ func (s *Server) checkProtocolBindingTarget(ctx context.Context, binding storage
 		}
 		return fmt.Errorf("model source does not exist")
 	}
-	models, err := s.store.ListModels(ctx)
+	models, err := s.store.ListModelsFiltered(ctx, storage.ModelListFilter{ShouldIncludeDisabledSources: true})
 	if err != nil {
 		return err
 	}
@@ -94,15 +90,19 @@ func (s *Server) checkProtocolBindingTarget(ctx context.Context, binding storage
 		if model.SourceID != binding.SourceID || model.ID != binding.ModelID {
 			continue
 		}
-		if !model.ToolsCapable && hasToolCapability(binding.Binding.Capabilities) {
-			return fmt.Errorf("model does not support tools")
-		}
-		if !model.VisionCapable && hasMediaCapability(binding.Binding.Capabilities) {
-			return fmt.Errorf("model does not support media")
-		}
-		return nil
+		return checkBindingCapabilities(binding.Binding.Capabilities, model.ToolsCapable, model.VisionCapable)
 	}
 	return fmt.Errorf("model binding target does not exist")
+}
+
+func checkBindingCapabilities(capabilities protocol.CapabilitySet, canUseTools, canUseMedia bool) error {
+	if !canUseTools && hasToolCapability(capabilities) {
+		return fmt.Errorf("binding declares tools disabled by the model or group")
+	}
+	if !canUseMedia && hasMediaCapability(capabilities) {
+		return fmt.Errorf("binding declares media disabled by the model or group")
+	}
+	return nil
 }
 
 func selectProtocolBinding(bindings []storage.ProtocolBinding, model config.ModelRef) (storage.ProtocolBinding, bool) {

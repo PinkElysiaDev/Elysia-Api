@@ -1,15 +1,15 @@
 package protocol
 
-import "strconv"
-
-const itemIdentityKinds = 3
+import "fmt"
 
 type replayItem struct {
-	kind       NodeKind
-	input      InputKind
-	callID     string
-	name       string
-	isFinished bool
+	kind          NodeKind
+	input         InputKind
+	callID        string
+	name          string
+	isFinished    bool
+	summaryParts  int
+	reasoningForm ReasoningForm
 }
 
 // EventReplay is the shared semantic event validator for fixtures and runtime
@@ -18,7 +18,7 @@ type EventReplay struct {
 	state      *StreamState
 	sequence   *SequenceTracker
 	items      map[string]*replayItem
-	aliases    map[string]string
+	identities *ItemIdentities
 	limits     Limits
 	target     Target
 	usage      *Usage
@@ -32,7 +32,7 @@ func NewEventReplay(target Target, limits Limits) (*EventReplay, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &EventReplay{state: state, sequence: NewSequenceTracker(limits), items: map[string]*replayItem{}, aliases: map[string]string{}, limits: limits, target: target}, nil
+	return &EventReplay{state: state, sequence: NewSequenceTracker(limits), items: map[string]*replayItem{}, identities: NewItemIdentities(limits.StateItems), limits: limits, target: target}, nil
 }
 
 // Consume validates one semantic event. False means an identical, explicitly
@@ -87,7 +87,7 @@ func (replay *EventReplay) consumeItem(event Event) error {
 		if len(replay.items) >= replay.limits.StateItems {
 			return streamIssue(LimitExceeded, "/item", "too many stream items")
 		}
-		item = &replayItem{kind: event.Item.Kind}
+		item = &replayItem{kind: event.Item.Kind, reasoningForm: event.Item.ReasoningForm}
 		if event.Item.Input != nil {
 			item.input = event.Item.Input.Kind
 		}
@@ -102,8 +102,29 @@ func (replay *EventReplay) consumeItem(event Event) error {
 	if event.Item != nil && event.Item.Kind != item.kind {
 		return streamIssue(InvalidAssociation, "/item/kind", "item kind changed")
 	}
+	if event.Item != nil && event.Item.ReasoningForm != item.reasoningForm {
+		return streamIssue(InvalidAssociation, "/item/reasoningForm", "reasoning representation changed")
+	}
 	if item.kind == ToolCallNode {
 		return replay.consumeTool(key, item, event)
+	}
+	if event.Item != nil && event.Item.ReasoningForm == "summary" {
+		if len(event.Item.Children) < item.summaryParts {
+			return streamIssue(UpstreamContractViolation, "/item/children", "reasoning summary removed an emitted part")
+		}
+		for index, child := range event.Item.Children {
+			if child.Kind != TextNode {
+				return streamIssue(UnsupportedCapability, "/item/children", "summary parts require text")
+			}
+			text, err := readString(child.Payload)
+			if err != nil {
+				return err
+			}
+			if _, err := replay.state.TrackText(fmt.Sprintf("%s/summary/%d", key, index), text, true); err != nil {
+				return err
+			}
+		}
+		item.summaryParts = len(event.Item.Children)
 	}
 	value := event.Delta
 	isSnapshot := event.Type == ItemSnapshot || event.Type == ItemFinished || event.Type == ItemStarted
@@ -196,50 +217,7 @@ func (replay *EventReplay) consumeTool(key string, item *replayItem, event Event
 }
 
 func (replay *EventReplay) itemKey(event Event) (string, error) {
-	var identities []string
-	for _, entry := range []struct {
-		prefix string
-		value  Value
-	}{{"item:", event.ItemID}, {"call:", event.CallID}} {
-		if !entry.value.IsZero() {
-			id, err := readString(entry.value)
-			if err != nil || id == "" {
-				return "", streamIssue(InvalidAssociation, "/itemId", "item/call identity must be a nonempty string")
-			}
-			identities = append(identities, entry.prefix+id)
-		}
-	}
-	if event.Index != nil {
-		identities = append(identities, "index:"+strconv.Itoa(*event.Index))
-	}
-	if len(identities) == 0 {
-		return "", streamIssue(InvalidAssociation, "/itemId", "item has no identity")
-	}
-	key := ""
-	for _, id := range identities {
-		if previous := replay.aliases[id]; previous != "" {
-			if key != "" && key != previous {
-				return "", streamIssue(InvalidAssociation, "/itemId", "event links two distinct items")
-			}
-			key = previous
-		}
-	}
-	if key == "" {
-		key = identities[0]
-	}
-	newAliases := 0
-	for _, id := range identities {
-		if replay.aliases[id] == "" {
-			newAliases++
-		}
-	}
-	if len(replay.aliases)+newAliases > replay.limits.StateItems*itemIdentityKinds {
-		return "", streamIssue(LimitExceeded, "/itemId", "too many item aliases")
-	}
-	for _, id := range identities {
-		replay.aliases[id] = key
-	}
-	return key, nil
+	return replay.identities.Resolve(event)
 }
 
 func (replay *EventReplay) completeTools() error {

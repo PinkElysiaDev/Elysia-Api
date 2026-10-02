@@ -9,6 +9,22 @@ import (
 
 type fragmentedReader struct{ content string }
 
+func TestHTTPEventNamesUseDeclaredPath(t *testing.T) {
+	operation := Operation{Transport: SSE, Framing: &Framing{EventNamePath: "/type"}}
+	var output bytes.Buffer
+	value, _ := ParseValue([]byte(`{"type":"content_block_delta","delta":{"text":"hi"}}`))
+	if err := WriteFrame(&output, operation, value); err != nil || !strings.HasPrefix(output.String(), "event: content_block_delta\n") {
+		t.Fatalf("dynamic event header: %s, %v", output.String(), err)
+	}
+	for _, body := range []string{`{}`, `{"type":null}`, `{"type":12}`, `{"type":"x\ndata: forged"}`} {
+		output.Reset()
+		value, _ := ParseValue([]byte(body))
+		if err := WriteFrame(&output, operation, value); err == nil || output.Len() != 0 {
+			t.Fatalf("invalid name partially emitted: %s", body)
+		}
+	}
+}
+
 func (reader *fragmentedReader) Read(buffer []byte) (int, error) {
 	if reader.content == "" {
 		return 0, io.EOF

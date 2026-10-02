@@ -266,7 +266,7 @@ func (session *SessionReplay) checkBudget() error {
 	items := len(session.responses) + len(session.tools) + len(session.clientSequence.records) + len(session.serverSequence.records) + session.pendingResponses
 	buffered := 0
 	for _, response := range session.responses {
-		items += len(response.items) + len(response.aliases) + len(response.sequence.records)
+		items += len(response.items) + len(response.identities.aliases) + len(response.sequence.records)
 		buffered += response.state.buffered
 	}
 	if items > session.limits.StateItems || buffered > session.limits.BufferBytes {

@@ -56,6 +56,9 @@ type Event struct {
 	Media         *Media    `json:"media,omitempty"`
 	Error         Value     `json:"error,omitzero"`
 	Native        *Native   `json:"native,omitempty"`
+	// Unmapped is semantic evidence of wire fields without a declared mapping.
+	// It may survive same-wire frame replay, but cannot silently cross families.
+	Unmapped *Native `json:"unmapped,omitempty"`
 }
 
 // TaskStatus includes uncertain submission separately from provider failures.
