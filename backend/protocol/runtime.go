@@ -128,9 +128,18 @@ func (compiled *Compiled) EncodeResponse(ctx context.Context, response *Response
 // DecodeEvents maps a wire frame to ordered semantic events. Lifecycle and
 // association validation belongs to one per-stream state, outside this immutable
 // compiled object.
-func (compiled *Compiled) DecodeEvents(ctx context.Context, frame Value, options EvaluationContext) (result []Event, err error) {
-	defer func() { err = compiled.runtimeError(DecodeEvent, err) }()
-	output, issues := compiled.Execute(ctx, DecodeEvent, frame, options)
+func (compiled *Compiled) DecodeEvents(ctx context.Context, frame Value, options EvaluationContext) ([]Event, error) {
+	return compiled.decodeEvents(ctx, DecodeEvent, frame, options)
+}
+
+// DecodeClientEvents decodes the independent client-to-upstream session lane.
+func (compiled *Compiled) DecodeClientEvents(ctx context.Context, frame Value, options EvaluationContext) ([]Event, error) {
+	return compiled.decodeEvents(ctx, DecodeClientEvent, frame, options)
+}
+
+func (compiled *Compiled) decodeEvents(ctx context.Context, direction Direction, frame Value, options EvaluationContext) (result []Event, err error) {
+	defer func() { err = compiled.runtimeError(direction, err) }()
+	output, issues := compiled.Execute(ctx, direction, frame, options)
 	if err := IssuesError(issues); err != nil {
 		return nil, err
 	}
@@ -142,9 +151,12 @@ func (compiled *Compiled) DecodeEvents(ctx context.Context, frame Value, options
 			return nil, err
 		}
 	}
+	if len(items) == 0 {
+		return nil, streamIssue(UpstreamContractViolation, "/events", "a wire event must produce at least one semantic event")
+	}
 	events := make([]Event, 0, len(items))
 	if compiled.native.Preserve && len(items) > 1 {
-		return nil, IssuesError([]ConversionIssue{{Code: UnsupportedNative, Severity: SeverityError, Protocol: compiled.identity, Direction: DecodeEvent, Stage: "decode", Path: "/directions/decode_event", Reason: "native frame preservation requires a single semantic event per frame", Suggestion: "Use a compound response/item event or disable native replay and verify the explicit event mappings."}})
+		return nil, IssuesError([]ConversionIssue{{Code: UnsupportedNative, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "decode", Path: "/directions/" + string(direction), Reason: "native frame preservation requires a single semantic event per frame", Suggestion: "Use a compound response/item event or disable native replay and verify the explicit event mappings."}})
 	}
 	for _, item := range items {
 		var event Event
@@ -153,15 +165,15 @@ func (compiled *Compiled) DecodeEvents(ctx context.Context, frame Value, options
 		}
 		event.SchemaVersion = SemanticSchemaVersion
 		event.Source = compiled.identity
-		if err := compiled.stampEventProvenance(&event, options.Scope); err != nil {
+		if err := compiled.stampEventProvenance(&event, direction, options.Scope); err != nil {
 			return nil, err
 		}
 		event.Native = nil
 		if compiled.native.Preserve {
-			event.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: DecodeEvent, Scope: options.Scope}, Value: frame}
+			event.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: direction, Scope: options.Scope}, Value: frame}
 		}
-		target := compiled.target(DecodeEvent, options)
-		target.Direction = EncodeEvent
+		target := compiled.target(direction, options)
+		target.Direction = eventEncoder(direction)
 		if err := IssuesError(CheckEvent(event, target, compiled.limits)); err != nil {
 			return nil, err
 		}
@@ -190,21 +202,32 @@ func (compiled *Compiled) stampNative(native *Native, direction Direction, scope
 	}
 }
 
-func (compiled *Compiled) stampEventProvenance(event *Event, scope Scope) error {
+func (compiled *Compiled) stampEventProvenance(event *Event, direction Direction, scope Scope) error {
+	if event.Request != nil {
+		event.Request.SchemaVersion, event.Request.Source = SemanticSchemaVersion, compiled.identity
+		compiled.stampNative(event.Request.Native, direction, scope)
+		if err := stampResourceScopes(event.Request, scope); err != nil {
+			return err
+		}
+		compiled.stampNodeProvenance(event.Request.Content, direction, scope)
+		for index := range event.Request.Tools {
+			compiled.stampNative(event.Request.Tools[index].Native, direction, scope)
+		}
+	}
 	if event.Item != nil {
 		if err := stampNodeScope(event.Item, scope); err != nil {
 			return err
 		}
-		compiled.stampNative(event.Item.Native, DecodeEvent, scope)
-		compiled.stampNodeProvenance(event.Item.Children, DecodeEvent, scope)
+		compiled.stampNative(event.Item.Native, direction, scope)
+		compiled.stampNodeProvenance(event.Item.Children, direction, scope)
 	}
 	if event.Response != nil {
 		event.Response.SchemaVersion, event.Response.Source = SemanticSchemaVersion, compiled.identity
-		compiled.stampNative(event.Response.Native, DecodeEvent, scope)
+		compiled.stampNative(event.Response.Native, direction, scope)
 		if err := stampNodeScopes(event.Response.Content, scope); err != nil {
 			return err
 		}
-		compiled.stampNodeProvenance(event.Response.Content, DecodeEvent, scope)
+		compiled.stampNodeProvenance(event.Response.Content, direction, scope)
 	}
 	if event.Media != nil {
 		return stampResourceScope(&event.Media.Reference, scope)
@@ -213,20 +236,29 @@ func (compiled *Compiled) stampEventProvenance(event *Event, scope Scope) error 
 }
 
 // EncodeEvent emits a declared event body; transport framing remains separate.
-func (compiled *Compiled) EncodeEvent(ctx context.Context, event Event, options EvaluationContext) (result Value, err error) {
-	defer func() { err = compiled.runtimeError(EncodeEvent, err) }()
-	if err := IssuesError(CheckEvent(event, compiled.target(EncodeEvent, options), compiled.limits)); err != nil {
+func (compiled *Compiled) EncodeEvent(ctx context.Context, event Event, options EvaluationContext) (Value, error) {
+	return compiled.encodeEvent(ctx, EncodeEvent, event, options)
+}
+
+// EncodeUpstreamEvent encodes a validated client session event for the upstream.
+func (compiled *Compiled) EncodeUpstreamEvent(ctx context.Context, event Event, options EvaluationContext) (Value, error) {
+	return compiled.encodeEvent(ctx, EncodeUpstreamEvent, event, options)
+}
+
+func (compiled *Compiled) encodeEvent(ctx context.Context, direction Direction, event Event, options EvaluationContext) (result Value, err error) {
+	defer func() { err = compiled.runtimeError(direction, err) }()
+	if err := IssuesError(CheckEvent(event, compiled.target(direction, options), compiled.limits)); err != nil {
 		return Value{}, err
 	}
 	input, err := EncodeValue(event)
 	if err != nil {
 		return Value{}, err
 	}
-	output, issues := compiled.Execute(ctx, EncodeEvent, input, options)
+	output, issues := compiled.Execute(ctx, direction, input, options)
 	if err := IssuesError(issues); err != nil {
 		return Value{}, err
 	}
-	return compiled.preserveMappedNative(ctx, EncodeEvent, event.Native, output, options)
+	return compiled.preserveMappedNative(ctx, direction, event.Native, output, options)
 }
 
 func (compiled *Compiled) runtimeError(direction Direction, err error) error {
@@ -331,8 +363,8 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 			return Value{}, err
 		}
 		baseline = response
-	case EncodeEvent:
-		events, err := compiled.DecodeEvents(ctx, original, options)
+	case EncodeEvent, EncodeUpstreamEvent:
+		events, err := compiled.decodeEvents(ctx, eventDecoder(direction), original, options)
 		if err != nil {
 			return Value{}, err
 		}

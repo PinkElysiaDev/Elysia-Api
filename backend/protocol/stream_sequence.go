@@ -48,3 +48,26 @@ func (tracker *SequenceTracker) Accept(sequence int64, payload []byte) (bool, er
 	}
 	return true, nil
 }
+
+func acceptEventSequence(tracker *SequenceTracker, event Event) (bool, error) {
+	if event.Sequence.IsZero() {
+		return true, nil
+	}
+	var sequence int64
+	if err := event.Sequence.Decode(&sequence); err != nil || event.Sequence.IsNull() {
+		return false, streamIssue(InvalidInput, "/sequence", "event sequence must be an integer")
+	}
+	value, err := EncodeValue(event)
+	if err != nil {
+		return false, err
+	}
+	var canonical any
+	if err := value.Decode(&canonical); err != nil {
+		return false, err
+	}
+	value, err = EncodeValue(canonical)
+	if err != nil {
+		return false, err
+	}
+	return tracker.Accept(sequence, value.Bytes())
+}

@@ -71,6 +71,7 @@ type usageRecord struct {
 	IngressRevision     string                     `json:"ingressRevision,omitempty"`
 	UpstreamRevision    string                     `json:"upstreamRevision,omitempty"`
 	ProtocolUsage       *protocol.Usage            `json:"protocolUsage,omitempty"`
+	ProtocolResponseID  string                     `json:"protocolResponseId,omitempty"`
 	ConversionIssues    []protocol.ConversionIssue `json:"conversionIssues,omitempty"`
 	observedUsage       *relay.MaheshvaraUsage
 	RequestID           string    `json:"requestId"`

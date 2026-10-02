@@ -5,19 +5,26 @@ package protocol
 type EventType string
 
 const (
-	SessionStarted     EventType = "session.started"
-	SessionConfigured  EventType = "session.configured"
-	ResponseStarted    EventType = "response.started"
-	ItemStarted        EventType = "item.started"
-	ItemDelta          EventType = "item.delta"
-	ItemSnapshot       EventType = "item.snapshot"
-	ItemFinished       EventType = "item.finished"
-	UsageUpdated       EventType = "usage.updated"
-	ResponseFinished   EventType = "response.finished"
-	OperationFailed    EventType = "operation.failed"
-	OperationCancelled EventType = "operation.cancelled"
-	MediaReceived      EventType = "media.received"
-	NativeEvent        EventType = "native"
+	SessionStarted      EventType = "session.started"
+	SessionConfigured   EventType = "session.configured"
+	ResponseStarted     EventType = "response.started"
+	ItemStarted         EventType = "item.started"
+	ItemDelta           EventType = "item.delta"
+	ItemSnapshot        EventType = "item.snapshot"
+	ItemFinished        EventType = "item.finished"
+	UsageUpdated        EventType = "usage.updated"
+	ResponseFinished    EventType = "response.finished"
+	OperationFailed     EventType = "operation.failed"
+	OperationCancelled  EventType = "operation.cancelled"
+	MediaReceived       EventType = "media.received"
+	NativeEvent         EventType = "native"
+	SessionConfigure    EventType = "session.configure"
+	InputAppend         EventType = "input.append"
+	InputCommit         EventType = "input.commit"
+	ResponseCreate      EventType = "response.create"
+	ResponseCancel      EventType = "response.cancel"
+	ToolResultSubmitted EventType = "tool.result"
+	SessionClose        EventType = "session.close"
 )
 
 // Media describes an already encoded payload. Reference identifies storage or
@@ -44,6 +51,7 @@ type Event struct {
 	Delta         Value     `json:"delta,omitzero"`
 	Item          *Node     `json:"item,omitempty"`
 	Response      *Response `json:"response,omitempty"`
+	Request       *Request  `json:"request,omitempty"`
 	Usage         *Usage    `json:"usage,omitempty"`
 	Media         *Media    `json:"media,omitempty"`
 	Error         Value     `json:"error,omitzero"`

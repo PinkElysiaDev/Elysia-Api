@@ -40,7 +40,7 @@ func TestRuntimeStampsNestedEventScopesAndIdentity(t *testing.T) {
 	}
 	resource := func() Resource { return Resource{Kind: "file", ID: StringValue("f")} }
 	event := Event{Item: &Node{Kind: DocumentNode, Resources: []Resource{resource()}, Native: native(), Children: []Node{{Kind: TextNode, Native: native()}}}, Response: &Response{Native: native(), Content: []Node{{Kind: DocumentNode, Resources: []Resource{resource()}, Native: native()}}}, Media: &Media{Reference: resource()}}
-	if err := compiled.stampEventProvenance(&event, scope); err != nil {
+	if err := compiled.stampEventProvenance(&event, DecodeEvent, scope); err != nil {
 		t.Fatal(err)
 	}
 	for _, got := range []Scope{event.Item.Resources[0].Scope, event.Response.Content[0].Resources[0].Scope, event.Media.Reference.Scope} {

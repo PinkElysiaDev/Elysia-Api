@@ -59,7 +59,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 		}
 		evidence := observeCapabilities(result.semantic)
 		if compiled.mappings[sample.Direction].capabilities[NativeExtensionsCapability] && compiled.native.Preserve &&
-			sample.Direction != DecodeEvent && sample.Direction != EncodeEvent {
+			!isEventDirection(sample.Direction) {
 			if err := verifyNativeExtension(ctx, compiled, sample); err != nil {
 				report.Issues = append(report.Issues, sampleIssues(compiled, sample, path, err)...)
 			} else {
@@ -90,6 +90,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 		check.Passed = true
 		report.Checks = append(report.Checks, check)
 	}
+	verifySessionSamples(ctx, compiled, &report, coverage, hasSample, hasSequence, hasLifecycle)
 	for _, direction := range DirectionCatalog() {
 		if !compiled.Supports(direction) {
 			continue
@@ -98,7 +99,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 		if !hasSample[direction] {
 			report.Issues = append(report.Issues, verificationIssue(compiled, direction, path, IncompleteCoverage, "implemented direction requires a passing positive fixture", ""))
 		}
-		if (direction == DecodeEvent || direction == EncodeEvent) && !hasSequence[direction] {
+		if isEventDirection(direction) && !hasSequence[direction] {
 			report.Issues = append(report.Issues, verificationIssue(compiled, direction, path, IncompleteCoverage, "event direction requires a complete sequence fixture with terminal validation", ""))
 		}
 		for _, capability := range CapabilityCatalog() {
@@ -110,7 +111,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 				issue.Capability = capability
 				report.Issues = append(report.Issues, issue)
 			}
-			if (direction == DecodeRequest || direction == EncodeRequest) && (capability == FunctionToolsCapability || capability == FreeTextToolsCapability) && !hasLifecycle[direction][capability] {
+			if (direction == DecodeRequest || direction == EncodeRequest || (isEventDirection(direction) && compiled.capabilities[SessionsCapability])) && (capability == FunctionToolsCapability || capability == FreeTextToolsCapability) && !hasLifecycle[direction][capability] {
 				issue := verificationIssue(compiled, direction, path+"/capabilities", IncompleteCoverage, "tool support requires a definition, associated call and result in a complete history fixture", "")
 				issue.Capability = capability
 				report.Issues = append(report.Issues, issue)
@@ -168,7 +169,7 @@ func executeVerificationSample(ctx context.Context, compiled *Compiled, sample S
 		if err == nil {
 			result.output, err = ParseValue(body)
 		}
-	case DecodeEvent, EncodeEvent:
+	case DecodeEvent, EncodeEvent, DecodeClientEvent, EncodeUpstreamEvent:
 		return executeEventFixture(ctx, compiled, sample)
 	default:
 		return result, fmt.Errorf("unsupported sample direction")
@@ -196,8 +197,8 @@ func executeEventFixture(ctx context.Context, compiled *Compiled, sample Sample)
 	var outputs []Value
 	buffered := 0
 	for _, input := range inputs {
-		if sample.Direction == DecodeEvent {
-			batch, err := compiled.DecodeEvents(ctx, input, options)
+		if isEventDecoder(sample.Direction) {
+			batch, err := compiled.decodeEvents(ctx, sample.Direction, input, options)
 			if err != nil {
 				return verificationResult{}, err
 			}
@@ -212,7 +213,7 @@ func executeEventFixture(ctx context.Context, compiled *Compiled, sample Sample)
 			if err := decodeContract(input.Bytes(), &event); err != nil {
 				return verificationResult{}, err
 			}
-			wire, err := compiled.EncodeEvent(ctx, event, options)
+			wire, err := compiled.encodeEvent(ctx, eventEncoder(sample.Direction), event, options)
 			if err != nil {
 				return verificationResult{}, err
 			}
@@ -225,6 +226,11 @@ func executeEventFixture(ctx context.Context, compiled *Compiled, sample Sample)
 		}
 	}
 	if sample.Sequence {
+		for _, event := range events {
+			if isSessionControl(event.Type) {
+				return verificationResult{}, streamIssue(IncompleteCoverage, "/samples", "session events require an interleaved sessionSamples trace")
+			}
+		}
 		target := compiled.target(sample.Direction, options)
 		target.Direction = EncodeEvent
 		replay, err := NewEventReplay(target, compiled.limits)
@@ -242,7 +248,7 @@ func executeEventFixture(ctx context.Context, compiled *Compiled, sample Sample)
 	}
 	result := verificationResult{semantic: events}
 	var err error
-	if sample.Direction == DecodeEvent {
+	if isEventDecoder(sample.Direction) {
 		result.output, err = comparableSemantic(events)
 	} else if sample.Sequence {
 		result.output, err = EncodeValue(outputs)
@@ -266,7 +272,7 @@ func comparableExpected(sample Sample) (Value, error) {
 			return Value{}, err
 		}
 		return comparableSemantic(&response)
-	case DecodeEvent:
+	case DecodeEvent, DecodeClientEvent:
 		var events []Event
 		if err := decodeContract(sample.Expected.Bytes(), &events); err != nil {
 			return Value{}, err
@@ -281,11 +287,11 @@ func capabilityApplies(capability Capability, direction Direction) bool {
 	isRequest := direction == DecodeRequest || direction == EncodeRequest
 	switch capability {
 	case UsageCapability:
-		return !isRequest
+		return !isRequest && direction != DecodeClientEvent && direction != EncodeUpstreamEvent
 	case CacheKeysCapability, CacheRetentionCapability, CacheResourcesCapability, CacheBreakpointsCapability:
 		return isRequest
 	case SessionsCapability, RealtimeMediaCapability:
-		return direction == DecodeEvent || direction == EncodeEvent
+		return isEventDirection(direction)
 	default:
 		return true
 	}

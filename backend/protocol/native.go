@@ -65,7 +65,8 @@ func CanPreserveNative(source Provenance, target Target) bool {
 	}
 	return (source.Direction == DecodeRequest && target.Direction == EncodeRequest) ||
 		(source.Direction == DecodeResponse && target.Direction == EncodeResponse) ||
-		(source.Direction == DecodeEvent && target.Direction == EncodeEvent)
+		(source.Direction == DecodeEvent && target.Direction == EncodeEvent) ||
+		(source.Direction == DecodeClientEvent && target.Direction == EncodeUpstreamEvent)
 }
 
 // CheckScope requires every restriction present in the source to match.

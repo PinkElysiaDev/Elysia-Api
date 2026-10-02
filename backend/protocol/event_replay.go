@@ -23,6 +23,7 @@ type EventReplay struct {
 	target     Target
 	usage      *Usage
 	isTerminal bool
+	terminal   EventType
 }
 
 // NewEventReplay creates isolated state for one response event sequence.
@@ -40,27 +41,8 @@ func (replay *EventReplay) Consume(event Event) (bool, error) {
 	if err := IssuesError(CheckEvent(event, replay.target, replay.limits)); err != nil {
 		return false, err
 	}
-	if !event.Sequence.IsZero() {
-		var sequence int64
-		if err := event.Sequence.Decode(&sequence); err != nil {
-			return false, streamIssue(InvalidInput, "/sequence", "event sequence must be an integer")
-		}
-		value, err := EncodeValue(event)
-		if err != nil {
-			return false, err
-		}
-		var canonical any
-		if err := value.Decode(&canonical); err != nil {
-			return false, err
-		}
-		value, err = EncodeValue(canonical)
-		if err != nil {
-			return false, err
-		}
-		accepted, err := replay.sequence.Accept(sequence, value.Bytes())
-		if err != nil || !accepted {
-			return accepted, err
-		}
+	if accepted, err := acceptEventSequence(replay.sequence, event); err != nil || !accepted {
+		return accepted, err
 	}
 	if replay.isTerminal && event.Type != UsageUpdated {
 		return false, streamIssue(UpstreamContractViolation, "/type", "event arrived after terminal; only usage tails are permitted")
@@ -80,9 +62,11 @@ func (replay *EventReplay) Consume(event Event) (bool, error) {
 			return false, err
 		}
 		replay.isTerminal = true
+		replay.terminal = ResponseFinished
 	case OperationFailed, OperationCancelled:
 		// Failed/cancelled operations may legitimately leave partial arguments.
 		replay.isTerminal = true
+		replay.terminal = event.Type
 	}
 	return true, nil
 }

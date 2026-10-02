@@ -78,7 +78,13 @@ func setupGatewayModel(t *testing.T, server *Server, upstream *protocol.Compiled
 	if err := server.store.ImportLegacyConfig(t.Context(), []storage.APIToken{{Name: "gateway-test", Token: "gateway-test-token", Enabled: true, AllowedGroups: []string{"group"}}}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	binding := storage.ProtocolBinding{Kind: "source", SourceID: source.ID, Binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []protocol.Transport{upstream.Definition().Operations["generate"].Transport}}}
+	transports := []protocol.Transport{}
+	for _, operation := range upstream.Operations() {
+		if operation.Kind == "generate" || operation.Kind == "session" {
+			transports = append(transports, operation.Transport)
+		}
+	}
+	binding := storage.ProtocolBinding{Kind: "source", SourceID: source.ID, Binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: transports}}
 	service, err := server.protocolService()
 	if err != nil {
 		t.Fatal(err)

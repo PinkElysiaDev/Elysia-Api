@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
@@ -33,7 +34,7 @@ type gatewayPlan struct {
 }
 
 func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, ingress *protocol.Compiled, path string, body []byte, record *usageRecord) (*gatewayPlan, error) {
-	if !ingress.Supports(protocol.DecodeRequest) || !ingress.Supports(protocol.EncodeResponse) {
+	if !ingress.Supports(protocol.DecodeRequest) {
 		return nil, gatewayIssue(ingress.Identity(), protocol.UnsupportedCapability, "/directions", "protocol is not a client ingress")
 	}
 	bindings, err := s.store.ListProtocolBindings(c.Request.Context())
@@ -57,12 +58,14 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		return nil, err
 	}
 	plan.request = request
-	if request.Parameters == nil {
-		request.Parameters = protocol.Object{}
-	}
-	request.Parameters["stream"], err = protocol.EncodeValue(plan.operation.Transport != protocol.HTTPJSON)
-	if err != nil {
-		return nil, err
+	if plan.operation.Transport != protocol.WebSocket {
+		if request.Parameters == nil {
+			request.Parameters = protocol.Object{}
+		}
+		request.Parameters["stream"], err = protocol.EncodeValue(plan.operation.Transport != protocol.HTTPJSON)
+		if err != nil {
+			return nil, err
+		}
 	}
 	var issues []protocol.ConversionIssue
 	var eligible []gatewayCandidate
@@ -70,6 +73,15 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		if err := checkGatewayCombination(ingress, candidate); err != nil {
 			issues = append(issues, err.Issues...)
 			continue
+		}
+		if plan.operation.Transport == protocol.WebSocket {
+			if err := protocol.CheckSessionCompatibility(plan.operation, candidate.operation); err != nil {
+				var conversion *protocol.ConversionError
+				if errors.As(err, &conversion) {
+					issues = append(issues, conversion.Issues...)
+				}
+				continue
+			}
 		}
 		constrained := constrainGatewayCapabilities(candidate.binding, candidate.model, plan.group, bindings)
 		candidateIssues := protocol.CheckRoute(request, candidate.compiled, constrained, candidate.scope, candidate.operation.Transport)
@@ -99,9 +111,13 @@ func makeGatewayCandidate(view protocol.RegistryView, bindings []storage.Protoco
 		return candidate, &protocol.ConversionError{Issues: issues}
 	}
 	var operation *protocol.Operation
+	kind := "generate"
+	if transport == protocol.WebSocket {
+		kind = "session"
+	}
 	for name, entry := range compiled.Operations() {
 		isCompatibleStream := (transport == protocol.SSE || transport == protocol.NDJSON) && (entry.Transport == protocol.SSE || entry.Transport == protocol.NDJSON)
-		if entry.Kind != "generate" || (entry.Transport != transport && !isCompatibleStream) || !slices.Contains(binding.Transports, entry.Transport) || (binding.Operation != "" && name != binding.Operation) {
+		if entry.Kind != kind || (entry.Transport != transport && !isCompatibleStream) || !slices.Contains(binding.Transports, entry.Transport) || (binding.Operation != "" && name != binding.Operation) {
 			continue
 		}
 		if operation != nil {
@@ -122,7 +138,7 @@ func verifyGatewayBinding(ctx context.Context, view protocol.RegistryView, upstr
 	reports := []protocol.CombinationReport{}
 	for _, id := range view.IDs() {
 		ingress, _ := view.Pin(id)
-		if ingress.Supports(protocol.DecodeRequest) && ingress.Supports(protocol.EncodeResponse) {
+		if ingress.Supports(protocol.DecodeRequest) && (ingress.Supports(protocol.EncodeResponse) || ingress.Supports(protocol.EncodeEvent)) {
 			reports = append(reports, protocol.VerifyBindingCombination(ctx, ingress, upstream, capabilities))
 		}
 	}
@@ -195,7 +211,7 @@ func selectGatewayIngressOperation(compiled *protocol.Compiled, method, path str
 	var choices []protocol.Operation
 	for _, operation := range compiled.Operations() {
 		_, isMatch := protocol.MatchOperationPath(operation.Path, path)
-		if operation.Method == method && isMatch && operation.Kind == "generate" {
+		if operation.Method == method && isMatch && (operation.Kind == "generate" || operation.Kind == "session") {
 			choices = append(choices, operation)
 		}
 	}
@@ -210,6 +226,9 @@ func selectGatewayIngressOperation(compiled *protocol.Compiled, method, path str
 	}
 	if len(choices) != 1 {
 		return protocol.Operation{}, gatewayIssue(compiled.Identity(), protocol.InvalidDefinition, "/operations", "client path/method does not select one generation operation")
+	}
+	if choices[0].Transport == protocol.HTTPJSON && !compiled.Supports(protocol.EncodeResponse) {
+		return protocol.Operation{}, gatewayIssue(compiled.Identity(), protocol.UnsupportedCapability, "/directions/encode_response", "HTTP ingress requires a response encoder")
 	}
 	if choices[0].Transport != protocol.HTTPJSON && !compiled.Supports(protocol.EncodeEvent) {
 		return protocol.Operation{}, gatewayIssue(compiled.Identity(), protocol.UnsupportedCapability, "/directions/encode_event", "streaming ingress requires an event encoder")

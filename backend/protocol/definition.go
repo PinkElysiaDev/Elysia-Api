@@ -5,7 +5,7 @@ package protocol
 const DefinitionSchemaVersion = 2
 
 // CompilerVersion binds verification evidence to execution semantics.
-const CompilerVersion = "2.0.0-dev.3"
+const CompilerVersion = "2.0.0-dev.4"
 
 // Transport identifies framing and connection lifecycle, never content shape.
 type Transport string
@@ -20,21 +20,22 @@ const (
 // Definition is a strictly decoded, versioned gateway protocol. Extensions are
 // inert metadata. There are no script, executable or implicit passthrough keys.
 type Definition struct {
-	SchemaVersion int                   `json:"schemaVersion"`
-	ID            string                `json:"id"`
-	Name          string                `json:"name"`
-	Version       string                `json:"version"`
-	Family        string                `json:"family"`
-	WireVersion   string                `json:"wireVersion"`
-	Requires      []string              `json:"requires,omitempty"`
-	Capabilities  CapabilitySet         `json:"capabilities"`
-	Directions    map[Direction]Mapping `json:"directions"`
-	Operations    map[string]Operation  `json:"operations"`
-	Expressions   map[string]Expression `json:"expressions,omitempty"`
-	Native        NativePolicy          `json:"native"`
-	Limits        *Limits               `json:"limits,omitempty"`
-	Samples       []Sample              `json:"samples"`
-	Extensions    Object                `json:"extensions,omitempty"`
+	SchemaVersion  int                   `json:"schemaVersion"`
+	ID             string                `json:"id"`
+	Name           string                `json:"name"`
+	Version        string                `json:"version"`
+	Family         string                `json:"family"`
+	WireVersion    string                `json:"wireVersion"`
+	Requires       []string              `json:"requires,omitempty"`
+	Capabilities   CapabilitySet         `json:"capabilities"`
+	Directions     map[Direction]Mapping `json:"directions"`
+	Operations     map[string]Operation  `json:"operations"`
+	Expressions    map[string]Expression `json:"expressions,omitempty"`
+	Native         NativePolicy          `json:"native"`
+	Limits         *Limits               `json:"limits,omitempty"`
+	Samples        []Sample              `json:"samples"`
+	SessionSamples []SessionSample       `json:"sessionSamples,omitempty"`
+	Extensions     Object                `json:"extensions,omitempty"`
 }
 
 // Mapping implements one direction. Module selects a registered built-in
@@ -81,6 +82,7 @@ type Operation struct {
 	Auth      Credential        `json:"auth"`
 	Framing   *Framing          `json:"framing,omitempty"`
 	Task      *TaskFlow         `json:"task,omitempty"`
+	Session   *SessionConfig    `json:"session,omitempty"`
 }
 
 // Credential selects supported credential injection; it contains no secret.
@@ -122,6 +124,25 @@ type Sample struct {
 	Context       Object       `json:"context,omitempty"`
 	Scope         Scope        `json:"scope,omitzero"`
 	Sequence      bool         `json:"sequence,omitempty"`
+}
+
+// SessionSample replays both independent directions in one ordered trace.
+// Direction fixtures alone cannot prove cross-lane tool-result association.
+type SessionSample struct {
+	ID            string        `json:"id"`
+	Operation     string        `json:"operation"`
+	Model         Value         `json:"model,omitzero"`
+	Steps         []SessionStep `json:"steps"`
+	ExpectedIssue IssueCode     `json:"expectedIssue,omitempty"`
+	Context       Object        `json:"context,omitempty"`
+	Scope         Scope         `json:"scope,omitzero"`
+}
+
+// SessionStep asserts the exact result of one declared event direction.
+type SessionStep struct {
+	Direction Direction `json:"direction"`
+	Input     Value     `json:"input"`
+	Expected  Value     `json:"expected"`
 }
 
 // Identity returns the wire identity associated with this definition revision.

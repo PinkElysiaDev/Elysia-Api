@@ -155,7 +155,10 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 		return fail("/", err)
 	}
 	compiled.hash = hashValue(canonical)
-	samples, err := EncodeValue(definition.Samples)
+	samples, err := EncodeValue(struct {
+		Samples  []Sample        `json:"samples"`
+		Sessions []SessionSample `json:"sessions"`
+	}{definition.Samples, definition.SessionSamples})
 	if err != nil {
 		return fail("/samples", err)
 	}
@@ -216,7 +219,7 @@ func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction
 		entry.transform = expression
 	}
 	if len(mapping.Rules) > 0 {
-		if direction != DecodeEvent && direction != EncodeEvent {
+		if !isEventDirection(direction) {
 			return entry, fmt.Errorf("event rules require an event direction")
 		}
 		if mapping.UnknownEvent != "reject" {
@@ -268,7 +271,7 @@ func (compiler *Compiler) checkDefinition(definition Definition) error {
 		}
 	}
 	if definition.Native.Preserve {
-		for _, pair := range [][2]Direction{{DecodeRequest, EncodeRequest}, {DecodeResponse, EncodeResponse}, {DecodeEvent, EncodeEvent}} {
+		for _, pair := range [][2]Direction{{DecodeRequest, EncodeRequest}, {DecodeResponse, EncodeResponse}, {DecodeEvent, EncodeEvent}, {DecodeClientEvent, EncodeUpstreamEvent}} {
 			_, hasDecoder := definition.Directions[pair[0]]
 			_, hasEncoder := definition.Directions[pair[1]]
 			if hasEncoder && !hasDecoder {
@@ -306,7 +309,7 @@ func (compiler *Compiler) checkDefinition(definition Definition) error {
 		}
 	}
 	seen := make(map[string]bool)
-	if len(definition.Samples) > compiler.limits.StateItems {
+	if len(definition.Samples)+len(definition.SessionSamples) > compiler.limits.StateItems {
 		return fmt.Errorf("sample count exceeds engine fixture limit")
 	}
 	for _, sample := range definition.Samples {
@@ -320,12 +323,30 @@ func (compiler *Compiler) checkDefinition(definition Definition) error {
 		if sample.Input.IsZero() || (sample.Expected.IsZero() == (sample.ExpectedIssue == "")) {
 			return fmt.Errorf("sample %q requires input and expected output or issue", sample.ID)
 		}
-		if sample.Sequence && sample.Direction != DecodeEvent && sample.Direction != EncodeEvent {
+		if sample.Sequence && !isEventDirection(sample.Direction) {
 			return fmt.Errorf("sample %q sequence requires an event direction", sample.ID)
 		}
 		for _, capability := range sample.Capabilities {
 			if !definition.Capabilities[capability] {
 				return fmt.Errorf("sample %q covers an undeclared capability", sample.ID)
+			}
+		}
+	}
+	for _, sample := range definition.SessionSamples {
+		if sample.ID == "" || seen[sample.ID] {
+			return fmt.Errorf("session samples require unique nonempty IDs")
+		}
+		seen[sample.ID] = true
+		operation, exists := definition.Operations[sample.Operation]
+		if !exists || operation.Transport != WebSocket {
+			return fmt.Errorf("session sample %q requires a WebSocket operation", sample.ID)
+		}
+		if len(sample.Steps) == 0 || len(sample.Steps) > compiler.limits.StateItems {
+			return fmt.Errorf("session sample %q has an invalid step count", sample.ID)
+		}
+		for _, step := range sample.Steps {
+			if !isEventDirection(step.Direction) || !hasDefinitionDirections(definition, step.Direction) || step.Input.IsZero() || step.Expected.IsZero() {
+				return fmt.Errorf("session sample %q requires implemented event directions, inputs and expectations", sample.ID)
 			}
 		}
 	}
@@ -348,6 +369,13 @@ func (compiler *Compiler) checkOperation(name string, operation Operation, defin
 	}
 	if !slices.Contains([]Transport{HTTPJSON, SSE, NDJSON, WebSocket}, operation.Transport) {
 		return fmt.Errorf("operation %q has unknown transport", name)
+	}
+	limits := compiler.limits
+	if definition.Limits != nil {
+		limits = *definition.Limits
+	}
+	if err := checkSessionOperation(operation, definition, limits); err != nil {
+		return fmt.Errorf("operation %q: %w", name, err)
 	}
 	if operation.Transport == WebSocket && !compiler.features["transport.websocket"] {
 		return fmt.Errorf("WebSocket transport is not installed")
@@ -431,6 +459,20 @@ func (compiled *Compiled) Operations() map[string]Operation {
 			task := *operation.Task
 			task.States = maps.Clone(task.States)
 			operation.Task = &task
+		}
+		if operation.Session != nil {
+			session := *operation.Session
+			session.QueryFields = append([]string(nil), session.QueryFields...)
+			session.HeaderFields = append([]string(nil), session.HeaderFields...)
+			if session.InputMedia != nil {
+				media := *session.InputMedia
+				session.InputMedia = &media
+			}
+			if session.OutputMedia != nil {
+				media := *session.OutputMedia
+				session.OutputMedia = &media
+			}
+			operation.Session = &session
 		}
 		operations[name] = operation
 	}

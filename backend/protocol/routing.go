@@ -36,8 +36,8 @@ func checkBinding(binding Binding, compiled *Compiled, requestDirection, respons
 		issue.Code, issue.Reason = VerificationMismatch, "binding revision differs from the active protocol"
 		return []ConversionIssue{issue}
 	}
-	if !compiled.Supports(requestDirection) || !compiled.Supports(responseDirection) {
-		issue.Reason = fmt.Sprintf("binding requires %s and %s", requestDirection, responseDirection)
+	if !compiled.Supports(requestDirection) {
+		issue.Reason = fmt.Sprintf("binding requires %s", requestDirection)
 		return []ConversionIssue{issue}
 	}
 	if binding.Capabilities == nil || len(binding.Transports) == 0 {
@@ -58,10 +58,23 @@ func checkBinding(binding Binding, compiled *Compiled, requestDirection, respons
 	}
 	operations := compiled.Operations()
 	for _, transport := range binding.Transports {
-		if (transport == SSE || transport == NDJSON) && !compiled.Supports(eventDirection) {
-			entry := issue
-			entry.Reason = fmt.Sprintf("streaming binding requires %s", eventDirection)
-			issues = append(issues, entry)
+		required := []Direction{responseDirection}
+		switch transport {
+		case SSE, NDJSON:
+			required = append(required, eventDirection)
+		case WebSocket:
+			clientDirection := EncodeUpstreamEvent
+			if requestDirection == DecodeRequest {
+				clientDirection = DecodeClientEvent
+			}
+			required = []Direction{clientDirection, eventDirection}
+		}
+		for _, direction := range required {
+			if !compiled.Supports(direction) {
+				entry := issue
+				entry.Reason = fmt.Sprintf("%s binding requires %s", transport, direction)
+				issues = append(issues, entry)
+			}
 		}
 		hasTransport := false
 		for _, operation := range operations {
@@ -82,6 +95,12 @@ func checkBinding(binding Binding, compiled *Compiled, requestDirection, respons
 		}
 	}
 	return issues
+}
+
+// CheckClientEvent checks session commands against the fixed model contract.
+// Configuring a session cannot enable tools/media excluded by the route binding.
+func CheckClientEvent(event Event, compiled *Compiled, binding Binding, scope Scope) []ConversionIssue {
+	return CheckEvent(event, bindingTarget(compiled, binding, EncodeUpstreamEvent, scope), compiled.limits)
 }
 
 // CheckRoute validates actual input against both model and adapter constraints.

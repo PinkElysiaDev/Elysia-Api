@@ -30,6 +30,16 @@ func comparableSemantic(input any) (Value, error) {
 			response.Content = comparableNodes(response.Content)
 			value.Response = &response
 		}
+		if value.Request != nil {
+			request := *value.Request
+			request.Source, request.SchemaVersion, request.Native = Identity{}, 0, nil
+			request.Content = comparableNodes(request.Content)
+			request.Tools = append([]Tool(nil), request.Tools...)
+			for index := range request.Tools {
+				request.Tools[index].Native = nil
+			}
+			value.Request = &request
+		}
 		return EncodeValue(value)
 	case []Event:
 		items := make([]Value, len(value))
@@ -114,6 +124,12 @@ func observeCapabilities(value any) capabilityEvidence {
 		}
 	case []Event:
 		for _, event := range semantic {
+			if event.Request != nil {
+				requestEvidence := observeCapabilities(event.Request)
+				for capability, supported := range requestEvidence.observed {
+					evidence.observed[capability] = supported
+				}
+			}
 			if event.Item != nil {
 				evidence.nodes([]Node{*event.Item})
 			}
@@ -126,7 +142,7 @@ func observeCapabilities(value any) capabilityEvidence {
 			if event.Media != nil {
 				evidence.observed[RealtimeMediaCapability] = true
 			}
-			if event.Type == SessionStarted || event.Type == SessionConfigured {
+			if isSessionControl(event.Type) {
 				evidence.observed[SessionsCapability] = true
 			}
 			if event.Type == NativeEvent {

@@ -38,13 +38,28 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 			report.Capabilities[capability] = supported
 		}
 	}
-	for _, binding := range []struct {
+	hasSession := len(sessionOperations(ingress)) > 0 && len(sessionOperations(upstream)) > 0 && (capabilities == nil || capabilities[SessionsCapability])
+	hasHTTP := hasHTTPGeneration(ingress) && hasHTTPGeneration(upstream)
+	required := []struct {
 		compiled  *Compiled
 		direction Direction
-	}{{ingress, DecodeRequest}, {ingress, EncodeResponse}, {upstream, EncodeRequest}, {upstream, DecodeResponse}} {
+	}{{ingress, DecodeRequest}, {upstream, EncodeRequest}}
+	if hasHTTP {
+		required = append(required, struct {
+			compiled  *Compiled
+			direction Direction
+		}{ingress, EncodeResponse}, struct {
+			compiled  *Compiled
+			direction Direction
+		}{upstream, DecodeResponse})
+	}
+	for _, binding := range required {
 		if !binding.compiled.Supports(binding.direction) {
 			report.Issues = append(report.Issues, verificationIssue(binding.compiled, binding.direction, "/directions", UnsupportedCapability, "composition requires this adapter direction", ""))
 		}
+	}
+	if !hasHTTP && !hasSession {
+		report.Issues = append(report.Issues, verificationIssue(ingress, "", "/operations", UnsupportedCapability, "protocols have no shared generation or session transport", ""))
 	}
 	if len(report.Issues) > 0 {
 		return report
@@ -54,44 +69,47 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 			continue
 		}
 		check := VerificationCheck{SampleID: sample.ID, Direction: EncodeRequest}
-		if skipBindingSample(ctx, ingress, sample, capabilities, &report, EncodeRequest) {
+		isSkipped, observed := inspectBindingSample(ctx, ingress, sample, capabilities, &report, EncodeRequest)
+		if isSkipped {
 			continue
 		}
 		err := verifyRequestCombination(ctx, ingress, upstream, sample)
 		check.Passed = err == nil
-		check.Capabilities = sample.Capabilities
+		check.Capabilities = observed
 		if err != nil {
 			report.Issues = append(report.Issues, sampleIssues(upstream, sample, "/combination/request", err)...)
 		}
 		report.Checks = append(report.Checks, check)
 	}
 	for _, sample := range upstream.Definition().Samples {
-		if sample.Direction != DecodeResponse || sample.ExpectedIssue != "" {
+		if !hasHTTP || sample.Direction != DecodeResponse || sample.ExpectedIssue != "" {
 			continue
 		}
 		check := VerificationCheck{SampleID: sample.ID, Direction: EncodeResponse}
-		if skipBindingSample(ctx, upstream, sample, capabilities, &report, EncodeResponse) {
+		isSkipped, observed := inspectBindingSample(ctx, upstream, sample, capabilities, &report, EncodeResponse)
+		if isSkipped {
 			continue
 		}
 		err := verifyResponseCombination(ctx, ingress, upstream, sample)
 		check.Passed = err == nil
-		check.Capabilities = sample.Capabilities
+		check.Capabilities = observed
 		if err != nil {
 			report.Issues = append(report.Issues, sampleIssues(ingress, sample, "/combination/response", err)...)
 		}
 		report.Checks = append(report.Checks, check)
 	}
-	if upstream.Supports(DecodeEvent) && ingress.Supports(EncodeEvent) {
+	if hasHTTP && ((len(sessionOperations(ingress)) == 0 && len(sessionOperations(upstream)) == 0) || (hasHTTPStream(upstream) && hasHTTPStream(ingress))) && upstream.Supports(DecodeEvent) && ingress.Supports(EncodeEvent) {
 		hasSequence := false
 		for _, sample := range upstream.Definition().Samples {
 			if sample.Direction != DecodeEvent || !sample.Sequence || sample.ExpectedIssue != "" {
 				continue
 			}
-			if skipBindingSample(ctx, upstream, sample, capabilities, &report, EncodeEvent) {
+			isSkipped, observed := inspectBindingSample(ctx, upstream, sample, capabilities, &report, EncodeEvent)
+			if isSkipped {
 				continue
 			}
 			err := verifyEventCombination(ctx, ingress, upstream, sample)
-			report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Direction: EncodeEvent, Passed: err == nil, Capabilities: sample.Capabilities})
+			report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Direction: EncodeEvent, Passed: err == nil, Capabilities: observed})
 			if err != nil {
 				report.Issues = append(report.Issues, sampleIssues(ingress, sample, "/combination/events", err)...)
 			} else {
@@ -102,12 +120,16 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 			report.Issues = append(report.Issues, verificationIssue(ingress, EncodeEvent, "/combination/events", IncompleteCoverage, "event composition requires a complete sequence fixture", ""))
 		}
 	}
+	hasSessionEvidence := false
+	if hasSession {
+		hasSessionEvidence = verifySessionCombination(ctx, ingress, upstream, &report)
+	}
 	hasRequest, hasResponse := false, false
 	for _, check := range report.Checks {
 		hasRequest = hasRequest || (check.Passed && check.Direction == EncodeRequest)
 		hasResponse = hasResponse || (check.Passed && check.Direction == EncodeResponse)
 	}
-	if !hasRequest || !hasResponse {
+	if !hasRequest || (hasHTTP && !hasResponse) || (hasSession && !hasSessionEvidence) {
 		report.Issues = append(report.Issues, verificationIssue(ingress, "", "/combination", IncompleteCoverage, "composition requires passing request and response fixtures", ""))
 	}
 	for _, capability := range sortedKeys(capabilities) {
@@ -131,22 +153,23 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 	return report
 }
 
-func skipBindingSample(ctx context.Context, compiled *Compiled, sample Sample, allowed CapabilitySet, report *CombinationReport, direction Direction) bool {
-	if allowed == nil {
-		return false
-	}
+func inspectBindingSample(ctx context.Context, compiled *Compiled, sample Sample, allowed CapabilitySet, report *CombinationReport, direction Direction) (bool, []Capability) {
 	result, err := executeVerificationSample(ctx, compiled, sample)
 	if err != nil {
-		return false
+		return false, nil
 	} // The normal replay reports the failure.
-	for capability := range observeCapabilities(result.semantic).observed {
-		if allowed[capability] {
-			continue
-		}
+	observed := observeCapabilities(result.semantic).observed
+	if allowed != nil && exceedsCapabilities(observed, allowed) {
 		report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Direction: direction, Skipped: true, Reason: "sample exceeds the model binding's declared capabilities"})
-		return true
+		return true, nil
 	}
-	return false
+	capabilities := []Capability{}
+	for _, capability := range CapabilityCatalog() {
+		if observed[capability] {
+			capabilities = append(capabilities, capability)
+		}
+	}
+	return false, capabilities
 }
 
 func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sample Sample) error {
@@ -226,4 +249,21 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 		return err
 	}
 	return compareRoundTrip(ingress, sample, response, decoded)
+}
+
+func hasHTTPGeneration(compiled *Compiled) bool {
+	for _, operation := range compiled.operations {
+		if operation.Kind == "generate" && operation.Transport != WebSocket {
+			return true
+		}
+	}
+	return false
+}
+func hasHTTPStream(compiled *Compiled) bool {
+	for _, operation := range compiled.operations {
+		if operation.Transport == SSE || operation.Transport == NDJSON {
+			return true
+		}
+	}
+	return false
 }

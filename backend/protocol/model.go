@@ -7,13 +7,37 @@ const SemanticSchemaVersion = 1
 type Direction string
 
 const (
-	DecodeRequest  Direction = "decode_request"
-	EncodeRequest  Direction = "encode_request"
-	DecodeResponse Direction = "decode_response"
-	EncodeResponse Direction = "encode_response"
-	DecodeEvent    Direction = "decode_event"
-	EncodeEvent    Direction = "encode_event"
+	DecodeRequest       Direction = "decode_request"
+	EncodeRequest       Direction = "encode_request"
+	DecodeResponse      Direction = "decode_response"
+	EncodeResponse      Direction = "encode_response"
+	DecodeEvent         Direction = "decode_event"
+	EncodeEvent         Direction = "encode_event"
+	DecodeClientEvent   Direction = "decode_client_event"
+	EncodeUpstreamEvent Direction = "encode_upstream_event"
 )
+
+func isEventDirection(direction Direction) bool {
+	return direction == DecodeEvent || direction == EncodeEvent || direction == DecodeClientEvent || direction == EncodeUpstreamEvent
+}
+
+func isEventDecoder(direction Direction) bool {
+	return direction == DecodeEvent || direction == DecodeClientEvent
+}
+
+func eventEncoder(direction Direction) Direction {
+	if direction == DecodeClientEvent || direction == EncodeUpstreamEvent {
+		return EncodeUpstreamEvent
+	}
+	return EncodeEvent
+}
+
+func eventDecoder(direction Direction) Direction {
+	if direction == EncodeUpstreamEvent || direction == DecodeClientEvent {
+		return DecodeClientEvent
+	}
+	return DecodeEvent
+}
 
 // Identity separates wire compatibility from a user-selected definition ID.
 type Identity struct {

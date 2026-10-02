@@ -29,7 +29,7 @@ func (service *Service) Preview(ctx context.Context, raw []byte, direction Direc
 		return PreviewResult{Issues: sampleIssues(compiled, sample, "/preview", err)}
 	}
 	output := result.output
-	if direction == DecodeRequest || direction == DecodeResponse || direction == DecodeEvent {
+	if direction == DecodeRequest || direction == DecodeResponse || isEventDecoder(direction) {
 		output = semantic
 	}
 	return PreviewResult{Output: output, Semantic: semantic, Issues: []ConversionIssue{}}

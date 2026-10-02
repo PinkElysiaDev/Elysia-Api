@@ -57,7 +57,7 @@ func verifyRoundTrip(ctx context.Context, compiled *Compiled, sample Sample, res
 		if err != nil {
 			return err
 		}
-	case DecodeEvent, EncodeEvent:
+	case DecodeEvent, EncodeEvent, DecodeClientEvent, EncodeUpstreamEvent:
 		return verifyEventRoundTrip(ctx, compiled, sample, result)
 	}
 	if !wire.IsZero() && compiled.native.Preserve && !equalValues(sample.Input, wire) {
@@ -115,14 +115,14 @@ func verifyNativeExtension(ctx context.Context, compiled *Compiled, sample Sampl
 }
 
 func verifyEventRoundTrip(ctx context.Context, compiled *Compiled, sample Sample, result verificationResult) error {
-	if !compiled.Supports(DecodeEvent) || !compiled.Supports(EncodeEvent) {
+	if !compiled.Supports(eventDecoder(sample.Direction)) || !compiled.Supports(eventEncoder(sample.Direction)) {
 		return nil
 	}
 	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context}
 	var frames []Value
-	if sample.Direction == DecodeEvent {
+	if isEventDecoder(sample.Direction) {
 		for _, event := range result.semantic.([]Event) {
-			frame, err := compiled.EncodeEvent(ctx, event, options)
+			frame, err := compiled.encodeEvent(ctx, eventEncoder(sample.Direction), event, options)
 			if err != nil {
 				return err
 			}
@@ -154,7 +154,7 @@ func verifyEventRoundTrip(ctx context.Context, compiled *Compiled, sample Sample
 	}
 	events := []Event{}
 	for _, frame := range frames {
-		batch, err := compiled.DecodeEvents(ctx, frame, options)
+		batch, err := compiled.decodeEvents(ctx, eventDecoder(sample.Direction), frame, options)
 		if err != nil {
 			return err
 		}

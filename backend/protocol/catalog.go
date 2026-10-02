@@ -56,12 +56,12 @@ func CapabilityCatalog() []Capability {
 
 // DirectionCatalog lists independently implementable adapter operations.
 func DirectionCatalog() []Direction {
-	return []Direction{DecodeRequest, EncodeRequest, DecodeResponse, EncodeResponse, DecodeEvent, EncodeEvent}
+	return []Direction{DecodeRequest, EncodeRequest, DecodeResponse, EncodeResponse, DecodeEvent, EncodeEvent, DecodeClientEvent, EncodeUpstreamEvent}
 }
 
 // EventCatalog lists the supported semantic event vocabulary.
 func EventCatalog() []EventType {
-	return []EventType{SessionStarted, SessionConfigured, ResponseStarted, ItemStarted, ItemDelta, ItemSnapshot, ItemFinished, UsageUpdated, ResponseFinished, OperationFailed, OperationCancelled, MediaReceived, NativeEvent}
+	return []EventType{SessionStarted, SessionConfigured, ResponseStarted, ItemStarted, ItemDelta, ItemSnapshot, ItemFinished, UsageUpdated, ResponseFinished, OperationFailed, OperationCancelled, MediaReceived, NativeEvent, SessionConfigure, InputAppend, InputCommit, ResponseCreate, ResponseCancel, ToolResultSubmitted, SessionClose}
 }
 
 // DiagnosticCatalog lists stable machine-readable compiler/runtime codes.

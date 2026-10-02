@@ -47,8 +47,20 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 		return check.issues
 	}
 	switch event.Type {
-	case SessionStarted, SessionConfigured:
+	case SessionStarted, SessionConfigured, SessionConfigure, InputCommit, ResponseCreate, ResponseCancel, SessionClose:
 		check.require(SessionsCapability, "/type")
+	case InputAppend:
+		check.require(SessionsCapability, "/type")
+		if event.Item == nil {
+			check.add(InvalidInput, "/item", "", "input append requires an ordered content item")
+		}
+	case ToolResultSubmitted:
+		check.require(SessionsCapability, "/type")
+		if event.Item == nil || event.Item.Kind != ToolResultNode || event.Item.Payload.IsZero() {
+			check.add(InvalidInput, "/item", "", "tool result submission requires an associated result payload")
+		} else {
+			check.requireName(event.Item.CallID, "/item/callId")
+		}
 	case ResponseStarted, ResponseFinished, OperationCancelled:
 	case ItemStarted, ItemDelta, ItemSnapshot, ItemFinished:
 		if event.ItemID.IsZero() && event.CallID.IsZero() && event.Index == nil {
@@ -94,6 +106,9 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 	}
 	if event.Response != nil {
 		check.issues = append(check.issues, CheckResponse(event.Response, target, limits)...)
+	}
+	if event.Request != nil {
+		check.issues = append(check.issues, CheckRequest(event.Request, target, limits)...)
 	}
 	return check.issues
 }

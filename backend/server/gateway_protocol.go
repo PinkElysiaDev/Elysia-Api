@@ -35,6 +35,15 @@ func (s *Server) gatewayProtocol(c *gin.Context) {
 		respondFail(c, http.StatusNotFound, "inactive_protocol", "protocol has no verified active revision")
 		return
 	}
+	if operation, exists := gatewaySessionOperation(ingress, c.Request.Method, c.Param("path")); exists {
+		handshake, err := protocol.ReadSessionHandshake(c.Request, operation)
+		if err != nil {
+			respondProtocolError(c, err)
+			return
+		}
+		s.serveGatewaySession(c, view, ingress, c.Param("path"), handshake.Bytes())
+		return
+	}
 	body, err := protocol.ReadBoundedBody(c.Request.Body, protocol.DefaultLimits().BufferBytes)
 	if err != nil {
 		respondFail(c, http.StatusBadRequest, "invalid_input", err.Error())

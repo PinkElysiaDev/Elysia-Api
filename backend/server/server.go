@@ -135,6 +135,7 @@ type Server struct {
 	protocolServiceOnce sync.Once
 	protocolServiceInst *protocol.Service
 	protocolServiceErr  error
+	gatewaySessions     gatewaySessionSet
 }
 
 func New(cfg *config.Config) *Server {
@@ -1403,6 +1404,7 @@ func (s *Server) shutdown(c *gin.Context) {
 func (s *Server) doShutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	s.gatewaySessions.stop()
 	if s.httpServer != nil {
 		if err := s.httpServer.Shutdown(ctx); err != nil {
 			log.Printf("graceful shutdown error: %v", err)
