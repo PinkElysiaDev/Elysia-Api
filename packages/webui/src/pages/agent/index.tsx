@@ -228,6 +228,22 @@ export function AgentPage() {
     [activeId, confirm, failToast, mutateSessions, sessions],
   );
 
+  /** 总览卡片点标题重命名：与 updateAgentSession settings patch 同链路。 */
+  const handleRenameSession = useCallback(
+    async (id: string, title: string) => {
+      try {
+        const updated = await updateAgentSession(id, { title });
+        if (id === activeId) setSession(updated);
+        await mutateSessions();
+      } catch (error) {
+        toast({
+          description: error instanceof Error ? error.message : "重命名失败",
+        });
+      }
+    },
+    [activeId, mutateSessions, toast],
+  );
+
   const handleSettingsChange = useCallback(
     async (patch: {
       settings?: Partial<AgentSettings>;
@@ -351,6 +367,7 @@ export function AgentPage() {
             onOpen={handleOpen}
             onCreate={() => void createSession()}
             onDelete={(id) => void handleDelete(id)}
+            onEditTitle={(id, title) => void handleRenameSession(id, title)}
           />
         </div>
         {confirmDialog}

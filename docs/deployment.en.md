@@ -29,19 +29,22 @@ On Windows use `.\elysia-api-windows-amd64.exe --config .\config.json`; on ARM64
 
 Drag ElysiaApi from the DMG into Applications. Requires macOS 12+ and supports Intel and Apple Silicon. Running and updating do not require Xcode.
 
+The main shell acts as a menu-bar supervisor for the backend, health checks and updates. Opening the panel starts a separate WebUI child using the bundled `ElysiaApi` executable with `--webui-process`; that child owns the window and WebKit. Closing the window exits the WebUI and its WebKit services while retaining the supervisor and original backend. Releasing Swift references to `WKWebView` alone does not end WebKit services, so resource cleanup uses the owning process's exit as its boundary.
+
 | Action | Behavior |
 | --- | --- |
 | First sign-in | Copy the panel token from the menu bar; credentials are not injected automatically |
 | Data directory | `~/Library/Application Support/ElysiaApi/`, containing configuration, database, master key, and runtime log |
 | Port conflict | Try the configured port, then an available port in `8799–8899`; use the address shown in the menu |
-| Close window | Keep the service running; reopening retains authentication, position, and theme |
+| Close window | Exit the WebUI child and its WebKit services; retain the menu bar and original backend, authentication, position and theme |
+| Start / restart service | Start when not running; otherwise wait for graceful shutdown before starting a new backend process |
 | Quit | Request graceful backend shutdown, then terminate the child if it times out |
-| Recovery | Restart after sustained health failures; stop after 3 consecutive attempts and offer manual retry |
+| Recovery | Check every 30 seconds while healthy in the background, every 3 seconds with the panel open or during startup/recovery. Process-exit callbacks handle backend crashes promptly; restart after sustained health failures, stop after 3 consecutive attempts and offer manual retry |
 | Launch at login | Disabled by default; enabling it starts only the menu bar item at login |
 | Notifications | Important notifications default to enabled; request system authorization on first use or explicit enable |
-| Update | Download the DMG, verify digest, integrity, and signature; roll back a failed replacement; retain configuration and database |
+| Update | Validate and stage the DMG app; stop the backend and old shell before helper replacement; retain the old bundle until the new service and panel are ready, roll back failures, and preserve configuration and database |
 
-The menu provides service controls, API address and token copying, logs, preferences, browser access, and update checks. The managed backend uses `ELYSIA_API_OPEN_BROWSER=false`. WebKit retains cookies and authentication after manual sign-in; signing out requires authentication again.
+The menu provides service start and restart, API address and token copying, logs, preferences, browser access, and update checks. The managed backend uses `ELYSIA_API_OPEN_BROWSER=false`. The WebUI uses WebKit's default persistent data store for cookies and authentication after manual sign-in; application preferences retain theme, window size and position. Recreating the child does not clear this data. Signing out requires authentication again.
 
 CI artifacts use ad-hoc signing, which is not Developer ID notarization. After verifying the file came from the project Release, a Gatekeeper block can be cleared with:
 

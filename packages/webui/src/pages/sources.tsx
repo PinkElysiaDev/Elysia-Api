@@ -23,7 +23,7 @@ import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/compon
 import { Switch } from '@/components/ui/switch'
 import { AsyncState } from '@/components/ui/states'
 import { ExpandRow } from '@/components/expand-row'
-import { CapChip, Dot, PlatformBadge } from '@/components/badges'
+import { CapChip, PlatformBadge } from '@/components/badges'
 import { SearchInput } from '@/components/ui/search-input'
 import { ToolbarSummary } from '@/components/toolbar-summary'
 import { useConfirm } from '@/components/ui/confirm-dialog'
@@ -184,23 +184,6 @@ export function SourcesPage() {
     setEditingModel(model)
     setModelEditOpen(true)
   }, [])
-
-  const handleToggleModelEnabled = useCallback(
-    async (model: Model) => {
-      const next = !(model.enabled !== false)
-      try {
-        await api.updateModel(model.sourceId ?? '', model.id, { enabled: next })
-        await revalidate.models()
-        toast.success(
-          next ? '已启用模型' : '已停用模型',
-          `${model.name || model.id}${next ? '' : '（不参与模型组调度）'}`,
-        )
-      } catch (err) {
-        toast.error('操作失败', (err as Error).message)
-      }
-    },
-    [toast],
-  )
 
   function setModelsSelected(list: Model[], value: boolean) {
     setSelected((prev) => {
@@ -443,6 +426,8 @@ export function SourcesPage() {
                       !globalKeyword ||
                       matchesModelKeyword(globalKeyword, m)
                     const selectedCount = selectedModelsOf(source.id).length
+                    // 顶部「全选」的作用范围 = 当前可见模型：
+                    // 各组经组内搜索（及跨组搜索）过滤后的并集，即原组行「全选本组」的合并形态
                     const allVisibleModels = groups
                       .map((g) => {
                         const groupKeyword = (debouncedGroupSearch[`${source.id}:${g.key}`] ?? '').trim().toLowerCase()
@@ -660,14 +645,7 @@ export function SourcesPage() {
                                           }
                                         />
                                       </div>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        disabled={groupVisible.length === 0}
-                                        onClick={() => setModelsSelected(groupVisible, true)}
-                                      >
-                                        全选本组
-                                      </Button>
+
                                     </div>
                                   </div>
                                   {!collapsed && (
@@ -687,7 +665,6 @@ export function SourcesPage() {
                                               locked={busy}
                                               onToggleSelect={handleToggleSelect}
                                               onEdit={handleEditModel}
-                                              onToggleEnabled={handleToggleModelEnabled}
                                             />
                                           ))}
                                         </div>
@@ -770,7 +747,6 @@ const ModelChip = memo(function ModelChip({
   locked = false,
   onToggleSelect,
   onEdit,
-  onToggleEnabled,
 }: {
   model: Model
   sourceId: string
@@ -778,10 +754,8 @@ const ModelChip = memo(function ModelChip({
   locked?: boolean
   onToggleSelect: (sourceId: string, modelId: string) => void
   onEdit: (model: Model) => void
-  onToggleEnabled: (model: Model) => void
 }) {
   const dimmed = !model.enabled || !model.available
-  const isEnabled = model.enabled !== false
   return (
     <span
       className={cn(
@@ -831,16 +805,6 @@ const ModelChip = memo(function ModelChip({
           className="rounded p-0.5 text-muted-foreground hover:text-rose"
         >
           <Pencil className="h-3 w-3" />
-        </button>
-        <button
-          type="button"
-          onClick={() => onToggleEnabled(model)}
-          disabled={locked}
-          title={isEnabled ? '停用（不参与调度）' : '启用'}
-          aria-label={isEnabled ? '停用模型' : '启用模型'}
-          className="rounded p-0.5 text-muted-foreground hover:text-rose"
-        >
-          <Dot state={isEnabled ? 'ok' : 'off'} />
         </button>
       </span>
     </span>

@@ -421,13 +421,14 @@ function startTransition(options: TransitionOptions, context: WebGL2RenderingCon
   let mediaTime = 0
   let maxFrameDrift = 0
   let lastDrawTime: number | undefined
-  const watchdog = window.setTimeout(() => finish(false), 6500)
-  const finish = (animated: boolean) => {
+  const watchdog = window.setTimeout(() => finish(false, 'transition timeout'), 6500)
+  const finish = (animated: boolean, reason?: unknown) => {
     if (finished || disposed) return
     finished = true
+    if (!animated) console.warn('[login] Cinematic interrupted; using a simple transition.', reason)
     options.onFinish(animated)
   }
-  const lost = (event: Event) => { event.preventDefault(); finish(false) }
+  const lost = (event: Event) => { event.preventDefault(); finish(false, 'WebGL context lost') }
   resources.defer(() => {
     disposed = true
     clearTimeout(watchdog)
@@ -454,14 +455,14 @@ function startTransition(options: TransitionOptions, context: WebGL2RenderingCon
       lastVideoFrame = performance.now()
       if (started === undefined) started = lastVideoFrame
       videoCallback = video.requestVideoFrameCallback(updateVideo)
-    } catch { finish(false) }
+    } catch (error) { finish(false, error) }
     finally { snapshot?.close() }
   }
   videoCallback = video.requestVideoFrameCallback(updateVideo)
 
   const render = (now: number) => {
     if (disposed || finished) return
-    if (document.hidden || now - lastVideoFrame > 900) { finish(false); return }
+    if (document.hidden || now - lastVideoFrame > 900) { finish(false, document.hidden ? 'page hidden' : 'video frame timeout'); return }
     if (started === undefined) { animation = requestAnimationFrame(render); return }
     const interval = 1000 / (window.innerWidth <= 700 ? 30 : 60)
     if (lastDrawTime !== undefined && now - lastDrawTime < interval && now - started < 5000) {
@@ -605,7 +606,7 @@ function startTransition(options: TransitionOptions, context: WebGL2RenderingCon
       }
       if (seconds >= 5) animation = requestAnimationFrame(() => finish(true))
       else animation = requestAnimationFrame(render)
-    } catch { finish(false) }
+    } catch (error) { finish(false, error) }
   }
   animation = requestAnimationFrame(render)
 }

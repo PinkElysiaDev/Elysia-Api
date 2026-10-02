@@ -51,6 +51,8 @@ const (
 // ErrSessionRunning 会话已有轮次在跑（单会话串行约束）。
 var ErrSessionRunning = errors.New("agent session already has a running turn")
 
+var ErrEngineClosed = errors.New("agent engine is shutting down")
+
 // ErrNoPendingApproval 会话不在等待审批状态。
 var ErrNoPendingApproval = errors.New("agent session has no pending approval")
 

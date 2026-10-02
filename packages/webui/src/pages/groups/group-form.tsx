@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
+import { Seg } from "@/components/ui/seg";
 import { CapChip } from "@/components/badges";
 import { api } from "@/lib/api";
 import { revalidate, useModels, useSources } from "@/lib/hooks";
@@ -243,19 +244,18 @@ export function GroupFormDialog({
             </div>
             <div className="space-y-2">
               <Label>类型</Label>
-              <Select
-                value={form.type}
-                onValueChange={(v) => update("type", v as ModelType)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="llm">LLM</SelectItem>
-                  <SelectItem value="embedding">Embedding</SelectItem>
-                  <SelectItem value="reranker">Reranker</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex min-h-[34px] items-center">
+                <Seg
+                  aria-label="组类型"
+                  options={[
+                    { value: "llm", label: "LLM" },
+                    { value: "embedding", label: "Embedding" },
+                    { value: "reranker", label: "Reranker" },
+                  ]}
+                  value={form.type}
+                  onChange={(v) => update("type", v as ModelType)}
+                />
+              </div>
             </div>
           </div>
 
@@ -305,7 +305,7 @@ export function GroupFormDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-border/70 bg-background/40 p-2">
+            <div className="max-h-56 space-y-1 overflow-y-auto divide-y divide-border/40">
               {filteredModels.length === 0 && (
                 <p className="py-6 text-center text-sm text-muted-foreground">
                   无可选模型，请先在模型缓存页刷新
@@ -356,19 +356,18 @@ export function GroupFormDialog({
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label>策略</Label>
-              <Select
-                value={form.strategy}
-                onValueChange={(v) => update("strategy", v as GroupStrategy)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="round-robin">轮询 Round-robin</SelectItem>
-                  <SelectItem value="sequential">顺序 Sequential</SelectItem>
-                  <SelectItem value="random">随机 Random</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex min-h-[34px] items-center">
+                <Seg
+                  aria-label="调度策略"
+                  options={[
+                    { value: "round-robin", label: "轮询" },
+                    { value: "sequential", label: "顺序" },
+                    { value: "random", label: "随机" },
+                  ]}
+                  value={form.strategy}
+                  onChange={(v) => update("strategy", v as GroupStrategy)}
+                />
+              </div>
             </div>
             <NumberField
               label="最大重试"
@@ -451,7 +450,7 @@ export function GroupFormDialog({
           >
             取消
           </Button>
-          <Button variant="primary" onClick={handleSave} disabled={saving}>
+          <Button onClick={handleSave} disabled={saving}>
             {saving ? "保存中…" : "保存"}
           </Button>
         </DialogFooter>

@@ -5,10 +5,6 @@ import { cn, isSuccessStatus } from '@/lib/utils'
 
 /* ---------- 状态点 ---------- */
 
-export function Dot({ state, className }: { state: 'ok' | 'err' | 'warn' | 'off'; className?: string }) {
-  return <span aria-hidden className={cn('dot', `dot-${state}`, className)} />
-}
-
 /** 色调胶囊：以任意前景色生成「边框 28% / 底色 9% / 文字原色」的统一
  * pill 外观（LevelPill、健康态徽标等动态配色场景共用）。 */
 export function TonePill({ color, className, children }: { color: string; className?: string; children: React.ReactNode }) {
