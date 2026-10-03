@@ -13,6 +13,7 @@ type EventFrame struct {
 	native      *Native
 	digest      [sha256.Size]byte
 	encoderHash string
+	decoderHash string
 }
 
 // DecodeFrame uses request-owned module state and preserves an unchanged native
@@ -27,7 +28,7 @@ func (compiled *Compiled) decodeFrame(ctx context.Context, direction Direction, 
 	if err != nil {
 		return nil, err
 	}
-	result := &EventFrame{Events: events, encoderHash: compiled.mappings[eventEncoder(direction)].definitionHash}
+	result := &EventFrame{Events: events, encoderHash: compiled.mappings[eventEncoder(direction)].definitionHash, decoderHash: compiled.mappings[direction].definitionHash}
 	if compiled.native.Preserve {
 		result.native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: direction, Scope: options.Scope}, Value: frame}
 		encoded, err := EncodeValue(events)
@@ -66,8 +67,8 @@ func (compiled *Compiled) encodeFrame(ctx context.Context, direction Direction, 
 	target := compiled.target(direction, options)
 	canReplay := compiled.native.Preserve && frame.native != nil && CanPreserveNative(frame.native.Source, target)
 	if canReplay {
-		if frame.encoderHash == "" || frame.encoderHash != compiled.mappings[direction].definitionHash {
-			return nil, streamIssue(UnsupportedNative, "/frame", "native frame replay requires equivalent event encoders; an explicit mapping cannot be bypassed")
+		if frame.encoderHash == "" || frame.encoderHash != compiled.mappings[direction].definitionHash || frame.decoderHash != compiled.mappings[eventDecoder(direction)].definitionHash {
+			return nil, streamIssue(UnsupportedNative, "/frame", "native frame replay requires equivalent event encoders and decoders; an explicit mapping cannot be bypassed")
 		}
 		if !CheckScope(frame.native.Source.Scope, target.Scope) {
 			return nil, streamIssue(ResourceScopeMismatch, "/frame", "native frame scope differs from target")

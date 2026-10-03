@@ -193,6 +193,11 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 }
 
 func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction Direction, expressions *expressionCompiler) (compiledMapping, error) {
+	// A ref name is not a conversion identity: its referenced implementation
+	// must also match before native replay can bypass an adapter.
+	references := map[string]Expression{}
+	expressions.mappingReferences = references
+	defer func() { expressions.mappingReferences = nil }()
 	entry := compiledMapping{input: mapping.Input, output: mapping.Output, frameBatch: mapping.FrameBatch}
 	definition, err := EncodeValue(mapping)
 	if err != nil {
@@ -289,6 +294,16 @@ func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction
 		}
 	} else if mapping.UnknownEvent != "" {
 		return entry, fmt.Errorf("unknownEvent requires event rules")
+	}
+	if len(references) > 0 {
+		identity, err := EncodeValue(struct {
+			Mapping    Mapping               `json:"mapping"`
+			References map[string]Expression `json:"references"`
+		}{mapping, references})
+		if err != nil {
+			return entry, err
+		}
+		entry.definitionHash = hashValue(identity)
 	}
 	return entry, nil
 }

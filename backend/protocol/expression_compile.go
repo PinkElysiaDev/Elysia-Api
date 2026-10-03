@@ -28,11 +28,12 @@ type compiledExpression struct {
 }
 
 type expressionCompiler struct {
-	limits     Limits
-	nodes      int
-	references map[string]Expression
-	resolving  map[string]bool
-	used       map[string]bool
+	limits            Limits
+	nodes             int
+	references        map[string]Expression
+	resolving         map[string]bool
+	used              map[string]bool
+	mappingReferences map[string]Expression
 }
 
 type expressionScope struct {
@@ -69,6 +70,9 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 			return nil, fmt.Errorf("%s/ref: recursive expression %q", path, expression.Ref)
 		}
 		compiler.used[expression.Ref] = true
+		if compiler.mappingReferences != nil {
+			compiler.mappingReferences[expression.Ref] = definition
+		}
 		compiler.resolving[expression.Ref] = true
 		compiled, err := compiler.compile(definition, path+"/@"+expression.Ref, scope, depth+1)
 		delete(compiler.resolving, expression.Ref)
