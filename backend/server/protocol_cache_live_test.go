@@ -296,14 +296,7 @@ func (run *cacheLiveRun) dueTasks(t *testing.T) {
 			result := run.generate(t, task.Target, task.Route, task.ID+"/probe", task.Prefix, task.TTL, true, "")
 			run.suite.selectTarget(t, task.Target)
 			assessment := assessLiveCache(result)
-			assessment.Timing = "observation_inconclusive"
-			if result.Status == "passed" {
-				if strings.HasSuffix(task.ID, "/retention") {
-					assessment.Timing = "retention_probe_completed"
-				} else {
-					assessment.Timing = "post_minimum_lifetime_probe_completed"
-				}
-			}
+			assessment.Timing = classifyCacheTiming(task, result)
 			result.ID += "/timing"
 			result.Assessment = assessment
 			result.Reason = fmt.Sprintf("%d seconds after warm request start; a post-TTL hit does not disprove a minimum lifetime", int(result.Wire.StartedAt.Sub(task.StartedAt).Seconds()))
@@ -312,4 +305,27 @@ func (run *cacheLiveRun) dueTasks(t *testing.T) {
 		run.checkpoint.Tasks[index].State = "observed"
 		run.save(t)
 	}
+}
+
+// Completing the scheduled request does not establish the claimed lifetime.
+// Classify observations separately from forwarding and counter fidelity.
+func classifyCacheTiming(task cacheCheckpointTask, result liveCase) string {
+	lifetime, err := time.ParseDuration(task.TTL)
+	if err != nil || result.Status != "passed" || result.UpstreamUsage == nil || result.UpstreamUsage.CacheRead == nil {
+		return "observation_inconclusive"
+	}
+	hasRead := result.UpstreamUsage.CacheRead.Count > 0
+	if result.Wire.StartedAt.Sub(task.StartedAt) < lifetime {
+		if hasRead {
+			return "read_observed_before_minimum_lifetime"
+		}
+		return "no_read_observed_before_minimum_lifetime"
+	}
+	if hasRead {
+		return "read_observed_after_minimum_lifetime"
+	}
+	if creation := result.UpstreamUsage.CacheCreation; creation != nil && creation.Count > 0 {
+		return "recreation_observed_after_minimum_lifetime"
+	}
+	return "zero_read_without_observed_recreation_after_minimum_lifetime"
 }

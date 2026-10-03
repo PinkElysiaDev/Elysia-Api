@@ -4,6 +4,7 @@ import { snapshotRevision } from './snapshot.mjs'
 
 const harnessFiles = [
   'backend/protocol/builtin/workload_benchmark_test.go',
+  'backend/protocol/builtin/cache_usage_benchmark_test.go',
   'backend/server/protocol_load_test.go',
   'backend/server/protocol_load_windows_test.go',
   'backend/server/protocol_load_unix_test.go',
@@ -24,7 +25,7 @@ export async function verifyPerformance(run, root) {
   run.report.measurement = { microCount: 10, benchtime: '300ms', profiled: false, requests: +(process.env.ELYSIA_LOAD_REQUESTS || 128), repeats: +(process.env.ELYSIA_LOAD_REPEATS || 3), warmupRequestsPerScenario: 32, concurrency: [1, 8, 32], gomaxprocs: process.env.GOMAXPROCS || 'Go default', filter: process.env.ELYSIA_LOAD_FILTER || 'all', cpuScope: 'gateway + loopback load generator + deterministic upstream', firstFrame: 'complete SSE frame or complete non-streaming body' }
   run.report.measurement.scenarios = process.env.ELYSIA_LOAD_SCENARIOS?.split(',') || 'all'
   await run.save()
-  const pattern = isLegacy ? 'BenchmarkProtocolConversion/claude$' : 'BenchmarkCacheConversion$|BenchmarkStreamTextDecode$|BenchmarkRequestWorkloads$'
+  const pattern = isLegacy ? 'BenchmarkProtocolConversion/claude$' : 'BenchmarkCacheConversion$|BenchmarkStreamTextDecode$|BenchmarkRequestWorkloads$|BenchmarkCacheUsageMutation$'
   const args = ['test', isLegacy ? './relay' : './protocol/builtin', '-run', '^$', '-bench', pattern, '-benchmem', '-benchtime=300ms', '-count=10', '-timeout=30m']
   let isPassed = await run.execute('micro', 'go', args, { cwd })
   if (isPassed) {

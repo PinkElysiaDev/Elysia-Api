@@ -1,23 +1,33 @@
 {
   "schemaVersion": 1,
-  "date": "2026-10-03",
-  "productionCodeCommit": "8a3bf15",
-  "compilerVersion": "2.0.0-dev.11",
+  "date": "2026-10-04",
+  "productionCodeCommit": "64d9d9b",
+  "compilerVersion": "2.0.0-dev.14",
   "evidenceRootRelativeToRepository": "../.cache",
   "releaseReady": false,
   "race": {
     "status": "passed",
     "fullBackendIncludingAgent": true,
     "dataRacesObserved": 0,
-    "fixedLifecycleDefect": "WebSocket forced shutdown waited behind graceful handshake",
-    "stress": {
+    "evidence": "c27-agent-final-checks/report.json",
+    "previousFinalAttempt": {
+      "status": "failed",
+      "evidence": "c27-dev14-checks/report.json",
+      "test": "TestRunTurn_ConcurrencyGuard",
+      "kind": "completion_order_lifecycle"
+    },
+    "fixedLifecycleDefect": "Agent event stream closed before deferred cleanup released session ownership",
+    "stressScope": "C23/dev11 and C24/dev12 whole-system stress remain historical; final dev14 full race plus focused regression is recorded separately",
+    "agentCompletionStress": {
+      "status": "passed",
       "gomaxprocs": [
         1,
         2,
         12
       ],
       "repetitionsEach": 20,
-      "shuffleSeed": 1208900205
+      "shuffleSeed": 20261004,
+      "evidence": "c27-agent-completion-stress/report.json"
     }
   },
   "live": {
@@ -32,10 +42,17 @@
       "responses-api",
       "anthropic-api"
     ],
-    "geminiAutomaticPrefixRead": "explicit_zero_in_direct_and_gateway",
+    "geminiAutomaticPrefixRead": "native_zero_conflicts_with_nonzero_billing_extension",
     "geminiNativeToolFollowup": "HTTP_400_reproduced_without_gateway_history_conversion",
     "cacheReadScope": "non-streaming direct/gateway pairs",
-    "sqliteEvidence": "request IDs and usage snapshots read from temporary SQLite; databases cleaned up by test lifecycle"
+    "sqliteEvidence": "request IDs and usage snapshots read from temporary SQLite; databases cleaned up by test lifecycle",
+    "campaign": "C19-C23 historical",
+    "geminiBillingReadValues": [
+      4224,
+      8320,
+      16512
+    ],
+    "creationInterpretationCorrection": "OpenAI native cache_write_tokens:0 was present but omitted from semantic usage before C25"
   },
   "performance": {
     "cacheConversion": {
@@ -97,21 +114,33 @@
   "remainingEvidenceGaps": [
     "unmapped_cross_protocol_native_extensions",
     "gemini_positive_tool_roundtrip",
-    "gemini_explicit_cache_resource",
-    "cache_TTL_expiry",
-    "anthropic_input_and_billing_denominator",
-    "nonzero_live_cache_creation",
-    "nonzero_live_SSE_cache_read",
+    "gemini_explicit_cache_resource_lifecycle_site_endpoint_404",
+    "gemini_gateway_nonzero_live_SSE_cache_read",
+    "anthropic_site_1h_retention_not_observed_at_55m",
+    "cache_read_refresh_extension_not_tested",
+    "openai_24h_retention_outside_window",
+    "old_GPT_wrapper_anthropic_input_and_billing_denominator",
+    "nonzero_live_chat_responses_cache_creation",
     "production_capacity_SLO",
+    "legacy_cache_alias_mutation_CPU_and_allocation_regression",
     "remote_CI_not_executed",
-    "dev11_six_platform_artifact_execution_not_claimed"
+    "dev14_six_platform_artifact_execution_not_claimed"
   ],
   "localCommits": {
     "C19": "5754293",
     "C20": "49bc7b2",
     "C21": "bf89ab6",
     "C22": "8a3bf15",
-    "C23": "commit containing this index"
+    "C23": "fc31fea",
+    "C24": "5fa69b9",
+    "C25": "fb87ccf",
+    "C26": "5333765",
+    "C25_native_alias_followup": "4dfa0d2",
+    "C26_observer_scope": "10b090e",
+    "C26_bounded_followup": "b5277d4",
+    "C26_stream_decoder_contract": "d70d9e0",
+    "C27_agent_completion": "64d9d9b",
+    "C27": "commit containing the cache follow-up report and this index"
   },
   "artifacts": [
     {
@@ -409,6 +438,3838 @@
       "path": "c23-gc-followup/3-candidate/report.json",
       "sha256": "014c39a67996ada842f6ab36fbeb0c7beb5df968d984fed10ba2bf5391160d1e",
       "bytes": 1351
+    },
+    {
+      "path": "c25-checks/agent-completion-after.log",
+      "sha256": "c3aa39a590d957fcf91e25f91a70e595911c948e5ecc5fdf4801f2dc4010903a",
+      "bytes": 100
+    },
+    {
+      "path": "c25-checks/agent-completion-before.log",
+      "sha256": "e282991695f559f673affab8044a52891b90228b19c4786745f35881a73fb5f7",
+      "bytes": 412
+    },
+    {
+      "path": "c25-checks/alias-mutation-after.log",
+      "sha256": "ab58ab394ff6bbba5511ba785b27e274fd3578da9d2457b22a477122bf268a58",
+      "bytes": 122
+    },
+    {
+      "path": "c25-checks/alias-mutation-before.log",
+      "sha256": "4146f7b3119e7f1871dc3d7cfe09e6e4e9bd96716718e77e4d482eb620f1f5ce",
+      "bytes": 2006
+    },
+    {
+      "path": "c25-checks/before.log",
+      "sha256": "a2a0ee6515f9989843196cfe2e482777c8d54f77a7adee04bba68d91a12c812b",
+      "bytes": 2530
+    },
+    {
+      "path": "c25-checks/decoder-replay-after.log",
+      "sha256": "f581e05ee89043e2fa2aeef1a4b17967b3310c53f46b7b3aa71ac764eab68283",
+      "bytes": 326
+    },
+    {
+      "path": "c25-checks/decoder-replay-before.log",
+      "sha256": "4e3c8e8612ccfb03af00db319d8023236a82393c5694ff8c9a2c2709075ea51e",
+      "bytes": 506
+    },
+    {
+      "path": "c25-checks/targeted.log",
+      "sha256": "ba753a5d87bd8249bd059adb78d7cc433356d5460ca795896834ad2d71e2bdbf",
+      "bytes": 362
+    },
+    {
+      "path": "c26-final-checks/backend.log",
+      "sha256": "020bd0d13dafe9f11246debadc83d3de4ef42b38f2ecfe96889491c527c0748c",
+      "bytes": 464
+    },
+    {
+      "path": "c26-final-checks/report.json",
+      "sha256": "fae367b0bb19423414de2beae2423c05bd6397016797c9c4f7e8bf56eaa7b051",
+      "bytes": 2092,
+      "status": "passed",
+      "compilerVersion": "2.0.0-dev.12",
+      "sourceBaseCommit": "533376552f3626e919ff11cd374807519fec17f4"
+    },
+    {
+      "path": "c26-final-checks/verification-tools.log",
+      "sha256": "df5833d21ac2bb75a2c3d006a073a3b623d432721cea9f6bb838a5fd190359b9",
+      "bytes": 1062
+    },
+    {
+      "path": "c26-final-checks/vet.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "c27-agent-completion-stress/agent-race-1.log",
+      "sha256": "c6d51f22c1bd4f763940579c64b4ea9fe8ab786045489ccaf6f3eb19c071a1fe",
+      "bytes": 48
+    },
+    {
+      "path": "c27-agent-completion-stress/agent-race-12.log",
+      "sha256": "d9b9c343c48254aa12a3ce3b19d85461b320c1e892847efa1bdb445988f31bcf",
+      "bytes": 48
+    },
+    {
+      "path": "c27-agent-completion-stress/agent-race-2.log",
+      "sha256": "a1611308413f864f29b9a25bcfa3ed4b0e9afcb37217eb51646fad47aec2deed",
+      "bytes": 48
+    },
+    {
+      "path": "c27-agent-completion-stress/report.json",
+      "sha256": "d26b6a369d5fc7b38dd6d2a1688d9b63ca417965a5bd32c619aa980904f8b1c7",
+      "bytes": 6344,
+      "status": "passed",
+      "compilerVersion": "2.0.0-dev.14",
+      "sourceBaseCommit": "64d9d9baf2dea3197a980344464b837d36b4d2df"
+    },
+    {
+      "path": "c27-agent-final-checks/backend.log",
+      "sha256": "4a7a8c684ab742f08e13da34582b852b65d4a4f973c4c5b5dabf2fa27df5d73b",
+      "bytes": 464
+    },
+    {
+      "path": "c27-agent-final-checks/race-all.log",
+      "sha256": "753f3a54a3631b93260496530d6d2aae194bbe9ae11d581ae53bbda9139b6808",
+      "bytes": 2286256
+    },
+    {
+      "path": "c27-agent-final-checks/report.json",
+      "sha256": "45927b3b44fdc929d53458ee8141d6510f5a7a3ef98e2925338e56514a427e24",
+      "bytes": 5381,
+      "status": "passed",
+      "compilerVersion": "2.0.0-dev.14",
+      "sourceBaseCommit": "64d9d9baf2dea3197a980344464b837d36b4d2df"
+    },
+    {
+      "path": "c27-agent-final-checks/vet.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "c27-agent-final.mjs",
+      "sha256": "626af8b0f0d0be0e749ddd0351fb9fdd961605719bf94290a45fabe3daf9af42",
+      "bytes": 941
+    },
+    {
+      "path": "c27-audit.py",
+      "sha256": "038fb50c5bc8a6ff315c2176d2f7888f2f93685f41bdc45bbb6254414fabaa58",
+      "bytes": 6648
+    },
+    {
+      "path": "c27-cache-budget-final.json",
+      "sha256": "27fae775f8c2c9262e5a238c897ed23336540c2151c3d20145df92d3da1326bf",
+      "bytes": 131
+    },
+    {
+      "path": "c27-complete.mjs",
+      "sha256": "4ce333b03595c91109e327d1fef114c7a0b882d1fa3b8c0b6172a91335c2cc95",
+      "bytes": 3687
+    },
+    {
+      "path": "c27-dev14-checks/backend.log",
+      "sha256": "55ebfd2ded3cf826f73b857ff36ad40330f71136d36475fa4c2ca993f5e34d27",
+      "bytes": 464
+    },
+    {
+      "path": "c27-dev14-checks/race-all.log",
+      "sha256": "7e39e862bc1b99560801fb307390d2ee315733f2976530cfa137e87fbff20f5c",
+      "bytes": 2279295
+    },
+    {
+      "path": "c27-dev14-checks/report.json",
+      "sha256": "2289d356ac8faf391337cbc6ed5d2be974100a628c6085ab22dbdb2b574db6ab",
+      "bytes": 6483,
+      "status": "failed",
+      "compilerVersion": "2.0.0-dev.14",
+      "sourceBaseCommit": "d70d9e09cb813e413bb2294d815e493ed99fbde6"
+    },
+    {
+      "path": "c27-dev14-checks/verification-tools.log",
+      "sha256": "7f09921ef4326a5eea21951011985c47c6cf8eba97627c71a3e294537836d539",
+      "bytes": 1707
+    },
+    {
+      "path": "c27-dev14-checks/vet.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "c27-independent-audit.json",
+      "sha256": "7f939dcc6ae89469f90f624f44c75b2523d8f93aebf2539576296a8a880fa607",
+      "bytes": 71555
+    },
+    {
+      "path": "c27-performance-baseline/micro.json",
+      "sha256": "79497c239c9d791d003735c941dd4a32ea84294b2e51a1659334fd4cf8a5c4fb",
+      "bytes": 19628
+    },
+    {
+      "path": "c27-performance-baseline/micro.log",
+      "sha256": "5f3057f28085413fd4ee0f009050f05025a23c3f02a562c65010f758196eb08f",
+      "bytes": 23498
+    },
+    {
+      "path": "c27-performance-baseline/report.json",
+      "sha256": "0abe526e2b4cdd0ffae6d42c20d7ef556d0a07eb34ef906626655bb369b91c36",
+      "bytes": 2983,
+      "status": "passed",
+      "compilerVersion": "2.0.0-dev.14",
+      "sourceBaseCommit": "64d9d9baf2dea3197a980344464b837d36b4d2df"
+    },
+    {
+      "path": "c27-performance-baseline/snapshot.json",
+      "sha256": "ed9f3ddcc9f0b4b42a0aae019de2fdb5c39b3c670662511015bee588483c2076",
+      "bytes": 208
+    },
+    {
+      "path": "c27-performance-candidate/micro.json",
+      "sha256": "b04ec51d32cbce51e97e213cbfd8c8ba6175fb2f3fa40d34903becf6ad4b6590",
+      "bytes": 19663
+    },
+    {
+      "path": "c27-performance-candidate/micro.log",
+      "sha256": "79a1fdb0a4eb5fabd15dfadac76c3221b255729b91e1507c8bbd6134c40930d4",
+      "bytes": 23498
+    },
+    {
+      "path": "c27-performance-candidate/report.json",
+      "sha256": "370d176aa840ce7a426167291fea798a51893d8a886303bf22dd7d100e33748d",
+      "bytes": 2661,
+      "status": "passed",
+      "compilerVersion": "2.0.0-dev.14",
+      "sourceBaseCommit": "64d9d9baf2dea3197a980344464b837d36b4d2df"
+    },
+    {
+      "path": "c27-performance-comparison.json",
+      "sha256": "22292849a8367e43aa0f6b6a9b42a743bd8e8c99c5a03065fcea5da5584c28e5",
+      "bytes": 22590
+    },
+    {
+      "path": "c27-performance-followup/comparison.json",
+      "sha256": "61d17d8711fddd6668b12264af67bbb819f90c9d4664de4b3a8b915e701ecff1",
+      "bytes": 20475
+    },
+    {
+      "path": "c27-performance-followup/micro-0-candidate.log",
+      "sha256": "0ffa8f5cde46396863d66abf7b3cb708569c34d963aee873ea69f1175f3ad810",
+      "bytes": 11848
+    },
+    {
+      "path": "c27-performance-followup/micro-1-baseline.log",
+      "sha256": "fd38256fbc54df8502801748ce0df88e4605dcd124e1807c13f95047ce60d551",
+      "bytes": 11848
+    },
+    {
+      "path": "c27-performance-followup/micro-2-baseline.log",
+      "sha256": "1637d677ba93b592c02e318ea2fc23a0b95cba10c5cef8a064f78b50830e7fce",
+      "bytes": 11848
+    },
+    {
+      "path": "c27-performance-followup/micro-3-candidate.log",
+      "sha256": "65348ddc0b3153aabad11f5557d3df6893eddbd1437f464b726d39e1669b645a",
+      "bytes": 11848
+    },
+    {
+      "path": "c27-performance-followup/mutation-alloc-top.log",
+      "sha256": "73b75433d5e4544e4db3a88314b636ae18919f787177c5a4976fdaca3f947700",
+      "bytes": 9339
+    },
+    {
+      "path": "c27-performance-followup/mutation-cpu-top.log",
+      "sha256": "0a0e991e7caee889e3732c06a29ffc6543fd8e13a851e31b5de495b2df62cc35",
+      "bytes": 18355
+    },
+    {
+      "path": "c27-performance-followup/mutation-profile.log",
+      "sha256": "1a3d19f21d5eab85ca5127078ce15830729e18f52471150b599a2ffaf795d9d4",
+      "bytes": 291
+    },
+    {
+      "path": "c27-performance-followup/mutation.cpu.pprof",
+      "sha256": "f8446179fc94b1d3dd97d1c79164578a6177e9cac85bce0f9cef7d2e2db84fe9",
+      "bytes": 27018
+    },
+    {
+      "path": "c27-performance-followup/mutation.mem.pprof",
+      "sha256": "0c1425520fb9c640215336faffd8e134b55da74f44409ca784a57fb2a8c35e99",
+      "bytes": 21384
+    },
+    {
+      "path": "c27-performance-followup/report.json",
+      "sha256": "132e607e5caf4604b7304a9bf23b78a10ac7768ea02b4b428bec89a6ff41244c",
+      "bytes": 11422,
+      "status": "passed",
+      "compilerVersion": "2.0.0-dev.14",
+      "sourceBaseCommit": "64d9d9baf2dea3197a980344464b837d36b4d2df"
+    },
+    {
+      "path": "c27-performance-followup/samples.json",
+      "sha256": "edc530bf2f15981564b35756c4cfabdd7e807d34348fc9d461efbc95317fe054",
+      "bytes": 43519
+    },
+    {
+      "path": "c27-performance-followup/snapshot.json",
+      "sha256": "6c25178cbe97ac0d9c6fca064fb32a062caf5a93d66ec792a65f9878724868ae",
+      "bytes": 208
+    },
+    {
+      "path": "c27-performance-followup.mjs",
+      "sha256": "f04b2231f5258da123621f43514fae3bf81eb7e65a0141e430cb5aea11e7dc9f",
+      "bytes": 3612
+    },
+    {
+      "path": "c27-scope-replay/report.json",
+      "sha256": "8d3115df9914da3ae08bff2f70e4264b52345b21331e27f4853f69a20eef07c4",
+      "bytes": 2139,
+      "status": "passed",
+      "compilerVersion": "2.0.0-dev.14",
+      "sourceBaseCommit": "64d9d9baf2dea3197a980344464b837d36b4d2df"
+    },
+    {
+      "path": "c27-scope-replay/signed-Gemini-replay.log",
+      "sha256": "717a3c68a752245becde6ed024e0398f3ef7008495ee699949355207760b2df6",
+      "bytes": 49
+    },
+    {
+      "path": "c27-supplemental-checks/cache-workflow-race.log",
+      "sha256": "8f976c90a165b41edb1c098a2748f06aed2011904c31274fa4154c09481fac3c",
+      "bytes": 51
+    },
+    {
+      "path": "c27-supplemental-checks/FuzzCompileDefinition.log",
+      "sha256": "2b49294389f4ecd327ef0a24c0653cddc4937e87ce63ae2393f3a62a05d1a17d",
+      "bytes": 994
+    },
+    {
+      "path": "c27-supplemental-checks/FuzzEventReplay.log",
+      "sha256": "3c1b274fbf72adc7d0b2bb061f3d2c7b8c481750b6e5fe404e01f4be9c036b9a",
+      "bytes": 1033
+    },
+    {
+      "path": "c27-supplemental-checks/FuzzJSONMappingPresence.log",
+      "sha256": "05765e3b69405e32cba4bd76d2c8dbcc92ea2c057916c97ca9f4f889e26380f7",
+      "bytes": 1095
+    },
+    {
+      "path": "c27-supplemental-checks/FuzzTypedLimitEquivalence.log",
+      "sha256": "9c35e58dee60e4b4c7ca616551ef8979b64fde5bf7e8146e707dc81d9a406a19",
+      "bytes": 1086
+    },
+    {
+      "path": "c27-supplemental-checks/node.log",
+      "sha256": "46e7c6de563e51fbea48feafbe28158aaac90b7407a633b77063fbdc01945144",
+      "bytes": 2363
+    },
+    {
+      "path": "c27-supplemental-checks/report.json",
+      "sha256": "b817677517342c453d408b22a527c9a9b4836eeb85c1509d698a1c4a16a1147b",
+      "bytes": 10983,
+      "status": "passed",
+      "compilerVersion": "2.0.0-dev.14",
+      "sourceBaseCommit": "64d9d9baf2dea3197a980344464b837d36b4d2df"
+    },
+    {
+      "path": "c27-supplemental-checks/vet.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "protocol-live-1791043109684/04ac90032517130c08a93791a71214c00bca13f4298611eb1b644836d3d4dd3a.request.txt",
+      "sha256": "9fe46eda36c8159c88c71f645cc9275cf85f61df71b667876d29dfbabffb4f59",
+      "bytes": 27934
+    },
+    {
+      "path": "protocol-live-1791043109684/04ac90032517130c08a93791a71214c00bca13f4298611eb1b644836d3d4dd3a.upstream.txt",
+      "sha256": "177ea873931535b2ffbf05f9445819a881af3e29b88b4c7f65879f129dd622fb",
+      "bytes": 1345
+    },
+    {
+      "path": "protocol-live-1791043109684/0941e73c5007ff15622d41005bc889fadf494e7f0154406762177960966ebb33.request.txt",
+      "sha256": "ccd975ff517fef7561f2f934b8cab006d648e81cb883ca026c64d90d00827d82",
+      "bytes": 27864
+    },
+    {
+      "path": "protocol-live-1791043109684/0941e73c5007ff15622d41005bc889fadf494e7f0154406762177960966ebb33.upstream.txt",
+      "sha256": "8e8954ea539a28e380e1cc7d8f2ac3d8aed04c1c9d74e0575f1262f3126cb82f",
+      "bytes": 117
+    },
+    {
+      "path": "protocol-live-1791043109684/09514a48dc140e283559786821c13489cc71e46a54bdcc066f81506b3d8dedbc.downstream.txt",
+      "sha256": "ce45b5559132a3f4f6d9c9672962756e45e2dadc47293d5c4d044f52fb871614",
+      "bytes": 7172
+    },
+    {
+      "path": "protocol-live-1791043109684/09514a48dc140e283559786821c13489cc71e46a54bdcc066f81506b3d8dedbc.request.txt",
+      "sha256": "718fafdcdd014aa4f77a5b625d7e8457c310ce95690025fd78349d61b1619bdd",
+      "bytes": 27954
+    },
+    {
+      "path": "protocol-live-1791043109684/09514a48dc140e283559786821c13489cc71e46a54bdcc066f81506b3d8dedbc.upstream.txt",
+      "sha256": "ce45b5559132a3f4f6d9c9672962756e45e2dadc47293d5c4d044f52fb871614",
+      "bytes": 7172
+    },
+    {
+      "path": "protocol-live-1791043109684/11d79ad21be4279ef0cc3e3a1e3994bb541e4f20083c043f2c2a8e441689b404.downstream.txt",
+      "sha256": "aad861cad0af897d6d6f94887cc17ec658c6b31d9529c89154daaae8d64f1013",
+      "bytes": 537
+    },
+    {
+      "path": "protocol-live-1791043109684/11d79ad21be4279ef0cc3e3a1e3994bb541e4f20083c043f2c2a8e441689b404.request.txt",
+      "sha256": "ae9e23ffa8ec9ea9f640b59fa55d0038f7b0104582be0abc904a1d1cb091740c",
+      "bytes": 27936
+    },
+    {
+      "path": "protocol-live-1791043109684/11d79ad21be4279ef0cc3e3a1e3994bb541e4f20083c043f2c2a8e441689b404.upstream.txt",
+      "sha256": "492c2fe8acc57ec7148ee406d728b4c5dfc5334a590ae17b114480a50d452a17",
+      "bytes": 550
+    },
+    {
+      "path": "protocol-live-1791043109684/158774799e9090a897c0bea396a567912fe0e7c031f74a90dc02ca1617ff80bb.request.txt",
+      "sha256": "0d1ec98efd6450e6cfb14698779e29539ceb60d7f140ede326d918aec98c760e",
+      "bytes": 240
+    },
+    {
+      "path": "protocol-live-1791043109684/158774799e9090a897c0bea396a567912fe0e7c031f74a90dc02ca1617ff80bb.upstream.txt",
+      "sha256": "794ad85d8d519a147111b90fb09b4549589c86329d3cff07d8031f435ffc1f41",
+      "bytes": 1257
+    },
+    {
+      "path": "protocol-live-1791043109684/170c84f4bec24e4781bffb65bc6025cf849bc85802ff126bb9e23436b0035bd0.downstream.txt",
+      "sha256": "905ee3ea6e25f0531bf88f813efd08bd9fd86992248e834074140d12f3e04bc6",
+      "bytes": 7183
+    },
+    {
+      "path": "protocol-live-1791043109684/170c84f4bec24e4781bffb65bc6025cf849bc85802ff126bb9e23436b0035bd0.request.txt",
+      "sha256": "5f72d05a9f941bbe4a39e7a839ef3588bc44488aaae6f464b75ed326d2812688",
+      "bytes": 27954
+    },
+    {
+      "path": "protocol-live-1791043109684/170c84f4bec24e4781bffb65bc6025cf849bc85802ff126bb9e23436b0035bd0.upstream.txt",
+      "sha256": "905ee3ea6e25f0531bf88f813efd08bd9fd86992248e834074140d12f3e04bc6",
+      "bytes": 7183
+    },
+    {
+      "path": "protocol-live-1791043109684/1a2c48f44cf3541e0d48296bf032bafa5e648973a0355817ca8521a32ca0becc.downstream.txt",
+      "sha256": "12e206b0acdb2d8b1f0e6fa2d1e20cdddc9b255826a06e103935fe34fc42bd49",
+      "bytes": 801
+    },
+    {
+      "path": "protocol-live-1791043109684/1a2c48f44cf3541e0d48296bf032bafa5e648973a0355817ca8521a32ca0becc.request.txt",
+      "sha256": "4493f1bb0851b6e4fbcb29c4d63be27fa941e61d6bd62707f3ddc72555a03719",
+      "bytes": 27939
+    },
+    {
+      "path": "protocol-live-1791043109684/1a2c48f44cf3541e0d48296bf032bafa5e648973a0355817ca8521a32ca0becc.upstream.txt",
+      "sha256": "27f648e8018aa51153f770109be2d12028cf34e2b5b9792736662e8b131028d1",
+      "bytes": 1311
+    },
+    {
+      "path": "protocol-live-1791043109684/1c0d07cbb4219b9a95eda9c4fc5dda6efcb977eb81f6183768201c26b2d6e7f8.request.txt",
+      "sha256": "d9cae337349630638be890b4f175b98875a213e6063b9e1a23c6786e4b8b23a9",
+      "bytes": 216
+    },
+    {
+      "path": "protocol-live-1791043109684/1c0d07cbb4219b9a95eda9c4fc5dda6efcb977eb81f6183768201c26b2d6e7f8.upstream.txt",
+      "sha256": "b139c69e08db26f5e9b979e4d245121dcbb1fac279ce32180f445c6c5d604dac",
+      "bytes": 1180
+    },
+    {
+      "path": "protocol-live-1791043109684/1c26606529e98ee4a2e99c5331620988ee5bb65976618bb03f353c04ffdf5d6d.downstream.txt",
+      "sha256": "78884b70e86ba4bb1ca5e17394e5eafac4937442dc494eb733940a511b92dde3",
+      "bytes": 538
+    },
+    {
+      "path": "protocol-live-1791043109684/1c26606529e98ee4a2e99c5331620988ee5bb65976618bb03f353c04ffdf5d6d.request.txt",
+      "sha256": "4b225f84aa5bbe34b53a13068149fdc5c74b991055aead809eca8f71dd44b679",
+      "bytes": 27936
+    },
+    {
+      "path": "protocol-live-1791043109684/1c26606529e98ee4a2e99c5331620988ee5bb65976618bb03f353c04ffdf5d6d.upstream.txt",
+      "sha256": "5f37be7b935445ee691a13e3c9ff12e1845099ca779ac2c4f1f441f242b85874",
+      "bytes": 551
+    },
+    {
+      "path": "protocol-live-1791043109684/1c81cd205c6190b02501ebffbe4e3f81a7291cc2c279624c674fca89b5e5e190.downstream.txt",
+      "sha256": "434ba1e952d4040c6f77a1a9b882e6807b93a39e73964676bcd260d7afe3480c",
+      "bytes": 538
+    },
+    {
+      "path": "protocol-live-1791043109684/1c81cd205c6190b02501ebffbe4e3f81a7291cc2c279624c674fca89b5e5e190.request.txt",
+      "sha256": "66bcde376c6d34c232f5bb83eee25f697fd40ee12c40067e3696c6c44c16f96c",
+      "bytes": 27940
+    },
+    {
+      "path": "protocol-live-1791043109684/1c81cd205c6190b02501ebffbe4e3f81a7291cc2c279624c674fca89b5e5e190.upstream.txt",
+      "sha256": "dc0caed0b07c7b951f3ffefcd75d5274c92da2cb1bc836d6f521c83b1e257480",
+      "bytes": 551
+    },
+    {
+      "path": "protocol-live-1791043109684/23575b797fc17d06e9fed0e14633861ec1dc29a59b827edb52594b0255112992.request.txt",
+      "sha256": "dac64762ba8d3d7d98c566917c6a3efc4b57c6dd22d548b42a6b22e71da5e170",
+      "bytes": 27953
+    },
+    {
+      "path": "protocol-live-1791043109684/23575b797fc17d06e9fed0e14633861ec1dc29a59b827edb52594b0255112992.upstream.txt",
+      "sha256": "dd87f4abed7b5a475529c24e25202271292bdd5d883a2b6060fb9da8b9ba4dd7",
+      "bytes": 7183
+    },
+    {
+      "path": "protocol-live-1791043109684/239c558bae188c8e60388b70d5cee72010a025f08b083c7049061356fe299c9c.downstream.txt",
+      "sha256": "bc07a72cc8b3fbb20ed36f8304d8c9d335f8ddfcf76e416a029f3eb5a73d520c",
+      "bytes": 537
+    },
+    {
+      "path": "protocol-live-1791043109684/239c558bae188c8e60388b70d5cee72010a025f08b083c7049061356fe299c9c.request.txt",
+      "sha256": "e67496c8d9dab4937ebcb30adde5e4ede768703848f26c5be08814f329b47c9b",
+      "bytes": 27940
+    },
+    {
+      "path": "protocol-live-1791043109684/239c558bae188c8e60388b70d5cee72010a025f08b083c7049061356fe299c9c.upstream.txt",
+      "sha256": "aa2c1f1ed9d558b6ff95c72520ab3402c54d92a6bc05ad6a2439f1a5d5aecc50",
+      "bytes": 550
+    },
+    {
+      "path": "protocol-live-1791043109684/252a2efd43f7d43c26be2e1c8c2b3afde4bf775465316fdbca7698492ac329a5.downstream.txt",
+      "sha256": "c06e249caebb5c840205d77b0681012dc5e901dce40c1ef1aabb1f73c362d2a1",
+      "bytes": 783
+    },
+    {
+      "path": "protocol-live-1791043109684/252a2efd43f7d43c26be2e1c8c2b3afde4bf775465316fdbca7698492ac329a5.request.txt",
+      "sha256": "23b97e9699e174e1910505d7f3f916a4b4393c51614e0288e0bb698511e5913d",
+      "bytes": 27872
+    },
+    {
+      "path": "protocol-live-1791043109684/252a2efd43f7d43c26be2e1c8c2b3afde4bf775465316fdbca7698492ac329a5.upstream.txt",
+      "sha256": "c06e249caebb5c840205d77b0681012dc5e901dce40c1ef1aabb1f73c362d2a1",
+      "bytes": 783
+    },
+    {
+      "path": "protocol-live-1791043109684/27cc5726d135fed31dda69e57f68b8290969ecb487ee3bf676caebbc9301f049.downstream.txt",
+      "sha256": "ec01c5730b922169ac782ca296fa94ece2d541235556fa6b65462e61f0592168",
+      "bytes": 800
+    },
+    {
+      "path": "protocol-live-1791043109684/27cc5726d135fed31dda69e57f68b8290969ecb487ee3bf676caebbc9301f049.request.txt",
+      "sha256": "04cfb783f6849d02a0017ce78374018c434ea01c9d1f27cd2f0f3c1df6621068",
+      "bytes": 27935
+    },
+    {
+      "path": "protocol-live-1791043109684/27cc5726d135fed31dda69e57f68b8290969ecb487ee3bf676caebbc9301f049.upstream.txt",
+      "sha256": "93e080f0c6d8c4d8f4a477729888dece77ad73dad3428d81cd42d3cae854f827",
+      "bytes": 1324
+    },
+    {
+      "path": "protocol-live-1791043109684/2ae52c606ecaff0d334e3ff1a14427322b010fbac1673322413eb6f05f8e9ed5.request.txt",
+      "sha256": "b63eda46e8ef2ee78cf0a931320e522882359c1e38f5c37d24531223191a3cfb",
+      "bytes": 27938
+    },
+    {
+      "path": "protocol-live-1791043109684/2ae52c606ecaff0d334e3ff1a14427322b010fbac1673322413eb6f05f8e9ed5.upstream.txt",
+      "sha256": "3c9957613a7b15639fbae88c7072aa2d569811d09cb324e4c86a4196e2395f3c",
+      "bytes": 1330
+    },
+    {
+      "path": "protocol-live-1791043109684/2faa40d3624da3259453075d727f02783cea08ea7f3a607a4e27ab4514a35231.downstream.txt",
+      "sha256": "1f4ad3472e57794f28044442de1ac2ee4aa611ae008ea775cdfac1c2b111d5f1",
+      "bytes": 780
+    },
+    {
+      "path": "protocol-live-1791043109684/2faa40d3624da3259453075d727f02783cea08ea7f3a607a4e27ab4514a35231.request.txt",
+      "sha256": "15570dd0c5fbcc0d432fafe8f3e84817faa928c7dd5fd2fee7ebcc4fac1fcabd",
+      "bytes": 27872
+    },
+    {
+      "path": "protocol-live-1791043109684/2faa40d3624da3259453075d727f02783cea08ea7f3a607a4e27ab4514a35231.upstream.txt",
+      "sha256": "1f4ad3472e57794f28044442de1ac2ee4aa611ae008ea775cdfac1c2b111d5f1",
+      "bytes": 780
+    },
+    {
+      "path": "protocol-live-1791043109684/2fee8549954b8b9f75e2c226435f78b6823631c7e01f01448d4808275f0bcb9b.request.txt",
+      "sha256": "dac64762ba8d3d7d98c566917c6a3efc4b57c6dd22d548b42a6b22e71da5e170",
+      "bytes": 27953
+    },
+    {
+      "path": "protocol-live-1791043109684/2fee8549954b8b9f75e2c226435f78b6823631c7e01f01448d4808275f0bcb9b.upstream.txt",
+      "sha256": "e9ca801dc2e1b222f56c07e7104e205173f8424020ac9f1939f9e7b7528dbeaf",
+      "bytes": 7172
+    },
+    {
+      "path": "protocol-live-1791043109684/4117782446b2b7006930a722384471c219eda58e421c0c2fa22ee2cb2301e275.request.txt",
+      "sha256": "9e5d1686cee50d54b7a9cbf9a6ed5106004f470dae5aba81fd41410a3834a141",
+      "bytes": 27937
+    },
+    {
+      "path": "protocol-live-1791043109684/4117782446b2b7006930a722384471c219eda58e421c0c2fa22ee2cb2301e275.upstream.txt",
+      "sha256": "bd4c7fcebe16d0576de6a94cfdd6402f5449187fac1d73bd39608fbe2d48eb72",
+      "bytes": 1324
+    },
+    {
+      "path": "protocol-live-1791043109684/42d40c9e57c839f65692db3571192616d460c2c4839696a0394f2d3f7d37b611.request.txt",
+      "sha256": "d9cae337349630638be890b4f175b98875a213e6063b9e1a23c6786e4b8b23a9",
+      "bytes": 216
+    },
+    {
+      "path": "protocol-live-1791043109684/42d40c9e57c839f65692db3571192616d460c2c4839696a0394f2d3f7d37b611.upstream.txt",
+      "sha256": "643f198179bccd0b5920eeb30cf2f503d9202fa606b26c01646763374e320817",
+      "bytes": 1157
+    },
+    {
+      "path": "protocol-live-1791043109684/435f0e2bc7515c2f9a6fecf72561924b119bad8f5080085fdc4b54f842ebe38e.request.txt",
+      "sha256": "31274b2b2acdf981c033b5f9a3d4977e189b07bc6a0ed9520330c45850ff2d75",
+      "bytes": 27938
+    },
+    {
+      "path": "protocol-live-1791043109684/435f0e2bc7515c2f9a6fecf72561924b119bad8f5080085fdc4b54f842ebe38e.upstream.txt",
+      "sha256": "3ea91471f7ea9ad7e0c6b64aa9cf5877c0a620a60794f40e71ff29cb4009fa53",
+      "bytes": 551
+    },
+    {
+      "path": "protocol-live-1791043109684/451f98e8897f164a696c95aab1dced6f9d07e14bd3b30df4b5687970a9679b83.request.txt",
+      "sha256": "7cf3b6d19259fb0de4249962acb334e7d671e8e1917a832a5709220fd223ffa2",
+      "bytes": 27938
+    },
+    {
+      "path": "protocol-live-1791043109684/451f98e8897f164a696c95aab1dced6f9d07e14bd3b30df4b5687970a9679b83.upstream.txt",
+      "sha256": "4ab554a6098574457d01c4d07dafe07e4789fd3dde84a86a7816ec7d7febb28a",
+      "bytes": 1221
+    },
+    {
+      "path": "protocol-live-1791043109684/49095b405bef6c2bbcc837b190fc1d4175f7c64882548ae34cc667f098dcf962.request.txt",
+      "sha256": "9eeab78f84a93487fe5e3d636533362407232fbb57b11b732d85b27631925b48",
+      "bytes": 241
+    },
+    {
+      "path": "protocol-live-1791043109684/49095b405bef6c2bbcc837b190fc1d4175f7c64882548ae34cc667f098dcf962.upstream.txt",
+      "sha256": "6061255be5273a58e9941127167b25355c3fac82d5b8c68559774d1f39f4467b",
+      "bytes": 545
+    },
+    {
+      "path": "protocol-live-1791043109684/4ea7e6d8151a49cfb1f9eed34e973316ff602e2e9e6dd57c8efe90dc3ca53172.request.txt",
+      "sha256": "9fe46eda36c8159c88c71f645cc9275cf85f61df71b667876d29dfbabffb4f59",
+      "bytes": 27934
+    },
+    {
+      "path": "protocol-live-1791043109684/4ea7e6d8151a49cfb1f9eed34e973316ff602e2e9e6dd57c8efe90dc3ca53172.upstream.txt",
+      "sha256": "177ea873931535b2ffbf05f9445819a881af3e29b88b4c7f65879f129dd622fb",
+      "bytes": 1345
+    },
+    {
+      "path": "protocol-live-1791043109684/516f7e55ec88bc165551cd80bb11d2871715e37edba802098991548da12d2a60.request.txt",
+      "sha256": "6d3c9b1fa2d2e388db0b8f8d24e2831ebb87d6a5656a381ec697a7595e6504fe",
+      "bytes": 27953
+    },
+    {
+      "path": "protocol-live-1791043109684/516f7e55ec88bc165551cd80bb11d2871715e37edba802098991548da12d2a60.upstream.txt",
+      "sha256": "837f335e35129a85767a049443b02431440fa289caacec55f2f75bb67dae89c9",
+      "bytes": 7172
+    },
+    {
+      "path": "protocol-live-1791043109684/547cee6a57d270fdaa1c8f09a607215e00f0e60ec2bc93b95ae20c37c5a191a5.request.txt",
+      "sha256": "6507640112f3e632a57ce52257da1f84856b83bdc96087a5f42dd2e3feffbd4e",
+      "bytes": 27939
+    },
+    {
+      "path": "protocol-live-1791043109684/547cee6a57d270fdaa1c8f09a607215e00f0e60ec2bc93b95ae20c37c5a191a5.upstream.txt",
+      "sha256": "c90185a9337e1ceb87346206790665a2bc875d60607c6749ba13bfc8607cd67a",
+      "bytes": 550
+    },
+    {
+      "path": "protocol-live-1791043109684/5632bbddcb5c3b2a200b419fe8ee194d4415514f12de41d4b41450dfb7b0b6be.request.txt",
+      "sha256": "468ff37e44acdf2ed56356cddaaf4a32a0e3c9e26a6eacdc163fc0cc829e1f77",
+      "bytes": 215
+    },
+    {
+      "path": "protocol-live-1791043109684/5632bbddcb5c3b2a200b419fe8ee194d4415514f12de41d4b41450dfb7b0b6be.upstream.txt",
+      "sha256": "4592bb50d93395b6abc6e154da3b1599cc529242e4a17064f85c41015e2befd5",
+      "bytes": 778
+    },
+    {
+      "path": "protocol-live-1791043109684/5cb5918f88ae6c243182abc5ff7b311b339cf96f2e14102aba3635cc66115358.request.txt",
+      "sha256": "d57b66763844689c5447e15a99e1a983d6a5774b351d6c4b68f04c813d868987",
+      "bytes": 27934
+    },
+    {
+      "path": "protocol-live-1791043109684/5cb5918f88ae6c243182abc5ff7b311b339cf96f2e14102aba3635cc66115358.upstream.txt",
+      "sha256": "3cf976051ac69d50d0498a84cc302bdceea510d27039f913826f036c2869c61f",
+      "bytes": 1344
+    },
+    {
+      "path": "protocol-live-1791043109684/5ceea7df080b649d9a765cd88a5ad9ffa21ab3782e7107b90f2aa1d58ca525d1.downstream.txt",
+      "sha256": "bbcb575361ffd3ee4ba662328ccda462e616af3cafedd97714e1f7eeeb0fa600",
+      "bytes": 718
+    },
+    {
+      "path": "protocol-live-1791043109684/5ceea7df080b649d9a765cd88a5ad9ffa21ab3782e7107b90f2aa1d58ca525d1.request.txt",
+      "sha256": "2fe12e807e58be466158b3c184fc1ae2d36140a102688c8aabfd5c932fbe04e1",
+      "bytes": 27939
+    },
+    {
+      "path": "protocol-live-1791043109684/5ceea7df080b649d9a765cd88a5ad9ffa21ab3782e7107b90f2aa1d58ca525d1.upstream.txt",
+      "sha256": "300d0a4c1a340f148f775ef690b7187b266a6f9c86185f3b08bf9c42f8f25ad8",
+      "bytes": 1231
+    },
+    {
+      "path": "protocol-live-1791043109684/5e285202840078c9742027a106f7184d1a48ce052a04e88173c524b7b72ba16c.downstream.txt",
+      "sha256": "12e206b0acdb2d8b1f0e6fa2d1e20cdddc9b255826a06e103935fe34fc42bd49",
+      "bytes": 801
+    },
+    {
+      "path": "protocol-live-1791043109684/5e285202840078c9742027a106f7184d1a48ce052a04e88173c524b7b72ba16c.request.txt",
+      "sha256": "723372a84d8c41b531f0b2022639f0eb99816a31b7de2ff5b04ead54eccd390a",
+      "bytes": 27935
+    },
+    {
+      "path": "protocol-live-1791043109684/5e285202840078c9742027a106f7184d1a48ce052a04e88173c524b7b72ba16c.upstream.txt",
+      "sha256": "26292c37eea2a987956038502f8c4749cb2644196afdf9ba7a6e7d3199b2c44e",
+      "bytes": 1329
+    },
+    {
+      "path": "protocol-live-1791043109684/5f3910c5ff580f0418d04b8dcac98dc35e3a3e798a678a8c5cd3c6d226fa4e53.downstream.txt",
+      "sha256": "ec01c5730b922169ac782ca296fa94ece2d541235556fa6b65462e61f0592168",
+      "bytes": 800
+    },
+    {
+      "path": "protocol-live-1791043109684/5f3910c5ff580f0418d04b8dcac98dc35e3a3e798a678a8c5cd3c6d226fa4e53.request.txt",
+      "sha256": "04cfb783f6849d02a0017ce78374018c434ea01c9d1f27cd2f0f3c1df6621068",
+      "bytes": 27935
+    },
+    {
+      "path": "protocol-live-1791043109684/5f3910c5ff580f0418d04b8dcac98dc35e3a3e798a678a8c5cd3c6d226fa4e53.upstream.txt",
+      "sha256": "93e080f0c6d8c4d8f4a477729888dece77ad73dad3428d81cd42d3cae854f827",
+      "bytes": 1324
+    },
+    {
+      "path": "protocol-live-1791043109684/5f840d5e76f004ff3030807f80138bd12c263e11519042919132741c2ae745f5.downstream.txt",
+      "sha256": "5a87a2f9944c300a5806c2eb9f74938a6c272d17156d1e7545343c1d669f79c8",
+      "bytes": 780
+    },
+    {
+      "path": "protocol-live-1791043109684/5f840d5e76f004ff3030807f80138bd12c263e11519042919132741c2ae745f5.request.txt",
+      "sha256": "15570dd0c5fbcc0d432fafe8f3e84817faa928c7dd5fd2fee7ebcc4fac1fcabd",
+      "bytes": 27872
+    },
+    {
+      "path": "protocol-live-1791043109684/5f840d5e76f004ff3030807f80138bd12c263e11519042919132741c2ae745f5.upstream.txt",
+      "sha256": "5a87a2f9944c300a5806c2eb9f74938a6c272d17156d1e7545343c1d669f79c8",
+      "bytes": 780
+    },
+    {
+      "path": "protocol-live-1791043109684/6222e85e933dec5e49187ea83c30b738655c29cfc62ae5b2d81f591f70f1e7da.request.txt",
+      "sha256": "d57b66763844689c5447e15a99e1a983d6a5774b351d6c4b68f04c813d868987",
+      "bytes": 27934
+    },
+    {
+      "path": "protocol-live-1791043109684/6222e85e933dec5e49187ea83c30b738655c29cfc62ae5b2d81f591f70f1e7da.upstream.txt",
+      "sha256": "3cf976051ac69d50d0498a84cc302bdceea510d27039f913826f036c2869c61f",
+      "bytes": 1344
+    },
+    {
+      "path": "protocol-live-1791043109684/6321504b62df0ae27b53d12e042d4546483b6897fd1ff45c68a3329b38aec11f.request.txt",
+      "sha256": "dc1a948ea9b4a0179abf16ef2359d0a3fd56f9ae82597aaaa4908b23b7c891d7",
+      "bytes": 27871
+    },
+    {
+      "path": "protocol-live-1791043109684/6321504b62df0ae27b53d12e042d4546483b6897fd1ff45c68a3329b38aec11f.upstream.txt",
+      "sha256": "ed7c8649f0dd715322b769a0dc71858091982a277d2133852d0fa46a2d63adf7",
+      "bytes": 780
+    },
+    {
+      "path": "protocol-live-1791043109684/65b0212d5603071a2f89133355279587c14b70786207936024a978fb25b3992e.downstream.txt",
+      "sha256": "2541f27768a5423a4e04a8b1707c6e21389b6a69b0d926377d5642f0c6569c99",
+      "bytes": 7172
+    },
+    {
+      "path": "protocol-live-1791043109684/65b0212d5603071a2f89133355279587c14b70786207936024a978fb25b3992e.request.txt",
+      "sha256": "5f72d05a9f941bbe4a39e7a839ef3588bc44488aaae6f464b75ed326d2812688",
+      "bytes": 27954
+    },
+    {
+      "path": "protocol-live-1791043109684/65b0212d5603071a2f89133355279587c14b70786207936024a978fb25b3992e.upstream.txt",
+      "sha256": "2541f27768a5423a4e04a8b1707c6e21389b6a69b0d926377d5642f0c6569c99",
+      "bytes": 7172
+    },
+    {
+      "path": "protocol-live-1791043109684/67d88ece6b68d4fa03a6d4c0245b5d227d3fad64ce4ef8e16edcdf718416e86e.downstream.txt",
+      "sha256": "a4164e310f2c8a7d53f6571384ac1957a7a91bcc114de32c92d0cd2d76419508",
+      "bytes": 177
+    },
+    {
+      "path": "protocol-live-1791043109684/67d88ece6b68d4fa03a6d4c0245b5d227d3fad64ce4ef8e16edcdf718416e86e.request.txt",
+      "sha256": "330e52e1cd2308d8a2d2fe416c1adb99b9cf08586854733cc060e16bbf68d1c8",
+      "bytes": 27939
+    },
+    {
+      "path": "protocol-live-1791043109684/6ef30a1bfeaa2a94e013cb02de068fe3a9a367b00b97c7a1c4746982694888e2.request.txt",
+      "sha256": "7cf3b6d19259fb0de4249962acb334e7d671e8e1917a832a5709220fd223ffa2",
+      "bytes": 27938
+    },
+    {
+      "path": "protocol-live-1791043109684/6ef30a1bfeaa2a94e013cb02de068fe3a9a367b00b97c7a1c4746982694888e2.upstream.txt",
+      "sha256": "4ab554a6098574457d01c4d07dafe07e4789fd3dde84a86a7816ec7d7febb28a",
+      "bytes": 1221
+    },
+    {
+      "path": "protocol-live-1791043109684/7811e6a9d6d9d12e5e3b57f331f76870b7e20a6d226deffd744183942320686d.request.txt",
+      "sha256": "16188cf9ba3778b1efebefab713646b126cf9ec2cc33765a801f3d25c950c223",
+      "bytes": 27935
+    },
+    {
+      "path": "protocol-live-1791043109684/7811e6a9d6d9d12e5e3b57f331f76870b7e20a6d226deffd744183942320686d.upstream.txt",
+      "sha256": "54064601a6b6a201a652ed596334bea4a342fbf4bbd6f0084e621e18aa67b5ea",
+      "bytes": 551
+    },
+    {
+      "path": "protocol-live-1791043109684/87e514565d04a161f661c65d8e433ab25fc1c8a583f2c9a2dc711666fe792c02.downstream.txt",
+      "sha256": "12e206b0acdb2d8b1f0e6fa2d1e20cdddc9b255826a06e103935fe34fc42bd49",
+      "bytes": 801
+    },
+    {
+      "path": "protocol-live-1791043109684/87e514565d04a161f661c65d8e433ab25fc1c8a583f2c9a2dc711666fe792c02.request.txt",
+      "sha256": "4493f1bb0851b6e4fbcb29c4d63be27fa941e61d6bd62707f3ddc72555a03719",
+      "bytes": 27939
+    },
+    {
+      "path": "protocol-live-1791043109684/87e514565d04a161f661c65d8e433ab25fc1c8a583f2c9a2dc711666fe792c02.upstream.txt",
+      "sha256": "27f648e8018aa51153f770109be2d12028cf34e2b5b9792736662e8b131028d1",
+      "bytes": 1311
+    },
+    {
+      "path": "protocol-live-1791043109684/8b2e02cbb495ac1a404305a8140e6b22a395563602d8f054b1640ab6dc465dd4.request.txt",
+      "sha256": "f116fa24c436aadaa485f712be87fc217ea7b195a6557a6ee1602086e75c334e",
+      "bytes": 216
+    },
+    {
+      "path": "protocol-live-1791043109684/8b2e02cbb495ac1a404305a8140e6b22a395563602d8f054b1640ab6dc465dd4.upstream.txt",
+      "sha256": "a6ef0cd76e32fcc67ae2e1bdd974bbc935a451c9154b30395ddb5cb8cb782cfd",
+      "bytes": 541
+    },
+    {
+      "path": "protocol-live-1791043109684/96c700bbaeecc72e9f7eb92e874123b2dd5b9b0efa8d2a75cce356f1c67abeba.request.txt",
+      "sha256": "072aa33e08f5e8820fd223ad1f700827e181bcb07a5e245bb520862cffc2e454",
+      "bytes": 27862
+    },
+    {
+      "path": "protocol-live-1791043109684/96c700bbaeecc72e9f7eb92e874123b2dd5b9b0efa8d2a75cce356f1c67abeba.upstream.txt",
+      "sha256": "19e355d7380152e58a6790493363a91e59568660402ffb708078b4b43f075834",
+      "bytes": 807
+    },
+    {
+      "path": "protocol-live-1791043109684/97ff35baed8af7b48b1a8157deeabbda8c309a13140e8fa33d230015e919b89c.downstream.txt",
+      "sha256": "8159072a2ac6328a3a29a0e9a1cdb57dcd3aeabad4dabd82e4f92f8029371577",
+      "bytes": 535
+    },
+    {
+      "path": "protocol-live-1791043109684/97ff35baed8af7b48b1a8157deeabbda8c309a13140e8fa33d230015e919b89c.request.txt",
+      "sha256": "af7829967cbe9e29d2fdd88131dde304c2d969c1fa09ba677464f23b6ebec58b",
+      "bytes": 27873
+    },
+    {
+      "path": "protocol-live-1791043109684/97ff35baed8af7b48b1a8157deeabbda8c309a13140e8fa33d230015e919b89c.upstream.txt",
+      "sha256": "b4d893aa2ae082bbd4911de2170a28f4b906f6c4c7e02c9662db1e3533397392",
+      "bytes": 543
+    },
+    {
+      "path": "protocol-live-1791043109684/9a8347f4789d3f01e86c7f655717f4dc2c0050fe5b69002f31488574cbce2218.request.txt",
+      "sha256": "29c2f617accc71afac2668d5a33b102244dca81d11b356da8c26b9c5c6b50b72",
+      "bytes": 27939
+    },
+    {
+      "path": "protocol-live-1791043109684/9a8347f4789d3f01e86c7f655717f4dc2c0050fe5b69002f31488574cbce2218.upstream.txt",
+      "sha256": "1202eef7d1b06e122cd5b7eb97e329ca3fcfefc607e9f79d2d0094deb1ac2114",
+      "bytes": 551
+    },
+    {
+      "path": "protocol-live-1791043109684/9be90b8c2ab512c3651e42514d9ef7fad38020bb1323ac75748b53209bd9e22e.request.txt",
+      "sha256": "5d0309c72de6b04ef6d510ca139a6f079af83e44b33d3c460510ff8e6f1c9f89",
+      "bytes": 27871
+    },
+    {
+      "path": "protocol-live-1791043109684/9be90b8c2ab512c3651e42514d9ef7fad38020bb1323ac75748b53209bd9e22e.upstream.txt",
+      "sha256": "d1e7b723f4fbe218e9a99ef5ac4d0370ac583776cb85c4946521a5755a983277",
+      "bytes": 783
+    },
+    {
+      "path": "protocol-live-1791043109684/a83dd997963ce86e2fc7c6c48a6403c8c0f73eb9c491c58e7267a9d06ee34b26.downstream.txt",
+      "sha256": "bbcb575361ffd3ee4ba662328ccda462e616af3cafedd97714e1f7eeeb0fa600",
+      "bytes": 718
+    },
+    {
+      "path": "protocol-live-1791043109684/a83dd997963ce86e2fc7c6c48a6403c8c0f73eb9c491c58e7267a9d06ee34b26.request.txt",
+      "sha256": "2fe12e807e58be466158b3c184fc1ae2d36140a102688c8aabfd5c932fbe04e1",
+      "bytes": 27939
+    },
+    {
+      "path": "protocol-live-1791043109684/a83dd997963ce86e2fc7c6c48a6403c8c0f73eb9c491c58e7267a9d06ee34b26.upstream.txt",
+      "sha256": "300d0a4c1a340f148f775ef690b7187b266a6f9c86185f3b08bf9c42f8f25ad8",
+      "bytes": 1231
+    },
+    {
+      "path": "protocol-live-1791043109684/b8937b6b899e465db9425c5ffb06595e7e7c7b23a6e263702cf4fe6a3dc1dbff.request.txt",
+      "sha256": "2a263d3fa2d889fd637c1b415ad8f6d059ac5c4341d3d1274046084a94be2ce7",
+      "bytes": 27935
+    },
+    {
+      "path": "protocol-live-1791043109684/b8937b6b899e465db9425c5ffb06595e7e7c7b23a6e263702cf4fe6a3dc1dbff.upstream.txt",
+      "sha256": "c799f9ad2eb4deb6ad48d979b9c4452d20f3fdcd7f030cc81557e3a13318f2a0",
+      "bytes": 550
+    },
+    {
+      "path": "protocol-live-1791043109684/c8031361006f8318a7d050938071563360db9b50e7106ff578b9458e5a76d78e.request.txt",
+      "sha256": "9e5d1686cee50d54b7a9cbf9a6ed5106004f470dae5aba81fd41410a3834a141",
+      "bytes": 27937
+    },
+    {
+      "path": "protocol-live-1791043109684/c8031361006f8318a7d050938071563360db9b50e7106ff578b9458e5a76d78e.upstream.txt",
+      "sha256": "027252360fcff28e0f772b7b818373ca0e6d09dfb2e9d623ffa051f0cca9f3e7",
+      "bytes": 1404
+    },
+    {
+      "path": "protocol-live-1791043109684/ca1d121eff708a52fb6e5274ffbf6f7520f0cdd730e8711cc04b19dcad3d13ce.request.txt",
+      "sha256": "39c044527436843fc8be4e323a5e346091f629450dd0a3cb6f113137a435d0df",
+      "bytes": 304
+    },
+    {
+      "path": "protocol-live-1791043109684/ca1d121eff708a52fb6e5274ffbf6f7520f0cdd730e8711cc04b19dcad3d13ce.upstream.txt",
+      "sha256": "58605bff0fdd5d1b8a6505b6cf036857652ba62610fbebecd1541f757ffa21a9",
+      "bytes": 7166
+    },
+    {
+      "path": "protocol-live-1791043109684/ca49e71fcc6b008188fcb30fd932fd2fa87e9aae1c36226b4cdaa057746d6c94.request.txt",
+      "sha256": "154975fa720ca2c6afaf27f6849b3f7df0f43a763919e8c4c4f66d8ee7146095",
+      "bytes": 27872
+    },
+    {
+      "path": "protocol-live-1791043109684/ca49e71fcc6b008188fcb30fd932fd2fa87e9aae1c36226b4cdaa057746d6c94.upstream.txt",
+      "sha256": "f816a8310b3967ef9823a47175516dba25c469e550a487b78fb46d6a441ccb71",
+      "bytes": 543
+    },
+    {
+      "path": "protocol-live-1791043109684/cache-checkpoint.json",
+      "sha256": "e4e9a76c952ff6228628fbd7659105955c17c73b465e54fa4171466b6e9dce3c",
+      "bytes": 228292
+    },
+    {
+      "path": "protocol-live-1791043109684/cache-live.log",
+      "sha256": "776bed2d72e00b50405716b430630d81e5a3b6235a3cd0292fb48bbf96747d49",
+      "bytes": 8827
+    },
+    {
+      "path": "protocol-live-1791043109684/cc5e0eb363978b5abbb7bf7ac6b5d9e6034bf125dea911c698b7523bcc932585.request.txt",
+      "sha256": "c4b925a2d99a1803edc2f84aa96d77d3904fa3417d82919ac65e701ea44ffddf",
+      "bytes": 27954
+    },
+    {
+      "path": "protocol-live-1791043109684/cc5e0eb363978b5abbb7bf7ac6b5d9e6034bf125dea911c698b7523bcc932585.upstream.txt",
+      "sha256": "bf1961d254598626a28d6e93be7a10d722bb90eb788e840332ef40892251ba47",
+      "bytes": 2550
+    },
+    {
+      "path": "protocol-live-1791043109684/cf5851e139090cd0d619c7e280f50affbf2d20998a3d0b757131f6dea78b2adf.request.txt",
+      "sha256": "dc1a948ea9b4a0179abf16ef2359d0a3fd56f9ae82597aaaa4908b23b7c891d7",
+      "bytes": 27871
+    },
+    {
+      "path": "protocol-live-1791043109684/cf5851e139090cd0d619c7e280f50affbf2d20998a3d0b757131f6dea78b2adf.upstream.txt",
+      "sha256": "eea820e63fe20efbfd7208f40ae677528f924d24c3f6acc5df180d7c6e7fed30",
+      "bytes": 783
+    },
+    {
+      "path": "protocol-live-1791043109684/d44213609f3d3fea53c9c0a6c3cab85ac3171834272483c75a96cd8cd86ab987.request.txt",
+      "sha256": "ede238b3059e5575dea4c9193227ed47789d1735a069990668477579d12aa57b",
+      "bytes": 27862
+    },
+    {
+      "path": "protocol-live-1791043109684/d44213609f3d3fea53c9c0a6c3cab85ac3171834272483c75a96cd8cd86ab987.upstream.txt",
+      "sha256": "b416443e268db6695b3d7d2a6e1bc07c77afa544d18597fc6cf02c8a940182e0",
+      "bytes": 1039
+    },
+    {
+      "path": "protocol-live-1791043109684/d7c1ed4df83a1e05bf18a7be5c22fb224889b90179e18cc99fae727b35b4eb99.downstream.txt",
+      "sha256": "12e206b0acdb2d8b1f0e6fa2d1e20cdddc9b255826a06e103935fe34fc42bd49",
+      "bytes": 801
+    },
+    {
+      "path": "protocol-live-1791043109684/d7c1ed4df83a1e05bf18a7be5c22fb224889b90179e18cc99fae727b35b4eb99.request.txt",
+      "sha256": "723372a84d8c41b531f0b2022639f0eb99816a31b7de2ff5b04ead54eccd390a",
+      "bytes": 27935
+    },
+    {
+      "path": "protocol-live-1791043109684/d7c1ed4df83a1e05bf18a7be5c22fb224889b90179e18cc99fae727b35b4eb99.upstream.txt",
+      "sha256": "26292c37eea2a987956038502f8c4749cb2644196afdf9ba7a6e7d3199b2c44e",
+      "bytes": 1329
+    },
+    {
+      "path": "protocol-live-1791043109684/e267b32d67500ceac9f533e86058dc59b7d21799363e54cf7b5eac08eda587ef.request.txt",
+      "sha256": "ede238b3059e5575dea4c9193227ed47789d1735a069990668477579d12aa57b",
+      "bytes": 27862
+    },
+    {
+      "path": "protocol-live-1791043109684/e267b32d67500ceac9f533e86058dc59b7d21799363e54cf7b5eac08eda587ef.upstream.txt",
+      "sha256": "b0355319f7ceed7350aaf08184af84937574c8e75b5244d4bd11ce7a057d246d",
+      "bytes": 1085
+    },
+    {
+      "path": "protocol-live-1791043109684/ec4b39b3cd75e9aea58f89be29d24fb56c3be8e820a291370b523feb6dfcf8f1.request.txt",
+      "sha256": "b568acfde6a781748eb29fa733382271cc378e914f672a9a41550587a91602f2",
+      "bytes": 27937
+    },
+    {
+      "path": "protocol-live-1791043109684/ec4b39b3cd75e9aea58f89be29d24fb56c3be8e820a291370b523feb6dfcf8f1.upstream.txt",
+      "sha256": "602a6cb85b557f03075a3dc9796bca2c2572ba9e450c0d6efb4af9c1c59ea58a",
+      "bytes": 1251
+    },
+    {
+      "path": "protocol-live-1791043109684/ec6237f276177d0a99a4428ce04960401811d62893928ea9879ad44a7ddd7a78.downstream.txt",
+      "sha256": "544b909c5e5e3fd376688a97c7ad4d3612acf84b1839985c74f1bcd7e86ea8ff",
+      "bytes": 2542
+    },
+    {
+      "path": "protocol-live-1791043109684/ec6237f276177d0a99a4428ce04960401811d62893928ea9879ad44a7ddd7a78.request.txt",
+      "sha256": "5e5dc3e67ff5d11887dc5894c7457e2b3774ca3e4094f8688632b34b9e8fd27d",
+      "bytes": 27955
+    },
+    {
+      "path": "protocol-live-1791043109684/ec6237f276177d0a99a4428ce04960401811d62893928ea9879ad44a7ddd7a78.upstream.txt",
+      "sha256": "96c760906058885eb29688f29e7d65a4682900cd807d9776553f59465cacc307",
+      "bytes": 2550
+    },
+    {
+      "path": "protocol-live-1791043109684/edc242071bf47b484ff7a3199bc1be99f5cb46ef7d7a2cf2548ad54533db48d7.downstream.txt",
+      "sha256": "a7b509d49ee541fb57922e94725c9351b843373d4f17541ccff7305d11ca0f44",
+      "bytes": 580
+    },
+    {
+      "path": "protocol-live-1791043109684/edc242071bf47b484ff7a3199bc1be99f5cb46ef7d7a2cf2548ad54533db48d7.request.txt",
+      "sha256": "69cf478e44fccb5c4cb61327dc54805e074c4f578315d971cf301d573a02c57f",
+      "bytes": 27863
+    },
+    {
+      "path": "protocol-live-1791043109684/edc242071bf47b484ff7a3199bc1be99f5cb46ef7d7a2cf2548ad54533db48d7.upstream.txt",
+      "sha256": "2d9d1b1fbb22510b8aad86cd957eedc8a31080cd7c78d3debfbc4bc6f42cabeb",
+      "bytes": 796
+    },
+    {
+      "path": "protocol-live-1791043109684/f0b5de21e420e698953b3e3dac3eb868d5b8ad3d4a977a94fee1b6283b169861.request.txt",
+      "sha256": "072aa33e08f5e8820fd223ad1f700827e181bcb07a5e245bb520862cffc2e454",
+      "bytes": 27862
+    },
+    {
+      "path": "protocol-live-1791043109684/f0b5de21e420e698953b3e3dac3eb868d5b8ad3d4a977a94fee1b6283b169861.upstream.txt",
+      "sha256": "b950034ef228f1cfee34e1f6b54fe18b0ae197b80330bb2cf6e0328f161e0a7e",
+      "bytes": 867
+    },
+    {
+      "path": "protocol-live-1791043109684/fec7f51c6b536f14b29dc3ac70f69b8ac052a5234a55f20e84745f20dc88208f.request.txt",
+      "sha256": "7e6028c815c8d20c43c9649089e3ffef5be7916cb07d33571ccbd4fa630595ac",
+      "bytes": 305
+    },
+    {
+      "path": "protocol-live-1791043109684/fec7f51c6b536f14b29dc3ac70f69b8ac052a5234a55f20e84745f20dc88208f.upstream.txt",
+      "sha256": "32680b0b5901482acefe7b2943ce7d1b5bf67a0b066ca01db8afdc16549d51e4",
+      "bytes": 2544
+    },
+    {
+      "path": "protocol-live-1791043109684/ff43895db09396a2800aaefd19daab9211299e605cec4a40b2790e7be7777d79.request.txt",
+      "sha256": "b63eda46e8ef2ee78cf0a931320e522882359c1e38f5c37d24531223191a3cfb",
+      "bytes": 27938
+    },
+    {
+      "path": "protocol-live-1791043109684/ff43895db09396a2800aaefd19daab9211299e605cec4a40b2790e7be7777d79.upstream.txt",
+      "sha256": "3c9957613a7b15639fbae88c7072aa2d569811d09cb324e4c86a4196e2395f3c",
+      "bytes": 1330
+    },
+    {
+      "path": "protocol-live-1791043109684/live.json",
+      "sha256": "9762ed89fbb2956408bc04885fa567810b7fc6281f275e14d072701225bd5569",
+      "bytes": 239680
+    },
+    {
+      "path": "protocol-live-1791043109684/report.json",
+      "sha256": "38ba436755aecaef8fea683de96adfb54005942e2cf293725546bb68fa7bb3db",
+      "bytes": 1882,
+      "status": "failed",
+      "compilerVersion": "2.0.0-dev.12",
+      "sourceBaseCommit": "533376552f3626e919ff11cd374807519fec17f4"
+    },
+    {
+      "path": "protocol-live-1791044462782/02151ec86d74530a643a1578103f3676d07496f1aab1016bc36c635cf80b3122.request.txt",
+      "sha256": "c1663e0f7df447a4389efe1b6b79f89b34dba9f4cfef43a389e96eb640154326",
+      "bytes": 27936
+    },
+    {
+      "path": "protocol-live-1791044462782/02151ec86d74530a643a1578103f3676d07496f1aab1016bc36c635cf80b3122.upstream.txt",
+      "sha256": "4630e611d89b6f728adb3c4527e99388662eb9d4f69d6a6a1eb67a10098e5907",
+      "bytes": 1343
+    },
+    {
+      "path": "protocol-live-1791044462782/08a437e791acc1f2c2203f89802738bed62523d715215a7991523f88ef5b103b.request.txt",
+      "sha256": "b4d05e8c7765e19ec6c244de5b1ca9344fb0d3c4d2cb7ad2bb640599e3a955ec",
+      "bytes": 110805
+    },
+    {
+      "path": "protocol-live-1791044462782/08a437e791acc1f2c2203f89802738bed62523d715215a7991523f88ef5b103b.upstream.txt",
+      "sha256": "1780ae461793cde224fae46563b00696cf5baafe7b3e3ccfd8825ad1740cd78d",
+      "bytes": 950
+    },
+    {
+      "path": "protocol-live-1791044462782/0e33e1d418952e39761c5c024318e14170c59a7ce41105ebea5b552406b9c538.request.txt",
+      "sha256": "0720db518a3051c80cf4c983a1ac9ba3e298767a9f5afda68172b209a89cb433",
+      "bytes": 27871
+    },
+    {
+      "path": "protocol-live-1791044462782/0e33e1d418952e39761c5c024318e14170c59a7ce41105ebea5b552406b9c538.upstream.txt",
+      "sha256": "25ef030445c0d41f718cfcd1b35c73964a06529f86fe4d03a2047e5318701319",
+      "bytes": 543
+    },
+    {
+      "path": "protocol-live-1791044462782/1812700b6bffef312e979be7243743da23e90ef13ffd4724ef73db68a5fb2939.downstream.txt",
+      "sha256": "9315d5cb22689b75c17a49fd2274b49e8bef01d21e1065e3a7f1bae3cd8c17f2",
+      "bytes": 702
+    },
+    {
+      "path": "protocol-live-1791044462782/1812700b6bffef312e979be7243743da23e90ef13ffd4724ef73db68a5fb2939.request.txt",
+      "sha256": "2ffd34130847d8a28bd155786071a0d9d735b03ff12e9c1d0ec10812e7f51226",
+      "bytes": 110806
+    },
+    {
+      "path": "protocol-live-1791044462782/1812700b6bffef312e979be7243743da23e90ef13ffd4724ef73db68a5fb2939.upstream.txt",
+      "sha256": "ee07917a0b794bfb9f0e420eb2fd20dd026464c30d04530cbb1633f14a97749d",
+      "bytes": 918
+    },
+    {
+      "path": "protocol-live-1791044462782/19cbc76e7cb78538240be477f4af4bf62444e5b9af83143f1fb7fb80e05e4a6a.downstream.txt",
+      "sha256": "660c800067d7e5ab222f2b901cfda519addb7ec98ae875370fb418b127cb6de4",
+      "bytes": 1311
+    },
+    {
+      "path": "protocol-live-1791044462782/19cbc76e7cb78538240be477f4af4bf62444e5b9af83143f1fb7fb80e05e4a6a.request.txt",
+      "sha256": "2ffd34130847d8a28bd155786071a0d9d735b03ff12e9c1d0ec10812e7f51226",
+      "bytes": 110806
+    },
+    {
+      "path": "protocol-live-1791044462782/19cbc76e7cb78538240be477f4af4bf62444e5b9af83143f1fb7fb80e05e4a6a.upstream.txt",
+      "sha256": "c0c69f5c684e8dc563851a126f46b36ac72c8267c9397f10787af57305613008",
+      "bytes": 1336
+    },
+    {
+      "path": "protocol-live-1791044462782/289a1021daebc71ae12a009475ffa30b83e1746848b77447b8c5d13bd896bcc0.downstream.txt",
+      "sha256": "671695f8a7772835621b0b14aa4f0fc1aba69990806e592e79e7422619ebff17",
+      "bytes": 7172
+    },
+    {
+      "path": "protocol-live-1791044462782/289a1021daebc71ae12a009475ffa30b83e1746848b77447b8c5d13bd896bcc0.request.txt",
+      "sha256": "fd28183986ca8cacff5162401b60e33d40e8c6bcfd6fccc48d28815d9d2745d4",
+      "bytes": 27953
+    },
+    {
+      "path": "protocol-live-1791044462782/289a1021daebc71ae12a009475ffa30b83e1746848b77447b8c5d13bd896bcc0.upstream.txt",
+      "sha256": "671695f8a7772835621b0b14aa4f0fc1aba69990806e592e79e7422619ebff17",
+      "bytes": 7172
+    },
+    {
+      "path": "protocol-live-1791044462782/50576cd839b679d0908ec0249db6f4f5efb29bed713b4352818e62e30dc77810.request.txt",
+      "sha256": "c0b8d9c258590c4a7aa845eefb14fa72058ca0b8528169d90cbeba35bb7b847c",
+      "bytes": 27870
+    },
+    {
+      "path": "protocol-live-1791044462782/50576cd839b679d0908ec0249db6f4f5efb29bed713b4352818e62e30dc77810.upstream.txt",
+      "sha256": "91250d302b5292a2b5afc00862785234aebd3eade9e7586cf16d66da4c8046cb",
+      "bytes": 780
+    },
+    {
+      "path": "protocol-live-1791044462782/597141f14084d64fedb63056e3d4f4f2d620897c5df270f517706ba0c26b8028.downstream.txt",
+      "sha256": "67e043dae855902f637bb62b3e50f5ce32f4e7d5d100eb49cf8ee4a8a9830b7e",
+      "bytes": 800
+    },
+    {
+      "path": "protocol-live-1791044462782/597141f14084d64fedb63056e3d4f4f2d620897c5df270f517706ba0c26b8028.request.txt",
+      "sha256": "3465a20b6b363254f455791b4a2a3c00bd3aae4af07472c39492bb8256c90a88",
+      "bytes": 27937
+    },
+    {
+      "path": "protocol-live-1791044462782/597141f14084d64fedb63056e3d4f4f2d620897c5df270f517706ba0c26b8028.upstream.txt",
+      "sha256": "69544dca7a26ea1af231fc26441f96054d63a32ce008bf1594eaeacc218c9a7d",
+      "bytes": 1329
+    },
+    {
+      "path": "protocol-live-1791044462782/60979170495a47a7a8e5e239ad516907714d162eea5d6873d5b4232d9000e87a.request.txt",
+      "sha256": "e4bfa5292ad3fc69799c8e4ced4379a9c5faf1ca76d1ddfa070507744d2912ec",
+      "bytes": 27953
+    },
+    {
+      "path": "protocol-live-1791044462782/60979170495a47a7a8e5e239ad516907714d162eea5d6873d5b4232d9000e87a.upstream.txt",
+      "sha256": "c784d8c4c63cb72774cf15eb661153ced54e9f63e5da3e06af1dcda28456acb0",
+      "bytes": 2550
+    },
+    {
+      "path": "protocol-live-1791044462782/61c7e078564be0774a67619b67819a191f623187e0977745a51b178562feefde.downstream.txt",
+      "sha256": "8643ae0c466bd0cb2db97f7b244beed9fb2ecd9e5781e2647c08292c74eca491",
+      "bytes": 760
+    },
+    {
+      "path": "protocol-live-1791044462782/61c7e078564be0774a67619b67819a191f623187e0977745a51b178562feefde.request.txt",
+      "sha256": "ef79b7d5d9b147d2afaa02b38d0314c1fa74a9ac15ed1285cd0cc0cd35b29157",
+      "bytes": 55510
+    },
+    {
+      "path": "protocol-live-1791044462782/61c7e078564be0774a67619b67819a191f623187e0977745a51b178562feefde.upstream.txt",
+      "sha256": "9f4e4de6786938ac9b6a9c3ff7764600d616d5fc69ac209cba6477acd870623e",
+      "bytes": 976
+    },
+    {
+      "path": "protocol-live-1791044462782/6ef89918dd3d0e90c0f5625f4d4adcf540c00b4b05444a36d9325bc3d9151bff.request.txt",
+      "sha256": "b4d05e8c7765e19ec6c244de5b1ca9344fb0d3c4d2cb7ad2bb640599e3a955ec",
+      "bytes": 110805
+    },
+    {
+      "path": "protocol-live-1791044462782/6ef89918dd3d0e90c0f5625f4d4adcf540c00b4b05444a36d9325bc3d9151bff.upstream.txt",
+      "sha256": "8b8436857eb9fbb3e98174edab8a33874d1cdbf2e2f8cdba659ecad79e2eef3c",
+      "bytes": 1169
+    },
+    {
+      "path": "protocol-live-1791044462782/734f1c0204fb455aedd4dfd27647713d2a6531c48537c53807d4e135df108d85.downstream.txt",
+      "sha256": "88a6a9b6ad9cf64dc6a731eea4fbab04acfff93a261db7b96305a717f9261e15",
+      "bytes": 783
+    },
+    {
+      "path": "protocol-live-1791044462782/734f1c0204fb455aedd4dfd27647713d2a6531c48537c53807d4e135df108d85.request.txt",
+      "sha256": "c1019dd66588fd7842e7f2e0835a026bff7735e3af053e65717cfd1730e44493",
+      "bytes": 27871
+    },
+    {
+      "path": "protocol-live-1791044462782/734f1c0204fb455aedd4dfd27647713d2a6531c48537c53807d4e135df108d85.upstream.txt",
+      "sha256": "88a6a9b6ad9cf64dc6a731eea4fbab04acfff93a261db7b96305a717f9261e15",
+      "bytes": 783
+    },
+    {
+      "path": "protocol-live-1791044462782/751664116fd88ac8896f38b1c4b0f68e0c24e95d3b2b9248b8e6193e30d2460e.request.txt",
+      "sha256": "1579a419ed102dcf74c5d351cbed74e7ea9cf9cc287af6912fd6b1e4da22f2a6",
+      "bytes": 55509
+    },
+    {
+      "path": "protocol-live-1791044462782/751664116fd88ac8896f38b1c4b0f68e0c24e95d3b2b9248b8e6193e30d2460e.upstream.txt",
+      "sha256": "8049cf383ff44dea0dde3086a289e01d3040d5e49335cc438108b0bd99f2fec1",
+      "bytes": 755
+    },
+    {
+      "path": "protocol-live-1791044462782/79fafcdb5093d0c62a7cb44744fc5a54bcf6b26748591b891d01d8fbb8332e3e.downstream.txt",
+      "sha256": "718c7279c5e0330a4bb8dfc036a3106b08f5b99339b2beb4d406ce6a696e03ef",
+      "bytes": 780
+    },
+    {
+      "path": "protocol-live-1791044462782/79fafcdb5093d0c62a7cb44744fc5a54bcf6b26748591b891d01d8fbb8332e3e.request.txt",
+      "sha256": "c1019dd66588fd7842e7f2e0835a026bff7735e3af053e65717cfd1730e44493",
+      "bytes": 27871
+    },
+    {
+      "path": "protocol-live-1791044462782/79fafcdb5093d0c62a7cb44744fc5a54bcf6b26748591b891d01d8fbb8332e3e.upstream.txt",
+      "sha256": "718c7279c5e0330a4bb8dfc036a3106b08f5b99339b2beb4d406ce6a696e03ef",
+      "bytes": 780
+    },
+    {
+      "path": "protocol-live-1791044462782/7bf93c64c2c2faad6cc5258b7fb4445c65f7af71b7ee5f4335276c359c400de4.downstream.txt",
+      "sha256": "6ad2e42d31a2a3f04e203b4da33c99268eeca2b92358c31c9d7460f980068383",
+      "bytes": 7183
+    },
+    {
+      "path": "protocol-live-1791044462782/7bf93c64c2c2faad6cc5258b7fb4445c65f7af71b7ee5f4335276c359c400de4.request.txt",
+      "sha256": "fd28183986ca8cacff5162401b60e33d40e8c6bcfd6fccc48d28815d9d2745d4",
+      "bytes": 27953
+    },
+    {
+      "path": "protocol-live-1791044462782/7bf93c64c2c2faad6cc5258b7fb4445c65f7af71b7ee5f4335276c359c400de4.upstream.txt",
+      "sha256": "6ad2e42d31a2a3f04e203b4da33c99268eeca2b92358c31c9d7460f980068383",
+      "bytes": 7183
+    },
+    {
+      "path": "protocol-live-1791044462782/7fca02df45c2175e15a705f139d1a52754125374eed098469064629633dea12c.request.txt",
+      "sha256": "5912e8f7fdd089bd072703ad7bd0507afc97822e00d1116663abb825b4a722a7",
+      "bytes": 27952
+    },
+    {
+      "path": "protocol-live-1791044462782/7fca02df45c2175e15a705f139d1a52754125374eed098469064629633dea12c.upstream.txt",
+      "sha256": "2be726ad718508ff2b21d787864ae2c61a800df16e4955336dc833c9a4796613",
+      "bytes": 7183
+    },
+    {
+      "path": "protocol-live-1791044462782/c47f5818b6b6567286f513c58b85645fb580e576c797bee460645838d1e1a869.request.txt",
+      "sha256": "1579a419ed102dcf74c5d351cbed74e7ea9cf9cc287af6912fd6b1e4da22f2a6",
+      "bytes": 55509
+    },
+    {
+      "path": "protocol-live-1791044462782/c47f5818b6b6567286f513c58b85645fb580e576c797bee460645838d1e1a869.upstream.txt",
+      "sha256": "1d225998bd144e745c88830de2d53cf6ff464624310549bc92a01e1c93cfb055",
+      "bytes": 1109
+    },
+    {
+      "path": "protocol-live-1791044462782/cache-checkpoint.json",
+      "sha256": "33f2411f54d3f5b6563b4aca0f17c9ccacdccff5e5c45f545219fc0562a72c70",
+      "bytes": 1244
+    },
+    {
+      "path": "protocol-live-1791044462782/cache-live.log",
+      "sha256": "fffc2880073685f19462320cfd86b3c93c343abc7bba594b3cdbd45850c37d09",
+      "bytes": 5072
+    },
+    {
+      "path": "protocol-live-1791044462782/d51ebf43fedeba4338e2517dfe30ad28a5b17bc2e8ef7f9ccd17a3620e2849eb.request.txt",
+      "sha256": "5d0d049dcbe4221f4fd229c9f13e8172927aa3c3b756f9395f9a745865cb66b7",
+      "bytes": 27937
+    },
+    {
+      "path": "protocol-live-1791044462782/d51ebf43fedeba4338e2517dfe30ad28a5b17bc2e8ef7f9ccd17a3620e2849eb.upstream.txt",
+      "sha256": "266fc737a0175a93363211857519ff793f816c2a0dd643ef34590a482fe287e9",
+      "bytes": 550
+    },
+    {
+      "path": "protocol-live-1791044462782/e734e731a38f6d35e14ed1ded1b611c3695800db742020a1972d08f8c8bae376.downstream.txt",
+      "sha256": "35f09213e4e2d1903348ac88aa886b8a6b0559d0605c4bcc29d2666319c90cc8",
+      "bytes": 897
+    },
+    {
+      "path": "protocol-live-1791044462782/e734e731a38f6d35e14ed1ded1b611c3695800db742020a1972d08f8c8bae376.request.txt",
+      "sha256": "ef79b7d5d9b147d2afaa02b38d0314c1fa74a9ac15ed1285cd0cc0cd35b29157",
+      "bytes": 55510
+    },
+    {
+      "path": "protocol-live-1791044462782/e734e731a38f6d35e14ed1ded1b611c3695800db742020a1972d08f8c8bae376.upstream.txt",
+      "sha256": "a3ebd15a6f577fdb31de6eb067791794070a17445df76eef3d37a33ddee56593",
+      "bytes": 922
+    },
+    {
+      "path": "protocol-live-1791044462782/ec871b7d37f2c05404bb7cbd023299583c17675d54a88d6757cff3b1eaeb0f34.downstream.txt",
+      "sha256": "b69c0563d0251c4a58dddbc95697ca328d4047c2d0195aad2309e504e345e114",
+      "bytes": 718
+    },
+    {
+      "path": "protocol-live-1791044462782/ec871b7d37f2c05404bb7cbd023299583c17675d54a88d6757cff3b1eaeb0f34.request.txt",
+      "sha256": "3465a20b6b363254f455791b4a2a3c00bd3aae4af07472c39492bb8256c90a88",
+      "bytes": 27937
+    },
+    {
+      "path": "protocol-live-1791044462782/ec871b7d37f2c05404bb7cbd023299583c17675d54a88d6757cff3b1eaeb0f34.upstream.txt",
+      "sha256": "ec0a0b923b6f516ccf29296dd958f92f0781abb8cacddb5c8027f482d3b87d15",
+      "bytes": 1251
+    },
+    {
+      "path": "protocol-live-1791044462782/live.json",
+      "sha256": "78681cde7c0d5838c4fe92e244364b759201b3059a38141a88e2baf8ad92aa84",
+      "bytes": 82962
+    },
+    {
+      "path": "protocol-live-1791044462782/report.json",
+      "sha256": "fc66c5bda571b4243442e2cdae8b1d6a3c23e0a458dd0c164a48889c09b3acdf",
+      "bytes": 2485,
+      "status": "inconclusive",
+      "compilerVersion": "2.0.0-dev.13",
+      "sourceBaseCommit": "b5277d4504b30cbbe4e4320089d2d073441f509d"
     }
-  ]
+  ],
+  "historicalC23Race": {
+    "status": "passed",
+    "fullBackendIncludingAgent": true,
+    "dataRacesObserved": 0,
+    "fixedLifecycleDefect": "WebSocket forced shutdown waited behind graceful handshake",
+    "stress": {
+      "gomaxprocs": [
+        1,
+        2,
+        12
+      ],
+      "repetitionsEach": 20,
+      "shuffleSeed": 1208900205
+    }
+  },
+  "cacheGapValidation": {
+    "origin": "https://moyuu.cc",
+    "budget": {
+      "calls": 71,
+      "limit": 96,
+      "cleanupReserve": 4,
+      "deadline": "2026-10-03T17:59:03.6174825Z",
+      "followupCallsAtStart": 51
+    },
+    "previousBudget": {
+      "calls": 256,
+      "limit": 256,
+      "unchanged": true
+    },
+    "main": {
+      "directory": "protocol-live-1791043109684",
+      "calls": 51,
+      "compiler": "2.0.0-dev.12",
+      "status": "failed",
+      "failures": [
+        "anthropic_header_timeout_no_replay",
+        "Gemini_signed_scope_inspector_fixed_later"
+      ]
+    },
+    "followup": {
+      "directory": "protocol-live-1791044462782",
+      "calls": 20,
+      "compiler": "2.0.0-dev.14",
+      "status": "inconclusive",
+      "forwardingCasesPassed": 20,
+      "note": "Node report was created on dev13; actual Go step source/compiler and live.json are dev14"
+    },
+    "targets": {
+      "anthropic-api": {
+        "model": "claude-haiku-4-5",
+        "keyEnv": "ELYSIA_VERIFY_ANTHROPIC_KEY"
+      },
+      "chat-completions-api": {
+        "model": "gpt-6.1-sol",
+        "keyEnv": "ELYSIA_VERIFY_OPENAI_KEY"
+      },
+      "gemini-api": {
+        "model": "gemini-3-flash-preview",
+        "keyEnv": "ELYSIA_VERIFY_GEMINI_KEY"
+      },
+      "responses-api": {
+        "model": "gpt-6.1-sol",
+        "keyEnv": "ELYSIA_VERIFY_OPENAI_KEY"
+      }
+    },
+    "independentAudit": {
+      "status": "passed",
+      "path": "c27-independent-audit.json",
+      "issues": []
+    },
+    "nonzeroLiveSSEReadDirectAndGateway": [
+      "chat-completions-api",
+      "responses-api",
+      "anthropic-api"
+    ],
+    "nonzeroLiveCreationJSONAndSSE": [
+      "anthropic-api"
+    ],
+    "geminiDirectSSE": {
+      "actualInput": [
+        9252,
+        18468
+      ],
+      "nativeRead": [
+        4079,
+        16351
+      ]
+    },
+    "geminiGatewaySSE": {
+      "actualInput": [
+        9252,
+        18468
+      ],
+      "nativeRead": "missing",
+      "fidelity": "preserved_missing"
+    },
+    "geminiExplicitResource": {
+      "createStatus": 404,
+      "error": "Invalid URL (POST /v1beta/cachedContents)",
+      "createdResources": 0,
+      "referenceAndExpiry": "not_run"
+    },
+    "anthropicDenominator": {
+      "model": "claude-haiku-4-5",
+      "uncached": 3,
+      "cacheReadOrCreation": 4633,
+      "normalizedInput": 4636,
+      "status": "passed_for_this_model",
+      "oldWrapperBillingConflict": "unresolved"
+    },
+    "ttl": [
+      {
+        "case": "anthropic-api/ttl/5m/direct/retention/probe",
+        "elapsedSeconds": 262.130277,
+        "changedRequestKeys": [
+          "stream"
+        ],
+        "cachePolicies": [
+          {
+            "ttl": "5m",
+            "type": "ephemeral"
+          }
+        ],
+        "expected": {
+          "input": 4638,
+          "output": 4,
+          "cacheRead": 4635,
+          "cacheCreation": 0
+        },
+        "warmUsage": {
+          "input": {
+            "count": 4638,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 4,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 4642,
+            "origin": "inferred"
+          },
+          "cacheRead": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 4635,
+            "origin": "observed"
+          },
+          "details": {
+            "ephemeral_1h_input_tokens": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "ephemeral_5m_input_tokens": {
+              "count": 4635,
+              "origin": "observed"
+            },
+            "uncached_input_tokens": {
+              "count": 3,
+              "origin": "observed"
+            }
+          }
+        }
+      },
+      {
+        "case": "anthropic-api/ttl/5m/gateway/retention/probe",
+        "elapsedSeconds": 258.769589,
+        "changedRequestKeys": [
+          "stream"
+        ],
+        "cachePolicies": [
+          {
+            "ttl": "5m",
+            "type": "ephemeral"
+          }
+        ],
+        "expected": {
+          "input": 4638,
+          "output": 4,
+          "cacheRead": 4635,
+          "cacheCreation": 0
+        },
+        "warmUsage": {
+          "input": {
+            "count": 4638,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 4,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 4642,
+            "origin": "inferred"
+          },
+          "cacheRead": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 4635,
+            "origin": "observed"
+          },
+          "details": {
+            "ephemeral_1h_input_tokens": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "ephemeral_5m_input_tokens": {
+              "count": 4635,
+              "origin": "observed"
+            },
+            "uncached_input_tokens": {
+              "count": 3,
+              "origin": "observed"
+            }
+          }
+        }
+      },
+      {
+        "case": "anthropic-api/ttl/5m/direct/quiet/probe",
+        "elapsedSeconds": 420.848772,
+        "changedRequestKeys": [
+          "stream"
+        ],
+        "cachePolicies": [
+          {
+            "ttl": "5m",
+            "type": "ephemeral"
+          }
+        ],
+        "expected": {
+          "input": 4638,
+          "output": 4,
+          "cacheRead": 0,
+          "cacheCreation": 4635
+        },
+        "warmUsage": {
+          "input": {
+            "count": 4638,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 4,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 4642,
+            "origin": "inferred"
+          },
+          "cacheRead": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 4635,
+            "origin": "observed"
+          },
+          "details": {
+            "ephemeral_1h_input_tokens": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "ephemeral_5m_input_tokens": {
+              "count": 4635,
+              "origin": "observed"
+            },
+            "uncached_input_tokens": {
+              "count": 3,
+              "origin": "observed"
+            }
+          }
+        }
+      },
+      {
+        "case": "anthropic-api/ttl/5m/gateway/quiet/probe",
+        "elapsedSeconds": 420.855926,
+        "changedRequestKeys": [
+          "stream"
+        ],
+        "cachePolicies": [
+          {
+            "ttl": "5m",
+            "type": "ephemeral"
+          }
+        ],
+        "expected": {
+          "input": 4638,
+          "output": 4,
+          "cacheRead": 0,
+          "cacheCreation": 4635
+        },
+        "warmUsage": {
+          "input": {
+            "count": 4638,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 4,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 4642,
+            "origin": "inferred"
+          },
+          "cacheRead": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 4635,
+            "origin": "observed"
+          },
+          "details": {
+            "ephemeral_1h_input_tokens": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "ephemeral_5m_input_tokens": {
+              "count": 4635,
+              "origin": "observed"
+            },
+            "uncached_input_tokens": {
+              "count": 3,
+              "origin": "observed"
+            }
+          }
+        }
+      },
+      {
+        "case": "anthropic-api/ttl/1h/direct/retention/probe",
+        "elapsedSeconds": 3300.90117,
+        "changedRequestKeys": [
+          "stream"
+        ],
+        "cachePolicies": [
+          {
+            "ttl": "1h",
+            "type": "ephemeral"
+          }
+        ],
+        "expected": {
+          "input": 4638,
+          "output": 4,
+          "cacheRead": 0,
+          "cacheCreation": 4635
+        },
+        "warmUsage": {
+          "input": {
+            "count": 4638,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 4,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 4642,
+            "origin": "inferred"
+          },
+          "cacheRead": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 4635,
+            "origin": "observed"
+          },
+          "details": {
+            "ephemeral_1h_input_tokens": {
+              "count": 4624,
+              "origin": "observed"
+            },
+            "ephemeral_5m_input_tokens": {
+              "count": 11,
+              "origin": "observed"
+            },
+            "uncached_input_tokens": {
+              "count": 3,
+              "origin": "observed"
+            }
+          }
+        }
+      },
+      {
+        "case": "anthropic-api/ttl/1h/gateway/retention/probe",
+        "elapsedSeconds": 3300.772121,
+        "changedRequestKeys": [
+          "stream"
+        ],
+        "cachePolicies": [
+          {
+            "ttl": "1h",
+            "type": "ephemeral"
+          }
+        ],
+        "expected": {
+          "input": 4638,
+          "output": 4,
+          "cacheRead": 0,
+          "cacheCreation": 4635
+        },
+        "warmUsage": {
+          "input": {
+            "count": 4638,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 4,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 4642,
+            "origin": "inferred"
+          },
+          "cacheRead": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 4635,
+            "origin": "observed"
+          },
+          "details": {
+            "ephemeral_1h_input_tokens": {
+              "count": 4624,
+              "origin": "observed"
+            },
+            "ephemeral_5m_input_tokens": {
+              "count": 11,
+              "origin": "observed"
+            },
+            "uncached_input_tokens": {
+              "count": 3,
+              "origin": "observed"
+            }
+          }
+        }
+      },
+      {
+        "case": "anthropic-api/ttl/1h/direct/quiet/probe",
+        "elapsedSeconds": 3900.829331,
+        "changedRequestKeys": [
+          "stream"
+        ],
+        "cachePolicies": [
+          {
+            "ttl": "1h",
+            "type": "ephemeral"
+          }
+        ],
+        "expected": {
+          "input": 4638,
+          "output": 4,
+          "cacheRead": 0,
+          "cacheCreation": 4635
+        },
+        "warmUsage": {
+          "input": {
+            "count": 4638,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 4,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 4642,
+            "origin": "inferred"
+          },
+          "cacheRead": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 4635,
+            "origin": "observed"
+          },
+          "details": {
+            "ephemeral_1h_input_tokens": {
+              "count": 4624,
+              "origin": "observed"
+            },
+            "ephemeral_5m_input_tokens": {
+              "count": 11,
+              "origin": "observed"
+            },
+            "uncached_input_tokens": {
+              "count": 3,
+              "origin": "observed"
+            }
+          }
+        }
+      },
+      {
+        "case": "anthropic-api/ttl/1h/gateway/quiet/probe",
+        "elapsedSeconds": 3900.957576,
+        "changedRequestKeys": [
+          "stream"
+        ],
+        "cachePolicies": [
+          {
+            "ttl": "1h",
+            "type": "ephemeral"
+          }
+        ],
+        "expected": {
+          "input": 4638,
+          "output": 4,
+          "cacheRead": 0,
+          "cacheCreation": 4635
+        },
+        "warmUsage": {
+          "input": {
+            "count": 4638,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 4,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 4642,
+            "origin": "inferred"
+          },
+          "cacheRead": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 4635,
+            "origin": "observed"
+          },
+          "details": {
+            "ephemeral_1h_input_tokens": {
+              "count": 4624,
+              "origin": "observed"
+            },
+            "ephemeral_5m_input_tokens": {
+              "count": 11,
+              "origin": "observed"
+            },
+            "uncached_input_tokens": {
+              "count": 3,
+              "origin": "observed"
+            }
+          }
+        }
+      }
+    ],
+    "aggregates": {
+      "chat-completions-api": {
+        "inputTokens": 8850,
+        "cacheHitTokens": 4224,
+        "requests": 2,
+        "cacheHitRate": 0.47728813559322036
+      },
+      "responses-api": {
+        "inputTokens": 8844,
+        "cacheHitTokens": 4224,
+        "requests": 2,
+        "cacheHitRate": 0.47761194029850745
+      },
+      "anthropic-api": {
+        "inputTokens": 9272,
+        "cacheHitTokens": 4633,
+        "requests": 2,
+        "cacheHitRate": 0.49967644521138915
+      },
+      "gemini-api": {
+        "inputTokens": 55440,
+        "cacheHitTokens": 0,
+        "requests": 4,
+        "cacheHitRate": 0.0
+      }
+    },
+    "counterAbsenceCaveat": "Aggregate read zero for missing counters is not an observed cache miss; per-request absence remains distinct",
+    "readRefreshExtension": "not_run",
+    "openai24h": "not_run",
+    "checks": {
+      "finalBackend": "passed",
+      "supplemental": "passed",
+      "browserE2E": "not_run_frontend_unchanged"
+    },
+    "performance": {
+      "initial": {
+        "beforeDirectory": "D:\\DevProjects\\Elysia-API\\.cache\\c27-performance-baseline",
+        "afterDirectory": "D:\\DevProjects\\Elysia-API\\.cache\\c27-performance-candidate",
+        "micro": [
+          {
+            "name": "BenchmarkCacheConversion",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 60177,
+                "afterMedian": 60212,
+                "ratio": 1.0005816175615267,
+                "interval95": [
+                  0.9109674665365735,
+                  1.0703797289417418
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "bytes": {
+                "beforeMedian": 36408.5,
+                "afterMedian": 36408,
+                "ratio": 0.9999862669431588,
+                "interval95": [
+                  0.9999450700357044,
+                  1.0000549329817623
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 605,
+                "afterMedian": 605,
+                "ratio": 1,
+                "interval95": [
+                  1,
+                  1
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkStreamTextDecode",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 2661280,
+                "afterMedian": 2664407.5,
+                "ratio": 1.0011751863764804,
+                "interval95": [
+                  0.9133590577538202,
+                  1.0821122093311726
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "bytes": {
+                "beforeMedian": 2077191,
+                "afterMedian": 2081245.5,
+                "ratio": 1.0019519148696485,
+                "interval95": [
+                  1.0018895392220202,
+                  1.0020580509992258
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 18590.5,
+                "afterMedian": 18590,
+                "ratio": 0.9999731045426428,
+                "interval95": [
+                  0.9999462105319779,
+                  1.0000268969041664
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkCacheUsageMutation",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 85320.5,
+                "afterMedian": 101379.5,
+                "ratio": 1.1882197127302347,
+                "interval95": [
+                  1.1348923764749264,
+                  1.238095523138532
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "regression"
+              },
+              "bytes": {
+                "beforeMedian": 66012,
+                "afterMedian": 77863,
+                "ratio": 1.1795279646124948,
+                "interval95": [
+                  1.179292221708937,
+                  1.1797066755552863
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "regression"
+              },
+              "allocations": {
+                "beforeMedian": 1101,
+                "afterMedian": 1309,
+                "ratio": 1.1889191643960035,
+                "interval95": [
+                  1.1889191643960035,
+                  1.19
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "regression"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkRequestWorkloads/same/short",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 31048,
+                "afterMedian": 30061,
+                "ratio": 0.9682105127544447,
+                "interval95": [
+                  0.9431986642323237,
+                  1.0064444853618117
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "bytes": {
+                "beforeMedian": 21854.5,
+                "afterMedian": 21855,
+                "ratio": 1.000022878583358,
+                "interval95": [
+                  0.9999771224634532,
+                  1.0000915164271986
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 314,
+                "afterMedian": 314,
+                "ratio": 1,
+                "interval95": [
+                  1,
+                  1
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkRequestWorkloads/same/prefix32k",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 2845581,
+                "afterMedian": 2872508.5,
+                "ratio": 1.0094629181176007,
+                "interval95": [
+                  0.9676664925368241,
+                  1.0299010283590486
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "bytes": {
+                "beforeMedian": 2362055,
+                "afterMedian": 2361739.5,
+                "ratio": 0.9998664298672131,
+                "interval95": [
+                  0.9921385341420887,
+                  1.006768800672373
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 325,
+                "afterMedian": 325,
+                "ratio": 1,
+                "interval95": [
+                  0.9969325153374233,
+                  1.003076923076923
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkRequestWorkloads/same/history256k",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 23777553.5,
+                "afterMedian": 25458279.5,
+                "ratio": 1.0706854050396732,
+                "interval95": [
+                  1.0317932733042048,
+                  1.0955136834796928
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "bytes": {
+                "beforeMedian": 20168941.5,
+                "afterMedian": 20224424,
+                "ratio": 1.0027508880423894,
+                "interval95": [
+                  0.9875533620135715,
+                  1.0114930061655354
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 13209,
+                "afterMedian": 13209.5,
+                "ratio": 1.0000378529790295,
+                "interval95": [
+                  0.9996214702097055,
+                  1.0003029040929916
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkRequestWorkloads/same/tools32",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 732966,
+                "afterMedian": 861229.5,
+                "ratio": 1.1749924280253108,
+                "interval95": [
+                  1.117733620782984,
+                  1.229813241117499
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "regression"
+              },
+              "bytes": {
+                "beforeMedian": 551846.5,
+                "afterMedian": 552777,
+                "ratio": 1.001686157291928,
+                "interval95": [
+                  1.000307960414406,
+                  1.0031036054940343
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 5625,
+                "afterMedian": 5625,
+                "ratio": 1,
+                "interval95": [
+                  1,
+                  1.000088896790826
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkRequestWorkloads/anthropic/short",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 11018.5,
+                "afterMedian": 12050,
+                "ratio": 1.093615283387031,
+                "interval95": [
+                  1.0655715387756954,
+                  1.1150559141740157
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "regression"
+              },
+              "bytes": {
+                "beforeMedian": 8882,
+                "afterMedian": 8882,
+                "ratio": 1,
+                "interval95": [
+                  1,
+                  1.00011259993244
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 136,
+                "afterMedian": 136,
+                "ratio": 1,
+                "interval95": [
+                  1,
+                  1
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkRequestWorkloads/anthropic/prefix32k",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 1101147,
+                "afterMedian": 1221745,
+                "ratio": 1.1095203456032665,
+                "interval95": [
+                  1.061979173454626,
+                  1.1513113144748157
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "regression"
+              },
+              "bytes": {
+                "beforeMedian": 995743.5,
+                "afterMedian": 995508.5,
+                "ratio": 0.9997639954466185,
+                "interval95": [
+                  0.9983107896117326,
+                  1.0018122929176256
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 140,
+                "afterMedian": 140,
+                "ratio": 1,
+                "interval95": [
+                  1,
+                  1
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkRequestWorkloads/anthropic/history256k",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 9900345,
+                "afterMedian": 10495247.5,
+                "ratio": 1.0600890676031998,
+                "interval95": [
+                  1.0357890198645703,
+                  1.0812472196690341
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "bytes": {
+                "beforeMedian": 8035237.5,
+                "afterMedian": 8014008,
+                "ratio": 0.9973579499050277,
+                "interval95": [
+                  0.9944344117895774,
+                  1.0002187378619656
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 6175,
+                "afterMedian": 6174,
+                "ratio": 0.9998380566801619,
+                "interval95": [
+                  0.9995951417004049,
+                  1.000161943319838
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkRequestWorkloads/anthropic/tools32",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 224687,
+                "afterMedian": 248340.5,
+                "ratio": 1.1052731132642297,
+                "interval95": [
+                  1.073317442605199,
+                  1.1915527319837769
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "regression"
+              },
+              "bytes": {
+                "beforeMedian": 190278,
+                "afterMedian": 190304.5,
+                "ratio": 1.0001392699103417,
+                "interval95": [
+                  0.9999973724108393,
+                  1.0002365147190992
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 2211,
+                "afterMedian": 2211,
+                "ratio": 1,
+                "interval95": [
+                  1,
+                  1
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkRequestWorkloads/responses/short",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 11574,
+                "afterMedian": 12880,
+                "ratio": 1.112839122170382,
+                "interval95": [
+                  1.079320355191257,
+                  1.1448248891978796
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "regression"
+              },
+              "bytes": {
+                "beforeMedian": 9699,
+                "afterMedian": 9700,
+                "ratio": 1.000103103412723,
+                "interval95": [
+                  1,
+                  1.000103103412723
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 143,
+                "afterMedian": 143,
+                "ratio": 1,
+                "interval95": [
+                  1,
+                  1
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkRequestWorkloads/responses/prefix32k",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 1115713.5,
+                "afterMedian": 1271371,
+                "ratio": 1.1395138626538086,
+                "interval95": [
+                  1.0942889014622321,
+                  1.2003986741723676
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "regression"
+              },
+              "bytes": {
+                "beforeMedian": 995366,
+                "afterMedian": 996604,
+                "ratio": 1.001243763600525,
+                "interval95": [
+                  0.997557520883697,
+                  1.0027903439532166
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 147,
+                "afterMedian": 147,
+                "ratio": 1,
+                "interval95": [
+                  1,
+                  1
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkRequestWorkloads/responses/history256k",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 9764334,
+                "afterMedian": 12262223.5,
+                "ratio": 1.2558177034910931,
+                "interval95": [
+                  1.1889474535877749,
+                  1.2719562898431498
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "regression"
+              },
+              "bytes": {
+                "beforeMedian": 8076728,
+                "afterMedian": 8064924.5,
+                "ratio": 0.9985385789889173,
+                "interval95": [
+                  0.9946492643988605,
+                  1.0033780174380065
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 6624,
+                "afterMedian": 6624,
+                "ratio": 1,
+                "interval95": [
+                  0.9996226984606097,
+                  1.0001509889778046
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkRequestWorkloads/responses/tools32",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 240962.5,
+                "afterMedian": 291746,
+                "ratio": 1.2107527104839966,
+                "interval95": [
+                  1.1829353657883792,
+                  1.3069359377586491
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "regression"
+              },
+              "bytes": {
+                "beforeMedian": 201743,
+                "afterMedian": 201811,
+                "ratio": 1.0003370625003098,
+                "interval95": [
+                  1.0000644384191768,
+                  1.0006444928089475
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 2378,
+                "afterMedian": 2378,
+                "ratio": 1,
+                "interval95": [
+                  1,
+                  1
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkRequestWorkloads/declarative/short",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 8274.5,
+                "afterMedian": 10742,
+                "ratio": 1.2982053296271678,
+                "interval95": [
+                  1.2436329256042074,
+                  1.430237476584688
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "regression"
+              },
+              "bytes": {
+                "beforeMedian": 6148,
+                "afterMedian": 6148,
+                "ratio": 1,
+                "interval95": [
+                  1,
+                  1
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 114,
+                "afterMedian": 114,
+                "ratio": 1,
+                "interval95": [
+                  1,
+                  1
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkRequestWorkloads/declarative/prefix32k",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 813292,
+                "afterMedian": 954676.5,
+                "ratio": 1.1738422362447927,
+                "interval95": [
+                  1.1571550213972372,
+                  1.222751448510672
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "regression"
+              },
+              "bytes": {
+                "beforeMedian": 836551.5,
+                "afterMedian": 836985.5,
+                "ratio": 1.0005187965116313,
+                "interval95": [
+                  0.9999856581304656,
+                  1.0010105540108232
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 123,
+                "afterMedian": 124,
+                "ratio": 1.008130081300813,
+                "interval95": [
+                  1,
+                  1.008130081300813
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkRequestWorkloads/declarative/history256k",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 7387576.5,
+                "afterMedian": 9040392,
+                "ratio": 1.2237290537702046,
+                "interval95": [
+                  1.1606089209597332,
+                  1.3847569921398757
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "regression"
+              },
+              "bytes": {
+                "beforeMedian": 6770652.5,
+                "afterMedian": 6735575,
+                "ratio": 0.9948191847093024,
+                "interval95": [
+                  0.9900704548047622,
+                  1.0050340579442965
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 4264,
+                "afterMedian": 4263.5,
+                "ratio": 0.9998827392120075,
+                "interval95": [
+                  0.9996482588814632,
+                  1.0002345765892564
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          },
+          {
+            "name": "BenchmarkRequestWorkloads/declarative/tools32",
+            "metrics": {
+              "nanos": {
+                "beforeMedian": 202887.5,
+                "afterMedian": 237282,
+                "ratio": 1.1695249830571128,
+                "interval95": [
+                  1.1491044235307943,
+                  1.2829593807563788
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "regression"
+              },
+              "bytes": {
+                "beforeMedian": 152390.5,
+                "afterMedian": 152472,
+                "ratio": 1.0005348102407958,
+                "interval95": [
+                  0.9999081566715978,
+                  1.000735028712059
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              },
+              "allocations": {
+                "beforeMedian": 1480,
+                "afterMedian": 1480,
+                "ratio": 1,
+                "interval95": [
+                  1,
+                  1
+                ],
+                "samples": [
+                  10,
+                  10
+                ],
+                "seed": 20261003,
+                "assessment": "inconclusive"
+              }
+            }
+          }
+        ],
+        "load": []
+      },
+      "abba": [
+        {
+          "name": "BenchmarkCacheConversion",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 55791,
+              "afterMedian": 58635,
+              "ratio": 1.0509759638651395,
+              "interval95": [
+                0.9900183826687512,
+                1.0922792759512376
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 36409,
+              "afterMedian": 36408.5,
+              "ratio": 0.9999862671317531,
+              "interval95": [
+                0.9999176050535568,
+                1.00005493449062
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 605,
+              "afterMedian": 605,
+              "ratio": 1,
+              "interval95": [
+                1,
+                1
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkStreamTextDecode",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 2261534.5,
+              "afterMedian": 2345495.5,
+              "ratio": 1.037125677277972,
+              "interval95": [
+                0.9816372886640555,
+                1.0857873321924232
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 2077174,
+              "afterMedian": 2081269.5,
+              "ratio": 1.001971669200558,
+              "interval95": [
+                1.0018587924275448,
+                1.0020487072876063
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 18590.5,
+              "afterMedian": 18591,
+              "ratio": 1.0000268954573572,
+              "interval95": [
+                0.9998655444106812,
+                1.0001344736700555
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkCacheUsageMutation",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 91767,
+              "afterMedian": 104953.5,
+              "ratio": 1.1436954460753865,
+              "interval95": [
+                1.0880091735946418,
+                1.2106029082392533
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "regression"
+            },
+            "bytes": {
+              "beforeMedian": 66020,
+              "afterMedian": 77878,
+              "ratio": 1.1796122387155408,
+              "interval95": [
+                1.1793097181626813,
+                1.179717499147953
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "regression"
+            },
+            "allocations": {
+              "beforeMedian": 1101,
+              "afterMedian": 1309,
+              "ratio": 1.1889191643960035,
+              "interval95": [
+                1.1889191643960035,
+                1.1889191643960035
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "regression"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkRequestWorkloads/same/short",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 33120,
+              "afterMedian": 32415.5,
+              "ratio": 0.9787288647342995,
+              "interval95": [
+                0.9499839458244549,
+                1.0046489284219988
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 21856.5,
+              "afterMedian": 21857,
+              "ratio": 1.0000228764898313,
+              "interval95": [
+                0.9999771245567883,
+                1.0000457540263543
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 314,
+              "afterMedian": 314,
+              "ratio": 1,
+              "interval95": [
+                1,
+                1
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkRequestWorkloads/same/prefix32k",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 3012104,
+              "afterMedian": 3072049,
+              "ratio": 1.0199013712673932,
+              "interval95": [
+                0.9662333369252845,
+                1.0399956729788127
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 2379351,
+              "afterMedian": 2373136.5,
+              "ratio": 0.9973881533241628,
+              "interval95": [
+                0.9898340983357176,
+                1.0044394709402074
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 326,
+              "afterMedian": 326,
+              "ratio": 1,
+              "interval95": [
+                0.9969325153374233,
+                1.001536098310292
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkRequestWorkloads/same/history256k",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 25385121.5,
+              "afterMedian": 25168733.5,
+              "ratio": 0.9914757941970063,
+              "interval95": [
+                0.9761367908422116,
+                1.0140177456275543
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 20033416.5,
+              "afterMedian": 20352625,
+              "ratio": 1.0159338024045974,
+              "interval95": [
+                1.0027731351237252,
+                1.024441413479031
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 13206,
+              "afterMedian": 13213,
+              "ratio": 1.000530062092988,
+              "interval95": [
+                1.0003028696903158,
+                1.0007572889057175
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkRequestWorkloads/same/tools32",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 797616,
+              "afterMedian": 792167,
+              "ratio": 0.9931683918075866,
+              "interval95": [
+                0.9644380616539643,
+                1.0154914751091253
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 552149.5,
+              "afterMedian": 552614.5,
+              "ratio": 1.000842163218476,
+              "interval95": [
+                0.9993855548376471,
+                1.0025905797101449
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 5625,
+              "afterMedian": 5625,
+              "ratio": 1,
+              "interval95": [
+                1,
+                1
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkRequestWorkloads/anthropic/short",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 11879,
+              "afterMedian": 12003,
+              "ratio": 1.0104385891068273,
+              "interval95": [
+                0.9633479886592431,
+                1.0503541862251429
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 8882,
+              "afterMedian": 8882,
+              "ratio": 1,
+              "interval95": [
+                1,
+                1
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 136,
+              "afterMedian": 136,
+              "ratio": 1,
+              "interval95": [
+                1,
+                1
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkRequestWorkloads/anthropic/prefix32k",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 1184228,
+              "afterMedian": 1187988,
+              "ratio": 1.003175064261274,
+              "interval95": [
+                0.9248813373042168,
+                1.027431769390641
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 996664.5,
+              "afterMedian": 994512.5,
+              "ratio": 0.9978407979816678,
+              "interval95": [
+                0.9960136702821828,
+                1.0007296841754016
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 140,
+              "afterMedian": 140,
+              "ratio": 1,
+              "interval95": [
+                0.9964285714285714,
+                1
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkRequestWorkloads/anthropic/history256k",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 10440591.5,
+              "afterMedian": 10394166,
+              "ratio": 0.9955533649602132,
+              "interval95": [
+                0.9636659551250527,
+                1.0192255979824554
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 8017158,
+              "afterMedian": 8014236,
+              "ratio": 0.9996355316934006,
+              "interval95": [
+                0.9932712200846882,
+                1.0033924637350862
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 6174,
+              "afterMedian": 6174.5,
+              "ratio": 1.0000809847748624,
+              "interval95": [
+                0.9996761658031088,
+                1.0003239390994494
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkRequestWorkloads/anthropic/tools32",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 238105,
+              "afterMedian": 237300.5,
+              "ratio": 0.9966212385292204,
+              "interval95": [
+                0.9691945450758241,
+                1.0160811217376935
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 190300,
+              "afterMedian": 190292.5,
+              "ratio": 0.9999605885444036,
+              "interval95": [
+                0.9997976894559423,
+                1.0001471515661131
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 2211,
+              "afterMedian": 2211,
+              "ratio": 1,
+              "interval95": [
+                1,
+                1
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkRequestWorkloads/responses/short",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 12669.5,
+              "afterMedian": 12826,
+              "ratio": 1.0123525000986622,
+              "interval95": [
+                0.9401098901098901,
+                1.0394588953114965
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 9700,
+              "afterMedian": 9700,
+              "ratio": 1,
+              "interval95": [
+                1,
+                1
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 143,
+              "afterMedian": 143,
+              "ratio": 1,
+              "interval95": [
+                1,
+                1
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkRequestWorkloads/responses/prefix32k",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 1179549.5,
+              "afterMedian": 1195739.5,
+              "ratio": 1.0137255791299984,
+              "interval95": [
+                0.9663291085232201,
+                1.0358933643734325
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 996462,
+              "afterMedian": 997336,
+              "ratio": 1.0008771031910901,
+              "interval95": [
+                0.998724110450709,
+                1.0038658471566961
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 147,
+              "afterMedian": 147,
+              "ratio": 1,
+              "interval95": [
+                1,
+                1
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkRequestWorkloads/responses/history256k",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 10258296,
+              "afterMedian": 10428640,
+              "ratio": 1.0166054869151757,
+              "interval95": [
+                1.000731318617027,
+                1.0712900398019098
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 8042600,
+              "afterMedian": 8040330.5,
+              "ratio": 0.9997178151344093,
+              "interval95": [
+                0.9958461433090804,
+                1.0046802849347145
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 6622,
+              "afterMedian": 6622,
+              "ratio": 1,
+              "interval95": [
+                0.9996225845410628,
+                1.0002265518803806
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkRequestWorkloads/responses/tools32",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 252536,
+              "afterMedian": 256932,
+              "ratio": 1.0174074191402414,
+              "interval95": [
+                0.976916350573694,
+                1.0635960142738616
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 201739,
+              "afterMedian": 201785.5,
+              "ratio": 1.0002304958386827,
+              "interval95": [
+                0.9996852719671493,
+                1.0004288122149514
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 2378,
+              "afterMedian": 2378,
+              "ratio": 1,
+              "interval95": [
+                1,
+                1
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkRequestWorkloads/declarative/short",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 8977,
+              "afterMedian": 8782.5,
+              "ratio": 0.978333518992982,
+              "interval95": [
+                0.9450976162226297,
+                0.9981062715829342
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 6148,
+              "afterMedian": 6148,
+              "ratio": 1,
+              "interval95": [
+                1,
+                1
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 114,
+              "afterMedian": 114,
+              "ratio": 1,
+              "interval95": [
+                1,
+                1
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkRequestWorkloads/declarative/prefix32k",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 854808.5,
+              "afterMedian": 864169,
+              "ratio": 1.0109504058511352,
+              "interval95": [
+                0.9862836917543963,
+                1.0449312069782515
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 836484.5,
+              "afterMedian": 837017,
+              "ratio": 1.0006365927880314,
+              "interval95": [
+                1.0000890527299742,
+                1.0010049422113392
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 123,
+              "afterMedian": 124,
+              "ratio": 1.008130081300813,
+              "interval95": [
+                1,
+                1.008130081300813
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkRequestWorkloads/declarative/history256k",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 7796948,
+              "afterMedian": 7576849,
+              "ratio": 0.9717711340386007,
+              "interval95": [
+                0.9285695158682734,
+                1.0219481515981061
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 6757893,
+              "afterMedian": 6747862.5,
+              "ratio": 0.9985157355998386,
+              "interval95": [
+                0.9936909035614491,
+                1.0068454174966173
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 4264.5,
+              "afterMedian": 4264,
+              "ratio": 0.9998827529604878,
+              "interval95": [
+                0.999648341343336,
+                1.0002345765892564
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        },
+        {
+          "name": "BenchmarkRequestWorkloads/declarative/tools32",
+          "metrics": {
+            "nanos": {
+              "beforeMedian": 219425.5,
+              "afterMedian": 223870.5,
+              "ratio": 1.0202574450098096,
+              "interval95": [
+                0.952606453914565,
+                1.0492524389008133
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "bytes": {
+              "beforeMedian": 152418,
+              "afterMedian": 152390,
+              "ratio": 0.99981629466336,
+              "interval95": [
+                0.9994848827862264,
+                1.0000787458412352
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            },
+            "allocations": {
+              "beforeMedian": 1480,
+              "afterMedian": 1480,
+              "ratio": 1,
+              "interval95": [
+                1,
+                1
+              ],
+              "samples": [
+                10,
+                10
+              ],
+              "seed": 20261003,
+              "assessment": "inconclusive"
+            }
+          }
+        }
+      ],
+      "profileEvidence": "c27-performance-followup"
+    },
+    "historicalArtifactHashesRechecked": 52,
+    "productionConfigurationChanged": false,
+    "productionDatabaseSchemaChanged": false,
+    "pushed": false,
+    "deployed": false
+  }
 }

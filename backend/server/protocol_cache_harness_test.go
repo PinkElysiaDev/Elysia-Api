@@ -36,6 +36,30 @@ func TestCacheCheckpointNeverReplaysUncertainWarmup(t *testing.T) {
 	}
 }
 
+func TestCacheTimingDistinguishesObservationFromCompletedProbe(t *testing.T) {
+	start := time.Date(2026, 10, 3, 0, 0, 0, 0, time.UTC)
+	task := cacheCheckpointTask{TTL: "1h", StartedAt: start}
+	for _, fixture := range []struct {
+		elapsed        time.Duration
+		read, creation int64
+		want           string
+	}{
+		{55 * time.Minute, 0, 4635, "no_read_observed_before_minimum_lifetime"},
+		{55 * time.Minute, 4624, 11, "read_observed_before_minimum_lifetime"},
+		{65 * time.Minute, 0, 4635, "recreation_observed_after_minimum_lifetime"},
+		{65 * time.Minute, 4635, 0, "read_observed_after_minimum_lifetime"},
+		{65 * time.Minute, 0, 0, "zero_read_without_observed_recreation_after_minimum_lifetime"},
+	} {
+		result := liveCase{Status: "passed", Wire: liveWireEvidence{StartedAt: start.Add(fixture.elapsed)}, UpstreamUsage: &protocol.Usage{CacheRead: &protocol.Counter{Count: fixture.read}, CacheCreation: &protocol.Counter{Count: fixture.creation}}}
+		if got := classifyCacheTiming(task, result); got != fixture.want {
+			t.Fatal(got, fixture.want)
+		}
+	}
+	if got := classifyCacheTiming(task, liveCase{Status: "passed"}); got != "observation_inconclusive" {
+		t.Fatal("HTTP success substituted for observed counters", got)
+	}
+}
+
 func TestStandardCacheCreationReachesNativeCopiesAndStorage(t *testing.T) {
 	for _, fixture := range cacheWireFixtures() {
 		if fixture.id != "chat-completions-api" && fixture.id != "responses-api" {

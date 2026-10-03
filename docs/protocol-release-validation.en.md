@@ -2,6 +2,8 @@
 
 [中文](protocol-release-validation.md)
 
+> C24–C27 results are in the [2026-10-04 follow-up](cache-validation-2026-10-04.en.md). This report retains the original C19–C23 versions and scope; its Gemini counter interpretation is corrected below.
+
 These experiments start from `5d43b83` on the local `feat/protocol-v2-gateway` branch. Nothing was pushed, published or deployed. Real requests used only `https://moyuu.cc` and `gpt-6.1-sol`; deterministic load tests used loopback servers. Results do not identify the site's underlying provider or establish behavior for another account or model.
 
 ## Race and shutdown
@@ -23,7 +25,7 @@ There were **254 of the allowed 256 paid calls**, including probes and unsuccess
 | Chat `/v1/chat/completions` | Passed | Passed | Direct and gateway: 4,224; downstream and SQLite agree |
 | Responses `/v1/responses` | Passed | Passed | Direct and gateway: 4,224; downstream and SQLite agree |
 | Anthropic `/v1/messages` | Passed | Passed | Direct and gateway: 4,224; see input-total ambiguity below |
-| Gemini `/v1beta/models/gpt-6.1-sol:generateContent` | Passed | Follow-up HTTP 400; streaming tool contract failure | Explicit zero through the 4K/8K/16K ladder, also after reversing execution order |
+| Gemini `/v1beta/models/gpt-6.1-sol:generateContent` | Passed | Follow-up HTTP 400; streaming tool contract failure | Native zero conflicts with billing-extension reads of 4,224 / 8,320 / 16,512; not evidence of no cache read |
 
 Gemini's largest actual input was 16,709/16,710 tokens; estimated prompt length was not substituted for observed counts. Chat and Responses accepted cache keys plus `24h` retention, and direct/gateway paths both observed 7,296 cached tokens. Anthropic system and tool breakpoints carried `1h` and both paths observed 7,424. Some repeated requests still returned zero. Field acceptance and nonzero reads do **not** prove retention duration or TTL expiry; expiry experiments were not completed. Gemini explicit cache-resource creation/reference remains unverified.
 
@@ -82,7 +84,7 @@ The final two paid calls tested Gemini's original non-streaming tool history dir
 
 The total is now **256/256 calls**. Real requests stopped and the temporary credential was cleared from session memory. The main real matrix used dev.10; this final native control used dev.11. Differential equivalence evidence is not a claim that the complete live matrix was rerun on dev.11.
 
-No nonzero live cache-creation counter was observed: Anthropic reported zero and other primary creation counters were absent. Nonzero creation fidelity remains supported by offline tests. Anthropic's conflicting input-total conventions also affect the hit-rate denominator; matching cache-read counts do not validate that denominator. Gemini explicit resources, actual TTL expiry, unsupported cross-protocol extensions and a production SLO remain open verification boundaries.
+Through C23, no nonzero live creation was observed. Anthropic reported zero. Later auditing established that Chat/Responses native cache_write_tokens:0 had been omitted from semantic statistics; semantic absence must not be described as wire-field absence. Nonzero creation fidelity remains supported by offline tests. Anthropic's conflicting input-total conventions also affect the hit-rate denominator; matching cache-read counts do not validate that denominator. Gemini explicit resources, actual TTL expiry, unsupported cross-protocol extensions and a production SLO remain open verification boundaries.
 
 The paired nonzero live cache-read evidence comes from non-streaming requests. The real SSE cases did not produce a nonzero cache read. Nonzero usage-tail fidelity has offline regression evidence, not an equivalent live nonzero SSE control in this run.
 
@@ -92,9 +94,9 @@ Focused performance reruns can use `ELYSIA_LOAD_SCENARIOS`, a comma-separated li
 
 The final metric audit identified four additional initial GC-pause regressions. They received a separate candidate–baseline–baseline–candidate follow-up: five repeats of 256 requests per scenario per stage, **20,480 successful measured requests**, and ten samples per version. GC-pause ratios were 0.878, 0.845, 0.958 and 0.831; every 95% interval crossed 1. None reproduced a significant regression, and none establishes a definite GC benefit. Other representative metrics had no significant regression. All original anomalies remain in the evidence (`c23-gc-followup`). For example, delayed Responses 64KiB streaming accumulated a median 33.786ms versus 28.082ms of GC pauses per 256 requests, not per-request latency.
 
-## Final acceptance boundary
+## C23 acceptance boundary (historical)
 
-The local validation and fixes are complete, but **not every release gate is passing**. Full race and all three stress settings passed; no DATA RACE was detected, and a shutdown lifecycle defect was fixed. Four real endpoints support JSON/SSE text; Gemini tools still fail in a native direct control. Non-streaming cache reads were observed and preserved for Chat, Responses and Anthropic. Gemini returned explicit zero with both routes; the experiment does not implicate request conversion. Anthropic's input denominator, nonzero live creation, nonzero live SSE reads, explicit resources and actual TTL expiry remain unverified.
+The local validation and fixes are complete, but **not every release gate is passing**. Full race and all three stress settings passed; no DATA RACE was detected, and a shutdown lifecycle defect was fixed. Four real endpoints support JSON/SSE text; Gemini tools still fail in a native direct control. Non-streaming cache reads were observed and preserved for Chat, Responses and Anthropic. Gemini native counters were zero, but the same responses contained nonzero billing-extension reads (4,224 / 8,320 / 16,512). This is a conflicting counter contract, not proof that no cache read occurred or explicit resources are unsupported. Anthropic's input denominator, nonzero live creation, nonzero live SSE reads, explicit resources and actual TTL expiry remain unverified.
 
 Retained metering optimization improves cache-conversion CPU by 30.2% and allocated bytes by 32.4%, with improvements in representative long-history HTTP cases. Every initially significant CPU, latency or GC regression received follow-up. Short-request and GC uncertainty remains; there is no production SLO or capacity certification. Unknown cross-protocol extensions still need explicit mappings. Remote CI was not triggered; C18 build/browser results remain historical evidence, not new dev.11 artifact execution.
 

@@ -10,7 +10,8 @@ import (
 	"github.com/elysia-api/backend/protocol"
 )
 
-func TestCacheAliasExamplePreservesStandardZeroAndUnrelatedExtensions(t *testing.T) {
+func cacheAliasExampleDefinition(t *testing.T) protocol.Definition {
+	t.Helper()
 	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "examples", "cache-usage-alias.mapping.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -35,6 +36,11 @@ func TestCacheAliasExamplePreservesStandardZeroAndUnrelatedExtensions(t *testing
 		mapping.After = patch.After
 		definition.Directions[direction] = mapping
 	}
+	return definition
+}
+
+func TestCacheAliasExamplePreservesStandardZeroAndUnrelatedExtensions(t *testing.T) {
+	definition := cacheAliasExampleDefinition(t)
 	// Identical ref names with different bodies must not authorize replay.
 	if definition.Expressions == nil {
 		definition.Expressions = map[string]protocol.Expression{}

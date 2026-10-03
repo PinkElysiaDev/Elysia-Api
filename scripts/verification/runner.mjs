@@ -9,10 +9,11 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex')
 
 async function sourceIdentity(root) {
   const git = args => execFileSync('git', args, { cwd: root, windowsHide: true })
+  const baseCommit = git(['rev-parse', 'HEAD']).toString().trim()
   const paths = git(['ls-files', '--others', '--exclude-standard', '-z']).toString().split('\0').filter(path => /\.(go|mjs|yml)$/.test(path))
   const untracked = {}
   for (const path of paths) untracked[path] = hash(await readFile(join(root, path)))
-  return { trackedDiffSHA256: hash(git(['diff', '--binary', 'HEAD'])), untrackedSourceSHA256: untracked }
+  return { baseCommit, trackedDiffSHA256: hash(git(['diff', '--binary', baseCommit])), untrackedSourceSHA256: untracked }
 }
 
 function stopProcess(child) {

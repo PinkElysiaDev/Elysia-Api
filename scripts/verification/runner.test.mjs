@@ -24,4 +24,6 @@ test('reports preserve command failures, timeout and unexecuted environment sepa
   assert.equal(report.steps[2].timedOut, true)
   assert.match(await readFile(report.steps[0].log, 'utf8'), /evidence/)
   assert(report.commit && report.compilerVersion && report.goVersion)
+  assert.equal(report.source.baseCommit, report.commit)
+  for (const step of report.steps) assert.equal(step.source.baseCommit, report.commit)
 })
