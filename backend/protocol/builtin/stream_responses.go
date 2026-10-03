@@ -285,7 +285,7 @@ func (stream *streamModule) decodeGeminiFrame(fields p.Object, options p.Evaluat
 				return nil, unsupported("/parts", "Gemini stream part requires a supported typed event mapping")
 			}
 		}
-		if finish := candidate["finishReason"]; !finish.IsZero() {
+		if finish := candidate["finishReason"]; !finish.IsZero() && !finish.IsNull() {
 			stream.finish, err = decodeFinishReason(Gemini, finish)
 			if err != nil {
 				return nil, err

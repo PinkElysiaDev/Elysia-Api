@@ -63,7 +63,7 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 			}
 		}
 		if adapter.name == Chat {
-			calls, err := readArray(fields["tool_calls"])
+			calls, err := readToolCalls(fields["tool_calls"])
 			if err != nil {
 				return nil, err
 			}
@@ -105,6 +105,15 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 		nodes = append(nodes, node)
 	}
 	return nodes, nil
+}
+
+// A nullable Chat tool list denotes no calls. The native snapshot retains its
+// presence so an unchanged or unrelated edit cannot turn null into omission.
+func readToolCalls(value p.Value) ([]p.Value, error) {
+	if value.IsNull() {
+		return nil, nil
+	}
+	return readArray(value)
 }
 
 func (adapter module) decodeResponseItem(value p.Value, path string, direction p.Direction, options p.EvaluationContext, history *historyState) (p.Node, error) {

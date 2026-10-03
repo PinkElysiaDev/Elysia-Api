@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestDeclaredChatCacheExtensionReachesAnthropic(t *testing.T) {
+func declaredChatCacheDefinition(t *testing.T) protocol.Definition {
 	definition := presetDefinition(t, "chat-completions-api")
 	definition.ID = "User-Chat-Cache"
 	definition.Capabilities[protocol.CacheBreakpointsCapability] = true
@@ -26,6 +26,12 @@ func TestDeclaredChatCacheExtensionReachesAnthropic(t *testing.T) {
 	definition.Samples = append(definition.Samples,
 		protocol.Sample{ID: "declared-cache.decode", Direction: protocol.DecodeRequest, Input: wire, Expected: semantic, Capabilities: []protocol.Capability{protocol.CacheBreakpointsCapability}},
 		protocol.Sample{ID: "declared-cache.encode", Direction: protocol.EncodeRequest, Input: semantic, Expected: wire, Capabilities: []protocol.Capability{protocol.CacheBreakpointsCapability}})
+	return definition
+}
+
+func TestDeclaredChatCacheExtensionReachesAnthropic(t *testing.T) {
+	definition := declaredChatCacheDefinition(t)
+	wire := definition.Samples[len(definition.Samples)-2].Input
 	var captured [][]byte
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)

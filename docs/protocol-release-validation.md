@@ -29,3 +29,42 @@
 统一验证报告记录提交、工作区源码摘要、Go/引擎/工具链版本、平台、参数、退出码与日志路径。状态区分 passed、failed、inconclusive、not_run；只保存检查元数据，不记录进程环境中的密钥。中断和超时终止自己创建的进程树，避免遗留测试进程污染后续测量。CI 已纳入 Agent 及失败证据上传，本轮没有触发远程 CI。
 
 C19 的全包 race 证据在关闭修复前产生；修复后有全包普通测试、专项 race 和确定性 race 回归。后续执行内核优化仍须重新执行完整 race，不能用此表替代候选版本验证。
+
+## C20：真实协议与缓存实验
+
+2026-10-03 使用指定站点与模型串行执行，共计 254/256 次真实上游调用（包括早期测试设施失败和预检）；没有重置预算、充值、压力测试或自动生成重试。默认输出限制 128 tokens，但站点是否遵守限制仍以原始 usage 为准。临时凭据只经隐藏输入传给测试子进程，不进入参数、SQLite、源码或证据。隔离 SQLite 使用观察代理占位凭据。
+
+`node scripts/verify-protocol.mjs live --preflight` 只预检；`--suite=cache|matrix|extended|custom|breakpoint|diagnostics` 运行相应实验。`ELYSIA_LIVE_TARGET` 限定目标，`ELYSIA_LIVE_PREFLIGHT_REPORT` 可显式引用已完成预检；复用前检查站点、模型、编译器、定义哈希及 JSON/SSE 成功记录，并保存证据路径与摘要。未执行项不记为通过。累计预算持久化在仓库外 `.cache/protocol-live-budget.json`，独占锁阻止并行付费测试。
+
+测试代理记录最终出站正文、原始上游响应、下游响应及 SQLite request ID/usage。正文仅含人工生成内容，写入前检查凭据；报告保留字段路径、字节数、SHA-256、计数和证据文件名，不捕获鉴权头。独立 JSON 读取器核对 usage，缺失与零值分开。同协议 SSE 检查原生帧回放与 usage 尾帧，不能通过删除未知字段取得成功。
+
+| 目标 | 真实 JSON / SSE 文本 | JSON / SSE 两轮 function | 自动前缀缓存读取及计数链路 |
+| --- | --- | --- | --- |
+| Chat `/v1/chat/completions` | 通过 | 通过 | 直连及网关均观察到 4,224；下游及 SQLite 一致 |
+| Responses `/v1/responses` | 通过 | 通过 | 同上，4,224 |
+| Anthropic `/v1/messages` | 通过 | 通过 | 同上，4,224；输入总量存在下述站点口径疑点 |
+| Gemini `/v1beta/models/gpt-6.1-sol:generateContent` | 通过 | 第二轮 HTTP 400；流式工具契约失败 | 4K/8K/16K 阶梯均明确零；交换直连/网关顺序后仍为零 |
+
+缓存阶梯中的最大 Gemini 实际输入为 16,709/16,710 tokens，估算长度未冒充实际 token 数。Chat/Responses 带缓存键与 `24h` 保留期时，两条路径都观察到 7,296 个读取 token；Anthropic 系统块和工具断点携带 `1h` 时，两条路径观察到 7,424。相同组内重复请求及只修改末尾问题均保留出站前缀；重复请求字节稳定。不保证每次重复都命中，有已观察到的零值；不据此猜测站点路由或底层供应商。
+
+Anthropic 返回 `input_tokens=4421`、`cache_read_input_tokens=4224`，同时附加 `billing_usage.semantic="openai"` 及 `prompt_tokens=4421`。标准 Anthropic 归一化产生 8,645；不能将此当作已经证明的实际提示输入量，也不能全局改写 Anthropic 输入语义。原始字段和计费元数据的口径需要站点澄清；如确定为另一口径，应在该站点的自定义定义中显式映射。缓存读取 4,224 本身在三层计数中一致。
+
+四入口 × 四目标矩阵保留了真实失败：站点返回的未知原生扩展没有跨协议映射，多数组合明确拒绝转换，未静默丢弃。任意 ID 的四种预置副本 JSON/SSE 文本全部通过。从零定义的 `verification-envelope` 在纯文本/usage 组合离线通过后，Responses、Anthropic、Gemini 的非流式真实转发通过；Chat 返回超出声明的内容，四种 SSE 返回未映射扩展，均保留阻断诊断。早期自定义样例缺少纯文本请求、路径模型上下文或输出限制导致的组合失败属于测试设施问题，不能作为生产转换回归。
+
+声明 `cache.breakpoints` 的 Chat 副本实际将系统块 `cache_control={type:ephemeral,ttl:1h}` 送到 Anthropic，上游读取曾为 8,320；下游因 `/wire:claude` 未映射字段拒绝转换。这只证明请求侧及上游读取，不能算完整端到端通过。Gemini 无已验证的显式缓存资源创建/引用条件；TTL 到期对照未执行，两项继续列为缺口。
+
+确认并修复了两项生产兼容缺陷：Chat `tool_calls:null` 现在解释为没有调用，同时保留原生 null；非法非数组仍拒绝。Gemini `finishReason:null` 不再提前终止流，实际 STOP 及尾帧 usage 得以保留。测试在 `5754293` 隔离快照修前失败、修后通过，证据在 `c20-final-checks/before-regressions.log`。编译器版本升为 `2.0.0-dev.10`，由现有启动重验机制更新定义证据。
+
+另一个 Responses 加密推理校验失败源于测试检查器缺少账号作用域；生产转发本来已传入作用域。修正检查器后真实实验通过，并增加了有来源载荷的本地回归。Gemini 工具第二轮请求中的调用与结果 ID 一致，但上游报 `No tool output found for function call call_1`；流式随后返回空 name 和 `args.arguments` 字符串片段，没有已声明的关联规则。保留原始证据及拒绝回归，不猜测合并、不替换成空参数；仍未证明 Gemini 两轮工具正向可用。
+
+关键原始证据位于仓库父目录 `.cache`：
+
+- `protocol-live-1791030580289`：四端点预检及缓存阶梯、四层计数。
+- `protocol-live-1791030876155`：入口与目标矩阵，含明确拒绝的组合。
+- `protocol-live-1791031683055`：修正工具提示词后的工具、任意 ID 副本、缓存策略。
+- `protocol-live-1791032315909`：带作用域的 Responses 缓存键/保留期复验。
+- `protocol-live-1791032521055`：Gemini 缓存执行顺序交换。
+- `protocol-live-1791032813311`：修正离线覆盖后的真实自定义入口。
+- `protocol-live-1791032933161`：Chat 声明断点到 Anthropic。
+
+完整后端回归与 vet 记录在 `c20-final-checks/report.json`；结果以步骤状态为准。HTTP 200、部分矩阵和本地模拟均不能替代尚未通过的真实正向验证。

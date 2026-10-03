@@ -5,7 +5,7 @@ package protocol
 const DefinitionSchemaVersion = 2
 
 // CompilerVersion binds verification evidence to execution semantics.
-const CompilerVersion = "2.0.0-dev.9"
+const CompilerVersion = "2.0.0-dev.10"
 
 // Transport identifies framing and connection lifecycle, never content shape.
 type Transport string
