@@ -217,7 +217,7 @@ func frameIndex(value p.Value) (int, error) {
 
 func (stream *streamModule) decodeChatFrame(fields p.Object, options p.EvaluationContext) ([]p.Event, error) {
 	if failure := fields["error"]; !failure.IsZero() {
-		return []p.Event{{Type: p.OperationFailed, Error: failure}}, nil
+		return stream.decodeFailureEvent(failure, options)
 	}
 	choices, err := readArray(fields["choices"])
 	if err != nil {
@@ -333,7 +333,7 @@ func (stream *streamModule) decodeAnthropicFrame(fields p.Object, options p.Eval
 	case "ping":
 		return nil, nil
 	case "error":
-		return []p.Event{{Type: p.OperationFailed, Error: fields["error"]}}, nil
+		return stream.decodeFailureEvent(fields["error"], options)
 	case "message_start":
 		message, err := fields["message"].ReadObject()
 		if err != nil {
@@ -392,9 +392,11 @@ func (stream *streamModule) decodeAnthropicFrame(fields p.Object, options p.Eval
 		if err != nil {
 			return nil, err
 		}
-		stream.finish, err = decodeFinishReason(Anthropic, delta["stop_reason"])
-		if err != nil {
-			return nil, err
+		if reason := delta["stop_reason"]; !reason.IsZero() {
+			stream.finish, err = decodeFinishReason(Anthropic, reason)
+			if err != nil {
+				return nil, err
+			}
 		}
 		return stream.usageEvent(fields["usage"])
 	case "message_stop":

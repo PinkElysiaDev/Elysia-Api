@@ -9,18 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/elysia-api/backend/relay"
 	"github.com/gin-gonic/gin"
 )
 
 func TestResponsesToolFidelityHTTPPaths(t *testing.T) {
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
-	preset := registerPresetForTest(t, "responses-api")
+	preset := presetDefinition(t, "responses-api")
 	preset.ID = "independent-tools"
-	if err := relay.RegisterCustomProtocol(preset); err != nil {
-		t.Fatal(err)
-	}
 	const requestBody = `{"model":"grp","input":[{"type":"custom_tool_call","call_id":"c1","name":"patch","input":"edit file"},{"type":"custom_tool_call_output","call_id":"c1","output":"done"}],"tools":[{"type":"custom","name":"patch","format":{"type":"text"}},{"type":"mcp","server_label":"docs","server_url":"https://example.invalid/mcp"}]}`
 	for _, platform := range []string{"responses", "custom:responses-api", "custom:independent-tools"} {
 		for _, isStream := range []bool{false, true} {
@@ -46,7 +40,7 @@ func TestResponsesToolFidelityHTTPPaths(t *testing.T) {
 					_, _ = io.WriteString(w, response)
 				}))
 				defer upstream.Close()
-				s := newTestServer(presetGroup(t, platform, upstream.URL))
+				s := newTestServer(t, presetGroup(t, platform, upstream.URL), preset)
 				recorder := httptest.NewRecorder()
 				ctx, _ := gin.CreateTestContext(recorder)
 				body := strings.Replace(requestBody, `"model":"grp"`, fmt.Sprintf(`"model":"grp","stream":%v`, isStream), 1)

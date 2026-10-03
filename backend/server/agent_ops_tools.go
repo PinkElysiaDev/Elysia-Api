@@ -582,7 +582,7 @@ func (t *createSourceTool) Execute(ctx context.Context, tctx CLIContext, args js
 	if err := t.server.validateAgentSource(ctx, &item, nil); err != nil {
 		return CLIError("校验失败: "+err.Error(), "validation_failed")
 	}
-	if err := store.UpsertSource(ctx, item); err != nil {
+	if err := t.server.saveSource(ctx, item); err != nil {
 		return CLIError("保存失败: "+err.Error(), "persist_failed")
 	}
 	created, _ := agentFindSource(ctx, store, item.ID)
@@ -655,7 +655,7 @@ func (t *updateSourceTool) Execute(ctx context.Context, tctx CLIContext, args js
 	if err := t.server.validateAgentSource(ctx, &item, &existing); err != nil {
 		return CLIError("校验失败: "+err.Error(), "validation_failed")
 	}
-	if err := store.UpsertSource(ctx, item); err != nil {
+	if err := t.server.saveSource(ctx, item); err != nil {
 		return CLIError("保存失败: "+err.Error(), "persist_failed")
 	}
 	if params.ManualModels != nil {
@@ -677,7 +677,7 @@ func (s *Server) validateAgentSource(ctx context.Context, item *storage.ModelSou
 	if item.ID == "" {
 		return fmt.Errorf("源 id 为空")
 	}
-	if err := validateCustomSourceProtocol(item); err != nil {
+	if err := s.validateSourceProtocol(item); err != nil {
 		return err
 	}
 	if err := s.validateOutbound(item.BaseURL); err != nil {

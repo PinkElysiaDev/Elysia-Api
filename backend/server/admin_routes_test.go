@@ -13,19 +13,19 @@ import (
 func TestAdminRoutesRegisterWithProtocolEndpoints(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	s := &Server{
-		config:        &config.Config{},
-		engine:        gin.New(),
-		openaiAdapter: relay.NewOpenAIAdapter(10 * time.Second),
+		config:            &config.Config{},
+		engine:            gin.New(),
+		protocolTransport: relay.NewProtocolTransport(10 * time.Second),
 	}
 	s.setupRoutes()
 	found := 0
 	for _, route := range s.engine.Routes() {
 		switch route.Path {
-		case "/api/admin/custom-protocols",
-			"/api/admin/custom-protocols/schema",
-			"/api/admin/custom-protocols/preview",
-			"/api/admin/custom-protocols/test",
-			"/api/admin/custom-protocols/:id":
+		case "/api/admin/protocols",
+			"/api/admin/protocols/schema",
+			"/api/admin/protocols/preview",
+			"/api/admin/protocols/test",
+			"/api/admin/protocols/:id/draft":
 			found++
 		}
 	}

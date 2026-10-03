@@ -96,15 +96,7 @@ func (s *Server) assembleGroupsFromStore() ([]config.ModelGroupConfig, bool) {
 		s.logWarnf("failed to load model sources from sqlite: %v", err)
 		return nil, false
 	}
-	keyMeta := make(map[string]sourceKeyMeta, len(sources))
-	for _, source := range sources {
-		effective := source.EffectiveKeys()
-		keys := make([]storage.SourceAPIKey, 0, len(effective))
-		for _, key := range effective {
-			keys = append(keys, key)
-		}
-		keyMeta[source.ID] = sourceKeyMeta{keys: keys, strategy: string(source.KeyStrategy), baseURL: source.BaseURL}
-	}
+	keyMeta := collectSourceKeys(sources)
 	// 同时按复合键(sourceId:id)与裸 id 建索引：复合键精确命中（解决同名模型路由错乱），
 	// 裸 id 用于向后兼容旧数据（models 元素无 ":" 前缀时回退）。
 	modelByComposite := make(map[string]storage.Model, len(models))
@@ -155,6 +147,12 @@ func (s *Server) expandModelRef(model storage.Model, found bool, keyMeta map[str
 	if !found || !model.Available || !model.Enabled {
 		return config.ModelRef{}, false
 	}
+	return s.resolveModelSource(model, keyMeta)
+}
+
+// resolveModelSource shares current credentials and model permissions with probes.
+// Health is checked by routing callers; unhealthy models must still be probed.
+func (s *Server) resolveModelSource(model storage.Model, keyMeta map[string]sourceKeyMeta) (config.ModelRef, bool) {
 	ref := config.ModelRef{ID: model.ID, Name: model.Name, BaseURL: model.BaseURL, APIKey: model.APIKey, Platform: model.Platform,
 		VisionCapable: model.VisionCapable, ToolsCapable: model.ToolsCapable, SourceID: model.SourceID}
 	if meta, ok := keyMeta[model.SourceID]; ok {
@@ -203,4 +201,13 @@ func (s *Server) loadTokensFromStore() (map[string]config.AccessToken, bool) {
 		tokens[item.Token] = config.AccessToken{Name: item.Name, Token: item.Token, Enabled: item.Enabled, AllowedGroups: item.AllowedGroups, Scopes: item.Scopes}
 	}
 	return tokens, true
+}
+
+func collectSourceKeys(sources []storage.ModelSource) map[string]sourceKeyMeta {
+	keyMeta := make(map[string]sourceKeyMeta, len(sources))
+	for _, source := range sources {
+		keys := source.EffectiveKeys()
+		keyMeta[source.ID] = sourceKeyMeta{keys: keys, strategy: string(source.KeyStrategy), baseURL: source.BaseURL}
+	}
+	return keyMeta
 }

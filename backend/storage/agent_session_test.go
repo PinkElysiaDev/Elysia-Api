@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/elysia-api/backend/agent"
-	"github.com/elysia-api/backend/relay"
 )
 
 func newAgentTestStore(t *testing.T) *Store {
@@ -72,7 +71,7 @@ func TestAgentSessionCRUDAndMessages(t *testing.T) {
 
 	// 引擎状态更新：draft + pending
 	pending := &agent.PendingAction{
-		Calls:  []relay.MaheshvaraToolCall{{ID: "c1", Type: "function", Name: "test_upstream"}},
+		Calls:  []agent.FunctionCall{{ID: "c1", Type: "function", Name: "test_upstream"}},
 		Reason: "需要真实测试",
 	}
 	waiting := agent.StatusWaitingApproval
@@ -311,7 +310,7 @@ func TestResetRunningSessionsReconcilesCrashLeftovers(t *testing.T) {
 		t.Fatalf("set running: %v", err)
 	}
 	waitStatus := agent.StatusWaitingApproval
-	pending := &agent.PendingAction{Calls: []relay.MaheshvaraToolCall{{ID: "c1", Type: "function", Name: "save_protocol"}}}
+	pending := &agent.PendingAction{Calls: []agent.FunctionCall{{ID: "c1", Type: "function", Name: "save_protocol"}}}
 	if err := store.UpdateSessionState(ctx, waiting.ID, agent.SessionStateUpdate{Status: &waitStatus, PendingAction: pending}); err != nil {
 		t.Fatalf("set waiting: %v", err)
 	}
@@ -376,7 +375,8 @@ func TestAgentSessionStatsAggregation(t *testing.T) {
 	append(created.ID, agent.RoleToolResult, "")                    // 空串 usage
 	append(created.ID, agent.RoleSystem, "")                        // 空串 usage
 	append(created.ID, agent.RoleUser, "")                          // 轮 2
-	append(created.ID, agent.RoleAssistant, `{"total_tokens":30,"input_tokens":20,"output_tokens":10}`)
+	append(created.ID, agent.RoleAssistant, `{"total":{"count":30,"origin":"observed"},"input":{"count":20,"origin":"observed"},"output":{"count":10,"origin":"observed"}}`)
+	append(created.ID, agent.RoleAssistant, `{"total":{"count":0,"origin":"observed"}}`)
 	append(created.ID, agent.RoleAssistant, "") // assistant 无 usage（空串）
 	append(other.ID, agent.RoleUser, "")
 

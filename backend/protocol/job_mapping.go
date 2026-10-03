@@ -3,10 +3,11 @@ package protocol
 import (
 	"context"
 	"fmt"
-	"golang.org/x/net/http/httpguts"
 	"net/http"
 	"slices"
 	"strings"
+
+	"golang.org/x/net/http/httpguts"
 )
 
 // TaskControl builds only a body and query parameters for a fixed operation;
@@ -88,16 +89,7 @@ func (compiled *Compiled) ConvertTask(ctx context.Context, operation, kind, purp
 	if kind == "decode" {
 		direction = DecodeResponse
 	}
-	view := *compiled
-	view.mappings = map[Direction]compiledMapping{direction: mapping}
-	output, issues := view.Execute(ctx, direction, input, EvaluationContext{Values: Object{"operation": StringValue(purpose)}})
-	for index := range issues {
-		issues[index].Path = "/operations/" + operation + "/task/" + kind + issues[index].Path
-	}
-	if err := IssuesError(issues); err != nil {
-		return Value{}, err
-	}
-	return output, nil
+	return compiled.executeOperationMapping(ctx, mapping, direction, "/operations/"+operation+"/task/"+kind, input, EvaluationContext{Values: Object{"operation": StringValue(purpose)}})
 }
 
 // DecodeTaskUpdate validates provider state without inventing identities or

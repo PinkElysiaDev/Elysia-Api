@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/elysia-api/backend/protocol/builtin"
+
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/relay"
 	"github.com/gin-gonic/gin"
 )
 
@@ -16,7 +18,18 @@ type gatewayFailure struct {
 	cause  error
 }
 
-func (failure *gatewayFailure) Error() string { return failure.cause.Error() }
+// upstreamFailure holds an error body already encoded by the pinned ingress.
+type upstreamFailure struct {
+	cause error
+	body  []byte
+}
+
+func (failure *upstreamFailure) Error() string { return failure.cause.Error() }
+func (failure *upstreamFailure) Unwrap() error { return failure.cause }
+
+func (failure *gatewayFailure) Error() string {
+	return fmt.Sprintf("HTTP %d: %v", failure.status, failure.cause)
+}
 func (failure *gatewayFailure) Unwrap() error { return failure.cause }
 
 func gatewayIssue(identity protocol.Identity, code protocol.IssueCode, path, reason string) *protocol.ConversionError {
@@ -50,7 +63,7 @@ func (s *Server) gatewayProtocol(c *gin.Context) {
 		s.serveGatewaySession(c, view, ingress, c.Param("path"), handshake.Bytes())
 		return
 	}
-	body, err := protocol.ReadBoundedBody(c.Request.Body, protocol.DefaultLimits().BufferBytes)
+	body, err := protocol.ReadBoundedBody(c.Request.Body, ingress.ResourceLimits().BufferBytes)
 	if err != nil {
 		respondFail(c, http.StatusBadRequest, "invalid_input", err.Error())
 		return
@@ -60,7 +73,7 @@ func (s *Server) gatewayProtocol(c *gin.Context) {
 
 func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView, ingress *protocol.Compiled, path string, body []byte) {
 	start := time.Now()
-	record := s.initUsageRecord(c, start, body, relay.FormatType(ingress.Identity().Family))
+	record := s.initUsageRecord(c, start, body, builtin.FormatType(ingress.Identity().Family))
 	record.IngressRevision, record.SourceEndpoint, record.SourceFormat = ingress.Hash(), c.Request.URL.Path, ingress.Identity().DefinitionID
 	record.RelayMode = "protocol_v2"
 	installDownstreamCapture(c, record, downstreamCaptureLimit(s.usageLogConfig()))
@@ -81,7 +94,9 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 	}
 	record.Stream = plan.operation.Transport != protocol.HTTPJSON
 	estimate := s.estimateProtocolTokens(plan.request)
-	record.Usage.Estimated, record.Usage.EstimatedTokens, record.UsageSource = true, estimate, "protocol_estimate"
+	if *s.config.GetUsageConfig().EstimateWhenMissing {
+		record.Usage.Estimated, record.Usage.EstimatedTokens, record.UsageSource = true, estimate, "protocol_estimate"
+	}
 	release, err := s.acquireRateLimit(plan.group, estimate)
 	if err != nil {
 		s.failGateway(c, record, http.StatusTooManyRequests, err)
@@ -119,8 +134,7 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 			s.failGateway(c, record, http.StatusBadGateway, err)
 			return
 		}
-		var failure *gatewayFailure
-		canRetry := errors.As(err, &failure) && (failure.status == http.StatusTooManyRequests || failure.status == http.StatusServiceUnavailable)
+		canRetry := canRetryGeneration(err)
 		isLast := index+1 == maxAttempts(plan.group.MaxRetries, len(plan.candidates))
 		if !canRetry || isLast {
 			s.failGateway(c, record, http.StatusBadGateway, err)
@@ -143,28 +157,32 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	options := protocol.EvaluationContext{Scope: candidate.scope}
 	body, err := candidate.compiled.EncodeRequest(c.Request.Context(), &request, options)
 	if err != nil {
-		return err
+		return &gatewayFailure{http.StatusBadRequest, err}
 	}
-	setRecordModel(record, candidate.model, relay.Platform("custom:"+candidate.binding.ProtocolID))
+	if err := candidate.compiled.CheckOperationInput(candidate.operation, body); err != nil {
+		return &gatewayFailure{http.StatusBadRequest, err}
+	}
+	setRecordModel(record, candidate.model, builtin.Platform("custom:"+candidate.binding.ProtocolID))
 	record.UpstreamRevision, record.TargetEndpoint, record.TargetFormat = candidate.compiled.Hash(), candidate.operation.Path, candidate.binding.ProtocolID
 	record.OutgoingBody = record.sanitizeBody(body)
-	response, err := s.openaiAdapter.SendProtocolRequest(c.Request.Context(), candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Name})
+	response, err := s.protocolTransport.SendProtocolRequest(c.Request.Context(), candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Name})
 	if err != nil {
 		return err
 	}
 	defer response.Body.Close()
+	record.TargetEndpoint = response.Request.URL.EscapedPath()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		body, err := protocol.ReadBoundedBody(response.Body, protocol.DefaultLimits().BufferBytes)
+		body, err := protocol.ReadBoundedBody(response.Body, candidate.compiled.ResourceLimits().BufferBytes)
 		if err != nil {
 			return err
 		}
 		record.ProviderResponse = record.sanitizeBody(body)
-		return &gatewayFailure{response.StatusCode, fmt.Errorf("upstream returned HTTP %d", response.StatusCode)}
+		return mapGatewayHTTPFailure(c.Request.Context(), record, response.StatusCode, body, plan.ingress, candidate, options)
 	}
 	if candidate.operation.Transport != protocol.HTTPJSON {
 		return s.forwardGatewayStream(c, record, plan, candidate, response)
 	}
-	body, err = protocol.ReadBoundedBody(response.Body, protocol.DefaultLimits().BufferBytes)
+	body, err = protocol.ReadBoundedBody(response.Body, candidate.compiled.ResourceLimits().BufferBytes)
 	if err != nil {
 		return err
 	}
@@ -173,7 +191,13 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	if err != nil {
 		return err
 	}
+	if err := observeHostedTools(record, candidate.compiled, body); err != nil {
+		return err
+	}
 	updateRecordProtocolUsage(record, semantic.Usage)
+	if err := protocol.CheckGenerationOutcome(semantic); err != nil {
+		return encodeGatewayFailure(c.Request.Context(), http.StatusBadGateway, semantic, plan.ingress, options)
+	}
 	if err := protocol.IssuesError(protocol.CheckModelResponse(semantic, candidate.compiled, candidate.binding, candidate.scope)); err != nil {
 		return err
 	}
@@ -209,6 +233,19 @@ func (s *Server) failGateway(c *gin.Context, record *usageRecord, status int, er
 		record.ErrorKind = ErrorKindClientCanceled
 	}
 	if c.Writer.Written() {
+		return
+	}
+	var upstream *upstreamFailure
+	if status != 499 && errors.As(err, &upstream) {
+		c.Data(status, "application/json", upstream.body)
+		return
+	}
+	if !strings.HasPrefix(c.Request.URL.Path, "/gateway/") {
+		var wireError *builtin.GatewayError
+		if !errors.As(err, &wireError) {
+			wireError = &builtin.GatewayError{Class: builtin.ClassFromStatus(status), Status: status, Message: err.Error()}
+		}
+		writeProtocolError(c, inputFormatFromPath(c.Request.URL.Path), wireError)
 		return
 	}
 	c.JSON(status, gin.H{"error": gin.H{"code": "protocol_gateway_error", "message": err.Error(), "issues": record.ConversionIssues}})

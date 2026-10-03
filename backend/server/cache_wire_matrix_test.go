@@ -10,147 +10,133 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/protocol"
 	"github.com/gin-gonic/gin"
 )
 
 type cacheWireFixture struct{ id, platform, path, request, response, stream string }
 
-func TestCacheUsageMissingOutputStillHasTotal(t *testing.T) {
+func TestCacheUsageMissingOutputRemainsUnknownUntilTail(t *testing.T) {
 	var record usageRecord
-	updateRecordUsageFromMaheshvara(&record, &relay.MaheshvaraUsage{
-		InputTokens: 100, CachedInputTokens: 70, TotalTokens: 100, TotalTokensInferred: true,
+	updateRecordProtocolUsage(&record, &protocol.Usage{
+		Input:     &protocol.Counter{Count: 100, Origin: protocol.ObservedCount},
+		CacheRead: &protocol.Counter{Count: 70, Origin: protocol.ObservedCount},
 	})
-	if derefInt(record.Usage.TotalTokens) != 100 || derefInt(record.UsageDetail.TotalTokens) != 100 {
-		t.Fatalf("input-only usage lost its total: %+v", record.Usage)
+	if record.Usage.TotalTokens != nil || record.Usage.OutputTokens != nil {
+		t.Fatal("missing output became zero", record.Usage)
 	}
-	updateRecordUsageFromMaheshvara(&record, &relay.MaheshvaraUsage{
-		OutputTokens: 5, TotalTokens: 5, TotalTokensInferred: true,
-	})
+	updateRecordProtocolUsage(&record, &protocol.Usage{Output: &protocol.Counter{Count: 5, Origin: protocol.ObservedCount}})
 	if derefInt(record.Usage.TotalTokens) != 105 || derefInt(record.UsageDetail.TotalTokens) != 105 || derefInt(record.Usage.CacheHitTokens) != 70 {
-		t.Fatalf("output tail clobbered previous counters: %+v", record.Usage)
+		t.Fatal("output tail clobbered previous counters", record.Usage)
 	}
 }
 
 func TestCacheGeminiReferenceDoesNotInventSystem(t *testing.T) {
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
-	cfg := registerPresetForTest(t, "gemini-api")
-	req, err := relay.GeminiToMaheshvara([]byte(`{"cachedContent":"cachedContents/existing","contents":[{"role":"user","parts":[{"text":"question"}]}]}`), "m")
+	compiled := compileFixtureDefinition(t, presetDefinition(t, "gemini-api"))
+	options := protocol.EvaluationContext{Scope: protocol.Scope{Provider: "provider", Account: "account", Model: "m"}, Values: protocol.Object{"model": protocol.StringValue("m")}}
+	request, err := compiled.DecodeRequest(t.Context(), []byte(`{"cachedContent":"cachedContents/existing","contents":[{"role":"user","parts":[{"text":"question"}]}]}`), options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rendered, err := relay.RenderCustomProtocolRequest(req, cfg)
+	body, err := compiled.EncodeRequest(t.Context(), request, options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var body map[string]any
-	_ = json.Unmarshal(rendered.Body, &body)
-	if body["systemInstruction"] != nil || body["tools"] != nil || body["cachedContent"] != "cachedContents/existing" {
-		t.Fatalf("invented conflicting cache context: %s", rendered.Body)
+	var wire map[string]any
+	if err := json.Unmarshal(body, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if wire["systemInstruction"] != nil || wire["tools"] != nil || wire["cachedContent"] != "cachedContents/existing" {
+		t.Fatal("invented conflicting cache context", string(body))
 	}
 }
 
 func TestCachePresetStablePrefix(t *testing.T) {
+	options := protocol.EvaluationContext{Scope: protocol.Scope{Provider: "provider", Account: "account", Model: "grp"}, Values: protocol.Object{"model": protocol.StringValue("grp")}}
 	for _, source := range cacheWireFixtures() {
-		for _, target := range PresetProtocolConfigsMust(t) {
-			t.Run(source.platform+"_to_"+target.ID, func(t *testing.T) {
-				req, _, err := relay.ConvertRequestToMaheshvara([]byte(source.request), inputFormatFromPath(source.path), "grp")
+		ingress := compileFixtureDefinition(t, presetDefinition(t, source.id))
+		for _, target := range cacheWireFixtures() {
+			t.Run(source.platform+"_to_"+target.id, func(t *testing.T) {
+				upstream := compileFixtureDefinition(t, presetDefinition(t, target.id))
+				request, err := ingress.DecodeRequest(t.Context(), []byte(source.request), options)
 				if err != nil {
 					t.Fatal(err)
 				}
-				first, err := relay.RenderCustomProtocolRequest(req, target)
+				first, err := upstream.EncodeRequest(t.Context(), request, options)
+				isOpenAI := func(name string) bool { return name == "openai" || name == "responses" }
+				isCompatible := source.platform == target.platform || (isOpenAI(source.platform) && isOpenAI(target.platform))
+				if !isCompatible {
+					if err == nil {
+						t.Fatal("foreign cache semantics silently accepted", string(first))
+					}
+					return
+				}
 				if err != nil {
 					t.Fatal(err)
 				}
-				for i := 0; i < 5; i++ {
-					repeat, err := relay.RenderCustomProtocolRequest(req, target)
-					if err != nil || string(repeat.Body) != string(first.Body) {
-						t.Fatal("identical request rendered differently")
+				for range 5 {
+					repeated, err := upstream.EncodeRequest(t.Context(), request, options)
+					if err != nil || string(first) != string(repeated) {
+						t.Fatal("identical request rendered differently", err)
 					}
 				}
-				part := relay.MaheshvaraContentPart{Type: relay.MaheshvaraContentText, Text: "new last turn"}
-				req.Messages = append(req.Messages, relay.MaheshvaraMessage{Role: "user", Content: []relay.MaheshvaraContentPart{part}})
-				if len(req.InputItems) > 0 {
-					req.InputItems = append(req.InputItems, relay.MaheshvaraInputItem{Type: "message", Role: "user", Content: []relay.MaheshvaraContentPart{part}})
-				}
-				next, err := relay.RenderCustomProtocolRequest(req, target)
+				request.Content = append(request.Content, protocol.Node{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("new last turn")}}})
+				next, err := upstream.EncodeRequest(t.Context(), request, options)
 				if err != nil {
 					t.Fatal(err)
 				}
-				var before, after map[string]any
-				_ = json.Unmarshal(first.Body, &before)
-				_ = json.Unmarshal(next.Body, &after)
-				key := "messages"
-				if target.Request.Shape == "gemini" {
-					key = "contents"
+				assertCacheWirePrefix(t, target.platform, first, next)
+				result := protocol.StringValue("second result")
+				if target.platform == "gemini" {
+					result = mustProtocolValue(t, `{"result":"second result"}`)
 				}
-				if target.Request.Shape == "responses" {
-					key = "input"
+				request.Content = append(request.Content,
+					protocol.Node{Kind: protocol.ToolCallNode, CallID: protocol.StringValue("t2"), Name: protocol.StringValue("lookup"), Input: &protocol.ToolInput{Kind: protocol.JSONInput, Value: mustProtocolValue(t, `{}`)}},
+					protocol.Node{Kind: protocol.ToolResultNode, CallID: protocol.StringValue("t2"), Name: protocol.StringValue("lookup"), Payload: result})
+				secondRound, err := upstream.EncodeRequest(t.Context(), request, options)
+				if err != nil || !strings.Contains(string(secondRound), "second result") {
+					t.Fatal(string(secondRound), err)
 				}
-				oldMessages := before[key].([]any)
-				newMessages := after[key].([]any)
-				if target.Request.Shape == "gemini" && len(newMessages) == len(oldMessages) {
-					// Gemini coalesces adjacent user turns. The existing parts must
-					// still be an exact prefix of the enlarged final user turn.
-					oldLast := oldMessages[len(oldMessages)-1].(map[string]any)
-					newLast := newMessages[len(newMessages)-1].(map[string]any)
-					oldParts := oldLast["parts"].([]any)
-					newParts := newLast["parts"].([]any)
-					if len(newParts) != len(oldParts)+1 || !reflect.DeepEqual(newParts[len(oldParts)], map[string]any{"text": "new last turn"}) {
-						t.Fatalf("new turn was not appended to Gemini parts: %s", next.Body)
-					}
-					newLast["parts"] = newParts[:len(oldParts)]
-				} else if len(newMessages) <= len(oldMessages) {
-					t.Fatal("new turn was not appended")
-				}
-				after[key] = newMessages[:len(oldMessages)]
-				if !reflect.DeepEqual(before, after) {
-					t.Fatalf("appending a turn changed the prefix:\nbefore=%s\nafter=%s", first.Body, next.Body)
-				}
-				// Append a second complete tool round after the original history.
-				toolRound, _, err := relay.ConvertRequestToMaheshvara([]byte(`{"model":"grp","input":[{"type":"function_call","call_id":"t2","name":"lookup","arguments":"{}"},{"type":"function_call_output","call_id":"t2","output":"second result"}]}`), inputFormatFromPath("/v1/responses"), "grp")
-				if err != nil {
-					t.Fatal(err)
-				}
-				req.Messages = append(req.Messages, toolRound.Messages...)
-				if len(req.InputItems) > 0 {
-					req.InputItems = append(req.InputItems, toolRound.InputItems...)
-				}
-				secondRound, err := relay.RenderCustomProtocolRequest(req, target)
-				if err != nil {
-					t.Fatal(err)
-				}
-				_ = json.Unmarshal(next.Body, &before)
-				_ = json.Unmarshal(secondRound.Body, &after)
-				oldMessages = before[key].([]any)
-				newMessages = after[key].([]any)
-				if len(newMessages) != len(oldMessages)+2 || !strings.Contains(string(secondRound.Body), "second result") {
-					t.Fatalf("second tool round lost: %s", secondRound.Body)
-				}
-				after[key] = newMessages[:len(oldMessages)]
-				if !reflect.DeepEqual(before, after) {
-					t.Fatalf("second tool round changed the prefix: %s", secondRound.Body)
-				}
+				assertCacheWirePrefix(t, target.platform, next, secondRound)
 			})
 		}
+	}
+}
+
+func assertCacheWirePrefix(t *testing.T, platform string, beforeBody, afterBody []byte) {
+	t.Helper()
+	var before, after map[string]any
+	if err := json.Unmarshal(beforeBody, &before); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(afterBody, &after); err != nil {
+		t.Fatal(err)
+	}
+	field := map[string]string{"openai": "messages", "anthropic": "messages", "responses": "input", "gemini": "contents"}[platform]
+	oldItems, newItems := before[field].([]any), after[field].([]any)
+	if len(newItems) <= len(oldItems) {
+		t.Fatal("new turn missing", string(afterBody))
+	}
+	after[field] = newItems[:len(oldItems)]
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("appending changed prefix: before=%s after=%s", beforeBody, afterBody)
 	}
 }
 
 func cacheWireFixtures() []cacheWireFixture {
 	return []cacheWireFixture{
 		{"chat-completions-api", "openai", "/v1/chat/completions",
-			`{"model":"grp","prompt_cache_key":"stable-key","prompt_cache_retention":"24h","messages":[{"role":"system","content":[{"type":"text","text":"stable system","cache_control":{"type":"ephemeral","ttl":"1h"}}]},{"role":"user","content":"question"},{"role":"assistant","tool_calls":[{"id":"t1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},{"role":"tool","tool_call_id":"t1","content":"result","cache_control":{"type":"ephemeral"}}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}},"cache_control":{"type":"ephemeral"}}]}`,
+			`{"model":"grp","prompt_cache_key":"stable-key","prompt_cache_retention":"24h","messages":[{"role":"system","content":[{"type":"text","text":"stable system"}]},{"role":"user","content":"question"},{"role":"assistant","tool_calls":[{"id":"t1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},{"role":"tool","tool_call_id":"t1","content":"result"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}]}`,
 			`{"id":"r1","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":5,"total_tokens":105,"prompt_tokens_details":{"cached_tokens":70}}}`,
 			"data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":5,\"total_tokens\":105,\"prompt_tokens_details\":{\"cached_tokens\":70}}}\n\ndata: [DONE]\n\n"},
 		{"anthropic-api", "anthropic", "/v1/messages",
 			`{"model":"grp","max_tokens":64,"cache_control":{"type":"ephemeral"},"system":[{"type":"text","text":"stable system","cache_control":{"type":"ephemeral","ttl":"1h"}}],"messages":[{"role":"user","content":"question"},{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"lookup","input":{},"cache_control":{"type":"ephemeral"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"result","cache_control":{"type":"ephemeral"}}]}],"tools":[{"name":"lookup","input_schema":{"type":"object"},"cache_control":{"type":"ephemeral"}}]}`,
 			`{"id":"r1","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":70,"cache_creation_input_tokens":20}}`,
-			"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"r1\",\"role\":\"assistant\",\"usage\":{\"input_tokens\":10,\"output_tokens\":0,\"cache_read_input_tokens\":70,\"cache_creation_input_tokens\":20}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"},
+			"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"r1\",\"role\":\"assistant\",\"usage\":{\"input_tokens\":10,\"output_tokens\":0,\"cache_read_input_tokens\":70,\"cache_creation_input_tokens\":20}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"},
 		{"responses-api", "responses", "/v1/responses",
 			`{"model":"grp","instructions":"stable system","prompt_cache_key":"stable-key","prompt_cache_retention":"24h","input":[{"role":"user","content":[{"type":"input_text","text":"question"}]},{"type":"function_call","call_id":"t1","name":"lookup","arguments":"{}"},{"type":"function_call_output","call_id":"t1","output":"result"}],"tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]}`,
 			`{"id":"r1","object":"response","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":100,"output_tokens":5,"total_tokens":105,"input_tokens_details":{"cached_tokens":70}}}`,
-			"event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"r1\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":100,\"output_tokens\":5,\"total_tokens\":105,\"input_tokens_details\":{\"cached_tokens\":70}}}}\n\n"},
+			"data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg1\",\"role\":\"assistant\",\"content\":[]}}\n\ndata: {\"type\":\"response.content_part.added\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\"}}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"r1\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":100,\"output_tokens\":5,\"total_tokens\":105,\"input_tokens_details\":{\"cached_tokens\":70}}}}\n\n"},
 		{"gemini-api", "gemini", "/v1beta/models/grp:generateContent",
 			`{"cachedContent":"cachedContents/stable","systemInstruction":{"parts":[{"text":"stable system"}]},"contents":[{"role":"user","parts":[{"text":"question"}]},{"role":"model","parts":[{"functionCall":{"id":"t1","name":"lookup","args":{}}}]},{"role":"user","parts":[{"functionResponse":{"id":"t1","name":"lookup","response":{"result":"result"}}}]}],"tools":[{"functionDeclarations":[{"name":"lookup","parameters":{"type":"object"}}]}]}`,
 			`{"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":5,"totalTokenCount":105,"cachedContentTokenCount":70}}`,
@@ -159,17 +145,6 @@ func cacheWireFixtures() []cacheWireFixture {
 }
 
 func TestCacheWireMatrix(t *testing.T) {
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
-	for _, cfg := range PresetProtocolConfigsMust(t) {
-		if err := relay.RegisterCustomProtocol(cfg); err != nil {
-			t.Fatal(err)
-		}
-		cfg.ID = "copy-" + cfg.ID
-		if err := relay.RegisterCustomProtocol(cfg); err != nil {
-			t.Fatal(err)
-		}
-	}
 	for _, source := range cacheWireFixtures() {
 		for _, target := range cacheWireFixtures() {
 			for _, mode := range []string{"builtin", "preset", "copy"} {
@@ -203,7 +178,11 @@ func TestCacheWireMatrix(t *testing.T) {
 						tools := true
 						groups[0].ToolsCapable = &tools
 						groups[0].Models[0].ToolsCapable = true
-						s := newTestServerWithStore(t, groups)
+						definition := presetDefinition(t, target.id)
+						if mode == "copy" {
+							definition.ID = "copy-" + definition.ID
+						}
+						s := newTestServerWithStore(t, groups, definition)
 						var request map[string]any
 						if err := json.Unmarshal([]byte(source.request), &request); err != nil {
 							t.Fatal(err)
@@ -224,7 +203,20 @@ func TestCacheWireMatrix(t *testing.T) {
 						} else {
 							s.chatCompletions(c)
 						}
-						if rec.Code != 200 {
+						isOpenAI := func(platform string) bool { return platform == "openai" || platform == "responses" }
+						isCompatible := source.platform == target.platform || (isOpenAI(source.platform) && isOpenAI(target.platform))
+						if !isCompatible {
+							if rec.Code < 400 || rec.Code >= 500 {
+								t.Fatalf("incompatible cache contract not rejected: %d %s", rec.Code, rec.Body)
+							}
+							select {
+							case wire := <-captured:
+								t.Fatalf("incompatible request reached upstream: %s", wire)
+							default:
+							}
+							return
+						}
+						if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
 							t.Fatalf("HTTP %d: %s", rec.Code, rec.Body.String())
 						}
 						var outbound []byte
@@ -265,7 +257,7 @@ func TestCacheWireMatrix(t *testing.T) {
 						}
 						// Assert persisted normalized usage separately from the response wire.
 						items := latestUsageRecords(t, s)
-						if len(items) != 1 {
+						if len(items) != 1 || items[0].StatusCode != http.StatusOK {
 							t.Fatalf("usage records: %d", len(items))
 						}
 						data, found, err := s.store.GetUsageRecordJSON(t.Context(), items[0].RequestID)
@@ -296,91 +288,10 @@ func TestCacheWireMatrix(t *testing.T) {
 	}
 }
 
-func TestCacheNewCustomProtocolNestedHTTP(t *testing.T) {
-	for _, stream := range []bool{false, true} {
-		t.Run(fmt.Sprint(stream), func(t *testing.T) {
-			relay.ClearCustomProtocols()
-			t.Cleanup(relay.ClearCustomProtocols)
-			var cfg relay.CustomProtocolConfig
-			if err := json.Unmarshal([]byte(`{"id":"new-nested-cache-protocol","request":{"method":"POST","path":"/vendor/generate","shape":"anthropic","body":{"payload":{"system":{"field":"anthropic_system"},"messages":{"field":"messages"},"tools":{"field":"tools"},"cache":{"field":"cache_control","omitIfEmpty":true},"retention":{"field":"prompt_cache_retention","omitIfEmpty":true}}}},"aliases":{"usage":{"input":["in"],"output":["out"],"cached":["hit"]}},"response":{"textPath":"text","usagePath":"metrics","stream":{"frames":[{"event":"text","response":{"textPath":"text","usagePath":"metrics"}},{"event":"end","terminal":true,"response":{"usagePath":"metrics"}}]}}}`), &cfg); err != nil {
-				t.Fatal(err)
-			}
-			if err := relay.RegisterCustomProtocol(cfg); err != nil {
-				t.Fatal(err)
-			}
-			captured := make(chan []byte, 1)
-			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/vendor/generate" {
-					t.Errorf("wrong path: %s", r.URL.Path)
-				}
-				body, _ := io.ReadAll(r.Body)
-				captured <- body
-				if stream {
-					w.Header().Set("Content-Type", "text/event-stream")
-					_, _ = io.WriteString(w, "event: text\ndata: {\"text\":\"ok\",\"metrics\":{\"in\":100,\"hit\":70}}\n\nevent: end\ndata: {\"metrics\":{\"out\":5}}\n\n")
-				} else {
-					w.Header().Set("Content-Type", "application/json")
-					_, _ = io.WriteString(w, `{"text":"ok","metrics":{"in":100,"out":5,"hit":70}}`)
-				}
-			}))
-			defer upstream.Close()
-			groups := presetGroup(t, "custom:"+cfg.ID, upstream.URL)
-			capable := true
-			groups[0].ToolsCapable = &capable
-			s := newTestServerWithStore(t, groups)
-			var body map[string]any
-			_ = json.Unmarshal([]byte(cacheWireFixtures()[0].request), &body)
-			body["stream"] = stream
-			body["cache_control"] = map[string]any{"type": "ephemeral"}
-			encoded, _ := json.Marshal(body)
-			parsed, err := relay.OpenAIChatToMaheshvara(encoded)
-			if err != nil {
-				t.Fatal(err)
-			}
-			parsed.Model = "preset-model"
-			preview, err := relay.RenderCustomProtocolRequest(parsed, cfg)
-			if err != nil {
-				t.Fatal(err)
-			}
-			c, rec := chatRequestContext(string(encoded))
-			s.chatCompletions(c)
-			if rec.Code != 200 {
-				t.Fatalf("HTTP %d: %s", rec.Code, rec.Body.String())
-			}
-			wire := <-captured
-			if string(wire) != string(preview.Body) {
-				t.Fatalf("preview differs from HTTP: %s != %s", preview.Body, wire)
-			}
-			var got map[string]any
-			_ = json.Unmarshal(wire, &got)
-			if got["system"] != nil || len(got) != 1 {
-				t.Fatalf("unconfigured root keys: %s", wire)
-			}
-			payload := got["payload"].(map[string]any)
-			if payload["cache"] == nil || payload["retention"] != "24h" || payload["system"].([]any)[0].(map[string]any)["cache_control"] == nil {
-				t.Fatalf("cache mapping lost: %s", wire)
-			}
-			items := latestUsageRecords(t, s)
-			data, _, err := s.store.GetUsageRecordJSON(t.Context(), items[0].RequestID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var record usageRecord
-			_ = json.Unmarshal(data, &record)
-			if derefInt(record.Usage.CacheHitTokens) != 70 || derefInt(record.Usage.TotalTokens) != 105 {
-				t.Fatalf("custom usage mapping: %+v", record.Usage)
-			}
-		})
-	}
-}
-
 func TestCacheUsageCreationAndAbsentFields(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		for _, phase := range []string{"creation", "absent"} {
 			t.Run(fmt.Sprintf("%s/stream=%v", phase, stream), func(t *testing.T) {
-				relay.ClearCustomProtocols()
-				t.Cleanup(relay.ClearCustomProtocols)
-				registerPresetForTest(t, "anthropic-api")
 				usage := `{"input_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":90}`
 				if phase == "absent" {
 					usage = `{"input_tokens":100}`
@@ -388,7 +299,7 @@ func TestCacheUsageCreationAndAbsentFields(t *testing.T) {
 				upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if stream {
 						w.Header().Set("Content-Type", "text/event-stream")
-						_, _ = fmt.Fprintf(w, "event: message_start\ndata: {\"message\":{\"usage\":%s}}\n\nevent: content_block_delta\ndata: {\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\n", usage)
+						_, _ = fmt.Fprintf(w, "data: {\"type\":\"message_start\",\"message\":{\"id\":\"r\",\"role\":\"assistant\",\"content\":[],\"usage\":%s}}\n\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\ndata: {\"type\":\"message_stop\"}\n\n", usage)
 					} else {
 						usage = strings.TrimSuffix(usage, "}") + `,"output_tokens":5}`
 						w.Header().Set("Content-Type", "application/json")
@@ -397,9 +308,9 @@ func TestCacheUsageCreationAndAbsentFields(t *testing.T) {
 				}))
 				defer upstream.Close()
 				s := newTestServerWithStore(t, presetGroup(t, "custom:anthropic-api", upstream.URL))
-				c, rec := chatRequestContext(fmt.Sprintf(`{"model":"grp","stream":%v,"messages":[{"role":"user","content":"hello"}]}`, stream))
+				c, rec := chatRequestContext(fmt.Sprintf(`{"model":"grp","max_tokens":64,"stream":%v,"messages":[{"role":"user","content":"hello"}]}`, stream))
 				s.chatCompletions(c)
-				if rec.Code != 200 {
+				if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
 					t.Fatalf("HTTP %d: %s", rec.Code, rec.Body.String())
 				}
 				items := latestUsageRecords(t, s)
@@ -415,7 +326,7 @@ func TestCacheUsageCreationAndAbsentFields(t *testing.T) {
 				if phase == "creation" && derefInt(record.UsageDetail.CacheCreationInputTokens) != 90 {
 					t.Fatalf("creation not persisted: %+v", record.UsageDetail)
 				}
-				if phase == "creation" && !strings.Contains(rec.Body.String(), `"cached_creation_tokens":90`) {
+				if phase == "creation" && !strings.Contains(rec.Body.String(), `"cache_creation_input_tokens":90`) {
 					t.Fatalf("creation missing from Chat-compatible downstream details: %s", rec.Body.String())
 				}
 			})

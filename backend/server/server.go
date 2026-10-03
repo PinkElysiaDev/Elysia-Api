@@ -3,9 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"github.com/elysia-api/backend/agent"
 	"io"
 	"io/fs"
 	"log"
@@ -21,6 +19,10 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/elysia-api/backend/protocol/builtin"
+
+	"github.com/elysia-api/backend/agent"
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
@@ -38,11 +40,9 @@ type rateLimitState struct {
 }
 
 type Server struct {
-	config        *config.Config
-	engine        *gin.Engine
-	openaiAdapter *relay.OpenAIAdapter
-	claudeAdapter *relay.ClaudeAdapter
-	geminiAdapter *relay.GeminiAdapter
+	config            *config.Config
+	engine            *gin.Engine
+	protocolTransport *relay.ProtocolTransport
 	// 轮询状态跟踪：模型组ID -> 当前模型索引
 	roundRobinIndex map[string]int
 	roundRobinMutex sync.Mutex
@@ -156,17 +156,15 @@ func New(cfg *config.Config) *Server {
 	httpTimeout := time.Duration(cfg.HTTPTimeout) * time.Second
 
 	server := &Server{
-		config:           cfg,
-		engine:           engine,
-		openaiAdapter:    relay.NewOpenAIAdapter(httpTimeout),
-		claudeAdapter:    relay.NewClaudeAdapter(httpTimeout),
-		geminiAdapter:    relay.NewGeminiAdapter(httpTimeout),
-		roundRobinIndex:  make(map[string]int),
-		rateLimits:       make(map[string]*rateLimitState),
-		affinity:         newAffinityCache(),
-		sourceRefreshing: make(map[string]bool),
-		sourceLastFetch:  make(map[string]sourceRefreshState),
-		refreshSem:       make(chan struct{}, sourceRefreshConcurrency),
+		config:            cfg,
+		engine:            engine,
+		protocolTransport: relay.NewProtocolTransport(httpTimeout),
+		roundRobinIndex:   make(map[string]int),
+		rateLimits:        make(map[string]*rateLimitState),
+		affinity:          newAffinityCache(),
+		sourceRefreshing:  make(map[string]bool),
+		sourceLastFetch:   make(map[string]sourceRefreshState),
+		refreshSem:        make(chan struct{}, sourceRefreshConcurrency),
 		catalog: newModelCatalog(cfg.GetModelCatalog, func() string {
 			// 缓存落在数据库同目录，跟随用户的数据目录布局。
 			dbPath := cfg.GetDatabasePath()
@@ -222,7 +220,6 @@ func New(cfg *config.Config) *Server {
 	// 存储迁移成功后才启动后台工作。
 	go server.catalog.runPeriodic()
 	server.syncOutboundPolicy()
-	server.syncCustomProtocols()
 	if protocolPreparationErr == nil {
 		protocolPreparationErr = server.initializeProtocolRuntime(context.Background())
 	} else {
@@ -422,8 +419,8 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 		if !ok {
 			// 401 也按客户端线制渲染标准错误体(Codex/SDK 依赖 error 对象解析)。
 			c.Abort()
-			writeProtocolError(c, inputFormatFromPath(c.Request.URL.Path), &relay.MaheshvaraError{
-				Class:   relay.ErrorClassAuthentication,
+			writeProtocolError(c, inputFormatFromPath(c.Request.URL.Path), &builtin.GatewayError{
+				Class:   builtin.ErrorClassAuthentication,
 				Message: "Incorrect API key provided",
 			})
 			return
@@ -432,8 +429,8 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 			// 远程访问 Key 与推理隔离：agent 作用域 Key 用于助手与 MCP 运维
 			//（/mcp、/a2a、/api/agent），不得调用 /v1 推理接口。
 			c.Abort()
-			writeProtocolError(c, inputFormatFromPath(c.Request.URL.Path), &relay.MaheshvaraError{
-				Class:   relay.ErrorClassAuthentication,
+			writeProtocolError(c, inputFormatFromPath(c.Request.URL.Path), &builtin.GatewayError{
+				Class:   builtin.ErrorClassAuthentication,
 				Message: "This API key is reserved for AI assistant remote control",
 			})
 			return
@@ -583,9 +580,7 @@ func (s *Server) reloadConfig(c *gin.Context) {
 	if timeout := s.config.GetHTTPTimeout(); timeout != oldHTTPTimeout {
 		log.Printf("HTTP timeout hot-reloaded: %ds -> %ds", oldHTTPTimeout, timeout)
 		duration := time.Duration(timeout) * time.Second
-		s.openaiAdapter.SetTimeout(duration)
-		s.claudeAdapter.SetTimeout(duration)
-		s.geminiAdapter.SetTimeout(duration)
+		s.protocolTransport.SetTimeout(duration)
 	}
 	// 配置热更新后失效路由缓存，下次请求按新配置重建（借鉴 SyncOptions）。
 	s.invalidateRouteCache()
@@ -637,377 +632,8 @@ func geminiModelFromAction(action string) string {
 	return strings.TrimSpace(modelPart)
 }
 
-func (s *Server) chatCompletions(c *gin.Context) {
-	if s.serveVersionedPublicIngress(c) {
-		return
-	}
-	s.logVerbose("[REQUEST ENTER] path=%s method=%s remote=%s contentType=%s", c.Request.URL.Path, c.Request.Method, c.Request.RemoteAddr, c.Request.Header.Get("Content-Type"))
-	// 生产转换路径统一为 Maheshvara：
-	//   非流式：client wire -> MaheshvaraRequest -> target wire；provider response -> MaheshvaraResponse -> client wire。
-	//   流式：provider SSE -> source decoder -> MaheshvaraStreamEvent -> target renderer -> client SSE。
-	// 协议同源且请求未被过滤时，直接绕过 Maheshvara 往返、零转换透传。
-	startTime := time.Now()
-
-	// 读取原始请求体
-	bodyBytes, ok := s.readRequestBody(c)
-	if !ok {
-		return
-	}
-
-	s.logVerbose("[Incoming Request Raw] %s", compactLogJSON(bodyBytes))
-
-	// 根据请求路径判断客户端期望的输入/输出格式
-	inputFormat := inputFormatFromPath(c.Request.URL.Path)
-	record := s.initUsageRecord(c, startTime, bodyBytes, inputFormat)
-	record.SourceFormat = string(inputFormat)
-	record.SourceEndpoint = c.Request.URL.Path
-	installDownstreamCapture(c, record, downstreamCaptureLimit(s.usageLogConfig()))
-	s.logVerbose("[Input Format] %s", inputFormat)
-
-	// 转换为 Maheshvara 核心请求。
-	urlModel := ""
-	if inputFormat == relay.FormatGemini {
-		urlModel = geminiModelFromAction(c.Param("action"))
-	}
-	maheshvaraReq, _, maheshvaraErr := relay.ConvertRequestToMaheshvara(bodyBytes, inputFormat, urlModel)
-	if maheshvaraErr != nil {
-		log.Printf("Error converting request to Maheshvara: %v", maheshvaraErr)
-		// 转换失败同样落 usage 记录（与 /v1/responses 路径对齐）：bodyOnErrorOnly
-		// 模式下这类记录恰恰是唯一保留请求体的排查样本。
-		s.failRequestError(c, record, startTime, inputFormat, &relay.MaheshvaraError{
-			Class:   relay.ErrorClassInvalidRequest,
-			Message: fmt.Sprintf("failed to convert request: %v", maheshvaraErr),
-		})
-		return
-	}
-
-	// Gemini 原生路径的模型名提取已由 ConvertRequestToMaheshvara 内部完成
-	//（body 无 model 时回填 urlModel），此处无需重复推导。
-	if maheshvaraJSON, err := json.Marshal(maheshvaraReq); err == nil {
-		s.logVerbose("[Maheshvara Request] %s", compactLogJSON(maheshvaraJSON))
-	}
-
-	// 共用前置阶段：鉴权 → 组校验 → 候选 → 能力约束 → 预估 → 限流。
-	plan, ok := s.prepareRelayPlan(c, record, startTime, maheshvaraReq, relayFailer{s: s, c: c, record: record, startTime: startTime, format: inputFormat}, true)
-	if !ok {
-		return
-	}
-	group, candidates := plan.group, plan.candidates
-	defer plan.releaseLimiter()
-
-	s.runRelayAttempts(c, record, startTime, group, candidates, inputFormat,
-		func(attempt int, selectedModel config.ModelRef, isLast bool) relayAttemptStep {
-			maheshvaraReq.Model = selectedModel.Name
-			targetPlatform := relay.DetectPlatform(selectedModel.BaseURL, selectedModel.Platform)
-			setRecordModel(record, selectedModel, targetPlatform)
-			s.logDebug("Request model group: '%s' attempt %d/%d, selected: %s", group.Name, attempt+1, maxAttempts(group.MaxRetries, len(candidates)), selectedModel.Name)
-
-			// Compatible native requests retain fields unknown to the semantic adapter.
-			usePassthrough := relay.FormatMatchesPlatform(inputFormat, targetPlatform)
-
-			// usage 记录补全（与 responses 入口对齐）：custom 平台记 custom:<id> 与
-			// 协议 path 模板，内置平台归到线制 FormatType 与端点；透传链两段、
-			// 转换链三段。RelayMode 随本尝试清空重写（成功路径由 buildChatTargetBody
-			// 写入正确值），失败落库时不残留上一次尝试的模式。
-			record.RelayMode = ""
-			if targetFormat, formatErr := relay.TargetFormatForPlatform(targetPlatform); formatErr == nil || relay.IsCustomPlatform(targetPlatform) {
-				setRecordTargetRoute(record, targetPlatform, targetFormat)
-			}
-			if record.TargetFormat != "" {
-				if usePassthrough {
-					record.ConversionChain = []string{string(inputFormat) + "_request", string(record.TargetFormat) + "_request"}
-				} else {
-					record.ConversionChain = []string{string(inputFormat) + "_request", "maheshvara_request", string(record.TargetFormat) + "_request"}
-				}
-			}
-
-			// 流式意图取自客户端原始请求：OpenAI/Claude 看请求体 stream 字段，
-			// Gemini 看 URL action（:streamGenerateContent）。
-			isStream := relay.IsStreamRequest(bodyBytes)
-			if action := c.Param("action"); strings.Contains(action, ":streamGenerateContent") {
-				isStream = true
-				maheshvaraReq.Stream = true
-			}
-
-			targetBody, customRequest, buildErr := s.buildChatTargetBody(bodyBytes, maheshvaraReq, selectedModel, targetPlatform, usePassthrough, isStream, record)
-			if buildErr != nil {
-				skip := fmt.Errorf("Failed to build upstream request: %w", buildErr)
-				return relayAttemptStep{
-					skipErr:    skip,
-					skipStatus: http.StatusBadRequest,
-					skipClass:  relay.ErrorClassInvalidRequest,
-				}
-			}
-			record.OutgoingBody = record.sanitizeBody(targetBody)
-			s.logVerbose("[Outgoing Request] passthrough=%v baseUrl=%s body=%s", usePassthrough, selectedModel.BaseURL, compactLogJSON(targetBody))
-
-			// 非透传路径仍需为流式补齐 stream 标记（透传已在 PassthroughBody 内处理）。
-			if isStream && !usePassthrough && !relay.IsCustomPlatform(targetPlatform) {
-				var streamBodyErr error
-				targetBody, streamBodyErr = ensureStreamFlagInTargetBody(targetBody, targetPlatform)
-				if streamBodyErr != nil {
-					skip := fmt.Errorf("Failed to prepare stream request: %w", streamBodyErr)
-					return relayAttemptStep{
-						skipErr:    skip,
-						skipStatus: http.StatusInternalServerError,
-						skipClass:  relay.ErrorClassServer,
-					}
-				}
-				record.OutgoingBody = record.sanitizeBody(targetBody)
-			}
-
-			if isStream {
-				record.Stream = true
-				return relayAttemptStep{outcome: s.handleStreamRequest(c, group, selectedModel, targetBody, customRequest, targetPlatform, inputFormat, startTime, record, isLast)}
-			}
-			return relayAttemptStep{outcome: s.handleNormalRequest(c, group, selectedModel, targetBody, customRequest, targetPlatform, inputFormat, startTime, record, isLast)}
-		})
-}
-
-// buildChatTargetBody 组装 chat 入口发往上游的请求体，三分叉：同源透传
-// （原始字节直发，保留 cache_control / thinking 等私有字段；vision 过滤改写
-// 过核心请求，usePassthrough 已为 false 只能走转换）、自定义协议渲染、
-// Maheshvara 转换。relayMode 随分支写入 record。
-func (s *Server) buildChatTargetBody(bodyBytes []byte, maheshvaraReq *relay.MaheshvaraRequest, selectedModel config.ModelRef, targetPlatform relay.Platform, usePassthrough, isStream bool, record *usageRecord) ([]byte, *relay.CustomProtocolRequestResult, error) {
-	if usePassthrough {
-		// Gemini：model 在 URL 里（adapter 单独接收 selectedModel.Name），原生
-		// generateContent 请求体不含顶层 model，故透传时不改写 model（传空），
-		// 也不向体内注入 stream（由 URL action 决定）。OpenAI/Claude 则改写 model；
-		// OpenAI 兼容线路补 stream_options.include_usage 以拿到 usage chunk。
-		passModelName := selectedModel.Name
-		addStreamOptions := false
-		ensureStream := false
-		if targetPlatform == relay.PlatformGemini {
-			passModelName = ""
-		} else {
-			ensureStream = isStream
-			addStreamOptions = isOpenAICompatible(targetPlatform)
-		}
-		targetBody, err := relay.PassthroughBody(bodyBytes, passModelName, ensureStream, addStreamOptions)
-		if err == nil {
-			record.RelayMode = RelayModePassthrough
-			// OpenAI 系透传同样补齐缺失的 tool call id：部分客户端重建历史时
-			// 会遗漏 tool_calls[].id，直接透传会被严格上游以 missing field id 拒绝。
-			if isOpenAICompatible(targetPlatform) {
-				targetBody, err = relay.NormalizeOpenAIToolCallIDs(targetBody)
-			}
-		}
-		return targetBody, nil, err
-	}
-	if relay.IsCustomPlatform(targetPlatform) {
-		customRequest, err := relay.RenderRegisteredCustomProtocolRequest(maheshvaraReq, relay.CustomProtocolID(targetPlatform))
-		if err != nil {
-			return nil, nil, err
-		}
-		record.RelayMode = RelayModeTransform
-		return customRequest.Body, customRequest, nil
-	}
-	targetFormat, err := relay.TargetFormatForPlatform(targetPlatform)
-	if err != nil {
-		return nil, nil, err
-	}
-	targetBody, err := relay.MaheshvaraToTargetRequest(maheshvaraReq, targetFormat, nil)
-	if err == nil {
-		record.RelayMode = RelayModeTransform
-	}
-	return targetBody, nil, err
-}
-
-func (s *Server) handleNormalRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
-	if relay.IsCustomPlatform(targetPlatform) {
-		return s.relayCustomChatNormal(c, group, selectedModel, customRequest, targetPlatform, inputFormat, startTime, record, isLast)
-	}
-	// 转发失败：末次尝试或不可重试时提交错误响应，否则交还上层换候选。
-	failWriter := relayFailWriter{c: c, inputFormat: relay.FormatType(inputFormat), targetPlatform: relay.Platform(targetPlatform)}
-	failResult := func(statusCode int, errMsg string, respBody []byte) relayOutcome {
-		return failWriter.fail(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, respBody)
-	}
-
-	// 仅在 committed 时记录 usage；未提交（将要重试）时不记录，
-	// 由最终成功/失败的那次尝试统一记录。
-	var result relayOutcome
-	defer s.commitUsageWhenDone(&result, record, startTime, true)()
-	// 设计原则：
-	// 1) 先按 targetPlatform 获取并解析上游响应
-	// 2) 再按 inputFormat 渲染客户端响应
-	// 这样输入协议与下游平台彻底解耦，避免协议错配。
-	// 统一取回:四类上游(responses/anthropic/gemini/openai 系)的
-	// 「发送→判错→非 2xx 读体→转 Maheshvara」骨架收敛于 fetchAsMaheshvara。
-	targetFormat := relay.FormatOpenAIChat
-	if f, ferr := relay.TargetFormatForPlatform(targetPlatform); ferr == nil {
-		targetFormat = f
-	}
-	fetched, err := s.fetchAsMaheshvara(c.Request.Context(), selectedModel, targetFormat, targetBody)
-	if fetched.respBody != nil {
-		record.ProviderResponse = record.sanitizeBody(fetched.respBody)
-	}
-	if err != nil {
-		status := fetched.status
-		if status <= 0 {
-			status = http.StatusBadGateway
-		}
-		result = failResult(status, err.Error(), fetched.respBody)
-		return result
-	}
-	switch targetFormat {
-	case relay.FormatResponses:
-		record.ConversionChain = append(record.ConversionChain, "openai_responses_response")
-	case relay.FormatClaude:
-		record.ConversionChain = append(record.ConversionChain, "anthropic_response")
-	case relay.FormatGemini:
-		record.ConversionChain = append(record.ConversionChain, "gemini_response")
-	default:
-		record.ConversionChain = append(record.ConversionChain, "openai_chat_response")
-	}
-	s.settleMaheshvaraUsage(group, record, startTime, fetched.maheshvara)
-	s.logDebug("Request completed in %dms", time.Since(startTime).Milliseconds())
-
-	// 上游 200 但响应体是错误对象:按线制输出标准错误体(带真实分类/码)。
-	if fetched.maheshvara.Error != nil {
-		mErr := fetched.maheshvara.Error
-		mErr.Class = mErr.Class.OrDefault()
-		result = failResult(mErr.EffectiveStatus(), mErr.Message, nil)
-		return result
-	}
-	record.StatusCode = http.StatusOK
-	output, renderErr := renderMaheshvaraChatResponse(fetched.maheshvara, inputFormat)
-	if renderErr != nil {
-		result = failResult(http.StatusInternalServerError, fmt.Sprintf("Failed to render Maheshvara response: %v", renderErr), nil)
-		return result
-	}
-	c.JSON(200, output)
-	result = relayOutcome{committed: true, statusCode: 200}
-	return result
-}
-
-func (s *Server) handleStreamRequest(c *gin.Context, group *config.ModelGroupConfig, selectedModel config.ModelRef, targetBody []byte, customRequest *relay.CustomProtocolRequestResult, targetPlatform relay.Platform, inputFormat relay.FormatType, startTime time.Time, record *usageRecord, isLast bool) relayOutcome {
-	if relay.IsCustomPlatform(targetPlatform) {
-		return s.handleCustomStreamRequest(c, group, selectedModel, customRequest, targetPlatform, inputFormat, startTime, record, isLast)
-	}
-	var result relayOutcome
-	defer s.commitUsageWhenDone(&result, record, startTime, false)()
-
-	// upstreamErrorStatus 从错误中提取上游真实状态码（UpstreamStatusError），
-	// 无则回退 fallback——永久错误（401/403/400）不得洗白成可重试的 502。
-	// 流式失败的可重试性判定。注意：一旦开始向客户端写出 SSE 字节，
-	// 就无法再重试（响应头已发出），因此重试只发生在"建立上游连接 +
-	// 读到上游首个状态码"之前。
-	failWriter := relayFailWriter{c: c, inputFormat: relay.FormatType(inputFormat), targetPlatform: relay.Platform(targetPlatform)}
-	failResult := func(statusCode int, errMsg string, respBody []byte) relayOutcome {
-		return failWriter.fail(record, isLast, shouldRetryStatus(statusCode), statusCode, errMsg, respBody)
-	}
-
-	_, ok := c.Writer.(http.Flusher)
-	if !ok {
-		log.Printf("Streaming not supported")
-		writeProtocolError(c, inputFormat, &relay.MaheshvaraError{Class: relay.ErrorClassServer, Message: "streaming is not supported on this connection"})
-		record.StatusCode = http.StatusInternalServerError
-		record.Error = "Streaming not supported"
-		result = relayOutcome{committed: true, statusCode: 500, errMsg: "Streaming not supported"}
-		return result
-	}
-
-	// startSSE 在确认上游成功、即将写出响应体之前调用一次，写出 SSE 响应头。
-	sseStarted := false
-	startSSE := func() {
-		if sseStarted {
-			return
-		}
-		writeSSEHeaders(c.Writer)
-		sseStarted = true
-	}
-
-	writer := &observingStreamWriter{
-		inner:     &ginStreamWriter{writer: c.Writer},
-		record:    record,
-		startTime: startTime,
-	}
-
-	// forwardErr 收集"上游连接成功、SSE 已开始后"的流转发/转换错误。
-	// 一旦 SSE 头已发出就无法改 HTTP 状态码，但必须把 record.StatusCode 从 200
-	// 下调，否则中途断流/空响应会被统计与日志误判为成功。
-	var forwardErr error
-
-	// 上游线制按平台推导（未知平台回退 OpenAI 系 chat）。
-	targetFormat := relay.FormatOpenAIChat
-	if f, formatErr := relay.TargetFormatForPlatform(targetPlatform); formatErr == nil {
-		targetFormat = f
-	}
-	conn, failure := s.openUpstreamStream(c.Request.Context(), targetFormat, selectedModel, targetBody)
-	if failure != nil {
-		if failure.transport {
-			log.Printf("Error forwarding stream request: %v", failure.err)
-			err := failure.err
-			result = failResult(upstreamErrorStatus(err, http.StatusBadGateway), fmt.Sprintf("Failed to forward request: %v", err), upstreamErrorBody(err))
-			return result
-		}
-		result = failResult(failure.status, string(failure.body), failure.body)
-		return result
-	}
-
-	startSSE()
-	record.StatusCode = http.StatusOK
-	observeUpstreamUsage(conn.resp, record, targetPlatform)
-
-	if record.RelayMode == RelayModePassthrough && conn.format == relay.FormatOpenAIChat {
-		// OpenAI 系同协议透传：原始转发上游 SSE，保留 tool call id、
-		// reasoning_content 等字段，不经过 Maheshvara 重渲染。
-		forwardErr = relay.ForwardOpenAIStream(c.Request.Context(), conn.resp, writer)
-	} else {
-		forwardErr = relay.TransformStreamViaMaheshvara(c.Request.Context(), conn.resp, conn.format, inputFormat, writer, selectedModel.Name)
-	}
-
-	// SSE 开始后 HTTP 状态码已无法更改；日志区分客户端取消与上游失败。
-	if forwardErr != nil {
-		log.Printf("Error forwarding stream after SSE started: %v", forwardErr)
-		setUsageError(record, c.Request.Context(), forwardErr)
-	}
-
-	s.settleStreamUsage(group, record, startTime)
-	s.logDebug("Stream request completed in %dms", time.Since(startTime).Milliseconds())
-	result = relayOutcome{committed: true, statusCode: record.StatusCode}
-	return result
-}
-
-// writeUpstreamError 写上游失败:与客户端共用同一错误信封时原样透传
-// (保真),否则把上游错误体解析为核心错误后按客户端线制重渲染(自定义
-// 协议平台按 OpenAI 形态尽力解析,失败回退原文摘要)。
-func writeUpstreamError(c *gin.Context, inputFormat relay.FormatType, targetPlatform relay.Platform, statusCode int, respBody []byte, contentType string) {
-	upstreamFormat := relay.FormatOpenAI
-	if f, err := relay.TargetFormatForPlatform(targetPlatform); err == nil {
-		upstreamFormat = f
-	}
-	if relay.SameErrorEnvelope(upstreamFormat, inputFormat) {
-		c.Data(statusCode, contentType, respBody)
-		return
-	}
-	writeProtocolError(c, inputFormat, relay.ParseUpstreamError(upstreamFormat, statusCode, respBody))
-}
-
-// upstreamErrorBody 从错误链中提取上游错误体(adapter 非 200 时返回的
-// UpstreamStatusError 自带响应体);没有则返回 nil。
-func upstreamErrorBody(err error) []byte {
-	var statusErr *relay.UpstreamStatusError
-	if errors.As(err, &statusErr) && statusErr.Body != "" {
-		return []byte(statusErr.Body)
-	}
-	return nil
-}
-
-// ensureStreamFlagInTargetBody 在需要流式转发时，为上游请求补齐 stream=true。
-// 注意：Gemini 原生接口通过 URL action 决定是否流式，不应注入 stream 字段。
-func ensureStreamFlagInTargetBody(
-	targetBody []byte,
-	targetPlatform relay.Platform,
-) ([]byte, error) {
-	if targetPlatform == relay.PlatformGemini {
-		// Gemini 原生接口经 URL action 决定流式,不注入 stream 字段。
-		return targetBody, nil
-	}
-	// 注入逻辑与透传路径同源(PassthroughBody):stream=true + OpenAI 系
-	// 补 stream_options.include_usage 帮助下游返回 usage chunk。
-	return relay.PassthroughBody(targetBody, "", true, isOpenAICompatible(targetPlatform))
-}
+func (s *Server) chatCompletions(c *gin.Context) { s.serveVersionedPublicIngress(c) }
+func (s *Server) responses(c *gin.Context)       { s.serveVersionedPublicIngress(c) }
 
 // ginStreamWriter 实现 relay.StreamResponseWriter，封装 gin 的 ResponseWriter
 type ginStreamWriter struct {
@@ -1060,22 +686,22 @@ func (s *Server) tokenAllowsGroup(c *gin.Context, groupName string) bool {
 
 // validateModelGroup 验证模型组配置,失败返回按稳定错误分类组织的核心错误
 // (各线制的状态码/type/code 由分类派生;消息不暴露内部「组」概念)。
-func (s *Server) validateModelGroup(groupName string) (*config.ModelGroupConfig, *relay.MaheshvaraError) {
+func (s *Server) validateModelGroup(groupName string) (*config.ModelGroupConfig, *builtin.GatewayError) {
 	if groupName == "" {
-		return nil, &relay.MaheshvaraError{Class: relay.ErrorClassInvalidRequest, Message: "model name is required"}
+		return nil, &builtin.GatewayError{Class: builtin.ErrorClassInvalidRequest, Message: "model name is required"}
 	}
 	group := s.findGroupByName(groupName)
 	if group == nil || len(group.Models) == 0 {
 		// 组不存在与组内无可用模型对客户端同义:该模型不可用。
 		// 4xx 让 SDK/Codex 停止自动重试并正确提示。
-		return nil, &relay.MaheshvaraError{
-			Class:   relay.ErrorClassModelNotFound,
+		return nil, &builtin.GatewayError{
+			Class:   builtin.ErrorClassModelNotFound,
 			Message: fmt.Sprintf("The model '%s' does not exist or is not available", groupName),
 		}
 	}
 	if !group.Enabled {
-		return nil, &relay.MaheshvaraError{
-			Class:   relay.ErrorClassPermission,
+		return nil, &builtin.GatewayError{
+			Class:   builtin.ErrorClassPermission,
 			Message: fmt.Sprintf("The model '%s' is disabled by the administrator", groupName),
 		}
 	}
@@ -1307,27 +933,30 @@ func (s *Server) listGeminiModels(c *gin.Context) {
 }
 
 func (s *Server) countTokens(c *gin.Context) {
-	bodyBytes, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		writeProtocolError(c, relay.FormatClaude, &relay.MaheshvaraError{
-			Class: relay.ErrorClassInvalidRequest, Message: fmt.Sprintf("failed to read request body: %v", err),
-		})
+	if !s.requireProtocolRuntime(c) {
 		return
 	}
-
-	maheshvaraReq, err := relay.AnthropicToMaheshvara(bodyBytes)
+	service, err := s.protocolService()
 	if err != nil {
-		writeProtocolError(c, relay.FormatClaude, &relay.MaheshvaraError{
-			Class: relay.ErrorClassInvalidRequest, Message: fmt.Sprintf("failed to convert request: %v", err),
-		})
+		respondProtocolError(c, err)
 		return
 	}
-
-	inputTokens := estimateMaheshvaraRequestUsage(maheshvaraReq, s.config.GetUsageConfig()).InputTokens
-
-	c.JSON(200, gin.H{
-		"input_tokens": inputTokens,
-	})
+	compiled, exists := service.View().Pin(publicProtocolIDs[builtin.FormatClaude])
+	if !exists {
+		respondFail(c, http.StatusServiceUnavailable, "inactive_protocol", "Anthropic protocol is not enabled")
+		return
+	}
+	body, err := protocol.ReadBoundedBody(c.Request.Body, compiled.ResourceLimits().BufferBytes)
+	if err != nil {
+		writeProtocolError(c, builtin.FormatClaude, &builtin.GatewayError{Class: builtin.ErrorClassInvalidRequest, Message: err.Error()})
+		return
+	}
+	request, err := compiled.DecodeRequest(c.Request.Context(), body, protocol.EvaluationContext{})
+	if err != nil {
+		writeProtocolError(c, builtin.FormatClaude, &builtin.GatewayError{Class: builtin.ErrorClassInvalidRequest, Message: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"input_tokens": s.estimateProtocolInputTokens(request)})
 }
 
 func (s *Server) healthCheck(c *gin.Context) {

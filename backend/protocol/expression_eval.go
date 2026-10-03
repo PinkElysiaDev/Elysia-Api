@@ -121,6 +121,16 @@ func (expression *compiledExpression) evaluate(state evaluation) (value Value, e
 	switch expression.op {
 	case "exists":
 		return EncodeValue(!source.IsZero())
+	case "strip_prefix":
+		text, err := readString(source)
+		if err != nil {
+			return Value{}, err
+		}
+		prefix, _ := readString(expression.value)
+		if !strings.HasPrefix(text, prefix) {
+			return Value{}, fmt.Errorf("string does not have the declared prefix")
+		}
+		return StringValue(strings.TrimPrefix(text, prefix)), nil
 	case "not":
 		isTrue, err := readBoolean(source)
 		if err != nil {
@@ -220,6 +230,17 @@ func (expression *compiledExpression) evaluateArray(state evaluation) (Value, er
 
 func (expression *compiledExpression) evaluateOperands(state evaluation) (Value, error) {
 	values := make([]Value, 0, len(expression.items))
+	if expression.source != nil {
+		// Only join accepts a dynamic operand array; compilation excludes items.
+		source, err := expression.source.evaluate(state)
+		if err != nil {
+			return Value{}, err
+		}
+		values, err = readArray(source)
+		if err != nil {
+			return Value{}, err
+		}
+	}
 	bytes := 0
 	for _, item := range expression.items {
 		value, err := item.evaluate(state)

@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/elysia-api/backend/protocol/builtin"
+
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 	"github.com/gin-gonic/gin"
@@ -70,7 +72,7 @@ func gatewaySessionOperation(compiled *protocol.Compiled, method, path string) (
 
 func (s *Server) serveGatewaySession(c *gin.Context, view protocol.RegistryView, ingress *protocol.Compiled, path string, handshake []byte) {
 	start := time.Now()
-	record := s.initUsageRecord(c, start, handshake, relay.FormatType(ingress.Identity().Family))
+	record := s.initUsageRecord(c, start, handshake, builtin.FormatType(ingress.Identity().Family))
 	record.IngressRevision, record.SourceEndpoint, record.SourceFormat = ingress.Hash(), c.Request.URL.Path, ingress.Identity().DefinitionID
 	record.Stream, record.RelayMode = true, "protocol_v2_websocket"
 	var adapter *protocol.SessionAdapter
@@ -108,7 +110,7 @@ func (s *Server) serveGatewaySession(c *gin.Context, view protocol.RegistryView,
 		s.failGateway(c, record, http.StatusBadRequest, err)
 		return
 	}
-	setRecordModel(record, candidate.model, relay.Platform("custom:"+candidate.binding.ProtocolID))
+	setRecordModel(record, candidate.model, builtin.Platform("custom:"+candidate.binding.ProtocolID))
 	record.UpstreamRevision, record.TargetEndpoint, record.TargetFormat = candidate.compiled.Hash(), candidate.operation.Path, candidate.binding.ProtocolID
 	record.OutgoingBody = record.sanitizeBody(body)
 	release, err := s.acquireRateLimit(plan.group, s.estimateProtocolTokens(plan.request))
@@ -130,7 +132,7 @@ func (s *Server) serveGatewaySession(c *gin.Context, view protocol.RegistryView,
 	}
 	defer client.Close()
 	deadline, stop := context.WithTimeout(ctx, time.Duration(candidate.operation.Session.CloseMillis)*time.Millisecond)
-	upstream, err := s.openaiAdapter.DialProtocolSession(deadline, upstreamRequest, *candidate.operation.Session)
+	upstream, err := s.protocolTransport.DialProtocolSession(deadline, upstreamRequest, *candidate.operation.Session)
 	stop()
 	if err != nil {
 		record.StatusCode, record.Error = http.StatusBadGateway, err.Error()

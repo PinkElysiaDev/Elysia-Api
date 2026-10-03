@@ -151,7 +151,7 @@ func verifyUpgradeCombinations(ctx context.Context, definitions map[string]*prot
 	for _, id := range ids {
 		ingress := definitions[id]
 		if ingress.Supports(protocol.DecodeRequest) && (ingress.Supports(protocol.EncodeResponse) || ingress.Supports(protocol.EncodeEvent)) {
-			reports = append(reports, protocol.VerifyBindingCombination(ctx, ingress, target, capabilities))
+			reports = append(reports, protocol.VerifyBindingProfiles(ctx, ingress, target, capabilities)...)
 		}
 	}
 	return reports
@@ -168,6 +168,10 @@ func makeUpgradeBinding(key upgradeBindingKey, platform string, definitions map[
 		issue := migrationIssue(id, "/bindings", "source or model references a missing or invalid protocol")
 		return storage.ProtocolBinding{}, &issue
 	}
+	return makeProtocolBinding(key, compiled), nil
+}
+
+func makeProtocolBinding(key upgradeBindingKey, compiled *protocol.Compiled) storage.ProtocolBinding {
 	capabilities := compiled.Definition().Capabilities
 	transports := []protocol.Transport{}
 	hasTransport := map[protocol.Transport]bool{}
@@ -179,5 +183,5 @@ func makeUpgradeBinding(key upgradeBindingKey, platform string, definitions map[
 		transports = append(transports, operation.Transport)
 	}
 	sort.Slice(transports, func(i, j int) bool { return transports[i] < transports[j] })
-	return storage.ProtocolBinding{Kind: key.kind, SourceID: key.source, ModelID: key.model, GroupID: key.group, Binding: protocol.Binding{ProtocolID: id, RevisionHash: compiled.Hash(), Capabilities: capabilities, Transports: transports}}, nil
+	return storage.ProtocolBinding{Kind: key.kind, SourceID: key.source, ModelID: key.model, GroupID: key.group, Binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: capabilities, Transports: transports}}
 }

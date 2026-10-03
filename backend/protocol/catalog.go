@@ -25,7 +25,7 @@ var expressionOperations = []OperationInfo{
 	{"cast", []string{"source", "to"}, []string{"source", "to"}, AnyType, "Perform a lossless scalar conversion; never truncate numbers."},
 	{"merge", []string{"items", "policy"}, []string{"items", "policy"}, ObjectType, "Explicitly merge objects with reject, first or last collision policy."},
 	{"concat", []string{"items"}, []string{"items"}, ArrayType, "Concatenate ordered arrays."},
-	{"join", []string{"items"}, []string{"items"}, StringType, "Concatenate string expressions without implicit coercion."},
+	{"join", []string{"items", "source"}, nil, StringType, "Concatenate either string expressions in items or a source array of strings, without implicit coercion."},
 	{"sort", []string{"source", "key"}, []string{"source", "key"}, ArrayType, "Stable sort by a declared scalar JSON pointer."},
 	{"associate", []string{"source", "key"}, []string{"source", "key"}, ObjectType, "Index items by a unique string identity; duplicate identities fail."},
 	{"exists", []string{"source"}, []string{"source"}, BooleanType, "Test presence, including explicit null, false and zero."},
@@ -35,6 +35,7 @@ var expressionOperations = []OperationInfo{
 	{"not", []string{"source"}, []string{"source"}, BooleanType, "Invert a boolean."},
 	{"parse_json", []string{"source"}, []string{"source"}, AnyType, "Decode a JSON string; invalid or absent tool arguments fail."},
 	{"stringify_json", []string{"source"}, []string{"source"}, StringType, "Encode a present JSON value as a string."},
+	{"strip_prefix", []string{"source", "value"}, []string{"source", "value"}, StringType, "Remove a required literal string prefix; a mismatching input is an error."},
 	{"ref", []string{"ref"}, []string{"ref"}, AnyType, "Expand a named expression at compile time; recursive references fail."},
 }
 

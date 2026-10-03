@@ -24,6 +24,7 @@ type protocolProbeInput struct {
 type protocolProbeResult struct {
 	Report   protocol.VerificationReport `json:"report"`
 	Response *protocol.Response          `json:"response,omitempty"`
+	Models   []protocol.DiscoveredModel  `json:"models,omitempty"`
 }
 
 func (s *Server) probeProtocol(ctx context.Context, input protocolProbeInput) (*protocolProbeResult, error) {
@@ -40,20 +41,28 @@ func (s *Server) probeProtocol(ctx context.Context, input protocolProbeInput) (*
 		return nil, protocol.IssuesError(offline.Issues)
 	}
 	operation, exists := compiled.Operations()[input.Operation]
-	if !exists || operation.Kind != "generate" || operation.Transport == protocol.WebSocket {
-		return nil, fmt.Errorf("select a declared HTTP generation operation; session/task/model discovery probes require their own workflow")
+	if !exists || (operation.Kind != "generate" && operation.Kind != "models") || operation.Transport == protocol.WebSocket {
+		return nil, fmt.Errorf("select a declared HTTP generation or model discovery operation; sessions and tasks require their own workflow")
 	}
 	var model string
-	if err := input.Request.Model.Decode(&model); err != nil || model == "" {
-		return nil, fmt.Errorf("probe requires an explicit semantic request and model")
+	if operation.Kind == "generate" {
+		if err := input.Request.Model.Decode(&model); err != nil || model == "" {
+			return nil, fmt.Errorf("generation probe requires an explicit semantic request and model")
+		}
 	}
 	endpoint := sha256.Sum256([]byte(input.BaseURL))
 	ref := config.ModelRef{Name: model, BaseURL: input.BaseURL, APIKey: input.APIKey, SourceID: hex.EncodeToString(endpoint[:])}
 	scope := modelProtocolScope(ref)
-	binding := protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: compiled.Capabilities(protocol.EncodeRequest), Transports: []protocol.Transport{operation.Transport}, Operation: input.Operation}
-	candidate := gatewayCandidate{model: ref, compiled: compiled, binding: binding, operation: operation, scope: scope}
-	response, runErr := s.collectProtocolGeneration(ctx, candidate, &input.Request, nil, nil)
-	report := protocol.VerificationReport{DefinitionHash: compiled.Hash(), CompilerVersion: protocol.CompilerVersion, SamplesHash: compiled.SamplesHash(), Kind: protocol.UpstreamVerification, VerifiedAt: time.Now().UTC(), Passed: runErr == nil, Target: &scope, Checks: []protocol.VerificationCheck{{SampleID: input.Operation, Direction: protocol.DecodeResponse, Passed: runErr == nil, Reason: "Observed request/response contract for this target only; does not prove all capabilities or cache hits."}}}
+	result := &protocolProbeResult{}
+	var runErr error
+	if operation.Kind == "models" {
+		result.Models, runErr = s.discoverProtocolModels(ctx, compiled, input.BaseURL, input.APIKey)
+	} else {
+		binding := protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: compiled.Capabilities(protocol.EncodeRequest), Transports: []protocol.Transport{operation.Transport}, Operation: input.Operation}
+		candidate := gatewayCandidate{model: ref, compiled: compiled, binding: binding, operation: operation, scope: scope}
+		result.Response, runErr = s.collectProtocolGeneration(ctx, candidate, &input.Request, nil, nil)
+	}
+	report := protocol.VerificationReport{DefinitionHash: compiled.Hash(), CompilerVersion: protocol.CompilerVersion, SamplesHash: compiled.SamplesHash(), Kind: protocol.UpstreamVerification, VerifiedAt: time.Now().UTC(), Passed: runErr == nil, Target: &scope, Checks: []protocol.VerificationCheck{{SampleID: input.Operation, Direction: protocol.DecodeResponse, Passed: runErr == nil, Reason: "Observed " + operation.Kind + " contract for this target only; does not prove other operations, all capabilities or cache hits."}}}
 	if runErr != nil {
 		var conversion *protocol.ConversionError
 		if errors.As(runErr, &conversion) {
@@ -70,7 +79,8 @@ func (s *Server) probeProtocol(ctx context.Context, input protocolProbeInput) (*
 	if err := s.store.SaveProtocolReport(ctx, revision.ProtocolID, revision.Hash, report); err != nil {
 		return nil, err
 	}
-	return &protocolProbeResult{Report: report, Response: response}, nil
+	result.Report = report
+	return result, nil
 }
 
 func (s *Server) adminProtocolProbe(c *gin.Context) {

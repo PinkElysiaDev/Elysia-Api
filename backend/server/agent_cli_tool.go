@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/elysia-api/backend/agent"
-	"github.com/elysia-api/backend/relay"
 )
 
 // elysia_cli is the thin adapter exposed to the built-in Agent. The CLI
@@ -29,9 +28,9 @@ func (t *elysiaCLITool) Meta() agent.ToolMeta {
 	return agent.ToolMeta{RiskLevel: "medium", TimeoutMs: 600_000, PreviewDirection: agent.ClampTail, MaxModelBytes: 48 * 1024}
 }
 
-func (t *elysiaCLITool) Definition() relay.MaheshvaraTool {
-	return relay.MaheshvaraTool{
-		Type: "function", Name: agentToolCLI,
+func (t *elysiaCLITool) Definition() agent.FunctionDefinition {
+	return agent.FunctionDefinition{
+		Name:        agentToolCLI,
 		Description: cliToolDescription,
 		Parameters: objectSchema(map[string]any{
 			"command": map[string]any{"type": "string", "description": "要执行的 elysia 命令（可多行批处理）"},

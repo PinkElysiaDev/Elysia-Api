@@ -13,6 +13,9 @@ import (
 	"strings"
 )
 
+// DefaultStreamIdleMillis bounds silence without limiting total stream duration.
+const DefaultStreamIdleMillis = 120000
+
 // BuildHTTPRequest constructs the declared operation. The caller owns the
 // configured HTTP client, outbound address policy, proxy and TLS settings.
 func BuildHTTPRequest(ctx context.Context, baseURL, credential string, operation Operation, body []byte, parameters map[string]string) (*http.Request, error) {

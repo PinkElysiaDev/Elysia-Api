@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "anthropic-api",
   "name": "anthropic-api",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "family": "claude",
   "wireVersion": "v2",
   "capabilities": {
@@ -37,8 +37,7 @@
         "type": "object",
         "required": [
           "model",
-          "messages",
-          "max_tokens"
+          "messages"
         ],
         "properties": {
           "model": {
@@ -164,6 +163,18 @@
       },
       "headers": {
         "anthropic-version": "2023-06-01"
+      },
+      "input": {
+        "type": "object",
+        "required": [
+          "max_tokens"
+        ],
+        "properties": {
+          "max_tokens": {
+            "type": "integer"
+          }
+        },
+        "allowUnknown": true
       }
     },
     "stream": {
@@ -182,6 +193,78 @@
       },
       "framing": {
         "eventNamePath": "/type"
+      },
+      "input": {
+        "type": "object",
+        "required": [
+          "max_tokens"
+        ],
+        "properties": {
+          "max_tokens": {
+            "type": "integer"
+          }
+        },
+        "allowUnknown": true
+      }
+    },
+    "models": {
+      "kind": "models",
+      "method": "GET",
+      "path": "/v1/models",
+      "transport": "http_json",
+      "auth": {
+        "location": "header",
+        "name": "x-api-key"
+      },
+      "headers": {
+        "anthropic-version": "2023-06-01"
+      },
+      "models": {
+        "decode": {
+          "transform": {
+            "op": "object",
+            "fields": {
+              "models": {
+                "op": "map",
+                "source": {
+                  "op": "read",
+                  "path": "/data",
+                  "required": true
+                },
+                "body": {
+                  "op": "object",
+                  "fields": {
+                    "id": {
+                      "op": "read",
+                      "path": "/id",
+                      "from": "item",
+                      "required": true
+                    },
+                    "name": {
+                      "op": "read",
+                      "path": "/display_name",
+                      "from": "item"
+                    }
+                  }
+                }
+              },
+              "next": {
+                "op": "if",
+                "when": {
+                  "op": "read",
+                  "path": "/has_more",
+                  "required": true
+                },
+                "then": {
+                  "op": "read",
+                  "path": "/last_id",
+                  "required": true
+                }
+              }
+            }
+          }
+        },
+        "cursorParameter": "after_id"
       }
     }
   },
@@ -1002,9 +1085,9 @@
                     "kind": "breakpoint",
                     "location": "block",
                     "value": {
-                      "type": "ephemeral",
-                      "ttl": "1h"
-                    }
+                      "type": "ephemeral"
+                    },
+                    "ttl": "1h"
                   }
                 ]
               }
@@ -1026,9 +1109,9 @@
             "kind": "breakpoint",
             "location": "request",
             "value": {
-              "type": "ephemeral",
-              "ttl": "1h"
-            }
+              "type": "ephemeral"
+            },
+            "ttl": "1h"
           }
         ],
         "parameters": {
@@ -1065,9 +1148,9 @@
                     "kind": "breakpoint",
                     "location": "block",
                     "value": {
-                      "type": "ephemeral",
-                      "ttl": "1h"
-                    }
+                      "type": "ephemeral"
+                    },
+                    "ttl": "1h"
                   }
                 ]
               }
@@ -1089,9 +1172,9 @@
             "kind": "breakpoint",
             "location": "request",
             "value": {
-              "type": "ephemeral",
-              "ttl": "1h"
-            }
+              "type": "ephemeral"
+            },
+            "ttl": "1h"
           }
         ],
         "native": {
@@ -4622,5 +4705,424 @@
       },
       "sequence": true
     }
-  ]
+  ],
+  "modelSamples": [
+    {
+      "id": "models-terminal",
+      "operation": "models",
+      "input": {
+        "data": [
+          {
+            "id": "alpha"
+          },
+          {
+            "id": "beta"
+          }
+        ],
+        "has_more": false
+      },
+      "expected": {
+        "models": [
+          {
+            "id": "alpha"
+          },
+          {
+            "id": "beta"
+          }
+        ]
+      }
+    },
+    {
+      "id": "models-continuation",
+      "operation": "models",
+      "input": {
+        "data": [
+          {
+            "id": "alpha",
+            "display_name": "Alpha"
+          }
+        ],
+        "has_more": true,
+        "last_id": "alpha"
+      },
+      "expected": {
+        "models": [
+          {
+            "id": "alpha",
+            "name": "Alpha"
+          }
+        ],
+        "next": "alpha"
+      }
+    }
+  ],
+  "agent": {
+    "thinkingEfforts": [
+      "",
+      "low",
+      "medium",
+      "high",
+      "max",
+      "adaptive"
+    ],
+    "parameters": {
+      "transform": {
+        "op": "merge",
+        "policy": "reject",
+        "items": [
+          {
+            "op": "object",
+            "fields": {
+              "max_output_tokens": {
+                "op": "read",
+                "path": "/maxOutputTokens",
+                "required": true
+              },
+              "stream": {
+                "op": "read",
+                "path": "/stream",
+                "required": true
+              }
+            }
+          },
+          {
+            "op": "if",
+            "when": {
+              "op": "read",
+              "path": "/thinkingEnabled",
+              "required": true
+            },
+            "then": {
+              "op": "object",
+              "fields": {
+                "anthropic_thinking": {
+                  "op": "literal",
+                  "value": {
+                    "type": "adaptive"
+                  }
+                },
+                "temperature": {
+                  "op": "literal",
+                  "value": 1
+                },
+                "anthropic_output_config": {
+                  "op": "if",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "path": "/thinkingEffort",
+                              "required": true
+                            },
+                            {
+                              "op": "literal",
+                              "value": ""
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "path": "/thinkingEffort",
+                              "required": true
+                            },
+                            {
+                              "op": "literal",
+                              "value": "adaptive"
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "object",
+                    "fields": {
+                      "effort": {
+                        "op": "read",
+                        "path": "/thinkingEffort",
+                        "required": true
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "op": "object",
+              "fields": {}
+            }
+          }
+        ]
+      }
+    },
+    "samples": [
+      {
+        "id": "agent-thinking-disabled",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": false,
+          "thinkingEffort": "",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "stream": false
+        }
+      },
+      {
+        "id": "agent-thinking-disabled-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": false,
+          "thinkingEffort": "",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "stream": true
+        }
+      },
+      {
+        "id": "agent-effort-default",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "anthropic_thinking": {
+            "type": "adaptive"
+          },
+          "temperature": 1,
+          "stream": false
+        }
+      },
+      {
+        "id": "agent-effort-default-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "anthropic_thinking": {
+            "type": "adaptive"
+          },
+          "temperature": 1,
+          "stream": true
+        }
+      },
+      {
+        "id": "agent-effort-low",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "low",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "anthropic_thinking": {
+            "type": "adaptive"
+          },
+          "temperature": 1,
+          "anthropic_output_config": {
+            "effort": "low"
+          },
+          "stream": false
+        }
+      },
+      {
+        "id": "agent-effort-low-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "low",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "anthropic_thinking": {
+            "type": "adaptive"
+          },
+          "temperature": 1,
+          "anthropic_output_config": {
+            "effort": "low"
+          },
+          "stream": true
+        }
+      },
+      {
+        "id": "agent-effort-medium",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "medium",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "anthropic_thinking": {
+            "type": "adaptive"
+          },
+          "temperature": 1,
+          "anthropic_output_config": {
+            "effort": "medium"
+          },
+          "stream": false
+        }
+      },
+      {
+        "id": "agent-effort-medium-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "medium",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "anthropic_thinking": {
+            "type": "adaptive"
+          },
+          "temperature": 1,
+          "anthropic_output_config": {
+            "effort": "medium"
+          },
+          "stream": true
+        }
+      },
+      {
+        "id": "agent-effort-high",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "high",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "anthropic_thinking": {
+            "type": "adaptive"
+          },
+          "temperature": 1,
+          "anthropic_output_config": {
+            "effort": "high"
+          },
+          "stream": false
+        }
+      },
+      {
+        "id": "agent-effort-high-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "high",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "anthropic_thinking": {
+            "type": "adaptive"
+          },
+          "temperature": 1,
+          "anthropic_output_config": {
+            "effort": "high"
+          },
+          "stream": true
+        }
+      },
+      {
+        "id": "agent-effort-max",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "max",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "anthropic_thinking": {
+            "type": "adaptive"
+          },
+          "temperature": 1,
+          "anthropic_output_config": {
+            "effort": "max"
+          },
+          "stream": false
+        }
+      },
+      {
+        "id": "agent-effort-max-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "max",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "anthropic_thinking": {
+            "type": "adaptive"
+          },
+          "temperature": 1,
+          "anthropic_output_config": {
+            "effort": "max"
+          },
+          "stream": true
+        }
+      },
+      {
+        "id": "agent-effort-adaptive",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "adaptive",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "anthropic_thinking": {
+            "type": "adaptive"
+          },
+          "temperature": 1,
+          "stream": false
+        }
+      },
+      {
+        "id": "agent-effort-adaptive-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "adaptive",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "anthropic_thinking": {
+            "type": "adaptive"
+          },
+          "temperature": 1,
+          "stream": true
+        }
+      }
+    ],
+    "toolResults": "text"
+  }
 }

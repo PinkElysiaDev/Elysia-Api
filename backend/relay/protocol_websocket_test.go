@@ -171,7 +171,7 @@ func TestWebSocketDialRefusesCredentialRedirect(t *testing.T) {
 		http.Redirect(w, r, redirect.URL, http.StatusTemporaryRedirect)
 	}))
 	defer provider.Close()
-	adapter := NewOpenAIAdapter(time.Second)
+	adapter := NewProtocolTransport(time.Second)
 	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, provider.URL, nil)
 	if err != nil {
 		t.Fatal(err)

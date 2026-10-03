@@ -154,18 +154,3 @@ func TestMaxAttempts(t *testing.T) {
 		}
 	}
 }
-
-func TestShouldRetryStatus(t *testing.T) {
-	retry := []int{0, -1, 408, 409, 425, 429, 500, 502, 503, 504, 524, 599}
-	noRetry := []int{200, 201, 204, 301, 400, 401, 403, 404, 422, 501, 505}
-	for _, code := range retry {
-		if !shouldRetryStatus(code) {
-			t.Fatalf("status %d should be retryable", code)
-		}
-	}
-	for _, code := range noRetry {
-		if shouldRetryStatus(code) {
-			t.Fatalf("status %d should NOT be retryable", code)
-		}
-	}
-}

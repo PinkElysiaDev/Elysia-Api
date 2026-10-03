@@ -52,7 +52,7 @@ func DescribeSchema() SchemaCatalog {
 	bindingDefinitions := make(map[string]any)
 	binding := schemaForType(reflect.TypeFor[Binding](), bindingDefinitions)
 	binding["$defs"] = bindingDefinitions
-	semantic := map[string]any{"$schema": "https://json-schema.org/draft/2020-12/schema", "request": schemaForType(reflect.TypeFor[Request](), semanticDefinitions), "response": schemaForType(reflect.TypeFor[Response](), semanticDefinitions), "event": schemaForType(reflect.TypeFor[Event](), semanticDefinitions), "task": schemaForType(reflect.TypeFor[Task](), semanticDefinitions), "$defs": semanticDefinitions}
+	semantic := map[string]any{"$schema": "https://json-schema.org/draft/2020-12/schema", "request": schemaForType(reflect.TypeFor[Request](), semanticDefinitions), "response": schemaForType(reflect.TypeFor[Response](), semanticDefinitions), "event": schemaForType(reflect.TypeFor[Event](), semanticDefinitions), "task": schemaForType(reflect.TypeFor[Task](), semanticDefinitions), "models": schemaForType(reflect.TypeFor[ModelPage](), semanticDefinitions), "agent": schemaForType(reflect.TypeFor[AgentPreferences](), semanticDefinitions), "$defs": semanticDefinitions}
 	return SchemaCatalog{SchemaVersion: DefinitionSchemaVersion, CompilerVersion: CompilerVersion, Directions: DirectionCatalog(), Transports: TransportCatalog(), OperationKinds: OperationKindCatalog(), Capabilities: CapabilityCatalog(), Events: EventCatalog(), Diagnostics: DiagnosticCatalog(), Operations: ExpressionCatalog(), Definition: root, Semantic: semantic, Binding: binding, Limits: DefaultLimits()}
 }
 
@@ -93,7 +93,11 @@ func schemaForType(kind reflect.Type, definitions map[string]any) map[string]any
 				if fieldName == "" {
 					fieldName = field.Name
 				}
-				properties[fieldName] = schemaForType(field.Type, definitions)
+				property := schemaForType(field.Type, definitions)
+				if description := field.Tag.Get("description"); description != "" {
+					property["description"] = description
+				}
+				properties[fieldName] = property
 				if len(tag) == 1 {
 					required = append(required, fieldName)
 				}

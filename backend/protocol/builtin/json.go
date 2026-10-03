@@ -151,20 +151,3 @@ func (adapter module) extensions(fields p.Object, known []string) p.Object {
 	}
 	return p.Object{"wire:" + adapter.family: extra}
 }
-
-func decodeCache(fields p.Object, location string) []p.CacheIntent {
-	if value := fields["cache_control"]; !value.IsZero() {
-		return []p.CacheIntent{{Kind: "breakpoint", Location: location, Value: value}}
-	}
-	return nil
-}
-
-func encodeCache(fields p.Object, intents []p.CacheIntent) error {
-	for _, intent := range intents {
-		if intent.Kind != "breakpoint" {
-			return unsupported("/cache", "this node accepts only cache breakpoints")
-		}
-		fields["cache_control"] = intent.Value
-	}
-	return nil
-}

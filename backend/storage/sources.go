@@ -42,6 +42,30 @@ func (s *Store) ListSources(ctx context.Context) ([]ModelSource, error) {
 }
 
 func (s *Store) UpsertSource(ctx context.Context, item ModelSource) error {
+	return s.upsertSource(ctx, s.db, item)
+}
+
+// SaveBoundSource commits a source and its verified routing contract together.
+// Catalog refreshes may then inherit the contract without rewriting it.
+func (s *Store) SaveBoundSource(ctx context.Context, item ModelSource, binding ProtocolBinding) error {
+	if binding.Kind != "source" || binding.SourceID != item.ID {
+		return errors.New("source and binding identities differ")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := s.upsertSource(ctx, tx, item); err != nil {
+		return err
+	}
+	if err := saveProtocolBinding(ctx, tx, binding); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) upsertSource(ctx context.Context, executor protocolSQLExecutor, item ModelSource) error {
 	if strings.TrimSpace(item.ID) == "" {
 		return errors.New("source id is required")
 	}
@@ -69,7 +93,7 @@ func (s *Store) UpsertSource(ctx context.Context, item ModelSource) error {
 		strategy = string(KeyStrategySingle)
 	}
 	now := nowString()
-	_, err = s.db.ExecContext(ctx, `INSERT INTO model_sources(id, name, base_url, api_key, platform, enabled, auto_fetch_models, manual_models_json, fetch_base_url, api_keys, key_strategy, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, base_url=excluded.base_url, api_key=excluded.api_key, platform=excluded.platform, enabled=excluded.enabled, auto_fetch_models=excluded.auto_fetch_models, manual_models_json=excluded.manual_models_json, fetch_base_url=excluded.fetch_base_url, api_keys=excluded.api_keys, key_strategy=excluded.key_strategy, updated_at=excluded.updated_at`, item.ID, item.Name, item.BaseURL, storedKey, item.Platform, sqlBoolToInt(item.Enabled), sqlBoolToInt(item.AutoFetchModels), string(manual), item.FetchBaseURL, storedKeys, strategy, now, now)
+	_, err = executor.ExecContext(ctx, `INSERT INTO model_sources(id, name, base_url, api_key, platform, enabled, auto_fetch_models, manual_models_json, fetch_base_url, api_keys, key_strategy, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, base_url=excluded.base_url, api_key=excluded.api_key, platform=excluded.platform, enabled=excluded.enabled, auto_fetch_models=excluded.auto_fetch_models, manual_models_json=excluded.manual_models_json, fetch_base_url=excluded.fetch_base_url, api_keys=excluded.api_keys, key_strategy=excluded.key_strategy, updated_at=excluded.updated_at`, item.ID, item.Name, item.BaseURL, storedKey, item.Platform, sqlBoolToInt(item.Enabled), sqlBoolToInt(item.AutoFetchModels), string(manual), item.FetchBaseURL, storedKeys, strategy, now, now)
 	return err
 }
 
@@ -122,10 +146,17 @@ func (s *Store) DeleteSource(ctx context.Context, id string) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM model_group_models WHERE source_id = ?`, id); err != nil {
 		return err
 	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM protocol_bindings WHERE json_extract(binding, '$.sourceId') = ? AND json_extract(binding, '$.kind') IN ('source', 'model')`, id); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
 func (s *Store) ReplaceSourceModels(ctx context.Context, source ModelSource, models []Model) error {
+	return s.replaceSourceModels(ctx, source, models, false)
+}
+
+func (s *Store) replaceSourceModels(ctx context.Context, source ModelSource, models []Model, isLegacyImport bool) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -148,13 +179,20 @@ func (s *Store) ReplaceSourceModels(ctx context.Context, source ModelSource, mod
 	}
 	for _, model := range models {
 		model = normalizeModelDefaults(model)
+		modelKey := storedKey
+		if isLegacyImport {
+			modelKey, err = s.codec.encrypt(model.APIKey)
+			if err != nil {
+				return err
+			}
+		}
 		// platform 优先取模型自带值（legacy 配置导入的模型可逐模型声明平台，
 		// 如 responses/gemini），为空才回落源级平台（自动拉取的模型两者一致）。
 		platform := model.Platform
 		if strings.TrimSpace(platform) == "" {
 			platform = source.Platform
 		}
-		if _, err := stmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, model.BaseURL, storedKey, NormalizePlatform(platform), model.Type, model.MaxTokens, sqlBoolToInt(model.VisionCapable), sqlBoolToInt(model.ToolsCapable), sqlBoolToInt(model.StructuredOutput), model.ThinkingMode, sqlBoolToInt(true), sqlBoolToInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
+		if _, err := stmt.ExecContext(ctx, model.ID, source.ID, model.Name, source.Name, model.BaseURL, modelKey, NormalizePlatform(platform), model.Type, model.MaxTokens, sqlBoolToInt(model.VisionCapable), sqlBoolToInt(model.ToolsCapable), sqlBoolToInt(model.StructuredOutput), model.ThinkingMode, sqlBoolToInt(true), sqlBoolToInt(model.Enabled), model.Origin, model.CapabilitySource, checked); err != nil {
 			return err
 		}
 	}

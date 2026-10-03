@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,29 +16,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func registerPresetForTest(t *testing.T, id string) relay.CustomProtocolConfig {
-	t.Helper()
-	configs, err := PresetProtocolConfigs()
-	if err != nil {
-		t.Fatalf("preset configs: %v", err)
-	}
-	for _, candidate := range configs {
-		if candidate.ID == id {
-			if err := relay.RegisterCustomProtocol(candidate); err != nil {
-				t.Fatalf("register preset %s: %v", id, err)
-			}
-			return candidate
-		}
-	}
-	t.Fatalf("preset %s not found", id)
-	return relay.CustomProtocolConfig{}
-}
-
 func presetGroup(t *testing.T, platform, upstreamURL string) []config.ModelGroupConfig {
 	t.Helper()
 	return []config.ModelGroupConfig{{
 		ID: "g1", Name: "grp", Enabled: true,
-		Models: []config.ModelRef{{ID: "m1", Name: "preset-model", BaseURL: upstreamURL, APIKey: "k", Platform: platform}},
+		Models: []config.ModelRef{{ID: "m1", Name: "preset-model", BaseURL: upstreamURL, APIKey: "k", Platform: platform, ToolsCapable: true, VisionCapable: true}},
 	}}
 }
 
@@ -68,10 +51,6 @@ func TestSeedPresetProtocols(t *testing.T) {
 		}
 		if len(rows) != len(presets) {
 			t.Fatalf("expected %d seeded presets, got %d", len(presets), len(rows))
-		}
-		s.syncCustomProtocolsQuiet()
-		if _, ok := relay.GetCustomProtocol("chat-completions-api"); !ok {
-			t.Fatal("seeded preset must register after sync")
 		}
 		// 幂等：重复播种不增行。
 		s.seedPresetProtocols()
@@ -142,9 +121,6 @@ func TestSeedPresetProtocols(t *testing.T) {
 // chat-completions-api 预置端到端：请求为线制形状(system 提升/role 折叠)，流式覆盖
 // 文本/推理/分帧工具参数拼装/usage 尾帧/finish。
 func TestPresetOpenAIChatEndToEnd(t *testing.T) {
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
-	registerPresetForTest(t, "chat-completions-api")
 
 	var gotBody string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -167,8 +143,8 @@ func TestPresetOpenAIChatEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(presetGroup(t, "custom:chat-completions-api", upstream.URL+"/v1"))
-	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"system","content":"be brief"},{"role":"user","content":"weather in sh?"}],"tools":[{"type":"function","function":{"name":"get_weather","parameters":{"type":"object"}}}]}`)
+	s := newTestServer(t, presetGroup(t, "custom:chat-completions-api", upstream.URL+"/v1"))
+	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"system","content":"be brief"},{"role":"user","content":"weather in sh?"}],"tools":[{"type":"function","function":{"name":"get_weather","parameters":{"type":"object"}}}]}`)
 	s.chatCompletions(c)
 
 	if rec.Code != http.StatusOK {
@@ -194,9 +170,6 @@ func TestPresetOpenAIChatEndToEnd(t *testing.T) {
 // anthropic-api 预置端到端：x-api-key 鉴权 + 事件名帧 + thinking 分块 +
 // content_block 分帧工具拼装 + message_delta 终态。
 func TestPresetAnthropicMessagesEndToEnd(t *testing.T) {
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
-	registerPresetForTest(t, "anthropic-api")
 
 	var gotAuth, gotVersion string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -214,8 +187,8 @@ func TestPresetAnthropicMessagesEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(presetGroup(t, "custom:anthropic-api", upstream.URL))
-	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"weather?"}]}`)
+	s := newTestServer(t, presetGroup(t, "custom:anthropic-api", upstream.URL))
+	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"weather?"}]}`)
 	s.chatCompletions(c)
 
 	if rec.Code != http.StatusOK {
@@ -237,64 +210,76 @@ func TestPresetAnthropicMessagesEndToEnd(t *testing.T) {
 
 // gemini-api 预置端到端：双路径按流切换 + thought 谓词分流 + functionCall。
 func TestPresetGeminiGenerateEndToEnd(t *testing.T) {
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
-	registerPresetForTest(t, "gemini-api")
+	for _, isNative := range []bool{true, false} {
+		t.Run(fmt.Sprint(isNative), func(t *testing.T) {
 
-	var gotPath string
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path + "?" + r.URL.RawQuery
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"pondering\",\"thought\":true}]}}]}\n\n")
-		_, _ = io.WriteString(w, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"sunny\"}]}}]}\n\n")
-		_, _ = io.WriteString(w, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"name\":\"get_weather\",\"args\":{\"city\":\"sh\"}}}]}}]}\n\n")
-		_, _ = io.WriteString(w, "data: {\"candidates\":[{\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":8,\"candidatesTokenCount\":9}}\n\n")
-	}))
-	defer upstream.Close()
+			var gotPath string
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotPath = r.URL.Path + "?" + r.URL.RawQuery
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = io.WriteString(w, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"pondering\",\"thought\":true}]}}]}\n\n")
+				_, _ = io.WriteString(w, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"sunny\"}]}}]}\n\n")
+				_, _ = io.WriteString(w, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"name\":\"get_weather\",\"args\":{\"city\":\"sh\"}}}]}}]}\n\n")
+				_, _ = io.WriteString(w, "data: {\"candidates\":[{\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":8,\"candidatesTokenCount\":9}}\n\n")
+			}))
+			defer upstream.Close()
 
-	s := newTestServer(presetGroup(t, "custom:gemini-api", upstream.URL))
-	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"weather?"}]}`)
-	s.chatCompletions(c)
+			s := newTestServer(t, presetGroup(t, "custom:gemini-api", upstream.URL))
+			c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"weather?"}]}`)
+			if isNative {
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/grp:streamGenerateContent", strings.NewReader(`{"contents":[{"role":"user","parts":[{"text":"weather?"}]}]}`))
+			}
+			s.chatCompletions(c)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
-	}
-	if gotPath != "/v1beta/models/preset-model:streamGenerateContent?alt=sse" {
-		t.Fatalf("stream request must use pathStream: %s", gotPath)
-	}
-	body := rec.Body.String()
-	for _, want := range []string{
-		`"reasoning_content":"pondering"`, `"content":"sunny"`, `"name":"get_weather"`,
-		`"prompt_tokens":8`, `"completion_tokens":9`, `"finish_reason":"stop"`, "data: [DONE]",
-	} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("stream output missing %s: %s", want, body)
-		}
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+			}
+			if gotPath != "/v1beta/models/preset-model:streamGenerateContent?alt=sse" {
+				t.Fatalf("stream request must use pathStream: %s", gotPath)
+			}
+			body := rec.Body.String()
+			logs := latestUsageRecords(t, s)
+			if !isNative {
+				// Gemini JSON results and Chat text results need an explicit mapping.
+				// The full tool lifecycle has no passing profile; do not fabricate IDs
+				// or serialize results implicitly when a tool arrives late in the stream.
+				if !strings.Contains(body, `"type":"api_error"`) || !strings.Contains(body, "upstream_contract_violation") || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "protocol_stream_error" || strings.Contains(body, "[DONE]") || len(logs) != 1 || logs[0].StatusCode != http.StatusBadGateway {
+					t.Fatal("unsupported lifecycle reported as success", logs, body)
+				}
+				return
+			}
+			for _, want := range []string{`"thought":true`, `"text":"sunny"`, `"name":"get_weather"`, `"promptTokenCount":8`, `"candidatesTokenCount":9`, `"finishReason":"STOP"`} {
+				if !strings.Contains(body, want) {
+					t.Fatal("native Gemini stream lost", want, body)
+				}
+			}
+			if len(logs) != 1 || logs[0].StatusCode != http.StatusOK || logs[0].TotalTokens != 17 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
+				t.Fatal(logs, body)
+			}
+		})
 	}
 }
 
 // responses-api 预置端到端：类型化事件流 + 分帧工具拼装 + completed 终态。
 func TestPresetOpenAIResponsesEndToEnd(t *testing.T) {
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
-	registerPresetForTest(t, "responses-api")
 
 	var gotBody string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		gotBody = string(body)
 		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"type\":\"response.content_part.added\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\"}}\n\n")
 		_, _ = io.WriteString(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hel\"}\n\n")
 		_, _ = io.WriteString(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"lo\"}\n\n")
-		_, _ = io.WriteString(w, "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"fc_item_9\",\"type\":\"function_call\",\"call_id\":\"call_9\",\"name\":\"get_weather\"}}\n\n")
-		_, _ = io.WriteString(w, "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"item_id\":\"fc_item_9\",\"delta\":\"{\\\"city\\\":\"}\n\n")
-		_, _ = io.WriteString(w, "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"item_id\":\"fc_item_9\",\"delta\":\"\\\"sh\\\"}\"}\n\n")
-		_, _ = io.WriteString(w, "data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":3,\"output_tokens\":5}}}\n\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_9\",\"name\":\"get_weather\"}}\n\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":1,\"delta\":\"{\\\"city\\\":\"}\n\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":1,\"delta\":\"\\\"sh\\\"}\"}\n\n")
+		_, _ = io.WriteString(w, `data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hello"}]},{"type":"function_call","call_id":"call_9","name":"get_weather","arguments":"{\"city\":\"sh\"}"}],"usage":{"input_tokens":3,"output_tokens":5}}}`+"\n\n")
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(presetGroup(t, "custom:responses-api", upstream.URL))
-	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"weather?"}]}`)
+	s := newTestServer(t, presetGroup(t, "custom:responses-api", upstream.URL))
+	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"weather?"}]}`)
 	s.chatCompletions(c)
 
 	if rec.Code != http.StatusOK {
@@ -369,10 +354,6 @@ func TestMigratePresetProtocolRenames(t *testing.T) {
 			t.Fatalf("config id must be rewritten to the new id, got %s", row.Config)
 		}
 	}
-	s.syncCustomProtocolsQuiet()
-	if _, ok := relay.GetCustomProtocol("chat-completions-api"); !ok {
-		t.Fatal("renamed protocol must register under the new id after sync")
-	}
 
 	// 冲突：用户新建了 responses-api，旧 openai-responses 行并存 → 跳过该对。
 	seedLegacy("openai-responses")
@@ -425,13 +406,9 @@ func TestReconcileCustomProtocolConfigIDsFixesLegacyRenameGap(t *testing.T) {
 	if len(rows) != 1 || strings.Contains(rows[0].Config, `"id":"anthropic-messages"`) || !strings.Contains(rows[0].Config, `"id":"anthropic-api"`) {
 		t.Fatalf("config id must be reconciled to the row id, got %+v", rows)
 	}
-	s.syncCustomProtocolsQuiet()
-	if _, ok := relay.GetCustomProtocol("anthropic-api"); !ok {
-		t.Fatal("reconciled protocol must register under the row id")
-	}
-	// 保存/切换该源的校验路径随注册表修复而通过。
-	if err := validateCustomSourceProtocol(&source); err != nil {
-		t.Fatalf("source save must pass after reconciliation: %v", err)
+	// ID reconciliation alone does not prove a legacy definition is executable.
+	if err := s.validateSourceProtocol(&source); err == nil {
+		t.Fatal("legacy registration bypassed verified activation")
 	}
 	// 幂等：一致后再跑对账无事发生。
 	if fixed, err := s.store.ReconcileCustomProtocolConfigIDs(ctx); err != nil || fixed != 0 {
@@ -441,42 +418,6 @@ func TestReconcileCustomProtocolConfigIDsFixesLegacyRenameGap(t *testing.T) {
 
 // 注册表装配容错：坏行（非法 JSON / 校验不过）跳过并记日志，好行照常注册；
 // 注册键以行 id 列为准（config 内部 id 与行 id 不一致时按行 id 注册）。
-func TestSyncCustomProtocolsSkipsBrokenRows(t *testing.T) {
-	s, _ := newProtocolAdminTestServer(t)
-	ctx := t.Context()
-	body := `"body":{"model":{"field":"model","mode":"string"},"messages":{"field":"messages"},"stream":{"field":"stream"}}`
-	rows := []storage.CustomProtocol{
-		{ID: "good-one", Type: "llm", Config: `{"id":"good-one","request":{"method":"POST","path":"/v1/x",` + body + `}}`},
-		{ID: "bad-json", Type: "llm", Config: `{"id":`},
-		{ID: "bad-shape", Type: "llm", Config: `{"id":"bad-shape","request":{"method":"POST","path":"/v1/x","shape":"nope",` + body + `}}`},
-		{ID: "row-id-wins", Type: "llm", Config: `{"id":"stale-inner-id","request":{"method":"POST","path":"/v1/y",` + body + `}}`},
-	}
-	for _, row := range rows {
-		if err := s.store.UpsertCustomProtocol(ctx, row); err != nil {
-			t.Fatalf("seed %s: %v", row.ID, err)
-		}
-	}
-	if err := s.syncCustomProtocolsQuiet(); err != nil {
-		t.Fatalf("sync must tolerate broken rows: %v", err)
-	}
-	if _, ok := relay.GetCustomProtocol("good-one"); !ok {
-		t.Fatal("good row must register")
-	}
-	if _, ok := relay.GetCustomProtocol("row-id-wins"); !ok {
-		t.Fatal("row id must win over a stale inner config id")
-	}
-	if _, ok := relay.GetCustomProtocol("stale-inner-id"); ok {
-		t.Fatal("stale inner config id must not register")
-	}
-	for _, id := range []string{"bad-json", "bad-shape"} {
-		if _, ok := relay.GetCustomProtocol(id); ok {
-			t.Fatalf("broken row %q must not register", id)
-		}
-	}
-}
-
-// 预置版本升级：未被改动的 v1 预置行自动升级到 v2（哈希匹配）；用户改过的
-// 行保持不动。
 func TestUpgradeUnmodifiedLegacyPreset(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
 	ctx := t.Context()
@@ -542,8 +483,7 @@ func TestUpgradeUnmodifiedLegacyPreset(t *testing.T) {
 // base + 相对路径拼出,不再产生 /v1/v1 重复。
 func TestPresetModelDiscoveryEndToEnd(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
-	s.seedPresetProtocols()
-	s.syncCustomProtocolsQuiet()
+	activateDiscoveryPresets(t, s)
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/models" {
@@ -656,8 +596,7 @@ func TestMigratePresetRelativePathBases(t *testing.T) {
 // 入库 ID 是裸名(转发路径模板不再拼出 /v1beta/models/models/<id>)。
 func TestPresetGeminiModelDiscoveryStripsPrefix(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
-	s.seedPresetProtocols()
-	s.syncCustomProtocolsQuiet()
+	activateDiscoveryPresets(t, s)
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1beta/models" {
@@ -718,9 +657,6 @@ func TestStripGeminiModelIDPrefixes(t *testing.T) {
 // custom 上游的 TargetFormat=custom:<id>、TargetEndpoint=协议 path 模板,
 // 转换链三段——与 responses 入口对齐,前端据此两端同名显示同线制对。
 func TestChatUsageRecordProtocolChain(t *testing.T) {
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
-	registerPresetForTest(t, "chat-completions-api")
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -745,11 +681,11 @@ func TestChatUsageRecordProtocolChain(t *testing.T) {
 	}
 	detail := string(payload)
 	for _, want := range []string{
-		`"sourceFormat":"openai"`,
+		`"sourceFormat":"chat-completions-api"`,
 		`"sourceEndpoint":"/v1/chat/completions"`,
-		`"targetFormat":"custom:chat-completions-api"`,
-		`"targetEndpoint":"/chat/completions"`,
-		`"conversionChain":["openai_request","maheshvara_request","custom:chat-completions-api_request"]`,
+		`"targetFormat":"chat-completions-api"`,
+		`"targetEndpoint":"/v1/chat/completions"`,
+		`"relayMode":"protocol_v2"`, `"ingressRevision":`, `"upstreamRevision":`,
 	} {
 		if !strings.Contains(detail, want) {
 			t.Fatalf("usage record missing %s: %.400s", want, detail)
@@ -830,9 +766,6 @@ func TestLegacyPresetHashChainCoversEveryGeneration(t *testing.T) {
 // cache_control 打点(缓存命中率的前提)。同源透传路径由 passthrough_test
 // 覆盖;thinking 块的 cache_control 属罕见打点,当前为已知边界不回放。
 func TestPresetAnthropicCacheControlFidelity(t *testing.T) {
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
-	registerPresetForTest(t, "anthropic-api")
 
 	var gotBody string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -846,7 +779,7 @@ func TestPresetAnthropicCacheControlFidelity(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(presetGroup(t, "custom:anthropic-api", upstream.URL))
+	s := newTestServer(t, presetGroup(t, "custom:anthropic-api", upstream.URL))
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{

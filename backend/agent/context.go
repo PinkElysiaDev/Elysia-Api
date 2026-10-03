@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/protocol"
 )
 
 // 上下文压缩的阈值与长度锚点。
@@ -22,7 +22,7 @@ const (
 // prepareContext 在每次模型调用前估算水位。超过微压缩线时把较早的工具结果
 // 换成占位符（只改本次发送副本，库里原文不动）。摘要压缩不在轮内做——
 // 见 maybeSummarize。
-func (e *Engine) prepareContext(conversation []relay.MaheshvaraMessage, events chan Event) []relay.MaheshvaraMessage {
+func (e *Engine) prepareContext(conversation []conversationTurn, events chan Event) []conversationTurn {
 	window := e.opts.ContextWindowTokens
 	before := estimateTokens(conversation)
 	e.emitContext(events, before, window)
@@ -41,7 +41,7 @@ func (e *Engine) prepareContext(conversation []relay.MaheshvaraMessage, events c
 // maybeSummarize 在轮次开始时（对话刚从库里加载、消息 seq 仍与元素一一对
 // 应时）决定是否做摘要压缩。摘要只覆盖切点之前的历史，boundary 记被摘要
 // 前缀最后一条消息的真实 seq——下一轮回放按它丢弃已摘要原文、保留其余。
-func (e *Engine) maybeSummarize(ctx context.Context, sessionID string, session *Session, conversation []relay.MaheshvaraMessage, seqs []int, events chan Event) []relay.MaheshvaraMessage {
+func (e *Engine) maybeSummarize(ctx context.Context, sessionID string, session *Session, conversation []conversationTurn, seqs []int, events chan Event) []conversationTurn {
 	window := e.opts.ContextWindowTokens
 	before := estimateTokens(conversation)
 	// 摘要有额外模型调用成本，短对话即使比例高也不值得。
@@ -59,8 +59,8 @@ func (e *Engine) maybeSummarize(ctx context.Context, sessionID string, session *
 	if _, err := e.store.AppendMessage(ctx, sessionID, RoleSystem, SystemContent{Kind: "summary", Text: summary, BoundarySeq: seqs[cut-1]}, "", nil); err != nil {
 		return conversation
 	}
-	head := relay.MaheshvaraMessage{Role: "user", Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentText, Text: "以下是此前对话的摘要，请据此继续：\n" + summary}}}
-	next := append([]relay.MaheshvaraMessage{head}, conversation[cut:]...)
+	head := textTurn(RoleUser, "以下是此前对话的摘要，请据此继续：\n"+summary)
+	next := append([]conversationTurn{head}, conversation[cut:]...)
 	emitEvent(events, Event{Type: EventContextCompacted, Compaction: &Compaction{
 		Kind: "summary", Summarized: cut, Kept: len(conversation) - cut, BeforeTokens: before, AfterTokens: estimateTokens(next),
 	}})
@@ -73,7 +73,7 @@ func (e *Engine) maybeSummarize(ctx context.Context, sessionID string, session *
 // 从批中间切开会产生孤儿 tool 结果，下一次模型调用直接被上游 400。
 // 扇入区间 [2, len-4]：至少摘要 2 条、保留 4 条；找不到边界返回 -1（本轮
 // 放弃摘要，微压缩照常兜底）。
-func summaryCut(conversation []relay.MaheshvaraMessage) int {
+func summaryCut(conversation []conversationTurn) int {
 	maxCut := len(conversation) - summaryKeepTail
 	if maxCut < summaryMinCut {
 		return -1
@@ -99,7 +99,7 @@ func (e *Engine) emitContext(events chan Event, tokens, window int) {
 }
 
 // microCompact 保留最近 4 条工具结果，更早的 Data 换成占位说明。
-func microCompact(conversation []relay.MaheshvaraMessage) ([]relay.MaheshvaraMessage, int) {
+func microCompact(conversation []conversationTurn) ([]conversationTurn, int) {
 	toolIndexes := make([]int, 0)
 	for index, message := range conversation {
 		if message.Role == "tool" {
@@ -114,18 +114,19 @@ func microCompact(conversation []relay.MaheshvaraMessage) ([]relay.MaheshvaraMes
 		drop[index] = true
 	}
 	cleared := 0
-	out := make([]relay.MaheshvaraMessage, len(conversation))
+	out := make([]conversationTurn, len(conversation))
 	for index, message := range conversation {
 		out[index] = message
 		if !drop[index] || len(message.Content) == 0 {
 			continue
 		}
 		part := message.Content[0]
-		if part.ToolOutput == "" || strings.Contains(part.ToolOutput, "旧命令结果已清除") {
+		if part.Payload.IsZero() || strings.Contains(string(part.Payload.Bytes()), "旧命令结果已清除") {
 			continue
 		}
-		part.ToolOutput = `{"note":"[旧命令结果已清除，需要时请重新运行]"}`
-		out[index].Content = []relay.MaheshvaraContentPart{part}
+		part.Payload, _ = protocol.EncodeValue(map[string]string{"note": "[旧命令结果已清除，需要时请重新运行]"})
+		part.Native = nil
+		out[index].Content = []protocol.Node{part}
 		cleared++
 	}
 	return out, cleared
@@ -133,7 +134,7 @@ func microCompact(conversation []relay.MaheshvaraMessage) ([]relay.MaheshvaraMes
 
 // summarizeHead 把给定前缀交给模型生成结构化摘要（失败重试，最终由调用方
 // 降级放弃）。
-func (e *Engine) summarizeHead(ctx context.Context, session *Session, head []relay.MaheshvaraMessage) (string, error) {
+func (e *Engine) summarizeHead(ctx context.Context, session *Session, head []conversationTurn) (string, error) {
 	if len(head) == 0 {
 		return "", fmt.Errorf("empty head")
 	}
@@ -148,7 +149,7 @@ func (e *Engine) summarizeHead(ctx context.Context, session *Session, head []rel
 		Model:         session.Settings.ModelName,
 		ModelSourceID: session.Settings.ModelSourceID,
 		Instructions:  "把下面的对话压缩成结构化摘要，保留：目标、已定决策、关键数据、未决事项。不要寒暄。",
-		Messages:      []relay.MaheshvaraMessage{{Role: "user", Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentText, Text: b.String()}}}},
+		Content:       textTurn(RoleUser, b.String()).Content,
 	}
 	var last error
 	for attempt := 0; attempt <= compactionRetries; attempt++ {
@@ -164,16 +165,18 @@ func (e *Engine) summarizeHead(ctx context.Context, session *Session, head []rel
 	return "", last
 }
 
-func messageText(message relay.MaheshvaraMessage) string {
+func messageText(message conversationTurn) string {
 	var parts []string
-	for _, part := range message.Content {
-		if part.Text != "" {
-			parts = append(parts, part.Text)
-		}
-		if part.ToolOutput != "" {
-			parts = append(parts, part.ToolOutput)
+	var visit func([]protocol.Node)
+	visit = func(nodes []protocol.Node) {
+		for _, node := range nodes {
+			if !node.Payload.IsZero() {
+				parts = append(parts, string(node.Payload.Bytes()))
+			}
+			visit(node.Children)
 		}
 	}
+	visit(message.Content)
 	// rune 截断：按字节切会把中文摘要前缀切成非法 UTF-8 进提示词。
 	return truncateRunes(strings.Join(parts, " "), summaryHeadTextLimit)
 }
@@ -211,7 +214,7 @@ func applySummaryBoundary(messages []Message) []Message {
 
 // estimateTokens 用字符数粗估 token（中英混合按 3 字一个 token）。只用于
 // 决定是否压缩，不用于计费。
-func estimateTokens(conversation []relay.MaheshvaraMessage) int {
+func estimateTokens(conversation []conversationTurn) int {
 	encoded, err := json.Marshal(conversation)
 	if err != nil {
 		return 0

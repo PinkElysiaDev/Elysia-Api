@@ -42,15 +42,14 @@ func newAgentIntegrationServer(t *testing.T) *Server {
 	s := &Server{
 		config:                 cfg,
 		engine:                 gin.New(),
-		openaiAdapter:          relay.NewOpenAIAdapter(10 * time.Second),
-		claudeAdapter:          relay.NewClaudeAdapter(10 * time.Second),
-		geminiAdapter:          relay.NewGeminiAdapter(10 * time.Second),
+		protocolTransport:      relay.NewProtocolTransport(10 * time.Second),
 		roundRobinIndex:        make(map[string]int),
 		rateLimits:             make(map[string]*rateLimitState),
 		affinity:               newAffinityCache(),
 		store:                  store,
 		skipOutboundValidation: true,
 	}
+	activateDiscoveryPresets(t, s)
 	return s
 }
 
@@ -105,7 +104,11 @@ func openAIChunk(id string, delta map[string]any, finish string, usage map[strin
 func openAIDone() string { return "data: [DONE]\n\n" }
 
 func toolCallDelta(index int, id, name, args string) map[string]any {
-	tool := map[string]any{"index": index, "function": map[string]any{"name": name, "arguments": args}}
+	function := map[string]any{"arguments": args}
+	if name != "" {
+		function["name"] = name
+	}
+	tool := map[string]any{"index": index, "function": function}
 	if id != "" {
 		tool["id"] = id
 		tool["type"] = "function"
@@ -394,7 +397,7 @@ func TestAgentStalePendingApprovalRejected(t *testing.T) {
 			sessionID := created.ID
 			waiting := agent.StatusWaitingApproval
 			pending := &agent.PendingAction{
-				Calls:  []relay.MaheshvaraToolCall{{ID: "call_1", Type: "function", Name: oldName, Arguments: json.RawMessage(`{"command":"elysia group create --name legacy-side-effect"}`)}},
+				Calls:  []agent.FunctionCall{{ID: "call_1", Type: "function", Name: oldName, Arguments: json.RawMessage(`{"command":"elysia group create --name legacy-side-effect"}`)}},
 				Reason: "legacy pending",
 			}
 			if err := s.store.UpdateSessionState(t.Context(), sessionID, agent.SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
@@ -576,12 +579,12 @@ func TestAgentThinkingEffortWhitelist(t *testing.T) {
 func seedAgentModel(t *testing.T, s *Server, baseURL string) {
 	t.Helper()
 	source := storage.ModelSource{ID: "s1", Name: "src", BaseURL: baseURL, Platform: "openai", Enabled: true}
-	if err := s.store.UpsertSource(t.Context(), source); err != nil {
+	if err := s.saveSource(t.Context(), source); err != nil {
 		t.Fatalf("UpsertSource: %v", err)
 	}
 	models := []storage.Model{{
 		ID: "fake-model", SourceID: "s1", Name: "fake-model", BaseURL: baseURL,
-		APIKey: "", Platform: "openai", Type: "llm", Enabled: true, Available: true,
+		APIKey: "", Platform: "openai", Type: "llm", Enabled: true, Available: true, ToolsCapable: true, VisionCapable: true,
 	}}
 	if err := s.store.ReplaceSourceModels(t.Context(), source, models); err != nil {
 		t.Fatalf("ReplaceSourceModels: %v", err)

@@ -41,6 +41,20 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 	var output Value
 	var err error
 	switch input.Mode {
+	case "agent":
+		var preferences AgentPreferences
+		err = decodeContract(input.Input.Bytes(), &preferences)
+		if err == nil {
+			semantic, err = compiled.BuildAgentParameters(ctx, preferences)
+		}
+		if err == nil {
+			output, err = EncodeValue(semantic)
+		}
+	case "models":
+		semantic, err = compiled.DecodeModelPage(ctx, input.Operation, input.Input)
+		if err == nil {
+			output, err = EncodeValue(semantic)
+		}
 	case "task":
 		output, err = executeTaskSample(ctx, compiled, TaskSample{ID: "preview", Operation: input.Operation, Kind: input.Kind, Purpose: input.Purpose, Input: input.Input})
 		semantic = input.Input

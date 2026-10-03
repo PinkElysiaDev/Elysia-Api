@@ -6,14 +6,15 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/elysia-api/backend/config"
-	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/storage"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/storage"
+	"github.com/gin-gonic/gin"
 )
 
 type gatewayCandidate struct {
@@ -59,6 +60,9 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		return nil, err
 	}
 	plan.request = request
+	if err := ingress.CheckOperationInput(plan.operation, body); err != nil {
+		return nil, err
+	}
 	if plan.operation.Transport != protocol.WebSocket {
 		if request.Parameters == nil {
 			request.Parameters = protocol.Object{}
@@ -71,10 +75,6 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 	var issues []protocol.ConversionIssue
 	var eligible []gatewayCandidate
 	for _, candidate := range plan.candidates {
-		if err := checkGatewayCombination(ingress, candidate); err != nil {
-			issues = append(issues, err.Issues...)
-			continue
-		}
 		if plan.operation.Transport == protocol.WebSocket {
 			if err := protocol.CheckSessionCompatibility(plan.operation, candidate.operation); err != nil {
 				var conversion *protocol.ConversionError
@@ -85,12 +85,12 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 			}
 		}
 		constrained := constrainGatewayCapabilities(candidate.binding, candidate.model, plan.group, bindings)
-		candidateIssues := protocol.CheckRoute(request, candidate.compiled, constrained, candidate.scope, candidate.operation.Transport)
+		matched, candidateIssues := matchGatewayCombination(ingress, candidate, request, constrained)
 		if len(candidateIssues) > 0 {
 			issues = append(issues, candidateIssues...)
 			continue
 		}
-		candidate.binding = constrained
+		candidate.binding = matched
 		eligible = append(eligible, candidate)
 	}
 	if len(eligible) == 0 {
@@ -140,7 +140,7 @@ func verifyGatewayBinding(ctx context.Context, view protocol.RegistryView, upstr
 	for _, id := range view.IDs() {
 		ingress, _ := view.Pin(id)
 		if ingress.Supports(protocol.DecodeRequest) && (ingress.Supports(protocol.EncodeResponse) || ingress.Supports(protocol.EncodeEvent)) {
-			reports = append(reports, protocol.VerifyBindingCombination(ctx, ingress, upstream, capabilities))
+			reports = append(reports, protocol.VerifyBindingProfiles(ctx, ingress, upstream, capabilities)...)
 		}
 	}
 	return reports
@@ -155,25 +155,32 @@ func hasPassingGatewayCombination(reports []protocol.CombinationReport) bool {
 	return false
 }
 
-func checkGatewayCombination(ingress *protocol.Compiled, candidate gatewayCandidate) *protocol.ConversionError {
+func matchGatewayCombination(ingress *protocol.Compiled, candidate gatewayCandidate, request *protocol.Request, constrained protocol.Binding) (protocol.Binding, []protocol.ConversionIssue) {
+	var diagnostics []protocol.ConversionIssue
+	contractHash := protocol.CapabilityContractHash(candidate.binding.Capabilities)
 	for _, report := range candidate.combinations {
-		if report.SourceHash != ingress.Hash() || report.TargetHash != candidate.compiled.Hash() || report.CompilerVersion != protocol.CompilerVersion || report.Kind != protocol.OfflineVerification {
+		if report.SourceHash != ingress.Hash() || report.TargetHash != candidate.compiled.Hash() || report.CompilerVersion != protocol.CompilerVersion || report.Kind != protocol.OfflineVerification || report.BindingHash != contractHash {
 			continue
 		}
 		if !report.Passed {
-			return &protocol.ConversionError{Issues: report.Issues}
+			diagnostics = append(diagnostics, report.Issues...)
+			continue
 		}
-		if len(report.Capabilities) != len(candidate.binding.Capabilities) {
-			break
+		matched := constrained
+		matched.Capabilities = protocol.CapabilitySet{}
+		for capability, supported := range constrained.Capabilities {
+			matched.Capabilities[capability] = supported && report.Capabilities[capability]
 		}
-		for capability, supported := range candidate.binding.Capabilities {
-			if report.Capabilities[capability] != supported {
-				return gatewayIssue(candidate.compiled.Identity(), protocol.VerificationMismatch, "/binding/capabilities", "binding capabilities changed after paired verification")
-			}
+		if issues := protocol.CheckRoute(request, candidate.compiled, matched, candidate.scope, candidate.operation.Transport); len(issues) > 0 {
+			diagnostics = append(diagnostics, issues...)
+			continue
 		}
-		return nil
+		return matched, nil
 	}
-	return gatewayIssue(candidate.compiled.Identity(), protocol.VerificationRequired, "/binding/combinations", "ingress/upstream revisions require paired offline verification; save the binding again")
+	if len(diagnostics) == 0 {
+		diagnostics = gatewayIssue(candidate.compiled.Identity(), protocol.VerificationRequired, "/binding/combinations", "ingress/upstream revisions require paired offline verification for the current binding; save the binding again").Issues
+	}
+	return protocol.Binding{}, diagnostics
 }
 
 func modelProtocolScope(model config.ModelRef) protocol.Scope {
@@ -240,6 +247,12 @@ func selectGatewayIngressOperation(compiled *protocol.Compiled, method, path str
 func (s *Server) bindGatewayRequest(c *gin.Context, view protocol.RegistryView, bindings []storage.ProtocolBinding, plan *gatewayPlan, path string, request *protocol.Request, record *usageRecord) (protocol.Scope, error) {
 	ingress := plan.ingress
 
+	operation, err := selectGatewayIngressOperation(ingress, c.Request.Method, path, request)
+	if err != nil {
+		return protocol.Scope{}, err
+	}
+	plan.operation = operation
+	record.Stream = operation.Transport != protocol.HTTPJSON
 	var groupName string
 	if err := request.Model.Decode(&groupName); err != nil || strings.TrimSpace(groupName) == "" {
 		return protocol.Scope{}, gatewayIssue(ingress.Identity(), protocol.InvalidInput, "/model", "request requires a model group")
@@ -250,15 +263,10 @@ func (s *Server) bindGatewayRequest(c *gin.Context, view protocol.RegistryView, 
 	}
 	group, failure := s.validateModelGroup(groupName)
 	if failure != nil {
-		return protocol.Scope{}, &gatewayFailure{http.StatusNotFound, fmt.Errorf("model group is unavailable")}
+		return protocol.Scope{}, &gatewayFailure{failure.Class.HTTPStatus(), failure}
 	}
 	plan.group = group
 	setRecordGroup(record, group)
-	operation, err := selectGatewayIngressOperation(ingress, c.Request.Method, path, request)
-	if err != nil {
-		return protocol.Scope{}, err
-	}
-	plan.operation = operation
 	for _, binding := range bindings {
 		if binding.Kind != "group" || binding.GroupID != group.ID {
 			continue

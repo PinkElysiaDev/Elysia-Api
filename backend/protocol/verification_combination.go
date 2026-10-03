@@ -16,6 +16,8 @@ type CombinationReport struct {
 	Checks          []VerificationCheck `json:"checks"`
 	Issues          []ConversionIssue   `json:"issues"`
 	Capabilities    CapabilitySet       `json:"capabilities,omitempty"`
+	BindingHash     string              `json:"bindingHash,omitempty"`
+	IsRestricted    bool                `json:"restricted,omitempty"`
 }
 
 // VerifyCombination replays ingress request and upstream response fixtures
@@ -36,6 +38,7 @@ func VerifyBindingCombination(ctx context.Context, ingress, upstream *Compiled, 
 func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabilities CapabilitySet) CombinationReport {
 	report := CombinationReport{SourceHash: ingress.hash, TargetHash: upstream.hash, CompilerVersion: CompilerVersion, Kind: OfflineVerification, Checks: []VerificationCheck{}, Issues: []ConversionIssue{}}
 	if capabilities != nil {
+		report.BindingHash = CapabilityContractHash(capabilities)
 		report.Capabilities = CapabilitySet{}
 		for capability, supported := range capabilities {
 			report.Capabilities[capability] = supported
@@ -173,15 +176,15 @@ func inspectBindingSample(ctx context.Context, compiled *Compiled, sample Sample
 		return false, nil
 	} // The normal replay reports the failure.
 	observed := observeCapabilities(result.semantic).observed
-	if allowed != nil && exceedsCapabilities(observed, allowed) {
-		report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Direction: direction, Skipped: true, Reason: "sample exceeds the model binding's declared capabilities"})
-		return true, nil
-	}
 	capabilities := []Capability{}
 	for _, capability := range CapabilityCatalog() {
 		if observed[capability] {
 			capabilities = append(capabilities, capability)
 		}
+	}
+	if allowed != nil && exceedsCapabilities(observed, allowed) {
+		report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Direction: direction, Skipped: true, Capabilities: capabilities, Reason: "sample exceeds the model binding's declared capabilities"})
+		return true, nil
 	}
 	return false, capabilities
 }
@@ -247,6 +250,14 @@ func verifyRequestCombination(ctx context.Context, ingress, upstream *Compiled, 
 	wire, err := upstream.EncodeRequest(ctx, request, options)
 	if err != nil {
 		return err
+	}
+	for _, name := range sortedKeys(upstream.operations) {
+		operation := upstream.operations[name]
+		if operation.Kind == "generate" || operation.Kind == "submit" {
+			if err := upstream.CheckOperationInput(operation, wire); err != nil {
+				return err
+			}
+		}
 	}
 	if !upstream.Supports(DecodeRequest) {
 		return nil

@@ -10,9 +10,9 @@ import (
 const maxBuiltinChoices = 1
 
 var parameterFields = map[string]map[string]string{
-	Chat:      {"max_completion_tokens": "max_output_tokens", "temperature": "temperature", "top_p": "top_p", "stop": "stop", "stream": "stream", "parallel_tool_calls": "parallel_tool_calls", "seed": "seed", "frequency_penalty": "frequency_penalty", "presence_penalty": "presence_penalty", "metadata": "metadata", "store": "store", "user": "user", "response_format": "response_format", "reasoning_effort": "reasoning_effort", "n": "n", "logprobs": "logprobs", "top_logprobs": "top_logprobs", "logit_bias": "logit_bias"},
+	Chat:      {"max_completion_tokens": "max_output_tokens", "temperature": "temperature", "top_p": "top_p", "stop": "stop", "stream": "stream", "parallel_tool_calls": "parallel_tool_calls", "seed": "seed", "frequency_penalty": "frequency_penalty", "presence_penalty": "presence_penalty", "metadata": "metadata", "store": "store", "user": "user", "response_format": "response_format", "reasoning_effort": "reasoning_effort", "stream_options": "stream_options", "n": "n", "logprobs": "logprobs", "top_logprobs": "top_logprobs", "logit_bias": "logit_bias"},
 	Responses: {"max_output_tokens": "max_output_tokens", "temperature": "temperature", "top_p": "top_p", "stream": "stream", "parallel_tool_calls": "parallel_tool_calls", "metadata": "metadata", "store": "store", "user": "user", "reasoning": "responses_reasoning", "text": "responses_text", "include": "responses_include", "previous_response_id": "responses_previous_response_id", "truncation": "responses_truncation"},
-	Anthropic: {"max_tokens": "max_output_tokens", "temperature": "temperature", "top_p": "top_p", "top_k": "top_k", "stop_sequences": "stop", "stream": "stream", "metadata": "anthropic_metadata", "thinking": "anthropic_thinking"},
+	Anthropic: {"max_tokens": "max_output_tokens", "temperature": "temperature", "top_p": "top_p", "top_k": "top_k", "stop_sequences": "stop", "stream": "stream", "metadata": "anthropic_metadata", "thinking": "anthropic_thinking", "output_config": "anthropic_output_config"},
 	Gemini:    {"maxOutputTokens": "max_output_tokens", "temperature": "temperature", "topP": "top_p", "topK": "top_k", "stopSequences": "stop", "seed": "seed", "candidateCount": "n", "responseMimeType": "gemini_response_mime", "responseSchema": "gemini_response_schema", "thinkingConfig": "gemini_thinking"},
 }
 
@@ -78,7 +78,11 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 			request.Parameters["gemini_generation_extensions"] = extra
 		}
 	}
-	for _, entry := range []struct{ field, kind string }{{"cache_control", "breakpoint"}, {"prompt_cache_key", "key"}, {"prompt_cache_retention", "retention"}} {
+	request.Cache, err = decodeCache(fields, "request")
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range []struct{ field, kind string }{{"prompt_cache_key", "key"}, {"prompt_cache_retention", "retention"}} {
 		if value := fields[entry.field]; !value.IsZero() {
 			request.Cache = append(request.Cache, p.CacheIntent{Kind: entry.kind, Location: "request", Value: value})
 		}
@@ -116,7 +120,11 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 		if err != nil {
 			return nil, err
 		}
-		request.Content = append(request.Content, p.Node{Kind: p.MessageNode, Role: p.StringValue("system"), Children: children})
+		node := p.Node{Kind: p.MessageNode, Role: p.StringValue("system"), Children: children}
+		if adapter.name == Responses {
+			node.Native = adapter.native(system, "/instructions", p.DecodeRequest, options)
+		}
+		request.Content = append(request.Content, node)
 	}
 	if adapter.name == Responses && !content.IsZero() && !content.IsNull() && !strings.HasPrefix(strings.TrimSpace(string(content.Bytes())), "[") {
 		text, err := stringValue(content)
@@ -238,7 +246,16 @@ func (adapter module) encodeRequest(request *p.Request, options p.EvaluationCont
 	if adapter.name == Gemini && len(parameterOutput) > 0 {
 		fields["generationConfig"] = object(parameterOutput)
 	}
-	content, system, err := adapter.encodeMessages(request.Content, p.EncodeRequest, options)
+	nodes := request.Content
+	if adapter.name == Responses && len(nodes) > 0 && hasNativeInstructions(nodes[0], options) {
+		instructions, err := encodeNativeInstructions(nodes[0])
+		if err != nil {
+			return p.Value{}, err
+		}
+		fields["instructions"] = instructions
+		nodes = nodes[1:]
+	}
+	content, system, err := adapter.encodeMessages(nodes, p.EncodeRequest, options)
 	if err != nil {
 		return p.Value{}, err
 	}
@@ -271,7 +288,12 @@ func (adapter module) encodeRequest(request *p.Request, options p.EvaluationCont
 			if adapter.name != Anthropic {
 				return p.Value{}, unsupported("/cache", "target has no top-level cache breakpoint")
 			}
-			fields["cache_control"] = intent.Value
+			if !fields["cache_control"].IsZero() {
+				return p.Value{}, unsupported("/cache", "one wire cache_control cannot express multiple policies")
+			}
+			if err := encodeCache(fields, []p.CacheIntent{intent}); err != nil {
+				return p.Value{}, err
+			}
 		case "key", "retention":
 			if adapter.name != Chat && adapter.name != Responses {
 				return p.Value{}, unsupported("/cache", "target has no cache key/retention mapping")
@@ -301,4 +323,32 @@ func (adapter module) encodeRequest(request *p.Request, options p.EvaluationCont
 		return p.Value{}, err
 	}
 	return object(fields), nil
+}
+
+func hasNativeInstructions(node p.Node, options p.EvaluationContext) bool {
+	return node.Native != nil && node.Native.Source.Path == "/instructions" &&
+		p.CanPreserveNative(node.Native.Source, p.Target{Protocol: options.Identity(), Direction: p.EncodeRequest})
+}
+
+func encodeNativeInstructions(node p.Node) (p.Value, error) {
+	if node.Kind != p.MessageNode || node.Role != p.StringValue("system") || hasStringMetadata(node) || !node.Payload.IsZero() {
+		return p.Value{}, unsupported("/instructions", "modified instructions cannot be represented as a native system string")
+	}
+	if len(node.Children) == 0 && node.Native.Value.IsNull() {
+		return node.Native.Value, nil
+	}
+	if len(node.Children) != 1 {
+		return p.Value{}, unsupported("/instructions", "native instructions require one text block")
+	}
+	text := node.Children[0]
+	if text.Kind != p.TextNode || hasStringMetadata(text) || !text.Role.IsZero() || len(text.Children) > 0 {
+		return p.Value{}, unsupported("/instructions", "native instructions cannot carry block metadata")
+	}
+	return text.Payload, nil
+}
+
+// A native string has no location for semantic identity or block metadata.
+func hasStringMetadata(node p.Node) bool {
+	return !node.ID.IsZero() || !node.Status.IsZero() || !node.Name.IsZero() || !node.CallID.IsZero() ||
+		node.Input != nil || node.ReasoningForm != "" || len(node.Cache) > 0 || len(node.Attributes) > 0 || len(node.Resources) > 0
 }

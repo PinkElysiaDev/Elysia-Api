@@ -36,6 +36,11 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 	if !event.ResponseID.IsZero() {
 		collector.response.ID = event.ResponseID
 	}
+	if event.Response != nil {
+		if err := CheckGenerationOutcome(event.Response); err != nil {
+			return "", "", err
+		}
+	}
 	switch event.Type {
 	case ResponseStarted:
 		if event.Response != nil {
@@ -234,6 +239,23 @@ func (collector *ResponseCollector) Finish() (*Response, error) {
 	}
 	collector.response.Usage = collector.replay.Usage()
 	return &collector.response, nil
+}
+
+// Partial returns a snapshot for diagnostics after interruption. It is never a
+// successful terminal and cannot authorize execution of incomplete tool calls.
+func (collector *ResponseCollector) Partial() (*Response, error) {
+	partial := collector.response
+	partial.Status = StringValue("incomplete")
+	partial.Usage = collector.replay.Usage()
+	value, err := EncodeValue(partial)
+	if err != nil {
+		return nil, err
+	}
+	var result Response
+	if err := value.Decode(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 func (collector *ResponseCollector) finishTools() error {

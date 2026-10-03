@@ -39,6 +39,11 @@ func (state *nativeReconciler) merge(original, before, after Value, path string,
 	if equalValues(before, after) {
 		return original, nil
 	}
+	// A fully represented subtree has no unmapped native fields to associate.
+	// Its semantic replacement is authoritative, including reorders and deletions.
+	if equalValues(original, before) {
+		return after, nil
+	}
 	if original.IsObject() && before.IsObject() && after.IsObject() {
 		return state.mergeObject(original, before, after, path, depth)
 	}

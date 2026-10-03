@@ -4,60 +4,54 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/elysia-api/backend/protocol/builtin"
+
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/relay"
 	"github.com/gin-gonic/gin"
 )
 
-var publicProtocolIDs = map[relay.FormatType]string{
-	relay.FormatOpenAIChat: "chat-completions-api",
-	relay.FormatResponses:  "responses-api",
-	relay.FormatClaude:     "anthropic-api",
-	relay.FormatGemini:     "gemini-api",
+var publicProtocolIDs = map[builtin.FormatType]string{
+	builtin.FormatOpenAIChat: "chat-completions-api",
+	builtin.FormatResponses:  "responses-api",
+	builtin.FormatClaude:     "anthropic-api",
+	builtin.FormatGemini:     "gemini-api",
 }
 
-// serveVersionedPublicIngress is the staged cutover point. C15 installs the
-// verified public revisions; C16 removes callers' legacy branch entirely.
-func (s *Server) serveVersionedPublicIngress(c *gin.Context) bool {
+func (s *Server) serveVersionedPublicIngress(c *gin.Context) {
 	if !s.requireProtocolRuntime(c) {
-		return true
-	}
-	if s.store == nil {
-		return false
+		return
 	}
 	service, err := s.protocolService()
 	if err != nil {
 		respondProtocolError(c, err)
-		return true
+		return
 	}
 	format := inputFormatFromPath(c.Request.URL.Path)
-	if format == relay.FormatOpenAI {
-		format = relay.FormatOpenAIChat
+	if format == builtin.FormatOpenAI {
+		format = builtin.FormatOpenAIChat
 	}
 	view := service.View()
 	ingress, exists := view.Pin(publicProtocolIDs[format])
 	if !exists {
-		if s.isProtocolRuntimeRequired.Load() {
-			respondFail(c, http.StatusServiceUnavailable, "inactive_protocol", "public endpoint requires its verified active protocol revision")
-			return true
-		}
-		return false
+		respondFail(c, http.StatusServiceUnavailable, "inactive_protocol", "public endpoint requires its verified active protocol revision")
+		return
 	}
+
 	if ingress.Identity().Family != string(format) {
 		respondProtocolError(c, gatewayIssue(ingress.Identity(), protocol.InvalidDefinition, "/family", "public endpoint requires its documented wire family"))
-		return true
+		return
 	}
-	if format == relay.FormatResponses {
+	if format == builtin.FormatResponses {
 		configuration := s.config.GetResponsesConfig()
 		if configuration.Enabled != nil && !*configuration.Enabled {
 			respondFail(c, http.StatusNotFound, "unsupported_endpoint", "Responses API is disabled")
-			return true
+			return
 		}
 	}
-	body, err := protocol.ReadBoundedBody(c.Request.Body, protocol.DefaultLimits().BufferBytes)
+	body, err := protocol.ReadBoundedBody(c.Request.Body, ingress.ResourceLimits().BufferBytes)
 	if err != nil {
 		respondFail(c, http.StatusBadRequest, "invalid_input", err.Error())
-		return true
+		return
 	}
 	path := c.Request.URL.Path
 	// Existing base URLs can include /v1 or /v1beta; operation paths remain
@@ -66,10 +60,9 @@ func (s *Server) serveVersionedPublicIngress(c *gin.Context) bool {
 		for _, operation := range ingress.Operations() {
 			if _, matches := protocol.MatchOperationPath(operation.Path, candidate); matches {
 				s.serveProtocolRequest(c, view, ingress, candidate, body)
-				return true
+				return
 			}
 		}
 	}
 	s.serveProtocolRequest(c, view, ingress, path, body)
-	return true
 }

@@ -5,7 +5,7 @@ package protocol
 const DefinitionSchemaVersion = 2
 
 // CompilerVersion binds verification evidence to execution semantics.
-const CompilerVersion = "2.0.0-dev.6"
+const CompilerVersion = "2.0.0-dev.8"
 
 // Transport identifies framing and connection lifecycle, never content shape.
 type Transport string
@@ -35,6 +35,8 @@ type Definition struct {
 	Limits         *Limits               `json:"limits,omitempty"`
 	Samples        []Sample              `json:"samples"`
 	TaskSamples    []TaskSample          `json:"taskSamples,omitempty"`
+	ModelSamples   []ModelSample         `json:"modelSamples,omitempty"`
+	Agent          *AgentConfig          `json:"agent,omitempty"`
 	SessionSamples []SessionSample       `json:"sessionSamples,omitempty"`
 	Extensions     Object                `json:"extensions,omitempty"`
 }
@@ -46,12 +48,15 @@ type Mapping struct {
 	Capabilities CapabilitySet `json:"capabilities,omitzero"`
 	Module       string        `json:"module,omitempty"`
 	After        *Expression   `json:"after,omitempty"`
-	Transform    *Expression   `json:"transform,omitempty"`
-	Input        *ValueSchema  `json:"input,omitempty"`
-	Output       *ValueSchema  `json:"output,omitempty"`
-	Rules        []EventRule   `json:"rules,omitempty"`
-	UnknownEvent string        `json:"unknownEvent,omitempty"`
-	FrameBatch   bool          `json:"frameBatch,omitempty"`
+	// Initial declares the prefix emitted once before the first nonempty
+	// decoded event frame, for providers whose stream omits an item-start frame.
+	Initial      *Expression  `json:"initial,omitempty"`
+	Transform    *Expression  `json:"transform,omitempty"`
+	Input        *ValueSchema `json:"input,omitempty"`
+	Output       *ValueSchema `json:"output,omitempty"`
+	Rules        []EventRule  `json:"rules,omitempty"`
+	UnknownEvent string       `json:"unknownEvent,omitempty"`
+	FrameBatch   bool         `json:"frameBatch,omitempty"`
 }
 
 // EventRule maps a matching wire frame to one event or an ordered event array.
@@ -85,6 +90,10 @@ type Operation struct {
 	Framing   *Framing          `json:"framing,omitempty"`
 	Task      *TaskFlow         `json:"task,omitempty"`
 	Session   *SessionConfig    `json:"session,omitempty"`
+	Models    *ModelDiscovery   `json:"models,omitempty"`
+	// Input constrains this operation's wire body independently of the shared
+	// decoder, which may also serve inspection or token counting.
+	Input *ValueSchema `json:"input,omitempty"`
 }
 
 // Credential selects supported credential injection; it contains no secret.
@@ -97,6 +106,9 @@ type Credential struct {
 // Framing defines end markers and optional SSE event names. JSON event bodies
 // still use the same expression compiler as HTTP requests and responses.
 type Framing struct {
+	// IdleMillis bounds an HTTP stream read, including the initial response.
+	// Zero uses DefaultStreamIdleMillis; this is not a total stream lifetime.
+	IdleMillis    int      `json:"idleMillis,omitempty"`
 	Done          []string `json:"done,omitempty"`
 	EventName     string   `json:"eventName,omitempty"`
 	EventNamePath string   `json:"eventNamePath,omitempty"`
@@ -130,6 +142,7 @@ type TaskSample struct {
 // Expected is required; a successful HTTP status cannot replace an assertion.
 type Sample struct {
 	ID            string       `json:"id"`
+	Operation     string       `json:"operation,omitempty"`
 	Direction     Direction    `json:"direction"`
 	Capabilities  []Capability `json:"capabilities"`
 	Input         Value        `json:"input"`

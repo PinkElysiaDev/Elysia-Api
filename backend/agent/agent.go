@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/protocol"
 )
 
 // Engine 是领域无关的 Agent 执行引擎：模型流式调用 → 工具分发 → 门控暂停/
@@ -49,7 +49,7 @@ type Options struct {
 	ContextWindowTokens int
 	// ParseAsk 把 ask_user 的调用参数解析为问题；宿主在装配时注入（引擎
 	// 不认识工具参数形状）。nil 时 ask_user 按普通工具执行并返回错误。
-	ParseAsk func(call relay.MaheshvaraToolCall) (AskQuestion, bool)
+	ParseAsk func(call FunctionCall) (AskQuestion, bool)
 }
 
 // DefaultMaxModelCalls 是单轮工具循环的默认模型调用上限。
@@ -75,26 +75,28 @@ func (o Options) withDefaults() Options {
 		o.ContextWindowTokens = defaultContextWindow
 	}
 	if o.ParseAsk == nil {
-		o.ParseAsk = func(relay.MaheshvaraToolCall) (AskQuestion, bool) { return AskQuestion{}, false }
+		o.ParseAsk = func(FunctionCall) (AskQuestion, bool) { return AskQuestion{}, false }
 	}
 	return o
 }
 
-// UserContentRenderer 把用户消息（含附件）渲染为 Maheshvara 内容块。
-// 平台差异（如文档 part 的 data URL vs 裸 base64）由宿主实现处理——引擎
-// 不知道目标平台。
+// UserContentRenderer builds ordered semantic content, independent of the
+// target protocol. Wire adapters own provider-specific media serialization.
 type UserContentRenderer interface {
-	RenderUserContent(meta SessionMeta, content *UserContent) ([]relay.MaheshvaraContentPart, error)
+	RenderUserContent(meta SessionMeta, content *UserContent) ([]protocol.Node, error)
 }
 
-// TextUserContentRenderer 是最简渲染器：纯文本，不处理附件（兜底用）。
+// TextUserContentRenderer accepts text and rejects unsupported attachments.
 type TextUserContentRenderer struct{}
 
-func (TextUserContentRenderer) RenderUserContent(meta SessionMeta, content *UserContent) ([]relay.MaheshvaraContentPart, error) {
+func (TextUserContentRenderer) RenderUserContent(meta SessionMeta, content *UserContent) ([]protocol.Node, error) {
+	if len(content.Documents) > 0 {
+		return nil, fmt.Errorf("text content renderer cannot represent attachments")
+	}
 	if content.Text == "" {
 		return nil, nil
 	}
-	return []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentText, Text: content.Text}}, nil
+	return []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue(content.Text)}}, nil
 }
 
 // ApprovalDecision 是用户对暂停动作的裁决。Answer 用于 ask_user 的作答。
@@ -196,9 +198,6 @@ func (e *Engine) RunTurn(ctx context.Context, sessionID string, input *UserConte
 // ResumeApproval 恢复一个等待审批的轮次：执行或拒绝待定动作，然后继续
 // 模型循环。
 func (e *Engine) ResumeApproval(ctx context.Context, sessionID string, decision ApprovalDecision) (<-chan Event, error) {
-	if ctx == nil {
-		ctx = context.Background() // 仅测试直传 nil 时触发；HTTP 路径恒非 nil
-	}
 	session, err := e.store.GetSession(ctx, sessionID)
 	if err != nil {
 		return nil, err
@@ -409,7 +408,7 @@ func (e *Engine) checkPendingTools(pending *PendingAction) error {
 // resumeQuestion 把用户作答合成 ask_user 的工具结果；同批其余调用一律合成
 // 取消结果——整批 tool_calls 早已持久化在 assistant 消息里，缺任何一个的
 // 结果，下一次模型调用都会被上游以配对不完整拒绝（400）。
-func (e *Engine) resumeQuestion(ctx context.Context, sessionID string, resume *PendingAction, decision ApprovalDecision, conversation []relay.MaheshvaraMessage, events chan Event) ([]relay.MaheshvaraMessage, bool, error) {
+func (e *Engine) resumeQuestion(ctx context.Context, sessionID string, resume *PendingAction, decision ApprovalDecision, conversation []conversationTurn, events chan Event) ([]conversationTurn, bool, error) {
 	answer := strings.TrimSpace(decision.Answer)
 	if answer == "" {
 		answer = strings.TrimSpace(decision.Note)
@@ -439,7 +438,7 @@ func (e *Engine) resumeQuestion(ctx context.Context, sessionID string, resume *P
 }
 
 // resumePlan 处理方案定稿：确认关闭计划模式；否则把修改意见交回模型。
-func (e *Engine) resumePlan(ctx context.Context, sessionID string, session *Session, decision ApprovalDecision, conversation []relay.MaheshvaraMessage, events chan Event) ([]relay.MaheshvaraMessage, bool, error) {
+func (e *Engine) resumePlan(ctx context.Context, sessionID string, session *Session, decision ApprovalDecision, conversation []conversationTurn, events chan Event) ([]conversationTurn, bool, error) {
 	if decision.Approved {
 		off := false
 		if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{SettingsPlanMode: &off}); err == nil {
@@ -447,17 +446,17 @@ func (e *Engine) resumePlan(ctx context.Context, sessionID string, session *Sess
 		}
 		note := "用户已确认方案，计划模式已关闭。请按方案逐步执行。"
 		_, _ = e.store.AppendMessage(ctx, sessionID, RoleSystem, SystemContent{Kind: "info", Text: note}, "", nil)
-		return append(conversation, relay.MaheshvaraMessage{Role: "user", Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentText, Text: note}}}), false, nil
+		return append(conversation, textTurn(RoleUser, note)), false, nil
 	}
 	feedback := strings.TrimSpace(decision.Note)
 	if feedback == "" {
 		feedback = "用户认为方案需要修改，请先询问具体意见。"
 	}
 	_, _ = e.store.AppendMessage(ctx, sessionID, RoleUser, UserContent{Text: feedback}, "", nil)
-	return append(conversation, relay.MaheshvaraMessage{Role: "user", Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentText, Text: feedback}}}), false, nil
+	return append(conversation, textTurn(RoleUser, feedback)), false, nil
 }
 
-func (e *Engine) resumeApprovalPrefix(ctx context.Context, sessionID string, session *Session, resume *PendingAction, decision ApprovalDecision, conversation []relay.MaheshvaraMessage, events chan Event) ([]relay.MaheshvaraMessage, bool, error) {
+func (e *Engine) resumeApprovalPrefix(ctx context.Context, sessionID string, session *Session, resume *PendingAction, decision ApprovalDecision, conversation []conversationTurn, events chan Event) ([]conversationTurn, bool, error) {
 	if resume.Kind == PendingKindQuestion {
 		return e.resumeQuestion(ctx, sessionID, resume, decision, conversation, events)
 	}
@@ -518,7 +517,7 @@ func (e *Engine) resumeApprovalPrefix(ctx context.Context, sessionID string, ses
 func (e *Engine) handleCallFailure(ctx context.Context, sessionID string, session *Session, handle *turnHandle, result *CallResult, err error, events chan Event) {
 	finCtx := context.WithoutCancel(ctx)
 	if result != nil && (result.Text != "" || result.Reasoning != "") {
-		e.persistAssistant(finCtx, sessionID, session, AssistantContent{Text: result.Text, Reasoning: result.Reasoning}, result.Usage, events)
+		e.persistAssistant(finCtx, sessionID, session, AssistantContent{IsIncomplete: true, Content: result.Content, Text: result.Text, Reasoning: result.Reasoning}, result.Usage, events)
 	}
 	reason := "模型调用失败"
 	retryable := true
@@ -537,13 +536,12 @@ func (e *Engine) handleCallFailure(ctx context.Context, sessionID string, sessio
 
 // modelLoop 运行「模型调用 → 工具执行」循环直到模型给出终稿正文、暂停审批、
 // 出错或到达上限。
-func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Session, handle *turnHandle, conversation []relay.MaheshvaraMessage, started time.Time, events chan Event) {
-	var usageTotal relay.MaheshvaraUsage
-	sawUsage := false
+func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Session, handle *turnHandle, conversation []conversationTurn, started time.Time, events chan Event) {
+	var usageTotal *protocol.Usage
 	rounds := 0
 	paused := false
 
-	defer e.finalizeTurn(ctx, sessionID, session, started, &usageTotal, &sawUsage, &rounds, &paused, events)
+	defer e.finalizeTurn(ctx, sessionID, session, started, &usageTotal, &rounds, &paused, events)
 
 	maxModelCalls := e.opts.MaxModelCalls
 	if session.Settings.MaxModelCalls > 0 {
@@ -564,9 +562,16 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 			OnText:      func(delta string) { emitEvent(events, Event{Type: EventTextDelta, Delta: delta}) },
 			OnReasoning: func(delta string) { emitEvent(events, Event{Type: EventReasoningDelta, Delta: delta}) },
 		})
-		if result != nil && result.Usage != nil {
-			accumulateUsage(&usageTotal, result.Usage)
-			sawUsage = true
+		if result != nil {
+			var usageErr error
+			if round == 0 {
+				usageTotal = protocol.MergeUsage(nil, result.Usage)
+			} else {
+				usageTotal, usageErr = addUsage(usageTotal, result.Usage)
+			}
+			if usageErr != nil && err == nil {
+				err = usageErr
+			}
 		}
 		if err != nil {
 			e.handleCallFailure(ctx, sessionID, session, handle, result, err, events)
@@ -579,13 +584,13 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 			return
 		}
 
-		content := AssistantContent{Text: result.Text, Reasoning: result.Reasoning, ToolCalls: result.ToolCalls}
+		content := AssistantContent{Content: result.Content, Text: result.Text, Reasoning: result.Reasoning, ToolCalls: result.ToolCalls}
 		e.persistAssistant(ctx, sessionID, session, content, result.Usage, events)
 
 		if len(result.ToolCalls) == 0 {
 			return // 终稿
 		}
-		conversation = append(conversation, assistantToMaheshvara(content))
+		conversation = append(conversation, assistantTurn(content))
 
 		paused, err = e.executeCalls(ctx, sessionID, session, &conversation, result.ToolCalls, result.Text, nil, events)
 		if err != nil {
@@ -611,14 +616,13 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 }
 
 // buildTurnRequest 组装一次模型调用：会话设置映射为请求参数 + 系统提示词。
-func (e *Engine) buildTurnRequest(session *Session, conversation []relay.MaheshvaraMessage, nudgePlan bool) CallRequest {
+func (e *Engine) buildTurnRequest(session *Session, conversation []conversationTurn, nudgePlan bool) CallRequest {
 	req := CallRequest{
 		Model:         session.Settings.ModelName,
 		ModelSourceID: session.Settings.ModelSourceID,
-		Messages:      conversation,
+		Content:       flattenConversation(conversation),
 		Tools:         e.tools.Definitions(),
-		Thinking:      thinkingFromSettings(session.Settings),
-		Reasoning:     reasoningFromSettings(session.Settings),
+		Preferences:   protocol.AgentPreferences{ThinkingEnabled: session.Settings.ThinkingEnabled, ThinkingEffort: strings.ToLower(strings.TrimSpace(session.Settings.ThinkingEffort))},
 	}
 	req.Instructions = e.composeInstructions(session, nudgePlan)
 	return req
@@ -641,7 +645,7 @@ func advancePlanStaleRounds(session *Session) bool {
 // finalizeTurn 是 modelLoop 的统一收尾：panic 防护 + 未暂停时置回 idle 并发
 // turn_done（含累计用量）。全部指针参数——defer 注册时求值会冻结布尔快照。
 // 写库走 WithoutCancel：Stop/超时取消 turnCtx 后收尾（状态回 idle）仍要落库。
-func (e *Engine) finalizeTurn(ctx context.Context, sessionID string, session *Session, started time.Time, usageTotal *relay.MaheshvaraUsage, sawUsage *bool, rounds *int, paused *bool, events chan Event) {
+func (e *Engine) finalizeTurn(ctx context.Context, sessionID string, session *Session, started time.Time, usageTotal **protocol.Usage, rounds *int, paused *bool, events chan Event) {
 	if r := recover(); r != nil {
 		emitEvent(events, Event{Type: EventError, Text: e.reportTurnPanic(context.Background(), sessionID, r, "modelLoop"), Retryable: true})
 	}
@@ -650,10 +654,7 @@ func (e *Engine) finalizeTurn(ctx context.Context, sessionID string, session *Se
 	}
 	e.setStatus(context.WithoutCancel(ctx), sessionID, StatusIdle, false, events)
 	event := Event{Type: EventTurnDone, DurationMs: time.Since(started).Milliseconds(), Rounds: *rounds, Model: session.Settings.ModelName}
-	if *sawUsage {
-		usage := *usageTotal
-		event.Usage = &usage
-	}
+	event.Usage = *usageTotal
 	emitTerminal(events, event)
 }
 
@@ -663,7 +664,7 @@ func (e *Engine) finalizeTurn(ctx context.Context, sessionID string, session *Se
 // 序回传、按原调用序追加进对话。approvedIDs 命中只豁免 ask 级暂停；非 nil
 // 时必覆盖 calls 全体 ID（恢复路径的既定语义），故 gatePause 分支只会在
 // 新轮次（approvedIDs=nil）到达。
-func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Session, conversation *[]relay.MaheshvaraMessage, calls []relay.MaheshvaraToolCall, reason string, approvedIDs map[string]bool, events chan Event) (bool, error) {
+func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Session, conversation *[]conversationTurn, calls []FunctionCall, reason string, approvedIDs map[string]bool, events chan Event) (bool, error) {
 	index := 0
 	for index < len(calls) {
 		call := calls[index]
@@ -709,7 +710,7 @@ func (e *Engine) executeCalls(ctx context.Context, sessionID string, session *Se
 // pauseForApproval 把 calls[index:] 存为审批型 PendingAction 并暂停轮次。
 // elysia_cli 类路由工具的待批子命令清单（pauseNotes）连同同批后续调用的门控
 // 命令一并并入 Reason——用户所见即所批（恢复时 approvedIDs 会放行整批）。
-func (e *Engine) pauseForApproval(ctx context.Context, sessionID string, session *Session, calls []relay.MaheshvaraToolCall, index int, reason, pauseNotes string, events chan Event) (bool, error) {
+func (e *Engine) pauseForApproval(ctx context.Context, sessionID string, session *Session, calls []FunctionCall, index int, reason, pauseNotes string, events chan Event) (bool, error) {
 	pendingReason := reason
 	if pendingReason != "" && pauseNotes != "" {
 		pendingReason += "\n"
@@ -718,7 +719,7 @@ func (e *Engine) pauseForApproval(ctx context.Context, sessionID string, session
 	for _, later := range calls[index+1:] {
 		pendingReason = e.appendProbeNotes(session, later, pendingReason)
 	}
-	pending := &PendingAction{Calls: append([]relay.MaheshvaraToolCall(nil), calls[index:]...), Reason: pendingReason}
+	pending := &PendingAction{Calls: append([]FunctionCall(nil), calls[index:]...), Reason: pendingReason}
 	waiting := StatusWaitingApproval
 	if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
 		return false, err
@@ -728,20 +729,20 @@ func (e *Engine) pauseForApproval(ctx context.Context, sessionID string, session
 }
 
 // appendToolOutput 只把结果追加进对话（runOneTool 已落库发事件）。
-func appendToolOutput(conversation *[]relay.MaheshvaraMessage, info ToolResultInfo, limit int) {
-	*conversation = append(*conversation, toolResultToMaheshvara(info, limit))
+func appendToolOutput(conversation *[]conversationTurn, info ToolResultInfo, limit int) {
+	*conversation = append(*conversation, toolResultTurn(info, limit))
 }
 
 // appendToolResult 落库一条工具结果（脱敏 + 事件）并追加进对话——
 // resume/deny 路径自己合成的结果走这里；runOneTool 已落库的结果只追加。
-func (e *Engine) appendToolResult(ctx context.Context, sessionID string, conversation []relay.MaheshvaraMessage, info ToolResultInfo, limit int, events chan Event) []relay.MaheshvaraMessage {
+func (e *Engine) appendToolResult(ctx context.Context, sessionID string, conversation []conversationTurn, info ToolResultInfo, limit int, events chan Event) []conversationTurn {
 	e.persistToolResult(ctx, sessionID, info, events)
-	return append(conversation, toolResultToMaheshvara(info, limit))
+	return append(conversation, toolResultTurn(info, limit))
 }
 
 // parallelEligible 报告调用能否并入当前并行组：必须存在、非门控且声明
 // ConcurrentSafe。门控调用留给顺序路径处理暂停。
-func (e *Engine) parallelEligible(session *Session, call relay.MaheshvaraToolCall, approvedIDs map[string]bool) bool {
+func (e *Engine) parallelEligible(session *Session, call FunctionCall, approvedIDs map[string]bool) bool {
 	tool := e.tools.Get(call.Name)
 	if tool == nil || !canRunParallel(tool) {
 		return false
@@ -762,12 +763,12 @@ func (e *Engine) pauseForPlan(ctx context.Context, sessionID string, session *Se
 
 // pauseForQuestion 把 ask_user 变成 question 型暂停。参数不合法时返回 false，
 // 让后续路径按未知或普通工具处理。
-func (e *Engine) pauseForQuestion(ctx context.Context, sessionID string, remaining []relay.MaheshvaraToolCall, reason string, events chan Event) bool {
+func (e *Engine) pauseForQuestion(ctx context.Context, sessionID string, remaining []FunctionCall, reason string, events chan Event) bool {
 	question, ok := e.opts.ParseAsk(remaining[0])
 	if !ok {
 		return false
 	}
-	pending := &PendingAction{Kind: PendingKindQuestion, Calls: append([]relay.MaheshvaraToolCall(nil), remaining...), Reason: reason, Question: &question}
+	pending := &PendingAction{Kind: PendingKindQuestion, Calls: append([]FunctionCall(nil), remaining...), Reason: reason, Question: &question}
 	waiting := StatusWaitingApproval
 	if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
 		return false
@@ -798,7 +799,7 @@ func (e *Engine) modelLimitFor(name string) int {
 // runParallel 并行执行一组只读工具。每个调用拿到会话快照：ConcurrentSafe
 // 是硬契约——并行工具不得修改共享会话态（SetDraft/SetPlan 的写入只会落在
 // 快照上静默丢失）；需要写会话的工具必须保持不可并行。
-func (e *Engine) runParallel(ctx context.Context, sessionID string, session *Session, calls []relay.MaheshvaraToolCall, events chan Event) []ToolResultInfo {
+func (e *Engine) runParallel(ctx context.Context, sessionID string, session *Session, calls []FunctionCall, events chan Event) []ToolResultInfo {
 	infos := make([]ToolResultInfo, len(calls))
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.SetLimit(toolParallelLimit)
@@ -840,7 +841,7 @@ const (
 // gateCall 复核单个调用的门禁（计划模式 → 显式禁令 → ask 级审批），返回
 // 判定、拒绝文案与审批卡补充说明。批准集命中只豁免 ask；never 与计划模式
 // 始终逐调用复核——批准后策略可能已收紧。
-func (e *Engine) gateCall(session *Session, call relay.MaheshvaraToolCall, tool Tool, approvedIDs map[string]bool) (gate callGate, denial, pauseNotes string) {
+func (e *Engine) gateCall(session *Session, call FunctionCall, tool Tool, approvedIDs map[string]bool) (gate callGate, denial, pauseNotes string) {
 	if !tool.Gated() {
 		// 路由型工具（如 elysia_cli）自身不门控：按解析出的子命令判定。探针
 		// 未实现或解析失败（ok=false）时放行——安全性由执行阶段对同一
@@ -890,7 +891,7 @@ func permissionKeyLabel(key string) string {
 
 // probeGatesFor 取路由型工具的探针结果；未实现 GateProbe 或解析失败
 // （ok=false）时 probed=false，调用方按放行处理。
-func probeGatesFor(tool Tool, call relay.MaheshvaraToolCall) (notes []GateNote, probed bool) {
+func probeGatesFor(tool Tool, call FunctionCall) (notes []GateNote, probed bool) {
 	probe, implements := tool.(GateProbe)
 	if !implements {
 		return nil, false
@@ -901,7 +902,7 @@ func probeGatesFor(tool Tool, call relay.MaheshvaraToolCall) (notes []GateNote, 
 
 // gateProbeDecision 聚合探针上报的子命令权限：任一 never 拒绝并点名
 // 全部命中命令；任一 ask 且未批准则暂停（notes 作为审批卡补充说明）。
-func (e *Engine) gateProbeDecision(session *Session, call relay.MaheshvaraToolCall, notes []GateNote, approvedIDs map[string]bool) (callGate, string, string) {
+func (e *Engine) gateProbeDecision(session *Session, call FunctionCall, notes []GateNote, approvedIDs map[string]bool) (callGate, string, string) {
 	if len(notes) == 0 {
 		return gateAllow, "", ""
 	}
@@ -940,7 +941,7 @@ func (e *Engine) gateProbeDecision(session *Session, call relay.MaheshvaraToolCa
 // appendProbeNotes 把同批后续路由型调用（elysia_cli）的待批命令并入审批说明。
 // 只列 ask 级：never 级在恢复执行时会被逐调用拒绝，不属于用户批准面。
 // 只在新轮次的暂停路径被调用（此时门控判定尚未批准任何调用）。
-func (e *Engine) appendProbeNotes(session *Session, call relay.MaheshvaraToolCall, reason string) string {
+func (e *Engine) appendProbeNotes(session *Session, call FunctionCall, reason string) string {
 	tool := e.tools.Get(call.Name)
 	if tool == nil || tool.Gated() {
 		return reason
@@ -971,7 +972,7 @@ const (
 
 // denyCall 合成一次被拒/未知的工具结果：落库 + 回传事件 + 追加到对话，
 // 三类拒绝（计划模式 / never 权限 / 未知工具）共用同一收尾。
-func (e *Engine) denyCall(ctx context.Context, sessionID string, conversation *[]relay.MaheshvaraMessage, call relay.MaheshvaraToolCall, message string, kind denyKind, events chan Event) {
+func (e *Engine) denyCall(ctx context.Context, sessionID string, conversation *[]conversationTurn, call FunctionCall, message string, kind denyKind, events chan Event) {
 	info := deniedToolResult(call, message)
 	if kind == denyUnknown {
 		info = ToolResultInfo{
@@ -985,7 +986,7 @@ func (e *Engine) denyCall(ctx context.Context, sessionID string, conversation *[
 }
 
 // runOneTool 执行单个工具（带 panic 防护），落库并发出事件。
-func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Session, tool Tool, call relay.MaheshvaraToolCall, events chan Event) (info ToolResultInfo) {
+func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Session, tool Tool, call FunctionCall, events chan Event) (info ToolResultInfo) {
 	// 事件出口脱敏：模型回路与 PendingAction 落库保留原文（执行需要），
 	// 只有发往 SSE 的副本遮盖密钥类字段。
 	emitEvent(events, Event{Type: EventToolCall, CallID: call.ID, Name: call.Name, Input: MaskSecretInputs(call.Arguments)})
@@ -1046,7 +1047,7 @@ func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Sess
 
 // notePlanReady 记住本批 update_plan 是否声明方案定稿。真正暂停放在整批
 // 工具结束之后，避免打断同批后续只读调用。
-func (e *Engine) notePlanReady(session *Session, call relay.MaheshvaraToolCall, result ToolResult) {
+func (e *Engine) notePlanReady(session *Session, call FunctionCall, result ToolResult) {
 	if !result.OK || !session.Settings.PlanMode {
 		return
 	}
@@ -1062,7 +1063,7 @@ func (e *Engine) notePlanReady(session *Session, call relay.MaheshvaraToolCall, 
 // 用声明值，否则给默认硬顶——无视 ctx 阻塞在 Execute 里的工具若没有上限，
 // 轮次 goroutine 永不返回，会话会卡在 running 直到进程重启。返回的停止
 // 函数必须在执行结束后调用。
-func (e *Engine) watchToolProgress(ctx context.Context, call relay.MaheshvaraToolCall, meta ToolMeta, events chan Event) (context.Context, func()) {
+func (e *Engine) watchToolProgress(ctx context.Context, call FunctionCall, meta ToolMeta, events chan Event) (context.Context, func()) {
 	execCtx := ctx
 	var cancel context.CancelFunc
 	timeoutMs := meta.TimeoutMs
@@ -1141,7 +1142,7 @@ func MaskSecretInputs(raw json.RawMessage) json.RawMessage {
 	return raw
 }
 
-func (e *Engine) persistAssistant(ctx context.Context, sessionID string, session *Session, content AssistantContent, usage *relay.MaheshvaraUsage, events chan Event) {
+func (e *Engine) persistAssistant(ctx context.Context, sessionID string, session *Session, content AssistantContent, usage *protocol.Usage, events chan Event) {
 	var usageJSON json.RawMessage
 	if usage != nil {
 		if encoded, err := json.Marshal(usage); err == nil {
@@ -1234,31 +1235,6 @@ func (e *Engine) composeInstructions(session *Session, nudgePlan bool) string {
 	return b.String()
 }
 
-// thinkingFromSettings 把会话思考设置映射为请求级思考配置（同时设置
-// Reasoning 以覆盖 OpenAI 线的 reasoning_effort 渲染路径）。
-func thinkingFromSettings(s Settings) *relay.MaheshvaraThinking {
-	if !s.ThinkingEnabled {
-		return nil
-	}
-	effort := strings.ToLower(strings.TrimSpace(s.ThinkingEffort))
-	thinking := &relay.MaheshvaraThinking{Enabled: true, Effort: effort}
-	if effort == "adaptive" {
-		thinking.Adaptive = true
-	}
-	return thinking
-}
-
-func reasoningFromSettings(s Settings) *relay.MaheshvaraReasoning {
-	if !s.ThinkingEnabled {
-		return nil
-	}
-	effort := strings.ToLower(strings.TrimSpace(s.ThinkingEffort))
-	if effort == "" || effort == "adaptive" {
-		return nil
-	}
-	return &relay.MaheshvaraReasoning{Effort: effort}
-}
-
 // PermissionFor 取权限键的策略（未知键视为 ask）。
 func PermissionFor(s Settings, key string) string {
 	// 权限值在存储写入与读取（遗留行兼容）时已归一化，此处直接消费。
@@ -1284,12 +1260,9 @@ func denialSuffix(note string) string {
 	return "（备注：" + note + "）"
 }
 
-func deniedToolResult(call relay.MaheshvaraToolCall, message string) ToolResultInfo {
+func deniedToolResult(call FunctionCall, message string) ToolResultInfo {
 	// 拒绝理由随 Data 一起回传给模型（ToolOutput 只含 Data），模型才能据此调整行为。
-	encoded, err := json.Marshal(map[string]string{"error": "denied", "message": message})
-	if err != nil {
-		encoded = json.RawMessage(`{"error":"denied"}`)
-	}
+	encoded, _ := json.Marshal(map[string]string{"error": "denied", "message": message})
 	return ToolResultInfo{
 		CallID:  call.ID,
 		Name:    call.Name,
@@ -1300,20 +1273,20 @@ func deniedToolResult(call relay.MaheshvaraToolCall, message string) ToolResultI
 	}
 }
 
-// ---- 会话历史 → Maheshvara 对话 ----
+// ---- 会话历史 → semantic 对话 ----
 
 // loadConversation 把持久化消息重建为发送对话。seqs 与 conversation 元素
 // 一一对应（来源消息的 seq；摘要边界产生的合成首条为 0），供摘要压缩记录
 // 覆盖边界。
-func (e *Engine) loadConversation(ctx context.Context, session *Session) ([]relay.MaheshvaraMessage, []int, error) {
+func (e *Engine) loadConversation(ctx context.Context, session *Session) ([]conversationTurn, []int, error) {
 	messages, err := e.store.ListMessages(ctx, session.ID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("读取会话消息失败: %w", err)
 	}
 	messages = applySummaryBoundary(messages)
-	conversation := make([]relay.MaheshvaraMessage, 0, len(messages))
+	conversation := make([]conversationTurn, 0, len(messages))
 	seqs := make([]int, 0, len(messages))
-	add := func(seq int, message relay.MaheshvaraMessage) {
+	add := func(seq int, message conversationTurn) {
 		conversation = append(conversation, message)
 		seqs = append(seqs, seq)
 	}
@@ -1330,14 +1303,22 @@ func (e *Engine) loadConversation(ctx context.Context, session *Session) ([]rela
 				return nil, nil, fmt.Errorf("用户消息 #%d 渲染失败: %w", message.Seq, err)
 			}
 			if len(parts) > 0 {
-				add(message.Seq, relay.MaheshvaraMessage{Role: "user", Content: parts})
+				add(message.Seq, conversationTurn{Role: RoleUser, Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue(RoleUser), Children: parts}}})
 			}
 		case RoleAssistant:
 			var content AssistantContent
 			if err := json.Unmarshal(message.Content, &content); err != nil {
 				return nil, nil, fmt.Errorf("助手消息 #%d 解析失败: %w", message.Seq, err)
 			}
-			add(message.Seq, assistantToMaheshvara(content))
+			// Interrupted provider output remains visible in the transcript, but
+			// cannot become valid signed reasoning or executable tool history.
+			if content.IsIncomplete {
+				continue
+			}
+			if err := importAssistantContent(&content); err != nil {
+				return nil, nil, fmt.Errorf("assistant message #%d: %w", message.Seq, err)
+			}
+			add(message.Seq, assistantTurn(content))
 		case RoleToolResult:
 			var info ToolResultInfo
 			if err := json.Unmarshal(message.Content, &info); err != nil {
@@ -1346,45 +1327,10 @@ func (e *Engine) loadConversation(ctx context.Context, session *Session) ([]rela
 			// 历史回放统一用默认上限而非 per-tool 预算：落库内容本已过
 			// Store 截断，且跨版本升级后旧工具可能已不在注册表（查不到
 			// MaxModelBytes），按名字回退默认值是稳妥口径。
-			add(message.Seq, toolResultToMaheshvara(info, e.opts.ToolResultModelLimit))
+			add(message.Seq, toolResultTurn(info, e.opts.ToolResultModelLimit))
 		}
 	}
 	return conversation, seqs, nil
-}
-
-func assistantToMaheshvara(content AssistantContent) relay.MaheshvaraMessage {
-	msg := relay.MaheshvaraMessage{Role: "assistant", ToolCalls: content.ToolCalls}
-	if content.Text != "" {
-		msg.Content = []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentText, Text: content.Text}}
-	}
-	return msg
-}
-
-func toolResultToMaheshvara(info ToolResultInfo, limit int) relay.MaheshvaraMessage {
-	data := info.Data
-	if len(data) == 0 {
-		data = json.RawMessage(`{}`)
-	}
-	output := clampJSON(data, limit, ClampHead)
-	return relay.MaheshvaraMessage{
-		Role:    "tool",
-		Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentToolOutput, ToolCallID: info.CallID, ToolOutput: string(output)}},
-	}
-}
-
-// ---- 工具函数 ----
-
-func accumulateUsage(total *relay.MaheshvaraUsage, u *relay.MaheshvaraUsage) {
-	total.InputTokens += u.InputTokens
-	total.OutputTokens += u.OutputTokens
-	if u.TotalTokens > 0 {
-		total.TotalTokens += u.TotalTokens
-	} else {
-		total.TotalTokens += u.InputTokens + u.OutputTokens
-	}
-	total.CachedInputTokens += u.CachedInputTokens
-	total.CacheCreationInputTokens += u.CacheCreationInputTokens
-	total.ReasoningTokens += u.ReasoningTokens
 }
 
 // clampJSON 在字节上限内截断超大 JSON 文档。截断产物必须是合法 JSON：
@@ -1420,10 +1366,8 @@ func clampJSON(raw json.RawMessage, limit int, direction clampDirection) json.Ra
 		"direction": direction,
 		"preview":   preview,
 	}
-	if encoded, err := json.Marshal(envelope); err == nil {
-		return encoded
-	}
-	return json.RawMessage(`{"truncated":true}`)
+	encoded, _ := json.Marshal(envelope)
+	return encoded
 }
 
 // clampSummary 截断回传模型与 UI 的工具摘要，避免单条说明撑爆上下文。

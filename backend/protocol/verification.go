@@ -22,6 +22,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 	coverage := map[Direction]CapabilitySet{}
 	hasSample, hasSequence := map[Direction]bool{}, map[Direction]bool{}
 	hasLifecycle := map[Direction]map[Capability]bool{}
+	operationEvidence := map[string]bool{}
 	for _, direction := range DirectionCatalog() {
 		coverage[direction], hasLifecycle[direction] = CapabilitySet{}, map[Capability]bool{}
 	}
@@ -29,6 +30,21 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 		path := fmt.Sprintf("/samples/%d", index)
 		check := VerificationCheck{SampleID: sample.ID, Direction: sample.Direction}
 		result, err := executeVerificationSample(ctx, compiled, sample)
+		if err == nil && (sample.Direction == DecodeRequest || sample.Direction == EncodeRequest) {
+			wire := sample.Input
+			if sample.Direction == EncodeRequest {
+				wire = result.output
+			}
+			for _, name := range sortedKeys(compiled.operations) {
+				operation := compiled.operations[name]
+				if operation.Kind != "generate" || (sample.Operation != "" && sample.Operation != name) {
+					continue
+				}
+				if err = compiled.CheckOperationInput(operation, wire.Bytes()); err != nil {
+					break
+				}
+			}
+		}
 		if sample.ExpectedIssue != "" {
 			check.Passed = hasIssueCode(err, sample.ExpectedIssue)
 			if !check.Passed {
@@ -91,14 +107,28 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 			coverage[eventEncoder(sample.Direction)][NativeExtensionsCapability] = true
 		}
 		hasSample[sample.Direction] = true
+		if sample.Direction == DecodeRequest || sample.Direction == EncodeRequest {
+			for name, operation := range compiled.operations {
+				if operation.Kind == "generate" && (sample.Operation == "" || sample.Operation == name) {
+					operationEvidence[name] = true
+				}
+			}
+		}
 		hasSequence[sample.Direction] = hasSequence[sample.Direction] || sample.Sequence
 		hasLifecycle[sample.Direction][FunctionToolsCapability] = hasLifecycle[sample.Direction][FunctionToolsCapability] || evidence.hasFunctionLifecycle
 		hasLifecycle[sample.Direction][FreeTextToolsCapability] = hasLifecycle[sample.Direction][FreeTextToolsCapability] || evidence.hasFreeTextLifecycle
 		check.Passed = true
 		report.Checks = append(report.Checks, check)
 	}
+	for _, name := range sortedKeys(compiled.operations) {
+		if compiled.operations[name].Input != nil && !operationEvidence[name] {
+			report.Issues = append(report.Issues, verificationIssue(compiled, DecodeRequest, "/operations/"+name+"/input", IncompleteCoverage, "operation input schema requires a passing request fixture", ""))
+		}
+	}
 	verifySessionSamples(ctx, compiled, &report, coverage, hasSample, hasSequence, hasLifecycle)
 	hasTaskEvidence := verifyTaskSamples(ctx, compiled, &report)
+	verifyModelSamples(ctx, compiled, &report)
+	verifyAgentSamples(ctx, compiled, &report)
 	for _, direction := range DirectionCatalog() {
 		if !compiled.Supports(direction) {
 			continue

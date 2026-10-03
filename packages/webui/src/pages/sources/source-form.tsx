@@ -23,10 +23,10 @@ import {
 import { useToast } from '@/components/ui/use-toast'
 import { customPlatformValue, customProtocolID, isCustomPlatform, protocolLabel } from '@/lib/protocol'
 import { api } from '@/lib/api'
+import { protocolAPI, type EnabledProtocol } from '@/lib/protocol-v2'
 import { revalidate } from '@/lib/hooks'
 import { cn } from '@/lib/utils'
 import {
-  PLATFORMS,
   KEY_STRATEGIES,
   emptySource,
   normalizePlatform,
@@ -37,7 +37,6 @@ import {
 } from './source-form/helpers'
 import { KeyModelsPanel, KeyPermissionBadge } from './source-form/key-models-panel'
 import type {
-  CustomProtocolSummary,
   ManualModel,
   ModelSource,
   Platform,
@@ -64,8 +63,8 @@ export function SourceFormDialog({
   const [expandedKey, setExpandedKey] = useState<number | null>(null)
   // 手动模式下每个手动模型选中的 key 下标集合（key 数 >1 时）。
   const [manualKeySelection, setManualKeySelection] = useState<Record<number, number[]>>({})
-  // 已注册的自定义协议（协议下拉选择用）；加载失败静默降级为纯手填。
-  const [registeredProtocols, setRegisteredProtocols] = useState<CustomProtocolSummary[]>([])
+  const [registeredProtocols, setRegisteredProtocols] = useState<EnabledProtocol[]>([])
+  const [protocolError, setProtocolError] = useState('')
 
   const keyCount = form.apiKeys.filter((k) => k.value.trim()).length
 
@@ -289,10 +288,9 @@ export function SourceFormDialog({
   }
 
   const custom = isCustomPlatform(form.platform)
-  // 协议是否声明模型发现配置(models.path):platform → 是否可自动拉取的唯一判据。
   const hasDiscovery = (platform: string) =>
     isCustomPlatform(platform)
-      ? !!registeredProtocols.find((item) => item.id === customProtocolID(platform))?.config.models?.path
+      ? !!registeredProtocols.find((item) => item.id === customProtocolID(platform))?.hasModelDiscovery
       : false
   const customDiscovery = hasDiscovery(form.platform)
   const selectedStrategy = form.keyStrategy
@@ -301,13 +299,15 @@ export function SourceFormDialog({
   useEffect(() => {
     if (!open) return
     let cancelled = false
-    api
-      .listCustomProtocols()
+    setProtocolError('')
+    setRegisteredProtocols([])
+    protocolAPI
+      .enabled()
       .then((items) => {
-        if (!cancelled) setRegisteredProtocols(items)
+        if (!cancelled) setRegisteredProtocols(items.filter((item) => item.canGenerate))
       })
-      .catch(() => {
-        /* 静默：下拉回退内置协议 */
+      .catch((error: unknown) => {
+        if (!cancelled) setProtocolError(String(error))
       })
     return () => {
       cancelled = true
@@ -327,16 +327,13 @@ export function SourceFormDialog({
     })
   }, [open, isEdit, registeredProtocols])
 
-  // 协议选项 = 已注册自定义协议（含四个预置，value 即 custom:<id>，选中即生效）。
-  // 四个预置与内置线路一一等价，不再并列展示内置项（用户反馈重复）；列表为空
-  // 或拉取失败时回退内置四项，保证表单可用。
   const customOptions = registeredProtocols.map((protocol) => ({
     value: `custom:${protocol.id}`,
     label: protocol.name?.trim() || protocol.id,
-    hint: `自定义协议 · ${protocol.id}${protocol.valid ? '' : '（校验失败）'}`,
+    hint: `已启用 · ${protocol.id} · ${protocol.revision.slice(0, 12)}`,
   }))
   const platformOptions: { value: string; label: string; hint: string }[] =
-    customOptions.length > 0 ? customOptions : PLATFORMS
+    customOptions
   // 当前值不在选项中（协议被删除，或存量源用内置/旧平台值）：追加占位项保证
   // 回显并提示重选。
   if (form.platform && !platformOptions.some((option) => option.value === form.platform)) {
@@ -360,6 +357,8 @@ export function SourceFormDialog({
         </DialogHeader>
 
         <div className="grid gap-4">
+          {protocolError && <p role="alert" className="text-sm text-destructive">无法读取已启用协议：{protocolError}</p>}
+          {!protocolError && registeredProtocols.length === 0 && <p className="text-sm text-muted-foreground">尚无可用上游协议，请在协议编辑器中验证并启用。</p>}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label required>名称</Label>

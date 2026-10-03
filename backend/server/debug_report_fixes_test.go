@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
@@ -91,13 +92,14 @@ func TestQueryAuthSecretSanitizedInTransportError(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	adapter := relay.NewOpenAIAdapter(5_000_000_000)
-	rendered := &relay.CustomProtocolRequestResult{
-		Method: http.MethodPost,
-		Path:   "/generate",
-		Auth:   relay.CustomProtocolAuth{Mode: "query", Query: "api_key"},
+	transport := relay.NewProtocolTransport(5_000_000_000)
+	operation := protocol.Operation{
+		Method:    http.MethodPost,
+		Path:      "/generate",
+		Transport: protocol.HTTPJSON,
+		Auth:      protocol.Credential{Location: "query", Name: "api_key"},
 	}
-	_, err := adapter.SendCustomProtocolRequest(context.Background(), upstream.URL, "AUDIT_UPSTREAM_SECRET", rendered, false)
+	_, err := transport.SendProtocolRequest(context.Background(), upstream.URL, "AUDIT_UPSTREAM_SECRET", operation, nil, nil)
 	if err == nil {
 		t.Fatal("expected a transport error from the closed connection")
 	}
@@ -109,69 +111,69 @@ func TestQueryAuthSecretSanitizedInTransportError(t *testing.T) {
 	}
 }
 
-// DBG-005 回归:流内多个工具必须拿到互异且稳定的下游 index(此前每帧 Output
-// 下标都是 0,两个工具的参数会串进同一状态)。分帧与 legacy 两条路径。
+// Interleaved tool arguments must retain distinct, stable downstream slots.
 func TestStreamToolStableSlotIndices(t *testing.T) {
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
-	anthropic := registerPresetForTest(t, "anthropic-api")
-	decoder, err := relay.NewCustomProtocolStreamDecoder(anthropic)
-	if err != nil {
-		t.Fatalf("decoder: %v", err)
-	}
+	decoder := compileFixtureDefinition(t, presetDefinition(t, "anthropic-api"))
+	encoder := compileFixtureDefinition(t, presetDefinition(t, "chat-completions-api"))
+	decodeOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
+	encodeOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
 	frames := []string{
 		`{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call_a","name":"first","input":{}}}`,
 		`{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call_b","name":"second","input":{}}}`,
 		`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"a\":"}}`,
 		`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"b\":1}"}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"2}"}}`,
+		`{"type":"content_block_stop","index":1}`,
+		`{"type":"content_block_stop","index":0}`,
+		`{"type":"message_delta","delta":{"stop_reason":"tool_use"}}`,
+		`{"type":"message_stop"}`,
 	}
 	slots := map[string]int{}
-	for _, frame := range frames {
-		events, _, err := decoder.Decode(relay.SSEEvent{Event: eventNameOf(frame), Data: frame})
+	arguments := map[int]string{}
+	for _, raw := range frames {
+		frame, err := decoder.DecodeFrame(t.Context(), mustProtocolValue(t, raw), decodeOptions)
 		if err != nil {
-			t.Fatalf("decode %s: %v", frame, err)
+			t.Fatal(err)
 		}
-		for _, event := range events {
-			if event.Type == relay.MaheshvaraEventFunctionCallAdded {
-				slots[event.ToolCallID] = event.ToolCallIndex
+		chunks, err := encoder.EncodeFrame(t.Context(), frame, encodeOptions)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, chunk := range chunks {
+			var wire struct {
+				Choices []struct {
+					Delta struct {
+						Tools []struct {
+							Index    int    `json:"index"`
+							ID       string `json:"id"`
+							Function struct {
+								Arguments string `json:"arguments"`
+							} `json:"function"`
+						} `json:"tool_calls"`
+					} `json:"delta"`
+				} `json:"choices"`
+			}
+			if err := chunk.Decode(&wire); err != nil {
+				t.Fatal(err)
+			}
+			for _, choice := range wire.Choices {
+				for _, tool := range choice.Delta.Tools {
+					if tool.ID != "" {
+						if previous, exists := slots[tool.ID]; exists && previous != tool.Index {
+							t.Fatal("tool changed slot")
+						}
+						slots[tool.ID] = tool.Index
+					}
+					arguments[tool.Index] += tool.Function.Arguments
+				}
 			}
 		}
 	}
-	if len(slots) != 2 {
-		t.Fatalf("two tools expected, got %v", slots)
+	if len(slots) != 2 || slots["call_a"] == slots["call_b"] {
+		t.Fatalf("distinct tools expected: %v", slots)
 	}
-	if slots["call_a"] == slots["call_b"] {
-		t.Fatalf("parallel tools must get distinct downstream indices: %v", slots)
-	}
-
-	// legacy ToolCallsPath 路径:两帧各一个工具,同样不得撞 index。
-	legacy, err := relay.NewCustomProtocolStreamDecoder(relay.CustomProtocolConfig{
-		ID:      "legacy-slots",
-		Request: relay.CustomProtocolRequest{Method: "POST", PathTemplate: "/x", BodyTemplate: `{"m":{{maheshvara.model | json}}}`},
-		Response: relay.CustomProtocolResponse{Stream: &relay.CustomProtocolStreamMapping{
-			Response: &relay.CustomProtocolResponse{ToolCallsPath: "calls"},
-		}},
-	})
-	if err != nil {
-		t.Fatalf("legacy decoder: %v", err)
-	}
-	legacySlots := map[string]int{}
-	for _, frame := range []string{
-		`{"calls":[{"id":"first","name":"first_tool","arguments":"{}"}]}`,
-		`{"calls":[{"id":"second","name":"second_tool","arguments":"{}"}]}`,
-	} {
-		events, _, err := legacy.Decode(relay.SSEEvent{Data: frame})
-		if err != nil {
-			t.Fatalf("legacy decode: %v", err)
-		}
-		for _, event := range events {
-			if event.Type == relay.MaheshvaraEventFunctionCallAdded {
-				legacySlots[event.ToolCallID] = event.ToolCallIndex
-			}
-		}
-	}
-	if len(legacySlots) == 2 && legacySlots["first"] == legacySlots["second"] {
-		t.Fatalf("legacy path must also get distinct indices: %v", legacySlots)
+	if arguments[slots["call_a"]] != `{"a":2}` || arguments[slots["call_b"]] != `{"b":1}` {
+		t.Fatalf("interleaved arguments crossed slots: %v", arguments)
 	}
 }
 
@@ -185,9 +187,6 @@ func eventNameOf(frame string) string {
 // DBG-007 回归:复合帧(正文+结束+usage 同帧)不得因 first-match 只映射一类
 // 字段而丢失其余——预设每帧全量映射。
 func TestPresetCombinedFramesEndToEnd(t *testing.T) {
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
-	registerPresetForTest(t, "chat-completions-api")
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -195,8 +194,8 @@ func TestPresetCombinedFramesEndToEnd(t *testing.T) {
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	}))
 	defer upstream.Close()
-	s := newTestServer(presetGroup(t, "custom:chat-completions-api", upstream.URL))
-	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	s := newTestServer(t, presetGroup(t, "custom:chat-completions-api", upstream.URL))
+	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("chat combined frame: expected 200, got %d body=%s", rec.Code, rec.Body.String())
@@ -208,15 +207,13 @@ func TestPresetCombinedFramesEndToEnd(t *testing.T) {
 		}
 	}
 
-	relay.ClearCustomProtocols()
-	registerPresetForTest(t, "gemini-api")
 	upstream = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = io.WriteString(w, "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"final answer\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":2,\"candidatesTokenCount\":3}}\n\n")
 	}))
 	defer upstream.Close()
-	s = newTestServer(presetGroup(t, "custom:gemini-api", upstream.URL))
-	c, rec = chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	s = newTestServer(t, presetGroup(t, "custom:gemini-api", upstream.URL))
+	c, rec = chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("gemini combined frame: expected 200, got %d body=%s", rec.Code, rec.Body.String())
@@ -232,26 +229,29 @@ func TestPresetCombinedFramesEndToEnd(t *testing.T) {
 // DBG-008 回归:HTTP 200 携带业务错误(ErrorPath 显式映射)必须渲染为失败,
 // 不得包装成空答案的成功响应。
 func TestCustomProtocolMappedErrorIsFailure(t *testing.T) {
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
-	if err := relay.RegisterCustomProtocol(relay.CustomProtocolConfig{
-		ID: "mapped-error",
-		Request: relay.CustomProtocolRequest{
-			Method:       http.MethodPost,
-			PathTemplate: "/v1/chat",
-			BodyTemplate: `{"model":{{maheshvara.model | json}}}`,
-		},
-		Response: relay.CustomProtocolResponse{ErrorPath: "error"},
-	}); err != nil {
-		t.Fatalf("register: %v", err)
+	definition := standaloneWireDefinition(t, protocol.HTTPJSON)
+	for _, direction := range []protocol.Direction{protocol.DecodeResponse, protocol.EncodeResponse} {
+		mapping := definition.Directions[direction]
+		errorFields := map[string]protocol.Expression{"error": {Op: "read", Path: "/error", Required: true}}
+		if direction == protocol.DecodeResponse {
+			errorFields["schemaVersion"] = protocol.Expression{Op: "literal", Value: mustProtocolValue(t, `1`)}
+			errorFields["content"] = protocol.Expression{Op: "literal", Value: mustProtocolValue(t, `[]`)}
+		}
+		mapping.Transform = &protocol.Expression{Op: "if", When: &protocol.Expression{Op: "exists", Source: &protocol.Expression{Op: "read", Path: "/error"}}, Then: &protocol.Expression{Op: "object", Fields: errorFields}, Otherwise: mapping.Transform}
+		definition.Directions[direction] = mapping
 	}
+	errorWire := mustProtocolValue(t, `{"error":{"message":"quota exhausted","category":"upstream"}}`)
+	errorSemantic := mustProtocolValue(t, `{"schemaVersion":1,"content":[],"error":{"message":"quota exhausted","category":"upstream"}}`)
+	definition.Samples = append(definition.Samples,
+		protocol.Sample{ID: "failure.decode", Direction: protocol.DecodeResponse, Input: errorWire, Expected: errorSemantic},
+		protocol.Sample{ID: "failure.encode", Direction: protocol.EncodeResponse, Input: errorSemantic, Expected: errorWire})
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"error":{"message":"quota exhausted"}}`))
+		_, _ = w.Write([]byte(`{"error":{"message":"quota exhausted","category":"upstream"}}`))
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(presetGroup(t, "custom:mapped-error", upstream.URL))
+	s := newTestServer(t, standaloneGroup(t, definition, upstream.URL), definition)
 	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if rec.Code == http.StatusOK {
@@ -267,9 +267,6 @@ func TestCustomProtocolMappedErrorIsFailure(t *testing.T) {
 
 // DBG-009 回归:同一 delta 帧携带多个工具时全部产出(tool.path 数组遍历)。
 func TestPresetChatMultipleToolsInOneFrame(t *testing.T) {
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
-	registerPresetForTest(t, "chat-completions-api")
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -279,8 +276,8 @@ func TestPresetChatMultipleToolsInOneFrame(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(presetGroup(t, "custom:chat-completions-api", upstream.URL))
-	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	s := newTestServer(t, presetGroup(t, "custom:chat-completions-api", upstream.URL))
+	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
@@ -293,55 +290,50 @@ func TestPresetChatMultipleToolsInOneFrame(t *testing.T) {
 
 // DBG-010 回归:预设的失败帧必须映射为流失败,终止后错误同样生效。
 func TestPresetErrorFramesEndToEnd(t *testing.T) {
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
-	registerPresetForTest(t, "anthropic-api")
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
 		_, _ = io.WriteString(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"partial\"}}\n\n")
 		_, _ = io.WriteString(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":2}}\n\n")
 		_, _ = io.WriteString(w, "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"overloaded\"}}\n\n")
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(presetGroup(t, "custom:anthropic-api", upstream.URL))
-	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	s := newTestServer(t, presetGroup(t, "custom:anthropic-api", upstream.URL))
+	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if !strings.Contains(rec.Body.String(), "overloaded") {
 		t.Fatalf("trailing error frame must surface as failure: %s", rec.Body.String())
 	}
 }
 
-// DBG-013 回归:shape=anthropic 时 tool_choice 转换为目标线制形状。
+// Arbitrary protocol IDs use the same target tool-choice semantics.
 func TestShapeAnthropicToolChoice(t *testing.T) {
-	protocol := relay.CustomProtocolConfig{
-		ID: "shape-toolchoice",
-		Request: relay.CustomProtocolRequest{
-			Method: "POST", PathTemplate: "/x", Shape: "anthropic",
-			BodyTemplate: `{"tool_choice":{{maheshvara.tool_choice | json}}}`,
-		},
-		Response: relay.CustomProtocolResponse{TextPath: "text"},
-	}
-	if err := relay.ValidateCustomProtocol(protocol); err != nil {
-		t.Fatalf("validate: %v", err)
-	}
-	request := MaheshvaraRequestForTest()
-	rendered, err := relay.RenderCustomProtocolRequest(&request, protocol)
+	decoder := compileFixtureDefinition(t, presetDefinition(t, "chat-completions-api"))
+	definition := presetDefinition(t, "anthropic-api")
+	definition.ID = "user-tool-choice"
+	encoder := compileFixtureDefinition(t, definition)
+	request, err := decoder.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"f","parameters":{"type":"object"}}}],"tool_choice":"required"}`), protocol.EvaluationContext{})
 	if err != nil {
-		t.Fatalf("render: %v", err)
+		t.Fatal(err)
 	}
-	if !strings.Contains(string(rendered.Body), `"tool_choice":{"type":"any"}`) {
-		t.Fatalf("shape=anthropic must convert tool_choice to the wire shape: %s", rendered.Body)
+	body, err := encoder.EncodeRequest(t.Context(), request, protocol.EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
 	}
-}
-
-// MaheshvaraRequestForTest 组一个 required 工具选择请求。
-func MaheshvaraRequestForTest() relay.MaheshvaraRequest {
-	return relay.MaheshvaraRequest{
-		Model:      "m",
-		ToolChoice: "required",
-		Messages:   []relay.MaheshvaraMessage{{Role: "user", Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentText, Text: "hi"}}}},
-		Tools:      []relay.MaheshvaraTool{{Type: relay.MaheshvaraToolFunction, Name: "f", Parameters: map[string]any{"type": "object"}}},
+	var wire struct {
+		ToolChoice struct {
+			Type string `json:"type"`
+		} `json:"tool_choice"`
+		Tools []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(body, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if wire.ToolChoice.Type != "any" || len(wire.Tools) != 1 || wire.Tools[0].Name != "f" {
+		t.Fatalf("target tool choice and definition: %s", body)
 	}
 }

@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/elysia-api/backend/protocol"
+
 	"github.com/elysia-api/backend/agent"
-	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -225,7 +226,7 @@ type remoteTurnOutcome struct {
 	Status     string               // waiting_approval | idle（完成）| failed
 	Reply      string               // 最后一条 assistant 消息文本
 	Pending    *agent.PendingAction // 事件出口已脱敏
-	Usage      *relay.MaheshvaraUsage
+	Usage      *protocol.Usage
 	Model      string
 	DurationMs int64
 	Rounds     int

@@ -30,7 +30,16 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 			nodes = append(nodes, node)
 			continue
 		}
-		role, err := stringValue(fields["role"])
+		roleValue := fields["role"]
+		// Gemini permits an omitted role for a single user content item.
+		// Keep the native snapshot unchanged so same-wire replay retains absence.
+		if adapter.name == Gemini && roleValue.IsZero() {
+			roleValue = p.StringValue("user")
+			if direction == p.DecodeResponse {
+				roleValue = p.StringValue("model")
+			}
+		}
+		role, err := stringValue(roleValue)
 		if err != nil {
 			return nil, err
 		}

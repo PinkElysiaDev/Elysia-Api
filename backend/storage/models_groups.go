@@ -177,12 +177,6 @@ func (s *Store) UpsertGroup(ctx context.Context, item ModelGroup) error {
 	if item.Strategy == "" {
 		item.Strategy = "round-robin"
 	}
-	if item.MaxRetries == 0 {
-		item.MaxRetries = 3
-	}
-	if item.RetryInterval == 0 {
-		item.RetryInterval = 1000
-	}
 	if item.Type == "" {
 		item.Type = "llm"
 	}
@@ -625,7 +619,7 @@ func (s *Store) ImportLegacyConfig(ctx context.Context, tokens []APIToken, group
 		if err := s.UpsertSource(ctx, source); err != nil {
 			return err
 		}
-		if err := s.ReplaceSourceModels(ctx, source, models); err != nil {
+		if err := s.replaceSourceModels(ctx, source, models, true); err != nil {
 			return err
 		}
 	}

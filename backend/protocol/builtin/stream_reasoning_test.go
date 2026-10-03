@@ -1,10 +1,28 @@
 package builtin
 
 import (
+	"strings"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
 )
+
+func TestResponsesNativeVisibleReasoningPreservesEdits(t *testing.T) {
+	compiled := testCompiled(t, Responses)
+	request, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","input":[{"type":"reasoning_text","text":"original","vendor":9007199254740993}]}`), p.EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Content[0].Payload = p.StringValue("edited")
+	body, err := compiled.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+	if err != nil || !strings.Contains(string(body), `"text":"edited"`) || !strings.Contains(string(body), `9007199254740993`) || strings.Contains(string(body), "original") {
+		t.Fatal(string(body), err)
+	}
+	request.Content[0].Native.Source.Protocol.Family = "foreign"
+	if _, err := compiled.EncodeRequest(t.Context(), request, p.EvaluationContext{}); err == nil {
+		t.Fatal("foreign thinking masqueraded as a native Responses extension")
+	}
+}
 
 func TestResponsesReasoningKeepsOrderedSummariesAndEncryptedPayload(t *testing.T) {
 	compiled := testCompiled(t, Responses)

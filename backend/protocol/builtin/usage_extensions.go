@@ -2,8 +2,8 @@ package builtin
 
 import p "github.com/elysia-api/backend/protocol"
 
-var inputUsageDetails = []string{"cached_tokens", "audio_tokens"}
-var outputUsageDetails = []string{"reasoning_tokens", "audio_tokens", "accepted_prediction_tokens", "rejected_prediction_tokens"}
+var inputUsageDetails = []string{"cached_tokens", "text_tokens", "image_tokens", "audio_tokens"}
+var outputUsageDetails = []string{"reasoning_tokens", "text_tokens", "image_tokens", "audio_tokens", "accepted_prediction_tokens", "rejected_prediction_tokens"}
 var creationUsageDetails = []string{"ephemeral_5m_input_tokens", "ephemeral_1h_input_tokens"}
 
 func (adapter module) usageExtensions(value p.Value) (p.Value, error) {

@@ -34,7 +34,11 @@ func (stream *streamModule) encodeEvent(event p.Event, options p.EvaluationConte
 		stream.pending = nil
 		failure := event.Error
 		if event.Type == p.OperationCancelled {
-			failure = object(p.Object{"type": p.StringValue("cancelled"), "message": p.StringValue("generation cancelled")})
+			failure = object(p.Object{"category": p.StringValue(string(ErrorClassInvalidRequest)), "message": p.StringValue("generation cancelled")})
+		}
+		failure, err := stream.module.encodeFailure(failure, options)
+		if err != nil {
+			return nil, err
 		}
 		if stream.name == Anthropic || stream.name == Responses {
 			return []p.Value{object(p.Object{"type": p.StringValue("error"), "error": failure})}, nil

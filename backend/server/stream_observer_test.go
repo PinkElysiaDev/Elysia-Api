@@ -2,26 +2,20 @@ package server
 
 import (
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"testing"
 
-	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/protocol"
 )
 
 // 回归：流事件须保留「最后」N 条（终态事件在流尾部），且非法 JSON 不得
 // 混入（会让整个事件数组的序列化永远失败）。物化推迟到 recordUsage 一次完成。
 func TestStreamEventsKeepTailAndMaterialize(t *testing.T) {
 	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: UsageBodyMaxBytes}}
-	resp := &http.Response{Body: io.NopCloser(strings.NewReader(buildSSEStream(120)))}
-	observeUpstreamUsage(resp, record, relay.PlatformOpenAI)
-	if _, err := io.ReadAll(resp.Body); err != nil {
-		t.Fatalf("read: %v", err)
+	for index := 0; index < 120; index++ {
+		record.appendStreamEvent(fmt.Sprintf(`{"i":%d}`, index))
 	}
-	if err := resp.Body.Close(); err != nil {
-		t.Fatalf("close: %v", err)
-	}
+	record.appendStreamEvent("invalid JSON")
 	if len(record.pendingStreamEvents) != StreamEventsCacheMax {
 		t.Fatalf("events kept = %d, want cap %d", len(record.pendingStreamEvents), StreamEventsCacheMax)
 	}
@@ -40,15 +34,15 @@ func TestStreamEventsKeepTailAndMaterialize(t *testing.T) {
 
 func TestStreamBodyCaptureDisabledStillCountsTokens(t *testing.T) {
 	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: 0}}
-	resp := &http.Response{Body: io.NopCloser(strings.NewReader(
-		openAIChunk("c1", map[string]any{"content": "private-response"}, "", nil) +
-			`data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}` + "\n\n" + openAIDone()))}
-	observeUpstreamUsage(resp, record, relay.PlatformOpenAI)
-	if _, err := io.ReadAll(resp.Body); err != nil {
+	compiled := compileFixtureDefinition(t, presetDefinition(t, "chat-completions-api"))
+	state := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
+	frame, err := compiled.DecodeFrame(t.Context(), mustProtocolValue(t, `{"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`), state)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := resp.Body.Close(); err != nil {
-		t.Fatal(err)
+	record.appendStreamEvent(`{"private":"response"}`)
+	for _, event := range frame.Events {
+		updateRecordProtocolUsage(record, event.Usage)
 	}
 	if len(record.pendingStreamEvents) != 0 {
 		t.Fatal("disabled body capture must not retain stream events")
@@ -57,15 +51,6 @@ func TestStreamBodyCaptureDisabledStillCountsTokens(t *testing.T) {
 	if record.ProviderResponse.Content != "" || derefInt(record.Usage.TotalTokens) != 5 {
 		t.Fatalf("body=%q, usage=%+v", record.ProviderResponse.Content, record.Usage)
 	}
-}
-
-func buildSSEStream(n int) string {
-	var b strings.Builder
-	for i := 0; i < n; i++ {
-		fmt.Fprintf(&b, "data: {\"i\":%d}\n\n", i)
-	}
-	b.WriteString("data: [DONE]\n")
-	return b.String()
 }
 
 // 回归：重试事件超限后保尾淘汰（最后的错误最接近根因），首条被挤出。

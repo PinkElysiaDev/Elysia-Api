@@ -9,7 +9,8 @@ import { ProtocolDirectionEditor, ProtocolOperationEditor } from './v2-operation
 
 const sectionNames = [
   ['directions', '方向与映射'], ['operations', '传输与操作'], ['samples', '请求、响应与事件样例'],
-  ['sessionSamples', '实时会话样例'], ['taskSamples', '异步任务样例'], ['native', '原生字段规则'], ['extensions', '扩展元数据'],
+  ['agent', '原生 Agent 参数、工具结果与样例'],
+  ['sessionSamples', '实时会话样例'], ['taskSamples', '异步任务样例'], ['modelSamples', '模型目录样例'], ['native', '原生字段规则'], ['extensions', '扩展元数据'],
 ] as const
 const emptyDefinition = () => JSON.stringify({ schemaVersion: 2, id: '', name: '', version: '1', family: '', wireVersion: '1', capabilities: {}, directions: {}, operations: {}, native: { preserve: false }, samples: [] }, null, 2)
 
@@ -88,7 +89,7 @@ export function ProtocolV2Editor({ schema, draft, activeHash, initialSource, onS
   const locate = (issue: ConversionIssue) => {
     let path = issue.path
     if (issue.evidence) {
-      for (const section of ['samples', 'sessionSamples', 'taskSamples']) {
+      for (const section of ['samples', 'sessionSamples', 'taskSamples', 'modelSamples']) {
         const entries = document?.locate(`/${section}`)?.children
         for (const [index] of entries ?? []) if (scalar(`/${section}/${index}/id`) === issue.evidence) path = `/${section}/${index}`
       }
@@ -139,7 +140,8 @@ export function ProtocolV2Editor({ schema, draft, activeHash, initialSource, onS
       {tab === 'operations' && <p className="text-xs text-muted-foreground">操作定义包含 method、path、transport、auth，以及可选的 session 或 task。支持 HTTP JSON、SSE、NDJSON、WebSocket；任务流声明 submit/status/result/cancel。未安装的引擎能力会在检查定义时报告。</p>}
       {tab === 'json' && <label className="block space-y-2 text-sm">完整协议 JSON<Textarea ref={jsonRef} aria-label="完整协议 JSON" rows={22} className="font-mono text-xs" value={source} onChange={(event) => setSource(event.target.value)} />{focusPath && <span className="text-xs text-muted-foreground">定位：{focusPath}</span>}</label>}
       {tab === 'preview' && <>
-        <label className="block text-sm">预览类型 <select aria-label="预览类型" className="rounded border bg-card p-2" value={previewMode} onChange={(event) => setPreviewMode(event.target.value)}><option value="mapping">请求 / 响应 / 事件</option><option value="session">完整双向会话</option><option value="task">任务操作</option></select></label>
+        <label className="block text-sm">预览类型 <select aria-label="预览类型" className="rounded border bg-card p-2" value={previewMode} onChange={(event) => setPreviewMode(event.target.value)}><option value="mapping">请求 / 响应 / 事件</option><option value="session">完整双向会话</option><option value="task">任务操作</option><option value="agent">Agent settings</option><option value="models">模型目录</option></select></label>
+        {previewMode === 'models' && <label className="block text-sm">发现操作名<Input value={taskOperation} onChange={(event) => setTaskOperation(event.target.value)} /></label>}
         {previewMode === 'session' && <label className="block text-sm">会话样例 ID<Input value={workflowSample} onChange={(event) => setWorkflowSample(event.target.value)} /></label>}
         {previewMode === 'task' && <div className="grid gap-3 md:grid-cols-3"><label>提交操作名<Input value={taskOperation} onChange={(event) => setTaskOperation(event.target.value)} /></label><label>任务映射<select className="block rounded border bg-card p-2" value={taskKind} onChange={(event) => setTaskKind(event.target.value)}>{['decode', 'encode', 'control'].map((kind) => <option key={kind}>{kind}</option>)}</select></label><label>任务阶段<select className="block rounded border bg-card p-2" value={taskPurpose} onChange={(event) => setTaskPurpose(event.target.value)}>{['submit', 'status', 'result', 'cancel'].map((purpose) => <option key={purpose}>{purpose}</option>)}</select></label></div>}
         <div className="flex flex-wrap items-center gap-3"><label>转换方向 <select aria-label="转换方向" className="rounded border bg-card p-2" value={direction} onChange={(event) => setDirection(event.target.value)}>{schema.directions.map((value) => <option key={value}>{value}</option>)}</select></label><label className="text-sm"><input type="checkbox" checked={isSequence} onChange={(event) => setSequence(event.target.checked)} /> 事件序列</label></div>

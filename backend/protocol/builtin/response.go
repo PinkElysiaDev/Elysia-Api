@@ -11,7 +11,16 @@ func (adapter module) decodeResponse(input p.Value, options p.EvaluationContext)
 	if err != nil {
 		return nil, err
 	}
+	if hasErrorEnvelope(fields) {
+		return adapter.decodeErrorEnvelope(fields, options)
+	}
 	response := &p.Response{SchemaVersion: p.SemanticSchemaVersion, Source: options.Identity(), ID: fields["id"], Model: fields["model"], Status: fields["status"], Error: fields["error"], Content: []p.Node{}, Attributes: p.Object{}}
+	if !response.Error.IsZero() && !response.Error.IsNull() {
+		response.Error, err = adapter.decodeFailure(response.Error, options)
+		if err != nil {
+			return nil, err
+		}
+	}
 	history := &historyState{calls: map[string][]p.Value{}}
 	known := []string{"id", "model", "status", "error", "usage", "object", "created", "created_at"}
 	usage := fields["usage"]
@@ -287,6 +296,13 @@ func responseFinish(response *p.Response) (p.Value, error) {
 
 func (adapter module) encodeResponse(response *p.Response, options p.EvaluationContext) (p.Value, error) {
 	fields := p.Object{"id": response.ID, "model": response.Model, "error": response.Error}
+	if !response.Error.IsZero() && !response.Error.IsNull() {
+		failure, err := adapter.encodeFailure(response.Error, options)
+		if err != nil {
+			return p.Value{}, err
+		}
+		fields["error"] = failure
+	}
 	if err := adapter.preserveExtensions(fields, response.Attributes); err != nil {
 		return p.Value{}, err
 	}
@@ -303,6 +319,17 @@ func (adapter module) encodeResponse(response *p.Response, options p.EvaluationC
 		return p.Value{}, err
 	}
 	fields["usage"] = usage
+	if !response.Error.IsZero() && !response.Error.IsNull() && len(response.Content) == 0 {
+		fields["status"] = response.Status
+		if adapter.name == Anthropic {
+			fields["type"] = p.StringValue("error")
+		}
+		if adapter.name == Gemini {
+			delete(fields, "usage")
+			fields["usageMetadata"] = usage
+		}
+		return object(fields), nil
+	}
 	reason, err := responseFinish(response)
 	if err != nil {
 		return p.Value{}, err
@@ -373,6 +400,35 @@ func (adapter module) encodeResponse(response *p.Response, options p.EvaluationC
 		fields["type"], fields["role"], fields["content"], fields["stop_reason"], fields["stop_sequence"] = p.StringValue("message"), p.StringValue("assistant"), message["content"], finish, response.Attributes["anthropic_stop_sequence"]
 	}
 	return object(fields), nil
+}
+
+func hasErrorEnvelope(fields p.Object) bool {
+	if fields["error"].IsZero() || fields["error"].IsNull() {
+		return false
+	}
+	for _, key := range []string{"choices", "output", "content", "candidates"} {
+		if !fields[key].IsZero() {
+			return false
+		}
+	}
+	return true
+}
+
+func (adapter module) decodeErrorEnvelope(fields p.Object, options p.EvaluationContext) (*p.Response, error) {
+	usageField := "usage"
+	if adapter.name == Gemini {
+		usageField = "usageMetadata"
+	}
+	usage, err := adapter.decodeUsage(fields[usageField])
+	if err != nil {
+		return nil, err
+	}
+	failure, err := adapter.decodeFailure(fields["error"], options)
+	if err != nil {
+		return nil, err
+	}
+	return &p.Response{SchemaVersion: p.SemanticSchemaVersion, Source: options.Identity(), ID: fields["id"], Model: fields["model"], Status: fields["status"], Error: failure, Content: []p.Node{}, Usage: usage,
+		Attributes: adapter.extensions(fields, []string{"id", "model", "status", "error", "type", usageField})}, nil
 }
 
 // A generated response is one assistant turn. Separate Responses output items

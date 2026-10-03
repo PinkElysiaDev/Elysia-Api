@@ -88,32 +88,17 @@ func TestProtocolRevisionAdminDraftVerifyActivateAndPreview(t *testing.T) {
 
 func TestLegacySaveCannotActivateOrOverwriteVersionedProtocol(t *testing.T) {
 	server, _ := newProtocolAdminTestServer(t)
-	raw, err := os.ReadFile(filepath.Join("..", "protocol", "testdata", "text-alpha.json"))
+	server.setupAdminRoutes(server.engine.Group("/api/admin"))
+	response := revisionAdminRequest(t, server.engine, http.MethodPut, "/api/admin/custom-protocols/text-alpha", []byte(`{"id":"text-alpha"}`), "")
+	if response.Code != http.StatusNotFound {
+		t.Fatal("retired execution endpoint remains reachable", response.Code)
+	}
+	service, err := server.protocolService()
 	if err != nil {
 		t.Fatal(err)
 	}
-	context, recorder := adminProtocolContext(http.MethodPut, "/api/admin/custom-protocols/text-alpha", string(raw))
-	context.Params = gin.Params{{Key: "id", Value: "text-alpha"}}
-	server.adminUpsertCustomProtocol(context)
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("v2 legacy-path draft save: %d %s", recorder.Code, recorder.Body)
-	}
-	if decodeAdminData(t, recorder)["activated"] != false {
-		t.Fatal("legacy save bypassed activation")
-	}
-	rows, err := server.store.ListCustomProtocols(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rows) != 0 {
-		t.Fatal("v2 draft was also installed into legacy registry")
-	}
-	legacy := `{"id":"text-alpha","request":{"path":"/chat","body":{"model":{"field":"model"}}},"response":{"textPath":"text"}}`
-	context, recorder = adminProtocolContext(http.MethodPut, "/api/admin/custom-protocols/text-alpha", legacy)
-	context.Params = gin.Params{{Key: "id", Value: "text-alpha"}}
-	server.adminUpsertCustomProtocol(context)
-	if recorder.Code != http.StatusConflict {
-		t.Fatalf("v1 overwrite escaped revision gate: %d %s", recorder.Code, recorder.Body)
+	if len(service.View().IDs()) != 0 {
+		t.Fatal("retired endpoint activated a protocol")
 	}
 }
 

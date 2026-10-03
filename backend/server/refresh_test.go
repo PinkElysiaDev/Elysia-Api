@@ -7,7 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -18,7 +19,10 @@ func newRefreshTestServer(t *testing.T) *Server {
 		t.Fatalf("open store: %v", err)
 	}
 	t.Cleanup(func() { store.Close() })
-	return &Server{config: &config.Config{}, store: store}
+	s := newUnboundTestServer(nil)
+	s.store = store
+	activateDiscoveryPresets(t, s)
+	return s
 }
 
 // #1: Claude 源走 /v1/models 拉取（OpenAI 风格响应），x-api-key 鉴权命中。
@@ -31,12 +35,12 @@ func TestFetchClaudeModelsViaV1Models(t *testing.T) {
 		}
 		gotAuth = r.Header.Get("x-api-key")
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":[{"id":"claude-3-5-sonnet"},{"id":"claude-3-opus"}]}`))
+		_, _ = w.Write([]byte(`{"data":[{"id":"claude-3-5-sonnet"},{"id":"claude-3-opus"}],"has_more":false}`))
 	}))
 	defer srv.Close()
 
 	s := newRefreshTestServer(t)
-	models, err := s.fetchClaudeModels(context.Background(), storage.ModelSource{
+	models, err := s.fetchModelsFromSource(context.Background(), storage.ModelSource{
 		Name: "claude-relay", BaseURL: srv.URL, Platform: "claude", Enabled: true,
 	}, "sk-ant-xxx")
 	if err != nil {
@@ -54,32 +58,23 @@ func TestFetchClaudeModelsViaV1Models(t *testing.T) {
 }
 
 // #1: Claude 官方鉴权失败时回退 Bearer（模拟只认 Bearer 的中转站）。
-func TestFetchClaudeModelsBearerFallback(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 只接受 Bearer，x-api-key 一律 401。
-		if r.Header.Get("Authorization") != "Bearer sk-relay" {
-			w.WriteHeader(401)
-			return
+func TestModelDiscoveryDoesNotGuessAuthentication(t *testing.T) {
+	calls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Header.Get("Authorization") != "" {
+			t.Error("invented Bearer authentication")
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":[{"id":"claude-3-5-sonnet"}]}`))
+		w.WriteHeader(http.StatusUnauthorized)
 	}))
-	defer srv.Close()
-
+	defer upstream.Close()
 	s := newRefreshTestServer(t)
-	models, err := s.fetchClaudeModels(context.Background(), storage.ModelSource{
-		Name: "relay", BaseURL: srv.URL, Platform: "claude", Enabled: true,
-	}, "sk-relay")
-	if err != nil {
-		t.Fatalf("expected bearer fallback to succeed, got: %v", err)
-	}
-	if len(models) != 1 {
-		t.Fatalf("expected 1 model via fallback, got %d", len(models))
+	_, err := s.fetchModelsFromSource(t.Context(), storage.ModelSource{Platform: "claude", BaseURL: upstream.URL}, "secret")
+	if err == nil || calls != 1 {
+		t.Fatalf("expected one failed declared-auth attempt: %d %v", calls, err)
 	}
 }
 
-// Gemini 源走 /v1beta/models 拉取（与 relay 适配器 baseUrl 不含 /v1beta 的约定一致），
-// x-goog-api-key 鉴权，解析 name 前缀与 inputTokenLimit。
 func TestFetchGeminiModelsViaV1BetaModels(t *testing.T) {
 	var gotAuth string
 	var gotPath string
@@ -96,7 +91,7 @@ func TestFetchGeminiModelsViaV1BetaModels(t *testing.T) {
 	defer srv.Close()
 
 	s := newRefreshTestServer(t)
-	models, err := s.fetchGeminiModels(context.Background(), storage.ModelSource{
+	models, err := s.fetchModelsFromSource(context.Background(), storage.ModelSource{
 		Name: "gemini-relay", BaseURL: srv.URL, Platform: "gemini", Enabled: true,
 	}, "gem-key")
 	if err != nil {
@@ -198,5 +193,20 @@ func TestRefreshEmptyModelListKeepsExistingModels(t *testing.T) {
 	}
 	if len(models) != 1 || models[0].Name != "keep-me" {
 		t.Fatalf("existing models must be kept on empty refresh, got %+v", models)
+	}
+}
+
+func activateDiscoveryPresets(t *testing.T, s *Server) {
+	t.Helper()
+	definitions, err := builtin.Definitions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range definitions {
+		var definition protocol.Definition
+		if err := value.Decode(&definition); err != nil {
+			t.Fatal(err)
+		}
+		activateGatewayDefinition(t, s, definition)
 	}
 }

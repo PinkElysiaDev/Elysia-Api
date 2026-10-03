@@ -185,7 +185,7 @@ func importFieldExpression(fields protocol.Object, shape, path string) (protocol
 		return protocol.Expression{}, err
 	}
 	fallback := protocol.Expression{Op: "literal", Value: null}
-	if spec, exists := lookupRequestFieldSpec(field); exists && spec.Shape == "string" {
+	if field == "model" {
 		fallback.Value = protocol.StringValue("")
 	}
 	return protocol.Expression{Op: "if", When: &protocol.Expression{Op: "exists", Source: &read}, Then: &read, Otherwise: &fallback}, nil

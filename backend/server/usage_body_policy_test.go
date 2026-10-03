@@ -113,7 +113,7 @@ func TestAgentCallerDefaultLogsMetadataOnly(t *testing.T) {
 			if (err != nil) != fail {
 				t.Fatalf("Call error=%v", err)
 			}
-			if !fail && (result.Text != "private-response" || result.Usage == nil || result.Usage.TotalTokens != 5) {
+			if !fail && (result.Text != "private-response" || result.Usage == nil || result.Usage.Total.Count != 5) {
 				t.Fatalf("result=%+v", result)
 			}
 			logs := latestUsageRecords(t, s)

@@ -55,7 +55,7 @@ func NewCompiler(limits Limits, modules []Module, features []string) (*Compiler,
 	if err := limits.Validate(); err != nil {
 		return nil, err
 	}
-	compiler := &Compiler{limits: limits, modules: make(map[string]Module), features: map[string]bool{"mapping.v2": true, "transport.http_json": true, "transport.sse": true, "transport.ndjson": true}}
+	compiler := &Compiler{limits: limits, modules: make(map[string]Module), features: map[string]bool{"mapping.v2": true, "mapping.event_initial": true, "transport.http_json": true, "transport.sse": true, "transport.ndjson": true}}
 	for _, module := range modules {
 		if module == nil || !definitionIdentifier.MatchString(module.Name()) {
 			return nil, fmt.Errorf("invalid module identity")
@@ -76,6 +76,7 @@ type compiledMapping struct {
 	module         Module
 	transform      *compiledExpression
 	after          *compiledExpression
+	initial        *compiledExpression
 	input, output  *ValueSchema
 	rules          []compiledEventRule
 	frameBatch     bool
@@ -87,16 +88,19 @@ type compiledEventRule struct{ when, emit *compiledExpression }
 // Compiled is an immutable protocol revision; mutable event state belongs to a
 // request/session, never to this registry object.
 type Compiled struct {
-	identity     Identity
-	definition   Value
-	hash         string
-	samplesHash  string
-	limits       Limits
-	capabilities CapabilitySet
-	native       NativePolicy
-	mappings     map[Direction]compiledMapping
-	operations   map[string]Operation
-	taskMappings map[string]map[string]compiledMapping
+	identity      Identity
+	definition    Value
+	hash          string
+	samplesHash   string
+	limits        Limits
+	capabilities  CapabilitySet
+	native        NativePolicy
+	mappings      map[Direction]compiledMapping
+	operations    map[string]Operation
+	taskMappings  map[string]map[string]compiledMapping
+	modelMappings map[string]compiledMapping
+	agentMapping  *compiledMapping
+	agentEfforts  []string
 }
 
 // Compile strictly parses one v2 definition and compiles every direction.
@@ -158,6 +162,12 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 	if err := compiler.compileTaskMappings(compiled, definition, expressions); err != nil {
 		return fail("/operations", err)
 	}
+	if err := compiler.compileModelMappings(compiled, definition, expressions); err != nil {
+		return fail("/operations", err)
+	}
+	if err := compiler.compileAgentMapping(compiled, definition, expressions); err != nil {
+		return fail("/agent", err)
+	}
 	for _, reference := range sortedKeys(definition.Expressions) {
 		if !expressions.used[reference] {
 			return fail("/expressions/"+reference, fmt.Errorf("unreachable named expression"))
@@ -172,7 +182,9 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 		Samples  []Sample        `json:"samples"`
 		Sessions []SessionSample `json:"sessions"`
 		Tasks    []TaskSample    `json:"tasks"`
-	}{definition.Samples, definition.SessionSamples, definition.TaskSamples})
+		Models   []ModelSample   `json:"models"`
+		Agent    *AgentConfig    `json:"agent,omitempty"`
+	}{definition.Samples, definition.SessionSamples, definition.TaskSamples, definition.ModelSamples, definition.Agent})
 	if err != nil {
 		return fail("/samples", err)
 	}
@@ -230,6 +242,19 @@ func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction
 		entry.after = after
 	}
 	scope := expressionScope{input: mapping.Input}
+	if mapping.Initial != nil {
+		if !isEventDecoder(direction) || mapping.Module != "" {
+			return entry, fmt.Errorf("initial requires a declarative event decoder")
+		}
+		initial, err := expressions.compile(*mapping.Initial, path+"/initial", scope, 1)
+		if err != nil {
+			return entry, err
+		}
+		if !isAssignable(initial.result, ObjectType) && !isAssignable(initial.result, ArrayType) {
+			return entry, fmt.Errorf("initial must produce an event or ordered event array")
+		}
+		entry.initial = initial
+	}
 	if mapping.Transform != nil {
 		expression, err := expressions.compile(*mapping.Transform, path+"/transform", scope, 1)
 		if err != nil {
@@ -331,7 +356,15 @@ func (compiler *Compiler) checkDefinition(definition Definition) error {
 		}
 	}
 	seen := make(map[string]bool)
-	if len(definition.Samples)+len(definition.SessionSamples)+len(definition.TaskSamples) > compiler.limits.StateItems {
+	fixtureCount := len(definition.Samples) + len(definition.SessionSamples) + len(definition.TaskSamples) + len(definition.ModelSamples)
+	if definition.Agent != nil {
+		fixtureCount += len(definition.Agent.Samples)
+	}
+	fixtureLimit := compiler.limits.StateItems
+	if definition.Limits != nil {
+		fixtureLimit = definition.Limits.StateItems
+	}
+	if fixtureCount > fixtureLimit {
 		return fmt.Errorf("sample count exceeds engine fixture limit")
 	}
 	for _, sample := range definition.Samples {
@@ -339,6 +372,12 @@ func (compiler *Compiler) checkDefinition(definition Definition) error {
 			return fmt.Errorf("samples require unique nonempty IDs")
 		}
 		seen[sample.ID] = true
+		if sample.Operation != "" {
+			operation, exists := definition.Operations[sample.Operation]
+			if !exists || operation.Kind != "generate" || (sample.Direction != DecodeRequest && sample.Direction != EncodeRequest) {
+				return fmt.Errorf("sample %q operation requires a declared generation operation and a request direction", sample.ID)
+			}
+		}
 		if _, exists := definition.Directions[sample.Direction]; !exists {
 			return fmt.Errorf("sample %q references an unimplemented direction", sample.ID)
 		}
@@ -396,6 +435,12 @@ func (compiler *Compiler) checkOperation(name string, operation Operation, defin
 	if definition.Limits != nil {
 		limits = *definition.Limits
 	}
+	if err := validateSchema(operation.Input, "/operations/"+name+"/input", 1, limits); err != nil {
+		return err
+	}
+	if operation.Input != nil && (operation.Kind != "generate" || operation.Transport == WebSocket) {
+		return fmt.Errorf("operation %q input schema requires HTTP generation; task and session inputs use their own mappings", name)
+	}
 	if err := checkSessionOperation(operation, definition, limits); err != nil {
 		return fmt.Errorf("operation %q: %w", name, err)
 	}
@@ -427,6 +472,11 @@ func (compiler *Compiler) checkOperation(name string, operation Operation, defin
 	}
 	if operation.Framing != nil && strings.ContainsAny(operation.Framing.EventName, "\r\n") {
 		return fmt.Errorf("operation %q has an invalid SSE event name", name)
+	}
+	if framing := operation.Framing; framing != nil && framing.IdleMillis != 0 {
+		if (operation.Transport != SSE && operation.Transport != NDJSON) || framing.IdleMillis < 0 || framing.IdleMillis > DefaultStreamIdleMillis {
+			return fmt.Errorf("operation %q idleMillis requires an HTTP stream and must be between 1 and %d", name, DefaultStreamIdleMillis)
+		}
 	}
 	if framing := operation.Framing; framing != nil && framing.EventNamePath != "" {
 		if operation.Transport != SSE || framing.EventName != "" {
@@ -471,6 +521,9 @@ func (compiled *Compiled) Identity() Identity { return compiled.identity }
 // Hash identifies the normalized definition including samples and metadata.
 func (compiled *Compiled) Hash() string { return compiled.hash }
 
+// ResourceLimits returns the immutable revision's bounded execution contract.
+func (compiled *Compiled) ResourceLimits() Limits { return compiled.limits }
+
 // SamplesHash identifies the exact offline fixture collection.
 func (compiled *Compiled) SamplesHash() string { return compiled.samplesHash }
 
@@ -480,6 +533,12 @@ func (compiled *Compiled) Operations() map[string]Operation {
 	operations := make(map[string]Operation, len(compiled.operations))
 	for name, operation := range compiled.operations {
 		operation.Headers, operation.Query = maps.Clone(operation.Headers), maps.Clone(operation.Query)
+		if operation.Input != nil {
+			var input ValueSchema
+			value, _ := EncodeValue(operation.Input)
+			_ = value.Decode(&input)
+			operation.Input = &input
+		}
 		if operation.Framing != nil {
 			framing := *operation.Framing
 			framing.Done = append([]string(nil), framing.Done...)
@@ -491,6 +550,12 @@ func (compiled *Compiled) Operations() map[string]Operation {
 			value, _ := EncodeValue(task)
 			_ = value.Decode(&task)
 			operation.Task = &task
+		}
+		if operation.Models != nil {
+			var discovery ModelDiscovery
+			value, _ := EncodeValue(operation.Models)
+			_ = value.Decode(&discovery)
+			operation.Models = &discovery
 		}
 		if operation.Session != nil {
 			session := *operation.Session
@@ -592,11 +657,21 @@ func (compiled *Compiled) Execute(ctx context.Context, direction Direction, inpu
 	if output.IsZero() {
 		return fail(fmt.Errorf("mapping omitted its entire output"))
 	}
+	isInitial := false
+	if mapping.initial != nil {
+		output, isInitial, err = options.State.prependInitial(compiled, direction, mapping.initial, state, output)
+		if err != nil {
+			return fail(err)
+		}
+	}
 	if err := checkValueLimits(output, compiled.limits); err != nil {
 		return fail(err)
 	}
 	if err := checkValueSchema(output, mapping.output, "/output", 1, compiled.limits); err != nil {
 		return fail(err)
+	}
+	if isInitial {
+		options.State.initialized[moduleStateKey{compiled: compiled, direction: direction}] = true
 	}
 	return output, nil
 }

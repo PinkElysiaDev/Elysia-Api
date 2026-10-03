@@ -24,7 +24,9 @@ import (
 
 func newOpsTestServer(t *testing.T) *Server {
 	t.Helper()
-	return newAgentIntegrationServer(t)
+	s := newAgentIntegrationServer(t)
+	activateDiscoveryPresets(t, s)
+	return s
 }
 
 type testToolResult struct {
@@ -369,27 +371,36 @@ func (c *sessionToolContext) SetPlanSummary(summary string) error {
 // SetTestTarget 直接复用引擎语义写库）。
 func TestOpsTestUpstreamCredentialParams(t *testing.T) {
 	s := newOpsTestServer(t)
+	service, serviceErr := s.protocolService()
+	if serviceErr != nil {
+		t.Fatal(serviceErr)
+	}
+	compiled, _ := service.Pin("chat-completions-api")
+	draft, err := json.Marshal(compiled.Definition())
+	if err != nil {
+		t.Fatal(err)
+	}
 	created, _ := s.store.CreateAgentSession(context.Background(), storage.AgentSessionUpsert{Mode: "create"})
 	vendor := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"answer":{"text":"ok"},"finish":"stop"}`))
+		_, _ = w.Write([]byte(`{"id":"r","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
 	}))
 	defer vendor.Close()
-	if err := s.store.UpdateSessionState(context.Background(), created.ID, stateUpdateWithDraft(json.RawMessage(agentTestConfig("cred-proto")))); err != nil {
+	if err := s.store.UpdateSessionState(context.Background(), created.ID, stateUpdateWithDraft(draft)); err != nil {
 		t.Fatalf("seed draft: %v", err)
 	}
 	session, _ := s.store.GetSession(context.Background(), created.ID)
 	tctx := &sessionToolContext{ctx: context.Background(), store: s.store, session: session}
 
 	// 无参数且会话无 baseUrl → 明确报缺少目标
-	result := (&testUpstreamTool{server: s}).Execute(context.Background(), tctx, json.RawMessage(`{}`))
+	result := (&protocolV2Tool{server: s, action: "test"}).Execute(context.Background(), tctx, json.RawMessage(`{"operation":"generate","sampleRequest":{"schemaVersion":1,"model":"test-model","content":[{"kind":"text","role":"user","payload":"hi"}]}}`))
 	if result.OK || !strings.Contains(result.Summary, "baseUrl") {
 		t.Fatalf("missing target must fail with baseUrl hint: %s", result.Summary)
 	}
 
 	// 参数凭证（真实工具执行，含 SetTestTarget 自动记住）
-	result = (&testUpstreamTool{server: s}).Execute(context.Background(), tctx,
-		json.RawMessage(fmt.Sprintf(`{"baseUrl":%q,"apiKey":"sk-param-key"}`, vendor.URL)))
+	result = (&protocolV2Tool{server: s, action: "test"}).Execute(context.Background(), tctx,
+		json.RawMessage(fmt.Sprintf(`{"baseUrl":%q,"apiKey":"sk-param-key","operation":"generate","sampleRequest":{"schemaVersion":1,"model":"test-model","content":[{"kind":"text","role":"user","payload":"hi"}]}}`, vendor.URL)))
 	if !result.OK {
 		t.Fatalf("test_upstream: %s", result.Summary)
 	}
@@ -401,7 +412,7 @@ func TestOpsTestUpstreamCredentialParams(t *testing.T) {
 	// 无参数重试：回退到已记住的凭证，仍然成功
 	session2, _ := s.store.GetSession(context.Background(), created.ID)
 	tctx2 := &sessionToolContext{ctx: context.Background(), store: s.store, session: session2}
-	if result := (&testUpstreamTool{server: s}).Execute(context.Background(), tctx2, json.RawMessage(`{}`)); !result.OK {
+	if result := (&protocolV2Tool{server: s, action: "test"}).Execute(context.Background(), tctx2, json.RawMessage(`{"operation":"generate","sampleRequest":{"schemaVersion":1,"model":"test-model","content":[{"kind":"text","role":"user","payload":"hi"}]}}`)); !result.OK {
 		t.Fatalf("fallback to remembered credentials failed: %s", result.Summary)
 	}
 }

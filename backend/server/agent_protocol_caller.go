@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -12,33 +13,31 @@ import (
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/relay"
+
 	"github.com/elysia-api/backend/storage"
 )
 
-func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input agent.CallRequest, model storage.Model, legacy *relay.MaheshvaraRequest, callbacks agent.StreamCallbacks) (*agent.CallResult, bool, error) {
+func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input agent.CallRequest, model storage.Model, callbacks agent.StreamCallbacks) (*agent.CallResult, error) {
 	bindings, err := caller.server.store.ListProtocolBindings(ctx)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	ref := config.ModelRef{ID: model.ID, Name: model.Name, SourceID: model.SourceID, BaseURL: model.BaseURL, APIKey: model.APIKey, Platform: model.Platform, ToolsCapable: model.ToolsCapable, VisionCapable: model.VisionCapable}
 	entry, isBound := selectProtocolBinding(bindings, ref)
 	if !isBound {
-		if caller.server.isProtocolRuntimeRequired.Load() {
-			return nil, true, gatewayIssue(protocol.Identity{}, protocol.VerificationRequired, "/binding", "Agent model requires a verified protocol binding")
-		}
-		return nil, false, nil
-	} // Removed after atomic legacy migration.
+		return nil, gatewayIssue(protocol.Identity{}, protocol.VerificationRequired, "/binding", "Agent model requires a verified protocol binding")
+	}
 	service, err := caller.server.protocolService()
 	if err != nil {
-		return nil, true, err
+		return nil, err
 	}
 	if !model.ToolsCapable || !entry.Binding.Capabilities[protocol.FunctionToolsCapability] {
-		return nil, true, gatewayIssue(protocol.Identity{}, protocol.UnsupportedCapability, "/binding/capabilities/tools.function", "Agent requires a model and protocol binding supporting function tools")
+		return nil, gatewayIssue(protocol.Identity{}, protocol.UnsupportedCapability, "/binding/capabilities/tools.function", "Agent requires a model and protocol binding supporting function tools")
 	}
-	compiled, _ := service.Pin(entry.Binding.ProtocolID)
+	view := service.View()
+	compiled, _ := view.Pin(entry.Binding.ProtocolID)
 	if err := protocol.IssuesError(protocol.CheckBinding(entry.Binding, compiled)); err != nil {
-		return nil, true, err
+		return nil, err
 	}
 	transport := protocol.HTTPJSON
 	if entry.Binding.Operation != "" {
@@ -51,22 +50,36 @@ func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input ag
 			}
 		}
 	}
-	candidate, failure := makeGatewayCandidate(service.View(), bindings, ref, transport, "generate")
+	candidate, failure := makeGatewayCandidate(view, bindings, ref, transport, "generate")
 	if failure != nil {
-		return nil, true, failure
+		return nil, failure
 	}
 	if candidate.operation.Kind != "generate" {
-		return nil, true, fmt.Errorf("Agent requires a synchronous generation operation")
+		return nil, fmt.Errorf("Agent requires a synchronous generation operation")
 	}
-	legacy.Stream = transport != protocol.HTTPJSON
-	request, err := relay.SnapshotProtocolRequest(legacy, protocol.Identity{Family: "elysia-agent", WireVersion: "1", DefinitionID: "agent", Revision: "1"}, candidate.scope)
+	content := append([]protocol.Node(nil), input.Content...)
+	if input.Instructions != "" {
+		content = append([]protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("system"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue(input.Instructions)}}}}, content...)
+	}
+	preferences := input.Preferences
+	preferences.MaxOutputTokens = agentStreamMaxOutputTokens
+	preferences.Stream = transport != protocol.HTTPJSON
+	request, err := compiled.BuildAgentRequest(ctx, protocol.Request{SchemaVersion: protocol.SemanticSchemaVersion, Source: protocol.AgentIdentity(), Model: protocol.StringValue(model.Name), Content: content, Tools: input.Tools}, preferences)
 	if err != nil {
-		return nil, true, err
+		return nil, err
 	}
+	isStream := transport != protocol.HTTPJSON
 	started := time.Now()
 	logConfig := caller.server.usageLogConfig()
-	record := &usageRecord{RequestID: usageRequestID(started), StartedAt: started, KeyName: AgentUsageKeyName, RequestedModelGroup: input.Model, ModelName: model.Name, SourceID: model.SourceID, Platform: model.Platform, TargetFormat: entry.Binding.ProtocolID, UpstreamRevision: compiled.Hash(), RelayMode: agentRelayMode, Stream: legacy.Stream, StatusCode: http.StatusOK, bodyOpts: usageBodyOptions{maxBytes: logConfig.BodyMaxBytes, externalize: logConfig.ExternalizeMedia}}
+	record := &usageRecord{RequestID: usageRequestID(started), StartedAt: started, KeyName: AgentUsageKeyName, RequestedModelGroup: input.Model, ModelName: model.Name, SourceID: model.SourceID, Platform: model.Platform, TargetFormat: entry.Binding.ProtocolID, UpstreamRevision: compiled.Hash(), RelayMode: agentRelayMode, Stream: isStream, StatusCode: http.StatusOK, bodyOpts: usageBodyOptions{maxBytes: logConfig.BodyMaxBytes, externalize: logConfig.ExternalizeMedia}}
 	record.assets = newAssetSink(record.RequestID)
+	if record.bodyOpts.maxBytes > 0 {
+		body, err := json.Marshal(input)
+		if err != nil {
+			return nil, err
+		}
+		record.IncomingBody = record.sanitizeBody(body)
+	}
 	defer func() {
 		record.EndedAt = time.Now()
 		record.DurationMs = record.EndedAt.Sub(started).Milliseconds()
@@ -85,16 +98,26 @@ func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input ag
 			callbacks.OnReasoning(delta)
 		}
 	})
+	var result *agent.CallResult
+	if response != nil {
+		var projectionErr error
+		result, projectionErr = agentResultFromProtocol(response)
+		err = errors.Join(err, projectionErr)
+	}
 	if err != nil {
 		setUsageError(record, ctx, err)
-		return nil, true, err
 	}
-	result, err := agentResultFromProtocol(response)
-	if err != nil {
-		setUsageError(record, ctx, err)
-		return nil, true, err
+	if record.bodyOpts.maxBytes > 0 {
+		body, marshalErr := json.Marshal(struct {
+			Result *agent.CallResult `json:"result"`
+			Error  string            `json:"error,omitempty"`
+		}{result, record.Error})
+		if marshalErr != nil {
+			return nil, errors.Join(err, marshalErr)
+		}
+		record.DownstreamResponse = record.sanitizeBody(body)
 	}
-	if !legacy.Stream {
+	if err == nil && !isStream {
 		if callbacks.OnText != nil && result.Text != "" {
 			callbacks.OnText(result.Text)
 		}
@@ -102,11 +125,11 @@ func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input ag
 			callbacks.OnReasoning(result.Reasoning)
 		}
 	}
-	return result, true, nil
+	return result, err
 }
 
 func agentResultFromProtocol(response *protocol.Response) (*agent.CallResult, error) {
-	result := &agent.CallResult{}
+	result := &agent.CallResult{Content: response.Content, Usage: response.Usage}
 	var text, reasoning strings.Builder
 	var collect func([]protocol.Node) error
 	collect = func(nodes []protocol.Node) error {
@@ -116,21 +139,37 @@ func agentResultFromProtocol(response *protocol.Response) (*agent.CallResult, er
 				if err := collect(node.Children); err != nil {
 					return err
 				}
-			case protocol.TextNode, protocol.ReasoningNode:
+			case protocol.TextNode, protocol.ReasoningNode, protocol.RefusalNode:
+				if node.Kind == protocol.ReasoningNode && node.Payload.IsZero() {
+					for _, child := range node.Children {
+						var summary string
+						if child.Kind != protocol.TextNode {
+							return fmt.Errorf("Agent reasoning summary requires text children")
+						}
+						if err := child.Payload.Decode(&summary); err != nil {
+							return err
+						}
+						reasoning.WriteString(summary)
+					}
+					continue
+				}
 				var value string
 				if err := node.Payload.Decode(&value); err != nil {
 					return err
 				}
-				if node.Kind == protocol.TextNode {
+				if node.Kind != protocol.ReasoningNode {
 					text.WriteString(value)
 				} else {
 					reasoning.WriteString(value)
 				}
 			case protocol.ToolCallNode:
-				if node.Input == nil || node.Input.Kind != protocol.JSONInput {
+				if response.Status == protocol.StringValue("incomplete") {
+					continue
+				}
+				if node.Input == nil || node.Input.Kind != protocol.JSONInput || !node.Input.Value.IsObject() {
 					return fmt.Errorf("Agent tools require JSON function arguments")
 				}
-				var call relay.MaheshvaraToolCall
+				var call agent.FunctionCall
 				if err := node.CallID.Decode(&call.ID); err != nil {
 					return err
 				}
@@ -149,20 +188,5 @@ func agentResultFromProtocol(response *protocol.Response) (*agent.CallResult, er
 		return nil, err
 	}
 	result.Text, result.Reasoning = text.String(), reasoning.String()
-	if usage := response.Usage; usage != nil {
-		fields := map[string]int64{}
-		for name, count := range map[string]*protocol.Counter{"input_tokens": usage.Input, "output_tokens": usage.Output, "total_tokens": usage.Total, "cached_input_tokens": usage.CacheRead, "cache_creation_input_tokens": usage.CacheCreation} {
-			if count != nil {
-				fields[name] = count.Count
-			}
-		}
-		body, err := json.Marshal(fields)
-		if err != nil {
-			return nil, err
-		}
-		if err := json.Unmarshal(body, &result.Usage); err != nil {
-			return nil, err
-		}
-	}
 	return result, nil
 }

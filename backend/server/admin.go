@@ -49,13 +49,6 @@ func (s *Server) setupAdminRoutes(admin *gin.RouterGroup) {
 	admin.GET("/model-catalog/status", s.adminModelCatalogStatus)
 	admin.POST("/model-catalog/refresh", s.adminModelCatalogRefresh)
 	// 协议设计器：协议 CRUD（SQLite）+ 字段目录 + 渲染预览 + 真实测试（AI 助手见 agent 路由）。
-	admin.GET("/custom-protocols", s.adminListCustomProtocols)
-	admin.GET("/custom-protocols/schema", s.adminCustomProtocolSchema)
-	admin.PUT("/custom-protocols/:id", s.adminUpsertCustomProtocol)
-	admin.DELETE("/custom-protocols/:id", s.adminDeleteCustomProtocol)
-	admin.POST("/custom-protocols/preview", s.adminPreviewCustomProtocol)
-	admin.POST("/custom-protocols/test", s.adminTestCustomProtocol)
-	admin.POST("/custom-protocols/test-models", s.adminTestCustomProtocolModels)
 	admin.GET("/models", s.adminListModels)
 	admin.POST("/models/refresh", s.adminRefreshModels)
 	// modelId 走 query 而非路径段：模型 ID 常含 "/"（如 org/model），路径参数
@@ -204,11 +197,9 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 	if payload.HTTPTimeout != nil {
 		seconds := *payload.HTTPTimeout
 		s.config.SetHTTPTimeout(seconds)
-		// 即时下发到三个 relay adapter，运行时修改无需重启。
+		// 更新共用传输层；在途流仍由各自的请求上下文控制。
 		timeout := time.Duration(seconds) * time.Second
-		s.openaiAdapter.SetTimeout(timeout)
-		s.claudeAdapter.SetTimeout(timeout)
-		s.geminiAdapter.SetTimeout(timeout)
+		s.protocolTransport.SetTimeout(timeout)
 	}
 	if payload.PanelAccessToken != nil {
 		s.config.SetPanelAccessToken(*payload.PanelAccessToken)
@@ -417,7 +408,7 @@ func (s *Server) adminListSources(c *gin.Context) {
 }
 
 func (s *Server) adminUpsertSource(c *gin.Context) {
-	store, okStore := s.requireStore(c)
+	_, okStore := s.requireStore(c)
 	if !okStore {
 		return
 	}
@@ -432,7 +423,7 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 	if item.ID == "" {
 		item.ID = slugID(item.Name)
 	}
-	if err := validateCustomSourceProtocol(&item); err != nil {
+	if err := s.validateSourceProtocol(&item); err != nil {
 		respondFail(c, 400, "invalid_custom_protocol_source", err.Error())
 		return
 	}
@@ -464,7 +455,7 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 			return
 		}
 	}
-	if err := store.UpsertSource(c.Request.Context(), item); err != nil {
+	if err := s.saveSource(c.Request.Context(), item); err != nil {
 		respondFail(c, 400, "save_source_failed", err.Error())
 		return
 	}
@@ -491,26 +482,6 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 	}
 
 	respondOK(c, item)
-}
-
-func validateCustomSourceProtocol(item *storage.ModelSource) error {
-	if item == nil {
-		return fmt.Errorf("model source is nil")
-	}
-	platform := relay.NormalizeAPIFormat(item.Platform)
-	if !strings.HasPrefix(platform, "custom:") {
-		return nil
-	}
-	protocolID := strings.TrimPrefix(platform, "custom:")
-	protocol, ok := relay.GetCustomProtocol(protocolID)
-	if !ok {
-		return fmt.Errorf("custom protocol %q is not registered", protocolID)
-	}
-	if item.AutoFetchModels && protocol.Models == nil {
-		return fmt.Errorf("custom protocol %q does not define model discovery (models.path/listPath); disable autoFetchModels or declare models discovery in the protocol designer", protocolID)
-	}
-	item.Platform = platform
-	return nil
 }
 
 // findSourceByID 按 id 查找模型源（用于「留空即不变」保留原 secret）。

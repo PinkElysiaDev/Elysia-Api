@@ -30,12 +30,12 @@ func AcceptProtocolSession(writer http.ResponseWriter, request *http.Request, co
 
 // DialProtocolSession shares proxy/TLS/dial-time address policy with HTTP streams.
 // Redirects are refused because a session credential must stay on its bound host.
-func (adapter *OpenAIAdapter) DialProtocolSession(ctx context.Context, request *http.Request, config protocol.SessionConfig) (*WebSocketSession, error) {
-	client := *adapter.streamClient
+func (transport *ProtocolTransport) DialProtocolSession(ctx context.Context, request *http.Request, config protocol.SessionConfig) (*WebSocketSession, error) {
+	client := *transport.streamClient
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	connection, _, err := websocket.Dial(ctx, request.URL.String(), &websocket.DialOptions{HTTPClient: &client, HTTPHeader: request.Header, CompressionMode: websocket.CompressionDisabled})
 	if err != nil {
-		return nil, sanitizeCustomTransportError(err)
+		return nil, sanitizeTransportError(err)
 	}
 	return wrapWebSocket(connection, config.FrameBytes), nil
 }

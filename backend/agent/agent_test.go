@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/protocol"
 )
 
 // ---- fakes ----
@@ -43,6 +43,13 @@ func (f *fakeCaller) Call(ctx context.Context, req CallRequest, cb StreamCallbac
 		if cb.OnText != nil {
 			cb.OnText(delta)
 		}
+	}
+	if next.result != nil && next.result.Content == nil {
+		content := AssistantContent{Text: next.result.Text, Reasoning: next.result.Reasoning, ToolCalls: next.result.ToolCalls}
+		if err := importAssistantContent(&content); err != nil {
+			return nil, err
+		}
+		next.result.Content = content.Content
 	}
 	return next.result, next.err
 }
@@ -180,8 +187,8 @@ type fakeTool struct {
 }
 
 func (t *fakeTool) Name() string { return t.name }
-func (t *fakeTool) Definition() relay.MaheshvaraTool {
-	return relay.MaheshvaraTool{Type: "function", Name: t.name, Description: t.name}
+func (t *fakeTool) Definition() FunctionDefinition {
+	return FunctionDefinition{Name: t.name, Description: t.name, Parameters: map[string]any{"type": "object"}}
 }
 func (t *fakeTool) Gated() bool           { return t.gated }
 func (t *fakeTool) PermissionKey() string { return t.permKey }
@@ -225,8 +232,8 @@ func newTestEngine(caller StreamCaller, store Store, tools ...Tool) *Engine {
 	return NewEngine(caller, store, registry, nil, func(*Session) string { return "test prompt" }, Options{TurnTimeout: 5 * time.Second})
 }
 
-func toolCall(id, name string, args string) relay.MaheshvaraToolCall {
-	return relay.MaheshvaraToolCall{ID: id, Type: "function", Name: name, Arguments: json.RawMessage(args)}
+func toolCall(id, name string, args string) FunctionCall {
+	return FunctionCall{ID: id, Type: "function", Name: name, Arguments: json.RawMessage(args)}
 }
 
 // ---- tests ----
@@ -234,7 +241,7 @@ func toolCall(id, name string, args string) relay.MaheshvaraToolCall {
 func TestRunTurn_PlainReplyWithoutTools(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1"}})
 	caller := &fakeCaller{responses: []scriptedResponse{{
-		result:     &CallResult{Text: "你好，我是终稿", Usage: &relay.MaheshvaraUsage{InputTokens: 10, OutputTokens: 5, TotalTokens: 15}},
+		result:     &CallResult{Text: "你好，我是终稿", Usage: &protocol.Usage{Input: &protocol.Counter{Count: 10, Origin: protocol.ObservedCount}, Output: &protocol.Counter{Count: 5, Origin: protocol.ObservedCount}, Total: &protocol.Counter{Count: 15, Origin: protocol.ObservedCount}}},
 		streamText: []string{"你好", "，我是终稿"},
 	}}}
 	engine := newTestEngine(caller, store)
@@ -272,7 +279,7 @@ func TestRunTurn_PlainReplyWithoutTools(t *testing.T) {
 			done = event
 		}
 	}
-	if done.Usage == nil || done.Usage.TotalTokens != 15 {
+	if done.Usage == nil || (done.Usage.Total == nil || done.Usage.Total.Count != 15) {
 		t.Fatalf("turn_done usage = %+v", done.Usage)
 	}
 }
@@ -280,7 +287,7 @@ func TestRunTurn_PlainReplyWithoutTools(t *testing.T) {
 func TestRunTurn_ToolLoopThenFinalReply(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1"}})
 	caller := &fakeCaller{responses: []scriptedResponse{
-		{result: &CallResult{Text: "我先查一下", ToolCalls: []relay.MaheshvaraToolCall{toolCall("c1", "lookup", `{}`)}}},
+		{result: &CallResult{Text: "我先查一下", ToolCalls: []FunctionCall{toolCall("c1", "lookup", `{}`)}}},
 		{result: &CallResult{Text: "查完了，这是结论"}},
 	}}
 	lookup := &fakeTool{name: "lookup", result: ToolResult{OK: true, Summary: "ok", Data: map[string]any{"value": 42}}}
@@ -303,22 +310,22 @@ func TestRunTurn_ToolLoopThenFinalReply(t *testing.T) {
 	}
 	// 第二次调用时对话应包含工具输出消息
 	last := caller.lastRequest()
-	if len(last.Messages) != 3 {
-		t.Fatalf("second call messages = %d", len(last.Messages))
+	if len(last.Content) != 3 {
+		t.Fatalf("second call messages = %d", len(last.Content))
 	}
-	toolMsg := last.Messages[2]
-	if toolMsg.Role != "tool" || len(toolMsg.Content) == 0 || toolMsg.Content[0].Type != relay.MaheshvaraContentToolOutput {
+	toolMsg := last.Content[2]
+	if toolMsg.Kind != protocol.ToolResultNode {
 		t.Fatalf("tool message shape wrong: %+v", toolMsg)
 	}
-	if toolMsg.Content[0].ToolOutput == "" || !strings.Contains(toolMsg.Content[0].ToolOutput, "42") {
-		t.Fatalf("tool output missing: %+v", toolMsg.Content[0])
+	if string(toolMsg.Payload.Bytes()) == "" || !strings.Contains(string(toolMsg.Payload.Bytes()), "42") {
+		t.Fatalf("tool output missing: %+v", toolMsg)
 	}
 }
 
 func TestRunTurn_GatedToolPausesAndResumeApproves(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1", AllowLiveTest: PermissionAsk}})
 	caller := &fakeCaller{responses: []scriptedResponse{
-		{result: &CallResult{Text: "需要真实测试", ToolCalls: []relay.MaheshvaraToolCall{toolCall("c1", "danger", `{"x":1}`)}}},
+		{result: &CallResult{Text: "需要真实测试", ToolCalls: []FunctionCall{toolCall("c1", "danger", `{"x":1}`)}}},
 		{result: &CallResult{Text: "测试完成"}},
 	}}
 	danger := &fakeTool{name: "danger", gated: true, permKey: "live_test", result: ToolResult{OK: true, Summary: "已执行"}}
@@ -349,7 +356,7 @@ func TestRunTurn_GatedToolPausesAndResumeApproves(t *testing.T) {
 	// 重新走到暂停状态，再走审批恢复
 	store2 := newFakeStore().seed(&Session{ID: "s2", Status: StatusIdle, Settings: Settings{ModelName: "m1", AllowLiveTest: PermissionAsk}})
 	caller2 := &fakeCaller{responses: []scriptedResponse{
-		{result: &CallResult{Text: "需要测试", ToolCalls: []relay.MaheshvaraToolCall{toolCall("c1", "danger", `{"x":1}`)}}},
+		{result: &CallResult{Text: "需要测试", ToolCalls: []FunctionCall{toolCall("c1", "danger", `{"x":1}`)}}},
 		{result: &CallResult{Text: "测试完成"}},
 	}}
 	danger2 := &fakeTool{name: "danger", gated: true, permKey: "live_test", result: ToolResult{OK: true, Summary: "已执行"}}
@@ -389,7 +396,7 @@ func TestRunTurn_GatedToolPausesAndResumeApproves(t *testing.T) {
 
 func TestRunTurn_DenyApprovalSynthesizesDenial(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusWaitingApproval,
-		PendingAction: &PendingAction{Calls: []relay.MaheshvaraToolCall{toolCall("c1", "danger", `{"x":1}`)}},
+		PendingAction: &PendingAction{Calls: []FunctionCall{toolCall("c1", "danger", `{"x":1}`)}},
 		Settings:      Settings{ModelName: "m1"}})
 	caller := &fakeCaller{responses: []scriptedResponse{
 		{result: &CallResult{Text: "好吧，我换个思路"}},
@@ -410,13 +417,13 @@ func TestRunTurn_DenyApprovalSynthesizesDenial(t *testing.T) {
 	}
 	// 拒绝结果回传给了模型
 	last := caller.lastRequest()
-	if len(last.Messages) == 0 {
+	if len(last.Content) == 0 {
 		t.Fatalf("no messages")
 	}
 	found := false
-	for _, msg := range last.Messages {
-		for _, part := range msg.Content {
-			if part.Type == relay.MaheshvaraContentToolOutput && strings.Contains(part.ToolOutput, "denied") {
+	for _, msg := range last.Content {
+		for _, part := range testContentNodes([]protocol.Node{msg}) {
+			if part.Kind == protocol.ToolResultNode && strings.Contains(string(part.Payload.Bytes()), "denied") {
 				found = true
 			}
 		}
@@ -429,7 +436,7 @@ func TestRunTurn_DenyApprovalSynthesizesDenial(t *testing.T) {
 func TestRunTurn_AlwaysPermissionSkipsApproval(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1", AllowLiveTest: PermissionAlways}})
 	caller := &fakeCaller{responses: []scriptedResponse{
-		{result: &CallResult{Text: "直接测", ToolCalls: []relay.MaheshvaraToolCall{toolCall("c1", "danger", `{"x":1}`)}}},
+		{result: &CallResult{Text: "直接测", ToolCalls: []FunctionCall{toolCall("c1", "danger", `{"x":1}`)}}},
 		{result: &CallResult{Text: "完成"}},
 	}}
 	danger := &fakeTool{name: "danger", gated: true, permKey: "live_test", result: ToolResult{OK: true}}
@@ -448,7 +455,7 @@ func TestRunTurn_AlwaysPermissionSkipsApproval(t *testing.T) {
 func TestRunTurn_NeverPermissionSynthesizesDenial(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1", AllowLiveTest: PermissionNever}})
 	caller := &fakeCaller{responses: []scriptedResponse{
-		{result: &CallResult{Text: "直接测", ToolCalls: []relay.MaheshvaraToolCall{toolCall("c1", "danger", `{"x":1}`)}}},
+		{result: &CallResult{Text: "直接测", ToolCalls: []FunctionCall{toolCall("c1", "danger", `{"x":1}`)}}},
 		{result: &CallResult{Text: "换思路"}},
 	}}
 	danger := &fakeTool{name: "danger", gated: true, permKey: "live_test", result: ToolResult{OK: true}}
@@ -466,7 +473,7 @@ func TestRunTurn_PlanModeBlocksGatedTools(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle,
 		Settings: Settings{ModelName: "m1", PlanMode: true, AllowLiveTest: PermissionAlways, AllowSave: PermissionAlways}})
 	caller := &fakeCaller{responses: []scriptedResponse{
-		{result: &CallResult{Text: "我来改配置", ToolCalls: []relay.MaheshvaraToolCall{toolCall("c1", "danger", `{"x":1}`)}}},
+		{result: &CallResult{Text: "我来改配置", ToolCalls: []FunctionCall{toolCall("c1", "danger", `{"x":1}`)}}},
 		{result: &CallResult{Text: "好的，先给出方案"}},
 	}}
 	danger := &fakeTool{name: "danger", gated: true, permKey: "save", result: ToolResult{OK: true}}
@@ -490,9 +497,9 @@ func TestRunTurn_PlanModeBlocksGatedTools(t *testing.T) {
 	// 计划模式拒绝理由回传给模型
 	last := caller.lastRequest()
 	found := false
-	for _, msg := range last.Messages {
-		for _, part := range msg.Content {
-			if part.Type == relay.MaheshvaraContentToolOutput && strings.Contains(part.ToolOutput, "计划模式") {
+	for _, msg := range last.Content {
+		for _, part := range testContentNodes([]protocol.Node{msg}) {
+			if part.Kind == protocol.ToolResultNode && strings.Contains(string(part.Payload.Bytes()), "计划模式") {
 				found = true
 			}
 		}
@@ -625,7 +632,7 @@ func (c *ctxAwareHangCaller) Call(ctx context.Context, req CallRequest, cb Strea
 func TestRunTurn_DraftUpdateEmitsDraftUpdated(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1"}})
 	caller := &fakeCaller{responses: []scriptedResponse{
-		{result: &CallResult{Text: "写草稿", ToolCalls: []relay.MaheshvaraToolCall{toolCall("c1", "draft", `{"id":"x"}`)}}},
+		{result: &CallResult{Text: "写草稿", ToolCalls: []FunctionCall{toolCall("c1", "draft", `{"id":"x"}`)}}},
 		{result: &CallResult{Text: "完成"}},
 	}}
 	draft := json.RawMessage(`{"id":"x","request":{}}`)
@@ -651,7 +658,7 @@ func TestRunTurn_DraftUpdateEmitsDraftUpdated(t *testing.T) {
 func TestRunTurn_UnknownToolSynthesizesError(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1"}})
 	caller := &fakeCaller{responses: []scriptedResponse{
-		{result: &CallResult{Text: "调用", ToolCalls: []relay.MaheshvaraToolCall{toolCall("c1", "nope", `{"x":1}`)}}},
+		{result: &CallResult{Text: "调用", ToolCalls: []FunctionCall{toolCall("c1", "nope", `{"x":1}`)}}},
 		{result: &CallResult{Text: "ok"}},
 	}}
 	engine := newTestEngine(caller, store)
@@ -668,7 +675,7 @@ func TestRunTurn_MaxRoundsCap(t *testing.T) {
 	const rounds = 3
 	responses := make([]scriptedResponse, rounds+2)
 	for i := range responses {
-		responses[i] = scriptedResponse{result: &CallResult{Text: "again", ToolCalls: []relay.MaheshvaraToolCall{toolCall(fmt.Sprintf("c%d", i), "loop", `{"x":1}`)}}}
+		responses[i] = scriptedResponse{result: &CallResult{Text: "again", ToolCalls: []FunctionCall{toolCall(fmt.Sprintf("c%d", i), "loop", `{"x":1}`)}}}
 	}
 	caller := &fakeCaller{responses: responses}
 	tool := &fakeTool{name: "loop", result: ToolResult{OK: true}}
@@ -708,8 +715,8 @@ func TestRunTurn_EmptyContinueRegenerates(t *testing.T) {
 	}
 	// 对话包含历史 user 消息
 	req := caller.lastRequest()
-	if len(req.Messages) == 0 || req.Messages[0].Role != "user" {
-		t.Fatalf("history not loaded: %+v", req.Messages)
+	if len(req.Content) == 0 || req.Content[0].Role != protocol.StringValue("user") {
+		t.Fatalf("history not loaded: %+v", req.Content)
 	}
 }
 
@@ -779,10 +786,10 @@ func TestExecuteCalls_ParallelReadOnlyToolsOverlap(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle})
 	engine := NewEngine(&fakeCaller{}, store, registry, nil, nil, Options{})
 	session, _ := store.GetSession(context.Background(), "s1")
-	conversation := []relay.MaheshvaraMessage{}
+	conversation := []conversationTurn{}
 	done := make(chan struct{})
 	go func() {
-		_, _ = engine.executeCalls(context.Background(), "s1", session, &conversation, []relay.MaheshvaraToolCall{
+		_, _ = engine.executeCalls(context.Background(), "s1", session, &conversation, []FunctionCall{
 			toolCall("c1", "list_a", `{}`), toolCall("c2", "list_b", `{}`),
 		}, "", nil, make(chan Event, 8))
 		close(done)
@@ -817,20 +824,20 @@ func TestMaskSecretInputs_Authorization(t *testing.T) {
 }
 
 func TestMicroCompact_ClearsOldToolResults(t *testing.T) {
-	conversation := make([]relay.MaheshvaraMessage, 0, 6)
+	conversation := make([]conversationTurn, 0, 6)
 	for index := 0; index < 6; index++ {
-		conversation = append(conversation, relay.MaheshvaraMessage{Role: "tool", Content: []relay.MaheshvaraContentPart{{
-			Type: relay.MaheshvaraContentToolOutput, ToolCallID: fmt.Sprintf("c%d", index), ToolOutput: strings.Repeat("x", 1000),
+		conversation = append(conversation, conversationTurn{Role: "tool", Content: []protocol.Node{{
+			Kind: protocol.ToolResultNode, CallID: protocol.StringValue(fmt.Sprintf("c%d", index)), Payload: protocol.StringValue(strings.Repeat("x", 1000)),
 		}}})
 	}
 	compacted, cleared := microCompact(conversation)
 	if cleared != 2 {
 		t.Fatalf("cleared = %d", cleared)
 	}
-	if !strings.Contains(compacted[0].Content[0].ToolOutput, "旧命令结果已清除") {
-		t.Fatalf("oldest result not cleared: %s", compacted[0].Content[0].ToolOutput)
+	if !strings.Contains(string(compacted[0].Content[0].Payload.Bytes()), "旧命令结果已清除") {
+		t.Fatalf("oldest result not cleared: %s", string(compacted[0].Content[0].Payload.Bytes()))
 	}
-	if strings.Contains(compacted[5].Content[0].ToolOutput, "旧命令结果已清除") {
+	if strings.Contains(string(compacted[5].Content[0].Payload.Bytes()), "旧命令结果已清除") {
 		t.Fatal("newest result should be kept")
 	}
 }
@@ -856,7 +863,7 @@ func TestRunTurn_OversizedToolResultPersists(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1"}})
 	big := map[string]any{"data": strings.Repeat("x", 100*1024)}
 	caller := &fakeCaller{responses: []scriptedResponse{
-		{result: &CallResult{Text: "查", ToolCalls: []relay.MaheshvaraToolCall{toolCall("c1", "lookup", `{}`)}}},
+		{result: &CallResult{Text: "查", ToolCalls: []FunctionCall{toolCall("c1", "lookup", `{}`)}}},
 		{result: &CallResult{Text: "完成"}},
 	}}
 	lookup := &fakeTool{name: "lookup", result: ToolResult{OK: true, Summary: "大结果", Data: big}}
@@ -888,7 +895,7 @@ func TestRunTurn_OversizedToolResultPersists(t *testing.T) {
 func TestResumeApproval_SuppliedAPIKeyVisibleToTool(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1", AllowLiveTest: PermissionAsk}})
 	caller := &fakeCaller{responses: []scriptedResponse{
-		{result: &CallResult{Text: "要测", ToolCalls: []relay.MaheshvaraToolCall{toolCall("c1", "probe", `{}`)}}},
+		{result: &CallResult{Text: "要测", ToolCalls: []FunctionCall{toolCall("c1", "probe", `{}`)}}},
 		{result: &CallResult{Text: "完成"}},
 	}}
 	gotKey := ""
@@ -917,7 +924,7 @@ func TestResumeApproval_BatchStillEnforcesNever(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle,
 		Settings: Settings{ModelName: "m1", AllowLiveTest: PermissionAsk, AllowSave: PermissionNever}})
 	caller := &fakeCaller{responses: []scriptedResponse{
-		{result: &CallResult{Text: "一起做", ToolCalls: []relay.MaheshvaraToolCall{
+		{result: &CallResult{Text: "一起做", ToolCalls: []FunctionCall{
 			toolCall("c1", "probe", `{}`),
 			toolCall("c2", "saver", `{}`),
 		}}},
@@ -951,9 +958,9 @@ func TestResumeApproval_BatchStillEnforcesNever(t *testing.T) {
 	// 拒绝结果回传模型
 	last := caller.lastRequest()
 	foundDenied := false
-	for _, msg := range last.Messages {
-		for _, part := range msg.Content {
-			if part.Type == relay.MaheshvaraContentToolOutput && strings.Contains(part.ToolOutput, "denied") {
+	for _, msg := range last.Content {
+		for _, part := range testContentNodes([]protocol.Node{msg}) {
+			if part.Kind == protocol.ToolResultNode && strings.Contains(string(part.Payload.Bytes()), "denied") {
 				foundDenied = true
 			}
 		}
@@ -966,7 +973,7 @@ func TestResumeApproval_BatchStillEnforcesNever(t *testing.T) {
 // 回归（W1-3）：审批挂起期间开启计划模式，批准后旧批次仍被计划模式拒绝。
 func TestResumeApproval_PlanModeEnabledAfterPauseStillDenies(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusWaitingApproval,
-		PendingAction: &PendingAction{Calls: []relay.MaheshvaraToolCall{toolCall("c1", "saver", `{}`)}},
+		PendingAction: &PendingAction{Calls: []FunctionCall{toolCall("c1", "saver", `{}`)}},
 		Settings:      Settings{ModelName: "m1", AllowSave: PermissionAsk, PlanMode: true}})
 	caller := &fakeCaller{responses: []scriptedResponse{
 		{result: &CallResult{Text: "改走方案"}},
@@ -1019,7 +1026,7 @@ func TestMaskSecretInputs(t *testing.T) {
 // protocolAgentEngine 的 Options.ParseAsk 注入）。
 func stubAskParser(t *testing.T) Options {
 	t.Helper()
-	return Options{ParseAsk: func(call relay.MaheshvaraToolCall) (AskQuestion, bool) {
+	return Options{ParseAsk: func(call FunctionCall) (AskQuestion, bool) {
 		if call.Name != ToolNameAskUser {
 			return AskQuestion{}, false
 		}
@@ -1040,7 +1047,7 @@ func TestResumeApproval_QuestionAnswerFeedsModelAndCancelsRest(t *testing.T) {
 	opts := stubAskParser(t)
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1"}})
 	caller := &fakeCaller{responses: []scriptedResponse{
-		{result: &CallResult{Text: "先确认方向", ToolCalls: []relay.MaheshvaraToolCall{
+		{result: &CallResult{Text: "先确认方向", ToolCalls: []FunctionCall{
 			toolCall("q1", "ask_user", `{"question":"用哪个源？"}`),
 			toolCall("c2", "lookup", `{}`),
 		}}},
@@ -1096,16 +1103,16 @@ func TestResumeApproval_QuestionAnswerFeedsModelAndCancelsRest(t *testing.T) {
 	last := caller.lastRequest()
 	toolOutputs := 0
 	sawAnswer, sawCancel := false, false
-	for _, message := range last.Messages {
-		if message.Role != "tool" {
+	for _, message := range last.Content {
+		if message.Kind != protocol.ToolResultNode {
 			continue
 		}
 		toolOutputs++
-		for _, part := range message.Content {
-			if strings.Contains(part.ToolOutput, "源A") {
+		for _, part := range testContentNodes([]protocol.Node{message}) {
+			if strings.Contains(string(part.Payload.Bytes()), "源A") {
 				sawAnswer = true
 			}
-			if strings.Contains(part.ToolOutput, "已取消") {
+			if strings.Contains(string(part.Payload.Bytes()), "已取消") {
 				sawCancel = true
 			}
 		}
@@ -1124,7 +1131,7 @@ func TestResumeApproval_QuestionAnswerFeedsModelAndCancelsRest(t *testing.T) {
 func TestPlanReadyPausesAndApprovalClosesPlanMode(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1", PlanMode: true}})
 	caller := &fakeCaller{responses: []scriptedResponse{
-		{result: &CallResult{Text: "方案如下", ToolCalls: []relay.MaheshvaraToolCall{
+		{result: &CallResult{Text: "方案如下", ToolCalls: []FunctionCall{
 			toolCall("p1", "update_plan", `{"plan":[{"title":"建源","status":"pending"},{"title":"测试","status":"pending"}],"ready_for_approval":true}`),
 		}}},
 		{result: &CallResult{Text: "开始执行"}},
@@ -1168,7 +1175,7 @@ func TestPlanReadyTriggersEvenWhenPlanUnchanged(t *testing.T) {
 	steps := []PlanStep{{Title: "建源", Status: "pending"}}
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Plan: steps, Settings: Settings{ModelName: "m1", PlanMode: true}})
 	caller := &fakeCaller{responses: []scriptedResponse{
-		{result: &CallResult{Text: "方案不变，请求确认", ToolCalls: []relay.MaheshvaraToolCall{
+		{result: &CallResult{Text: "方案不变，请求确认", ToolCalls: []FunctionCall{
 			toolCall("p1", "update_plan", `{"plan":[{"title":"建源","status":"pending"}],"ready_for_approval":true}`),
 		}}},
 		{result: &CallResult{Text: "收到确认"}},
@@ -1190,7 +1197,7 @@ func TestMaskedPendingAction_PreservesKindQuestionPlan(t *testing.T) {
 	pending := &PendingAction{
 		Kind:  PendingKindPlan,
 		Plan:  plan,
-		Calls: []relay.MaheshvaraToolCall{toolCall("c1", "test_upstream", `{"apiKey":"sk-1"}`)},
+		Calls: []FunctionCall{toolCall("c1", "test_upstream", `{"apiKey":"sk-1"}`)},
 	}
 	masked := MaskedPendingAction(pending)
 	if masked.Kind != PendingKindPlan || len(masked.Plan) != 1 || masked.Plan[0].Title != "步骤" {
@@ -1213,10 +1220,10 @@ func TestMaskedPendingAction_PreservesKindQuestionPlan(t *testing.T) {
 // ---- 上下文摘要压缩（d134314 回归） ----
 
 func TestSummaryCut_LandsOnUserBoundary(t *testing.T) {
-	roles := func(values ...string) []relay.MaheshvaraMessage {
-		messages := make([]relay.MaheshvaraMessage, 0, len(values))
+	roles := func(values ...string) []conversationTurn {
+		messages := make([]conversationTurn, 0, len(values))
 		for _, value := range values {
-			messages = append(messages, relay.MaheshvaraMessage{Role: value})
+			messages = append(messages, conversationTurn{Role: value})
 		}
 		return messages
 	}
@@ -1246,11 +1253,11 @@ func TestTurnStartSummary_RecordsBoundaryAndReplaysKeptHalf(t *testing.T) {
 		return seq
 	}
 	seqFirst := mustAppend(RoleUser, UserContent{Text: "marker-first 第一轮问题"})
-	mustAppend(RoleAssistant, AssistantContent{ToolCalls: []relay.MaheshvaraToolCall{toolCall("c1", "lookup", `{}`)}})
+	mustAppend(RoleAssistant, AssistantContent{ToolCalls: []FunctionCall{toolCall("c1", "lookup", `{}`)}})
 	mustAppend(RoleToolResult, ToolResultInfo{CallID: "c1", Name: "lookup", OK: true, Data: bigData})
 	seqMid := mustAppend(RoleAssistant, AssistantContent{Text: "第一轮结论"})
 	mustAppend(RoleUser, UserContent{Text: "marker-second 第二轮问题"})
-	mustAppend(RoleAssistant, AssistantContent{ToolCalls: []relay.MaheshvaraToolCall{toolCall("c2", "lookup", `{}`)}})
+	mustAppend(RoleAssistant, AssistantContent{ToolCalls: []FunctionCall{toolCall("c2", "lookup", `{}`)}})
 	mustAppend(RoleToolResult, ToolResultInfo{CallID: "c2", Name: "lookup", OK: true, Data: bigData})
 	mustAppend(RoleAssistant, AssistantContent{Text: "第二轮结论"})
 	if seqFirst == 0 || seqMid == 0 {
@@ -1296,15 +1303,15 @@ func TestTurnStartSummary_RecordsBoundaryAndReplaysKeptHalf(t *testing.T) {
 	// 本轮发给模型的对话：保留半段原文在、被摘要前缀不在、摘要在。
 	last := caller.lastRequest()
 	var sawKept, sawSummary, sawDropped bool
-	for _, message := range last.Messages {
-		for _, part := range message.Content {
-			if strings.Contains(part.Text, "marker-second") || strings.Contains(part.ToolOutput, "marker-second") {
+	for _, message := range last.Content {
+		for _, part := range testContentNodes([]protocol.Node{message}) {
+			if strings.Contains(string(part.Payload.Bytes()), "marker-second") || strings.Contains(string(part.Payload.Bytes()), "marker-second") {
 				sawKept = true
 			}
-			if strings.Contains(part.Text, "marker-summary") {
+			if strings.Contains(string(part.Payload.Bytes()), "marker-summary") {
 				sawSummary = true
 			}
-			if strings.Contains(part.Text, "marker-first") {
+			if strings.Contains(string(part.Payload.Bytes()), "marker-first") {
 				sawDropped = true
 			}
 		}
@@ -1321,8 +1328,8 @@ func TestTurnStartSummary_RecordsBoundaryAndReplaysKeptHalf(t *testing.T) {
 	}
 	var replayKept, replayDropped, replaySummary bool
 	for _, message := range replayed {
-		for _, part := range message.Content {
-			text := part.Text + part.ToolOutput
+		for _, part := range testContentNodes(message.Content) {
+			text := string(part.Payload.Bytes()) + string(part.Payload.Bytes())
 			if strings.Contains(text, "marker-second") {
 				replayKept = true
 			}
@@ -1344,7 +1351,7 @@ func TestTurnStartSummary_RecordsBoundaryAndReplaysKeptHalf(t *testing.T) {
 		if message.Role == "tool" && firstTool < 0 {
 			firstTool = index
 		}
-		if message.Role == "assistant" && len(message.ToolCalls) > 0 && firstAssistantWithCalls < 0 {
+		if message.Role == "assistant" && hasTestToolCall(message.Content) && firstAssistantWithCalls < 0 {
 			firstAssistantWithCalls = index
 		}
 	}
@@ -1386,4 +1393,21 @@ func TestAdvancePlanStaleRoundsCadence(t *testing.T) {
 	if advancePlanStaleRounds(empty) || empty.PlanStaleRounds != 0 {
 		t.Fatal("empty plan must never advance or nudge")
 	}
+}
+
+func testContentNodes(nodes []protocol.Node) []protocol.Node {
+	var result []protocol.Node
+	for _, node := range nodes {
+		result = append(result, node)
+		result = append(result, testContentNodes(node.Children)...)
+	}
+	return result
+}
+func hasTestToolCall(nodes []protocol.Node) bool {
+	for _, node := range testContentNodes(nodes) {
+		if node.Kind == protocol.ToolCallNode {
+			return true
+		}
+	}
+	return false
 }

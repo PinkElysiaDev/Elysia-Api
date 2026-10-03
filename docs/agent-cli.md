@@ -570,31 +570,30 @@ elysia protocol — 自定义协议设计（草稿/离线预览/真实测试/保
       --from                   from
       --to                     to
 
-  elysia protocol draft '<完整配置 JSON>' [--example '<响应示例 JSON>']
-    写入/更新协议配置草稿（立即校验并离线验证）
-      --example                上游响应示例 JSON，用于离线检验 response 映射
-      <config>                 完整 CustomProtocolConfig JSON（建议用单引号包裹）
+  elysia protocol draft '<schemaVersion=2 JSON>'
+    写入协议草稿并校验定义
+      <config>                 完整 v2 定义 JSON
 
   elysia protocol models [--base-url <URL>] [--api-key <key>]
-    按草稿 models 配置试拉上游模型列表（受权限策略控制）
-      --base-url               上游 baseUrl（缺省用当前 CLI 上下文已记录的）
-      --api-key                API key（缺省用当前 CLI 上下文已记录的）
+    按声明操作验证真实上游模型目录（受权限策略控制）
+      --base-url               真实上游地址；仍受出站地址策略限制
+      --api-key                真实上游凭据；不写入验证报告
 
-  elysia protocol preview --direction <direction> --sample '<input JSON>' [--sequence] [--mode session|task] [--sample-id <id>] [--operation <submit>] [--kind decode|encode|control] [--purpose submit|status|result|cancel]
-    离线渲染草稿请求（不发送）
-      --sample                 自定义样例请求 JSON
-      --sequence               Complete ordered event sequence
-      --direction              direction
-      --mode                   mode
-      --sample-id              sample-id
-      --operation              operation
-      --kind                   kind
-      --purpose                purpose
+  elysia protocol preview --sample '<JSON>' [--direction <direction>] [--sequence] [--mode mapping|session|task|models|agent]
+    预览请求、响应、事件或工作流
+      --sample                 完整输入 JSON；真实生成探测使用语义请求
+      --direction              映射方向，取值以 protocol schema 为准
+      --sequence               将输入作为有序事件序列验证
+      --mode                   mapping、session、task、models 或 agent
+      --sample-id              定义中已声明的会话样例 ID
+      --operation              定义中已声明的操作名
+      --kind                   任务映射方向：decode、encode 或 control
+      --purpose                任务阶段：submit、status、result 或 cancel
 
   elysia protocol read --id <id> [--hash <revision-hash>]
-    读取已保存协议的完整配置
-      --id                     协议 id（含内置预置协议）
-      --hash                   hash
+    读取协议草稿或不可变修订
+      --id                     协议 ID，区分大小写
+      --hash                   不可变修订的内容哈希；省略时读取草稿
 
   elysia protocol rollback [--id <id>] [--hash <revision>] [--expected <active>] [--section <section>] [--type <type>] [--from <hash>] [--to <hash>]
     Protocol v2 rollback
@@ -607,9 +606,8 @@ elysia protocol — 自定义协议设计（草稿/离线预览/真实测试/保
       --to                     to
 
   elysia protocol save [--expected <draft-hash>]
-    Save draft and verification evidence without activation
-      --update                 显式更新已有协议；目标必须存在且与草稿 id 一致
-      --expected               expected
+    保存草稿与离线证据，不启用
+      --expected               当前草稿哈希，用于检测并发修改
 
   elysia protocol schema [--id <id>] [--hash <revision>] [--expected <active>] [--section <section>] [--type <type>] [--from <hash>] [--to <hash>]
     Protocol v2 schema
@@ -622,12 +620,11 @@ elysia protocol — 自定义协议设计（草稿/离线预览/真实测试/保
       --to                     to
 
   elysia protocol test --operation <id> --sample '<semantic request JSON>' [--base-url <URL>] [--api-key <key>]
-    向真实上游发送一次测试请求（受权限策略控制）
-      --base-url               用户提供的上游 baseUrl（缺省用当前 CLI 上下文已记录的）
-      --api-key                用户提供的 API key（缺省用当前 CLI 上下文已记录的）
-      --stream                 按流式（SSE）测试
-      --sample                 自定义样例请求 JSON
-      --operation              operation
+    验证真实上游契约（受权限策略控制）
+      --operation              定义中已声明的操作名
+      --sample                 完整输入 JSON；真实生成探测使用语义请求
+      --base-url               真实上游地址；仍受出站地址策略限制
+      --api-key                真实上游凭据；不写入验证报告
 
   elysia protocol validate [--id <id>] [--hash <revision>] [--expected <active>] [--section <section>] [--type <type>] [--from <hash>] [--to <hash>]
     Protocol v2 validate
@@ -709,17 +706,15 @@ Protocol v2 diff
 ### protocol draft
 
 ````text
-elysia protocol draft '<完整配置 JSON>' [--example '<响应示例 JSON>']
-写入/更新协议配置草稿（立即校验并离线验证）
+elysia protocol draft '<schemaVersion=2 JSON>'
+写入协议草稿并校验定义
 
-参数：
-  --example                上游响应示例 JSON，用于离线检验 response 映射
-  <config>                 完整 CustomProtocolConfig JSON（建议用单引号包裹）
-
-示例：elysia protocol draft '{"id":"my-api","request":{...}}' --example '{"text":"hi"}'
+  <config>                 完整 v2 定义 JSON
 
 详细说明：接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
 编写 schemaVersion=2 的完整定义：独立声明方向、传输、能力、映射和预期样例。elysia protocol draft '<JSON>' 保留草稿并检查定义。
+模型目录通过 models 操作与 modelSamples 声明。作为 Agent 模型时，配置 agent 工具结果输入类型、参数映射和各思考模式的样例；使用 preview --mode agent 检查实际渲染。
+真实测试受服务端权限与业务策略控制。示例：elysia protocol test --operation generate --sample '<完整语义请求 JSON>' --base-url <URL> --api-key <key>。操作名称必须来自定义，流式由操作的传输声明决定。
 运行 validate、preview、verify；按结构化诊断修订。不能靠删工具、删字段、降低能力声明或缩减必要测试掩盖用户需要的能力。无法表达的新机制必须报告不支持。
 save 保存草稿与当前验证报告；已有草稿用 --expected <draft-hash> 防止覆盖并发编辑。保存不启用。验证通过后 activate --id <id> --hash <revision-hash> --expected <active-hash> 启用。
 read --id <id> 读取当前草稿与哈希；diff --id <id> --from <hash> --to <hash> 比较修订；rollback 使用与 activate 相同的验证门槛。
@@ -730,17 +725,16 @@ read --id <id> 读取当前草稿与哈希；diff --id <id> --from <hash> --to <
 
 ````text
 elysia protocol models [--base-url <URL>] [--api-key <key>]
-按草稿 models 配置试拉上游模型列表（受权限策略控制）
+按声明操作验证真实上游模型目录（受权限策略控制）
 
 参数：
-  --base-url               上游 baseUrl（缺省用当前 CLI 上下文已记录的）
-  --api-key                API key（缺省用当前 CLI 上下文已记录的）
+  --base-url               真实上游地址；仍受出站地址策略限制
+  --api-key                真实上游凭据；不写入验证报告
 
-示例：elysia protocol models --base-url https://api.example.com
-
-详细说明：受服务端权限与业务策略控制。Use the running protocol engine's schema, validation, preview and immutable revision service. Unsupported capabilities produce diagnostics; saving a draft never activates it.
-接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
+详细说明：接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
 编写 schemaVersion=2 的完整定义：独立声明方向、传输、能力、映射和预期样例。elysia protocol draft '<JSON>' 保留草稿并检查定义。
+模型目录通过 models 操作与 modelSamples 声明。作为 Agent 模型时，配置 agent 工具结果输入类型、参数映射和各思考模式的样例；使用 preview --mode agent 检查实际渲染。
+真实测试受服务端权限与业务策略控制。示例：elysia protocol test --operation generate --sample '<完整语义请求 JSON>' --base-url <URL> --api-key <key>。操作名称必须来自定义，流式由操作的传输声明决定。
 运行 validate、preview、verify；按结构化诊断修订。不能靠删工具、删字段、降低能力声明或缩减必要测试掩盖用户需要的能力。无法表达的新机制必须报告不支持。
 save 保存草稿与当前验证报告；已有草稿用 --expected <draft-hash> 防止覆盖并发编辑。保存不启用。验证通过后 activate --id <id> --hash <revision-hash> --expected <active-hash> 启用。
 read --id <id> 读取当前草稿与哈希；diff --id <id> --from <hash> --to <hash> 比较修订；rollback 使用与 activate 相同的验证门槛。
@@ -750,24 +744,23 @@ read --id <id> 读取当前草稿与哈希；diff --id <id> --from <hash> --to <
 ### protocol preview
 
 ````text
-elysia protocol preview --direction <direction> --sample '<input JSON>' [--sequence] [--mode session|task] [--sample-id <id>] [--operation <submit>] [--kind decode|encode|control] [--purpose submit|status|result|cancel]
-离线渲染草稿请求（不发送）
+elysia protocol preview --sample '<JSON>' [--direction <direction>] [--sequence] [--mode mapping|session|task|models|agent]
+预览请求、响应、事件或工作流
 
 参数：
-  --sample                 自定义样例请求 JSON
-  --sequence               Complete ordered event sequence
-  --direction              direction
-  --mode                   mode
-  --sample-id              sample-id
-  --operation              operation
-  --kind                   kind
-  --purpose                purpose
+  --sample                 完整输入 JSON；真实生成探测使用语义请求
+  --direction              映射方向，取值以 protocol schema 为准
+  --sequence               将输入作为有序事件序列验证
+  --mode                   mapping、session、task、models 或 agent
+  --sample-id              定义中已声明的会话样例 ID
+  --operation              定义中已声明的操作名
+  --kind                   任务映射方向：decode、encode 或 control
+  --purpose                任务阶段：submit、status、result 或 cancel
 
-示例：elysia protocol preview
-
-详细说明：受服务端权限与业务策略控制。Use the running protocol engine's schema, validation, preview and immutable revision service. Unsupported capabilities produce diagnostics; saving a draft never activates it.
-接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
+详细说明：接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
 编写 schemaVersion=2 的完整定义：独立声明方向、传输、能力、映射和预期样例。elysia protocol draft '<JSON>' 保留草稿并检查定义。
+模型目录通过 models 操作与 modelSamples 声明。作为 Agent 模型时，配置 agent 工具结果输入类型、参数映射和各思考模式的样例；使用 preview --mode agent 检查实际渲染。
+真实测试受服务端权限与业务策略控制。示例：elysia protocol test --operation generate --sample '<完整语义请求 JSON>' --base-url <URL> --api-key <key>。操作名称必须来自定义，流式由操作的传输声明决定。
 运行 validate、preview、verify；按结构化诊断修订。不能靠删工具、删字段、降低能力声明或缩减必要测试掩盖用户需要的能力。无法表达的新机制必须报告不支持。
 save 保存草稿与当前验证报告；已有草稿用 --expected <draft-hash> 防止覆盖并发编辑。保存不启用。验证通过后 activate --id <id> --hash <revision-hash> --expected <active-hash> 启用。
 read --id <id> 读取当前草稿与哈希；diff --id <id> --from <hash> --to <hash> 比较修订；rollback 使用与 activate 相同的验证门槛。
@@ -778,17 +771,16 @@ read --id <id> 读取当前草稿与哈希；diff --id <id> --from <hash> --to <
 
 ````text
 elysia protocol read --id <id> [--hash <revision-hash>]
-读取已保存协议的完整配置
+读取协议草稿或不可变修订
 
 参数：
-  --id                     协议 id（含内置预置协议）
-  --hash                   hash
+  --id                     协议 ID，区分大小写
+  --hash                   不可变修订的内容哈希；省略时读取草稿
 
-示例：elysia protocol read --id anthropic-api
-
-详细说明：受服务端权限与业务策略控制。Use the running protocol engine's schema, validation, preview and immutable revision service. Unsupported capabilities produce diagnostics; saving a draft never activates it.
-接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
+详细说明：接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
 编写 schemaVersion=2 的完整定义：独立声明方向、传输、能力、映射和预期样例。elysia protocol draft '<JSON>' 保留草稿并检查定义。
+模型目录通过 models 操作与 modelSamples 声明。作为 Agent 模型时，配置 agent 工具结果输入类型、参数映射和各思考模式的样例；使用 preview --mode agent 检查实际渲染。
+真实测试受服务端权限与业务策略控制。示例：elysia protocol test --operation generate --sample '<完整语义请求 JSON>' --base-url <URL> --api-key <key>。操作名称必须来自定义，流式由操作的传输声明决定。
 运行 validate、preview、verify；按结构化诊断修订。不能靠删工具、删字段、降低能力声明或缩减必要测试掩盖用户需要的能力。无法表达的新机制必须报告不支持。
 save 保存草稿与当前验证报告；已有草稿用 --expected <draft-hash> 防止覆盖并发编辑。保存不启用。验证通过后 activate --id <id> --hash <revision-hash> --expected <active-hash> 启用。
 read --id <id> 读取当前草稿与哈希；diff --id <id> --from <hash> --to <hash> 比较修订；rollback 使用与 activate 相同的验证门槛。
@@ -817,17 +809,15 @@ Protocol v2 rollback
 
 ````text
 elysia protocol save [--expected <draft-hash>]
-Save draft and verification evidence without activation
+保存草稿与离线证据，不启用
 
 参数：
-  --update                 显式更新已有协议；目标必须存在且与草稿 id 一致
-  --expected               expected
+  --expected               当前草稿哈希，用于检测并发修改
 
-示例：elysia protocol save
-
-详细说明：受服务端权限与业务策略控制。Use the running protocol engine's schema, validation, preview and immutable revision service. Unsupported capabilities produce diagnostics; saving a draft never activates it.
-接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
+详细说明：接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
 编写 schemaVersion=2 的完整定义：独立声明方向、传输、能力、映射和预期样例。elysia protocol draft '<JSON>' 保留草稿并检查定义。
+模型目录通过 models 操作与 modelSamples 声明。作为 Agent 模型时，配置 agent 工具结果输入类型、参数映射和各思考模式的样例；使用 preview --mode agent 检查实际渲染。
+真实测试受服务端权限与业务策略控制。示例：elysia protocol test --operation generate --sample '<完整语义请求 JSON>' --base-url <URL> --api-key <key>。操作名称必须来自定义，流式由操作的传输声明决定。
 运行 validate、preview、verify；按结构化诊断修订。不能靠删工具、删字段、降低能力声明或缩减必要测试掩盖用户需要的能力。无法表达的新机制必须报告不支持。
 save 保存草稿与当前验证报告；已有草稿用 --expected <draft-hash> 防止覆盖并发编辑。保存不启用。验证通过后 activate --id <id> --hash <revision-hash> --expected <active-hash> 启用。
 read --id <id> 读取当前草稿与哈希；diff --id <id> --from <hash> --to <hash> 比较修订；rollback 使用与 activate 相同的验证门槛。
@@ -856,20 +846,18 @@ Protocol v2 schema
 
 ````text
 elysia protocol test --operation <id> --sample '<semantic request JSON>' [--base-url <URL>] [--api-key <key>]
-向真实上游发送一次测试请求（受权限策略控制）
+验证真实上游契约（受权限策略控制）
 
 参数：
-  --base-url               用户提供的上游 baseUrl（缺省用当前 CLI 上下文已记录的）
-  --api-key                用户提供的 API key（缺省用当前 CLI 上下文已记录的）
-  --stream                 按流式（SSE）测试
-  --sample                 自定义样例请求 JSON
-  --operation              operation
+  --operation              定义中已声明的操作名
+  --sample                 完整输入 JSON；真实生成探测使用语义请求
+  --base-url               真实上游地址；仍受出站地址策略限制
+  --api-key                真实上游凭据；不写入验证报告
 
-示例：elysia protocol test --base-url https://api.example.com --api-key sk-xxx
-
-详细说明：受服务端权限与业务策略控制。Use the running protocol engine's schema, validation, preview and immutable revision service. Unsupported capabilities produce diagnostics; saving a draft never activates it.
-接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
+详细说明：接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
 编写 schemaVersion=2 的完整定义：独立声明方向、传输、能力、映射和预期样例。elysia protocol draft '<JSON>' 保留草稿并检查定义。
+模型目录通过 models 操作与 modelSamples 声明。作为 Agent 模型时，配置 agent 工具结果输入类型、参数映射和各思考模式的样例；使用 preview --mode agent 检查实际渲染。
+真实测试受服务端权限与业务策略控制。示例：elysia protocol test --operation generate --sample '<完整语义请求 JSON>' --base-url <URL> --api-key <key>。操作名称必须来自定义，流式由操作的传输声明决定。
 运行 validate、preview、verify；按结构化诊断修订。不能靠删工具、删字段、降低能力声明或缩减必要测试掩盖用户需要的能力。无法表达的新机制必须报告不支持。
 save 保存草稿与当前验证报告；已有草稿用 --expected <draft-hash> 防止覆盖并发编辑。保存不启用。验证通过后 activate --id <id> --hash <revision-hash> --expected <active-hash> 启用。
 read --id <id> 读取当前草稿与哈希；diff --id <id> --from <hash> --to <hash> 比较修订；rollback 使用与 activate 相同的验证门槛。

@@ -223,7 +223,7 @@ func protocolIDForPlatform(platform string) (string, error) {
 		return strings.TrimPrefix(platform, "custom:"), nil
 	}
 	switch platform {
-	case "", "openai", "openai_chat":
+	case "", "openai", "openai_chat", "openai-compatible", "chat_completions":
 		return "chat-completions-api", nil
 	case "openai_responses", "responses":
 		return "responses-api", nil

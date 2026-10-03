@@ -9,6 +9,8 @@ export interface Activation { protocolId: string; revisionHash: string }
 export interface VerificationReport { definitionHash: string; compilerVersion: string; samplesHash: string; kind: string; passed: boolean; covered: string[]; checks: { sampleId: string; direction?: string; passed: boolean; capabilities?: string[] }[]; issues: ConversionIssue[] }
 export interface Preview { exactJSON: string; issues: ConversionIssue[] }
 export interface ProtocolListing { drafts: ProtocolDraft[]; active: Activation[]; loaded: Record<string, string> }
+/** Capabilities of an enabled, compiled revision; drafts are excluded. */
+export interface EnabledProtocol { id: string; name: string; revision: string; directions: string[]; capabilities: Record<string, boolean>; canGenerate: boolean; hasModelDiscovery: boolean; hasAgentPolicy: boolean }
 const base = '/protocols'
 const identifier = (id: string) => encodeURIComponent(id)
 
@@ -21,6 +23,7 @@ async function previewRequest(rawBody: string): Promise<Preview> {
 
 /** Protocol authoring shares server compilation and verification with forwarding. */
 export const protocolAPI = {
+  enabled: () => request<{ items: EnabledProtocol[] }>(`${base}/enabled`).then((result) => result.items),
   schema: () => request<ProtocolSchema>(`${base}/schema`),
   async list(): Promise<ProtocolListing> {
     const { document, data } = responseData(await request<string>(base, { rawResponse: true }))

@@ -39,14 +39,16 @@ func (s *Server) importLegacyConfig() error {
 			}
 			modelIDs = append(modelIDs, model.ID)
 			modelsByID[model.ID] = storage.Model{
-				ID:        model.ID,
-				Name:      model.Name,
-				BaseURL:   model.BaseURL,
-				APIKey:    model.APIKey,
-				Platform:  model.Platform,
-				Type:      group.Type,
-				MaxTokens: group.MaxTokens,
-				Available: true,
+				ID:            model.ID,
+				Name:          model.Name,
+				BaseURL:       model.BaseURL,
+				APIKey:        model.APIKey,
+				Platform:      model.Platform,
+				Type:          group.Type,
+				MaxTokens:     group.MaxTokens,
+				Available:     true,
+				ToolsCapable:  model.ToolsCapable,
+				VisionCapable: model.VisionCapable,
 			}
 		}
 		groups = append(groups, storage.ModelGroup{
@@ -73,7 +75,7 @@ func (s *Server) getGroups() []config.ModelGroupConfig {
 		return s.config.GetGroups()
 	}
 	if !s.ensureRouteCache() {
-		return s.config.GetGroups() // 缓存装配失败时回退
+		return nil
 	}
 	s.routeCacheMu.RLock()
 	defer s.routeCacheMu.RUnlock()
@@ -94,15 +96,14 @@ func (s *Server) findAccessToken(token string) (config.AccessToken, bool) {
 	if strings.TrimSpace(token) == "" {
 		return config.AccessToken{}, false
 	}
-	if s.store != nil && s.ensureRouteCache() {
+	if s.store != nil {
+		if !s.ensureRouteCache() {
+			return config.AccessToken{}, false
+		}
 		s.routeCacheMu.RLock()
 		item, ok := s.cachedTokens[token]
 		s.routeCacheMu.RUnlock()
-		if ok {
-			return item, true
-		}
-		// 缓存未命中时不再回查 DB：缓存是 token 表的完整快照，
-		// 未命中即不存在（避免给暴力探测留 DB 查询放大面）。
+		return item, ok
 	}
 	return s.config.FindAccessToken(token)
 }

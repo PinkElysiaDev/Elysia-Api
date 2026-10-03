@@ -219,6 +219,11 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		return fail("condition must produce a boolean")
 	}
 	switch expression.op {
+	case "strip_prefix":
+		prefix, err := readString(expression.value)
+		if err != nil || prefix == "" || !isAssignable(expression.source.result, StringType) {
+			return fail("strip_prefix requires a nonempty literal string prefix and a string source")
+		}
 	case "choose", "enum":
 		if !isAssignable(expression.source.result, StringType) {
 			return fail("type/enum discriminator must be a string")
@@ -261,6 +266,14 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 			}
 		}
 	case "join":
+		_, hasItems := source.present["items"]
+		hasItems = hasItems || source.Items != nil
+		if hasItems == (expression.source != nil) {
+			return fail("join requires exactly one of items or source")
+		}
+		if expression.source != nil && !isAssignable(expression.source.result, ArrayType) {
+			return fail("join source must be an array of strings")
+		}
 		for _, item := range expression.items {
 			if !isAssignable(item.result, StringType) {
 				return fail("join inputs must be strings")

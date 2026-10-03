@@ -44,12 +44,49 @@ type moduleStateKey struct {
 
 // EvaluationState owns native codec state for one stream/session. It is not
 // shared across requests or goroutines and is inaccessible to expressions.
-type EvaluationState struct{ modules map[moduleStateKey]Module }
+type EvaluationState struct {
+	modules     map[moduleStateKey]Module
+	initialized map[moduleStateKey]bool
+}
 
 // NewEvaluationState creates independent codec state. Declarative expressions
 // remain immutable; association and terminal validation belong to EventReplay.
 func NewEvaluationState() *EvaluationState {
-	return &EvaluationState{modules: map[moduleStateKey]Module{}}
+	return &EvaluationState{modules: map[moduleStateKey]Module{}, initialized: map[moduleStateKey]bool{}}
+}
+
+func (state *EvaluationState) prependInitial(compiled *Compiled, direction Direction, initial *compiledExpression, evaluation evaluation, output Value) (Value, bool, error) {
+	if state == nil {
+		return Value{}, false, fmt.Errorf("initial events require one EvaluationState per stream")
+	}
+	key := moduleStateKey{compiled: compiled, direction: direction}
+	if state.initialized[key] {
+		return output, false, nil
+	}
+	if len(state.initialized)+len(state.modules) >= compiled.limits.StateItems {
+		return Value{}, false, fmt.Errorf("event mapping state exceeds the item limit")
+	}
+	events, err := eventValues(output)
+	if err != nil || len(events) == 0 {
+		return output, false, err
+	}
+	prefix, err := initial.evaluate(evaluation)
+	if err != nil {
+		return Value{}, false, err
+	}
+	values, err := eventValues(prefix)
+	if err != nil {
+		return Value{}, false, err
+	}
+	combined, err := EncodeValue(append(values, events...))
+	return combined, true, err
+}
+
+func eventValues(value Value) ([]Value, error) {
+	if value.IsObject() {
+		return []Value{value}, nil
+	}
+	return readArray(value)
 }
 
 func (state *EvaluationState) resolve(compiled *Compiled, direction Direction, module Module) (Module, error) {

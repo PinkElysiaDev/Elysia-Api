@@ -2,451 +2,84 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/elysia-api/backend/config"
-	"github.com/elysia-api/backend/relay"
-	"github.com/gin-gonic/gin"
+	"github.com/elysia-api/backend/protocol"
 )
 
-func registerIntegrationCustomProtocol(t *testing.T) {
+func dashscopeStreamDefinition(t *testing.T) protocol.Definition {
 	t.Helper()
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
-	err := relay.RegisterCustomProtocol(relay.CustomProtocolConfig{
-		ID: "vendor-json",
-		Request: relay.CustomProtocolRequest{
-			Method:       http.MethodPost,
-			PathTemplate: "/v2/generate/{{maheshvara.model}}",
-			Headers: map[string]string{
-				"X-Model": "{{maheshvara.model}}",
-			},
-			BodyTemplate: `{"model":"{{maheshvara.model}}","messages":{{maheshvara.messages}},"temperature":{{maheshvara.temperature | default:0.2}},"stream":{{maheshvara.stream}}}`,
-		},
-		Response: relay.CustomProtocolResponse{
-			TextPath:         "answer.text",
-			FinishReasonPath: "finish",
-			UsagePath:        "usage",
-		},
-	})
+	definition := cumulativeWireDefinition(t)
+	definition.ID, definition.Family = "dashscope-native", "dashscope-native"
+	operation := definition.Operations["generate"]
+	operation.Path = "/api/v1/services/aigc/text-generation/generation"
+	operation.Headers["X-DashScope-SSE"] = "enable"
+	operation.Framing.Done = []string{"[DONE]"}
+	definition.Operations["generate"] = operation
+	mapping := definition.Directions[protocol.DecodeEvent]
+	raw, err := json.Marshal(mapping)
 	if err != nil {
-		t.Fatalf("register custom protocol: %v", err)
+		t.Fatal(err)
 	}
+	raw = []byte(strings.ReplaceAll(string(raw), `"path":"/payload/text"`, `"path":"/output/choices/0/message/content"`))
+	raw = []byte(strings.ReplaceAll(string(raw), `{"op":"read","path":"/finished"}`, `{"op":"equal","items":[{"op":"read","path":"/output/choices/0/finish_reason"},{"op":"literal","value":"stop"}]}`))
+	if err := json.Unmarshal(raw, &mapping); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := mapping.Rules[2].Emit.Items[0].Then.Items[0]
+	item := snapshot.Fields["item"]
+	item.Fields["payload"] = protocol.Expression{Op: "join", Source: &protocol.Expression{Op: "map",
+		Source: &protocol.Expression{Op: "read", Path: "/output/choices/0/message/content", Required: true},
+		Body:   &protocol.Expression{Op: "read", From: "item", Path: "/text", Required: true}}}
+	snapshot.Fields["item"] = item
+	mapping.Rules[2].Emit.Items[0].Then.Items[0] = snapshot
+	definition.Directions[protocol.DecodeEvent] = mapping
+	for index, sample := range definition.Samples {
+		if sample.Direction == protocol.DecodeEvent {
+			sample.Input = mustProtocolValue(t, `[
+			 {"output":{"choices":[{"message":{"content":[{"text":"hel"}]}}]}},
+			 {"output":{"choices":[{"message":{"content":[{"text":"hel"},{"text":"lo"}]}}]}},
+			 {"output":{"choices":[{"message":{"content":[{"text":"hello!"}]},"finish_reason":"stop"}]},"usage":{"input_tokens":2,"output_tokens":3}}
+			]`)
+			definition.Samples[index] = sample
+		}
+	}
+	return definition
 }
 
-func TestChatCompletionsCustomProtocolEndToEnd(t *testing.T) {
-	registerIntegrationCustomProtocol(t)
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Errorf("expected POST, got %s", r.Method)
-		}
-		if r.URL.Path != "/v2/generate/vendor-model" {
-			t.Errorf("unexpected path: %s", r.URL.Path)
-		}
-		if r.Header.Get("X-Model") != "vendor-model" {
-			t.Errorf("unexpected X-Model header: %q", r.Header.Get("X-Model"))
-		}
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Errorf("read request body: %v", err)
-			return
-		}
-		var request map[string]any
-		if err := json.Unmarshal(body, &request); err != nil {
-			t.Errorf("request body is not JSON: %v", err)
-			return
-		}
-		if request["model"] != "vendor-model" {
-			t.Errorf("unexpected request model: %#v", request["model"])
-		}
-		messages, ok := request["messages"].([]any)
-		if !ok || len(messages) != 1 {
-			t.Errorf("expected one rendered message, got %#v", request["messages"])
-		}
-		if temperature, ok := request["temperature"].(float64); !ok || temperature != 0.4 {
-			t.Errorf("unexpected temperature: %#v", request["temperature"])
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"answer":{"text":"ok"},"finish":"stop","usage":{"prompt_tokens":2,"completion_tokens":3}}`)
-	}))
-	defer upstream.Close()
-
-	group := config.ModelGroupConfig{
-		ID:      "g1",
-		Name:    "grp",
-		Enabled: true,
-		Models:  []config.ModelRef{{ID: "m1", Name: "vendor-model", BaseURL: upstream.URL, APIKey: "test-key", Platform: "custom:vendor-json"}},
-	}
-	s := newTestServer([]config.ModelGroupConfig{group})
-	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hello"}],"temperature":0.4}`)
-	s.chatCompletions(c)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
-	}
-	var response relay.OpenAIResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode downstream response: %v", err)
-	}
-	if len(response.Choices) != 1 || response.Choices[0].Message.Content != "ok" {
-		t.Fatalf("unexpected downstream response: %s", rec.Body.String())
-	}
-}
-
-func TestResponsesCustomProtocolEndToEnd(t *testing.T) {
-	registerIntegrationCustomProtocol(t)
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v2/generate/vendor-model" {
-			t.Errorf("unexpected path: %s", r.URL.Path)
-		}
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Errorf("read request body: %v", err)
-			return
-		}
-		if !strings.Contains(string(body), `"model":"vendor-model"`) {
-			t.Errorf("custom model was not rendered: %s", body)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"answer":{"text":"responses-ok"},"finish":"stop"}`)
-	}))
-	defer upstream.Close()
-
-	group := config.ModelGroupConfig{
-		ID:      "g1",
-		Name:    "grp",
-		Enabled: true,
-		Models:  []config.ModelRef{{ID: "m1", Name: "vendor-model", BaseURL: upstream.URL, APIKey: "test-key", Platform: "custom:vendor-json"}},
-	}
-	s := newTestServer([]config.ModelGroupConfig{group})
-	rec := httptest.NewRecorder()
-	c, _ := newResponsesContext(rec, `{"model":"grp","input":"hello"}`)
-	s.responses(c)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
-	}
-	var response relay.OpenAIResponsesResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode downstream Responses response: %v", err)
-	}
-	if len(response.Output) == 0 || response.Output[0].Content == nil {
-		t.Fatalf("expected Responses output content: %s", rec.Body.String())
-	}
-	if len(response.Output[0].Content) == 0 || response.Output[0].Content[0].Text != "responses-ok" {
-		t.Fatalf("unexpected Responses output: %s", rec.Body.String())
-	}
-}
-
-func TestAnthropicCustomProtocolEndToEnd(t *testing.T) {
-	registerIntegrationCustomProtocol(t)
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"answer":{"text":"anthropic-ok"},"finish":"end_turn"}`)
-	}))
-	defer upstream.Close()
-
-	group := config.ModelGroupConfig{
-		ID:      "g1",
-		Name:    "grp",
-		Enabled: true,
-		Models:  []config.ModelRef{{ID: "m1", Name: "vendor-model", BaseURL: upstream.URL, APIKey: "test-key", Platform: "custom:vendor-json"}},
-	}
-	server := newTestServer([]config.ModelGroupConfig{group})
-	context, recorder := messagesRequestContext(`{"model":"grp","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`)
-	server.chatCompletions(context)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d body=%s", recorder.Code, recorder.Body.String())
-	}
-	var response relay.ClaudeResponse
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode Anthropic response: %v", err)
-	}
-	if len(response.Content) != 1 || response.Content[0].Text != "anthropic-ok" {
-		t.Fatalf("unexpected Anthropic custom response: %s", recorder.Body.String())
-	}
-}
-
-func TestGeminiCustomProtocolEndToEnd(t *testing.T) {
-	registerIntegrationCustomProtocol(t)
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"answer":{"text":"gemini-ok"},"finish":"STOP"}`)
-	}))
-	defer upstream.Close()
-
-	group := config.ModelGroupConfig{
-		ID:      "g1",
-		Name:    "grp",
-		Enabled: true,
-		Models:  []config.ModelRef{{ID: "m1", Name: "vendor-model", BaseURL: upstream.URL, APIKey: "test-key", Platform: "custom:vendor-json"}},
-	}
-	server := newTestServer([]config.ModelGroupConfig{group})
-	context, recorder := chatRequestContext(`{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`)
-	context.Request.URL.Path = "/v1beta/models/grp:generateContent"
-	context.Params = gin.Params{{Key: "action", Value: "/grp:generateContent"}}
-	server.chatCompletions(context)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d body=%s", recorder.Code, recorder.Body.String())
-	}
-	var response relay.GeminiResponse
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode Gemini response: %v", err)
-	}
-	if len(response.Candidates) != 1 || len(response.Candidates[0].Content.Parts) != 1 || response.Candidates[0].Content.Parts[0].Text != "gemini-ok" {
-		t.Fatalf("unexpected Gemini custom response: %s", recorder.Body.String())
-	}
-}
-
-func TestGeminiCustomProtocolStreamURLSetsMaheshvaraStream(t *testing.T) {
-	registerIntegrationCustomProtocol(t)
-	streamValue := make(chan bool, 1)
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Errorf("read custom Gemini stream body: %v", err)
-			return
-		}
-		var request map[string]any
-		if err := json.Unmarshal(body, &request); err != nil {
-			t.Errorf("decode custom Gemini stream body: %v", err)
-			return
-		}
-		streamValue <- request["stream"] == true
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, "data: {\"answer\":{\"text\":\"hello\"}}\n\n")
-		_, _ = io.WriteString(w, "data: [DONE]\n\n")
-	}))
-	defer upstream.Close()
-
-	group := config.ModelGroupConfig{
-		ID:      "g1",
-		Name:    "grp",
-		Enabled: true,
-		Models:  []config.ModelRef{{ID: "m1", Name: "vendor-model", BaseURL: upstream.URL, APIKey: "test-key", Platform: "custom:vendor-json"}},
-	}
-	server := newTestServer([]config.ModelGroupConfig{group})
-	context, recorder := chatRequestContext(`{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`)
-	context.Request.URL.Path = "/v1beta/models/grp:streamGenerateContent"
-	context.Params = gin.Params{{Key: "action", Value: "/grp:streamGenerateContent"}}
-	server.chatCompletions(context)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d body=%s", recorder.Code, recorder.Body.String())
-	}
-	if streamed := <-streamValue; !streamed {
-		t.Fatal("Gemini stream URL did not set maheshvara.stream for the custom request template")
-	}
-}
-
-func TestChatCompletionsCustomProtocolStreamingEndToEnd(t *testing.T) {
-	registerIntegrationCustomProtocol(t)
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, "data: {\"answer\":{\"text\":\"hello\"}}\n\n")
-		_, _ = io.WriteString(w, "data: {\"answer\":{\"text\":\" world\"},\"finish\":\"stop\"}\n\n")
-		_, _ = io.WriteString(w, "data: [DONE]\n\n")
-	}))
-	defer upstream.Close()
-
-	group := config.ModelGroupConfig{
-		ID:      "g1",
-		Name:    "grp",
-		Enabled: true,
-		Models:  []config.ModelRef{{ID: "m1", Name: "vendor-model", BaseURL: upstream.URL, APIKey: "test-key", Platform: "custom:vendor-json"}},
-	}
-	s := newTestServer([]config.ModelGroupConfig{group})
-	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hello"}]}`)
-	s.chatCompletions(c)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
-	}
-	body := rec.Body.String()
-	if !strings.Contains(body, `"content":"hello"`) || !strings.Contains(body, `"content":" world"`) || !strings.Contains(body, "data: [DONE]") {
-		t.Fatalf("unexpected custom stream output: %s", body)
-	}
-}
-
-func TestChatCompletionsCustomProtocolCumulativeMultilineStreamingEndToEnd(t *testing.T) {
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
-	err := relay.RegisterCustomProtocol(relay.CustomProtocolConfig{
-		ID: "vendor-cumulative",
-		Request: relay.CustomProtocolRequest{
-			Method:       http.MethodPost,
-			PathTemplate: "/v2/stream",
-			BodyTemplate: `{"model":{{maheshvara.model | json}},"stream":{{maheshvara.stream}}}`,
-		},
-		Response: relay.CustomProtocolResponse{Stream: &relay.CustomProtocolStreamMapping{
-			PayloadPath: "payload",
-			Mode:        "cumulative",
-			DoneValues:  []string{"END"},
-			Events:      []string{"message"},
-			Response:    &relay.CustomProtocolResponse{TextPath: "text"},
-		}},
-	})
-	if err != nil {
-		t.Fatalf("register cumulative custom protocol: %v", err)
-	}
-
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, "event: ignored\ndata: {\"payload\":{\"text\":\"ignored\"}}\n\n")
-		_, _ = io.WriteString(w, "event: message\ndata: {\"payload\":{\"text\":\ndata: \"hel\"}}\n\n")
-		_, _ = io.WriteString(w, "event: message\ndata: {\"payload\":{\"text\":\"hello\"}}\n\n")
-		_, _ = io.WriteString(w, "event: message\ndata: END\n\n")
-	}))
-	defer upstream.Close()
-
-	group := config.ModelGroupConfig{
-		ID:      "g1",
-		Name:    "grp",
-		Enabled: true,
-		Models:  []config.ModelRef{{ID: "m1", Name: "vendor-model", BaseURL: upstream.URL, APIKey: "test-key", Platform: "custom:vendor-cumulative"}},
-	}
-	s := newTestServer([]config.ModelGroupConfig{group})
-	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hello"}]}`)
-	s.chatCompletions(c)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
-	}
-	body := rec.Body.String()
-	if !strings.Contains(body, `"content":"hel"`) || !strings.Contains(body, `"content":"lo"`) || !strings.Contains(body, "data: [DONE]") {
-		t.Fatalf("unexpected cumulative custom stream output: %s", body)
-	}
-	if strings.Contains(body, `"content":"ignored"`) || strings.Contains(body, `"content":"hello"`) {
-		t.Fatalf("event filtering or cumulative delta handling failed: %s", body)
-	}
-}
-
-// 回归：custom 协议非流式请求必须支持故障转移——第一个上游 500 时换下一个
-// 候选，而不是直接把错误提交给客户端。
-func TestCustomProtocolNormalRequestFailsOver(t *testing.T) {
-	registerIntegrationCustomProtocol(t)
-	var hits int
-	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits++
-		w.WriteHeader(500)
-	}))
-	defer broken.Close()
-	healthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"answer":{"text":"from-backup"},"finish":"stop","usage":{"prompt_tokens":1,"completion_tokens":1}}`)
-	}))
-	defer healthy.Close()
-
-	// MaxRetries=1：首个候选 500 后允许再试一个候选。
-	group := config.ModelGroupConfig{
-		ID:         "g1",
-		Name:       "grp",
-		Enabled:    true,
-		MaxRetries: 1,
-		Models: []config.ModelRef{
-			{ID: "m1", Name: "vendor-model", BaseURL: broken.URL, APIKey: "k", Platform: "custom:vendor-json"},
-			{ID: "m2", Name: "vendor-model", BaseURL: healthy.URL, APIKey: "k", Platform: "custom:vendor-json"},
-		},
-	}
-	s := newTestServer([]config.ModelGroupConfig{group})
-	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hello"}]}`)
-	s.chatCompletions(c)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected failover to the healthy upstream and 200, got %d body=%s", rec.Code, rec.Body.String())
-	}
-	if hits != 1 {
-		t.Fatalf("broken upstream should have been hit exactly once, got %d", hits)
-	}
-	var response relay.OpenAIResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode downstream response: %v", err)
-	}
-	if len(response.Choices) != 1 || response.Choices[0].Message.Content != "from-backup" {
-		t.Fatalf("unexpected downstream response: %s", rec.Body.String())
-	}
-}
-
-// 阿里 dashscope native(Generation)协议的流式端到端:验证现有自定义协议
-// 机制可无损承载其形态——请求侧注入 X-DashScope-SSE 头与 incremental_output
-// 参数,响应侧累计文本在 output.choices[0].message.content(对象数组取
-// text)、末帧 finish_reason 终态、usage 键名 input_tokens/output_tokens 别名。
+// The provider-specific cumulative path and array text blocks are entirely
+// declarative. Multibyte prefixes, headers and trailing counters reach HTTP.
 func TestChatCompletionsDashscopeNativeStreamingEndToEnd(t *testing.T) {
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
-	err := relay.RegisterCustomProtocol(relay.CustomProtocolConfig{
-		ID: "dashscope-native",
-		Request: relay.CustomProtocolRequest{
-			Method:       http.MethodPost,
-			PathTemplate: "/api/v1/services/aigc/text-generation/generation",
-			Headers:      map[string]string{"X-DashScope-SSE": "enable"},
-			BodyTemplate: `{"model":{{maheshvara.model | json}},"parameters":{"incremental_output":true,"result_format":"message"}}`,
-		},
-		Response: relay.CustomProtocolResponse{Stream: &relay.CustomProtocolStreamMapping{
-			// dashscope 默认输出为累计全文;此处以 cumulative 差分还原纯增量。
-			Mode: "cumulative",
-			Response: &relay.CustomProtocolResponse{
-				TextPath:         "output.choices[0].message.content",
-				FinishReasonPath: "output.choices[0].finish_reason",
-				UsagePath:        "usage",
-			},
-		}},
-	})
-	if err != nil {
-		t.Fatalf("register dashscope protocol: %v", err)
-	}
-
-	var gotBody, gotSSEHeader string
+	definition := dashscopeStreamDefinition(t)
+	var gotBody, gotHeader, gotPath string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		gotBody = string(body)
-		gotSSEHeader = r.Header.Get("X-DashScope-SSE")
+		gotBody, gotHeader, gotPath = string(body), r.Header.Get("X-DashScope-SSE"), r.URL.Path
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, `data: {"output":{"choices":[{"message":{"content":[{"text":"你好"}]}}]},"usage":{"input_tokens":10,"output_tokens":5},"request_id":"req-1"}`+"\n\n")
-		_, _ = io.WriteString(w, `data: {"output":{"choices":[{"message":{"content":[{"text":"你好，世界"}]},"finish_reason":"stop"}]},"usage":{"input_tokens":10,"output_tokens":8},"request_id":"req-1"}`+"\n\n")
-		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+		fmt.Fprint(w, `data: {"output":{"choices":[{"message":{"content":[{"text":"你好"}]}}]},"usage":{"input_tokens":10,"output_tokens":5}}`+"\n\n")
+		fmt.Fprint(w, `data: {"output":{"choices":[{"message":{"content":[{"text":"你好"},{"text":"，世界"}]},"finish_reason":"stop"}]},"usage":{"input_tokens":10,"output_tokens":8}}`+"\n\ndata: [DONE]\n\n")
 	}))
 	defer upstream.Close()
-
-	group := config.ModelGroupConfig{
-		ID: "g1", Name: "grp", Enabled: true,
-		Models: []config.ModelRef{{ID: "m1", Name: "qwen-plus", BaseURL: upstream.URL, APIKey: "sk-dashscope", Platform: "custom:dashscope-native"}},
-	}
-	s := newTestServer([]config.ModelGroupConfig{group})
+	groups := standaloneGroup(t, definition, upstream.URL)
+	groups[0].Models[0].Name = "qwen-plus"
+	s := newTestServer(t, groups, definition)
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"你好"}]}`)
 	s.chatCompletions(c)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	if gotHeader != "enable" || gotPath != definition.Operations["generate"].Path || !strings.Contains(gotBody, `"qwen-plus"`) {
+		t.Fatal(gotHeader, gotPath, gotBody)
 	}
-	if gotSSEHeader != "enable" {
-		t.Fatalf("X-DashScope-SSE header must be forwarded, got %q", gotSSEHeader)
+	for _, want := range []string{`"content":"你好"`, `"content":"，世界"`, `"prompt_tokens":10`, `"completion_tokens":8`, `"finish_reason":"stop"`, "data: [DONE]"} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatal(want, rec.Body)
+		}
 	}
-	if !strings.Contains(gotBody, `"incremental_output":true`) || !strings.Contains(gotBody, `"qwen-plus"`) {
-		t.Fatalf("unexpected upstream request body: %s", gotBody)
-	}
-	body := rec.Body.String()
-	// 累计帧差分为纯增量:第一帧全文、第二帧只剩新增片段。
-	if !strings.Contains(body, `"content":"你好"`) || !strings.Contains(body, `"content":"，世界"`) {
-		t.Fatalf("cumulative dashscope frames must be diffed into deltas: %s", body)
-	}
-	if strings.Contains(body, `"content":"你好，世界"`) {
-		t.Fatalf("cumulative frame must not be re-emitted verbatim: %s", body)
-	}
-	// usage 别名(input_tokens/output_tokens)归集为 OpenAI 用量 chunk,终态映射 stop。
-	if !strings.Contains(body, `"prompt_tokens":10`) || !strings.Contains(body, `"completion_tokens":8`) {
-		t.Fatalf("dashscope usage aliases must be collected: %s", body)
-	}
-	if !strings.Contains(body, `"finish_reason":"stop"`) {
-		t.Fatalf("finish_reason must map to stop: %s", body)
-	}
-	if !strings.Contains(body, "data: [DONE]") {
-		t.Fatalf("downstream stream must terminate with [DONE]: %s", body)
+	logs := latestUsageRecords(t, s)
+	if len(logs) != 1 || logs[0].StatusCode != http.StatusOK || logs[0].TotalTokens != 18 || strings.Contains(rec.Body.String(), `"content":"你好，世界"`) {
+		t.Fatal(logs, rec.Body)
 	}
 }

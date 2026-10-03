@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
@@ -32,7 +32,7 @@ func parseTestIP(t *testing.T, raw string) net.IP {
 
 // newTestServer 构造一个不依赖 SQLite 的 Server（store=nil → usage 走内存切片，
 // groups 走 config）。跳过 SSRF 校验以便上游指向 httptest 的 127.0.0.1。
-func newTestServer(groups []config.ModelGroupConfig) *Server {
+func newUnboundTestServer(groups []config.ModelGroupConfig) *Server {
 	gin.SetMode(gin.TestMode)
 	// 上游指向 httptest 的 127.0.0.1：关闭 relay 的连接时 SSRF 校验，
 	// 否则私网 IP 会被 secureControl 在 connect 时拒绝。
@@ -43,9 +43,7 @@ func newTestServer(groups []config.ModelGroupConfig) *Server {
 	return &Server{
 		config:                 cfg,
 		engine:                 gin.New(),
-		openaiAdapter:          relay.NewOpenAIAdapter(10 * time.Second),
-		claudeAdapter:          relay.NewClaudeAdapter(10 * time.Second),
-		geminiAdapter:          relay.NewGeminiAdapter(10 * time.Second),
+		protocolTransport:      relay.NewProtocolTransport(10 * time.Second),
 		roundRobinIndex:        make(map[string]int),
 		rateLimits:             make(map[string]*rateLimitState),
 		affinity:               newAffinityCache(),
@@ -56,9 +54,25 @@ func newTestServer(groups []config.ModelGroupConfig) *Server {
 // newTestServerWithStore 在 newTestServer 基础上挂临时 SQLite store：
 // usage 记录走异步落库路径，测试用 QueryUsageLogs 读回（内存态快照已随
 // 遗留面板下线移除）。
-func newTestServerWithStore(t *testing.T, groups []config.ModelGroupConfig) *Server {
+func newTestServerWithStore(t *testing.T, groups []config.ModelGroupConfig, definitions ...protocol.Definition) *Server {
 	t.Helper()
-	s := newTestServer(groups)
+	for index := range groups {
+		if groups[index].ToolsCapable == nil {
+			hasTools := false
+			for _, model := range groups[index].Models {
+				hasTools = hasTools || model.ToolsCapable
+			}
+			groups[index].ToolsCapable = &hasTools
+		}
+		if groups[index].VisionCapable == nil {
+			hasMedia := false
+			for _, model := range groups[index].Models {
+				hasMedia = hasMedia || model.VisionCapable
+			}
+			groups[index].VisionCapable = &hasMedia
+		}
+	}
+	s := newUnboundTestServer(groups)
 	store, err := storage.Open(filepath.Join(t.TempDir(), "usage-test.sqlite3"))
 	if err != nil {
 		t.Fatalf("storage.Open() error = %v", err)
@@ -69,8 +83,19 @@ func newTestServerWithStore(t *testing.T, groups []config.ModelGroupConfig) *Ser
 	if err := s.importLegacyConfig(); err != nil {
 		t.Fatalf("importLegacyConfig: %v", err)
 	}
+	for _, definition := range definitions {
+		activateGatewayDefinition(t, s, definition)
+	}
+	if err := s.initializeProtocolRuntime(t.Context()); err != nil {
+		t.Fatal("protocol runtime", err)
+	}
 	s.startUsageWriter()
 	return s
+}
+
+func newTestServer(t *testing.T, groups []config.ModelGroupConfig, definitions ...protocol.Definition) *Server {
+	t.Helper()
+	return newTestServerWithStore(t, groups, definitions...)
 }
 
 // latestUsageRecords 读回已落库的 usage 记录（重试等待异步 writer 冲刷）。
@@ -90,7 +115,7 @@ func latestUsageRecords(t *testing.T, s *Server) []storage.UsageLogItem {
 }
 
 func openAIModel(name, baseURL string) config.ModelRef {
-	return config.ModelRef{ID: name, Name: name, BaseURL: baseURL, Platform: "openai", APIKey: "test-key"}
+	return config.ModelRef{ID: name, Name: name, BaseURL: baseURL, Platform: "openai", APIKey: "test-key", ToolsCapable: true, VisionCapable: true}
 }
 
 func chatRequestContext(body string) (*gin.Context, *httptest.ResponseRecorder) {
@@ -104,18 +129,7 @@ func chatRequestContext(body string) (*gin.Context, *httptest.ResponseRecorder) 
 
 func okChatCompletionBody(t *testing.T) string {
 	t.Helper()
-	resp := relay.OpenAIResponse{
-		ID:      "cmpl-1",
-		Object:  "chat.completion",
-		Model:   "upstream",
-		Choices: []relay.Choice{{Index: 0, Message: relay.Message{Role: "assistant", Content: "hi"}, FinishReason: "stop"}},
-		Usage:   relay.Usage{PromptTokens: 1, CompletionTokens: 1, TotalTokens: 2},
-	}
-	data, err := json.Marshal(resp)
-	if err != nil {
-		t.Fatalf("marshal upstream response: %v", err)
-	}
-	return string(data)
+	return `{"id":"cmpl-1","object":"chat.completion","model":"upstream","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`
 }
 
 // 核心回归：故障转移。首个候选返回 500（可重试），第二个返回 200，
@@ -139,7 +153,7 @@ func TestChatCompletionsFailoverToHealthyModel(t *testing.T) {
 		ID: "g1", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 2,
 		Models: []config.ModelRef{openAIModel("m-bad", bad.URL), openAIModel("m-good", good.URL)},
 	}
-	s := newTestServer([]config.ModelGroupConfig{group})
+	s := newTestServer(t, []config.ModelGroupConfig{group})
 
 	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hello"}]}`)
 	s.chatCompletions(c)
@@ -175,7 +189,7 @@ func TestChatCompletionsNoRetryOnClientError(t *testing.T) {
 		ID: "g1", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 3,
 		Models: []config.ModelRef{openAIModel("m-bad", bad.URL), openAIModel("m-2", second.URL)},
 	}
-	s := newTestServer([]config.ModelGroupConfig{group})
+	s := newTestServer(t, []config.ModelGroupConfig{group})
 
 	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
@@ -209,7 +223,7 @@ func TestChatCompletionsAllModelsFail(t *testing.T) {
 		ID: "g1", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 5,
 		Models: []config.ModelRef{openAIModel("a", a.URL), openAIModel("b", b.URL)},
 	}
-	s := newTestServer([]config.ModelGroupConfig{group})
+	s := newTestServer(t, []config.ModelGroupConfig{group})
 
 	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
@@ -241,7 +255,7 @@ func TestChatCompletionsMaxRetriesZero(t *testing.T) {
 		ID: "g1", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 0,
 		Models: []config.ModelRef{openAIModel("bad", bad.URL), openAIModel("good", good.URL)},
 	}
-	s := newTestServer([]config.ModelGroupConfig{group})
+	s := newTestServer(t, []config.ModelGroupConfig{group})
 
 	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
@@ -259,7 +273,7 @@ func TestChatCompletionsDisabledGroup(t *testing.T) {
 		ID: "g1", Name: "grp", Enabled: false, Strategy: "sequential",
 		Models: []config.ModelRef{openAIModel("m", "http://example.com")},
 	}
-	s := newTestServer([]config.ModelGroupConfig{group})
+	s := newTestServer(t, []config.ModelGroupConfig{group})
 	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if rec.Code != http.StatusForbidden {
@@ -268,7 +282,7 @@ func TestChatCompletionsDisabledGroup(t *testing.T) {
 }
 
 func TestChatCompletionsUnknownGroup(t *testing.T) {
-	s := newTestServer(nil)
+	s := newTestServer(t, nil)
 	c, rec := chatRequestContext(`{"model":"nope","messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if rec.Code != http.StatusNotFound {
@@ -278,7 +292,7 @@ func TestChatCompletionsUnknownGroup(t *testing.T) {
 
 // 限流：超出 MaxConcurrency 时返回 429。这里通过把活跃数顶满来验证 acquire 逻辑。
 func TestAcquireRateLimitConcurrency(t *testing.T) {
-	s := newTestServer(nil)
+	s := newTestServer(t, nil)
 	group := &config.ModelGroupConfig{ID: "g1", Name: "grp", MaxConcurrency: 1}
 
 	release1, err := s.acquireRateLimit(group, 0)
@@ -295,7 +309,7 @@ func TestAcquireRateLimitConcurrency(t *testing.T) {
 }
 
 func TestAcquireRateLimitDailyRequests(t *testing.T) {
-	s := newTestServer(nil)
+	s := newTestServer(t, nil)
 	group := &config.ModelGroupConfig{ID: "g1", Name: "grp", DailyLimitMaxRequests: 2}
 	for i := 0; i < 2; i++ {
 		release, err := s.acquireRateLimit(group, 0)
@@ -312,7 +326,7 @@ func TestAcquireRateLimitDailyRequests(t *testing.T) {
 // H1 回归：失败请求（只 acquire+release、从不 adjustTokenUsage）必须把预留的
 // estimatedTokens 如数退还，不能永久占用每日 token 配额。
 func TestAcquireRateLimitRefundsReservationOnRelease(t *testing.T) {
-	s := newTestServer(nil)
+	s := newTestServer(t, nil)
 	group := &config.ModelGroupConfig{ID: "g1", Name: "grp", DailyLimitMaxTokens: 1000}
 
 	// 预留 800，随后 release（模拟请求失败：不调用 adjustTokenUsage）。
@@ -333,7 +347,7 @@ func TestAcquireRateLimitRefundsReservationOnRelease(t *testing.T) {
 
 // H1 成功路径：release 退还预留、adjustTokenUsage 累加实际值，净额应为实际消耗。
 func TestRateLimitSettlesToActualOnSuccess(t *testing.T) {
-	s := newTestServer(nil)
+	s := newTestServer(t, nil)
 	group := &config.ModelGroupConfig{ID: "g1", Name: "grp", DailyLimitMaxTokens: 10000}
 
 	release, err := s.acquireRateLimit(group, 800) // 预留估算值

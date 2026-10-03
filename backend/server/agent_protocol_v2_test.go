@@ -12,7 +12,6 @@ import (
 
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -242,6 +241,11 @@ func agentEnvelopeDefinition(t *testing.T) protocol.Definition {
 		definition.Directions[pair.encode] = protocol.Mapping{Transform: &protocol.Expression{Op: "object", Fields: map[string]protocol.Expression{"payload": {Op: "object", Fields: fields}}}}
 		definition.Samples = append(definition.Samples, protocol.Sample{ID: string(pair.decode), Direction: pair.decode, Input: wire, Expected: pair.value}, protocol.Sample{ID: string(pair.encode), Direction: pair.encode, Input: pair.value, Expected: wire})
 	}
+	definition.Agent = &protocol.AgentConfig{
+		ToolResults: protocol.JSONInput,
+		Parameters:  protocol.Mapping{Transform: &protocol.Expression{Op: "object", Fields: map[string]protocol.Expression{"max_output_tokens": {Op: "read", From: "input", Path: "/maxOutputTokens"}}}},
+		Samples:     []protocol.AgentSample{{ID: "agent-disabled", Preferences: protocol.AgentPreferences{MaxOutputTokens: 8192}, Expected: mustProtocolValue(t, `{"max_output_tokens":8192}`)}},
+	}
 	return definition
 }
 
@@ -275,7 +279,7 @@ func TestAgentUsesBoundCustomProtocolAndRejectsToolMismatch(t *testing.T) {
 	if err := s.store.SaveProtocolBinding(t.Context(), binding); err != nil {
 		t.Fatal(err)
 	}
-	input := agent.CallRequest{Model: "fake-model", ModelSourceID: "s1", Messages: []relay.MaheshvaraMessage{{Role: "user", Content: []relay.MaheshvaraContentPart{{Type: "text", Text: "hello"}}}}, Tools: []relay.MaheshvaraTool{{Type: "function", Name: "lookup", Parameters: map[string]any{"type": "object"}}}}
+	input := agent.CallRequest{Model: "fake-model", ModelSourceID: "s1", Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("hello")}}}}, Tools: []protocol.Tool{{Kind: protocol.FunctionTool, Name: protocol.StringValue("lookup"), InputSchema: mustProtocolValue(t, `{"type":"object"}`)}}}
 	result, err := newAgentStreamCaller(s).Call(context.Background(), input, agent.StreamCallbacks{})
 	if err != nil {
 		t.Fatal(err)

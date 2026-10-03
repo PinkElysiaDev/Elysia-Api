@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
-
-	"github.com/elysia-api/backend/relay"
 )
 
 // MaskedPendingAction 复制待批快照并遮盖调用参数里的密钥类字段，供会话
@@ -16,7 +14,7 @@ func MaskedPendingAction(pending *PendingAction) *PendingAction {
 	if pending == nil {
 		return nil
 	}
-	masked := &PendingAction{Kind: pending.Kind, Reason: pending.Reason, Calls: make([]relay.MaheshvaraToolCall, len(pending.Calls))}
+	masked := &PendingAction{Kind: pending.Kind, Reason: pending.Reason, Calls: make([]FunctionCall, len(pending.Calls))}
 	for index, call := range pending.Calls {
 		masked.Calls[index] = call
 		masked.Calls[index].Arguments = MaskSecretInputs(call.Arguments)

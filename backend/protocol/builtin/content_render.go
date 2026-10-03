@@ -97,6 +97,10 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 		if adapter.name == Chat {
 			return p.Value{}, unsupported("/content", "Chat reasoning belongs to message.reasoning_content")
 		}
+		if adapter.name == Responses && isNativeBlock(node, "reasoning_text", direction, options) {
+			fields["type"], fields["text"] = p.StringValue("reasoning_text"), node.Payload
+			break
+		}
 		if adapter.name == Anthropic {
 			fields["type"], fields["thinking"] = p.StringValue("thinking"), node.Payload
 			if len(node.Children) > 0 {
@@ -169,6 +173,14 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 		return p.Value{}, err
 	}
 	return object(fields), nil
+}
+
+func isNativeBlock(node p.Node, kind string, direction p.Direction, options p.EvaluationContext) bool {
+	if node.Native == nil || !p.CanPreserveNative(node.Native.Source, p.Target{Protocol: options.Identity(), Direction: direction}) {
+		return false
+	}
+	fields, err := node.Native.Value.ReadObject()
+	return err == nil && fields["type"] == p.StringValue(kind)
 }
 
 func checkResourceProtocol(node p.Node, options p.EvaluationContext) error {

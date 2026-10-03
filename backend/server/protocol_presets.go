@@ -37,9 +37,6 @@ func PresetProtocolConfigs() ([]relay.CustomProtocolConfig, error) {
 		if err := json.Unmarshal(raw, &config); err != nil {
 			return nil, fmt.Errorf("parse preset %s: %w", entry.Name(), err)
 		}
-		if err := relay.ValidateCustomProtocol(config); err != nil {
-			return nil, fmt.Errorf("preset %s is invalid: %w", entry.Name(), err)
-		}
 		configs = append(configs, config)
 	}
 	return configs, nil

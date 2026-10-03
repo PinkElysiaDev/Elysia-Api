@@ -54,6 +54,7 @@ func (s *Server) requireProtocolService(c *gin.Context) (*protocol.Service, bool
 func (s *Server) setupProtocolRevisionRoutes(admin *gin.RouterGroup) {
 	group := admin.Group("/protocols")
 	group.GET("", s.adminProtocolDrafts)
+	group.GET("/enabled", s.adminEnabledProtocols)
 	group.GET("/schema", s.adminProtocolSchemaV2)
 	group.GET("/migration", s.adminProtocolUpgradeStatus)
 	group.POST("/migration/preview", s.adminProtocolUpgradePreview)
@@ -79,11 +80,11 @@ func (s *Server) setupProtocolRevisionRoutes(admin *gin.RouterGroup) {
 
 func readProtocolAdminBody(c *gin.Context) (result []byte, err error) {
 	defer func() { err = protocolManagementInputError(err) }()
-	body, err := io.ReadAll(io.LimitReader(c.Request.Body, customProtocolMaxAdminBodyBytes+1))
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, protocolAdminMaxBodyBytes+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(body) > customProtocolMaxAdminBodyBytes {
+	if len(body) > protocolAdminMaxBodyBytes {
 		return nil, fmt.Errorf("protocol request exceeds body limit")
 	}
 	return body, nil

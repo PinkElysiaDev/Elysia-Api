@@ -210,6 +210,15 @@ func (check *capabilityCheck) cache(intents []CacheIntent, path string) {
 		switch intent.Kind {
 		case "breakpoint":
 			check.require(CacheBreakpointsCapability, location)
+			if intent.Value.IsNull() {
+				if !intent.TTL.IsZero() {
+					check.add(InvalidInput, location+"/ttl", CacheBreakpointsCapability, "a null policy cannot contain TTL")
+				}
+			} else if policy, err := intent.Value.ReadObject(); err != nil {
+				check.add(InvalidInput, location+"/value", CacheBreakpointsCapability, "cache policy must be an object or null")
+			} else if !policy["ttl"].IsZero() {
+				check.add(InvalidInput, location+"/value/ttl", CacheBreakpointsCapability, "move ttl to the cache intent's ttl field")
+			}
 		case "key":
 			check.require(CacheKeysCapability, location)
 		case "retention":

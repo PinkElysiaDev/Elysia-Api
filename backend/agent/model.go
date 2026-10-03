@@ -2,8 +2,9 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 
-	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/protocol"
 )
 
 // StreamCaller 是引擎对「一次流式模型调用」的抽象。实现负责线格式渲染、
@@ -19,10 +20,9 @@ type CallRequest struct {
 	Model         string
 	ModelSourceID string // 模型源 id（实现层解析端点/凭据）
 	Instructions  string // 系统提示词
-	Messages      []relay.MaheshvaraMessage
-	Tools         []relay.MaheshvaraTool
-	Thinking      *relay.MaheshvaraThinking
-	Reasoning     *relay.MaheshvaraReasoning // OpenAI 线 reasoning_effort 渲染路径
+	Content       []protocol.Node
+	Tools         []protocol.Tool
+	Preferences   protocol.AgentPreferences
 }
 
 // StreamCallbacks 增量回调（均可为 nil）。
@@ -33,8 +33,20 @@ type StreamCallbacks struct {
 
 // CallResult 一次调用的聚合产出。
 type CallResult struct {
+	// Content is the authoritative ordered history, including scoped signatures.
+	// Text, Reasoning and ToolCalls are presentation/execution projections only.
+	Content   []protocol.Node
 	Text      string
 	Reasoning string
-	ToolCalls []relay.MaheshvaraToolCall
-	Usage     *relay.MaheshvaraUsage
+	ToolCalls []FunctionCall
+	Usage     *protocol.Usage
+}
+
+// FunctionCall is the native Agent's executable function projection. It is not
+// a protocol conversion model; original content is retained in CallResult.
+type FunctionCall struct {
+	ID        string          `json:"id,omitempty"`
+	Type      string          `json:"type,omitempty"`
+	Name      string          `json:"name,omitempty"`
+	Arguments json.RawMessage `json:"arguments,omitempty"`
 }

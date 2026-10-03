@@ -4,8 +4,28 @@ import (
 	"context"
 	"testing"
 
+	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/storage"
 )
+
+func TestStoreRoutingNeverResurrectsLegacyConfiguration(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	s.config.Groups = []config.ModelGroupConfig{{ID: "legacy", Name: "deleted", Enabled: true}}
+	s.config.Tokens = []config.AccessToken{{Token: "deleted-key", Enabled: true}}
+	if _, exists := s.findAccessToken("deleted-key"); exists {
+		t.Fatal("missing persisted token resurrected from configuration")
+	}
+	if err := s.store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s.invalidateRouteCache()
+	if groups := s.getGroups(); len(groups) != 0 {
+		t.Fatal("database failure resurrected legacy routes", groups)
+	}
+	if _, exists := s.findAccessToken("deleted-key"); exists {
+		t.Fatal("database failure resurrected legacy credentials")
+	}
+}
 
 // 候选的源身份(地址/密钥)以源表为准:源保存后即便合并未跑(手动源、自动
 // 拉取失败),models 行的旧快照不得再被热路径消费(回归:改源 url/key 后

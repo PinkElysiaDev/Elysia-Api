@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/elysia-api/backend/protocol"
 )
 
 // 回归：流式请求必须用无 Timeout 的 streamClient。构造一个 Timeout=1s 的 adapter，
@@ -36,8 +38,8 @@ func TestOpenAIStreamNotCutByClientTimeout(t *testing.T) {
 	defer srv.Close()
 
 	// 关键：Timeout=1s。非流式会被掐断，流式（streamClient 无超时）不会。
-	a := NewOpenAIAdapter(1 * time.Second)
-	resp, err := a.SendRequestStream(context.Background(), srv.URL, "k", []byte(`{"stream":true}`))
+	a := NewProtocolTransport(1 * time.Second)
+	resp, err := a.SendProtocolRequest(context.Background(), srv.URL, "k", protocol.Operation{Method: "POST", Path: "/generate", Transport: protocol.SSE, Auth: protocol.Credential{Location: "none"}}, []byte(`{"stream":true}`), nil)
 	if err != nil {
 		t.Fatalf("stream request should not be cut by client timeout, got: %v", err)
 	}
@@ -73,8 +75,8 @@ func TestOpenAINonStreamStillRespectsTimeout(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	a := NewOpenAIAdapter(1 * time.Second)
-	_, _, _, err := a.SendRequestRawWithBody(context.Background(), srv.URL, "k", []byte(`{}`))
+	a := NewProtocolTransport(1 * time.Second)
+	_, err := a.SendProtocolRequest(context.Background(), srv.URL, "k", protocol.Operation{Method: "POST", Path: "/generate", Transport: protocol.HTTPJSON, Auth: protocol.Credential{Location: "none"}}, []byte(`{}`), nil)
 	if err == nil {
 		t.Fatalf("non-stream request should be cut by 1s client timeout, but succeeded")
 	}

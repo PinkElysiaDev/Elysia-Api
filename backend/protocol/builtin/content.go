@@ -42,7 +42,11 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 	if err != nil {
 		return p.Node{}, err
 	}
-	node := p.Node{Kind: p.OpaqueNode, Native: adapter.native(value, path, direction, options), Cache: decodeCache(fields, "block")}
+	cache, err := decodeCache(fields, "block")
+	if err != nil {
+		return p.Node{}, err
+	}
+	node := p.Node{Kind: p.OpaqueNode, Native: adapter.native(value, path, direction, options), Cache: cache}
 	if adapter.name == Gemini {
 		return adapter.decodeGeminiPart(fields, node, options, history)
 	}

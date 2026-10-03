@@ -158,9 +158,11 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		if err != nil {
 			return nil, err
 		}
-		return []p.Event{{Type: p.OperationFailed, Error: response["error"]}}, nil
+		return stream.decodeFailureEvent(response["error"], options)
 	case "error":
-		return []p.Event{{Type: p.OperationFailed, Error: object(fields)}}, nil
+		payload := copyFields(fields)
+		delete(payload, "type")
+		return stream.decodeFailureEvent(object(payload), options)
 	default:
 		return []p.Event{{Type: p.NativeEvent}}, nil
 	}
@@ -210,7 +212,7 @@ func (stream *streamModule) checkResponsesItemID(fields p.Object, index int) err
 
 func (stream *streamModule) decodeGeminiFrame(fields p.Object, options p.EvaluationContext) ([]p.Event, error) {
 	if failure := fields["error"]; !failure.IsZero() {
-		return []p.Event{{Type: p.OperationFailed, Error: failure}}, nil
+		return stream.decodeFailureEvent(failure, options)
 	}
 	candidates, err := readArray(fields["candidates"])
 	if err != nil {

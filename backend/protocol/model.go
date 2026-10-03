@@ -115,11 +115,13 @@ type Resource struct {
 
 // CacheIntent preserves a declared cache policy without enabling caching.
 // Kind is breakpoint, key, retention or resource; Location identifies its scope.
+// Breakpoint Value holds the policy object without ttl. TTL is the only owner
+// of that field: absent removes it, while an explicit null remains null.
 type CacheIntent struct {
 	Kind     string    `json:"kind"`
 	Location string    `json:"location"`
-	Value    Value     `json:"value,omitzero"`
-	TTL      Value     `json:"ttl,omitzero"`
+	Value    Value     `json:"value,omitzero" description:"For breakpoints: the cache policy object without ttl, or explicit null. No cache intent means no cache policy is added."`
+	TTL      Value     `json:"ttl,omitzero" description:"Breakpoint TTL has one semantic owner here. Missing removes the wire ttl; explicit null remains null. Never also place ttl inside value."`
 	Resource *Resource `json:"resource,omitempty"`
 }
 

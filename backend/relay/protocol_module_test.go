@@ -11,11 +11,7 @@ import (
 
 func compileBuiltinModule(t *testing.T, name string) *protocol.Compiled {
 	t.Helper()
-	adapter, err := findWireAdapter(name)
-	if err != nil {
-		t.Fatal(err)
-	}
-	definition := protocol.Definition{SchemaVersion: 2, ID: "arbitrary-" + name, Name: name, Version: "1", Family: string(adapter.format), WireVersion: legacyWireContractVersion, Native: protocol.NativePolicy{Preserve: true}, Directions: map[protocol.Direction]protocol.Mapping{}, Capabilities: protocol.CapabilitySet{}, Operations: map[string]protocol.Operation{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: protocol.HTTPJSON, Auth: protocol.Credential{Location: "none"}}}}
+	definition := protocol.Definition{SchemaVersion: 2, ID: "arbitrary-" + name, Name: name, Version: "1", Family: map[string]string{"openai-chat": "openai_chat", "responses": "openai_responses", "anthropic": "claude", "gemini": "gemini"}[name], WireVersion: "v2", Native: protocol.NativePolicy{Preserve: true}, Directions: map[protocol.Direction]protocol.Mapping{}, Capabilities: protocol.CapabilitySet{}, Operations: map[string]protocol.Operation{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: protocol.HTTPJSON, Auth: protocol.Credential{Location: "none"}}}}
 	for _, direction := range []protocol.Direction{protocol.DecodeRequest, protocol.EncodeRequest, protocol.DecodeResponse, protocol.EncodeResponse} {
 		definition.Directions[direction] = protocol.Mapping{Module: name}
 	}

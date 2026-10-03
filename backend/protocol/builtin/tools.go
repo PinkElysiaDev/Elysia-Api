@@ -44,7 +44,11 @@ func (adapter module) decodeTools(value p.Value, options p.EvaluationContext) ([
 		if err != nil {
 			return nil, err
 		}
-		tool := p.Tool{Kind: p.FunctionTool, Native: adapter.native(item, path, p.DecodeRequest, options), Cache: decodeCache(fields, "tool")}
+		cache, err := decodeCache(fields, "tool")
+		if err != nil {
+			return nil, err
+		}
+		tool := p.Tool{Kind: p.FunctionTool, Native: adapter.native(item, path, p.DecodeRequest, options), Cache: cache}
 		definition := fields
 		if adapter.name == Chat && !fields["function"].IsZero() {
 			definition, err = fields["function"].ReadObject()

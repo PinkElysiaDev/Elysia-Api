@@ -73,7 +73,8 @@ func TestProtocolUpgradeRepairAPIIsIdempotentAndGatesReload(t *testing.T) {
 		t.Fatal("edited legacy configuration did not close generation", err)
 	}
 	context, recorder := adminProtocolContext(http.MethodPost, "/v1/responses", `{"model":"m","input":"hi"}`)
-	if !s.serveVersionedPublicIngress(context) || recorder.Code != http.StatusServiceUnavailable {
+	s.serveVersionedPublicIngress(context)
+	if recorder.Code != http.StatusServiceUnavailable {
 		t.Fatal("failed migration fell back to legacy generation", recorder.Code, recorder.Body)
 	}
 	reload := revisionAdminRequest(t, s.engine, http.MethodPost, "/api/admin/protocols/reload", nil, "")

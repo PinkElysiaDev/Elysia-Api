@@ -3,10 +3,10 @@ package server
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/elysia-api/backend/relay"
-	"github.com/elysia-api/backend/storage"
 )
 
 func TestCachePresetUpgradeFromRealPreviousDefinitions(t *testing.T) {
@@ -19,8 +19,6 @@ func TestAdapterPresetUpgradeFromRealPreviousDefinitions(t *testing.T) {
 
 func testPresetUpgradeFromFixtures(t *testing.T, directory string) {
 	t.Helper()
-	relay.ClearCustomProtocols()
-	t.Cleanup(relay.ClearCustomProtocols)
 	s, _ := newProtocolAdminTestServer(t)
 	for _, latest := range PresetProtocolConfigsMust(t) {
 		data, err := os.ReadFile(directory + "/" + latest.ID + ".json")
@@ -47,50 +45,37 @@ func testPresetUpgradeFromFixtures(t *testing.T, directory string) {
 			t.Fatal(err)
 		}
 	}
+
 	s.seedPresetProtocols()
-	if err := s.syncCustomProtocolsQuiet(); err != nil {
-		t.Fatal(err)
+	rows, err := s.store.ListCustomProtocols(t.Context())
+	if err != nil || len(rows) != 8 {
+		t.Fatal(rows, err)
 	}
-	for _, latest := range PresetProtocolConfigsMust(t) {
-		got, exists := relay.GetCustomProtocol(latest.ID)
-		if !exists || got.Version != latest.Version {
-			t.Errorf("registry not upgraded: %s", latest.ID)
+	for _, row := range rows {
+		var got relay.CustomProtocolConfig
+		if err := json.Unmarshal([]byte(row.Config), &got); err != nil {
+			t.Fatal(err)
 		}
-		custom, exists := relay.GetCustomProtocol("user-" + latest.ID)
-		if !exists || custom.Request.PathTemplate != "/user-endpoint" {
-			t.Errorf("custom definition changed: %s", latest.ID)
+		if strings.HasPrefix(row.ID, "user-") {
+			if got.Request.PathTemplate != "/user-endpoint" {
+				t.Fatal("edited definition changed", row.ID)
+			}
+		} else if latest, ok := findPresetConfig(row.ID); !ok || got.Version != latest.Version {
+			t.Fatal("preset not upgraded", row.ID)
 		}
 	}
 	if upgraded := s.seedPresetProtocols(); len(upgraded) != 0 {
-		t.Fatalf("upgrade not idempotent: %v", upgraded)
+		t.Fatal("non-idempotent upgrade", upgraded)
 	}
-	// Recreate the server registry from persisted rows, as on restart.
-	relay.ClearCustomProtocols()
-	if err := s.syncCustomProtocolsQuiet(); err != nil {
+	preview, err := s.prepareProtocolUpgrade(t.Context(), protocolUpgradeInput{})
+	if err != nil || preview.Ready {
+		t.Fatal("edited legacy protocol bypassed review", err)
+	}
+	service, err := s.protocolService()
+	if err != nil {
 		t.Fatal(err)
 	}
-	rows, _ := s.store.ListCustomProtocols(t.Context())
-	if len(rows) != 8 {
-		t.Fatalf("unexpected rows: %d", len(rows))
-	}
-	for _, row := range rows {
-		if _, exists := relay.GetCustomProtocol(row.ID); !exists {
-			t.Errorf("restart lost %s", row.ID)
-		}
-	}
-	// Editing the actual preset ID also prevents replacement.
-	latest := PresetProtocolConfigsMust(t)[0]
-	latest.Request.PathTemplate = "/edited-preset"
-	edited, _ := json.Marshal(latest)
-	if err := s.store.UpsertCustomProtocol(t.Context(), storage.CustomProtocol{ID: latest.ID, Name: latest.Name, Type: "llm", Config: string(edited)}); err != nil {
-		t.Fatal(err)
-	}
-	s.seedPresetProtocols()
-	if err := s.syncCustomProtocolsQuiet(); err != nil {
-		t.Fatal(err)
-	}
-	got, _ := relay.GetCustomProtocol(latest.ID)
-	if got.Request.PathTemplate != "/edited-preset" {
-		t.Fatal("edited preset overwritten")
+	if len(service.View().IDs()) != 0 {
+		t.Fatal("migration preview executed legacy definitions")
 	}
 }
