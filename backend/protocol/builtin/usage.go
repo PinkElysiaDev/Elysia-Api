@@ -93,6 +93,11 @@ func (adapter module) decodeUsage(value p.Value) (*p.Usage, error) {
 				}
 				if key == "cached_tokens" && entry.prefix == "input." {
 					usage.CacheRead = count
+				} else if key == "cache_write_tokens" && entry.prefix == "input." {
+					if usage.CacheCreation != nil && count != nil && usage.CacheCreation.Count != count.Count {
+						return nil, fmt.Errorf("cache_write_tokens disagrees with cache_creation_input_tokens")
+					}
+					usage.CacheCreation = count
 				} else if count != nil {
 					usage.Details[entry.prefix+key] = *count
 				}
@@ -216,7 +221,7 @@ func (adapter module) encodeUsage(usage *p.Usage) (p.Value, error) {
 			fields["cache_creation"] = object(details)
 		}
 	case Chat, Responses:
-		in, out := p.Object{"cached_tokens": counterValue(usage.CacheRead)}, p.Object{}
+		in, out := p.Object{"cached_tokens": counterValue(usage.CacheRead), "cache_write_tokens": counterValue(usage.CacheCreation)}, p.Object{}
 		for key, count := range usage.Details {
 			if len(key) > 6 && key[:6] == "input." {
 				in[key[6:]] = counterValue(&count)
@@ -229,14 +234,11 @@ func (adapter module) encodeUsage(usage *p.Usage) (p.Value, error) {
 		if adapter.name == Responses {
 			inputDetails, outputDetails = "input_tokens_details", "output_tokens_details"
 		}
-		if usage.CacheRead != nil || len(in) > 1 {
+		if usage.CacheRead != nil || usage.CacheCreation != nil || len(in) > 2 {
 			fields[inputDetails] = object(in)
 		}
 		if len(out) > 0 {
 			fields[outputDetails] = object(out)
-		}
-		if usage.CacheCreation != nil {
-			fields["cache_creation_input_tokens"] = counterValue(usage.CacheCreation)
 		}
 	case Gemini:
 		fields["cachedContentTokenCount"] = counterValue(usage.CacheRead)

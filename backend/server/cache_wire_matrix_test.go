@@ -326,7 +326,7 @@ func TestCacheUsageCreationAndAbsentFields(t *testing.T) {
 				if phase == "creation" && derefInt(record.UsageDetail.CacheCreationInputTokens) != 90 {
 					t.Fatalf("creation not persisted: %+v", record.UsageDetail)
 				}
-				if phase == "creation" && !strings.Contains(rec.Body.String(), `"cache_creation_input_tokens":90`) {
+				if phase == "creation" && !strings.Contains(rec.Body.String(), `"cache_write_tokens":90`) {
 					t.Fatalf("creation missing from Chat-compatible downstream details: %s", rec.Body.String())
 				}
 			})

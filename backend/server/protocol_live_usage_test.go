@@ -48,6 +48,16 @@ func referenceLiveUsage(id string, frames []map[string]any) (*protocol.Usage, er
 			if count != nil {
 				current.CacheRead = count
 			}
+			write, err := referenceLiveCounter(details, "cache_write_tokens")
+			if err != nil {
+				return nil, err
+			}
+			if write != nil {
+				if current.CacheCreation != nil && current.CacheCreation.Count != write.Count {
+					return nil, fmt.Errorf("raw creation counters disagree")
+				}
+				current.CacheCreation = write
+			}
 		}
 	}
 	if id == "anthropic-api" && current.CacheCreation == nil {
