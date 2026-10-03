@@ -306,7 +306,7 @@ func (adapter module) encodeResponse(response *p.Response, options p.EvaluationC
 	if err := adapter.preserveExtensions(fields, response.Attributes); err != nil {
 		return p.Value{}, err
 	}
-	usage, err := adapter.encodeUsage(response.Usage)
+	usage, err := adapter.encodeResponseUsage(response, options)
 	if err != nil {
 		return p.Value{}, err
 	}

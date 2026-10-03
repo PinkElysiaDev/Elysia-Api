@@ -93,6 +93,24 @@ func TestCacheWriteLateFrameAndNativeReplay(t *testing.T) {
 				t.Fatal(err)
 			}
 			sameJSON(t, wire, body)
+			response.Usage.CacheCreation.Count = 31
+			wire, err = compiled.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			updated, err := compiled.DecodeResponse(t.Context(), wire, p.EvaluationContext{})
+			if err != nil || updated.Usage.CacheCreation.Count != 31 {
+				t.Fatal("native legacy alias overrode semantic mutation", string(wire), err)
+			}
+			response.Usage.CacheCreation = nil
+			wire, err = compiled.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			updated, err = compiled.DecodeResponse(t.Context(), wire, p.EvaluationContext{})
+			if err != nil || updated.Usage.CacheCreation != nil {
+				t.Fatal("deleted creation resurrected from native legacy alias", string(wire), err)
+			}
 		})
 	}
 }

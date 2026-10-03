@@ -179,6 +179,43 @@ func counterValue(count *p.Counter) p.Value {
 	return value
 }
 
+// Include recognized aliases in both sides of native reconciliation. Otherwise
+// moving a canonical counter to its standard nested field leaves an old alias
+// looking like an unknown extension, allowing it to survive edits or deletion.
+func (adapter module) encodeResponseUsage(response *p.Response, options p.EvaluationContext) (p.Value, error) {
+	encoded, err := adapter.encodeUsage(response.Usage)
+	if err != nil || encoded.IsZero() || response.Native == nil || (adapter.name != Chat && adapter.name != Responses) {
+		return encoded, err
+	}
+	if !p.CanPreserveNative(response.Native.Source, p.Target{Protocol: options.Identity(), Direction: p.EncodeResponse, Scope: options.Scope}) {
+		return encoded, nil
+	}
+	root, err := response.Native.Value.ReadObject()
+	if err != nil {
+		return p.Value{}, err
+	}
+	original, err := nestedObject(root, "usage")
+	if err != nil {
+		return p.Value{}, err
+	}
+	if original["cache_read_input_tokens"].IsZero() && original["cache_creation_input_tokens"].IsZero() {
+		return encoded, nil
+	}
+	fields, err := encoded.ReadObject()
+	if err != nil {
+		return p.Value{}, err
+	}
+	for _, alias := range []struct {
+		name    string
+		counter *p.Counter
+	}{{"cache_read_input_tokens", response.Usage.CacheRead}, {"cache_creation_input_tokens", response.Usage.CacheCreation}} {
+		if !original[alias.name].IsZero() {
+			fields[alias.name] = counterValue(alias.counter)
+		}
+	}
+	return object(fields), nil
+}
+
 func (adapter module) encodeUsage(usage *p.Usage) (p.Value, error) {
 	if usage == nil {
 		return p.Value{}, nil
