@@ -1,5 +1,6 @@
 import { dirname, join } from 'node:path'
-import { readFile } from 'node:fs/promises'
+import { readFile, access } from 'node:fs/promises'
+import { setTimeout as delay } from 'node:timers/promises'
 import { readCredential } from './credential.mjs'
 
 export const cacheTargets = {
@@ -19,6 +20,9 @@ export function cacheCredentialEnvironment(packet) {
 
 /** Executes one bounded multi-model experiment, including durable TTL cohorts. */
 export async function verifyCacheGaps(run, root) {
+  const isFollowup = process.argv.includes('--suite=cache-followup')
+  const parent = process.argv.find(arg => arg.startsWith('--parent='))?.slice(9)
+  if (isFollowup && !parent) throw new Error('cache-followup requires its original --parent evidence directory')
   const names = [...new Set(Object.values(cacheTargets).map(target => target.keyEnv))]
   let credentials
   if (names.every(name => process.env[name])) credentials = cacheCredentialEnvironment(Object.fromEntries(names.map(name => [name, process.env[name]])))
@@ -30,9 +34,21 @@ export async function verifyCacheGaps(run, root) {
   }
   run.report.cacheValidation = { origin: 'https://moyuu.cc', targets: cacheTargets, maximumCalls: 96, cleanupReserve: 4, maximumHours: 2 }
   await run.save()
-  const env = { ...process.env, ...credentials, ELYSIA_LIVE_TESTS: '1', ELYSIA_LIVE_SUITE: 'cache-gaps', ELYSIA_LIVE_TARGETS: JSON.stringify(cacheTargets), ELYSIA_VERIFY_DIR: run.directory, ELYSIA_LIVE_BUDGET: join(dirname(root), '.cache', 'protocol-cache-budget.json') }
+  const budget = join(dirname(root), '.cache', 'protocol-cache-budget.json')
+  const env = { ...process.env, ...credentials, ELYSIA_LIVE_TESTS: '1', ELYSIA_LIVE_SUITE: isFollowup ? 'cache-followup' : 'cache-gaps', ELYSIA_CACHE_PARENT: parent || '', ELYSIA_LIVE_TARGETS: JSON.stringify(cacheTargets), ELYSIA_VERIFY_DIR: run.directory, ELYSIA_LIVE_BUDGET: budget }
   let passed
-  try { passed = await run.execute('cache-live', 'go', ['test', './server', '-run', '^TestProtocolLive$', '-count=1', '-v', '-timeout=125m'], { env, timeoutMillis: 126 * 60 * 1000 }) }
+  try {
+    if (isFollowup) {
+      await readFile(join(parent, 'cache-checkpoint.json'))
+      const deadline = Date.now() + 2 * 60 * 60 * 1000
+      for (;;) {
+        try { await access(`${budget}.lock`) } catch (error) { if (error.code === 'ENOENT') break; throw error }
+        if (Date.now() >= deadline) throw new Error('Parent experiment still owns the paid boundary')
+        await delay(1000)
+      }
+    }
+    passed = await run.execute('cache-live', 'go', ['test', './server', '-run', '^TestProtocolLive$', '-count=1', '-v', '-timeout=125m'], { env, timeoutMillis: 126 * 60 * 1000 })
+  }
   finally { for (const name of names) { delete env[name]; delete credentials[name] } }
   let evidence
   try { evidence = JSON.parse(await readFile(join(run.directory, 'live.json'), 'utf8')) }

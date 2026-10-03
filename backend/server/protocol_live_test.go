@@ -241,6 +241,10 @@ func TestProtocolLive(t *testing.T) {
 		suite.runCacheGaps(t)
 		return
 	}
+	if suite.Suite == "cache-followup" {
+		suite.runCacheFollowup(t)
+		return
+	}
 	if suite.Suite == "gemini-native-tools" {
 		suite.geminiNativeToolControl(t, compileFixtureDefinition(t, presetDefinition(t, "gemini-api")))
 		return

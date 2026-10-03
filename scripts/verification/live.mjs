@@ -5,8 +5,8 @@ import { readCredential } from './credential.mjs'
 /** Runs the serial paid experiment only after explicit live opt-in. */
 export async function verifyLive(run, root) {
   const suite = process.argv.find(arg => arg.startsWith('--suite='))?.slice(8) || 'all'
-  if (!['all','cache','matrix','extended','followup','diagnostics','breakpoint','custom','gemini-native-tools','cache-gaps'].includes(suite)) throw new Error('Unknown live suite')
-  if (suite === 'cache-gaps') {
+  if (!['all','cache','matrix','extended','followup','diagnostics','breakpoint','custom','gemini-native-tools','cache-gaps','cache-followup'].includes(suite)) throw new Error('Unknown live suite')
+  if (suite === 'cache-gaps' || suite === 'cache-followup') {
     const { verifyCacheGaps } = await import('./cache-live.mjs')
     await verifyCacheGaps(run, root)
     return

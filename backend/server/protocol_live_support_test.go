@@ -30,13 +30,14 @@ const liveUsagePoll = 10 * time.Millisecond
 const liveErrorLimit = 1024
 
 type liveBudget struct {
-	mu             sync.Mutex
-	path           string
-	Calls          int       `json:"calls"`
-	Stopped        string    `json:"stopped,omitempty"`
-	Limit          int       `json:"limit,omitempty"`
-	CleanupReserve int       `json:"cleanupReserve,omitempty"`
-	Deadline       time.Time `json:"deadline,omitempty"`
+	mu                   sync.Mutex
+	path                 string
+	Calls                int       `json:"calls"`
+	Stopped              string    `json:"stopped,omitempty"`
+	Limit                int       `json:"limit,omitempty"`
+	CleanupReserve       int       `json:"cleanupReserve,omitempty"`
+	Deadline             time.Time `json:"deadline,omitempty"`
+	FollowupCallsAtStart *int      `json:"followupCallsAtStart,omitempty"`
 }
 
 func (budget *liveBudget) reserve() error {
