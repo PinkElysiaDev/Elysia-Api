@@ -5,11 +5,12 @@ import { verifyRace } from './verification/race.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const mode = process.argv[2]
-if (!['race', 'live'].includes(mode)) throw new Error('Usage: node scripts/verify-protocol.mjs race|live [--preflight|--suite=cache|matrix|extended|custom|breakpoint|diagnostics]')
+if (!['race', 'live', 'performance'].includes(mode)) throw new Error('Usage: node scripts/verify-protocol.mjs race|live|performance [--preflight|--suite=NAME|--revision=SHA|--micro-only]')
 const run = await VerificationRun.create(root, join(dirname(root), '.cache', `protocol-${mode}-${Date.now()}`), mode)
 try {
   if (mode === 'race') await verifyRace(run, root)
   else if (mode === 'live') { const { verifyLive } = await import('./verification/live.mjs'); await verifyLive(run, root) }
+  else { const { verifyPerformance } = await import('./verification/performance.mjs'); await verifyPerformance(run, root) }
 } catch (error) {
   await run.finish('failed', error.message)
   process.exitCode = 1
