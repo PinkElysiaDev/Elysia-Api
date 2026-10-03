@@ -22,6 +22,7 @@ export async function verifyPerformance(run, root) {
   const compiler = await readFile(join(cwd, 'protocol/definition.go'), 'utf8').catch(error => { if (isLegacy && error.code === 'ENOENT') return ''; throw error })
   run.report.measuredCompilerVersion = compiler.match(/CompilerVersion\s*=\s*"([^"]+)"/)?.[1] || 'legacy-c01'
   run.report.measurement = { microCount: 10, benchtime: '300ms', profiled: false, requests: +(process.env.ELYSIA_LOAD_REQUESTS || 128), repeats: +(process.env.ELYSIA_LOAD_REPEATS || 3), warmupRequestsPerScenario: 32, concurrency: [1, 8, 32], gomaxprocs: process.env.GOMAXPROCS || 'Go default', filter: process.env.ELYSIA_LOAD_FILTER || 'all', cpuScope: 'gateway + loopback load generator + deterministic upstream', firstFrame: 'complete SSE frame or complete non-streaming body' }
+  run.report.measurement.scenarios = process.env.ELYSIA_LOAD_SCENARIOS?.split(',') || 'all'
   await run.save()
   const pattern = isLegacy ? 'BenchmarkProtocolConversion/claude$' : 'BenchmarkCacheConversion$|BenchmarkStreamTextDecode$|BenchmarkRequestWorkloads$'
   const args = ['test', isLegacy ? './relay' : './protocol/builtin', '-run', '^$', '-bench', pattern, '-benchmem', '-benchtime=300ms', '-count=10', '-timeout=30m']

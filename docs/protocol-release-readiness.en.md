@@ -2,6 +2,8 @@
 
 [简体中文](protocol-release-readiness.md) · [User guide](protocol-guide.en.md) · [System evidence](protocol-system-validation.md)
 
+For subsequent C19?C23 live, race and performance evidence, see [release validation](protocol-release-validation.en.md). The tables and six-platform artifacts below describe the C18 delivery, not execution evidence for the later optimized version.
+
 Date: 2026-10-03. Branch: `feat/protocol-v2-gateway`. All commits and artifacts are local. Nothing was pushed, published or deployed.
 
 ## Delivered scope

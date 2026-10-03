@@ -224,6 +224,10 @@ func liveCalls(nodes []protocol.Node) []protocol.Node {
 
 func TestProtocolLive(t *testing.T) {
 	suite := openLiveSuite(t)
+	if suite.Suite == "gemini-native-tools" {
+		suite.geminiNativeToolControl(t, compileFixtureDefinition(t, presetDefinition(t, "gemini-api")))
+		return
+	}
 	compiled := map[string]*protocol.Compiled{}
 	available := map[string]map[bool]bool{}
 	for _, id := range liveProtocolIDs {
