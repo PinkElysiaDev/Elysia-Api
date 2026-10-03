@@ -90,6 +90,7 @@ func newTestServerWithStore(t *testing.T, groups []config.ModelGroupConfig, defi
 		t.Fatal("protocol runtime", err)
 	}
 	s.startUsageWriter()
+	t.Cleanup(s.stopUsageWriter)
 	return s
 }
 
