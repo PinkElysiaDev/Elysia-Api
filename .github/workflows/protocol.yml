@@ -35,7 +35,7 @@ jobs:
       - name: Fixed-duration compiler, JSON and event fuzzing
         working-directory: backend
         run: |
-          for target in FuzzCompileDefinition FuzzJSONMappingPresence FuzzJSONResourceLimits FuzzJSONContainers FuzzEventReplay; do
+          for target in FuzzCompileDefinition FuzzJSONMappingPresence FuzzJSONResourceLimits FuzzJSONContainers FuzzEventReplay FuzzTypedLimitEquivalence; do
             go test ./protocol -run '^$' -fuzz "^${target}$" -fuzztime=20s -parallel=2
           done
       - name: Reload, task recovery and cancellation stress

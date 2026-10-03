@@ -26,6 +26,9 @@ func (compiled *Compiled) hasTypedMapping(direction Direction) bool {
 }
 
 func checkTypedLimits(value any, limits Limits) error {
+	if fitsTypedLimits(value, limits) {
+		return nil
+	}
 	encoded, isValue := value.(Value)
 	if !isValue {
 		var err error

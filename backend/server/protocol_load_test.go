@@ -144,6 +144,9 @@ func TestProtocolLoad(t *testing.T) {
 				for _, delayed := range []bool{false, true} {
 					isDelayed.Store(delayed)
 					for _, concurrency := range []int{1, 8, 32} {
+						if !selectLoadScenario(targetID, workload, delayed, concurrency) {
+							continue
+						}
 						server.startUsageWriter()
 						warmup := measureGatewayLoad(t, server, client, gateway.URL+path, wire, loadWarmupRequests, concurrency)
 						if warmup.Failures > 0 {
@@ -170,6 +173,23 @@ func TestProtocolLoad(t *testing.T) {
 			}
 		})
 	}
+	if len(measurements) == 0 {
+		t.Fatal("load filters selected no scenarios")
+	}
+}
+
+func selectLoadScenario(path, workload string, isDelayed bool, concurrency int) bool {
+	selection := os.Getenv("ELYSIA_LOAD_SCENARIOS")
+	if selection == "" {
+		return true
+	}
+	key := fmt.Sprintf("%s/%s/%t/%d", path, workload, isDelayed, concurrency)
+	for _, scenario := range strings.Split(selection, ",") {
+		if scenario == key {
+			return true
+		}
+	}
+	return false
 }
 
 func loadSetting(t *testing.T, name string, fallback int) int {

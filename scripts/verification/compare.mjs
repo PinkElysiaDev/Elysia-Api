@@ -31,12 +31,20 @@ export async function comparePerformance(beforeDirectory, afterDirectory, output
   if (micro.length === 0) throw new Error('No equivalent microbenchmark workloads to compare')
   const load = async directory => { try { return JSON.parse(await readFile(join(directory, 'load.json'), 'utf8')) } catch (error) { if (error.code === 'ENOENT') return []; throw error } }
   const first = await load(beforeDirectory), second = await load(afterDirectory)
+  report.load = compareLoadSamples(first, second)
+  await writeFile(output, JSON.stringify(report, null, 2))
+  return report
+}
+
+/** Compares matching HTTP scenarios, retaining failed requests and uncertainty. */
+export function compareLoadSamples(first, second) {
+  const comparisons = []
   const key = value => [value.path, value.workload, value.delayed, value.concurrency].join('/')
   for (const group of new Set(second.map(key))) {
     const baseline = first.filter(value => key(value) === group)
     const candidate = second.filter(value => key(value) === group)
     if (!baseline.length) continue
-    if ([...baseline, ...candidate].some(value => value.failures !== 0)) { report.load.push({ name: group, assessment: 'failed-requests' }); continue }
+    if ([...baseline, ...candidate].some(value => value.failures !== 0)) { comparisons.push({ name: group, assessment: 'failed-requests' }); continue }
     const metrics = {}
     for (const metric of ['cpuPerRequestNS', 'requestsPerSecond', 'allocatedBytesPerRequest', 'allocationsPerRequest', 'gcPauseNS']) {
       const left = baseline.map(value => value[metric]), right = candidate.map(value => value[metric])
@@ -52,8 +60,7 @@ export async function comparePerformance(beforeDirectory, afterDirectory, output
       metrics[name] = compareSamples(baseline.map(value => value.latencyP50P95P99NS[index]), candidate.map(value => value.latencyP50P95P99NS[index]))
       metrics[`firstFrame${name.toUpperCase()}`] = compareSamples(baseline.map(value => value.firstFrameP50P95P99NS[index]), candidate.map(value => value.firstFrameP50P95P99NS[index]))
     }
-    report.load.push({ name: group, metrics, retainedHeapDeltaBytes: { before: baseline.map(value => value.retainedHeapDeltaBytes), after: candidate.map(value => value.retainedHeapDeltaBytes) }, gcCycles: { before: baseline.map(value => value.gcCycles), after: candidate.map(value => value.gcCycles) } })
+    comparisons.push({ name: group, metrics, retainedHeapDeltaBytes: { before: baseline.map(value => value.retainedHeapDeltaBytes), after: candidate.map(value => value.retainedHeapDeltaBytes) }, gcCycles: { before: baseline.map(value => value.gcCycles), after: candidate.map(value => value.gcCycles) } })
   }
-  await writeFile(output, JSON.stringify(report, null, 2))
-  return report
+  return comparisons
 }
