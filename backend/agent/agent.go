@@ -224,9 +224,11 @@ func (e *Engine) ResumeApproval(ctx context.Context, sessionID string, decision 
 func (e *Engine) spawnTurn(turnCtx context.Context, sessionID string, handle *turnHandle, cancel context.CancelFunc, input *UserContent, resume *PendingAction, decision ApprovalDecision) <-chan Event {
 	events := make(chan Event, e.opts.EventBuffer)
 	go func() {
+		// EOF permits the caller to start another turn, so release this turn's
+		// resources and session guard before making completion observable.
+		defer close(events)
 		defer e.end(sessionID, handle)
 		defer cancel()
-		defer close(events)
 		e.startTurn(turnCtx, sessionID, handle, input, resume, decision, events)
 	}()
 	return events
