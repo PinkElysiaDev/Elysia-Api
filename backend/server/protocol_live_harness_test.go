@@ -74,6 +74,9 @@ func TestLiveObserverChecksFourEvidenceLayersWithoutStoringCredentials(t *testin
 			directory := t.TempDir()
 			suite := &liveSuite{Model: "synthetic", Origin: provider.URL, Compiler: protocol.CompilerVersion, StartedAt: time.Now(), key: "synthetic-secret-never-persisted", budget: &liveBudget{path: filepath.Join(directory, "budget.json")}, path: filepath.Join(directory, "live.json"), client: provider.Client()}
 			gateway := newLiveGateway(t, suite, compiled)
+			if gateway.scope.Provider == "" || gateway.scope.Account == "" || gateway.scope.Model != suite.Model {
+				t.Fatal("observer lost persisted model account provenance", gateway.scope)
+			}
 			for _, isStream := range []bool{false, true} {
 				result, _ := gateway.request(t, "harness", compiled, liveRequest(t, "grp", isStream), isStream)
 				if result.Status != "passed" {

@@ -60,12 +60,20 @@ func newLiveGateway(t *testing.T, suite *liveSuite, target *protocol.Compiled) *
 	proxy, completed := suite.observer(target)
 	t.Cleanup(proxy.Close)
 	groups := presetGroup(t, "custom:"+target.Identity().DefinitionID, liveBase(proxy.URL, target))
-	groups[0].MaxRetries = 1
+	groups[0].MaxRetries = 0
 	groups[0].Models[0].Name = suite.Model
 	groups[0].Models[0].APIKey = "verification-observer-placeholder"
 	server := newTestServerWithStore(t, groups, target.Definition(), verificationEnvelopeDefinition(t))
 	server.protocolTransport.SetTimeout(liveRequestTimeout)
-	return &liveGateway{suite: suite, server: server, target: target, completed: completed, scope: modelProtocolScope(groups[0].Models[0])}
+	group, failure := server.validateModelGroup("grp")
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	models := server.expandCandidatesByKeyStrategy(server.buildCandidates(group))
+	if len(models) != 1 {
+		t.Fatal("live verification requires a single persisted model account")
+	}
+	return &liveGateway{suite: suite, server: server, target: target, completed: completed, scope: modelProtocolScope(models[0])}
 }
 
 func (gateway *liveGateway) bind(t *testing.T, capabilities protocol.CapabilitySet) {
