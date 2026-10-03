@@ -526,13 +526,24 @@ func TestCLICodeSnapshotCommands(t *testing.T) {
 	if result.OK || result.Data.(map[string]any)["error"] != "invalid_path" {
 		t.Fatalf("path traversal must be rejected: %+v", result)
 	}
-	result = read.Execute(t.Context(), nil, json.RawMessage(`{"path":"backend/server/presets/anthropic-api.json"}`))
+	result = read.Execute(t.Context(), nil, json.RawMessage(`{"path":"backend/protocol/builtin/definitions/anthropic-api.json"}`))
 	if snapshotAvailable() {
 		if !result.OK || !strings.Contains(result.Data.(map[string]any)["content"].(string), `"anthropic-api"`) {
 			t.Fatalf("preset original must be readable from the snapshot: %+v", result.Summary)
 		}
 	} else if result.OK || result.Data.(map[string]any)["error"] != "snapshot_unavailable" {
 		t.Fatalf("placeholder build must surface the notice: %+v", result)
+	}
+	if snapshotAvailable() {
+		for _, path := range []string{"packages/webui/src/lib/protocol-v2.ts", "docs/protocol-guide.md", "docs/protocol-guide.en.md", "docs/examples/cached-text-v2.json"} {
+			args, err := json.Marshal(map[string]string{"path": path})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result := read.Execute(t.Context(), nil, args); !result.OK {
+				t.Fatalf("current authoring reference %s must be embedded: %s", path, result.Summary)
+			}
+		}
 	}
 	list := &codeListTool{}
 	result = list.Execute(t.Context(), nil, json.RawMessage(`{}`))

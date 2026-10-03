@@ -260,7 +260,7 @@ func protocolV2Commands() []*cliCommand {
 	for _, action := range []string{"schema", "validate", "verify", "diagnose", "diff", "activate", "rollback"} {
 		command := &cliCommand{group: "protocol", name: action, summary: "Protocol v2 " + action, usage: "elysia protocol " + action + " [--id <id>] [--hash <revision>] [--expected <active>] [--section <section>] [--type <type>] [--from <hash>] [--to <hash>]", handler: func(s *Server) CLIHandler { return &protocolV2Tool{server: s, action: action} }}
 		for _, name := range []string{"id", "hash", "expected", "section", "type", "from", "to"} {
-			command.flags = append(command.flags, cliFlagSpec{name: name, usage: name})
+			command.flags = append(command.flags, cliFlagSpec{name: name, usage: protocolFlagUsage[name]})
 		}
 		command.mapper = func(inv *cliInvocation) (map[string]any, error) {
 			params := map[string]any{}

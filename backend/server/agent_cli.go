@@ -874,7 +874,7 @@ func codeCommands() []*cliCommand {
 	return []*cliCommand{
 		&cliCommand{group: "code", name: "ls", summary: "列出源码快照文件(引擎与预置协议的参考实现)",
 			usage:   "elysia code ls [前缀]",
-			example: `elysia code ls backend/server/presets`,
+			example: `elysia code ls backend/protocol/builtin/definitions`,
 			positionals: []cliPositionalSpec{
 				{"prefix", "路径前缀过滤(可选,如 backend/relay/ 或 packages/webui/src/lib/)"},
 			},
@@ -888,7 +888,7 @@ func codeCommands() []*cliCommand {
 			}},
 		&cliCommand{group: "code", name: "read", summary: "读取源码快照中的一个文件",
 			usage:   "elysia code read <路径>",
-			example: `elysia code read backend/server/presets/anthropic-api.json`,
+			example: `elysia code read backend/protocol/builtin/definitions/anthropic-api.json`,
 			positionals: []cliPositionalSpec{
 				{"path", "仓库相对路径(先 code ls 浏览)"},
 			},

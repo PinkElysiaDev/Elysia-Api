@@ -26,7 +26,8 @@ Command groups:
   model      Individual model management (ls, rm, set)
   group      Groups and members (create, delete, ls, member add, member rm, update)
   key        API keys (inference access tokens) (create, delete, ls, update)
-  protocol   Custom protocol drafts, offline previews, live tests and saving (draft, models, preview, read, save, test)
+  protocol   Protocol design and operations (activate, diagnose, diff, draft, models, preview, read, rollback, save, schema, test, validate, verify)
+  code       Bundled source and protocol references (ls, read)
   usage      Usage statistics and request logs (log, logs, stats, trend)
   syslog     System logs
   outbound   Denied outbound IP ranges (SSRF protection) (get, reset, set)
@@ -494,242 +495,232 @@ Details: Update a key under server permissions and business policies: rename (ne
 
 ## protocol
 
-````text
-elysia protocol — custom protocols (draft/offline preview/live test/save)
+All commands use the running v2 engine. Read the vendor documentation and complete
+examples, then `elysia protocol schema`. Declare independent directions,
+transports, capabilities, mappings and expected fixtures in a complete
+`schemaVersion: 2` definition. Legacy shape templates are import-only.
 
-  elysia protocol draft '<complete configuration JSON>' [--example '<sample response JSON>']
-    Write/update a draft (immediate validation and offline checks)
-      --example                Upstream response JSON for offline response-mapping checks
-      <config>                 Complete CustomProtocolConfig JSON (single quotes recommended)
+The workflow is draft ? validate/preview/verify ? repair ? save ? activate.
+Unsupported mechanisms must be reported; do not delete required fields/tools,
+reduce requested capabilities or shrink necessary tests to hide a gap. A saved
+draft is not an active protocol. The editor and CLI use the same compiler,
+verifier and immutable revisions. Offline and real-target evidence are separate;
+HTTP 200 does not prove fidelity. Protocol mappings cannot change gateway
+authorization or execute client business tools.
 
-  elysia protocol models [--base-url <URL>] [--api-key <key>]
-    Test upstream discovery using the draft's models configuration (permission-controlled)
-      --base-url               Upstream baseUrl (defaults to one recorded in the current CLI context)
-      --api-key                API key (defaults to one recorded in the current CLI context)
+### protocol schema
 
-  elysia protocol preview [--sample '<sample Maheshvara request JSON>']
-    Render the draft request offline (do not send)
-      --sample                 Custom sample request JSON
+```text
+elysia protocol schema [--section <section>] [--type <type>]
+```
 
-  elysia protocol read --id <protocol-id>
-    Read a saved protocol's full configuration
-      --id                     Protocol ID (including built-in presets)
+Without a section, return the installed compiler/schema version, features,
+directions, transports, operation kinds and capabilities. Sections are
+`definition`, `semantic`, `binding`, `directions`, `capabilities`, `operations`,
+`events`, `diagnostics`, `modules`. `--type` selects a named type from a section
+containing `$defs`; it is not valid for a list catalog.
 
-  elysia protocol save [--update <protocol-id>]
-    Save the current draft as a protocol (permission-controlled)
-      --update                 Explicitly update an existing protocol; target must exist and match the draft ID
-
-  elysia protocol test [--base-url <URL>] [--api-key <key>] [--stream] [--sample '<sample request JSON>']
-    Send a test request to a real upstream (permission-controlled)
-      --base-url               User-provided upstream baseUrl (defaults to one recorded in the current CLI context)
-      --api-key                User-provided API key (defaults to one recorded in the current CLI context)
-      --stream                 Test streaming (SSE)
-      --sample                 Custom sample request JSON
-
-Full semantics and examples: elysia help protocol <command>.
-````
+```text
+elysia protocol schema --section definition --type Definition
+elysia protocol schema --section semantic --type Request
+elysia protocol schema --section operations
+```
 
 ### protocol draft
 
-````text
-elysia protocol draft '<complete configuration JSON>' [--example '<sample response JSON>']
-Write/update a draft (immediate validation and offline checks)
-
-Arguments:
-  --example                Upstream response JSON for offline response-mapping checks
-  <config>                 Complete CustomProtocolConfig JSON (single quotes recommended)
-
-Example: elysia protocol draft '{"id":"my-api","request":{...}}' --example '{"text":"hi"}'
-
-Details: Integration workflow:
-1. Read the user's API documentation/examples: identify authentication, endpoint paths, request/response shapes, SSE support and any model-list endpoint.
-2. Submit elysia protocol draft '<complete configuration JSON>'; include --example '<sample JSON>' for offline response mapping when available. Failed validation returns issues; fix and resubmit.
-3. Run elysia protocol preview offline. Ask for the test target (baseUrl / API key), then use elysia protocol test --stream and elysia protocol models for live tests (permission-controlled; pass credentials with --base-url / --api-key). Refine from results.
-4. Save with elysia protocol save after passing. Serving requests also requires a source (--platform custom:<protocol-id>) and a group.
-
-Top-level fields: id (required, short lowercase English identifier), name, version, type (llm default / reranker and embedding reserved / x- extensions), request (required), response.
-
-### request (gateway → upstream)
-- method: GET/POST/PUT/PATCH/DELETE; default POST.
-- path: relative to the source baseUrl; supports {{maheshvara.<field>}} interpolation and must not contain a scheme.
-- pathStream: streaming path override (for example Gemini :streamGenerateContent?alt=sse).
-- headers / query: static key/value pairs (no authentication headers; use auth).
-- contentType: default application/json.
-- auth: {"mode": "bearer|none|header|query", "header": "...", "prefix": "...", "query": "..."}. Use bearer (default) for Bearer tokens, header for X-Api-Key, query for key parameters and none for no authentication.
-- body: field-level request construction tree. Containers are ordinary JSON objects/arrays; leaves are one of:
-  - Field reference {"field": "<request catalog field>", "mode": "json|string", "default": <optional JSON literal>, "omitIfEmpty": <optional true>}. json inserts native values (required for objects/arrays/numbers/booleans); string inserts strings.
-  - Constant {"value": <any JSON>}: required upstream fields with no Maheshvara equivalent, such as versions or fixed formatting options.
-
-### response (upstream → Maheshvara; JSON bodies only)
-- body: response construction tree (recommended). Containers follow the sample's JSON object/array shape. Leaves are mappings {"field": "<response catalog field>", "value": <sample>, "transform": "<optional>"} or placeholders {"value": ...}. Preserve array levels; for example, annotate the first choices entry.
-- fields: equivalent row list [{"path", "field", "transform"?}], with dot paths and array indices such as choices[0].delta.content. Choose either fields or body.
-- Map text/reasoning/tool_calls/usage/stop_reason/id/model/error wherever the upstream documents them.
-- stream: configure only for documented SSE: {"payloadPath": "...", "mode": "delta|cumulative", "events": [...], "doneValues": ["[DONE]"], "response": {"body": {...} or "fields": [...]}}.
-
-Request catalog (field values in request.body leaves):
-- model — Routed upstream model name (string)
-- instructions — System instructions (string)
-- anthropic_system — Anthropic system content preserving cache blocks (native)
-- gemini_system — Gemini system content, omitted when absent (native)
-- messages — Message array (role + content) (native)
-- input_items — Responses-style input items (native)
-- stream — Whether streaming is enabled (scalar)
-- stream_options — Streaming options (native)
-- tools — Tool definitions (native)
-- tool_choice — Tool selection policy (native)
-- parallel_tool_calls — Allow parallel tool calls (scalar)
-- max_output_tokens — Maximum output tokens (scalar)
-- min_output_tokens — Minimum output tokens (scalar)
-- temperature — Temperature (scalar)
-- top_p — Top-P (scalar)
-- top_k — Top-K (scalar)
-- stop — Stop sequences (native)
-- n — Candidate count (scalar)
-- seed — Random seed (scalar)
-- presence_penalty — Presence penalty (scalar)
-- frequency_penalty — Frequency penalty (scalar)
-- repetition_penalty — Repetition penalty (scalar)
-- logprobs — Return log probabilities (scalar)
-- top_logprobs — Log-probability count (scalar)
-- typical_p — Typical-P (scalar)
-- min_p — Min-P (scalar)
-- top_a — Top-A (scalar)
-- response_format — Response format, such as JSON schema (native)
-- reasoning — Reasoning settings, such as effort (native)
-- thinking — Thinking settings, such as budget_tokens (native)
-- reasoning_effort — Reasoning effort produced by chat shaping (string)
-- output_config — Output settings for anthropic adaptive thinking (native)
-- thinking_config — Thinking settings produced by gemini shaping (native)
-- tool_config — Tool selection settings produced by gemini shaping (native)
-- modalities — Output modalities (native)
-- audio — Audio settings (native)
-- safety_settings — Safety settings (native)
-- service_tier — Service tier (string)
-- verbosity — Output verbosity (string)
-- user — End-user identifier (string)
-- include — Responses include list; shaping also appends encrypted reasoning (native)
-- prompt_cache_key — Prompt cache key (string)
-- prompt_cache_retention — Prompt cache retention (native)
-- cache_control — Cache control shaped for the target wire (native)
-- metadata — Metadata (native)
-- raw_extra — Unknown fields passed through from the client; alias extra (native)
-
-Response catalog (field values in response mappings):
-- text — Body text
-- reasoning — Reasoning text
-- tool_calls — Tool-call array
-- usage — Usage object, with automatic recognition of multiple key names
-- usage.input_tokens — Input tokens
-- usage.output_tokens — Output tokens
-- usage.total_tokens — Total tokens
-- usage.cached_input_tokens — Cached input tokens
-- usage.reasoning_tokens — Reasoning tokens
-- stop_reason — Finish reason
-- id — Response ID
-- model — Model name
-- status — Status
-- error — Error object
-- created_at — Creation timestamp in seconds
-- service_tier — Service tier
-- system_fingerprint — System fingerprint
-- metadata — Metadata, including metadata.<key> subkeys
-- output — Structured output items, with transforms such as output_items
-- metadata subkeys (such as metadata.vendor) carry upstream-specific metadata.
-
-Optional transforms (usually unnecessary; usage.* defaults to int):
-(empty), identity, raw, string, text, join, int, integer, number, float, bool, boolean, json, parse_json, json_string, timestamp_ms, first, usage, content_parts, tool_calls, output_items
-
-Design notes:
-- Map a whole usage object with field "usage" for automatic key recognition; map individual fields only for unusual structures.
-- Preserve array levels when inferring shapes from sample responses/screenshots.
-- Supply required fixed parameters (versions, formats) with constant value leaves.
-- Prefer request.shape (openai-chat/anthropic/gemini/responses) for messages/tools matching an existing wire format.
-- Use leaf when/omitIf for conditional inclusion, stream.finishWhen/statusWhen for finish detection, and stream.done for typed terminal values.
-- Use stream.frames when events have different shapes (select by event or match); use frame.tool for split tool-call frames.
-- Declare aliases for unrecognized key names; use textFilter/reasoningFilter to extract typed blocks from arrays.
-- Read built-in presets with `elysia protocol read --id <id>`: chat-completions-api / responses-api / anthropic-api / gemini-api.
-- Select `response.adapter` and `response.stream.adapter` independently from `schema.wireAdapters`. Do not combine an adapter with legacy content/event rules for that direction. Explicit usage aliases remain supported; custom protocol IDs do not change adapter behavior.
-
-Complete example (anthropic-api preset):
-```json
-{"id":"anthropic-api","name":"Anthropic API (preset)","version":"5","type":"llm","request":{"method":"POST","path":"/v1/messages","shape":"anthropic","headers":{"anthropic-version":"2023-06-01"},"auth":{"mode":"header","header":"x-api-key"},"body":{"model":{"field":"model","mode":"string"},"messages":{"field":"messages"},"system":{"field":"anthropic_system","omitIfEmpty":true},"max_tokens":{"field":"max_output_tokens","default":65536},"stream":{"field":"stream"},"temperature":{"field":"temperature","omitIfEmpty":true},"top_p":{"field":"top_p","omitIfEmpty":true},"top_k":{"field":"top_k","omitIfEmpty":true},"stop_sequences":{"field":"stop","omitIfEmpty":true},"thinking":{"field":"thinking","omitIfEmpty":true},"output_config":{"field":"output_config","omitIfEmpty":true},"tools":{"field":"tools","omitIfEmpty":true},"tool_choice":{"field":"tool_choice","omitIfEmpty":true},"cache_control":{"field":"cache_control","omitIfEmpty":true}}},"response":{"adapter":"anthropic","stream":{"adapter":"anthropic"}},"models":{"path":"/v1/models","listPath":"data"},"metadata":{"description":"Anthropic API wire preset; v3: vendor-neutral naming; v2: thinking/output_config shaping, signature/citations frames, argument-completion frames and cached-usage aliases; v4: preserve cache semantics and cache field mappings; v5: share native response and event adapters","preset":true,"presetVersion":5}}
+```text
+elysia protocol draft '<complete schemaVersion=2 JSON>'
 ```
 
-````
+The sole positional argument is the complete definition, not a patch. Retain the
+working draft in this tool context and compile it. A malformed definition is
+retained for repair but reports failure; it is not persisted or activated. Edit
+mode must retain the selected protocol ID. REST/A2A use session context; stateless
+MCP callers keep dependent draft operations in one command batch. `read` returns
+stored content; pass edited content through `draft` to set the working draft.
 
-### protocol models
+Complete standalone examples: [text-alpha](../backend/protocol/testdata/text-alpha.json),
+[text-beta](../backend/protocol/testdata/text-beta.json), and
+[cached-text](examples/cached-text-v2.json). See the
+[definition reference](protocol-definition-reference.en.md) for the contract.
 
-````text
-elysia protocol models [--base-url <URL>] [--api-key <key>]
-Test upstream discovery using the draft's models configuration (permission-controlled)
+### protocol validate
 
-Arguments:
-  --base-url               Upstream baseUrl (defaults to one recorded in the current CLI context)
-  --api-key                API key (defaults to one recorded in the current CLI context)
+```text
+elysia protocol validate [--id <id>] [--hash <revision-hash>]
+```
 
-Example: elysia protocol models --base-url https://api.example.com
+Compile the working draft, or select a saved protocol with case-sensitive `--id`.
+With ID but no hash, read its draft; with both, read the immutable revision.
+Return validity, structured issues and the compiled hash when valid. This does
+not run the full fixture suite, persist evidence or activate a revision.
 
-Details: Fetch and parse a real upstream model list using the draft's models configuration, under server permissions and business policies. This validates discovery; missing models configuration is an error. Pass user-provided baseUrl/API key as arguments. Reuse only targets successfully recorded by this command or protocol test in the current CLI context, not credentials from other commands.
-````
+### protocol verify
+
+```text
+elysia protocol verify [--id <id>] [--hash <revision-hash>]
+```
+
+Select content as in `validate`, compile and run offline capability/fidelity
+verification. Return a report bound to content hash, compiler version and
+fixtures. No provider request is sent and this command does not persist the
+report. `save` stores current draft evidence; the management API can reverify
+an existing immutable revision for rollback.
+
+### protocol diagnose
+
+```text
+elysia protocol diagnose [--id <id>] [--hash <revision-hash>]
+```
+
+Run the same offline verifier as `verify` and return structured diagnostics for
+repair. This is not a live provider probe and does not modify the definition.
+Use issue codes, directions, paths and suggestions to revise the draft.
 
 ### protocol preview
 
-````text
-elysia protocol preview [--sample '<sample Maheshvara request JSON>']
-Render the draft request offline (do not send)
+```text
+elysia protocol preview --sample '<JSON>' [--direction <direction>] [--sequence] [--mode mapping|session|task|models|agent] [--sample-id <id>] [--operation <name>] [--kind decode|encode|control] [--purpose submit|status|result|cancel]
+```
 
-Arguments:
-  --sample                 Custom sample request JSON
+Preview the working draft using the shared runtime, without saving or enabling:
 
-Example: elysia protocol preview
+| Flag | Meaning |
+| --- | --- |
+| `--sample` | Complete input JSON; event arrays for a sequence, semantic input for an encoder |
+| `--direction` | Independent mapping direction from the current schema; required in mapping mode |
+| `--sequence` | Replay the input as an ordered event sequence |
+| `--mode` | `mapping` by default; `session`, `task`, `models` and `agent` select workflow previews |
+| `--sample-id` | Declared session fixture ID; session mode uses this fixture instead of `--sample` |
+| `--operation` | Declared operation name for model/task previews |
+| `--kind` | Task mapping: `decode`, `encode` or `control` |
+| `--purpose` | Task phase: `submit`, `status`, `result` or `cancel` |
 
-Details: Render the draft's outbound request offline using a sample Maheshvara request (method/path/query/headers/body and credential-injection shape). No upstream request is sent. Use after submitting a draft to inspect its request shape.
-````
-
-### protocol read
-
-````text
-elysia protocol read --id <protocol-id>
-Read a saved protocol's full configuration
-
-Arguments:
-  --id                     Protocol ID (including built-in presets)
-
-Example: elysia protocol read --id anthropic-api
-
-Details: Read a saved protocol's complete configuration JSON by ID, including built-in presets, as a reference or editing baseline.
-````
-
-### protocol save
-
-````text
-elysia protocol save [--update <protocol-id>]
-Save the current draft as a protocol (permission-controlled)
-
-Arguments:
-  --update                 Explicitly update an existing protocol; target must exist and match the draft ID
-
-Example: elysia protocol save
-
-Details: Save the draft in the protocol registry under server permissions and business policies; writes take effect immediately. Edit mode must retain the original ID. Other contexts create by default and reject an existing ID. To update, explicitly pass --update <protocol-id>; the target must exist and match the draft ID. Prefer saving after successful live testing.
-````
+For `models`, supply the wire model-list response. For `agent`, supply semantic
+`AgentPreferences`; it previews parameter rendering, not a model invocation.
+Model discovery requires declared model operations and `modelSamples`. Agent
+use requires tool result input type, parameter policies and thinking-mode
+fixtures. Results include output, semantic data and located issues.
 
 ### protocol test
 
-````text
-elysia protocol test [--base-url <URL>] [--api-key <key>] [--stream] [--sample '<sample request JSON>']
-Send a test request to a real upstream (permission-controlled)
+```text
+elysia protocol test --operation <name> --sample '<complete semantic request JSON>' [--base-url <URL>] [--api-key <key>]
+```
 
-Arguments:
-  --base-url               User-provided upstream baseUrl (defaults to one recorded in the current CLI context)
-  --api-key                User-provided API key (defaults to one recorded in the current CLI context)
-  --stream                 Test streaming (SSE)
-  --sample                 Custom sample request JSON
+Probe an actual upstream using the working draft. The operation must be declared;
+its transport selects streaming behavior. `--sample` is a semantic `Request`, not
+a vendor wire request. URL/key may come from the current test target; explicit
+arguments override it. Credentials are not written to verification reports.
+Server outbound permissions, address restrictions and approval policies still
+apply. The result is separate real-target contract evidence, not activation.
 
-Example: elysia protocol test --base-url https://api.example.com --api-key sk-xxx
+### protocol models
 
-Details: Render the draft and send it to a real upstream under server permissions and business policies. Returns HTTP status, raw content and mapped results; stream=true samples SSE events and decoded results. Pass user-provided baseUrl/API key as arguments. Reuse only values successfully recorded by this command or protocol models in the current CLI context; other commands' credentials are not reused.
-````
+```text
+elysia protocol models [--base-url <URL>] [--api-key <key>]
+```
+
+Probe the declared model-discovery operation against the real target. Target
+selection and permissions match `test`. The definition must contain a supported
+model operation; do not invent an endpoint from its provider name.
+
+### protocol save
+
+```text
+elysia protocol save [--expected <current-draft-hash>]
+```
+
+Persist the working draft. Use the previously read draft hash to detect concurrent
+edits. If compilation succeeds, also store the immutable revision and current
+offline report. Failed verification leaves a repairable draft and cannot justify
+activation. A successful save means persistence succeeded; inspect its report
+before activation. Saving never activates, binds sources or replaces in-flight
+request revisions. Writes remain permission-controlled.
+
+### protocol read
+
+```text
+elysia protocol read --id <id> [--hash <revision-hash>]
+```
+
+Read the case-sensitive ID's draft and conditional-save hash, or the immutable
+revision selected by `--hash`. It does not implicitly replace the working draft.
+
+### protocol diff
+
+```text
+elysia protocol diff --id <id> --from <revision-hash> --to <revision-hash>
+```
+
+Compare two persisted immutable revisions without changing either or activating.
+
+### protocol activate
+
+```text
+elysia protocol activate --id <id> --hash <revision-hash> [--expected <current-active-hash>]
+```
+
+Activate exactly the selected immutable revision with current valid offline
+evidence. `--expected` checks the current active pointer, not the draft hash;
+an empty expected value denotes no active revision. Edit sessions must preserve
+their selected ID. Existing permission/approval gates apply; reports supplied by
+the caller cannot bypass server verification. In-flight requests retain their
+pinned revision.
+
+### protocol rollback
+
+```text
+elysia protocol rollback --id <id> --hash <revision-hash> [--expected <current-active-hash>]
+```
+
+Activate a prior revision under the same gate as `activate`. It must be loadable
+and verified by the current engine. This does not roll back the executable or
+database migration; those require matching backups.
+
+The runtime currently exposes the shared selector flags
+`--id`, `--hash`, `--expected`, `--section`, `--type`, `--from`, `--to` on the seven
+schema/validate/verify/diagnose/diff/activate/rollback commands. Only the flags
+listed under each command have meaning for that operation. Check
+`elysia help protocol <command>` for the current parser's accepted flags.
+
+## code
+
+Read the source snapshot bundled by `scripts/build-standalone.mjs`. This is a
+read-only build snapshot, not arbitrary filesystem access. A plain development
+`go build` with no generated snapshot returns a descriptive notice.
+
+### code ls
+
+```text
+elysia code ls [prefix]
+```
+
+List sorted repository-relative paths, optionally filtered by a positional
+prefix. The snapshot includes backend Go, definitions/fixtures, WebUI source,
+protocol guides and CLI references.
+
+```text
+elysia code ls backend/protocol/builtin/definitions
+elysia code ls packages/webui/src/lib/
+elysia code ls docs/
+```
+
+### code read
+
+```text
+elysia code read <path>
+```
+
+Read one repository-relative snapshot file. Browse with `code ls` first; use
+`grep`/`head` pipelines to limit large output. Missing paths return an error and
+may include a nearby path hint. Presets in `backend/server/presets/` are historical
+migration inputs; active v2 definitions live under `backend/protocol/builtin/definitions/`.
+
+```text
+elysia code read backend/protocol/builtin/definitions/anthropic-api.json
+elysia code read docs/protocol-guide.en.md
+```
 
 ## usage
 

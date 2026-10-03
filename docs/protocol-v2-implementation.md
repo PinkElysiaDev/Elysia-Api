@@ -4,6 +4,10 @@ Base: `8a0b23f`. Branch: `feat/protocol-v2-gateway`. Started: 2026-10-02.
 
 This ledger records implemented and verified work; unchecked stages are not delivered capabilities. Commits remain local.
 
+Earlier rows retain their commit-time integration boundaries. C16 closes those
+legacy-runtime/editor boundaries; the current contract and outstanding release
+gates are in [delivery readiness](protocol-release-readiness.en.md).
+
 | Stage | Status | Validation / evidence |
 | --- | --- | --- |
 | C01 Cache fidelity | Complete | Backend full tests, vet, WebUI type check; cache audit and 96-case HTTP matrix; conversion benchmark baseline |
@@ -23,7 +27,7 @@ This ledger records implemented and verified work; unchecked stages are not deli
 | C15 Unified migration | Implemented; final removal follows in C16 | Direct four-wire ordered-model adapters and static verified v2 presets; read-only graph preview, explicit repair, pre-import SQLite backup, atomic activation/bindings/receipt, exact-intent API replay, startup fail-closed and reload recovery. Independent wire, late-usage, nested-extension, stream identity and compound session regression evidence; see [migration reference](protocol-migration-v2.md). |
 | C16 Legacy removal and quality | Complete | Public/Agent/editor/CLI/MCP/probe paths use v2; old conversion and template executors removed. Cache TTL has one semantic owner, failure mapping and retry boundaries are shared, idle reads and hosted usage are bounded. Known-preset refresh retains edited definitions/drafts and backs up before atomic replacement. Full backend tests (server 271.673 s), vet, type check, diff check and 3 Chromium tests against isolated Go/SQLite passed on 2026-10-03. See [cutover contract](protocol-cutover-v2.md). |
 | C17 System verification | Local gates passed; race pending supported environment | Full backend tests/vet/type check and 3 real Chromium tests; 20 stress repetitions; five fixed-duration fuzz targets (2,752,020 executions). Typed/JSON adapter parity and profiling reduced C16 conversion overhead. Linux CI gates added, not run remotely. Request CPU remains above C01. See [system evidence](protocol-system-validation.md). |
-| C18 Documentation and builds | Pending | |
+| C18 Documentation and builds | Delivered locally; release gates remain explicit | Bilingual architecture/definition/editor/Agent/migration/readiness guides, current CLI help and embedded frontend/docs/examples; published cache fixture verifies. Full backend tests (server 189.669 s), vet, type check and diff check passed. Six standalone targets built; Windows amd64 isolated database/schema/four presets/UI smoke passed. Other targets were not run; race and real-provider evidence remain outstanding. See [release readiness](protocol-release-readiness.en.md). |
 
 The unrelated pre-existing `docs/debug-report-2026-09-18.md` is excluded. Offline fixtures do not establish real provider compatibility or cache hit rates.
 

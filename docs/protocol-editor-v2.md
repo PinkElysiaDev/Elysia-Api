@@ -32,9 +32,9 @@ draft or reverify and roll back. The service enforces these gates even if a
 client calls the API directly. A real upstream validation record is not inferred
 from offline examples or an HTTP 200 response.
 
-During the staged migration, the separate historical configuration page remains
-reachable for old definitions. C15/C16 must migrate/remove that transition; this
-editor does not claim those stages have already occurred.
+The legacy editor has been removed. Imported definitions must be repaired and
+verified through this editor before activation. Use
+`node scripts/test-protocol-e2e.mjs` for an isolated backend/browser test.
 
 Validation: TypeScript type check, scoped ESLint, full backend tests and vet.
 Chromium against an isolated real Go server/SQLite store creates a standalone

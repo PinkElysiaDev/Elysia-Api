@@ -169,14 +169,23 @@ Use RFC3339 timestamps and the range `[from, to)`. Repeat `keyName`, `groupName`
 
 | Method | Path | Behavior |
 | --- | --- | --- |
-| GET | `/api/admin/custom-protocols` | List protocols |
-| GET | `/api/admin/custom-protocols/schema` | Field catalog and constraints |
-| PUT / DELETE | `/api/admin/custom-protocols/:id` | Save / delete a definition |
-| POST | `/api/admin/custom-protocols/preview` | Offline mapping preview |
-| POST | `/api/admin/custom-protocols/test` | Live upstream test; may incur charges |
-| POST | `/api/admin/custom-protocols/test-models` | Live model discovery test |
+| GET | `/api/admin/protocols`, `/api/admin/protocols/enabled` | Draft/active revisions and executable protocol catalog |
+| GET | `/api/admin/protocols/schema` | Current definition, semantic, capability, mapping and diagnostic catalogs |
+| GET / PUT | `/api/admin/protocols/:id/draft` | Read / save a complete draft; PUT checks its previous hash with `If-Match` |
+| POST | `/api/admin/protocols/validate`, `/api/admin/protocols/preview` | Compile and preview requests/responses/events/workflows |
+| POST | `/api/admin/protocols/:id/verify` | Verify the exact draft; store immutable revision and offline evidence |
+| GET | `/api/admin/protocols/:id/revisions`, `/api/admin/protocols/:id/diff` | List / compare revisions |
+| POST | `/api/admin/protocols/:id/activate`, `/api/admin/protocols/:id/rollback` | Change active revision under current-engine verification gates |
+| POST | `/api/admin/protocols/test` | Live generation or model-discovery contract probe; may incur charges |
+| POST | `/api/admin/protocols/combinations` | Verify ingress/upstream capability composition |
+| GET / PUT | `/api/admin/protocols/bindings` | Read / save source/group protocol constraints |
+| POST | `/api/admin/protocols/reload` | Atomically replace the registry after compilation succeeds |
+| GET | `/api/admin/protocols/migration` | Migration status |
+| POST | `/api/admin/protocols/migration/preview`, `/api/admin/protocols/migration/apply` | Preview the full graph / apply transactional cutover |
 
-See [protocol definitions](protocol-definition-reference.en.md) and frontend types `CustomProtocolPreviewResult` / `CustomProtocolTestResult` for request and result contracts.
+The old `/custom-protocols` execution endpoints are removed. Saving does not activate. Offline reports must match the definition hash and current compiler; real-target evidence is separate. See the [definition reference](protocol-definition-reference.en.md), [handlers](../backend/server/protocol_revision_admin.go) and [frontend v2 contract](../packages/webui/src/lib/protocol-v2.ts) for complete paths, payloads and concurrency requirements.
+
+Custom client ingress uses `/gateway/:protocolId/*path`, dispatching declared HTTP, WebSocket or task operations under unified inference authorization. The four existing public protocol endpoints retain the shared engine. Definitions cannot bypass authorization or manufacture capabilities; see the [guide](protocol-guide.en.md).
 
 `/api/admin/agent/*` shares session handlers with [remote REST](remote-agent-api.en.md#rest), but uses the panel token. See that document for session creation/editing, messages, approvals, stopping, truncation, and draft restoration. The assistant operates through `elysia_cli`, with `ask_user` and `update_plan` as supporting tools. Model calls count toward usage with `relayMode=agent-assist`. Session views mask credentials; test-credential reuse is limited to protocol-testing commands.
 

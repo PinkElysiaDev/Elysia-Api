@@ -104,18 +104,8 @@ public ingress dispatches, report generation, frame limits, path/credential
 placement, nested provenance and model capability checks. HTTP tests use local
 simulated upstreams, not real provider validation.
 
-The four public paths dispatch through this runtime **when their verified v2
-revisions are active** (`chat-completions-api`, `responses-api`, `anthropic-api`,
-`gemini-api`). Existing installations still retain their v1 branch until C15's
-transactional migration and C16's removal. C10 does not silently auto-activate
-unverified preset definitions. Installed built-in v2 modules still advertise HTTP
-directions only; their stateful event-module integration, complete preset migration,
-and removal of Maheshvara projections remain outstanding. Declarative event
-protocols are exercised by the new gateway tests. WebSocket and async generation
-are not enabled by this stage.
-
-Compiler version is now `2.0.0-dev.3`; previous offline reports require server-side
-reverification. No WebUI definition was changed in C10. Full backend tests, vet and
-diff checks pass. Two existing request-conversion benchmark runs measured 19.1–22.2
-us/op on this Windows/amd64 host; allocation counts remain Chat 343, Claude 327,
-Gemini 302, Responses 291. End-to-end v2 performance comparison remains in C17.
+The four public paths and custom namespace now use active verified v2
+revisions. C15/C16 removed the old runtime. Built-in adapters implement stateful
+events; WebSocket and durable task transport are installed. See the
+[guide](protocol-guide.en.md) and [system evidence](protocol-system-validation.md)
+for current compiler, coverage, performance and unverified release gates.

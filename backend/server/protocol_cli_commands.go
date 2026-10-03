@@ -13,9 +13,13 @@ var protocolFlagUsage = map[string]string{
 	"purpose":   "任务阶段：submit、status、result 或 cancel",
 	"base-url":  "真实上游地址；仍受出站地址策略限制",
 	"api-key":   "真实上游凭据；不写入验证报告",
-	"expected":  "当前草稿哈希，用于检测并发修改",
+	"expected":  "保存时为当前草稿哈希；启用/回滚时为当前活动哈希，用于检测并发修改",
 	"id":        "协议 ID，区分大小写",
 	"hash":      "不可变修订的内容哈希；省略时读取草稿",
+	"section":   "schema 目录分区；省略时返回目录摘要",
+	"type":      "schema 分区中的具体类型名",
+	"from":      "比较的起始修订哈希",
+	"to":        "比较的目标修订哈希",
 }
 
 // protocolCommands routes every authoring command to the shared versioned

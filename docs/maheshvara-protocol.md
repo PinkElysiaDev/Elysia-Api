@@ -1,5 +1,8 @@
 # Maheshvara 协议
 
+> 历史架构参考。Maheshvara 运行内核已在 C16 删除。
+> 当前引擎请参阅 [Protocol v2](protocol-guide.md)。下文中的旧路径仅描述历史版本。
+
 [文档索引](README.md) · **简体中文** · [English](maheshvara-protocol.en.md)
 
 Maheshvara 是网关的内部请求、响应和流事件模型。它用于跨协议转换，不是独立 HTTP API。当前 `MaheshvaraProtocolVersion` 为 `"2"`，对应推理信封版本；v1 信封保留读取兼容。

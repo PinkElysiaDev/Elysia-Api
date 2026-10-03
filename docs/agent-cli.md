@@ -27,7 +27,7 @@ elysia —— 网关运维 CLI（全部操作经 elysia_cli 工具执行）
   model      单模型管理（ls, rm, set）
   group      模型组管理与成员维护（create, delete, ls, member add, member rm, update）
   key        API Key（推理访问令牌）管理（create, delete, ls, update）
-  protocol   自定义协议设计（草稿/离线预览/真实测试/保存）（activate, diagnose, diff, draft, models, preview, read, rollback, save, schema, test, validate, verify）
+  protocol   协议设计与运维（schema/草稿/验证/预览/测试/修订/启用/回滚）（activate, diagnose, diff, draft, models, preview, read, rollback, save, schema, test, validate, verify）
   usage      用量统计与调用日志（log, logs, stats, trend）
   syslog     系统日志
   outbound   出站禁止 IP 段（SSRF 防护）（get, reset, set）
@@ -70,7 +70,7 @@ elysia code ls [前缀]
 
   <prefix>                 路径前缀过滤(可选,如 backend/relay/ 或 packages/webui/src/lib/)
 
-示例：elysia code ls backend/server/presets
+示例：elysia code ls backend/protocol/builtin/definitions
 
 详细说明：列出随二进制打包的源码快照文件(仓库相对路径,可加路径前缀过滤;配合 grep/head 管道使用)。
 ````
@@ -83,9 +83,9 @@ elysia code read <路径>
 
   <path>                   仓库相对路径(先 code ls 浏览)
 
-示例：elysia code read backend/server/presets/anthropic-api.json
+示例：elysia code read backend/protocol/builtin/definitions/anthropic-api.json
 
-详细说明：读取源码快照中的一个文件(仓库相对路径,如 backend/server/custom_protocol.go 或 packages/webui/src/lib/types.ts);输出较长时配合 grep/head 管道截取。预置协议原文在 backend/server/presets/ 下。
+详细说明：读取源码快照中的一个文件(仓库相对路径,如 backend/protocol/compiler.go 或 packages/webui/src/lib/protocol-v2.ts);输出较长时配合 grep/head 管道截取。预置协议原文在 backend/protocol/builtin/definitions/ 下；协议指南在 docs/ 下。
 ````
 
 ## source
@@ -538,37 +538,37 @@ elysia key update --name <名> [--new-name <新名>] [--enabled[=false]] [--allo
 ## protocol
 
 ````text
-elysia protocol — 自定义协议设计（草稿/离线预览/真实测试/保存）
+elysia protocol — 协议设计与运维（schema/草稿/验证/预览/测试/修订/启用/回滚）
 
   elysia protocol activate [--id <id>] [--hash <revision>] [--expected <active>] [--section <section>] [--type <type>] [--from <hash>] [--to <hash>]
     Protocol v2 activate
-      --id                     id
-      --hash                   hash
-      --expected               expected
-      --section                section
-      --type                   type
-      --from                   from
-      --to                     to
+      --id                     协议 ID，区分大小写
+      --hash                   不可变修订的内容哈希；省略时读取草稿
+      --expected               保存时为当前草稿哈希；启用/回滚时为当前活动哈希，用于检测并发修改
+      --section                schema 目录分区；省略时返回目录摘要
+      --type                   schema 分区中的具体类型名
+      --from                   比较的起始修订哈希
+      --to                     比较的目标修订哈希
 
   elysia protocol diagnose [--id <id>] [--hash <revision>] [--expected <active>] [--section <section>] [--type <type>] [--from <hash>] [--to <hash>]
     Protocol v2 diagnose
-      --id                     id
-      --hash                   hash
-      --expected               expected
-      --section                section
-      --type                   type
-      --from                   from
-      --to                     to
+      --id                     协议 ID，区分大小写
+      --hash                   不可变修订的内容哈希；省略时读取草稿
+      --expected               保存时为当前草稿哈希；启用/回滚时为当前活动哈希，用于检测并发修改
+      --section                schema 目录分区；省略时返回目录摘要
+      --type                   schema 分区中的具体类型名
+      --from                   比较的起始修订哈希
+      --to                     比较的目标修订哈希
 
   elysia protocol diff [--id <id>] [--hash <revision>] [--expected <active>] [--section <section>] [--type <type>] [--from <hash>] [--to <hash>]
     Protocol v2 diff
-      --id                     id
-      --hash                   hash
-      --expected               expected
-      --section                section
-      --type                   type
-      --from                   from
-      --to                     to
+      --id                     协议 ID，区分大小写
+      --hash                   不可变修订的内容哈希；省略时读取草稿
+      --expected               保存时为当前草稿哈希；启用/回滚时为当前活动哈希，用于检测并发修改
+      --section                schema 目录分区；省略时返回目录摘要
+      --type                   schema 分区中的具体类型名
+      --from                   比较的起始修订哈希
+      --to                     比较的目标修订哈希
 
   elysia protocol draft '<schemaVersion=2 JSON>'
     写入协议草稿并校验定义
@@ -597,27 +597,27 @@ elysia protocol — 自定义协议设计（草稿/离线预览/真实测试/保
 
   elysia protocol rollback [--id <id>] [--hash <revision>] [--expected <active>] [--section <section>] [--type <type>] [--from <hash>] [--to <hash>]
     Protocol v2 rollback
-      --id                     id
-      --hash                   hash
-      --expected               expected
-      --section                section
-      --type                   type
-      --from                   from
-      --to                     to
+      --id                     协议 ID，区分大小写
+      --hash                   不可变修订的内容哈希；省略时读取草稿
+      --expected               保存时为当前草稿哈希；启用/回滚时为当前活动哈希，用于检测并发修改
+      --section                schema 目录分区；省略时返回目录摘要
+      --type                   schema 分区中的具体类型名
+      --from                   比较的起始修订哈希
+      --to                     比较的目标修订哈希
 
   elysia protocol save [--expected <draft-hash>]
     保存草稿与离线证据，不启用
-      --expected               当前草稿哈希，用于检测并发修改
+      --expected               保存时为当前草稿哈希；启用/回滚时为当前活动哈希，用于检测并发修改
 
   elysia protocol schema [--id <id>] [--hash <revision>] [--expected <active>] [--section <section>] [--type <type>] [--from <hash>] [--to <hash>]
     Protocol v2 schema
-      --id                     id
-      --hash                   hash
-      --expected               expected
-      --section                section
-      --type                   type
-      --from                   from
-      --to                     to
+      --id                     协议 ID，区分大小写
+      --hash                   不可变修订的内容哈希；省略时读取草稿
+      --expected               保存时为当前草稿哈希；启用/回滚时为当前活动哈希，用于检测并发修改
+      --section                schema 目录分区；省略时返回目录摘要
+      --type                   schema 分区中的具体类型名
+      --from                   比较的起始修订哈希
+      --to                     比较的目标修订哈希
 
   elysia protocol test --operation <id> --sample '<semantic request JSON>' [--base-url <URL>] [--api-key <key>]
     验证真实上游契约（受权限策略控制）
@@ -628,23 +628,23 @@ elysia protocol — 自定义协议设计（草稿/离线预览/真实测试/保
 
   elysia protocol validate [--id <id>] [--hash <revision>] [--expected <active>] [--section <section>] [--type <type>] [--from <hash>] [--to <hash>]
     Protocol v2 validate
-      --id                     id
-      --hash                   hash
-      --expected               expected
-      --section                section
-      --type                   type
-      --from                   from
-      --to                     to
+      --id                     协议 ID，区分大小写
+      --hash                   不可变修订的内容哈希；省略时读取草稿
+      --expected               保存时为当前草稿哈希；启用/回滚时为当前活动哈希，用于检测并发修改
+      --section                schema 目录分区；省略时返回目录摘要
+      --type                   schema 分区中的具体类型名
+      --from                   比较的起始修订哈希
+      --to                     比较的目标修订哈希
 
   elysia protocol verify [--id <id>] [--hash <revision>] [--expected <active>] [--section <section>] [--type <type>] [--from <hash>] [--to <hash>]
     Protocol v2 verify
-      --id                     id
-      --hash                   hash
-      --expected               expected
-      --section                section
-      --type                   type
-      --from                   from
-      --to                     to
+      --id                     协议 ID，区分大小写
+      --hash                   不可变修订的内容哈希；省略时读取草稿
+      --expected               保存时为当前草稿哈希；启用/回滚时为当前活动哈希，用于检测并发修改
+      --section                schema 目录分区；省略时返回目录摘要
+      --type                   schema 分区中的具体类型名
+      --from                   比较的起始修订哈希
+      --to                     比较的目标修订哈希
 
 完整语义与示例：elysia help protocol <命令>。
 ````
@@ -656,13 +656,13 @@ elysia protocol activate [--id <id>] [--hash <revision>] [--expected <active>] [
 Protocol v2 activate
 
 参数：
-  --id                     id
-  --hash                   hash
-  --expected               expected
-  --section                section
-  --type                   type
-  --from                   from
-  --to                     to
+  --id                     协议 ID，区分大小写
+  --hash                   不可变修订的内容哈希；省略时读取草稿
+  --expected               保存时为当前草稿哈希；启用/回滚时为当前活动哈希，用于检测并发修改
+  --section                schema 目录分区；省略时返回目录摘要
+  --type                   schema 分区中的具体类型名
+  --from                   比较的起始修订哈希
+  --to                     比较的目标修订哈希
 
 详细说明：受服务端权限与业务策略控制。Use the running protocol engine's schema, validation, preview and immutable revision service. Unsupported capabilities produce diagnostics; saving a draft never activates it.
 ````
@@ -674,13 +674,13 @@ elysia protocol diagnose [--id <id>] [--hash <revision>] [--expected <active>] [
 Protocol v2 diagnose
 
 参数：
-  --id                     id
-  --hash                   hash
-  --expected               expected
-  --section                section
-  --type                   type
-  --from                   from
-  --to                     to
+  --id                     协议 ID，区分大小写
+  --hash                   不可变修订的内容哈希；省略时读取草稿
+  --expected               保存时为当前草稿哈希；启用/回滚时为当前活动哈希，用于检测并发修改
+  --section                schema 目录分区；省略时返回目录摘要
+  --type                   schema 分区中的具体类型名
+  --from                   比较的起始修订哈希
+  --to                     比较的目标修订哈希
 
 详细说明：受服务端权限与业务策略控制。Use the running protocol engine's schema, validation, preview and immutable revision service. Unsupported capabilities produce diagnostics; saving a draft never activates it.
 ````
@@ -692,13 +692,13 @@ elysia protocol diff [--id <id>] [--hash <revision>] [--expected <active>] [--se
 Protocol v2 diff
 
 参数：
-  --id                     id
-  --hash                   hash
-  --expected               expected
-  --section                section
-  --type                   type
-  --from                   from
-  --to                     to
+  --id                     协议 ID，区分大小写
+  --hash                   不可变修订的内容哈希；省略时读取草稿
+  --expected               保存时为当前草稿哈希；启用/回滚时为当前活动哈希，用于检测并发修改
+  --section                schema 目录分区；省略时返回目录摘要
+  --type                   schema 分区中的具体类型名
+  --from                   比较的起始修订哈希
+  --to                     比较的目标修订哈希
 
 详细说明：受服务端权限与业务策略控制。Use the running protocol engine's schema, validation, preview and immutable revision service. Unsupported capabilities produce diagnostics; saving a draft never activates it.
 ````
@@ -794,13 +794,13 @@ elysia protocol rollback [--id <id>] [--hash <revision>] [--expected <active>] [
 Protocol v2 rollback
 
 参数：
-  --id                     id
-  --hash                   hash
-  --expected               expected
-  --section                section
-  --type                   type
-  --from                   from
-  --to                     to
+  --id                     协议 ID，区分大小写
+  --hash                   不可变修订的内容哈希；省略时读取草稿
+  --expected               保存时为当前草稿哈希；启用/回滚时为当前活动哈希，用于检测并发修改
+  --section                schema 目录分区；省略时返回目录摘要
+  --type                   schema 分区中的具体类型名
+  --from                   比较的起始修订哈希
+  --to                     比较的目标修订哈希
 
 详细说明：受服务端权限与业务策略控制。Use the running protocol engine's schema, validation, preview and immutable revision service. Unsupported capabilities produce diagnostics; saving a draft never activates it.
 ````
@@ -812,7 +812,7 @@ elysia protocol save [--expected <draft-hash>]
 保存草稿与离线证据，不启用
 
 参数：
-  --expected               当前草稿哈希，用于检测并发修改
+  --expected               保存时为当前草稿哈希；启用/回滚时为当前活动哈希，用于检测并发修改
 
 详细说明：接入工作流：读取提供的协议文档与完整样例；运行 elysia protocol schema 读取当前引擎能力，按 --section/--type 获取定义、语义、映射操作和约束。
 编写 schemaVersion=2 的完整定义：独立声明方向、传输、能力、映射和预期样例。elysia protocol draft '<JSON>' 保留草稿并检查定义。
@@ -831,13 +831,13 @@ elysia protocol schema [--id <id>] [--hash <revision>] [--expected <active>] [--
 Protocol v2 schema
 
 参数：
-  --id                     id
-  --hash                   hash
-  --expected               expected
-  --section                section
-  --type                   type
-  --from                   from
-  --to                     to
+  --id                     协议 ID，区分大小写
+  --hash                   不可变修订的内容哈希；省略时读取草稿
+  --expected               保存时为当前草稿哈希；启用/回滚时为当前活动哈希，用于检测并发修改
+  --section                schema 目录分区；省略时返回目录摘要
+  --type                   schema 分区中的具体类型名
+  --from                   比较的起始修订哈希
+  --to                     比较的目标修订哈希
 
 详细说明：受服务端权限与业务策略控制。Use the running protocol engine's schema, validation, preview and immutable revision service. Unsupported capabilities produce diagnostics; saving a draft never activates it.
 ````
@@ -871,13 +871,13 @@ elysia protocol validate [--id <id>] [--hash <revision>] [--expected <active>] [
 Protocol v2 validate
 
 参数：
-  --id                     id
-  --hash                   hash
-  --expected               expected
-  --section                section
-  --type                   type
-  --from                   from
-  --to                     to
+  --id                     协议 ID，区分大小写
+  --hash                   不可变修订的内容哈希；省略时读取草稿
+  --expected               保存时为当前草稿哈希；启用/回滚时为当前活动哈希，用于检测并发修改
+  --section                schema 目录分区；省略时返回目录摘要
+  --type                   schema 分区中的具体类型名
+  --from                   比较的起始修订哈希
+  --to                     比较的目标修订哈希
 
 详细说明：受服务端权限与业务策略控制。Use the running protocol engine's schema, validation, preview and immutable revision service. Unsupported capabilities produce diagnostics; saving a draft never activates it.
 ````
@@ -889,13 +889,13 @@ elysia protocol verify [--id <id>] [--hash <revision>] [--expected <active>] [--
 Protocol v2 verify
 
 参数：
-  --id                     id
-  --hash                   hash
-  --expected               expected
-  --section                section
-  --type                   type
-  --from                   from
-  --to                     to
+  --id                     协议 ID，区分大小写
+  --hash                   不可变修订的内容哈希；省略时读取草稿
+  --expected               保存时为当前草稿哈希；启用/回滚时为当前活动哈希，用于检测并发修改
+  --section                schema 目录分区；省略时返回目录摘要
+  --type                   schema 分区中的具体类型名
+  --from                   比较的起始修订哈希
+  --to                     比较的目标修订哈希
 
 详细说明：受服务端权限与业务策略控制。Use the running protocol engine's schema, validation, preview and immutable revision service. Unsupported capabilities produce diagnostics; saving a draft never activates it.
 ````

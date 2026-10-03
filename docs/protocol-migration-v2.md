@@ -102,10 +102,9 @@ extensions, reasoning summary/encryption, late cache/TTL/reasoning usage and
 compound native session frames. No Maheshvara projection is used by these
 modules.
 
-C16 still removes the historical public-handler branches, Agent request
-boundary, legacy editor/discovery and template execution implementation.
-Migration currently stores full binding-combination reports: an incompatible
-full capability contract blocks that ingress/target pair even if a narrower
-request would be expressible. Conditional route contracts and final migration
-surface checks remain part of the subsequent cutover; they must not be
-implemented by ignoring a failed report or deleting input capabilities.
+C16 removed the historical handlers, Agent boundary, legacy editor and template
+executor. Binding verification may publish explicitly restricted capability
+profiles, each with independent evidence; actual requests must match a verified
+profile. Failed combinations are retained as diagnostics, never ignored.
+Compiler upgrades reverify edited active definitions and only replace known
+preset fingerprints. See [cutover](protocol-cutover-v2.md).

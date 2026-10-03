@@ -103,8 +103,8 @@ type codeReadTool struct{ server *Server }
 func (t *codeReadTool) CLIEffect() string { return "" }
 
 func (t *codeReadTool) Description() string {
-	return "读取源码快照中的一个文件(仓库相对路径,如 backend/server/custom_protocol.go 或 packages/webui/src/lib/types.ts);" +
-		"输出较长时配合 grep/head 管道截取。预置协议原文在 backend/server/presets/ 下。"
+	return "读取源码快照中的一个文件(仓库相对路径,如 backend/protocol/compiler.go 或 packages/webui/src/lib/protocol-v2.ts);" +
+		"输出较长时配合 grep/head 管道截取。预置协议原文在 backend/protocol/builtin/definitions/ 下；协议指南在 docs/ 下。"
 }
 
 func (t *codeReadTool) Execute(ctx context.Context, tctx CLIContext, args json.RawMessage) CLIResult {

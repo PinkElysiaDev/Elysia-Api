@@ -31,13 +31,11 @@ Unknown extensions belong there until an explicit mapping gives them semantic
 meaning. Named Parameters/Attributes are not authorization to copy unknown
 fields to a different vendor. Preservation and modification rules are C04.
 
-`SnapshotProtocolRequest` provides the temporary legacy boundary. It restores
-Anthropic block order from parser positions and treats Responses InputItems as
-authoritative when the old object contains both representations. Its input has
-already passed through the old parser, so it cannot promise to recover lost
-number precision. `DecodeProtocolSnapshot` also retains the original bytes;
-the new adapters will parse those bytes directly. Both transitional helpers are
-scheduled for removal when production callers move to the new engine.
+Production adapters now parse original wire JSON directly. The transitional
+snapshot/projection helpers and old conversion runtime have been removed.
+Cache breakpoint `ttl` has one owner beside `value`; `value` contains the
+remaining policy object. Missing TTL deletes the wire field, explicit null
+remains null. See [cutover](protocol-cutover-v2.md).
 
 The versioned decoder rejects unknown contract keys and extra JSON documents.
 Semantic capability and association validation is separate from JSON decoding.

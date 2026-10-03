@@ -14,7 +14,7 @@ Deployment, protocols, APIs, and development for Elysia API. Start with [quick s
 
 | Document | Contents |
 | --- | --- |
-| [Maheshvara](maheshvara-protocol.en.md) | Internal model, protocol mappings, streaming, and capability limits |
+| [Protocol v2](protocol-guide.en.md) | Unified engine, editor, Agent, support matrix and migration |
 | [Custom protocols](protocol-definition-reference.en.md) | JSON definitions, field mappings, conditions, stream frames, and model discovery |
 | [Cache fidelity audit (Chinese)](cache-fidelity-audit-2026-10-01.md) | Four-protocol historical comparison, shared fixes, verification, and custom protocol migration |
 

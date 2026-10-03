@@ -20,7 +20,13 @@ type ThinkingMode = 'both' | 'non-thinking-only' | 'thinking-only'
 type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 ```
 
-Legacy values `openai`, `openai-compatible`, and `claude` remain readable; use canonical wire identifiers for new configuration. Type fields such as `embedding` and `reranker` do not imply corresponding inference routes exist. See [API](webui-api.en.md) and [protocols](maheshvara-protocol.en.md).
+Legacy values `openai`, `openai-compatible`, and `claude` remain readable; use canonical wire identifiers for new configuration. Type fields such as `embedding` and `reranker` do not imply corresponding inference routes exist. See [API](webui-api.en.md) and [protocols](protocol-guide.en.md).
+
+## Protocol revisions and capability bindings
+
+Definitions use `schemaVersion: 2`; semantic documents independently use version 1. Author version, definition hash and compiler version are distinct. Drafts, immutable revisions, active pointers, offline reports and real-target reports are separate; saving does not activate. Source/group bindings record direction, capability, transport and composition evidence; `platform` alone does not establish tool or media support.
+
+See [protocol-v2.ts](../packages/webui/src/lib/protocol-v2.ts) and the [definition reference](protocol-definition-reference.en.md). The editor retains raw JSON text; do not round-trip definitions with long integers/native extensions through ordinary JavaScript objects. Usage distinguishes absent and explicit-zero counters; cache semantics separate TTL, keys and scoped resource references.
 
 ## Runtime config
 

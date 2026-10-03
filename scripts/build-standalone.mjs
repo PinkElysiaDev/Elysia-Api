@@ -1,5 +1,5 @@
-import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
@@ -73,12 +73,21 @@ function stripTrailingWhitespace(dir) {
   }
 }
 
+function resetBuildDirectory(directory) {
+  const target = existsSync(directory) ? realpathSync(directory) : resolve(directory)
+  const pathFromRoot = relative(realpathSync(repoRoot), target)
+  if (!pathFromRoot || pathFromRoot.startsWith('..') || isAbsolute(pathFromRoot)) {
+    throw new Error(`Build directory escapes the repository: ${target}`)
+  }
+  rmSync(target, { recursive: true, force: true })
+  mkdirSync(target, { recursive: true })
+}
+
 log('Building WebUI')
 run('npm', ['run', 'build', '--workspace', '@root/webui'])
 
 log('Syncing WebUI assets into backend/webui/dist')
-rmSync(embeddedWebuiDist, { recursive: true, force: true })
-mkdirSync(embeddedWebuiDist, { recursive: true })
+resetBuildDirectory(embeddedWebuiDist)
 cpSync(webuiDist, embeddedWebuiDist, { recursive: true })
 stripTrailingWhitespace(embeddedWebuiDist)
 // 恢复 embed 占位文件：go:embed all:dist 依赖目录非空，该文件被 git 跟踪。
@@ -92,8 +101,7 @@ const snapshotRoot = join(repoRoot, 'backend', 'server', '_snapshot')
 const snapshotKeep = join(snapshotRoot, 'README.md')
 const snapshotSkip = new Set([join(repoRoot, 'backend', 'server', '_snapshot'), join(repoRoot, 'backend', 'webui')])
 const snapshotKeepContent = readFileSync(snapshotKeep, 'utf8')
-rmSync(snapshotRoot, { recursive: true, force: true })
-mkdirSync(snapshotRoot, { recursive: true })
+resetBuildDirectory(snapshotRoot)
 function copyTreeIntoSnapshot(absDir, relDir) {
   if (snapshotSkip.has(absDir)) return
   for (const entry of readdirSync(absDir, { withFileTypes: true })) {
@@ -104,18 +112,24 @@ function copyTreeIntoSnapshot(absDir, relDir) {
       copyTreeIntoSnapshot(abs, rel)
       continue
     }
-    if (!entry.name.endsWith('.go') && !entry.name.endsWith('.json')) continue
+    if (!/\.(go|json|ts|tsx|css)$/.test(entry.name)) continue
     mkdirSync(dirname(join(snapshotRoot, rel)), { recursive: true })
     cpSync(abs, join(snapshotRoot, rel))
   }
 }
 copyTreeIntoSnapshot(join(repoRoot, 'backend'), 'backend')
 copyTreeIntoSnapshot(join(repoRoot, 'packages', 'webui', 'src'), 'packages/webui/src')
+mkdirSync(join(snapshotRoot, 'docs'), { recursive: true })
+for (const name of readdirSync(join(repoRoot, 'docs'))) {
+  if (/^(protocol-.*|(?:agent-cli|webui-api|webui-data-model|deployment)(?:\.en)?)\.md$/.test(name)) {
+    cpSync(join(repoRoot, 'docs', name), join(snapshotRoot, 'docs', name))
+  }
+}
+cpSync(join(repoRoot, 'docs', 'examples'), join(snapshotRoot, 'docs', 'examples'), { recursive: true })
 writeFileSync(snapshotKeep, snapshotKeepContent)
 
 log('Preparing standalone release directory')
-rmSync(releaseDir, { recursive: true, force: true })
-mkdirSync(releaseDir, { recursive: true })
+resetBuildDirectory(releaseDir)
 
 for (const target of targets) {
   log(`Building ${target.output} (${target.goos}/${target.goarch})`)

@@ -62,7 +62,8 @@ an incorrect path, repairs it and enables the definition. Chromium uses a real
 isolated Go/SQLite server to open an Agent draft in the editor without rounding
 numbers and to verify the editor's creation/activation/rollback workflow.
 
-No credentialed provider validation was run. During the C14 staging commit,
-unmigrated models and unversioned authoring configurations still use their old
-paths. C15/C16 must migrate and remove these paths, including the temporary
-Maheshvara Agent request/result boundary. C14 is not evidence of final cutover.
+No credentialed provider validation was run. C15/C16 have completed the
+migration and removed the old Agent conversion and authoring paths. The native
+Agent consumes the ordered protocol contract and a declared Agent parameter
+policy. Current evidence and limitations are in
+[system validation](protocol-system-validation.md).
