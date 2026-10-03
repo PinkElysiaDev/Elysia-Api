@@ -30,29 +30,25 @@ func valueType(value Value) JSONType {
 	if value.IsZero() {
 		return AnyType
 	}
-	var parsed any
-	if value.Decode(&parsed) != nil {
-		return AnyType
-	}
-	switch typed := parsed.(type) {
-	case nil:
+	raw := strings.TrimSpace(value.raw)
+	switch raw[0] {
+	case 'n':
 		return NullType
-	case string:
+	case '"':
 		return StringType
-	case bool:
+	case 't', 'f':
 		return BooleanType
-	case []any:
+	case '[':
 		return ArrayType
-	case map[string]any:
+	case '{':
 		return ObjectType
-	case json.Number:
-		number, ok := exactNumber(typed.String())
+	default:
+		number, ok := exactNumber(raw)
 		if ok && number.IsInt() {
 			return IntegerType
 		}
 		return NumberType
 	}
-	return AnyType
 }
 
 func isAssignable(actual, expected JSONType) bool {

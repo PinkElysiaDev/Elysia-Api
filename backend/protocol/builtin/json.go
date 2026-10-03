@@ -71,6 +71,13 @@ func readJSONArguments(value p.Value) (p.Value, error) {
 	return p.ParseValue([]byte(text))
 }
 
+func encodeJSONArguments(value p.Value) p.Value {
+	// Wire arguments are a JSON string. Compact valid JSON explicitly instead
+	// of relying on an incidental semantic serialization between adapters.
+	encoded, _ := p.EncodeValue(value)
+	return p.StringValue(string(encoded.Bytes()))
+}
+
 func collectUnknown(fields p.Object, known []string) p.Value {
 	extra := copyFields(fields)
 	for _, name := range known {

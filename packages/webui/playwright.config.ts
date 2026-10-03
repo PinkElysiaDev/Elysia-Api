@@ -25,7 +25,7 @@ export default defineConfig({
       workers: 1,
     },
   ],
-  webServer: {
+  webServer: process.env.PLAYWRIGHT_EXTERNAL_SERVER ? undefined : {
     command: `npm run dev -- --port ${port} --strictPort`,
     url: baseURL,
     reuseExistingServer: !process.env.CI && !process.env.PROTOCOL_E2E_URL,

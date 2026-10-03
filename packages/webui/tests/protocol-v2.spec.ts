@@ -5,7 +5,7 @@ import { ProtocolDocument } from '../src/lib/protocol-document'
 
 test('Agent edit session opens exact v2 draft in the editor', async ({ page, request }) => {
   test.skip(!process.env.PROTOCOL_E2E_URL, 'requires an isolated real backend')
-  const token = 'local-protocol-e2e'
+  const token = process.env.PROTOCOL_E2E_TOKEN ?? 'local-protocol-e2e'
   const fixture = JSON.parse(readFileSync(resolve('../../backend/protocol/testdata/text-alpha.json'), 'utf8'))
   fixture.id = `agent-browser-${Date.now()}`
   fixture.family = fixture.id

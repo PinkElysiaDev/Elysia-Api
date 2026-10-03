@@ -53,7 +53,7 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 			if node.Input.Kind == p.TextInput {
 				fields["type"], fields["input"] = p.StringValue("custom_tool_call"), node.Input.Value
 			} else {
-				fields["type"], fields["arguments"] = p.StringValue("function_call"), p.StringValue(string(node.Input.Value.Bytes()))
+				fields["type"], fields["arguments"] = p.StringValue("function_call"), encodeJSONArguments(node.Input.Value)
 			}
 		}
 	case p.ToolResultNode:

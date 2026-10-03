@@ -1,10 +1,7 @@
 package protocol
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 )
@@ -148,32 +145,31 @@ func checkValueLimits(value Value, limits Limits) error {
 	if len(value.raw) > limits.BufferBytes {
 		return fmt.Errorf("native node exceeds buffer limit")
 	}
-	decoder := json.NewDecoder(bytes.NewBufferString(value.raw))
-	decoder.UseNumber()
 	depth, nodes := 0, 0
-	for {
-		token, err := decoder.Token()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
+	// Value is already valid JSON. Count the same tokens as Decoder.Token
+	// without allocating decoded keys/scalars or reparsing nested snapshots.
+	for offset := 0; offset < len(value.raw); offset++ {
+		switch value.raw[offset] {
+		case ' ', '\t', '\r', '\n', ',', ':':
+			continue
+		case '{', '[':
+			depth++
+			if depth > limits.Depth {
+				return fmt.Errorf("native node exceeds depth limit")
+			}
+		case '}', ']':
+			depth--
+		case '"':
+			offset = jsonStringEnd(value.raw, offset) - 1
+		default:
+			offset = jsonValueEnd(value.raw, offset) - 1
 		}
 		nodes++
 		if nodes > limits.Nodes {
 			return fmt.Errorf("native node exceeds node count limit")
 		}
-		if delimiter, ok := token.(json.Delim); ok {
-			if delimiter == '{' || delimiter == '[' {
-				depth++
-			} else {
-				depth--
-			}
-			if depth > limits.Depth {
-				return fmt.Errorf("native node exceeds depth limit")
-			}
-		}
 	}
+	return nil
 }
 
 func parsePointer(pointer string) ([]string, error) {

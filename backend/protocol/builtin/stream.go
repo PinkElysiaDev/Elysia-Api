@@ -66,9 +66,17 @@ func (stream *streamModule) Convert(ctx context.Context, direction p.Direction, 
 		}
 		return array(stream.numberFrames(frames)), nil
 	}
-	fields, err := input.ReadObject()
+	events, err := stream.DecodeEvents(ctx, input, options)
 	if err != nil {
 		return p.Value{}, err
+	}
+	return p.EncodeValue(events)
+}
+
+func (stream *streamModule) DecodeEvents(ctx context.Context, input p.Value, options p.EvaluationContext) ([]p.Event, error) {
+	fields, err := input.ReadObject()
+	if err != nil {
+		return nil, err
 	}
 	var events []p.Event
 	switch stream.name {
@@ -82,20 +90,20 @@ func (stream *streamModule) Convert(ctx context.Context, direction p.Direction, 
 		events, err = stream.decodeGeminiFrame(fields, options)
 	}
 	if err != nil {
-		return p.Value{}, err
+		return nil, err
 	}
 	if events == nil {
 		events = []p.Event{}
 	}
 	extra, err := stream.captureFrameExtensions(fields)
 	if err != nil {
-		return p.Value{}, err
+		return nil, err
 	}
 	if !extra.IsZero() {
 		if len(events) == 0 {
 			events = append(events, p.Event{Type: p.NativeEvent})
 		}
-		events[0].Unmapped = stream.module.native(extra, "/frame/extensions", direction, options)
+		events[0].Unmapped = stream.module.native(extra, "/frame/extensions", p.DecodeEvent, options)
 	}
 	for index := range events {
 		events[index].SchemaVersion = p.SemanticSchemaVersion
@@ -104,7 +112,7 @@ func (stream *streamModule) Convert(ctx context.Context, direction p.Direction, 
 			events[index].ResponseID = stream.id
 		}
 	}
-	return p.EncodeValue(events)
+	return events, nil
 }
 
 func (stream *streamModule) begin(id, model p.Value) []p.Event {

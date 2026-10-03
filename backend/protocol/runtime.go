@@ -14,18 +14,16 @@ func (compiled *Compiled) DecodeRequest(ctx context.Context, body []byte, option
 	if err != nil {
 		return nil, err
 	}
-	output, issues := compiled.Execute(ctx, DecodeRequest, input, options)
-	if err := IssuesError(issues); err != nil {
-		return nil, err
-	}
-	var request Request
-	if err := decodeContract(output.Bytes(), &request); err != nil {
+	request, err := decodeTyped(ctx, compiled, DecodeRequest, input, options, func(module TypedModule, options EvaluationContext) (*Request, error) {
+		return module.DecodeRequest(ctx, input, options)
+	})
+	if err != nil {
 		return nil, err
 	}
 	request.SchemaVersion = SemanticSchemaVersion
 	request.Source = compiled.identity
 	if options.ResolveRequestScope != nil {
-		scope, err := options.ResolveRequestScope(&request)
+		scope, err := options.ResolveRequestScope(request)
 		if err != nil {
 			return nil, err
 		}
@@ -35,16 +33,16 @@ func (compiled *Compiled) DecodeRequest(ctx context.Context, body []byte, option
 	if compiled.native.Preserve {
 		request.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: DecodeRequest, Scope: options.Scope}, Value: input}
 	}
-	if err := stampResourceScopes(&request, options.Scope); err != nil {
+	if err := stampResourceScopes(request, options.Scope); err != nil {
 		return nil, err
 	}
-	compiled.stampRequestProvenance(&request, options.Scope)
+	compiled.stampRequestProvenance(request, options.Scope)
 	target := compiled.target(DecodeRequest, options)
 	target.Direction = EncodeRequest
-	if err := IssuesError(CheckRequest(&request, target, compiled.limits)); err != nil {
+	if err := IssuesError(CheckRequest(request, target, compiled.limits)); err != nil {
 		return nil, err
 	}
-	return &request, nil
+	return request, nil
 }
 
 // EncodeRequest validates capabilities and evaluates only the author's declared
@@ -56,12 +54,10 @@ func (compiled *Compiled) EncodeRequest(ctx context.Context, request *Request, o
 	if err := IssuesError(CheckRequest(request, target, compiled.limits)); err != nil {
 		return nil, err
 	}
-	input, err := EncodeValue(request)
+	output, err := encodeTyped(ctx, compiled, EncodeRequest, request, options, func(module TypedModule, options EvaluationContext) (Value, error) {
+		return module.EncodeRequest(ctx, request, options)
+	})
 	if err != nil {
-		return nil, err
-	}
-	output, issues := compiled.Execute(ctx, EncodeRequest, input, options)
-	if err := IssuesError(issues); err != nil {
 		return nil, err
 	}
 	output, err = compiled.preserveMappedNative(ctx, EncodeRequest, request.Native, output, options)
@@ -78,12 +74,10 @@ func (compiled *Compiled) DecodeResponse(ctx context.Context, body []byte, optio
 	if err != nil {
 		return nil, err
 	}
-	output, issues := compiled.Execute(ctx, DecodeResponse, input, options)
-	if err := IssuesError(issues); err != nil {
-		return nil, err
-	}
-	var response Response
-	if err := decodeContract(output.Bytes(), &response); err != nil {
+	response, err := decodeTyped(ctx, compiled, DecodeResponse, input, options, func(module TypedModule, options EvaluationContext) (*Response, error) {
+		return module.DecodeResponse(ctx, input, options)
+	})
+	if err != nil {
 		return nil, err
 	}
 	response.SchemaVersion = SemanticSchemaVersion
@@ -98,10 +92,10 @@ func (compiled *Compiled) DecodeResponse(ctx context.Context, body []byte, optio
 	compiled.stampNodeProvenance(response.Content, DecodeResponse, options.Scope)
 	target := compiled.target(DecodeResponse, options)
 	target.Direction = EncodeResponse
-	if err := IssuesError(CheckResponse(&response, target, compiled.limits)); err != nil {
+	if err := IssuesError(CheckResponse(response, target, compiled.limits)); err != nil {
 		return nil, err
 	}
-	return &response, nil
+	return response, nil
 }
 
 // EncodeResponse executes the independently authored client response mapping.
@@ -110,12 +104,10 @@ func (compiled *Compiled) EncodeResponse(ctx context.Context, response *Response
 	if err := IssuesError(CheckResponse(response, compiled.target(EncodeResponse, options), compiled.limits)); err != nil {
 		return nil, err
 	}
-	input, err := EncodeValue(response)
+	output, err := encodeTyped(ctx, compiled, EncodeResponse, response, options, func(module TypedModule, options EvaluationContext) (Value, error) {
+		return module.EncodeResponse(ctx, response, options)
+	})
 	if err != nil {
-		return nil, err
-	}
-	output, issues := compiled.Execute(ctx, EncodeResponse, input, options)
-	if err := IssuesError(issues); err != nil {
 		return nil, err
 	}
 	output, err = compiled.preserveMappedNative(ctx, EncodeResponse, response.Native, output, options)
@@ -139,33 +131,21 @@ func (compiled *Compiled) DecodeClientEvents(ctx context.Context, frame Value, o
 
 func (compiled *Compiled) decodeEvents(ctx context.Context, direction Direction, frame Value, options EvaluationContext) (result []Event, err error) {
 	defer func() { err = compiled.runtimeError(direction, err) }()
-	output, issues := compiled.Execute(ctx, direction, frame, options)
-	if err := IssuesError(issues); err != nil {
+	events, err := compiled.decodeEventValues(ctx, direction, frame, options)
+	if err != nil {
 		return nil, err
 	}
-	items := []Value{output}
-	if valueType(output) == ArrayType {
-		var err error
-		items, err = readArray(output)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if len(items) == 0 && !options.compoundFrame {
+	if len(events) == 0 && !options.compoundFrame {
 		return nil, streamIssue(UpstreamContractViolation, "/events", "a wire event must produce at least one semantic event")
 	}
-	events := make([]Event, 0, len(items))
-	if compiled.native.Preserve && len(items) > 1 && !options.compoundFrame {
+	if compiled.native.Preserve && len(events) > 1 && !options.compoundFrame {
 		return nil, IssuesError([]ConversionIssue{{Code: UnsupportedNative, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "decode", Path: "/directions/" + string(direction), Reason: "native frame preservation requires a single semantic event per frame", Suggestion: "Use a compound response/item event or disable native replay and verify the explicit event mappings."}})
 	}
-	for _, item := range items {
-		var event Event
-		if err := decodeContract(item.Bytes(), &event); err != nil {
-			return nil, err
-		}
+	for index := range events {
+		event := &events[index]
 		event.SchemaVersion = SemanticSchemaVersion
 		event.Source = compiled.identity
-		if err := compiled.stampEventProvenance(&event, direction, options.Scope); err != nil {
+		if err := compiled.stampEventProvenance(event, direction, options.Scope); err != nil {
 			return nil, err
 		}
 		event.Native = nil
@@ -174,10 +154,9 @@ func (compiled *Compiled) decodeEvents(ctx context.Context, direction Direction,
 		}
 		target := compiled.target(direction, options)
 		target.Direction = eventEncoder(direction)
-		if err := IssuesError(CheckEvent(event, target, compiled.limits)); err != nil {
+		if err := IssuesError(CheckEvent(*event, target, compiled.limits)); err != nil {
 			return nil, err
 		}
-		events = append(events, event)
 	}
 	return events, nil
 }

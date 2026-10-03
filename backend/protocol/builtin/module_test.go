@@ -18,7 +18,7 @@ func testValue(t *testing.T, text string) p.Value {
 	return value
 }
 
-func testCompiled(t *testing.T, name string) *p.Compiled {
+func testCompiled(t testing.TB, name string) *p.Compiled {
 	t.Helper()
 	compiler, err := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
 	if err != nil {

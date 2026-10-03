@@ -279,7 +279,7 @@ func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, opti
 			if !child.ID.IsZero() || !child.Status.IsZero() || len(child.Cache) > 0 || len(child.Resources) > 0 {
 				return nil, unsupported("/content/call", "Chat function calls cannot carry a separate item identity, status or cache boundary")
 			}
-			call := p.Object{"id": child.CallID, "type": p.StringValue("function"), "function": object(p.Object{"name": child.Name, "arguments": p.StringValue(string(child.Input.Value.Bytes()))})}
+			call := p.Object{"id": child.CallID, "type": p.StringValue("function"), "function": object(p.Object{"name": child.Name, "arguments": encodeJSONArguments(child.Input.Value)})}
 			if err := adapter.preserveExtensions(call, child.Attributes); err != nil {
 				return nil, err
 			}
