@@ -5,7 +5,12 @@ import { readCredential } from './credential.mjs'
 /** Runs the serial paid experiment only after explicit live opt-in. */
 export async function verifyLive(run, root) {
   const suite = process.argv.find(arg => arg.startsWith('--suite='))?.slice(8) || 'all'
-  if (!['all','cache','matrix','extended','followup','diagnostics','breakpoint','custom','gemini-native-tools'].includes(suite)) throw new Error('Unknown live suite')
+  if (!['all','cache','matrix','extended','followup','diagnostics','breakpoint','custom','gemini-native-tools','cache-gaps'].includes(suite)) throw new Error('Unknown live suite')
+  if (suite === 'cache-gaps') {
+    const { verifyCacheGaps } = await import('./cache-live.mjs')
+    await verifyCacheGaps(run, root)
+    return
+  }
   run.report.liveScope = process.argv.includes('--preflight') ? 'preflight' : suite
   run.report.liveTarget = process.env.ELYSIA_LIVE_TARGET || 'all'
   await run.save()

@@ -135,21 +135,23 @@ type cacheCheckpoint struct {
 	Origin        string                `json:"origin"`
 	StartedAt     time.Time             `json:"startedAt"`
 	Tasks         []cacheCheckpointTask `json:"tasks"`
+	Attempts      map[string]string     `json:"attempts"`
 }
 
 type cacheCheckpointTask struct {
-	ID        string    `json:"id"`
-	Target    string    `json:"target"`
-	Model     string    `json:"model"`
-	Revision  string    `json:"revision"`
-	Route     string    `json:"route"`
-	TTL       string    `json:"ttl,omitempty"`
-	Prefix    string    `json:"prefix,omitempty"`
-	State     string    `json:"state"`
-	StartedAt time.Time `json:"startedAt,omitempty"`
-	DueAt     time.Time `json:"dueAt,omitempty"`
-	Resource  string    `json:"resource,omitempty"`
-	ExpiresAt time.Time `json:"expiresAt,omitempty"`
+	ID           string    `json:"id"`
+	Target       string    `json:"target"`
+	Model        string    `json:"model"`
+	Revision     string    `json:"revision"`
+	Route        string    `json:"route"`
+	TTL          string    `json:"ttl,omitempty"`
+	Prefix       string    `json:"prefix,omitempty"`
+	State        string    `json:"state"`
+	StartedAt    time.Time `json:"startedAt,omitempty"`
+	DueAt        time.Time `json:"dueAt,omitempty"`
+	Resource     string    `json:"resource,omitempty"`
+	ExpiresAt    time.Time `json:"expiresAt,omitempty"`
+	DelaySeconds int       `json:"delaySeconds,omitempty"`
 }
 
 func saveCacheCheckpoint(path string, checkpoint *cacheCheckpoint) error {

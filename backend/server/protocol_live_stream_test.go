@@ -20,16 +20,16 @@ type liveStreamEvidence struct {
 // The returned response is only a projection for usage/tool assertions, not a
 // conversion of the full event stream into an Agent response. Extensions remain
 // in the checked frames and are recorded separately, never cleared for a codec.
-func inspectLiveStream(compiled *protocol.Compiled, raw []byte) (*protocol.Response, *liveStreamEvidence, error) {
+func inspectLiveStream(compiled *protocol.Compiled, raw []byte, scope protocol.Scope) (*protocol.Response, *liveStreamEvidence, error) {
 	ctx := context.Background()
-	replay, err := protocol.NewEventReplay(protocol.Target{Protocol: compiled.Identity(), Direction: protocol.EncodeEvent, Scope: liveInspectionScope(), Capabilities: compiled.Capabilities(protocol.EncodeEvent)}, compiled.ResourceLimits())
+	replay, err := protocol.NewEventReplay(protocol.Target{Protocol: compiled.Identity(), Direction: protocol.EncodeEvent, Scope: scope, Capabilities: compiled.Capabilities(protocol.EncodeEvent)}, compiled.ResourceLimits())
 	if err != nil {
 		return nil, nil, err
 	}
 	evidence := &liveStreamEvidence{Events: map[protocol.EventType]int{}, NativeReplay: true}
 	response := &protocol.Response{SchemaVersion: protocol.SemanticSchemaVersion}
-	decodeOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState(), Scope: liveInspectionScope()}
-	encodeOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState(), Scope: liveInspectionScope()}
+	decodeOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState(), Scope: scope}
+	encodeOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState(), Scope: scope}
 	identities := protocol.NewItemIdentities(compiled.ResourceLimits().StateItems)
 	items := map[string]*protocol.Node{}
 	arguments := map[string]*strings.Builder{}

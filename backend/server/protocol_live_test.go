@@ -25,7 +25,7 @@ func liveRequest(t *testing.T, model string, isStream bool) *protocol.Request {
 func (suite *liveSuite) direct(t *testing.T, id string, compiled *protocol.Compiled, request *protocol.Request, isStream bool) (liveCase, *protocol.Response) {
 	t.Helper()
 	result := liveCase{ID: id, Model: suite.Model, Target: compiled.Identity().DefinitionID, Revision: compiled.Hash(), Stream: isStream, Status: "failed"}
-	body, err := compiled.EncodeRequest(t.Context(), request, protocol.EvaluationContext{})
+	body, err := compiled.EncodeRequest(t.Context(), request, protocol.EvaluationContext{Scope: suite.scope()})
 	if err != nil {
 		result.Reason = err.Error()
 		return result, nil
@@ -52,6 +52,7 @@ type liveGateway struct {
 	target     *protocol.Compiled
 	completed  <-chan liveWireEvidence
 	lastRecord string
+	scope      protocol.Scope
 }
 
 func newLiveGateway(t *testing.T, suite *liveSuite, target *protocol.Compiled) *liveGateway {
@@ -64,7 +65,7 @@ func newLiveGateway(t *testing.T, suite *liveSuite, target *protocol.Compiled) *
 	groups[0].Models[0].APIKey = "verification-observer-placeholder"
 	server := newTestServerWithStore(t, groups, target.Definition(), verificationEnvelopeDefinition(t))
 	server.protocolTransport.SetTimeout(liveRequestTimeout)
-	return &liveGateway{suite: suite, server: server, target: target, completed: completed}
+	return &liveGateway{suite: suite, server: server, target: target, completed: completed, scope: modelProtocolScope(groups[0].Models[0])}
 }
 
 func (gateway *liveGateway) bind(t *testing.T, capabilities protocol.CapabilitySet) {
@@ -116,7 +117,7 @@ func (gateway *liveGateway) stored(t *testing.T) *usageRecord {
 func (gateway *liveGateway) request(t *testing.T, id string, ingress *protocol.Compiled, request *protocol.Request, isStream bool) (liveCase, *protocol.Response) {
 	t.Helper()
 	result := liveCase{ID: id, Model: gateway.suite.Model, Ingress: ingress.Identity().DefinitionID, Target: gateway.target.Identity().DefinitionID, Revision: gateway.target.Hash(), Stream: isStream, Status: "failed"}
-	body, err := ingress.EncodeRequest(t.Context(), request, protocol.EvaluationContext{})
+	body, err := ingress.EncodeRequest(t.Context(), request, protocol.EvaluationContext{Scope: gateway.scope})
 	if err != nil {
 		result.Reason = err.Error()
 		return result, nil
@@ -173,7 +174,7 @@ func (gateway *liveGateway) request(t *testing.T, id string, ingress *protocol.C
 		return result, nil
 	}
 	result.UpstreamUsage = upstream.Usage
-	downstream, err := decodeLiveResponse(ingress, rec.Body.Bytes(), isStream)
+	downstream, err := decodeLiveResponse(ingress, rec.Body.Bytes(), isStream, gateway.scope)
 	if err != nil {
 		result.Reason = "downstream decode: " + err.Error()
 		return result, nil
@@ -228,6 +229,10 @@ func liveCalls(nodes []protocol.Node) []protocol.Node {
 
 func TestProtocolLive(t *testing.T) {
 	suite := openLiveSuite(t)
+	if suite.Suite == "cache-gaps" {
+		suite.runCacheGaps(t)
+		return
+	}
 	if suite.Suite == "gemini-native-tools" {
 		suite.geminiNativeToolControl(t, compileFixtureDefinition(t, presetDefinition(t, "gemini-api")))
 		return

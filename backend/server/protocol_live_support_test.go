@@ -283,16 +283,20 @@ func liveOperation(compiled *protocol.Compiled, isStream bool) protocol.Operatio
 // before sending and never follows redirects or retries generation requests.
 func (suite *liveSuite) exchange(ctx context.Context, compiled *protocol.Compiled, body []byte, isStream bool, writer http.ResponseWriter) liveWireEvidence {
 	operation := liveOperation(compiled, isStream)
+	return suite.exchangeOperation(ctx, liveBase(suite.Origin, compiled), operation, body, isStream, writer, false)
+}
+
+func (suite *liveSuite) exchangeOperation(ctx context.Context, base string, operation protocol.Operation, body []byte, isStream bool, writer http.ResponseWriter, isCleanup bool) liveWireEvidence {
 	wire := liveWireEvidence{RequestHash: liveHash(body), RequestBytes: len(body), request: append([]byte(nil), body...), Policies: map[string]any{}}
 	var requestValue any
 	if json.Unmarshal(body, &requestValue) == nil {
 		collectLivePolicies(requestValue, "", wire.Policies)
 	}
-	if err := suite.budget.reserve(); err != nil {
+	if err := suite.budget.reserveOperation(isCleanup); err != nil {
 		wire.Error = err.Error()
 		return wire
 	}
-	request, err := protocol.BuildHTTPRequest(ctx, liveBase(suite.Origin, compiled), suite.key, operation, body, map[string]string{"model": suite.Model})
+	request, err := protocol.BuildHTTPRequest(ctx, base, suite.key, operation, body, map[string]string{"model": suite.Model})
 	if err != nil {
 		wire.Error = err.Error()
 		return wire
@@ -445,24 +449,28 @@ func liveInspectionScope() protocol.Scope {
 	return protocol.Scope{Provider: "https://moyuu.cc", Account: "verification-account", Model: "gpt-6.1-sol"}
 }
 
-func decodeLiveResponse(compiled *protocol.Compiled, raw []byte, isStream bool) (*protocol.Response, error) {
+func decodeLiveResponse(compiled *protocol.Compiled, raw []byte, isStream bool, scope protocol.Scope) (*protocol.Response, error) {
 	if !isStream {
-		return compiled.DecodeResponse(context.Background(), raw, protocol.EvaluationContext{Scope: liveInspectionScope()})
+		return compiled.DecodeResponse(context.Background(), raw, protocol.EvaluationContext{Scope: scope})
 	}
-	response, _, err := inspectLiveStream(compiled, raw)
+	response, _, err := inspectLiveStream(compiled, raw, scope)
 	return response, err
 }
 
 func inspectLiveWire(compiled *protocol.Compiled, result *liveCase) (*protocol.Response, error) {
+	scope := liveInspectionScope()
+	if result.Model != "" {
+		scope.Model = result.Model
+	}
 	familyID := map[string]string{"openai_chat": "chat-completions-api", "openai_responses": "responses-api", "claude": "anthropic-api", "gemini": "gemini-api"}[compiled.Identity().Family]
 	reference, referenceErr := referenceLiveUsage(familyID, result.Wire.RawUsage)
 	result.ReferenceUsage = reference
 	var response *protocol.Response
 	var err error
 	if result.Stream {
-		response, result.Wire.StreamEvidence, err = inspectLiveStream(compiled, result.Wire.body)
+		response, result.Wire.StreamEvidence, err = inspectLiveStream(compiled, result.Wire.body, scope)
 	} else {
-		response, err = decodeLiveResponse(compiled, result.Wire.body, false)
+		response, err = decodeLiveResponse(compiled, result.Wire.body, false, scope)
 	}
 	if err != nil {
 		return nil, err

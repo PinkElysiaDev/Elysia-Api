@@ -33,7 +33,7 @@ func TestLiveInspectorRejectsUnassociatedGeminiToolFragments(t *testing.T) {
 	wire := "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"functionCall\":{\"name\":\"verify_echo\",\"args\":{}}}]},\"finishReason\":null,\"index\":0}]}\n\n" +
 		"data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"functionCall\":{\"name\":\"\",\"args\":{\"arguments\":\"7}\"}}}]},\"finishReason\":null,\"index\":0}]}\n\n" +
 		"data: {\"candidates\":[{\"content\":{\"parts\":[]},\"finishReason\":\"STOP\",\"index\":0}]}\n\n"
-	if _, _, err := inspectLiveStream(compiled, []byte(wire)); err == nil {
+	if _, _, err := inspectLiveStream(compiled, []byte(wire), liveInspectionScope()); err == nil {
 		t.Fatal("unassociated vendor fragments silently repaired")
 	}
 }
@@ -43,14 +43,14 @@ func TestLiveStreamInspectorPreservesUnknownFramesAndUsageTails(t *testing.T) {
 	wire := "data: {\"id\":\"r\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"OK\"}}],\"vendor\":{\"n\":9007199254740993}}\n\n" +
 		"data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
 		"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":2,\"prompt_tokens_details\":{\"cached_tokens\":80}}}\n\ndata: [DONE]\n\n"
-	response, evidence, err := inspectLiveStream(compiled, []byte(wire))
+	response, evidence, err := inspectLiveStream(compiled, []byte(wire), liveInspectionScope())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !evidence.NativeReplay || len(evidence.Extensions) == 0 || response.Usage.CacheRead.Count != 80 || evidence.Events[protocol.ResponseFinished] != 1 {
 		t.Fatalf("incorrect stream evidence: %+v", evidence)
 	}
-	if _, _, err := inspectLiveStream(compiled, []byte(strings.Split(wire, "data: {\"choices\":[{\"index\":0,\"delta\":{},")[0])); err == nil {
+	if _, _, err := inspectLiveStream(compiled, []byte(strings.Split(wire, "data: {\"choices\":[{\"index\":0,\"delta\":{},")[0]), liveInspectionScope()); err == nil {
 		t.Fatal("truncated stream passed")
 	}
 }
