@@ -13,76 +13,100 @@ import (
 // Provider extensions remain evidence; an unknown alias is not assigned a
 // meaning solely because its spelling contains the word cache.
 func referenceLiveUsage(id string, frames []map[string]any) (*protocol.Usage, error) {
-	var result *protocol.Usage
-	for _, fields := range frames {
-		if result == nil {
-			result = &protocol.Usage{}
+	if len(frames) == 0 {
+		return nil, nil
+	}
+	fields := mergeLiveUsageFrames(frames)
+	input, output, total, read, creation := "input_tokens", "output_tokens", "total_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"
+	if id == "chat-completions-api" {
+		input, output = "prompt_tokens", "completion_tokens"
+	}
+	if id == "gemini-api" {
+		input, output, total, read = "promptTokenCount", "candidatesTokenCount", "totalTokenCount", "cachedContentTokenCount"
+	}
+	current := &protocol.Usage{}
+	for _, field := range []struct {
+		name    string
+		counter **protocol.Counter
+	}{{input, &current.Input}, {output, &current.Output}, {total, &current.Total}, {read, &current.CacheRead}, {creation, &current.CacheCreation}} {
+		count, err := referenceLiveCounter(fields, field.name)
+		if err != nil {
+			return nil, err
 		}
-		input, output, total, read, creation := "input_tokens", "output_tokens", "total_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"
-		if id == "chat-completions-api" {
-			input, output = "prompt_tokens", "completion_tokens"
+		*field.counter = count
+	}
+	if id == "chat-completions-api" || id == "responses-api" {
+		key := "prompt_tokens_details"
+		if id == "responses-api" {
+			key = "input_tokens_details"
 		}
-		if id == "gemini-api" {
-			input, output, total, read = "promptTokenCount", "candidatesTokenCount", "totalTokenCount", "cachedContentTokenCount"
-		}
-		current := &protocol.Usage{}
-		for _, field := range []struct {
-			name    string
-			counter **protocol.Counter
-		}{{input, &current.Input}, {output, &current.Output}, {total, &current.Total}, {read, &current.CacheRead}, {creation, &current.CacheCreation}} {
-			count, err := referenceLiveCounter(fields, field.name)
+		if details, ok := fields[key].(map[string]any); ok {
+			count, err := referenceLiveCounter(details, "cached_tokens")
 			if err != nil {
 				return nil, err
 			}
-			*field.counter = count
-		}
-		if id == "chat-completions-api" || id == "responses-api" {
-			key := "prompt_tokens_details"
-			if id == "responses-api" {
-				key = "input_tokens_details"
-			}
-			if details, ok := fields[key].(map[string]any); ok {
-				count, err := referenceLiveCounter(details, "cached_tokens")
-				if err != nil {
-					return nil, err
-				}
-				if count != nil {
-					current.CacheRead = count
-				}
-			}
-		}
-		if id == "anthropic-api" && current.Input != nil {
-			for _, extra := range []*protocol.Counter{current.CacheRead, current.CacheCreation} {
-				if extra != nil {
-					if current.Input.Count > math.MaxInt64-extra.Count {
-						return nil, fmt.Errorf("raw input counter overflow")
-					}
-					current.Input.Count += extra.Count
-				}
-			}
-		}
-		if id == "gemini-api" && current.Output != nil {
-			thoughts, err := referenceLiveCounter(fields, "thoughtsTokenCount")
-			if err != nil {
-				return nil, err
-			}
-			if thoughts != nil {
-				if current.Output.Count > math.MaxInt64-thoughts.Count {
-					return nil, fmt.Errorf("raw output counter overflow")
-				}
-				current.Output.Count += thoughts.Count
-			}
-		}
-		for _, pair := range []struct {
-			source *protocol.Counter
-			target **protocol.Counter
-		}{{current.Input, &result.Input}, {current.Output, &result.Output}, {current.Total, &result.Total}, {current.CacheRead, &result.CacheRead}, {current.CacheCreation, &result.CacheCreation}} {
-			if pair.source != nil {
-				*pair.target = pair.source
+			if count != nil {
+				current.CacheRead = count
 			}
 		}
 	}
-	return result, nil
+	if id == "anthropic-api" && current.CacheCreation == nil {
+		if details, ok := fields["cache_creation"].(map[string]any); ok {
+			five, err := referenceLiveCounter(details, "ephemeral_5m_input_tokens")
+			if err != nil {
+				return nil, err
+			}
+			one, err := referenceLiveCounter(details, "ephemeral_1h_input_tokens")
+			if err != nil {
+				return nil, err
+			}
+			if five != nil && one != nil {
+				if five.Count > math.MaxInt64-one.Count {
+					return nil, fmt.Errorf("raw creation counter overflow")
+				}
+				current.CacheCreation = &protocol.Counter{Count: five.Count + one.Count, Origin: protocol.InferredCount}
+			}
+		}
+	}
+	if id == "anthropic-api" && current.Input != nil {
+		for _, extra := range []*protocol.Counter{current.CacheRead, current.CacheCreation} {
+			if extra != nil {
+				if current.Input.Count > math.MaxInt64-extra.Count {
+					return nil, fmt.Errorf("raw input counter overflow")
+				}
+				current.Input.Count += extra.Count
+			}
+		}
+	}
+	if id == "gemini-api" && current.Output != nil {
+		thoughts, err := referenceLiveCounter(fields, "thoughtsTokenCount")
+		if err != nil {
+			return nil, err
+		}
+		if thoughts != nil {
+			if current.Output.Count > math.MaxInt64-thoughts.Count {
+				return nil, fmt.Errorf("raw output counter overflow")
+			}
+			current.Output.Count += thoughts.Count
+		}
+	}
+	return current, nil
+}
+
+func TestLiveReferenceNormalizesLateComponentsOnce(t *testing.T) {
+	frames := []map[string]any{{"input_tokens": json.Number("5"), "output_tokens": json.Number("2")}, {"cache_read_input_tokens": json.Number("15")}, {"cache_creation": map[string]any{"ephemeral_5m_input_tokens": json.Number("3")}}, {"cache_creation": map[string]any{"ephemeral_1h_input_tokens": json.Number("4")}}}
+	u, err := referenceLiveUsage("anthropic-api", frames)
+	if err != nil || u.Input.Count != 27 || u.CacheCreation.Count != 7 {
+		t.Fatal("late components lost", u, err)
+	}
+	frames = append(frames, map[string]any{"cache_read_input_tokens": json.Number("0")})
+	u, err = referenceLiveUsage("anthropic-api", frames)
+	if err != nil || u.Input.Count != 12 || u.CacheRead.Count != 0 {
+		t.Fatal("zero update lost", u, err)
+	}
+	if frames[0]["input_tokens"] != json.Number("5") {
+		t.Fatal("reference mutated evidence")
+	}
 }
 
 func referenceLiveCounter(fields map[string]any, name string) (*protocol.Counter, error) {

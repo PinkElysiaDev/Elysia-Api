@@ -24,7 +24,7 @@ func liveRequest(t *testing.T, model string, isStream bool) *protocol.Request {
 
 func (suite *liveSuite) direct(t *testing.T, id string, compiled *protocol.Compiled, request *protocol.Request, isStream bool) (liveCase, *protocol.Response) {
 	t.Helper()
-	result := liveCase{ID: id, Target: compiled.Identity().DefinitionID, Revision: compiled.Hash(), Stream: isStream, Status: "failed"}
+	result := liveCase{ID: id, Model: suite.Model, Target: compiled.Identity().DefinitionID, Revision: compiled.Hash(), Stream: isStream, Status: "failed"}
 	body, err := compiled.EncodeRequest(t.Context(), request, protocol.EvaluationContext{})
 	if err != nil {
 		result.Reason = err.Error()
@@ -115,7 +115,7 @@ func (gateway *liveGateway) stored(t *testing.T) *usageRecord {
 
 func (gateway *liveGateway) request(t *testing.T, id string, ingress *protocol.Compiled, request *protocol.Request, isStream bool) (liveCase, *protocol.Response) {
 	t.Helper()
-	result := liveCase{ID: id, Ingress: ingress.Identity().DefinitionID, Target: gateway.target.Identity().DefinitionID, Revision: gateway.target.Hash(), Stream: isStream, Status: "failed"}
+	result := liveCase{ID: id, Model: gateway.suite.Model, Ingress: ingress.Identity().DefinitionID, Target: gateway.target.Identity().DefinitionID, Revision: gateway.target.Hash(), Stream: isStream, Status: "failed"}
 	body, err := ingress.EncodeRequest(t.Context(), request, protocol.EvaluationContext{})
 	if err != nil {
 		result.Reason = err.Error()
@@ -156,6 +156,10 @@ func (gateway *liveGateway) request(t *testing.T, id string, ingress *protocol.C
 		}
 	}
 	result.StoredUsage, result.StoredRequestID = saved.ProtocolUsage, saved.RequestID
+	result.StoredTotals, err = gateway.server.store.UsageTotals(t.Context(), storage.UsageQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	upstream, upstreamErr := inspectLiveWire(gateway.target, &result)
 	if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
 		result.Reason = saved.Error
@@ -240,6 +244,9 @@ func TestProtocolLive(t *testing.T) {
 		if filter := os.Getenv("ELYSIA_LIVE_TARGET"); filter != "" && id != filter {
 			continue
 		}
+		if len(suite.Targets) > 0 {
+			suite.selectTarget(t, id)
+		}
 		if reuseLivePreflight(t, suite, compiled[id], available[id]) {
 			continue
 		}
@@ -257,6 +264,9 @@ func TestProtocolLive(t *testing.T) {
 			continue
 		}
 		t.Run(targetID, func(t *testing.T) {
+			if len(suite.Targets) > 0 {
+				suite.selectTarget(t, targetID)
+			}
 			gateway := newLiveGateway(t, suite, compiled[targetID])
 			if suite.Suite == "breakpoint" {
 				definition := declaredChatCacheDefinition(t)

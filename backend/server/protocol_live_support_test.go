@@ -30,19 +30,36 @@ const liveUsagePoll = 10 * time.Millisecond
 const liveErrorLimit = 1024
 
 type liveBudget struct {
-	mu      sync.Mutex
-	path    string
-	Calls   int    `json:"calls"`
-	Stopped string `json:"stopped,omitempty"`
+	mu             sync.Mutex
+	path           string
+	Calls          int       `json:"calls"`
+	Stopped        string    `json:"stopped,omitempty"`
+	Limit          int       `json:"limit,omitempty"`
+	CleanupReserve int       `json:"cleanupReserve,omitempty"`
+	Deadline       time.Time `json:"deadline,omitempty"`
 }
 
 func (budget *liveBudget) reserve() error {
+	return budget.reserveOperation(false)
+}
+
+func (budget *liveBudget) reserveOperation(isCleanup bool) error {
 	budget.mu.Lock()
 	defer budget.mu.Unlock()
-	if budget.Stopped != "" {
+	if budget.Stopped != "" && !isCleanup {
 		return fmt.Errorf("live run stopped: %s", budget.Stopped)
 	}
-	if budget.Calls >= liveRequestLimit {
+	limit := budget.Limit
+	if limit == 0 {
+		limit = liveRequestLimit
+	}
+	if !isCleanup {
+		limit -= budget.CleanupReserve
+		if !budget.Deadline.IsZero() && !time.Now().Before(budget.Deadline) {
+			return fmt.Errorf("live run deadline reached")
+		}
+	}
+	if budget.Calls >= limit {
 		return fmt.Errorf("live request limit reached")
 	}
 	budget.Calls++
@@ -69,6 +86,7 @@ func (budget *liveBudget) stop(reason string) error {
 }
 
 type liveWireEvidence struct {
+	StartedAt        time.Time           `json:"startedAt,omitempty"`
 	Endpoint         string              `json:"endpoint"`
 	Status           int                 `json:"status"`
 	RequestHash      string              `json:"requestHash"`
@@ -88,21 +106,24 @@ type liveWireEvidence struct {
 }
 
 type liveCase struct {
-	ID                 string           `json:"id"`
-	Ingress            string           `json:"ingress,omitempty"`
-	Target             string           `json:"target"`
-	Revision           string           `json:"revision"`
-	Stream             bool             `json:"stream"`
-	Status             string           `json:"status"`
-	Reason             string           `json:"reason,omitempty"`
-	FailureClass       string           `json:"failureClass,omitempty"`
-	Wire               liveWireEvidence `json:"wire"`
-	DownstreamStatus   int              `json:"downstreamStatus,omitempty"`
-	UpstreamUsage      *protocol.Usage  `json:"upstreamUsage,omitempty"`
-	ReferenceUsage     *protocol.Usage  `json:"referenceUsage,omitempty"`
-	DownstreamHash     string           `json:"downstreamHash,omitempty"`
-	DownstreamBytes    int              `json:"downstreamBytes,omitempty"`
-	DownstreamEvidence string           `json:"downstreamEvidence,omitempty"`
+	Model              string               `json:"model,omitempty"`
+	Assessment         *liveCacheAssessment `json:"assessment,omitempty"`
+	StoredTotals       map[string]any       `json:"storedTotals,omitempty"`
+	ID                 string               `json:"id"`
+	Ingress            string               `json:"ingress,omitempty"`
+	Target             string               `json:"target"`
+	Revision           string               `json:"revision"`
+	Stream             bool                 `json:"stream"`
+	Status             string               `json:"status"`
+	Reason             string               `json:"reason,omitempty"`
+	FailureClass       string               `json:"failureClass,omitempty"`
+	Wire               liveWireEvidence     `json:"wire"`
+	DownstreamStatus   int                  `json:"downstreamStatus,omitempty"`
+	UpstreamUsage      *protocol.Usage      `json:"upstreamUsage,omitempty"`
+	ReferenceUsage     *protocol.Usage      `json:"referenceUsage,omitempty"`
+	DownstreamHash     string               `json:"downstreamHash,omitempty"`
+	DownstreamBytes    int                  `json:"downstreamBytes,omitempty"`
+	DownstreamEvidence string               `json:"downstreamEvidence,omitempty"`
 	downstream         []byte
 	DownstreamUsage    *protocol.Usage `json:"downstreamUsage,omitempty"`
 	StoredUsage        *protocol.Usage `json:"storedUsage,omitempty"`
@@ -111,19 +132,20 @@ type liveCase struct {
 }
 
 type liveSuite struct {
-	SchemaVersion     int        `json:"schemaVersion"`
-	Model             string     `json:"model"`
-	Origin            string     `json:"origin"`
-	Compiler          string     `json:"compiler"`
-	StartedAt         time.Time  `json:"startedAt"`
-	Cases             []liveCase `json:"cases"`
-	Limit             int        `json:"requestLimit"`
-	CallsAtStart      int        `json:"callsAtStart"`
-	CallsAtCheckpoint int        `json:"callsAtCheckpoint"`
-	Stopped           string     `json:"stopped,omitempty"`
-	Suite             string     `json:"suite"`
-	PreflightEvidence string     `json:"preflightEvidence,omitempty"`
-	PreflightHash     string     `json:"preflightHash,omitempty"`
+	Targets           map[string]liveTargetProfile `json:"targets,omitempty"`
+	SchemaVersion     int                          `json:"schemaVersion"`
+	Model             string                       `json:"model"`
+	Origin            string                       `json:"origin"`
+	Compiler          string                       `json:"compiler"`
+	StartedAt         time.Time                    `json:"startedAt"`
+	Cases             []liveCase                   `json:"cases"`
+	Limit             int                          `json:"requestLimit"`
+	CallsAtStart      int                          `json:"callsAtStart"`
+	CallsAtCheckpoint int                          `json:"callsAtCheckpoint"`
+	Stopped           string                       `json:"stopped,omitempty"`
+	Suite             string                       `json:"suite"`
+	PreflightEvidence string                       `json:"preflightEvidence,omitempty"`
+	PreflightHash     string                       `json:"preflightHash,omitempty"`
 	key               string
 	budget            *liveBudget
 	path              string
@@ -164,7 +186,11 @@ func openLiveSuite(t *testing.T) *liveSuite {
 		t.Skip("real provider tests require explicit opt-in")
 	}
 	key, directory, budgetPath := os.Getenv("ELYSIA_VERIFY_API_KEY"), os.Getenv("ELYSIA_VERIFY_DIR"), os.Getenv("ELYSIA_LIVE_BUDGET")
-	if key == "" || directory == "" || budgetPath == "" {
+	profiles, err := readLiveTargetProfiles(os.Getenv("ELYSIA_LIVE_TARGETS"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if (key == "" && len(profiles) == 0) || directory == "" || budgetPath == "" {
 		t.Fatal("live run requires in-memory credential and evidence/budget paths")
 	}
 	lock, err := os.OpenFile(budgetPath+".lock", os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -182,6 +208,7 @@ func openLiveSuite(t *testing.T) *liveSuite {
 		t.Fatal(err)
 	}
 	suite := &liveSuite{SchemaVersion: 1, Model: "gpt-6.1-sol", Origin: "https://moyuu.cc", Compiler: protocol.CompilerVersion, StartedAt: time.Now().UTC(), Limit: liveRequestLimit, key: key, budget: budget, path: filepath.Join(directory, "live.json"), client: &http.Client{Transport: relay.NewSecureTransport(), Timeout: liveRequestTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	suite.Targets = profiles
 	suite.CallsAtStart, suite.Suite = budget.Calls, os.Getenv("ELYSIA_LIVE_SUITE")
 	if testing.Short() {
 		suite.Suite = "preflight"
@@ -194,6 +221,10 @@ func liveHash(raw []byte) string { sum := sha256.Sum256(raw); return hex.EncodeT
 
 func (suite *liveSuite) record(t *testing.T, result liveCase) {
 	t.Helper()
+	result.Model = suite.Model
+	if result.Assessment == nil {
+		result.Assessment = assessLiveCache(result)
+	}
 	result.Reason = strings.ReplaceAll(result.Reason, suite.key, "<redacted>")
 	result.Wire.Error = strings.ReplaceAll(result.Wire.Error, suite.key, "<redacted>")
 	if result.Status != "passed" {
@@ -268,6 +299,7 @@ func (suite *liveSuite) exchange(ctx context.Context, compiled *protocol.Compile
 	}
 	wire.Endpoint = request.URL.Scheme + "://" + request.URL.Host + request.URL.EscapedPath()
 	started := time.Now()
+	wire.StartedAt = started.UTC()
 	response, err := suite.client.Do(request)
 	if err != nil {
 		wire.Error = strings.ReplaceAll(err.Error(), suite.key, "<redacted>")
