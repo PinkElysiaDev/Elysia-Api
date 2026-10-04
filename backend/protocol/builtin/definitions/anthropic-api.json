@@ -4704,6 +4704,194 @@
         "model": "m"
       },
       "sequence": true
+    },
+    {
+      "id": "cache-creation-buckets-decode-response",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "id": "r",
+        "model": "m",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "hi"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 5,
+          "output_tokens": 2,
+          "cache_read_input_tokens": 15,
+          "cache_creation_input_tokens": 7,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 2,
+            "ephemeral_1h_input_tokens": 5
+          }
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop"
+        },
+        "usage": {
+          "input": {
+            "count": 27,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 2,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 29,
+            "origin": "inferred"
+          },
+          "cacheRead": {
+            "count": 15,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 7,
+            "origin": "observed"
+          },
+          "details": {
+            "ephemeral_1h_input_tokens": {
+              "count": 5,
+              "origin": "observed"
+            },
+            "ephemeral_5m_input_tokens": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "uncached_input_tokens": {
+              "count": 5,
+              "origin": "observed"
+            }
+          }
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "cache-creation-explicit-zero-decode-response",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "id": "r",
+        "model": "m",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "hi"
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 10,
+          "output_tokens": 2,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          }
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop"
+        },
+        "usage": {
+          "input": {
+            "count": 10,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 2,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 12,
+            "origin": "inferred"
+          },
+          "cacheRead": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "details": {
+            "ephemeral_1h_input_tokens": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "ephemeral_5m_input_tokens": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "uncached_input_tokens": {
+              "count": 10,
+              "origin": "observed"
+            }
+          }
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
     }
   ],
   "modelSamples": [

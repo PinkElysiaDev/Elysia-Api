@@ -5031,6 +5031,90 @@
         "model": "m"
       },
       "sequence": true
+    },
+    {
+      "id": "cache-creation-decode-response",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "id": "r",
+        "model": "m",
+        "object": "response",
+        "status": "completed",
+        "output": [
+          {
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "hi"
+              }
+            ]
+          }
+        ],
+        "usage": {
+          "input_tokens": 30,
+          "output_tokens": 2,
+          "total_tokens": 32,
+          "input_tokens_details": {
+            "cached_tokens": 4,
+            "cache_write_tokens": 7
+          }
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop"
+        },
+        "usage": {
+          "input": {
+            "count": 30,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 2,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 32,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 4,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 7,
+            "origin": "observed"
+          }
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
     }
   ],
   "modelSamples": [
