@@ -154,7 +154,8 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	}
 	request := *plan.request
 	request.Model = protocol.StringValue(candidate.model.Name)
-	options := protocol.EvaluationContext{Scope: candidate.scope}
+	options := protocol.EvaluationContext{Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}}
+	defer func() { record.appendConversionIssues(options.Diagnostics.Issues()) }()
 	body, err := candidate.compiled.EncodeRequest(c.Request.Context(), &request, options)
 	if err != nil {
 		return &gatewayFailure{http.StatusBadRequest, err}

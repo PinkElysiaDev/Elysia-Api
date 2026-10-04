@@ -13,7 +13,8 @@ const gatewayStreamErrorTrailer = "X-Elysia-Stream-Error"
 
 func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan *gatewayPlan, candidate gatewayCandidate, response *http.Response) error {
 	limits := plan.ingress.ResourceLimits()
-	options := protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState()}
+	options := protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState(), Diagnostics: &protocol.DiagnosticSink{}}
+	defer func() { record.appendConversionIssues(options.Diagnostics.Issues()) }()
 	target := protocol.Target{Protocol: plan.ingress.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: plan.ingress.Capabilities(protocol.EncodeEvent)}
 	replay, err := protocol.NewEventReplay(target, limits)
 	if err != nil {

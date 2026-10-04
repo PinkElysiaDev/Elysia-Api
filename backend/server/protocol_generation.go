@@ -51,7 +51,7 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	if err := s.validateOutbound(candidate.model.BaseURL); err != nil {
 		return nil, err
 	}
-	options := protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState()}
+	options := protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState(), Diagnostics: &protocol.DiagnosticSink{}}
 	body, err := candidate.compiled.EncodeRequest(ctx, request, options)
 	if err != nil {
 		return nil, err

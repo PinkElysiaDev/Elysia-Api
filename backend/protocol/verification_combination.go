@@ -286,7 +286,7 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 	if err != nil {
 		return err
 	}
-	return compareRoundTrip(ingress, sample, equivalentResponse(response), equivalentResponse(decoded))
+	return compareRoundTrip(ingress, sample, equivalentResponse(response, ingress.identity.Family), equivalentResponse(decoded, ingress.identity.Family))
 }
 
 func hasHTTPGeneration(compiled *Compiled) bool {

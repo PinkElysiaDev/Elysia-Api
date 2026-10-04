@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"strings"
@@ -183,7 +184,7 @@ func counterValue(count *p.Counter) p.Value {
 // moving a canonical counter to its standard nested field leaves an old alias
 // looking like an unknown extension, allowing it to survive edits or deletion.
 func (adapter module) encodeResponseUsage(response *p.Response, options p.EvaluationContext) (p.Value, error) {
-	encoded, err := adapter.encodeUsage(response.Usage)
+	encoded, err := adapter.encodeUsage(response.Usage, options)
 	if err != nil || encoded.IsZero() || response.Native == nil || (adapter.name != Chat && adapter.name != Responses) {
 		return encoded, err
 	}
@@ -216,11 +217,11 @@ func (adapter module) encodeResponseUsage(response *p.Response, options p.Evalua
 	return object(fields), nil
 }
 
-func (adapter module) encodeUsage(usage *p.Usage) (p.Value, error) {
+func (adapter module) encodeUsage(usage *p.Usage, options p.EvaluationContext) (p.Value, error) {
 	if usage == nil {
 		return p.Value{}, nil
 	}
-	if err := adapter.checkUsageDetails(usage); err != nil {
+	if err := adapter.checkUsageDetails(usage, options); err != nil {
 		return p.Value{}, err
 	}
 	fields := p.Object{}
@@ -302,8 +303,12 @@ func (adapter module) encodeUsage(usage *p.Usage) (p.Value, error) {
 
 // The uncached subtotal is derivable from normalized input. Every other detail
 // needs an explicit target representation, even when its count is zero.
-func (adapter module) checkUsageDetails(usage *p.Usage) error {
-	for name, count := range usage.Details {
+//
+// Details are traversed in sorted order so a rejected target reports the same
+// path on every run; map iteration order is not stable across processes.
+func (adapter module) checkUsageDetails(usage *p.Usage, options p.EvaluationContext) error {
+	for _, name := range slices.Sorted(maps.Keys(usage.Details)) {
+		count := usage.Details[name]
 		if name == "uncached_input_tokens" {
 			if usage.Input == nil {
 				return unsupported("/usage/details/"+name, "uncached subtotal requires total input")
@@ -328,9 +333,32 @@ func (adapter module) checkUsageDetails(usage *p.Usage) error {
 		case Gemini:
 			isSupported = name == "output.reasoning_tokens" || name == "toolUsePromptTokenCount"
 		}
-		if !isSupported {
-			return unsupported("/usage/details/"+name, "target has no equivalent usage detail")
+		if isSupported {
+			continue
 		}
+		// The provider's TTL buckets have no target field outside Anthropic.
+		// Their total survives in CacheCreation, so the projection is recorded
+		// rather than failing a response the client can otherwise consume.
+		if adapter.omitsCacheCreationBucket(name) {
+			options.Diagnostics.Add(p.ConversionIssue{
+				Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
+				Direction: p.EncodeResponse, Stage: "wire", Path: "/usage/details/" + name,
+				Reason:     "cache creation bucket omitted: target has no equivalent usage detail",
+				Suggestion: "Compare cache creation through the total counter; the TTL breakdown is provider-specific.",
+			})
+			continue
+		}
+		return unsupported("/usage/details/"+name, "target has no equivalent usage detail")
 	}
 	return nil
+}
+
+// omitsCacheCreationBucket reports whether a provider TTL bucket is projected
+// away for this target. Anthropic owns the bucket schema; every other family
+// keeps only the total creation counter.
+func (adapter module) omitsCacheCreationBucket(name string) bool {
+	if adapter.name == Anthropic {
+		return false
+	}
+	return name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens"
 }

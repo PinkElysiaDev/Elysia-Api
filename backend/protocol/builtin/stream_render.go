@@ -46,7 +46,7 @@ func (stream *streamModule) encodeEvent(event p.Event, options p.EvaluationConte
 		return []p.Value{object(p.Object{"error": failure})}, nil
 	case p.ResponseStarted:
 		stream.isStarted = true
-		return stream.encodeStart()
+		return stream.encodeStart(options)
 	case p.UsageUpdated:
 		return nil, nil
 	case p.ResponseFinished:
@@ -64,12 +64,12 @@ func (stream *streamModule) encodeEvent(event p.Event, options p.EvaluationConte
 	}
 }
 
-func (stream *streamModule) encodeStart() ([]p.Value, error) {
+func (stream *streamModule) encodeStart(options p.EvaluationContext) ([]p.Value, error) {
 	switch stream.name {
 	case Chat:
 		return []p.Value{stream.chatChunk(object(p.Object{"role": p.StringValue("assistant")}), p.Value{}, p.Value{})}, nil
 	case Anthropic:
-		usage, err := stream.module.encodeUsage(stream.usage)
+		usage, err := stream.module.encodeUsage(stream.usage, options)
 		if err != nil {
 			return nil, err
 		}
@@ -483,7 +483,7 @@ func (stream *streamModule) Finish(ctx context.Context, options p.EvaluationCont
 	if err != nil && stream.name != Responses {
 		return nil, err
 	}
-	usage, err := stream.module.encodeUsage(stream.usage)
+	usage, err := stream.module.encodeUsage(stream.usage, options)
 	if err != nil {
 		return nil, err
 	}

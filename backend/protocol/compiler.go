@@ -22,6 +22,9 @@ type EvaluationContext struct {
 	Scope         Scope
 	Values        Object
 	State         *EvaluationState
+	// Diagnostics collects non-blocking conversion issues for this request.
+	// It is gateway-owned; mappings can report through it but cannot read it.
+	Diagnostics   *DiagnosticSink
 	identity      Identity
 	compoundFrame bool
 	// ResolveRequestScope is supplied by the gateway after model/authorization

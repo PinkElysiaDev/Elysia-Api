@@ -95,7 +95,9 @@ func (s *Server) serveGatewaySession(c *gin.Context, view protocol.RegistryView,
 	}
 	request := *plan.request
 	request.Model = protocol.StringValue(candidate.model.Name)
-	body, err := candidate.compiled.EncodeRequest(c.Request.Context(), &request, protocol.EvaluationContext{Scope: candidate.scope})
+	sessionOptions := protocol.EvaluationContext{Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}}
+	defer func() { record.appendConversionIssues(sessionOptions.Diagnostics.Issues()) }()
+	body, err := candidate.compiled.EncodeRequest(c.Request.Context(), &request, sessionOptions)
 	if err != nil {
 		s.failGateway(c, record, http.StatusBadRequest, err)
 		return

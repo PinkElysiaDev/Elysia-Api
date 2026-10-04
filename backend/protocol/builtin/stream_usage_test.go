@@ -37,7 +37,7 @@ func TestStreamUsageLateComponentsRecomputeTotals(t *testing.T) {
 			if fixture.creation > 0 && (usage.CacheCreation == nil || usage.CacheCreation.Count != fixture.creation) {
 				t.Fatal(usage.CacheCreation)
 			}
-			if _, err := stream.module.encodeUsage(usage); err != nil {
+			if _, err := stream.module.encodeUsage(usage, p.EvaluationContext{}); err != nil {
 				t.Fatal("normalized counters cannot be rendered", err)
 			}
 		})

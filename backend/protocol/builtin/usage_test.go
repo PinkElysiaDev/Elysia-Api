@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"strings"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
@@ -36,8 +37,24 @@ func TestUsageDetailsPreserveExtensionsAndRejectUnsupportedCounters(t *testing.T
 		t.Fatal("usage-tail extension was discarded", frame, err)
 	}
 	usageWithTTL := &p.Usage{Input: &p.Counter{Count: 10, Origin: p.ObservedCount}, CacheCreation: &p.Counter{Count: 2, Origin: p.ObservedCount}, Details: map[string]p.Counter{"ephemeral_1h_input_tokens": {Count: 2, Origin: p.ObservedCount}}}
-	if _, err := (module{name: Chat, family: "openai_chat"}).encodeUsage(usageWithTTL); err == nil {
-		t.Fatal("TTL detail was silently dropped")
+	sink := &p.DiagnosticSink{}
+	projected, err := (module{name: Chat, family: "openai_chat"}).encodeUsage(usageWithTTL, p.EvaluationContext{Diagnostics: sink})
+	if err != nil {
+		t.Fatal("cross-protocol TTL bucket must project away, not fail", err)
+	}
+	// The total creation counter survives; only the provider-specific TTL
+	// breakdown is omitted, and the omission is recorded as a warning.
+	projectedFields, err := projected.ReadObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectedDetails, _ := projectedFields["prompt_tokens_details"].ReadObject()
+	if projectedDetails["cache_write_tokens"].IsZero() || strings.Contains(string(projected.Bytes()), "ephemeral") {
+		t.Fatalf("TTL bucket leaked or total creation lost: %s", projected.Bytes())
+	}
+	issues := sink.Issues()
+	if len(issues) != 1 || issues[0].Severity != p.SeverityWarning || issues[0].Path != "/usage/details/ephemeral_1h_input_tokens" {
+		t.Fatalf("omission must be diagnosed once: %+v", issues)
 	}
 }
 
@@ -58,7 +75,7 @@ func TestUsageMissingBucketAndReasoningNormalization(t *testing.T) {
 	if usage.Output.Count != 5 || usage.Details["output.reasoning_tokens"].Count != 3 {
 		t.Fatal(usage)
 	}
-	encoded, err := gemini.encodeUsage(usage)
+	encoded, err := gemini.encodeUsage(usage, p.EvaluationContext{})
 	if err != nil {
 		t.Fatal(err)
 	}

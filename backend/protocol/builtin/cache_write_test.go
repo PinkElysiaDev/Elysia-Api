@@ -36,7 +36,7 @@ func TestStandardCacheWriteCountersPreservePresenceAndRejectConflicts(t *testing
 				if usage.CacheCreation == nil || usage.CacheCreation.Count != fixture.want {
 					t.Fatalf("creation lost: %s -> %+v", raw, usage)
 				}
-				encoded, err := adapter.encodeUsage(usage)
+				encoded, err := adapter.encodeUsage(usage, p.EvaluationContext{})
 				if err != nil {
 					t.Fatal(err)
 				}

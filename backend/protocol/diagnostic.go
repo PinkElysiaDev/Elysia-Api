@@ -46,6 +46,35 @@ type ConversionIssue struct {
 	Evidence   string     `json:"evidence,omitempty"`
 }
 
+// DiagnosticSink accumulates non-blocking conversion issues for one request.
+// A nil sink disables collection and never changes the conversion result, so
+// callers that do not record diagnostics pay nothing for the channel.
+type DiagnosticSink struct {
+	issues []ConversionIssue
+}
+
+// Add records one issue, collapsing an exact repeat. A stream renders usage
+// more than once, so the same omission must not accumulate into a flood.
+func (sink *DiagnosticSink) Add(issue ConversionIssue) {
+	if sink == nil {
+		return
+	}
+	for _, existing := range sink.issues {
+		if existing.Code == issue.Code && existing.Path == issue.Path && existing.Stage == issue.Stage {
+			return
+		}
+	}
+	sink.issues = append(sink.issues, issue)
+}
+
+// Issues returns the accumulated diagnostics in emission order.
+func (sink *DiagnosticSink) Issues() []ConversionIssue {
+	if sink == nil {
+		return nil
+	}
+	return sink.issues
+}
+
 // ConversionError carries machine-readable diagnostics through Go error APIs.
 type ConversionError struct {
 	Issues []ConversionIssue `json:"issues"`

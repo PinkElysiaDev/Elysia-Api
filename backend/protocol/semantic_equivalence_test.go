@@ -6,7 +6,7 @@ func TestWireUsageComparisonRetainsMissingZeroAndNonredundantDetails(t *testing.
 	observed := func(count int64) *Counter { return &Counter{Count: count, Origin: ObservedCount} }
 	base := &Usage{Input: observed(10), Output: observed(2), Total: observed(12), CacheRead: observed(4)}
 	equivalent := &Usage{Input: observed(10), Output: observed(2), Total: &Counter{Count: 12, Origin: InferredCount}, CacheRead: observed(4), Details: map[string]Counter{"uncached_input_tokens": {Count: 6, Origin: ObservedCount}}}
-	encode := func(usage *Usage) Value { return fixtureValue(t, comparableWireUsage(usage)) }
+	encode := func(usage *Usage) Value { return fixtureValue(t, comparableWireUsage(usage, nil)) }
 	if !equalValues(encode(base), encode(equivalent)) {
 		t.Fatal("wire-independent counter provenance blocked equal usage")
 	}

@@ -34,10 +34,26 @@ func comparableConversation(nodes []Node) []Node {
 	return result
 }
 
+// anthropicCacheBucketFamily owns the provider TTL bucket schema. Every other
+// family keeps only the creation total, so a cross-protocol roundtrip legally
+// projects these details away and the comparison must not read that as loss.
+const anthropicCacheBucketFamily = "claude"
+
+// cacheBucketOmission returns the one approved usage-detail projection for a
+// target family: nil when the family preserves the provider's TTL buckets.
+func cacheBucketOmission(family string) func(string) bool {
+	if family == anthropicCacheBucketFamily {
+		return nil
+	}
+	return func(name string) bool {
+		return name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens"
+	}
+}
+
 // Wire counters cannot carry the gateway's observed/inferred provenance.
 // Compare present counts while retaining that provenance in runtime accounting.
 // The uncached subtotal is redundant only when its arithmetic is exact.
-func comparableWireUsage(usage *Usage) *Usage {
+func comparableWireUsage(usage *Usage, omitted func(string) bool) *Usage {
 	if usage == nil {
 		return nil
 	}
@@ -62,6 +78,9 @@ func comparableWireUsage(usage *Usage) *Usage {
 				continue
 			}
 		}
+		if omitted != nil && omitted(name) {
+			continue
+		}
 		if copy.Details == nil {
 			copy.Details = map[string]Counter{}
 		}
@@ -76,9 +95,9 @@ func equivalentRequest(request *Request) *Request {
 	return &copy
 }
 
-func equivalentResponse(response *Response) *Response {
+func equivalentResponse(response *Response, family string) *Response {
 	copy := *response
 	copy.Content = comparableConversation(response.Content)
-	copy.Usage = comparableWireUsage(response.Usage)
+	copy.Usage = comparableWireUsage(response.Usage, cacheBucketOmission(family))
 	return &copy
 }

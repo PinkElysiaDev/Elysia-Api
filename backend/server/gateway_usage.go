@@ -67,6 +67,23 @@ func estimateValueChars(value protocol.Value) int {
 	return utf8.RuneCount(value.Bytes())
 }
 
+// appendConversionIssues merges request diagnostics into the record, keeping
+// one entry per distinct code/path so a stream's repeated renders stay quiet.
+func (record *usageRecord) appendConversionIssues(issues []protocol.ConversionIssue) {
+	for _, issue := range issues {
+		exists := false
+		for _, existing := range record.ConversionIssues {
+			if existing.Code == issue.Code && existing.Path == issue.Path {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			record.ConversionIssues = append(record.ConversionIssues, issue)
+		}
+	}
+}
+
 func updateRecordProtocolUsage(record *usageRecord, usage *protocol.Usage) {
 	if usage == nil {
 		return
