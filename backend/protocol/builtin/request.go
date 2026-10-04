@@ -302,10 +302,16 @@ func (adapter module) encodeRequest(request *p.Request, options p.EvaluationCont
 			if intent.Kind == "retention" {
 				key = "prompt_cache_retention"
 			}
+			if !fields[key].IsZero() {
+				return p.Value{}, unsupported("/cache", "one wire field cannot express multiple "+intent.Kind+" intents")
+			}
 			fields[key] = intent.Value
 		case "resource":
 			if adapter.name != Gemini {
 				return p.Value{}, unsupported("/cache", "target has no explicit cache resource reference")
+			}
+			if !fields["cachedContent"].IsZero() {
+				return p.Value{}, unsupported("/cache", "one wire field cannot express multiple resource intents")
 			}
 			fields["cachedContent"] = intent.Resource.ID
 		}

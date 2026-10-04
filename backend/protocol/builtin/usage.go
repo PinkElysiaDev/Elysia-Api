@@ -324,6 +324,14 @@ func (adapter module) checkUsageDetails(usage *p.Usage, options p.EvaluationCont
 			}
 			continue
 		}
+		// The canonical counters own these names. An expression that writes the
+		// detail form would otherwise overwrite the count chosen above, leaving
+		// no signal that the two disagreed.
+		if adapter.name == Chat || adapter.name == Responses {
+			if trimmed, isDetail := strings.CutPrefix(name, "input."); isDetail && (trimmed == "cached_tokens" || trimmed == "cache_write_tokens") {
+				return unsupported("/usage/details/"+name, "detail name is reserved for the canonical counter")
+			}
+		}
 		isSupported := false
 		switch adapter.name {
 		case Chat, Responses:
