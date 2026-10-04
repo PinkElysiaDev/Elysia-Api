@@ -58,6 +58,36 @@ func TestUsageDetailsPreserveExtensionsAndRejectUnsupportedCounters(t *testing.T
 	}
 }
 
+// Gemini reports cache reads only. The provider's creation total has no target
+// field, so the projection is recorded rather than failing a response the
+// client can otherwise consume.
+func TestUsageGeminiCreationTotalIsProjectedAndDiagnosed(t *testing.T) {
+	gemini := module{name: Gemini, family: "gemini"}
+	usage := &p.Usage{
+		Input:         &p.Counter{Count: 27, Origin: p.ObservedCount},
+		Output:        &p.Counter{Count: 2, Origin: p.ObservedCount},
+		CacheRead:     &p.Counter{Count: 15, Origin: p.ObservedCount},
+		CacheCreation: &p.Counter{Count: 7, Origin: p.ObservedCount},
+		Details:       map[string]p.Counter{},
+	}
+	sink := &p.DiagnosticSink{}
+	encoded, err := gemini.encodeUsage(usage, p.EvaluationContext{Diagnostics: sink})
+	if err != nil {
+		t.Fatal("a creation total Gemini cannot express must project away, not fail", err)
+	}
+	// Total is absent here because this usage carries no total counter; the
+	// creation total is projected away while the read count survives.
+	sameJSON(t, encoded.Bytes(), `{"promptTokenCount":27,"candidatesTokenCount":2,"cachedContentTokenCount":15}`)
+	issues := sink.Issues()
+	if len(issues) != 1 || issues[0].Severity != p.SeverityWarning || issues[0].Path != "/usage/cacheCreation" {
+		t.Fatalf("omission must be diagnosed once: %+v", issues)
+	}
+	// A nil sink stays zero-cost and still omits without panicking.
+	if _, err := gemini.encodeUsage(usage, p.EvaluationContext{}); err != nil {
+		t.Fatalf("nil diagnostics must not change the projection: %v", err)
+	}
+}
+
 func TestUsageMissingBucketAndReasoningNormalization(t *testing.T) {
 	anthropic := module{name: Anthropic, family: "claude"}
 	usage, err := anthropic.decodeUsage(testValue(t, `{"cache_creation":{"ephemeral_1h_input_tokens":9}}`))

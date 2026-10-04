@@ -280,8 +280,16 @@ func (adapter module) encodeUsage(usage *p.Usage, options p.EvaluationContext) (
 		}
 	case Gemini:
 		fields["cachedContentTokenCount"] = counterValue(usage.CacheRead)
+		// Gemini reports cache reads only. The provider's creation total has no
+		// target field, so it is projected away and recorded rather than failing
+		// a response the client can otherwise consume.
 		if usage.CacheCreation != nil {
-			return p.Value{}, unsupported("/usage/cacheCreation", "Gemini usage has no cache creation counter")
+			options.Diagnostics.Add(p.ConversionIssue{
+				Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
+				Direction: p.EncodeResponse, Stage: "wire", Path: "/usage/cacheCreation",
+				Reason:     "cache creation total omitted: target has no cache creation counter",
+				Suggestion: "Compare cache reads through cachedContentTokenCount; Gemini does not report cache writes.",
+			})
 		}
 		if count, exists := usage.Details["toolUsePromptTokenCount"]; exists {
 			fields["toolUsePromptTokenCount"] = counterValue(&count)

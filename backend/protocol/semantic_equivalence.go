@@ -39,14 +39,22 @@ func comparableConversation(nodes []Node) []Node {
 // projects these details away and the comparison must not read that as loss.
 const anthropicCacheBucketFamily = "claude"
 
-// cacheBucketOmission returns the one approved usage-detail projection for a
-// target family: nil when the family preserves the provider's TTL buckets.
-func cacheBucketOmission(family string) func(string) bool {
+// geminiCacheReadOnlyFamily reports cache reads but has no wire field for the
+// provider's cache creation total.
+const geminiCacheReadOnlyFamily = "gemini"
+
+// cacheOmission returns the approved usage projections for a target family:
+// nil when the family preserves every counter the provider reports.
+func cacheOmission(family string) func(string) bool {
 	if family == anthropicCacheBucketFamily {
 		return nil
 	}
 	return func(name string) bool {
-		return name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens"
+		if name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens" {
+			return true
+		}
+		// Gemini has no cache creation counter; the total is projected away.
+		return name == "/usage/cacheCreation" && family == geminiCacheReadOnlyFamily
 	}
 }
 
@@ -66,6 +74,9 @@ func comparableWireUsage(usage *Usage, omitted func(string) bool) *Usage {
 	}
 	copy.Input, copy.Output, copy.Total = normalize(usage.Input), normalize(usage.Output), normalize(usage.Total)
 	copy.CacheRead, copy.CacheCreation = normalize(usage.CacheRead), normalize(usage.CacheCreation)
+	if omitted != nil && omitted("/usage/cacheCreation") {
+		copy.CacheCreation = nil
+	}
 	for name, value := range usage.Details {
 		if name == "uncached_input_tokens" && usage.Input != nil {
 			expected := usage.Input.Count
@@ -98,6 +109,6 @@ func equivalentRequest(request *Request) *Request {
 func equivalentResponse(response *Response, family string) *Response {
 	copy := *response
 	copy.Content = comparableConversation(response.Content)
-	copy.Usage = comparableWireUsage(response.Usage, cacheBucketOmission(family))
+	copy.Usage = comparableWireUsage(response.Usage, cacheOmission(family))
 	return &copy
 }
