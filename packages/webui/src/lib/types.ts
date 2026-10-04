@@ -212,6 +212,8 @@ export interface ModelSource {
   /** 多 key 配置（源级密钥集合）：空 = 单 key（apiKey）。 */
   apiKeys?: SourceAPIKey[]
   keyStrategy?: SourceKeyStrategy
+  /** 源级缓存断点合成：目标支持 cache.breakpoints 且调用方未打满时补结构断点。默认关闭。 */
+  cacheSynthesis?: boolean
   /** 后台拉取任务状态（轮询进度与最近结果）。 */
   refreshState?: SourceRefreshState
   createdAt?: string

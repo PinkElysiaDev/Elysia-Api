@@ -93,11 +93,14 @@ func (s *Server) serveGatewaySession(c *gin.Context, view protocol.RegistryView,
 		s.failGateway(c, record, http.StatusForbidden, err)
 		return
 	}
-	request := *plan.request
+	request := plan.request.Clone()
 	request.Model = protocol.StringValue(candidate.model.Name)
 	sessionOptions := protocol.EvaluationContext{Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}}
 	defer func() { record.appendConversionIssues(sessionOptions.Diagnostics.Issues()) }()
-	body, err := candidate.compiled.EncodeRequest(c.Request.Context(), &request, sessionOptions)
+	if candidate.model.CacheSynthesis {
+		protocol.SynthesizeCacheBreakpoints(request, candidate.compiled.Capabilities(protocol.EncodeRequest), sessionOptions)
+	}
+	body, err := candidate.compiled.EncodeRequest(c.Request.Context(), request, sessionOptions)
 	if err != nil {
 		s.failGateway(c, record, http.StatusBadRequest, err)
 		return

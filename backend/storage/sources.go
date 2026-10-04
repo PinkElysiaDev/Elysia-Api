@@ -10,7 +10,7 @@ import (
 )
 
 func (s *Store) ListSources(ctx context.Context) ([]ModelSource, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, base_url, api_key, platform, enabled, auto_fetch_models, manual_models_json, fetch_base_url, api_keys, key_strategy, created_at, updated_at FROM model_sources ORDER BY name`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, base_url, api_key, platform, enabled, auto_fetch_models, manual_models_json, fetch_base_url, api_keys, key_strategy, cache_synthesis, created_at, updated_at FROM model_sources ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -18,15 +18,16 @@ func (s *Store) ListSources(ctx context.Context) ([]ModelSource, error) {
 	items := []ModelSource{}
 	for rows.Next() {
 		var item ModelSource
-		var enabled, autoFetch int
+		var enabled, autoFetch, cacheSynthesis int
 		var manual, fetchBase, storedKeys, strategy, created, updated string
-		if err := rows.Scan(&item.ID, &item.Name, &item.BaseURL, &item.APIKey, &item.Platform, &enabled, &autoFetch, &manual, &fetchBase, &storedKeys, &strategy, &created, &updated); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.BaseURL, &item.APIKey, &item.Platform, &enabled, &autoFetch, &manual, &fetchBase, &storedKeys, &strategy, &cacheSynthesis, &created, &updated); err != nil {
 			return nil, err
 		}
 		item.Enabled = sqlIntToBool(enabled)
 		item.AutoFetchModels = sqlIntToBool(autoFetch)
 		item.FetchBaseURL = fetchBase
 		item.KeyStrategy = SourceKeyStrategy(strategy)
+		item.CacheSynthesis = sqlIntToBool(cacheSynthesis)
 		item.CreatedAt = parseTime(created)
 		item.UpdatedAt = parseTime(updated)
 		item.APIKey = s.decryptOrClear("source api_key", item.ID, item.APIKey)
@@ -93,7 +94,7 @@ func (s *Store) upsertSource(ctx context.Context, executor protocolSQLExecutor, 
 		strategy = string(KeyStrategySingle)
 	}
 	now := nowString()
-	_, err = executor.ExecContext(ctx, `INSERT INTO model_sources(id, name, base_url, api_key, platform, enabled, auto_fetch_models, manual_models_json, fetch_base_url, api_keys, key_strategy, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, base_url=excluded.base_url, api_key=excluded.api_key, platform=excluded.platform, enabled=excluded.enabled, auto_fetch_models=excluded.auto_fetch_models, manual_models_json=excluded.manual_models_json, fetch_base_url=excluded.fetch_base_url, api_keys=excluded.api_keys, key_strategy=excluded.key_strategy, updated_at=excluded.updated_at`, item.ID, item.Name, item.BaseURL, storedKey, item.Platform, sqlBoolToInt(item.Enabled), sqlBoolToInt(item.AutoFetchModels), string(manual), item.FetchBaseURL, storedKeys, strategy, now, now)
+	_, err = executor.ExecContext(ctx, `INSERT INTO model_sources(id, name, base_url, api_key, platform, enabled, auto_fetch_models, manual_models_json, fetch_base_url, api_keys, key_strategy, cache_synthesis, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, base_url=excluded.base_url, api_key=excluded.api_key, platform=excluded.platform, enabled=excluded.enabled, auto_fetch_models=excluded.auto_fetch_models, manual_models_json=excluded.manual_models_json, fetch_base_url=excluded.fetch_base_url, api_keys=excluded.api_keys, key_strategy=excluded.key_strategy, cache_synthesis=excluded.cache_synthesis, updated_at=excluded.updated_at`, item.ID, item.Name, item.BaseURL, storedKey, item.Platform, sqlBoolToInt(item.Enabled), sqlBoolToInt(item.AutoFetchModels), string(manual), item.FetchBaseURL, storedKeys, strategy, sqlBoolToInt(item.CacheSynthesis), now, now)
 	return err
 }
 

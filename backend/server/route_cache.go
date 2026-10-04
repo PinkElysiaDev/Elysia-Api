@@ -70,6 +70,8 @@ func (s *Server) invalidateRouteCache() {
 type sourceKeyMeta struct {
 	keys     []storage.SourceAPIKey
 	strategy string
+	// 源级缓存断点合成开关：透传到 ModelRef，由网关在编码前消费。
+	cacheSynthesis bool
 	// 源地址：热路径以源为准（models 行是快照，源保存后若未触发合并——
 	// 如自动拉取失败——快照会滞后）。空 = legacy 导入源，回落 models 行。
 	baseURL string
@@ -162,6 +164,7 @@ func (s *Server) resolveModelSource(model storage.Model, keyMeta map[string]sour
 		if meta.baseURL != "" {
 			ref.BaseURL = meta.baseURL
 		}
+		ref.CacheSynthesis = meta.cacheSynthesis
 	}
 	if meta, ok := keyMeta[model.SourceID]; ok && len(meta.keys) > 0 {
 		// 按模型过滤可服务该模型的 key（多 key 权限发现）：不在任何 key 的
@@ -207,7 +210,7 @@ func collectSourceKeys(sources []storage.ModelSource) map[string]sourceKeyMeta {
 	keyMeta := make(map[string]sourceKeyMeta, len(sources))
 	for _, source := range sources {
 		keys := source.EffectiveKeys()
-		keyMeta[source.ID] = sourceKeyMeta{keys: keys, strategy: string(source.KeyStrategy), baseURL: source.BaseURL}
+		keyMeta[source.ID] = sourceKeyMeta{keys: keys, strategy: string(source.KeyStrategy), baseURL: source.BaseURL, cacheSynthesis: source.CacheSynthesis}
 	}
 	return keyMeta
 }

@@ -39,8 +39,11 @@ type ModelSource struct {
 	// 存储 JSON 数组整体加密；KeyStrategy 决定调度方式。
 	APIKeys     []SourceAPIKey    `json:"apiKeys,omitempty"`
 	KeyStrategy SourceKeyStrategy `json:"keyStrategy,omitempty"`
-	CreatedAt   time.Time         `json:"createdAt"`
-	UpdatedAt   time.Time         `json:"updatedAt"`
+	// CacheSynthesis 让网关为声明 cache.breakpoints 的上游补结构断点。
+	// 默认关闭：开启会改变发往上游的请求体，属显式的运维选择。
+	CacheSynthesis bool      `json:"cacheSynthesis,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 // EffectiveKeys 返回参与调度的 key 列表（多 key 时过滤 disabled；单 key 回退 APIKey）。

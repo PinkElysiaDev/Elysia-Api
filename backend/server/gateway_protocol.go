@@ -152,11 +152,14 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	if err := s.validateOutbound(candidate.model.BaseURL); err != nil {
 		return &gatewayFailure{http.StatusForbidden, fmt.Errorf("target base URL rejected: %w", err)}
 	}
-	request := *plan.request
+	request := plan.request.Clone()
 	request.Model = protocol.StringValue(candidate.model.Name)
 	options := protocol.EvaluationContext{Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}}
 	defer func() { record.appendConversionIssues(options.Diagnostics.Issues()) }()
-	body, err := candidate.compiled.EncodeRequest(c.Request.Context(), &request, options)
+	if candidate.model.CacheSynthesis {
+		protocol.SynthesizeCacheBreakpoints(request, candidate.compiled.Capabilities(protocol.EncodeRequest), options)
+	}
+	body, err := candidate.compiled.EncodeRequest(c.Request.Context(), request, options)
 	if err != nil {
 		return &gatewayFailure{http.StatusBadRequest, err}
 	}

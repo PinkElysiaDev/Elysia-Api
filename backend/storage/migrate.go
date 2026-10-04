@@ -208,6 +208,8 @@ func (s *Store) migrate(ctx context.Context) error {
 	// 增量迁移（幂等，duplicate column 忽略）：
 	//   model_sources.fetch_base_url —— 模型列表拉取专用地址（空=与 base_url 一致）；
 	//   model_sources.api_keys / key_strategy —— 多 Key 配置与调度策略；
+	//   model_sources.cache_synthesis —— 是否为目标声明 cache.breakpoints 的
+	//     上游补结构断点（默认关闭，仅在调用方未打满 4 个时补）；
 	//   models.enabled —— 用户手动启停（与 available 健康位分离）；
 	//   models.origin —— 行来源（fetched 随刷新合并替换 / manual 刷新永不触碰）；
 	//   models.capability_source —— 能力字段填充来源（''/catalog/manual，
@@ -216,6 +218,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		`ALTER TABLE model_sources ADD COLUMN fetch_base_url TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE model_sources ADD COLUMN api_keys TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE model_sources ADD COLUMN key_strategy TEXT NOT NULL DEFAULT 'single'`,
+		`ALTER TABLE model_sources ADD COLUMN cache_synthesis INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE models ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE models ADD COLUMN origin TEXT NOT NULL DEFAULT 'fetched'`,
 		`ALTER TABLE models ADD COLUMN capability_source TEXT NOT NULL DEFAULT ''`,

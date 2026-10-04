@@ -66,6 +66,7 @@ export function emptySource(): SourceForm {
     manualModels: [],
     apiKeys: [],
     keyStrategy: 'round-robin',
+    cacheSynthesis: false,
   }
 }
 

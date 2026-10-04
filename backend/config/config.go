@@ -227,6 +227,9 @@ type ModelRef struct {
 	APIKeys     []string `json:"apiKeys,omitempty"`
 	KeyStrategy string   `json:"keyStrategy,omitempty"`
 	SourceID    string   `json:"sourceId,omitempty"`
+	// CacheSynthesis 来自源级开关：目标声明 cache.breakpoints 且调用方未打满
+	// 上限时，透传前补结构断点。默认关闭，不改变既有请求体。
+	CacheSynthesis bool `json:"cacheSynthesis,omitempty"`
 }
 
 var GlobalConfig *Config

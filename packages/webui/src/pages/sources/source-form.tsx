@@ -541,6 +541,13 @@ export function SourceFormDialog({
                 <Switch checked={fetchUrlEnabled} onCheckedChange={setFetchUrlEnabled} />
                 <span className="text-sm font-medium">自定义模型拉取地址</span>
               </label>
+              <label className="flex items-center gap-3">
+                <Switch
+                  checked={form.cacheSynthesis ?? false}
+                  onCheckedChange={(v) => update('cacheSynthesis', v)}
+                />
+                <span className="text-sm font-medium">补缓存断点</span>
+              </label>
             </div>
             {fetchUrlEnabled && (
               <div className="space-y-2">
