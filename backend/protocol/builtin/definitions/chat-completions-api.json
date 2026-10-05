@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "chat-completions-api",
   "name": "chat-completions-api",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "family": "openai_chat",
   "wireVersion": "v2",
   "capabilities": {
@@ -12,6 +12,7 @@
     "usage": true,
     "cache.keys": true,
     "cache.retention": true,
+    "cache.options": true,
     "images": true,
     "audio": true,
     "documents": true,
@@ -26,6 +27,7 @@
         "native_extensions": true,
         "cache.keys": true,
         "cache.retention": true,
+        "cache.options": true,
         "images": true,
         "audio": true,
         "documents": true,
@@ -40,6 +42,7 @@
         "native_extensions": true,
         "cache.keys": true,
         "cache.retention": true,
+        "cache.options": true,
         "images": true,
         "audio": true,
         "documents": true,
@@ -1041,6 +1044,155 @@
         ],
         "prompt_cache_key": "prefix-key",
         "prompt_cache_retention": "24h",
+        "max_completion_tokens": 10
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "cache-options-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "prompt_cache_options": {
+          "mode": "explicit",
+          "ttl": "30m"
+        },
+        "max_completion_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "cache": [
+          {
+            "kind": "mode",
+            "location": "request",
+            "value": "explicit"
+          },
+          {
+            "kind": "options.ttl",
+            "location": "request",
+            "value": "30m"
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "cache-options-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "cache": [
+          {
+            "kind": "mode",
+            "location": "request",
+            "value": "explicit"
+          },
+          {
+            "kind": "options.ttl",
+            "location": "request",
+            "value": "30m"
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "chat-completions-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "model": "m",
+            "messages": [
+              {
+                "role": "user",
+                "content": "hello"
+              }
+            ],
+            "prompt_cache_options": {
+              "mode": "explicit",
+              "ttl": "30m"
+            },
+            "max_completion_tokens": 10
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "prompt_cache_options": {
+          "mode": "explicit",
+          "ttl": "30m"
+        },
         "max_completion_tokens": 10
       },
       "context": {

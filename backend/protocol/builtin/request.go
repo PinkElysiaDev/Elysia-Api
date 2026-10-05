@@ -23,7 +23,7 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 	}
 	request := &p.Request{SchemaVersion: p.SemanticSchemaVersion, Source: options.Identity(), Model: fields["model"], Parameters: p.Object{}, Content: []p.Node{}}
 	history := &historyState{calls: map[string][]p.Value{}}
-	known := []string{"model", "tools", "tool_choice", "cache_control", "prompt_cache_key", "prompt_cache_retention"}
+	known := []string{"model", "tools", "tool_choice", "cache_control", "prompt_cache_key", "prompt_cache_retention", "prompt_cache_options", "prewarm"}
 	parameterInput := fields
 	if adapter.name == Gemini {
 		request.Model = p.StringValue(options.Scope.Model)
@@ -86,6 +86,24 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 		if value := fields[entry.field]; !value.IsZero() {
 			request.Cache = append(request.Cache, p.CacheIntent{Kind: entry.kind, Location: "request", Value: value})
 		}
+	}
+	// The mode and lifetime settings share one wire object but stay independent
+	// intents: implicit/explicit selects behaviour, while ttl sets a minimum
+	// lifetime. Neither is the maximum-retention setting, so they must not be
+	// folded into the retention intent even when they travel together.
+	if value := fields["prompt_cache_options"]; !value.IsZero() && !value.IsNull() {
+		options, err := value.ReadObject()
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range []struct{ field, kind string }{{"mode", "mode"}, {"ttl", "options.ttl"}} {
+			if setting := options[entry.field]; !setting.IsZero() {
+				request.Cache = append(request.Cache, p.CacheIntent{Kind: entry.kind, Location: "request", Value: setting})
+			}
+		}
+	}
+	if value := fields["prewarm"]; !value.IsZero() {
+		request.Cache = append(request.Cache, p.CacheIntent{Kind: "prewarm", Location: "request", Value: value})
 	}
 	if value := fields["cachedContent"]; !value.IsZero() {
 		request.Cache = append(request.Cache, p.CacheIntent{Kind: "resource", Location: "request", Resource: &p.Resource{Kind: "cache", ID: value, Scope: options.Scope}})
@@ -285,13 +303,10 @@ func (adapter module) encodeRequest(request *p.Request, options p.EvaluationCont
 	for _, intent := range request.Cache {
 		switch intent.Kind {
 		case "breakpoint":
-			if adapter.name != Anthropic {
-				return p.Value{}, unsupported("/cache", "target has no top-level cache breakpoint")
-			}
 			if !fields["cache_control"].IsZero() {
 				return p.Value{}, unsupported("/cache", "one wire cache_control cannot express multiple policies")
 			}
-			if err := encodeCache(fields, []p.CacheIntent{intent}); err != nil {
+			if err := adapter.encodeCache(fields, []p.CacheIntent{intent}); err != nil {
 				return p.Value{}, err
 			}
 		case "key", "retention":
@@ -314,7 +329,43 @@ func (adapter module) encodeRequest(request *p.Request, options p.EvaluationCont
 				return p.Value{}, unsupported("/cache", "one wire field cannot express multiple resource intents")
 			}
 			fields["cachedContent"] = intent.Resource.ID
+		case "mode", "options.ttl":
+			if adapter.name != Chat && adapter.name != Responses {
+				return p.Value{}, unsupported("/cache", "target has no cache options mapping")
+			}
+			options := p.Object{}
+			if existing := fields["prompt_cache_options"]; !existing.IsZero() {
+				parsed, err := existing.ReadObject()
+				if err != nil {
+					return p.Value{}, err
+				}
+				options = parsed
+			}
+			key := "mode"
+			if intent.Kind == "options.ttl" {
+				key = "ttl"
+			}
+			if !options[key].IsZero() {
+				return p.Value{}, unsupported("/cache", "one wire field cannot express multiple "+intent.Kind+" intents")
+			}
+			options[key] = intent.Value
+			fields["prompt_cache_options"] = object(options)
+		case "prewarm":
+			if adapter.name != Responses {
+				return p.Value{}, unsupported("/cache", "target has no cache prewarm mapping")
+			}
+			if !fields["prewarm"].IsZero() {
+				return p.Value{}, unsupported("/cache", "one wire field cannot express multiple prewarm intents")
+			}
+			fields["prewarm"] = intent.Value
+		default:
+			return p.Value{}, unsupported("/cache", "unknown cache intent: "+intent.Kind)
 		}
+	}
+	if adapter.name == Anthropic {
+		// Non-blocking: an off-order TTL is reported through the diagnostic sink,
+		// never as a wire error (see warnBreakpointOrder).
+		adapter.warnBreakpointOrder(request, options.Diagnostics)
 	}
 	for _, resource := range request.Resources {
 		if adapter.name != Responses || resource.Kind != "session" || request.Source.Family != options.Identity().Family || request.Source.WireVersion != options.Identity().WireVersion {

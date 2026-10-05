@@ -55,6 +55,40 @@ func TestCacheTTLEditsOverrideNativeAtEveryScope(t *testing.T) {
 	}
 }
 
+// The provider processes breakpoints tools then system then messages and
+// documents that a longer TTL should appear before a shorter one. No reference
+// implementation enforces that order and the provider does not document the
+// failing status, so the encoder records the caller's layout as a non-blocking
+// warning rather than rejecting a request that would otherwise cache correctly —
+// a 400 here would suppress exactly the caching this path exists to preserve.
+func TestCacheTTLOrderingIsReportedNotRejected(t *testing.T) {
+	compiled := testCompiled(t, Anthropic)
+	options := p.EvaluationContext{Scope: p.Scope{Provider: "p", Account: "a", Model: "m"}, Diagnostics: &p.DiagnosticSink{}}
+	request := &p.Request{
+		SchemaVersion: p.SemanticSchemaVersion, Model: p.StringValue("m"),
+		Tools: []p.Tool{{Kind: p.FunctionTool, Name: p.StringValue("f"), InputSchema: testValue(t, `{"type":"object"}`),
+			Cache: []p.CacheIntent{{Kind: "breakpoint", Location: "tool", Value: testValue(t, `{"type":"ephemeral"}`), TTL: p.StringValue("1h")}}}},
+		Content: []p.Node{{Kind: p.MessageNode, Role: p.StringValue("user"), Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("hi"),
+			Cache: []p.CacheIntent{{Kind: "breakpoint", Location: "block", Value: testValue(t, `{"type":"ephemeral"}`), TTL: p.StringValue("5m")}}}}}},
+	}
+	if _, err := compiled.EncodeRequest(t.Context(), request, options); err != nil {
+		t.Fatalf("1h before 5m must be accepted: %v", err)
+	}
+	if len(options.Diagnostics.Issues()) != 0 {
+		t.Fatalf("valid ordering produced a warning: %v", options.Diagnostics.Issues())
+	}
+	// The same markers reversed: a 5m tool marker now precedes a 1h message one.
+	request.Tools[0].Cache[0].TTL = p.StringValue("5m")
+	request.Content[0].Children[0].Cache[0].TTL = p.StringValue("1h")
+	options.Diagnostics = &p.DiagnosticSink{}
+	if _, err := compiled.EncodeRequest(t.Context(), request, options); err != nil {
+		t.Fatalf("out-of-order TTL must still encode: %v", err)
+	}
+	if len(options.Diagnostics.Issues()) == 0 {
+		t.Fatal("a 1h breakpoint after a 5m one must be reported as a warning")
+	}
+}
+
 func TestCacheAbsentNullAndConflictingTTL(t *testing.T) {
 	compiled := testCompiled(t, Anthropic)
 	for _, control := range []string{"", `,"cache_control":null`, `,"cache_control":{"type":"ephemeral","x":9007199254740993,"ttl":null}`} {

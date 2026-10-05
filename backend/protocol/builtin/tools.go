@@ -140,10 +140,7 @@ func (adapter module) encodeTools(tools []p.Tool, options p.EvaluationContext) (
 				fields = p.Object{"functionDeclarations": array([]p.Value{object(fields)})}
 			}
 		}
-		if adapter.name == Gemini && len(tool.Cache) > 0 {
-			return p.Value{}, unsupported("/tools/cache", "Gemini tools cannot express cache breakpoints")
-		}
-		if err := encodeCache(fields, tool.Cache); err != nil {
+		if err := adapter.encodeCache(fields, tool.Cache); err != nil {
 			return p.Value{}, err
 		}
 		if adapter.name != Gemini {

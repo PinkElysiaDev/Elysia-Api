@@ -351,7 +351,7 @@ func capabilityApplies(capability Capability, direction Direction) bool {
 		return false // Task workflows have independent mapping fixtures.
 	case UsageCapability:
 		return !isRequest && direction != DecodeClientEvent && direction != EncodeUpstreamEvent
-	case CacheKeysCapability, CacheRetentionCapability, CacheResourcesCapability, CacheBreakpointsCapability:
+	case CacheKeysCapability, CacheRetentionCapability, CacheResourcesCapability, CacheBreakpointsCapability, CacheOptionsCapability, CachePrewarmCapability:
 		return isRequest
 	case SessionsCapability, RealtimeMediaCapability:
 		return isEventDirection(direction)

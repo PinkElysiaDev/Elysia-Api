@@ -166,7 +166,7 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 			return p.Value{}, unsupported("/resources", "unsupported resource reference")
 		}
 	}
-	if err := encodeCache(fields, node.Cache); err != nil {
+	if err := adapter.encodeCache(fields, node.Cache); err != nil {
 		return p.Value{}, err
 	}
 	if err := adapter.preserveExtensions(fields, node.Attributes); err != nil {

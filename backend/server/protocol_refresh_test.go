@@ -73,7 +73,10 @@ func TestRuntimeRefreshUpgradesOnlyKnownPresetsAndPreservesDrafts(t *testing.T) 
 	}
 	for _, id := range service.View().IDs() {
 		compiled, _ := service.Pin(id)
-		if compiled.Identity().Revision != "2.1.0" {
+		// Derive the expected revision from the shipped definition instead of a
+		// hardcoded string: built-in presets version independently, so only the
+		// ones whose content changed this cycle carry a new revision.
+		if compiled.Identity().Revision != presetDefinition(t, id).Version {
 			t.Fatalf("preset not upgraded: %v", compiled.Identity())
 		}
 		report, err := server.store.ReadProtocolReport(t.Context(), id, compiled.Hash())

@@ -204,6 +204,10 @@ func (evidence *capabilityEvidence) cache(intents []CacheIntent) {
 			evidence.observed[CacheRetentionCapability] = true
 		case "resource":
 			evidence.observed[CacheResourcesCapability] = true
+		case "mode", "options.ttl":
+			evidence.observed[CacheOptionsCapability] = true
+		case "prewarm":
+			evidence.observed[CachePrewarmCapability] = true
 		}
 	}
 }

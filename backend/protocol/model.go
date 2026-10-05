@@ -114,9 +114,13 @@ type Resource struct {
 }
 
 // CacheIntent preserves a declared cache policy without enabling caching.
-// Kind is breakpoint, key, retention or resource; Location identifies its scope.
+// Kind is breakpoint, key, retention, resource, mode, options.ttl or prewarm;
+// Location identifies its scope.
 // Breakpoint Value holds the policy object without ttl. TTL is the only owner
 // of that field: absent removes it, while an explicit null remains null.
+// mode is the provider's explicit/implicit selector and options.ttl is its
+// minimum lifetime, kept distinct from retention (a maximum) and from the
+// breakpoint TTL because the three are independent wire settings.
 type CacheIntent struct {
 	Kind     string    `json:"kind"`
 	Location string    `json:"location"`

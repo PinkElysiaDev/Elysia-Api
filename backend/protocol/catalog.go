@@ -52,7 +52,7 @@ func ExpressionCatalog() []OperationInfo {
 
 // CapabilityCatalog lists every semantic feature recognized by this engine.
 func CapabilityCatalog() []Capability {
-	return []Capability{TextCapability, FunctionToolsCapability, FreeTextToolsCapability, ServerToolsCapability, NativeExtensionsCapability, ImagesCapability, AudioCapability, VideoCapability, DocumentsCapability, ReasoningCapability, SignaturesCapability, EncryptedReasoningCapability, CacheBreakpointsCapability, CacheKeysCapability, CacheRetentionCapability, CacheResourcesCapability, SessionsCapability, RealtimeMediaCapability, AsyncJobsCapability, UsageCapability}
+	return []Capability{TextCapability, FunctionToolsCapability, FreeTextToolsCapability, ServerToolsCapability, NativeExtensionsCapability, ImagesCapability, AudioCapability, VideoCapability, DocumentsCapability, ReasoningCapability, SignaturesCapability, EncryptedReasoningCapability, CacheBreakpointsCapability, CacheKeysCapability, CacheRetentionCapability, CacheResourcesCapability, CacheOptionsCapability, CachePrewarmCapability, SessionsCapability, RealtimeMediaCapability, AsyncJobsCapability, UsageCapability}
 }
 
 // DirectionCatalog lists independently implementable adapter operations.

@@ -22,6 +22,12 @@ const (
 	CacheKeysCapability          Capability = "cache.keys"
 	CacheRetentionCapability     Capability = "cache.retention"
 	CacheResourcesCapability     Capability = "cache.resources"
+	// CacheOptionsCapability covers the declared mode and minimum-lifetime knobs
+	// that some providers expose separately from the maximum-retention setting.
+	CacheOptionsCapability Capability = "cache.options"
+	// CachePrewarmCapability covers a provider that will populate a cache ahead
+	// of the first read, which is a distinct wire operation, not a breakpoint.
+	CachePrewarmCapability Capability = "cache.prewarm"
 	SessionsCapability           Capability = "sessions"
 	RealtimeMediaCapability      Capability = "media.realtime"
 	AsyncJobsCapability          Capability = "tasks.async"
@@ -230,6 +236,20 @@ func (check *capabilityCheck) cache(intents []CacheIntent, path string) {
 			} else {
 				check.resources([]Resource{*intent.Resource}, location+"/resource")
 			}
+		case "mode":
+			check.require(CacheOptionsCapability, location)
+			var mode string
+			if err := intent.Value.Decode(&mode); err != nil || (mode != "explicit" && mode != "implicit") {
+				check.add(InvalidInput, location+"/value", CacheOptionsCapability, "cache mode must be explicit or implicit")
+			}
+		case "options.ttl":
+			check.require(CacheOptionsCapability, location)
+			var ttl string
+			if err := intent.Value.Decode(&ttl); err != nil || ttl == "" {
+				check.add(InvalidInput, location+"/value", CacheOptionsCapability, "minimum cache lifetime must be a nonempty string")
+			}
+		case "prewarm":
+			check.require(CachePrewarmCapability, location)
 		default:
 			check.add(InvalidInput, location+"/kind", "", "unknown cache intent")
 		}
