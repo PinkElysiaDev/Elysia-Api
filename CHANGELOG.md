@@ -29,10 +29,10 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
 
 ### 技术细节
 
-- **跨协议缓存创建分桶投影**（`6aa14c5`）：目标协议无对应字段时省略 `ephemeral_5m_input_tokens`/`ephemeral_1h_input_tokens` 明细，在 `/usage/details/ephemeral_5m_input_tokens`（或 `ephemeral_1h_input_tokens`）产一条 `SeverityWarning`，随成功响应一并进入该次记录的 ConversionIssues；创建总量仍写 `cache_write_tokens`（Chat/Responses），Gemini 无生成创建计数字段时省略并产 warning（路径 `/usage/cacheCreation`），读取仍走 `cachedContentTokenCount`。记录侧 `ProtocolUsage` 始终保留完整分桶，省略只作用于线制输出；组合验证按目标家族认可该投影（`cacheBucketOmission`），绑定期不把合法的跨协议往返判为「计数丢失」。
+- **跨协议缓存创建分桶投影**（`941518f`）：目标协议无对应字段时省略 `ephemeral_5m_input_tokens`/`ephemeral_1h_input_tokens` 明细，在 `/usage/details/ephemeral_5m_input_tokens`（或 `ephemeral_1h_input_tokens`）产一条 `SeverityWarning`，随成功响应一并进入该次记录的 ConversionIssues；创建总量仍写 `cache_write_tokens`（Chat/Responses），Gemini 无生成创建计数字段时省略并产 warning（路径 `/usage/cacheCreation`），读取仍走 `cachedContentTokenCount`。记录侧 `ProtocolUsage` 始终保留完整分桶，省略只作用于线制输出；组合验证按目标家族认可该投影（`cacheBucketOmission`），绑定期不把合法的跨协议往返判为「计数丢失」。
 - **诊断排序**：分桶明细按键名排序遍历，消除 map 遍历序造成的非确定性。
 - **缓存能力与意图扩展**：能力目录新增 `cache.options`（覆盖 `mode`/`options.ttl`）与 `cache.prewarm`，与既有 `cache.breakpoints`/`cache.keys`/`cache.retention`/`cache.resources` 并列，并按方向声明；缓存意图 `Kind` 新增 `mode`、`options.ttl`、`prewarm`——`prewarm` 仅 Responses 目标可编码，`mode`/`options.ttl` 仅 Chat/Responses。未知 `Kind` 显式拒绝而非丢弃。
-- **保留键与重复意图**（`8c7e42a`）：Chat/Responses 目标的 `Details` 不得占用 `input.cached_tokens`/`input.cache_write_tokens`（归规范化计数器）；同一 `Kind` 的多个缓存意图映射到同一线制字段时报错，四类一致（此前仅 `breakpoint` 分支拒绝重复，`key`/`retention`/`resource` 静默后者覆盖前者）。
+- **保留键与重复意图**（`0fb3df1`）：Chat/Responses 目标的 `Details` 不得占用 `input.cached_tokens`/`input.cache_write_tokens`（归规范化计数器）；同一 `Kind` 的多个缓存意图映射到同一线制字段时报错，四类一致（此前仅 `breakpoint` 分支拒绝重复，`key`/`retention`/`resource` 静默后者覆盖前者）。
 - **Anthropic 混合 TTL 断点顺序**：按上游处理顺序（tools → system → messages）要求较长 TTL 在前，未显式设置 `ttl` 的断点按 5m 默认参与排序；由 `warnBreakpointOrder` 以非阻断诊断报告，不因布局非最优而 4xx。
 - **用量统计**：`usage_records` 新增 `cache_creation_tokens` 与 `usage_report_mask` 列（位含义 `UsageReportInput`/`UsageReportCacheHit`/`UsageReportCreation`，区分「上游未上报」与「上报为零」），`usage_rollup_hour` 同步累积 `cc_tok`/`cc_rows`；覆盖索引显式 `DROP`+`CREATE` 重建以纳入新列，新增列经幂等 `ALTER TABLE` 补齐。`UsageLogItem`/`UsageSummary` 增加对应字段。
 - **预置协议**：`chat-completions-api`、`responses-api` 升至 v2.2.0，新增 `cache.options`/`cache.prewarm` 能力与配套样例；`anthropic-api`、`gemini-api` 维持 v2.1.0（本轮未改内容）。编译器版本随之升至 `2.0.0-dev.18`，映射变更触发既有启动重验机制。

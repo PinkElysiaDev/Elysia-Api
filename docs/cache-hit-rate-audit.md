@@ -16,8 +16,8 @@
 
 | 主张 | 复现方法 | 结论 | 处置 |
 | --- | --- | --- | --- |
-| 分桶跨协议必失败 | 探针实测显式 0、单键、非零三种形态 | 确证：非流式 502、流式 trailer | C28 省略投影并产 warning（`6aa14c5`） |
-| 诊断非确定 | 200 次同输入统计 | 确证：`ephemeral_5m` 171 / `ephemeral_1h` 29，根因 `usage.go` map 遍历序 | C28 按键名排序遍历（`6aa14c5`） |
+| 分桶跨协议必失败 | 探针实测显式 0、单键、非零三种形态 | 确证：非流式 502、流式 trailer | C28 省略投影并产 warning（`941518f`） |
+| 诊断非确定 | 200 次同输入统计 | 确证：`ephemeral_5m` 171 / `ephemeral_1h` 29，根因 `usage.go` map 遍历序 | C28 按键名排序遍历（`941518f`） |
 | 落库不受影响 | 比较「更新 usage」早于「编码」的语句顺序 | 确证：`protocolUsage` 记录完整含分桶 | 保留完整分桶，省略只作用于线制输出 |
 | `unsupported` 可被捕获 | 追踪 `module.go` 的 `IssuesError`（wrapped `ConversionError`） | 确证：网关 `errors.As` 命中 | 成功路径也 drain 诊断通道 |
 | Details 覆盖可达性 | wire 不可达；自定义定义 `after` 表达式实测可达 | 确证：`20→99` 可穿到 wire | C29 拒绝 `input.cached_tokens`/`input.cache_write_tokens` 保留键 |
