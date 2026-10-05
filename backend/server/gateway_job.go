@@ -58,7 +58,7 @@ func (s *Server) submitGatewayJob(c *gin.Context, record *usageRecord, plan *gat
 		return false
 	}
 	if err := s.startGatewayJobs(); err != nil {
-		s.failGateway(c, record, 503, err)
+		s.failGateway(c, record, http.StatusServiceUnavailable, err)
 		return true
 	}
 	c.Header("Location", "/gateway/"+job.IngressID+"/_jobs/"+job.Task.ID)

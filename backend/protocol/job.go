@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -116,13 +117,17 @@ func JobRequestDigest(request *Request) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
+// jobHashSeparator joins hash components. NUL cannot appear in the owner,
+// ingress or caller key, so ("ab","c") and ("a","bc") never collide.
+const jobHashSeparator = "\x00"
+
 // JobDeduplicationHash scopes caller idempotency keys to an owner and ingress.
 // Without a caller key the generated job ID is unique for that submission.
 func JobDeduplicationHash(owner, ingress, key, id string) string {
 	if key == "" {
 		key = id
 	}
-	sum := sha256.Sum256([]byte(owner + "\x00" + ingress + "\x00" + key))
+	sum := sha256.Sum256([]byte(strings.Join([]string{owner, ingress, key}, jobHashSeparator)))
 	return hex.EncodeToString(sum[:])
 }
 

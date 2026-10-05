@@ -53,7 +53,7 @@ func (h *healthChecker) pruneStaleFailureKeys(models []storage.Model) {
 	h.mu.Unlock()
 }
 
-func probeKey(modelID, sourceID string) string { return modelID + "\x00" + sourceID }
+func probeKey(modelID, sourceID string) string { return modelID + nulSeparator + sourceID }
 
 // start 在 store 可用时启动后台探测循环。enabled 与 interval 每轮从配置
 // 热读取：旧实现把 interval 烘死在 ticker 里、enabled 只在启动时看一眼，

@@ -177,6 +177,12 @@ func sortedKeys[K ~string, V any](object map[K]V) []K {
 	return keys
 }
 
+// equalValues compares two values by their decoded JSON content, not their raw
+// bytes. Two spellings of the same value (`1` vs `1.0`, reordered keys) must
+// compare equal, because a caller that re-encodes a semantically unchanged node
+// would otherwise look like an edit and force native reconciliation to treat an
+// unmapped field as changed. equalJSON applies exact numeric comparison for
+// that reason; a byte comparison would be both stricter and wrong.
 func equalValues(left, right Value) bool {
 	if left.IsZero() || right.IsZero() {
 		return left.IsZero() && right.IsZero()
@@ -184,11 +190,11 @@ func equalValues(left, right Value) bool {
 	if left.raw == right.raw {
 		return true
 	}
-	var a, b any
-	if left.Decode(&a) != nil || right.Decode(&b) != nil {
+	var leftDecoded, rightDecoded any
+	if left.Decode(&leftDecoded) != nil || right.Decode(&rightDecoded) != nil {
 		return false
 	}
-	return equalJSON(a, b)
+	return equalJSON(leftDecoded, rightDecoded)
 }
 
 func equalJSON(left, right any) bool {

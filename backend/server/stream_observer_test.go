@@ -11,7 +11,7 @@ import (
 // 回归：流事件须保留「最后」N 条（终态事件在流尾部），且非法 JSON 不得
 // 混入（会让整个事件数组的序列化永远失败）。物化推迟到 recordUsage 一次完成。
 func TestStreamEventsKeepTailAndMaterialize(t *testing.T) {
-	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: UsageBodyMaxBytes}}
+	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: usageBodyMaxBytes}}
 	for index := 0; index < 120; index++ {
 		record.appendStreamEvent(fmt.Sprintf(`{"i":%d}`, index))
 	}

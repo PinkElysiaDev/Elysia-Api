@@ -276,19 +276,3 @@ func (s *Store) FindAPITokenByName(ctx context.Context, name string) (APIToken, 
 	}
 	return item, true, nil
 }
-
-// FindAPIToken 按明文 token 查找。由于 token 以随机 nonce 加密存储，
-// 无法用 SQL 等值查询，改为遍历解密后比对。注意：服务端热路径已由
-// 内存缓存（持解密后的 token）承担，这里仅作回退/非热路径使用。
-func (s *Store) FindAPIToken(ctx context.Context, token string) (APIToken, bool, error) {
-	items, err := s.ListAPITokens(ctx)
-	if err != nil {
-		return APIToken{}, false, err
-	}
-	for _, item := range items {
-		if item.Enabled && subtleConstantTimeEqual(item.Token, token) {
-			return item, true, nil
-		}
-	}
-	return APIToken{}, false, nil
-}

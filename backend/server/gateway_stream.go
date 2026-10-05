@@ -49,6 +49,10 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 			updateRecordProtocolUsage(record, event.Usage)
 			if event.Response != nil {
 				updateRecordProtocolUsage(record, event.Response.Usage)
+				// Two layers, different consumers: CheckGenerationOutcome rejects a
+				// terminal response whose status/error disagree (the streaming
+				// equivalent of an HTTP failure); CheckModelEvent below applies the
+				// declared model contract and upstream capabilities to every event.
 				if err := protocol.CheckGenerationOutcome(event.Response); err != nil {
 					return err
 				}
@@ -96,21 +100,8 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 		}
 	}
 	if err != nil {
-		// Never replay a generation after any downstream frame. A trailer also
-		// exposes a late mapping failure when the target has no error event.
-		if c.Writer.Written() {
-			c.Header(gatewayStreamErrorTrailer, "protocol_stream_error")
-			errorValue, encodeErr := protocol.EncodeValue(map[string]string{"category": "upstream", "message": err.Error()})
-			if encodeErr == nil {
-				failure := protocol.Event{SchemaVersion: protocol.SemanticSchemaVersion, Type: protocol.OperationFailed, Error: errorValue}
-				if frames, encodeErr := plan.ingress.EncodeFrames(c.Request.Context(), failure, options); encodeErr == nil {
-					for _, frame := range frames {
-						if writeErr := emit(frame); writeErr != nil {
-							return fmt.Errorf("%w; downstream error frame: %v", err, writeErr)
-						}
-					}
-				}
-			}
+		if writeErr := emitFailureEvent(c, plan, options, emit, err); writeErr != nil {
+			return writeErr
 		}
 		return err
 	}
@@ -128,5 +119,32 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 		}
 	}
 	c.Writer.Flush()
+	return nil
+}
+
+// emitFailureEvent surfaces a late mapping failure after the response headers
+// are already committed. Never replay a generation once any downstream frame is
+// written; the trailer is the signal when the target has no error event of its
+// own. A failure to deliver the error frame is reported back to the caller so it
+// can be logged, but the original stream error is what the caller still returns.
+func emitFailureEvent(c *gin.Context, plan *gatewayPlan, options protocol.EvaluationContext, emit func(protocol.Value) error, cause error) error {
+	if !c.Writer.Written() {
+		return nil
+	}
+	c.Header(gatewayStreamErrorTrailer, "protocol_stream_error")
+	errorValue, encodeErr := protocol.EncodeValue(map[string]string{"category": "upstream", "message": cause.Error()})
+	if encodeErr != nil {
+		return nil
+	}
+	failure := protocol.Event{SchemaVersion: protocol.SemanticSchemaVersion, Type: protocol.OperationFailed, Error: errorValue}
+	frames, encodeErr := plan.ingress.EncodeFrames(c.Request.Context(), failure, options)
+	if encodeErr != nil {
+		return nil
+	}
+	for _, frame := range frames {
+		if writeErr := emit(frame); writeErr != nil {
+			return fmt.Errorf("%w; downstream error frame: %v", cause, writeErr)
+		}
+	}
 	return nil
 }

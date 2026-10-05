@@ -76,7 +76,7 @@ func TestSourceModelsGroupsTokensAndUsage(t *testing.T) {
 	if err := store.UpsertAPIToken(ctx, APIToken{Name: "default", Token: "tok", Enabled: true}); err != nil {
 		t.Fatalf("UpsertAPIToken() error = %v", err)
 	}
-	if token, ok, err := store.FindAPIToken(ctx, "tok"); err != nil || !ok || token.Name != "default" {
+	if token, ok, err := findAPIToken(store, ctx, "tok"); err != nil || !ok || token.Name != "default" {
 		t.Fatalf("FindAPIToken() = %#v, %v, %v", token, ok, err)
 	}
 

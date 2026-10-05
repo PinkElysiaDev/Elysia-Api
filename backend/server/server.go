@@ -800,7 +800,7 @@ func (s *Server) forgetGroupRuntimeState(groupID string) {
 }
 
 func (s *Server) getOrCreateRateLimitStateLocked(groupID string) *rateLimitState {
-	today := time.Now().Format("2006-01-02")
+	today := usageDayKey(time.Now())
 	state, ok := s.rateLimits[groupID]
 	if !ok {
 		state = &rateLimitState{Date: today}

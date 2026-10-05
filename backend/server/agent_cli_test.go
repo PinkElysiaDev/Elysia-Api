@@ -372,6 +372,12 @@ func TestCLIHelp(t *testing.T) {
 // 等价执行：CLI 命令经真实 Server 落库，结果与既有工具行为一致。
 // 等价执行：CLI 命令经真实 Server 落库，结果与既有工具行为一致。子测试
 // 共用同一 server/upstream（场景间有先后依赖：批处理先建 src1，回显打码
+// runAgentCLI 直接驱动批处理脚本，绕过 elysiaCLITool.Execute 的参数解析；
+// 两条路径共用 runCLIWithOptions，故该测试覆盖的是同一个批处理实现。
+func (s *Server) runAgentCLI(ctx context.Context, tctx agent.ToolContext, script string) agent.ToolResult {
+	return agentResultFromCLI(s.runCLIWithOptions(ctx, &agentCLIContext{inner: tctx}, script, true))
+}
+
 // 后才有第二个源），t.Run 按声明顺序执行。
 func TestCLIRunEquivalence(t *testing.T) {
 	s := newAgentIntegrationServer(t)

@@ -113,11 +113,11 @@ func TestStoreEncryptsSecretsAtRest(t *testing.T) {
 	}
 
 	// FindAPIToken 应能用明文命中。
-	found, ok, err := store.FindAPIToken(ctx, "client-tok-abc")
+	found, ok, err := findAPIToken(store, ctx, "client-tok-abc")
 	if err != nil || !ok || found.Name != "k1" {
 		t.Fatalf("FindAPIToken failed: ok=%v err=%v item=%+v", ok, err, found)
 	}
-	if _, ok, _ := store.FindAPIToken(ctx, "wrong-token"); ok {
+	if _, ok, _ := findAPIToken(store, ctx, "wrong-token"); ok {
 		t.Fatalf("FindAPIToken should not match wrong token")
 	}
 }
@@ -142,7 +142,7 @@ func TestStoreReadsLegacyPlaintextAfterEnablingKey(t *testing.T) {
 		t.Fatalf("OpenWithKey: %v", err)
 	}
 	defer enc.Close()
-	found, ok, err := enc.FindAPIToken(ctx, "legacy-tok")
+	found, ok, err := findAPIToken(enc, ctx, "legacy-tok")
 	if err != nil || !ok || found.Name != "k1" {
 		t.Fatalf("legacy plaintext read failed: ok=%v err=%v", ok, err)
 	}
