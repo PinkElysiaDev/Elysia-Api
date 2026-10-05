@@ -26,12 +26,15 @@ type usageBody struct {
 }
 
 type usageTokenUsage struct {
-	InputTokens     *int `json:"inputTokens,omitempty"`
-	OutputTokens    *int `json:"outputTokens,omitempty"`
-	TotalTokens     *int `json:"totalTokens,omitempty"`
-	CacheHitTokens  *int `json:"cacheHitTokens,omitempty"`
-	EstimatedTokens int  `json:"estimatedTokens,omitempty"`
-	Estimated       bool `json:"estimated,omitempty"`
+	InputTokens  *int `json:"inputTokens,omitempty"`
+	OutputTokens *int `json:"outputTokens,omitempty"`
+	TotalTokens  *int `json:"totalTokens,omitempty"`
+	CacheHitTokens *int `json:"cacheHitTokens,omitempty"`
+	// CacheCreationTokens 是缓存创建 token 数。指针语义保留「上游未上报」
+	// （nil）与「上报为零」（指向 0）之别，落库时据此置位 UsageReportMask。
+	CacheCreationTokens *int `json:"cacheCreationTokens,omitempty"`
+	EstimatedTokens     int  `json:"estimatedTokens,omitempty"`
+	Estimated           bool `json:"estimated,omitempty"`
 }
 
 type usageDetail struct {
@@ -283,6 +286,26 @@ func derefInt(v *int) int {
 		return 0
 	}
 	return *v
+}
+
+// reportMask 把「上游是否上报了该计数」编码为 storage.UsageReport* 位。指针
+// 语义在此兑现：nil（上游未上报）不置位，非 nil（含显式零）置位。record.Usage
+// 的 Input/CacheHit/CacheCreation 只会被 updateRecordProtocolUsage 从协议观测
+// 结果赋值（估算路径只写 EstimatedTokens，不碰这些指针），且 MergeUsage 唯一
+// 合成的 Inferred 计数是 Total（不参与掩码），因此「非 nil」等价于「上游确实
+// 上报」。命中率的可比性依赖此位：未上报不得当作零参与聚合。
+func reportMask(usage usageTokenUsage) int {
+	mask := 0
+	if usage.InputTokens != nil {
+		mask |= storage.UsageReportInput
+	}
+	if usage.CacheHitTokens != nil {
+		mask |= storage.UsageReportCacheHit
+	}
+	if usage.CacheCreationTokens != nil {
+		mask |= storage.UsageReportCreation
+	}
+	return mask
 }
 func (s *Server) recordUsage(record *usageRecord) {
 	if record == nil {

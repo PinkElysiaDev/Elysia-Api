@@ -117,12 +117,12 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 					total += usage.Output.Count
 				}
 			}
-			s.adjustTokenUsage(plan.group.ID, int(total), start.Format("2006-01-02"))
+			s.adjustTokenUsage(plan.group.ID, int(total), usageDayKey(start))
 		}
 	}()
 	for index, candidate := range plan.candidates[:maxAttempts(plan.group.MaxRetries, len(plan.candidates))] {
 		if err := c.Request.Context().Err(); err != nil {
-			s.failGateway(c, record, 499, err)
+			s.failGateway(c, record, statusClientClosedRequest, err)
 			return
 		}
 		err := s.forwardGateway(c, record, plan, candidate)
@@ -142,7 +142,7 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 		}
 		s.appendRetryEvent(record, index, candidate.model.Name, err.Error())
 		if plan.group.RetryInterval > 0 && !waitForRetryOrCancel(c, plan.group.RetryInterval) {
-			s.failGateway(c, record, 499, c.Request.Context().Err())
+			s.failGateway(c, record, statusClientClosedRequest, c.Request.Context().Err())
 			return
 		}
 	}
@@ -223,7 +223,7 @@ func (s *Server) failGateway(c *gin.Context, record *usageRecord, status int, er
 		status = failure.status
 	}
 	if c.Request.Context().Err() != nil {
-		status = 499
+		status = statusClientClosedRequest
 	}
 	record.StatusCode, record.Error, record.ErrorKind = status, err.Error(), ErrorKindUpstream
 	var conversion *protocol.ConversionError
@@ -233,14 +233,14 @@ func (s *Server) failGateway(c *gin.Context, record *usageRecord, status int, er
 			record.ErrorKind = string(conversion.Issues[0].Code)
 		}
 	}
-	if status == 499 {
+	if status == statusClientClosedRequest {
 		record.ErrorKind = ErrorKindClientCanceled
 	}
 	if c.Writer.Written() {
 		return
 	}
 	var upstream *upstreamFailure
-	if status != 499 && errors.As(err, &upstream) {
+	if status != statusClientClosedRequest && errors.As(err, &upstream) {
 		c.Data(status, "application/json", upstream.body)
 		return
 	}

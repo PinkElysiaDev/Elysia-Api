@@ -153,7 +153,7 @@ func (s *Server) serveGatewaySession(c *gin.Context, view protocol.RegistryView,
 	if err != nil {
 		record.StatusCode, record.Error = http.StatusBadGateway, err.Error()
 		if errors.Is(err, context.Canceled) {
-			record.StatusCode, record.ErrorKind = 499, ErrorKindClientCanceled
+			record.StatusCode, record.ErrorKind = statusClientClosedRequest, ErrorKindClientCanceled
 		}
 		var conversion *protocol.ConversionError
 		if errors.As(err, &conversion) {
@@ -173,7 +173,7 @@ func (s *Server) recordGatewaySession(record *usageRecord, adapter *protocol.Ses
 	}
 	for _, response := range adapter.Responses() {
 		entry := *record
-		digest := sha256.Sum256([]byte(record.RequestID + "\x00" + response.ID))
+		digest := sha256.Sum256([]byte(record.RequestID + nulSeparator + response.ID))
 		entry.RequestID = record.RequestID + "_" + hex.EncodeToString(digest[:8])
 		entry.ProtocolResponseID = response.ID
 		entry.Usage, entry.UsageDetail = usageTokenUsage{}, usageDetail{}
@@ -182,7 +182,7 @@ func (s *Server) recordGatewaySession(record *usageRecord, adapter *protocol.Ses
 		switch response.Terminal {
 		case protocol.ResponseFinished:
 		case protocol.OperationCancelled:
-			entry.StatusCode, entry.ErrorKind = 499, ErrorKindClientCanceled
+			entry.StatusCode, entry.ErrorKind = statusClientClosedRequest, ErrorKindClientCanceled
 		default:
 			entry.StatusCode, entry.Error = http.StatusBadGateway, "response ended without a successful terminal"
 		}
@@ -199,7 +199,7 @@ func (s *Server) recordGatewaySession(record *usageRecord, adapter *protocol.Ses
 					total += response.Usage.Output.Count
 				}
 			}
-			s.adjustTokenUsage(record.GroupID, int(total), record.StartedAt.Format("2006-01-02"))
+			s.adjustTokenUsage(record.GroupID, int(total), usageDayKey(record.StartedAt))
 		}
 		s.recordUsage(&entry)
 	}

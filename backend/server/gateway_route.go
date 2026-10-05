@@ -184,7 +184,7 @@ func matchGatewayCombination(ingress *protocol.Compiled, candidate gatewayCandid
 }
 
 func modelProtocolScope(model config.ModelRef) protocol.Scope {
-	account := sha256.Sum256([]byte(model.SourceID + "\x00" + model.APIKey))
+	account := sha256.Sum256([]byte(model.SourceID + nulSeparator + model.APIKey))
 	return protocol.Scope{Provider: model.SourceID, Account: hex.EncodeToString(account[:]), Model: model.Name}
 }
 

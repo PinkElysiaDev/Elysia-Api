@@ -57,11 +57,6 @@ func (s *Store) StartRollupBackfill() {
 	}()
 }
 
-// WaitRollupBackfill 等待后台回填结束（测试用）。
-func (s *Store) WaitRollupBackfill() {
-	s.rollupWG.Wait()
-}
-
 // initRollupState 初始化状态行（幂等）并把 ready 载入内存。首次运行把回填
 // 上界固定在当前时刻：此前的记录归回填，此后由写入侧增量维护，两者不重叠。
 func (s *Store) initRollupState(ctx context.Context) error {
@@ -243,9 +238,10 @@ func (s *Store) rebuildRollupRange(ctx context.Context, fromMs, toMs int64) erro
 		return err
 	}
 	// SELECT 的全部列都在 idx_usage_agg_cover 内：历史回填同样不回表读胖行。
-	if _, err := tx.ExecContext(ctx, `INSERT INTO usage_rollup_hour(hour_ms, model_name, group_name, key_name, status_code, cnt, in_tok, out_tok, total_tok, cache_tok, dur_ms_sum, fb_ms_sum, fb_cnt, min_started_ms, max_started_ms)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO usage_rollup_hour(hour_ms, model_name, group_name, key_name, status_code, cnt, in_tok, out_tok, total_tok, cache_tok, cc_tok, cc_rows, dur_ms_sum, fb_ms_sum, fb_cnt, min_started_ms, max_started_ms)
 SELECT (started_ms / 3600000) * 3600000, model_name, group_name, key_name, status_code, COUNT(*),
        COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0), COALESCE(SUM(cache_hit_tokens),0),
+       COALESCE(SUM(cache_creation_tokens),0), COALESCE(COUNT(CASE WHEN usage_report_mask & 4 THEN 1 END),0),
        COALESCE(SUM(duration_ms),0), COALESCE(SUM(CASE WHEN first_byte_ms > 0 THEN first_byte_ms END),0), COALESCE(COUNT(CASE WHEN first_byte_ms > 0 THEN 1 END),0),
        COALESCE(MIN(started_ms),0), COALESCE(MAX(started_ms),0)
 FROM usage_records WHERE started_ms > 0 AND started_ms >= ? AND started_ms < ? GROUP BY 1, model_name, group_name, key_name, status_code`, fromMs, toMs); err != nil {
@@ -359,21 +355,27 @@ func upsertUsageRollupTx(ctx context.Context, tx *sql.Tx, summary UsageLogItem) 
 	if summary.FirstByteMs > 0 {
 		fbSum, fbCnt = summary.FirstByteMs, 1
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO usage_rollup_hour(hour_ms, model_name, group_name, key_name, status_code, cnt, in_tok, out_tok, total_tok, cache_tok, dur_ms_sum, fb_ms_sum, fb_cnt, min_started_ms, max_started_ms)
-VALUES(?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	ccRows := 0
+	if summary.UsageReportMask&UsageReportCreation != 0 {
+		ccRows = 1
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO usage_rollup_hour(hour_ms, model_name, group_name, key_name, status_code, cnt, in_tok, out_tok, total_tok, cache_tok, cc_tok, cc_rows, dur_ms_sum, fb_ms_sum, fb_cnt, min_started_ms, max_started_ms)
+VALUES(?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(hour_ms, model_name, group_name, key_name, status_code) DO UPDATE SET
   cnt = cnt + 1,
   in_tok = in_tok + excluded.in_tok,
   out_tok = out_tok + excluded.out_tok,
   total_tok = total_tok + excluded.total_tok,
   cache_tok = cache_tok + excluded.cache_tok,
+  cc_tok = cc_tok + excluded.cc_tok,
+  cc_rows = cc_rows + excluded.cc_rows,
   dur_ms_sum = dur_ms_sum + excluded.dur_ms_sum,
   fb_ms_sum = fb_ms_sum + excluded.fb_ms_sum,
   fb_cnt = fb_cnt + excluded.fb_cnt,
   min_started_ms = MIN(min_started_ms, excluded.min_started_ms),
   max_started_ms = MAX(max_started_ms, excluded.max_started_ms)`,
 		hourMs, summary.ModelName, summary.GroupName, summary.KeyName, summary.StatusCode,
-		summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens,
+		summary.InputTokens, summary.OutputTokens, summary.TotalTokens, summary.CacheHitTokens, summary.CacheCreationTokens, ccRows,
 		summary.DurationMs, fbSum, fbCnt, startedMs, startedMs)
 	return err
 }

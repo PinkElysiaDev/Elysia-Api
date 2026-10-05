@@ -98,6 +98,7 @@ func updateRecordProtocolUsage(record *usageRecord, usage *protocol.Usage) {
 		return &value
 	}
 	record.Usage.InputTokens, record.Usage.OutputTokens, record.Usage.TotalTokens, record.Usage.CacheHitTokens = count(usage.Input), count(usage.Output), count(usage.Total), count(usage.CacheRead)
+	record.Usage.CacheCreationTokens = count(usage.CacheCreation)
 	record.Usage.Estimated, record.UsageSource = false, "protocol_observed"
 	record.UsageDetail.InputTokens, record.UsageDetail.OutputTokens, record.UsageDetail.TotalTokens = count(usage.Input), count(usage.Output), count(usage.Total)
 	record.UsageDetail.CachedInputTokens, record.UsageDetail.CacheCreationInputTokens = count(usage.CacheRead), count(usage.CacheCreation)

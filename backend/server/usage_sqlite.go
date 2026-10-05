@@ -61,8 +61,12 @@ func (s *Server) saveUsageRecordToStore(record *usageRecord) error {
 		OutputTokens:        derefInt(record.Usage.OutputTokens),
 		TotalTokens:         derefInt(record.Usage.TotalTokens),
 		CacheHitTokens:      derefInt(record.Usage.CacheHitTokens),
-		RequestTruncated:    record.IncomingBody.Truncated,
-		ResponseTruncated:   record.ProviderResponse.Truncated,
+		CacheCreationTokens: derefInt(record.Usage.CacheCreationTokens),
+		// 只有指针非 nil（上游确实上报了该计数，含显式零）才置位；nil 表示
+		// 上游未报告，聚合不得把它当作零参与命中率。
+		UsageReportMask:   reportMask(record.Usage),
+		RequestTruncated:  record.IncomingBody.Truncated,
+		ResponseTruncated: record.ProviderResponse.Truncated,
 	}
 	return s.store.SaveUsageRecordJSON(context.Background(), payload, summary, record.EndedAt, assets...)
 }

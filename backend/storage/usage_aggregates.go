@@ -40,6 +40,7 @@ func (s *Store) UsageDaily(ctx context.Context, q UsageQuery, utcOffsetMinutes i
 		b.InputTokens += r.inputTokens
 		b.OutputTokens += r.outputTokens
 		b.CacheHitTokens += r.cacheHitTokens
+		b.CacheCreationTokens += r.cacheCreationTokens
 		b.Tokens += r.totalTokens
 		model := r.model
 		if model == "" {
@@ -122,7 +123,7 @@ func scanUsageDailyRows(ctx context.Context, qe sqlQueryer, q UsageQuery, offset
 	// token 列只累计成功记录（口径与 UsageTotals 一致，失败调用不计成本）。
 	succOnly := "CASE WHEN " + usageSuccessPredicate + " THEN "
 	rows, err := qe.QueryContext(ctx,
-		`SELECT (started_ms + ?) / 86400000, model_name, COUNT(*), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(`+succOnly+`input_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`output_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`cache_hit_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`total_tokens ELSE 0 END),0) FROM usage_records `+where+` GROUP BY 1, 2 ORDER BY 1`, fullArgs...)
+		`SELECT (started_ms + ?) / 86400000, model_name, COUNT(*), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(`+succOnly+`input_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`output_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`cache_hit_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`cache_creation_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`total_tokens ELSE 0 END),0) FROM usage_records `+where+` GROUP BY 1, 2 ORDER BY 1`, fullArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +131,7 @@ func scanUsageDailyRows(ctx context.Context, qe sqlQueryer, q UsageQuery, offset
 	out := []usageDayRow{}
 	for rows.Next() {
 		var r usageDayRow
-		if err := rows.Scan(&r.dayKey, &r.model, &r.requests, &r.success, &r.inputTokens, &r.outputTokens, &r.cacheHitTokens, &r.totalTokens); err != nil {
+		if err := rows.Scan(&r.dayKey, &r.model, &r.requests, &r.success, &r.inputTokens, &r.outputTokens, &r.cacheHitTokens, &r.cacheCreationTokens, &r.totalTokens); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -481,27 +482,44 @@ func (s *Store) UsageTotals(ctx context.Context, q UsageQuery) (map[string]any, 
 		lastUsedAt = time.UnixMilli(acc.lastMs).UTC().Format(time.RFC3339)
 	}
 	cacheHitRate := 0.0
+	// cacheHitTokens 应始终是 inputTokens 的子集，比率落在 [0,1]。历史行在
+	// 命中列引入前未记录 input（分母偏小）或上游语义差异都可能令分子虚高；
+	// 这里不再静默钳制，而是保留原始计数并把「分母不可信」暴露给调用方：
+	// 比率置 0 并置 rateReliable=false，避免一个被抹平的 100% 掩盖真实失真。
+	rateReliable := true
 	if acc.input > 0 {
 		cacheHitRate = float64(acc.cacheHit) / float64(acc.input)
-		// 缓存命中 token 是 input 的子集，比率应落在 [0,1]；个别上游语义差异或
-		// 迁移前未记录 input 的行可能令分子虚高，钳制避免出现 >100% 的命中率。
 		if cacheHitRate > 1 {
-			cacheHitRate = 1
+			cacheHitRate, rateReliable = 0, false
 		}
+	} else if acc.cacheHit > 0 {
+		// 有命中、无输入：分母缺失，比率无意义。
+		rateReliable = false
+	}
+	// creationCoverage 是上报了创建计数的成功记录占成功记录的比例：分母是
+	// 成功请求数，分子只数「上游确实上报」（usage_report_mask 置位）的行。
+	// 覆盖率低时，cacheCreationTokens 的合计不代表全部流量，UI 据此提示。
+	creationCoverage := 0.0
+	if acc.success > 0 {
+		creationCoverage = float64(acc.ccRows) / float64(acc.success)
 	}
 	return map[string]any{
-		"requests":       acc.requests,
-		"success":        acc.success,
-		"failed":         acc.requests - acc.success,
-		"inputTokens":    acc.input,
-		"outputTokens":   acc.output,
-		"totalTokens":    acc.total,
-		"cacheHitTokens": acc.cacheHit,
-		"cacheHitRate":   cacheHitRate,
-		"avgDurationMs":  avgDuration,
-		"avgFirstByteMs": avgFirstByte,
-		"firstUsedAt":    firstUsedAt,
-		"lastUsedAt":     lastUsedAt,
+		"requests":             acc.requests,
+		"success":              acc.success,
+		"failed":               acc.requests - acc.success,
+		"inputTokens":          acc.input,
+		"outputTokens":         acc.output,
+		"totalTokens":          acc.total,
+		"cacheHitTokens":       acc.cacheHit,
+		"cacheHitRate":         cacheHitRate,
+		"cacheHitRateReliable": rateReliable,
+		// 缓存创建 token 合计（仅含上游上报的行）与上报覆盖率。
+		"cacheCreationTokens":   acc.cacheCreation,
+		"cacheCreationCoverage": creationCoverage,
+		"avgDurationMs":         avgDuration,
+		"avgFirstByteMs":        avgFirstByte,
+		"firstUsedAt":           firstUsedAt,
+		"lastUsedAt":            lastUsedAt,
 	}, nil
 }
 
@@ -544,14 +562,15 @@ func (s *Store) computeUsageTotals(ctx context.Context, q UsageQuery) (*usageTot
 // usageDayRow 是 (本地日, 模型) 粒度的聚合行，由 raw 扫描与 rollup 扫描共同产出，
 // 供上层（UsageDaily 及阶段二统一聚合入口）合并。
 type usageDayRow struct {
-	dayKey         int64
-	model          string
-	requests       int
-	success        int
-	inputTokens    int
-	outputTokens   int
-	cacheHitTokens int
-	totalTokens    int
+	dayKey              int64
+	model               string
+	requests            int
+	success             int
+	inputTokens         int
+	outputTokens        int
+	cacheHitTokens      int
+	cacheCreationTokens int
+	totalTokens         int
 }
 
 // MaxPulseSpan 是 UsagePulse 允许的最大 [from, to) 跨度。短窗接口会把时延读入

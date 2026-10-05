@@ -95,12 +95,16 @@ func usageRollupWhere(q UsageQuery) (string, []any) {
 // usageTotalsAcc 是 totals 的可加 accumulator：raw 单行聚合与 rollup 单行
 // 聚合各自扫出一份后 merge，AVG 由 sum/count 重构。
 type usageTotalsAcc struct {
-	requests     int
-	success      int
-	input        int
-	output       int
-	total        int
-	cacheHit     int
+	requests      int
+	success       int
+	input         int
+	output        int
+	total         int
+	cacheHit      int
+	cacheCreation int
+	// ccRows 是「上报了创建计数」的成功记录数（raw 侧按 usage_report_mask 置位
+	// 计，rollup 侧累加 cc_rows），用于给合计附带覆盖率。
+	ccRows       int
 	durationSum  int64
 	firstByteSum int64
 	firstByteCnt int
@@ -115,6 +119,8 @@ func (a *usageTotalsAcc) merge(other usageTotalsAcc) {
 	a.output += other.output
 	a.total += other.total
 	a.cacheHit += other.cacheHit
+	a.cacheCreation += other.cacheCreation
+	a.ccRows += other.ccRows
 	a.durationSum += other.durationSum
 	a.firstByteSum += other.firstByteSum
 	a.firstByteCnt += other.firstByteCnt
@@ -133,9 +139,9 @@ func usageTotalsRawInto(ctx context.Context, qe sqlQueryer, q UsageQuery, acc *u
 	where, args := usageWhere(q)
 	succOnly := "CASE WHEN " + usageSuccessPredicate + " THEN "
 	succFb := "CASE WHEN " + usageSuccessPredicate + " AND first_byte_ms > 0 THEN "
-	row := qe.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(`+succOnly+`input_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`output_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`total_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`cache_hit_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`duration_ms ELSE 0 END),0), COALESCE(SUM(`+succFb+`first_byte_ms END),0), COALESCE(COUNT(`+succFb+`1 END),0), COALESCE(MIN(started_ms),0), COALESCE(MAX(started_ms),0) FROM usage_records `+where, args...)
+	row := qe.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN 1 ELSE 0 END),0), COALESCE(SUM(`+succOnly+`input_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`output_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`total_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`cache_hit_tokens ELSE 0 END),0), COALESCE(SUM(`+succOnly+`cache_creation_tokens ELSE 0 END),0), COALESCE(COUNT(CASE WHEN `+usageSuccessPredicate+` AND usage_report_mask & 4 THEN 1 END),0), COALESCE(SUM(`+succOnly+`duration_ms ELSE 0 END),0), COALESCE(SUM(`+succFb+`first_byte_ms END),0), COALESCE(COUNT(`+succFb+`1 END),0), COALESCE(MIN(started_ms),0), COALESCE(MAX(started_ms),0) FROM usage_records `+where, args...)
 	var part usageTotalsAcc
-	if err := row.Scan(&part.requests, &part.success, &part.input, &part.output, &part.total, &part.cacheHit, &part.durationSum, &part.firstByteSum, &part.firstByteCnt, &part.firstMs, &part.lastMs); err != nil {
+	if err := row.Scan(&part.requests, &part.success, &part.input, &part.output, &part.total, &part.cacheHit, &part.cacheCreation, &part.ccRows, &part.durationSum, &part.firstByteSum, &part.firstByteCnt, &part.firstMs, &part.lastMs); err != nil {
 		return err
 	}
 	acc.merge(part)
@@ -150,9 +156,9 @@ func usageTotalsRollupInto(ctx context.Context, qe sqlQueryer, q UsageQuery, fro
 	args := append([]any{fromHour, toHour}, filterArgs...)
 	succOnly := "CASE WHEN " + usageSuccessPredicate + " THEN "
 	succFb := "CASE WHEN " + usageSuccessPredicate + " AND fb_cnt > 0 THEN "
-	row := qe.QueryRowContext(ctx, `SELECT COALESCE(SUM(cnt),0), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN cnt ELSE 0 END),0), COALESCE(SUM(`+succOnly+`in_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`out_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`total_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`cache_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`dur_ms_sum ELSE 0 END),0), COALESCE(SUM(`+succFb+`fb_ms_sum END),0), COALESCE(SUM(`+succFb+`fb_cnt ELSE 0 END),0), COALESCE(MIN(min_started_ms),0), COALESCE(MAX(max_started_ms),0) FROM usage_rollup_hour WHERE hour_ms >= ? AND hour_ms < ?`+filters, args...)
+	row := qe.QueryRowContext(ctx, `SELECT COALESCE(SUM(cnt),0), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN cnt ELSE 0 END),0), COALESCE(SUM(`+succOnly+`in_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`out_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`total_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`cache_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`cc_tok ELSE 0 END),0), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN cc_rows ELSE 0 END),0), COALESCE(SUM(`+succOnly+`dur_ms_sum ELSE 0 END),0), COALESCE(SUM(`+succFb+`fb_ms_sum END),0), COALESCE(SUM(`+succFb+`fb_cnt ELSE 0 END),0), COALESCE(MIN(min_started_ms),0), COALESCE(MAX(max_started_ms),0) FROM usage_rollup_hour WHERE hour_ms >= ? AND hour_ms < ?`+filters, args...)
 	var part usageTotalsAcc
-	if err := row.Scan(&part.requests, &part.success, &part.input, &part.output, &part.total, &part.cacheHit, &part.durationSum, &part.firstByteSum, &part.firstByteCnt, &part.firstMs, &part.lastMs); err != nil {
+	if err := row.Scan(&part.requests, &part.success, &part.input, &part.output, &part.total, &part.cacheHit, &part.cacheCreation, &part.ccRows, &part.durationSum, &part.firstByteSum, &part.firstByteCnt, &part.firstMs, &part.lastMs); err != nil {
 		return err
 	}
 	acc.merge(part)
@@ -171,7 +177,7 @@ func scanUsageDailyRollupRows(ctx context.Context, qe sqlQueryer, q UsageQuery, 
 	// token 列只累计成功记录（口径与 UsageTotals 一致）。
 	succOnly := "CASE WHEN " + usageSuccessPredicate + " THEN "
 	rows, err := qe.QueryContext(ctx,
-		`SELECT (hour_ms + ?) / 86400000, model_name, COALESCE(SUM(cnt),0), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN cnt ELSE 0 END),0), COALESCE(SUM(`+succOnly+`in_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`out_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`cache_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`total_tok ELSE 0 END),0) FROM usage_rollup_hour WHERE hour_ms >= ? AND hour_ms < ?`+filters+` GROUP BY 1, 2 ORDER BY 1`, args...)
+		`SELECT (hour_ms + ?) / 86400000, model_name, COALESCE(SUM(cnt),0), COALESCE(SUM(CASE WHEN `+usageSuccessPredicate+` THEN cnt ELSE 0 END),0), COALESCE(SUM(`+succOnly+`in_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`out_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`cache_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`cc_tok ELSE 0 END),0), COALESCE(SUM(`+succOnly+`total_tok ELSE 0 END),0) FROM usage_rollup_hour WHERE hour_ms >= ? AND hour_ms < ?`+filters+` GROUP BY 1, 2 ORDER BY 1`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +185,7 @@ func scanUsageDailyRollupRows(ctx context.Context, qe sqlQueryer, q UsageQuery, 
 	out := []usageDayRow{}
 	for rows.Next() {
 		var r usageDayRow
-		if err := rows.Scan(&r.dayKey, &r.model, &r.requests, &r.success, &r.inputTokens, &r.outputTokens, &r.cacheHitTokens, &r.totalTokens); err != nil {
+		if err := rows.Scan(&r.dayKey, &r.model, &r.requests, &r.success, &r.inputTokens, &r.outputTokens, &r.cacheHitTokens, &r.cacheCreationTokens, &r.totalTokens); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
