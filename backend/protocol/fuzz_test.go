@@ -114,6 +114,10 @@ func FuzzCompileDefinition(f *testing.F) {
 		f.Add(seed)
 	}
 	f.Add([]byte(`{"schemaVersion":2,"directions":{"decode_request":{"transform":{"op":"ref","ref":"loop"}}},"expressions":{"loop":{"op":"ref","ref":"loop"}}}`))
+	// A definition that declares a usage mapping and a cache intent exercises the
+	// compile path where a wrong key or kind is a definition error, not a runtime
+	// surprise: the reserved-name and duplicate-intent rules live here.
+	f.Add([]byte(`{"schemaVersion":2,"id":"usage-seed","name":"usage-seed","version":"1","family":"usage-seed","wireVersion":"1","capabilities":{"text":true,"usage":true,"cache.breakpoints":true},"directions":{"encode_request":{"transform":{"op":"object","fields":{"prompt_cache_key":{"op":"read","from":"input","path":"/cache/0/value"}}},"capabilities":{"cache.breakpoints":true}}}}`))
 	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
 	if err != nil {
 		f.Fatal(err)
@@ -142,7 +146,10 @@ func FuzzCompileDefinition(f *testing.F) {
 }
 
 func FuzzJSONMappingPresence(f *testing.F) {
-	for _, seed := range []string{`{}`, `{"value":null}`, `{"value":false}`, `{"value":0}`, `{"value":900719925474099312345}`, `{"value":-0}`, `{"value":1e99}`, `{"value":[{},[],null,false,0]}`} {
+	// Seeds cover JSON spelling/presence edges plus usage alias pairs: a value
+	// body carrying both legacy top-level aliases must round-trip unchanged, and
+	// a zero alias must stay present rather than being dropped.
+	for _, seed := range []string{`{}`, `{"value":null}`, `{"value":false}`, `{"value":0}`, `{"value":900719925474099312345}`, `{"value":-0}`, `{"value":1e99}`, `{"value":[{},[],null,false,0]}`, `{"value":{"cache_read_input_tokens":0,"cache_creation_input_tokens":7}}`, `{"value":{"input_tokens":100,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}`} {
 		f.Add([]byte(seed))
 	}
 	expression := objectExpression(map[string]Expression{"value": readExpression("input", "/value")})

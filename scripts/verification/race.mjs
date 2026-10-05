@@ -1,7 +1,7 @@
 import { randomInt } from 'node:crypto'
 import { prepareRaceEnvironment } from './toolchain.mjs'
 
-const concurrencyPattern = 'TestProtocolDraftConcurrent|TestProtocolConcurrentReaders|TestProtocolFailedActivation|TestGenerationJob|TestRunSession|TestWebSocketScheduler|TestWebSocketForceClose|TestEnqueueConcurrent|TestA2ACancel|TestAgentCallerRetryAndCancel|TestMCPCLICancel|TestLongReplay'
+const concurrencyPattern = 'TestProtocolDraftConcurrent|TestProtocolConcurrentReaders|TestProtocolFailedActivation|TestGenerationJob|TestRunSession|TestRunTurn_ConcurrencyGuard|TestWebSocketScheduler|TestWebSocketForceClose|TestEnqueueConcurrent|TestA2ACancel|TestAgentCallerRetryAndCancel|TestMCPCLICancel|TestLongReplay'
 
 /** Executes the full suite and reproducible concurrency stress, including Agent. */
 export async function verifyRace(run, root) {
