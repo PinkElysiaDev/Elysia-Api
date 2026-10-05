@@ -1,5 +1,7 @@
 // 类型合同：与 backend storage 类型 + docs/webui-data-model.md 严格对齐。
 
+import type { ConversionIssue } from './protocol-v2'
+
 export interface ApiEnvelope<T> {
   ok: true
   data: T
@@ -282,6 +284,12 @@ export interface UsageStats {
   totalTokens: number
   cacheHitTokens: number
   cacheHitRate: number
+  /** 命中率是否可信：false 表示分母（input）缺失或分子>分母，展示应降级为「—」。 */
+  cacheHitRateReliable?: boolean
+  /** 缓存创建 token 合计（仅含上游上报的行）。 */
+  cacheCreationTokens?: number
+  /** 上报了创建计数的成功记录占比（0–1）；低覆盖率时该合计不代表全部流量。 */
+  cacheCreationCoverage?: number
   avgDurationMs: number
   avgFirstByteMs: number
 }
@@ -311,6 +319,10 @@ export interface UsageLogItem {
   totalTokens: number
   /** 命中 prompt 缓存的输入 token 数（缓存命中展示用；0/缺省表示无命中）。 */
   cacheHitTokens?: number
+  /** 缓存创建 token 数；仅当 usageReportMask 的 UsageReportCreation 位置位时才代表上游上报值。 */
+  cacheCreationTokens?: number
+  /** usage_report_mask：区分「上游未上报」与「上报为零」；历史行缺省视为未上报。 */
+  usageReportMask?: number
   incomingBodyTruncated: boolean
   providerResponseTruncated: boolean
 }
@@ -382,6 +394,8 @@ export interface UsageTokenUsage {
   outputTokens?: number
   totalTokens?: number
   cacheHitTokens?: number
+  /** 缓存创建 token 数；详情载荷为指针语义，缺省（omitempty）即上游未上报，显式 0 为上报为零。 */
+  cacheCreationTokens?: number
   estimatedTokens?: number
   estimated?: boolean
 }
@@ -426,6 +440,8 @@ export interface UsageLogDetail {
   usage: UsageTokenUsage
   usageDetail?: Record<string, unknown>
   builtinToolUsage?: Record<string, number>
+  /** 转发诊断：缓存创建 TTL 分桶被目标协议省略但总量保留时在此留 warning（见后端 conversionIssues）。 */
+  conversionIssues?: ConversionIssue[]
   retryCount: number
   retryEvents?: UsageRetryEvent[]
   incomingBody: UsageBody

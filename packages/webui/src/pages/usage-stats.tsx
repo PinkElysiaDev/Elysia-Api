@@ -36,6 +36,7 @@ import { ModelBreakdownTooltip } from '@/components/model-breakdown-tooltip'
 import { useUsageStats, useUsageTrend, useUsageByModel, useMinuteTick } from '@/lib/hooks'
 import { useUsageFilters } from '@/lib/usage-filters'
 import { CHART_TICK, compactNumber, formatDuration, formatHitRate, formatNumber, percent } from '@/lib/utils'
+import type { UsageStats } from '@/lib/types'
 import { CHART_TOOLTIP_Z } from '@/lib/z-index'
 
 const TOP_MODELS_BAR = 8
@@ -103,6 +104,16 @@ export function UsageStatsPage() {
     ]
   }, [stats])
 
+  // 命中率在分母缺失或分子虚高时不可信（后端置 cacheHitRateReliable=false），
+  // 此时显示 — 而非被抹平的数字；创建计数仅在上报覆盖率为正时附带，避免把
+  // 「未上报」当成 0 展示。
+  const cacheHitDelta = (s: UsageStats): string => {
+    const rate = s.cacheHitRateReliable === false ? '—' : formatHitRate(s.cacheHitRate)
+    const base = `命中率 ${rate}`
+    if (!s.cacheCreationCoverage || !s.cacheCreationTokens) return base
+    return `${base} · 创建 ${compactNumber(s.cacheCreationTokens)}`
+  }
+
   return (
     <>
       <RoleWatermark className="-right-8 top-0 opacity-[0.05] dark:opacity-[0.08]" />
@@ -156,7 +167,7 @@ export function UsageStatsPage() {
                 <KpiCard
                   label="Prompt 缓存命中"
                   value={stats ? compactNumber(stats.cacheHitTokens) : '—'}
-                  delta={stats ? `命中率 ${formatHitRate(stats.cacheHitRate)}` : undefined}
+                  delta={stats ? cacheHitDelta(stats) : undefined}
                 />
                 <KpiCard
                   label="平均请求耗时"

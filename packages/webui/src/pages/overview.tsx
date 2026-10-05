@@ -409,11 +409,25 @@ export function OverviewPage() {
             {/* 支撑指标 3：缓存命中率 */}
             <KpiCard
               label="缓存命中率"
-              value={today ? formatHitRate(today.cacheHitRate).replace('%', '') : '—'}
-              unit={today ? '%' : undefined}
+              value={
+                today
+                  ? today.cacheHitRateReliable === false
+                    ? '—'
+                    : formatHitRate(today.cacheHitRate).replace('%', '')
+                  : '—'
+              }
+              unit={today && today.cacheHitRateReliable !== false ? '%' : undefined}
               icon={<Database className="h-4 w-4 text-jade" />}
-              delta={today ? `命中 ${compactNumber(today.cacheHitTokens)} tokens` : todayError ? '加载失败' : undefined}
-              deltaTone={todayError ? 'down' : 'neutral'}
+              delta={
+                today
+                  ? today.cacheHitRateReliable === false
+                    ? '命中率不可用（输入计数缺失）'
+                    : `命中 ${compactNumber(today.cacheHitTokens)} tokens`
+                  : todayError
+                    ? '加载失败'
+                    : undefined
+              }
+              deltaTone={todayError || today?.cacheHitRateReliable === false ? 'down' : 'neutral'}
             />
 
             {/* 支撑指标 4：内存占用 */}
