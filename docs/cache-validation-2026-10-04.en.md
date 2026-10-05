@@ -25,6 +25,14 @@ Protocol fixes advanced verification through dev.12, dev.13 and dev.14, using ex
 
 Two inspector corrections are separate from production defects: raw usage components are merged before normalization, and Gemini response inspection now derives signature scope from the persisted model account. The original Gemini HTTP response and SQLite counters were already correct. A synthetic signed fixture and offline replay of the actual response passed after the inspector fix; subsequent real JSON/SSE gateway forwarding passed too.
 
+## Cache-intent and usage-detail validation (C28–C29)
+
+The compiler enforces the following before encoding; a violation fails with a specific path instead of passing silently. Together with the [usage-contract](cache-usage-contracts.en.md) bucket omission they are the C28–C29 behavior change, and the compiler version moves to `2.0.0-dev.18`.
+
+- **Reserved keys**: a Chat/Responses target's `Details` may not occupy `input.cached_tokens` or `input.cache_write_tokens` — those names belong to the canonical counters (read and creation). A mapping that wrote the detail form would overwrite the count derived from the counters and make the wire disagree with the semantic usage; it is now rejected with its path.
+- **Duplicate intents**: several cache intents of the same `Kind` that map to one wire field are rejected. Previously only the `breakpoint` branch refused a duplicate; `key`/`retention`/`resource` let a later intent silently replace an earlier one, so the request that reached the provider was not the request the client described. All four kinds now report the conflict.
+- **Anthropic breakpoint TTL ordering (non-blocking)**: the provider processes markers tools → system → messages and documents that a longer TTL should appear before a shorter one; a breakpoint with no explicit `ttl` counts as the **5m default** for this ordering. Unlike the two rules above, violating the order does **not** fail: `warnBreakpointOrder` emits a `SeverityWarning` and the request still encodes. The provider does not document a failing status for the order and no reference implementation validates it, so rejecting a non-optimal layout with a 4xx would refuse traffic that caches correctly — record the warning, forward anyway, and let the caller optimize.
+
 ## Live results
 
 | Target | Site availability and nonzero observations | Accounting | Remaining limits |

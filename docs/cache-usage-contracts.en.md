@@ -11,7 +11,21 @@ A cache hit, an observable counter, and faithful forwarding are separate claims.
 | Anthropic | `usage.cache_read_input_tokens` | `usage.cache_creation_input_tokens` | Raw `input_tokens` + read + creation |
 | Gemini | `usageMetadata.cachedContentTokenCount` | No equivalent generation counter | `usageMetadata.promptTokenCount` |
 
-Chat/Responses retain legacy top-level `cache_creation_input_tokens` input support. Conflicting simultaneous creation counters fail explicitly, as do negative, noninteger, null or overflowing values. Absence and explicit zero remain distinct. Newly generated usage uses the nested field; unchanged compatible native responses retain their original form. Semantic edits/deletions reconcile recognized aliases so stale Raw cannot restore a removed count. A Gemini resource's creation token count measures resource size, not generation cache creation. Unrepresentable creation usage is diagnosed rather than discarded.
+Chat/Responses retain legacy top-level `cache_creation_input_tokens` input support. Conflicting simultaneous creation counters fail explicitly, as do negative, noninteger, null or overflowing values. Absence and explicit zero remain distinct. Newly generated usage uses the nested field; unchanged compatible native responses retain their original form. Semantic edits/deletions reconcile recognized aliases so stale Raw cannot restore a removed count. A Gemini resource's creation token count measures resource size, not generation cache creation. When the target has no field for a creation count or detail, the converter diagnoses and omits that detail rather than hiding it or deleting counts to force the conversion through — see the next section.
+
+## Cross-protocol cache-creation bucket projection
+
+Every Anthropic response that wrote cache carries `cache_creation.ephemeral_5m_input_tokens` and `ephemeral_1h_input_tokens`, a provider TTL breakdown that is bookkeeping rather than a requested capability. No non-Anthropic target has a field for it.
+
+- **Omit, do not fail**: when a target cannot express the breakdown, the bucket details are omitted while the **creation total still reaches `cache_write_tokens`** (Chat/Responses). A response is no longer rejected on bucket-key presence; Anthropic→Chat/Responses previously returned 502 (non-streaming) or 200 cut short by the `X-Elysia-Stream-Error` trailer (streaming).
+- **Visible omission**: the omission raises a `SeverityWarning` at `/usage/details/ephemeral_5m_input_tokens` (or `ephemeral_1h_input_tokens`) that is drained into the record's ConversionIssues beside a successful response, so it is an explicit omission rather than a silent drop.
+- **Deterministic**: details are traversed in sorted key order, so the same input reports the same path every run; previously the rejected key depended on map iteration order and could differ between runs.
+- **Same-protocol preservation**: an unmodified Anthropic→Anthropic roundtrip retains both buckets fully, with tools, system and message positions unmodified.
+- **Gemini creation total**: Gemini reports cache reads only and has no creation counter; the creation total is likewise omitted with a warning at `/usage/cacheCreation`, while reads cross normally as `cachedContentTokenCount`.
+
+Combination verification approves this projection per target family (`cacheBucketOmission`), so a legal cross-protocol roundtrip is not read as a lost counter. The record's `ProtocolUsage` always retains the complete buckets; the omission applies only to the wire output.
+
+**Open verification gap**: a nonzero cross-protocol cache read has not yet been obtained on the live site; local tests cannot substitute for it — see the [live report](cache-validation-2026-10-04.en.md).
 
 ## Declaring a provider alias
 

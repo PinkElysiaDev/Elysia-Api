@@ -65,6 +65,33 @@ explicit rule yielding an empty array. An HTTP status alone is never a
 semantic terminal event. `EventReplay` and `SessionReplay` handle association and lifecycle;
 the immutable compiler stores no per-request mutable state.
 
+## Cache intents and capabilities
+
+A request's `cache` list holds cache intents; `Kind` selects the policy and is one of:
+
+- `breakpoint` — an Anthropic-style `cache_control` marker on a request, block or
+  tool node. Only an Anthropic target emits it.
+- `key` — a cache key (`prompt_cache_key`), Chat/Responses.
+- `retention` — the maximum-retention setting (`prompt_cache_retention`),
+  Chat/Responses. It is decoded for compatibility even though the provider marks
+  the field deprecated.
+- `resource` — an explicit cache-resource reference (`cachedContent`), Gemini.
+- `mode` — the `explicit`/`implicit` selector carried inside the
+  `prompt_cache_options` object, Chat/Responses.
+- `options.ttl` — the minimum-lifetime string carried in the same
+  `prompt_cache_options` object, Chat/Responses. It is independent of `retention`
+  (a maximum lifetime) and of a breakpoint TTL; keep the three settings separate
+  even when they travel together.
+- `prewarm` — a request to populate the cache before the first read, Responses
+  only.
+
+An unknown `Kind` is rejected explicitly rather than dropped. The capability
+catalog adds `cache.options` (covering `mode` and `options.ttl`) and
+`cache.prewarm` beside the existing `cache.breakpoints`, `cache.keys`,
+`cache.retention` and `cache.resources`. Cache capabilities are declared
+**per-direction**: an encoder checks the declaration of the direction it is
+encoding, not only the definition's top-level `capabilities`.
+
 ## Native preservation
 
 `native.preserve: true` requires the corresponding decoder for each encoder.

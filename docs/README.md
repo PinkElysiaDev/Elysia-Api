@@ -17,6 +17,7 @@ Elysia API 的部署、协议、接口和开发参考。首次使用从[快速�
 | [Protocol v2](protocol-guide.md) | 统一引擎、编辑器、Agent、支持矩阵与迁移 |
 | [自定义协议](protocol-definition-reference.md) | JSON 定义、字段映射、条件、流式帧和模型发现 |
 | [缓存语义审计](cache-fidelity-audit-2026-10-01.md) | 四协议历史对照、通用修复、验证证据与自定义协议迁移 |
+| [缓存命中率审计](cache-hit-rate-audit.md) | 请求侧能力缺口、跨协议分桶投影、五轮审验对照与业界合成对比 |
 
 ## 管理接口
 
