@@ -148,7 +148,7 @@ func (adapter module) decodeResponseItem(value p.Value, path string, direction p
 func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, options p.EvaluationContext) (p.Value, p.Value, error) {
 	var messages, system []p.Value
 	hasConversation := false
-	for _, node := range nodes {
+	for index, node := range nodes {
 		if node.Kind != p.MessageNode {
 			if adapter.name == Responses {
 				item, err := adapter.encodeBlock(node, direction, options)
@@ -169,8 +169,16 @@ func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, opti
 			return p.Value{}, p.Value{}, err
 		}
 		if (role == "system" || role == "developer") && (adapter.name == Anthropic || adapter.name == Gemini) {
-			if !node.ID.IsZero() || !node.Status.IsZero() || len(node.Attributes) > 0 || len(node.Cache) > 0 || len(node.Resources) > 0 {
-				return p.Value{}, p.Value{}, unsupported("/content/system", "target system container cannot carry message metadata; use explicit block mappings")
+			for _, field := range []struct {
+				name    string
+				present bool
+			}{
+				{"id", !node.ID.IsZero()}, {"status", !node.Status.IsZero()},
+				{"attributes", len(node.Attributes) > 0}, {"cache", len(node.Cache) > 0}, {"resources", len(node.Resources) > 0},
+			} {
+				if field.present {
+					return p.Value{}, p.Value{}, unsupported(fmt.Sprintf("/content/%d/%s", index, field.name), "target system container cannot carry message metadata: "+field.name+"; use explicit block mappings")
+				}
 			}
 			if hasConversation {
 				return p.Value{}, p.Value{}, unsupported("/content", "target cannot represent a system message after conversation content")

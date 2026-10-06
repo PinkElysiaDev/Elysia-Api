@@ -259,7 +259,16 @@ func (compiled *Compiled) runtimeError(direction Direction, err error) error {
 	}
 	var conversion *ConversionError
 	if errors.As(err, &conversion) {
-		return err
+		issues := append([]ConversionIssue(nil), conversion.Issues...)
+		for index := range issues {
+			if issues[index].Protocol.DefinitionID == "" {
+				issues[index].Protocol = compiled.identity
+			}
+			if issues[index].Direction == "" {
+				issues[index].Direction = direction
+			}
+		}
+		return &ConversionError{cause: err, Issues: issues}
 	}
 	code := InvalidInput
 	if direction == DecodeResponse || direction == DecodeEvent {

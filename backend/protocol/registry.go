@@ -202,6 +202,51 @@ func (service *Service) Reload(ctx context.Context) error {
 	return nil
 }
 
+// RemoveActive serializes archival with activation/reload. The immutable view
+// already held by an in-flight request remains usable after publication.
+func (service *Service) RemoveActive(id string, commit func() error) error {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	if err := commit(); err != nil {
+		return err
+	}
+	entries := make(map[string]*Compiled)
+	for key, compiled := range service.snapshot.Load().entries {
+		if key != id {
+			entries[key] = compiled
+		}
+	}
+	service.snapshot.Store(&registrySnapshot{entries: entries})
+	return nil
+}
+
+// DeleteRetained evicts the historical compiled cache only after durable deletion.
+func (service *Service) DeleteRetained(id, hash string, commit func() error) error {
+	if IsPresetProtocolID(id) {
+		return draftInputError("/id", fmt.Errorf("preset protocol %q is read-only; its history refreshes with the engine", id))
+	}
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	if compiled, ok := service.Pin(id); ok && compiled.Hash() == hash {
+		return ErrRevisionConflict
+	}
+	if err := commit(); err != nil {
+		return err
+	}
+	key := id + "/" + hash
+	if compiled := service.retained[key]; compiled != nil {
+		service.retainedBytes -= len(compiled.definition.raw)
+		delete(service.retained, key)
+		for index, entry := range service.retainedOrder {
+			if entry == key {
+				service.retainedOrder = append(service.retainedOrder[:index], service.retainedOrder[index+1:]...)
+				break
+			}
+		}
+	}
+	return nil
+}
+
 func (service *Service) loadVerifiedRevision(ctx context.Context, id, hash string) (*Compiled, error) {
 	revision, err := service.repository.ReadProtocolRevision(ctx, id, hash)
 	if err != nil {
