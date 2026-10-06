@@ -60,3 +60,4 @@ yarn.lock
 packages/webui/test-results/
 packages/webui/playwright-report/
 scripts/login-trace/__pycache__/
+packages/webui/public/assets/login-trace/

@@ -35,8 +35,9 @@ type sourceRefreshState struct {
 // 写系统日志并失效路由缓存。内存态在 mutex 保护下访问；信号量与映射懒初始化，
 // 兼容直接构造 &Server{} 的测试。
 func (s *Server) launchSourceRefresh(source storage.ModelSource) bool {
+	s.initLifecycle()
 	s.sourceRefreshMu.Lock()
-	if s.sourceRefreshing[source.ID] {
+	if s.lifecycleCtx.Err() != nil || s.sourceRefreshing[source.ID] {
 		s.sourceRefreshMu.Unlock()
 		return false
 	}
@@ -50,6 +51,7 @@ func (s *Server) launchSourceRefresh(source storage.ModelSource) bool {
 		s.refreshSem = make(chan struct{}, sourceRefreshConcurrency)
 	}
 	s.sourceRefreshing[source.ID] = true
+	s.sourceRefreshWG.Add(1)
 	sem := s.refreshSem
 	s.sourceRefreshMu.Unlock()
 
@@ -80,6 +82,7 @@ func (s *Server) startSourceRefreshByID(ctx context.Context, sourceID string) (b
 
 // runSourceRefresh 执行单个源的后台拉取任务体。
 func (s *Server) runSourceRefresh(source storage.ModelSource, sem chan struct{}) {
+	defer s.sourceRefreshWG.Done()
 	defer func() {
 		s.sourceRefreshMu.Lock()
 		delete(s.sourceRefreshing, source.ID)
@@ -87,10 +90,14 @@ func (s *Server) runSourceRefresh(source storage.ModelSource, sem chan struct{})
 	}()
 
 	// 源间并发上限：拿不到槽位就排队等待（任务仍处于 refreshing 状态）。
-	sem <- struct{}{}
+	select {
+	case sem <- struct{}{}:
+	case <-s.lifecycleCtx.Done():
+		return
+	}
 	defer func() { <-sem }()
 
-	ctx, cancel := context.WithTimeout(context.Background(), sourceRefreshBudget)
+	ctx, cancel := context.WithTimeout(s.lifecycleCtx, sourceRefreshBudget)
 	defer cancel()
 
 	summary, err := s.refreshSourceByValue(ctx, source)
@@ -107,7 +114,7 @@ func (s *Server) runSourceRefresh(source storage.ModelSource, sem chan struct{})
 		// 系统日志用独立 ctx：任务最典型的失败就是 10 分钟预算耗尽，那时
 		// ctx 已死，再用它写日志必然 DeadlineExceeded——最有价值的失败
 		// 恰好永远进不了系统日志。本地写库，短超时足矣。
-		logCtx, logCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		logCtx, logCancel := context.WithTimeout(s.lifecycleCtx, 5*time.Second)
 		_ = s.store.InsertSystemLog(logCtx, "warn", "model source refresh failed", map[string]any{
 			"sourceId": source.ID, "sourceName": source.Name, "error": err.Error(),
 		})

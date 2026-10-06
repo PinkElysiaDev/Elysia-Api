@@ -4,10 +4,13 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync, spawnSync } from 'node:child_process'
+import { runNativeUpdateFlow } from './macos-app/NativeUpdateFlowTest.mjs'
+import { runNativeTrayFlow } from './macos-app/NativeTrayFlowTest.mjs'
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const source = join(repo, 'scripts', 'macos-app')
+const sourceRoot = join(repo, 'scripts', 'macos-app')
 const temp = mkdtempSync(join(tmpdir(), 'elysia-native-tests-'))
+const source = join(temp, 'source')
 const app = join(temp, 'ElysiaNativeTests.app')
 const macos = join(app, 'Contents', 'MacOS')
 const data = join(temp, 'data')
@@ -18,6 +21,7 @@ function run(cmd, args, options = {}) {
   if (result.status !== 0) throw result.error ?? new Error(`${cmd}: ${result.status ?? result.signal}`)
 }
 try {
+  cpSync(sourceRoot, source, { recursive: true })
   mkdirSync(macos, { recursive: true })
   mkdirSync(data)
   if (!previewOnly) {
@@ -37,9 +41,11 @@ try {
   cpSync(previewOnly ? join(repo, 'dist', 'standalone', 'ElysiaApi.app', 'Contents', 'MacOS', 'elysia-api') : join(source, 'BackendFixture.py'), join(macos, 'elysia-api'))
   chmodSync(join(macos, 'elysia-api'), 0o755)
   run('xcrun', ['--sdk', 'macosx', 'swiftc', '-D', 'NATIVE_TESTS', '-target', `${process.arch === 'arm64' ? 'arm64' : 'x86_64'}-apple-macos12.0`,
-    '-o', join(macos, 'ElysiaApi'), join(source, 'MacSupport.swift'), join(source, 'NativeTests.swift'), join(source, 'main.swift')])
+    '-o', join(macos, 'ElysiaApi'), join(source, 'MacSupport.swift'), join(source, 'PanelBridge.swift'), join(source, 'UpdateCapsuleView.swift'), join(source, 'NativeTests.swift'), join(source, 'UpdateTests.swift'), join(source, 'ResourceTests.swift'), join(source, 'LifecycleTests.swift'), join(source, 'main.swift')])
   run('codesign', ['--force', '--sign', '-', '--deep', app])
-  run(join(macos, 'ElysiaApi'), previewOnly ? ['--panel'] : [], { timeout: 120000, env: { ...process.env, ELYSIA_NATIVE_TEST_DATA: data, ELYSIA_NATIVE_SCREENSHOT: join(repo, 'dist', 'macos-panel-preview.png') } })
+  if (!process.argv.includes('--flows')) run(join(macos, 'ElysiaApi'), previewOnly ? ['--panel'] : [], { timeout: 120000, env: { ...process.env, ELYSIA_NATIVE_TEST_DATA: data, ELYSIA_NATIVE_SCREENSHOT: join(repo, 'dist', 'macos-panel-preview.png') } })
+  await runNativeTrayFlow({ app, temp, bundleID, previewOnly })
+  await runNativeUpdateFlow({ app, temp, bundleID, previewOnly })
 } finally {
   // Also clean up an owned fixture if the test process timed out before Swift could run its cleanup.
   try {

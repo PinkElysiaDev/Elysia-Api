@@ -54,7 +54,10 @@ export function TurnRail({
         );
       })}
       {live.running ? (
-        <span className="dot dot-ok mt-1 shrink-0" aria-label="本轮进行中" />
+        <span
+          className="mt-1 h-2 w-2 shrink-0 rounded-full bg-rose opacity-70"
+          aria-label="本轮进行中"
+        />
       ) : null}
     </nav>
   );

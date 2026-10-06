@@ -8,7 +8,7 @@ import { Seg } from '@/components/ui/seg'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { AsyncState } from '@/components/ui/states'
 import { ExpandRow } from '@/components/expand-row'
-import { CapChip, Dot, StrategyBadge } from '@/components/badges'
+import { CapChip, StrategyBadge } from '@/components/badges'
 import { ToolbarSummary } from '@/components/toolbar-summary'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useGroups, revalidate } from '@/lib/hooks'
@@ -227,7 +227,6 @@ export function GroupsPage() {
                                   key={m}
                                   className="group/chip inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-card px-2.5 py-1 font-mono text-xs text-muted-foreground shadow-sm"
                                 >
-                                  <Dot state="ok" />
                                   <span className="max-w-[240px] truncate">{m}</span>
                                   <button
                                     type="button"

@@ -62,7 +62,11 @@ Full extraction updates these files; commit them together:
 
 Binary fields are little-endian. Each frame begins with `uint32 pathCount`. Each segment contains `uint32 id`, `uint8 group`, `uint8 closed`, `uint16 pointCount`, followed by signed 16-bit XY pixel deltas. The first point is relative to the origin; subsequent points are relative to the previous point. The browser normalizes after decoding. Absent segments are invisible. Frame offsets refer to decompressed bytes.
 
-Both compressed and decompressed content have SHA-256 hashes. Some static servers add `Content-Encoding: gzip` to `.gz`, so Fetch may return decompressed bytes. The loader checks the header to distinguish raw gzip from decoded content and verifies the corresponding hash, avoiding double decompression or a false version mismatch.
+Both compressed and decompressed content have SHA-256 hashes. The browser fetches ordinary `application/json` chunks containing `{ "encoding": "gzip-base64", "data": "..." }`, then restores, verifies and decompresses the bytes internally. JSON URLs, response types and contents avoid presenting a `.bin.gz` archive for download extensions such as IDM to intercept. Optional HTTP gzip compression of the JSON is handled by the browser independently of the compressed data inside it.
+
+Development and production builds run `prepare-delivery.mjs` to split the original trace losslessly into 16 one-second chunks in the ignored `public/assets/login-trace/` directory, with an `index-json-v1.json` manifest. The first JSON chunk is about 594 KiB instead of the entire 6.54 MiB payload. This adds roughly one third over direct gzip delivery for download-extension compatibility. All 960 frames remain byte-for-byte identical, with compressed and decoded checksums for each chunk. Deploy the generated directory with the rest of the build. The new manifest URL avoids cached manifests that still reference binary downloads.
+
+For signed-out users with motion enabled, the application entry preloads the manifest, first chunk, target image and renderer in parallel. Wallpaper playback prefetches two seconds ahead and reuses decoded chunks within the page session. Pausing or leaving login stops further prefetching. Authentication adds no asset-waiting phase: ready assets start the full cinematic immediately; unavailable assets or rendering capabilities use a roughly 1.4-second text fade instead. User pause, reduced motion, save-data and backgrounding still complete authentication directly.
 
 The Node verifier checks all asset hashes, all 960 frames, monotonic PTS, bounds, groups and path identifiers. Replacing the video/target or editing annotations without exporting again must fail the build.
 
@@ -79,7 +83,7 @@ npm.cmd run test:e2e --workspace @root/webui -- --workers=1
 
 Platforms without Edge can use installed Playwright Chromium without `PLAYWRIGHT_CHANNEL`. End-to-end tests use mocked admin responses and test tokens, without reading real configuration.
 
-The transition selects traces by video presentation time and uses a separate four-second timeline for particles/text. Video, strokes and particles share one WebGL2 canvas. Pausing, backgrounding, missing assets or rendering failure never blocks an already authenticated login. Development-only `data-media-time`, `data-elapsed` and `data-paths` attributes support sync inspection; release builds omit them.
+The transition selects traces by video presentation time and uses a separate five-second timeline for particles/text. Video, strokes and particles share one WebGL2 canvas. Pausing, backgrounding, missing assets or rendering failure never blocks an already authenticated login. Development-only `data-media-time`, `data-elapsed` and `data-paths` attributes support sync inspection; release builds omit them.
 
 Frame callbacks prefer an immutable `VideoFrame`, use its own PTS to select traces, upload that same frame to the GPU and release it immediately. Main-thread stalls can make a callback's old `mediaTime` lag behind the actual frame read from the video; this was reproduced with a 220ms stall. Do not pair old metadata with a newer video image. Without `VideoFrame`, only on-time callbacks are accepted; repeated lateness completes login without showing misaligned strokes.
 

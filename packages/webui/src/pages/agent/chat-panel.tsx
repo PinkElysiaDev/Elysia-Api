@@ -414,7 +414,11 @@ export function ChatPanel({
             <div ref={bottomRef} />
           </div>
         </div>
-        {turnRail ? <div className="absolute inset-y-0 left-1 flex w-11">{turnRail}</div> : null}
+        {turnRail ? (
+          <div className="absolute inset-y-0 left-1 flex w-11 md:left-[calc(10%-3.25rem)]">
+            {turnRail}
+          </div>
+        ) : null}
         {showJumpBottom ? (
           <button
             type="button"
