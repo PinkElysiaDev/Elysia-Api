@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"errors"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -40,6 +41,8 @@ type Engine struct {
 // Options 引擎行为参数（零值字段取默认）。
 type Options struct {
 	MaxModelCalls int           // 单轮最大模型调用次数（工具循环上限）
+	// ModelCallLimit 为运行时动态上限（热重载）；非 nil 且返回 >0 时优先生效。
+	ModelCallLimit func() int
 	TurnTimeout   time.Duration // 单轮总超时
 	EventBuffer   int           // 事件 channel 缓冲
 	// ToolResultModelLimit 回传模型的工具结果字节上限（超出截断）。
@@ -566,7 +569,12 @@ func (e *Engine) handleCallFailure(ctx context.Context, sessionID string, sessio
 	if _, cerr := e.store.AppendMessage(finCtx, sessionID, RoleSystem, SystemContent{Kind: "error", Text: fmt.Sprintf("%s: %v", reason, err)}, "", nil); cerr != nil { //nolint:staticcheck // 落库失败无从恢复，继续走错误回报
 	}
 	e.setStatus(finCtx, sessionID, StatusIdle, false, events)
-	emitTerminal(ctx, events, Event{Type: EventError, Text: fmt.Sprintf("%s: %v", reason, err), Retryable: retryable})
+	failure := Event{Type: EventError, Text: fmt.Sprintf("%s: %v", reason, err), Retryable: retryable}
+	var coder interface{ ReasonCode() string }
+	if errors.As(err, &coder) {
+		failure.ReasonCode = coder.ReasonCode()
+	}
+	emitTerminal(ctx, events, failure)
 }
 
 // modelLoop 运行「模型调用 → 工具执行」循环直到模型给出终稿正文、暂停审批、
@@ -579,6 +587,11 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 	defer e.finalizeTurn(ctx, sessionID, session, started, &usageTotal, &rounds, &paused, events)
 
 	maxModelCalls := e.opts.MaxModelCalls
+	if e.opts.ModelCallLimit != nil {
+		if limit := e.opts.ModelCallLimit(); limit > 0 {
+			maxModelCalls = limit
+		}
+	}
 	if session.Settings.MaxModelCalls > 0 {
 		maxModelCalls = session.Settings.MaxModelCalls
 	}
@@ -597,9 +610,10 @@ func (e *Engine) modelLoop(ctx context.Context, sessionID string, session *Sessi
 			OnText:      func(delta string) { emitEvent(events, Event{Type: EventTextDelta, Delta: delta}) },
 			OnReasoning: func(delta string) { emitEvent(events, Event{Type: EventReasoningDelta, Delta: delta}) },
 		})
-		if result != nil {
+		if result != nil && result.Usage != nil {
+			// 个别协议轮次不回用量时保留既有累计，而非清空。
 			var usageErr error
-			if round == 0 {
+			if usageTotal == nil {
 				usageTotal = protocol.MergeUsage(nil, result.Usage)
 			} else {
 				usageTotal, usageErr = addUsage(usageTotal, result.Usage)

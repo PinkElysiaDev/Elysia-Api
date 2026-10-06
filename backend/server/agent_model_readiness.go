@@ -43,6 +43,10 @@ type agentReadinessError struct{ status agentModelReadiness }
 
 func (err agentReadinessError) Error() string { return err.status.Reason }
 
+// ReasonCode 供 agent 引擎经接口提取（model_tools_disabled 等），随
+// EventError 透出到前端与远程面。
+func (err agentReadinessError) ReasonCode() string { return err.status.ReasonCode }
+
 func agentTransport(binding protocol.Binding, compiled *protocol.Compiled) protocol.Transport {
 	if binding.Operation != "" {
 		return compiled.Operations()[binding.Operation].Transport
@@ -134,7 +138,8 @@ func (s *Server) adminVerifyAgentTools(c *gin.Context) {
 		respondProtocolError(c, err)
 		return
 	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), s.probeTimeout(60*time.Second))
+	// 与 Agent 模型调用同一超时口径（300s）：慢推理模型的探针不再因 60s 预算必败。
+	ctx, cancel := context.WithTimeout(c.Request.Context(), s.probeTimeout(agentCallTimeoutSec*time.Second))
 	defer cancel()
 	service, ok := s.requireProtocolService(c)
 	if !ok {

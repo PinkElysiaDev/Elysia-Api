@@ -150,6 +150,9 @@ func (tool *protocolV2Tool) Execute(ctx context.Context, tctx CLIContext, raw js
 	if edit := tctx.EditProtocolID(); edit != "" && edit != id {
 		return CLIError("Edit mode must preserve the protocol ID", "id_mismatch")
 	}
+	if protocol.IsPresetProtocolID(id) {
+		return CLIError("预置协议只读且随引擎自动更新：请用「复制为新协议」派生副本后编辑（如 "+id+"-copy）", "preset_readonly")
+	}
 	compiled, issues := service.Validate(definition)
 	switch tool.action {
 	case "draft":

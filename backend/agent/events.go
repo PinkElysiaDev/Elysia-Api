@@ -33,6 +33,9 @@ type Event struct {
 	Text string `json:"text,omitempty"`
 	// error 专用：失败是否可通过重发同一条消息恢复
 	Retryable bool `json:"retryable,omitempty"`
+	// error 专用：机器可读原因码（如 model_tools_disabled），前端据此引导
+	// 到「验证并启用」等修复入口；由错误实现方通过 ReasonCode() 提供。
+	ReasonCode string `json:"reasonCode,omitempty"`
 
 	// message：刚持久化的消息（含 seq，前端据此对账）
 	Message *Message `json:"message,omitempty"`

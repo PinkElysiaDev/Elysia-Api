@@ -1120,6 +1120,10 @@ func (t *updateModelTool) Execute(ctx context.Context, tctx CLIContext, args jso
 	if params.ThinkingMode != nil && strings.TrimSpace(*params.ThinkingMode) == "" {
 		return CLIError("thinkingMode 不能为空串", "invalid_thinking_mode")
 	}
+	if params.ToolsCapable != nil && *params.ToolsCapable {
+		// 工具能力必须经实证启用（verify-tools 探针），禁止手工置真绕过。
+		return CLIError("toolsCapable 不允许直接设为 true：请在 WebUI 的模型选择器使用「验证并启用工具调用」", "tools_requires_verification")
+	}
 	patch := storage.ModelPatch{
 		Name: params.Name, Type: params.Type, MaxTokens: params.MaxTokens,
 		VisionCapable: params.VisionCapable, ToolsCapable: params.ToolsCapable,
