@@ -42,6 +42,11 @@ func (s *Store) ListProtocolUpstreamReports(ctx context.Context, id, hash string
 
 func (s *Store) migrateProtocolRevisions(ctx context.Context) error {
 	statements := []string{
+		`CREATE TABLE IF NOT EXISTS protocol_history (
+			id TEXT PRIMARY KEY, protocol_id TEXT NOT NULL, content_hash TEXT NOT NULL,
+			definition TEXT NOT NULL, reason TEXT NOT NULL, is_draft INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL, archived_at TEXT NOT NULL)`,
+		`CREATE INDEX IF NOT EXISTS idx_protocol_history_time ON protocol_history(archived_at DESC,id)`,
 		`CREATE TABLE IF NOT EXISTS protocol_bindings (binding_key TEXT PRIMARY KEY, binding TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS protocol_drafts (
 			protocol_id TEXT PRIMARY KEY, content_hash TEXT NOT NULL,
@@ -66,7 +71,7 @@ func (s *Store) migrateProtocolRevisions(ctx context.Context) error {
 			return err
 		}
 	}
-	return nil
+	return s.backfillProtocolHistory(ctx)
 }
 
 // SaveProtocolDraft performs an optimistic edit independently of activation.

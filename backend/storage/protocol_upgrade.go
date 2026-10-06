@@ -51,6 +51,8 @@ type protocolUpgradeReader interface {
 // The fingerprint includes credential ciphertext, never plaintext or a public
 // snapshot. Usage/log writes deliberately do not invalidate a configuration plan.
 var protocolUpgradeQueries = []string{
+	`SELECT * FROM protocol_history ORDER BY id`,
+	`SELECT * FROM protocol_revisions ORDER BY protocol_id,content_hash`,
 	`SELECT * FROM custom_protocols ORDER BY id`,
 	`SELECT * FROM model_sources ORDER BY id`,
 	`SELECT * FROM models ORDER BY source_id,id`,
@@ -218,6 +220,9 @@ func validateProtocolUpgrade(plan ProtocolUpgrade) error {
 		revisions[revision.ProtocolID] = revision.Hash
 	}
 	for _, entry := range plan.Bindings {
+		if entry.Unbound {
+			continue
+		}
 		if revisions[entry.Binding.ProtocolID] != entry.Binding.RevisionHash || entry.Binding.RevisionHash == "" {
 			return fmt.Errorf("binding references a protocol outside the verified upgrade")
 		}
@@ -227,6 +232,11 @@ func validateProtocolUpgrade(plan ProtocolUpgrade) error {
 
 func writeProtocolUpgradeRevision(ctx context.Context, tx *sql.Tx, entry ProtocolUpgradeRevision) error {
 	revision, draft := entry.Revision, entry.Draft
+	if protocol.IsPresetProtocolID(revision.ProtocolID) {
+		if err := archiveReplacedPreset(ctx, tx, revision.ProtocolID, revision.Hash); err != nil {
+			return err
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO protocol_drafts(protocol_id,content_hash,definition,updated_at) VALUES(?,?,?,?) ON CONFLICT(protocol_id) DO UPDATE SET content_hash=excluded.content_hash,definition=excluded.definition,updated_at=excluded.updated_at`, draft.ProtocolID, draft.Hash, string(draft.Definition.Bytes()), draft.UpdatedAt.UTC().Format(time.RFC3339Nano)); err != nil {
 		return err
 	}

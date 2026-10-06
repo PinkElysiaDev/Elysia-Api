@@ -11,6 +11,8 @@ import (
 // ProtocolBinding stores model/source contracts separately from discovered
 // model metadata, so a catalog refresh cannot overwrite an operator's binding.
 type ProtocolBinding struct {
+	// Unbound is an explicit operator decision, not an absent inherited binding.
+	Unbound      bool                         `json:"unbound,omitempty"`
 	Kind         string                       `json:"kind"`
 	SourceID     string                       `json:"sourceId"`
 	ModelID      string                       `json:"modelId"`
@@ -45,6 +47,32 @@ func (binding ProtocolBinding) key() (string, error) {
 // SaveProtocolBinding persists a contract checked by the shared protocol service.
 func (store *Store) SaveProtocolBinding(ctx context.Context, binding ProtocolBinding) error {
 	return saveProtocolBinding(ctx, store.db, binding)
+}
+
+// SaveManagedProtocolBinding keeps the displayed protocol and explicit contract
+// consistent when an operator binds or clears an individual source/model.
+func (store *Store) SaveManagedProtocolBinding(ctx context.Context, binding ProtocolBinding) error {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := saveProtocolBinding(ctx, tx, binding); err != nil {
+		return err
+	}
+	platform := ""
+	if !binding.Unbound {
+		platform = "custom:" + binding.Binding.ProtocolID
+	}
+	if binding.Kind == "model" {
+		_, err = tx.ExecContext(ctx, `UPDATE models SET platform=? WHERE source_id=? AND id=?`, platform, binding.SourceID, binding.ModelID)
+	} else if binding.Kind == "source" {
+		_, err = tx.ExecContext(ctx, `UPDATE model_sources SET platform=?,auto_fetch_models=CASE WHEN ?='' THEN 0 ELSE auto_fetch_models END WHERE id=?`, platform, platform, binding.SourceID)
+	}
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func saveProtocolBinding(ctx context.Context, executor protocolSQLExecutor, binding ProtocolBinding) error {
