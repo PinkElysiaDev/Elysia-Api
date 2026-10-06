@@ -156,7 +156,13 @@ func (s *Server) adminProtocolDrafts(c *gin.Context) {
 			loaded[activation.ProtocolID] = pinned.Hash()
 		}
 	}
-	respondOK(c, gin.H{"drafts": drafts, "active": active, "loaded": loaded})
+	presets := make([]string, 0)
+	for _, activation := range active {
+		if protocol.IsPresetProtocolID(activation.ProtocolID) {
+			presets = append(presets, activation.ProtocolID)
+		}
+	}
+	respondOK(c, gin.H{"drafts": drafts, "active": active, "loaded": loaded, "presets": presets})
 }
 
 func (s *Server) adminProtocolSchemaV2(c *gin.Context) {

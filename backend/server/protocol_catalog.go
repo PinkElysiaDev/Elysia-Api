@@ -11,6 +11,7 @@ type enabledProtocol struct {
 	ID                string                 `json:"id"`
 	Name              string                 `json:"name"`
 	Revision          string                 `json:"revision"`
+	Preset            bool                   `json:"preset"`
 	Directions        []protocol.Direction   `json:"directions"`
 	Capabilities      protocol.CapabilitySet `json:"capabilities"`
 	CanGenerate       bool                   `json:"canGenerate"`
@@ -28,7 +29,7 @@ func (s *Server) adminEnabledProtocols(c *gin.Context) {
 	for _, id := range view.IDs() {
 		compiled, _ := view.Pin(id)
 		definition := compiled.Definition()
-		item := enabledProtocol{ID: id, Name: definition.Name, Revision: compiled.Hash(), Capabilities: definition.Capabilities, HasAgentPolicy: definition.Agent != nil, Directions: []protocol.Direction{}}
+		item := enabledProtocol{ID: id, Name: definition.Name, Revision: compiled.Hash(), Preset: protocol.IsPresetProtocolID(id), Capabilities: definition.Capabilities, HasAgentPolicy: definition.Agent != nil, Directions: []protocol.Direction{}}
 		for _, direction := range protocol.DirectionCatalog() {
 			if compiled.Supports(direction) {
 				item.Directions = append(item.Directions, direction)

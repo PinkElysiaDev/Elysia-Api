@@ -8,9 +8,9 @@ export interface ProtocolRevision { protocolId: string; hash: string; definition
 export interface Activation { protocolId: string; revisionHash: string }
 export interface VerificationReport { definitionHash: string; compilerVersion: string; samplesHash: string; kind: string; passed: boolean; covered: string[]; checks: { sampleId: string; direction?: string; passed: boolean; capabilities?: string[] }[]; issues: ConversionIssue[] }
 export interface Preview { exactJSON: string; issues: ConversionIssue[] }
-export interface ProtocolListing { drafts: ProtocolDraft[]; active: Activation[]; loaded: Record<string, string> }
+export interface ProtocolListing { drafts: ProtocolDraft[]; active: Activation[]; loaded: Record<string, string>; presets?: string[] }
 /** Capabilities of an enabled, compiled revision; drafts are excluded. */
-export interface EnabledProtocol { id: string; name: string; revision: string; directions: string[]; capabilities: Record<string, boolean>; canGenerate: boolean; hasModelDiscovery: boolean; hasAgentPolicy: boolean }
+export interface EnabledProtocol { id: string; name: string; revision: string; preset?: boolean; directions: string[]; capabilities: Record<string, boolean>; canGenerate: boolean; hasModelDiscovery: boolean; hasAgentPolicy: boolean }
 const base = '/protocols'
 const identifier = (id: string) => encodeURIComponent(id)
 
