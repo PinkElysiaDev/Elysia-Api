@@ -6,12 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/elysia-api/backend/agent"
-	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
 
 	"github.com/elysia-api/backend/storage"
@@ -22,34 +20,19 @@ func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input ag
 	if err != nil {
 		return nil, err
 	}
-	ref := config.ModelRef{ID: model.ID, Name: model.Name, SourceID: model.SourceID, BaseURL: model.BaseURL, APIKey: model.APIKey, Platform: model.Platform, ToolsCapable: model.ToolsCapable, VisionCapable: model.VisionCapable}
-	entry, isBound := selectProtocolBinding(bindings, ref)
-	if !isBound {
-		return nil, gatewayIssue(protocol.Identity{}, protocol.VerificationRequired, "/binding", "Agent model requires a verified protocol binding")
-	}
+	ref := modelReference(model)
 	service, err := caller.server.protocolService()
 	if err != nil {
 		return nil, err
 	}
-	if !model.ToolsCapable || !entry.Binding.Capabilities[protocol.FunctionToolsCapability] {
-		return nil, gatewayIssue(protocol.Identity{}, protocol.UnsupportedCapability, "/binding/capabilities/tools.function", "Agent requires a model and protocol binding supporting function tools")
-	}
 	view := service.View()
+	readiness := checkAgentModel(view, bindings, model)
+	if !readiness.Available {
+		return nil, agentReadinessError{readiness}
+	}
+	entry, _ := selectProtocolBinding(bindings, ref)
 	compiled, _ := view.Pin(entry.Binding.ProtocolID)
-	if err := protocol.IssuesError(protocol.CheckBinding(entry.Binding, compiled)); err != nil {
-		return nil, err
-	}
-	transport := protocol.HTTPJSON
-	if entry.Binding.Operation != "" {
-		transport = compiled.Operations()[entry.Binding.Operation].Transport
-	} else {
-		for _, preferred := range []protocol.Transport{protocol.SSE, protocol.NDJSON, protocol.HTTPJSON} {
-			if slices.Contains(entry.Binding.Transports, preferred) {
-				transport = preferred
-				break
-			}
-		}
-	}
+	transport := agentTransport(entry.Binding, compiled)
 	candidate, failure := makeGatewayCandidate(view, bindings, ref, transport, "generate")
 	if failure != nil {
 		return nil, failure

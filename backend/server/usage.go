@@ -26,9 +26,9 @@ type usageBody struct {
 }
 
 type usageTokenUsage struct {
-	InputTokens  *int `json:"inputTokens,omitempty"`
-	OutputTokens *int `json:"outputTokens,omitempty"`
-	TotalTokens  *int `json:"totalTokens,omitempty"`
+	InputTokens    *int `json:"inputTokens,omitempty"`
+	OutputTokens   *int `json:"outputTokens,omitempty"`
+	TotalTokens    *int `json:"totalTokens,omitempty"`
 	CacheHitTokens *int `json:"cacheHitTokens,omitempty"`
 	// CacheCreationTokens 是缓存创建 token 数。指针语义保留「上游未上报」
 	// （nil）与「上报为零」（指向 0）之别，落库时据此置位 UsageReportMask。
@@ -72,6 +72,8 @@ type usageRecord struct {
 	hostedTools         *builtin.ToolAccounting
 	IngressRevision     string                     `json:"ingressRevision,omitempty"`
 	UpstreamRevision    string                     `json:"upstreamRevision,omitempty"`
+	CacheSynthesis      bool                       `json:"cacheSynthesis"`
+	SystemStructure     *systemStructureDiagnostic `json:"systemStructure,omitempty"`
 	ProtocolUsage       *protocol.Usage            `json:"protocolUsage,omitempty"`
 	ProtocolResponseID  string                     `json:"protocolResponseId,omitempty"`
 	ConversionIssues    []protocol.ConversionIssue `json:"conversionIssues,omitempty"`

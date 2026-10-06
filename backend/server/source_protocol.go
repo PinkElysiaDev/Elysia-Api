@@ -10,6 +10,11 @@ import (
 
 func (s *Server) validateSourceProtocol(source *storage.ModelSource) error {
 	platform := strings.TrimSpace(source.Platform)
+	if platform == "" {
+		source.Platform = ""
+		source.AutoFetchModels = false
+		return nil
+	}
 	if len(platform) >= len("custom:") && strings.EqualFold(platform[:len("custom:")], "custom:") {
 		source.Platform = "custom:" + platform[len("custom:"):]
 	} else {
@@ -28,6 +33,10 @@ func (s *Server) validateSourceProtocol(source *storage.ModelSource) error {
 // saveSource installs a verified source contract once. Subsequent metadata
 // edits preserve the operator's capabilities, operation and waiting policy.
 func (s *Server) saveSource(ctx context.Context, source storage.ModelSource) error {
+	if source.Platform == "" {
+		source.AutoFetchModels = false
+		return s.store.SaveBoundSource(ctx, source, storage.ProtocolBinding{Kind: "source", SourceID: source.ID, Unbound: true})
+	}
 	compiled, err := s.sourceProtocol(source)
 	if err != nil {
 		return err

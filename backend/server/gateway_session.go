@@ -89,6 +89,9 @@ func (s *Server) serveGatewaySession(c *gin.Context, view protocol.RegistryView,
 		return
 	}
 	candidate := plan.candidates[0]
+	defer s.protocolUses.acquire(candidate.binding.ProtocolID, candidate.compiled.Hash())()
+	defer s.protocolUses.acquire(ingress.Identity().DefinitionID, ingress.Hash())()
+	prepareCandidateRecord(record, candidate, plan.request)
 	if err := s.validateOutbound(candidate.model.BaseURL); err != nil {
 		s.failGateway(c, record, http.StatusForbidden, err)
 		return
@@ -100,6 +103,7 @@ func (s *Server) serveGatewaySession(c *gin.Context, view protocol.RegistryView,
 	if candidate.model.CacheSynthesis {
 		protocol.SynthesizeCacheBreakpoints(request, candidate.compiled.Capabilities(protocol.EncodeRequest), sessionOptions)
 	}
+	record.SystemStructure.After = systemStructure(request)
 	body, err := candidate.compiled.EncodeRequest(c.Request.Context(), request, sessionOptions)
 	if err != nil {
 		s.failGateway(c, record, http.StatusBadRequest, err)

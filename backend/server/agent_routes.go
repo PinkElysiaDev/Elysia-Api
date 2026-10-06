@@ -34,6 +34,8 @@ const (
 )
 
 func (s *Server) setupAgentRoutes(admin *gin.RouterGroup) {
+	admin.GET("/agent/models", s.adminAgentModels)
+	admin.POST("/agent/models/verify-tools", s.adminVerifyAgentTools)
 	// 列表与远程 REST 面共用带过滤分页的内核；面板不带参数即全量。
 	admin.GET("/agent/sessions", s.listAgentSessionsFiltered)
 	admin.POST("/agent/sessions", s.adminCreateAgentSession)
@@ -449,7 +451,16 @@ func agentTurnErrorInfo(err error) (int, string, string) {
 	case strings.Contains(err.Error(), "not found"):
 		return http.StatusNotFound, "not_found", err.Error()
 	default:
-		// 存储故障等：500 而非把一切当作不存在。
+		// 模型就绪度拒绝（model_tools_disabled 等）带原因码透出，前端可
+		// 以据此引导到「验证并启用」入口；其余按存储故障 500。
+		var readiness agentReadinessError
+		if errors.As(err, &readiness) {
+			code := readiness.status.ReasonCode
+			if code == "" {
+				code = "model_not_ready"
+			}
+			return http.StatusBadRequest, code, readiness.status.Reason
+		}
 		return http.StatusInternalServerError, "turn_failed", err.Error()
 	}
 }

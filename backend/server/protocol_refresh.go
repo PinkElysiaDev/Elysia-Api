@@ -99,6 +99,10 @@ func (s *Server) refreshProtocolRuntime(ctx context.Context, service *protocol.S
 	combinations := map[string][]protocol.CombinationReport{}
 	for _, binding := range bindings {
 		compiled := definitions[binding.Binding.ProtocolID]
+		if binding.Unbound {
+			plan.Bindings = append(plan.Bindings, binding)
+			continue
+		}
 		if compiled == nil {
 			return gatewayIssue(protocol.Identity{DefinitionID: binding.Binding.ProtocolID}, protocol.VerificationRequired, "/binding", "runtime refresh cannot enable an inactive bound protocol")
 		}

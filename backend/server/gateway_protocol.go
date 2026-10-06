@@ -149,6 +149,9 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 }
 
 func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatewayPlan, candidate gatewayCandidate) error {
+	defer s.protocolUses.acquire(candidate.binding.ProtocolID, candidate.compiled.Hash())()
+	defer s.protocolUses.acquire(record.SourceFormat, record.IngressRevision)()
+	prepareCandidateRecord(record, candidate, plan.request)
 	if err := s.validateOutbound(candidate.model.BaseURL); err != nil {
 		return &gatewayFailure{http.StatusForbidden, fmt.Errorf("target base URL rejected: %w", err)}
 	}
@@ -159,6 +162,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	if candidate.model.CacheSynthesis {
 		protocol.SynthesizeCacheBreakpoints(request, candidate.compiled.Capabilities(protocol.EncodeRequest), options)
 	}
+	record.SystemStructure.After = systemStructure(request)
 	body, err := candidate.compiled.EncodeRequest(c.Request.Context(), request, options)
 	if err != nil {
 		return &gatewayFailure{http.StatusBadRequest, err}

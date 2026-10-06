@@ -205,14 +205,11 @@ func activateDiscoveryPresets(t *testing.T, s *Server) {
 		t.Fatal(err)
 	}
 	for _, value := range definitions {
-		compiled := persistPreviousRevision(t, s, value)
-		report := protocol.Verify(t.Context(), compiled)
-		if !report.Passed {
-			t.Fatal(compiled.Identity().DefinitionID, report.Issues)
-		}
-		if err := s.store.SaveProtocolReport(t.Context(), compiled.Identity().DefinitionID, compiled.Hash(), report); err != nil {
+		var definition protocol.Definition
+		if err := value.Decode(&definition); err != nil {
 			t.Fatal(err)
 		}
+		activateGatewayDefinition(t, s, definition)
 	}
 	service, err := s.protocolService()
 	if err != nil {

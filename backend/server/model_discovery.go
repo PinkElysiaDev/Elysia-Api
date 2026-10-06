@@ -12,6 +12,9 @@ import (
 const maxModelDiscoveryPages = 100
 
 func (s *Server) sourceProtocol(source storage.ModelSource) (*protocol.Compiled, error) {
+	if source.Platform == "" {
+		return nil, gatewayIssue(protocol.Identity{}, protocol.VerificationRequired, "/binding", "模型源未绑定协议，请先选择协议")
+	}
 	id, err := protocolIDForPlatform(source.Platform)
 	if err != nil {
 		return nil, err

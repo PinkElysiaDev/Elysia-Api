@@ -21,6 +21,7 @@ func isRetryableGenerationStatus(status int) bool {
 // collectProtocolGeneration is the bounded consumer used by Agent and live
 // probes. It shares codecs, contract checks and stream replay with the gateway.
 func (s *Server) collectProtocolGeneration(ctx context.Context, candidate gatewayCandidate, request *protocol.Request, record *usageRecord, onText func(protocol.NodeKind, string)) (*protocol.Response, error) {
+	defer s.protocolUses.acquire(candidate.binding.ProtocolID, candidate.compiled.Hash())()
 	for attempt := 0; ; attempt++ {
 		result, err := s.collectProtocolGenerationAttempt(ctx, candidate, request, record, onText)
 		if err == nil || ctx.Err() != nil || attempt == len(generationRetryDelays) || !canRetryGeneration(err) {

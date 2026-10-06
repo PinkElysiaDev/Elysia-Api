@@ -106,6 +106,9 @@ func makeGatewayCandidate(view protocol.RegistryView, bindings []storage.Protoco
 	if !exists {
 		return candidate, gatewayIssue(protocol.Identity{}, protocol.VerificationRequired, "/binding", "model has no protocol binding")
 	}
+	if entry.Unbound {
+		return candidate, gatewayIssue(protocol.Identity{}, protocol.VerificationRequired, "/binding", "模型已取消协议绑定，请先选择协议")
+	}
 	binding := entry.Binding
 	compiled, _ := view.Pin(binding.ProtocolID)
 	if issues := protocol.CheckBinding(binding, compiled); len(issues) > 0 {
@@ -135,9 +138,12 @@ func makeGatewayCandidate(view protocol.RegistryView, bindings []storage.Protoco
 	return candidate, nil
 }
 
-func verifyGatewayBinding(ctx context.Context, view protocol.RegistryView, upstream *protocol.Compiled, capabilities protocol.CapabilitySet) []protocol.CombinationReport {
+func verifyGatewayBinding(ctx context.Context, view protocol.RegistryView, upstream *protocol.Compiled, capabilities protocol.CapabilitySet, excludedIDs ...string) []protocol.CombinationReport {
 	reports := []protocol.CombinationReport{}
 	for _, id := range view.IDs() {
+		if slices.Contains(excludedIDs, id) {
+			continue
+		}
 		ingress, _ := view.Pin(id)
 		if ingress.Supports(protocol.DecodeRequest) && (ingress.Supports(protocol.EncodeResponse) || ingress.Supports(protocol.EncodeEvent)) {
 			reports = append(reports, protocol.VerifyBindingProfiles(ctx, ingress, upstream, capabilities)...)
@@ -270,6 +276,9 @@ func (s *Server) bindGatewayRequest(c *gin.Context, view protocol.RegistryView, 
 	for _, binding := range bindings {
 		if binding.Kind != "group" || binding.GroupID != group.ID {
 			continue
+		}
+		if binding.Unbound {
+			return protocol.Scope{}, gatewayIssue(ingress.Identity(), protocol.UnsupportedCapability, "/binding", "model group is explicitly unbound; select a protocol before calling")
 		}
 		if err := protocol.IssuesError(protocol.CheckIngressBinding(binding.Binding, ingress)); err != nil {
 			return protocol.Scope{}, err

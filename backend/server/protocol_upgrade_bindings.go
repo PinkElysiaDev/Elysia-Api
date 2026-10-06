@@ -64,6 +64,10 @@ func (s *Server) prepareProtocolUpgradeBindings(ctx context.Context, input proto
 		validTargets[key] = true
 		targetCapabilities[key] = struct{ tools, media bool }{model.ToolsCapable, model.VisionCapable}
 		if _, exists := bindings[key]; !exists {
+			if parent, ok := bindings[upgradeBindingKey{kind: "source", source: model.SourceID}]; ok && parent.Unbound {
+				bindings[key] = storage.ProtocolBinding{Kind: "model", SourceID: model.SourceID, ModelID: model.ID, Unbound: true}
+				continue
+			}
 			binding, issue := makeUpgradeBinding(key, model.Platform, definitions)
 			if issue != nil {
 				preview.Issues = append(preview.Issues, *issue)
@@ -104,6 +108,10 @@ func (s *Server) prepareProtocolUpgradeBindings(ctx context.Context, input proto
 	for key, binding := range bindings {
 		if !validTargets[key] {
 			preview.Issues = append(preview.Issues, migrationIssue(binding.Binding.ProtocolID, "/bindings", "binding target does not exist or has conflicting identity fields"))
+			continue
+		}
+		if binding.Unbound {
+			preview.Bindings = append(preview.Bindings, binding)
 			continue
 		}
 		if limits, exists := targetCapabilities[key]; exists {

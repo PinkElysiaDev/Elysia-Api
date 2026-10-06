@@ -25,7 +25,6 @@ import (
 func newOpsTestServer(t *testing.T) *Server {
 	t.Helper()
 	s := newAgentIntegrationServer(t)
-	activateDiscoveryPresets(t, s)
 	return s
 }
 

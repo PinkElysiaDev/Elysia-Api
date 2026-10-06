@@ -30,6 +30,21 @@ func (s *Server) adminSaveProtocolBinding(c *gin.Context) {
 		respondProtocolError(c, err)
 		return
 	}
+	if binding.Unbound {
+		binding.Binding = protocol.Binding{}
+		binding.Combinations = nil
+		if err := s.checkProtocolBindingTarget(c.Request.Context(), binding); err != nil {
+			respondFail(c, http.StatusBadRequest, "invalid_binding", err.Error())
+			return
+		}
+		if err := s.store.SaveManagedProtocolBinding(c.Request.Context(), binding); err != nil {
+			respondProtocolError(c, err)
+			return
+		}
+		s.invalidateRouteCache()
+		respondOK(c, binding)
+		return
+	}
 	compiled, _ := service.Pin(binding.Binding.ProtocolID)
 	issues := protocol.CheckBinding(binding.Binding, compiled)
 	if binding.Kind == "group" {
@@ -50,10 +65,11 @@ func (s *Server) adminSaveProtocolBinding(c *gin.Context) {
 			return
 		}
 	}
-	if err := s.store.SaveProtocolBinding(c.Request.Context(), binding); err != nil {
+	if err := s.store.SaveManagedProtocolBinding(c.Request.Context(), binding); err != nil {
 		respondProtocolError(c, err)
 		return
 	}
+	s.invalidateRouteCache()
 	respondOK(c, binding)
 }
 

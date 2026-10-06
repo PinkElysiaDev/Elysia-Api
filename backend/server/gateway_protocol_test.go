@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
@@ -46,6 +47,38 @@ func activateGatewayDefinition(t *testing.T, server *Server, definition protocol
 	}
 	if active, ok := service.Pin(definition.ID); ok {
 		expectedActive = active.Hash()
+	}
+	// Presets are installed by the runtime, never through user authoring APIs.
+	// Tests seed them through the same verified repository boundary.
+	if protocol.IsPresetProtocolID(definition.ID) {
+		compiled, issues := service.Validate(raw)
+		if err := protocol.IssuesError(issues); err != nil {
+			t.Fatal(err)
+		}
+		report := protocol.Verify(t.Context(), compiled)
+		if !report.Passed {
+			t.Fatal(report.Issues)
+		}
+		value, err := protocol.ParseValue(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := server.store.SaveProtocolDraft(t.Context(), protocol.Draft{ProtocolID: definition.ID, Hash: compiled.Hash(), Definition: value, UpdatedAt: time.Now().UTC()}, expectedDraft); err != nil {
+			t.Fatal(err)
+		}
+		if err := server.store.SaveProtocolRevision(t.Context(), protocol.Revision{ProtocolID: definition.ID, Hash: compiled.Hash(), Definition: value, CreatedAt: time.Now().UTC()}); err != nil {
+			t.Fatal(err)
+		}
+		if err := server.store.SaveProtocolReport(t.Context(), definition.ID, compiled.Hash(), report); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := server.store.SetProtocolActivation(t.Context(), definition.ID, compiled.Hash(), expectedActive); err != nil {
+			t.Fatal(err)
+		}
+		if err := service.Reload(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		return compiled
 	}
 	draft, issues, err := service.SaveDraft(t.Context(), definition.ID, raw, expectedDraft)
 	if err != nil || protocol.IssuesError(issues) != nil {

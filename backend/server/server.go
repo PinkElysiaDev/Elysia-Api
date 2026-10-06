@@ -151,6 +151,7 @@ type Server struct {
 	isProtocolRuntimeRequired atomic.Bool
 	protocolRuntimeReady      atomic.Bool
 	gatewaySessions           gatewaySessionSet
+	protocolUses              protocolRevisionUses
 	gatewayJobs               gatewayJobService
 }
 
