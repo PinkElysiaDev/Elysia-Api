@@ -90,16 +90,17 @@ func TestAnthropicCopySystemCacheGateway(t *testing.T) {
 
 func TestEncodingFailureKeepsCandidateAndExactField(t *testing.T) {
 	s := newAgentIntegrationServer(t)
-	compiled, _ := s.protocolServiceInst.Pin("anthropic-api")
+	compiled, _ := s.protocolServiceInst.Pin("gemini-api")
 	request := &protocol.Request{SchemaVersion: protocol.SemanticSchemaVersion, Source: protocol.AgentIdentity(), Model: protocol.StringValue("m"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("system"), ID: protocol.StringValue("sensitive-id"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("secret prompt")}}}}, Parameters: protocol.Object{"max_output_tokens": mustProtocolValue(t, "64")}}
-	candidate := gatewayCandidate{compiled: compiled, binding: protocol.Binding{ProtocolID: "anthropic-api"}, operation: compiled.Operations()["generate"]}
+	candidate := gatewayCandidate{compiled: compiled, binding: protocol.Binding{ProtocolID: "gemini-api"}, operation: compiled.Operations()["generate"]}
 	candidate.model.Name = "candidate"
 	candidate.model.BaseURL = "https://example.invalid"
 	candidate.model.SourceID = "source"
 	c, _ := messagesRequestContext(`{}`)
 	record := &usageRecord{}
 	err := s.forwardGateway(c, record, &gatewayPlan{request: request}, candidate)
-	if err == nil || !strings.Contains(err.Error(), "/content/0/id") {
+	// Anthropic 目标现按位转换带身份的 system；Gemini 目标仍显式拒绝（无网络依赖）。
+	if err == nil || !strings.Contains(err.Error(), "/content/0") {
 		t.Fatal(err)
 	}
 	if record.ModelName != "candidate" || record.SourceID != "source" || record.UpstreamRevision == "" {

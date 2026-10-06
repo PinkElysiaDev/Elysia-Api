@@ -257,8 +257,26 @@ func (adapter module) encodeRequest(request *p.Request, options p.EvaluationCont
 			}
 			isMapped = true
 		}
+		if semantic == "anthropic_metadata" && (adapter.name == Chat || adapter.name == Responses) {
+			// metadata.user_id 在 OpenAI 系目标映射为等价 user 字段（循环后
+			// 统一提取）；完整 metadata 对象仅同族保真。
+			isMapped = true
+		}
 		if !isMapped {
 			return p.Value{}, unsupported("/parameters/"+semantic, "target has no equivalent parameter mapping")
+		}
+	}
+	// Anthropic 的 metadata.user_id（Claude Code 恒带）在 OpenAI 系目标映射为
+	// 等价的 user 字段；同族仍走完整 metadata 对象保真。
+	if adapter.name == Chat || adapter.name == Responses {
+		if parameterOutput["user"].IsZero() {
+			if meta := request.Parameters["anthropic_metadata"]; !meta.IsZero() {
+				if object, err := meta.ReadObject(); err == nil {
+					if user := object["user_id"]; !user.IsZero() {
+						parameterOutput["user"] = user
+					}
+				}
+			}
 		}
 	}
 	if adapter.name == Gemini && len(parameterOutput) > 0 {

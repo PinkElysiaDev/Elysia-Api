@@ -50,10 +50,12 @@ func TestCompiledBuiltinRequestMatrix(t *testing.T) {
 					t.Fatal(err)
 				}
 				body, err := encoder.EncodeRequest(t.Context(), request, options)
-				if (source == "gemini") != (target == "gemini") {
+				if source != "gemini" && target == "gemini" {
+					// 非 JSON 文本工具结果（"found"）在 Gemini 目标仍显式拒绝；
+					// Gemini 的对象结果到其它目标现按 JSON 字符串序列化转换。
 					var conversion *protocol.ConversionError
 					if !errors.As(err, &conversion) || conversion.Issues[0].Code != protocol.UnsupportedCapability {
-						t.Fatalf("non-equivalent text/object tool result must be diagnosed: %v", err)
+						t.Fatalf("non-JSON text tool result must stay diagnosed: %v", err)
 					}
 					return
 				}

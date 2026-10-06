@@ -81,7 +81,9 @@ func TestClaudeClientResponsesUpstreamToolLoop(t *testing.T) {
 	hasNativeItemID = true
 	c, rec = messagesRequestContext(`{"model":"grp","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`)
 	s.chatCompletions(c)
-	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "item identity") {
-		t.Fatal("unrepresentable native message identity silently discarded", rec.Code, rec.Body)
+	// 消息 item 身份是传输记账：跨族目标丢弃并给 warning（记录在
+	// ConversionIssues），不再 502。
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"text"`) {
+		t.Fatal("item identity should convert with a warning instead of failing", rec.Code, rec.Body)
 	}
 }

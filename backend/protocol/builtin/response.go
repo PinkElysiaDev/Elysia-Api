@@ -280,11 +280,21 @@ func encodeFinishReason(name string, value p.Value) (p.Value, error) {
 			return p.StringValue(wire), nil
 		}
 	}
+	// Gemini 独有的 RECITATION/OTHER：映射到各目标的最近语义而非拒绝，
+	// 行为由成对矩阵测试与保证文档钉死。
+	if fallback, exists := finishReasonFallbacks[text][name]; exists {
+		return p.StringValue(fallback), nil
+	}
 	prefix := name + ":"
 	if len(text) > len(prefix) && text[:len(prefix)] == prefix {
 		return p.StringValue(text[len(prefix):]), nil
 	}
 	return p.Value{}, unsupported("/finishReason", "target cannot express this terminal reason")
+}
+
+var finishReasonFallbacks = map[string]map[string]string{
+	"recitation": {Chat: "content_filter", Anthropic: "refusal", Responses: "content_filter", Gemini: "RECITATION"},
+	"other":      {Chat: "stop", Anthropic: "end_turn", Responses: "stop", Gemini: "OTHER"},
 }
 
 func responseFinish(response *p.Response) (p.Value, error) {

@@ -144,10 +144,12 @@ func TestBuiltinFourByFourTextAndFunctionHistory(t *testing.T) {
 					t.Fatal(err)
 				}
 				output, err := to.EncodeRequest(t.Context(), semantic, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
-				if (source.name == Gemini) != (target.name == Gemini) {
+				if source.name != Gemini && target.name == Gemini {
+					// 非 JSON 文本工具结果在 Gemini 目标仍显式拒绝（本夹具为 "found"）；
+					// Gemini 的对象结果到其它目标现按 JSON 字符串序列化转换。
 					var conversion *p.ConversionError
 					if !errors.As(err, &conversion) || conversion.Issues[0].Code != p.UnsupportedCapability {
-						t.Fatalf("text/object tool result requires an explicit mapping: %v", err)
+						t.Fatalf("non-JSON text tool result must stay rejected by Gemini: %v", err)
 					}
 					return
 				}
@@ -166,10 +168,18 @@ func TestBuiltinFourByFourTextAndFunctionHistory(t *testing.T) {
 							calls++
 							sameJSON(t, node.Input.Value.Bytes(), `{"n":9007199254740993}`)
 						}
-						if node.Kind == p.ToolResultNode {
-							results++
-							sameJSON(t, node.Payload.Bytes(), string(result.Bytes()))
+					if node.Kind == p.ToolResultNode {
+						results++
+						payload := node.Payload.Bytes()
+						if source.name == Gemini && target.name != Gemini {
+							// 对象结果经 JSON 字符串序列化后，目标侧重回语义仍是文本载荷。
+							var text string
+							if err := node.Payload.Decode(&text); err == nil {
+								payload = []byte(text)
+							}
 						}
+						sameJSON(t, payload, string(result.Bytes()))
+					}
 						visit(node.Children)
 					}
 				}

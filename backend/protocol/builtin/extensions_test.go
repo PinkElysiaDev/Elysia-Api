@@ -63,7 +63,8 @@ func TestChatToolEnvelopeExtensionSurvivesRename(t *testing.T) {
 	}
 	fields, _ := testValue(t, string(encoded)).ReadObject()
 	sameJSON(t, fields["tools"].Bytes(), `[{"type":"function","vendor":false,"function":{"name":"new","parameters":{},"inner":9007199254740993}}]`)
-	if _, err := testCompiled(t, Responses).EncodeRequest(t.Context(), request, p.EvaluationContext{}); err == nil {
-		t.Fatal("tool envelope extension was dropped")
+	sink := &p.DiagnosticSink{}
+	if _, err := testCompiled(t, Responses).EncodeRequest(t.Context(), request, p.EvaluationContext{Diagnostics: sink}); err != nil {
+		t.Fatal("cross-family tool envelope extension should drop with a warning:", err)
 	}
 }

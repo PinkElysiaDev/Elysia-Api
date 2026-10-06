@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"fmt"
+	"strings"
 
 	p "github.com/elysia-api/backend/protocol"
 )
@@ -111,12 +112,33 @@ func (adapter module) encodeTools(tools []p.Tool, options p.EvaluationContext) (
 			items = append(items, object(fields))
 			continue
 		}
+		toolOptions := tool.Options
+		if foreign := foreignWireKeys(toolOptions, adapter.family); len(foreign) > 0 {
+			// 工具级源族扩展（如 Anthropic 工具上的 cache_control）在异族目标
+			// 无等价字段：剥离并显式 warning，不再拒绝整个请求。
+			options.Diagnostics.Add(p.ConversionIssue{
+				Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
+				Direction: p.EncodeRequest, Stage: "wire", Path: "/tools/extensions",
+				Reason:     "tool-level wire extensions dropped: " + strings.Join(foreign, ", ") + " has no target equivalent",
+				Suggestion: "Same-family forwarding preserves them through native replay.",
+			})
+			toolOptions = sameFamilyExtensions(toolOptions, adapter.family)
+		}
 		fields := p.Object{"name": tool.Name, "description": tool.Description}
-		if strict := tool.Options["strict"]; !strict.IsZero() {
+		if strict := toolOptions["strict"]; !strict.IsZero() {
 			if adapter.name != Chat && adapter.name != Responses {
-				return p.Value{}, unsupported("/tools/strict", "target has no equivalent strict tool-schema policy")
+				// strict 是 OpenAI 系的校验提示，其他目标无等价字段：剥离并
+				// 显式 warning（原为硬拒，Claude Code→Anthropic 的工具声明
+				// 常带 strict）。
+				options.Diagnostics.Add(p.ConversionIssue{
+					Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
+					Direction: p.EncodeRequest, Stage: "wire", Path: "/tools/strict",
+					Reason:     "strict tool-schema policy dropped: target has no equivalent",
+					Suggestion: "Target schemas stay permissive; validate arguments at the call site.",
+				})
+			} else {
+				fields["strict"] = strict
 			}
-			fields["strict"] = strict
 		}
 		if tool.Kind == p.FreeTextTool {
 			if adapter.name != Responses {
@@ -134,7 +156,7 @@ func (adapter module) encodeTools(tools []p.Tool, options p.EvaluationContext) (
 				delete(fields, "parameters")
 				fields["input_schema"] = tool.InputSchema
 			case Gemini:
-				if err := adapter.preserveExtensions(fields, tool.Options); err != nil {
+				if err := adapter.preserveExtensions(fields, toolOptions); err != nil {
 					return p.Value{}, err
 				}
 				fields = p.Object{"functionDeclarations": array([]p.Value{object(fields)})}
@@ -144,7 +166,7 @@ func (adapter module) encodeTools(tools []p.Tool, options p.EvaluationContext) (
 			return p.Value{}, err
 		}
 		if adapter.name != Gemini {
-			if err := adapter.preserveExtensions(fields, tool.Options); err != nil {
+			if err := adapter.preserveExtensions(fields, toolOptions); err != nil {
 				return p.Value{}, err
 			}
 		}

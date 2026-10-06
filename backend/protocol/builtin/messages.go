@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"fmt"
+	"strings"
 
 	p "github.com/elysia-api/backend/protocol"
 )
@@ -169,19 +170,38 @@ func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, opti
 			return p.Value{}, p.Value{}, err
 		}
 		if (role == "system" || role == "developer") && (adapter.name == Anthropic || adapter.name == Gemini) {
-			for _, field := range []struct {
-				name    string
-				present bool
-			}{
-				{"id", !node.ID.IsZero()}, {"status", !node.Status.IsZero()},
-				{"attributes", len(node.Attributes) > 0}, {"cache", len(node.Cache) > 0}, {"resources", len(node.Resources) > 0},
-			} {
-				if field.present {
-					return p.Value{}, p.Value{}, unsupported(fmt.Sprintf("/content/%d/%s", index, field.name), "target system container cannot carry message metadata: "+field.name+"; use explicit block mappings")
+			annotated := !node.ID.IsZero() || !node.Status.IsZero() || len(node.Attributes) > 0 || len(node.Cache) > 0 || len(node.Resources) > 0
+			if hasConversation || annotated {
+				if adapter.name == Gemini {
+					return p.Value{}, p.Value{}, unsupported(fmt.Sprintf("/content/%d", index), "Gemini contents cannot express an in-conversation or annotated system message; hoist it before the conversation or move the metadata onto explicit blocks")
 				}
-			}
-			if hasConversation {
-				return p.Value{}, p.Value{}, unsupported("/content", "target cannot represent a system message after conversation content")
+				// Anthropic 接受会话内 system 消息（Claude Code 的 system-reminder
+				// 注入即此形态）。按位输出并保留消息级 wire 扩展（如消息级
+				// cache_control），位置不变以保住缓存前缀。
+				fields := p.Object{"role": p.StringValue("system")}
+				if err := adapter.preserveExtensions(fields, node.Attributes); err != nil {
+					return p.Value{}, p.Value{}, err
+				}
+				if len(node.Cache) > 0 || len(node.Resources) > 0 {
+					options.Diagnostics.Add(p.ConversionIssue{
+						Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
+						Direction: p.EncodeRequest, Stage: "wire", Path: fmt.Sprintf("/content/%d", index),
+						Reason:     "in-conversation system message dropped its node-level cache markers or resources",
+						Suggestion: "Move cache_control onto a content block inside the system message.",
+					})
+				}
+				var blocks []p.Value
+				for _, child := range node.Children {
+					block, err := adapter.encodeBlock(child, direction, options)
+					if err != nil {
+						return p.Value{}, p.Value{}, err
+					}
+					blocks = append(blocks, block)
+				}
+				fields["content"] = array(blocks)
+				messages = append(messages, object(fields))
+				hasConversation = true
+				continue
 			}
 			for _, child := range node.Children {
 				block, err := adapter.encodeBlock(child, direction, options)
@@ -194,7 +214,15 @@ func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, opti
 		}
 		hasConversation = true
 		if (adapter.name == Anthropic || adapter.name == Gemini || adapter.name == Chat) && (!node.ID.IsZero() || !node.Status.IsZero()) {
-			return p.Value{}, p.Value{}, unsupported("/content/message", "target messages have no equivalent item identity or status")
+			// Responses 消息 item 的 id/status 是传输记账而非会话语义：跨族
+			// 目标没有等价字段，同族经原生回放保留；这里丢弃并给出显式
+			// warning（原为硬拒，Codex 等客户端的每条消息都携带 id）。
+			options.Diagnostics.Add(p.ConversionIssue{
+				Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
+				Direction: p.EncodeRequest, Stage: "wire", Path: fmt.Sprintf("/content/%d", index),
+				Reason:     "message item identity or status dropped: target has no per-message item id",
+				Suggestion: "Same-family forwarding preserves item ids through native replay.",
+			})
 		}
 		if adapter.name == Chat {
 			entries, err := adapter.encodeChatMessage(node, direction, options)
@@ -260,29 +288,63 @@ func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, opti
 
 func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, options p.EvaluationContext) ([]p.Value, error) {
 	fields := p.Object{"role": node.Role}
-	if err := adapter.preserveExtensions(fields, node.Attributes); err != nil {
+	attributes := node.Attributes
+	if foreign := foreignWireKeys(attributes, adapter.family); len(foreign) > 0 {
+		// 消息级源族扩展（如 Anthropic 的消息级 cache_control）在 Chat 目标
+		// 没有等价字段：剥离并显式 warning，不再拒绝整个请求。
+		options.Diagnostics.Add(p.ConversionIssue{
+			Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
+			Direction: p.EncodeRequest, Stage: "wire", Path: "/content/extensions",
+			Reason:     "message-level wire extensions dropped: " + strings.Join(foreign, ", ") + " has no Chat equivalent",
+			Suggestion: "Same-family forwarding preserves them through native replay.",
+		})
+		attributes = sameFamilyExtensions(attributes, adapter.family)
+	}
+	if err := adapter.preserveExtensions(fields, attributes); err != nil {
 		return nil, err
 	}
 	var content, calls, results []p.Value
-	hasCall := false
 	for _, child := range node.Children {
 		if err := checkResourceProtocol(child, options); err != nil {
 			return nil, err
 		}
 		switch child.Kind {
 		case p.ToolResultNode:
-			if len(node.Children) != 1 {
-				return nil, unsupported("/content", "Chat tool results require their own message")
-			}
 			payload := child.Payload
 			if payload.IsObject() {
-				return nil, unsupported("/content", "Chat tool result cannot represent a JSON object without an explicit serialization mapping")
+				// Gemini 标准 functionResponse.response 是对象；Chat 的工具
+				// 结果内容是字符串——显式 JSON 序列化保持可逆。
+				payload = encodeJSONArguments(payload)
 			}
 			if len(child.Children) > 0 {
-				return nil, unsupported("/content", "Chat tool result cannot express structured content blocks")
+				// Anthropic tool_result 的结构化内容块拼接为文本；非文本块
+				// 仍显式拒绝。
+				var text []byte
+				for _, block := range child.Children {
+					if block.Kind != p.TextNode {
+						return nil, unsupported("/content/result", "Chat tool result blocks must be text")
+					}
+					value, err := stringValue(block.Payload)
+					if err != nil {
+						return nil, err
+					}
+					text = append(text, value...)
+				}
+				payload = p.StringValue(string(text))
 			}
 			if !child.ID.IsZero() || !child.Status.IsZero() || len(child.Cache) > 0 || len(child.Resources) > 0 {
-				return nil, unsupported("/content/result", "Chat tool results cannot carry item metadata or cache boundaries")
+				options.Diagnostics.Add(p.ConversionIssue{
+					Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
+					Direction: p.EncodeRequest, Stage: "wire", Path: "/content/result",
+					Reason:     "tool result item metadata, cache markers or resources dropped for the Chat target",
+					Suggestion: "Same-family forwarding preserves them through native replay.",
+				})
+			}
+			if isErrorResult(child.Status) {
+				// Anthropic 的 is_error（解码为 Status.isError）以文本标记保留。
+				if text, err := stringValue(payload); err == nil {
+					payload = p.StringValue("[Tool error] " + text)
+				}
 			}
 			result := p.Object{"role": p.StringValue("tool"), "tool_call_id": child.CallID, "name": child.Name, "content": payload}
 			if err := adapter.preserveExtensions(result, child.Attributes); err != nil {
@@ -294,28 +356,51 @@ func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, opti
 				return nil, unsupported("/content/input", "Chat requires JSON function arguments")
 			}
 			if !child.ID.IsZero() || !child.Status.IsZero() || len(child.Cache) > 0 || len(child.Resources) > 0 {
-				return nil, unsupported("/content/call", "Chat function calls cannot carry a separate item identity, status or cache boundary")
+				options.Diagnostics.Add(p.ConversionIssue{
+					Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
+					Direction: p.EncodeRequest, Stage: "wire", Path: "/content/call",
+					Reason:     "function call item metadata, cache markers or resources dropped for the Chat target",
+					Suggestion: "Same-family forwarding preserves them through native replay.",
+				})
 			}
 			call := p.Object{"id": child.CallID, "type": p.StringValue("function"), "function": object(p.Object{"name": child.Name, "arguments": encodeJSONArguments(child.Input.Value)})}
 			if err := adapter.preserveExtensions(call, child.Attributes); err != nil {
 				return nil, err
 			}
 			calls = append(calls, object(call))
-			hasCall = true
 		case p.ReasoningNode:
-			if !fields["reasoning_content"].IsZero() || len(child.Children) > 0 || len(child.Resources) > 0 || len(child.Attributes) > 0 || len(child.Cache) > 0 || !child.ID.IsZero() || !child.Status.IsZero() {
-				return nil, unsupported("/reasoning", "Chat cannot collapse multiple reasoning blocks, summaries or signed payloads")
+			// Chat 只有单一 reasoning_content 字符串：多块拼接；签名/缓存等
+			// 跨族不可表达的元数据丢弃并给显式 warning（原为硬拒）。
+			if len(child.Children) > 0 {
+				return nil, unsupported("/reasoning", "Chat cannot express nested reasoning blocks")
 			}
-			fields["reasoning_content"] = child.Payload
+			if len(child.Resources) > 0 || len(child.Attributes) > 0 || len(child.Cache) > 0 || !child.ID.IsZero() || !child.Status.IsZero() {
+				options.Diagnostics.Add(p.ConversionIssue{
+					Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
+					Direction: p.EncodeRequest, Stage: "wire", Path: "/reasoning",
+					Reason:     "reasoning signatures or metadata dropped: Chat has no signed reasoning channel",
+					Suggestion: "Same-family forwarding preserves signed reasoning through native replay.",
+				})
+			}
+			if !fields["reasoning_content"].IsZero() {
+				previous, err := stringValue(fields["reasoning_content"])
+				if err != nil {
+					return nil, err
+				}
+				next, err := stringValue(child.Payload)
+				if err != nil {
+					return nil, err
+				}
+				fields["reasoning_content"] = p.StringValue(previous + next)
+			} else {
+				fields["reasoning_content"] = child.Payload
+			}
 		case p.RefusalNode:
 			if !fields["refusal"].IsZero() || len(child.Attributes) > 0 || len(child.Cache) > 0 {
 				return nil, unsupported("/refusal", "Chat refusal scalar cannot carry multiple blocks or block metadata")
 			}
 			fields["refusal"] = child.Payload
 		default:
-			if hasCall {
-				return nil, unsupported("/content", "Chat cannot preserve content after an interleaved tool call")
-			}
 			block, err := adapter.encodeBlock(child, direction, options)
 			if err != nil {
 				return nil, err
@@ -335,4 +420,45 @@ func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, opti
 		fields["tool_calls"] = array(calls)
 	}
 	return []p.Value{object(fields)}, nil
+}
+
+// isErrorResult 读取 tool_result 的 Status.isError 标记（Anthropic is_error
+// 的语义落点）。仅布尔真值视为错误结果。
+func isErrorResult(status p.Value) bool {
+	if status.IsZero() {
+		return false
+	}
+	object, err := status.ReadObject()
+	if err != nil {
+		return false
+	}
+	flag, exists := object["isError"]
+	if !exists || flag.IsZero() {
+		return false
+	}
+	var value bool
+	return flag.Decode(&value) == nil && value
+}
+
+// foreignWireKeys 列出与目标族不匹配的 wire:* 扩展键。
+func foreignWireKeys(attributes p.Object, family string) []string {
+	var foreign []string
+	for key := range attributes {
+		if prefix, ok := strings.CutPrefix(key, "wire:"); ok && prefix != family {
+			foreign = append(foreign, key)
+		}
+	}
+	return foreign
+}
+
+// sameFamilyExtensions 返回仅含目标族 wire:* 扩展的浅拷贝。
+func sameFamilyExtensions(attributes p.Object, family string) p.Object {
+	remaining := p.Object{}
+	for key, value := range attributes {
+		if prefix, ok := strings.CutPrefix(key, "wire:"); ok && prefix != family {
+			continue
+		}
+		remaining[key] = value
+	}
+	return remaining
 }

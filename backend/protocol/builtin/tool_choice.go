@@ -78,8 +78,12 @@ func (adapter module) encodeChoice(value p.Value) (p.Value, error) {
 	if mode != "auto" && mode != "none" && mode != "required" && mode != "function" && mode != "custom" {
 		return p.Value{}, fmt.Errorf("unsupported tool choice mode %q", mode)
 	}
-	if !fields["disableParallel"].IsZero() && adapter.name != Anthropic {
-		return p.Value{}, unsupported("/toolChoice/disableParallel", "target requires a separate parallel-tool policy")
+	if disable := fields["disableParallel"]; !disable.IsZero() && adapter.name != Anthropic {
+		var enabled bool
+		if err := disable.Decode(&enabled); err != nil || enabled {
+			return p.Value{}, unsupported("/toolChoice/disableParallel", "target requires a separate parallel-tool policy")
+		}
+		// 显式 false 是无操作：忽略而不是拒绝（Claude Code 恒带该字段）。
 	}
 	if !fields["names"].IsZero() && adapter.name != Gemini {
 		return p.Value{}, unsupported("/toolChoice/names", "target has no equivalent allowed-tool set")

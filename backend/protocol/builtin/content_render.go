@@ -60,7 +60,10 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 		fields["id"] = node.ID
 		payload := node.Payload
 		if payload.IsObject() {
-			return p.Value{}, unsupported("/content", "target tool result cannot represent a JSON object without an explicit serialization mapping")
+			// Gemini 标准 functionResponse.response 是对象；无对象载荷字段的
+			// 目标（Responses 输出串、Anthropic 内容串/块）统一 JSON 字符串
+			// 序列化保持可逆，Chat 路径在 encodeChatMessage 内同构处理。
+			payload = encodeJSONArguments(payload)
 		}
 		if node.Children != nil {
 			var blocks []p.Value
@@ -347,10 +350,20 @@ func (adapter module) encodeGeminiPart(node p.Node, fields p.Object) (p.Value, e
 		if node.Name.IsZero() {
 			return p.Value{}, unsupported("/name", "Gemini results require the associated function name")
 		}
-		if !node.Payload.IsObject() {
+		payload := node.Payload
+		if !payload.IsObject() {
+			// Chat 的工具结果内容是 JSON 字符串：可解析为对象时转换（Gemini
+			// 标准 functionResponse.response 是对象）；不可解析保持显式拒绝。
+			if text, err := stringValue(payload); err == nil {
+				if parsed, parseErr := p.ParseValue([]byte(text)); parseErr == nil && parsed.IsObject() {
+					payload = parsed
+				}
+			}
+		}
+		if !payload.IsObject() {
 			return p.Value{}, unsupported("/payload", "Gemini function response requires an object; arbitrary text is not wrapped automatically")
 		}
-		fields["functionResponse"] = object(p.Object{"name": node.Name, "id": node.CallID, "response": node.Payload})
+		fields["functionResponse"] = object(p.Object{"name": node.Name, "id": node.CallID, "response": payload})
 	case p.ImageNode, p.AudioNode, p.VideoNode, p.DocumentNode:
 		media, err := node.Payload.ReadObject()
 		if err != nil {
