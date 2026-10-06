@@ -58,17 +58,17 @@ export function ProtocolDesignerPage() {
     {archiveID && <ProtocolArchiveDialog id={archiveID} onClose={() => setArchiveID('')} onArchived={() => refresh(archiveID)} />}
     {error && <p role="alert" className="text-destructive">{error}</p>}
     {!schema || !listing ? <p role="status">正在读取协议引擎契约…</p> : selection ? <ProtocolV2Editor schema={schema} draft={selection.draft} initialSource={selection.source} activeHash={listing.active.find((entry) => entry.protocolId === selection.draft?.protocolId)?.revisionHash ?? ''} onSaved={refresh} onClose={() => setSelection(undefined)} /> : <>
-      {customDrafts.length === 0 ? <p>暂无版本化协议。新建协议开始编写，或从历史配置迁移。</p> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">协议</th><th>草稿</th><th>启用状态</th><th>操作</th></tr></thead><tbody>{customDrafts.map((draft) => {
-        const active = listing.active.find((entry) => entry.protocolId === draft.protocolId)
-        return <tr key={draft.protocolId} className="border-b"><td className="p-3 font-mono">{draft.protocolId}</td><td className="font-mono text-xs">{draft.hash.slice(0, 12)}</td><td>{active ? listing.loaded[draft.protocolId] === active.revisionHash ? '已启用' : '需重新验证或修复' : '未启用'}</td><td><Button onClick={() => setSelection({ draft })}>编辑 {draft.protocolId}</Button><Button variant="danger" onClick={() => setArchiveID(draft.protocolId)}>删除 {draft.protocolId}</Button></td></tr>
-      })}</tbody></table></div>}
       {(listing.presets ?? []).length > 0 && <div className="space-y-2">
-        <h2 className="text-sm font-medium">预置协议（只读，随版本自动更新）</h2>
-        <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">协议</th><th>启用修订</th><th>操作</th></tr></thead><tbody>{(listing.presets ?? []).map((id) => {
+        <h2 className="text-sm font-medium">预置协议（只读）</h2>
+        <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">协议</th><th>当前版本</th><th className="p-3 text-center">操作</th></tr></thead><tbody>{(listing.presets ?? []).map((id) => {
           const active = listing.active.find((entry) => entry.protocolId === id)
-          return <tr key={id} className="border-b"><td className="p-3 font-mono">{id}</td><td className="font-mono text-xs">{active?.revisionHash.slice(0, 12) ?? '—'}</td><td><Button variant="ghost" onClick={() => void copyPreset(id)}>复制为新协议</Button></td></tr>
+          return <tr key={id} className="border-b"><td className="p-3 font-mono">{id}</td><td className="p-3 font-mono text-xs">{active?.revisionHash.slice(0, 12) ?? '—'}</td><td className="p-3 text-center"><Button variant="ghost" onClick={() => void copyPreset(id)}>复制为新协议</Button></td></tr>
         })}</tbody></table></div>
       </div>}
+      {customDrafts.length === 0 ? <p>暂无自定义协议。新建协议开始编写，或从历史配置迁移。</p> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">协议</th><th>草稿</th><th>启用状态</th><th className="p-3 text-center">操作</th></tr></thead><tbody>{customDrafts.map((draft) => {
+        const active = listing.active.find((entry) => entry.protocolId === draft.protocolId)
+        return <tr key={draft.protocolId} className="border-b"><td className="p-3 font-mono">{draft.protocolId}</td><td className="p-3 font-mono text-xs">{draft.hash.slice(0, 12)}</td><td className="p-3">{active ? listing.loaded[draft.protocolId] === active.revisionHash ? '已启用' : '需重新验证或修复' : '未启用'}</td><td className="p-3 text-center"><Button onClick={() => setSelection({ draft })}>编辑 {draft.protocolId}</Button><Button variant="danger" onClick={() => setArchiveID(draft.protocolId)}>删除 {draft.protocolId}</Button></td></tr>
+      })}</tbody></table></div>}
     </>}
   </div>
 }
