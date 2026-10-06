@@ -7,6 +7,27 @@ const DefinitionSchemaVersion = 2
 // CompilerVersion binds verification evidence to execution semantics.
 const CompilerVersion = "2.0.0-dev.18"
 
+// Preset protocol identifiers. Presets ship with the engine, are read-only for
+// authoring, and are refreshed to the shipped revision on every startup;
+// customization starts from a copy under a new ID.
+const (
+	PresetChatCompletionsID = "chat-completions-api"
+	PresetResponsesID       = "responses-api"
+	PresetAnthropicID       = "anthropic-api"
+	PresetGeminiID          = "gemini-api"
+)
+
+// IsPresetProtocolID reports whether the identifier belongs to a built-in
+// preset and is therefore exempt from user authoring.
+func IsPresetProtocolID(id string) bool {
+	switch id {
+	case PresetChatCompletionsID, PresetResponsesID, PresetAnthropicID, PresetGeminiID:
+		return true
+	default:
+		return false
+	}
+}
+
 // Transport identifies framing and connection lifecycle, never content shape.
 type Transport string
 

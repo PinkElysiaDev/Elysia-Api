@@ -70,6 +70,9 @@ func (service *Service) SaveDraft(ctx context.Context, id string, raw []byte, ex
 	if !definitionIdentifier.MatchString(id) {
 		return Draft{}, nil, draftInputError("/id", fmt.Errorf("invalid protocol ID"))
 	}
+	if IsPresetProtocolID(id) {
+		return Draft{}, nil, draftInputError("/id", fmt.Errorf("preset protocol %q is read-only and refreshes with the engine; copy it under a new ID to customize", id))
+	}
 	value, err := ParseValue(raw)
 	if err != nil {
 		return Draft{}, nil, draftInputError("/", err)
@@ -150,6 +153,9 @@ func (service *Service) Revisions(ctx context.Context, id string) ([]Revision, e
 // Activate compiles and verifies evidence before atomically publishing a
 // revision. Requests that already pinned the old pointer remain unaffected.
 func (service *Service) Activate(ctx context.Context, id, hash, expectedActive string) (Activation, error) {
+	if IsPresetProtocolID(id) {
+		return Activation{}, draftInputError("/id", fmt.Errorf("preset protocol %q is read-only and refreshes with the engine", id))
+	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	compiled, err := service.loadVerifiedRevision(ctx, id, hash)
