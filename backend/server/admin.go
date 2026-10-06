@@ -140,6 +140,9 @@ func (s *Server) adminRuntimeConfig(c *gin.Context) {
 			"enabled":   s.config.GetAgentRemote().AgentRemoteEnabled(),
 			"publicUrl": s.config.GetAgentRemote().PublicURL,
 		},
+		"agent": gin.H{
+			"toolLoopLimit": s.config.ResolveAgentToolLoopLimit(),
+		},
 	})
 }
 
@@ -160,6 +163,12 @@ type runtimeConfigPayload struct {
 		SyncIntervalMinutes *int `json:"syncIntervalMinutes"`
 	} `json:"modelCatalog"`
 	AgentRemote *agentRemoteConfigPayload `json:"agentRemote"`
+	Agent       *agentDefaultsPayload      `json:"agent"`
+}
+
+// agentDefaultsPayload 是 AI 助手全局默认的增量更新体。
+type agentDefaultsPayload struct {
+	ToolLoopLimit *int `json:"toolLoopLimit"`
 }
 
 // agentRemoteConfigPayload 是 AI 助手远程暴露面的增量更新体：块存在即
@@ -244,6 +253,15 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 	if payload.ModelCatalog != nil && payload.ModelCatalog.SyncIntervalMinutes != nil {
 		// 周期检查是动态的，写入配置即生效（0 = 默认 24h），无需重启。
 		s.config.SetModelCatalogSyncInterval(*payload.ModelCatalog.SyncIntervalMinutes)
+	}
+	if payload.Agent != nil && payload.Agent.ToolLoopLimit != nil {
+		limit := *payload.Agent.ToolLoopLimit
+		if limit < 0 || limit > 100 {
+			respondFail(c, 400, "invalid_tool_loop_limit", "toolLoopLimit 取值 0-100（0=默认 30）")
+			return
+		}
+		// 引擎每轮动态读取，写入即热生效。
+		s.config.SetAgentToolLoopLimit(limit)
 	}
 	if payload.AgentRemote != nil {
 		// 远程面鉴权链每请求读内存配置，写入即热生效（无需重启）。

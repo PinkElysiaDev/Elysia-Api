@@ -41,6 +41,7 @@ type Config struct {
 	AllowFakeIPOutbound bool               `json:"allowFakeIPOutbound,omitempty"` // 已废弃：仅作加载迁移读取（见 normalizeOutboundLocked），不再下发/落盘
 	ModelCatalog        ModelCatalogConfig `json:"modelCatalog,omitempty"`        // 模型能力元数据目录（默认 models.dev）
 	AgentRemote         AgentRemoteConfig  `json:"agentRemote,omitempty"`         // AI 助手远程暴露面（REST/MCP/A2A）
+	Agent               AgentDefaultsConfig `json:"agent,omitempty"`                // AI 助手全局默认（工具循环上限等）
 	// OpenBrowserOnStart 控制启动时是否在系统默认浏览器打开控制台。
 	// nil = 默认尝试（桌面开箱即用；无桌面环境命令缺失时静默跳过），
 	// false = 不打开（子进程托管场景），true = 强制尝试。
@@ -620,6 +621,38 @@ func (c *Config) GetAgentRemote() AgentRemoteConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.AgentRemote
+}
+
+// defaultAgentToolLoopLimit 与 agent.DefaultMaxModelCalls 保持一致（30）；
+// config 包不反向依赖 agent，此处独立声明。
+const defaultAgentToolLoopLimit = 30
+
+// AgentDefaultsConfig 汇总 AI 助手的全局默认项，运行配置页可改、热生效。
+type AgentDefaultsConfig struct {
+	// ToolLoopLimit 是单轮工具循环的模型调用上限；0 = 默认（30）。
+	ToolLoopLimit int `json:"toolLoopLimit,omitempty"`
+}
+
+// GetAgentDefaults 返回 AI 助手全局默认配置（含读锁快照）。
+func (c *Config) GetAgentDefaults() AgentDefaultsConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Agent
+}
+
+// ResolveAgentToolLoopLimit 归一化工具循环上限（<=0 回落默认 30）。
+func (c *Config) ResolveAgentToolLoopLimit() int {
+	if limit := c.GetAgentDefaults().ToolLoopLimit; limit > 0 {
+		return limit
+	}
+	return defaultAgentToolLoopLimit
+}
+
+// SetAgentToolLoopLimit 运行时修改工具循环上限，随 Save() 落盘并热生效。
+func (c *Config) SetAgentToolLoopLimit(limit int) {
+	c.mu.Lock()
+	c.Agent.ToolLoopLimit = limit
+	c.mu.Unlock()
 }
 
 // ResolveModelCatalogInterval 返回供管理页表单显示的周期值（分钟）：

@@ -74,7 +74,13 @@ func (s *Server) protocolAgentEngine() *agent.Engine {
 			registry,
 			newAgentUserContentRenderer(s),
 			agentSystemPrompt,
-			agent.Options{MaxModelCalls: 30, TurnTimeout: 10 * time.Minute, ParseAsk: parseAskQuestion},
+			agent.Options{
+			MaxModelCalls: 30,
+			// 运行配置页可改、热生效（会话级设置仍可逐会话覆盖）。
+			ModelCallLimit: func() int { return s.config.ResolveAgentToolLoopLimit() },
+			TurnTimeout:   10 * time.Minute,
+			ParseAsk:      parseAskQuestion,
+		},
 		)
 		// 启动对账：上一进程崩溃/被杀遗留的 running 会话复位为 idle，否则
 		// UI 会永远挡在不存在的轮次上（waiting_approval 保留可恢复）。

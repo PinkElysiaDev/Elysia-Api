@@ -11,6 +11,9 @@
     "enabled": true,
     "publicUrl": ""
   },
+  "agent": {
+    "toolLoopLimit": 30
+  },
   "outbound": {
     "deniedIpRanges": [
       "0.0.0.0/8",
