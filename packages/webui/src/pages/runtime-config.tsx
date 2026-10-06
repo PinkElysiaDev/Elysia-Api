@@ -307,9 +307,10 @@ export function RuntimeConfigPage() {
               <RefreshCw className="h-4 w-4" />
               <span className="max-rail:sr-only">{reloading ? "重载中…" : "重载配置"}</span>
             </Button>
-            <Button variant="primary" onClick={() => void handleSave()} disabled={saving || reloading}>
+            {/* 默认白瓷键，有未保存修改时切换梅釉主色提醒保存 */}
+            <Button variant={isDirty ? "primary" : "default"} onClick={() => void handleSave()} disabled={saving || reloading}>
               <Save className="h-4 w-4" />
-              <span className="max-rail:sr-only">{saving ? "保存中…" : "保存配置"}</span>
+              <span className="max-rail:sr-only">{saving ? "保存中…" : isDirty ? "保存修改" : "保存配置"}</span>
             </Button>
           </div>
         </div>
@@ -324,7 +325,7 @@ export function RuntimeConfigPage() {
           </div>
         )}
 
-        <fieldset disabled={saving || reloading} aria-label="运行配置表单" aria-busy={saving || reloading} className="min-w-0 max-w-[1100px] pt-6 disabled:opacity-70">
+        <fieldset disabled={saving || reloading} aria-label="运行配置表单" aria-busy={saving || reloading} className="min-w-0 w-full pt-6 disabled:opacity-70">
           <Tabs.Content value="basic" forceMount className="space-y-8 outline-none data-[state=inactive]:hidden">
             <SettingSection
               icon={Server}

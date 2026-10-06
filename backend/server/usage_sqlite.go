@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -12,6 +11,11 @@ import (
 )
 
 func (s *Server) saveUsageRecordToStore(record *usageRecord) error {
+	s.initLifecycle()
+	ctx := s.usageWriteCtx
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	cfg := s.usageLogConfig()
 	var assets []storage.UsageAsset
 	// bodyOnErrorOnly：成功请求的请求体没有排查价值，四段 body 与外置媒体
@@ -68,7 +72,7 @@ func (s *Server) saveUsageRecordToStore(record *usageRecord) error {
 		RequestTruncated:  record.IncomingBody.Truncated,
 		ResponseTruncated: record.ProviderResponse.Truncated,
 	}
-	return s.store.SaveUsageRecordJSON(context.Background(), payload, summary, record.EndedAt, assets...)
+	return s.store.SaveUsageRecordJSON(ctx, payload, summary, record.EndedAt, assets...)
 }
 
 // usageLogConfig 返回本服务生效的日志策略；无 config 的裸 Server（测试）

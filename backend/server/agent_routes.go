@@ -49,6 +49,11 @@ func (s *Server) setupAgentRoutes(admin *gin.RouterGroup) {
 
 // protocolAgentEngine 惰性装配引擎（store 就绪后首次调用时构建）。
 func (s *Server) protocolAgentEngine() *agent.Engine {
+	s.agentEngineMu.Lock()
+	defer s.agentEngineMu.Unlock()
+	if s.agentEngineClosed {
+		return nil
+	}
 	s.agentEngineOnce.Do(func() {
 		if s.store == nil {
 			return
@@ -433,6 +438,8 @@ func respondAgentTurnError(c *gin.Context, err error) {
 // 管理面（gin）与 A2A 远程出口共用这一张映射表，新增引擎错误只改这里。
 func agentTurnErrorInfo(err error) (int, string, string) {
 	switch {
+	case errors.Is(err, agent.ErrEngineClosed):
+		return http.StatusServiceUnavailable, "agent_unavailable", "Agent 引擎正在停止"
 	case errors.Is(err, agent.ErrSessionRunning):
 		return http.StatusConflict, "session_running", "会话已有轮次进行中"
 	case errors.Is(err, agent.ErrNoPendingApproval):

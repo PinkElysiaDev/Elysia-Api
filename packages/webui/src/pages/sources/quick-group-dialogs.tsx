@@ -108,7 +108,7 @@ export function QuickCreateGroupDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             取消
           </Button>
-          <Button variant="primary" onClick={handleCreate} disabled={saving}>
+          <Button onClick={handleCreate} disabled={saving}>
             {saving ? '创建中…' : '创建'}
           </Button>
         </DialogFooter>
@@ -207,7 +207,7 @@ export function AddToGroupDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             取消
           </Button>
-          <Button variant="primary" onClick={handleAdd} disabled={saving || !selected}>
+          <Button onClick={handleAdd} disabled={saving || !selected}>
             {saving ? '添加中…' : '添加'}
           </Button>
         </DialogFooter>

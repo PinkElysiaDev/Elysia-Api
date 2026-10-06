@@ -38,7 +38,7 @@
 
   --border: 230 12% 89%;                /* #DEE1E9 清爽微冷刻线 */
   --input: 230 12% 89%;
-  --ring: 336 80% 48%;
+  --ring: 226 10% 44%;                  /* 焦点环：中性冷灰，独立于品牌玫红 */
 
   --sidebar: 230 14% 97.5%;             /* #F7F8FB 侧栏浅色 */
   --sidebar-foreground: 228 24% 12%;
@@ -129,7 +129,7 @@
 
   --border: 240 10% 18%;                /* #2B2B36 清晰微冷暗刻线 */
   --input: 240 10% 18%;
-  --ring: 336 90% 64%;
+  --ring: 230 12% 68%;                  /* 焦点环：中性冷灰（暗色），独立于品牌玫红 */
 
   --sidebar: 240 16% 8.5%;              /* #131319 */
   --sidebar-foreground: 230 20% 96%;
@@ -585,29 +585,6 @@ html.theme-transitioning :where(body, #root, #root *):not(.theme-sun):not(.theme
   }
   .no-scrollbar::-webkit-scrollbar {
     display: none;
-  }
-
-  /* 状态点（状态视图 / 源健康表）：jade 呼吸光环 / ember / 熄灭 */
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex: none;
-    display: inline-block;
-  }
-  .dot-ok {
-    background: var(--jade);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--jade) 18%, transparent);
-    animation: breathe 2.6s ease-in-out infinite;
-  }
-  .dot-off {
-    background: hsl(var(--border));
-  }
-  /* 待办/待审批态：amber 光环呼吸（与 dot-ok/err 同构）。 */
-  .dot-warn {
-    background: var(--amber);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 18%, transparent);
-    animation: breathe 2.6s ease-in-out infinite;
   }
 
   /* JSON 高亮（lib/json-highlight.ts 输出）：j-k 键 / j-s 字符串 / j-n 数字 / j-b 布尔 */

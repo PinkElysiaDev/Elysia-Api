@@ -1,7 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { gunzipSync } from 'node:zlib'
+import { createServer } from 'node:http'
+import { gunzipSync, gzipSync } from 'node:zlib'
 import { fileURLToPath } from 'node:url'
 import { CharacterTrace, frameAtTime, interludeAtTime, type CharacterTraceAsset } from '../src/lib/character-trace'
 import { clipTraceSegment, coverPlacement, particlePoint } from '../src/lib/login-renderer'
@@ -68,6 +69,117 @@ async function expectLoginReady(page: Page) {
   await expect.poll(() => page.locator('video').evaluate((video) => !video.paused && video.currentTime > 0)).toBe(true)
 }
 
+test('a verified login immediately animates even while its trace is still loading', async ({ page }) => {
+  await mockLogin(page)
+  let release: () => void = () => undefined
+  const pending = new Promise<void>((resolve) => { release = resolve })
+  await page.route('**/login-trace/000.json*', async (route) => {
+    await pending
+    await route.fulfill({ contentType: 'application/json', body: readFileSync(assetPath('login-trace/000.json')) })
+  })
+  await page.goto('/#/login')
+  await expect.poll(() => page.locator('video').evaluate((video) => !video.paused && video.currentTime > 0)).toBe(true)
+  await page.getByLabel(/Panel Access Token/).fill('loading-trace-test-token')
+  await page.getByRole('button', { name: '立即登录' }).click()
+  try {
+    await expect(page.locator('.garden')).toHaveAttribute('data-cinematic', 'fallback', { timeout: 1000 })
+    await expect(page.locator('.garden')).toHaveAttribute('data-phase', 'entering')
+    await expect.poll(() => page.locator('.garden-interlude-cn').evaluate((element) => Number(getComputedStyle(element).opacity))).toBeGreaterThan(0.5)
+    expect(await page.evaluate(() => localStorage.getItem('elysia-webui.panel-token'))).toBeNull()
+  } finally { release() }
+  await expect(page.getByRole('button', { name: '退出登录', exact: true })).toBeVisible()
+  await expect(page.locator('.arrival-echo, .elysia-arrive')).toHaveCount(0)
+})
+
+test('delivery chunks preserve every byte of the original trace and reduce startup bytes', () => {
+  const manifest = JSON.parse(readFileSync(assetPath('login-trace/index-json-v1.json'), 'utf8')) as CharacterTraceAsset
+  const original = gunzipSync(readFileSync(assetPath(manifest.payload)))
+  const parts = manifest.chunks!.map((chunk) => {
+    expect(chunk.file).toMatch(/^\d{3}\.json$/)
+    const payload = JSON.parse(readFileSync(assetPath(`login-trace/${chunk.file}`), 'utf8'))
+    expect(payload.encoding).toBe('gzip-base64')
+    const encoded = Buffer.from(payload.data, 'base64')
+    expect(createHash('sha256').update(encoded).digest('hex')).toBe(chunk.sha256)
+    const decoded = gunzipSync(encoded)
+    expect(createHash('sha256').update(decoded).digest('hex')).toBe(chunk.decodedSha256)
+    expect(decoded.length).toBe(chunk.decodedBytes)
+    return decoded
+  })
+  expect(Buffer.concat(parts).equals(original)).toBe(true)
+  expect(readFileSync(assetPath('login-trace/000.json')).length).toBeLessThan(readFileSync(assetPath(manifest.payload)).length / 10)
+})
+
+test('startup fetches run in parallel and the full cinematic does not need the remaining chunks', async ({ page }) => {
+  await mockLogin(page)
+  const requested: string[] = []
+  page.on('request', (request) => requested.push(new URL(request.url()).pathname))
+  let releaseManifest: () => void = () => undefined
+  const pendingManifest = new Promise<void>((resolve) => { releaseManifest = resolve })
+  await page.route('**/login-trace/index-json-v1.json*', async (route) => {
+    await pendingManifest
+    await route.fulfill({ contentType: 'application/json', body: readFileSync(assetPath('login-trace/index-json-v1.json')) })
+  })
+  // 视频接下来五秒不会用到这些块，它们不可用不应影响过场。
+  await page.route(/\/login-trace\/0(?:0[89]|1\d)\.json/, (route) => route.abort('failed'))
+  await page.goto('/#/login')
+  try {
+    await expect.poll(() => requested.some((path) => path.endsWith('/000.json'))).toBe(true)
+    await expect.poll(() => requested.some((path) => path.endsWith('/role-mask.png'))).toBe(true)
+  } finally { releaseManifest() }
+  await expect(page.locator('.garden')).toHaveAttribute('data-trace-ready', 'true')
+  await expect.poll(() => page.locator('video').evaluate((video) => !video.paused && video.currentTime > 0)).toBe(true)
+  await page.getByLabel(/Panel Access Token/).fill('progressive-test-token')
+  await page.getByRole('button', { name: '立即登录' }).click()
+  await expect(page.locator('.garden')).toHaveAttribute('data-cinematic', 'ready')
+  await page.waitForSelector('.garden', { state: 'detached' })
+  await expect(page.locator('.arrival-echo')).toBeVisible()
+  expect(requested.some((path) => path.endsWith('elysia-character-trace.bin.gz'))).toBe(false)
+})
+
+test('resuming motion prefetches the current position while reusing startup assets', async ({ page }) => {
+  await mockLogin(page)
+  const requests: string[] = []
+  page.on('request', (request) => requests.push(new URL(request.url()).pathname))
+  await expectLoginReady(page)
+  await page.getByRole('button', { name: '暂停动态效果' }).click()
+  await expect(page.locator('.garden')).toHaveAttribute('data-motion', 'paused')
+  await page.locator('video').evaluate((video) => { video.currentTime = 10 })
+  await page.getByRole('button', { name: '播放动态效果' }).click()
+  await expect(page.locator('.garden')).toHaveAttribute('data-trace-ready', 'true')
+  await expect.poll(() => requests.filter((path) => path.endsWith('/010.json')).length).toBe(1)
+  expect(requests.filter((path) => path.endsWith('/login-trace/index-json-v1.json'))).toHaveLength(1)
+  expect(requests.filter((path) => path.endsWith('/000.json'))).toHaveLength(1)
+  await page.getByLabel(/Panel Access Token/).fill('resumed-trace-test-token')
+  await page.getByRole('button', { name: '立即登录' }).click()
+  await expect(page.locator('.garden')).toHaveAttribute('data-cinematic', 'ready')
+})
+
+test('a browser without video frame callbacks immediately uses the lightweight transition', async ({ page }) => {
+  await mockLogin(page)
+  await page.addInitScript(() => Object.defineProperty(HTMLVideoElement.prototype, 'requestVideoFrameCallback', { value: undefined }))
+  await expectLoginReady(page)
+  await page.getByLabel(/Panel Access Token/).fill('unsupported-frame-callback-test-token')
+  await page.getByRole('button', { name: '立即登录' }).click()
+  await expect(page.locator('.garden')).toHaveAttribute('data-cinematic', 'fallback', { timeout: 1000 })
+  await expect(page.getByRole('button', { name: '退出登录', exact: true })).toBeVisible()
+})
+
+test('a corrupted startup chunk is rejected without stranding authentication', async ({ page }) => {
+  await mockLogin(page)
+  await page.route('**/login-trace/000.json*', (route) => {
+    const payload = JSON.parse(readFileSync(assetPath('login-trace/000.json'), 'utf8'))
+    const bytes = Buffer.from(payload.data, 'base64')
+    bytes[bytes.length - 1] ^= 1
+    return route.fulfill({ json: { ...payload, data: bytes.toString('base64') } })
+  })
+  await page.goto('/#/login')
+  await expect(page.locator('.garden')).toHaveAttribute('data-trace-status', 'failed')
+  await page.getByLabel(/Panel Access Token/).fill('corrupt-trace-test-token')
+  await page.getByRole('button', { name: '立即登录' }).click()
+  await expect(page.locator('.garden')).toHaveAttribute('data-cinematic', 'fallback')
+  await expect(page.getByRole('button', { name: '退出登录', exact: true })).toBeVisible()
+})
+
 test('pause freezes video, camera, aurora and form; the choice survives reload', async ({ page }) => {
   await mockLogin(page)
   await expectLoginReady(page)
@@ -118,15 +230,18 @@ test('labels remain accessible, tools are equal-sized, and errors surface in a b
 for (const mode of ['paused', 'reduced', 'unavailable'] as const) {
   test(`successful ${mode} login skips both cinematic and arrival effects`, async ({ page }) => {
     await mockLogin(page)
+    const traceRequests: string[] = []
+    page.on('request', (request) => { if (request.url().includes('/login-trace/')) traceRequests.push(request.url()) })
     if (mode === 'paused') await page.addInitScript(() => localStorage.setItem('elysia-webui.login-motion', 'paused'))
     if (mode === 'reduced') await page.emulateMedia({ reducedMotion: 'reduce' })
-    if (mode === 'unavailable') await page.route('**/elysia-character-trace.json*', (route) => route.fulfill({ status: 404 }))
+    if (mode === 'unavailable') await page.route('**/login-trace/index-json-v1.json*', (route) => route.fulfill({ status: 404 }))
     await page.goto('/#/login')
     await page.getByLabel(/Panel Access Token/).fill('valid-test-token')
     await page.getByRole('button', { name: '立即登录' }).click()
     await expect(page.getByRole('button', { name: '退出登录', exact: true })).toBeVisible()
     await expect(page.locator('.garden-cinematic, .arrival-echo, .elysia-arrive, .app-fade')).toHaveCount(0)
     expect(await page.evaluate(() => sessionStorage.getItem('elysia-webui.arrived-from-login'))).toBeNull()
+    if (mode !== 'unavailable') expect(traceRequests).toHaveLength(0)
   })
 }
 
@@ -182,19 +297,59 @@ test('renderer context loss cannot strand a verified login', async ({ page }) =>
   await expect(page.locator('.arrival-echo, .elysia-arrive')).toHaveCount(0)
 })
 
-test('raw gzip delivery loads the same checked trace as HTTP-decoded gzip', async ({ page }) => {
+for (const compressed of [false, true]) {
+  test(`${compressed ? 'HTTP-compressed' : 'plain'} JSON chunks load the checked trace`, async ({ page }) => {
+    await mockLogin(page)
+    const bytes = readFileSync(assetPath('login-trace/000.json'))
+    // 使用真实 HTTP 响应测试浏览器解码；CDP fulfill 会跳过网络解压层。
+    const server = createServer((_request, response) => {
+      response.setHeader('Content-Type', 'application/json')
+      response.setHeader('Access-Control-Allow-Origin', '*')
+      if (compressed) response.setHeader('Content-Encoding', 'gzip')
+      response.end(compressed ? gzipSync(bytes) : bytes)
+    })
+    try {
+      await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
+      const address = server.address()
+      if (!address || typeof address === 'string') throw new Error('Missing test server address')
+      await page.route('**/login-trace/000.json*', (route) => route.continue({ url: `http://127.0.0.1:${address.port}/000.json` }))
+      await expectLoginReady(page)
+    } finally {
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  })
+}
+
+test('archive-download interception cannot remove cinematic strokes or particles', async ({ page }) => {
   await mockLogin(page)
-  await page.route('**/elysia-character-trace.bin.gz*', (route) => route.fulfill({
-    contentType: 'application/octet-stream', body: readFileSync(assetPath('elysia-character-trace.bin.gz')),
-  }))
+  const intercepted: string[] = []
+  // 模拟下载扩展接管压缩包：前端不应再发出这种请求。
+  await page.route(/\.(?:gz|bin)(?:\?|$)/, (route) => {
+    intercepted.push(route.request().url())
+    return route.abort('blockedbyclient')
+  })
+  const firstResponse = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith('/login-trace/000.json'))
   await expectLoginReady(page)
+  const response = await firstResponse
+  expect(response.headers()['content-type']).toContain('application/json')
+  expect(response.headers()['content-disposition'] ?? '').not.toContain('attachment')
+  expect((await response.json()).encoding).toBe('gzip-base64')
+  await page.getByLabel(/Panel Access Token/).fill('archive-interception-test-token')
+  await page.getByRole('button', { name: '立即登录' }).click()
+  await expect(page.locator('.garden')).toHaveAttribute('data-cinematic', 'ready')
+  await expect.poll(() => page.locator('canvas').evaluate((canvas) => Number(canvas.dataset.paths))).toBeGreaterThan(100)
+  await expect.poll(() => page.locator('canvas').evaluate((canvas) => Number(canvas.dataset.activeParticles))).toBeGreaterThan(0)
+  await page.waitForSelector('.garden', { state: 'detached' })
+  await expect(page.locator('.arrival-echo')).toBeVisible()
+  expect(intercepted).toEqual([])
 })
 
 test('a stale trace manifest cannot delay verified authentication', async ({ page }) => {
   await mockLogin(page)
-  const manifest = JSON.parse(readFileSync(assetPath('elysia-character-trace.json'), 'utf8'))
+  const manifest = JSON.parse(readFileSync(assetPath('login-trace/index-json-v1.json'), 'utf8'))
   manifest.source.sha256 = 'stale'
-  await page.route('**/elysia-character-trace.json*', (route) => route.fulfill({ json: manifest }))
+  await page.route('**/login-trace/index-json-v1.json*', (route) => route.fulfill({ json: manifest }))
   await page.goto('/#/login')
   await page.getByLabel(/Panel Access Token/).fill('stale-asset-test-token')
   await page.getByRole('button', { name: '立即登录' }).click()

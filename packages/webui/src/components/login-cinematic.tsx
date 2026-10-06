@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { interludeAtTime, type CharacterTrace } from '@/lib/character-trace'
 
 interface Props {
@@ -7,26 +7,38 @@ interface Props {
   cameraRef: RefObject<HTMLDivElement>
   videoRef: RefObject<HTMLVideoElement>
   targetRef: RefObject<HTMLDivElement>
-  trace: CharacterTrace
+  trace: CharacterTrace | null
   onFinish: (animated: boolean) => void
 }
 
 export function LoginCinematic({ rootRef, sceneRef, cameraRef, videoRef, targetRef, trace, onFinish }: Props) {
+  const [fallback, setFallback] = useState(!trace)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const textRef = useRef<HTMLSpanElement>(null)
   useEffect(() => {
     let cancelled = false
     let dispose: (() => void) | undefined
     const root = rootRef.current
+    if (!root) { onFinish(false); return }
+    if (fallback) {
+      root.dataset.cinematic = 'fallback'
+      // animationend 正常交接；样式未加载或事件未触发时仍能完成登录。
+      const timer = window.setTimeout(() => onFinish(false), 1800)
+      return () => {
+        window.clearTimeout(timer)
+        delete root.dataset.cinematic
+      }
+    }
     const scene = sceneRef.current
     const camera = cameraRef.current
     const video = videoRef.current
     const target = targetRef.current
     const canvas = canvasRef.current
-    if (!root || !scene || !camera || !video || !target || !canvas) { onFinish(false); return }
+    if (!scene || !camera || !video || !target || !canvas || !trace) { setFallback(true); return }
     void import('@/lib/login-renderer').then(({ runLoginTransition }) => {
       if (cancelled) return
-      dispose = runLoginTransition({ root, scene, camera, video, target, canvas, trace, onFinish,
+      dispose = runLoginTransition({ root, scene, camera, video, target, canvas, trace,
+        onFinish: (animated) => { if (!cancelled) { if (animated) onFinish(true); else setFallback(true) } },
         onReady: () => { root.dataset.cinematic = 'ready' },
         onFrame: (seconds) => {
           const text = textRef.current
@@ -36,15 +48,20 @@ export function LoginCinematic({ rootRef, sceneRef, cameraRef, videoRef, targetR
           text.style.filter = `blur(${presentation.blur}px)`
         },
       })
-    }).catch(() => { if (!cancelled) onFinish(false) })
+    }).catch((error: unknown) => {
+      if (cancelled) return
+      console.warn('[login] Cinematic renderer unavailable; using a simple transition.', error)
+      setFallback(true)
+    })
     return () => {
       cancelled = true
       dispose?.()
       delete root.dataset.cinematic
     }
-  }, [rootRef, sceneRef, cameraRef, videoRef, targetRef, trace, onFinish])
+  }, [rootRef, sceneRef, cameraRef, videoRef, targetRef, trace, onFinish, fallback])
   return <>
-    <canvas ref={canvasRef} className="garden-cinematic" aria-hidden="true" />
-    <div className="garden-interlude" aria-hidden="true"><span ref={textRef} className="garden-interlude-cn">因你而在的故事</span></div>
+    {!fallback && <canvas ref={canvasRef} className="garden-cinematic" aria-hidden="true" />}
+    <div className="garden-interlude" aria-hidden="true"><span ref={textRef} className="garden-interlude-cn"
+      onAnimationEnd={(event) => { if (fallback && event.animationName === 'garden-fallback-text') onFinish(false) }}>因你而在的故事</span></div>
   </>
 }

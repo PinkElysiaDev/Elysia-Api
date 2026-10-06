@@ -6,9 +6,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -192,5 +195,78 @@ func TestProbeCredentialSelectionHonorsModelPermissions(t *testing.T) {
 	sources[0].APIKeys = sources[0].APIKeys[:1]
 	if _, ok := server.resolveModelSource(model, collectSourceKeys(sources)); ok {
 		t.Fatal("probe bypassed model permissions")
+	}
+}
+
+func TestHealthCheckerShutdownCancelsActiveProbe(t *testing.T) {
+	s := newHealthTestServer(t)
+	s.config.HealthCheck.TimeoutSeconds = 30
+	s.config.HealthCheck.FailureThreshold = 1
+	started := make(chan struct{}, 2)
+	release := make(chan struct{})
+	var calls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		started <- struct{}{}
+		select {
+		case <-r.Context().Done():
+		case <-release:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer upstream.Close()
+
+	// feat 起探测要求可解析凭据（resolveModelSource 无 Key 即跳过），
+	// 补一个 Key 使探测真正发出，测试意图（关停取消在途探测）不变。
+	source := storage.ModelSource{ID: "slow", Name: "slow", BaseURL: upstream.URL, Platform: "openai", Enabled: true, APIKeys: []storage.SourceAPIKey{{Value: "probe-key"}}}
+	if err := s.store.UpsertSource(context.Background(), source); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.ReplaceSourceModels(context.Background(), source, []storage.Model{{ID: "first", Name: "first"}, {ID: "second", Name: "second"}}); err != nil {
+		t.Fatal(err)
+	}
+	// feat 起探测走协议引擎，要求源有已验证的协议绑定；迁移在测试服务器
+	// 构造时已完成，新建的源直接按生产同构方式补存绑定（见 agent_protocol_v2_test）。
+	service, err := s.protocolService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, ok := service.Pin("chat-completions-api")
+	if !ok {
+		t.Fatal("chat-completions-api preset not active")
+	}
+	if err := s.store.SaveProtocolBinding(context.Background(), storage.ProtocolBinding{Kind: "source", SourceID: source.ID, Binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: compiled.Definition().Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}); err != nil {
+		t.Fatal(err)
+	}
+	hc := newHealthChecker(s)
+	hc.start()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		close(release)
+		hc.shutdown()
+		t.Fatal("health checker did not start its first probe")
+	}
+
+	done := make(chan struct{})
+	go func() { hc.shutdown(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Error("shutdown must cancel the active probe instead of waiting for its 30s timeout")
+	}
+	close(release)
+	<-done
+	if got := calls.Load(); got != 1 {
+		t.Errorf("shutdown must not probe subsequent models: got %d requests", got)
+	}
+	models, err := s.store.ListModels(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range models {
+		if !model.Available {
+			t.Errorf("shutdown cancellation must not disable model %s", model.ID)
+		}
 	}
 }

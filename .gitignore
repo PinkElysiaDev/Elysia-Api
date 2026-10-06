@@ -64,3 +64,4 @@ scripts/login-trace/__pycache__/
 # 源码快照:构建时由 scripts/build-standalone.mjs 同步,只跟踪 README 占位
 backend/server/_snapshot/*
 !backend/server/_snapshot/README.md
+packages/webui/public/assets/login-trace/

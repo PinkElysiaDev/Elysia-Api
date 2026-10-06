@@ -29,7 +29,9 @@ export function useLoginMotion(rootRef: RefObject<HTMLElement>, videoRef: RefObj
   const [introEnabled, setIntroEnabled] = useState(() => !userPaused && !reduced && !saveData && !hidden)
   const [sceneIntroEnabled] = useState(introEnabled)
   const position = useRef({ horizontal: 0, vertical: 0 })
-  const allowed = !userPaused && !reduced && !saveData && !hidden && !autoplayBlocked && !videoFailed
+  // 用户/系统的动效意愿与视频播放能力分开：视频失败仍可使用轻量过场。
+  const enabled = !userPaused && !reduced && !saveData && !hidden
+  const allowed = enabled && !autoplayBlocked && !videoFailed
 
   useEffect(() => { if (!allowed) setIntroEnabled(false) }, [allowed])
 
@@ -130,6 +132,6 @@ export function useLoginMotion(rootRef: RefObject<HTMLElement>, videoRef: RefObj
   }, [autoplayBlocked, reduced, saveData, userPaused, videoFailed, videoRef])
 
   const reason = reduced ? '已遵循系统减少动态效果设置' : saveData ? '省流模式下已暂停动态效果' : videoFailed ? '动态壁纸加载失败' : ''
-  return { allowed, reduced, videoReady, videoFailed, requestedVideo, introEnabled, sceneIntroEnabled, toggle, reason,
+  return { enabled, allowed, reduced, videoReady, videoFailed, requestedVideo, introEnabled, sceneIntroEnabled, toggle, reason,
     onPlaying: () => setVideoReady(true), onError: () => setVideoFailed(true) }
 }

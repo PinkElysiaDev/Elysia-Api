@@ -8,6 +8,14 @@ Use this guide to verify the native shell, updater and embedded panel. Run comma
 
 The App targets macOS 12+. The build host needs compatible Command Line Tools (or full Xcode), Node.js and Go 1.25+. Its toolchain must link macOS 12 Swift programs for both arm64 and x86_64. The shell uses system frameworks; tests use Swift, AppKit, WebKit, the Python standard library and Clang-built architecture fixtures. Running and updating the packaged App requires no developer tools.
 
+## Processes and window closure
+
+The menu-bar shell supervises the backend and updates. The panel runs its AppKit window and WebKit in a separate child, using the bundled `ElysiaApi` executable with `--webui-process`. Closing the window cleans up window resources and exports, then exits the panel and its WebKit services while retaining the supervisor and original backend. Resource cleanup therefore no longer depends on whether WebKit retains services used by a released `WKWebView`. Reopening starts a fresh child; showing an already open panel reuses its current process.
+
+The panel uses WebKit's default persistent data store for manual sign-in and cookies; the same application's preferences retain theme, window size and position. Closing ends runtime resources without clearing persistent data. If the supervisor crashes, the panel's communication pipe and the backend's stdin receive EOF, triggering their respective shutdown paths.
+
+The supervisor checks health every 30 seconds when the backend is healthy and the panel is closed, and every 3 seconds while the panel is open or the service is starting/recovering. Backend process-exit callbacks begin exit handling and recovery immediately, without waiting for the next health poll.
+
 ## Toolchain and universal builds
 
 Follow Apple's [installation guide](https://developer.apple.com/documentation/xcode/installing-the-command-line-tools) to configure Command Line Tools, or use full Xcode. Check host OS and deployment-target compatibility in the [Xcode support table](https://developer.apple.com/support/xcode/).
@@ -44,20 +52,25 @@ npm run test:macos-app -- --panel
 PLAYWRIGHT_CHANNEL=chrome npm run test:e2e --workspace @root/webui
 ```
 
-`test:macos-app` runs a local HTTP child process in a temporary test App with a separate bundle ID, configuration, SQLite database, master-key directory and UserDefaults domain. It does not register login items, send notifications or request notification permission. Hooks compile only with `NATIVE_TESTS` and do not enter release builds. Cleanup removes test preferences, directories and backend processes owned by the test.
+`test:macos-app` runs a local HTTP child process and verifies the real supervisor and separate WebUI processes in a temporary test App with a separate bundle ID, configuration, SQLite database, master-key directory and UserDefaults domain. It does not register login items, send notifications or request notification permission. Hooks compile only with `NATIVE_TESTS` and do not enter release builds. Cleanup removes test preferences, directories and processes owned by the test.
 
 Automated coverage includes:
 
 - Default creation for missing config; preservation of damaged files; preservation of unknown keys and file permissions when changing ports.
-- Occupied-port fallback, IPv4/IPv6 URLs, background health checks, restart after sustained unhealthy state, graceful stop, stopping after three failed automatic restarts and manual retry.
+- Occupied-port fallback, IPv4/IPv6 URLs, background health checks, menu start/restart, restart after sustained unhealthy state, graceful draining on quit, stopping after three failed automatic restarts and manual retry.
 - Menu-bar usage pulse: millisecond buckets, window totals, token totals, sparse-slot filling, out-of-range rejection, malformed envelopes, RFC3339 query encoding, compact token formatting and authenticated reads from the real `/api/admin/usage/pulse` backend.
 - Reopening at overview when authenticated, ignoring and clearing old page history; an existing window keeps its page. Minimized-window restoration, geometry/theme, copy-token menu, no initial token/cookie injection, persistent WebKit storage, and releasing WebViews/message handlers on close.
 - Geometry recovery after disconnecting an external display, oversized windows and partly off-screen bounds.
 - Install disabled while checking updates, download progress/cancellation, HTTP errors, temporary file lifecycle, missing/mismatched digests, damaged DMGs and rollback after replacement failure.
+- Repeated window closure releases windows, WebViews, capsules and save sheets. Closing or quitting during export cancels the download and removes its temporary file while preserving existing destinations and files created at that path during the download.
+- Three real supervisor/WebUI open-close cycles: use `launchctl print pid/<WebUI PID>` to identify owned WebContent, Networking and GPU services, require their exit after closure, and retain a healthy original backend with no WebKit services in the supervisor. The fixture's JavaScript heartbeat and periodic HTTP requests must stop.
+- Repeated show and a second application launch reuse the original supervisor, panel and backend. Supervisor failure closes the pipes, and EOF shuts down its panel, WebKit services and backend.
+- Cancelled downloads can be retried, installation excludes service restarts, TERM allows backend draining, and parent-pipe EOF stops orphaned children.
+- Real signed DMG staging, hung-tool timeouts, replacement by an independent helper after the old shell exits, new-shell readiness acknowledgements, and rollback on launch failure, invalid acknowledgements or timeouts. Loaded HTML without a ready React UI keeps the old bundle and rolls back.
 - CoreFoundation inspection of real Mach-O fixtures: accept universal files without developer tools; reject single-architecture, invalid or missing files. Runtime validation does not invoke `lipo`.
 - Stable macOS 12 LaunchAgent configuration and paths containing spaces, quotes or shell characters.
 
-`--panel` requires a built App and uses its real universal Go backend and React WebUI. It checks the initially empty login form, token/cookie persistence after manual login, login state across window close/reopen, logout persistence, theme and overview, graceful stop/restart, port and configuration/master-key/SQLite preservation. The test App has a separate bundle ID and cleans up its WebKit store. A static preview is saved to `dist/macos-panel-preview.png` using test data; updates are neither downloaded nor installed. A locked or displayless environment can pause WebKit animation, so only the test page completes finite entrance animations before capture. This checks final layout, not unlocked animation and interaction.
+`--panel` requires a built App and uses its real universal Go backend and React WebUI. It checks the initially empty login form, token/cookie persistence after manual login, login state across window close/reopen, logout persistence, theme and overview, graceful draining during menu restart, port and configuration/master-key/SQLite preservation. It also runs three supervisor/child open-close cycles and a supervisor-crash check against the real backend and React panel; the JavaScript heartbeat check uses the HTTP fixture in the regular suite. The test App has a separate bundle ID and cleans up its WebKit store; update handoff checks replace only temporary test copies, without contacting the release server or changing installed applications. A static preview is saved to `dist/macos-panel-preview.png` using test data. A locked or displayless environment can pause WebKit animation, so only the test page completes finite entrance animations before capture. This checks final layout, not unlocked animation and interaction.
 
 `build:macos-app` compiles arm64 and x86_64 native shells targeting macOS 12, then performs:
 
@@ -80,8 +93,11 @@ These checks require the specified OS, permission or interaction. Automated test
 | macOS 13+ login item | Check system login items after enabling; use the menu to open system settings when approval is needed. A system-disabled item must not be silently re-enabled on launch. |
 | Notifications | Allow, deny, re-enable in system settings and disable in-app. Important notifications open the window; update/failure notifications expose the update bar. Menu text explains permission status. |
 | Windows and accessibility | Test ⌘W, Dock/menu reopening, minimize/fullscreen, title-bar drag/double-click and display removal. VoiceOver announces windows, status items, menus, progress and error actions. |
-| System quit | Quit healthy and hung services with ⌘Q/system quit. Request graceful shutdown, then TERM after 8 seconds and KILL after another 3; leave no orphan child. Quit is temporarily disabled during installation replacement. |
-| Updates | Test no update, offline, missing DMG, bad digest, cancellation, read-only destination, replacement failure and success. Preserve the old version or recoverable backup. Reopen at overview while retaining geometry, theme, config, database and key. Validation works without CLT. |
+| Processes after closure | Open and close the panel three times. Require the WebUI child and its WebContent/Networking/GPU services to exit, while the original supervisor and backend remain alive. Reopening retains authentication, theme, size and position. Check WebKit ownership with `launchctl print` for the panel PID. |
+| Service actions | Show Start Service when not running and Restart Service when running. Wait for the old process to exit before starting its replacement. Disable repeated actions during startup, restart and installation. |
+| System quit | Quit healthy and hung services with ⌘Q/system quit. Send TERM directly to the owned backend and wait for records to flush; use KILL only after 15 seconds. Parent-shell failure triggers the shared shutdown sequence through stdin EOF. Quit is temporarily disabled during validation and staging. |
+| Background health and recovery | Check every 30 seconds with a closed panel and healthy backend, every 3 seconds with the panel open or during startup/recovery. Process-exit callbacks handle backend crashes promptly. |
+| Updates | Test no update, offline, missing DMG, bad digest, cancellation, read-only destination, replacement failure and success. Validate and stage first, stop the backend and exit the old shell, then let the helper replace and launch. Foreground launches require a healthy backend and ready React UI; background launches require a healthy backend. Keep the old bundle until readiness and roll back failed launches. Retain geometry, theme, configuration, database and key. Validation works without CLT. |
 | WebKit export | Export logs, cancel saving and close the window during download. Complete the export or report a clear error; open external links in the default browser. |
 
 ## Keyboard and logs
@@ -93,10 +109,10 @@ These checks require the specified OS, permission or interaction. Automated test
 | Reload panel | ⌘R |
 | Open in browser / copy panel URL | ⇧⌘B / ⇧⌘L |
 | Copy API URL / panel token | ⌥⌘C / ⇧⌥⌘C |
-| Start or stop service | ⌥⌘S |
+| Start or restart service | ⌥⌘S |
 | Check updates / quit | ⇧⌘U / ⌘Q |
 
-The menu-bar log action opens `~/Library/Application Support/ElysiaApi/elysia-api.log`. Native startup, port, health and update events go to OSLog:
+The menu-bar log action opens `~/Library/Application Support/ElysiaApi/elysia-api.log`. Update handoff, readiness and rollback events are written to `update.log` in the same directory. Native startup, port, health and update events go to OSLog:
 
 ```sh
 log stream --predicate 'subsystem == "dev.pinkelysiadev.ElysiaApi"' --level info

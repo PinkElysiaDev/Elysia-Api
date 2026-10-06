@@ -24,15 +24,19 @@ type healthChecker struct {
 	mu       sync.Mutex
 	failures map[string]int // key: modelID\x00sourceID → 连续失败次数
 
-	stop chan struct{}
-	done chan struct{}
+	ctx       context.Context
+	cancel    context.CancelFunc
+	done      chan struct{}
+	startOnce sync.Once
 }
 
 func newHealthChecker(s *Server) *healthChecker {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &healthChecker{
 		server:   s,
 		failures: make(map[string]int),
-		stop:     make(chan struct{}),
+		ctx:      ctx,
+		cancel:   cancel,
 		done:     make(chan struct{}),
 	}
 }
@@ -60,36 +64,38 @@ func probeKey(modelID, sourceID string) string { return modelID + nulSeparator +
 // 热重载改配置完全无效。禁用状态循环保持空转（每周期一次 timer 唤醒，
 // 代价可忽略），重新启用无需重启进程。
 func (h *healthChecker) start() {
-	if h.server.store == nil {
-		close(h.done)
-		return
-	}
-	if cfg := h.server.config.GetHealthCheckConfig(); cfg.Enabled {
-		interval := h.probeInterval()
-		h.server.logInfof("health checker enabled: interval=%s timeout=%ds failureThreshold=%d", interval, cfg.TimeoutSeconds, cfg.FailureThreshold)
-	}
-	go func() {
-		defer close(h.done)
-		interval := h.probeInterval()
-		timer := time.NewTimer(interval)
-		defer timer.Stop()
-		if h.server.config.GetHealthCheckConfig().Enabled {
-			// 启动后先跑一轮，不必等第一个 interval。
-			h.runOnce()
+	h.startOnce.Do(func() {
+		if h.server.store == nil || h.ctx.Err() != nil {
+			close(h.done)
+			return
 		}
-		for {
-			select {
-			case <-h.stop:
-				return
-			case <-timer.C:
-				if h.server.config.GetHealthCheckConfig().Enabled {
-					h.runOnce()
-				}
-				// 周期热更新：interval 变化从下一轮生效。
-				timer.Reset(h.probeInterval())
+		if cfg := h.server.config.GetHealthCheckConfig(); cfg.Enabled {
+			interval := h.probeInterval()
+			h.server.logInfof("health checker enabled: interval=%s timeout=%ds failureThreshold=%d", interval, cfg.TimeoutSeconds, cfg.FailureThreshold)
+		}
+		go func() {
+			defer close(h.done)
+			interval := h.probeInterval()
+			timer := time.NewTimer(interval)
+			defer timer.Stop()
+			if h.server.config.GetHealthCheckConfig().Enabled {
+				// 启动后先跑一轮，不必等第一个 interval。
+				h.runOnce()
 			}
-		}
-	}()
+			for {
+				select {
+				case <-h.ctx.Done():
+					return
+				case <-timer.C:
+					if h.server.config.GetHealthCheckConfig().Enabled {
+						h.runOnce()
+					}
+					// 周期热更新：interval 变化从下一轮生效。
+					timer.Reset(h.probeInterval())
+				}
+			}
+		}()
+	})
 }
 
 // probeInterval 读取当前生效的探测周期（config 层已保证 >0）。
@@ -98,24 +104,22 @@ func (h *healthChecker) probeInterval() time.Duration {
 }
 
 func (h *healthChecker) shutdown() {
-	select {
-	case <-h.stop:
-		// already closed
-	default:
-		close(h.stop)
-	}
+	h.cancel()
+	h.start()
 	<-h.done
 }
 
 // runOnce 探测一轮所有模型。
 func (h *healthChecker) runOnce() {
 	cfg := h.server.config.GetHealthCheckConfig()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.TimeoutSeconds)*time.Second)
+	ctx, cancel := context.WithTimeout(h.ctx, time.Duration(cfg.TimeoutSeconds)*time.Second)
 	defer cancel()
 
 	models, err := h.server.store.ListAllModelsForProbe(ctx)
 	if err != nil {
-		h.server.logWarnf("health check: failed to list models: %v", err)
+		if h.ctx.Err() == nil {
+			h.server.logWarnf("health check: failed to list models: %v", err)
+		}
 		return
 	}
 	sources, err := h.server.store.ListSources(ctx)
@@ -127,15 +131,22 @@ func (h *healthChecker) runOnce() {
 	h.pruneStaleFailureKeys(models)
 
 	for _, model := range models {
+		if h.ctx.Err() != nil {
+			return
+		}
 		ref, hasCredential := h.server.resolveModelSource(model, keyMeta)
 		if !hasCredential {
 			continue
 		}
 		model.BaseURL, model.APIKey = ref.BaseURL, ref.APIKey
 
-		// 每次探测在 probe 内部独立限时：若整轮共享一个超时 ctx，一个慢上游
-		// 就会耗尽预算，导致本轮后续所有探测连锁失败、健康模型被误禁。
-		result := h.probe(context.Background(), model, cfg.TimeoutSeconds)
+		// 探测父 ctx 取 h.ctx（仅可取消、无 deadline）：既保持每探测独立限时
+		// （慢上游只消耗自己的预算），又让关停取消能中断在途探测。
+		result := h.probe(h.ctx, model, cfg.TimeoutSeconds)
+		// 停机取消不是上游故障，不计失败或更改模型可用性。
+		if h.ctx.Err() != nil {
+			return
+		}
 		if result == probeUnavailable {
 			continue
 		}
@@ -150,6 +161,9 @@ func (h *healthChecker) runOnce() {
 // record 根据探测结果更新连续失败计数，并在跨过阈值时切换 available 状态。
 // 返回 true 表示发生了状态变更。
 func (h *healthChecker) recordProbeResult(model storage.Model, ok bool, threshold int) bool {
+	if h.ctx.Err() != nil {
+		return false
+	}
 	key := probeKey(model.ID, model.SourceID)
 	h.mu.Lock()
 	if ok {
@@ -160,7 +174,7 @@ func (h *healthChecker) recordProbeResult(model storage.Model, ok bool, threshol
 	failCount := h.failures[key]
 	h.mu.Unlock()
 
-	ctx := context.Background()
+	ctx := h.ctx
 	switch {
 	case ok && !model.Available:
 		// 恢复：探测成功且当前被禁用 → 重新启用

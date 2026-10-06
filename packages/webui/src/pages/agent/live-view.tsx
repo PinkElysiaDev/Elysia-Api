@@ -12,7 +12,7 @@ export function LiveAssistantView({
     <div className="flex flex-col gap-2">
       {hasContent ? (
         <div>
-          <div className="min-w-0 space-y-2">
+          <div className="min-w-0 max-w-[80ch] space-y-2">
             <ReasoningBlock text={live.reasoning} />
             {live.text ? <Markdown text={live.text} /> : null}
           </div>
