@@ -1,5 +1,8 @@
 # Maheshvara protocol
 
+> Historical architecture reference. The Maheshvara runtime was removed in C16.
+> For the active engine, use [Protocol v2](protocol-guide.en.md). Old paths below describe historical versions only.
+
 [Documentation](README.en.md) · [简体中文](maheshvara-protocol.md) · **English**
 
 Maheshvara is the gateway's internal model for requests, responses, and stream events. It supports cross-protocol conversion and is not a standalone HTTP API. `MaheshvaraProtocolVersion` is currently `"2"`, corresponding to the reasoning envelope; v1 envelopes remain readable.

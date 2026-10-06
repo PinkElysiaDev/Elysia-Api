@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/elysia-api/backend/config"
 	"github.com/gin-gonic/gin"
@@ -30,7 +31,7 @@ func TestOpenAIChatPassthroughStreamForwardsRawSSE(t *testing.T) {
 			``,
 			`data: [DONE]`,
 			``,
-		}, "\n"))
+		}, "\n")+"\n")
 	}))
 	defer upstream.Close()
 
@@ -78,13 +79,16 @@ func TestResponsesPassthroughStreamPreservesReasoningText(t *testing.T) {
 			`event: response.reasoning_text.done`,
 			`data: {"type":"response.reasoning_text.done","sequence_number":2,"item_id":"rs_1","output_index":0,"content_index":0,"text":"thinking..."}`,
 			``,
+			`event: response.content_part.added`,
+			`data: {"type":"response.content_part.added","item_id":"msg_1","output_index":1,"content_index":0,"part":{"type":"output_text","text":""}}`,
+			``,
 			`event: response.output_text.delta`,
 			`data: {"type":"response.output_text.delta","sequence_number":3,"item_id":"msg_1","output_index":1,"content_index":0,"delta":"42"}`,
 			``,
 			`event: response.completed`,
 			`data: {"type":"response.completed","response":{"id":"resp_1","object":"response","status":"completed","model":"upstream","output":[{"type":"message","id":"msg_1","status":"completed","role":"assistant","content":[{"type":"output_text","text":"42","annotations":[]}]}],"usage":{"input_tokens":5,"output_tokens":1,"total_tokens":6}}}`,
 			``,
-		}, "\n"))
+		}, "\n")+"\n")
 	}))
 	defer upstream.Close()
 
@@ -168,8 +172,8 @@ func TestStreamCancellationUsage(t *testing.T) {
 				}
 				if endpoint == "responses" || endpoint == "converted" {
 					platform = "responses"
-					body = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n"
-					terminal = "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":2,\"output_tokens\":1,\"total_tokens\":3}}}\n\n"
+					body = "data: {\"type\":\"response.content_part.added\",\"part\":{\"type\":\"output_text\",\"text\":\"\"}}\n\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n"
+					terminal = `data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"partial"}]}],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3}}}` + "\n\n"
 					if endpoint == "responses" {
 						marker = "response.completed"
 					}
@@ -192,16 +196,12 @@ func TestStreamCancellationUsage(t *testing.T) {
 				model := openAIModel("actual", upstream.URL)
 				model.Platform = platform
 				s := newTestServerWithStore(t, []config.ModelGroupConfig{{ID: "g", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 1, Models: []config.ModelRef{model}}})
-				if endpoint == "custom" {
-					s.seedPresetProtocols()
-					s.syncCustomProtocols()
-				}
 				c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 				if endpoint == "responses" {
 					rec = httptest.NewRecorder()
 					c, _ = newResponsesContext(rec, `{"model":"grp","stream":true,"input":"hi"}`)
 				}
-				ctx, cancel := context.WithCancel(c.Request.Context())
+				ctx, cancel := context.WithTimeout(c.Request.Context(), time.Second)
 				defer cancel()
 				c.Request = c.Request.WithContext(ctx)
 				if !completed {
@@ -214,10 +214,9 @@ func TestStreamCancellationUsage(t *testing.T) {
 					s.chatCompletions(c)
 				}
 				logs := latestUsageRecords(t, s)
+				// The connection was canceled before transport completion. Converted
+				// terminals remain pending until usage tails have been consumed.
 				want := 499
-				if completed {
-					want = 200
-				}
 				if len(logs) != 1 || logs[0].StatusCode != want {
 					t.Fatalf("want %d: %+v", want, logs)
 				}
@@ -225,12 +224,11 @@ func TestStreamCancellationUsage(t *testing.T) {
 				if err := json.Unmarshal([]byte(storedRecordJSON(t, s.store, logs[0].RequestID)), &record); err != nil {
 					t.Fatal(err)
 				}
-				if completed {
-					if record.Error != "" || strings.Contains(rec.Body.String(), "context canceled") {
-						t.Fatalf("completed stream reported error: %+v", record)
-					}
-				} else if record.ErrorKind != ErrorKindClientCanceled {
+				if record.ErrorKind != ErrorKindClientCanceled {
 					t.Fatalf("errorKind=%q", record.ErrorKind)
+				}
+				if completed && (record.ProtocolUsage == nil || record.ProtocolUsage.Total == nil || record.ProtocolUsage.Total.Count != 3) {
+					t.Fatalf("observed usage lost on cancellation: %+v", record.ProtocolUsage)
 				}
 			})
 		}

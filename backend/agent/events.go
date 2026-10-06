@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/protocol"
 )
 
 // 事件类型：引擎只产出结构化事件，SSE 编码由 HTTP 层完成。
@@ -63,10 +63,10 @@ type Event struct {
 	Compaction *Compaction   `json:"compaction,omitempty"`
 
 	// turn_done
-	Usage      *relay.MaheshvaraUsage `json:"usage,omitempty"`
-	Model      string                 `json:"model,omitempty"`
-	DurationMs int64                  `json:"durationMs,omitempty"`
-	Rounds     int                    `json:"rounds,omitempty"`
+	Usage      *protocol.Usage `json:"usage,omitempty"`
+	Model      string          `json:"model,omitempty"`
+	DurationMs int64           `json:"durationMs,omitempty"`
+	Rounds     int             `json:"rounds,omitempty"`
 }
 
 // ToolResultInfo 是 tool_result 事件与消息内容共用的结构。
@@ -114,9 +114,13 @@ type Document struct {
 
 // AssistantContent 是 assistant 消息内容。
 type AssistantContent struct {
-	Text      string                     `json:"text,omitempty"`
-	Reasoning string                     `json:"reasoning,omitempty"`
-	ToolCalls []relay.MaheshvaraToolCall `json:"toolCalls,omitempty"`
+	IsIncomplete bool `json:"incomplete,omitempty"`
+	// Content retains the complete model output. Legacy rows without this field
+	// are imported once at the persistence boundary from the display fields.
+	Content   []protocol.Node `json:"content,omitempty"`
+	Text      string          `json:"text,omitempty"`
+	Reasoning string          `json:"reasoning,omitempty"`
+	ToolCalls []FunctionCall  `json:"toolCalls,omitempty"`
 }
 
 // ApprovalContent 是 approval 消息内容（用户对门控动作的裁决）。
@@ -168,12 +172,12 @@ type PlanStep struct {
 // PendingAction 是等待用户的动作快照。Kind 为空或 approval 时是门控工具审批；
 // question 是 ask_user 的提问；plan 是方案定稿确认。
 type PendingAction struct {
-	Kind        string                     `json:"kind,omitempty"`
-	Calls       []relay.MaheshvaraToolCall `json:"calls"`
-	Reason      string                     `json:"reason,omitempty"` // 模型对动作意图的说明（取自正文）
-	Question    *AskQuestion               `json:"question,omitempty"`
-	Plan        []PlanStep                 `json:"plan,omitempty"`
-	PlanSummary string                     `json:"planSummary,omitempty"` // plan 型：方案的分析摘要
+	Kind        string         `json:"kind,omitempty"`
+	Calls       []FunctionCall `json:"calls"`
+	Reason      string         `json:"reason,omitempty"` // 模型对动作意图的说明（取自正文）
+	Question    *AskQuestion   `json:"question,omitempty"`
+	Plan        []PlanStep     `json:"plan,omitempty"`
+	PlanSummary string         `json:"planSummary,omitempty"` // plan 型：方案的分析摘要
 }
 
 // AskQuestion 是 ask_user 暂停时交给用户的问题。

@@ -60,19 +60,6 @@ func (s *Store) UpsertCustomProtocol(ctx context.Context, item CustomProtocol) e
 	return err
 }
 
-// DeleteCustomProtocol 删除一条协议，返回是否确实删除了记录。
-func (s *Store) DeleteCustomProtocol(ctx context.Context, id string) (bool, error) {
-	result, err := s.db.ExecContext(ctx, `DELETE FROM custom_protocols WHERE id = ?`, strings.TrimSpace(id))
-	if err != nil {
-		return false, err
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return false, err
-	}
-	return affected > 0, nil
-}
-
 // ProtocolRenamePair 是一次性 ID 迁移对（预置协议去厂商化重命名用）。
 type ProtocolRenamePair struct {
 	OldID string

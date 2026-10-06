@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/elysia-api/backend/agent"
-	"github.com/elysia-api/backend/relay"
 )
 
 // update_plan 工具：模型维护多步任务的工作方案清单，侧边栏「方案」页实时
@@ -25,9 +24,8 @@ func (t *updatePlanTool) Meta() agent.ToolMeta {
 	return agent.ToolMeta{RiskLevel: "low", PreviewDirection: agent.ClampHead}
 }
 
-func (t *updatePlanTool) Definition() relay.MaheshvaraTool {
-	return relay.MaheshvaraTool{
-		Type: "function",
+func (t *updatePlanTool) Definition() agent.FunctionDefinition {
+	return agent.FunctionDefinition{
 		Name: agent.ToolNameUpdatePlan,
 		Description: "更新工作方案（analysis 摘要与步骤清单都是整体替换）。方案分两部分：" +
 			"analysis 归纳已完成探索/查询/测试得到的结论与关键约束（不是步骤，执行中发现新结论就更新它）；" +

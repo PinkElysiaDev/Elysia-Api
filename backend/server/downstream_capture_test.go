@@ -8,6 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// usageBodyMaxBytes 是测试用的请求体捕获上限。生产路径的上限来自
+// usageLogConfig().BodyMaxBytes，测试需要固定值来断言截断行为。
+const usageBodyMaxBytes = 1 * 1024 * 1024
+
 // newTestGinWriter 借助 gin.CreateTestContext 拿到一个真实的 gin.ResponseWriter
 // （底层是 httptest recorder），避免手写实现整个接口。
 func newTestGinWriter() (gin.ResponseWriter, *httptest.ResponseRecorder) {
@@ -18,7 +22,7 @@ func newTestGinWriter() (gin.ResponseWriter, *httptest.ResponseRecorder) {
 
 func TestDownstreamCaptureRecordsWrittenBytes(t *testing.T) {
 	inner, rec := newTestGinWriter()
-	capture := newDownstreamCaptureWriter(inner, UsageBodyMaxBytes)
+	capture := newDownstreamCaptureWriter(inner, usageBodyMaxBytes)
 
 	if _, err := capture.Write([]byte(`{"hello":`)); err != nil {
 		t.Fatalf("unexpected write error: %v", err)
@@ -42,9 +46,9 @@ func TestDownstreamCaptureRecordsWrittenBytes(t *testing.T) {
 
 func TestDownstreamCaptureTruncatesAtLimit(t *testing.T) {
 	inner, rec := newTestGinWriter()
-	capture := newDownstreamCaptureWriter(inner, UsageBodyMaxBytes)
+	capture := newDownstreamCaptureWriter(inner, usageBodyMaxBytes)
 
-	big := strings.Repeat("a", UsageBodyMaxBytes+512)
+	big := strings.Repeat("a", usageBodyMaxBytes+512)
 	if _, err := capture.Write([]byte(big)); err != nil {
 		t.Fatalf("unexpected write error: %v", err)
 	}
@@ -53,8 +57,8 @@ func TestDownstreamCaptureTruncatesAtLimit(t *testing.T) {
 	if !body.Truncated {
 		t.Fatal("expected truncation flag for oversized body")
 	}
-	if len(body.Content) != UsageBodyMaxBytes {
-		t.Fatalf("expected captured content capped at %d, got %d", UsageBodyMaxBytes, len(body.Content))
+	if len(body.Content) != usageBodyMaxBytes {
+		t.Fatalf("expected captured content capped at %d, got %d", usageBodyMaxBytes, len(body.Content))
 	}
 	// 截断只影响捕获的副本，客户端仍收到完整字节。
 	if rec.Body.Len() != len(big) {
@@ -67,7 +71,7 @@ func TestInstallDownstreamCaptureWiresRecord(t *testing.T) {
 	c, _ := gin.CreateTestContext(rec)
 	record := &usageRecord{}
 
-	capture := installDownstreamCapture(c, record, UsageBodyMaxBytes)
+	capture := installDownstreamCapture(c, record, usageBodyMaxBytes)
 	if capture == nil {
 		t.Fatal("expected capture writer")
 	}
@@ -75,7 +79,7 @@ func TestInstallDownstreamCaptureWiresRecord(t *testing.T) {
 		t.Fatal("record.downstream not wired to capture writer")
 	}
 	// 幂等：重复安装应复用已有 capture，不再二次包裹。
-	again := installDownstreamCapture(c, record, UsageBodyMaxBytes)
+	again := installDownstreamCapture(c, record, usageBodyMaxBytes)
 	if again != capture {
 		t.Fatal("expected installDownstreamCapture to be idempotent")
 	}

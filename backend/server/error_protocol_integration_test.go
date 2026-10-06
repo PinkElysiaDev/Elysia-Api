@@ -6,15 +6,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/elysia-api/backend/protocol/builtin"
+
 	"github.com/elysia-api/backend/config"
-	"github.com/elysia-api/backend/relay"
 	"github.com/gin-gonic/gin"
 )
 
 // 四线制错误矩阵:未知模型在每条客户端线制上都返回该协议的标准错误体
 // (4xx,SDK/Codex 不再自动重试;type/code/status 由 ErrorClass 派生)。
 func TestUnknownModelRendersProtocolErrors(t *testing.T) {
-	s := newTestServer(nil)
+	s := newTestServer(t, nil)
 	cases := []struct {
 		name    string
 		path    string
@@ -89,7 +90,7 @@ func TestUnknownModelRendersProtocolErrors(t *testing.T) {
 // stream:true 的前置错误仍是带 JSON Content-Type 的普通响应(非 SSE):
 // Codex 等客户端依赖此行为判定请求失败而不是挂在一个空流上。
 func TestStreamPreflightErrorStaysJSON(t *testing.T) {
-	s := newTestServer(nil)
+	s := newTestServer(t, nil)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.6-luna","stream":true,"input":"hi"}`))
@@ -109,7 +110,7 @@ func TestStreamPreflightErrorStaysJSON(t *testing.T) {
 
 // 401 按线制渲染:OpenAI 线是 invalid_request_error + invalid_api_key。
 func TestAuthFailureRendersOpenAIError(t *testing.T) {
-	s := newTestServer(nil)
+	s := newTestServer(t, nil)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"x"}`))
@@ -138,8 +139,8 @@ func TestCrossProtocolUpstreamErrorTranslation(t *testing.T) {
 		ID: "g1", Name: "grp", Enabled: true,
 		Models: []config.ModelRef{{ID: "m1", Name: "claude-x", BaseURL: upstream.URL, APIKey: "k", Platform: "anthropic"}},
 	}
-	s := newTestServer([]config.ModelGroupConfig{group})
-	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hi"}]}`)
+	s := newTestServer(t, []config.ModelGroupConfig{group})
+	c, rec := chatRequestContext(`{"model":"grp","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 
 	if rec.Code != http.StatusTooManyRequests {
@@ -168,8 +169,8 @@ func TestSameProtocolUpstreamErrorPassthrough(t *testing.T) {
 		ID: "g1", Name: "grp", Enabled: true,
 		Models: []config.ModelRef{{ID: "m1", Name: "gpt-x", BaseURL: upstream.URL, APIKey: "k", Platform: "openai"}},
 	}
-	s := newTestServer([]config.ModelGroupConfig{group})
-	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hi"}]}`)
+	s := newTestServer(t, []config.ModelGroupConfig{group})
+	c, rec := chatRequestContext(`{"model":"grp","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 
 	if rec.Code != http.StatusTooManyRequests {
@@ -182,4 +183,4 @@ func TestSameProtocolUpstreamErrorPassthrough(t *testing.T) {
 }
 
 // 编译期锚点:确保 relay 常量参与此文件(避免 import 漂移)。
-var _ = relay.FormatOpenAI
+var _ = builtin.FormatOpenAI

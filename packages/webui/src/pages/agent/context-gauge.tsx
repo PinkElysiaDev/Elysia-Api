@@ -9,10 +9,11 @@ const GAUGE_WARN_RATIO = 0.7; // 上下文占用环的黄/绿分界
 const GAUGE_DANGER_RATIO = 0.9; // 红/黄分界
 
 export interface SessionUsageStat {
-  input: number;
-  output: number;
-  cached: number;
-  total: number;
+  input?: number;
+  output?: number;
+  cached?: number;
+  created?: number;
+  total?: number;
   hitRate: number | null;
   /** 最近一次调用的输入 token；不能用会话累计用量代替上下文水位。 */
   contextTokens?: number;
@@ -26,7 +27,8 @@ export function ContextGauge({
   usage: SessionUsageStat | null;
   contextLimit: number;
 }) {
-  const hasUsage = !!usage && usage.total > 0;
+  const hasUsage = usage !== null;
+  const formatCounter = (value: number | undefined) => value === undefined ? "未知" : compactNumber(value);
   const hasLimit = Number.isFinite(contextLimit) && contextLimit > 0;
   const showRing = hasLimit && usage?.contextTokens != null;
   const ratio = showRing ? Math.min(1, usage.contextTokens! / contextLimit) : 0;
@@ -77,16 +79,14 @@ export function ContextGauge({
         {hasUsage ? (
           <>
             <p className="tnum">
-              会话累计：↑{compactNumber(usage.input)} ↓
-              {compactNumber(usage.output)} tokens
+              会话累计：↑{formatCounter(usage.input)} ↓
+              {formatCounter(usage.output)} tokens
             </p>
-            {usage.cached > 0 ? (
-              <p className="tnum">
-                缓存命中：{compactNumber(usage.cached)}（
-                {formatHitRate(usage.hitRate ?? 0)}）
-              </p>
-            ) : null}
-            <p className="tnum">共 {compactNumber(usage.total)} tokens</p>
+            <p className="tnum">
+              缓存读取：{formatCounter(usage.cached)}（{usage.hitRate === null ? "命中率未知" : formatHitRate(usage.hitRate)}）
+            </p>
+            <p className="tnum">缓存创建：{formatCounter(usage.created)}</p>
+            <p className="tnum">共 {formatCounter(usage.total)} tokens</p>
           </>
         ) : (
           <p>本会话暂无 token 消耗</p>

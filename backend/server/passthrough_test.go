@@ -42,10 +42,10 @@ func TestChatCompletionsClaudePassthroughPreservesFields(t *testing.T) {
 		ID: "g1", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 1,
 		Models: []config.ModelRef{claudeModel("upstream-claude", upstream.URL)},
 	}
-	s := newTestServer([]config.ModelGroupConfig{group})
+	s := newTestServer(t, []config.ModelGroupConfig{group})
 
 	// 含 cache_control 与未知扩展字段，验证同协议透传默认保真。
-	reqBody := `{"model":"grp","system":[{"type":"text","text":"sys","cache_control":{"type":"ephemeral"}}],"messages":[{"role":"user","content":"hello"}],"x_future_flag":true}`
+	reqBody := `{"model":"grp","max_tokens":64,"system":[{"type":"text","text":"sys","cache_control":{"type":"ephemeral"}}],"messages":[{"role":"user","content":"hello"}],"x_future_flag":true}`
 	c, rec := messagesRequestContext(reqBody)
 	s.chatCompletions(c)
 

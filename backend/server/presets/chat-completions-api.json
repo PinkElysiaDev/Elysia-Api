@@ -1,12 +1,12 @@
 {
   "id": "chat-completions-api",
   "name": "Chat Completions API（预置）",
-  "version": "4",
+  "version": "6",
   "type": "llm",
   "metadata": {
     "preset": true,
-    "presetVersion": 4,
-    "description": "Chat Completions 线制的预置定义；复制后可定制端点/字段。v4：命名去厂商化；v3：path 相对化——base 填到 /v1 为止（对齐官方 base 约定），端点路径不含版本前缀"
+    "presetVersion": 6,
+    "description": "Chat Completions 线制的预置定义；复制后可定制端点/字段。v4：命名去厂商化；v3：path 相对化——base 填到 /v1 为止（对齐官方 base 约定），端点路径不含版本前缀; v5: preserve cache semantics and cache field mappings; v6: share native response and event adapters"
   },
   "request": {
     "method": "POST",
@@ -74,93 +74,29 @@
         "field": "user",
         "mode": "string",
         "omitIfEmpty": true
+      },
+      "prompt_cache_key": {
+        "field": "prompt_cache_key",
+        "omitIfEmpty": true
+      },
+      "prompt_cache_retention": {
+        "field": "prompt_cache_retention",
+        "omitIfEmpty": true
+      },
+      "cache_control": {
+        "field": "cache_control",
+        "omitIfEmpty": true
       }
     }
   },
   "response": {
-    "textPath": "choices[0].message.content",
-    "reasoningPath": "choices[0].message.reasoning_content",
-    "refusalPath": "choices[0].message.refusal",
-    "toolCallsPath": "choices[0].message.tool_calls",
-    "usagePath": "usage",
-    "finishReasonPath": "choices[0].finish_reason",
+    "adapter": "openai-chat",
     "stream": {
-      "mode": "delta",
-      "frames": [
-        {
-          "match": {
-            "path": "error",
-            "op": "notNull"
-          },
-          "response": {
-            "errorPath": "error"
-          }
-        },
-        {
-          "match": {
-            "path": "choices[0].delta.tool_calls",
-            "op": "nonEmpty"
-          },
-          "tool": {
-            "path": "choices[0].delta.tool_calls",
-            "indexPath": "index",
-            "idPath": "id",
-            "namePath": "function.name",
-            "argumentsPath": "function.arguments"
-          },
-          "response": {
-            "textPath": "choices[0].delta.content",
-            "reasoningPath": "choices[0].delta.reasoning_content",
-            "usagePath": "usage",
-            "finishReasonPath": "choices[0].finish_reason"
-          }
-        },
-        {
-          "match": {
-            "path": "choices[0].delta.reasoning_signature",
-            "op": "notNull"
-          },
-          "response": {
-            "signaturePath": "choices[0].delta.reasoning_signature",
-            "signatureProvider": "openai"
-          }
-        },
-        {
-          "match": {
-            "path": "choices[0].delta.refusal",
-            "op": "notNull"
-          },
-          "response": {
-            "refusalPath": "choices[0].delta.refusal"
-          }
-        },
-        {
-          "match": {
-            "path": "choices[0]",
-            "op": "isNull"
-          },
-          "response": {
-            "usagePath": "usage"
-          }
-        },
-        {
-          "match": {
-            "path": "choices",
-            "op": "nonEmpty"
-          },
-          "response": {
-            "textPath": "choices[0].delta.content",
-            "reasoningPath": "choices[0].delta.reasoning_content",
-            "usagePath": "usage",
-            "finishReasonPath": "choices[0].finish_reason"
-          }
-        }
-      ]
+      "adapter": "openai-chat"
     }
   },
   "models": {
     "path": "/models",
     "listPath": "data"
-  },
-  "aliases": {}
+  }
 }

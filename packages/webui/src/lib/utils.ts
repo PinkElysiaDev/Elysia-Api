@@ -74,9 +74,28 @@ export function percent(part: number, total: number): string {
   return `${((part / total) * 100).toFixed(1)}%`
 }
 
-/** cacheHitRate（0–1）→ 百分比文案。 */
+/** cacheHitRate（0–1）→ 百分比文案；非有限值（NaN/Infinity）显示 —。 */
 export function formatHitRate(rate: number): string {
+  if (!Number.isFinite(rate)) return '—'
   return `${(rate * 100).toFixed(1)}%`
+}
+
+/** usage_report_mask 位定义（与后端 storage.UsageReport* 对齐）：标记该行计数是否来自上游上报。 */
+export const USAGE_REPORT_INPUT = 1 << 0
+export const USAGE_REPORT_CACHE_HIT = 1 << 1
+export const USAGE_REPORT_CREATION = 1 << 2
+
+/** cache_creation_tokens 是否由上游上报：掩码缺省（历史行/详情载荷）或对应位未置位均视为未上报。 */
+export function isCacheCreationReported(mask: number | undefined): boolean {
+  return ((mask ?? 0) & USAGE_REPORT_CREATION) !== 0
+}
+
+/** 缓存创建 token 三态文案：未上报 → —（绝不能当 0）；上报（含显式 0）→ 千分位数字。
+ *  列表行传掩码判定置位；详情载荷无掩码，字段缺省（omitempty）即未上报。 */
+export function formatCacheCreationTokens(value: number | undefined, mask?: number): string {
+  const reported = mask === undefined ? value !== undefined : isCacheCreationReported(mask)
+  if (!reported || value == null || !Number.isFinite(value)) return '—'
+  return formatNumber(value)
 }
 
 /** Recharts 轴刻度共用样式。字号/字重由 --chart-tick-* 定义，rem 随根字号流式缩放。 */

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Download, RotateCcw, ScrollText, Zap } from 'lucide-react'
+import { Download, Plus, RotateCcw, ScrollText, Zap } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { RoleWatermark } from '@/components/role-watermark'
 import { Button } from '@/components/ui/button'
@@ -17,7 +17,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { useUsageLogs, revalidate, useDebouncedValue } from '@/lib/hooks'
 import { useUsageFilters } from '@/lib/usage-filters'
 import { api } from '@/lib/api'
-import { downloadJSON, formatDateTime, formatDuration, formatNumber, isSuccessStatus } from '@/lib/utils'
+import { cn, downloadJSON, formatCacheCreationTokens, formatDateTime, formatDuration, formatNumber, isCacheCreationReported, isSuccessStatus } from '@/lib/utils'
 
 const PAGE_SIZE = 20
 
@@ -227,6 +227,8 @@ export function UsageLogsPage() {
                     const route = !log.modelName ? '未路由' : [
                       log.modelName !== log.requestedModelGroup ? `→ ${log.modelName}` : '', source,
                     ].filter(Boolean).join(' · ')
+                    const creationReported = isCacheCreationReported(log.usageReportMask)
+                    const creationText = formatCacheCreationTokens(log.cacheCreationTokens, log.usageReportMask)
                     return (
                     <TableRow
                       key={log.requestId}
@@ -272,6 +274,16 @@ export function UsageLogsPage() {
                             {Math.round((log.cacheHitTokens / log.inputTokens) * 100)}%
                           </span>
                         )}
+                        <span
+                          className={cn(
+                            'ml-1.5 whitespace-nowrap font-mono text-xs',
+                            creationReported ? 'text-jade' : 'text-muted-foreground/55',
+                          )}
+                          title={creationReported ? `缓存创建 ${creationText} tokens` : '缓存创建：上游未上报'}
+                        >
+                          <Plus className="mr-px inline h-3 w-3 align-[-1px]" />
+                          {creationText}
+                        </span>
                       </TableCell>
                     </TableRow>
                   )})}

@@ -1,12 +1,12 @@
 {
   "id": "responses-api",
   "name": "Responses API（预置）",
-  "version": "4",
+  "version": "6",
   "type": "llm",
   "metadata": {
     "preset": true,
-    "presetVersion": 4,
-    "description": "Responses 线制的预置定义；v4：命名去厂商化；v3：path 相对化——base 填到 /v1 为止（对齐官方 base 约定），端点路径不含版本前缀"
+    "presetVersion": 6,
+    "description": "Responses 线制的预置定义；v4：命名去厂商化；v3：path 相对化——base 填到 /v1 为止（对齐官方 base 约定），端点路径不含版本前缀; v5: preserve cache semantics and cache field mappings; v6: share native response and event adapters"
   },
   "request": {
     "method": "POST",
@@ -64,105 +64,25 @@
         "field": "user",
         "mode": "string",
         "omitIfEmpty": true
+      },
+      "prompt_cache_key": {
+        "field": "prompt_cache_key",
+        "omitIfEmpty": true
+      },
+      "prompt_cache_retention": {
+        "field": "prompt_cache_retention",
+        "omitIfEmpty": true
       }
     }
   },
   "response": {
-    "textPath": "output",
-    "textFilter": {
-      "path": "type",
-      "op": "equals",
-      "value": "message"
-    },
-    "reasoningPath": "output",
-    "reasoningFilter": {
-      "path": "type",
-      "op": "equals",
-      "value": "reasoning"
-    },
-    "toolCallsPath": "output",
-    "usagePath": "usage",
+    "adapter": "responses",
     "stream": {
-      "frames": [
-        {
-          "event": "response.failed",
-          "payloadPath": "response",
-          "response": {
-            "errorPath": "error"
-          }
-        },
-        {
-          "event": "response.output_text.delta",
-          "response": {
-            "textPath": "delta"
-          }
-        },
-        {
-          "event": "response.refusal.delta",
-          "response": {
-            "refusalPath": "delta"
-          }
-        },
-        {
-          "event": "response.reasoning_text.delta",
-          "response": {
-            "reasoningPath": "delta"
-          }
-        },
-        {
-          "event": "response.reasoning_signature.delta",
-          "response": {
-            "signaturePath": "delta",
-            "signatureProvider": "openai"
-          }
-        },
-        {
-          "event": "response.output_item.added",
-          "match": {
-            "path": "item.type",
-            "op": "equals",
-            "value": "function_call"
-          },
-          "tool": {
-            "indexPath": "output_index",
-            "idPath": "item.call_id",
-            "namePath": "item.name"
-          }
-        },
-        {
-          "event": "response.function_call_arguments.delta",
-          "tool": {
-            "indexPath": "output_index",
-            "argumentsPath": "delta"
-          }
-        },
-        {
-          "event": "response.function_call_arguments.done",
-          "toolDone": true,
-          "tool": {
-            "indexPath": "output_index"
-          }
-        },
-        {
-          "event": "response.completed",
-          "terminal": true,
-          "payloadPath": "response",
-          "response": {
-            "usagePath": "usage"
-          }
-        }
-      ]
+      "adapter": "responses"
     }
   },
   "models": {
     "path": "/models",
     "listPath": "data"
-  },
-  "aliases": {
-    "textKeys": [
-      "text",
-      "content",
-      "summary"
-    ]
   }
 }

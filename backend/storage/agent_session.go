@@ -99,7 +99,7 @@ func (s *Store) attachSessionStats(ctx context.Context, items []agent.Session) {
 	// 否则统计整列静默归零。WHERE 顺带跳过两种都不是的行。
 	rows, err := s.db.QueryContext(ctx, `SELECT session_id,
 			SUM(CASE WHEN role = 'user' THEN 1 ELSE 0 END),
-			COALESCE(SUM(CASE WHEN usage_json != '' THEN CAST(json_extract(usage_json, '$.total_tokens') AS INTEGER) ELSE 0 END), 0)
+			COALESCE(SUM(CASE WHEN usage_json != '' THEN CAST(COALESCE(json_extract(usage_json, '$.total.count'), json_extract(usage_json, '$.total_tokens')) AS INTEGER) ELSE 0 END), 0)
 			FROM agent_messages WHERE role = 'user' OR usage_json != '' GROUP BY session_id`)
 	if err != nil {
 		return

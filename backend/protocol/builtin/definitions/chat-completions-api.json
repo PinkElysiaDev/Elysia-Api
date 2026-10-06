@@ -1,0 +1,3372 @@
+{
+  "schemaVersion": 2,
+  "id": "chat-completions-api",
+  "name": "chat-completions-api",
+  "version": "2.2.0",
+  "family": "openai_chat",
+  "wireVersion": "v2",
+  "capabilities": {
+    "text": true,
+    "tools.function": true,
+    "native_extensions": true,
+    "usage": true,
+    "cache.keys": true,
+    "cache.retention": true,
+    "cache.options": true,
+    "images": true,
+    "audio": true,
+    "documents": true,
+    "reasoning": true
+  },
+  "directions": {
+    "decode_request": {
+      "module": "openai-chat",
+      "capabilities": {
+        "text": true,
+        "tools.function": true,
+        "native_extensions": true,
+        "cache.keys": true,
+        "cache.retention": true,
+        "cache.options": true,
+        "images": true,
+        "audio": true,
+        "documents": true,
+        "reasoning": true
+      }
+    },
+    "encode_request": {
+      "module": "openai-chat",
+      "capabilities": {
+        "text": true,
+        "tools.function": true,
+        "native_extensions": true,
+        "cache.keys": true,
+        "cache.retention": true,
+        "cache.options": true,
+        "images": true,
+        "audio": true,
+        "documents": true,
+        "reasoning": true
+      }
+    },
+    "decode_response": {
+      "module": "openai-chat",
+      "capabilities": {
+        "text": true,
+        "tools.function": true,
+        "usage": true,
+        "native_extensions": true,
+        "reasoning": true
+      }
+    },
+    "encode_response": {
+      "module": "openai-chat",
+      "capabilities": {
+        "text": true,
+        "tools.function": true,
+        "usage": true,
+        "native_extensions": true,
+        "reasoning": true
+      }
+    },
+    "decode_event": {
+      "module": "openai-chat",
+      "capabilities": {
+        "text": true,
+        "tools.function": true,
+        "usage": true,
+        "native_extensions": true,
+        "reasoning": true
+      }
+    },
+    "encode_event": {
+      "module": "openai-chat",
+      "capabilities": {
+        "text": true,
+        "tools.function": true,
+        "usage": true,
+        "native_extensions": true,
+        "reasoning": true
+      },
+      "frameBatch": true
+    }
+  },
+  "native": {
+    "preserve": true
+  },
+  "operations": {
+    "generate": {
+      "kind": "generate",
+      "method": "POST",
+      "path": "/chat/completions",
+      "transport": "http_json",
+      "request": "encode_request",
+      "response": "decode_response",
+      "auth": {
+        "location": "header",
+        "name": "Authorization",
+        "prefix": "Bearer "
+      }
+    },
+    "stream": {
+      "kind": "generate",
+      "method": "POST",
+      "path": "/chat/completions",
+      "transport": "sse",
+      "request": "encode_request",
+      "response": "decode_event",
+      "auth": {
+        "location": "header",
+        "name": "Authorization",
+        "prefix": "Bearer "
+      },
+      "framing": {
+        "done": [
+          "[DONE]"
+        ]
+      }
+    },
+    "models": {
+      "kind": "models",
+      "method": "GET",
+      "path": "/models",
+      "transport": "http_json",
+      "auth": {
+        "location": "header",
+        "name": "Authorization",
+        "prefix": "Bearer "
+      },
+      "models": {
+        "decode": {
+          "transform": {
+            "op": "object",
+            "fields": {
+              "models": {
+                "op": "map",
+                "source": {
+                  "op": "read",
+                  "path": "/data",
+                  "required": true
+                },
+                "body": {
+                  "op": "object",
+                  "fields": {
+                    "id": {
+                      "op": "read",
+                      "path": "/id",
+                      "from": "item",
+                      "required": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "samples": [
+    {
+      "id": "text-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "text-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "chat-completions-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "model": "m",
+            "messages": [
+              {
+                "role": "user",
+                "content": "hello"
+              }
+            ],
+            "max_completion_tokens": 10
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "history-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          },
+          {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "type": "function",
+                "id": "call",
+                "function": {
+                  "name": "lookup",
+                  "arguments": "{\"n\":9007199254740993}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "call",
+            "name": "lookup",
+            "content": "ok"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "type": "object"
+              }
+            }
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "tool_call",
+                "name": "lookup",
+                "callId": "call",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "kind": "tool_result",
+            "name": "lookup",
+            "callId": "call",
+            "payload": "ok"
+          }
+        ],
+        "tools": [
+          {
+            "kind": "function",
+            "name": "lookup",
+            "inputSchema": {
+              "type": "object"
+            }
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "history-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "tool_call",
+                "name": "lookup",
+                "callId": "call",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "kind": "tool_result",
+            "name": "lookup",
+            "callId": "call",
+            "payload": "ok"
+          }
+        ],
+        "tools": [
+          {
+            "kind": "function",
+            "name": "lookup",
+            "inputSchema": {
+              "type": "object"
+            }
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "chat-completions-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "model": "m",
+            "messages": [
+              {
+                "role": "user",
+                "content": "hello"
+              },
+              {
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "type": "function",
+                    "id": "call",
+                    "function": {
+                      "name": "lookup",
+                      "arguments": "{\"n\":9007199254740993}"
+                    }
+                  }
+                ]
+              },
+              {
+                "role": "tool",
+                "tool_call_id": "call",
+                "name": "lookup",
+                "content": "ok"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "lookup",
+                  "parameters": {
+                    "type": "object"
+                  }
+                }
+              }
+            ],
+            "max_completion_tokens": 10
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          },
+          {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "type": "function",
+                "id": "call",
+                "function": {
+                  "name": "lookup",
+                  "arguments": "{\"n\":9007199254740993}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "call",
+            "name": "lookup",
+            "content": "ok"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "type": "object"
+              }
+            }
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "text-decode-response",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "id": "r",
+        "model": "m",
+        "object": "chat.completion",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "hi"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 20,
+          "completion_tokens": 2,
+          "total_tokens": 22,
+          "prompt_tokens_details": {
+            "cached_tokens": 15
+          }
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop"
+        },
+        "usage": {
+          "input": {
+            "count": 20,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 2,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 22,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 15,
+            "origin": "observed"
+          }
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "text-encode-response",
+      "direction": "encode_response",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop"
+        },
+        "usage": {
+          "input": {
+            "count": 20,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 2,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 22,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 15,
+            "origin": "observed"
+          }
+        },
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "chat-completions-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_response",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "id": "r",
+            "model": "m",
+            "object": "chat.completion",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "hi"
+                },
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 20,
+              "completion_tokens": 2,
+              "total_tokens": 22,
+              "prompt_tokens_details": {
+                "cached_tokens": 15
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "id": "r",
+        "model": "m",
+        "object": "chat.completion",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "hi"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 20,
+          "completion_tokens": 2,
+          "total_tokens": 22,
+          "prompt_tokens_details": {
+            "cached_tokens": 15
+          }
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "tool-decode-response",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "id": "r",
+        "model": "m",
+        "object": "chat.completion",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "type": "function",
+                  "id": "call",
+                  "function": {
+                    "name": "lookup",
+                    "arguments": "{\"n\":9007199254740993}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": "tool_calls"
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "tool_call",
+                "name": "lookup",
+                "callId": "call",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "tool_calls"
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "tool-encode-response",
+      "direction": "encode_response",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "tool_call",
+                "name": "lookup",
+                "callId": "call",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "tool_calls"
+        },
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "chat-completions-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_response",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "id": "r",
+            "model": "m",
+            "object": "chat.completion",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "type": "function",
+                      "id": "call",
+                      "function": {
+                        "name": "lookup",
+                        "arguments": "{\"n\":9007199254740993}"
+                      }
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "id": "r",
+        "model": "m",
+        "object": "chat.completion",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "type": "function",
+                  "id": "call",
+                  "function": {
+                    "name": "lookup",
+                    "arguments": "{\"n\":9007199254740993}"
+                  }
+                }
+              ]
+            },
+            "finish_reason": "tool_calls"
+          }
+        ]
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "cache-policy-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "prompt_cache_key": "prefix-key",
+        "prompt_cache_retention": "24h",
+        "max_completion_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "cache": [
+          {
+            "kind": "key",
+            "location": "request",
+            "value": "prefix-key"
+          },
+          {
+            "kind": "retention",
+            "location": "request",
+            "value": "24h"
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "cache-policy-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "cache": [
+          {
+            "kind": "key",
+            "location": "request",
+            "value": "prefix-key"
+          },
+          {
+            "kind": "retention",
+            "location": "request",
+            "value": "24h"
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "chat-completions-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "model": "m",
+            "messages": [
+              {
+                "role": "user",
+                "content": "hello"
+              }
+            ],
+            "prompt_cache_key": "prefix-key",
+            "prompt_cache_retention": "24h",
+            "max_completion_tokens": 10
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "prompt_cache_key": "prefix-key",
+        "prompt_cache_retention": "24h",
+        "max_completion_tokens": 10
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "cache-options-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "prompt_cache_options": {
+          "mode": "explicit",
+          "ttl": "30m"
+        },
+        "max_completion_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "cache": [
+          {
+            "kind": "mode",
+            "location": "request",
+            "value": "explicit"
+          },
+          {
+            "kind": "options.ttl",
+            "location": "request",
+            "value": "30m"
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "cache-options-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "cache": [
+          {
+            "kind": "mode",
+            "location": "request",
+            "value": "explicit"
+          },
+          {
+            "kind": "options.ttl",
+            "location": "request",
+            "value": "30m"
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "chat-completions-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "model": "m",
+            "messages": [
+              {
+                "role": "user",
+                "content": "hello"
+              }
+            ],
+            "prompt_cache_options": {
+              "mode": "explicit",
+              "ttl": "30m"
+            },
+            "max_completion_tokens": 10
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ],
+        "prompt_cache_options": {
+          "mode": "explicit",
+          "ttl": "30m"
+        },
+        "max_completion_tokens": 10
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "image-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "https://example.invalid/image.png"
+                }
+              }
+            ]
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "image",
+                "payload": {
+                  "url": "https://example.invalid/image.png"
+                }
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "image-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "image",
+                "payload": {
+                  "url": "https://example.invalid/image.png"
+                }
+              }
+            ]
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "chat-completions-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "model": "m",
+            "messages": [
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "image_url",
+                    "image_url": {
+                      "url": "https://example.invalid/image.png"
+                    }
+                  }
+                ]
+              }
+            ],
+            "max_completion_tokens": 10
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "https://example.invalid/image.png"
+                }
+              }
+            ]
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "audio-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "input_audio",
+                "input_audio": {
+                  "data": "AAAA",
+                  "format": "wav"
+                }
+              }
+            ]
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "audio",
+                "payload": {
+                  "data": "AAAA",
+                  "mime": "audio/wav"
+                }
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "audio-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "audio",
+                "payload": {
+                  "data": "AAAA",
+                  "mime": "audio/wav"
+                }
+              }
+            ]
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "chat-completions-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "model": "m",
+            "messages": [
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "input_audio",
+                    "input_audio": {
+                      "data": "AAAA",
+                      "format": "wav"
+                    }
+                  }
+                ]
+              }
+            ],
+            "max_completion_tokens": 10
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "input_audio",
+                "input_audio": {
+                  "data": "AAAA",
+                  "format": "wav"
+                }
+              }
+            ]
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "document-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "file",
+                "file": {
+                  "file_data": "data:application/pdf;base64,AAAA",
+                  "filename": "note.pdf"
+                }
+              }
+            ]
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "document",
+                "payload": {
+                  "data": "AAAA",
+                  "mime": "application/pdf",
+                  "name": "note.pdf"
+                }
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "document-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "document",
+                "payload": {
+                  "data": "AAAA",
+                  "mime": "application/pdf",
+                  "name": "note.pdf"
+                }
+              }
+            ]
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "chat-completions-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "model": "m",
+            "messages": [
+              {
+                "role": "user",
+                "content": [
+                  {
+                    "type": "file",
+                    "file": {
+                      "file_data": "data:application/pdf;base64,AAAA",
+                      "filename": "note.pdf"
+                    }
+                  }
+                ]
+              }
+            ],
+            "max_completion_tokens": 10
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "file",
+                "file": {
+                  "file_data": "data:application/pdf;base64,AAAA",
+                  "filename": "note.pdf"
+                }
+              }
+            ]
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "stream-text-decode",
+      "direction": "decode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "id": "r",
+          "model": "m",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "content": "hi"
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "index": 0,
+              "delta": {},
+              "finish_reason": "stop"
+            }
+          ]
+        },
+        {
+          "choices": [],
+          "usage": {
+            "prompt_tokens": 20,
+            "completion_tokens": 2,
+            "total_tokens": 22,
+            "prompt_tokens_details": {
+              "cached_tokens": 15
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "item": {
+            "kind": "text"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "stream-native-decode",
+      "direction": "decode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "id": "r",
+          "model": "m",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "content": "hi"
+              }
+            }
+          ],
+          "extension": {
+            "long": 9007199254740993,
+            "empty": []
+          }
+        },
+        {
+          "choices": [
+            {
+              "index": 0,
+              "delta": {},
+              "finish_reason": "stop"
+            }
+          ]
+        },
+        {
+          "choices": [],
+          "usage": {
+            "prompt_tokens": 20,
+            "completion_tokens": 2,
+            "total_tokens": 22,
+            "prompt_tokens_details": {
+              "cached_tokens": 15
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          },
+          "unmapped": {
+            "source": {
+              "protocol": {
+                "family": "openai_chat",
+                "wireVersion": "v2",
+                "definitionId": "chat-completions-api",
+                "revision": "2.0.0"
+              },
+              "direction": "decode_event",
+              "path": "/frame/extensions"
+            },
+            "value": {
+              "/": {
+                "extension": {
+                  "long": 9007199254740993,
+                  "empty": []
+                }
+              }
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "item": {
+            "kind": "text"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "stream-text-encode",
+      "direction": "encode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "item": {
+            "kind": "text"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "id": "r",
+          "model": "m",
+          "object": "chat.completion.chunk",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "role": "assistant"
+              }
+            }
+          ]
+        },
+        {
+          "id": "r",
+          "model": "m",
+          "object": "chat.completion.chunk",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "content": "hi"
+              }
+            }
+          ]
+        },
+        {
+          "id": "r",
+          "model": "m",
+          "object": "chat.completion.chunk",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {},
+              "finish_reason": "stop"
+            }
+          ]
+        },
+        {
+          "id": "r",
+          "model": "m",
+          "object": "chat.completion.chunk",
+          "choices": [],
+          "usage": {
+            "prompt_tokens": 20,
+            "completion_tokens": 2,
+            "total_tokens": 22,
+            "prompt_tokens_details": {
+              "cached_tokens": 15
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "stream-tool-decode",
+      "direction": "decode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "id": "r",
+          "model": "m",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "tool_calls": [
+                  {
+                    "index": 0,
+                    "type": "function",
+                    "id": "call",
+                    "function": {
+                      "name": "lookup",
+                      "arguments": "{\"n\":9007199254740993}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "index": 0,
+              "delta": {},
+              "finish_reason": "tool_calls"
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "tool:0",
+          "index": 0,
+          "item": {
+            "kind": "tool_call",
+            "name": "lookup",
+            "callId": "call",
+            "input": {
+              "kind": "json"
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "tool:0",
+          "index": 0,
+          "delta": "{\"n\":9007199254740993}"
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "tool_calls"
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "stream-tool-encode",
+      "direction": "encode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "tool",
+          "index": 0,
+          "item": {
+            "kind": "tool_call",
+            "name": "lookup",
+            "callId": "call",
+            "input": {
+              "kind": "json"
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "tool",
+          "index": 0,
+          "delta": "{\"n\":9007199254740993}"
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "tool",
+          "index": 0
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "tool_calls"
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "id": "r",
+          "model": "m",
+          "object": "chat.completion.chunk",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "role": "assistant"
+              }
+            }
+          ]
+        },
+        {
+          "id": "r",
+          "model": "m",
+          "object": "chat.completion.chunk",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "tool_calls": [
+                  {
+                    "index": 0,
+                    "id": "call",
+                    "type": "function",
+                    "function": {
+                      "name": "lookup",
+                      "arguments": ""
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "r",
+          "model": "m",
+          "object": "chat.completion.chunk",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "tool_calls": [
+                  {
+                    "index": 0,
+                    "id": "call",
+                    "function": {
+                      "name": "lookup",
+                      "arguments": "{\"n\":9007199254740993}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "r",
+          "model": "m",
+          "object": "chat.completion.chunk",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {},
+              "finish_reason": "tool_calls"
+            }
+          ]
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "reasoning-history-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          },
+          {
+            "role": "assistant",
+            "reasoning_content": "consider",
+            "content": "hi"
+          },
+          {
+            "role": "user",
+            "content": "continue"
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "reasoning",
+                "payload": "consider"
+              },
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "continue"
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "reasoning-history-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "reasoning",
+                "payload": "consider"
+              },
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "continue"
+              }
+            ]
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "chat-completions-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "model": "m",
+            "messages": [
+              {
+                "role": "user",
+                "content": "hello"
+              },
+              {
+                "role": "assistant",
+                "reasoning_content": "consider",
+                "content": "hi"
+              },
+              {
+                "role": "user",
+                "content": "continue"
+              }
+            ],
+            "max_completion_tokens": 10
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          },
+          {
+            "role": "assistant",
+            "reasoning_content": "consider",
+            "content": "hi"
+          },
+          {
+            "role": "user",
+            "content": "continue"
+          }
+        ],
+        "max_completion_tokens": 10
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "reasoning-response-decode",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "id": "r",
+        "model": "m",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "reasoning_content": "consider",
+              "content": "hi"
+            },
+            "finish_reason": "stop"
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "reasoning",
+                "payload": "consider"
+              },
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop"
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "reasoning-response-encode",
+      "direction": "encode_response",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "reasoning",
+                "payload": "consider"
+              },
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop"
+        },
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "chat-completions-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_response",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "id": "r",
+            "model": "m",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "reasoning_content": "consider",
+                  "content": "hi"
+                },
+                "finish_reason": "stop"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "id": "r",
+        "model": "m",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "reasoning_content": "consider",
+              "content": "hi"
+            },
+            "finish_reason": "stop"
+          }
+        ]
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "stream-reasoning-decode",
+      "direction": "decode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "id": "r",
+          "model": "m",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "reasoning_content": "hi"
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "index": 0,
+              "delta": {},
+              "finish_reason": "stop"
+            }
+          ]
+        },
+        {
+          "choices": [],
+          "usage": {
+            "prompt_tokens": 20,
+            "completion_tokens": 2,
+            "total_tokens": 22,
+            "prompt_tokens_details": {
+              "cached_tokens": 15
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "reasoning",
+          "index": 0,
+          "item": {
+            "kind": "reasoning"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "reasoning",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "stream-reasoning-encode",
+      "direction": "encode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "item": {
+            "kind": "reasoning"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "id": "r",
+          "model": "m",
+          "object": "chat.completion.chunk",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "role": "assistant"
+              }
+            }
+          ]
+        },
+        {
+          "id": "r",
+          "model": "m",
+          "object": "chat.completion.chunk",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "reasoning_content": "hi"
+              }
+            }
+          ]
+        },
+        {
+          "id": "r",
+          "model": "m",
+          "object": "chat.completion.chunk",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {},
+              "finish_reason": "stop"
+            }
+          ]
+        },
+        {
+          "id": "r",
+          "model": "m",
+          "object": "chat.completion.chunk",
+          "choices": [],
+          "usage": {
+            "prompt_tokens": 20,
+            "completion_tokens": 2,
+            "total_tokens": 22,
+            "prompt_tokens_details": {
+              "cached_tokens": 15
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "cache-creation-decode-response",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "id": "r",
+        "model": "m",
+        "object": "chat.completion",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "hi"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 30,
+          "completion_tokens": 2,
+          "total_tokens": 32,
+          "prompt_tokens_details": {
+            "cached_tokens": 4,
+            "cache_write_tokens": 7
+          }
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop"
+        },
+        "usage": {
+          "input": {
+            "count": 30,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 2,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 32,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 4,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 7,
+            "origin": "observed"
+          }
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "cache-creation-missing-decode-response",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "id": "r",
+        "model": "m",
+        "object": "chat.completion",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "hi"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 20,
+          "completion_tokens": 2,
+          "total_tokens": 22,
+          "prompt_tokens_details": {
+            "cached_tokens": 15
+          }
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop"
+        },
+        "usage": {
+          "input": {
+            "count": 20,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 2,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 22,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 15,
+            "origin": "observed"
+          }
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    }
+  ],
+  "modelSamples": [
+    {
+      "id": "models-terminal",
+      "operation": "models",
+      "input": {
+        "data": [
+          {
+            "id": "alpha"
+          },
+          {
+            "id": "beta"
+          }
+        ]
+      },
+      "expected": {
+        "models": [
+          {
+            "id": "alpha"
+          },
+          {
+            "id": "beta"
+          }
+        ]
+      }
+    }
+  ],
+  "agent": {
+    "thinkingEfforts": [
+      "",
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "parameters": {
+      "transform": {
+        "op": "merge",
+        "policy": "reject",
+        "items": [
+          {
+            "op": "object",
+            "fields": {
+              "max_output_tokens": {
+                "op": "read",
+                "path": "/maxOutputTokens",
+                "required": true
+              },
+              "stream": {
+                "op": "read",
+                "path": "/stream",
+                "required": true
+              },
+              "stream_options": {
+                "op": "if",
+                "when": {
+                  "op": "read",
+                  "path": "/stream",
+                  "required": true
+                },
+                "then": {
+                  "op": "literal",
+                  "value": {
+                    "include_usage": true
+                  }
+                }
+              }
+            }
+          },
+          {
+            "op": "if",
+            "when": {
+              "op": "read",
+              "path": "/thinkingEnabled",
+              "required": true
+            },
+            "then": {
+              "op": "object",
+              "fields": {
+                "reasoning_effort": {
+                  "op": "enum",
+                  "source": {
+                    "op": "read",
+                    "path": "/thinkingEffort",
+                    "required": true
+                  },
+                  "values": {
+                    "": "medium",
+                    "low": "low",
+                    "medium": "medium",
+                    "high": "high",
+                    "xhigh": "xhigh"
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "op": "object",
+              "fields": {}
+            }
+          }
+        ]
+      }
+    },
+    "samples": [
+      {
+        "id": "agent-thinking-disabled",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": false,
+          "thinkingEffort": "",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "stream": false
+        }
+      },
+      {
+        "id": "agent-thinking-disabled-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": false,
+          "thinkingEffort": "",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
+        }
+      },
+      {
+        "id": "agent-effort-default",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning_effort": "medium",
+          "stream": false
+        }
+      },
+      {
+        "id": "agent-effort-default-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning_effort": "medium",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
+        }
+      },
+      {
+        "id": "agent-effort-low",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "low",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning_effort": "low",
+          "stream": false
+        }
+      },
+      {
+        "id": "agent-effort-low-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "low",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning_effort": "low",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
+        }
+      },
+      {
+        "id": "agent-effort-medium",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "medium",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning_effort": "medium",
+          "stream": false
+        }
+      },
+      {
+        "id": "agent-effort-medium-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "medium",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning_effort": "medium",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
+        }
+      },
+      {
+        "id": "agent-effort-high",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "high",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning_effort": "high",
+          "stream": false
+        }
+      },
+      {
+        "id": "agent-effort-high-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "high",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning_effort": "high",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
+        }
+      },
+      {
+        "id": "agent-effort-xhigh",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "xhigh",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning_effort": "xhigh",
+          "stream": false
+        }
+      },
+      {
+        "id": "agent-effort-xhigh-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "xhigh",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "reasoning_effort": "xhigh",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
+        }
+      }
+    ],
+    "toolResults": "text"
+  }
+}

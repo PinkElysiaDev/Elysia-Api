@@ -1,0 +1,71 @@
+name: Protocol fidelity
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: go test ./... -count=1
+        working-directory: backend
+      - run: go vet ./...
+        working-directory: backend
+      - run: node scripts/verify-protocol.mjs race
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: protocol-race-evidence
+          path: ../.cache/protocol-race-*/
+      - name: Fixed-duration compiler, JSON and event fuzzing
+        working-directory: backend
+        run: |
+          for target in FuzzCompileDefinition FuzzJSONMappingPresence FuzzJSONResourceLimits FuzzJSONContainers FuzzEventReplay FuzzTypedLimitEquivalence; do
+            go test ./protocol -run '^$' -fuzz "^${target}$" -fuzztime=20s -parallel=2
+          done
+      - name: Reload, task recovery and cancellation stress
+        working-directory: backend
+        run: go test ./protocol ./storage ./relay -run 'TestProtocolConcurrent|TestGenerationJob|TestRunSession|TestLongReplay' -count=20
+      - run: go test ./protocol/builtin -run '^$' -bench 'BenchmarkCacheConversion|BenchmarkStreamTextDecode' -benchmem -count=3
+        working-directory: backend
+      - run: git diff --check
+
+  editor-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+        working-directory: packages/webui
+      - run: npx playwright install --with-deps chromium
+        working-directory: packages/webui
+      - run: node scripts/test-protocol-e2e.mjs
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: protocol-browser-failures
+          path: packages/webui/test-results

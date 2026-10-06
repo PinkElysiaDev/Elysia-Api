@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/agent"
+	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
@@ -96,18 +97,20 @@ func (s *Server) requireAgentEngine(c *gin.Context) (*agent.Engine, bool) {
 func agentSessionView(session *agent.Session) gin.H {
 	return gin.H{
 		"id": session.ID, "title": session.Title, "mode": session.Mode, "protocolId": session.ProtocolID,
-		"seedConfig":    json.RawMessage(session.SeedConfig),
-		"draftConfig":   json.RawMessage(session.DraftConfig),
-		"draftRestore":  json.RawMessage(session.DraftRestore),
-		"settings":      session.Settings,
-		"status":        session.Status,
-		"pendingAction": agent.MaskedPendingAction(session.PendingAction),
-		"plan":          session.Plan,
-		"planSummary":   session.PlanSummary,
-		"userTurns":     session.UserTurns,
-		"totalTokens":   session.TotalTokens,
-		"createdAt":     session.CreatedAt.UTC().Format(time.RFC3339),
-		"updatedAt":     session.UpdatedAt.UTC().Format(time.RFC3339),
+		"seedConfig":     json.RawMessage(session.SeedConfig),
+		"draftConfig":    json.RawMessage(session.DraftConfig),
+		"definitionJSON": string(session.DraftConfig),
+		"restoreJSON":    string(session.DraftRestore),
+		"draftRestore":   json.RawMessage(session.DraftRestore),
+		"settings":       session.Settings,
+		"status":         session.Status,
+		"pendingAction":  agent.MaskedPendingAction(session.PendingAction),
+		"plan":           session.Plan,
+		"planSummary":    session.PlanSummary,
+		"userTurns":      session.UserTurns,
+		"totalTokens":    session.TotalTokens,
+		"createdAt":      session.CreatedAt.UTC().Format(time.RFC3339),
+		"updatedAt":      session.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 }
 
@@ -139,21 +142,35 @@ func (s *Server) adminCreateAgentSession(c *gin.Context) {
 			respondFail(c, http.StatusBadRequest, "missing_protocol", "编辑模式必须指定 protocolId")
 			return
 		}
-		rows, err := store.ListCustomProtocols(c.Request.Context())
+		service, err := s.protocolService()
 		if err != nil {
-			respondFail(c, http.StatusInternalServerError, "list_failed", err.Error())
+			respondProtocolError(c, err)
 			return
 		}
-		found := false
-		for _, row := range rows {
-			if strings.EqualFold(row.ID, protocolID) {
-				seed, protocolID, found = row.Config, row.ID, true
-				break
+		draft, err := service.ReadDraft(c.Request.Context(), protocolID)
+		if err != nil && !errors.Is(err, protocol.ErrNotFound) {
+			respondProtocolError(c, err)
+			return
+		}
+		if err == nil {
+			seed = string(draft.Definition.Bytes())
+		} else {
+			rows, err := store.ListCustomProtocols(c.Request.Context())
+			if err != nil {
+				respondFail(c, http.StatusInternalServerError, "list_failed", err.Error())
+				return
 			}
-		}
-		if !found {
-			respondFail(c, http.StatusNotFound, "not_found", fmt.Sprintf("协议 %q 不存在", protocolID))
-			return
+			found := false
+			for _, row := range rows {
+				if strings.EqualFold(row.ID, protocolID) {
+					seed, protocolID, found = row.Config, row.ID, true
+					break
+				}
+			}
+			if !found {
+				respondFail(c, http.StatusNotFound, "not_found", fmt.Sprintf("协议 %q 不存在", protocolID))
+				return
+			}
 		}
 	}
 	upsert := storage.AgentSessionUpsert{

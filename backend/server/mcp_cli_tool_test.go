@@ -15,7 +15,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const mcpTestProtocolDraft = `elysia protocol draft '{"id":"mcp-draft","request":{"method":"POST","path":"/chat","auth":{"mode":"none"},"body":{"model":{"field":"model","mode":"string"}}},"response":{"fields":[{"path":"text","field":"text"}]}}'`
+func mcpTestProtocolDraft(t *testing.T) string {
+	t.Helper()
+	definition := loadGatewayDefinition(t, "text-alpha")
+	definition.ID = "mcp-draft"
+	raw, err := json.Marshal(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return "elysia protocol draft '" + string(raw) + "'"
+}
+
+const mcpProtocolSample = `'{"schemaVersion":1,"model":"m","content":[{"kind":"message","role":"user","children":[{"kind":"text","payload":"hi"}]}]}'`
 
 func callMCPCLI(t *testing.T, s *Server, args map[string]any) (map[string]any, string) {
 	t.Helper()
@@ -97,31 +108,35 @@ func TestMCPCLIRejectsSessionID(t *testing.T) {
 
 func TestMCPCLIProtocolSaveUpdate(t *testing.T) {
 	s := newAgentIntegrationServer(t)
-	result, _ := callMCPCLI(t, s, map[string]any{"command": mcpTestProtocolDraft + "; elysia protocol save"})
+	original := mcpTestProtocolDraft(t)
+	result, _ := callMCPCLI(t, s, map[string]any{"command": original + "; elysia protocol save"})
 	cliMCPData(t, result, false)
-	changed := strings.Replace(mcpTestProtocolDraft, `"path":"/chat"`, `"path":"/chat-v2"`, 1)
-	for _, tc := range []struct {
-		name, command, wantError, savedPath string
-	}{
-		{"no_implicit_overwrite", changed + "; elysia protocol save", "id_conflict", "/chat"},
-		{"wrong_target", changed + "; elysia protocol save --update other", "id_mismatch", "/chat"},
-		{"missing_target", strings.ReplaceAll(changed, "mcp-draft", "missing") + "; elysia protocol save --update missing", "not_found", "/chat"},
-		{"empty_target", changed + "; elysia protocol save --update ''", "--update", "/chat"},
-		{"explicit_update", changed + "; elysia protocol save --update mcp-draft", "", "/chat-v2"},
-		{"case_insensitive_id", strings.Replace(changed, `"id":"mcp-draft"`, `"id":"MCP-DRAFT"`, 1) + "; elysia protocol save --update mcp-draft", "", "/chat-v2"},
-		{"no_update_state_leak", mcpTestProtocolDraft + "; elysia protocol save", "id_conflict", "/chat-v2"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			result, _ := callMCPCLI(t, s, map[string]any{"command": tc.command})
-			data := cliMCPData(t, result, tc.wantError != "")
-			if tc.wantError != "" && !strings.Contains(data["output"].(string), tc.wantError) {
-				t.Fatalf("missing error %q: %v", tc.wantError, data)
-			}
-			rows, err := s.store.ListCustomProtocols(t.Context())
-			if err != nil || len(rows) != 1 || rows[0].ID != "mcp-draft" || !strings.Contains(rows[0].Config, `"path":"`+tc.savedPath+`"`) {
-				t.Fatalf("unexpected saved protocols: %+v, error=%v", rows, err)
-			}
-		})
+	service, err := s.protocolService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft, err := service.ReadDraft(t.Context(), "mcp-draft")
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := strings.Replace(original, `"name":"Text Alpha"`, `"name":"Updated Alpha"`, 1)
+	if changed == original {
+		changed = strings.Replace(original, `"version":"1"`, `"version":"2"`, 1)
+	}
+	for _, expected := range []string{"", "stale", draft.Hash} {
+		suffix := ""
+		if expected != "" {
+			suffix = " --expected " + expected
+		}
+		result, _ = callMCPCLI(t, s, map[string]any{"command": changed + "; elysia protocol save" + suffix})
+		cliMCPData(t, result, expected != draft.Hash)
+		if _, enabled := service.Pin("mcp-draft"); enabled {
+			t.Fatal("draft save activated protocol")
+		}
+	}
+	rows, err := s.store.ListCustomProtocols(t.Context())
+	if err != nil || len(rows) != 0 {
+		t.Fatal("v2 authoring wrote legacy storage", rows, err)
 	}
 }
 
@@ -166,18 +181,18 @@ func TestMCPCLIStatelessBatchAndIsolation(t *testing.T) {
 	var hits int
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits++
-		_, _ = w.Write([]byte(`{"text":"ok"}`))
+		_, _ = w.Write([]byte(`{"requestId":"r","answer":[{"actor":"assistant","segments":[{"text":"ok"}]}]}`))
 	}))
 	t.Cleanup(upstream.Close)
-	batch := mcpTestProtocolDraft + " ; elysia protocol preview ; elysia protocol test --base-url " + upstream.URL + " --api-key sk-mcp-batch-secret"
+	batch := mcpTestProtocolDraft(t) + " ; elysia protocol preview --direction encode_request --sample " + mcpProtocolSample + " ; elysia protocol test --operation generate --sample " + mcpProtocolSample + " --base-url " + upstream.URL + " --api-key sk-mcp-batch-secret"
 	result, raw := callMCPCLI(t, s, map[string]any{"command": batch})
 	data := cliMCPData(t, result, false)
-	if !strings.Contains(data["output"].(string), "渲染成功") || hits != 1 || strings.Contains(raw, "sk-mcp-batch-secret") {
+	if !strings.Contains(data["output"].(string), "Shared runtime preview") || hits != 1 || strings.Contains(raw, "sk-mcp-batch-secret") {
 		t.Fatalf("batch state or masking failed: %v %s", data, raw)
 	}
 	result, _ = callMCPCLI(t, s, map[string]any{"command": "elysia protocol preview"})
 	data = cliMCPData(t, result, true)
-	if !strings.Contains(data["output"].(string), "尚无草稿") {
+	if !strings.Contains(data["output"].(string), "no_draft") {
 		t.Fatalf("state leaked across calls: %v", data)
 	}
 	sessions, _ := s.store.ListAgentSessions(t.Context())
@@ -231,7 +246,7 @@ func TestMCPCLICancellationIsStateless(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	args, _ := json.Marshal(map[string]any{
-		"command": mcpTestProtocolDraft + " ; elysia protocol test --base-url " + upstream.URL + "; elysia group create --name must-not-run",
+		"command": mcpTestProtocolDraft(t) + " ; elysia protocol test --operation generate --sample " + mcpProtocolSample + " --base-url " + upstream.URL + "; elysia group create --name must-not-run",
 	})
 	type outcome struct {
 		data any

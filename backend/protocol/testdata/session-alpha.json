@@ -1,0 +1,1182 @@
+{
+  "schemaVersion": 2,
+  "id": "session-alpha",
+  "name": "session-alpha",
+  "version": "1",
+  "family": "session-alpha",
+  "wireVersion": "1",
+  "capabilities": {
+    "sessions": true,
+    "text": true,
+    "tools.function": true,
+    "usage": true
+  },
+  "directions": {
+    "decode_client_event": {
+      "capabilities": {
+        "sessions": true,
+        "text": true,
+        "tools.function": true
+      },
+      "transform": {
+        "op": "object",
+        "fields": {
+          "error": {
+            "op": "read",
+            "path": "/failure"
+          },
+          "item": {
+            "op": "read",
+            "path": "/part"
+          },
+          "itemId": {
+            "op": "read",
+            "path": "/itemKey"
+          },
+          "request": {
+            "op": "read",
+            "path": "/settings"
+          },
+          "responseId": {
+            "op": "read",
+            "path": "/response"
+          },
+          "schemaVersion": {
+            "op": "literal",
+            "value": 1
+          },
+          "sessionId": {
+            "op": "read",
+            "path": "/session"
+          },
+          "type": {
+            "op": "read",
+            "path": "/event"
+          },
+          "usage": {
+            "op": "read",
+            "path": "/counts"
+          }
+        }
+      }
+    },
+    "decode_event": {
+      "capabilities": {
+        "sessions": true,
+        "text": true,
+        "tools.function": true,
+        "usage": true
+      },
+      "transform": {
+        "op": "object",
+        "fields": {
+          "error": {
+            "op": "read",
+            "path": "/failure"
+          },
+          "item": {
+            "op": "read",
+            "path": "/part"
+          },
+          "itemId": {
+            "op": "read",
+            "path": "/itemKey"
+          },
+          "request": {
+            "op": "read",
+            "path": "/settings"
+          },
+          "responseId": {
+            "op": "read",
+            "path": "/response"
+          },
+          "schemaVersion": {
+            "op": "literal",
+            "value": 1
+          },
+          "sessionId": {
+            "op": "read",
+            "path": "/session"
+          },
+          "type": {
+            "op": "read",
+            "path": "/event"
+          },
+          "usage": {
+            "op": "read",
+            "path": "/counts"
+          }
+        }
+      }
+    },
+    "decode_request": {
+      "capabilities": {},
+      "transform": {
+        "op": "object",
+        "fields": {
+          "content": {
+            "op": "literal",
+            "value": []
+          },
+          "model": {
+            "op": "read",
+            "path": "/query/model/0",
+            "required": true
+          },
+          "schemaVersion": {
+            "op": "literal",
+            "value": 1
+          }
+        }
+      }
+    },
+    "encode_event": {
+      "capabilities": {
+        "sessions": true,
+        "text": true,
+        "tools.function": true,
+        "usage": true
+      },
+      "transform": {
+        "op": "object",
+        "fields": {
+          "counts": {
+            "op": "read",
+            "path": "/usage"
+          },
+          "event": {
+            "op": "read",
+            "path": "/type"
+          },
+          "failure": {
+            "op": "read",
+            "path": "/error"
+          },
+          "itemKey": {
+            "op": "read",
+            "path": "/itemId"
+          },
+          "part": {
+            "op": "read",
+            "path": "/item"
+          },
+          "response": {
+            "op": "read",
+            "path": "/responseId"
+          },
+          "session": {
+            "op": "read",
+            "path": "/sessionId"
+          },
+          "settings": {
+            "op": "read",
+            "path": "/request"
+          }
+        }
+      }
+    },
+    "encode_request": {
+      "capabilities": {},
+      "transform": {
+        "op": "object",
+        "fields": {
+          "headers": {
+            "op": "literal",
+            "value": {}
+          },
+          "query": {
+            "op": "object",
+            "fields": {
+              "model": {
+                "op": "array",
+                "items": [
+                  {
+                    "op": "read",
+                    "path": "/model",
+                    "required": true
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "encode_upstream_event": {
+      "capabilities": {
+        "sessions": true,
+        "text": true,
+        "tools.function": true
+      },
+      "transform": {
+        "op": "object",
+        "fields": {
+          "counts": {
+            "op": "read",
+            "path": "/usage"
+          },
+          "event": {
+            "op": "read",
+            "path": "/type"
+          },
+          "failure": {
+            "op": "read",
+            "path": "/error"
+          },
+          "itemKey": {
+            "op": "read",
+            "path": "/itemId"
+          },
+          "part": {
+            "op": "read",
+            "path": "/item"
+          },
+          "response": {
+            "op": "read",
+            "path": "/responseId"
+          },
+          "session": {
+            "op": "read",
+            "path": "/sessionId"
+          },
+          "settings": {
+            "op": "read",
+            "path": "/request"
+          }
+        }
+      }
+    }
+  },
+  "operations": {
+    "session": {
+      "kind": "session",
+      "method": "GET",
+      "path": "/session",
+      "transport": "websocket",
+      "auth": {
+        "location": "none"
+      },
+      "session": {
+        "frameBytes": 1048576,
+        "queueItems": 32,
+        "queueBytes": 8388608,
+        "idleMillis": 120000,
+        "pingMillis": 30000,
+        "closeMillis": 5000,
+        "automaticResponses": false,
+        "queryFields": [
+          "model"
+        ]
+      }
+    }
+  },
+  "native": {
+    "preserve": true
+  },
+  "samples": [
+    {
+      "id": "handshake.decode",
+      "direction": "decode_request",
+      "capabilities": null,
+      "input": {
+        "query": {
+          "model": [
+            "m"
+          ]
+        },
+        "headers": {}
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {
+          "family": "",
+          "wireVersion": "",
+          "definitionId": "",
+          "revision": ""
+        },
+        "model": "m",
+        "content": []
+      }
+    },
+    {
+      "id": "handshake.encode",
+      "direction": "encode_request",
+      "capabilities": null,
+      "input": {
+        "schemaVersion": 1,
+        "source": {
+          "family": "",
+          "wireVersion": "",
+          "definitionId": "",
+          "revision": ""
+        },
+        "model": "m",
+        "content": []
+      },
+      "expected": {
+        "query": {
+          "model": [
+            "m"
+          ]
+        },
+        "headers": {}
+      }
+    }
+  ],
+  "sessionSamples": [
+    {
+      "id": "decode-session",
+      "operation": "session",
+      "model": "m",
+      "steps": [
+        {
+          "direction": "decode_event",
+          "input": {
+            "event": "session.started",
+            "session": "s"
+          },
+          "expected": [
+            {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "type": "session.started",
+              "sessionId": "s"
+            }
+          ]
+        },
+        {
+          "direction": "decode_client_event",
+          "input": {
+            "event": "session.configure",
+            "settings": {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "model": "m",
+              "content": null,
+              "tools": [
+                {
+                  "kind": "function",
+                  "name": "count"
+                }
+              ]
+            }
+          },
+          "expected": [
+            {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "type": "session.configure",
+              "request": {
+                "schemaVersion": 1,
+                "source": {
+                  "family": "",
+                  "wireVersion": "",
+                  "definitionId": "",
+                  "revision": ""
+                },
+                "model": "m",
+                "content": null,
+                "tools": [
+                  {
+                    "kind": "function",
+                    "name": "count"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "direction": "decode_client_event",
+          "input": {
+            "event": "input.append",
+            "part": {
+              "kind": "text",
+              "payload": "please count"
+            }
+          },
+          "expected": [
+            {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "type": "input.append",
+              "item": {
+                "kind": "text",
+                "payload": "please count"
+              }
+            }
+          ]
+        },
+        {
+          "direction": "decode_client_event",
+          "input": {
+            "event": "input.commit"
+          },
+          "expected": [
+            {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "type": "input.commit"
+            }
+          ]
+        },
+        {
+          "direction": "decode_client_event",
+          "input": {
+            "event": "response.create"
+          },
+          "expected": [
+            {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "type": "response.create"
+            }
+          ]
+        },
+        {
+          "direction": "decode_event",
+          "input": {
+            "event": "response.started",
+            "response": "r"
+          },
+          "expected": [
+            {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "type": "response.started",
+              "responseId": "r"
+            }
+          ]
+        },
+        {
+          "direction": "decode_event",
+          "input": {
+            "event": "item.started",
+            "itemKey": "i",
+            "part": {
+              "kind": "tool_call",
+              "callId": "c",
+              "name": "count",
+              "input": {
+                "kind": "json",
+                "value": {
+                  "n": 2
+                }
+              }
+            },
+            "response": "r"
+          },
+          "expected": [
+            {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "type": "item.started",
+              "responseId": "r",
+              "itemId": "i",
+              "item": {
+                "kind": "tool_call",
+                "callId": "c",
+                "name": "count",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 2
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "direction": "decode_event",
+          "input": {
+            "event": "item.finished",
+            "itemKey": "i",
+            "part": {
+              "kind": "tool_call",
+              "callId": "c",
+              "name": "count",
+              "input": {
+                "kind": "json",
+                "value": {
+                  "n": 2
+                }
+              }
+            },
+            "response": "r"
+          },
+          "expected": [
+            {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "type": "item.finished",
+              "responseId": "r",
+              "itemId": "i",
+              "item": {
+                "kind": "tool_call",
+                "callId": "c",
+                "name": "count",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 2
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "direction": "decode_event",
+          "input": {
+            "event": "response.finished",
+            "response": "r"
+          },
+          "expected": [
+            {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "type": "response.finished",
+              "responseId": "r"
+            }
+          ]
+        },
+        {
+          "direction": "decode_client_event",
+          "input": {
+            "event": "tool.result",
+            "part": {
+              "kind": "tool_result",
+              "callId": "c",
+              "payload": "2"
+            }
+          },
+          "expected": [
+            {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "type": "tool.result",
+              "item": {
+                "kind": "tool_result",
+                "callId": "c",
+                "payload": "2"
+              }
+            }
+          ]
+        },
+        {
+          "direction": "decode_client_event",
+          "input": {
+            "event": "response.create"
+          },
+          "expected": [
+            {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "type": "response.create"
+            }
+          ]
+        },
+        {
+          "direction": "decode_event",
+          "input": {
+            "event": "response.started",
+            "response": "r2"
+          },
+          "expected": [
+            {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "type": "response.started",
+              "responseId": "r2"
+            }
+          ]
+        },
+        {
+          "direction": "decode_event",
+          "input": {
+            "event": "item.started",
+            "itemKey": "t",
+            "part": {
+              "kind": "text",
+              "payload": "two"
+            },
+            "response": "r2"
+          },
+          "expected": [
+            {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "type": "item.started",
+              "responseId": "r2",
+              "itemId": "t",
+              "item": {
+                "kind": "text",
+                "payload": "two"
+              }
+            }
+          ]
+        },
+        {
+          "direction": "decode_event",
+          "input": {
+            "event": "response.finished",
+            "response": "r2"
+          },
+          "expected": [
+            {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "type": "response.finished",
+              "responseId": "r2"
+            }
+          ]
+        },
+        {
+          "direction": "decode_event",
+          "input": {
+            "counts": {
+              "cacheRead": {
+                "count": 40,
+                "origin": "observed"
+              },
+              "cacheCreation": {
+                "count": 0,
+                "origin": "observed"
+              }
+            },
+            "event": "usage.updated",
+            "response": "r2"
+          },
+          "expected": [
+            {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "type": "usage.updated",
+              "responseId": "r2",
+              "usage": {
+                "cacheRead": {
+                  "count": 40,
+                  "origin": "observed"
+                },
+                "cacheCreation": {
+                  "count": 0,
+                  "origin": "observed"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "direction": "decode_event",
+          "input": {
+            "event": "session.close"
+          },
+          "expected": [
+            {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "type": "session.close"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "encode-session",
+      "operation": "session",
+      "model": "m",
+      "steps": [
+        {
+          "direction": "encode_event",
+          "input": {
+            "schemaVersion": 1,
+            "source": {
+              "family": "",
+              "wireVersion": "",
+              "definitionId": "",
+              "revision": ""
+            },
+            "type": "session.started",
+            "sessionId": "s"
+          },
+          "expected": {
+            "event": "session.started",
+            "session": "s"
+          }
+        },
+        {
+          "direction": "encode_upstream_event",
+          "input": {
+            "schemaVersion": 1,
+            "source": {
+              "family": "",
+              "wireVersion": "",
+              "definitionId": "",
+              "revision": ""
+            },
+            "type": "session.configure",
+            "request": {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "model": "m",
+              "content": null,
+              "tools": [
+                {
+                  "kind": "function",
+                  "name": "count"
+                }
+              ]
+            }
+          },
+          "expected": {
+            "event": "session.configure",
+            "settings": {
+              "schemaVersion": 1,
+              "source": {
+                "family": "",
+                "wireVersion": "",
+                "definitionId": "",
+                "revision": ""
+              },
+              "model": "m",
+              "content": null,
+              "tools": [
+                {
+                  "kind": "function",
+                  "name": "count"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "direction": "encode_upstream_event",
+          "input": {
+            "schemaVersion": 1,
+            "source": {
+              "family": "",
+              "wireVersion": "",
+              "definitionId": "",
+              "revision": ""
+            },
+            "type": "input.append",
+            "item": {
+              "kind": "text",
+              "payload": "please count"
+            }
+          },
+          "expected": {
+            "event": "input.append",
+            "part": {
+              "kind": "text",
+              "payload": "please count"
+            }
+          }
+        },
+        {
+          "direction": "encode_upstream_event",
+          "input": {
+            "schemaVersion": 1,
+            "source": {
+              "family": "",
+              "wireVersion": "",
+              "definitionId": "",
+              "revision": ""
+            },
+            "type": "input.commit"
+          },
+          "expected": {
+            "event": "input.commit"
+          }
+        },
+        {
+          "direction": "encode_upstream_event",
+          "input": {
+            "schemaVersion": 1,
+            "source": {
+              "family": "",
+              "wireVersion": "",
+              "definitionId": "",
+              "revision": ""
+            },
+            "type": "response.create"
+          },
+          "expected": {
+            "event": "response.create"
+          }
+        },
+        {
+          "direction": "encode_event",
+          "input": {
+            "schemaVersion": 1,
+            "source": {
+              "family": "",
+              "wireVersion": "",
+              "definitionId": "",
+              "revision": ""
+            },
+            "type": "response.started",
+            "responseId": "r"
+          },
+          "expected": {
+            "event": "response.started",
+            "response": "r"
+          }
+        },
+        {
+          "direction": "encode_event",
+          "input": {
+            "schemaVersion": 1,
+            "source": {
+              "family": "",
+              "wireVersion": "",
+              "definitionId": "",
+              "revision": ""
+            },
+            "type": "item.started",
+            "responseId": "r",
+            "itemId": "i",
+            "item": {
+              "kind": "tool_call",
+              "callId": "c",
+              "name": "count",
+              "input": {
+                "kind": "json",
+                "value": {
+                  "n": 2
+                }
+              }
+            }
+          },
+          "expected": {
+            "event": "item.started",
+            "itemKey": "i",
+            "part": {
+              "kind": "tool_call",
+              "callId": "c",
+              "name": "count",
+              "input": {
+                "kind": "json",
+                "value": {
+                  "n": 2
+                }
+              }
+            },
+            "response": "r"
+          }
+        },
+        {
+          "direction": "encode_event",
+          "input": {
+            "schemaVersion": 1,
+            "source": {
+              "family": "",
+              "wireVersion": "",
+              "definitionId": "",
+              "revision": ""
+            },
+            "type": "item.finished",
+            "responseId": "r",
+            "itemId": "i",
+            "item": {
+              "kind": "tool_call",
+              "callId": "c",
+              "name": "count",
+              "input": {
+                "kind": "json",
+                "value": {
+                  "n": 2
+                }
+              }
+            }
+          },
+          "expected": {
+            "event": "item.finished",
+            "itemKey": "i",
+            "part": {
+              "kind": "tool_call",
+              "callId": "c",
+              "name": "count",
+              "input": {
+                "kind": "json",
+                "value": {
+                  "n": 2
+                }
+              }
+            },
+            "response": "r"
+          }
+        },
+        {
+          "direction": "encode_event",
+          "input": {
+            "schemaVersion": 1,
+            "source": {
+              "family": "",
+              "wireVersion": "",
+              "definitionId": "",
+              "revision": ""
+            },
+            "type": "response.finished",
+            "responseId": "r"
+          },
+          "expected": {
+            "event": "response.finished",
+            "response": "r"
+          }
+        },
+        {
+          "direction": "encode_upstream_event",
+          "input": {
+            "schemaVersion": 1,
+            "source": {
+              "family": "",
+              "wireVersion": "",
+              "definitionId": "",
+              "revision": ""
+            },
+            "type": "tool.result",
+            "item": {
+              "kind": "tool_result",
+              "callId": "c",
+              "payload": "2"
+            }
+          },
+          "expected": {
+            "event": "tool.result",
+            "part": {
+              "kind": "tool_result",
+              "callId": "c",
+              "payload": "2"
+            }
+          }
+        },
+        {
+          "direction": "encode_upstream_event",
+          "input": {
+            "schemaVersion": 1,
+            "source": {
+              "family": "",
+              "wireVersion": "",
+              "definitionId": "",
+              "revision": ""
+            },
+            "type": "response.create"
+          },
+          "expected": {
+            "event": "response.create"
+          }
+        },
+        {
+          "direction": "encode_event",
+          "input": {
+            "schemaVersion": 1,
+            "source": {
+              "family": "",
+              "wireVersion": "",
+              "definitionId": "",
+              "revision": ""
+            },
+            "type": "response.started",
+            "responseId": "r2"
+          },
+          "expected": {
+            "event": "response.started",
+            "response": "r2"
+          }
+        },
+        {
+          "direction": "encode_event",
+          "input": {
+            "schemaVersion": 1,
+            "source": {
+              "family": "",
+              "wireVersion": "",
+              "definitionId": "",
+              "revision": ""
+            },
+            "type": "item.started",
+            "responseId": "r2",
+            "itemId": "t",
+            "item": {
+              "kind": "text",
+              "payload": "two"
+            }
+          },
+          "expected": {
+            "event": "item.started",
+            "itemKey": "t",
+            "part": {
+              "kind": "text",
+              "payload": "two"
+            },
+            "response": "r2"
+          }
+        },
+        {
+          "direction": "encode_event",
+          "input": {
+            "schemaVersion": 1,
+            "source": {
+              "family": "",
+              "wireVersion": "",
+              "definitionId": "",
+              "revision": ""
+            },
+            "type": "response.finished",
+            "responseId": "r2"
+          },
+          "expected": {
+            "event": "response.finished",
+            "response": "r2"
+          }
+        },
+        {
+          "direction": "encode_event",
+          "input": {
+            "schemaVersion": 1,
+            "source": {
+              "family": "",
+              "wireVersion": "",
+              "definitionId": "",
+              "revision": ""
+            },
+            "type": "usage.updated",
+            "responseId": "r2",
+            "usage": {
+              "cacheRead": {
+                "count": 40,
+                "origin": "observed"
+              },
+              "cacheCreation": {
+                "count": 0,
+                "origin": "observed"
+              }
+            }
+          },
+          "expected": {
+            "counts": {
+              "cacheRead": {
+                "count": 40,
+                "origin": "observed"
+              },
+              "cacheCreation": {
+                "count": 0,
+                "origin": "observed"
+              }
+            },
+            "event": "usage.updated",
+            "response": "r2"
+          }
+        },
+        {
+          "direction": "encode_event",
+          "input": {
+            "schemaVersion": 1,
+            "source": {
+              "family": "",
+              "wireVersion": "",
+              "definitionId": "",
+              "revision": ""
+            },
+            "type": "session.close"
+          },
+          "expected": {
+            "event": "session.close"
+          }
+        }
+      ]
+    }
+  ]
+}

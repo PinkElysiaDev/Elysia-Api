@@ -1,25 +1,11 @@
 package server
 
 import (
-	"github.com/gin-gonic/gin"
-
 	"math/rand"
 
 	"github.com/elysia-api/backend/config"
-	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 )
-
-// relayOutcome 是单次转发尝试的结果，供故障转移循环决策。
-//   - committed=true: 已向客户端写出响应（成功，或已是最后一次/不可重试的失败），
-//     循环必须停止。
-//   - committed=false: 本次失败且可以重试，循环应尝试下一个候选模型。
-//     statusCode/errMsg 记录失败信息，用于日志与最终兜底响应。
-type relayOutcome struct {
-	committed  bool
-	statusCode int
-	errMsg     string
-}
 
 // appendRetryEvent 把一次失败尝试追加到 usage 记录的 RetryEvents，并更新 RetryCount。
 // attempt 从 0 计数（0 即首次尝试，不算重试）。RetryCount 取「本次失败之前已发生的
@@ -122,71 +108,6 @@ func (s *Server) buildCandidates(group *config.ModelGroupConfig) []config.ModelR
 	return orderedCandidates(group, rrStart)
 }
 
-// reorderCandidatesByRequestNeeds 组内候选软过滤（方向2）：请求携带多模态输入时把
-// 声明不支持视觉的候选移到列表末尾，请求使用工具时把不支持工具的候选移到末尾
-// （均保持组内相对顺序，候选集合不变）。全部候选都不支持时维持原序照常发送——
-// 模型级能力来自目录推断，只做优先级参考，不做硬拒绝。
-func reorderCandidatesByRequestNeeds(candidates []config.ModelRef, needsVision, needsTools bool) []config.ModelRef {
-	if len(candidates) <= 1 {
-		return candidates
-	}
-	var capable, incapable []config.ModelRef
-	split := func(keep func(config.ModelRef) bool) {
-		capable = capable[:0]
-		incapable = incapable[:0]
-		for _, candidate := range candidates {
-			if keep(candidate) {
-				capable = append(capable, candidate)
-			} else {
-				incapable = append(incapable, candidate)
-			}
-		}
-		if len(capable) == 0 {
-			return // 全部不支持：维持原序，照常发送
-		}
-		candidates = append(capable, incapable...)
-	}
-	if needsVision {
-		split(func(candidate config.ModelRef) bool { return candidate.VisionCapable })
-	}
-	if needsTools {
-		split(func(candidate config.ModelRef) bool { return candidate.ToolsCapable })
-	}
-	return candidates
-}
-
-// maheshvaraRequestHasMultimodalInput 检测请求是否携带多模态输入（image/audio/video）。
-func maheshvaraRequestHasMultimodalInput(request *relay.MaheshvaraRequest) bool {
-	if request == nil {
-		return false
-	}
-	for index := range request.Messages {
-		for _, part := range request.Messages[index].Content {
-			if isMultimodalContentPart(part.Type) {
-				return true
-			}
-		}
-	}
-	for index := range request.InputItems {
-		for _, part := range request.InputItems[index].Content {
-			if isMultimodalContentPart(part.Type) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// expandCandidatesByKeyStrategy 为候选列表解析每次尝试实际使用的 key（方向6）。
-// 在既有故障转移循环之前把「候选 × key」展开成逐次尝试的序列，循环体无需感知 key 维度：
-//   - single（默认）        → 原样（ModelRef.APIKey，兼容旧单 key 行为）；
-//   - priority             → 每个候选按 key 列表顺序展开为多次连续尝试——失败时
-//     先轮换同候选的下一个 key（至多 len(keys) 次），耗尽再切候选；
-//   - round-robin          → 每候选一次，key 取源级原子游标（同源多候选在请求内错开、
-//     跨请求轮转；内存态，重启归零）；
-//   - random               → 每候选一次，key 随机选取。
-//
-// 展开后 maxAttempts 语义不变：重试预算封顶总尝试次数。
 func (s *Server) expandCandidatesByKeyStrategy(candidates []config.ModelRef) []config.ModelRef {
 	multi := false
 	for i := range candidates {
@@ -262,72 +183,4 @@ func maxAttempts(maxRetries, candidateCount int) int {
 		attempts = candidateCount
 	}
 	return attempts
-}
-
-// shouldRetryStatus 判断给定的上游 HTTP 状态码是否值得换下一个模型重试。
-// 借鉴 new-api 的状态码区间策略，针对个人网关场景做了精简：
-//   - 2xx/3xx: 成功，不重试
-//   - 408 (请求超时), 409, 425, 429 (限流): 重试
-//   - 5xx: 重试，但 501(未实现)/505 视为协议级错误不重试；
-//     504(网关超时)/524 由调用方根据是否流式自行决定，这里默认重试，
-//     因为换一个上游模型通常能绕开单点超时
-//   - 4xx (除上面列出的): 客户端错误，重试同样会失败，不重试
-//
-// statusCode<=0 表示连接层失败（DNS/拨号/读取错误），一律重试。
-func shouldRetryStatus(statusCode int) bool {
-	if statusCode <= 0 {
-		return true // 连接错误：换一个上游
-	}
-	if statusCode >= 200 && statusCode < 400 {
-		return false
-	}
-	switch statusCode {
-	case 408, 409, 425, 429:
-		return true
-	case 501, 505:
-		return false
-	}
-	if statusCode >= 500 {
-		return true
-	}
-	return false
-}
-
-// relayFailOutcome 转发失败的统一决策：末次尝试或不可重试 → 补全记录三
-// 要素并提交错误响应；否则 committed=false 交还上层故障转移到下一候选。
-// 错误体的写出形态由调用方闭包提供（扁平 JSON / OpenAI typed / SSE error 帧），
-// retryable 由调用方判定（绝大多数场景即 shouldRetryStatus(statusCode)，
-// 自定义协议等特殊语义可显式传入）。
-func relayFailOutcome(record *usageRecord, isLast, retryable bool, statusCode int, errMsg string, writeError func()) relayOutcome {
-	if isLast || !retryable {
-		record.StatusCode = statusCode
-		record.Error = errMsg
-		record.ErrorKind = ErrorKindUpstream
-		writeError()
-		return relayOutcome{committed: true, statusCode: statusCode, errMsg: errMsg}
-	}
-	return relayOutcome{committed: false, statusCode: statusCode, errMsg: errMsg}
-}
-
-// relayFailWriter 绑定一次转发的写出口（客户端连接 + 输入/目标线制），
-// 是各 handler 此前人手一份的 failResult/connFail/fail 闭包的共享体：
-// 有上游原文透传原文，否则写协议错误；retryable 由调用方判定传入。
-type relayFailWriter struct {
-	c              *gin.Context
-	inputFormat    relay.FormatType
-	targetPlatform relay.Platform
-}
-
-func (w relayFailWriter) fail(record *usageRecord, isLast, retryable bool, status int, message string, body []byte) relayOutcome {
-	if err := w.c.Request.Context().Err(); err != nil {
-		setUsageError(record, w.c.Request.Context(), err)
-		return relayOutcome{committed: true, statusCode: record.StatusCode, errMsg: record.Error}
-	}
-	return relayFailOutcome(record, isLast, retryable, status, message, func() {
-		if body != nil {
-			writeUpstreamError(w.c, w.inputFormat, w.targetPlatform, status, body, contentTypeJSON)
-			return
-		}
-		writeProtocolError(w.c, w.inputFormat, &relay.MaheshvaraError{Class: relay.ErrorClassUpstream, Status: status, Message: message})
-	})
 }

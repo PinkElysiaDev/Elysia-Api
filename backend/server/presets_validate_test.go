@@ -3,25 +3,28 @@ package server
 import (
 	"testing"
 
-	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/protocol/builtin"
 )
 
-// 四份 v2 预置必须通过整体校验（含双模板渲染）——预置是协议作者的起点，
-// 坏预置会随播种进入每个部署。
 func TestPresetProtocolsValidate(t *testing.T) {
-	configs, err := PresetProtocolConfigs()
+	definitions, err := builtin.Definitions()
 	if err != nil {
-		t.Fatalf("presets: %v", err)
+		t.Fatal(err)
 	}
-	if len(configs) != 4 {
-		t.Fatalf("presets = %d, want 4", len(configs))
+	if len(definitions) != 4 {
+		t.Fatalf("presets = %d, want 4", len(definitions))
 	}
-	for _, config := range configs {
-		if err := relay.ValidateCustomProtocol(config); err != nil {
-			t.Fatalf("preset %q invalid: %v", config.ID, err)
+	for _, value := range definitions {
+		var definition protocol.Definition
+		if err := value.Decode(&definition); err != nil {
+			t.Fatal(err)
 		}
-		if config.Metadata == nil || config.Metadata["presetVersion"] == nil {
-			t.Fatalf("preset %q missing metadata.presetVersion", config.ID)
-		}
+		t.Run(definition.ID, func(t *testing.T) {
+			compiled := compileFixtureDefinition(t, definition)
+			if report := protocol.Verify(t.Context(), compiled); !report.Passed {
+				t.Fatalf("preset invalid: %+v", report.Issues)
+			}
+		})
 	}
 }

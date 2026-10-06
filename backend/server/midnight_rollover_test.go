@@ -10,7 +10,7 @@ import (
 // release 闭包的同源日期守卫(current.Date == acquiredDate 才退还预留)
 // 与此同一比较,依赖真实时钟跨越无法在单进程构造,由代码审查保证。
 func TestRateLimitMidnightRolloverProtectsNewDay(t *testing.T) {
-	s := newTestServer(nil)
+	s := newTestServer(t, nil)
 	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 
 	// 新一天已有计数。

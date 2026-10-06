@@ -12,7 +12,7 @@ import { api } from '@/lib/api'
 import { useSources } from '@/lib/hooks'
 import { protocolLabel } from '@/lib/protocol'
 import type { UsageLogDetail } from '@/lib/types'
-import { downloadJSON, formatDateTime, formatDuration, formatNumber } from '@/lib/utils'
+import { downloadJSON, formatCacheCreationTokens, formatDateTime, formatDuration, formatNumber } from '@/lib/utils'
 import { ChainBodies } from './log-detail/body-sections'
 import { buildExportPayload, errorKindLabel } from './log-detail/body-helpers'
 
@@ -63,12 +63,19 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
   ].filter(Boolean))]
   const sourceName = sources?.find((source) => source.id === detail?.sourceId)?.name || detail?.sourceId
   const usage = detail?.usage
-  // tokbar 三段：缓存命中 rose-soft / 未命中输入 rose / 输出 jade
+  // tokbar 四段：缓存命中 rose-soft / 未命中输入 rose / 缓存创建 amber / 输出 jade。
+  // 缓存创建为上游独有语义，缺省（未上报）不入柱、不显示 0。
   const cacheHit = usage?.cacheHitTokens ?? 0
   const inputTotal = usage?.inputTokens ?? 0
   const inputMiss = Math.max(inputTotal - cacheHit, 0)
   const output = usage?.outputTokens ?? 0
-  const tokTotal = cacheHit + inputMiss + output
+  const creationReported = usage?.cacheCreationTokens !== undefined
+  const creation = creationReported ? usage?.cacheCreationTokens ?? 0 : 0
+  const tokTotal = cacheHit + inputMiss + creation + output
+  // C28 分桶省略但总量保留：目标协议无 TTL 分桶字段时后端记 warning，此处显式说明避免像丢数据。
+  const creationBucketOmitted = (detail?.conversionIssues ?? []).some(
+    (issue) => issue.reason?.includes('cache creation bucket omitted'),
+  )
   const outputRate =
     detail && output > 0 && detail.durationMs > 0 ? (output / (detail.durationMs / 1000)).toFixed(1) : null
 
@@ -156,6 +163,7 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                     <div className="my-2 flex h-2 overflow-hidden rounded-full bg-border">
                       {cacheHit > 0 && <i className="h-full" style={{ width: `${(cacheHit / tokTotal) * 100}%`, background: 'var(--rose-soft)' }} />}
                       {inputMiss > 0 && <i className="h-full" style={{ width: `${(inputMiss / tokTotal) * 100}%`, background: 'var(--rose)' }} />}
+                      {creation > 0 && <i className="h-full" style={{ width: `${(creation / tokTotal) * 100}%`, background: 'var(--amber)' }} />}
                       {output > 0 && <i className="h-full" style={{ width: `${(output / tokTotal) * 100}%`, background: 'var(--jade)' }} />}
                     </div>
                     <p className="tnum flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -174,6 +182,10 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                         <i className="mr-[5px] inline-block h-2 w-2 rounded-[2px] align-[-1px]" style={{ background: 'var(--jade)' }} />
                         输出 {formatNumber(output)}
                       </span>
+                      <span className={creationReported ? undefined : 'text-muted-foreground/70'}>
+                        <i className="mr-[5px] inline-block h-2 w-2 rounded-[2px] align-[-1px]" style={{ background: 'var(--amber)' }} />
+                        缓存创建 {formatCacheCreationTokens(usage?.cacheCreationTokens)}
+                      </span>
                       <span>
                         合计 <b className="font-semibold text-foreground">{formatNumber(tokTotal)}</b>
                       </span>
@@ -183,6 +195,12 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     无 token 用量（embedding / 请求未完成或上游未返回 usage）。
+                  </p>
+                )}
+                {creationBucketOmitted && (
+                  <p className="mt-2 flex items-start gap-1.5 text-2xs text-amber">
+                    <AlertTriangle className="mt-px h-3 w-3 shrink-0" aria-hidden />
+                    <span>上游按 TTL 分桶上报的缓存创建明细已省略（目标协议无对应字段）；缓存创建总量仍保留，见上方「缓存创建」。</span>
                   </p>
                 )}
               </section>

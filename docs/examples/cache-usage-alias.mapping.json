@@ -1,0 +1,188 @@
+{
+  "decode_response": {
+    "module": "openai-chat",
+    "after": {
+      "op": "if",
+      "when": {
+        "op": "all",
+        "items": [
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "root",
+              "path": "/usage/provider_metrics/write_tokens"
+            }
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/usage"
+            }
+          },
+          {
+            "op": "not",
+            "source": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usage/cacheCreation"
+              }
+            }
+          }
+        ]
+      },
+      "then": {
+        "op": "merge",
+        "policy": "last",
+        "items": [
+          {
+            "op": "read",
+            "from": "input",
+            "path": ""
+          },
+          {
+            "op": "object",
+            "fields": {
+              "usage": {
+                "op": "merge",
+                "policy": "last",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/usage"
+                  },
+                  {
+                    "op": "object",
+                    "fields": {
+                      "cacheCreation": {
+                        "op": "object",
+                        "fields": {
+                          "count": {
+                            "op": "read",
+                            "from": "root",
+                            "path": "/usage/provider_metrics/write_tokens"
+                          },
+                          "origin": {
+                            "op": "literal",
+                            "value": "observed"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "otherwise": {
+        "op": "read",
+        "from": "input",
+        "path": ""
+      }
+    }
+  },
+  "decode_event": {
+    "module": "openai-chat",
+    "after": {
+      "op": "map",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": ""
+      },
+      "body": {
+        "op": "if",
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "root",
+                "path": "/usage/provider_metrics/write_tokens"
+              }
+            },
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": "/usage"
+              }
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/usage/cacheCreation"
+                }
+              }
+            }
+          ]
+        },
+        "then": {
+          "op": "merge",
+          "policy": "last",
+          "items": [
+            {
+              "op": "read",
+              "from": "item",
+              "path": ""
+            },
+            {
+              "op": "object",
+              "fields": {
+                "usage": {
+                  "op": "merge",
+                  "policy": "last",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/usage"
+                    },
+                    {
+                      "op": "object",
+                      "fields": {
+                        "cacheCreation": {
+                          "op": "object",
+                          "fields": {
+                            "count": {
+                              "op": "read",
+                              "from": "root",
+                              "path": "/usage/provider_metrics/write_tokens"
+                            },
+                            "origin": {
+                              "op": "literal",
+                              "value": "observed"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "otherwise": {
+          "op": "read",
+          "from": "item",
+          "path": ""
+        }
+      }
+    }
+  }
+}

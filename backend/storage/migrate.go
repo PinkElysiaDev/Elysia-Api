@@ -12,6 +12,9 @@ import (
 )
 
 func (s *Store) migrate(ctx context.Context) error {
+	if err := s.migrateProtocolRevisions(ctx); err != nil {
+		return err
+	}
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)`,
@@ -98,6 +101,12 @@ func (s *Store) migrate(ctx context.Context) error {
 		// usage_records：缓存命中 token 数——统计接口直接 SUM，免逐条解析
 		// record_json；历史行为 0（旧记录不回填）。
 		`ALTER TABLE usage_records ADD COLUMN cache_hit_tokens INTEGER NOT NULL DEFAULT 0`,
+		// usage_records：缓存创建 token 数此前只存在于 record_json.protocolUsage
+		// 内，聚合无法直接 SUM；usage_report_mask 记录该行哪些计数来自上游真实
+		// 上报（位含义见 UsageReport* 常量），用于区分「未上报」与「上报为零」。
+		// 历史行默认 0/未上报，不臆造零。
+		`ALTER TABLE usage_records ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE usage_records ADD COLUMN usage_report_mask INTEGER NOT NULL DEFAULT 0`,
 	}
 	for _, stmt := range incrementalColumns {
 		if err := s.addColumnIgnoreDup(ctx, stmt); err != nil {
@@ -173,7 +182,14 @@ func (s *Store) migrate(ctx context.Context) error {
 	if hasAggIndex == 0 {
 		log.Printf("[migration] building usage aggregate index — one-time on first start after upgrade, duration scales with usage history")
 	}
-	if _, err := s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_usage_agg_cover ON usage_records(started_ms, model_name, group_name, key_name, status_code, stream, input_tokens, output_tokens, total_tokens, cache_hit_tokens, duration_ms, first_byte_ms)`); err != nil {
+	// SQLite 的 CREATE INDEX IF NOT EXISTS 不会因列清单变化而重建既有索引，
+	// 新增 cache_creation_tokens / usage_report_mask 后必须显式 DROP 再 CREATE，
+	// 否则旧索引缺列、聚合（totals 要按 usage_report_mask 数上报行）回到逐行
+	// 回表读胖行。DROP+CREATE 幂等，大表首次为一次性成本。
+	if _, err := s.db.ExecContext(ctx, `DROP INDEX IF EXISTS idx_usage_agg_cover`); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_usage_agg_cover ON usage_records(started_ms, model_name, group_name, key_name, status_code, stream, input_tokens, output_tokens, total_tokens, cache_hit_tokens, cache_creation_tokens, usage_report_mask, duration_ms, first_byte_ms)`); err != nil {
 		return err
 	}
 	// 旧的时间索引成为覆盖索引前缀的冗余（写入双份维护），删除。
@@ -205,6 +221,8 @@ func (s *Store) migrate(ctx context.Context) error {
 	// 增量迁移（幂等，duplicate column 忽略）：
 	//   model_sources.fetch_base_url —— 模型列表拉取专用地址（空=与 base_url 一致）；
 	//   model_sources.api_keys / key_strategy —— 多 Key 配置与调度策略；
+	//   model_sources.cache_synthesis —— 是否为目标声明 cache.breakpoints 的
+	//     上游补结构断点（默认关闭，仅在调用方未打满 4 个时补）；
 	//   models.enabled —— 用户手动启停（与 available 健康位分离）；
 	//   models.origin —— 行来源（fetched 随刷新合并替换 / manual 刷新永不触碰）；
 	//   models.capability_source —— 能力字段填充来源（''/catalog/manual，
@@ -213,12 +231,12 @@ func (s *Store) migrate(ctx context.Context) error {
 		`ALTER TABLE model_sources ADD COLUMN fetch_base_url TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE model_sources ADD COLUMN api_keys TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE model_sources ADD COLUMN key_strategy TEXT NOT NULL DEFAULT 'single'`,
+		`ALTER TABLE model_sources ADD COLUMN cache_synthesis INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE models ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE models ADD COLUMN origin TEXT NOT NULL DEFAULT 'fetched'`,
 		`ALTER TABLE models ADD COLUMN capability_source TEXT NOT NULL DEFAULT ''`,
 	} {
-		if _, err := s.db.ExecContext(ctx, stmt); err != nil &&
-			!strings.Contains(err.Error(), "duplicate column") {
+		if err := s.addColumnIgnoreDup(ctx, stmt); err != nil {
 			return err
 		}
 	}
@@ -349,6 +367,18 @@ func (s *Store) migrateRollupTables(ctx context.Context) error {
 	}
 	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS usage_rollup_state (key TEXT PRIMARY KEY, int_value INTEGER NOT NULL DEFAULT 0)`); err != nil {
 		return err
+	}
+	// usage_rollup_hour 的既有库无法靠上面的 CREATE TABLE IF NOT EXISTS 补列
+	// （表已存在即整条跳过），必须显式 ALTER。cc_tok 累积缓存创建 token，
+	// cc_reported/cc_rows 记录该桶内有多少行真正上报了创建计数，使聚合能区分
+	// 「全桶未上报」与「上报为零」——只 SUM 会让两者不可分。
+	for _, stmt := range []string{
+		`ALTER TABLE usage_rollup_hour ADD COLUMN cc_tok INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE usage_rollup_hour ADD COLUMN cc_rows INTEGER NOT NULL DEFAULT 0`,
+	} {
+		if err := s.addColumnIgnoreDup(ctx, stmt); err != nil {
+			return err
+		}
 	}
 	if err := s.initRollupState(ctx); err != nil {
 		return err

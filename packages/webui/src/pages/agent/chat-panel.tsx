@@ -156,27 +156,34 @@ export function ChatPanel({
 
   /** 会话累计用量（含缓存命中），随助手消息持久化逐步累加。 */
   const usageStat = useMemo(() => {
-    let input = 0;
-    let output = 0;
-    let total = 0;
-    let cached = 0;
+    let input: number | undefined = 0;
+    let output: number | undefined = 0;
+    let total: number | undefined = 0;
+    let cached: number | undefined = 0;
+    let created: number | undefined = 0;
+    let hasCalls = false;
+    const addKnown = (left: number | undefined, right: number | undefined) =>
+      left !== undefined && right !== undefined ? left + right : undefined;
     let contextTokens: number | undefined;
     for (const message of messages) {
-      if (message.role !== "assistant" || !message.usage) continue;
-      const turn = agentUsageToTurn(message.usage);
-      input += turn.inputTokens;
-      output += turn.outputTokens;
-      total += turn.totalTokens;
-      cached += Number(message.usage.cached_input_tokens ?? 0);
+      if (message.role !== "assistant") continue;
+      hasCalls = true;
+      const turn = agentUsageToTurn(message.usage ?? {});
+      input = addKnown(input, turn.inputTokens);
+      output = addKnown(output, turn.outputTokens);
+      total = addKnown(total, turn.totalTokens);
+      cached = addKnown(cached, turn.cachedInputTokens);
+      created = addKnown(created, turn.cacheCreationTokens);
       if (message.model === settings.modelName) contextTokens = turn.inputTokens;
     }
-    if (total === 0 && input === 0 && output === 0) return null;
+    if (!hasCalls) return null;
     return {
       input,
       output,
       cached,
-      total: total || input + output,
-      hitRate: input > 0 ? cached / input : null,
+      created,
+      total,
+      hitRate: input !== undefined && input > 0 && cached !== undefined ? cached / input : null,
       contextTokens: live.running ? live.context?.inputTokens ?? contextTokens : contextTokens,
     };
   }, [messages, live.context, live.running, settings.modelName]);

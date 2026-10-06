@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,7 +14,7 @@ import (
 
 	"github.com/elysia-api/backend/agent"
 	"github.com/elysia-api/backend/config"
-	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -76,12 +77,12 @@ func (u *capturingUpstream) last() capturedUpstreamRequest {
 func seedCallerModel(t *testing.T, s *Server, baseURL, platform string) {
 	t.Helper()
 	source := storage.ModelSource{ID: "cs1", Name: "caller-src", BaseURL: baseURL, APIKey: "sk-caller-key", Platform: platform, Enabled: true}
-	if err := s.store.UpsertSource(t.Context(), source); err != nil {
+	if err := s.saveSource(t.Context(), source); err != nil {
 		t.Fatalf("UpsertSource: %v", err)
 	}
 	models := []storage.Model{{
 		ID: "m1", SourceID: "cs1", Name: "fake-model", BaseURL: baseURL,
-		Platform: platform, Type: "llm", Enabled: true, Available: true,
+		Platform: platform, Type: "llm", Enabled: true, Available: true, ToolsCapable: true, VisionCapable: true,
 	}}
 	if err := s.store.ReplaceSourceModels(t.Context(), source, models); err != nil {
 		t.Fatalf("ReplaceSourceModels: %v", err)
@@ -91,7 +92,7 @@ func seedCallerModel(t *testing.T, s *Server, baseURL, platform string) {
 func callerRequest() agent.CallRequest {
 	return agent.CallRequest{
 		ModelSourceID: "cs1", Model: "fake-model",
-		Messages: []relay.MaheshvaraMessage{{Role: "user", Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentText, Text: "你好"}}}},
+		Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("你好")}}}},
 	}
 }
 
@@ -138,7 +139,7 @@ func TestAgentCallerOpenAIChatViaAdapter(t *testing.T) {
 	if options["include_usage"] != true {
 		t.Fatalf("stream_options.include_usage missing: %s", req.Body)
 	}
-	if result.Usage == nil || result.Usage.TotalTokens != 5 {
+	if result.Usage == nil || result.Usage.Total.Count != 5 {
 		t.Fatalf("usage not captured: %+v", result.Usage)
 	}
 
@@ -279,7 +280,7 @@ func TestAgentCallerUpstream400NotRetried(t *testing.T) {
 	seedCallerModel(t, s, upstream.URL, "openai")
 
 	_, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
-	if err == nil || !strings.Contains(err.Error(), "上游模型返回 400") {
+	if err == nil || !strings.Contains(err.Error(), "HTTP 400") {
 		t.Fatalf("err = %v, want 上游模型返回 400", err)
 	}
 	if count := upstream.requestCount(); count != 1 {
@@ -313,7 +314,6 @@ func TestAgentCallerCustomProtocolPlatform(t *testing.T) {
 	bodyMaxKB := 1024
 	s.config.SetUsageLogConfig(config.UsageLogConfig{BodyMaxKB: &bodyMaxKB})
 	s.seedPresetProtocols()
-	s.syncCustomProtocols()
 
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -358,10 +358,9 @@ func TestAgentCallerCustomProtocolPlatform(t *testing.T) {
 // 未注册的 custom 协议：调用前即失败并给出可读错误。
 func TestAgentCallerUnregisteredCustomProtocol(t *testing.T) {
 	s := newAgentIntegrationServer(t)
-	seedCallerModel(t, s, "http://127.0.0.1:9", "custom:never-registered")
-	_, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
-	if err == nil || !strings.Contains(err.Error(), "未注册") {
-		t.Fatalf("err = %v, want 未注册", err)
+	err := s.saveSource(t.Context(), storage.ModelSource{ID: "bad", Platform: "custom:never-registered", BaseURL: "http://127.0.0.1:9"})
+	if err == nil || !strings.Contains(err.Error(), string(protocol.VerificationRequired)) {
+		t.Fatalf("inactive protocol accepted: %v", err)
 	}
 }
 
@@ -380,30 +379,38 @@ func TestAgentAttachmentBase64IsTextNotBinary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	if len(parts) != 2 { // 文本块 + 图片块
+	if len(parts) != 3 { // 文本块 + 图片块
 		t.Fatalf("parts = %d", len(parts))
 	}
-	var image *relay.MaheshvaraContentPart
+	var image *protocol.Node
 	for i := range parts {
-		if parts[i].Type == relay.MaheshvaraContentImage {
+		if parts[i].Kind == protocol.ImageNode {
 			image = &parts[i]
 		}
 	}
 	if image == nil {
 		t.Fatalf("image part missing")
 	}
-	if image.ImageBase64 != pngPayload {
-		t.Fatalf("image base64 corrupted: %.60s", image.ImageBase64)
+	media, _ := image.Payload.ReadObject()
+	var imageBase64 string
+	if err := media["data"].Decode(&imageBase64); err != nil {
+		t.Fatal(err)
 	}
-	if _, decodeErr := base64.StdEncoding.DecodeString(image.ImageBase64); decodeErr != nil {
+	if imageBase64 != pngPayload {
+		t.Fatalf("image base64 corrupted: %.60s", imageBase64)
+	}
+	if _, decodeErr := base64.StdEncoding.DecodeString(imageBase64); decodeErr != nil {
 		t.Fatalf("image base64 not decodable: %v", decodeErr)
 	}
 
 	// 各平台出口透传后仍是合法 base64。
-	request := &relay.MaheshvaraRequest{Model: "fake-model", Messages: []relay.MaheshvaraMessage{
-		{Role: "user", Content: []relay.MaheshvaraContentPart{*image}},
-	}}
-	anthropicBody, err := relay.MaheshvaraToAnthropic(request)
+	service, err := s.protocolService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := &protocol.Request{SchemaVersion: 1, Parameters: protocol.Object{"max_output_tokens": mustProtocolValue(t, "100")}, Model: protocol.StringValue("fake-model"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{*image}}}}
+	anthropic, _ := service.Pin("anthropic-api")
+	anthropicBody, err := anthropic.EncodeRequest(t.Context(), request, protocol.EvaluationContext{})
 	if err != nil {
 		t.Fatalf("anthropic convert: %v", err)
 	}
@@ -430,7 +437,8 @@ func TestAgentAttachmentBase64IsTextNotBinary(t *testing.T) {
 		t.Fatalf("anthropic source.data not valid base64 (this is the reported 400): %v", decodeErr)
 	}
 
-	geminiBody, err := relay.MaheshvaraToGemini(request)
+	gemini, _ := service.Pin("gemini-api")
+	geminiBody, err := gemini.EncodeRequest(t.Context(), request, protocol.EvaluationContext{})
 	if err != nil {
 		t.Fatalf("gemini convert: %v", err)
 	}
@@ -453,7 +461,8 @@ func TestAgentAttachmentBase64IsTextNotBinary(t *testing.T) {
 		t.Fatalf("gemini inlineData.data not valid base64: %v", decodeErr)
 	}
 
-	chatBody, err := relay.MaheshvaraToOpenAIChat(request)
+	chat, _ := service.Pin("chat-completions-api")
+	chatBody, err := chat.EncodeRequest(t.Context(), request, protocol.EvaluationContext{})
 	if err != nil {
 		t.Fatalf("chat convert: %v", err)
 	}
@@ -468,8 +477,17 @@ func TestAgentCallerResponsesNoStreamOptions(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte("event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"完成\"}\n\n"))
-		_, _ = w.Write([]byte("event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n"))
+		for _, frame := range []string{
+			`{"type":"response.created","response":{"id":"r","model":"fake-model","status":"in_progress","output":[]}}`,
+			`{"type":"response.output_item.added","output_index":0,"item":{"type":"message","role":"assistant","content":[]}}`,
+			`{"type":"response.content_part.added","output_index":0,"content_index":0,"part":{"type":"output_text","text":""}}`,
+			`{"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"done"}`,
+			`{"type":"response.output_text.done","output_index":0,"content_index":0,"text":"done"}`,
+			`{"type":"response.content_part.done","output_index":0,"content_index":0,"part":{"type":"output_text","text":"done"}}`,
+			`{"type":"response.completed","response":{"id":"r","model":"fake-model","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"done"}]}]}}`,
+		} {
+			fmt.Fprintf(w, "data: %s\n\n", frame)
+		}
 	})
 	seedCallerModel(t, s, upstream.URL, "responses")
 
@@ -477,7 +495,7 @@ func TestAgentCallerResponsesNoStreamOptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Call: %v", err)
 	}
-	if result.Text != "完成" {
+	if result.Text != "done" {
 		t.Fatalf("text = %q", result.Text)
 	}
 	req := upstream.last()
@@ -492,12 +510,10 @@ func TestAgentCallerResponsesNoStreamOptions(t *testing.T) {
 	}
 }
 
-// 回归（W1-6）：custom 协议终态后的排水窗内，重复文本帧不得再计入结果
-// （旧实现对 terminalBeforeBatch 视而不见，会把"协议协议"这类重复发给用户）。
-func TestAgentCallerCustomProtocolPostTerminalTextIgnored(t *testing.T) {
+// Late content cannot change a completed result or be silently discarded.
+func TestAgentCallerCustomProtocolPostTerminalTextRejected(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	s.seedPresetProtocols()
-	s.syncCustomProtocols()
 
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -509,12 +525,9 @@ func TestAgentCallerCustomProtocolPostTerminalTextIgnored(t *testing.T) {
 	})
 	seedCallerModel(t, s, upstream.URL+"/v1", "custom:chat-completions-api")
 
-	result, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
-	if err != nil {
-		t.Fatalf("Call: %v", err)
-	}
-	if result.Text != "协议" {
-		t.Fatalf("post-terminal text leaked into result: %q", result.Text)
+	_, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
+	if err == nil || !strings.Contains(err.Error(), "event arrived after terminal") {
+		t.Fatalf("late content must fail the stream: %v", err)
 	}
 }
 
@@ -523,10 +536,11 @@ func TestAgentCallerCustomProtocolPostTerminalTextIgnored(t *testing.T) {
 func TestAgentCallerAnthropicPresetToolRound(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	s.seedPresetProtocols()
-	s.syncCustomProtocols()
 
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, call int) {
 		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"type\":\"message_start\",\"message\":{\"id\":\"r\",\"content\":[]}}\n\n")
+		defer fmt.Fprint(w, "data: {\"type\":\"message_stop\"}\n\n")
 		if call == 1 {
 			_, _ = w.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"list_sources\",\"input\":{}}}\n\n"))
 			_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{}\"}}\n\n"))
@@ -534,7 +548,7 @@ func TestAgentCallerAnthropicPresetToolRound(t *testing.T) {
 			_, _ = w.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"input_tokens\":9,\"output_tokens\":4}}\n\n"))
 			return
 		}
-		_, _ = w.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}}\n\n"))
+		_, _ = w.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n"))
 		_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"完成\"}}\n\n"))
 		_, _ = w.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":2}}\n\n"))
 	})
@@ -566,43 +580,71 @@ func TestAgentCallerAnthropicPresetToolRound(t *testing.T) {
 // 回放），否则真实上游会拒绝跨轮思考。
 func TestAgentCallerAnthropicPresetSignatureRoundTrip(t *testing.T) {
 	s := newAgentIntegrationServer(t)
-	s.seedPresetProtocols()
-	s.syncCustomProtocols()
-
-	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, call int) {
+	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, body string, call int) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		if call == 1 {
-			_, _ = w.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\n"))
-			_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"琢磨\"}}\n\n"))
-			_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"sig-roundtrip\"}}\n\n"))
-			_, _ = w.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n"))
-			return
+		if call > 1 {
+			for _, fragment := range []string{`"signature":"sig-roundtrip"`, `"thinking":"consider"`, `"tool_use_id":"call-agent"`, `"name":"elysia_cli"`} {
+				if !strings.Contains(body, fragment) {
+					t.Errorf("history lost %s: %s", fragment, body)
+				}
+			}
 		}
-		_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"好\"}}\n\n"))
-		_, _ = w.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n"))
+		frames := []string{`{"type":"message_start","message":{"id":"reply","model":"fake-model","role":"assistant","content":[]}}`}
+		if call == 1 {
+			frames = append(frames,
+				`{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}`,
+				`{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"consider"}}`,
+				`{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig-roundtrip"}}`,
+				`{"type":"content_block_stop","index":0}`,
+				`{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call-agent","name":"elysia_cli","input":{}}}`,
+				`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"command\":\"elysia group ls\"}"}}`,
+				`{"type":"content_block_stop","index":1}`,
+				`{"type":"message_delta","delta":{"stop_reason":"tool_use"}}`)
+		} else {
+			frames = append(frames,
+				`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+				`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"done"}}`,
+				`{"type":"content_block_stop","index":0}`,
+				`{"type":"message_delta","delta":{"stop_reason":"end_turn"}}`)
+		}
+		frames = append(frames, `{"type":"message_stop"}`)
+		for _, frame := range frames {
+			fmt.Fprintf(w, "data: %s\n\n", frame)
+		}
 	})
 	seedCallerModel(t, s, upstream.URL, "custom:anthropic-api")
-
-	caller := newAgentStreamCaller(s)
-	first, err := caller.Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
+	session, err := s.store.CreateAgentSession(t.Context(), storage.AgentSessionUpsert{Mode: "create", Settings: agent.Settings{ModelSourceID: "cs1", ModelName: "fake-model"}})
 	if err != nil {
-		t.Fatalf("first round: %v", err)
+		t.Fatal(err)
 	}
-	if first.Reasoning != "琢磨" {
-		t.Fatalf("reasoning = %q", first.Reasoning)
+	run := func(text string) {
+		registry, err := agent.NewRegistry(&elysiaCLITool{server: s})
+		if err != nil {
+			t.Fatal(err)
+		}
+		engine := agent.NewEngine(newAgentStreamCaller(s), s.store, registry, newAgentUserContentRenderer(s), nil, agent.Options{})
+		events, err := engine.RunTurn(t.Context(), session.ID, &agent.UserContent{Text: text})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for event := range events {
+			if event.Type == agent.EventError {
+				t.Fatal(event.Text)
+			}
+		}
 	}
-	// 签名没有进 accumulator（agent 历史不带签名）——此处验证的是预置解码器
-	// 能产出签名事件；请求侧回放由 relay 形状整形保证（parity 已覆盖）。
-	// 第二轮直接断言调用照常成功。
-	second, err := caller.Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
+	run("inspect groups")
+	messages, err := s.store.ListMessages(t.Context(), session.ID)
 	if err != nil {
-		t.Fatalf("second round: %v", err)
+		t.Fatal(err)
 	}
-	if second.Text != "好" {
-		t.Fatalf("text = %q", second.Text)
+	encoded, err := json.Marshal(messages)
+	if err != nil || !strings.Contains(string(encoded), "sig-roundtrip") {
+		t.Fatalf("signature missing from persisted history: %s, %v", encoded, err)
 	}
-	if !strings.Contains(upstream.last().Body, "/v1/messages") && upstream.last().Path != "/v1/messages" {
-		t.Fatalf("second round path wrong: %q", upstream.last().Path)
+	run("continue after engine restart")
+	if upstream.requestCount() != 3 {
+		t.Fatalf("calls=%d", upstream.requestCount())
 	}
 }
 
@@ -630,12 +672,12 @@ func TestAgentCallerPicksPermittedKey(t *testing.T) {
 			{Value: "key-b", FetchedModels: []string{"fake-model"}},
 		},
 	}
-	if err := s.store.UpsertSource(t.Context(), source); err != nil {
+	if err := s.saveSource(t.Context(), source); err != nil {
 		t.Fatalf("UpsertSource: %v", err)
 	}
 	if err := s.store.ReplaceSourceModels(t.Context(), source, []storage.Model{{
 		ID: "m1", SourceID: "cs1", Name: "fake-model", BaseURL: upstream.URL,
-		Platform: "openai", Type: "llm", Enabled: true, Available: true,
+		Platform: "openai", Type: "llm", Enabled: true, Available: true, ToolsCapable: true, VisionCapable: true,
 	}}); err != nil {
 		t.Fatalf("ReplaceSourceModels: %v", err)
 	}
@@ -662,7 +704,7 @@ func TestApplyAgentPermittedKey(t *testing.T) {
 			{Value: "key-b", FetchedModels: []string{"m2"}},
 		},
 	}
-	if err := s.store.UpsertSource(t.Context(), source); err != nil {
+	if err := s.saveSource(t.Context(), source); err != nil {
 		t.Fatalf("UpsertSource: %v", err)
 	}
 

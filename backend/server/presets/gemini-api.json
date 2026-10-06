@@ -1,31 +1,12 @@
 {
   "id": "gemini-api",
   "name": "Gemini API（预置）",
-  "version": "3",
+  "version": "5",
   "type": "llm",
   "metadata": {
     "preset": true,
-    "presetVersion": 3,
-    "description": "Gemini 线制的预置定义；v3：模型发现 idStripPrefix 剥离 name 的 models/ 集合前缀（入库 ID 与转发路径不再双前缀 404）"
-  },
-  "aliases": {
-    "toolCall": {
-      "id": [
-        "functionCall.name"
-      ],
-      "name": [
-        "functionCall.name"
-      ],
-      "arguments": [
-        "functionCall.args"
-      ],
-      "signature": [
-        "thoughtSignature"
-      ],
-      "signatureProvider": [
-        "thoughtSignatureProvider"
-      ]
-    }
+    "presetVersion": 5,
+    "description": "Gemini 线制的预置定义；v3：模型发现 idStripPrefix 剥离 name 的 models/ 集合前缀（入库 ID 与转发路径不再双前缀 404）; v4: preserve cache semantics and cache field mappings; v5: share native response and event adapters"
   },
   "request": {
     "method": "POST",
@@ -41,14 +22,8 @@
         "field": "messages"
       },
       "systemInstruction": {
-        "parts": [
-          {
-            "text": {
-              "field": "instructions",
-              "mode": "string"
-            }
-          }
-        ]
+        "field": "gemini_system",
+        "omitIfEmpty": true
       },
       "generationConfig": {
         "temperature": {
@@ -83,122 +58,17 @@
       "toolConfig": {
         "field": "tool_config",
         "omitIfEmpty": true
+      },
+      "cachedContent": {
+        "field": "cache_control",
+        "omitIfEmpty": true
       }
     }
   },
   "response": {
-    "textPath": "candidates[0].content.parts",
-    "textFilter": [
-      {
-        "path": "thought",
-        "op": "isFalse"
-      },
-      {
-        "path": "functionCall",
-        "op": "isNull"
-      }
-    ],
-    "reasoningPath": "candidates[0].content.parts",
-    "reasoningFilter": [
-      {
-        "path": "thought",
-        "op": "isTrue"
-      }
-    ],
-    "toolCallsPath": "candidates[0].content.parts",
-    "usagePath": "usageMetadata",
-    "finishReasonPath": "candidates[0].finishReason",
+    "adapter": "gemini",
     "stream": {
-      "mode": "delta",
-      "frames": [
-        {
-          "match": {
-            "path": "error",
-            "op": "notNull"
-          },
-          "response": {
-            "errorPath": "error"
-          }
-        },
-        {
-          "match": {
-            "path": "candidates[0].content.parts[0].functionCall",
-            "op": "notNull"
-          },
-          "response": {
-            "toolCallsPath": "candidates[0].content.parts",
-            "usagePath": "usageMetadata",
-            "finishReasonPath": "candidates[0].finishReason"
-          }
-        },
-        {
-          "match": {
-            "path": "candidates[0].finishReason",
-            "op": "notNull"
-          },
-          "terminal": true,
-          "response": {
-            "textPath": "candidates[0].content.parts",
-            "textFilter": [
-              {
-                "path": "thought",
-                "op": "isFalse"
-              },
-              {
-                "path": "functionCall",
-                "op": "isNull"
-              }
-            ],
-            "reasoningPath": "candidates[0].content.parts",
-            "reasoningFilter": [
-              {
-                "path": "thought",
-                "op": "isTrue"
-              }
-            ],
-            "usagePath": "usageMetadata",
-            "finishReasonPath": "candidates[0].finishReason"
-          }
-        },
-        {
-          "match": {
-            "path": "candidates[0]",
-            "op": "isNull"
-          },
-          "response": {
-            "usagePath": "usageMetadata"
-          }
-        },
-        {
-          "match": {
-            "path": "candidates",
-            "op": "nonEmpty"
-          },
-          "response": {
-            "textPath": "candidates[0].content.parts",
-            "textFilter": [
-              {
-                "path": "thought",
-                "op": "isFalse"
-              },
-              {
-                "path": "functionCall",
-                "op": "isNull"
-              }
-            ],
-            "reasoningPath": "candidates[0].content.parts",
-            "reasoningFilter": [
-              {
-                "path": "thought",
-                "op": "isTrue"
-              }
-            ],
-            "usagePath": "usageMetadata",
-            "finishReasonPath": "candidates[0].finishReason"
-          }
-        }
-      ],
-      "doneValuesReplace": true
+      "adapter": "gemini"
     }
   },
   "models": {

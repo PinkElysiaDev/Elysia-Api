@@ -247,7 +247,7 @@ If the panel token is lost, stop the service, set `panelAccessToken` to a new ra
 - `server.host` / `server.port` are fallback values only when the corresponding top-level fields are absent.
 - Current configuration parsing no longer reads `tokens` or `modelGroups`, or treats `dashboardToken` as the panel token. Do not rely on automatic migration described in older documentation. Export through a compatible older release or recreate data through management APIs, keeping the original backup.
 - Startup migration processes the deprecated `customProtocols` field and removes it from configuration. Back up first and inspect the result in the protocol designer after startup.
-- See [Maheshvara](maheshvara-protocol.en.md) and [protocol definitions](protocol-definition-reference.en.md) for model capabilities, streaming, and custom-protocol constraints.
+- See the [protocol engine guide](protocol-guide.en.md) and [definition reference](protocol-definition-reference.en.md) for model capabilities, streaming and custom-protocol constraints. Retain matching executable/database/configuration/master-key backups and preview migration before upgrading; see [upgrade and rollback](protocol-release-readiness.en.md#upgrade-and-rollback).
 
 ## Troubleshooting
 

@@ -3,6 +3,7 @@ module github.com/elysia-api/backend
 go 1.25.0
 
 require (
+	github.com/coder/websocket v1.8.14
 	github.com/gin-gonic/gin v1.10.0
 	golang.org/x/sync v0.20.0
 	modernc.org/sqlite v1.52.0

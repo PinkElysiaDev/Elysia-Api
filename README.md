@@ -16,7 +16,7 @@
 
 - 多协议兼容：支持 Chat Completions API / Responses API、Anthropic API、Gemini API，流式转换与同协议透传
 - 流量调度：模型组负载均衡、多 Key 调度、并发/配额限制、Key 权限自动探测
-- 无代码扩展：可视化字段映射自定义上游协议，保存后生效，无需修改源码
+- 声明式扩展：编辑器或内置 Agent 编写双向协议，经离线验证后启用；支持 HTTP JSON、SSE、NDJSON、WebSocket 与持久化异步任务
 - AI 运维：内置管控助手，支持协议自动接入、用量分析、故障排查，写操作按会话权限审批
 - 多端管控：内嵌 WebUI，提供 REST / MCP / A2A 远程管控，CLI 命令由 Agent 工具执行
 - 安全加固：主密钥加载成功时加密存储敏感字段、出站 IP 策略、用量与请求日志
@@ -145,6 +145,8 @@ docker run -d --name elysia-api \
 ## 进阶文档
 
 - [自定义协议开发](docs/protocol-definition-reference.md)
+- [协议架构、支持矩阵与迁移](docs/protocol-guide.md)
+- [验收证据与发布边界](docs/protocol-release-readiness.md)
 - [AI Agent 远程接入](docs/remote-agent-api.md)
 - [运维与接口参考](docs/webui-api.md)
 - [CLI 命令手册](docs/agent-cli.md)

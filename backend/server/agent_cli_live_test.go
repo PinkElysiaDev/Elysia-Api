@@ -43,9 +43,7 @@ func TestCLILivePromptTasks(t *testing.T) {
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			s := newAgentIntegrationServer(t)
-			s.openaiAdapter = relay.NewOpenAIAdapter(120 * time.Second)
-			s.claudeAdapter = relay.NewClaudeAdapter(120 * time.Second)
-			s.geminiAdapter = relay.NewGeminiAdapter(120 * time.Second)
+			s.protocolTransport = relay.NewProtocolTransport(120 * time.Second)
 			ctx := t.Context()
 			if err := s.store.UpsertSource(ctx, fixture.Source); err != nil {
 				t.Fatal(err)
@@ -59,9 +57,8 @@ func TestCLILivePromptTasks(t *testing.T) {
 			}))
 			t.Cleanup(upstream.Close)
 			// 仅在隔离测试中让模型发现请求访问本地合成上游。
-			previousFetchClient := modelFetchClient
-			modelFetchClient = upstream.Client()
-			t.Cleanup(func() { modelFetchClient = previousFetchClient })
+			relay.SetAllowPrivateDial(true)
+
 			models := []storage.Model{{ID: "eval-a", Name: "eval-a", BaseURL: upstream.URL, Type: "llm", Enabled: true}, {ID: "eval-b", Name: "eval-b", BaseURL: upstream.URL, Type: "llm", Enabled: true}}
 			source := storage.ModelSource{ID: "catalog", Name: "测试源", BaseURL: upstream.URL, Platform: "openai", Enabled: true, ManualModels: models}
 			if err := s.store.UpsertSource(ctx, source); err != nil {

@@ -39,8 +39,11 @@ type ModelSource struct {
 	// 存储 JSON 数组整体加密；KeyStrategy 决定调度方式。
 	APIKeys     []SourceAPIKey    `json:"apiKeys,omitempty"`
 	KeyStrategy SourceKeyStrategy `json:"keyStrategy,omitempty"`
-	CreatedAt   time.Time         `json:"createdAt"`
-	UpdatedAt   time.Time         `json:"updatedAt"`
+	// CacheSynthesis 让网关为声明 cache.breakpoints 的上游补结构断点。
+	// 默认关闭：开启会改变发往上游的请求体，属显式的运维选择。
+	CacheSynthesis bool      `json:"cacheSynthesis,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 // EffectiveKeys 返回参与调度的 key 列表（多 key 时过滤 disabled；单 key 回退 APIKey）。
@@ -222,15 +225,18 @@ type UsageQuery struct {
 
 // UsageDailyBucket 趋势图的单日聚合行。Date 是请求方时区的本地日（YYYY-MM-DD）。
 type UsageDailyBucket struct {
-	Date            string         `json:"date"`
-	Requests        int            `json:"requests"`
-	SuccessRequests int            `json:"successRequests"`
-	FailedRequests  int            `json:"failedRequests"`
-	InputTokens     int            `json:"inputTokens,omitempty"`
-	OutputTokens    int            `json:"outputTokens,omitempty"`
-	CacheHitTokens  int            `json:"cacheHitTokens,omitempty"`
-	Tokens          int            `json:"tokens"`
-	ModelTokens     map[string]int `json:"modelTokens,omitempty"`
+	Date            string `json:"date"`
+	Requests        int    `json:"requests"`
+	SuccessRequests int    `json:"successRequests"`
+	FailedRequests  int    `json:"failedRequests"`
+	InputTokens     int    `json:"inputTokens,omitempty"`
+	OutputTokens    int    `json:"outputTokens,omitempty"`
+	CacheHitTokens  int    `json:"cacheHitTokens,omitempty"`
+	// CacheCreationTokens 是缓存创建 token 数；未上报的行贡献 0（见 UsageReport*
+	// 掩码）。与 cacheHitTokens 同口径，只累计成功记录。
+	CacheCreationTokens int            `json:"cacheCreationTokens,omitempty"`
+	Tokens              int            `json:"tokens"`
+	ModelTokens         map[string]int `json:"modelTokens,omitempty"`
 }
 
 // UsageModelBucket 按模型的聚合行（热门模型 / 明细表）。
@@ -275,6 +281,15 @@ type UsageModelDailyBucket struct {
 	Other    bool   `json:"isOther,omitempty"`
 }
 
+// usage_report_mask 位含义：记录该行的计数是否来自上游真实上报。缺位 = 上游
+// 未报告（不得当作零），置位 = 上游确实报告了该计数（可能是零）。命中率的
+// 分子分母只有在相应位置位时才可比。
+const (
+	UsageReportInput    = 1 << 0 // input_tokens 来自上游上报
+	UsageReportCacheHit = 1 << 1 // cache_hit_tokens 来自上游上报
+	UsageReportCreation = 1 << 2 // cache_creation_tokens 来自上游上报
+)
+
 type UsageLogItem struct {
 	RequestID           string    `json:"requestId"`
 	StartedAt           time.Time `json:"startedAt"`
@@ -299,8 +314,13 @@ type UsageLogItem struct {
 	OutputTokens        int       `json:"outputTokens"`
 	TotalTokens         int       `json:"totalTokens"`
 	CacheHitTokens      int       `json:"cacheHitTokens"`
-	RequestTruncated    bool      `json:"incomingBodyTruncated"`
-	ResponseTruncated   bool      `json:"providerResponseTruncated"`
+	// CacheCreationTokens 是缓存创建 token 数；仅当 UsageReportMask 的
+	// UsageReportCreation 位置位时才代表上游上报值。历史行保持 0 且未置位。
+	CacheCreationTokens int `json:"cacheCreationTokens"`
+	// UsageReportMask 见 UsageReport* 位常量：区分「上游未上报」与「上报为零」。
+	UsageReportMask   int  `json:"usageReportMask"`
+	RequestTruncated  bool `json:"incomingBodyTruncated"`
+	ResponseTruncated bool `json:"providerResponseTruncated"`
 }
 
 type SystemLog struct {

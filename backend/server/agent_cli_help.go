@@ -121,7 +121,7 @@ func groupSummary(group string) string {
 	case "key":
 		return "API Key（推理访问令牌）管理"
 	case "protocol":
-		return "自定义协议设计（草稿/离线预览/真实测试/保存）"
+		return "协议设计与运维（schema/草稿/验证/预览/测试/修订/启用/回滚）"
 	case "usage":
 		return "用量统计与调用日志"
 	case "syslog":

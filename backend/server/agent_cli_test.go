@@ -158,12 +158,9 @@ func TestCLIResolveMappers(t *testing.T) {
 	}
 
 	// 位置参数 JSON（protocol draft）。
-	params = mapCLI(t, `elysia protocol draft '{"id":"p1"}' --example '{"text":"hi"}'`)
-	if string(params["config"].(json.RawMessage)) != `{"id":"p1"}` {
+	params = mapCLI(t, `elysia protocol draft '{"schemaVersion":2,"id":"p1"}'`)
+	if string(params["config"].(json.RawMessage)) != `{"schemaVersion":2,"id":"p1"}` {
 		t.Fatalf("config = %v", params["config"])
-	}
-	if string(params["exampleResponse"].(json.RawMessage)) != `{"text":"hi"}` {
-		t.Fatalf("example = %v", params["exampleResponse"])
 	}
 
 	// usage log 位置参数与二级命令。
@@ -247,7 +244,7 @@ func TestCLIAllCommandsResolve(t *testing.T) {
 		`elysia key create --name k1 --allowed-groups g1`,
 		`elysia key delete --name k1`,
 		`elysia protocol preview --sample '{"model":"m"}'`,
-		`elysia protocol test --base-url https://u.io --api-key sk --stream`,
+		`elysia protocol test --base-url https://u.io --api-key sk --operation generate --sample '{"schemaVersion":1,"model":"m"}'`,
 		`elysia protocol models --base-url https://u.io`,
 		`elysia protocol save`,
 		`elysia protocol read --id anthropic-api`,
@@ -270,7 +267,7 @@ func TestCLIProbeGates(t *testing.T) {
 	if len(notes) != 2 || notes[0].PermissionKey != "save" || notes[1].PermissionKey != "delete" {
 		t.Fatalf("notes = %+v", notes)
 	}
-	notes, err = probeAgentCLI("elysia protocol save --update existing")
+	notes, err = probeAgentCLI("elysia protocol save --expected existing-hash")
 	if err != nil || len(notes) != 1 || notes[0].PermissionKey != "save" {
 		t.Fatalf("explicit protocol updates must require save permission: %+v err=%v", notes, err)
 	}
@@ -375,9 +372,16 @@ func TestCLIHelp(t *testing.T) {
 // 等价执行：CLI 命令经真实 Server 落库，结果与既有工具行为一致。
 // 等价执行：CLI 命令经真实 Server 落库，结果与既有工具行为一致。子测试
 // 共用同一 server/upstream（场景间有先后依赖：批处理先建 src1，回显打码
+// runAgentCLI 直接驱动批处理脚本，绕过 elysiaCLITool.Execute 的参数解析；
+// 两条路径共用 runCLIWithOptions，故该测试覆盖的是同一个批处理实现。
+func (s *Server) runAgentCLI(ctx context.Context, tctx agent.ToolContext, script string) agent.ToolResult {
+	return agentResultFromCLI(s.runCLIWithOptions(ctx, &agentCLIContext{inner: tctx}, script, true))
+}
+
 // 后才有第二个源），t.Run 按声明顺序执行。
 func TestCLIRunEquivalence(t *testing.T) {
 	s := newAgentIntegrationServer(t)
+	activateDiscoveryPresets(t, s)
 	ctx := context.Background()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{}`))
@@ -457,10 +461,10 @@ func TestCLIRunEquivalence(t *testing.T) {
 	})
 
 	t.Run("update_preserves_edit_target", func(t *testing.T) {
-		draftArgs := mapCLI(t, mcpTestProtocolDraft)
+		draftArgs := mapCLI(t, mcpTestProtocolDraft(t))
 		draft, _ := json.Marshal(draftArgs["config"])
 		tctx := &sessionToolContext{session: &agent.Session{Mode: agent.ModeEdit, ProtocolID: "original", DraftConfig: draft}}
-		result := s.runCLI(ctx, tctx, "elysia protocol save --update mcp-draft")
+		result := s.runCLI(ctx, tctx, "elysia protocol save")
 		if result.OK || !strings.Contains(string(result.MarshalData()), "id_mismatch") {
 			t.Fatalf("explicit update bypassed edit target: %s", result.MarshalData())
 		}
@@ -528,13 +532,24 @@ func TestCLICodeSnapshotCommands(t *testing.T) {
 	if result.OK || result.Data.(map[string]any)["error"] != "invalid_path" {
 		t.Fatalf("path traversal must be rejected: %+v", result)
 	}
-	result = read.Execute(t.Context(), nil, json.RawMessage(`{"path":"backend/server/presets/anthropic-api.json"}`))
+	result = read.Execute(t.Context(), nil, json.RawMessage(`{"path":"backend/protocol/builtin/definitions/anthropic-api.json"}`))
 	if snapshotAvailable() {
 		if !result.OK || !strings.Contains(result.Data.(map[string]any)["content"].(string), `"anthropic-api"`) {
 			t.Fatalf("preset original must be readable from the snapshot: %+v", result.Summary)
 		}
 	} else if result.OK || result.Data.(map[string]any)["error"] != "snapshot_unavailable" {
 		t.Fatalf("placeholder build must surface the notice: %+v", result)
+	}
+	if snapshotAvailable() {
+		for _, path := range []string{"packages/webui/src/lib/protocol-v2.ts", "docs/protocol-guide.md", "docs/protocol-guide.en.md", "docs/examples/cached-text-v2.json"} {
+			args, err := json.Marshal(map[string]string{"path": path})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result := read.Execute(t.Context(), nil, args); !result.OK {
+				t.Fatalf("current authoring reference %s must be embedded: %s", path, result.Summary)
+			}
+		}
 	}
 	list := &codeListTool{}
 	result = list.Execute(t.Context(), nil, json.RawMessage(`{}`))

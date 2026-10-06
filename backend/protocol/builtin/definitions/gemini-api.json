@@ -1,0 +1,4375 @@
+{
+  "schemaVersion": 2,
+  "id": "gemini-api",
+  "name": "gemini-api",
+  "version": "2.1.0",
+  "family": "gemini",
+  "wireVersion": "v2",
+  "capabilities": {
+    "text": true,
+    "tools.function": true,
+    "native_extensions": true,
+    "usage": true,
+    "cache.resources": true,
+    "images": true,
+    "audio": true,
+    "video": true,
+    "documents": true,
+    "tools.server": true,
+    "reasoning": true,
+    "reasoning.signatures": true
+  },
+  "directions": {
+    "decode_request": {
+      "module": "gemini",
+      "capabilities": {
+        "text": true,
+        "tools.function": true,
+        "native_extensions": true,
+        "cache.resources": true,
+        "images": true,
+        "audio": true,
+        "video": true,
+        "documents": true,
+        "tools.server": true,
+        "reasoning": true,
+        "reasoning.signatures": true
+      }
+    },
+    "encode_request": {
+      "module": "gemini",
+      "capabilities": {
+        "text": true,
+        "tools.function": true,
+        "native_extensions": true,
+        "cache.resources": true,
+        "images": true,
+        "audio": true,
+        "video": true,
+        "documents": true,
+        "tools.server": true,
+        "reasoning": true,
+        "reasoning.signatures": true
+      }
+    },
+    "decode_response": {
+      "module": "gemini",
+      "capabilities": {
+        "text": true,
+        "tools.function": true,
+        "usage": true,
+        "native_extensions": true,
+        "reasoning": true,
+        "reasoning.signatures": true
+      }
+    },
+    "encode_response": {
+      "module": "gemini",
+      "capabilities": {
+        "text": true,
+        "tools.function": true,
+        "usage": true,
+        "native_extensions": true,
+        "reasoning": true,
+        "reasoning.signatures": true
+      }
+    },
+    "decode_event": {
+      "module": "gemini",
+      "capabilities": {
+        "text": true,
+        "tools.function": true,
+        "usage": true,
+        "native_extensions": true,
+        "reasoning": true,
+        "reasoning.signatures": true
+      }
+    },
+    "encode_event": {
+      "module": "gemini",
+      "capabilities": {
+        "text": true,
+        "tools.function": true,
+        "usage": true,
+        "native_extensions": true,
+        "reasoning": true,
+        "reasoning.signatures": true
+      },
+      "frameBatch": true
+    }
+  },
+  "native": {
+    "preserve": true
+  },
+  "operations": {
+    "generate": {
+      "kind": "generate",
+      "method": "POST",
+      "path": "/v1beta/models/{model}:generateContent",
+      "transport": "http_json",
+      "request": "encode_request",
+      "response": "decode_response",
+      "auth": {
+        "location": "header",
+        "name": "x-goog-api-key"
+      }
+    },
+    "stream": {
+      "kind": "generate",
+      "method": "POST",
+      "path": "/v1beta/models/{model}:streamGenerateContent",
+      "transport": "sse",
+      "request": "encode_request",
+      "response": "decode_event",
+      "auth": {
+        "location": "header",
+        "name": "x-goog-api-key"
+      },
+      "framing": {},
+      "query": {
+        "alt": "sse"
+      }
+    },
+    "models": {
+      "kind": "models",
+      "method": "GET",
+      "path": "/v1beta/models",
+      "transport": "http_json",
+      "auth": {
+        "location": "header",
+        "name": "x-goog-api-key"
+      },
+      "models": {
+        "decode": {
+          "transform": {
+            "op": "object",
+            "fields": {
+              "models": {
+                "op": "map",
+                "source": {
+                  "op": "read",
+                  "path": "/models",
+                  "required": true
+                },
+                "body": {
+                  "op": "object",
+                  "fields": {
+                    "id": {
+                      "op": "strip_prefix",
+                      "source": {
+                        "op": "read",
+                        "path": "/name",
+                        "from": "item",
+                        "required": true
+                      },
+                      "value": "models/"
+                    },
+                    "name": {
+                      "op": "read",
+                      "path": "/displayName",
+                      "from": "item"
+                    },
+                    "maxTokens": {
+                      "op": "read",
+                      "path": "/inputTokenLimit",
+                      "from": "item"
+                    }
+                  }
+                }
+              },
+              "next": {
+                "op": "read",
+                "path": "/nextPageToken"
+              }
+            }
+          }
+        },
+        "cursorParameter": "pageToken"
+      }
+    }
+  },
+  "samples": [
+    {
+      "id": "text-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "hello"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "text-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "gemini",
+              "wireVersion": "v2",
+              "definitionId": "gemini-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "contents": [
+              {
+                "role": "user",
+                "parts": [
+                  {
+                    "text": "hello"
+                  }
+                ]
+              }
+            ],
+            "generationConfig": {
+              "maxOutputTokens": 10
+            }
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "hello"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "history-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "hello"
+              }
+            ]
+          },
+          {
+            "role": "model",
+            "parts": [
+              {
+                "functionCall": {
+                  "id": "call",
+                  "name": "lookup",
+                  "args": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "parts": [
+              {
+                "functionResponse": {
+                  "id": "call",
+                  "name": "lookup",
+                  "response": {
+                    "ok": true
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "functionDeclarations": [
+              {
+                "name": "lookup",
+                "parameters": {
+                  "type": "object"
+                }
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "tool_call",
+                "name": "lookup",
+                "callId": "call",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "tool_result",
+                "name": "lookup",
+                "callId": "call",
+                "payload": {
+                  "ok": true
+                }
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "kind": "function",
+            "name": "lookup",
+            "inputSchema": {
+              "type": "object"
+            }
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "history-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "tool_call",
+                "name": "lookup",
+                "callId": "call",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "tool_result",
+                "name": "lookup",
+                "callId": "call",
+                "payload": {
+                  "ok": true
+                }
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "kind": "function",
+            "name": "lookup",
+            "inputSchema": {
+              "type": "object"
+            }
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "gemini",
+              "wireVersion": "v2",
+              "definitionId": "gemini-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "contents": [
+              {
+                "role": "user",
+                "parts": [
+                  {
+                    "text": "hello"
+                  }
+                ]
+              },
+              {
+                "role": "model",
+                "parts": [
+                  {
+                    "functionCall": {
+                      "id": "call",
+                      "name": "lookup",
+                      "args": {
+                        "n": 9007199254740993
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "role": "user",
+                "parts": [
+                  {
+                    "functionResponse": {
+                      "id": "call",
+                      "name": "lookup",
+                      "response": {
+                        "ok": true
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "tools": [
+              {
+                "functionDeclarations": [
+                  {
+                    "name": "lookup",
+                    "parameters": {
+                      "type": "object"
+                    }
+                  }
+                ]
+              }
+            ],
+            "generationConfig": {
+              "maxOutputTokens": 10
+            }
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "hello"
+              }
+            ]
+          },
+          {
+            "role": "model",
+            "parts": [
+              {
+                "functionCall": {
+                  "id": "call",
+                  "name": "lookup",
+                  "args": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "parts": [
+              {
+                "functionResponse": {
+                  "id": "call",
+                  "name": "lookup",
+                  "response": {
+                    "ok": true
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "functionDeclarations": [
+              {
+                "name": "lookup",
+                "parameters": {
+                  "type": "object"
+                }
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "text-decode-response",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "responseId": "r",
+        "modelVersion": "m",
+        "candidates": [
+          {
+            "content": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "hi"
+                }
+              ]
+            },
+            "finishReason": "STOP"
+          }
+        ],
+        "usageMetadata": {
+          "promptTokenCount": 20,
+          "candidatesTokenCount": 2,
+          "totalTokenCount": 22,
+          "cachedContentTokenCount": 15
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop"
+        },
+        "usage": {
+          "input": {
+            "count": 20,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 2,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 22,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 15,
+            "origin": "observed"
+          }
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "text-encode-response",
+      "direction": "encode_response",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop"
+        },
+        "usage": {
+          "input": {
+            "count": 20,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 2,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 22,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 15,
+            "origin": "observed"
+          }
+        },
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "gemini",
+              "wireVersion": "v2",
+              "definitionId": "gemini-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_response",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "responseId": "r",
+            "modelVersion": "m",
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "text": "hi"
+                    }
+                  ]
+                },
+                "finishReason": "STOP"
+              }
+            ],
+            "usageMetadata": {
+              "promptTokenCount": 20,
+              "candidatesTokenCount": 2,
+              "totalTokenCount": 22,
+              "cachedContentTokenCount": 15
+            }
+          }
+        }
+      },
+      "expected": {
+        "responseId": "r",
+        "modelVersion": "m",
+        "candidates": [
+          {
+            "content": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "hi"
+                }
+              ]
+            },
+            "finishReason": "STOP"
+          }
+        ],
+        "usageMetadata": {
+          "promptTokenCount": 20,
+          "candidatesTokenCount": 2,
+          "totalTokenCount": 22,
+          "cachedContentTokenCount": 15
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "tool-decode-response",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "responseId": "r",
+        "modelVersion": "m",
+        "candidates": [
+          {
+            "content": {
+              "role": "model",
+              "parts": [
+                {
+                  "functionCall": {
+                    "id": "call",
+                    "name": "lookup",
+                    "args": {
+                      "n": 9007199254740993
+                    }
+                  }
+                }
+              ]
+            },
+            "finishReason": "STOP"
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "tool_call",
+                "name": "lookup",
+                "callId": "call",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "tool_calls"
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "tool-encode-response",
+      "direction": "encode_response",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "tool_call",
+                "name": "lookup",
+                "callId": "call",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "tool_calls"
+        },
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "gemini",
+              "wireVersion": "v2",
+              "definitionId": "gemini-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_response",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "responseId": "r",
+            "modelVersion": "m",
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "functionCall": {
+                        "id": "call",
+                        "name": "lookup",
+                        "args": {
+                          "n": 9007199254740993
+                        }
+                      }
+                    }
+                  ]
+                },
+                "finishReason": "STOP"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "responseId": "r",
+        "modelVersion": "m",
+        "candidates": [
+          {
+            "content": {
+              "role": "model",
+              "parts": [
+                {
+                  "functionCall": {
+                    "id": "call",
+                    "name": "lookup",
+                    "args": {
+                      "n": 9007199254740993
+                    }
+                  }
+                }
+              ]
+            },
+            "finishReason": "STOP"
+          }
+        ]
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "cache-policy-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "hello"
+              }
+            ]
+          }
+        ],
+        "cachedContent": "cachedContents/prefix",
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "cache": [
+          {
+            "kind": "resource",
+            "location": "request",
+            "resource": {
+              "kind": "cache",
+              "id": "cachedContents/prefix",
+              "scope": {
+                "provider": "fixture",
+                "account": "fixture",
+                "model": "m"
+              }
+            }
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "cache-policy-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "cache": [
+          {
+            "kind": "resource",
+            "location": "request",
+            "resource": {
+              "kind": "cache",
+              "id": "cachedContents/prefix",
+              "scope": {
+                "provider": "fixture",
+                "account": "fixture",
+                "model": "m"
+              }
+            }
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "gemini",
+              "wireVersion": "v2",
+              "definitionId": "gemini-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "contents": [
+              {
+                "role": "user",
+                "parts": [
+                  {
+                    "text": "hello"
+                  }
+                ]
+              }
+            ],
+            "cachedContent": "cachedContents/prefix",
+            "generationConfig": {
+              "maxOutputTokens": 10
+            }
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "hello"
+              }
+            ]
+          }
+        ],
+        "cachedContent": "cachedContents/prefix",
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "image-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "inlineData": {
+                  "mimeType": "image/png",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "image",
+                "payload": {
+                  "mime": "image/png",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "image-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "image",
+                "payload": {
+                  "mime": "image/png",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "gemini",
+              "wireVersion": "v2",
+              "definitionId": "gemini-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "contents": [
+              {
+                "role": "user",
+                "parts": [
+                  {
+                    "inlineData": {
+                      "mimeType": "image/png",
+                      "data": "AAAA"
+                    }
+                  }
+                ]
+              }
+            ],
+            "generationConfig": {
+              "maxOutputTokens": 10
+            }
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "inlineData": {
+                  "mimeType": "image/png",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "audio-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "inlineData": {
+                  "mimeType": "audio/wav",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "audio",
+                "payload": {
+                  "mime": "audio/wav",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "audio-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "audio",
+                "payload": {
+                  "mime": "audio/wav",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "gemini",
+              "wireVersion": "v2",
+              "definitionId": "gemini-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "contents": [
+              {
+                "role": "user",
+                "parts": [
+                  {
+                    "inlineData": {
+                      "mimeType": "audio/wav",
+                      "data": "AAAA"
+                    }
+                  }
+                ]
+              }
+            ],
+            "generationConfig": {
+              "maxOutputTokens": 10
+            }
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "inlineData": {
+                  "mimeType": "audio/wav",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "video-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "inlineData": {
+                  "mimeType": "video/mp4",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "video",
+                "payload": {
+                  "mime": "video/mp4",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "video-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "video",
+                "payload": {
+                  "mime": "video/mp4",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "gemini",
+              "wireVersion": "v2",
+              "definitionId": "gemini-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "contents": [
+              {
+                "role": "user",
+                "parts": [
+                  {
+                    "inlineData": {
+                      "mimeType": "video/mp4",
+                      "data": "AAAA"
+                    }
+                  }
+                ]
+              }
+            ],
+            "generationConfig": {
+              "maxOutputTokens": 10
+            }
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "inlineData": {
+                  "mimeType": "video/mp4",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "document-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "inlineData": {
+                  "mimeType": "application/pdf",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "document",
+                "payload": {
+                  "mime": "application/pdf",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "document-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "document",
+                "payload": {
+                  "mime": "application/pdf",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "gemini",
+              "wireVersion": "v2",
+              "definitionId": "gemini-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "contents": [
+              {
+                "role": "user",
+                "parts": [
+                  {
+                    "inlineData": {
+                      "mimeType": "application/pdf",
+                      "data": "AAAA"
+                    }
+                  }
+                ]
+              }
+            ],
+            "generationConfig": {
+              "maxOutputTokens": 10
+            }
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "inlineData": {
+                  "mimeType": "application/pdf",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "stream-text-decode",
+      "direction": "decode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "hi"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": []
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 20,
+            "candidatesTokenCount": 2,
+            "totalTokenCount": 22,
+            "cachedContentTokenCount": 15
+          }
+        }
+      ],
+      "expected": [
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "item": {
+            "kind": "text"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "stream-native-decode",
+      "direction": "decode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "hi"
+                  }
+                ]
+              }
+            }
+          ],
+          "extension": {
+            "long": 9007199254740993,
+            "empty": []
+          }
+        },
+        {
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": []
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 20,
+            "candidatesTokenCount": 2,
+            "totalTokenCount": 22,
+            "cachedContentTokenCount": 15
+          }
+        }
+      ],
+      "expected": [
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          },
+          "unmapped": {
+            "source": {
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "gemini-api",
+                "revision": "2.0.0"
+              },
+              "direction": "decode_event",
+              "path": "/frame/extensions"
+            },
+            "value": {
+              "/": {
+                "extension": {
+                  "long": 9007199254740993,
+                  "empty": []
+                }
+              }
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "item": {
+            "kind": "text"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "stream-text-encode",
+      "direction": "encode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "item": {
+            "kind": "text"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "hi"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": []
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 20,
+            "candidatesTokenCount": 2,
+            "totalTokenCount": 22,
+            "cachedContentTokenCount": 15
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "stream-tool-decode",
+      "direction": "decode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "functionCall": {
+                      "id": "call",
+                      "name": "lookup",
+                      "args": {
+                        "n": 9007199254740993
+                      }
+                    }
+                  }
+                ]
+              },
+              "finishReason": "STOP"
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "tool:call",
+          "index": 0,
+          "item": {
+            "kind": "tool_call",
+            "name": "lookup",
+            "callId": "call",
+            "input": {
+              "kind": "json",
+              "value": {
+                "n": 9007199254740993
+              }
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "tool:call",
+          "index": 0
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "tool_calls"
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "stream-tool-encode",
+      "direction": "encode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "tool",
+          "index": 0,
+          "item": {
+            "kind": "tool_call",
+            "name": "lookup",
+            "callId": "call",
+            "input": {
+              "kind": "json"
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "tool",
+          "index": 0,
+          "delta": "{\"n\":9007199254740993}"
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "tool",
+          "index": 0
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "tool_calls"
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "functionCall": {
+                      "id": "call",
+                      "name": "lookup",
+                      "args": {
+                        "n": 9007199254740993
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": []
+              },
+              "finishReason": "STOP"
+            }
+          ]
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "hosted-tool-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "hello"
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "googleSearch": {}
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "kind": "server",
+            "native": {
+              "source": {
+                "protocol": {
+                  "family": "gemini",
+                  "wireVersion": "v2",
+                  "definitionId": "gemini-api",
+                  "revision": "2.0.0"
+                },
+                "direction": "decode_request",
+                "path": "/tools/0",
+                "scope": {
+                  "provider": "fixture",
+                  "account": "fixture",
+                  "model": "m"
+                }
+              },
+              "value": {
+                "googleSearch": {}
+              }
+            }
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "hosted-tool-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "kind": "server",
+            "native": {
+              "source": {
+                "protocol": {
+                  "family": "gemini",
+                  "wireVersion": "v2",
+                  "definitionId": "gemini-api",
+                  "revision": "2.0.0"
+                },
+                "direction": "decode_request",
+                "path": "/tools/0",
+                "scope": {
+                  "provider": "fixture",
+                  "account": "fixture",
+                  "model": "m"
+                }
+              },
+              "value": {
+                "googleSearch": {}
+              }
+            }
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "gemini",
+              "wireVersion": "v2",
+              "definitionId": "gemini-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "contents": [
+              {
+                "role": "user",
+                "parts": [
+                  {
+                    "text": "hello"
+                  }
+                ]
+              }
+            ],
+            "tools": [
+              {
+                "googleSearch": {}
+              }
+            ],
+            "generationConfig": {
+              "maxOutputTokens": 10
+            }
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "hello"
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "googleSearch": {}
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "reasoning-history-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "hello"
+              }
+            ]
+          },
+          {
+            "role": "model",
+            "parts": [
+              {
+                "text": "consider",
+                "thought": true
+              },
+              {
+                "text": "hi"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "continue"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "reasoning",
+                "payload": "consider"
+              },
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "continue"
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "reasoning-history-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "reasoning",
+                "payload": "consider"
+              },
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "continue"
+              }
+            ]
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "gemini",
+              "wireVersion": "v2",
+              "definitionId": "gemini-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "contents": [
+              {
+                "role": "user",
+                "parts": [
+                  {
+                    "text": "hello"
+                  }
+                ]
+              },
+              {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "consider",
+                    "thought": true
+                  },
+                  {
+                    "text": "hi"
+                  }
+                ]
+              },
+              {
+                "role": "user",
+                "parts": [
+                  {
+                    "text": "continue"
+                  }
+                ]
+              }
+            ],
+            "generationConfig": {
+              "maxOutputTokens": 10
+            }
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "hello"
+              }
+            ]
+          },
+          {
+            "role": "model",
+            "parts": [
+              {
+                "text": "consider",
+                "thought": true
+              },
+              {
+                "text": "hi"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "continue"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "reasoning-response-decode",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "responseId": "r",
+        "modelVersion": "m",
+        "candidates": [
+          {
+            "content": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "consider",
+                  "thought": true
+                },
+                {
+                  "text": "hi"
+                }
+              ]
+            },
+            "finishReason": "STOP"
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "reasoning",
+                "payload": "consider"
+              },
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop"
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "reasoning-response-encode",
+      "direction": "encode_response",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "reasoning",
+                "payload": "consider"
+              },
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop"
+        },
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "gemini",
+              "wireVersion": "v2",
+              "definitionId": "gemini-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_response",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "responseId": "r",
+            "modelVersion": "m",
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "text": "consider",
+                      "thought": true
+                    },
+                    {
+                      "text": "hi"
+                    }
+                  ]
+                },
+                "finishReason": "STOP"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "responseId": "r",
+        "modelVersion": "m",
+        "candidates": [
+          {
+            "content": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "consider",
+                  "thought": true
+                },
+                {
+                  "text": "hi"
+                }
+              ]
+            },
+            "finishReason": "STOP"
+          }
+        ]
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "stream-reasoning-decode",
+      "direction": "decode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "hi",
+                    "thought": true
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": []
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 20,
+            "candidatesTokenCount": 2,
+            "totalTokenCount": 22,
+            "cachedContentTokenCount": 15
+          }
+        }
+      ],
+      "expected": [
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "reasoning",
+          "index": 0,
+          "item": {
+            "kind": "reasoning"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "reasoning",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "stream-reasoning-encode",
+      "direction": "encode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "item": {
+            "kind": "reasoning"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "hi",
+                    "thought": true
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": []
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 20,
+            "candidatesTokenCount": 2,
+            "totalTokenCount": 22,
+            "cachedContentTokenCount": 15
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "signature-reasoning-history-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "hello"
+              }
+            ]
+          },
+          {
+            "role": "model",
+            "parts": [
+              {
+                "text": "consider",
+                "thought": true,
+                "thoughtSignature": "signed"
+              },
+              {
+                "text": "hi"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "continue"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "reasoning",
+                "payload": "consider",
+                "resources": [
+                  {
+                    "kind": "signature",
+                    "id": "signed",
+                    "scope": {
+                      "provider": "fixture",
+                      "account": "fixture",
+                      "model": "m"
+                    }
+                  }
+                ],
+                "source": {
+                  "protocol": {
+                    "family": "gemini",
+                    "wireVersion": "v2",
+                    "definitionId": "gemini-api",
+                    "revision": "2.0.0"
+                  },
+                  "direction": "decode_request",
+                  "path": "/reasoning",
+                  "scope": {
+                    "provider": "fixture",
+                    "account": "fixture",
+                    "model": "m"
+                  }
+                }
+              },
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "continue"
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "signature-reasoning-history-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "reasoning",
+                "payload": "consider",
+                "resources": [
+                  {
+                    "kind": "signature",
+                    "id": "signed",
+                    "scope": {
+                      "provider": "fixture",
+                      "account": "fixture",
+                      "model": "m"
+                    }
+                  }
+                ],
+                "source": {
+                  "protocol": {
+                    "family": "gemini",
+                    "wireVersion": "v2",
+                    "definitionId": "gemini-api",
+                    "revision": "2.0.0"
+                  },
+                  "direction": "decode_request",
+                  "path": "/reasoning",
+                  "scope": {
+                    "provider": "fixture",
+                    "account": "fixture",
+                    "model": "m"
+                  }
+                }
+              },
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "continue"
+              }
+            ]
+          }
+        ],
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "gemini",
+              "wireVersion": "v2",
+              "definitionId": "gemini-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_request",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "contents": [
+              {
+                "role": "user",
+                "parts": [
+                  {
+                    "text": "hello"
+                  }
+                ]
+              },
+              {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "consider",
+                    "thought": true,
+                    "thoughtSignature": "signed"
+                  },
+                  {
+                    "text": "hi"
+                  }
+                ]
+              },
+              {
+                "role": "user",
+                "parts": [
+                  {
+                    "text": "continue"
+                  }
+                ]
+              }
+            ],
+            "generationConfig": {
+              "maxOutputTokens": 10
+            }
+          }
+        },
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "expected": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "hello"
+              }
+            ]
+          },
+          {
+            "role": "model",
+            "parts": [
+              {
+                "text": "consider",
+                "thought": true,
+                "thoughtSignature": "signed"
+              },
+              {
+                "text": "hi"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "continue"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "signature-reasoning-response-decode",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "responseId": "r",
+        "modelVersion": "m",
+        "candidates": [
+          {
+            "content": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "consider",
+                  "thought": true,
+                  "thoughtSignature": "signed"
+                },
+                {
+                  "text": "hi"
+                }
+              ]
+            },
+            "finishReason": "STOP"
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "reasoning",
+                "payload": "consider",
+                "resources": [
+                  {
+                    "kind": "signature",
+                    "id": "signed",
+                    "scope": {
+                      "provider": "fixture",
+                      "account": "fixture",
+                      "model": "m"
+                    }
+                  }
+                ],
+                "source": {
+                  "protocol": {
+                    "family": "gemini",
+                    "wireVersion": "v2",
+                    "definitionId": "gemini-api",
+                    "revision": "2.0.0"
+                  },
+                  "direction": "decode_response",
+                  "path": "/reasoning",
+                  "scope": {
+                    "provider": "fixture",
+                    "account": "fixture",
+                    "model": "m"
+                  }
+                }
+              },
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop"
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "signature-reasoning-response-encode",
+      "direction": "encode_response",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "reasoning",
+                "payload": "consider",
+                "resources": [
+                  {
+                    "kind": "signature",
+                    "id": "signed",
+                    "scope": {
+                      "provider": "fixture",
+                      "account": "fixture",
+                      "model": "m"
+                    }
+                  }
+                ],
+                "source": {
+                  "protocol": {
+                    "family": "gemini",
+                    "wireVersion": "v2",
+                    "definitionId": "gemini-api",
+                    "revision": "2.0.0"
+                  },
+                  "direction": "decode_response",
+                  "path": "/reasoning",
+                  "scope": {
+                    "provider": "fixture",
+                    "account": "fixture",
+                    "model": "m"
+                  }
+                }
+              },
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop"
+        },
+        "native": {
+          "source": {
+            "protocol": {
+              "family": "gemini",
+              "wireVersion": "v2",
+              "definitionId": "gemini-api",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_response",
+            "path": "",
+            "scope": {
+              "provider": "fixture",
+              "account": "fixture",
+              "model": "m"
+            }
+          },
+          "value": {
+            "responseId": "r",
+            "modelVersion": "m",
+            "candidates": [
+              {
+                "content": {
+                  "role": "model",
+                  "parts": [
+                    {
+                      "text": "consider",
+                      "thought": true,
+                      "thoughtSignature": "signed"
+                    },
+                    {
+                      "text": "hi"
+                    }
+                  ]
+                },
+                "finishReason": "STOP"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "responseId": "r",
+        "modelVersion": "m",
+        "candidates": [
+          {
+            "content": {
+              "role": "model",
+              "parts": [
+                {
+                  "text": "consider",
+                  "thought": true,
+                  "thoughtSignature": "signed"
+                },
+                {
+                  "text": "hi"
+                }
+              ]
+            },
+            "finishReason": "STOP"
+          }
+        ]
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "signed-stream-reasoning-decode",
+      "direction": "decode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "hi",
+                    "thought": true,
+                    "thoughtSignature": "signed"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": []
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 20,
+            "candidatesTokenCount": 2,
+            "totalTokenCount": 22,
+            "cachedContentTokenCount": 15
+          }
+        }
+      ],
+      "expected": [
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "reasoning",
+          "index": 0,
+          "item": {
+            "kind": "reasoning"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "reasoning",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.snapshot",
+          "responseId": "r",
+          "itemId": "reasoning",
+          "index": 0,
+          "item": {
+            "kind": "reasoning",
+            "resources": [
+              {
+                "kind": "signature",
+                "id": "signed",
+                "scope": {
+                  "provider": "fixture",
+                  "account": "fixture",
+                  "model": "m"
+                }
+              }
+            ],
+            "source": {
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "gemini-api",
+                "revision": "2.0.0"
+              },
+              "direction": "decode_event",
+              "path": "/reasoning",
+              "scope": {
+                "provider": "fixture",
+                "account": "fixture",
+                "model": "m"
+              }
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "signed-stream-reasoning-encode",
+      "direction": "encode_event",
+      "capabilities": [],
+      "input": [
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "item": {
+            "kind": "reasoning"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "delta": "hi"
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.snapshot",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0,
+          "item": {
+            "kind": "reasoning",
+            "resources": [
+              {
+                "kind": "signature",
+                "id": "signed",
+                "scope": {
+                  "provider": "fixture",
+                  "account": "fixture",
+                  "model": "m"
+                }
+              }
+            ],
+            "source": {
+              "protocol": {
+                "family": "gemini",
+                "wireVersion": "v2",
+                "definitionId": "gemini-api",
+                "revision": "2.0.0"
+              },
+              "direction": "decode_event",
+              "path": "/reasoning",
+              "scope": {
+                "provider": "fixture",
+                "account": "fixture",
+                "model": "m"
+              }
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "text",
+          "index": 0
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 1,
+            "source": {},
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "hi",
+                    "thought": true
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "",
+                    "thought": true,
+                    "thoughtSignature": "signed"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "responseId": "r",
+          "modelVersion": "m",
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": []
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 20,
+            "candidatesTokenCount": 2,
+            "totalTokenCount": 22,
+            "cachedContentTokenCount": 15
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    }
+  ],
+  "modelSamples": [
+    {
+      "id": "models-terminal",
+      "operation": "models",
+      "input": {
+        "models": [
+          {
+            "name": "models/alpha",
+            "displayName": "Alpha",
+            "inputTokenLimit": 1000000
+          }
+        ]
+      },
+      "expected": {
+        "models": [
+          {
+            "id": "alpha",
+            "name": "Alpha",
+            "maxTokens": 1000000
+          }
+        ]
+      }
+    },
+    {
+      "id": "models-continuation",
+      "operation": "models",
+      "input": {
+        "models": [
+          {
+            "name": "models/beta"
+          }
+        ],
+        "nextPageToken": "p2"
+      },
+      "expected": {
+        "models": [
+          {
+            "id": "beta"
+          }
+        ],
+        "next": "p2"
+      }
+    }
+  ],
+  "agent": {
+    "thinkingEfforts": [
+      "",
+      "low",
+      "medium",
+      "high"
+    ],
+    "parameters": {
+      "transform": {
+        "op": "merge",
+        "policy": "reject",
+        "items": [
+          {
+            "op": "object",
+            "fields": {
+              "max_output_tokens": {
+                "op": "read",
+                "path": "/maxOutputTokens",
+                "required": true
+              }
+            }
+          },
+          {
+            "op": "if",
+            "when": {
+              "op": "read",
+              "path": "/thinkingEnabled",
+              "required": true
+            },
+            "then": {
+              "op": "object",
+              "fields": {
+                "gemini_thinking": {
+                  "op": "object",
+                  "fields": {
+                    "includeThoughts": {
+                      "op": "literal",
+                      "value": true
+                    },
+                    "thinkingLevel": {
+                      "op": "if",
+                      "when": {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "path": "/thinkingEffort",
+                              "required": true
+                            },
+                            {
+                              "op": "literal",
+                              "value": ""
+                            }
+                          ]
+                        }
+                      },
+                      "then": {
+                        "op": "read",
+                        "path": "/thinkingEffort",
+                        "required": true
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "op": "object",
+              "fields": {}
+            }
+          }
+        ]
+      }
+    },
+    "samples": [
+      {
+        "id": "agent-thinking-disabled",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": false,
+          "thinkingEffort": "",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192
+        }
+      },
+      {
+        "id": "agent-thinking-disabled-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": false,
+          "thinkingEffort": "",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192
+        }
+      },
+      {
+        "id": "agent-effort-default",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "gemini_thinking": {
+            "includeThoughts": true
+          }
+        }
+      },
+      {
+        "id": "agent-effort-default-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "gemini_thinking": {
+            "includeThoughts": true
+          }
+        }
+      },
+      {
+        "id": "agent-effort-low",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "low",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "gemini_thinking": {
+            "includeThoughts": true,
+            "thinkingLevel": "low"
+          }
+        }
+      },
+      {
+        "id": "agent-effort-low-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "low",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "gemini_thinking": {
+            "includeThoughts": true,
+            "thinkingLevel": "low"
+          }
+        }
+      },
+      {
+        "id": "agent-effort-medium",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "medium",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "gemini_thinking": {
+            "includeThoughts": true,
+            "thinkingLevel": "medium"
+          }
+        }
+      },
+      {
+        "id": "agent-effort-medium-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "medium",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "gemini_thinking": {
+            "includeThoughts": true,
+            "thinkingLevel": "medium"
+          }
+        }
+      },
+      {
+        "id": "agent-effort-high",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "high",
+          "stream": false
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "gemini_thinking": {
+            "includeThoughts": true,
+            "thinkingLevel": "high"
+          }
+        }
+      },
+      {
+        "id": "agent-effort-high-stream",
+        "preferences": {
+          "maxOutputTokens": 8192,
+          "thinkingEnabled": true,
+          "thinkingEffort": "high",
+          "stream": true
+        },
+        "expected": {
+          "max_output_tokens": 8192,
+          "gemini_thinking": {
+            "includeThoughts": true,
+            "thinkingLevel": "high"
+          }
+        }
+      }
+    ],
+    "toolResults": "json"
+  }
+}

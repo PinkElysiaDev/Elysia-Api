@@ -1,13 +1,9 @@
 package server
 
-import "github.com/elysia-api/backend/relay"
-
 import "time"
 
 const (
 	AffinityTTL          = 5 * time.Minute
-	UsageBodyMaxBytes    = 1 * 1024 * 1024
-	DefaultCharsPerToken = 4
 	HealthProbeMaxTokens = 1
 	RetryErrorMaxLen     = 512
 )
@@ -18,6 +14,10 @@ const (
 	// statusClientClosedRequest 是 nginx 惯例的「客户端提前断开」哨兵码，
 	// 记录在 usage 日志中标记完成前被取消的请求。
 	statusClientClosedRequest = 499
+	// nulSeparator 是拼接键/摘要时的部件分隔符：调用方保证各部件本身不含
+	// NUL，故用它避免 "ab"+"c" 与 "a"+"bc" 撞成同一键。它只用于拼接；
+	// 入参校验里拒绝控制字符的 NUL 是另一回事，不复用本常量。
+	nulSeparator = "\x00"
 )
 
 // ErrorKind* 是 usage 记录 errorKind 字段的归类值（供面板筛选/展示）。
@@ -30,13 +30,8 @@ const (
 // RelayMode / ResponsesMode 是 usage 记录的序列化字段值（统计侧按字面比对，
 // 拼错即统计失真），统一在此定义。
 const (
-	RelayModePassthrough     = "passthrough"
-	RelayModeTransform       = "transform"
-	ResponsesModeNative      = "native_responses"
-	ResponsesModeTransformed = "transformed_responses"
 	CacheHeaderImmutable     = "public, max-age=31536000, immutable"
 	UsageLogsDefaultPageSize = 50
-	UsageLogsMaxPageSize     = 500
 	StreamEventsCacheMax     = 50
 	RetryEventsCacheMax      = 50
 )
@@ -46,9 +41,3 @@ const (
 	geminiDefaultInputTokenLimit  = 1048576
 	geminiDefaultOutputTokenLimit = 8192
 )
-
-// isOpenAICompatible 判断平台是否走 OpenAI 兼容线路（DeepSeek/Azure 与
-// OpenAI 同构，仅 base_url/鉴权头差异）。
-func isOpenAICompatible(platform relay.Platform) bool {
-	return platform == relay.PlatformOpenAI || platform == relay.PlatformDeepSeek || platform == relay.PlatformAzure
-}

@@ -1,0 +1,67 @@
+{
+  "id": "declared-cache-write-alias",
+  "direction": "decode_response",
+  "capabilities": [
+    "usage",
+    "native_extensions"
+  ],
+  "input": {
+    "id": "r",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "OK"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 100,
+      "provider_metrics": {
+        "write_tokens": 30,
+        "keep": "extension"
+      }
+    }
+  },
+  "expected": {
+    "schemaVersion": 1,
+    "source": {},
+    "id": "r",
+    "status": "completed",
+    "content": [
+      {
+        "kind": "message",
+        "role": "assistant",
+        "children": [
+          {
+            "kind": "text",
+            "payload": "OK"
+          }
+        ]
+      }
+    ],
+    "attributes": {
+      "finishReason": "stop",
+      "wire:openai_chat": {
+        "usage": {
+          "provider_metrics": {
+            "write_tokens": 30,
+            "keep": "extension"
+          }
+        }
+      }
+    },
+    "usage": {
+      "input": {
+        "count": 100,
+        "origin": "observed"
+      },
+      "cacheCreation": {
+        "count": 30,
+        "origin": "observed"
+      }
+    }
+  }
+}

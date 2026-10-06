@@ -247,7 +247,7 @@ SQLite 使用 WAL、5000 ms busy timeout、外键和 `synchronous=NORMAL`。
 - `server.host` / `server.port` 仅在对应顶层字段缺省时作为回退。
 - 当前配置解析不再读取 `tokens`、`modelGroups`，也不把 `dashboardToken` 当作面板令牌。不要依赖旧文档所述的自动迁移；在兼容旧版本导出数据或通过管理接口重建，并保留原备份。
 - 已废弃的 `customProtocols` 字段由启动迁移处理并从配置移除。先备份，启动后在协议设计器检查结果。
-- 模型能力目录、流式转换和自定义协议的限制见 [Maheshvara](maheshvara-protocol.md) 与[协议定义](protocol-definition-reference.md)。
+- 模型能力、流式转换和自定义协议的限制见[协议引擎指南](protocol-guide.md)与[协议定义](protocol-definition-reference.md)。升级前保留匹配的程序、数据库、配置和主密钥备份，先做迁移预演；步骤见[升级与回滚](protocol-release-readiness.md#升级与回滚)。
 
 ## 故障处理
 

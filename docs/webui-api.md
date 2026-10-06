@@ -169,14 +169,23 @@ Authorization: Bearer <PANEL_TOKEN>
 
 | 方法 | 路径 | 行为 |
 | --- | --- | --- |
-| GET | `/api/admin/custom-protocols` | 协议列表 |
-| GET | `/api/admin/custom-protocols/schema` | 字段目录与校验约束 |
-| PUT / DELETE | `/api/admin/custom-protocols/:id` | 保存 / 删除定义 |
-| POST | `/api/admin/custom-protocols/preview` | 离线映射预览 |
-| POST | `/api/admin/custom-protocols/test` | 真实上游测试，可能产生费用 |
-| POST | `/api/admin/custom-protocols/test-models` | 真实模型发现测试 |
+| GET | `/api/admin/protocols`、`/api/admin/protocols/enabled` | 草稿/活动修订与可执行协议目录 |
+| GET | `/api/admin/protocols/schema` | 当前定义、语义、能力、映射和诊断目录 |
+| GET / PUT | `/api/admin/protocols/:id/draft` | 读取 / 保存完整草稿；PUT 使用 `If-Match` 检查旧草稿哈希 |
+| POST | `/api/admin/protocols/validate`、`/api/admin/protocols/preview` | 编译与请求/响应/事件/工作流预览 |
+| POST | `/api/admin/protocols/:id/verify` | 验证确切草稿，保存不可变修订与离线报告 |
+| GET | `/api/admin/protocols/:id/revisions`、`/api/admin/protocols/:id/diff` | 修订列表及比较 |
+| POST | `/api/admin/protocols/:id/activate`、`/api/admin/protocols/:id/rollback` | 在当前引擎验证门槛下切换活动版本 |
+| POST | `/api/admin/protocols/test` | 真实生成或模型目录操作验证，可能产生费用 |
+| POST | `/api/admin/protocols/combinations` | 验证入口/上游的能力组合 |
+| GET / PUT | `/api/admin/protocols/bindings` | 读取 / 保存模型源及模型组协议约束 |
+| POST | `/api/admin/protocols/reload` | 编译成功后原子替换注册表 |
+| GET | `/api/admin/protocols/migration` | 迁移状态 |
+| POST | `/api/admin/protocols/migration/preview`、`/api/admin/protocols/migration/apply` | 全图迁移预演及事务切换 |
 
-请求结构见[协议定义](protocol-definition-reference.md)及前端类型 `CustomProtocolPreviewResult`、`CustomProtocolTestResult`。
+旧 `/custom-protocols` 执行端点已移除。保存不启用；离线报告必须匹配内容哈希和当前编译器。真实验证与离线报告独立。完整路径、请求结构和并发要求见[协议定义](protocol-definition-reference.md)、[处理器](../backend/server/protocol_revision_admin.go)及[前端 v2 契约](../packages/webui/src/lib/protocol-v2.ts)。
+
+客户端的新协议入口为 `/gateway/:protocolId/*path`，按活动定义分派 HTTP、WebSocket 或任务操作；使用网关统一推理授权。既有四个公共协议入口保留，使用同一内核。不能通过协议定义绕过授权或伪造能力，详见[指南](protocol-guide.md)。
 
 `/api/admin/agent/*` 与[远程 REST](remote-agent-api.md#rest)共用会话 handler，但使用面板令牌。创建／编辑会话、消息、审批、停止、截断和草稿恢复均见该文档。助手通过 `elysia_cli` 执行运维，另有 `ask_user`、`update_plan`；模型调用计入用量，`relayMode=agent-assist`。凭证在会话视图中脱敏，测试凭证的复用限协议测试相关命令。
 

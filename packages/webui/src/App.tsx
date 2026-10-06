@@ -1,7 +1,7 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { getToken, subscribeToken, syncCookieFromStorage } from './lib/auth'
-import { api } from './lib/api'
+import { protocolAPI } from './lib/protocol-v2'
 import { setCustomProtocolDisplayNames } from './lib/protocol'
 import { AppLayout } from './components/app-layout'
 
@@ -81,7 +81,7 @@ function useCustomProtocolNames(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
-    void api.listCustomProtocols().then((items) => {
+    void protocolAPI.enabled().then((items) => {
       if (cancelled || !items.length) return
       const names: Record<string, string> = {}
       for (const item of items) names[item.id] = item.name || item.id
@@ -107,6 +107,7 @@ export function App() {
               <Route path="/overview" element={<OverviewPage />} />
               <Route path="/sources" element={<SourcesPage />} />
               <Route path="/protocols" element={<ProtocolDesignerPage />} />
+              <Route path="/protocols/legacy" element={<Navigate to="/protocols" replace />} />
               <Route path="/agent" element={<AgentPage />} />
               <Route path="/groups" element={<GroupsPage />} />
               <Route path="/tokens" element={<TokensPage />} />

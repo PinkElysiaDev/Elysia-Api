@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/elysia-api/backend/agent"
-	"github.com/elysia-api/backend/relay"
 )
 
 // elysia_cli is the thin adapter exposed to the built-in Agent. The CLI
@@ -29,9 +28,9 @@ func (t *elysiaCLITool) Meta() agent.ToolMeta {
 	return agent.ToolMeta{RiskLevel: "medium", TimeoutMs: 600_000, PreviewDirection: agent.ClampTail, MaxModelBytes: 48 * 1024}
 }
 
-func (t *elysiaCLITool) Definition() relay.MaheshvaraTool {
-	return relay.MaheshvaraTool{
-		Type: "function", Name: agentToolCLI,
+func (t *elysiaCLITool) Definition() agent.FunctionDefinition {
+	return agent.FunctionDefinition{
+		Name:        agentToolCLI,
 		Description: cliToolDescription,
 		Parameters: objectSchema(map[string]any{
 			"command": map[string]any{"type": "string", "description": "要执行的 elysia 命令（可多行批处理）"},
@@ -53,12 +52,6 @@ func (t *elysiaCLITool) Execute(ctx context.Context, tctx agent.ToolContext, arg
 	}
 	adapter := &agentCLIContext{inner: tctx}
 	return agentResultFromCLI(t.server.runCLIWithOptions(ctx, adapter, params.Command, true))
-}
-
-// runAgentCLI 仅供既有集成测试直接驱动批处理;生产工具面走
-// elysiaCLITool.Execute(同一 runCLIWithOptions 实现)。
-func (s *Server) runAgentCLI(ctx context.Context, tctx agent.ToolContext, script string) agent.ToolResult {
-	return agentResultFromCLI(s.runCLIWithOptions(ctx, &agentCLIContext{inner: tctx}, script, true))
 }
 
 func agentResultFromCLI(result CLIResult) agent.ToolResult {

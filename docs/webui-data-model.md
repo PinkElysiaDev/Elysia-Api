@@ -20,7 +20,13 @@ type ThinkingMode = 'both' | 'non-thinking-only' | 'thinking-only'
 type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 ```
 
-`openai`、`openai-compatible`、`claude` 是存量兼容值；新配置使用标准线路标识。`embedding`、`reranker` 等类型字段不等同于已提供对应推理路由，实际端点见 [API](webui-api.md)和[协议说明](maheshvara-protocol.md)。
+`openai`、`openai-compatible`、`claude` 是存量兼容值；新配置使用标准线路标识。`embedding`、`reranker` 等类型字段不等同于已提供对应推理路由，实际端点见 [API](webui-api.md)和[协议说明](protocol-guide.md)。
+
+## 协议修订与能力绑定
+
+协议使用 `schemaVersion: 2` 定义，语义模型独立使用版本 1。作者版本、定义哈希与编译器版本分别记录。草稿、不可变修订、活动指针和离线/真实验证报告彼此独立；保存不启用。模型源和模型组的绑定记录方向、能力、传输及组合证据，不能仅凭 `platform` 推断工具或媒体能力。
+
+当前契约见 [protocol-v2.ts](../packages/webui/src/lib/protocol-v2.ts) 和[协议参考](protocol-definition-reference.md)。前端以原始 JSON 文本编辑定义；不要把携带长整数和原生扩展的配置经普通 JavaScript 对象往返后再保存。用量语义区分缺失与明确零值，缓存策略区分 TTL、键和有作用域的资源引用。
 
 ## 运行配置
 

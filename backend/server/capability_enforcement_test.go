@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/config"
-	"github.com/elysia-api/backend/relay"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -132,107 +131,6 @@ func TestModelCatalogEnrich(t *testing.T) {
 // ---- 能力生效（方向2）----
 
 // tools=false 且请求携带 tools / 工具消息 → 拒绝；tools=true 或不含工具 → 放行。
-func TestRejectToolRequestsIfNeeded(t *testing.T) {
-	group := &config.ModelGroupConfig{Name: "g", ToolsCapable: boolPtr(false)}
-	plain := &relay.MaheshvaraRequest{Model: "m"}
-	if rejectToolRequestsIfNeeded(group, plain) {
-		t.Fatalf("plain request must pass")
-	}
-	withTools := &relay.MaheshvaraRequest{Model: "m", Tools: []relay.MaheshvaraTool{{}}}
-	if !rejectToolRequestsIfNeeded(group, withTools) {
-		t.Fatalf("request with tools must be rejected")
-	}
-	withChoice := &relay.MaheshvaraRequest{Model: "m", ToolChoice: "auto"}
-	if !rejectToolRequestsIfNeeded(group, withChoice) {
-		t.Fatalf("request with tool_choice must be rejected")
-	}
-	withToolMessage := &relay.MaheshvaraRequest{Model: "m", Messages: []relay.MaheshvaraMessage{{
-		Role:    "assistant",
-		Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentToolCall}},
-	}}}
-	if !rejectToolRequestsIfNeeded(group, withToolMessage) {
-		t.Fatalf("request with tool_call message must be rejected")
-	}
-	withFunctionOutputItem := &relay.MaheshvaraRequest{Model: "m", InputItems: []relay.MaheshvaraInputItem{{
-		Type: relay.MaheshvaraInputFunctionCallOutput,
-	}}}
-	if !rejectToolRequestsIfNeeded(group, withFunctionOutputItem) {
-		t.Fatalf("request with function_call_output item must be rejected")
-	}
-	// tools=true 放行；指针为 nil（未知）也放行（宽松语义）。
-	open := &config.ModelGroupConfig{Name: "g", ToolsCapable: boolPtr(true)}
-	if rejectToolRequestsIfNeeded(open, withTools) {
-		t.Fatalf("tools-capable group must pass")
-	}
-	unknown := &config.ModelGroupConfig{Name: "g"}
-	if rejectToolRequestsIfNeeded(unknown, withTools) {
-		t.Fatalf("unknown capability must pass")
-	}
-}
-
-// vision=false：image/audio/video 全部剥离，返回被剥离的模态集合；vision=true 不动。
-func TestFilterMaheshvaraMultimodalInputsIfNeeded(t *testing.T) {
-	group := &config.ModelGroupConfig{Name: "g", VisionCapable: boolPtr(false)}
-	request := &relay.MaheshvaraRequest{Model: "m", Messages: []relay.MaheshvaraMessage{{
-		Role: "user",
-		Content: []relay.MaheshvaraContentPart{
-			{Type: relay.MaheshvaraContentText},
-			{Type: relay.MaheshvaraContentImage},
-			{Type: relay.MaheshvaraContentAudio},
-			{Type: relay.MaheshvaraContentVideo},
-		},
-	}}}
-	changed, parts, modalities := filterMaheshvaraMultimodalInputsIfNeeded(group, request)
-	if !changed || parts != 3 {
-		t.Fatalf("expected 3 stripped parts, changed=%v parts=%d", changed, parts)
-	}
-	if len(modalities) != 3 || modalities[0] != "audio" || modalities[1] != "image" || modalities[2] != "video" {
-		t.Fatalf("modalities wrong: %v", modalities)
-	}
-	if len(request.Messages[0].Content) != 1 || request.Messages[0].Content[0].Type != relay.MaheshvaraContentText {
-		t.Fatalf("text part must be kept, got %+v", request.Messages[0].Content)
-	}
-
-	visionGroup := &config.ModelGroupConfig{Name: "g", VisionCapable: boolPtr(true)}
-	request2 := &relay.MaheshvaraRequest{Messages: []relay.MaheshvaraMessage{{
-		Content: []relay.MaheshvaraContentPart{{Type: relay.MaheshvaraContentImage}},
-	}}}
-	if changed, _, _ := filterMaheshvaraMultimodalInputsIfNeeded(visionGroup, request2); changed {
-		t.Fatalf("vision-capable group must not strip")
-	}
-}
-
-// ---- 候选软过滤与多 key 展开（方向2/6）----
-
-// 请求含多模态输入时，不支持视觉的候选被移到末尾（保持相对顺序）；全部不支持则原序。
-func TestReorderCandidatesByRequestNeeds(t *testing.T) {
-	candidates := []config.ModelRef{
-		{ID: "a", VisionCapable: false, ToolsCapable: true},
-		{ID: "b", VisionCapable: true, ToolsCapable: false},
-		{ID: "c", VisionCapable: false, ToolsCapable: true},
-	}
-	reordered := reorderCandidatesByRequestNeeds(append([]config.ModelRef(nil), candidates...), true, false)
-	if reordered[0].ID != "b" {
-		t.Fatalf("vision-capable candidate should come first, got %s", reordered[0].ID)
-	}
-	if reordered[1].ID != "a" || reordered[2].ID != "c" {
-		t.Fatalf("relative order of incapable candidates must be preserved, got %s,%s", reordered[1].ID, reordered[2].ID)
-	}
-	allIncapable := []config.ModelRef{{ID: "x"}, {ID: "y"}}
-	same := reorderCandidatesByRequestNeeds(append([]config.ModelRef(nil), allIncapable...), true, false)
-	if same[0].ID != "x" || same[1].ID != "y" {
-		t.Fatalf("all-incapable must keep original order")
-	}
-	// 工具需求同理。
-	toolCandidates := []config.ModelRef{{ID: "a", ToolsCapable: false}, {ID: "b", ToolsCapable: true}}
-	toolReordered := reorderCandidatesByRequestNeeds(append([]config.ModelRef(nil), toolCandidates...), false, true)
-	if toolReordered[0].ID != "b" {
-		t.Fatalf("tools-capable candidate should come first")
-	}
-}
-
-// 多 key 展开：priority 展开为候选×key 连续尝试；round-robin 按源级游标轮转；
-// single（默认）原样。
 func TestExpandCandidatesByKeyStrategy(t *testing.T) {
 	s := &Server{}
 	priority := []config.ModelRef{

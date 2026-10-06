@@ -2,132 +2,137 @@ package server
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
 
 func newHealthTestServer(t *testing.T) *Server {
 	t.Helper()
-	store, err := storage.Open(filepath.Join(t.TempDir(), "hc.sqlite3"))
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	t.Cleanup(func() { store.Close() })
-	cfg := &config.Config{}
-	cfg.HealthCheck = config.HealthCheckConfig{Enabled: true, FailureThreshold: 2}
-	return &Server{config: cfg, store: store, skipOutboundValidation: true}
+	server := newTestServer(t, nil)
+	server.config.HealthCheck = config.HealthCheckConfig{Enabled: true, FailureThreshold: 2}
+	return server
 }
 
-func TestProbeEndpoint(t *testing.T) {
-	cases := []struct {
-		platform, base, name, want string
-	}{
-		{"openai", "https://api.x.com/v1/", "", "https://api.x.com/v1/chat/completions"},
-		// claude 是存量库旧值，anthropic 是当前 UI；两者都必须打 /v1/messages。
-		{"claude", "https://api.anthropic.com", "", "https://api.anthropic.com/v1/messages"},
-		{"anthropic", "https://api.anthropic.com", "", "https://api.anthropic.com/v1/messages"},
-		{"responses", "https://api.openai.com/v1", "", "https://api.openai.com/v1/responses"},
-		{"gemini", "https://generativelanguage.googleapis.com/", "gemini-2.0-flash", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"},
+func bindHealthModel(t *testing.T, server *Server, platform, endpoint string) storage.Model {
+	t.Helper()
+	source := storage.ModelSource{ID: "probe-source", Name: "probe-source", Platform: platform, BaseURL: endpoint, APIKey: "probe-key", Enabled: true}
+	if err := server.saveSource(t.Context(), source); err != nil {
+		t.Fatal(err)
+	}
+	return storage.Model{ID: "model", Name: "model", SourceID: source.ID, Platform: platform, BaseURL: endpoint, APIKey: source.APIKey}
+}
+
+func TestHealthProbeUsesVerifiedWireAndCredentials(t *testing.T) {
+	cases := []struct{ id, path, auth, key, request, response string }{
+		{"chat-completions-api", "/chat/completions", "Authorization", "Bearer probe-key", `"messages"`, `{"choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}]}`},
+		{"responses-api", "/responses", "Authorization", "Bearer probe-key", `"input"`, `{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi"}]}]}`},
+		{"anthropic-api", "/v1/messages", "x-api-key", "probe-key", `"messages"`, `{"role":"assistant","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn"}`},
+		{"gemini-api", "/v1beta/models/model:generateContent", "x-goog-api-key", "probe-key", `"contents"`, `{"candidates":[{"content":{"role":"model","parts":[{"text":"hi"}]},"finishReason":"STOP"}]}`},
 	}
 	for _, tc := range cases {
-		got := probeEndpoint(storage.Model{BaseURL: tc.base, Platform: tc.platform, Name: tc.name})
-		if got != tc.want {
-			t.Fatalf("platform %q: got %s want %s", tc.platform, got, tc.want)
-		}
+		t.Run(tc.id, func(t *testing.T) {
+			server := newHealthTestServer(t)
+			definition := presetDefinition(t, tc.id)
+			definition.ID = "User-" + tc.id
+			activateGatewayDefinition(t, server, definition)
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Error(err)
+				}
+				if r.URL.Path != tc.path || r.Header.Get(tc.auth) != tc.key || !strings.Contains(string(body), tc.request) {
+					t.Errorf("unexpected probe: path=%s headers=%v body=%s", r.URL.Path, r.Header, body)
+				}
+				if tc.id == "anthropic-api" && r.Header.Get("anthropic-version") == "" {
+					t.Error("missing wire version header")
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, tc.response)
+			}))
+			defer upstream.Close()
+			model := bindHealthModel(t, server, "custom:"+definition.ID, upstream.URL)
+			if result := newHealthChecker(server).probe(t.Context(), model, 5); result != probeHealthy {
+				t.Fatalf("valid probe result = %v", result)
+			}
+		})
 	}
 }
 
-// 回归：Gemini 平台探测必须用 generateContent 请求体与 x-goog-api-key 鉴权，
-// 否则原生上游必 404/401，模型会被健康检查误禁。
-func TestProbeGeminiEndpointAndAuth(t *testing.T) {
-	var gotPath, gotAuth, gotBody string
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		gotAuth = r.Header.Get("x-goog-api-key")
-		buf := make([]byte, r.ContentLength)
-		_, _ = r.Body.Read(buf)
-		gotBody = string(buf)
-		w.WriteHeader(200)
-	}))
-	defer ts.Close()
-
-	s := newHealthTestServer(t)
-	hc := newHealthChecker(s)
-	if !hc.probe(context.Background(), storage.Model{BaseURL: ts.URL, Platform: "gemini", Name: "gemini-2.0-flash", APIKey: "gkey"}, 5) {
-		t.Fatalf("gemini probe should succeed against native endpoint")
+func TestHealthProbeRequiresSuccessfulContract(t *testing.T) {
+	server := newHealthTestServer(t)
+	checker := newHealthChecker(server)
+	for _, tc := range []struct {
+		name     string
+		status   int
+		body     string
+		expected healthProbeResult
+	}{
+		{"valid", 200, okChatCompletionBody(t), probeHealthy},
+		{"empty", 200, "", probeUnhealthy},
+		{"business-error", 200, `{"error":{"message":"quota exhausted"}}`, probeUnhealthy},
+		{"server-error", 500, `{"error":"failed"}`, probeUnhealthy},
+		{"wrong-path", 404, "", probeUnhealthy},
+		{"wrong-method", 405, "", probeUnhealthy},
+		{"rate-limit", 429, "", probeUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer upstream.Close()
+			model := bindHealthModel(t, server, "openai", upstream.URL)
+			if result := checker.probe(t.Context(), model, 5); result != tc.expected {
+				t.Fatalf("probe = %v, want %v", result, tc.expected)
+			}
+		})
 	}
-	if gotPath != "/v1beta/models/gemini-2.0-flash:generateContent" {
-		t.Fatalf("gemini probe path wrong: %s", gotPath)
-	}
-	if gotAuth != "gkey" {
-		t.Fatalf("gemini probe must use x-goog-api-key, got %q", gotAuth)
-	}
-	if !strings.Contains(gotBody, `"contents"`) {
-		t.Fatalf("gemini probe body must use contents shape: %s", gotBody)
+	if result := checker.probe(t.Context(), storage.Model{ID: "unbound"}, 5); result != probeUnavailable {
+		t.Fatal("unbound model must not be disabled by a guessed probe")
 	}
 }
 
-// 回归：单个慢上游不得挤占本轮探测预算，导致后续健康模型被误判失败。
 func TestSlowProbeDoesNotStarveSubsequentModels(t *testing.T) {
-	s := newHealthTestServer(t)
-	hc := newHealthChecker(s)
-	ctx := context.Background()
-
-	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(2 * time.Second)
-		w.WriteHeader(200)
-	}))
+	server := newHealthTestServer(t)
+	checker := newHealthChecker(server)
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.Copy(io.Discard, r.Body); <-r.Context().Done() }))
 	defer slow.Close()
-	fast := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	fast := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, okChatCompletionBody(t)) }))
 	defer fast.Close()
-
-	// 慢上游以 1s 超时探测必然失败；若探测共享整轮 ctx，紧随其后的
-	// 健康上游会因 ctx 已耗尽而同样失败。
-	if hc.probe(ctx, storage.Model{BaseURL: slow.URL, Platform: "openai", Name: "m"}, 1) {
-		t.Fatalf("slow upstream should fail the 1s probe")
+	if result := checker.probe(t.Context(), bindHealthModel(t, server, "openai", slow.URL), 1); result != probeUnhealthy {
+		t.Fatal("slow probe must fail")
 	}
-	if !hc.probe(ctx, storage.Model{BaseURL: fast.URL, Platform: "openai", Name: "m"}, 1) {
-		t.Fatalf("subsequent healthy model must not be starved by earlier slow probe")
+	if result := checker.probe(t.Context(), bindHealthModel(t, server, "openai", fast.URL), 1); result != probeHealthy {
+		t.Fatal("fast probe must have its own timeout")
 	}
 }
 
-// 回归：404/405 表示端点不支持探测而非上游故障，不得计入失败。
-func TestProbeTreatsEndpointUnsupportedAsHealthy(t *testing.T) {
-	s := newHealthTestServer(t)
-	hc := newHealthChecker(s)
-	for _, status := range []int{404, 405} {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status) }))
-		if !hc.probe(context.Background(), storage.Model{BaseURL: ts.URL, Platform: "openai", Name: "m"}, 5) {
-			t.Fatalf("status %d means endpoint unsupported, must not count as failure", status)
-		}
-		ts.Close()
+func TestHealthProbeUnavailablePreservesFailureEvidence(t *testing.T) {
+	server := newHealthTestServer(t)
+	checker := newHealthChecker(server)
+	model := storage.Model{ID: "missing", SourceID: "missing"}
+	checker.failures[probeKey(model.ID, model.SourceID)] = 1
+	if checker.probe(t.Context(), model, 1) != probeUnavailable {
+		t.Fatal("missing contract must be neutral")
+	}
+	if checker.failures[probeKey(model.ID, model.SourceID)] != 1 {
+		t.Fatal("unobserved health must not reset failures")
+	}
+	checker.pruneStaleFailureKeys(nil)
+	if len(checker.failures) != 0 {
+		t.Fatal("removed models must not accumulate failure keys")
 	}
 }
 
-func TestApplyProbeAuth(t *testing.T) {
-	for _, platform := range []string{"claude", "anthropic"} {
-		req, _ := http.NewRequest(http.MethodPost, "https://x", nil)
-		applyProbeAuth(req, storage.Model{APIKey: "k", Platform: platform})
-		if req.Header.Get("x-api-key") != "k" || req.Header.Get("anthropic-version") == "" {
-			t.Fatalf("platform %q: anthropic auth headers missing", platform)
-		}
-	}
-	req, _ := http.NewRequest(http.MethodPost, "https://x", nil)
-	applyProbeAuth(req, storage.Model{APIKey: "k", Platform: "openai"})
-	if req.Header.Get("Authorization") != "Bearer k" {
-		t.Fatalf("openai auth header missing")
-	}
-}
-
-// 自动禁用：连续失败达到阈值后 available 翻转为 false。
 func TestHealthCheckerAutoDisableAndRecover(t *testing.T) {
 	s := newHealthTestServer(t)
 	ctx := context.Background()
@@ -168,37 +173,29 @@ func TestHealthCheckerAutoDisableAndRecover(t *testing.T) {
 	}
 }
 
-// 探测真实 HTTP：2xx 健康，5xx 不健康，429 视为健康。
-func TestHealthCheckerProbe(t *testing.T) {
-	s := newHealthTestServer(t)
-	hc := newHealthChecker(s)
-	ctx := context.Background()
-
-	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
-	defer good.Close()
-	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) }))
-	defer bad.Close()
-	limited := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(429) }))
-	defer limited.Close()
-
-	if !hc.probe(ctx, storage.Model{BaseURL: good.URL, Platform: "openai", Name: "m"}, 5) {
-		t.Fatalf("2xx should be healthy")
-	}
-	if hc.probe(ctx, storage.Model{BaseURL: bad.URL, Platform: "openai", Name: "m"}, 5) {
-		t.Fatalf("5xx should be unhealthy")
-	}
-	if !hc.probe(ctx, storage.Model{BaseURL: limited.URL, Platform: "openai", Name: "m"}, 5) {
-		t.Fatalf("429 should be treated as healthy (upstream alive)")
-	}
-}
-
-// 禁用状态：未启用时 start() 不应启动 goroutine（done 立即关闭）。
 func TestHealthCheckerDisabledByDefault(t *testing.T) {
 	cfg := &config.Config{} // HealthCheck.Enabled = false
 	s := &Server{config: cfg}
 	hc := newHealthChecker(s)
 	hc.start()
 	<-hc.done // 应立即返回，不阻塞
+}
+
+func TestProbeCredentialSelectionHonorsModelPermissions(t *testing.T) {
+	server := newHealthTestServer(t)
+	model := storage.Model{ID: "m", SourceID: "s", APIKey: "stale", BaseURL: "https://stale.invalid", Available: false}
+	sources := []storage.ModelSource{{ID: "s", BaseURL: "https://current.invalid", APIKeys: []storage.SourceAPIKey{
+		{Value: "wrong-model", AllowedModels: []string{"other"}},
+		{Value: "permitted", AllowedModels: []string{"m"}},
+	}}}
+	ref, ok := server.resolveModelSource(model, collectSourceKeys(sources))
+	if !ok || ref.APIKey != "permitted" || ref.BaseURL != sources[0].BaseURL {
+		t.Fatalf("probe used stale or unauthorized identity: %+v", ref)
+	}
+	sources[0].APIKeys = sources[0].APIKeys[:1]
+	if _, ok := server.resolveModelSource(model, collectSourceKeys(sources)); ok {
+		t.Fatal("probe bypassed model permissions")
+	}
 }
 
 func TestHealthCheckerShutdownCancelsActiveProbe(t *testing.T) {
@@ -219,11 +216,26 @@ func TestHealthCheckerShutdownCancelsActiveProbe(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	source := storage.ModelSource{ID: "slow", Name: "slow", BaseURL: upstream.URL, Platform: "openai", Enabled: true}
+	// feat 起探测要求可解析凭据（resolveModelSource 无 Key 即跳过），
+	// 补一个 Key 使探测真正发出，测试意图（关停取消在途探测）不变。
+	source := storage.ModelSource{ID: "slow", Name: "slow", BaseURL: upstream.URL, Platform: "openai", Enabled: true, APIKeys: []storage.SourceAPIKey{{Value: "probe-key"}}}
 	if err := s.store.UpsertSource(context.Background(), source); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.store.ReplaceSourceModels(context.Background(), source, []storage.Model{{ID: "first", Name: "first"}, {ID: "second", Name: "second"}}); err != nil {
+		t.Fatal(err)
+	}
+	// feat 起探测走协议引擎，要求源有已验证的协议绑定；迁移在测试服务器
+	// 构造时已完成，新建的源直接按生产同构方式补存绑定（见 agent_protocol_v2_test）。
+	service, err := s.protocolService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, ok := service.Pin("chat-completions-api")
+	if !ok {
+		t.Fatal("chat-completions-api preset not active")
+	}
+	if err := s.store.SaveProtocolBinding(context.Background(), storage.ProtocolBinding{Kind: "source", SourceID: source.ID, Binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: compiled.Definition().Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}); err != nil {
 		t.Fatal(err)
 	}
 	hc := newHealthChecker(s)

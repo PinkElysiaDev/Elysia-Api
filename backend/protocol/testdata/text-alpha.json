@@ -1,0 +1,389 @@
+{
+  "schemaVersion": 2,
+  "id": "text-alpha",
+  "name": "text-alpha",
+  "version": "1",
+  "family": "text-alpha",
+  "wireVersion": "1",
+  "capabilities": {
+    "text": true
+  },
+  "directions": {
+    "decode_request": {
+      "transform": {
+        "op": "object",
+        "fields": {
+          "model": {
+            "op": "read",
+            "from": "input",
+            "path": "/deployment"
+          },
+          "content": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/turns"
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "kind": {
+                  "op": "literal",
+                  "value": "message"
+                },
+                "role": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/actor"
+                },
+                "children": {
+                  "op": "map",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/segments"
+                  },
+                  "body": {
+                    "op": "object",
+                    "fields": {
+                      "kind": {
+                        "op": "literal",
+                        "value": "text"
+                      },
+                      "payload": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "encode_request": {
+      "transform": {
+        "op": "object",
+        "fields": {
+          "deployment": {
+            "op": "read",
+            "from": "input",
+            "path": "/model"
+          },
+          "turns": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/content"
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "actor": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/role"
+                },
+                "segments": {
+                  "op": "map",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/children"
+                  },
+                  "body": {
+                    "op": "object",
+                    "fields": {
+                      "text": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/payload"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "decode_response": {
+      "transform": {
+        "op": "object",
+        "fields": {
+          "id": {
+            "op": "read",
+            "from": "input",
+            "path": "/requestId"
+          },
+          "status": {
+            "op": "literal",
+            "value": "completed"
+          },
+          "content": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/answer"
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "kind": {
+                  "op": "literal",
+                  "value": "message"
+                },
+                "role": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/actor"
+                },
+                "children": {
+                  "op": "map",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/segments"
+                  },
+                  "body": {
+                    "op": "object",
+                    "fields": {
+                      "kind": {
+                        "op": "literal",
+                        "value": "text"
+                      },
+                      "payload": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "encode_response": {
+      "transform": {
+        "op": "object",
+        "fields": {
+          "requestId": {
+            "op": "read",
+            "from": "input",
+            "path": "/id"
+          },
+          "answer": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/content"
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "actor": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/role"
+                },
+                "segments": {
+                  "op": "map",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/children"
+                  },
+                  "body": {
+                    "op": "object",
+                    "fields": {
+                      "text": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/payload"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "operations": {
+    "generate": {
+      "kind": "generate",
+      "method": "POST",
+      "path": "/generate",
+      "transport": "http_json",
+      "request": "encode_request",
+      "response": "decode_response",
+      "auth": {
+        "location": "none"
+      }
+    }
+  },
+  "native": {
+    "preserve": true
+  },
+  "samples": [
+    {
+      "id": "request.decode",
+      "direction": "decode_request",
+      "capabilities": [
+        "text"
+      ],
+      "input": {
+        "deployment": "m",
+        "turns": [
+          {
+            "actor": "user",
+            "segments": [
+              {
+                "text": "hello"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "request.encode",
+      "direction": "encode_request",
+      "capabilities": [
+        "text"
+      ],
+      "input": {
+        "schemaVersion": 1,
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "deployment": "m",
+        "turns": [
+          {
+            "actor": "user",
+            "segments": [
+              {
+                "text": "hello"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "response.decode",
+      "direction": "decode_response",
+      "capabilities": [
+        "text"
+      ],
+      "input": {
+        "requestId": "r",
+        "answer": [
+          {
+            "actor": "assistant",
+            "segments": [
+              {
+                "text": "answer"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "id": "r",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "answer"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "response.encode",
+      "direction": "encode_response",
+      "capabilities": [
+        "text"
+      ],
+      "input": {
+        "schemaVersion": 1,
+        "id": "r",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "answer"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "requestId": "r",
+        "answer": [
+          {
+            "actor": "assistant",
+            "segments": [
+              {
+                "text": "answer"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

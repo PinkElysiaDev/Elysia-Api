@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -18,7 +17,10 @@ func newKeyPermissionTestServer(t *testing.T) *Server {
 		t.Fatalf("open store: %v", err)
 	}
 	t.Cleanup(func() { store.Close() })
-	return &Server{config: &config.Config{}, store: store}
+	s := newUnboundTestServer(nil)
+	s.store = store
+	activateDiscoveryPresets(t, s)
+	return s
 }
 
 // 双 key 分属不同分组（拉到不同模型集）：逐 key 拉取后并集入库、

@@ -6,12 +6,6 @@ import type {
   UsagePulseResult,
   UsageModelDailyPoint,
   ApiToken,
-  CustomProtocolConfig,
-  CustomProtocolPreviewResult,
-  CustomProtocolSchema,
-  CustomProtocolSummary,
-  CustomProtocolTestResult,
-  CustomProtocolModelsTestResult,
   Health,
   Model,
   ModelGroup,
@@ -31,11 +25,13 @@ import type {
 export class ApiError extends Error {
   code: string
   status: number
-  constructor(code: string, message: string, status: number) {
+  details?: unknown
+  constructor(code: string, message: string, status: number, details?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.code = code
     this.status = status
+    this.details = details
   }
 }
 
@@ -54,6 +50,9 @@ interface RequestOptions {
   body?: unknown
   query?: Record<string, QueryValue>
   signal?: AbortSignal
+  rawBody?: string
+  rawResponse?: boolean
+  headers?: Record<string, string>
 }
 
 function buildUrl(path: string, query?: RequestOptions['query']): string {
@@ -78,16 +77,16 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = getToken()
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = { ...options.headers }
   if (token) headers.Authorization = `Bearer ${token}`
-  if (options.body !== undefined) headers['Content-Type'] = 'application/json'
+  if (options.body !== undefined || options.rawBody !== undefined) headers['Content-Type'] = 'application/json'
 
   let response: Response
   try {
     response = await fetch(buildUrl(path, options.query), {
       method: options.method ?? 'GET',
       headers,
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      body: options.rawBody ?? (options.body !== undefined ? JSON.stringify(options.body) : undefined),
       signal: options.signal,
     })
   } catch (err) {
@@ -111,9 +110,9 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 
   if (payload && typeof payload === 'object' && 'ok' in payload) {
-    if (payload.ok) return (payload as { data: T }).data
+    if (payload.ok) return options.rawResponse ? text as T : (payload as { data: T }).data
     const err = (payload as { error: { code: string; message: string } }).error
-    throw new ApiError(err?.code ?? 'error', err?.message ?? '请求失败', response.status)
+    throw new ApiError(err?.code ?? 'error', err?.message ?? '请求失败', response.status, err)
   }
 
   if (!response.ok) {
@@ -304,39 +303,7 @@ export const api = {
   systemLogs: (params: { limit?: number; offset?: number; level?: string }) =>
     request<SystemLogsResult>('/logs', { query: params }),
 
-  // ---- 协议设计器 ----
-  listCustomProtocols: () =>
-    request<ListEnvelope<CustomProtocolSummary>>('/custom-protocols').then((r) => r.items ?? []),
-  /** 字段目录与约束（UI 下拉与校验共用）。 */
-  customProtocolSchema: () => request<CustomProtocolSchema>('/custom-protocols/schema'),
-  upsertCustomProtocol: (protocol: CustomProtocolConfig) =>
-    request<{ saved: boolean; id: string; synced: boolean; warning?: string }>(
-      `/custom-protocols/${encodeURIComponent(protocol.id)}`,
-      { method: 'PUT', body: protocol },
-    ),
-  deleteCustomProtocol: (id: string) =>
-    request<{ deleted: boolean; synced: boolean }>(`/custom-protocols/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-    }),
-  /** 用样例 Maheshvara 请求渲染协议，预览真实发送形态（凭证打码）。 */
-  previewCustomProtocol: (body: { protocol: CustomProtocolConfig; sampleRequest?: unknown }, options?: { signal?: AbortSignal }) =>
-    request<CustomProtocolPreviewResult>('/custom-protocols/preview', { method: 'POST', body, signal: options?.signal }),
-  /** 向所选模型源或临时凭据（baseUrl+apiKey 直连）真实发送渲染后的请求。 */
-  testCustomProtocol: (body: {
-    protocol: CustomProtocolConfig
-    sourceId?: string
-    model: string
-    baseUrl?: string
-    apiKey?: string
-    stream?: boolean
-    sampleRequest?: unknown
-  }) => request<CustomProtocolTestResult>('/custom-protocols/test', { method: 'POST', body }),
-  /** 按协议 models 发现配置试拉模型列表（临时凭据，不落库）。 */
-  testCustomProtocolModels: (body: {
-    protocol: CustomProtocolConfig
-    baseUrl: string
-    apiKey?: string
-  }) => request<CustomProtocolModelsTestResult>('/custom-protocols/test-models', { method: 'POST', body }),
+
 }
 
 function serializeUsage(params: UsageQueryParams): Record<string, QueryValue> {
@@ -358,4 +325,3 @@ function serializeUsage(params: UsageQueryParams): Record<string, QueryValue> {
     ...(params.sourceIds?.length ? { sourceId: params.sourceIds } : {}),
   }
 }
-

@@ -34,7 +34,7 @@ func newAffinityCache() *affinityCache {
 }
 
 func affinityKey(keyHash, groupID string) string {
-	return keyHash + "\x00" + groupID
+	return keyHash + nulSeparator + groupID
 }
 
 // get 返回未过期的粘连模型名；无或已过期返回 ""。
@@ -74,7 +74,7 @@ func (a *affinityCache) removeGroup(groupID string) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	suffix := "\x00" + groupID
+	suffix := nulSeparator + groupID
 	for key := range a.entries {
 		if strings.HasSuffix(key, suffix) {
 			delete(a.entries, key)

@@ -813,114 +813,6 @@ func keyCommands() []*cliCommand {
 	}
 }
 
-// protocolCommands 自定义协议设计命令。
-func protocolCommands() []*cliCommand {
-	return []*cliCommand{
-		&cliCommand{group: "protocol", name: "draft", summary: "写入/更新协议配置草稿（立即校验并离线验证）",
-			usage:   "elysia protocol draft '<完整配置 JSON>' [--example '<响应示例 JSON>']",
-			example: `elysia protocol draft '{"id":"my-api","request":{...}}' --example '{"text":"hi"}'`,
-			detail:  protocolDraftDetail,
-			positionals: []cliPositionalSpec{
-				{"config", "完整 CustomProtocolConfig JSON（建议用单引号包裹）"},
-			},
-			flags: []cliFlagSpec{
-				{"example", "上游响应示例 JSON，用于离线检验 response 映射", false, false},
-			},
-			handler: func(s *Server) CLIHandler { return &updateDraftTool{} },
-			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				params := map[string]any{}
-				if len(inv.args) == 0 || strings.TrimSpace(inv.args[0]) == "" {
-					return nil, fmt.Errorf("缺少位置参数 <config>（完整协议配置 JSON）")
-				}
-				if err := inv.setJSONText(params, "config", inv.args[0]); err != nil {
-					return nil, err
-				}
-				if inv.Has("example") {
-					if err := inv.setJSONText(params, "exampleResponse", inv.Str("example")); err != nil {
-						return nil, err
-					}
-				}
-				return params, nil
-			}},
-		&cliCommand{group: "protocol", name: "preview", summary: "离线渲染草稿请求（不发送）",
-			usage:   "elysia protocol preview [--sample '<样例 Maheshvara 请求 JSON>']",
-			example: `elysia protocol preview`,
-			flags:   []cliFlagSpec{{"sample", "自定义样例请求 JSON", false, false}},
-			handler: func(s *Server) CLIHandler { return &previewRequestTool{} },
-			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				params := map[string]any{}
-				if inv.Has("sample") {
-					if err := inv.setJSONText(params, "sampleRequest", inv.Str("sample")); err != nil {
-						return nil, err
-					}
-				}
-				return params, nil
-			}},
-		&cliCommand{group: "protocol", name: "test", summary: "向真实上游发送一次测试请求（受权限策略控制）",
-			usage:   "elysia protocol test [--base-url <URL>] [--api-key <key>] [--stream] [--sample '<样例请求 JSON>']",
-			example: `elysia protocol test --base-url https://api.example.com --api-key sk-xxx`,
-			flags: []cliFlagSpec{
-				{"base-url", "用户提供的上游 baseUrl（缺省用当前 CLI 上下文已记录的）", false, false},
-				{"api-key", "用户提供的 API key（缺省用当前 CLI 上下文已记录的）", false, false},
-				{"stream", "按流式（SSE）测试", true, false},
-				{"sample", "自定义样例请求 JSON", false, false},
-			},
-			handler: func(s *Server) CLIHandler { return &testUpstreamTool{server: s} },
-			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				params := map[string]any{}
-				inv.setStr(params, "base-url", "baseUrl")
-				inv.setStr(params, "api-key", "apiKey")
-				inv.setBool(params, "stream", "stream")
-				if inv.Has("sample") {
-					if err := inv.setJSONText(params, "sampleRequest", inv.Str("sample")); err != nil {
-						return nil, err
-					}
-				}
-				return params, nil
-			}},
-		&cliCommand{group: "protocol", name: "models", summary: "按草稿 models 配置试拉上游模型列表（受权限策略控制）",
-			usage:   "elysia protocol models [--base-url <URL>] [--api-key <key>]",
-			example: `elysia protocol models --base-url https://api.example.com`,
-			flags: []cliFlagSpec{
-				{"base-url", "上游 baseUrl（缺省用当前 CLI 上下文已记录的）", false, false},
-				{"api-key", "API key（缺省用当前 CLI 上下文已记录的）", false, false},
-			},
-			handler: func(s *Server) CLIHandler { return &testModelsTool{server: s} },
-			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				params := map[string]any{}
-				inv.setStr(params, "base-url", "baseUrl")
-				inv.setStr(params, "api-key", "apiKey")
-				return params, nil
-			}},
-		&cliCommand{group: "protocol", name: "save", summary: "把当前草稿保存为正式协议（受权限策略控制）",
-			usage: "elysia protocol save [--update <协议id>]", example: "elysia protocol save",
-			flags:   []cliFlagSpec{{"update", "显式更新已有协议；目标必须存在且与草稿 id 一致", false, false}},
-			handler: func(s *Server) CLIHandler { return &saveProtocolTool{server: s} },
-			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				params := map[string]any{}
-				if inv.Has("update") {
-					if err := inv.requireStr(params, "update", "updateId"); err != nil {
-						return nil, err
-					}
-				}
-				return params, nil
-			}},
-		&cliCommand{group: "protocol", name: "read", summary: "读取已保存协议的完整配置",
-			usage:   "elysia protocol read --id <协议id>",
-			example: `elysia protocol read --id anthropic-api`,
-			flags:   []cliFlagSpec{{"id", "协议 id（含内置预置协议）", false, false}},
-			handler: func(s *Server) CLIHandler { return &readProtocolTool{server: s} },
-			mapper: func(inv *cliInvocation) (map[string]any, error) {
-				params := map[string]any{}
-				if err := inv.requireStr(params, "id", "id"); err != nil {
-					return nil, err
-				}
-				return params, nil
-			}},
-		// ---- usage ----
-	}
-}
-
 // usageCommands 用量统计、调用日志与系统日志命令。
 func usageCommands() []*cliCommand {
 	return []*cliCommand{
@@ -982,7 +874,7 @@ func codeCommands() []*cliCommand {
 	return []*cliCommand{
 		&cliCommand{group: "code", name: "ls", summary: "列出源码快照文件(引擎与预置协议的参考实现)",
 			usage:   "elysia code ls [前缀]",
-			example: `elysia code ls backend/server/presets`,
+			example: `elysia code ls backend/protocol/builtin/definitions`,
 			positionals: []cliPositionalSpec{
 				{"prefix", "路径前缀过滤(可选,如 backend/relay/ 或 packages/webui/src/lib/)"},
 			},
@@ -996,7 +888,7 @@ func codeCommands() []*cliCommand {
 			}},
 		&cliCommand{group: "code", name: "read", summary: "读取源码快照中的一个文件",
 			usage:   "elysia code read <路径>",
-			example: `elysia code read backend/server/presets/anthropic-api.json`,
+			example: `elysia code read backend/protocol/builtin/definitions/anthropic-api.json`,
 			positionals: []cliPositionalSpec{
 				{"path", "仓库相对路径(先 code ls 浏览)"},
 			},

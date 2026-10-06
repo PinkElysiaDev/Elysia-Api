@@ -46,6 +46,9 @@ export interface AgentSession {
   protocolId?: string;
   seedConfig?: unknown;
   draftConfig?: unknown;
+  /** Exact draft JSON; editing must not round long JSON numbers through Number. */
+  definitionJSON?: string;
+  restoreJSON?: string;
   /** 草稿还原点：最近一轮修改前的副本（单槽覆盖，每轮更新）。 */
   draftRestore?: unknown;
   plan?: AgentPlanStep[];
@@ -105,6 +108,10 @@ export interface AgentUserContent {
 }
 
 export interface AgentAssistantContent {
+	/** Interrupted output is retained for display and excluded from model replay. */
+	incomplete?: boolean;
+	/** Ordered semantic nodes, retained verbatim by persistence. */
+	content?: unknown[];
   text?: string;
   reasoning?: string;
   toolCalls?: AgentToolCall[];
@@ -132,12 +139,25 @@ export interface AgentSystemContent {
 }
 
 export interface AgentUsage {
+	input?: AgentCounter;
+	output?: AgentCounter;
+	total?: AgentCounter;
+	cacheRead?: AgentCounter;
+	cacheCreation?: AgentCounter;
+	details?: Record<string, AgentCounter>;
+	/** Historical persisted counters; new calls use the semantic fields above. */
   input_tokens?: number;
   output_tokens?: number;
   total_tokens?: number;
   reasoning_tokens?: number;
-  /** 后端透传完整 MaheshvaraUsage；字段按需读取，未列字段经 index signature 访问。 */
-  [key: string]: unknown;
+  cached_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
+/** A present counter retains explicit zero and observed/inferred provenance. */
+export interface AgentCounter {
+  count: number;
+  origin: "observed" | "inferred";
 }
 
 export interface AgentMessage {
@@ -207,9 +227,11 @@ export interface AgentCompaction {
 }
 
 export interface AgentTurnUsage {
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  cachedInputTokens?: number;
+  cacheCreationTokens?: number;
 }
 
 /** 工具名 → 工作过程里的中文动作名。门控工具用审批卡能看懂的完整说法。 */
@@ -264,12 +286,16 @@ export function cliCommandOf(
   return typeof parsed?.command === "string" ? parsed.command : undefined;
 }
 
-/** assistant 消息携带的 usage（snake_case）→ 轮次累计口径（camelCase）。 */
+/** Normalize current and historical usage without treating missing counters as zero. */
 export function agentUsageToTurn(u: AgentUsage): AgentTurnUsage {
+  const input = u.input?.count ?? u.input_tokens;
+  const output = u.output?.count ?? u.output_tokens;
   return {
-    inputTokens: u.input_tokens ?? 0,
-    outputTokens: u.output_tokens ?? 0,
-    totalTokens:
-      u.total_tokens ?? (u.input_tokens ?? 0) + (u.output_tokens ?? 0),
+    inputTokens: input,
+    outputTokens: output,
+    totalTokens: u.total?.count ?? u.total_tokens ??
+      (input !== undefined && output !== undefined ? input + output : undefined),
+    cachedInputTokens: u.cacheRead?.count ?? u.cached_input_tokens,
+    cacheCreationTokens: u.cacheCreation?.count ?? u.cache_creation_input_tokens,
   };
 }

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/protocol"
 )
 
 // Tool 是 Agent 可用的工具抽象。引擎对工具的具体行为一无所知；领域知识
@@ -15,7 +15,7 @@ type Tool interface {
 	// Name 工具名（模型可见，需为合法标识符）。
 	Name() string
 	// Definition 返回模型的工具定义（含 JSON Schema 参数）。
-	Definition() relay.MaheshvaraTool
+	Definition() FunctionDefinition
 	// Gated 是否为门控动作（执行前需用户审批）。
 	Gated() bool
 	// PermissionKey 门控动作对应的会话权限键（如 live_test / save）；
@@ -25,6 +25,14 @@ type Tool interface {
 	Description() string
 	// Execute 执行工具。args 是模型给出的原始 JSON 参数。
 	Execute(ctx context.Context, tctx ToolContext, args json.RawMessage) ToolResult
+}
+
+// FunctionDefinition declares a locally implemented Agent function. Registration
+// validates its JSON schema once and exposes a semantic protocol.Tool.
+type FunctionDefinition struct {
+	Name        string
+	Description string
+	Parameters  map[string]any
 }
 
 // ToolContext 是工具执行时可见的会话上下文。由宿主（server 层）实现，
@@ -145,12 +153,13 @@ func (r ToolResult) MarshalData() json.RawMessage {
 
 // Registry 是工具注册表。新增能力 = 实现 Tool + 注册一行，引擎零改动。
 type Registry struct {
-	tools map[string]Tool
-	order []string
+	definitions map[string]protocol.Tool
+	tools       map[string]Tool
+	order       []string
 }
 
 func NewRegistry(tools ...Tool) (*Registry, error) {
-	registry := &Registry{tools: make(map[string]Tool, len(tools))}
+	registry := &Registry{tools: make(map[string]Tool, len(tools)), definitions: make(map[string]protocol.Tool, len(tools))}
 	for _, tool := range tools {
 		name := strings.TrimSpace(tool.Name())
 		if name == "" {
@@ -165,6 +174,15 @@ func NewRegistry(tools ...Tool) (*Registry, error) {
 		if !tool.Gated() && tool.PermissionKey() != "" {
 			return nil, fmt.Errorf("agent tool %q is not gated but declares permission key %q", name, tool.PermissionKey())
 		}
+		definition := tool.Definition()
+		if definition.Name != name || definition.Parameters["type"] != "object" {
+			return nil, fmt.Errorf("agent tool %q requires a matching definition name and an object schema", name)
+		}
+		schema, err := protocol.EncodeValue(definition.Parameters)
+		if err != nil {
+			return nil, fmt.Errorf("agent tool %q: %w", name, err)
+		}
+		registry.definitions[name] = protocol.Tool{Kind: protocol.FunctionTool, Name: protocol.StringValue(name), Description: protocol.StringValue(definition.Description), InputSchema: schema}
 		registry.tools[name] = tool
 		registry.order = append(registry.order, name)
 	}
@@ -177,10 +195,10 @@ func (r *Registry) Get(name string) Tool {
 }
 
 // Definitions 返回全部工具定义（顺序稳定，便于提示词与缓存友好）。
-func (r *Registry) Definitions() []relay.MaheshvaraTool {
-	definitions := make([]relay.MaheshvaraTool, 0, len(r.order))
+func (r *Registry) Definitions() []protocol.Tool {
+	definitions := make([]protocol.Tool, 0, len(r.order))
 	for _, name := range r.order {
-		definitions = append(definitions, r.tools[name].Definition())
+		definitions = append(definitions, r.definitions[name])
 	}
 	return definitions
 }

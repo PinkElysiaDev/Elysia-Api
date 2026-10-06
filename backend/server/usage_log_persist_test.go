@@ -11,8 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/elysia-api/backend/protocol/builtin"
+
 	"github.com/elysia-api/backend/config"
-	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
@@ -68,7 +70,7 @@ func TestBodyOnErrorOnlyKeepsFailedBodiesAndWritesAssets(t *testing.T) {
 	failed := newExternalizeRecord("onerr-failed")
 	failed.StatusCode = 400
 	failed.Error = "boom"
-	failed.ErrorKind = string(relay.ErrorClassInvalidRequest)
+	failed.ErrorKind = string(builtin.ErrorClassInvalidRequest)
 	payload := strings.Repeat("A", 600)
 	failed.IncomingBody = failed.sanitizeBody([]byte(`{"url":"data:image/png;base64,` + payload + `"}`))
 	if failed.assets.count() != 1 {
@@ -151,9 +153,8 @@ func TestConversionFailureIsRecorded(t *testing.T) {
 	record := s.initUsageRecord(c, start, []byte(`{invalid json`), "openai")
 
 	// 与 chatCompletions 内一致的失败路径。
-	s.failRequestError(c, record, start, relay.FormatOpenAI, &relay.MaheshvaraError{
-		Class: relay.ErrorClassInvalidRequest, Message: "failed to convert request: bad json",
-	})
+	s.failGateway(c, record, http.StatusBadRequest, gatewayIssue(protocol.Identity{}, protocol.InvalidInput, "/", "bad json"))
+	s.recordUsage(record)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d", rec.Code)
@@ -162,7 +163,7 @@ func TestConversionFailureIsRecorded(t *testing.T) {
 	for time.Now().Before(deadline) {
 		payload, found, err := store.GetUsageRecordJSON(context.Background(), record.RequestID)
 		if err == nil && found {
-			if !strings.Contains(string(payload), `"errorKind":"invalid_request"`) {
+			if !strings.Contains(string(payload), `"errorKind":"invalid_input"`) {
 				t.Fatalf("errorKind=conversion must be persisted: %s", payload)
 			}
 			return

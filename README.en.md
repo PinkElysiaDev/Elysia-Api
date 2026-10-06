@@ -16,7 +16,7 @@
 
 - Protocols: Chat Completions API / Responses API, Anthropic API, and Gemini API; streaming conversion and same-protocol passthrough
 - Routing: model groups, load balancing, multiple API keys, concurrency and quota limits, per-key model discovery
-- Protocol extensions: visual field mappings for upstream APIs; saved definitions take effect without source changes
+- Declarative extensions: author bidirectional protocols with the editor or native Agent, verify offline, then activate; HTTP JSON, SSE, NDJSON, WebSocket and persistent asynchronous jobs
 - AI operations: protocol onboarding, usage analysis, and troubleshooting; writes follow session approval policies
 - Management: embedded WebUI and remote REST / MCP / A2A access; CLI commands run through Agent tools
 - Security: sensitive fields encrypted when the master key loads successfully, outbound IP policies, usage records, and request logs
@@ -148,6 +148,8 @@ See [deployment](docs/deployment.en.md) for configuration fields, environment va
 ## Further reading
 
 - [Custom protocols](docs/protocol-definition-reference.en.md)
+- [Protocol architecture, capabilities and migration](docs/protocol-guide.en.md)
+- [Validation evidence and release boundaries](docs/protocol-release-readiness.en.md)
 - [Remote AI agent access](docs/remote-agent-api.en.md)
 - [Management API](docs/webui-api.en.md)
 - [CLI reference](docs/agent-cli.en.md)

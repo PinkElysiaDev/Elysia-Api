@@ -36,6 +36,7 @@ export default defineConfig(({ command }) => {
       proxy: {
         '/api': proxy,
         '/v1': proxy,
+        '/gateway': { ...proxy, ws: true },
         '/health': proxy,
         // 接入配置默认使用当前页面地址，开发服务器也需转发远程端点。
         '/mcp': proxy,

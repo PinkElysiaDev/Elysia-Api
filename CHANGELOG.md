@@ -9,6 +9,34 @@
 v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.1.1 起的全部
 发布说明已合并进来，根目录不再保留按版本拆散的 `RELEASE_NOTES_v*.md`。
 
+## v1.6.0 - 2026-10-05
+
+缓存语义与诊断确定性的加固版：转换不再因 Anthropic 的缓存创建分桶而中断响应，缓存创建总量照常进入用量；诊断从「看运行次数」变成「同输入同结果」；同时补齐 OpenAI 系缓存语义建模与 Anthropic 混合 TTL 断点顺序校验。
+
+### 修复
+
+- **跨协议缓存创建分桶不再中断响应**：此前非 Anthropic 目标收到带 `cache_creation.ephemeral_5m/1h` 的真实 Anthropic 响应会硬失败——非流式返回 502、流式返回 200 但被 `X-Elysia-Stream-Error` trailer 截断。现在目标协议无法表达该分桶时省略投影并产生 warning，**创建总量仍映射到 `cache_write_tokens`**；Anthropic→Anthropic 的未修改往返完整保留两个分桶，工具、system 与消息位置都不重排。
+- **诊断确定性**：此前同一输入会在 `ephemeral_5m`/`ephemeral_1h` 之间非确定二选一（取决于 map 遍历序），现在按键名排序遍历，同输入每次报告同一路径。
+
+### 新增与改进
+
+- **OpenAI 缓存语义建模**：新增 `prompt_cache_options{mode,ttl}` 与 `prewarm`（仅 Responses）；`prompt_cache_retention` 标记为 Deprecated，但仍解码兼容。
+- **Anthropic 混合 TTL 断点顺序**：文档要求更长 TTL 在前（1h 在 5m 前），违反时给出非阻断警告而非拒绝请求。
+- **用量统计区分「未上报」与「上报为零」**：新增缓存创建 token 列（`cache_creation_tokens`）与上报掩码（`usage_report_mask`），避免上游未上报的计数被当作零拉低命中率。
+- **内部质量收束（C34）**：删除死代码、统一状态码常量、规范化分隔符。
+
+<!-- release-details -->
+
+### 技术细节
+
+- **跨协议缓存创建分桶投影**（`941518f`）：目标协议无对应字段时省略 `ephemeral_5m_input_tokens`/`ephemeral_1h_input_tokens` 明细，在 `/usage/details/ephemeral_5m_input_tokens`（或 `ephemeral_1h_input_tokens`）产一条 `SeverityWarning`，随成功响应一并进入该次记录的 ConversionIssues；创建总量仍写 `cache_write_tokens`（Chat/Responses），Gemini 无生成创建计数字段时省略并产 warning（路径 `/usage/cacheCreation`），读取仍走 `cachedContentTokenCount`。记录侧 `ProtocolUsage` 始终保留完整分桶，省略只作用于线制输出；组合验证按目标家族认可该投影（`cacheBucketOmission`），绑定期不把合法的跨协议往返判为「计数丢失」。
+- **诊断排序**：分桶明细按键名排序遍历，消除 map 遍历序造成的非确定性。
+- **缓存能力与意图扩展**：能力目录新增 `cache.options`（覆盖 `mode`/`options.ttl`）与 `cache.prewarm`，与既有 `cache.breakpoints`/`cache.keys`/`cache.retention`/`cache.resources` 并列，并按方向声明；缓存意图 `Kind` 新增 `mode`、`options.ttl`、`prewarm`——`prewarm` 仅 Responses 目标可编码，`mode`/`options.ttl` 仅 Chat/Responses。未知 `Kind` 显式拒绝而非丢弃。
+- **保留键与重复意图**（`0fb3df1`）：Chat/Responses 目标的 `Details` 不得占用 `input.cached_tokens`/`input.cache_write_tokens`（归规范化计数器）；同一 `Kind` 的多个缓存意图映射到同一线制字段时报错，四类一致（此前仅 `breakpoint` 分支拒绝重复，`key`/`retention`/`resource` 静默后者覆盖前者）。
+- **Anthropic 混合 TTL 断点顺序**：按上游处理顺序（tools → system → messages）要求较长 TTL 在前，未显式设置 `ttl` 的断点按 5m 默认参与排序；由 `warnBreakpointOrder` 以非阻断诊断报告，不因布局非最优而 4xx。
+- **用量统计**：`usage_records` 新增 `cache_creation_tokens` 与 `usage_report_mask` 列（位含义 `UsageReportInput`/`UsageReportCacheHit`/`UsageReportCreation`，区分「上游未上报」与「上报为零」），`usage_rollup_hour` 同步累积 `cc_tok`/`cc_rows`；覆盖索引显式 `DROP`+`CREATE` 重建以纳入新列，新增列经幂等 `ALTER TABLE` 补齐。`UsageLogItem`/`UsageSummary` 增加对应字段。
+- **预置协议**：`chat-completions-api`、`responses-api` 升至 v2.2.0，新增 `cache.options`/`cache.prewarm` 能力与配套样例；`anthropic-api`、`gemini-api` 维持 v2.1.0（本轮未改内容）。编译器版本随之升至 `2.0.0-dev.18`，映射变更触发既有启动重验机制。
+
 ## v1.5.1 - 2026-09-27
 
 修复版：解决旧库升级后自定义协议全部报「not registered」、以及 OpenAI 系预置协议按站点文档填地址会拼出 `/v1/v1/...` 两个问题。

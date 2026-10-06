@@ -1,0 +1,641 @@
+{
+  "schemaVersion": 2,
+  "id": "cached-text",
+  "name": "Standalone text and cache example",
+  "version": "1",
+  "family": "cached-text",
+  "wireVersion": "1",
+  "capabilities": {
+    "text": true,
+    "cache.breakpoints": true,
+    "usage": true
+  },
+  "directions": {
+    "decode_request": {
+      "transform": {
+        "op": "object",
+        "fields": {
+          "model": {
+            "op": "read",
+            "from": "input",
+            "path": "/deployment"
+          },
+          "content": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/turns"
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "kind": {
+                  "op": "literal",
+                  "value": "message"
+                },
+                "role": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/actor"
+                },
+                "children": {
+                  "op": "map",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/segments"
+                  },
+                  "body": {
+                    "op": "object",
+                    "fields": {
+                      "kind": {
+                        "op": "literal",
+                        "value": "text"
+                      },
+                      "payload": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "cache": {
+            "op": "read",
+            "path": "/promptPolicy"
+          }
+        }
+      },
+      "capabilities": {
+        "text": true,
+        "cache.breakpoints": true
+      }
+    },
+    "encode_request": {
+      "transform": {
+        "op": "object",
+        "fields": {
+          "deployment": {
+            "op": "read",
+            "from": "input",
+            "path": "/model"
+          },
+          "turns": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/content"
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "actor": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/role"
+                },
+                "segments": {
+                  "op": "map",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/children"
+                  },
+                  "body": {
+                    "op": "object",
+                    "fields": {
+                      "text": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/payload"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "promptPolicy": {
+            "op": "read",
+            "path": "/cache"
+          }
+        }
+      },
+      "capabilities": {
+        "text": true,
+        "cache.breakpoints": true
+      }
+    },
+    "decode_response": {
+      "transform": {
+        "op": "object",
+        "fields": {
+          "id": {
+            "op": "read",
+            "from": "input",
+            "path": "/requestId"
+          },
+          "status": {
+            "op": "literal",
+            "value": "completed"
+          },
+          "content": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/answer"
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "kind": {
+                  "op": "literal",
+                  "value": "message"
+                },
+                "role": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/actor"
+                },
+                "children": {
+                  "op": "map",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/segments"
+                  },
+                  "body": {
+                    "op": "object",
+                    "fields": {
+                      "kind": {
+                        "op": "literal",
+                        "value": "text"
+                      },
+                      "payload": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "usage": {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "path": "/meter"
+              }
+            },
+            "then": {
+              "op": "object",
+              "fields": {
+                "input": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "path": "/meter/input"
+                    }
+                  },
+                  "then": {
+                    "op": "object",
+                    "fields": {
+                      "count": {
+                        "op": "read",
+                        "path": "/meter/input"
+                      },
+                      "origin": {
+                        "op": "literal",
+                        "value": "observed"
+                      }
+                    }
+                  }
+                },
+                "output": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "path": "/meter/output"
+                    }
+                  },
+                  "then": {
+                    "op": "object",
+                    "fields": {
+                      "count": {
+                        "op": "read",
+                        "path": "/meter/output"
+                      },
+                      "origin": {
+                        "op": "literal",
+                        "value": "observed"
+                      }
+                    }
+                  }
+                },
+                "cacheRead": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "path": "/meter/cache_read"
+                    }
+                  },
+                  "then": {
+                    "op": "object",
+                    "fields": {
+                      "count": {
+                        "op": "read",
+                        "path": "/meter/cache_read"
+                      },
+                      "origin": {
+                        "op": "literal",
+                        "value": "observed"
+                      }
+                    }
+                  }
+                },
+                "cacheCreation": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "path": "/meter/cache_creation"
+                    }
+                  },
+                  "then": {
+                    "op": "object",
+                    "fields": {
+                      "count": {
+                        "op": "read",
+                        "path": "/meter/cache_creation"
+                      },
+                      "origin": {
+                        "op": "literal",
+                        "value": "observed"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "capabilities": {
+        "text": true,
+        "usage": true
+      }
+    },
+    "encode_response": {
+      "transform": {
+        "op": "object",
+        "fields": {
+          "requestId": {
+            "op": "read",
+            "from": "input",
+            "path": "/id"
+          },
+          "answer": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/content"
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "actor": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/role"
+                },
+                "segments": {
+                  "op": "map",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/children"
+                  },
+                  "body": {
+                    "op": "object",
+                    "fields": {
+                      "text": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/payload"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "meter": {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "object",
+              "fields": {
+                "input": {
+                  "op": "read",
+                  "path": "/usage/input/count"
+                },
+                "output": {
+                  "op": "read",
+                  "path": "/usage/output/count"
+                },
+                "cache_read": {
+                  "op": "read",
+                  "path": "/usage/cacheRead/count"
+                },
+                "cache_creation": {
+                  "op": "read",
+                  "path": "/usage/cacheCreation/count"
+                }
+              }
+            }
+          }
+        }
+      },
+      "capabilities": {
+        "text": true,
+        "usage": true
+      }
+    }
+  },
+  "operations": {
+    "generate": {
+      "kind": "generate",
+      "method": "POST",
+      "path": "/generate",
+      "transport": "http_json",
+      "request": "encode_request",
+      "response": "decode_response",
+      "auth": {
+        "location": "none"
+      }
+    }
+  },
+  "native": {
+    "preserve": true
+  },
+  "samples": [
+    {
+      "id": "request.decode",
+      "direction": "decode_request",
+      "capabilities": [
+        "text"
+      ],
+      "input": {
+        "deployment": "m",
+        "turns": [
+          {
+            "actor": "user",
+            "segments": [
+              {
+                "text": "hello"
+              }
+            ]
+          }
+        ],
+        "promptPolicy": [
+          {
+            "kind": "breakpoint",
+            "location": "request",
+            "value": {
+              "type": "ephemeral"
+            },
+            "ttl": "1h"
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "cache": [
+          {
+            "kind": "breakpoint",
+            "location": "request",
+            "value": {
+              "type": "ephemeral"
+            },
+            "ttl": "1h"
+          }
+        ]
+      }
+    },
+    {
+      "id": "request.encode",
+      "direction": "encode_request",
+      "capabilities": [
+        "text"
+      ],
+      "input": {
+        "schemaVersion": 1,
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "cache": [
+          {
+            "kind": "breakpoint",
+            "location": "request",
+            "value": {
+              "type": "ephemeral"
+            },
+            "ttl": "1h"
+          }
+        ]
+      },
+      "expected": {
+        "deployment": "m",
+        "turns": [
+          {
+            "actor": "user",
+            "segments": [
+              {
+                "text": "hello"
+              }
+            ]
+          }
+        ],
+        "promptPolicy": [
+          {
+            "kind": "breakpoint",
+            "location": "request",
+            "value": {
+              "type": "ephemeral"
+            },
+            "ttl": "1h"
+          }
+        ]
+      }
+    },
+    {
+      "id": "response.decode",
+      "direction": "decode_response",
+      "capabilities": [
+        "text"
+      ],
+      "input": {
+        "requestId": "r",
+        "answer": [
+          {
+            "actor": "assistant",
+            "segments": [
+              {
+                "text": "answer"
+              }
+            ]
+          }
+        ],
+        "meter": {
+          "input": 100,
+          "output": 5,
+          "cache_read": 70,
+          "cache_creation": 20
+        }
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "id": "r",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "answer"
+              }
+            ]
+          }
+        ],
+        "usage": {
+          "input": {
+            "count": 100,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 5,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 70,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 20,
+            "origin": "observed"
+          }
+        }
+      }
+    },
+    {
+      "id": "response.encode",
+      "direction": "encode_response",
+      "capabilities": [
+        "text"
+      ],
+      "input": {
+        "schemaVersion": 1,
+        "id": "r",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "answer"
+              }
+            ]
+          }
+        ],
+        "usage": {
+          "input": {
+            "count": 100,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 5,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 70,
+            "origin": "observed"
+          },
+          "cacheCreation": {
+            "count": 20,
+            "origin": "observed"
+          }
+        }
+      },
+      "expected": {
+        "requestId": "r",
+        "answer": [
+          {
+            "actor": "assistant",
+            "segments": [
+              {
+                "text": "answer"
+              }
+            ]
+          }
+        ],
+        "meter": {
+          "input": 100,
+          "output": 5,
+          "cache_read": 70,
+          "cache_creation": 20
+        }
+      }
+    }
+  ]
+}

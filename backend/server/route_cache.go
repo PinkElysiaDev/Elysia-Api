@@ -70,6 +70,8 @@ func (s *Server) invalidateRouteCache() {
 type sourceKeyMeta struct {
 	keys     []storage.SourceAPIKey
 	strategy string
+	// 源级缓存断点合成开关：透传到 ModelRef，由网关在编码前消费。
+	cacheSynthesis bool
 	// 源地址：热路径以源为准（models 行是快照，源保存后若未触发合并——
 	// 如自动拉取失败——快照会滞后）。空 = legacy 导入源，回落 models 行。
 	baseURL string
@@ -96,15 +98,7 @@ func (s *Server) assembleGroupsFromStore() ([]config.ModelGroupConfig, bool) {
 		s.logWarnf("failed to load model sources from sqlite: %v", err)
 		return nil, false
 	}
-	keyMeta := make(map[string]sourceKeyMeta, len(sources))
-	for _, source := range sources {
-		effective := source.EffectiveKeys()
-		keys := make([]storage.SourceAPIKey, 0, len(effective))
-		for _, key := range effective {
-			keys = append(keys, key)
-		}
-		keyMeta[source.ID] = sourceKeyMeta{keys: keys, strategy: string(source.KeyStrategy), baseURL: source.BaseURL}
-	}
+	keyMeta := collectSourceKeys(sources)
 	// 同时按复合键(sourceId:id)与裸 id 建索引：复合键精确命中（解决同名模型路由错乱），
 	// 裸 id 用于向后兼容旧数据（models 元素无 ":" 前缀时回退）。
 	modelByComposite := make(map[string]storage.Model, len(models))
@@ -155,6 +149,12 @@ func (s *Server) expandModelRef(model storage.Model, found bool, keyMeta map[str
 	if !found || !model.Available || !model.Enabled {
 		return config.ModelRef{}, false
 	}
+	return s.resolveModelSource(model, keyMeta)
+}
+
+// resolveModelSource shares current credentials and model permissions with probes.
+// Health is checked by routing callers; unhealthy models must still be probed.
+func (s *Server) resolveModelSource(model storage.Model, keyMeta map[string]sourceKeyMeta) (config.ModelRef, bool) {
 	ref := config.ModelRef{ID: model.ID, Name: model.Name, BaseURL: model.BaseURL, APIKey: model.APIKey, Platform: model.Platform,
 		VisionCapable: model.VisionCapable, ToolsCapable: model.ToolsCapable, SourceID: model.SourceID}
 	if meta, ok := keyMeta[model.SourceID]; ok {
@@ -164,6 +164,7 @@ func (s *Server) expandModelRef(model storage.Model, found bool, keyMeta map[str
 		if meta.baseURL != "" {
 			ref.BaseURL = meta.baseURL
 		}
+		ref.CacheSynthesis = meta.cacheSynthesis
 	}
 	if meta, ok := keyMeta[model.SourceID]; ok && len(meta.keys) > 0 {
 		// 按模型过滤可服务该模型的 key（多 key 权限发现）：不在任何 key 的
@@ -203,4 +204,13 @@ func (s *Server) loadTokensFromStore() (map[string]config.AccessToken, bool) {
 		tokens[item.Token] = config.AccessToken{Name: item.Name, Token: item.Token, Enabled: item.Enabled, AllowedGroups: item.AllowedGroups, Scopes: item.Scopes}
 	}
 	return tokens, true
+}
+
+func collectSourceKeys(sources []storage.ModelSource) map[string]sourceKeyMeta {
+	keyMeta := make(map[string]sourceKeyMeta, len(sources))
+	for _, source := range sources {
+		keys := source.EffectiveKeys()
+		keyMeta[source.ID] = sourceKeyMeta{keys: keys, strategy: string(source.KeyStrategy), baseURL: source.BaseURL, cacheSynthesis: source.CacheSynthesis}
+	}
+	return keyMeta
 }

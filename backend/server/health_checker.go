@@ -1,14 +1,14 @@
 package server
 
 import (
-	"bytes"
 	"context"
-	"fmt"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
 
-	"github.com/elysia-api/backend/relay"
+	"github.com/elysia-api/backend/config"
+	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -24,9 +24,6 @@ type healthChecker struct {
 	mu       sync.Mutex
 	failures map[string]int // key: modelID\x00sourceID → 连续失败次数
 
-	// client 全 checker 共享（见 newHealthChecker 注释）。
-	client *http.Client
-
 	ctx       context.Context
 	cancel    context.CancelFunc
 	done      chan struct{}
@@ -36,12 +33,7 @@ type healthChecker struct {
 func newHealthChecker(s *Server) *healthChecker {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &healthChecker{
-		server: s,
-		// client 全 checker 共享：此前每次探测新建 Transport，空闲连接只能等
-		// GC finalizer 回收——几百模型×每 300s 一轮会持续制造 socket/FD churn。
-		// 探测走与转发路径相同的 SSRF 防护 Transport（连接时校验每个实际拨号
-		// IP，含重定向后的目标）；超时由每次探测的 ctx 控制。
-		client:   &http.Client{Transport: relay.NewSecureTransport()},
+		server:   s,
 		failures: make(map[string]int),
 		ctx:      ctx,
 		cancel:   cancel,
@@ -65,7 +57,7 @@ func (h *healthChecker) pruneStaleFailureKeys(models []storage.Model) {
 	h.mu.Unlock()
 }
 
-func probeKey(modelID, sourceID string) string { return modelID + "\x00" + sourceID }
+func probeKey(modelID, sourceID string) string { return modelID + nulSeparator + sourceID }
 
 // start 在 store 可用时启动后台探测循环。enabled 与 interval 每轮从配置
 // 热读取：旧实现把 interval 烘死在 ticker 里、enabled 只在启动时看一眼，
@@ -115,7 +107,6 @@ func (h *healthChecker) shutdown() {
 	h.cancel()
 	h.start()
 	<-h.done
-	h.client.CloseIdleConnections()
 }
 
 // runOnce 探测一轮所有模型。
@@ -131,50 +122,35 @@ func (h *healthChecker) runOnce() {
 		}
 		return
 	}
-	// 探测凭据与热路径(route_cache)同源:models 行的 baseURL/apiKey 是保存
-	// 时刻的快照,源换 key/地址后探测打旧目标 → 连续 401/连不上 → 可服务
-	// 的模型被自动下线。此处按源级最新值覆盖(legacy 空 baseURL 源保留行内值)。
-	if sources, err := h.server.store.ListSources(ctx); err == nil {
-		type sourceIdentity struct{ baseURL, apiKey string }
-		identity := make(map[string]sourceIdentity, len(sources))
-		for _, source := range sources {
-			if source.BaseURL == "" {
-				continue
-			}
-			key := ""
-			if effective := source.EffectiveKeys(); len(effective) > 0 {
-				key = effective[0].Value
-			}
-			identity[source.ID] = sourceIdentity{baseURL: source.BaseURL, apiKey: key}
-		}
-		if len(identity) > 0 {
-			overlaid := make([]storage.Model, len(models))
-			for i, model := range models {
-				if id, ok := identity[model.SourceID]; ok {
-					model.BaseURL = id.baseURL
-					if id.apiKey != "" {
-						model.APIKey = id.apiKey
-					}
-				}
-				overlaid[i] = model
-			}
-			models = overlaid
-		}
+	sources, err := h.server.store.ListSources(ctx)
+	if err != nil {
+		h.server.logWarnf("health check: failed to load current source credentials: %v", err)
+		return
 	}
+	keyMeta := collectSourceKeys(sources)
 	h.pruneStaleFailureKeys(models)
 
 	for _, model := range models {
 		if h.ctx.Err() != nil {
 			return
 		}
-		// 每次探测在 probe 内部独立限时：若整轮共享一个超时 ctx，一个慢上游
-		// 就会耗尽预算，导致本轮后续所有探测连锁失败、健康模型被误禁。
-		ok := h.probe(h.ctx, model, cfg.TimeoutSeconds)
+		ref, hasCredential := h.server.resolveModelSource(model, keyMeta)
+		if !hasCredential {
+			continue
+		}
+		model.BaseURL, model.APIKey = ref.BaseURL, ref.APIKey
+
+		// 探测父 ctx 取 h.ctx（仅可取消、无 deadline）：既保持每探测独立限时
+		// （慢上游只消耗自己的预算），又让关停取消能中断在途探测。
+		result := h.probe(h.ctx, model, cfg.TimeoutSeconds)
 		// 停机取消不是上游故障，不计失败或更改模型可用性。
 		if h.ctx.Err() != nil {
 			return
 		}
-		if h.recordProbeResult(model, ok, cfg.FailureThreshold) {
+		if result == probeUnavailable {
+			continue
+		}
+		if h.recordProbeResult(model, result == probeHealthy, cfg.FailureThreshold) {
 			// 状态翻转立即失效路由缓存:整轮探测(串行,每模型独立超时)可达
 			// 分钟级,推迟失效会让轮首被禁用的模型继续接流量。
 			h.server.invalidateRouteCache()
@@ -220,82 +196,81 @@ func (h *healthChecker) recordProbeResult(model storage.Model, ok bool, threshol
 	return false
 }
 
-// probe 对单个模型发一个最小探测请求，返回是否健康。
-// 使用各平台原生的轻量端点；任何 2xx 视为健康。探测请求经 SSRF 校验。
-func (h *healthChecker) probe(ctx context.Context, model storage.Model, timeoutSeconds int) bool {
-	// 单次探测独立超时，避免上一个慢探测挤占本轮预算。
+type healthProbeResult uint8
+
+const (
+	probeUnavailable healthProbeResult = iota
+	probeHealthy
+	probeUnhealthy
+)
+
+// probe uses the verified generation binding without retries. Unavailable
+// probe contracts and rate limits provide no evidence to change availability.
+func (h *healthChecker) probe(ctx context.Context, model storage.Model, timeoutSeconds int) healthProbeResult {
 	probeCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
 	defer cancel()
-	if err := h.server.validateOutboundContext(probeCtx, model.BaseURL); err != nil {
-		return false
-	}
-	req, err := http.NewRequestWithContext(probeCtx, http.MethodPost, probeEndpoint(model), bytes.NewReader(probeBody(model)))
+	candidate, request, err := h.server.prepareHealthProbe(probeCtx, model)
 	if err != nil {
-		return false
+		h.server.logWarnf("health check: model %s has no usable probe contract: %v", model.Name, err)
+		return probeUnavailable
 	}
-	applyProbeAuth(req, model)
-	req.Header.Set("Content-Type", contentTypeJSON)
-
-	resp, err := h.client.Do(req)
+	_, err = h.server.collectProtocolGenerationAttempt(probeCtx, candidate, request, nil, nil)
+	var failure *gatewayFailure
+	if errors.As(err, &failure) && failure.status == http.StatusTooManyRequests {
+		return probeUnavailable
+	}
 	if err != nil {
-		return false
+		return probeUnhealthy
 	}
-	defer resp.Body.Close()
-	// 2xx = 健康。401/403（鉴权失败）也应视为不健康并禁用。
-	// 429（限流）说明上游其实活着，视为健康，避免误禁。
-	if resp.StatusCode == http.StatusTooManyRequests {
-		return true
-	}
-	// 404/405：上游可达且正常响应，只是该端点不支持探测（如网关只实现了
-	// chat/completions）。鉴权与连通性已验证，不计入失败以免误禁。
-	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
-		return true
-	}
-	return resp.StatusCode >= 200 && resp.StatusCode < 300
+	return probeHealthy
 }
 
-// probeBody 按归一化后的线路协议构造最小探测请求体。
-func probeBody(model storage.Model) []byte {
-	switch relay.NormalizeAPIFormat(model.Platform) {
-	case relay.APIFormatGemini:
-		return []byte(`{"contents":[{"parts":[{"text":"ping"}]}],"generationConfig":{"maxOutputTokens":1}}`)
-	case relay.APIFormatResponses:
-		return []byte(fmt.Sprintf(`{"model":%q,"input":"ping","max_output_tokens":%d}`, model.Name, HealthProbeMaxTokens))
-	default:
-		return []byte(fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"ping"}],"max_tokens":%d}`, model.Name, HealthProbeMaxTokens))
+func (s *Server) prepareHealthProbe(ctx context.Context, model storage.Model) (gatewayCandidate, *protocol.Request, error) {
+	service, err := s.protocolService()
+	if err != nil {
+		return gatewayCandidate{}, nil, err
 	}
-}
-
-func probeEndpoint(model storage.Model) string {
-	base := model.BaseURL
-	for len(base) > 0 && base[len(base)-1] == '/' {
-		base = base[:len(base)-1]
+	bindings, err := s.store.ListProtocolBindings(ctx)
+	if err != nil {
+		return gatewayCandidate{}, nil, err
 	}
-	switch relay.NormalizeAPIFormat(model.Platform) {
-	case relay.APIFormatAnthropic:
-		// baseUrl 不含 /v1（与 fetchClaudeModels / ClaudeAdapter 一致），探测必须打 /v1/messages。
-		return base + "/v1/messages"
-	case relay.APIFormatGemini:
-		// 与 relay.GeminiAdapter 的 URL 规则保持一致。
-		return base + "/v1beta/models/" + model.Name + ":generateContent"
-	case relay.APIFormatResponses:
-		return base + "/responses"
-	default:
-		return base + "/chat/completions"
+	ref := config.ModelRef{ID: model.ID, Name: model.Name, SourceID: model.SourceID, BaseURL: model.BaseURL, APIKey: model.APIKey}
+	view := service.View()
+	var candidate gatewayCandidate
+	var failure *protocol.ConversionError
+	for _, transport := range []protocol.Transport{protocol.HTTPJSON, protocol.SSE, protocol.NDJSON} {
+		candidate, failure = makeGatewayCandidate(view, bindings, ref, transport, "generate")
+		if failure == nil {
+			break
+		}
 	}
-}
-
-func applyProbeAuth(req *http.Request, model storage.Model) {
-	if model.APIKey == "" {
-		return
+	if failure != nil {
+		return candidate, nil, failure
 	}
-	switch relay.NormalizeAPIFormat(model.Platform) {
-	case relay.APIFormatAnthropic:
-		req.Header.Set("x-api-key", model.APIKey)
-		req.Header.Set("anthropic-version", relay.AnthropicAPIVersion)
-	case relay.APIFormatGemini:
-		req.Header.Set("x-goog-api-key", model.APIKey)
-	default:
-		req.Header.Set("Authorization", "Bearer "+model.APIKey)
+	if candidate.operation.Kind != "generate" {
+		return candidate, nil, gatewayIssue(candidate.compiled.Identity(), protocol.UnsupportedCapability, "/operations", "background health probes require synchronous generation")
 	}
+	budget, err := protocol.EncodeValue(HealthProbeMaxTokens)
+	if err != nil {
+		return candidate, nil, err
+	}
+	stream, err := protocol.EncodeValue(candidate.operation.Transport != protocol.HTTPJSON)
+	if err != nil {
+		return candidate, nil, err
+	}
+	request := &protocol.Request{
+		SchemaVersion: protocol.SemanticSchemaVersion,
+		Source:        protocol.Identity{Family: "elysia-health", WireVersion: "1"},
+		Model:         protocol.StringValue(model.Name),
+		Content:       []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("ping")}}}},
+		Parameters:    protocol.Object{"max_output_tokens": budget, "stream": stream},
+	}
+	if err := protocol.IssuesError(protocol.CheckRoute(request, candidate.compiled, candidate.binding, candidate.scope, candidate.operation.Transport)); err != nil {
+		return candidate, nil, err
+	}
+	body, err := candidate.compiled.EncodeRequest(ctx, request, protocol.EvaluationContext{Scope: candidate.scope})
+	if err != nil {
+		return candidate, nil, err
+	}
+	return candidate, request, candidate.compiled.CheckOperationInput(candidate.operation, body)
 }

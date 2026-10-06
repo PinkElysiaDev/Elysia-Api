@@ -15,23 +15,28 @@ import (
 // 结果回传),验证三协议→Responses 接线后全链路可用且 call_id 配对。
 func TestClaudeClientResponsesUpstreamToolLoop(t *testing.T) {
 	var receivedBodies []string
+	hasNativeItemID := false
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		receivedBodies = append(receivedBodies, string(body))
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
+		response := `{
 			"id": "resp_1", "object": "response", "status": "completed", "model": "gpt",
 			"output": [{"type": "message", "id": "msg_1", "role": "assistant",
 				"content": [{"type": "output_text", "text": "sunny"}]}]
-		}`))
+		}`
+		if !hasNativeItemID {
+			response = strings.Replace(response, `"id": "msg_1",`, "", 1)
+		}
+		_, _ = w.Write([]byte(response))
 	}))
 	defer upstream.Close()
 
 	group := config.ModelGroupConfig{
 		ID: "g1", Name: "grp", Enabled: true,
-		Models: []config.ModelRef{{ID: "m1", Name: "gpt-x", BaseURL: upstream.URL, APIKey: "k", Platform: "responses"}},
+		Models: []config.ModelRef{{ID: "m1", Name: "gpt-x", BaseURL: upstream.URL, APIKey: "k", Platform: "responses", ToolsCapable: true}},
 	}
-	s := newTestServer([]config.ModelGroupConfig{group})
+	s := newTestServer(t, []config.ModelGroupConfig{group})
 
 	// 第二轮:Claude 客户端回传 tool_result(此前该链路上游 400)。
 	rec := httptest.NewRecorder()
@@ -72,5 +77,11 @@ func TestClaudeClientResponsesUpstreamToolLoop(t *testing.T) {
 	// 客户端按 Claude 形态收到响应。
 	if !strings.Contains(rec.Body.String(), `"type":"text"`) && !strings.Contains(rec.Body.String(), `"text":"sunny"`) {
 		t.Fatalf("claude client should receive anthropic-shaped response: %s", rec.Body.String())
+	}
+	hasNativeItemID = true
+	c, rec = messagesRequestContext(`{"model":"grp","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`)
+	s.chatCompletions(c)
+	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "item identity") {
+		t.Fatal("unrepresentable native message identity silently discarded", rec.Code, rec.Body)
 	}
 }

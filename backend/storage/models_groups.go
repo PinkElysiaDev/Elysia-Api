@@ -43,6 +43,9 @@ func (s *Store) ListModelsFiltered(ctx context.Context, filter ModelListFilter) 
 
 func (s *Store) listModelsFiltered(ctx context.Context, filter ModelListFilter) ([]Model, error) {
 	where := "WHERE (m.source_id = '' OR ms.enabled = 1 OR ms.id IS NULL)"
+	if filter.ShouldIncludeDisabledSources {
+		where = "WHERE 1=1"
+	}
 	args := []any{}
 	if filter.SourceID != "" {
 		where += " AND m.source_id = ?"
@@ -173,12 +176,6 @@ func (s *Store) UpsertGroup(ctx context.Context, item ModelGroup) error {
 	}
 	if item.Strategy == "" {
 		item.Strategy = "round-robin"
-	}
-	if item.MaxRetries == 0 {
-		item.MaxRetries = 3
-	}
-	if item.RetryInterval == 0 {
-		item.RetryInterval = 1000
 	}
 	if item.Type == "" {
 		item.Type = "llm"
@@ -622,7 +619,7 @@ func (s *Store) ImportLegacyConfig(ctx context.Context, tokens []APIToken, group
 		if err := s.UpsertSource(ctx, source); err != nil {
 			return err
 		}
-		if err := s.ReplaceSourceModels(ctx, source, models); err != nil {
+		if err := s.replaceSourceModels(ctx, source, models, true); err != nil {
 			return err
 		}
 	}
@@ -639,6 +636,9 @@ func (s *Store) ImportLegacyConfig(ctx context.Context, tokens []APIToken, group
 type ModelListFilter struct {
 	SourceID string
 	Search   string
+	// ShouldIncludeDisabledSources is used by whole-database migrations, which
+	// must preserve contracts even for sources that are currently disabled.
+	ShouldIncludeDisabledSources bool
 }
 
 // ModelPatch 是单个模型的部分更新（方向4）：nil 字段表示不修改。
