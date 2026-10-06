@@ -24,6 +24,9 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
 - **Anthropic 混合 TTL 断点顺序**：文档要求更长 TTL 在前（1h 在 5m 前），违反时给出非阻断警告而非拒绝请求。
 - **用量统计区分「未上报」与「上报为零」**：新增缓存创建 token 列（`cache_creation_tokens`）与上报掩码（`usage_report_mask`），避免上游未上报的计数被当作零拉低命中率。
 - **预置协议只读、随版本自动更新**：四份内置预置不再允许编辑，每次启动自动跟进程序携带的最新版本；升级时旧的本地修改会被回归为 shipped 版本并在系统日志留审计记录（协议、内容哈希与字节数）。需要定制时在协议设计器对预置「复制为新协议」后编辑副本。
+- **Agent 模型就绪度与「验证并启用」**：模型选择器逐模型展示可用性与原因（未绑定/协议未启用/未声明工具能力/绑定未允许函数工具等）；对未声明工具能力的模型，一键发送最小真实探针（带 nonce 的函数工具调用）验证通过后才提交能力标记与模型级绑定——失败零副作用，成功后迁移/刷新/目录同步均不回滚，探针调用计入用量日志。
+- **协议版本历史页**：设计器新增「协议历史」——按「预置旧版本 / 已删除自定义协议」归档观察，含验证报告、与当前启用版本的差异、引用阻断清单；支持恢复为新协议（重新验证后启用）与彻底删除（激活中/被引用版本拒删；预置历史三层只读守卫，不可物理删除）。
+- **流式收集保真**：Agent 与工具探针的响应收集器不再因中转站在 chat SSE 帧上携带的未映射字段（厂商标注、计费扩展）而报错——扩展字段在缓冲上限内保真保留到响应属性，与网关转发的原帧重发同一口径。
 - **内部质量收束（C34）**：删除死代码、统一状态码常量、规范化分隔符。
 
 <!-- release-details -->
@@ -37,6 +40,10 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
 - **Anthropic 混合 TTL 断点顺序**：按上游处理顺序（tools → system → messages）要求较长 TTL 在前，未显式设置 `ttl` 的断点按 5m 默认参与排序；由 `warnBreakpointOrder` 以非阻断诊断报告，不因布局非最优而 4xx。
 - **用量统计**：`usage_records` 新增 `cache_creation_tokens` 与 `usage_report_mask` 列（位含义 `UsageReportInput`/`UsageReportCacheHit`/`UsageReportCreation`，区分「上游未上报」与「上报为零」），`usage_rollup_hour` 同步累积 `cc_tok`/`cc_rows`；覆盖索引显式 `DROP`+`CREATE` 重建以纳入新列，新增列经幂等 `ALTER TABLE` 补齐。`UsageLogItem`/`UsageSummary` 增加对应字段。
 - **预置只读与自动更新**：`protocol.IsPresetProtocolID` 列出四个只读预置；服务层 `SaveDraft`/`Activate` 对预置 ID 一律拒绝（单点闸门覆盖编辑器、Agent CLI 与 REST），同名新建同样被拒。启动刷新与迁移对预置行/激活**无条件**采用 shipped 定义（移除原指纹门槛，`IsPreviousDefinition`/`DefinitionFingerprint` 及其测试随之删除）；被丢弃的本地修改写入系统日志审计行。协议列表/启用目录为预置加 `preset` 标记，设计器把预置从草稿表移入只读区块并提供「复制为新协议」（派生 `-copy` ID、名称加副本后缀）。
+- **就绪度与实证启用**：`GET /api/admin/agent/models` 就绪度看板（逐模型原因码）与 `POST /api/admin/agent/models/verify-tools`（nonce 探针 + 单事务启用，baseline 乐观锁防并发，已就绪模型幂等短路，上游 5xx 返回 502）；`EnableModelFunctionTools` 事务更新 `models.tools_capable/capability_source` 与 model 级绑定；Agent 轮次错误透出就绪原因码（4xx）而非 500。
+- **版本历史**：`/protocols/history*` 管理端点（列表/详情+差异/恢复为新协议/删除/引用检查）；归档 block/replace/unbind 三模式单事务、失败零残留；`preset_replaced` 历史行在 handler/service/storage 三层拒绝物理删除；`/protocols/legacy` 重定向至历史页（修复占位死链）。
+- **流式收集保真**：`ResponseCollector` 将 `event.Unmapped`（未映射流扩展）累积至 `Attributes["wire:stream"]`（计入既有缓冲上限），替代原硬错；同族回放路径不变。
+- **系统容器诊断**：Anthropic/GemNI 系统容器元数据拒绝错误指名字段与位置（`/content/{n}/{field}`）；用量记录新增 `systemStructure` 逐节点诊断，用于定位客户端请求形态。
 - **预置协议**：`chat-completions-api`、`responses-api` 升至 v2.2.0，新增 `cache.options`/`cache.prewarm` 能力与配套样例；`anthropic-api`、`gemini-api` 维持 v2.1.0（本轮未改内容）。编译器版本随之升至 `2.0.0-dev.18`，映射变更触发既有启动重验机制。
 
 ## v1.5.1 - 2026-09-27
