@@ -65,6 +65,8 @@ export interface RuntimeConfig {
   systemLog: LogRetentionConfig
   modelCatalog?: ModelCatalogInfo
   agentRemote?: AgentRemoteRuntimeConfig
+  /** AI 助手全局默认（工具循环上限等，运行配置页可改、热生效）。 */
+  agent?: { toolLoopLimit?: number }
 }
 
 /** AI 助手远程暴露面（REST/MCP/A2A）的运行时配置。 */
@@ -113,6 +115,9 @@ export interface RuntimeConfigUpdate {
     enabled?: boolean
     /** 显式空串 = 清空 publicUrl；undefined = 不修改。 */
     publicUrl?: string
+  }
+  agent?: {
+    toolLoopLimit?: number
   }
 }
 

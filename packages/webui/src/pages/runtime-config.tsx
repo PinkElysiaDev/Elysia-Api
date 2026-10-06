@@ -34,6 +34,7 @@ import { SettingSection, SettingRow } from "@/components/ui/setting-card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/use-toast";
 import { useRuntimeConfigForm } from "./runtime-config/use-runtime-config-form";
+import { AgentDefaultsSection } from "./runtime-config/agent-defaults-section";
 import { AgentRemoteSection } from "./runtime-config/agent-remote-section";
 import {
   useUsageStorage,
@@ -64,6 +65,7 @@ const configTabs = [
   ["basic", "基础设置"],
   ["security", "安全设置"],
   ["remote", "远程访问"],
+  ["agent", "AI 助手"],
   ["logs", "日志与存储"],
   ["catalog", "模型目录"],
 ] as const;
@@ -87,6 +89,7 @@ export function RuntimeConfigPage() {
     toggleUsageBody,
     updateOutboundText,
     updateAgentRemote,
+    updateAgentDefaults,
     resetOutboundDefaults,
     dirtyBlockPayload,
     isDirty,
@@ -326,7 +329,7 @@ export function RuntimeConfigPage() {
         )}
 
         <fieldset disabled={saving || reloading} aria-label="运行配置表单" aria-busy={saving || reloading} className="min-w-0 w-full pt-6 disabled:opacity-70">
-          <Tabs.Content value="basic" forceMount className="space-y-8 outline-none data-[state=inactive]:hidden">
+          <Tabs.Content value="basic" forceMount className="grid items-start gap-8 space-y-8 outline-none data-[state=inactive]:hidden lg:grid-cols-2">
             <SettingSection
               icon={Server}
               title="服务与网络"
@@ -524,7 +527,13 @@ export function RuntimeConfigPage() {
             />
 
           </Tabs.Content>
-          <Tabs.Content value="logs" forceMount className="space-y-8 outline-none data-[state=inactive]:hidden">
+          <Tabs.Content value="agent" forceMount className="space-y-8 outline-none data-[state=inactive]:hidden">
+            <AgentDefaultsSection
+              toolLoopLimit={form?.agent.toolLoopLimit ?? 30}
+              onToolLoopLimitChange={(value) => updateAgentDefaults("toolLoopLimit", value)}
+            />
+          </Tabs.Content>
+          <Tabs.Content value="logs" forceMount className="grid items-start gap-8 space-y-8 outline-none data-[state=inactive]:hidden lg:grid-cols-2">
             <SettingSection
               icon={HardDrive}
               title="请求日志"

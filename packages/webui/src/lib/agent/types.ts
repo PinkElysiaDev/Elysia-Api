@@ -193,6 +193,8 @@ export interface AgentStreamEvent {
     | "error";
   text?: string;
   retryable?: boolean;
+  /** 机器可读原因码（如 model_tools_disabled），服务端就绪度拒绝时携带。 */
+  reasonCode?: string;
   delta?: string;
   callId?: string;
   name?: string;

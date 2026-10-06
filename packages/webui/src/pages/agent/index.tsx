@@ -27,7 +27,6 @@ import { useAgentStream } from "@/lib/agent/use-agent-stream";
 import { ChatPanel } from "./chat-panel";
 import { ContextPanel } from "./context-panel";
 import { SessionOverview } from "./session-overview";
-import { ShortcutSettingsDialog } from "./shortcut-settings";
 import { TurnRail } from "./turn-rail";
 import { WorkspaceHeader } from "./workspace-header";
 import { useAgentDrafts } from "./use-agent-drafts";
@@ -372,7 +371,7 @@ export function AgentPage() {
     return (
       <div className={WORKSPACE_CLASS}>
         <div key="agent-overview" className="flex min-h-0 flex-1 flex-col">
-          <PageHeader title="AI 助手" actions={<ShortcutSettingsDialog />} />
+          <PageHeader title="AI 助手"  />
           <SessionOverview
             sessions={sessions ?? []}
             draftSessions={draftSessions}
