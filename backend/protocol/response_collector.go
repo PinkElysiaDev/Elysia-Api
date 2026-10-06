@@ -10,6 +10,7 @@ type ResponseCollector struct {
 	items    map[string]int
 	texts    map[string]*strings.Builder
 	metadata map[string]int
+	unmapped []Value
 	bytes    int
 	limit    int
 }
@@ -27,7 +28,9 @@ func NewResponseCollector(target Target, limits Limits) (*ResponseCollector, err
 // duplicate sequence frames never appear twice in a caller's output.
 func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, error) {
 	if event.Unmapped != nil {
-		return "", "", streamIssue(UnsupportedNative, "/unmapped", "response collection cannot discard unmapped stream fields")
+		if err := collector.collectUnmapped(event.Unmapped); err != nil {
+			return "", "", err
+		}
 	}
 	isAccepted, err := collector.replay.Consume(event)
 	if err != nil || !isAccepted {
@@ -94,6 +97,38 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 	default:
 		return "", "", nil
 	}
+}
+
+// collectUnmapped keeps wire fields without a declared mapping instead of
+// discarding them: relays attach billing and vendor metadata to stream frames,
+// and same-wire replay preserves those for gateway clients. Collected
+// responses carry the same evidence under Attributes["wire:stream"], bounded
+// by the shared buffer limit.
+func (collector *ResponseCollector) collectUnmapped(native *Native) error {
+	encoded, err := EncodeValue(native.Value)
+	if err != nil {
+		return err
+	}
+	if collector.bytes+len(encoded.Bytes()) > collector.limit {
+		return streamIssue(LimitExceeded, "/unmapped", "unmapped stream extensions exceed buffer limit")
+	}
+	collector.bytes += len(encoded.Bytes())
+	collector.unmapped = append(collector.unmapped, native.Value)
+	return nil
+}
+
+func (collector *ResponseCollector) attachUnmapped(response *Response) {
+	if len(collector.unmapped) == 0 {
+		return
+	}
+	value, err := EncodeValue(collector.unmapped)
+	if err != nil {
+		return
+	}
+	if response.Attributes == nil {
+		response.Attributes = Object{}
+	}
+	response.Attributes["wire:stream"] = value
 }
 
 // A terminal may wrap streamed leaves in output messages. Compare generated
@@ -238,6 +273,7 @@ func (collector *ResponseCollector) Finish() (*Response, error) {
 		return nil, err
 	}
 	collector.response.Usage = collector.replay.Usage()
+	collector.attachUnmapped(&collector.response)
 	return &collector.response, nil
 }
 
@@ -247,6 +283,7 @@ func (collector *ResponseCollector) Partial() (*Response, error) {
 	partial := collector.response
 	partial.Status = StringValue("incomplete")
 	partial.Usage = collector.replay.Usage()
+	collector.attachUnmapped(&partial)
 	value, err := EncodeValue(partial)
 	if err != nil {
 		return nil, err

@@ -63,3 +63,43 @@ func TestResponseCollectorDoesNotMaskFailuresOrGrowWithoutLimit(t *testing.T) {
 		t.Fatal("unbounded collection")
 	}
 }
+
+func TestResponseCollectorPreservesUnmappedStreamExtensions(t *testing.T) {
+	// 与收集目标同族的溯源：回放层要求 Unmapped 原生内容可归属（CanPreserveNative）。
+	family := Identity{Family: "collector-test", WireVersion: "1"}
+	target := replayTarget()
+	target.Protocol = family
+	collector, err := NewResponseCollector(target, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	extensions, _ := ParseValue([]byte(`{"/":{"system_fingerprint":"fp"},"/usage":{"provider_metrics":{"write_tokens":31}}}`))
+	provenance := Native{Source: Provenance{Protocol: family, Direction: DecodeEvent}, Value: extensions}
+	events := []Event{
+		{SchemaVersion: 1, Type: ItemStarted, ItemID: StringValue("text"), Item: &Node{Kind: TextNode, Payload: StringValue("hi")}, Unmapped: &provenance},
+		{SchemaVersion: 1, Type: ResponseFinished},
+	}
+	for _, event := range events {
+		if _, _, err := collector.Consume(event); err != nil {
+			t.Fatalf("unmapped extensions must not fail collection: %v", err)
+		}
+	}
+	response, err := collector.Finish()
+	if err != nil {
+		t.Fatal(err)
+	}
+	preserved, exists := response.Attributes["wire:stream"]
+	if !exists || !strings.Contains(string(preserved.Bytes()), "provider_metrics") {
+		t.Fatalf("unmapped stream extensions not preserved: %+v", response.Attributes)
+	}
+
+	bounded := DefaultLimits()
+	bounded.BufferBytes = 64
+	collector, err = NewResponseCollector(target, bounded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := collector.Consume(Event{SchemaVersion: 1, Type: ItemStarted, ItemID: StringValue("text"), Item: &Node{Kind: TextNode}, Unmapped: &provenance}); err == nil {
+		t.Fatal("unbounded unmapped extensions")
+	}
+}
