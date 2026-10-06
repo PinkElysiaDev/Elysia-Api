@@ -31,7 +31,8 @@ export function LoginPage() {
   const [error, setError] = useState('')
   const [phase, setPhase] = useState<'login' | 'entering'>('login')
   const [verifying, setVerifying] = useState(false)
-  const [traceReady, setTraceReady] = useState(false)
+  const [traceStatus, setTraceStatus] = useState<'loading' | 'ready' | 'failed'>('loading')
+  const [cinematicTrace, setCinematicTrace] = useState<CharacterTrace | null>(null)
   const [switching, setSwitching] = useState(false)
   const rootRef = useRef<HTMLElement>(null)
   const sceneRef = useRef<HTMLDivElement>(null)
@@ -109,22 +110,25 @@ export function LoginPage() {
   }, [theme])
 
   useEffect(() => {
-    if (!motion.allowed || traceRef.current) return
+    if (!motion.allowed) return
     const controller = new AbortController()
-    void Promise.all([loadCharacterTrace(controller.signal), import('@/lib/login-renderer')])
+    setTraceStatus('loading')
+    void Promise.all([loadCharacterTrace(controller.signal, videoRef.current), import('@/lib/login-renderer')])
       .then(([trace]) => {
         if (controller.signal.aborted) return
         traceRef.current = trace
-        setTraceReady(true)
-      }).catch(() => {
-        if (!controller.signal.aborted) setTraceReady(false)
+        setTraceStatus('ready')
+      }).catch((error: unknown) => {
+        if (controller.signal.aborted) return
+        setTraceStatus('failed')
+        console.warn('[login] Cinematic assets unavailable; using a simple transition.', error)
       })
     return () => controller.abort()
   }, [motion.allowed])
 
   useEffect(() => {
-    if (phase === 'entering' && !motion.allowed) finish(false)
-  }, [phase, motion.allowed, finish])
+    if (phase === 'entering' && !motion.enabled) finish(false)
+  }, [phase, motion.enabled, finish])
 
   const showError = (message: string) => {
     setError(message)
@@ -133,7 +137,7 @@ export function LoginPage() {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
-    if (phase !== 'login' || submitting.current) return
+    if (phase !== 'login' || submitting.current || pendingToken.current) return
     const token = value.trim()
     if (!token) { showError('请输入访问令牌'); return }
     submitting.current = true
@@ -156,10 +160,14 @@ export function LoginPage() {
       return
     }
     pendingToken.current = token
+    if (!latestMotion.current.enabled) { finish(false); return }
     const video = videoRef.current
     if (latestMotion.current.allowed && latestMotion.current.videoReady && traceRef.current
-      && video && !video.paused && video.readyState >= 2 && typeof video.requestVideoFrameCallback === 'function') setPhase('entering')
-    else finish(false)
+      && video && !video.paused && video.readyState >= 2 && typeof video.requestVideoFrameCallback === 'function') {
+      setCinematicTrace(traceRef.current)
+    }
+    // 登录后立即开始过场；素材仍未就绪时使用轻量效果，不增加等待阶段。
+    setPhase('entering')
   }
 
   const toggleMotion = () => {
@@ -168,12 +176,12 @@ export function LoginPage() {
     setSwitching(true)
     window.clearTimeout(switchTimer.current)
     switchTimer.current = window.setTimeout(() => setSwitching(false), 560)
-    if (phase === 'entering') finish(false)
+    if (phase !== 'login') finish(false)
   }
   const motionLabel = motion.reason || (motion.allowed ? '暂停动态效果' : '播放动态效果')
 
   return (
-    <main ref={rootRef} className="garden" data-phase={phase} data-motion={motion.allowed ? 'playing' : 'paused'} data-intro={motion.introEnabled} data-scene-intro={motion.sceneIntroEnabled} data-trace-ready={traceReady}>
+    <main ref={rootRef} className="garden" data-phase={phase} data-motion={motion.allowed ? 'playing' : 'paused'} data-intro={motion.introEnabled} data-scene-intro={motion.sceneIntroEnabled} data-trace-ready={traceStatus === 'ready'} data-trace-status={traceStatus}>
       <div ref={sceneRef} className="garden-scene" aria-hidden="true">
         <div ref={cameraRef} className="garden-camera">
           <img className="garden-image" src={`${MEDIA_BASE}elysia-login-poster.jpg`} alt="" />
@@ -209,7 +217,7 @@ export function LoginPage() {
 
       <section className="garden-content" aria-label="登录控制台">
         <div className="garden-login-motion">
-          <div className="garden-login" aria-hidden={phase !== 'login'}>
+          <div className="garden-login" aria-hidden={phase === 'entering'}>
             <h1>Elysia <i>API</i><span className="garden-title-dot">.</span></h1>
             <p className="garden-greeting">嗨，想我了吗？♪</p>
             <form className="garden-form" onSubmit={handleSubmit} noValidate>
@@ -231,9 +239,9 @@ export function LoginPage() {
               </div>
               {error && <span role="status" className="sr-only" id="token-error">{error}</span>}
               <div className="garden-submit-wrap">
-                <button className="garden-submit" type="submit" disabled={verifying || phase !== 'login'} aria-busy={verifying || phase === 'entering'}>
-                  <span>{verifying ? '正在验证' : phase === 'entering' ? '正在进入控制台' : '立即登录'}</span>
-                  {verifying || phase === 'entering' ? <Loader2 className="garden-spinner" size={18} /> : <ArrowRight size={19} />}
+                <button className="garden-submit" type="submit" disabled={verifying || phase !== 'login'} aria-busy={verifying || phase !== 'login'}>
+                  <span>{verifying ? '正在验证' : phase !== 'login' ? '正在进入控制台' : '立即登录'}</span>
+                  {verifying || phase !== 'login' ? <Loader2 className="garden-spinner" size={18} /> : <ArrowRight size={19} />}
                 </button>
               </div>
             </form>
@@ -242,9 +250,9 @@ export function LoginPage() {
       </section>
 
       <div ref={targetRef} className={`garden-echo ${ROLE_ANCHOR_CLASS}`} aria-hidden="true" style={roleMaskStyle()} />
-      {phase === 'entering' && traceRef.current && (
+      {phase === 'entering' && (
         <LoginCinematic rootRef={rootRef} sceneRef={sceneRef} cameraRef={cameraRef} videoRef={videoRef}
-          targetRef={targetRef} trace={traceRef.current} onFinish={finish} />
+          targetRef={targetRef} trace={cinematicTrace} onFinish={finish} />
       )}
       <footer className="garden-footer"><p className="garden-signature">「长风化作她的轺车，<wbr />四海落成她的圆圃」</p></footer>
     </main>

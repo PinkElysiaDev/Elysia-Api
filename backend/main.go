@@ -1,7 +1,9 @@
 package main
 
 import (
+	"io"
 	"log"
+	"os"
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/server"
@@ -13,6 +15,12 @@ func main() {
 	}
 
 	srv := server.New(config.GlobalConfig)
+	if os.Getenv("ELYSIA_PARENT_STDIN") == "1" {
+		go func() {
+			_, _ = io.Copy(io.Discard, os.Stdin)
+			srv.RequestShutdown()
+		}()
+	}
 
 	log.Printf("Starting Elysia-API backend %s on %s:%d",
 		server.BuildIdentity(),

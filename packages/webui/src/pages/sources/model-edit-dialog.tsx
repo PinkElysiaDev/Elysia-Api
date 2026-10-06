@@ -12,13 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Seg } from '@/components/ui/seg'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
@@ -122,16 +116,18 @@ export function ModelEditDialog({
             </div>
             <div className="space-y-2">
               <Label>类型</Label>
-              <Select value={form.type} onValueChange={(v) => setForm((p) => ({ ...p, type: v as ModelType }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="llm">LLM</SelectItem>
-                  <SelectItem value="embedding">Embedding</SelectItem>
-                  <SelectItem value="reranker">Reranker</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex min-h-[34px] items-center">
+                <Seg
+                  aria-label="模型类型"
+                  options={[
+                    { value: 'llm', label: 'LLM' },
+                    { value: 'embedding', label: 'Embedding' },
+                    { value: 'reranker', label: 'Reranker' },
+                  ]}
+                  value={form.type}
+                  onChange={(v) => setForm((p) => ({ ...p, type: v as ModelType }))}
+                />
+              </div>
             </div>
           </div>
 
@@ -149,19 +145,18 @@ export function ModelEditDialog({
             </div>
             <div className="space-y-2">
               <Label>思考模式</Label>
-              <Select
-                value={form.thinkingMode}
-                onValueChange={(v) => setForm((p) => ({ ...p, thinkingMode: v as ThinkingMode }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="both">双向 Both</SelectItem>
-                  <SelectItem value="thinking-only">仅思考 Thinking-only</SelectItem>
-                  <SelectItem value="non-thinking-only">仅非思考 Non-thinking</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex min-h-[34px] items-center">
+                <Seg
+                  aria-label="思考模式"
+                  options={[
+                    { value: 'both', label: '双向' },
+                    { value: 'thinking-only', label: '仅思考' },
+                    { value: 'non-thinking-only', label: '仅非思考' },
+                  ]}
+                  value={form.thinkingMode}
+                  onChange={(v) => setForm((p) => ({ ...p, thinkingMode: v as ThinkingMode }))}
+                />
+              </div>
             </div>
           </div>
 

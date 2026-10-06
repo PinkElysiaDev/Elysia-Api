@@ -75,10 +75,21 @@ type Server struct {
 	usageWriterMu sync.Mutex
 	usageWriter   *usageWriterState
 	// usageWriteGen 在 reset 时递增，丢掉队列里尚未落库的旧记录。
-	usageWriteGen  atomic.Uint64
-	usageSeq       atomic.Uint64
-	usagePersistMu sync.Mutex
-	shutdownOnce   sync.Once
+	usageWriteGen       atomic.Uint64
+	usageSeq            atomic.Uint64
+	usageWriteCtx       context.Context
+	usageWriteCancel    context.CancelFunc
+	usagePersistMu      sync.Mutex
+	shutdownOnce        sync.Once
+	lifecycleOnce       sync.Once
+	lifecycleCtx        context.Context
+	lifecycleCancel     context.CancelFunc
+	shutdownRequested   chan struct{}
+	shutdownRequestOnce sync.Once
+	requestMu           sync.Mutex
+	requestWG           sync.WaitGroup
+	stopping            bool
+	sourceRefreshWG     sync.WaitGroup
 	// shutdownDone 在关停序列（信号或 /__shutdown 触发）完成后 close，
 	// ListenAndServe 据此等待收尾后再返回，避免进程驻留。
 	shutdownDone chan struct{}
@@ -128,8 +139,10 @@ type Server struct {
 	skipOutboundValidation bool
 
 	// 协议 Agent 引擎（agent_routes.go 惰性装配：store 就绪后首次使用时构建）。
-	agentEngineOnce sync.Once
-	agentEngineInst *agent.Engine
+	agentEngineOnce   sync.Once
+	agentEngineMu     sync.Mutex
+	agentEngineClosed bool
+	agentEngineInst   *agent.Engine
 }
 
 func New(cfg *config.Config) *Server {
@@ -166,6 +179,7 @@ func New(cfg *config.Config) *Server {
 			return filepath.Join(filepath.Dir(dbPath), "model-catalog.json")
 		}),
 	}
+	server.initLifecycle()
 	if store, err := storage.OpenWithKey(cfg.DatabasePath, cfg.GetDBEncryptionKey()); err != nil {
 		server.startupErr = fmt.Errorf("open sqlite store: %w", err)
 		return server
@@ -1174,13 +1188,21 @@ func (s *Server) getOrCreateRateLimitStateLocked(groupID string) *rateLimitState
 }
 
 func (s *Server) validateOutbound(raw string) error {
+	return s.validateOutboundContext(context.Background(), raw)
+}
+
+func (s *Server) validateOutboundContext(ctx context.Context, raw string) error {
 	if s.skipOutboundValidation {
 		return nil
 	}
-	return validateOutboundBaseURL(raw)
+	return validateOutboundBaseURLContext(ctx, raw)
 }
 
 func validateOutboundBaseURL(raw string) error {
+	return validateOutboundBaseURLContext(context.Background(), raw)
+}
+
+func validateOutboundBaseURLContext(ctx context.Context, raw string) error {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
 		return fmt.Errorf("invalid URL: %w", err)
@@ -1203,7 +1225,7 @@ func validateOutboundBaseURL(raw string) error {
 	// 列表里，DNS 解析后逐 IP 判定自然覆盖；用户从列表移除环回段后 localhost
 	// 随之放行，与拨号层（secureControl）语义保持一致。
 
-	ips, err := net.LookupIP(hostname)
+	ips, err := net.DefaultResolver.LookupIP(ctx, "ip", hostname)
 	if err != nil {
 		return fmt.Errorf("dns resolve failed: %w", err)
 	}
@@ -1332,6 +1354,8 @@ func (s *Server) healthCheck(c *gin.Context) {
 }
 
 func (s *Server) ListenAndServe() error {
+	s.initLifecycle()
+	defer s.doShutdown()
 	if s.startupErr != nil {
 		return s.startupErr
 	}
@@ -1346,7 +1370,7 @@ func (s *Server) ListenAndServe() error {
 	log.Printf("Starting server on %s", addr)
 
 	// 显式持有 http.Server，便于 /__shutdown 与信号(SIGTERM/SIGINT)优雅关停。
-	s.httpServer = &http.Server{Addr: addr, Handler: s.engine}
+	s.httpServer = &http.Server{Addr: addr, Handler: http.HandlerFunc(s.serveHTTP), BaseContext: func(net.Listener) context.Context { return s.lifecycleCtx }}
 
 	// 先绑定再 Serve：监听失败（端口占用等）时不拉起浏览器。
 	listener, listenErr := net.Listen("tcp", addr)
@@ -1355,18 +1379,22 @@ func (s *Server) ListenAndServe() error {
 	}
 	launchConsoleBrowser(s.config.OpenBrowserOnStart, s.config.Server.Host, s.config.Server.Port)
 
-	// 信号与 /__shutdown 共用同一关停序列（shutdownOnce 去重），完成后 close
-	// shutdownDone；ListenAndServe 返回 ErrServerClosed 时等待它，确保两种触发
-	// 方式下进程都能真正退出（此前仅信号路径会通知，/__shutdown 会永久阻塞主
-	// goroutine，表现为端口已关但进程驻留）。
-	s.shutdownDone = make(chan struct{})
+	// Signals, the local shutdown endpoint and parent EOF share one shutdown sequence.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	defer signal.Stop(sigCh)
+	serveDone := make(chan struct{})
+	defer close(serveDone)
 	go func() {
-		<-sigCh
-		log.Printf("Shutdown signal received, draining...")
-		s.shutdownOnce.Do(s.runShutdownSequence)
+		select {
+		case <-sigCh:
+			log.Printf("Shutdown signal received, draining...")
+		case <-s.shutdownRequested:
+			log.Printf("Shutdown requested, draining...")
+		case <-serveDone:
+			return
+		}
+		s.doShutdown()
 	}()
 
 	err := s.httpServer.Serve(listener)
@@ -1380,10 +1408,32 @@ func (s *Server) ListenAndServe() error {
 	return err
 }
 
-// runShutdownSequence 执行优雅关停并 close shutdownDone（只能经 shutdownOnce 调用一次）。
-func (s *Server) runShutdownSequence() {
-	defer close(s.shutdownDone)
-	s.doShutdown()
+func (s *Server) initLifecycle() {
+	s.lifecycleOnce.Do(func() {
+		s.lifecycleCtx, s.lifecycleCancel = context.WithCancel(context.Background())
+		s.usageWriteCtx, s.usageWriteCancel = context.WithCancel(context.Background())
+		s.shutdownRequested = make(chan struct{})
+		s.shutdownDone = make(chan struct{})
+	})
+}
+
+// RequestShutdown is safe before ListenAndServe binds its listener.
+func (s *Server) RequestShutdown() {
+	s.initLifecycle()
+	s.shutdownRequestOnce.Do(func() { close(s.shutdownRequested) })
+}
+
+func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
+	s.requestMu.Lock()
+	if s.stopping {
+		s.requestMu.Unlock()
+		http.Error(w, "server is shutting down", http.StatusServiceUnavailable)
+		return
+	}
+	s.requestWG.Add(1)
+	s.requestMu.Unlock()
+	defer s.requestWG.Done()
+	s.engine.ServeHTTP(w, r)
 }
 
 // shutdown 处理 /__shutdown：优雅关停 http.Server（给在途请求一个超时窗口），
@@ -1391,30 +1441,78 @@ func (s *Server) runShutdownSequence() {
 func (s *Server) shutdown(c *gin.Context) {
 	s.logSystemEvent("info", "server shutdown requested", nil)
 	c.JSON(http.StatusOK, gin.H{"shuttingDown": true})
-	go s.shutdownOnce.Do(s.runShutdownSequence)
+	s.RequestShutdown()
 }
 
 func (s *Server) doShutdown() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if s.httpServer != nil {
-		if err := s.httpServer.Shutdown(ctx); err != nil {
-			log.Printf("graceful shutdown error: %v", err)
+	s.initLifecycle()
+	s.shutdownOnce.Do(func() {
+		defer close(s.shutdownDone)
+		deadline := time.Now().Add(12 * time.Second)
+		stopWrites := time.AfterFunc(time.Until(deadline), s.usageWriteCancel)
+		defer stopWrites.Stop()
+		defer s.usageWriteCancel()
+		ctx, cancel := context.WithDeadline(context.Background(), deadline)
+		defer cancel()
+		s.requestMu.Lock()
+		s.stopping = true
+		s.requestMu.Unlock()
+		s.lifecycleCancel()
+		if s.healthChecker != nil {
+			s.healthChecker.cancel()
 		}
-	}
-	// http.Server.Shutdown 已等待在途请求结束，此时不会再有新记录入队。
-	// 先停健康检查 goroutine，再冲刷 usage 队列把缓冲中的记录落库，
-	// 避免优雅关停时丢失计费/统计记录与 goroutine 泄漏。
-	if s.healthChecker != nil {
-		s.healthChecker.shutdown()
-	}
-	// 目录周期循环同样停机（裸 for+sleep 会泄漏 goroutine）。
-	if s.catalog != nil {
-		s.catalog.shutdown()
-	}
-	// 日志清理可能正在删行/删资产目录，先等它结束再冲刷 usage 队列。
-	if s.usageRetention != nil {
-		s.usageRetention.shutdown()
-	}
-	s.stopUsageWriter()
+		if s.catalog != nil {
+			s.catalog.cancel()
+		}
+		if s.usageRetention != nil {
+			s.usageRetention.cancel()
+		}
+		s.agentEngineMu.Lock()
+		s.agentEngineClosed = true
+		agentEngine := s.agentEngineInst
+		s.agentEngineMu.Unlock()
+		storageSafe := true
+		if agentEngine != nil {
+			if err := agentEngine.Shutdown(ctx); err != nil {
+				log.Printf("agent shutdown error: %v", err)
+				storageSafe = false
+			}
+		}
+		if s.httpServer != nil {
+			httpCtx, stopHTTP := context.WithTimeout(ctx, 5*time.Second)
+			if err := s.httpServer.Shutdown(httpCtx); err != nil {
+				log.Printf("graceful shutdown error: %v", err)
+				_ = s.httpServer.Close()
+			}
+			stopHTTP()
+		}
+		// Cancellation rejects new refresh tasks before waiting on both owners.
+		s.sourceRefreshMu.Lock()
+		s.sourceRefreshMu.Unlock()
+		requestsDone := make(chan struct{})
+		go func() { s.requestWG.Wait(); s.sourceRefreshWG.Wait(); close(requestsDone) }()
+		select {
+		case <-requestsDone:
+		case <-ctx.Done():
+			log.Printf("request shutdown error: %v", ctx.Err())
+			storageSafe = false
+		}
+		if s.healthChecker != nil {
+			s.healthChecker.shutdown()
+		}
+		if s.catalog != nil {
+			s.catalog.shutdown()
+		}
+		if s.usageRetention != nil {
+			s.usageRetention.shutdown()
+		}
+		s.stopUsageWriter()
+		if s.store != nil && storageSafe {
+			if err := s.store.Close(); err != nil {
+				log.Printf("store close error: %v", err)
+			}
+		} else if s.store != nil {
+			log.Printf("shutdown deadline reached; active work still owns storage, leaving cleanup to process exit")
+		}
+	})
 }

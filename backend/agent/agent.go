@@ -34,6 +34,7 @@ type Engine struct {
 
 	mu      sync.Mutex
 	running map[string]*turnHandle
+	closed  bool
 }
 
 // Options 引擎行为参数（零值字段取默认）。
@@ -140,6 +141,9 @@ func (e *Engine) IsRunning(sessionID string) bool {
 func (e *Engine) begin(sessionID string, timeout time.Duration) (context.Context, *turnHandle, context.CancelFunc, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.closed {
+		return nil, nil, nil, ErrEngineClosed
+	}
 	if _, exists := e.running[sessionID]; exists {
 		return nil, nil, nil, ErrSessionRunning
 	}
@@ -180,6 +184,27 @@ func (e *Engine) Stop(sessionID string) bool {
 	case <-time.After(stopDrainWait):
 	}
 	return true
+}
+
+// Shutdown prevents new turns and cancels all active turns before the host closes storage.
+func (e *Engine) Shutdown(ctx context.Context) error {
+	e.mu.Lock()
+	e.closed = true
+	handles := make([]*turnHandle, 0, len(e.running))
+	for _, handle := range e.running {
+		handle.stopped.Store(true)
+		handle.cancel()
+		handles = append(handles, handle)
+	}
+	e.mu.Unlock()
+	for _, handle := range handles {
+		select {
+		case <-handle.done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
 }
 
 // RunTurn 开始一个新轮次。input 非 nil 时先追加用户消息；input 为 nil 表示
@@ -277,9 +302,15 @@ const (
 )
 
 // emitTerminal 发送终态事件：尽力送达（5s 窗口），随后 channel 将被关闭。
-func emitTerminal(events chan<- Event, event Event) {
+func emitTerminal(ctx context.Context, events chan<- Event, event Event) {
 	select {
 	case events <- event:
+		return
+	default:
+	}
+	select {
+	case events <- event:
+	case <-ctx.Done():
 	case <-time.After(terminalEmitWait):
 	}
 }
@@ -292,15 +323,17 @@ func (e *Engine) startTurn(ctx context.Context, sessionID string, handle *turnHa
 	defer func() {
 		if r := recover(); r != nil {
 			message := e.reportTurnPanic(context.Background(), sessionID, r, "startTurn")
-			emitTerminal(events, Event{Type: EventError, Text: message, Retryable: true})
+			// panic 路径不用轮次 ctx：ctx 可能正是 panic 诱因（已取消），
+			// Background + emitTerminal 的 5s 上限保证错误事件尽力送达。
+			emitTerminal(context.Background(), events, Event{Type: EventError, Text: message, Retryable: true})
 			e.setStatus(context.Background(), sessionID, StatusIdle, true, events)
-			emitTerminal(events, Event{Type: EventTurnDone})
+			emitTerminal(ctx, events, Event{Type: EventTurnDone})
 		}
 	}()
 	started := time.Now()
 	session, err := e.store.GetSession(ctx, sessionID)
 	if err != nil {
-		emitTerminal(events, Event{Type: EventError, Text: fmt.Sprintf("读取会话失败: %v", err)})
+		emitTerminal(ctx, events, Event{Type: EventError, Text: fmt.Sprintf("读取会话失败: %v", err)})
 		return
 	}
 	if session == nil {
@@ -532,7 +565,7 @@ func (e *Engine) handleCallFailure(ctx context.Context, sessionID string, sessio
 	if _, cerr := e.store.AppendMessage(finCtx, sessionID, RoleSystem, SystemContent{Kind: "error", Text: fmt.Sprintf("%s: %v", reason, err)}, "", nil); cerr != nil { //nolint:staticcheck // 落库失败无从恢复，继续走错误回报
 	}
 	e.setStatus(finCtx, sessionID, StatusIdle, false, events)
-	emitTerminal(events, Event{Type: EventError, Text: fmt.Sprintf("%s: %v", reason, err), Retryable: retryable})
+	emitTerminal(ctx, events, Event{Type: EventError, Text: fmt.Sprintf("%s: %v", reason, err), Retryable: retryable})
 }
 
 // modelLoop 运行「模型调用 → 工具执行」循环直到模型给出终稿正文、暂停审批、
@@ -654,7 +687,7 @@ func (e *Engine) finalizeTurn(ctx context.Context, sessionID string, session *Se
 		usage := *usageTotal
 		event.Usage = &usage
 	}
-	emitTerminal(events, event)
+	emitTerminal(ctx, events, event)
 }
 
 // executeCalls 执行一批工具调用。门控与非并行工具保持原顺序：遇到首个需
@@ -723,7 +756,7 @@ func (e *Engine) pauseForApproval(ctx context.Context, sessionID string, session
 	if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
 		return false, err
 	}
-	emitTerminal(events, Event{Type: EventApprovalPending, Approval: MaskedPendingAction(pending)})
+	emitTerminal(ctx, events, Event{Type: EventApprovalPending, Approval: MaskedPendingAction(pending)})
 	return true, nil
 }
 
@@ -757,7 +790,7 @@ func (e *Engine) pauseForPlan(ctx context.Context, sessionID string, session *Se
 	if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
 		return
 	}
-	emitTerminal(events, Event{Type: EventApprovalPending, Approval: MaskedPendingAction(pending)})
+	emitTerminal(ctx, events, Event{Type: EventApprovalPending, Approval: MaskedPendingAction(pending)})
 }
 
 // pauseForQuestion 把 ask_user 变成 question 型暂停。参数不合法时返回 false，
@@ -772,7 +805,7 @@ func (e *Engine) pauseForQuestion(ctx context.Context, sessionID string, remaini
 	if err := e.store.UpdateSessionState(ctx, sessionID, SessionStateUpdate{Status: &waiting, PendingAction: pending}); err != nil {
 		return false
 	}
-	emitTerminal(events, Event{Type: EventApprovalPending, Approval: MaskedPendingAction(pending)})
+	emitTerminal(ctx, events, Event{Type: EventApprovalPending, Approval: MaskedPendingAction(pending)})
 	return true
 }
 
@@ -1210,7 +1243,7 @@ func (e *Engine) failTurn(ctx context.Context, sessionID string, events chan Eve
 	finCtx := context.WithoutCancel(ctx)
 	_, _ = e.store.AppendMessage(finCtx, sessionID, RoleSystem, SystemContent{Kind: "error", Text: message}, "", nil)
 	e.setStatus(finCtx, sessionID, StatusIdle, false, events)
-	emitTerminal(events, Event{Type: EventError, Text: message, Retryable: true})
+	emitTerminal(ctx, events, Event{Type: EventError, Text: message, Retryable: true})
 }
 
 // composeInstructions 组装每次模型调用的系统提示词：宿主领域提示 + 方案

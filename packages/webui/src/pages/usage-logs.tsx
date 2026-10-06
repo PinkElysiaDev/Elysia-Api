@@ -233,7 +233,7 @@ export function UsageLogsPage() {
                       role="button"
                       tabIndex={0}
                       aria-label={`查看请求 ${log.requestId} 详情`}
-                      className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:color-mix(in_srgb,var(--rose)_50%,transparent)]"
+                      className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                       onClick={() => setDetailId(log.requestId)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {

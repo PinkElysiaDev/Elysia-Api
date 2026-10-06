@@ -325,8 +325,9 @@
   width: 100%;
   translate: calc(var(--par-x) * -6px) calc(var(--par-y) * -4px);
 }
-.garden-brand, .garden-footer { transition: opacity 0.4s ease; }
+.garden-brand, .garden-actions, .garden-footer { transition: opacity 0.4s ease; }
 .garden[data-phase='entering'] .garden-brand,
+.garden[data-phase='entering'] .garden-actions,
 .garden[data-phase='entering'] .garden-footer { opacity: 0; pointer-events: none; }
 .garden[data-phase='entering'] .garden-login { opacity: 0; transform: translateY(-8px); pointer-events: none; }
 .garden[data-cinematic='ready'] .garden-scene { visibility: hidden; }
@@ -474,3 +475,17 @@
 }
 .dark .garden-interlude-cn { color: #ecd0e2; text-shadow: 0 0 24px rgb(240 174 210 / 0.4); }
 .garden-echo { aspect-ratio: 760 / 808; opacity: 0; background: linear-gradient(172deg, var(--grad-a) 8%, var(--grad-b) 92%); }
+
+/* 资源超时或 WebGL 不可用时也保留登录反馈，不依赖视频、轨迹或 GPU。 */
+.garden[data-cinematic='fallback'] .garden-scene,
+.garden[data-cinematic='fallback'] .garden-aurora {
+  animation: garden-fallback-scene 1.4s ease both;
+}
+.garden[data-cinematic='fallback'] .garden-interlude-cn {
+  animation: garden-fallback-text 1.4s ease both;
+}
+@keyframes garden-fallback-scene { from { opacity: 1; } to { opacity: 0; } }
+@keyframes garden-fallback-text {
+  0%, 100% { opacity: 0; filter: blur(6px); }
+  25%, 65% { opacity: 1; filter: blur(0); }
+}
