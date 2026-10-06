@@ -54,8 +54,9 @@ func TestRuntimeRefreshUpgradesOnlyKnownPresetsAndPreservesDrafts(t *testing.T) 
 		if id == "responses-api" {
 			edited := old.Definition()
 			edited.Name = "unfinished operator draft"
+			edited.ID = "responses-api-operator"
 			value := mustEncodedProtocolValue(t, edited)
-			if _, _, err := service.SaveDraft(t.Context(), id, value.Bytes(), old.Hash()); err != nil {
+			if _, _, err := service.SaveDraft(t.Context(), "responses-api-operator", value.Bytes(), ""); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -64,7 +65,7 @@ func TestRuntimeRefreshUpgradesOnlyKnownPresetsAndPreservesDrafts(t *testing.T) 
 	if err := server.store.SaveProtocolBinding(t.Context(), bindings[0]); err != nil {
 		t.Fatal(err)
 	}
-	draftBefore, err := server.store.ReadProtocolDraft(t.Context(), "responses-api")
+	draftBefore, err := server.store.ReadProtocolDraft(t.Context(), "responses-api-operator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +85,7 @@ func TestRuntimeRefreshUpgradesOnlyKnownPresetsAndPreservesDrafts(t *testing.T) 
 			t.Fatal("missing current-engine evidence", err, report)
 		}
 	}
-	draftAfter, err := server.store.ReadProtocolDraft(t.Context(), "responses-api")
+	draftAfter, err := server.store.ReadProtocolDraft(t.Context(), "responses-api-operator")
 	if err != nil || !reflect.DeepEqual(draftBefore, draftAfter) {
 		t.Fatal("operator draft changed", err)
 	}
@@ -114,7 +115,6 @@ func TestRuntimeRefreshPreservesCustomRevisionsAndBlocksInvalidEvidence(t *testi
 		t.Run(map[bool]string{false: "preserve", true: "block"}[isInvalid], func(t *testing.T) {
 			server, _ := newProtocolAdminTestServer(t)
 			definition := loadGatewayDefinition(t, "text-alpha")
-			definition.ID = "chat-completions-api"
 			definition.Name = "operator-owned protocol"
 			if isInvalid {
 				definition.Samples[0].Expected = mustProtocolValue(t, `{"schemaVersion":1,"content":[]}`)
@@ -144,5 +144,35 @@ func TestRuntimeRefreshPreservesCustomRevisionsAndBlocksInvalidEvidence(t *testi
 				t.Fatal("custom content replaced or inactive presets enabled")
 			}
 		})
+	}
+}
+
+func TestRuntimeRefreshResetsPresetRevisionsToShipped(t *testing.T) {
+	server, _ := newProtocolAdminTestServer(t)
+	// 在预置 ID 下持久化一份「运营者持有」修订（带无效样例）：预置只读策略
+	// 下，启动刷新无条件回归 shipped 版本并重建证据，而不是被旧修订阻断。
+	definition := loadGatewayDefinition(t, "text-alpha")
+	definition.ID = "chat-completions-api"
+	definition.Name = "operator-owned protocol"
+	definition.Samples[0].Expected = mustProtocolValue(t, `{"schemaVersion":1,"content":[]}`)
+	persistPreviousRevision(t, server, mustEncodedProtocolValue(t, definition))
+	if err := server.reloadProtocolRuntime(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	service, err := server.protocolService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	active, exists := service.Pin("chat-completions-api")
+	if !exists {
+		t.Fatal("preset not active after refresh")
+	}
+	shipped := presetDefinition(t, "chat-completions-api")
+	if active.Definition().Name == "operator-owned protocol" || active.Identity().Revision != shipped.Version {
+		t.Fatal("operator revision under a preset ID survived refresh", active.Identity())
+	}
+	report, err := server.store.ReadProtocolReport(t.Context(), "chat-completions-api", active.Hash())
+	if err != nil || !report.Passed {
+		t.Fatal("shipped replacement lacks current-engine evidence", err, report)
 	}
 }

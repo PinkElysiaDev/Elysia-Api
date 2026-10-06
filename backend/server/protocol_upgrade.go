@@ -132,12 +132,21 @@ func (s *Server) prepareProtocolUpgrade(ctx context.Context, input protocolUpgra
 		if _, exists := preview.Definitions[row.ID]; exists {
 			continue
 		}
-		if replacement, exists := input.Definitions[row.ID]; exists {
-			preview.Definitions[row.ID] = replacement
+		if preset, exists := presets[row.ID]; exists {
+			// 预置只读：无论行是否被改动，一律采用 shipped 版本；被丢弃的
+			// 本地修改留审计日志，定制需求走「复制为新协议」。
+			preview.Definitions[row.ID] = preset
+			if !isUnmodifiedLegacyPreset(row) {
+				s.logSystemEvent("info", "preset protocol reset to shipped version; local edits discarded", map[string]any{
+					"protocol":      row.ID,
+					"discardedHash": presetContentHash(row.Config),
+					"discardedSize": len(row.Config),
+				})
+			}
 			continue
 		}
-		if preset, exists := presets[row.ID]; exists && isUnmodifiedLegacyPreset(row) {
-			preview.Definitions[row.ID] = preset
+		if replacement, exists := input.Definitions[row.ID]; exists {
+			preview.Definitions[row.ID] = replacement
 			continue
 		}
 		definition, issues := relay.ImportLegacyProtocol([]byte(row.Config), protocol.CapabilitySet{protocol.TextCapability: true})

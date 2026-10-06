@@ -3,9 +3,11 @@ package server
 import (
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -32,11 +34,12 @@ func TestProtocolUpgradePreviewPreservesDraftAndLegacyEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	fields["name"] = protocol.StringValue("Unfinished edited draft")
+	fields["id"] = protocol.StringValue("responses-api-draft")
 	value, err := protocol.EncodeValue(fields)
 	if err != nil {
 		t.Fatal(err)
 	}
-	draft, _, err := service.SaveDraft(t.Context(), "responses-api", value.Bytes(), "")
+	draft, _, err := service.SaveDraft(t.Context(), "responses-api-draft", value.Bytes(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,13 +64,15 @@ func TestProtocolUpgradePreviewPreservesDraftAndLegacyEdits(t *testing.T) {
 	if err != nil || saved.Hash != draft.Hash {
 		t.Fatal("migration overwrote editor draft", saved, err)
 	}
-	active, exists := service.Pin(draft.ProtocolID)
-	if !exists || active.Definition().Name == "Unfinished edited draft" {
-		t.Fatal("migration activated unfinished editor state")
+	if active, exists := service.Pin(draft.ProtocolID); exists {
+		t.Fatal("migration activated an unrelated editor draft", active.Definition().Name)
+	}
+	if active, exists := service.Pin("responses-api"); !exists || active.Definition().Name == "Unfinished edited draft" {
+		t.Fatal("preset not activated with shipped content")
 	}
 }
 
-func TestProtocolUpgradeEditedLegacyRequiresExplicitReplacement(t *testing.T) {
+func TestProtocolUpgradeResetsEditedLegacyPresetToShipped(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
 	row := storage.CustomProtocol{ID: "responses-api", Name: "edited", Version: "7", Config: `{"id":"responses-api","name":"edited","version":"7","request":{"method":"POST","path":"/private","body":{"field":"model"}},"response":{}}`}
 	if err := s.store.UpsertCustomProtocol(t.Context(), row); err != nil {
@@ -77,15 +82,41 @@ func TestProtocolUpgradeEditedLegacyRequiresExplicitReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if preview.Ready || len(preview.Issues) == 0 {
-		t.Fatal("edited legacy replaced silently")
+	// 预置只读：被改动的预置行无条件回归 shipped 版本，迁移保持就绪。
+	if !preview.Ready {
+		t.Fatal(preview.Issues)
 	}
-	if receipt, err := s.store.ProtocolUpgradeStatus(t.Context()); err != nil || receipt != nil {
-		t.Fatal(receipt, err)
+	shipped, err := builtin.Definitions()
+	if err != nil {
+		t.Fatal(err)
 	}
-	rows, err := s.store.ListCustomProtocols(t.Context())
-	if err != nil || len(rows) != 1 || rows[0].Config != row.Config {
-		t.Fatal("preview changed legacy content", rows, err)
+	var expected protocol.Value
+	for _, candidate := range shipped {
+		var definition protocol.Definition
+		if err := candidate.Decode(&definition); err != nil {
+			t.Fatal(err)
+		}
+		if definition.ID == "responses-api" {
+			expected = candidate
+			break
+		}
+	}
+	if expected.IsZero() || string(preview.Definitions["responses-api"].Bytes()) != string(expected.Bytes()) {
+		t.Fatal("edited legacy preset was not reset to the shipped definition")
+	}
+	_, logs, err := s.store.QuerySystemLogs(t.Context(), 20, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	audited := false
+	for _, entry := range logs {
+		if strings.Contains(entry.Message, "preset protocol reset to shipped version") {
+			audited = true
+			break
+		}
+	}
+	if !audited {
+		t.Fatal("discarded preset edits were not audited")
 	}
 }
 

@@ -14,23 +14,16 @@ func TestEnabledProtocolCatalogUsesPinnedRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	compiled, _ := service.Pin("chat-completions-api")
-	draft, err := service.ReadDraft(t.Context(), "chat-completions-api")
-	if err != nil {
-		t.Fatal(err)
-	}
+	// 预置只读：未验证草稿只能以副本 ID 存在（原实现会在预置 ID 上存草稿）。
 	definition := compiled.Definition()
 	definition.Name = "unverified draft"
+	definition.ID = "unactivated-copy"
 	delete(definition.Operations, "models")
 	definition.Agent = nil
 	raw, err := json.Marshal(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err = service.SaveDraft(t.Context(), definition.ID, raw, draft.Hash); err != nil {
-		t.Fatal(err)
-	}
-	definition.ID = "unactivated-copy"
-	raw, _ = json.Marshal(definition)
 	if _, _, err = service.SaveDraft(t.Context(), definition.ID, raw, ""); err != nil {
 		t.Fatal(err)
 	}

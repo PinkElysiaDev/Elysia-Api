@@ -9,7 +9,6 @@ import (
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -65,12 +64,14 @@ func TestProtocolUpgradeStartupAndRestart(t *testing.T) {
 func TestProtocolUpgradeRepairAPIIsIdempotentAndGatesReload(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
 	s.setupProtocolRevisionRoutes(s.engine.Group("/api/admin"))
-	row := storage.CustomProtocol{ID: "responses-api", Name: "edited", Config: `{"id":"responses-api","request":{"path":"/private"}}`}
+	// 预置只读后被改的预置会自动回归 shipped 版本；真正阻断迁移的是
+	// 无法自动导入的旧自定义协议（此处为带模型发现块的极简配置）。
+	row := storage.CustomProtocol{ID: "legacy-custom", Name: "custom", Config: `{"id":"legacy-custom","name":"custom","models":{"path":"/models"}}`}
 	if err := s.store.UpsertCustomProtocol(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.initializeProtocolRuntime(t.Context()); err == nil || s.protocolRuntimeError() == nil {
-		t.Fatal("edited legacy configuration did not close generation", err)
+		t.Fatal("unimportable legacy configuration did not close generation", err)
 	}
 	context, recorder := adminProtocolContext(http.MethodPost, "/v1/responses", `{"model":"m","input":"hi"}`)
 	s.serveVersionedPublicIngress(context)
@@ -86,19 +87,9 @@ func TestProtocolUpgradeRepairAPIIsIdempotentAndGatesReload(t *testing.T) {
 		t.Fatal("client report accepted", forged.Code, forged.Body)
 	}
 	input := protocolUpgradeInput{Definitions: map[string]protocol.Value{}}
-	definitions, err := builtin.Definitions()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, value := range definitions {
-		var definition protocol.Definition
-		if err := value.Decode(&definition); err != nil {
-			t.Fatal(err)
-		}
-		if definition.ID == row.ID {
-			input.Definitions[row.ID] = value
-		}
-	}
+	replacement := loadGatewayDefinition(t, "text-alpha")
+	replacement.ID = row.ID
+	input.Definitions[row.ID] = mustEncodedProtocolValue(t, replacement)
 	raw, _ := json.Marshal(input)
 	preview := revisionAdminRequest(t, s.engine, http.MethodPost, "/api/admin/protocols/migration/preview", raw, "")
 	if preview.Code != http.StatusOK {

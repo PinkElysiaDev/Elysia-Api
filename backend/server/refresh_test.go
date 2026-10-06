@@ -198,15 +198,27 @@ func TestRefreshEmptyModelListKeepsExistingModels(t *testing.T) {
 
 func activateDiscoveryPresets(t *testing.T, s *Server) {
 	t.Helper()
+	// 预置只读：测试种子绕过作者路径（SaveDraft/Activate 已拒绝预置 ID），
+	// 直接持久化修订+激活+草稿，并用当前编译器重写离线证据后整体装载。
 	definitions, err := builtin.Definitions()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, value := range definitions {
-		var definition protocol.Definition
-		if err := value.Decode(&definition); err != nil {
+		compiled := persistPreviousRevision(t, s, value)
+		report := protocol.Verify(t.Context(), compiled)
+		if !report.Passed {
+			t.Fatal(compiled.Identity().DefinitionID, report.Issues)
+		}
+		if err := s.store.SaveProtocolReport(t.Context(), compiled.Identity().DefinitionID, compiled.Hash(), report); err != nil {
 			t.Fatal(err)
 		}
-		activateGatewayDefinition(t, s, definition)
+	}
+	service, err := s.protocolService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Reload(t.Context()); err != nil {
+		t.Fatal(err)
 	}
 }

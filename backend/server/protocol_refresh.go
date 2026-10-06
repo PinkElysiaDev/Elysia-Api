@@ -45,7 +45,9 @@ func (s *Server) refreshProtocolRuntime(ctx context.Context, service *protocol.S
 			return err
 		}
 		definition := revision.Definition
-		if replacement, exists := presets[activation.ProtocolID]; exists && builtin.IsPreviousDefinition(activation.ProtocolID, definition) {
+		// 预置只读：启动时无条件跟进 shipped 版本，本地激活的旧/改版本被
+		// 替换并走下方重验链（hash 未变时为无操作）。
+		if replacement, exists := presets[activation.ProtocolID]; exists {
 			definition = replacement
 		}
 		compiled, issues := service.Validate(definition.Bytes())
