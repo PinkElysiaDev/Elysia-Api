@@ -47,6 +47,10 @@ export function buildExportPayload(detail: UsageLogDetail) {
       groupName: detail.groupName,
       modelName: detail.modelName,
       sourceId: detail.sourceId,
+      ingressRevision: detail.ingressRevision,
+      upstreamRevision: detail.upstreamRevision,
+      cacheSynthesis: detail.cacheSynthesis,
+      systemStructure: detail.systemStructure,
       conversion: {
         from: detail.sourceFormat || detail.inputFormat || '',
         to: detail.targetFormat || detail.platform || '',

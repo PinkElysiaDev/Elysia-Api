@@ -224,6 +224,11 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                 </section>
               )}
 
+              {detail.systemStructure && <details className="mb-5 rounded-md border p-3 text-xs">
+                <summary className="cursor-pointer">System 结构诊断 · 缓存合成{detail.cacheSynthesis ? '开启' : '关闭'}</summary>
+                <p className="mt-2 break-all">目标协议：{detail.targetFormat} · 修订：{detail.upstreamRevision}</p>
+                <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap">{JSON.stringify(detail.systemStructure, null, 2)}</pre>
+              </details>}
               <section className="mb-5">
                 <SheetSectionTitle>链路原文</SheetSectionTitle>
                 <ChainBodies key={detail.requestId} detail={detail} />

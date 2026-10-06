@@ -6,6 +6,11 @@ export interface ProtocolSchema { compilerVersion: string; transports: string[];
 export interface ProtocolDraft { protocolId: string; hash: string; definition: string; updatedAt: string }
 export interface ProtocolRevision { protocolId: string; hash: string; definition: string; createdAt: string }
 export interface Activation { protocolId: string; revisionHash: string }
+export interface ProtocolHistoryItem { id: string; protocolId: string; hash: string; name: string; version: string; reason: 'preset_replaced' | 'custom_deleted'; isDraft: boolean; createdAt: string; archivedAt: string; definition?: string }
+export interface ProtocolReference { kind: string; id: string; sourceId?: string; name?: string }
+export interface ProtocolBindingEntry { kind: 'source' | 'model' | 'group'; sourceId: string; modelId?: string; groupId?: string; unbound?: boolean; binding: { protocolId?: string; revisionHash?: string; capabilities?: Record<string, boolean>; transports?: string[]; operation?: string } }
+export interface ProtocolReferences { baseline: string; references: ProtocolReference[]; affectedModels: ProtocolReference[] }
+export interface ProtocolHistoryDetail { item: ProtocolHistoryItem & { definition: string }; report?: VerificationReport; references: ProtocolReference[]; currentHash?: string; changes?: unknown[] }
 export interface VerificationReport { definitionHash: string; compilerVersion: string; samplesHash: string; kind: string; passed: boolean; covered: string[]; checks: { sampleId: string; direction?: string; passed: boolean; capabilities?: string[] }[]; issues: ConversionIssue[] }
 export interface Preview { exactJSON: string; issues: ConversionIssue[] }
 export interface ProtocolListing { drafts: ProtocolDraft[]; active: Activation[]; loaded: Record<string, string>; presets?: string[] }
@@ -23,6 +28,17 @@ async function previewRequest(rawBody: string): Promise<Preview> {
 
 /** Protocol authoring shares server compilation and verification with forwarding. */
 export const protocolAPI = {
+  bindings: () => request<ProtocolBindingEntry[]>(`${base}/bindings`),
+  saveBinding: (entry: ProtocolBindingEntry) => request<ProtocolBindingEntry>(`${base}/bindings`, { method: 'PUT', body: entry }),
+  history: () => request<{ items: ProtocolHistoryItem[] }>(`${base}/history`).then((result) => result.items),
+  async historyDetail(id: string): Promise<ProtocolHistoryDetail> {
+    const { document, data } = responseData(await request<string>(`${base}/history/${identifier(id)}`, { rawResponse: true }))
+    return { ...data, item: preserveDefinition(data.item, document, '/data/item/definition') }
+  },
+  restore: (archiveId: string, id: string, name: string) => request<{ protocolId: string; activated: boolean; issues: ConversionIssue[] }>(`${base}/history/${identifier(archiveId)}/restore`, { method: 'POST', body: { id, name } }),
+  deleteHistory: (id: string) => request(`${base}/history/${identifier(id)}`, { method: 'DELETE' }),
+  references: (id: string) => request<ProtocolReferences>(`${base}/${identifier(id)}/references`),
+  archive: (id: string, baseline: string, mode: 'block' | 'replace' | 'unbind', targetProtocolId?: string) => request(`${base}/${identifier(id)}/archive`, { method: 'POST', body: { baseline, mode, targetProtocolId } }),
   enabled: () => request<{ items: EnabledProtocol[] }>(`${base}/enabled`).then((result) => result.items),
   schema: () => request<ProtocolSchema>(`${base}/schema`),
   async list(): Promise<ProtocolListing> {

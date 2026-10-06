@@ -29,6 +29,7 @@ export const PLATFORMS: { value: string; label: string; hint: string }[] = [
 // 把历史 platform 值归一化到新的四个 apiFormat，使旧源在新下拉里正确回显
 // （与后端 NormalizeAPIFormat 保持一致）。
 export function normalizePlatform(raw: string | undefined): Platform {
+  if (raw === '') return '' as Platform
   const normalized = (raw ?? '').trim().toLowerCase()
   if (normalized.startsWith('custom:')) return normalized as Platform
   switch (normalized) {

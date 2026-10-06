@@ -18,6 +18,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
 import { revalidate } from '@/lib/hooks'
 import type { Model, ModelType, ThinkingMode } from '@/lib/types'
+import { ModelProtocolBinding } from './model-protocol-binding'
 
 // 模型编辑弹窗（方向4）：对拉取/手动入库的单个模型做编辑与启停。
 // 能力字段一经保存即标记 manual，后续刷新保留用户值（capability_source 语义）。
@@ -109,6 +110,7 @@ export function ModelEditDialog({
         </DialogHeader>
 
         <div className="grid gap-4">
+          {open && <ModelProtocolBinding key={`${model.sourceId}/${model.id}`} model={model} disabled={saving} />}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>显示名称</Label>

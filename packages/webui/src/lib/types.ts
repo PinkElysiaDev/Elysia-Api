@@ -20,6 +20,7 @@ export type ApiResult<T> = ApiEnvelope<T> | ApiErrorEnvelope
 // API 协议（线路 API），与上游 wire API 一一对应。旧值 openai/openai-compatible/claude
 // 仍可能出现在存量数据里，后端读取时会归一化；类型保留它们避免存量源在下拉里显示空。
 export type Platform =
+  | ''
   | 'responses'
   | 'chat_completions'
   | 'anthropic'
@@ -408,6 +409,13 @@ export interface UsageRetryEvent {
 
 /** GET /usage/logs/:id 返回的完整记录，含四段链路原文。 */
 export interface UsageLogDetail {
+  ingressRevision?: string
+  upstreamRevision?: string
+  cacheSynthesis?: boolean
+  systemStructure?: {
+    before: { path: string; kind: string; metadata?: string[]; cacheCount: number }[]
+    after: { path: string; kind: string; metadata?: string[]; cacheCount: number }[]
+  }
   sourceId?: string
   requestId: string
   startedAt: string

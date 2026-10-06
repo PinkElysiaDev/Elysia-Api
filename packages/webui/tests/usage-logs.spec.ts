@@ -16,6 +16,8 @@ details.push(
   { ...base, requestId: 'same', requestedModelGroup: 'deepseek-flash', modelName: 'deepseek-flash', groupName: 'deepseek-flash', platform: 'deepseek', sourceFormat: 'openai', targetFormat: 'chat_completions' },
   { ...base, requestId: 'mapped', requestedModelGroup: 'long-routing-group-name-that-needs-truncation-'.repeat(3), modelName: 'actual-model', platform: 'openai', sourceFormat: 'openai_responses', targetFormat: 'openai' },
   { ...base, requestId: 'agent', keyName: 'AI 助手', requestedModelGroup: 'deepseek-flash', modelName: 'deepseek-flash', inputFormat: '', platform: 'deepseek', targetFormat: 'chat_completions', relayMode: 'agent-assist',
+    upstreamRevision: 'diagnostic-revision', cacheSynthesis: true,
+    systemStructure: { before: [{ path: '/content/0', kind: 'message', metadata: ['attributes'], cacheCount: 0 }], after: [{ path: '/content/0', kind: 'message', metadata: ['attributes'], cacheCount: 0 }] },
     incomingBody: { ...emptyBody, content: '{"Messages":[{"role":"user","content":"hello"}]}' },
     outgoingBody: { ...emptyBody, content: '{"model":"deepseek-flash","stream":true}' },
     providerResponse: { ...emptyBody, content: '[{"choices":[{"delta":{"content":"hello"}}]}]' },
@@ -110,7 +112,7 @@ test('assistant has four labelled bodies, exports metadata, and uses the new fil
   const stream = await (await downloaded).createReadStream()
   let body = ''
   for await (const chunk of stream!) body += chunk.toString()
-  expect(JSON.parse(body).overview).toMatchObject({ requestedModelGroup: 'deepseek-flash', sourceId: 'deepseek' })
+  expect(JSON.parse(body).overview).toMatchObject({ requestedModelGroup: 'deepseek-flash', sourceId: 'deepseek', upstreamRevision: 'diagnostic-revision', cacheSynthesis: true, systemStructure: { before: [{ path: '/content/0', metadata: ['attributes'] }] } })
   await sheet.getByRole('button', { name: '关闭', exact: true }).last().click()
   await page.getByRole('button', { name: '调用方筛选', exact: true }).click()
   await expect(page.getByRole('option', { name: 'AI 协议助手', exact: true })).toHaveCount(0)

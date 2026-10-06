@@ -45,7 +45,7 @@ export function CodePill({ code, className }: { code: number; className?: string
 export function PlatformBadge({ platform }: { platform: Platform | string }) {
   return (
     <span className="inline-flex whitespace-nowrap font-mono text-2xs text-muted-foreground">
-      {protocolLabel(platform, 'short')}
+      {protocolLabel(platform, 'short') || '未绑定协议'}
     </span>
   )
 }

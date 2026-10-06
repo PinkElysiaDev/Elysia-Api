@@ -5,6 +5,10 @@ import { Z_INDEX } from "@/lib/z-index";
 import { useModels, useSources } from "@/lib/hooks";
 import type { Model, ModelSource } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import useSWR, { useSWRConfig } from 'swr';
+import { agentModelAPI, type AgentModelReadiness } from '@/lib/agent/model-readiness';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 
 /**
  * 合并式模型选择器：胶囊触发器 + 浮层面板——按模型源分组、可搜索、
@@ -24,6 +28,19 @@ export function ModelPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
+  const [repair, setRepair] = useState<AgentModelReadiness>();
+  const [repairing, setRepairing] = useState(false);
+  const [repairError, setRepairError] = useState('');
+  const { mutate: mutateCache } = useSWRConfig();
+  const { data: readiness, error: readinessError, mutate: refreshReadiness } = useSWR('agent-model-readiness', agentModelAPI.list);
+  const statusOf = (model: Model) => readiness?.find((item) => item.sourceId === model.sourceId && item.modelId === model.id);
+  const verify = async () => {
+    if (!repair || repairing) return;
+    setRepairing(true); setRepairError('');
+    try { await agentModelAPI.verifyTools(repair.sourceId, repair.modelId); await refreshReadiness(); await mutateCache((key) => typeof key === 'string' && key.includes('models')); setRepair(undefined); }
+    catch (err) { setRepairError(String(err)); }
+    finally { setRepairing(false); }
+  };
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -87,12 +104,13 @@ export function ModelPicker({
 
   const pick = (index: number) => {
     const entry = flat[index];
-    if (!entry) return;
+    if (!entry || !statusOf(entry.model)?.available) return;
     onSelect(entry.source, entry.model);
     setOpen(false);
   };
 
   const onKeyDown = (event: React.KeyboardEvent) => {
+    if (!open) return;
     if (event.key === "Escape") {
       setOpen(false);
       return;
@@ -119,6 +137,7 @@ export function ModelPicker({
   const selected = (models ?? []).find(
     (model) => model.sourceId === sourceId && model.name === modelName,
   );
+  const selectedStatus = selected && statusOf(selected);
 
   let flatIndex = -1;
   return (
@@ -149,6 +168,15 @@ export function ModelPicker({
         ) : null}
         <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
       </button>
+      {readinessError && <p role="alert" className="text-xs text-destructive">无法检查 Agent 模型可用性。<button type="button" className="ml-1 underline" onClick={() => void refreshReadiness()}>重试</button></p>}
+      {selectedStatus && !selectedStatus.available && <div className="mt-1 max-w-sm text-xs text-destructive"><span>{selectedStatus.reason}</span>{selectedStatus.canRepair && <Button size="sm" variant="ghost" onClick={() => { setRepairError(''); setRepair(selectedStatus) }}>验证并启用工具调用</Button>}</div>}
+      <Dialog open={!!repair} onOpenChange={(next) => { if (!next && !repairing) setRepair(undefined) }}><DialogContent hideClose={repairing}>
+        <DialogTitle>验证并启用工具调用</DialogTitle>
+        <DialogDescription>向 {repair?.modelName} 发送最小工具调用验证请求，可能产生少量用量。不会执行模型返回的工具；通过后更新该模型的能力和模型级协议绑定。</DialogDescription>
+        <dl className="space-y-1 text-sm"><div>模型工具能力：{repair?.modelTools ? '已开启' : '未开启'} · 来源：{repair?.capabilitySource || '未知'}</div><div>绑定工具能力：{repair?.bindingTools ? '已开启' : '未开启'} · {repair?.bindingKind === 'model' ? '模型级' : '源级'}</div><div>协议：{repair?.protocolId} · {repair?.revision?.slice(0, 12)}</div></dl>
+        {repairError && <p role="alert" className="text-sm text-destructive">{repairError}</p>}
+        <DialogFooter><Button disabled={repairing} variant="ghost" onClick={() => setRepair(undefined)}>取消</Button><Button disabled={repairing} variant="primary" onClick={() => void verify()}>{repairing ? '验证中…' : '开始验证并修复'}</Button></DialogFooter>
+      </DialogContent></Dialog>
 
       {open ? (
         <div
@@ -202,11 +230,14 @@ export function ModelPicker({
                     const active = index === cursor;
                     const isSelected =
                       model.sourceId === sourceId && model.name === modelName;
+                    const modelStatus = statusOf(model);
                     return (
+                      <div key={`${model.sourceId}/${model.id}`}>
                       <button
-                        key={`${model.sourceId}/${model.id}`}
                         type="button"
                         role="option"
+                        aria-disabled={!modelStatus?.available}
+                        title={modelStatus?.reason}
                         aria-selected={isSelected}
                         data-active={active}
                         onClick={() => pick(index)}
@@ -231,6 +262,8 @@ export function ModelPicker({
                           </span>
                         ) : null}
                       </button>
+                      {!modelStatus?.available && <div className="px-7 pb-2 text-2xs text-muted-foreground">{modelStatus?.reason || '正在检查能力与协议绑定…'}{modelStatus?.canRepair && <button type="button" className="ml-2 text-rose underline" onClick={() => { setOpen(false); setRepairError(''); setRepair(modelStatus) }}>验证并启用工具调用</button>}</div>}
+                      </div>
                     );
                   })}
                 </div>

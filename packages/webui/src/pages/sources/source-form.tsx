@@ -241,7 +241,7 @@ export function SourceFormDialog({
       return
     }
     // 协议未声明模型发现配置时，custom 源强制手动模型（后端保存校验同样拒绝）。
-    const autoFetch = custom && !customDiscovery ? false : form.autoFetchModels
+    const autoFetch = !form.platform || (custom && !customDiscovery) ? false : form.autoFetchModels
     const keysResult = compileApiKeysPayload(form, manualKeySelection, autoFetch)
     if ('error' in keysResult) {
       toast.error('请为每个手动模型至少选择一个 Key', keysResult.error)
@@ -336,7 +336,7 @@ export function SourceFormDialog({
     hint: `已启用 · ${protocol.id} · ${protocol.revision.slice(0, 12)}`,
   }))
   const platformOptions: { value: string; label: string; hint: string }[] =
-    customOptions
+    [{ value: '', label: '未绑定协议', hint: '保留模型源，绑定协议后才可调用' }, ...customOptions]
   // 当前值不在选项中（协议被删除，或存量源用内置/旧平台值）：追加占位项保证
   // 回显并提示重选。
   if (form.platform && !platformOptions.some((option) => option.value === form.platform)) {
@@ -374,17 +374,17 @@ export function SourceFormDialog({
             <div className="space-y-2">
               <Label required>API 协议</Label>
               <Select
-                value={form.platform}
+                value={form.platform || '__unbound__'}
                 onValueChange={(value) =>
                   setForm((previous) => {
-                    const nextPlatform = value as Platform
+                    const nextPlatform = (value === '__unbound__' ? '' : value) as Platform
                     // 切到未声明模型发现的自定义协议时关闭自动拉取
                     //（无标准模型列表端点，后端保存校验同样拒绝）。
                     const nextDiscovery = hasDiscovery(nextPlatform)
                     return {
                       ...previous,
                       platform: nextPlatform,
-                      ...(isCustomPlatform(nextPlatform) && !nextDiscovery ? { autoFetchModels: false } : {}),
+                      ...(!nextPlatform || (isCustomPlatform(nextPlatform) && !nextDiscovery) ? { autoFetchModels: false } : {}),
                     }
                   })
                 }
@@ -394,7 +394,7 @@ export function SourceFormDialog({
                 </SelectTrigger>
                 <SelectContent>
                   {platformOptions.map((p) => (
-                    <SelectItem key={p.value} value={p.value}>
+                    <SelectItem key={p.value} value={p.value || '__unbound__'}>
                       {p.label}
                     </SelectItem>
                   ))}
