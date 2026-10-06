@@ -40,7 +40,7 @@ Anthropic 上游在每次写出缓存的响应里都附带 `cache_creation.ephem
 3. 将样例追加到 `samples`，补充实际站点的 JSON、流式、零值、缺失和冲突样例。该示例约定标准语义字段优先，包括明确零值；只有标准创建计数缺失才读取别名。
 4. 执行验证、预览、保存草稿、启用确切修订，然后验证模型绑定及实际转发。
 
-Agent 使用同一服务层：`elysia protocol draft`、`validate`、`verify`、`preview --direction decode_response --sample ...`、`save`、`activate --id ... --hash ...`。定义编辑后旧验证报告失效；编译器版本变化由现有启动重验机制处理，不用预置内容覆盖用户修改。
+Agent 使用同一服务层：`elysia protocol draft`、`validate`、`verify`、`preview --direction decode_response --sample ...`、`save`、`activate --id ... --hash ...`。定义编辑后旧验证报告失效；编译器版本变化由现有启动重验机制处理。预置协议只读且随版本自动更新（服务层拒绝在预置 ID 上保存/激活），用户定制一律在协议设计器「复制为新协议」后编辑副本。
 
 旧样例如果把 `cache_write_tokens` 预期为未知扩展，需要按新解析结果更新这一字段的断言：`expected.usage.cacheCreation={"count":原值,"origin":"observed"}`，包括零值；输入总量仍使用原来的总输入。只调整该已识别字段的旧扩展路径，保留其他扩展和所有样例。先用预览检查完整语义差异，再重验启用；不要删除失败样例来绕过版本验证。
 
