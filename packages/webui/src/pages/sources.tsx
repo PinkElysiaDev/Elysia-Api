@@ -237,17 +237,18 @@ export function SourcesPage() {
     return () => clearInterval(id)
   }, [anyRefreshing])
 
-  // 任务完成通知：只提示本页面见过的「进行中 → 完成」迁移（按 lastFinishedAt
-  // 去重），首次加载的历史结果不弹。
-  const seenRefreshing = useRef<Record<string, boolean>>({})
+  // 任务完成通知：按 lastFinishedAt 去重；首次加载把历史结果预标记（不弹），
+  // 此后任何新完成（含快到轮询没看到 refreshing 态的秒败任务）都必达提示。
   const notifiedFinish = useRef<Record<string, string>>({})
+  const finishPrimed = useRef(false)
   useEffect(() => {
     for (const source of data ?? []) {
       const state = source.refreshState
-      const isRefreshing = !!state?.refreshing
-      const wasRefreshing = !!seenRefreshing.current[source.id]
-      seenRefreshing.current[source.id] = isRefreshing
-      if (!state || isRefreshing || !wasRefreshing || !state.lastFinishedAt) continue
+      if (!state?.lastFinishedAt) continue
+      if (!finishPrimed.current) {
+        notifiedFinish.current[source.id] = state.lastFinishedAt
+        continue
+      }
       if (notifiedFinish.current[source.id] === state.lastFinishedAt) continue
       notifiedFinish.current[source.id] = state.lastFinishedAt
       if (state.lastError) {
@@ -262,6 +263,7 @@ export function SourcesPage() {
         toast.success('拉取完成', `${source.name} 共 ${state.lastCount ?? 0} 个模型${changes ? `（${changes}）` : ''}`)
       }
     }
+    if (data) finishPrimed.current = true
   }, [data, toast])
 
   /** 该源的后台拉取进行中：锁定其模型相关操作，避免合并期间冲突误操作。 */
