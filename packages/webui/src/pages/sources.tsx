@@ -341,9 +341,7 @@ export function SourcesPage() {
               <Button variant="ghost" onClick={refreshAll} disabled={refreshingAll}>
                 <RefreshCw className={cn('h-4 w-4', (refreshingAll || anyRefreshing) && 'animate-spin')} /> 刷新全部模型
               </Button>
-              <Button variant="primary" onClick={openCreate}>
-                <Plus className="h-4 w-4" /> 新增模型源
-              </Button>
+              <Button variant="primary" onClick={openCreate}>新增模型源</Button>
             </>
           }
         />
@@ -390,9 +388,7 @@ export function SourcesPage() {
           loadingColumns={8}
           emptyTitle="暂无任何模型源"
           emptyAction={
-            <Button variant="primary" onClick={openCreate}>
-              <Plus className="h-4 w-4" /> 新增模型源
-            </Button>
+            <Button variant="primary" className="h-9 px-5" onClick={openCreate}>新增模型源</Button>
           }
         >
           {() => (

@@ -8,7 +8,7 @@ interface StateProps {
   className?: string
 }
 
-/** 空状态：无图标、无说明长文，只留宽字间距的安静文案；操作按钮悬浮浮现。 */
+/** 空状态：无图标、无说明长文，display 衬线大字间距文案；胶囊操作随鼠标浮现。 */
 export function EmptyState({
   title,
   action,
@@ -18,11 +18,11 @@ export function EmptyState({
   action?: ReactNode
 }) {
   return (
-    <div className={cn('group flex flex-col items-center justify-center gap-7 px-6 py-20 text-center', className)}>
+    <div className={cn('group flex min-h-[55vh] flex-col items-center justify-center gap-8 px-6 py-16 text-center', className)}>
       {/* pl 补偿末字符字间距，保证视觉居中 */}
-      <p className="pl-[0.24em] text-lg tracking-[0.24em] text-muted-foreground/80">{title}</p>
+      <p className="pl-[0.24em] font-display text-lg font-medium tracking-[0.24em] text-muted-foreground/80">{title}</p>
       {action && (
-        <div className="opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+        <div className="translate-y-1 opacity-0 transition-[opacity,transform] duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">
           {action}
         </div>
       )}

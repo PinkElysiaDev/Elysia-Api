@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { RoleWatermark } from '@/components/role-watermark'
 import { Button } from '@/components/ui/button'
@@ -82,9 +82,7 @@ export function TokensPage() {
       <div className="relative z-[1] space-y-6">
         <PageHeader
           title="访问令牌"          actions={
-            <Button variant="primary" onClick={openCreate}>
-              <Plus className="h-4 w-4" /> 新增令牌
-            </Button>
+            <Button variant="primary" onClick={openCreate}>新增令牌</Button>
           }
         />
 
@@ -96,9 +94,7 @@ export function TokensPage() {
           loadingColumns={5}
           emptyTitle="暂无任何访问令牌"
           emptyAction={
-            <Button variant="primary" onClick={openCreate}>
-              <Plus className="h-4 w-4" /> 新增令牌
-            </Button>
+            <Button variant="primary" className="h-9 px-5" onClick={openCreate}>新增令牌</Button>
           }
         >
           {(tokens) => (
