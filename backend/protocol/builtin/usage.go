@@ -284,12 +284,7 @@ func (adapter module) encodeUsage(usage *p.Usage, options p.EvaluationContext) (
 		// target field, so it is projected away and recorded rather than failing
 		// a response the client can otherwise consume.
 		if usage.CacheCreation != nil {
-			options.Diagnostics.Add(p.ConversionIssue{
-				Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
-				Direction: p.EncodeResponse, Stage: "wire", Path: "/usage/cacheCreation",
-				Reason:     "cache creation total omitted: target has no cache creation counter",
-				Suggestion: "Compare cache reads through cachedContentTokenCount; Gemini does not report cache writes.",
-			})
+			warnDropped(options, p.EncodeResponse, "/usage/cacheCreation", "cache creation total omitted: target has no cache creation counter", "Compare cache reads through cachedContentTokenCount; Gemini does not report cache writes.")
 		}
 		if count, exists := usage.Details["toolUsePromptTokenCount"]; exists {
 			fields["toolUsePromptTokenCount"] = counterValue(&count)
@@ -356,12 +351,7 @@ func (adapter module) checkUsageDetails(usage *p.Usage, options p.EvaluationCont
 		// Their total survives in CacheCreation, so the projection is recorded
 		// rather than failing a response the client can otherwise consume.
 		if adapter.omitsCacheCreationBucket(name) {
-			options.Diagnostics.Add(p.ConversionIssue{
-				Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
-				Direction: p.EncodeResponse, Stage: "wire", Path: "/usage/details/" + name,
-				Reason:     "cache creation bucket omitted: target has no equivalent usage detail",
-				Suggestion: "Compare cache creation through the total counter; the TTL breakdown is provider-specific.",
-			})
+			warnDropped(options, p.EncodeResponse, "/usage/details/" + name, "cache creation bucket omitted: target has no equivalent usage detail", "Compare cache creation through the total counter; the TTL breakdown is provider-specific.")
 			continue
 		}
 		return unsupported("/usage/details/"+name, "target has no equivalent usage detail")
@@ -378,3 +368,4 @@ func (adapter module) omitsCacheCreationBucket(name string) bool {
 	}
 	return name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens"
 }
+

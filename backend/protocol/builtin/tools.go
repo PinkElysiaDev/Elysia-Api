@@ -116,12 +116,7 @@ func (adapter module) encodeTools(tools []p.Tool, options p.EvaluationContext) (
 		if foreign := foreignWireKeys(toolOptions, adapter.family); len(foreign) > 0 {
 			// 工具级源族扩展（如 Anthropic 工具上的 cache_control）在异族目标
 			// 无等价字段：剥离并显式 warning，不再拒绝整个请求。
-			options.Diagnostics.Add(p.ConversionIssue{
-				Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
-				Direction: p.EncodeRequest, Stage: "wire", Path: "/tools/extensions",
-				Reason:     "tool-level wire extensions dropped: " + strings.Join(foreign, ", ") + " has no target equivalent",
-				Suggestion: "Same-family forwarding preserves them through native replay.",
-			})
+			warnDropped(options, p.EncodeRequest, "/tools/extensions", "tool-level wire extensions dropped: " + strings.Join(foreign, ", ") + " has no target equivalent", "Same-family forwarding preserves them through native replay.")
 			toolOptions = sameFamilyExtensions(toolOptions, adapter.family)
 		}
 		fields := p.Object{"name": tool.Name, "description": tool.Description}
@@ -130,12 +125,7 @@ func (adapter module) encodeTools(tools []p.Tool, options p.EvaluationContext) (
 				// strict 是 OpenAI 系的校验提示，其他目标无等价字段：剥离并
 				// 显式 warning（原为硬拒，Claude Code→Anthropic 的工具声明
 				// 常带 strict）。
-				options.Diagnostics.Add(p.ConversionIssue{
-					Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
-					Direction: p.EncodeRequest, Stage: "wire", Path: "/tools/strict",
-					Reason:     "strict tool-schema policy dropped: target has no equivalent",
-					Suggestion: "Target schemas stay permissive; validate arguments at the call site.",
-				})
+				warnDropped(options, p.EncodeRequest, "/tools/strict", "strict tool-schema policy dropped: target has no equivalent", "Target schemas stay permissive; validate arguments at the call site.")
 			} else {
 				fields["strict"] = strict
 			}
@@ -174,3 +164,4 @@ func (adapter module) encodeTools(tools []p.Tool, options p.EvaluationContext) (
 	}
 	return array(items), nil
 }
+

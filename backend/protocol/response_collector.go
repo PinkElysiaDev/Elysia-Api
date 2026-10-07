@@ -199,7 +199,7 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 		}
 	}
 	value := event.Delta
-	isSnapshot := event.Type != ItemDelta
+	isSnapshot := IsItemSnapshot(event.Type)
 	if isSnapshot && event.Item != nil {
 		value = event.Item.Payload
 		if event.Item.Input != nil {
@@ -313,3 +313,6 @@ func (collector *ResponseCollector) finishTools() error {
 	}
 	return nil
 }
+
+// IsItemSnapshot 判定事件是否携带全量快照（非增量 delta）。
+func IsItemSnapshot(eventType EventType) bool { return eventType != ItemDelta }

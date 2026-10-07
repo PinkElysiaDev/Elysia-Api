@@ -183,12 +183,9 @@ func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, opti
 					return p.Value{}, p.Value{}, err
 				}
 				if len(node.Cache) > 0 || len(node.Resources) > 0 {
-					options.Diagnostics.Add(p.ConversionIssue{
-						Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
-						Direction: p.EncodeRequest, Stage: "wire", Path: fmt.Sprintf("/content/%d", index),
-						Reason:     "in-conversation system message dropped its node-level cache markers or resources",
-						Suggestion: "Move cache_control onto a content block inside the system message.",
-					})
+					warnDropped(options, p.EncodeRequest, fmt.Sprintf("/content/%d", index),
+						"in-conversation system message dropped its node-level cache markers or resources",
+						"Move cache_control onto a content block inside the system message.")
 				}
 				var blocks []p.Value
 				for _, child := range node.Children {
@@ -217,12 +214,9 @@ func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, opti
 			// Responses 消息 item 的 id/status 是传输记账而非会话语义：跨族
 			// 目标没有等价字段，同族经原生回放保留；这里丢弃并给出显式
 			// warning（原为硬拒，Codex 等客户端的每条消息都携带 id）。
-			options.Diagnostics.Add(p.ConversionIssue{
-				Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
-				Direction: p.EncodeRequest, Stage: "wire", Path: fmt.Sprintf("/content/%d", index),
-				Reason:     "message item identity or status dropped: target has no per-message item id",
-				Suggestion: "Same-family forwarding preserves item ids through native replay.",
-			})
+			warnDropped(options, p.EncodeRequest, fmt.Sprintf("/content/%d", index),
+				"message item identity or status dropped: target has no per-message item id",
+				"Same-family forwarding preserves item ids through native replay.")
 		}
 		if adapter.name == Chat {
 			entries, err := adapter.encodeChatMessage(node, direction, options)
@@ -292,12 +286,7 @@ func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, opti
 	if foreign := foreignWireKeys(attributes, adapter.family); len(foreign) > 0 {
 		// 消息级源族扩展（如 Anthropic 的消息级 cache_control）在 Chat 目标
 		// 没有等价字段：剥离并显式 warning，不再拒绝整个请求。
-		options.Diagnostics.Add(p.ConversionIssue{
-			Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
-			Direction: p.EncodeRequest, Stage: "wire", Path: "/content/extensions",
-			Reason:     "message-level wire extensions dropped: " + strings.Join(foreign, ", ") + " has no Chat equivalent",
-			Suggestion: "Same-family forwarding preserves them through native replay.",
-		})
+		warnDropped(options, p.EncodeRequest, "/content/extensions", "message-level wire extensions dropped: " + strings.Join(foreign, ", ") + " has no Chat equivalent", "Same-family forwarding preserves them through native replay.")
 		attributes = sameFamilyExtensions(attributes, adapter.family)
 	}
 	if err := adapter.preserveExtensions(fields, attributes); err != nil {
@@ -332,13 +321,8 @@ func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, opti
 				}
 				payload = p.StringValue(string(text))
 			}
-			if !child.ID.IsZero() || !child.Status.IsZero() || len(child.Cache) > 0 || len(child.Resources) > 0 {
-				options.Diagnostics.Add(p.ConversionIssue{
-					Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
-					Direction: p.EncodeRequest, Stage: "wire", Path: "/content/result",
-					Reason:     "tool result item metadata, cache markers or resources dropped for the Chat target",
-					Suggestion: "Same-family forwarding preserves them through native replay.",
-				})
+			if hasItemMetadata(child) {
+				warnDropped(options, p.EncodeRequest, "/content/result", "tool result item metadata, cache markers or resources dropped for the Chat target", "Same-family forwarding preserves them through native replay.")
 			}
 			if isErrorResult(child.Status) {
 				// Anthropic 的 is_error（解码为 Status.isError）以文本标记保留。
@@ -355,13 +339,8 @@ func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, opti
 			if child.Input.Kind != p.JSONInput {
 				return nil, unsupported("/content/input", "Chat requires JSON function arguments")
 			}
-			if !child.ID.IsZero() || !child.Status.IsZero() || len(child.Cache) > 0 || len(child.Resources) > 0 {
-				options.Diagnostics.Add(p.ConversionIssue{
-					Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
-					Direction: p.EncodeRequest, Stage: "wire", Path: "/content/call",
-					Reason:     "function call item metadata, cache markers or resources dropped for the Chat target",
-					Suggestion: "Same-family forwarding preserves them through native replay.",
-				})
+			if hasItemMetadata(child) {
+				warnDropped(options, p.EncodeRequest, "/content/call", "function call item metadata, cache markers or resources dropped for the Chat target", "Same-family forwarding preserves them through native replay.")
 			}
 			call := p.Object{"id": child.CallID, "type": p.StringValue("function"), "function": object(p.Object{"name": child.Name, "arguments": encodeJSONArguments(child.Input.Value)})}
 			if err := adapter.preserveExtensions(call, child.Attributes); err != nil {
@@ -375,12 +354,7 @@ func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, opti
 				return nil, unsupported("/reasoning", "Chat cannot express nested reasoning blocks")
 			}
 			if len(child.Resources) > 0 || len(child.Attributes) > 0 || len(child.Cache) > 0 || !child.ID.IsZero() || !child.Status.IsZero() {
-				options.Diagnostics.Add(p.ConversionIssue{
-					Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
-					Direction: p.EncodeRequest, Stage: "wire", Path: "/reasoning",
-					Reason:     "reasoning signatures or metadata dropped: Chat has no signed reasoning channel",
-					Suggestion: "Same-family forwarding preserves signed reasoning through native replay.",
-				})
+				warnDropped(options, p.EncodeRequest, "/reasoning", "reasoning signatures or metadata dropped: Chat has no signed reasoning channel", "Same-family forwarding preserves signed reasoning through native replay.")
 			}
 			if !fields["reasoning_content"].IsZero() {
 				previous, err := stringValue(fields["reasoning_content"])
@@ -461,4 +435,19 @@ func sameFamilyExtensions(attributes p.Object, family string) p.Object {
 		remaining[key] = value
 	}
 	return remaining
+}
+
+// warnDropped 记录一次「跨族不可表达 → 显式剥离/丢弃」的 warning 诊断：
+// 本轮点对点保证中所有降级适配共用这一构造。
+func warnDropped(options p.EvaluationContext, direction p.Direction, path, reason, suggestion string) {
+	options.Diagnostics.Add(p.ConversionIssue{
+		Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
+		Direction: direction, Stage: "wire", Path: path,
+		Reason: reason, Suggestion: suggestion,
+	})
+}
+
+// hasItemMetadata 判定节点是否携带项目级元数据（id/status/cache/resources）。
+func hasItemMetadata(node p.Node) bool {
+	return !node.ID.IsZero() || !node.Status.IsZero() || len(node.Cache) > 0 || len(node.Resources) > 0
 }

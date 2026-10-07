@@ -137,7 +137,7 @@ func (stream *streamModule) encodeItem(event p.Event, options p.EvaluationContex
 		}
 	}
 	value := event.Delta
-	isSnapshot := event.Type != p.ItemDelta
+	isSnapshot := p.IsItemSnapshot(event.Type)
 	if isSnapshot && event.Item != nil {
 		value = event.Item.Payload
 		if event.Item.Input != nil {

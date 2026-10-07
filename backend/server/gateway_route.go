@@ -207,13 +207,15 @@ func constrainGatewayCapabilities(binding protocol.Binding, model config.ModelRe
 			capabilities[capability] = capabilities[capability] && entry.Binding.Capabilities[capability]
 		}
 	}
-	if !model.ToolsCapable || (group.ToolsCapable != nil && !*group.ToolsCapable) {
-		for _, capability := range []protocol.Capability{protocol.FunctionToolsCapability, protocol.FreeTextToolsCapability, protocol.ServerToolsCapability} {
+	toolsAllowed := model.ToolsCapable && (group.ToolsCapable == nil || *group.ToolsCapable)
+	mediaAllowed := model.VisionCapable && (group.VisionCapable == nil || *group.VisionCapable)
+	if !toolsAllowed {
+		for _, capability := range toolCapabilityFamily {
 			capabilities[capability] = false
 		}
 	}
-	if !model.VisionCapable || (group.VisionCapable != nil && !*group.VisionCapable) {
-		for _, capability := range []protocol.Capability{protocol.ImagesCapability, protocol.AudioCapability, protocol.VideoCapability} {
+	if !mediaAllowed {
+		for _, capability := range mediaCapabilityFamily {
 			capabilities[capability] = false
 		}
 	}

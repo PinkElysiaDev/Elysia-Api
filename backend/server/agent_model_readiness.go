@@ -184,11 +184,7 @@ func (s *Server) adminVerifyAgentTools(c *gin.Context) {
 		entry.Binding.Capabilities = protocol.CapabilitySet{}
 	}
 	entry.Binding.Capabilities[protocol.FunctionToolsCapability] = true
-	if !model.VisionCapable {
-		for _, capability := range []protocol.Capability{protocol.ImagesCapability, protocol.AudioCapability, protocol.VideoCapability} {
-			delete(entry.Binding.Capabilities, capability)
-		}
-	}
+	stripMediaCapabilities(entry.Binding.Capabilities, model.VisionCapable)
 	if err := protocol.IssuesError(protocol.CheckBinding(entry.Binding, compiled)); err != nil {
 		respondProtocolError(c, err)
 		return

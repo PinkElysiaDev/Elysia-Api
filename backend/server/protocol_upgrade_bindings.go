@@ -73,16 +73,7 @@ func (s *Server) prepareProtocolUpgradeBindings(ctx context.Context, input proto
 				preview.Issues = append(preview.Issues, *issue)
 				continue
 			}
-			if !model.ToolsCapable {
-				for _, capability := range []protocol.Capability{protocol.FunctionToolsCapability, protocol.FreeTextToolsCapability, protocol.ServerToolsCapability} {
-					delete(binding.Binding.Capabilities, capability)
-				}
-			}
-			if !model.VisionCapable {
-				for _, capability := range []protocol.Capability{protocol.ImagesCapability, protocol.AudioCapability, protocol.VideoCapability} {
-					delete(binding.Binding.Capabilities, capability)
-				}
-			}
+			stripModelDisallowedCapabilities(binding.Binding.Capabilities, model.ToolsCapable, model.VisionCapable)
 			if model.ToolsCapable && !hasToolCapability(binding.Binding.Capabilities) {
 				preview.Issues = append(preview.Issues, migrationIssue(binding.Binding.ProtocolID, "/models/"+model.ID, "existing model tool capability cannot be fulfilled by this protocol"))
 			}
