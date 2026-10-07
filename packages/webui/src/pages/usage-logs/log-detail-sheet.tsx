@@ -182,10 +182,12 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                         <i className="mr-[5px] inline-block h-2 w-2 rounded-[2px] align-[-1px]" style={{ background: 'var(--jade)' }} />
                         输出 {formatNumber(output)}
                       </span>
-                      <span className={creationReported ? undefined : 'text-muted-foreground/70'}>
-                        <i className="mr-[5px] inline-block h-2 w-2 rounded-[2px] align-[-1px]" style={{ background: 'var(--amber)' }} />
-                        缓存创建 {formatCacheCreationTokens(usage?.cacheCreationTokens)}
-                      </span>
+                      {creation > 0 && (
+                        <span className="text-muted-foreground/70 transition-colors hover:text-foreground">
+                          <i className="mr-[5px] inline-block h-2 w-2 rounded-[2px] align-[-1px]" style={{ background: 'var(--amber)' }} />
+                          缓存创建 {formatCacheCreationTokens(usage?.cacheCreationTokens)}
+                        </span>
+                      )}
                       <span>
                         合计 <b className="font-semibold text-foreground">{formatNumber(tokTotal)}</b>
                       </span>

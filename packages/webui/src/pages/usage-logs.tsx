@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Download, Plus, RotateCcw, ScrollText, Zap } from 'lucide-react'
+import { Download, Plus, RotateCcw, Zap } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { RoleWatermark } from '@/components/role-watermark'
 import { Button } from '@/components/ui/button'
@@ -17,7 +17,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { useUsageLogs, revalidate, useDebouncedValue } from '@/lib/hooks'
 import { useUsageFilters } from '@/lib/usage-filters'
 import { api } from '@/lib/api'
-import { cn, downloadJSON, formatCacheCreationTokens, formatDateTime, formatDuration, formatNumber, isCacheCreationReported, isSuccessStatus } from '@/lib/utils'
+import { downloadJSON, formatCacheCreationTokens, formatDateTime, formatDuration, formatNumber, isCacheCreationReported, isSuccessStatus } from '@/lib/utils'
 
 const PAGE_SIZE = 20
 
@@ -201,9 +201,7 @@ export function UsageLogsPage() {
           data={data?.items}
           onRetry={() => mutate()}
           loadingColumns={8}
-          emptyIcon={<ScrollText className="h-7 w-7" />}
           emptyTitle="暂无匹配日志记录"
-          emptyDescription="当前筛选时间与过滤条件范围内未查询到任何请求。"
         >
           {() => (
             <div className="space-y-3">
@@ -229,6 +227,8 @@ export function UsageLogsPage() {
                     ].filter(Boolean).join(' · ')
                     const creationReported = isCacheCreationReported(log.usageReportMask)
                     const creationText = formatCacheCreationTokens(log.cacheCreationTokens, log.usageReportMask)
+                    // 缓存创建：仅在已上报且非 0 时展示；默认调暗，悬停亮起。
+                    const showCreation = creationReported && (log.cacheCreationTokens ?? 0) > 0
                     return (
                     <TableRow
                       key={log.requestId}
@@ -274,16 +274,15 @@ export function UsageLogsPage() {
                             {Math.round((log.cacheHitTokens / log.inputTokens) * 100)}%
                           </span>
                         )}
-                        <span
-                          className={cn(
-                            'ml-1.5 whitespace-nowrap font-mono text-xs',
-                            creationReported ? 'text-jade' : 'text-muted-foreground/55',
-                          )}
-                          title={creationReported ? `缓存创建 ${creationText} tokens` : '缓存创建：上游未上报'}
-                        >
-                          <Plus className="mr-px inline h-3 w-3 align-[-1px]" />
-                          {creationText}
-                        </span>
+                        {showCreation && (
+                          <span
+                            className="ml-1.5 whitespace-nowrap font-mono text-xs text-muted-foreground/55 transition-colors hover:text-jade"
+                            title={`缓存创建 ${creationText} tokens`}
+                          >
+                            <Plus className="mr-px inline h-3 w-3 align-[-1px]" />
+                            {creationText}
+                          </span>
+                        )}
                       </TableCell>
                     </TableRow>
                   )})}

@@ -333,10 +333,9 @@ export function SourceFormDialog({
   const customOptions = registeredProtocols.map((protocol) => ({
     value: `custom:${protocol.id}`,
     label: protocol.name?.trim() || protocol.id,
-    hint: `已启用 · ${protocol.id} · ${protocol.revision.slice(0, 12)}`,
   }))
-  const platformOptions: { value: string; label: string; hint: string }[] =
-    [{ value: '', label: '未绑定协议', hint: '保留模型源，绑定协议后才可调用' }, ...customOptions]
+  const platformOptions: { value: string; label: string }[] =
+    [{ value: '', label: '未绑定协议' }, ...customOptions]
   // 当前值不在选项中（协议被删除，或存量源用内置/旧平台值）：追加占位项保证
   // 回显并提示重选。
   if (form.platform && !platformOptions.some((option) => option.value === form.platform)) {
@@ -345,7 +344,6 @@ export function SourceFormDialog({
       label: isCustomPlatform(form.platform)
         ? `自定义协议（未注册）· ${customProtocolID(form.platform)}`
         : `当前值 · ${protocolLabel(form.platform)}`,
-      hint: '该值不在可选项中，请重新选择协议',
     })
   }
 
@@ -400,9 +398,6 @@ export function SourceFormDialog({
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">
-                {platformOptions.find((p) => p.value === form.platform)?.hint}
-              </p>
             </div>
           </div>
 

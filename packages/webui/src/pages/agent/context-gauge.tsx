@@ -85,7 +85,7 @@ export function ContextGauge({
             <p className="tnum">
               缓存读取：{formatCounter(usage.cached)}（{usage.hitRate === null ? "命中率未知" : formatHitRate(usage.hitRate)}）
             </p>
-            <p className="tnum">缓存创建：{formatCounter(usage.created)}</p>
+            {usage.created !== 0 && <p className="tnum">缓存创建：{formatCounter(usage.created)}</p>}
             <p className="tnum">共 {formatCounter(usage.total)} tokens</p>
           </>
         ) : (
