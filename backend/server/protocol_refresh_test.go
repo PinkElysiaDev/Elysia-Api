@@ -140,8 +140,15 @@ func TestRuntimeRefreshPreservesCustomRevisionsAndBlocksInvalidEvidence(t *testi
 			}
 			service, _ := server.protocolService()
 			actual, exists := service.Pin(definition.ID)
-			if !exists || actual.Hash() != old.Hash() || len(service.View().IDs()) != 1 {
-				t.Fatal("custom content replaced or inactive presets enabled")
+			if !exists || actual.Hash() != old.Hash() {
+				t.Fatal("custom content replaced")
+			}
+			// 预置属引擎所有：即便此前从未激活（测试服务器未走完整升级链），
+			// 刷新也会自愈补激活（现实里对应改名半途等混合状态）。
+			for _, id := range []string{"openai-chat-completions", "openai-responses", "anthropic-messages", "google-generate-content"} {
+				if _, ok := service.Pin(id); !ok {
+					t.Fatalf("preset %s not self-healed to active", id)
+				}
 			}
 		})
 	}

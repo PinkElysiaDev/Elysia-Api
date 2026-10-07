@@ -100,6 +100,16 @@ func TestStartupRecoversFromLegacyIDRegistry(t *testing.T) {
 			t.Fatalf("preset %s missing after recovery", id)
 		}
 	}
+
+	// 混合状态自愈：改名对被跳过/半途启动可能留下「预置缺激活」——刷新必须
+	// 补上，源拉取（sourceProtocol→Pin）才能恢复。删一条 activation 再刷新。
+	deleteActivation(t, path, "anthropic-messages")
+	if err := adminServer.reloadProtocolRuntime(ctx); err != nil {
+		t.Fatalf("reload after activation loss: %v", err)
+	}
+	if _, ok := service.Pin("anthropic-messages"); !ok {
+		t.Fatal("preset without activation was not self-healed")
+	}
 }
 
 func openStoreAt(t *testing.T, path string) *storage.Store {
@@ -138,5 +148,18 @@ func seedUpgradeReceipt(t *testing.T, path string) {
 	receipt := `{"planHash":"legacy","baseline":"legacy","compilerVersion":"old","backup":"legacy","completedAt":"` + time.Now().UTC().Format(time.RFC3339Nano) + `"}`
 	if _, err := db.Exec(`INSERT INTO settings(key,value,updated_at) VALUES('protocol_engine_v2_migration',?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`, receipt, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 		t.Fatalf("seed receipt: %v", err)
+	}
+}
+
+// deleteActivation 裸连接删除一条激活行，模拟混合状态下的预置缺激活。
+func deleteActivation(t *testing.T, path, protocolID string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("raw open: %v", err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`DELETE FROM protocol_activations WHERE protocol_id = ?`, protocolID); err != nil {
+		t.Fatalf("delete activation: %v", err)
 	}
 }
