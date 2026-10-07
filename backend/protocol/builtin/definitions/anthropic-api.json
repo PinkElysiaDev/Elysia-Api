@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
   "id": "anthropic-api",
-  "name": "anthropic-api",
-  "version": "2.1.0",
+  "name": "Anthropic API",
+  "version": "2.1.1",
   "family": "claude",
   "wireVersion": "v2",
   "capabilities": {

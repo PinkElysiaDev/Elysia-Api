@@ -1,6 +1,6 @@
 {
   "id": "responses-api",
-  "name": "Responses API（预置）",
+  "name": "Responses API",
   "version": "6",
   "type": "llm",
   "metadata": {

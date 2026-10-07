@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
   "id": "responses-api",
-  "name": "responses-api",
-  "version": "2.2.0",
+  "name": "Responses API",
+  "version": "2.2.1",
   "family": "openai_responses",
   "wireVersion": "v2",
   "capabilities": {

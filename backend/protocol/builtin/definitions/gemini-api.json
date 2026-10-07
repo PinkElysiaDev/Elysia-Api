@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
   "id": "gemini-api",
-  "name": "gemini-api",
-  "version": "2.1.0",
+  "name": "Gemini API",
+  "version": "2.1.1",
   "family": "gemini",
   "wireVersion": "v2",
   "capabilities": {

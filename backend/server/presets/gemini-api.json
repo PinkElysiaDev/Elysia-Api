@@ -1,6 +1,6 @@
 {
   "id": "gemini-api",
-  "name": "Gemini API（预置）",
+  "name": "Gemini API",
   "version": "5",
   "type": "llm",
   "metadata": {
