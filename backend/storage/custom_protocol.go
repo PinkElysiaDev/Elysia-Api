@@ -165,11 +165,20 @@ func renameProtocolRegistryIDs(ctx context.Context, tx *sql.Tx, oldID, newID str
 			}
 		}
 		if _, err := tx.ExecContext(ctx, copy.sql, args...); err != nil {
+			// 坏库（拷贝丢 WAL 等）可能缺个别表：缺表=该表无事可迁，跳过
+			// 而不是让整条改名迁移回滚（否则后续播种/刷新整链落空）。
+			if strings.Contains(err.Error(), "no such table") {
+				log.Printf("[preset-rename] skipped a missing table while copying %s: %v", copy.table, err)
+				continue
+			}
 			return fmt.Errorf("copy %s: %w", copy.table, err)
 		}
 	}
 	for _, table := range deleteTables {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE protocol_id = ?`, oldID); err != nil {
+			if strings.Contains(err.Error(), "no such table") {
+				continue
+			}
 			return fmt.Errorf("delete legacy %s: %w", table, err)
 		}
 	}

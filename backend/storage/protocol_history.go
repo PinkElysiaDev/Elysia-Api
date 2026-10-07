@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/elysia-api/backend/protocol"
@@ -29,6 +31,12 @@ func archiveReplacedPreset(ctx context.Context, tx *sql.Tx, id, nextHash string)
 		SELECT r.protocol_id || '~' || r.content_hash,r.protocol_id,r.content_hash,r.definition,'preset_replaced',r.created_at,?
 		FROM protocol_revisions r JOIN protocol_activations a ON a.protocol_id=r.protocol_id AND a.revision_hash=r.content_hash
 		WHERE r.protocol_id=? AND r.content_hash<>?`, nowString(), id, nextHash)
+	if err != nil && strings.Contains(err.Error(), "no such table") {
+		// 坏库（拷贝丢 WAL 等）缺 protocol_history 时归档降级为跳过：
+		// 历史簿记是尽力而为，不能反过来阻塞预置升级与运行时刷新。
+		log.Printf("[protocol-history] archive skipped, table missing: %v", err)
+		return nil
+	}
 	return err
 }
 
