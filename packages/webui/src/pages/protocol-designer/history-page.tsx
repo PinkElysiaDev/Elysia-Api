@@ -2,11 +2,18 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
+import { Seg } from '@/components/ui/seg'
+import { EmptyText } from '@/components/ui/states'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog'
 import { protocolAPI, type ProtocolHistoryDetail, type ProtocolHistoryItem, type ProtocolReference } from '@/lib/protocol-v2'
 
 const reasonLabel = (reason: string) => reason === 'preset_replaced' ? '预置旧版本' : '已删除自定义协议'
+const HISTORY_FILTERS = [
+  { value: 'all', label: '全部' },
+  { value: 'preset_replaced', label: '预置旧版本' },
+  { value: 'custom_deleted', label: '已删除' },
+]
 export function ReferenceList({ items }: { items: ProtocolReference[] }) {
   const labels: Record<string, string> = { source: '模型源', model: '模型', group: '模型组', job: '持久任务', session: 'Agent 编辑会话', draft: '当前草稿', active: '当前启用', in_flight: '进行中的请求或会话' }
   return <ul className="space-y-1 text-sm">{items.map((item, index) => <li key={`${item.kind}/${item.sourceId}/${item.id}/${index}`}>{labels[item.kind] ?? item.kind} · {item.name || [item.sourceId, item.id].filter(Boolean).join(' / ')}</li>)}</ul>
@@ -51,15 +58,19 @@ export function ProtocolHistoryPage() {
   const visible = items.filter((item) => (filter === 'all' || item.reason === filter) && `${item.name} ${item.protocolId} ${item.hash}`.toLowerCase().includes(query.toLowerCase()))
   return <div className="space-y-6">
     <PageHeader title="协议历史" actions={<Button onClick={() => navigate('/protocols')}>返回协议设计器</Button>} />
-    <p className="text-sm text-muted-foreground">查看被更新替换的预置版本和已删除的自定义协议。恢复将创建独立的新协议。</p>
     {error && !action && <p role="alert" className="text-destructive">{error}</p>}
     {notice && <div role="status" className="rounded-lg border p-3 text-sm">{notice}{restoredID && <Button variant="ghost" onClick={() => navigate('/protocols', { state: { protocolId: restoredID } })}>查看新协议</Button>}</div>}
-    <div className="flex flex-wrap gap-3">
-      <label className="text-sm">类型 <select aria-label="历史类型" value={filter} onChange={(event) => setFilter(event.target.value)} className="rounded-md border bg-card p-2"><option value="all">全部</option><option value="preset_replaced">预置旧版本</option><option value="custom_deleted">已删除自定义协议</option></select></label>
-      <Input aria-label="搜索协议历史" placeholder="搜索名称、ID 或版本哈希" value={query} onChange={(event) => setQuery(event.target.value)} className="max-w-sm" />
-      <Button disabled={busy} variant="ghost" onClick={() => void refresh().catch((err: unknown) => setError(String(err)))}>刷新</Button>
+    <div className="flex flex-wrap items-center justify-between gap-3 py-1">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">类型</span>
+        <Seg aria-label="历史类型" options={HISTORY_FILTERS} value={filter} onChange={setFilter} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input aria-label="搜索协议历史" placeholder="搜索名称、ID 或版本哈希" value={query} onChange={(event) => setQuery(event.target.value)} className="max-w-xs" />
+        <Button disabled={busy} variant="ghost" onClick={() => void refresh().catch((err: unknown) => setError(String(err)))}>刷新</Button>
+      </div>
     </div>
-    {!loaded ? <p role="status">正在读取历史…</p> : visible.length === 0 ? <p className="text-muted-foreground">暂无匹配的历史版本。</p> : <div className="overflow-x-auto rounded-lg border"><table className="w-full text-left text-sm"><thead className="bg-muted/40"><tr><th className="p-3">协议</th><th>版本</th><th>来源</th><th>归档时间</th><th className="p-3">操作</th></tr></thead><tbody>{visible.map((item) => <tr key={item.id} className="border-t"><td className="p-3"><div>{item.name || item.protocolId}</div><div className="font-mono text-xs text-muted-foreground">{item.protocolId}</div></td><td><div>{item.version || '—'}{item.isDraft ? ' · 草稿' : ''}</div><code className="text-xs">{item.hash.slice(0, 12)}</code></td><td>{reasonLabel(item.reason)}</td><td>{new Date(item.archivedAt).toLocaleString()}</td><td className="p-3"><Button disabled={busy} onClick={() => void inspect(item.id)}>查看版本</Button></td></tr>)}</tbody></table></div>}
+    {!loaded ? <p role="status">正在读取历史…</p> : visible.length === 0 ? <EmptyText className="py-8 text-center">暂无匹配的历史版本</EmptyText> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">协议</th><th className="p-3">版本</th><th className="p-3">来源</th><th className="p-3">归档时间</th><th className="p-3 text-center">操作</th></tr></thead><tbody className="divide-y divide-border/30">{visible.map((item) => <tr key={item.id}><td className="p-3"><div>{item.name || item.protocolId}</div><div className="font-mono text-xs text-muted-foreground">{item.protocolId}</div></td><td className="p-3"><div>{item.version || '—'}{item.isDraft ? ' · 草稿' : ''}</div><code className="text-xs">{item.hash.slice(0, 12)}</code></td><td className="p-3">{reasonLabel(item.reason)}</td><td className="p-3">{new Date(item.archivedAt).toLocaleString()}</td><td className="p-3 text-center"><Button disabled={busy} onClick={() => void inspect(item.id)}>查看版本</Button></td></tr>)}</tbody></table></div>}
     {detail && <section aria-label="历史版本详情" className="space-y-4 rounded-lg border bg-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-medium">{detail.item.name || detail.item.protocolId}</h2><p className="break-all font-mono text-xs text-muted-foreground">{detail.item.hash}</p></div><div className="flex gap-2">
         <Button disabled={busy} onClick={() => { setNewID(`${detail.item.protocolId}-restored-${detail.item.hash.slice(0, 8)}`); setNewName(`${detail.item.name || detail.item.protocolId}（恢复）`); setError(''); setAction('restore') }}>恢复为新协议</Button>
