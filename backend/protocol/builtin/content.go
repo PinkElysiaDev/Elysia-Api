@@ -156,9 +156,9 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 				if err != nil {
 					return node, err
 				}
-				fields, _ := decoded.ReadObject()
-				if !fields["mime"].IsZero() {
-					payload["data"], payload["mime"] = fields["data"], fields["mime"]
+				decodedFields, _ := decoded.ReadObject()
+				if !decodedFields["mime"].IsZero() {
+					payload["data"], payload["mime"] = decodedFields["data"], decodedFields["mime"]
 				}
 			}
 			node.Payload = object(payload)
