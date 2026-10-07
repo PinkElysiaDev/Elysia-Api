@@ -1,12 +1,12 @@
 {
-  "id": "gemini-api",
+  "id": "google-generate-content",
   "name": "Gemini API（预置）",
-  "version": "3",
+  "version": "4",
   "type": "llm",
   "metadata": {
     "preset": true,
-    "presetVersion": 3,
-    "description": "Gemini 线制的预置定义；v3：模型发现 idStripPrefix 剥离 name 的 models/ 集合前缀（入库 ID 与转发路径不再双前缀 404）"
+    "presetVersion": 4,
+    "description": "Gemini 线制的预置定义；v3：模型发现 idStripPrefix 剥离 name 的 models/ 集合前缀（入库 ID 与转发路径不再双前缀 404）; v4: preserve cache semantics and cache field mappings"
   },
   "aliases": {
     "toolCall": {
@@ -41,14 +41,8 @@
         "field": "messages"
       },
       "systemInstruction": {
-        "parts": [
-          {
-            "text": {
-              "field": "instructions",
-              "mode": "string"
-            }
-          }
-        ]
+        "field": "gemini_system",
+        "omitIfEmpty": true
       },
       "generationConfig": {
         "temperature": {
@@ -82,6 +76,10 @@
       },
       "toolConfig": {
         "field": "tool_config",
+        "omitIfEmpty": true
+      },
+      "cachedContent": {
+        "field": "cache_control",
         "omitIfEmpty": true
       }
     }

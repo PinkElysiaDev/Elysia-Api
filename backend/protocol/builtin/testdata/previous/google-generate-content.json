@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
-  "id": "gemini-api",
-  "name": "Google Generate-content",
-  "version": "2.1.3",
+  "id": "google-generate-content",
+  "name": "google-generate-content",
+  "version": "2.0.0",
   "family": "gemini",
   "wireVersion": "v2",
   "capabilities": {
@@ -129,63 +129,6 @@
       "query": {
         "alt": "sse"
       }
-    },
-    "models": {
-      "kind": "models",
-      "method": "GET",
-      "path": "/v1beta/models",
-      "transport": "http_json",
-      "auth": {
-        "location": "header",
-        "name": "x-goog-api-key"
-      },
-      "models": {
-        "decode": {
-          "transform": {
-            "op": "object",
-            "fields": {
-              "models": {
-                "op": "map",
-                "source": {
-                  "op": "read",
-                  "path": "/models",
-                  "required": true
-                },
-                "body": {
-                  "op": "object",
-                  "fields": {
-                    "id": {
-                      "op": "trim_prefix",
-                      "source": {
-                        "op": "read",
-                        "path": "/name",
-                        "from": "item",
-                        "required": true
-                      },
-                      "value": "models/"
-                    },
-                    "name": {
-                      "op": "read",
-                      "path": "/displayName",
-                      "from": "item"
-                    },
-                    "maxTokens": {
-                      "op": "read",
-                      "path": "/inputTokenLimit",
-                      "from": "item"
-                    }
-                  }
-                }
-              },
-              "next": {
-                "op": "read",
-                "path": "/nextPageToken"
-              }
-            }
-          }
-        },
-        "cursorParameter": "pageToken"
-      }
     }
   },
   "samples": [
@@ -262,7 +205,7 @@
             "protocol": {
               "family": "gemini",
               "wireVersion": "v2",
-              "definitionId": "gemini-api",
+              "definitionId": "google-generate-content",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -510,7 +453,7 @@
             "protocol": {
               "family": "gemini",
               "wireVersion": "v2",
-              "definitionId": "gemini-api",
+              "definitionId": "google-generate-content",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -769,7 +712,7 @@
             "protocol": {
               "family": "gemini",
               "wireVersion": "v2",
-              "definitionId": "gemini-api",
+              "definitionId": "google-generate-content",
               "revision": "2.0.0"
             },
             "direction": "decode_response",
@@ -939,7 +882,7 @@
             "protocol": {
               "family": "gemini",
               "wireVersion": "v2",
-              "definitionId": "gemini-api",
+              "definitionId": "google-generate-content",
               "revision": "2.0.0"
             },
             "direction": "decode_response",
@@ -1111,7 +1054,7 @@
             "protocol": {
               "family": "gemini",
               "wireVersion": "v2",
-              "definitionId": "gemini-api",
+              "definitionId": "google-generate-content",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -1250,7 +1193,7 @@
             "protocol": {
               "family": "gemini",
               "wireVersion": "v2",
-              "definitionId": "gemini-api",
+              "definitionId": "google-generate-content",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -1393,7 +1336,7 @@
             "protocol": {
               "family": "gemini",
               "wireVersion": "v2",
-              "definitionId": "gemini-api",
+              "definitionId": "google-generate-content",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -1536,7 +1479,7 @@
             "protocol": {
               "family": "gemini",
               "wireVersion": "v2",
-              "definitionId": "gemini-api",
+              "definitionId": "google-generate-content",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -1679,7 +1622,7 @@
             "protocol": {
               "family": "gemini",
               "wireVersion": "v2",
-              "definitionId": "gemini-api",
+              "definitionId": "google-generate-content",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -1932,7 +1875,7 @@
               "protocol": {
                 "family": "gemini",
                 "wireVersion": "v2",
-                "definitionId": "gemini-api",
+                "definitionId": "google-generate-content",
                 "revision": "2.0.0"
               },
               "direction": "decode_event",
@@ -2424,7 +2367,7 @@
                 "protocol": {
                   "family": "gemini",
                   "wireVersion": "v2",
-                  "definitionId": "gemini-api",
+                  "definitionId": "google-generate-content",
                   "revision": "2.0.0"
                 },
                 "direction": "decode_request",
@@ -2482,7 +2425,7 @@
                 "protocol": {
                   "family": "gemini",
                   "wireVersion": "v2",
-                  "definitionId": "gemini-api",
+                  "definitionId": "google-generate-content",
                   "revision": "2.0.0"
                 },
                 "direction": "decode_request",
@@ -2504,7 +2447,7 @@
             "protocol": {
               "family": "gemini",
               "wireVersion": "v2",
-              "definitionId": "gemini-api",
+              "definitionId": "google-generate-content",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -2710,7 +2653,7 @@
             "protocol": {
               "family": "gemini",
               "wireVersion": "v2",
-              "definitionId": "gemini-api",
+              "definitionId": "google-generate-content",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -2899,7 +2842,7 @@
             "protocol": {
               "family": "gemini",
               "wireVersion": "v2",
-              "definitionId": "gemini-api",
+              "definitionId": "google-generate-content",
               "revision": "2.0.0"
             },
             "direction": "decode_response",
@@ -3308,7 +3251,7 @@
                   "protocol": {
                     "family": "gemini",
                     "wireVersion": "v2",
-                    "definitionId": "gemini-api",
+                    "definitionId": "google-generate-content",
                     "revision": "2.0.0"
                   },
                   "direction": "decode_request",
@@ -3391,7 +3334,7 @@
                   "protocol": {
                     "family": "gemini",
                     "wireVersion": "v2",
-                    "definitionId": "gemini-api",
+                    "definitionId": "google-generate-content",
                     "revision": "2.0.0"
                   },
                   "direction": "decode_request",
@@ -3425,7 +3368,7 @@
             "protocol": {
               "family": "gemini",
               "wireVersion": "v2",
-              "definitionId": "gemini-api",
+              "definitionId": "google-generate-content",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -3577,7 +3520,7 @@
                   "protocol": {
                     "family": "gemini",
                     "wireVersion": "v2",
-                    "definitionId": "gemini-api",
+                    "definitionId": "google-generate-content",
                     "revision": "2.0.0"
                   },
                   "direction": "decode_response",
@@ -3642,7 +3585,7 @@
                   "protocol": {
                     "family": "gemini",
                     "wireVersion": "v2",
-                    "definitionId": "gemini-api",
+                    "definitionId": "google-generate-content",
                     "revision": "2.0.0"
                   },
                   "direction": "decode_response",
@@ -3669,7 +3612,7 @@
             "protocol": {
               "family": "gemini",
               "wireVersion": "v2",
-              "definitionId": "gemini-api",
+              "definitionId": "google-generate-content",
               "revision": "2.0.0"
             },
             "direction": "decode_response",
@@ -3837,7 +3780,7 @@
               "protocol": {
                 "family": "gemini",
                 "wireVersion": "v2",
-                "definitionId": "gemini-api",
+                "definitionId": "google-generate-content",
                 "revision": "2.0.0"
               },
               "direction": "decode_event",
@@ -3965,7 +3908,7 @@
               "protocol": {
                 "family": "gemini",
                 "wireVersion": "v2",
-                "definitionId": "gemini-api",
+                "definitionId": "google-generate-content",
                 "revision": "2.0.0"
               },
               "direction": "decode_event",
@@ -4097,299 +4040,5 @@
       },
       "sequence": true
     }
-  ],
-  "modelSamples": [
-    {
-      "id": "models-terminal",
-      "operation": "models",
-      "input": {
-        "models": [
-          {
-            "name": "models/alpha",
-            "displayName": "Alpha",
-            "inputTokenLimit": 1000000
-          }
-        ]
-      },
-      "expected": {
-        "models": [
-          {
-            "id": "alpha",
-            "name": "Alpha",
-            "maxTokens": 1000000
-          }
-        ]
-      }
-    },
-    {
-      "id": "models-continuation",
-      "operation": "models",
-      "input": {
-        "models": [
-          {
-            "name": "models/beta"
-          }
-        ],
-        "nextPageToken": "p2"
-      },
-      "expected": {
-        "models": [
-          {
-            "id": "beta"
-          }
-        ],
-        "next": "p2"
-      }
-    },
-    {
-      "id": "models-bare-identity",
-      "operation": "models",
-      "input": {
-        "models": [
-          {
-            "name": "gemini-bare",
-            "displayName": "Bare Relay"
-          }
-        ]
-      },
-      "expected": {
-        "models": [
-          {
-            "id": "gemini-bare",
-            "name": "Bare Relay"
-          }
-        ]
-      }
-    }
-  ],
-  "agent": {
-    "thinkingEfforts": [
-      "",
-      "low",
-      "medium",
-      "high"
-    ],
-    "parameters": {
-      "transform": {
-        "op": "merge",
-        "policy": "reject",
-        "items": [
-          {
-            "op": "object",
-            "fields": {
-              "max_output_tokens": {
-                "op": "read",
-                "path": "/maxOutputTokens",
-                "required": true
-              }
-            }
-          },
-          {
-            "op": "if",
-            "when": {
-              "op": "read",
-              "path": "/thinkingEnabled",
-              "required": true
-            },
-            "then": {
-              "op": "object",
-              "fields": {
-                "gemini_thinking": {
-                  "op": "object",
-                  "fields": {
-                    "includeThoughts": {
-                      "op": "literal",
-                      "value": true
-                    },
-                    "thinkingLevel": {
-                      "op": "if",
-                      "when": {
-                        "op": "not",
-                        "source": {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "path": "/thinkingEffort",
-                              "required": true
-                            },
-                            {
-                              "op": "literal",
-                              "value": ""
-                            }
-                          ]
-                        }
-                      },
-                      "then": {
-                        "op": "read",
-                        "path": "/thinkingEffort",
-                        "required": true
-                      }
-                    }
-                  }
-                }
-              }
-            },
-            "otherwise": {
-              "op": "object",
-              "fields": {}
-            }
-          }
-        ]
-      }
-    },
-    "samples": [
-      {
-        "id": "agent-thinking-disabled",
-        "preferences": {
-          "maxOutputTokens": 8192,
-          "thinkingEnabled": false,
-          "thinkingEffort": "",
-          "stream": false
-        },
-        "expected": {
-          "max_output_tokens": 8192
-        }
-      },
-      {
-        "id": "agent-thinking-disabled-stream",
-        "preferences": {
-          "maxOutputTokens": 8192,
-          "thinkingEnabled": false,
-          "thinkingEffort": "",
-          "stream": true
-        },
-        "expected": {
-          "max_output_tokens": 8192
-        }
-      },
-      {
-        "id": "agent-effort-default",
-        "preferences": {
-          "maxOutputTokens": 8192,
-          "thinkingEnabled": true,
-          "thinkingEffort": "",
-          "stream": false
-        },
-        "expected": {
-          "max_output_tokens": 8192,
-          "gemini_thinking": {
-            "includeThoughts": true
-          }
-        }
-      },
-      {
-        "id": "agent-effort-default-stream",
-        "preferences": {
-          "maxOutputTokens": 8192,
-          "thinkingEnabled": true,
-          "thinkingEffort": "",
-          "stream": true
-        },
-        "expected": {
-          "max_output_tokens": 8192,
-          "gemini_thinking": {
-            "includeThoughts": true
-          }
-        }
-      },
-      {
-        "id": "agent-effort-low",
-        "preferences": {
-          "maxOutputTokens": 8192,
-          "thinkingEnabled": true,
-          "thinkingEffort": "low",
-          "stream": false
-        },
-        "expected": {
-          "max_output_tokens": 8192,
-          "gemini_thinking": {
-            "includeThoughts": true,
-            "thinkingLevel": "low"
-          }
-        }
-      },
-      {
-        "id": "agent-effort-low-stream",
-        "preferences": {
-          "maxOutputTokens": 8192,
-          "thinkingEnabled": true,
-          "thinkingEffort": "low",
-          "stream": true
-        },
-        "expected": {
-          "max_output_tokens": 8192,
-          "gemini_thinking": {
-            "includeThoughts": true,
-            "thinkingLevel": "low"
-          }
-        }
-      },
-      {
-        "id": "agent-effort-medium",
-        "preferences": {
-          "maxOutputTokens": 8192,
-          "thinkingEnabled": true,
-          "thinkingEffort": "medium",
-          "stream": false
-        },
-        "expected": {
-          "max_output_tokens": 8192,
-          "gemini_thinking": {
-            "includeThoughts": true,
-            "thinkingLevel": "medium"
-          }
-        }
-      },
-      {
-        "id": "agent-effort-medium-stream",
-        "preferences": {
-          "maxOutputTokens": 8192,
-          "thinkingEnabled": true,
-          "thinkingEffort": "medium",
-          "stream": true
-        },
-        "expected": {
-          "max_output_tokens": 8192,
-          "gemini_thinking": {
-            "includeThoughts": true,
-            "thinkingLevel": "medium"
-          }
-        }
-      },
-      {
-        "id": "agent-effort-high",
-        "preferences": {
-          "maxOutputTokens": 8192,
-          "thinkingEnabled": true,
-          "thinkingEffort": "high",
-          "stream": false
-        },
-        "expected": {
-          "max_output_tokens": 8192,
-          "gemini_thinking": {
-            "includeThoughts": true,
-            "thinkingLevel": "high"
-          }
-        }
-      },
-      {
-        "id": "agent-effort-high-stream",
-        "preferences": {
-          "maxOutputTokens": 8192,
-          "thinkingEnabled": true,
-          "thinkingEffort": "high",
-          "stream": true
-        },
-        "expected": {
-          "max_output_tokens": 8192,
-          "gemini_thinking": {
-            "includeThoughts": true,
-            "thinkingLevel": "high"
-          }
-        }
-      }
-    ],
-    "toolResults": "json"
-  }
+  ]
 }

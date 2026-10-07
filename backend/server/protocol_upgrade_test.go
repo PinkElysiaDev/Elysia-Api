@@ -28,18 +28,18 @@ func TestProtocolUpgradePreviewPreservesDraftAndLegacyEdits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	definition := preview.Definitions["responses-api"]
+	definition := preview.Definitions["openai-responses"]
 	fields, err := definition.ReadObject()
 	if err != nil {
 		t.Fatal(err)
 	}
 	fields["name"] = protocol.StringValue("Unfinished edited draft")
-	fields["id"] = protocol.StringValue("responses-api-draft")
+	fields["id"] = protocol.StringValue("openai-responses-draft")
 	value, err := protocol.EncodeValue(fields)
 	if err != nil {
 		t.Fatal(err)
 	}
-	draft, _, err := service.SaveDraft(t.Context(), "responses-api-draft", value.Bytes(), "")
+	draft, _, err := service.SaveDraft(t.Context(), "openai-responses-draft", value.Bytes(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,14 +67,14 @@ func TestProtocolUpgradePreviewPreservesDraftAndLegacyEdits(t *testing.T) {
 	if active, exists := service.Pin(draft.ProtocolID); exists {
 		t.Fatal("migration activated an unrelated editor draft", active.Definition().Name)
 	}
-	if active, exists := service.Pin("responses-api"); !exists || active.Definition().Name == "Unfinished edited draft" {
+	if active, exists := service.Pin("openai-responses"); !exists || active.Definition().Name == "Unfinished edited draft" {
 		t.Fatal("preset not activated with shipped content")
 	}
 }
 
 func TestProtocolUpgradeResetsEditedLegacyPresetToShipped(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
-	row := storage.CustomProtocol{ID: "responses-api", Name: "edited", Version: "7", Config: `{"id":"responses-api","name":"edited","version":"7","request":{"method":"POST","path":"/private","body":{"field":"model"}},"response":{}}`}
+	row := storage.CustomProtocol{ID: "openai-responses", Name: "edited", Version: "7", Config: `{"id":"openai-responses","name":"edited","version":"7","request":{"method":"POST","path":"/private","body":{"field":"model"}},"response":{}}`}
 	if err := s.store.UpsertCustomProtocol(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
@@ -96,12 +96,12 @@ func TestProtocolUpgradeResetsEditedLegacyPresetToShipped(t *testing.T) {
 		if err := candidate.Decode(&definition); err != nil {
 			t.Fatal(err)
 		}
-		if definition.ID == "responses-api" {
+		if definition.ID == "openai-responses" {
 			expected = candidate
 			break
 		}
 	}
-	if expected.IsZero() || string(preview.Definitions["responses-api"].Bytes()) != string(expected.Bytes()) {
+	if expected.IsZero() || string(preview.Definitions["openai-responses"].Bytes()) != string(expected.Bytes()) {
 		t.Fatal("edited legacy preset was not reset to the shipped definition")
 	}
 	_, logs, err := s.store.QuerySystemLogs(t.Context(), 20, 0, "")

@@ -7,7 +7,7 @@ import (
 )
 
 func TestProtocolUsageDetailsReachStatisticsAndKeepTailZeros(t *testing.T) {
-	compiled := compileFixtureDefinition(t, presetDefinition(t, "responses-api"))
+	compiled := compileFixtureDefinition(t, presetDefinition(t, "openai-responses"))
 	response, err := compiled.DecodeResponse(t.Context(), []byte(`{"status":"completed","output":[],"usage":{"input_tokens":100,"output_tokens":50,"input_tokens_details":{"cached_tokens":25,"text_tokens":80,"image_tokens":12,"audio_tokens":3},"output_tokens_details":{"reasoning_tokens":7,"text_tokens":30,"image_tokens":2,"audio_tokens":4}}}`), protocol.EvaluationContext{})
 	if err != nil {
 		t.Fatal(err)

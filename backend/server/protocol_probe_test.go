@@ -13,7 +13,7 @@ import (
 func TestProbeProtocolPersistsPresetEvidenceOnlyForActiveRevision(t *testing.T) {
 	server, _ := newProtocolAdminTestServer(t)
 	ctx := t.Context()
-	definition := presetDefinition(t, "chat-completions-api")
+	definition := presetDefinition(t, "openai-chat-completions")
 	shipped := mustEncodedProtocolValue(t, definition)
 	compiled := compileFixtureDefinition(t, definition)
 	if err := server.store.SaveProtocolRevision(ctx, protocol.Revision{ProtocolID: definition.ID, Hash: compiled.Hash(), Definition: shipped, CreatedAt: time.Now().UTC()}); err != nil {

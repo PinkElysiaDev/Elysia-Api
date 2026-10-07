@@ -33,7 +33,7 @@ func TestProtocolEstimateCountsUnicodeFilesAndToolHistoryOnce(t *testing.T) {
 }
 
 func TestHostedToolAccountingDeduplicatesAndHonorsSource(t *testing.T) {
-	compiled := compileFixtureDefinition(t, presetDefinition(t, "responses-api"))
+	compiled := compileFixtureDefinition(t, presetDefinition(t, "openai-responses"))
 	record := &usageRecord{}
 	for _, wire := range []string{
 		`{"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call"}}`,
@@ -76,7 +76,7 @@ func TestHostedToolUsagePersistedHTTPAndSSE(t *testing.T) {
 				fmt.Fprintf(w, "data: {\"type\":\"response.completed\",\"response\":%s}\n\n", payload)
 			}))
 			defer upstream.Close()
-			server := newTestServer(t, presetGroup(t, "custom:responses-api", upstream.URL))
+			server := newTestServer(t, presetGroup(t, "custom:openai-responses", upstream.URL))
 			request, recorder := chatRequestContext(fmt.Sprintf(`{"model":"grp","input":"hello","stream":%t}`, isStream))
 			request.Request.URL.Path = "/v1/responses"
 			server.responses(request)

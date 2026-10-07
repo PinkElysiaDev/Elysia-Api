@@ -33,10 +33,10 @@ func bindHealthModel(t *testing.T, server *Server, platform, endpoint string) st
 
 func TestHealthProbeUsesVerifiedWireAndCredentials(t *testing.T) {
 	cases := []struct{ id, path, auth, key, request, response string }{
-		{"chat-completions-api", "/chat/completions", "Authorization", "Bearer probe-key", `"messages"`, `{"choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}]}`},
-		{"responses-api", "/responses", "Authorization", "Bearer probe-key", `"input"`, `{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi"}]}]}`},
-		{"anthropic-api", "/v1/messages", "x-api-key", "probe-key", `"messages"`, `{"role":"assistant","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn"}`},
-		{"gemini-api", "/v1beta/models/model:generateContent", "x-goog-api-key", "probe-key", `"contents"`, `{"candidates":[{"content":{"role":"model","parts":[{"text":"hi"}]},"finishReason":"STOP"}]}`},
+		{"openai-chat-completions", "/chat/completions", "Authorization", "Bearer probe-key", `"messages"`, `{"choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}]}`},
+		{"openai-responses", "/responses", "Authorization", "Bearer probe-key", `"input"`, `{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi"}]}]}`},
+		{"anthropic-messages", "/v1/messages", "x-api-key", "probe-key", `"messages"`, `{"role":"assistant","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn"}`},
+		{"google-generate-content", "/v1beta/models/model:generateContent", "x-goog-api-key", "probe-key", `"contents"`, `{"candidates":[{"content":{"role":"model","parts":[{"text":"hi"}]},"finishReason":"STOP"}]}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.id, func(t *testing.T) {
@@ -52,7 +52,7 @@ func TestHealthProbeUsesVerifiedWireAndCredentials(t *testing.T) {
 				if r.URL.Path != tc.path || r.Header.Get(tc.auth) != tc.key || !strings.Contains(string(body), tc.request) {
 					t.Errorf("unexpected probe: path=%s headers=%v body=%s", r.URL.Path, r.Header, body)
 				}
-				if tc.id == "anthropic-api" && r.Header.Get("anthropic-version") == "" {
+				if tc.id == "anthropic-messages" && r.Header.Get("anthropic-version") == "" {
 					t.Error("missing wire version header")
 				}
 				w.Header().Set("Content-Type", "application/json")
@@ -231,9 +231,9 @@ func TestHealthCheckerShutdownCancelsActiveProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compiled, ok := service.Pin("chat-completions-api")
+	compiled, ok := service.Pin("openai-chat-completions")
 	if !ok {
-		t.Fatal("chat-completions-api preset not active")
+		t.Fatal("openai-chat-completions preset not active")
 	}
 	if err := s.store.SaveProtocolBinding(context.Background(), storage.ProtocolBinding{Kind: "source", SourceID: source.ID, Binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: compiled.Definition().Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}); err != nil {
 		t.Fatal(err)

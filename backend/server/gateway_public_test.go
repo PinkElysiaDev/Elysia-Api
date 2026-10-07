@@ -15,10 +15,10 @@ import (
 
 func TestGatewayFourPublicEntrypointsUseActiveRuntime(t *testing.T) {
 	fixtures := []struct{ module, id, family, path, request, response string }{
-		{"openai-chat", "chat-completions-api", string(builtin.FormatOpenAIChat), "/v1/chat/completions", `{"model":"m","messages":[{"role":"user","content":"hello"}]}`, `{"id":"r1","object":"chat.completion","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"world"},"finish_reason":"stop"}]}`},
-		{"responses", "responses-api", string(builtin.FormatResponses), "/v1/responses", `{"model":"m","input":[{"role":"user","content":"hello"}]}`, `{"id":"r1","object":"response","created_at":1,"status":"completed","model":"m","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"world"}]}]}`},
-		{"anthropic", "anthropic-api", string(builtin.FormatClaude), "/v1/messages", `{"model":"m","max_tokens":10,"messages":[{"role":"user","content":"hello"}]}`, `{"id":"r1","type":"message","role":"assistant","content":[{"type":"text","text":"world"}],"model":"m","stop_reason":"end_turn"}`},
-		{"gemini", "gemini-api", string(builtin.FormatGemini), "/v1beta/models/{model}:generateContent", `{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`, `{"candidates":[{"content":{"role":"model","parts":[{"text":"world"}]},"finishReason":"STOP"}],"modelVersion":"m","responseId":"r1"}`},
+		{"openai-chat", "openai-chat-completions", string(builtin.FormatOpenAIChat), "/v1/chat/completions", `{"model":"m","messages":[{"role":"user","content":"hello"}]}`, `{"id":"r1","object":"chat.completion","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"world"},"finish_reason":"stop"}]}`},
+		{"responses", "openai-responses", string(builtin.FormatResponses), "/v1/responses", `{"model":"m","input":[{"role":"user","content":"hello"}]}`, `{"id":"r1","object":"response","created_at":1,"status":"completed","model":"m","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"world"}]}]}`},
+		{"anthropic", "anthropic-messages", string(builtin.FormatClaude), "/v1/messages", `{"model":"m","max_tokens":10,"messages":[{"role":"user","content":"hello"}]}`, `{"id":"r1","type":"message","role":"assistant","content":[{"type":"text","text":"world"}],"model":"m","stop_reason":"end_turn"}`},
+		{"gemini", "google-generate-content", string(builtin.FormatGemini), "/v1beta/models/{model}:generateContent", `{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`, `{"candidates":[{"content":{"role":"model","parts":[{"text":"world"}]},"finishReason":"STOP"}],"modelVersion":"m","responseId":"r1"}`},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.module, func(t *testing.T) {

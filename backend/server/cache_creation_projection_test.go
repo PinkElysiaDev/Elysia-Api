@@ -28,7 +28,7 @@ func TestCacheCreationBucketProjectionAcrossProtocols(t *testing.T) {
 				}
 			}))
 			defer upstream.Close()
-			s := newTestServerWithStore(t, presetGroup(t, "custom:anthropic-api", upstream.URL))
+			s := newTestServerWithStore(t, presetGroup(t, "custom:anthropic-messages", upstream.URL))
 			c, rec := chatRequestContext(fmt.Sprintf(`{"model":"grp","max_tokens":64,"stream":%v,"messages":[{"role":"user","content":"hello"}]}`, stream))
 			s.chatCompletions(c)
 			if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {

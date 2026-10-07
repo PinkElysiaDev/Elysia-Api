@@ -1,39 +1,34 @@
 {
-  "id": "chat-completions-api",
-  "name": "Openai Chat Completions",
+  "id": "openai-responses",
+  "name": "Openai Responses",
   "version": "6",
   "type": "llm",
   "metadata": {
     "preset": true,
     "presetVersion": 6,
-    "description": "Chat Completions 线制的预置定义；复制后可定制端点/字段。v4：命名去厂商化；v3：path 相对化——base 填到 /v1 为止（对齐官方 base 约定），端点路径不含版本前缀; v5: preserve cache semantics and cache field mappings; v6: share native response and event adapters"
+    "description": "Responses 线制的预置定义；v4：命名去厂商化；v3：path 相对化——base 填到 /v1 为止（对齐官方 base 约定），端点路径不含版本前缀; v5: preserve cache semantics and cache field mappings; v6: share native response and event adapters"
   },
   "request": {
     "method": "POST",
-    "path": "/chat/completions",
-    "shape": "openai-chat",
+    "path": "/responses",
+    "shape": "responses",
     "body": {
       "model": {
         "field": "model",
         "mode": "string"
       },
-      "messages": {
-        "field": "messages"
+      "input": {
+        "field": "input_items"
+      },
+      "instructions": {
+        "field": "instructions",
+        "mode": "string",
+        "omitIfEmpty": true
       },
       "stream": {
         "field": "stream"
       },
-      "stream_options": {
-        "include_usage": {
-          "field": "stream_options.include_usage",
-          "default": true,
-          "when": {
-            "path": "stream",
-            "op": "isTrue"
-          }
-        }
-      },
-      "max_tokens": {
+      "max_output_tokens": {
         "field": "max_output_tokens",
         "omitIfEmpty": true
       },
@@ -43,15 +38,6 @@
       },
       "top_p": {
         "field": "top_p",
-        "omitIfEmpty": true
-      },
-      "stop": {
-        "field": "stop",
-        "omitIfEmpty": true
-      },
-      "reasoning_effort": {
-        "field": "reasoning_effort",
-        "mode": "string",
         "omitIfEmpty": true
       },
       "tools": {
@@ -66,8 +52,12 @@
         "field": "parallel_tool_calls",
         "omitIfEmpty": true
       },
-      "response_format": {
-        "field": "response_format",
+      "reasoning": {
+        "field": "reasoning",
+        "omitIfEmpty": true
+      },
+      "include": {
+        "field": "include",
         "omitIfEmpty": true
       },
       "user": {
@@ -82,17 +72,13 @@
       "prompt_cache_retention": {
         "field": "prompt_cache_retention",
         "omitIfEmpty": true
-      },
-      "cache_control": {
-        "field": "cache_control",
-        "omitIfEmpty": true
       }
     }
   },
   "response": {
-    "adapter": "openai-chat",
+    "adapter": "responses",
     "stream": {
-      "adapter": "openai-chat"
+      "adapter": "responses"
     }
   },
   "models": {

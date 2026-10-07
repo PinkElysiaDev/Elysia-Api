@@ -66,11 +66,11 @@ func TestProtocolLoad(t *testing.T) {
 	count := loadSetting(t, "ELYSIA_LOAD_REQUESTS", loadRequests)
 	repeats := loadSetting(t, "ELYSIA_LOAD_REPEATS", loadRepeats)
 	var measurements []loadMeasurement
-	for _, targetID := range []string{"chat-completions-api", "anthropic-api", "responses-api", "declarative"} {
+	for _, targetID := range []string{"openai-chat-completions", "anthropic-messages", "openai-responses", "declarative"} {
 		t.Run(targetID, func(t *testing.T) {
 			upstreamID := targetID
 			if targetID == "declarative" {
-				upstreamID = "chat-completions-api"
+				upstreamID = "openai-chat-completions"
 			}
 			upstream := compileFixtureDefinition(t, presetDefinition(t, upstreamID))
 			var isDelayed, isStream atomic.Bool
@@ -100,7 +100,7 @@ func TestProtocolLoad(t *testing.T) {
 				definitions = append(definitions, verificationEnvelopeDefinition(t))
 			}
 			server := newTestServerWithStore(t, presetGroup(t, "custom:"+upstreamID, loadBase(provider.URL, upstream)), definitions...)
-			ingress := compileFixtureDefinition(t, presetDefinition(t, "chat-completions-api"))
+			ingress := compileFixtureDefinition(t, presetDefinition(t, "openai-chat-completions"))
 			path := "/v1/chat/completions"
 			if targetID == "declarative" {
 				service, err := server.protocolService()

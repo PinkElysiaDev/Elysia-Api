@@ -93,7 +93,7 @@ func assessLiveCache(result liveCase) *liveCacheAssessment {
 		a.BillingUsage = billing
 		if billing["semantic"] == "openai" {
 			if counters, ok := billing["openai_usage"].(map[string]any); ok {
-				u, err := referenceLiveUsage("chat-completions-api", []map[string]any{counters})
+				u, err := referenceLiveUsage("openai-chat-completions", []map[string]any{counters})
 				if err != nil {
 					a.Conflicts = append(a.Conflicts, "invalid_billing_usage")
 				} else if result.ReferenceUsage != nil {
@@ -196,7 +196,7 @@ func TestCacheValidationBudgetReservesCleanupAndPersistsAcrossTargets(t *testing
 
 func TestCacheEvidenceDistinguishesBillingConflictAndUnknownCreation(t *testing.T) {
 	fields := []map[string]any{{"input_tokens": json.Number("4421"), "cache_read_input_tokens": json.Number("4224"), "billing_usage": map[string]any{"semantic": "openai", "openai_usage": map[string]any{"prompt_tokens": json.Number("4421")}}}}
-	u, err := referenceLiveUsage("anthropic-api", fields)
+	u, err := referenceLiveUsage("anthropic-messages", fields)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,11 +207,11 @@ func TestCacheEvidenceDistinguishesBillingConflictAndUnknownCreation(t *testing.
 }
 
 func TestLiveTargetProfilesContainOnlyCredentialReferences(t *testing.T) {
-	profiles, err := readLiveTargetProfiles(`{"anthropic-api":{"model":"claude-haiku-4-5","keyEnv":"ELYSIA_VERIFY_ANTHROPIC_KEY"}}`)
-	if err != nil || profiles["anthropic-api"].Model != "claude-haiku-4-5" {
+	profiles, err := readLiveTargetProfiles(`{"anthropic-messages":{"model":"claude-haiku-4-5","keyEnv":"ELYSIA_VERIFY_ANTHROPIC_KEY"}}`)
+	if err != nil || profiles["anthropic-messages"].Model != "claude-haiku-4-5" {
 		t.Fatal(err)
 	}
-	if _, err := readLiveTargetProfiles(`{"anthropic-api":{"model":"m","key":"secret"}}`); err == nil {
+	if _, err := readLiveTargetProfiles(`{"anthropic-messages":{"model":"m","key":"secret"}}`); err == nil {
 		t.Fatal("secret config accepted")
 	}
 }

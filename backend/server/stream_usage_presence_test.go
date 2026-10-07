@@ -11,9 +11,9 @@ import (
 )
 
 func TestStreamUsageTailZeroReachesClientAndStorage(t *testing.T) {
-	for _, platform := range []string{"anthropic", "custom:anthropic-api", "custom:usage-tail-copy"} {
+	for _, platform := range []string{"anthropic", "custom:anthropic-messages", "custom:usage-tail-copy"} {
 		t.Run(platform, func(t *testing.T) {
-			preset := presetDefinition(t, "anthropic-api")
+			preset := presetDefinition(t, "anthropic-messages")
 			preset.ID = "usage-tail-copy"
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", "text/event-stream")

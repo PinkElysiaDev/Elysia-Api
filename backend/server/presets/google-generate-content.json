@@ -1,5 +1,5 @@
 {
-  "id": "gemini-api",
+  "id": "google-generate-content",
   "name": "Google Generate-content",
   "version": "5",
   "type": "llm",

@@ -136,16 +136,16 @@ func (gateway *liveGateway) request(t *testing.T, id string, ingress *protocol.C
 		result.Reason = err.Error()
 		return result, nil
 	}
-	if ingress.Identity().DefinitionID == "chat-completions-api" || ingress.Identity().DefinitionID == "responses-api" {
+	if ingress.Identity().DefinitionID == "openai-chat-completions" || ingress.Identity().DefinitionID == "openai-responses" {
 		path = "/v1" + path
 	}
 	c, rec := adminProtocolContext("POST", path, string(body))
-	if ingress.Identity().DefinitionID == "gemini-api" {
+	if ingress.Identity().DefinitionID == "google-generate-content" {
 		c.Params = gin.Params{{Key: "action", Value: strings.TrimPrefix(path, "/v1beta/models/")}}
 	}
-	if ingress.Identity().DefinitionID == "responses-api" {
+	if ingress.Identity().DefinitionID == "openai-responses" {
 		gateway.server.responses(c)
-	} else if ingress.Identity().DefinitionID == "chat-completions-api" || ingress.Identity().DefinitionID == "anthropic-api" || ingress.Identity().DefinitionID == "gemini-api" {
+	} else if ingress.Identity().DefinitionID == "openai-chat-completions" || ingress.Identity().DefinitionID == "anthropic-messages" || ingress.Identity().DefinitionID == "google-generate-content" {
 		gateway.server.chatCompletions(c)
 	} else {
 		service, _ := gateway.server.protocolService()
@@ -246,7 +246,7 @@ func TestProtocolLive(t *testing.T) {
 		return
 	}
 	if suite.Suite == "gemini-native-tools" {
-		suite.geminiNativeToolControl(t, compileFixtureDefinition(t, presetDefinition(t, "gemini-api")))
+		suite.geminiNativeToolControl(t, compileFixtureDefinition(t, presetDefinition(t, "google-generate-content")))
 		return
 	}
 	compiled := map[string]*protocol.Compiled{}
@@ -320,10 +320,10 @@ func TestProtocolLive(t *testing.T) {
 					result, _ := gateway.request(t, fmt.Sprintf("custom/corrected/%t", isStream), custom, liveRequest(t, "grp", isStream), isStream)
 					suite.record(t, result)
 				}
-				if targetID == "responses-api" && suite.Suite == "followup" {
+				if targetID == "openai-responses" && suite.Suite == "followup" {
 					gateway.policyPairs(t, compiled[targetID])
 				}
-				if targetID == "gemini-api" && suite.Suite == "diagnostics" {
+				if targetID == "google-generate-content" && suite.Suite == "diagnostics" {
 					gateway.cacheOrderControl(t, compiled[targetID])
 				}
 				return
@@ -500,7 +500,7 @@ func (gateway *liveGateway) cachePairs(t *testing.T, ingress *protocol.Compiled)
 			prefix := fmt.Sprintf("Verification prefix %d %s %s.\n", gateway.suite.StartedAt.UnixNano(), ingress.Identity().DefinitionID, route) + strings.Repeat("stable alpha beta gamma delta reference information.\n", tokens/8)
 			request := liveRequest(t, gateway.suite.Model, false)
 			request.Content[0].Children[0].Payload = protocol.StringValue(prefix)
-			if ingress.Identity().DefinitionID == "anthropic-api" {
+			if ingress.Identity().DefinitionID == "anthropic-messages" {
 				request.Content[0].Children[0].Cache = []protocol.CacheIntent{{Kind: "breakpoint", Location: "block", Value: mustProtocolValue(t, `{"type":"ephemeral"}`), TTL: protocol.StringValue("5m")}}
 			}
 			if route == "gateway" {

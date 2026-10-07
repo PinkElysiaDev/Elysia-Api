@@ -20,10 +20,15 @@ const PROTOCOL_ALIASES: Record<string, ProtocolAlias> = {
 
 /**
  * 四条预置协议与其内置线路线缆等价（shape 一一对应），显示与内置线一致的
- * 规范名——usage 链路里「Google Generate-content → custom:gemini-api」这类
+ * 规范名——usage 链路里「Google Generate-content → custom:google-generate-content」这类
  * 同线制对两端同名、不再呈现为转换。
  */
 const PRESET_PROTOCOL_ALIASES: Record<string, ProtocolAlias> = {
+  'openai-chat-completions': { short: 'chat_cmpl', long: 'Openai Chat Completions' },
+  'openai-responses': { short: 'responses', long: 'Openai Responses' },
+  'anthropic-messages': { short: 'anthropic', long: 'Anthropic Messages' },
+  'google-generate-content': { short: 'gemini', long: 'Google Generate-content' },
+  // 历史 ID（改名迁移前的用量记录与旧库回显）沿用同一显示名。
   'chat-completions-api': { short: 'chat_cmpl', long: 'Openai Chat Completions' },
   'responses-api': { short: 'responses', long: 'Openai Responses' },
   'anthropic-api': { short: 'anthropic', long: 'Anthropic Messages' },

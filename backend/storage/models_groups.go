@@ -656,17 +656,17 @@ type ModelPatch struct {
 // geminiModelIDPrefix 是 Gemini listModels 返回的 name 集合前缀形态。
 const geminiModelIDPrefix = "models/"
 
-// isGeminiLikePlatform 判断平台是否 Gemini 系（内置 gemini 与 gemini-api 预置）。
+// isGeminiLikePlatform 判断平台是否 Gemini 系（内置 gemini 与 google-generate-content 预置）。
 func isGeminiLikePlatform(platform string) bool {
 	switch strings.ToLower(strings.TrimSpace(platform)) {
-	case "gemini", "custom:gemini-api":
+	case "gemini", "custom:google-generate-content":
 		return true
 	}
 	return false
 }
 
 // StripGeminiModelIDPrefixes 一次性修复历史自动拉取入库的 Gemini 系模型 ID 带
-// "models/" 集合前缀的问题（内置 gemini 平台与 gemini-api 预置的旧拉取都曾
+// "models/" 集合前缀的问题（内置 gemini 平台与 google-generate-content 预置的旧拉取都曾
 // 原样入库，转发路径模板会拼出 /v1beta/models/models/<id> 的双前缀 404）：
 // 剥前缀并同步改写 model_group_models 关联与多 key 权限列表。目标 id 已存在
 // （用户重新拉取过）时删除带前缀的旧行。幂等；两段互相独立收敛——模型行
@@ -688,7 +688,7 @@ func (s *Store) StripGeminiModelIDPrefixes(ctx context.Context) (fixed int, err 
 // stripGeminiModelIDRows 剥离模型行的 "models/" 前缀并改写组关联，单事务。
 func (s *Store) stripGeminiModelIDRows(ctx context.Context) (fixed int, err error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT source_id, id FROM models WHERE (LOWER(platform) = 'gemini' OR LOWER(platform) = 'custom:gemini-api') AND id LIKE ?`, geminiModelIDPrefix+"%")
+		`SELECT source_id, id FROM models WHERE (LOWER(platform) = 'gemini' OR LOWER(platform) = 'custom:google-generate-content') AND id LIKE ?`, geminiModelIDPrefix+"%")
 	if err != nil {
 		return 0, err
 	}

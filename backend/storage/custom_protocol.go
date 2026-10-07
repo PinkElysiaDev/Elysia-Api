@@ -95,6 +95,18 @@ func (s *Store) MigratePresetProtocolRenames(ctx context.Context, pairs []Protoc
 			log.Printf("[preset-rename] skip %q -> %q: target id already exists (user-defined row wins)", oldID, newID)
 			continue
 		}
+		// 平台引用与 v2 注册表的重写不依赖 v1 行是否存在：v2 升级过的老库
+		// custom_protocols 可能已无预置行，注册表行与 custom:<旧> 引用仍在。
+		// 重放安全：旧值零行即静默无事发生。
+		if _, err := tx.ExecContext(ctx, `UPDATE model_sources SET platform = ? WHERE LOWER(platform) = ?`, newPlatform, strings.ToLower(oldPlatform)); err != nil {
+			return renamed, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE models SET platform = ? WHERE LOWER(platform) = ?`, newPlatform, strings.ToLower(oldPlatform)); err != nil {
+			return renamed, err
+		}
+		if err := renameProtocolRegistryIDs(ctx, tx, oldID, newID); err != nil {
+			return renamed, err
+		}
 		// 运行时注册表按 config JSON 内部 id 建键,只改行 id 列会让注册键与
 		// 改写后的 custom:<新> 平台引用脱节(保存源/请求时 not registered)。
 		if err := rewriteProtocolConfigIDs(ctx, tx, oldID, newID); err != nil {
@@ -105,29 +117,100 @@ func (s *Store) MigratePresetProtocolRenames(ctx context.Context, pairs []Protoc
 			return renamed, err
 		}
 		// 旧 ID 行不存在(全新库/已改过名)时不算改名:否则每次启动都会打
-		// 误导性的 "renamed" 日志;platform 引用的悬空重写照常执行(见上)。
+		// 误导性的 "renamed" 日志。
 		affected, err := result.RowsAffected()
 		if err != nil {
 			return renamed, err
 		}
 		if affected == 0 {
-			if srcResult, err := tx.ExecContext(ctx, `UPDATE model_sources SET platform = ? WHERE LOWER(platform) = ?`, newPlatform, strings.ToLower(oldPlatform)); err == nil {
-				if rows, rowsErr := srcResult.RowsAffected(); err == nil && rowsErr == nil && rows > 0 {
-					log.Printf("[preset-rename] rewrote %d dangling custom:%s platform reference(s) to custom:%s", rows, oldID, newID)
-				}
-			}
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE model_sources SET platform = ? WHERE LOWER(platform) = ?`, newPlatform, strings.ToLower(oldPlatform)); err != nil {
-			return renamed, err
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE models SET platform = ? WHERE LOWER(platform) = ?`, newPlatform, strings.ToLower(oldPlatform)); err != nil {
-			return renamed, err
-		}
 		renamed++
-		log.Printf("[preset-rename] protocol %q renamed to %q (platform references rewritten)", oldID, newID)
+		log.Printf("[preset-rename] protocol %q renamed to %q (registry rows and platform references rewritten)", oldID, newID)
 	}
 	return renamed, tx.Commit()
+}
+
+// renameProtocolRegistryIDs 把 v2 协议注册表里 oldID 的行（revisions/drafts/
+// activations/reports/history、bindings JSON 内的 protocolId、agent 会话引用）
+// 改名到 newID。预置行由引擎随版本强制重发：与新 ID 并存的行删旧拷贝消解主键
+// 冲突；旧 ID 无行时整段为幂等空操作（重放不破坏已迁移的新行）。
+func renameProtocolRegistryIDs(ctx context.Context, tx *sql.Tx, oldID, newID string) error {
+	// 注册表带 FOREIGN KEY（activations/reports → revisions），UPDATE 改主键会
+	// 触发即时约束。改为两阶段：先按父表在前的次序把旧行「复制为新键」
+	// （INSERT OR IGNORE：新旧并存的行以新行——引擎当前内容——胜出），再按
+	// 子表在前的次序删除旧行。全程序等幂等，重放零副作用。
+	// 复制语句按表显式给出：protocol_history 的 id 是内容寻址主键
+	// （<protocol_id>~<hash>），照抄会与源行主键冲突被 OR IGNORE 吞掉，
+	// 须按新 ID 重新生成；revisions 的新内容哈希由引擎随版本重发。
+	copyTables := []struct {
+		table string
+		sql   string
+		args  []any
+	}{
+		{"protocol_revisions", `INSERT OR IGNORE INTO protocol_revisions(protocol_id, content_hash, definition, created_at) SELECT ?, content_hash, definition, created_at FROM protocol_revisions WHERE protocol_id = ?`, nil},
+		{"protocol_drafts", `INSERT OR IGNORE INTO protocol_drafts(protocol_id, content_hash, definition, updated_at) SELECT ?, content_hash, definition, updated_at FROM protocol_drafts WHERE protocol_id = ?`, nil},
+		{"protocol_history", `INSERT OR IGNORE INTO protocol_history(id, protocol_id, content_hash, definition, reason, is_draft, created_at, archived_at) SELECT ? || '~' || content_hash, ?, content_hash, definition, reason, is_draft, created_at, archived_at FROM protocol_history WHERE protocol_id = ?`, nil},
+		{"protocol_activations", `INSERT OR IGNORE INTO protocol_activations(protocol_id, revision_hash, generation, activated_at) SELECT ?, revision_hash, generation, activated_at FROM protocol_activations WHERE protocol_id = ?`, nil},
+		{"protocol_verification_reports", `INSERT OR IGNORE INTO protocol_verification_reports(id, protocol_id, revision_hash, compiler_version, samples_hash, kind, report, verified_at) SELECT id, ?, revision_hash, compiler_version, samples_hash, kind, report, verified_at FROM protocol_verification_reports WHERE protocol_id = ?`, nil},
+	}
+	deleteTables := []string{"protocol_activations", "protocol_verification_reports", "protocol_revisions", "protocol_drafts", "protocol_history"}
+	for _, copy := range copyTables {
+		args := copy.args
+		if args == nil {
+			if copy.table == "protocol_history" {
+				args = []any{newID, newID, oldID}
+			} else {
+				args = []any{newID, oldID}
+			}
+		}
+		if _, err := tx.ExecContext(ctx, copy.sql, args...); err != nil {
+			return fmt.Errorf("copy %s: %w", copy.table, err)
+		}
+	}
+	for _, table := range deleteTables {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE protocol_id = ?`, oldID); err != nil {
+			return fmt.Errorf("delete legacy %s: %w", table, err)
+		}
+	}
+	// bindings 的行键不含协议 ID，只需改写 JSON 内容；单连接 SQLite 下先收集
+	// 再写回，避免游标未关时同事务写入。
+	rows, err := tx.QueryContext(ctx, `SELECT binding_key, binding FROM protocol_bindings`)
+	if err != nil {
+		return err
+	}
+	type bindingPatch struct{ key, binding string }
+	patches := []bindingPatch{}
+	for rows.Next() {
+		var key, raw string
+		if err := rows.Scan(&key, &raw); err != nil {
+			rows.Close()
+			return err
+		}
+		var binding ProtocolBinding
+		if err := json.Unmarshal([]byte(raw), &binding); err != nil || binding.Binding.ProtocolID != oldID {
+			continue
+		}
+		binding.Binding.ProtocolID = newID
+		updated, err := json.Marshal(binding)
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		patches = append(patches, bindingPatch{key: key, binding: string(updated)})
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for _, patch := range patches {
+		if _, err := tx.ExecContext(ctx, `UPDATE protocol_bindings SET binding = ? WHERE binding_key = ?`, patch.binding, patch.key); err != nil {
+			return err
+		}
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE agent_sessions SET protocol_id = ? WHERE protocol_id = ?`, newID, oldID)
+	return err
 }
 
 // rewriteProtocolConfigID 把存储行 config JSON 内部的 "id" 字段改写为 wantID

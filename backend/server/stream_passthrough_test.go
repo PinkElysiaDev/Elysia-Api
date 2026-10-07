@@ -168,7 +168,7 @@ func TestStreamCancellationUsage(t *testing.T) {
 				marker := `"finish_reason":"stop"`
 				platform := "openai"
 				if endpoint == "custom" {
-					platform = "custom:chat-completions-api"
+					platform = "custom:openai-chat-completions"
 				}
 				if endpoint == "responses" || endpoint == "converted" {
 					platform = "responses"

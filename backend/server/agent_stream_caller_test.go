@@ -308,7 +308,7 @@ func TestAgentCallerUpstream400NotRetried(t *testing.T) {
 }
 
 // custom:<协议ID> 平台：走注册协议渲染 + 自定义协议发送 + 注册流解码器，
-// 请求路径与请求体由协议定义（预置 chat-completions-api 即 OpenAI chat 形状）。
+// 请求路径与请求体由协议定义（预置 openai-chat-completions 即 OpenAI chat 形状）。
 func TestAgentCallerCustomProtocolPlatform(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	bodyMaxKB := 1024
@@ -321,7 +321,7 @@ func TestAgentCallerCustomProtocolPlatform(t *testing.T) {
 		_, _ = w.Write([]byte(openAIChunk("c9", map[string]any{}, "stop", nil)))
 		_, _ = w.Write([]byte(openAIDone()))
 	})
-	seedCallerModel(t, s, upstream.URL+"/v1", "custom:chat-completions-api")
+	seedCallerModel(t, s, upstream.URL+"/v1", "custom:openai-chat-completions")
 
 	result, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
 	if err != nil {
@@ -409,7 +409,7 @@ func TestAgentAttachmentBase64IsTextNotBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := &protocol.Request{SchemaVersion: 1, Parameters: protocol.Object{"max_output_tokens": mustProtocolValue(t, "100")}, Model: protocol.StringValue("fake-model"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{*image}}}}
-	anthropic, _ := service.Pin("anthropic-api")
+	anthropic, _ := service.Pin("anthropic-messages")
 	anthropicBody, err := anthropic.EncodeRequest(t.Context(), request, protocol.EvaluationContext{})
 	if err != nil {
 		t.Fatalf("anthropic convert: %v", err)
@@ -437,7 +437,7 @@ func TestAgentAttachmentBase64IsTextNotBinary(t *testing.T) {
 		t.Fatalf("anthropic source.data not valid base64 (this is the reported 400): %v", decodeErr)
 	}
 
-	gemini, _ := service.Pin("gemini-api")
+	gemini, _ := service.Pin("google-generate-content")
 	geminiBody, err := gemini.EncodeRequest(t.Context(), request, protocol.EvaluationContext{})
 	if err != nil {
 		t.Fatalf("gemini convert: %v", err)
@@ -461,7 +461,7 @@ func TestAgentAttachmentBase64IsTextNotBinary(t *testing.T) {
 		t.Fatalf("gemini inlineData.data not valid base64: %v", decodeErr)
 	}
 
-	chat, _ := service.Pin("chat-completions-api")
+	chat, _ := service.Pin("openai-chat-completions")
 	chatBody, err := chat.EncodeRequest(t.Context(), request, protocol.EvaluationContext{})
 	if err != nil {
 		t.Fatalf("chat convert: %v", err)
@@ -523,7 +523,7 @@ func TestAgentCallerCustomProtocolPostTerminalTextRejected(t *testing.T) {
 		_, _ = w.Write([]byte(openAIChunk("c9", map[string]any{"content": "协议"}, "", nil)))
 		_, _ = w.Write([]byte(openAIDone()))
 	})
-	seedCallerModel(t, s, upstream.URL+"/v1", "custom:chat-completions-api")
+	seedCallerModel(t, s, upstream.URL+"/v1", "custom:openai-chat-completions")
 
 	_, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
 	if err == nil || !strings.Contains(err.Error(), "event arrived after terminal") {
@@ -552,7 +552,7 @@ func TestAgentCallerAnthropicPresetToolRound(t *testing.T) {
 		_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"完成\"}}\n\n"))
 		_, _ = w.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":2}}\n\n"))
 	})
-	seedCallerModel(t, s, upstream.URL, "custom:anthropic-api")
+	seedCallerModel(t, s, upstream.URL, "custom:anthropic-messages")
 
 	caller := newAgentStreamCaller(s)
 	toolResult, err := caller.Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
@@ -612,7 +612,7 @@ func TestAgentCallerAnthropicPresetSignatureRoundTrip(t *testing.T) {
 			fmt.Fprintf(w, "data: %s\n\n", frame)
 		}
 	})
-	seedCallerModel(t, s, upstream.URL, "custom:anthropic-api")
+	seedCallerModel(t, s, upstream.URL, "custom:anthropic-messages")
 	session, err := s.store.CreateAgentSession(t.Context(), storage.AgentSessionUpsert{Mode: "create", Settings: agent.Settings{ModelSourceID: "cs1", ModelName: "fake-model"}})
 	if err != nil {
 		t.Fatal(err)

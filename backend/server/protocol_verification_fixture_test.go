@@ -6,7 +6,7 @@ import (
 	"github.com/elysia-api/backend/protocol"
 )
 
-var liveProtocolIDs = []string{"chat-completions-api", "responses-api", "anthropic-api", "gemini-api"}
+var liveProtocolIDs = []string{"openai-chat-completions", "openai-responses", "anthropic-messages", "google-generate-content"}
 
 func TestVerificationEnvelopeTextCombinations(t *testing.T) {
 	custom := compileFixtureDefinition(t, verificationEnvelopeDefinition(t))

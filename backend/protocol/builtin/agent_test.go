@@ -20,7 +20,7 @@ func compileAgentDefinition(t *testing.T, mutate func(*p.Definition)) *p.Compile
 		if err := value.Decode(&definition); err != nil {
 			t.Fatal(err)
 		}
-		if definition.ID != "chat-completions-api" {
+		if definition.ID != "openai-chat-completions" {
 			continue
 		}
 		mutate(&definition)

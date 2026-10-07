@@ -20,7 +20,7 @@ func cacheAliasExampleDefinition(t *testing.T) protocol.Definition {
 	if err := json.Unmarshal(raw, &mappings); err != nil {
 		t.Fatal(err)
 	}
-	definition := presetDefinition(t, "chat-completions-api")
+	definition := presetDefinition(t, "openai-chat-completions")
 	definition.ID = "independent-usage-alias-example"
 	sampleBytes, err := os.ReadFile(filepath.Join("..", "..", "docs", "examples", "cache-usage-alias.sample.json"))
 	if err != nil {
@@ -50,7 +50,7 @@ func TestCacheAliasExamplePreservesStandardZeroAndUnrelatedExtensions(t *testing
 	eventMapping.After = &protocol.Expression{Op: "ref", Ref: "cache_usage"}
 	definition.Directions[protocol.DecodeEvent] = eventMapping
 	compiled := compileFixtureDefinition(t, definition)
-	standard := compileFixtureDefinition(t, presetDefinition(t, "chat-completions-api"))
+	standard := compileFixtureDefinition(t, presetDefinition(t, "openai-chat-completions"))
 	different := compiled.Definition()
 	different.ID = "different-usage-decoder-same-ref"
 	different.Expressions["cache_usage"] = protocol.Expression{Op: "read"}

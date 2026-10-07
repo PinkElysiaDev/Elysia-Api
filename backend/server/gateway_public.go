@@ -11,10 +11,10 @@ import (
 )
 
 var publicProtocolIDs = map[builtin.FormatType]string{
-	builtin.FormatOpenAIChat: "chat-completions-api",
-	builtin.FormatResponses:  "responses-api",
-	builtin.FormatClaude:     "anthropic-api",
-	builtin.FormatGemini:     "gemini-api",
+	builtin.FormatOpenAIChat: protocol.PresetChatCompletionsID,
+	builtin.FormatResponses:  protocol.PresetResponsesID,
+	builtin.FormatClaude:     protocol.PresetAnthropicID,
+	builtin.FormatGemini:     protocol.PresetGeminiID,
 }
 
 func (s *Server) serveVersionedPublicIngress(c *gin.Context) {

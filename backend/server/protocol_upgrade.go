@@ -233,13 +233,13 @@ func protocolIDForPlatform(platform string) (string, error) {
 	}
 	switch platform {
 	case "", "openai", "openai_chat", "openai-compatible", "chat_completions":
-		return "chat-completions-api", nil
+		return "openai-chat-completions", nil
 	case "openai_responses", "responses":
-		return "responses-api", nil
+		return "openai-responses", nil
 	case "claude", "anthropic":
-		return "anthropic-api", nil
+		return "anthropic-messages", nil
 	case "gemini":
-		return "gemini-api", nil
+		return "google-generate-content", nil
 	default:
 		return "", fmt.Errorf("platform %q requires an explicit verified protocol binding", platform)
 	}

@@ -132,7 +132,7 @@ func TestProtocolHistoryRestoreInvalidDraftPreservesEditableCopy(t *testing.T) {
 func TestProtocolHistoryReplacementFailureRollsBackAllReferences(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
 	s.setupProtocolRevisionRoutes(s.engine.Group("/api/admin"))
-	old := activateGatewayDefinition(t, s, presetDefinition(t, "anthropic-api"))
+	old := activateGatewayDefinition(t, s, presetDefinition(t, "anthropic-messages"))
 	definition := old.Definition()
 	definition.ID = "tools-custom"
 	old = activateGatewayDefinition(t, s, definition)

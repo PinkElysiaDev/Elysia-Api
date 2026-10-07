@@ -32,7 +32,7 @@ func TestCacheUsageMissingOutputRemainsUnknownUntilTail(t *testing.T) {
 }
 
 func TestCacheGeminiReferenceDoesNotInventSystem(t *testing.T) {
-	compiled := compileFixtureDefinition(t, presetDefinition(t, "gemini-api"))
+	compiled := compileFixtureDefinition(t, presetDefinition(t, "google-generate-content"))
 	options := protocol.EvaluationContext{Scope: protocol.Scope{Provider: "provider", Account: "account", Model: "m"}, Values: protocol.Object{"model": protocol.StringValue("m")}}
 	request, err := compiled.DecodeRequest(t.Context(), []byte(`{"cachedContent":"cachedContents/existing","contents":[{"role":"user","parts":[{"text":"question"}]}]}`), options)
 	if err != nil {
@@ -125,19 +125,19 @@ func assertCacheWirePrefix(t *testing.T, platform string, beforeBody, afterBody 
 
 func cacheWireFixtures() []cacheWireFixture {
 	return []cacheWireFixture{
-		{"chat-completions-api", "openai", "/v1/chat/completions",
+		{"openai-chat-completions", "openai", "/v1/chat/completions",
 			`{"model":"grp","prompt_cache_key":"stable-key","prompt_cache_retention":"24h","messages":[{"role":"system","content":[{"type":"text","text":"stable system"}]},{"role":"user","content":"question"},{"role":"assistant","tool_calls":[{"id":"t1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},{"role":"tool","tool_call_id":"t1","content":"result"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}]}`,
 			`{"id":"r1","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":5,"total_tokens":105,"prompt_tokens_details":{"cached_tokens":70}}}`,
 			"data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":5,\"total_tokens\":105,\"prompt_tokens_details\":{\"cached_tokens\":70}}}\n\ndata: [DONE]\n\n"},
-		{"anthropic-api", "anthropic", "/v1/messages",
+		{"anthropic-messages", "anthropic", "/v1/messages",
 			`{"model":"grp","max_tokens":64,"cache_control":{"type":"ephemeral"},"system":[{"type":"text","text":"stable system","cache_control":{"type":"ephemeral","ttl":"1h"}}],"messages":[{"role":"user","content":"question"},{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"lookup","input":{},"cache_control":{"type":"ephemeral"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"result","cache_control":{"type":"ephemeral"}}]}],"tools":[{"name":"lookup","input_schema":{"type":"object"},"cache_control":{"type":"ephemeral"}}]}`,
 			`{"id":"r1","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":70,"cache_creation_input_tokens":20}}`,
 			"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"r1\",\"role\":\"assistant\",\"usage\":{\"input_tokens\":10,\"output_tokens\":0,\"cache_read_input_tokens\":70,\"cache_creation_input_tokens\":20}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"},
-		{"responses-api", "responses", "/v1/responses",
+		{"openai-responses", "responses", "/v1/responses",
 			`{"model":"grp","instructions":"stable system","prompt_cache_key":"stable-key","prompt_cache_retention":"24h","input":[{"role":"user","content":[{"type":"input_text","text":"question"}]},{"type":"function_call","call_id":"t1","name":"lookup","arguments":"{}"},{"type":"function_call_output","call_id":"t1","output":"result"}],"tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]}`,
 			`{"id":"r1","object":"response","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":100,"output_tokens":5,"total_tokens":105,"input_tokens_details":{"cached_tokens":70}}}`,
 			"data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg1\",\"role\":\"assistant\",\"content\":[]}}\n\ndata: {\"type\":\"response.content_part.added\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\"}}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"r1\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":100,\"output_tokens\":5,\"total_tokens\":105,\"input_tokens_details\":{\"cached_tokens\":70}}}}\n\n"},
-		{"gemini-api", "gemini", "/v1beta/models/grp:generateContent",
+		{"google-generate-content", "gemini", "/v1beta/models/grp:generateContent",
 			`{"cachedContent":"cachedContents/stable","systemInstruction":{"parts":[{"text":"stable system"}]},"contents":[{"role":"user","parts":[{"text":"question"}]},{"role":"model","parts":[{"functionCall":{"id":"t1","name":"lookup","args":{}}}]},{"role":"user","parts":[{"functionResponse":{"id":"t1","name":"lookup","response":{"result":"result"}}}]}],"tools":[{"functionDeclarations":[{"name":"lookup","parameters":{"type":"object"}}]}]}`,
 			`{"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":5,"totalTokenCount":105,"cachedContentTokenCount":70}}`,
 			"data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"}]},\"finishReason\":\"STOP\"}]}\n\ndata: {\"usageMetadata\":{\"promptTokenCount\":100,\"candidatesTokenCount\":5,\"totalTokenCount\":105,\"cachedContentTokenCount\":70}}\n\n"},
@@ -307,7 +307,7 @@ func TestCacheUsageCreationAndAbsentFields(t *testing.T) {
 					}
 				}))
 				defer upstream.Close()
-				s := newTestServerWithStore(t, presetGroup(t, "custom:anthropic-api", upstream.URL))
+				s := newTestServerWithStore(t, presetGroup(t, "custom:anthropic-messages", upstream.URL))
 				c, rec := chatRequestContext(fmt.Sprintf(`{"model":"grp","max_tokens":64,"stream":%v,"messages":[{"role":"user","content":"hello"}]}`, stream))
 				s.chatCompletions(c)
 				if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {

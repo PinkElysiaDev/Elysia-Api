@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "id": "anthropic-api",
-  "name": "anthropic-api",
+  "id": "anthropic-messages",
+  "name": "anthropic-messages",
   "version": "2.1.0",
   "family": "claude",
   "wireVersion": "v2",
@@ -342,7 +342,7 @@
             "protocol": {
               "family": "claude",
               "wireVersion": "v2",
-              "definitionId": "anthropic-api",
+              "definitionId": "anthropic-messages",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -577,7 +577,7 @@
             "protocol": {
               "family": "claude",
               "wireVersion": "v2",
-              "definitionId": "anthropic-api",
+              "definitionId": "anthropic-messages",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -825,7 +825,7 @@
             "protocol": {
               "family": "claude",
               "wireVersion": "v2",
-              "definitionId": "anthropic-api",
+              "definitionId": "anthropic-messages",
               "revision": "2.0.0"
             },
             "direction": "decode_response",
@@ -979,7 +979,7 @@
             "protocol": {
               "family": "claude",
               "wireVersion": "v2",
-              "definitionId": "anthropic-api",
+              "definitionId": "anthropic-messages",
               "revision": "2.0.0"
             },
             "direction": "decode_response",
@@ -1182,7 +1182,7 @@
             "protocol": {
               "family": "claude",
               "wireVersion": "v2",
-              "definitionId": "anthropic-api",
+              "definitionId": "anthropic-messages",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -1348,7 +1348,7 @@
             "protocol": {
               "family": "claude",
               "wireVersion": "v2",
-              "definitionId": "anthropic-api",
+              "definitionId": "anthropic-messages",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -1494,7 +1494,7 @@
             "protocol": {
               "family": "claude",
               "wireVersion": "v2",
-              "definitionId": "anthropic-api",
+              "definitionId": "anthropic-messages",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -1778,7 +1778,7 @@
               "protocol": {
                 "family": "claude",
                 "wireVersion": "v2",
-                "definitionId": "anthropic-api",
+                "definitionId": "anthropic-messages",
                 "revision": "2.0.0"
               },
               "direction": "decode_event",
@@ -2326,7 +2326,7 @@
                 "protocol": {
                   "family": "claude",
                   "wireVersion": "v2",
-                  "definitionId": "anthropic-api",
+                  "definitionId": "anthropic-messages",
                   "revision": "2.0.0"
                 },
                 "direction": "decode_request",
@@ -2387,7 +2387,7 @@
                 "protocol": {
                   "family": "claude",
                   "wireVersion": "v2",
-                  "definitionId": "anthropic-api",
+                  "definitionId": "anthropic-messages",
                   "revision": "2.0.0"
                 },
                 "direction": "decode_request",
@@ -2412,7 +2412,7 @@
             "protocol": {
               "family": "claude",
               "wireVersion": "v2",
-              "definitionId": "anthropic-api",
+              "definitionId": "anthropic-messages",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -2614,7 +2614,7 @@
             "protocol": {
               "family": "claude",
               "wireVersion": "v2",
-              "definitionId": "anthropic-api",
+              "definitionId": "anthropic-messages",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -2783,7 +2783,7 @@
             "protocol": {
               "family": "claude",
               "wireVersion": "v2",
-              "definitionId": "anthropic-api",
+              "definitionId": "anthropic-messages",
               "revision": "2.0.0"
             },
             "direction": "decode_response",
@@ -3209,7 +3209,7 @@
                   "protocol": {
                     "family": "claude",
                     "wireVersion": "v2",
-                    "definitionId": "anthropic-api",
+                    "definitionId": "anthropic-messages",
                     "revision": "2.0.0"
                   },
                   "direction": "decode_request",
@@ -3292,7 +3292,7 @@
                   "protocol": {
                     "family": "claude",
                     "wireVersion": "v2",
-                    "definitionId": "anthropic-api",
+                    "definitionId": "anthropic-messages",
                     "revision": "2.0.0"
                   },
                   "direction": "decode_request",
@@ -3326,7 +3326,7 @@
             "protocol": {
               "family": "claude",
               "wireVersion": "v2",
-              "definitionId": "anthropic-api",
+              "definitionId": "anthropic-messages",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -3458,7 +3458,7 @@
                   "protocol": {
                     "family": "claude",
                     "wireVersion": "v2",
-                    "definitionId": "anthropic-api",
+                    "definitionId": "anthropic-messages",
                     "revision": "2.0.0"
                   },
                   "direction": "decode_response",
@@ -3523,7 +3523,7 @@
                   "protocol": {
                     "family": "claude",
                     "wireVersion": "v2",
-                    "definitionId": "anthropic-api",
+                    "definitionId": "anthropic-messages",
                     "revision": "2.0.0"
                   },
                   "direction": "decode_response",
@@ -3550,7 +3550,7 @@
             "protocol": {
               "family": "claude",
               "wireVersion": "v2",
-              "definitionId": "anthropic-api",
+              "definitionId": "anthropic-messages",
               "revision": "2.0.0"
             },
             "direction": "decode_response",
@@ -3724,7 +3724,7 @@
               "protocol": {
                 "family": "claude",
                 "wireVersion": "v2",
-                "definitionId": "anthropic-api",
+                "definitionId": "anthropic-messages",
                 "revision": "2.0.0"
               },
               "direction": "decode_event",
@@ -3866,7 +3866,7 @@
               "protocol": {
                 "family": "claude",
                 "wireVersion": "v2",
-                "definitionId": "anthropic-api",
+                "definitionId": "anthropic-messages",
                 "revision": "2.0.0"
               },
               "direction": "decode_event",
@@ -4066,7 +4066,7 @@
                   "protocol": {
                     "family": "claude",
                     "wireVersion": "v2",
-                    "definitionId": "anthropic-api",
+                    "definitionId": "anthropic-messages",
                     "revision": "2.0.0"
                   },
                   "direction": "decode_request",
@@ -4148,7 +4148,7 @@
                   "protocol": {
                     "family": "claude",
                     "wireVersion": "v2",
-                    "definitionId": "anthropic-api",
+                    "definitionId": "anthropic-messages",
                     "revision": "2.0.0"
                   },
                   "direction": "decode_request",
@@ -4182,7 +4182,7 @@
             "protocol": {
               "family": "claude",
               "wireVersion": "v2",
-              "definitionId": "anthropic-api",
+              "definitionId": "anthropic-messages",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -4310,7 +4310,7 @@
                   "protocol": {
                     "family": "claude",
                     "wireVersion": "v2",
-                    "definitionId": "anthropic-api",
+                    "definitionId": "anthropic-messages",
                     "revision": "2.0.0"
                   },
                   "direction": "decode_response",
@@ -4374,7 +4374,7 @@
                   "protocol": {
                     "family": "claude",
                     "wireVersion": "v2",
-                    "definitionId": "anthropic-api",
+                    "definitionId": "anthropic-messages",
                     "revision": "2.0.0"
                   },
                   "direction": "decode_response",
@@ -4401,7 +4401,7 @@
             "protocol": {
               "family": "claude",
               "wireVersion": "v2",
-              "definitionId": "anthropic-api",
+              "definitionId": "anthropic-messages",
               "revision": "2.0.0"
             },
             "direction": "decode_response",
@@ -4531,7 +4531,7 @@
               "protocol": {
                 "family": "claude",
                 "wireVersion": "v2",
-                "definitionId": "anthropic-api",
+                "definitionId": "anthropic-messages",
                 "revision": "2.0.0"
               },
               "direction": "decode_event",
@@ -4623,7 +4623,7 @@
               "protocol": {
                 "family": "claude",
                 "wireVersion": "v2",
-                "definitionId": "anthropic-api",
+                "definitionId": "anthropic-messages",
                 "revision": "2.0.0"
               },
               "direction": "decode_event",

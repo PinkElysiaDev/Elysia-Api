@@ -34,9 +34,9 @@ func TestAnthropicCopySystemCacheGateway(t *testing.T) {
 						}
 					}))
 					defer provider.Close()
-					definition := presetDefinition(t, "anthropic-api")
-					definition.ID = "anthropic-api-copy"
-					groups := presetGroup(t, "custom:anthropic-api-copy", provider.URL)
+					definition := presetDefinition(t, "anthropic-messages")
+					definition.ID = "anthropic-messages-copy"
+					groups := presetGroup(t, "custom:anthropic-messages-copy", provider.URL)
 					s := newTestServerWithStore(t, groups, definition)
 					sources, err := s.store.ListSources(t.Context())
 					if err != nil || len(sources) != 1 {
@@ -75,7 +75,7 @@ func TestAnthropicCopySystemCacheGateway(t *testing.T) {
 					if err := json.Unmarshal(raw, &record); err != nil {
 						t.Fatal(err)
 					}
-					if record.TargetFormat != "anthropic-api-copy" || record.UpstreamRevision == "" || record.CacheSynthesis != synthesis {
+					if record.TargetFormat != "anthropic-messages-copy" || record.UpstreamRevision == "" || record.CacheSynthesis != synthesis {
 						t.Fatal("candidate diagnostics missing")
 					}
 					diagnostic, _ := json.Marshal(record.SystemStructure)
@@ -90,9 +90,9 @@ func TestAnthropicCopySystemCacheGateway(t *testing.T) {
 
 func TestEncodingFailureKeepsCandidateAndExactField(t *testing.T) {
 	s := newAgentIntegrationServer(t)
-	compiled, _ := s.protocolServiceInst.Pin("gemini-api")
+	compiled, _ := s.protocolServiceInst.Pin("google-generate-content")
 	request := &protocol.Request{SchemaVersion: protocol.SemanticSchemaVersion, Source: protocol.AgentIdentity(), Model: protocol.StringValue("m"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("system"), ID: protocol.StringValue("sensitive-id"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("secret prompt")}}}}, Parameters: protocol.Object{"max_output_tokens": mustProtocolValue(t, "64")}}
-	candidate := gatewayCandidate{compiled: compiled, binding: protocol.Binding{ProtocolID: "gemini-api"}, operation: compiled.Operations()["generate"]}
+	candidate := gatewayCandidate{compiled: compiled, binding: protocol.Binding{ProtocolID: "google-generate-content"}, operation: compiled.Operations()["generate"]}
 	candidate.model.Name = "candidate"
 	candidate.model.BaseURL = "https://example.invalid"
 	candidate.model.SourceID = "source"

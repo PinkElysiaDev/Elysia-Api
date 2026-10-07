@@ -27,7 +27,7 @@ func TestLiveSignedGeminiResponseUsesPersistedScope(t *testing.T) {
 	t.Cleanup(provider.Close)
 	directory := t.TempDir()
 	suite := &liveSuite{Model: "gemini-3-flash-preview", Origin: provider.URL, key: "synthetic-secret", StartedAt: time.Now(), client: provider.Client(), budget: &liveBudget{path: filepath.Join(directory, "budget.json")}, path: filepath.Join(directory, "live.json")}
-	compiled := compileFixtureDefinition(t, presetDefinition(t, "gemini-api"))
+	compiled := compileFixtureDefinition(t, presetDefinition(t, "google-generate-content"))
 	gateway := newLiveGateway(t, suite, compiled)
 	result, _ := gateway.request(t, "signed", compiled, liveRequest(t, "grp", false), false)
 	if result.Status != "passed" {

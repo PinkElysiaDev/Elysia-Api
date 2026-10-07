@@ -34,7 +34,7 @@ func TestStreamEventsKeepTailAndMaterialize(t *testing.T) {
 
 func TestStreamBodyCaptureDisabledStillCountsTokens(t *testing.T) {
 	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: 0}}
-	compiled := compileFixtureDefinition(t, presetDefinition(t, "chat-completions-api"))
+	compiled := compileFixtureDefinition(t, presetDefinition(t, "openai-chat-completions"))
 	state := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
 	frame, err := compiled.DecodeFrame(t.Context(), mustProtocolValue(t, `{"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`), state)
 	if err != nil {

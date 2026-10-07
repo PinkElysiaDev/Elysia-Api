@@ -83,7 +83,7 @@ func (suite *liveSuite) runCacheFollowup(t *testing.T) {
 		}
 		gateway.bind(t, compiled.Definition().Capabilities)
 		levels := []int{1}
-		if target == "gemini-api" {
+		if target == "google-generate-content" {
 			levels = []int{2, 4}
 		}
 		for _, level := range levels {
@@ -98,11 +98,11 @@ func (suite *liveSuite) runCacheFollowup(t *testing.T) {
 						if route == "direct" {
 							model = suite.Model
 						}
-						isStream := repeat == 1 || (route == "gateway" && target != "gemini-api")
+						isStream := repeat == 1 || (route == "gateway" && target != "google-generate-content")
 						request := liveRequest(t, model, isStream)
 						prefix := run.prefix(target+"/"+route+fmt.Sprint(level)) + strings.Repeat("stable alpha beta gamma delta reference information.\n", (level-1)*cachePrefixTokens/8)
 						request.Content[0].Children[0].Payload = protocol.StringValue(prefix)
-						if target == "anthropic-api" {
+						if target == "anthropic-messages" {
 							request.Content[0].Children[0].Cache = []protocol.CacheIntent{{Kind: "breakpoint", Location: "block", Value: mustProtocolValue(t, `{"type":"ephemeral"}`), TTL: protocol.StringValue("5m")}}
 						}
 						var result liveCase

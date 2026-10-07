@@ -13,7 +13,7 @@ import (
 )
 
 func declaredChatCacheDefinition(t *testing.T) protocol.Definition {
-	definition := presetDefinition(t, "chat-completions-api")
+	definition := presetDefinition(t, "openai-chat-completions")
 	definition.ID = "User-Chat-Cache"
 	definition.Capabilities[protocol.CacheBreakpointsCapability] = true
 	for _, direction := range []protocol.Direction{protocol.DecodeRequest, protocol.EncodeRequest} {
@@ -43,7 +43,7 @@ func TestDeclaredChatCacheExtensionReachesAnthropic(t *testing.T) {
 		io.WriteString(w, `{"role":"assistant","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":10,"cache_read_input_tokens":70,"output_tokens":2}}`)
 	}))
 	defer upstream.Close()
-	server := newTestServer(t, presetGroup(t, "custom:anthropic-api", upstream.URL), definition)
+	server := newTestServer(t, presetGroup(t, "custom:anthropic-messages", upstream.URL), definition)
 	for attempt := 0; attempt < 2; attempt++ {
 		request, recorder := chatRequestContext(strings.ReplaceAll(string(wire.Bytes()), `"model":"m"`, `"model":"grp"`))
 		request.Request.URL.Path = "/gateway/" + definition.ID + "/chat/completions"
@@ -119,7 +119,7 @@ func TestCacheNewCustomProtocolNestedHTTP(t *testing.T) {
 	groups[0].Models[0].VisionCapable = false
 	s := newTestServerWithStore(t, groups, definition)
 	service, _ := s.protocolService()
-	ingress, _ := service.Pin("anthropic-api")
+	ingress, _ := service.Pin("anthropic-messages")
 	upstream, _ := service.Pin(definition.ID)
 	request := cacheWireFixtures()[1].request
 	c, rec := messagesRequestContext(request)

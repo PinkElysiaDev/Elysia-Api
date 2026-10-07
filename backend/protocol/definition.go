@@ -11,11 +11,18 @@ const CompilerVersion = "2.0.0-dev.18"
 // authoring, and are refreshed to the shipped revision on every startup;
 // customization starts from a copy under a new ID.
 const (
-	PresetChatCompletionsID = "chat-completions-api"
-	PresetResponsesID       = "responses-api"
-	PresetAnthropicID       = "anthropic-api"
-	PresetGeminiID          = "gemini-api"
+	PresetChatCompletionsID = "openai-chat-completions"
+	PresetResponsesID       = "openai-responses"
+	PresetAnthropicID       = "anthropic-messages"
+	PresetGeminiID          = "google-generate-content"
 )
+
+// legacyPresetIDs are historical identifiers kept for display compatibility and
+// the startup rename migration (usage records and old databases still carry
+// them). IsPresetProtocolID deliberately does not match them: a database row
+// under a legacy ID is renamed to the current preset ID before the registry
+// loads.
+var legacyPresetIDs = [4]string{"chat-completions-api", "responses-api", "anthropic-api", "gemini-api"}
 
 // IsPresetProtocolID reports whether the identifier belongs to a built-in
 // preset and is therefore exempt from user authoring.

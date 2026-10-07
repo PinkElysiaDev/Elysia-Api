@@ -247,7 +247,7 @@ func TestCLIAllCommandsResolve(t *testing.T) {
 		`elysia protocol test --base-url https://u.io --api-key sk --operation generate --sample '{"schemaVersion":1,"model":"m"}'`,
 		`elysia protocol models --base-url https://u.io`,
 		`elysia protocol save`,
-		`elysia protocol read --id anthropic-api`,
+		`elysia protocol read --id anthropic-messages`,
 		`elysia usage stats --days 7 --group g1`,
 		`elysia usage trend --days 30`,
 		`elysia usage logs --days 1 --status failed --limit 5`,
@@ -532,9 +532,9 @@ func TestCLICodeSnapshotCommands(t *testing.T) {
 	if result.OK || result.Data.(map[string]any)["error"] != "invalid_path" {
 		t.Fatalf("path traversal must be rejected: %+v", result)
 	}
-	result = read.Execute(t.Context(), nil, json.RawMessage(`{"path":"backend/protocol/builtin/definitions/anthropic-api.json"}`))
+	result = read.Execute(t.Context(), nil, json.RawMessage(`{"path":"backend/protocol/builtin/definitions/anthropic-messages.json"}`))
 	if snapshotAvailable() {
-		if !result.OK || !strings.Contains(result.Data.(map[string]any)["content"].(string), `"anthropic-api"`) {
+		if !result.OK || !strings.Contains(result.Data.(map[string]any)["content"].(string), `"anthropic-messages"`) {
 			t.Fatalf("preset original must be readable from the snapshot: %+v", result.Summary)
 		}
 	} else if result.OK || result.Data.(map[string]any)["error"] != "snapshot_unavailable" {

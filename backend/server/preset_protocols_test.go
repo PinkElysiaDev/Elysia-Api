@@ -70,9 +70,9 @@ func TestSeedPresetProtocols(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("seed custom: %v", err)
 		}
-		editedPreset := `{"id":"chat-completions-api","name":"我的定制 Chat API","request":{"method":"POST","path":"/v1/chat/completions"}}`
+		editedPreset := `{"id":"openai-chat-completions","name":"我的定制 Chat API","request":{"method":"POST","path":"/v1/chat/completions"}}`
 		if err := s.store.UpsertCustomProtocol(ctx, storage.CustomProtocol{
-			ID: "chat-completions-api", Name: "我的定制 Chat API", Type: "llm", Config: editedPreset,
+			ID: "openai-chat-completions", Name: "我的定制 Chat API", Type: "llm", Config: editedPreset,
 		}); err != nil {
 			t.Fatalf("seed edited preset: %v", err)
 		}
@@ -100,7 +100,7 @@ func TestSeedPresetProtocols(t *testing.T) {
 		}
 		// 用户编辑过的预置保持用户版本（不被覆盖）。
 		for _, row := range rows {
-			if row.ID == "chat-completions-api" {
+			if row.ID == "openai-chat-completions" {
 				if row.Name != "我的定制 Chat API" || row.Config != editedPreset {
 					t.Fatalf("edited preset must keep user version, got name=%q", row.Name)
 				}
@@ -118,7 +118,7 @@ func TestSeedPresetProtocols(t *testing.T) {
 	})
 }
 
-// chat-completions-api 预置端到端：请求为线制形状(system 提升/role 折叠)，流式覆盖
+// openai-chat-completions 预置端到端：请求为线制形状(system 提升/role 折叠)，流式覆盖
 // 文本/推理/分帧工具参数拼装/usage 尾帧/finish。
 func TestPresetOpenAIChatEndToEnd(t *testing.T) {
 
@@ -143,7 +143,7 @@ func TestPresetOpenAIChatEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(t, presetGroup(t, "custom:chat-completions-api", upstream.URL+"/v1"))
+	s := newTestServer(t, presetGroup(t, "custom:openai-chat-completions", upstream.URL+"/v1"))
 	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"system","content":"be brief"},{"role":"user","content":"weather in sh?"}],"tools":[{"type":"function","function":{"name":"get_weather","parameters":{"type":"object"}}}]}`)
 	s.chatCompletions(c)
 
@@ -167,7 +167,7 @@ func TestPresetOpenAIChatEndToEnd(t *testing.T) {
 	}
 }
 
-// anthropic-api 预置端到端：x-api-key 鉴权 + 事件名帧 + thinking 分块 +
+// anthropic-messages 预置端到端：x-api-key 鉴权 + 事件名帧 + thinking 分块 +
 // content_block 分帧工具拼装 + message_delta 终态。
 func TestPresetAnthropicMessagesEndToEnd(t *testing.T) {
 
@@ -187,7 +187,7 @@ func TestPresetAnthropicMessagesEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(t, presetGroup(t, "custom:anthropic-api", upstream.URL))
+	s := newTestServer(t, presetGroup(t, "custom:anthropic-messages", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"weather?"}]}`)
 	s.chatCompletions(c)
 
@@ -208,7 +208,7 @@ func TestPresetAnthropicMessagesEndToEnd(t *testing.T) {
 	}
 }
 
-// gemini-api 预置端到端：双路径按流切换 + thought 谓词分流 + functionCall。
+// google-generate-content 预置端到端：双路径按流切换 + thought 谓词分流 + functionCall。
 func TestPresetGeminiGenerateEndToEnd(t *testing.T) {
 	for _, isNative := range []bool{true, false} {
 		t.Run(fmt.Sprint(isNative), func(t *testing.T) {
@@ -224,7 +224,7 @@ func TestPresetGeminiGenerateEndToEnd(t *testing.T) {
 			}))
 			defer upstream.Close()
 
-			s := newTestServer(t, presetGroup(t, "custom:gemini-api", upstream.URL))
+			s := newTestServer(t, presetGroup(t, "custom:google-generate-content", upstream.URL))
 			c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"weather?"}]}`)
 			if isNative {
 				c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/grp:streamGenerateContent", strings.NewReader(`{"contents":[{"role":"user","parts":[{"text":"weather?"}]}]}`))
@@ -260,7 +260,7 @@ func TestPresetGeminiGenerateEndToEnd(t *testing.T) {
 	}
 }
 
-// responses-api 预置端到端：类型化事件流 + 分帧工具拼装 + completed 终态。
+// openai-responses 预置端到端：类型化事件流 + 分帧工具拼装 + completed 终态。
 func TestPresetOpenAIResponsesEndToEnd(t *testing.T) {
 
 	var gotBody string
@@ -278,7 +278,7 @@ func TestPresetOpenAIResponsesEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(t, presetGroup(t, "custom:responses-api", upstream.URL))
+	s := newTestServer(t, presetGroup(t, "custom:openai-responses", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"weather?"}]}`)
 	s.chatCompletions(c)
 
@@ -336,26 +336,27 @@ func TestMigratePresetProtocolRenames(t *testing.T) {
 	for _, row := range rows {
 		ids[row.ID] = true
 	}
-	if !ids["chat-completions-api"] || ids["openai-chat"] {
+	if !ids["openai-chat-completions"] || ids["openai-chat"] {
 		t.Fatalf("rename failed, rows = %v", ids)
 	}
 	sources, _ := s.store.ListSources(ctx)
-	if len(sources) != 1 || sources[0].Platform != "custom:chat-completions-api" {
+	if len(sources) != 1 || sources[0].Platform != "custom:openai-chat-completions" {
 		t.Fatalf("source platform not rewritten: %+v", sources)
 	}
 	models, _ := s.store.ListModels(ctx)
-	if len(models) != 1 || models[0].Platform != "custom:chat-completions-api" {
+	if len(models) != 1 || models[0].Platform != "custom:openai-chat-completions" {
 		t.Fatalf("model platform not rewritten: %+v", models)
 	}
 	// 迁移后 config 内部 id 同步改写,registry 可按新平台解析(修复旧版只改
 	// 行 id 列、注册键残留旧 id 的脱节)。
 	for _, row := range rows {
-		if row.ID == "chat-completions-api" && !strings.Contains(row.Config, `"id":"chat-completions-api"`) {
+		if row.ID == "openai-chat-completions" && !strings.Contains(row.Config, `"id":"openai-chat-completions"`) {
 			t.Fatalf("config id must be rewritten to the new id, got %s", row.Config)
 		}
 	}
 
-	// 冲突：用户新建了 responses-api，旧 openai-responses 行并存 → 跳过该对。
+	// 冲突：用户新建了 responses-api（gen2 中性名），gen1 旧 openai-responses
+	// 行并存 → 链上两对互相冲突，均跳过、原样保留。
 	seedLegacy("openai-responses")
 	seedLegacy("responses-api")
 	s.migratePresetProtocolRenames()
@@ -384,18 +385,21 @@ func TestMigratePresetProtocolRenames(t *testing.T) {
 func TestReconcileCustomProtocolConfigIDsFixesLegacyRenameGap(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
 	ctx := t.Context()
+	// 旧版改名迁移的遗留现场：行 id 与平台引用是 gen2 名，config 内部 id 残留
+	// gen1 名（anthropic-messages）。gen3 改名迁移把行改回 anthropic-messages
+	// 并同步改写 config 内部 id，注册键恢复一致。
 	if err := s.store.UpsertCustomProtocol(ctx, storage.CustomProtocol{
-		ID: "anthropic-api", Name: "Anthropic API（预置）", Type: "llm",
-		Config: `{"id":"anthropic-messages","name":"Anthropic API（预置）","request":{"method":"POST","path":"/v1/messages","body":{"model":{"field":"model","mode":"string"},"messages":{"field":"messages"},"stream":{"field":"stream"}}}}`,
+		ID: "anthropic-messages", Name: "Anthropic Messages（预置）", Type: "llm",
+		Config: `{"id":"anthropic-messages","name":"Anthropic Messages（预置）","request":{"method":"POST","path":"/v1/messages","body":{"model":{"field":"model","mode":"string"},"messages":{"field":"messages"},"stream":{"field":"stream"}}}}`,
 	}); err != nil {
 		t.Fatalf("seed legacy row: %v", err)
 	}
-	source := storage.ModelSource{ID: "src1", Name: "src1", BaseURL: "https://up.example", Platform: "custom:anthropic-api", Enabled: true}
+	source := storage.ModelSource{ID: "src1", Name: "src1", BaseURL: "https://up.example", Platform: "custom:anthropic-messages", Enabled: true}
 	if err := s.store.UpsertSource(ctx, source); err != nil {
 		t.Fatalf("seed source: %v", err)
 	}
 
-	// 启动序列等价路径：改名迁移（旧行已不存在，不命中）+ 对账。
+	// 启动序列等价路径：改名迁移（gen2 行改回 gen3，config 一并改写）+ 对账。
 	s.migratePresetProtocolRenames()
 	s.reconcileCustomProtocolConfigIDs()
 
@@ -403,8 +407,12 @@ func TestReconcileCustomProtocolConfigIDsFixesLegacyRenameGap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	if len(rows) != 1 || strings.Contains(rows[0].Config, `"id":"anthropic-messages"`) || !strings.Contains(rows[0].Config, `"id":"anthropic-api"`) {
-		t.Fatalf("config id must be reconciled to the row id, got %+v", rows)
+	if len(rows) != 1 || rows[0].ID != "anthropic-messages" || !strings.Contains(rows[0].Config, `"id":"anthropic-messages"`) {
+		t.Fatalf("row must be renamed with its config id in sync, got %+v", rows)
+	}
+	sources, _ := s.store.ListSources(ctx)
+	if len(sources) != 1 || sources[0].Platform != "custom:anthropic-messages" {
+		t.Fatalf("source platform must follow the rename, got %+v", sources)
 	}
 	// ID reconciliation alone does not prove a legacy definition is executable.
 	if err := s.validateSourceProtocol(&source); err == nil {
@@ -423,18 +431,18 @@ func TestUpgradeUnmodifiedLegacyPreset(t *testing.T) {
 	ctx := t.Context()
 
 	// 构造与 v1 播种形态完全一致的行：unmarshal→marshal 的规范形态。
-	legacyChat := `{"id":"chat-completions-api","name":"Chat Completions API（预置）","version":"1","type":"llm","metadata":{"preset":true},"request":{"method":"POST","path":"/v1/chat/completions","shape":"openai-chat","body":{"model":{"field":"model","mode":"string"},"messages":{"field":"messages"},"stream":{"field":"stream"}}},"response":{"textPath":"choices[0].message.content"}}`
+	legacyChat := `{"id":"openai-chat-completions","name":"Chat Completions API（预置）","version":"1","type":"llm","metadata":{"preset":true},"request":{"method":"POST","path":"/v1/chat/completions","shape":"openai-chat","body":{"model":{"field":"model","mode":"string"},"messages":{"field":"messages"},"stream":{"field":"stream"}}},"response":{"textPath":"choices[0].message.content"}}`
 	// 用真实 v1 规范哈希需要完整 v1 文本；此处通过哈希表反向构造不可行，
 	// 改用「直接把 legacyPresetHashes 的哈希对上」最小路径：写入哈希表登记
 	// 的 v1 内容原文（从 git 提取后内联太长）——因此本测试改为验证机制：
 	// 手工构造一行，使其 marshal 哈希 == 登记哈希。做法：取登记哈希对应的
 	// v1 内容不可得时，跳过精确匹配，改为注入：临时把登记哈希指向本行。
-	originalHashes := legacyPresetHashes["chat-completions-api"]
-	t.Cleanup(func() { legacyPresetHashes["chat-completions-api"] = originalHashes })
-	legacyPresetHashes["chat-completions-api"] = []string{presetContentHash(legacyChat)}
+	originalHashes := legacyPresetHashes["openai-chat-completions"]
+	t.Cleanup(func() { legacyPresetHashes["openai-chat-completions"] = originalHashes })
+	legacyPresetHashes["openai-chat-completions"] = []string{presetContentHash(legacyChat)}
 
 	if err := s.store.UpsertCustomProtocol(ctx, storage.CustomProtocol{
-		ID: "chat-completions-api", Name: "Chat Completions API（预置）", Type: "llm", Config: legacyChat,
+		ID: "openai-chat-completions", Name: "Chat Completions API（预置）", Type: "llm", Config: legacyChat,
 	}); err != nil {
 		t.Fatalf("seed legacy: %v", err)
 	}
@@ -443,7 +451,7 @@ func TestUpgradeUnmodifiedLegacyPreset(t *testing.T) {
 	// 升级写入的行文本应与当前内嵌预置的规范形态完全一致(不绑具体版本号)。
 	var latestChat string
 	for _, config := range PresetProtocolConfigsMust(t) {
-		if config.ID == "chat-completions-api" {
+		if config.ID == "openai-chat-completions" {
 			encoded, err := json.Marshal(config)
 			if err != nil {
 				t.Fatalf("marshal latest preset: %v", err)
@@ -454,7 +462,7 @@ func TestUpgradeUnmodifiedLegacyPreset(t *testing.T) {
 	rows, _ := s.store.ListCustomProtocols(ctx)
 	var upgraded bool
 	for _, row := range rows {
-		if row.ID == "chat-completions-api" {
+		if row.ID == "openai-chat-completions" {
 			upgraded = row.Config != legacyChat && row.Config == latestChat
 		}
 	}
@@ -464,16 +472,16 @@ func TestUpgradeUnmodifiedLegacyPreset(t *testing.T) {
 
 	// 用户改过的行不升级：登记哈希恢复为未改动的历代值，改过的行哈希对不上。
 	modified := strings.Replace(legacyChat, "/v1/chat/completions", "/custom/path", 1)
-	legacyPresetHashes["chat-completions-api"] = originalHashes
+	legacyPresetHashes["openai-chat-completions"] = originalHashes
 	if err := s.store.UpsertCustomProtocol(ctx, storage.CustomProtocol{
-		ID: "chat-completions-api", Name: "改过的预置", Type: "llm", Config: modified,
+		ID: "openai-chat-completions", Name: "改过的预置", Type: "llm", Config: modified,
 	}); err != nil {
 		t.Fatalf("seed modified: %v", err)
 	}
 	s.seedPresetProtocols()
 	rows, _ = s.store.ListCustomProtocols(ctx)
 	for _, row := range rows {
-		if row.ID == "chat-completions-api" && row.Config != modified {
+		if row.ID == "openai-chat-completions" && row.Config != modified {
 			t.Fatalf("user-modified preset must not be overwritten")
 		}
 	}
@@ -494,7 +502,7 @@ func TestPresetModelDiscoveryEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	source := storage.ModelSource{ID: "src1", Name: "src1", BaseURL: upstream.URL + "/v1", Platform: "custom:chat-completions-api", Enabled: true}
+	source := storage.ModelSource{ID: "src1", Name: "src1", BaseURL: upstream.URL + "/v1", Platform: "custom:openai-chat-completions", Enabled: true}
 	models, err := s.fetchModelsFromSource(t.Context(), source, "k")
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
@@ -512,16 +520,16 @@ func TestMigratePresetRelativePathBases(t *testing.T) {
 	ctx := t.Context()
 
 	// v2 形态旧预置行(完整路径),注入哈希使升级链命中。
-	legacyChat := `{"id":"chat-completions-api","name":"Chat Completions API（预置）","version":"2","type":"llm","request":{"method":"POST","path":"/v1/chat/completions","shape":"openai-chat","body":{"model":{"field":"model","mode":"string"},"messages":{"field":"messages"},"stream":{"field":"stream"}}}}`
-	originalHashes := legacyPresetHashes["chat-completions-api"]
-	t.Cleanup(func() { legacyPresetHashes["chat-completions-api"] = originalHashes })
-	legacyPresetHashes["chat-completions-api"] = append([]string{presetContentHash(legacyChat)}, originalHashes...)
-	if err := s.store.UpsertCustomProtocol(ctx, storage.CustomProtocol{ID: "chat-completions-api", Type: "llm", Config: legacyChat}); err != nil {
+	legacyChat := `{"id":"openai-chat-completions","name":"Chat Completions API（预置）","version":"2","type":"llm","request":{"method":"POST","path":"/v1/chat/completions","shape":"openai-chat","body":{"model":{"field":"model","mode":"string"},"messages":{"field":"messages"},"stream":{"field":"stream"}}}}`
+	originalHashes := legacyPresetHashes["openai-chat-completions"]
+	t.Cleanup(func() { legacyPresetHashes["openai-chat-completions"] = originalHashes })
+	legacyPresetHashes["openai-chat-completions"] = append([]string{presetContentHash(legacyChat)}, originalHashes...)
+	if err := s.store.UpsertCustomProtocol(ctx, storage.CustomProtocol{ID: "openai-chat-completions", Type: "llm", Config: legacyChat}); err != nil {
 		t.Fatalf("seed legacy preset: %v", err)
 	}
-	// responses-api:用户改过的行(哈希必不匹配)→ 不升级 → 其源不迁移。
-	modifiedResponses := `{"id":"responses-api","name":"改过的预置","version":"2","type":"llm","request":{"method":"POST","path":"/v1/responses","shape":"responses","body":{"model":{"field":"model","mode":"string"},"input":{"field":"input_items"}}}}`
-	if err := s.store.UpsertCustomProtocol(ctx, storage.CustomProtocol{ID: "responses-api", Type: "llm", Config: modifiedResponses}); err != nil {
+	// openai-responses:用户改过的行(哈希必不匹配)→ 不升级 → 其源不迁移。
+	modifiedResponses := `{"id":"openai-responses","name":"改过的预置","version":"2","type":"llm","request":{"method":"POST","path":"/v1/responses","shape":"responses","body":{"model":{"field":"model","mode":"string"},"input":{"field":"input_items"}}}}`
+	if err := s.store.UpsertCustomProtocol(ctx, storage.CustomProtocol{ID: "openai-responses", Type: "llm", Config: modifiedResponses}); err != nil {
 		t.Fatalf("seed modified preset: %v", err)
 	}
 
@@ -533,14 +541,14 @@ func TestMigratePresetRelativePathBases(t *testing.T) {
 		}
 		return source
 	}
-	rootSource := seedSource("src-root", "custom:chat-completions-api", "https://up.example", "")
-	seedSource("src-v1", "custom:chat-completions-api", "https://up.example/v1/", "")
-	seedSource("src-fetch", "custom:chat-completions-api", "https://up.example", "https://fetch.example")
-	seedSource("src-modified", "custom:responses-api", "https://up.example", "")
-	seedSource("src-anthropic", "custom:anthropic-api", "https://up.example", "")
+	rootSource := seedSource("src-root", "custom:openai-chat-completions", "https://up.example", "")
+	seedSource("src-v1", "custom:openai-chat-completions", "https://up.example/v1/", "")
+	seedSource("src-fetch", "custom:openai-chat-completions", "https://up.example", "https://fetch.example")
+	seedSource("src-modified", "custom:openai-responses", "https://up.example", "")
+	seedSource("src-anthropic", "custom:anthropic-messages", "https://up.example", "")
 	if err := s.store.ReplaceSourceModels(ctx, rootSource, []storage.Model{{
 		ID: "m1", SourceID: rootSource.ID, Name: "m1", BaseURL: rootSource.BaseURL,
-		Platform: "custom:chat-completions-api", Type: "llm", Enabled: true, Available: true,
+		Platform: "custom:openai-chat-completions", Type: "llm", Enabled: true, Available: true,
 	}}); err != nil {
 		t.Fatalf("seed model snapshot: %v", err)
 	}
@@ -550,10 +558,10 @@ func TestMigratePresetRelativePathBases(t *testing.T) {
 	for _, id := range upgraded {
 		upgradedSet[id] = true
 	}
-	if !upgradedSet["chat-completions-api"] {
+	if !upgradedSet["openai-chat-completions"] {
 		t.Fatalf("legacy preset must upgrade, got %v", upgraded)
 	}
-	if upgradedSet["responses-api"] {
+	if upgradedSet["openai-responses"] {
 		t.Fatal("user-modified preset must not upgrade")
 	}
 	s.migratePresetRelativePathBases(upgraded)
@@ -587,12 +595,12 @@ func TestMigratePresetRelativePathBases(t *testing.T) {
 	}
 
 	// 幂等:重复迁移无事发生。
-	if n, err := s.store.AppendSourceBaseURLSuffix(ctx, "custom:chat-completions-api", "/v1"); err != nil || n != 0 {
+	if n, err := s.store.AppendSourceBaseURLSuffix(ctx, "custom:openai-chat-completions", "/v1"); err != nil || n != 0 {
 		t.Fatalf("rebase must be idempotent: n=%d err=%v", n, err)
 	}
 }
 
-// gemini-api 预置模型发现:idStripPrefix 剥离 name 的 "models/" 集合前缀,
+// google-generate-content 预置模型发现:idStripPrefix 剥离 name 的 "models/" 集合前缀,
 // 入库 ID 是裸名(转发路径模板不再拼出 /v1beta/models/models/<id>)。
 func TestPresetGeminiModelDiscoveryStripsPrefix(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
@@ -607,7 +615,7 @@ func TestPresetGeminiModelDiscoveryStripsPrefix(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	source := storage.ModelSource{ID: "src1", Name: "src1", BaseURL: upstream.URL, Platform: "custom:gemini-api", Enabled: true}
+	source := storage.ModelSource{ID: "src1", Name: "src1", BaseURL: upstream.URL, Platform: "custom:google-generate-content", Enabled: true}
 	models, err := s.fetchModelsFromSource(t.Context(), source, "k")
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
@@ -625,7 +633,7 @@ func TestStripGeminiModelIDPrefixes(t *testing.T) {
 
 	seedModel := func(id string) {
 		t.Helper()
-		source := storage.ModelSource{ID: "src-g", Name: "gemini", BaseURL: "https://up.example", Platform: "custom:gemini-api", Enabled: true}
+		source := storage.ModelSource{ID: "src-g", Name: "gemini", BaseURL: "https://up.example", Platform: "custom:google-generate-content", Enabled: true}
 		if err := s.store.UpsertSource(ctx, source); err != nil {
 			t.Fatalf("seed source: %v", err)
 		}
@@ -664,7 +672,7 @@ func TestChatUsageRecordProtocolChain(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	s := newTestServerWithStore(t, presetGroup(t, "custom:chat-completions-api", upstream.URL+"/v1"))
+	s := newTestServerWithStore(t, presetGroup(t, "custom:openai-chat-completions", upstream.URL+"/v1"))
 	c, rec := chatRequestContext(`{"model":"grp","messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if rec.Code != http.StatusOK {
@@ -681,9 +689,9 @@ func TestChatUsageRecordProtocolChain(t *testing.T) {
 	}
 	detail := string(payload)
 	for _, want := range []string{
-		`"sourceFormat":"chat-completions-api"`,
+		`"sourceFormat":"openai-chat-completions"`,
 		`"sourceEndpoint":"/v1/chat/completions"`,
-		`"targetFormat":"chat-completions-api"`,
+		`"targetFormat":"openai-chat-completions"`,
 		`"targetEndpoint":"/v1/chat/completions"`,
 		`"relayMode":"protocol_v2"`, `"ingressRevision":`, `"upstreamRevision":`,
 	} {
@@ -701,7 +709,7 @@ func TestStripGeminiModelIDPrefixesRecoversHalfConverged(t *testing.T) {
 	ctx := t.Context()
 
 	source := storage.ModelSource{
-		ID: "src-g", Name: "gemini", BaseURL: "https://up.example", Platform: "custom:gemini-api", Enabled: true,
+		ID: "src-g", Name: "gemini", BaseURL: "https://up.example", Platform: "custom:google-generate-content", Enabled: true,
 		APIKeys: []storage.SourceAPIKey{{
 			Value:         "k1",
 			FetchedModels: []string{"models/gemini-2.5-flash", "models/gemini-2.5-pro"},
@@ -741,9 +749,10 @@ func TestStripGeminiModelIDPrefixesRecoversHalfConverged(t *testing.T) {
 	}
 }
 
-// 哈希链代数一致性:每条预置登记的历史哈希数必须等于当前版本号-1(v1 起
+// 哈希链代数一致性:每条预置登记的历史哈希数不得少于当前版本号-1(v1 起
 // 每代一条),防止发新版时漏登记——漏登的那一代老库会被误判为「用户改过」
-// 而永远不升级(连带 rebase 迁移不触发)。
+// 而永远不升级(连带 rebase 迁移不触发)。ID 改名迁移会把存量行内容重写,
+// 同一代内容存在改写前后两种形态,链里允许出现多于代数的额外登记。
 func TestLegacyPresetHashChainCoversEveryGeneration(t *testing.T) {
 	configs := PresetProtocolConfigsMust(t)
 	for _, config := range configs {
@@ -752,8 +761,8 @@ func TestLegacyPresetHashChainCoversEveryGeneration(t *testing.T) {
 			version = v
 		}
 		chain := legacyPresetHashes[config.ID]
-		if version > 1 && len(chain) != version-1 {
-			t.Fatalf("preset %s version=%d but hash chain has %d entr(y|ies); register the previous version's hash when bumping", config.ID, version, len(chain))
+		if version > 1 && len(chain) < version-1 {
+			t.Fatalf("preset %s version=%d but hash chain has only %d entr(y|ies); register the previous version's hash when bumping", config.ID, version, len(chain))
 		}
 		if version <= 1 && len(chain) != 0 {
 			t.Fatalf("preset %s version=%d must not carry legacy hashes", config.ID, version)
@@ -761,7 +770,7 @@ func TestLegacyPresetHashChainCoversEveryGeneration(t *testing.T) {
 	}
 }
 
-// 字段保真矩阵(防线):Claude 客户端的私有字段经 custom:anthropic-api 预置
+// 字段保真矩阵(防线):Claude 客户端的私有字段经 custom:anthropic-messages 预置
 // 转发必须原样到达上游——system 块 / tool_use 块 / tool_result 块的
 // cache_control 打点(缓存命中率的前提)。同源透传路径由 passthrough_test
 // 覆盖;thinking 块的 cache_control 属罕见打点,当前为已知边界不回放。
@@ -779,7 +788,7 @@ func TestPresetAnthropicCacheControlFidelity(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(t, presetGroup(t, "custom:anthropic-api", upstream.URL))
+	s := newTestServer(t, presetGroup(t, "custom:anthropic-messages", upstream.URL))
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{

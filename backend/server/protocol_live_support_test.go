@@ -463,7 +463,7 @@ func inspectLiveWire(compiled *protocol.Compiled, result *liveCase) (*protocol.R
 	if result.Model != "" {
 		scope.Model = result.Model
 	}
-	familyID := map[string]string{"openai_chat": "chat-completions-api", "openai_responses": "responses-api", "claude": "anthropic-api", "gemini": "gemini-api"}[compiled.Identity().Family]
+	familyID := map[string]string{"openai_chat": "openai-chat-completions", "openai_responses": "openai-responses", "claude": "anthropic-messages", "gemini": "google-generate-content"}[compiled.Identity().Family]
 	reference, referenceErr := referenceLiveUsage(familyID, result.Wire.RawUsage)
 	result.ReferenceUsage = reference
 	var response *protocol.Response

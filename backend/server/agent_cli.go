@@ -888,7 +888,7 @@ func codeCommands() []*cliCommand {
 			}},
 		&cliCommand{group: "code", name: "read", summary: "读取源码快照中的一个文件",
 			usage:   "elysia code read <路径>",
-			example: `elysia code read backend/protocol/builtin/definitions/anthropic-api.json`,
+			example: `elysia code read backend/protocol/builtin/definitions/anthropic-messages.json`,
 			positionals: []cliPositionalSpec{
 				{"path", "仓库相对路径(先 code ls 浏览)"},
 			},

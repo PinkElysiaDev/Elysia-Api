@@ -18,10 +18,10 @@ func referenceLiveUsage(id string, frames []map[string]any) (*protocol.Usage, er
 	}
 	fields := mergeLiveUsageFrames(frames)
 	input, output, total, read, creation := "input_tokens", "output_tokens", "total_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"
-	if id == "chat-completions-api" {
+	if id == "openai-chat-completions" {
 		input, output = "prompt_tokens", "completion_tokens"
 	}
-	if id == "gemini-api" {
+	if id == "google-generate-content" {
 		input, output, total, read = "promptTokenCount", "candidatesTokenCount", "totalTokenCount", "cachedContentTokenCount"
 	}
 	current := &protocol.Usage{}
@@ -35,9 +35,9 @@ func referenceLiveUsage(id string, frames []map[string]any) (*protocol.Usage, er
 		}
 		*field.counter = count
 	}
-	if id == "chat-completions-api" || id == "responses-api" {
+	if id == "openai-chat-completions" || id == "openai-responses" {
 		key := "prompt_tokens_details"
-		if id == "responses-api" {
+		if id == "openai-responses" {
 			key = "input_tokens_details"
 		}
 		if details, ok := fields[key].(map[string]any); ok {
@@ -60,7 +60,7 @@ func referenceLiveUsage(id string, frames []map[string]any) (*protocol.Usage, er
 			}
 		}
 	}
-	if id == "anthropic-api" && current.CacheCreation == nil {
+	if id == "anthropic-messages" && current.CacheCreation == nil {
 		if details, ok := fields["cache_creation"].(map[string]any); ok {
 			five, err := referenceLiveCounter(details, "ephemeral_5m_input_tokens")
 			if err != nil {
@@ -78,7 +78,7 @@ func referenceLiveUsage(id string, frames []map[string]any) (*protocol.Usage, er
 			}
 		}
 	}
-	if id == "anthropic-api" && current.Input != nil {
+	if id == "anthropic-messages" && current.Input != nil {
 		for _, extra := range []*protocol.Counter{current.CacheRead, current.CacheCreation} {
 			if extra != nil {
 				if current.Input.Count > math.MaxInt64-extra.Count {
@@ -88,7 +88,7 @@ func referenceLiveUsage(id string, frames []map[string]any) (*protocol.Usage, er
 			}
 		}
 	}
-	if id == "gemini-api" && current.Output != nil {
+	if id == "google-generate-content" && current.Output != nil {
 		thoughts, err := referenceLiveCounter(fields, "thoughtsTokenCount")
 		if err != nil {
 			return nil, err
@@ -105,12 +105,12 @@ func referenceLiveUsage(id string, frames []map[string]any) (*protocol.Usage, er
 
 func TestLiveReferenceNormalizesLateComponentsOnce(t *testing.T) {
 	frames := []map[string]any{{"input_tokens": json.Number("5"), "output_tokens": json.Number("2")}, {"cache_read_input_tokens": json.Number("15")}, {"cache_creation": map[string]any{"ephemeral_5m_input_tokens": json.Number("3")}}, {"cache_creation": map[string]any{"ephemeral_1h_input_tokens": json.Number("4")}}}
-	u, err := referenceLiveUsage("anthropic-api", frames)
+	u, err := referenceLiveUsage("anthropic-messages", frames)
 	if err != nil || u.Input.Count != 27 || u.CacheCreation.Count != 7 {
 		t.Fatal("late components lost", u, err)
 	}
 	frames = append(frames, map[string]any{"cache_read_input_tokens": json.Number("0")})
-	u, err = referenceLiveUsage("anthropic-api", frames)
+	u, err = referenceLiveUsage("anthropic-messages", frames)
 	if err != nil || u.Input.Count != 12 || u.CacheRead.Count != 0 {
 		t.Fatal("zero update lost", u, err)
 	}
@@ -141,10 +141,10 @@ func TestLiveUsageReferenceDistinguishesTailsMissingAndZero(t *testing.T) {
 		input, output, read int64
 		hasRead             bool
 	}{
-		{"chat-completions-api", `{"usage":{"prompt_tokens":100,"completion_tokens":2,"prompt_tokens_details":{"cached_tokens":0}}}`, 100, 2, 0, true},
-		{"responses-api", `{"usage":{"input_tokens":100,"output_tokens":2}}`, 100, 2, 0, false},
-		{"anthropic-api", `{"usage":{"input_tokens":10,"output_tokens":2,"cache_read_input_tokens":80,"cache_creation_input_tokens":10}}`, 100, 2, 80, true},
-		{"gemini-api", `{"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":2,"thoughtsTokenCount":3,"cachedContentTokenCount":80}}`, 100, 5, 80, true},
+		{"openai-chat-completions", `{"usage":{"prompt_tokens":100,"completion_tokens":2,"prompt_tokens_details":{"cached_tokens":0}}}`, 100, 2, 0, true},
+		{"openai-responses", `{"usage":{"input_tokens":100,"output_tokens":2}}`, 100, 2, 0, false},
+		{"anthropic-messages", `{"usage":{"input_tokens":10,"output_tokens":2,"cache_read_input_tokens":80,"cache_creation_input_tokens":10}}`, 100, 2, 80, true},
+		{"google-generate-content", `{"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":2,"thoughtsTokenCount":3,"cachedContentTokenCount":80}}`, 100, 5, 80, true},
 	} {
 		usage, err := referenceLiveUsage(fixture.id, readLiveUsage([]byte(fixture.wire), protocol.Operation{}, false))
 		if err != nil {
@@ -157,7 +157,7 @@ func TestLiveUsageReferenceDistinguishesTailsMissingAndZero(t *testing.T) {
 			t.Fatal("cache read changed")
 		}
 	}
-	usage, err := referenceLiveUsage("anthropic-api", []map[string]any{{"input_tokens": json.Number("18"), "output_tokens": json.Number("0")}, {"input_tokens": json.Number("322"), "output_tokens": json.Number("5")}})
+	usage, err := referenceLiveUsage("anthropic-messages", []map[string]any{{"input_tokens": json.Number("18"), "output_tokens": json.Number("0")}, {"input_tokens": json.Number("322"), "output_tokens": json.Number("5")}})
 	if err != nil || usage.Input.Count != 322 || usage.Output.Count != 5 {
 		t.Fatal("tail did not replace initial usage", err)
 	}

@@ -59,6 +59,11 @@ export const KEY_STRATEGIES: { value: SourceKeyStrategy; label: string; hint: st
  * path 前缀对齐（openai /v1 + /chat/completions、/responses；anthropic 根域 +
  * /v1/messages；google 根域 + /v1beta/models/...）。 */
 export const PROTOCOL_DEFAULTS: Record<string, { name: string; baseUrl: string }> = {
+  'custom:openai-chat-completions': { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
+  'custom:openai-responses': { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
+  'custom:anthropic-messages': { name: 'Anthropic', baseUrl: 'https://api.anthropic.com' },
+  'custom:google-generate-content': { name: 'Google', baseUrl: 'https://generativelanguage.googleapis.com' },
+  // 改名迁移前的旧源平台值同样联动。
   'custom:chat-completions-api': { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
   'custom:responses-api': { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
   'custom:anthropic-api': { name: 'Anthropic', baseUrl: 'https://api.anthropic.com' },

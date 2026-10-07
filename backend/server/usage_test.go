@@ -12,15 +12,15 @@ func TestNativeUsageUsesPinnedProtocolAndPreservesPresence(t *testing.T) {
 		name, id, body             string
 		input, output, total, read *int
 	}{
-		{"absent", "chat-completions-api", `{"choices":[]}`, nil, nil, nil, nil},
-		{"null", "chat-completions-api", `{"choices":[],"usage":null}`, nil, nil, nil, nil},
-		{"zero", "chat-completions-api", `{"choices":[],"usage":{"total_tokens":0}}`, nil, nil, intPtr(0), nil},
-		{"chat", "chat-completions-api", `{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":20,"prompt_tokens_details":{"cached_tokens":4}}}`, intPtr(10), intPtr(20), intPtr(30), intPtr(4)},
-		{"responses", "responses-api", `{"output":[],"status":"completed","usage":{"input_tokens":100,"output_tokens":50,"input_tokens_details":{"cached_tokens":25}}}`, intPtr(100), intPtr(50), intPtr(150), intPtr(25)},
-		{"anthropic", "anthropic-api", `{"content":[],"usage":{"input_tokens":100,"output_tokens":200,"cache_read_input_tokens":30,"cache_creation_input_tokens":50}}`, intPtr(180), intPtr(200), intPtr(380), intPtr(30)},
+		{"absent", "openai-chat-completions", `{"choices":[]}`, nil, nil, nil, nil},
+		{"null", "openai-chat-completions", `{"choices":[],"usage":null}`, nil, nil, nil, nil},
+		{"zero", "openai-chat-completions", `{"choices":[],"usage":{"total_tokens":0}}`, nil, nil, intPtr(0), nil},
+		{"chat", "openai-chat-completions", `{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":20,"prompt_tokens_details":{"cached_tokens":4}}}`, intPtr(10), intPtr(20), intPtr(30), intPtr(4)},
+		{"responses", "openai-responses", `{"output":[],"status":"completed","usage":{"input_tokens":100,"output_tokens":50,"input_tokens_details":{"cached_tokens":25}}}`, intPtr(100), intPtr(50), intPtr(150), intPtr(25)},
+		{"anthropic", "anthropic-messages", `{"content":[],"usage":{"input_tokens":100,"output_tokens":200,"cache_read_input_tokens":30,"cache_creation_input_tokens":50}}`, intPtr(180), intPtr(200), intPtr(380), intPtr(30)},
 		// Gemini's prompt count includes its tool prompt detail. Do not add
 		// the detail again; reasoning is separate from candidates output.
-		{"gemini", "gemini-api", `{"candidates":[],"usageMetadata":{"promptTokenCount":10,"toolUsePromptTokenCount":5,"candidatesTokenCount":20,"thoughtsTokenCount":7,"totalTokenCount":37,"cachedContentTokenCount":3}}`, intPtr(10), intPtr(27), intPtr(37), intPtr(3)},
+		{"gemini", "google-generate-content", `{"candidates":[],"usageMetadata":{"promptTokenCount":10,"toolUsePromptTokenCount":5,"candidatesTokenCount":20,"thoughtsTokenCount":7,"totalTokenCount":37,"cachedContentTokenCount":3}}`, intPtr(10), intPtr(27), intPtr(37), intPtr(3)},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
 			compiled := compileFixtureDefinition(t, presetDefinition(t, fixture.id))

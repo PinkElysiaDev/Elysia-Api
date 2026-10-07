@@ -9,7 +9,7 @@ import (
 // A definition ID identifies a revision, not its wire semantics. Copies must
 // pass the same capability evidence and compose with the shipped definition.
 func TestPresetCopiesPreserveVerifiedCapabilities(t *testing.T) {
-	for _, id := range []string{"chat-completions-api", "responses-api", "anthropic-api", "gemini-api"} {
+	for _, id := range []string{"openai-chat-completions", "openai-responses", "anthropic-messages", "google-generate-content"} {
 		t.Run(id, func(t *testing.T) {
 			definition := presetDefinition(t, id)
 			original := compileFixtureDefinition(t, definition)

@@ -113,8 +113,8 @@ func TestQueryAuthSecretSanitizedInTransportError(t *testing.T) {
 
 // Interleaved tool arguments must retain distinct, stable downstream slots.
 func TestStreamToolStableSlotIndices(t *testing.T) {
-	decoder := compileFixtureDefinition(t, presetDefinition(t, "anthropic-api"))
-	encoder := compileFixtureDefinition(t, presetDefinition(t, "chat-completions-api"))
+	decoder := compileFixtureDefinition(t, presetDefinition(t, "anthropic-messages"))
+	encoder := compileFixtureDefinition(t, presetDefinition(t, "openai-chat-completions"))
 	decodeOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
 	encodeOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
 	frames := []string{
@@ -194,7 +194,7 @@ func TestPresetCombinedFramesEndToEnd(t *testing.T) {
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	}))
 	defer upstream.Close()
-	s := newTestServer(t, presetGroup(t, "custom:chat-completions-api", upstream.URL))
+	s := newTestServer(t, presetGroup(t, "custom:openai-chat-completions", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if rec.Code != http.StatusOK {
@@ -212,7 +212,7 @@ func TestPresetCombinedFramesEndToEnd(t *testing.T) {
 		_, _ = io.WriteString(w, "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"final answer\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":2,\"candidatesTokenCount\":3}}\n\n")
 	}))
 	defer upstream.Close()
-	s = newTestServer(t, presetGroup(t, "custom:gemini-api", upstream.URL))
+	s = newTestServer(t, presetGroup(t, "custom:google-generate-content", upstream.URL))
 	c, rec = chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if rec.Code != http.StatusOK {
@@ -276,7 +276,7 @@ func TestPresetChatMultipleToolsInOneFrame(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(t, presetGroup(t, "custom:chat-completions-api", upstream.URL))
+	s := newTestServer(t, presetGroup(t, "custom:openai-chat-completions", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if rec.Code != http.StatusOK {
@@ -300,7 +300,7 @@ func TestPresetErrorFramesEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	s := newTestServer(t, presetGroup(t, "custom:anthropic-api", upstream.URL))
+	s := newTestServer(t, presetGroup(t, "custom:anthropic-messages", upstream.URL))
 	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if !strings.Contains(rec.Body.String(), "overloaded") {
@@ -310,8 +310,8 @@ func TestPresetErrorFramesEndToEnd(t *testing.T) {
 
 // Arbitrary protocol IDs use the same target tool-choice semantics.
 func TestShapeAnthropicToolChoice(t *testing.T) {
-	decoder := compileFixtureDefinition(t, presetDefinition(t, "chat-completions-api"))
-	definition := presetDefinition(t, "anthropic-api")
+	decoder := compileFixtureDefinition(t, presetDefinition(t, "openai-chat-completions"))
+	definition := presetDefinition(t, "anthropic-messages")
 	definition.ID = "user-tool-choice"
 	encoder := compileFixtureDefinition(t, definition)
 	request, err := decoder.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"f","parameters":{"type":"object"}}}],"tool_choice":"required"}`), protocol.EvaluationContext{})

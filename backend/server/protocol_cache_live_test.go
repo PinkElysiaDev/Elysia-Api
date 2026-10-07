@@ -33,7 +33,7 @@ func (suite *liveSuite) runCacheGaps(t *testing.T) {
 	run := &cacheLiveRun{suite: suite, path: filepath.Join(filepath.Dir(suite.path), "cache-checkpoint.json"), compiled: map[string]*protocol.Compiled{}, gateways: map[string]*liveGateway{}}
 	run.open(t)
 	available := map[string]bool{}
-	for _, id := range []string{"anthropic-api", "gemini-api", "chat-completions-api", "responses-api"} {
+	for _, id := range []string{"anthropic-messages", "google-generate-content", "openai-chat-completions", "openai-responses"} {
 		suite.selectTarget(t, id)
 		run.compiled[id] = compileFixtureDefinition(t, presetDefinition(t, id))
 		if report := protocol.Verify(t.Context(), run.compiled[id]); !report.Passed {
@@ -53,10 +53,10 @@ func (suite *liveSuite) runCacheGaps(t *testing.T) {
 			run.gateways[id].bind(t, run.compiled[id].Definition().Capabilities)
 		}
 	}
-	if available["anthropic-api"] {
+	if available["anthropic-messages"] {
 		run.prepareTTL(t)
 	}
-	if available["gemini-api"] {
+	if available["google-generate-content"] {
 		run.prepareResources(t)
 	}
 	for _, id := range liveProtocolIDs {
@@ -213,7 +213,7 @@ func (run *cacheLiveRun) generate(t *testing.T, target, route, id, prefix, ttl s
 
 func (run *cacheLiveRun) cacheSequence(t *testing.T, target string) {
 	ttl := ""
-	if target == "anthropic-api" {
+	if target == "anthropic-messages" {
 		ttl = "5m"
 	}
 	for _, route := range []string{"direct", "gateway"} {
@@ -246,12 +246,12 @@ func (run *cacheLiveRun) prepareTTL(t *testing.T) {
 					continue
 				}
 				prefix := run.prefix(id)
-				result := run.generate(t, "anthropic-api", route, id+"/warm", prefix, policy.ttl, false, "")
+				result := run.generate(t, "anthropic-messages", route, id+"/warm", prefix, policy.ttl, false, "")
 				state := "unavailable"
 				if result.Status == "passed" {
 					state = "waiting"
 				}
-				run.checkpoint.Tasks = append(run.checkpoint.Tasks, cacheCheckpointTask{ID: id, Target: "anthropic-api", Model: run.suite.Model, Revision: run.compiled["anthropic-api"].Hash(), Route: route, TTL: policy.ttl, Prefix: prefix, State: state, StartedAt: result.Wire.StartedAt, DueAt: result.Wire.StartedAt.Add(cohort.delay), DelaySeconds: int(cohort.delay.Seconds())})
+				run.checkpoint.Tasks = append(run.checkpoint.Tasks, cacheCheckpointTask{ID: id, Target: "anthropic-messages", Model: run.suite.Model, Revision: run.compiled["anthropic-messages"].Hash(), Route: route, TTL: policy.ttl, Prefix: prefix, State: state, StartedAt: result.Wire.StartedAt, DueAt: result.Wire.StartedAt.Add(cohort.delay), DelaySeconds: int(cohort.delay.Seconds())})
 				run.save(t)
 			}
 		}

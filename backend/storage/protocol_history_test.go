@@ -94,7 +94,7 @@ func TestProtocolHistoryPresetUpdatesBackfillAndRollback(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		value, err = protocol.ApplyMutations(value, []protocol.Mutation{{Op: protocol.SetValue, Path: "/id", Value: protocol.StringValue("anthropic-api")}}, protocol.DefaultLimits())
+		value, err = protocol.ApplyMutations(value, []protocol.Mutation{{Op: protocol.SetValue, Path: "/id", Value: protocol.StringValue("anthropic-messages")}}, protocol.DefaultLimits())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -103,7 +103,7 @@ func TestProtocolHistoryPresetUpdatesBackfillAndRollback(t *testing.T) {
 			t.Fatal(err)
 		}
 		now := time.Now().UTC()
-		entry := ProtocolUpgradeRevision{Revision: protocol.Revision{ProtocolID: "anthropic-api", Hash: compiled.Hash(), Definition: value, CreatedAt: now}, Draft: protocol.Draft{ProtocolID: "anthropic-api", Hash: compiled.Hash(), Definition: value, UpdatedAt: now}, Report: protocol.Verify(t.Context(), compiled)}
+		entry := ProtocolUpgradeRevision{Revision: protocol.Revision{ProtocolID: "anthropic-messages", Hash: compiled.Hash(), Definition: value, CreatedAt: now}, Draft: protocol.Draft{ProtocolID: "anthropic-messages", Hash: compiled.Hash(), Definition: value, UpdatedAt: now}, Report: protocol.Verify(t.Context(), compiled)}
 		tx, err := store.db.BeginTx(t.Context(), nil)
 		if err != nil {
 			t.Fatal(err)

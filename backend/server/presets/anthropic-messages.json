@@ -1,5 +1,5 @@
 {
-  "id": "anthropic-api",
+  "id": "anthropic-messages",
   "name": "Anthropic Messages",
   "version": "5",
   "type": "llm",

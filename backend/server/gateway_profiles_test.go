@@ -14,7 +14,7 @@ func TestGatewayProfilesRejectUnsupportedInputAndUnexpectedOutput(t *testing.T) 
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()
-	upstream, _ := service.Pin("anthropic-api")
+	upstream, _ := service.Pin("anthropic-messages")
 	calls := 0
 	shouldReturnReasoning := false
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -28,7 +28,7 @@ func TestGatewayProfilesRejectUnsupportedInputAndUnexpectedOutput(t *testing.T) 
 	defer provider.Close()
 	setupGatewayModel(t, s, upstream, provider.URL)
 	request := func(body string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest(http.MethodPost, "/gateway/chat-completions-api/chat/completions", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPost, "/gateway/openai-chat-completions/chat/completions", strings.NewReader(body))
 		r.Header.Set("Authorization", "Bearer gateway-test-token")
 		response := httptest.NewRecorder()
 		s.engine.ServeHTTP(response, r)

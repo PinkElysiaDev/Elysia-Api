@@ -44,7 +44,7 @@ func PresetProtocolConfigs() ([]relay.CustomProtocolConfig, error) {
 
 // presetProtocolAnthropicAPIID 标记 AI 助手 few-shot 范例所用预置;
 // 改名/删除该预设时此常量是唯一需要同步的位置。
-const presetProtocolAnthropicAPIID = "anthropic-api"
+const presetProtocolAnthropicAPIID = "anthropic-messages"
 
 // cachedPresetConfigs 内嵌定义不可变:解析+整体校验只做一次,助手每请求
 // 复用(此前每次调用重读 embed 并校验四份)。
@@ -86,31 +86,39 @@ func customProtocolRow(config relay.CustomProtocolConfig, rawJSON string) storag
 // 命中任一代哈希即升级到当前版；每次发布新预置版本时把上一版哈希追加进
 // 此表（链式登记,停在任意旧版的老库都能一步升到最新）。
 var legacyPresetHashes = map[string][]string{
-	"chat-completions-api": {
+	"openai-chat-completions": {
 		"86f959ef404dc7a9bf543851c9e14146a1e279ef3c3b01ade375bff0598eb415", // v1
 		"295485921fa104e0ca507371bfe71dd2587cb92de3ddd9f38bfcae92a111220f", // v2
 		"327ca4b2dbc1b9564af48700418d2ef27ad0ef9a7d0602a74312bfed0013a22f", // v3
 		"81d0c91f116a803728a04e520b26ea6c5c236f872388ab479f52afa31ddaa8c4", // v4
 		"40f2f69655f726203bb212e788137469c82ec33e57d5f3a1ffc2767e142575b6", // v5
+		"927e9c4a0fbee9862a716b369e18d20b4525ea4ff1623e21852108f1c1c9872c", // v5（ID 改名重写后）
+		"36b1bed9298896bde6eff76463720d922302f84e4cf675aa2ebbb23db655aa76", // v4（ID 改名重写后·cache 夹具）
 	},
-	"anthropic-api": {
+	"anthropic-messages": {
 		"006284c9d72573d340434ac2378ff501bd506cac01da3cfaa0a3a60594bbc7d2", // v1
 		"db954c7442472fdd8540b19c423fa6c7eaba2c12d934325345078b54541c889d", // v2
 		"26c999684e03ed26e34a39378c923bd29b6793cd6ecc14ae12593264b14a9db7", // v3
 		"19c8ec6ff491b3c7471ef3d4b6efe6e6f212c5b9107d4c19ad30ad3ebd17fbe5", // v4
+		"03d0bae8dd53de1e4f6d08b8269b74ce5eb613d16dd6127727d21531f884bf25", // v4（ID 改名重写后）
+		"aa1d2659fd39882a1d3d4519ac15c96cd4dbe9ae6992b43c3b2f377a7d06d0e7", // v3（ID 改名重写后·cache 夹具）
 	},
-	"gemini-api": {
+	"google-generate-content": {
 		"832c2a3ba8f9e21c65666426849a908a2c7e0762d9267a6fa59b3928ad1d433f", // v1
 		"9e4687a486228f0e6a3ac6cc37db561d014e147dd11025693ffe50821aa306a6", // v2
 		"17649cc0f6619488acfa2cfeedacdf94847b3795e4ea1181a33cf9a4de58ba80", // v3
 		"86941a1e6b3599d3b5e7a013c752c3f345f202038787774c370cdf6c862f892a", // v4
+		"25b9a95aa9c0909eb10b45519042f960739af62a8444cccf869c8a34a28d690e", // v4（ID 改名重写后）
+		"d047b742566ccf26ee52def49654bfecdf5ab593fdcf0699b50cb494e33cdb8c", // v3（ID 改名重写后·cache 夹具）
 	},
-	"responses-api": {
+	"openai-responses": {
 		"cdbe42c33f03c0be4d4d8d69c4d2ec40ab5071a9577ff36d3e86b5cdf20dec75", // v1
 		"166fc489e972d4a07f33deffde41397c4d9072ef6aae57aa3c105a7bd9f62489", // v2
 		"8c7a575502904cd0cb773e0ef66a1118aa5076d2a7e58dd05d484f6048b76d24", // v3
 		"a72bd5ad968db8a836f9ab38561c2c76872c2eb1ec24b2e001e842c74e5a6b03", // v4
 		"54b73998ae8568c4dfef036ed4f0d3b878e6326853429a2dfdfae82db8916015", // v5
+		"d30384aff53001a4b0ea9aabc91d11feb4e1b0a58f23cbe504a30b97f3f8d4db", // v5（ID 改名重写后）
+		"2a521cd7dee8db61735141f8b6d45ea35321ee9fb632597c2c9e5f459ea9cee9", // v4（ID 改名重写后·cache 夹具）
 	},
 }
 
@@ -202,6 +210,10 @@ var presetProtocolRenames = []storage.ProtocolRenamePair{
 	{OldID: "openai-responses", NewID: "responses-api"},
 	{OldID: "anthropic-messages", NewID: "anthropic-api"},
 	{OldID: "gemini-generate", NewID: "gemini-api"},
+	{OldID: "chat-completions-api", NewID: "openai-chat-completions"},
+	{OldID: "responses-api", NewID: "openai-responses"},
+	{OldID: "anthropic-api", NewID: "anthropic-messages"},
+	{OldID: "gemini-api", NewID: "google-generate-content"},
 }
 
 // migratePresetProtocolRenames 执行预置 ID 改名并同步重写 custom:<id> 平台
@@ -243,8 +255,8 @@ func (s *Server) reconcileCustomProtocolConfigIDs() {
 // base 需含版本段,对齐 OpenAI 官方 base 约定)的预置及其 base 版本段。
 // anthropic-api / gemini-api 的路径语义与各自官方约定一致,不在表内。
 var relativePathPresets = map[string]string{
-	"chat-completions-api": "/v1",
-	"responses-api":        "/v1",
+	"openai-chat-completions": "/v1",
+	"openai-responses":        "/v1",
 }
 
 // migratePresetRelativePathBases 在预置行本次从历史版本升级到 path 相对版

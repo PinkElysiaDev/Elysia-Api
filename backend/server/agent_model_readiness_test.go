@@ -76,7 +76,7 @@ func TestAgentToolProbeOnlyCommitsValidatedCapability(t *testing.T) {
 				fmt.Fprintf(w, `{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"test-call","type":"function","function":{"name":"elysia_capability_probe","arguments":%s}}]},"finish_reason":"tool_calls"}]}`, argsString)
 			}))
 			defer provider.Close()
-			seedCallerModel(t, s, provider.URL, "custom:chat-completions-api")
+			seedCallerModel(t, s, provider.URL, "custom:openai-chat-completions")
 			bindings, _ := s.store.ListProtocolBindings(t.Context())
 			binding := bindings[0]
 			binding.Binding.Transports = []protocol.Transport{protocol.HTTPJSON}
@@ -150,7 +150,7 @@ func TestAgentToolProbeStreamsRelayExtensions(t *testing.T) {
 		chunk(`[DONE]`)
 	}))
 	defer provider.Close()
-	seedCallerModel(t, s, provider.URL, "custom:chat-completions-api")
+	seedCallerModel(t, s, provider.URL, "custom:openai-chat-completions")
 	bindings, _ := s.store.ListProtocolBindings(t.Context())
 	binding := bindings[0]
 	// 复刻迁移生成的真实形态：两个 generate 传输、未钉选操作——

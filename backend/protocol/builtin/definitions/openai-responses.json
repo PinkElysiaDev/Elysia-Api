@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
-  "id": "responses-api",
+  "id": "openai-responses",
   "name": "Openai Responses",
-  "version": "2.2.3",
+  "version": "2.2.4",
   "family": "openai_responses",
   "wireVersion": "v2",
   "capabilities": {
@@ -255,7 +255,7 @@
             "protocol": {
               "family": "openai_responses",
               "wireVersion": "v2",
-              "definitionId": "responses-api",
+              "definitionId": "openai-responses",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -455,7 +455,7 @@
             "protocol": {
               "family": "openai_responses",
               "wireVersion": "v2",
-              "definitionId": "responses-api",
+              "definitionId": "openai-responses",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -677,7 +677,7 @@
             "protocol": {
               "family": "openai_responses",
               "wireVersion": "v2",
-              "definitionId": "responses-api",
+              "definitionId": "openai-responses",
               "revision": "2.0.0"
             },
             "direction": "decode_response",
@@ -832,7 +832,7 @@
             "protocol": {
               "family": "openai_responses",
               "wireVersion": "v2",
-              "definitionId": "responses-api",
+              "definitionId": "openai-responses",
               "revision": "2.0.0"
             },
             "direction": "decode_response",
@@ -981,7 +981,7 @@
             "protocol": {
               "family": "openai_responses",
               "wireVersion": "v2",
-              "definitionId": "responses-api",
+              "definitionId": "openai-responses",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -1141,7 +1141,7 @@
             "protocol": {
               "family": "openai_responses",
               "wireVersion": "v2",
-              "definitionId": "responses-api",
+              "definitionId": "openai-responses",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -1292,7 +1292,7 @@
             "protocol": {
               "family": "openai_responses",
               "wireVersion": "v2",
-              "definitionId": "responses-api",
+              "definitionId": "openai-responses",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -1426,7 +1426,7 @@
             "protocol": {
               "family": "openai_responses",
               "wireVersion": "v2",
-              "definitionId": "responses-api",
+              "definitionId": "openai-responses",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -1563,7 +1563,7 @@
             "protocol": {
               "family": "openai_responses",
               "wireVersion": "v2",
-              "definitionId": "responses-api",
+              "definitionId": "openai-responses",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -1762,7 +1762,7 @@
             "protocol": {
               "family": "openai_responses",
               "wireVersion": "v2",
-              "definitionId": "responses-api",
+              "definitionId": "openai-responses",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -2149,7 +2149,7 @@
               "protocol": {
                 "family": "openai_responses",
                 "wireVersion": "v2",
-                "definitionId": "responses-api",
+                "definitionId": "openai-responses",
                 "revision": "2.0.0"
               },
               "direction": "decode_event",
@@ -2882,7 +2882,7 @@
                 "protocol": {
                   "family": "openai_responses",
                   "wireVersion": "v2",
-                  "definitionId": "responses-api",
+                  "definitionId": "openai-responses",
                   "revision": "2.0.0"
                 },
                 "direction": "decode_request",
@@ -2941,7 +2941,7 @@
                 "protocol": {
                   "family": "openai_responses",
                   "wireVersion": "v2",
-                  "definitionId": "responses-api",
+                  "definitionId": "openai-responses",
                   "revision": "2.0.0"
                 },
                 "direction": "decode_request",
@@ -2964,7 +2964,7 @@
             "protocol": {
               "family": "openai_responses",
               "wireVersion": "v2",
-              "definitionId": "responses-api",
+              "definitionId": "openai-responses",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -3108,7 +3108,7 @@
             "protocol": {
               "family": "openai_responses",
               "wireVersion": "v2",
-              "definitionId": "responses-api",
+              "definitionId": "openai-responses",
               "revision": "2.0.0"
             },
             "direction": "decode_response",
@@ -3634,7 +3634,7 @@
             "protocol": {
               "family": "openai_responses",
               "wireVersion": "v2",
-              "definitionId": "responses-api",
+              "definitionId": "openai-responses",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -3836,7 +3836,7 @@
             "protocol": {
               "family": "openai_responses",
               "wireVersion": "v2",
-              "definitionId": "responses-api",
+              "definitionId": "openai-responses",
               "revision": "2.0.0"
             },
             "direction": "decode_response",
@@ -4396,7 +4396,7 @@
               "protocol": {
                 "family": "openai_responses",
                 "wireVersion": "v2",
-                "definitionId": "responses-api",
+                "definitionId": "openai-responses",
                 "revision": "2.0.0"
               },
               "direction": "decode_request",
@@ -4485,7 +4485,7 @@
               "protocol": {
                 "family": "openai_responses",
                 "wireVersion": "v2",
-                "definitionId": "responses-api",
+                "definitionId": "openai-responses",
                 "revision": "2.0.0"
               },
               "direction": "decode_request",
@@ -4523,7 +4523,7 @@
             "protocol": {
               "family": "openai_responses",
               "wireVersion": "v2",
-              "definitionId": "responses-api",
+              "definitionId": "openai-responses",
               "revision": "2.0.0"
             },
             "direction": "decode_request",
@@ -4678,7 +4678,7 @@
               "protocol": {
                 "family": "openai_responses",
                 "wireVersion": "v2",
-                "definitionId": "responses-api",
+                "definitionId": "openai-responses",
                 "revision": "2.0.0"
               },
               "direction": "decode_response",
@@ -4749,7 +4749,7 @@
               "protocol": {
                 "family": "openai_responses",
                 "wireVersion": "v2",
-                "definitionId": "responses-api",
+                "definitionId": "openai-responses",
                 "revision": "2.0.0"
               },
               "direction": "decode_response",
@@ -4780,7 +4780,7 @@
             "protocol": {
               "family": "openai_responses",
               "wireVersion": "v2",
-              "definitionId": "responses-api",
+              "definitionId": "openai-responses",
               "revision": "2.0.0"
             },
             "direction": "decode_response",
@@ -5057,7 +5057,7 @@
               "protocol": {
                 "family": "openai_responses",
                 "wireVersion": "v2",
-                "definitionId": "responses-api",
+                "definitionId": "openai-responses",
                 "revision": "2.0.0"
               },
               "direction": "decode_event",
@@ -5107,7 +5107,7 @@
                   "protocol": {
                     "family": "openai_responses",
                     "wireVersion": "v2",
-                    "definitionId": "responses-api",
+                    "definitionId": "openai-responses",
                     "revision": "2.0.0"
                   },
                   "direction": "decode_event",
@@ -5187,7 +5187,7 @@
               "protocol": {
                 "family": "openai_responses",
                 "wireVersion": "v2",
-                "definitionId": "responses-api",
+                "definitionId": "openai-responses",
                 "revision": "2.0.0"
               },
               "direction": "decode_event",

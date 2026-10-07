@@ -374,7 +374,7 @@ func TestOpsTestUpstreamCredentialParams(t *testing.T) {
 	if serviceErr != nil {
 		t.Fatal(serviceErr)
 	}
-	compiled, _ := service.Pin("chat-completions-api")
+	compiled, _ := service.Pin("openai-chat-completions")
 	draft, err := json.Marshal(compiled.Definition())
 	if err != nil {
 		t.Fatal(err)

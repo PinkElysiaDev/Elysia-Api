@@ -83,7 +83,7 @@ try {
   assert(compilerVersion, 'Compiler version declaration missing')
   assert.equal(schema.compilerVersion, compilerVersion)
   const enabled = await readJSON('/api/admin/protocols/enabled', true)
-  assert.deepEqual(enabled.items.map(item => item.id).sort(), ['anthropic-api', 'chat-completions-api', 'gemini-api', 'responses-api'])
+  assert.deepEqual(enabled.items.map(item => item.id).sort(), ['anthropic-messages', 'google-generate-content', 'openai-chat-completions', 'openai-responses'])
   assert(enabled.items.every(item => item.revision && item.canGenerate && item.hasAgentPolicy))
   const ui = await fetch(`${baseURL}/ui/`, { signal: AbortSignal.timeout(requestTimeoutMillis) })
   assert.equal(ui.status, 200)

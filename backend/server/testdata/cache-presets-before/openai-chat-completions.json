@@ -1,12 +1,12 @@
 {
-  "id": "chat-completions-api",
+  "id": "openai-chat-completions",
   "name": "Chat Completions API（预置）",
-  "version": "5",
+  "version": "4",
   "type": "llm",
   "metadata": {
     "preset": true,
-    "presetVersion": 5,
-    "description": "Chat Completions 线制的预置定义；复制后可定制端点/字段。v4：命名去厂商化；v3：path 相对化——base 填到 /v1 为止（对齐官方 base 约定），端点路径不含版本前缀; v5: preserve cache semantics and cache field mappings"
+    "presetVersion": 4,
+    "description": "Chat Completions 线制的预置定义；复制后可定制端点/字段。v4：命名去厂商化；v3：path 相对化——base 填到 /v1 为止（对齐官方 base 约定），端点路径不含版本前缀"
   },
   "request": {
     "method": "POST",
@@ -73,18 +73,6 @@
       "user": {
         "field": "user",
         "mode": "string",
-        "omitIfEmpty": true
-      },
-      "prompt_cache_key": {
-        "field": "prompt_cache_key",
-        "omitIfEmpty": true
-      },
-      "prompt_cache_retention": {
-        "field": "prompt_cache_retention",
-        "omitIfEmpty": true
-      },
-      "cache_control": {
-        "field": "cache_control",
         "omitIfEmpty": true
       }
     }

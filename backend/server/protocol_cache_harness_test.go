@@ -17,9 +17,9 @@ import (
 func TestCacheCheckpointNeverReplaysUncertainWarmup(t *testing.T) {
 	directory := t.TempDir()
 	t.Setenv("ELYSIA_VERIFY_TEST_KEY", "synthetic-secret")
-	suite := &liveSuite{Targets: map[string]liveTargetProfile{"anthropic-api": {Model: "m", KeyEnv: "ELYSIA_VERIFY_TEST_KEY"}}, path: filepath.Join(directory, "live.json"), budget: &liveBudget{path: filepath.Join(directory, "budget.json")}}
-	run := &cacheLiveRun{suite: suite, path: filepath.Join(directory, "checkpoint.json"), checkpoint: cacheCheckpoint{Attempts: map[string]string{"anthropic-api/warm": "started"}}}
-	result := run.once(t, "anthropic-api", "warm", func() liveCase { t.Fatal("uncertain paid request retried"); return liveCase{} })
+	suite := &liveSuite{Targets: map[string]liveTargetProfile{"anthropic-messages": {Model: "m", KeyEnv: "ELYSIA_VERIFY_TEST_KEY"}}, path: filepath.Join(directory, "live.json"), budget: &liveBudget{path: filepath.Join(directory, "budget.json")}}
+	run := &cacheLiveRun{suite: suite, path: filepath.Join(directory, "checkpoint.json"), checkpoint: cacheCheckpoint{Attempts: map[string]string{"anthropic-messages/warm": "started"}}}
+	result := run.once(t, "anthropic-messages", "warm", func() liveCase { t.Fatal("uncertain paid request retried"); return liveCase{} })
 	if result.Status != "inconclusive" || suite.budget.Calls != 0 {
 		t.Fatal("uncertain state changed", result)
 	}
@@ -31,7 +31,7 @@ func TestCacheCheckpointNeverReplaysUncertainWarmup(t *testing.T) {
 	}
 	var restored cacheCheckpoint
 	raw, _ := os.ReadFile(run.path)
-	if err := json.Unmarshal(raw, &restored); err != nil || restored.Attempts["anthropic-api/warm"] != "started" {
+	if err := json.Unmarshal(raw, &restored); err != nil || restored.Attempts["anthropic-messages/warm"] != "started" {
 		t.Fatal("attempt identity lost", err)
 	}
 }
@@ -62,7 +62,7 @@ func TestCacheTimingDistinguishesObservationFromCompletedProbe(t *testing.T) {
 
 func TestStandardCacheCreationReachesNativeCopiesAndStorage(t *testing.T) {
 	for _, fixture := range cacheWireFixtures() {
-		if fixture.id != "chat-completions-api" && fixture.id != "responses-api" {
+		if fixture.id != "openai-chat-completions" && fixture.id != "openai-responses" {
 			continue
 		}
 		for _, copyID := range []bool{false, true} {

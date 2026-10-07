@@ -13,7 +13,7 @@ func TestPresetProtocolsAreReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"chat-completions-api", "responses-api", "anthropic-api", "gemini-api"} {
+	for _, id := range []string{"openai-chat-completions", "openai-responses", "anthropic-messages", "google-generate-content"} {
 		raw := []byte(`{"id":"` + id + `"}`)
 		if _, _, err := service.SaveDraft(t.Context(), id, raw, ""); err == nil || !strings.Contains(err.Error(), "read-only") {
 			t.Fatalf("SaveDraft accepted preset %s: %v", id, err)

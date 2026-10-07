@@ -326,9 +326,9 @@ export function SourceFormDialog({
     if (!open || isEdit || registeredProtocols.length === 0) return
     setForm((previous) => {
       if (previous.platform !== 'chat_completions') return previous
-      const preset = registeredProtocols.find((item) => item.id === 'chat-completions-api')
+      const preset = registeredProtocols.find((item) => item.id === 'openai-chat-completions')
       if (!preset) return previous
-      const platform = customPlatformValue('chat-completions-api') as Platform
+      const platform = customPlatformValue('openai-chat-completions') as Platform
       const defaults = PROTOCOL_DEFAULTS[platform]
       return {
         ...previous,
