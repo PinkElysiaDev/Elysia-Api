@@ -142,7 +142,7 @@ func (adapter module) decodeResponse(input p.Value, options p.EvaluationContext)
 		return nil, err
 	}
 	if !usageExtra.IsZero() {
-		key := "wire:" + adapter.family
+		key := wireExtensionPrefix + adapter.family
 		extra := p.Object{}
 		if value := response.Attributes[key]; !value.IsZero() {
 			extra, err = value.ReadObject()

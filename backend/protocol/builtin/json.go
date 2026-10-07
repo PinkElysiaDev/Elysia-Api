@@ -159,5 +159,5 @@ func (adapter module) extensions(fields p.Object, known []string) p.Object {
 	if extra.IsZero() {
 		return nil
 	}
-	return p.Object{"wire:" + adapter.family: extra}
+	return p.Object{wireExtensionPrefix + adapter.family: extra}
 }

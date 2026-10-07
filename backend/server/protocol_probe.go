@@ -72,6 +72,19 @@ func (s *Server) probeProtocol(ctx context.Context, input protocolProbeInput) (*
 		}
 	}
 	// Store metadata only; credentials and captured model output stay out of reports.
+	// 预置只读：探测证据只落在当前激活（shipped）修订上。旧政策遗留的预置
+	// draft 不能借 test 探测把已废弃的编辑重新写回修订历史；探针结果本身
+	// 仍照常返回给调用方。
+	if id := compiled.Identity().DefinitionID; protocol.IsPresetProtocolID(id) {
+		activated, err := s.activeRevisionHash(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if activated != compiled.Hash() {
+			result.Report = report
+			return result, nil
+		}
+	}
 	revision := protocol.Revision{ProtocolID: compiled.Identity().DefinitionID, Hash: compiled.Hash(), Definition: input.Definition, CreatedAt: report.VerifiedAt}
 	if err := s.store.SaveProtocolRevision(ctx, revision); err != nil {
 		return nil, err
@@ -81,6 +94,19 @@ func (s *Server) probeProtocol(ctx context.Context, input protocolProbeInput) (*
 	}
 	result.Report = report
 	return result, nil
+}
+
+func (s *Server) activeRevisionHash(ctx context.Context, id string) (string, error) {
+	activations, err := s.store.ListProtocolActivations(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, activation := range activations {
+		if activation.ProtocolID == id {
+			return activation.RevisionHash, nil
+		}
+	}
+	return "", nil
 }
 
 func (s *Server) adminProtocolProbe(c *gin.Context) {

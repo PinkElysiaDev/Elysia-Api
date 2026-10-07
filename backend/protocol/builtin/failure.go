@@ -101,7 +101,7 @@ func (adapter module) decodeFailure(value p.Value, options p.EvaluationContext) 
 		}
 	}
 	if unknown := collectUnknown(fields, known); !unknown.IsZero() {
-		result["wire:"+adapter.family] = unknown
+		result[wireExtensionPrefix+adapter.family] = unknown
 	}
 	return object(result), nil
 }
@@ -115,7 +115,7 @@ func (adapter module) encodeFailure(value p.Value, options p.EvaluationContext) 
 		switch key {
 		case "message", "category", "code", "param", "details":
 		default:
-			if !strings.HasPrefix(key, "wire:") {
+			if !strings.HasPrefix(key, wireExtensionPrefix) {
 				return p.Value{}, unsupported("/error/"+key, "target has no declared error field mapping")
 			}
 		}

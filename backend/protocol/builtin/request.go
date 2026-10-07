@@ -123,7 +123,7 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 			}
 			system = block["parts"]
 			if extra := collectUnknown(block, []string{"parts"}); !extra.IsZero() {
-				key := "wire:" + adapter.family
+				key := wireExtensionPrefix + adapter.family
 				root := p.Object{}
 				if value := request.Parameters[key]; !value.IsZero() {
 					root, _ = value.ReadObject()

@@ -387,7 +387,7 @@ func isErrorResult(status p.Value) bool {
 func foreignWireKeys(attributes p.Object, family string) []string {
 	var foreign []string
 	for key := range attributes {
-		if prefix, ok := strings.CutPrefix(key, "wire:"); ok && prefix != family {
+		if prefix, ok := strings.CutPrefix(key, wireExtensionPrefix); ok && prefix != family {
 			foreign = append(foreign, key)
 		}
 	}
@@ -398,7 +398,7 @@ func foreignWireKeys(attributes p.Object, family string) []string {
 func sameFamilyExtensions(attributes p.Object, family string) p.Object {
 	remaining := p.Object{}
 	for key, value := range attributes {
-		if prefix, ok := strings.CutPrefix(key, "wire:"); ok && prefix != family {
+		if prefix, ok := strings.CutPrefix(key, wireExtensionPrefix); ok && prefix != family {
 			continue
 		}
 		remaining[key] = value
