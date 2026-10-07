@@ -81,7 +81,7 @@ func seedCallerModel(t *testing.T, s *Server, baseURL, platform string) {
 		t.Fatalf("UpsertSource: %v", err)
 	}
 	models := []storage.Model{{
-		ID: "m1", SourceID: "cs1", Name: "fake-model", BaseURL: baseURL,
+		ID: "fake-model", SourceID: "cs1", Name: "fake-model", BaseURL: baseURL,
 		Platform: platform, Type: "llm", Enabled: true, Available: true, ToolsCapable: true, VisionCapable: true,
 	}}
 	if err := s.store.ReplaceSourceModels(t.Context(), source, models); err != nil {

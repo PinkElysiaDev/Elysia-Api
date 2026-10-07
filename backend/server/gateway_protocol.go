@@ -156,7 +156,8 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 		return &gatewayFailure{http.StatusForbidden, fmt.Errorf("target base URL rejected: %w", err)}
 	}
 	request := plan.request.Clone()
-	request.Model = protocol.StringValue(candidate.model.Name)
+	// 上行模型串用 API id；Name 是显示名（Gemini displayName 直接拼路径会 404）。
+	request.Model = protocol.StringValue(candidate.model.Identifier())
 	options := protocol.EvaluationContext{Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}}
 	defer func() { record.appendConversionIssues(options.Diagnostics.Issues()) }()
 	if candidate.model.CacheSynthesis {
@@ -173,7 +174,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	setRecordModel(record, candidate.model, builtin.Platform("custom:"+candidate.binding.ProtocolID))
 	record.UpstreamRevision, record.TargetEndpoint, record.TargetFormat = candidate.compiled.Hash(), candidate.operation.Path, candidate.binding.ProtocolID
 	record.OutgoingBody = record.sanitizeBody(body)
-	response, err := s.protocolTransport.SendProtocolRequest(c.Request.Context(), candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Name})
+	response, err := s.protocolTransport.SendProtocolRequest(c.Request.Context(), candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Identifier()})
 	if err != nil {
 		return err
 	}

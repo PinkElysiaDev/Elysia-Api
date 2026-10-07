@@ -143,6 +143,15 @@ type Model struct {
 	LastCheckedAt    time.Time `json:"lastCheckedAt"`
 }
 
+// Identifier 返回上行请求使用的模型标识：ID 是上游 API 的调用名，Name 只是
+// 显示名（如 Gemini displayName）。ID 缺失时回退 Name，兼容历史行。
+func (m Model) Identifier() string {
+	if m.ID != "" {
+		return m.ID
+	}
+	return m.Name
+}
+
 type ModelGroup struct {
 	ID                    string   `json:"id"`
 	Name                  string   `json:"name"`

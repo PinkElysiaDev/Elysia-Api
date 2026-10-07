@@ -20,7 +20,7 @@ func presetGroup(t *testing.T, platform, upstreamURL string) []config.ModelGroup
 	t.Helper()
 	return []config.ModelGroupConfig{{
 		ID: "g1", Name: "grp", Enabled: true,
-		Models: []config.ModelRef{{ID: "m1", Name: "preset-model", BaseURL: upstreamURL, APIKey: "k", Platform: platform, ToolsCapable: true, VisionCapable: true}},
+		Models: []config.ModelRef{{ID: "preset-model", Name: "preset-model", BaseURL: upstreamURL, APIKey: "k", Platform: platform, ToolsCapable: true, VisionCapable: true}},
 	}}
 }
 

@@ -67,7 +67,7 @@ func TestAgentToolProbeOnlyCommitsValidatedCapability(t *testing.T) {
 				}
 				if mode == "conflict" {
 					name := "changed"
-					if _, err := s.store.UpdateModel(t.Context(), "m1", "cs1", storage.ModelPatch{Name: &name}); err != nil {
+					if _, err := s.store.UpdateModel(t.Context(), "fake-model", "cs1", storage.ModelPatch{Name: &name}); err != nil {
 						t.Error(err)
 					}
 				}
@@ -86,10 +86,10 @@ func TestAgentToolProbeOnlyCommitsValidatedCapability(t *testing.T) {
 				t.Fatal(err)
 			}
 			tools := false
-			if _, err := s.store.UpdateModel(t.Context(), "m1", "cs1", storage.ModelPatch{ToolsCapable: &tools}); err != nil {
+			if _, err := s.store.UpdateModel(t.Context(), "fake-model", "cs1", storage.ModelPatch{ToolsCapable: &tools}); err != nil {
 				t.Fatal(err)
 			}
-			response := revisionAdminRequest(t, s.engine, "POST", "/api/admin/agent/models/verify-tools", []byte(`{"sourceId":"cs1","modelId":"m1"}`), "")
+			response := revisionAdminRequest(t, s.engine, "POST", "/api/admin/agent/models/verify-tools", []byte(`{"sourceId":"cs1","modelId":"fake-model"}`), "")
 			want := 400
 			if mode == "success" {
 				want = 200
@@ -116,7 +116,7 @@ func TestAgentToolProbeOnlyCommitsValidatedCapability(t *testing.T) {
 				t.Fatal(entry)
 			}
 			sources, _ := s.store.ListSources(t.Context())
-			if _, err := s.store.MergeSourceModels(t.Context(), sources[0], []storage.Model{{ID: "m1", Name: "fake-model", Enabled: true, ToolsCapable: false, CapabilitySource: "catalog"}}); err != nil {
+			if _, err := s.store.MergeSourceModels(t.Context(), sources[0], []storage.Model{{ID: "fake-model", Name: "fake-model", Enabled: true, ToolsCapable: false, CapabilitySource: "catalog"}}); err != nil {
 				t.Fatal(err)
 			}
 			models, _ = s.store.ListModelsFiltered(t.Context(), storage.ModelListFilter{})
@@ -162,10 +162,10 @@ func TestAgentToolProbeStreamsRelayExtensions(t *testing.T) {
 		t.Fatal(err)
 	}
 	tools := false
-	if _, err := s.store.UpdateModel(t.Context(), "m1", "cs1", storage.ModelPatch{ToolsCapable: &tools}); err != nil {
+	if _, err := s.store.UpdateModel(t.Context(), "fake-model", "cs1", storage.ModelPatch{ToolsCapable: &tools}); err != nil {
 		t.Fatal(err)
 	}
-	response := revisionAdminRequest(t, s.engine, "POST", "/api/admin/agent/models/verify-tools", []byte(`{"sourceId":"cs1","modelId":"m1"}`), "")
+	response := revisionAdminRequest(t, s.engine, "POST", "/api/admin/agent/models/verify-tools", []byte(`{"sourceId":"cs1","modelId":"fake-model"}`), "")
 	if response.Code != 200 {
 		t.Fatal(response.Code, response.Body)
 	}

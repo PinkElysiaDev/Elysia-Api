@@ -63,7 +63,7 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	if record != nil {
 		record.OutgoingBody = record.sanitizeBody(body)
 	}
-	response, err := s.protocolTransport.SendProtocolRequest(ctx, candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Name})
+	response, err := s.protocolTransport.SendProtocolRequest(ctx, candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Identifier()})
 	if err != nil {
 		return nil, err
 	}

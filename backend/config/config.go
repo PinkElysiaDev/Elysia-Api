@@ -233,6 +233,16 @@ type ModelRef struct {
 	CacheSynthesis bool `json:"cacheSynthesis,omitempty"`
 }
 
+// Identifier 返回上行请求使用的模型标识：ID 是上游 API 的调用名（拉取模型
+// 的裸 id、手动模型的「模型 ID」），Name 只是显示名（如 Gemini displayName）。
+// ID 缺失时回退 Name，兼容未填 ID 的历史引用。
+func (r ModelRef) Identifier() string {
+	if r.ID != "" {
+		return r.ID
+	}
+	return r.Name
+}
+
 var GlobalConfig *Config
 
 func Load(path string) (*Config, error) {

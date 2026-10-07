@@ -66,7 +66,7 @@ func TestChatCompletionsDashscopeNativeStreamingEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 	groups := standaloneGroup(t, definition, upstream.URL)
-	groups[0].Models[0].Name = "qwen-plus"
+	groups[0].Models[0].ID = "qwen-plus"
 	s := newTestServer(t, groups, definition)
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"你好"}]}`)
 	s.chatCompletions(c)

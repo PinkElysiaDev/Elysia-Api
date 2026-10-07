@@ -147,7 +147,7 @@ func (executor gatewayJobExecutor) Submit(ctx context.Context, job protocol.Gene
 		}
 		operation.Headers[header] = job.Task.ID
 	}
-	response, err := executor.send(ctx, model, operation, body, map[string]string{"model": model.Name})
+	response, err := executor.send(ctx, model, operation, body, map[string]string{"model": model.Identifier()})
 	if err != nil {
 		return protocol.JobUpdate{}, err
 	}
