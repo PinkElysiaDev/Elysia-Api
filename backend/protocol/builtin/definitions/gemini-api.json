@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
   "id": "gemini-api",
-  "name": "Google Generate Content",
-  "version": "2.1.2",
+  "name": "Google Generate-content",
+  "version": "2.1.3",
   "family": "gemini",
   "wireVersion": "v2",
   "capabilities": {
@@ -155,7 +155,7 @@
                   "op": "object",
                   "fields": {
                     "id": {
-                      "op": "strip_prefix",
+                      "op": "trim_prefix",
                       "source": {
                         "op": "read",
                         "path": "/name",
@@ -4139,6 +4139,26 @@
           }
         ],
         "next": "p2"
+      }
+    },
+    {
+      "id": "models-bare-identity",
+      "operation": "models",
+      "input": {
+        "models": [
+          {
+            "name": "gemini-bare",
+            "displayName": "Bare Relay"
+          }
+        ]
+      },
+      "expected": {
+        "models": [
+          {
+            "id": "gemini-bare",
+            "name": "Bare Relay"
+          }
+        ]
       }
     }
   ],

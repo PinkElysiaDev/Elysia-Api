@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "anthropic-api",
   "name": "Anthropic Messages",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "family": "claude",
   "wireVersion": "v2",
   "capabilities": {
