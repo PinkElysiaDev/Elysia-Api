@@ -378,7 +378,7 @@ export function SourceFormDialog({
               <Label required>名称</Label>
               <Input
                 value={form.name}
-                placeholder="OpenAI Main"
+                placeholder={PROTOCOL_DEFAULTS[form.platform]?.name ?? '自定义名称'}
                 onChange={(e) => update('name', e.target.value)}
               />
             </div>
@@ -426,7 +426,7 @@ export function SourceFormDialog({
             <Label required>Base URL</Label>
             <Input
               value={form.baseUrl}
-              placeholder="https://api.openai.com/v1"
+              placeholder={PROTOCOL_DEFAULTS[form.platform]?.baseUrl ?? 'https://api.example.com/v1'}
               onChange={(e) => update('baseUrl', e.target.value)}
             />
           </div>

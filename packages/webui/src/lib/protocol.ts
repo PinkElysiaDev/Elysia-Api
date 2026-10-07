@@ -3,31 +3,31 @@
 type ProtocolAlias = { short: string; long: string }
 
 const PROTOCOL_ALIASES: Record<string, ProtocolAlias> = {
-  responses: { short: 'responses', long: 'OpenAI Responses' },
-  openai_responses: { short: 'responses', long: 'OpenAI Responses' },
-  'openai-responses': { short: 'responses', long: 'OpenAI Responses' },
-  chat_completions: { short: 'chat_cmpl', long: 'OpenAI Chat Completions' },
-  openai: { short: 'chat_cmpl', long: 'OpenAI Chat Completions' },
-  openai_chat: { short: 'chat_cmpl', long: 'OpenAI Chat Completions' },
-  'openai-compatible': { short: 'chat_cmpl', long: 'OpenAI Chat Completions' },
-  azure: { short: 'azure', long: 'OpenAI Chat Completions' },
-  deepseek: { short: 'deepseek', long: 'OpenAI Chat Completions' },
+  responses: { short: 'responses', long: 'Openai Responses' },
+  openai_responses: { short: 'responses', long: 'Openai Responses' },
+  'openai-responses': { short: 'responses', long: 'Openai Responses' },
+  chat_completions: { short: 'chat_cmpl', long: 'Openai Chat Completions' },
+  openai: { short: 'chat_cmpl', long: 'Openai Chat Completions' },
+  openai_chat: { short: 'chat_cmpl', long: 'Openai Chat Completions' },
+  'openai-compatible': { short: 'chat_cmpl', long: 'Openai Chat Completions' },
+  azure: { short: 'azure', long: 'Openai Chat Completions' },
+  deepseek: { short: 'deepseek', long: 'Openai Chat Completions' },
   anthropic: { short: 'anthropic', long: 'Anthropic Messages' },
   claude: { short: 'anthropic', long: 'Anthropic Messages' },
-  gemini: { short: 'gemini', long: 'Google Generate Content' },
-  google: { short: 'google', long: 'Google Generate Content' },
+  gemini: { short: 'gemini', long: 'Google Generate-content' },
+  google: { short: 'google', long: 'Google Generate-content' },
 }
 
 /**
  * 四条预置协议与其内置线路线缆等价（shape 一一对应），显示与内置线一致的
- * 规范名——usage 链路里「Google Generate Content → custom:gemini-api」这类
+ * 规范名——usage 链路里「Google Generate-content → custom:gemini-api」这类
  * 同线制对两端同名、不再呈现为转换。
  */
 const PRESET_PROTOCOL_ALIASES: Record<string, ProtocolAlias> = {
-  'chat-completions-api': { short: 'chat_cmpl', long: 'OpenAI Chat Completions' },
-  'responses-api': { short: 'responses', long: 'OpenAI Responses' },
+  'chat-completions-api': { short: 'chat_cmpl', long: 'Openai Chat Completions' },
+  'responses-api': { short: 'responses', long: 'Openai Responses' },
   'anthropic-api': { short: 'anthropic', long: 'Anthropic Messages' },
-  'gemini-api': { short: 'gemini', long: 'Google Generate Content' },
+  'gemini-api': { short: 'gemini', long: 'Google Generate-content' },
 }
 
 /** 非预置自定义协议的注册名（listCustomProtocols 拉取后注入；键为协议 id）。 */

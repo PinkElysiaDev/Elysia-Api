@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/page-header'
 import { EmptyState } from '@/components/ui/states'
 import { Button } from '@/components/ui/button'
 import { protocolAPI, type ProtocolDraft, type ProtocolListing, type ProtocolSchema } from '@/lib/protocol-v2'
+import { customPlatformValue, protocolLabel } from '@/lib/protocol'
 import { ProtocolV2Editor } from './v2-editor'
 import { ProtocolArchiveDialog } from './archive-dialog'
 import { ProtocolDocument } from '@/lib/protocol-document'
@@ -63,7 +64,7 @@ export function ProtocolDesignerPage() {
         <h2 className="text-sm font-medium">预置协议（只读）</h2>
         <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">协议</th><th>当前版本</th><th className="p-3 text-center">操作</th></tr></thead><tbody>{(listing.presets ?? []).map((id) => {
           const active = listing.active.find((entry) => entry.protocolId === id)
-          return <tr key={id} className="border-b"><td className="p-3 font-mono">{id}</td><td className="p-3 font-mono text-xs">{active?.revisionHash.slice(0, 12) ?? '—'}</td><td className="p-3 text-center"><Button variant="ghost" onClick={() => void copyPreset(id)}>复制为新协议</Button></td></tr>
+          return <tr key={id} className="border-b"><td className="p-3"><span className="font-medium">{protocolLabel(customPlatformValue(id), 'long')}</span><span className="ml-2 font-mono text-2xs text-muted-foreground">{id}</span></td><td className="p-3 font-mono text-xs">{active?.revisionHash.slice(0, 12) ?? '—'}</td><td className="p-3 text-center"><Button variant="ghost" onClick={() => void copyPreset(id)}>复制为新协议</Button></td></tr>
         })}</tbody></table></div>
       </div>}
       {customDrafts.length === 0 ? <EmptyState title="暂无自定义协议" /> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">协议</th><th>草稿</th><th>启用状态</th><th className="p-3 text-center">操作</th></tr></thead><tbody>{customDrafts.map((draft) => {

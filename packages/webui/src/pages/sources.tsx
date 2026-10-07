@@ -772,7 +772,9 @@ const ModelChip = memo(function ModelChip({
         disabled={locked}
         className="max-w-[220px] truncate"
       >
-        {model.name || model.id}
+        <span className="max-w-[220px] truncate font-mono" title={model.name && model.name !== model.id ? model.name : undefined}>
+          {model.id}
+        </span>
       </button>
       <span className="rounded border border-border px-1 text-2xs uppercase tracking-[0.08em] text-muted-foreground">
         {model.type.slice(0, 3)}

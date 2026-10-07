@@ -20,10 +20,10 @@ export type SourceForm = Omit<ModelSource, 'apiKeys' | 'manualModels' | 'keyStra
 // 选择 Responses API 表示上游端点类型；默认仍经过 Maheshvara，显式 relay.passthrough
 // 才会启用同协议透传。
 export const PLATFORMS: { value: string; label: string; hint: string }[] = [
-  { value: 'responses', label: 'OpenAI Responses', hint: '上游原生 Responses（默认经过 Maheshvara）' },
-  { value: 'chat_completions', label: 'OpenAI Chat Completions', hint: 'Chat Completions 兼容协议，最通用' },
+  { value: 'responses', label: 'Openai Responses', hint: '上游原生 Responses（默认经过 Maheshvara）' },
+  { value: 'chat_completions', label: 'Openai Chat Completions', hint: 'Chat Completions 兼容协议，最通用' },
   { value: 'anthropic', label: 'Anthropic Messages', hint: 'Claude /v1/messages' },
-  { value: 'gemini', label: 'Google Generate Content', hint: 'Gemini /v1beta generateContent' },
+  { value: 'gemini', label: 'Google Generate-content', hint: 'Gemini /v1beta generateContent' },
 ]
 
 // 把历史 platform 值归一化到新的四个 apiFormat，使旧源在新下拉里正确回显
@@ -63,6 +63,11 @@ export const PROTOCOL_DEFAULTS: Record<string, { name: string; baseUrl: string }
   'custom:responses-api': { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
   'custom:anthropic-api': { name: 'Anthropic', baseUrl: 'https://api.anthropic.com' },
   'custom:gemini-api': { name: 'Google', baseUrl: 'https://generativelanguage.googleapis.com' },
+  // 历史 platform 值（回显用）映射到同一组默认，占位符不退化。
+  responses: { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
+  chat_completions: { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
+  anthropic: { name: 'Anthropic', baseUrl: 'https://api.anthropic.com' },
+  gemini: { name: 'Google', baseUrl: 'https://generativelanguage.googleapis.com' },
 }
 
 /** 字段是否仍处于「未被用户改动」状态：为空，或值就是任一协议的联动默认值。 */
