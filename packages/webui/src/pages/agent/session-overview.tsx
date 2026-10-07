@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Check, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Check, Pencil, Plus, Trash2 } from "lucide-react";
 import type { AgentSession } from "@/lib/agent/types";
 import { cn, compactNumber, formatRelative } from "@/lib/utils";
+import { EmptyText } from "@/components/ui/states";
 
 /**
  * AI 助手总览页：会话卡片网格。不直接进入交互窗口——点击卡片或新建任务
@@ -66,10 +67,7 @@ export function SessionOverview({
       </div>
 
       {sessions.length === 0 ? (
-        <div className="mt-10 flex items-center justify-center gap-2 text-2xs text-muted-foreground">
-          <Sparkles className="h-3.5 w-3.5" />
-          还没有会话——点上面的卡片开始第一个任务
-        </div>
+        <EmptyText className="mt-10 text-center">还没有会话</EmptyText>
       ) : null}
     </div>
   );

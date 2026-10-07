@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/page-header'
+import { EmptyState } from '@/components/ui/states'
 import { Button } from '@/components/ui/button'
 import { protocolAPI, type ProtocolDraft, type ProtocolListing, type ProtocolSchema } from '@/lib/protocol-v2'
 import { ProtocolV2Editor } from './v2-editor'
@@ -65,7 +66,7 @@ export function ProtocolDesignerPage() {
           return <tr key={id} className="border-b"><td className="p-3 font-mono">{id}</td><td className="p-3 font-mono text-xs">{active?.revisionHash.slice(0, 12) ?? '—'}</td><td className="p-3 text-center"><Button variant="ghost" onClick={() => void copyPreset(id)}>复制为新协议</Button></td></tr>
         })}</tbody></table></div>
       </div>}
-      {customDrafts.length === 0 ? <p>暂无自定义协议。新建协议开始编写，或从历史配置迁移。</p> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">协议</th><th>草稿</th><th>启用状态</th><th className="p-3 text-center">操作</th></tr></thead><tbody>{customDrafts.map((draft) => {
+      {customDrafts.length === 0 ? <EmptyState title="暂无自定义协议" /> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">协议</th><th>草稿</th><th>启用状态</th><th className="p-3 text-center">操作</th></tr></thead><tbody>{customDrafts.map((draft) => {
         const active = listing.active.find((entry) => entry.protocolId === draft.protocolId)
         return <tr key={draft.protocolId} className="border-b"><td className="p-3 font-mono">{draft.protocolId}</td><td className="p-3 font-mono text-xs">{draft.hash.slice(0, 12)}</td><td className="p-3">{active ? listing.loaded[draft.protocolId] === active.revisionHash ? '已启用' : '需重新验证或修复' : '未启用'}</td><td className="p-3 text-center"><Button onClick={() => setSelection({ draft })}>编辑 {draft.protocolId}</Button><Button variant="danger" onClick={() => setArchiveID(draft.protocolId)}>删除 {draft.protocolId}</Button></td></tr>
       })}</tbody></table></div>}

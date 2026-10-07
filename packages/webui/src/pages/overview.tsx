@@ -17,7 +17,7 @@ import { KpiCard, KpiGrid } from '@/components/kpi-card'
 import { ElysiaStage } from '@/components/role-watermark'
 import { Seg } from '@/components/ui/seg'
 import { RANGE_OPTIONS } from '@/lib/range-options'
-import { ErrorState } from '@/components/ui/states'
+import { EmptyText, ErrorState } from '@/components/ui/states'
 import { CodePill, PlatformBadge } from '@/components/badges'
 import {
   useHealth,
@@ -162,7 +162,7 @@ function SourceHealthScroller({
   }
 
   if (rows.length === 0) {
-    return <p className="py-8 text-center text-xs text-muted-foreground">暂无模型源</p>
+    return <EmptyText className="py-8 text-center">暂无模型源</EmptyText>
   }
 
   return (
@@ -483,7 +483,7 @@ export function OverviewPage() {
               ) : byModelLoading && !byModel ? (
                 <div className="skeleton h-36 rounded-md" />
               ) : topModels.length === 0 ? (
-                <p className="py-8 text-center text-xs text-muted-foreground">所选时间窗内暂无调用数据</p>
+                <EmptyText className="py-8 text-center">暂无调用数据</EmptyText>
               ) : (
                 <div className="space-y-3.5">
                   {topModels.map((m, idx) => (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { RefreshCw, Terminal } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { TonePill } from '@/components/badges'
 import { PaginationBar } from '@/components/pagination'
@@ -105,9 +105,7 @@ export function SystemLogsPage() {
           data={data?.items}
           onRetry={() => mutate()}
           loadingColumns={3}
-          emptyIcon={<Terminal className="h-7 w-7" />}
           emptyTitle="暂无匹配系统日志"
-          emptyDescription="当前筛选日志级别下未记录任何运行事件。"
         >
           {(items) => (
             <div className="space-y-3">

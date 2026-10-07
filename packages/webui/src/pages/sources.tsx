@@ -1,7 +1,6 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
-  Boxes,
   Check,
   ChevronRight,
   Eye,
@@ -21,7 +20,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Switch } from '@/components/ui/switch'
-import { AsyncState } from '@/components/ui/states'
+import { AsyncState, EmptyText } from '@/components/ui/states'
 import { ExpandRow } from '@/components/expand-row'
 import { CapChip, PlatformBadge } from '@/components/badges'
 import { SearchInput } from '@/components/ui/search-input'
@@ -389,9 +388,7 @@ export function SourcesPage() {
           data={data}
           onRetry={() => mutate()}
           loadingColumns={8}
-          emptyIcon={<Boxes className="h-7 w-7" />}
           emptyTitle="暂无任何模型源"
-          emptyDescription="添加你的第一个上游供应商（OpenAI / Anthropic / DeepSeek / 自定义网关），开始聚合模型。"
           emptyAction={
             <Button variant="primary" onClick={openCreate}>
               <Plus className="h-4 w-4" /> 新增模型源
@@ -522,13 +519,7 @@ export function SourcesPage() {
                         </TableRow>
                         <ExpandRow open={isOpen} colSpan={8} className="bg-secondary/15 pl-12 py-3">
                         {() => sourceModels.length === 0 ? (
-                          <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
-                            <Boxes className="h-4 w-4" />
-                            暂无模型。
-                            {source.autoFetchModels
-                              ? '点击右侧刷新按钮拉取，或在编辑中添加手动模型。'
-                              : '在编辑中添加手动模型。'}
-                          </div>
+                          <EmptyText className="py-4">暂无模型</EmptyText>
                         ) : (
                           <div className="space-y-3">
                             {/* 顶部工具条：跨组搜索 + 更新时间 + 全局选择 + 批量操作 */}

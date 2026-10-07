@@ -23,7 +23,7 @@ import { LegendChip } from '@/components/ui/legend-chip'
 import * as Tabs from '@radix-ui/react-tabs'
 import { TitleTabs } from '@/components/ui/title-tabs'
 import { Seg } from '@/components/ui/seg'
-import { ErrorState } from '@/components/ui/states'
+import { EmptyText, ErrorState } from '@/components/ui/states'
 import { ModelBreakdownTooltip } from '@/components/model-breakdown-tooltip'
 import { useUsageByModelDaily, useUsageTrend } from '@/lib/hooks'
 import type { UsageModelDailyPoint } from '@/lib/types'
@@ -417,7 +417,7 @@ export function TemporalTrendSection({ minuteTick }: { minuteTick: number }) {
           ) : breakdownLoading && !breakdownData ? (
             <div className="skeleton h-full w-full rounded-md" />
           ) : models.length === 0 ? (
-            <p className="flex h-full items-center justify-center text-xs text-muted-foreground">当前窗口暂无模型调用数据</p>
+            <EmptyText className="flex h-full items-center justify-center">暂无调用数据</EmptyText>
           ) : (
             <ChartFrame height={OVERVIEW_CHART.height}>
               <ComposedChart data={breakdownSeries} margin={OVERVIEW_CHART.margin}>

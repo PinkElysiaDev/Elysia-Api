@@ -16,7 +16,6 @@ import {
 } from 'recharts'
 import {
   Activity,
-  BarChart3,
   CheckCircle2,
   Clock,
   Coins,
@@ -29,7 +28,7 @@ import { PageHeader } from '@/components/page-header'
 import { KpiCard, KpiGrid } from '@/components/kpi-card'
 import { RoleWatermark } from '@/components/role-watermark'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { ErrorState } from '@/components/ui/states'
+import { EmptyText, ErrorState } from '@/components/ui/states'
 import { LegendChip } from '@/components/ui/legend-chip'
 import { UsageFilterBar } from '@/components/usage-filter-bar'
 import { ModelBreakdownTooltip } from '@/components/model-breakdown-tooltip'
@@ -330,7 +329,7 @@ export function UsageStatsPage() {
                   </div>
                   <div className="pt-2">
                     {byModel.length === 0 ? (
-                      <p className="py-8 text-center text-sm text-muted-foreground">当前筛选范围内暂无模型调用记录</p>
+                      <EmptyText className="py-8 text-center">暂无调用记录</EmptyText>
                     ) : (
                       <>
                         <div className="h-[220px]">
@@ -497,9 +496,7 @@ function DonutChart({
           </PieChart>
         </ResponsiveContainer>
       ) : (
-        <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-          <BarChart3 className="mr-2 h-4 w-4" /> 暂无数据
-        </div>
+        <EmptyText className="flex h-full items-center justify-center">暂无数据</EmptyText>
       )}
       {/* 圆环中央：悬停某环时显示该环信息，否则显示总计。 */}
       {hasData && (

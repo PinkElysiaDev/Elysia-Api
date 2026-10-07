@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { AlertCircle, Inbox, RefreshCw } from 'lucide-react'
+import { AlertCircle, RefreshCw } from 'lucide-react'
 import { Button } from './button'
 import { TableSkeleton } from './skeleton'
 import { cn } from '@/lib/utils'
@@ -8,31 +8,31 @@ interface StateProps {
   className?: string
 }
 
-/** 空状态。 */
+/** 空状态：无图标、无说明长文，只留宽字间距的安静文案；操作按钮悬浮浮现。 */
 export function EmptyState({
-  icon,
   title,
-  description,
   action,
   className,
 }: StateProps & {
-  icon?: ReactNode
   title: string
-  description?: string
   action?: ReactNode
 }) {
   return (
-    <div className={cn('flex flex-col items-center justify-center gap-3 px-6 py-16 text-center', className)}>
-      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-        {icon ?? <Inbox className="h-7 w-7" />}
-      </span>
-      <div className="space-y-1">
-        <p className="text-base font-semibold">{title}</p>
-        {description && <p className="max-w-sm text-sm text-muted-foreground">{description}</p>}
-      </div>
-      {action}
+    <div className={cn('group flex flex-col items-center justify-center gap-7 px-6 py-20 text-center', className)}>
+      {/* pl 补偿末字符字间距，保证视觉居中 */}
+      <p className="pl-[0.24em] text-lg tracking-[0.24em] text-muted-foreground/80">{title}</p>
+      {action && (
+        <div className="opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+          {action}
+        </div>
+      )}
     </div>
   )
+}
+
+/** 卡片/表格内的紧凑空文案：与页面级 EmptyState 同语言（宽字间距、无图标）。 */
+export function EmptyText({ children, className }: { children: ReactNode; className?: string }) {
+  return <p className={cn('pl-[0.18em] text-xs tracking-[0.18em] text-muted-foreground/70', className)}>{children}</p>
 }
 
 /** 错误状态，附带重试。 */
@@ -80,9 +80,7 @@ export function AsyncState<T>({
   data,
   onRetry,
   emptyTitle,
-  emptyDescription,
   emptyAction,
-  emptyIcon,
   loadingRows,
   loadingColumns,
   children,
@@ -92,23 +90,13 @@ export function AsyncState<T>({
   data: T[] | undefined
   onRetry?: () => void
   emptyTitle: string
-  emptyDescription?: string
   emptyAction?: ReactNode
-  emptyIcon?: ReactNode
   loadingRows?: number
   loadingColumns?: number
   children: (data: T[]) => ReactNode
 }) {
   if (isLoading && !data) return <LoadingState rows={loadingRows} columns={loadingColumns} />
   if (error) return <ErrorState message={(error as Error)?.message} onRetry={onRetry} />
-  if (!data || data.length === 0)
-    return (
-      <EmptyState
-        title={emptyTitle}
-        description={emptyDescription}
-        action={emptyAction}
-        icon={emptyIcon}
-      />
-    )
+  if (!data || data.length === 0) return <EmptyState title={emptyTitle} action={emptyAction} />
   return <>{children(data)}</>
 }

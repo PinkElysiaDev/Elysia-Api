@@ -1,12 +1,12 @@
 import { Fragment, useMemo, useState } from 'react'
-import { ChevronRight, Layers, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { ChevronRight, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { RoleWatermark } from '@/components/role-watermark'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Seg } from '@/components/ui/seg'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { AsyncState } from '@/components/ui/states'
+import { AsyncState, EmptyText } from '@/components/ui/states'
 import { ExpandRow } from '@/components/expand-row'
 import { CapChip, StrategyBadge } from '@/components/badges'
 import { ToolbarSummary } from '@/components/toolbar-summary'
@@ -116,9 +116,7 @@ export function GroupsPage() {
           data={data}
           onRetry={() => mutate()}
           loadingColumns={9}
-          emptyIcon={<Layers className="h-7 w-7" />}
           emptyTitle="暂无任何模型组"
-          emptyDescription="创建你的第一个模型组，聚合多渠道模型实现负载均衡与故障自动转移。"
           emptyAction={
             <Button variant="primary" onClick={openCreate}>
               <Plus className="h-4 w-4" /> 新增模型组
@@ -219,7 +217,7 @@ export function GroupsPage() {
                         </TableRow>
                         <ExpandRow open={isOpen} colSpan={9} className="bg-secondary/15 pl-12 py-3">
                           {() => members.length === 0 ? (
-                            <p className="text-xs text-muted-foreground">该组暂无聚合成员模型，点击编辑即可勾选关联。</p>
+                            <EmptyText>暂无成员模型</EmptyText>
                           ) : (
                             <div className="flex flex-wrap gap-2">
                               {members.map((m) => (
@@ -247,8 +245,8 @@ export function GroupsPage() {
                   })}
                   {filtered.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={9} className="py-12 text-center text-sm text-muted-foreground">
-                        暂无匹配策略的模型组
+                      <TableCell colSpan={9} className="py-12">
+                        <EmptyText className="text-center">暂无匹配策略的模型组</EmptyText>
                       </TableCell>
                     </TableRow>
                   )}

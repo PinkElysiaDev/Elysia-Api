@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { RoleWatermark } from '@/components/role-watermark'
 import { Button } from '@/components/ui/button'
@@ -94,9 +94,7 @@ export function TokensPage() {
           data={inferenceTokens}
           onRetry={() => mutate()}
           loadingColumns={5}
-          emptyIcon={<KeyRound className="h-7 w-7" />}
           emptyTitle="暂无任何访问令牌"
-          emptyDescription="创建你的第一个 API Key，供 OpenAI / Claude SDK 客户端鉴权接入。"
           emptyAction={
             <Button variant="primary" onClick={openCreate}>
               <Plus className="h-4 w-4" /> 新增令牌
