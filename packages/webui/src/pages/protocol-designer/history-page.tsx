@@ -57,17 +57,14 @@ export function ProtocolHistoryPage() {
   }
   const visible = items.filter((item) => (filter === 'all' || item.reason === filter) && `${item.name} ${item.protocolId} ${item.hash}`.toLowerCase().includes(query.toLowerCase()))
   return <div className="space-y-6">
-    <PageHeader title="协议历史" actions={<Button onClick={() => navigate('/protocols')}>返回协议设计器</Button>} />
+    <PageHeader title="协议历史" actions={<><Button disabled={busy} variant="ghost" onClick={() => void refresh().catch((err: unknown) => setError(String(err)))}>刷新</Button><Button onClick={() => navigate('/protocols')}>返回协议设计器</Button></>} />
     {error && !action && <p role="alert" className="text-destructive">{error}</p>}
     {notice && <div role="status" className="rounded-lg border p-3 text-sm">{notice}{restoredID && <Button variant="ghost" onClick={() => navigate('/protocols', { state: { protocolId: restoredID } })}>查看新协议</Button>}</div>}
     <div className="flex flex-wrap items-center justify-between gap-3 py-1">
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">类型</span>
         <Seg aria-label="历史类型" options={HISTORY_FILTERS} value={filter} onChange={setFilter} />
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
         <Input aria-label="搜索协议历史" placeholder="搜索名称、ID 或版本哈希" value={query} onChange={(event) => setQuery(event.target.value)} className="max-w-xs" />
-        <Button disabled={busy} variant="ghost" onClick={() => void refresh().catch((err: unknown) => setError(String(err)))}>刷新</Button>
       </div>
     </div>
     {!loaded ? <p role="status">正在读取历史…</p> : visible.length === 0 ? <EmptyText className="py-8 text-center">暂无匹配的历史版本</EmptyText> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">协议</th><th className="p-3">版本</th><th className="p-3">来源</th><th className="p-3">归档时间</th><th className="p-3 text-center">操作</th></tr></thead><tbody className="divide-y divide-border/30">{visible.map((item) => <tr key={item.id}><td className="p-3"><div>{item.name || item.protocolId}</div><div className="font-mono text-xs text-muted-foreground">{item.protocolId}</div></td><td className="p-3"><div>{item.version || '—'}{item.isDraft ? ' · 草稿' : ''}</div><code className="text-xs">{item.hash.slice(0, 12)}</code></td><td className="p-3">{reasonLabel(item.reason)}</td><td className="p-3">{new Date(item.archivedAt).toLocaleString()}</td><td className="p-3 text-center"><Button disabled={busy} onClick={() => void inspect(item.id)}>查看版本</Button></td></tr>)}</tbody></table></div>}
