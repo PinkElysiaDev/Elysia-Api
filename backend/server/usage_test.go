@@ -54,3 +54,7 @@ func TestUsageRequestIDUniqueForSameNanosecond(t *testing.T) {
 		t.Fatal("usage IDs must carry a random suffix")
 	}
 }
+
+func intPtr(v int) *int {
+	return &v
+}

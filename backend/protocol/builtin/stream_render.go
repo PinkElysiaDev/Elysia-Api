@@ -471,7 +471,7 @@ func (stream *streamModule) Finish(ctx context.Context, options p.EvaluationCont
 			content = append(content, item.node)
 		}
 	}
-	response := &p.Response{SchemaVersion: 1, ID: stream.id, Model: stream.model, Status: p.StringValue("completed"), Content: content, Usage: stream.usage, Attributes: copyFields(stream.attributes)}
+	response := &p.Response{SchemaVersion: p.SemanticSchemaVersion, ID: stream.id, Model: stream.model, Status: p.StringValue("completed"), Content: content, Usage: stream.usage, Attributes: copyFields(stream.attributes)}
 	if stream.pending.Response != nil {
 		response.Status = stream.pending.Response.Status
 	}

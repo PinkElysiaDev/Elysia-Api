@@ -12,6 +12,9 @@ import (
 	"time"
 )
 
+// defaultUsageTopModels 是模型分项保留的默认数量；其余合并为「其他」。
+const defaultUsageTopModels = 8
+
 // UsageDaily 按固定 UTC offset 的本地日聚合请求数、细分 tokens 以及各模型消耗。
 // rollup 就绪时中段（完整小时）走预聚合表、两侧不足一小时的边缘走 raw 单次
 // (日, 模型) 扫描，在一个读事务（WAL 快照）内精确合并；否则整体走 raw 路径
@@ -361,7 +364,7 @@ func percentileInt64(values []int64, p float64) float64 {
 // 走与 UsageDaily 相同的 rollup 中段 + raw 边缘路径，避免每次刷新都扫完整 raw 表。
 func (s *Store) UsageByModelDaily(ctx context.Context, q UsageQuery, utcOffsetMinutes, top int) ([]UsageModelDailyBucket, error) {
 	if top <= 0 {
-		top = 8
+		top = defaultUsageTopModels
 	}
 	offsetMs := int64(utcOffsetMinutes) * msPerMinute
 	dayRows, err := s.usageDailyRows(ctx, q, offsetMs)

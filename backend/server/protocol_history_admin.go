@@ -243,12 +243,12 @@ func (s *Server) adminArchiveProtocol(c *gin.Context) {
 		input.Mode = "block"
 	}
 	if input.Mode != "block" && input.Mode != "replace" && input.Mode != "unbind" {
-		respondFail(c, 400, "invalid_mode", "请选择替换协议或取消绑定")
+		respondFail(c, http.StatusBadRequest, "invalid_mode", "请选择替换协议或取消绑定")
 		return
 	}
 	id := c.Param("id")
 	if protocol.IsPresetProtocolID(id) {
-		respondFail(c, 400, "preset_readonly", "当前预置协议不能删除")
+		respondFail(c, http.StatusBadRequest, "preset_readonly", "当前预置协议不能删除")
 		return
 	}
 	ctx := c.Request.Context()
@@ -274,12 +274,12 @@ func (s *Server) adminArchiveProtocol(c *gin.Context) {
 	replacement := ""
 	if input.Mode == "replace" {
 		if input.TargetProtocolID == id {
-			respondFail(c, 400, "invalid_target", "替换目标必须是其他已启用协议")
+			respondFail(c, http.StatusBadRequest, "invalid_target", "替换目标必须是其他已启用协议")
 			return
 		}
 		target, _ = view.Pin(input.TargetProtocolID)
 		if target == nil {
-			respondFail(c, 400, "invalid_target", "替换目标协议未启用")
+			respondFail(c, http.StatusBadRequest, "invalid_target", "替换目标协议未启用")
 			return
 		}
 		replacement = "custom:" + input.TargetProtocolID

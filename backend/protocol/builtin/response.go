@@ -55,7 +55,7 @@ func (adapter module) decodeResponse(input p.Value, options p.EvaluationContext)
 				response.Attributes["finishReason"] = entry["finish_reason"]
 			}
 			if extra := collectUnknown(entry, []string{"index", "message", "finish_reason"}); !extra.IsZero() {
-				response.Attributes["wire:"+adapter.family] = object(p.Object{"choiceExtensions": extra})
+				response.Attributes[wireExtensionPrefix+adapter.family] = object(p.Object{"choiceExtensions": extra})
 			}
 			response.Content = append(response.Content, nodes...)
 		}

@@ -2,7 +2,7 @@ package protocol
 
 import "fmt"
 
-// Capability is a independently verifiable semantic feature.
+// Capability is an independently verifiable semantic feature.
 type Capability string
 
 const (

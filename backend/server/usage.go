@@ -279,10 +279,6 @@ func isSensitiveUsageKey(key string) bool {
 	}
 }
 
-func intPtr(v int) *int {
-	return &v
-}
-
 func derefInt(v *int) int {
 	if v == nil {
 		return 0
@@ -418,10 +414,6 @@ func parsePositiveInt(raw string, fallback int) int {
 	return value
 }
 
-// observingStreamWriter 是下游观察者：包裹写回客户端的流式 writer，仅负责
-// 首字节计时。事件捕获与 usage 提取由
-// 上游观察者（upstreamUsageObservingBody）承担——若两者都写 ProviderResponse，
-// transform 模式下最终值取决于读写交错且记录的是下游渲染格式而非上游原文。
 func sseDataPayload(line string) (string, bool) {
 	trimmed := strings.TrimLeft(line, " ")
 	if !strings.HasPrefix(trimmed, "data:") {
@@ -434,13 +426,6 @@ func sseDataPayload(line string) (string, bool) {
 	return payload, true
 }
 
-// sseLineSplitter 缓冲跨 Read/Write 到达的字节，按完整行回调 onLine。
-// 观察者逐行解析 SSE，若直接对每次到达的字节片段 Split("\n")，一个跨两次
-// Write 的 data: 载荷会被当成两条（半截）事件处理——坏 JSON 混进事件数组
-// 后，json.Marshal 对内嵌 RawMessage 的校验会让之后的所有序列化全部失败。
-// 互斥保护：上游观察者的 Close（flushRemainder）与扫描 goroutine 解除
-// 阻塞后的最后一次 feed 可能并发（inner.Close 先唤醒阻塞中的 Read）；
-// 回调作为参数传入而非结构体字段，避免回调字段自身的读写竞争。
 func setRecordGroup(record *usageRecord, group *config.ModelGroupConfig) {
 	record.GroupID = group.ID
 	record.GroupName = group.Name

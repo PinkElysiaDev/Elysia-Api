@@ -126,7 +126,7 @@ func (stream *streamModule) begin(id, model p.Value) []p.Event {
 		return nil
 	}
 	stream.isStarted = true
-	return []p.Event{{Type: p.ResponseStarted, ResponseID: stream.id, Response: &p.Response{SchemaVersion: 1, ID: stream.id, Model: stream.model, Status: p.StringValue("in_progress"), Content: []p.Node{}, Attributes: copyFields(stream.attributes)}}}
+	return []p.Event{{Type: p.ResponseStarted, ResponseID: stream.id, Response: &p.Response{SchemaVersion: p.SemanticSchemaVersion, ID: stream.id, Model: stream.model, Status: p.StringValue("in_progress"), Content: []p.Node{}, Attributes: copyFields(stream.attributes)}}}
 }
 
 func (stream *streamModule) itemEvent(kind p.EventType, key string, node *p.Node, delta p.Value) (p.Event, error) {
@@ -317,7 +317,7 @@ func (stream *streamModule) decodeChatFrame(fields p.Object, options p.Evaluatio
 			}
 			stream.isFinished = true
 			attributes := mergeAttributes(copyFields(stream.attributes), p.Object{"finishReason": stream.finish})
-			events = append(events, p.Event{Type: p.ResponseFinished, Response: &p.Response{SchemaVersion: 1, ID: stream.id, Model: stream.model, Status: p.StringValue("completed"), Attributes: attributes}})
+			events = append(events, p.Event{Type: p.ResponseFinished, Response: &p.Response{SchemaVersion: p.SemanticSchemaVersion, ID: stream.id, Model: stream.model, Status: p.StringValue("completed"), Attributes: attributes}})
 		}
 	}
 	usage, err := stream.usageEvent(fields["usage"])
@@ -412,7 +412,7 @@ func (stream *streamModule) decodeAnthropicFrame(fields p.Object, options p.Eval
 			return nil, unsupported("/stop_reason", "message_stop has no preceding terminal reason")
 		}
 		stream.isFinished = true
-		return []p.Event{{Type: p.ResponseFinished, Response: &p.Response{SchemaVersion: 1, ID: stream.id, Model: stream.model, Status: p.StringValue("completed"), Attributes: p.Object{"finishReason": stream.finish}}}}, nil
+		return []p.Event{{Type: p.ResponseFinished, Response: &p.Response{SchemaVersion: p.SemanticSchemaVersion, ID: stream.id, Model: stream.model, Status: p.StringValue("completed"), Attributes: p.Object{"finishReason": stream.finish}}}}, nil
 	default:
 		return nil, unsupported("/type", "unsupported Anthropic event "+kind)
 	}

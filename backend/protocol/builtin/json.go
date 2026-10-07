@@ -89,12 +89,15 @@ func collectUnknown(fields p.Object, known []string) p.Value {
 	return object(extra)
 }
 
+// wireExtensionPrefix 标记「源协议原生、无声明式映射」的字段证据；后缀为族名。
+const wireExtensionPrefix = "wire:"
+
 func (adapter module) preserveExtensions(fields p.Object, extensions p.Object) error {
 	for key, value := range extensions {
-		if !strings.HasPrefix(key, "wire:") {
+		if !strings.HasPrefix(key, wireExtensionPrefix) {
 			continue
 		}
-		if strings.TrimPrefix(key, "wire:") != adapter.family {
+		if strings.TrimPrefix(key, wireExtensionPrefix) != adapter.family {
 			return unsupported("/"+key, "protocol-specific fields have no declared cross-protocol mapping")
 		}
 		values, err := value.ReadObject()

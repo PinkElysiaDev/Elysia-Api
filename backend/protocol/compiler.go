@@ -52,13 +52,30 @@ type Compiler struct {
 	features map[string]bool
 }
 
+// 引擎 feature 键与默认已实现集合：feature 描述引擎自身能力，绝非用户承诺。
+const (
+	featureWebSocketTransport = "transport.websocket"
+	featureAsyncTasks         = "tasks.async"
+)
+
+// operationMethodWhitelist 是声明式操作允许的 HTTP 方法集合。
+var operationMethodWhitelist = []string{http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodPut, http.MethodPatch}
+
+var defaultFeatures = map[string]bool{
+	"mapping.v2":             true,
+	"mapping.event_initial":  true,
+	"transport.http_json":    true,
+	"transport.sse":          true,
+	"transport.ndjson":       true,
+}
+
 // NewCompiler validates engine limits and installed module identities. Feature
 // flags describe implemented engine support, never user-requested promises.
 func NewCompiler(limits Limits, modules []Module, features []string) (*Compiler, error) {
 	if err := limits.Validate(); err != nil {
 		return nil, err
 	}
-	compiler := &Compiler{limits: limits, modules: make(map[string]Module), features: map[string]bool{"mapping.v2": true, "mapping.event_initial": true, "transport.http_json": true, "transport.sse": true, "transport.ndjson": true}}
+	compiler := &Compiler{limits: limits, modules: make(map[string]Module), features: maps.Clone(defaultFeatures)}
 	for _, module := range modules {
 		if module == nil || !definitionIdentifier.MatchString(module.Name()) {
 			return nil, fmt.Errorf("invalid module identity")
@@ -439,7 +456,7 @@ func (compiler *Compiler) checkOperation(name string, operation Operation, defin
 	if !slices.Contains(OperationKindCatalog(), operation.Kind) {
 		return fmt.Errorf("operation %q has unsupported kind", name)
 	}
-	if !slices.Contains([]string{http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodPut, http.MethodPatch}, operation.Method) {
+	if !slices.Contains(operationMethodWhitelist, operation.Method) {
 		return fmt.Errorf("operation %q has unsupported method", name)
 	}
 	path, err := url.Parse(operation.Path)
@@ -462,10 +479,10 @@ func (compiler *Compiler) checkOperation(name string, operation Operation, defin
 	if err := checkSessionOperation(operation, definition, limits); err != nil {
 		return fmt.Errorf("operation %q: %w", name, err)
 	}
-	if operation.Transport == WebSocket && !compiler.features["transport.websocket"] {
+	if operation.Transport == WebSocket && !compiler.features[featureWebSocketTransport] {
 		return fmt.Errorf("WebSocket transport is not installed")
 	}
-	if operation.Kind == "submit" && !compiler.features["tasks.async"] {
+	if operation.Kind == "submit" && !compiler.features[featureAsyncTasks] {
 		return fmt.Errorf("asynchronous task transport is not installed")
 	}
 	for _, direction := range []Direction{operation.Request, operation.Response} {

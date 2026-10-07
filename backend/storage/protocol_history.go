@@ -33,7 +33,7 @@ func archiveReplacedPreset(ctx context.Context, tx *sql.Tx, id, nextHash string)
 }
 
 func (s *Store) backfillProtocolHistory(ctx context.Context) error {
-	for _, id := range []string{"anthropic-api", "chat-completions-api", "responses-api", "gemini-api"} {
+	for _, id := range []string{protocol.PresetAnthropicID, protocol.PresetChatCompletionsID, protocol.PresetResponsesID, protocol.PresetGeminiID} {
 		_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO protocol_history(id,protocol_id,content_hash,definition,reason,created_at,archived_at)
 		SELECT r.protocol_id || '~' || r.content_hash,r.protocol_id,r.content_hash,r.definition,'preset_replaced',r.created_at,a.activated_at
 		FROM protocol_revisions r JOIN protocol_activations a ON a.protocol_id=r.protocol_id

@@ -38,11 +38,11 @@ const (
 	agentToolDeleteModel  = "delete_model"
 )
 
-// toolStore 取存储并在不可用时返回统一的失败 CLIResult。
-// 14 处工具 Execute 开头的样板由此收敛为一行守卫。
 // sourceRefreshTimeout 是模型源拉取类 CLI 命令的语句级超时。
 const sourceRefreshTimeout = 60 * time.Second
 
+// toolStore 取存储并在不可用时返回统一的失败 CLIResult。
+// 14 处工具 Execute 开头的样板由此收敛为一行守卫。
 func toolStore(server *Server) (*storage.Store, CLIResult) {
 	if server.store == nil {
 		return nil, CLIError("存储不可用", "store_unavailable")
@@ -703,7 +703,7 @@ type refreshSourceTool struct{ server *Server }
 func (t *refreshSourceTool) Name() string      { return agentToolRefreshSource }
 func (t *refreshSourceTool) CLIEffect() string { return CLIEffectOutbound }
 func (t *refreshSourceTool) CLIMeta() CLICommandMeta {
-	return CLICommandMeta{Timeout: 60 * time.Second}
+	return CLICommandMeta{Timeout: sourceRefreshTimeout}
 }
 
 func (t *refreshSourceTool) Description() string {

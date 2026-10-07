@@ -299,7 +299,7 @@ func (stream *streamModule) decodeGeminiFrame(fields p.Object, options p.Evaluat
 				}
 			}
 			stream.isFinished = true
-			events = append(events, p.Event{Type: p.ResponseFinished, Response: &p.Response{SchemaVersion: 1, ID: stream.id, Model: stream.model, Status: p.StringValue("completed"), Attributes: p.Object{"finishReason": stream.finish}}})
+			events = append(events, p.Event{Type: p.ResponseFinished, Response: &p.Response{SchemaVersion: p.SemanticSchemaVersion, ID: stream.id, Model: stream.model, Status: p.StringValue("completed"), Attributes: p.Object{"finishReason": stream.finish}}})
 		}
 	}
 	usage, err := stream.usageEvent(fields["usageMetadata"])
