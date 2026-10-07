@@ -29,6 +29,7 @@ var expressionOperations = []OperationInfo{
 	{"sort", []string{"source", "key"}, []string{"source", "key"}, ArrayType, "Stable sort by a declared scalar JSON pointer."},
 	{"associate", []string{"source", "key"}, []string{"source", "key"}, ObjectType, "Index items by a unique string identity; duplicate identities fail."},
 	{"exists", []string{"source"}, []string{"source"}, BooleanType, "Test presence, including explicit null, false and zero."},
+	{"present", []string{"source"}, []string{"source"}, BooleanType, "Test presence with a non-null value; explicit null counts as absent."},
 	{"equal", []string{"items"}, []string{"items"}, BooleanType, "Compare two JSON values semantically with exact numbers."},
 	{"all", []string{"items"}, []string{"items"}, BooleanType, "Boolean conjunction, with no truthiness coercion."},
 	{"any", []string{"items"}, []string{"items"}, BooleanType, "Boolean disjunction, with no truthiness coercion."},

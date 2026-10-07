@@ -121,6 +121,9 @@ func (expression *compiledExpression) evaluate(state evaluation) (value Value, e
 	switch expression.op {
 	case "exists":
 		return EncodeValue(!source.IsZero())
+	case "present":
+		// exists 的非空变体：显式 null 视为缺失（兼容上游用 null 占位的字段）。
+		return EncodeValue(!source.IsZero() && !source.IsNull())
 	case "strip_prefix":
 		text, err := readString(source)
 		if err != nil {

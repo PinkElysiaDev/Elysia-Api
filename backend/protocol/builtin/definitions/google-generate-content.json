@@ -172,7 +172,7 @@
                     "maxTokens": {
                       "op": "if",
                       "when": {
-                        "op": "exists",
+                        "op": "present",
                         "source": {
                           "op": "read",
                           "path": "/inputTokenLimit",
@@ -4154,6 +4154,25 @@
           }
         ],
         "next": "p2"
+      }
+    },
+    {
+      "id": "models-null-limit",
+      "operation": "models",
+      "input": {
+        "models": [
+          {
+            "name": "models/relay-null-limit",
+            "inputTokenLimit": null
+          }
+        ]
+      },
+      "expected": {
+        "models": [
+          {
+            "id": "relay-null-limit"
+          }
+        ]
       }
     },
     {
