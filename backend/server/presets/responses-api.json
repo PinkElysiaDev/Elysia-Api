@@ -1,6 +1,6 @@
 {
   "id": "responses-api",
-  "name": "Responses API",
+  "name": "OpenAI Responses",
   "version": "6",
   "type": "llm",
   "metadata": {

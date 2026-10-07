@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
   "id": "chat-completions-api",
-  "name": "Chat Completions API",
-  "version": "2.2.1",
+  "name": "OpenAI Chat Completions",
+  "version": "2.2.2",
   "family": "openai_chat",
   "wireVersion": "v2",
   "capabilities": {

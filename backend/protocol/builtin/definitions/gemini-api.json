@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
   "id": "gemini-api",
-  "name": "Gemini API",
-  "version": "2.1.1",
+  "name": "Google Generate Content",
+  "version": "2.1.2",
   "family": "gemini",
   "wireVersion": "v2",
   "capabilities": {

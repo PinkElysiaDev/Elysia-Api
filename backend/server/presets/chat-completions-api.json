@@ -1,6 +1,6 @@
 {
   "id": "chat-completions-api",
-  "name": "Chat Completions API",
+  "name": "OpenAI Chat Completions",
   "version": "6",
   "type": "llm",
   "metadata": {
