@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/elysia-api/backend/protocol"
@@ -79,6 +81,13 @@ func readProtocolUpgradeBaseline(ctx context.Context, reader protocolUpgradeRead
 	for _, query := range protocolUpgradeQueries {
 		rows, err := reader.QueryContext(ctx, query)
 		if err != nil {
+			// 缺表不再致命：老库/拷贝丢失 WAL 等场景下个别表可能不存在，
+			// 跳过该表对指纹的贡献并告警——备份仍按文件真实状态捕获，
+			// 启动预备段（预置播种/生成开关）不被一个缺表卡死。
+			if strings.Contains(err.Error(), "no such table") {
+				log.Printf("[protocol-upgrade] baseline skipped a missing table: %v", err)
+				continue
+			}
 			return "", err
 		}
 		err = hashProtocolUpgradeRows(rows, encoder, query)
