@@ -177,14 +177,7 @@ func (s *Server) adminVerifyAgentTools(c *gin.Context) {
 	}
 	entry, _ := selectProtocolBinding(bindings, modelReference(model))
 	compiled, _ := view.Pin(entry.Binding.ProtocolID)
-	entry.Kind, entry.ModelID, entry.GroupID = "model", model.ID, ""
-	entry.Binding.RevisionHash = compiled.Hash()
-	entry.Binding.Capabilities = maps.Clone(entry.Binding.Capabilities)
-	if entry.Binding.Capabilities == nil {
-		entry.Binding.Capabilities = protocol.CapabilitySet{}
-	}
-	entry.Binding.Capabilities[protocol.FunctionToolsCapability] = true
-	stripMediaCapabilities(entry.Binding.Capabilities, model.VisionCapable)
+	entry = repairedModelBinding(entry, compiled, model)
 	if err := protocol.IssuesError(protocol.CheckBinding(entry.Binding, compiled)); err != nil {
 		respondProtocolError(c, err)
 		return
@@ -262,4 +255,18 @@ func protocolValueArguments(raw []byte, target any) error {
 		return fmt.Errorf("invalid tool arguments: %w", err)
 	}
 	return value.Decode(target)
+}
+
+// repairedModelBinding 在源级绑定基础上派生 model 级、带函数工具能力的
+// 修复绑定：升级到目标修订、开启 tools.function、按模型视觉声明裁剪媒体。
+func repairedModelBinding(entry storage.ProtocolBinding, compiled *protocol.Compiled, model storage.Model) storage.ProtocolBinding {
+	entry.Kind, entry.ModelID, entry.GroupID = "model", model.ID, ""
+	entry.Binding.RevisionHash = compiled.Hash()
+	entry.Binding.Capabilities = maps.Clone(entry.Binding.Capabilities)
+	if entry.Binding.Capabilities == nil {
+		entry.Binding.Capabilities = protocol.CapabilitySet{}
+	}
+	entry.Binding.Capabilities[protocol.FunctionToolsCapability] = true
+	stripMediaCapabilities(entry.Binding.Capabilities, model.VisionCapable)
+	return entry
 }

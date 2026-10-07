@@ -203,22 +203,11 @@ func (stream *streamModule) encodeItem(event p.Event, options p.EvaluationContex
 		}
 		frames = append(frames, update...)
 	}
-	if event.Type == p.ItemSnapshot && event.Item != nil && len(event.Item.Resources) > 0 && item.node.ReasoningForm != "summary" {
-		if (stream.name != Anthropic && stream.name != Gemini) || item.node.Kind != p.ReasoningNode {
-			return nil, unsupported("/resources", "target cannot express this reasoning signature update")
-		}
-		for _, resource := range event.Item.Resources {
-			if resource.Kind != "signature" {
-				return nil, unsupported("/resources", "unsupported stream resource")
-			}
-			if stream.name == Anthropic {
-				frames = append(frames, stream.anthropicEvent("content_block_delta", item, object(p.Object{"type": p.StringValue("signature_delta"), "signature": resource.ID}), "delta"))
-			} else {
-				isThought, _ := p.EncodeValue(true)
-				frames = append(frames, stream.geminiChunk(array([]p.Value{object(p.Object{"text": p.StringValue(""), "thought": isThought, "thoughtSignature": resource.ID})}), p.Value{}, p.Value{}))
-			}
-		}
+	signatureFrames, err := stream.encodeSignatureUpdates(event, item)
+	if err != nil {
+		return nil, err
 	}
+	frames = append(frames, signatureFrames...)
 	if event.Type == p.ItemFinished {
 		end, err := stream.encodeItemEnd(key, item, options)
 		if err != nil {
@@ -475,7 +464,7 @@ func (stream *streamModule) Finish(ctx context.Context, options p.EvaluationCont
 	if stream.pending.Response != nil {
 		response.Status = stream.pending.Response.Status
 	}
-	reason, err := responseFinish(response)
+	reason, err := finishReasonOf(response)
 	if err != nil {
 		return nil, err
 	}
@@ -553,4 +542,28 @@ func (stream *streamModule) responsesEvent(kind, key string, item *streamItem, f
 func (stream *streamModule) geminiChunk(parts, finish, usage p.Value) p.Value {
 	index, _ := p.EncodeValue(0)
 	return object(p.Object{"responseId": stream.id, "modelVersion": stream.model, "candidates": array([]p.Value{object(p.Object{"index": index, "content": object(p.Object{"role": p.StringValue("model"), "parts": parts}), "finishReason": finish})}), "usageMetadata": usage})
+}
+
+// encodeSignatureUpdates 在快照事件携带签名资源时产出增量帧：仅 Anthropic
+// 与 Gemini 可表达推理签名，其余目标显式拒绝。
+func (stream *streamModule) encodeSignatureUpdates(event p.Event, item *streamItem) ([]p.Value, error) {
+	if event.Type != p.ItemSnapshot || event.Item == nil || len(event.Item.Resources) == 0 || item.node.ReasoningForm == "summary" {
+		return nil, nil
+	}
+	if (stream.name != Anthropic && stream.name != Gemini) || item.node.Kind != p.ReasoningNode {
+		return nil, unsupported("/resources", "target cannot express this reasoning signature update")
+	}
+	var frames []p.Value
+	for _, resource := range event.Item.Resources {
+		if resource.Kind != "signature" {
+			return nil, unsupported("/resources", "unsupported stream resource")
+		}
+		if stream.name == Anthropic {
+			frames = append(frames, stream.anthropicEvent("content_block_delta", item, object(p.Object{"type": p.StringValue("signature_delta"), "signature": resource.ID}), "delta"))
+			continue
+		}
+		isThought, _ := p.EncodeValue(true)
+		frames = append(frames, stream.geminiChunk(array([]p.Value{object(p.Object{"text": p.StringValue(""), "thought": isThought, "thoughtSignature": resource.ID})}), p.Value{}, p.Value{}))
+	}
+	return frames, nil
 }

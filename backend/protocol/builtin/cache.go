@@ -119,21 +119,20 @@ func (adapter module) encodeCache(fields p.Object, intents []p.CacheIntent) erro
 	if len(intents) > 1 {
 		return unsupported("/cache", "one wire cache_control cannot express multiple policies")
 	}
-	for _, intent := range intents {
-		if intent.Kind != "breakpoint" {
-			return unsupported("/cache", "this node accepts only cache breakpoints")
-		}
-		value := intent.Value
-		if !value.IsNull() {
-			policy, err := value.ReadObject()
-			if err != nil {
-				return err
-			}
-			// TTL has one semantic owner; deleting it must not revive a native value.
-			policy["ttl"] = intent.TTL
-			value = object(policy)
-		}
-		fields["cache_control"] = value
+	intent := intents[0]
+	if intent.Kind != "breakpoint" {
+		return unsupported("/cache", "this node accepts only cache breakpoints")
 	}
+	value := intent.Value
+	if !value.IsNull() {
+		policy, err := value.ReadObject()
+		if err != nil {
+			return err
+		}
+		// TTL has one semantic owner; deleting it must not revive a native value.
+		policy["ttl"] = intent.TTL
+		value = object(policy)
+	}
+	fields["cache_control"] = value
 	return nil
 }

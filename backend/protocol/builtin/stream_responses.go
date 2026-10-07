@@ -39,7 +39,7 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 			return nil, err
 		}
 		stream.attributes = response.Attributes
-		return stream.begin(response.ID, response.Model), nil
+		return stream.beginResponse(response.ID, response.Model), nil
 	case "response.in_progress":
 		response, err := fields["response"].ReadObject()
 		if err != nil {
@@ -220,7 +220,7 @@ func (stream *streamModule) decodeGeminiFrame(fields p.Object, options p.Evaluat
 	}
 	var events []p.Event
 	if len(candidates) > 0 {
-		events = stream.begin(fields["responseId"], fields["modelVersion"])
+		events = stream.beginResponse(fields["responseId"], fields["modelVersion"])
 	}
 	for _, value := range candidates {
 		candidate, err := value.ReadObject()

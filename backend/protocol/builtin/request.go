@@ -227,60 +227,11 @@ func (adapter module) encodeRequest(request *p.Request, options p.EvaluationCont
 		return p.Value{}, err
 	}
 	fields := p.Object{"model": request.Model}
-	parameterOutput := fields
 	if adapter.name == Gemini {
 		delete(fields, "model")
-		parameterOutput = p.Object{}
 	}
-	for semantic, value := range request.Parameters {
-		if strings.HasPrefix(semantic, "wire:") {
-			continue
-		}
-		if semantic == "stream" && adapter.name == Gemini {
-			continue
-		} // Selected by the endpoint, not a Gemini JSON field.
-		isMapped := false
-		for wire, name := range parameterFields[adapter.name] {
-			if name == semantic {
-				parameterOutput[wire] = value
-				isMapped = true
-				break
-			}
-		}
-		if semantic == "gemini_generation_extensions" && adapter.name == Gemini {
-			extra, err := value.ReadObject()
-			if err != nil {
-				return p.Value{}, err
-			}
-			for key, value := range extra {
-				parameterOutput[key] = value
-			}
-			isMapped = true
-		}
-		if semantic == "anthropic_metadata" && (adapter.name == Chat || adapter.name == Responses) {
-			// metadata.user_id 在 OpenAI 系目标映射为等价 user 字段（循环后
-			// 统一提取）；完整 metadata 对象仅同族保真。
-			isMapped = true
-		}
-		if !isMapped {
-			return p.Value{}, unsupported("/parameters/"+semantic, "target has no equivalent parameter mapping")
-		}
-	}
-	// Anthropic 的 metadata.user_id（Claude Code 恒带）在 OpenAI 系目标映射为
-	// 等价的 user 字段；同族仍走完整 metadata 对象保真。
-	if adapter.name == Chat || adapter.name == Responses {
-		if parameterOutput["user"].IsZero() {
-			if meta := request.Parameters["anthropic_metadata"]; !meta.IsZero() {
-				if object, err := meta.ReadObject(); err == nil {
-					if user := object["user_id"]; !user.IsZero() {
-						parameterOutput["user"] = user
-					}
-				}
-			}
-		}
-	}
-	if adapter.name == Gemini && len(parameterOutput) > 0 {
-		fields["generationConfig"] = object(parameterOutput)
+	if err := adapter.encodeParameters(fields, request.Parameters); err != nil {
+		return p.Value{}, err
 	}
 	nodes := request.Content
 	if adapter.name == Responses && len(nodes) > 0 && hasNativeInstructions(nodes[0], options) {
@@ -318,67 +269,8 @@ func (adapter module) encodeRequest(request *p.Request, options p.EvaluationCont
 	} else {
 		fields["tool_choice"] = choice
 	}
-	for _, intent := range request.Cache {
-		switch intent.Kind {
-		case "breakpoint":
-			if !fields["cache_control"].IsZero() {
-				return p.Value{}, unsupported("/cache", "one wire cache_control cannot express multiple policies")
-			}
-			if err := adapter.encodeCache(fields, []p.CacheIntent{intent}); err != nil {
-				return p.Value{}, err
-			}
-		case "key", "retention":
-			if adapter.name != Chat && adapter.name != Responses {
-				return p.Value{}, unsupported("/cache", "target has no cache key/retention mapping")
-			}
-			key := "prompt_cache_key"
-			if intent.Kind == "retention" {
-				key = "prompt_cache_retention"
-			}
-			if !fields[key].IsZero() {
-				return p.Value{}, unsupported("/cache", "one wire field cannot express multiple "+intent.Kind+" intents")
-			}
-			fields[key] = intent.Value
-		case "resource":
-			if adapter.name != Gemini {
-				return p.Value{}, unsupported("/cache", "target has no explicit cache resource reference")
-			}
-			if !fields["cachedContent"].IsZero() {
-				return p.Value{}, unsupported("/cache", "one wire field cannot express multiple resource intents")
-			}
-			fields["cachedContent"] = intent.Resource.ID
-		case "mode", "options.ttl":
-			if adapter.name != Chat && adapter.name != Responses {
-				return p.Value{}, unsupported("/cache", "target has no cache options mapping")
-			}
-			options := p.Object{}
-			if existing := fields["prompt_cache_options"]; !existing.IsZero() {
-				parsed, err := existing.ReadObject()
-				if err != nil {
-					return p.Value{}, err
-				}
-				options = parsed
-			}
-			key := "mode"
-			if intent.Kind == "options.ttl" {
-				key = "ttl"
-			}
-			if !options[key].IsZero() {
-				return p.Value{}, unsupported("/cache", "one wire field cannot express multiple "+intent.Kind+" intents")
-			}
-			options[key] = intent.Value
-			fields["prompt_cache_options"] = object(options)
-		case "prewarm":
-			if adapter.name != Responses {
-				return p.Value{}, unsupported("/cache", "target has no cache prewarm mapping")
-			}
-			if !fields["prewarm"].IsZero() {
-				return p.Value{}, unsupported("/cache", "one wire field cannot express multiple prewarm intents")
-			}
-			fields["prewarm"] = intent.Value
-		default:
-			return p.Value{}, unsupported("/cache", "unknown cache intent: "+intent.Kind)
-		}
+	if err := adapter.encodeCacheIntents(fields, request.Cache); err != nil {
+		return p.Value{}, err
 	}
 	if adapter.name == Anthropic {
 		// Non-blocking: an off-order TTL is reported through the diagnostic sink,
@@ -426,4 +318,127 @@ func encodeNativeInstructions(node p.Node) (p.Value, error) {
 func hasStringMetadata(node p.Node) bool {
 	return !node.ID.IsZero() || !node.Status.IsZero() || !node.Name.IsZero() || !node.CallID.IsZero() ||
 		node.Input != nil || node.ReasoningForm != "" || len(node.Cache) > 0 || len(node.Attributes) > 0 || len(node.Resources) > 0
+}
+
+// encodeCacheIntents 把语义缓存意图逐条落到目标 wire 字段；一个 wire 字段
+// 只承载一个策略，重复即显式报错。
+func (adapter module) encodeCacheIntents(fields p.Object, intents []p.CacheIntent) error {
+	for _, intent := range intents {
+		switch intent.Kind {
+		case "breakpoint":
+			if !fields["cache_control"].IsZero() {
+				return unsupported("/cache", "one wire cache_control cannot express multiple policies")
+			}
+			if err := adapter.encodeCache(fields, []p.CacheIntent{intent}); err != nil {
+				return err
+			}
+		case "key", "retention":
+			if adapter.name != Chat && adapter.name != Responses {
+				return unsupported("/cache", "target has no cache key/retention mapping")
+			}
+			key := "prompt_cache_key"
+			if intent.Kind == "retention" {
+				key = "prompt_cache_retention"
+			}
+			if !fields[key].IsZero() {
+				return unsupported("/cache", "one wire field cannot express multiple "+intent.Kind+" intents")
+			}
+			fields[key] = intent.Value
+		case "resource":
+			if adapter.name != Gemini {
+				return unsupported("/cache", "target has no explicit cache resource reference")
+			}
+			if !fields["cachedContent"].IsZero() {
+				return unsupported("/cache", "one wire field cannot express multiple resource intents")
+			}
+			fields["cachedContent"] = intent.Resource.ID
+		case "mode", "options.ttl":
+			if adapter.name != Chat && adapter.name != Responses {
+				return unsupported("/cache", "target has no cache options mapping")
+			}
+			cacheOptions := p.Object{}
+			if existing := fields["prompt_cache_options"]; !existing.IsZero() {
+				parsed, err := existing.ReadObject()
+				if err != nil {
+					return err
+				}
+				cacheOptions = parsed
+			}
+			key := "mode"
+			if intent.Kind == "options.ttl" {
+				key = "ttl"
+			}
+			if !cacheOptions[key].IsZero() {
+				return unsupported("/cache", "one wire field cannot express multiple "+intent.Kind+" intents")
+			}
+			cacheOptions[key] = intent.Value
+			fields["prompt_cache_options"] = object(cacheOptions)
+		case "prewarm":
+			if adapter.name != Responses {
+				return unsupported("/cache", "target has no cache prewarm mapping")
+			}
+			if !fields["prewarm"].IsZero() {
+				return unsupported("/cache", "one wire field cannot express multiple prewarm intents")
+			}
+			fields["prewarm"] = intent.Value
+		default:
+			return unsupported("/cache", "unknown cache intent: "+intent.Kind)
+		}
+	}
+	return nil
+}
+
+// encodeParameters 将语义参数映射到目标 wire 字段。Gemini 的参数全部落在
+// generationConfig；Anthropic 的 metadata.user_id（Claude Code 恒带）在
+// OpenAI 系目标映射为等价 user 字段，完整 metadata 对象仅同族保真。
+func (adapter module) encodeParameters(fields p.Object, parameters p.Object) error {
+	parameterOutput := fields
+	if adapter.name == Gemini {
+		parameterOutput = p.Object{}
+	}
+	for semantic, value := range parameters {
+		if strings.HasPrefix(semantic, wireExtensionPrefix) {
+			continue
+		}
+		if semantic == "stream" && adapter.name == Gemini {
+			continue // Selected by the endpoint, not a Gemini JSON field.
+		}
+		isMapped := false
+		for wire, name := range parameterFields[adapter.name] {
+			if name == semantic {
+				parameterOutput[wire] = value
+				isMapped = true
+				break
+			}
+		}
+		if semantic == "gemini_generation_extensions" && adapter.name == Gemini {
+			extra, err := value.ReadObject()
+			if err != nil {
+				return err
+			}
+			for key, value := range extra {
+				parameterOutput[key] = value
+			}
+			isMapped = true
+		}
+		if semantic == "anthropic_metadata" && (adapter.name == Chat || adapter.name == Responses) {
+			isMapped = true
+		}
+		if !isMapped {
+			return unsupported("/parameters/"+semantic, "target has no equivalent parameter mapping")
+		}
+	}
+	if (adapter.name == Chat || adapter.name == Responses) && parameterOutput["user"].IsZero() {
+		if meta := parameters["anthropic_metadata"]; !meta.IsZero() {
+			if object, err := meta.ReadObject(); err == nil {
+				if user := object["user_id"]; !user.IsZero() {
+					parameterOutput["user"] = user
+				}
+			}
+		}
+	}
+	if adapter.name == Gemini && len(parameterOutput) > 0 {
+		fields["generationConfig"] = object(parameterOutput)
+	}
+	return nil
 }

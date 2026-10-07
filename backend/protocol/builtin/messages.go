@@ -299,42 +299,11 @@ func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, opti
 		}
 		switch child.Kind {
 		case p.ToolResultNode:
-			payload := child.Payload
-			if payload.IsObject() {
-				// Gemini 标准 functionResponse.response 是对象；Chat 的工具
-				// 结果内容是字符串——显式 JSON 序列化保持可逆。
-				payload = encodeJSONArguments(payload)
-			}
-			if len(child.Children) > 0 {
-				// Anthropic tool_result 的结构化内容块拼接为文本；非文本块
-				// 仍显式拒绝。
-				var text []byte
-				for _, block := range child.Children {
-					if block.Kind != p.TextNode {
-						return nil, unsupported("/content/result", "Chat tool result blocks must be text")
-					}
-					value, err := stringValue(block.Payload)
-					if err != nil {
-						return nil, err
-					}
-					text = append(text, value...)
-				}
-				payload = p.StringValue(string(text))
-			}
-			if hasItemMetadata(child) {
-				warnDropped(options, p.EncodeRequest, "/content/result", "tool result item metadata, cache markers or resources dropped for the Chat target", "Same-family forwarding preserves them through native replay.")
-			}
-			if isErrorResult(child.Status) {
-				// Anthropic 的 is_error（解码为 Status.isError）以文本标记保留。
-				if text, err := stringValue(payload); err == nil {
-					payload = p.StringValue("[Tool error] " + text)
-				}
-			}
-			result := p.Object{"role": p.StringValue("tool"), "tool_call_id": child.CallID, "name": child.Name, "content": payload}
-			if err := adapter.preserveExtensions(result, child.Attributes); err != nil {
+			result, err := adapter.encodeChatToolResult(child, options)
+			if err != nil {
 				return nil, err
 			}
-			results = append(results, object(result))
+			results = append(results, result)
 		case p.ToolCallNode:
 			if child.Input.Kind != p.JSONInput {
 				return nil, unsupported("/content/input", "Chat requires JSON function arguments")
@@ -450,4 +419,43 @@ func warnDropped(options p.EvaluationContext, direction p.Direction, path, reaso
 // hasItemMetadata 判定节点是否携带项目级元数据（id/status/cache/resources）。
 func hasItemMetadata(node p.Node) bool {
 	return !node.ID.IsZero() || !node.Status.IsZero() || len(node.Cache) > 0 || len(node.Resources) > 0
+}
+
+// encodeChatToolResult 把一个工具结果节点转为一条 Chat tool 角色消息：
+// 对象载荷 JSON 序列化、结构化块拼接为文本、is_error 加文本标记，节点级
+// 元数据剥离并给 warning。
+func (adapter module) encodeChatToolResult(child p.Node, options p.EvaluationContext) (p.Value, error) {
+	payload := child.Payload
+	if payload.IsObject() {
+		payload = encodeJSONArguments(payload)
+	}
+	if len(child.Children) > 0 {
+		var text []byte
+		for _, block := range child.Children {
+			if block.Kind != p.TextNode {
+				return p.Value{}, unsupported("/content/result", "Chat tool result blocks must be text")
+			}
+			value, err := stringValue(block.Payload)
+			if err != nil {
+				return p.Value{}, err
+			}
+			text = append(text, value...)
+		}
+		payload = p.StringValue(string(text))
+	}
+	if hasItemMetadata(child) {
+		warnDropped(options, p.EncodeRequest, "/content/result",
+			"tool result item metadata, cache markers or resources dropped for the Chat target",
+			"Same-family forwarding preserves them through native replay.")
+	}
+	if isErrorResult(child.Status) {
+		if text, err := stringValue(payload); err == nil {
+			payload = p.StringValue("[Tool error] " + text)
+		}
+	}
+	result := p.Object{"role": p.StringValue("tool"), "tool_call_id": child.CallID, "name": child.Name, "content": payload}
+	if err := adapter.preserveExtensions(result, child.Attributes); err != nil {
+		return p.Value{}, err
+	}
+	return object(result), nil
 }

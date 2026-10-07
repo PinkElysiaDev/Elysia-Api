@@ -24,10 +24,10 @@ func (adapter module) decodeResponse(input p.Value, options p.EvaluationContext)
 	history := &historyState{calls: map[string][]p.Value{}}
 	known := []string{"id", "model", "status", "error", "usage", "object", "created", "created_at"}
 	usage := fields["usage"]
-	if created := fields["created"]; !created.IsZero() {
-		response.Attributes["created_at"] = created
-	}
+	// 首个非零者生效：Chat 的 created（秒）与 Responses 的 created_at（ISO）同义。
 	if created := fields["created_at"]; !created.IsZero() {
+		response.Attributes["created_at"] = created
+	} else if created := fields["created"]; !created.IsZero() {
 		response.Attributes["created_at"] = created
 	}
 	switch adapter.name {
@@ -297,7 +297,7 @@ var finishReasonFallbacks = map[string]map[string]string{
 	"other":      {Chat: "stop", Anthropic: "end_turn", Responses: "stop", Gemini: "OTHER"},
 }
 
-func responseFinish(response *p.Response) (p.Value, error) {
+func finishReasonOf(response *p.Response) (p.Value, error) {
 	if reason := response.Attributes["finishReason"]; !reason.IsZero() {
 		return reason, nil
 	}
@@ -340,7 +340,7 @@ func (adapter module) encodeResponse(response *p.Response, options p.EvaluationC
 		}
 		return object(fields), nil
 	}
-	reason, err := responseFinish(response)
+	reason, err := finishReasonOf(response)
 	if err != nil {
 		return p.Value{}, err
 	}

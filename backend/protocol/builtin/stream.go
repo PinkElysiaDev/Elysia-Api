@@ -115,7 +115,7 @@ func (stream *streamModule) DecodeEvents(ctx context.Context, input p.Value, opt
 	return events, nil
 }
 
-func (stream *streamModule) begin(id, model p.Value) []p.Event {
+func (stream *streamModule) beginResponse(id, model p.Value) []p.Event {
 	if !id.IsZero() {
 		stream.id = id
 	}
@@ -236,7 +236,7 @@ func (stream *streamModule) decodeChatFrame(fields p.Object, options p.Evaluatio
 		if created := fields["created"]; !created.IsZero() {
 			stream.attributes = mergeAttributes(stream.attributes, p.Object{"created_at": created})
 		}
-		events = stream.begin(fields["id"], fields["model"])
+		events = stream.beginResponse(fields["id"], fields["model"])
 	}
 	for _, value := range choices {
 		choice, err := value.ReadObject()
@@ -347,7 +347,7 @@ func (stream *streamModule) decodeAnthropicFrame(fields p.Object, options p.Eval
 		if err != nil {
 			return nil, err
 		}
-		events := stream.begin(message["id"], message["model"])
+		events := stream.beginResponse(message["id"], message["model"])
 		usage, err := stream.usageEvent(message["usage"])
 		return append(events, usage...), err
 	case "content_block_start":
