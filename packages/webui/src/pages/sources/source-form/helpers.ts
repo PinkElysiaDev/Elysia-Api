@@ -20,10 +20,10 @@ export type SourceForm = Omit<ModelSource, 'apiKeys' | 'manualModels' | 'keyStra
 // 选择 Responses API 表示上游端点类型；默认仍经过 Maheshvara，显式 relay.passthrough
 // 才会启用同协议透传。
 export const PLATFORMS: { value: string; label: string; hint: string }[] = [
-  { value: 'responses', label: 'Responses API', hint: '上游原生 Responses（默认经过 Maheshvara）' },
-  { value: 'chat_completions', label: 'Chat Completions API', hint: 'Chat Completions 兼容协议，最通用' },
-  { value: 'anthropic', label: 'Anthropic API', hint: 'Claude /v1/messages' },
-  { value: 'gemini', label: 'Gemini API', hint: 'Gemini /v1beta generateContent' },
+  { value: 'responses', label: 'OpenAI Responses', hint: '上游原生 Responses（默认经过 Maheshvara）' },
+  { value: 'chat_completions', label: 'OpenAI Chat Completions', hint: 'Chat Completions 兼容协议，最通用' },
+  { value: 'anthropic', label: 'Anthropic Messages', hint: 'Claude /v1/messages' },
+  { value: 'gemini', label: 'Google Generate Content', hint: 'Gemini /v1beta generateContent' },
 ]
 
 // 把历史 platform 值归一化到新的四个 apiFormat，使旧源在新下拉里正确回显
@@ -54,6 +54,22 @@ export const KEY_STRATEGIES: { value: SourceKeyStrategy; label: string; hint: st
   { value: 'random', label: '随机 Random', hint: '每次请求随机选取 Key' },
   { value: 'priority', label: '优先级 Priority', hint: '按列表顺序优先，失败先轮换 Key 再换模型' },
 ]
+
+/** 新建源时按协议联动的默认名称与 API 地址；baseUrl 与预置协议声明的 operation
+ * path 前缀对齐（openai /v1 + /chat/completions、/responses；anthropic 根域 +
+ * /v1/messages；google 根域 + /v1beta/models/...）。 */
+export const PROTOCOL_DEFAULTS: Record<string, { name: string; baseUrl: string }> = {
+  'custom:chat-completions-api': { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
+  'custom:responses-api': { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
+  'custom:anthropic-api': { name: 'Anthropic', baseUrl: 'https://api.anthropic.com' },
+  'custom:gemini-api': { name: 'Google', baseUrl: 'https://generativelanguage.googleapis.com' },
+}
+
+/** 字段是否仍处于「未被用户改动」状态：为空，或值就是任一协议的联动默认值。 */
+export function isProtocolDefaultField(value: string, field: 'name' | 'baseUrl'): boolean {
+  if (!value.trim()) return true
+  return Object.values(PROTOCOL_DEFAULTS).some((d) => d[field] === value)
+}
 
 export function emptySource(): SourceForm {
   return {

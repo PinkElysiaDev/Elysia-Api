@@ -31,7 +31,9 @@ import { revalidate } from '@/lib/hooks'
 import { cn } from '@/lib/utils'
 import {
   KEY_STRATEGIES,
+  PROTOCOL_DEFAULTS,
   emptySource,
+  isProtocolDefaultField,
   normalizePlatform,
   normalizeKeyStrategy,
   compileApiKeysPayload,
@@ -318,15 +320,26 @@ export function SourceFormDialog({
   }, [open])
 
   // 新建源：协议列表就绪后把内置默认（chat_completions）切到等价预置协议，
-  // 与「下拉仅展示注册协议」保持一致。用户已手动改过 platform 则不动。
+  // 与「下拉仅展示注册协议」保持一致，并联动默认名称与地址；用户已手动改过
+  // platform 则不动。
   useEffect(() => {
     if (!open || isEdit || registeredProtocols.length === 0) return
     setForm((previous) => {
       if (previous.platform !== 'chat_completions') return previous
       const preset = registeredProtocols.find((item) => item.id === 'chat-completions-api')
-      return preset
-        ? { ...previous, platform: customPlatformValue('chat-completions-api') as Platform }
-        : previous
+      if (!preset) return previous
+      const platform = customPlatformValue('chat-completions-api') as Platform
+      const defaults = PROTOCOL_DEFAULTS[platform]
+      return {
+        ...previous,
+        platform,
+        ...(defaults
+          ? {
+              name: isProtocolDefaultField(previous.name, 'name') ? defaults.name : previous.name,
+              baseUrl: isProtocolDefaultField(previous.baseUrl, 'baseUrl') ? defaults.baseUrl : previous.baseUrl,
+            }
+          : {}),
+      }
     })
   }, [open, isEdit, registeredProtocols])
 
@@ -383,6 +396,14 @@ export function SourceFormDialog({
                       ...previous,
                       platform: nextPlatform,
                       ...(!nextPlatform || (isCustomPlatform(nextPlatform) && !nextDiscovery) ? { autoFetchModels: false } : {}),
+                      // 新建时联动默认名称与地址：字段未被用户改动（空或仍是
+                      // 任一协议默认值）才覆盖，编辑模式不联动。
+                      ...(!isEdit && PROTOCOL_DEFAULTS[nextPlatform]
+                        ? {
+                            name: isProtocolDefaultField(previous.name, 'name') ? PROTOCOL_DEFAULTS[nextPlatform].name : previous.name,
+                            baseUrl: isProtocolDefaultField(previous.baseUrl, 'baseUrl') ? PROTOCOL_DEFAULTS[nextPlatform].baseUrl : previous.baseUrl,
+                          }
+                        : {}),
                     }
                   })
                 }
