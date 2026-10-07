@@ -83,7 +83,7 @@ elysia code read <路径>
 
   <path>                   仓库相对路径(先 code ls 浏览)
 
-示例：elysia code read backend/protocol/builtin/definitions/anthropic-api.json
+示例：elysia code read backend/protocol/builtin/definitions/anthropic-messages.json
 
 详细说明：读取源码快照中的一个文件(仓库相对路径,如 backend/protocol/compiler.go 或 packages/webui/src/lib/protocol-v2.ts);输出较长时配合 grep/head 管道截取。预置协议原文在 backend/protocol/builtin/definitions/ 下；协议指南在 docs/ 下。
 ````
