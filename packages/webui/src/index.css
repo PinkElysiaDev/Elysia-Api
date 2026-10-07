@@ -630,7 +630,13 @@ html.theme-transitioning :where(body, #root, #root *):not(.theme-sun):not(.theme
   .agent-markdown th, .agent-markdown td {
     border: 1px solid hsl(var(--border) / 0.6);
     padding: 0.35em 0.6em;
+  }
+  /* 只在 GFM 未给出内联对齐时默认左对齐，让 :---:/---: 的列对齐生效。 */
+  .agent-markdown th:not([style]), .agent-markdown td:not([style]) {
     text-align: left;
+  }
+  .agent-markdown td {
+    overflow-wrap: anywhere;
   }
   .agent-markdown th {
     font-weight: 600;
@@ -641,10 +647,114 @@ html.theme-transitioning :where(body, #root, #root *):not(.theme-sun):not(.theme
     padding-left: 0.75em;
     color: hsl(var(--muted-foreground));
   }
+  .agent-markdown blockquote blockquote {
+    border-left-color: hsl(var(--border) / 0.6);
+    opacity: 0.85;
+  }
   .agent-markdown a {
     color: var(--rose);
     text-decoration: underline;
     text-underline-offset: 2px;
+  }
+  .agent-markdown del {
+    color: hsl(var(--muted-foreground));
+  }
+  .agent-markdown hr {
+    border: 0;
+    border-top: 1px solid hsl(var(--border));
+    margin: 1em 0;
+  }
+  .agent-markdown kbd {
+    display: inline-block;
+    padding: 0.1em 0.4em;
+    border: 1px solid hsl(var(--border));
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    background: hsl(var(--muted) / 0.5);
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+  }
+  /* GFM 任务列表：去项目符号，checkbox 用品牌色。 */
+  .agent-markdown li:has(> input[type='checkbox']) {
+    list-style: none;
+    margin-left: -1.25em;
+  }
+  .agent-markdown input[type='checkbox'] {
+    margin-right: 0.45em;
+    accent-color: var(--rose);
+  }
+  /* GFM 脚注：缩小并弱化为尾注形态。 */
+  .agent-markdown section[data-footnotes] {
+    margin-top: 1em;
+    padding-top: 0.6em;
+    border-top: 1px solid hsl(var(--border) / 0.6);
+    font-size: 0.8125rem;
+    color: hsl(var(--muted-foreground));
+  }
+  .agent-markdown section[data-footnotes] ol {
+    padding-left: 1.25em;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25em;
+  }
+
+  /* Prism 语法高亮 token（lib/prism-highlight.ts 输出）：沿用设计色板，
+     亮暗主题随 HSL 变量自适应；diff 的 +/- 行用 jade/ember 底色。 */
+  .agent-markdown .token.comment,
+  .agent-markdown .token.prolog,
+  .agent-markdown .token.cdata {
+    color: hsl(var(--muted-foreground) / 0.75);
+    font-style: italic;
+  }
+  .agent-markdown .token.string,
+  .agent-markdown .token.char,
+  .agent-markdown .token.attr-value,
+  .agent-markdown .token.regex {
+    color: var(--jade);
+  }
+  .agent-markdown .token.number,
+  .agent-markdown .token.unit {
+    color: var(--amber);
+  }
+  .agent-markdown .token.boolean,
+  .agent-markdown .token.null-value {
+    color: var(--ember);
+    font-style: italic;
+  }
+  .agent-markdown .token.keyword,
+  .agent-markdown .token.important,
+  .agent-markdown .token.atrule,
+  .agent-markdown .token.rule {
+    color: var(--orchid);
+  }
+  .agent-markdown .token.function {
+    color: var(--rose);
+  }
+  .agent-markdown .token.class-name,
+  .agent-markdown .token.maybe-class-name {
+    color: var(--amber);
+  }
+  .agent-markdown .token.operator,
+  .agent-markdown .token.punctuation,
+  .agent-markdown .token.entity {
+    color: hsl(var(--foreground) / 0.65);
+  }
+  .agent-markdown .token.tag .token.tag,
+  .agent-markdown .token.tag {
+    color: var(--orchid);
+  }
+  .agent-markdown .token.attr-name,
+  .agent-markdown .token.property {
+    color: hsl(var(--secondary-foreground));
+  }
+  .agent-markdown .token.selector {
+    color: var(--rose);
+  }
+  .agent-markdown .token.deleted {
+    color: var(--ember);
+  }
+  .agent-markdown .token.inserted {
+    color: var(--jade);
   }
 
 	/* 工具执行中的状态文字：品牌渐变流动，替代转圈图标。 */

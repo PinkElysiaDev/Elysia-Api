@@ -1,5 +1,5 @@
 import type { AgentLiveState } from "@/lib/agent/use-agent-stream";
-import { Markdown, ReasoningBlock } from "./markdown";
+import { Markdown, ReasoningBlock, closeUnbalancedFences } from "./markdown";
 
 /** 进行中的正文与思考；工具由消息流统一分组。 */
 export function LiveAssistantView({
@@ -14,7 +14,7 @@ export function LiveAssistantView({
         <div>
           <div className="min-w-0 max-w-[80ch] space-y-2">
             <ReasoningBlock text={live.reasoning} />
-            {live.text ? <Markdown text={live.text} /> : null}
+            {live.text ? <Markdown text={closeUnbalancedFences(live.text)} /> : null}
           </div>
         </div>
       ) : null}
