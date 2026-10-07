@@ -131,6 +131,15 @@ func (expression *compiledExpression) evaluate(state evaluation) (value Value, e
 			return Value{}, fmt.Errorf("string does not have the declared prefix")
 		}
 		return StringValue(strings.TrimPrefix(text, prefix)), nil
+	case "trim_prefix":
+		// 宽容版 strip_prefix：前缀在则剥除，不在则原样通过——用于「同一字段
+		// 在不同兼容上游可能带或不带前缀」的发现/解码场景，转换优先于拒绝。
+		text, err := readString(source)
+		if err != nil {
+			return Value{}, err
+		}
+		prefix, _ := readString(expression.value)
+		return StringValue(strings.TrimPrefix(text, prefix)), nil
 	case "not":
 		isTrue, err := readBoolean(source)
 		if err != nil {

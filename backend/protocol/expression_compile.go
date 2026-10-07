@@ -223,10 +223,10 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		return fail("condition must produce a boolean")
 	}
 	switch expression.op {
-	case "strip_prefix":
+	case "strip_prefix", "trim_prefix":
 		prefix, err := readString(expression.value)
 		if err != nil || prefix == "" || !isAssignable(expression.source.result, StringType) {
-			return fail("strip_prefix requires a nonempty literal string prefix and a string source")
+			return fail(expression.op + " requires a nonempty literal string prefix and a string source")
 		}
 	case "choose", "enum":
 		if !isAssignable(expression.source.result, StringType) {
