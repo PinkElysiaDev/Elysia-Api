@@ -1,0 +1,73 @@
+# 可配置跨协议转换
+
+实现保留公共语义模型，在 HTTP 普通／流式网关中增加独立的 ConversionPolicy。配置不修改预置定义或模型工具权限。编译器为 `2.0.0-dev.21`，特征为 `conversion.policies.v1`、`conversion.continuation.v1` 和 `conversion.client_output.v1`。
+
+## 默认行为与契约
+
+模型原始绑定、分组／手动权限和组合证据分开处理。上游响应按照真实模型契约检查，转换后的内容再由目标协议检查。组合的较窄能力集只选择请求路径，不覆盖模型绑定。真正超出模型／分组权限的输出仍返回 `upstream_contract_violation`。
+
+预置之间默认启用下列具名规则；自定义协议需显式配置规则：
+
+| 规则 | 行为 |
+|---|---|
+| `client-stream-options` | 分离 `include_usage` 偏好；跨族未知子字段逐项诊断；非流式选项兼容忽略、严格拒绝 |
+| `gemini-tool-results` | 文本工具结果明确包装为 `{"result":原文}`，记录兼容降级；字段名可改；严格模式拒绝此包装 |
+| `request-signatures` | 投影无法原生表达的外族签名；已认证恢复到目标协议的资源保留 |
+| `response-signatures` / `event-signatures` | 只处理签名，保留其他资源和正文；恢复通道成功与信息丢失分别记录 |
+
+新版 Chat 预置声明 `requires: ["conversion.client_output.v1"]`，`stream_options` 不再属于通用生成参数。true 输出一次 Chat 结束用量块；false、缺省、null、空对象默认不输出该块。`usage.defaultIncludeUsage` 恢复旧显示默认。`usage.collectUpstreamUsage` 独立决定是否向 Chat 上游请求用量；内部计量不受客户端显示偏好影响。没有实际计数时不会伪造观察值。
+
+未声明该特征的旧自定义 Chat 定义保留其原解码形状、Agent 参数及样例。无需修改用户原文；主动启用 `stream_options` 行为规则时才规范化旧参数。回归使用提交 `82406b9` 的原始定义，仅更改副本 ID，验证原样例及实际编解码。
+
+## 配置和管理
+
+页面为 `/protocols/conversions`。模型源和模型绑定页面提供覆盖入口。优先级是引擎默认、协议对、模型源、模型；同 ID 完整覆盖，禁用规则停止继承。执行顺序必须明确，同阶段的重复顺序拒绝编译。未完成的规则仍可保存为草稿。
+
+阶段为 `ingress`、`request`、`response`、`event`、`wire`。动作注册表包括 `set`、`remove`、`transform`、`warn`、`reject`、`signatures`、`stream_options`、`tool_result_object`、`buffer_node`、`provider_signature`。`transform` 使用现有受限表达式引擎，可返回完整语义树；不执行 JavaScript。节点条件只遍历语义节点，不遍历工具参数中的任意 JSON。普通规则不能创建或重新关联来源、作用域和签名资源。
+
+`buffer_node` 等待匹配节点完成，保持原事件顺序，受引擎资源上限约束。严格签名投影自动等待完整节点；组合验证也使用同一等待逻辑。原始上游事件序列独立验证，保存失败不能掩盖生命周期错误。Anthropic `signature_delta` 累积为完整签名，重复语义快照不会重复发送签名片段；Gemini `thoughtSignature` 按完整字段处理，不猜测任意字符串是增量还是快照。已写出流式内容后不会重提生成请求。
+
+所有管理接口沿用管理员鉴权：
+
+| 接口（公共前缀 `/api/admin/protocols`） | 用途 |
+|---|---|
+| `GET /schema` | 策略 schema、阶段、动作和限制 |
+| `GET /conversion-policies` | 草稿及当前激活修订 |
+| `PUT /conversion-policies/:id/draft` | 携带 `expectedHash` 保存草稿 |
+| `POST /conversion-policies/:id/verify` | 验证指定草稿 hash 并生成修订 |
+| `GET /conversion-policies/:id/revisions` | 修订与验证报告 |
+| `POST /conversion-policies/:id/activate` | 指定 hash、expectedActive、selector 激活或回滚 |
+| `POST /conversion-policies/preview` | 只读阶段预览、规则来源和诊断 |
+| `POST /conversion-policies/:id/probe-signature` | 显式向已有模型发送兼容值验证请求 |
+| `GET /continuations` | 数量、字节、命中、未命中、过期和淘汰计数 |
+| `DELETE /continuations?session=...` | 按会话清理副本 |
+
+原 `/preview` 支持 `mode=conversion`，原 `/combinations` 支持 `conversionPolicy`。绑定中的 `conversion` 可固定 `policyId/revisionHash` 并增加 `overrides`；固定修订不随全局激活漂移。
+
+策略、绑定和派生证据同事务更新；请求通过一次数据库读事务固定策略及绑定。提交时检查配置代数和读取集合，变化返回 409。证据关联双方定义／样例 hash、编译器、完整能力契约及最终策略 hash；条件规则另外绑定模型／操作／传输上下文。
+
+## 签名恢复
+
+载体前缀为 `elysia-continuation.v1.`。使用主密钥派生独立用途密钥，通过 AES-GCM 认证加密原片段。Messages 使用专用 thinking 载体，Responses 使用 opaque reasoning 载体，Chat 使用 `elysia_continuation` 扩展。载体只由 Elysia 解封，不发送给供应商。
+
+不存整段用户历史，只存需要恢复的签名节点。鉴权主体、源／账号、实际模型 ID、会话、父轮次摘要和内容摘要共同限制恢复。工具按包含调用 ID 与完整参数的摘要匹配，客户端补入 `content:null` 不改变关联；文本及媒体另需原节点序号。修改内容、压缩历史、合并原节点、跨会话／模型或歧义匹配都可能使精确关联失败；兼容模式诊断，严格模式拒绝，不按工具名或相似文本猜测。
+
+无载体查找必须有稳定会话标识，例如 `x-elysia-session-id`。默认保留 7 天、每会话 64 轮、全局 512 MiB，单记录受 8 MiB 上限约束。过期记录立即不参与查找，写入时分批清理。容量由事务内计数器维护。缺少主密钥不阻断普通无签名文本请求；需要恢复时明确诊断，绝不降级为明文。
+
+`provider_signature` 没有默认魔法值。规则须指定目标族、工具节点及具体值，支持 raw/base64 编码。用户点击验证后才发送合成工具历史，返回的工具不执行。上游接受且响应通过契约检查后才保存证据；证据绑定最终策略、协议修订、账号、实际模型和编译器，30 天到期。该动作是有诊断的兼容替代，不是恢复原签名。
+
+多密钥源可以指定源配置中的密钥序号（界面从 1 开始，接口 `keyIndex` 从 0 开始）；仅允许已启用且具备该模型权限的密钥。留空使用首个可用密钥，验证结论不推广至其他账号。添加载体后的普通响应及单个流帧仍须满足目标缓冲上限。
+
+## 迁移与验收边界
+
+新增结构接入当前仓库 `storage.OpenWithKey` 的版本化步骤 `2026100801`、`2026100802`。数据和完成标记事务提交，已完成步骤不重建表或扫描历史正文；策略验证结果另行追加到证据表。当前检出的代码仍使用既有启动迁移体系，本次没有重新实现此前另一计划中的统一迁移执行器。
+
+打包重启检查发现旧启动别名表仍包含 `openai-responses → responses-api → openai-responses` 及 Anthropic 的同类循环，会破坏验证报告。本轮改为历史别名直接指向最终 ID，并加入十次重放后协议修订、激活和证据摘要不变的回归。该修复不等于完成全部历史数据库迁移重构。
+
+自动化覆盖两个原故障、usage 偏好、加密数据库重开后的无载体恢复、会话／内容隔离、并行同名工具第二轮、严格模式签名晚到、规则顺序、限制、兼容值验证成功／失败、CAS 和容量淘汰。浏览器用例连接真实后端验证草稿、预览只读、验证、激活与 409。
+
+已使用 Claude Code 2.1.293 和 OpenAI Node SDK 7.30.1，连接本地真实网关及模拟 Gemini 上游完成工具第二轮。Claude Code 在 `--bare --restricted`、短系统提示词、仅 Read 工具及关闭提示缓存／thinking 的条件下实际回传了载体。测试显式配置丢弃 Anthropic metadata／output_config 的具名兼容规则，不代表 Gemini 与 Anthropic 的 effort 等价，也不代表 Claude Code 全部默认配置都已验收。Chat SDK 验证普通请求保留载体，以及流式请求只保留标准工具字段、删除载体后依靠稳定会话恢复。另有常规 HTTP 回归在关闭数据库及重建协议注册表后验证无载体恢复。
+
+客户端验收可通过 `ELYSIA_TEST_CLAUDE_BIN` 和 `ELYSIA_TEST_OPENAI_MODULE` 指向隔离安装，再运行 `go test ./server -run '^TestConversionClientToolRoundTrip$' -v -count=1`。不设置变量时仅运行不依赖外部客户端的 HTTP 回归。测试不使用真实供应商凭据。
+
+远端脱敏结构重放、供应商原故障重试，以及真实客户端完整配置、历史压缩等场景仍需独立验收。当前证据支持本地修复通过，不能据此宣称远端问题已经关闭或整个发布验收完成。

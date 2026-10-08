@@ -1,5 +1,6 @@
 # Maheshvara protocol
 
+> Historical adapter reference. For the active typed v2 gateway, authenticated carriers, configurable policies, and current verification limits, see [Configurable conversion](conversion-implementation.md). Legacy envelope names and unconditional signature placeholders below do not describe the current gateway.
 > Historical architecture reference. The Maheshvara runtime was removed in C16.
 > For the active engine, use [Protocol v2](protocol-guide.en.md). Old paths below describe historical versions only.
 

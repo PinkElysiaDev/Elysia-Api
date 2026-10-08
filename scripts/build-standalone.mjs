@@ -121,7 +121,7 @@ copyTreeIntoSnapshot(join(repoRoot, 'backend'), 'backend')
 copyTreeIntoSnapshot(join(repoRoot, 'packages', 'webui', 'src'), 'packages/webui/src')
 mkdirSync(join(snapshotRoot, 'docs'), { recursive: true })
 for (const name of readdirSync(join(repoRoot, 'docs'))) {
-  if (/^(protocol-.*|(?:agent-cli|webui-api|webui-data-model|deployment)(?:\.en)?)\.md$/.test(name)) {
+  if (/^((?:protocol|conversion)-.*|(?:agent-cli|webui-api|webui-data-model|deployment)(?:\.en)?)\.md$/.test(name)) {
     cpSync(join(repoRoot, 'docs', name), join(snapshotRoot, 'docs', name))
   }
 }
