@@ -42,8 +42,8 @@ func TestGatewayProfilesRejectUnsupportedInputAndUnexpectedOutput(t *testing.T) 
 		t.Fatal("unsupported cache sent to provider", response.Code, calls, response.Body)
 	}
 	shouldReturnReasoning = true
-	if response := request(input); response.Code == http.StatusOK || calls != 2 {
-		t.Fatal("unexpected signed reasoning was silently stripped", response.Code, calls, response.Body)
+	if response := request(input); response.Code != http.StatusOK || calls != 2 || !strings.Contains(response.Body.String(), "elysia_continuation") {
+		t.Fatal("signed reasoning was not preserved in a continuation carrier", response.Code, calls, response.Body)
 	}
 	bindings, err := s.store.ListProtocolBindings(t.Context())
 	if err != nil {

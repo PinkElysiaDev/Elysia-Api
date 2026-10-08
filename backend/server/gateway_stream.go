@@ -1,11 +1,13 @@
 package server
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/gin-gonic/gin"
 )
 
@@ -14,7 +16,25 @@ const gatewayStreamErrorTrailer = "X-Elysia-Stream-Error"
 func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan *gatewayPlan, candidate gatewayCandidate, response *http.Response) error {
 	limits := plan.ingress.ResourceLimits()
 	options := protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState(), Diagnostics: &protocol.DiagnosticSink{}}
+	options.ClientOutput = plan.request.ClientOutput
+	if candidate.prepared != nil {
+		options.ClientOutput = candidate.prepared.ClientOutput
+	}
 	defer func() { record.appendConversionIssues(options.Diagnostics.Issues()) }()
+	eventState := protocol.NewConversionEventState(candidate.conversion, candidate.conversionContext(plan.ingress, true))
+	carriers := &builtin.ContinuationStream{Family: plan.ingress.Identity().Family}
+	var collector *protocol.ResponseCollector
+	if candidate.continuation != nil {
+		candidate.continuation.sink = options.Diagnostics
+		collector, _ = protocol.NewResponseCollector(protocol.Target{Protocol: candidate.compiled.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: candidate.binding.Capabilities}, limits)
+	}
+	if options.ClientOutput == nil {
+		options.ClientOutput = &protocol.ClientOutput{}
+	}
+	sourceReplay, err := protocol.NewEventReplay(protocol.Target{Protocol: candidate.compiled.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: candidate.binding.Capabilities}, candidate.compiled.ResourceLimits())
+	if err != nil {
+		return err
+	}
 	target := protocol.Target{Protocol: plan.ingress.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: plan.ingress.Capabilities(protocol.EncodeEvent)}
 	replay, err := protocol.NewEventReplay(target, limits)
 	if err != nil {
@@ -24,12 +44,37 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 	c.Header("Content-Type", protocol.TransportContentType(plan.operation.Transport))
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Trailer", gatewayStreamErrorTrailer)
+	wireValidation := protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState()}
 	emit := func(value protocol.Value) error {
 		if record.FirstByteMs == 0 {
 			record.FirstByteMs = time.Since(record.StartedAt).Milliseconds()
 		}
-		if err := protocol.WriteFrame(c.Writer, plan.operation, value); err != nil {
-			return err
+		if candidate.conversion.HasPhase(protocol.ConversionWire) {
+			converted, e := candidate.conversion.ApplyValue(c.Request.Context(), protocol.ConversionWire, value, candidate.conversionContext(plan.ingress, true), options.Diagnostics)
+			if e != nil {
+				return e
+			}
+			if _, e = plan.ingress.DecodeFrame(c.Request.Context(), converted, wireValidation); e != nil {
+				return e
+			}
+			value = converted
+		}
+		frames := []protocol.Value{value}
+		if candidate.continuation != nil {
+			carriers.Tokens = candidate.continuation.tokens
+			var err error
+			frames, err = carriers.Frames(value)
+			if err != nil {
+				return err
+			}
+		}
+		for _, frame := range frames {
+			if len(frame.Bytes()) > limits.BufferBytes {
+				return protocol.IssuesError([]protocol.ConversionIssue{{Code: protocol.LimitExceeded, Severity: protocol.SeverityError, Stage: "continuation", Path: "/frame", Reason: "frame including continuation carriers exceeds target buffer limit"}})
+			}
+			if err := protocol.WriteFrame(c.Writer, plan.operation, frame); err != nil {
+				return err
+			}
 		}
 		c.Writer.Flush()
 		return nil
@@ -44,6 +89,7 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 		if err := observeHostedTools(record, candidate.compiled, frame.Bytes()); err != nil {
 			return err
 		}
+		originalEvents, _ := protocol.EncodeValue(decoded.Events)
 		acceptedEvents := []protocol.Event{}
 		for _, event := range decoded.Events {
 			updateRecordProtocolUsage(record, event.Usage)
@@ -60,19 +106,61 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 			if err := protocol.IssuesError(protocol.CheckModelEvent(event, candidate.compiled, candidate.binding, candidate.scope)); err != nil {
 				return err
 			}
-			accepted, err := replay.Consume(event)
-			if err != nil {
+			if _, err := sourceReplay.Consume(event); err != nil {
 				return err
 			}
-			if !accepted {
-				continue
+			if collector != nil {
+				if _, _, captureErr := collector.Consume(event); captureErr != nil {
+					if err := candidate.continuation.warning("continuation stream collection unavailable: " + captureErr.Error()); err != nil {
+						return err
+					}
+					collector = nil
+				} else {
+					if node, ordinal, ok := collector.CompletedNode(event); ok {
+						if err := s.captureContinuationNode(c, candidate.continuation, node, ordinal); err != nil {
+							return err
+						}
+					}
+					if event.Type == protocol.ResponseFinished {
+						collected, e := collector.Finish()
+						if e != nil {
+							return e
+						}
+						if e = s.captureContinuationResponse(c, candidate.continuation, collected); e != nil {
+							return e
+						}
+					}
+				}
 			}
-			acceptedEvents = append(acceptedEvents, event)
+			queued, e := eventState.Push(event)
+			if e != nil {
+				return e
+			}
+			for _, next := range queued {
+				if candidate.conversion != nil {
+					next, err = candidate.conversion.Event(c.Request.Context(), next, candidate.conversionContext(plan.ingress, true), options.Diagnostics)
+					if err != nil {
+						return err
+					}
+				}
+				accepted, e := replay.Consume(next)
+				if e != nil {
+					return e
+				}
+				if accepted {
+					acceptedEvents = append(acceptedEvents, next)
+				}
+			}
 		}
 		if len(decoded.Events) > 0 && len(acceptedEvents) == 0 {
 			return nil
 		}
-		decoded.Events = acceptedEvents
+		updatedEvents, _ := protocol.EncodeValue(acceptedEvents)
+		if eventState.Buffered || !bytes.Equal(originalEvents.Bytes(), updatedEvents.Bytes()) {
+			decoded = &protocol.EventFrame{Events: acceptedEvents}
+		} else {
+			decoded.Events = acceptedEvents
+		}
 		frames, err := plan.ingress.EncodeFrame(c.Request.Context(), decoded, options)
 		if err != nil {
 			return err
@@ -85,7 +173,13 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 		return nil
 	})
 	if err == nil {
-		err = replay.Finish()
+		err = eventState.Finish()
+		if err == nil {
+			err = sourceReplay.Finish()
+		}
+		if err == nil {
+			err = replay.Finish()
+		}
 	}
 	if err == nil {
 		var frames []protocol.Value

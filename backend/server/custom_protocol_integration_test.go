@@ -68,7 +68,7 @@ func TestChatCompletionsDashscopeNativeStreamingEndToEnd(t *testing.T) {
 	groups := standaloneGroup(t, definition, upstream.URL)
 	groups[0].Models[0].ID = "qwen-plus"
 	s := newTestServer(t, groups, definition)
-	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"你好"}]}`)
+	c, rec := chatRequestContext(`{"model":"grp","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"你好"}]}`)
 	s.chatCompletions(c)
 	if gotHeader != "enable" || gotPath != definition.Operations["generate"].Path || !strings.Contains(gotBody, `"qwen-plus"`) {
 		t.Fatal(gotHeader, gotPath, gotBody)

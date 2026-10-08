@@ -190,6 +190,9 @@ func TestCacheWireMatrix(t *testing.T) {
 						path := source.path
 						if source.platform != "gemini" {
 							request["stream"] = stream
+							if source.platform == "openai" && stream {
+								request["stream_options"] = map[string]any{"include_usage": true}
+							}
 						} else if stream {
 							path = strings.ReplaceAll(path, ":generateContent", ":streamGenerateContent")
 						}
@@ -308,7 +311,7 @@ func TestCacheUsageCreationAndAbsentFields(t *testing.T) {
 				}))
 				defer upstream.Close()
 				s := newTestServerWithStore(t, presetGroup(t, "custom:anthropic-messages", upstream.URL))
-				c, rec := chatRequestContext(fmt.Sprintf(`{"model":"grp","max_tokens":64,"stream":%v,"messages":[{"role":"user","content":"hello"}]}`, stream))
+				c, rec := chatRequestContext(fmt.Sprintf(`{"model":"grp","max_tokens":64,"stream":%v,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hello"}]}`, stream))
 				s.chatCompletions(c)
 				if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
 					t.Fatalf("HTTP %d: %s", rec.Code, rec.Body.String())

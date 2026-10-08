@@ -13,11 +13,16 @@ import (
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
 
 type gatewayCandidate struct {
+	conversion    *protocol.CompiledConversion
+	routeBinding  protocol.Binding
+	prepared      *protocol.Request
+	continuation  *gatewayContinuation
 	model         config.ModelRef
 	compiled      *protocol.Compiled
 	binding       protocol.Binding
@@ -28,6 +33,8 @@ type gatewayCandidate struct {
 }
 
 type gatewayPlan struct {
+	carriers   []string
+	session    string
 	group      *config.ModelGroupConfig
 	request    *protocol.Request
 	candidates []gatewayCandidate
@@ -39,11 +46,15 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 	if !ingress.Supports(protocol.DecodeRequest) {
 		return nil, gatewayIssue(ingress.Identity(), protocol.UnsupportedCapability, "/directions", "protocol is not a client ingress")
 	}
-	bindings, err := s.store.ListProtocolBindings(c.Request.Context())
+	policies, bindings, _, err := s.store.ConversionSnapshot(c.Request.Context())
 	if err != nil {
 		return nil, err
 	}
-	plan := &gatewayPlan{ingress: ingress}
+	plan := &gatewayPlan{ingress: ingress, session: continuationSession(c, body)}
+	body, plan.carriers, err = builtin.ExtractContinuationCarriers(body, ingress.Identity().Family, ingress.ResourceLimits().BufferBytes)
+	if err != nil {
+		return nil, err
+	}
 	options := protocol.EvaluationContext{Values: protocol.Object{"path": protocol.StringValue(path)}}
 	for _, operation := range ingress.Operations() {
 		if parameters, matches := protocol.MatchOperationPath(operation.Path, path); matches {
@@ -85,12 +96,34 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 			}
 		}
 		constrained := constrainGatewayCapabilities(candidate.binding, candidate.model, plan.group, bindings)
-		matched, candidateIssues := matchGatewayCombination(ingress, candidate, request, constrained)
+		candidate.conversion, err = resolveGatewayConversion(policies, bindings, ingress, candidate.compiled, candidate.model, candidate.operationName, candidate.operation.Transport)
+		if err != nil {
+			return nil, err
+		}
+		if err = s.loadProviderConversionEvidence(c.Request.Context(), candidate.conversion, candidate.model, candidate.compiled); err != nil {
+			return nil, err
+		}
+		sink := &protocol.DiagnosticSink{}
+		candidate.continuation, err = s.newGatewayContinuation(c, plan, candidate, sink)
+		if err != nil {
+			return nil, err
+		}
+		restored := request.Clone()
+		if err = s.restoreGatewayContinuation(c, candidate.continuation, restored, plan.carriers); err != nil {
+			return nil, err
+		}
+		candidate.prepared, err = candidate.conversion.Request(c.Request.Context(), restored, candidate.conversionContext(ingress, false), sink)
+		record.appendConversionIssues(sink.Issues())
+		if err != nil {
+			return nil, err
+		}
+		matched, candidateIssues := matchGatewayCombination(ingress, candidate, candidate.prepared, constrained)
 		if len(candidateIssues) > 0 {
 			issues = append(issues, candidateIssues...)
 			continue
 		}
-		candidate.binding = matched
+		candidate.binding = constrained
+		candidate.routeBinding = matched
 		eligible = append(eligible, candidate)
 	}
 	if len(eligible) == 0 {
@@ -162,10 +195,40 @@ func hasPassingGatewayCombination(reports []protocol.CombinationReport) bool {
 }
 
 func matchGatewayCombination(ingress *protocol.Compiled, candidate gatewayCandidate, request *protocol.Request, constrained protocol.Binding) (protocol.Binding, []protocol.ConversionIssue) {
+	// The actual upstream contract is mandatory even when a compatibility
+	// profile omits metadata restored by the authenticated recovery channel.
+	if issues := protocol.CheckRoute(request, candidate.compiled, constrained, candidate.scope, candidate.operation.Transport); len(issues) > 0 {
+		return protocol.Binding{}, issues
+	}
+	profileRequest := request
+	if candidate.continuation != nil && len(candidate.continuation.restored) > 0 {
+		profileRequest = request.Clone()
+		var strip func([]protocol.Node)
+		strip = func(nodes []protocol.Node) {
+			for i := range nodes {
+				n := &nodes[i]
+				if candidate.continuation.restored[protocol.ContinuationNodeDigest(*n)] {
+					n.Resources = slices.DeleteFunc(n.Resources, func(r protocol.Resource) bool { return r.Kind == "signature" })
+				}
+				strip(n.Children)
+			}
+		}
+		strip(profileRequest.Content)
+	}
 	var diagnostics []protocol.ConversionIssue
 	contractHash := protocol.CapabilityContractHash(candidate.binding.Capabilities)
 	for _, report := range candidate.combinations {
-		if report.SourceHash != ingress.Hash() || report.TargetHash != candidate.compiled.Hash() || report.CompilerVersion != protocol.CompilerVersion || report.Kind != protocol.OfflineVerification || report.BindingHash != contractHash {
+		if report.SourceHash != ingress.Hash() || report.TargetHash != candidate.compiled.Hash() || report.CompilerVersion != protocol.CompilerVersion || report.Kind != protocol.OfflineVerification || report.BindingHash != contractHash || report.SourceSamplesHash != ingress.SamplesHash() || report.TargetSamplesHash != candidate.compiled.SamplesHash() {
+			continue
+		}
+		expectedContext := ""
+		if candidate.conversion.ContextDependent() {
+			expectedContext = candidate.conversion.WithVerificationContext(candidate.conversionContext(ingress, false)).ContextHash()
+		}
+		if report.ContextHash != expectedContext {
+			continue
+		}
+		if report.PolicyHash != protocol.ConversionHash(candidate.conversion) {
 			continue
 		}
 		if !report.Passed {
@@ -177,7 +240,7 @@ func matchGatewayCombination(ingress *protocol.Compiled, candidate gatewayCandid
 		for capability, supported := range constrained.Capabilities {
 			matched.Capabilities[capability] = supported && report.Capabilities[capability]
 		}
-		if issues := protocol.CheckRoute(request, candidate.compiled, matched, candidate.scope, candidate.operation.Transport); len(issues) > 0 {
+		if issues := protocol.CheckRoute(profileRequest, candidate.compiled, matched, candidate.scope, candidate.operation.Transport); len(issues) > 0 {
 			diagnostics = append(diagnostics, issues...)
 			continue
 		}
@@ -189,9 +252,29 @@ func matchGatewayCombination(ingress *protocol.Compiled, candidate gatewayCandid
 	return protocol.Binding{}, diagnostics
 }
 
+func (candidate gatewayCandidate) conversionContext(ingress *protocol.Compiled, response bool) protocol.ConversionContext {
+	source, target := ingress.Identity(), candidate.compiled.Identity()
+	if response {
+		source, target = target, source
+	}
+	recoverable := map[string]bool{}
+	if candidate.continuation != nil {
+		for key := range candidate.continuation.saved {
+			if strings.HasPrefix(key, "signature:") {
+				recoverable[key] = true
+				continue
+			}
+			if i := strings.IndexByte(key, ':'); i >= 0 {
+				recoverable[key[i+1:]] = true
+			}
+		}
+	}
+	return protocol.ConversionContext{Scope: candidate.scope, Recoverable: recoverable, Source: source, Target: target, Model: candidate.model.Identifier(), Operation: candidate.operationName, Transport: candidate.operation.Transport}
+}
+
 func modelProtocolScope(model config.ModelRef) protocol.Scope {
 	account := sha256.Sum256([]byte(model.SourceID + nulSeparator + model.APIKey))
-	return protocol.Scope{Provider: model.SourceID, Account: hex.EncodeToString(account[:]), Model: model.Name}
+	return protocol.Scope{Provider: model.SourceID, Account: hex.EncodeToString(account[:]), Model: model.Identifier()}
 }
 
 func constrainGatewayCapabilities(binding protocol.Binding, model config.ModelRef, group *config.ModelGroupConfig, bindings []storage.ProtocolBinding) protocol.Binding {

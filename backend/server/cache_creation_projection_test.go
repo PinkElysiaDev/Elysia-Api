@@ -29,7 +29,7 @@ func TestCacheCreationBucketProjectionAcrossProtocols(t *testing.T) {
 			}))
 			defer upstream.Close()
 			s := newTestServerWithStore(t, presetGroup(t, "custom:anthropic-messages", upstream.URL))
-			c, rec := chatRequestContext(fmt.Sprintf(`{"model":"grp","max_tokens":64,"stream":%v,"messages":[{"role":"user","content":"hello"}]}`, stream))
+			c, rec := chatRequestContext(fmt.Sprintf(`{"model":"grp","max_tokens":64,"stream":%v,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hello"}]}`, stream))
 			s.chatCompletions(c)
 			if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
 				t.Fatalf("cross-protocol bucket must not fail: HTTP %d trailer=%q body=%s", rec.Code, rec.Result().Trailer.Get(gatewayStreamErrorTrailer), rec.Body.String())

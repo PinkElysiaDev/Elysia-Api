@@ -25,7 +25,7 @@ func TestCustomProtocolStreamTrailingUsageAfterFinishEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 	s := newTestServer(t, standaloneGroup(t, definition, upstream.URL), definition)
-	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	c, rec := chatRequestContext(`{"model":"grp","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	for _, want := range []string{`"content":"hello"`, `"prompt_tokens":11`, `"completion_tokens":22`, `"finish_reason":"stop"`, "data: [DONE]"} {
 		if !strings.Contains(rec.Body.String(), want) {
@@ -80,7 +80,7 @@ func TestCustomProtocolStreamEmptyCompletionWithFinishReasonEndToEnd(t *testing.
 	}))
 	defer upstream.Close()
 	s := newTestServer(t, standaloneGroup(t, definition, upstream.URL), definition)
-	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	c, rec := chatRequestContext(`{"model":"grp","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	logs := latestUsageRecords(t, s)
 	if len(logs) != 1 || logs[0].StatusCode != http.StatusOK || !strings.Contains(rec.Body.String(), `"finish_reason":"content_filter"`) || !strings.Contains(rec.Body.String(), "[DONE]") {
@@ -103,7 +103,7 @@ func TestCustomProtocolStreamRetryableFailureRecordsUsageOnce(t *testing.T) {
 	groups[0].Models = append(groups[0].Models, backup)
 	groups[0].MaxRetries = 1
 	s := newTestServer(t, groups, definition)
-	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	c, rec := chatRequestContext(`{"model":"grp","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	logs := latestUsageRecords(t, s)
 	if rec.Code != http.StatusInternalServerError || attempts.Load() != 2 || len(logs) != 1 || logs[0].StatusCode != http.StatusInternalServerError {

@@ -53,6 +53,7 @@ func (s *Server) requireProtocolService(c *gin.Context) (*protocol.Service, bool
 
 func (s *Server) setupProtocolRevisionRoutes(admin *gin.RouterGroup) {
 	group := admin.Group("/protocols")
+	s.registerConversionPolicyRoutes(group)
 	group.GET("", s.adminProtocolDrafts)
 	group.GET("/enabled", s.adminEnabledProtocols)
 	group.GET("/schema", s.adminProtocolSchemaV2)
@@ -359,8 +360,10 @@ func (s *Server) adminProtocolCombination(c *gin.Context) {
 		return
 	}
 	var input struct {
-		Ingress  json.RawMessage `json:"ingress"`
-		Upstream json.RawMessage `json:"upstream"`
+		Ingress          json.RawMessage            `json:"ingress"`
+		ConversionPolicy *protocol.ConversionPolicy `json:"conversionPolicy,omitempty"`
+		Capabilities     protocol.CapabilitySet     `json:"capabilities,omitempty"`
+		Upstream         json.RawMessage            `json:"upstream"`
 	}
 	if err := decodeProtocolAdminBody(c, &input); err != nil {
 		respondProtocolError(c, err)
@@ -370,6 +373,15 @@ func (s *Server) adminProtocolCombination(c *gin.Context) {
 	upstream, second := service.Validate(input.Upstream)
 	if issues := append(first, second...); protocol.IssuesError(issues) != nil {
 		respondProtocolError(c, protocol.IssuesError(issues))
+		return
+	}
+	if input.ConversionPolicy != nil {
+		conversion, err := protocol.ResolveConversion(protocol.DefaultConversionPolicy(ingress.Identity(), upstream.Identity()), *input.ConversionPolicy)
+		if err != nil {
+			respondFail(c, http.StatusBadRequest, "invalid_conversion_policy", err.Error())
+			return
+		}
+		respondOK(c, protocol.VerifyBindingCombination(c.Request.Context(), ingress, upstream, input.Capabilities, conversion))
 		return
 	}
 	respondOK(c, protocol.VerifyCombination(c.Request.Context(), ingress, upstream))

@@ -62,6 +62,7 @@ func newLiveGateway(t *testing.T, suite *liveSuite, target *protocol.Compiled) *
 	groups := presetGroup(t, "custom:"+target.Identity().DefinitionID, liveBase(proxy.URL, target))
 	groups[0].MaxRetries = 0
 	groups[0].Models[0].Name = suite.Model
+	groups[0].Models[0].ID = suite.Model
 	groups[0].Models[0].APIKey = "verification-observer-placeholder"
 	server := newTestServerWithStore(t, groups, target.Definition(), verificationEnvelopeDefinition(t))
 	server.protocolTransport.SetTimeout(liveRequestTimeout)

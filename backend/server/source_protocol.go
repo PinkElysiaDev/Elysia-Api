@@ -46,7 +46,7 @@ func (s *Server) saveSource(ctx context.Context, source storage.ModelSource) (er
 	if err != nil {
 		return err
 	}
-	bindings, err := s.store.ListProtocolBindings(ctx)
+	policies, bindings, generation, err := s.store.ConversionSnapshot(ctx)
 	if err != nil {
 		return err
 	}
@@ -66,9 +66,28 @@ func (s *Server) saveSource(ctx context.Context, source storage.ModelSource) (er
 	if err != nil {
 		return err
 	}
-	binding.Combinations = verifyGatewayBinding(ctx, service.View(), compiled, binding.Binding.Capabilities)
+	if len(policies) > 0 || binding.Conversion != nil {
+		next := []storage.ProtocolBinding{}
+		for _, b := range bindings {
+			if b.Kind != "source" || b.SourceID != source.ID {
+				next = append(next, b)
+			}
+		}
+		next = append(next, binding)
+		verified, e := s.verifyConversionBindings(ctx, service.View(), policies, next)
+		if e != nil {
+			return e
+		}
+		for _, b := range verified {
+			if b.Kind == "source" && b.SourceID == source.ID {
+				binding = b
+			}
+		}
+	} else {
+		binding.Combinations = verifyGatewayBinding(ctx, service.View(), compiled, binding.Binding.Capabilities)
+	}
 	if !hasPassingGatewayCombination(binding.Combinations) {
 		return gatewayIssue(compiled.Identity(), protocol.VerificationRequired, "/binding/combinations", "source requires a verified ingress conversion contract")
 	}
-	return s.store.SaveBoundSource(ctx, source, binding)
+	return s.store.SaveBoundSource(ctx, source, binding, generation)
 }

@@ -27,7 +27,7 @@ func TestStreamUsageTailZeroReachesClientAndStorage(t *testing.T) {
 			}))
 			defer upstream.Close()
 			s := newTestServerWithStore(t, presetGroup(t, platform, upstream.URL), preset)
-			context, response := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"hello"}]}`)
+			context, response := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hello"}]}`)
 			s.chatCompletions(context)
 			if response.Code != http.StatusOK || strings.Contains(response.Body.String(), `"error"`) {
 				t.Fatalf("response: %d %s", response.Code, response.Body.String())

@@ -156,9 +156,15 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 		return &gatewayFailure{http.StatusForbidden, fmt.Errorf("target base URL rejected: %w", err)}
 	}
 	request := plan.request.Clone()
+	if candidate.prepared != nil {
+		request = candidate.prepared.Clone()
+	}
 	// 上行模型串用 API id；Name 是显示名（Gemini displayName 直接拼路径会 404）。
 	request.Model = protocol.StringValue(candidate.model.Identifier())
-	options := protocol.EvaluationContext{Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}}
+	options := protocol.EvaluationContext{Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}, ClientOutput: request.ClientOutput}
+	if candidate.continuation != nil {
+		candidate.continuation.sink = options.Diagnostics
+	}
 	defer func() { record.appendConversionIssues(options.Diagnostics.Issues()) }()
 	if candidate.model.CacheSynthesis {
 		protocol.SynthesizeCacheBreakpoints(request, candidate.compiled.Capabilities(protocol.EncodeRequest), options)
@@ -167,6 +173,19 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	body, err := candidate.compiled.EncodeRequest(c.Request.Context(), request, options)
 	if err != nil {
 		return &gatewayFailure{http.StatusBadRequest, err}
+	}
+	if candidate.conversion.HasPhase(protocol.ConversionWire) {
+		body, err = candidate.conversion.Wire(c.Request.Context(), body, candidate.conversionContext(plan.ingress, false), options.Diagnostics)
+		if err != nil {
+			return &gatewayFailure{http.StatusBadRequest, err}
+		}
+		decoded, e := candidate.compiled.DecodeRequest(c.Request.Context(), body, options)
+		if e != nil {
+			return &gatewayFailure{http.StatusBadRequest, e}
+		}
+		if e = protocol.IssuesError(protocol.CheckRoute(decoded, candidate.compiled, candidate.binding, candidate.scope, candidate.operation.Transport)); e != nil {
+			return &gatewayFailure{http.StatusBadRequest, e}
+		}
 	}
 	if err := candidate.compiled.CheckOperationInput(candidate.operation, body); err != nil {
 		return &gatewayFailure{http.StatusBadRequest, err}
@@ -210,12 +229,40 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	if err := protocol.IssuesError(protocol.CheckModelResponse(semantic, candidate.compiled, candidate.binding, candidate.scope)); err != nil {
 		return err
 	}
+	if err := s.captureContinuationResponse(c, candidate.continuation, semantic); err != nil {
+		return err
+	}
+	if candidate.conversion != nil {
+		semantic, err = candidate.conversion.Response(c.Request.Context(), semantic, candidate.conversionContext(plan.ingress, true), options.Diagnostics)
+		if err != nil {
+			return err
+		}
+	}
 	if !semantic.Model.IsZero() {
 		semantic.Model = plan.request.Model
 	}
 	body, err = plan.ingress.EncodeResponse(c.Request.Context(), semantic, options)
 	if err != nil {
 		return err
+	}
+	if candidate.conversion.HasPhase(protocol.ConversionWire) {
+		body, err = candidate.conversion.Wire(c.Request.Context(), body, candidate.conversionContext(plan.ingress, true), options.Diagnostics)
+		if err != nil {
+			return err
+		}
+		// The target decoder applies its declared structure and capabilities.
+		if _, err = plan.ingress.DecodeResponse(c.Request.Context(), body, options); err != nil {
+			return err
+		}
+	}
+	if candidate.continuation != nil {
+		body, err = builtin.AttachContinuationCarriers(body, plan.ingress.Identity().Family, candidate.continuation.tokens)
+		if err != nil {
+			return err
+		}
+	}
+	if len(body) > plan.ingress.ResourceLimits().BufferBytes {
+		return protocol.IssuesError([]protocol.ConversionIssue{{Code: protocol.LimitExceeded, Severity: protocol.SeverityError, Stage: "continuation", Path: "/response", Reason: "response including continuation carriers exceeds target buffer limit"}})
 	}
 	record.FirstByteMs = time.Since(record.StartedAt).Milliseconds()
 	c.Data(http.StatusOK, "application/json", body)

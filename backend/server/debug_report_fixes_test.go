@@ -195,7 +195,7 @@ func TestPresetCombinedFramesEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 	s := newTestServer(t, presetGroup(t, "custom:openai-chat-completions", upstream.URL))
-	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("chat combined frame: expected 200, got %d body=%s", rec.Code, rec.Body.String())
@@ -213,7 +213,7 @@ func TestPresetCombinedFramesEndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 	s = newTestServer(t, presetGroup(t, "custom:google-generate-content", upstream.URL))
-	c, rec = chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	c, rec = chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("gemini combined frame: expected 200, got %d body=%s", rec.Code, rec.Body.String())
@@ -277,7 +277,7 @@ func TestPresetChatMultipleToolsInOneFrame(t *testing.T) {
 	defer upstream.Close()
 
 	s := newTestServer(t, presetGroup(t, "custom:openai-chat-completions", upstream.URL))
-	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
@@ -301,7 +301,7 @@ func TestPresetErrorFramesEndToEnd(t *testing.T) {
 	defer upstream.Close()
 
 	s := newTestServer(t, presetGroup(t, "custom:anthropic-messages", upstream.URL))
-	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if !strings.Contains(rec.Body.String(), "overloaded") {
 		t.Fatalf("trailing error frame must surface as failure: %s", rec.Body.String())

@@ -153,6 +153,20 @@ func (s *Server) refreshProtocolRuntime(ctx context.Context, service *protocol.S
 		}
 		plan.Bindings = append(plan.Bindings, binding)
 	}
+	policies, _, _, err := s.store.ConversionSnapshot(ctx)
+	if err != nil {
+		return err
+	}
+	configured := len(policies) > 0
+	for _, b := range plan.Bindings {
+		configured = configured || b.Conversion != nil
+	}
+	if configured {
+		plan.Bindings, err = s.verifyConversionBindings(ctx, conversionDefinitions(definitions), policies, plan.Bindings)
+		if err != nil {
+			return err
+		}
+	}
 	return s.store.RefreshProtocolRuntime(ctx, plan)
 }
 
