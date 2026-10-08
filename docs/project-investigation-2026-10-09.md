@@ -42,7 +42,7 @@ Elysia-Api/
 │   ├── server/                   HTTP 服务（81 个文件）：路由、网关编排、管理面、Agent 宿主、预置刷新
 │   │   ├── presets/              旧格式（v1）预置种子 JSON，服务迁移链
 │   │   └── _snapshot/            elyisia code 工具与发布快照的源码副本（下划线目录不参与编译）
-│   ├── storage/                  SQLite 持久化（27 个文件）：31 张表、迁移、加密、用量聚合
+│   ├── storage/                  SQLite 持久化（27 个文件）：32 张表、迁移、加密、用量聚合
 │   ├── config/                   config.json 解析、首启自举、原子写、热重载
 │   ├── agent/                    Agent 执行引擎（领域无关，不认识任何线格式）
 │   └── webui/                    //go:embed all:dist（构建脚本同步，仓库只跟踪 .gitkeep）
@@ -164,7 +164,7 @@ Elysia-Api/
 
 ## 9. 存储与配置
 
-**SQLite（modernc 纯 Go，无 CGO），WAL + 单连接 + PRAGMA 调优。31 张表分五组：**
+**SQLite（modernc 纯 Go，无 CGO），WAL + 单连接 + PRAGMA 调优。32 张表分五组（逐表逐字段分析见 [storage-schema-analysis-2026-10-09.md](storage-schema-analysis-2026-10-09.md)）：**
 
 | 组 | 表 |
 | --- | --- |
