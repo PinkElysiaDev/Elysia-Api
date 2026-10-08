@@ -11,6 +11,7 @@ import (
 // ProtocolBinding stores model/source contracts separately from discovered
 // model metadata, so a catalog refresh cannot overwrite an operator's binding.
 type ProtocolBinding struct {
+	Conversion *protocol.ConversionSelection `json:"conversion,omitempty"`
 	// Unbound is an explicit operator decision, not an absent inherited binding.
 	Unbound      bool                         `json:"unbound,omitempty"`
 	Kind         string                       `json:"kind"`
@@ -51,12 +52,15 @@ func (store *Store) SaveProtocolBinding(ctx context.Context, binding ProtocolBin
 
 // SaveManagedProtocolBinding keeps the displayed protocol and explicit contract
 // consistent when an operator binds or clears an individual source/model.
-func (store *Store) SaveManagedProtocolBinding(ctx context.Context, binding ProtocolBinding) error {
+func (store *Store) SaveManagedProtocolBinding(ctx context.Context, binding ProtocolBinding, expectedGeneration ...int64) error {
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if err := checkConversionGeneration(ctx, tx, expectedGeneration); err != nil {
+		return err
+	}
 	if err := saveProtocolBinding(ctx, tx, binding); err != nil {
 		return err
 	}

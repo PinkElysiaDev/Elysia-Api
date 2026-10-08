@@ -91,6 +91,9 @@ func (s *Store) init(ctx context.Context) error {
 	if err := s.migrateGenerationJobs(ctx); err != nil {
 		return err
 	}
+	if err := s.migrateConversion(ctx); err != nil {
+		return err
+	}
 	return s.migrateLogLifecycle(ctx)
 }
 
