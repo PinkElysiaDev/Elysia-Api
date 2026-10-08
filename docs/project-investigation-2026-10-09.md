@@ -2,7 +2,7 @@
 
 > 一句话定位：**Elysia-API 是一个单进程、零外部依赖的 Go 自部署 AI 网关——把「任意已声明协议的客户端请求」经统一语义模型翻译成「任意已验证协议的上游调用」，再把回答（连同缓存与用量口径）如实译回。** 协议本身是数据：四份预置与用户自定义协议共用一套声明式定义语言，编译成双向编解码器；无法等价表达的语义一律显式诊断，绝不静默近似。进程内还住着一个通用管理 Agent，聊天即可维护这座网关。
 
-基线：分支 `deploy` @ `27c8e68`，工作树干净，领先 `origin/deploy` 12 个提交未推送。编译器 `2.0.0-dev.21`，语义模型 v1，定义语言 v2；CHANGELOG 最新版本 v1.6.0（2026-10-05）。后端 224 个非测试 Go 文件约 5.0 万行，408 个测试文件 / 1474 个测试函数；前端 React 18 + TypeScript 5.4。本报告由五路并行子系统调查（协议引擎 / Agent / server+relay / storage+config / webui）交叉汇总，关键结论带 file:line（相对仓库根）。
+基线：分支 `deploy` @ `27c8e68`，工作树干净，领先 `origin/deploy` 12 个提交未推送。编译器 `2.0.0-dev.21`，语义模型 v1，定义语言 v2；CHANGELOG 最新版本 v1.6.0（2026-10-05）。后端 224 个非测试 Go 文件约 5.0 万行，204 个测试文件 / 737 个 Test + 5 个 Fuzz 目标（`server/_snapshot` 下另有等量快照副本，统计时勿重复计入）；前端 React 18 + TypeScript 5.4。本报告由五路并行子系统调查（协议引擎 / Agent / server+relay / storage+config / webui）交叉汇总，关键结论带 file:line（相对仓库根）。
 
 心智模型是一条双向流水线，中间是唯一的语义真相：
 
@@ -208,7 +208,7 @@ React 18.3 + TypeScript 5.4 + Vite(SWC) + Tailwind 3.4 + Radix 原语 + SWR + Re
 ## 12. 构建、分发与工程现状
 
 - **六平台交叉编译**（scripts/build-standalone.mjs）：windows/linux/darwin × amd64/arm64，产出 `dist/standalone` + SHA256；`smoke-standalone.mjs` 冒烟；DMG 仅 macOS/CI 组装；`publish-npm-binaries.mjs` 发布平台二进制 npm 包（Koishi 启动器插件按 optionalDependencies 版本对齐消费，该插件在独立仓库）。
-- **测试规模**：后端 408 文件 / 1474 测试函数（server 395、storage 103、agent 36、protocol+builtin 56+，含 5 个 Fuzz 目标与 3 组基准）；前端 11 个 E2E 规格。
+- **测试规模**：后端 204 个测试文件 / 737 个 Test 函数 + 5 个 Fuzz 目标（server 108 文件 395 函数、protocol 32/114、builtin 24/53、storage 24/103、agent 3/36、relay 9/22、config 4/20；另有 3 组基准）；前端 11 个 E2E 规格（无单元测试）。
 - **git 现状**：`deploy` @ `27c8e68`，领先远端 12 个提交——主体为跨协议转换功能九连提交（`d2b0a1b..7ab8276`：策略引擎/续传载体/typed client_output/pipeline+管理 API/存储持久化/预置别名修复/WebUI 管理页/历史过滤测试/实施文档）+ README 横幅、确定性测试与 WebUI hooks 修复。
 - **文档**：40+ 篇中英双语，含四份 dated 审计（缓存保真/命中率/流式/工具）、协议定义参考、迁移与发布清单；`elysia code` 工具让 Agent 读到内嵌的当前源码与文档快照。
 
