@@ -1,3 +1,4 @@
+import { BindingConversionEditor } from './binding-conversion'
 import { useEffect, useState } from 'react'
 import { useSWRConfig } from 'swr'
 import { Button } from '@/components/ui/button'
@@ -28,7 +29,7 @@ export function ModelProtocolBinding({ model, disabled }: { model: Model; disabl
   const save = async () => {
     setBusy(true); setError(''); setNotice('')
     try {
-      const entry: ProtocolBindingEntry = { kind: 'model', sourceId: model.sourceId ?? '', modelId: model.id, unbound: !selected, binding: {} }
+      const entry: ProtocolBindingEntry = { kind: 'model', sourceId: model.sourceId ?? '', modelId: model.id, unbound: !selected, binding: {}, conversion: current?.kind === 'model' ? current.conversion : undefined }
       if (selected) {
         const target = protocols.find((item) => item.id === selected)
         if (!target) throw new Error('请选择当前已启用的协议')
@@ -54,5 +55,6 @@ export function ModelProtocolBinding({ model, disabled }: { model: Model; disabl
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {notice && <p role="status" className="text-xs">{notice}</p>}
     <Button size="sm" disabled={!loaded || disabled || busy} onClick={() => void save()}>{busy ? '验证中…' : '验证并保存模型绑定'}</Button>
+    <BindingConversionEditor sourceId={model.sourceId ?? ''} modelId={model.id} disabled={disabled || busy} />
   </section>
 }

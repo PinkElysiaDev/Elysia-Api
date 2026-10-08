@@ -1,3 +1,4 @@
+import { BindingConversionEditor } from './binding-conversion'
 import { useEffect, useState } from 'react'
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import {
@@ -653,7 +654,8 @@ export function SourceFormDialog({
           )}
         </div>
 
-        <DialogFooter>
+        {source && <BindingConversionEditor sourceId={source.id} disabled={saving} />}
+      <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             取消
           </Button>

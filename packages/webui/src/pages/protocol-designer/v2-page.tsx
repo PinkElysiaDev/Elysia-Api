@@ -56,7 +56,7 @@ export function ProtocolDesignerPage() {
   const presetIDs = new Set(listing?.presets ?? [])
   const customDrafts = (listing?.drafts ?? []).filter((draft) => !presetIDs.has(draft.protocolId))
   return <div className="space-y-6">
-    <PageHeader title="协议设计器" actions={!selection && <><Button variant="ghost" onClick={() => navigate('/protocols/history')}>协议历史</Button><Button onClick={() => navigate('/agent?mode=create')}>Agent 编写</Button><Button variant="primary" onClick={() => setSelection({})}>新建协议</Button></>} />
+    <PageHeader title="协议设计器" actions={!selection && <><Button variant="ghost" onClick={() => navigate('/protocols/conversions')}>转换行为</Button><Button variant="ghost" onClick={() => navigate('/protocols/history')}>协议历史</Button><Button onClick={() => navigate('/agent?mode=create')}>Agent 编写</Button><Button variant="primary" onClick={() => setSelection({})}>新建协议</Button></>} />
     {archiveID && <ProtocolArchiveDialog id={archiveID} onClose={() => setArchiveID('')} onArchived={() => refresh(archiveID)} />}
     {error && <p role="alert" className="text-destructive">{error}</p>}
     {!schema || !listing ? <p role="status">正在读取协议引擎契约…</p> : selection ? <ProtocolV2Editor schema={schema} draft={selection.draft} initialSource={selection.source} activeHash={listing.active.find((entry) => entry.protocolId === selection.draft?.protocolId)?.revisionHash ?? ''} onSaved={refresh} onClose={() => setSelection(undefined)} /> : <>
