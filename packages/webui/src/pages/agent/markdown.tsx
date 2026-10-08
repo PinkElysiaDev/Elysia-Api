@@ -12,16 +12,18 @@ import { parseChartSpec } from "@/lib/agent/chart";
 function MarkdownCode({ className, children, node: _node, ...props }: ComponentProps<"code"> & ExtraProps) {
   const raw = String(children ?? "");
   const language = /language-([A-Za-z0-9_-]+)/.exec(className ?? "")?.[1];
-  const spec = useMemo(() => language === "chart" ? parseChartSpec(raw) : null, [language, raw]);
+  // 两个 useMemo 都须在任何条件返回之前:流式文本会让同一代码块实例在
+  // chart 围栏与普通围栏之间切换,提前返回会改变 hook 数。
+  const spec = useMemo(() => (language === "chart" ? parseChartSpec(raw) : null), [language, raw]);
+  const html = useMemo(
+    () => (language === "json" || language === "" ? colorize(raw) : highlightCode(raw, language ?? "")),
+    [language, raw],
+  );
   if (spec) return <ChartBlock spec={spec} />;
   if (/language-/.test(className ?? "")) {
     // JSON 走既有 colorize（观感不变），其余语言用 Prism token（配色见
     // index.css 的 .agent-markdown .token 规则）；块级 code 自带完整容器，
     // 外层 pre 由 pre 覆写透传。
-    const html = useMemo(
-      () => (language === "json" || language === "" ? colorize(raw) : highlightCode(raw, language ?? "")),
-      [language, raw],
-    );
     return (
       <div className="overflow-hidden rounded-[7px] border border-border bg-code">
         <div className="flex items-center justify-between border-b border-border/60 pl-3 pr-1">
@@ -61,13 +63,6 @@ const markdownComponents: Components = {
   ),
 };
 const remarkPlugins = [remarkGfm, remarkBreaks];
-
-/** 流式渲染前补齐未配对围栏：流到一半的 ``` 块按 micromark 语义会吞掉后续
- * 一切内容直到 EOF，补一个闭合围栏让未完代码块先以代码块形态呈现。 */
-export function closeUnbalancedFences(text: string): string {
-  const fences = text.match(/^[ \t]*(?:```|~~~)/gm) ?? [];
-  return fences.length % 2 === 1 ? text + "\n```" : text;
-}
 
 /** Markdown 渲染：GFM + 单换行成行（与用户侧 pre-wrap 对齐）、ChatGPT 式代码
  * 块头栏（语言 + 复制）、多语言语法高亮，chart 围栏渲染为图表。 */

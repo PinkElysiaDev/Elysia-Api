@@ -52,6 +52,19 @@ export function ContextPanel({
     if (!compact) closeRef.current?.focus({ preventScroll: true });
   }, [compact]);
 
+  // 展开/收拢过渡:挂载后下一帧从 0 宽/透明过渡到目标宽(入场动画);此后
+  // 随 open 受控——父级关闭时保持挂载传 false,由宽屏分支的宽度+淡出收拢,
+  // 过渡结束后父级再卸载(父级计时 320ms = 300ms 过渡 + 余量)。这组 hooks
+  // 必须无条件调用:窄屏抽屉分支在此之后提前返回,断点切换会改变 hook 数。
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setExpanded(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  useEffect(() => {
+    setExpanded(open);
+  }, [open]);
+
   const title = activePanel === "plan" ? "任务方案" : "协议草稿";
   const content = (
     <>
@@ -124,17 +137,6 @@ export function ContextPanel({
     );
   }
 
-  // 展开/收拢过渡:挂载后下一帧从 0 宽/透明过渡到目标宽(入场动画);此后
-  // 随 open 受控——父级关闭时保持挂载传 false,由这里的宽度+淡出收拢,
-  // 过渡结束后父级再卸载(父级计时 320ms = 300ms 过渡 + 余量)。
-  const [expanded, setExpanded] = useState(false);
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setExpanded(true));
-    return () => cancelAnimationFrame(id);
-  }, []);
-  useEffect(() => {
-    setExpanded(open);
-  }, [open]);
   return (
     <aside
       id="agent-context-panel"
