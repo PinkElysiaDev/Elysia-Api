@@ -36,6 +36,7 @@ test.beforeEach(async ({ page }) => {
     const url = new URL(route.request().url())
     let data: unknown = { items: [], total: 0 }
     if (url.pathname.endsWith('/seq')) data = { seq: 1 }
+    else if (url.pathname.endsWith('/protocols/enabled')) data = { items: [{ id: 'team-relay', name: 'Team Gateway' }] }
     else if (url.pathname.endsWith('/model-sources')) data = { items: [{ id: 'deepseek', name: 'DeepSeek', enabled: true }] }
     else if (url.pathname.endsWith('/usage/logs')) {
       const keys = url.searchParams.getAll('keyName')
@@ -66,7 +67,7 @@ test('request model and route stay compact and missing models remain visible', a
   const sheet = page.getByRole('dialog', { name: '调用详情' })
   await expect(sheet.getByText('调用失败（404）', { exact: false })).toBeVisible()
   await expect(sheet.getByText('gpt-6-luna', { exact: true })).toBeVisible()
-  await expect(sheet.getByText('Responses API', { exact: true })).toHaveCount(1)
+  await expect(sheet.getByText('Openai Responses', { exact: true })).toHaveCount(1)
   await expect(sheet.getByText('未转发', { exact: true })).toBeVisible()
   await expect(sheet.getByText('未记录正文', { exact: true })).toHaveCount(4)
   await page.setViewportSize({ width: 375, height: 812 })
@@ -77,9 +78,9 @@ test('protocol routes stay consistent and status codes stay compact', async ({ p
   for (const id of ['same', 'mapped', 'cancelled', 'gemini']) {
     await page.getByRole('button', { name: `查看请求 ${id} 详情`, exact: true }).click()
     const sheet = page.getByRole('dialog', { name: '调用详情' })
-    await expect(sheet.getByText('Chat Completions API', { exact: true })).toHaveCount(1)
-    await expect(sheet.getByText('Responses API', { exact: true })).toHaveCount(id === 'mapped' ? 1 : 0)
-    await expect(sheet.getByText('Gemini API', { exact: true })).toHaveCount(id === 'gemini' ? 1 : 0)
+    await expect(sheet.getByText('Openai Chat Completions', { exact: true })).toHaveCount(1)
+    await expect(sheet.getByText('Openai Responses', { exact: true })).toHaveCount(id === 'mapped' ? 1 : 0)
+    await expect(sheet.getByText('Google Generate-content', { exact: true })).toHaveCount(id === 'gemini' ? 1 : 0)
     if (id === 'gemini') {
       const colors = await sheet.locator('section').filter({ hasText: '协议链路' }).locator('span.rounded-full').evaluateAll((pills) => pills.map((pill) => getComputedStyle(pill).borderColor))
       expect(new Set(colors).size).toBe(1)
@@ -92,13 +93,33 @@ test('protocol routes stay consistent and status codes stay compact', async ({ p
   await expect(page.getByText('499', { exact: true })).toBeVisible()
 })
 
+test('protocol routes preserve raw IDs and existing alias labels', async ({ page }) => {
+  for (const [sourceFormat, targetFormat, labels] of [
+    ['openai-chat-completions', 'google-generate-content', ['openai-chat-completions', 'google-generate-content']],
+    ['openai-chat-completions', 'custom:openai-chat-completions', ['openai-chat-completions', 'Openai Chat Completions']],
+    ['anthropic-messages', 'custom:gemini-api', ['anthropic-messages', 'Google Generate-content']],
+    ['openai-responses', 'team-relay', ['Openai Responses', 'team-relay']],
+    ['custom:team-relay', 'team-relay', ['Team Gateway', 'team-relay']],
+    ['unknown-protocol', 'unknown-target', ['unknown-protocol', 'unknown-target']],
+  ] as const) {
+    await page.route('**/api/admin/usage/logs/gemini', (route) => route.fulfill({ json: { ok: true, data: {
+      ...details[5], sourceFormat, targetFormat,
+    } } }))
+    await page.getByRole('button', { name: '查看请求 gemini 详情', exact: true }).click()
+    const sheet = page.getByRole('dialog', { name: '调用详情' })
+    const chain = sheet.locator('section').filter({ hasText: '协议链路' })
+    await expect(chain.locator('span.rounded-full')).toHaveText([...labels])
+    await sheet.getByRole('button', { name: '关闭', exact: true }).last().click()
+  }
+})
+
 test('assistant has four labelled bodies, exports metadata, and uses the new filter name', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1100 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.getByRole('button', { name: '查看请求 agent 详情', exact: true }).click()
   const sheet = page.getByRole('dialog', { name: '调用详情' })
   await expect(sheet.getByText('内部调用', { exact: true })).toBeVisible()
-  await expect(sheet.getByText('Chat Completions API', { exact: true })).toHaveCount(1)
+  await expect(sheet.getByText('Openai Chat Completions', { exact: true })).toHaveCount(1)
   for (const title of ['① 助手内部请求', '② 后端转发', '③ 上游回传', '④ 返回助手引擎']) {
     await expect(sheet.getByRole('button', { name: new RegExp(title) })).toBeEnabled()
     await expect(sheet.getByRole('button', { name: new RegExp(title) })).toHaveAttribute('aria-expanded', 'false')
@@ -139,7 +160,7 @@ for (const viewport of [{ width: 1440, height: 800 }, { width: 1440, height: 500
     const navScroll = await nav.evaluate((el) => { el.scrollTop = el.scrollHeight; return el.scrollTop })
     await row.click()
     const sheet = page.getByRole('dialog', { name: '调用详情' })
-    await expect(sheet.getByText('Gemini API', { exact: true })).toBeVisible()
+    await expect(sheet.getByText('Google Generate-content', { exact: true })).toBeVisible()
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scrollY)
     await expect.poll(() => sidebar.boundingBox()).toEqual(sidebarBox)
     await expect.poll(() => nav.evaluate((el) => el.scrollTop)).toBe(navScroll)
@@ -179,13 +200,13 @@ test('large bodies render only when expanded and preserve JSON and SSE contents'
   await page.getByRole('button', { name: '查看请求 agent 详情', exact: true }).click()
   const sheet = page.getByRole('dialog', { name: '调用详情' })
   await expect(sheet.locator('#chain-trigger-downstream')).toBeVisible()
-  await expect(sheet.locator('pre')).toHaveCount(0)
+  await expect(sheet.locator('[id^="chain-body-"] pre')).toHaveCount(0)
   await sheet.locator('#chain-trigger-incoming').click()
-  await expect(sheet.locator('pre')).toHaveCount(1)
+  await expect(sheet.locator('[id^="chain-body-"] pre')).toHaveCount(1)
   expect(JSON.parse((await sheet.locator('#chain-body-incoming pre').textContent())!)).toEqual(request)
   await expect(sheet.locator('#chain-body-incoming script')).toHaveCount(0)
   await sheet.locator('#chain-trigger-provider').click()
-  await expect(sheet.locator('pre')).toHaveCount(2)
+  await expect(sheet.locator('[id^="chain-body-"] pre')).toHaveCount(2)
   await expect(sheet.locator('#chain-body-provider pre')).toContainText('message 5999 <script>sample</script>')
   await expect(sheet.locator('#chain-body-provider pre')).toContainText('[DONE]')
   await sheet.locator('#chain-trigger-incoming').click()
