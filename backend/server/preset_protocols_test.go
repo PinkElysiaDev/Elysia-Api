@@ -144,7 +144,7 @@ func TestPresetOpenAIChatEndToEnd(t *testing.T) {
 	defer upstream.Close()
 
 	s := newTestServer(t, presetGroup(t, "custom:openai-chat-completions", upstream.URL+"/v1"))
-	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"system","content":"be brief"},{"role":"user","content":"weather in sh?"}],"tools":[{"type":"function","function":{"name":"get_weather","parameters":{"type":"object"}}}]}`)
+	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"system","content":"be brief"},{"role":"user","content":"weather in sh?"}],"tools":[{"type":"function","function":{"name":"get_weather","parameters":{"type":"object"}}}]}`)
 	s.chatCompletions(c)
 
 	if rec.Code != http.StatusOK {
@@ -188,7 +188,7 @@ func TestPresetAnthropicMessagesEndToEnd(t *testing.T) {
 	defer upstream.Close()
 
 	s := newTestServer(t, presetGroup(t, "custom:anthropic-messages", upstream.URL))
-	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"weather?"}]}`)
+	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"weather?"}]}`)
 	s.chatCompletions(c)
 
 	if rec.Code != http.StatusOK {
@@ -225,7 +225,7 @@ func TestPresetGeminiGenerateEndToEnd(t *testing.T) {
 			defer upstream.Close()
 
 			s := newTestServer(t, presetGroup(t, "custom:google-generate-content", upstream.URL))
-			c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"weather?"}]}`)
+			c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"weather?"}]}`)
 			if isNative {
 				c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/grp:streamGenerateContent", strings.NewReader(`{"contents":[{"role":"user","parts":[{"text":"weather?"}]}]}`))
 			}
@@ -240,11 +240,16 @@ func TestPresetGeminiGenerateEndToEnd(t *testing.T) {
 			body := rec.Body.String()
 			logs := latestUsageRecords(t, s)
 			if !isNative {
-				// Gemini JSON results and Chat text results need an explicit mapping.
-				// The full tool lifecycle has no passing profile; do not fabricate IDs
-				// or serialize results implicitly when a tool arrives late in the stream.
-				if !strings.Contains(body, `"type":"api_error"`) || !strings.Contains(body, "upstream_contract_violation") || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "protocol_stream_error" || strings.Contains(body, "[DONE]") || len(logs) != 1 || logs[0].StatusCode != http.StatusBadGateway {
-					t.Fatal("unsupported lifecycle reported as success", logs, body)
+				// Pair evidence does not narrow the original upstream contract.
+				// A legitimate function call is rendered even when the narrower
+				// request profile does not promise arbitrary tool-result inputs.
+				for _, want := range []string{`"reasoning_content":"pondering"`, `"content":"sunny"`, `"name":"get_weather"`, `"tool_calls"`, `[DONE]`} {
+					if !strings.Contains(body, want) {
+						t.Fatal("converted Gemini stream lost", want, body)
+					}
+				}
+				if rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" || len(logs) != 1 || logs[0].StatusCode != http.StatusOK {
+					t.Fatal(logs, body)
 				}
 				return
 			}
@@ -279,7 +284,7 @@ func TestPresetOpenAIResponsesEndToEnd(t *testing.T) {
 	defer upstream.Close()
 
 	s := newTestServer(t, presetGroup(t, "custom:openai-responses", upstream.URL))
-	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"weather?"}]}`)
+	c, rec := chatRequestContext(`{"model":"grp","max_tokens":64,"stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"weather?"}]}`)
 	s.chatCompletions(c)
 
 	if rec.Code != http.StatusOK {
@@ -303,6 +308,32 @@ func TestPresetOpenAIResponsesEndToEnd(t *testing.T) {
 }
 
 // 预置改名迁移：旧 ID 行改名 + custom:<旧> 平台引用重写；新旧并存跳过；幂等。
+func TestCurrentPresetRestartPreservesConversionEvidence(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	activateDiscoveryPresets(t, s)
+	service, err := s.protocolService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := s.store.ProtocolUpgradeBaseline(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for restart := 0; restart < 10; restart++ {
+		s.migratePresetProtocolRenames()
+		if err := s.refreshProtocolRuntime(t.Context(), service); err != nil {
+			t.Fatal(err)
+		}
+		if err := service.Reload(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		after, err := s.store.ProtocolUpgradeBaseline(t.Context())
+		if err != nil || before != after {
+			t.Fatalf("restart %d rewrote current protocol revisions, activations or evidence: %v", restart, err)
+		}
+	}
+}
+
 func TestMigratePresetProtocolRenames(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
 	ctx := t.Context()
@@ -355,8 +386,8 @@ func TestMigratePresetProtocolRenames(t *testing.T) {
 		}
 	}
 
-	// 冲突：用户新建了 responses-api（gen2 中性名），gen1 旧 openai-responses
-	// 行并存 → 链上两对互相冲突，均跳过、原样保留。
+	// 冲突：用户新建了 responses-api（gen2 中性名），最终 ID
+	// openai-responses 行并存，保留双方，不能覆盖用户定义。
 	seedLegacy("openai-responses")
 	seedLegacy("responses-api")
 	s.migratePresetProtocolRenames()

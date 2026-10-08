@@ -203,13 +203,12 @@ func matchesAnyPresetHash(stored string, legacies []string) bool {
 	return false
 }
 
-// presetProtocolRenames 是预置协议去厂商化的历史 ID 迁移表；新增预置改名时
-// 在此登记一对即可（幂等）。
+// Historical aliases resolve directly to the current identity. Current preset
+// IDs must never appear as sources: cycling through an older name destroys
+// revision evidence and forces a refresh on every otherwise unchanged restart.
 var presetProtocolRenames = []storage.ProtocolRenamePair{
-	{OldID: "openai-chat", NewID: "chat-completions-api"},
-	{OldID: "openai-responses", NewID: "responses-api"},
-	{OldID: "anthropic-messages", NewID: "anthropic-api"},
-	{OldID: "gemini-generate", NewID: "gemini-api"},
+	{OldID: "openai-chat", NewID: "openai-chat-completions"},
+	{OldID: "gemini-generate", NewID: "google-generate-content"},
 	{OldID: "chat-completions-api", NewID: "openai-chat-completions"},
 	{OldID: "responses-api", NewID: "openai-responses"},
 	{OldID: "anthropic-api", NewID: "anthropic-messages"},
