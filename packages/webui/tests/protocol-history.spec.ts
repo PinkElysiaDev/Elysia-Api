@@ -37,7 +37,7 @@ test('history filters, restores a new ID and requires irreversible-delete confir
   })
   await page.goto('/#/protocols/history')
   await expect(page.getByRole('button', { name: '查看版本' })).toHaveCount(2)
-  await page.getByLabel('历史类型').selectOption('preset_replaced')
+  await page.getByRole('group', { name: '历史类型' }).getByRole('button', { name: '预置旧版本', exact: true }).click()
   await expect(page.getByRole('button', { name: '查看版本' })).toHaveCount(1)
   await page.getByRole('button', { name: '查看版本' }).click()
   await expect(page.getByRole('region', { name: '历史版本详情' })).toContainText('恢复时会重新验证')
