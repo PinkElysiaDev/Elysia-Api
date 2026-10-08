@@ -15,6 +15,22 @@ type ResponseCollector struct {
 	limit    int
 }
 
+// CompletedNode returns an isolated snapshot only at an acknowledged item end.
+func (collector *ResponseCollector) CompletedNode(event Event) (Node, int, bool) {
+	if event.Type != ItemFinished {
+		return Node{}, 0, false
+	}
+	key, err := collector.replay.itemKey(event)
+	if err != nil {
+		return Node{}, 0, false
+	}
+	index, ok := collector.items[key]
+	if !ok {
+		return Node{}, 0, false
+	}
+	return cloneNodes([]Node{collector.response.Content[index]})[0], index, true
+}
+
 // NewResponseCollector uses the same lifecycle validator as live forwarding.
 func NewResponseCollector(target Target, limits Limits) (*ResponseCollector, error) {
 	replay, err := NewEventReplay(target, limits)

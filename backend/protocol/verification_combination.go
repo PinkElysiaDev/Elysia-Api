@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"bytes"
 	"context"
 	"slices"
 )
@@ -8,16 +9,21 @@ import (
 // CombinationReport binds offline conversion evidence to both immutable
 // revisions. It must be recalculated when either endpoint changes.
 type CombinationReport struct {
-	SourceHash      string              `json:"sourceHash"`
-	TargetHash      string              `json:"targetHash"`
-	CompilerVersion string              `json:"compilerVersion"`
-	Kind            VerificationKind    `json:"kind"`
-	Passed          bool                `json:"passed"`
-	Checks          []VerificationCheck `json:"checks"`
-	Issues          []ConversionIssue   `json:"issues"`
-	Capabilities    CapabilitySet       `json:"capabilities,omitempty"`
-	BindingHash     string              `json:"bindingHash,omitempty"`
-	IsRestricted    bool                `json:"restricted,omitempty"`
+	SourceSamplesHash string              `json:"sourceSamplesHash"`
+	TargetSamplesHash string              `json:"targetSamplesHash"`
+	ContextHash       string              `json:"contextHash,omitempty"`
+	Fidelity          string              `json:"fidelity"`
+	PolicyHash        string              `json:"policyHash,omitempty"`
+	SourceHash        string              `json:"sourceHash"`
+	TargetHash        string              `json:"targetHash"`
+	CompilerVersion   string              `json:"compilerVersion"`
+	Kind              VerificationKind    `json:"kind"`
+	Passed            bool                `json:"passed"`
+	Checks            []VerificationCheck `json:"checks"`
+	Issues            []ConversionIssue   `json:"issues"`
+	Capabilities      CapabilitySet       `json:"capabilities,omitempty"`
+	BindingHash       string              `json:"bindingHash,omitempty"`
+	IsRestricted      bool                `json:"restricted,omitempty"`
 }
 
 // VerifyCombination replays ingress request and upstream response fixtures
@@ -31,12 +37,25 @@ func VerifyCombination(ctx context.Context, ingress, upstream *Compiled) Combina
 // VerifyBindingCombination verifies the explicitly restricted model contract.
 // Samples outside that contract are reported as skipped; missing evidence for
 // any promised capability still blocks the binding.
-func VerifyBindingCombination(ctx context.Context, ingress, upstream *Compiled, capabilities CapabilitySet) CombinationReport {
+func VerifyBindingCombination(ctx context.Context, ingress, upstream *Compiled, capabilities CapabilitySet, policies ...*CompiledConversion) CombinationReport {
+	if len(policies) > 0 {
+		ctx = context.WithValue(ctx, conversionVerificationKey{}, policies[0])
+	}
 	return verifyCombination(ctx, ingress, upstream, capabilities)
 }
 
 func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabilities CapabilitySet) CombinationReport {
-	report := CombinationReport{SourceHash: ingress.hash, TargetHash: upstream.hash, CompilerVersion: CompilerVersion, Kind: OfflineVerification, Checks: []VerificationCheck{}, Issues: []ConversionIssue{}}
+	report := CombinationReport{Fidelity: "preserved", SourceSamplesHash: ingress.SamplesHash(), TargetSamplesHash: upstream.SamplesHash(), SourceHash: ingress.hash, TargetHash: upstream.hash, CompilerVersion: CompilerVersion, Kind: OfflineVerification, Checks: []VerificationCheck{}, Issues: []ConversionIssue{}}
+	conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion)
+	if conversion == nil {
+		conversion, _ = ResolveConversion(DefaultConversionPolicy(ingress.Identity(), upstream.Identity()))
+	}
+	ctx = context.WithValue(ctx, conversionVerificationKey{}, conversion)
+	sink := &DiagnosticSink{}
+	ctx = context.WithValue(ctx, conversionVerificationDiagnostics{}, sink)
+	report.ContextHash = conversion.ContextHash()
+
+	report.PolicyHash = ConversionHash(conversion)
 	if capabilities != nil {
 		report.BindingHash = CapabilityContractHash(capabilities)
 		report.Capabilities = CapabilitySet{}
@@ -166,7 +185,13 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 			report.Issues = append(report.Issues, verificationIssue(upstream, "", "/binding/capabilities/"+string(capability), IncompleteCoverage, "model binding has no successful paired fixture for this capability", ""))
 		}
 	}
+	report.Issues = append(report.Issues, sink.Issues()...)
 	report.Passed = IssuesError(report.Issues) == nil
+	if !report.Passed {
+		report.Fidelity = "rejected"
+	} else if len(sink.Issues()) > 0 {
+		report.Fidelity = "lossy_compatible"
+	}
 	return report
 }
 
@@ -195,9 +220,53 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 		return err
 	}
 	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	// This suite verifies transport usage independently of a particular client's
+	// presentation preference.
+	yes := true
+	options.ClientOutput = &ClientOutput{IncludeUsage: &yes}
+	conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion)
+	projected := []Event{}
+	route := ConversionContext{Source: upstream.Identity(), Target: ingress.Identity(), Transport: SSE}
+	if conversion != nil {
+		route = conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), SSE)
+	}
+	eventState := NewConversionEventState(conversion, route)
+	convertedFrames := []*EventFrame{}
+	for _, frame := range result.frames {
+		original, _ := EncodeValue(frame.Events)
+		events := []Event{}
+		for _, event := range frame.Events {
+			queued, err := eventState.Push(event)
+			if err != nil {
+				return err
+			}
+			for _, next := range queued {
+				if conversion != nil {
+					next, err = conversion.Event(ctx, next, route, verificationDiagnostics(ctx))
+					if err != nil {
+						return err
+					}
+				}
+				events = append(events, next)
+				projected = append(projected, next)
+			}
+		}
+		if len(frame.Events) > 0 && len(events) == 0 {
+			continue
+		}
+		updated, _ := EncodeValue(events)
+		if eventState.Buffered || !bytes.Equal(original.Bytes(), updated.Bytes()) {
+			frame = &EventFrame{Events: events}
+		}
+		convertedFrames = append(convertedFrames, frame)
+	}
+	if err := eventState.Finish(); err != nil {
+		return err
+	}
+	result.semantic = projected
 	var frames []Value
 	var decoded []Event
-	for _, frame := range result.frames {
+	for _, frame := range convertedFrames {
 		wire, err := ingress.EncodeFrame(ctx, frame, options)
 		if err != nil {
 			return err
@@ -247,6 +316,14 @@ func verifyRequestCombination(ctx context.Context, ingress, upstream *Compiled, 
 	if err != nil {
 		return err
 	}
+	if conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion); conversion != nil {
+		route := conversion.VerificationRoute(ingress.Identity(), upstream.Identity(), HTTPJSON)
+		route.Scope = options.Scope
+		request, err = conversion.Request(ctx, request, route, verificationDiagnostics(ctx))
+		if err != nil {
+			return err
+		}
+	}
 	wire, err := upstream.EncodeRequest(ctx, request, options)
 	if err != nil {
 		return err
@@ -275,6 +352,12 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 	if err != nil {
 		return err
 	}
+	if conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion); conversion != nil {
+		response, err = conversion.Response(ctx, response, conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), HTTPJSON), verificationDiagnostics(ctx))
+		if err != nil {
+			return err
+		}
+	}
 	wire, err := ingress.EncodeResponse(ctx, response, options)
 	if err != nil {
 		return err
@@ -288,6 +371,8 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 	}
 	return compareRoundTrip(ingress, sample, equivalentResponse(response, ingress.identity.Family), equivalentResponse(decoded, ingress.identity.Family))
 }
+
+type conversionVerificationKey struct{}
 
 func hasHTTPGeneration(compiled *Compiled) bool {
 	for _, operation := range compiled.operations {
@@ -304,4 +389,11 @@ func hasHTTPStream(compiled *Compiled) bool {
 		}
 	}
 	return false
+}
+
+type conversionVerificationDiagnostics struct{}
+
+func verificationDiagnostics(ctx context.Context) *DiagnosticSink {
+	sink, _ := ctx.Value(conversionVerificationDiagnostics{}).(*DiagnosticSink)
+	return sink
 }

@@ -33,7 +33,7 @@ func (compiled *Compiled) finishEvents(ctx context.Context, direction Direction,
 	if !hasFinalizer {
 		return nil, nil
 	}
-	options.identity = compiled.identity
+	options = options.forDefinition(compiled)
 	return finalizer.Finish(ctx, options)
 }
 

@@ -8,28 +8,50 @@ import (
 // PreviewResult exposes the same typed conversion used by verification and
 // forwarding, including provenance and diagnostics for the editor and Agent.
 type PreviewResult struct {
-	Output   Value             `json:"output,omitzero"`
-	Semantic Value             `json:"semantic,omitzero"`
-	Issues   []ConversionIssue `json:"issues"`
+	Effective *CompiledConversion `json:"effective,omitempty"`
+	Output    Value               `json:"output,omitzero"`
+	Semantic  Value               `json:"semantic,omitzero"`
+	Issues    []ConversionIssue   `json:"issues"`
 }
 
 // PreviewInput selects a conversion or a complete declared workflow fixture.
 // Both editor and Agent send this contract to the same authoring service.
 type PreviewInput struct {
-	Definition Value     `json:"definition"`
-	Direction  Direction `json:"direction,omitempty"`
-	Input      Value     `json:"input,omitzero"`
-	Sequence   bool      `json:"sequence,omitempty"`
-	Mode       string    `json:"mode,omitempty"`
-	Sample     string    `json:"sample,omitempty"`
-	Operation  string    `json:"operation,omitempty"`
-	Kind       string    `json:"kind,omitempty"`
-	Purpose    string    `json:"purpose,omitempty"`
+	ConversionPolicy  *ConversionPolicy `json:"conversionPolicy,omitempty"`
+	ConversionContext ConversionContext `json:"conversionContext,omitempty"`
+	ConversionPhase   ConversionPhase   `json:"conversionPhase,omitempty"`
+	Definition        Value             `json:"definition"`
+	Direction         Direction         `json:"direction,omitempty"`
+	Input             Value             `json:"input,omitzero"`
+	Sequence          bool              `json:"sequence,omitempty"`
+	Mode              string            `json:"mode,omitempty"`
+	Sample            string            `json:"sample,omitempty"`
+	Operation         string            `json:"operation,omitempty"`
+	Kind              string            `json:"kind,omitempty"`
+	Purpose           string            `json:"purpose,omitempty"`
 }
 
 // PreviewWorkflow executes request/response/event mappings, a mixed session
 // trace, or one task mapping without saving or enabling a protocol revision.
 func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput) PreviewResult {
+	if input.Mode == "conversion" {
+		sink := &DiagnosticSink{}
+		layers := []ConversionPolicy{DefaultConversionPolicy(input.ConversionContext.Source, input.ConversionContext.Target)}
+		if input.ConversionPolicy != nil {
+			layers = append(layers, *input.ConversionPolicy)
+		}
+		conversion, err := ResolveConversion(layers...)
+		var output Value
+		if err == nil {
+			output, err = conversion.ApplyValue(ctx, input.ConversionPhase, input.Input, input.ConversionContext, sink)
+		}
+		issues := sink.Issues()
+		if err != nil {
+			issues = append(issues, ConversionIssue{Code: ConversionRejected, Severity: SeverityError, Stage: "preview", Path: "/conversionPolicy", Reason: err.Error()})
+		}
+		return PreviewResult{Output: output, Issues: issues, Effective: conversion}
+	}
+
 	if input.Mode == "" || input.Mode == "mapping" {
 		return service.Preview(ctx, input.Definition.Bytes(), input.Direction, input.Input, input.Sequence, EvaluationContext{})
 	}

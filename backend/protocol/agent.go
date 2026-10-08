@@ -91,6 +91,7 @@ func (compiled *Compiled) BuildAgentRequest(ctx context.Context, request Request
 		return nil, err
 	}
 	request.Parameters = parameters
+	request.ClientOutput = &ClientOutput{CollectUsage: preferences.Stream}
 	resultKind := compiled.Definition().Agent.ToolResults
 	var prepare func([]Node) ([]Node, error)
 	prepare = func(nodes []Node) ([]Node, error) {

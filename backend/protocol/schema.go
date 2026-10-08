@@ -8,6 +8,7 @@ import (
 // SchemaCatalog is the shared machine-readable contract for editor, Agent and
 // API clients. The JSON schema is generated from the actual strict Go model.
 type SchemaCatalog struct {
+	Conversion      map[string]any  `json:"conversion"`
 	SchemaVersion   int             `json:"schemaVersion"`
 	CompilerVersion string          `json:"compilerVersion"`
 	Directions      []Direction     `json:"directions"`
@@ -53,7 +54,10 @@ func DescribeSchema() SchemaCatalog {
 	binding := schemaForType(reflect.TypeFor[Binding](), bindingDefinitions)
 	binding["$defs"] = bindingDefinitions
 	semantic := map[string]any{"$schema": "https://json-schema.org/draft/2020-12/schema", "request": schemaForType(reflect.TypeFor[Request](), semanticDefinitions), "response": schemaForType(reflect.TypeFor[Response](), semanticDefinitions), "event": schemaForType(reflect.TypeFor[Event](), semanticDefinitions), "task": schemaForType(reflect.TypeFor[Task](), semanticDefinitions), "models": schemaForType(reflect.TypeFor[ModelPage](), semanticDefinitions), "agent": schemaForType(reflect.TypeFor[AgentPreferences](), semanticDefinitions), "$defs": semanticDefinitions}
-	return SchemaCatalog{SchemaVersion: DefinitionSchemaVersion, CompilerVersion: CompilerVersion, Directions: DirectionCatalog(), Transports: TransportCatalog(), OperationKinds: OperationKindCatalog(), Capabilities: CapabilityCatalog(), Events: EventCatalog(), Diagnostics: DiagnosticCatalog(), Operations: ExpressionCatalog(), Definition: root, Semantic: semantic, Binding: binding, Limits: DefaultLimits()}
+	conversionDefs := make(map[string]any)
+	conversionSchema := schemaForType(reflect.TypeFor[ConversionPolicy](), conversionDefs)
+	conversionSchema["$defs"] = conversionDefs
+	return SchemaCatalog{Conversion: map[string]any{"policy": conversionSchema, "phases": []ConversionPhase{ConversionIngress, ConversionRequest, ConversionResponse, ConversionEvent, ConversionWire}, "actions": []string{"set", "remove", "transform", "warn", "reject", "signatures", "stream_options", "tool_result_object", "buffer_node", "provider_signature"}}, SchemaVersion: DefinitionSchemaVersion, CompilerVersion: CompilerVersion, Directions: DirectionCatalog(), Transports: TransportCatalog(), OperationKinds: OperationKindCatalog(), Capabilities: CapabilityCatalog(), Events: EventCatalog(), Diagnostics: DiagnosticCatalog(), Operations: ExpressionCatalog(), Definition: root, Semantic: semantic, Binding: binding, Limits: DefaultLimits()}
 }
 
 func schemaForType(kind reflect.Type, definitions map[string]any) map[string]any {

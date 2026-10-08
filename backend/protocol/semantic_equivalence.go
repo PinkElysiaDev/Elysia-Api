@@ -103,6 +103,8 @@ func comparableWireUsage(usage *Usage, omitted func(string) bool) *Usage {
 func equivalentRequest(request *Request) *Request {
 	copy := *request
 	copy.Content = comparableConversation(request.Content)
+	// Client delivery preferences and upstream accounting controls are hop-local.
+	copy.ClientOutput = nil
 	return &copy
 }
 

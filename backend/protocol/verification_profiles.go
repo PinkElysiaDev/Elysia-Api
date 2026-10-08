@@ -12,11 +12,13 @@ func CapabilityContractHash(capabilities CapabilitySet) string {
 
 // VerifyBindingProfiles retains the complete contract's diagnostics and derives
 // independently verified subsets for ordinary HTTP generation. It never changes
-// the definition, fixtures or input. Runtime must check both request and response
-// against one entire passing profile; evidence from separate profiles cannot be
-// combined. Stateful sessions and jobs require their complete flow contract.
-func VerifyBindingProfiles(ctx context.Context, ingress, upstream *Compiled, capabilities CapabilitySet) []CombinationReport {
-	full := VerifyBindingCombination(ctx, ingress, upstream, capabilities)
+// the definition, fixtures or input. Runtime selects one entire passing request
+// profile; evidence from separate profiles cannot be combined. The original
+// upstream response is checked against the full model contract before conversion,
+// then against the target's expression capabilities. Stateful sessions and jobs
+// require their complete flow contract.
+func VerifyBindingProfiles(ctx context.Context, ingress, upstream *Compiled, capabilities CapabilitySet, policies ...*CompiledConversion) []CombinationReport {
+	full := VerifyBindingCombination(ctx, ingress, upstream, capabilities, policies...)
 	reports := []CombinationReport{full}
 	if full.Passed || !canProfileHTTP(ingress) || !canProfileHTTP(upstream) {
 		return reports
@@ -28,7 +30,7 @@ func VerifyBindingProfiles(ctx context.Context, ingress, upstream *Compiled, cap
 		}
 	}
 	verify := func(contract CapabilitySet) CombinationReport {
-		report := VerifyBindingCombination(ctx, ingress, upstream, contract)
+		report := VerifyBindingCombination(ctx, ingress, upstream, contract, policies...)
 		report.BindingHash, report.IsRestricted = full.BindingHash, true
 		return report
 	}

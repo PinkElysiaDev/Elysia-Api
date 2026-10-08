@@ -52,7 +52,7 @@ func decodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 			if err := checkValueLimits(input, compiled.limits); err != nil {
 				return nil, err
 			}
-			options.identity = compiled.identity
+			options = options.forDefinition(compiled)
 			output, err := decode(module, options)
 			if err != nil {
 				return nil, err
@@ -83,7 +83,7 @@ func encodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 			if err := checkTypedLimits(input, compiled.limits); err != nil {
 				return Value{}, err
 			}
-			options.identity = compiled.identity
+			options = options.forDefinition(compiled)
 			output, err := encode(module, options)
 			if err != nil {
 				return Value{}, err
@@ -112,7 +112,7 @@ func (compiled *Compiled) decodeEventValues(ctx context.Context, direction Direc
 			if err := checkValueLimits(frame, compiled.limits); err != nil {
 				return nil, err
 			}
-			options.identity = compiled.identity
+			options = options.forDefinition(compiled)
 			events, err := module.DecodeEvents(ctx, frame, options)
 			if err != nil {
 				return nil, err

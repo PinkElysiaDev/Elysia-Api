@@ -29,21 +29,28 @@ const (
 	VerificationMismatch      IssueCode = "verification_mismatch"
 	IncompleteCoverage        IssueCode = "incomplete_coverage"
 	UpstreamContractViolation IssueCode = "upstream_contract_violation"
+	ConversionDegraded        IssueCode = "conversion_degraded"
+	ConversionRejected        IssueCode = "conversion_rejected"
+	ContinuationUnavailable   IssueCode = "continuation_unavailable"
 )
 
 // ConversionIssue locates a compatibility failure without capturing request
 // bodies or credentials. Evidence identifies a sample, rule or provider record.
 type ConversionIssue struct {
-	Code       IssueCode  `json:"code"`
-	Severity   Severity   `json:"severity"`
-	Protocol   Identity   `json:"protocol"`
-	Direction  Direction  `json:"direction"`
-	Stage      string     `json:"stage"`
-	Path       string     `json:"path"`
-	Capability Capability `json:"capability,omitempty"`
-	Reason     string     `json:"reason"`
-	Suggestion string     `json:"suggestion"`
-	Evidence   string     `json:"evidence,omitempty"`
+	PolicyRevision string     `json:"policyRevision,omitempty"`
+	Fidelity       string     `json:"fidelity,omitempty"`
+	RuleID         string     `json:"ruleId,omitempty"`
+	PolicyHash     string     `json:"policyHash,omitempty"`
+	Code           IssueCode  `json:"code"`
+	Severity       Severity   `json:"severity"`
+	Protocol       Identity   `json:"protocol"`
+	Direction      Direction  `json:"direction"`
+	Stage          string     `json:"stage"`
+	Path           string     `json:"path"`
+	Capability     Capability `json:"capability,omitempty"`
+	Reason         string     `json:"reason"`
+	Suggestion     string     `json:"suggestion"`
+	Evidence       string     `json:"evidence,omitempty"`
 }
 
 // DiagnosticSink accumulates non-blocking conversion issues for one request.
@@ -60,7 +67,7 @@ func (sink *DiagnosticSink) Add(issue ConversionIssue) {
 		return
 	}
 	for _, existing := range sink.issues {
-		if existing.Code == issue.Code && existing.Path == issue.Path && existing.Stage == issue.Stage {
+		if existing.Code == issue.Code && existing.Path == issue.Path && existing.Stage == issue.Stage && existing.RuleID == issue.RuleID && existing.PolicyHash == issue.PolicyHash && existing.Reason == issue.Reason {
 			return
 		}
 	}

@@ -186,6 +186,15 @@ type Request struct {
 	Cache         []CacheIntent `json:"cache,omitempty"`
 	Resources     []Resource    `json:"resources,omitempty"`
 	Native        *Native       `json:"native,omitempty"`
+	ClientOutput  *ClientOutput `json:"clientOutput,omitempty"`
+}
+
+// ClientOutput describes delivery to the caller, independently of generation.
+// RawStreamOptions retains absent/null and extensions for same-wire replay.
+type ClientOutput struct {
+	CollectUsage     bool  `json:"collectUsage,omitempty"`
+	IncludeUsage     *bool `json:"includeUsage,omitempty"`
+	RawStreamOptions Value `json:"rawStreamOptions,omitzero"`
 }
 
 // CounterOrigin distinguishes observed counts from estimates.

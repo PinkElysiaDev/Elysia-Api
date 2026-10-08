@@ -19,13 +19,15 @@ var definitionIdentifier = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}
 // EvaluationContext contains gateway-owned metadata. Scope is supplied by the
 // selected model/account binding and cannot be changed by a mapping expression.
 type EvaluationContext struct {
-	Scope         Scope
-	Values        Object
-	State         *EvaluationState
+	ClientOutput *ClientOutput
+	Scope        Scope
+	Values       Object
+	State        *EvaluationState
 	// Diagnostics collects non-blocking conversion issues for this request.
 	// It is gateway-owned; mappings can report through it but cannot read it.
 	Diagnostics   *DiagnosticSink
 	identity      Identity
+	requires      []string
 	compoundFrame bool
 	// ResolveRequestScope is supplied by the gateway after model/authorization
 	// lookup. Definitions cannot execute it or replace its returned binding.
@@ -35,6 +37,17 @@ type EvaluationContext struct {
 // Identity returns the immutable definition identity stamped by execution.
 // Callers and mapping expressions cannot impersonate another wire revision.
 func (options EvaluationContext) Identity() Identity { return options.identity }
+
+// DefinitionRequires selects explicitly versioned module semantics. Older
+// definitions retain their authored contract without rewriting their fixtures.
+func (options EvaluationContext) DefinitionRequires(feature string) bool {
+	return slices.Contains(options.requires, feature)
+}
+
+func (options EvaluationContext) forDefinition(compiled *Compiled) EvaluationContext {
+	options.identity, options.requires = compiled.identity, compiled.requires
+	return options
+}
 
 // Module is a registered, thread-safe adapter implementation. Definitions can
 // reference modules but cannot register executable code.
@@ -62,11 +75,14 @@ const (
 var operationMethodWhitelist = []string{http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodPut, http.MethodPatch}
 
 var defaultFeatures = map[string]bool{
-	"mapping.v2":             true,
-	"mapping.event_initial":  true,
-	"transport.http_json":    true,
-	"transport.sse":          true,
-	"transport.ndjson":       true,
+	"conversion.client_output.v1": true,
+	"conversion.policies.v1":      true,
+	"conversion.continuation.v1":  true,
+	"mapping.v2":                  true,
+	"mapping.event_initial":       true,
+	"transport.http_json":         true,
+	"transport.sse":               true,
+	"transport.ndjson":            true,
 }
 
 // NewCompiler validates engine limits and installed module identities. Feature
@@ -109,6 +125,7 @@ type compiledEventRule struct{ when, emit *compiledExpression }
 // request/session, never to this registry object.
 type Compiled struct {
 	identity      Identity
+	requires      []string
 	definition    Value
 	hash          string
 	samplesHash   string
@@ -153,6 +170,7 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 		limits = *definition.Limits
 	}
 	compiled := &Compiled{identity: identity, definition: value, limits: limits, native: definition.Native, capabilities: make(CapabilitySet), mappings: make(map[Direction]compiledMapping), operations: definition.Operations}
+	compiled.requires = slices.Clone(definition.Requires)
 	for capability, supported := range definition.Capabilities {
 		compiled.capabilities[capability] = supported
 	}
@@ -668,7 +686,7 @@ func (compiled *Compiled) Execute(ctx context.Context, direction Direction, inpu
 	var output Value
 	switch {
 	case mapping.module != nil:
-		options.identity = compiled.identity
+		options = options.forDefinition(compiled)
 		instance, resolveErr := options.State.resolve(compiled, direction, mapping.module)
 		if resolveErr != nil {
 			return fail(resolveErr)
