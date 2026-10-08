@@ -184,7 +184,7 @@ func TestRefreshEmptyModelListKeepsExistingModels(t *testing.T) {
 		t.Fatalf("seed models: %v", err)
 	}
 
-	if _, err := s.refreshSourceByValue(ctx, source); err == nil {
+	if _, err := s.refreshSourceByID(ctx, source.ID); err == nil {
 		t.Fatal("refresh with an empty model list must surface an error")
 	}
 	models, err := s.store.ListModels(ctx)

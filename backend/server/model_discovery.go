@@ -59,7 +59,7 @@ func (s *Server) fetchModelsFromSource(ctx context.Context, source storage.Model
 	}
 	models := make([]storage.Model, 0, len(entries))
 	for _, entry := range entries {
-		model := inferredModel(source, entry.ID, entry.Name)
+		model := inferredModel(source, entry.ID, entry.ID)
 		model.MaxTokens = entry.MaxTokens
 		s.enrichModelFromCatalog(&model)
 		models = append(models, model)

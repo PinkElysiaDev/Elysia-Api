@@ -28,12 +28,16 @@ func applyAgentPermittedKey(ctx context.Context, store *storage.Store, model *st
 		}
 		effective := source.EffectiveKeys()
 		if len(effective) == 0 {
+			if len(source.APIKeys) > 0 {
+				return fmt.Errorf("模型源 %q 没有启用的 API key", source.Name)
+			}
+			if source.BaseURL != "" {
+				model.APIKey = ""
+			}
 			return nil
 		}
 		for _, key := range effective {
-			// 权限集存的是拉取到的模型 ID；助手按 Name/ID 双匹配解析模型，
-			// 两个标识任一命中即可。
-			if key.KeyAllowsModel(model.ID) || key.KeyAllowsModel(model.Name) {
+			if key.KeyAllowsModel(model.Identifier()) {
 				model.APIKey = key.Value
 				return nil
 			}

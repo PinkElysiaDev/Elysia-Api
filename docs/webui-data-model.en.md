@@ -65,12 +65,12 @@ interface SourceAPIKey {
   value: string
   note?: string
   disabled?: boolean
-  fetchedModels?: string[]
-  allowedModels?: string[]
+  fetchedModels?: string[] | null
+  allowedModels?: string[] | null
 }
 ```
 
-If `allowedModels` is absent, use the fetched set. If both are absent, access is unrestricted. An explicit empty array disables all models for that key. Do not collapse absent and empty values.
+Automatic sources use only `fetchedModels`; manual sources use only `allowedModels`. Null/absence means unrestricted; an explicit empty array permits no models.
 
 ## Model
 

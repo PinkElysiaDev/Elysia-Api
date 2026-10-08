@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"time"
-
-	"github.com/elysia-api/backend/storage"
 )
 
 const (
@@ -30,19 +28,18 @@ type sourceRefreshState struct {
 	LastKeys       []keyFetchOutcome `json:"lastKeys,omitempty"`
 }
 
-// launchSourceRefresh 为源启动后台拉取任务；已在进行中返回 false（去重）。
-// 任务使用独立 context（页面跳开/断开不中断）+ 总预算，结束后记录状态快照、
-// 写系统日志并失效路由缓存。内存态在 mutex 保护下访问；信号量与映射懒初始化，
-// 兼容直接构造 &Server{} 的测试。
-func (s *Server) launchSourceRefresh(source storage.ModelSource) bool {
+func (s *Server) beginSourceRefresh(sourceID string) bool {
 	s.initLifecycle()
 	s.sourceRefreshMu.Lock()
-	if s.lifecycleCtx.Err() != nil || s.sourceRefreshing[source.ID] {
-		s.sourceRefreshMu.Unlock()
+	defer s.sourceRefreshMu.Unlock()
+	if s.lifecycleCtx.Err() != nil || s.sourceRefreshing[sourceID] {
 		return false
 	}
 	if s.sourceRefreshing == nil {
 		s.sourceRefreshing = make(map[string]bool)
+	}
+	if s.sourceRefreshPending == nil {
+		s.sourceRefreshPending = make(map[string]bool)
 	}
 	if s.sourceLastFetch == nil {
 		s.sourceLastFetch = make(map[string]sourceRefreshState)
@@ -50,86 +47,106 @@ func (s *Server) launchSourceRefresh(source storage.ModelSource) bool {
 	if s.refreshSem == nil {
 		s.refreshSem = make(chan struct{}, sourceRefreshConcurrency)
 	}
-	s.sourceRefreshing[source.ID] = true
+	s.sourceRefreshing[sourceID] = true
 	s.sourceRefreshWG.Add(1)
-	sem := s.refreshSem
-	s.sourceRefreshMu.Unlock()
-
-	go s.runSourceRefresh(source, sem)
 	return true
 }
 
-// startSourceRefreshByID 按源 ID 启动后台拉取。返回 (是否启动, 是否因已在
-// 进行中而未启动, 错误)。
-func (s *Server) startSourceRefreshByID(ctx context.Context, sourceID string) (bool, bool, error) {
-	if s.store == nil {
-		return false, false, fmt.Errorf("sqlite store is unavailable")
+func (s *Server) launchSourceRefresh(sourceID string) bool {
+	if !s.beginSourceRefresh(sourceID) {
+		return false
 	}
-	sources, err := s.store.ListSources(ctx)
+	go s.runSourceRefresh(s.lifecycleCtx, sourceID)
+	return true
+}
+
+// Saves coalesce into one follow-up; ordinary refresh clicks only deduplicate.
+func (s *Server) noteSourceSaved(sourceID string, autoFetch bool) {
+	s.sourceRefreshMu.Lock()
+	defer s.sourceRefreshMu.Unlock()
+	if s.sourceRefreshing[sourceID] {
+		s.sourceRefreshPending[sourceID] = autoFetch
+	}
+}
+
+func (s *Server) startSourceRefreshByID(ctx context.Context, sourceID string) (bool, bool, error) {
+	_, found, err := s.findSourceByID(ctx, sourceID)
 	if err != nil {
 		return false, false, err
 	}
-	for _, source := range sources {
-		if source.ID == sourceID {
-			if s.launchSourceRefresh(source) {
-				return true, false, nil
-			}
-			return false, true, nil
-		}
+	if !found {
+		return false, false, fmt.Errorf("model source %q not found", sourceID)
 	}
-	return false, false, fmt.Errorf("model source %q not found", sourceID)
+	started := s.launchSourceRefresh(sourceID)
+	return started, !started, nil
 }
 
-// runSourceRefresh 执行单个源的后台拉取任务体。
-func (s *Server) runSourceRefresh(source storage.ModelSource, sem chan struct{}) {
+func (s *Server) refreshSourceSync(ctx context.Context, sourceID string) (refreshSummary, error) {
+	if !s.beginSourceRefresh(sourceID) {
+		return refreshSummary{Added: []string{}, Removed: []string{}}, fmt.Errorf("model source %q is already refreshing or server is stopping", sourceID)
+	}
+	return s.runSourceRefresh(ctx, sourceID)
+}
+
+func (s *Server) runSourceRefresh(parent context.Context, sourceID string) (refreshSummary, error) {
 	defer s.sourceRefreshWG.Done()
 	defer func() {
 		s.sourceRefreshMu.Lock()
-		delete(s.sourceRefreshing, source.ID)
-		s.sourceRefreshMu.Unlock()
+		defer s.sourceRefreshMu.Unlock()
+		if s.sourceRefreshPending[sourceID] && s.lifecycleCtx.Err() == nil {
+			// A saved configuration outlives a canceled synchronous caller.
+			s.sourceRefreshWG.Add(1)
+			go s.runSourceRefresh(s.lifecycleCtx, sourceID)
+		} else {
+			delete(s.sourceRefreshing, sourceID)
+			delete(s.sourceRefreshPending, sourceID)
+		}
 	}()
-
-	// 源间并发上限：拿不到槽位就排队等待（任务仍处于 refreshing 状态）。
-	select {
-	case sem <- struct{}{}:
-	case <-s.lifecycleCtx.Done():
-		return
-	}
-	defer func() { <-sem }()
-
-	ctx, cancel := context.WithTimeout(s.lifecycleCtx, sourceRefreshBudget)
+	ctx, cancel := context.WithTimeout(parent, sourceRefreshBudget)
 	defer cancel()
-
-	summary, err := s.refreshSourceByValue(ctx, source)
-
-	state := sourceRefreshState{
-		LastCount:      summary.Count,
-		LastAdded:      len(summary.Added),
-		LastRemoved:    len(summary.Removed),
-		LastKeys:       summary.Keys,
-		LastFinishedAt: time.Now().UTC().Format(time.RFC3339),
+	stop := context.AfterFunc(s.lifecycleCtx, cancel)
+	defer stop()
+	select {
+	case s.refreshSem <- struct{}{}:
+	case <-ctx.Done():
+		return refreshSummary{}, ctx.Err()
 	}
-	if err != nil {
-		state.LastError = err.Error()
-		// 系统日志用独立 ctx：任务最典型的失败就是 10 分钟预算耗尽，那时
-		// ctx 已死，再用它写日志必然 DeadlineExceeded——最有价值的失败
-		// 恰好永远进不了系统日志。本地写库，短超时足矣。
-		logCtx, logCancel := context.WithTimeout(s.lifecycleCtx, 5*time.Second)
-		_ = s.store.InsertSystemLog(logCtx, "warn", "model source refresh failed", map[string]any{
-			"sourceId": source.ID, "sourceName": source.Name, "error": err.Error(),
-		})
+	defer func() { <-s.refreshSem }()
+
+	for {
+		s.sourceRefreshMu.Lock()
+		delete(s.sourceRefreshPending, sourceID)
+		s.sourceRefreshMu.Unlock()
+		summary, err := s.refreshSourceByID(ctx, sourceID)
+		if err == nil {
+			s.invalidateRouteCache()
+		}
+		s.sourceRefreshMu.Lock()
+		if s.sourceRefreshPending[sourceID] && ctx.Err() == nil {
+			s.sourceRefreshMu.Unlock()
+			continue
+		}
+		logCtx, logCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_, found, lookupErr := s.findSourceByID(logCtx, sourceID)
+		if found && lookupErr == nil {
+			state := sourceRefreshState{
+				LastCount: summary.Count, LastAdded: len(summary.Added), LastRemoved: len(summary.Removed),
+				LastKeys: summary.Keys, LastFinishedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			}
+			level, message := "info", "model source refreshed"
+			if err != nil {
+				state.LastError = err.Error()
+				level, message = "warn", "model source refresh failed"
+			}
+			s.sourceLastFetch[sourceID] = state
+			_ = s.store.InsertSystemLog(logCtx, level, message, map[string]any{
+				"sourceId": sourceID, "count": summary.Count, "error": state.LastError,
+			})
+		}
 		logCancel()
-	} else {
-		_ = s.store.InsertSystemLog(ctx, "info", "model source refreshed", map[string]any{
-			"sourceId": source.ID, "sourceName": source.Name, "count": summary.Count,
-		})
+		s.sourceRefreshMu.Unlock()
+		return summary, err
 	}
-	s.sourceRefreshMu.Lock()
-	s.sourceLastFetch[source.ID] = state
-	s.sourceRefreshMu.Unlock()
-	// 无论成败都失效路由缓存：成功的合并改写了模型表；失败的路径也可能有
-	// per-key 权限字段落库。
-	s.invalidateRouteCache()
 }
 
 // sourceRefreshStateOf 返回指定源的当前拉取状态快照（含进行中标志）。

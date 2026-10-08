@@ -102,20 +102,18 @@ export function normalizeKeyStrategy(raw: string | undefined): SourceKeyStrategy
   return raw === 'random' || raw === 'priority' ? raw : 'round-robin'
 }
 
-/** 手动模式多 key 时,把「模型 ↔ key」选择编译为每个 key 的显式 allowedModels
- * (无 nil 歧义);单 key 或自动模式保持原值。返回错误文案表示校验未过。 */
+/** 自动源清除手动分配；手动源将模型与 Key 的选择编译为 allowedModels。 */
 export function compileApiKeysPayload(
   form: SourceForm,
   manualKeySelection: Record<number, number[]>,
   autoFetch: boolean,
 ): { keys: SourceAPIKey[] } | { error: string } {
   const keys = form.apiKeys.filter((k) => k.value.trim())
-  if (autoFetch || keys.length <= 1) return { keys }
+  if (autoFetch) return { keys: keys.map((key) => ({ ...key, allowedModels: null })) }
+  if (keys.length <= 1) return { keys }
   const allManual = form.manualModels
   for (const [index, model] of allManual.entries()) {
     if (!model.id.trim()) continue
-    // 显式空勾选才报错；从未用过勾选面板的模型不参与编译——否则
-    // KeyModelsPanel 里手工维护的 per-key allowedModels 会被整体覆盖掉。
     const selection = manualKeySelection[index]
     if (selection !== undefined && selection.length === 0) {
       return { error: `模型「${model.id}」没有任何可用 Key` }

@@ -53,10 +53,11 @@ type Server struct {
 
 	// 模型拉取后台任务状态（refresh_jobs.go）：去重标志、结果快照与源间并发
 	// 信号量。任务异步执行，端点发起即返回，前端轮询 refreshState。
-	sourceRefreshMu  sync.Mutex
-	sourceRefreshing map[string]bool
-	sourceLastFetch  map[string]sourceRefreshState
-	refreshSem       chan struct{}
+	sourceRefreshMu      sync.Mutex
+	sourceRefreshing     map[string]bool
+	sourceRefreshPending map[string]bool
+	sourceLastFetch      map[string]sourceRefreshState
+	refreshSem           chan struct{}
 
 	rateLimitMu sync.Mutex
 	rateLimits  map[string]*rateLimitState

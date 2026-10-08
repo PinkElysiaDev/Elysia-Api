@@ -64,14 +64,11 @@ function buildModelGroups(source: ModelSource, sourceModels: Model[]): ModelGrou
   }
   const groups: ModelGroupView[] = keysWithFetch.map(({ entry, index }) => {
     const fetched = new Set(entry.fetchedModels ?? [])
-    const enabledCount = entry.allowedModels
-      ? entry.allowedModels.filter((id) => fetched.has(id)).length
-      : fetched.size
     return {
       key: `key-${index}`,
       label: `Key ${index + 1}`,
       note: entry.note,
-      badge: `已启用 ${enabledCount}/${fetched.size}`,
+      badge: `发现 ${fetched.size} 个模型`,
       models: ordered.filter((m) => fetched.has(m.id)),
     }
   })
@@ -252,7 +249,10 @@ export function SourcesPage() {
       if (notifiedFinish.current[source.id] === state.lastFinishedAt) continue
       notifiedFinish.current[source.id] = state.lastFinishedAt
       if (state.lastError) {
-        toast.error('拉取失败', `${source.name}：${state.lastError}`)
+        const keyErrors = (state.lastKeys ?? [])
+          .filter((key) => key.error)
+          .map((key) => `Key ${key.index + 1}${key.note ? `（${key.note}）` : ''}：${key.error}`)
+        toast.error('拉取失败，保留原数据', `${source.name}：${[state.lastError, ...keyErrors].join('；')}`)
       } else {
         const changes = [
           state.lastAdded ? `新增 ${state.lastAdded}` : '',

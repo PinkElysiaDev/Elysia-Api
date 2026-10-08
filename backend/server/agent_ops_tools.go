@@ -726,7 +726,7 @@ func (t *refreshSourceTool) Execute(ctx context.Context, tctx CLIContext, args j
 	if source.ID == "" {
 		return missingSource
 	}
-	summary, err := t.server.refreshSourceByValue(ctx, source)
+	summary, err := t.server.refreshSourceSync(ctx, source.ID)
 	t.server.invalidateRouteCache()
 	if err != nil {
 		return CLIResult{OK: false, Summary: "拉取失败: " + err.Error(), Data: map[string]any{"error": err.Error(), "summary": summary}}

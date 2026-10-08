@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -46,16 +47,20 @@ type ModelSource struct {
 	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
-// EffectiveKeys 返回参与调度的 key 列表（多 key 时过滤 disabled；单 key 回退 APIKey）。
-// 不做策略选择，策略由运行时调度器按 KeyStrategy 消费。
+// EffectiveKeys 过滤停用和空 Key；仅未配置 Key 池时回退 APIKey。
 func (s ModelSource) EffectiveKeys() []SourceAPIKey {
 	enabled := make([]SourceAPIKey, 0, len(s.APIKeys))
 	for _, key := range s.APIKeys {
 		if !key.Disabled && strings.TrimSpace(key.Value) != "" {
+			if s.AutoFetchModels {
+				key.AllowedModels = nil
+			} else {
+				key.FetchedModels = nil
+			}
 			enabled = append(enabled, key)
 		}
 	}
-	if len(enabled) > 0 {
+	if len(s.APIKeys) > 0 {
 		return enabled
 	}
 	if strings.TrimSpace(s.APIKey) != "" {
@@ -69,39 +74,16 @@ type SourceAPIKey struct {
 	Value    string `json:"value"`
 	Note     string `json:"note,omitempty"`
 	Disabled bool   `json:"disabled,omitempty"`
-	// FetchedModels 是该 key 上次独立拉取到的模型集——站点分组权限的自动发现
-	// 结果，同时作为前端勾选界面（启用/停用该 key 可服务的模型）的展示宇宙。
-	// nil = 从未按 key 拉取过。
-	FetchedModels []string `json:"fetchedModels,omitempty"`
-	// AllowedModels 是用户勾选启用的模型子集。nil = 未做过勾选（启用全部
-	// FetchedModels）；非 nil 时仅启用其中的模型（空数组 = 全部停用，是合法的
-	// 显式选择，故不用 omitempty——否则 [] 会被吞成 nil 语义）。手动模式下由
-	// 「模型 ↔ key」多选在保存时直接编译写入本字段。
+	// FetchedModels 是发现集；nil 表示尚未发现，空数组表示无可用模型。
+	FetchedModels []string `json:"fetchedModels"`
+	// AllowedModels 仅用于手动源的模型分配；nil 不限制，空数组表示全部禁用。
 	AllowedModels []string `json:"allowedModels"`
 }
 
-// KeyAllowsModel 判断该 key 是否可服务指定模型：
-//   - AllowedModels 非 nil：按启用集精确匹配；
-//   - 否则 FetchedModels 非 nil：按拉取集匹配（未勾选 = 全启用）；
-//   - 两者皆 nil（从未按 key 拉取/配置）：不限制。
+// KeyAllowsModel 匹配 Key 的有效模型集合；nil 表示未限制。
 func (k SourceAPIKey) KeyAllowsModel(modelID string) bool {
-	if k.AllowedModels != nil {
-		for _, id := range k.AllowedModels {
-			if id == modelID {
-				return true
-			}
-		}
-		return false
-	}
-	if k.FetchedModels != nil {
-		for _, id := range k.FetchedModels {
-			if id == modelID {
-				return true
-			}
-		}
-		return false
-	}
-	return true
+	return (k.FetchedModels == nil || slices.Contains(k.FetchedModels, modelID)) &&
+		(k.AllowedModels == nil || slices.Contains(k.AllowedModels, modelID))
 }
 
 // SourceKeyStrategy 是源级 key 调度策略。
@@ -143,8 +125,7 @@ type Model struct {
 	LastCheckedAt    time.Time `json:"lastCheckedAt"`
 }
 
-// Identifier 返回上行请求使用的模型标识：ID 是上游 API 的调用名，Name 只是
-// 显示名（如 Gemini displayName）。ID 缺失时回退 Name，兼容历史行。
+// Identifier 返回调用 ID；ID 缺失时使用 Name 兼容历史模型。
 func (m Model) Identifier() string {
 	if m.ID != "" {
 		return m.ID

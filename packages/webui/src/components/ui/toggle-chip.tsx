@@ -2,11 +2,6 @@ import type { ReactNode } from 'react'
 import { Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-/**
- * 可选中芯片：选中 = 玫红描边 + 淡玫底 + 内嵌 check 方块；未选 = 素边灰字。
- * 统一此前在 KeyModelsPanel / 手动模型 Key 分配 / 组表单模型选项里
- * 各自手写三遍的同款交互（替代迷你降级开关做能力/多选切换）。
- */
 export function ToggleChip({
   selected,
   onToggle,

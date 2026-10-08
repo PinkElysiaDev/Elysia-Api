@@ -488,7 +488,7 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 	//     共享去重/并发约束，结果落在源的 refreshState 上（前端可见进度与成败）。
 	saved := item
 	if !saved.AutoFetchModels {
-		if _, err := s.refreshSourceByValue(c.Request.Context(), saved); err != nil {
+		if _, err := s.refreshSourceByID(c.Request.Context(), saved.ID); err != nil {
 			if s.store != nil {
 				_ = s.store.InsertSystemLog(c.Request.Context(), "warn", "manual model sync after save failed", map[string]any{"sourceId": saved.ID, "sourceName": saved.Name, "error": err.Error()})
 			}
@@ -496,7 +496,7 @@ func (s *Server) adminUpsertSource(c *gin.Context) {
 			s.invalidateRouteCache()
 		}
 	} else {
-		s.launchSourceRefresh(saved)
+		s.launchSourceRefresh(saved.ID)
 	}
 
 	respondOK(c, item)
@@ -539,6 +539,10 @@ func (s *Server) deleteSourceCascade(ctx context.Context, store *storage.Store, 
 	if err := store.DeleteSource(ctx, id); err != nil {
 		return err
 	}
+	s.sourceRefreshMu.Lock()
+	delete(s.sourceRefreshPending, id)
+	delete(s.sourceLastFetch, id)
+	s.sourceRefreshMu.Unlock()
 	s.logSystemEvent("warn", "model source deleted", map[string]any{"sourceId": id})
 	// 游标以 sourceID 为键，删除/重建循环下不清理会让 map 随历史源数量无限增长。
 	s.keyRRMutex.Lock()
@@ -591,7 +595,7 @@ func (s *Server) adminRefreshModels(c *gin.Context) {
 			continue
 		}
 		enabled++
-		if s.launchSourceRefresh(source) {
+		if s.launchSourceRefresh(source.ID) {
 			started++
 		}
 	}
