@@ -7,6 +7,69 @@ import (
 	p "github.com/elysia-api/backend/protocol"
 )
 
+func TestAnthropicSignatureFragmentsAndRepeatedSnapshots(t *testing.T) {
+	compiled := testCompiled(t, Anthropic)
+	options := p.EvaluationContext{State: p.NewEvaluationState(), Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}}
+	collector, err := p.NewResponseCollector(p.Target{Protocol: compiled.Identity(), Scope: options.Scope, Direction: p.EncodeEvent, Capabilities: compiled.Capabilities(p.EncodeEvent)}, p.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output []p.Value
+	for _, body := range []string{
+		`{"type":"message_start","message":{"id":"r","model":"m","type":"message","role":"assistant","content":[]}}`,
+		`{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"reason"}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"first-"}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"second"}}`,
+		`{"type":"content_block_stop","index":0}`,
+		`{"type":"message_delta","delta":{"stop_reason":"end_turn"}}`,
+		`{"type":"message_stop"}`,
+	} {
+		frame, err := compiled.DecodeFrame(t.Context(), testValue(t, body), options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, event := range frame.Events {
+			if _, _, err := collector.Consume(event); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// Force semantic encoding; native replay would conceal duplicate deltas.
+		wire, err := compiled.EncodeFrame(t.Context(), &p.EventFrame{Events: frame.Events}, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		output = append(output, wire...)
+		for _, event := range frame.Events {
+			if event.Type == p.ItemSnapshot {
+				duplicate, err := compiled.EncodeFrame(t.Context(), &p.EventFrame{Events: []p.Event{event}}, options)
+				if err != nil || len(duplicate) != 0 {
+					t.Fatal("duplicate signature snapshot emitted", duplicate, err)
+				}
+			}
+		}
+	}
+	response, err := collector.Finish()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Content) != 1 || len(response.Content[0].Resources) != 1 || response.Content[0].Resources[0].ID != p.StringValue("first-second") {
+		t.Fatal("signature fragments lost", response)
+	}
+	var signature strings.Builder
+	for _, wire := range output {
+		fields, _ := wire.ReadObject()
+		delta, _ := fields["delta"].ReadObject()
+		var fragment string
+		if delta["signature"].Decode(&fragment) == nil {
+			signature.WriteString(fragment)
+		}
+	}
+	if signature.String() != "first-second" {
+		t.Fatal("wire signature duplicated or truncated", signature.String())
+	}
+}
+
 func convertStream(t *testing.T, source, target string, bodies []string) []p.Value {
 	t.Helper()
 	from, to := testCompiled(t, source), testCompiled(t, target)

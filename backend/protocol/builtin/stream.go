@@ -14,6 +14,7 @@ type streamItem struct {
 	index           int
 	isFinished      bool
 	text            p.TextTracker
+	signature       p.TextTracker
 	buffer          strings.Builder
 	metadataBytes   int
 	wireID          p.Value
@@ -25,26 +26,28 @@ type streamItem struct {
 
 type streamModule struct {
 	module
-	limits          p.Limits
-	isStarted       bool
-	isFinished      bool
-	hasFailed       bool
-	id              p.Value
-	model           p.Value
-	finish          p.Value
-	items           map[string]*streamItem
-	identities      *p.ItemIdentities
-	order           []string
-	nextTool        int
-	buffered        int
-	pending         *p.Event
-	usage           *p.Usage
-	usageFields     p.Object
-	usageBytes      int
-	responseItemIDs map[int]p.Value
-	attributes      p.Object
-	sequence        int64
-	hasSequence     bool
+	limits           p.Limits
+	isStarted        bool
+	isFinished       bool
+	hasFailed        bool
+	id               p.Value
+	model            p.Value
+	finish           p.Value
+	items            map[string]*streamItem
+	identities       *p.ItemIdentities
+	order            []string
+	nextTool         int
+	geminiLastKey    string
+	geminiPartSerial int
+	buffered         int
+	pending          *p.Event
+	usage            *p.Usage
+	usageFields      p.Object
+	usageBytes       int
+	responseItemIDs  map[int]p.Value
+	attributes       p.Object
+	sequence         int64
+	hasSequence      bool
 }
 
 func (adapter module) NewStream(direction p.Direction, limits p.Limits) (p.Module, error) {
@@ -387,7 +390,25 @@ func (stream *streamModule) decodeAnthropicFrame(fields p.Object, options p.Eval
 			}
 			node := item.node
 			node.Payload = p.Value{}
-			node.Resources = []p.Resource{{Kind: "signature", ID: delta["signature"], Scope: options.Scope}}
+			fragment, err := stringValue(delta["signature"])
+			if err != nil {
+				return nil, err
+			}
+			var signature string
+			resources := make([]p.Resource, 0, len(node.Resources)+1)
+			for _, resource := range node.Resources {
+				if resource.Kind == "signature" {
+					if err := resource.ID.Decode(&signature); err != nil {
+						return nil, err
+					}
+				} else {
+					resources = append(resources, resource)
+				}
+			}
+			if len(signature)+len(fragment) > stream.limits.BufferBytes {
+				return nil, unsupported("/delta/signature", "signature exceeds stream buffer limit")
+			}
+			node.Resources = append(resources, p.Resource{Kind: "signature", ID: p.StringValue(signature + fragment), Scope: options.Scope})
 			event, err := stream.itemEvent(p.ItemSnapshot, key, &node, p.Value{})
 			return []p.Event{event}, err
 		}

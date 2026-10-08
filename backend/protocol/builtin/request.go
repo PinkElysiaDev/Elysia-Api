@@ -10,7 +10,7 @@ import (
 const maxBuiltinChoices = 1
 
 var parameterFields = map[string]map[string]string{
-	Chat:      {"max_completion_tokens": "max_output_tokens", "temperature": "temperature", "top_p": "top_p", "stop": "stop", "stream": "stream", "parallel_tool_calls": "parallel_tool_calls", "seed": "seed", "frequency_penalty": "frequency_penalty", "presence_penalty": "presence_penalty", "metadata": "metadata", "store": "store", "user": "user", "response_format": "response_format", "reasoning_effort": "reasoning_effort", "stream_options": "stream_options", "n": "n", "logprobs": "logprobs", "top_logprobs": "top_logprobs", "logit_bias": "logit_bias"},
+	Chat:      {"max_completion_tokens": "max_output_tokens", "temperature": "temperature", "top_p": "top_p", "stop": "stop", "stream": "stream", "parallel_tool_calls": "parallel_tool_calls", "seed": "seed", "frequency_penalty": "frequency_penalty", "presence_penalty": "presence_penalty", "metadata": "metadata", "store": "store", "user": "user", "response_format": "response_format", "reasoning_effort": "reasoning_effort", "n": "n", "logprobs": "logprobs", "top_logprobs": "top_logprobs", "logit_bias": "logit_bias"},
 	Responses: {"max_output_tokens": "max_output_tokens", "temperature": "temperature", "top_p": "top_p", "stream": "stream", "parallel_tool_calls": "parallel_tool_calls", "metadata": "metadata", "store": "store", "user": "user", "reasoning": "responses_reasoning", "text": "responses_text", "include": "responses_include", "previous_response_id": "responses_previous_response_id", "truncation": "responses_truncation"},
 	Anthropic: {"max_tokens": "max_output_tokens", "temperature": "temperature", "top_p": "top_p", "top_k": "top_k", "stop_sequences": "stop", "stream": "stream", "metadata": "anthropic_metadata", "thinking": "anthropic_thinking", "output_config": "anthropic_output_config"},
 	Gemini:    {"maxOutputTokens": "max_output_tokens", "temperature": "temperature", "topP": "top_p", "topK": "top_k", "stopSequences": "stop", "seed": "seed", "candidateCount": "n", "responseMimeType": "gemini_response_mime", "responseSchema": "gemini_response_schema", "thinkingConfig": "gemini_thinking"},
@@ -48,7 +48,15 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 		}
 	}
 	if adapter.name == Chat {
-		known = append(known, "max_tokens", "messages", "functions", "function_call")
+		known = append(known, "max_tokens", "messages", "functions", "function_call", "stream_options")
+		if options.DefinitionRequires("conversion.client_output.v1") {
+			request.ClientOutput, err = p.ParseClientOutput(fields["stream_options"])
+			if err != nil {
+				return nil, err
+			}
+		} else if value, exists := fields["stream_options"]; exists {
+			request.Parameters["stream_options"] = value
+		}
 		if value, exists := fields["max_tokens"]; exists {
 			if _, ambiguous := fields["max_completion_tokens"]; ambiguous {
 				return nil, fmt.Errorf("max_tokens and max_completion_tokens cannot both be present")
@@ -233,6 +241,21 @@ func (adapter module) encodeRequest(request *p.Request, options p.EvaluationCont
 	if err := adapter.encodeParameters(fields, request.Parameters); err != nil {
 		return p.Value{}, err
 	}
+	if adapter.name == Chat && request.ClientOutput != nil {
+		if raw := request.ClientOutput.RawStreamOptions; !raw.IsZero() {
+			fields["stream_options"] = raw
+		}
+		var stream bool
+		_ = request.Parameters["stream"].Decode(&stream)
+		if stream && request.ClientOutput.CollectUsage {
+			options := p.Object{}
+			if fields["stream_options"].IsObject() {
+				options, _ = fields["stream_options"].ReadObject()
+			}
+			options["include_usage"], _ = p.EncodeValue(true)
+			fields["stream_options"], _ = p.EncodeValue(options)
+		}
+	}
 	nodes := request.Content
 	if adapter.name == Responses && len(nodes) > 0 && hasNativeInstructions(nodes[0], options) {
 		instructions, err := encodeNativeInstructions(nodes[0])
@@ -397,6 +420,12 @@ func (adapter module) encodeParameters(fields p.Object, parameters p.Object) err
 		parameterOutput = p.Object{}
 	}
 	for semantic, value := range parameters {
+		// Legacy custom definitions and their Agent policies still use this
+		// semantic key. Cross-protocol removal requires an explicit policy rule.
+		if semantic == "stream_options" && adapter.name == Chat {
+			parameterOutput[semantic] = value
+			continue
+		}
 		if strings.HasPrefix(semantic, wireExtensionPrefix) {
 			continue
 		}

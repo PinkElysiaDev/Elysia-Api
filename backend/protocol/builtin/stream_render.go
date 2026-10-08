@@ -479,7 +479,7 @@ func (stream *streamModule) Finish(ctx context.Context, options p.EvaluationCont
 	switch stream.name {
 	case Chat:
 		frames = append(frames, stream.chatChunk(object(p.Object{}), finish, p.Value{}))
-		if !usage.IsZero() {
+		if !usage.IsZero() && (options.ClientOutput == nil || (options.ClientOutput.IncludeUsage != nil && *options.ClientOutput.IncludeUsage)) {
 			frames = append(frames, object(p.Object{"id": stream.id, "model": stream.model, "object": p.StringValue("chat.completion.chunk"), "choices": array(nil), "usage": usage}))
 		}
 	case Anthropic:
@@ -559,7 +559,17 @@ func (stream *streamModule) encodeSignatureUpdates(event p.Event, item *streamIt
 			return nil, unsupported("/resources", "unsupported stream resource")
 		}
 		if stream.name == Anthropic {
-			frames = append(frames, stream.anthropicEvent("content_block_delta", item, object(p.Object{"type": p.StringValue("signature_delta"), "signature": resource.ID}), "delta"))
+			signature, err := stringValue(resource.ID)
+			if err != nil {
+				return nil, err
+			}
+			delta, err := item.signature.Snapshot(signature)
+			if err != nil {
+				return nil, err
+			}
+			if delta != "" {
+				frames = append(frames, stream.anthropicEvent("content_block_delta", item, object(p.Object{"type": p.StringValue("signature_delta"), "signature": p.StringValue(delta)}), "delta"))
+			}
 			continue
 		}
 		isThought, _ := p.EncodeValue(true)

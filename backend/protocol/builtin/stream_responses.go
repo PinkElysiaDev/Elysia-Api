@@ -243,6 +243,31 @@ func (stream *streamModule) decodeGeminiFrame(fields p.Object, options p.Evaluat
 			return nil, err
 		}
 		for _, part := range parts {
+			partFields, err := part.ReadObject()
+			if err != nil {
+				return nil, err
+			}
+			// A signature-only part applies only to the immediately preceding
+			// open part. Never associate by tool name or an arbitrary index.
+			if len(partFields) == 1 && !partFields["thoughtSignature"].IsZero() {
+				item := stream.items[stream.geminiLastKey]
+				if item == nil || item.isFinished {
+					return nil, unsupported("/parts/thoughtSignature", "signature has no open part association")
+				}
+				synthetic := p.Object{"text": p.StringValue(""), "thoughtSignature": partFields["thoughtSignature"]}
+				signed, err := stream.module.decodeBlock(object(synthetic), "/parts", p.DecodeResponse, options, &historyState{})
+				if err != nil {
+					return nil, err
+				}
+				node := item.node
+				node.Resources = signed.Resources
+				event, err := stream.itemEvent(p.ItemSnapshot, stream.geminiLastKey, &node, p.Value{})
+				if err != nil {
+					return nil, err
+				}
+				events = append(events, event)
+				continue
+			}
 			history := &historyState{calls: map[string][]p.Value{}, next: stream.nextTool}
 			node, err := stream.module.decodeBlock(part, "/parts", p.DecodeResponse, options, history)
 			if err != nil {
@@ -251,7 +276,16 @@ func (stream *streamModule) decodeGeminiFrame(fields p.Object, options p.Evaluat
 			stream.nextTool = history.next
 			switch node.Kind {
 			case p.TextNode, p.ReasoningNode:
-				key := string(node.Kind)
+				key := stream.geminiLastKey
+				previous := stream.items[key]
+				if previous == nil || previous.node.Kind != node.Kind || p.HasSignature(previous.node) {
+					key = string(node.Kind)
+					if _, exists := stream.items[key]; exists {
+						key = fmt.Sprintf("%s:%d", node.Kind, stream.geminiPartSerial)
+					}
+					stream.geminiPartSerial++
+				}
+				stream.geminiLastKey = key
 				batch, err := stream.textEvents(key, node.Kind, node.Payload)
 				if err != nil {
 					return nil, err
@@ -271,12 +305,12 @@ func (stream *streamModule) decodeGeminiFrame(fields p.Object, options p.Evaluat
 					return nil, err
 				}
 				key := "tool:" + id
-				event, err := stream.itemEvent(p.ItemStarted, key, &node, p.Value{})
-				if err != nil {
-					return nil, err
+				stream.geminiLastKey = key
+				kind := p.ItemStarted
+				if previous := stream.items[key]; previous != nil {
+					kind = p.ItemSnapshot
 				}
-				events = append(events, event)
-				event, err = stream.itemEvent(p.ItemFinished, key, nil, p.Value{})
+				event, err := stream.itemEvent(kind, key, &node, p.Value{})
 				if err != nil {
 					return nil, err
 				}
@@ -286,6 +320,16 @@ func (stream *streamModule) decodeGeminiFrame(fields p.Object, options p.Evaluat
 			}
 		}
 		if finish := candidate["finishReason"]; !finish.IsZero() && !finish.IsNull() {
+			for _, key := range stream.order {
+				item := stream.items[key]
+				if item.node.Kind == p.ToolCallNode && !item.isFinished {
+					event, err := stream.itemEvent(p.ItemFinished, key, nil, p.Value{})
+					if err != nil {
+						return nil, err
+					}
+					events = append(events, event)
+				}
+			}
 			stream.finish, err = decodeFinishReason(Gemini, finish)
 			if err != nil {
 				return nil, err

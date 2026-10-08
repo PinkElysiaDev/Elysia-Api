@@ -2,10 +2,9 @@
   "schemaVersion": 2,
   "id": "openai-chat-completions",
   "name": "Openai Chat Completions",
-  "version": "2.2.5",
+  "version": "2.2.4",
   "family": "openai_chat",
   "wireVersion": "v2",
-  "requires": ["conversion.client_output.v1"],
   "capabilities": {
     "text": true,
     "tools.function": true,
@@ -3130,6 +3129,20 @@
                 "op": "read",
                 "path": "/stream",
                 "required": true
+              },
+              "stream_options": {
+                "op": "if",
+                "when": {
+                  "op": "read",
+                  "path": "/stream",
+                  "required": true
+                },
+                "then": {
+                  "op": "literal",
+                  "value": {
+                    "include_usage": true
+                  }
+                }
               }
             }
           },
@@ -3192,7 +3205,10 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "stream": true
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
         }
       },
       {
@@ -3220,7 +3236,10 @@
         "expected": {
           "max_output_tokens": 8192,
           "reasoning_effort": "medium",
-          "stream": true
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
         }
       },
       {
@@ -3248,7 +3267,10 @@
         "expected": {
           "max_output_tokens": 8192,
           "reasoning_effort": "low",
-          "stream": true
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
         }
       },
       {
@@ -3276,7 +3298,10 @@
         "expected": {
           "max_output_tokens": 8192,
           "reasoning_effort": "medium",
-          "stream": true
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
         }
       },
       {
@@ -3304,7 +3329,10 @@
         "expected": {
           "max_output_tokens": 8192,
           "reasoning_effort": "high",
-          "stream": true
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
         }
       },
       {
@@ -3332,7 +3360,10 @@
         "expected": {
           "max_output_tokens": 8192,
           "reasoning_effort": "xhigh",
-          "stream": true
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
         }
       }
     ],
