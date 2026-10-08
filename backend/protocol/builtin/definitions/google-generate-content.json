@@ -164,11 +164,6 @@
                       },
                       "value": "models/"
                     },
-                    "name": {
-                      "op": "read",
-                      "path": "/displayName",
-                      "from": "item"
-                    },
                     "maxTokens": {
                       "op": "if",
                       "when": {
@@ -4130,7 +4125,6 @@
         "models": [
           {
             "id": "alpha",
-            "name": "Alpha",
             "maxTokens": 1000000
           }
         ]
@@ -4209,8 +4203,28 @@
       "expected": {
         "models": [
           {
-            "id": "gemini-bare",
-            "name": "Bare Relay"
+            "id": "gemini-bare"
+          }
+        ]
+      }
+    },
+    {
+      "id": "models-new-api-null-cursor",
+      "operation": "models",
+      "input": {
+        "models": [
+          {
+            "name": "gemini-2.5-flash",
+            "displayName": null,
+            "inputTokenLimit": null
+          }
+        ],
+        "nextPageToken": null
+      },
+      "expected": {
+        "models": [
+          {
+            "id": "gemini-2.5-flash"
           }
         ]
       }

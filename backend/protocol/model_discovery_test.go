@@ -41,7 +41,7 @@ func TestDiscoveryVerificationRequiresPaginationEvidence(t *testing.T) {
 
 func TestDiscoveryRejectsMalformedCatalogValues(t *testing.T) {
 	compiled := compileTestDefinition(t, discoveryDefinition(t))
-	for _, raw := range []string{`{}`, `{"models":null}`, `{"models":[{"id":null}]}`, `{"models":[{"id":""}]}`, `{"models":[{"id":"a"},{"id":"a"}]}`, `{"models":[{"id":"a","maxTokens":1.5}]}`, `{"models":[{"id":"a","maxTokens":-1}]}`, `{"models":[],"next":null}`, `{"models":[],"url":"https://other.invalid"}`} {
+	for _, raw := range []string{`{}`, `{"models":null}`, `{"models":[{"id":null}]}`, `{"models":[{"id":""}]}`, `{"models":[{"id":"a"},{"id":"a"}]}`, `{"models":[{"id":"a","maxTokens":1.5}]}`, `{"models":[{"id":"a","maxTokens":-1}]}`, `{"models":[],"next":42}`, `{"models":[],"next":true}`, `{"models":[],"next":[]}`, `{"models":[],"next":{}}`, `{"models":[],"hasMore":true}`, `{"models":[],"hasMore":true,"next":""}`, `{"models":[],"hasMore":true,"next":null}`, `{"models":[],"url":"https://other.invalid"}`} {
 		t.Run(raw, func(t *testing.T) {
 			value, _ := ParseValue([]byte(raw))
 			if _, err := compiled.DecodeModelPage(t.Context(), "models", value); err == nil {
@@ -68,6 +68,17 @@ func TestDiscoveryCompilerRejectsCredentialAndMappingConflicts(t *testing.T) {
 		raw, _ := json.Marshal(definition)
 		if _, issues := compiler.Compile(raw); IssuesError(issues) == nil {
 			t.Fatal("invalid discovery operation compiled")
+		}
+	}
+}
+
+func TestDiscoveryNormalizesTerminalCursors(t *testing.T) {
+	compiled := compileTestDefinition(t, discoveryDefinition(t))
+	for _, raw := range []string{`{"models":[]}`, `{"models":[],"next":null}`, `{"models":[],"next":""}`} {
+		value, _ := ParseValue([]byte(raw))
+		page, err := compiled.DecodeModelPage(t.Context(), "models", value)
+		if err != nil || page.Next != "" {
+			t.Fatalf("terminal cursor: %s -> %+v (%v)", raw, page, err)
 		}
 	}
 }

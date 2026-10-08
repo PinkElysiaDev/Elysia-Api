@@ -23,8 +23,6 @@ func newKeyPermissionTestServer(t *testing.T) *Server {
 	return s
 }
 
-// 双 key 分属不同分组（拉到不同模型集）：逐 key 拉取后并集入库、
-// per-key fetchedModels 持久化、allowedModels 重置为 nil（默认全启用）。
 func TestPerKeyModelDiscovery(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Header.Get("Authorization") {
@@ -49,7 +47,7 @@ func TestPerKeyModelDiscovery(t *testing.T) {
 		t.Fatalf("upsert source: %v", err)
 	}
 
-	summary, err := s.refreshSourceByValue(ctx, source)
+	summary, err := s.refreshSourceByID(ctx, source.ID)
 	if err != nil {
 		t.Fatalf("refresh: %v", err)
 	}
@@ -82,7 +80,7 @@ func TestPerKeyModelDiscovery(t *testing.T) {
 		t.Fatalf("fetchedModels not persisted per key: %+v", keys)
 	}
 	if keys[0].AllowedModels != nil || keys[1].AllowedModels != nil {
-		t.Fatalf("fresh fetch must reset allowedModels to nil: %+v", keys)
+		t.Fatalf("untouched selection must remain nil: %+v", keys)
 	}
 
 	// 权限判定：gpt-4o 两个 key 都能服务；claude-3-5 仅 key-b。
@@ -94,7 +92,6 @@ func TestPerKeyModelDiscovery(t *testing.T) {
 	}
 }
 
-// 部分 key 拉取失败：失败 key 保留旧权限字段、成功 key 正常回写，整体不报错。
 func TestPerKeyPartialFailureKeepsStalePermissions(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") == "Bearer good" {
@@ -119,17 +116,20 @@ func TestPerKeyPartialFailureKeepsStalePermissions(t *testing.T) {
 	if err := s.store.UpsertSource(ctx, source); err != nil {
 		t.Fatalf("upsert source: %v", err)
 	}
-	summary, err := s.refreshSourceByValue(ctx, source)
-	if err != nil {
-		t.Fatalf("partial failure must not fail the whole refresh: %v", err)
+	if err := s.store.UpdateSourceAPIKeys(ctx, source.ID, source.APIKeys); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := s.refreshSourceByID(ctx, source.ID)
+	if err == nil {
+		t.Fatal("partial failure must fail the whole refresh")
 	}
 	if len(summary.Keys) != 2 || summary.Keys[1].Error == "" {
 		t.Fatalf("bad key must record its error: %+v", summary.Keys)
 	}
 	sources, _ := s.store.ListSources(ctx)
 	keys := sources[0].APIKeys
-	if len(keys[0].FetchedModels) != 1 {
-		t.Fatalf("good key must get fresh fetchedModels: %+v", keys[0])
+	if keys[0].FetchedModels != nil {
+		t.Fatalf("successful key must also retain previous permissions: %+v", keys[0])
 	}
 	// 失败 key 保持旧值（不清空、不覆盖）。
 	if len(keys[1].FetchedModels) != 2 || len(keys[1].AllowedModels) != 1 {
@@ -161,7 +161,7 @@ func TestAssemblyFiltersModelsByPerKeyPermissions(t *testing.T) {
 	if err := s.store.UpsertSource(ctx, source); err != nil {
 		t.Fatalf("upsert source: %v", err)
 	}
-	if _, err := s.refreshSourceByValue(ctx, source); err != nil {
+	if _, err := s.refreshSourceByID(ctx, source.ID); err != nil {
 		t.Fatalf("refresh: %v", err)
 	}
 	// gamma 不在任何 key 的集合里，但通过手动途径入库（模拟历史残留/手动模型）。
@@ -204,9 +204,7 @@ func TestAssemblyFiltersModelsByPerKeyPermissions(t *testing.T) {
 	}
 }
 
-// 多 key 减为单 key：剩余 key 残留的旧拉取集在下次单 key 刷新成功后被清除，
-// 此后上游新增的模型不再被挡在组外。
-func TestSingleKeyRefreshClearsStalePerKeyPermissions(t *testing.T) {
+func TestSingleKeyRefreshUsesDiscoveredModels(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer only" {
 			w.WriteHeader(401)
@@ -230,19 +228,23 @@ func TestSingleKeyRefreshClearsStalePerKeyPermissions(t *testing.T) {
 	if err := s.store.UpsertSource(ctx, source); err != nil {
 		t.Fatalf("upsert source: %v", err)
 	}
-	if _, err := s.refreshSourceByValue(ctx, source); err != nil {
+	if err := s.store.UpdateSourceAPIKeys(ctx, source.ID, source.APIKeys); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.refreshSourceByID(ctx, source.ID); err != nil {
 		t.Fatalf("refresh: %v", err)
 	}
 	keys, err := s.store.ListSources(ctx)
 	if err != nil || len(keys) == 0 || len(keys[0].APIKeys) != 2 {
 		t.Fatalf("list sources: %v", err)
 	}
-	for index, key := range keys[0].APIKeys {
-		if key.FetchedModels != nil || key.AllowedModels != nil {
-			t.Fatalf("key %d must have stale permissions cleared: %+v", index, key)
-		}
+	active, disabled := keys[0].APIKeys[0], keys[0].APIKeys[1]
+	if len(active.FetchedModels) != 2 || active.AllowedModels != nil || !active.KeyAllowsModel("m1") || !active.KeyAllowsModel("m2-new") {
+		t.Fatalf("single-key discovery must enable discovered models: %+v", active)
 	}
-	// 新模型进组：装配不再被旧拉取集挡住。
+	if len(disabled.FetchedModels) != 1 || !disabled.Disabled {
+		t.Fatalf("disabled key metadata changed: %+v", disabled)
+	}
 	if err := s.store.UpsertGroup(ctx, storage.ModelGroup{
 		ID: "g1", Name: "all", Enabled: true, Models: []string{"src1:m2-new"},
 	}); err != nil {
@@ -250,6 +252,6 @@ func TestSingleKeyRefreshClearsStalePerKeyPermissions(t *testing.T) {
 	}
 	groups, ok := s.assembleGroupsFromStore()
 	if !ok || len(groups) != 1 || len(groups[0].Models) != 1 {
-		t.Fatalf("m2-new must be schedulable after clearing stale permissions: ok=%v groups=%+v", ok, groups)
+		t.Fatalf("m2-new must be available after discovery: ok=%v groups=%+v", ok, groups)
 	}
 }

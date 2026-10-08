@@ -145,7 +145,11 @@ func TestShutdownCancelsRunningAndQueuedSourceRefreshes(t *testing.T) {
 	defer upstream.Close()
 	s := newKeyPermissionTestServer(t)
 	for i := 0; i <= sourceRefreshConcurrency; i++ {
-		if !s.launchSourceRefresh(storage.ModelSource{ID: string(rune('a' + i)), BaseURL: upstream.URL, Platform: "openai", AutoFetchModels: true}) {
+		source := storage.ModelSource{ID: string(rune('a' + i)), BaseURL: upstream.URL, Platform: "openai", AutoFetchModels: true}
+		if err := s.store.UpsertSource(t.Context(), source); err != nil {
+			t.Fatal(err)
+		}
+		if !s.launchSourceRefresh(source.ID) {
 			t.Fatal("source refresh was rejected before shutdown")
 		}
 	}
@@ -164,7 +168,7 @@ func TestShutdownCancelsRunningAndQueuedSourceRefreshes(t *testing.T) {
 	if calls.Load() != sourceRefreshConcurrency {
 		t.Error("queued source refresh contacted its upstream after shutdown")
 	}
-	if s.launchSourceRefresh(storage.ModelSource{ID: "late"}) {
+	if s.launchSourceRefresh("late") {
 		t.Error("server accepted a source refresh after shutdown")
 	}
 }

@@ -65,12 +65,12 @@ interface SourceAPIKey {
   value: string
   note?: string
   disabled?: boolean
-  fetchedModels?: string[]
-  allowedModels?: string[]
+  fetchedModels?: string[] | null
+  allowedModels?: string[] | null
 }
 ```
 
-`allowedModels` 未设置时使用拉取集；两者都未设置时不限制。显式空数组表示该 Key 不服务任何模型。不要把“缺省”和“空数组”合并。
+自动源仅使用 `fetchedModels`，手动源仅使用 `allowedModels`。null/缺省表示未限制，显式空数组表示该 Key 不服务任何模型。
 
 ## 模型
 

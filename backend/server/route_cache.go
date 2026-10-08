@@ -68,8 +68,9 @@ func (s *Server) invalidateRouteCache() {
 // FetchedModels/AllowedModels 对每个模型过滤可服务该模型的 key 池
 // （多 key 权限发现，见 KeyAllowsModel）。
 type sourceKeyMeta struct {
-	keys     []storage.SourceAPIKey
-	strategy string
+	keys       []storage.SourceAPIKey
+	strategy   string
+	hasKeyPool bool
 	// 源级缓存断点合成开关：透传到 ModelRef，由网关在编码前消费。
 	cacheSynthesis bool
 	// 源地址：热路径以源为准（models 行是快照，源保存后若未触发合并——
@@ -158,11 +159,15 @@ func (s *Server) resolveModelSource(model storage.Model, keyMeta map[string]sour
 	ref := config.ModelRef{ID: model.ID, Name: model.Name, BaseURL: model.BaseURL, APIKey: model.APIKey, Platform: model.Platform,
 		VisionCapable: model.VisionCapable, ToolsCapable: model.ToolsCapable, SourceID: model.SourceID}
 	if meta, ok := keyMeta[model.SourceID]; ok {
+		if meta.hasKeyPool && len(meta.keys) == 0 {
+			return config.ModelRef{}, false
+		}
 		// 源身份（地址/密钥）以源为准：models 行是保存时刻的快照，源
 		// url/key 变更后若合并未跑（手动源、自动拉取失败），快照滞后
 		// 会导致请求打到旧地址/旧 key。legacy 源（地址为空）仍用行内值。
 		if meta.baseURL != "" {
 			ref.BaseURL = meta.baseURL
+			ref.APIKey = ""
 		}
 		ref.CacheSynthesis = meta.cacheSynthesis
 	}
@@ -210,7 +215,7 @@ func collectSourceKeys(sources []storage.ModelSource) map[string]sourceKeyMeta {
 	keyMeta := make(map[string]sourceKeyMeta, len(sources))
 	for _, source := range sources {
 		keys := source.EffectiveKeys()
-		keyMeta[source.ID] = sourceKeyMeta{keys: keys, strategy: string(source.KeyStrategy), baseURL: source.BaseURL, cacheSynthesis: source.CacheSynthesis}
+		keyMeta[source.ID] = sourceKeyMeta{keys: keys, hasKeyPool: len(source.APIKeys) > 0, strategy: string(source.KeyStrategy), baseURL: source.BaseURL, cacheSynthesis: source.CacheSynthesis}
 	}
 	return keyMeta
 }

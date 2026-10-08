@@ -13,12 +13,6 @@ import (
 // modelFetchTimeout 是模型列表拉取的单请求超时。
 const modelFetchTimeout = 30 * time.Second
 
-type openAIModelsResponse struct {
-	Data []struct {
-		ID string `json:"id"`
-	} `json:"data"`
-}
-
 // refreshSummary 汇总一次源刷新的结果：模型总数、新增/移除清单与逐 key 拉取结果
 // （多 key 源的权限发现，供前端按 key 展示与 toast 提示）。
 type refreshSummary struct {
@@ -37,8 +31,15 @@ type keyFetchOutcome struct {
 	Error string `json:"error,omitempty"`
 }
 
-func (s *Server) refreshSourceByValue(ctx context.Context, source storage.ModelSource) (refreshSummary, error) {
-	empty := refreshSummary{Added: []string{}, Removed: []string{}}
+func (s *Server) refreshSourceByID(ctx context.Context, sourceID string) (refreshSummary, error) {
+	summary := refreshSummary{Added: []string{}, Removed: []string{}}
+	source, found, err := s.findSourceByID(ctx, sourceID)
+	if err != nil {
+		return summary, err
+	}
+	if !found {
+		return summary, fmt.Errorf("model source %q not found", sourceID)
+	}
 	models := make([]storage.Model, 0)
 	if !source.AutoFetchModels {
 		for _, model := range source.ManualModels {
@@ -61,34 +62,44 @@ func (s *Server) refreshSourceByValue(ctx context.Context, source storage.ModelS
 		return refreshSummary{Count: len(models), Added: result.Added, Removed: result.Removed}, err
 	}
 
-	fetched, summaryKeys, err := s.fetchSourceModelsByKey(ctx, source)
+	fetched, err := s.fetchSourceModelsByKey(ctx, source)
+	summary.Keys = fetched.outcomes
 	if err != nil {
-		return empty, err
+		return summary, err
 	}
-	if len(fetched) == 0 {
-		// 上游 200 但解析不出任何模型（中转站返回 {"error":...} 等异常结构是常态）。
-		// 合并会移除上游消失的 fetched 行，空列表意味着清空该源全部拉取模型、
-		// 相关模型组变成"无可用模型"——跳过合并并告警。
-		_ = s.store.InsertSystemLog(ctx, "warn", "model source refresh returned no models; kept existing models", map[string]any{"sourceId": source.ID, "sourceName": source.Name})
-		return refreshSummary{Added: []string{}, Removed: []string{}, Keys: summaryKeys}, fmt.Errorf("source %q returned no models; kept existing model list", source.Name)
+	if len(fetched.models) == 0 {
+		return summary, fmt.Errorf("source %q returned no models; kept existing data", source.Name)
 	}
-	result, err := s.store.MergeSourceModels(ctx, source, fetched)
-	return refreshSummary{Count: len(fetched), Added: result.Added, Removed: result.Removed, Keys: summaryKeys}, err
+	result, err := s.store.CommitSourceRefresh(ctx, source, fetched.models, fetched.keyModels)
+	if err != nil {
+		return summary, err
+	}
+	summary.Count, summary.Added, summary.Removed = len(fetched.models), result.Added, result.Removed
+	return summary, nil
 }
 
-// 逐 key 并行拉取（每个 key 一个 goroutine）：key 间互不依赖，中转站 /models
-// 响应慢时总耗时 ≈ 最慢一个 key，而非全部之和。结果按下标回填保持顺序稳定。
 type keyFetchJob struct {
 	fetched []storage.Model
 	err     error
 }
 
-func (s *Server) fetchPerKey(ctx context.Context, source storage.ModelSource) map[int]*keyFetchJob {
+type modelFetchResult struct {
+	models    []storage.Model
+	keyModels map[int][]string
+	outcomes  []keyFetchOutcome
+}
+
+func (s *Server) fetchSourceModelsByKey(ctx context.Context, source storage.ModelSource) (modelFetchResult, error) {
+	result := modelFetchResult{keyModels: make(map[int][]string)}
+	if len(source.APIKeys) == 0 {
+		models, err := s.fetchModelsFromSource(ctx, source, source.APIKey)
+		result.models = models
+		return result, err
+	}
 	jobs := make(map[int]*keyFetchJob)
 	var wg sync.WaitGroup
-	for index := range source.APIKeys {
-		entry := source.APIKeys[index]
-		if entry.Disabled || entry.Value == "" {
+	for index, entry := range source.APIKeys {
+		if entry.Disabled || strings.TrimSpace(entry.Value) == "" {
 			continue
 		}
 		job := &keyFetchJob{}
@@ -100,103 +111,36 @@ func (s *Server) fetchPerKey(ctx context.Context, source storage.ModelSource) ma
 		}()
 	}
 	wg.Wait()
-	return jobs
-}
-
-// fetchSourceModelsByKey 解析拉取用的 key 并执行拉取：
-//   - 多 key（启用数 >1）：逐 key 独立拉取（并行），返回模型并集与逐 key 结果；
-//     成功 key 的 fetchedModels/allowedModels 回写进 source.APIKeys（调用方负责
-//     持久化）——这是「key 分组权限自动发现」：每个 key 拉到的集合即其可用模型集；
-//   - 单 key：原单次拉取，不写 per-key 权限字段（行为与历史版本一致）。
-func (s *Server) fetchSourceModelsByKey(ctx context.Context, source storage.ModelSource) ([]storage.Model, []keyFetchOutcome, error) {
-	effective := source.EffectiveKeys()
-	if len(effective) <= 1 {
-		key := source.APIKey
-		if len(effective) == 1 {
-			key = effective[0].Value
-		}
-		models, err := s.fetchModelsFromSource(ctx, source, key)
-		if err != nil {
-			return models, nil, err
-		}
-		// 多 key 减为单 key 后，残留的 per-key 拉取集会把此后上游新增的模型
-		// 挡在组外（装配按 KeyAllowsModel 过滤）。单 key 语义是「不限制」
-		// （两字段 nil），拉取成功即清残留（含停用 key——重新启用后下次多
-		// key 刷新会重新发现）；失败不清，保留旧值优于清空。
-		s.clearStalePerKeyPermissions(ctx, source)
-		return models, nil, nil
+	if len(jobs) == 0 {
+		return result, fmt.Errorf("source %q has no enabled API keys", source.Name)
 	}
-
-	jobs := s.fetchPerKey(ctx, source)
-	outcomes := make([]keyFetchOutcome, 0, len(jobs))
-	union := make([]storage.Model, 0)
-	seen := make(map[string]struct{})
-	anySuccess := false
-	var lastErr error
-	for index := range source.APIKeys {
-		entry := source.APIKeys[index]
+	seen := make(map[string]bool)
+	failed := 0
+	for index, entry := range source.APIKeys {
 		job, attempted := jobs[index]
 		if !attempted {
-			continue // 停用/空 key 不参与
-		}
-		outcome := keyFetchOutcome{Index: index, Note: entry.Note}
-		if job.err != nil {
-			lastErr = job.err
-			outcome.Error = job.err.Error()
-			outcomes = append(outcomes, outcome)
-			// 失败 key 保留旧的权限字段（可能过期但优于清空），继续其余 key。
 			continue
 		}
-		fetched := job.fetched
-		anySuccess = true
-		outcome.Count = len(fetched)
-		outcomes = append(outcomes, outcome)
-		for _, model := range fetched {
-			if _, dup := seen[model.ID]; dup {
-				continue
-			}
-			seen[model.ID] = struct{}{}
-			union = append(union, model)
+		outcome := keyFetchOutcome{Index: index, Note: entry.Note, Count: len(job.fetched)}
+		if job.err != nil {
+			failed++
+			outcome.Error = job.err.Error()
 		}
-		ids := make([]string, 0, len(fetched))
-		for _, model := range fetched {
+		result.outcomes = append(result.outcomes, outcome)
+		ids := make([]string, 0, len(job.fetched))
+		for _, model := range job.fetched {
 			ids = append(ids, model.ID)
+			if !seen[model.ID] {
+				seen[model.ID] = true
+				result.models = append(result.models, model)
+			}
 		}
-		// 回写权限字段：fetchedModels = 该 key 拉到的集合；allowedModels 重置为
-		// nil（新拉取默认全启用，用户在勾选界面裁剪后才产生非 nil 子集）。
-		source.APIKeys[index].FetchedModels = ids
-		source.APIKeys[index].AllowedModels = nil
+		result.keyModels[index] = ids
 	}
-	if !anySuccess {
-		return nil, outcomes, fmt.Errorf("all %d keys failed to fetch models; last error: %w", len(effective), lastErr)
+	if failed > 0 {
+		return result, fmt.Errorf("%d/%d keys failed to fetch models; kept existing data", failed, len(jobs))
 	}
-	// 逐 key 结果持久化（失败 key 保持旧值不影响整体成功路径）。
-	if err := s.store.UpdateSourceAPIKeys(ctx, source.ID, source.APIKeys); err != nil {
-		return nil, outcomes, fmt.Errorf("persist per-key model permissions: %w", err)
-	}
-	return union, outcomes, nil
-}
-
-// clearStalePerKeyPermissions 清掉源上残留的 per-key 拉取/勾选集（仅当存在
-// 残留时写库，避免每次单 key 刷新都空写）。见 fetchSourceModelsByKey 单 key
-// 分支注释。
-func (s *Server) clearStalePerKeyPermissions(ctx context.Context, source storage.ModelSource) {
-	stale := false
-	for index := range source.APIKeys {
-		if source.APIKeys[index].FetchedModels != nil || source.APIKeys[index].AllowedModels != nil {
-			source.APIKeys[index].FetchedModels = nil
-			source.APIKeys[index].AllowedModels = nil
-			stale = true
-		}
-	}
-	if !stale {
-		return
-	}
-	if err := s.store.UpdateSourceAPIKeys(ctx, source.ID, source.APIKeys); err != nil {
-		_ = s.store.InsertSystemLog(ctx, "warn", "failed to clear stale per-key model permissions", map[string]any{"sourceId": source.ID, "error": err.Error()})
-		return
-	}
-	_ = s.store.InsertSystemLog(ctx, "info", "cleared stale per-key model permissions (source now single-key)", map[string]any{"sourceId": source.ID, "sourceName": source.Name})
+	return result, nil
 }
 
 // enrichModelFromCatalog 用能力目录（models.dev）回填模型能力字段（方向1）。

@@ -187,7 +187,7 @@ func TestCustomModelDiscoveryPaginationAndFetchBase(t *testing.T) {
 	if err != nil || calls != 2 || len(models) != 2 {
 		t.Fatal(models, calls, err)
 	}
-	if models[0].ID != "m-a" || models[0].Name != "Model A" || models[1].Name != "m-b" || models[0].Platform != "custom:vendor-discovery" {
+	if models[0].ID != "m-a" || models[0].Name != "m-a" || models[1].Name != "m-b" || models[0].Platform != "custom:vendor-discovery" {
 		t.Fatal(models)
 	}
 }

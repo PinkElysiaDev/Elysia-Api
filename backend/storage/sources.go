@@ -6,7 +6,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
+	"time"
 )
 
 func (s *Store) ListSources(ctx context.Context) ([]ModelSource, error) {
@@ -70,6 +72,14 @@ func (s *Store) upsertSource(ctx context.Context, executor protocolSQLExecutor, 
 	if strings.TrimSpace(item.ID) == "" {
 		return errors.New("source id is required")
 	}
+	item.APIKeys = slices.Clone(item.APIKeys)
+	for i := range item.APIKeys {
+		if item.AutoFetchModels {
+			item.APIKeys[i].AllowedModels = nil
+		} else {
+			item.APIKeys[i].FetchedModels = nil
+		}
+	}
 	manual, err := json.Marshal(item.ManualModels)
 	if err != nil {
 		return err
@@ -98,9 +108,7 @@ func (s *Store) upsertSource(ctx context.Context, executor protocolSQLExecutor, 
 	return err
 }
 
-// UpdateSourceAPIKeys 定向更新某个源的 key 列表（加密整列重写，不碰其他字段）。
-// 供逐 key 拉取后回写 fetchedModels/allowedModels 使用——避免为了改 key 元数据
-// 而走整源 Upsert 与用户编辑产生竞争。
+// UpdateSourceAPIKeys 供历史数据迁移改写 Key 列表；在线刷新使用 CommitSourceRefresh。
 func (s *Store) UpdateSourceAPIKeys(ctx context.Context, sourceID string, keys []SourceAPIKey) error {
 	payload, err := json.Marshal(keys)
 	if err != nil {
@@ -389,7 +397,68 @@ func (s *Store) mergeSourceModels(ctx context.Context, source ModelSource, incom
 		return result, err
 	}
 	defer tx.Rollback()
+	result, err = s.mergeSourceModelsTx(ctx, tx, source, incoming, deleteMissingManual)
+	if err != nil {
+		return ModelMergeResult{Added: []string{}, Removed: []string{}}, err
+	}
+	return result, tx.Commit()
+}
 
+var ErrSourceChanged = errors.New("model source changed or was deleted during refresh; discarded fetched results")
+
+// CommitSourceRefresh commits only discovery data against the exact source snapshot.
+func (s *Store) CommitSourceRefresh(ctx context.Context, source ModelSource, incoming []Model, keyModels map[int][]string) (ModelMergeResult, error) {
+	empty := ModelMergeResult{Added: []string{}, Removed: []string{}}
+	if len(incoming) == 0 || !source.AutoFetchModels {
+		return empty, errors.New("automatic refresh requires a nonempty model catalog")
+	}
+	source.APIKeys = slices.Clone(source.APIKeys)
+	for index := range source.APIKeys {
+		source.APIKeys[index].AllowedModels = nil
+	}
+	for index, models := range keyModels {
+		if index < 0 || index >= len(source.APIKeys) {
+			return empty, errors.New("invalid discovery key index")
+		}
+		source.APIKeys[index].FetchedModels = slices.Clone(models)
+	}
+	payload, err := json.Marshal(source.APIKeys)
+	if err != nil {
+		return empty, err
+	}
+	stored, err := s.codec.encrypt(string(payload))
+	if err != nil {
+		return empty, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return empty, err
+	}
+	defer tx.Rollback()
+	updated, err := tx.ExecContext(ctx, `UPDATE model_sources SET api_keys = ?, updated_at = ? WHERE id = ? AND updated_at = ?`,
+		stored, nowString(), source.ID, source.UpdatedAt.UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return empty, err
+	}
+	rows, err := updated.RowsAffected()
+	if err != nil {
+		return empty, err
+	}
+	if rows != 1 {
+		return empty, ErrSourceChanged
+	}
+	result, err := s.mergeSourceModelsTx(ctx, tx, source, incoming, false)
+	if err != nil {
+		return empty, err
+	}
+	if err := tx.Commit(); err != nil {
+		return empty, err
+	}
+	return result, nil
+}
+
+func (s *Store) mergeSourceModelsTx(ctx context.Context, tx *sql.Tx, source ModelSource, incoming []Model, deleteMissingManual bool) (ModelMergeResult, error) {
+	result := ModelMergeResult{Added: []string{}, Removed: []string{}}
 	existing, err := loadExistingModelRows(ctx, tx, source.ID)
 	if err != nil {
 		return result, err
@@ -416,7 +485,7 @@ func (s *Store) mergeSourceModels(ctx context.Context, source ModelSource, incom
 	if err != nil {
 		return result, err
 	}
-	return result, tx.Commit()
+	return result, nil
 }
 
 // normalizeModelDefaults 补齐模型字段的落库默认值。

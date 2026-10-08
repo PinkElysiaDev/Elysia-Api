@@ -620,7 +620,7 @@ func TestPresetGeminiModelDiscoveryStripsPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
-	if len(models) != 1 || models[0].ID != "gemini-2.5-flash" || models[0].Name != "Gemini 2.5 Flash" {
+	if len(models) != 1 || models[0].ID != "gemini-2.5-flash" || models[0].Name != "gemini-2.5-flash" {
 		t.Fatalf("unexpected models: %+v", models)
 	}
 }
@@ -709,7 +709,7 @@ func TestStripGeminiModelIDPrefixesRecoversHalfConverged(t *testing.T) {
 	ctx := t.Context()
 
 	source := storage.ModelSource{
-		ID: "src-g", Name: "gemini", BaseURL: "https://up.example", Platform: "custom:google-generate-content", Enabled: true,
+		ID: "src-g", Name: "gemini", BaseURL: "https://up.example", Platform: "custom:google-generate-content", Enabled: true, AutoFetchModels: true,
 		APIKeys: []storage.SourceAPIKey{{
 			Value:         "k1",
 			FetchedModels: []string{"models/gemini-2.5-flash", "models/gemini-2.5-pro"},
@@ -718,6 +718,9 @@ func TestStripGeminiModelIDPrefixesRecoversHalfConverged(t *testing.T) {
 	}
 	if err := s.store.UpsertSource(ctx, source); err != nil {
 		t.Fatalf("seed source: %v", err)
+	}
+	if err := s.store.UpdateSourceAPIKeys(ctx, source.ID, source.APIKeys); err != nil {
+		t.Fatal(err)
 	}
 	// 模型行已是裸名(首跑的模型行修复已提交)。
 	if err := s.store.ReplaceSourceModels(ctx, source, []storage.Model{{

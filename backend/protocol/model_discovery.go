@@ -23,8 +23,9 @@ type DiscoveredModel struct {
 // ModelPage is the result of an independently compiled discovery mapping.
 // Empty Next ends pagination; an empty model array is a valid terminal page.
 type ModelPage struct {
-	Models []DiscoveredModel `json:"models"`
-	Next   string            `json:"next,omitempty"`
+	Models  []DiscoveredModel `json:"models"`
+	Next    string            `json:"next,omitempty"`
+	HasMore bool              `json:"hasMore,omitempty"`
 }
 
 // ModelSample supplies wire-to-catalog evidence for one discovery operation.
@@ -39,7 +40,8 @@ var modelPageSchema = ValueSchema{Type: ObjectType, Required: []string{"models"}
 	"models": {Type: ArrayType, Items: &ValueSchema{Type: ObjectType, Required: []string{"id"}, Properties: map[string]ValueSchema{
 		"id": {Type: StringType}, "name": {Type: StringType}, "maxTokens": {Type: IntegerType},
 	}}},
-	"next": {Type: StringType},
+	"next":    {Type: StringType, Nullable: true},
+	"hasMore": {Type: BooleanType},
 }}
 
 func (compiler *Compiler) compileModelMappings(compiled *Compiled, definition Definition, expressions *expressionCompiler) error {
@@ -103,6 +105,9 @@ func (compiled *Compiled) DecodeModelPage(ctx context.Context, operation string,
 	}
 	if page.Models == nil || len(page.Models) > compiled.limits.StateItems {
 		return page, fmt.Errorf("model page requires a bounded models array")
+	}
+	if page.HasMore && strings.TrimSpace(page.Next) == "" {
+		return page, fmt.Errorf("model page requires a continuation cursor when hasMore is true")
 	}
 	seen := map[string]bool{}
 	for _, model := range page.Models {

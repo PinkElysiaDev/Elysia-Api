@@ -3,6 +3,33 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { ProtocolDocument } from '../src/lib/protocol-document'
 
+test('designer renders the published listing contract without migration metadata', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.addInitScript(() => localStorage.setItem('elysia-webui.panel-token', 'test-only'))
+  await page.route('**/api/admin/**', async (route) => {
+    const path = new URL(route.request().url()).pathname
+    let data: unknown = { items: [], seq: 1 }
+    if (path.endsWith('/schema')) data = {}
+    if (path.endsWith('/protocols')) data = {
+      drafts: [{ protocolId: 'my-protocol', hash: 'draft', definition: { id: 'my-protocol' }, updatedAt: '2026-10-08T00:00:00Z' }],
+      active: [
+        { protocolId: 'openai-chat-completions', revisionHash: 'active' },
+        { protocolId: 'google-generate-content', revisionHash: 'pending' },
+        { protocolId: 'my-protocol', revisionHash: 'pending' },
+      ],
+      loaded: { 'openai-chat-completions': 'active' },
+      presets: ['openai-chat-completions', 'google-generate-content'],
+    }
+    await route.fulfill({ json: { ok: true, data } })
+  })
+  await page.goto('/#/protocols')
+  await expect(page.getByRole('row').filter({ hasText: 'openai-chat-completions' })).toContainText('已启用')
+  await expect(page.getByRole('row').filter({ hasText: 'google-generate-content' })).toContainText('待恢复')
+  await expect(page.getByRole('row').filter({ hasText: 'my-protocol' })).toContainText('需重新验证或修复')
+  expect(errors).toEqual([])
+})
+
 test('Agent edit session opens exact v2 draft in the editor', async ({ page, request }) => {
   test.skip(!process.env.PROTOCOL_E2E_URL, 'requires an isolated real backend')
   const token = process.env.PROTOCOL_E2E_TOKEN ?? 'local-protocol-e2e'

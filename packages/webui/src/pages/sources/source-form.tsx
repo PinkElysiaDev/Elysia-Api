@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowDown, ArrowUp, ChevronDown, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -28,7 +28,6 @@ import { customPlatformValue, customProtocolID, isCustomPlatform, protocolLabel 
 import { api } from '@/lib/api'
 import { protocolAPI, type EnabledProtocol } from '@/lib/protocol-v2'
 import { revalidate } from '@/lib/hooks'
-import { cn } from '@/lib/utils'
 import {
   KEY_STRATEGIES,
   PROTOCOL_DEFAULTS,
@@ -40,7 +39,6 @@ import {
   buildSourcePayload,
   type SourceForm,
 } from './source-form/helpers'
-import { KeyModelsPanel, KeyPermissionBadge } from './source-form/key-models-panel'
 import type {
   ManualModel,
   ModelSource,
@@ -64,8 +62,6 @@ export function SourceFormDialog({
   const [saving, setSaving] = useState(false)
   // 「自定义模型拉取地址」开关（默认关闭）：关闭 = 拉取走 API 地址。
   const [fetchUrlEnabled, setFetchUrlEnabled] = useState(false)
-  // 按 key 展开显示该 key 拉取到的模型勾选面板（多 key 时）。
-  const [expandedKey, setExpandedKey] = useState<number | null>(null)
   // 手动模式下每个手动模型选中的 key 下标集合（key 数 >1 时）。
   const [manualKeySelection, setManualKeySelection] = useState<Record<number, number[]>>({})
   const [registeredProtocols, setRegisteredProtocols] = useState<EnabledProtocol[]>([])
@@ -105,7 +101,7 @@ export function SourceFormDialog({
       const allKeyIndexes = sourceKeys
         .map((k, i) => (k.value.trim() ? i : -1))
         .filter((i) => i >= 0)
-      const hasRestriction = sourceKeys.some((k) => Array.isArray(k.allowedModels))
+      const hasRestriction = !source?.autoFetchModels && sourceKeys.some((k) => Array.isArray(k.allowedModels))
       const initialSelection: Record<number, number[]> = {}
       sourceModels.forEach((model, index) => {
         if (hasRestriction && model.id) {
@@ -120,7 +116,6 @@ export function SourceFormDialog({
         }
       })
       setManualKeySelection(initialSelection)
-      setExpandedKey(null)
     }
   }, [open, source])
 
@@ -507,27 +502,6 @@ export function SourceFormDialog({
                       </Button>
                     </div>
                   </div>
-                  {keyCount > 1 && (
-                    <>
-                      <button
-                        type="button"
-                        className="mt-1.5 flex w-full items-center gap-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
-                        onClick={() => setExpandedKey((prev) => (prev === index ? null : index))}
-                      >
-                        <ChevronDown
-                          className={cn('h-3.5 w-3.5 transition-transform', expandedKey === index && 'rotate-180')}
-                        />
-                        模型权限
-                        <KeyPermissionBadge apiKeyEntry={key} />
-                      </button>
-                      {expandedKey === index && (
-                        <KeyModelsPanel
-                          apiKeyEntry={key}
-                          onChange={(allowed) => updateApiKey(index, { allowedModels: allowed })}
-                        />
-                      )}
-                    </>
-                  )}
                 </div>
               ))}
             </div>

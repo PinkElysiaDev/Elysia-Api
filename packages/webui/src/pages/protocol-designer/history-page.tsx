@@ -75,7 +75,6 @@ export function ProtocolHistoryPage() {
         <Button disabled={busy || detail.references.length > 0} variant="destructive" onClick={() => { setConfirmation(''); setError(''); setAction('delete') }}>彻底删除</Button>
       </div></div>
       <p className="text-sm">验证：{detail.report?.definitionHash ? detail.report.passed ? `已通过 · 编译器 ${detail.report.compilerVersion}` : '未通过' : '暂无验证记录'}。恢复时会重新验证。</p>
-      {detail.item.diagnostic && <p role="alert" className="text-sm text-destructive">{detail.item.diagnostic}</p>}
       {(detail.report?.issues?.length ?? 0) > 0 && <ul className="text-sm text-destructive">{detail.report!.issues.map((issue, index) => <li key={index}>{issue.path} · {issue.reason}</li>)}</ul>}
       {detail.references.length > 0 && <div className="space-y-2 rounded-md bg-muted p-3"><p className="text-sm font-medium">以下引用阻止彻底删除</p><ReferenceList items={detail.references} /></div>}
       {detail.changes && <details><summary className="cursor-pointer text-sm">与当前启用版本的差异（{detail.changes.length} 项）</summary><pre className="max-h-64 overflow-auto p-3 text-xs">{JSON.stringify(detail.changes, null, 2)}</pre></details>}

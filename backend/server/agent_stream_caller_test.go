@@ -666,7 +666,7 @@ func TestAgentCallerPicksPermittedKey(t *testing.T) {
 		_, _ = w.Write([]byte(openAIDone()))
 	})
 	source := storage.ModelSource{
-		ID: "cs1", Name: "multi-key-src", BaseURL: upstream.URL, Platform: "openai", Enabled: true,
+		ID: "cs1", Name: "multi-key-src", BaseURL: upstream.URL, Platform: "openai", Enabled: true, AutoFetchModels: true,
 		APIKeys: []storage.SourceAPIKey{
 			{Value: "key-a", FetchedModels: []string{"other-model"}},
 			{Value: "key-b", FetchedModels: []string{"fake-model"}},
@@ -676,7 +676,7 @@ func TestAgentCallerPicksPermittedKey(t *testing.T) {
 		t.Fatalf("UpsertSource: %v", err)
 	}
 	if err := s.store.ReplaceSourceModels(t.Context(), source, []storage.Model{{
-		ID: "m1", SourceID: "cs1", Name: "fake-model", BaseURL: upstream.URL,
+		ID: "fake-model", SourceID: "cs1", Name: "fake-model", BaseURL: upstream.URL,
 		Platform: "openai", Type: "llm", Enabled: true, Available: true, ToolsCapable: true, VisionCapable: true,
 	}}); err != nil {
 		t.Fatalf("ReplaceSourceModels: %v", err)
@@ -698,7 +698,7 @@ func TestAgentCallerPicksPermittedKey(t *testing.T) {
 func TestApplyAgentPermittedKey(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	source := storage.ModelSource{
-		ID: "src1", Name: "src", Platform: "openai", Enabled: true,
+		ID: "src1", Name: "src", Platform: "openai", Enabled: true, AutoFetchModels: true,
 		APIKeys: []storage.SourceAPIKey{
 			{Value: "key-a", FetchedModels: []string{"m1"}},
 			{Value: "key-b", FetchedModels: []string{"m2"}},

@@ -189,10 +189,10 @@ export interface SourceAPIKey {
   value: string
   note?: string
   disabled?: boolean
-  /** 该 key 上次独立拉取到的模型集（权限自动发现结果，勾选界面的展示宇宙）。 */
-  fetchedModels?: string[]
-  /** 用户勾选启用的模型子集；undefined = 未勾选过 = 全部启用。 */
-  allowedModels?: string[]
+  /** 发现集；null/undefined 表示尚未发现，[] 表示无可用模型。 */
+  fetchedModels?: string[] | null
+  /** 手动源的模型分配；null/undefined 不限制，[] 表示全部禁用。 */
+  allowedModels?: string[] | null
 }
 
 /** 源的后台拉取任务状态（后端运行时叠加，不落库）。 */

@@ -239,11 +239,6 @@
                       "path": "/id",
                       "from": "item",
                       "required": true
-                    },
-                    "name": {
-                      "op": "read",
-                      "path": "/display_name",
-                      "from": "item"
                     }
                   }
                 }
@@ -260,6 +255,11 @@
                   "path": "/last_id",
                   "required": true
                 }
+              },
+              "hasMore": {
+                "op": "read",
+                "path": "/has_more",
+                "required": true
               }
             }
           }
@@ -4936,11 +4936,11 @@
       "expected": {
         "models": [
           {
-            "id": "alpha",
-            "name": "Alpha"
+            "id": "alpha"
           }
         ],
-        "next": "alpha"
+        "next": "alpha",
+        "hasMore": true
       }
     }
   ],
