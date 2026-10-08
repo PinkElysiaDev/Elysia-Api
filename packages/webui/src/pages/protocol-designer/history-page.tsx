@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog'
 import { protocolAPI, type ProtocolHistoryDetail, type ProtocolHistoryItem, type ProtocolReference } from '@/lib/protocol-v2'
 
-const reasonLabel = (reason: string) => reason === 'preset_replaced' ? '预置旧版本' : '已删除自定义协议'
+const reasonLabel = (reason: string) => reason === 'preset_replaced' ? '预置旧版本' : reason === 'identity_recovered' ? '历史身份恢复' : '已删除自定义协议'
 const HISTORY_FILTERS = [
   { value: 'all', label: '全部' },
   { value: 'preset_replaced', label: '预置旧版本' },
@@ -60,20 +60,22 @@ export function ProtocolHistoryPage() {
     <PageHeader title="协议历史" actions={<><Button disabled={busy} variant="ghost" onClick={() => void refresh().catch((err: unknown) => setError(String(err)))}>刷新</Button><Button onClick={() => navigate('/protocols')}>返回协议设计器</Button></>} />
     {error && !action && <p role="alert" className="text-destructive">{error}</p>}
     {notice && <div role="status" className="rounded-lg border p-3 text-sm">{notice}{restoredID && <Button variant="ghost" onClick={() => navigate('/protocols', { state: { protocolId: restoredID } })}>查看新协议</Button>}</div>}
-    <div className="flex flex-wrap items-center justify-between gap-3 py-1">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">类型</span>
+    <div className="flex flex-wrap items-center gap-3 py-1">
+      <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">类型</span>
+      {/* 筛选与搜索成组不换行：窄屏整组下移，搜索框始终贴在筛选右侧 */}
+      <div className="flex min-w-0 items-center gap-3">
         <Seg aria-label="历史类型" options={HISTORY_FILTERS} value={filter} onChange={setFilter} />
-        <Input aria-label="搜索协议历史" placeholder="搜索名称、ID 或版本哈希" value={query} onChange={(event) => setQuery(event.target.value)} className="max-w-xs" />
+        <Input aria-label="搜索协议历史" placeholder="搜索名称、ID 或版本哈希" value={query} onChange={(event) => setQuery(event.target.value)} className="w-56 min-w-0" />
       </div>
     </div>
     {!loaded ? <p role="status">正在读取历史…</p> : visible.length === 0 ? <EmptyText className="py-8 text-center">暂无匹配的历史版本</EmptyText> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">协议</th><th className="p-3">版本</th><th className="p-3">来源</th><th className="p-3">归档时间</th><th className="p-3 text-center">操作</th></tr></thead><tbody className="divide-y divide-border/30">{visible.map((item) => <tr key={item.id}><td className="p-3"><div>{item.name || item.protocolId}</div><div className="font-mono text-xs text-muted-foreground">{item.protocolId}</div></td><td className="p-3"><div>{item.version || '—'}{item.isDraft ? ' · 草稿' : ''}</div><code className="text-xs">{item.hash.slice(0, 12)}</code></td><td className="p-3">{reasonLabel(item.reason)}</td><td className="p-3">{new Date(item.archivedAt).toLocaleString()}</td><td className="p-3 text-center"><Button disabled={busy} onClick={() => void inspect(item.id)}>查看版本</Button></td></tr>)}</tbody></table></div>}
     {detail && <section aria-label="历史版本详情" className="space-y-4 rounded-lg border bg-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-medium">{detail.item.name || detail.item.protocolId}</h2><p className="break-all font-mono text-xs text-muted-foreground">{detail.item.hash}</p></div><div className="flex gap-2">
         <Button disabled={busy} onClick={() => { setNewID(`${detail.item.protocolId}-restored-${detail.item.hash.slice(0, 8)}`); setNewName(`${detail.item.name || detail.item.protocolId}（恢复）`); setError(''); setAction('restore') }}>恢复为新协议</Button>
-        <Button disabled={busy || detail.references.length > 0 || detail.item.reason === 'preset_replaced'} variant="destructive" onClick={() => { setConfirmation(''); setError(''); setAction('delete') }}>彻底删除</Button>
+        <Button disabled={busy || detail.references.length > 0} variant="destructive" onClick={() => { setConfirmation(''); setError(''); setAction('delete') }}>彻底删除</Button>
       </div></div>
       <p className="text-sm">验证：{detail.report?.definitionHash ? detail.report.passed ? `已通过 · 编译器 ${detail.report.compilerVersion}` : '未通过' : '暂无验证记录'}。恢复时会重新验证。</p>
+      {detail.item.diagnostic && <p role="alert" className="text-sm text-destructive">{detail.item.diagnostic}</p>}
       {(detail.report?.issues?.length ?? 0) > 0 && <ul className="text-sm text-destructive">{detail.report!.issues.map((issue, index) => <li key={index}>{issue.path} · {issue.reason}</li>)}</ul>}
       {detail.references.length > 0 && <div className="space-y-2 rounded-md bg-muted p-3"><p className="text-sm font-medium">以下引用阻止彻底删除</p><ReferenceList items={detail.references} /></div>}
       {detail.changes && <details><summary className="cursor-pointer text-sm">与当前启用版本的差异（{detail.changes.length} 项）</summary><pre className="max-h-64 overflow-auto p-3 text-xs">{JSON.stringify(detail.changes, null, 2)}</pre></details>}

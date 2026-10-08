@@ -18,6 +18,8 @@ export function ProtocolDesignerPage() {
   const [error, setError] = useState('')
   const [archiveID, setArchiveID] = useState('')
   const [selection, setSelection] = useState<{ draft?: ProtocolDraft; source?: string }>()
+  // 启动迁移就绪信号：仅异常时渲染警示（正常路径零噪音）。
+  const [migration, setMigration] = useState<{ ready: boolean; blocked: number }>()
   const refresh = useCallback(async (id: string) => {
     const items = await protocolAPI.list()
     setListing(items)
@@ -38,6 +40,7 @@ export function ProtocolDesignerPage() {
   useEffect(() => {
     let isCurrent = true
     void Promise.all([protocolAPI.schema(), protocolAPI.list()]).then(([contract, items]) => { if (isCurrent) { setSchema(contract); setListing(items) } }).catch((failure: unknown) => { if (isCurrent) setError(String(failure)) })
+    void protocolAPI.migrations().then((status) => { if (isCurrent) setMigration({ ready: status.ready, blocked: status.blocked }) }).catch(() => {})
     return () => { isCurrent = false }
   }, [])
   useEffect(() => {
@@ -58,18 +61,23 @@ export function ProtocolDesignerPage() {
   return <div className="space-y-6">
     <PageHeader title="协议设计器" actions={!selection && <><Button variant="ghost" onClick={() => navigate('/protocols/history')}>协议历史</Button><Button onClick={() => navigate('/agent?mode=create')}>Agent 编写</Button><Button variant="primary" onClick={() => setSelection({})}>新建协议</Button></>} />
     {archiveID && <ProtocolArchiveDialog id={archiveID} onClose={() => setArchiveID('')} onArchived={() => refresh(archiveID)} />}
+    {migration && (!migration.ready || migration.blocked > 0) && (
+      <div role="alert" className="tone-amber rounded-lg px-4 py-3 text-sm">
+        协议迁移待修复：{migration.blocked > 0 ? `${migration.blocked} 个协议或绑定受阻` : '核心服务未就绪'}，生成已暂停。详细步骤见系统日志。
+      </div>
+    )}
     {error && <p role="alert" className="text-destructive">{error}</p>}
     {!schema || !listing ? <p role="status">正在读取协议引擎契约…</p> : selection ? <ProtocolV2Editor schema={schema} draft={selection.draft} initialSource={selection.source} activeHash={listing.active.find((entry) => entry.protocolId === selection.draft?.protocolId)?.revisionHash ?? ''} onSaved={refresh} onClose={() => setSelection(undefined)} /> : <>
       {(listing.presets ?? []).length > 0 && <div className="space-y-2">
         <h2 className="text-sm font-medium">预置协议（只读）</h2>
-        <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">协议</th><th>当前版本</th><th className="p-3 text-center">操作</th></tr></thead><tbody>{(listing.presets ?? []).map((id) => {
+        <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">协议</th><th>当前版本</th><th>运行状态</th><th className="p-3 text-center">操作</th></tr></thead><tbody>{(listing.presets ?? []).map((id) => {
           const active = listing.active.find((entry) => entry.protocolId === id)
-          return <tr key={id} className="border-b"><td className="p-3"><span className="font-medium">{protocolLabel(customPlatformValue(id), 'long')}</span><span className="ml-2 font-mono text-2xs text-muted-foreground">{id}</span></td><td className="p-3 font-mono text-xs">{active?.revisionHash.slice(0, 12) ?? '—'}</td><td className="p-3 text-center"><Button variant="ghost" onClick={() => void copyPreset(id)}>复制为新协议</Button></td></tr>
+          return <tr key={id} className="border-b"><td className="p-3"><span className="font-medium">{protocolLabel(customPlatformValue(id), 'long')}</span><span className="ml-2 font-mono text-2xs text-muted-foreground">{id}</span></td><td className="p-3 font-mono text-xs">{active?.revisionHash.slice(0, 12) ?? '—'}</td><td className="p-3"><span>{listing.loaded[id] ? '已启用' : listing.statuses?.[id]?.state === 'blocked' ? '恢复失败' : '待恢复'}</span>{listing.statuses?.[id]?.reason && <p role="status" className="mt-1 max-w-sm text-xs text-muted-foreground">{listing.statuses[id].reason}</p>}</td><td className="p-3 text-center"><Button variant="ghost" onClick={() => void copyPreset(id)}>复制为新协议</Button></td></tr>
         })}</tbody></table></div>
       </div>}
       {customDrafts.length === 0 ? <EmptyState title="暂无自定义协议" /> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">协议</th><th>草稿</th><th>启用状态</th><th className="p-3 text-center">操作</th></tr></thead><tbody>{customDrafts.map((draft) => {
         const active = listing.active.find((entry) => entry.protocolId === draft.protocolId)
-        return <tr key={draft.protocolId} className="border-b"><td className="p-3 font-mono">{draft.protocolId}</td><td className="p-3 font-mono text-xs">{draft.hash.slice(0, 12)}</td><td className="p-3">{active ? listing.loaded[draft.protocolId] === active.revisionHash ? '已启用' : '需重新验证或修复' : '未启用'}</td><td className="p-3 text-center"><Button onClick={() => setSelection({ draft })}>编辑 {draft.protocolId}</Button><Button variant="danger" onClick={() => setArchiveID(draft.protocolId)}>删除 {draft.protocolId}</Button></td></tr>
+        return <tr key={draft.protocolId} className="border-b"><td className="p-3 font-mono">{draft.protocolId}</td><td className="p-3 font-mono text-xs">{draft.hash.slice(0, 12)}{draft.diagnostic && <p role="status" className="mt-1 max-w-sm text-xs text-destructive">{draft.diagnostic}</p>}</td><td className="p-3">{active ? listing.loaded[draft.protocolId] === active.revisionHash ? '已启用' : '需重新验证或修复' : '未启用'}{listing.statuses?.[draft.protocolId]?.reason && <p className="mt-1 max-w-sm text-xs text-muted-foreground">{listing.statuses[draft.protocolId].reason}</p>}</td><td className="p-3 text-center"><Button onClick={() => setSelection({ draft })}>编辑 {draft.protocolId}</Button><Button variant="danger" onClick={() => setArchiveID(draft.protocolId)}>删除 {draft.protocolId}</Button></td></tr>
       })}</tbody></table></div>}
     </>}
   </div>
