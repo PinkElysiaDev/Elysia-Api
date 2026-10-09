@@ -36,6 +36,7 @@ type streamItem struct {
 
 type streamModule struct {
 	metadata []p.ResponseMetadata
+	wire     wireStreamContract
 	module
 	limits           p.Limits
 	isStarted        bool
@@ -289,6 +290,12 @@ func (stream *streamModule) decodeChatFrame(fields p.Object, options p.Evaluatio
 		delta, err := nestedObject(choice, "delta")
 		if err != nil {
 			return nil, err
+		}
+		if role := delta["role"]; !role.IsZero() {
+			text, err := stringValue(role)
+			if err != nil || text != "assistant" {
+				return nil, unsupported("/choices/0/delta/role", "Chat output role must be assistant")
+			}
 		}
 		for _, part := range []struct {
 			field, key string

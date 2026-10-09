@@ -2,6 +2,13 @@ package protocol
 
 import "context"
 
+// WireEventValidator checks cross-frame wire requirements that are not part of
+// the semantic event model (for example an explicit Chat assistant role).
+// It runs on the installed codec's request-owned instance, after wire mappings.
+type WireEventValidator interface {
+	ValidateWireEvent(Value) error
+}
+
 // WireStreamValidation checks the bytes after after-mappings, wire rules and
 // carrier insertion. It uses the installed target codec, not a user-authored
 // decode mapping that could hide a malformed wire frame.
@@ -36,6 +43,11 @@ func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
 	}
 	if v.decoder == nil {
 		return nil
+	}
+	if validator, ok := v.decoder.(WireEventValidator); ok {
+		if err := validator.ValidateWireEvent(frame); err != nil {
+			return v.compiled.runtimeError(EncodeEvent, err)
+		}
 	}
 	events, err := v.decoder.Convert(ctx, DecodeEvent, frame, v.options)
 	if err != nil {

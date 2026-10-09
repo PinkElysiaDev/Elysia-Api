@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "openai-chat-completions",
   "name": "Openai Chat Completions",
-  "version": "2.2.5",
+  "version": "2.2.6",
   "family": "openai_chat",
   "wireVersion": "v2",
   "requires": [
@@ -1795,6 +1795,7 @@
             {
               "index": 0,
               "delta": {
+                "role": "assistant",
                 "content": "hi"
               }
             }
@@ -2119,6 +2120,7 @@
             {
               "index": 0,
               "delta": {
+                "role": "assistant",
                 "tool_calls": [
                   {
                     "index": 0,
@@ -2728,6 +2730,7 @@
             {
               "index": 0,
               "delta": {
+                "role": "assistant",
                 "reasoning_content": "hi"
               }
             }

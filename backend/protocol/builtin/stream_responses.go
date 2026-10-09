@@ -400,6 +400,12 @@ func (stream *streamModule) decodeGeminiFrame(fields p.Object, options p.Evaluat
 		if err != nil {
 			return nil, err
 		}
+		if role := content["role"]; !role.IsZero() {
+			text, err := stringValue(role)
+			if err != nil || text != "model" {
+				return nil, unsupported("/candidates/0/content/role", "Gemini output role must be model")
+			}
+		}
 		parts, err := readArray(content["parts"])
 		if err != nil {
 			return nil, err
