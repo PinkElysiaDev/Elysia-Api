@@ -229,6 +229,15 @@ func TestVisibleReasoningComplexNativeStructureNotDiscarded(t *testing.T) {
 }
 
 func TestVisibleReasoningRejectsMalformedStream(t *testing.T) {
+	for _, raw := range []string{
+		`{"type":"response.reasoning_text.delta","output_index":0,"content_index":0,"delta":"orphan"}`,
+		`{"type":"response.reasoning_text.done","output_index":0,"content_index":0,"text":"orphan"}`,
+	} {
+		c := shippedProjectionProtocol(t, Responses)
+		if _, err := c.DecodeFrame(t.Context(), testValue(t, raw), p.EvaluationContext{State: p.NewEvaluationState()}); err == nil {
+			t.Fatal("orphan reasoning must not masquerade as an opaque native event")
+		}
+	}
 	for _, bad := range []string{
 		`{"type":"response.reasoning_text.delta","output_index":0,"content_index":1,"delta":"wrong association"}`,
 		`{"type":"response.reasoning_text.done","output_index":0,"content_index":0,"text":"replacement"}`,

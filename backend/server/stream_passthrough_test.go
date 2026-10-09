@@ -73,20 +73,44 @@ func TestResponsesPassthroughStreamPreservesReasoningText(t *testing.T) {
 			`event: response.created`,
 			`data: {"type":"response.created","response":{"id":"resp_1","object":"response","status":"in_progress","model":"upstream","output":[],"created_at":1},"sequence_number":0}`,
 			``,
-			`event: response.reasoning_text.delta`,
-			`data: {"type":"response.reasoning_text.delta","sequence_number":1,"item_id":"rs_1","output_index":0,"content_index":0,"delta":"thinking..."}`,
-			``,
-			`event: response.reasoning_text.done`,
-			`data: {"type":"response.reasoning_text.done","sequence_number":2,"item_id":"rs_1","output_index":0,"content_index":0,"text":"thinking..."}`,
+			`event: response.output_item.added`,
+			`data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"reasoning","id":"rs_1","status":"in_progress","summary":[],"content":[]}}`,
 			``,
 			`event: response.content_part.added`,
-			`data: {"type":"response.content_part.added","item_id":"msg_1","output_index":1,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]},"sequence_number":3}`,
+			`data: {"type":"response.content_part.added","sequence_number":2,"item_id":"rs_1","output_index":0,"content_index":0,"part":{"type":"reasoning_text","text":""}}`,
+			``,
+			`event: response.reasoning_text.delta`,
+			`data: {"type":"response.reasoning_text.delta","sequence_number":3,"item_id":"rs_1","output_index":0,"content_index":0,"delta":"thinking..."}`,
+			``,
+			`event: response.reasoning_text.done`,
+			`data: {"type":"response.reasoning_text.done","sequence_number":4,"item_id":"rs_1","output_index":0,"content_index":0,"text":"thinking..."}`,
+			``,
+			`event: response.content_part.done`,
+			`data: {"type":"response.content_part.done","sequence_number":5,"item_id":"rs_1","output_index":0,"content_index":0,"part":{"type":"reasoning_text","text":"thinking..."}}`,
+			``,
+			`event: response.output_item.done`,
+			`data: {"type":"response.output_item.done","sequence_number":6,"output_index":0,"item":{"type":"reasoning","id":"rs_1","status":"completed","summary":[],"content":[{"type":"reasoning_text","text":"thinking..."}]}}`,
+			``,
+			`event: response.output_item.added`,
+			`data: {"type":"response.output_item.added","sequence_number":7,"output_index":1,"item":{"type":"message","id":"msg_1","status":"in_progress","role":"assistant","content":[]}}`,
+			``,
+			`event: response.content_part.added`,
+			`data: {"type":"response.content_part.added","item_id":"msg_1","output_index":1,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]},"sequence_number":8}`,
 			``,
 			`event: response.output_text.delta`,
-			`data: {"type":"response.output_text.delta","sequence_number":4,"item_id":"msg_1","output_index":1,"content_index":0,"delta":"42"}`,
+			`data: {"type":"response.output_text.delta","sequence_number":9,"item_id":"msg_1","output_index":1,"content_index":0,"delta":"42"}`,
+			``,
+			`event: response.output_text.done`,
+			`data: {"type":"response.output_text.done","sequence_number":10,"item_id":"msg_1","output_index":1,"content_index":0,"text":"42"}`,
+			``,
+			`event: response.content_part.done`,
+			`data: {"type":"response.content_part.done","sequence_number":11,"item_id":"msg_1","output_index":1,"content_index":0,"part":{"type":"output_text","text":"42","annotations":[]}}`,
+			``,
+			`event: response.output_item.done`,
+			`data: {"type":"response.output_item.done","sequence_number":12,"output_index":1,"item":{"type":"message","id":"msg_1","status":"completed","role":"assistant","content":[{"type":"output_text","text":"42","annotations":[]}]}}`,
 			``,
 			`event: response.completed`,
-			`data: {"type":"response.completed","response":{"id":"resp_1","object":"response","status":"completed","model":"upstream","output":[{"type":"message","id":"msg_1","status":"completed","role":"assistant","content":[{"type":"output_text","text":"42","annotations":[]}]}],"usage":{"input_tokens":5,"output_tokens":1,"total_tokens":6},"created_at":1},"sequence_number":5}`,
+			`data: {"type":"response.completed","response":{"id":"resp_1","object":"response","status":"completed","model":"upstream","output":[{"type":"reasoning","id":"rs_1","status":"completed","summary":[],"content":[{"type":"reasoning_text","text":"thinking..."}]},{"type":"message","id":"msg_1","status":"completed","role":"assistant","content":[{"type":"output_text","text":"42","annotations":[]}]}],"usage":{"input_tokens":5,"output_tokens":1,"total_tokens":6},"created_at":1},"sequence_number":13}`,
 			``,
 		}, "\n")+"\n")
 	}))
@@ -120,6 +144,9 @@ func TestResponsesPassthroughStreamPreservesReasoningText(t *testing.T) {
 	}
 	if !strings.Contains(upstreamBody, `"reasoning_text"`) {
 		t.Fatalf("upstream request lost reasoning_text input item, got: %s", upstreamBody)
+	}
+	if trailer := rec.Result().Trailer.Get("X-Elysia-Stream-Error"); trailer != "" {
+		t.Fatalf("native stream failed after forwarding text: %s", trailer)
 	}
 
 	records := latestUsageRecords(t, s)
