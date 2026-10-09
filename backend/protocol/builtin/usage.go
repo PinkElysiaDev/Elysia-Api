@@ -94,9 +94,9 @@ func (adapter module) decodeUsage(value p.Value) (*p.Usage, error) {
 				}
 				if key == "cached_tokens" && entry.prefix == "input." {
 					usage.CacheRead = count
-				} else if key == "cache_write_tokens" && entry.prefix == "input." {
+				} else if (key == "cache_write_tokens" || key == "cached_creation_tokens") && entry.prefix == "input." {
 					if usage.CacheCreation != nil && count != nil && usage.CacheCreation.Count != count.Count {
-						return nil, fmt.Errorf("cache_write_tokens disagrees with cache_creation_input_tokens")
+						return nil, fmt.Errorf("%s disagrees with another cache creation counter", key)
 					}
 					usage.CacheCreation = count
 				} else if count != nil {
@@ -213,9 +213,6 @@ func (adapter module) encodeResponseUsage(response *p.Response, options p.Evalua
 	if err != nil {
 		return p.Value{}, err
 	}
-	if original["cache_read_input_tokens"].IsZero() && original["cache_creation_input_tokens"].IsZero() {
-		return encoded, nil
-	}
 	fields, err := encoded.ReadObject()
 	if err != nil {
 		return p.Value{}, err
@@ -227,6 +224,22 @@ func (adapter module) encodeResponseUsage(response *p.Response, options p.Evalua
 		if !original[alias.name].IsZero() {
 			fields[alias.name] = counterValue(alias.counter)
 		}
+	}
+	detailsKey := "input_tokens_details"
+	if adapter.name == Chat {
+		detailsKey = "prompt_tokens_details"
+	}
+	originalDetails, err := nestedObject(original, detailsKey)
+	if err != nil {
+		return p.Value{}, err
+	}
+	if !originalDetails["cached_creation_tokens"].IsZero() {
+		details, err := nestedObject(fields, detailsKey)
+		if err != nil {
+			return p.Value{}, err
+		}
+		details["cached_creation_tokens"] = counterValue(response.Usage.CacheCreation)
+		fields[detailsKey] = object(details)
 	}
 	return object(fields), nil
 }
@@ -345,7 +358,7 @@ func (adapter module) checkUsageDetails(usage *p.Usage, options p.EvaluationCont
 		// detail form would otherwise overwrite the count chosen above, leaving
 		// no signal that the two disagreed.
 		if adapter.name == Chat || adapter.name == Responses {
-			if trimmed, isDetail := strings.CutPrefix(name, "input."); isDetail && (trimmed == "cached_tokens" || trimmed == "cache_write_tokens") {
+			if trimmed, isDetail := strings.CutPrefix(name, "input."); isDetail && (trimmed == "cached_tokens" || trimmed == "cache_write_tokens" || trimmed == "cached_creation_tokens") {
 				return unsupported("/usage/details/"+name, "detail name is reserved for the canonical counter")
 			}
 		}

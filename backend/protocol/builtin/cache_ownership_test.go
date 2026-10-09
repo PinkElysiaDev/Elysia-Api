@@ -12,7 +12,7 @@ import (
 // count derived from the counters, leaving the two silently disagreeing.
 func TestUsageReservedDetailNamesAreRejected(t *testing.T) {
 	chat := module{name: Chat, family: "openai_chat"}
-	for _, name := range []string{"input.cached_tokens", "input.cache_write_tokens"} {
+	for _, name := range []string{"input.cached_tokens", "input.cache_write_tokens", "input.cached_creation_tokens"} {
 		usage := &p.Usage{
 			Input:   &p.Counter{Count: 100, Origin: p.ObservedCount},
 			Details: map[string]p.Counter{name: {Count: 1, Origin: p.ObservedCount}},
