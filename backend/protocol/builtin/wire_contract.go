@@ -146,6 +146,13 @@ func (adapter module) validateWireContract(direction p.Direction, value p.Value)
 		}
 		return nil
 	}
+	if adapter.name == Responses && direction == p.EncodeEvent && fields["type"] == p.StringValue("error") {
+		if err := num(fields["sequence_number"], "/sequence_number"); err != nil {
+			return err
+		}
+		_, err := responsesFailurePayload(fields)
+		return err
+	}
 	if !fields["error"].IsZero() && !fields["error"].IsNull() {
 		_, err := obj(fields["error"], "/error")
 		return err

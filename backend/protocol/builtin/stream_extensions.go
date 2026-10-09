@@ -69,7 +69,11 @@ func (stream *streamModule) captureFrameExtensions(fields p.Object) (p.Value, er
 			capture("/delta", delta, "type", "text", "thinking", "partial_json", "signature", "stop_reason", "stop_sequence")
 		}
 	case Responses:
-		capture("/", fields, "type", "sequence_number", "response_id", "output_index", "content_index", "summary_index", "item_id", "delta", "text", "refusal", "arguments", "input", "item", "part", "response", "error", "logprobs", "annotation", "annotation_index")
+		if fields["type"] == p.StringValue("error") {
+			capture("/", fields, "type", "sequence_number", "error", "message", "code", "param")
+		} else {
+			capture("/", fields, "type", "sequence_number", "response_id", "output_index", "content_index", "summary_index", "item_id", "delta", "text", "refusal", "arguments", "input", "item", "part", "response", "error", "logprobs", "annotation", "annotation_index")
+		}
 		if fields["type"] == p.StringValue("response.in_progress") {
 			response, err := fields["response"].ReadObject()
 			if err != nil {
@@ -141,7 +145,7 @@ func (stream *streamModule) captureFrameExtensions(fields p.Object) (p.Value, er
 			extra[entry.path] = usage
 		}
 	}
-	if value := fields["message"]; !value.IsZero() {
+	if value := fields["message"]; stream.name == Anthropic && !value.IsZero() {
 		message, err := value.ReadObject()
 		if err != nil {
 			return p.Value{}, err

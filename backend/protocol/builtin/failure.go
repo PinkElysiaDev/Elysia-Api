@@ -9,6 +9,42 @@ import (
 
 var failureNull, _ = p.EncodeValue(nil)
 
+// Responses uses both flat and nested error events. The event discriminator
+// and sequence belong to framing, not to the provider's failure payload.
+// Unknown fields remain scoped by captureFrameExtensions/decodeFailure.
+func responsesFailurePayload(fields p.Object) (p.Value, error) {
+	payload, path := fields, ""
+	if nested := fields["error"]; !nested.IsZero() {
+		if !nested.IsObject() {
+			return p.Value{}, unsupported("/error", "Responses error payload requires an object")
+		}
+		for _, key := range []string{"message", "code", "param"} {
+			if !fields[key].IsZero() {
+				return p.Value{}, unsupported("/"+key, "Responses error cannot combine nested and flat failure fields")
+			}
+		}
+		payload, _ = nested.ReadObject()
+		path = "/error"
+		if name, err := stringValue(payload["type"]); err != nil || name == "" {
+			return p.Value{}, unsupported(path+"/type", "Responses nested error requires a nonempty type string")
+		}
+	}
+	if _, err := stringValue(payload["message"]); err != nil {
+		return p.Value{}, unsupported(path+"/message", "Responses error requires a message string")
+	}
+	for _, key := range []string{"code", "param"} {
+		if value := payload[key]; !value.IsZero() && !value.IsNull() {
+			if _, err := stringValue(value); err != nil {
+				return p.Value{}, unsupported(path+"/"+key, "Responses error field requires a string or null")
+			}
+		}
+	}
+	if path == "" {
+		return object(p.Object{"message": payload["message"], "code": payload["code"], "param": payload["param"]}), nil
+	}
+	return fields["error"], nil
+}
+
 // Failure payloads use message/category/code/param/details. Vendor-specific
 // fields remain scoped extensions; a target cannot silently discard them.
 func (adapter module) decodeFailure(value p.Value, options p.EvaluationContext) (p.Value, error) {

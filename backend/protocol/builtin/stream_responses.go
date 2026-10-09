@@ -320,9 +320,11 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		}
 		return stream.decodeFailureEvent(response["error"], options)
 	case "error":
-		payload := copyFields(fields)
-		delete(payload, "type")
-		return stream.decodeFailureEvent(object(payload), options)
+		payload, err := responsesFailurePayload(fields)
+		if err != nil {
+			return nil, err
+		}
+		return stream.decodeFailureEvent(payload, options)
 	default:
 		return []p.Event{{Type: p.NativeEvent}}, nil
 	}
