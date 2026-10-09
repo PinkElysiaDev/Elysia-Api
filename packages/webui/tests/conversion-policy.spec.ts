@@ -32,6 +32,42 @@ test('real backend include and usage projections share preview and strict bounda
   await page.getByRole('button', { name: '添加规则' }).click()
   await page.getByRole('combobox', { name: /^动作/ }).selectOption('usage_projection')
   await expect(page.getByLabel('规则 1 目标编码器')).toBeVisible()
+  await page.getByRole('combobox', { name: /^动作/ }).selectOption('responses_storage')
+  await page.getByLabel('规则 1 目标编码器').selectOption('gemini')
+  await page.getByLabel('规则 1 保存降级').selectOption('reject')
+  await page.getByRole('combobox', { name: /^动作/ }).selectOption('anthropic_usage_envelope')
+  await expect(page.getByLabel('规则 1 目标编码器')).toHaveCount(0)
+})
+
+test('real backend storage and required usage policies expose explicit client projections', async ({ request }) => {
+  test.skip(!process.env.PROTOCOL_E2E_URL, 'requires isolated real backend')
+  const base = process.env.PROTOCOL_E2E_URL!
+  const headers = { Authorization: `Bearer ${process.env.PROTOCOL_E2E_TOKEN}` }
+  const preview = (mode: string, phase: string, input: unknown) => request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: {
+    policy: { schemaVersion: 1, id: 'envelope-preview', mode, rules: [] }, phase, input,
+    context: phase === 'request' ? { source: { definitionId: 'openai-responses' }, target: { definitionId: 'google-generate-content' } } : { source: { definitionId: 'google-generate-content' }, target: { definitionId: 'anthropic-messages' }, model: 'chosen-model' },
+  } })
+  for (const store of [undefined, null, true, false, 42]) {
+    for (const mode of ['compatible', 'strict']) {
+      const result = await preview(mode, 'request', { schemaVersion: 1, source: {}, content: [], parameters: { store } })
+      const accepted = store !== 42 && (mode === 'compatible' || store === false)
+      expect(result.ok()).toBe(accepted)
+      const body = await result.json()
+      if (accepted) {
+        expect(body.data.output.clientOutput.responsesStorage.effective).toBe(false)
+        expect(body.data.output.parameters?.store).toBeUndefined()
+        expect(body.data.persistentWrites).toBe(false)
+      }
+    }
+  }
+  const missing = { schemaVersion: 1, source: {}, content: [] }
+  const projected = await preview('compatible', 'response', missing)
+  expect(projected.ok()).toBeTruthy()
+  const body = (await projected.json()).data
+  expect(body.output.usage.input).toEqual({ count: 0, origin: 'placeholder' })
+  expect(body.output.usage.output).toEqual({ count: 0, origin: 'placeholder' })
+  expect(body.issues.some((issue: { ruleId: string }) => issue.ruleId === 'response-anthropic-usage-envelope')).toBeTruthy()
+  expect((await preview('strict', 'response', missing)).status()).toBe(400)
 })
 
 test('real backend policy draft, read-only preview, verification, activation and stale save', async ({ page, request }) => {

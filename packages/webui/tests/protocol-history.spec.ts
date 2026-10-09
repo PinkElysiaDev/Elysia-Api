@@ -12,6 +12,23 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
+test('damaged preset archives display the original text and parse diagnosis', async ({ page }) => {
+  const damaged = { ...old, id: 'anthropic-messages~damaged', protocolId: 'anthropic-messages', reason: 'preset_repaired', readError: 'invalid JSON value' }
+  const rawDefinition = '{broken raw definition'
+  await page.route('**/api/admin/**', async (route) => {
+    const path = new URL(route.request().url()).pathname
+    const data = path.endsWith('/history') ? { items: [damaged] }
+      : path.includes('/history/') ? { item: { ...damaged, rawDefinition }, references: [] }
+      : { items: [], seq: 1 }
+    await route.fulfill({ json: { ok: true, data } })
+  })
+  await page.goto('/#/protocols/history')
+  await expect(page.getByText('预置损坏原文')).toBeVisible()
+  await page.getByRole('button', { name: '查看版本' }).click()
+  await expect(page.getByRole('alert')).toContainText('invalid JSON value')
+  await expect(page.getByRole('region', { name: '历史版本详情' }).locator('pre')).toHaveText(rawDefinition)
+})
+
 test('history filters, restores a new ID and requires irreversible-delete confirmation', async ({ page }) => {
   let items = [old, custom]
   let restores = 0

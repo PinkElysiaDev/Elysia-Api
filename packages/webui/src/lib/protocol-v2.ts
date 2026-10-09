@@ -7,14 +7,14 @@ export interface ProtocolSchema { conversion: ConversionRegistry; compilerVersio
 export interface ProtocolDraft { protocolId: string; hash: string; definition: string; updatedAt: string }
 export interface ProtocolRevision { protocolId: string; hash: string; definition: string; createdAt: string }
 export interface Activation { protocolId: string; revisionHash: string }
-export interface ProtocolHistoryItem { id: string; protocolId: string; hash: string; name: string; version: string; reason: 'preset_replaced' | 'custom_deleted'; isDraft: boolean; createdAt: string; archivedAt: string; definition?: string }
+export interface ProtocolHistoryItem { id: string; protocolId: string; hash: string; name: string; version: string; reason: 'preset_replaced' | 'custom_deleted' | 'identity_recovered' | 'preset_repaired' | 'preset_draft_replaced'; isDraft: boolean; createdAt: string; archivedAt: string; definition?: string; rawDefinition?: string; readError?: string }
 export interface ProtocolReference { kind: string; id: string; sourceId?: string; name?: string }
 export interface ProtocolBindingEntry { conversion?: ConversionSelection; kind: 'source' | 'model' | 'group'; sourceId: string; modelId?: string; groupId?: string; unbound?: boolean; binding: { protocolId?: string; revisionHash?: string; capabilities?: Record<string, boolean>; transports?: string[]; operation?: string } }
 export interface ProtocolReferences { baseline: string; references: ProtocolReference[]; affectedModels: ProtocolReference[] }
 export interface ProtocolHistoryDetail { item: ProtocolHistoryItem & { definition: string }; report?: VerificationReport; references: ProtocolReference[]; currentHash?: string; changes?: unknown[] }
 export interface VerificationReport { definitionHash: string; compilerVersion: string; samplesHash: string; kind: string; passed: boolean; covered: string[]; checks: { sampleId: string; direction?: string; passed: boolean; capabilities?: string[] }[]; issues: ConversionIssue[] }
 export interface Preview { exactJSON: string; issues: ConversionIssue[] }
-export interface ProtocolListing { drafts: ProtocolDraft[]; active: Activation[]; loaded: Record<string, string>; presets?: string[]; runtimeFailures?: Record<string, string> }
+export interface ProtocolListing { drafts: ProtocolDraft[]; active: Activation[]; loaded: Record<string, string>; presets?: string[]; runtimeFailures?: Record<string, string>; runtimeError?: string }
 /** Capabilities of an enabled, compiled revision; drafts are excluded. */
 export interface EnabledProtocol { id: string; name: string; revision: string; preset?: boolean; directions: string[]; capabilities: Record<string, boolean>; canGenerate: boolean; hasModelDiscovery: boolean; hasAgentPolicy: boolean }
 const base = '/protocols'

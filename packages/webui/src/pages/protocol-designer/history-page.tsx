@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog'
 import { protocolAPI, type ProtocolHistoryDetail, type ProtocolHistoryItem, type ProtocolReference } from '@/lib/protocol-v2'
 
-const reasonLabel = (reason: string) => reason === 'preset_replaced' ? '预置旧版本' : reason === 'identity_recovered' ? '历史身份恢复' : '已删除自定义协议'
+const reasonLabel = (reason: string) => reason === 'preset_replaced' ? '预置旧版本' : reason === 'identity_recovered' ? '历史身份恢复' : reason === 'preset_repaired' ? '预置损坏原文' : reason === 'preset_draft_replaced' ? '预置原草稿' : '已删除自定义协议'
 const HISTORY_FILTERS = [
   { value: 'all', label: '全部' },
   { value: 'preset_replaced', label: '预置旧版本' },
@@ -78,7 +78,8 @@ export function ProtocolHistoryPage() {
       {(detail.report?.issues?.length ?? 0) > 0 && <ul className="text-sm text-destructive">{detail.report!.issues.map((issue, index) => <li key={index}>{issue.path} · {issue.reason}</li>)}</ul>}
       {detail.references.length > 0 && <div className="space-y-2 rounded-md bg-muted p-3"><p className="text-sm font-medium">以下引用阻止彻底删除</p><ReferenceList items={detail.references} /></div>}
       {detail.changes && <details><summary className="cursor-pointer text-sm">与当前启用版本的差异（{detail.changes.length} 项）</summary><pre className="max-h-64 overflow-auto p-3 text-xs">{JSON.stringify(detail.changes, null, 2)}</pre></details>}
-      <details open><summary className="cursor-pointer text-sm">完整协议定义</summary><pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-3 text-xs">{detail.item.definition}</pre></details>
+      {detail.item.readError && <p role="alert" className="text-sm text-destructive">原始记录无法解析：{detail.item.readError}。原文保留如下。</p>}
+      <details open><summary className="cursor-pointer text-sm">完整协议定义</summary><pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-3 text-xs">{detail.item.rawDefinition ?? detail.item.definition}</pre></details>
     </section>}
     <Dialog open={!!action} onOpenChange={(open) => { if (!open && !busy) setAction(undefined) }}><DialogContent hideClose={busy}>
       <DialogTitle>{action === 'restore' ? '恢复为新协议' : '彻底删除历史版本'}</DialogTitle>
