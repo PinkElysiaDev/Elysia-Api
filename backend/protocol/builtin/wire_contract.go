@@ -83,6 +83,20 @@ func (adapter module) validateWireContract(direction p.Direction, value p.Value)
 					if !valid {
 						return fail(base+"/role", "invalid message role")
 					}
+					if adapter.name == Responses && role == "assistant" {
+						var parts []p.Value
+						if m["content"].Decode(&parts) == nil {
+							for j, part := range parts {
+								block, e := part.ReadObject()
+								if e != nil {
+									return fail(fmt.Sprintf("%s/content/%d", base, j), "expected content block")
+								}
+								if block["type"] == p.StringValue("input_text") {
+									return fail(fmt.Sprintf("%s/content/%d/type", base, j), "assistant history requires output_text, not input_text")
+								}
+							}
+						}
+					}
 				}
 			}
 		}

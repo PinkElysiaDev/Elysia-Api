@@ -222,7 +222,12 @@ func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, opti
 			}
 		}
 		for _, child := range node.Children {
-			block, err := adapter.encodeBlock(child, direction, options)
+			blockDirection := direction
+			if adapter.name == Responses && role == "assistant" && child.Kind == p.TextNode {
+				// Assistant history is model output even inside a new request.
+				blockDirection = p.EncodeResponse
+			}
+			block, err := adapter.encodeBlock(child, blockDirection, options)
 			if err != nil {
 				return p.Value{}, p.Value{}, err
 			}
