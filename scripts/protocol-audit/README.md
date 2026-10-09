@@ -197,4 +197,24 @@ protocol/
 
 临时实例启用有界正文日志。每条生成响应的 `X-Elysia-Request-Id` 用于查找其持久调用记录，清理临时数据库前导出脱敏证据；同时保存激活修订、绑定、策略、诊断和事件顺序。没有调用 ID 的认证或发现请求明确标记不可关联，不靠时间猜测。SDK 自测完整执行，Anthropic 尾帧的必需 usage 单独检查。
 
-报告区分直连失败、模型未遵循指令、限流、转换错误、SDK 消费错误和待分析情况。预期拒绝独立标注，限流或预算不足不能算通过。`daily` 的系统结构是人工边界样例，不代表已捕获的 Claude Code 实际流量。真实渠道通过仍不等于原 Cherry Studio 或 VS Code 插件验收通过。
+报告区分直连失败、模型未遵循指令、限流、转换错误、SDK 消费错误和待分析情况。预期拒绝独立标注，限流或预算不足不能算通过。`daily` 的系统结构是人工边界样例，不代表已捕获的 Claude Code 实际流量。真实渠道通过仍不等于实际客户端或 VS Code 插件验收通过。本次用户未使用 Cherry Studio，不将其作为用户验收前提。
+
+### 隔离的 Claude Code 插件取证
+
+`plugin.mjs` 使用已安装的 VS Code 扩展，创建临时网关、独立配置及只有合成文本的工作区，不安装独立 CLI，不修改日常插件配置。它会使用配置中的 Anthropic 渠道；只有开始插件验收时才启动。
+
+```powershell
+node scripts/protocol-audit/plugin.mjs --config scripts/protocol-audit/config.local.json --extension "已安装的 anthropic.claude-code 扩展目录" --out .tmp-dev/plugin-audit-new
+```
+
+输出目录必须不存在。就绪后读取其中 `ready.json`，用对应 `profile`、`extensions`、`workspace` 启动 VS Code：
+
+```text
+code --user-data-dir PROFILE --extensions-dir EXTENSIONS --new-window WORKSPACE
+```
+
+脚本不会自行打开窗口。启动命令返回也不代表窗口或插件已成功加载，必须实际确认插件版本。在隔离窗口中依次发送“只回复 OK”、“读取 audit-note.txt 并告诉我 marker”、“沿用刚才的结果，再回复一次 marker”，审批读取该测试文件。创建输出目录下的 `STOP` 文件后，脚本导出证据并停止临时服务。
+
+代理仅转发到本机临时网关，保持请求、响应原字节及 trailer；通过精确调用 ID 查询持久记录，写盘时脱敏。`report.json` 不自动宣称客户端验收成功，需结合插件显示、工具结果和记录确认。输出目录含隔离配置，必须放在已忽略的 `.tmp-dev/` 或 `scripts/protocol-audit/results/`，不能提交。
+
+脱敏使用固定版本 `jsonc-parser` 定位敏感值，保留其他 JSON 字节、工具参数空格和大整数。复制工具目录后需要安装 lockfile 中的依赖。当前本地环境使用 `npm ci --ignore-scripts --prefix scripts/protocol-audit` 安装，不执行依赖生命周期脚本；全部 SDK 离线测试仍实际执行。
