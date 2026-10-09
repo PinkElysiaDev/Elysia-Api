@@ -108,7 +108,12 @@ func TestProtocolHistoryPresetUpdatesBackfillAndRollback(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := writeProtocolUpgradeRevision(t.Context(), tx, entry); err != nil {
+		prepared, err := normalizeProtocolCommit(t.Context(), tx, ProtocolUpgrade{Revisions: []ProtocolUpgradeRevision{entry}})
+		if err != nil {
+			tx.Rollback()
+			t.Fatal(err)
+		}
+		if err := writeProtocolCommit(t.Context(), tx, prepared); err != nil {
 			tx.Rollback()
 			t.Fatal(err)
 		}
@@ -125,7 +130,12 @@ func TestProtocolHistoryPresetUpdatesBackfillAndRollback(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := writeProtocolUpgradeRevision(t.Context(), tx, entry); err != nil {
+			prepared, err = normalizeProtocolCommit(t.Context(), tx, ProtocolUpgrade{Revisions: []ProtocolUpgradeRevision{entry}})
+			if err != nil {
+				tx.Rollback()
+				t.Fatal(err)
+			}
+			if err := writeProtocolCommit(t.Context(), tx, prepared); err != nil {
 				tx.Rollback()
 				t.Fatal(err)
 			}
