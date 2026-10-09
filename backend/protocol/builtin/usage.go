@@ -176,6 +176,16 @@ func (adapter module) decodeUsage(value p.Value) (*p.Usage, error) {
 			// still replace an earlier snapshot containing only visible output.
 			usage.Output.Origin = p.ObservedCount
 		}
+		// Gemini may omit candidatesTokenCount when all counted output is
+		// thinking. Only infer that case when the observed total leaves exactly
+		// zero for every other nonnegative component. A positive remainder could
+		// include unreported tool-use input, so it cannot be called output.
+		if thoughts, exists := usage.Details["output.reasoning_tokens"]; exists && usage.Output == nil && usage.Input != nil && usage.Total != nil {
+			toolInput := usage.Details["toolUsePromptTokenCount"]
+			if toolInput.Count == 0 && usage.Total.Count >= usage.Input.Count && usage.Total.Count-usage.Input.Count == thoughts.Count {
+				usage.Output = &p.Counter{Count: thoughts.Count, Origin: p.InferredCount}
+			}
+		}
 	}
 	if usage.Total == nil {
 		usage.Total, err = sumCounters(usage.Input, usage.Output)

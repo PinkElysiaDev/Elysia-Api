@@ -48,7 +48,7 @@ func (stream *streamModule) decodeUsageUpdate(value p.Value) (*p.Usage, error) {
 			}
 		}
 	case Gemini:
-		if update.Output != nil || !fields["thoughtsTokenCount"].IsZero() {
+		if update.Output != nil || !fields["thoughtsTokenCount"].IsZero() || !fields["promptTokenCount"].IsZero() || !fields["totalTokenCount"].IsZero() {
 			update.Output = normalized.Output
 		}
 	}
