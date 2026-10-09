@@ -10,7 +10,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 
 const require = createRequire(import.meta.url)
-function packageVersion(name) {
+export function packageVersion(name) {
   let directory = dirname(require.resolve(name))
   while (dirname(directory) !== directory) {
     const path = join(directory, 'package.json')

@@ -66,6 +66,17 @@ node scripts/protocol-audit/replay.mjs .tmp-dev/audit-wire
 
 预期为 32 份响应、56 次 SDK 消费全部通过。回放不会修改正文或 SSE 字段；缺文件、SDK 格式错误、隐藏 error 事件和未完成流均视为失败。该命令只用于上述合成测试输出，不能代替真实签名、真实工具第二轮或插件测试。
 
+异常流另行验证，不能把任意 SDK 报错当作预期错误已送达：
+
+```powershell
+Push-Location backend
+go test ./server -run '^TestGatewayResponsesNativeFailureSequence$' -count=1
+Pop-Location
+node scripts/protocol-audit/replay-errors.mjs .tmp-dev/audit-wire
+```
+
+沿用上面的 `ELYSIA_AUDIT_CAPTURE`，覆盖截断、非法终止快照、上游嵌套及平铺错误四种场景。OpenAI 与 Vercel Responses SDK 分别读取实际网关输出；每个 SDK 必须保留错误前的正文、报告一次包含原始原因的错误，并且只发送一次请求。普通成功结束、无关格式异常均不能算通过。HTTP 200 表示流头已经发送，持久调用记录及 trailer 仍须表明失败。
+
 ## 查看结果
 
 每次结果保存在 `scripts/protocol-audit/results/` 下的新目录，终端会显示完整路径。
