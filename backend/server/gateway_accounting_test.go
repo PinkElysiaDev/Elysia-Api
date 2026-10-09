@@ -79,6 +79,7 @@ func TestHostedToolUsagePersistedHTTPAndSSE(t *testing.T) {
 			server := newTestServer(t, presetGroup(t, "custom:openai-responses", upstream.URL))
 			request, recorder := chatRequestContext(fmt.Sprintf(`{"model":"grp","input":"hello","stream":%t}`, isStream))
 			request.Request.URL.Path = "/v1/responses"
+			request.Request.Header.Set("X-Elysia-Request-Id", "untrusted-client-id")
 			server.responses(request)
 			if recorder.Code != 200 || !strings.Contains(recorder.Body.String(), "s2") {
 				t.Fatalf("native hosted tools failed: %d %s", recorder.Code, recorder.Body)
@@ -86,6 +87,9 @@ func TestHostedToolUsagePersistedHTTPAndSSE(t *testing.T) {
 			items := latestUsageRecords(t, server)
 			if len(items) != 1 || items[0].Error != "" {
 				t.Fatalf("unexpected usage: %+v", items)
+			}
+			if id := recorder.Header().Get("X-Elysia-Request-Id"); id != items[0].RequestID || id == "untrusted-client-id" {
+				t.Fatalf("response request ID %q does not identify its persisted call %q", id, items[0].RequestID)
 			}
 			body, exists, err := server.store.GetUsageRecordJSON(t.Context(), items[0].RequestID)
 			if err != nil || !exists {
@@ -99,5 +103,19 @@ func TestHostedToolUsagePersistedHTTPAndSSE(t *testing.T) {
 				t.Fatalf("hosted tools lost or duplicated in persisted statistics: %+v", saved.BuiltinToolUsage)
 			}
 		})
+	}
+}
+
+func TestRejectedRequestIDIdentifiesPersistedCall(t *testing.T) {
+	server := newTestServer(t, presetGroup(t, "custom:openai-responses", "http://127.0.0.1:1"))
+	request, recorder := chatRequestContext(`{"model":"grp","input":"hello","store":42}`)
+	request.Request.URL.Path = "/v1/responses"
+	server.responses(request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("invalid input accepted: %d %s", recorder.Code, recorder.Body)
+	}
+	items := latestUsageRecords(t, server)
+	if len(items) != 1 || items[0].RequestID != recorder.Header().Get("X-Elysia-Request-Id") || items[0].Error == "" {
+		t.Fatalf("rejected call cannot be correlated: header=%q records=%+v", recorder.Header().Get("X-Elysia-Request-Id"), items)
 	}
 }

@@ -146,6 +146,9 @@ func shortTokenHash(token string) string {
 func (s *Server) initUsageRecord(c *gin.Context, start time.Time, body []byte, inputFormat builtin.FormatType) *usageRecord {
 	cfg := s.usageLogConfig()
 	requestID := usageRequestID(start)
+	// Correlate the delivered response with its persisted call, including local
+	// conversion failures and SSE. Never reuse an untrusted client request ID.
+	c.Header("X-Elysia-Request-Id", requestID)
 	record := &usageRecord{
 		RequestID:   requestID,
 		StartedAt:   start,
