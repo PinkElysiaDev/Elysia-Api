@@ -18,7 +18,7 @@ func conversionPolicyRank(selector protocol.ConversionMatch) int {
 }
 
 func resolveGatewayConversion(policies []storage.ConversionPolicyRecord, bindings []storage.ProtocolBinding, ingress, upstream *protocol.Compiled, model config.ModelRef, operation string, transport protocol.Transport) (*protocol.CompiledConversion, error) {
-	layers := []protocol.ConversionPolicy{protocol.DefaultConversionPolicy(ingress.Identity(), upstream.Identity())}
+	layers := []protocol.ConversionPolicy{protocol.DefaultConversionPolicy(ingress, upstream)}
 	route := protocol.ConversionContext{Source: ingress.Identity(), Target: upstream.Identity(), Model: model.Identifier(), Operation: operation, Transport: transport}
 	for rank := 0; rank <= 1; rank++ {
 		matched := false
@@ -62,7 +62,7 @@ func resolveGatewayConversion(policies []storage.ConversionPolicyRecord, binding
 	return protocol.ResolveConversion(layers...)
 }
 
-func (s *Server) verifyConversionBindings(ctx context.Context, view conversionRegistry, policies []storage.ConversionPolicyRecord, bindings []storage.ProtocolBinding) ([]storage.ProtocolBinding, error) {
+func (s *Server) verifyConversionBindings(ctx context.Context, view conversionRegistry, policies []storage.ConversionPolicyRecord, bindings []storage.ProtocolBinding, isolate ...bool) ([]storage.ProtocolBinding, error) {
 	updated := slices.Clone(bindings)
 	models, err := s.store.ListModelsFiltered(ctx, storage.ModelListFilter{ShouldIncludeDisabledSources: true})
 	if err != nil {
@@ -73,14 +73,39 @@ func (s *Server) verifyConversionBindings(ctx context.Context, view conversionRe
 		return nil, err
 	}
 	sourceKeys := collectSourceKeys(sources)
+bindingLoop:
 	for i := range updated {
 		b := &updated[i]
-		if b.Unbound || b.Kind == "group" {
+		if b.Unbound {
 			continue
+		}
+		reject := func(err error) bool {
+			if len(isolate) == 0 || !isolate[0] {
+				return false
+			}
+			b.Combinations = []protocol.CombinationReport{{CompilerVersion: protocol.CompilerVersion, Fidelity: "rejected", Issues: []protocol.ConversionIssue{{Code: protocol.VerificationRequired, Severity: protocol.SeverityError, Path: "/binding", Reason: err.Error()}}}}
+			return true
 		}
 		upstream, ok := view.Pin(b.Binding.ProtocolID)
 		if !ok {
-			return nil, fmt.Errorf("inactive binding protocol %s", b.Binding.ProtocolID)
+			err := fmt.Errorf("inactive binding protocol %s", b.Binding.ProtocolID)
+			if reject(err) {
+				continue
+			}
+			return nil, err
+		}
+		issues := protocol.CheckBinding(b.Binding, upstream)
+		if b.Kind == "group" {
+			issues = protocol.CheckIngressBinding(b.Binding, upstream)
+		}
+		if err := protocol.IssuesError(issues); err != nil {
+			if reject(err) {
+				continue
+			}
+			return nil, err
+		}
+		if b.Kind == "group" {
+			continue
 		}
 		references := []config.ModelRef{}
 		for _, m := range models {
@@ -114,9 +139,15 @@ func (s *Server) verifyConversionBindings(ctx context.Context, view conversionRe
 					}
 					conversion, err := resolveGatewayConversion(policies, layers, ingress, upstream, model, operationName, operation.Transport)
 					if err != nil {
+						if reject(err) {
+							continue bindingLoop
+						}
 						return nil, err
 					}
 					if err := s.loadProviderConversionEvidence(ctx, conversion, model, upstream); err != nil {
+						if reject(err) {
+							continue bindingLoop
+						}
 						return nil, err
 					}
 					if conversion.ContextDependent() {
@@ -131,7 +162,7 @@ func (s *Server) verifyConversionBindings(ctx context.Context, view conversionRe
 				}
 			}
 		}
-		if !hasPassingGatewayCombination(b.Combinations) {
+		if !hasPassingGatewayCombination(b.Combinations) && (len(isolate) == 0 || !isolate[0]) {
 			return nil, fmt.Errorf("conversion policy leaves binding %s/%s without a verified route", b.SourceID, b.ModelID)
 		}
 	}

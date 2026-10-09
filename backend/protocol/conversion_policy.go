@@ -102,25 +102,6 @@ type CompiledConversion struct {
 	limits                Limits
 }
 
-func DefaultConversionPolicy(ingress, upstream Identity) ConversionPolicy {
-	p := ConversionPolicy{SchemaVersion: 1, ID: "engine-default", Name: "引擎默认", Mode: "compatible", Rules: []ConversionRule{},
-		Continuation: &ContinuationSettings{ClientCarrier: true, Persist: true, RetentionSeconds: 7 * 24 * 3600, TurnsPerSession: 64, MaxBytes: 512 << 20, RecordBytes: 8 << 20},
-		Usage:        &ConversionUsageSettings{CollectUpstreamUsage: true}}
-	// Custom definitions retain strict behavior until they explicitly opt in.
-	if !IsPresetProtocolID(ingress.DefinitionID) || !IsPresetProtocolID(upstream.DefinitionID) {
-		p.Usage = nil
-		return p
-	}
-	p.Rules = []ConversionRule{
-		{ID: "client-stream-options", Order: 100, Enabled: true, Phase: ConversionRequest, Action: "stream_options"},
-		{ID: "gemini-tool-results", Order: 150, Enabled: true, Phase: ConversionRequest, Match: ConversionMatch{TargetFamily: "gemini", NodeKind: ToolResultNode}, Action: "tool_result_object", Value: StringValue("result")},
-		{ID: "request-signatures", Order: 200, Enabled: true, Phase: ConversionRequest, Action: "signatures"},
-		{ID: "response-signatures", Order: 200, Enabled: true, Phase: ConversionResponse, Action: "signatures"},
-		{ID: "event-signatures", Order: 200, Enabled: true, Phase: ConversionEvent, Action: "signatures"},
-	}
-	return p
-}
-
 // ResolveConversion applies complete rule replacement by stable ID; no implicit
 // concatenation or duplicate execution. Equal order in a phase is ambiguous.
 func ResolveConversion(layers ...ConversionPolicy) (*CompiledConversion, error) {
@@ -206,7 +187,7 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 	}
 	c := &CompiledConversion{Policy: p, limits: limits, expressions: map[string]*compiledExpression{}, Origins: map[string]string{}}
 	compiler := &expressionCompiler{limits: limits, references: map[string]Expression{}, resolving: map[string]bool{}, used: map[string]bool{}}
-	seen, orders := map[string]bool{}, map[string]bool{}
+	seen, orders := map[string]bool{}, map[string]string{}
 	for _, r := range p.Rules {
 		if !definitionIdentifier.MatchString(r.ID) || seen[r.ID] {
 			return nil, fmt.Errorf("invalid or duplicate rule id %q", r.ID)
@@ -216,14 +197,23 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 			return nil, fmt.Errorf("unknown conversion phase %q", r.Phase)
 		}
 		key := fmt.Sprintf("%s:%d", r.Phase, r.Order)
-		if r.Enabled && orders[key] {
-			return nil, fmt.Errorf("ambiguous conversion rule order %s", key)
+		if r.Enabled && orders[key] != "" {
+			return nil, fmt.Errorf("ambiguous conversion rule order %s: %q and %q", key, orders[key], r.ID)
 		}
 		if r.Enabled {
-			orders[key] = true
+			orders[key] = r.ID
 		}
-		if !slices.Contains([]string{"set", "remove", "transform", "warn", "reject", "signatures", "stream_options", "tool_result_object", "buffer_node", "provider_signature"}, r.Action) {
+		if !slices.Contains([]string{"set", "remove", "transform", "warn", "reject", "signatures", "stream_options", "tool_result_object", "buffer_node", "provider_signature", "responses_include", "usage_projection"}, r.Action) {
 			return nil, fmt.Errorf("unknown conversion action %q", r.Action)
+		}
+		if r.Action == "usage_projection" && r.Phase != ConversionResponse && r.Phase != ConversionEvent {
+			return nil, fmt.Errorf("usage_projection requires response or event phase")
+		}
+		if r.Action == "usage_projection" || r.Action == "responses_include" {
+			var codec string
+			if r.Value.Decode(&codec) != nil || !knownConversionCodec(codec) {
+				return nil, fmt.Errorf("%s requires a known target codec in value", r.Action)
+			}
 		}
 		if r.Action == "provider_signature" {
 			if r.Phase != ConversionRequest || r.Match.NodeKind != ToolCallNode || r.Match.TargetFamily == "" {
@@ -239,10 +229,10 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if r.Action == "buffer_node" && r.Phase != ConversionEvent {
 			return nil, fmt.Errorf("buffer_node requires event phase")
 		}
-		if r.Action == "stream_options" && r.Phase != ConversionRequest {
-			return nil, fmt.Errorf("stream_options requires request phase")
+		if (r.Action == "stream_options" || r.Action == "responses_include") && r.Phase != ConversionRequest {
+			return nil, fmt.Errorf("%s requires request phase", r.Action)
 		}
-		if r.Action == "stream_options" && r.Match.NodeKind != "" {
+		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "usage_projection") && r.Match.NodeKind != "" {
 			return nil, fmt.Errorf("stream_options matches the request, not an individual node")
 		}
 		if r.Match.NodeKind != "" {
@@ -372,16 +362,24 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 		}
 		var err error
 		switch {
-		case rule.Action == "stream_options":
+		case rule.Action == "stream_options" || rule.Action == "responses_include":
 			if !rule.Match.matches(route, value) {
 				continue
 			}
 			var req Request
 			if err = decodeContract(value.Bytes(), &req); err == nil {
-				err = c.streamOptions(&req, route, rule, sink)
+				if rule.Action == "responses_include" {
+					err = c.responsesInclude(&req, route, rule, sink)
+				} else {
+					err = c.streamOptions(&req, route, rule, sink)
+				}
 				if err == nil {
 					value, err = EncodeValue(req)
 				}
+			}
+		case rule.Action == "usage_projection":
+			if rule.Match.matches(route, value) {
+				value, err = c.projectUsageValue(phase, value, route, rule, sink)
 			}
 		case rule.Action == "signatures" || rule.Match.NodeKind != "":
 			value, err = c.applyNodeRule(ctx, phase, value, route, sink, rule)
@@ -674,6 +672,7 @@ func (c *CompiledConversion) streamOptions(request *Request, route ConversionCon
 		}
 		if request.ClientOutput != nil {
 			legacy.CollectUsage = request.ClientOutput.CollectUsage
+			legacy.RawResponsesInclude = request.ClientOutput.RawResponsesInclude
 		}
 		request.ClientOutput = legacy
 		delete(request.Parameters, "stream_options")

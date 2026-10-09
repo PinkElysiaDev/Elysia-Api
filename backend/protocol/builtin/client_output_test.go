@@ -50,8 +50,8 @@ func TestLegacyCustomChatClientOutputCompatibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	sameJSON(t, wire, string(body))
-	// Custom protocols keep this contract until a named conversion rule opts in.
-	policy := p.ConversionPolicy{SchemaVersion: 1, ID: "opt-in", Rules: []p.ConversionRule{{ID: "client-preference", Order: 100, Enabled: true, Phase: p.ConversionRequest, Action: "stream_options"}}}
+	// Old custom definitions automatically inherit engine fixes after authored mappings.
+	policy := p.DefaultConversionPolicy(compiled, testCompiled(t, Gemini))
 	conversion, err := p.CompileConversion(policy)
 	if err != nil {
 		t.Fatal(err)

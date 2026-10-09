@@ -23,6 +23,9 @@ func (check *capabilityCheck) usage(usage *Usage, path string) {
 		return
 	}
 	check.require(UsageCapability, path)
+	if err := ValidateUsageArithmetic(usage); err != nil {
+		check.add(InvalidInput, path, UsageCapability, err.Error())
+	}
 	if usage.Input != nil && usage.Output != nil && usage.Output.Count >= 0 && usage.Input.Count > math.MaxInt64-usage.Output.Count {
 		check.add(LimitExceeded, path, UsageCapability, "combined token count exceeds the supported integer range")
 	}

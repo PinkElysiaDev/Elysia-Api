@@ -192,9 +192,10 @@ type Request struct {
 // ClientOutput describes delivery to the caller, independently of generation.
 // RawStreamOptions retains absent/null and extensions for same-wire replay.
 type ClientOutput struct {
-	CollectUsage     bool  `json:"collectUsage,omitempty"`
-	IncludeUsage     *bool `json:"includeUsage,omitempty"`
-	RawStreamOptions Value `json:"rawStreamOptions,omitzero"`
+	CollectUsage        bool  `json:"collectUsage,omitempty"`
+	IncludeUsage        *bool `json:"includeUsage,omitempty"`
+	RawStreamOptions    Value `json:"rawStreamOptions,omitzero"`
+	RawResponsesInclude Value `json:"rawResponsesInclude,omitzero"`
 }
 
 // CounterOrigin distinguishes observed counts from estimates.

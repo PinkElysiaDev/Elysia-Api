@@ -169,7 +169,7 @@ func (s *Server) adminProtocolDrafts(c *gin.Context) {
 			presets = append(presets, activation.ProtocolID)
 		}
 	}
-	respondOK(c, gin.H{"drafts": drafts, "active": active, "loaded": loaded, "presets": presets})
+	respondOK(c, gin.H{"drafts": drafts, "active": active, "loaded": loaded, "presets": presets, "runtimeFailures": service.View().Failures()})
 }
 
 func (s *Server) adminProtocolSchemaV2(c *gin.Context) {
@@ -376,7 +376,7 @@ func (s *Server) adminProtocolCombination(c *gin.Context) {
 		return
 	}
 	if input.ConversionPolicy != nil {
-		conversion, err := protocol.ResolveConversion(protocol.DefaultConversionPolicy(ingress.Identity(), upstream.Identity()), *input.ConversionPolicy)
+		conversion, err := protocol.ResolveConversion(protocol.DefaultConversionPolicy(ingress, upstream), *input.ConversionPolicy)
 		if err != nil {
 			respondFail(c, http.StatusBadRequest, "invalid_conversion_policy", err.Error())
 			return

@@ -280,11 +280,8 @@ func (adapter module) encodeUsage(usage *p.Usage, options p.EvaluationContext) (
 		}
 	case Gemini:
 		fields["cachedContentTokenCount"] = counterValue(usage.CacheRead)
-		// Gemini reports cache reads only. The provider's creation total has no
-		// target field, so it is projected away and recorded rather than failing
-		// a response the client can otherwise consume.
 		if usage.CacheCreation != nil {
-			warnDropped(options, p.EncodeResponse, "/usage/cacheCreation", "cache creation total omitted: target has no cache creation counter", "Compare cache reads through cachedContentTokenCount; Gemini does not report cache writes.")
+			return p.Value{}, unsupported("/usage/cacheCreation", "target has no cache creation counter; configure usage_projection")
 		}
 		if count, exists := usage.Details["toolUsePromptTokenCount"]; exists {
 			fields["toolUsePromptTokenCount"] = counterValue(&count)
@@ -347,25 +344,7 @@ func (adapter module) checkUsageDetails(usage *p.Usage, options p.EvaluationCont
 		if isSupported {
 			continue
 		}
-		// The provider's TTL buckets have no target field outside Anthropic.
-		// Their total survives in CacheCreation, so the projection is recorded
-		// rather than failing a response the client can otherwise consume.
-		if adapter.omitsCacheCreationBucket(name) {
-			warnDropped(options, p.EncodeResponse, "/usage/details/" + name, "cache creation bucket omitted: target has no equivalent usage detail", "Compare cache creation through the total counter; the TTL breakdown is provider-specific.")
-			continue
-		}
 		return unsupported("/usage/details/"+name, "target has no equivalent usage detail")
 	}
 	return nil
 }
-
-// omitsCacheCreationBucket reports whether a provider TTL bucket is projected
-// away for this target. Anthropic owns the bucket schema; every other family
-// keeps only the total creation counter.
-func (adapter module) omitsCacheCreationBucket(name string) bool {
-	if adapter.name == Anthropic {
-		return false
-	}
-	return name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens"
-}
-

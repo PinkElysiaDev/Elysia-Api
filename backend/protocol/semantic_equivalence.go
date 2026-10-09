@@ -34,34 +34,10 @@ func comparableConversation(nodes []Node) []Node {
 	return result
 }
 
-// anthropicCacheBucketFamily owns the provider TTL bucket schema. Every other
-// family keeps only the creation total, so a cross-protocol roundtrip legally
-// projects these details away and the comparison must not read that as loss.
-const anthropicCacheBucketFamily = "claude"
-
-// geminiCacheReadOnlyFamily reports cache reads but has no wire field for the
-// provider's cache creation total.
-const geminiCacheReadOnlyFamily = "gemini"
-
-// cacheOmission returns the approved usage projections for a target family:
-// nil when the family preserves every counter the provider reports.
-func cacheOmission(family string) func(string) bool {
-	if family == anthropicCacheBucketFamily {
-		return nil
-	}
-	return func(name string) bool {
-		if name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens" {
-			return true
-		}
-		// Gemini has no cache creation counter; the total is projected away.
-		return name == "/usage/cacheCreation" && family == geminiCacheReadOnlyFamily
-	}
-}
-
 // Wire counters cannot carry the gateway's observed/inferred provenance.
 // Compare present counts while retaining that provenance in runtime accounting.
 // The uncached subtotal is redundant only when its arithmetic is exact.
-func comparableWireUsage(usage *Usage, omitted func(string) bool) *Usage {
+func comparableWireUsage(usage *Usage) *Usage {
 	if usage == nil {
 		return nil
 	}
@@ -74,9 +50,6 @@ func comparableWireUsage(usage *Usage, omitted func(string) bool) *Usage {
 	}
 	copy.Input, copy.Output, copy.Total = normalize(usage.Input), normalize(usage.Output), normalize(usage.Total)
 	copy.CacheRead, copy.CacheCreation = normalize(usage.CacheRead), normalize(usage.CacheCreation)
-	if omitted != nil && omitted("/usage/cacheCreation") {
-		copy.CacheCreation = nil
-	}
 	for name, value := range usage.Details {
 		if name == "uncached_input_tokens" && usage.Input != nil {
 			expected := usage.Input.Count
@@ -88,9 +61,6 @@ func comparableWireUsage(usage *Usage, omitted func(string) bool) *Usage {
 			if expected == value.Count {
 				continue
 			}
-		}
-		if omitted != nil && omitted(name) {
-			continue
 		}
 		if copy.Details == nil {
 			copy.Details = map[string]Counter{}
@@ -111,6 +81,6 @@ func equivalentRequest(request *Request) *Request {
 func equivalentResponse(response *Response, family string) *Response {
 	copy := *response
 	copy.Content = comparableConversation(response.Content)
-	copy.Usage = comparableWireUsage(response.Usage, cacheOmission(family))
+	copy.Usage = comparableWireUsage(response.Usage)
 	return &copy
 }

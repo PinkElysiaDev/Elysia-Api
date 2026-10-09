@@ -48,7 +48,7 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 	report := CombinationReport{Fidelity: "preserved", SourceSamplesHash: ingress.SamplesHash(), TargetSamplesHash: upstream.SamplesHash(), SourceHash: ingress.hash, TargetHash: upstream.hash, CompilerVersion: CompilerVersion, Kind: OfflineVerification, Checks: []VerificationCheck{}, Issues: []ConversionIssue{}}
 	conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion)
 	if conversion == nil {
-		conversion, _ = ResolveConversion(DefaultConversionPolicy(ingress.Identity(), upstream.Identity()))
+		conversion, _ = ResolveConversion(DefaultConversionPolicy(ingress, upstream))
 	}
 	ctx = context.WithValue(ctx, conversionVerificationKey{}, conversion)
 	sink := &DiagnosticSink{}
@@ -189,8 +189,15 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 	report.Passed = IssuesError(report.Issues) == nil
 	if !report.Passed {
 		report.Fidelity = "rejected"
-	} else if len(sink.Issues()) > 0 {
-		report.Fidelity = "lossy_compatible"
+	} else {
+		for _, issue := range sink.Issues() {
+			if issue.Fidelity == "lossy_compatible" {
+				report.Fidelity = "lossy_compatible"
+			}
+			if issue.Fidelity == "recoverable_wrapped" && report.Fidelity == "preserved" {
+				report.Fidelity = "recoverable_wrapped"
+			}
+		}
 	}
 	return report
 }
@@ -230,6 +237,7 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 	if conversion != nil {
 		route = conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), SSE)
 	}
+	route.Scope = options.Scope
 	eventState := NewConversionEventState(conversion, route)
 	convertedFrames := []*EventFrame{}
 	for _, frame := range result.frames {
@@ -242,7 +250,15 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 			}
 			for _, next := range queued {
 				if conversion != nil {
-					next, err = conversion.Event(ctx, next, route, verificationDiagnostics(ctx))
+					value, encodeErr := EncodeValue(next)
+					if encodeErr != nil {
+						return encodeErr
+					}
+					proofRoute, proofErr := conversion.PreviewRecovery(ConversionEvent, value, route)
+					if proofErr != nil {
+						return proofErr
+					}
+					next, err = conversion.Event(ctx, next, proofRoute, verificationDiagnostics(ctx))
 					if err != nil {
 						return err
 					}
@@ -353,7 +369,17 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 		return err
 	}
 	if conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion); conversion != nil {
-		response, err = conversion.Response(ctx, response, conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), HTTPJSON), verificationDiagnostics(ctx))
+		route := conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), HTTPJSON)
+		route.Scope = options.Scope
+		value, encodeErr := EncodeValue(response)
+		if encodeErr != nil {
+			return encodeErr
+		}
+		route, err = conversion.PreviewRecovery(ConversionResponse, value, route)
+		if err != nil {
+			return err
+		}
+		response, err = conversion.Response(ctx, response, route, verificationDiagnostics(ctx))
 		if err != nil {
 			return err
 		}

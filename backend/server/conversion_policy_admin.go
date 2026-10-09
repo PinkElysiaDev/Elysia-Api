@@ -108,7 +108,7 @@ func (s *Server) adminConversionVerify(c *gin.Context) {
 				if !upstream.Supports(protocol.EncodeRequest) {
 					continue
 				}
-				policy, e := protocol.ResolveConversion(protocol.DefaultConversionPolicy(ingress.Identity(), upstream.Identity()), record.Policy)
+				policy, e := protocol.ResolveConversion(protocol.DefaultConversionPolicy(ingress, upstream), record.Policy)
 				if e != nil {
 					respondFail(c, http.StatusBadRequest, "invalid_conversion_policy", e.Error())
 					return
@@ -217,7 +217,15 @@ func (s *Server) adminConversionPreview(c *gin.Context) {
 		respondProtocolError(c, err)
 		return
 	}
-	policy, err := protocol.ResolveConversion(protocol.DefaultConversionPolicy(input.Context.Source, input.Context.Target), input.Policy)
+	service, ok := s.requireProtocolService(c)
+	if !ok {
+		return
+	}
+	policy, route, err := service.ResolvePreviewConversion(input.Context, input.Phase, &input.Policy)
+	if err == nil {
+		route, err = policy.PreviewRecovery(input.Phase, input.Input, route)
+	}
+	input.Context = route
 	if err != nil {
 		respondFail(c, http.StatusBadRequest, "invalid_conversion_policy", err.Error())
 		return

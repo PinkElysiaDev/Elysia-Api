@@ -49,7 +49,7 @@ func collectVerificationSequence(compiled *Compiled, sample Sample, events []Eve
 	if err != nil {
 		return Value{}, err
 	}
-	response.Usage = comparableWireUsage(response.Usage, cacheOmission(compiled.identity.Family))
+	response.Usage = comparableWireUsage(response.Usage)
 	if failure != nil {
 		return EncodeValue(struct {
 			Type  EventType `json:"type"`

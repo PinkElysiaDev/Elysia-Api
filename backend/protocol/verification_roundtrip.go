@@ -195,5 +195,9 @@ func CanActivate(compiled *Compiled, report VerificationReport) []ConversionIssu
 	if report.Kind == OfflineVerification && report.Passed && len(report.Checks) > 0 && IssuesError(report.Issues) == nil && report.IsCurrent(compiled.hash, CompilerVersion, compiled.samplesHash) {
 		return nil
 	}
-	return []ConversionIssue{verificationIssue(compiled, "", "/verification", VerificationRequired, "activation requires passing offline evidence bound to this definition, compiler and sample set", "")}
+	issues := []ConversionIssue{verificationIssue(compiled, "", "/verification", VerificationRequired, "activation requires passing offline evidence bound to this definition, compiler and sample set", "")}
+	if report.IsCurrent(compiled.hash, CompilerVersion, compiled.samplesHash) {
+		issues = append(issues, report.Issues...)
+	}
+	return issues
 }

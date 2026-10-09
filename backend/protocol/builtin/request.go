@@ -65,6 +65,9 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 		}
 	}
 	if adapter.name == Responses {
+		if _, err := p.ParseResponsesInclude(fields["include"]); err != nil {
+			return nil, err
+		}
 		known = append(known, "input", "instructions")
 		if previous := fields["previous_response_id"]; !previous.IsZero() && !previous.IsNull() {
 			delete(request.Parameters, "responses_previous_response_id")

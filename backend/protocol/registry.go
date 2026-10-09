@@ -9,7 +9,10 @@ import (
 	"time"
 )
 
-type registrySnapshot struct{ entries map[string]*Compiled }
+type registrySnapshot struct {
+	entries  map[string]*Compiled
+	failures map[string]string
+}
 
 // Service is shared by the editor, Agent and gateway. Administrative mutations
 // are serialized; request reads pin a compiled pointer without locking or SQL.
@@ -55,6 +58,15 @@ func (view RegistryView) Pin(id string) (*Compiled, bool) {
 
 // IDs lists the captured revisions in deterministic order for binding checks.
 func (view RegistryView) IDs() []string { return sortedKeys(view.snapshot.entries) }
+
+// Failures describes isolated active revisions without changing activation intent.
+func (view RegistryView) Failures() map[string]string {
+	result := map[string]string{}
+	for id, reason := range view.snapshot.failures {
+		result[id] = reason
+	}
+	return result
+}
 
 // Schema exposes the installed compiler contract used by every authoring path.
 func (service *Service) Schema() SchemaCatalog { return service.compiler.Schema() }
@@ -172,7 +184,9 @@ func (service *Service) Activate(ctx context.Context, id, hash, expectedActive s
 		entries[key] = entry
 	}
 	entries[id] = compiled
-	service.snapshot.Store(&registrySnapshot{entries: entries})
+	failures := service.View().Failures()
+	delete(failures, id)
+	service.snapshot.Store(&registrySnapshot{entries: entries, failures: failures})
 	return activation, nil
 }
 
@@ -184,6 +198,16 @@ func (service *Service) Rollback(ctx context.Context, id, hash, expectedActive s
 // Reload publishes all persisted active revisions in one atomic snapshot.
 // Failure leaves the previous snapshot intact and returns repair diagnostics.
 func (service *Service) Reload(ctx context.Context) error {
+	return service.reload(ctx, false)
+}
+
+// ReloadAvailable keeps healthy protocols executable when an old custom
+// revision fails current-engine verification. Preset failures remain blocking.
+func (service *Service) ReloadAvailable(ctx context.Context) error {
+	return service.reload(ctx, true)
+}
+
+func (service *Service) reload(ctx context.Context, isolate bool) error {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	activations, err := service.repository.ListProtocolActivations(ctx)
@@ -191,14 +215,19 @@ func (service *Service) Reload(ctx context.Context) error {
 		return err
 	}
 	entries := make(map[string]*Compiled, len(activations))
+	failures := map[string]string{}
 	for _, active := range activations {
 		compiled, err := service.loadVerifiedRevision(ctx, active.ProtocolID, active.RevisionHash)
 		if err != nil {
+			if isolate && !IsPresetProtocolID(active.ProtocolID) {
+				failures[active.ProtocolID] = err.Error()
+				continue
+			}
 			return fmt.Errorf("reload protocol %s: %w", active.ProtocolID, err)
 		}
 		entries[active.ProtocolID] = compiled
 	}
-	service.snapshot.Store(&registrySnapshot{entries: entries})
+	service.snapshot.Store(&registrySnapshot{entries: entries, failures: failures})
 	return nil
 }
 
@@ -216,7 +245,9 @@ func (service *Service) RemoveActive(id string, commit func() error) error {
 			entries[key] = compiled
 		}
 	}
-	service.snapshot.Store(&registrySnapshot{entries: entries})
+	failures := service.View().Failures()
+	delete(failures, id)
+	service.snapshot.Store(&registrySnapshot{entries: entries, failures: failures})
 	return nil
 }
 

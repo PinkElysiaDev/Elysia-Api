@@ -36,14 +36,13 @@ type PreviewInput struct {
 func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput) PreviewResult {
 	if input.Mode == "conversion" {
 		sink := &DiagnosticSink{}
-		layers := []ConversionPolicy{DefaultConversionPolicy(input.ConversionContext.Source, input.ConversionContext.Target)}
-		if input.ConversionPolicy != nil {
-			layers = append(layers, *input.ConversionPolicy)
-		}
-		conversion, err := ResolveConversion(layers...)
+		conversion, route, err := service.ResolvePreviewConversion(input.ConversionContext, input.ConversionPhase, input.ConversionPolicy)
 		var output Value
 		if err == nil {
-			output, err = conversion.ApplyValue(ctx, input.ConversionPhase, input.Input, input.ConversionContext, sink)
+			route, err = conversion.PreviewRecovery(input.ConversionPhase, input.Input, route)
+		}
+		if err == nil {
+			output, err = conversion.ApplyValue(ctx, input.ConversionPhase, input.Input, route, sink)
 		}
 		issues := sink.Issues()
 		if err != nil {
