@@ -1,6 +1,6 @@
 # dev.29 消息阶段修复与本地验收
 
-接续 [dev.28](protocol-audit-dev28-local-2026-10-10.md)。遵照用户要求，本轮真实 API 测试保持暂停，没有读取或修改 `scripts/protocol-audit/config.local.json`，没有请求用户渠道。所有模型响应均为本地合成夹具，所有提交只在本地。
+接续 [dev.28](protocol-audit-dev28-local-2026-10-10.md)。后续消息边界修复见 [dev.30](protocol-audit-dev30-local-2026-10-10.md)。遵照用户要求，本轮真实 API 测试保持暂停，没有读取或修改 `scripts/protocol-audit/config.local.json`，没有请求用户渠道。所有模型响应均为本地合成夹具，所有提交只在本地。
 
 ## 修复内容
 
