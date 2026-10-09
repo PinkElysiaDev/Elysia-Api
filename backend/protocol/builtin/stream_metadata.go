@@ -38,6 +38,11 @@ func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event) ([]
 			items = append(items, event.Item.Metadata...)
 		}
 		for _, m := range items {
+			// Check even when this event emits no frame (Gemini start, usage
+			// updates). A disabled projection must not silently lose metadata.
+			if m.Codec != stream.name {
+				return nil, unsupported(m.Path, "stream metadata requires target projection")
+			}
 			if m.Codec == Chat && m.Location == "choice" && m.Name == "native_finish_reason" {
 				choiceMetadata = append(choiceMetadata, m)
 			} else if m.Location == "response" || m.Location == "usage" {

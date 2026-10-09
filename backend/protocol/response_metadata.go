@@ -39,6 +39,10 @@ func MetadataFieldType(codec, location, name string) string {
 				return "reference"
 			case "moderation":
 				return "empty-state"
+			case "content_filters":
+				// Only the observed empty sentinel has a known meaning. A
+				// non-null vendor filtering payload remains an opaque extension.
+				return "null-only"
 			case "metadata", "reasoning", "text":
 				return "object"
 			case "tools":
