@@ -7,9 +7,8 @@ import (
 	p "github.com/elysia-api/backend/protocol"
 )
 
-// Content text can finish before the enclosing message's phase arrives. Keep
-// the semantic item open until the message snapshot closes its metadata too.
-// Only digests are retained for already finished text, not a second text buffer.
+// Messages own their metadata and child order independently of content. Only
+// digests are retained for finished text, not a second text buffer.
 type responseMessageState struct {
 	metadata []p.ResponseMetadata
 	parts    []string
@@ -68,6 +67,11 @@ func responsePartText(node p.Node) (string, error) {
 }
 
 func (stream *streamModule) finishResponseMessage(index int, fields p.Object, options p.EvaluationContext) ([]p.Event, error) {
+	key := fmt.Sprintf("output:%d", index)
+	parent := stream.items[key]
+	if parent == nil || parent.node.Kind != p.MessageNode {
+		return nil, unsupported("/output_index", "message completion has no start")
+	}
 	m, err := stream.updateMessageMetadata(index, fields)
 	if err != nil {
 		return nil, err
@@ -83,17 +87,6 @@ func (stream *streamModule) finishResponseMessage(index int, fields p.Object, op
 		}
 	}
 	var events []p.Event
-	if len(m.parts) == 0 && !m.finished {
-		node := p.Node{Kind: p.MessageNode, Role: p.StringValue("assistant"), ID: stream.responseItemIDs[index], Metadata: m.metadata}
-		key := fmt.Sprintf("output:%d", index)
-		for _, kind := range []p.EventType{p.ItemStarted, p.ItemFinished} {
-			event, err := stream.itemEvent(kind, key, &node, p.Value{})
-			if err != nil {
-				return nil, err
-			}
-			events = append(events, event)
-		}
-	}
 	for i, key := range m.parts {
 		item := stream.items[key]
 		if !item.partClosed {
@@ -111,18 +104,43 @@ func (stream *streamModule) finishResponseMessage(index int, fields p.Object, op
 			if sha256.Sum256([]byte(text)) != item.closedTextDigest {
 				return nil, unsupported("/item/content", "completed message text changed")
 			}
-			node = parts[i]
+			if !sameCompletedPartMetadata(item.node.Metadata, parts[i].Metadata) {
+				return nil, unsupported("/item/content", "completed message part metadata changed after content_part.done")
+			}
 		}
-		node.Metadata = p.MergeNodeMetadata(node.Metadata, m.metadata, false)
-		if m.finished {
-			continue // The terminal snapshot still has to agree with closed text.
-		}
-		e, err := stream.itemEvent(p.ItemFinished, key, &node, p.Value{})
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, e)
 	}
+	if !fields["role"].IsZero() && fields["role"] != parent.node.Role {
+		return nil, unsupported("/item/role", "message role changed")
+	}
+	if m.finished {
+		if !fields["status"].IsZero() && fields["status"] != parent.node.Status {
+			return nil, unsupported("/item/status", "completed message status changed")
+		}
+		return nil, nil
+	}
+	node := parent.node
+	node.Metadata, node.Status = m.metadata, fields["status"]
+	event, err := stream.itemEvent(p.ItemFinished, key, &node, p.Value{})
+	if err != nil {
+		return nil, err
+	}
+	events = append(events, event)
 	m.finished = true
 	return events, nil
+}
+
+func sameCompletedPartMetadata(left, right []p.ResponseMetadata) bool {
+	canonical := func(entries []p.ResponseMetadata) p.Value {
+		values := map[string]any{}
+		for _, m := range entries {
+			var value any
+			if m.Value.Decode(&value) != nil {
+				return p.Value{}
+			}
+			values[m.Codec+"/"+m.Location+"/"+m.Name] = value
+		}
+		v, _ := p.EncodeValue(values)
+		return v
+	}
+	return canonical(left) == canonical(right)
 }

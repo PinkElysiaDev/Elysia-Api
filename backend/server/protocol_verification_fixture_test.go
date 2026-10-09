@@ -75,7 +75,7 @@ func verificationEnvelopeDefinition(t *testing.T) protocol.Definition {
 	}
 	mapping := definition.Directions[protocol.EncodeEvent]
 	fields := mapping.Transform.Fields["event"]
-	for _, name := range []string{"response", "responseId", "index", "callId", "sequence"} {
+	for _, name := range []string{"response", "responseId", "parentId", "index", "callId", "sequence"} {
 		fields.Fields[name] = protocol.Expression{Op: "read", Path: "/" + name}
 	}
 	mapping.Transform.Fields["event"] = fields

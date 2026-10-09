@@ -1,0 +1,576 @@
+[
+  {
+    "capabilities": [],
+    "context": {
+      "model": "m"
+    },
+    "direction": "decode_event",
+    "expected": [
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "response.started",
+        "responseId": "r",
+        "response": {
+          "schemaVersion": 1,
+          "source": {},
+          "id": "r",
+          "model": "m",
+          "status": "in_progress",
+          "content": [],
+          "attributes": {
+            "created_at": 1
+          }
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "item.started",
+        "responseId": "r",
+        "itemId": "output:0:0",
+        "index": 0,
+        "item": {
+          "kind": "text",
+          "payload": ""
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "item.delta",
+        "responseId": "r",
+        "itemId": "output:0:0",
+        "index": 0,
+        "delta": "hi"
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "item.snapshot",
+        "responseId": "r",
+        "itemId": "output:0:0",
+        "index": 0,
+        "item": {
+          "kind": "text",
+          "payload": "hi"
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "item.snapshot",
+        "responseId": "r",
+        "itemId": "output:0:0",
+        "index": 0,
+        "item": {
+          "kind": "text",
+          "payload": "hi"
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "item.finished",
+        "responseId": "r",
+        "itemId": "output:0:0",
+        "index": 0,
+        "item": {
+          "kind": "text",
+          "payload": "hi"
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "response.finished",
+        "responseId": "r",
+        "response": {
+          "schemaVersion": 1,
+          "source": {},
+          "id": "r",
+          "model": "m",
+          "status": "completed",
+          "content": [
+            {
+              "kind": "message",
+              "role": "assistant",
+              "children": [
+                {
+                  "kind": "text",
+                  "payload": "hi"
+                }
+              ],
+              "id": "r_item_0",
+              "status": "completed"
+            }
+          ],
+          "attributes": {
+            "finishReason": "stop",
+            "created_at": 1
+          },
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        },
+        "usage": {
+          "input": {
+            "count": 20,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 2,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 22,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 15,
+            "origin": "observed"
+          }
+        }
+      }
+    ],
+    "id": "stream-text-decode",
+    "input": [
+      {
+        "type": "response.created",
+        "response": {
+          "id": "r",
+          "model": "m",
+          "status": "in_progress",
+          "output": [],
+          "created_at": 1,
+          "object": "response"
+        },
+        "sequence_number": 0
+      },
+      {
+        "type": "response.output_item.added",
+        "output_index": 0,
+        "item": {
+          "id": "r_item_0",
+          "type": "message",
+          "role": "assistant",
+          "status": "in_progress",
+          "content": []
+        },
+        "sequence_number": 1
+      },
+      {
+        "type": "response.content_part.added",
+        "output_index": 0,
+        "content_index": 0,
+        "part": {
+          "type": "output_text",
+          "text": "",
+          "annotations": []
+        },
+        "sequence_number": 2,
+        "item_id": "r_item_0"
+      },
+      {
+        "type": "response.output_text.delta",
+        "output_index": 0,
+        "content_index": 0,
+        "delta": "hi",
+        "sequence_number": 3,
+        "item_id": "r_item_0"
+      },
+      {
+        "type": "response.output_text.done",
+        "output_index": 0,
+        "content_index": 0,
+        "text": "hi",
+        "sequence_number": 4,
+        "item_id": "r_item_0"
+      },
+      {
+        "type": "response.content_part.done",
+        "output_index": 0,
+        "content_index": 0,
+        "part": {
+          "type": "output_text",
+          "text": "hi",
+          "annotations": []
+        },
+        "sequence_number": 5,
+        "item_id": "r_item_0"
+      },
+      {
+        "type": "response.output_item.done",
+        "output_index": 0,
+        "item": {
+          "id": "r_item_0",
+          "type": "message",
+          "role": "assistant",
+          "status": "completed",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "hi",
+              "annotations": []
+            }
+          ]
+        },
+        "sequence_number": 6
+      },
+      {
+        "type": "response.completed",
+        "response": {
+          "id": "r",
+          "model": "m",
+          "object": "response",
+          "status": "completed",
+          "output": [
+            {
+              "type": "message",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "hi",
+                  "annotations": []
+                }
+              ],
+              "id": "r_item_0",
+              "status": "completed"
+            }
+          ],
+          "usage": {
+            "input_tokens": 20,
+            "output_tokens": 2,
+            "total_tokens": 22,
+            "input_tokens_details": {
+              "cached_tokens": 15
+            }
+          },
+          "created_at": 1
+        },
+        "sequence_number": 7
+      }
+    ],
+    "scope": {
+      "provider": "fixture",
+      "account": "fixture",
+      "model": "m"
+    },
+    "sequence": true
+  },
+  {
+    "capabilities": [],
+    "context": {
+      "model": "m"
+    },
+    "direction": "decode_event",
+    "expected": [
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "response.started",
+        "responseId": "r",
+        "response": {
+          "schemaVersion": 1,
+          "source": {},
+          "id": "r",
+          "model": "m",
+          "status": "in_progress",
+          "content": [],
+          "attributes": {
+            "created_at": 1
+          }
+        },
+        "unmapped": {
+          "source": {
+            "protocol": {
+              "family": "openai_responses",
+              "wireVersion": "v2",
+              "definitionId": "openai-responses",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_event",
+            "path": "/frame/extensions"
+          },
+          "value": {
+            "/": {
+              "extension": {
+                "long": 9007199254740993,
+                "empty": []
+              }
+            }
+          }
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "item.started",
+        "responseId": "r",
+        "itemId": "output:0:0",
+        "index": 0,
+        "item": {
+          "kind": "text",
+          "payload": ""
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "item.delta",
+        "responseId": "r",
+        "itemId": "output:0:0",
+        "index": 0,
+        "delta": "hi"
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "item.snapshot",
+        "responseId": "r",
+        "itemId": "output:0:0",
+        "index": 0,
+        "item": {
+          "kind": "text",
+          "payload": "hi"
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "item.snapshot",
+        "responseId": "r",
+        "itemId": "output:0:0",
+        "index": 0,
+        "item": {
+          "kind": "text",
+          "payload": "hi"
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "item.finished",
+        "responseId": "r",
+        "itemId": "output:0:0",
+        "index": 0,
+        "item": {
+          "kind": "text",
+          "payload": "hi"
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "response.finished",
+        "responseId": "r",
+        "response": {
+          "schemaVersion": 1,
+          "source": {},
+          "id": "r",
+          "model": "m",
+          "status": "completed",
+          "content": [
+            {
+              "kind": "message",
+              "role": "assistant",
+              "children": [
+                {
+                  "kind": "text",
+                  "payload": "hi"
+                }
+              ],
+              "id": "r_item_0",
+              "status": "completed"
+            }
+          ],
+          "attributes": {
+            "finishReason": "stop",
+            "created_at": 1
+          },
+          "usage": {
+            "input": {
+              "count": 20,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 22,
+              "origin": "observed"
+            },
+            "cacheRead": {
+              "count": 15,
+              "origin": "observed"
+            }
+          }
+        },
+        "usage": {
+          "input": {
+            "count": 20,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 2,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 22,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 15,
+            "origin": "observed"
+          }
+        }
+      }
+    ],
+    "id": "stream-native-decode",
+    "input": [
+      {
+        "type": "response.created",
+        "response": {
+          "id": "r",
+          "model": "m",
+          "status": "in_progress",
+          "output": [],
+          "created_at": 1,
+          "object": "response"
+        },
+        "extension": {
+          "long": 9007199254740993,
+          "empty": []
+        },
+        "sequence_number": 0
+      },
+      {
+        "type": "response.output_item.added",
+        "output_index": 0,
+        "item": {
+          "id": "r_item_0",
+          "type": "message",
+          "role": "assistant",
+          "status": "in_progress",
+          "content": []
+        },
+        "sequence_number": 1
+      },
+      {
+        "type": "response.content_part.added",
+        "output_index": 0,
+        "content_index": 0,
+        "part": {
+          "type": "output_text",
+          "text": "",
+          "annotations": []
+        },
+        "sequence_number": 2,
+        "item_id": "r_item_0"
+      },
+      {
+        "type": "response.output_text.delta",
+        "output_index": 0,
+        "content_index": 0,
+        "delta": "hi",
+        "sequence_number": 3,
+        "item_id": "r_item_0"
+      },
+      {
+        "type": "response.output_text.done",
+        "output_index": 0,
+        "content_index": 0,
+        "text": "hi",
+        "sequence_number": 4,
+        "item_id": "r_item_0"
+      },
+      {
+        "type": "response.content_part.done",
+        "output_index": 0,
+        "content_index": 0,
+        "part": {
+          "type": "output_text",
+          "text": "hi",
+          "annotations": []
+        },
+        "sequence_number": 5,
+        "item_id": "r_item_0"
+      },
+      {
+        "type": "response.output_item.done",
+        "output_index": 0,
+        "item": {
+          "id": "r_item_0",
+          "type": "message",
+          "role": "assistant",
+          "status": "completed",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "hi",
+              "annotations": []
+            }
+          ]
+        },
+        "sequence_number": 6
+      },
+      {
+        "type": "response.completed",
+        "response": {
+          "id": "r",
+          "model": "m",
+          "object": "response",
+          "status": "completed",
+          "output": [
+            {
+              "type": "message",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "hi",
+                  "annotations": []
+                }
+              ],
+              "id": "r_item_0",
+              "status": "completed"
+            }
+          ],
+          "usage": {
+            "input_tokens": 20,
+            "output_tokens": 2,
+            "total_tokens": 22,
+            "input_tokens_details": {
+              "cached_tokens": 15
+            }
+          },
+          "created_at": 1
+        },
+        "sequence_number": 7
+      }
+    ],
+    "scope": {
+      "provider": "fixture",
+      "account": "fixture",
+      "model": "m"
+    },
+    "sequence": true
+  }
+]

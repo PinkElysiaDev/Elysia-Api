@@ -2,17 +2,23 @@ package protocol
 
 import "strings"
 
+type collectedPosition struct {
+	parent string
+	index  int
+}
+
 // ResponseCollector assembles a bounded result for consumers that need a whole
 // response (Agent and probes). Ordinary gateway streams use EventReplay alone.
 type ResponseCollector struct {
-	replay   *EventReplay
-	response Response
-	items    map[string]int
-	texts    map[string]*strings.Builder
-	metadata map[string]int
-	unmapped []Value
-	bytes    int
-	limit    int
+	replay     *EventReplay
+	response   Response
+	items      map[string]collectedPosition
+	containers bool
+	texts      map[string]*strings.Builder
+	metadata   map[string]int
+	unmapped   []Value
+	bytes      int
+	limit      int
 }
 
 // CompletedNode returns an isolated snapshot only at an acknowledged item end.
@@ -24,11 +30,45 @@ func (collector *ResponseCollector) CompletedNode(event Event) (Node, int, bool)
 	if err != nil {
 		return Node{}, 0, false
 	}
-	index, ok := collector.items[key]
+	position, ok := collector.items[key]
 	if !ok {
 		return Node{}, 0, false
 	}
-	return CanonicalReasoning(cloneNodes([]Node{collector.response.Content[index]})[0]), index, true
+	node := collector.item(key)
+	if node.Kind == MessageNode {
+		return Node{}, 0, false
+	}
+	top := position.index
+	if position.parent != "" {
+		top = collector.items[position.parent].index
+	}
+	// A preceding open message could still append children and shift this
+	// ordinal. Such nodes are captured from the complete terminal response.
+	for id, p := range collector.items {
+		if p.parent == "" && p.index < top && collector.replay.items[id].kind == MessageNode && !collector.replay.items[id].isFinished {
+			return Node{}, 0, false
+		}
+	}
+	ordinal := 0
+	for _, n := range collector.response.Content[:top] {
+		if n.Kind == MessageNode {
+			ordinal += len(n.Children)
+		} else {
+			ordinal++
+		}
+	}
+	if position.parent != "" {
+		ordinal += position.index
+	}
+	return CanonicalReasoning(cloneNodes([]Node{*node})[0]), ordinal, true
+}
+
+func (collector *ResponseCollector) item(key string) *Node {
+	p := collector.items[key]
+	if p.parent != "" {
+		return &collector.item(p.parent).Children[p.index]
+	}
+	return &collector.response.Content[p.index]
 }
 
 // NewResponseCollector uses the same lifecycle validator as live forwarding.
@@ -37,7 +77,7 @@ func NewResponseCollector(target Target, limits Limits) (*ResponseCollector, err
 	if err != nil {
 		return nil, err
 	}
-	return &ResponseCollector{replay: replay, response: Response{SchemaVersion: SemanticSchemaVersion, Source: target.Protocol}, items: map[string]int{}, texts: map[string]*strings.Builder{}, metadata: map[string]int{}, limit: limits.BufferBytes}, nil
+	return &ResponseCollector{replay: replay, response: Response{SchemaVersion: SemanticSchemaVersion, Source: target.Protocol}, items: map[string]collectedPosition{}, texts: map[string]*strings.Builder{}, metadata: map[string]int{}, limit: limits.BufferBytes}, nil
 }
 
 // Consume returns the newly appended text, if any. Snapshot prefixes and
@@ -82,11 +122,15 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 		}
 		if event.Response != nil {
 			if len(event.Response.Content) > 0 && len(collector.items) > 0 {
-				actual, err := EncodeValue(collectedOutput(collector.response.Content))
+				compare := collectedOutput
+				if collector.containers {
+					compare = collectedContainers
+				}
+				actual, err := EncodeValue(compare(collector.response.Content))
 				if err != nil {
 					return "", "", err
 				}
-				expected, err := EncodeValue(collectedOutput(event.Response.Content))
+				expected, err := EncodeValue(compare(event.Response.Content))
 				if err != nil {
 					return "", "", err
 				}
@@ -198,11 +242,19 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 		return "", "", err
 	}
 	if event.Type == ItemStarted {
-		collector.items[key] = len(collector.response.Content)
-		collector.response.Content = append(collector.response.Content, *event.Item)
+		parent := collector.replay.items[key].parent
+		if parent == "" {
+			collector.items[key] = collectedPosition{index: len(collector.response.Content)}
+			collector.response.Content = append(collector.response.Content, *event.Item)
+		} else {
+			node := collector.item(parent)
+			collector.items[key] = collectedPosition{parent: parent, index: len(node.Children)}
+			node.Children = append(node.Children, *event.Item)
+		}
+		collector.containers = collector.containers || event.Item.Kind == MessageNode
 		collector.texts[key] = &strings.Builder{}
 	}
-	item := &collector.response.Content[collector.items[key]]
+	item := collector.item(key)
 	if event.Item != nil {
 		item.Metadata = MergeNodeMetadata(item.Metadata, event.Item.Metadata, false)
 		if !event.Item.Name.IsZero() {
@@ -220,7 +272,7 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 		if event.Item.Resources != nil {
 			item.Resources = append([]Resource(nil), event.Item.Resources...)
 		}
-		if event.Item.Children != nil {
+		if event.Item.Children != nil && item.Kind != MessageNode {
 			item.Children = append([]Node(nil), event.Item.Children...)
 		}
 		if event.Item.ReasoningContent != nil {
@@ -305,6 +357,9 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 func (collector *ResponseCollector) accountItemMetadata(key string, node Node) error {
 	// Text and input bytes are accounted by their independent accumulators.
 	node.Payload = Value{}
+	if node.Kind == MessageNode {
+		node.Children = nil // Children have independent budgets.
+	}
 	if node.Input != nil {
 		node.Input = &ToolInput{Kind: node.Input.Kind}
 	}
@@ -353,8 +408,8 @@ func (collector *ResponseCollector) Partial() (*Response, error) {
 }
 
 func (collector *ResponseCollector) finishTools() error {
-	for key, index := range collector.items {
-		item := &collector.response.Content[index]
+	for key := range collector.items {
+		item := collector.item(key)
 		if item.Kind != ToolCallNode || collector.replay.items[key].isFinished {
 			continue
 		}

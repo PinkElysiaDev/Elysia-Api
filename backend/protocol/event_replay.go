@@ -3,6 +3,9 @@ package protocol
 import "fmt"
 
 type replayItem struct {
+	parent        string
+	wireID        Value
+	role          Value
 	kind          NodeKind
 	input         InputKind
 	callID        string
@@ -77,6 +80,16 @@ func (replay *EventReplay) consumeItem(event Event) error {
 	if err != nil {
 		return err
 	}
+	parent, err := replay.identities.Parent(event.ParentID)
+	if err != nil {
+		return err
+	}
+	if parent != "" {
+		p := replay.items[parent]
+		if p == nil || p.kind != MessageNode || p.isFinished || p.parent != "" {
+			return streamIssue(InvalidAssociation, "/parentId", "content requires an open top-level message")
+		}
+	}
 	item := replay.items[key]
 	if event.Type == ItemStarted {
 		if item != nil {
@@ -88,7 +101,10 @@ func (replay *EventReplay) consumeItem(event Event) error {
 		if len(replay.items) >= replay.limits.StateItems {
 			return streamIssue(LimitExceeded, "/item", "too many stream items")
 		}
-		item = &replayItem{kind: event.Item.Kind, reasoningForm: event.Item.ReasoningForm}
+		if parent != "" && event.Item.Kind != TextNode && event.Item.Kind != RefusalNode {
+			return streamIssue(UnsupportedCapability, "/item/kind", "message stream children require text or refusal content")
+		}
+		item = &replayItem{kind: event.Item.Kind, reasoningForm: event.Item.ReasoningForm, parent: parent}
 		if event.Item.Input != nil {
 			item.input = event.Item.Input.Kind
 		}
@@ -96,6 +112,36 @@ func (replay *EventReplay) consumeItem(event Event) error {
 	}
 	if item == nil {
 		return streamIssue(InvalidAssociation, "/itemId", "delta or completion has no preceding item start")
+	}
+	if item.parent != parent {
+		return streamIssue(InvalidAssociation, "/parentId", "item parent changed")
+	}
+	if item.kind == MessageNode {
+		if event.Item != nil {
+			for _, entry := range []struct {
+				value   Value
+				current *Value
+				path    string
+			}{{event.Item.ID, &item.wireID, "/item/id"}, {event.Item.Role, &item.role, "/item/role"}} {
+				if entry.value.IsZero() {
+					continue
+				}
+				if !entry.current.IsZero() && *entry.current != entry.value {
+					return streamIssue(InvalidAssociation, entry.path, "message identity or role changed")
+				}
+				*entry.current = entry.value
+			}
+		}
+		if event.Item != nil && len(event.Item.Children) > 0 {
+			return streamIssue(InvalidAssociation, "/item/children", "streamed message children require their own associated events")
+		}
+		if event.Type == ItemFinished {
+			for _, child := range replay.items {
+				if child.parent == key && !child.isFinished {
+					return streamIssue(InvalidAssociation, "/parentId", "message finished before its content")
+				}
+			}
+		}
 	}
 	if item.isFinished {
 		return streamIssue(UpstreamContractViolation, "/itemId", "content arrived after item completion")
@@ -239,6 +285,9 @@ func (replay *EventReplay) itemKey(event Event) (string, error) {
 
 func (replay *EventReplay) completeTools() error {
 	for key, item := range replay.items {
+		if item.kind == MessageNode && !item.isFinished {
+			return streamIssue(UpstreamContractViolation, "/itemId", "response finished before its message")
+		}
 		if item.kind == ToolCallNode && (item.callID == "" || item.name == "") {
 			return streamIssue(InvalidAssociation, key, "completed tool requires its name and call ID")
 		}

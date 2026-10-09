@@ -124,8 +124,18 @@ func TestResponsesMessagePhaseStreamOwnership(t *testing.T) {
 					if fields["type"] == p.StringValue("response.completed") {
 						final, _ := fields["response"].ReadObject()
 						messages, _ = readArray(final["output"])
-						if len(messages) == 0 {
-							t.Fatal("output disappeared")
+						if len(messages) != len(phases) {
+							t.Fatalf("message boundaries changed: got %d outputs, want %d", len(messages), len(phases))
+						}
+						for i, value := range messages {
+							message, _ := value.ReadObject()
+							if message["id"] != p.StringValue(fmt.Sprintf("msg_%d", i)) {
+								t.Fatalf("message identity changed: %s", value.Bytes())
+							}
+							parts, _ := readArray(message["content"])
+							if len(parts) != []int{1, 2, 0}[i] {
+								t.Fatalf("message parts changed: %s", value.Bytes())
+							}
 						}
 					}
 					for _, v := range messages {
@@ -174,7 +184,7 @@ func TestResponsesMessagePhaseRejectsInvalidFinalWire(t *testing.T) {
 
 func TestResponsesMessagePhaseAndTextCannotChangeAfterCompletion(t *testing.T) {
 	c := shippedProjectionProtocol(t, Responses)
-	for _, field := range []string{"phase", "text", "id"} {
+	for _, field := range []string{"phase", "text", "id", "role", "status", "annotations"} {
 		frames := phaseStreamFrames(t, "done", []string{`"commentary"`})
 		last := string(frames[len(frames)-1].Bytes())
 		switch field {
@@ -184,6 +194,12 @@ func TestResponsesMessagePhaseAndTextCannotChangeAfterCompletion(t *testing.T) {
 			last = strings.Replace(last, `text_0_0`, `rewritten`, 1)
 		case "id":
 			last = strings.Replace(last, `msg_0`, `changed`, 1)
+		case "role":
+			last = strings.Replace(last, `"assistant"`, `"user"`, 1)
+		case "status":
+			last = strings.Replace(last, `"status":"completed"`, `"status":"incomplete"`, 1)
+		case "annotations":
+			last = strings.Replace(last, `"annotations":[]`, `"annotations":[{"type":"url_citation","url":"https://example.invalid","title":"test","start_index":0,"end_index":2}]`, 1)
 		}
 		frames[len(frames)-1] = testValue(t, last)
 		options := p.EvaluationContext{State: p.NewEvaluationState()}

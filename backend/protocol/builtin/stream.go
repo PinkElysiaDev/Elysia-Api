@@ -10,6 +10,9 @@ import (
 )
 
 type streamItem struct {
+	parent               string
+	children             []string
+	contentIndex         int
 	node                 p.Node
 	index                int
 	isFinished           bool
@@ -44,6 +47,7 @@ type streamModule struct {
 	items            map[string]*streamItem
 	identities       *p.ItemIdentities
 	order            []string
+	outputItems      int
 	nextTool         int
 	geminiLastKey    string
 	geminiPartSerial int
@@ -179,7 +183,11 @@ func (stream *streamModule) itemEvent(kind p.EventType, key string, node *p.Node
 	if kind == p.ItemFinished {
 		item.isFinished = true
 	}
-	return p.Event{Type: kind, ItemID: p.StringValue(key), Index: &item.index, Item: node, Delta: delta}, nil
+	event := p.Event{Type: kind, ItemID: p.StringValue(key), Index: &item.index, Item: node, Delta: delta}
+	if item.parent != "" {
+		event.ParentID = p.StringValue(item.parent)
+	}
+	return event, nil
 }
 
 func itemMetadata(node p.Node) p.Node {

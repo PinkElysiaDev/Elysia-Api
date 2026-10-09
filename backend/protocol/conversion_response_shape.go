@@ -28,7 +28,7 @@ func (c *CompiledConversion) responseShape(r *Response, phase ConversionPhase, r
 			if !n.Attributes["choiceIndex"].IsZero() {
 				return streamIssue(UnsupportedCapability, "/content", "multiple candidate answers cannot become a single Responses output sequence")
 			}
-			if n.Kind != MessageNode || len(n.Attributes) > 0 || len(n.Metadata) > 0 || len(n.Cache) > 0 || len(n.Resources) > 0 {
+			if n.Kind != MessageNode || len(n.Children) == 0 || len(n.Attributes) > 0 || len(n.Metadata) > 0 || len(n.Cache) > 0 || len(n.Resources) > 0 {
 				output = append(output, n)
 				continue
 			}
@@ -209,6 +209,24 @@ func (c *CompiledConversion) responseValue(action string, phase ConversionPhase,
 	var e Event
 	if err := input.Decode(&e); err != nil {
 		return Value{}, err
+	}
+	if action == "response_shape" && codec != "responses" {
+		if !e.ParentID.IsZero() {
+			if err := c.issue(rule, phase, route, "/parentId", "target expresses message content as a flat assistant turn", sink, true); err != nil {
+				return Value{}, err
+			}
+			e.ParentID = Value{}
+		}
+		if e.Item != nil && e.Item.Kind == MessageNode {
+			n := e.Item
+			if len(n.Children) > 0 || len(n.Attributes) > 0 || len(n.Metadata) > 0 || len(n.Cache) > 0 || len(n.Resources) > 0 || !n.Payload.IsZero() || (n.Role != StringValue("assistant") && !n.Role.IsZero()) {
+				return Value{}, streamIssue(UnsupportedCapability, "/item", "message container has data requiring an explicit projection")
+			}
+			if err := c.issue(rule, phase, route, "/item", "target cannot retain this message container identity, status and boundary", sink, true); err != nil {
+				return Value{}, err
+			}
+			e.Type, e.Item, e.ItemID, e.Index = MetadataUpdated, nil, Value{}, nil
+		}
 	}
 	if action == "response_shape" && codec == "openai-chat" {
 		if err := c.chatEventShape(&e, route, rule, sink); err != nil {

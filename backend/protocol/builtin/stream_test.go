@@ -278,6 +278,11 @@ func TestBuiltinStreamMatrixPreservesTextAndUsageTails(t *testing.T) {
 		for _, target := range modules {
 			t.Run(source.name+"-"+target.name, func(t *testing.T) {
 				from, to := testCompiled(t, source.name), testCompiled(t, target.name)
+				conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
+				if err != nil {
+					t.Fatal(err)
+				}
+				route := conversion.VerificationRoute(from.Identity(), to.Identity(), p.SSE)
 				options := p.EvaluationContext{State: p.NewEvaluationState()}
 				replay, err := p.NewEventReplay(p.Target{Protocol: to.Identity(), Direction: p.EncodeEvent, Capabilities: to.Capabilities(p.EncodeEvent)}, p.DefaultLimits())
 				if err != nil {
@@ -289,7 +294,14 @@ func TestBuiltinStreamMatrixPreservesTextAndUsageTails(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					for _, event := range frame.Events {
+					for i, event := range frame.Events {
+						if source.name != target.name {
+							event, err = conversion.Event(t.Context(), event, route, nil)
+							if err != nil {
+								t.Fatal(err)
+							}
+							frame.Events[i] = event
+						}
 						if _, err := replay.Consume(event); err != nil {
 							t.Fatal(err)
 						}

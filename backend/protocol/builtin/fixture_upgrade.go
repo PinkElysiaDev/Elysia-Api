@@ -113,8 +113,8 @@ func RepairOutputFixtures(d p.Definition) (p.Definition, bool) {
 	return d, changed
 }
 
-// Only the two exact shipped dev.28 decoder fixtures closed text before its
-// owning message. Advance those oracles with the corrected lifecycle. Do not
+// Only the exact shipped dev.28/dev.29 decoder fixtures flattened messages.
+// Advance those oracles with the corrected lifecycle. Do not
 // recalculate arbitrary user expectations from the implementation under test.
 // Canonical JSON keeps json.Number so the native large-number fixture is exact.
 func repairResponsesMessageOracle(sample p.Sample) (p.Value, bool) {
@@ -126,8 +126,11 @@ func repairResponsesMessageOracle(sample p.Sample) (p.Value, bool) {
 	if err != nil {
 		return sample.Expected, false
 	}
+	legacy := false
 	switch fmt.Sprintf("%x", sha256.Sum256(canonical.Bytes())) {
 	case "1c4b7aacd0ae89d8312ef93616371b348e0e9e46249ae9337d188c71b76b97a2", "4e1c2a7395c0ce684129ff3e9b1c367ba54302ab5269593c882ab684fc2cb2ac":
+		legacy = true
+	case "8823958393f646c8770f738f2ecc1253ac1f480b64294a0b53d188200c8222b6", "b7c4dfeaa6bc979d8907ccf09bb6ee5d85938e6f28c0165a5a05364d7763d93c":
 	default:
 		return sample.Expected, false
 	}
@@ -135,12 +138,35 @@ func repairResponsesMessageOracle(sample p.Sample) (p.Value, bool) {
 	_ = sample.Expected.Decode(&events)
 	// Existing event 3 is the complete text snapshot; preserve its payload and
 	// association for the part snapshot and the subsequent message completion.
-	snapshot := events[3]
-	finished, _ := snapshot.ReadObject()
-	finished["type"] = p.StringValue(string(p.ItemFinished))
-	result := append([]p.Value(nil), events[:4]...)
-	result = append(result, snapshot, object(finished))
-	result = append(result, events[5:]...)
+	if legacy {
+		snapshot := events[3]
+		finished, _ := snapshot.ReadObject()
+		finished["type"] = p.StringValue(string(p.ItemFinished))
+		updated := append([]p.Value(nil), events[:4]...)
+		updated = append(updated, snapshot, object(finished))
+		events = append(updated, events[5:]...)
+	}
+	var frames []p.Value
+	_ = sample.Input.Decode(&frames)
+	added, _ := frames[1].ReadObject()
+	message, _ := added["item"].ReadObject()
+	zero, _ := p.EncodeValue(0)
+	one, _ := p.EncodeValue(1)
+	node := p.Object{"kind": p.StringValue("message"), "role": message["role"], "id": message["id"], "status": message["status"]}
+	parent := p.Object{"schemaVersion": one, "source": object(p.Object{}), "type": p.StringValue(string(p.ItemStarted)), "responseId": p.StringValue("r"), "itemId": p.StringValue("output:0"), "index": zero, "item": object(node)}
+	result := []p.Value{events[0], object(parent)}
+	for i := 1; i <= 4; i++ {
+		event, _ := events[i].ReadObject()
+		event["parentId"], event["index"] = p.StringValue("output:0"), one
+		if i == 4 {
+			event["type"] = p.StringValue(string(p.ItemFinished))
+		}
+		result = append(result, object(event))
+	}
+	parent["type"], node["status"] = p.StringValue(string(p.ItemFinished)), p.StringValue("completed")
+	parent["item"] = object(node)
+	result = append(result, object(parent))
+	result = append(result, events[6:]...)
 	return array(result), true
 }
 

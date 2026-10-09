@@ -84,12 +84,25 @@ func (stream *streamModule) encodeStart(options p.EvaluationContext) ([]p.Value,
 }
 
 func (stream *streamModule) encodeItem(event p.Event, options p.EvaluationContext) ([]p.Value, error) {
+	if event.Item != nil && event.Item.Kind == p.MessageNode && len(event.Item.Children) > 0 {
+		return nil, unsupported("/item/children", "stream message children require separate associated events")
+	}
 	if event.Item != nil && stream.name != Responses && (event.Item.ReasoningForm != "" || event.Item.ReasoningContent != nil) {
 		return nil, unsupported("/reasoningForm", "structured reasoning requires an explicit projection to visible thinking")
 	}
 	key, err := stream.identities.Resolve(event)
 	if err != nil {
 		return nil, err
+	}
+	parent, err := stream.identities.Parent(event.ParentID)
+	if err != nil {
+		return nil, err
+	}
+	if parent != "" {
+		owner := stream.items[parent]
+		if stream.name != Responses || owner == nil || owner.node.Kind != p.MessageNode || owner.isFinished {
+			return nil, unsupported("/parentId", "target requires an open Responses message or an explicit message projection")
+		}
 	}
 	item := stream.items[key]
 	if event.Type == p.ItemStarted {
@@ -99,11 +112,27 @@ func (stream *streamModule) encodeItem(event p.Event, options p.EvaluationContex
 		if len(stream.items) >= stream.limits.StateItems {
 			return nil, unsupported("/items", "target stream item limit exceeded")
 		}
-		item = &streamItem{node: itemMetadata(*event.Item), index: len(stream.order)}
+		if event.Item == nil {
+			return nil, unsupported("/item", "item start requires a node")
+		}
+		item = &streamItem{node: itemMetadata(*event.Item), parent: parent, index: stream.outputItems}
+		if parent == "" {
+			stream.outputItems++
+		} else {
+			if item.node.Kind != p.TextNode && item.node.Kind != p.RefusalNode {
+				return nil, unsupported("/item", "message parts require text or refusal")
+			}
+			owner := stream.items[parent]
+			item.index, item.contentIndex = owner.index, len(owner.children)
+			owner.children = append(owner.children, key)
+		}
 		stream.items[key] = item
 		stream.order = append(stream.order, key)
 	} else if item == nil {
 		return nil, fmt.Errorf("target item has no start")
+	}
+	if item.parent != parent {
+		return nil, unsupported("/parentId", "target item parent changed")
 	}
 	if event.Item != nil {
 		if err := checkResourceProtocol(*event.Item, options); err != nil {
@@ -191,6 +220,9 @@ func (stream *streamModule) encodeItem(event p.Event, options p.EvaluationContex
 			return nil, nil
 		}
 		item.wireID = item.node.ID
+		if parent != "" {
+			item.wireID = stream.items[parent].wireID
+		}
 		if item.wireID.IsZero() {
 			item.wireID = p.StringValue(key)
 		}
@@ -297,7 +329,10 @@ func (stream *streamModule) encodeItemStart(key string, item *streamItem, option
 				block["type"], block["input"] = p.StringValue("custom_tool_call"), p.StringValue("")
 			}
 		}
-		frames := []p.Value{stream.responsesEvent("response.output_item.added", key, item, "item", object(block))}
+		var frames []p.Value
+		if item.parent == "" {
+			frames = append(frames, stream.responsesEvent("response.output_item.added", key, item, "item", object(block)))
+		}
 		if node.Kind == p.ReasoningNode && node.ReasoningForm == "" {
 			frames = append(frames, stream.responsesEvent("response.content_part.added", key, item, "part", object(p.Object{"type": p.StringValue("reasoning_text"), "text": p.StringValue("")})))
 		}
@@ -371,7 +406,18 @@ func (stream *streamModule) encodeDelta(key string, item *streamItem, delta stri
 
 func (stream *streamModule) materialize(item *streamItem) (p.Node, error) {
 	node := item.node
-	if node.ReasoningForm != "" || node.Kind == p.MessageNode {
+	if node.Kind == p.MessageNode {
+		node.Children = nil
+		for _, key := range item.children {
+			child, err := stream.materialize(stream.items[key])
+			if err != nil {
+				return node, err
+			}
+			node.Children = append(node.Children, child)
+		}
+		return node, nil
+	}
+	if node.ReasoningForm != "" {
 		return node, nil
 	}
 	if node.Kind != p.ToolCallNode {
@@ -403,6 +449,11 @@ func (stream *streamModule) encodeItemEnd(key string, item *streamItem, options 
 	if !item.hasEmittedStart {
 		return nil, unsupported("/item", "tool completed without a name and call identity")
 	}
+	for _, child := range item.children {
+		if !stream.items[child].isFinished {
+			return nil, unsupported("/parentId", "target message finished before its content")
+		}
+	}
 	node := item.node
 	if stream.needsPayload(item) {
 		var err error
@@ -431,8 +482,20 @@ func (stream *streamModule) encodeItemEnd(key string, item *streamItem, options 
 		}
 		return []p.Value{stream.geminiChunk(array([]p.Value{block}), p.Value{}, p.Value{})}, nil
 	case Responses:
-		if node.Kind == p.MessageNode && len(node.Children) == 0 {
-			message := p.Object{"id": item.wireID, "type": p.StringValue("message"), "role": p.StringValue("assistant"), "status": p.StringValue("completed"), "content": array(nil)}
+		if node.Kind == p.MessageNode {
+			var parts []p.Value
+			for _, child := range node.Children {
+				part, err := stream.module.encodeBlock(child, p.EncodeResponse, options)
+				if err != nil {
+					return nil, err
+				}
+				parts = append(parts, part)
+			}
+			status := node.Status
+			if status.IsZero() || status == p.StringValue("in_progress") {
+				status = p.StringValue("completed")
+			}
+			message := p.Object{"id": item.wireID, "type": p.StringValue("message"), "role": node.Role, "status": status, "content": array(parts)}
 			if err := stream.module.writeMetadata(message, node.Metadata, "message"); err != nil {
 				return nil, err
 			}
@@ -440,7 +503,9 @@ func (stream *streamModule) encodeItemEnd(key string, item *streamItem, options 
 		}
 		if node.Kind == p.ToolCallNode || node.Kind == p.ReasoningNode {
 			node.ID = item.wireID
-			node.Status = p.StringValue("completed")
+			if node.Status.IsZero() || node.Status == p.StringValue("in_progress") {
+				node.Status = p.StringValue("completed")
+			}
 		}
 		block, err := stream.module.encodeBlock(node, p.EncodeResponse, options)
 		if err != nil {
@@ -472,7 +537,11 @@ func (stream *streamModule) encodeItemEnd(key string, item *streamItem, options 
 		if node.Kind == p.RefusalNode {
 			kind, field = "response.refusal.done", "refusal"
 		}
-		return []p.Value{stream.responsesEvent(kind, key, item, field, node.Payload), stream.responsesEvent("response.content_part.done", key, item, "part", block), stream.responsesEvent("response.output_item.done", key, item, "item", message)}, nil
+		frames := []p.Value{stream.responsesEvent(kind, key, item, field, node.Payload), stream.responsesEvent("response.content_part.done", key, item, "part", block)}
+		if item.parent == "" {
+			frames = append(frames, stream.responsesEvent("response.output_item.done", key, item, "item", message))
+		}
+		return frames, nil
 	}
 	return nil, fmt.Errorf("unsupported stream target")
 }
@@ -499,13 +568,18 @@ func (stream *streamModule) Finish(ctx context.Context, options p.EvaluationCont
 			frames = append(frames, end...)
 		}
 		if stream.name == Responses {
+			if item.parent != "" {
+				continue
+			}
 			node, err := stream.materialize(item)
 			if err != nil {
 				return nil, err
 			}
 			if node.Kind == p.ToolCallNode || node.Kind == p.ReasoningNode || node.Kind == p.MessageNode {
 				node.ID = item.wireID
-				node.Status = p.StringValue("completed")
+				if node.Status.IsZero() || node.Status == p.StringValue("in_progress") {
+					node.Status = p.StringValue("completed")
+				}
 			} else {
 				node = p.Node{Kind: p.MessageNode, ID: item.wireID, Status: p.StringValue("completed"), Role: p.StringValue("assistant"), Children: []p.Node{node}}
 			}
@@ -598,8 +672,8 @@ func (stream *streamModule) anthropicEvent(kind string, item *streamItem, value 
 }
 func (stream *streamModule) responsesEvent(kind, key string, item *streamItem, field string, value p.Value) p.Value {
 	index, _ := p.EncodeValue(item.index)
-	zero, _ := p.EncodeValue(0)
-	return object(p.Object{"type": p.StringValue(kind), "response_id": stream.id, "item_id": item.wireID, "output_index": index, "content_index": zero, field: value})
+	content, _ := p.EncodeValue(item.contentIndex)
+	return object(p.Object{"type": p.StringValue(kind), "response_id": stream.id, "item_id": item.wireID, "output_index": index, "content_index": content, field: value})
 }
 func (stream *streamModule) geminiChunk(parts, finish, usage p.Value) p.Value {
 	index, _ := p.EncodeValue(0)

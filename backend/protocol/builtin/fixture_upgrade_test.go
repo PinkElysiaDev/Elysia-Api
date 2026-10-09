@@ -8,7 +8,13 @@ import (
 )
 
 func TestRepairResponsesMessageCompletionOracles(t *testing.T) {
-	raw, err := os.ReadFile("testdata/responses-dev28-message-samples.json")
+	for _, version := range []string{"dev28", "dev29"} {
+		t.Run(version, func(t *testing.T) { repairResponsesMessageCompletionOracles(t, version) })
+	}
+}
+
+func repairResponsesMessageCompletionOracles(t *testing.T, version string) {
+	raw, err := os.ReadFile("testdata/responses-" + version + "-message-samples.json")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -47,17 +47,20 @@ type Event struct {
 	SessionID     Value              `json:"sessionId,omitzero"`
 	ResponseID    Value              `json:"responseId,omitzero"`
 	ItemID        Value              `json:"itemId,omitzero"`
-	CallID        Value              `json:"callId,omitzero"`
-	Sequence      Value              `json:"sequence,omitzero"`
-	Index         *int               `json:"index,omitempty"`
-	Delta         Value              `json:"delta,omitzero"`
-	Item          *Node              `json:"item,omitempty"`
-	Response      *Response          `json:"response,omitempty"`
-	Request       *Request           `json:"request,omitempty"`
-	Usage         *Usage             `json:"usage,omitempty"`
-	Media         *Media             `json:"media,omitempty"`
-	Error         Value              `json:"error,omitzero"`
-	Native        *Native            `json:"native,omitempty"`
+	// ParentID references an open message's semantic ItemID. Index remains a
+	// response-wide item identity; child order is its order of ItemStarted events.
+	ParentID Value     `json:"parentId,omitzero"`
+	CallID   Value     `json:"callId,omitzero"`
+	Sequence Value     `json:"sequence,omitzero"`
+	Index    *int      `json:"index,omitempty"`
+	Delta    Value     `json:"delta,omitzero"`
+	Item     *Node     `json:"item,omitempty"`
+	Response *Response `json:"response,omitempty"`
+	Request  *Request  `json:"request,omitempty"`
+	Usage    *Usage    `json:"usage,omitempty"`
+	Media    *Media    `json:"media,omitempty"`
+	Error    Value     `json:"error,omitzero"`
+	Native   *Native   `json:"native,omitempty"`
 	// Unmapped is semantic evidence of wire fields without a declared mapping.
 	// It may survive same-wire frame replay, but cannot silently cross families.
 	Unmapped *Native `json:"unmapped,omitempty"`

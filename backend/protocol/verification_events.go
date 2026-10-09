@@ -7,18 +7,19 @@ func compareEventSequence(compiled *Compiled, sample Sample, expected, actual []
 	if !sample.Sequence {
 		return compareRoundTrip(compiled, sample, expected, actual)
 	}
-	before, err := collectVerificationSequence(compiled, sample, expected)
+	containers := hasMessageEvents(expected)
+	before, err := collectVerificationSequence(compiled, sample, expected, containers)
 	if err != nil {
 		return err
 	}
-	after, err := collectVerificationSequence(compiled, sample, actual)
+	after, err := collectVerificationSequence(compiled, sample, actual, containers)
 	if err != nil {
 		return err
 	}
 	return compareRoundTrip(compiled, sample, before, after)
 }
 
-func collectVerificationSequence(compiled *Compiled, sample Sample, events []Event) (Value, error) {
+func collectVerificationSequence(compiled *Compiled, sample Sample, events []Event, containers bool) (Value, error) {
 	// Each sequence retains its source capabilities for collection. Target
 	// capability enforcement already happens while encoding and decoding.
 	target := compiled.target(EncodeEvent, EvaluationContext{Scope: sample.Scope})
@@ -63,7 +64,11 @@ func collectVerificationSequence(compiled *Compiled, sample Sample, events []Eve
 	if response.Status.IsZero() {
 		response.Status = StringValue("completed")
 	}
-	response.Content = comparableStreamOutput(response.Content)
+	if containers {
+		response.Content = collectedContainers(response.Content)
+	} else {
+		response.Content = comparableStreamOutput(response.Content)
+	}
 	return comparableSemantic(response)
 }
 

@@ -16,6 +16,18 @@ func NewItemIdentities(maxItems int) *ItemIdentities {
 	return &ItemIdentities{aliases: map[string]string{}, limit: maxItems * itemIdentityKinds}
 }
 
+// Parent resolves an existing association without minting an alias for an orphan.
+func (index *ItemIdentities) Parent(value Value) (string, error) {
+	if value.IsZero() {
+		return "", nil
+	}
+	id, err := readString(value)
+	if err != nil || id == "" || index.aliases["item:"+id] == "" {
+		return "", streamIssue(InvalidAssociation, "/parentId", "parent must reference an already started message item")
+	}
+	return index.aliases["item:"+id], nil
+}
+
 // Resolve returns a stable key and records only unambiguous new aliases.
 func (index *ItemIdentities) Resolve(event Event) (string, error) {
 	var identities []string

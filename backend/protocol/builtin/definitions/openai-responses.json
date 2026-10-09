@@ -2004,10 +2004,6 @@
       ],
       "expected": [
         {
-          "schemaVersion": 1,
-          "source": {},
-          "type": "response.started",
-          "responseId": "r",
           "response": {
             "schemaVersion": 1,
             "source": {},
@@ -2018,70 +2014,90 @@
             "attributes": {
               "created_at": 1
             }
-          }
-        },
-        {
+          },
+          "responseId": "r",
           "schemaVersion": 1,
           "source": {},
-          "type": "item.started",
-          "responseId": "r",
-          "itemId": "output:0:0",
+          "type": "response.started"
+        },
+        {
           "index": 0,
+          "item": {
+            "id": "r_item_0",
+            "kind": "message",
+            "role": "assistant",
+            "status": "in_progress"
+          },
+          "itemId": "output:0",
+          "responseId": "r",
+          "schemaVersion": 1,
+          "source": {},
+          "type": "item.started"
+        },
+        {
+          "index": 1,
           "item": {
             "kind": "text",
             "payload": ""
-          }
-        },
-        {
+          },
+          "itemId": "output:0:0",
+          "parentId": "output:0",
+          "responseId": "r",
           "schemaVersion": 1,
           "source": {},
-          "type": "item.delta",
-          "responseId": "r",
-          "itemId": "output:0:0",
-          "index": 0,
-          "delta": "hi"
+          "type": "item.started"
         },
         {
+          "delta": "hi",
+          "index": 1,
+          "itemId": "output:0:0",
+          "parentId": "output:0",
+          "responseId": "r",
           "schemaVersion": 1,
           "source": {},
-          "type": "item.snapshot",
-          "responseId": "r",
-          "itemId": "output:0:0",
-          "index": 0,
+          "type": "item.delta"
+        },
+        {
+          "index": 1,
           "item": {
             "kind": "text",
             "payload": "hi"
-          }
-        },
-        {
+          },
+          "itemId": "output:0:0",
+          "parentId": "output:0",
+          "responseId": "r",
           "schemaVersion": 1,
           "source": {},
-          "type": "item.snapshot",
-          "responseId": "r",
-          "itemId": "output:0:0",
-          "index": 0,
+          "type": "item.snapshot"
+        },
+        {
+          "index": 1,
           "item": {
             "kind": "text",
             "payload": "hi"
-          }
-        },
-        {
+          },
+          "itemId": "output:0:0",
+          "parentId": "output:0",
+          "responseId": "r",
           "schemaVersion": 1,
           "source": {},
-          "type": "item.finished",
-          "responseId": "r",
-          "itemId": "output:0:0",
+          "type": "item.finished"
+        },
+        {
           "index": 0,
           "item": {
-            "kind": "text",
-            "payload": "hi"
-          }
-        },
-        {
+            "id": "r_item_0",
+            "kind": "message",
+            "role": "assistant",
+            "status": "completed"
+          },
+          "itemId": "output:0",
+          "responseId": "r",
           "schemaVersion": 1,
           "source": {},
-          "type": "response.finished",
-          "responseId": "r",
+          "type": "item.finished"
+        },
+        {
           "response": {
             "schemaVersion": 1,
             "source": {},
@@ -2125,6 +2141,10 @@
               }
             }
           },
+          "responseId": "r",
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
           "usage": {
             "input": {
               "count": 20,
@@ -2283,10 +2303,6 @@
       ],
       "expected": [
         {
-          "schemaVersion": 1,
-          "source": {},
-          "type": "response.started",
-          "responseId": "r",
           "response": {
             "schemaVersion": 1,
             "source": {},
@@ -2298,6 +2314,10 @@
               "created_at": 1
             }
           },
+          "responseId": "r",
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.started",
           "unmapped": {
             "source": {
               "protocol": {
@@ -2320,67 +2340,83 @@
           }
         },
         {
+          "index": 0,
+          "item": {
+            "id": "r_item_0",
+            "kind": "message",
+            "role": "assistant",
+            "status": "in_progress"
+          },
+          "itemId": "output:0",
+          "responseId": "r",
           "schemaVersion": 1,
           "source": {},
-          "type": "item.started",
-          "responseId": "r",
-          "itemId": "output:0:0",
-          "index": 0,
+          "type": "item.started"
+        },
+        {
+          "index": 1,
           "item": {
             "kind": "text",
             "payload": ""
-          }
-        },
-        {
+          },
+          "itemId": "output:0:0",
+          "parentId": "output:0",
+          "responseId": "r",
           "schemaVersion": 1,
           "source": {},
-          "type": "item.delta",
-          "responseId": "r",
-          "itemId": "output:0:0",
-          "index": 0,
-          "delta": "hi"
+          "type": "item.started"
         },
         {
+          "delta": "hi",
+          "index": 1,
+          "itemId": "output:0:0",
+          "parentId": "output:0",
+          "responseId": "r",
           "schemaVersion": 1,
           "source": {},
-          "type": "item.snapshot",
-          "responseId": "r",
-          "itemId": "output:0:0",
-          "index": 0,
+          "type": "item.delta"
+        },
+        {
+          "index": 1,
           "item": {
             "kind": "text",
             "payload": "hi"
-          }
-        },
-        {
+          },
+          "itemId": "output:0:0",
+          "parentId": "output:0",
+          "responseId": "r",
           "schemaVersion": 1,
           "source": {},
-          "type": "item.snapshot",
-          "responseId": "r",
-          "itemId": "output:0:0",
-          "index": 0,
+          "type": "item.snapshot"
+        },
+        {
+          "index": 1,
           "item": {
             "kind": "text",
             "payload": "hi"
-          }
-        },
-        {
+          },
+          "itemId": "output:0:0",
+          "parentId": "output:0",
+          "responseId": "r",
           "schemaVersion": 1,
           "source": {},
-          "type": "item.finished",
-          "responseId": "r",
-          "itemId": "output:0:0",
+          "type": "item.finished"
+        },
+        {
           "index": 0,
           "item": {
-            "kind": "text",
-            "payload": "hi"
-          }
-        },
-        {
+            "id": "r_item_0",
+            "kind": "message",
+            "role": "assistant",
+            "status": "completed"
+          },
+          "itemId": "output:0",
+          "responseId": "r",
           "schemaVersion": 1,
           "source": {},
-          "type": "response.finished",
-          "responseId": "r",
+          "type": "item.finished"
+        },
+        {
           "response": {
             "schemaVersion": 1,
             "source": {},
@@ -2424,6 +2460,10 @@
               }
             }
           },
+          "responseId": "r",
+          "schemaVersion": 1,
+          "source": {},
+          "type": "response.finished",
           "usage": {
             "input": {
               "count": 20,

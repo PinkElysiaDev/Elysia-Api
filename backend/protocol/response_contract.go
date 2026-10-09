@@ -59,6 +59,14 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 		check.require(NativeExtensionsCapability, "/unmapped")
 		check.native(event.Unmapped, "/unmapped")
 	}
+	if !event.ParentID.IsZero() {
+		check.requireName(event.ParentID, "/parentId")
+		switch event.Type {
+		case ItemStarted, ItemDelta, ItemSnapshot, ItemFinished:
+		default:
+			check.add(InvalidAssociation, "/parentId", "", "only item lifecycle events can reference a parent")
+		}
+	}
 	switch event.Type {
 	case SessionStarted, SessionConfigured, SessionConfigure, InputCommit, ResponseCreate, ResponseCancel, SessionClose:
 		check.require(SessionsCapability, "/type")

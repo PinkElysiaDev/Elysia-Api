@@ -85,8 +85,22 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 			if stream.responseMessages[outputIndex] != nil {
 				return nil, unsupported("/output_index", "message started twice")
 			}
-			_, err := stream.updateMessageMetadata(outputIndex, item)
-			return nil, err
+			m, err := stream.updateMessageMetadata(outputIndex, item)
+			if err != nil {
+				return nil, err
+			}
+			nodes, err := stream.module.decodeMessages(array([]p.Value{fields["item"]}), "/output", p.DecodeResponse, options, &historyState{})
+			if err != nil {
+				return nil, err
+			}
+			node := nodes[0]
+			node.Native.Source.Path = fmt.Sprintf("/output/%d", outputIndex)
+			if len(node.Children) != 0 {
+				return nil, unsupported("/item/content", "message start must precede content parts")
+			}
+			node.Children, node.Metadata = nil, m.metadata
+			event, err := stream.itemEvent(p.ItemStarted, key, &node, p.Value{})
+			return []p.Event{event}, err
 		}
 		if itemKind != "function_call" && itemKind != "custom_tool_call" {
 			return []p.Event{{Type: p.NativeEvent}}, nil
@@ -102,6 +116,9 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 	case "response.reasoning_text.delta", "response.reasoning_text.done":
 		return nil, unsupported("/item_id", "reasoning text has no preceding visible reasoning item")
 	case "response.content_part.added":
+		if parent := stream.items[key]; parent == nil || parent.node.Kind != p.MessageNode || parent.isFinished {
+			return nil, unsupported("/output_index", "content part requires an open message")
+		}
 		message, err := stream.responseMessage(outputIndex)
 		if err != nil {
 			return nil, err
@@ -121,9 +138,10 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		if string(part["type"].Bytes()) == `"refusal"` {
 			node.Kind, node.Payload = p.RefusalNode, part["refusal"]
 		}
-		node.Metadata = p.MergeNodeMetadata(node.Metadata, message.metadata, false)
 		event, err := stream.itemEvent(p.ItemStarted, contentKey, &node, p.Value{})
 		if err == nil {
+			stream.items[contentKey].parent = key
+			event.ParentID = p.StringValue(key)
 			message.parts = append(message.parts, contentKey)
 		}
 		return []p.Event{event}, err
@@ -229,7 +247,7 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		}
 		current.partClosed, current.closedTextDigest = true, digest
 		node.Metadata = p.MergeNodeMetadata(current.node.Metadata, node.Metadata, false)
-		event, err := stream.itemEvent(p.ItemSnapshot, contentKey, &node, p.Value{})
+		event, err := stream.itemEvent(p.ItemFinished, contentKey, &node, p.Value{})
 		return []p.Event{event}, err
 	case "response.output_item.done":
 		item, err := fields["item"].ReadObject()
