@@ -104,7 +104,12 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 			if reasoning := fields["reasoning_content"]; !reasoning.IsZero() && !reasoning.IsNull() && reasoning != p.StringValue("") {
 				node.Children = append([]p.Node{{Kind: p.ReasoningNode, Payload: reasoning}}, node.Children...)
 			}
-			if refusal := fields["refusal"]; !refusal.IsZero() {
+			// Chat SDK history includes refusal:null for ordinary assistant
+			// messages. Null denotes no refusal; native snapshots keep presence.
+			if refusal := fields["refusal"]; !refusal.IsZero() && !refusal.IsNull() {
+				if _, err := stringValue(refusal); err != nil {
+					return nil, p.IssuesError([]p.ConversionIssue{{Code: p.InvalidInput, Severity: p.SeverityError, Path: location + "/refusal", Reason: "Chat refusal requires a string or null"}})
+				}
 				node.Children = append(node.Children, p.Node{Kind: p.RefusalNode, Payload: refusal})
 			}
 		}
