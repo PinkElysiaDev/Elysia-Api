@@ -184,7 +184,7 @@ func TestResponsesMessagePhaseRejectsInvalidFinalWire(t *testing.T) {
 
 func TestResponsesMessagePhaseAndTextCannotChangeAfterCompletion(t *testing.T) {
 	c := shippedProjectionProtocol(t, Responses)
-	for _, field := range []string{"phase", "text", "id", "role", "status", "annotations"} {
+	for _, field := range []string{"phase", "text", "id", "role", "status", "annotations", "omitted_message"} {
 		frames := phaseStreamFrames(t, "done", []string{`"commentary"`})
 		last := string(frames[len(frames)-1].Bytes())
 		switch field {
@@ -200,6 +200,12 @@ func TestResponsesMessagePhaseAndTextCannotChangeAfterCompletion(t *testing.T) {
 			last = strings.Replace(last, `"status":"completed"`, `"status":"incomplete"`, 1)
 		case "annotations":
 			last = strings.Replace(last, `"annotations":[]`, `"annotations":[{"type":"url_citation","url":"https://example.invalid","title":"test","start_index":0,"end_index":2}]`, 1)
+		case "omitted_message":
+			frame, _ := testValue(t, last).ReadObject()
+			response, _ := frame["response"].ReadObject()
+			response["output"] = array(nil)
+			frame["response"] = object(response)
+			last = string(object(frame).Bytes())
 		}
 		frames[len(frames)-1] = testValue(t, last)
 		options := p.EvaluationContext{State: p.NewEvaluationState()}

@@ -288,6 +288,15 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		var events []p.Event
 		terminal, _ := fields["response"].ReadObject()
 		output, _ := readArray(terminal["output"])
+		for index := range stream.responseMessages {
+			if index >= len(output) {
+				return nil, unsupported("/response/output", "terminal snapshot omitted a started message")
+			}
+			item, err := output[index].ReadObject()
+			if err != nil || item["type"] != p.StringValue("message") {
+				return nil, unsupported("/response/output", "terminal snapshot replaced a started message")
+			}
+		}
 		for i := range response.Content {
 			node := &response.Content[i]
 			if node.Kind != p.MessageNode {
