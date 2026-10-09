@@ -78,6 +78,20 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 		node.Resources = []p.Resource{{Kind: "encrypted_content", ID: fields["data"], Scope: options.Scope}}
 		known = append(known, "data")
 	case "tool_use", "function_call", "custom_tool_call":
+		if adapter.name == Anthropic && kind == "tool_use" && !fields["caller"].IsZero() {
+			caller, err := fields["caller"].ReadObject()
+			if err != nil || fields["caller"].IsNull() {
+				return node, p.IssuesError([]p.ConversionIssue{{Code: p.InvalidInput, Severity: p.SeverityError, Path: path + "/caller", Reason: "tool caller must be an object"}})
+			}
+			if _, err := stringValue(caller["type"]); err != nil {
+				return node, p.IssuesError([]p.ConversionIssue{{Code: p.InvalidInput, Severity: p.SeverityError, Path: path + "/caller/type", Reason: "tool caller requires a string type"}})
+			}
+			// ToolCallNode is a direct client-executed call. Programmatic
+			// callers and any extra caller fields retain their extension guard.
+			if len(caller) == 1 && caller["type"] == p.StringValue("direct") {
+				known = append(known, "caller")
+			}
+		}
 		node, err = adapter.decodeCall(fields, node, kind)
 		known = append(known, "id", "name")
 		if kind != "tool_use" {
