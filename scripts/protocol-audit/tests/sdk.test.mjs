@@ -30,6 +30,35 @@ for (const protocol of ['chat', 'responses', 'anthropic', 'gemini']) for (const 
   })
 }
 
+for (const stream of [false, true]) test(`Responses visible reasoning ${stream ? 'SSE' : 'JSON'} is consumed without hidden SDK errors`, { skip: !consume && 'SDK dependencies unavailable' }, async t => {
+  const reasoning = { id: 'rs_visible', type: 'reasoning', status: 'completed', summary: [], content: [{ type: 'reasoning_text', text: 'Synthetic visible thought.' }] }
+  // Only synthetic fixtures are parsed here, never live evidence or signatures.
+  const response = JSON.parse(replyWire('responses'))
+  response.output.unshift(reasoning)
+  let wire = JSON.stringify(response)
+  if (stream) {
+    const original = replyWire('responses', 'OK', false, true).split('\n').filter(line => line.startsWith('data: ')).map(line => JSON.parse(line.slice(6)))
+    const ref = { output_index: 0, item_id: reasoning.id, content_index: 0 }
+    const reasoningEvents = [
+      { type: 'response.output_item.added', output_index: 0, item: { ...reasoning, status: 'in_progress', content: [] } },
+      { type: 'response.content_part.added', ...ref, part: { type: 'reasoning_text', text: '' } },
+      { type: 'response.reasoning_text.delta', ...ref, delta: reasoning.content[0].text },
+      { type: 'response.reasoning_text.done', ...ref, text: reasoning.content[0].text },
+      { type: 'response.content_part.done', ...ref, part: reasoning.content[0] },
+      { type: 'response.output_item.done', output_index: 0, item: reasoning },
+    ]
+    for (const event of original) if (event.output_index !== undefined) event.output_index++
+    original.at(-1).response = response
+    original.splice(1, 0, ...reasoningEvents)
+    wire = original.map((event, sequence_number) => `event: ${event.type}\ndata: ${JSON.stringify({ ...event, sequence_number })}\n\n`).join('')
+  }
+  const f = await endpoint(t, wire, stream)
+  const result = await consume('responses', f.options, stream)
+  assert.deepEqual(result.map(p => p.name), ['openai', '@ai-sdk/openai'])
+  assert.equal(f.captured.length, 2)
+  assert.ok(f.captured.every(detail => detail.response.status === 200 && detail.response.body === wire))
+})
+
 test('strict SDK rejection retains the HTTP 200 response evidence', { skip: !consume && 'SDK dependencies unavailable' }, async t => {
   const body = JSON.parse(replyWire('responses')); delete body.output[0].id
   const f = await endpoint(t, JSON.stringify(body), false)
