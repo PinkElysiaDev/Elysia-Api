@@ -136,14 +136,45 @@ func CheckRoute(request *Request, compiled *Compiled, binding Binding, scope Sco
 func CheckModelResponse(response *Response, compiled *Compiled, binding Binding, scope Scope) []ConversionIssue {
 	target := bindingTarget(compiled, binding, DecodeResponse, scope)
 	target.Direction = EncodeResponse
-	return upstreamBindingIssues(CheckResponse(response, target, compiled.limits))
+	issues := CheckResponse(response, target, compiled.limits)
+	if response != nil {
+		issues = append(issues, providerUsageIssues(response.Usage, target, "/usage")...)
+	}
+	return upstreamBindingIssues(issues)
 }
 
 // CheckModelEvent applies the same model contract to each upstream event.
 func CheckModelEvent(event Event, compiled *Compiled, binding Binding, scope Scope) []ConversionIssue {
 	target := bindingTarget(compiled, binding, DecodeEvent, scope)
 	target.Direction = EncodeEvent
-	return upstreamBindingIssues(CheckEvent(event, target, compiled.limits))
+	issues := CheckEvent(event, target, compiled.limits)
+	issues = append(issues, providerUsageIssues(event.Usage, target, "/usage")...)
+	if event.Response != nil {
+		issues = append(issues, providerUsageIssues(event.Response.Usage, target, "/response/usage")...)
+	}
+	return upstreamBindingIssues(issues)
+}
+
+func providerUsageIssues(usage *Usage, target Target, base string) []ConversionIssue {
+	if usage == nil {
+		return nil
+	}
+	issues := []ConversionIssue{}
+	check := func(name string, counter *Counter) {
+		if counter != nil && counter.Origin == PlaceholderCount {
+			issues = append(issues, ConversionIssue{Code: InvalidInput, Severity: SeverityError, Protocol: target.Protocol, Direction: target.Direction, Path: base + "/" + name, Reason: "client-only placeholders cannot be provider accounting observations"})
+		}
+	}
+	check("input", usage.Input)
+	check("output", usage.Output)
+	check("total", usage.Total)
+	check("cacheRead", usage.CacheRead)
+	check("cacheCreation", usage.CacheCreation)
+	for _, name := range sortedKeys(usage.Details) {
+		counter := usage.Details[name]
+		check("details/"+name, &counter)
+	}
+	return issues
 }
 
 func bindingTarget(compiled *Compiled, binding Binding, direction Direction, scope Scope) Target {

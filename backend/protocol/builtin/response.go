@@ -363,6 +363,9 @@ func (adapter module) encodeResponse(response *p.Response, options p.EvaluationC
 	}
 	switch adapter.name {
 	case Responses:
+		if value := responsesStorageValue(options); !value.IsZero() {
+			fields["store"] = value
+		}
 		fields["object"], fields["status"], fields["output"], fields["created_at"] = p.StringValue("response"), response.Status, content, response.Attributes["created_at"]
 		fields["status"], fields["incomplete_details"], err = encodeResponsesFinish(response)
 		if err != nil {
@@ -408,6 +411,9 @@ func (adapter module) encodeResponse(response *p.Response, options p.EvaluationC
 			return p.Value{}, err
 		}
 		fields["type"], fields["role"], fields["content"], fields["stop_reason"], fields["stop_sequence"] = p.StringValue("message"), p.StringValue("assistant"), message["content"], finish, response.Attributes["anthropic_stop_sequence"]
+		if fields["stop_sequence"].IsZero() {
+			fields["stop_sequence"] = nullValue()
+		}
 	}
 	return object(fields), nil
 }
@@ -484,4 +490,12 @@ func groupResponsesContent(nodes []p.Node) []p.Node {
 	}
 	flush()
 	return output
+}
+
+func responsesStorageValue(options p.EvaluationContext) p.Value {
+	if options.ClientOutput == nil || options.ClientOutput.ResponsesStorage == nil {
+		return p.Value{}
+	}
+	value, _ := p.EncodeValue(options.ClientOutput.ResponsesStorage.Effective)
+	return value
 }

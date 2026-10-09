@@ -153,7 +153,7 @@ func TestCustomModuleProjectionAndUnknownBoundaries(t *testing.T) {
 	if _, err = gemini.EncodeRequest(t.Context(), out, p.EvaluationContext{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"responses_text", "responses_truncation", "store", "parallel_tool_calls"} {
+	for _, name := range []string{"responses_text", "responses_truncation", "parallel_tool_calls"} {
 		r := req.Clone()
 		r.Parameters[name] = p.StringValue("must-not-disappear")
 		o, e := c.Request(t.Context(), r, p.ConversionContext{}, nil)

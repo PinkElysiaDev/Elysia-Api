@@ -65,6 +65,9 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 		}
 	}
 	if adapter.name == Responses {
+		if _, err := p.ParseResponsesStore(fields["store"]); err != nil {
+			return nil, err
+		}
 		if _, err := p.ParseResponsesInclude(fields["include"]); err != nil {
 			return nil, err
 		}

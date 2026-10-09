@@ -203,16 +203,22 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if r.Enabled {
 			orders[key] = r.ID
 		}
-		if !slices.Contains([]string{"set", "remove", "transform", "warn", "reject", "signatures", "stream_options", "tool_result_object", "buffer_node", "provider_signature", "responses_include", "usage_projection"}, r.Action) {
+		if !slices.Contains([]string{"set", "remove", "transform", "warn", "reject", "signatures", "stream_options", "tool_result_object", "buffer_node", "provider_signature", "responses_include", "usage_projection", "responses_storage", "anthropic_usage_envelope"}, r.Action) {
 			return nil, fmt.Errorf("unknown conversion action %q", r.Action)
 		}
-		if r.Action == "usage_projection" && r.Phase != ConversionResponse && r.Phase != ConversionEvent {
-			return nil, fmt.Errorf("usage_projection requires response or event phase")
+		if (r.Action == "usage_projection" || r.Action == "anthropic_usage_envelope") && r.Phase != ConversionResponse && r.Phase != ConversionEvent {
+			return nil, fmt.Errorf("%s requires response or event phase", r.Action)
 		}
 		if r.Action == "usage_projection" || r.Action == "responses_include" {
 			var codec string
 			if r.Value.Decode(&codec) != nil || !knownConversionCodec(codec) {
 				return nil, fmt.Errorf("%s requires a known target codec in value", r.Action)
+			}
+		}
+		if r.Action == "responses_storage" {
+			var opts responsesStorageOptions
+			if r.Value.Decode(&opts) != nil || !knownConversionCodec(opts.TargetCodec) || (opts.OnUnsupported != "degrade" && opts.OnUnsupported != "reject") {
+				return nil, fmt.Errorf("responses_storage requires targetCodec and onUnsupported: degrade or reject")
 			}
 		}
 		if r.Action == "provider_signature" {
@@ -229,11 +235,11 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if r.Action == "buffer_node" && r.Phase != ConversionEvent {
 			return nil, fmt.Errorf("buffer_node requires event phase")
 		}
-		if (r.Action == "stream_options" || r.Action == "responses_include") && r.Phase != ConversionRequest {
+		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "responses_storage") && r.Phase != ConversionRequest {
 			return nil, fmt.Errorf("%s requires request phase", r.Action)
 		}
-		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "usage_projection") && r.Match.NodeKind != "" {
-			return nil, fmt.Errorf("stream_options matches the request, not an individual node")
+		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "usage_projection" || r.Action == "responses_storage" || r.Action == "anthropic_usage_envelope") && r.Match.NodeKind != "" {
+			return nil, fmt.Errorf("%s matches the complete semantic value, not an individual node", r.Action)
 		}
 		if r.Match.NodeKind != "" {
 			if r.Phase == ConversionWire {
@@ -362,13 +368,15 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 		}
 		var err error
 		switch {
-		case rule.Action == "stream_options" || rule.Action == "responses_include":
+		case rule.Action == "stream_options" || rule.Action == "responses_include" || rule.Action == "responses_storage":
 			if !rule.Match.matches(route, value) {
 				continue
 			}
 			var req Request
 			if err = decodeContract(value.Bytes(), &req); err == nil {
-				if rule.Action == "responses_include" {
+				if rule.Action == "responses_storage" {
+					err = c.responsesStorage(&req, route, rule, sink)
+				} else if rule.Action == "responses_include" {
 					err = c.responsesInclude(&req, route, rule, sink)
 				} else {
 					err = c.streamOptions(&req, route, rule, sink)
@@ -376,6 +384,10 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 				if err == nil {
 					value, err = EncodeValue(req)
 				}
+			}
+		case rule.Action == "anthropic_usage_envelope":
+			if rule.Match.matches(route, value) {
+				value, err = c.envelopeUsageValue(phase, value, route, rule, sink)
 			}
 		case rule.Action == "usage_projection":
 			if rule.Match.matches(route, value) {

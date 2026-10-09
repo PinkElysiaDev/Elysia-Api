@@ -22,6 +22,10 @@ func (request *Request) Clone() *Request {
 			value := *output.IncludeUsage
 			output.IncludeUsage = &value
 		}
+		if output.ResponsesStorage != nil {
+			value := *output.ResponsesStorage
+			output.ResponsesStorage = &value
+		}
 		copy.ClientOutput = &output
 	}
 	copy.Cache = append([]CacheIntent(nil), request.Cache...)

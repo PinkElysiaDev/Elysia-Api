@@ -143,6 +143,7 @@ type VerificationCheck struct {
 	SampleID     string       `json:"sampleId"`
 	Direction    Direction    `json:"direction"`
 	Passed       bool         `json:"passed"`
+	Rejected     bool         `json:"rejected,omitempty"`
 	Capabilities []Capability `json:"capabilities,omitempty"`
 	Skipped      bool         `json:"skipped,omitempty"`
 	Reason       string       `json:"reason,omitempty"`

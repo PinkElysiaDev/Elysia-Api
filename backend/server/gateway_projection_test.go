@@ -187,7 +187,7 @@ func TestGatewayIncludeCarrierDeliveryModes(t *testing.T) {
 					t.Fatal(err)
 				}
 				s.invalidateRouteCache()
-				req := httptest.NewRequest("POST", "/gateway/openai-responses/responses", strings.NewReader(`{"model":"group","input":"hello","include":["reasoning.encrypted_content"]}`))
+				req := httptest.NewRequest("POST", "/gateway/openai-responses/responses", strings.NewReader(`{"model":"group","input":"hello","store":false,"include":["reasoning.encrypted_content"]}`))
 				req.Header.Set("Authorization", "Bearer gateway-test-token")
 				req.Header.Set("x-elysia-session-id", "delivery-test")
 				rec := httptest.NewRecorder()

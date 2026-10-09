@@ -59,14 +59,14 @@ func (stream *streamModule) captureFrameExtensions(fields p.Object) (p.Value, er
 			if err != nil {
 				return p.Value{}, err
 			}
-			capture("/message", message, "id", "model", "type", "role", "content", "usage")
+			capture("/message", message, "id", "model", "type", "role", "content", "usage", "stop_reason", "stop_sequence")
 		}
 		if !fields["delta"].IsZero() {
 			delta, err := fields["delta"].ReadObject()
 			if err != nil {
 				return p.Value{}, err
 			}
-			capture("/delta", delta, "type", "text", "thinking", "partial_json", "signature", "stop_reason")
+			capture("/delta", delta, "type", "text", "thinking", "partial_json", "signature", "stop_reason", "stop_sequence")
 		}
 	case Responses:
 		capture("/", fields, "type", "sequence_number", "response_id", "output_index", "content_index", "summary_index", "item_id", "delta", "text", "refusal", "arguments", "input", "item", "part", "response", "error")

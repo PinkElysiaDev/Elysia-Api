@@ -7,6 +7,8 @@ import (
 	p "github.com/elysia-api/backend/protocol"
 )
 
+func nullValue() p.Value { value, _ := p.EncodeValue(nil); return value }
+
 // object constructs only present fields. Its typed values have already passed
 // JSON parsing, so marshaling this closed container cannot fail.
 func object(fields p.Object) p.Value {

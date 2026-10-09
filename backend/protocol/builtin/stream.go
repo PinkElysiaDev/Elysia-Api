@@ -427,13 +427,19 @@ func (stream *streamModule) decodeAnthropicFrame(fields p.Object, options p.Eval
 				return nil, err
 			}
 		}
+		if stop := delta["stop_sequence"]; !stop.IsZero() && !stop.IsNull() {
+			if stream.attributes == nil {
+				stream.attributes = p.Object{}
+			}
+			stream.attributes["anthropic_stop_sequence"] = stop
+		}
 		return stream.usageEvent(fields["usage"])
 	case "message_stop":
 		if stream.finish.IsZero() || stream.finish.IsNull() {
 			return nil, unsupported("/stop_reason", "message_stop has no preceding terminal reason")
 		}
 		stream.isFinished = true
-		return []p.Event{{Type: p.ResponseFinished, Response: &p.Response{SchemaVersion: p.SemanticSchemaVersion, ID: stream.id, Model: stream.model, Status: p.StringValue("completed"), Attributes: p.Object{"finishReason": stream.finish}}}}, nil
+		return []p.Event{{Type: p.ResponseFinished, Response: &p.Response{SchemaVersion: p.SemanticSchemaVersion, ID: stream.id, Model: stream.model, Status: p.StringValue("completed"), Attributes: mergeAttributes(copyFields(stream.attributes), p.Object{"finishReason": stream.finish})}}}, nil
 	default:
 		return nil, unsupported("/type", "unsupported Anthropic event "+kind)
 	}

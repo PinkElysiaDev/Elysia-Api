@@ -39,6 +39,11 @@ func TestGatewayFourPublicEntrypointsUseActiveRuntime(t *testing.T) {
 				{ID: "request", Direction: protocol.DecodeRequest, Capabilities: []protocol.Capability{protocol.TextCapability}, Input: parse(fixture.request), Expected: semanticRequest, Context: protocol.Object{"model": protocol.StringValue("m")}},
 				{ID: "response", Direction: protocol.EncodeResponse, Capabilities: []protocol.Capability{protocol.TextCapability}, Input: semanticResponse, Expected: parse(fixture.response)},
 			}}
+			if fixture.module == "anthropic" {
+				definition.Capabilities[protocol.UsageCapability] = true
+				definition.Samples[1].Input = parse(`{"schemaVersion":1,"id":"r1","model":"m","status":"completed","content":[{"kind":"text","payload":"world"}],"attributes":{"finishReason":"stop"},"usage":{"input":{"count":1,"origin":"observed"},"output":{"count":1,"origin":"observed"}}}`)
+				definition.Samples[1].Expected = parse(`{"id":"r1","model":"m","type":"message","role":"assistant","content":[{"type":"text","text":"world"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}`)
+			}
 			ingress := activateGatewayDefinition(t, server, definition)
 			upstreamDefinition := loadGatewayDefinition(t, "text-beta")
 			upstreamDefinition.Directions[protocol.DecodeRequest].Transform.Fields["parameters"] = protocol.Expression{Op: "object", Fields: map[string]protocol.Expression{"max_output_tokens": {Op: "read", From: "input", Path: "/maxTokens"}}}

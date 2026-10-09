@@ -50,6 +50,10 @@ func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 			ConversionRule{ID: "client-stream-options", Order: 100, Enabled: true, Phase: ConversionRequest, Action: "stream_options"},
 			ConversionRule{ID: "responses-include", Order: 180, Enabled: true, Phase: ConversionRequest, Action: "responses_include", Value: StringValue(codec)},
 			ConversionRule{ID: "request-signatures", Order: 200, Enabled: true, Phase: ConversionRequest, Action: "signatures"})
+		if ingress.Codec(DecodeRequest) == "responses" {
+			settings, _ := EncodeValue(responsesStorageOptions{TargetCodec: codec, OnUnsupported: "degrade"})
+			p.Rules = append(p.Rules, ConversionRule{ID: "responses-storage", Order: 190, Enabled: true, Phase: ConversionRequest, Action: "responses_storage", Value: settings})
+		}
 		if codec == "gemini" {
 			p.Rules = append(p.Rules, ConversionRule{ID: "gemini-tool-results", Order: 150, Enabled: true, Phase: ConversionRequest, Match: ConversionMatch{NodeKind: ToolResultNode}, Action: "tool_result_object", Value: StringValue("result")})
 		}
@@ -63,9 +67,26 @@ func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 			p.Rules = append(p.Rules,
 				ConversionRule{ID: entry.prefix + "-signatures", Order: 200, Enabled: true, Phase: entry.phase, Action: "signatures"},
 				ConversionRule{ID: entry.prefix + "-usage-projection", Order: 300, Enabled: true, Phase: entry.phase, Action: "usage_projection", Value: StringValue(codec)})
+			if codec == "anthropic" && !nativeConversionPair(ingress, upstream, entry.direction) {
+				p.Rules = append(p.Rules, ConversionRule{ID: entry.prefix + "-anthropic-usage-envelope", Order: 310, Enabled: true, Phase: entry.phase, Action: "anthropic_usage_envelope"})
+			}
 		}
 	}
 	return p
+}
+
+// Native replay already has its own complete envelope. Only identical installed
+// mappings qualify; family labels alone say nothing about custom mixed codecs.
+// Final wire validation still rejects malformed native frames.
+func nativeConversionPair(ingress, upstream *Compiled, encode Direction) bool {
+	decode := DecodeResponse
+	if encode == EncodeEvent {
+		decode = DecodeEvent
+	}
+	return ingress != nil && upstream != nil && ingress.native.Preserve && upstream.native.Preserve &&
+		ingress.identity.Family == upstream.identity.Family && ingress.identity.WireVersion == upstream.identity.WireVersion &&
+		ingress.mappings[encode].definitionHash == upstream.mappings[encode].definitionHash &&
+		ingress.mappings[decode].definitionHash == upstream.mappings[decode].definitionHash
 }
 
 // ParseResponsesInclude preserves null/empty at the caller while checking every

@@ -29,17 +29,21 @@ func MergeUsage(current, update *Usage) *Usage {
 			}
 		}
 	}
-	if merged.Total == nil || merged.Total.Origin == InferredCount {
+	if merged.Total == nil || merged.Total.Origin == InferredCount || merged.Total.Origin == PlaceholderCount {
 		merged.Total = nil
 		if merged.Input != nil && merged.Output != nil && merged.Input.Count <= math.MaxInt64-merged.Output.Count {
-			merged.Total = &Counter{Count: merged.Input.Count + merged.Output.Count, Origin: InferredCount}
+			origin := InferredCount
+			if merged.Input.Origin == PlaceholderCount || merged.Output.Origin == PlaceholderCount {
+				origin = PlaceholderCount
+			}
+			merged.Total = &Counter{Count: merged.Input.Count + merged.Output.Count, Origin: origin}
 		}
 	}
 	return merged
 }
 
 func mergeCounter(target **Counter, update *Counter) {
-	if update == nil || (*target != nil && (*target).Origin == ObservedCount && update.Origin == InferredCount) {
+	if update == nil || (*target != nil && update.Origin == PlaceholderCount && (*target).Origin != PlaceholderCount) || (*target != nil && (*target).Origin == ObservedCount && update.Origin == InferredCount) {
 		return
 	}
 	copy := *update

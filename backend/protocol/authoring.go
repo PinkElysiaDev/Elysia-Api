@@ -121,6 +121,24 @@ func (service *Service) Preview(ctx context.Context, raw []byte, direction Direc
 	if err != nil {
 		return PreviewResult{Issues: sampleIssues(compiled, sample, "/preview", err)}
 	}
+	if direction == EncodeResponse {
+		err = compiled.ValidateWireOutput(direction, result.output)
+	}
+	if direction == EncodeEvent {
+		var frames []Value
+		if result.output.Decode(&frames) == nil {
+			for _, frame := range frames {
+				if err = compiled.ValidateWireOutput(direction, frame); err != nil {
+					break
+				}
+			}
+		} else {
+			err = compiled.ValidateWireOutput(direction, result.output)
+		}
+	}
+	if err != nil {
+		return PreviewResult{Issues: sampleIssues(compiled, sample, "/preview", err)}
+	}
 	semantic, err := EncodeValue(result.semantic)
 	if err != nil {
 		return PreviewResult{Issues: sampleIssues(compiled, sample, "/preview", err)}

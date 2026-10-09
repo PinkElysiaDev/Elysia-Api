@@ -30,8 +30,8 @@ func (check *capabilityCheck) usage(usage *Usage, path string) {
 		check.add(LimitExceeded, path, UsageCapability, "combined token count exceeds the supported integer range")
 	}
 	validate := func(counter *Counter, location string) {
-		if counter != nil && (counter.Count < 0 || (counter.Origin != ObservedCount && counter.Origin != InferredCount)) {
-			check.add(InvalidInput, location, UsageCapability, "usage counters require a nonnegative count and observed/inferred origin")
+		if counter != nil && (counter.Count < 0 || (counter.Origin != ObservedCount && counter.Origin != InferredCount && counter.Origin != PlaceholderCount)) {
+			check.add(InvalidInput, location, UsageCapability, "usage counters require a nonnegative count and observed/inferred/placeholder origin")
 		}
 	}
 	for _, entry := range []struct {

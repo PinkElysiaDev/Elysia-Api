@@ -73,10 +73,10 @@ func (stream *streamModule) encodeStart(options p.EvaluationContext) ([]p.Value,
 		if err != nil {
 			return nil, err
 		}
-		message := object(p.Object{"id": stream.id, "model": stream.model, "type": p.StringValue("message"), "role": p.StringValue("assistant"), "content": array(nil), "usage": usage})
+		message := object(p.Object{"id": stream.id, "model": stream.model, "type": p.StringValue("message"), "role": p.StringValue("assistant"), "content": array(nil), "usage": usage, "stop_reason": nullValue(), "stop_sequence": nullValue()})
 		return []p.Value{object(p.Object{"type": p.StringValue("message_start"), "message": message})}, nil
 	case Responses:
-		return []p.Value{object(p.Object{"type": p.StringValue("response.created"), "response": object(p.Object{"id": stream.id, "model": stream.model, "object": p.StringValue("response"), "status": p.StringValue("in_progress"), "output": array(nil)})})}, nil
+		return []p.Value{object(p.Object{"type": p.StringValue("response.created"), "response": object(p.Object{"id": stream.id, "model": stream.model, "object": p.StringValue("response"), "status": p.StringValue("in_progress"), "output": array(nil), "store": responsesStorageValue(options)})})}, nil
 	case Gemini:
 		return nil, nil
 	}
@@ -483,7 +483,11 @@ func (stream *streamModule) Finish(ctx context.Context, options p.EvaluationCont
 			frames = append(frames, object(p.Object{"id": stream.id, "model": stream.model, "object": p.StringValue("chat.completion.chunk"), "choices": array(nil), "usage": usage}))
 		}
 	case Anthropic:
-		frames = append(frames, object(p.Object{"type": p.StringValue("message_delta"), "delta": object(p.Object{"stop_reason": finish}), "usage": usage}), object(p.Object{"type": p.StringValue("message_stop")}))
+		stopSequence := stream.attributes["anthropic_stop_sequence"]
+		if stopSequence.IsZero() {
+			stopSequence = nullValue()
+		}
+		frames = append(frames, object(p.Object{"type": p.StringValue("message_delta"), "delta": object(p.Object{"stop_reason": finish, "stop_sequence": stopSequence}), "usage": usage}), object(p.Object{"type": p.StringValue("message_stop")}))
 	case Gemini:
 		frames = append(frames, stream.geminiChunk(array(nil), finish, usage))
 	case Responses:

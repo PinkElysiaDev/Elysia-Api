@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "anthropic-messages",
   "name": "Anthropic Messages",
-  "version": "2.1.4",
+  "version": "2.1.5",
   "family": "claude",
   "wireVersion": "v2",
   "capabilities": {
@@ -902,7 +902,11 @@
             }
           }
         ],
-        "stop_reason": "tool_use"
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 0,
+          "output_tokens": 0
+        }
       },
       "expected": {
         "schemaVersion": 1,
@@ -917,18 +921,39 @@
             "children": [
               {
                 "kind": "tool_call",
-                "name": "lookup",
                 "callId": "call",
+                "name": "lookup",
                 "input": {
                   "kind": "json",
                   "value": {
                     "n": 9007199254740993
                   }
-                }
+                },
+                "source": {}
               }
             ]
           }
         ],
+        "usage": {
+          "input": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 0,
+            "origin": "inferred"
+          },
+          "details": {
+            "uncached_input_tokens": {
+              "count": 0,
+              "origin": "observed"
+            }
+          }
+        },
         "attributes": {
           "finishReason": "tool_calls"
         }
@@ -1567,7 +1592,15 @@
           "message": {
             "id": "r",
             "model": "m",
-            "content": []
+            "content": [],
+            "usage": {
+              "input_tokens": 0,
+              "output_tokens": 0
+            },
+            "type": "message",
+            "role": "assistant",
+            "stop_reason": null,
+            "stop_sequence": null
           }
         },
         {
@@ -1623,13 +1656,40 @@
         {
           "schemaVersion": 1,
           "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 0,
+              "origin": "inferred"
+            },
+            "details": {
+              "uncached_input_tokens": {
+                "count": 0,
+                "origin": "observed"
+              }
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
           "type": "item.started",
           "responseId": "r",
           "itemId": "item:0",
           "index": 0,
           "item": {
             "kind": "text",
-            "payload": ""
+            "payload": "",
+            "source": {}
           }
         },
         {
@@ -1717,7 +1777,15 @@
           "message": {
             "id": "r",
             "model": "m",
-            "content": []
+            "content": [],
+            "usage": {
+              "input_tokens": 0,
+              "output_tokens": 0
+            },
+            "type": "message",
+            "role": "assistant",
+            "stop_reason": null,
+            "stop_sequence": null
           },
           "extension": {
             "long": 9007199254740993,
@@ -1774,16 +1842,7 @@
             "content": []
           },
           "unmapped": {
-            "source": {
-              "protocol": {
-                "family": "claude",
-                "wireVersion": "v2",
-                "definitionId": "anthropic-messages",
-                "revision": "2.0.0"
-              },
-              "direction": "decode_event",
-              "path": "/frame/extensions"
-            },
+            "source": {},
             "value": {
               "/": {
                 "extension": {
@@ -1797,13 +1856,40 @@
         {
           "schemaVersion": 1,
           "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 0,
+              "origin": "inferred"
+            },
+            "details": {
+              "uncached_input_tokens": {
+                "count": 0,
+                "origin": "observed"
+              }
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
           "type": "item.started",
           "responseId": "r",
           "itemId": "item:0",
           "index": 0,
           "item": {
             "kind": "text",
-            "payload": ""
+            "payload": "",
+            "source": {}
           }
         },
         {
@@ -2042,7 +2128,15 @@
           "message": {
             "id": "r",
             "model": "m",
-            "content": []
+            "content": [],
+            "usage": {
+              "input_tokens": 0,
+              "output_tokens": 0
+            },
+            "type": "message",
+            "role": "assistant",
+            "stop_reason": null,
+            "stop_sequence": null
           }
         },
         {
@@ -2071,6 +2165,9 @@
           "type": "message_delta",
           "delta": {
             "stop_reason": "tool_use"
+          },
+          "usage": {
+            "output_tokens": 0
           }
         },
         {
@@ -2095,17 +2192,44 @@
         {
           "schemaVersion": 1,
           "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 0,
+              "origin": "inferred"
+            },
+            "details": {
+              "uncached_input_tokens": {
+                "count": 0,
+                "origin": "observed"
+              }
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
           "type": "item.started",
           "responseId": "r",
           "itemId": "item:0",
           "index": 0,
           "item": {
             "kind": "tool_call",
-            "name": "lookup",
             "callId": "call",
+            "name": "lookup",
             "input": {
               "kind": "json"
-            }
+            },
+            "source": {}
           }
         },
         {
@@ -2124,6 +2248,18 @@
           "responseId": "r",
           "itemId": "item:0",
           "index": 0
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "output": {
+              "count": 0,
+              "origin": "observed"
+            }
+          }
         },
         {
           "schemaVersion": 1,
@@ -2712,7 +2848,11 @@
             "text": "hi"
           }
         ],
-        "stop_reason": "end_turn"
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 0,
+          "output_tokens": 0
+        }
       },
       "expected": {
         "schemaVersion": 1,
@@ -2727,15 +2867,37 @@
             "children": [
               {
                 "kind": "reasoning",
-                "payload": "consider"
+                "payload": "consider",
+                "source": {}
               },
               {
                 "kind": "text",
-                "payload": "hi"
+                "payload": "hi",
+                "source": {}
               }
             ]
           }
         ],
+        "usage": {
+          "input": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 0,
+            "origin": "inferred"
+          },
+          "details": {
+            "uncached_input_tokens": {
+              "count": 0,
+              "origin": "observed"
+            }
+          }
+        },
         "attributes": {
           "finishReason": "stop"
         }
@@ -2849,7 +3011,15 @@
           "message": {
             "id": "r",
             "model": "m",
-            "content": []
+            "content": [],
+            "usage": {
+              "input_tokens": 0,
+              "output_tokens": 0
+            },
+            "type": "message",
+            "role": "assistant",
+            "stop_reason": null,
+            "stop_sequence": null
           }
         },
         {
@@ -2905,13 +3075,40 @@
         {
           "schemaVersion": 1,
           "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 0,
+              "origin": "inferred"
+            },
+            "details": {
+              "uncached_input_tokens": {
+                "count": 0,
+                "origin": "observed"
+              }
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
           "type": "item.started",
           "responseId": "r",
           "itemId": "item:0",
           "index": 0,
           "item": {
             "kind": "reasoning",
-            "payload": ""
+            "payload": "",
+            "source": {}
           }
         },
         {
@@ -3427,7 +3624,11 @@
             "text": "hi"
           }
         ],
-        "stop_reason": "end_turn"
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 0,
+          "output_tokens": 0
+        }
       },
       "expected": {
         "schemaVersion": 1,
@@ -3454,29 +3655,36 @@
                     }
                   }
                 ],
-                "source": {
-                  "protocol": {
-                    "family": "claude",
-                    "wireVersion": "v2",
-                    "definitionId": "anthropic-messages",
-                    "revision": "2.0.0"
-                  },
-                  "direction": "decode_response",
-                  "path": "/reasoning",
-                  "scope": {
-                    "provider": "fixture",
-                    "account": "fixture",
-                    "model": "m"
-                  }
-                }
+                "source": {}
               },
               {
                 "kind": "text",
-                "payload": "hi"
+                "payload": "hi",
+                "source": {}
               }
             ]
           }
         ],
+        "usage": {
+          "input": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 0,
+            "origin": "inferred"
+          },
+          "details": {
+            "uncached_input_tokens": {
+              "count": 0,
+              "origin": "observed"
+            }
+          }
+        },
         "attributes": {
           "finishReason": "stop"
         }
@@ -3618,7 +3826,15 @@
           "message": {
             "id": "r",
             "model": "m",
-            "content": []
+            "content": [],
+            "usage": {
+              "input_tokens": 0,
+              "output_tokens": 0
+            },
+            "type": "message",
+            "role": "assistant",
+            "stop_reason": null,
+            "stop_sequence": null
           }
         },
         {
@@ -3682,13 +3898,40 @@
         {
           "schemaVersion": 1,
           "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 0,
+              "origin": "inferred"
+            },
+            "details": {
+              "uncached_input_tokens": {
+                "count": 0,
+                "origin": "observed"
+              }
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
           "type": "item.started",
           "responseId": "r",
           "itemId": "item:0",
           "index": 0,
           "item": {
             "kind": "reasoning",
-            "payload": ""
+            "payload": "",
+            "source": {}
           }
         },
         {
@@ -3720,21 +3963,7 @@
                 }
               }
             ],
-            "source": {
-              "protocol": {
-                "family": "claude",
-                "wireVersion": "v2",
-                "definitionId": "anthropic-messages",
-                "revision": "2.0.0"
-              },
-              "direction": "decode_event",
-              "path": "/reasoning",
-              "scope": {
-                "provider": "fixture",
-                "account": "fixture",
-                "model": "m"
-              }
-            }
+            "source": {}
           }
         },
         {
@@ -4280,7 +4509,11 @@
             "text": "hi"
           }
         ],
-        "stop_reason": "end_turn"
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 0,
+          "output_tokens": 0
+        }
       },
       "expected": {
         "schemaVersion": 1,
@@ -4306,29 +4539,36 @@
                     }
                   }
                 ],
-                "source": {
-                  "protocol": {
-                    "family": "claude",
-                    "wireVersion": "v2",
-                    "definitionId": "anthropic-messages",
-                    "revision": "2.0.0"
-                  },
-                  "direction": "decode_response",
-                  "path": "/reasoning",
-                  "scope": {
-                    "provider": "fixture",
-                    "account": "fixture",
-                    "model": "m"
-                  }
-                }
+                "source": {}
               },
               {
                 "kind": "text",
-                "payload": "hi"
+                "payload": "hi",
+                "source": {}
               }
             ]
           }
         ],
+        "usage": {
+          "input": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 0,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 0,
+            "origin": "inferred"
+          },
+          "details": {
+            "uncached_input_tokens": {
+              "count": 0,
+              "origin": "observed"
+            }
+          }
+        },
         "attributes": {
           "finishReason": "stop"
         }
@@ -4467,7 +4707,15 @@
           "message": {
             "id": "r",
             "model": "m",
-            "content": []
+            "content": [],
+            "usage": {
+              "input_tokens": 0,
+              "output_tokens": 0
+            },
+            "type": "message",
+            "role": "assistant",
+            "stop_reason": null,
+            "stop_sequence": null
           }
         },
         {
@@ -4486,6 +4734,9 @@
           "type": "message_delta",
           "delta": {
             "stop_reason": "end_turn"
+          },
+          "usage": {
+            "output_tokens": 0
           }
         },
         {
@@ -4510,6 +4761,32 @@
         {
           "schemaVersion": 1,
           "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 0,
+              "origin": "inferred"
+            },
+            "details": {
+              "uncached_input_tokens": {
+                "count": 0,
+                "origin": "observed"
+              }
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
           "type": "item.started",
           "responseId": "r",
           "itemId": "item:0",
@@ -4527,21 +4804,7 @@
                 }
               }
             ],
-            "source": {
-              "protocol": {
-                "family": "claude",
-                "wireVersion": "v2",
-                "definitionId": "anthropic-messages",
-                "revision": "2.0.0"
-              },
-              "direction": "decode_event",
-              "path": "/reasoning",
-              "scope": {
-                "provider": "fixture",
-                "account": "fixture",
-                "model": "m"
-              }
-            }
+            "source": {}
           }
         },
         {
@@ -4551,6 +4814,18 @@
           "responseId": "r",
           "itemId": "item:0",
           "index": 0
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "output": {
+              "count": 0,
+              "origin": "observed"
+            }
+          }
         },
         {
           "schemaVersion": 1,

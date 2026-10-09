@@ -257,7 +257,7 @@ func TestGatewayStrictLateGeminiSignature(t *testing.T) {
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		for _, frame := range []string{
-			`{"candidates":[{"content":{"role":"model","parts":[{"text":"hel"}]}}]}`,
+			`{"candidates":[{"content":{"role":"model","parts":[{"text":"hel"}]}}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":0}}`,
 			`{"candidates":[{"content":{"role":"model","parts":[{"text":"lo"}]}}]}`,
 			`{"candidates":[{"content":{"role":"model","parts":[{"thoughtSignature":"late-signature"}]}}]}`,
 			`{"candidates":[{"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":2}}`,

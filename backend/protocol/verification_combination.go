@@ -3,6 +3,7 @@ package protocol
 import (
 	"bytes"
 	"context"
+	"errors"
 	"slices"
 )
 
@@ -99,6 +100,9 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 			continue
 		}
 		err := verifyRequestCombination(ctx, ingress, upstream, sample)
+		if recordEnvelopeRejection(conversion, err, check, &report) {
+			continue
+		}
 		check.Passed = err == nil
 		check.Capabilities = observed
 		if err != nil {
@@ -116,6 +120,9 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 			continue
 		}
 		err := verifyResponseCombination(ctx, ingress, upstream, sample)
+		if recordEnvelopeRejection(conversion, err, check, &report) {
+			continue
+		}
 		check.Passed = err == nil
 		check.Capabilities = observed
 		if err != nil {
@@ -134,6 +141,9 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 				continue
 			}
 			err := verifyEventCombination(ctx, ingress, upstream, sample)
+			if recordEnvelopeRejection(conversion, err, VerificationCheck{SampleID: sample.ID, Direction: EncodeEvent}, &report) {
+				continue
+			}
 			if err != nil && !hasSameWire(ingress, upstream) && slices.Contains(observed, NativeExtensionsCapability) && hasIssueCode(err, UnsupportedNative) {
 				report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Direction: EncodeEvent, Passed: true, Reason: "foreign native event extensions were explicitly rejected"})
 				continue
@@ -202,6 +212,33 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 	return report
 }
 
+// Storage intent and required counters are value-dependent policy boundaries,
+// not extra model capabilities. A rejected fixture supplies no positive coverage;
+// independent passing request/response/stream fixtures are still mandatory.
+func recordEnvelopeRejection(conversion *CompiledConversion, err error, check VerificationCheck, report *CombinationReport) bool {
+	var failure *ConversionError
+	if conversion == nil || !errors.As(err, &failure) || len(failure.Issues) == 0 {
+		return false
+	}
+	for _, issue := range failure.Issues {
+		allowed := false
+		for _, rule := range conversion.Policy.Rules {
+			if rule.Enabled && rule.ID == issue.RuleID && issue.Code == ConversionRejected && issue.PolicyHash == conversion.Hash {
+				allowed = (rule.Action == "responses_storage" && issue.Path == "/store") ||
+					(rule.Action == "anthropic_usage_envelope" && conversion.Policy.Mode == "strict" &&
+						slices.Contains([]string{"/usage/input", "/usage/output", "/response/usage/input", "/response/usage/output"}, issue.Path))
+			}
+		}
+		if !allowed {
+			return false
+		}
+	}
+	check.Rejected = true
+	check.Reason = err.Error()
+	report.Checks = append(report.Checks, check)
+	return true
+}
+
 func inspectBindingSample(ctx context.Context, compiled *Compiled, sample Sample, allowed CapabilitySet, report *CombinationReport, direction Direction) (bool, []Capability) {
 	result, err := executeVerificationSample(ctx, compiled, sample)
 	if err != nil {
@@ -243,7 +280,11 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 	for _, frame := range result.frames {
 		original, _ := EncodeValue(frame.Events)
 		events := []Event{}
-		for _, event := range frame.Events {
+		deliveryEvents := frame.Events
+		if conversion.HasAnthropicEnvelope(ConversionEvent, route) {
+			deliveryEvents = DeliveryFrameEvents(frame.Events)
+		}
+		for _, event := range deliveryEvents {
 			queued, err := eventState.Push(event)
 			if err != nil {
 				return err
@@ -276,8 +317,17 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 		}
 		convertedFrames = append(convertedFrames, frame)
 	}
-	if err := eventState.Finish(); err != nil {
+	tailEvents, err := eventState.Drain()
+	if err != nil {
 		return err
+	}
+	for _, event := range tailEvents {
+		event, err = conversion.Event(ctx, event, route, verificationDiagnostics(ctx))
+		if err != nil {
+			return err
+		}
+		projected = append(projected, event)
+		convertedFrames = append(convertedFrames, &EventFrame{Events: []Event{event}})
 	}
 	result.semantic = projected
 	var frames []Value
@@ -294,18 +344,30 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 		return err
 	}
 	frames = append(frames, tail...)
-	if !ingress.Supports(DecodeEvent) {
-		return nil
-	}
 	for _, wire := range frames {
+		if conversion != nil && conversion.HasPhase(ConversionWire) {
+			wire, err = conversion.ApplyValue(ctx, ConversionWire, wire, route, verificationDiagnostics(ctx))
+			if err != nil {
+				return err
+			}
+		}
+		if err := ingress.ValidateWireOutput(EncodeEvent, wire); err != nil {
+			return err
+		}
+		if !ingress.Supports(DecodeEvent) {
+			continue
+		}
 		frame, err := ingress.DecodeFrame(ctx, wire, options)
 		if err != nil {
 			return err
 		}
 		decoded = append(decoded, frame.Events...)
 	}
+	if !ingress.Supports(DecodeEvent) {
+		return nil
+	}
 	var comparison error
-	if hasSameWire(ingress, upstream) && ingress.native.Preserve && upstream.native.Preserve {
+	if hasSameWire(ingress, upstream) && ingress.native.Preserve && upstream.native.Preserve && !eventState.Buffered {
 		comparison = compareRoundTrip(ingress, sample, result.semantic, decoded)
 	} else {
 		comparison = compareEventSequence(ingress, sample, result.semantic.([]Event), decoded)
@@ -386,6 +448,19 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 	}
 	wire, err := ingress.EncodeResponse(ctx, response, options)
 	if err != nil {
+		return err
+	}
+	wireValue, _ := ParseValue(wire)
+	if conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion); conversion != nil && conversion.HasPhase(ConversionWire) {
+		route := conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), HTTPJSON)
+		route.Scope = options.Scope
+		wireValue, err = conversion.ApplyValue(ctx, ConversionWire, wireValue, route, verificationDiagnostics(ctx))
+		if err != nil {
+			return err
+		}
+		wire = wireValue.Bytes()
+	}
+	if err := ingress.ValidateWireOutput(EncodeResponse, wireValue); err != nil {
 		return err
 	}
 	if !ingress.Supports(DecodeResponse) {

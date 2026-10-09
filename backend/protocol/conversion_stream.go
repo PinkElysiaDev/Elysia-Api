@@ -13,6 +13,10 @@ type ConversionEventState struct {
 	open       map[string]bool
 	bytes      int
 	Buffered   bool
+	usage      *Usage
+	terminal   *Event
+	id         Value
+	model      Value
 }
 
 func NewConversionEventState(c *CompiledConversion, route ConversionContext) *ConversionEventState {
@@ -22,6 +26,51 @@ func NewConversionEventState(c *CompiledConversion, route ConversionContext) *Co
 func (s *ConversionEventState) Push(event Event) ([]Event, error) {
 	if s.conversion == nil {
 		return []Event{event}, nil
+	}
+	if s.conversion.HasAnthropicEnvelope(ConversionEvent, s.route) {
+		s.usage = MergeUsage(s.usage, event.Usage)
+		if event.Response != nil {
+			s.usage = MergeUsage(s.usage, event.Response.Usage)
+		}
+		if event.Type == ResponseStarted {
+			if event.Response == nil {
+				event.Response = &Response{SchemaVersion: SemanticSchemaVersion, ID: event.ResponseID}
+			} else {
+				copy := *event.Response
+				event.Response = &copy
+			}
+			if event.Response.ID.IsZero() {
+				event.Response.ID = event.ResponseID
+			}
+			ensureDeliveryIdentity(event.Response, s.route)
+			s.id, s.model = event.Response.ID, event.Response.Model
+			event.ResponseID = s.id
+			event.Response.Usage = MergeUsage(nil, s.usage)
+		}
+		if !s.id.IsZero() {
+			event.ResponseID = s.id
+			if event.Response != nil {
+				copy := *event.Response
+				copy.ID, copy.Model = s.id, s.model
+				event.Response = &copy
+			}
+		}
+		if event.Type == ResponseFinished {
+			if s.terminal != nil {
+				return nil, streamIssue(InvalidAssociation, "/event", "duplicate terminal")
+			}
+			copy := event
+			s.terminal = &copy
+			s.Buffered = true
+			// Close implicit items but retain terminal until usage tail frames arrive.
+			clear(s.open)
+			out := s.pending
+			s.pending, s.bytes = nil, 0
+			return out, nil
+		}
+		if event.Type == OperationFailed || event.Type == OperationCancelled {
+			s.terminal = nil
+		}
 	}
 	wait := false
 	if event.Type == ItemStarted && event.Item != nil {
@@ -69,6 +118,73 @@ func (s *ConversionEventState) Push(event Event) ([]Event, error) {
 	s.pending = nil
 	s.bytes = 0
 	return out, nil
+}
+
+// Drain finalizes client projection after the provider's usage-only tail.
+func (s *ConversionEventState) Drain() ([]Event, error) {
+	if err := s.Finish(); err != nil {
+		return nil, err
+	}
+	if s.terminal == nil {
+		return nil, nil
+	}
+	event := *s.terminal
+	s.terminal = nil
+	if event.Response == nil {
+		event.Response = &Response{SchemaVersion: SemanticSchemaVersion}
+	} else {
+		copy := *event.Response
+		event.Response = &copy
+	}
+	event.Response.Usage = MergeUsage(nil, s.usage)
+	event.Response.ID, event.Response.Model, event.ResponseID = s.id, s.model, s.id
+	return []Event{event}, nil
+}
+
+// DeliveryFrameEvents makes same-frame usage available before message_start.
+// Provider event order and provider accounting remain unchanged.
+func DeliveryFrameEvents(events []Event) []Event {
+	usage := map[Value]*Usage{}
+	identities := map[Value]bool{}
+	identity := func(event Event) Value {
+		if !event.ResponseID.IsZero() && !event.ResponseID.IsNull() {
+			return event.ResponseID
+		}
+		if event.Response != nil && !event.Response.ID.IsNull() {
+			return event.Response.ID
+		}
+		return Value{}
+	}
+	for _, event := range events {
+		id := identity(event)
+		if !id.IsZero() {
+			identities[id] = true
+		}
+		usage[id] = MergeUsage(usage[id], event.Usage)
+		if event.Response != nil {
+			usage[id] = MergeUsage(usage[id], event.Response.Usage)
+		}
+	}
+	copy := append([]Event(nil), events...)
+	for i := range copy {
+		if copy[i].Type == ResponseStarted {
+			id := identity(copy[i])
+			counts := usage[id]
+			if !id.IsZero() && len(identities) == 1 {
+				counts = MergeUsage(counts, usage[Value{}])
+			}
+			if counts == nil {
+				continue
+			}
+			response := Response{SchemaVersion: SemanticSchemaVersion}
+			if copy[i].Response != nil {
+				response = *copy[i].Response
+			}
+			response.Usage = MergeUsage(response.Usage, counts)
+			copy[i].Response = &response
+		}
+	}
+	return copy
 }
 
 func (s *ConversionEventState) Finish() error {

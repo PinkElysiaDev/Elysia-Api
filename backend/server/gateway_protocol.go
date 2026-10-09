@@ -264,6 +264,13 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 			return err
 		}
 	}
+	wireValue, parseErr := protocol.ParseValue(body)
+	if parseErr != nil {
+		return parseErr
+	}
+	if err := plan.ingress.ValidateWireOutput(protocol.EncodeResponse, wireValue); err != nil {
+		return err
+	}
 	if len(body) > plan.ingress.ResourceLimits().BufferBytes {
 		return protocol.IssuesError([]protocol.ConversionIssue{{Code: protocol.LimitExceeded, Severity: protocol.SeverityError, Stage: "continuation", Path: "/response", Reason: "response including continuation carriers exceeds target buffer limit"}})
 	}

@@ -68,6 +68,9 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 			}
 		}
 		for _, frame := range frames {
+			if err := plan.ingress.ValidateWireOutput(protocol.EncodeEvent, frame); err != nil {
+				return err
+			}
 			if len(frame.Bytes()) > limits.BufferBytes {
 				return protocol.IssuesError([]protocol.ConversionIssue{{Code: protocol.LimitExceeded, Severity: protocol.SeverityError, Stage: "continuation", Path: "/frame", Reason: "frame including continuation carriers exceeds target buffer limit"}})
 			}
@@ -88,8 +91,7 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 		if err := observeHostedTools(record, candidate.compiled, frame.Bytes()); err != nil {
 			return err
 		}
-		originalEvents, _ := protocol.EncodeValue(decoded.Events)
-		acceptedEvents := []protocol.Event{}
+		// Validate the whole provider frame before using same-frame usage in a client start.
 		for _, event := range decoded.Events {
 			if event.Response != nil {
 				// Two layers, different consumers: CheckGenerationOutcome rejects a
@@ -103,6 +105,14 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 			if err := protocol.IssuesError(protocol.CheckModelEvent(event, candidate.compiled, candidate.binding, candidate.scope)); err != nil {
 				return err
 			}
+		}
+		originalEvents, _ := protocol.EncodeValue(decoded.Events)
+		acceptedEvents := []protocol.Event{}
+		deliveryEvents := decoded.Events
+		if candidate.conversion.HasAnthropicEnvelope(protocol.ConversionEvent, candidate.conversionContext(plan.ingress, true)) {
+			deliveryEvents = protocol.DeliveryFrameEvents(decoded.Events)
+		}
+		for eventIndex, event := range decoded.Events {
 			if _, err := sourceReplay.Consume(event); err != nil {
 				return err
 			}
@@ -130,7 +140,7 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 					}
 				}
 			}
-			queued, e := eventState.Push(event)
+			queued, e := eventState.Push(deliveryEvents[eventIndex])
 			if e != nil {
 				return e
 			}
@@ -171,7 +181,30 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 		return nil
 	})
 	if err == nil {
-		err = eventState.Finish()
+		var tail []protocol.Event
+		tail, err = eventState.Drain()
+		for _, event := range tail {
+			if err != nil {
+				break
+			}
+			event, err = candidate.conversion.Event(c.Request.Context(), event, candidate.conversionContext(plan.ingress, true), options.Diagnostics)
+			if err != nil {
+				break
+			}
+			if _, err = replay.Consume(event); err != nil {
+				break
+			}
+			var frames []protocol.Value
+			frames, err = plan.ingress.EncodeFrame(c.Request.Context(), &protocol.EventFrame{Events: []protocol.Event{event}}, options)
+			if err != nil {
+				break
+			}
+			for _, frame := range frames {
+				if err = emit(frame); err != nil {
+					break
+				}
+			}
+		}
 		if err == nil {
 			err = sourceReplay.Finish()
 		}

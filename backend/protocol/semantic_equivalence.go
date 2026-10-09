@@ -82,5 +82,13 @@ func equivalentResponse(response *Response, family string) *Response {
 	copy := *response
 	copy.Content = comparableConversation(response.Content)
 	copy.Usage = comparableWireUsage(response.Usage)
+	if response.Attributes["anthropic_stop_sequence"].IsNull() {
+		copy.Attributes = Object{}
+		for key, value := range response.Attributes {
+			if key != "anthropic_stop_sequence" {
+				copy.Attributes[key] = value
+			}
+		}
+	}
 	return &copy
 }

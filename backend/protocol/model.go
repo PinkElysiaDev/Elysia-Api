@@ -192,10 +192,19 @@ type Request struct {
 // ClientOutput describes delivery to the caller, independently of generation.
 // RawStreamOptions retains absent/null and extensions for same-wire replay.
 type ClientOutput struct {
-	CollectUsage        bool  `json:"collectUsage,omitempty"`
-	IncludeUsage        *bool `json:"includeUsage,omitempty"`
-	RawStreamOptions    Value `json:"rawStreamOptions,omitzero"`
-	RawResponsesInclude Value `json:"rawResponsesInclude,omitzero"`
+	CollectUsage        bool                    `json:"collectUsage,omitempty"`
+	IncludeUsage        *bool                   `json:"includeUsage,omitempty"`
+	RawStreamOptions    Value                   `json:"rawStreamOptions,omitzero"`
+	RawResponsesInclude Value                   `json:"rawResponsesInclude,omitzero"`
+	ResponsesStorage    *ResponsesStorageIntent `json:"responsesStorage,omitempty"`
+}
+
+// ResponsesStorageIntent describes API response retrieval, independently of
+// usage logs and authenticated continuation fragments.
+type ResponsesStorageIntent struct {
+	Raw       Value `json:"raw,omitzero"`
+	Requested bool  `json:"requested"`
+	Effective bool  `json:"effective"`
 }
 
 // CounterOrigin distinguishes observed counts from estimates.
@@ -204,6 +213,8 @@ type CounterOrigin string
 const (
 	ObservedCount CounterOrigin = "observed"
 	InferredCount CounterOrigin = "inferred"
+	// PlaceholderCount exists only in a client projection, never provider billing.
+	PlaceholderCount CounterOrigin = "placeholder"
 )
 
 // Counter represents a present count, including zero. A nil *Counter is absent.
