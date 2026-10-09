@@ -67,6 +67,29 @@ test('strict SDK rejection retains the HTTP 200 response evidence', { skip: !con
   assert.equal(f.captured[1].response.status, 200)
 })
 
+for (const stream of [false, true]) test(`Responses message phase ${stream ? 'SSE' : 'JSON'} survives SDK collection`, { skip: !consume && 'SDK dependencies unavailable' }, async t => {
+  // Synthetic data only; live configuration is not read by this test suite.
+  const response = JSON.parse(replyWire('responses'))
+  response.output[0].phase = 'final_answer'
+  let wire = JSON.stringify(response)
+  if (stream) {
+    const events = replyWire('responses', 'OK', false, true).split('\n').filter(line => line.startsWith('data: ')).map(line => JSON.parse(line.slice(6)))
+    // Phase is absent at item.added, and first appears at item.done.
+    for (const event of events) if (event.type === 'response.output_item.done') event.item.phase = 'final_answer'
+    events.at(-1).response = response
+    wire = events.map((event, sequence_number) => `event: ${event.type}\ndata: ${JSON.stringify({ ...event, sequence_number })}\n\n`).join('')
+  }
+  const f = await endpoint(t, wire, stream)
+  const result = await consume('responses', f.options, stream)
+  assert.deepEqual(result.map(p => p.name), ['openai', '@ai-sdk/openai'])
+  assert.equal(f.captured.length, 2)
+  const { default: OpenAI } = await import('openai')
+  const client = new OpenAI({ baseURL: `${f.options.baseUrl}/v1`, apiKey: f.options.apiKey, maxRetries: 0 })
+  const params = { model: 'test', input: 'Synthetic phase regression', store: false }
+  const final = stream ? await client.responses.stream(params).finalResponse() : await client.responses.create(params)
+  assert.equal(final.output[0].phase, 'final_answer')
+})
+
 for (const stream of [false, true]) test(`Responses mixed summary and multipart reasoning ${stream ? 'SSE' : 'JSON'} keeps independent SDK content`, { skip: !consume && 'SDK dependencies unavailable' }, async t => {
   const reasoning = {
     id: 'rs_multipart', type: 'reasoning', status: 'completed',

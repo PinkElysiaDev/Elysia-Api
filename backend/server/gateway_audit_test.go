@@ -43,6 +43,7 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 							body["system_fingerprint"], _ = protocol.ParseValue([]byte("null"))
 						case protocol.PresetResponsesID:
 							body["store"], _ = protocol.ParseValue([]byte("false"))
+							addAuditMessagePhase(body)
 						}
 						value, _ := protocol.EncodeValue(body)
 						w.Header().Set("Content-Type", "application/json")
@@ -54,6 +55,18 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 					_ = sample.Input.Decode(&frames)
 					for _, frame := range frames {
 						body, _ := frame.ReadObject()
+						if upstreamID == protocol.PresetResponsesID {
+							// The message phase arrives after content_part.done.
+							if body["type"] == protocol.StringValue("response.output_item.done") {
+								item, _ := body["item"].ReadObject()
+								item["phase"] = protocol.StringValue("final_answer")
+								body["item"], _ = protocol.EncodeValue(item)
+							}
+							if response, err := body["response"].ReadObject(); err == nil {
+								addAuditMessagePhase(response)
+								body["response"], _ = protocol.EncodeValue(response)
+							}
+						}
 						if upstreamID == protocol.PresetChatCompletionsID {
 							body["service_tier"] = protocol.StringValue("default")
 							body["system_fingerprint"], _ = protocol.ParseValue([]byte("null"))
@@ -106,6 +119,12 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 						if rec.Code != 200 || calls != before+1 || !strings.Contains(rec.Body.String(), "hi") || rec.Result().Trailer.Get("X-Elysia-Stream-Error") != "" {
 							t.Fatalf("status=%d calls=%d trailer=%v body=%s", rec.Code, calls-before, rec.Result().Trailer, rec.Body)
 						}
+						if upstreamID == protocol.PresetResponsesID {
+							kept := strings.Contains(rec.Body.String(), `"phase":"final_answer"`)
+							if kept != (ingressID == protocol.PresetResponsesID) {
+								t.Fatal("phase preservation/projection mismatch", rec.Body)
+							}
+						}
 						ingress, _ := service.Pin(ingressID)
 						if !stream {
 							v, e := protocol.ParseValue(rec.Body.Bytes())
@@ -145,4 +164,19 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 			}
 		})
 	}
+}
+
+func addAuditMessagePhase(response protocol.Object) {
+	var output []protocol.Value
+	if response["output"].Decode(&output) != nil || len(output) == 0 {
+		return
+	}
+	for i, value := range output {
+		item, err := value.ReadObject()
+		if err == nil && item["type"] == protocol.StringValue("message") {
+			item["phase"] = protocol.StringValue("final_answer")
+			output[i], _ = protocol.EncodeValue(item)
+		}
+	}
+	response["output"], _ = protocol.EncodeValue(output)
 }
