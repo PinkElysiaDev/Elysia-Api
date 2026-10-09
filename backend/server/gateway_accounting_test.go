@@ -64,7 +64,7 @@ func TestHostedToolAccountingDeduplicatesAndHonorsSource(t *testing.T) {
 func TestHostedToolUsagePersistedHTTPAndSSE(t *testing.T) {
 	for _, isStream := range []bool{false, true} {
 		t.Run(fmt.Sprint(isStream), func(t *testing.T) {
-			payload := `{"status":"completed","output":[{"type":"web_search_call","id":"s1","status":"completed"},{"type":"web_search_call","id":"s2","status":"completed"}],"usage":{"input_tokens":9,"output_tokens":2}}`
+			payload := `{"status":"completed","output":[{"type":"web_search_call","id":"s1","status":"completed"},{"type":"web_search_call","id":"s2","status":"completed"}],"usage":{"input_tokens":9,"output_tokens":2},"id":"r1","model":"m","object":"response","created_at":1}`
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if !isStream {
 					w.Header().Set("Content-Type", "application/json")
@@ -72,8 +72,8 @@ func TestHostedToolUsagePersistedHTTPAndSSE(t *testing.T) {
 					return
 				}
 				w.Header().Set("Content-Type", "text/event-stream")
-				fmt.Fprint(w, "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"web_search_call\",\"id\":\"s1\",\"status\":\"completed\"}}\n\n")
-				fmt.Fprintf(w, "data: {\"type\":\"response.completed\",\"response\":%s}\n\n", payload)
+				fmt.Fprint(w, "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"web_search_call\",\"id\":\"s1\",\"status\":\"completed\"},\"sequence_number\":0}\n\n")
+				fmt.Fprintf(w, "data: {\"type\":\"response.completed\",\"sequence_number\":1,\"response\":%s}\n\n", payload)
 			}))
 			defer upstream.Close()
 			server := newTestServer(t, presetGroup(t, "custom:openai-responses", upstream.URL))

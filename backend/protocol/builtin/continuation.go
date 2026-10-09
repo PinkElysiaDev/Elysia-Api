@@ -240,7 +240,7 @@ func (stream *ContinuationStream) Frames(value p.Value) ([]p.Value, error) {
 			if isTerminal {
 				tokens, _ := p.EncodeValue(stream.Tokens)
 				idx, _ := p.EncodeValue(0)
-				result = append(result, object(p.Object{"id": fields["id"], "model": fields["model"], "object": p.StringValue("chat.completion.chunk"), "choices": array([]p.Value{object(p.Object{"index": idx, "delta": object(p.Object{"elysia_continuation": tokens}), "finish_reason": nullValue})})}))
+				result = append(result, object(p.Object{"id": fields["id"], "model": fields["model"], "created": fields["created"], "object": p.StringValue("chat.completion.chunk"), "choices": array([]p.Value{object(p.Object{"index": idx, "delta": object(p.Object{"elysia_continuation": tokens}), "finish_reason": nullValue})})}))
 				stream.emitted = true
 			}
 		case stream.Family == "openai_responses" && (typ == "response.completed" || typ == "response.incomplete"):

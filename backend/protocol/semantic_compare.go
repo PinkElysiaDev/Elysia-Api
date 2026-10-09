@@ -15,10 +15,12 @@ func comparableSemantic(input any) (Value, error) {
 		return EncodeValue(copy)
 	case *Response:
 		copy := *value
+		copy.Metadata = comparableMetadata(value.Metadata)
 		copy.Source, copy.SchemaVersion, copy.Native = Identity{}, 0, nil
 		copy.Content = comparableNodes(copy.Content)
 		return EncodeValue(copy)
 	case Event:
+		value.Metadata = comparableMetadata(value.Metadata)
 		value.Source, value.SchemaVersion, value.Native = Identity{}, 0, nil
 		if value.Unmapped != nil {
 			copy := *value.Unmapped
@@ -31,6 +33,7 @@ func comparableSemantic(input any) (Value, error) {
 		}
 		if value.Response != nil {
 			response := *value.Response
+			response.Metadata = comparableMetadata(response.Metadata)
 			response.Source, response.SchemaVersion, response.Native = Identity{}, 0, nil
 			response.Content = comparableNodes(response.Content)
 			value.Response = &response
@@ -64,6 +67,7 @@ func comparableSemantic(input any) (Value, error) {
 func comparableNodes(nodes []Node) []Node {
 	copy := append([]Node(nil), nodes...)
 	for index := range copy {
+		copy[index].Metadata = comparableMetadata(copy[index].Metadata)
 		copy[index].Native = nil
 		copy[index].Source = nil
 		copy[index].Children = comparableNodes(copy[index].Children)
@@ -227,4 +231,20 @@ func (evidence *capabilityEvidence) resources(resources []Resource) {
 			evidence.observed[DocumentsCapability] = true
 		}
 	}
+}
+
+// Metadata source paths are provenance; compare target field/value/ownership.
+func comparableMetadata(items []ResponseMetadata) []ResponseMetadata {
+	var out []ResponseMetadata
+	for _, item := range items {
+		// The required empty output_text annotations array adds no citations.
+		// This applies only to typed protocol metadata, never payload objects.
+		if (item.Name == "annotations" || item.Name == "citations") && MetadataFieldType(item.Codec, item.Location, item.Name) == "array" && string(item.Value.Bytes()) == "[]" {
+			continue
+		}
+		item.Path = ""
+		item.SourceCodec = ""
+		out = append(out, item)
+	}
+	return out
 }

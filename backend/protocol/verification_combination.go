@@ -344,6 +344,10 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 		return err
 	}
 	frames = append(frames, tail...)
+	finalValidation, err := ingress.NewWireStreamValidation(options.Scope)
+	if err != nil {
+		return err
+	}
 	for _, wire := range frames {
 		if conversion != nil && conversion.HasPhase(ConversionWire) {
 			wire, err = conversion.ApplyValue(ctx, ConversionWire, wire, route, verificationDiagnostics(ctx))
@@ -351,7 +355,7 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 				return err
 			}
 		}
-		if err := ingress.ValidateWireOutput(EncodeEvent, wire); err != nil {
+		if err := finalValidation.Consume(ctx, wire); err != nil {
 			return err
 		}
 		if !ingress.Supports(DecodeEvent) {
@@ -362,6 +366,9 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 			return err
 		}
 		decoded = append(decoded, frame.Events...)
+	}
+	if err := finalValidation.Finish(); err != nil {
+		return err
 	}
 	if !ingress.Supports(DecodeEvent) {
 		return nil
@@ -405,6 +412,11 @@ func verifyRequestCombination(ctx context.Context, ingress, upstream *Compiled, 
 	wire, err := upstream.EncodeRequest(ctx, request, options)
 	if err != nil {
 		return err
+	}
+	if v, e := ParseValue(wire); e != nil {
+		return e
+	} else if e = upstream.ValidateWireOutput(EncodeRequest, v); e != nil {
+		return e
 	}
 	for _, name := range sortedKeys(upstream.operations) {
 		operation := upstream.operations[name]

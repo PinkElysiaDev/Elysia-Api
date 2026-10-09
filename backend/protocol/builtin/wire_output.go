@@ -6,6 +6,9 @@ import (
 )
 
 func (adapter module) ValidateWireOutput(direction p.Direction, value p.Value) error {
+	if err := adapter.validateWireContract(direction, value); err != nil {
+		return err
+	}
 	if adapter.name != Anthropic || (direction != p.EncodeResponse && direction != p.EncodeEvent) {
 		return nil
 	}

@@ -69,13 +69,13 @@ func (stream *streamModule) captureFrameExtensions(fields p.Object) (p.Value, er
 			capture("/delta", delta, "type", "text", "thinking", "partial_json", "signature", "stop_reason", "stop_sequence")
 		}
 	case Responses:
-		capture("/", fields, "type", "sequence_number", "response_id", "output_index", "content_index", "summary_index", "item_id", "delta", "text", "refusal", "arguments", "input", "item", "part", "response", "error")
+		capture("/", fields, "type", "sequence_number", "response_id", "output_index", "content_index", "summary_index", "item_id", "delta", "text", "refusal", "arguments", "input", "item", "part", "response", "error", "logprobs", "annotation", "annotation_index")
 		if fields["type"] == p.StringValue("response.in_progress") {
 			response, err := fields["response"].ReadObject()
 			if err != nil {
 				return p.Value{}, err
 			}
-			capture("/response", response, "id", "model", "status", "usage")
+			capture("/response", response, "id", "model", "status", "usage", "object", "created_at", "output", "error", "incomplete_details")
 		}
 		if value := fields["item"]; !value.IsZero() {
 			item, err := value.ReadObject()
@@ -94,7 +94,7 @@ func (stream *streamModule) captureFrameExtensions(fields p.Object) (p.Value, er
 					if err != nil {
 						return p.Value{}, err
 					}
-					capture(fmt.Sprintf("/item/content/%d", index), part, "type", "text", "refusal")
+					capture(fmt.Sprintf("/item/content/%d", index), part, "type", "text", "refusal", "annotations", "logprobs")
 				}
 			case p.StringValue("function_call"):
 				capture("/item", item, "type", "id", "call_id", "name", "arguments", "status")
@@ -107,7 +107,7 @@ func (stream *streamModule) captureFrameExtensions(fields p.Object) (p.Value, er
 			if err != nil {
 				return p.Value{}, err
 			}
-			capture("/part", part, "type", "text", "refusal")
+			capture("/part", part, "type", "text", "refusal", "annotations", "logprobs")
 		}
 	case Gemini:
 		capture("/", fields, "responseId", "modelVersion", "candidates", "usageMetadata", "error")

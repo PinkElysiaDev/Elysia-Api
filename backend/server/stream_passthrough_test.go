@@ -71,7 +71,7 @@ func TestResponsesPassthroughStreamPreservesReasoningText(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = io.WriteString(w, strings.Join([]string{
 			`event: response.created`,
-			`data: {"type":"response.created","response":{"id":"resp_1","object":"response","status":"in_progress","model":"upstream","output":[]}}`,
+			`data: {"type":"response.created","response":{"id":"resp_1","object":"response","status":"in_progress","model":"upstream","output":[],"created_at":1},"sequence_number":0}`,
 			``,
 			`event: response.reasoning_text.delta`,
 			`data: {"type":"response.reasoning_text.delta","sequence_number":1,"item_id":"rs_1","output_index":0,"content_index":0,"delta":"thinking..."}`,
@@ -80,13 +80,13 @@ func TestResponsesPassthroughStreamPreservesReasoningText(t *testing.T) {
 			`data: {"type":"response.reasoning_text.done","sequence_number":2,"item_id":"rs_1","output_index":0,"content_index":0,"text":"thinking..."}`,
 			``,
 			`event: response.content_part.added`,
-			`data: {"type":"response.content_part.added","item_id":"msg_1","output_index":1,"content_index":0,"part":{"type":"output_text","text":""}}`,
+			`data: {"type":"response.content_part.added","item_id":"msg_1","output_index":1,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]},"sequence_number":3}`,
 			``,
 			`event: response.output_text.delta`,
-			`data: {"type":"response.output_text.delta","sequence_number":3,"item_id":"msg_1","output_index":1,"content_index":0,"delta":"42"}`,
+			`data: {"type":"response.output_text.delta","sequence_number":4,"item_id":"msg_1","output_index":1,"content_index":0,"delta":"42"}`,
 			``,
 			`event: response.completed`,
-			`data: {"type":"response.completed","response":{"id":"resp_1","object":"response","status":"completed","model":"upstream","output":[{"type":"message","id":"msg_1","status":"completed","role":"assistant","content":[{"type":"output_text","text":"42","annotations":[]}]}],"usage":{"input_tokens":5,"output_tokens":1,"total_tokens":6}}}`,
+			`data: {"type":"response.completed","response":{"id":"resp_1","object":"response","status":"completed","model":"upstream","output":[{"type":"message","id":"msg_1","status":"completed","role":"assistant","content":[{"type":"output_text","text":"42","annotations":[]}]}],"usage":{"input_tokens":5,"output_tokens":1,"total_tokens":6},"created_at":1},"sequence_number":5}`,
 			``,
 		}, "\n")+"\n")
 	}))
@@ -172,8 +172,8 @@ func TestStreamCancellationUsage(t *testing.T) {
 				}
 				if endpoint == "responses" || endpoint == "converted" {
 					platform = "responses"
-					body = "data: {\"type\":\"response.content_part.added\",\"part\":{\"type\":\"output_text\",\"text\":\"\"}}\n\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n"
-					terminal = `data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"partial"}]}],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3}}}` + "\n\n"
+					body = "data: {\"type\":\"response.content_part.added\",\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[]},\"sequence_number\":0,\"output_index\":0,\"content_index\":0,\"item_id\":\"msg1\"}\n\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\",\"sequence_number\":1,\"output_index\":0,\"content_index\":0,\"item_id\":\"msg1\"}\n\n"
+					terminal = `data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"partial","annotations":[]}],"id":"item_0","status":"completed"}],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3},"id":"r1","model":"m","created_at":1,"object":"response"},"sequence_number":5}` + "\n\n"
 					if endpoint == "responses" {
 						marker = "response.completed"
 					}
@@ -251,7 +251,7 @@ func TestStreamFlushErrorThroughGinAndCapture(t *testing.T) {
 func TestToolOnlyStreamWithoutUsageSucceeds(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		io.WriteString(w, `data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}`+"\n\ndata: [DONE]\n\n")
+		io.WriteString(w, `data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"id":"r1","model":"m","created":1,"object":"chat.completion.chunk"}`+"\n\ndata: [DONE]\n\n")
 	}))
 	defer upstream.Close()
 	s := newTestServerWithStore(t, []config.ModelGroupConfig{{ID: "g", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 1, Models: []config.ModelRef{openAIModel("m", upstream.URL)}}})

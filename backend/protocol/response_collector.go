@@ -52,6 +52,7 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 	if err != nil || !isAccepted {
 		return "", "", err
 	}
+	collector.response.Metadata = mergeCollectedMetadata(collector.response.Metadata, event.Metadata)
 	if !event.ResponseID.IsZero() {
 		collector.response.ID = event.ResponseID
 	}
@@ -63,7 +64,12 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 	switch event.Type {
 	case ResponseStarted:
 		if event.Response != nil {
+			id, metadata := collector.response.ID, collector.response.Metadata
 			collector.response = *event.Response
+			if collector.response.ID.IsZero() {
+				collector.response.ID = id
+			}
+			collector.response.Metadata = mergeCollectedMetadata(metadata, event.Response.Metadata)
 		}
 		return "", "", nil
 	case NativeEvent, MediaReceived:
@@ -89,7 +95,13 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 				}
 			}
 			content, id, model := collector.response.Content, collector.response.ID, collector.response.Model
+			attributes, metadata := collector.response.Attributes, collector.response.Metadata
 			collector.response = *event.Response
+			collector.response.Attributes = copyObject(attributes)
+			for key, value := range event.Response.Attributes {
+				collector.response.Attributes[key] = value
+			}
+			collector.response.Metadata = mergeCollectedMetadata(metadata, event.Response.Metadata)
 			if collector.response.ID.IsZero() {
 				collector.response.ID = id
 			}
@@ -159,6 +171,7 @@ func collectedOutput(nodes []Node) []Node {
 		}
 		node.Native = nil
 		node.Source = nil
+		node.Metadata = comparableMetadata(node.Metadata)
 		node.ID, node.Status = Value{}, Value{}
 		node.Children = comparableNodes(node.Children)
 		output = append(output, node)
@@ -178,6 +191,7 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 	}
 	item := &collector.response.Content[collector.items[key]]
 	if event.Item != nil {
+		item.Metadata = MergeNodeMetadata(item.Metadata, event.Item.Metadata, false)
 		if !event.Item.Name.IsZero() {
 			item.Name = event.Item.Name
 		}
@@ -206,6 +220,7 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 			}
 		}
 	}
+	item.Metadata = MergeNodeMetadata(item.Metadata, event.Metadata, event.Type == ItemDelta)
 	if !event.CallID.IsZero() {
 		item.CallID = event.CallID
 	}
@@ -332,3 +347,70 @@ func (collector *ResponseCollector) finishTools() error {
 
 // IsItemSnapshot 判定事件是否携带全量快照（非增量 delta）。
 func IsItemSnapshot(eventType EventType) bool { return eventType != ItemDelta }
+
+func mergeCollectedMetadata(left, right []ResponseMetadata) []ResponseMetadata {
+	out := append([]ResponseMetadata(nil), left...)
+	for _, m := range right {
+		if m.Location != "response" && m.Location != "usage" {
+			continue
+		}
+		found := false
+		for i := range out {
+			if out[i].Codec == m.Codec && out[i].Location == m.Location && out[i].Name == m.Name {
+				out[i] = m
+				found = true
+				break
+			}
+		}
+		if !found {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// Node metadata snapshots replace earlier values. Token probabilities arriving
+// as deltas append; response/usage metadata never migrates to a content item.
+func MergeNodeMetadata(left, right []ResponseMetadata, delta bool) []ResponseMetadata {
+	out := append([]ResponseMetadata(nil), left...)
+	for _, m := range right {
+		if m.Location == "response" || m.Location == "usage" {
+			continue
+		}
+		found := false
+		for i := range out {
+			if out[i].Codec == m.Codec && out[i].Location == m.Location && out[i].Name == m.Name {
+				if delta && m.Name == "logprobs" {
+					m.Value = appendLogprobValues(out[i].Value, m.Value, m.Codec)
+				}
+				out[i], found = m, true
+				break
+			}
+		}
+		if !found {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func appendLogprobValues(a, b Value, codec string) Value {
+	if codec == "openai-chat" {
+		left, _ := a.ReadObject()
+		right, _ := b.ReadObject()
+		if left == nil {
+			left = Object{}
+		}
+		for k, v := range right {
+			left[k] = appendLogprobValues(left[k], v, "responses")
+		}
+		out, _ := EncodeValue(left)
+		return out
+	}
+	var left, right []Value
+	if a.Decode(&left) != nil || b.Decode(&right) != nil {
+		return b
+	}
+	out, _ := EncodeValue(append(left, right...))
+	return out
+}

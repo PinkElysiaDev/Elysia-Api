@@ -11,6 +11,7 @@ type Severity string
 const (
 	SeverityError   Severity = "error"
 	SeverityWarning Severity = "warning"
+	SeverityInfo    Severity = "info"
 )
 
 // IssueCode is stable across human-readable message revisions.
@@ -30,6 +31,7 @@ const (
 	IncompleteCoverage        IssueCode = "incomplete_coverage"
 	UpstreamContractViolation IssueCode = "upstream_contract_violation"
 	ConversionDegraded        IssueCode = "conversion_degraded"
+	ConversionNormalized      IssueCode = "conversion_normalized"
 	ConversionRejected        IssueCode = "conversion_rejected"
 	ContinuationUnavailable   IssueCode = "continuation_unavailable"
 )
@@ -60,6 +62,12 @@ type DiagnosticSink struct {
 	issues []ConversionIssue
 }
 
+// SameDiagnostic identifies repeated observations without merging different
+// stages, revisions or outcomes at the same field.
+func SameDiagnostic(a, b ConversionIssue) bool {
+	return a == b
+}
+
 // Add records one issue, collapsing an exact repeat. A stream renders usage
 // more than once, so the same omission must not accumulate into a flood.
 func (sink *DiagnosticSink) Add(issue ConversionIssue) {
@@ -67,7 +75,7 @@ func (sink *DiagnosticSink) Add(issue ConversionIssue) {
 		return
 	}
 	for _, existing := range sink.issues {
-		if existing.Code == issue.Code && existing.Path == issue.Path && existing.Stage == issue.Stage && existing.RuleID == issue.RuleID && existing.PolicyHash == issue.PolicyHash && existing.Reason == issue.Reason {
+		if SameDiagnostic(existing, issue) {
 			return
 		}
 	}

@@ -22,6 +22,9 @@ func (compiled *Compiled) DecodeRequest(ctx context.Context, body []byte, option
 	}
 	request.SchemaVersion = SemanticSchemaVersion
 	request.Source = compiled.identity
+	if err := compiled.checkDecodedResponsesContext(request); err != nil {
+		return nil, err
+	}
 	if options.ResolveRequestScope != nil {
 		scope, err := options.ResolveRequestScope(request)
 		if err != nil {
@@ -50,6 +53,9 @@ func (compiled *Compiled) DecodeRequest(ctx context.Context, body []byte, option
 // layer; unknown fields are never copied to a foreign protocol by this method.
 func (compiled *Compiled) EncodeRequest(ctx context.Context, request *Request, options EvaluationContext) (result []byte, err error) {
 	defer func() { err = compiled.runtimeError(EncodeRequest, err) }()
+	if err := validateRequestContext(request); err != nil {
+		return nil, err
+	}
 	target := compiled.target(EncodeRequest, options)
 	if err := IssuesError(CheckRequest(request, target, compiled.limits)); err != nil {
 		return nil, err

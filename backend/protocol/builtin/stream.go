@@ -10,21 +10,23 @@ import (
 )
 
 type streamItem struct {
-	node            p.Node
-	index           int
-	isFinished      bool
-	text            p.TextTracker
-	signature       p.TextTracker
-	buffer          strings.Builder
-	metadataBytes   int
-	wireID          p.Value
-	hasEmittedStart bool
-	summaryTexts    []string
-	summaryDone     map[int]bool
-	summaryTextDone map[int]bool
+	node                 p.Node
+	index                int
+	isFinished           bool
+	text                 p.TextTracker
+	signature            p.TextTracker
+	buffer               strings.Builder
+	metadataBytes        int
+	deliveredAnnotations p.Value
+	wireID               p.Value
+	hasEmittedStart      bool
+	summaryTexts         []string
+	summaryDone          map[int]bool
+	summaryTextDone      map[int]bool
 }
 
 type streamModule struct {
+	metadata []p.ResponseMetadata
 	module
 	limits           p.Limits
 	isStarted        bool
@@ -67,6 +69,10 @@ func (stream *streamModule) Convert(ctx context.Context, direction p.Direction, 
 		if err != nil {
 			return p.Value{}, err
 		}
+		frames, err = stream.renderMetadata(frames, &event)
+		if err != nil {
+			return p.Value{}, err
+		}
 		return array(stream.numberFrames(frames)), nil
 	}
 	events, err := stream.DecodeEvents(ctx, input, options)
@@ -99,6 +105,14 @@ func (stream *streamModule) DecodeEvents(ctx context.Context, input p.Value, opt
 		events = []p.Event{}
 	}
 	extra, err := stream.captureFrameExtensions(fields)
+	if err != nil {
+		return nil, err
+	}
+	extra, metadata, err := stream.splitFrameMetadata(extra)
+	if err != nil {
+		return nil, err
+	}
+	events, err = stream.attachFrameMetadata(events, metadata)
 	if err != nil {
 		return nil, err
 	}

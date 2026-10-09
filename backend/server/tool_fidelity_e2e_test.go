@@ -28,12 +28,12 @@ func TestResponsesToolFidelityHTTPPaths(t *testing.T) {
 						return
 					}
 					captured <- body
-					response := `{"id":"r1","model":"m","status":"completed","output":[{"type":"custom_tool_call","id":"item2","call_id":"c2","name":"patch","input":"another edit"}],"usage":{"input_tokens":100,"output_tokens":3,"input_tokens_details":{"cached_tokens":50}}}`
+					response := `{"id":"r1","object":"response","created_at":1,"model":"m","status":"completed","output":[{"type":"custom_tool_call","id":"item2","status":"completed","call_id":"c2","name":"patch","input":"another edit"}],"usage":{"input_tokens":100,"output_tokens":3,"input_tokens_details":{"cached_tokens":50}}}`
 					if isStream {
 						w.Header().Set("Content-Type", "text/event-stream")
-						_, _ = io.WriteString(w, "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"custom_tool_call\",\"id\":\"item2\",\"call_id\":\"c2\",\"name\":\"patch\",\"input\":\"\"}}\n\n")
-						_, _ = io.WriteString(w, "data: {\"type\":\"response.custom_tool_call_input.delta\",\"output_index\":0,\"delta\":\"another edit\"}\n\n")
-						_, _ = io.WriteString(w, "data: {\"type\":\"response.completed\",\"response\":"+response+"}\n\n")
+						_, _ = io.WriteString(w, "data: {\"type\":\"response.output_item.added\",\"sequence_number\":0,\"output_index\":0,\"item\":{\"type\":\"custom_tool_call\",\"id\":\"item2\",\"status\":\"in_progress\",\"call_id\":\"c2\",\"name\":\"patch\",\"input\":\"\"}}\n\n")
+						_, _ = io.WriteString(w, "data: {\"type\":\"response.custom_tool_call_input.delta\",\"sequence_number\":1,\"item_id\":\"item2\",\"output_index\":0,\"delta\":\"another edit\"}\n\n")
+						_, _ = io.WriteString(w, "data: {\"type\":\"response.completed\",\"sequence_number\":2,\"response\":"+response+"}\n\n")
 						return
 					}
 					w.Header().Set("Content-Type", "application/json")

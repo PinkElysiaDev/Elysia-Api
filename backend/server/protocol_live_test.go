@@ -126,6 +126,10 @@ func (gateway *liveGateway) stored(t *testing.T) *usageRecord {
 func (gateway *liveGateway) request(t *testing.T, id string, ingress *protocol.Compiled, request *protocol.Request, isStream bool) (liveCase, *protocol.Response) {
 	t.Helper()
 	result := liveCase{ID: id, Model: gateway.suite.Model, Ingress: ingress.Identity().DefinitionID, Target: gateway.target.Identity().DefinitionID, Revision: gateway.target.Hash(), Stream: isStream, Status: "failed"}
+	if isStream && ingress.Codec(protocol.EncodeRequest) == "openai-chat" {
+		request = request.Clone()
+		request.Parameters["stream_options"] = mustProtocolValue(t, `{"include_usage":true}`)
+	}
 	body, err := ingress.EncodeRequest(t.Context(), request, protocol.EvaluationContext{Scope: gateway.scope})
 	if err != nil {
 		result.Reason = err.Error()
@@ -349,7 +353,7 @@ func TestProtocolLive(t *testing.T) {
 				gateway.cachePairs(t, compiled[targetID])
 				return
 			}
-			gateway.bind(t, protocol.CapabilitySet{protocol.TextCapability: true, protocol.FunctionToolsCapability: true, protocol.UsageCapability: true, protocol.ReasoningCapability: true, protocol.NativeExtensionsCapability: true})
+			gateway.bind(t, gateway.target.Definition().Capabilities)
 			for _, sourceID := range liveProtocolIDs {
 				for _, isStream := range []bool{false, true} {
 					if !available[targetID][isStream] {
@@ -452,7 +456,8 @@ func (gateway *liveGateway) toolRoundTrip(t *testing.T, id string, ingress *prot
 	if ingress.Identity().Family == "gemini" {
 		payload = mustProtocolValue(t, `{"value":7}`)
 	}
-	request.Content = append(request.Content, protocol.Node{Kind: protocol.MessageNode, Role: protocol.StringValue("assistant"), Children: []protocol.Node{{Kind: protocol.ToolCallNode, CallID: call.CallID, Name: call.Name, Input: call.Input}}}, protocol.Node{Kind: protocol.ToolResultNode, CallID: call.CallID, Name: call.Name, Payload: payload})
+	request.Content = append(request.Content, response.Content...)
+	request.Content = append(request.Content, protocol.Node{Kind: protocol.ToolResultNode, CallID: call.CallID, Name: call.Name, Payload: payload})
 	request.ToolChoice = mustProtocolValue(t, `{"mode":"none"}`)
 	hasFollowup = true
 	second, _ := gateway.request(t, id+"/tool-result", ingress, request, isStream)

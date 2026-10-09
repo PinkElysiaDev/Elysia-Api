@@ -90,10 +90,7 @@ func openAIChunk(id string, delta map[string]any, finish string, usage map[strin
 	if finish != "" {
 		choice["finish_reason"] = finish
 	}
-	chunk := map[string]any{"id": id, "choices": []any{choice}}
-	if delta["role"] != nil && id != "" {
-		chunk["model"] = "fake-model"
-	}
+	chunk := map[string]any{"id": id, "object": "chat.completion.chunk", "created": 1, "model": "fake-model", "choices": []any{choice}}
 	if usage != nil {
 		chunk["usage"] = usage
 	}

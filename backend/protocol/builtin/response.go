@@ -21,10 +21,14 @@ func (adapter module) decodeResponse(input p.Value, options p.EvaluationContext)
 			return nil, err
 		}
 	}
+	response.Metadata, err = adapter.extractMetadata(fields, "response", "")
+	if err != nil {
+		return nil, err
+	}
 	history := &historyState{calls: map[string][]p.Value{}}
 	known := []string{"id", "model", "status", "error", "usage", "object", "created", "created_at"}
 	usage := fields["usage"]
-	// 首个非零者生效：Chat 的 created（秒）与 Responses 的 created_at（ISO）同义。
+	// 首个非零者生效：Chat 的 created（秒）与 Responses 的 created_at（Unix seconds）同义。
 	if created := fields["created_at"]; !created.IsZero() {
 		response.Attributes["created_at"] = created
 	} else if created := fields["created"]; !created.IsZero() {
@@ -54,8 +58,22 @@ func (adapter module) decodeResponse(input p.Value, options p.EvaluationContext)
 			} else {
 				response.Attributes["finishReason"] = entry["finish_reason"]
 			}
+			metadata, err := adapter.extractMetadata(entry, "choice", fmt.Sprintf("/choices/%d", index))
+			if err != nil {
+				return nil, err
+			}
+			if len(nodes) > 0 {
+				owner := &nodes[0]
+				for i := range nodes[0].Children {
+					if nodes[0].Children[i].Kind == p.TextNode {
+						owner = &nodes[0].Children[i]
+						break
+					}
+				}
+				owner.Metadata = append(owner.Metadata, metadata...)
+			}
 			if extra := collectUnknown(entry, []string{"index", "message", "finish_reason"}); !extra.IsZero() {
-				response.Attributes[wireExtensionPrefix+adapter.family] = object(p.Object{"choiceExtensions": extra})
+				nodes[0].Attributes["choiceExtensions"] = extra
 			}
 			response.Content = append(response.Content, nodes...)
 		}
@@ -126,6 +144,11 @@ func (adapter module) decodeResponse(input p.Value, options p.EvaluationContext)
 			} else {
 				response.Attributes["finishReason"] = reason
 			}
+			metadata, err := adapter.extractMetadata(entry, "candidate", fmt.Sprintf("/candidates/%d", index))
+			if err != nil {
+				return nil, err
+			}
+			nodes[0].Metadata = append(nodes[0].Metadata, metadata...)
 			if extra := collectUnknown(entry, []string{"content", "index", "finishReason"}); !extra.IsZero() {
 				nodes[0].Attributes = mergeAttributes(nodes[0].Attributes, adapter.extensions(entry, []string{"content", "index", "finishReason"}))
 			}
@@ -137,6 +160,18 @@ func (adapter module) decodeResponse(input p.Value, options p.EvaluationContext)
 		return nil, err
 	}
 	response.Attributes = mergeAttributes(response.Attributes, adapter.extensions(fields, known))
+	if !usage.IsZero() && !usage.IsNull() {
+		u, e := usage.ReadObject()
+		if e != nil {
+			return nil, e
+		}
+		metadata, e := adapter.extractMetadata(u, "usage", "/usage")
+		if e != nil {
+			return nil, e
+		}
+		response.Metadata = append(response.Metadata, metadata...)
+		usage = object(u)
+	}
 	usageExtra, err := adapter.usageExtensions(usage)
 	if err != nil {
 		return nil, err
@@ -306,6 +341,9 @@ func finishReasonOf(response *p.Response) (p.Value, error) {
 
 func (adapter module) encodeResponse(response *p.Response, options p.EvaluationContext) (p.Value, error) {
 	fields := p.Object{"id": response.ID, "model": response.Model, "error": response.Error}
+	if err := adapter.writeMetadata(fields, response.Metadata, "response"); err != nil {
+		return p.Value{}, err
+	}
 	if !response.Error.IsZero() && !response.Error.IsNull() {
 		failure, err := adapter.encodeFailure(response.Error, options)
 		if err != nil {
@@ -327,6 +365,16 @@ func (adapter module) encodeResponse(response *p.Response, options p.EvaluationC
 	usage, err = mergeUsageExtensions(usage, fields[usageField])
 	if err != nil {
 		return p.Value{}, err
+	}
+	if !usage.IsZero() && !usage.IsNull() {
+		u, e := usage.ReadObject()
+		if e != nil {
+			return p.Value{}, e
+		}
+		if e = adapter.writeMetadata(u, response.Metadata, "usage"); e != nil {
+			return p.Value{}, e
+		}
+		usage = object(u)
 	}
 	fields["usage"] = usage
 	if !response.Error.IsZero() && !response.Error.IsNull() && len(response.Content) == 0 {
@@ -380,13 +428,39 @@ func (adapter module) encodeResponse(response *p.Response, options p.EvaluationC
 		for index, message := range messages {
 			position, _ := p.EncodeValue(index)
 			entry := p.Object{"index": position}
+			itemFinish := finish
+			if index < len(nodes) && !nodes[index].Attributes["choiceIndex"].IsZero() {
+				entry["index"] = nodes[index].Attributes["choiceIndex"]
+				if reason := nodes[index].Attributes["finishReason"]; !reason.IsZero() {
+					itemFinish = reason
+				}
+			}
 			if adapter.name == Gemini && len(messages) == 1 {
 				delete(entry, "index")
 			}
 			if adapter.name == Chat {
-				entry["message"], entry["finish_reason"] = message, finish
+				entry["message"], entry["finish_reason"] = message, itemFinish
+				if index < len(nodes) {
+					if err := adapter.writeMetadata(entry, adapter.contentMetadata([]p.Node{nodes[index]}), "choice"); err != nil {
+						return p.Value{}, err
+					}
+					if extra := nodes[index].Attributes["choiceExtensions"]; !extra.IsZero() {
+						e, _ := extra.ReadObject()
+						for k, v := range e {
+							if !entry[k].IsZero() {
+								return p.Value{}, unsupported("/choices", "choice extension collision")
+							}
+							entry[k] = v
+						}
+					}
+				}
 			} else {
 				entry["content"], entry["finishReason"] = message, finish
+				if index < len(nodes) {
+					if err := adapter.writeMetadata(entry, adapter.contentMetadata([]p.Node{nodes[index]}), "candidate"); err != nil {
+						return p.Value{}, err
+					}
+				}
 			}
 			choices = append(choices, object(entry))
 		}
@@ -450,6 +524,15 @@ func (adapter module) decodeErrorEnvelope(fields p.Object, options p.EvaluationC
 // A generated response is one assistant turn. Separate Responses output items
 // remain ordered within that turn; they are not additional Chat choices.
 func groupResponseOutput(nodes []p.Node) ([]p.Node, error) {
+	if len(nodes) > 1 {
+		candidates := true
+		for _, n := range nodes {
+			candidates = candidates && n.Kind == p.MessageNode && !n.Attributes["choiceIndex"].IsZero()
+		}
+		if candidates {
+			return nodes, nil
+		}
+	}
 	if len(nodes) == 1 && nodes[0].Kind == p.MessageNode {
 		return nodes, nil
 	}
@@ -463,7 +546,7 @@ func groupResponseOutput(nodes []p.Node) ([]p.Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		if role != "assistant" || !node.ID.IsZero() || !node.Status.IsZero() || len(node.Attributes) > 0 || len(node.Cache) > 0 || len(node.Resources) > 0 {
+		if role != "assistant" || !node.ID.IsZero() || !node.Status.IsZero() || len(node.Attributes) > 0 || len(node.Cache) > 0 || len(node.Resources) > 0 || len(node.Metadata) > 0 {
 			return nil, unsupported("/content", "target cannot combine independently identified or annotated output messages")
 		}
 		message.Children = append(message.Children, node.Children...)

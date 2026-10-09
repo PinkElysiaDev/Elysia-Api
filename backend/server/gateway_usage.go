@@ -68,12 +68,12 @@ func estimateValueChars(value protocol.Value) int {
 }
 
 // appendConversionIssues merges request diagnostics into the record, keeping
-// one entry per distinct code/path so a stream's repeated renders stay quiet.
+// exact repeats quiet without hiding distinct stages, rules or failures.
 func (record *usageRecord) appendConversionIssues(issues []protocol.ConversionIssue) {
 	for _, issue := range issues {
 		exists := false
 		for _, existing := range record.ConversionIssues {
-			if existing.Code == issue.Code && existing.Path == issue.Path {
+			if protocol.SameDiagnostic(existing, issue) {
 				exists = true
 				break
 			}

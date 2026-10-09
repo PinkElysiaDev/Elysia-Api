@@ -49,6 +49,7 @@ func cloneNodes(nodes []Node) []Node {
 	copy := make([]Node, len(nodes))
 	for index, node := range nodes {
 		copy[index] = node
+		copy[index].Metadata = append([]ResponseMetadata(nil), node.Metadata...)
 		copy[index].Attributes = maps.Clone(node.Attributes)
 		if node.Input != nil {
 			input := *node.Input

@@ -27,6 +27,8 @@ func (s *Service) ResolvePreviewConversion(route ConversionContext, phase Conver
 		return nil, route, streamIssue(InvalidInput, "/context", "preview requires active source and target protocol IDs")
 	}
 	route.Source, route.Target = source.Identity(), target.Identity()
+	created, _ := EncodeValue(1)
+	route.Delivery = &DeliveryState{ID: StringValue("response_preview"), Created: created}
 	ingress, upstream := source, target
 	if phase == ConversionResponse || phase == ConversionEvent {
 		ingress, upstream = target, source
@@ -47,12 +49,20 @@ func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 	if codec := upstream.Codec(EncodeRequest); knownConversionCodec(codec) {
 		p.Usage = &ConversionUsageSettings{CollectUpstreamUsage: true}
 		p.Rules = append(p.Rules,
+			ConversionRule{ID: "history-response-metadata", Order: 160, Enabled: true, Phase: ConversionRequest, Action: "response_metadata", Value: StringValue(codec)},
 			ConversionRule{ID: "client-stream-options", Order: 100, Enabled: true, Phase: ConversionRequest, Action: "stream_options"},
 			ConversionRule{ID: "responses-include", Order: 180, Enabled: true, Phase: ConversionRequest, Action: "responses_include", Value: StringValue(codec)},
+			ConversionRule{ID: "responses-context", Order: 185, Enabled: true, Phase: ConversionRequest, Action: "responses_context", Value: StringValue(codec)},
 			ConversionRule{ID: "request-signatures", Order: 200, Enabled: true, Phase: ConversionRequest, Action: "signatures"})
 		if ingress.Codec(DecodeRequest) == "responses" {
 			settings, _ := EncodeValue(responsesStorageOptions{TargetCodec: codec, OnUnsupported: "degrade"})
 			p.Rules = append(p.Rules, ConversionRule{ID: "responses-storage", Order: 190, Enabled: true, Phase: ConversionRequest, Action: "responses_storage", Value: settings})
+		}
+		if codec == "anthropic" || codec == "gemini" {
+			p.Rules = append(p.Rules, ConversionRule{ID: "system-instruction-hoist", Order: 140, Enabled: true, Phase: ConversionRequest, Action: "system_instruction_hoist"})
+		}
+		if codec != "gemini" {
+			p.Rules = append(p.Rules, ConversionRule{ID: "text-tool-results", Order: 150, Enabled: true, Phase: ConversionRequest, Match: ConversionMatch{NodeKind: ToolResultNode}, Action: "tool_result_text"})
 		}
 		if codec == "gemini" {
 			p.Rules = append(p.Rules, ConversionRule{ID: "gemini-tool-results", Order: 150, Enabled: true, Phase: ConversionRequest, Match: ConversionMatch{NodeKind: ToolResultNode}, Action: "tool_result_object", Value: StringValue("result")})
@@ -64,7 +74,12 @@ func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 		prefix    string
 	}{{EncodeResponse, ConversionResponse, "response"}, {EncodeEvent, ConversionEvent, "event"}} {
 		if codec := ingress.Codec(entry.direction); knownConversionCodec(codec) {
+			if !nativeConversionPair(ingress, upstream, entry.direction) {
+				p.Rules = append(p.Rules, ConversionRule{ID: entry.prefix + "-shape", Order: 230, Enabled: true, Phase: entry.phase, Action: "response_shape", Value: StringValue(codec)})
+				p.Rules = append(p.Rules, ConversionRule{ID: entry.prefix + "-envelope", Order: 320, Enabled: true, Phase: entry.phase, Action: "response_envelope", Value: StringValue(codec)})
+			}
 			p.Rules = append(p.Rules,
+				ConversionRule{ID: entry.prefix + "-metadata", Order: 220, Enabled: true, Phase: entry.phase, Action: "response_metadata", Value: StringValue(codec)},
 				ConversionRule{ID: entry.prefix + "-signatures", Order: 200, Enabled: true, Phase: entry.phase, Action: "signatures"},
 				ConversionRule{ID: entry.prefix + "-usage-projection", Order: 300, Enabled: true, Phase: entry.phase, Action: "usage_projection", Value: StringValue(codec)})
 			if codec == "anthropic" && !nativeConversionPair(ingress, upstream, entry.direction) {
@@ -150,6 +165,7 @@ func (c *CompiledConversion) responsesInclude(req *Request, route ConversionCont
 			}
 		}
 		delete(req.Parameters, "responses_include")
+		c.normalized(rule, route, "/include", "Responses output selection retained as client output preferences; not forwarded as an upstream generation parameter", sink)
 	} else {
 		if req.Parameters == nil {
 			req.Parameters = Object{}

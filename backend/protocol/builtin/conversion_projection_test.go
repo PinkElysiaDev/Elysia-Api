@@ -19,12 +19,13 @@ func TestResponsesIncludeProjection(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			request, err := responses.DecodeRequest(t.Context(), []byte(`{"model":"m","input":"hi"`+tc.field+`}`), p.EvaluationContext{})
 			var converted *p.Request
+			sink := &p.DiagnosticSink{}
 			if err == nil {
 				conversion, e := p.ResolveConversion(p.DefaultConversionPolicy(responses, gemini))
 				if e != nil {
 					t.Fatal(e)
 				}
-				converted, err = conversion.Request(t.Context(), request, p.ConversionContext{Source: responses.Identity(), Target: gemini.Identity()}, nil)
+				converted, err = conversion.Request(t.Context(), request, p.ConversionContext{Source: responses.Identity(), Target: gemini.Identity()}, sink)
 			}
 			if tc.errorPath != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.errorPath) {
@@ -45,6 +46,18 @@ func TestResponsesIncludeProjection(t *testing.T) {
 			if tc.field != "" && request.Parameters["responses_include"].IsZero() {
 				t.Fatal("original request mutated")
 			}
+			found := false
+			for _, issue := range sink.Issues() {
+				if issue.Code == p.ConversionNormalized && issue.RuleID == "responses-include" {
+					if issue.Severity != p.SeverityInfo || issue.Fidelity != "preserved" || issue.PolicyHash == "" || issue.PolicyRevision == "" || issue.Path != "/include" {
+						t.Fatal(issue)
+					}
+					found = true
+				}
+			}
+			if found != (tc.field != "") {
+				t.Fatal("normalization diagnostic", tc.name, sink.Issues())
+			}
 		})
 	}
 	for _, value := range []string{`null`, `[]`, `["future","reasoning.encrypted_content"]`} {
@@ -54,9 +67,13 @@ func TestResponsesIncludeProjection(t *testing.T) {
 			t.Fatal(err)
 		}
 		conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(responses, responses))
-		req, err = conversion.Request(t.Context(), req, p.ConversionContext{}, nil)
+		sink := &p.DiagnosticSink{}
+		req, err = conversion.Request(t.Context(), req, p.ConversionContext{}, sink)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if len(sink.Issues()) != 0 {
+			t.Fatal("unchanged native include diagnosed", sink.Issues())
 		}
 		req.Native = nil
 		wire, err := responses.EncodeRequest(t.Context(), req, p.EvaluationContext{})
@@ -153,7 +170,9 @@ func TestCustomModuleProjectionAndUnknownBoundaries(t *testing.T) {
 	if _, err = gemini.EncodeRequest(t.Context(), out, p.EvaluationContext{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"responses_text", "responses_truncation", "parallel_tool_calls"} {
+	// Context fields now have typed validation before conversion; the dedicated
+	// context tests assert their rejection. Other constraints still reach encode.
+	for _, name := range []string{"responses_text", "parallel_tool_calls"} {
 		r := req.Clone()
 		r.Parameters[name] = p.StringValue("must-not-disappear")
 		o, e := c.Request(t.Context(), r, p.ConversionContext{}, nil)

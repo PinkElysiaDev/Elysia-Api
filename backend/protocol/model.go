@@ -132,7 +132,8 @@ type CacheIntent struct {
 // Node is one ordered content item. Tool calls and results occupy their original
 // positions in Children instead of a separate, independently mutable list.
 type Node struct {
-	Kind NodeKind `json:"kind"`
+	Metadata []ResponseMetadata `json:"metadata,omitempty"`
+	Kind     NodeKind           `json:"kind"`
 	// ReasoningForm distinguishes provider summaries from visible thinking.
 	// Summaries keep their ordered text parts in Children, never in Payload.
 	ReasoningForm ReasoningForm `json:"reasoningForm,omitempty"`
@@ -236,14 +237,15 @@ type Usage struct {
 
 // Response is the ordered result of one generation operation.
 type Response struct {
-	SchemaVersion int      `json:"schemaVersion"`
-	Source        Identity `json:"source"`
-	ID            Value    `json:"id,omitzero"`
-	Model         Value    `json:"model,omitzero"`
-	Status        Value    `json:"status,omitzero"`
-	Content       []Node   `json:"content"`
-	Usage         *Usage   `json:"usage,omitempty"`
-	Error         Value    `json:"error,omitzero"`
-	Attributes    Object   `json:"attributes,omitempty"`
-	Native        *Native  `json:"native,omitempty"`
+	Metadata      []ResponseMetadata `json:"metadata,omitempty"`
+	SchemaVersion int                `json:"schemaVersion"`
+	Source        Identity           `json:"source"`
+	ID            Value              `json:"id,omitzero"`
+	Model         Value              `json:"model,omitzero"`
+	Status        Value              `json:"status,omitzero"`
+	Content       []Node             `json:"content"`
+	Usage         *Usage             `json:"usage,omitempty"`
+	Error         Value              `json:"error,omitzero"`
+	Attributes    Object             `json:"attributes,omitempty"`
+	Native        *Native            `json:"native,omitempty"`
 }

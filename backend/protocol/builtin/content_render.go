@@ -33,6 +33,14 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 			}
 		}
 		fields["type"], fields["text"] = p.StringValue(kind), node.Payload
+		if kind == "output_text" {
+			fields["annotations"] = array(nil)
+			for _, m := range node.Metadata {
+				if m.Name == "annotations" && m.Codec == Responses {
+					delete(fields, "annotations")
+				}
+			}
+		}
 	case p.RefusalNode:
 		if adapter.name == Anthropic {
 			return p.Value{}, unsupported("/content/refusal", "Anthropic has no equivalent refusal content block")
@@ -60,10 +68,7 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 		fields["id"] = node.ID
 		payload := node.Payload
 		if payload.IsObject() {
-			// Gemini 标准 functionResponse.response 是对象；无对象载荷字段的
-			// 目标（Responses 输出串、Anthropic 内容串/块）统一 JSON 字符串
-			// 序列化保持可逆，Chat 路径在 encodeChatMessage 内同构处理。
-			payload = encodeJSONArguments(payload)
+			return p.Value{}, unsupported("/content/result", "object tool result requires tool_result_text conversion")
 		}
 		if node.Children != nil {
 			var blocks []p.Value
@@ -170,6 +175,9 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 		}
 	}
 	if err := adapter.encodeCache(fields, node.Cache); err != nil {
+		return p.Value{}, err
+	}
+	if err := adapter.writeMetadata(fields, node.Metadata, "content"); err != nil {
 		return p.Value{}, err
 	}
 	if err := adapter.preserveExtensions(fields, node.Attributes); err != nil {
@@ -388,6 +396,9 @@ func (adapter module) encodeGeminiPart(node p.Node, fields p.Object) (p.Value, e
 			return p.Value{}, unsupported("/resources", fmt.Sprintf("Gemini part cannot express %s", resource.Kind))
 		}
 		fields["thoughtSignature"] = resource.ID
+	}
+	if err := adapter.writeMetadata(fields, node.Metadata, "content"); err != nil {
+		return p.Value{}, err
 	}
 	if err := adapter.preserveExtensions(fields, node.Attributes); err != nil {
 		return p.Value{}, err

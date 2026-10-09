@@ -182,6 +182,10 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 	if err != nil {
 		return node, err
 	}
+	node.Metadata, err = adapter.extractMetadata(fields, "content", path)
+	if err != nil {
+		return node, err
+	}
 	node.Attributes, err = adapter.nestedExtensions(fields, known, nested)
 	if err != nil {
 		return node, err
@@ -370,6 +374,10 @@ func (adapter module) decodeGeminiPart(fields p.Object, node p.Node, options p.E
 		return node, nil
 	}
 	var err error
+	node.Metadata, err = adapter.extractMetadata(fields, "content", "/parts")
+	if err != nil {
+		return node, err
+	}
 	node.Attributes, err = adapter.nestedExtensions(fields, known, nested)
 	return node, err
 }

@@ -149,7 +149,7 @@ func FuzzJSONMappingPresence(f *testing.F) {
 	// Seeds cover JSON spelling/presence edges plus usage alias pairs: a value
 	// body carrying both legacy top-level aliases must round-trip unchanged, and
 	// a zero alias must stay present rather than being dropped.
-	for _, seed := range []string{`{}`, `{"value":null}`, `{"value":false}`, `{"value":0}`, `{"value":900719925474099312345}`, `{"value":-0}`, `{"value":1e99}`, `{"value":[{},[],null,false,0]}`, `{"value":{"cache_read_input_tokens":0,"cache_creation_input_tokens":7}}`, `{"value":{"input_tokens":100,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}`} {
+	for _, seed := range []string{`{}`, `{"value":null}`, `{"value":false}`, `{"value":0}`, `{"value":900719925474099312345}`, `{"value":-0}`, `{"value":1e99}`, `{"value":{"0000000000000000&":0}}`, `{"value":[{},[],null,false,0]}`, `{"value":{"cache_read_input_tokens":0,"cache_creation_input_tokens":7}}`, `{"value":{"input_tokens":100,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}`} {
 		f.Add([]byte(seed))
 	}
 	expression := objectExpression(map[string]Expression{"value": readExpression("input", "/value")})
@@ -172,8 +172,8 @@ func FuzzJSONMappingPresence(f *testing.F) {
 			t.Fatal(err)
 		}
 		output, err := result.ReadObject()
-		if err != nil || output["value"] != input["value"] {
-			t.Fatalf("presence or JSON spelling changed: %s -> %s", raw, result.Bytes())
+		if err != nil || !equalValues(output["value"], input["value"]) {
+			t.Fatalf("presence or JSON content changed: %s -> %s", raw, result.Bytes())
 		}
 	})
 }

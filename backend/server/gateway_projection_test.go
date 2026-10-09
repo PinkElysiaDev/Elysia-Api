@@ -120,6 +120,17 @@ func TestGatewayGeminiIncludeAndReasoningProjection(t *testing.T) {
 				if !found {
 					t.Fatal("projection not diagnosed", record.ConversionIssues)
 				}
+				if clientKind == "responses" {
+					found = false
+					for _, issue := range record.ConversionIssues {
+						if issue.Code == protocol.ConversionNormalized && issue.RuleID == "responses-include" && issue.Fidelity == "preserved" && issue.Severity == protocol.SeverityInfo && issue.PolicyHash != "" {
+							found = true
+						}
+					}
+					if !found {
+						t.Fatal("include normalization not persisted", record.ConversionIssues)
+					}
+				}
 			})
 		}
 	}
@@ -216,13 +227,16 @@ func TestGatewayIncludeCarrierDeliveryModes(t *testing.T) {
 					}
 					var record usageRecord
 					_ = json.Unmarshal(data, &record)
-					found := false
+					found, normalized := false, false
 					for _, issue := range record.ConversionIssues {
+						if issue.RuleID == "responses-include" && issue.Code == protocol.ConversionNormalized {
+							normalized = true
+						}
 						if issue.RuleID == "responses-include" && issue.Fidelity == "lossy_compatible" {
 							found = true
 						}
 					}
-					if !found {
+					if !found || !normalized {
 						t.Fatal("server persistence incorrectly satisfied client delivery", record.ConversionIssues)
 					}
 				}

@@ -143,6 +143,13 @@ func TestBuiltinFourByFourTextAndFunctionHistory(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				if source.name == Gemini && target.name != Gemini {
+					conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(from, to))
+					semantic, err = conversion.Request(t.Context(), semantic, p.ConversionContext{}, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
 				output, err := to.EncodeRequest(t.Context(), semantic, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
 				if source.name != Gemini && target.name == Gemini {
 					// 非 JSON 文本工具结果在 Gemini 目标仍显式拒绝（本夹具为 "found"）；
@@ -168,18 +175,18 @@ func TestBuiltinFourByFourTextAndFunctionHistory(t *testing.T) {
 							calls++
 							sameJSON(t, node.Input.Value.Bytes(), `{"n":9007199254740993}`)
 						}
-					if node.Kind == p.ToolResultNode {
-						results++
-						payload := node.Payload.Bytes()
-						if source.name == Gemini && target.name != Gemini {
-							// 对象结果经 JSON 字符串序列化后，目标侧重回语义仍是文本载荷。
-							var text string
-							if err := node.Payload.Decode(&text); err == nil {
-								payload = []byte(text)
+						if node.Kind == p.ToolResultNode {
+							results++
+							payload := node.Payload.Bytes()
+							if source.name == Gemini && target.name != Gemini {
+								// 对象结果经 JSON 字符串序列化后，目标侧重回语义仍是文本载荷。
+								var text string
+								if err := node.Payload.Decode(&text); err == nil {
+									payload = []byte(text)
+								}
 							}
+							sameJSON(t, payload, string(result.Bytes()))
 						}
-						sameJSON(t, payload, string(result.Bytes()))
-					}
 						visit(node.Children)
 					}
 				}

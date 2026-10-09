@@ -33,8 +33,8 @@ func bindHealthModel(t *testing.T, server *Server, platform, endpoint string) st
 
 func TestHealthProbeUsesVerifiedWireAndCredentials(t *testing.T) {
 	cases := []struct{ id, path, auth, key, request, response string }{
-		{"openai-chat-completions", "/chat/completions", "Authorization", "Bearer probe-key", `"messages"`, `{"choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}]}`},
-		{"openai-responses", "/responses", "Authorization", "Bearer probe-key", `"input"`, `{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi"}]}]}`},
+		{"openai-chat-completions", "/chat/completions", "Authorization", "Bearer probe-key", `"messages"`, `{"choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop","index":0}],"id":"r1","model":"m","created":1,"object":"chat.completion"}`},
+		{"openai-responses", "/responses", "Authorization", "Bearer probe-key", `"input"`, `{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi","annotations":[]}],"id":"item_0","status":"completed"}],"id":"r1","model":"m","object":"response","created_at":1}`},
 		{"anthropic-messages", "/v1/messages", "x-api-key", "probe-key", `"messages"`, `{"role":"assistant","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn"}`},
 		{"google-generate-content", "/v1beta/models/model:generateContent", "x-goog-api-key", "probe-key", `"contents"`, `{"candidates":[{"content":{"role":"model","parts":[{"text":"hi"}]},"finishReason":"STOP"}]}`},
 	}

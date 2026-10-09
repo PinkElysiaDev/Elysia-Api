@@ -21,7 +21,9 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 		options.ClientOutput = candidate.prepared.ClientOutput
 	}
 	defer func() { record.appendConversionIssues(options.Diagnostics.Issues()) }()
-	eventState := protocol.NewConversionEventState(candidate.conversion, candidate.conversionContext(plan.ingress, true))
+	route := candidate.conversionContext(plan.ingress, true)
+	route.Delivery = protocol.NewDeliveryState()
+	eventState := protocol.NewConversionEventState(candidate.conversion, route)
 	carriers := &builtin.ContinuationStream{Family: plan.ingress.Identity().Family}
 	var collector *protocol.ResponseCollector
 	if candidate.continuation != nil {
@@ -44,12 +46,16 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Trailer", gatewayStreamErrorTrailer)
 	wireValidation := protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState()}
+	finalValidation, err := plan.ingress.NewWireStreamValidation(candidate.scope)
+	if err != nil {
+		return err
+	}
 	emit := func(value protocol.Value) error {
 		if record.FirstByteMs == 0 {
 			record.FirstByteMs = time.Since(record.StartedAt).Milliseconds()
 		}
 		if candidate.conversion.HasPhase(protocol.ConversionWire) {
-			converted, e := candidate.conversion.ApplyValue(c.Request.Context(), protocol.ConversionWire, value, candidate.conversionContext(plan.ingress, true), options.Diagnostics)
+			converted, e := candidate.conversion.ApplyValue(c.Request.Context(), protocol.ConversionWire, value, route, options.Diagnostics)
 			if e != nil {
 				return e
 			}
@@ -68,7 +74,7 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 			}
 		}
 		for _, frame := range frames {
-			if err := plan.ingress.ValidateWireOutput(protocol.EncodeEvent, frame); err != nil {
+			if err := finalValidation.Consume(c.Request.Context(), frame); err != nil {
 				return err
 			}
 			if len(frame.Bytes()) > limits.BufferBytes {
@@ -109,7 +115,7 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 		originalEvents, _ := protocol.EncodeValue(decoded.Events)
 		acceptedEvents := []protocol.Event{}
 		deliveryEvents := decoded.Events
-		if candidate.conversion.HasAnthropicEnvelope(protocol.ConversionEvent, candidate.conversionContext(plan.ingress, true)) {
+		if candidate.conversion.HasAnthropicEnvelope(protocol.ConversionEvent, route) {
 			deliveryEvents = protocol.DeliveryFrameEvents(decoded.Events)
 		}
 		for eventIndex, event := range decoded.Events {
@@ -146,7 +152,8 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 			}
 			for _, next := range queued {
 				if candidate.conversion != nil {
-					next, err = candidate.conversion.Event(c.Request.Context(), next, candidate.conversionContext(plan.ingress, true), options.Diagnostics)
+					route.Recoverable = candidate.conversionContext(plan.ingress, true).Recoverable
+					next, err = candidate.conversion.Event(c.Request.Context(), next, route, options.Diagnostics)
 					if err != nil {
 						return err
 					}
@@ -187,7 +194,8 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 			if err != nil {
 				break
 			}
-			event, err = candidate.conversion.Event(c.Request.Context(), event, candidate.conversionContext(plan.ingress, true), options.Diagnostics)
+			route.Recoverable = candidate.conversionContext(plan.ingress, true).Recoverable
+			event, err = candidate.conversion.Event(c.Request.Context(), event, route, options.Diagnostics)
 			if err != nil {
 				break
 			}
@@ -223,6 +231,9 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 				}
 			}
 		}
+	}
+	if err == nil {
+		err = finalValidation.Finish()
 	}
 	if err != nil {
 		if writeErr := emitFailureEvent(c, plan, options, emit, err); writeErr != nil {

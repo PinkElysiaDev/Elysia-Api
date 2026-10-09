@@ -39,6 +39,10 @@ func TestGatewayFourPublicEntrypointsUseActiveRuntime(t *testing.T) {
 				{ID: "request", Direction: protocol.DecodeRequest, Capabilities: []protocol.Capability{protocol.TextCapability}, Input: parse(fixture.request), Expected: semanticRequest, Context: protocol.Object{"model": protocol.StringValue("m")}},
 				{ID: "response", Direction: protocol.EncodeResponse, Capabilities: []protocol.Capability{protocol.TextCapability}, Input: semanticResponse, Expected: parse(fixture.response)},
 			}}
+			if fixture.module == "responses" {
+				definition.Samples[1].Input = parse(`{"schemaVersion":1,"id":"r1","model":"m","status":"completed","content":[{"kind":"message","id":"msg1","status":"completed","role":"assistant","children":[{"kind":"text","payload":"world"}]}],"attributes":{"created_at":1}}`)
+				definition.Samples[1].Expected = parse(`{"id":"r1","object":"response","created_at":1,"status":"completed","model":"m","output":[{"type":"message","id":"msg1","status":"completed","role":"assistant","content":[{"type":"output_text","text":"world","annotations":[]}]}]}`)
+			}
 			if fixture.module == "anthropic" {
 				definition.Capabilities[protocol.UsageCapability] = true
 				definition.Samples[1].Input = parse(`{"schemaVersion":1,"id":"r1","model":"m","status":"completed","content":[{"kind":"text","payload":"world"}],"attributes":{"finishReason":"stop"},"usage":{"input":{"count":1,"origin":"observed"},"output":{"count":1,"origin":"observed"}}}`)

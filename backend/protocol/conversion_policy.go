@@ -82,6 +82,7 @@ type ConversionSelection struct {
 }
 
 type ConversionContext struct {
+	Delivery    *DeliveryState  `json:"-"`
 	Scope       Scope           `json:"-"`
 	Recoverable map[string]bool `json:"-"`
 	Source      Identity        `json:"source"`
@@ -203,13 +204,13 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if r.Enabled {
 			orders[key] = r.ID
 		}
-		if !slices.Contains([]string{"set", "remove", "transform", "warn", "reject", "signatures", "stream_options", "tool_result_object", "buffer_node", "provider_signature", "responses_include", "usage_projection", "responses_storage", "anthropic_usage_envelope"}, r.Action) {
+		if !slices.Contains([]string{"set", "remove", "transform", "warn", "reject", "signatures", "stream_options", "tool_result_object", "tool_result_text", "system_instruction_hoist", "buffer_node", "provider_signature", "responses_include", "responses_context", "usage_projection", "response_metadata", "response_shape", "response_envelope", "responses_storage", "anthropic_usage_envelope"}, r.Action) {
 			return nil, fmt.Errorf("unknown conversion action %q", r.Action)
 		}
-		if (r.Action == "usage_projection" || r.Action == "anthropic_usage_envelope") && r.Phase != ConversionResponse && r.Phase != ConversionEvent {
+		if (r.Action == "response_metadata" || r.Action == "response_shape" || r.Action == "response_envelope" || r.Action == "usage_projection" || r.Action == "anthropic_usage_envelope") && r.Phase != ConversionResponse && r.Phase != ConversionEvent && !(r.Action == "response_metadata" && r.Phase == ConversionRequest) {
 			return nil, fmt.Errorf("%s requires response or event phase", r.Action)
 		}
-		if r.Action == "usage_projection" || r.Action == "responses_include" {
+		if r.Action == "response_metadata" || r.Action == "response_shape" || r.Action == "response_envelope" || r.Action == "usage_projection" || r.Action == "responses_include" || r.Action == "responses_context" {
 			var codec string
 			if r.Value.Decode(&codec) != nil || !knownConversionCodec(codec) {
 				return nil, fmt.Errorf("%s requires a known target codec in value", r.Action)
@@ -221,6 +222,9 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 				return nil, fmt.Errorf("responses_storage requires targetCodec and onUnsupported: degrade or reject")
 			}
 		}
+		if r.Action == "system_instruction_hoist" && r.Phase != ConversionRequest {
+			return nil, fmt.Errorf("system_instruction_hoist requires request phase")
+		}
 		if r.Action == "provider_signature" {
 			if r.Phase != ConversionRequest || r.Match.NodeKind != ToolCallNode || r.Match.TargetFamily == "" {
 				return nil, fmt.Errorf("provider_signature requires a request tool_call rule with an explicit target family")
@@ -229,16 +233,16 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 				return nil, err
 			}
 		}
-		if r.Action == "tool_result_object" && (r.Phase != ConversionRequest || r.Match.NodeKind != ToolResultNode) {
+		if (r.Action == "tool_result_object" || r.Action == "tool_result_text") && (r.Phase != ConversionRequest || r.Match.NodeKind != ToolResultNode) {
 			return nil, fmt.Errorf("tool_result_object requires request tool_result nodes")
 		}
 		if r.Action == "buffer_node" && r.Phase != ConversionEvent {
 			return nil, fmt.Errorf("buffer_node requires event phase")
 		}
-		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "responses_storage") && r.Phase != ConversionRequest {
+		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "responses_context" || r.Action == "responses_storage") && r.Phase != ConversionRequest {
 			return nil, fmt.Errorf("%s requires request phase", r.Action)
 		}
-		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "usage_projection" || r.Action == "responses_storage" || r.Action == "anthropic_usage_envelope") && r.Match.NodeKind != "" {
+		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "responses_context" || r.Action == "usage_projection" || r.Action == "responses_storage" || r.Action == "anthropic_usage_envelope") && r.Match.NodeKind != "" {
 			return nil, fmt.Errorf("%s matches the complete semantic value, not an individual node", r.Action)
 		}
 		if r.Match.NodeKind != "" {
@@ -361,6 +365,9 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 	if err := checkValueLimits(input, c.limits); err != nil {
 		return Value{}, err
 	}
+	if err := validateContextValue(phase, input); err != nil {
+		return Value{}, err
+	}
 	value := input
 	for _, rule := range c.Policy.Rules {
 		if !rule.Enabled || rule.Phase != phase {
@@ -368,16 +375,20 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 		}
 		var err error
 		switch {
-		case rule.Action == "stream_options" || rule.Action == "responses_include" || rule.Action == "responses_storage":
+		case rule.Action == "system_instruction_hoist" || rule.Action == "stream_options" || rule.Action == "responses_include" || rule.Action == "responses_context" || rule.Action == "responses_storage":
 			if !rule.Match.matches(route, value) {
 				continue
 			}
 			var req Request
 			if err = decodeContract(value.Bytes(), &req); err == nil {
-				if rule.Action == "responses_storage" {
+				if rule.Action == "system_instruction_hoist" {
+					err = c.hoistSystem(&req, route, rule, sink)
+				} else if rule.Action == "responses_storage" {
 					err = c.responsesStorage(&req, route, rule, sink)
 				} else if rule.Action == "responses_include" {
 					err = c.responsesInclude(&req, route, rule, sink)
+				} else if rule.Action == "responses_context" {
+					err = c.responsesContext(&req, route, rule, sink)
 				} else {
 					err = c.streamOptions(&req, route, rule, sink)
 				}
@@ -388,6 +399,14 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 		case rule.Action == "anthropic_usage_envelope":
 			if rule.Match.matches(route, value) {
 				value, err = c.envelopeUsageValue(phase, value, route, rule, sink)
+			}
+		case rule.Action == "response_shape" || rule.Action == "response_envelope":
+			if rule.Match.matches(route, value) {
+				value, err = c.responseValue(rule.Action, phase, value, route, rule, sink)
+			}
+		case rule.Action == "response_metadata":
+			if rule.Match.matches(route, value) {
+				value, err = c.metadataValue(phase, value, route, rule, sink)
 			}
 		case rule.Action == "usage_projection":
 			if rule.Match.matches(route, value) {
@@ -406,6 +425,9 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 		if err = checkValueLimits(value, c.limits); err != nil {
 			return Value{}, err
 		}
+	}
+	if err := validateContextValue(phase, value); err != nil {
+		return Value{}, err
 	}
 	return value, nil
 }
@@ -491,6 +513,13 @@ func (c *CompiledConversion) applyNodeRule(ctx context.Context, phase Conversion
 					n.Resources = append(n.Resources, Resource{Kind: "signature", ID: signature, Scope: route.Scope})
 					n.Source = &Provenance{Protocol: route.Target, Direction: DecodeResponse, Scope: route.Scope}
 					n.Native = nil
+				} else if rule.Action == "tool_result_text" {
+					if n.Payload.IsObject() {
+						if err := c.issue(rule, phase, route, at+"/payload", "object tool result serialized as JSON text; payload type changes", sink, true); err != nil {
+							return err
+						}
+						n.Payload = StringValue(string(n.Payload.Bytes()))
+					}
 				} else if rule.Action == "tool_result_object" && !n.Payload.IsObject() {
 					var text string
 					if err := n.Payload.Decode(&text); err != nil {
@@ -773,7 +802,8 @@ func (c *CompiledConversion) ContextHash() string {
 	return hashValue(value)
 }
 func (c *CompiledConversion) VerificationRoute(source, target Identity, transport Transport) ConversionContext {
-	route := ConversionContext{Source: source, Target: target, Transport: transport}
+	created, _ := EncodeValue(1)
+	route := ConversionContext{Source: source, Target: target, Transport: transport, Delivery: &DeliveryState{ID: StringValue("response_verification"), Created: created}}
 	if c != nil && c.VerificationContext != nil {
 		route.Model = c.VerificationContext.Model
 		route.Operation = c.VerificationContext.Operation

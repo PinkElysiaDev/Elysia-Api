@@ -33,7 +33,7 @@ func TestGatewayUsageBodyPolicy(t *testing.T) {
 							fmt.Fprint(w, openAIChunk("c1", map[string]any{}, "stop", map[string]any{"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5}), openAIDone())
 						} else {
 							w.Header().Set("Content-Type", "application/json")
-							fmt.Fprint(w, `{"id":"c1","object":"chat.completion","model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"private-response"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`)
+							fmt.Fprint(w, `{"id":"c1","object":"chat.completion","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"private-response"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`)
 						}
 					})
 					model := openAIModel("m", upstream.URL)

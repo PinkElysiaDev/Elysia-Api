@@ -566,9 +566,12 @@
             "content": [
               {
                 "type": "output_text",
-                "text": "hi"
+                "text": "hi",
+                "annotations": []
               }
-            ]
+            ],
+            "id": "r_item_0",
+            "status": "completed"
           }
         ],
         "usage": {
@@ -578,7 +581,8 @@
           "input_tokens_details": {
             "cached_tokens": 15
           }
-        }
+        },
+        "created_at": 1
       },
       "expected": {
         "schemaVersion": 1,
@@ -595,11 +599,14 @@
                 "kind": "text",
                 "payload": "hi"
               }
-            ]
+            ],
+            "id": "r_item_0",
+            "status": "completed"
           }
         ],
         "attributes": {
-          "finishReason": "stop"
+          "finishReason": "stop",
+          "created_at": 1
         },
         "usage": {
           "input": {
@@ -648,11 +655,14 @@
                 "kind": "text",
                 "payload": "hi"
               }
-            ]
+            ],
+            "id": "r_item_0",
+            "status": "completed"
           }
         ],
         "attributes": {
-          "finishReason": "stop"
+          "finishReason": "stop",
+          "created_at": 1
         },
         "usage": {
           "input": {
@@ -700,9 +710,12 @@
                 "content": [
                   {
                     "type": "output_text",
-                    "text": "hi"
+                    "text": "hi",
+                    "annotations": []
                   }
-                ]
+                ],
+                "id": "r_item_0",
+                "status": "completed"
               }
             ],
             "usage": {
@@ -712,7 +725,8 @@
               "input_tokens_details": {
                 "cached_tokens": 15
               }
-            }
+            },
+            "created_at": 1
           }
         }
       },
@@ -728,9 +742,12 @@
             "content": [
               {
                 "type": "output_text",
-                "text": "hi"
+                "text": "hi",
+                "annotations": []
               }
-            ]
+            ],
+            "id": "r_item_0",
+            "status": "completed"
           }
         ],
         "usage": {
@@ -740,7 +757,8 @@
           "input_tokens_details": {
             "cached_tokens": 15
           }
-        }
+        },
+        "created_at": 1
       },
       "context": {
         "model": "m"
@@ -765,9 +783,12 @@
             "type": "function_call",
             "call_id": "call",
             "name": "lookup",
-            "arguments": "{\"n\":9007199254740993}"
+            "arguments": "{\"n\":9007199254740993}",
+            "id": "r_item_0",
+            "status": "completed"
           }
-        ]
+        ],
+        "created_at": 1
       },
       "expected": {
         "schemaVersion": 1,
@@ -785,11 +806,14 @@
               "value": {
                 "n": 9007199254740993
               }
-            }
+            },
+            "id": "r_item_0",
+            "status": "completed"
           }
         ],
         "attributes": {
-          "finishReason": "tool_calls"
+          "finishReason": "tool_calls",
+          "created_at": 1
         }
       },
       "context": {
@@ -821,11 +845,14 @@
               "value": {
                 "n": 9007199254740993
               }
-            }
+            },
+            "id": "r_item_0",
+            "status": "completed"
           }
         ],
         "attributes": {
-          "finishReason": "tool_calls"
+          "finishReason": "tool_calls",
+          "created_at": 1
         },
         "native": {
           "source": {
@@ -853,9 +880,12 @@
                 "type": "function_call",
                 "call_id": "call",
                 "name": "lookup",
-                "arguments": "{\"n\":9007199254740993}"
+                "arguments": "{\"n\":9007199254740993}",
+                "id": "r_item_0",
+                "status": "completed"
               }
-            ]
+            ],
+            "created_at": 1
           }
         }
       },
@@ -869,9 +899,12 @@
             "type": "function_call",
             "call_id": "call",
             "name": "lookup",
-            "arguments": "{\"n\":9007199254740993}"
+            "arguments": "{\"n\":9007199254740993}",
+            "id": "r_item_0",
+            "status": "completed"
           }
-        ]
+        ],
+        "created_at": 1
       },
       "context": {
         "model": "m"
@@ -1858,8 +1891,23 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "output": []
-          }
+            "output": [],
+            "created_at": 1,
+            "object": "response"
+          },
+          "sequence_number": 0
+        },
+        {
+          "type": "response.output_item.added",
+          "output_index": 0,
+          "item": {
+            "id": "r_item_0",
+            "type": "message",
+            "role": "assistant",
+            "status": "in_progress",
+            "content": []
+          },
+          "sequence_number": 1
         },
         {
           "type": "response.content_part.added",
@@ -1867,20 +1915,27 @@
           "content_index": 0,
           "part": {
             "type": "output_text",
-            "text": ""
-          }
+            "text": "",
+            "annotations": []
+          },
+          "sequence_number": 2,
+          "item_id": "r_item_0"
         },
         {
           "type": "response.output_text.delta",
           "output_index": 0,
           "content_index": 0,
-          "delta": "hi"
+          "delta": "hi",
+          "sequence_number": 3,
+          "item_id": "r_item_0"
         },
         {
           "type": "response.output_text.done",
           "output_index": 0,
           "content_index": 0,
-          "text": "hi"
+          "text": "hi",
+          "sequence_number": 4,
+          "item_id": "r_item_0"
         },
         {
           "type": "response.content_part.done",
@@ -1888,8 +1943,29 @@
           "content_index": 0,
           "part": {
             "type": "output_text",
-            "text": "hi"
-          }
+            "text": "hi",
+            "annotations": []
+          },
+          "sequence_number": 5,
+          "item_id": "r_item_0"
+        },
+        {
+          "type": "response.output_item.done",
+          "output_index": 0,
+          "item": {
+            "id": "r_item_0",
+            "type": "message",
+            "role": "assistant",
+            "status": "completed",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "hi",
+                "annotations": []
+              }
+            ]
+          },
+          "sequence_number": 6
         },
         {
           "type": "response.completed",
@@ -1905,9 +1981,12 @@
                 "content": [
                   {
                     "type": "output_text",
-                    "text": "hi"
+                    "text": "hi",
+                    "annotations": []
                   }
-                ]
+                ],
+                "id": "r_item_0",
+                "status": "completed"
               }
             ],
             "usage": {
@@ -1917,8 +1996,10 @@
               "input_tokens_details": {
                 "cached_tokens": 15
               }
-            }
-          }
+            },
+            "created_at": 1
+          },
+          "sequence_number": 7
         }
       ],
       "expected": [
@@ -1933,7 +2014,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           }
         },
         {
@@ -1997,11 +2081,14 @@
                     "kind": "text",
                     "payload": "hi"
                   }
-                ]
+                ],
+                "id": "r_item_0",
+                "status": "completed"
               }
             ],
             "attributes": {
-              "finishReason": "stop"
+              "finishReason": "stop",
+              "created_at": 1
             },
             "usage": {
               "input": {
@@ -2063,12 +2150,27 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "output": []
+            "output": [],
+            "created_at": 1,
+            "object": "response"
           },
           "extension": {
             "long": 9007199254740993,
             "empty": []
-          }
+          },
+          "sequence_number": 0
+        },
+        {
+          "type": "response.output_item.added",
+          "output_index": 0,
+          "item": {
+            "id": "r_item_0",
+            "type": "message",
+            "role": "assistant",
+            "status": "in_progress",
+            "content": []
+          },
+          "sequence_number": 1
         },
         {
           "type": "response.content_part.added",
@@ -2076,20 +2178,27 @@
           "content_index": 0,
           "part": {
             "type": "output_text",
-            "text": ""
-          }
+            "text": "",
+            "annotations": []
+          },
+          "sequence_number": 2,
+          "item_id": "r_item_0"
         },
         {
           "type": "response.output_text.delta",
           "output_index": 0,
           "content_index": 0,
-          "delta": "hi"
+          "delta": "hi",
+          "sequence_number": 3,
+          "item_id": "r_item_0"
         },
         {
           "type": "response.output_text.done",
           "output_index": 0,
           "content_index": 0,
-          "text": "hi"
+          "text": "hi",
+          "sequence_number": 4,
+          "item_id": "r_item_0"
         },
         {
           "type": "response.content_part.done",
@@ -2097,8 +2206,29 @@
           "content_index": 0,
           "part": {
             "type": "output_text",
-            "text": "hi"
-          }
+            "text": "hi",
+            "annotations": []
+          },
+          "sequence_number": 5,
+          "item_id": "r_item_0"
+        },
+        {
+          "type": "response.output_item.done",
+          "output_index": 0,
+          "item": {
+            "id": "r_item_0",
+            "type": "message",
+            "role": "assistant",
+            "status": "completed",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "hi",
+                "annotations": []
+              }
+            ]
+          },
+          "sequence_number": 6
         },
         {
           "type": "response.completed",
@@ -2114,9 +2244,12 @@
                 "content": [
                   {
                     "type": "output_text",
-                    "text": "hi"
+                    "text": "hi",
+                    "annotations": []
                   }
-                ]
+                ],
+                "id": "r_item_0",
+                "status": "completed"
               }
             ],
             "usage": {
@@ -2126,8 +2259,10 @@
               "input_tokens_details": {
                 "cached_tokens": 15
               }
-            }
-          }
+            },
+            "created_at": 1
+          },
+          "sequence_number": 7
         }
       ],
       "expected": [
@@ -2142,7 +2277,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           },
           "unmapped": {
             "source": {
@@ -2226,11 +2364,14 @@
                     "kind": "text",
                     "payload": "hi"
                   }
-                ]
+                ],
+                "id": "r_item_0",
+                "status": "completed"
               }
             ],
             "attributes": {
-              "finishReason": "stop"
+              "finishReason": "stop",
+              "created_at": 1
             },
             "usage": {
               "input": {
@@ -2297,7 +2438,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           }
         },
         {
@@ -2341,7 +2485,8 @@
             "status": "completed",
             "content": null,
             "attributes": {
-              "finishReason": "stop"
+              "finishReason": "stop",
+              "created_at": 1
             }
           }
         },
@@ -2378,7 +2523,8 @@
             "model": "m",
             "object": "response",
             "status": "in_progress",
-            "output": []
+            "output": [],
+            "created_at": 1
           },
           "sequence_number": 0
         },
@@ -2405,7 +2551,8 @@
           "content_index": 0,
           "part": {
             "type": "output_text",
-            "text": ""
+            "text": "",
+            "annotations": []
           },
           "sequence_number": 2
         },
@@ -2435,7 +2582,8 @@
           "content_index": 0,
           "part": {
             "type": "output_text",
-            "text": "hi"
+            "text": "hi",
+            "annotations": []
           },
           "sequence_number": 5
         },
@@ -2453,7 +2601,8 @@
             "content": [
               {
                 "type": "output_text",
-                "text": "hi"
+                "text": "hi",
+                "annotations": []
               }
             ]
           },
@@ -2475,7 +2624,8 @@
                 "content": [
                   {
                     "type": "output_text",
-                    "text": "hi"
+                    "text": "hi",
+                    "annotations": []
                   }
                 ]
               }
@@ -2487,7 +2637,8 @@
               "input_tokens_details": {
                 "cached_tokens": 15
               }
-            }
+            },
+            "created_at": 1
           },
           "sequence_number": 7
         }
@@ -2513,8 +2664,11 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "output": []
-          }
+            "output": [],
+            "created_at": 1,
+            "object": "response"
+          },
+          "sequence_number": 0
         },
         {
           "type": "response.output_item.added",
@@ -2523,18 +2677,25 @@
             "type": "function_call",
             "call_id": "call",
             "name": "lookup",
-            "arguments": ""
-          }
+            "arguments": "",
+            "id": "r_item_0",
+            "status": "in_progress"
+          },
+          "sequence_number": 1
         },
         {
           "type": "response.function_call_arguments.delta",
           "output_index": 0,
-          "delta": "{\"n\":9007199254740993}"
+          "delta": "{\"n\":9007199254740993}",
+          "sequence_number": 2,
+          "item_id": "r_item_0"
         },
         {
           "type": "response.function_call_arguments.done",
           "output_index": 0,
-          "arguments": "{\"n\":9007199254740993}"
+          "arguments": "{\"n\":9007199254740993}",
+          "sequence_number": 3,
+          "item_id": "r_item_0"
         },
         {
           "type": "response.output_item.done",
@@ -2543,8 +2704,11 @@
             "type": "function_call",
             "call_id": "call",
             "name": "lookup",
-            "arguments": "{\"n\":9007199254740993}"
-          }
+            "arguments": "{\"n\":9007199254740993}",
+            "id": "r_item_0",
+            "status": "completed"
+          },
+          "sequence_number": 4
         },
         {
           "type": "response.completed",
@@ -2558,10 +2722,14 @@
                 "type": "function_call",
                 "call_id": "call",
                 "name": "lookup",
-                "arguments": "{\"n\":9007199254740993}"
+                "arguments": "{\"n\":9007199254740993}",
+                "id": "r_item_0",
+                "status": "completed"
               }
-            ]
-          }
+            ],
+            "created_at": 1
+          },
+          "sequence_number": 5
         }
       ],
       "expected": [
@@ -2576,7 +2744,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           }
         },
         {
@@ -2592,7 +2763,9 @@
             "callId": "call",
             "input": {
               "kind": "json"
-            }
+            },
+            "id": "r_item_0",
+            "status": "in_progress"
           }
         },
         {
@@ -2620,7 +2793,9 @@
               "value": {
                 "n": 9007199254740993
               }
-            }
+            },
+            "id": "r_item_0",
+            "status": "in_progress"
           }
         },
         {
@@ -2639,7 +2814,9 @@
               "value": {
                 "n": 9007199254740993
               }
-            }
+            },
+            "id": "r_item_0",
+            "status": "completed"
           }
         },
         {
@@ -2663,11 +2840,14 @@
                   "value": {
                     "n": 9007199254740993
                   }
-                }
+                },
+                "id": "r_item_0",
+                "status": "completed"
               }
             ],
             "attributes": {
-              "finishReason": "tool_calls"
+              "finishReason": "tool_calls",
+              "created_at": 1
             }
           }
         }
@@ -2698,7 +2878,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           }
         },
         {
@@ -2747,7 +2930,8 @@
             "status": "completed",
             "content": null,
             "attributes": {
-              "finishReason": "tool_calls"
+              "finishReason": "tool_calls",
+              "created_at": 1
             }
           }
         }
@@ -2760,7 +2944,8 @@
             "model": "m",
             "object": "response",
             "status": "in_progress",
-            "output": []
+            "output": [],
+            "created_at": 1
           },
           "sequence_number": 0
         },
@@ -2775,7 +2960,8 @@
             "call_id": "call",
             "name": "lookup",
             "arguments": "",
-            "id": "item:tool"
+            "id": "item:tool",
+            "status": "in_progress"
           },
           "sequence_number": 1
         },
@@ -2799,7 +2985,8 @@
             "call_id": "call",
             "name": "lookup",
             "arguments": "{\"n\":9007199254740993}",
-            "id": "item:tool"
+            "id": "item:tool",
+            "status": "completed"
           },
           "sequence_number": 3
         },
@@ -2816,9 +3003,11 @@
                 "call_id": "call",
                 "name": "lookup",
                 "arguments": "{\"n\":9007199254740993}",
-                "id": "item:tool"
+                "id": "item:tool",
+                "status": "completed"
               }
-            ]
+            ],
+            "created_at": 1
           },
           "sequence_number": 4
         }
@@ -3045,9 +3234,12 @@
             "type": "custom_tool_call",
             "call_id": "call",
             "name": "lookup",
-            "input": "echo ok"
+            "input": "echo ok",
+            "id": "r_item_0",
+            "status": "completed"
           }
-        ]
+        ],
+        "created_at": 1
       },
       "expected": {
         "schemaVersion": 1,
@@ -3063,11 +3255,14 @@
             "input": {
               "kind": "text",
               "value": "echo ok"
-            }
+            },
+            "id": "r_item_0",
+            "status": "completed"
           }
         ],
         "attributes": {
-          "finishReason": "tool_calls"
+          "finishReason": "tool_calls",
+          "created_at": 1
         }
       },
       "context": {
@@ -3097,11 +3292,14 @@
             "input": {
               "kind": "text",
               "value": "echo ok"
-            }
+            },
+            "id": "r_item_0",
+            "status": "completed"
           }
         ],
         "attributes": {
-          "finishReason": "tool_calls"
+          "finishReason": "tool_calls",
+          "created_at": 1
         },
         "native": {
           "source": {
@@ -3129,9 +3327,12 @@
                 "type": "custom_tool_call",
                 "call_id": "call",
                 "name": "lookup",
-                "input": "echo ok"
+                "input": "echo ok",
+                "id": "r_item_0",
+                "status": "completed"
               }
-            ]
+            ],
+            "created_at": 1
           }
         }
       },
@@ -3145,9 +3346,12 @@
             "type": "custom_tool_call",
             "call_id": "call",
             "name": "lookup",
-            "input": "echo ok"
+            "input": "echo ok",
+            "id": "r_item_0",
+            "status": "completed"
           }
-        ]
+        ],
+        "created_at": 1
       },
       "context": {
         "model": "m"
@@ -3169,8 +3373,11 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "output": []
-          }
+            "output": [],
+            "created_at": 1,
+            "object": "response"
+          },
+          "sequence_number": 0
         },
         {
           "type": "response.output_item.added",
@@ -3179,18 +3386,25 @@
             "type": "custom_tool_call",
             "call_id": "call",
             "name": "lookup",
-            "input": ""
-          }
+            "input": "",
+            "id": "r_item_0",
+            "status": "in_progress"
+          },
+          "sequence_number": 1
         },
         {
           "type": "response.custom_tool_call_input.delta",
           "output_index": 0,
-          "delta": "echo ok"
+          "delta": "echo ok",
+          "sequence_number": 2,
+          "item_id": "r_item_0"
         },
         {
           "type": "response.custom_tool_call_input.done",
           "output_index": 0,
-          "input": "echo ok"
+          "input": "echo ok",
+          "sequence_number": 3,
+          "item_id": "r_item_0"
         },
         {
           "type": "response.output_item.done",
@@ -3199,8 +3413,11 @@
             "type": "custom_tool_call",
             "call_id": "call",
             "name": "lookup",
-            "input": "echo ok"
-          }
+            "input": "echo ok",
+            "id": "r_item_0",
+            "status": "completed"
+          },
+          "sequence_number": 4
         },
         {
           "type": "response.completed",
@@ -3214,10 +3431,14 @@
                 "type": "custom_tool_call",
                 "call_id": "call",
                 "name": "lookup",
-                "input": "echo ok"
+                "input": "echo ok",
+                "id": "r_item_0",
+                "status": "completed"
               }
-            ]
-          }
+            ],
+            "created_at": 1
+          },
+          "sequence_number": 5
         }
       ],
       "expected": [
@@ -3232,7 +3453,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           }
         },
         {
@@ -3248,7 +3472,9 @@
             "callId": "call",
             "input": {
               "kind": "text"
-            }
+            },
+            "id": "r_item_0",
+            "status": "in_progress"
           }
         },
         {
@@ -3274,7 +3500,9 @@
             "input": {
               "kind": "text",
               "value": "echo ok"
-            }
+            },
+            "id": "r_item_0",
+            "status": "in_progress"
           }
         },
         {
@@ -3291,7 +3519,9 @@
             "input": {
               "kind": "text",
               "value": "echo ok"
-            }
+            },
+            "id": "r_item_0",
+            "status": "completed"
           }
         },
         {
@@ -3313,11 +3543,14 @@
                 "input": {
                   "kind": "text",
                   "value": "echo ok"
-                }
+                },
+                "id": "r_item_0",
+                "status": "completed"
               }
             ],
             "attributes": {
-              "finishReason": "tool_calls"
+              "finishReason": "tool_calls",
+              "created_at": 1
             }
           }
         }
@@ -3348,7 +3581,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           }
         },
         {
@@ -3397,7 +3633,8 @@
             "status": "completed",
             "content": null,
             "attributes": {
-              "finishReason": "tool_calls"
+              "finishReason": "tool_calls",
+              "created_at": 1
             }
           }
         }
@@ -3410,7 +3647,8 @@
             "model": "m",
             "object": "response",
             "status": "in_progress",
-            "output": []
+            "output": [],
+            "created_at": 1
           },
           "sequence_number": 0
         },
@@ -3425,7 +3663,8 @@
             "call_id": "call",
             "name": "lookup",
             "input": "",
-            "id": "item:tool"
+            "id": "item:tool",
+            "status": "in_progress"
           },
           "sequence_number": 1
         },
@@ -3449,7 +3688,8 @@
             "call_id": "call",
             "name": "lookup",
             "input": "echo ok",
-            "id": "item:tool"
+            "id": "item:tool",
+            "status": "completed"
           },
           "sequence_number": 3
         },
@@ -3466,9 +3706,11 @@
                 "call_id": "call",
                 "name": "lookup",
                 "input": "echo ok",
-                "id": "item:tool"
+                "id": "item:tool",
+                "status": "completed"
               }
-            ]
+            ],
+            "created_at": 1
           },
           "sequence_number": 4
         }
@@ -3741,7 +3983,8 @@
                 "type": "summary_text",
                 "text": "consider"
               }
-            ]
+            ],
+            "id": "r_item_0"
           },
           {
             "type": "message",
@@ -3749,11 +3992,16 @@
             "content": [
               {
                 "type": "output_text",
-                "text": "hi"
+                "text": "hi",
+                "annotations": []
               }
-            ]
+            ],
+            "id": "r_item_1",
+            "status": "completed"
           }
-        ]
+        ],
+        "created_at": 1,
+        "object": "response"
       },
       "expected": {
         "schemaVersion": 1,
@@ -3770,7 +4018,8 @@
                 "kind": "text",
                 "payload": "consider"
               }
-            ]
+            ],
+            "id": "r_item_0"
           },
           {
             "kind": "message",
@@ -3780,11 +4029,14 @@
                 "kind": "text",
                 "payload": "hi"
               }
-            ]
+            ],
+            "id": "r_item_1",
+            "status": "completed"
           }
         ],
         "attributes": {
-          "finishReason": "stop"
+          "finishReason": "stop",
+          "created_at": 1
         }
       },
       "context": {
@@ -3815,7 +4067,8 @@
                 "kind": "text",
                 "payload": "consider"
               }
-            ]
+            ],
+            "id": "r_item_0"
           },
           {
             "kind": "message",
@@ -3825,11 +4078,14 @@
                 "kind": "text",
                 "payload": "hi"
               }
-            ]
+            ],
+            "id": "r_item_1",
+            "status": "completed"
           }
         ],
         "attributes": {
-          "finishReason": "stop"
+          "finishReason": "stop",
+          "created_at": 1
         },
         "native": {
           "source": {
@@ -3859,7 +4115,8 @@
                     "type": "summary_text",
                     "text": "consider"
                   }
-                ]
+                ],
+                "id": "r_item_0"
               },
               {
                 "type": "message",
@@ -3867,11 +4124,16 @@
                 "content": [
                   {
                     "type": "output_text",
-                    "text": "hi"
+                    "text": "hi",
+                    "annotations": []
                   }
-                ]
+                ],
+                "id": "r_item_1",
+                "status": "completed"
               }
-            ]
+            ],
+            "created_at": 1,
+            "object": "response"
           }
         }
       },
@@ -3887,7 +4149,8 @@
                 "type": "summary_text",
                 "text": "consider"
               }
-            ]
+            ],
+            "id": "r_item_0"
           },
           {
             "type": "message",
@@ -3895,11 +4158,16 @@
             "content": [
               {
                 "type": "output_text",
-                "text": "hi"
+                "text": "hi",
+                "annotations": []
               }
-            ]
+            ],
+            "id": "r_item_1",
+            "status": "completed"
           }
-        ]
+        ],
+        "created_at": 1,
+        "object": "response"
       },
       "context": {
         "model": "m"
@@ -3921,8 +4189,11 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "output": []
-          }
+            "output": [],
+            "created_at": 1,
+            "object": "response"
+          },
+          "sequence_number": 0
         },
         {
           "type": "response.output_item.added",
@@ -3931,7 +4202,8 @@
             "type": "reasoning",
             "id": "rs",
             "summary": []
-          }
+          },
+          "sequence_number": 1
         },
         {
           "type": "response.reasoning_summary_part.added",
@@ -3940,13 +4212,17 @@
           "part": {
             "type": "summary_text",
             "text": ""
-          }
+          },
+          "sequence_number": 2,
+          "item_id": "rs"
         },
         {
           "type": "response.reasoning_summary_text.delta",
           "output_index": 0,
           "summary_index": 0,
-          "delta": "consider"
+          "delta": "consider",
+          "sequence_number": 3,
+          "item_id": "rs"
         },
         {
           "type": "response.reasoning_summary_part.done",
@@ -3955,7 +4231,9 @@
           "part": {
             "type": "summary_text",
             "text": "consider"
-          }
+          },
+          "sequence_number": 4,
+          "item_id": "rs"
         },
         {
           "type": "response.output_item.done",
@@ -3969,7 +4247,8 @@
                 "text": "consider"
               }
             ]
-          }
+          },
+          "sequence_number": 5
         },
         {
           "type": "response.completed",
@@ -3988,8 +4267,11 @@
                   }
                 ]
               }
-            ]
-          }
+            ],
+            "created_at": 1,
+            "object": "response"
+          },
+          "sequence_number": 6
         }
       ],
       "expected": [
@@ -4004,7 +4286,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           }
         },
         {
@@ -4121,7 +4406,8 @@
               }
             ],
             "attributes": {
-              "finishReason": "stop"
+              "finishReason": "stop",
+              "created_at": 1
             }
           }
         }
@@ -4152,7 +4438,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           }
         },
         {
@@ -4195,7 +4484,8 @@
             "status": "completed",
             "content": null,
             "attributes": {
-              "finishReason": "stop"
+              "finishReason": "stop",
+              "created_at": 1
             }
           }
         }
@@ -4208,7 +4498,8 @@
             "model": "m",
             "object": "response",
             "status": "in_progress",
-            "output": []
+            "output": [],
+            "created_at": 1
           },
           "sequence_number": 0
         },
@@ -4281,7 +4572,8 @@
                 "type": "summary_text",
                 "text": "consider"
               }
-            ]
+            ],
+            "status": "completed"
           },
           "content_index": 0,
           "sequence_number": 6
@@ -4302,9 +4594,11 @@
                     "type": "summary_text",
                     "text": "consider"
                   }
-                ]
+                ],
+                "status": "completed"
               }
-            ]
+            ],
+            "created_at": 1
           },
           "sequence_number": 7
         }
@@ -4633,7 +4927,8 @@
                 "text": "consider"
               }
             ],
-            "encrypted_content": "sealed"
+            "encrypted_content": "sealed",
+            "id": "r_item_0"
           },
           {
             "type": "message",
@@ -4641,11 +4936,16 @@
             "content": [
               {
                 "type": "output_text",
-                "text": "hi"
+                "text": "hi",
+                "annotations": []
               }
-            ]
+            ],
+            "id": "r_item_1",
+            "status": "completed"
           }
-        ]
+        ],
+        "created_at": 1,
+        "object": "response"
       },
       "expected": {
         "schemaVersion": 1,
@@ -4688,7 +4988,8 @@
                 "account": "fixture",
                 "model": "m"
               }
-            }
+            },
+            "id": "r_item_0"
           },
           {
             "kind": "message",
@@ -4698,11 +4999,14 @@
                 "kind": "text",
                 "payload": "hi"
               }
-            ]
+            ],
+            "id": "r_item_1",
+            "status": "completed"
           }
         ],
         "attributes": {
-          "finishReason": "stop"
+          "finishReason": "stop",
+          "created_at": 1
         }
       },
       "context": {
@@ -4759,7 +5063,8 @@
                 "account": "fixture",
                 "model": "m"
               }
-            }
+            },
+            "id": "r_item_0"
           },
           {
             "kind": "message",
@@ -4769,11 +5074,14 @@
                 "kind": "text",
                 "payload": "hi"
               }
-            ]
+            ],
+            "id": "r_item_1",
+            "status": "completed"
           }
         ],
         "attributes": {
-          "finishReason": "stop"
+          "finishReason": "stop",
+          "created_at": 1
         },
         "native": {
           "source": {
@@ -4804,7 +5112,8 @@
                     "text": "consider"
                   }
                 ],
-                "encrypted_content": "sealed"
+                "encrypted_content": "sealed",
+                "id": "r_item_0"
               },
               {
                 "type": "message",
@@ -4812,11 +5121,16 @@
                 "content": [
                   {
                     "type": "output_text",
-                    "text": "hi"
+                    "text": "hi",
+                    "annotations": []
                   }
-                ]
+                ],
+                "id": "r_item_1",
+                "status": "completed"
               }
-            ]
+            ],
+            "created_at": 1,
+            "object": "response"
           }
         }
       },
@@ -4833,7 +5147,8 @@
                 "text": "consider"
               }
             ],
-            "encrypted_content": "sealed"
+            "encrypted_content": "sealed",
+            "id": "r_item_0"
           },
           {
             "type": "message",
@@ -4841,11 +5156,16 @@
             "content": [
               {
                 "type": "output_text",
-                "text": "hi"
+                "text": "hi",
+                "annotations": []
               }
-            ]
+            ],
+            "id": "r_item_1",
+            "status": "completed"
           }
-        ]
+        ],
+        "created_at": 1,
+        "object": "response"
       },
       "context": {
         "model": "m"
@@ -4867,8 +5187,11 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "output": []
-          }
+            "output": [],
+            "created_at": 1,
+            "object": "response"
+          },
+          "sequence_number": 0
         },
         {
           "type": "response.output_item.added",
@@ -4877,7 +5200,8 @@
             "type": "reasoning",
             "id": "rs",
             "summary": []
-          }
+          },
+          "sequence_number": 1
         },
         {
           "type": "response.reasoning_summary_part.added",
@@ -4886,13 +5210,17 @@
           "part": {
             "type": "summary_text",
             "text": ""
-          }
+          },
+          "sequence_number": 2,
+          "item_id": "rs"
         },
         {
           "type": "response.reasoning_summary_text.delta",
           "output_index": 0,
           "summary_index": 0,
-          "delta": "consider"
+          "delta": "consider",
+          "sequence_number": 3,
+          "item_id": "rs"
         },
         {
           "type": "response.reasoning_summary_part.done",
@@ -4901,7 +5229,9 @@
           "part": {
             "type": "summary_text",
             "text": "consider"
-          }
+          },
+          "sequence_number": 4,
+          "item_id": "rs"
         },
         {
           "type": "response.output_item.done",
@@ -4916,7 +5246,8 @@
               }
             ],
             "encrypted_content": "sealed"
-          }
+          },
+          "sequence_number": 5
         },
         {
           "type": "response.completed",
@@ -4936,8 +5267,11 @@
                 ],
                 "encrypted_content": "sealed"
               }
-            ]
-          }
+            ],
+            "created_at": 1,
+            "object": "response"
+          },
+          "sequence_number": 6
         }
       ],
       "expected": [
@@ -4952,7 +5286,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           }
         },
         {
@@ -5121,7 +5458,8 @@
               }
             ],
             "attributes": {
-              "finishReason": "stop"
+              "finishReason": "stop",
+              "created_at": 1
             }
           }
         }
@@ -5152,7 +5490,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           }
         },
         {
@@ -5221,7 +5562,8 @@
             "status": "completed",
             "content": null,
             "attributes": {
-              "finishReason": "stop"
+              "finishReason": "stop",
+              "created_at": 1
             }
           }
         }
@@ -5234,7 +5576,8 @@
             "model": "m",
             "object": "response",
             "status": "in_progress",
-            "output": []
+            "output": [],
+            "created_at": 1
           },
           "sequence_number": 0
         },
@@ -5308,7 +5651,8 @@
                 "text": "consider"
               }
             ],
-            "encrypted_content": "sealed"
+            "encrypted_content": "sealed",
+            "status": "completed"
           },
           "content_index": 0,
           "sequence_number": 6
@@ -5330,9 +5674,11 @@
                     "text": "consider"
                   }
                 ],
-                "encrypted_content": "sealed"
+                "encrypted_content": "sealed",
+                "status": "completed"
               }
-            ]
+            ],
+            "created_at": 1
           },
           "sequence_number": 7
         }
@@ -5363,9 +5709,12 @@
             "content": [
               {
                 "type": "output_text",
-                "text": "hi"
+                "text": "hi",
+                "annotations": []
               }
-            ]
+            ],
+            "id": "r_item_0",
+            "status": "completed"
           }
         ],
         "usage": {
@@ -5376,7 +5725,8 @@
             "cached_tokens": 4,
             "cache_write_tokens": 7
           }
-        }
+        },
+        "created_at": 1
       },
       "expected": {
         "schemaVersion": 1,
@@ -5393,11 +5743,14 @@
                 "kind": "text",
                 "payload": "hi"
               }
-            ]
+            ],
+            "id": "r_item_0",
+            "status": "completed"
           }
         ],
         "attributes": {
-          "finishReason": "stop"
+          "finishReason": "stop",
+          "created_at": 1
         },
         "usage": {
           "input": {

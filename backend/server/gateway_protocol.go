@@ -187,6 +187,11 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 			return &gatewayFailure{http.StatusBadRequest, e}
 		}
 	}
+	if v, e := protocol.ParseValue(body); e != nil {
+		return e
+	} else if e = candidate.compiled.ValidateWireOutput(protocol.EncodeRequest, v); e != nil {
+		return e
+	}
 	if err := candidate.compiled.CheckOperationInput(candidate.operation, body); err != nil {
 		return &gatewayFailure{http.StatusBadRequest, err}
 	}

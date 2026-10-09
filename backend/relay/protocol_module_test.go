@@ -49,6 +49,13 @@ func TestCompiledBuiltinRequestMatrix(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				if source == "gemini" && target != "gemini" {
+					c, _ := protocol.ResolveConversion(protocol.DefaultConversionPolicy(decoder, encoder))
+					request, err = c.Request(t.Context(), request, protocol.ConversionContext{}, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
 				body, err := encoder.EncodeRequest(t.Context(), request, options)
 				if source != "gemini" && target == "gemini" {
 					// 非 JSON 文本工具结果（"found"）在 Gemini 目标仍显式拒绝；

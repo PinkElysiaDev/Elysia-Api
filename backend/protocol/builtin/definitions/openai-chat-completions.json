@@ -5,7 +5,9 @@
   "version": "2.2.5",
   "family": "openai_chat",
   "wireVersion": "v2",
-  "requires": ["conversion.client_output.v1"],
+  "requires": [
+    "conversion.client_output.v1"
+  ],
   "capabilities": {
     "text": true,
     "tools.function": true,
@@ -573,7 +575,8 @@
           "prompt_tokens_details": {
             "cached_tokens": 15
           }
-        }
+        },
+        "created": 1
       },
       "expected": {
         "schemaVersion": 1,
@@ -594,7 +597,8 @@
           }
         ],
         "attributes": {
-          "finishReason": "stop"
+          "finishReason": "stop",
+          "created_at": 1
         },
         "usage": {
           "input": {
@@ -647,7 +651,8 @@
           }
         ],
         "attributes": {
-          "finishReason": "stop"
+          "finishReason": "stop",
+          "created_at": 1
         },
         "usage": {
           "input": {
@@ -704,7 +709,8 @@
               "prompt_tokens_details": {
                 "cached_tokens": 15
               }
-            }
+            },
+            "created": 1
           }
         }
       },
@@ -729,7 +735,8 @@
           "prompt_tokens_details": {
             "cached_tokens": 15
           }
-        }
+        },
+        "created": 1
       },
       "context": {
         "model": "m"
@@ -766,7 +773,8 @@
             },
             "finish_reason": "tool_calls"
           }
-        ]
+        ],
+        "created": 1
       },
       "expected": {
         "schemaVersion": 1,
@@ -794,7 +802,8 @@
           }
         ],
         "attributes": {
-          "finishReason": "tool_calls"
+          "finishReason": "tool_calls",
+          "created_at": 1
         }
       },
       "context": {
@@ -836,7 +845,8 @@
           }
         ],
         "attributes": {
-          "finishReason": "tool_calls"
+          "finishReason": "tool_calls",
+          "created_at": 1
         },
         "native": {
           "source": {
@@ -876,7 +886,8 @@
                 },
                 "finish_reason": "tool_calls"
               }
-            ]
+            ],
+            "created": 1
           }
         }
       },
@@ -902,7 +913,8 @@
             },
             "finish_reason": "tool_calls"
           }
-        ]
+        ],
+        "created": 1
       },
       "context": {
         "model": "m"
@@ -1646,7 +1658,9 @@
                 "content": "hi"
               }
             }
-          ]
+          ],
+          "created": 1,
+          "object": "chat.completion.chunk"
         },
         {
           "choices": [
@@ -1655,7 +1669,11 @@
               "delta": {},
               "finish_reason": "stop"
             }
-          ]
+          ],
+          "created": 1,
+          "object": "chat.completion.chunk",
+          "id": "r",
+          "model": "m"
         },
         {
           "choices": [],
@@ -1666,7 +1684,11 @@
             "prompt_tokens_details": {
               "cached_tokens": 15
             }
-          }
+          },
+          "created": 1,
+          "object": "chat.completion.chunk",
+          "id": "r",
+          "model": "m"
         }
       ],
       "expected": [
@@ -1681,7 +1703,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           }
         },
         {
@@ -1717,7 +1742,8 @@
             "status": "completed",
             "content": null,
             "attributes": {
-              "finishReason": "stop"
+              "finishReason": "stop",
+              "created_at": 1
             }
           }
         },
@@ -1775,7 +1801,9 @@
           "extension": {
             "long": 9007199254740993,
             "empty": []
-          }
+          },
+          "created": 1,
+          "object": "chat.completion.chunk"
         },
         {
           "choices": [
@@ -1784,7 +1812,11 @@
               "delta": {},
               "finish_reason": "stop"
             }
-          ]
+          ],
+          "created": 1,
+          "object": "chat.completion.chunk",
+          "id": "r",
+          "model": "m"
         },
         {
           "choices": [],
@@ -1795,7 +1827,11 @@
             "prompt_tokens_details": {
               "cached_tokens": 15
             }
-          }
+          },
+          "created": 1,
+          "object": "chat.completion.chunk",
+          "id": "r",
+          "model": "m"
         }
       ],
       "expected": [
@@ -1810,7 +1846,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           },
           "unmapped": {
             "source": {
@@ -1866,7 +1905,8 @@
             "status": "completed",
             "content": null,
             "attributes": {
-              "finishReason": "stop"
+              "finishReason": "stop",
+              "created_at": 1
             }
           }
         },
@@ -1921,7 +1961,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           }
         },
         {
@@ -1965,7 +2008,8 @@
             "status": "completed",
             "content": null,
             "attributes": {
-              "finishReason": "stop"
+              "finishReason": "stop",
+              "created_at": 1
             }
           }
         },
@@ -2006,7 +2050,8 @@
                 "role": "assistant"
               }
             }
-          ]
+          ],
+          "created": 1
         },
         {
           "id": "r",
@@ -2019,7 +2064,8 @@
                 "content": "hi"
               }
             }
-          ]
+          ],
+          "created": 1
         },
         {
           "id": "r",
@@ -2031,7 +2077,8 @@
               "delta": {},
               "finish_reason": "stop"
             }
-          ]
+          ],
+          "created": 1
         },
         {
           "id": "r",
@@ -2045,7 +2092,8 @@
             "prompt_tokens_details": {
               "cached_tokens": 15
             }
-          }
+          },
+          "created": 1
         }
       ],
       "context": {
@@ -2083,7 +2131,9 @@
                 ]
               }
             }
-          ]
+          ],
+          "created": 1,
+          "object": "chat.completion.chunk"
         },
         {
           "choices": [
@@ -2092,7 +2142,11 @@
               "delta": {},
               "finish_reason": "tool_calls"
             }
-          ]
+          ],
+          "created": 1,
+          "object": "chat.completion.chunk",
+          "id": "r",
+          "model": "m"
         }
       ],
       "expected": [
@@ -2107,7 +2161,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           }
         },
         {
@@ -2148,7 +2205,8 @@
             "status": "completed",
             "content": null,
             "attributes": {
-              "finishReason": "tool_calls"
+              "finishReason": "tool_calls",
+              "created_at": 1
             }
           }
         }
@@ -2179,7 +2237,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           }
         },
         {
@@ -2228,7 +2289,8 @@
             "status": "completed",
             "content": null,
             "attributes": {
-              "finishReason": "tool_calls"
+              "finishReason": "tool_calls",
+              "created_at": 1
             }
           }
         }
@@ -2245,7 +2307,8 @@
                 "role": "assistant"
               }
             }
-          ]
+          ],
+          "created": 1
         },
         {
           "id": "r",
@@ -2268,7 +2331,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "created": 1
         },
         {
           "id": "r",
@@ -2290,7 +2354,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "created": 1
         },
         {
           "id": "r",
@@ -2302,7 +2367,8 @@
               "delta": {},
               "finish_reason": "tool_calls"
             }
-          ]
+          ],
+          "created": 1
         }
       ],
       "context": {
@@ -2520,7 +2586,9 @@
             },
             "finish_reason": "stop"
           }
-        ]
+        ],
+        "created": 1,
+        "object": "chat.completion"
       },
       "expected": {
         "schemaVersion": 1,
@@ -2545,7 +2613,8 @@
           }
         ],
         "attributes": {
-          "finishReason": "stop"
+          "finishReason": "stop",
+          "created_at": 1
         }
       },
       "context": {
@@ -2584,7 +2653,8 @@
           }
         ],
         "attributes": {
-          "finishReason": "stop"
+          "finishReason": "stop",
+          "created_at": 1
         },
         "native": {
           "source": {
@@ -2615,7 +2685,9 @@
                 },
                 "finish_reason": "stop"
               }
-            ]
+            ],
+            "created": 1,
+            "object": "chat.completion"
           }
         }
       },
@@ -2632,7 +2704,9 @@
             },
             "finish_reason": "stop"
           }
-        ]
+        ],
+        "created": 1,
+        "object": "chat.completion"
       },
       "context": {
         "model": "m"
@@ -2658,7 +2732,9 @@
                 "reasoning_content": "hi"
               }
             }
-          ]
+          ],
+          "created": 1,
+          "object": "chat.completion.chunk"
         },
         {
           "choices": [
@@ -2667,7 +2743,11 @@
               "delta": {},
               "finish_reason": "stop"
             }
-          ]
+          ],
+          "created": 1,
+          "object": "chat.completion.chunk",
+          "id": "r",
+          "model": "m"
         },
         {
           "choices": [],
@@ -2678,7 +2758,11 @@
             "prompt_tokens_details": {
               "cached_tokens": 15
             }
-          }
+          },
+          "created": 1,
+          "object": "chat.completion.chunk",
+          "id": "r",
+          "model": "m"
         }
       ],
       "expected": [
@@ -2693,7 +2777,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           }
         },
         {
@@ -2729,7 +2816,8 @@
             "status": "completed",
             "content": null,
             "attributes": {
-              "finishReason": "stop"
+              "finishReason": "stop",
+              "created_at": 1
             }
           }
         },
@@ -2784,7 +2872,10 @@
             "id": "r",
             "model": "m",
             "status": "in_progress",
-            "content": []
+            "content": [],
+            "attributes": {
+              "created_at": 1
+            }
           }
         },
         {
@@ -2828,7 +2919,8 @@
             "status": "completed",
             "content": null,
             "attributes": {
-              "finishReason": "stop"
+              "finishReason": "stop",
+              "created_at": 1
             }
           }
         },
@@ -2869,7 +2961,8 @@
                 "role": "assistant"
               }
             }
-          ]
+          ],
+          "created": 1
         },
         {
           "id": "r",
@@ -2882,7 +2975,8 @@
                 "reasoning_content": "hi"
               }
             }
-          ]
+          ],
+          "created": 1
         },
         {
           "id": "r",
@@ -2894,7 +2988,8 @@
               "delta": {},
               "finish_reason": "stop"
             }
-          ]
+          ],
+          "created": 1
         },
         {
           "id": "r",
@@ -2908,7 +3003,8 @@
             "prompt_tokens_details": {
               "cached_tokens": 15
             }
-          }
+          },
+          "created": 1
         }
       ],
       "context": {
@@ -2947,7 +3043,8 @@
             "cached_tokens": 4,
             "cache_write_tokens": 7
           }
-        }
+        },
+        "created": 1
       },
       "expected": {
         "schemaVersion": 1,
@@ -2968,7 +3065,8 @@
           }
         ],
         "attributes": {
-          "finishReason": "stop"
+          "finishReason": "stop",
+          "created_at": 1
         },
         "usage": {
           "input": {
@@ -3027,7 +3125,8 @@
           "prompt_tokens_details": {
             "cached_tokens": 15
           }
-        }
+        },
+        "created": 1
       },
       "expected": {
         "schemaVersion": 1,
@@ -3048,7 +3147,8 @@
           }
         ],
         "attributes": {
-          "finishReason": "stop"
+          "finishReason": "stop",
+          "created_at": 1
         },
         "usage": {
           "input": {

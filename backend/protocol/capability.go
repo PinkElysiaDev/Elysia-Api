@@ -37,6 +37,41 @@ const (
 // CapabilitySet contains only features supported in the checked direction.
 type CapabilitySet map[Capability]bool
 
+// CheckToolAssociations checks only the history relation. It is also used on
+// decoded final wire output, where account provenance is held by the caller.
+func CheckToolAssociations(nodes []Node, limits Limits) []ConversionIssue {
+	check := capabilityCheck{limits: limits, calls: map[string]struct{}{}, results: map[string]struct{}{}}
+	var visit func([]Node, string, int)
+	visit = func(items []Node, path string, depth int) {
+		if depth > limits.Depth {
+			check.add(LimitExceeded, path, "", "tool history depth exceeded")
+			return
+		}
+		for i, n := range items {
+			check.nodes++
+			if check.nodes > limits.Nodes {
+				check.add(LimitExceeded, path, "", "tool history node limit exceeded")
+				return
+			}
+			at := fmt.Sprintf("%s/%d", path, i)
+			if n.Kind == ToolCallNode {
+				check.call(n, at)
+			}
+			if n.Kind == ToolResultNode {
+				check.result(n, at)
+			}
+			visit(n.Children, at+"/children", depth+1)
+		}
+	}
+	visit(nodes, "/content", 1)
+	var issues []ConversionIssue
+	for _, issue := range check.issues {
+		if issue.Code == InvalidInput || issue.Code == InvalidAssociation || issue.Code == LimitExceeded {
+			issues = append(issues, issue)
+		}
+	}
+	return issues
+}
 type capabilityCheck struct {
 	target  Target
 	limits  Limits

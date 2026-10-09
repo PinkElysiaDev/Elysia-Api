@@ -17,15 +17,63 @@ type ConversionEventState struct {
 	terminal   *Event
 	id         Value
 	model      Value
+	started    bool
 }
 
 func NewConversionEventState(c *CompiledConversion, route ConversionContext) *ConversionEventState {
+	if route.Delivery == nil {
+		route.Delivery = NewDeliveryState()
+	}
 	return &ConversionEventState{conversion: c, route: route, open: map[string]bool{}}
 }
 
 func (s *ConversionEventState) Push(event Event) ([]Event, error) {
 	if s.conversion == nil {
 		return []Event{event}, nil
+	}
+	if s.conversion.hasDeliveryRule(s.route) && !s.started && event.Type != ResponseStarted && (event.Type == ItemStarted || event.Type == ResponseFinished) {
+		start, err := s.Push(Event{SchemaVersion: event.SchemaVersion, Source: event.Source, Type: ResponseStarted, ResponseID: event.ResponseID})
+		if err != nil {
+			return nil, err
+		}
+		s.Buffered = true
+		rest, err := s.Push(event)
+		return append(start, rest...), err
+	}
+	if event.Type == ResponseStarted && s.conversion.hasDeliveryRule(s.route) {
+		s.started = true
+		if event.Response == nil {
+			event.Response = &Response{SchemaVersion: SemanticSchemaVersion, ID: event.ResponseID}
+		} else {
+			copy := *event.Response
+			copy.Attributes = copyObject(event.Response.Attributes)
+			event.Response = &copy
+		}
+		if event.Response.ID.IsZero() {
+			event.Response.ID = event.ResponseID
+		}
+		prepareDelivery(event.Response, s.route, s.conversion.deliveryCodec(s.route))
+		s.id, s.model = event.Response.ID, event.Response.Model
+		s.route.Delivery.ID = s.id
+		if created := event.Response.Attributes["created_at"]; !created.IsZero() {
+			s.route.Delivery.Created = created
+		}
+	}
+	if !s.id.IsZero() && s.conversion.hasDeliveryRule(s.route) {
+		event.ResponseID = s.id
+		if event.Response != nil {
+			copy := *event.Response
+			copy.Attributes = copyObject(event.Response.Attributes)
+			copy.ID = s.id
+			copy.Model = s.model
+			if copy.Attributes == nil {
+				copy.Attributes = Object{}
+			}
+			if codec := s.conversion.deliveryCodec(s.route); (codec == "openai-chat" || codec == "responses") && !s.route.Delivery.Created.IsZero() {
+				copy.Attributes["created_at"] = s.route.Delivery.Created
+			}
+			event.Response = &copy
+		}
 	}
 	if s.conversion.HasAnthropicEnvelope(ConversionEvent, s.route) {
 		s.usage = MergeUsage(s.usage, event.Usage)

@@ -39,23 +39,24 @@ type Media struct {
 
 // Event associates deltas and snapshots with stable session/response/item IDs.
 type Event struct {
-	SchemaVersion int       `json:"schemaVersion"`
-	Source        Identity  `json:"source"`
-	Type          EventType `json:"type"`
-	SessionID     Value     `json:"sessionId,omitzero"`
-	ResponseID    Value     `json:"responseId,omitzero"`
-	ItemID        Value     `json:"itemId,omitzero"`
-	CallID        Value     `json:"callId,omitzero"`
-	Sequence      Value     `json:"sequence,omitzero"`
-	Index         *int      `json:"index,omitempty"`
-	Delta         Value     `json:"delta,omitzero"`
-	Item          *Node     `json:"item,omitempty"`
-	Response      *Response `json:"response,omitempty"`
-	Request       *Request  `json:"request,omitempty"`
-	Usage         *Usage    `json:"usage,omitempty"`
-	Media         *Media    `json:"media,omitempty"`
-	Error         Value     `json:"error,omitzero"`
-	Native        *Native   `json:"native,omitempty"`
+	Metadata      []ResponseMetadata `json:"metadata,omitempty"`
+	SchemaVersion int                `json:"schemaVersion"`
+	Source        Identity           `json:"source"`
+	Type          EventType          `json:"type"`
+	SessionID     Value              `json:"sessionId,omitzero"`
+	ResponseID    Value              `json:"responseId,omitzero"`
+	ItemID        Value              `json:"itemId,omitzero"`
+	CallID        Value              `json:"callId,omitzero"`
+	Sequence      Value              `json:"sequence,omitzero"`
+	Index         *int               `json:"index,omitempty"`
+	Delta         Value              `json:"delta,omitzero"`
+	Item          *Node              `json:"item,omitempty"`
+	Response      *Response          `json:"response,omitempty"`
+	Request       *Request           `json:"request,omitempty"`
+	Usage         *Usage             `json:"usage,omitempty"`
+	Media         *Media             `json:"media,omitempty"`
+	Error         Value              `json:"error,omitzero"`
+	Native        *Native            `json:"native,omitempty"`
 	// Unmapped is semantic evidence of wire fields without a declared mapping.
 	// It may survive same-wire frame replay, but cannot silently cross families.
 	Unmapped *Native `json:"unmapped,omitempty"`

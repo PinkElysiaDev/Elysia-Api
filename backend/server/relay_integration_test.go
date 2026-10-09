@@ -130,7 +130,7 @@ func chatRequestContext(body string) (*gin.Context, *httptest.ResponseRecorder) 
 
 func okChatCompletionBody(t *testing.T) string {
 	t.Helper()
-	return `{"id":"cmpl-1","object":"chat.completion","model":"upstream","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`
+	return `{"id":"cmpl-1","object":"chat.completion","created":1,"model":"upstream","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`
 }
 
 // 核心回归：故障转移。首个候选返回 500（可重试），第二个返回 200，

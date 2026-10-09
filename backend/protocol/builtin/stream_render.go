@@ -76,7 +76,7 @@ func (stream *streamModule) encodeStart(options p.EvaluationContext) ([]p.Value,
 		message := object(p.Object{"id": stream.id, "model": stream.model, "type": p.StringValue("message"), "role": p.StringValue("assistant"), "content": array(nil), "usage": usage, "stop_reason": nullValue(), "stop_sequence": nullValue()})
 		return []p.Value{object(p.Object{"type": p.StringValue("message_start"), "message": message})}, nil
 	case Responses:
-		return []p.Value{object(p.Object{"type": p.StringValue("response.created"), "response": object(p.Object{"id": stream.id, "model": stream.model, "object": p.StringValue("response"), "status": p.StringValue("in_progress"), "output": array(nil), "store": responsesStorageValue(options)})})}, nil
+		return []p.Value{object(p.Object{"type": p.StringValue("response.created"), "response": object(p.Object{"id": stream.id, "model": stream.model, "object": p.StringValue("response"), "status": p.StringValue("in_progress"), "created_at": stream.attributes["created_at"], "output": array(nil), "store": responsesStorageValue(options)})})}, nil
 	case Gemini:
 		return nil, nil
 	}
@@ -109,6 +109,7 @@ func (stream *streamModule) encodeItem(event p.Event, options p.EvaluationContex
 		if len(event.Item.Attributes) > 0 {
 			return nil, unsupported("/item/attributes", "stream item extensions require original frame preservation or an explicit event mapping")
 		}
+		item.node.Metadata = mergeResponseMetadata(item.node.Metadata, event.Item.Metadata)
 		if !event.Item.Name.IsZero() {
 			item.node.Name = event.Item.Name
 		}
@@ -128,6 +129,7 @@ func (stream *streamModule) encodeItem(event p.Event, options p.EvaluationContex
 			item.node.Resources = event.Item.Resources
 		}
 	}
+	item.node.Metadata = p.MergeNodeMetadata(item.node.Metadata, event.Metadata, event.Type == p.ItemDelta)
 	if !event.CallID.IsZero() {
 		item.node.CallID = event.CallID
 	}
@@ -265,7 +267,7 @@ func (stream *streamModule) encodeItemStart(key string, item *streamItem, option
 			block = p.Object{"id": id, "type": p.StringValue("reasoning"), "status": p.StringValue("in_progress"), "summary": array(nil)}
 		}
 		if node.Kind == p.ToolCallNode {
-			block = p.Object{"id": id, "type": p.StringValue("function_call"), "name": node.Name, "call_id": node.CallID, "arguments": p.StringValue("")}
+			block = p.Object{"id": id, "type": p.StringValue("function_call"), "name": node.Name, "call_id": node.CallID, "arguments": p.StringValue(""), "status": p.StringValue("in_progress")}
 			if node.Input.Kind == p.TextInput {
 				delete(block, "arguments")
 				block["type"], block["input"] = p.StringValue("custom_tool_call"), p.StringValue("")
@@ -273,7 +275,7 @@ func (stream *streamModule) encodeItemStart(key string, item *streamItem, option
 		}
 		frames := []p.Value{stream.responsesEvent("response.output_item.added", key, item, "item", object(block))}
 		if node.Kind != p.ToolCallNode && node.Kind != p.ReasoningNode {
-			part := p.Object{"type": p.StringValue("output_text"), "text": p.StringValue("")}
+			part := p.Object{"type": p.StringValue("output_text"), "text": p.StringValue(""), "annotations": array(nil)}
 			if node.Kind == p.RefusalNode {
 				part = p.Object{"type": p.StringValue("refusal"), "refusal": p.StringValue("")}
 			}
@@ -399,6 +401,7 @@ func (stream *streamModule) encodeItemEnd(key string, item *streamItem, options 
 	case Responses:
 		if node.Kind == p.ToolCallNode || node.ReasoningForm == "summary" {
 			node.ID = item.wireID
+			node.Status = p.StringValue("completed")
 		}
 		block, err := stream.module.encodeBlock(node, p.EncodeResponse, options)
 		if err != nil {
@@ -452,6 +455,7 @@ func (stream *streamModule) Finish(ctx context.Context, options p.EvaluationCont
 			}
 			if node.Kind == p.ToolCallNode || node.ReasoningForm == "summary" {
 				node.ID = item.wireID
+				node.Status = p.StringValue("completed")
 			} else {
 				node = p.Node{Kind: p.MessageNode, ID: item.wireID, Status: p.StringValue("completed"), Role: p.StringValue("assistant"), Children: []p.Node{node}}
 			}
@@ -480,7 +484,7 @@ func (stream *streamModule) Finish(ctx context.Context, options p.EvaluationCont
 	case Chat:
 		frames = append(frames, stream.chatChunk(object(p.Object{}), finish, p.Value{}))
 		if !usage.IsZero() && (options.ClientOutput == nil || (options.ClientOutput.IncludeUsage != nil && *options.ClientOutput.IncludeUsage)) {
-			frames = append(frames, object(p.Object{"id": stream.id, "model": stream.model, "object": p.StringValue("chat.completion.chunk"), "choices": array(nil), "usage": usage}))
+			frames = append(frames, object(p.Object{"id": stream.id, "model": stream.model, "object": p.StringValue("chat.completion.chunk"), "created": stream.attributes["created_at"], "choices": array(nil), "usage": usage}))
 		}
 	case Anthropic:
 		stopSequence := stream.attributes["anthropic_stop_sequence"]
@@ -509,6 +513,10 @@ func (stream *streamModule) Finish(ctx context.Context, options p.EvaluationCont
 		frames = append(frames, object(p.Object{"type": p.StringValue("response." + statusName), "response": value}))
 	}
 	stream.pending = nil
+	frames, err = stream.renderMetadata(frames, nil)
+	if err != nil {
+		return nil, err
+	}
 	return stream.numberFrames(frames), nil
 }
 

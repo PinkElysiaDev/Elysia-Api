@@ -121,16 +121,31 @@ func (service *Service) Preview(ctx context.Context, raw []byte, direction Direc
 	if err != nil {
 		return PreviewResult{Issues: sampleIssues(compiled, sample, "/preview", err)}
 	}
-	if direction == EncodeResponse {
+	if direction == EncodeResponse || direction == EncodeRequest {
 		err = compiled.ValidateWireOutput(direction, result.output)
 	}
 	if direction == EncodeEvent {
 		var frames []Value
 		if result.output.Decode(&frames) == nil {
+			var validator *WireStreamValidation
+			if isSequence {
+				validator, err = compiled.NewWireStreamValidation(options.Scope)
+			}
 			for _, frame := range frames {
-				if err = compiled.ValidateWireOutput(direction, frame); err != nil {
+				if err != nil {
 					break
 				}
+				if validator != nil {
+					err = validator.Consume(ctx, frame)
+				} else {
+					err = compiled.ValidateWireOutput(direction, frame)
+				}
+				if err != nil {
+					break
+				}
+			}
+			if err == nil && validator != nil {
+				err = validator.Finish()
 			}
 		} else {
 			err = compiled.ValidateWireOutput(direction, result.output)

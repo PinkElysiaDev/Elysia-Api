@@ -279,6 +279,10 @@ func (meter *typedMeter) raw(raw string) bool {
 }
 
 func jsonStringBytes(value string) int {
+	if !utf8.ValidString(value) {
+		raw, _ := json.Marshal(value)
+		return len(raw)
+	}
 	length := 2
 	for offset := 0; offset < len(value); {
 		character := value[offset]

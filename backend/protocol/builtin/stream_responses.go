@@ -39,7 +39,12 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 			return nil, err
 		}
 		stream.attributes = response.Attributes
-		return stream.beginResponse(response.ID, response.Model), nil
+		events := stream.beginResponse(response.ID, response.Model)
+		if len(events) > 0 {
+			events[0].Response.Metadata = response.Metadata
+			events[0].Response.Usage = response.Usage
+		}
+		return events, nil
 	case "response.in_progress":
 		response, err := fields["response"].ReadObject()
 		if err != nil {
@@ -83,6 +88,10 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 			return nil, err
 		}
 		node := p.Node{Kind: p.TextNode, Payload: part["text"]}
+		node.Metadata, err = stream.module.extractMetadata(part, "content", "/part")
+		if err != nil {
+			return nil, err
+		}
 		if string(part["type"].Bytes()) == `"refusal"` {
 			node.Kind, node.Payload = p.RefusalNode, part["refusal"]
 		}
@@ -90,6 +99,33 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		return []p.Event{event}, err
 	case "response.output_text.delta", "response.refusal.delta":
 		event, err := stream.itemEvent(p.ItemDelta, contentKey, nil, fields["delta"])
+		if !fields["logprobs"].IsZero() {
+			event.Metadata = []p.ResponseMetadata{{Name: "logprobs", Location: "content", Codec: Responses, SourceCodec: Responses, Path: "/logprobs", Value: fields["logprobs"]}}
+		}
+		return []p.Event{event}, err
+	case "response.output_text.annotation.added":
+		item := stream.items[contentKey]
+		if item == nil {
+			return nil, unsupported("/item_id", "citation has no text item")
+		}
+		var entries []p.Value
+		for _, m := range item.node.Metadata {
+			if m.Name == "annotations" {
+				_ = m.Value.Decode(&entries)
+			}
+		}
+		var index int
+		if fields["annotation_index"].Decode(&index) != nil || index != len(entries) {
+			return nil, unsupported("/annotation_index", "citation index must append to its text item")
+		}
+		entries = append(entries, fields["annotation"])
+		node := item.node
+		m := p.ResponseMetadata{Name: "annotations", Location: "content", Codec: Responses, SourceCodec: Responses, Path: "/annotation", Value: array(entries)}
+		if err := p.ValidateMetadataValue(Responses, "content", "annotations", m.Value, m.Path); err != nil {
+			return nil, err
+		}
+		node.Metadata = p.MergeNodeMetadata(node.Metadata, []p.ResponseMetadata{m}, false)
+		event, err := stream.itemEvent(p.ItemSnapshot, contentKey, &node, p.Value{})
 		return []p.Event{event}, err
 	case "response.function_call_arguments.delta", "response.custom_tool_call_input.delta":
 		event, err := stream.itemEvent(p.ItemDelta, key, nil, fields["delta"])
@@ -123,7 +159,32 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		event, err := stream.itemEvent(p.ItemSnapshot, contentKey, &node, p.Value{})
 		return []p.Event{event}, err
 	case "response.content_part.done":
-		event, err := stream.itemEvent(p.ItemFinished, contentKey, nil, p.Value{})
+		current := stream.items[contentKey]
+		if current == nil {
+			return nil, fmt.Errorf("completed part has no start")
+		}
+		node := current.node
+		if !fields["part"].IsZero() {
+			part, e := fields["part"].ReadObject()
+			if e != nil {
+				return nil, e
+			}
+			node.Metadata, e = stream.module.extractMetadata(part, "content", "/part")
+			if e != nil {
+				return nil, e
+			}
+		}
+		var final *p.Node
+		hasContentMetadata := false
+		for _, m := range node.Metadata {
+			if string(m.Value.Bytes()) != "[]" {
+				hasContentMetadata = true
+			}
+		}
+		if hasContentMetadata {
+			final = &node
+		}
+		event, err := stream.itemEvent(p.ItemFinished, contentKey, final, p.Value{})
 		return []p.Event{event}, err
 	case "response.output_item.done":
 		item, err := fields["item"].ReadObject()

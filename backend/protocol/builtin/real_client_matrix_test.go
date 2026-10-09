@@ -26,39 +26,16 @@ const claudeCodePayload = `{
 	"metadata":{"user_id":"user_acct"}
 }`
 
-// Claude Code → Anthropic：中段 system 按位输出、消息级 cache_control 保真、
-// 同族往返不再 400。
-func TestClaudeCodeToAnthropicPreservesInPlaceSystem(t *testing.T) {
+// In-message system is not an Anthropic wire role. The semantic hoist action
+// must resolve scope and cache boundaries before this encoder can accept it.
+func TestAnthropicRejectsUnprojectedInPlaceSystem(t *testing.T) {
 	compiled := testCompiled(t, Anthropic)
-	input := testValue(t, claudeCodePayload)
-	request, err := compiled.DecodeRequest(t.Context(), input.Bytes(), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+	request, err := compiled.DecodeRequest(t.Context(), testValue(t, claudeCodePayload).Bytes(), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	sink := &p.DiagnosticSink{}
-	output, err := compiled.EncodeRequest(t.Context(), request, p.EvaluationContext{Scope: p.Scope{Model: "m"}, Diagnostics: sink})
-	if err != nil {
-		t.Fatal(err)
-	}
-	recovered, err := compiled.DecodeRequest(t.Context(), output, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var systemMessages int
-	for _, node := range recovered.Content {
-		var role string
-		if err := node.Role.Decode(&role); err != nil {
-			t.Fatal(err)
-		}
-		if role == "system" {
-			systemMessages++
-		}
-	}
-	if systemMessages != 2 {
-		t.Fatalf("expected top-level + one in-place system message, got %d", systemMessages)
-	}
-	if !strings.Contains(string(output), `"role":"system"`) || !strings.Contains(string(output), "cache_control") {
-		t.Fatal("in-place system message or its message-level cache_control missing", string(output[:min(400, len(output))]))
+	if _, err = compiled.EncodeRequest(t.Context(), request, p.EvaluationContext{Scope: p.Scope{Model: "m"}}); !isUnsupported(err) {
+		t.Fatalf("unprojected in-message system must fail: %v", err)
 	}
 }
 
@@ -165,7 +142,12 @@ func TestGeminiObjectToolResultSerializesRoundTrip(t *testing.T) {
 	}
 	for _, target := range []string{Chat, Responses, Anthropic} {
 		compiled := testCompiled(t, target)
-		output, err := compiled.EncodeRequest(t.Context(), request, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+		conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(source, compiled))
+		converted, e := conversion.Request(t.Context(), request, p.ConversionContext{}, nil)
+		if e != nil {
+			t.Fatal(e)
+		}
+		output, err := compiled.EncodeRequest(t.Context(), converted, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
 		if err != nil {
 			t.Fatalf("%s: object tool result must serialize, got %v", target, err)
 		}

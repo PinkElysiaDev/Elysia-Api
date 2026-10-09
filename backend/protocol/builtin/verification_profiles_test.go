@@ -55,7 +55,7 @@ func TestBuiltinVerifiedProfilesKeepTextRoutesAndFullDiagnostics(t *testing.T) {
 					}
 				}
 				if !hasText {
-					t.Fatal("text/usage route blocked by unrelated capabilities")
+					t.Fatal("text/usage route blocked by unrelated capabilities", reports)
 				}
 				if ingress.Definition().Capabilities[p.CacheKeysCapability] && contract[p.CacheKeysCapability] && !hasCache {
 					t.Fatal("joint cache key/retention evidence split into unsupported fragments")

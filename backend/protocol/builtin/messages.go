@@ -102,6 +102,10 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 				node.Children = append(node.Children, p.Node{Kind: p.RefusalNode, Payload: refusal})
 			}
 		}
+		node.Metadata, err = adapter.extractMetadata(fields, "message", location)
+		if err != nil {
+			return nil, err
+		}
 		node.Attributes = adapter.extensions(fields, known)
 		nodes = append(nodes, node)
 	}
@@ -165,40 +169,17 @@ func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, opti
 			}
 			node = p.Node{Kind: p.MessageNode, Role: p.StringValue(role), Children: []p.Node{node}}
 		}
+		if adapter.name != Chat && !node.Attributes["choiceExtensions"].IsZero() {
+			return p.Value{}, p.Value{}, unsupported("/choices", "unknown choice extensions require an explicit mapping")
+		}
 		role, err := stringValue(node.Role)
 		if err != nil {
 			return p.Value{}, p.Value{}, err
 		}
 		if (role == "system" || role == "developer") && (adapter.name == Anthropic || adapter.name == Gemini) {
 			annotated := !node.ID.IsZero() || !node.Status.IsZero() || len(node.Attributes) > 0 || len(node.Cache) > 0 || len(node.Resources) > 0
-			if hasConversation || annotated {
-				if adapter.name == Gemini {
-					return p.Value{}, p.Value{}, unsupported(fmt.Sprintf("/content/%d", index), "Gemini contents cannot express an in-conversation or annotated system message; hoist it before the conversation or move the metadata onto explicit blocks")
-				}
-				// Anthropic 接受会话内 system 消息（Claude Code 的 system-reminder
-				// 注入即此形态）。按位输出并保留消息级 wire 扩展（如消息级
-				// cache_control），位置不变以保住缓存前缀。
-				fields := p.Object{"role": p.StringValue("system")}
-				if err := adapter.preserveExtensions(fields, node.Attributes); err != nil {
-					return p.Value{}, p.Value{}, err
-				}
-				if len(node.Cache) > 0 || len(node.Resources) > 0 {
-					warnDropped(options, p.EncodeRequest, fmt.Sprintf("/content/%d", index),
-						"in-conversation system message dropped its node-level cache markers or resources",
-						"Move cache_control onto a content block inside the system message.")
-				}
-				var blocks []p.Value
-				for _, child := range node.Children {
-					block, err := adapter.encodeBlock(child, direction, options)
-					if err != nil {
-						return p.Value{}, p.Value{}, err
-					}
-					blocks = append(blocks, block)
-				}
-				fields["content"] = array(blocks)
-				messages = append(messages, object(fields))
-				hasConversation = true
-				continue
+			if hasConversation || annotated || role == "developer" {
+				return p.Value{}, p.Value{}, unsupported(fmt.Sprintf("/content/%d", index), "target requires top-level system instructions; enable system_instruction_hoist or provide an explicit mapping")
 			}
 			for _, child := range node.Children {
 				block, err := adapter.encodeBlock(child, direction, options)
@@ -282,11 +263,14 @@ func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, opti
 
 func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, options p.EvaluationContext) ([]p.Value, error) {
 	fields := p.Object{"role": node.Role}
+	if err := adapter.writeMetadata(fields, adapter.contentMetadata([]p.Node{node}), "message"); err != nil {
+		return nil, err
+	}
 	attributes := node.Attributes
 	if foreign := foreignWireKeys(attributes, adapter.family); len(foreign) > 0 {
 		// 消息级源族扩展（如 Anthropic 的消息级 cache_control）在 Chat 目标
 		// 没有等价字段：剥离并显式 warning，不再拒绝整个请求。
-		warnDropped(options, p.EncodeRequest, "/content/extensions", "message-level wire extensions dropped: " + strings.Join(foreign, ", ") + " has no Chat equivalent", "Same-family forwarding preserves them through native replay.")
+		warnDropped(options, p.EncodeRequest, "/content/extensions", "message-level wire extensions dropped: "+strings.Join(foreign, ", ")+" has no Chat equivalent", "Same-family forwarding preserves them through native replay.")
 		attributes = sameFamilyExtensions(attributes, adapter.family)
 	}
 	if err := adapter.preserveExtensions(fields, attributes); err != nil {
@@ -354,7 +338,14 @@ func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, opti
 	if len(results) > 0 {
 		return results, nil
 	}
-	if len(content) == 1 && len(node.Children) == 1 && node.Children[0].Kind == p.TextNode && len(node.Children[0].Cache) == 0 && len(node.Children[0].Attributes) == 0 {
+	if len(content) == 1 && direction == p.EncodeResponse {
+		block, _ := content[0].ReadObject()
+		if block["type"] == p.StringValue("text") {
+			fields["content"] = block["text"]
+		} else {
+			fields["content"] = array(content)
+		}
+	} else if len(content) == 1 && len(node.Children) == 1 && node.Children[0].Kind == p.TextNode && len(node.Children[0].Cache) == 0 && len(node.Children[0].Attributes) == 0 {
 		fields["content"] = node.Children[0].Payload
 	} else if content != nil {
 		fields["content"] = array(content)
@@ -427,7 +418,7 @@ func hasItemMetadata(node p.Node) bool {
 func (adapter module) encodeChatToolResult(child p.Node, options p.EvaluationContext) (p.Value, error) {
 	payload := child.Payload
 	if payload.IsObject() {
-		payload = encodeJSONArguments(payload)
+		return p.Value{}, unsupported("/content/result", "object tool result requires tool_result_text conversion")
 	}
 	if len(child.Children) > 0 {
 		var text []byte
