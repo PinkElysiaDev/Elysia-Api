@@ -226,3 +226,42 @@ func TestStructuredSingleVisiblePartProjectsToOtherCodecs(t *testing.T) {
 		}
 	}
 }
+
+func TestUnprojectedStructuredReasoningCannotDisappearInForeignCodecs(t *testing.T) {
+	from := shippedProjectionProtocol(t, Responses)
+	for _, item := range []string{
+		structuredReasoningFinal,
+		`{"type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"first"},{"type":"reasoning_text","text":"second"}]}`,
+		`{"type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"first","vendor_detail":true}]}`,
+		`{"type":"reasoning","summary":[]}`,
+	} {
+		for _, codec := range []string{Chat, Anthropic, Gemini} {
+			t.Run(codec+item, func(t *testing.T) {
+				to := shippedProjectionProtocol(t, codec)
+				r, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","status":"completed","output":[`+item+`]}`), p.EvaluationContext{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
+				projected, err := conversion.Response(t.Context(), r, p.ConversionContext{Source: from.Identity(), Target: to.Identity()}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+				if err == nil || !strings.Contains(err.Error(), "/reasoningForm") {
+					t.Fatalf("unmapped structured response was not rejected: %v", err)
+				}
+				request := &p.Request{SchemaVersion: 1, Model: p.StringValue("m"), Content: projected.Content}
+				if _, err := to.EncodeRequest(t.Context(), request, p.EvaluationContext{}); err == nil || !strings.Contains(err.Error(), "/reasoningForm") {
+					t.Fatalf("unmapped structured history was not rejected: %v", err)
+				}
+				// Direct event encoding must retain the same guard even if the
+				// caller disabled conversion or supplied its own semantic mapping.
+				event := p.Event{SchemaVersion: 1, Type: p.ItemStarted, ItemID: p.StringValue("thought"), Item: &projected.Content[0]}
+				if _, err := to.EncodeFrames(t.Context(), event, p.EvaluationContext{State: p.NewEvaluationState()}); err == nil || !strings.Contains(err.Error(), "/reasoningForm") {
+					t.Fatalf("unmapped structured event was not rejected: %v", err)
+				}
+			})
+		}
+	}
+}

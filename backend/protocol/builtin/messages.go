@@ -297,6 +297,9 @@ func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, opti
 			}
 			calls = append(calls, object(call))
 		case p.ReasoningNode:
+			if child.ReasoningForm != "" || child.ReasoningContent != nil {
+				return nil, unsupported("/reasoningForm", "structured reasoning requires an explicit projection to Chat visible thinking")
+			}
 			// Chat 只有单一 reasoning_content 字符串：多块拼接；签名/缓存等
 			// 跨族不可表达的元数据丢弃并给显式 warning（原为硬拒）。
 			if len(child.Children) > 0 {

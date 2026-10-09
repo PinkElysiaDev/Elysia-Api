@@ -84,6 +84,9 @@ func (stream *streamModule) encodeStart(options p.EvaluationContext) ([]p.Value,
 }
 
 func (stream *streamModule) encodeItem(event p.Event, options p.EvaluationContext) ([]p.Value, error) {
+	if event.Item != nil && stream.name != Responses && (event.Item.ReasoningForm != "" || event.Item.ReasoningContent != nil) {
+		return nil, unsupported("/reasoningForm", "structured reasoning requires an explicit projection to visible thinking")
+	}
 	key, err := stream.identities.Resolve(event)
 	if err != nil {
 		return nil, err

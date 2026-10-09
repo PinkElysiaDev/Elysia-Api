@@ -13,8 +13,8 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 	if err := checkResourceProtocol(node, options); err != nil {
 		return p.Value{}, err
 	}
-	if node.ReasoningForm != "" && adapter.name != Responses {
-		return p.Value{}, unsupported("/reasoningForm", "reasoning summaries cannot be substituted for visible thinking")
+	if (node.ReasoningForm != "" || node.ReasoningContent != nil) && adapter.name != Responses {
+		return p.Value{}, unsupported("/reasoningForm", "structured reasoning requires an explicit projection to visible thinking")
 	}
 	if node.Kind == p.OpaqueNode {
 		return adapter.replay(node.Native, direction, options)
