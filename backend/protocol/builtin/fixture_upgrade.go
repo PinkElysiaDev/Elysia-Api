@@ -85,6 +85,9 @@ func RepairOutputFixtures(d p.Definition) (p.Definition, bool) {
 	}
 	for i, s := range d.Samples {
 		m := d.Directions[s.Direction]
+		if fixtureHasNativeReplay(s) {
+			continue
+		}
 		if s.Direction == p.EncodeEvent && m.Module == Chat && m.After == nil && s.Sequence && s.ExpectedIssue == "" {
 			if fixed, didChange := repairChatToolFrames(s.Expected); didChange {
 				d.Samples[i].Expected, changed = fixed, true
@@ -93,18 +96,56 @@ func RepairOutputFixtures(d p.Definition) (p.Definition, bool) {
 		if (s.Direction != p.EncodeResponse && s.Direction != p.EncodeEvent) || m.Module != Responses || m.After != nil || s.ExpectedIssue != "" {
 			continue
 		}
-		// A native replay fixture asserts exact original bytes, not generated
-		// output. Keep that assertion; final delivery independently checks shape.
-		if s.Direction == p.EncodeResponse {
-			input, _ := s.Input.ReadObject()
-			if !input["native"].IsZero() && !input["native"].IsNull() {
-				continue
-			}
-		}
 		sequence = s.Direction == p.EncodeEvent
 		d.Samples[i].Expected = repair(s.Expected)
 	}
 	return d, changed
+}
+
+// Native replay fixtures assert original output, not an old generated oracle.
+// Only inspect semantic containers; tool payload properties are not provenance.
+func fixtureHasNativeReplay(s p.Sample) bool {
+	if s.Direction != p.EncodeResponse && s.Direction != p.EncodeEvent {
+		return false
+	}
+	inputs := []p.Value{s.Input}
+	if s.Sequence {
+		if err := s.Input.Decode(&inputs); err != nil {
+			return true // Malformed fixtures need explicit repair, never guessing.
+		}
+	}
+	var hasNative func(p.Value) bool
+	hasNative = func(value p.Value) bool {
+		fields, err := value.ReadObject()
+		if err != nil {
+			return false
+		}
+		if !fields["native"].IsZero() && !fields["native"].IsNull() {
+			return true
+		}
+		for _, name := range []string{"item", "response"} {
+			if hasNative(fields[name]) {
+				return true
+			}
+		}
+		for _, name := range []string{"content", "children"} {
+			var nodes []p.Value
+			if fields[name].Decode(&nodes) == nil {
+				for _, node := range nodes {
+					if hasNative(node) {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}
+	for _, input := range inputs {
+		if hasNative(input) {
+			return true
+		}
+	}
+	return false
 }
 
 // Only remove a repeated, identical tool identity after its explicit start.

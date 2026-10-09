@@ -36,6 +36,23 @@ func TestRepairLegacyChatToolIdentityFixture(t *testing.T) {
 	}
 }
 
+func TestRepairFixturesKeepsNativeReplayAssertions(t *testing.T) {
+	for _, module := range []string{Chat, Responses} {
+		for _, input := range []string{
+			`[{"native":{"value":{}}}]`,
+			`[{"item":{"native":{"value":{}}}}]`,
+			`[{"response":{"content":[{"children":[{"native":{"value":{}}}]}]}}]`,
+		} {
+			expected := testValue(t, `[{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"c","type":"function","function":{"name":"f"}}]}}]},{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"c","function":{"name":"f","arguments":"{}"}}]}}]},{"type":"response.content_part.done","part":{"type":"output_text","text":"OK"}}]`)
+			d := p.Definition{Directions: map[p.Direction]p.Mapping{p.EncodeEvent: {Module: module}}, Samples: []p.Sample{{Direction: p.EncodeEvent, Sequence: true, Input: testValue(t, input), Expected: expected}}}
+			fixed, changed := RepairOutputFixtures(d)
+			if changed || fixed.Samples[0].Expected != expected {
+				t.Fatal("native replay assertion rewritten", module, input)
+			}
+		}
+	}
+}
+
 func TestRepairOutputFixtureOnlyKnownEncoderExpectation(t *testing.T) {
 	raw := testValue(t, `{"object":"response","output":[{"type":"message","content":[{"type":"output_text","text":"hi"}]},{"type":"function_call","arguments":"{\"type\":\"output_text\"}"}]}`)
 	d := p.Definition{Directions: map[p.Direction]p.Mapping{p.EncodeResponse: {Module: Responses}}, Samples: []p.Sample{{Direction: p.EncodeResponse, Expected: raw}}}
