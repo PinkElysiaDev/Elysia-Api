@@ -31,6 +31,14 @@ func (adapter module) decodeChoice(value p.Value) (p.Value, error) {
 		if mode == "any" {
 			mode = "required"
 		}
+		if mode == "required" {
+			var names []string
+			if fields["allowedFunctionNames"].Decode(&names) == nil && len(names) == 1 && strings.TrimSpace(names[0]) != "" {
+				// ANY with a singleton allowed set is exactly a named function
+				// choice. Canonicalize before conversion and round-trip checking.
+				return object(p.Object{"mode": p.StringValue("function"), "name": p.StringValue(names[0])}), nil
+			}
+		}
 		return object(p.Object{"mode": p.StringValue(mode), "names": fields["allowedFunctionNames"]}), nil
 	}
 	typeName, err := optionalString(fields["type"])
