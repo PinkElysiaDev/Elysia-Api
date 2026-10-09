@@ -7,11 +7,11 @@ import (
 	p "github.com/elysia-api/backend/protocol"
 )
 
-// 真实客户端形态回归：这些载荷取自线上实测（Claude Code 中段 system 消息、
-// Codex 消息 item id、Gemini 对象工具结果、chat strict 工具），锁定四协议
+// 人工协议边界夹具：包含非标准中段 system 消息，不能视为已捕获的 Claude Code 流量。
+// 另覆盖 Responses 消息 item id、Gemini 对象工具结果和 Chat strict 工具，锁定四协议
 // 点对点的保证行为——正确转换或显式诊断。
 
-const claudeCodePayload = `{
+const syntheticAnthropicHistory = `{
 	"model":"claude-opus-5-5","max_tokens":8192,"stream":true,
 	"system":[{"type":"text","text":"You are Claude Code.","cache_control":{"type":"ephemeral"}}],
 	"messages":[
@@ -30,7 +30,7 @@ const claudeCodePayload = `{
 // must resolve scope and cache boundaries before this encoder can accept it.
 func TestAnthropicRejectsUnprojectedInPlaceSystem(t *testing.T) {
 	compiled := testCompiled(t, Anthropic)
-	request, err := compiled.DecodeRequest(t.Context(), testValue(t, claudeCodePayload).Bytes(), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+	request, err := compiled.DecodeRequest(t.Context(), testValue(t, syntheticAnthropicHistory).Bytes(), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,12 +39,12 @@ func TestAnthropicRejectsUnprojectedInPlaceSystem(t *testing.T) {
 	}
 }
 
-// Claude Code → Chat：并行 tool_result 拆为多条 tool 消息、is_error 文本标记、
+// 人工 Anthropic → Chat：并行 tool_result 拆为多条 tool 消息、is_error 文本标记、
 // strict 剥离、thinking 签名丢弃——全部转成 Chat 可表达形态。
-func TestClaudeCodeToChatConvertsToolResultGroup(t *testing.T) {
+func TestSyntheticAnthropicToChatConvertsToolResultGroup(t *testing.T) {
 	source := testCompiled(t, Anthropic)
 	target := testCompiled(t, Chat)
-	request, err := source.DecodeRequest(t.Context(), testValue(t, claudeCodePayload).Bytes(), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+	request, err := source.DecodeRequest(t.Context(), testValue(t, syntheticAnthropicHistory).Bytes(), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestClaudeCodeToChatConvertsToolResultGroup(t *testing.T) {
 func TestInPlaceSystemToGeminiStaysDiagnosed(t *testing.T) {
 	source := testCompiled(t, Anthropic)
 	target := testCompiled(t, Gemini)
-	request, err := source.DecodeRequest(t.Context(), testValue(t, claudeCodePayload).Bytes(), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+	request, err := source.DecodeRequest(t.Context(), testValue(t, syntheticAnthropicHistory).Bytes(), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
 	if err != nil {
 		t.Fatal(err)
 	}

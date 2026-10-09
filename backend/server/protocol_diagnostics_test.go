@@ -99,7 +99,7 @@ func TestEncodingFailureKeepsCandidateAndExactField(t *testing.T) {
 	c, _ := messagesRequestContext(`{}`)
 	record := &usageRecord{}
 	err := s.forwardGateway(c, record, &gatewayPlan{request: request}, candidate)
-	// Anthropic 目标现按位转换带身份的 system；Gemini 目标仍显式拒绝（无网络依赖）。
+	// 带身份的 system 不能无条件上提；确认失败保留候选与节点路径（无网络依赖）。
 	if err == nil || !strings.Contains(err.Error(), "/content/0") {
 		t.Fatal(err)
 	}

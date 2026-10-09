@@ -7,6 +7,7 @@ import "fmt"
 func (c *CompiledConversion) hoistSystem(request *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
 	var system, conversation []Node
 	seenConversation := false
+	changed := false
 	for i, node := range request.Content {
 		if node.Kind != MessageNode || (node.Role != StringValue("system") && node.Role != StringValue("developer")) {
 			seenConversation = true
@@ -21,6 +22,7 @@ func (c *CompiledConversion) hoistSystem(request *Request, route ConversionConte
 			if err := c.issue(rule, ConversionRequest, route, at, "system/developer instruction moved to top-level system; its scope or role precedence changes", sink, true); err != nil {
 				return err
 			}
+			changed = true
 		}
 		node.Role = StringValue("system")
 		system = append(system, node)
@@ -33,6 +35,13 @@ func (c *CompiledConversion) hoistSystem(request *Request, route ConversionConte
 			combined.Children = append(combined.Children, node.Children...)
 		}
 		request.Content = append([]Node{combined}, conversation...)
+		if changed || len(system) > 1 {
+			// The old message array cannot be replayed after this explicit
+			// structural projection. Reconciliation would try to encode the
+			// unhoisted baseline and reject it again on same-codec routes.
+			// Keep semantic attributes, cache/resources and all node provenance.
+			request.Native = nil
+		}
 	}
 	return nil
 }
