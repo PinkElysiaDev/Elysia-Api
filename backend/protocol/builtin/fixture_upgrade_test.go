@@ -1,9 +1,40 @@
 package builtin
 
 import (
+	"encoding/json"
 	p "github.com/elysia-api/backend/protocol"
+	"os"
 	"testing"
 )
+
+func TestRepairLegacyChatToolIdentityFixture(t *testing.T) {
+	raw, err := os.ReadFile("testdata/chat-82406b9.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var d p.Definition
+	if err = json.Unmarshal(raw, &d); err != nil {
+		t.Fatal(err)
+	}
+	fixed, changed := RepairOutputFixtures(d)
+	if !changed {
+		t.Fatal("legacy generated oracle not repaired")
+	}
+	if _, changed = RepairOutputFixtures(fixed); changed {
+		t.Fatal("repair not idempotent")
+	}
+	for i, before := range d.Samples {
+		if before.ID != "stream-tool-encode" && before.Expected != fixed.Samples[i].Expected {
+			t.Fatal("unrelated fixture changed", before.ID)
+		}
+	}
+	for _, mapping := range []p.Mapping{{Module: Chat, After: &p.Expression{Op: "read"}}, {Transform: &p.Expression{Op: "read"}}} {
+		d.Directions[p.EncodeEvent] = mapping
+		if _, changed = RepairOutputFixtures(d); changed {
+			t.Fatal("rewrote custom mapping expectation")
+		}
+	}
+}
 
 func TestRepairOutputFixtureOnlyKnownEncoderExpectation(t *testing.T) {
 	raw := testValue(t, `{"object":"response","output":[{"type":"message","content":[{"type":"output_text","text":"hi"}]},{"type":"function_call","arguments":"{\"type\":\"output_text\"}"}]}`)

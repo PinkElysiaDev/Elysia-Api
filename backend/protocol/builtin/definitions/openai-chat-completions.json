@@ -2345,9 +2345,7 @@
                 "tool_calls": [
                   {
                     "index": 0,
-                    "id": "call",
                     "function": {
-                      "name": "lookup",
                       "arguments": "{\"n\":9007199254740993}"
                     }
                   }

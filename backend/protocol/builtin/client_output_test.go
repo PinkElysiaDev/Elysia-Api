@@ -20,6 +20,9 @@ func TestLegacyCustomChatClientOutputCompatibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	definition.ID = "old-custom-chat"
+	// The startup path advances only the obsolete generated tool-delta oracle;
+	// the historic client-output mapping and its feature set stay intact.
+	definition, _ = RepairOutputFixtures(definition)
 	raw, _ = json.Marshal(definition)
 	compiler, err := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
 	if err != nil {

@@ -85,6 +85,11 @@ func RepairOutputFixtures(d p.Definition) (p.Definition, bool) {
 	}
 	for i, s := range d.Samples {
 		m := d.Directions[s.Direction]
+		if s.Direction == p.EncodeEvent && m.Module == Chat && m.After == nil && s.Sequence && s.ExpectedIssue == "" {
+			if fixed, didChange := repairChatToolFrames(s.Expected); didChange {
+				d.Samples[i].Expected, changed = fixed, true
+			}
+		}
 		if (s.Direction != p.EncodeResponse && s.Direction != p.EncodeEvent) || m.Module != Responses || m.After != nil || s.ExpectedIssue != "" {
 			continue
 		}
@@ -100,4 +105,65 @@ func RepairOutputFixtures(d p.Definition) (p.Definition, bool) {
 		d.Samples[i].Expected = repair(s.Expected)
 	}
 	return d, changed
+}
+
+// Only remove a repeated, identical tool identity after its explicit start.
+// This repairs the old generated oracle; it never weakens the comparator.
+func repairChatToolFrames(value p.Value) (p.Value, bool) {
+	var frames []p.Value
+	if value.Decode(&frames) != nil {
+		return value, false
+	}
+	type identity struct{ id, name p.Value }
+	seen := map[string]identity{}
+	changed := false
+	for i, frame := range frames {
+		f, err := frame.ReadObject()
+		if err != nil || f["object"] != p.StringValue("chat.completion.chunk") {
+			continue
+		}
+		choices, _ := readArray(f["choices"])
+		for j, choice := range choices {
+			ch, _ := choice.ReadObject()
+			delta, err := ch["delta"].ReadObject()
+			if err != nil {
+				continue
+			}
+			calls, _ := readArray(delta["tool_calls"])
+			for k, call := range calls {
+				entry, _ := call.ReadObject()
+				fn, err := entry["function"].ReadObject()
+				if err != nil || entry["index"].IsZero() || ch["index"].IsZero() {
+					continue
+				}
+				key := string(ch["index"].Bytes()) + ":" + string(entry["index"].Bytes())
+				previous, exists := seen[key]
+				if !exists && entry["type"] == p.StringValue("function") && !entry["id"].IsZero() && !fn["name"].IsZero() {
+					seen[key] = identity{entry["id"], fn["name"]}
+				} else if exists && entry["type"].IsZero() {
+					if entry["id"] == previous.id {
+						delete(entry, "id")
+						changed = true
+					}
+					if fn["name"] == previous.name {
+						delete(fn, "name")
+						changed = true
+					}
+					entry["function"] = object(fn)
+					calls[k] = object(entry)
+				}
+			}
+			if len(calls) > 0 {
+				delta["tool_calls"] = array(calls)
+			}
+			ch["delta"] = object(delta)
+			choices[j] = object(ch)
+		}
+		f["choices"] = array(choices)
+		frames[i] = object(f)
+	}
+	if !changed {
+		return value, false
+	}
+	return array(frames), true
 }
