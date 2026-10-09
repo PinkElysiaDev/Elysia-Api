@@ -53,6 +53,9 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 					w.Header().Set("Content-Type", "text/event-stream")
 					var frames []protocol.Value
 					_ = sample.Input.Decode(&frames)
+					if upstreamID == protocol.PresetResponsesID {
+						frames = auditMultipartResponsesFrames(frames)
+					}
 					for _, frame := range frames {
 						body, _ := frame.ReadObject()
 						if upstreamID == protocol.PresetResponsesID {
@@ -116,7 +119,7 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 						r.Header.Set("Authorization", "Bearer gateway-test-token")
 						rec := httptest.NewRecorder()
 						s.engine.ServeHTTP(rec, r)
-						if rec.Code != 200 || calls != before+1 || !strings.Contains(rec.Body.String(), "hi") || rec.Result().Trailer.Get("X-Elysia-Stream-Error") != "" {
+						if rec.Code != 200 || calls != before+1 || rec.Result().Trailer.Get("X-Elysia-Stream-Error") != "" {
 							t.Fatalf("status=%d calls=%d trailer=%v body=%s", rec.Code, calls-before, rec.Result().Trailer, rec.Body)
 						}
 						if upstreamID == protocol.PresetResponsesID {
@@ -124,8 +127,37 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 							if kept != (ingressID == protocol.PresetResponsesID) {
 								t.Fatal("phase preservation/projection mismatch", rec.Body)
 							}
+							if ingressID == protocol.PresetResponsesID {
+								// Both native JSON and SSE must retain one message with
+								// two content parts, even though SDKs concatenate the text.
+								var response protocol.Object
+								if !stream {
+									_ = json.Unmarshal(rec.Body.Bytes(), &response)
+								} else {
+									for _, line := range strings.Split(rec.Body.String(), "\n") {
+										if strings.HasPrefix(line, "data: {") {
+											var event protocol.Object
+											_ = json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &event)
+											if event["type"] == protocol.StringValue("response.completed") {
+												response, _ = event["response"].ReadObject()
+											}
+										}
+									}
+								}
+								var output, parts []protocol.Value
+								_ = response["output"].Decode(&output)
+								if len(output) != 1 {
+									t.Fatal("message split", rec.Body)
+								}
+								message, _ := output[0].ReadObject()
+								_ = message["content"].Decode(&parts)
+								if len(parts) != 2 {
+									t.Fatal("content boundaries lost", rec.Body)
+								}
+							}
 						}
 						ingress, _ := service.Pin(ingressID)
+						var text strings.Builder
 						if !stream {
 							v, e := protocol.ParseValue(rec.Body.Bytes())
 							if e != nil {
@@ -134,7 +166,28 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 							if e = ingress.ValidateWireOutput(protocol.EncodeResponse, v); e != nil {
 								t.Fatal(e)
 							}
+							response, e := ingress.DecodeResponse(t.Context(), rec.Body.Bytes(), protocol.EvaluationContext{})
+							if e != nil {
+								t.Fatal(e)
+							}
+							var visit func([]protocol.Node)
+							visit = func(nodes []protocol.Node) {
+								for _, node := range nodes {
+									if node.Kind == protocol.TextNode {
+										var s string
+										_ = node.Payload.Decode(&s)
+										text.WriteString(s)
+									}
+									visit(node.Children)
+								}
+							}
+							visit(response.Content)
 						} else {
+							collector, e := protocol.NewResponseCollector(protocol.Target{Protocol: ingress.Identity(), Direction: protocol.EncodeEvent, Capabilities: ingress.Capabilities(protocol.EncodeEvent)}, protocol.DefaultLimits())
+							if e != nil {
+								t.Fatal(e)
+							}
+							decode := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
 							for _, line := range strings.Split(rec.Body.String(), "\n") {
 								if !strings.HasPrefix(line, "data: {") {
 									continue
@@ -146,7 +199,26 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 								if e = ingress.ValidateWireOutput(protocol.EncodeEvent, v); e != nil {
 									t.Fatal(e, line)
 								}
+								frame, e := ingress.DecodeFrame(t.Context(), v, decode)
+								if e != nil {
+									t.Fatal(e)
+								}
+								for _, event := range frame.Events {
+									kind, delta, err := collector.Consume(event)
+									if err != nil {
+										t.Fatal(err)
+									}
+									if kind == protocol.TextNode {
+										text.WriteString(delta)
+									}
+								}
 							}
+							if _, e := collector.Finish(); e != nil {
+								t.Fatal(e)
+							}
+						}
+						if text.String() != "hi" {
+							t.Fatalf("content changed: %q", text.String())
 						}
 						if dir := os.Getenv("ELYSIA_AUDIT_CAPTURE"); dir != "" {
 							if e := os.MkdirAll(dir, 0700); e != nil {
@@ -175,8 +247,72 @@ func addAuditMessagePhase(response protocol.Object) {
 		item, err := value.ReadObject()
 		if err == nil && item["type"] == protocol.StringValue("message") {
 			item["phase"] = protocol.StringValue("final_answer")
+			splitAuditTextParts(item)
 			output[i], _ = protocol.EncodeValue(item)
 		}
 	}
 	response["output"], _ = protocol.EncodeValue(output)
+}
+
+func splitAuditTextParts(message protocol.Object) {
+	var parts []protocol.Value
+	if message["content"].Decode(&parts) != nil || len(parts) != 1 {
+		return
+	}
+	part, err := parts[0].ReadObject()
+	if err != nil || part["text"] != protocol.StringValue("hi") {
+		return
+	}
+	part["text"] = protocol.StringValue("h")
+	first, _ := protocol.EncodeValue(part)
+	part["text"] = protocol.StringValue("i")
+	second, _ := protocol.EncodeValue(part)
+	message["content"], _ = protocol.EncodeValue([]protocol.Value{first, second})
+}
+
+func auditMultipartResponsesFrames(frames []protocol.Value) []protocol.Value {
+	var out []protocol.Value
+	for _, frame := range frames {
+		f, _ := frame.ReadObject()
+		switch f["type"] {
+		case protocol.StringValue("response.output_text.delta"):
+			f["delta"] = protocol.StringValue("h")
+		case protocol.StringValue("response.output_text.done"):
+			f["text"] = protocol.StringValue("h")
+		case protocol.StringValue("response.content_part.done"):
+			part, _ := f["part"].ReadObject()
+			part["text"] = protocol.StringValue("h")
+			f["part"], _ = protocol.EncodeValue(part)
+		case protocol.StringValue("response.output_item.done"):
+			item, _ := f["item"].ReadObject()
+			splitAuditTextParts(item)
+			f["item"], _ = protocol.EncodeValue(item)
+			for _, kind := range []string{"response.content_part.added", "response.output_text.delta", "response.output_text.done", "response.content_part.done"} {
+				e := protocol.Object{"type": protocol.StringValue(kind), "item_id": item["id"], "output_index": f["output_index"]}
+				e["content_index"], _ = protocol.EncodeValue(1)
+				switch kind {
+				case "response.output_text.delta":
+					e["delta"] = protocol.StringValue("i")
+				case "response.output_text.done":
+					e["text"] = protocol.StringValue("i")
+				default:
+					text := "i"
+					if kind == "response.content_part.added" {
+						text = ""
+					}
+					e["part"], _ = protocol.EncodeValue(map[string]any{"type": "output_text", "text": text, "annotations": []any{}})
+				}
+				value, _ := protocol.EncodeValue(e)
+				out = append(out, value)
+			}
+		}
+		value, _ := protocol.EncodeValue(f)
+		out = append(out, value)
+	}
+	for i, value := range out {
+		f, _ := value.ReadObject()
+		f["sequence_number"], _ = protocol.EncodeValue(i)
+		out[i], _ = protocol.EncodeValue(f)
+	}
+	return out
 }

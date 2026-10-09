@@ -11,10 +11,16 @@ import (
 )
 
 func TestRuntimeRefreshRepairsResponsesPhaseLifecycleEvidence(t *testing.T) {
+	for _, version := range []string{"dev28", "dev29"} {
+		t.Run(version, func(t *testing.T) { refreshResponsesMessageLifecycleEvidence(t, version) })
+	}
+}
+
+func refreshResponsesMessageLifecycleEvidence(t *testing.T, version string) {
 	s, _ := newProtocolAdminTestServer(t)
 	d := presetDefinition(t, protocol.PresetResponsesID)
 	d.ID = "existing-custom-responses"
-	raw, err := os.ReadFile(filepath.Join("..", "protocol", "builtin", "testdata", "responses-dev28-message-samples.json"))
+	raw, err := os.ReadFile(filepath.Join("..", "protocol", "builtin", "testdata", "responses-"+version+"-message-samples.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
