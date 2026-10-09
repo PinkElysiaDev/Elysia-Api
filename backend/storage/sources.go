@@ -6,42 +6,53 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
 )
 
+const sourceColumns = `id, name, base_url, api_key, platform, enabled, auto_fetch_models, manual_models_json, fetch_base_url, api_keys, key_strategy, cache_synthesis, created_at, updated_at`
+
 func (s *Store) ListSources(ctx context.Context) ([]ModelSource, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, base_url, api_key, platform, enabled, auto_fetch_models, manual_models_json, fetch_base_url, api_keys, key_strategy, cache_synthesis, created_at, updated_at FROM model_sources ORDER BY name`)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+sourceColumns+` FROM model_sources ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	items := []ModelSource{}
 	for rows.Next() {
-		var item ModelSource
-		var enabled, autoFetch, cacheSynthesis int
-		var manual, fetchBase, storedKeys, strategy, created, updated string
-		if err := rows.Scan(&item.ID, &item.Name, &item.BaseURL, &item.APIKey, &item.Platform, &enabled, &autoFetch, &manual, &fetchBase, &storedKeys, &strategy, &cacheSynthesis, &created, &updated); err != nil {
+		item, err := s.scanSource(rows)
+		if err != nil {
 			return nil, err
-		}
-		item.Enabled = sqlIntToBool(enabled)
-		item.AutoFetchModels = sqlIntToBool(autoFetch)
-		item.FetchBaseURL = fetchBase
-		item.KeyStrategy = SourceKeyStrategy(strategy)
-		item.CacheSynthesis = sqlIntToBool(cacheSynthesis)
-		item.CreatedAt = parseTime(created)
-		item.UpdatedAt = parseTime(updated)
-		item.APIKey = s.decryptOrClear("source api_key", item.ID, item.APIKey)
-		_ = json.Unmarshal([]byte(manual), &item.ManualModels)
-		if storedKeys != "" {
-			if plain := s.decryptOrClear("source api_keys", item.ID, storedKeys); plain != "" {
-				_ = json.Unmarshal([]byte(plain), &item.APIKeys)
-			}
 		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (s *Store) scanSource(row interface{ Scan(...any) error }) (ModelSource, error) {
+	var item ModelSource
+	var enabled, autoFetch, cacheSynthesis int
+	var manual, fetchBase, storedKeys, strategy, created, updated string
+	if err := row.Scan(&item.ID, &item.Name, &item.BaseURL, &item.APIKey, &item.Platform, &enabled, &autoFetch, &manual, &fetchBase, &storedKeys, &strategy, &cacheSynthesis, &created, &updated); err != nil {
+		return item, err
+	}
+	item.Enabled = sqlIntToBool(enabled)
+	item.AutoFetchModels = sqlIntToBool(autoFetch)
+	item.FetchBaseURL = fetchBase
+	item.KeyStrategy = SourceKeyStrategy(strategy)
+	item.CacheSynthesis = sqlIntToBool(cacheSynthesis)
+	item.CreatedAt = parseTime(created)
+	item.UpdatedAt = parseTime(updated)
+	item.APIKey = s.decryptOrClear("source api_key", item.ID, item.APIKey)
+	_ = json.Unmarshal([]byte(manual), &item.ManualModels)
+	if storedKeys != "" {
+		if plain := s.decryptOrClear("source api_keys", item.ID, storedKeys); plain != "" {
+			_ = json.Unmarshal([]byte(plain), &item.APIKeys)
+		}
+	}
+	return item, nil
 }
 
 func (s *Store) UpsertSource(ctx context.Context, item ModelSource) error {
@@ -415,6 +426,7 @@ func (s *Store) CommitSourceRefresh(ctx context.Context, source ModelSource, inc
 	if len(incoming) == 0 || !source.AutoFetchModels {
 		return empty, errors.New("automatic refresh requires a nonempty model catalog")
 	}
+	original := source
 	source.APIKeys = slices.Clone(source.APIKeys)
 	for index := range source.APIKeys {
 		source.APIKeys[index].AllowedModels = nil
@@ -438,6 +450,19 @@ func (s *Store) CommitSourceRefresh(ctx context.Context, source ModelSource, inc
 		return empty, err
 	}
 	defer tx.Rollback()
+	// Wall-clock timestamps can repeat (notably on Windows). Compare the
+	// complete fetched source snapshot inside the write transaction so a
+	// same-tick key or routing edit cannot be overwritten by an older refresh.
+	current, err := s.scanSource(tx.QueryRowContext(ctx, `SELECT `+sourceColumns+` FROM model_sources WHERE id = ?`, source.ID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return empty, ErrSourceChanged
+	}
+	if err != nil {
+		return empty, err
+	}
+	if !reflect.DeepEqual(original, current) {
+		return empty, ErrSourceChanged
+	}
 	updated, err := tx.ExecContext(ctx, `UPDATE model_sources SET api_keys = ?, updated_at = ? WHERE id = ? AND updated_at = ?`,
 		stored, nowString(), source.ID, source.UpdatedAt.UTC().Format(time.RFC3339Nano))
 	if err != nil {

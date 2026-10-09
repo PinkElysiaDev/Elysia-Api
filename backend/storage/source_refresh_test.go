@@ -61,11 +61,10 @@ func TestSourceRefreshCommitRejectsStaleAndDeletedSources(t *testing.T) {
 	snapshot := sources[0]
 	source.APIKey = "replacement"
 	seedSource(t, s, source)
-	// Windows 时钟粒度可能让两次 seed 写下同一纳秒值，过期检测将无法区分
-	// “未变化”与“同刻度被改”——直接把 updated_at 顶到 snapshot 之后，保证
-	// 判定确定可期（生产行为不受影响，仅消除测试对时钟的依赖）。
+	// Reproduce a same-clock-tick edit deterministically. A timestamp alone
+	// cannot distinguish this replacement from the original fetch snapshot.
 	if _, err := s.db.ExecContext(t.Context(), `UPDATE model_sources SET updated_at = ? WHERE id = ?`,
-		snapshot.UpdatedAt.Add(time.Nanosecond).UTC().Format(time.RFC3339Nano), source.ID); err != nil {
+		snapshot.UpdatedAt.UTC().Format(time.RFC3339Nano), source.ID); err != nil {
 		t.Fatal(err)
 	}
 	for _, deleted := range []bool{false, true} {
