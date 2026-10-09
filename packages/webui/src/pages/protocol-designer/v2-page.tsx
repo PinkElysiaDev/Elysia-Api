@@ -69,7 +69,7 @@ export function ProtocolDesignerPage() {
       </div>}
       {customDrafts.length === 0 ? <EmptyState title="暂无自定义协议" /> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">协议</th><th>草稿</th><th>启用状态</th><th className="p-3 text-center">操作</th></tr></thead><tbody>{customDrafts.map((draft) => {
         const active = listing.active.find((entry) => entry.protocolId === draft.protocolId)
-        return <tr key={draft.protocolId} className="border-b"><td className="p-3 font-mono">{draft.protocolId}</td><td className="p-3 font-mono text-xs">{draft.hash.slice(0, 12)}</td><td className="p-3">{active ? listing.loaded[draft.protocolId] === active.revisionHash ? '已启用' : '需重新验证或修复' : '未启用'}</td><td className="p-3 text-center"><Button onClick={() => setSelection({ draft })}>编辑 {draft.protocolId}</Button><Button variant="danger" onClick={() => setArchiveID(draft.protocolId)}>删除 {draft.protocolId}</Button></td></tr>
+        return <tr key={draft.protocolId} className="border-b"><td className="p-3 font-mono">{draft.protocolId}</td><td className="p-3 font-mono text-xs">{draft.hash.slice(0, 12)}</td><td className="p-3">{active ? listing.loaded[draft.protocolId] === active.revisionHash ? '已启用' : '需重新验证或修复' : '未启用'}{listing.runtimeFailures?.[draft.protocolId] && <p className="mt-1 max-w-lg text-xs text-destructive">{listing.runtimeFailures[draft.protocolId]}</p>}</td><td className="p-3 text-center"><Button onClick={() => setSelection({ draft })}>编辑 {draft.protocolId}</Button><Button variant="danger" onClick={() => setArchiveID(draft.protocolId)}>删除 {draft.protocolId}</Button></td></tr>
       })}</tbody></table></div>}
     </>}
   </div>

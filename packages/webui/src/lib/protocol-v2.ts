@@ -14,7 +14,7 @@ export interface ProtocolReferences { baseline: string; references: ProtocolRefe
 export interface ProtocolHistoryDetail { item: ProtocolHistoryItem & { definition: string }; report?: VerificationReport; references: ProtocolReference[]; currentHash?: string; changes?: unknown[] }
 export interface VerificationReport { definitionHash: string; compilerVersion: string; samplesHash: string; kind: string; passed: boolean; covered: string[]; checks: { sampleId: string; direction?: string; passed: boolean; capabilities?: string[] }[]; issues: ConversionIssue[] }
 export interface Preview { exactJSON: string; issues: ConversionIssue[] }
-export interface ProtocolListing { drafts: ProtocolDraft[]; active: Activation[]; loaded: Record<string, string>; presets?: string[] }
+export interface ProtocolListing { drafts: ProtocolDraft[]; active: Activation[]; loaded: Record<string, string>; presets?: string[]; runtimeFailures?: Record<string, string> }
 /** Capabilities of an enabled, compiled revision; drafts are excluded. */
 export interface EnabledProtocol { id: string; name: string; revision: string; preset?: boolean; directions: string[]; capabilities: Record<string, boolean>; canGenerate: boolean; hasModelDiscovery: boolean; hasAgentPolicy: boolean }
 const base = '/protocols'
