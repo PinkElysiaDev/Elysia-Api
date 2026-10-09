@@ -77,6 +77,17 @@ node scripts/protocol-audit/replay-errors.mjs .tmp-dev/audit-wire
 
 沿用上面的 `ELYSIA_AUDIT_CAPTURE`，覆盖截断、非法终止快照、上游嵌套及平铺错误四种场景。OpenAI 与 Vercel Responses SDK 分别读取实际网关输出；每个 SDK 必须保留错误前的正文、报告一次包含原始原因的错误，并且只发送一次请求。普通成功结束、无关格式异常均不能算通过。HTTP 200 表示流头已经发送，持久调用记录及 trailer 仍须表明失败。
 
+Chat 的缺失角色及身份变化另用同一错误回放器检查：
+
+```powershell
+Push-Location backend
+go test ./server -run '^TestGatewayChatWireContractFailure$' -count=1
+Pop-Location
+node scripts/protocol-audit/replay-errors.mjs .tmp-dev/audit-wire chat
+```
+
+四种场景分别是整轮缺少 assistant 角色、ID 变化、模型变化及创建时间变化。两个 SDK 应读到包含正文的分片，并得到网关指出的具体字段错误，不能以 SDK 自身的 `missing role` 或类型校验异常替代网关诊断。固定版本 OpenAI 高层 helper 在收到角色之前不会触发 `content` 回调；报告单独记录这一限制，不把收到分片等同于客户端已展示文字。
+
 ## 查看结果
 
 每次结果保存在 `scripts/protocol-audit/results/` 下的新目录，终端会显示完整路径。
