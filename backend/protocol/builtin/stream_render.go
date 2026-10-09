@@ -299,7 +299,9 @@ func (stream *streamModule) encodeDelta(key string, item *streamItem, delta stri
 		}
 		if kind == p.ToolCallNode {
 			position, _ := p.EncodeValue(item.index)
-			fields = p.Object{"tool_calls": array([]p.Value{object(p.Object{"index": position, "id": item.node.CallID, "function": object(p.Object{"name": item.node.Name, "arguments": p.StringValue(delta)})})})}
+			// Chat clients concatenate string deltas, including name and id.
+			// Identity was emitted once by encodeItemStart; only input grows here.
+			fields = p.Object{"tool_calls": array([]p.Value{object(p.Object{"index": position, "function": object(p.Object{"arguments": p.StringValue(delta)})})})}
 		}
 		return []p.Value{stream.chatChunk(object(fields), p.Value{}, p.Value{})}, nil
 	case Anthropic:
