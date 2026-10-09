@@ -2,21 +2,33 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/storage"
 	"github.com/gin-gonic/gin"
 )
 
 // initializeProtocolRuntime makes migration all-or-nothing for serving. A
 // failed preview leaves the management API usable and never selects old codecs.
 func (s *Server) initializeProtocolRuntime(ctx context.Context) (err error) {
+	s.protocolStartupMu.Lock()
+	defer s.protocolStartupMu.Unlock()
 	defer func() { s.recordProtocolRuntimeFailure(err) }()
 	if err := s.recoverRequiredPresets(ctx); err != nil {
-		return err
+		return &protocolStartupError{Stage: "preset_recovery", Err: err}
 	}
-	return s.completeProtocolRuntimeInitialization(ctx)
+	if s.config != nil {
+		if err := s.prepareLegacyProtocolState(ctx); err != nil {
+			return &protocolStartupError{Stage: "legacy_migration", Err: err}
+		}
+	}
+	if err := s.completeProtocolRuntimeInitialization(ctx); err != nil {
+		return &protocolStartupError{Stage: "migration_verification", Err: err}
+	}
+	return nil
 }
 
 // Recover presets independently of legacy custom migration. Publishing this
@@ -91,11 +103,55 @@ func (s *Server) reloadProtocolRuntime(ctx context.Context) (err error) {
 func (s *Server) recordProtocolRuntimeFailure(err error) {
 	if err == nil {
 		s.protocolRuntimeFailure.Store(nil)
+		s.protocolStartupFailure.Store(nil)
 		return
 	}
 	message := err.Error()
 	s.protocolRuntimeFailure.Store(&message)
+	failure := &protocolStartupFailure{Stage: "runtime_publication", Code: "protocol_runtime_error", Message: message}
+	var stage *protocolStartupError
+	if errors.As(err, &stage) {
+		failure.Stage = stage.Stage
+	}
+	var databaseError interface {
+		error
+		Code() int
+	}
+	if errors.As(err, &databaseError) {
+		failure.Code = "storage_error"
+		if databaseError.Code()&0xff == 1 {
+			failure.Code = "storage_schema_error"
+		}
+	}
+	var snapshot *storage.ProtocolSnapshotError
+	if errors.As(err, &snapshot) {
+		failure.Stage = "snapshot_" + snapshot.Stage
+		failure.Code = "backup_" + snapshot.Stage + "_failed"
+	}
+	if errors.Is(err, protocol.ErrRevisionConflict) {
+		failure.Code = "revision_conflict"
+	}
+	var conversion *protocol.ConversionError
+	if errors.As(err, &conversion) {
+		failure.Code = "protocol_verification_failed"
+	}
+	s.protocolStartupFailure.Store(failure)
 }
+
+type protocolStartupFailure struct {
+	Stage   string `json:"stage"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+type protocolStartupError struct {
+	Stage string
+	Err   error
+}
+
+func (e *protocolStartupError) Error() string {
+	return fmt.Sprintf("protocol startup %s: %v", e.Stage, e.Err)
+}
+func (e *protocolStartupError) Unwrap() error { return e.Err }
 
 func (s *Server) protocolRuntimeError() error {
 	if s.isProtocolRuntimeRequired.Load() && !s.protocolRuntimeReady.Load() {

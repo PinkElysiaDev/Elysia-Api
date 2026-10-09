@@ -9,6 +9,8 @@ import (
 	"log"
 	"strings"
 	"time"
+
+	"github.com/elysia-api/backend/protocol"
 )
 
 // CustomProtocol 是 Maheshvara 自定义协议的持久化行。Config 保留用户提交的
@@ -71,11 +73,51 @@ type ProtocolRenamePair struct {
 // （大小写不敏感）。新旧 ID 并存（用户自建了同名协议）时跳过该对——自定义
 // 行优先，平台引用保持原样。幂等：旧 ID 不存在即无事发生。
 func (s *Store) MigratePresetProtocolRenames(ctx context.Context, pairs []ProtocolRenamePair) (renamed int, err error) {
+	var snapshot *ProtocolSnapshot
+	for _, pair := range pairs {
+		var conflict int
+		if err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM custom_protocols WHERE id=? COLLATE NOCASE`, pair.NewID).Scan(&conflict); err != nil {
+			return 0, err
+		}
+		if conflict > 0 {
+			continue
+		}
+		pending := false
+		for _, query := range []string{
+			`SELECT COUNT(*) FROM custom_protocols WHERE id=? COLLATE NOCASE`,
+			`SELECT COUNT(*) FROM protocol_revisions WHERE protocol_id=?`,
+			`SELECT COUNT(*) FROM protocol_drafts WHERE protocol_id=?`,
+			`SELECT COUNT(*) FROM protocol_history WHERE protocol_id=?`,
+			`SELECT COUNT(*) FROM model_sources WHERE LOWER(platform)='custom:'||LOWER(?)`,
+			`SELECT COUNT(*) FROM models WHERE LOWER(platform)='custom:'||LOWER(?)`,
+			`SELECT COUNT(*) FROM protocol_bindings WHERE json_extract(binding,'$.binding.protocolId')=?`,
+			`SELECT COUNT(*) FROM agent_sessions WHERE protocol_id=?`,
+		} {
+			var count int
+			if err = s.db.QueryRowContext(ctx, query, pair.OldID).Scan(&count); err != nil {
+				return 0, err
+			}
+			pending = pending || count > 0
+		}
+		if pending {
+			snapshot, err = s.EnsureProtocolSnapshot(ctx)
+			if err != nil {
+				return 0, err
+			}
+			break
+		}
+	}
+	if snapshot == nil {
+		return 0, nil
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err = checkProtocolCommitBaseline(ctx, tx, ProtocolUpgrade{Baseline: snapshot.Baseline, EvidenceBaseline: snapshot.EvidenceBaseline}); err != nil {
+		return 0, err
+	}
 	for _, pair := range pairs {
 		oldID := strings.TrimSpace(pair.OldID)
 		newID := strings.TrimSpace(pair.NewID)
@@ -306,8 +348,19 @@ func (s *Store) ReconcileCustomProtocolConfigIDs(ctx context.Context) (fixed int
 		if !changed {
 			continue
 		}
-		if _, err := s.db.ExecContext(ctx, `UPDATE custom_protocols SET config = ?, updated_at = ? WHERE id = ? COLLATE NOCASE`, rewritten, nowString(), row.ID); err != nil {
+		if _, err := s.EnsureProtocolSnapshot(ctx); err != nil {
 			return fixed, err
+		}
+		result, err := s.db.ExecContext(ctx, `UPDATE custom_protocols SET config = ?, updated_at = ? WHERE id = ? COLLATE NOCASE AND config=?`, rewritten, nowString(), row.ID, row.Config)
+		if err != nil {
+			return fixed, err
+		}
+		count, err := result.RowsAffected()
+		if err != nil {
+			return fixed, err
+		}
+		if count != 1 {
+			return fixed, protocol.ErrRevisionConflict
 		}
 		fixed++
 		log.Printf("[protocol-reconcile] protocol %q config id rewritten to match row id", row.ID)

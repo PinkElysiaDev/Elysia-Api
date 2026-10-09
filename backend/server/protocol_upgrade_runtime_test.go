@@ -48,14 +48,12 @@ func TestProtocolUpgradeStartupAndRestart(t *testing.T) {
 			} else if first.PlanHash != receipt.PlanHash || first.Backup != receipt.Backup {
 				t.Fatal("restart repeated migration", first, receipt)
 			}
-			backup, err := storage.Open(receipt.Backup)
-			if err != nil {
-				t.Fatal(err)
+			if receipt.Backup != "" || receipt.BackupMode != "not_required" {
+				t.Fatal("empty startup requested a snapshot", receipt)
 			}
-			defer backup.Close()
-			rows, err := backup.ListCustomProtocols(t.Context())
+			rows, err := s.store.ListCustomProtocols(t.Context())
 			if err != nil || len(rows) != 0 {
-				t.Fatal("backup was taken after legacy preset seeding", rows, err)
+				t.Fatal("empty startup seeded the legacy registry", rows, err)
 			}
 		}()
 	}

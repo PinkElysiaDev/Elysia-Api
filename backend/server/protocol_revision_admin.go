@@ -169,7 +169,10 @@ func (s *Server) adminProtocolDrafts(c *gin.Context) {
 			failures[id] = "预置未成功加载，请重新加载协议并检查启动日志"
 		}
 	}
-	result := gin.H{"drafts": drafts, "active": active, "loaded": loaded, "presets": requiredPresetIDs, "runtimeFailures": failures}
+	result := gin.H{"drafts": drafts, "active": active, "loaded": loaded, "presets": requiredPresetIDs, "runtimeFailures": failures, "runtimeReady": s.protocolRuntimeReady.Load()}
+	if failure := s.protocolStartupFailure.Load(); failure != nil {
+		result["startupFailure"] = failure
+	}
 	if reason := s.protocolRuntimeFailure.Load(); reason != nil {
 		result["runtimeError"] = *reason
 	}
@@ -325,7 +328,7 @@ func (s *Server) adminProtocolActivate(c *gin.Context) {
 }
 
 func (s *Server) adminProtocolReload(c *gin.Context) {
-	if err := s.reloadProtocolRuntime(c.Request.Context()); err != nil {
+	if err := s.initializeProtocolRuntime(c.Request.Context()); err != nil {
 		respondProtocolError(c, err)
 		return
 	}

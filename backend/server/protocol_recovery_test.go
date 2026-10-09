@@ -143,12 +143,12 @@ func TestPresetRecoveryDefectsAndIdempotence(t *testing.T) {
 			}
 			baseline, _ := s.store.ProtocolUpgradeBaseline(t.Context())
 			counts := recoveryCounts(t, db)
-			backups, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "*.pre-protocol-v2-*"))
+			backups, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "*.protocol-snapshot-v2-*"))
 			if err := s.initializeProtocolRuntime(t.Context()); err != nil {
 				t.Fatal(err)
 			}
 			after, _ := s.store.ProtocolUpgradeBaseline(t.Context())
-			afterBackups, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "*.pre-protocol-v2-*"))
+			afterBackups, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "*.protocol-snapshot-v2-*"))
 			if after != baseline || !reflect.DeepEqual(counts, recoveryCounts(t, db)) || !reflect.DeepEqual(backups, afterBackups) {
 				t.Fatal("healthy restart wrote protocol state")
 			}
@@ -186,7 +186,7 @@ func TestPresetRecoveryIndependentOfLegacyMigration(t *testing.T) {
 }
 
 func TestPresetRecoveryFailureIsAtomic(t *testing.T) {
-	for _, failure := range []string{"verification", "transaction", "disk-write", "concurrent", "concurrent-report", "backup", "canceled", "missing-table"} {
+	for _, failure := range []string{"verification", "transaction", "disk-write", "concurrent", "concurrent-report", "canceled", "missing-table"} {
 		t.Run(failure, func(t *testing.T) {
 			s, path := newProtocolAdminTestServer(t)
 			db := recoveryDB(t, path)
@@ -209,10 +209,6 @@ func TestPresetRecoveryFailureIsAtomic(t *testing.T) {
 				recoveryExec(t, db, `INSERT INTO protocol_drafts VALUES('concurrent','hash','{}','now')`)
 			case "concurrent-report":
 				recoveryExec(t, db, `INSERT INTO protocol_verification_reports(protocol_id,revision_hash,compiler_version,samples_hash,kind,report,verified_at) VALUES('concurrent','hash','old','hash','offline','{}','now')`)
-			case "backup":
-				if err := os.Mkdir(filepath.Join(filepath.Dir(path), "test.sqlite3.pre-protocol-v2-"+plan.Baseline), 0700); err != nil {
-					t.Fatal(err)
-				}
 			case "canceled":
 				var cancel context.CancelFunc
 				ctx, cancel = context.WithCancel(ctx)
@@ -316,7 +312,7 @@ func TestPresetRecoveryTenRestartsPreserveEvidenceAndCustomData(t *testing.T) {
 	db := recoveryDB(t, path)
 	baseline, _ := s.store.ProtocolUpgradeBaseline(t.Context())
 	counts := recoveryCounts(t, db)
-	backups, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "*.pre-protocol-v2-*"))
+	backups, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "*.protocol-snapshot-v2-*"))
 	beforeConfig, _ := os.ReadFile(path)
 	for i := 0; i < 10; i++ {
 		if err := s.store.Close(); err != nil {
@@ -335,7 +331,7 @@ func TestPresetRecoveryTenRestartsPreserveEvidenceAndCustomData(t *testing.T) {
 		}
 		assertRecoveredPresets(t, s)
 		after, _ := s.store.ProtocolUpgradeBaseline(t.Context())
-		afterBackups, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "*.pre-protocol-v2-*"))
+		afterBackups, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "*.protocol-snapshot-v2-*"))
 		afterConfig, _ := os.ReadFile(path)
 		if after != baseline || !reflect.DeepEqual(counts, recoveryCounts(t, db)) || !reflect.DeepEqual(backups, afterBackups) || string(beforeConfig) != string(afterConfig) {
 			t.Fatal("restart changed persisted state", i)
@@ -423,6 +419,22 @@ func TestPresetRecoveryPreservesManualBindingsAndHistoricalRevision(t *testing.T
 		t.Fatal(err)
 	}
 	if err := s.recoverRequiredPresets(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	initialBindings, err := s.store.ListProtocolBindings(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, binding := range initialBindings {
+		if binding.Kind == "source" && !reflect.DeepEqual(binding, b) {
+			t.Fatal("preset creation modified a binding")
+		}
+	}
+	service, err := s.protocolService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.refreshProtocolRuntime(t.Context(), service); err != nil {
 		t.Fatal(err)
 	}
 	bindings, err := s.store.ListProtocolBindings(t.Context())

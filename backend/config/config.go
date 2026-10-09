@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -17,31 +18,31 @@ import (
 )
 
 type Config struct {
-	Host                string             `json:"host,omitempty"`
-	Port                int                `json:"port,omitempty"`
-	PanelAccessToken    string             `json:"panelAccessToken,omitempty"`
-	DatabasePath        string             `json:"databasePath,omitempty"`
-	LogLevel            string             `json:"logLevel,omitempty"`
-	SecretKeyPath       string             `json:"secretKeyPath,omitempty"`
-	WebUIDir            string             `json:"webuiDir,omitempty"`
-	EnablePprof         bool               `json:"enablePprof,omitempty"`
-	MaxBodyBytes        int64              `json:"maxBodyBytes,omitempty"`
-	Server              ServerConfig       `json:"server"`
-	Tokens              []AccessToken      `json:"-"`                   // 运行时字段：仅用于 store-nil 回退与测试；不再从 config.json 读取（模型/token 走 SQLite）
-	Groups              []ModelGroupConfig `json:"-"`                   // 同上：旧 config.json 的 modelGroups 字段已废弃，数据走 SQLite
-	Responses           ResponsesConfig    `json:"responses,omitempty"` // Responses API 兼容策略
-	Usage               UsageConfig        `json:"usage,omitempty"`     // 用量估算配置
-	SystemLog           LogRetentionConfig `json:"systemLog,omitempty"`
-	UsageLog            UsageLogConfig     `json:"usageLog,omitempty"`            // 请求日志留存与内容策略（清理默认关闭）
-	HTTPTimeout         int                `json:"httpTimeout,omitempty"`         // HTTP 请求超时时间（秒），0 为不限制
-	DebugMode           bool               `json:"debugMode,omitempty"`           // 调试模式
-	VerboseLog          bool               `json:"verboseLog,omitempty"`          // 详细日志模式
-	HealthCheck         HealthCheckConfig  `json:"healthCheck,omitempty"`         // 可选的后台健康检测
-	Outbound            OutboundConfig     `json:"outbound,omitempty"`            // 出站网络策略：禁止拨号的 IP 段（CIDR 列表，可编辑）
-	AllowFakeIPOutbound bool               `json:"allowFakeIPOutbound,omitempty"` // 已废弃：仅作加载迁移读取（见 normalizeOutboundLocked），不再下发/落盘
-	ModelCatalog        ModelCatalogConfig `json:"modelCatalog,omitempty"`        // 模型能力元数据目录（默认 models.dev）
-	AgentRemote         AgentRemoteConfig  `json:"agentRemote,omitempty"`         // AI 助手远程暴露面（REST/MCP/A2A）
-	Agent               AgentDefaultsConfig `json:"agent,omitempty"`                // AI 助手全局默认（工具循环上限等）
+	Host                string              `json:"host,omitempty"`
+	Port                int                 `json:"port,omitempty"`
+	PanelAccessToken    string              `json:"panelAccessToken,omitempty"`
+	DatabasePath        string              `json:"databasePath,omitempty"`
+	LogLevel            string              `json:"logLevel,omitempty"`
+	SecretKeyPath       string              `json:"secretKeyPath,omitempty"`
+	WebUIDir            string              `json:"webuiDir,omitempty"`
+	EnablePprof         bool                `json:"enablePprof,omitempty"`
+	MaxBodyBytes        int64               `json:"maxBodyBytes,omitempty"`
+	Server              ServerConfig        `json:"server"`
+	Tokens              []AccessToken       `json:"-"`                   // 运行时字段：仅用于 store-nil 回退与测试；不再从 config.json 读取（模型/token 走 SQLite）
+	Groups              []ModelGroupConfig  `json:"-"`                   // 同上：旧 config.json 的 modelGroups 字段已废弃，数据走 SQLite
+	Responses           ResponsesConfig     `json:"responses,omitempty"` // Responses API 兼容策略
+	Usage               UsageConfig         `json:"usage,omitempty"`     // 用量估算配置
+	SystemLog           LogRetentionConfig  `json:"systemLog,omitempty"`
+	UsageLog            UsageLogConfig      `json:"usageLog,omitempty"`            // 请求日志留存与内容策略（清理默认关闭）
+	HTTPTimeout         int                 `json:"httpTimeout,omitempty"`         // HTTP 请求超时时间（秒），0 为不限制
+	DebugMode           bool                `json:"debugMode,omitempty"`           // 调试模式
+	VerboseLog          bool                `json:"verboseLog,omitempty"`          // 详细日志模式
+	HealthCheck         HealthCheckConfig   `json:"healthCheck,omitempty"`         // 可选的后台健康检测
+	Outbound            OutboundConfig      `json:"outbound,omitempty"`            // 出站网络策略：禁止拨号的 IP 段（CIDR 列表，可编辑）
+	AllowFakeIPOutbound bool                `json:"allowFakeIPOutbound,omitempty"` // 已废弃：仅作加载迁移读取（见 normalizeOutboundLocked），不再下发/落盘
+	ModelCatalog        ModelCatalogConfig  `json:"modelCatalog,omitempty"`        // 模型能力元数据目录（默认 models.dev）
+	AgentRemote         AgentRemoteConfig   `json:"agentRemote,omitempty"`         // AI 助手远程暴露面（REST/MCP/A2A）
+	Agent               AgentDefaultsConfig `json:"agent,omitempty"`               // AI 助手全局默认（工具循环上限等）
 	// OpenBrowserOnStart 控制启动时是否在系统默认浏览器打开控制台。
 	// nil = 默认尝试（桌面开箱即用；无桌面环境命令缺失时静默跳过），
 	// false = 不打开（子进程托管场景），true = 强制尝试。
@@ -438,31 +439,55 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 	return os.Rename(tmpName, path)
 }
 
-// TakeDeprecatedCustomProtocols 取出 config.json 中已废弃的 customProtocols
-// 键并从文件中移除（协议改存 SQLite，由 server 启动时一次性导入）。
-// 键不存在或文件不可读时返回 nil，调用方按"无需迁移"处理。
-func (c *Config) TakeDeprecatedCustomProtocols() []json.RawMessage {
+// Read first and remove only after all entries have been imported successfully.
+func (c *Config) ReadDeprecatedCustomProtocols() ([]json.RawMessage, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.path == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(c.path)
+	if err != nil {
+		return nil, err
+	}
+	var raw map[string]json.RawMessage
+	if err = json.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+	if _, ok := raw["customProtocols"]; !ok {
+		return nil, nil
+	}
+	var entries []json.RawMessage
+	err = json.Unmarshal(raw["customProtocols"], &entries)
+	return entries, err
+}
+
+func (c *Config) FinishDeprecatedCustomProtocols(expected []json.RawMessage) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	data, err := os.ReadFile(c.path)
 	if err != nil {
-		return nil
+		return err
 	}
 	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil
-	}
-	key, exists := raw["customProtocols"]
-	if !exists {
-		return nil
-	}
-	delete(raw, "customProtocols")
-	if out, err := json.MarshalIndent(raw, "", "  "); err == nil {
-		_ = WriteFileAtomic(c.path, out, 0o644)
+	if err = json.Unmarshal(data, &raw); err != nil {
+		return err
 	}
 	var entries []json.RawMessage
-	_ = json.Unmarshal(key, &entries)
-	return entries
+	if err = json.Unmarshal(raw["customProtocols"], &entries); err != nil {
+		return err
+	}
+	actual, _ := json.Marshal(entries)
+	before, _ := json.Marshal(expected)
+	if string(actual) != string(before) {
+		return fmt.Errorf("legacy custom protocols changed during import")
+	}
+	delete(raw, "customProtocols")
+	encoded, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return err
+	}
+	return WriteFileAtomic(c.path, encoded, 0600)
 }
 
 func (c *Config) SetPanelAccessToken(token string) {

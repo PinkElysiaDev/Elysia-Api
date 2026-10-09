@@ -217,12 +217,18 @@ func TestRuntimeProjectionUpgradeTenRestartsPreserveCustomAndFailedEvidence(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	backups, err := filepath.Glob(filepath.Join(filepath.Dir(path), "*.pre-protocol-v2-*"))
+	evidenceBefore, err := s.store.ProtocolRefreshEvidenceBaseline(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(backups) != 1 {
-		t.Fatal("expected one upgrade backup", backups)
+	backups, err := filepath.Glob(filepath.Join(filepath.Dir(path), "*.protocol-snapshot-v2-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// These current definitions only need new evidence and missing presets.
+	// No existing draft, activation, revision or binding is overwritten.
+	if len(backups) != 0 {
+		t.Fatal("append-only refresh created an unnecessary snapshot", backups)
 	}
 	for i := 0; i < 10; i++ {
 		if err := s.reloadProtocolRuntime(t.Context()); err != nil {
@@ -232,7 +238,14 @@ func TestRuntimeProjectionUpgradeTenRestartsPreserveCustomAndFailedEvidence(t *t
 		if err != nil || before != after {
 			t.Fatal("restart changed protocol state", i, err)
 		}
-		current, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "*.pre-protocol-v2-*"))
+		evidenceAfter, err := s.store.ProtocolRefreshEvidenceBaseline(t.Context())
+		if err != nil || evidenceBefore != evidenceAfter {
+			t.Fatal("restart changed verification evidence", i, err)
+		}
+		current, err := filepath.Glob(filepath.Join(filepath.Dir(path), "*.protocol-snapshot-v2-*"))
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !reflect.DeepEqual(backups, current) {
 			t.Fatal("restart added backup", i)
 		}

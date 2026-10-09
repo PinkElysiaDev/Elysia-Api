@@ -8,10 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/elysia-api/backend/protocol"
@@ -31,11 +27,13 @@ type ProtocolUpgradeRevision struct {
 }
 
 type ProtocolRefreshWrite struct {
-	Revision     bool `json:"revision,omitempty"`
-	Report       bool `json:"report,omitempty"`
-	Draft        bool `json:"draft,omitempty"`
-	Activation   bool `json:"activation,omitempty"`
-	RepairPreset bool `json:"repairPreset,omitempty"`
+	Revision         bool `json:"revision,omitempty"`
+	Report           bool `json:"report,omitempty"`
+	Draft            bool `json:"draft,omitempty"`
+	Activation       bool `json:"activation,omitempty"`
+	RepairPreset     bool `json:"repairPreset,omitempty"`
+	insertDraft      bool
+	insertActivation bool
 }
 
 func (w ProtocolRefreshWrite) Changed() bool {
@@ -64,12 +62,14 @@ type ProtocolUpgradeRejection struct {
 
 // ProtocolUpgradeReceipt identifies the committed plan and its database backup.
 type ProtocolUpgradeReceipt struct {
-	PlanHash        string    `json:"planHash"`
-	Baseline        string    `json:"baseline"`
-	RequestHash     string    `json:"requestHash,omitempty"`
-	CompilerVersion string    `json:"compilerVersion"`
-	Backup          string    `json:"backup"`
-	CompletedAt     time.Time `json:"completedAt"`
+	PlanHash        string            `json:"planHash"`
+	Baseline        string            `json:"baseline"`
+	RequestHash     string            `json:"requestHash,omitempty"`
+	CompilerVersion string            `json:"compilerVersion"`
+	Backup          string            `json:"backup"`
+	BackupMode      string            `json:"backupMode"`
+	Snapshot        *ProtocolSnapshot `json:"snapshot,omitempty"`
+	CompletedAt     time.Time         `json:"completedAt"`
 }
 
 type protocolUpgradeReader interface {
@@ -107,14 +107,7 @@ func readProtocolUpgradeBaseline(ctx context.Context, reader protocolUpgradeRead
 	for _, query := range protocolUpgradeQueries {
 		rows, err := reader.QueryContext(ctx, query)
 		if err != nil {
-			// 缺表不再致命：老库/拷贝丢失 WAL 等场景下个别表可能不存在，
-			// 跳过该表对指纹的贡献并告警——备份仍按文件真实状态捕获，
-			// 启动预备段（预置播种/生成开关）不被一个缺表卡死。
-			if strings.Contains(err.Error(), "no such table") {
-				log.Printf("[protocol-upgrade] baseline skipped a missing table: %v", err)
-				continue
-			}
-			return "", err
+			return "", fmt.Errorf("protocol configuration storage: %w", err)
 		}
 		err = hashProtocolUpgradeRows(rows, encoder, query)
 		closeErr := rows.Close()
@@ -195,40 +188,22 @@ func (store *Store) ApplyProtocolUpgrade(ctx context.Context, plan ProtocolUpgra
 	if err := validateProtocolUpgrade(plan); err != nil {
 		return nil, err
 	}
-	baseline, err := store.ProtocolUpgradeBaseline(ctx)
+	prepared, snapshot, err := store.prepareProtocolCommit(ctx, plan)
 	if err != nil {
 		return nil, err
 	}
-	if baseline != plan.Baseline {
-		return nil, protocol.ErrRevisionConflict
-	}
-	backup, err := store.selectProtocolUpgradeBackup(ctx, baseline)
-	if err != nil {
-		return nil, err
-	}
-	tx, err := store.db.BeginTx(ctx, nil)
+	tx, err := store.beginProtocolCommit(ctx, prepared)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	baseline, err = readProtocolUpgradeBaseline(ctx, tx)
-	if err != nil {
+	if err := writeProtocolCommit(ctx, tx, prepared); err != nil {
 		return nil, err
 	}
-	if baseline != plan.Baseline {
-		return nil, protocol.ErrRevisionConflict
+	receipt := &ProtocolUpgradeReceipt{PlanHash: planHash, Baseline: plan.Baseline, RequestHash: plan.RequestHash, CompilerVersion: protocol.CompilerVersion, BackupMode: "not_required", Snapshot: snapshot, CompletedAt: time.Now().UTC()}
+	if snapshot != nil {
+		receipt.Backup, receipt.BackupMode = snapshot.Path, "current_snapshot"
 	}
-	for _, entry := range plan.Revisions {
-		if err := writeProtocolUpgradeRevision(ctx, tx, entry); err != nil {
-			return nil, err
-		}
-	}
-	for _, binding := range plan.Bindings {
-		if err := saveProtocolBinding(ctx, tx, binding); err != nil {
-			return nil, err
-		}
-	}
-	receipt := &ProtocolUpgradeReceipt{PlanHash: planHash, Baseline: plan.Baseline, RequestHash: plan.RequestHash, CompilerVersion: protocol.CompilerVersion, Backup: backup, CompletedAt: time.Now().UTC()}
 	encoded, err := json.Marshal(receipt)
 	if err != nil {
 		return nil, err
@@ -267,10 +242,10 @@ func validateProtocolUpgrade(plan ProtocolUpgrade) error {
 
 func writeProtocolUpgradeRevision(ctx context.Context, tx *sql.Tx, entry ProtocolUpgradeRevision) error {
 	revision, draft := entry.Revision, entry.Draft
-	writes := ProtocolRefreshWrite{Revision: true, Report: true, Draft: true, Activation: true}
-	if entry.Refresh != nil {
-		writes = *entry.Refresh
+	if entry.Refresh == nil {
+		return fmt.Errorf("protocol writes must be normalized before commit")
 	}
+	writes := *entry.Refresh
 	if !writes.Changed() {
 		return nil
 	}
@@ -290,12 +265,17 @@ func writeProtocolUpgradeRevision(ctx context.Context, tx *sql.Tx, entry Protoco
 				return err
 			}
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO protocol_drafts(protocol_id,content_hash,definition,updated_at) VALUES(?,?,?,?) ON CONFLICT(protocol_id) DO UPDATE SET content_hash=excluded.content_hash,definition=excluded.definition,updated_at=excluded.updated_at`, draft.ProtocolID, draft.Hash, string(draft.Definition.Bytes()), draft.UpdatedAt.UTC().Format(time.RFC3339Nano)); err != nil {
+		query := `UPDATE protocol_drafts SET content_hash=?,definition=?,updated_at=? WHERE protocol_id=?`
+		args := []any{draft.Hash, string(draft.Definition.Bytes()), draft.UpdatedAt.UTC().Format(time.RFC3339Nano), draft.ProtocolID}
+		if writes.insertDraft {
+			query = `INSERT INTO protocol_drafts(content_hash,definition,updated_at,protocol_id) VALUES(?,?,?,?)`
+		}
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 			return err
 		}
 	}
 	if writes.Revision {
-		if err := saveProtocolRevision(ctx, tx, revision); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO protocol_revisions(protocol_id,content_hash,definition,created_at) VALUES(?,?,?,?)`, revision.ProtocolID, revision.Hash, string(revision.Definition.Bytes()), revision.CreatedAt.UTC().Format(time.RFC3339Nano)); err != nil {
 			return err
 		}
 	}
@@ -307,50 +287,10 @@ func writeProtocolUpgradeRevision(ctx context.Context, tx *sql.Tx, entry Protoco
 	if !writes.Activation {
 		return nil
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO protocol_activations(protocol_id,revision_hash,generation,activated_at) VALUES(?,?,1,?) ON CONFLICT(protocol_id) DO UPDATE SET revision_hash=excluded.revision_hash,generation=protocol_activations.generation+1,activated_at=excluded.activated_at`, revision.ProtocolID, revision.Hash, nowString())
+	query := `UPDATE protocol_activations SET revision_hash=?,generation=MAX(generation,0)+1,activated_at=? WHERE protocol_id=?`
+	if writes.insertActivation {
+		query = `INSERT INTO protocol_activations(revision_hash,activated_at,protocol_id,generation) VALUES(?,?,?,1)`
+	}
+	_, err := tx.ExecContext(ctx, query, revision.Hash, nowString(), revision.ProtocolID)
 	return err
-}
-
-func (store *Store) backupProtocolUpgrade(ctx context.Context, baseline string) (string, error) {
-	path := store.path + ".pre-protocol-v2-" + baseline
-	if _, err := os.Stat(path); err == nil {
-		return path, checkProtocolUpgradeBackup(ctx, path, baseline)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", err
-	}
-	file, err := os.CreateTemp(filepath.Dir(store.path), ".protocol-v2-backup-*.sqlite")
-	if err != nil {
-		return "", err
-	}
-	temporary := file.Name()
-	if err := file.Close(); err != nil {
-		return "", err
-	}
-	defer os.Remove(temporary)
-	if _, err := store.db.ExecContext(ctx, `VACUUM INTO ?`, temporary); err != nil {
-		return "", err
-	}
-	if err := checkProtocolUpgradeBackup(ctx, temporary, baseline); err != nil {
-		return "", err
-	}
-	if err := os.Rename(temporary, path); err != nil {
-		return "", err
-	}
-	return path, nil
-}
-
-func checkProtocolUpgradeBackup(ctx context.Context, path, baseline string) error {
-	database, err := sql.Open("sqlite", path)
-	if err != nil {
-		return err
-	}
-	defer database.Close()
-	actual, err := readProtocolUpgradeBaseline(ctx, database)
-	if err != nil {
-		return err
-	}
-	if actual != baseline {
-		return protocol.ErrRevisionConflict
-	}
-	return nil
 }

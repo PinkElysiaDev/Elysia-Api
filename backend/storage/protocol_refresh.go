@@ -10,7 +10,7 @@ import (
 
 // RefreshProtocolRuntime atomically refreshes active definitions and bindings
 // after an engine upgrade. It preserves the original migration receipt and
-// writes a new database backup before changing the executable graph.
+// snapshots only changes that overwrite existing data.
 func (store *Store) RefreshProtocolRuntime(ctx context.Context, plan ProtocolUpgrade) error {
 	if err := validateProtocolUpgrade(plan); err != nil {
 		return err
@@ -18,49 +18,24 @@ func (store *Store) RefreshProtocolRuntime(ctx context.Context, plan ProtocolUpg
 	if len(plan.Revisions) == 0 {
 		return fmt.Errorf("runtime refresh requires active revisions")
 	}
-	var backup string
-	previous, err := store.ProtocolUpgradeStatus(ctx)
+	prepared, snapshot, err := store.prepareProtocolCommit(ctx, plan)
 	if err != nil {
 		return err
 	}
-	if previous == nil {
-		backup, err = store.selectProtocolUpgradeBackup(ctx, plan.Baseline)
-	} else {
-		backup, err = store.backupProtocolUpgrade(ctx, plan.Baseline)
+	changed := len(prepared.plan.Bindings) > 0 || len(prepared.plan.Rejections) > 0
+	for _, entry := range prepared.plan.Revisions {
+		changed = changed || entry.Refresh.Changed()
 	}
-	if err != nil {
-		return err
+	if !changed {
+		return nil
 	}
-	tx, err := store.db.BeginTx(ctx, nil)
+	tx, err := store.beginProtocolCommit(ctx, prepared)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	baseline, err := readProtocolUpgradeBaseline(ctx, tx)
-	if err != nil {
+	if err := writeProtocolCommit(ctx, tx, prepared); err != nil {
 		return err
-	}
-	if baseline != plan.Baseline {
-		return protocol.ErrRevisionConflict
-	}
-	if plan.EvidenceBaseline != "" {
-		actual, err := readProtocolRefreshEvidenceBaseline(ctx, tx)
-		if err != nil {
-			return err
-		}
-		if actual != plan.EvidenceBaseline {
-			return protocol.ErrRevisionConflict
-		}
-	}
-	for _, entry := range plan.Revisions {
-		if err := writeProtocolUpgradeRevision(ctx, tx, entry); err != nil {
-			return err
-		}
-	}
-	for _, binding := range plan.Bindings {
-		if err := saveProtocolBinding(ctx, tx, binding); err != nil {
-			return err
-		}
 	}
 	for _, rejection := range plan.Rejections {
 		report := rejection.Report
@@ -78,7 +53,11 @@ func (store *Store) RefreshProtocolRuntime(ctx context.Context, plan ProtocolUpg
 			return err
 		}
 	}
-	receipt, err := json.Marshal(map[string]string{"baseline": plan.Baseline, "backup": backup, "compilerVersion": protocol.CompilerVersion})
+	mode, path := "not_required", ""
+	if snapshot != nil {
+		mode, path = "current_snapshot", snapshot.Path
+	}
+	receipt, err := json.Marshal(map[string]any{"baseline": plan.Baseline, "backup": path, "backupMode": mode, "snapshot": snapshot, "compilerVersion": protocol.CompilerVersion})
 	if err != nil {
 		return err
 	}

@@ -88,11 +88,15 @@ func (s *Server) prepareProtocolUpgrade(ctx context.Context, input protocolUpgra
 	if input.Baseline != "" && input.Baseline != baseline {
 		return nil, protocol.ErrRevisionConflict
 	}
+	evidence, err := s.store.ProtocolRefreshEvidenceBaseline(ctx)
+	if err != nil {
+		return nil, err
+	}
 	service, err := s.protocolService()
 	if err != nil {
 		return nil, err
 	}
-	preview := &protocolUpgradePreview{Baseline: baseline, Definitions: map[string]protocol.Value{}, Reports: map[string]protocol.VerificationReport{}, Issues: []protocol.ConversionIssue{}, plan: storage.ProtocolUpgrade{Baseline: baseline}}
+	preview := &protocolUpgradePreview{Baseline: baseline, Definitions: map[string]protocol.Value{}, Reports: map[string]protocol.VerificationReport{}, Issues: []protocol.ConversionIssue{}, plan: storage.ProtocolUpgrade{Baseline: baseline, EvidenceBaseline: evidence}}
 	drafts, err := s.store.ListProtocolDrafts(ctx)
 	if err != nil {
 		return nil, err
@@ -187,7 +191,13 @@ func (s *Server) prepareProtocolUpgrade(ctx context.Context, input protocolUpgra
 			preview.Issues = append(preview.Issues, migrationIssue(id, "/definitions/"+id+"/id", "replacement must retain the referenced protocol ID"))
 			continue
 		}
-		report := protocol.Verify(ctx, entry)
+		report, reportErr := s.store.ReadProtocolReport(ctx, id, entry.Hash())
+		if reportErr != nil && !recoverableProtocolRead(reportErr) {
+			return nil, reportErr
+		}
+		if reportErr != nil || protocol.IssuesError(protocol.CanActivate(entry, report)) != nil {
+			report = protocol.Verify(ctx, entry)
+		}
 		preview.Reports[id] = report
 		preview.Issues = append(preview.Issues, report.Issues...)
 		compiled[id] = entry
@@ -209,6 +219,13 @@ func (s *Server) prepareProtocolUpgrade(ctx context.Context, input protocolUpgra
 		return nil, err
 	}
 	if current != baseline {
+		return nil, protocol.ErrRevisionConflict
+	}
+	currentEvidence, err := s.store.ProtocolRefreshEvidenceBaseline(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if currentEvidence != evidence {
 		return nil, protocol.ErrRevisionConflict
 	}
 	preview.Ready = protocol.IssuesError(preview.Issues) == nil

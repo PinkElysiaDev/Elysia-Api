@@ -17,18 +17,20 @@ import (
 
 const protocolAdminMaxBodyBytes = 8 << 20
 
-func (s *Server) migrateLegacyCustomProtocols() {
+func (s *Server) migrateLegacyCustomProtocols() error {
 	if s.store == nil {
-		return
+		return nil
 	}
-	entries := s.config.TakeDeprecatedCustomProtocols()
+	entries, err := s.config.ReadDeprecatedCustomProtocols()
+	if err != nil {
+		return err
+	}
 	if len(entries) == 0 {
-		return
+		return nil
 	}
 	existing, err := s.store.ListCustomProtocols(context.Background())
 	if err != nil {
-		log.Printf("custom protocol migration aborted: %v", err)
-		return
+		return err
 	}
 	known := make(map[string]bool, len(existing))
 	for _, row := range existing {
@@ -38,22 +40,25 @@ func (s *Server) migrateLegacyCustomProtocols() {
 	for _, raw := range entries {
 		var protocol relay.CustomProtocolConfig
 		if err := json.Unmarshal(raw, &protocol); err != nil {
-			log.Printf("custom protocol migration skipped an invalid entry: %v", err)
-			continue
+			return fmt.Errorf("legacy custom protocol invalid: %w", err)
 		}
 		id := strings.ToLower(strings.TrimSpace(protocol.ID))
-		if id == "" || known[id] {
+		if id == "" {
+			return fmt.Errorf("legacy custom protocol requires an id")
+		}
+		if known[id] {
 			continue
 		}
 		if err := s.store.UpsertCustomProtocol(context.Background(), customProtocolRow(protocol, string(raw))); err != nil {
-			log.Printf("custom protocol migration failed for %q: %v", protocol.ID, err)
-			continue
+			return err
 		}
 		imported++
+		known[id] = true
 	}
 	if imported > 0 {
 		log.Printf("migrated %d custom protocol(s) from config.json into the database", imported)
 	}
+	return s.config.FinishDeprecatedCustomProtocols(entries)
 }
 
 func findCustomProtocolTestModel(ctx context.Context, store *storage.Store, sourceID, modelName string) (storage.Model, bool) {

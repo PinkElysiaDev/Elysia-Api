@@ -2,7 +2,6 @@ package server
 
 import (
 	"errors"
-	"os"
 	"strings"
 	"testing"
 
@@ -54,8 +53,8 @@ func TestProtocolUpgradePreviewPreservesDraftAndLegacyEdits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(receipt.Backup); err != nil {
-		t.Fatal(err)
+	if receipt.Backup != "" || receipt.BackupMode != "not_required" {
+		t.Fatal("append-only migration required a backup", receipt)
 	}
 	if err := service.Reload(t.Context()); err != nil {
 		t.Fatal(err)

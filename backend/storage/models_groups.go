@@ -678,9 +678,7 @@ func (s *Store) StripGeminiModelIDPrefixes(ctx context.Context) (fixed int, err 
 		return fixed, err
 	}
 	if err := s.stripGeminiKeyPermissionLists(ctx); err != nil {
-		// per-key 失败不回滚已提交的模型行修复（下次启动重入收敛），也不让
-		// 启动迁移整体报错——记日志即可。
-		log.Printf("[gemini-id-fix] key permission rewrite deferred to next start: %v", err)
+		return fixed, err
 	}
 	return fixed, nil
 }
@@ -710,11 +708,18 @@ func (s *Store) stripGeminiModelIDRows(ctx context.Context) (fixed int, err erro
 	if len(pending) == 0 {
 		return 0, nil
 	}
+	snapshot, err := s.EnsureProtocolSnapshot(ctx)
+	if err != nil {
+		return 0, err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err = checkProtocolCommitBaseline(ctx, tx, ProtocolUpgrade{Baseline: snapshot.Baseline, EvidenceBaseline: snapshot.EvidenceBaseline}); err != nil {
+		return 0, err
+	}
 	for _, item := range pending {
 		var exists int
 		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM models WHERE source_id = ? AND id = ?`, item.sourceID, item.newID).Scan(&exists); err != nil {
@@ -771,6 +776,9 @@ func (s *Store) stripGeminiKeyPermissionLists(ctx context.Context) error {
 		}
 		if !changed {
 			continue
+		}
+		if _, err := s.EnsureProtocolSnapshot(ctx); err != nil {
+			return err
 		}
 		if err := s.UpdateSourceAPIKeys(ctx, source.ID, source.APIKeys); err != nil {
 			return fmt.Errorf("source %q: %w", source.ID, err)

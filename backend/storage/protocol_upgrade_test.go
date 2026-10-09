@@ -46,6 +46,13 @@ func TestProtocolUpgradeAtomicBackupAndRestart(t *testing.T) {
 	if err := store.UpsertCustomProtocol(t.Context(), legacy); err != nil {
 		t.Fatal(err)
 	}
+	oldDraft, err := protocol.ParseValue([]byte(`{"unfinished":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SaveProtocolDraft(t.Context(), protocol.Draft{ProtocolID: "text-alpha", Hash: "old-draft", Definition: oldDraft, UpdatedAt: time.Now()}, ""); err != nil {
+		t.Fatal(err)
+	}
 	plan := protocolUpgradeFixture(t, store)
 	receipt, err := store.ApplyProtocolUpgrade(t.Context(), plan)
 	if err != nil {
@@ -54,7 +61,7 @@ func TestProtocolUpgradeAtomicBackupAndRestart(t *testing.T) {
 	if _, err := os.Stat(receipt.Backup); err != nil {
 		t.Fatal(err)
 	}
-	if err := checkProtocolUpgradeBackup(t.Context(), receipt.Backup, plan.Baseline); err != nil {
+	if err := checkProtocolSnapshot(t.Context(), receipt.Snapshot); err != nil {
 		t.Fatal(err)
 	}
 	second, err := store.ApplyProtocolUpgrade(t.Context(), plan)

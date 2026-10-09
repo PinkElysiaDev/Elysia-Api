@@ -14,7 +14,9 @@ func (s *Server) importLegacyConfig() error {
 	}
 	ctx := context.Background()
 	var imported bool
-	if ok, err := s.store.GetSetting(ctx, "legacyConfigImported", &imported); err == nil && ok && imported {
+	if ok, err := s.store.GetSetting(ctx, "legacyConfigImported", &imported); err != nil {
+		return err
+	} else if ok && imported {
 		return nil
 	}
 	tokens := make([]storage.APIToken, 0, len(s.config.GetTokens()))
@@ -63,6 +65,11 @@ func (s *Server) importLegacyConfig() error {
 	models := make([]storage.Model, 0, len(modelsByID))
 	for _, model := range modelsByID {
 		models = append(models, model)
+	}
+	if len(tokens) > 0 || len(groups) > 0 || len(models) > 0 {
+		if _, err := s.store.EnsureProtocolSnapshot(ctx); err != nil {
+			return err
+		}
 	}
 	if err := s.store.ImportLegacyConfig(ctx, tokens, groups, models); err != nil {
 		return err
