@@ -265,13 +265,13 @@ func (stream *streamModule) encodeItemStart(key string, item *streamItem, option
 	case Gemini:
 		return nil, nil
 	case Responses:
-		if node.Kind == p.ReasoningNode && node.ReasoningForm != "summary" {
-			return nil, unsupported("/item", "visible thinking cannot be substituted for a Responses reasoning summary")
-		}
 		id := item.wireID
 		block := p.Object{"id": id, "type": p.StringValue("message"), "role": p.StringValue("assistant"), "status": p.StringValue("in_progress"), "content": array(nil)}
-		if node.ReasoningForm == "summary" {
+		if node.Kind == p.ReasoningNode {
 			block = p.Object{"id": id, "type": p.StringValue("reasoning"), "status": p.StringValue("in_progress"), "summary": array(nil)}
+			if node.ReasoningForm != "summary" {
+				block["content"] = array(nil)
+			}
 		}
 		if node.Kind == p.ToolCallNode {
 			block = p.Object{"id": id, "type": p.StringValue("function_call"), "name": node.Name, "call_id": node.CallID, "arguments": p.StringValue(""), "status": p.StringValue("in_progress")}
@@ -281,6 +281,9 @@ func (stream *streamModule) encodeItemStart(key string, item *streamItem, option
 			}
 		}
 		frames := []p.Value{stream.responsesEvent("response.output_item.added", key, item, "item", object(block))}
+		if node.Kind == p.ReasoningNode && node.ReasoningForm != "summary" {
+			frames = append(frames, stream.responsesEvent("response.content_part.added", key, item, "part", object(p.Object{"type": p.StringValue("reasoning_text"), "text": p.StringValue("")})))
+		}
 		if node.Kind != p.ToolCallNode && node.Kind != p.ReasoningNode {
 			part := p.Object{"type": p.StringValue("output_text"), "text": p.StringValue(""), "annotations": array(nil)}
 			if node.Kind == p.RefusalNode {
@@ -322,6 +325,9 @@ func (stream *streamModule) encodeDelta(key string, item *streamItem, delta stri
 		return []p.Value{stream.anthropicEvent("content_block_delta", item, object(p.Object{"type": p.StringValue(deltaKind), field: p.StringValue(delta)}), "delta")}, nil
 	case Responses:
 		eventKind := "response.output_text.delta"
+		if kind == p.ReasoningNode {
+			eventKind = "response.reasoning_text.delta"
+		}
 		if kind == p.RefusalNode {
 			eventKind = "response.refusal.delta"
 		}
@@ -408,7 +414,7 @@ func (stream *streamModule) encodeItemEnd(key string, item *streamItem, options 
 		}
 		return []p.Value{stream.geminiChunk(array([]p.Value{block}), p.Value{}, p.Value{})}, nil
 	case Responses:
-		if node.Kind == p.ToolCallNode || node.ReasoningForm == "summary" {
+		if node.Kind == p.ToolCallNode || node.Kind == p.ReasoningNode {
 			node.ID = item.wireID
 			node.Status = p.StringValue("completed")
 		}
@@ -418,6 +424,10 @@ func (stream *streamModule) encodeItemEnd(key string, item *streamItem, options 
 		}
 		if node.Kind == p.ToolCallNode {
 			return []p.Value{stream.responsesEvent("response.output_item.done", key, item, "item", block)}, nil
+		}
+		if node.Kind == p.ReasoningNode && node.ReasoningForm != "summary" {
+			part := object(p.Object{"type": p.StringValue("reasoning_text"), "text": node.Payload})
+			return []p.Value{stream.responsesEvent("response.reasoning_text.done", key, item, "text", node.Payload), stream.responsesEvent("response.content_part.done", key, item, "part", part), stream.responsesEvent("response.output_item.done", key, item, "item", block)}, nil
 		}
 		if node.ReasoningForm == "summary" {
 			frames := []p.Value{}
@@ -462,7 +472,7 @@ func (stream *streamModule) Finish(ctx context.Context, options p.EvaluationCont
 			if err != nil {
 				return nil, err
 			}
-			if node.Kind == p.ToolCallNode || node.ReasoningForm == "summary" {
+			if node.Kind == p.ToolCallNode || node.Kind == p.ReasoningNode {
 				node.ID = item.wireID
 				node.Status = p.StringValue("completed")
 			} else {

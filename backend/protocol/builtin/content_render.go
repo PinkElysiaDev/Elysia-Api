@@ -102,6 +102,14 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 			return p.Value{}, unsupported("/content", "Chat results belong to separate tool messages")
 		}
 	case p.ReasoningNode:
+		// A standalone reasoning_text block is a native extension. The
+		// standard Responses representation is a reasoning item's content.
+		if adapter.name == Responses && node.Native != nil {
+			original, _ := node.Native.Value.ReadObject()
+			if original["type"] == p.StringValue("reasoning_text") && !isNativeBlock(node, "reasoning_text", direction, options) {
+				return p.Value{}, unsupported("/reasoning", "standalone reasoning_text requires compatible native provenance")
+			}
+		}
 		if adapter.name == Chat {
 			return p.Value{}, unsupported("/content", "Chat reasoning belongs to message.reasoning_content")
 		}
@@ -115,10 +123,17 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 				return p.Value{}, unsupported("/reasoning", "summary blocks cannot be substituted for visible thinking")
 			}
 		} else {
-			if !node.Payload.IsZero() {
-				return p.Value{}, unsupported("/reasoning", "visible thinking cannot be substituted for a Responses reasoning summary")
-			}
 			fields["type"], fields["id"], fields["status"] = p.StringValue("reasoning"), node.ID, node.Status
+			if node.ReasoningForm != "summary" {
+				content := []p.Value{}
+				if !node.Payload.IsZero() {
+					if _, err := stringValue(node.Payload); err != nil {
+						return p.Value{}, err
+					}
+					content = append(content, object(p.Object{"type": p.StringValue("reasoning_text"), "text": node.Payload}))
+				}
+				fields["content"] = array(content)
+			}
 			var summary []p.Value
 			for _, child := range node.Children {
 				if child.Kind != p.TextNode {

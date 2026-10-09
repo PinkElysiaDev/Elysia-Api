@@ -199,10 +199,13 @@ func (adapter module) validateWireContract(direction p.Direction, value p.Value)
 			if e != nil {
 				return e
 			}
-			if f["type"] == p.StringValue("output_text") {
+			if f["type"] == p.StringValue("output_text") || f["type"] == p.StringValue("reasoning_text") || f["type"] == p.StringValue("summary_text") {
 				var text string
 				if f["text"].IsNull() || f["text"].Decode(&text) != nil {
-					return fail(base+"/text", "output_text requires text")
+					return fail(base+"/text", "text part requires a string")
+				}
+				if f["type"] != p.StringValue("output_text") {
+					return nil
 				}
 				_, e = arr(f["annotations"], base+"/annotations")
 				return e
@@ -216,6 +219,34 @@ func (adapter module) validateWireContract(direction p.Direction, value p.Value)
 			}
 			if e = str(f["id"], base+"/id"); e != nil {
 				return e
+			}
+			if f["type"] == p.StringValue("reasoning") {
+				for _, field := range []string{"summary", "content"} {
+					if field == "content" && f[field].IsZero() {
+						continue
+					}
+					parts, err := arr(f[field], base+"/"+field)
+					if err != nil {
+						return err
+					}
+					for i, value := range parts {
+						at := fmt.Sprintf("%s/%s/%d", base, field, i)
+						entry, err := obj(value, at)
+						if err != nil {
+							return err
+						}
+						kind := "summary_text"
+						if field == "content" {
+							kind = "reasoning_text"
+						}
+						if entry["type"] != p.StringValue(kind) {
+							return fail(at+"/type", "reasoning part has the wrong text representation")
+						}
+						if err := part(value, at); err != nil {
+							return err
+						}
+					}
+				}
 			}
 			if f["type"] == p.StringValue("message") {
 				if f["role"] != p.StringValue("assistant") {
@@ -278,7 +309,19 @@ func (adapter module) validateWireContract(direction p.Direction, value p.Value)
 			if e := num(fields["sequence_number"], "/sequence_number"); e != nil {
 				return e
 			}
-			if strings.HasPrefix(kind, "response.content_part.") || strings.HasPrefix(kind, "response.output_text.") || strings.HasPrefix(kind, "response.refusal.") || strings.HasPrefix(kind, "response.function_call_arguments.") || strings.HasPrefix(kind, "response.custom_tool_call_input.") || strings.HasPrefix(kind, "response.reasoning_summary_") {
+			if strings.HasPrefix(kind, "response.reasoning_text.") {
+				if e := num(fields["content_index"], "/content_index"); e != nil {
+					return e
+				}
+				field := "text"
+				if kind == "response.reasoning_text.delta" {
+					field = "delta"
+				}
+				if _, e := stringValue(fields[field]); e != nil {
+					return fail("/"+field, "reasoning text event requires a string")
+				}
+			}
+			if strings.HasPrefix(kind, "response.content_part.") || strings.HasPrefix(kind, "response.output_text.") || strings.HasPrefix(kind, "response.refusal.") || strings.HasPrefix(kind, "response.function_call_arguments.") || strings.HasPrefix(kind, "response.custom_tool_call_input.") || strings.HasPrefix(kind, "response.reasoning_summary_") || strings.HasPrefix(kind, "response.reasoning_text.") {
 				if e := str(fields["item_id"], "/item_id"); e != nil {
 					return e
 				}

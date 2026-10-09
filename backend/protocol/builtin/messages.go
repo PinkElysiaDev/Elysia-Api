@@ -151,6 +151,37 @@ func (adapter module) decodeResponseItem(value p.Value, path string, direction p
 			}
 			node.Children = append(node.Children, p.Node{Kind: p.TextNode, Payload: entry["text"], Attributes: adapter.extensions(entry, []string{"type", "text"})})
 		}
+		// Responses exposes visible reasoning separately from its summary. A
+		// single plain reasoning_text part maps exactly to the common visible
+		// thought payload; never relabel it as summary_text. More complex parts
+		// retain their native extension until their structure can be projected.
+		if !fields["content"].IsZero() {
+			parts, err := readArray(fields["content"])
+			if err != nil {
+				return node, err
+			}
+			if len(summaries) == 0 && len(parts) <= 1 {
+				var payload p.Value
+				plain := true
+				if len(parts) == 1 {
+					part, e := parts[0].ReadObject()
+					if e != nil {
+						return node, e
+					}
+					plain = part["type"] == p.StringValue("reasoning_text") && len(part) == 2
+					if plain {
+						if _, e = stringValue(part["text"]); e != nil {
+							return node, e
+						}
+						payload = part["text"]
+					}
+				}
+				if plain {
+					node.ReasoningForm, node.Payload = "", payload
+					node.Attributes = adapter.extensions(fields, []string{"type", "id", "status", "encrypted_content", "summary", "content"})
+				}
+			}
+		}
 		return node, nil
 	}
 	return adapter.decodeBlock(value, path, direction, options, history)

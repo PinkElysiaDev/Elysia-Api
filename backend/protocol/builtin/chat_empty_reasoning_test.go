@@ -26,8 +26,8 @@ func TestChatAbsentThinkingDoesNotBecomeResponsesReasoning(t *testing.T) {
 			wire, err = responses.EncodeResponse(t.Context(), r, p.EvaluationContext{})
 		}
 		if value == `"visible thought"` {
-			if err == nil {
-				t.Fatal("visible thought silently changed to summary")
+			if err != nil || !strings.Contains(string(wire), `"type":"reasoning_text"`) || strings.Contains(string(wire), `"type":"summary_text"`) {
+				t.Fatal("visible thought must use content, not summary", string(wire), err)
 			}
 			continue
 		}
