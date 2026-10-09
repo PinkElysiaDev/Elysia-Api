@@ -190,7 +190,7 @@ func TestStreamCancellationUsage(t *testing.T) {
 	for _, endpoint := range []string{"chat", "responses", "converted", "custom"} {
 		for _, completed := range []bool{false, true} {
 			t.Run(endpoint+fmt.Sprint(completed), func(t *testing.T) {
-				body := openAIChunk("c1", map[string]any{"content": "partial"}, "", nil)
+				body := openAIChunk("c1", map[string]any{"role": "assistant", "content": "partial"}, "", nil)
 				terminal := openAIChunk("c1", map[string]any{}, "stop", map[string]any{"prompt_tokens": 2, "completion_tokens": 1, "total_tokens": 3})
 				marker := `"finish_reason":"stop"`
 				platform := "openai"
@@ -282,7 +282,7 @@ func TestStreamFlushErrorThroughGinAndCapture(t *testing.T) {
 func TestToolOnlyStreamWithoutUsageSucceeds(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		io.WriteString(w, `data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"id":"r1","model":"m","created":1,"object":"chat.completion.chunk"}`+"\n\ndata: [DONE]\n\n")
+		io.WriteString(w, `data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"id":"r1","model":"m","created":1,"object":"chat.completion.chunk"}`+"\n\ndata: [DONE]\n\n")
 	}))
 	defer upstream.Close()
 	s := newTestServerWithStore(t, []config.ModelGroupConfig{{ID: "g", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 1, Models: []config.ModelRef{openAIModel("m", upstream.URL)}}})

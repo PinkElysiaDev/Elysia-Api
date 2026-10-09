@@ -190,7 +190,7 @@ func TestPresetCombinedFramesEndToEnd(t *testing.T) {
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"last\"},\"finish_reason\":\"stop\",\"index\":0}],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":3},\"id\":\"r1\",\"model\":\"m\",\"created\":1,\"object\":\"chat.completion.chunk\"}\n\n")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"last\"},\"finish_reason\":\"stop\",\"index\":0}],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":3},\"id\":\"r1\",\"model\":\"m\",\"created\":1,\"object\":\"chat.completion.chunk\"}\n\n")
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	}))
 	defer upstream.Close()

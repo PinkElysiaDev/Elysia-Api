@@ -83,8 +83,9 @@ func TestHostedToolUsagePersistedHTTPAndSSE(t *testing.T) {
 					return
 				}
 				w.Header().Set("Content-Type", "text/event-stream")
-				fmt.Fprint(w, "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"web_search_call\",\"id\":\"s1\",\"status\":\"completed\"},\"sequence_number\":0}\n\n")
-				fmt.Fprintf(w, "data: {\"type\":\"response.completed\",\"sequence_number\":1,\"response\":%s}\n\n", payload)
+				fmt.Fprint(w, "data: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"r1\",\"model\":\"m\",\"object\":\"response\",\"created_at\":1,\"status\":\"in_progress\",\"output\":[]}}\n\n")
+				fmt.Fprint(w, "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"web_search_call\",\"id\":\"s1\",\"status\":\"completed\"},\"sequence_number\":1}\n\n")
+				fmt.Fprintf(w, "data: {\"type\":\"response.completed\",\"sequence_number\":2,\"response\":%s}\n\n", payload)
 			}))
 			defer upstream.Close()
 			server := newTestServer(t, presetGroup(t, "custom:openai-responses", upstream.URL))
