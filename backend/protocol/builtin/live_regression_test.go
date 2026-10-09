@@ -57,7 +57,7 @@ func TestResponsesProgressMetadataDoesNotInventUsage(t *testing.T) {
 			}
 			for _, codec := range []string{Chat, Anthropic, Gemini} {
 				target := shippedProjectionProtocol(t, codec)
-				conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(compiled, target))
+				conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(target, compiled))
 				projected, err := conversion.Event(t.Context(), frame.Events[0], p.ConversionContext{}, nil)
 				if err != nil {
 					t.Fatal(err)

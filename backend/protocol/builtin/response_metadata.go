@@ -75,6 +75,10 @@ func (stream *streamModule) splitFrameMetadata(extra p.Value) (p.Value, []p.Resp
 		switch path {
 		case "/", "/message", "/response":
 			location = "response"
+		case "/delta":
+			if stream.name == Anthropic {
+				location = "response"
+			}
 		case "/usage", "/usageMetadata", "/message/usage":
 			location = "usage"
 		}

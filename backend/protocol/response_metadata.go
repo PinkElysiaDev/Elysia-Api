@@ -33,8 +33,12 @@ func MetadataFieldType(codec, location, name string) string {
 				return "string"
 			case "store", "background", "parallel_tool_calls":
 				return "bool"
-			case "temperature", "top_p", "max_output_tokens", "max_tool_calls", "top_logprobs", "completed_at":
+			case "temperature", "top_p", "max_output_tokens", "max_tool_calls", "top_logprobs", "completed_at", "frequency_penalty", "presence_penalty":
 				return "number"
+			case "previous_response_id":
+				return "reference"
+			case "moderation":
+				return "empty-state"
 			case "metadata", "reasoning", "text":
 				return "object"
 			case "tools":
@@ -43,7 +47,7 @@ func MetadataFieldType(codec, location, name string) string {
 				return "string-or-container"
 			}
 		case "anthropic":
-			if name == "container" || name == "context_management" {
+			if name == "container" || name == "context_management" || name == "stop_details" {
 				return "empty-state"
 			}
 		case "gemini":
@@ -99,9 +103,12 @@ func ValidateMetadataValue(codec, location, name string, v Value, at string) err
 	}
 	ok := false
 	switch kind {
-	case "string":
+	case "string", "reference":
 		var s string
 		ok = v.Decode(&s) == nil
+		if kind == "reference" {
+			ok = ok && strings.TrimSpace(s) != ""
+		}
 	case "bool":
 		var b bool
 		ok = v.Decode(&b) == nil
@@ -138,6 +145,19 @@ func emptyMetadata(v Value) bool {
 	return s == "null" || s == "[]" || s == "{}"
 }
 
+func emptyMetadataField(item ResponseMetadata) bool {
+	if emptyMetadata(item.Value) {
+		return true
+	}
+	// Anthropic explicitly reports no applied context edits this way. Other
+	// keys or any actual edit still require state-aware conversion.
+	if item.Codec == "anthropic" && item.Name == "context_management" {
+		fields, err := item.Value.ReadObject()
+		return err == nil && len(fields) == 1 && string(fields["applied_edits"].Bytes()) == "[]"
+	}
+	return false
+}
+
 func (c *CompiledConversion) projectMetadata(items []ResponseMetadata, codec string, phase ConversionPhase, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) ([]ResponseMetadata, error) {
 	var out []ResponseMetadata
 	for _, item := range items {
@@ -157,7 +177,8 @@ func (c *CompiledConversion) projectMetadata(items []ResponseMetadata, codec str
 				return nil, err
 			}
 		}
-		if MetadataFieldType(item.Codec, item.Location, item.Name) == "empty-state" && !emptyMetadata(item.Value) {
+		kind := MetadataFieldType(item.Codec, item.Location, item.Name)
+		if (kind == "empty-state" || kind == "reference") && !emptyMetadataField(item) {
 			return nil, streamIssue(UnsupportedCapability, item.Path, "nonempty context/container state requires a scoped state mapping")
 		}
 		if (item.Name == "citations" || item.Name == "citationMetadata" || item.Name == "groundingMetadata") && !emptyMetadata(item.Value) {
@@ -171,7 +192,7 @@ func (c *CompiledConversion) projectMetadata(items []ResponseMetadata, codec str
 			out = append(out, mapped)
 			continue
 		}
-		if emptyMetadata(item.Value) {
+		if emptyMetadataField(item) {
 			sink.Add(ConversionIssue{Code: ConversionNormalized, Severity: SeverityInfo, Fidelity: "preserved", Protocol: route.Target, Stage: "conversion." + string(phase), Path: item.Path, RuleID: rule.ID, PolicyHash: c.Hash, PolicyRevision: c.RuleRevisions[rule.ID], Reason: "empty known response metadata normalized for target", Evidence: c.Origins[rule.ID]})
 		} else if err := c.issue(rule, phase, route, item.Path, "target cannot express this recognized response metadata field", sink, true); err != nil {
 			return nil, err
