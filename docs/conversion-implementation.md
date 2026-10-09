@@ -1,29 +1,39 @@
 # 可配置跨协议转换
 
-实现保留公共语义模型，在 HTTP 普通／流式网关中增加独立的 ConversionPolicy。配置不修改预置定义或模型工具权限。编译器为 `2.0.0-dev.21`，特征为 `conversion.policies.v1`、`conversion.continuation.v1` 和 `conversion.client_output.v1`。
+实现保留公共语义模型，在 HTTP 普通／流式网关中使用独立的 ConversionPolicy。配置不修改预置定义或模型工具权限。编译器为 `2.0.0-dev.22`，特征为 `conversion.policies.v1`、`conversion.continuation.v1` 和 `conversion.client_output.v1`。
 
 ## 默认行为与契约
 
 模型原始绑定、分组／手动权限和组合证据分开处理。上游响应按照真实模型契约检查，转换后的内容再由目标协议检查。组合的较窄能力集只选择请求路径，不覆盖模型绑定。真正超出模型／分组权限的输出仍返回 `upstream_contract_violation`。
 
-预置之间默认启用下列具名规则；自定义协议需显式配置规则：
+默认规则按各方向实际使用的编解码模块选择，预置和旧自定义协议同等生效；模块后的 `after` 映射仍先执行。完全手写的目标编码器不因名称或 family 相似而自动获得字段省略规则。
 
 | 规则 | 行为 |
 |---|---|
 | `client-stream-options` | 分离 `include_usage` 偏好；跨族未知子字段逐项诊断；非流式选项兼容忽略、严格拒绝 |
+| `responses-include` | 保留同线格式的 include；跨协议将 `reasoning.encrypted_content` 作为客户端续传选择，不发送上游；未知选择项拒绝 |
 | `gemini-tool-results` | 文本工具结果明确包装为 `{"result":原文}`，记录兼容降级；字段名可改；严格模式拒绝此包装 |
 | `request-signatures` | 投影无法原生表达的外族签名；已认证恢复到目标协议的资源保留 |
 | `response-signatures` / `event-signatures` | 只处理签名，保留其他资源和正文；恢复通道成功与信息丢失分别记录 |
+| `response-usage-projection` / `event-usage-projection` | 只省略列举的目标不可表达用量字段；兼容模式诊断，严格模式拒绝；内部计量保持完整 |
 
 新版 Chat 预置声明 `requires: ["conversion.client_output.v1"]`，`stream_options` 不再属于通用生成参数。true 输出一次 Chat 结束用量块；false、缺省、null、空对象默认不输出该块。`usage.defaultIncludeUsage` 恢复旧显示默认。`usage.collectUpstreamUsage` 独立决定是否向 Chat 上游请求用量；内部计量不受客户端显示偏好影响。没有实际计数时不会伪造观察值。
 
-未声明该特征的旧自定义 Chat 定义保留其原解码形状、Agent 参数及样例。无需修改用户原文；主动启用 `stream_options` 行为规则时才规范化旧参数。回归使用提交 `82406b9` 的原始定义，仅更改副本 ID，验证原样例及实际编解码。
+未声明该特征的旧自定义 Chat 定义保留用户映射所依赖的解码形状、Agent 参数及样例；映射执行后，默认策略自动规范化旧参数，无需重建或手动开启。回归使用提交 `82406b9` 的原始定义，仅更改副本 ID。
+
+Responses 的 include 接受缺失、null 和字符串数组，错误类型返回准确的 `/include` 路径。同线格式保留未知字符串、顺序及空值；跨协议目前只实现 `reasoning.encrypted_content`。它复用 Elysia 认证载体，不能冒充供应商原生加密思考内容。有状态才保存和包装；用户关闭客户端载体时，服务端副本不等于已向客户端返回所选字段。`store`、`truncation` 和生成约束不默认省略。
+
+用量投影范围：Anthropic 目标省略 `output.reasoning_tokens`；非 Gemini 目标省略 `toolUsePromptTokenCount`；非 Anthropic 目标省略两个 TTL 桶；Gemini 目标省略 `CacheCreation` 及依赖它的 `uncached_input_tokens`。投影前验证原始算术关系，输出总量不重复加入思考计数，未知明细仍拒绝。流式的顶层用量和终止响应用量使用同一动作，内部计量只消费原始上游事件。
+
+编码器没有这些字段的隐藏省略分支，组合比较也不再按 family 忽略它们。运行、预览和验证比较同一份投影；预览及离线签名验证仅使用临时认证状态，不写持久副本。报告区分原生保留、可恢复包装、有损兼容和拒绝。
+
+升级自动重验原自定义修订；失败证据保留，相关协议隔离，健康预置继续加载。绑定直接使用最终继承策略验证。正常重启复用当前证据；原文、草稿、手动能力和显式未绑定状态不变。
 
 ## 配置和管理
 
 页面为 `/protocols/conversions`。模型源和模型绑定页面提供覆盖入口。优先级是引擎默认、协议对、模型源、模型；同 ID 完整覆盖，禁用规则停止继承。执行顺序必须明确，同阶段的重复顺序拒绝编译。未完成的规则仍可保存为草稿。
 
-阶段为 `ingress`、`request`、`response`、`event`、`wire`。动作注册表包括 `set`、`remove`、`transform`、`warn`、`reject`、`signatures`、`stream_options`、`tool_result_object`、`buffer_node`、`provider_signature`。`transform` 使用现有受限表达式引擎，可返回完整语义树；不执行 JavaScript。节点条件只遍历语义节点，不遍历工具参数中的任意 JSON。普通规则不能创建或重新关联来源、作用域和签名资源。
+阶段为 `ingress`、`request`、`response`、`event`、`wire`。动作注册表另增加 `responses_include` 和 `usage_projection`；schema 返回适用阶段、目标编码器枚举及说明，页面提供对应选择器。其 `value` 为实际目标模块名：`openai-chat`、`responses`、`anthropic` 或 `gemini`。原有 `set`、`remove`、`transform`、`warn`、`reject`、`signatures`、`stream_options`、`tool_result_object`、`buffer_node`、`provider_signature` 继续使用。`transform` 使用受限表达式引擎，不执行 JavaScript。普通规则不能创建或重新关联来源、作用域和签名资源。
 
 `buffer_node` 等待匹配节点完成，保持原事件顺序，受引擎资源上限约束。严格签名投影自动等待完整节点；组合验证也使用同一等待逻辑。原始上游事件序列独立验证，保存失败不能掩盖生命周期错误。Anthropic `signature_delta` 累积为完整签名，重复语义快照不会重复发送签名片段；Gemini `thoughtSignature` 按完整字段处理，不猜测任意字符串是增量还是快照。已写出流式内容后不会重提生成请求。
 

@@ -32,11 +32,13 @@
 
 Chat→Gemini 的 `stream_options.include_usage` 属于客户端输出偏好，不进入 Gemini 生成参数。上游真实响应按照原始模型绑定验证，目标表达限制在转换后检查，不再通过收窄模型绑定把合法签名误判为上游违约。
 
+自 `dev.22` 起，上述默认规则按实际方向模块适用于预置和旧自定义协议。Responses→Gemini 的 `include: ["reasoning.encrypted_content"]` 由客户端输出选择动作处理，复用 Elysia 认证续传；不代表供应商原生 encrypted reasoning 可以任意互译。未知选择项跨协议拒绝，类型错误返回 `invalid_input`。同线格式保留原生选择。
+
 ## 已知降级（转换但语义变化，均有 warning 或文档记录）
 
 - Anthropic/Gemini 目标把**会话前段**的 system 消息提升合并进顶层 system 数组（既有行为）；中段 system 对 A 按位、对 G 拒绝。
 - 跨族流式：Anthropic 客户端的 message_start 不带 usage（仅尾帧）；Responses sequence_number 为本地重编；Chat 流式 refusal→G 退化为文本。
-- 缓存计数投影：分桶/TTL 明细与 Gemini 创建总量跨族省略+warning（`cache-usage-contracts.md`）。
+- 用量投影：具名规则在兼容模式省略目标不可表达的 TTL 桶、Gemini 创建总量、Anthropic 思考明细及非 Gemini 工具提示明细；严格模式拒绝。原始计量和既有总量保留（`cache-usage-contracts.md`）。
 - chat 旧版 `"role":"function"` 历史消息未识别（透传后上游 400、本层无诊断）——遗留项，待下轮补显式诊断。
 
 ## 原则

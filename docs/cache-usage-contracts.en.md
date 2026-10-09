@@ -17,13 +17,13 @@ Chat/Responses retain legacy top-level `cache_creation_input_tokens` input suppo
 
 Every Anthropic response that wrote cache carries `cache_creation.ephemeral_5m_input_tokens` and `ephemeral_1h_input_tokens`, a provider TTL breakdown that is bookkeeping rather than a requested capability. No non-Anthropic target has a field for it.
 
-- **Omit, do not fail**: when a target cannot express the breakdown, the bucket details are omitted while the **creation total still reaches `cache_write_tokens`** (Chat/Responses). A response is no longer rejected on bucket-key presence; Anthropic→Chat/Responses previously returned 502 (non-streaming) or 200 cut short by the `X-Elysia-Stream-Error` trailer (streaming).
+- **Named compatibility projection**: the default compatible policy uses `usage_projection` to omit unrepresentable buckets while the **creation total still reaches `cache_write_tokens`** (Chat/Responses). Strict mode rejects the loss. With the rule disabled, the encoder rejects unprojected fields.
 - **Visible omission**: the omission raises a `SeverityWarning` at `/usage/details/ephemeral_5m_input_tokens` (or `ephemeral_1h_input_tokens`) that is drained into the record's ConversionIssues beside a successful response, so it is an explicit omission rather than a silent drop.
 - **Deterministic**: details are traversed in sorted key order, so the same input reports the same path every run; previously the rejected key depended on map iteration order and could differ between runs.
 - **Same-protocol preservation**: an unmodified Anthropic→Anthropic roundtrip retains both buckets fully, with tools, system and message positions unmodified.
 - **Gemini creation total**: Gemini reports cache reads only and has no creation counter; the creation total is likewise omitted with a warning at `/usage/cacheCreation`, while reads cross normally as `cachedContentTokenCount`.
 
-Combination verification approves this projection per target family (`cacheBucketOmission`), so a legal cross-protocol roundtrip is not read as a lost counter. The record's `ProtocolUsage` always retains the complete buckets; the omission applies only to the wire output.
+Since `dev.22`, combination verification compares the projected semantics, without family-based omissions in the comparator. Dropping cache creation for Gemini first validates the original arithmetic and removes its dependent uncached subtotal from the client copy. `ProtocolUsage` retains the original counters; target stream replay cannot overwrite accounting.
 
 **Open verification gap**: a nonzero cross-protocol cache read has not yet been obtained on the live site; local tests cannot substitute for it — see the [live report](cache-validation-2026-10-04.en.md).
 

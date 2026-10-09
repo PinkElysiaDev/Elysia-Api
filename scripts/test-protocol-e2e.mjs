@@ -65,7 +65,7 @@ try {
   const backend = start(binary, ['-config', config], runDirectory)
   const vite = start(process.execPath, [join(root, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(webPort), '--strictPort'], web)
   await Promise.all([waitReady(backend, `${backendURL}/health`), waitReady(vite, webURL)])
-  await run(process.execPath, [join(root, 'node_modules/@playwright/test/cli.js'), 'test', 'protocol-v2.spec.ts', '--project=chromium', '--workers=1'], web)
+  await run(process.execPath, [join(root, 'node_modules/@playwright/test/cli.js'), 'test', ...(process.argv.length > 2 ? process.argv.slice(2) : ['protocol-v2.spec.ts', 'conversion-policy.spec.ts']), '--project=chromium', '--workers=1'], web)
 } finally {
   // Close only children created by this runner. No port-based or name-based kills.
   for (const child of owned.reverse()) {

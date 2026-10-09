@@ -21,13 +21,13 @@ Gemini 资源创建响应中的 token 数表示资源容量，不能充当一次
 
 Anthropic 上游在每次写出缓存的响应里都附带 `cache_creation.ephemeral_5m_input_tokens` 与 `ephemeral_1h_input_tokens` 两个 TTL 分桶。这是上游的记账明细，不是调用方请求的能力，而目标协议（Chat、Responses、Gemini）没有对应字段。
 
-- **省略而非报错**：目标无法表达分桶时，分桶细节被省略，**创建总量仍映射到 `cache_write_tokens`**（Chat/Responses），不再因分桶键存在而拒绝整个响应。此前 Anthropic→Chat/Responses 的非流式请求返回 502、流式请求返回 200 但被 `X-Elysia-Stream-Error` trailer 截断。
+- **具名兼容投影**：默认兼容策略通过 `usage_projection` 省略目标无法表达的分桶，**创建总量仍映射到 `cache_write_tokens`**（Chat/Responses）。严格模式拒绝信息损失；禁用规则后编码器也会拒绝未经投影的字段。
 - **可见省略**：省略在 `/usage/details/ephemeral_5m_input_tokens`（或 `ephemeral_1h_input_tokens`）上产一条 `SeverityWarning` 诊断，随成功响应一并进入该次记录的 ConversionIssues，故是「显式省略」而非静默丢弃。
 - **确定性**：明细按键名排序遍历，同一输入每次都报告同一条路径；此前被拒绝的键取决于 map 遍历序，同输入在不同运行间会报 `ephemeral_5m` 或 `ephemeral_1h`。
 - **同协议保留**：Anthropic→Anthropic 的未修改往返完整保留两个分桶，工具、system 与消息位置都不重排。
 - **Gemini 创建总量**：Gemini 响应只报告读取，没有创建计数字段；创建总量同样被省略并产 warning（路径 `/usage/cacheCreation`），读取仍走 `cachedContentTokenCount` 正常跨过。
 
-组合验证按目标家族认可该投影（`cacheBucketOmission`），因此绑定期不会把一次合法的跨协议往返判为「计数丢失」。记录侧的 `ProtocolUsage` 始终保留完整分桶，省略只作用于线制输出。
+自 `dev.22` 起，组合验证比较具名规则执行后的语义，不再按协议家族跳过计数比较。Gemini 创建计数省略前先检查原始算术关系，同时从客户端副本移除依赖创建计数的未缓存子计数。`ProtocolUsage` 始终保留完整原始计数，流式客户端投影不会回写计量。
 
 **开放验证缺口**：跨协议线上非零缓存读取尚未在真实站点取得，本地测试不能替代该项，详见[本轮实测报告](cache-validation-2026-10-04.md)。
 
