@@ -1,0 +1,31 @@
+{
+  "concurrency": 32,
+  "maxOutputTokens": 32768,
+  "timeoutMs": 180000,
+  "targets": [
+    {
+      "protocol": "chat",
+      "baseUrl": "https://chat.provider.example/v1",
+      "apiKey": "YOUR_CHAT_KEY",
+      "model": "YOUR_CHAT_MODEL"
+    },
+    {
+      "protocol": "responses",
+      "baseUrl": "https://responses.provider.example/v1",
+      "apiKey": "YOUR_RESPONSES_KEY",
+      "model": "YOUR_RESPONSES_MODEL"
+    },
+    {
+      "protocol": "anthropic",
+      "baseUrl": "https://anthropic.provider.example",
+      "apiKey": "YOUR_ANTHROPIC_KEY",
+      "model": "YOUR_ANTHROPIC_MODEL"
+    },
+    {
+      "protocol": "gemini",
+      "baseUrl": "https://gemini.provider.example",
+      "apiKey": "YOUR_GEMINI_KEY",
+      "model": "YOUR_GEMINI_MODEL"
+    }
+  ]
+}

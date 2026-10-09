@@ -1,0 +1,191 @@
+# 自动测试与报错收集
+
+填齐 Chat、Responses、Anthropic、Gemini 四种真实渠道后，自动启动独立的 Elysia 测试实例，检查日常使用、协议转换、SDK 兼容和代码，并保存详细日志。默认运行全部六组，也能单独重跑一组。
+
+## 开始使用
+
+将整个 `protocol-audit` 文件夹放在 Elysia-Api 的 `scripts/` 下。需要 Node.js 22+、Go 1.25+ 和已安装项目依赖的源码。以下命令在**项目根目录**执行。
+
+**1. 首次使用，复制示例配置：**
+
+```sh
+cp scripts/protocol-audit/config.example.json scripts/protocol-audit/config.local.json
+```
+
+**2. 编辑 `scripts/protocol-audit/config.local.json`：**
+
+- 按[示例配置](config.example.json)，填齐四个渠道的 `baseUrl`、`apiKey`、`model`，替换全部示例地址和 `YOUR_...` 占位符。
+- `baseUrl` 可带 `/v1`、`/v1beta` 或代理前缀，不要填完整推理端点（如 `/v1/chat/completions`）。Gemini 模型名不加 `models/`。
+- 已有配置可直接复用；`config.local.json` 含真实密钥，请注意隐私安全。
+
+**3. 首次安装测试依赖：**
+
+```sh
+npm install --prefix scripts/protocol-audit
+```
+
+**4. 运行测试：**
+
+```sh
+node scripts/protocol-audit/run.mjs
+```
+
+测试实例自动启动、关闭，临时数据库自动清理；一项失败后继续收集其他结果。测试会调用真实渠道并产生费用。结束后打开终端显示的 `report.md`。
+
+**默认并发为 32**，在配置中修改 `"concurrency": 32` 即可调整，允许任意正整数，`1` 为串行。协议和 SDK 的独立用例跨渠道并行；同一对话的前后轮次、重启和渠道启停等操作保持顺序。并发较高时需留意渠道限流。
+
+## 只运行一组
+
+```sh
+node scripts/protocol-audit/run.mjs --group protocol
+```
+
+| 分组 | 检查内容 |
+|---|---|
+| `daily` | 渠道和令牌、对话、模型列表、用量日志、会话隔离、流式响应 |
+| `protocol` | 上游直连与 4×4 协议转换，包括多轮、系统指令、中文、历史和工具调用 |
+| `sdk` | OpenAI、Anthropic、Google SDK 和 AI SDK 的实际调用 |
+| `errors` | 错误令牌、无效模型、非法 JSON、取消请求及恢复 |
+| `persistence` | 重启、修改配置、渠道启停、撤销令牌 |
+| `code` | 后端测试和 go vet；前端类型检查、ESLint 和构建 |
+
+不加 `--group` 就是全部。除单独的 `code` 组外，每个分组也都要求四种渠道配齐。仅 `code` 组不需要渠道配置；不运行 `sdk` 组就无需安装脚本的 SDK 依赖。代码检查仍需要项目自身的依赖。
+
+## 查看结果
+
+每次结果保存在 `scripts/protocol-audit/results/` 下的新目录，终端会显示完整路径。
+
+- **看结果：** 打开 `report.md`，点击证据链接查看具体请求、响应和报错。
+- **看进度：** 运行过程中也能查看 `run.log`。
+- **反馈问题：** 打包本次结果目录。日志会脱敏已知密钥，但分享前仍需检查其他私有内容，不要加入配置文件。
+
+Ctrl+C 会保留已收集的结果并关闭临时实例。HTTP 200 也可能因响应结构或内容错误而未通过；结合直连结果判断是渠道问题还是网关转换问题。
+
+可用性、重启和异常恢复检查接受结构正常的非空回答；指定文字、记忆码和工具结果仍由相应场景严格检查。协议组的汇总项不重复计入通过或失败数量。
+
+---
+
+## 高级用法
+
+### 目录与分发
+
+```text
+scripts/protocol-audit/
+  run.mjs                 运行入口
+  README.md               使用说明
+  config.example.json     可公开的四协议配置模板
+  config.local.json       用户填写的配置（不上传）
+  package.json            依赖和自测命令
+  package-lock.json       固定依赖版本
+  .gitignore              排除本地配置、依赖和结果
+  src/                    测试执行代码
+  tests/                  脚本自测及固定样例
+  node_modules/           安装的依赖（不上传）
+  results/                每次运行的报告和日志（不上传）
+```
+
+分发包统一放在 `scripts/protocol-audit.zip`，包内保留 `protocol-audit/` 这一层目录。只包含入口、说明、示例配置、依赖清单、`.gitignore`、`src/` 和 `tests/`；不包含用户配置、依赖、测试结果和系统杂项。
+
+### 使用环境变量
+
+在对应渠道中，将 `"apiKey": "你的密钥"` 替换为 `"apiKeyEnv": "AUDIT_CHAT_KEY"`，然后运行：
+
+```sh
+export AUDIT_CHAT_KEY='你的密钥'
+node scripts/protocol-audit/run.mjs
+```
+
+其他渠道同理，`apiKey` 和 `apiKeyEnv` 二选一。脚本会在测试前检查变量是否已设置。
+
+### 命令选项和独立使用
+
+```sh
+# 只校验配置和查看计划，不要求设置密钥环境变量，不运行命令或发请求
+node scripts/protocol-audit/run.mjs --dry-run
+
+# 指定配置或新的输出目录
+node scripts/protocol-audit/run.mjs --config /path/to/config.json --out /path/to/new-result
+```
+
+输出目录必须不存在。退出码：`0` 通过，`1` 有失败，`2` 配置错误或未完成，`130` 中断。
+
+复制整个脚本目录到项目外也能使用：在配置中增加 `"projectRoot": "/path/to/Elysia-Api"`，在脚本目录安装依赖并运行 `node run.mjs`。相对 `projectRoot` 按配置文件目录解析；省略时自动查找源码仓库。
+
+### 可选配置
+
+以下字段均可省略：
+
+| 字段 | 默认值 / 含义 |
+|---|---|
+| `concurrency` | `32`，所有渠道共用的协议/SDK 并发数；正整数，无人为上限，`1` 为串行 |
+| `projectRoot` | 自动查找源码目录 |
+| 渠道的 `id` | 自动生成；填写可让报告名称更容易辨认 |
+| `timeoutMs` | `180000`（3 分钟），单次 HTTP 请求总超时；SDK 和临时后端同步使用 |
+| `maxRequests` | `512`，所有渠道的 **protocol 组**共享请求上限；其他组另有调用 |
+| `maxResponseBytes` | `16777216`（16 MiB），单次 HTTP 响应或代码日志上限；超限会失败并保存已收集的部分 |
+| `maxOutputTokens` | `32768`，单次生成预算；普通 HTTP、SDK 和工具后续轮次统一使用 |
+| `requireUsage` | `true`，协议与日常调用要求返回用量计数；Gemini 允许省略可选分项，已返回的计数仍须有效 |
+| `scenarios` | `models`, `text`, `multiturn`, `tools`, `system`, `chinese`, `history`；影响 protocol 组 |
+| `streams` | `[false, true]`，protocol 和 sdk 组分别跑 JSON 与 SSE |
+| `codeChecks` | 省略使用内置代码检查；非空数组可替换 |
+
+没有密钥的服务可用 `"auth": "none"`。渠道使用各协议的标准密钥认证，暂不支持自定义认证请求头。
+
+图片为可选场景：将 `image` 加入 `scenarios`，在支持图片的渠道上设置 `"vision": true`。脚本发送内置红色 PNG；未声明图片能力的路径标记不适用。
+
+默认 protocol 组每条路径 13 个用例、最多 17 次请求；四种上游的直连加 4×4 网关路径共 260 个用例、最多 340 次请求，其中 320 次为模型生成。完整运行全部六组约有 440 次模型生成，另有模型列表和管理请求；失败可能减少后续调用。脚本不自动重试；请求预算不约束网关内部行为或实际费用。
+
+默认 **32,768 tokens** 用于给推理和输出预留空间，是可调整的测试预算，不是供应商的统一默认值。预算较大可能增加费用，达到上限被截断仍算失败。依据 2026-10-09 核对的[OpenAI 推理指南](https://developers.openai.com/api/docs/guides/reasoning)、[GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol)、[Gemini](https://ai.google.dev/gemini-api/docs/latest-model) 和 [Claude](https://platform.claude.com/docs/en/models/overview) 官方说明；具体预算和能力需按所填模型确认。
+
+### 自定义代码检查
+
+`codeChecks` 替换内置检查，`cwd` 相对于 `projectRoot`：
+
+```json
+{
+  "codeChecks": [
+    {
+      "id": "backend-tests",
+      "command": ["go", "test", "./...", "-count=1"],
+      "cwd": "backend",
+      "timeoutMs": 600000
+    }
+  ]
+}
+```
+
+命令按参数数组直接执行，`&&`、`$VAR` 和 Shell 通配符不会自动展开。默认每条超时 10 分钟；非零退出、无法启动、超时或输出超限均会记录。内置代码检查清除继承的 Elysia live 测试开关，避免额外启用付费测试。
+
+### 详细日志与状态
+
+```text
+report.md                 结果与证据链接
+report.json               结构化结果、预期与实际、错误堆栈、SDK 版本
+run.log                   测试起止、命令、HTTP 状态、耗时、具体报错
+evidence/
+  ...-http.json           管理和日常调用的请求、响应、状态、耗时
+  ...-sdk-http.json       SDK 实际请求和原始响应，包括 SSE
+  ...-backend.log         临时后端输出
+  ...-backend-tests.log   代码检查输出；其他检查各自有日志
+protocol/
+  report.md               全部渠道直连与转换的详细结果
+  run.log                 协议用例及请求轮次日志
+  evidence/               协议请求响应
+```
+
+代码命令记录参数、工作目录、退出码和合并的标准输出/错误输出。后端日志超限会标记截断；HTTP 和代码输出超限会记录失败，并保留已收集内容。
+
+`failed` 表示未通过；`blocked` 表示缺少配置、依赖或前置步骤；`skipped` 表示中断或请求预算不足；`not_applicable` 表示未声明相应能力。未执行不能算通过。
+
+### 脚本自测
+
+在脚本目录执行 `npm test`。自测使用固定配置和本地样例，不读取用户渠道配置，并拦截外部 API 请求。自测通过仅说明脚本的相关检查通过，不代表项目或真实渠道全部通过。
+
+## 测试范围与限制
+
+- 测试连接真实上游和自动启动的独立后端，使用临时数据库。后端准备失败时，仍尝试直连和代码检查。
+- 不主动制造上游 429、503、超时或断流；实际发生就记录，未发生不代表已验证。
+- 取消测试检查客户端取消及后续可用性，无法确认供应商停止生成或计费。流式记录首字节和总耗时，不能凭一次短响应判断是否存在缓冲。
+- 管理操作通过 API 执行，不包含浏览器页面、长期压测和安装包。模型列表只检查第一页，也不等于完整供应商 Schema 认证。
+- 模型能力限制应结合直连结果判断，不能直接归因于网关转换。例如 GPT-6.1 Sol 的工具调用支持需区分 Chat 与 Responses，参见上方官方文档。
+- 只有脚本自测使用固定样例，不调用付费渠道；样例不参与实际测试报告。
