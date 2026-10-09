@@ -11,6 +11,8 @@ import { runAudit, planAudit, redactor, codeCheck, exchange, runLogger } from '.
 import { protocols, requestBody, followupBody, endpoint, inspectReply } from './protocols.mjs'
 import { localInstance } from './local.mjs'
 import { mapConcurrent, serialize } from './concurrency.mjs'
+import { eventSequence, failureCategory, persistedCall } from './evidence.mjs'
+import { regressionCases } from './regressions.mjs'
 
 export const groups = ['daily', 'protocol', 'sdk', 'errors', 'persistence', 'code']
 const toolDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -109,7 +111,8 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
     if (signal?.aborted) { item.status = 'skipped'; item.actual = 'interrupted'; log(`END ${item.id} skipped: interrupted`); await save(); return false }
     await save(); const start = performance.now()
     try { item.actual = await currentCase.run(item, () => fn(item)) || '符合预期'; item.status = 'passed' }
-    catch (error) { item.status = error.code === 'blocked' ? 'blocked' : signal?.aborted ? 'skipped' : 'failed'; item.error = { code: error.code || error.name, message: error.message, stack: error.stack }; if (error.sdk) item.sdk = error.sdk; if (error.backendLog) await evidence('backend.log', error.backendLog, item) }
+    catch (error) { item.status = error.code === 'blocked' ? 'blocked' : signal?.aborted ? 'skipped' : 'failed'; item.error = { code: error.code || error.name, message: error.message, stack: error.stack }; if (error.sdk) item.sdk = error.sdk; if (error.backendLog) await evidence('backend.log', error.backendLog, item); if (error.startupFailure) await evidence('startup-failure.json', error.startupFailure, item) }
+    if (item.status === 'failed') item.failureCategory = failureCategory({ ...item, record: item.calls?.at(-1)?.record })
     item.elapsedMs = Math.round(performance.now() - start); item.finishedAt = new Date().toISOString()
     log(`END ${item.id} ${item.status} elapsedMs=${item.elapsedMs}${item.error ? ` error=${item.error.stack || item.error.message}` : ''}`)
     await save(); onProgress(clean(`${item.status}: ${item.id}${item.error ? ` — ${item.error.message}` : ''}`))
@@ -132,6 +135,11 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
     const result = await exchange(url, body, headers, { ...plan.api, timeoutMs }, requestSignal, { method, rawBody, onChunk })
     const file = await evidence('http.json', { caseId: active.id, request: { url, method: method || (body === undefined && rawBody === undefined ? 'GET' : 'POST'), headers, body, rawBody }, response: { ...result, error: result.error?.message } })
     log(`HTTP END ${active.id} status=${result.status} elapsedMs=${result.elapsedMs} evidence=${file}${result.error ? ` error=${result.error.message}` : ''}`)
+    if (!path.startsWith('/api/admin/')) {
+      const trace = await captureCall(result, { request: { body }, owner: active })
+      ;(active.calls ||= []).push(trace)
+      ;(active.httpStatuses ||= []).push(result.status)
+    }
     if (expected !== undefined) {
       if (result.error) throw result.error
       assert.ok((Array.isArray(expected) ? expected : [expected]).includes(result.status), `Expected HTTP ${JSON.stringify(expected)}, got ${result.status}: ${result.raw.slice(0, 1500)}`)
@@ -143,6 +151,27 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
     const result = await http(`/api/admin/${path}`, body, { expected: 200, method })
     assert.equal(result.json?.ok, true, `Management API rejected ${path}: ${result.raw.slice(0, 1000)}`)
     return result.json.data
+  }
+  async function captureCall(response, { request, owner = currentCase.getStore(), round, protocol, taskId } = {}) {
+    const trace = await persistedCall(instance.baseUrl, instance.panel, response.headers?.['x-elysia-request-id'])
+    const stream = /text\/event-stream/i.test(response.headers?.['content-type'] || '')
+    const record = trace.record
+    const result = {
+      available: trace.available, reason: trace.reason, round, protocol, taskId,
+      requestId: record?.requestId, ingress: record?.sourceFormat, upstream: record?.targetFormat,
+      ingressRevision: record?.ingressRevision, upstreamRevision: record?.upstreamRevision,
+      sourceId: record?.sourceId, modelId: record?.modelId,
+      policyHashes: [...new Set(record?.conversionIssues?.map(i => i.policyHash).filter(Boolean) || [])],
+      // Keep a small classification view; the full redacted record lives in evidence.
+      record: record ? { error: record.error, errorKind: record.errorKind, conversionIssues: record.conversionIssues, protocolUsage: record.protocolUsage } : undefined,
+    }
+    result.evidence = await evidence('call-record.json', { ...trace, round, protocol, taskId, requestSelection: { include: request?.body?.include, store: request?.body?.store }, events: eventSequence(response.raw || response.body || '', stream) }, owner)
+    // Make the full record available for assertions without copying bodies into reports.
+    Object.defineProperty(result, 'fullRecord', { value: record })
+    return result
+  }
+  async function runtimeEvidence(label) {
+    await evidence(`${label}-runtime.json`, { startups: instance.startups, runtime: await admin('protocols'), bindings: await admin('protocols/bindings'), policies: await admin('protocols/conversion-policies') })
   }
   const ready = () => { if (!instance) throw blocked('临时后端准备失败；查看 setup 用例') }
   function source(target, id) {
@@ -169,6 +198,7 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
         instance = await localInstance(plan.root, command, signal, plan.api.timeoutMs, plan.api.maxResponseBytes)
         secrets.push(instance.panel, instance.token); clean = redactor(secrets)
         await admin('api-tokens', { name: 'audit-relay', token: instance.token, enabled: true, allowedGroups: [], scopes: [] })
+        await runtimeEvidence('startup')
       }, 'source-code')
       if (!ok && instance) { await instance.close(); instance = undefined }
     }
@@ -233,11 +263,53 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
             needRoute(); const result = await call(protocol, id, true); checkReply(result, protocol, { ...replyOptions, stream: true })
             return `firstByteMs=${result.firstByteMs}; elapsedMs=${result.elapsedMs}；仅记录客户端观测，不推断上游是否缓冲`
           })
+          for (const spec of regressionCases(target, id, plan.api.maxOutputTokens)) await run(spec.name, spec.rejectPath ? '明确拒绝，零上游生成调用，诊断指出具体字段' : '专项结构通过并核对持久调用证据', async item => {
+            needRoute()
+            const result = await call(spec.protocol, id, spec.stream, {}, spec.body)
+            const record = item.calls.at(-1)?.fullRecord
+            assert.ok(record, 'Missing persisted call evidence')
+            if (spec.rejectPath) {
+              assert.equal(result.status, 400, result.raw.slice(0, 1500))
+              assert.ok(result.raw.includes(spec.rejectPath), result.raw.slice(0, 1500))
+              assert.ok(!record.outgoingBody?.content && !record.providerResponse?.content, 'Rejected request reached upstream')
+              item.outcome = 'expected_rejection'
+              return
+            }
+            checkReply(result, spec.protocol, { ...replyOptions, stream: spec.stream })
+            const outgoing = JSON.parse(record.outgoingBody?.content || 'null')
+            assert.ok(outgoing, 'Outgoing request body unavailable')
+            for (const field of spec.absentUpstream || []) assert.equal(outgoing[field], undefined, `${field} leaked upstream`)
+            if (spec.diagnostic) assert.ok(record.conversionIssues?.some(i => i.ruleId === spec.diagnostic && i.policyHash), `Missing ${spec.diagnostic} diagnostic`)
+            if (spec.preserveSystem) assert.deepEqual(outgoing.system, spec.body.system)
+            if (spec.stateless) {
+              const final = spec.stream ? JSON.parse(result.raw.split('\n').findLast(line => line.startsWith('data: ') && line.includes('"response.completed"')).slice(6)).response : result.json
+              assert.equal(final.store, false, 'Stateless execution falsely reports storage')
+            }
+            if (spec.originalUsage) {
+              assert.ok(record.protocolUsage, 'Original provider usage absent')
+              item.reasoningObserved = Object.hasOwn(record.protocolUsage.details || {}, 'output.reasoning_tokens')
+            }
+          })
+          await run('tool-second-round-reminder', '工具关联和完整续传历史保留，第二轮 reminder 仍是 user 文本', async () => {
+            needRoute()
+            const marker = `AUDIT_${randomUUID().replaceAll('-', '').slice(0, 12)}`
+            const firstBody = requestBody('anthropic', id, false, 'tools', marker, plan.api.maxOutputTokens)
+            const result = await call('anthropic', id, false, {}, firstBody)
+            assert.equal(result.status, 200, result.raw.slice(0, 1500))
+            const reply = inspectReply('anthropic', result.raw, false, plan.api.requireUsage)
+            assert.deepEqual(reply.issues, [])
+            assert.ok(reply.calls.length && reply.calls.every(c => c.name === 'audit_echo' && c.args?.value === 7), 'Model did not return the synthetic tool call')
+            const second = followupBody('anthropic', firstBody, reply, 'tools', marker)
+            second.messages.at(-1).content.push({ type: 'text', text: '<system-reminder>Reply only with the marker from the tool result.</system-reminder>' })
+            checkReply(await call('anthropic', id, false, {}, second), 'anthropic', { ...replyOptions, expectedText: marker })
+          })
         }
         if (current === 'sdk') for (const ingress of protocols) for (const stream of plan.api.streams) sdkTasks.push(() => run(`${ingress}-${stream ? 'sse' : 'json'}`, '实际 SDK 发送请求并消费真实网关响应', async item => {
           needRoute()
           item.sdk = await consume(ingress, { baseUrl: instance.baseUrl, apiKey: instance.token, model: id, ...plan.api, signal, onExchange: async detail => {
             const path = await evidence('sdk-http.json', { caseId: item.id, ...detail }, item)
+            ;(item.calls ||= []).push(await captureCall(detail.response || {}, { request: detail.request, owner: item, protocol: ingress }))
+            ;(item.httpStatuses ||= []).push(detail.response?.status)
             log(`SDK HTTP ${item.id} status=${detail.response?.status ?? 'none'} elapsedMs=${detail.elapsedMs} evidence=${path}${detail.error ? ` error=${detail.error}` : ''}`)
           } }, stream)
           return JSON.stringify(item.sdk)
@@ -258,7 +330,7 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
         if (current === 'persistence') {
           let called = false
           await run('call', '原有源、模型组和令牌调用成功', async () => { needRoute(); await recovery(); called = true })
-          await run('restart', '重启后原有配置和令牌可直接使用', async () => { needRoute(); if (!called) throw blocked('依赖 call 成功'); await instance.restart(); await recovery() })
+          await run('restart', '重启后原有配置和令牌可直接使用', async () => { needRoute(); if (!called) throw blocked('依赖 call 成功'); await instance.restart(); await runtimeEvidence('restart'); await recovery() })
           await run('update-and-disable', '配置修改保存，禁用阻止调用，重新启用后恢复', async () => {
             needRoute()
             await admin(`model-sources/${id}`, { ...source(target, id), name: 'Updated audit source' }, 'PUT')
@@ -280,7 +352,8 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
       if (current === 'protocol') await check(current, 'matrix', '所有渠道直连及四种客户端协议的转换场景分别通过', async item => {
         const path = join(outputDir, 'protocol')
         const config = { ...plan.api, codeChecks: [], ...(routes.length ? { gateway: { baseUrl: instance.baseUrl, apiKey: instance.token, routes } } : {}) }
-        const result = await runAudit(config, { outputDir: path, env, signal, onProgress: c => { log(`${c.status} ${c.id}${c.issues.length ? ` issues=${JSON.stringify(c.issues)}` : ''}`); onProgress(`${c.status}: ${c.id}`) } })
+        if (instance) await runtimeEvidence('matrix')
+        const result = await runAudit(config, { outputDir: path, env, signal, onExchange: ({ task, round, request, response }) => task.kind === 'gateway' ? captureCall(response, { request, round, protocol: task.protocol, taskId: task.id }) : undefined, onProgress: c => { log(`${c.status} ${c.id}${c.issues.length ? ` issues=${JSON.stringify(c.issues)}` : ''}`); onProgress(`${c.status}: ${c.id}`) } })
         item.summary = true
         const prefix = relative(outputDir, path).split('\\').join('/')
         item.evidence.push(`${prefix}/report.md`, `${prefix}/run.log`)

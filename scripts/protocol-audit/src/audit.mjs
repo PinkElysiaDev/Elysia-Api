@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { protocols, scenarios, AuditError, endpoint, requestBody, followupBody, inspectReply, inspectModels } from './protocols.mjs'
 import { mapConcurrent, serialize } from './concurrency.mjs'
+import { eventSequence, failureCategory } from './evidence.mjs'
 
 export const defaults = { concurrency: 32, timeoutMs: 180000, maxResponseBytes: 16 * 1024 * 1024, maxRequests: 512, maxOutputTokens: 32768, requireUsage: true }
 
@@ -156,7 +157,7 @@ export async function exchange(url, body, headers, settings, signal, { method, r
   } catch (err) {
     error = signal?.aborted ? new AuditError('interrupted', 'Run interrupted') : timedOut ? new AuditError('timeout', `Request exceeded ${settings.timeoutMs} ms`) : err instanceof AuditError ? err : new AuditError('network_error', `${err.message}${err.cause?.code ? ` (${err.cause.code})` : ''}`)
   } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort) }
-  return { status: response?.status ?? null, headers: response ? Object.fromEntries(['content-type', 'x-request-id', 'request-id', 'retry-after'].map(k => [k, response.headers.get(k)]).filter(([, v]) => v !== null)) : {}, raw: Buffer.concat(chunks).toString('utf8'), bytes, firstByteMs, elapsedMs: Math.round(performance.now() - started), error }
+  return { status: response?.status ?? null, headers: response ? Object.fromEntries(['content-type', 'x-request-id', 'request-id', 'x-elysia-request-id', 'retry-after'].map(k => [k, response.headers.get(k)]).filter(([, v]) => v !== null)) : {}, raw: Buffer.concat(chunks).toString('utf8'), bytes, firstByteMs, elapsedMs: Math.round(performance.now() - started), error }
 }
 
 export async function codeCheck(item, configDir, maxBytes, signal, env) {
@@ -191,7 +192,7 @@ export async function codeCheck(item, configDir, maxBytes, signal, env) {
   })
 }
 
-export async function runAudit(input, { outputDir, env = process.env, signal, onProgress = () => {} } = {}) {
+export async function runAudit(input, { outputDir, env = process.env, signal, onProgress = () => {}, onExchange } = {}) {
   const plan = planAudit(input), config = plan.config
   const secrets = [config.gateway, ...config.targets].filter(Boolean).flatMap(target => [target.apiKey, ...[target.apiKeyEnv, ...Object.values(target.headersEnv || {})].filter(Boolean).map(name => env[name])]).filter(value => typeof value === 'string' && value.length > 0)
   for (const item of plan.cases) {
@@ -259,6 +260,9 @@ export async function runAudit(input, { outputDir, env = process.env, signal, on
         const evidence = { caseId: item.id, round, request: { method: body === undefined ? 'GET' : 'POST', url, headers, body }, response: { status: outcome.status, headers: outcome.headers, body: outcome.raw, receivedBytes: outcome.bytes }, firstByteMs: outcome.firstByteMs, elapsedMs: outcome.elapsedMs, ...(outcome.error ? { error: issue(outcome.error) } : {}) }
         await writeFile(join(outputDir, path), JSON.stringify(clean(evidence), null, 2) + '\n', { mode: 0o600 })
         item.evidence.push(path); (item.httpStatuses ||= []).push(outcome.status); await save()
+        const trace = await onExchange?.({ task, round, request: evidence.request, response: outcome })
+        if (trace) (item.calls ||= []).push(clean(trace))
+        if (task.stream) (item.eventSequences ||= []).push({ round, events: eventSequence(outcome.raw, true) })
         log(`HTTP END ${item.id} round=${round} status=${outcome.status} elapsedMs=${outcome.elapsedMs} evidence=${path}${outcome.error ? ` error=${outcome.error.message}` : ''}`)
         if (outcome.error) throw outcome.error
         if (outcome.status < 200 || outcome.status >= 300) {
@@ -292,6 +296,7 @@ export async function runAudit(input, { outputDir, env = process.env, signal, on
     finally { release(unused) }
     item.elapsedMs = Math.round(performance.now() - started); item.finishedAt = new Date().toISOString()
     item.status = item.issues.length ? 'failed' : 'passed'
+    if (item.status === 'failed') item.failureCategory = failureCategory({ ...item, record: item.calls?.at(-1)?.record })
     log(`END ${item.id} ${item.status} elapsedMs=${item.elapsedMs}${item.issues.length ? ` issues=${JSON.stringify(item.issues)}` : ''}`)
     await save(); onProgress(clean({ id: item.id, status: item.status, issues: item.issues }))
   })

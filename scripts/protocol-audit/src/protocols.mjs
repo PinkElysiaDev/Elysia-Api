@@ -369,6 +369,11 @@ export function inspectReply(protocol, raw, stream, requireUsage = true) {
         c.require(open.delete(v.index), path, 'Stop references a closed or missing block', 'stream_lifecycle')
       } else if (type === 'message_delta') {
         deltaSeen = true
+        if (c.object(v.usage, `${path}/usage`)) c.count(v.usage.output_tokens, `${path}/usage/output_tokens`)
+        if (c.object(v.delta, `${path}/delta`)) {
+          c.string(v.delta.stop_reason, `${path}/delta/stop_reason`)
+          c.require(v.delta.stop_sequence === null || typeof v.delta.stop_sequence === 'string', `${path}/delta/stop_sequence`, 'Expected string or null')
+        }
         Object.assign(message, v.delta); message.usage = { ...message.usage, ...v.usage }
       } else if (type === 'message_stop') stop = true
       else c.require(false, path, `Unsupported event type: ${type}`, 'unsupported_event')

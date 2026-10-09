@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { setTimeout as delay } from 'node:timers/promises'
+import { waitForRuntime } from './evidence.mjs'
 
 export async function localInstance(root, command, signal, timeoutMs = defaults.timeoutMs, maxLogBytes = defaults.maxResponseBytes) {
   const directory = await mkdtemp(join(tmpdir(), 'elysia-audit-'))
@@ -18,6 +18,10 @@ export async function localInstance(root, command, signal, timeoutMs = defaults.
   const binary = join(directory, process.platform === 'win32' ? 'gateway.exe' : 'gateway')
   const path = join(directory, 'config.json')
   const config = { host: '127.0.0.1', port, databasePath: join(directory, 'gateway.sqlite3'), secretKeyPath: join(directory, 'secret.key'), panelAccessToken: panel, openBrowserOnStart: false, modelCatalog: { enabled: false, syncIntervalMinutes: 0 }, outbound: { deniedIpRanges: [] }, logLifecycleVersion: 1, httpTimeout: Math.ceil(timeoutMs / 1000) }
+  // Only this isolated synthetic-traffic instance captures bodies. Its database
+  // is deleted after redacted call evidence has been exported.
+  config.usageLog = { bodyMaxKB: Math.ceil(maxLogBytes / 1024), bodyOnErrorOnly: false, externalizeMedia: false }
+  const startups = []
   let child, completion, stopped = false, bytes = 0, truncated = false
   const chunks = []
   const capture = value => {
@@ -38,13 +42,8 @@ export async function localInstance(root, command, signal, timeoutMs = defaults.
     child = spawn(binary, ['-config', path], { cwd: directory, env: environment, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
     completion = new Promise(resolve => { child.once('error', error => { capture(error.message); resolve() }); child.once('close', resolve) })
     child.stdout.on('data', capture); child.stderr.on('data', capture)
-    for (let attempt = 0; attempt < 120; attempt++) {
-      if (signal?.aborted) throw new Error('Run interrupted')
-      if (child.exitCode !== null || child.signalCode !== null || !child.pid) throw new Error('Isolated backend exited during startup; inspect backend.log')
-      try { const response = await fetch(`${baseUrl}/api/admin/health`, { headers: { authorization: `Bearer ${panel}` }, signal: AbortSignal.timeout(1000) }); await response.arrayBuffer(); if (response.ok) return } catch { /* Startup readiness is bounded. */ }
-      await delay(100)
-    }
-    throw new Error('Isolated backend readiness timed out')
+    const state = await waitForRuntime(baseUrl, panel, { signal, timeoutMs: Math.min(timeoutMs, 30000), alive: () => child.pid && child.exitCode === null && child.signalCode === null })
+    startups.push({ observedAt: new Date().toISOString(), ...state })
   }
   const close = async () => { if (stopped) return; stopped = true; await stop(); await rm(directory, { recursive: true, force: true }) }
   try {
@@ -52,5 +51,5 @@ export async function localInstance(root, command, signal, timeoutMs = defaults.
     await command('backend-build', ['go', 'build', '-o', binary, '.'], join(root, 'backend'))
     await start()
   } catch (error) { await close(); error.backendLog = log(); throw error }
-  return { baseUrl, panel, token, restart: async () => { await stop(); await start() }, close, log }
+  return { baseUrl, panel, token, startups, restart: async () => { await stop(); await start() }, close, log }
 }
