@@ -50,6 +50,7 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 	if err != nil {
 		return err
 	}
+	var terminalFailure error
 	emit := func(value protocol.Value) error {
 		if record.FirstByteMs == 0 {
 			record.FirstByteMs = time.Since(record.StartedAt).Milliseconds()
@@ -121,6 +122,13 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 		for eventIndex, event := range decoded.Events {
 			if _, err := sourceReplay.Consume(event); err != nil {
 				return err
+			}
+			if event.Type == protocol.OperationFailed || event.Type == protocol.OperationCancelled {
+				status := "failed"
+				if event.Type == protocol.OperationCancelled {
+					status = "cancelled"
+				}
+				terminalFailure = &protocol.GenerationFailure{Payload: event.Error, Status: protocol.StringValue(status)}
 			}
 			updateRecordProtocolUsage(record, sourceReplay.Usage())
 			if collector != nil {
@@ -241,6 +249,13 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 		}
 		return err
 	}
+	if terminalFailure != nil {
+		// The provider's error has already been delivered and validated. Keep
+		// usage tails, record a failed call, and never append a second error or
+		// a synthetic success marker to that native/projected terminal.
+		c.Header(gatewayStreamErrorTrailer, "protocol_stream_error")
+		return terminalFailure
+	}
 	if plan.operation.Framing != nil {
 		for _, marker := range plan.operation.Framing.Done {
 			if plan.operation.Transport == protocol.SSE {
@@ -270,12 +285,12 @@ func emitFailureEvent(c *gin.Context, plan *gatewayPlan, options protocol.Evalua
 	c.Header(gatewayStreamErrorTrailer, "protocol_stream_error")
 	errorValue, encodeErr := protocol.EncodeValue(map[string]string{"category": "upstream", "message": cause.Error()})
 	if encodeErr != nil {
-		return nil
+		return fmt.Errorf("%w; downstream error frame: %v", cause, encodeErr)
 	}
 	failure := protocol.Event{SchemaVersion: protocol.SemanticSchemaVersion, Type: protocol.OperationFailed, Error: errorValue}
 	frames, encodeErr := plan.ingress.EncodeFrames(c.Request.Context(), failure, options)
 	if encodeErr != nil {
-		return nil
+		return fmt.Errorf("%w; downstream error frame: %v", cause, encodeErr)
 	}
 	for _, frame := range frames {
 		if writeErr := emit(frame); writeErr != nil {
