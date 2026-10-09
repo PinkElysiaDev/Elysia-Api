@@ -87,7 +87,7 @@ func TestGatewayFourPublicEntrypointsUseActiveRuntime(t *testing.T) {
 			if err := json.Unmarshal([]byte(storedRecordJSON(t, server.store, logs[0].RequestID)), &record); err != nil {
 				t.Fatal(err)
 			}
-			if record.IngressRevision != ingress.Hash() || record.RelayMode != "protocol_v2" {
+			if record.IngressRevision != ingress.Hash() || record.RelayMode != "protocol_v2" || record.ConversionPolicyHash == "" {
 				t.Fatalf("public endpoint bypassed v2: %+v", record)
 			}
 		})

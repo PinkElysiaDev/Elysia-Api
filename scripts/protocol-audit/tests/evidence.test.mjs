@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import './network-guard.mjs'
-import { presetIDs, runtimeReadiness, waitForRuntime, persistedCall, eventSequence, failureCategory } from '../src/evidence.mjs'
+import { presetIDs, runtimeReadiness, waitForRuntime, persistedCall, eventSequence, failureCategory, requestSelection } from '../src/evidence.mjs'
 import { inspectReply } from '../src/protocols.mjs'
 import { replyWire } from './fixtures.mjs'
 
@@ -68,6 +68,15 @@ test('failure classification does not call throttling or model instruction failu
   assert.equal(failureCategory({ sdk: {}, record: { conversionIssues: [{ severity: 'error' }] } }), 'gateway_conversion_failure')
   assert.equal(failureCategory({ sdk: {} }), 'sdk_consumption_failure')
   assert.equal(failureCategory({ httpStatuses: [502] }), 'needs_trace_review')
+  assert.equal(failureCategory({ kind: 'gateway', issues: [{ code: 'tool_call_mismatch' }] }), 'needs_trace_review')
+  assert.equal(failureCategory({ issues: [{ code: 'tool_call_mismatch' }], record: { conversionIssues: [{ severity: 'error' }] } }), 'gateway_conversion_failure')
+})
+
+test('SDK serialized request selection retains explicit false and null', () => {
+  for (const body of [{ include: [], store: false }, { include: null, store: null }, {}]) {
+    assert.deepEqual(requestSelection(JSON.stringify(body)), requestSelection(body))
+  }
+  assert.deepEqual(requestSelection('{'), { unavailable: 'invalid_json' })
 })
 
 test('event order summary contains no text, signature or encrypted state', () => {

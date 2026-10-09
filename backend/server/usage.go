@@ -69,40 +69,41 @@ type retryEvent struct {
 }
 
 type usageRecord struct {
-	hostedTools         *builtin.ToolAccounting
-	IngressRevision     string                     `json:"ingressRevision,omitempty"`
-	UpstreamRevision    string                     `json:"upstreamRevision,omitempty"`
-	CacheSynthesis      bool                       `json:"cacheSynthesis"`
-	SystemStructure     *systemStructureDiagnostic `json:"systemStructure,omitempty"`
-	ProtocolUsage       *protocol.Usage            `json:"protocolUsage,omitempty"`
-	ProtocolResponseID  string                     `json:"protocolResponseId,omitempty"`
-	ConversionIssues    []protocol.ConversionIssue `json:"conversionIssues,omitempty"`
-	RequestID           string                     `json:"requestId"`
-	StartedAt           time.Time                  `json:"startedAt"`
-	EndedAt             time.Time                  `json:"endedAt"`
-	KeyName             string                     `json:"keyName"`
-	KeyHash             string                     `json:"keyHash"`
-	RequestedModelGroup string                     `json:"requestedModelGroup"`
-	GroupID             string                     `json:"groupId"`
-	GroupName           string                     `json:"groupName"`
-	ModelID             string                     `json:"modelId"`
-	ModelName           string                     `json:"modelName"`
-	SourceID            string                     `json:"sourceId,omitempty"`
-	Platform            string                     `json:"platform"`
-	InputFormat         string                     `json:"inputFormat"`
-	TargetPlatform      string                     `json:"targetPlatform"`
-	SourceFormat        string                     `json:"sourceFormat,omitempty"`
-	TargetFormat        string                     `json:"targetFormat,omitempty"`
-	SourceEndpoint      string                     `json:"sourceEndpoint,omitempty"`
-	TargetEndpoint      string                     `json:"targetEndpoint,omitempty"`
-	RelayMode           string                     `json:"relayMode,omitempty"`
-	ResponsesMode       string                     `json:"responsesMode,omitempty"`
-	ConversionChain     []string                   `json:"conversionChain,omitempty"`
-	UsageSource         string                     `json:"usageSource,omitempty"`
-	RequestWarnings     []string                   `json:"requestWarnings,omitempty"`
-	Stream              bool                       `json:"stream"`
-	StatusCode          int                        `json:"statusCode"`
-	Error               string                     `json:"error,omitempty"`
+	hostedTools          *builtin.ToolAccounting
+	IngressRevision      string                     `json:"ingressRevision,omitempty"`
+	UpstreamRevision     string                     `json:"upstreamRevision,omitempty"`
+	ConversionPolicyHash string                     `json:"conversionPolicyHash,omitempty"`
+	CacheSynthesis       bool                       `json:"cacheSynthesis"`
+	SystemStructure      *systemStructureDiagnostic `json:"systemStructure,omitempty"`
+	ProtocolUsage        *protocol.Usage            `json:"protocolUsage,omitempty"`
+	ProtocolResponseID   string                     `json:"protocolResponseId,omitempty"`
+	ConversionIssues     []protocol.ConversionIssue `json:"conversionIssues,omitempty"`
+	RequestID            string                     `json:"requestId"`
+	StartedAt            time.Time                  `json:"startedAt"`
+	EndedAt              time.Time                  `json:"endedAt"`
+	KeyName              string                     `json:"keyName"`
+	KeyHash              string                     `json:"keyHash"`
+	RequestedModelGroup  string                     `json:"requestedModelGroup"`
+	GroupID              string                     `json:"groupId"`
+	GroupName            string                     `json:"groupName"`
+	ModelID              string                     `json:"modelId"`
+	ModelName            string                     `json:"modelName"`
+	SourceID             string                     `json:"sourceId,omitempty"`
+	Platform             string                     `json:"platform"`
+	InputFormat          string                     `json:"inputFormat"`
+	TargetPlatform       string                     `json:"targetPlatform"`
+	SourceFormat         string                     `json:"sourceFormat,omitempty"`
+	TargetFormat         string                     `json:"targetFormat,omitempty"`
+	SourceEndpoint       string                     `json:"sourceEndpoint,omitempty"`
+	TargetEndpoint       string                     `json:"targetEndpoint,omitempty"`
+	RelayMode            string                     `json:"relayMode,omitempty"`
+	ResponsesMode        string                     `json:"responsesMode,omitempty"`
+	ConversionChain      []string                   `json:"conversionChain,omitempty"`
+	UsageSource          string                     `json:"usageSource,omitempty"`
+	RequestWarnings      []string                   `json:"requestWarnings,omitempty"`
+	Stream               bool                       `json:"stream"`
+	StatusCode           int                        `json:"statusCode"`
+	Error                string                     `json:"error,omitempty"`
 	// ErrorKind 是错误归类（ErrorKind* 常量），供面板筛选/展示；空表示未归类。
 	ErrorKind          string           `json:"errorKind,omitempty"`
 	FirstByteMs        int64            `json:"firstByteMs"`

@@ -11,7 +11,7 @@ import { runAudit, planAudit, redactor, codeCheck, exchange, runLogger } from '.
 import { protocols, requestBody, followupBody, endpoint, inspectReply } from './protocols.mjs'
 import { localInstance } from './local.mjs'
 import { mapConcurrent, serialize } from './concurrency.mjs'
-import { eventSequence, failureCategory, persistedCall } from './evidence.mjs'
+import { eventSequence, failureCategory, persistedCall, requestSelection } from './evidence.mjs'
 import { regressionCases } from './regressions.mjs'
 
 export const groups = ['daily', 'protocol', 'sdk', 'errors', 'persistence', 'code']
@@ -161,11 +161,11 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
       requestId: record?.requestId, ingress: record?.sourceFormat, upstream: record?.targetFormat,
       ingressRevision: record?.ingressRevision, upstreamRevision: record?.upstreamRevision,
       sourceId: record?.sourceId, modelId: record?.modelId,
-      policyHashes: [...new Set(record?.conversionIssues?.map(i => i.policyHash).filter(Boolean) || [])],
+      policyHashes: [...new Set([record?.conversionPolicyHash, ...(record?.conversionIssues?.map(i => i.policyHash) || [])].filter(Boolean))],
       // Keep a small classification view; the full redacted record lives in evidence.
       record: record ? { error: record.error, errorKind: record.errorKind, conversionIssues: record.conversionIssues, protocolUsage: record.protocolUsage } : undefined,
     }
-    result.evidence = await evidence('call-record.json', { ...trace, round, protocol, taskId, requestSelection: { include: request?.body?.include, store: request?.body?.store }, events: eventSequence(response.raw || response.body || '', stream) }, owner)
+    result.evidence = await evidence('call-record.json', { ...trace, round, protocol, taskId, requestSelection: requestSelection(request?.body), events: eventSequence(response.raw || response.body || '', stream) }, owner)
     // Make the full record available for assertions without copying bodies into reports.
     Object.defineProperty(result, 'fullRecord', { value: record })
     return result

@@ -52,12 +52,23 @@ export function eventSequence(raw, stream) {
 export function failureCategory({ kind, issues = [], httpStatuses = [], sdk, error, record } = {}) {
   if (httpStatuses.includes(429)) return 'rate_limited'
   if (issues.some(i => i.code === 'request_budget') || error?.code === 'request_budget') return 'budget_exhausted'
-  if (issues.length && issues.every(i => ['unexpected_text', 'tool_call_missing', 'tool_call_mismatch'].includes(i.code))) return 'model_instruction_mismatch'
   if (record?.conversionIssues?.some(i => i.severity === 'error')) return 'gateway_conversion_failure'
+  if (issues.length && issues.every(i => ['unexpected_text', 'tool_call_missing', 'tool_call_mismatch'].includes(i.code))) {
+    // A gateway can corrupt a correct upstream tool call. Attribute instruction
+    // failure to the model only on the direct baseline; relay traces need review.
+    return kind === 'direct' ? 'model_instruction_mismatch' : 'needs_trace_review'
+  }
   if (kind === 'direct') return 'upstream_direct_failure'
   if (sdk || error?.sdk) return 'sdk_consumption_failure'
   // An HTTP error alone cannot distinguish provider rejection from gateway failure.
   return 'needs_trace_review'
+}
+
+export function requestSelection(body) {
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body) } catch { return { unavailable: 'invalid_json' } }
+  }
+  return { include: body?.include, store: body?.store }
 }
 
 export async function persistedCall(baseUrl, panel, requestId, { timeoutMs = 5000, intervalMs = 100 } = {}) {

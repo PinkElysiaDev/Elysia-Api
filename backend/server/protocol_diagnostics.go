@@ -55,6 +55,7 @@ func systemStructure(request *protocol.Request) []systemNodeStructure {
 func prepareCandidateRecord(record *usageRecord, candidate gatewayCandidate, request *protocol.Request) {
 	setRecordModel(record, candidate.model, builtin.Platform("custom:"+candidate.binding.ProtocolID))
 	record.UpstreamRevision, record.TargetEndpoint, record.TargetFormat = candidate.compiled.Hash(), candidate.operation.Path, candidate.binding.ProtocolID
+	record.ConversionPolicyHash = protocol.ConversionHash(candidate.conversion)
 	record.CacheSynthesis = candidate.model.CacheSynthesis
 	record.SystemStructure = &systemStructureDiagnostic{Before: systemStructure(request)}
 }
