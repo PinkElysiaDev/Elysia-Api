@@ -33,3 +33,51 @@ func TestChatSingleChoiceExtensionKeepsNativeBoundary(t *testing.T) {
 		t.Fatal("unknown choice extension silently crossed protocol boundary")
 	}
 }
+
+func TestResponsesProgressMetadataDoesNotInventUsage(t *testing.T) {
+	compiled := shippedProjectionProtocol(t, Responses)
+	options := p.EvaluationContext{State: p.NewEvaluationState()}
+	validator, err := compiled.NewWireStreamValidation(p.Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, wire := range []string{
+		`{"type":"response.created","sequence_number":0,"response":{"id":"r","object":"response","model":"m","created_at":1,"status":"in_progress","output":[],"usage":null,"service_tier":"auto"}}`,
+		`{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","object":"response","model":"m","created_at":1,"status":"in_progress","output":[],"usage":null,"service_tier":"auto"}}`,
+		`{"type":"response.completed","sequence_number":2,"response":{"id":"r","object":"response","model":"m","created_at":1,"status":"completed","output":[],"usage":{"input_tokens":2,"output_tokens":0,"total_tokens":2},"service_tier":"auto"}}`,
+	} {
+		value := testValue(t, wire)
+		frame, err := compiled.DecodeFrame(t.Context(), value, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(wire, `"type":"response.in_progress"`) {
+			if len(frame.Events) != 1 || frame.Events[0].Type != p.MetadataUpdated || frame.Events[0].Usage != nil {
+				t.Fatalf("metadata was represented as billing: %+v", frame.Events)
+			}
+			for _, codec := range []string{Chat, Anthropic, Gemini} {
+				target := shippedProjectionProtocol(t, codec)
+				conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(compiled, target))
+				projected, err := conversion.Event(t.Context(), frame.Events[0], p.ConversionContext{}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = p.IssuesError(p.CheckEvent(projected, p.Target{Protocol: target.Identity(), Direction: p.EncodeEvent, Capabilities: target.Capabilities(p.EncodeEvent)}, p.DefaultLimits())); err != nil {
+					t.Fatalf("%s metadata projection rejected: %v", codec, err)
+				}
+				if projected.Usage != nil {
+					t.Fatal("metadata projection invented usage")
+				}
+			}
+		}
+		if err = validator.Consume(t.Context(), value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = validator.Finish(); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.CheckEvent(p.Event{SchemaVersion: 1, Type: p.UsageUpdated}, p.Target{}, p.DefaultLimits())) == 0 {
+		t.Fatal("missing usage was globally accepted")
+	}
+}

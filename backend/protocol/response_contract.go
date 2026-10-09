@@ -86,6 +86,14 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 		if event.Usage == nil {
 			check.add(InvalidInput, "/usage", UsageCapability, "usage event requires counters")
 		}
+	case MetadataUpdated:
+		// Projection may remove all recognized metadata. This remains a no-op,
+		// not an observation of zero tokens and not a native extension escape.
+		for _, item := range event.Metadata {
+			if err := ValidateMetadataValue(item.Codec, item.Location, item.Name, item.Value, item.Path); err != nil {
+				check.add(InvalidInput, item.Path, "", err.Error())
+			}
+		}
 	case OperationFailed:
 		if event.Error.IsZero() || event.Error.IsNull() {
 			check.add(InvalidInput, "/error", "", "failure event requires an error")

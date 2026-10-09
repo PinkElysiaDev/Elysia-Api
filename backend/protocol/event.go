@@ -13,6 +13,7 @@ const (
 	ItemSnapshot        EventType = "item.snapshot"
 	ItemFinished        EventType = "item.finished"
 	UsageUpdated        EventType = "usage.updated"
+	MetadataUpdated     EventType = "metadata.updated"
 	ResponseFinished    EventType = "response.finished"
 	OperationFailed     EventType = "operation.failed"
 	OperationCancelled  EventType = "operation.cancelled"

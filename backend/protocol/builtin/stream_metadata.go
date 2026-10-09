@@ -194,14 +194,14 @@ func (stream *streamModule) attachFrameMetadata(events []p.Event, metadata []p.R
 	for _, m := range metadata {
 		if m.Location == "response" || m.Location == "usage" {
 			if len(events) == 0 {
-				events = append(events, p.Event{Type: p.UsageUpdated})
+				events = append(events, p.Event{Type: p.MetadataUpdated})
 			}
 			events[0].Metadata = append(events[0].Metadata, m)
 			continue
 		}
 		if m.Location == "candidate" { // Candidate details have no text dependency.
 			if len(events) == 0 {
-				events = append(events, p.Event{Type: p.UsageUpdated})
+				events = append(events, p.Event{Type: p.MetadataUpdated})
 			}
 			events[0].Metadata = append(events[0].Metadata, m)
 			continue
@@ -219,7 +219,7 @@ func (stream *streamModule) attachFrameMetadata(events []p.Event, metadata []p.R
 			if item == nil {
 				if m.Value.IsNull() {
 					if len(events) == 0 {
-						events = append(events, p.Event{Type: p.UsageUpdated})
+						events = append(events, p.Event{Type: p.MetadataUpdated})
 					}
 					events[0].Metadata = append(events[0].Metadata, m)
 					continue

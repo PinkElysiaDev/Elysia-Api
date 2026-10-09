@@ -47,7 +47,7 @@ func (stream *streamModule) encodeEvent(event p.Event, options p.EvaluationConte
 	case p.ResponseStarted:
 		stream.isStarted = true
 		return stream.encodeStart(options)
-	case p.UsageUpdated:
+	case p.UsageUpdated, p.MetadataUpdated:
 		return nil, nil
 	case p.ResponseFinished:
 		if stream.pending != nil {
