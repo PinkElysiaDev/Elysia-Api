@@ -69,7 +69,7 @@ export async function consume(protocol, { baseUrl, apiKey, model, expectedText =
       } else {
         const params = { model, input: prompt, max_output_tokens: maxOutputTokens, store: false }
         const result = stream ? await client.responses.stream(params, { signal }).finalResponse() : await client.responses.create(params, { signal })
-        assert.ok(result.output.some(o => o.content?.some(c => c.text?.includes(expectedText))))
+        assert.ok(result.output.filter(o => o.type === 'message').map(o => visibleText(o.content, 'output_text')).join('').includes(expectedText))
       }
       version('@ai-sdk/openai')
       const provider = createOpenAI({ apiKey, baseURL: `${baseUrl}/v1`, fetch: capture })
@@ -79,7 +79,7 @@ export async function consume(protocol, { baseUrl, apiKey, model, expectedText =
       const client = new Anthropic({ apiKey, baseURL: baseUrl, maxRetries: 0, timeout: timeoutMs, fetch: capture })
       const params = { model, max_tokens: maxOutputTokens, messages: [{ role: 'user', content: prompt }] }
       const result = stream ? await client.messages.stream(params, { signal }).finalMessage() : await client.messages.create(params, { signal })
-      assert.ok(result.content.some(c => c.text?.includes(expectedText)))
+      assert.ok(visibleText(result.content).includes(expectedText))
       version('@ai-sdk/anthropic')
       await checkAI(createAnthropic({ apiKey, baseURL: `${baseUrl}/v1`, fetch: capture })(model), stream, options, expectedText)
     } else {
@@ -99,7 +99,7 @@ export async function consume(protocol, { baseUrl, apiKey, model, expectedText =
 }
 
 async function checkAI(model, stream, options, expectedText) {
-  if (!stream) { assert.ok((await model.doGenerate(options)).content.some(c => c.text?.includes(expectedText))); return }
+  if (!stream) { assert.ok(visibleText((await model.doGenerate(options)).content).includes(expectedText)); return }
   let finished = false, text = ''
   for await (const event of (await model.doStream(options)).stream) {
     if (event.type === 'error') throw event.error
@@ -107,4 +107,10 @@ async function checkAI(model, stream, options, expectedText) {
     if (event.type === 'finish') finished = true
   }
   assert.ok(finished && text.includes(expectedText), 'SDK did not receive expected text and finish event')
+}
+
+// Text may span multiple ordered parts. Keep reasoning/refusal/tool payloads
+// out of the marker check, and never concatenate different Chat candidates.
+function visibleText(parts, type = 'text') {
+  return (parts || []).filter(part => part.type === type && typeof part.text === 'string').map(part => part.text).join('')
 }

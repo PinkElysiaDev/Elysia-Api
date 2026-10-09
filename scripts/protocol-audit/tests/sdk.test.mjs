@@ -77,6 +77,54 @@ test('strict SDK rejection retains the HTTP 200 response evidence', { skip: !con
   assert.equal(f.captured[1].response.status, 200)
 })
 
+for (const protocol of ['responses', 'anthropic']) {
+  for (const stream of [false, true]) test(`${protocol} SDK checks ordered text across content parts (${stream ? 'SSE' : 'JSON'})`, { skip: !consume && 'SDK dependencies unavailable' }, async t => {
+    const wire = multipartTextWire(protocol, ['O', 'K'], stream)
+    const f = await endpoint(t, wire, stream)
+    const result = await consume(protocol, f.options, stream)
+    assert.equal(result.length, 2)
+    assert.ok(f.captured.every(c => c.response.body === wire))
+  })
+  test(`${protocol} multipart SDK assertions still reject missing or reordered text`, { skip: !consume && 'SDK dependencies unavailable' }, async t => {
+    for (const parts of [['O'], ['K', 'O'], ['O', 'X']]) {
+      const f = await endpoint(t, multipartTextWire(protocol, parts, false), false)
+      await assert.rejects(consume(protocol, f.options, false))
+    }
+  })
+}
+
+function multipartTextWire(protocol, texts, stream) {
+  const response = JSON.parse(replyWire(protocol)) // Only synthetic fixtures.
+  const content = texts.map(text => protocol === 'responses' ? { type: 'output_text', text, annotations: [] } : { type: 'text', text })
+  if (protocol === 'responses') response.output[0].content = content
+  else response.content = content
+  if (!stream) return JSON.stringify(response)
+  const original = replyWire(protocol, 'OK', false, true).split('\n').filter(line => line.startsWith('data: ')).map(line => JSON.parse(line.slice(6)))
+  const events = [original[0]]
+  if (protocol === 'responses') {
+    const message = response.output[0]
+    events.push({ type: 'response.output_item.added', output_index: 0, item: { ...message, status: 'in_progress', content: [] } })
+    for (const [content_index, part] of content.entries()) {
+      const ref = { output_index: 0, item_id: message.id, content_index }
+      events.push(
+        { type: 'response.content_part.added', ...ref, part: { ...part, text: '' } },
+        { type: 'response.output_text.delta', ...ref, delta: part.text },
+        { type: 'response.output_text.done', ...ref, text: part.text },
+        { type: 'response.content_part.done', ...ref, part },
+      )
+    }
+    events.push({ type: 'response.output_item.done', output_index: 0, item: message }, { type: 'response.completed', response })
+  } else {
+    for (const [index, part] of content.entries()) events.push(
+      { type: 'content_block_start', index, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index, delta: { type: 'text_delta', text: part.text } },
+      { type: 'content_block_stop', index },
+    )
+    events.push(...original.slice(-2))
+  }
+  return events.map((event, sequence_number) => `event: ${event.type}\ndata: ${JSON.stringify(protocol === 'responses' ? { ...event, sequence_number } : event)}\n\n`).join('')
+}
+
 for (const stream of [false, true]) test(`Responses message phase ${stream ? 'SSE' : 'JSON'} survives SDK collection`, { skip: !consume && 'SDK dependencies unavailable' }, async t => {
   // Synthetic data only; live configuration is not read by this test suite.
   const response = JSON.parse(replyWire('responses'))
