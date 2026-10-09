@@ -222,6 +222,9 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	if err := observeHostedTools(record, candidate.compiled, body); err != nil {
 		return err
 	}
+	if err := protocol.ValidateUsageArithmetic(semantic.Usage); err != nil {
+		return err
+	}
 	updateRecordProtocolUsage(record, semantic.Usage)
 	if err := protocol.CheckGenerationOutcome(semantic); err != nil {
 		return encodeGatewayFailure(c.Request.Context(), http.StatusBadGateway, semantic, plan.ingress, options)

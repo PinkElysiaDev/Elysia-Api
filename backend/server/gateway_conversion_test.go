@@ -333,7 +333,7 @@ func TestProviderSignatureProbeRequiresAcceptedScopedEvidence(t *testing.T) {
 	models, _ := s.store.ListModels(t.Context())
 	ref := modelReference(models[0])
 	scope, _ := s.providerEvidenceScope(ref)
-	conversion, err := protocol.ResolveConversion(protocol.DefaultConversionPolicy(ingress.Identity(), upstream.Identity()), policy)
+	conversion, err := protocol.ResolveConversion(protocol.DefaultConversionPolicy(ingress, upstream), policy)
 	if err != nil {
 		t.Fatal(err)
 	}

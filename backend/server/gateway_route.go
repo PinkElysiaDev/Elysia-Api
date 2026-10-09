@@ -113,6 +113,11 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 			return nil, err
 		}
 		candidate.prepared, err = candidate.conversion.Request(c.Request.Context(), restored, candidate.conversionContext(ingress, false), sink)
+		if err == nil && candidate.continuation != nil {
+			candidate.continuation.requireCarrier = candidate.prepared.ClientOutput.RequestsEncryptedReasoning()
+			candidate.continuation.conversion = candidate.conversion
+			candidate.continuation.route = candidate.conversionContext(ingress, true)
+		}
 		record.appendConversionIssues(sink.Issues())
 		if err != nil {
 			return nil, err

@@ -40,7 +40,6 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 	if err != nil {
 		return err
 	}
-	defer func() { updateRecordProtocolUsage(record, replay.Usage()) }()
 	c.Header("Content-Type", protocol.TransportContentType(plan.operation.Transport))
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Trailer", gatewayStreamErrorTrailer)
@@ -92,9 +91,7 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 		originalEvents, _ := protocol.EncodeValue(decoded.Events)
 		acceptedEvents := []protocol.Event{}
 		for _, event := range decoded.Events {
-			updateRecordProtocolUsage(record, event.Usage)
 			if event.Response != nil {
-				updateRecordProtocolUsage(record, event.Response.Usage)
 				// Two layers, different consumers: CheckGenerationOutcome rejects a
 				// terminal response whose status/error disagree (the streaming
 				// equivalent of an HTTP failure); CheckModelEvent below applies the
@@ -109,6 +106,7 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 			if _, err := sourceReplay.Consume(event); err != nil {
 				return err
 			}
+			updateRecordProtocolUsage(record, sourceReplay.Usage())
 			if collector != nil {
 				if _, _, captureErr := collector.Consume(event); captureErr != nil {
 					if err := candidate.continuation.warning("continuation stream collection unavailable: " + captureErr.Error()); err != nil {

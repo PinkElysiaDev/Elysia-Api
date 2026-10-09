@@ -19,6 +19,9 @@ type gatewayContinuation struct {
 	identity                         protocol.Identity
 	settings                         protocol.ContinuationSettings
 	strict                           bool
+	requireCarrier                   bool
+	conversion                       *protocol.CompiledConversion
+	route                            protocol.ConversionContext
 	tokens                           []string
 	tokenBytes                       int
 	saved                            map[string]bool
@@ -253,6 +256,11 @@ func (s *Server) captureContinuationNode(c *gin.Context, g *gatewayContinuation,
 	}
 	if !g.settings.ClientCarrier && !g.settings.Persist {
 		return g.warning("signature recovery is disabled")
+	}
+	if g.requireCarrier && !g.settings.ClientCarrier {
+		if err := g.conversion.CheckIncludeCarrier(g.route, g.sink); err != nil {
+			return err
+		}
 	}
 	digest := protocol.ContinuationNodeDigest(node)
 	key := fmt.Sprintf("%d:%s", ordinal, digest)
