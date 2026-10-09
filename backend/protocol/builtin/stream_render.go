@@ -3,6 +3,7 @@ package builtin
 import (
 	"context"
 	"fmt"
+	"math"
 
 	p "github.com/elysia-api/backend/protocol"
 )
@@ -641,21 +642,28 @@ func (stream *streamModule) Finish(ctx context.Context, options p.EvaluationCont
 	if err != nil {
 		return nil, err
 	}
-	return stream.numberFrames(frames), nil
+	return stream.numberFrames(frames)
 }
 
-func (stream *streamModule) numberFrames(frames []p.Value) []p.Value {
+func (stream *streamModule) numberFrames(frames []p.Value) ([]p.Value, error) {
 	if stream.name != Responses {
-		return frames
+		return frames, nil
+	}
+	// Validate the entire batch before changing the watermark or returning frames.
+	if stream.hasSequence && int64(len(frames)) > math.MaxInt64-stream.sequence {
+		return nil, unsupported("/sequence_number", "Responses event sequence is exhausted")
 	}
 	for index, value := range frames {
+		if stream.hasSequence {
+			stream.sequence++
+		}
 		// Frames originate from this codec's closed object constructors.
 		fields, _ := value.ReadObject()
 		fields["sequence_number"], _ = p.EncodeValue(stream.sequence)
-		stream.sequence++
+		stream.hasSequence = true
 		frames[index] = object(fields)
 	}
-	return frames
+	return frames, nil
 }
 
 func (stream *streamModule) chatChunk(delta, finish, usage p.Value) p.Value {

@@ -9,12 +9,8 @@ import (
 )
 
 func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.EvaluationContext) ([]p.Event, error) {
-	if value := fields["sequence_number"]; !value.IsZero() {
-		var sequence int64
-		if err := value.Decode(&sequence); err != nil || value.IsNull() || sequence < 0 || (stream.hasSequence && sequence <= stream.sequence) {
-			return nil, unsupported("/sequence_number", "Responses event sequence must increase; repeated or reordered frames cannot be replayed")
-		}
-		stream.sequence, stream.hasSequence = sequence, true
+	if err := stream.observeResponsesSequence(fields["sequence_number"]); err != nil {
+		return nil, err
 	}
 	kind, err := stringValue(fields["type"])
 	if err != nil {

@@ -18,8 +18,16 @@ type StreamFinalizer interface {
 	Finish(context.Context, EvaluationContext) ([]Value, error)
 }
 
-// FinishEvents flushes an instantiated event encoder without allocating a
-// second state machine for a native passthrough or stateless mapping.
+// NativeFrameObserver synchronizes framing state without rebuilding a replayed
+// frame. Observers must not interpret opaque extensions or synthesize content.
+// A native-only observer is never finalized: source/target replay already check
+// that stream's terminal, and no semantic encoder terminal is pending.
+type NativeFrameObserver interface {
+	ObserveNativeFrame(context.Context, Value, EvaluationContext) error
+}
+
+// FinishEvents flushes an event encoder that actually encoded semantic events.
+// Native observation alone must not produce another terminal.
 func (compiled *Compiled) FinishEvents(ctx context.Context, options EvaluationContext) ([]Value, error) {
 	return compiled.finishEvents(ctx, EncodeEvent, options)
 }
@@ -29,7 +37,10 @@ func (compiled *Compiled) finishEvents(ctx context.Context, direction Direction,
 		return nil, nil
 	}
 	instance := options.State.modules[moduleStateKey{compiled: compiled, direction: direction}]
-	finalizer, hasFinalizer := instance.(StreamFinalizer)
+	if instance == nil || !instance.executed {
+		return nil, nil
+	}
+	finalizer, hasFinalizer := instance.module.(StreamFinalizer)
 	if !hasFinalizer {
 		return nil, nil
 	}
@@ -42,17 +53,22 @@ type moduleStateKey struct {
 	direction Direction
 }
 
+type streamModuleState struct {
+	module   Module
+	executed bool
+}
+
 // EvaluationState owns native codec state for one stream/session. It is not
 // shared across requests or goroutines and is inaccessible to expressions.
 type EvaluationState struct {
-	modules     map[moduleStateKey]Module
+	modules     map[moduleStateKey]*streamModuleState
 	initialized map[moduleStateKey]bool
 }
 
 // NewEvaluationState creates independent codec state. Declarative expressions
 // remain immutable; association and terminal validation belong to EventReplay.
 func NewEvaluationState() *EvaluationState {
-	return &EvaluationState{modules: map[moduleStateKey]Module{}, initialized: map[moduleStateKey]bool{}}
+	return &EvaluationState{modules: map[moduleStateKey]*streamModuleState{}, initialized: map[moduleStateKey]bool{}}
 }
 
 func (state *EvaluationState) prependInitial(compiled *Compiled, direction Direction, initial *compiledExpression, evaluation evaluation, output Value) (Value, bool, error) {
@@ -90,6 +106,25 @@ func eventValues(value Value) ([]Value, error) {
 }
 
 func (state *EvaluationState) resolve(compiled *Compiled, direction Direction, module Module) (Module, error) {
+	return state.resolveModule(compiled, direction, module, true)
+}
+
+func (state *EvaluationState) observeNative(ctx context.Context, compiled *Compiled, direction Direction, frame Value, options EvaluationContext) error {
+	module := compiled.mappings[direction].module
+	if _, ok := module.(StreamModule); !ok {
+		return nil
+	}
+	instance, err := state.resolveModule(compiled, direction, module, false)
+	if err != nil {
+		return err
+	}
+	if observer, ok := instance.(NativeFrameObserver); ok {
+		return observer.ObserveNativeFrame(ctx, frame, options.forDefinition(compiled))
+	}
+	return nil
+}
+
+func (state *EvaluationState) resolveModule(compiled *Compiled, direction Direction, module Module, executed bool) (Module, error) {
 	factory, isStateful := module.(StreamModule)
 	if !isStateful || !isEventDirection(direction) {
 		return module, nil
@@ -99,12 +134,16 @@ func (state *EvaluationState) resolve(compiled *Compiled, direction Direction, m
 	}
 	key := moduleStateKey{compiled: compiled, direction: direction}
 	if current, exists := state.modules[key]; exists {
-		return current, nil
+		current.executed = current.executed || executed
+		return current.module, nil
+	}
+	if len(state.initialized)+len(state.modules) >= compiled.limits.StateItems {
+		return nil, fmt.Errorf("event mapping state exceeds the item limit")
 	}
 	current, err := factory.NewStream(direction, compiled.limits)
 	if err != nil {
 		return nil, err
 	}
-	state.modules[key] = current
+	state.modules[key] = &streamModuleState{module: current, executed: executed}
 	return current, nil
 }

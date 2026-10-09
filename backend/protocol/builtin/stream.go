@@ -84,7 +84,11 @@ func (stream *streamModule) Convert(ctx context.Context, direction p.Direction, 
 		if err != nil {
 			return p.Value{}, err
 		}
-		return array(stream.numberFrames(frames)), nil
+		frames, err = stream.numberFrames(frames)
+		if err != nil {
+			return p.Value{}, err
+		}
+		return array(frames), nil
 	}
 	events, err := stream.DecodeEvents(ctx, input, options)
 	if err != nil {

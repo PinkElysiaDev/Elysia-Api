@@ -104,6 +104,9 @@ func (compiled *Compiled) encodeFrame(ctx context.Context, direction Direction, 
 		frames = append(frames, value...)
 	}
 	if canReplay {
+		if err := options.State.observeNative(ctx, compiled, direction, frame.native.Value, options); err != nil {
+			return nil, compiled.runtimeError(direction, err)
+		}
 		return []Value{frame.native.Value}, nil
 	}
 	return frames, nil
