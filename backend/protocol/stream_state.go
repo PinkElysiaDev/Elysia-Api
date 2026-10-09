@@ -117,7 +117,14 @@ func (state *StreamState) AppendTool(key, input string, isSnapshot, isDone bool)
 	delta := input
 	if isSnapshot {
 		var err error
-		delta, err = tool.text.Snapshot(input)
+		if tool.kind == JSONInput {
+			delta, err = JSONToolSnapshotSuffix(tool.input.String(), input)
+			if err == nil {
+				tool.text.Append(delta)
+			}
+		} else {
+			delta, err = tool.text.Snapshot(input)
+		}
 		if err != nil {
 			return err
 		}

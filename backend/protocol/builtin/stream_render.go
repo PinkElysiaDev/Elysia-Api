@@ -157,7 +157,14 @@ func (stream *streamModule) encodeItem(event p.Event, options p.EvaluationContex
 			}
 		}
 		if isSnapshot {
-			delta, err = item.text.Snapshot(delta)
+			if item.node.Kind == p.ToolCallNode && item.node.Input.Kind == p.JSONInput {
+				delta, err = p.JSONToolSnapshotSuffix(item.buffer.String(), delta)
+				if err == nil {
+					item.text.Append(delta)
+				}
+			} else {
+				delta, err = item.text.Snapshot(delta)
+			}
 			if err != nil {
 				return nil, err
 			}

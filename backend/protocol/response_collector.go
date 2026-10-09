@@ -246,7 +246,14 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 			return "", "", err
 		}
 		if isSnapshot {
-			delta = delta[buffer.Len():]
+			if item.Kind == ToolCallNode && item.Input.Kind == JSONInput {
+				delta, err = JSONToolSnapshotSuffix(buffer.String(), delta)
+				if err != nil {
+					return "", "", err
+				}
+			} else {
+				delta = delta[buffer.Len():]
+			}
 		} // Replay already verified the prefix.
 		if collector.bytes+len(delta) > collector.limit {
 			return "", "", streamIssue(LimitExceeded, "/response", "collected response exceeds buffer limit")
