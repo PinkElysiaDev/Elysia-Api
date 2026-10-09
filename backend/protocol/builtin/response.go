@@ -73,6 +73,9 @@ func (adapter module) decodeResponse(input p.Value, options p.EvaluationContext)
 				owner.Metadata = append(owner.Metadata, metadata...)
 			}
 			if extra := collectUnknown(entry, []string{"index", "message", "finish_reason"}); !extra.IsZero() {
+				if nodes[0].Attributes == nil {
+					nodes[0].Attributes = p.Object{}
+				}
 				nodes[0].Attributes["choiceExtensions"] = extra
 			}
 			response.Content = append(response.Content, nodes...)
