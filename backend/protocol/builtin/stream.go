@@ -23,9 +23,9 @@ type streamItem struct {
 	summaryTexts         []string
 	summaryDone          map[int]bool
 	summaryTextDone      map[int]bool
-	visiblePartStarted   bool
-	visibleTextDone      bool
-	visiblePartDone      bool
+	visibleTexts         []string
+	visibleTextDone      map[int]bool
+	visiblePartDone      map[int]bool
 }
 
 type streamModule struct {

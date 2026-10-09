@@ -13,7 +13,7 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 	if err := checkResourceProtocol(node, options); err != nil {
 		return p.Value{}, err
 	}
-	if node.ReasoningForm == "summary" && adapter.name != Responses {
+	if node.ReasoningForm != "" && adapter.name != Responses {
 		return p.Value{}, unsupported("/reasoningForm", "reasoning summaries cannot be substituted for visible thinking")
 	}
 	if node.Kind == p.OpaqueNode {
@@ -124,7 +124,13 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 			}
 		} else {
 			fields["type"], fields["id"], fields["status"] = p.StringValue("reasoning"), node.ID, node.Status
-			if node.ReasoningForm != "summary" {
+			if node.ReasoningForm == p.StructuredReasoning && node.ReasoningContent != nil {
+				content, err := adapter.encodeReasoningParts(node.ReasoningContent, "reasoning_text")
+				if err != nil {
+					return p.Value{}, err
+				}
+				fields["content"] = content
+			} else if node.ReasoningForm == "" {
 				content := []p.Value{}
 				if !node.Payload.IsZero() {
 					if _, err := stringValue(node.Payload); err != nil {
@@ -134,18 +140,11 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 				}
 				fields["content"] = array(content)
 			}
-			var summary []p.Value
-			for _, child := range node.Children {
-				if child.Kind != p.TextNode {
-					return p.Value{}, unsupported("/reasoning", "Responses reasoning summaries require text")
-				}
-				part := p.Object{"type": p.StringValue("summary_text"), "text": child.Payload}
-				if err := adapter.preserveExtensions(part, child.Attributes); err != nil {
-					return p.Value{}, err
-				}
-				summary = append(summary, object(part))
+			summary, err := adapter.encodeReasoningParts(node.Children, "summary_text")
+			if err != nil {
+				return p.Value{}, err
 			}
-			fields["summary"] = array(summary)
+			fields["summary"] = summary
 		}
 	case p.ImageNode, p.AudioNode, p.DocumentNode, p.VideoNode:
 		if err := adapter.encodeMedia(node, fields); err != nil {

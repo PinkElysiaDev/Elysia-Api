@@ -58,6 +58,7 @@ func cloneNodes(nodes []Node) []Node {
 		copy[index].Cache = append([]CacheIntent(nil), node.Cache...)
 		copy[index].Resources = append([]Resource(nil), node.Resources...)
 		copy[index].Children = cloneNodes(node.Children)
+		copy[index].ReasoningContent = cloneNodes(node.ReasoningContent)
 	}
 	return copy
 }

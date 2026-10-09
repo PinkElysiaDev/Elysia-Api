@@ -125,6 +125,9 @@ func (stream *streamModule) encodeItem(event p.Event, options p.EvaluationContex
 		if event.Item.Children != nil {
 			item.node.Children = event.Item.Children
 		}
+		if event.Item.ReasoningContent != nil {
+			item.node.ReasoningContent = event.Item.ReasoningContent
+		}
 		if event.Item.Resources != nil {
 			item.node.Resources = event.Item.Resources
 		}
@@ -198,12 +201,19 @@ func (stream *streamModule) encodeItem(event p.Event, options p.EvaluationContex
 			delta = item.buffer.String()
 		}
 	}
-	if item.node.ReasoningForm == "summary" {
+	if item.node.ReasoningForm == p.SummaryReasoning || item.node.ReasoningForm == p.StructuredReasoning {
 		updates, err := stream.encodeSummaryParts(item)
 		if err != nil {
 			return nil, err
 		}
 		frames = append(frames, updates...)
+		if item.node.ReasoningForm == p.StructuredReasoning {
+			updates, err = stream.encodeVisibleReasoningParts(item)
+			if err != nil {
+				return nil, err
+			}
+			frames = append(frames, updates...)
+		}
 	}
 	if delta != "" {
 		update, err := stream.encodeDelta(key, item, delta)
@@ -269,7 +279,7 @@ func (stream *streamModule) encodeItemStart(key string, item *streamItem, option
 		block := p.Object{"id": id, "type": p.StringValue("message"), "role": p.StringValue("assistant"), "status": p.StringValue("in_progress"), "content": array(nil)}
 		if node.Kind == p.ReasoningNode {
 			block = p.Object{"id": id, "type": p.StringValue("reasoning"), "status": p.StringValue("in_progress"), "summary": array(nil)}
-			if node.ReasoningForm != "summary" {
+			if node.ReasoningForm == "" || node.ReasoningContent != nil {
 				block["content"] = array(nil)
 			}
 		}
@@ -281,7 +291,7 @@ func (stream *streamModule) encodeItemStart(key string, item *streamItem, option
 			}
 		}
 		frames := []p.Value{stream.responsesEvent("response.output_item.added", key, item, "item", object(block))}
-		if node.Kind == p.ReasoningNode && node.ReasoningForm != "summary" {
+		if node.Kind == p.ReasoningNode && node.ReasoningForm == "" {
 			frames = append(frames, stream.responsesEvent("response.content_part.added", key, item, "part", object(p.Object{"type": p.StringValue("reasoning_text"), "text": p.StringValue("")})))
 		}
 		if node.Kind != p.ToolCallNode && node.Kind != p.ReasoningNode {
@@ -354,7 +364,7 @@ func (stream *streamModule) encodeDelta(key string, item *streamItem, delta stri
 
 func (stream *streamModule) materialize(item *streamItem) (p.Node, error) {
 	node := item.node
-	if node.ReasoningForm == "summary" {
+	if node.ReasoningForm != "" {
 		return node, nil
 	}
 	if node.Kind != p.ToolCallNode {
@@ -425,14 +435,17 @@ func (stream *streamModule) encodeItemEnd(key string, item *streamItem, options 
 		if node.Kind == p.ToolCallNode {
 			return []p.Value{stream.responsesEvent("response.output_item.done", key, item, "item", block)}, nil
 		}
-		if node.Kind == p.ReasoningNode && node.ReasoningForm != "summary" {
+		if node.Kind == p.ReasoningNode && node.ReasoningForm == "" {
 			part := object(p.Object{"type": p.StringValue("reasoning_text"), "text": node.Payload})
 			return []p.Value{stream.responsesEvent("response.reasoning_text.done", key, item, "text", node.Payload), stream.responsesEvent("response.content_part.done", key, item, "part", part), stream.responsesEvent("response.output_item.done", key, item, "item", block)}, nil
 		}
-		if node.ReasoningForm == "summary" {
+		if node.ReasoningForm == p.SummaryReasoning || node.ReasoningForm == p.StructuredReasoning {
 			frames := []p.Value{}
 			for index, child := range node.Children {
 				frames = append(frames, stream.summaryEvent("response.reasoning_summary_text.done", item, index, "text", child.Payload), stream.summaryEvent("response.reasoning_summary_part.done", item, index, "part", object(p.Object{"type": p.StringValue("summary_text"), "text": child.Payload})))
+			}
+			for index, part := range node.ReasoningContent {
+				frames = append(frames, stream.visibleEvent("response.reasoning_text.done", item, index, "text", part.Payload), stream.visibleEvent("response.content_part.done", item, index, "part", object(p.Object{"type": p.StringValue("reasoning_text"), "text": part.Payload})))
 			}
 			return append(frames, stream.responsesEvent("response.output_item.done", key, item, "item", block)), nil
 		}
@@ -578,7 +591,7 @@ func (stream *streamModule) geminiChunk(parts, finish, usage p.Value) p.Value {
 // encodeSignatureUpdates 在快照事件携带签名资源时产出增量帧：仅 Anthropic
 // 与 Gemini 可表达推理签名，其余目标显式拒绝。
 func (stream *streamModule) encodeSignatureUpdates(event p.Event, item *streamItem) ([]p.Value, error) {
-	if event.Type != p.ItemSnapshot || event.Item == nil || len(event.Item.Resources) == 0 || item.node.ReasoningForm == "summary" {
+	if event.Type != p.ItemSnapshot || event.Item == nil || len(event.Item.Resources) == 0 || item.node.ReasoningForm != "" {
 		return nil, nil
 	}
 	if (stream.name != Anthropic && stream.name != Gemini) || item.node.Kind != p.ReasoningNode {

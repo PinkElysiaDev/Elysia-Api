@@ -9,7 +9,7 @@ import (
 
 func (stream *streamModule) decodeSummaryFrame(kind, key string, fields p.Object) ([]p.Event, error) {
 	item := stream.items[key]
-	if item == nil || item.node.ReasoningForm != "summary" || item.isFinished {
+	if item == nil || (item.node.ReasoningForm != p.SummaryReasoning && item.node.ReasoningForm != p.StructuredReasoning) || item.isFinished {
 		return nil, fmt.Errorf("reasoning summary has no active reasoning item")
 	}
 	index, err := frameIndex(fields["summary_index"])
@@ -99,6 +99,9 @@ func (stream *streamModule) encodeSummaryParts(item *streamItem) ([]p.Value, err
 	}
 	var frames []p.Value
 	for index, child := range item.node.Children {
+		if !p.PlainReasoningTextPart(child) {
+			return nil, unsupported("/summary", "extended summary parts require native frame preservation or an explicit mapping")
+		}
 		text, err := stringValue(child.Payload)
 		if err != nil {
 			return nil, err

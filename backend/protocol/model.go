@@ -90,10 +90,13 @@ const (
 // InputKind distinguishes function JSON from free text without coercion.
 type InputKind string
 
-// ReasoningForm identifies a summary instead of visible generated thinking.
+// ReasoningForm distinguishes visible text, summaries and structured reasoning.
 type ReasoningForm string
 
-const SummaryReasoning ReasoningForm = "summary"
+const (
+	SummaryReasoning    ReasoningForm = "summary"
+	StructuredReasoning ReasoningForm = "structured"
+)
 
 const (
 	JSONInput InputKind = "json"
@@ -137,19 +140,22 @@ type Node struct {
 	// ReasoningForm distinguishes provider summaries from visible thinking.
 	// Summaries keep their ordered text parts in Children, never in Payload.
 	ReasoningForm ReasoningForm `json:"reasoningForm,omitempty"`
-	Role          Value         `json:"role,omitzero"`
-	ID            Value         `json:"id,omitzero"`
-	CallID        Value         `json:"callId,omitzero"`
-	Name          Value         `json:"name,omitzero"`
-	Status        Value         `json:"status,omitzero"`
-	Payload       Value         `json:"payload,omitzero"`
-	Input         *ToolInput    `json:"input,omitempty"`
-	Children      []Node        `json:"children,omitempty"`
-	Cache         []CacheIntent `json:"cache,omitempty"`
-	Resources     []Resource    `json:"resources,omitempty"`
-	Attributes    Object        `json:"attributes,omitempty"`
-	Source        *Provenance   `json:"source,omitempty"`
-	Native        *Native       `json:"native,omitempty"`
+	// Structured reasoning keeps visible text parts separate from summary
+	// Children. nil means absent content; a non-nil empty slice means content:[].
+	ReasoningContent []Node        `json:"reasoningContent,omitzero"`
+	Role             Value         `json:"role,omitzero"`
+	ID               Value         `json:"id,omitzero"`
+	CallID           Value         `json:"callId,omitzero"`
+	Name             Value         `json:"name,omitzero"`
+	Status           Value         `json:"status,omitzero"`
+	Payload          Value         `json:"payload,omitzero"`
+	Input            *ToolInput    `json:"input,omitempty"`
+	Children         []Node        `json:"children,omitempty"`
+	Cache            []CacheIntent `json:"cache,omitempty"`
+	Resources        []Resource    `json:"resources,omitempty"`
+	Attributes       Object        `json:"attributes,omitempty"`
+	Source           *Provenance   `json:"source,omitempty"`
+	Native           *Native       `json:"native,omitempty"`
 }
 
 // ToolKind describes the client's execution responsibility, not its wire type.

@@ -67,10 +67,18 @@ func comparableSemantic(input any) (Value, error) {
 func comparableNodes(nodes []Node) []Node {
 	copy := append([]Node(nil), nodes...)
 	for index := range copy {
+		copy[index] = CanonicalReasoning(copy[index])
 		copy[index].Metadata = comparableMetadata(copy[index].Metadata)
 		copy[index].Native = nil
 		copy[index].Source = nil
 		copy[index].Children = comparableNodes(copy[index].Children)
+		if copy[index].ReasoningContent != nil {
+			parts := comparableNodes(copy[index].ReasoningContent)
+			if parts == nil {
+				parts = []Node{}
+			}
+			copy[index].ReasoningContent = parts
+		}
 	}
 	return copy
 }

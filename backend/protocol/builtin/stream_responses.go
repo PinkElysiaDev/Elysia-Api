@@ -32,7 +32,7 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 	}
 	key := "output:" + strconv.Itoa(outputIndex)
 	contentKey := key + ":" + strconv.Itoa(contentIndex)
-	if item := stream.items[key]; item != nil && item.node.Kind == p.ReasoningNode && item.node.ReasoningForm != "summary" {
+	if item := stream.items[key]; item != nil && item.node.Kind == p.ReasoningNode {
 		switch kind {
 		case "response.content_part.added", "response.reasoning_text.delta", "response.reasoning_text.done", "response.content_part.done":
 			return stream.decodeVisibleReasoningFrame(kind, key, fields)
@@ -67,7 +67,7 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 			return nil, err
 		}
 		if itemKind == "reasoning" {
-			node, err := stream.module.decodeResponseItem(fields["item"], "/item", p.DecodeResponse, options, &historyState{})
+			node, err := stream.module.decodeReasoningItem(fields["item"], "/item", p.DecodeResponse, options)
 			if err != nil {
 				return nil, err
 			}
@@ -209,10 +209,13 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		if itemKind != "function_call" && itemKind != "custom_tool_call" && itemKind != "reasoning" {
 			return []p.Event{{Type: p.NativeEvent}}, nil
 		}
-		if current := stream.items[key]; itemKind == "reasoning" && current != nil && current.visiblePartStarted && !current.visiblePartDone {
-			return nil, unsupported("/item", "reasoning item completed before its content part")
-		}
 		node, err := stream.module.decodeResponseItem(fields["item"], "/item", p.DecodeResponse, options, &historyState{calls: map[string][]p.Value{}})
+		if itemKind == "reasoning" {
+			node, err = stream.module.decodeReasoningItem(fields["item"], "/item", p.DecodeResponse, options)
+			if err == nil {
+				err = stream.checkReasoningCompletion(key, node)
+			}
+		}
 		if err != nil {
 			return nil, err
 		}

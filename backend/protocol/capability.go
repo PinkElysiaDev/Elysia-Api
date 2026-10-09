@@ -27,11 +27,11 @@ const (
 	CacheOptionsCapability Capability = "cache.options"
 	// CachePrewarmCapability covers a provider that will populate a cache ahead
 	// of the first read, which is a distinct wire operation, not a breakpoint.
-	CachePrewarmCapability Capability = "cache.prewarm"
-	SessionsCapability           Capability = "sessions"
-	RealtimeMediaCapability      Capability = "media.realtime"
-	AsyncJobsCapability          Capability = "tasks.async"
-	UsageCapability              Capability = "usage"
+	CachePrewarmCapability  Capability = "cache.prewarm"
+	SessionsCapability      Capability = "sessions"
+	RealtimeMediaCapability Capability = "media.realtime"
+	AsyncJobsCapability     Capability = "tasks.async"
+	UsageCapability         Capability = "usage"
 )
 
 // CapabilitySet contains only features supported in the checked direction.
@@ -72,6 +72,7 @@ func CheckToolAssociations(nodes []Node, limits Limits) []ConversionIssue {
 	}
 	return issues
 }
+
 type capabilityCheck struct {
 	target  Target
 	limits  Limits
@@ -175,11 +176,18 @@ func (check *capabilityCheck) content(nodes []Node, path string, depth int) {
 			check.require(DocumentsCapability, location)
 		case ReasoningNode:
 			check.require(ReasoningCapability, location)
-			if node.ReasoningForm != "" && node.ReasoningForm != "summary" {
+			if node.ReasoningForm != "" && node.ReasoningForm != SummaryReasoning && node.ReasoningForm != StructuredReasoning {
 				check.add(InvalidInput, location+"/reasoningForm", ReasoningCapability, "unknown reasoning representation")
 			}
-			if node.ReasoningForm == "summary" && !node.Payload.IsZero() {
+			if node.ReasoningForm != "" && !node.Payload.IsZero() {
 				check.add(InvalidInput, location+"/payload", ReasoningCapability, "reasoning summary text belongs to ordered children")
+			}
+			if node.ReasoningForm == SummaryReasoning || node.ReasoningForm == StructuredReasoning {
+				for i, child := range node.Children {
+					if child.Kind != TextNode {
+						check.add(InvalidInput, fmt.Sprintf("%s/children/%d/kind", location, i), ReasoningCapability, "reasoning summary parts must be text")
+					}
+				}
 			}
 		case ToolCallNode:
 			check.call(node, location)
@@ -193,6 +201,18 @@ func (check *capabilityCheck) content(nodes []Node, path string, depth int) {
 		}
 		check.cache(node.Cache, location+"/cache")
 		check.resources(node.Resources, location+"/resources")
+		if node.ReasoningContent != nil {
+			if node.Kind != ReasoningNode || node.ReasoningForm != StructuredReasoning {
+				check.add(InvalidInput, location+"/reasoningContent", ReasoningCapability, "reasoning content requires structured reasoning")
+			}
+			for i, part := range node.ReasoningContent {
+				var text string
+				if part.Kind != TextNode || part.Payload.IsZero() || part.Payload.IsNull() || part.Payload.Decode(&text) != nil {
+					check.add(InvalidInput, fmt.Sprintf("%s/reasoningContent/%d", location, i), ReasoningCapability, "visible reasoning parts must contain string text")
+				}
+			}
+			check.content(node.ReasoningContent, location+"/reasoningContent", depth+1)
+		}
 		if len(node.Children) > 0 {
 			check.content(node.Children, location+"/children", depth+1)
 		}

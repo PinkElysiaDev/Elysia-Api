@@ -135,54 +135,8 @@ func (adapter module) decodeResponseItem(value p.Value, path string, direction p
 	if kind, err := optionalString(fields["type"]); err != nil {
 		return p.Node{}, err
 	} else if kind == "reasoning" {
-		node := p.Node{Kind: p.ReasoningNode, ReasoningForm: "summary", ID: fields["id"], Status: fields["status"], Native: adapter.native(value, path, direction, options)}
-		if encrypted := fields["encrypted_content"]; !encrypted.IsZero() {
-			node.Resources = append(node.Resources, p.Resource{Kind: "encrypted_content", ID: encrypted, Scope: options.Scope})
-		}
-		node.Attributes = adapter.extensions(fields, []string{"type", "id", "status", "encrypted_content", "summary"})
-		summaries, err := readArray(fields["summary"])
-		if err != nil {
-			return node, err
-		}
-		for _, summary := range summaries {
-			entry, err := summary.ReadObject()
-			if err != nil {
-				return node, err
-			}
-			node.Children = append(node.Children, p.Node{Kind: p.TextNode, Payload: entry["text"], Attributes: adapter.extensions(entry, []string{"type", "text"})})
-		}
-		// Responses exposes visible reasoning separately from its summary. A
-		// single plain reasoning_text part maps exactly to the common visible
-		// thought payload; never relabel it as summary_text. More complex parts
-		// retain their native extension until their structure can be projected.
-		if !fields["content"].IsZero() {
-			parts, err := readArray(fields["content"])
-			if err != nil {
-				return node, err
-			}
-			if len(summaries) == 0 && len(parts) <= 1 {
-				var payload p.Value
-				plain := true
-				if len(parts) == 1 {
-					part, e := parts[0].ReadObject()
-					if e != nil {
-						return node, e
-					}
-					plain = part["type"] == p.StringValue("reasoning_text") && len(part) == 2
-					if plain {
-						if _, e = stringValue(part["text"]); e != nil {
-							return node, e
-						}
-						payload = part["text"]
-					}
-				}
-				if plain {
-					node.ReasoningForm, node.Payload = "", payload
-					node.Attributes = adapter.extensions(fields, []string{"type", "id", "status", "encrypted_content", "summary", "content"})
-				}
-			}
-		}
-		return node, nil
+		node, err := adapter.decodeReasoningItem(value, path, direction, options)
+		return p.CanonicalReasoning(node), err
 	}
 	return adapter.decodeBlock(value, path, direction, options, history)
 }

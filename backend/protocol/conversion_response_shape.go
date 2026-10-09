@@ -65,13 +65,22 @@ func (c *CompiledConversion) responseShape(r *Response, phase ConversionPhase, r
 		out := make([]Node, 0, len(nodes))
 		for i, n := range nodes {
 			at := fmt.Sprintf("%s/%d", base, i)
+			if n.ReasoningForm == StructuredReasoning {
+				// A stream starts before the provider chooses to send summary or
+				// visible text. There is no text to relabel at an empty start.
+				if phase == ConversionEvent && len(n.Children) == 0 && len(n.ReasoningContent) == 0 {
+					n.ReasoningForm, n.ReasoningContent = "", nil
+				} else {
+					n = CanonicalReasoning(n)
+				}
+			}
 			var err error
 			n.Children, err = flatten(n.Children, at+"/children")
 			if err != nil {
 				return nil, err
 			}
-			if n.Kind == ToolCallNode && (!n.ID.IsZero() || !n.Status.IsZero()) {
-				if err := c.issue(rule, phase, route, at, "target preserves call ID but cannot express a separate output item ID/status", sink, true); err != nil {
+			if (n.Kind == ToolCallNode || n.Kind == ReasoningNode) && (!n.ID.IsZero() || !n.Status.IsZero()) {
+				if err := c.issue(rule, phase, route, at, "target cannot express this separate output item ID/status; tool call identity is retained", sink, true); err != nil {
 					return nil, err
 				}
 				n.ID, n.Status = Value{}, Value{}

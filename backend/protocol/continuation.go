@@ -113,6 +113,7 @@ func NewContinuationID() (string, error) {
 // ContinuationNodeDigest excludes adapter provenance and presentation IDs.
 // Actual text, media, arguments and call identity must match exactly.
 func ContinuationNodeDigest(node Node) string {
+	node = CanonicalReasoning(node)
 	node.ID, node.Status, node.Role = Value{}, Value{}, Value{}
 	node.Source, node.Native = nil, nil
 	node.Resources = nil
@@ -131,6 +132,13 @@ func ContinuationNodeDigest(node Node) string {
 		}
 		clean(children)
 		node.Children = children
+	}
+	if node.ReasoningContent != nil {
+		parts := comparableNodes(node.ReasoningContent)
+		if parts == nil {
+			parts = []Node{}
+		}
+		node.ReasoningContent = parts
 	}
 	value, _ := EncodeValue(node)
 	return hashValue(value)

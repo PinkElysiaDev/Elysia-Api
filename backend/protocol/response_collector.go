@@ -28,7 +28,7 @@ func (collector *ResponseCollector) CompletedNode(event Event) (Node, int, bool)
 	if !ok {
 		return Node{}, 0, false
 	}
-	return cloneNodes([]Node{collector.response.Content[index]})[0], index, true
+	return CanonicalReasoning(cloneNodes([]Node{collector.response.Content[index]})[0]), index, true
 }
 
 // NewResponseCollector uses the same lifecycle validator as live forwarding.
@@ -165,6 +165,7 @@ func (collector *ResponseCollector) attachUnmapped(response *Response) {
 func collectedOutput(nodes []Node) []Node {
 	var output []Node
 	for _, node := range nodes {
+		node = CanonicalReasoning(node)
 		if node.Kind == MessageNode {
 			output = append(output, collectedOutput(node.Children)...)
 			continue
@@ -174,6 +175,12 @@ func collectedOutput(nodes []Node) []Node {
 		node.Metadata = comparableMetadata(node.Metadata)
 		node.ID, node.Status = Value{}, Value{}
 		node.Children = comparableNodes(node.Children)
+		if node.ReasoningContent != nil {
+			node.ReasoningContent = comparableNodes(node.ReasoningContent)
+			if node.ReasoningContent == nil {
+				node.ReasoningContent = []Node{}
+			}
+		}
 		output = append(output, node)
 	}
 	return output
@@ -209,6 +216,9 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 		}
 		if event.Item.Children != nil {
 			item.Children = append([]Node(nil), event.Item.Children...)
+		}
+		if event.Item.ReasoningContent != nil {
+			item.ReasoningContent = cloneNodes(event.Item.ReasoningContent)
 		}
 		if event.Item.Cache != nil {
 			item.Cache = append([]CacheIntent(nil), event.Item.Cache...)
@@ -262,7 +272,7 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 		collector.bytes += len(delta)
 	}
 	if item.Kind != ToolCallNode {
-		if item.ReasoningForm == "summary" {
+		if item.ReasoningForm != "" {
 			return item.Kind, "", nil
 		}
 		for _, resource := range item.Resources {
@@ -311,6 +321,9 @@ func (collector *ResponseCollector) Finish() (*Response, error) {
 		return nil, err
 	}
 	collector.response.Usage = collector.replay.Usage()
+	for i := range collector.response.Content {
+		collector.response.Content[i] = CanonicalReasoning(collector.response.Content[i])
+	}
 	collector.attachUnmapped(&collector.response)
 	return &collector.response, nil
 }

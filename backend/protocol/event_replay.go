@@ -9,6 +9,7 @@ type replayItem struct {
 	name          string
 	isFinished    bool
 	summaryParts  int
+	visibleParts  int
 	reasoningForm ReasoningForm
 }
 
@@ -108,7 +109,7 @@ func (replay *EventReplay) consumeItem(event Event) error {
 	if item.kind == ToolCallNode {
 		return replay.consumeTool(key, item, event)
 	}
-	if event.Item != nil && event.Item.ReasoningForm == "summary" {
+	if event.Item != nil && (event.Item.ReasoningForm == SummaryReasoning || event.Item.ReasoningForm == StructuredReasoning) {
 		if len(event.Item.Children) < item.summaryParts {
 			return streamIssue(UpstreamContractViolation, "/item/children", "reasoning summary removed an emitted part")
 		}
@@ -125,6 +126,22 @@ func (replay *EventReplay) consumeItem(event Event) error {
 			}
 		}
 		item.summaryParts = len(event.Item.Children)
+		if len(event.Item.ReasoningContent) < item.visibleParts {
+			return streamIssue(UpstreamContractViolation, "/item/reasoningContent", "reasoning content removed an emitted part")
+		}
+		for index, part := range event.Item.ReasoningContent {
+			text, err := readString(part.Payload)
+			if err != nil {
+				return err
+			}
+			if _, err := replay.state.TrackText(fmt.Sprintf("%s/reasoning-content/%d", key, index), text, true); err != nil {
+				return err
+			}
+		}
+		item.visibleParts = len(event.Item.ReasoningContent)
+	}
+	if item.reasoningForm != "" && !event.Delta.IsZero() {
+		return streamIssue(InvalidAssociation, "/delta", "structured reasoning updates require an indexed part snapshot")
 	}
 	value := event.Delta
 	isSnapshot := event.Type == ItemSnapshot || event.Type == ItemFinished || event.Type == ItemStarted
