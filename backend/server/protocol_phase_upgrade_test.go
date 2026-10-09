@@ -12,15 +12,21 @@ import (
 
 func TestRuntimeRefreshRepairsResponsesPhaseLifecycleEvidence(t *testing.T) {
 	for _, version := range []string{"dev28", "dev29"} {
-		t.Run(version, func(t *testing.T) { refreshResponsesMessageLifecycleEvidence(t, version) })
+		t.Run(version, func(t *testing.T) {
+			refreshBuiltinFixtureEvidence(t, protocol.PresetResponsesID, "responses-"+version+"-message-samples.json")
+		})
 	}
 }
 
-func refreshResponsesMessageLifecycleEvidence(t *testing.T, version string) {
+func TestRuntimeRefreshRepairsChatRoleEvidence(t *testing.T) {
+	refreshBuiltinFixtureEvidence(t, protocol.PresetChatCompletionsID, "chat-dev31-role-samples.json")
+}
+
+func refreshBuiltinFixtureEvidence(t *testing.T, presetID, fixture string) {
 	s, _ := newProtocolAdminTestServer(t)
-	d := presetDefinition(t, protocol.PresetResponsesID)
-	d.ID = "existing-custom-responses"
-	raw, err := os.ReadFile(filepath.Join("..", "protocol", "builtin", "testdata", "responses-"+version+"-message-samples.json"))
+	d := presetDefinition(t, presetID)
+	d.ID = "existing-custom-" + presetID
+	raw, err := os.ReadFile(filepath.Join("..", "protocol", "builtin", "testdata", fixture))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,7 +8,7 @@ import (
 )
 
 // RepairOutputFixtures corrects known obsolete builtin output expectations,
-// including the two fingerprinted Responses message-completion decoder oracles.
+// including fingerprinted Responses message oracles and Chat role fixtures.
 // It changes the definition, never comparison semantics or runtime output.
 // The caller verifies and commits a new immutable revision and keeps the old
 // revision and operator draft. Handwritten/after mappings are not rewritten.
@@ -91,6 +91,11 @@ func RepairOutputFixtures(d p.Definition) (p.Definition, bool) {
 	}
 	for i, s := range d.Samples {
 		m := d.Directions[s.Direction]
+		if s.Direction == p.DecodeEvent && m.Module == Chat && m.After == nil && s.Sequence && s.ExpectedIssue == "" {
+			if fixed, repaired := repairChatRoleFixture(s); repaired {
+				d.Samples[i].Input, changed = fixed, true
+			}
+		}
 		if s.Direction == p.DecodeEvent && m.Module == Responses && m.After == nil && s.Sequence && s.ExpectedIssue == "" {
 			if expected, repaired := repairResponsesMessageOracle(s); repaired {
 				d.Samples[i].Expected, changed = expected, true
@@ -111,6 +116,37 @@ func RepairOutputFixtures(d p.Definition) (p.Definition, bool) {
 		d.Samples[i].Expected = repair(s.Expected)
 	}
 	return d, changed
+}
+
+// These exact shipped dev.31 samples omitted the mandatory assistant role.
+// Correct their wire inputs, retaining the independently recorded semantic
+// expectation. Arbitrary user fixtures, including negative cases, stay exact.
+func repairChatRoleFixture(sample p.Sample) (p.Value, bool) {
+	var input, expected any
+	if sample.Input.Decode(&input) != nil || sample.Expected.Decode(&expected) != nil {
+		return sample.Input, false
+	}
+	canonical, err := p.EncodeValue([]any{input, expected})
+	if err != nil {
+		return sample.Input, false
+	}
+	switch fmt.Sprintf("%x", sha256.Sum256(canonical.Bytes())) {
+	case "7f0e169ff0993651f09617241e34e1231cf3b87b9ab05013e492743f55115721", "29812d4e734a26bc06d166cf7a76c8788bdadfe5eaffac5e343adeee50d6e519", "bdff5f744063e2132aa96cae6cb37abf75cb610f54e475bee99e385507968e37":
+	default:
+		return sample.Input, false
+	}
+	var frames []p.Value
+	_ = sample.Input.Decode(&frames)
+	frame, _ := frames[0].ReadObject()
+	choices, _ := readArray(frame["choices"])
+	choice, _ := choices[0].ReadObject()
+	delta, _ := choice["delta"].ReadObject()
+	delta["role"] = p.StringValue("assistant")
+	choice["delta"] = object(delta)
+	choices[0] = object(choice)
+	frame["choices"] = array(choices)
+	frames[0] = object(frame)
+	return array(frames), true
 }
 
 // Only the exact shipped dev.28/dev.29 decoder fixtures flattened messages.

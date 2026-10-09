@@ -94,6 +94,61 @@ func TestRepairLegacyChatToolIdentityFixture(t *testing.T) {
 	}
 }
 
+func TestRepairShippedChatRoleFixtures(t *testing.T) {
+	raw, err := os.ReadFile("testdata/chat-dev31-role-samples.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var samples []p.Sample
+	if err := json.Unmarshal(raw, &samples); err != nil {
+		t.Fatal(err)
+	}
+	d := shippedProjectionProtocol(t, Chat).Definition()
+	d.ID = "custom-existing-chat"
+	for i, current := range d.Samples {
+		for _, old := range samples {
+			if current.ID == old.ID {
+				d.Samples[i] = old
+			}
+		}
+	}
+	fixed, changed := RepairOutputFixtures(d)
+	if !changed {
+		t.Fatal("old invalid role fixtures were not repaired")
+	}
+	if _, changed := RepairOutputFixtures(fixed); changed {
+		t.Fatal("fixture repair is not idempotent")
+	}
+	for i := range d.Samples {
+		if fixed.Samples[i].Expected != d.Samples[i].Expected {
+			t.Fatal("changed semantic oracle", d.Samples[i].ID)
+		}
+	}
+	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
+	value, _ := p.EncodeValue(fixed)
+	c, issues := compiler.Compile(value.Bytes())
+	if err := p.IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	if report := p.Verify(t.Context(), c); !report.Passed {
+		t.Fatal(report.Issues)
+	}
+	if report := p.VerifyCombination(t.Context(), c, c); !report.Passed {
+		t.Fatal(report.Issues)
+	}
+	for _, mapping := range []p.Mapping{{Module: Chat, After: &p.Expression{Op: "read"}}, {Transform: &p.Expression{Op: "read"}}} {
+		d.Directions[p.DecodeEvent] = mapping
+		if _, changed := RepairOutputFixtures(d); changed {
+			t.Fatal("rewrote a user decoder fixture")
+		}
+	}
+	modified := samples[0]
+	modified.Expected = testValue(t, `[]`)
+	if _, changed := repairChatRoleFixture(modified); changed {
+		t.Fatal("guessed user intent")
+	}
+}
+
 func TestRepairFixturesKeepsNativeReplayAssertions(t *testing.T) {
 	for _, module := range []string{Chat, Responses} {
 		for _, input := range []string{

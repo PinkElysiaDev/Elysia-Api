@@ -1,0 +1,419 @@
+[
+  {
+    "id": "stream-native-decode",
+    "direction": "decode_event",
+    "capabilities": [],
+    "input": [
+      {
+        "id": "r",
+        "model": "m",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "content": "hi"
+            }
+          }
+        ],
+        "extension": {
+          "long": 9007199254740993,
+          "empty": []
+        },
+        "created": 1,
+        "object": "chat.completion.chunk"
+      },
+      {
+        "choices": [
+          {
+            "index": 0,
+            "delta": {},
+            "finish_reason": "stop"
+          }
+        ],
+        "created": 1,
+        "object": "chat.completion.chunk",
+        "id": "r",
+        "model": "m"
+      },
+      {
+        "choices": [],
+        "usage": {
+          "prompt_tokens": 20,
+          "completion_tokens": 2,
+          "total_tokens": 22,
+          "prompt_tokens_details": {
+            "cached_tokens": 15
+          }
+        },
+        "created": 1,
+        "object": "chat.completion.chunk",
+        "id": "r",
+        "model": "m"
+      }
+    ],
+    "expected": [
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "response.started",
+        "responseId": "r",
+        "response": {
+          "schemaVersion": 1,
+          "source": {},
+          "id": "r",
+          "model": "m",
+          "status": "in_progress",
+          "content": [],
+          "attributes": {
+            "created_at": 1
+          }
+        },
+        "unmapped": {
+          "source": {
+            "protocol": {
+              "family": "openai_chat",
+              "wireVersion": "v2",
+              "definitionId": "openai-chat-completions",
+              "revision": "2.0.0"
+            },
+            "direction": "decode_event",
+            "path": "/frame/extensions"
+          },
+          "value": {
+            "/": {
+              "extension": {
+                "long": 9007199254740993,
+                "empty": []
+              }
+            }
+          }
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "item.started",
+        "responseId": "r",
+        "itemId": "text",
+        "index": 0,
+        "item": {
+          "kind": "text"
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "item.delta",
+        "responseId": "r",
+        "itemId": "text",
+        "index": 0,
+        "delta": "hi"
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "response.finished",
+        "responseId": "r",
+        "response": {
+          "schemaVersion": 1,
+          "source": {},
+          "id": "r",
+          "model": "m",
+          "status": "completed",
+          "content": null,
+          "attributes": {
+            "finishReason": "stop",
+            "created_at": 1
+          }
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "usage.updated",
+        "responseId": "r",
+        "usage": {
+          "input": {
+            "count": 20,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 2,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 22,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 15,
+            "origin": "observed"
+          }
+        }
+      }
+    ],
+    "context": {
+      "model": "m"
+    },
+    "scope": {
+      "provider": "fixture",
+      "account": "fixture",
+      "model": "m"
+    },
+    "sequence": true
+  },
+  {
+    "id": "stream-tool-decode",
+    "direction": "decode_event",
+    "capabilities": [],
+    "input": [
+      {
+        "id": "r",
+        "model": "m",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "tool_calls": [
+                {
+                  "index": 0,
+                  "type": "function",
+                  "id": "call",
+                  "function": {
+                    "name": "lookup",
+                    "arguments": "{\"n\":9007199254740993}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "created": 1,
+        "object": "chat.completion.chunk"
+      },
+      {
+        "choices": [
+          {
+            "index": 0,
+            "delta": {},
+            "finish_reason": "tool_calls"
+          }
+        ],
+        "created": 1,
+        "object": "chat.completion.chunk",
+        "id": "r",
+        "model": "m"
+      }
+    ],
+    "expected": [
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "response.started",
+        "responseId": "r",
+        "response": {
+          "schemaVersion": 1,
+          "source": {},
+          "id": "r",
+          "model": "m",
+          "status": "in_progress",
+          "content": [],
+          "attributes": {
+            "created_at": 1
+          }
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "item.started",
+        "responseId": "r",
+        "itemId": "tool:0",
+        "index": 0,
+        "item": {
+          "kind": "tool_call",
+          "name": "lookup",
+          "callId": "call",
+          "input": {
+            "kind": "json"
+          }
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "item.delta",
+        "responseId": "r",
+        "itemId": "tool:0",
+        "index": 0,
+        "delta": "{\"n\":9007199254740993}"
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "response.finished",
+        "responseId": "r",
+        "response": {
+          "schemaVersion": 1,
+          "source": {},
+          "id": "r",
+          "model": "m",
+          "status": "completed",
+          "content": null,
+          "attributes": {
+            "finishReason": "tool_calls",
+            "created_at": 1
+          }
+        }
+      }
+    ],
+    "context": {
+      "model": "m"
+    },
+    "scope": {
+      "provider": "fixture",
+      "account": "fixture",
+      "model": "m"
+    },
+    "sequence": true
+  },
+  {
+    "id": "stream-reasoning-decode",
+    "direction": "decode_event",
+    "capabilities": [],
+    "input": [
+      {
+        "id": "r",
+        "model": "m",
+        "choices": [
+          {
+            "index": 0,
+            "delta": {
+              "reasoning_content": "hi"
+            }
+          }
+        ],
+        "created": 1,
+        "object": "chat.completion.chunk"
+      },
+      {
+        "choices": [
+          {
+            "index": 0,
+            "delta": {},
+            "finish_reason": "stop"
+          }
+        ],
+        "created": 1,
+        "object": "chat.completion.chunk",
+        "id": "r",
+        "model": "m"
+      },
+      {
+        "choices": [],
+        "usage": {
+          "prompt_tokens": 20,
+          "completion_tokens": 2,
+          "total_tokens": 22,
+          "prompt_tokens_details": {
+            "cached_tokens": 15
+          }
+        },
+        "created": 1,
+        "object": "chat.completion.chunk",
+        "id": "r",
+        "model": "m"
+      }
+    ],
+    "expected": [
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "response.started",
+        "responseId": "r",
+        "response": {
+          "schemaVersion": 1,
+          "source": {},
+          "id": "r",
+          "model": "m",
+          "status": "in_progress",
+          "content": [],
+          "attributes": {
+            "created_at": 1
+          }
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "item.started",
+        "responseId": "r",
+        "itemId": "reasoning",
+        "index": 0,
+        "item": {
+          "kind": "reasoning"
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "item.delta",
+        "responseId": "r",
+        "itemId": "reasoning",
+        "index": 0,
+        "delta": "hi"
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "response.finished",
+        "responseId": "r",
+        "response": {
+          "schemaVersion": 1,
+          "source": {},
+          "id": "r",
+          "model": "m",
+          "status": "completed",
+          "content": null,
+          "attributes": {
+            "finishReason": "stop",
+            "created_at": 1
+          }
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "source": {},
+        "type": "usage.updated",
+        "responseId": "r",
+        "usage": {
+          "input": {
+            "count": 20,
+            "origin": "observed"
+          },
+          "output": {
+            "count": 2,
+            "origin": "observed"
+          },
+          "total": {
+            "count": 22,
+            "origin": "observed"
+          },
+          "cacheRead": {
+            "count": 15,
+            "origin": "observed"
+          }
+        }
+      }
+    ],
+    "context": {
+      "model": "m"
+    },
+    "scope": {
+      "provider": "fixture",
+      "account": "fixture",
+      "model": "m"
+    },
+    "sequence": true
+  }
+]
