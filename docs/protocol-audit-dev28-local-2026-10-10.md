@@ -2,6 +2,8 @@
 
 接续 [dev.27 记录](protocol-audit-dev27-local-2026-10-10.md)。用户要求完成下一轮修改后先不要真实测试，等待其调整 API。本轮没有请求真实渠道，也没有修改 `scripts/protocol-audit/config.local.json`。测试只使用合成内容、回环地址和隔离数据库；提交均留在本地。
 
+后续消息 `phase` 修复与实际网关输出 SDK 回放见 [dev.29 记录](protocol-audit-dev29-local-2026-10-10.md)。下列未关闭项描述的是 dev.28 当时的状态。
+
 ## 修改与证据
 
 | 提交 | 修复 |
