@@ -67,6 +67,53 @@ test('strict SDK rejection retains the HTTP 200 response evidence', { skip: !con
   assert.equal(f.captured[1].response.status, 200)
 })
 
+for (const stream of [false, true]) test(`Responses mixed summary and multipart reasoning ${stream ? 'SSE' : 'JSON'} keeps independent SDK content`, { skip: !consume && 'SDK dependencies unavailable' }, async t => {
+  const reasoning = {
+    id: 'rs_multipart', type: 'reasoning', status: 'completed',
+    summary: [{ type: 'summary_text', text: 'Synthetic summary.' }],
+    content: [{ type: 'reasoning_text', text: 'First visible part.' }, { type: 'reasoning_text', text: 'Second visible part.' }],
+  }
+  const response = JSON.parse(replyWire('responses'))
+  response.output.unshift(reasoning)
+  let wire = JSON.stringify(response)
+  if (stream) {
+    const events = replyWire('responses', 'OK', false, true).split('\n').filter(line => line.startsWith('data: ')).map(line => JSON.parse(line.slice(6)))
+    for (const e of events) if (e.output_index !== undefined) e.output_index++
+    const owner = { output_index: 0, item_id: reasoning.id }
+    const parts = [{ type: 'response.output_item.added', output_index: 0, item: { ...reasoning, status: 'in_progress', summary: [], content: [] } }]
+    const summaryRef = { ...owner, summary_index: 0 }
+    const summary = [
+      { type: 'response.reasoning_summary_part.added', ...summaryRef, part: { type: 'summary_text', text: '' } },
+      { type: 'response.reasoning_summary_text.delta', ...summaryRef, delta: reasoning.summary[0].text },
+      { type: 'response.reasoning_summary_text.done', ...summaryRef, text: reasoning.summary[0].text },
+      { type: 'response.reasoning_summary_part.done', ...summaryRef, part: reasoning.summary[0] },
+    ]
+    for (const [content_index, part] of reasoning.content.entries()) {
+      const ref = { ...owner, content_index }
+      parts.push({ type: 'response.content_part.added', ...ref, part: { type: 'reasoning_text', text: '' } })
+      // Interleave summary events with visible content, as the Go regression
+      // does. Their indexes are separate namespaces, not one text buffer.
+      if (content_index === 0) parts.push(...summary.slice(0, 2))
+      parts.push({ type: 'response.reasoning_text.delta', ...ref, delta: part.text })
+      parts.push({ type: 'response.reasoning_text.done', ...ref, text: part.text })
+      parts.push({ type: 'response.content_part.done', ...ref, part })
+    }
+    parts.push(...summary.slice(2), { type: 'response.output_item.done', output_index: 0, item: reasoning })
+    events.at(-1).response = response
+    events.splice(1, 0, ...parts)
+    wire = events.map((event, sequence_number) => `event: ${event.type}\ndata: ${JSON.stringify({ ...event, sequence_number })}\n\n`).join('')
+  }
+  const f = await endpoint(t, wire, stream)
+  const result = await consume('responses', f.options, stream)
+  assert.deepEqual(result.map(p => p.name), ['openai', '@ai-sdk/openai'])
+  assert.equal(f.captured.length, 2)
+  const { default: OpenAI } = await import('openai')
+  const client = new OpenAI({ baseURL: `${f.options.baseUrl}/v1`, apiKey: f.options.apiKey, maxRetries: 0 })
+  const params = { model: 'test', input: 'Synthetic SDK regression', store: false }
+  const final = stream ? await client.responses.stream(params).finalResponse() : await client.responses.create(params)
+  assert.deepEqual(final.output[0], reasoning)
+})
+
 for (const protocol of ['chat', 'responses', 'anthropic', 'gemini']) test(`${protocol} SDK HTTP errors are captured without automatic retries`, { skip: !consume && 'SDK dependencies unavailable' }, async t => {
   const body = JSON.stringify({ error: { message: 'provider unavailable' } })
   const f = await endpoint(t, body, false, 503)
