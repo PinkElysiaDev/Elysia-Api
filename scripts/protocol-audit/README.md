@@ -218,6 +218,22 @@ protocol/
 
 在脚本目录执行 `npm test`。自测使用固定配置和本地样例，不读取用户渠道配置，并拦截外部 API 请求。自测通过仅说明脚本的相关检查通过，不代表项目或真实渠道全部通过。
 
+### 本地 SDK 工具两轮矩阵
+
+`local-tools.mjs` 使用实际隔离网关、模拟上游及固定版本 SDK，检查 16 个方向的 JSON/SSE 并行函数工具第二轮。先在仓库根目录生成合成夹具：
+
+```powershell
+$env:ELYSIA_AUDIT_CAPTURE = Join-Path (Get-Location) '.tmp-dev/sdk-tools-wire'
+Push-Location backend
+go test ./server -run '^TestGatewayAuditParallelToolRoundTrips$' -count=1
+Pop-Location
+node scripts/protocol-audit/local-tools.mjs .tmp-dev/sdk-tools-wire
+```
+
+工具会编译当前后端，创建临时数据库，并通过管理 API 创建四条仅指向回环地址的测试源。不会读取 `config.local.json`。正常结果为 32 个场景、56 个 SDK 变体、112 次模拟上游请求；任一 SDK 格式错误、隐藏 error、重试、调用 ID 或参数／结果串线都会使检查失败。第二轮必须由 SDK 的第一轮结果构造，上游另行核对完整历史；调用记录在临时实例清理前查询并写入标准输出 JSON。
+
+Responses 历史使用固定 SDK 的 `toResponseInputItems`，并断言未省略任何输出项；Chat 仅去掉 SDK 添加的 `parsed`／`parsed_arguments` 辅助属性，不改写网关响应。用例参数为安全整数 1、2，不能代替已有 Go 大整数原文保真测试，也不能证明 JavaScript SDK 的数值精度、供应商真实签名接受情况或真实渠道工具能力。
+
 ## 测试范围与限制
 
 - 测试连接真实上游和自动启动的独立后端，使用临时数据库。后端准备失败时，仍尝试直连和代码检查。

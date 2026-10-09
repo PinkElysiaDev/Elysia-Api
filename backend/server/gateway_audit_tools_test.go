@@ -259,8 +259,8 @@ func auditParallelToolFixture(t *testing.T, id string, stream bool) string {
 	switch id {
 	case protocol.PresetChatCompletionsID:
 		calls := []any{}
-		for _, cid := range []string{"c1", "c2"} {
-			calls = append(calls, obj{"id": cid, "type": "function", "function": obj{"name": "lookup", "arguments": "{}"}})
+		for i, cid := range []string{"c1", "c2"} {
+			calls = append(calls, obj{"id": cid, "type": "function", "function": obj{"name": "lookup", "arguments": fmt.Sprintf(`{"n":%d}`, i+1)}})
 		}
 		response = obj{"id": "r", "object": "chat.completion", "created": 1, "model": "m", "choices": []any{obj{"index": 0, "message": obj{"role": "assistant", "content": "hi", "tool_calls": calls}, "finish_reason": "tool_calls"}}}
 		chunk := func(d any, finish any) any {
@@ -273,14 +273,14 @@ func auditParallelToolFixture(t *testing.T, id string, stream bool) string {
 		}
 		frames = append(frames, chunk(obj{"tool_calls": starts}, nil))
 		for _, i := range []int{1, 0} {
-			frames = append(frames, chunk(obj{"tool_calls": []any{obj{"index": i, "function": obj{"arguments": "{}"}}}}, nil))
+			frames = append(frames, chunk(obj{"tool_calls": []any{obj{"index": i, "function": obj{"arguments": fmt.Sprintf(`{"n":%d}`, i+1)}}}}, nil))
 		}
 		frames = append(frames, chunk(obj{}, "tool_calls"))
 	case protocol.PresetGeminiID:
-		response = obj{"responseId": "r", "modelVersion": "m", "candidates": []any{obj{"index": 0, "content": obj{"role": "model", "parts": []any{obj{"text": "hi"}, obj{"functionCall": obj{"id": "c1", "name": "lookup", "args": obj{}}}, obj{"functionCall": obj{"id": "c2", "name": "lookup", "args": obj{}}}}}, "finishReason": "STOP"}}}
+		response = obj{"responseId": "r", "modelVersion": "m", "candidates": []any{obj{"index": 0, "content": obj{"role": "model", "parts": []any{obj{"text": "hi"}, obj{"functionCall": obj{"id": "c1", "name": "lookup", "args": obj{"n": 1}}}, obj{"functionCall": obj{"id": "c2", "name": "lookup", "args": obj{"n": 2}}}}}, "finishReason": "STOP"}}}
 		frames = []any{response}
 	case protocol.PresetAnthropicID:
-		content := []any{obj{"type": "text", "text": "hi"}, obj{"type": "tool_use", "id": "c1", "name": "lookup", "input": obj{}}, obj{"type": "tool_use", "id": "c2", "name": "lookup", "input": obj{}}}
+		content := []any{obj{"type": "text", "text": "hi"}, obj{"type": "tool_use", "id": "c1", "name": "lookup", "input": obj{"n": 1}}, obj{"type": "tool_use", "id": "c2", "name": "lookup", "input": obj{"n": 2}}}
 		usage := obj{"input_tokens": 3, "output_tokens": 2}
 		response = obj{"id": "r", "type": "message", "model": "m", "role": "assistant", "content": content, "stop_reason": "tool_use", "stop_sequence": nil, "usage": usage}
 		frames = append(frames, obj{"type": "message_start", "message": obj{"id": "r", "type": "message", "model": "m", "role": "assistant", "content": []any{}, "stop_reason": nil, "stop_sequence": nil, "usage": obj{"input_tokens": 3, "output_tokens": 0}}})
@@ -289,15 +289,15 @@ func auditParallelToolFixture(t *testing.T, id string, stream bool) string {
 			frames = append(frames, obj{"type": "content_block_start", "index": i + 1, "content_block": obj{"type": "tool_use", "id": cid, "name": "lookup", "input": obj{}}})
 		}
 		for _, i := range []int{2, 1} {
-			frames = append(frames, obj{"type": "content_block_delta", "index": i, "delta": obj{"type": "input_json_delta", "partial_json": "{}"}}, obj{"type": "content_block_stop", "index": i})
+			frames = append(frames, obj{"type": "content_block_delta", "index": i, "delta": obj{"type": "input_json_delta", "partial_json": fmt.Sprintf(`{"n":%d}`, i)}}, obj{"type": "content_block_stop", "index": i})
 		}
 		frames = append(frames, obj{"type": "message_delta", "delta": obj{"stop_reason": "tool_use", "stop_sequence": nil}, "usage": usage}, obj{"type": "message_stop"})
 	case protocol.PresetResponsesID:
 		text := obj{"type": "output_text", "text": "hi", "annotations": []any{}}
 		message := obj{"type": "message", "id": "msg1", "status": "completed", "role": "assistant", "content": []any{text}}
 		output := []any{message}
-		for _, cid := range []string{"c1", "c2"} {
-			output = append(output, obj{"type": "function_call", "id": "item_" + cid, "call_id": cid, "name": "lookup", "arguments": "{}", "status": "completed"})
+		for i, cid := range []string{"c1", "c2"} {
+			output = append(output, obj{"type": "function_call", "id": "item_" + cid, "call_id": cid, "name": "lookup", "arguments": fmt.Sprintf(`{"n":%d}`, i+1), "status": "completed"})
 		}
 		response = obj{"id": "r", "object": "response", "created_at": 1, "model": "m", "status": "completed", "output": output}
 		frames = append(frames, obj{"type": "response.created", "response": obj{"id": "r", "object": "response", "created_at": 1, "model": "m", "status": "in_progress", "output": []any{}}})
@@ -307,7 +307,7 @@ func auditParallelToolFixture(t *testing.T, id string, stream bool) string {
 		}
 		for _, i := range []int{2, 1} {
 			cid := fmt.Sprintf("c%d", i)
-			frames = append(frames, obj{"type": "response.function_call_arguments.delta", "output_index": i, "item_id": "item_" + cid, "delta": "{}"}, obj{"type": "response.output_item.done", "output_index": i, "item": output[i]})
+			frames = append(frames, obj{"type": "response.function_call_arguments.delta", "output_index": i, "item_id": "item_" + cid, "delta": fmt.Sprintf(`{"n":%d}`, i)}, obj{"type": "response.output_item.done", "output_index": i, "item": output[i]})
 		}
 		frames = append(frames, obj{"type": "response.completed", "response": response})
 		for i, f := range frames {
