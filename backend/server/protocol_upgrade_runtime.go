@@ -34,7 +34,7 @@ func (s *Server) reloadProtocolRuntime(ctx context.Context) error {
 	if err := s.refreshProtocolRuntime(ctx, service); err != nil {
 		return err
 	}
-	if err := service.Reload(ctx); err != nil {
+	if err := service.ReloadAvailable(ctx); err != nil {
 		return err
 	}
 	if s.isProtocolRuntimeRequired.Load() {

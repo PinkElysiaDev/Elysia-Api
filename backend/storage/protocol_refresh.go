@@ -44,6 +44,22 @@ func (store *Store) RefreshProtocolRuntime(ctx context.Context, plan ProtocolUpg
 			return err
 		}
 	}
+	for _, rejection := range plan.Rejections {
+		report := rejection.Report
+		if protocol.IsPresetProtocolID(rejection.ProtocolID) || report.Passed || report.Kind != protocol.OfflineVerification || report.CompilerVersion != protocol.CompilerVersion || protocol.IssuesError(report.Issues) == nil {
+			return fmt.Errorf("invalid isolated custom verification report")
+		}
+		var active string
+		if err := tx.QueryRowContext(ctx, `SELECT revision_hash FROM protocol_activations WHERE protocol_id=?`, rejection.ProtocolID).Scan(&active); err != nil {
+			return err
+		}
+		if active != report.DefinitionHash {
+			return protocol.ErrRevisionConflict
+		}
+		if err := saveProtocolReport(ctx, tx, rejection.ProtocolID, active, report); err != nil {
+			return err
+		}
+	}
 	receipt, err := json.Marshal(map[string]string{"baseline": plan.Baseline, "backup": backup, "compilerVersion": protocol.CompilerVersion})
 	if err != nil {
 		return err

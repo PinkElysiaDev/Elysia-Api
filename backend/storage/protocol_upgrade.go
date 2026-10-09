@@ -34,6 +34,14 @@ type ProtocolUpgrade struct {
 	RequestHash string                    `json:"requestHash,omitempty"`
 	Revisions   []ProtocolUpgradeRevision `json:"revisions"`
 	Bindings    []ProtocolBinding         `json:"bindings"`
+	// Rejections refresh evidence for an unchanged custom revision without
+	// activating it or rewriting its definition/draft.
+	Rejections []ProtocolUpgradeRejection `json:"rejections,omitempty"`
+}
+
+type ProtocolUpgradeRejection struct {
+	ProtocolID string                      `json:"protocolId"`
+	Report     protocol.VerificationReport `json:"report"`
 }
 
 // ProtocolUpgradeReceipt identifies the committed plan and its database backup.

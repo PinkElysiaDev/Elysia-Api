@@ -126,12 +126,27 @@ func TestRuntimeRefreshPreservesCustomRevisionsAndBlocksInvalidEvidence(t *testi
 			}
 			err = server.reloadProtocolRuntime(t.Context())
 			if isInvalid {
-				if err == nil {
-					t.Fatal("old report authorized invalid definition")
+				if err != nil {
+					t.Fatal("custom failure blocked healthy presets", err)
+				}
+				service, _ := server.protocolService()
+				if _, ok := service.Pin(definition.ID); ok {
+					t.Fatal("invalid custom revision loaded")
+				}
+				if service.View().Failures()[definition.ID] == "" {
+					t.Fatal("missing isolation reason")
 				}
 				after, readErr := server.store.ListProtocolActivations(t.Context())
-				if readErr != nil || !reflect.DeepEqual(before, after) {
-					t.Fatal("failed refresh changed persistence", readErr)
+				if readErr != nil {
+					t.Fatal(readErr)
+				}
+				for _, activation := range after {
+					if activation.ProtocolID == definition.ID && !reflect.DeepEqual(activation, before[0]) {
+						t.Fatal("custom activation intent changed")
+					}
+				}
+				if len(service.View().IDs()) != 4 {
+					t.Fatal("healthy presets were not recovered")
 				}
 				return
 			}
@@ -181,5 +196,55 @@ func TestRuntimeRefreshResetsPresetRevisionsToShipped(t *testing.T) {
 	report, err := server.store.ReadProtocolReport(t.Context(), "openai-chat-completions", active.Hash())
 	if err != nil || !report.Passed {
 		t.Fatal("shipped replacement lacks current-engine evidence", err, report)
+	}
+}
+
+func TestRuntimeProjectionUpgradeTenRestartsPreserveCustomAndFailedEvidence(t *testing.T) {
+	s, path := newProtocolAdminTestServer(t)
+	for _, id := range []string{"old-copy", "broken-copy"} {
+		d := presetDefinition(t, protocol.PresetResponsesID)
+		d.ID = id
+		d.Requires = nil
+		if id == "broken-copy" {
+			d.Samples[0].Expected = mustProtocolValue(t, `{"schemaVersion":1,"content":[]}`)
+		}
+		persistPreviousRevision(t, s, mustEncodedProtocolValue(t, d))
+	}
+	if err := s.reloadProtocolRuntime(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	before, err := s.store.ProtocolUpgradeBaseline(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	backups, err := filepath.Glob(filepath.Join(filepath.Dir(path), "*.pre-protocol-v2-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(backups) != 1 {
+		t.Fatal("expected one upgrade backup", backups)
+	}
+	for i := 0; i < 10; i++ {
+		if err := s.reloadProtocolRuntime(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		after, err := s.store.ProtocolUpgradeBaseline(t.Context())
+		if err != nil || before != after {
+			t.Fatal("restart changed protocol state", i, err)
+		}
+		current, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "*.pre-protocol-v2-*"))
+		if !reflect.DeepEqual(backups, current) {
+			t.Fatal("restart added backup", i)
+		}
+	}
+	service, _ := s.protocolService()
+	if _, ok := service.Pin("old-copy"); !ok {
+		t.Fatal("old custom was not automatically reverified")
+	}
+	if _, ok := service.Pin("broken-copy"); ok {
+		t.Fatal("invalid custom became executable")
+	}
+	if service.View().Failures()["broken-copy"] == "" {
+		t.Fatal("missing repair diagnosis")
 	}
 }

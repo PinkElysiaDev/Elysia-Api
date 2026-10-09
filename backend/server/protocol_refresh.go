@@ -20,7 +20,7 @@ func (s *Server) refreshProtocolRuntime(ctx context.Context, service *protocol.S
 		return err
 	}
 	active, err := s.store.ListProtocolActivations(ctx)
-	if err != nil || len(active) == 0 {
+	if err != nil {
 		return err
 	}
 	shipped, err := builtin.Definitions()
@@ -37,7 +37,6 @@ func (s *Server) refreshProtocolRuntime(ctx context.Context, service *protocol.S
 	}
 	plan := storage.ProtocolUpgrade{Baseline: baseline}
 	definitions := map[string]*protocol.Compiled{}
-	ids := []string{}
 	hasChanges := false
 	// ensureProtocol 把一个协议推进到给定（预置=shipped）定义并进入计划。
 	// current 为 nil 表示库中尚无激活（预置补激活通道）：等同被替换处理。
@@ -55,9 +54,16 @@ func (s *Server) refreshProtocolRuntime(ctx context.Context, service *protocol.S
 		if err != nil && !errors.Is(err, protocol.ErrNotFound) {
 			return err
 		}
+		if err == nil && !report.Passed && report.IsCurrent(compiled.Hash(), protocol.CompilerVersion, compiled.SamplesHash()) && !protocol.IsPresetProtocolID(definitionID) {
+			return protocol.IssuesError(protocol.CanActivate(compiled, report))
+		}
 		if err != nil || protocol.IssuesError(protocol.CanActivate(compiled, report)) != nil {
 			report = protocol.Verify(ctx, compiled)
 			if err := protocol.IssuesError(protocol.CanActivate(compiled, report)); err != nil {
+				if current != nil && current.Hash == compiled.Hash() && !protocol.IsPresetProtocolID(definitionID) {
+					plan.Rejections = append(plan.Rejections, storage.ProtocolUpgradeRejection{ProtocolID: definitionID, Report: report})
+					hasChanges = true
+				}
 				return err
 			}
 			hasChanges = true
@@ -77,13 +83,17 @@ func (s *Server) refreshProtocolRuntime(ctx context.Context, service *protocol.S
 		hasChanges = hasChanges || isReplaced
 		plan.Revisions = append(plan.Revisions, storage.ProtocolUpgradeRevision{Revision: revision, Report: report, Draft: draft})
 		definitions[definitionID] = compiled
-		ids = append(ids, definitionID)
 		return nil
 	}
 	for _, activation := range active {
 		revision, err := s.store.ReadProtocolRevision(ctx, activation.ProtocolID, activation.RevisionHash)
 		if err != nil {
-			return err
+			if definition, preset := presets[activation.ProtocolID]; preset {
+				if err := ensureProtocol(activation.ProtocolID, definition, nil); err != nil {
+					return err
+				}
+			}
+			continue
 		}
 		definition := revision.Definition
 		// 预置只读：启动时无条件跟进 shipped 版本，本地激活的旧/改版本被
@@ -92,7 +102,12 @@ func (s *Server) refreshProtocolRuntime(ctx context.Context, service *protocol.S
 			definition = replacement
 		}
 		if err := ensureProtocol(activation.ProtocolID, definition, &revision); err != nil {
-			return err
+			if protocol.IsPresetProtocolID(activation.ProtocolID) {
+				return err
+			}
+			// Retain activation intent and original data; ReloadAvailable exposes
+			// this custom revision's failure without blocking healthy protocols.
+			continue
 		}
 	}
 	// 自愈通道：预置属引擎所有，激活是「随版本自动更新」策略的蕴含——
@@ -106,12 +121,17 @@ func (s *Server) refreshProtocolRuntime(ctx context.Context, service *protocol.S
 			return err
 		}
 	}
-	sort.Strings(ids)
 	bindings, err := s.store.ListProtocolBindings(ctx)
 	if err != nil {
 		return err
 	}
 	for _, binding := range bindings {
+		if definitions[binding.Binding.ProtocolID] == nil {
+			continue
+		}
+		if !binding.Unbound && binding.Kind != "group" && len(binding.Combinations) == 0 {
+			hasChanges = true
+		}
 		for _, report := range binding.Combinations {
 			if report.CompilerVersion != protocol.CompilerVersion {
 				hasChanges = true
@@ -121,7 +141,6 @@ func (s *Server) refreshProtocolRuntime(ctx context.Context, service *protocol.S
 	if !hasChanges {
 		return nil
 	}
-	combinations := map[string][]protocol.CombinationReport{}
 	for _, binding := range bindings {
 		compiled := definitions[binding.Binding.ProtocolID]
 		if binding.Unbound {
@@ -129,43 +148,18 @@ func (s *Server) refreshProtocolRuntime(ctx context.Context, service *protocol.S
 			continue
 		}
 		if compiled == nil {
-			return gatewayIssue(protocol.Identity{DefinitionID: binding.Binding.ProtocolID}, protocol.VerificationRequired, "/binding", "runtime refresh cannot enable an inactive bound protocol")
-		}
+			continue
+		} // Keep the unavailable binding unchanged.
 		binding.Binding.RevisionHash = compiled.Hash()
-		issues := protocol.CheckBinding(binding.Binding, compiled)
-		if binding.Kind == "group" {
-			issues = protocol.CheckIngressBinding(binding.Binding, compiled)
-		}
-		if err := protocol.IssuesError(issues); err != nil {
-			return err
-		}
-		if binding.Kind != "group" {
-			key := compiled.Hash() + protocol.CapabilityContractHash(binding.Binding.Capabilities)
-			if reports, exists := combinations[key]; exists {
-				binding.Combinations = reports
-			} else {
-				binding.Combinations = verifyUpgradeCombinations(ctx, definitions, ids, compiled, binding.Binding.Capabilities)
-				combinations[key] = binding.Combinations
-			}
-			if !hasPassingGatewayCombination(binding.Combinations) {
-				return gatewayIssue(compiled.Identity(), protocol.VerificationRequired, "/binding/combinations", "current engine cannot verify this binding; repair its definition or capability contract")
-			}
-		}
 		plan.Bindings = append(plan.Bindings, binding)
 	}
 	policies, _, _, err := s.store.ConversionSnapshot(ctx)
 	if err != nil {
 		return err
 	}
-	configured := len(policies) > 0
-	for _, b := range plan.Bindings {
-		configured = configured || b.Conversion != nil
-	}
-	if configured {
-		plan.Bindings, err = s.verifyConversionBindings(ctx, conversionDefinitions(definitions), policies, plan.Bindings)
-		if err != nil {
-			return err
-		}
+	plan.Bindings, err = s.verifyConversionBindings(ctx, conversionDefinitions(definitions), policies, plan.Bindings, true)
+	if err != nil {
+		return err
 	}
 	return s.store.RefreshProtocolRuntime(ctx, plan)
 }
