@@ -163,13 +163,17 @@ func (s *Server) adminProtocolDrafts(c *gin.Context) {
 			loaded[activation.ProtocolID] = pinned.Hash()
 		}
 	}
-	presets := make([]string, 0)
-	for _, activation := range active {
-		if protocol.IsPresetProtocolID(activation.ProtocolID) {
-			presets = append(presets, activation.ProtocolID)
+	failures := service.View().Failures()
+	for _, id := range requiredPresetIDs {
+		if loaded[id] == "" {
+			failures[id] = "预置未成功加载，请重新加载协议并检查启动日志"
 		}
 	}
-	respondOK(c, gin.H{"drafts": drafts, "active": active, "loaded": loaded, "presets": presets, "runtimeFailures": service.View().Failures()})
+	result := gin.H{"drafts": drafts, "active": active, "loaded": loaded, "presets": requiredPresetIDs, "runtimeFailures": failures}
+	if reason := s.protocolRuntimeFailure.Load(); reason != nil {
+		result["runtimeError"] = *reason
+	}
+	respondOK(c, result)
 }
 
 func (s *Server) adminProtocolSchemaV2(c *gin.Context) {

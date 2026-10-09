@@ -2,7 +2,10 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"sort"
 	"time"
 
@@ -11,157 +14,275 @@ import (
 	"github.com/elysia-api/backend/storage"
 )
 
-// refreshProtocolRuntime prepares all evidence before any persistent mutation.
-// An edited definition is verified as authored; only cataloged preset contents
-// may be replaced. Saved drafts and deliberately inactive protocols stay intact.
+var requiredPresetIDs = []string{protocol.PresetChatCompletionsID, protocol.PresetResponsesID, protocol.PresetAnthropicID, protocol.PresetGeminiID}
+
 func (s *Server) refreshProtocolRuntime(ctx context.Context, service *protocol.Service) error {
+	return s.refreshProtocolRuntimeScope(ctx, service, false)
+}
+
+// One recovery path serves startup and reload. The first pass reads only current
+// records; a changing plan is rebuilt under a baseline before it can commit.
+// Healthy restarts never fingerprint historical definitions or create backups.
+func (s *Server) refreshProtocolRuntimeScope(ctx context.Context, service *protocol.Service, presetsOnly bool) error {
+	_, _, changed, err := s.prepareProtocolRefresh(ctx, service, presetsOnly)
+	if err != nil || !changed {
+		return err
+	}
 	baseline, err := s.store.ProtocolUpgradeBaseline(ctx)
 	if err != nil {
 		return err
 	}
-	active, err := s.store.ListProtocolActivations(ctx)
+	evidence, err := s.store.ProtocolRefreshEvidenceBaseline(ctx)
 	if err != nil {
 		return err
+	}
+	plan, definitions, changed, err := s.prepareProtocolRefresh(ctx, service, presetsOnly)
+	if err != nil || !changed {
+		return err
+	}
+	plan.Baseline, plan.EvidenceBaseline = baseline, evidence
+	if len(plan.Bindings) > 0 {
+		policies, bindings, _, err := s.store.ConversionSnapshot(ctx)
+		if err != nil {
+			return err
+		}
+		// Verification needs the entire inheritance chain, even when only one
+		// binding is being refreshed. Persist only the affected bindings.
+		selected := map[string]bool{}
+		before := map[string]string{}
+		key := func(b storage.ProtocolBinding) string {
+			raw, _ := json.Marshal([]string{b.Kind, b.SourceID, b.ModelID, b.GroupID})
+			return string(raw)
+		}
+		for _, b := range plan.Bindings {
+			selected[key(b)] = true
+		}
+		for i, b := range bindings {
+			raw, err := json.Marshal(b)
+			if err != nil {
+				return err
+			}
+			before[key(b)] = string(raw)
+			if selected[key(b)] {
+				bindings[i].Binding.RevisionHash = definitions[b.Binding.ProtocolID].Hash()
+			}
+		}
+		verified, err := s.verifyConversionBindings(ctx, conversionDefinitions(definitions), policies, bindings, true)
+		if err != nil {
+			return err
+		}
+		plan.Bindings = nil
+		for _, b := range verified {
+			raw, err := json.Marshal(b)
+			if err != nil {
+				return err
+			}
+			if selected[key(b)] && before[key(b)] != string(raw) {
+				plan.Bindings = append(plan.Bindings, b)
+			}
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := s.store.RefreshProtocolRuntime(ctx, plan); err != nil {
+		return fmt.Errorf("protocol recovery commit: %w", err)
+	}
+	for _, entry := range plan.Revisions {
+		if protocol.IsPresetProtocolID(entry.Revision.ProtocolID) && entry.Refresh.Changed() {
+			log.Printf("[protocol-recovery] %s restored: revision=%t evidence=%t activation=%t draft=%t", entry.Revision.ProtocolID, entry.Refresh.Revision || entry.Refresh.RepairPreset, entry.Refresh.Report, entry.Refresh.Activation, entry.Refresh.Draft)
+		}
+	}
+	return nil
+}
+
+func recoverableProtocolRead(err error) bool {
+	return errors.Is(err, protocol.ErrNotFound) || errors.Is(err, storage.ErrCorruptProtocolRecord)
+}
+
+func (s *Server) prepareProtocolRefresh(ctx context.Context, service *protocol.Service, presetsOnly bool) (storage.ProtocolUpgrade, map[string]*protocol.Compiled, bool, error) {
+	plan := storage.ProtocolUpgrade{}
+	definitions := map[string]*protocol.Compiled{}
+	fail := func(err error) (storage.ProtocolUpgrade, map[string]*protocol.Compiled, bool, error) {
+		return plan, definitions, false, err
+	}
+	active, err := s.store.ListProtocolActivations(ctx)
+	if err != nil {
+		return fail(err)
+	}
+	activations := map[string]protocol.Activation{}
+	for _, a := range active {
+		activations[a.ProtocolID] = a
 	}
 	shipped, err := builtin.Definitions()
 	if err != nil {
-		return err
+		return fail(err)
 	}
-	presets := map[string]protocol.Value{}
-	for _, value := range shipped {
-		var definition protocol.Definition
-		if err := value.Decode(&definition); err != nil {
-			return err
-		}
-		presets[definition.ID] = value
-	}
-	plan := storage.ProtocolUpgrade{Baseline: baseline}
-	definitions := map[string]*protocol.Compiled{}
-	hasChanges := false
-	// ensureProtocol 把一个协议推进到给定（预置=shipped）定义并进入计划。
-	// current 为 nil 表示库中尚无激活（预置补激活通道）：等同被替换处理。
-	ensureProtocol := func(definitionID string, definition protocol.Value, current *protocol.Revision) error {
-		compiled, issues := service.Validate(definition.Bytes())
+	changed := false
+	ensure := func(id string, value protocol.Value, preset bool) error {
+		compiled, issues := service.Validate(value.Bytes())
 		if err := protocol.IssuesError(issues); err != nil {
+			return fmt.Errorf("protocol %s compile: %w", id, err)
+		}
+		if compiled.Identity().DefinitionID != id {
+			return fmt.Errorf("%w: protocol %s identity mismatch", storage.ErrCorruptProtocolRecord, id)
+		}
+		a, isActive := activations[id]
+		if !preset && a.RevisionHash != compiled.Hash() {
+			return fmt.Errorf("%w: protocol %s stored hash mismatch", storage.ErrCorruptProtocolRecord, id)
+		}
+		writes := &storage.ProtocolRefreshWrite{}
+		revision, err := s.store.ReadProtocolRevision(ctx, id, compiled.Hash())
+		if err != nil && !recoverableProtocolRead(err) {
 			return err
 		}
-		revision := protocol.Revision{}
-		if current != nil {
-			revision = *current
+		if errors.Is(err, protocol.ErrNotFound) {
+			writes.Revision = true
+		} else if errors.Is(err, storage.ErrCorruptProtocolRecord) {
+			writes.RepairPreset = preset
+		} else if preset {
+			stored, issues := service.Validate(revision.Definition.Bytes())
+			writes.RepairPreset = protocol.IssuesError(issues) != nil || stored == nil || stored.Identity().DefinitionID != id || stored.Hash() != compiled.Hash()
 		}
-		isReplaced := current == nil || compiled.Hash() != revision.Hash
-		report, err := s.store.ReadProtocolReport(ctx, definitionID, compiled.Hash())
-		if err != nil && !errors.Is(err, protocol.ErrNotFound) {
+		if writes.Revision || writes.RepairPreset {
+			revision = protocol.Revision{ProtocolID: id, Hash: compiled.Hash(), Definition: value, CreatedAt: time.Now().UTC()}
+		}
+		writes.Activation = !isActive || a.RevisionHash != compiled.Hash() || a.Generation < 1 || a.ActivatedAt.IsZero()
+		report, err := s.store.ReadProtocolReport(ctx, id, compiled.Hash())
+		if err != nil && !recoverableProtocolRead(err) {
 			return err
 		}
-		if err == nil && !report.Passed && report.IsCurrent(compiled.Hash(), protocol.CompilerVersion, compiled.SamplesHash()) && !protocol.IsPresetProtocolID(definitionID) {
+		if err == nil && !preset && !report.Passed && report.IsCurrent(compiled.Hash(), protocol.CompilerVersion, compiled.SamplesHash()) {
 			return protocol.IssuesError(protocol.CanActivate(compiled, report))
 		}
-		if err != nil || protocol.IssuesError(protocol.CanActivate(compiled, report)) != nil {
+		if err != nil || writes.RepairPreset || protocol.IssuesError(protocol.CanActivate(compiled, report)) != nil {
 			report = protocol.Verify(ctx, compiled)
-			if err := protocol.IssuesError(protocol.CanActivate(compiled, report)); err != nil {
-				if current != nil && current.Hash == compiled.Hash() && !protocol.IsPresetProtocolID(definitionID) {
-					plan.Rejections = append(plan.Rejections, storage.ProtocolUpgradeRejection{ProtocolID: definitionID, Report: report})
-					hasChanges = true
-				}
+			if err := ctx.Err(); err != nil {
 				return err
 			}
-			hasChanges = true
+			if err := protocol.IssuesError(protocol.CanActivate(compiled, report)); err != nil {
+				if !preset {
+					plan.Rejections = append(plan.Rejections, storage.ProtocolUpgradeRejection{ProtocolID: id, Report: report})
+					changed = true
+				}
+				return fmt.Errorf("protocol %s offline verification: %w", id, err)
+			}
+			writes.Report = true
 		}
-		draft, err := s.store.ReadProtocolDraft(ctx, definitionID)
-		if err != nil && !errors.Is(err, protocol.ErrNotFound) {
+		draft, err := s.store.ReadProtocolDraft(ctx, id)
+		if err != nil && !recoverableProtocolRead(err) {
 			return err
 		}
-		// 草稿仅在缺失、或预置随版本替换且草稿还停在旧版时重置——
-		// 自定义协议的草稿是用户进行中的工作，永不回写覆盖。
-		if errors.Is(err, protocol.ErrNotFound) || (isReplaced && draft.Hash == revision.Hash) {
-			draft = protocol.Draft{ProtocolID: definitionID, Hash: compiled.Hash(), Definition: definition, UpdatedAt: time.Now().UTC()}
+		if err != nil && !preset && !errors.Is(err, protocol.ErrNotFound) {
+			return err
 		}
-		if isReplaced {
-			revision = protocol.Revision{ProtocolID: definitionID, Hash: compiled.Hash(), Definition: definition, CreatedAt: time.Now().UTC()}
+		// Preserve unrelated operator drafts. A corrupt preset draft or a draft
+		// still following the replaced preset is archived before replacement.
+		damagedDraft := false
+		if err == nil && preset && draft.Hash == compiled.Hash() && !storage.EquivalentProtocolDefinition(draft.Definition, value) {
+			// Omitted defaults and explicitly encoded defaults are both valid.
+			// Only identity/hash corruption warrants replacing a current draft.
+			draftCompiled, issues := service.Validate(draft.Definition.Bytes())
+			damagedDraft = protocol.IssuesError(issues) != nil || draftCompiled == nil || draftCompiled.Hash() != draft.Hash || draftCompiled.Identity().DefinitionID != id
 		}
-		hasChanges = hasChanges || isReplaced
-		plan.Revisions = append(plan.Revisions, storage.ProtocolUpgradeRevision{Revision: revision, Report: report, Draft: draft})
-		definitions[definitionID] = compiled
+		writes.Draft = err != nil || (preset && ((a.RevisionHash != compiled.Hash() && draft.Hash == a.RevisionHash) || damagedDraft))
+		if writes.Draft {
+			draft = protocol.Draft{ProtocolID: id, Hash: compiled.Hash(), Definition: value, UpdatedAt: time.Now().UTC()}
+		}
+		plan.Revisions = append(plan.Revisions, storage.ProtocolUpgradeRevision{Revision: revision, Report: report, Draft: draft, Refresh: writes})
+		definitions[id] = compiled
+		changed = changed || writes.Changed()
 		return nil
 	}
-	for _, activation := range active {
-		revision, err := s.store.ReadProtocolRevision(ctx, activation.ProtocolID, activation.RevisionHash)
-		if err != nil {
-			if definition, preset := presets[activation.ProtocolID]; preset {
-				if err := ensureProtocol(activation.ProtocolID, definition, nil); err != nil {
-					return err
-				}
-			}
-			continue
+	// Presets always start from embedded content, never from damaged stored data.
+	for _, value := range shipped {
+		var d protocol.Definition
+		if err := value.Decode(&d); err != nil {
+			return fail(err)
 		}
-		definition := revision.Definition
-		// 预置只读：启动时无条件跟进 shipped 版本，本地激活的旧/改版本被
-		// 替换并走下方重验链（hash 未变时为无操作）。
-		if replacement, exists := presets[activation.ProtocolID]; exists {
-			definition = replacement
-		}
-		if err := ensureProtocol(activation.ProtocolID, definition, &revision); err != nil {
-			if protocol.IsPresetProtocolID(activation.ProtocolID) {
-				return err
-			}
-			// Retain activation intent and original data; ReloadAvailable exposes
-			// this custom revision's failure without blocking healthy protocols.
-			continue
+		if err := ensure(d.ID, value, true); err != nil {
+			return fail(fmt.Errorf("preset %s recovery: %w", d.ID, err))
 		}
 	}
-	// 自愈通道：预置属引擎所有，激活是「随版本自动更新」策略的蕴含——
-	// 任何混合状态（改名对被跳过/历史半途启动）导致预置缺激活时，这里
-	// 直接补上，避免 Pin 永远失败、源拉取报 verification_required。
-	for _, id := range sortedDefinitionIDs(presets) {
-		if _, active := definitions[id]; active {
-			continue
+	for _, id := range requiredPresetIDs {
+		if definitions[id] == nil {
+			return fail(fmt.Errorf("preset %s is missing from embedded definitions", id))
 		}
-		if err := ensureProtocol(id, presets[id], nil); err != nil {
-			return err
+	}
+	if !presetsOnly {
+		for _, a := range active {
+			if protocol.IsPresetProtocolID(a.ProtocolID) {
+				continue
+			}
+			r, err := s.store.ReadProtocolRevision(ctx, a.ProtocolID, a.RevisionHash)
+			if err != nil {
+				if !recoverableProtocolRead(err) {
+					return fail(err)
+				}
+				continue
+			}
+			if err := ensure(a.ProtocolID, r.Definition, false); err != nil {
+				if ctx.Err() != nil {
+					return fail(ctx.Err())
+				}
+				var conversion *protocol.ConversionError
+				if !errors.As(err, &conversion) && !errors.Is(err, storage.ErrCorruptProtocolRecord) {
+					return fail(err)
+				}
+				log.Printf("[protocol-refresh] custom %s unavailable: %v", a.ProtocolID, err)
+			}
 		}
 	}
 	bindings, err := s.store.ListProtocolBindings(ctx)
 	if err != nil {
-		return err
+		return fail(err)
 	}
-	for _, binding := range bindings {
-		if definitions[binding.Binding.ProtocolID] == nil {
+	for _, b := range bindings {
+		c := definitions[b.Binding.ProtocolID]
+		if b.Unbound || c == nil {
 			continue
 		}
-		if !binding.Unbound && binding.Kind != "group" && len(binding.Combinations) == 0 {
-			hasChanges = true
-		}
-		for _, report := range binding.Combinations {
-			if report.CompilerVersion != protocol.CompilerVersion {
-				hasChanges = true
-			}
-		}
-	}
-	if !hasChanges {
-		return nil
-	}
-	for _, binding := range bindings {
-		compiled := definitions[binding.Binding.ProtocolID]
-		if binding.Unbound {
-			plan.Bindings = append(plan.Bindings, binding)
+		if !bindingNeedsProtocolRefresh(b, definitions) {
 			continue
 		}
-		if compiled == nil {
-			continue
-		} // Keep the unavailable binding unchanged.
-		binding.Binding.RevisionHash = compiled.Hash()
-		plan.Bindings = append(plan.Bindings, binding)
+		changed = true
+		b.Binding.RevisionHash = c.Hash()
+		plan.Bindings = append(plan.Bindings, b)
 	}
-	policies, _, _, err := s.store.ConversionSnapshot(ctx)
-	if err != nil {
-		return err
+	return plan, definitions, changed, nil
+}
+
+func bindingNeedsProtocolRefresh(b storage.ProtocolBinding, definitions map[string]*protocol.Compiled) bool {
+	if b.Binding.RevisionHash != definitions[b.Binding.ProtocolID].Hash() {
+		return true
 	}
-	plan.Bindings, err = s.verifyConversionBindings(ctx, conversionDefinitions(definitions), policies, plan.Bindings, true)
-	if err != nil {
-		return err
+	if b.Kind == "group" {
+		return false
 	}
-	return s.store.RefreshProtocolRuntime(ctx, plan)
+	if len(b.Combinations) == 0 {
+		return true
+	}
+	covered := map[string]bool{}
+	for _, r := range b.Combinations {
+		if r.CompilerVersion != protocol.CompilerVersion {
+			return true
+		}
+		// A current whole-binding rejection is itself stable evidence. A
+		// capability/operation change is checked by its management write path.
+		if r.SourceHash == "" && r.TargetHash == "" && r.Fidelity == "rejected" {
+			return false
+		}
+		if r.TargetHash != definitions[b.Binding.ProtocolID].Hash() {
+			return true
+		}
+		covered[r.SourceHash] = true
+	}
+	for _, c := range definitions {
+		if c.Supports(protocol.DecodeRequest) && c.Supports(protocol.EncodeResponse) && !covered[c.Hash()] {
+			return true
+		}
+	}
+	return false
 }
 
 func sortedDefinitionIDs(definitions map[string]protocol.Value) []string {

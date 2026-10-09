@@ -6,24 +6,24 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
-	"strings"
 	"time"
 
 	"github.com/elysia-api/backend/protocol"
 )
 
 type ProtocolHistory struct {
-	ID         string         `json:"id"`
-	ProtocolID string         `json:"protocolId"`
-	Hash       string         `json:"hash"`
-	Name       string         `json:"name"`
-	Version    string         `json:"version"`
-	Definition protocol.Value `json:"definition,omitzero"`
-	Reason     string         `json:"reason"`
-	IsDraft    bool           `json:"isDraft"`
-	CreatedAt  time.Time      `json:"createdAt"`
-	ArchivedAt time.Time      `json:"archivedAt"`
+	ID            string         `json:"id"`
+	ProtocolID    string         `json:"protocolId"`
+	Hash          string         `json:"hash"`
+	Name          string         `json:"name"`
+	Version       string         `json:"version"`
+	Definition    protocol.Value `json:"definition,omitzero"`
+	RawDefinition string         `json:"rawDefinition,omitempty"`
+	ReadError     string         `json:"readError,omitempty"`
+	Reason        string         `json:"reason"`
+	IsDraft       bool           `json:"isDraft"`
+	CreatedAt     time.Time      `json:"createdAt"`
+	ArchivedAt    time.Time      `json:"archivedAt"`
 }
 
 func archiveReplacedPreset(ctx context.Context, tx *sql.Tx, id, nextHash string) error {
@@ -31,12 +31,6 @@ func archiveReplacedPreset(ctx context.Context, tx *sql.Tx, id, nextHash string)
 		SELECT r.protocol_id || '~' || r.content_hash,r.protocol_id,r.content_hash,r.definition,'preset_replaced',r.created_at,?
 		FROM protocol_revisions r JOIN protocol_activations a ON a.protocol_id=r.protocol_id AND a.revision_hash=r.content_hash
 		WHERE r.protocol_id=? AND r.content_hash<>?`, nowString(), id, nextHash)
-	if err != nil && strings.Contains(err.Error(), "no such table") {
-		// 坏库（拷贝丢 WAL 等）缺 protocol_history 时归档降级为跳过：
-		// 历史簿记是尽力而为，不能反过来阻塞预置升级与运行时刷新。
-		log.Printf("[protocol-history] archive skipped, table missing: %v", err)
-		return nil
-	}
 	return err
 }
 
@@ -81,17 +75,21 @@ func scanProtocolHistory(row interface{ Scan(...any) error }) (ProtocolHistory, 
 		return item, protocolRowError(err)
 	}
 	value, err := protocol.ParseValue([]byte(raw))
-	if err != nil {
-		return item, err
-	}
 	var meta struct {
 		Name    string `json:"name"`
 		Version string `json:"version"`
 	}
-	if err := json.Unmarshal([]byte(raw), &meta); err != nil {
-		return item, err
+	if err == nil {
+		err = json.Unmarshal([]byte(raw), &meta)
 	}
-	item.Definition, item.Name, item.Version = value, meta.Name, meta.Version
+	if err != nil {
+		item.RawDefinition, item.ReadError = raw, err.Error()
+	} else {
+		item.Definition, item.Name, item.Version = value, meta.Name, meta.Version
+	}
+	if item.Reason == "preset_repaired" || item.Reason == "preset_draft_replaced" {
+		item.RawDefinition = raw
+	}
 	item.CreatedAt, item.ArchivedAt = parseTime(created), parseTime(archived)
 	return item, nil
 }

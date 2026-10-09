@@ -82,9 +82,8 @@ func TestStartupRecoversFromLegacyIDRegistry(t *testing.T) {
 	adminServer.store.Close()
 	adminServer.store = openStoreAt(t, path)
 
-	// 坏库现场（在最终 Open 之后注入，避免被启动迁移重建）：
-	// 主文件丢 protocol_history + 上一代成功迁移留下的回执。
-	dropProtocolHistory(t, path)
+	// 上一代成功迁移的回执不能替代当前预置的完整性检查。
+	// 缺业务表属于结构故障，另测为阻断；不能跳过原文归档。
 	seedUpgradeReceipt(t, path)
 	adminServer.migratePresetProtocolRenames()
 	adminServer.seedPresetProtocols()

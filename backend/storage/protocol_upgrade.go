@@ -25,6 +25,21 @@ type ProtocolUpgradeRevision struct {
 	Revision protocol.Revision           `json:"revision"`
 	Report   protocol.VerificationReport `json:"report"`
 	Draft    protocol.Draft              `json:"draft"`
+	// Refresh limits writes to defects found by the runtime recovery check.
+	// Nil retains the legacy migration's complete-write behavior.
+	Refresh *ProtocolRefreshWrite `json:"refresh,omitempty"`
+}
+
+type ProtocolRefreshWrite struct {
+	Revision     bool `json:"revision,omitempty"`
+	Report       bool `json:"report,omitempty"`
+	Draft        bool `json:"draft,omitempty"`
+	Activation   bool `json:"activation,omitempty"`
+	RepairPreset bool `json:"repairPreset,omitempty"`
+}
+
+func (w ProtocolRefreshWrite) Changed() bool {
+	return w.Revision || w.Report || w.Draft || w.Activation || w.RepairPreset
 }
 
 // ProtocolUpgrade applies the whole validated graph, never individual rows.
@@ -34,6 +49,9 @@ type ProtocolUpgrade struct {
 	RequestHash string                    `json:"requestHash,omitempty"`
 	Revisions   []ProtocolUpgradeRevision `json:"revisions"`
 	Bindings    []ProtocolBinding         `json:"bindings"`
+	// EvidenceBaseline guards reports and conversion configuration, which were
+	// deliberately not part of the original backup fingerprint format.
+	EvidenceBaseline string `json:"evidenceBaseline,omitempty"`
 	// Rejections refresh evidence for an unchanged custom revision without
 	// activating it or rewriting its definition/draft.
 	Rejections []ProtocolUpgradeRejection `json:"rejections,omitempty"`
@@ -249,19 +267,45 @@ func validateProtocolUpgrade(plan ProtocolUpgrade) error {
 
 func writeProtocolUpgradeRevision(ctx context.Context, tx *sql.Tx, entry ProtocolUpgradeRevision) error {
 	revision, draft := entry.Revision, entry.Draft
-	if protocol.IsPresetProtocolID(revision.ProtocolID) {
+	writes := ProtocolRefreshWrite{Revision: true, Report: true, Draft: true, Activation: true}
+	if entry.Refresh != nil {
+		writes = *entry.Refresh
+	}
+	if !writes.Changed() {
+		return nil
+	}
+	if protocol.IsPresetProtocolID(revision.ProtocolID) && writes.Activation {
 		if err := archiveReplacedPreset(ctx, tx, revision.ProtocolID, revision.Hash); err != nil {
 			return err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO protocol_drafts(protocol_id,content_hash,definition,updated_at) VALUES(?,?,?,?) ON CONFLICT(protocol_id) DO UPDATE SET content_hash=excluded.content_hash,definition=excluded.definition,updated_at=excluded.updated_at`, draft.ProtocolID, draft.Hash, string(draft.Definition.Bytes()), draft.UpdatedAt.UTC().Format(time.RFC3339Nano)); err != nil {
-		return err
+	if writes.RepairPreset {
+		if err := repairPresetRevision(ctx, tx, entry); err != nil {
+			return err
+		}
 	}
-	if err := saveProtocolRevision(ctx, tx, revision); err != nil {
-		return err
+	if writes.Draft {
+		if protocol.IsPresetProtocolID(draft.ProtocolID) {
+			if err := archivePresetDraft(ctx, tx, draft); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO protocol_drafts(protocol_id,content_hash,definition,updated_at) VALUES(?,?,?,?) ON CONFLICT(protocol_id) DO UPDATE SET content_hash=excluded.content_hash,definition=excluded.definition,updated_at=excluded.updated_at`, draft.ProtocolID, draft.Hash, string(draft.Definition.Bytes()), draft.UpdatedAt.UTC().Format(time.RFC3339Nano)); err != nil {
+			return err
+		}
 	}
-	if err := saveProtocolReport(ctx, tx, revision.ProtocolID, revision.Hash, entry.Report); err != nil {
-		return err
+	if writes.Revision {
+		if err := saveProtocolRevision(ctx, tx, revision); err != nil {
+			return err
+		}
+	}
+	if writes.Report {
+		if err := saveProtocolReport(ctx, tx, revision.ProtocolID, revision.Hash, entry.Report); err != nil {
+			return err
+		}
+	}
+	if !writes.Activation {
+		return nil
 	}
 	_, err := tx.ExecContext(ctx, `INSERT INTO protocol_activations(protocol_id,revision_hash,generation,activated_at) VALUES(?,?,1,?) ON CONFLICT(protocol_id) DO UPDATE SET revision_hash=excluded.revision_hash,generation=protocol_activations.generation+1,activated_at=excluded.activated_at`, revision.ProtocolID, revision.Hash, nowString())
 	return err

@@ -203,11 +203,11 @@ func (service *Service) Reload(ctx context.Context) error {
 
 // ReloadAvailable keeps healthy protocols executable when an old custom
 // revision fails current-engine verification. Preset failures remain blocking.
-func (service *Service) ReloadAvailable(ctx context.Context) error {
-	return service.reload(ctx, true)
+func (service *Service) ReloadAvailable(ctx context.Context, requiredIDs ...string) error {
+	return service.reload(ctx, true, requiredIDs...)
 }
 
-func (service *Service) reload(ctx context.Context, isolate bool) error {
+func (service *Service) reload(ctx context.Context, isolate bool, requiredIDs ...string) error {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	activations, err := service.repository.ListProtocolActivations(ctx)
@@ -226,6 +226,11 @@ func (service *Service) reload(ctx context.Context, isolate bool) error {
 			return fmt.Errorf("reload protocol %s: %w", active.ProtocolID, err)
 		}
 		entries[active.ProtocolID] = compiled
+	}
+	for _, id := range requiredIDs {
+		if entries[id] == nil {
+			return fmt.Errorf("reload protocol %s: required preset is not available", id)
+		}
 	}
 	service.snapshot.Store(&registrySnapshot{entries: entries, failures: failures})
 	return nil

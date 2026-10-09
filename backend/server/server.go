@@ -151,6 +151,7 @@ type Server struct {
 	protocolServiceErr        error
 	isProtocolRuntimeRequired atomic.Bool
 	protocolRuntimeReady      atomic.Bool
+	protocolRuntimeFailure    atomic.Pointer[string]
 	gatewaySessions           gatewaySessionSet
 	protocolUses              protocolRevisionUses
 	gatewayJobs               gatewayJobService
@@ -215,6 +216,9 @@ func New(cfg *config.Config) *Server {
 		store.StartRollupBackfill()
 		protocolPreparationErr = store.PrepareProtocolUpgradeBackup(context.Background())
 		if protocolPreparationErr == nil {
+			protocolPreparationErr = server.recoverRequiredPresets(context.Background())
+		}
+		if protocolPreparationErr == nil {
 			if err := server.importLegacyConfig(); err != nil {
 				log.Printf("failed to import legacy config into sqlite: %v", err)
 			}
@@ -237,11 +241,13 @@ func New(cfg *config.Config) *Server {
 	go server.catalog.runPeriodic()
 	server.syncOutboundPolicy()
 	if protocolPreparationErr == nil {
-		protocolPreparationErr = server.initializeProtocolRuntime(context.Background())
+		protocolPreparationErr = server.completeProtocolRuntimeInitialization(context.Background())
 	} else {
 		server.isProtocolRuntimeRequired.Store(true)
 	}
 	if protocolPreparationErr != nil {
+		message := protocolPreparationErr.Error()
+		server.protocolRuntimeFailure.Store(&message)
 		log.Printf("protocol migration requires repair; generation is disabled: %v", protocolPreparationErr)
 	}
 	if server.store != nil {

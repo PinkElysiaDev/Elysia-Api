@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/elysia-api/backend/protocol"
@@ -13,6 +14,10 @@ import (
 var _ protocol.Repository = (*Store)(nil)
 
 const protocolReportHistoryLimit = 20
+
+// ErrCorruptProtocolRecord distinguishes malformed stored content from storage
+// failures. Only the former can be recovered from an embedded preset.
+var ErrCorruptProtocolRecord = errors.New("corrupt protocol record")
 
 type protocolSQLExecutor interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
@@ -106,7 +111,7 @@ func scanProtocolDraft(row interface{ Scan(...any) error }) (protocol.Draft, err
 	}
 	value, err := protocol.ParseValue([]byte(definition))
 	if err != nil {
-		return draft, err
+		return draft, fmt.Errorf("%w: draft %s: %v", ErrCorruptProtocolRecord, draft.ProtocolID, err)
 	}
 	draft.Definition, draft.UpdatedAt = value, parseTime(updated)
 	return draft, nil
@@ -154,7 +159,7 @@ func scanProtocolRevision(row interface{ Scan(...any) error }) (protocol.Revisio
 	}
 	value, err := protocol.ParseValue([]byte(definition))
 	if err != nil {
-		return revision, err
+		return revision, fmt.Errorf("%w: revision %s/%s: %v", ErrCorruptProtocolRecord, revision.ProtocolID, revision.Hash, err)
 	}
 	revision.Definition, revision.CreatedAt = value, parseTime(created)
 	return revision, nil
@@ -212,7 +217,7 @@ func (s *Store) ReadProtocolReport(ctx context.Context, id, hash string) (protoc
 	}
 	var report protocol.VerificationReport
 	if err := json.Unmarshal([]byte(encoded), &report); err != nil {
-		return report, err
+		return report, fmt.Errorf("%w: report %s/%s: %v", ErrCorruptProtocolRecord, id, hash, err)
 	}
 	return report, nil
 }

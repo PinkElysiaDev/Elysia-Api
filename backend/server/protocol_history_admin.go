@@ -20,6 +20,7 @@ func (s *Server) adminProtocolHistory(c *gin.Context) {
 	}
 	for index := range items {
 		items[index].Definition = protocol.Value{}
+		items[index].RawDefinition = ""
 	}
 	respondOK(c, gin.H{"items": items})
 }
@@ -38,7 +39,7 @@ func (s *Server) adminProtocolHistoryDetail(c *gin.Context) {
 	}
 	references = append(references, s.protocolUses.references(item.ProtocolID, item.Hash)...)
 	report, err := s.store.ReadProtocolReport(ctx, item.ProtocolID, item.Hash)
-	if err != nil && !errors.Is(err, protocol.ErrNotFound) {
+	if err != nil && !errors.Is(err, protocol.ErrNotFound) && !errors.Is(err, storage.ErrCorruptProtocolRecord) {
 		respondProtocolError(c, err)
 		return
 	}
@@ -47,6 +48,14 @@ func (s *Server) adminProtocolHistoryDetail(c *gin.Context) {
 		return
 	}
 	result := gin.H{"item": item, "references": references, "report": report}
+	if errors.Is(err, storage.ErrCorruptProtocolRecord) {
+		result["reportError"] = err.Error()
+	}
+	// A repaired same-hash row now has fresh evidence. It is not evidence for
+	// the damaged archived bytes.
+	if item.Reason == "preset_repaired" || item.Reason == "preset_draft_replaced" {
+		delete(result, "report")
+	}
 	if active, found := service.Pin(item.ProtocolID); found {
 		result["currentHash"] = active.Hash()
 		if changes, err := service.Diff(ctx, item.ProtocolID, item.Hash, active.Hash()); err == nil {
@@ -77,6 +86,10 @@ func (s *Server) adminRestoreProtocolHistory(c *gin.Context) {
 	}
 	if strings.TrimSpace(input.ID) == item.ProtocolID {
 		respondFail(c, http.StatusBadRequest, "invalid_restore_id", "恢复必须使用新的协议 ID")
+		return
+	}
+	if item.ReadError != "" {
+		respondFail(c, http.StatusBadRequest, "corrupt_archive", "归档保留了损坏原文，请先修正定义再验证："+item.ReadError)
 		return
 	}
 	fields, err := item.Definition.ReadObject()

@@ -18,7 +18,16 @@ func (store *Store) RefreshProtocolRuntime(ctx context.Context, plan ProtocolUpg
 	if len(plan.Revisions) == 0 {
 		return fmt.Errorf("runtime refresh requires active revisions")
 	}
-	backup, err := store.backupProtocolUpgrade(ctx, plan.Baseline)
+	var backup string
+	previous, err := store.ProtocolUpgradeStatus(ctx)
+	if err != nil {
+		return err
+	}
+	if previous == nil {
+		backup, err = store.selectProtocolUpgradeBackup(ctx, plan.Baseline)
+	} else {
+		backup, err = store.backupProtocolUpgrade(ctx, plan.Baseline)
+	}
 	if err != nil {
 		return err
 	}
@@ -33,6 +42,15 @@ func (store *Store) RefreshProtocolRuntime(ctx context.Context, plan ProtocolUpg
 	}
 	if baseline != plan.Baseline {
 		return protocol.ErrRevisionConflict
+	}
+	if plan.EvidenceBaseline != "" {
+		actual, err := readProtocolRefreshEvidenceBaseline(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if actual != plan.EvidenceBaseline {
+			return protocol.ErrRevisionConflict
+		}
 	}
 	for _, entry := range plan.Revisions {
 		if err := writeProtocolUpgradeRevision(ctx, tx, entry); err != nil {
