@@ -23,7 +23,10 @@
         "write_tokens": 30,
         "keep": "extension"
       }
-    }
+    },
+    "model": "m",
+    "object": "chat.completion",
+    "created": 1
   },
   "expected": {
     "schemaVersion": 1,
@@ -51,7 +54,8 @@
             "keep": "extension"
           }
         }
-      }
+      },
+      "created_at": 1
     },
     "usage": {
       "input": {
@@ -62,6 +66,7 @@
         "count": 30,
         "origin": "observed"
       }
-    }
+    },
+    "model": "m"
   }
 }

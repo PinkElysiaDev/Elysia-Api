@@ -131,6 +131,20 @@ func (s *Server) prepareProtocolRefresh(ctx context.Context, service *protocol.S
 		if !preset && a.RevisionHash != compiled.Hash() {
 			return fmt.Errorf("%w: protocol %s stored hash mismatch", storage.ErrCorruptProtocolRecord, id)
 		}
+		if !preset {
+			if repaired, changed := builtin.RepairOutputFixtures(compiled.Definition()); changed {
+				updated, err := protocol.EncodeValue(repaired)
+				if err != nil {
+					return err
+				}
+				candidate, issues := service.Validate(updated.Bytes())
+				if protocol.IssuesError(issues) == nil && candidate != nil && protocol.Verify(ctx, candidate).Passed {
+					// Only a verified, deterministic fixture correction advances the
+					// active revision. The original and operator draft remain intact.
+					compiled, value = candidate, updated
+				}
+			}
+		}
 		writes := &storage.ProtocolRefreshWrite{}
 		revision, err := s.store.ReadProtocolRevision(ctx, id, compiled.Hash())
 		if err != nil && !recoverableProtocolRead(err) {
@@ -232,6 +246,10 @@ func (s *Server) prepareProtocolRefresh(ctx context.Context, service *protocol.S
 				log.Printf("[protocol-refresh] custom %s unavailable: %v", a.ProtocolID, err)
 			}
 		}
+	}
+	// Missing presets can be committed before any historical binding migration.
+	if presetsOnly {
+		return plan, definitions, changed, nil
 	}
 	bindings, err := s.store.ListProtocolBindings(ctx)
 	if err != nil {

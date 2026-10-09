@@ -53,11 +53,12 @@ async function stop() {
   if (log) await new Promise((done) => log.end(done))
   child = undefined
 }
-async function snapshot() {
+async function snapshot(requireReady = true) {
   const listing = await api('')
   const reports = {}
   for (const activation of listing.active) reports[activation.protocolId] = await api(`/${activation.protocolId}/revisions/${activation.revisionHash}`)
-  return { listing, reports, backups: (await readdir(directory)).filter((name) => name.includes('.pre-protocol-v2-')).sort() }
+  if (requireReady) assert.equal(listing.runtimeReady, true, JSON.stringify(listing.startupFailure))
+  return { listing, reports, backups: (await readdir(directory)).filter((name) => name.includes('.pre-protocol-v2-') || name.includes('.protocol-snapshot-v2-')).sort() }
 }
 try {
   await start(oldBinary, 'old')
@@ -77,25 +78,33 @@ try {
   const anthropicVerified = await api(`/${anthropicDefinition.id}/verify`, 'POST', { draftHash: anthropicSaved.draft.hash })
   assert.equal(anthropicVerified.report.passed, true, JSON.stringify(anthropicVerified.report.issues))
   await api(`/${anthropicDefinition.id}/activate`, 'POST', { revisionHash: anthropicVerified.revision.hash, expectedActive: '' })
-  const before = await snapshot()
+  const before = await snapshot(false)
   await stop()
   await start(newBinary, 'new')
   const compiler = (await api('/schema')).compilerVersion
-  assert.equal(compiler, '2.0.0-dev.23')
+  const expectedCompiler = (await readFile(new URL('../backend/protocol/definition.go', import.meta.url), 'utf8')).match(/const CompilerVersion = "([^"]+)"/)?.[1]
+  assert(expectedCompiler, 'current compiler version not found')
+  assert.equal(compiler, expectedCompiler)
   let upgraded = await snapshot()
   const custom = upgraded.listing.active.find((entry) => entry.protocolId === definition.id)
-  assert.equal(custom.revisionHash, verified.revision.hash)
-  assert.equal(upgraded.listing.loaded[definition.id], verified.revision.hash)
+  assert.notEqual(custom.revisionHash, verified.revision.hash, 'outdated Responses encoder fixtures require a corrected revision')
+  assert.equal(upgraded.listing.loaded[definition.id], custom.revisionHash)
+  assert.equal((await api(`/${definition.id}/revisions/${verified.revision.hash}`)).revision.hash, verified.revision.hash)
   assert.deepEqual(upgraded.listing.drafts.find((entry) => entry.protocolId === definition.id), before.listing.drafts.find((entry) => entry.protocolId === definition.id))
   assert.equal(upgraded.reports[definition.id].report.compilerVersion, compiler)
   assert.equal(upgraded.listing.loaded[anthropicDefinition.id], anthropicVerified.revision.hash)
   assert.equal(upgraded.reports[anthropicDefinition.id].report.compilerVersion, compiler)
   assert.deepEqual(upgraded.listing.drafts.find((entry) => entry.protocolId === anthropicDefinition.id), before.listing.drafts.find((entry) => entry.protocolId === anthropicDefinition.id))
-  const preview = await api('/conversion-policies/preview', 'POST', { policy: { schemaVersion: 1, id: 'upgrade-preview', rules: [] }, phase: 'request', context: { source: { definitionId: definition.id }, target: { definitionId: 'google-generate-content' } }, input: { schemaVersion: 1, source: {}, content: [], parameters: { responses_include: ['reasoning.encrypted_content'] } } })
+  const preview = await api('/conversion-policies/preview', 'POST', { policy: { schemaVersion: 1, id: 'upgrade-preview', rules: [] }, phase: 'request', context: { source: { definitionId: definition.id }, target: { definitionId: 'google-generate-content' } }, input: { schemaVersion: 1, source: {}, content: [], parameters: { responses_include: ['reasoning.encrypted_content'], responses_previous_response_id: null } } })
   assert.equal(preview.output.parameters?.responses_include, undefined)
   assert.equal(preview.effective.origins['responses-include'], 'engine-default')
   assert.equal(preview.effective.origins['responses-storage'], 'engine-default')
   assert.equal(preview.output.clientOutput.responsesStorage.effective, false)
+  assert.equal(preview.output.parameters?.responses_previous_response_id, undefined)
+  for (const ruleId of ['responses-include', 'responses-context']) {
+    assert.equal(preview.effective.origins[ruleId], 'engine-default')
+    assert(preview.issues.some((issue) => issue.ruleId === ruleId && issue.code === 'conversion_normalized' && issue.severity === 'info' && issue.fidelity === 'preserved'))
+  }
   const envelope = await api('/conversion-policies/preview', 'POST', { policy: { schemaVersion: 1, id: 'upgrade-envelope', rules: [] }, phase: 'response', context: { source: { definitionId: 'google-generate-content' }, target: { definitionId: anthropicDefinition.id }, model: 'm' }, input: { schemaVersion: 1, source: {}, content: [] } })
   assert.deepEqual(envelope.output.usage.input, { count: 0, origin: 'placeholder' })
   assert.equal(envelope.effective.origins['response-anthropic-usage-envelope'], 'engine-default')
@@ -138,7 +147,7 @@ db.close()
     await stop()
     assert.equal(await readFile(config, 'utf8'), configAfterUpgrade)
   }
-  const evidence = { oldCompiler, compiler, customRevisionPreserved: true, customDraftPreserved: true, inheritedProjection: true, presetRecovery: exercisePresetRecovery, restarts: 10, protocolStateStable: true, passed: true }
+  const evidence = { oldCompiler, compiler, originalCustomRevisionPreserved: true, invalidFixtureCorrectedInNewRevision: true, customDraftPreserved: true, inheritedProjection: true, presetRecovery: exercisePresetRecovery, restarts: 10, protocolStateStable: true, passed: true }
   await writeFile(join(directory, 'evidence.json'), JSON.stringify(evidence, null, 2))
   console.log(JSON.stringify(evidence, null, 2))
 } finally {
