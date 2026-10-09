@@ -308,6 +308,13 @@ func (stream *streamModule) decodeGeminiFrame(fields p.Object, options p.Evaluat
 			if err != nil {
 				return nil, err
 			}
+			// A terminal empty text delta is a framing placeholder, not a new
+			// assistant item. Creating one breaks the following tool-result turn.
+			// Signed or annotated parts, and empty parts before terminal, retain
+			// their identity because a later signature may belong to them.
+			if len(partFields) == 1 && partFields["text"] == p.StringValue("") && !candidate["finishReason"].IsZero() && !candidate["finishReason"].IsNull() {
+				continue
+			}
 			// A signature-only part applies only to the immediately preceding
 			// open part. Never associate by tool name or an arbitrary index.
 			if len(partFields) == 1 && !partFields["thoughtSignature"].IsZero() {
