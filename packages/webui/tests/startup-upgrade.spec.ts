@@ -2,18 +2,26 @@ import { expect, test } from '@playwright/test'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
-test('upgraded backend exposes recovery progress and discovers models with all four presets', async ({ page, request }) => {
-  test.skip(!process.env.PROTOCOL_E2E_URL, 'requires a real upgraded backend')
+test('fresh backend loads all four presets and discovers models', async ({ page, request }) => {
+  test.skip(!process.env.PROTOCOL_E2E_URL, 'requires a real backend')
   test.setTimeout(90_000)
   const base = process.env.PROTOCOL_E2E_URL!
   const token = process.env.PROTOCOL_E2E_TOKEN ?? 'local-protocol-e2e'
   const headers = { Authorization: `Bearer ${token}` }
-  const ready = await request.get(`${base}/ready`)
+  const ready = await request.get(`${base}/health`)
   expect(ready.status()).toBe(200)
-  expect((await ready.json()).ready).toBe(true)
+  expect((await ready.json()).database).toBe(true)
+  const protocols = await request.get(`${base}/api/admin/protocols`, { headers })
+  expect(protocols.status()).toBe(200)
+  const status = (await protocols.json()).data
+  expect(status.runtimeReady).toBe(true)
+  expect(status.startupFailure).toBeUndefined()
+  expect(Object.keys(status.loaded)).toEqual(expect.arrayContaining(['openai-chat-completions', 'openai-responses', 'anthropic-messages', 'google-generate-content']))
   await page.addInitScript((value) => localStorage.setItem('elysia-webui.panel-token', value), token)
   await page.goto('/#/protocols')
   await expect(page.getByRole('heading', { name: '预置协议（只读）' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: '协议运行时已就绪' })).toBeVisible()
+  await expect(page.getByText('已加载', { exact: true })).toHaveCount(4)
   const paths: string[] = []
   const upstream = createServer((incoming, response) => {
     paths.push(new URL(incoming.url!, 'http://localhost').pathname)

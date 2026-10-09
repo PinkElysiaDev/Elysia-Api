@@ -2,7 +2,7 @@ import { request } from './api'
 import type { ConversionRegistry, ConversionSelection } from './conversion-policy'
 import { ProtocolDocument } from './protocol-document'
 
-export interface ConversionIssue { code: string; severity: string; direction?: string; stage?: string; path: string; capability?: string; reason: string; suggestion: string; evidence?: string }
+export interface ConversionIssue { code: string; severity: string; direction?: string; stage?: string; path: string; capability?: string; reason: string; suggestion: string; evidence?: string; ruleId?: string; policyHash?: string; policyRevision?: string; fidelity?: string; protocol?: { definitionId: string; revision: string; family: string; wireVersion: string } }
 export interface ProtocolSchema { conversion: ConversionRegistry; compilerVersion: string; transports: string[]; operationKinds: string[]; directions: string[]; capabilities: string[]; engineFeatures: string[]; modules: { name: string; directions: string[] }[]; events: string[]; definitionSchema: unknown; semanticSchema: unknown; mappingOperations: { name: string; description: string }[] }
 export interface ProtocolDraft { protocolId: string; hash: string; definition: string; updatedAt: string }
 export interface ProtocolRevision { protocolId: string; hash: string; definition: string; createdAt: string }
@@ -14,7 +14,7 @@ export interface ProtocolReferences { baseline: string; references: ProtocolRefe
 export interface ProtocolHistoryDetail { item: ProtocolHistoryItem & { definition: string }; report?: VerificationReport; references: ProtocolReference[]; currentHash?: string; changes?: unknown[] }
 export interface VerificationReport { definitionHash: string; compilerVersion: string; samplesHash: string; kind: string; passed: boolean; covered: string[]; checks: { sampleId: string; direction?: string; passed: boolean; capabilities?: string[] }[]; issues: ConversionIssue[] }
 export interface Preview { exactJSON: string; issues: ConversionIssue[] }
-export interface ProtocolListing { drafts: ProtocolDraft[]; active: Activation[]; loaded: Record<string, string>; presets?: string[]; runtimeFailures?: Record<string, string>; runtimeError?: string }
+export interface ProtocolListing { drafts: ProtocolDraft[]; active: Activation[]; loaded: Record<string, string>; presets?: string[]; runtimeFailures?: Record<string, string>; runtimeError?: string; runtimeReady?: boolean; startupFailure?: { stage: string; code: string; message: string } }
 /** Capabilities of an enabled, compiled revision; drafts are excluded. */
 export interface EnabledProtocol { id: string; name: string; revision: string; preset?: boolean; directions: string[]; capabilities: Record<string, boolean>; canGenerate: boolean; hasModelDiscovery: boolean; hasAgentPolicy: boolean }
 const base = '/protocols'

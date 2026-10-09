@@ -9,18 +9,23 @@ Offline fixtures are not evidence of a real provider connection or cache hit.
 
 Stop the previous executable and retain it together with `config.json`, the
 database and its encryption key. Do not replace the encryption key when
-restoring a database. The executable opens the existing schema and snapshots
-the database **before** historical configuration imports, preset renames or
-preset base-path adjustments. The receipt identifies that snapshot. Database
-schema initialization precedes this snapshot; a full pre-launch copy remains
-the rollback source for changes made by an older executable's schema loader.
+restoring a database. After schema preparation, startup first recovers the four
+embedded presets, then completes legacy imports and binding verification.
+Missing presets and append-only evidence need no backup. Existing rows are
+protected by a current snapshot before replacement; schema initialization
+precedes that snapshot, so a full pre-launch copy remains the rollback source
+for changes made by an older executable's schema loader.
 
-Backups use SQLite `VACUUM INTO`, include committed WAL content and are checked
-against a configuration fingerprint. An interrupted/blocked migration retains
-the first valid startup backup. A missing or changed backup blocks the switch.
-The backup is stored beside the database as
-`<database>.pre-protocol-v2-<baseline-hash>`. It contains secrets and follows the
-same storage/access policy as the original database.
+Historical `protocol_engine_v2_backup` records and files are retained without
+being opened or revalidated at startup. Missing, damaged or outdated historical
+backups cannot block insert-only recovery. Current snapshots use SQLite
+`VACUUM INTO`, include committed WAL content, and check SHA-256, database
+integrity and configuration/evidence baselines. They do not require old
+protocol definitions to compile. The independent `protocol_current_snapshot_v2`
+setting identifies the format, path, checksum, creation time and baselines.
+Receipts record `backupMode: not_required` for pure additions or
+`backupMode: current_snapshot` and the actual snapshot for overwrites.
+Snapshot files sit beside the database and contain the same sensitive data.
 
 ## Preview and repair
 
@@ -31,7 +36,7 @@ Authenticated management endpoints:
 | GET | `/api/admin/protocols/migration` | Committed receipt, or `null` |
 | POST | `/api/admin/protocols/migration/preview` | Definitions, reports, bindings, diagnostics, baseline |
 | POST | `/api/admin/protocols/migration/apply` | Atomically committed receipt |
-| POST | `/api/admin/protocols/reload` | Reload current-engine verified active revisions |
+| POST | `/api/admin/protocols/reload` | Retry preset recovery, pending migration and runtime publication |
 
 Send `{}` for the initial preview. For repairs, supply `definitions`, keyed by
 the **existing protocol ID**, and optional binding replacements. Each value is
@@ -76,10 +81,13 @@ that transaction. An injected failure after revision writes rolls everything
 back. Registry publication follows commit, so a reload failure can be repaired
 without reapplying the migration. New requests pin an immutable registry view.
 
-After repair, apply the reviewed preview and reload. A reload before the
-migration receipt exists cannot enable generation. Restart checks the receipt
-and reloads current-engine evidence; it does not repeat the migration or
-overwrite later edits. Evidence from an older compiler must be regenerated.
+After repair, apply the reviewed preview and reload. Reload also retries an
+unfinished startup, but generation remains disabled until necessary migration,
+binding verification and runtime publication succeed. Unchanged restarts reuse
+current evidence without duplicate reports, activations or snapshots. Evidence
+from an older compiler must be regenerated. The protocol listing exposes
+`runtimeReady` and a structured `startupFailure`; four preset names or an HTTP
+200 from `/health` do not prove that the protocol runtime is ready.
 
 For executable rollback, stop the new server, restore the retained executable,
 configuration, database and matching key as a consistent set. Keep the current
@@ -89,7 +97,10 @@ database downgrade and does not restore usage written after migration.
 ## Evidence and staged boundary
 
 `TestProtocolUpgradeStartupAndRestart` uses the production constructor and
-checks that the backup predates preset seeding. Service/API tests cover edited
+checks insert-only startup without legacy preset seeding or a backup.
+`TestProductionStartupIgnoresHistoricalBackups` reproduces a zero-preset database
+with an old fingerprint and a backup missing `protocol_history`, then checks
+ten unchanged restarts. Service/API tests cover edited
 legacy definitions, explicit repair, forged reports, source-less models,
 disabled sources, capability conflicts, repeated application and readiness.
 Storage tests use real SQLite backup/reopen, stale fingerprints, failed

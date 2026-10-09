@@ -108,8 +108,11 @@ without cache intent do not acquire a policy.
 Retain the old executable plus matching configuration, database and master key.
 Preview the graph through `/protocols/migration/preview`, repair issues and
 apply the same intent with `/migration/apply`. The server recomputes reports;
-client-supplied success evidence cannot authorize migration. A database backup
-and transaction precede the switch. Failure leaves management available for repair.
+client-supplied success evidence cannot authorize migration. Startup first
+recovers the four embedded presets without depending on historical backups.
+Pure additions commit directly; overwrites require a current consistent snapshot
+and a transaction. Failure leaves management available for repair. Check the
+protocol listing's `runtimeReady` and loaded revisions to confirm readiness.
 
 Only complete known preset fingerprints authorize replacement. Edited active
 definitions are reverified, edited drafts and inactive states retained. Custom

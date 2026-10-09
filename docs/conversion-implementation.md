@@ -1,6 +1,6 @@
 # 可配置跨协议转换
 
-实现保留公共语义模型，在 HTTP 普通／流式网关中使用独立的 ConversionPolicy。配置不修改预置定义或模型工具权限。编译器为 `2.0.0-dev.23`，特征为 `conversion.policies.v1`、`conversion.continuation.v1` 和 `conversion.client_output.v1`。
+实现保留公共语义模型，在 HTTP 普通／流式网关中使用独立的 ConversionPolicy。配置不修改预置定义或模型工具权限。编译器为 `2.0.0-dev.25`，特征为 `conversion.policies.v1`、`conversion.continuation.v1` 和 `conversion.client_output.v1`。本轮实现与验收见 [四协议修复记录](four-protocol-repair-dev25.md)。
 
 ## 默认行为与契约
 
@@ -14,6 +14,12 @@
 | `responses-include` | 保留同线格式的 include；跨协议将 `reasoning.encrypted_content` 作为客户端续传选择，不发送上游；未知选择项拒绝 |
 | `responses-storage` | Responses 入口向无响应对象保存语义的已知编码器转换时，false 转为无状态；true／缺省／null 在兼容模式诊断降级，严格模式拒绝 |
 | `gemini-tool-results` | 文本工具结果明确包装为 `{"result":原文}`，记录兼容降级；字段名可改；严格模式拒绝此包装 |
+| `text-tool-results` | 对象工具结果通过 JSON 文本投影到 Chat／Responses／Anthropic，保留数字精度和调用关联；严格模式拒绝未包装的类型改变 |
+| `system-instruction-hoist` | Anthropic／Gemini 目标上提 system/developer，保持文本顺序；中段作用域或 developer 优先级改变时诊断，严格模式拒绝 |
+| `history-response-metadata` | 第二轮历史中的已知响应元数据按目标投影；空 annotations 不再阻断工具续轮，非空引用按同一映射处理 |
+| `response-metadata` / `event-metadata` | 已知响应附加字段逐项映射、规范化或诊断省略；Chat↔Responses URL 引用及 token 概率保留所属文本；未知扩展不自动放行 |
+| `response-shape` / `event-shape` | 转换有序输出项，保留工具调用 ID；消息边界及交错损失有诊断；多个候选不混成一轮 |
+| `response-envelope` / `event-envelope` | 构造稳定响应 ID、创建时间及项目状态；仅客户端格式补齐，不改供应商用量 |
 | `request-signatures` | 投影无法原生表达的外族签名；已认证恢复到目标协议的资源保留 |
 | `response-signatures` / `event-signatures` | 只处理签名，保留其他资源和正文；恢复通道成功与信息丢失分别记录 |
 | `response-usage-projection` / `event-usage-projection` | 只省略列举的目标不可表达用量字段；兼容模式诊断，严格模式拒绝；内部计量保持完整 |
@@ -23,13 +29,17 @@
 
 未声明该特征的旧自定义 Chat 定义保留用户映射所依赖的解码形状、Agent 参数及样例；映射执行后，默认策略自动规范化旧参数，无需重建或手动开启。回归使用提交 `82406b9` 的原始定义，仅更改副本 ID。
 
-Responses 的 include 接受缺失、null 和字符串数组，错误类型返回准确的 `/include` 路径。同线格式保留未知字符串、顺序及空值；跨协议目前只实现 `reasoning.encrypted_content`。它复用 Elysia 认证载体，不能冒充供应商原生加密思考内容。有状态才保存和包装；用户关闭客户端载体时，服务端副本不等于已向客户端返回所选字段。`store` 由独立保存规则处理；`truncation`、`previous_response_id`、`conversation` 和生成约束不随之省略。
+Responses 的 include 接受缺失、null 和字符串数组，错误类型返回准确的 `/include` 路径。同线格式保留未知字符串、顺序及空值；跨协议目前只实现 `reasoning.encrypted_content`。它复用 Elysia 认证载体，不能冒充供应商原生加密思考内容。有状态才保存和包装；用户关闭客户端载体时，服务端副本不等于已向客户端返回所选字段。跨协议分离输出偏好记录 `conversion_normalized / info / preserved`，不提前宣称载体已生成或信息损失；后续载体交付失败有独立诊断。`store` 由独立保存规则处理；上下文约束不随之省略。
+
+`responses_context` 是请求阶段的具名规则，按实际目标模块继承。仅将跨协议的 `previous_response_id:null` 规范化为无引用，并记录信息级诊断；同线格式保留原值。关闭规则后编码器仍拒绝未映射的空引用。`truncation` 接受 auto、disabled 或 null，`previous_response_id` 接受非空字符串或 null；入口和用户映射后均校验类型。跨协议非空引用及截断要求（包括显式 null）继续拒绝，需要完整历史恢复或经过验证的等价截断行为，不能自动清空。实际 Responses 预置未声明所需会话能力，非空原生引用也在路由前以 `/previous_response_id` 明确拒绝；本轮未扩大能力声明。`conversation` 和生成约束保持原边界。
+
+诊断按协议身份、阶段、规则、策略、严重程度及保真分类等完整内容去重，流式重复记录折叠，不合并同路径不同阶段的结果。调用日志页面区分信息、警告和错误。dev.24 重新生成当前语义的验证证据，不重写用户定义或草稿。
 
 `responses_storage` 仅默认匹配实际 Responses 解码模块。参数为 `{"targetCodec":"gemini","onUnsupported":"degrade"}`，可将 `onUnsupported` 改为 `reject`；严格模式始终优先。原生 Responses 保存路径保留原值。其他已知目标：显式 false 不要求保存，允许转换；true／null／缺省按保存意图处理，兼容模式记录损失并在响应 JSON、`response.created` 和终止对象中返回 `store:false`。错误类型返回 `invalid_input at /store`，不调用上游。本项不提供 Responses 检索、删除或会话存储 API；签名副本不是响应对象数据库。`store:false` 不承诺供应商零留存，也不关闭调用日志。
 
 Anthropic 客户端输出必须有合法的消息外壳及用量。先取得同一上游帧、同一响应的已知用量，再渲染首帧；不等待下一帧，不默认缓冲整轮。缺失必填计数的零占位只存在于客户端副本（`origin:placeholder`），不进入 `ProtocolUsage`、计费或数据库；真实零值仍是 `observed`。已知缓存拆分照常保留，可选缓存字段不自动补零。尾部真实计数替换占位，快照不累加；终止消息在用量尾帧消费完后生成。缺少身份时使用本次响应稳定 ID 和已选模型。一轮结束、取消或错误均不重新提交上游生成。
 
-合法的同线格式、同映射原生帧原样保留，仍通过最终必填字段检查。不同模块的自定义定义不因 family 相同跳过修复。网关、协议编码预览和组合验证在 `after`、线格式规则及客户端载体处理后检查 Anthropic 输出；没有 `usage` 或计数类型错误不能记为转换成功。
+合法的同线格式、同映射原生帧原样保留，仍通过最终必填字段检查；错误原生帧不会因“旧模块兼容”绕过校验。不同模块的自定义定义不因 family 相同跳过修复。网关、协议编码预览和组合验证在 `after`、线格式规则及客户端载体处理后检查四协议输出，并用目标模块独立解码器检查事件关联。Anthropic 缺 usage、Chat 缺 created、Responses 缺消息身份或 annotations 等不能记为转换成功。
 
 严格策略的条件拒绝记录在组合报告 `checks[].rejected`，不算成功样例，也不贡献能力覆盖。仍须有独立的正向请求、响应及完整流证据；预置新增显式 `store:false` 和首帧完整用量样例。不存在正向覆盖的旧自定义严格配置继续显示具体阻塞原因，不能借负向样例宣称支持。兼容模式的旧自定义修复无需改写原文。
 

@@ -10,9 +10,9 @@
 
 | 形状 | 此前行为 | 现行为 |
 |---|---|---|
-| A→A：会话中段 system 消息（Claude Code system-reminder）+ 消息级元数据 | 硬错 `/content/N/attributes` | **按位输出** `{role:"system"}`，消息级扩展 wire 保真，位置不变（缓存前缀保真） |
+| 目标 A/G：会话中段 system/developer | 曾输出 Anthropic 不接受的 messages[].role=system | 具名规则按顺序上提；作用域或层级改变有诊断，严格模式拒绝；资源及缓存边界不随意删除 |
 | R→C/A/G：消息 item 的 id/status（Codex 恒带） | 硬错 | 转换 + warning（同族经原生回放保真） |
-| G→C/R/A：对象工具结果（Gemini 标准） | 硬错（与 C→G 双向死锁） | **JSON 字符串序列化**，往返可逆 |
+| G→C/R/A：对象工具结果（Gemini 标准） | 编码器隐式序列化导致组合验证不一致 | 语义阶段具名 JSON 文本投影；保留数字精度，但载荷类型改变，严格模式拒绝；不会自动把 JSON 字符串解析回对象 |
 | C/A→G：字符串工具结果 | 缺少对象映射 | 默认 `gemini-tool-results` 明确包装为对象并诊断；可配置字段名或禁用，严格模式拒绝 |
 | A→C：并行多 tool_result 同消息 / 数组 content / is_error / thinking+签名 / strict / 消息级 cache_control / metadata.user_id / disable_parallel=false | 各类硬错 | 拆分多条 tool 消息；拼接为文本；`[Tool error]` 文本标记+warning；签名由具名策略保存或诊断损失，thinking 转 reasoning_content；strict/消息级扩展剥离+warning；user_id 映射 user 字段；false 视为无操作 |
 | G→X：RECITATION/OTHER finish | 全目标硬错 | 映射最近语义（content_filter/refusal/end_turn/stop），文档钉死 |
@@ -24,7 +24,7 @@
 |---|---|---|---|---|
 | **C 源** | 直通 | 转换（openai 族） | 转换†1 | 转换†2 |
 | **R 源** | 转换（item 身份丢弃+warning） | 直通 | 转换†1（item 身份 warning） | 转换†2（item 身份 warning） |
-| **A 源** | 转换（本表 A→C 行全部适配） | 转换（同 A→C 语义） | 直通（含中段 system 按位保真） | 转换（中段 system/块断点→显式拒绝） |
+| **A 源** | 转换（仍受具体能力约束） | 转换（仍受具体能力约束） | 合法原生请求保留；非法中段 system 不原样输出 | system/developer 经规则上提；无法映射的缓存断点明确拒绝 |
 | **G 源** | 签名经配置的客户端载体／加密副本保存后投影；无法保存则诊断或严格拒绝 | 同左 | 同左；绝不把 Gemini 原签名冒充 Anthropic 原生签名 | 同作用域的原生保留 |
 
 †1 显式拒绝保留：hosted/server 工具、refusal→A、参数族（logprobs/seed/response_format/top_k/anthropic_thinking/gemini_* 等无映射项）、块级 cache_control（目标未声明 breakpoints）、文件/视频媒体跨族、encrypted reasoning 跨族。
@@ -34,9 +34,11 @@ Chat→Gemini 的 `stream_options.include_usage` 属于客户端输出偏好，�
 
 自 `dev.22` 起，上述默认规则按实际方向模块适用于预置和旧自定义协议。Responses→Gemini 的 `include: ["reasoning.encrypted_content"]` 由客户端输出选择动作处理，复用 Elysia 认证续传；不代表供应商原生 encrypted reasoning 可以任意互译。未知选择项跨协议拒绝，类型错误返回 `invalid_input`。同线格式保留原生选择。
 
+自 `dev.24` 起，输出选择分离和跨协议空上一轮引用规范化有 `conversion_normalized / info / preserved` 记录，不等同于已完成签名包装。`responses_context` 可关闭，只将 `previous_response_id:null` 转为无引用；非空引用和截断要求仍需对应能力。实际 Responses 预置的非空原生引用尚未通过会话能力声明与验证，本轮明确拒绝，不宣称已经支持。类型校验覆盖入口及用户映射后的标准字段；同路径不同阶段的诊断分别保留。
+
 ## 已知降级（转换但语义变化，均有 warning 或文档记录）
 
-- Anthropic/Gemini 目标把**会话前段**的 system 消息提升合并进顶层 system 数组（既有行为）；中段 system 对 A 按位、对 G 拒绝。
+- Anthropic/Gemini 目标将 system/developer 提升合并进顶层系统要求。前置 system 可等价表达；中段指令作用域和 developer 层级变化属于有损兼容，严格模式拒绝。
 - 跨族流式：Anthropic 首帧包含必填 usage，同帧已知计数优先；兼容模式为未知必填计数补客户端专用 0 并诊断，严格模式拒绝。尾帧使用最终已知用量，内部计量不受占位影响。部分旧 SDK 不会修正首帧输入计数。Responses sequence_number 为本地重编；Chat 流式 refusal→G 退化为文本。
 - Responses 保存语义：`store:false` 可无损转为无状态调用；true／缺省／null 向不支持响应对象保存的目标转换时，兼容模式诊断降级并返回 `store:false`，严格模式拒绝。状态关联参数不会一起丢弃。
 - 用量投影：具名规则在兼容模式省略目标不可表达的 TTL 桶、Gemini 创建总量、Anthropic 思考明细及非 Gemini 工具提示明细；严格模式拒绝。原始计量和既有总量保留（`cache-usage-contracts.md`）。
@@ -47,4 +49,10 @@ Chat→Gemini 的 `stream_options.include_usage` 属于客户端输出偏好，�
 - **原生回放有条件**：相同线格式、作用域满足且内容未修改时优先保留；规则改变内容后须重新编码和检查。
 - **兼容行为须有依据**：已实现映射的客户端字段按映射处理；未知语义不因兼容模式而自动忽略。
 - **拒绝必须显式**：不可表达形态返回带路径的诊断；严格策略无法保留时返回 `conversion_rejected`，目标限制不冒充上游违约。
-- **warning 记录降级**：剥离/丢弃类适配全部进入该次请求的 ConversionIssues（用量日志可查）。
+- **具名规则记录降级**：本轮元数据、工具对象、系统上提和输出形态投影进入该次请求的 ConversionIssues。其他历史适配仍须按具体样例核验，不能据此宣称全部字段无损。
+
+## dev.25 验收边界
+
+实际四个预置的 16 个方向分别覆盖 JSON/SSE 普通文本、单工具两轮，以及正文混合两个同名不同 ID 工具的两轮调用。测试经过 HTTP 网关，保存完整回复历史后提交工具结果；对象中的大整数必须完整到达模拟上游。固定 SDK 回放检验网关实际输出，完整消费流并检查错误事件，不能替代真实供应商和 Cherry Studio 验收。详见 [修复与验收记录](four-protocol-repair-dev25.md)。
+
+非空 Chat↔Responses 公共 URL 引用和 logprobs 有明确映射；文件引用、Gemini grounding、非 URL 引用和非空上下文管理状态没有通用跨协议映射，继续明确拒绝。流式引用跨越不同文本项交错形成的不连续区间时拒绝，避免把引用绑定到错误正文。

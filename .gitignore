@@ -52,7 +52,6 @@ backend/**/master.key
 **/elysia-api.sqlite3-shm
 **/elysia-api.sqlite3-wal
 config.json
-package-lock.json
 yarn.lock
 
 # 本地联调环境（临时后端 + vite 日志）

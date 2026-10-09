@@ -60,6 +60,7 @@ try {
     databasePath: join(runDirectory, 'gateway.sqlite3'), host: '127.0.0.1', port: backendPort,
     panelAccessToken: token, logLifecycleVersion: 1, openBrowserOnStart: false,
     modelCatalog: { enabled: false, syncIntervalMinutes: 0 },
+    outbound: { deniedIpRanges: [] }, // isolated mock providers listen on loopback
   }), { mode: 0o600 })
   await run('go', ['build', '-o', binary, '.'], join(root, 'backend'))
   const backend = start(binary, ['-config', config], runDirectory)

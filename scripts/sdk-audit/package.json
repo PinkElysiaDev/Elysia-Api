@@ -1,0 +1,14 @@
+{
+  "name": "elysia-protocol-sdk-audit",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node replay.mjs" },
+  "dependencies": {
+    "openai": "7.31.0",
+    "@anthropic-ai/sdk": "0.132.1",
+    "@google/genai": "2.28.0",
+    "@ai-sdk/openai": "4.0.91",
+    "@ai-sdk/anthropic": "4.0.78",
+    "anthropic-v2": "npm:@ai-sdk/anthropic@2.0.33"
+  }
+}

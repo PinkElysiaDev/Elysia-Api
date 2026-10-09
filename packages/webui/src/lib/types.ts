@@ -453,7 +453,7 @@ export interface UsageLogDetail {
   usage: UsageTokenUsage
   usageDetail?: Record<string, unknown>
   builtinToolUsage?: Record<string, number>
-  /** 转发诊断：缓存创建 TTL 分桶被目标协议省略但总量保留时在此留 warning（见后端 conversionIssues）。 */
+  /** 转换诊断：信息级规范化、兼容降级及失败，保留规则与阶段归属。 */
   conversionIssues?: ConversionIssue[]
   retryCount: number
   retryEvents?: UsageRetryEvent[]

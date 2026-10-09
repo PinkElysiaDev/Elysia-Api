@@ -51,7 +51,7 @@ async function openAgent(page: Page, messages: AgentMessage[] = []) {
     await route.fulfill({ json: { ok: true, data } })
   })
   await page.goto('/#/agent')
-  await page.getByText(session.title, { exact: true }).click()
+  await page.locator('[role="button"]').filter({ has: page.getByText(session.title, { exact: true }) }).press('Enter')
   await expect(page.getByPlaceholder('请描述你的任务')).toBeVisible()
 }
 
@@ -129,7 +129,7 @@ test('tool_result embedded messages stay between assistant replies during the st
   await expect(firstTool).toHaveAttribute('aria-expanded', 'true')
   // Reload from stored messages to exercise history replay independently of SSE.
   await page.reload()
-  await page.getByText('流式与图表回归检查', { exact: true }).click()
+  await page.locator('[role="button"]').filter({ has: page.getByText('流式与图表回归检查', { exact: true }) }).press('Enter')
   await expect(groups).toHaveCount(2)
   await groups.first().click()
   await expect(firstTool).toContainText('elysia usage logs --days 1 --status failed --limit 10')
