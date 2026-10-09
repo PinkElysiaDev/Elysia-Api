@@ -101,7 +101,7 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 				node.Children = append(node.Children, p.Node{Kind: p.ToolCallNode, Name: function["name"], CallID: call["id"], Input: &p.ToolInput{Kind: p.JSONInput, Value: arguments}, Native: adapter.native(callValue, fmt.Sprintf("%s/tool_calls/%d", location, callIndex), direction, options), Attributes: attributes})
 			}
 			known = append(known, "tool_calls", "reasoning_content", "refusal")
-			if reasoning := fields["reasoning_content"]; !reasoning.IsZero() {
+			if reasoning := fields["reasoning_content"]; !reasoning.IsZero() && !reasoning.IsNull() && reasoning != p.StringValue("") {
 				node.Children = append([]p.Node{{Kind: p.ReasoningNode, Payload: reasoning}}, node.Children...)
 			}
 			if refusal := fields["refusal"]; !refusal.IsZero() {
