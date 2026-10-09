@@ -106,6 +106,20 @@ func (adapter module) decodeUsage(value p.Value) (*p.Usage, error) {
 		}
 	}
 	if adapter.name == Anthropic {
+		if detail := fields["output_tokens_details"]; !detail.IsZero() && !detail.IsNull() {
+			details, err := detail.ReadObject()
+			if err != nil {
+				return nil, err
+			}
+			count, err := counter(details["thinking_tokens"])
+			if err != nil {
+				return nil, err
+			}
+			if count != nil {
+				// Anthropic output_tokens already includes thinking_tokens.
+				usage.Details["output.reasoning_tokens"] = *count
+			}
+		}
 		creationDetails, err := nestedObject(fields, "cache_creation")
 		if err != nil {
 			return nil, err
@@ -236,6 +250,9 @@ func (adapter module) encodeUsage(usage *p.Usage, options p.EvaluationContext) (
 	switch adapter.name {
 	case Anthropic:
 		delete(fields, total)
+		if count, exists := usage.Details["output.reasoning_tokens"]; exists {
+			fields["output_tokens_details"] = object(p.Object{"thinking_tokens": counterValue(&count)})
+		}
 		if usage.Input != nil {
 			uncached := *usage.Input
 			for _, count := range []*p.Counter{usage.CacheRead, usage.CacheCreation} {
@@ -337,7 +354,7 @@ func (adapter module) checkUsageDetails(usage *p.Usage, options p.EvaluationCont
 		case Chat, Responses:
 			isSupported = strings.HasPrefix(name, "input.") || strings.HasPrefix(name, "output.")
 		case Anthropic:
-			isSupported = name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens"
+			isSupported = name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens" || name == "output.reasoning_tokens"
 		case Gemini:
 			isSupported = name == "output.reasoning_tokens" || name == "toolUsePromptTokenCount"
 		}

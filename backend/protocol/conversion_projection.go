@@ -217,8 +217,7 @@ func (c *CompiledConversion) projectUsage(usage *Usage, phase ConversionPhase, r
 	var codec string
 	_ = rule.Value.Decode(&codec)
 	for _, name := range sortedKeys(usage.Details) {
-		drop := name == "output.reasoning_tokens" && codec == "anthropic" ||
-			name == "toolUsePromptTokenCount" && codec != "gemini" ||
+		drop := name == "toolUsePromptTokenCount" && codec != "gemini" ||
 			(name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens") && codec != "anthropic"
 		if !drop {
 			continue

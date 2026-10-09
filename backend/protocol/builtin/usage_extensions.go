@@ -24,8 +24,8 @@ func (adapter module) usageExtensions(value p.Value) (p.Value, error) {
 		known = append(known, "input_tokens_details", "output_tokens_details")
 		nested = map[string][]string{"input_tokens_details": inputUsageDetails, "output_tokens_details": outputUsageDetails}
 	case Anthropic:
-		known = append(known, "cache_creation")
-		nested = map[string][]string{"cache_creation": creationUsageDetails}
+		known = append(known, "cache_creation", "output_tokens_details")
+		nested = map[string][]string{"cache_creation": creationUsageDetails, "output_tokens_details": {"thinking_tokens"}}
 	case Gemini:
 		known = []string{"promptTokenCount", "candidatesTokenCount", "totalTokenCount", "cachedContentTokenCount", "thoughtsTokenCount", "toolUsePromptTokenCount", "cache_creation_input_tokens"}
 	}
@@ -34,7 +34,7 @@ func (adapter module) usageExtensions(value p.Value) (p.Value, error) {
 		delete(extra, key)
 	}
 	for key, keys := range nested {
-		if fields[key].IsZero() {
+		if fields[key].IsZero() || adapter.name == Anthropic && key == "output_tokens_details" && fields[key].IsNull() {
 			continue
 		}
 		object, err := fields[key].ReadObject()
