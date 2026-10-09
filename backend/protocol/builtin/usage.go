@@ -174,7 +174,7 @@ func (adapter module) decodeUsage(value p.Value) (*p.Usage, error) {
 		}
 		if miss != nil {
 			if usage.Input == nil {
-				usage.Input, err = sumCounters(hit, miss)
+				usage.Input, err = sumCounters(usage.CacheRead, miss)
 				if err != nil {
 					return nil, err
 				}

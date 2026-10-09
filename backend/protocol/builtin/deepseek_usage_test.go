@@ -73,3 +73,39 @@ func TestDeepSeekStreamUsageAliasesAreNotOpaque(t *testing.T) {
 		}
 	}
 }
+
+func TestDeepSeekLateCacheMissUsesRetainedInput(t *testing.T) {
+	for _, hit := range []string{`{"prompt_cache_hit_tokens":2}`, `{"prompt_tokens_details":{"cached_tokens":2}}`} {
+		from := shippedProjectionProtocol(t, Chat)
+		options := p.EvaluationContext{State: p.NewEvaluationState()}
+		var usage *p.Usage
+		for _, raw := range []string{`{"prompt_tokens":5,"completion_tokens":1,"total_tokens":6}`, hit, `{"prompt_cache_miss_tokens":3}`, `{"prompt_cache_miss_tokens":3}`} {
+			frame, err := from.DecodeFrame(t.Context(), testValue(t, `{"choices":[],"usage":`+raw+`}`), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, event := range frame.Events {
+				if err := p.ValidateUsageArithmetic(event.Usage); err != nil {
+					t.Fatal(err)
+				}
+				usage = p.MergeUsage(usage, event.Usage)
+			}
+		}
+		if usage.Input.Count != 5 || usage.Input.Origin != p.ObservedCount || usage.CacheRead.Count != 2 || usage.Details["uncached_input_tokens"].Count != 3 || usage.Total.Count != 6 {
+			t.Fatal(usage)
+		}
+	}
+}
+
+func TestDeepSeekCacheMissAndNestedHitInferInput(t *testing.T) {
+	u, err := (module{name: Chat}).decodeUsage(testValue(t, `{"prompt_tokens_details":{"cached_tokens":2},"prompt_cache_miss_tokens":3}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Input == nil || u.Input.Count != 5 || u.Input.Origin != p.InferredCount || u.CacheRead.Origin != p.ObservedCount {
+		t.Fatal(u)
+	}
+	if err := p.ValidateUsageArithmetic(u); err != nil {
+		t.Fatal(err)
+	}
+}

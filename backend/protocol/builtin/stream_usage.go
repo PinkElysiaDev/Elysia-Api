@@ -37,6 +37,13 @@ func (stream *streamModule) decodeUsageUpdate(value p.Value) (*p.Usage, error) {
 		return nil, err
 	}
 	switch stream.name {
+	case Chat:
+		// Cache aliases may arrive in a later usage-only frame. Normalize the
+		// retained wire components together; a standalone miss subtotal cannot
+		// be checked against an input count absent from just this update.
+		if !merged["prompt_cache_hit_tokens"].IsZero() || !merged["prompt_cache_miss_tokens"].IsZero() {
+			update = normalized
+		}
 	case Anthropic:
 		if !fields["cache_creation"].IsZero() && update.CacheCreation == nil {
 			update.CacheCreation = normalized.CacheCreation
