@@ -18,7 +18,7 @@ func (adapter module) usageExtensions(value p.Value) (p.Value, error) {
 	nested := map[string][]string{}
 	switch adapter.name {
 	case Chat:
-		known = []string{"prompt_tokens", "completion_tokens", "total_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "prompt_tokens_details", "completion_tokens_details"}
+		known = []string{"prompt_tokens", "completion_tokens", "total_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "prompt_tokens_details", "completion_tokens_details", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens"}
 		nested = map[string][]string{"prompt_tokens_details": inputUsageDetails, "completion_tokens_details": outputUsageDetails}
 	case Responses:
 		known = append(known, "input_tokens_details", "output_tokens_details")

@@ -157,6 +157,45 @@ func (adapter module) decodeUsage(value p.Value) (*p.Usage, error) {
 			}
 		}
 	}
+	if adapter.name == Chat {
+		hit, err := counter(fields["prompt_cache_hit_tokens"])
+		if err != nil {
+			return nil, err
+		}
+		miss, err := counter(fields["prompt_cache_miss_tokens"])
+		if err != nil {
+			return nil, err
+		}
+		if hit != nil {
+			if usage.CacheRead != nil && usage.CacheRead.Count != hit.Count {
+				return nil, fmt.Errorf("prompt_cache_hit_tokens disagrees with cached input")
+			}
+			usage.CacheRead = hit
+		}
+		if miss != nil {
+			if usage.Input == nil {
+				usage.Input, err = sumCounters(hit, miss)
+				if err != nil {
+					return nil, err
+				}
+			}
+			if usage.Input != nil && usage.CacheRead == nil && usage.Input.Count >= miss.Count {
+				usage.CacheRead = &p.Counter{Count: usage.Input.Count - miss.Count, Origin: p.InferredCount}
+			}
+			if usage.Input != nil && usage.CacheRead != nil && (usage.Input.Count < usage.CacheRead.Count || usage.Input.Count-usage.CacheRead.Count != miss.Count) {
+				return nil, fmt.Errorf("prompt_cache_miss_tokens disagrees with prompt input and cache hits")
+			}
+			uncached := *miss
+			if usage.CacheCreation != nil {
+				uncached.Count -= usage.CacheCreation.Count
+				uncached.Origin = p.InferredCount
+				if uncached.Count < 0 {
+					return nil, fmt.Errorf("cache creation exceeds prompt cache misses")
+				}
+			}
+			usage.Details["uncached_input_tokens"] = uncached
+		}
+	}
 	if adapter.name == Gemini {
 		for key, semantic := range map[string]string{"thoughtsTokenCount": "output.reasoning_tokens", "toolUsePromptTokenCount": "toolUsePromptTokenCount"} {
 			count, err := counter(fields[key])
@@ -226,6 +265,24 @@ func (adapter module) encodeResponseUsage(response *p.Response, options p.Evalua
 	fields, err := encoded.ReadObject()
 	if err != nil {
 		return p.Value{}, err
+	}
+	if adapter.name == Chat {
+		if !original["prompt_cache_hit_tokens"].IsZero() {
+			fields["prompt_cache_hit_tokens"] = counterValue(response.Usage.CacheRead)
+		}
+		if !original["prompt_cache_miss_tokens"].IsZero() {
+			var miss *p.Counter
+			if count, exists := response.Usage.Details["uncached_input_tokens"]; exists {
+				miss = &count
+				if response.Usage.CacheCreation != nil {
+					miss, err = sumCounters(miss, response.Usage.CacheCreation)
+					if err != nil {
+						return p.Value{}, err
+					}
+				}
+			}
+			fields["prompt_cache_miss_tokens"] = counterValue(miss)
+		}
 	}
 	for _, alias := range []struct {
 		name    string
