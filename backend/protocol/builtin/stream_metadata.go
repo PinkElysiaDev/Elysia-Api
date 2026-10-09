@@ -26,6 +26,7 @@ func mergeResponseMetadata(left, right []p.ResponseMetadata) []p.ResponseMetadat
 // for that same item; it never waits for an unrelated subsequent text delta.
 func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event) ([]p.Value, error) {
 	var local []p.ResponseMetadata
+	var choiceMetadata []p.ResponseMetadata
 	var item *streamItem
 	var key string
 	if event != nil {
@@ -37,7 +38,9 @@ func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event) ([]
 			items = append(items, event.Item.Metadata...)
 		}
 		for _, m := range items {
-			if m.Location == "response" || m.Location == "usage" {
+			if m.Codec == Chat && m.Location == "choice" && m.Name == "native_finish_reason" {
+				choiceMetadata = append(choiceMetadata, m)
+			} else if m.Location == "response" || m.Location == "usage" {
 				stream.metadata = mergeResponseMetadata(stream.metadata, []p.ResponseMetadata{m})
 			} else {
 				local = append(local, m)
@@ -52,6 +55,39 @@ func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event) ([]
 		return nil, unsupported("/metadata", "content metadata has no explicit stream item association")
 	}
 	var extra []p.Value
+	if len(choiceMetadata) > 0 {
+		if stream.name != Chat {
+			return nil, unsupported(choiceMetadata[0].Path, "choice metadata requires target projection")
+		}
+		attached := false
+		for i, frame := range frames {
+			fields, _ := frame.ReadObject()
+			choices, _ := readArray(fields["choices"])
+			if len(choices) != 1 {
+				continue
+			}
+			choice, _ := choices[0].ReadObject()
+			for _, m := range choiceMetadata {
+				choice[m.Name] = m.Value
+			}
+			choices[0] = object(choice)
+			fields["choices"] = array(choices)
+			frames[i] = object(fields)
+			attached = true
+			break
+		}
+		if !attached {
+			fields, _ := stream.chatChunk(object(p.Object{}), p.Value{}, p.Value{}).ReadObject()
+			choices, _ := readArray(fields["choices"])
+			choice, _ := choices[0].ReadObject()
+			for _, m := range choiceMetadata {
+				choice[m.Name] = m.Value
+			}
+			choices[0] = object(choice)
+			fields["choices"] = array(choices)
+			extra = append(extra, object(fields))
+		}
+	}
 	for _, m := range local {
 		if m.Codec != stream.name {
 			return nil, unsupported(m.Path, "stream metadata requires target projection")
@@ -192,6 +228,15 @@ func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event) ([]
 
 func (stream *streamModule) attachFrameMetadata(events []p.Event, metadata []p.ResponseMetadata) ([]p.Event, error) {
 	for _, m := range metadata {
+		// This field belongs to the sole supported streaming choice, including
+		// tool-only replies. Do not fabricate a text item to carry it.
+		if m.Codec == Chat && m.Location == "choice" && m.Name == "native_finish_reason" {
+			if len(events) == 0 {
+				events = append(events, p.Event{Type: p.MetadataUpdated})
+			}
+			events[len(events)-1].Metadata = append(events[len(events)-1].Metadata, m)
+			continue
+		}
 		if m.Location == "response" || m.Location == "usage" {
 			if len(events) == 0 {
 				events = append(events, p.Event{Type: p.MetadataUpdated})

@@ -59,6 +59,11 @@ func MetadataFieldType(codec, location, name string) string {
 	if location == "choice" && codec == "openai-chat" && name == "logprobs" {
 		return "object"
 	}
+	// OpenRouter-compatible channels expose the original provider stop spelling
+	// alongside finish_reason. It supplements, never replaces, the mapped reason.
+	if location == "choice" && codec == "openai-chat" && name == "native_finish_reason" {
+		return "string"
+	}
 	if location == "message" && codec == "openai-chat" && name == "annotations" {
 		return "array"
 	}
