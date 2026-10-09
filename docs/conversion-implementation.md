@@ -1,6 +1,6 @@
 # 可配置跨协议转换
 
-实现保留公共语义模型，在 HTTP 普通／流式网关中使用独立的 ConversionPolicy。配置不修改预置定义或模型工具权限。编译器为 `2.0.0-dev.22`，特征为 `conversion.policies.v1`、`conversion.continuation.v1` 和 `conversion.client_output.v1`。
+实现保留公共语义模型，在 HTTP 普通／流式网关中使用独立的 ConversionPolicy。配置不修改预置定义或模型工具权限。编译器为 `2.0.0-dev.23`，特征为 `conversion.policies.v1`、`conversion.continuation.v1` 和 `conversion.client_output.v1`。
 
 ## 默认行为与契约
 
@@ -12,16 +12,28 @@
 |---|---|
 | `client-stream-options` | 分离 `include_usage` 偏好；跨族未知子字段逐项诊断；非流式选项兼容忽略、严格拒绝 |
 | `responses-include` | 保留同线格式的 include；跨协议将 `reasoning.encrypted_content` 作为客户端续传选择，不发送上游；未知选择项拒绝 |
+| `responses-storage` | Responses 入口向无响应对象保存语义的已知编码器转换时，false 转为无状态；true／缺省／null 在兼容模式诊断降级，严格模式拒绝 |
 | `gemini-tool-results` | 文本工具结果明确包装为 `{"result":原文}`，记录兼容降级；字段名可改；严格模式拒绝此包装 |
 | `request-signatures` | 投影无法原生表达的外族签名；已认证恢复到目标协议的资源保留 |
 | `response-signatures` / `event-signatures` | 只处理签名，保留其他资源和正文；恢复通道成功与信息丢失分别记录 |
 | `response-usage-projection` / `event-usage-projection` | 只省略列举的目标不可表达用量字段；兼容模式诊断，严格模式拒绝；内部计量保持完整 |
+| `response-anthropic-usage-envelope` / `event-anthropic-usage-envelope` | Anthropic 必填用量缺失时，兼容模式补客户端专用零占位并诊断；严格模式拒绝；原始计量不变 |
 
 新版 Chat 预置声明 `requires: ["conversion.client_output.v1"]`，`stream_options` 不再属于通用生成参数。true 输出一次 Chat 结束用量块；false、缺省、null、空对象默认不输出该块。`usage.defaultIncludeUsage` 恢复旧显示默认。`usage.collectUpstreamUsage` 独立决定是否向 Chat 上游请求用量；内部计量不受客户端显示偏好影响。没有实际计数时不会伪造观察值。
 
 未声明该特征的旧自定义 Chat 定义保留用户映射所依赖的解码形状、Agent 参数及样例；映射执行后，默认策略自动规范化旧参数，无需重建或手动开启。回归使用提交 `82406b9` 的原始定义，仅更改副本 ID。
 
-Responses 的 include 接受缺失、null 和字符串数组，错误类型返回准确的 `/include` 路径。同线格式保留未知字符串、顺序及空值；跨协议目前只实现 `reasoning.encrypted_content`。它复用 Elysia 认证载体，不能冒充供应商原生加密思考内容。有状态才保存和包装；用户关闭客户端载体时，服务端副本不等于已向客户端返回所选字段。`store`、`truncation` 和生成约束不默认省略。
+Responses 的 include 接受缺失、null 和字符串数组，错误类型返回准确的 `/include` 路径。同线格式保留未知字符串、顺序及空值；跨协议目前只实现 `reasoning.encrypted_content`。它复用 Elysia 认证载体，不能冒充供应商原生加密思考内容。有状态才保存和包装；用户关闭客户端载体时，服务端副本不等于已向客户端返回所选字段。`store` 由独立保存规则处理；`truncation`、`previous_response_id`、`conversation` 和生成约束不随之省略。
+
+`responses_storage` 仅默认匹配实际 Responses 解码模块。参数为 `{"targetCodec":"gemini","onUnsupported":"degrade"}`，可将 `onUnsupported` 改为 `reject`；严格模式始终优先。原生 Responses 保存路径保留原值。其他已知目标：显式 false 不要求保存，允许转换；true／null／缺省按保存意图处理，兼容模式记录损失并在响应 JSON、`response.created` 和终止对象中返回 `store:false`。错误类型返回 `invalid_input at /store`，不调用上游。本项不提供 Responses 检索、删除或会话存储 API；签名副本不是响应对象数据库。`store:false` 不承诺供应商零留存，也不关闭调用日志。
+
+Anthropic 客户端输出必须有合法的消息外壳及用量。先取得同一上游帧、同一响应的已知用量，再渲染首帧；不等待下一帧，不默认缓冲整轮。缺失必填计数的零占位只存在于客户端副本（`origin:placeholder`），不进入 `ProtocolUsage`、计费或数据库；真实零值仍是 `observed`。已知缓存拆分照常保留，可选缓存字段不自动补零。尾部真实计数替换占位，快照不累加；终止消息在用量尾帧消费完后生成。缺少身份时使用本次响应稳定 ID 和已选模型。一轮结束、取消或错误均不重新提交上游生成。
+
+合法的同线格式、同映射原生帧原样保留，仍通过最终必填字段检查。不同模块的自定义定义不因 family 相同跳过修复。网关、协议编码预览和组合验证在 `after`、线格式规则及客户端载体处理后检查 Anthropic 输出；没有 `usage` 或计数类型错误不能记为转换成功。
+
+严格策略的条件拒绝记录在组合报告 `checks[].rejected`，不算成功样例，也不贡献能力覆盖。仍须有独立的正向请求、响应及完整流证据；预置新增显式 `store:false` 和首帧完整用量样例。不存在正向覆盖的旧自定义严格配置继续显示具体阻塞原因，不能借负向样例宣称支持。兼容模式的旧自定义修复无需改写原文。
+
+客户端实验：`@ai-sdk/anthropic` 2.0.33 与 4.0.78 均完整消费经过修复的流，并检查所有 `error` 事件。首帧未知输入填 0 时，2.0.33 的最终展示仍可能保留 0；4.0.78 可用尾帧更新。因此无法承诺所有客户端都显示最终正确输入计数。用户实际 Cherry Studio 版本仍需单独复测。
 
 用量投影范围：Anthropic 目标省略 `output.reasoning_tokens`；非 Gemini 目标省略 `toolUsePromptTokenCount`；非 Anthropic 目标省略两个 TTL 桶；Gemini 目标省略 `CacheCreation` 及依赖它的 `uncached_input_tokens`。投影前验证原始算术关系，输出总量不重复加入思考计数，未知明细仍拒绝。流式的顶层用量和终止响应用量使用同一动作，内部计量只消费原始上游事件。
 
@@ -34,6 +46,8 @@ Responses 的 include 接受缺失、null 和字符串数组，错误类型返�
 页面为 `/protocols/conversions`。模型源和模型绑定页面提供覆盖入口。优先级是引擎默认、协议对、模型源、模型；同 ID 完整覆盖，禁用规则停止继承。执行顺序必须明确，同阶段的重复顺序拒绝编译。未完成的规则仍可保存为草稿。
 
 阶段为 `ingress`、`request`、`response`、`event`、`wire`。动作注册表另增加 `responses_include` 和 `usage_projection`；schema 返回适用阶段、目标编码器枚举及说明，页面提供对应选择器。其 `value` 为实际目标模块名：`openai-chat`、`responses`、`anthropic` 或 `gemini`。原有 `set`、`remove`、`transform`、`warn`、`reject`、`signatures`、`stream_options`、`tool_result_object`、`buffer_node`、`provider_signature` 继续使用。`transform` 使用受限表达式引擎，不执行 JavaScript。普通规则不能创建或重新关联来源、作用域和签名资源。
+
+`dev.23` 增加 `responses_storage`（请求阶段，以上对象参数）和 `anthropic_usage_envelope`（响应／事件阶段，无参数）。现有规则表单提供保存降级选择，完整 JSON 仍可编辑；不新增页面或存储表。禁用补齐规则后，最终格式检查仍会拒绝不完整输出。
 
 `buffer_node` 等待匹配节点完成，保持原事件顺序，受引擎资源上限约束。严格签名投影自动等待完整节点；组合验证也使用同一等待逻辑。原始上游事件序列独立验证，保存失败不能掩盖生命周期错误。Anthropic `signature_delta` 累积为完整签名，重复语义快照不会重复发送签名片段；Gemini `thoughtSignature` 按完整字段处理，不猜测任意字符串是增量还是快照。已写出流式内容后不会重提生成请求。
 

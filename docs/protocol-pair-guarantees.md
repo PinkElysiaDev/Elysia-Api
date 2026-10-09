@@ -37,7 +37,8 @@ Chat→Gemini 的 `stream_options.include_usage` 属于客户端输出偏好，�
 ## 已知降级（转换但语义变化，均有 warning 或文档记录）
 
 - Anthropic/Gemini 目标把**会话前段**的 system 消息提升合并进顶层 system 数组（既有行为）；中段 system 对 A 按位、对 G 拒绝。
-- 跨族流式：Anthropic 客户端的 message_start 不带 usage（仅尾帧）；Responses sequence_number 为本地重编；Chat 流式 refusal→G 退化为文本。
+- 跨族流式：Anthropic 首帧包含必填 usage，同帧已知计数优先；兼容模式为未知必填计数补客户端专用 0 并诊断，严格模式拒绝。尾帧使用最终已知用量，内部计量不受占位影响。部分旧 SDK 不会修正首帧输入计数。Responses sequence_number 为本地重编；Chat 流式 refusal→G 退化为文本。
+- Responses 保存语义：`store:false` 可无损转为无状态调用；true／缺省／null 向不支持响应对象保存的目标转换时，兼容模式诊断降级并返回 `store:false`，严格模式拒绝。状态关联参数不会一起丢弃。
 - 用量投影：具名规则在兼容模式省略目标不可表达的 TTL 桶、Gemini 创建总量、Anthropic 思考明细及非 Gemini 工具提示明细；严格模式拒绝。原始计量和既有总量保留（`cache-usage-contracts.md`）。
 - chat 旧版 `"role":"function"` 历史消息未识别（透传后上游 400、本层无诊断）——遗留项，待下轮补显式诊断。
 
