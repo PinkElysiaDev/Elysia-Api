@@ -82,6 +82,7 @@ func (adapter module) warnBreakpointOrder(request *p.Request, sink *p.Diagnostic
 		for index := range nodes {
 			visit(nodes[index].Cache)
 			walk(nodes[index].Children)
+			walk(nodes[index].ReasoningContent)
 		}
 	}
 	walk(request.Content)

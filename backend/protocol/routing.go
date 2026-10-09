@@ -206,7 +206,7 @@ func HasScopedResources(request *Request) bool {
 	var hasNodes func([]Node) bool
 	hasNodes = func(nodes []Node) bool {
 		for _, node := range nodes {
-			if node.Kind == OpaqueNode || len(node.Resources) > 0 || hasCache(node.Cache) || hasNodes(node.Children) {
+			if node.Kind == OpaqueNode || len(node.Resources) > 0 || hasCache(node.Cache) || hasNodes(node.Children) || hasNodes(node.ReasoningContent) {
 				return true
 			}
 		}

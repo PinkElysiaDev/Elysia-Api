@@ -550,6 +550,9 @@ func (c *CompiledConversion) applyNodeRule(ctx context.Context, phase Conversion
 			if err := visit(n.Children, at+"/children"); err != nil {
 				return err
 			}
+			if err := visit(n.ReasoningContent, at+"/reasoningContent"); err != nil {
+				return err
+			}
 		}
 		return nil
 	}

@@ -124,6 +124,7 @@ func countCacheBreakpoints(request *Request) int {
 		for index := range nodes {
 			count += len(nodes[index].Cache)
 			visit(nodes[index].Children)
+			visit(nodes[index].ReasoningContent)
 		}
 	}
 	visit(request.Content)

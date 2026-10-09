@@ -174,6 +174,7 @@ func messageText(message conversationTurn) string {
 				parts = append(parts, string(node.Payload.Bytes()))
 			}
 			visit(node.Children)
+			visit(node.ReasoningContent)
 		}
 	}
 	visit(message.Content)

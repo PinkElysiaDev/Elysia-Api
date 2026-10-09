@@ -32,6 +32,17 @@ func TestProtocolEstimateCountsUnicodeFilesAndToolHistoryOnce(t *testing.T) {
 	}
 }
 
+func TestProtocolEstimateIncludesStructuredReasoningHistory(t *testing.T) {
+	s := &Server{config: &config.Config{Usage: config.UsageConfig{CharsPerToken: 1}}}
+	request := &protocol.Request{Content: []protocol.Node{{Kind: protocol.ReasoningNode, ReasoningForm: protocol.StructuredReasoning,
+		Children:         []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("摘要")}},
+		ReasoningContent: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("first")}, {Kind: protocol.TextNode, Payload: protocol.StringValue("second")}},
+	}}}
+	if got := s.estimateProtocolInputTokens(request); got != 13 {
+		t.Fatalf("reasoning history estimate = %d, want 2+5+6", got)
+	}
+}
+
 func TestHostedToolAccountingDeduplicatesAndHonorsSource(t *testing.T) {
 	compiled := compileFixtureDefinition(t, presetDefinition(t, "openai-responses"))
 	record := &usageRecord{}

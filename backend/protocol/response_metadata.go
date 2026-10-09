@@ -394,6 +394,11 @@ func (c *CompiledConversion) metadataValue(phase ConversionPhase, input Value, r
 				return err
 			}
 		}
+		for i := range n.ReasoningContent {
+			if err = visit(&n.ReasoningContent[i]); err != nil {
+				return err
+			}
+		}
 		if codec == "responses" && n.Kind == MessageNode {
 			var keep []ResponseMetadata
 			for _, m := range n.Metadata {

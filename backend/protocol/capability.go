@@ -61,6 +61,7 @@ func CheckToolAssociations(nodes []Node, limits Limits) []ConversionIssue {
 				check.result(n, at)
 			}
 			visit(n.Children, at+"/children", depth+1)
+			visit(n.ReasoningContent, at+"/reasoningContent", depth+1)
 		}
 	}
 	visit(nodes, "/content", 1)

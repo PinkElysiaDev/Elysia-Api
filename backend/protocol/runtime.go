@@ -178,6 +178,7 @@ func (compiled *Compiled) stampNodeProvenance(nodes []Node, direction Direction,
 	for index := range nodes {
 		compiled.stampNodeOrigin(&nodes[index], direction, scope)
 		compiled.stampNodeProvenance(nodes[index].Children, direction, scope)
+		compiled.stampNodeProvenance(nodes[index].ReasoningContent, direction, scope)
 	}
 }
 
@@ -218,6 +219,7 @@ func (compiled *Compiled) stampEventProvenance(event *Event, direction Direction
 		}
 		compiled.stampNodeOrigin(event.Item, direction, scope)
 		compiled.stampNodeProvenance(event.Item.Children, direction, scope)
+		compiled.stampNodeProvenance(event.Item.ReasoningContent, direction, scope)
 	}
 	if event.Response != nil {
 		event.Response.SchemaVersion, event.Response.Source = SemanticSchemaVersion, compiled.identity
@@ -318,7 +320,10 @@ func stampNodeScope(node *Node, scope Scope) error {
 	if err := stampCacheScopes(node.Cache, scope); err != nil {
 		return err
 	}
-	return stampNodeScopes(node.Children, scope)
+	if err := stampNodeScopes(node.Children, scope); err != nil {
+		return err
+	}
+	return stampNodeScopes(node.ReasoningContent, scope)
 }
 
 func stampCacheScopes(intents []CacheIntent, scope Scope) error {

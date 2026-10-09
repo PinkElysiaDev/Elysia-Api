@@ -47,6 +47,7 @@ func (s *Server) estimateProtocolInputTokens(request *protocol.Request) int {
 				textChars += estimateValueChars(node.Input.Value)
 			}
 			visit(node.Children)
+			visit(node.ReasoningContent)
 		}
 	}
 	visit(request.Content)

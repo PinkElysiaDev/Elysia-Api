@@ -202,6 +202,7 @@ func (evidence *capabilityEvidence) nodes(nodes []Node) {
 		evidence.cache(node.Cache)
 		evidence.resources(node.Resources)
 		evidence.nodes(node.Children)
+		evidence.nodes(node.ReasoningContent)
 	}
 }
 
