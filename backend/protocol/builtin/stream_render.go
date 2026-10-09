@@ -117,6 +117,12 @@ func (stream *streamModule) encodeItem(event p.Event, options p.EvaluationContex
 			return nil, unsupported("/item", "item start requires a node")
 		}
 		item = &streamItem{node: itemMetadata(*event.Item), parent: parent, index: stream.outputItems}
+		if stream.name == Chat && item.node.Kind == p.ToolCallNode {
+			// Chat indexes its tool_calls array independently of text, reasoning
+			// and refusal items. General output positions leave sparse SDK arrays.
+			item.index = stream.nextTool
+			stream.nextTool++
+		}
 		if parent == "" {
 			stream.outputItems++
 		} else {

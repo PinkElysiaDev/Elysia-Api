@@ -20,6 +20,7 @@ type wireStreamContract struct {
 	assistant  bool
 	stopReason bool
 	openBlocks map[int]bool
+	chatTools  map[int]bool
 }
 
 func wireStreamIssue(path, reason string) error {
@@ -112,9 +113,32 @@ func (stream *streamModule) ValidateWireEvent(frame p.Value) error {
 				}
 				s.assistant = true
 			}
+			calls, err := readArray(delta["tool_calls"])
+			if err != nil {
+				return err
+			}
+			for j, value := range calls {
+				call, err := value.ReadObject()
+				if err != nil {
+					return err
+				}
+				position, err := frameIndex(call["index"])
+				if err != nil || call["index"].IsZero() || position >= stream.limits.StateItems {
+					return wireStreamIssue(fmt.Sprintf("%s/delta/tool_calls/%d/index", base, j), "Chat tool index must be a bounded nonnegative integer")
+				}
+				if s.chatTools == nil {
+					s.chatTools = map[int]bool{}
+				}
+				s.chatTools[position] = true
+			}
 			if finish := choice["finish_reason"]; !finish.IsZero() && !finish.IsNull() {
 				if !s.assistant {
 					return wireStreamIssue(base+"/delta/role", "Chat completion has no assistant role in any delta")
+				}
+				for position := range s.chatTools {
+					if position >= len(s.chatTools) {
+						return wireStreamIssue(base+"/delta/tool_calls", "Chat completion has gaps in its zero-based tool indexes")
+					}
 				}
 				s.terminal = true
 			}

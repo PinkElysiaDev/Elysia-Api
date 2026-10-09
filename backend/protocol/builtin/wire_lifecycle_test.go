@@ -34,6 +34,7 @@ func TestWireStreamLifecycleRejectsIncompleteContracts(t *testing.T) {
 		{"chat-model-change", Chat, "/model", []string{chatStart, chatContractFrame("r", "other", 1, `{}`, `"stop"`)}},
 		{"chat-time-change", Chat, "/created", []string{chatStart, chatContractFrame("r", "m", 2, `{}`, `"stop"`)}},
 		{"chat-empty-choice-after-finish", Chat, "/choices", []string{chatContractFrame("r", "m", 1, `{"role":"assistant"}`, `"stop"`), chatContractFrame("r", "m", 1, `{}`, `null`)}},
+		{"chat-tool-index-gap", Chat, "/choices/0/delta/tool_calls", []string{chatContractFrame("r", "m", 1, `{"role":"assistant","tool_calls":[{"index":1,"id":"c1","type":"function","function":{"name":"lookup","arguments":"{}"}}]}`, `"tool_calls"`)}},
 		{"responses-missing-start", Responses, "/type", []string{responsesContractFrame("response.completed", "r", "m", "completed", 0)}},
 		{"responses-repeated-start", Responses, "/type", []string{responsesStart, responsesContractFrame("response.created", "r", "m", "in_progress", 1)}},
 		{"responses-id-change", Responses, "/response/id", []string{responsesStart, responsesContractFrame("response.in_progress", "other", "m", "in_progress", 1)}},
@@ -86,6 +87,10 @@ func TestWireStreamLifecycleKeepsValidShapes(t *testing.T) {
 		{"delayed-role", Chat, []string{chatContractFrame("r", "m", 1, `{"content":"hi"}`, `null`), chatContractFrame("r", "m", 1, `{"role":"assistant"}`, `"stop"`)}},
 		{"repeated-role-and-usage", Chat, []string{chatContractFrame("r", "m", 1, `{"role":"assistant","content":"hi"}`, `null`), chatContractFrame("r", "m", 1, `{"role":"assistant"}`, `"stop"`), `{"id":"r","model":"m","created":1,"object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`}},
 		{"escaped-id", Chat, []string{chatContractFrame("r", "m", 1, `{"role":"assistant"}`, `null`), strings.Replace(chatContractFrame("r", "m", 1, `{"content":"hi"}`, `"stop"`), `"id":"r"`, `"id":"\u0072"`, 1)}},
+		{"tool-index-gap-filled-before-finish", Chat, []string{
+			chatContractFrame("r", "m", 1, `{"role":"assistant","tool_calls":[{"index":1,"id":"c2","type":"function","function":{"name":"lookup","arguments":"{}"}}]}`, `null`),
+			chatContractFrame("r", "m", 1, `{"tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"lookup","arguments":"{}"}}]}`, `"tool_calls"`),
+		}},
 		{"responses-empty", Responses, []string{responsesContractFrame("response.created", "r", "m", "in_progress", 0), responsesContractFrame("response.completed", "r", "m", "completed", 1)}},
 		{"anthropic-empty-with-ping", Anthropic, []string{`{"type":"ping"}`, anthropicContractStart, anthropicContractDelta, `{"type":"message_stop"}`}},
 		{"gemini-optional-envelope", Gemini, []string{`{"candidates":[{"content":{"parts":[{"text":"hi"}]}}]}`, `{"candidates":[{"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1,"totalTokenCount":2}}`}},
