@@ -1,4 +1,4 @@
-import { writeFile, mkdir, rename } from 'node:fs/promises'
+import { writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve, dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -13,6 +13,7 @@ import { localInstance } from './local.mjs'
 import { mapConcurrent, serialize } from './concurrency.mjs'
 import { eventSequence, failureCategory, persistedCall, requestSelection } from './evidence.mjs'
 import { regressionCases } from './regressions.mjs'
+import { atomicFile } from './report-file.mjs'
 
 export const groups = ['daily', 'protocol', 'sdk', 'errors', 'persistence', 'code']
 const toolDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -95,7 +96,7 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
     report.counts = Object.fromEntries(['passed', 'failed', 'blocked', 'skipped', 'not_applicable', 'running'].map(status => [status, report.cases.filter(c => !c.summary && c.status === status).length]))
     const snapshot = clean(report)
     for (const [name, body] of [['report.json', JSON.stringify(snapshot, null, 2)], ['report.md', reportMarkdown(snapshot)]]) {
-      await writeFile(join(outputDir, `${name}.tmp`), body + '\n', { mode: 0o600 }); await rename(join(outputDir, `${name}.tmp`), join(outputDir, name))
+      await atomicFile(join(outputDir, name), body + '\n')
     }
   })
   async function evidence(name, value, owner = currentCase.getStore()) {

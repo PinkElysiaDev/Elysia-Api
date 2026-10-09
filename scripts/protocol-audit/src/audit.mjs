@@ -1,4 +1,4 @@
-import { writeFile, mkdir, rename } from 'node:fs/promises'
+import { writeFile, mkdir } from 'node:fs/promises'
 import { appendFileSync } from 'node:fs'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,6 +8,7 @@ import { parseTree } from 'jsonc-parser'
 import { protocols, scenarios, AuditError, endpoint, requestBody, followupBody, inspectReply, inspectModels } from './protocols.mjs'
 import { mapConcurrent, serialize } from './concurrency.mjs'
 import { eventSequence, failureCategory } from './evidence.mjs'
+import { atomicFile } from './report-file.mjs'
 
 export const defaults = { concurrency: 32, timeoutMs: 180000, maxResponseBytes: 16 * 1024 * 1024, maxRequests: 512, maxOutputTokens: 32768, requireUsage: true }
 
@@ -138,11 +139,6 @@ function markdown(report) {
   }
   lines.push('## 检查边界', '', '本工具检查常用响应字段、基本 SSE 生命周期、文本、多轮和合成工具往返；不是供应商完整 JSON Schema 或官方 SDK 认证。不执行模型返回的任意工具，不修改网关渠道、模型组或数据库。模型列表仅检查一页。', '', `独立用例最多 ${report.settings.concurrency} 个并行，同一用例的多轮请求保持顺序，不自动重试；请求上限不约束网关内部的重试或计费。证据会脱敏配置引用的密钥、认证字段和已知签名字段，但响应正文仍可能包含其他私有信息，分享前应审阅。`, '')
   return lines.join('\n')
-}
-
-async function atomicFile(path, text) {
-  await writeFile(`${path}.tmp`, text, { mode: 0o600 })
-  await rename(`${path}.tmp`, path)
 }
 
 export async function exchange(url, body, headers, settings, signal, { method, rawBody, onChunk } = {}) {
