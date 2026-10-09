@@ -20,7 +20,8 @@ function packageVersion(name) {
   throw new Error(`Cannot determine SDK version: ${name}`)
 }
 
-export async function consume(protocol, { baseUrl, apiKey, model, timeoutMs = defaults.timeoutMs, maxOutputTokens = defaults.maxOutputTokens, maxResponseBytes = defaults.maxResponseBytes, signal, onExchange = async () => {} }, stream) {
+export async function consume(protocol, { baseUrl, apiKey, model, expectedText = 'OK', timeoutMs = defaults.timeoutMs, maxOutputTokens = defaults.maxOutputTokens, maxResponseBytes = defaults.maxResponseBytes, signal, onExchange = async () => {} }, stream) {
+  assert.ok(typeof expectedText === 'string' && expectedText.length > 0, 'SDK expected text must be nonempty')
   const used = [], pending = [], transportErrors = []
   const version = name => { used.push({ name, version: packageVersion(name) }) }
   const capture = async (input, init) => {
@@ -56,38 +57,39 @@ export async function consume(protocol, { baseUrl, apiKey, model, timeoutMs = de
   }
   let failure
   try {
-    const options = { prompt: [{ role: 'user', content: [{ type: 'text', text: 'Reply exactly OK.' }] }], maxOutputTokens, abortSignal: signal }
+    const prompt = `Reply exactly ${expectedText}.`
+    const options = { prompt: [{ role: 'user', content: [{ type: 'text', text: prompt }] }], maxOutputTokens, abortSignal: signal }
     if (protocol === 'chat' || protocol === 'responses') {
       version('openai')
       const client = new OpenAI({ apiKey, baseURL: `${baseUrl}/v1`, maxRetries: 0, timeout: timeoutMs, fetch: capture })
       if (protocol === 'chat') {
-        const params = { model, messages: [{ role: 'user', content: 'Reply exactly OK.' }], max_completion_tokens: maxOutputTokens }
+        const params = { model, messages: [{ role: 'user', content: prompt }], max_completion_tokens: maxOutputTokens }
         const result = stream ? await client.chat.completions.stream(params, { signal }).finalChatCompletion() : await client.chat.completions.create(params, { signal })
-        assert.ok(result.choices.some(c => c.message?.content?.includes('OK')))
+        assert.ok(result.choices.some(c => c.message?.content?.includes(expectedText)))
       } else {
-        const params = { model, input: 'Reply exactly OK.', max_output_tokens: maxOutputTokens, store: false }
+        const params = { model, input: prompt, max_output_tokens: maxOutputTokens, store: false }
         const result = stream ? await client.responses.stream(params, { signal }).finalResponse() : await client.responses.create(params, { signal })
-        assert.ok(result.output.some(o => o.content?.some(c => c.text?.includes('OK'))))
+        assert.ok(result.output.some(o => o.content?.some(c => c.text?.includes(expectedText))))
       }
       version('@ai-sdk/openai')
       const provider = createOpenAI({ apiKey, baseURL: `${baseUrl}/v1`, fetch: capture })
-      await checkAI(protocol === 'chat' ? provider.chat(model) : provider.responses(model), stream, options)
+      await checkAI(protocol === 'chat' ? provider.chat(model) : provider.responses(model), stream, options, expectedText)
     } else if (protocol === 'anthropic') {
       version('@anthropic-ai/sdk')
       const client = new Anthropic({ apiKey, baseURL: baseUrl, maxRetries: 0, timeout: timeoutMs, fetch: capture })
-      const params = { model, max_tokens: maxOutputTokens, messages: [{ role: 'user', content: 'Reply exactly OK.' }] }
+      const params = { model, max_tokens: maxOutputTokens, messages: [{ role: 'user', content: prompt }] }
       const result = stream ? await client.messages.stream(params, { signal }).finalMessage() : await client.messages.create(params, { signal })
-      assert.ok(result.content.some(c => c.text?.includes('OK')))
+      assert.ok(result.content.some(c => c.text?.includes(expectedText)))
       version('@ai-sdk/anthropic')
-      await checkAI(createAnthropic({ apiKey, baseURL: `${baseUrl}/v1`, fetch: capture })(model), stream, options)
+      await checkAI(createAnthropic({ apiKey, baseURL: `${baseUrl}/v1`, fetch: capture })(model), stream, options, expectedText)
     } else {
       version('@google/genai')
       const client = new GoogleGenAI({ apiKey, httpOptions: { baseUrl, timeout: timeoutMs, fetch: capture, retryOptions: { attempts: 1 } } })
-      const params = { model, contents: 'Reply exactly OK.', config: { maxOutputTokens, abortSignal: signal } }
+      const params = { model, contents: prompt, config: { maxOutputTokens, abortSignal: signal } }
       let text = ''
       if (stream) for await (const part of await client.models.generateContentStream(params)) { assert.ok(!part.error); text += part.text || '' }
       else text = (await client.models.generateContent(params)).text || ''
-      assert.ok(text.includes('OK'))
+      assert.ok(text.includes(expectedText))
     }
   } catch (error) { failure = error }
   const captured = await Promise.allSettled(pending)
@@ -96,13 +98,13 @@ export async function consume(protocol, { baseUrl, apiKey, model, timeoutMs = de
   return used
 }
 
-async function checkAI(model, stream, options) {
-  if (!stream) { assert.ok((await model.doGenerate(options)).content.some(c => c.text?.includes('OK'))); return }
+async function checkAI(model, stream, options, expectedText) {
+  if (!stream) { assert.ok((await model.doGenerate(options)).content.some(c => c.text?.includes(expectedText))); return }
   let finished = false, text = ''
   for await (const event of (await model.doStream(options)).stream) {
     if (event.type === 'error') throw event.error
     if (event.type === 'text-delta') text += event.delta
     if (event.type === 'finish') finished = true
   }
-  assert.ok(finished && text.includes('OK'), 'SDK did not receive expected text and finish event')
+  assert.ok(finished && text.includes(expectedText), 'SDK did not receive expected text and finish event')
 }

@@ -30,6 +30,16 @@ for (const protocol of ['chat', 'responses', 'anthropic', 'gemini']) for (const 
   })
 }
 
+for (const protocol of ['chat', 'responses', 'anthropic', 'gemini']) for (const stream of [false, true]) {
+  test(`${protocol} ${stream ? 'SSE' : 'JSON'} SDK replays a literal synthetic marker without rewriting wire`, { skip: !consume && 'SDK dependencies unavailable' }, async t => {
+    const wire = replyWire(protocol, 'hi', false, stream)
+    const f = await endpoint(t, wire, stream)
+    await consume(protocol, { ...f.options, expectedText: 'hi' }, stream)
+    assert.equal(f.captured.length, protocol === 'gemini' ? 1 : 2)
+    assert.ok(f.captured.every(c => c.response.body === wire && c.request.body.includes('Reply exactly hi.')))
+  })
+}
+
 for (const stream of [false, true]) test(`Responses visible reasoning ${stream ? 'SSE' : 'JSON'} is consumed without hidden SDK errors`, { skip: !consume && 'SDK dependencies unavailable' }, async t => {
   const reasoning = { id: 'rs_visible', type: 'reasoning', status: 'completed', summary: [], content: [{ type: 'reasoning_text', text: 'Synthetic visible thought.' }] }
   // Only synthetic fixtures are parsed here, never live evidence or signatures.

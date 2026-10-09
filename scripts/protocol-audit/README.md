@@ -51,6 +51,21 @@ node scripts/protocol-audit/run.mjs --group protocol
 
 不加 `--group` 就是全部。除单独的 `code` 组外，每个分组也都要求四种渠道配齐。仅 `code` 组不需要渠道配置；不运行 `sdk` 组就无需安装脚本的 SDK 依赖。代码检查仍需要项目自身的依赖。
 
+## 暂停真实渠道时的本地 SDK 回放
+
+以下 PowerShell 命令使用 Go 网关测试的模拟上游，保存网关实际生成的 16 个方向 JSON/SSE 输出，再由固定版本 SDK 完整读取。不会读取 `config.local.json`，不会请求真实渠道；此结果也不代表原环境验收。
+
+```powershell
+npm ci --prefix scripts/protocol-audit
+$env:ELYSIA_AUDIT_CAPTURE = Join-Path (Get-Location).Path '.tmp-dev/audit-wire'
+Push-Location backend
+go test ./server -run '^TestGatewayAuditTextMatrix$' -count=1
+Pop-Location
+node scripts/protocol-audit/replay.mjs .tmp-dev/audit-wire
+```
+
+预期为 32 份响应、56 次 SDK 消费全部通过。回放不会修改正文或 SSE 字段；缺文件、SDK 格式错误、隐藏 error 事件和未完成流均视为失败。该命令只用于上述合成测试输出，不能代替真实签名、真实工具第二轮或插件测试。
+
 ## 查看结果
 
 每次结果保存在 `scripts/protocol-audit/results/` 下的新目录，终端会显示完整路径。
