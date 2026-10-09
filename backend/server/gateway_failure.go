@@ -41,10 +41,12 @@ func encodeGatewayFailure(ctx context.Context, status int, response *protocol.Re
 		// Preserve the readable provider cause without serializing its whole
 		// error object (which may contain opaque details or private data).
 		// Keep the conversion error in the chain for diagnostics/retry logic.
-		fields, _ := response.Error.ReadObject()
-		var message string
-		if fields["message"].Decode(&message) == nil && message != "" {
-			err = fmt.Errorf("upstream failure: %q; error conversion failed: %w", message, err)
+		if response != nil {
+			fields, _ := response.Error.ReadObject()
+			var message string
+			if fields["message"].Decode(&message) == nil && message != "" {
+				err = fmt.Errorf("upstream failure: %q; error conversion failed: %w", message, err)
+			}
 		}
 		return &gatewayFailure{status, err}
 	}

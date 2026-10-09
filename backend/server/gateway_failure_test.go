@@ -129,4 +129,11 @@ func TestGatewayUnmappedFailureKeepsProviderMessageAndConversionIssue(t *testing
 	if !strings.Contains(failure.Error(), "readable provider cause") || strings.Contains(failure.Error(), "must-not-leak") || canRetryGeneration(failure) {
 		t.Fatalf("unsafe/misclassified conversion context: %v", failure)
 	}
+	// Invalid custom output still reports the existing typed error, even when
+	// no provider message can be read from it.
+	failure = encodeGatewayFailure(t.Context(), http.StatusBadGateway, nil, ingress, protocol.EvaluationContext{})
+	var missing *protocol.ConversionError
+	if !errors.As(failure, &missing) || strings.Contains(failure.Error(), "upstream failure:") {
+		t.Fatalf("missing response lost its validation error: %v", failure)
+	}
 }
