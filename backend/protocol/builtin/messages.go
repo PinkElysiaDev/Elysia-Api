@@ -68,6 +68,12 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 			if err != nil {
 				return nil, err
 			}
+			// In a tool-only assistant message, a scalar null/empty content is
+			// Chat's no-text envelope, not a separate part before the tool call.
+			// Preserve the native wire value, including null versus empty string.
+			if role == "assistant" && len(calls) > 0 && (content.IsNull() || content == p.StringValue("")) {
+				node.Children = nil
+			}
 			for callIndex, callValue := range calls {
 				call, err := callValue.ReadObject()
 				if err != nil {
