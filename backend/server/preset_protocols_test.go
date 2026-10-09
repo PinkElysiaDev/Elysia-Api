@@ -279,7 +279,11 @@ func TestPresetOpenAIResponsesEndToEnd(t *testing.T) {
 		_, _ = io.WriteString(w, "data: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_9\",\"name\":\"get_weather\"},\"sequence_number\":3}\n\n")
 		_, _ = io.WriteString(w, "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":1,\"delta\":\"{\\\"city\\\":\",\"sequence_number\":4}\n\n")
 		_, _ = io.WriteString(w, "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":1,\"delta\":\"\\\"sh\\\"}\",\"sequence_number\":5}\n\n")
-		_, _ = io.WriteString(w, `data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hello","annotations":[]}],"id":"item_0","status":"completed"},{"type":"function_call","call_id":"call_9","name":"get_weather","arguments":"{\"city\":\"sh\"}","id":"item_1"}],"usage":{"input_tokens":3,"output_tokens":5},"id":"r1","model":"m","object":"response","created_at":1},"sequence_number":6}`+"\n\n")
+		// Complete the same message that supplied the deltas. A terminal item
+		// cannot substitute a different identity or bypass content completion.
+		_, _ = io.WriteString(w, `data: {"type":"response.output_text.done","output_index":0,"content_index":0,"item_id":"msg1","text":"Hello","sequence_number":6}`+"\n\n")
+		_, _ = io.WriteString(w, `data: {"type":"response.content_part.done","output_index":0,"content_index":0,"item_id":"msg1","part":{"type":"output_text","text":"Hello","annotations":[]},"sequence_number":7}`+"\n\n")
+		_, _ = io.WriteString(w, `data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hello","annotations":[]}],"id":"msg1","status":"completed"},{"type":"function_call","call_id":"call_9","name":"get_weather","arguments":"{\"city\":\"sh\"}","id":"item_1"}],"usage":{"input_tokens":3,"output_tokens":5},"id":"r1","model":"m","object":"response","created_at":1},"sequence_number":8}`+"\n\n")
 	}))
 	defer upstream.Close()
 
