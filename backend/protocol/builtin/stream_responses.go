@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"strconv"
 
@@ -32,6 +33,12 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 	}
 	key := "output:" + strconv.Itoa(outputIndex)
 	contentKey := key + ":" + strconv.Itoa(contentIndex)
+	if item := stream.items[contentKey]; item != nil && item.partClosed {
+		switch kind {
+		case "response.output_text.delta", "response.refusal.delta", "response.output_text.done", "response.refusal.done", "response.content_part.done", "response.output_text.annotation.added":
+			return nil, unsupported("/content_index", "content arrived after message part completion")
+		}
+	}
 	if item := stream.items[key]; item != nil && item.node.Kind == p.ReasoningNode {
 		switch kind {
 		case "response.content_part.added", "response.reasoning_text.delta", "response.reasoning_text.done", "response.content_part.done":
@@ -75,7 +82,11 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 			return []p.Event{event}, err
 		}
 		if itemKind == "message" {
-			return nil, nil
+			if stream.responseMessages[outputIndex] != nil {
+				return nil, unsupported("/output_index", "message started twice")
+			}
+			_, err := stream.updateMessageMetadata(outputIndex, item)
+			return nil, err
 		}
 		if itemKind != "function_call" && itemKind != "custom_tool_call" {
 			return []p.Event{{Type: p.NativeEvent}}, nil
@@ -91,6 +102,13 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 	case "response.reasoning_text.delta", "response.reasoning_text.done":
 		return nil, unsupported("/item_id", "reasoning text has no preceding visible reasoning item")
 	case "response.content_part.added":
+		message, err := stream.responseMessage(outputIndex)
+		if err != nil {
+			return nil, err
+		}
+		if message.finished || contentIndex != len(message.parts) {
+			return nil, unsupported("/content_index", "message part must append to its open message")
+		}
 		part, err := fields["part"].ReadObject()
 		if err != nil {
 			return nil, err
@@ -103,9 +121,16 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		if string(part["type"].Bytes()) == `"refusal"` {
 			node.Kind, node.Payload = p.RefusalNode, part["refusal"]
 		}
+		node.Metadata = p.MergeNodeMetadata(node.Metadata, message.metadata, false)
 		event, err := stream.itemEvent(p.ItemStarted, contentKey, &node, p.Value{})
+		if err == nil {
+			message.parts = append(message.parts, contentKey)
+		}
 		return []p.Event{event}, err
 	case "response.output_text.delta", "response.refusal.delta":
+		if item := stream.items[contentKey]; item != nil && item.textClosed {
+			return nil, unsupported("/content_index", "text arrived after its completion")
+		}
 		event, err := stream.itemEvent(p.ItemDelta, contentKey, nil, fields["delta"])
 		if !fields["logprobs"].IsZero() {
 			event.Metadata = []p.ResponseMetadata{{Name: "logprobs", Location: "content", Codec: Responses, SourceCodec: Responses, Path: "/logprobs", Value: fields["logprobs"]}}
@@ -164,6 +189,14 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		if kind == "response.refusal.done" {
 			node.Payload = fields["refusal"]
 		}
+		text, err := responsePartText(node)
+		if err != nil {
+			return nil, err
+		}
+		if item.textClosed {
+			return nil, unsupported("/content_index", "text completed twice")
+		}
+		item.textClosed, item.closedTextDigest = true, sha256.Sum256([]byte(text))
 		event, err := stream.itemEvent(p.ItemSnapshot, contentKey, &node, p.Value{})
 		return []p.Event{event}, err
 	case "response.content_part.done":
@@ -181,18 +214,22 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 			if e != nil {
 				return nil, e
 			}
-		}
-		var final *p.Node
-		hasContentMetadata := false
-		for _, m := range node.Metadata {
-			if string(m.Value.Bytes()) != "[]" {
-				hasContentMetadata = true
+			node.Payload = part["text"]
+			if node.Kind == p.RefusalNode {
+				node.Payload = part["refusal"]
 			}
 		}
-		if hasContentMetadata {
-			final = &node
+		text, err := responsePartText(node)
+		if err != nil {
+			return nil, err
 		}
-		event, err := stream.itemEvent(p.ItemFinished, contentKey, final, p.Value{})
+		digest := sha256.Sum256([]byte(text))
+		if current.textClosed && current.closedTextDigest != digest {
+			return nil, unsupported("/part", "completed message text changed")
+		}
+		current.partClosed, current.closedTextDigest = true, digest
+		node.Metadata = p.MergeNodeMetadata(current.node.Metadata, node.Metadata, false)
+		event, err := stream.itemEvent(p.ItemSnapshot, contentKey, &node, p.Value{})
 		return []p.Event{event}, err
 	case "response.output_item.done":
 		item, err := fields["item"].ReadObject()
@@ -204,7 +241,10 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 			return nil, err
 		}
 		if itemKind == "message" {
-			return nil, nil
+			if message := stream.responseMessages[outputIndex]; message != nil && message.finished {
+				return nil, unsupported("/output_index", "message completed twice")
+			}
+			return stream.finishResponseMessage(outputIndex, item, options)
 		}
 		if itemKind != "function_call" && itemKind != "custom_tool_call" && itemKind != "reasoning" {
 			return []p.Event{{Type: p.NativeEvent}}, nil
@@ -227,7 +267,29 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 			return nil, err
 		}
 		stream.isFinished = true
-		return []p.Event{{Type: p.ResponseFinished, Response: response, Usage: response.Usage}}, nil
+		var events []p.Event
+		terminal, _ := fields["response"].ReadObject()
+		output, _ := readArray(terminal["output"])
+		for i := range response.Content {
+			node := &response.Content[i]
+			if node.Kind != p.MessageNode {
+				continue
+			}
+			item, err := output[i].ReadObject()
+			if err != nil {
+				return nil, err
+			}
+			if err := stream.checkResponsesItemID(p.Object{"item": output[i]}, i); err != nil {
+				return nil, err
+			}
+			batch, err := stream.finishResponseMessage(i, item, options)
+			if err != nil {
+				return nil, err
+			}
+			node.Metadata = p.MergeNodeMetadata(node.Metadata, stream.responseMessages[i].metadata, false)
+			events = append(events, batch...)
+		}
+		return append(events, p.Event{Type: p.ResponseFinished, Response: response, Usage: response.Usage}), nil
 	case "response.failed":
 		response, err := fields["response"].ReadObject()
 		if err != nil {

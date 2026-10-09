@@ -1,8 +1,14 @@
 package builtin
 
-import p "github.com/elysia-api/backend/protocol"
+import (
+	"crypto/sha256"
+	"fmt"
 
-// RepairOutputFixtures corrects a specific old builtin encoder expectation.
+	p "github.com/elysia-api/backend/protocol"
+)
+
+// RepairOutputFixtures corrects known obsolete builtin output expectations,
+// including the two fingerprinted Responses message-completion decoder oracles.
 // It changes the definition, never comparison semantics or runtime output.
 // The caller verifies and commits a new immutable revision and keeps the old
 // revision and operator draft. Handwritten/after mappings are not rewritten.
@@ -85,6 +91,11 @@ func RepairOutputFixtures(d p.Definition) (p.Definition, bool) {
 	}
 	for i, s := range d.Samples {
 		m := d.Directions[s.Direction]
+		if s.Direction == p.DecodeEvent && m.Module == Responses && m.After == nil && s.Sequence && s.ExpectedIssue == "" {
+			if expected, repaired := repairResponsesMessageOracle(s); repaired {
+				d.Samples[i].Expected, changed = expected, true
+			}
+		}
 		if fixtureHasNativeReplay(s) {
 			continue
 		}
@@ -100,6 +111,37 @@ func RepairOutputFixtures(d p.Definition) (p.Definition, bool) {
 		d.Samples[i].Expected = repair(s.Expected)
 	}
 	return d, changed
+}
+
+// Only the two exact shipped dev.28 decoder fixtures closed text before its
+// owning message. Advance those oracles with the corrected lifecycle. Do not
+// recalculate arbitrary user expectations from the implementation under test.
+// Canonical JSON keeps json.Number so the native large-number fixture is exact.
+func repairResponsesMessageOracle(sample p.Sample) (p.Value, bool) {
+	var input, expected any
+	if sample.Input.Decode(&input) != nil || sample.Expected.Decode(&expected) != nil {
+		return sample.Expected, false
+	}
+	canonical, err := p.EncodeValue([]any{input, expected})
+	if err != nil {
+		return sample.Expected, false
+	}
+	switch fmt.Sprintf("%x", sha256.Sum256(canonical.Bytes())) {
+	case "1c4b7aacd0ae89d8312ef93616371b348e0e9e46249ae9337d188c71b76b97a2", "4e1c2a7395c0ce684129ff3e9b1c367ba54302ab5269593c882ab684fc2cb2ac":
+	default:
+		return sample.Expected, false
+	}
+	var events []p.Value
+	_ = sample.Expected.Decode(&events)
+	// Existing event 3 is the complete text snapshot; preserve its payload and
+	// association for the part snapshot and the subsequent message completion.
+	snapshot := events[3]
+	finished, _ := snapshot.ReadObject()
+	finished["type"] = p.StringValue(string(p.ItemFinished))
+	result := append([]p.Value(nil), events[:4]...)
+	result = append(result, snapshot, object(finished))
+	result = append(result, events[5:]...)
+	return array(result), true
 }
 
 // Native replay fixtures assert original output, not an old generated oracle.

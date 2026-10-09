@@ -7,6 +7,58 @@ import (
 	"testing"
 )
 
+func TestRepairResponsesMessageCompletionOracles(t *testing.T) {
+	raw, err := os.ReadFile("testdata/responses-dev28-message-samples.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var samples []p.Sample
+	if err = json.Unmarshal(raw, &samples); err != nil {
+		t.Fatal(err)
+	}
+	definition := shippedProjectionProtocol(t, Responses).Definition()
+	definition.ID = "existing-custom-responses"
+	for i, sample := range definition.Samples {
+		for _, old := range samples {
+			if old.ID == sample.ID {
+				definition.Samples[i] = old
+			}
+		}
+	}
+	repaired, changed := RepairOutputFixtures(definition)
+	if !changed {
+		t.Fatal("old lifecycle evidence was not repaired")
+	}
+	if _, changed := RepairOutputFixtures(repaired); changed {
+		t.Fatal("repair is not idempotent")
+	}
+	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
+	data, _ := json.Marshal(repaired)
+	compiled, issues := compiler.Compile(data)
+	if compiled == nil {
+		t.Fatal(issues)
+	}
+	if report := p.Verify(t.Context(), compiled); !report.Passed {
+		t.Fatal(report.Issues)
+	}
+	for i, before := range definition.Samples {
+		if before.ID != "stream-text-decode" && before.ID != "stream-native-decode" {
+			sameJSON(t, repaired.Samples[i].Expected.Bytes(), string(before.Expected.Bytes()))
+		}
+	}
+	for _, mapping := range []p.Mapping{{Module: Responses, After: &p.Expression{Op: "read"}}, {Transform: &p.Expression{Op: "read"}}} {
+		definition.Directions[p.DecodeEvent] = mapping
+		if _, changed := RepairOutputFixtures(definition); changed {
+			t.Fatal("guessed custom decoder semantics")
+		}
+	}
+	changedSample := samples[0]
+	changedSample.Expected = testValue(t, `[]`)
+	if _, changed := repairResponsesMessageOracle(changedSample); changed {
+		t.Fatal("rewrote user expectation")
+	}
+}
+
 func TestRepairLegacyChatToolIdentityFixture(t *testing.T) {
 	raw, err := os.ReadFile("testdata/chat-82406b9.json")
 	if err != nil {

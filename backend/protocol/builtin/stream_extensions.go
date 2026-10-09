@@ -84,7 +84,7 @@ func (stream *streamModule) captureFrameExtensions(fields p.Object) (p.Value, er
 			}
 			switch item["type"] {
 			case p.StringValue("message"):
-				capture("/item", item, "type", "id", "role", "status", "content")
+				capture("/item", item, "type", "id", "role", "status", "content", "phase")
 				parts, err := readArray(item["content"])
 				if err != nil {
 					return p.Value{}, err

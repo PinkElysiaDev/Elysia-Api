@@ -71,6 +71,9 @@ func MetadataFieldType(codec, location, name string) string {
 	if location == "message" && codec == "openai-chat" && name == "annotations" {
 		return "array"
 	}
+	if location == "message" && codec == "responses" && name == "phase" {
+		return "message-phase"
+	}
 	if location == "content" {
 		if codec == "responses" && (name == "annotations" || name == "logprobs") {
 			return "array"
@@ -112,6 +115,8 @@ func ValidateMetadataValue(codec, location, name string, v Value, at string) err
 	}
 	ok := false
 	switch kind {
+	case "message-phase":
+		ok = v == StringValue("commentary") || v == StringValue("final_answer")
 	case "string", "reference":
 		var s string
 		ok = v.Decode(&s) == nil

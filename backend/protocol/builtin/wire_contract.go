@@ -249,6 +249,11 @@ func (adapter module) validateWireContract(direction p.Direction, value p.Value)
 				}
 			}
 			if f["type"] == p.StringValue("message") {
+				if phase := f["phase"]; !phase.IsZero() {
+					if err := p.ValidateMetadataValue(Responses, "message", "phase", phase, base+"/phase"); err != nil {
+						return fail(base+"/phase", "message phase must be commentary, final_answer or null")
+					}
+				}
 				if f["role"] != p.StringValue("assistant") {
 					return fail(base+"/role", "Responses output message requires assistant role")
 				}

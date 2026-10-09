@@ -74,7 +74,14 @@ func comparableStreamOutput(nodes []Node) []Node {
 		node.ID, node.Status = Value{}, Value{}
 		node.Children = comparableStreamOutput(node.Children)
 		if node.Kind == MessageNode && (node.Role.IsZero() || node.Role == StringValue("assistant")) && len(node.Attributes) == 0 && len(node.Cache) == 0 && len(node.Resources) == 0 && node.Payload.IsZero() && node.Input == nil && node.Name.IsZero() && node.CallID.IsZero() {
-			output = append(output, node.Children...)
+			if len(node.Children) == 0 {
+				output = append(output, node)
+				continue
+			}
+			for _, child := range node.Children {
+				child.Metadata = MergeNodeMetadata(child.Metadata, node.Metadata, false)
+				output = append(output, child)
+			}
 		} else {
 			output = append(output, node)
 		}

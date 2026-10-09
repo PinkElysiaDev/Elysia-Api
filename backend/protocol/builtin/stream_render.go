@@ -242,7 +242,8 @@ func (stream *streamModule) encodeItem(event p.Event, options p.EvaluationContex
 
 func (stream *streamModule) encodeItemStart(key string, item *streamItem, options p.EvaluationContext) ([]p.Value, error) {
 	node := item.node
-	if node.Kind != p.TextNode && node.Kind != p.ReasoningNode && node.Kind != p.RefusalNode && node.Kind != p.ToolCallNode {
+	emptyMessage := stream.name == Responses && node.Kind == p.MessageNode && len(node.Children) == 0
+	if node.Kind != p.TextNode && node.Kind != p.ReasoningNode && node.Kind != p.RefusalNode && node.Kind != p.ToolCallNode && !emptyMessage {
 		return nil, unsupported("/item", "stream target cannot express this item kind")
 	}
 	switch stream.name {
@@ -280,6 +281,9 @@ func (stream *streamModule) encodeItemStart(key string, item *streamItem, option
 	case Responses:
 		id := item.wireID
 		block := p.Object{"id": id, "type": p.StringValue("message"), "role": p.StringValue("assistant"), "status": p.StringValue("in_progress"), "content": array(nil)}
+		if err := stream.module.writeMetadata(block, node.Metadata, "message"); err != nil {
+			return nil, err
+		}
 		if node.Kind == p.ReasoningNode {
 			block = p.Object{"id": id, "type": p.StringValue("reasoning"), "status": p.StringValue("in_progress"), "summary": array(nil)}
 			if node.ReasoningForm == "" || node.ReasoningContent != nil {
@@ -297,7 +301,7 @@ func (stream *streamModule) encodeItemStart(key string, item *streamItem, option
 		if node.Kind == p.ReasoningNode && node.ReasoningForm == "" {
 			frames = append(frames, stream.responsesEvent("response.content_part.added", key, item, "part", object(p.Object{"type": p.StringValue("reasoning_text"), "text": p.StringValue("")})))
 		}
-		if node.Kind != p.ToolCallNode && node.Kind != p.ReasoningNode {
+		if node.Kind != p.ToolCallNode && node.Kind != p.ReasoningNode && !emptyMessage {
 			part := p.Object{"type": p.StringValue("output_text"), "text": p.StringValue(""), "annotations": array(nil)}
 			if node.Kind == p.RefusalNode {
 				part = p.Object{"type": p.StringValue("refusal"), "refusal": p.StringValue("")}
@@ -367,7 +371,7 @@ func (stream *streamModule) encodeDelta(key string, item *streamItem, delta stri
 
 func (stream *streamModule) materialize(item *streamItem) (p.Node, error) {
 	node := item.node
-	if node.ReasoningForm != "" {
+	if node.ReasoningForm != "" || node.Kind == p.MessageNode {
 		return node, nil
 	}
 	if node.Kind != p.ToolCallNode {
@@ -427,6 +431,13 @@ func (stream *streamModule) encodeItemEnd(key string, item *streamItem, options 
 		}
 		return []p.Value{stream.geminiChunk(array([]p.Value{block}), p.Value{}, p.Value{})}, nil
 	case Responses:
+		if node.Kind == p.MessageNode && len(node.Children) == 0 {
+			message := p.Object{"id": item.wireID, "type": p.StringValue("message"), "role": p.StringValue("assistant"), "status": p.StringValue("completed"), "content": array(nil)}
+			if err := stream.module.writeMetadata(message, node.Metadata, "message"); err != nil {
+				return nil, err
+			}
+			return []p.Value{stream.responsesEvent("response.output_item.done", key, item, "item", object(message))}, nil
+		}
 		if node.Kind == p.ToolCallNode || node.Kind == p.ReasoningNode {
 			node.ID = item.wireID
 			node.Status = p.StringValue("completed")
@@ -452,7 +463,11 @@ func (stream *streamModule) encodeItemEnd(key string, item *streamItem, options 
 			}
 			return append(frames, stream.responsesEvent("response.output_item.done", key, item, "item", block)), nil
 		}
-		message := object(p.Object{"id": item.wireID, "type": p.StringValue("message"), "role": p.StringValue("assistant"), "status": p.StringValue("completed"), "content": array([]p.Value{block})})
+		messageFields := p.Object{"id": item.wireID, "type": p.StringValue("message"), "role": p.StringValue("assistant"), "status": p.StringValue("completed"), "content": array([]p.Value{block})}
+		if err := stream.module.writeMetadata(messageFields, node.Metadata, "message"); err != nil {
+			return nil, err
+		}
+		message := object(messageFields)
 		kind, field := "response.output_text.done", "text"
 		if node.Kind == p.RefusalNode {
 			kind, field = "response.refusal.done", "refusal"
@@ -488,7 +503,7 @@ func (stream *streamModule) Finish(ctx context.Context, options p.EvaluationCont
 			if err != nil {
 				return nil, err
 			}
-			if node.Kind == p.ToolCallNode || node.Kind == p.ReasoningNode {
+			if node.Kind == p.ToolCallNode || node.Kind == p.ReasoningNode || node.Kind == p.MessageNode {
 				node.ID = item.wireID
 				node.Status = p.StringValue("completed")
 			} else {

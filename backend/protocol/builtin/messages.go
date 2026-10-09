@@ -199,6 +199,9 @@ func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, opti
 			continue
 		}
 		fields := p.Object{"role": node.Role, "id": node.ID, "status": node.Status}
+		if err := adapter.writeMetadata(fields, adapter.contentMetadata([]p.Node{node}), "message"); err != nil {
+			return p.Value{}, p.Value{}, err
+		}
 		if err := adapter.preserveExtensions(fields, node.Attributes); err != nil {
 			return p.Value{}, p.Value{}, err
 		}
@@ -244,6 +247,10 @@ func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, opti
 			fields["content"] = array(parts)
 			messages = append(messages, object(fields))
 		case Responses:
+			if len(node.Children) == 0 {
+				fields["type"], fields["content"] = p.StringValue("message"), array(nil)
+				messages = append(messages, object(fields))
+			}
 			flush()
 		}
 	}

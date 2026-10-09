@@ -167,8 +167,14 @@ func collectedOutput(nodes []Node) []Node {
 	for _, node := range nodes {
 		node = CanonicalReasoning(node)
 		if node.Kind == MessageNode {
-			output = append(output, collectedOutput(node.Children)...)
-			continue
+			if len(node.Children) > 0 {
+				children := cloneNodes(node.Children)
+				for i := range children {
+					children[i].Metadata = MergeNodeMetadata(children[i].Metadata, node.Metadata, false)
+				}
+				output = append(output, collectedOutput(children)...)
+				continue
+			}
 		}
 		node.Native = nil
 		node.Source = nil
@@ -272,7 +278,7 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 		collector.bytes += len(delta)
 	}
 	if item.Kind != ToolCallNode {
-		if item.ReasoningForm != "" {
+		if item.ReasoningForm != "" || item.Kind == MessageNode {
 			return item.Kind, "", nil
 		}
 		for _, resource := range item.Resources {

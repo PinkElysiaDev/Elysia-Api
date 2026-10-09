@@ -26,6 +26,9 @@ type streamItem struct {
 	visibleTexts         []string
 	visibleTextDone      map[int]bool
 	visiblePartDone      map[int]bool
+	partClosed           bool
+	textClosed           bool
+	closedTextDigest     [32]byte
 }
 
 type streamModule struct {
@@ -50,6 +53,7 @@ type streamModule struct {
 	usageFields      p.Object
 	usageBytes       int
 	responseItemIDs  map[int]p.Value
+	responseMessages map[int]*responseMessageState
 	attributes       p.Object
 	sequence         int64
 	hasSequence      bool

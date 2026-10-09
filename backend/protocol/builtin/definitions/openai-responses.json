@@ -2056,10 +2056,26 @@
         {
           "schemaVersion": 1,
           "source": {},
+          "type": "item.snapshot",
+          "responseId": "r",
+          "itemId": "output:0:0",
+          "index": 0,
+          "item": {
+            "kind": "text",
+            "payload": "hi"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
           "type": "item.finished",
           "responseId": "r",
           "itemId": "output:0:0",
-          "index": 0
+          "index": 0,
+          "item": {
+            "kind": "text",
+            "payload": "hi"
+          }
         },
         {
           "schemaVersion": 1,
@@ -2339,10 +2355,26 @@
         {
           "schemaVersion": 1,
           "source": {},
+          "type": "item.snapshot",
+          "responseId": "r",
+          "itemId": "output:0:0",
+          "index": 0,
+          "item": {
+            "kind": "text",
+            "payload": "hi"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "source": {},
           "type": "item.finished",
           "responseId": "r",
           "itemId": "output:0:0",
-          "index": 0
+          "index": 0,
+          "item": {
+            "kind": "text",
+            "payload": "hi"
+          }
         },
         {
           "schemaVersion": 1,
