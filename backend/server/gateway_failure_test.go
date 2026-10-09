@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -75,5 +76,57 @@ func TestCustomHTTPFailuresUseDeclaredResponseDirections(t *testing.T) {
 				t.Fatalf("declared failure was not converted: %d %s", recorder.Code, recorder.Body.String())
 			}
 		})
+	}
+}
+
+func TestGatewayUnmappedFailureKeepsProviderMessageAndConversionIssue(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	activateDiscoveryPresets(t, s)
+	service, _ := s.protocolService()
+	upstream, _ := service.Pin(protocol.PresetChatCompletionsID)
+	ingress, _ := service.Pin(protocol.PresetAnthropicID)
+	const message = "Thinking mode does not support this tool_choice"
+	const body = `{"error":{"type":"invalid_request_error","code":"invalid_request_error","message":"` + message + `","param":null}}`
+	var calls atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer provider.Close()
+	setupGatewayModel(t, s, upstream, provider.URL)
+	s.engine.POST("/v1/messages", s.authMiddleware(), s.chatCompletions)
+	for _, path := range []string{"/v1/messages", "/gateway/anthropic-messages/v1/messages"} {
+		before := calls.Load()
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"group","max_tokens":128,"messages":[{"role":"user","content":"hello"}]}`))
+		req.Header.Set("Authorization", "Bearer gateway-test-token")
+		rec := httptest.NewRecorder()
+		s.engine.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), message) || !strings.Contains(rec.Body.String(), "/error/code") {
+			t.Fatalf("provider cause masked: %d %s", rec.Code, rec.Body.String())
+		}
+		if calls.Load() != before+1 {
+			t.Fatal("nonretryable upstream rejection retried")
+		}
+	}
+	for _, status := range []int{http.StatusBadRequest, http.StatusServiceUnavailable} {
+		record := &usageRecord{}
+		err := mapGatewayHTTPFailure(t.Context(), record, status, []byte(body), ingress, gatewayCandidate{compiled: upstream}, protocol.EvaluationContext{})
+		var issue *protocol.ConversionError
+		var failure *gatewayFailure
+		if !errors.As(err, &issue) || len(issue.Issues) == 0 || issue.Issues[0].Path != "/error/code" || !errors.As(err, &failure) || failure.status != status {
+			t.Fatalf("lost typed failure: %v", err)
+		}
+		if canRetryGeneration(err) != (status == http.StatusServiceUnavailable) {
+			t.Fatal("HTTP retry classification changed")
+		}
+	}
+	// Opaque fields remain rejected; only the typed message is added to the
+	// public failure context. This is not successful provider error mapping.
+	response := &protocol.Response{SchemaVersion: 1, Error: mustProtocolValue(t, `{"message":"readable provider cause","code":"unsupported-code","details":{"private":"must-not-leak"}}`)}
+	failure := encodeGatewayFailure(t.Context(), http.StatusBadGateway, response, ingress, protocol.EvaluationContext{})
+	if !strings.Contains(failure.Error(), "readable provider cause") || strings.Contains(failure.Error(), "must-not-leak") || canRetryGeneration(failure) {
+		t.Fatalf("unsafe/misclassified conversion context: %v", failure)
 	}
 }

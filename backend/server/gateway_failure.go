@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/elysia-api/backend/protocol"
 )
@@ -37,6 +38,14 @@ func encodeGatewayFailure(ctx context.Context, status int, response *protocol.Re
 	options.Values = protocol.Object{"httpStatus": statusValue}
 	encoded, err := ingress.EncodeResponse(ctx, response, options)
 	if err != nil {
+		// Preserve the readable provider cause without serializing its whole
+		// error object (which may contain opaque details or private data).
+		// Keep the conversion error in the chain for diagnostics/retry logic.
+		fields, _ := response.Error.ReadObject()
+		var message string
+		if fields["message"].Decode(&message) == nil && message != "" {
+			err = fmt.Errorf("upstream failure: %q; error conversion failed: %w", message, err)
+		}
 		return &gatewayFailure{status, err}
 	}
 	return &gatewayFailure{status, &upstreamFailure{cause: protocol.CheckGenerationOutcome(response), body: encoded}}
