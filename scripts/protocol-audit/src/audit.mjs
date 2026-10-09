@@ -4,6 +4,7 @@ import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
+import { parseTree } from 'jsonc-parser'
 import { protocols, scenarios, AuditError, endpoint, requestBody, followupBody, inspectReply, inspectModels } from './protocols.mjs'
 import { mapConcurrent, serialize } from './concurrency.mjs'
 import { eventSequence, failureCategory } from './evidence.mjs'
@@ -89,13 +90,25 @@ export function redactor(secrets) {
   const text = raw => {
     let result = String(raw)
     for (const secret of values) result = result.split(secret).join('[REDACTED]')
-    try {
-      const parsed = JSON.parse(result)
-      if (object(parsed) || Array.isArray(parsed)) return JSON.stringify(clean(parsed))
-    } catch { /* Non-JSON logs and SSE still receive field/credential masking. */ }
-    result = result.replace(/^data: ?(.+)$/gm, (line, data) => {
-      try { return `data: ${JSON.stringify(clean(JSON.parse(data)))}` } catch { return line }
-    })
+    const errors = [], tree = parseTree(result, errors, { disallowComments: true, allowTrailingComma: false })
+    if (tree && !errors.length && ['object', 'array'].includes(tree.type)) {
+      const edits = []
+      const visit = node => {
+        if (node.type === 'property' && sensitive.test(node.children[0].value)) {
+          const value = node.children[1]
+          edits.push({ offset: value.offset, length: value.length, value: '"[REDACTED]"' })
+        } else if (node.type === 'string') {
+          const changed = text(node.value)
+          if (changed !== node.value) edits.push({ offset: node.offset, length: node.length, value: JSON.stringify(changed) })
+        } else for (const child of node.children || []) visit(child)
+      }
+      visit(tree)
+      // Replace sensitive spans only. Never decode and stringify an entire
+      // payload: that rounds int64s and erases argument whitespace evidence.
+      for (const edit of edits.sort((a,b) => b.offset-a.offset)) result = result.slice(0, edit.offset) + edit.value + result.slice(edit.offset+edit.length)
+      return result
+    }
+    result = result.replace(/^(data: ?)(.+)$/gm, (_line, prefix, data) => prefix + text(data))
     result = result.replace(/(Bearer\s+)[^\s"'\\]+/gi, '$1[REDACTED]')
     return result.replace(/("(?:api[-_]?key|x-api-key|x-goog-api-key|access[-_]?token|refresh[-_]?token|id[-_]?token|token|authorization|proxy-authorization|password|secret|cookie|set-cookie|signature|thoughtSignature|thought_signature|encrypted_content|elysia_continuation)"\s*:\s*)"(?:\\.|[^"\\])*"/gi, '$1"[REDACTED]"')
   }

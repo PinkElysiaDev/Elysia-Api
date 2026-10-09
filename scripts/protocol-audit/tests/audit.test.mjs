@@ -282,6 +282,16 @@ test('redaction covers JSON, nested JSON strings, SSE, quoted secrets and bearer
   for (const denied of ['unconfigured', 'opaque', 'something-private', 'quote-and']) assert.ok(!text.includes(denied), denied)
 })
 
+test('redaction preserves nonsensitive JSON bytes, nested argument whitespace, and int64s', () => {
+  const clean = redactor([])
+  const raw = '{ "n":9007199254740993, "arguments":"{ \\\"value\\\": 7 }", "signature": "private" }'
+  assert.equal(clean(raw), raw.replace('"private"', '"[REDACTED]"'))
+  const sse = `data: ${raw}\n\n`
+  assert.equal(clean(sse), sse.replace('"private"', '"[REDACTED]"'))
+  const plain = '{ "n":9007199254740993, "arguments":"{ \\\"value\\\": 7 }" }'
+  assert.equal(clean(plain), plain)
+})
+
 test('invalid configuration is rejected instead of silently changing test scope', () => {
   for (const patch of [{ unknown: true }, { scenarios: ['typo'] }, { streams: [false, false] }, { maxRequests: -1 }, { retry: 3 }]) assert.throws(() => planAudit({ ...settings('http://localhost'), ...patch }), /Configuration/)
   for (const baseUrl of ['file:///tmp/test', 'https://user:password@example.com', 'https://example.com?key=secret']) assert.throws(() => planAudit(settings(baseUrl)), /Configuration/)

@@ -23,6 +23,9 @@ async function copyPackage(root) {
   await copyFile(new URL('../run.mjs', import.meta.url), join(root, 'run.mjs'))
   await writeFile(join(root, 'config.example.json'), JSON.stringify(exampleConfig()))
   await cp(new URL('../src/', import.meta.url), join(root, 'src'), { recursive: true })
+  // The standalone package now uses a source-span JSON parser for redaction.
+  // Copy its installed, pinned dependency without fetching during offline tests.
+  await cp(new URL('../node_modules/jsonc-parser/', import.meta.url), join(root, 'node_modules/jsonc-parser'), { recursive: true })
 }
 
 test('default selects every group with four independently configured protocols', () => {
