@@ -139,7 +139,17 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 				return nil, err
 			}
 			system = block["parts"]
-			if extra := collectUnknown(block, []string{"parts"}); !extra.IsZero() {
+			// systemInstruction is a Content envelope. Google SDKs assign its
+			// role to "user" even when given a plain system string. Its position
+			// already establishes system authority; the wrapper role must not
+			// become an unmapped parameter or change the semantic message role.
+			// Native reconciliation retains its exact presence/value on Gemini.
+			if role := block["role"]; !role.IsZero() && !role.IsNull() {
+				if _, err := stringValue(role); err != nil {
+					return nil, p.IssuesError([]p.ConversionIssue{{Code: p.InvalidInput, Severity: p.SeverityError, Path: "/systemInstruction/role", Reason: "system instruction role must be a string or null"}})
+				}
+			}
+			if extra := collectUnknown(block, []string{"parts", "role"}); !extra.IsZero() {
 				key := wireExtensionPrefix + adapter.family
 				root := p.Object{}
 				if value := request.Parameters[key]; !value.IsZero() {
