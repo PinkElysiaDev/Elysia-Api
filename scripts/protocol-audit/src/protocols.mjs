@@ -1,5 +1,5 @@
 export const protocols = ['chat', 'responses', 'anthropic', 'gemini']
-export const scenarios = ['models', 'text', 'multiturn', 'tools', 'system', 'chinese', 'history', 'image']
+export const scenarios = ['models', 'text', 'multiturn', 'tools', 'tools_auto', 'system', 'chinese', 'history', 'image']
 
 export class AuditError extends Error {
   constructor(code, message, path = '') { super(message); this.code = code; this.path = path }
@@ -20,6 +20,8 @@ export function endpoint(baseUrl, protocol, model, stream, models = false) {
 }
 
 export function requestBody(protocol, model, stream, scenario, marker, maxOutputTokens) {
+	const automaticTools = scenario === 'tools_auto'
+	if (automaticTools) scenario = 'tools'
   const prompt = scenario === 'system' ? 'Reply only with the code from system instructions.' : scenario === 'chinese' ? '请只回复：测试成功' : scenario === 'image' ? 'What solid color is this image? Reply with only the English color name.' : scenario === 'tools' ? 'Call audit_echo with value 7. After receiving the result, reply with its marker exactly.'
     : scenario === 'multiturn' ? `Remember this code: ${marker}. Reply with OK.` : 'Reply exactly OK.'
   let body
@@ -54,6 +56,10 @@ export function requestBody(protocol, model, stream, scenario, marker, maxOutput
     if (protocol === 'responses') Object.assign(body, { tools: [{ type: 'function', ...tool }], tool_choice: { type: 'function', name: tool.name } })
     if (protocol === 'anthropic') Object.assign(body, { tools: [{ name: tool.name, description: tool.description, input_schema: schema }], tool_choice: { type: 'tool', name: tool.name } })
     if (protocol === 'gemini') Object.assign(body, { tools: [{ functionDeclarations: [{ ...tool, parameters: { type: schema.type, properties: schema.properties, required: schema.required } }] }], toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [tool.name] } } })
+  }
+  if (automaticTools) {
+    if (protocol === 'gemini') body.toolConfig = { functionCallingConfig: { mode: 'AUTO' } }
+    else body.tool_choice = protocol === 'anthropic' ? { type: 'auto' } : 'auto'
   }
   return body
 }

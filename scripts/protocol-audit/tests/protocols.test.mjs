@@ -3,6 +3,19 @@ import assert from 'node:assert/strict'
 import { protocols, endpoint, parseSSE, inspectReply, requestBody, followupBody } from '../src/protocols.mjs'
 import { fixtureSignature, replyWire } from './fixtures.mjs'
 
+for (const protocol of protocols) test(`${protocol} automatic tools retain forced-tool coverage as a separate scenario`, () => {
+  const forced = requestBody(protocol, 'test', false, 'tools', 'marker', 32768)
+  const auto = requestBody(protocol, 'test', false, 'tools_auto', 'marker', 32768)
+  assert.deepEqual(auto.tools, forced.tools)
+  assert.notDeepEqual(auto.tool_choice ?? auto.toolConfig, forced.tool_choice ?? forced.toolConfig)
+  assert.deepEqual(auto.tool_choice ?? auto.toolConfig, protocol === 'gemini' ? { functionCallingConfig: { mode: 'AUTO' } } : protocol === 'anthropic' ? { type: 'auto' } : 'auto')
+  const reply = inspectReply(protocol, replyWire(protocol, '', true, false), false)
+  const second = followupBody(protocol, auto, reply, 'tools_auto', 'RESULT_ONLY')
+  assert.ok(JSON.stringify(second).includes('RESULT_ONLY'))
+  assert.ok(JSON.stringify(second).includes('call_1'))
+  assert.ok(JSON.stringify(second).includes(fixtureSignature))
+})
+
 for (const protocol of protocols) for (const stream of [false, true]) {
   test(`${protocol} ${stream ? 'SSE' : 'JSON'} preserves tool IDs and opaque continuation fields`, () => {
     const reply = inspectReply(protocol, replyWire(protocol, '', true, stream), stream)

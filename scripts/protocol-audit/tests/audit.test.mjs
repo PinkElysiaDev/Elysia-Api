@@ -18,6 +18,17 @@ async function fixture(t, handler) {
 
 const settings = baseUrl => ({ scenarios: ['text'], streams: [false], targets: [{ id: 'chat', protocol: 'chat', baseUrl, model: 'test', apiKeyEnv: 'TEST_KEY' }] })
 
+test('automatic tool audits reserve two calls and fail when the model never calls a tool', async t => {
+  const f = await fixture(t, (req, res) => { req.resume(); res.end(replyWire('chat')) })
+  const config = { ...settings(f.baseUrl), scenarios: ['tools_auto'] }
+  assert.equal(planAudit(config).maximumRequests, 2)
+  const result = await runAudit(config, { ...f, env: { TEST_KEY: 'synthetic-only' } })
+  assert.equal(result.requestsSent, 1)
+  assert.equal(result.cases[0].status, 'failed')
+  assert.ok(result.cases[0].issues.some(i => i.code === 'tool_call_missing'))
+  assert.equal(result.cases[0].unexecutedRounds, 1)
+})
+
 test('HTTP failures are recorded, secrets are redacted, and later cases still run', async t => {
   let count = 0
   const secret = 'synthetic-key-never-save-this'

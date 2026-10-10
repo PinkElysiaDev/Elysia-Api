@@ -49,7 +49,7 @@ export function planAudit(input) {
   const cases = [], ids = new Set(), sources = new Map()
   const id = value => { validate(typeof value === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(value) && !ids.has(value), 'IDs must be unique, 1–64 ASCII letters/digits/underscores/hyphens'); ids.add(value) }
   const add = (target, kind, protocol, upstream) => {
-    for (const scenario of config.scenarios) for (const stream of scenario === 'models' ? [false] : config.streams) cases.push({ id: `${kind}/${target.id}/${protocol}/${scenario}/${stream ? 'sse' : 'json'}`, kind, protocol, target: target.id, upstream, model: target.model, scenario, stream, maximumRequests: ['tools', 'multiturn'].includes(scenario) ? 2 : 1, connection: target, ...(scenario === 'image' && !(kind === 'gateway' ? sources.get(upstream) : target)?.vision ? { skipReason: '目标未声明 vision:true，图片场景不适用' } : {}) })
+    for (const scenario of config.scenarios) for (const stream of scenario === 'models' ? [false] : config.streams) cases.push({ id: `${kind}/${target.id}/${protocol}/${scenario}/${stream ? 'sse' : 'json'}`, kind, protocol, target: target.id, upstream, model: target.model, scenario, stream, maximumRequests: ['tools', 'tools_auto', 'multiturn'].includes(scenario) ? 2 : 1, connection: target, ...(scenario === 'image' && !(kind === 'gateway' ? sources.get(upstream) : target)?.vision ? { skipReason: '目标未声明 vision:true，图片场景不适用' } : {}) })
   }
   for (const target of config.targets) {
     fields(target, ['id', 'protocol', 'baseUrl', 'model', 'apiKey', 'apiKeyEnv', 'auth', 'headersEnv', 'vision'], 'target')
@@ -285,7 +285,7 @@ export async function runAudit(input, { outputDir, env = process.env, signal, on
         item.issues.push(...reply.issues); item.warnings.push(...reply.warnings)
         if (reply.usage) (item.usage ||= []).push(reply.usage)
         if (task.scenario === 'models') { item.modelFound = reply.modelFound; item.modelCount = reply.modelCount }
-        else if (round === 1 && task.scenario === 'tools') {
+        else if (round === 1 && ['tools', 'tools_auto'].includes(task.scenario)) {
           if (!reply.calls.length) item.issues.push({ code: 'tool_call_missing', path: '', message: 'Model did not return the requested audit_echo call' })
           const ids = new Set()
           for (const call of reply.calls) {

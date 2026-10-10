@@ -162,13 +162,15 @@ node scripts/protocol-audit/run.mjs --config /path/to/config.json --out /path/to
 | `maxResponseBytes` | `16777216`（16 MiB），单次 HTTP 响应或代码日志上限；超限会失败并保存已收集的部分 |
 | `maxOutputTokens` | `32768`，单次生成预算；普通 HTTP、SDK 和工具后续轮次统一使用 |
 | `requireUsage` | `true`，协议与日常调用要求返回用量计数；Gemini 允许省略可选分项，已返回的计数仍须有效 |
-| `scenarios` | `models`, `text`, `multiturn`, `tools`, `system`, `chinese`, `history`；影响 protocol 组 |
+| `scenarios` | `models`, `text`, `multiturn`, `tools`, `tools_auto`, `system`, `chinese`, `history`；影响 protocol 组 |
 | `streams` | `[false, true]`，protocol 和 sdk 组分别跑 JSON 与 SSE |
 | `codeChecks` | 省略使用内置代码检查；非空数组可替换 |
 
 没有密钥的服务可用 `"auth": "none"`。渠道使用各协议的标准密钥认证，暂不支持自定义认证请求头。
 
 图片为可选场景：将 `image` 加入 `scenarios`，在支持图片的渠道上设置 `"vision": true`。脚本发送内置红色 PNG；未声明图片能力的路径标记不适用。
+
+`tools` 强制指定 `audit_echo`，`tools_auto` 使用自动选择并通过提示要求调用同一个工具。两者分别记录，均要求真实工具调用及第二轮结果标记；自动模式不调用工具时仍算失败。若渠道在思考模式下拒绝强制选择，保留 `tools` 的直连失败证据，另运行 `tools_auto` 验证工具往返，不能将前者改记为通过。
 
 默认 protocol 组每条路径 13 个用例、最多 17 次请求；四种上游的直连加 4×4 网关路径共 260 个用例、最多 340 次请求，其中 320 次为模型生成。完整运行全部六组约有 440 次模型生成，另有模型列表和管理请求；失败可能减少后续调用。脚本不自动重试；请求预算不约束网关内部行为或实际费用。
 
