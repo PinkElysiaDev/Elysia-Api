@@ -11,7 +11,7 @@ func TestForeignWireExtensionNamesTheUnsupportedField(t *testing.T) {
 	from, to := shippedProjectionProtocol(t, Gemini), shippedProjectionProtocol(t, Responses)
 	options := p.EvaluationContext{Scope: p.Scope{Model: "m"}}
 	for _, tc := range []struct{ field, path string }{
-		{`"safetySettings":[{"category":"HARM_CATEGORY_HARASSMENT","threshold":"BLOCK_NONE"}]`, "/wire:gemini/safetySettings"},
+		{`"safetySettings":[{"category":"HARM_CATEGORY_HARASSMENT","threshold":"BLOCK_NONE"}]`, "/parameters/gemini_safety_settings"},
 		{`"systemInstruction":{"role":"user","parts":[{"text":"prefix"}],"vendor":{"state":"private-value"}}`, "/wire:gemini/systemInstruction/vendor/state"},
 		{`"z":false,"a/b~c":{"token":"private-value"}`, "/wire:gemini/a~1b~0c/token"},
 		{`"vendor":{}`, "/wire:gemini/vendor"},

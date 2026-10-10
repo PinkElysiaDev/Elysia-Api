@@ -37,7 +37,13 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 				return nil, err
 			}
 		}
-		known = append(known, "generationConfig", "cachedContent", "systemInstruction", "contents", "toolConfig")
+		known = append(known, "generationConfig", "cachedContent", "systemInstruction", "contents", "toolConfig", "safetySettings")
+		if safety, present := fields["safetySettings"]; present {
+			if _, err := p.ParseGeminiSafetySettings(safety); err != nil {
+				return nil, err
+			}
+			request.Parameters["gemini_safety_settings"] = safety
+		}
 	}
 	for wire, semantic := range parameterFields[adapter.name] {
 		if value, exists := parameterInput[wire]; exists {
@@ -450,6 +456,10 @@ func (adapter module) encodeParameters(fields p.Object, parameters p.Object) err
 		}
 		if semantic == "stream" && adapter.name == Gemini {
 			continue // Selected by the endpoint, not a Gemini JSON field.
+		}
+		if semantic == "gemini_safety_settings" && adapter.name == Gemini {
+			fields["safetySettings"] = value
+			continue
 		}
 		isMapped := false
 		for wire, name := range parameterFields[adapter.name] {

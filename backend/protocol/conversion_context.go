@@ -22,6 +22,9 @@ func validateRequestContext(request *Request) error {
 	if request == nil {
 		return nil // CheckRequest reports the missing semantic document.
 	}
+	if _, err := ParseGeminiSafetySettings(request.Parameters["gemini_safety_settings"]); err != nil {
+		return err
+	}
 	return ValidateResponsesContext(request.Parameters["responses_truncation"], request.Parameters["responses_previous_response_id"])
 }
 
@@ -35,6 +38,9 @@ func validateContextValue(phase ConversionPhase, value Value) error {
 	}
 	parameters, err := fields["parameters"].ReadObject()
 	if err != nil {
+		return err
+	}
+	if _, err := ParseGeminiSafetySettings(parameters["gemini_safety_settings"]); err != nil {
 		return err
 	}
 	return ValidateResponsesContext(parameters["responses_truncation"], parameters["responses_previous_response_id"])

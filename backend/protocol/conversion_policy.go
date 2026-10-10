@@ -204,13 +204,13 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if r.Enabled {
 			orders[key] = r.ID
 		}
-		if !slices.Contains([]string{"set", "remove", "transform", "warn", "reject", "signatures", "stream_options", "tool_result_object", "tool_result_text", "system_instruction_hoist", "chat_history", "assistant_history", "buffer_node", "provider_signature", "responses_include", "responses_context", "usage_projection", "response_metadata", "response_shape", "response_envelope", "responses_storage", "anthropic_usage_envelope"}, r.Action) {
+		if !slices.Contains([]string{"set", "remove", "transform", "warn", "reject", "signatures", "stream_options", "tool_result_object", "tool_result_text", "system_instruction_hoist", "chat_history", "assistant_history", "buffer_node", "provider_signature", "responses_include", "responses_context", "gemini_safety_settings", "usage_projection", "response_metadata", "response_shape", "response_envelope", "responses_storage", "anthropic_usage_envelope"}, r.Action) {
 			return nil, fmt.Errorf("unknown conversion action %q", r.Action)
 		}
 		if (r.Action == "response_metadata" || r.Action == "response_shape" || r.Action == "response_envelope" || r.Action == "usage_projection" || r.Action == "anthropic_usage_envelope") && r.Phase != ConversionResponse && r.Phase != ConversionEvent && !(r.Action == "response_metadata" && r.Phase == ConversionRequest) {
 			return nil, fmt.Errorf("%s requires response or event phase", r.Action)
 		}
-		if r.Action == "response_metadata" || r.Action == "response_shape" || r.Action == "response_envelope" || r.Action == "usage_projection" || r.Action == "responses_include" || r.Action == "responses_context" {
+		if r.Action == "response_metadata" || r.Action == "response_shape" || r.Action == "response_envelope" || r.Action == "usage_projection" || r.Action == "responses_include" || r.Action == "responses_context" || r.Action == "gemini_safety_settings" {
 			var codec string
 			if r.Value.Decode(&codec) != nil || !knownConversionCodec(codec) {
 				return nil, fmt.Errorf("%s requires a known target codec in value", r.Action)
@@ -239,10 +239,10 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if r.Action == "buffer_node" && r.Phase != ConversionEvent {
 			return nil, fmt.Errorf("buffer_node requires event phase")
 		}
-		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "responses_context" || r.Action == "responses_storage") && r.Phase != ConversionRequest {
+		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "responses_context" || r.Action == "gemini_safety_settings" || r.Action == "responses_storage") && r.Phase != ConversionRequest {
 			return nil, fmt.Errorf("%s requires request phase", r.Action)
 		}
-		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "responses_context" || r.Action == "usage_projection" || r.Action == "responses_storage" || r.Action == "anthropic_usage_envelope") && r.Match.NodeKind != "" {
+		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "responses_context" || r.Action == "gemini_safety_settings" || r.Action == "usage_projection" || r.Action == "responses_storage" || r.Action == "anthropic_usage_envelope") && r.Match.NodeKind != "" {
 			return nil, fmt.Errorf("%s matches the complete semantic value, not an individual node", r.Action)
 		}
 		if r.Match.NodeKind != "" {
@@ -375,7 +375,7 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 		}
 		var err error
 		switch {
-		case rule.Action == "system_instruction_hoist" || rule.Action == "chat_history" || rule.Action == "assistant_history" || rule.Action == "stream_options" || rule.Action == "responses_include" || rule.Action == "responses_context" || rule.Action == "responses_storage":
+		case rule.Action == "system_instruction_hoist" || rule.Action == "chat_history" || rule.Action == "assistant_history" || rule.Action == "stream_options" || rule.Action == "responses_include" || rule.Action == "responses_context" || rule.Action == "responses_storage" || rule.Action == "gemini_safety_settings":
 			if !rule.Match.matches(route, value) {
 				continue
 			}
@@ -389,6 +389,8 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 					err = c.responsesStorage(&req, route, rule, sink)
 				} else if rule.Action == "responses_include" {
 					err = c.responsesInclude(&req, route, rule, sink)
+				} else if rule.Action == "gemini_safety_settings" {
+					err = c.geminiSafetySettings(&req, route, rule, sink)
 				} else if rule.Action == "responses_context" {
 					err = c.responsesContext(&req, route, rule, sink)
 				} else {

@@ -51,6 +51,7 @@ func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 		p.Rules = append(p.Rules,
 			ConversionRule{ID: "history-response-metadata", Order: 160, Enabled: true, Phase: ConversionRequest, Action: "response_metadata", Value: StringValue(codec)},
 			ConversionRule{ID: "client-stream-options", Order: 100, Enabled: true, Phase: ConversionRequest, Action: "stream_options"},
+			ConversionRule{ID: "gemini-safety-settings", Order: 170, Enabled: true, Phase: ConversionRequest, Action: "gemini_safety_settings", Value: StringValue(codec)},
 			ConversionRule{ID: "responses-include", Order: 180, Enabled: true, Phase: ConversionRequest, Action: "responses_include", Value: StringValue(codec)},
 			ConversionRule{ID: "responses-context", Order: 185, Enabled: true, Phase: ConversionRequest, Action: "responses_context", Value: StringValue(codec)},
 			ConversionRule{ID: "request-signatures", Order: 200, Enabled: true, Phase: ConversionRequest, Action: "signatures"})
