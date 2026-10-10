@@ -1,6 +1,9 @@
 package protocol
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // assistantHistory projects one contiguous assistant turn before encoding. Tool
 // results and other roles end the turn; unfinished history is never discarded.
@@ -107,6 +110,10 @@ func (c *CompiledConversion) assistantHistory(request *Request, route Conversion
 // Chat exposes separate reasoning, content, calls and refusal fields. Project
 // that order explicitly so round-trip verification sees the same target data.
 func (c *CompiledConversion) chatHistoryChildren(nodes []Node, at string, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) ([]Node, bool, error) {
+	nodes, joined, err := c.joinChatThinking(nodes, at, route, rule, sink)
+	if err != nil {
+		return nil, false, err
+	}
 	var groups [4][]Node
 	previous, thoughts := -1, 0
 	reordered := false
@@ -130,7 +137,7 @@ func (c *CompiledConversion) chatHistoryChildren(nodes []Node, at string, route 
 		groups[rank] = append(groups[rank], n)
 	}
 	if !reordered {
-		return nodes, false, nil
+		return nodes, joined, nil
 	}
 	if err := c.issue(rule, ConversionRequest, route, at, "Chat separates content from tool calls and cannot retain their interleaving; text order and tool call IDs are retained", sink, true); err != nil {
 		return nil, false, err
@@ -140,4 +147,33 @@ func (c *CompiledConversion) chatHistoryChildren(nodes []Node, at string, route 
 		out = append(out, group...)
 	}
 	return out, true, nil
+}
+
+// Only unannotated, adjacent visible text can be joined. Summaries and scoped
+// provider state are not interchangeable with Chat's single text field.
+func (c *CompiledConversion) joinChatThinking(nodes []Node, at string, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) ([]Node, bool, error) {
+	count := 0
+	for count < len(nodes) && nodes[count].Kind == ReasoningNode {
+		count++
+	}
+	if count < 2 {
+		return nodes, false, nil
+	}
+	var text strings.Builder
+	for _, n := range nodes[:count] {
+		if n.ReasoningForm != "" || n.ReasoningContent != nil || len(n.Children) > 0 || len(n.Cache) > 0 || len(n.Resources) > 0 || len(n.Attributes) > 0 || len(n.Metadata) > 0 || !n.ID.IsZero() || !n.Status.IsZero() || !n.Role.IsZero() || !n.Name.IsZero() || !n.CallID.IsZero() || n.Input != nil {
+			return nil, false, streamIssue(UnsupportedCapability, at, "Chat cannot join thinking blocks carrying structure or scoped state")
+		}
+		var part string
+		if n.Payload.IsNull() || n.Payload.Decode(&part) != nil {
+			return nil, false, streamIssue(InvalidInput, at, "visible thinking requires text")
+		}
+		text.WriteString(part)
+	}
+	if err := c.issue(rule, ConversionRequest, route, at, "Chat joins adjacent visible thinking text; block boundaries cannot be represented", sink, true); err != nil {
+		return nil, false, err
+	}
+	first := nodes[0]
+	first.Payload, first.Native = StringValue(text.String()), nil
+	return append([]Node{first}, nodes[count:]...), true, nil
 }
