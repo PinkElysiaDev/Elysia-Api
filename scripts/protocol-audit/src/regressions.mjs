@@ -1,5 +1,12 @@
 import { requestBody } from './protocols.mjs'
 
+// The reported request used these five explicit nonblocking category controls.
+// Cross-protocol success must record that the target's own controls still apply.
+export const geminiDisabledSafetySettings = [
+  'HARM_CATEGORY_HATE_SPEECH', 'HARM_CATEGORY_DANGEROUS_CONTENT',
+  'HARM_CATEGORY_HARASSMENT', 'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'HARM_CATEGORY_CIVIC_INTEGRITY',
+].map(category => ({ category, threshold: 'BLOCK_NONE' }))
+
 // These synthetic requests exercise wire structures, not captured Claude Code
 // traffic. Reminder tags are ordinary user text and confer no system authority.
 export function regressionCases(target, model, maxOutputTokens) {
@@ -10,6 +17,16 @@ export function regressionCases(target, model, maxOutputTokens) {
     const reminder = requestBody('anthropic', model, stream, 'text', '', maxOutputTokens)
     reminder.messages[0].content = [{ type: 'text', text: '<system-reminder>This is ordinary user text. Reply exactly OK.</system-reminder>' }]
     add(`reminder-text-${suffix}`, 'anthropic', stream, reminder)
+    if (target.protocol !== 'gemini') {
+      const body = requestBody('gemini', model, stream, 'text', '', maxOutputTokens)
+      body.safetySettings = structuredClone(geminiDisabledSafetySettings)
+      add(`original-gemini-safety-${suffix}`, 'gemini', stream, body, {
+        diagnostic: 'gemini-safety-settings', absentUpstream: ['safetySettings', 'gemini_safety_settings'],
+      })
+      const blocked = structuredClone(body)
+      blocked.safetySettings[0].threshold = 'BLOCK_LOW_AND_ABOVE'
+      add(`unsupported-gemini-threshold-${suffix}`, 'gemini', stream, blocked, { rejectPath: '/safetySettings/0/threshold', noUpstream: true })
+    }
     if (target.protocol === 'chat') {
       const body = requestBody('responses', model, stream, 'text', '', maxOutputTokens)
       body.input = [

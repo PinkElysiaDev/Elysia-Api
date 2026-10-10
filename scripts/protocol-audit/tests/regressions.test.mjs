@@ -1,6 +1,24 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { regressionCases } from '../src/regressions.mjs'
+import { regressionCases, geminiDisabledSafetySettings } from '../src/regressions.mjs'
+
+test('reported Gemini safety controls are diagnosed while blocking requirements reject locally', () => {
+  for (const protocol of ['chat', 'responses', 'anthropic']) {
+    const cases = regressionCases({ protocol }, 'model', 32768)
+    for (const stream of [false, true]) {
+      const suffix = stream ? 'sse' : 'json'
+      const accepted = cases.find(c => c.name === `original-gemini-safety-${suffix}`)
+      assert.deepEqual(accepted.body.safetySettings, geminiDisabledSafetySettings)
+      assert.equal(accepted.body.systemInstruction, undefined)
+      assert.equal(accepted.diagnostic, 'gemini-safety-settings')
+      assert.deepEqual(accepted.absentUpstream, ['safetySettings', 'gemini_safety_settings'])
+      const rejected = cases.find(c => c.name === `unsupported-gemini-threshold-${suffix}`)
+      assert.equal(rejected.noUpstream, true)
+      assert.equal(rejected.rejectPath, '/safetySettings/0/threshold')
+      assert.equal(rejected.body.safetySettings[0].threshold, 'BLOCK_LOW_AND_ABOVE')
+    }
+  }
+})
 
 test('mixed tool history checks a synthetic second round without forced tool selection', () => {
   const cases = regressionCases({ protocol: 'chat' }, 'model', 32768).filter(c => c.mixedHistory)
@@ -49,7 +67,7 @@ test('reminders remain user text while mid-system cases deliberately exercise ro
 test('cached system scope and original include/store faults have distinct expected outcomes', () => {
   const native = regressionCases({ protocol: 'anthropic' }, 'model', 32768)
   assert.equal(native.filter(c => c.preserveSystem).length, 2)
-  assert.equal(native.filter(c => c.rejectPath && c.noUpstream).length, 2)
+  assert.equal(native.filter(c => c.name.startsWith('nonstandard-message-cache-') && c.rejectPath && c.noUpstream).length, 2)
   const gemini = regressionCases({ protocol: 'gemini' }, 'model', 32768)
   assert.equal(gemini.filter(c => c.originalUsage).length, 2)
   for (const stream of [false, true]) {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { replyWire } from './fixtures.mjs'
 import { mapConcurrent } from '../src/concurrency.mjs'
+import { geminiDisabledSafetySettings } from '../src/regressions.mjs'
 let consume
 try { consume = (await import('../src/sdk.mjs')).consume } catch (error) { if (error.code !== 'ERR_MODULE_NOT_FOUND') throw error }
 
@@ -13,6 +14,16 @@ async function endpoint(t, body, stream, status = 200, stall = false) {
   const captured = []
   return { captured, options: { baseUrl: `http://127.0.0.1:${server.address().port}`, apiKey: 'synthetic-sdk-key', model: 'test', onExchange: detail => { captured.push(detail) } } }
 }
+
+for (const stream of [false, true]) test(`Google SDK serializes reported safety controls (${stream ? 'SSE' : 'JSON'})`, { skip: !consume && 'SDK dependencies unavailable' }, async t => {
+  const f = await endpoint(t, replyWire('gemini', 'OK', false, stream), stream)
+  await consume('gemini', { ...f.options, safetySettings: geminiDisabledSafetySettings }, stream)
+  assert.equal(f.captured.length, 1)
+  const body = JSON.parse(f.captured[0].request.body)
+  assert.deepEqual(body.safetySettings, geminiDisabledSafetySettings)
+  assert.equal(body.generationConfig.safetySettings, undefined)
+  assert.deepEqual(body.systemInstruction, { role: 'user', parts: [{ text: 'Follow the user instructions.' }] })
+})
 
 for (const protocol of ['chat', 'responses', 'anthropic', 'gemini']) for (const stream of [false, true]) {
   test(`${protocol} ${stream ? 'SSE' : 'JSON'} SDK sends HTTP and records request, response and versions`, { skip: !consume && 'Run npm install in the script directory for SDK self-tests' }, async t => {

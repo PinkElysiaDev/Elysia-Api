@@ -20,7 +20,7 @@ export function packageVersion(name) {
   throw new Error(`Cannot determine SDK version: ${name}`)
 }
 
-export async function consume(protocol, { baseUrl, apiKey, model, expectedText = 'OK', timeoutMs = defaults.timeoutMs, maxOutputTokens = defaults.maxOutputTokens, maxResponseBytes = defaults.maxResponseBytes, signal, onExchange = async () => {} }, stream) {
+export async function consume(protocol, { baseUrl, apiKey, model, expectedText = 'OK', timeoutMs = defaults.timeoutMs, maxOutputTokens = defaults.maxOutputTokens, maxResponseBytes = defaults.maxResponseBytes, safetySettings, signal, onExchange = async () => {} }, stream) {
   assert.ok(typeof expectedText === 'string' && expectedText.length > 0, 'SDK expected text must be nonempty')
   const used = [], pending = [], transportErrors = []
   const version = name => { used.push({ name, version: packageVersion(name) }) }
@@ -88,7 +88,7 @@ export async function consume(protocol, { baseUrl, apiKey, model, expectedText =
       // Exercise the actual SDK Content envelope: a string system instruction
       // serializes as systemInstruction.role="user" plus parts. A hand-written
       // parts-only fixture misses this common cross-protocol request boundary.
-      const params = { model, contents: prompt, config: { systemInstruction: 'Follow the user instructions.', maxOutputTokens, abortSignal: signal } }
+      const params = { model, contents: prompt, config: { systemInstruction: 'Follow the user instructions.', maxOutputTokens, ...(safetySettings === undefined ? {} : { safetySettings }), abortSignal: signal } }
       let text = ''
       if (stream) for await (const part of await client.models.generateContentStream(params)) { assert.ok(!part.error); text += part.text || '' }
       else text = (await client.models.generateContent(params)).text || ''
