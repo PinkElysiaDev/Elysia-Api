@@ -31,6 +31,12 @@ func VerifyBindingProfiles(ctx context.Context, ingress, upstream *Compiled, cap
 	}
 	verify := func(contract CapabilitySet) CombinationReport {
 		report := VerifyBindingCombination(ctx, ingress, upstream, contract, policies...)
+		if !report.Passed && contract[ReasoningCapability] {
+			limited := VerifyBindingCombination(context.WithValue(ctx, visibleReasoningVerificationKey{}, true), ingress, upstream, contract, policies...)
+			if limited.Passed {
+				report = limited
+			}
+		}
 		report.BindingHash, report.IsRestricted = full.BindingHash, true
 		return report
 	}

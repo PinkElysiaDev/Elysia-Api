@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "openai-responses",
   "name": "Openai Responses",
-  "version": "2.2.5",
+  "version": "2.2.6",
   "family": "openai_responses",
   "wireVersion": "v2",
   "capabilities": {
@@ -5895,6 +5895,173 @@
         "parameters": {
           "max_output_tokens": 10,
           "store": false
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "visible-reasoning-history-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "model": "m",
+        "input": [
+          {
+            "role": "user",
+            "content": "hello"
+          },
+          {
+            "type": "reasoning",
+            "summary": [],
+            "content": [
+              {
+                "type": "reasoning_text",
+                "text": "consider"
+              }
+            ]
+          },
+          {
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "hi"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": "continue"
+          }
+        ],
+        "max_output_tokens": 10
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "reasoning",
+            "payload": "consider"
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "continue"
+              }
+            ]
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "visible-reasoning-response-decode",
+      "direction": "decode_response",
+      "capabilities": [],
+      "input": {
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "output": [
+          {
+            "type": "reasoning",
+            "summary": [],
+            "id": "r_item_0",
+            "content": [
+              {
+                "type": "reasoning_text",
+                "text": "consider"
+              }
+            ]
+          },
+          {
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "hi",
+                "annotations": []
+              }
+            ],
+            "id": "r_item_1",
+            "status": "completed"
+          }
+        ],
+        "created_at": 1,
+        "object": "response"
+      },
+      "expected": {
+        "schemaVersion": 1,
+        "source": {},
+        "id": "r",
+        "model": "m",
+        "status": "completed",
+        "content": [
+          {
+            "kind": "reasoning",
+            "id": "r_item_0",
+            "payload": "consider"
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hi"
+              }
+            ],
+            "id": "r_item_1",
+            "status": "completed"
+          }
+        ],
+        "attributes": {
+          "finishReason": "stop",
+          "created_at": 1
         }
       },
       "context": {

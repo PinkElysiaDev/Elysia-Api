@@ -110,6 +110,18 @@ func (c *CompiledConversion) responseShape(r *Response, phase ConversionPhase, r
 	}
 	var err error
 	r.Content, err = flatten(r.Content, "/content")
+	if err == nil && phase == ConversionResponse && len(r.Content) > 0 {
+		flat := true
+		for _, n := range r.Content {
+			flat = flat && n.Kind != MessageNode
+		}
+		if flat {
+			// Other protocols expose one assistant envelope for this ordered
+			// turn. Materialize it in the projection so verification sees the
+			// same grouping as the wire decoder, including thinking plus text.
+			r.Content = []Node{{Kind: MessageNode, Role: StringValue("assistant"), Children: r.Content}}
+		}
+	}
 	if err == nil && codec == "openai-chat" && phase == ConversionResponse {
 		for i := range r.Content {
 			if r.Content[i].Kind == MessageNode {

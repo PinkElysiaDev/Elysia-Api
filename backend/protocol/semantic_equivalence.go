@@ -1,12 +1,12 @@
 package protocol
 
 // comparableConversation removes only the protocol-required role envelope of
-// a tool item. IDs, annotations, cache boundaries and explicit empty messages
+// a tool or thinking item. IDs, annotations, cache boundaries and explicit empty messages
 // keep their envelopes because they carry additional semantics.
 func comparableConversation(nodes []Node) []Node {
 	var result []Node
 	for _, node := range nodes {
-		if node.Kind != MessageNode || !node.ID.IsZero() || !node.Status.IsZero() || len(node.Attributes) > 0 || len(node.Cache) > 0 || len(node.Resources) > 0 || !node.Payload.IsZero() || node.Input != nil || !node.Name.IsZero() || !node.CallID.IsZero() || len(node.Children) == 0 {
+		if node.Kind != MessageNode || !node.ID.IsZero() || !node.Status.IsZero() || len(node.Attributes) > 0 || len(node.Metadata) > 0 || len(node.Cache) > 0 || len(node.Resources) > 0 || !node.Payload.IsZero() || node.Input != nil || !node.Name.IsZero() || !node.CallID.IsZero() || len(node.Children) == 0 {
 			result = append(result, node)
 			continue
 		}
@@ -22,7 +22,8 @@ func comparableConversation(nodes []Node) []Node {
 		for _, child := range node.Children {
 			isCall := child.Kind == ToolCallNode && node.Role == StringValue("assistant")
 			isResult := child.Kind == ToolResultNode && (node.Role == StringValue("user") || node.Role == StringValue("tool"))
-			if isCall || isResult {
+			isThinking := child.Kind == ReasoningNode && node.Role == StringValue("assistant")
+			if isCall || isResult || isThinking {
 				flush()
 				result = append(result, child)
 			} else {

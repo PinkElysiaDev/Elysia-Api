@@ -1,10 +1,57 @@
 package builtin
 
 import (
+	"encoding/json"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
 )
+
+func TestVisibleThinkingProfilesKeepSummaryBoundary(t *testing.T) {
+	for _, from := range []string{Chat, Responses, Anthropic, Gemini} {
+		for _, to := range []string{Chat, Responses, Anthropic, Gemini} {
+			t.Run(from+"/"+to, func(t *testing.T) {
+				a, b := shippedProjectionProtocol(t, from), shippedProjectionProtocol(t, to)
+				reports := p.VerifyBindingProfiles(t.Context(), a, b, b.Definition().Capabilities)
+				var found bool
+				for _, report := range reports {
+					if !report.Passed || !report.Capabilities[p.ReasoningCapability] {
+						continue
+					}
+					found = true
+					if report.VisibleReasoningOnly {
+						if !report.IsRestricted {
+							t.Fatal("limited proof claims full contract")
+						}
+						data, _ := json.Marshal(report)
+						var restored p.CombinationReport
+						if err := json.Unmarshal(data, &restored); err != nil || !restored.VisibleReasoningOnly {
+							t.Fatal("persisted restriction lost", err)
+						}
+						plain := &p.Request{Content: []p.Node{{Kind: p.ReasoningNode, Payload: p.StringValue("visible")}}}
+						if issues := p.CheckCombinationRequest(plain, restored, b.Identity()); len(issues) > 0 {
+							t.Fatal(issues)
+						}
+						for _, form := range []p.ReasoningForm{p.SummaryReasoning, p.StructuredReasoning} {
+							unsupported := &p.Request{Content: []p.Node{{Kind: p.MessageNode, Children: []p.Node{{Kind: p.ReasoningNode, ReasoningForm: form, Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("summary")}}}}}}}
+							if issues := p.CheckCombinationRequest(unsupported, restored, b.Identity()); len(issues) != 1 || issues[0].Path != "/content/0/children/0/reasoningForm" {
+								t.Fatal("profile accepted unsupported reasoning", issues)
+							}
+						}
+						for _, check := range report.Checks {
+							if check.Skipped && check.Passed {
+								t.Fatal("excluded case counted as coverage")
+							}
+						}
+					}
+				}
+				if !found {
+					t.Fatal("visible history blocked", reports)
+				}
+			})
+		}
+	}
+}
 
 func TestBuiltinVerifiedProfilesKeepTextRoutesAndFullDiagnostics(t *testing.T) {
 	compiler, err := p.NewCompiler(p.DefaultLimits(), Modules(), nil)

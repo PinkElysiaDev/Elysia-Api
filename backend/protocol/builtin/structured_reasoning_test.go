@@ -257,7 +257,14 @@ func TestUnprojectedStructuredReasoningCannotDisappearInForeignCodecs(t *testing
 				}
 				// Direct event encoding must retain the same guard even if the
 				// caller disabled conversion or supplied its own semantic mapping.
-				event := p.Event{SchemaVersion: 1, Type: p.ItemStarted, ItemID: p.StringValue("thought"), Item: &projected.Content[0]}
+				thought := projected.Content[0]
+				if thought.Kind == p.MessageNode {
+					thought = thought.Children[0]
+				}
+				if thought.Kind != p.ReasoningNode {
+					t.Fatal("projection lost reasoning node")
+				}
+				event := p.Event{SchemaVersion: 1, Type: p.ItemStarted, ItemID: p.StringValue("thought"), Item: &thought}
 				if _, err := to.EncodeFrames(t.Context(), event, p.EvaluationContext{State: p.NewEvaluationState()}); err == nil || !strings.Contains(err.Error(), "/reasoningForm") {
 					t.Fatalf("unmapped structured event was not rejected: %v", err)
 				}

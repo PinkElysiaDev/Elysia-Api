@@ -10,21 +10,24 @@ import (
 // CombinationReport binds offline conversion evidence to both immutable
 // revisions. It must be recalculated when either endpoint changes.
 type CombinationReport struct {
-	SourceSamplesHash string              `json:"sourceSamplesHash"`
-	TargetSamplesHash string              `json:"targetSamplesHash"`
-	ContextHash       string              `json:"contextHash,omitempty"`
-	Fidelity          string              `json:"fidelity"`
-	PolicyHash        string              `json:"policyHash,omitempty"`
-	SourceHash        string              `json:"sourceHash"`
-	TargetHash        string              `json:"targetHash"`
-	CompilerVersion   string              `json:"compilerVersion"`
-	Kind              VerificationKind    `json:"kind"`
-	Passed            bool                `json:"passed"`
-	Checks            []VerificationCheck `json:"checks"`
-	Issues            []ConversionIssue   `json:"issues"`
-	Capabilities      CapabilitySet       `json:"capabilities,omitempty"`
-	BindingHash       string              `json:"bindingHash,omitempty"`
-	IsRestricted      bool                `json:"restricted,omitempty"`
+	// VisibleReasoningOnly narrows this proof to ordinary visible thinking.
+	// Summary/multipart cases remain in the full report, never positive coverage.
+	VisibleReasoningOnly bool                `json:"visibleReasoningOnly,omitempty"`
+	SourceSamplesHash    string              `json:"sourceSamplesHash"`
+	TargetSamplesHash    string              `json:"targetSamplesHash"`
+	ContextHash          string              `json:"contextHash,omitempty"`
+	Fidelity             string              `json:"fidelity"`
+	PolicyHash           string              `json:"policyHash,omitempty"`
+	SourceHash           string              `json:"sourceHash"`
+	TargetHash           string              `json:"targetHash"`
+	CompilerVersion      string              `json:"compilerVersion"`
+	Kind                 VerificationKind    `json:"kind"`
+	Passed               bool                `json:"passed"`
+	Checks               []VerificationCheck `json:"checks"`
+	Issues               []ConversionIssue   `json:"issues"`
+	Capabilities         CapabilitySet       `json:"capabilities,omitempty"`
+	BindingHash          string              `json:"bindingHash,omitempty"`
+	IsRestricted         bool                `json:"restricted,omitempty"`
 }
 
 // VerifyCombination replays ingress request and upstream response fixtures
@@ -47,6 +50,7 @@ func VerifyBindingCombination(ctx context.Context, ingress, upstream *Compiled, 
 
 func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabilities CapabilitySet) CombinationReport {
 	report := CombinationReport{Fidelity: "preserved", SourceSamplesHash: ingress.SamplesHash(), TargetSamplesHash: upstream.SamplesHash(), SourceHash: ingress.hash, TargetHash: upstream.hash, CompilerVersion: CompilerVersion, Kind: OfflineVerification, Checks: []VerificationCheck{}, Issues: []ConversionIssue{}}
+	report.VisibleReasoningOnly, _ = ctx.Value(visibleReasoningVerificationKey{}).(bool)
 	conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion)
 	if conversion == nil {
 		conversion, _ = ResolveConversion(DefaultConversionPolicy(ingress, upstream))
@@ -245,6 +249,10 @@ func inspectBindingSample(ctx context.Context, compiled *Compiled, sample Sample
 		return false, nil
 	} // The normal replay reports the failure.
 	observed := observeCapabilities(result.semantic).observed
+	if report.VisibleReasoningOnly && !hasOnlyVisibleReasoning(result.semantic) {
+		report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Direction: direction, Skipped: true, Reason: "summary or multipart reasoning is outside this visible-thinking profile"})
+		return true, nil
+	}
 	capabilities := []Capability{}
 	for _, capability := range CapabilityCatalog() {
 		if observed[capability] {

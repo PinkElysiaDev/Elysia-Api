@@ -240,6 +240,10 @@ func matchGatewayCombination(ingress *protocol.Compiled, candidate gatewayCandid
 			diagnostics = append(diagnostics, report.Issues...)
 			continue
 		}
+		if issues := protocol.CheckCombinationRequest(profileRequest, report, candidate.compiled.Identity()); len(issues) > 0 {
+			diagnostics = append(diagnostics, issues...)
+			continue
+		}
 		matched := constrained
 		matched.Capabilities = protocol.CapabilitySet{}
 		for capability, supported := range constrained.Capabilities {
