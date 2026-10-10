@@ -110,6 +110,10 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 			return []p.Event{{Type: p.NativeEvent}}, nil
 		}
 		node := p.Node{Kind: p.ToolCallNode, ID: item["id"], CallID: item["call_id"], Name: item["name"], Status: item["status"], Input: &p.ToolInput{Kind: p.JSONInput}}
+		node.Metadata, err = stream.module.extractMetadata(item, "item", "/item")
+		if err != nil {
+			return nil, err
+		}
 		if itemKind == "custom_tool_call" {
 			node.Input.Kind = p.TextInput
 		}

@@ -201,6 +201,11 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 	if err := adapter.writeMetadata(fields, node.Metadata, "content"); err != nil {
 		return p.Value{}, err
 	}
+	if adapter.name == Responses && (node.Kind == p.ToolCallNode || node.Kind == p.ReasoningNode) {
+		if err := adapter.writeMetadata(fields, node.Metadata, "item"); err != nil {
+			return p.Value{}, err
+		}
+	}
 	if err := adapter.preserveExtensions(fields, node.Attributes); err != nil {
 		return p.Value{}, err
 	}

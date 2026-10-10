@@ -21,7 +21,7 @@ func (adapter module) extractMetadata(fields p.Object, location, base string) ([
 		if kind == "" || kind == "null-only" && !value.IsNull() || kind == "empty-tool-usage" && !p.EmptyResponsesToolUsage(value) {
 			continue
 		}
-		if kind == "turn-tags" && !p.KnownResponseTurnTags(value) {
+		if (kind == "turn-tags" || kind == "timed-turn-tags") && !p.KnownResponseTurnTags(value, kind == "timed-turn-tags") {
 			continue
 		}
 		at := base + "/" + key

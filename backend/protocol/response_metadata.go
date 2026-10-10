@@ -84,8 +84,13 @@ func MetadataFieldType(codec, location, name string) string {
 	if location == "message" && codec == "responses" && name == "phase" {
 		return "message-phase"
 	}
-	if location == "message" && codec == "responses" && (name == "metadata" || name == "internal_chat_message_metadata_passthrough") {
-		return "turn-tags"
+	if (location == "message" || location == "item") && codec == "responses" {
+		if name == "metadata" {
+			return "turn-tags"
+		}
+		if name == "internal_chat_message_metadata_passthrough" {
+			return "timed-turn-tags"
+		}
 	}
 	if location == "content" {
 		if codec == "responses" && (name == "annotations" || name == "logprobs") {
@@ -128,12 +133,19 @@ func ValidateMetadataValue(codec, location, name string, v Value, at string) err
 	}
 	ok := false
 	switch kind {
-	case "turn-tags":
+	case "turn-tags", "timed-turn-tags":
 		fields, err := v.ReadObject()
 		if err != nil {
 			break
 		}
 		for _, key := range sortedKeys(fields) {
+			if key == "create_time" && kind == "timed-turn-tags" {
+				var seconds float64
+				if fields[key].IsNull() || fields[key].Decode(&seconds) != nil || seconds < 0 {
+					return streamIssue(InvalidInput, at+"/"+key, "item creation time must be a nonnegative number")
+				}
+				continue
+			}
 			if key != "turn_id" {
 				return streamIssue(UnsupportedCapability, at+"/"+key, "unknown message metadata requires explicit mapping")
 			}
@@ -210,13 +222,13 @@ func emptyMetadata(v Value) bool {
 
 // Only the observed correlation tag is classified. Other channel annotations
 // retain their opaque boundary, including when they accompany a known tag.
-func KnownResponseTurnTags(v Value) bool {
+func KnownResponseTurnTags(v Value, withTime bool) bool {
 	fields, err := v.ReadObject()
 	if err != nil {
 		return true
 	} // Type/null validation remains the caller's job.
 	for key := range fields {
-		if key != "turn_id" {
+		if key != "turn_id" && !(withTime && key == "create_time") {
 			return false
 		}
 	}

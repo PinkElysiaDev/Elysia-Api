@@ -16,6 +16,10 @@ func (adapter module) decodeReasoningItem(value p.Value, path string, direction 
 	if encrypted := fields["encrypted_content"]; !encrypted.IsZero() {
 		node.Resources = append(node.Resources, p.Resource{Kind: "encrypted_content", ID: encrypted, Scope: options.Scope})
 	}
+	node.Metadata, err = adapter.extractMetadata(fields, "item", path)
+	if err != nil {
+		return node, err
+	}
 	node.Attributes = adapter.extensions(fields, []string{"type", "id", "status", "encrypted_content", "summary", "content"})
 	for _, entry := range []struct {
 		field, kind string

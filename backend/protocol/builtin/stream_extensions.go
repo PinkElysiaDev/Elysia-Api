@@ -116,8 +116,14 @@ func (stream *streamModule) captureFrameExtensions(fields p.Object) (p.Value, er
 					capture(fmt.Sprintf("/item/content/%d", index), part, "type", "text", "refusal", "annotations", "logprobs")
 				}
 			case p.StringValue("function_call"):
+				if _, err := stream.module.extractMetadata(item, "item", "/item"); err != nil {
+					return p.Value{}, err
+				}
 				capture("/item", item, "type", "id", "call_id", "name", "arguments", "status")
 			case p.StringValue("custom_tool_call"):
+				if _, err := stream.module.extractMetadata(item, "item", "/item"); err != nil {
+					return p.Value{}, err
+				}
 				capture("/item", item, "type", "id", "call_id", "name", "input", "status")
 			}
 		}

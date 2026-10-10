@@ -8,7 +8,7 @@ import (
 
 func TestResponsesMessageTurnTagsJSONAndSSE(t *testing.T) {
 	from := shippedProjectionProtocol(t, Responses)
-	const tags = `"metadata":{"turn_id":"turn-one"},"internal_chat_message_metadata_passthrough":{"turn_id":"turn-two"},`
+	const tags = `"metadata":{"turn_id":"turn-one"},"internal_chat_message_metadata_passthrough":{"create_time":1791613919.6719978,"turn_id":"turn-two"},`
 	for _, target := range []string{Responses, Chat, Anthropic, Gemini} {
 		to := shippedProjectionProtocol(t, target)
 		for _, mode := range []string{"compatible", "strict"} {

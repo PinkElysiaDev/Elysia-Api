@@ -200,6 +200,13 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 	if err != nil {
 		return node, err
 	}
+	if adapter.name == Responses && (kind == "function_call" || kind == "custom_tool_call") {
+		metadata, err := adapter.extractMetadata(fields, "item", path)
+		if err != nil {
+			return node, err
+		}
+		node.Metadata = append(node.Metadata, metadata...)
+	}
 	node.Attributes, err = adapter.nestedExtensions(fields, known, nested)
 	if err != nil {
 		return node, err

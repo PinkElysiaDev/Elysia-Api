@@ -338,6 +338,9 @@ func (stream *streamModule) encodeItemStart(key string, item *streamItem, option
 		}
 		var frames []p.Value
 		if item.parent == "" {
+			if err := stream.module.writeMetadata(block, node.Metadata, "item"); err != nil {
+				return nil, err
+			}
 			frames = append(frames, stream.responsesEvent("response.output_item.added", key, item, "item", object(block)))
 		}
 		if node.Kind == p.ReasoningNode && node.ReasoningForm == "" {
