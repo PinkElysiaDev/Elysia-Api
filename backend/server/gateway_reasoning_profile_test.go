@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/elysia-api/backend/protocol"
 	"net/http"
@@ -17,6 +18,26 @@ func TestGatewayVisibleReasoningHistoryAndSummaryRejection(t *testing.T) {
 	calls := 0
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
+		var request struct {
+			Messages []struct {
+				Role     string
+				Content  json.RawMessage
+				Thinking string            `json:"reasoning_content"`
+				Calls    []json.RawMessage `json:"tool_calls"`
+			}
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+			w.WriteHeader(400)
+			return
+		}
+		for _, message := range request.Messages {
+			if message.Role == "assistant" && message.Thinking != "" && (len(message.Content) == 0 || string(message.Content) == "null") && len(message.Calls) == 0 {
+				t.Error("thinking detached from assistant reply")
+				w.WriteHeader(400)
+				return
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"id":"r","created":1,"object":"chat.completion","model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"OK"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
 	}))

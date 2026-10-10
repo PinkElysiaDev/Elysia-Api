@@ -83,6 +83,12 @@ func (adapter module) validateWireContract(direction p.Direction, value p.Value)
 					if !valid {
 						return fail(base+"/role", "invalid message role")
 					}
+					if adapter.name == Chat && role == "assistant" && !m["reasoning_content"].IsZero() && !m["reasoning_content"].IsNull() && (m["content"].IsZero() || m["content"].IsNull()) {
+						calls, _ := readToolCalls(m["tool_calls"])
+						if len(calls) == 0 && (m["refusal"].IsZero() || m["refusal"].IsNull()) {
+							return fail(base+"/content", "Chat thinking history needs associated assistant content or tool calls; enable chat_history")
+						}
+					}
 					if adapter.name == Responses && role == "assistant" {
 						var parts []p.Value
 						if m["content"].Decode(&parts) == nil {

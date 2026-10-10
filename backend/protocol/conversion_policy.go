@@ -204,7 +204,7 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if r.Enabled {
 			orders[key] = r.ID
 		}
-		if !slices.Contains([]string{"set", "remove", "transform", "warn", "reject", "signatures", "stream_options", "tool_result_object", "tool_result_text", "system_instruction_hoist", "buffer_node", "provider_signature", "responses_include", "responses_context", "usage_projection", "response_metadata", "response_shape", "response_envelope", "responses_storage", "anthropic_usage_envelope"}, r.Action) {
+		if !slices.Contains([]string{"set", "remove", "transform", "warn", "reject", "signatures", "stream_options", "tool_result_object", "tool_result_text", "system_instruction_hoist", "chat_history", "buffer_node", "provider_signature", "responses_include", "responses_context", "usage_projection", "response_metadata", "response_shape", "response_envelope", "responses_storage", "anthropic_usage_envelope"}, r.Action) {
 			return nil, fmt.Errorf("unknown conversion action %q", r.Action)
 		}
 		if (r.Action == "response_metadata" || r.Action == "response_shape" || r.Action == "response_envelope" || r.Action == "usage_projection" || r.Action == "anthropic_usage_envelope") && r.Phase != ConversionResponse && r.Phase != ConversionEvent && !(r.Action == "response_metadata" && r.Phase == ConversionRequest) {
@@ -222,8 +222,8 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 				return nil, fmt.Errorf("responses_storage requires targetCodec and onUnsupported: degrade or reject")
 			}
 		}
-		if r.Action == "system_instruction_hoist" && r.Phase != ConversionRequest {
-			return nil, fmt.Errorf("system_instruction_hoist requires request phase")
+		if (r.Action == "system_instruction_hoist" || r.Action == "chat_history") && r.Phase != ConversionRequest {
+			return nil, fmt.Errorf("%s requires request phase", r.Action)
 		}
 		if r.Action == "provider_signature" {
 			if r.Phase != ConversionRequest || r.Match.NodeKind != ToolCallNode || r.Match.TargetFamily == "" {
@@ -375,7 +375,7 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 		}
 		var err error
 		switch {
-		case rule.Action == "system_instruction_hoist" || rule.Action == "stream_options" || rule.Action == "responses_include" || rule.Action == "responses_context" || rule.Action == "responses_storage":
+		case rule.Action == "system_instruction_hoist" || rule.Action == "chat_history" || rule.Action == "stream_options" || rule.Action == "responses_include" || rule.Action == "responses_context" || rule.Action == "responses_storage":
 			if !rule.Match.matches(route, value) {
 				continue
 			}
@@ -383,6 +383,8 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 			if err = decodeContract(value.Bytes(), &req); err == nil {
 				if rule.Action == "system_instruction_hoist" {
 					err = c.hoistSystem(&req, route, rule, sink)
+				} else if rule.Action == "chat_history" {
+					err = c.chatHistory(&req, route, rule, sink)
 				} else if rule.Action == "responses_storage" {
 					err = c.responsesStorage(&req, route, rule, sink)
 				} else if rule.Action == "responses_include" {
