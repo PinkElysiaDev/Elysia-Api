@@ -13,7 +13,10 @@ import { setTimeout as delay } from 'node:timers/promises'
 const oldBinary = process.argv[2]
 const newBinary = process.argv[3]
 const exercisePresetRecovery = process.argv.includes('--preset-recovery')
-assert(oldBinary && newBinary, 'usage: node scripts/smoke-projection-upgrade.mjs <old-binary> <new-binary>')
+// Older fixture migrations intentionally create a corrected definition. Engine
+// upgrades with already-correct fixtures must keep the original revision.
+const preserveDefinition = process.argv.includes('--preserve-definition')
+assert(oldBinary && newBinary, 'usage: node scripts/smoke-projection-upgrade.mjs <old-binary> <new-binary> [--preserve-definition] [--preset-recovery]')
 const directory = await mkdtemp(join(tmpdir(), 'elysia-projection-upgrade-smoke-'))
 const token = randomBytes(24).toString('hex')
 const listener = createServer()
@@ -87,7 +90,8 @@ try {
   assert.equal(compiler, expectedCompiler)
   let upgraded = await snapshot()
   const custom = upgraded.listing.active.find((entry) => entry.protocolId === definition.id)
-  assert.notEqual(custom.revisionHash, verified.revision.hash, 'outdated Responses encoder fixtures require a corrected revision')
+  if (preserveDefinition) assert.equal(custom.revisionHash, verified.revision.hash, 'engine revalidation must preserve an unchanged definition revision')
+  else assert.notEqual(custom.revisionHash, verified.revision.hash, 'outdated Responses encoder fixtures require a corrected revision')
   assert.equal(upgraded.listing.loaded[definition.id], custom.revisionHash)
   assert.equal((await api(`/${definition.id}/revisions/${verified.revision.hash}`)).revision.hash, verified.revision.hash)
   assert.deepEqual(upgraded.listing.drafts.find((entry) => entry.protocolId === definition.id), before.listing.drafts.find((entry) => entry.protocolId === definition.id))
@@ -108,6 +112,14 @@ try {
   const envelope = await api('/conversion-policies/preview', 'POST', { policy: { schemaVersion: 1, id: 'upgrade-envelope', rules: [] }, phase: 'response', context: { source: { definitionId: 'google-generate-content' }, target: { definitionId: anthropicDefinition.id }, model: 'm' }, input: { schemaVersion: 1, source: {}, content: [] } })
   assert.deepEqual(envelope.output.usage.input, { count: 0, origin: 'placeholder' })
   assert.equal(envelope.effective.origins['response-anthropic-usage-envelope'], 'engine-default')
+  const safety = await api('/conversion-policies/preview', 'POST', {
+    policy: { schemaVersion: 1, id: 'upgrade-safety', rules: [] }, phase: 'request',
+    context: { source: { definitionId: 'google-generate-content' }, target: { definitionId: definition.id } },
+    input: { schemaVersion: 1, source: {}, content: [], parameters: { gemini_safety_settings: [{ category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' }] } },
+  })
+  assert.equal(safety.output.parameters?.gemini_safety_settings, undefined)
+  assert.equal(safety.effective.origins['gemini-safety-settings'], 'engine-default')
+  assert(safety.issues.some(issue => issue.ruleId === 'gemini-safety-settings' && issue.fidelity === 'lossy_compatible' && issue.policyHash))
   const configAfterUpgrade = await readFile(config, 'utf8')
   await stop()
   if (exercisePresetRecovery) {
@@ -147,7 +159,7 @@ db.close()
     await stop()
     assert.equal(await readFile(config, 'utf8'), configAfterUpgrade)
   }
-  const evidence = { oldCompiler, compiler, originalCustomRevisionPreserved: true, invalidFixtureCorrectedInNewRevision: true, customDraftPreserved: true, inheritedProjection: true, presetRecovery: exercisePresetRecovery, restarts: 10, protocolStateStable: true, passed: true }
+  const evidence = { oldCompiler, compiler, originalCustomRevisionPreserved: true, invalidFixtureCorrectedInNewRevision: !preserveDefinition, unchangedDefinitionRevisionPreserved: preserveDefinition, customDraftPreserved: true, inheritedProjection: true, inheritedGeminiSafetyRule: true, presetRecovery: exercisePresetRecovery, restarts: 10, protocolStateStable: true, passed: true }
   await writeFile(join(directory, 'evidence.json'), JSON.stringify(evidence, null, 2))
   console.log(JSON.stringify(evidence, null, 2))
 } finally {
