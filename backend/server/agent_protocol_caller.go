@@ -113,6 +113,16 @@ func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input ag
 
 func agentResultFromProtocol(response *protocol.Response) (*agent.CallResult, error) {
 	result := &agent.CallResult{Content: response.Content, Usage: response.Usage}
+	flat := len(response.Content) > 0
+	for _, node := range response.Content {
+		flat = flat && node.Kind != protocol.MessageNode
+	}
+	if flat {
+		// A collected stream exposes ordered blocks. The Agent owns one
+		// assistant turn, so persist its envelope with the blocks; otherwise
+		// the next request can split signed thinking from its tool calls.
+		result.Content = []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("assistant"), Children: response.Content}}
+	}
 	var text, reasoning strings.Builder
 	var collect func([]protocol.Node) error
 	collect = func(nodes []protocol.Node) error {

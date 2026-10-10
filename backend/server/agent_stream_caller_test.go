@@ -583,6 +583,33 @@ func TestAgentCallerAnthropicPresetSignatureRoundTrip(t *testing.T) {
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, body string, call int) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		if call > 1 {
+			var history struct {
+				Messages []struct {
+					Role    string
+					Content []struct {
+						Type      string
+						Thinking  string
+						Signature string
+						ID        string
+					}
+				}
+			}
+			if err := json.Unmarshal([]byte(body), &history); err != nil {
+				t.Error(err)
+				return
+			}
+			paired := false
+			for _, message := range history.Messages {
+				thinking, tool := false, false
+				for _, part := range message.Content {
+					thinking = thinking || (part.Type == "thinking" && part.Thinking == "consider" && part.Signature == "sig-roundtrip")
+					tool = tool || (part.Type == "tool_use" && part.ID == "call-agent")
+				}
+				paired = paired || (message.Role == "assistant" && thinking && tool)
+			}
+			if !paired {
+				t.Error("signed thinking and its tool call must share the assistant history message")
+			}
 			for _, fragment := range []string{`"signature":"sig-roundtrip"`, `"thinking":"consider"`, `"tool_use_id":"call-agent"`, `"name":"elysia_cli"`} {
 				if !strings.Contains(body, fragment) {
 					t.Errorf("history lost %s: %s", fragment, body)
