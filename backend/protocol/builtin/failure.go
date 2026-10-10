@@ -90,7 +90,11 @@ func (adapter module) decodeFailure(value p.Value, options p.EvaluationContext) 
 		if adapter.name == Anthropic {
 			canonicalType = category.anthropicType()
 		}
-		if category != "" && typeName == canonicalType {
+		// OpenAI also uses server_error as the type itself. It denotes the
+		// existing server category; treating it as a vendor extension would
+		// replace a real provider outage with an unsupported conversion error.
+		serverTypeAlias := (adapter.name == Chat || adapter.name == Responses) && typeName == "server_error"
+		if category != "" && (typeName == canonicalType || serverTypeAlias) {
 			known = append(known, "type")
 		}
 		if adapter.name == Chat || adapter.name == Responses {
