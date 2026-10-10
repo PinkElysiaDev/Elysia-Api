@@ -484,14 +484,14 @@ func (c *CompiledConversion) applyNodeRule(ctx context.Context, phase Conversion
 					if foreign && !restored {
 						kept := make([]Resource, 0, len(n.Resources))
 						for j, res := range n.Resources {
-							if res.Kind != "signature" {
+							if !IsContinuationResource(res) {
 								kept = append(kept, res)
 								continue
 							}
-							recoverable := route.Recoverable[ContinuationNodeDigest(*n)] || route.Recoverable[SignatureRecoveryKey(res)]
-							reason := "foreign signature has no target representation; recovery unavailable"
+							recoverable := route.Recoverable[ContinuationNodeDigest(*n)] || route.Recoverable[ContinuationResourceKey(res)]
+							reason := "foreign " + res.Kind + " has no target representation; recovery unavailable"
 							if recoverable {
-								reason = "foreign signature preserved in authenticated continuation state"
+								reason = "foreign " + res.Kind + " preserved in authenticated continuation state"
 							}
 							if err := c.issue(rule, phase, route, fmt.Sprintf("%s/resources/%d", at, j), reason, sink, !recoverable); err != nil {
 								return err

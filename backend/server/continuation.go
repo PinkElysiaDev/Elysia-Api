@@ -248,7 +248,7 @@ func (s *Server) restoreGatewayContinuation(c *gin.Context, g *gatewayContinuati
 }
 
 func (s *Server) captureContinuationNode(c *gin.Context, g *gatewayContinuation, node protocol.Node, ordinal int) error {
-	if g == nil || !protocol.HasSignature(node) {
+	if g == nil || !protocol.HasContinuationState(node) {
 		return nil
 	}
 	if g.codec == nil {
@@ -303,8 +303,8 @@ func (s *Server) captureContinuationNode(c *gin.Context, g *gatewayContinuation,
 	}
 	g.saved[key] = true
 	for _, res := range node.Resources {
-		if res.Kind == "signature" {
-			g.saved[protocol.SignatureRecoveryKey(res)] = true
+		if protocol.IsContinuationResource(res) {
+			g.saved[protocol.ContinuationResourceKey(res)] = true
 		}
 	}
 	return nil

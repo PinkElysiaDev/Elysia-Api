@@ -44,7 +44,7 @@ func (c *CompiledConversion) PreviewRecovery(phase ConversionPhase, input Value,
 	var visit func([]Node) error
 	visit = func(nodes []Node) error {
 		for _, node := range nodes {
-			if HasSignature(node) {
+			if HasContinuationState(node) {
 				record := ContinuationRecord{Version: 1, ID: "offline-proof", Owner: "offline-proof", Protocol: route.Source, Scope: route.Scope, Digest: ContinuationNodeDigest(node), Node: node, ExpiresAt: time.Now().Add(time.Hour).Unix()}
 				token, err := codec.Seal(record, c.Policy.Continuation.RecordBytes)
 				if err != nil {
@@ -55,17 +55,17 @@ func (c *CompiledConversion) PreviewRecovery(phase ConversionPhase, input Value,
 					return err
 				}
 				copy := node
-				copy.Resources = slices.DeleteFunc(slices.Clone(node.Resources), func(r Resource) bool { return r.Kind == "signature" })
+				copy.Resources = slices.DeleteFunc(slices.Clone(node.Resources), func(r Resource) bool { return IsContinuationResource(r) })
 				if err := RestoreContinuation(&copy, opened, record.Owner, route.Scope, route.Source); err != nil {
 					return err
 				}
-				if !HasSignature(copy) {
+				if !HasContinuationState(copy) {
 					return streamIssue(VerificationMismatch, "/continuation", "authenticated fragment did not restore signatures")
 				}
 				route.Recoverable[ContinuationNodeDigest(node)] = true
 				for _, r := range node.Resources {
-					if r.Kind == "signature" {
-						route.Recoverable[SignatureRecoveryKey(r)] = true
+					if IsContinuationResource(r) {
+						route.Recoverable[ContinuationResourceKey(r)] = true
 					}
 				}
 			}

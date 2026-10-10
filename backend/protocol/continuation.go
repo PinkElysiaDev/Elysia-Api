@@ -144,6 +144,21 @@ func ContinuationNodeDigest(node Node) string {
 	return hashValue(value)
 }
 
+// IsContinuationResource enumerates opaque provider state that can be sealed
+// and restored. Other resources, including file/session references, stay scoped.
+func IsContinuationResource(resource Resource) bool {
+	return resource.Kind == "signature" || resource.Kind == "encrypted_content"
+}
+
+func HasContinuationState(node Node) bool {
+	for _, resource := range node.Resources {
+		if IsContinuationResource(resource) {
+			return true
+		}
+	}
+	return false
+}
+
 func HasSignature(node Node) bool {
 	for _, r := range node.Resources {
 		if r.Kind == "signature" {
@@ -162,11 +177,11 @@ func RestoreContinuation(node *Node, record ContinuationRecord, owner string, sc
 	if ContinuationNodeDigest(*node) != record.Digest {
 		return fmt.Errorf("continuation content changed")
 	}
-	if HasSignature(*node) {
+	if HasContinuationState(*node) {
 		return nil
 	}
 	for _, r := range record.Node.Resources {
-		if r.Kind == "signature" {
+		if IsContinuationResource(r) {
 			node.Resources = append(node.Resources, r)
 		}
 	}

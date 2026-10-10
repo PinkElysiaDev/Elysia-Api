@@ -213,7 +213,7 @@ func matchGatewayCombination(ingress *protocol.Compiled, candidate gatewayCandid
 			for i := range nodes {
 				n := &nodes[i]
 				if candidate.continuation.restored[protocol.ContinuationNodeDigest(*n)] {
-					n.Resources = slices.DeleteFunc(n.Resources, func(r protocol.Resource) bool { return r.Kind == "signature" })
+					n.Resources = slices.DeleteFunc(n.Resources, func(r protocol.Resource) bool { return protocol.IsContinuationResource(r) })
 				}
 				strip(n.Children)
 			}
@@ -265,7 +265,7 @@ func (candidate gatewayCandidate) conversionContext(ingress *protocol.Compiled, 
 	recoverable := map[string]bool{}
 	if candidate.continuation != nil {
 		for key := range candidate.continuation.saved {
-			if strings.HasPrefix(key, "signature:") {
+			if strings.HasPrefix(key, "continuation-resource:") {
 				recoverable[key] = true
 				continue
 			}

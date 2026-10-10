@@ -58,6 +58,7 @@ func DescribeSchema() SchemaCatalog {
 	conversionSchema := schemaForType(reflect.TypeFor[ConversionPolicy](), conversionDefs)
 	conversionSchema["$defs"] = conversionDefs
 	return SchemaCatalog{Conversion: map[string]any{"actionSchemas": map[string]any{
+		"signatures":               map[string]any{"phases": []ConversionPhase{ConversionRequest, ConversionResponse, ConversionEvent}, "description": "将外协议 signature 与 encrypted_content 纳入认证续传；成功封装后诊断为可恢复，恢复仍校验身份、账号、模型及原节点。不转换文件或会话引用，不将加密内容冒充供应商签名。"},
 		"tool_result_text":         map[string]any{"phases": []ConversionPhase{ConversionRequest}, "description": "将对象工具结果序列化为 JSON 文本，保留数值精度及调用关联。兼容模式记录类型变化；严格模式拒绝。"},
 		"system_instruction_hoist": map[string]any{"phases": []ConversionPhase{ConversionRequest}, "description": "按原顺序将 system/developer 上提为顶层系统要求。作用范围或角色优先级变化时记录降级；严格模式拒绝。"},
 		"response_metadata":        map[string]any{"phases": []ConversionPhase{ConversionRequest, ConversionResponse, ConversionEvent}, "value": map[string]any{"type": "string", "enum": []string{"openai-chat", "responses", "anthropic", "gemini"}}, "description": "逐项转换已识别的响应元数据，保留所属文本、候选及来源路径。未知扩展、文件引用和上下文状态仍受保护。"},

@@ -242,4 +242,7 @@ func (s *ConversionEventState) Finish() error {
 	return nil
 }
 
-func SignatureRecoveryKey(resource Resource) string { return "signature:" + hashValue(resource.ID) }
+func ContinuationResourceKey(resource Resource) string {
+	value, _ := EncodeValue(resource)
+	return "continuation-resource:" + hashValue(value)
+}
