@@ -43,6 +43,15 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel bool) {
 					return
 				}
 				if parallel && second {
+					wire, e := protocol.ParseValue(raw)
+					if e == nil {
+						e = upstream.ValidateWireOutput(protocol.EncodeRequest, wire)
+					}
+					if e != nil {
+						t.Error("invalid final tool history", e)
+						w.WriteHeader(400)
+						return
+					}
 					decoded, e := upstream.DecodeRequest(t.Context(), raw, protocol.EvaluationContext{Scope: protocol.Scope{Model: "m"}})
 					if e != nil {
 						t.Error(e)
@@ -155,7 +164,7 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel bool) {
 							before := calls
 							s.engine.ServeHTTP(rec, r)
 							if rec.Code != 200 || calls != before+1 || rec.Result().Trailer.Get("X-Elysia-Stream-Error") != "" {
-								t.Fatalf("second=%v status=%d calls=%d trailer=%v body=%s", second, rec.Code, calls-before, rec.Result().Trailer, rec.Body)
+								t.Fatalf("second=%v status=%d calls=%d trailer=%v body=%s request=%s", second, rec.Code, calls-before, rec.Result().Trailer, rec.Body, body)
 							}
 							if dir := os.Getenv("ELYSIA_AUDIT_CAPTURE"); dir != "" {
 								if e := os.MkdirAll(dir, 0700); e != nil {
@@ -215,7 +224,32 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel bool) {
 						if len(tools) != expected {
 							t.Fatalf("expected %d tools, got %d", expected, len(tools))
 						}
-						request.Content = append(request.Content, response.Content...)
+						history := response.Content
+						if id != protocol.PresetResponsesID {
+							flat := true
+							for _, node := range history {
+								flat = flat && node.Kind != protocol.MessageNode
+							}
+							if flat {
+								// SDKs assemble streamed blocks into one assistant
+								// history message. The generic event collector exposes
+								// blocks, not an already reconstructed client request.
+								history = []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("assistant"), Children: history}}
+							}
+						}
+						if parallel && upstreamID == protocol.PresetChatCompletionsID && id == protocol.PresetResponsesID {
+							// Responses permits text between independent function items.
+							// Chat must keep both calls together before either result.
+							var mixed []protocol.Node
+							for _, node := range history {
+								mixed = append(mixed, node)
+								if node.Kind == protocol.ToolCallNode && node.CallID == tools[0].CallID {
+									mixed = append(mixed, protocol.Node{Kind: protocol.MessageNode, Role: protocol.StringValue("assistant"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("between parallel calls")}}})
+								}
+							}
+							history = mixed
+						}
+						request.Content = append(request.Content, history...)
 						result := protocol.StringValue(`{"n":900719925474099312345}`)
 						if id == protocol.PresetGeminiID {
 							result = mustProtocolValue(t, `{"n":900719925474099312345}`)

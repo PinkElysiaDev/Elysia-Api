@@ -279,6 +279,24 @@ func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, opti
 }
 
 func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, options p.EvaluationContext) ([]p.Value, error) {
+	if direction == p.EncodeRequest && node.Role == p.StringValue("assistant") {
+		previous, thoughts := -1, 0
+		for _, child := range node.Children {
+			rank := 1
+			switch child.Kind {
+			case p.ReasoningNode:
+				rank, thoughts = 0, thoughts+1
+			case p.ToolCallNode:
+				rank = 2
+			case p.RefusalNode:
+				rank = 3
+			}
+			if rank < previous || thoughts > 1 {
+				return nil, unsupported("/content", "Chat history requires an explicit chat_history projection for interleaved content or multiple thinking blocks")
+			}
+			previous = rank
+		}
+	}
 	fields := p.Object{"role": node.Role}
 	if err := adapter.writeMetadata(fields, adapter.contentMetadata([]p.Node{node}), "message"); err != nil {
 		return nil, err

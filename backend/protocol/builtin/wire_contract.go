@@ -65,6 +65,11 @@ func (adapter module) validateWireContract(direction p.Direction, value p.Value)
 				if err != nil {
 					return err
 				}
+				if adapter.name == Chat {
+					if err := validateChatToolSequence(messages); err != nil {
+						return err
+					}
+				}
 				for i, v := range messages {
 					base := fmt.Sprintf("/%s/%d", key, i)
 					m, err := obj(v, base)

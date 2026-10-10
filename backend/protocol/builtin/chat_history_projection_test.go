@@ -12,6 +12,7 @@ func TestChatHistoryGroupsThinkingWithAssociatedReply(t *testing.T) {
 		last := `{"role":"assistant","content":"answer"}`
 		if tool {
 			last = `{"type":"function_call","call_id":"call1","name":"echo","arguments":"{\"n\":9007199254740993}"},{"type":"function_call","call_id":"call2","name":"echo","arguments":"{}"}`
+			last += `,{"type":"function_call_output","call_id":"call1","output":"one"},{"type":"function_call_output","call_id":"call2","output":"two"}`
 		}
 		raw := `{"model":"m","store":false,"input":[{"role":"user","content":"hi"},{"type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"visible"}]},` + last + `]}`
 		r, err := from.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
@@ -32,7 +33,11 @@ func TestChatHistoryGroupsThinkingWithAssociatedReply(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(r.Content) < 3 || len(projected.Content) != 2 || projected.Content[1].Kind != p.MessageNode {
+			want := 2
+			if tool {
+				want += 2
+			}
+			if len(r.Content) < 3 || len(projected.Content) != want || projected.Content[1].Kind != p.MessageNode {
 				t.Fatal("source changed or assistant turn not grouped")
 			}
 			wire, err := to.EncodeRequest(t.Context(), projected, p.EvaluationContext{})
