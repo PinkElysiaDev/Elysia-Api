@@ -1,0 +1,407 @@
+{
+  "compilerVersion": "2.0.0-dev.54",
+  "buildCommit": "f92fab0",
+  "startedAt": "2026-10-10T12:38:28.929Z",
+  "source": "configured Responses channel through isolated dev54 gateway; synthetic prompt, reported safety array",
+  "runtimeReady": true,
+  "maxOutputTokens": 32768,
+  "retries": 0,
+  "harnessNote": "The first direct baseline attempt was blocked locally by an accidentally imported self-test network guard (zero network calls). These direct results come from the corrected independent baseline; gateway results were unaffected and were not repeated.",
+  "cases": [
+    {
+      "name": "direct-json",
+      "passed": true,
+      "http": 200,
+      "elapsedMs": 10663,
+      "schemaIssues": [],
+      "markerReceived": true
+    },
+    {
+      "name": "direct-sse",
+      "passed": true,
+      "http": 200,
+      "elapsedMs": 12503,
+      "schemaIssues": [],
+      "markerReceived": true
+    },
+    {
+      "name": "reported-json",
+      "passed": true,
+      "http": 200,
+      "elapsedMs": 21995,
+      "schemaIssues": [],
+      "markerReceived": true,
+      "requestId": "req_1791635911035141200_9799b24a",
+      "status": 200,
+      "recordedStatus": 200,
+      "ingressRevision": "5a8568d57e9111e3279d8408ed4ee300f0d53323cf1ed44551f8b4a692c8e26d",
+      "upstreamRevision": "592c9315ba3d6ae8a54e2c36619108d3d0c1539338ac947799c7de8a2e9a01d9",
+      "policyHash": "7fc8dd3073233650545b49623e302dfa662cf02a017a627c5487b4ab8a250c02",
+      "issues": [
+        {
+          "code": "conversion_degraded",
+          "direction": "",
+          "evidence": "engine-default",
+          "fidelity": "lossy_compatible",
+          "path": "/safetySettings",
+          "policyHash": "7fc8dd3073233650545b49623e302dfa662cf02a017a627c5487b4ab8a250c02",
+          "policyRevision": "9f6ae2ebb2422bb6851bebd187f22fb2dd93496cc54080f79157de1bab547d78",
+          "protocol": {
+            "definitionId": "openai-responses",
+            "family": "openai_responses",
+            "revision": "2.2.6",
+            "wireVersion": "v2"
+          },
+          "reason": "target has no Gemini category filter controls; BLOCK_NONE/OFF cannot disable the target's own safety policy, which remains in force",
+          "ruleId": "gemini-safety-settings",
+          "severity": "warning",
+          "stage": "conversion.request",
+          "suggestion": ""
+        }
+      ],
+      "upstreamSent": true,
+      "upstreamKeys": [
+        "input",
+        "max_output_tokens",
+        "model",
+        "stream"
+      ],
+      "upstreamSafetyOmitted": true,
+      "upstreamBytes": 168,
+      "providerBytes": 23890,
+      "retryCount": 0,
+      "diagnosticCount": 44,
+      "diagnosticSummary": [
+        {
+          "code": "conversion_degraded",
+          "severity": "warning",
+          "ruleId": "gemini-safety-settings",
+          "fidelity": "lossy_compatible",
+          "count": 1
+        },
+        {
+          "code": "conversion_normalized",
+          "severity": "info",
+          "ruleId": "response-metadata",
+          "fidelity": "preserved",
+          "count": 10
+        },
+        {
+          "code": "conversion_degraded",
+          "severity": "warning",
+          "ruleId": "response-metadata",
+          "fidelity": "lossy_compatible",
+          "count": 21
+        },
+        {
+          "code": "conversion_degraded",
+          "severity": "warning",
+          "ruleId": "response-shape",
+          "fidelity": "lossy_compatible",
+          "count": 2
+        },
+        {
+          "code": "conversion_degraded",
+          "severity": "warning",
+          "ruleId": "response-usage-projection",
+          "fidelity": "lossy_compatible",
+          "count": 10
+        }
+      ],
+      "eventCount": 0,
+      "eventTypeCounts": {},
+      "eventSequenceExcerpt": []
+    },
+    {
+      "name": "reported-sse",
+      "passed": true,
+      "http": 200,
+      "elapsedMs": 23011,
+      "schemaIssues": [],
+      "markerReceived": true,
+      "requestId": "req_1791635911035141200_e7a6e68a",
+      "status": 200,
+      "recordedStatus": 200,
+      "ingressRevision": "5a8568d57e9111e3279d8408ed4ee300f0d53323cf1ed44551f8b4a692c8e26d",
+      "upstreamRevision": "592c9315ba3d6ae8a54e2c36619108d3d0c1539338ac947799c7de8a2e9a01d9",
+      "policyHash": "7fc8dd3073233650545b49623e302dfa662cf02a017a627c5487b4ab8a250c02",
+      "issues": [
+        {
+          "code": "conversion_degraded",
+          "direction": "",
+          "evidence": "engine-default",
+          "fidelity": "lossy_compatible",
+          "path": "/safetySettings",
+          "policyHash": "7fc8dd3073233650545b49623e302dfa662cf02a017a627c5487b4ab8a250c02",
+          "policyRevision": "9f6ae2ebb2422bb6851bebd187f22fb2dd93496cc54080f79157de1bab547d78",
+          "protocol": {
+            "definitionId": "openai-responses",
+            "family": "openai_responses",
+            "revision": "2.2.6",
+            "wireVersion": "v2"
+          },
+          "reason": "target has no Gemini category filter controls; BLOCK_NONE/OFF cannot disable the target's own safety policy, which remains in force",
+          "ruleId": "gemini-safety-settings",
+          "severity": "warning",
+          "stage": "conversion.request",
+          "suggestion": ""
+        }
+      ],
+      "upstreamSent": true,
+      "upstreamKeys": [
+        "input",
+        "max_output_tokens",
+        "model",
+        "stream"
+      ],
+      "upstreamSafetyOmitted": true,
+      "upstreamBytes": 167,
+      "providerBytes": 70713,
+      "retryCount": 0,
+      "diagnosticCount": 85,
+      "diagnosticSummary": [
+        {
+          "code": "conversion_degraded",
+          "severity": "warning",
+          "ruleId": "gemini-safety-settings",
+          "fidelity": "lossy_compatible",
+          "count": 1
+        },
+        {
+          "code": "conversion_normalized",
+          "severity": "info",
+          "ruleId": "event-metadata",
+          "fidelity": "preserved",
+          "count": 23
+        },
+        {
+          "code": "conversion_degraded",
+          "severity": "warning",
+          "ruleId": "event-metadata",
+          "fidelity": "lossy_compatible",
+          "count": 37
+        },
+        {
+          "code": "conversion_degraded",
+          "severity": "warning",
+          "ruleId": "event-shape",
+          "fidelity": "lossy_compatible",
+          "count": 4
+        },
+        {
+          "code": "conversion_degraded",
+          "severity": "warning",
+          "ruleId": "event-usage-projection",
+          "fidelity": "lossy_compatible",
+          "count": 20
+        }
+      ],
+      "eventCount": 2,
+      "eventTypeCounts": {
+        "data": 2
+      },
+      "eventSequenceExcerpt": [
+        {
+          "index": 0,
+          "type": "data"
+        },
+        {
+          "index": 1,
+          "type": "data"
+        }
+      ]
+    },
+    {
+      "name": "google-sdk-sse",
+      "passed": true,
+      "sdk": [
+        {
+          "name": "@google/genai",
+          "version": "2.28.0"
+        }
+      ],
+      "requestId": "req_1791635934061667400_f6677f47",
+      "status": 200,
+      "recordedStatus": 200,
+      "ingressRevision": "5a8568d57e9111e3279d8408ed4ee300f0d53323cf1ed44551f8b4a692c8e26d",
+      "upstreamRevision": "592c9315ba3d6ae8a54e2c36619108d3d0c1539338ac947799c7de8a2e9a01d9",
+      "policyHash": "7fc8dd3073233650545b49623e302dfa662cf02a017a627c5487b4ab8a250c02",
+      "issues": [
+        {
+          "code": "conversion_degraded",
+          "direction": "",
+          "evidence": "engine-default",
+          "fidelity": "lossy_compatible",
+          "path": "/safetySettings",
+          "policyHash": "7fc8dd3073233650545b49623e302dfa662cf02a017a627c5487b4ab8a250c02",
+          "policyRevision": "9f6ae2ebb2422bb6851bebd187f22fb2dd93496cc54080f79157de1bab547d78",
+          "protocol": {
+            "definitionId": "openai-responses",
+            "family": "openai_responses",
+            "revision": "2.2.6",
+            "wireVersion": "v2"
+          },
+          "reason": "target has no Gemini category filter controls; BLOCK_NONE/OFF cannot disable the target's own safety policy, which remains in force",
+          "ruleId": "gemini-safety-settings",
+          "severity": "warning",
+          "stage": "conversion.request",
+          "suggestion": ""
+        }
+      ],
+      "upstreamSent": true,
+      "upstreamKeys": [
+        "input",
+        "max_output_tokens",
+        "model",
+        "stream"
+      ],
+      "upstreamSafetyOmitted": true,
+      "upstreamBytes": 275,
+      "providerBytes": 70806,
+      "retryCount": 0,
+      "diagnosticCount": 85,
+      "diagnosticSummary": [
+        {
+          "code": "conversion_degraded",
+          "severity": "warning",
+          "ruleId": "gemini-safety-settings",
+          "fidelity": "lossy_compatible",
+          "count": 1
+        },
+        {
+          "code": "conversion_normalized",
+          "severity": "info",
+          "ruleId": "event-metadata",
+          "fidelity": "preserved",
+          "count": 23
+        },
+        {
+          "code": "conversion_degraded",
+          "severity": "warning",
+          "ruleId": "event-metadata",
+          "fidelity": "lossy_compatible",
+          "count": 37
+        },
+        {
+          "code": "conversion_degraded",
+          "severity": "warning",
+          "ruleId": "event-shape",
+          "fidelity": "lossy_compatible",
+          "count": 4
+        },
+        {
+          "code": "conversion_degraded",
+          "severity": "warning",
+          "ruleId": "event-usage-projection",
+          "fidelity": "lossy_compatible",
+          "count": 20
+        }
+      ],
+      "eventCount": 2,
+      "eventTypeCounts": {
+        "data": 2
+      },
+      "eventSequenceExcerpt": [
+        {
+          "index": 0,
+          "type": "data"
+        },
+        {
+          "index": 1,
+          "type": "data"
+        }
+      ]
+    },
+    {
+      "name": "google-sdk-json",
+      "passed": true,
+      "sdk": [
+        {
+          "name": "@google/genai",
+          "version": "2.28.0"
+        }
+      ],
+      "requestId": "req_1791635934061161600_54d70017",
+      "status": 200,
+      "recordedStatus": 200,
+      "ingressRevision": "5a8568d57e9111e3279d8408ed4ee300f0d53323cf1ed44551f8b4a692c8e26d",
+      "upstreamRevision": "592c9315ba3d6ae8a54e2c36619108d3d0c1539338ac947799c7de8a2e9a01d9",
+      "policyHash": "7fc8dd3073233650545b49623e302dfa662cf02a017a627c5487b4ab8a250c02",
+      "issues": [
+        {
+          "code": "conversion_degraded",
+          "direction": "",
+          "evidence": "engine-default",
+          "fidelity": "lossy_compatible",
+          "path": "/safetySettings",
+          "policyHash": "7fc8dd3073233650545b49623e302dfa662cf02a017a627c5487b4ab8a250c02",
+          "policyRevision": "9f6ae2ebb2422bb6851bebd187f22fb2dd93496cc54080f79157de1bab547d78",
+          "protocol": {
+            "definitionId": "openai-responses",
+            "family": "openai_responses",
+            "revision": "2.2.6",
+            "wireVersion": "v2"
+          },
+          "reason": "target has no Gemini category filter controls; BLOCK_NONE/OFF cannot disable the target's own safety policy, which remains in force",
+          "ruleId": "gemini-safety-settings",
+          "severity": "warning",
+          "stage": "conversion.request",
+          "suggestion": ""
+        }
+      ],
+      "upstreamSent": true,
+      "upstreamKeys": [
+        "input",
+        "max_output_tokens",
+        "model",
+        "stream"
+      ],
+      "upstreamSafetyOmitted": true,
+      "upstreamBytes": 276,
+      "providerBytes": 23917,
+      "retryCount": 0,
+      "diagnosticCount": 44,
+      "diagnosticSummary": [
+        {
+          "code": "conversion_degraded",
+          "severity": "warning",
+          "ruleId": "gemini-safety-settings",
+          "fidelity": "lossy_compatible",
+          "count": 1
+        },
+        {
+          "code": "conversion_normalized",
+          "severity": "info",
+          "ruleId": "response-metadata",
+          "fidelity": "preserved",
+          "count": 10
+        },
+        {
+          "code": "conversion_degraded",
+          "severity": "warning",
+          "ruleId": "response-metadata",
+          "fidelity": "lossy_compatible",
+          "count": 21
+        },
+        {
+          "code": "conversion_degraded",
+          "severity": "warning",
+          "ruleId": "response-shape",
+          "fidelity": "lossy_compatible",
+          "count": 2
+        },
+        {
+          "code": "conversion_degraded",
+          "severity": "warning",
+          "ruleId": "response-usage-projection",
+          "fidelity": "lossy_compatible",
+          "count": 10
+        }
+      ],
+      "eventCount": 0,
+      "eventTypeCounts": {},
+      "eventSequenceExcerpt": []
+    }
+  ],
+  "passed": true
+}
