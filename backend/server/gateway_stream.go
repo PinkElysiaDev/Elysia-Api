@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -51,6 +52,7 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 		return err
 	}
 	var terminalFailure error
+	failureDelivered := false
 	emit := func(value protocol.Value) error {
 		if record.FirstByteMs == 0 {
 			record.FirstByteMs = time.Since(record.StartedAt).Milliseconds()
@@ -193,6 +195,13 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 				return err
 			}
 		}
+		if len(frames) > 0 {
+			for _, event := range acceptedEvents {
+				if event.Type == protocol.OperationFailed || event.Type == protocol.OperationCancelled {
+					failureDelivered = true
+				}
+			}
+		}
 		return nil
 	})
 	if err == nil {
@@ -244,6 +253,13 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 		err = finalValidation.Finish()
 	}
 	if err != nil {
+		if failureDelivered {
+			// A provider failure already ended the client's event lifecycle.
+			// Reject an invalid tail without replacing the original cause or
+			// attempting a second terminal. Both errors remain inspectable.
+			c.Header(gatewayStreamErrorTrailer, "protocol_stream_error")
+			return errors.Join(terminalFailure, err)
+		}
 		if writeErr := emitFailureEvent(c, plan, options, emit, err); writeErr != nil {
 			return writeErr
 		}
