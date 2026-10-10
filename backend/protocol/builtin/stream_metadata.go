@@ -2,6 +2,7 @@ package builtin
 
 import (
 	p "github.com/elysia-api/backend/protocol"
+	"strings"
 )
 
 func mergeResponseMetadata(left, right []p.ResponseMetadata) []p.ResponseMetadata {
@@ -27,6 +28,7 @@ func mergeResponseMetadata(left, right []p.ResponseMetadata) []p.ResponseMetadat
 func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event) ([]p.Value, error) {
 	var local []p.ResponseMetadata
 	var choiceMetadata []p.ResponseMetadata
+	var frameMetadata []p.ResponseMetadata
 	var item *streamItem
 	var key string
 	if event != nil {
@@ -43,7 +45,9 @@ func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event) ([]
 			if m.Codec != stream.name {
 				return nil, unsupported(m.Path, "stream metadata requires target projection")
 			}
-			if m.Codec == Chat && m.Location == "choice" && m.Name == "native_finish_reason" {
+			if strings.HasPrefix(m.Location, "event:") {
+				frameMetadata = append(frameMetadata, m)
+			} else if m.Codec == Chat && m.Location == "choice" && m.Name == "native_finish_reason" {
 				choiceMetadata = append(choiceMetadata, m)
 			} else if m.Location == "response" || m.Location == "usage" {
 				stream.metadata = mergeResponseMetadata(stream.metadata, []p.ResponseMetadata{m})
@@ -224,6 +228,20 @@ func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event) ([]
 		}
 		frames[i] = object(f)
 	}
+	for _, m := range frameMetadata {
+		attached := false
+		for i, frame := range frames {
+			fields, _ := frame.ReadObject()
+			if fields["type"] == p.StringValue(strings.TrimPrefix(m.Location, "event:")) {
+				fields[m.Name] = m.Value
+				frames[i] = object(fields)
+				attached = true
+			}
+		}
+		if !attached {
+			return nil, unsupported(m.Path, "event padding has no corresponding target delta")
+		}
+	}
 	metadata, _ := p.EncodeValue(stream.metadata)
 	if len(metadata.Bytes()) > stream.limits.BufferBytes {
 		return nil, unsupported("/metadata", "stream metadata exceeds buffer limit")
@@ -233,6 +251,13 @@ func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event) ([]
 
 func (stream *streamModule) attachFrameMetadata(events []p.Event, metadata []p.ResponseMetadata) ([]p.Event, error) {
 	for _, m := range metadata {
+		if strings.HasPrefix(m.Location, "event:") {
+			if len(events) == 0 {
+				return nil, unsupported(m.Path, "event padding arrived without a semantic delta")
+			}
+			events[len(events)-1].Metadata = append(events[len(events)-1].Metadata, m)
+			continue
+		}
 		// This field belongs to the sole supported streaming choice, including
 		// tool-only replies. Do not fabricate a text item to carry it.
 		if m.Codec == Chat && m.Location == "choice" && m.Name == "native_finish_reason" {

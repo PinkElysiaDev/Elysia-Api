@@ -58,7 +58,7 @@ func (adapter module) contentMetadata(nodes []p.Node) []p.ResponseMetadata {
 
 // Metadata in stream extension locations remains associated with the source
 // frame. Content metadata is attached by the part decoders, not duplicated here.
-func (stream *streamModule) splitFrameMetadata(extra p.Value) (p.Value, []p.ResponseMetadata, error) {
+func (stream *streamModule) splitFrameMetadata(extra p.Value, kind p.Value) (p.Value, []p.ResponseMetadata, error) {
 	if extra.IsZero() {
 		return extra, nil, nil
 	}
@@ -99,6 +99,14 @@ func (stream *streamModule) splitFrameMetadata(extra p.Value) (p.Value, []p.Resp
 				base = ""
 			}
 			items, err := stream.module.extractMetadata(fields, location, base)
+			if err != nil {
+				return p.Value{}, nil, err
+			}
+			metadata = append(metadata, items...)
+		}
+		if path == "/" && stream.name == Responses {
+			name, _ := stringValue(kind)
+			items, err := stream.module.extractMetadata(fields, "event:"+name, "")
 			if err != nil {
 				return p.Value{}, nil, err
 			}

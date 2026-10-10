@@ -20,6 +20,12 @@ type ResponseMetadata struct {
 // MetadataFieldType is shared by JSON and SSE decoders. Stateful references,
 // credentials, signatures and counters are deliberately absent from this list.
 func MetadataFieldType(codec, location, name string) string {
+	if codec == "responses" && name == "obfuscation" {
+		switch location {
+		case "event:response.output_text.delta", "event:response.refusal.delta", "event:response.function_call_arguments.delta", "event:response.custom_tool_call_input.delta", "event:response.reasoning_text.delta", "event:response.reasoning_summary_text.delta":
+			return "padding-string"
+		}
+	}
 	if location == "response" {
 		switch codec {
 		case "openai-chat":
@@ -114,11 +120,14 @@ func ValidateMetadataValue(codec, location, name string, v Value, at string) err
 	if kind == "" {
 		return streamIssue(UnsupportedCapability, at, "unknown response metadata")
 	}
-	if v.IsNull() {
+	if v.IsNull() && kind != "padding-string" {
 		return nil
 	}
 	ok := false
 	switch kind {
+	case "padding-string":
+		var value string
+		ok = !v.IsNull() && v.Decode(&value) == nil
 	case "empty-tool-usage":
 		ok = EmptyResponsesToolUsage(v)
 	case "access-programs":
@@ -205,6 +214,12 @@ func (c *CompiledConversion) projectMetadata(items []ResponseMetadata, codec str
 		}
 		if item.Codec == codec {
 			out = append(out, item)
+			continue
+		}
+		if MetadataFieldType(item.Codec, item.Location, item.Name) == "padding-string" {
+			if err := c.issue(rule, phase, route, item.Path, "source event padding cannot preserve payload-size obfuscation after protocol conversion", sink, true); err != nil {
+				return nil, err
+			}
 			continue
 		}
 		if (item.Name == "annotations" || item.Name == "citations" || item.Name == "logprobs") && emptyMetadata(item.Value) {

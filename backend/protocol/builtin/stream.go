@@ -124,7 +124,7 @@ func (stream *streamModule) DecodeEvents(ctx context.Context, input p.Value, opt
 	if err != nil {
 		return nil, err
 	}
-	extra, metadata, err := stream.splitFrameMetadata(extra)
+	extra, metadata, err := stream.splitFrameMetadata(extra, fields["type"])
 	if err != nil {
 		return nil, err
 	}
