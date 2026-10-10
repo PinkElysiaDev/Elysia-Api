@@ -379,8 +379,41 @@ func (adapter module) validateWireContract(direction p.Direction, value p.Value)
 					if e != nil {
 						return e
 					}
-					if _, e = arr(m["parts"], fmt.Sprintf("/candidates/%d/content/parts", i)); e != nil {
+					parts, e := arr(m["parts"], fmt.Sprintf("/candidates/%d/content/parts", i))
+					if e != nil {
 						return e
+					}
+					for j, value := range parts {
+						path := fmt.Sprintf("/candidates/%d/content/parts/%d", i, j)
+						part, e := obj(value, path)
+						if e != nil {
+							return e
+						}
+						hasData := false
+						if text := part["text"]; !text.IsZero() {
+							var s string
+							if text.IsNull() || text.Decode(&s) != nil {
+								return fail(path+"/text", "Gemini text must be a string, including explicit empty text")
+							}
+							hasData = true
+						}
+						for _, name := range []string{"inlineData", "fileData", "functionCall", "functionResponse", "executableCode", "codeExecutionResult"} {
+							if data := part[name]; !data.IsZero() {
+								if _, e := obj(data, path+"/"+name); e != nil {
+									return e
+								}
+								hasData = true
+							}
+						}
+						if signature := part["thoughtSignature"]; !signature.IsZero() {
+							if e := str(signature, path+"/thoughtSignature"); e != nil {
+								return e
+							}
+							hasData = true // Continuation-only frames have separate association checks.
+						}
+						if !hasData {
+							return fail(path, "Gemini part requires data or a thought signature")
+						}
 					}
 				}
 			}
