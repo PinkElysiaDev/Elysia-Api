@@ -39,6 +39,8 @@ func MetadataFieldType(codec, location, name string) string {
 				return "reference"
 			case "moderation":
 				return "empty-state"
+			case "access_programs":
+				return "access-programs"
 			case "content_filters":
 				// Only the observed empty sentinel has a known meaning. A
 				// non-null vendor filtering payload remains an opaque extension.
@@ -115,6 +117,22 @@ func ValidateMetadataValue(codec, location, name string, v Value, at string) err
 	}
 	ok := false
 	switch kind {
+	case "access-programs":
+		fields, err := v.ReadObject()
+		if err != nil {
+			break
+		}
+		for _, key := range sortedKeys(fields) {
+			if key != "cyber" {
+				return streamIssue(UnsupportedCapability, at+"/"+key, "unknown response access program requires explicit mapping")
+			}
+		}
+		switch fields["cyber"] {
+		case StringValue("standard"), StringValue("daybreak_blue"), StringValue("daybreak_red"):
+			ok = true
+		default:
+			return streamIssue(InvalidInput, at+"/cyber", "expected standard, daybreak_blue or daybreak_red access program")
+		}
 	case "message-phase":
 		ok = v == StringValue("commentary") || v == StringValue("final_answer")
 	case "string", "reference":
