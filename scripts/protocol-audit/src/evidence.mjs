@@ -52,7 +52,13 @@ export function eventSequence(raw, stream) {
 export function failureCategory({ kind, issues = [], httpStatuses = [], sdk, error, record } = {}) {
   if (httpStatuses.includes(429)) return 'rate_limited'
   if (issues.some(i => i.code === 'request_budget') || error?.code === 'request_budget') return 'budget_exhausted'
-  if (record?.conversionIssues?.some(i => i.severity === 'error')) return 'gateway_conversion_failure'
+  const failures = record?.conversionIssues?.filter(i => i.severity === 'error') || []
+  // The gateway also records contract violations raised while reading the
+  // provider, including non-protocol CDN error bodies. They are failed calls,
+  // but do not establish a defect in the downstream conversion. Keep a mixed
+  // diagnosis classified as conversion failure so this cannot hide one.
+  if (failures.some(i => i.code !== 'upstream_contract_violation')) return 'gateway_conversion_failure'
+  if (failures.length) return 'upstream_contract_failure'
   if (issues.length && issues.every(i => ['unexpected_text', 'tool_call_missing', 'tool_call_mismatch'].includes(i.code))) {
     // A gateway can corrupt a correct upstream tool call. Attribute instruction
     // failure to the model only on the direct baseline; relay traces need review.

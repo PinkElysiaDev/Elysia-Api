@@ -79,6 +79,22 @@ test('SDK serialized request selection retains explicit false and null', () => {
   assert.deepEqual(requestSelection('{'), { unavailable: 'invalid_json' })
 })
 
+test('recorded upstream contract violations are distinct from conversion defects', () => {
+  const upstream = { code: 'upstream_contract_violation', severity: 'error', path: '/error' }
+  const conversion = { code: 'unsupported_capability', severity: 'error', stage: 'conversion.response' }
+  for (const sdk of [undefined, {}]) {
+    assert.equal(failureCategory({ sdk, httpStatuses: [524], record: { conversionIssues: [upstream] } }), 'upstream_contract_failure')
+    assert.equal(failureCategory({ sdk, httpStatuses: [200], record: { conversionIssues: [upstream] } }), 'upstream_contract_failure')
+    for (const conversionIssues of [[upstream, conversion], [conversion, upstream]]) {
+      assert.equal(failureCategory({ sdk, httpStatuses: [524], record: { conversionIssues } }), 'gateway_conversion_failure')
+    }
+  }
+  assert.equal(failureCategory({ httpStatuses: [429], record: { conversionIssues: [upstream] } }), 'rate_limited')
+  assert.equal(failureCategory({ error: { message: 'HTTP 524: upstream_contract_violation' } }), 'needs_trace_review')
+  assert.equal(failureCategory({ record: { conversionIssues: [{ ...upstream, severity: 'warning' }] } }), 'needs_trace_review')
+  assert.equal(failureCategory({ sdk: {}, record: { conversionIssues: [{ ...upstream, severity: 'warning' }] } }), 'sdk_consumption_failure')
+})
+
 test('event order summary contains no text, signature or encrypted state', () => {
   const sequence = eventSequence(replyWire('anthropic', 'private-text', true, true), true)
   assert.equal(sequence[0].type, 'message_start')
