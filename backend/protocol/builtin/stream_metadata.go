@@ -10,7 +10,12 @@ func mergeResponseMetadata(left, right []p.ResponseMetadata) []p.ResponseMetadat
 	for _, v := range right {
 		found := false
 		for i := range out {
-			if out[i].Codec == v.Codec && out[i].Location == v.Location && out[i].Name == v.Name && out[i].Path == v.Path {
+			// Response/usage fields have one owner per stream. A decoder may
+			// expose the same snapshot field via /response/name or /name;
+			// Path identifies its diagnostic source, not a second field. Keep
+			// path identity for metadata belonging to distinct choices/items.
+			sameOwner := out[i].Path == v.Path || v.Location == "response" || v.Location == "usage"
+			if out[i].Codec == v.Codec && out[i].Location == v.Location && out[i].Name == v.Name && sameOwner {
 				out[i] = v
 				found = true
 				break

@@ -18,7 +18,7 @@ func TestResponsesSeparateToolLedgerPersistedAcrossClientProjection(t *testing.T
 			const item = `{"type":"message","id":"msg","role":"assistant","status":"completed","content":[{"type":"output_text","text":"OK","annotations":[]}]}`
 			const attribution = `{"items":{"msg":{"input_tokens":2,"output_tokens":1,"content":[{"input_tokens":2,"output_tokens":1}]}},"request_fields":{"instructions":{"input_tokens":1,"cached_tokens":0}}}`
 			const billing = `{"basis":"disclosed_billing_allocation","billed_cached_tokens":1,"observed_cached_tokens":3,"policy_revision":2,"rule_id":"test-rule"}`
-			const response = `{"object":"response","id":"r","model":"m","created_at":1,"status":"completed","output":[` + item + `],"usage":{"input_tokens":3,"output_tokens":1,"total_tokens":4,"input_tokens_details":{"cached_tokens":1},"attribution":` + attribution + `,"linapi_cache_billing":` + billing + `},"tool_usage":` + ledger + `}`
+			const response = `{"object":"response","id":"r","model":"m","created_at":1,"service_tier":"default","status":"completed","output":[` + item + `],"usage":{"input_tokens":3,"output_tokens":1,"total_tokens":4,"input_tokens_details":{"cached_tokens":1},"attribution":` + attribution + `,"linapi_cache_billing":` + billing + `},"tool_usage":` + ledger + `}`
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if !stream {
 					w.Header().Set("Content-Type", "application/json")
@@ -27,8 +27,8 @@ func TestResponsesSeparateToolLedgerPersistedAcrossClientProjection(t *testing.T
 				}
 				w.Header().Set("Content-Type", "text/event-stream")
 				frames := []string{
-					`{"type":"response.created","response":{"id":"r","model":"m","created_at":1,"status":"in_progress","output":[],"usage":{"input_tokens":3,"output_tokens":0}}}`,
-					`{"type":"response.in_progress","response":{"id":"r","status":"in_progress","output":[],"tool_usage":` + ledger + `}}`,
+					`{"type":"response.created","response":{"id":"r","model":"m","created_at":1,"service_tier":"auto","status":"in_progress","output":[],"usage":{"input_tokens":3,"output_tokens":0}}}`,
+					`{"type":"response.in_progress","response":{"id":"r","service_tier":"auto","status":"in_progress","output":[],"tool_usage":` + ledger + `}}`,
 					`{"type":"response.in_progress","response":{"id":"r","status":"in_progress","output":[],"tool_usage":` + ledger + `}}`,
 					`{"type":"response.output_item.added","output_index":0,"item":{"id":"msg","type":"message","role":"assistant","status":"in_progress","content":[]}}`,
 					`{"type":"response.content_part.added","output_index":0,"content_index":0,"item_id":"msg","part":{"type":"output_text","text":"","annotations":[]}}`,
@@ -46,6 +46,9 @@ func TestResponsesSeparateToolLedgerPersistedAcrossClientProjection(t *testing.T
 			s.chatCompletions(request)
 			if recorder.Code != 200 || !strings.Contains(recorder.Body.String(), "OK") || strings.Contains(recorder.Body.String(), "tool_usage") || recorder.Header().Get("X-Elysia-Stream-Error") != "" {
 				t.Fatalf("bad projected response: %d %s", recorder.Code, recorder.Body)
+			}
+			if !strings.Contains(recorder.Body.String(), `"service_tier":"default"`) || stream && !strings.Contains(recorder.Body.String(), "[DONE]") {
+				t.Fatal("updated service tier or final stream marker missing", recorder.Body)
 			}
 			records := latestUsageRecords(t, s)
 			if len(records) != 1 || records[0].Error != "" {
