@@ -10,6 +10,20 @@ export function regressionCases(target, model, maxOutputTokens) {
     const reminder = requestBody('anthropic', model, stream, 'text', '', maxOutputTokens)
     reminder.messages[0].content = [{ type: 'text', text: '<system-reminder>This is ordinary user text. Reply exactly OK.</system-reminder>' }]
     add(`reminder-text-${suffix}`, 'anthropic', stream, reminder)
+    if (target.protocol === 'chat') {
+      const body = requestBody('responses', model, stream, 'text', '', maxOutputTokens)
+      body.input = [
+        { role: 'user', content: 'Read both tool results and reply exactly MIXED_HISTORY_OK. Do not call more tools.' },
+        { type: 'reasoning', summary: [], content: [{ type: 'reasoning_text', text: 'Read both supplied results.' }] },
+        { type: 'function_call', call_id: 'audit_mixed_1', name: 'audit_echo', arguments: '{"value":1}' },
+        { role: 'assistant', content: 'between parallel calls' },
+        { type: 'function_call', call_id: 'audit_mixed_2', name: 'audit_echo', arguments: '{"value":2}' },
+        { type: 'function_call_output', call_id: 'audit_mixed_1', output: 'first result' },
+        { type: 'function_call_output', call_id: 'audit_mixed_2', output: 'MIXED_HISTORY_OK' },
+      ]
+      body.tools = [{ type: 'function', name: 'audit_echo', parameters: { type: 'object', properties: { value: { type: 'integer' } }, required: ['value'] } }]
+      add(`mixed-tool-history-${suffix}`, 'responses', stream, body, { diagnostic: 'chat-assistant-history', mixedHistory: true, expectedText: 'MIXED_HISTORY_OK' })
+    }
     if (['anthropic', 'gemini'].includes(target.protocol)) {
       for (const protocol of ['chat', 'responses']) for (const role of ['system', 'developer']) {
         const body = requestBody(protocol, model, stream, 'text', '', maxOutputTokens)

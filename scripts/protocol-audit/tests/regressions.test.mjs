@@ -2,6 +2,21 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { regressionCases } from '../src/regressions.mjs'
 
+test('mixed tool history checks a synthetic second round without forced tool selection', () => {
+  const cases = regressionCases({ protocol: 'chat' }, 'model', 32768).filter(c => c.mixedHistory)
+  assert.deepEqual(cases.map(c => c.stream), [false, true])
+  for (const c of cases) {
+    const items = c.body.input
+    assert.equal(items[2].type, 'function_call')
+    assert.equal(items[3].content, 'between parallel calls')
+    assert.equal(items[4].type, 'function_call')
+    assert.deepEqual(items.slice(5).map(i => i.call_id), [items[2].call_id, items[4].call_id])
+    assert.equal(c.body.tool_choice, undefined)
+    assert.equal(c.diagnostic, 'chat-assistant-history')
+    assert.equal(c.expectedText, items[6].output)
+  }
+})
+
 test('reminders remain user text while mid-system cases deliberately exercise role conversion', () => {
   for (const protocol of ['chat', 'responses', 'anthropic', 'gemini']) {
     const cases = regressionCases({ protocol }, 'model', 32768)

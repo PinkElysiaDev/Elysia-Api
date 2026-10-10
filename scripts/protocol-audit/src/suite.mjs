@@ -276,12 +276,21 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
               item.outcome = 'expected_rejection'
               return
             }
-            checkReply(result, spec.protocol, { ...replyOptions, stream: spec.stream })
+            checkReply(result, spec.protocol, { ...replyOptions, stream: spec.stream, ...(spec.expectedText ? { expectedText: spec.expectedText } : {}) })
             const outgoing = JSON.parse(record.outgoingBody?.content || 'null')
             assert.ok(outgoing, 'Outgoing request body unavailable')
             for (const field of spec.absentUpstream || []) assert.equal(outgoing[field], undefined, `${field} leaked upstream`)
             if (spec.diagnostic) assert.ok(record.conversionIssues?.some(i => i.ruleId === spec.diagnostic && i.policyHash), `Missing ${spec.diagnostic} diagnostic`)
             if (spec.preserveSystem) assert.deepEqual(outgoing.system, spec.body.system)
+            if (spec.mixedHistory) {
+              const index = outgoing.messages.findIndex(m => m.tool_calls?.length)
+              assert.ok(index >= 0, 'Mixed history lost its calls')
+              const assistant = outgoing.messages[index]
+              assert.deepEqual(assistant.tool_calls.map(c => c.id), ['audit_mixed_1', 'audit_mixed_2'])
+              assert.ok(JSON.stringify(assistant.content).includes('between parallel calls'), 'Interleaved text lost')
+              assert.deepEqual(outgoing.messages.slice(index + 1, index + 3).map(m => [m.role, m.tool_call_id]), [['tool', 'audit_mixed_1'], ['tool', 'audit_mixed_2']])
+              assert.ok(record.conversionIssues.some(i => i.ruleId === 'chat-assistant-history' && i.reason?.includes('interleaving')), 'Interleaving loss not diagnosed')
+            }
             if (spec.stateless) {
               const final = spec.stream ? JSON.parse(result.raw.split('\n').findLast(line => line.startsWith('data: ') && line.includes('"response.completed"')).slice(6)).response : result.json
               assert.equal(final.store, false, 'Stateless execution falsely reports storage')
