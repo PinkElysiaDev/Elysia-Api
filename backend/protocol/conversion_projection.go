@@ -191,6 +191,15 @@ func ValidateUsageArithmetic(usage *Usage) error {
 	if usage == nil {
 		return nil
 	}
+	if !usage.Attribution.IsZero() {
+		known, err := ParseUsageAttribution(usage.Attribution)
+		if err != nil {
+			return err
+		}
+		if !known {
+			return streamIssue(UnsupportedCapability, "/usage/attribution", "unknown attribution shape requires explicit mapping")
+		}
+	}
 	if count, ok := usage.Details["uncached_input_tokens"]; ok {
 		if usage.Input == nil {
 			return streamIssue(InvalidInput, "/usage/details/uncached_input_tokens", "uncached subtotal requires total input")
@@ -222,6 +231,14 @@ func (c *CompiledConversion) projectUsage(usage *Usage, phase ConversionPhase, r
 	}
 	var codec string
 	_ = rule.Value.Decode(&codec)
+	if codec != "responses" && !usage.Attribution.IsZero() {
+		if emptyUsageAttribution(usage.Attribution) {
+			sink.Add(ConversionIssue{Code: ConversionNormalized, Severity: SeverityInfo, Fidelity: "preserved", Protocol: route.Target, Stage: "conversion." + string(phase), Path: base + "/attribution", RuleID: rule.ID, PolicyHash: c.Hash, PolicyRevision: c.RuleRevisions[rule.ID], Reason: "empty usage attribution normalized for target", Evidence: c.Origins[rule.ID]})
+		} else if err := c.issue(rule, phase, route, base+"/attribution", "target cannot express per-item usage attribution; original accounting is retained", sink, true); err != nil {
+			return err
+		}
+		usage.Attribution = Value{}
+	}
 	for _, name := range sortedKeys(usage.Details) {
 		drop := name == "toolUsePromptTokenCount" && codec != "gemini" ||
 			(name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens") && codec != "anthropic" ||

@@ -54,6 +54,15 @@ func (adapter module) decodeUsage(value p.Value) (*p.Usage, error) {
 		return nil, err
 	}
 	usage := &p.Usage{Details: map[string]p.Counter{}}
+	if adapter.name == Responses && !fields["attribution"].IsZero() {
+		known, err := p.ParseUsageAttribution(fields["attribution"])
+		if err != nil {
+			return nil, err
+		}
+		if known {
+			usage.Attribution = fields["attribution"]
+		}
+	}
 	input, output, total, read, creation := "input_tokens", "output_tokens", "total_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"
 	if adapter.name == Chat {
 		input, output = "prompt_tokens", "completion_tokens"
@@ -320,6 +329,9 @@ func (adapter module) encodeUsage(usage *p.Usage, options p.EvaluationContext) (
 	}
 	fields := p.Object{}
 	input, output, total := "input_tokens", "output_tokens", "total_tokens"
+	if adapter.name == Responses {
+		fields["attribution"] = usage.Attribution
+	}
 	if adapter.name == Chat {
 		input, output = "prompt_tokens", "completion_tokens"
 	}
@@ -404,6 +416,9 @@ func (adapter module) encodeUsage(usage *p.Usage, options p.EvaluationContext) (
 // Details are traversed in sorted order so a rejected target reports the same
 // path on every run; map iteration order is not stable across processes.
 func (adapter module) checkUsageDetails(usage *p.Usage, options p.EvaluationContext) error {
+	if !usage.Attribution.IsZero() && adapter.name != Responses {
+		return unsupported("/usage/attribution", "target requires usage_projection for attributed counts")
+	}
 	for _, name := range slices.Sorted(maps.Keys(usage.Details)) {
 		count := usage.Details[name]
 		if name == "uncached_input_tokens" {

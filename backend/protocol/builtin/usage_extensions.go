@@ -22,6 +22,11 @@ func (adapter module) usageExtensions(value p.Value) (p.Value, error) {
 		nested = map[string][]string{"prompt_tokens_details": inputUsageDetails, "completion_tokens_details": outputUsageDetails}
 	case Responses:
 		known = append(known, "input_tokens_details", "output_tokens_details")
+		if recognized, err := p.ParseUsageAttribution(fields["attribution"]); err != nil {
+			return p.Value{}, err
+		} else if recognized {
+			known = append(known, "attribution")
+		}
 		nested = map[string][]string{"input_tokens_details": inputUsageDetails, "output_tokens_details": outputUsageDetails}
 	case Anthropic:
 		known = append(known, "cache_creation", "output_tokens_details")

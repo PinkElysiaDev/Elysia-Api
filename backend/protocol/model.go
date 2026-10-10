@@ -233,6 +233,9 @@ type Counter struct {
 // Usage normalizes input to include cached reads and cache creation tokens.
 // Details retains declared provider counters without inventing missing totals.
 type Usage struct {
+	// Attribution is a validated, separate Responses bucket snapshot. Counts
+	// already belong to the model totals and must never be added a second time.
+	Attribution   Value              `json:"attribution,omitzero"`
 	Input         *Counter           `json:"input,omitempty"`
 	Output        *Counter           `json:"output,omitempty"`
 	Total         *Counter           `json:"total,omitempty"`
