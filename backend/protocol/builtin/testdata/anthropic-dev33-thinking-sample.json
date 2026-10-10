@@ -1,0 +1,82 @@
+{
+  "id": "reasoning-response-decode",
+  "direction": "decode_response",
+  "capabilities": [],
+  "input": {
+    "id": "r",
+    "model": "m",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "consider"
+      },
+      {
+        "type": "text",
+        "text": "hi"
+      }
+    ],
+    "stop_reason": "end_turn",
+    "usage": {
+      "input_tokens": 0,
+      "output_tokens": 0
+    }
+  },
+  "expected": {
+    "schemaVersion": 1,
+    "source": {},
+    "id": "r",
+    "model": "m",
+    "status": "completed",
+    "content": [
+      {
+        "kind": "message",
+        "role": "assistant",
+        "children": [
+          {
+            "kind": "reasoning",
+            "payload": "consider",
+            "source": {}
+          },
+          {
+            "kind": "text",
+            "payload": "hi",
+            "source": {}
+          }
+        ]
+      }
+    ],
+    "usage": {
+      "input": {
+        "count": 0,
+        "origin": "observed"
+      },
+      "output": {
+        "count": 0,
+        "origin": "observed"
+      },
+      "total": {
+        "count": 0,
+        "origin": "inferred"
+      },
+      "details": {
+        "uncached_input_tokens": {
+          "count": 0,
+          "origin": "observed"
+        }
+      }
+    },
+    "attributes": {
+      "finishReason": "stop"
+    }
+  },
+  "context": {
+    "model": "m"
+  },
+  "scope": {
+    "provider": "fixture",
+    "account": "fixture",
+    "model": "m"
+  }
+}

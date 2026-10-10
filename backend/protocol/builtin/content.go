@@ -70,7 +70,7 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 		}
 		node.Kind, node.Payload = p.ReasoningNode, fields[textKey]
 		known = append(known, textKey, "signature")
-		if signature := fields["signature"]; !signature.IsZero() {
+		if signature := fields["signature"]; !signature.IsZero() && signature != p.StringValue("") {
 			node.Resources = append(node.Resources, p.Resource{Kind: "signature", ID: signature, Scope: options.Scope})
 		}
 	case "redacted_thinking":

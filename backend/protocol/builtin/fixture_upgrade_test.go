@@ -7,6 +7,58 @@ import (
 	"testing"
 )
 
+func TestRepairShippedAnthropicThinkingFixture(t *testing.T) {
+	raw, err := os.ReadFile("testdata/anthropic-dev33-thinking-sample.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sample p.Sample
+	if err := json.Unmarshal(raw, &sample); err != nil {
+		t.Fatal(err)
+	}
+	d := shippedProjectionProtocol(t, Anthropic).Definition()
+	d.ID = "existing-custom-anthropic"
+	for i := range d.Samples {
+		if d.Samples[i].ID == sample.ID {
+			d.Samples[i] = sample
+		}
+	}
+	fixed, changed := RepairOutputFixtures(d)
+	if !changed {
+		t.Fatal("shipped invalid completed thinking fixture not repaired")
+	}
+	if _, changed := RepairOutputFixtures(fixed); changed {
+		t.Fatal("repair not idempotent")
+	}
+	for i := range d.Samples {
+		if d.Samples[i].Expected != fixed.Samples[i].Expected {
+			t.Fatal("semantic oracle changed")
+		}
+	}
+	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
+	value, _ := p.EncodeValue(fixed)
+	c, issues := compiler.Compile(value.Bytes())
+	if c == nil {
+		t.Fatal(issues)
+	}
+	if r := p.Verify(t.Context(), c); !r.Passed {
+		t.Fatal(r.Issues)
+	}
+	if r := p.VerifyCombination(t.Context(), c, c); !r.Passed {
+		t.Fatal(r.Issues)
+	}
+	for _, mapping := range []p.Mapping{{Module: Anthropic, After: &p.Expression{Op: "read"}}, {Transform: &p.Expression{Op: "read"}}} {
+		d.Directions[p.DecodeResponse] = mapping
+		if _, changed := RepairOutputFixtures(d); changed {
+			t.Fatal("custom mapping fixture rewritten")
+		}
+	}
+	sample.Expected = testValue(t, `{}`)
+	if _, changed := repairAnthropicThinkingFixture(sample); changed {
+		t.Fatal("user oracle rewritten")
+	}
+}
+
 func TestRepairResponsesMessageCompletionOracles(t *testing.T) {
 	for _, version := range []string{"dev28", "dev29"} {
 		t.Run(version, func(t *testing.T) { repairResponsesMessageCompletionOracles(t, version) })

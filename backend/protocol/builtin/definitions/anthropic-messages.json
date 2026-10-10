@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "anthropic-messages",
   "name": "Anthropic Messages",
-  "version": "2.1.5",
+  "version": "2.1.6",
   "family": "claude",
   "wireVersion": "v2",
   "capabilities": {
@@ -2841,7 +2841,8 @@
         "content": [
           {
             "type": "thinking",
-            "thinking": "consider"
+            "thinking": "consider",
+            "signature": ""
           },
           {
             "type": "text",

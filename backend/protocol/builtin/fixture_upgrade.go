@@ -91,6 +91,11 @@ func RepairOutputFixtures(d p.Definition) (p.Definition, bool) {
 	}
 	for i, s := range d.Samples {
 		m := d.Directions[s.Direction]
+		if s.Direction == p.DecodeResponse && m.Module == Anthropic && m.After == nil && s.ExpectedIssue == "" {
+			if fixed, repaired := repairAnthropicThinkingFixture(s); repaired {
+				d.Samples[i].Input, changed = fixed, true
+			}
+		}
 		if s.Direction == p.DecodeEvent && m.Module == Chat && m.After == nil && s.Sequence && s.ExpectedIssue == "" {
 			if fixed, repaired := repairChatRoleFixture(s); repaired {
 				d.Samples[i].Input, changed = fixed, true
@@ -116,6 +121,27 @@ func RepairOutputFixtures(d p.Definition) (p.Definition, bool) {
 		d.Samples[i].Expected = repair(s.Expected)
 	}
 	return d, changed
+}
+
+// Correct only the exact shipped unsigned-thinking sample. The completed
+// response requires a signature string; empty expresses no provider state.
+// Custom or negative fixtures retain their independently authored contract.
+func repairAnthropicThinkingFixture(sample p.Sample) (p.Value, bool) {
+	var input, expected any
+	if sample.Input.Decode(&input) != nil || sample.Expected.Decode(&expected) != nil {
+		return sample.Input, false
+	}
+	canonical, err := p.EncodeValue([]any{input, expected})
+	if err != nil || fmt.Sprintf("%x", sha256.Sum256(canonical.Bytes())) != "eee8c712e598a68e54f1d2aa954f5d16ae6fdebce0cda1e08aa9206bcf5c0b35" {
+		return sample.Input, false
+	}
+	fields, _ := sample.Input.ReadObject()
+	content, _ := readArray(fields["content"])
+	thinking, _ := content[0].ReadObject()
+	thinking["signature"] = p.StringValue("")
+	content[0] = object(thinking)
+	fields["content"] = array(content)
+	return object(fields), true
 }
 
 // These exact shipped dev.31 samples omitted the mandatory assistant role.

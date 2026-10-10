@@ -119,6 +119,12 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 		}
 		if adapter.name == Anthropic {
 			fields["type"], fields["thinking"] = p.StringValue("thinking"), node.Payload
+			if direction == p.EncodeResponse {
+				// The response contract requires a string even for unsigned
+				// visible thinking. Empty means no provider authentication;
+				// real source signatures below take precedence.
+				fields["signature"] = p.StringValue("")
+			}
 			if len(node.Children) > 0 {
 				return p.Value{}, unsupported("/reasoning", "summary blocks cannot be substituted for visible thinking")
 			}
@@ -169,6 +175,7 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 			} else {
 				fields["type"], fields["data"] = p.StringValue("redacted_thinking"), resource.ID
 				delete(fields, "thinking")
+				delete(fields, "signature")
 			}
 		case "file", "file_id":
 			if adapter.name == Chat && node.Kind == p.DocumentNode {

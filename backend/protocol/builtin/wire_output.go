@@ -75,6 +75,21 @@ func (adapter module) ValidateWireOutput(direction p.Direction, value p.Value) e
 		if m["content"].IsNull() || m["content"].Decode(&content) != nil {
 			return invalid(base+"/content", "content must be an array")
 		}
+		for i, value := range content {
+			path := fmt.Sprintf("%s/content/%d", base, i)
+			block, err := obj(value, path)
+			if err != nil {
+				return err
+			}
+			if block["type"] == p.StringValue("thinking") {
+				for _, key := range []string{"thinking", "signature"} {
+					var value string
+					if block[key].IsNull() || block[key].Decode(&value) != nil {
+						return invalid(path+"/"+key, "completed thinking block requires a string")
+					}
+				}
+			}
+		}
 		return usage(m["usage"], base+"/usage", true)
 	}
 	fields, err := obj(value, "")

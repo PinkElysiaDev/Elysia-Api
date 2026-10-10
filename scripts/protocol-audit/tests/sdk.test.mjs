@@ -77,6 +77,18 @@ test('strict SDK rejection retains the HTTP 200 response evidence', { skip: !con
   assert.equal(f.captured[1].response.status, 200)
 })
 
+test('Anthropic completed unsigned thinking needs an empty signature string, not a missing field', { skip: !consume && 'SDK dependencies unavailable' }, async t => {
+  const response = JSON.parse(replyWire('anthropic'))
+  response.content.unshift({ type: 'thinking', thinking: 'Synthetic visible thought.', signature: '' })
+  const good = await endpoint(t, JSON.stringify(response), false)
+  const result = await consume('anthropic', good.options, false)
+  assert.deepEqual(result.map(p => p.name), ['@anthropic-ai/sdk', '@ai-sdk/anthropic'])
+  delete response.content[0].signature
+  const bad = await endpoint(t, JSON.stringify(response), false)
+  await assert.rejects(consume('anthropic', bad.options, false))
+  assert.equal(bad.captured.at(-1).response.status, 200)
+})
+
 for (const protocol of ['responses', 'anthropic']) {
   for (const stream of [false, true]) test(`${protocol} SDK checks ordered text across content parts (${stream ? 'SSE' : 'JSON'})`, { skip: !consume && 'SDK dependencies unavailable' }, async t => {
     const wire = multipartTextWire(protocol, ['O', 'K'], stream)
