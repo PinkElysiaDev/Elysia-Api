@@ -86,7 +86,7 @@ func TestGatewayUnmappedFailureKeepsProviderMessageAndConversionIssue(t *testing
 	upstream, _ := service.Pin(protocol.PresetChatCompletionsID)
 	ingress, _ := service.Pin(protocol.PresetAnthropicID)
 	const message = "Thinking mode does not support this tool_choice"
-	const body = `{"error":{"type":"invalid_request_error","code":"invalid_request_error","message":"` + message + `","param":null}}`
+	const body = `{"error":{"type":"invalid_request_error","code":"vendor_tool_choice_detail","message":"` + message + `","param":null}}`
 	var calls atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
