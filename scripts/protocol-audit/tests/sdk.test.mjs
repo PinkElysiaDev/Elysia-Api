@@ -24,6 +24,7 @@ for (const protocol of ['chat', 'responses', 'anthropic', 'gemini']) for (const 
       assert.equal(detail.response.body, wire); assert.equal(detail.response.status, 200)
       assert.match(detail.request.body, /Reply exactly OK/)
       const body = JSON.parse(detail.request.body)
+      if (protocol === 'gemini') assert.deepEqual(body.systemInstruction, { role: 'user', parts: [{ text: 'Follow the user instructions.' }] })
       assert.equal(body.max_completion_tokens ?? body.max_output_tokens ?? body.max_tokens ?? body.generationConfig?.maxOutputTokens, 32768)
       assert.ok(detail.elapsedMs >= 0); assert.ok(detail.firstByteMs >= 0)
     }

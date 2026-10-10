@@ -34,7 +34,7 @@ export function requestBody(protocol, model, stream, scenario, marker, maxOutput
     if (protocol === 'chat') body.messages.unshift({ role: 'system', content: system })
     if (protocol === 'responses') body.instructions = system
     if (protocol === 'anthropic') body.system = system
-    if (protocol === 'gemini') body.systemInstruction = { parts: [{ text: system }] }
+    if (protocol === 'gemini') body.systemInstruction = { role: 'user', parts: [{ text: system }] }
   }
   if (scenario === 'history') {
     const history = [{ role: 'user', content: `Remember this code: ${marker}.` }, { role: 'assistant', content: 'Noted.' }]

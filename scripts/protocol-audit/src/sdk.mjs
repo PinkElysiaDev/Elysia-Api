@@ -85,7 +85,10 @@ export async function consume(protocol, { baseUrl, apiKey, model, expectedText =
     } else {
       version('@google/genai')
       const client = new GoogleGenAI({ apiKey, httpOptions: { baseUrl, timeout: timeoutMs, fetch: capture, retryOptions: { attempts: 1 } } })
-      const params = { model, contents: prompt, config: { maxOutputTokens, abortSignal: signal } }
+      // Exercise the actual SDK Content envelope: a string system instruction
+      // serializes as systemInstruction.role="user" plus parts. A hand-written
+      // parts-only fixture misses this common cross-protocol request boundary.
+      const params = { model, contents: prompt, config: { systemInstruction: 'Follow the user instructions.', maxOutputTokens, abortSignal: signal } }
       let text = ''
       if (stream) for await (const part of await client.models.generateContentStream(params)) { assert.ok(!part.error); text += part.text || '' }
       else text = (await client.models.generateContent(params)).text || ''
