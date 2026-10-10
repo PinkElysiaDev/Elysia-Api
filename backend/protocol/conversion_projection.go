@@ -208,7 +208,7 @@ func ValidateUsageArithmetic(usage *Usage) error {
 	if reasoning, ok := usage.Details["output.reasoning_tokens"]; ok && usage.Output != nil && reasoning.Count > usage.Output.Count {
 		return streamIssue(InvalidInput, "/usage/details/output.reasoning_tokens", "reasoning output exceeds total output")
 	}
-	return nil
+	return validateResponsesToolUsageArithmetic(usage)
 }
 
 func (c *CompiledConversion) projectUsage(usage *Usage, phase ConversionPhase, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, base string) error {
@@ -224,7 +224,8 @@ func (c *CompiledConversion) projectUsage(usage *Usage, phase ConversionPhase, r
 	_ = rule.Value.Decode(&codec)
 	for _, name := range sortedKeys(usage.Details) {
 		drop := name == "toolUsePromptTokenCount" && codec != "gemini" ||
-			(name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens") && codec != "anthropic"
+			(name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens") && codec != "anthropic" ||
+			IsResponsesToolUsageDetail(name) && codec != "responses"
 		if !drop {
 			continue
 		}

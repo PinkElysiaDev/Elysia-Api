@@ -433,6 +433,9 @@ func (adapter module) checkUsageDetails(usage *p.Usage, options p.EvaluationCont
 		switch adapter.name {
 		case Chat, Responses:
 			isSupported = strings.HasPrefix(name, "input.") || strings.HasPrefix(name, "output.")
+			if adapter.name == Responses && p.IsResponsesToolUsageDetail(name) {
+				isSupported = true
+			}
 		case Anthropic:
 			isSupported = name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens" || name == "output.reasoning_tokens"
 		case Gemini:

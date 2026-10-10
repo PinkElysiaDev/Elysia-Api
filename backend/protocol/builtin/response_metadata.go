@@ -18,7 +18,7 @@ func (adapter module) extractMetadata(fields p.Object, location, base string) ([
 	for _, key := range keys {
 		value := fields[key]
 		kind := p.MetadataFieldType(adapter.name, location, key)
-		if kind == "" || kind == "null-only" && !value.IsNull() {
+		if kind == "" || kind == "null-only" && !value.IsNull() || kind == "empty-tool-usage" && !p.EmptyResponsesToolUsage(value) {
 			continue
 		}
 		at := base + "/" + key

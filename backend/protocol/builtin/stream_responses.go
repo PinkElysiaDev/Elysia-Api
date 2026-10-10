@@ -59,7 +59,15 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		if err != nil {
 			return nil, err
 		}
-		return stream.usageEvent(response["usage"])
+		usage, err := stream.decodeUsageUpdate(response["usage"])
+		if err != nil {
+			return nil, err
+		}
+		usage, err = decodeResponsesToolUsage(response, usage)
+		if err != nil || usage == nil {
+			return nil, err
+		}
+		return []p.Event{{Type: p.UsageUpdated, Usage: usage}}, nil
 	case "response.output_item.added":
 		item, err := fields["item"].ReadObject()
 		if err != nil {

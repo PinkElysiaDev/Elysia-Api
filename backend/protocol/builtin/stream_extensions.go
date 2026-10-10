@@ -79,6 +79,9 @@ func (stream *streamModule) captureFrameExtensions(fields p.Object) (p.Value, er
 			if err != nil {
 				return p.Value{}, err
 			}
+			if _, err := decodeResponsesToolUsage(response, nil); err != nil {
+				return p.Value{}, err
+			}
 			capture("/response", response, "id", "model", "status", "usage", "object", "created_at", "output", "error", "incomplete_details")
 		}
 		if value := fields["item"]; !value.IsZero() {

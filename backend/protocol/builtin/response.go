@@ -21,6 +21,12 @@ func (adapter module) decodeResponse(input p.Value, options p.EvaluationContext)
 			return nil, err
 		}
 	}
+	if adapter.name == Responses {
+		response.Usage, err = decodeResponsesToolUsage(fields, nil)
+		if err != nil {
+			return nil, err
+		}
+	}
 	response.Metadata, err = adapter.extractMetadata(fields, "response", "")
 	if err != nil {
 		return nil, err
@@ -158,10 +164,11 @@ func (adapter module) decodeResponse(input p.Value, options p.EvaluationContext)
 			response.Content = append(response.Content, nodes...)
 		}
 	}
-	response.Usage, err = adapter.decodeUsage(usage)
+	decodedUsage, err := adapter.decodeUsage(usage)
 	if err != nil {
 		return nil, err
 	}
+	response.Usage = p.MergeUsage(response.Usage, decodedUsage)
 	response.Attributes = mergeAttributes(response.Attributes, adapter.extensions(fields, known))
 	if !usage.IsZero() && !usage.IsNull() {
 		u, e := usage.ReadObject()
@@ -416,6 +423,12 @@ func (adapter module) encodeResponse(response *p.Response, options p.EvaluationC
 	case Responses:
 		if value := responsesStorageValue(options); !value.IsZero() {
 			fields["store"] = value
+		}
+		if tools := encodeResponsesToolUsage(response.Usage); !tools.IsZero() {
+			fields["tool_usage"], err = mergeUsageExtensions(tools, fields["tool_usage"])
+			if err != nil {
+				return p.Value{}, err
+			}
 		}
 		fields["object"], fields["status"], fields["output"], fields["created_at"] = p.StringValue("response"), response.Status, content, response.Attributes["created_at"]
 		fields["status"], fields["incomplete_details"], err = encodeResponsesFinish(response)

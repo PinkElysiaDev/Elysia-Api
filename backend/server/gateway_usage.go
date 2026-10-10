@@ -148,6 +148,13 @@ func observeHostedTools(record *usageRecord, compiled *protocol.Compiled, body [
 		"computer_use": &record.BuiltinToolUsage.ComputerUseCalls,
 	} {
 		*target = record.hostedTools.Count(kind)
+		// A usage snapshot is authoritative, including zero. Later frames with
+		// no usage events must not reset reported counts to item observations.
+		if record.ProtocolUsage != nil {
+			if counter, ok := record.ProtocolUsage.Details["tools."+kind+"_calls"]; ok {
+				*target = int(counter.Count)
+			}
+		}
 	}
 	return nil
 }

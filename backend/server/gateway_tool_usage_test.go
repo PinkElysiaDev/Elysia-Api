@@ -1,0 +1,89 @@
+package server
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/elysia-api/backend/protocol"
+)
+
+func TestResponsesSeparateToolLedgerPersistedAcrossClientProjection(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprint(stream), func(t *testing.T) {
+			const ledger = `{"image_gen":{"input_tokens":7,"output_tokens":5,"total_tokens":12,"input_tokens_details":{"image_tokens":4,"text_tokens":3},"output_tokens_details":{"image_tokens":5,"text_tokens":0}},"web_search":{"num_requests":2}}`
+			const item = `{"type":"message","id":"msg","role":"assistant","status":"completed","content":[{"type":"output_text","text":"OK","annotations":[]}]}`
+			const response = `{"object":"response","id":"r","model":"m","created_at":1,"status":"completed","output":[` + item + `],"usage":{"input_tokens":3,"output_tokens":1,"total_tokens":4},"tool_usage":` + ledger + `}`
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if !stream {
+					w.Header().Set("Content-Type", "application/json")
+					fmt.Fprint(w, response)
+					return
+				}
+				w.Header().Set("Content-Type", "text/event-stream")
+				frames := []string{
+					`{"type":"response.created","response":{"id":"r","model":"m","created_at":1,"status":"in_progress","output":[],"usage":{"input_tokens":3,"output_tokens":0}}}`,
+					`{"type":"response.in_progress","response":{"id":"r","status":"in_progress","output":[],"tool_usage":` + ledger + `}}`,
+					`{"type":"response.in_progress","response":{"id":"r","status":"in_progress","output":[],"tool_usage":` + ledger + `}}`,
+					`{"type":"response.output_item.added","output_index":0,"item":{"id":"msg","type":"message","role":"assistant","status":"in_progress","content":[]}}`,
+					`{"type":"response.content_part.added","output_index":0,"content_index":0,"item_id":"msg","part":{"type":"output_text","text":"","annotations":[]}}`,
+					`{"type":"response.output_text.delta","output_index":0,"content_index":0,"item_id":"msg","delta":"OK"}`,
+					`{"type":"response.content_part.done","output_index":0,"content_index":0,"item_id":"msg","part":{"type":"output_text","text":"OK","annotations":[]}}`,
+					`{"type":"response.completed","response":` + response + `}`,
+				}
+				for _, frame := range frames {
+					fmt.Fprintf(w, "data: %s\n\n", frame)
+				}
+			}))
+			defer upstream.Close()
+			s := newTestServer(t, presetGroup(t, "custom:openai-responses", upstream.URL))
+			request, recorder := chatRequestContext(fmt.Sprintf(`{"model":"grp","messages":[{"role":"user","content":"hi"}],"stream":%t,"stream_options":{"include_usage":true}}`, stream))
+			s.chatCompletions(request)
+			if recorder.Code != 200 || !strings.Contains(recorder.Body.String(), "OK") || strings.Contains(recorder.Body.String(), "tool_usage") || recorder.Header().Get("X-Elysia-Stream-Error") != "" {
+				t.Fatalf("bad projected response: %d %s", recorder.Code, recorder.Body)
+			}
+			records := latestUsageRecords(t, s)
+			if len(records) != 1 || records[0].Error != "" {
+				t.Fatal(records)
+			}
+			body, exists, err := s.store.GetUsageRecordJSON(t.Context(), records[0].RequestID)
+			if err != nil || !exists {
+				t.Fatal(err)
+			}
+			var saved usageRecord
+			if err = json.Unmarshal(body, &saved); err != nil {
+				t.Fatal(err)
+			}
+			u := saved.ProtocolUsage
+			if u == nil || u.Input.Count != 3 || u.Output.Count != 1 || u.Total.Count != 4 || len(u.Details) != 8 || u.Details["tools.image_generation.total_tokens"].Count != 12 || saved.BuiltinToolUsage.WebSearchCalls != 2 {
+				t.Fatalf("original ledger lost or model totals contaminated: %+v %+v", u, saved.BuiltinToolUsage)
+			}
+			n := 0
+			for _, issue := range saved.ConversionIssues {
+				if strings.Contains(issue.Path, "/details/tools.") && issue.RuleID != "" && issue.PolicyHash != "" {
+					n++
+				}
+			}
+			if n < 8 {
+				t.Fatalf("missing persisted projection diagnostics: %+v", saved.ConversionIssues)
+			}
+		})
+	}
+}
+
+func TestReportedToolCountSurvivesFramesWithoutUsage(t *testing.T) {
+	compiled := compileFixtureDefinition(t, presetDefinition(t, "openai-responses"))
+	for _, count := range []int64{0, 2} {
+		r := &usageRecord{}
+		updateRecordProtocolUsage(r, &protocol.Usage{Details: map[string]protocol.Counter{"tools.web_search_calls": {Count: count, Origin: protocol.ObservedCount}}})
+		if err := observeHostedTools(r, compiled, []byte(`{"type":"response.in_progress","response":{"id":"r"}}`)); err != nil {
+			t.Fatal(err)
+		}
+		if r.BuiltinToolUsage.WebSearchCalls != int(count) {
+			t.Fatal(r.BuiltinToolUsage)
+		}
+	}
+}

@@ -41,6 +41,8 @@ func MetadataFieldType(codec, location, name string) string {
 				return "empty-state"
 			case "access_programs":
 				return "access-programs"
+			case "tool_usage":
+				return "empty-tool-usage"
 			case "content_filters":
 				// Only the observed empty sentinel has a known meaning. A
 				// non-null vendor filtering payload remains an opaque extension.
@@ -117,6 +119,8 @@ func ValidateMetadataValue(codec, location, name string, v Value, at string) err
 	}
 	ok := false
 	switch kind {
+	case "empty-tool-usage":
+		ok = EmptyResponsesToolUsage(v)
 	case "access-programs":
 		fields, err := v.ReadObject()
 		if err != nil {
@@ -178,6 +182,9 @@ func emptyMetadata(v Value) bool {
 }
 
 func emptyMetadataField(item ResponseMetadata) bool {
+	if item.Codec == "responses" && item.Name == "tool_usage" {
+		return EmptyResponsesToolUsage(item.Value)
+	}
 	if emptyMetadata(item.Value) {
 		return true
 	}
