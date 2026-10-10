@@ -2,9 +2,10 @@ package protocol
 
 import "fmt"
 
-// chatHistory projects one contiguous assistant turn before encoding. Tool
+// assistantHistory projects one contiguous assistant turn before encoding. Tool
 // results and other roles end the turn; unfinished history is never discarded.
-func (c *CompiledConversion) chatHistory(request *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
+func (c *CompiledConversion) assistantHistory(request *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
+	chat := rule.Action == "chat_history"
 	var result, pending []Node
 	start, bare := 0, false
 	changed := false
@@ -14,6 +15,10 @@ func (c *CompiledConversion) chatHistory(request *Request, route ConversionConte
 		}
 		defer func() { pending, bare = nil, false }()
 		if !bare {
+			if !chat {
+				result = append(result, pending...)
+				return nil
+			}
 			// Native Chat message boundaries remain intact. Other codecs can
 			// still place text between calls inside one assistant message.
 			for i, n := range pending {
@@ -41,7 +46,7 @@ func (c *CompiledConversion) chatHistory(request *Request, route ConversionConte
 				}
 			}
 			if !item.ID.IsZero() || !item.Status.IsZero() {
-				if err := c.issue(rule, ConversionRequest, route, path, "Chat cannot express separate history item identity/status; tool call IDs are retained", sink, true); err != nil {
+				if err := c.issue(rule, ConversionRequest, route, path, "target cannot express separate history item identity/status; tool call IDs are retained", sink, true); err != nil {
 					return err
 				}
 				item.ID, item.Status, item.Native = Value{}, Value{}, nil
@@ -53,20 +58,22 @@ func (c *CompiledConversion) chatHistory(request *Request, route ConversionConte
 			}
 		}
 		if messages > 1 {
-			if err := c.issue(rule, ConversionRequest, route, at, "Chat combines message boundaries within this assistant turn to keep parallel tool calls adjacent to their results", sink, true); err != nil {
+			if err := c.issue(rule, ConversionRequest, route, at, "target combines message boundaries within this assistant turn; thinking and parallel tool calls stay in the same message", sink, true); err != nil {
 				return err
 			}
 		}
-		children, _, err := c.chatHistoryChildren(n.Children, at+"/children", route, rule, sink)
-		if err != nil {
-			return err
+		if chat {
+			children, _, err := c.chatHistoryChildren(n.Children, at+"/children", route, rule, sink)
+			if err != nil {
+				return err
+			}
+			n.Children = children
 		}
-		n.Children = children
 		hasReply := false
 		for _, child := range n.Children {
 			hasReply = hasReply || child.Kind == TextNode || child.Kind == ToolCallNode || child.Kind == RefusalNode
 		}
-		if !hasReply {
+		if chat && !hasReply {
 			return streamIssue(UnsupportedCapability, at, "Chat thinking history requires associated assistant content or tool calls before the next turn")
 		}
 		result = append(result, n)

@@ -156,6 +156,20 @@ func (adapter module) decodeResponseItem(value p.Value, path string, direction p
 }
 
 func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, options p.EvaluationContext) (p.Value, p.Value, error) {
+	if direction == p.EncodeRequest && (adapter.name == Anthropic || adapter.name == Gemini) {
+		count, bare := 0, false
+		for i, n := range nodes {
+			if n.Kind == p.ReasoningNode || n.Kind == p.ToolCallNode || (n.Kind == p.MessageNode && n.Role == p.StringValue("assistant")) {
+				count++
+				bare = bare || n.Kind != p.MessageNode
+				if count > 1 && bare {
+					return p.Value{}, p.Value{}, unsupported(fmt.Sprintf("/content/%d", i), "independent assistant history items require assistant_history projection before block encoding")
+				}
+			} else {
+				count, bare = 0, false
+			}
+		}
+	}
 	var messages, system []p.Value
 	hasConversation := false
 	for index, node := range nodes {

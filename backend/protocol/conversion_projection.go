@@ -64,6 +64,9 @@ func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 		if codec == "openai-chat" {
 			p.Rules = append(p.Rules, ConversionRule{ID: "chat-assistant-history", Order: 210, Enabled: true, Phase: ConversionRequest, Action: "chat_history"})
 		}
+		if codec == "anthropic" || codec == "gemini" {
+			p.Rules = append(p.Rules, ConversionRule{ID: "block-assistant-history", Order: 210, Enabled: true, Phase: ConversionRequest, Action: "assistant_history"})
+		}
 		if codec != "gemini" {
 			p.Rules = append(p.Rules, ConversionRule{ID: "text-tool-results", Order: 150, Enabled: true, Phase: ConversionRequest, Match: ConversionMatch{NodeKind: ToolResultNode}, Action: "tool_result_text"})
 		}
