@@ -79,11 +79,11 @@ func (c *CompiledConversion) responseShape(r *Response, phase ConversionPhase, r
 			if err != nil {
 				return nil, err
 			}
-			if codec == "gemini" && n.Kind == ReasoningNode && n.Payload.IsZero() && n.ReasoningForm == "" && n.ReasoningContent == nil && len(n.Children) == 0 {
-				// An empty visible thought has no characters to invent. Gemini
-				// still needs an explicit data member on its part envelope.
+			if (codec == "gemini" || codec == "anthropic") && n.Kind == ReasoningNode && n.Payload.IsZero() && n.ReasoningForm == "" && n.ReasoningContent == nil && len(n.Children) == 0 {
+				// An empty visible thought has no characters to invent. These
+				// targets still require an explicit string on the thinking block.
 				n.Payload = StringValue("")
-				sink.Add(ConversionIssue{Code: ConversionNormalized, Severity: SeverityInfo, Fidelity: "preserved", Protocol: route.Target, Stage: "conversion." + string(phase), Path: at + "/payload", RuleID: rule.ID, PolicyHash: c.Hash, PolicyRevision: c.RuleRevisions[rule.ID], Reason: "empty visible thought expressed as an explicit Gemini text member", Evidence: c.Origins[rule.ID]})
+				sink.Add(ConversionIssue{Code: ConversionNormalized, Severity: SeverityInfo, Fidelity: "preserved", Protocol: route.Target, Stage: "conversion." + string(phase), Path: at + "/payload", RuleID: rule.ID, PolicyHash: c.Hash, PolicyRevision: c.RuleRevisions[rule.ID], Reason: "empty visible thought expressed as an explicit target text member", Evidence: c.Origins[rule.ID]})
 			}
 			if (n.Kind == ToolCallNode || n.Kind == ReasoningNode) && (!n.ID.IsZero() || !n.Status.IsZero()) {
 				if err := c.issue(rule, phase, route, at, "target cannot express this separate output item ID/status; tool call identity is retained", sink, true); err != nil {

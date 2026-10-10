@@ -58,3 +58,39 @@ func TestGeminiFinalContractRejectsEmptyPartAfterMapping(t *testing.T) {
 		}
 	}
 }
+
+func TestEmptyResponsesThoughtHasAnthropicRequiredThinking(t *testing.T) {
+	from, to := shippedProjectionProtocol(t, Responses), shippedProjectionProtocol(t, Anthropic)
+	r, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","status":"completed","output":[{"type":"reasoning","summary":[],"content":[]},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"OK"}]}],"usage":{"input_tokens":1,"output_tokens":1}}`), p.EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
+	sink := &p.DiagnosticSink{}
+	projected, err := c.Response(t.Context(), r, p.ConversionContext{}, sink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(wire), `"thinking":""`) || !strings.Contains(string(wire), `"signature":""`) {
+		t.Fatal(string(wire))
+	}
+	if err := to.ValidateWireOutput(p.EncodeResponse, testValue(t, string(wire))); err != nil {
+		t.Fatal(err)
+	}
+	if !r.Content[0].Payload.IsZero() {
+		t.Fatal("source thought modified")
+	}
+	found := false
+	for _, issue := range sink.Issues() {
+		if strings.HasSuffix(issue.Path, "/payload") {
+			found = issue.Code == p.ConversionNormalized && issue.Fidelity == "preserved" && issue.RuleID != ""
+		}
+	}
+	if !found {
+		t.Fatal("normalization was not diagnosed")
+	}
+}
