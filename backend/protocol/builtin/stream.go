@@ -302,6 +302,13 @@ func (stream *streamModule) decodeChatFrame(fields p.Object, options p.Evaluatio
 			kind       p.NodeKind
 		}{{"reasoning_content", "reasoning", p.ReasoningNode}, {"content", "text", p.TextNode}, {"refusal", "refusal", p.RefusalNode}} {
 			if content := delta[part.field]; !content.IsZero() && !content.IsNull() {
+				// A Chat text delta appends characters; an empty delta does not
+				// start a content item. Otherwise role/terminal chunks invent an
+				// empty assistant turn between a tool call and its result.
+				// The native frame still preserves the original empty field.
+				if part.field == "content" && content == p.StringValue("") {
+					continue
+				}
 				batch, err := stream.textEvents(part.key, part.kind, content)
 				if err != nil {
 					return nil, err
