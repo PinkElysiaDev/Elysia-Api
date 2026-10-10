@@ -451,11 +451,12 @@ func mergeCollectedMetadata(left, right []ResponseMetadata) []ResponseMetadata {
 }
 
 // Node metadata snapshots replace earlier values. Token probabilities arriving
-// as deltas append; response/usage metadata never migrates to a content item.
+// as deltas append; response, usage and transport event metadata never migrates
+// to a content item. Event padding belongs to frame replay, not chat history.
 func MergeNodeMetadata(left, right []ResponseMetadata, delta bool) []ResponseMetadata {
 	out := append([]ResponseMetadata(nil), left...)
 	for _, m := range right {
-		if m.Location == "response" || m.Location == "usage" {
+		if m.Location == "response" || m.Location == "usage" || strings.HasPrefix(m.Location, "event:") {
 			continue
 		}
 		found := false
