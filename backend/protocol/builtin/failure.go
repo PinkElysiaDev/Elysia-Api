@@ -118,6 +118,22 @@ func (adapter module) decodeFailure(value p.Value, options p.EvaluationContext) 
 			}
 			known = append(known, "code", "param")
 		}
+		// Some compatible providers repeat the canonical category in code.
+		// It adds no independent detail. Preserve the original same-wire shape
+		// through the native snapshot, while foreign targets use the category.
+		if category != "" && typeName == canonicalType && fields["code"] == p.StringValue(typeName) {
+			delete(result, "code")
+			known = append(known, "code")
+		}
+		if adapter.name == Anthropic {
+			// Enumerated nullable compatibility fields denote no detail. Actual
+			// nonempty provider codes/parameters still require an explicit mapping.
+			for _, key := range []string{"code", "param"} {
+				if fields[key].IsNull() {
+					known = append(known, key)
+				}
+			}
+		}
 	}
 	if category == "" && !options.Values["httpStatus"].IsZero() {
 		var status int
