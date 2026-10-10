@@ -17,6 +17,9 @@ func MergeUsage(current, update *Usage) *Usage {
 		if !source.Attribution.IsZero() {
 			merged.Attribution = source.Attribution
 		}
+		if !source.CacheBilling.IsZero() {
+			merged.CacheBilling = source.CacheBilling
+		}
 		mergeCounter(&merged.Input, source.Input)
 		mergeCounter(&merged.Output, source.Output)
 		mergeCounter(&merged.CacheRead, source.CacheRead)

@@ -235,7 +235,9 @@ type Counter struct {
 type Usage struct {
 	// Attribution is a validated, separate Responses bucket snapshot. Counts
 	// already belong to the model totals and must never be added a second time.
-	Attribution   Value              `json:"attribution,omitzero"`
+	Attribution Value `json:"attribution,omitzero"`
+	// CacheBilling retains the declared linapi cache allocation independently.
+	CacheBilling  Value              `json:"cacheBilling,omitzero"`
 	Input         *Counter           `json:"input,omitempty"`
 	Output        *Counter           `json:"output,omitempty"`
 	Total         *Counter           `json:"total,omitempty"`

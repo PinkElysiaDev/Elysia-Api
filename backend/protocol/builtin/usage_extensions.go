@@ -22,6 +22,11 @@ func (adapter module) usageExtensions(value p.Value) (p.Value, error) {
 		nested = map[string][]string{"prompt_tokens_details": inputUsageDetails, "completion_tokens_details": outputUsageDetails}
 	case Responses:
 		known = append(known, "input_tokens_details", "output_tokens_details")
+		if recognized, err := p.ParseCacheBilling(fields["linapi_cache_billing"]); err != nil {
+			return p.Value{}, err
+		} else if recognized {
+			known = append(known, "linapi_cache_billing")
+		}
 		if recognized, err := p.ParseUsageAttribution(fields["attribution"]); err != nil {
 			return p.Value{}, err
 		} else if recognized {

@@ -200,6 +200,15 @@ func ValidateUsageArithmetic(usage *Usage) error {
 			return streamIssue(UnsupportedCapability, "/usage/attribution", "unknown attribution shape requires explicit mapping")
 		}
 	}
+	if !usage.CacheBilling.IsZero() {
+		known, err := ParseCacheBilling(usage.CacheBilling)
+		if err != nil {
+			return err
+		}
+		if !known {
+			return streamIssue(UnsupportedCapability, "/usage/cacheBilling", "unknown billing disclosure requires explicit mapping")
+		}
+	}
 	if count, ok := usage.Details["uncached_input_tokens"]; ok {
 		if usage.Input == nil {
 			return streamIssue(InvalidInput, "/usage/details/uncached_input_tokens", "uncached subtotal requires total input")
@@ -238,6 +247,14 @@ func (c *CompiledConversion) projectUsage(usage *Usage, phase ConversionPhase, r
 			return err
 		}
 		usage.Attribution = Value{}
+	}
+	if codec != "responses" && !usage.CacheBilling.IsZero() {
+		if emptyMetadata(usage.CacheBilling) {
+			sink.Add(ConversionIssue{Code: ConversionNormalized, Severity: SeverityInfo, Fidelity: "preserved", Protocol: route.Target, Stage: "conversion." + string(phase), Path: base + "/cacheBilling", RuleID: rule.ID, PolicyHash: c.Hash, PolicyRevision: c.RuleRevisions[rule.ID], Reason: "empty cache billing disclosure normalized for target", Evidence: c.Origins[rule.ID]})
+		} else if err := c.issue(rule, phase, route, base+"/cacheBilling", "target cannot express the provider's disclosed cache allocation; original accounting is retained", sink, true); err != nil {
+			return err
+		}
+		usage.CacheBilling = Value{}
 	}
 	for _, name := range sortedKeys(usage.Details) {
 		drop := name == "toolUsePromptTokenCount" && codec != "gemini" ||

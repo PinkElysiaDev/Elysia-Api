@@ -17,7 +17,8 @@ func TestResponsesSeparateToolLedgerPersistedAcrossClientProjection(t *testing.T
 			const ledger = `{"image_gen":{"input_tokens":7,"output_tokens":5,"total_tokens":12,"input_tokens_details":{"image_tokens":4,"text_tokens":3},"output_tokens_details":{"image_tokens":5,"text_tokens":0}},"web_search":{"num_requests":2}}`
 			const item = `{"type":"message","id":"msg","role":"assistant","status":"completed","content":[{"type":"output_text","text":"OK","annotations":[]}]}`
 			const attribution = `{"items":{"msg":{"input_tokens":2,"output_tokens":1,"content":[{"input_tokens":2,"output_tokens":1}]}},"request_fields":{"instructions":{"input_tokens":1,"cached_tokens":0}}}`
-			const response = `{"object":"response","id":"r","model":"m","created_at":1,"status":"completed","output":[` + item + `],"usage":{"input_tokens":3,"output_tokens":1,"total_tokens":4,"attribution":` + attribution + `},"tool_usage":` + ledger + `}`
+			const billing = `{"basis":"disclosed_billing_allocation","billed_cached_tokens":1,"observed_cached_tokens":3,"policy_revision":2,"rule_id":"test-rule"}`
+			const response = `{"object":"response","id":"r","model":"m","created_at":1,"status":"completed","output":[` + item + `],"usage":{"input_tokens":3,"output_tokens":1,"total_tokens":4,"input_tokens_details":{"cached_tokens":1},"attribution":` + attribution + `,"linapi_cache_billing":` + billing + `},"tool_usage":` + ledger + `}`
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if !stream {
 					w.Header().Set("Content-Type", "application/json")
@@ -64,6 +65,9 @@ func TestResponsesSeparateToolLedgerPersistedAcrossClientProjection(t *testing.T
 			}
 			if string(u.Attribution.Bytes()) != attribution {
 				t.Fatalf("attribution lost from persisted raw accounting: %s", u.Attribution.Bytes())
+			}
+			if string(u.CacheBilling.Bytes()) != billing || u.CacheRead.Count != 1 {
+				t.Fatalf("disclosed billing replaced observed usage or was lost: %+v", u)
 			}
 			attributionIssue := false
 			for _, issue := range saved.ConversionIssues {
