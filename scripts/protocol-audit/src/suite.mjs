@@ -282,6 +282,11 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
             for (const field of spec.absentUpstream || []) assert.equal(outgoing[field], undefined, `${field} leaked upstream`)
             if (spec.diagnostic) assert.ok(record.conversionIssues?.some(i => i.ruleId === spec.diagnostic && i.policyHash), `Missing ${spec.diagnostic} diagnostic`)
             if (spec.preserveSystem) assert.deepEqual(outgoing.system, spec.body.system)
+            if (spec.thinkingFragments) {
+              assert.equal(outgoing.messages[1].reasoning_content, 'visible thinking')
+              assert.ok(JSON.stringify(outgoing.messages[1].content).includes('Hello.'))
+              assert.ok(record.conversionIssues.some(i => i.ruleId === 'chat-assistant-history' && i.reason?.includes('block boundaries')), 'Thinking block loss not diagnosed')
+            }
             if (spec.mixedHistory) {
               const index = outgoing.messages.findIndex(m => m.tool_calls?.length)
               assert.ok(index >= 0, 'Mixed history lost its calls')

@@ -23,6 +23,13 @@ export function regressionCases(target, model, maxOutputTokens) {
       ]
       body.tools = [{ type: 'function', name: 'audit_echo', parameters: { type: 'object', properties: { value: { type: 'integer' } }, required: ['value'] } }]
       add(`mixed-tool-history-${suffix}`, 'responses', stream, body, { diagnostic: 'chat-assistant-history', mixedHistory: true, expectedText: 'MIXED_HISTORY_OK' })
+      const fragments = requestBody('gemini', model, stream, 'text', '', maxOutputTokens)
+      fragments.contents = [
+        { role: 'user', parts: [{ text: 'Say hello.' }] },
+        { role: 'model', parts: [{ thought: true, text: 'visible ' }, { thought: true, text: 'thinking' }, { text: 'Hello.' }] },
+        { role: 'user', parts: [{ text: 'Reply exactly FRAGMENTS_OK.' }] },
+      ]
+      add(`thinking-fragments-${suffix}`, 'gemini', stream, fragments, { diagnostic: 'chat-assistant-history', thinkingFragments: true, expectedText: 'FRAGMENTS_OK' })
     }
     if (['anthropic', 'gemini'].includes(target.protocol)) {
       for (const protocol of ['chat', 'responses']) for (const role of ['system', 'developer']) {

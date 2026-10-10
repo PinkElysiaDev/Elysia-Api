@@ -17,6 +17,18 @@ test('mixed tool history checks a synthetic second round without forced tool sel
   }
 })
 
+test('visible thinking fragment regressions preserve the full synthetic history', () => {
+  const cases = regressionCases({ protocol: 'chat' }, 'model', 32768).filter(c => c.thinkingFragments)
+  assert.deepEqual(cases.map(c => c.stream), [false, true])
+  for (const c of cases) {
+    assert.equal(c.protocol, 'gemini')
+    assert.deepEqual(c.body.contents.map(m => m.role), ['user', 'model', 'user'])
+    assert.equal(c.body.contents[1].parts.length, 3)
+    assert.equal(c.expectedText, 'FRAGMENTS_OK')
+    assert.equal(c.diagnostic, 'chat-assistant-history')
+  }
+})
+
 test('reminders remain user text while mid-system cases deliberately exercise role conversion', () => {
   for (const protocol of ['chat', 'responses', 'anthropic', 'gemini']) {
     const cases = regressionCases({ protocol }, 'model', 32768)
