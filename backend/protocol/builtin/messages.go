@@ -86,6 +86,15 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 				if callKind != "function" {
 					return nil, unsupported(location+"/tool_calls", "Chat tool history requires function calls")
 				}
+				// Some Chat providers repeat the array position in complete JSON
+				// tool calls. Only an exact positional index is redundant; do not
+				// discard an alternative association or malformed vendor value.
+				if index := call["index"]; !index.IsZero() {
+					var observed int
+					if index.IsNull() || index.Decode(&observed) != nil || observed != callIndex {
+						return nil, p.IssuesError([]p.ConversionIssue{{Code: p.InvalidAssociation, Severity: p.SeverityError, Path: fmt.Sprintf("%s/tool_calls/%d/index", location, callIndex), Reason: "complete tool call index must match its array position"}})
+					}
+				}
 				function, err := call["function"].ReadObject()
 				if err != nil {
 					return nil, err
@@ -94,7 +103,7 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 				if err != nil {
 					return nil, err
 				}
-				attributes, err := adapter.nestedExtensions(call, []string{"type", "id", "function"}, map[string][]string{"function": {"name", "arguments"}})
+				attributes, err := adapter.nestedExtensions(call, []string{"type", "id", "function", "index"}, map[string][]string{"function": {"name", "arguments"}})
 				if err != nil {
 					return nil, err
 				}
