@@ -91,6 +91,11 @@ func (stream *streamModule) captureFrameExtensions(fields p.Object) (p.Value, er
 			}
 			switch item["type"] {
 			case p.StringValue("message"):
+				// Message metadata was attached by the message decoder. Consume
+				// the same validated fields here instead of duplicating them as opaque.
+				if _, err := stream.module.extractMetadata(item, "message", "/item"); err != nil {
+					return p.Value{}, err
+				}
 				capture("/item", item, "type", "id", "role", "status", "content", "phase")
 				parts, err := readArray(item["content"])
 				if err != nil {

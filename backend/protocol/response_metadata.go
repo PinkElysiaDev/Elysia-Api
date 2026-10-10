@@ -84,6 +84,9 @@ func MetadataFieldType(codec, location, name string) string {
 	if location == "message" && codec == "responses" && name == "phase" {
 		return "message-phase"
 	}
+	if location == "message" && codec == "responses" && (name == "metadata" || name == "internal_chat_message_metadata_passthrough") {
+		return "turn-tags"
+	}
 	if location == "content" {
 		if codec == "responses" && (name == "annotations" || name == "logprobs") {
 			return "array"
@@ -125,6 +128,21 @@ func ValidateMetadataValue(codec, location, name string, v Value, at string) err
 	}
 	ok := false
 	switch kind {
+	case "turn-tags":
+		fields, err := v.ReadObject()
+		if err != nil {
+			break
+		}
+		for _, key := range sortedKeys(fields) {
+			if key != "turn_id" {
+				return streamIssue(UnsupportedCapability, at+"/"+key, "unknown message metadata requires explicit mapping")
+			}
+			var id string
+			if fields[key].IsNull() || fields[key].Decode(&id) != nil || strings.TrimSpace(id) == "" {
+				return streamIssue(InvalidInput, at+"/"+key, "message turn tag must be a nonempty string")
+			}
+		}
+		ok = true
 	case "padding-string":
 		var value string
 		ok = !v.IsNull() && v.Decode(&value) == nil
@@ -188,6 +206,21 @@ func ValidateMetadataValue(codec, location, name string, v Value, at string) err
 func emptyMetadata(v Value) bool {
 	s := strings.TrimSpace(string(v.Bytes()))
 	return s == "null" || s == "[]" || s == "{}"
+}
+
+// Only the observed correlation tag is classified. Other channel annotations
+// retain their opaque boundary, including when they accompany a known tag.
+func KnownResponseTurnTags(v Value) bool {
+	fields, err := v.ReadObject()
+	if err != nil {
+		return true
+	} // Type/null validation remains the caller's job.
+	for key := range fields {
+		if key != "turn_id" {
+			return false
+		}
+	}
+	return true
 }
 
 func emptyMetadataField(item ResponseMetadata) bool {

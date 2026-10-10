@@ -21,6 +21,9 @@ func (adapter module) extractMetadata(fields p.Object, location, base string) ([
 		if kind == "" || kind == "null-only" && !value.IsNull() || kind == "empty-tool-usage" && !p.EmptyResponsesToolUsage(value) {
 			continue
 		}
+		if kind == "turn-tags" && !p.KnownResponseTurnTags(value) {
+			continue
+		}
 		at := base + "/" + key
 		if err := p.ValidateMetadataValue(adapter.name, location, key, value, at); err != nil {
 			return nil, err
