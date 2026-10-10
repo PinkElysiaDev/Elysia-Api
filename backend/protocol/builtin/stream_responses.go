@@ -42,6 +42,11 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		}
 	}
 	switch kind {
+	case "keepalive":
+		// A declared payload-free transport heartbeat has no generation
+		// event. Sequence validation above still applies; extension capture
+		// below rejects any additional data instead of silently discarding it.
+		return nil, nil
 	case "response.created":
 		response, err := stream.module.decodeResponse(fields["response"], options)
 		if err != nil {

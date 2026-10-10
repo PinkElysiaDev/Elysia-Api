@@ -65,6 +65,11 @@ func (stream *streamModule) splitFrameMetadata(extra p.Value, kind p.Value) (p.V
 	if extra.IsZero() {
 		return extra, nil, nil
 	}
+	if stream.name == Responses && kind == p.StringValue("keepalive") {
+		// Only type/sequence are declared on this heartbeat. Response
+		// metadata names do not grant payload semantics to a keepalive.
+		return extra, nil, nil
+	}
 	locations, err := extra.ReadObject()
 	if err != nil {
 		return p.Value{}, nil, err

@@ -69,7 +69,13 @@ func (stream *streamModule) captureFrameExtensions(fields p.Object) (p.Value, er
 			capture("/delta", delta, "type", "text", "thinking", "partial_json", "signature", "stop_reason", "stop_sequence")
 		}
 	case Responses:
-		if fields["type"] == p.StringValue("error") {
+		if fields["type"] == p.StringValue("keepalive") {
+			capture("/", fields, "type", "sequence_number")
+			if len(extra) == 0 {
+				return p.Value{}, nil
+			}
+			return object(extra), nil
+		} else if fields["type"] == p.StringValue("error") {
 			capture("/", fields, "type", "sequence_number", "error", "message", "code", "param")
 		} else {
 			capture("/", fields, "type", "sequence_number", "response_id", "output_index", "content_index", "summary_index", "item_id", "delta", "text", "refusal", "arguments", "input", "item", "part", "response", "error", "logprobs", "annotation", "annotation_index")
