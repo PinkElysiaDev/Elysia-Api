@@ -218,7 +218,7 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		}
 		if r.Action == "responses_storage" {
 			var opts responsesStorageOptions
-			if r.Value.Decode(&opts) != nil || !knownConversionCodec(opts.TargetCodec) || (opts.OnUnsupported != "degrade" && opts.OnUnsupported != "reject") {
+			if r.Value.Decode(&opts) != nil || !knownConversionCodec(opts.TargetCodec) || (opts.SourceCodec != "" && !knownConversionCodec(opts.SourceCodec)) || (opts.OnUnsupported != "degrade" && opts.OnUnsupported != "reject") {
 				return nil, fmt.Errorf("responses_storage requires targetCodec and onUnsupported: degrade or reject")
 			}
 		}

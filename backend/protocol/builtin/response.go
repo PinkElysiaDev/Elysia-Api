@@ -592,7 +592,7 @@ func groupResponsesContent(nodes []p.Node) []p.Node {
 }
 
 func responsesStorageValue(options p.EvaluationContext) p.Value {
-	if options.ClientOutput == nil || options.ClientOutput.ResponsesStorage == nil {
+	if options.ClientOutput == nil || options.ClientOutput.ResponsesStorage == nil || options.ClientOutput.ResponsesStorage.EffectiveUnknown {
 		return p.Value{}
 	}
 	value, _ := p.EncodeValue(options.ClientOutput.ResponsesStorage.Effective)

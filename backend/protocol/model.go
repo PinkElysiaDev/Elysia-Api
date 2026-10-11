@@ -209,9 +209,12 @@ type ClientOutput struct {
 // ResponsesStorageIntent describes API response retrieval, independently of
 // usage logs and authenticated continuation fragments.
 type ResponsesStorageIntent struct {
-	Raw       Value `json:"raw,omitzero"`
-	Requested bool  `json:"requested"`
-	Effective bool  `json:"effective"`
+	SourceCodec      string `json:"sourceCodec,omitempty"`
+	RequestedUnknown bool   `json:"requestedUnknown,omitempty"`
+	EffectiveUnknown bool   `json:"effectiveUnknown,omitempty"`
+	Raw              Value  `json:"raw,omitzero"`
+	Requested        bool   `json:"requested"`
+	Effective        bool   `json:"effective"`
 }
 
 // CounterOrigin distinguishes observed counts from estimates.

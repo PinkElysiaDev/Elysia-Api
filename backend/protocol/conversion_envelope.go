@@ -6,6 +6,7 @@ import (
 )
 
 type responsesStorageOptions struct {
+	SourceCodec   string `json:"sourceCodec,omitempty"`
 	TargetCodec   string `json:"targetCodec"`
 	OnUnsupported string `json:"onUnsupported"`
 }
@@ -23,39 +24,80 @@ func ParseResponsesStore(raw Value) (bool, error) {
 }
 
 func (c *CompiledConversion) responsesStorage(req *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
-	raw := req.Parameters["store"]
-	if req.ClientOutput != nil && req.ClientOutput.ResponsesStorage != nil {
-		intent := req.ClientOutput.ResponsesStorage
-		if !raw.IsZero() && !equalValues(raw, intent.Raw) {
-			return streamIssue(InvalidInput, "/store", "conflicting legacy and typed storage intent")
-		}
-		raw = intent.Raw
-	}
-	requested, err := ParseResponsesStore(raw)
-	if err != nil {
-		return err
-	}
 	var settings responsesStorageOptions
 	if err := rule.Value.Decode(&settings); err != nil {
 		return err
 	}
-	if settings.TargetCodec == "responses" {
-		return nil
+	if settings.SourceCodec == "" {
+		settings.SourceCodec = "responses"
+	} // Existing authored rules use Responses defaults.
+	raw := req.Parameters["store"]
+	intent := &ResponsesStorageIntent{Raw: raw, SourceCodec: settings.SourceCodec}
+	if req.ClientOutput != nil && req.ClientOutput.ResponsesStorage != nil {
+		previous := req.ClientOutput.ResponsesStorage
+		// The outgoing instruction may differ from the original intent on a repeated pass.
+		expected, _ := EncodeValue(previous.Effective)
+		if !raw.IsZero() && !equalValues(raw, previous.Raw) && (previous.EffectiveUnknown || !equalValues(raw, expected)) {
+			return streamIssue(InvalidInput, "/store", "conflicting legacy and typed storage intent")
+		}
+		*intent = *previous
+		raw = intent.Raw
+	} else {
+		if _, err := ParseResponsesStore(raw); err != nil {
+			return err
+		}
+		switch settings.SourceCodec {
+		case "responses":
+			intent.Requested, _ = ParseResponsesStore(raw)
+		case "openai-chat":
+			intent.RequestedUnknown = raw.IsZero() || raw.IsNull()
+			if !intent.RequestedUnknown {
+				_ = raw.Decode(&intent.Requested)
+			}
+		}
 	}
-	if requested {
+	intent.Effective, intent.EffectiveUnknown = intent.Requested, intent.RequestedUnknown
+	same := settings.SourceCodec == settings.TargetCodec
+	supported := settings.TargetCodec == "responses" || settings.TargetCodec == "openai-chat"
+	reason := ""
+	if !same && intent.RequestedUnknown {
+		reason = "source account storage default is unknown; using stateless target instructions"
+		intent.Effective, intent.EffectiveUnknown = false, false
+	} else if !same && intent.Requested {
+		if supported {
+			reason = "provider storage remains enabled but the target API has a different retrieval contract"
+		} else {
+			reason = "target cannot store a retrievable source API object; proceeding stateless (store:false)"
+			intent.Effective = false
+		}
+	}
+	if reason != "" {
 		check := rule
 		if settings.OnUnsupported == "reject" {
 			check.Action = "reject"
 		}
-		if err := c.issue(check, ConversionRequest, route, "/store", "target cannot store a retrievable Responses object; proceeding stateless (store:false). Set store:false explicitly when storage is not required", sink, true); err != nil {
-			return err
+		if err := c.issue(check, ConversionRequest, route, "/store", reason, sink, true); err != nil {
+			if settings.OnUnsupported == "reject" {
+				return err
+			}
+			return candidateFailure(err)
 		}
 	}
+	if req.Parameters == nil {
+		req.Parameters = Object{}
+	}
 	delete(req.Parameters, "store")
+	if same {
+		if !raw.IsZero() {
+			req.Parameters["store"] = raw
+		}
+	} else if supported {
+		req.Parameters["store"], _ = EncodeValue(intent.Effective)
+	}
 	if req.ClientOutput == nil {
 		req.ClientOutput = &ClientOutput{}
 	}
-	req.ClientOutput.ResponsesStorage = &ResponsesStorageIntent{Raw: raw, Requested: requested, Effective: false}
+	req.ClientOutput.ResponsesStorage = intent
 	return nil
 }
 

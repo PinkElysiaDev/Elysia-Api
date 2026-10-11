@@ -1,6 +1,8 @@
 package builtin
 
 import (
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -261,5 +263,88 @@ func TestProviderCannotMintPlaceholderAccounting(t *testing.T) {
 	issues := p.CheckModelResponse(response, upstream, p.Binding{Capabilities: upstream.Definition().Capabilities}, p.Scope{})
 	if err := p.IssuesError(issues); err == nil || !strings.Contains(err.Error(), "upstream_contract_violation at /usage/input") {
 		t.Fatal(issues)
+	}
+}
+
+func TestStoreDecisionTable(t *testing.T) {
+	for _, source := range []string{Chat, Responses, Anthropic, Gemini} {
+		for _, target := range []string{Chat, Responses, Anthropic, Gemini} {
+			for _, raw := range []string{"", "null", "false", "true"} {
+				if (source == Anthropic || source == Gemini) && raw != "" {
+					continue
+				}
+				t.Run(source+"/"+target+"/"+raw, func(t *testing.T) {
+					from, to := shippedProjectionProtocol(t, source), shippedProjectionProtocol(t, target)
+					input := map[string]any{"model": "alias", "messages": []any{map[string]any{"role": "user", "content": "hi"}}}
+					if source == Responses {
+						input = map[string]any{"model": "alias", "input": "hi"}
+					}
+					if source == Anthropic {
+						input["max_tokens"] = 8192
+					}
+					if source == Gemini {
+						input = map[string]any{"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "hi"}}}}}
+					}
+					if raw != "" {
+						input["store"] = json.RawMessage(raw)
+					}
+					body, _ := json.Marshal(input)
+					request, err := from.DecodeRequest(t.Context(), body, p.EvaluationContext{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					request.Parameters["max_output_tokens"], _ = p.EncodeValue(8192)
+					unknown := source == Chat && (raw == "" || raw == "null")
+					on := raw == "true" || (source == Responses && (raw == "" || raw == "null"))
+					lossy := source != target && (unknown || on)
+					for _, mode := range []string{"compatible", "strict"} {
+						policy := p.DefaultConversionPolicy(from, to)
+						policy.Mode = mode
+						c, _ := p.ResolveConversion(policy)
+						sink := &p.DiagnosticSink{}
+						converted, err := c.Request(t.Context(), request, p.ConversionContext{}, sink)
+						if mode == "strict" && lossy {
+							var failure *p.ConversionError
+							if !errors.As(err, &failure) || !failure.CandidateOnly {
+								t.Fatalf("wanted candidate rejection: %v", err)
+							}
+							continue
+						}
+						if err != nil {
+							t.Fatal(err)
+						}
+						wire, err := to.EncodeRequest(t.Context(), converted, p.EvaluationContext{})
+						if err != nil {
+							t.Fatal(err)
+						}
+						var out map[string]json.RawMessage
+						json.Unmarshal(wire, &out)
+						want := ""
+						if source == target {
+							want = raw
+						} else if target == Chat || target == Responses {
+							want = "false"
+							if on {
+								want = "true"
+							}
+						}
+						if string(out["store"]) != want {
+							t.Fatalf("%s want store=%s", wire, want)
+						}
+						intent := converted.ClientOutput.ResponsesStorage
+						if intent.RequestedUnknown != unknown || intent.EffectiveUnknown != (unknown && source == target) {
+							t.Fatal(intent)
+						}
+						warnings := false
+						for _, issue := range sink.Issues() {
+							warnings = warnings || issue.Path == "/store"
+						}
+						if warnings != lossy {
+							t.Fatal(sink.Issues())
+						}
+					}
+				})
+			}
+		}
 	}
 }

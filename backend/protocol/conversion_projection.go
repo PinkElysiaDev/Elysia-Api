@@ -55,8 +55,8 @@ func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 			ConversionRule{ID: "responses-include", Order: 180, Enabled: true, Phase: ConversionRequest, Action: "responses_include", Value: StringValue(codec)},
 			ConversionRule{ID: "responses-context", Order: 185, Enabled: true, Phase: ConversionRequest, Action: "responses_context", Value: StringValue(codec)},
 			ConversionRule{ID: "request-signatures", Order: 200, Enabled: true, Phase: ConversionRequest, Action: "signatures"})
-		if ingress.Codec(DecodeRequest) == "responses" {
-			settings, _ := EncodeValue(responsesStorageOptions{TargetCodec: codec, OnUnsupported: "degrade"})
+		if source := ingress.Codec(DecodeRequest); knownConversionCodec(source) {
+			settings, _ := EncodeValue(responsesStorageOptions{SourceCodec: source, TargetCodec: codec, OnUnsupported: "degrade"})
 			p.Rules = append(p.Rules, ConversionRule{ID: "responses-storage", Order: 190, Enabled: true, Phase: ConversionRequest, Action: "responses_storage", Value: settings})
 		}
 		if codec == "anthropic" || codec == "gemini" {
