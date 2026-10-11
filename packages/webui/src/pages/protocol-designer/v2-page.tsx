@@ -4,25 +4,27 @@ import { PageHeader } from '@/components/page-header'
 import { EmptyState } from '@/components/ui/states'
 import { Button } from '@/components/ui/button'
 import { protocolAPI, type ProtocolDraft, type ProtocolListing, type ProtocolSchema } from '@/lib/protocol-v2'
-import { customPlatformValue, protocolLabel } from '@/lib/protocol'
+import { protocolLabel } from '@/lib/protocol'
 import { ProtocolV2Editor } from './v2-editor'
 import { ProtocolArchiveDialog } from './archive-dialog'
 import { ProtocolDocument } from '@/lib/protocol-document'
+import { useEnabledProtocols } from '@/lib/hooks'
 
 /** Versioned definitions are saved as drafts and activated only with evidence. */
 export function ProtocolDesignerPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { data: protocols = [], mutate: refreshProtocols } = useEnabledProtocols()
   const [schema, setSchema] = useState<ProtocolSchema>()
   const [listing, setListing] = useState<ProtocolListing>()
   const [error, setError] = useState('')
   const [archiveID, setArchiveID] = useState('')
   const [selection, setSelection] = useState<{ draft?: ProtocolDraft; source?: string }>()
   const refresh = useCallback(async (id: string) => {
-    const items = await protocolAPI.list()
+    const [items] = await Promise.all([protocolAPI.list(), refreshProtocols()])
     setListing(items)
     setSelection((current) => current && ({ ...current, draft: items.drafts.find((entry) => entry.protocolId === id) }))
-  }, [])
+  }, [refreshProtocols])
   /** 预置只读：复制为派生 ID 的可编辑草稿（名称加副本后缀）。 */
   const copyPreset = useCallback(async (id: string) => {
     const revisions = await protocolAPI.revisions(id)
@@ -68,7 +70,7 @@ export function ProtocolDesignerPage() {
           const active = listing.active.find((entry) => entry.protocolId === id)
           const created = active || listing.drafts.some((draft) => draft.protocolId === id)
           const state = listing.loaded[id] ? '已加载' : created ? '已创建，等待验证或加载' : '内置，尚未创建'
-          return <tr key={id} className="border-b"><td className="p-3"><span className="font-medium">{protocolLabel(customPlatformValue(id), 'long')}</span><span className="ml-2 font-mono text-2xs text-muted-foreground">{id}</span></td><td className="p-3 font-mono text-xs">{active?.revisionHash.slice(0, 12) ?? '—'}</td><td className="p-3">{state}{listing.runtimeFailures?.[id] && <p className="mt-1 max-w-lg text-xs text-destructive">{listing.runtimeFailures[id]}</p>}</td><td className="p-3 text-center"><Button variant="ghost" disabled={!listing.loaded[id]} onClick={() => void copyPreset(id)}>复制为新协议</Button></td></tr>
+          return <tr key={id} className="border-b"><td className="p-3"><span className="font-medium">{protocolLabel(id, 'long', protocols)}</span><span className="ml-2 font-mono text-2xs text-muted-foreground">{id}</span></td><td className="p-3 font-mono text-xs">{active?.revisionHash.slice(0, 12) ?? '—'}</td><td className="p-3">{state}{listing.runtimeFailures?.[id] && <p className="mt-1 max-w-lg text-xs text-destructive">{listing.runtimeFailures[id]}</p>}</td><td className="p-3 text-center"><Button variant="ghost" disabled={!listing.loaded[id]} onClick={() => void copyPreset(id)}>复制为新协议</Button></td></tr>
         })}</tbody></table></div>
       </div>}
       {customDrafts.length === 0 ? <EmptyState title="暂无自定义协议" /> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-3">协议</th><th>草稿</th><th>启用状态</th><th className="p-3 text-center">操作</th></tr></thead><tbody>{customDrafts.map((draft) => {
