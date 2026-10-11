@@ -571,28 +571,10 @@ func (c *CompiledConversion) applyNodeRule(ctx context.Context, phase Conversion
 					n.Resources = append(n.Resources, Resource{Kind: "signature", ID: signature, Scope: route.Scope})
 					n.Source = &Provenance{Protocol: route.Target, Direction: DecodeResponse, Scope: route.Scope}
 					n.Native = nil
-				} else if rule.Action == "tool_result_text" {
-					if n.Payload.IsObject() {
-						if err := c.issue(rule, phase, route, at+"/payload", "object tool result serialized as JSON text; payload type changes", sink, true); err != nil {
-							return err
-						}
-						n.Payload = StringValue(string(n.Payload.Bytes()))
-					}
-				} else if rule.Action == "tool_result_object" && !n.Payload.IsObject() {
-					var text string
-					if err := n.Payload.Decode(&text); err != nil {
-						return fmt.Errorf("tool_result_object requires text or an object at %s/payload", at)
-					}
-					key := "result"
-					if !rule.Value.IsZero() {
-						if err := rule.Value.Decode(&key); err != nil || key == "" {
-							return fmt.Errorf("tool_result_object requires a nonempty field name")
-						}
-					}
-					if err := c.issue(rule, phase, route, at+"/payload", "text tool result wrapped in the configured object field", sink, true); err != nil {
+				} else if rule.Action == "tool_result_text" || rule.Action == "tool_result_object" {
+					if err := c.toolResult(n, route, rule, at, sink); err != nil {
 						return err
 					}
-					n.Payload, _ = EncodeValue(Object{key: StringValue(text)})
 				} else {
 					out, err := c.applyRule(ctx, phase, v, route, sink, rule)
 					if err != nil {

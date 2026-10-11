@@ -59,7 +59,8 @@ func DescribeSchema() SchemaCatalog {
 	conversionSchema["$defs"] = conversionDefs
 	return SchemaCatalog{Conversion: map[string]any{"actionSchemas": map[string]any{
 		"signatures":               map[string]any{"phases": []ConversionPhase{ConversionRequest, ConversionResponse, ConversionEvent}, "description": "将外协议 signature 与 encrypted_content 纳入认证续传；成功封装后诊断为可恢复，恢复仍校验身份、账号、模型及原节点。不转换文件或会话引用，不将加密内容冒充供应商签名。"},
-		"tool_result_text":         map[string]any{"phases": []ConversionPhase{ConversionRequest}, "description": "将对象工具结果序列化为 JSON 文本，保留数值精度及调用关联。兼容模式记录类型变化；严格模式拒绝。"},
+		"tool_result_text":         map[string]any{"phases": []ConversionPhase{ConversionRequest}, "value": map[string]any{"type": "string", "enum": []string{"openai-chat", "responses", "anthropic", "gemini"}}, "description": "将对象工具结果序列化为 JSON 文本，保留数值精度及调用关联。value 可指定实际目标编码器；Chat／Responses 的 false 错误标记无效果规范化，true 转为明确错误文本并警告，严格模式拒绝该降级。未指定目标时保留错误状态；对象文本化仍按类型变化诊断。"},
+		"tool_result_object":       map[string]any{"phases": []ConversionPhase{ConversionRequest}, "value": map[string]any{"type": "string", "minLength": 1}, "description": "将文本工具结果包装到 value 指定字段（默认 result），合并纯文本结果块，类型或块边界变化时警告并在严格模式拒绝。true 错误状态映射到 error 字段，false 规范化为普通结果；保护正文中的同名字段，保留调用关联，未处理媒体、扩展及资源明确拒绝。"},
 		"system_instruction_hoist": map[string]any{"phases": []ConversionPhase{ConversionRequest}, "description": "按原顺序将 system/developer 上提为顶层系统要求。作用范围或角色优先级变化时记录降级；严格模式拒绝。"},
 		"assistant_history":        map[string]any{"phases": []ConversionPhase{ConversionRequest}, "description": "将独立思考、正文和工具项归入同一助手历史消息，保留块顺序、调用 ID 和签名关联；不跨用户或工具结果边界。合并消息边界或丢失项目身份时诊断，严格模式拒绝；带无法移动的消息元数据时明确拒绝。"},
 		"chat_history":             map[string]any{"phases": []ConversionPhase{ConversionRequest}, "description": "将同一助手回合的思考、正文及并行工具项归入 Chat 历史消息，保留正文顺序和调用 ID，不跨用户或工具结果边界。相邻的无状态可见思考可合并为文本。合并块或消息边界、改变正文与工具的交错顺序时诊断，严格模式拒绝损失。摘要、带状态或交错思考不自动拼接；孤立思考、未完成或不相邻的工具结果拒绝。"},

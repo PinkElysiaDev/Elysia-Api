@@ -7,13 +7,13 @@ import (
 	p "github.com/elysia-api/backend/protocol"
 )
 
-// 人工协议边界夹具：包含非标准中段 system 消息，不能视为已捕获的 Claude Code 流量。
+// 人工协议边界样例，包含非标准中段 system 消息。
 // 另覆盖 Responses 消息 item id、Gemini 对象工具结果和 Chat strict 工具，锁定四协议
 // 点对点的保证行为——正确转换或显式诊断。
 
 const syntheticAnthropicHistory = `{
 	"model":"claude-opus-5-5","max_tokens":8192,"stream":true,
-	"system":[{"type":"text","text":"You are Claude Code.","cache_control":{"type":"ephemeral"}}],
+	"system":[{"type":"text","text":"You are a helpful assistant.","cache_control":{"type":"ephemeral"}}],
 	"messages":[
 		{"role":"user","content":[{"type":"text","text":"list files"}]},
 		{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}},{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"pwd"}}]},
@@ -49,6 +49,11 @@ func TestSyntheticAnthropicToChatConvertsToolResultGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	sink := &p.DiagnosticSink{}
+	conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(source, target))
+	request, err = conversion.Request(t.Context(), request, p.ConversionContext{Source: source.Identity(), Target: target.Identity()}, sink)
+	if err != nil {
+		t.Fatal(err)
+	}
 	output, err := target.EncodeRequest(t.Context(), request, p.EvaluationContext{Scope: p.Scope{Model: "m"}, Diagnostics: sink})
 	if err != nil {
 		// 定位残余的 wire:claude 拒绝来自哪个节点，便于修正剥离点。
@@ -65,13 +70,13 @@ func TestSyntheticAnthropicToChatConvertsToolResultGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := string(output)
-	for _, expected := range []string{`"tool_call_id":"t1"`, `"tool_call_id":"t2"`, "[Tool error] err"} {
+	for _, expected := range []string{`"tool_call_id":"t1"`, `"tool_call_id":"t2"`, "[Tool error] err", "and t2"} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("missing %s in output: %s", expected, body[:min(600, len(body))])
 		}
 	}
-	if !sinkHas(sink, "/content/result") {
-		t.Fatal("expected explicit warning for result metadata drop")
+	if !sinkHas(sink, "/tools/0/cache") {
+		t.Fatal("expected cache hint omission diagnostic")
 	}
 	recovered, err := target.DecodeRequest(t.Context(), output, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
 	if err != nil {
@@ -106,7 +111,7 @@ func TestInPlaceSystemToGeminiStaysDiagnosed(t *testing.T) {
 	}
 }
 
-// Codex/Responses 客户端：消息 item id/status 不再硬拒——跨族丢弃 + warning。
+// History item identity/status loss is owned by the shared conversion policy.
 func TestResponsesItemIdentityConvertsCrossFamily(t *testing.T) {
 	payload := `{"model":"gpt","input":[
 		{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}],"id":"msg_1","status":"completed"}
@@ -119,7 +124,12 @@ func TestResponsesItemIdentityConvertsCrossFamily(t *testing.T) {
 	for _, target := range []string{Chat, Anthropic, Gemini} {
 		compiled := testCompiled(t, target)
 		sink := &p.DiagnosticSink{}
-		if _, err := compiled.EncodeRequest(t.Context(), request, p.EvaluationContext{Scope: p.Scope{Model: "m"}, Diagnostics: sink}); err != nil {
+		conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(source, compiled))
+		converted, err := conversion.Request(t.Context(), request, p.ConversionContext{Source: source.Identity(), Target: compiled.Identity()}, sink)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := compiled.EncodeRequest(t.Context(), converted, p.EvaluationContext{Scope: p.Scope{Model: "m"}, Diagnostics: sink}); err != nil {
 			t.Fatalf("%s: item identity must convert with a warning, got %v", target, err)
 		}
 		if !sinkHas(sink, "/content/") {

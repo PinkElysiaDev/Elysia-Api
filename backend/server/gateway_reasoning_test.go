@@ -397,13 +397,16 @@ func TestGatewayLateOutputLimitNeverCallsUpstream(t *testing.T) {
 }
 
 func TestGatewayThinkingToolContinuation(t *testing.T) {
-	for _, source := range []string{protocol.PresetChatCompletionsID, protocol.PresetAnthropicID} {
+	for _, source := range []string{protocol.PresetChatCompletionsID, protocol.PresetAnthropicID, protocol.PresetResponsesID} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/%v", source, stream), func(t *testing.T) {
 				calls := 0
 				provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					calls++
 					raw, _ := io.ReadAll(r.Body)
+					if strings.Contains(string(raw), "prompt_cache_key") || strings.Contains(string(raw), "cache_control") || strings.Contains(string(raw), "eager_input_streaming") {
+						t.Error("unprojected request preferences leaked", string(raw))
+					}
 					if !strings.Contains(string(raw), `"thinkingLevel":"high"`) {
 						t.Error("lost effort", string(raw))
 					}
@@ -412,6 +415,9 @@ func TestGatewayThinkingToolContinuation(t *testing.T) {
 					}
 					if calls == 2 && (!strings.Contains(string(raw), `"thoughtSignature":"tool-signature"`) || !strings.Contains(string(raw), "functionResponse") || !strings.Contains(string(raw), "tool-result")) {
 						t.Error("broken tool continuation", string(raw))
+					}
+					if calls == 2 && source == protocol.PresetAnthropicID && strings.Contains(string(raw), `"error":`) != stream {
+						t.Error("tool result error state changed", string(raw))
 					}
 					payload := `{"candidates":[{"index":0,"content":{"role":"model","parts":[{"functionCall":{"id":"call-1","name":"lookup","args":{}},"thoughtSignature":"tool-signature"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":2,"totalTokenCount":6}}`
 					if calls == 2 {
@@ -430,11 +436,15 @@ func TestGatewayThinkingToolContinuation(t *testing.T) {
 				groups[0].Models[0].ID = "gemini-3.5-flash-lite"
 				s := newTestServer(t, groups)
 				s.config.SecretKeyPath = filepath.Join(t.TempDir(), "continuation.key")
-				raw := fmt.Sprintf(`{"model":"grp","store":false,"reasoning_effort":"high","max_completion_tokens":8192,"stream":%v,"messages":[{"role":"user","content":"lookup"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}]}`, stream)
+				raw := fmt.Sprintf(`{"model":"grp","store":false,"prompt_cache_key":"anonymous-session","stream_options":{"include_usage":true},"reasoning_effort":"high","max_completion_tokens":8192,"stream":%v,"messages":[{"role":"user","content":"lookup"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}]}`, stream)
 				path := "/v1/chat/completions"
 				if source == protocol.PresetAnthropicID {
-					raw = fmt.Sprintf(`{"model":"grp","max_tokens":8192,"thinking":{"type":"adaptive","display":"omitted"},"output_config":{"effort":"high"},"stream":%v,"messages":[{"role":"user","content":"lookup"}],"tools":[{"name":"lookup","input_schema":{"type":"object"}}]}`, stream)
+					raw = fmt.Sprintf(`{"model":"grp","max_tokens":8192,"cache_control":{"type":"ephemeral"},"thinking":{"type":"adaptive","display":"omitted"},"output_config":{"effort":"high"},"stream":%v,"messages":[{"role":"user","content":"lookup"}],"tools":[{"name":"lookup","input_schema":{"type":"object"},"eager_input_streaming":true}]}`, stream)
 					path = "/v1/messages"
+				}
+				if source == protocol.PresetResponsesID {
+					raw = fmt.Sprintf(`{"model":"grp","store":false,"prompt_cache_key":"anonymous-session","reasoning":{"effort":"high","summary":"auto"},"include":["reasoning.encrypted_content"],"max_output_tokens":8192,"stream":%v,"input":[{"role":"user","content":"lookup"}],"tools":[{"type":"function","name":"lookup","description":"Read an item","parameters":{"type":"object"}}]}`, stream)
+					path = "/v1/responses"
 				}
 				var request map[string]any
 				if err := json.Unmarshal([]byte(raw), &request); err != nil {
@@ -447,7 +457,11 @@ func TestGatewayThinkingToolContinuation(t *testing.T) {
 					}
 					c, rec := adminProtocolContext("POST", path, string(body))
 					c.Request.Header.Set("x-elysia-session-id", "thinking-tools")
-					s.chatCompletions(c)
+					if source == protocol.PresetResponsesID {
+						s.responses(c)
+					} else {
+						s.chatCompletions(c)
+					}
 					if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
 						t.Fatalf("%d %s", rec.Code, rec.Body)
 					}
@@ -464,6 +478,17 @@ func TestGatewayThinkingToolContinuation(t *testing.T) {
 					}
 					callID = tools[0].(map[string]any)["id"].(string)
 					result = map[string]any{"role": "tool", "tool_call_id": callID, "content": "tool-result"}
+				} else if source == protocol.PresetResponsesID {
+					for _, value := range message["output"].([]any) {
+						item := value.(map[string]any)
+						if item["type"] == "function_call" {
+							callID = item["call_id"].(string)
+						}
+					}
+					if callID == "" {
+						t.Fatal("missing tool call", message)
+					}
+					result = map[string]any{"type": "function_call_output", "call_id": callID, "output": "tool-result"}
 				} else {
 					for _, value := range message["content"].([]any) {
 						block := value.(map[string]any)
@@ -474,9 +499,13 @@ func TestGatewayThinkingToolContinuation(t *testing.T) {
 					if callID == "" {
 						t.Fatal("missing tool call", message)
 					}
-					result = map[string]any{"role": "user", "content": []any{map[string]any{"type": "tool_result", "tool_use_id": callID, "content": "tool-result"}}}
+					result = map[string]any{"role": "user", "content": []any{map[string]any{"type": "tool_result", "tool_use_id": callID, "content": "tool-result", "is_error": stream}}}
 				}
-				request["messages"] = append(request["messages"].([]any), message, result)
+				if source == protocol.PresetResponsesID {
+					request["input"] = append(append(request["input"].([]any), message["output"].([]any)...), result)
+				} else {
+					request["messages"] = append(request["messages"].([]any), message, result)
+				}
 				second := perform()
 				if calls != 2 || !strings.Contains(second.Body.String(), "done") {
 					t.Fatal(calls, second.Body)
@@ -499,6 +528,9 @@ func thinkingToolWireMessage(t *testing.T, source string, stream bool, raw []byt
 	message := map[string]any{"role": "assistant"}
 	if !stream {
 		response := decode(raw)
+		if source == protocol.PresetResponsesID {
+			return map[string]any{"output": response["output"]}
+		}
 		if source == protocol.PresetChatCompletionsID {
 			return response["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)
 		}
@@ -512,6 +544,12 @@ func thinkingToolWireMessage(t *testing.T, source string, stream bool, raw []byt
 			continue
 		}
 		event := decode([]byte(strings.TrimPrefix(line, "data: ")))
+		if source == protocol.PresetResponsesID {
+			if event["type"] == "response.completed" {
+				message["output"] = event["response"].(map[string]any)["output"]
+			}
+			continue
+		}
 		if source == protocol.PresetChatCompletionsID {
 			for _, choice := range event["choices"].([]any) {
 				for key, value := range choice.(map[string]any)["delta"].(map[string]any) {

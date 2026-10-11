@@ -77,7 +77,7 @@ func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 			p.Rules = append(p.Rules, ConversionRule{ID: "block-assistant-history", Order: 210, Enabled: true, Phase: ConversionRequest, Action: "assistant_history"})
 		}
 		if codec != "gemini" {
-			p.Rules = append(p.Rules, ConversionRule{ID: "text-tool-results", Order: 150, Enabled: true, Phase: ConversionRequest, Match: ConversionMatch{NodeKind: ToolResultNode}, Action: "tool_result_text"})
+			p.Rules = append(p.Rules, ConversionRule{ID: "text-tool-results", Order: 150, Enabled: true, Phase: ConversionRequest, Match: ConversionMatch{NodeKind: ToolResultNode}, Action: "tool_result_text", Value: StringValue(codec)})
 		}
 		if codec == "gemini" {
 			p.Rules = append(p.Rules, ConversionRule{ID: "gemini-tool-results", Order: 150, Enabled: true, Phase: ConversionRequest, Match: ConversionMatch{NodeKind: ToolResultNode}, Action: "tool_result_object", Value: StringValue("result")})

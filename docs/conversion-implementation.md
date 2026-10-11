@@ -17,8 +17,8 @@
 | `responses-storage` | 根据来源协议区分显式值、来源默认值和未知状态，保留对象保存意图；完整规则见[存储决策](protocol-reasoning.md#store-决策) |
 | `reasoning-controls` | 按目标模型解析思考模式、等级、预算、摘要和输出上限；约束不满足时拒绝当前候选 |
 | `gemini-safety-settings` | 保留原生安全设置；仅对可降级的跨协议设置显式诊断，实际阻断要求或未知设置拒绝 |
-| `gemini-tool-results` | 文本工具结果明确包装为 `{"result":原文}`，记录兼容降级；字段名可改；严格模式拒绝此包装 |
-| `text-tool-results` | 对象工具结果通过 JSON 文本投影到 Chat／Responses／Anthropic，保留数字精度和调用关联；严格模式拒绝未包装的类型改变 |
+| `gemini-tool-results` | 文本工具结果明确包装为 `{"result":原文}`，纯文本结果块按顺序合并；类型或块边界变化记录兼容降级，严格模式拒绝。布尔错误状态 true 映射到 `response.error`，false 规范化为普通结果，正文内同名 error 字段受到保护 |
+| `text-tool-results` | 对象工具结果通过 JSON 文本投影，保留数字精度和调用关联。默认 value 为实际目标编码器：Anthropic 保留错误标记；Chat／Responses 的 false 无效果规范化，true 转为 `[Tool error] ` 文本标记并记录警告和 `lossy_compatible`，严格模式拒绝此降级；未指定目标时不改变状态 |
 | `system-instruction-hoist` | Anthropic／Gemini 目标上提 system/developer，保持文本顺序；中段作用域或 developer 优先级改变时诊断，严格模式拒绝 |
 | `history-response-metadata` | 第二轮历史中的已知响应元数据按目标投影；空 annotations 不再阻断工具续轮，非空引用按同一映射处理 |
 | `response-metadata` / `event-metadata` | 已知响应附加字段逐项映射、规范化或诊断省略；Chat↔Responses URL 引用及 token 概率保留所属文本；未知扩展不自动放行 |
@@ -66,6 +66,7 @@ Responses 消息使用独立的 `item.started` / `item.finished`；内容事件�
 
 非流式请求的已知流式输出选项按无效果规范化，记录 `conversion_normalized` / info / `preserved`。`include_usage` 和加密思考输出选择仍由已有输出处理动作管理。未知输出扩展同协议保留，跨协议要求明确映射。思考、生成上限、结构化输出、工具选择、安全、历史引用及存储意图继续使用各自检查。
 
+编码器不自行丢弃消息或工具扩展、未处理资源。已知历史 item ID/status 的表示损失由历史动作诊断，工具调用 ID、结果关联和错误状态保持；Chat 混排工具结果与正文按原顺序拆成消息。转换只修改候选副本，原生快照不得恢复省略字段。运行、管理预览、协议组合验证和内置 Agent 共用转换流程。编译器版本变化复用启动重验及预置升级，不增加迁移或旧版本分支。
 
 ## 配置和管理
 

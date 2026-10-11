@@ -363,3 +363,72 @@ func TestRequestProjectionCombinationReportsInfoLoss(t *testing.T) {
 		t.Fatal("info loss missing from combination evidence", report.Checks)
 	}
 }
+
+func TestRequestToolErrorAndUnknownMessageState(t *testing.T) {
+	source, dest := testCompiled(t, Anthropic), testCompiled(t, Chat)
+	for _, value := range []string{`true`, `false`, `null`, `"true"`} {
+		raw := `{"model":"m","max_tokens":100,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"f","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"c","content":"result","is_error":` + value + `}]}]}`
+		req, err := source.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+		if value == "null" || value == `"true"` {
+			if err == nil {
+				t.Fatal("invalid error state accepted")
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, _ := p.ResolveConversion(p.DefaultConversionPolicy(source, dest))
+		out, err := c.Request(t.Context(), req, p.ConversionContext{Source: source.Identity(), Target: dest.Identity()}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wire, err := dest.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(wire), "[Tool error]") != (value == "true") {
+			t.Fatal(string(wire))
+		}
+		req.Content[1].Attributes = p.Object{"wire:claude": testValue(t, `{"future":true}`)}
+		out, err = c.Request(t.Context(), req, p.ConversionContext{Source: source.Identity(), Target: dest.Identity()}, nil)
+		if err == nil {
+			_, err = dest.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+		}
+		if err == nil {
+			t.Fatal("unknown message state lost")
+		}
+	}
+}
+
+func TestRequestNativeExtensionsRequireCrossProtocolMapping(t *testing.T) {
+	for _, raw := range []string{
+		`{"model":"m","messages":[{"role":"user","content":"hi","id":"vendor","status":{"future":true}}]}`,
+		`{"model":"m","messages":[{"role":"user","content":"hi"}],"prompt_cache_options":{"mode":"implicit","future":true}}`,
+	} {
+		source := testCompiled(t, Chat)
+		req, err := source.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, codec := range []string{Chat, Responses, Anthropic, Gemini} {
+			dest := testCompiled(t, codec)
+			c, _ := p.ResolveConversion(p.DefaultConversionPolicy(source, dest))
+			out, err := c.Request(t.Context(), req, p.ConversionContext{Source: source.Identity(), Target: dest.Identity()}, nil)
+			var wire []byte
+			if err == nil {
+				wire, err = dest.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+			}
+			if codec != Chat {
+				if err == nil {
+					t.Fatal("unknown extension disappeared", codec)
+				}
+				continue
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			sameJSON(t, wire, raw)
+		}
+	}
+}
