@@ -200,6 +200,9 @@ func ValidateUsageArithmetic(usage *Usage) error {
 	if usage == nil {
 		return nil
 	}
+	if err := validateModalityUsage(usage); err != nil {
+		return err
+	}
 	if !usage.Attribution.IsZero() {
 		known, err := ParseUsageAttribution(usage.Attribution)
 		if err != nil {
@@ -266,9 +269,11 @@ func (c *CompiledConversion) projectUsage(usage *Usage, phase ConversionPhase, r
 		usage.CacheBilling = Value{}
 	}
 	for _, name := range sortedKeys(usage.Details) {
+		bucket, modality := ModalityUsageDetail(name)
 		drop := name == "toolUsePromptTokenCount" && codec != "gemini" ||
 			(name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens") && codec != "anthropic" ||
-			IsResponsesToolUsageDetail(name) && codec != "responses"
+			IsResponsesToolUsageDetail(name) && codec != "responses" ||
+			bucket != "" && !SupportsModalityUsage(codec, bucket, modality)
 		if !drop {
 			continue
 		}

@@ -25,6 +25,8 @@ Chat/Responses retain legacy top-level `cache_creation_input_tokens` input suppo
 
 ## Cross-protocol cache-creation bucket projection
 
+Gemini modality breakdowns (`promptTokensDetails`, `candidatesTokensDetails`, `cacheTokensDetails`, and `toolUsePromptTokensDetails`) decode into usage details without adding to token totals. Text, image and audio input/output details map to Chat and Responses; Gemini also retains video, document, cache and tool-input breakdowns. Unsupported known details follow `usage_projection`: compatible mode records a lossy warning and omits only the detail, while strict mode rejects the loss. Counts must be nonnegative integers, modalities must be unique, and known breakdowns cannot exceed an available total, including totals retained from earlier stream frames. Unknown modalities or additional properties remain native extensions and require explicit mapping across protocols. `usageMetadata.serviceTier` follows the existing response metadata policy; its provider-specific value is not assumed equivalent to another protocol's service tier.
+
 Every Anthropic response that wrote cache carries `cache_creation.ephemeral_5m_input_tokens` and `ephemeral_1h_input_tokens`, a provider TTL breakdown that is bookkeeping rather than a requested capability. No non-Anthropic target has a field for it.
 
 - **Named compatibility projection**: the default compatible policy uses `usage_projection` to omit unrepresentable buckets while the **creation total still reaches `cache_write_tokens`** (Chat/Responses). Strict mode rejects the loss. With the rule disabled, the encoder rejects unprojected fields.

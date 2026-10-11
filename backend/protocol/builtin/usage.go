@@ -215,6 +215,15 @@ func (adapter module) decodeUsage(value p.Value) (*p.Usage, error) {
 		}
 	}
 	if adapter.name == Gemini {
+		for _, bucket := range geminiModalityBuckets {
+			counts, known, err := decodeModalityCounts(fields[bucket.field], bucket.prefix, "/usageMetadata/"+bucket.field)
+			if err != nil {
+				return nil, err
+			}
+			if known {
+				maps.Copy(usage.Details, counts)
+			}
+		}
 		for key, semantic := range map[string]string{"thoughtsTokenCount": "output.reasoning_tokens", "toolUsePromptTokenCount": "toolUsePromptTokenCount"} {
 			count, err := counter(fields[key])
 			if err != nil {
@@ -398,6 +407,9 @@ func (adapter module) encodeUsage(usage *p.Usage, options p.EvaluationContext) (
 			fields[outputDetails] = object(out)
 		}
 	case Gemini:
+		for _, bucket := range geminiModalityBuckets {
+			fields[bucket.field] = encodeModalityCounts(usage, bucket.prefix)
+		}
 		fields["cachedContentTokenCount"] = counterValue(usage.CacheRead)
 		if usage.CacheCreation != nil {
 			return p.Value{}, unsupported("/usage/cacheCreation", "target has no cache creation counter; configure usage_projection")
@@ -434,6 +446,9 @@ func (adapter module) checkUsageDetails(usage *p.Usage, options p.EvaluationCont
 	}
 	for _, name := range slices.Sorted(maps.Keys(usage.Details)) {
 		count := usage.Details[name]
+		if bucket, modality := p.ModalityUsageDetail(name); bucket != "" && !p.SupportsModalityUsage(adapter.name, bucket, modality) {
+			return unsupported("/usage/details/"+name, "target has no equivalent modality usage detail; configure usage_projection")
+		}
 		if name == "uncached_input_tokens" {
 			if usage.Input == nil {
 				return unsupported("/usage/details/"+name, "uncached subtotal requires total input")
@@ -467,7 +482,8 @@ func (adapter module) checkUsageDetails(usage *p.Usage, options p.EvaluationCont
 		case Anthropic:
 			isSupported = name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens" || name == "output.reasoning_tokens"
 		case Gemini:
-			isSupported = name == "output.reasoning_tokens" || name == "toolUsePromptTokenCount"
+			bucket, _ := p.ModalityUsageDetail(name)
+			isSupported = name == "output.reasoning_tokens" || name == "toolUsePromptTokenCount" || bucket != ""
 		}
 		if isSupported {
 			continue

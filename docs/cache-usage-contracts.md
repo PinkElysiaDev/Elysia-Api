@@ -29,6 +29,7 @@ Gemini 资源创建响应中的 token 数表示资源容量，不能充当一次
 
 ## 跨协议缓存创建分桶投影
 
+Gemini 的模态明细（`promptTokensDetails`、`candidatesTokensDetails`、`cacheTokensDetails`、`toolUsePromptTokensDetails`）解码为用量明细，不重复计入 token 总量。文本、图像及音频的输入/输出明细映射到 Chat 和 Responses；Gemini 还保留视频、文档、缓存和工具输入分桶。目标无法表达的已知明细沿用 `usage_projection`：兼容模式仅省略明细并记录有损警告，严格模式拒绝损失。计数必须是非负整数，模态不能重复，已知分桶不能超过已有总量（包括流中先前收到的总量）。未知模态或附加属性仍作为原生扩展，跨协议要求明确映射。`usageMetadata.serviceTier` 沿用响应元数据策略，不假定其服务等级值与其他协议等价。
 
 Anthropic 上游在每次写出缓存的响应里都附带 `cache_creation.ephemeral_5m_input_tokens` 与 `ephemeral_1h_input_tokens` 两个 TTL 分桶。这是上游的记账明细，不是调用方请求的能力，而目标协议（Chat、Responses、Gemini）没有对应字段。
 

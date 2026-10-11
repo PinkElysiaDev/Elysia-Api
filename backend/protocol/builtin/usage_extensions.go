@@ -38,6 +38,15 @@ func (adapter module) usageExtensions(value p.Value) (p.Value, error) {
 		nested = map[string][]string{"cache_creation": creationUsageDetails, "output_tokens_details": {"thinking_tokens"}}
 	case Gemini:
 		known = []string{"promptTokenCount", "candidatesTokenCount", "totalTokenCount", "cachedContentTokenCount", "thoughtsTokenCount", "toolUsePromptTokenCount", "cache_creation_input_tokens"}
+		for _, bucket := range geminiModalityBuckets {
+			_, recognized, err := decodeModalityCounts(fields[bucket.field], bucket.prefix, "/usageMetadata/"+bucket.field)
+			if err != nil {
+				return p.Value{}, err
+			}
+			if recognized {
+				known = append(known, bucket.field)
+			}
+		}
 	}
 	extra := copyFields(fields)
 	for _, key := range known {

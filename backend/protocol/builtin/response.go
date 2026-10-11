@@ -175,7 +175,11 @@ func (adapter module) decodeResponse(input p.Value, options p.EvaluationContext)
 		if e != nil {
 			return nil, e
 		}
-		metadata, e := adapter.extractMetadata(u, "usage", "/usage")
+		usagePath := "/usage"
+		if adapter.name == Gemini {
+			usagePath = "/usageMetadata"
+		}
+		metadata, e := adapter.extractMetadata(u, "usage", usagePath)
 		if e != nil {
 			return nil, e
 		}

@@ -222,13 +222,17 @@ func (stream *streamModule) renderMetadata(frames []p.Value, event *p.Event) ([]
 				}
 				f["response"] = object(r)
 			}
-		case Anthropic:
-			if !f["usage"].IsZero() {
-				u, _ := f["usage"].ReadObject()
+		case Anthropic, Gemini:
+			usageKey := "usage"
+			if stream.name == Gemini {
+				usageKey = "usageMetadata"
+			}
+			if !f[usageKey].IsZero() {
+				u, _ := f[usageKey].ReadObject()
 				if err := stream.module.writeMetadata(u, stream.metadata, "usage"); err != nil {
 					return nil, err
 				}
-				f["usage"] = object(u)
+				f[usageKey] = object(u)
 			}
 		}
 		frames[i] = object(f)

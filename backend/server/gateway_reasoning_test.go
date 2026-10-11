@@ -423,6 +423,7 @@ func TestGatewayThinkingToolContinuation(t *testing.T) {
 					if calls == 2 {
 						payload = `{"candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"done"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":2,"totalTokenCount":6}}`
 					}
+					payload = strings.Replace(payload, `"promptTokenCount":4`, `"promptTokenCount":4,"promptTokensDetails":[{"modality":"TEXT","tokenCount":4}],"serviceTier":"standard"`, 1)
 					if stream {
 						w.Header().Set("Content-Type", "text/event-stream")
 						fmt.Fprintf(w, "data: %s\n\n", payload)
