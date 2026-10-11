@@ -176,18 +176,42 @@ func makeGatewayCandidate(view protocol.RegistryView, bindings []storage.Protoco
 	return candidate, nil
 }
 
-func verifyGatewayBinding(ctx context.Context, view protocol.RegistryView, upstream *protocol.Compiled, capabilities protocol.CapabilitySet, excludedIDs ...string) []protocol.CombinationReport {
-	reports := []protocol.CombinationReport{}
-	for _, id := range view.IDs() {
-		if slices.Contains(excludedIDs, id) {
-			continue
-		}
-		ingress, _ := view.Pin(id)
-		if ingress.Supports(protocol.DecodeRequest) && (ingress.Supports(protocol.EncodeResponse) || ingress.Supports(protocol.EncodeEvent)) {
-			reports = append(reports, protocol.VerifyBindingProfiles(ctx, ingress, upstream, capabilities)...)
+func (s *Server) verifyGatewayBinding(ctx context.Context, view protocol.RegistryView, binding storage.ProtocolBinding, excludedIDs ...string) ([]protocol.CombinationReport, error) {
+	policies, bindings, _, err := s.store.ConversionSnapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	replaced := false
+	for i, old := range bindings {
+		if upgradeBindingIdentity(old) == upgradeBindingIdentity(binding) {
+			bindings[i], replaced = binding, true
 		}
 	}
-	return reports
+	if !replaced {
+		bindings = append(bindings, binding)
+	}
+	definitions := conversionDefinitions{}
+	for _, id := range view.IDs() {
+		definitions[id], _ = view.Pin(id)
+	}
+	verified, err := s.verifyConversionBindings(ctx, definitions, policies, bindings, conversionBindingScope{changed: &binding})
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range verified {
+		if upgradeBindingIdentity(item) == upgradeBindingIdentity(binding) {
+			reports := slices.DeleteFunc(slices.Clone(item.Combinations), func(report protocol.CombinationReport) bool {
+				for _, id := range excludedIDs {
+					if source := definitions[id]; source != nil && source.Hash() == report.SourceHash {
+						return true
+					}
+				}
+				return false
+			})
+			return reports, nil
+		}
+	}
+	return nil, fmt.Errorf("binding disappeared during verification")
 }
 
 func hasPassingGatewayCombination(reports []protocol.CombinationReport) bool {

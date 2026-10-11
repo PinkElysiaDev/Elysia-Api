@@ -588,8 +588,12 @@ func (t *createSourceTool) Execute(ctx context.Context, tctx CLIContext, args js
 	created, _ := agentFindSource(ctx, store, item.ID)
 	if len(params.ManualModels) > 0 {
 		models := agentManualModels(created, params.ManualModels)
-		if _, err := store.SyncManualSourceModels(ctx, created, models); err != nil {
-			return CLIResult{OK: true, Summary: "源已创建，但手动模型列表写入失败: " + err.Error(), Data: map[string]any{"id": item.ID, "warning": err.Error()}}
+		_, err := store.SyncManualSourceModels(ctx, created, models)
+		if err == nil {
+			err = t.server.refreshModelProtocolEvidence(ctx)
+		}
+		if err != nil {
+			return CLIResult{OK: true, Summary: "源已创建，但手动模型写入或协议验证失败: " + err.Error(), Data: map[string]any{"id": item.ID, "warning": err.Error()}}
 		}
 	}
 	t.server.invalidateRouteCache()
@@ -661,8 +665,12 @@ func (t *updateSourceTool) Execute(ctx context.Context, tctx CLIContext, args js
 	if params.ManualModels != nil {
 		updated, _ := agentFindSource(ctx, store, item.ID)
 		models := agentManualModels(updated, params.ManualModels)
-		if _, err := store.SyncManualSourceModels(ctx, updated, models); err != nil {
-			return CLIResult{OK: true, Summary: "源已更新，但手动模型列表写入失败: " + err.Error(), Data: map[string]any{"warning": err.Error()}}
+		_, err := store.SyncManualSourceModels(ctx, updated, models)
+		if err == nil {
+			err = t.server.refreshModelProtocolEvidence(ctx)
+		}
+		if err != nil {
+			return CLIResult{OK: true, Summary: "源已更新，但手动模型写入或协议验证失败: " + err.Error(), Data: map[string]any{"warning": err.Error()}}
 		}
 	}
 	t.server.invalidateRouteCache()

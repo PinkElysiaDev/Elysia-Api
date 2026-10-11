@@ -364,7 +364,11 @@ func (s *Server) adminArchiveProtocol(c *gin.Context) {
 				return
 			}
 			if entry.Kind != "group" {
-				entry.Combinations = verifyGatewayBinding(ctx, view, target, entry.Binding.Capabilities, id)
+				entry.Combinations, err = s.verifyGatewayBinding(ctx, view, entry, id)
+				if err != nil {
+					respondProtocolError(c, err)
+					return
+				}
 				if !hasPassingGatewayCombination(entry.Combinations) {
 					respondProtocolError(c, fmt.Errorf("替换协议未通过入口兼容性验证"))
 					return

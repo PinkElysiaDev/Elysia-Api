@@ -14,6 +14,14 @@ func TestProtocolBindingAPIGeneratesCurrentReportsAndRejectsInvalidClaims(t *tes
 	ingress := activateGatewayDefinition(t, server, loadGatewayDefinition(t, "text-alpha"))
 	upstream := activateGatewayDefinition(t, server, loadGatewayDefinition(t, "text-beta"))
 	setupGatewayModel(t, server, upstream, "https://example.test")
+	for _, invalid := range []storage.ProtocolBinding{
+		{Kind: "source", SourceID: "unrelated", Binding: protocol.Binding{ProtocolID: "inactive-custom"}},
+		{Kind: "model", SourceID: "gateway-source", ModelID: "unrelated-model", Binding: protocol.Binding{ProtocolID: "inactive-custom"}},
+	} {
+		if err := server.store.SaveProtocolBinding(t.Context(), invalid); err != nil {
+			t.Fatal(err)
+		}
+	}
 	server.setupProtocolRevisionRoutes(server.engine.Group("/api/admin"))
 	binding := storage.ProtocolBinding{Kind: "model", SourceID: "gateway-source", ModelID: "upstream-model", Binding: protocol.Binding{ProtocolID: "text-beta", RevisionHash: upstream.Hash(), Capabilities: protocol.CapabilitySet{protocol.TextCapability: true}, Transports: []protocol.Transport{protocol.HTTPJSON}}, Combinations: []protocol.CombinationReport{{Passed: true, SourceHash: "forged", TargetHash: "forged"}}}
 	raw, _ := json.Marshal(binding)
@@ -27,7 +35,7 @@ func TestProtocolBindingAPIGeneratesCurrentReportsAndRejectsInvalidClaims(t *tes
 	}
 	var found bool
 	for _, row := range rows {
-		if row.Kind != "model" {
+		if row.Kind != "model" || row.ModelID != "upstream-model" {
 			continue
 		}
 		for _, report := range row.Combinations {
@@ -45,5 +53,19 @@ func TestProtocolBindingAPIGeneratesCurrentReportsAndRejectsInvalidClaims(t *tes
 	result = revisionAdminRequest(t, server.engine, http.MethodPut, "/api/admin/protocols/bindings", raw, "")
 	if result.Code != 400 {
 		t.Fatalf("text-only protocol claimed tools: %d %s", result.Code, result.Body)
+	}
+	delete(binding.Binding.Capabilities, protocol.FunctionToolsCapability)
+	for _, row := range rows {
+		if row.Kind == "source" && row.SourceID == binding.SourceID {
+			row.Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "parent-reject", Rules: []protocol.ConversionRule{{ID: "reject", Enabled: true, Phase: protocol.ConversionRequest, Action: "reject", Reason: "parent source policy"}}}}
+			if err := server.store.SaveProtocolBinding(t.Context(), row); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	raw, _ = json.Marshal(binding)
+	result = revisionAdminRequest(t, server.engine, http.MethodPut, "/api/admin/protocols/bindings", raw, "")
+	if result.Code != 400 {
+		t.Fatalf("targeted validation ignored inherited source policy: %d %s", result.Code, result.Body)
 	}
 }

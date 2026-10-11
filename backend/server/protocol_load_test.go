@@ -115,7 +115,10 @@ func TestProtocolLoad(t *testing.T) {
 				}
 				for _, binding := range bindings {
 					binding.Binding.Capabilities = protocol.CapabilitySet{protocol.TextCapability: true, protocol.FunctionToolsCapability: true, protocol.UsageCapability: true}
-					binding.Combinations = verifyGatewayBinding(t.Context(), service.View(), upstream, binding.Binding.Capabilities)
+					binding.Combinations, err = server.verifyGatewayBinding(t.Context(), service.View(), binding)
+					if err != nil {
+						t.Fatal(err)
+					}
 					if err := server.store.SaveProtocolBinding(t.Context(), binding); err != nil {
 						t.Fatal(err)
 					}

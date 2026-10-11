@@ -62,7 +62,16 @@ func resolveGatewayConversion(policies []storage.ConversionPolicyRecord, binding
 	return protocol.ResolveConversion(layers...)
 }
 
-func (s *Server) verifyConversionBindings(ctx context.Context, view conversionRegistry, policies []storage.ConversionPolicyRecord, bindings []storage.ProtocolBinding, isolate ...bool) ([]storage.ProtocolBinding, error) {
+type conversionBindingScope struct {
+	changed *storage.ProtocolBinding
+	isolate bool
+}
+
+func (s *Server) verifyConversionBindings(ctx context.Context, view conversionRegistry, policies []storage.ConversionPolicyRecord, bindings []storage.ProtocolBinding, scopes ...conversionBindingScope) ([]storage.ProtocolBinding, error) {
+	scope := conversionBindingScope{}
+	if len(scopes) > 0 {
+		scope = scopes[0]
+	}
 	updated := slices.Clone(bindings)
 	models, err := s.store.ListModelsFiltered(ctx, storage.ModelListFilter{ShouldIncludeDisabledSources: true})
 	if err != nil {
@@ -76,11 +85,14 @@ func (s *Server) verifyConversionBindings(ctx context.Context, view conversionRe
 bindingLoop:
 	for i := range updated {
 		b := &updated[i]
+		if changed := scope.changed; changed != nil && upgradeBindingIdentity(*b) != upgradeBindingIdentity(*changed) && !(changed.Kind == "source" && b.Kind == "model" && b.SourceID == changed.SourceID) {
+			continue
+		}
 		if b.Unbound {
 			continue
 		}
 		reject := func(err error) bool {
-			if len(isolate) == 0 || !isolate[0] {
+			if !scope.isolate {
 				return false
 			}
 			b.Combinations = []protocol.CombinationReport{{CompilerVersion: protocol.CompilerVersion, Fidelity: "rejected", Issues: []protocol.ConversionIssue{{Code: protocol.VerificationRequired, Severity: protocol.SeverityError, Path: "/binding", Reason: err.Error()}}}}
@@ -107,22 +119,11 @@ bindingLoop:
 		if b.Kind == "group" {
 			continue
 		}
-		references := []config.ModelRef{}
-		for _, m := range models {
-			if m.SourceID == b.SourceID && (b.Kind == "source" || m.ID == b.ModelID) {
-				ref, ok := s.resolveModelSource(m, sourceKeys)
-				if ok {
-					references = append(references, ref)
-				}
-			}
-		}
-		if len(references) == 0 {
-			references = append(references, config.ModelRef{ID: b.ModelID, SourceID: b.SourceID, Name: b.ModelID})
-		}
+		references := s.bindingModelReferences(*b, models, sourceKeys)
 		b.Combinations = nil
 		for _, id := range view.IDs() {
 			ingress, _ := view.Pin(id)
-			if !ingress.Supports(protocol.DecodeRequest) || !ingress.Supports(protocol.EncodeResponse) {
+			if !ingress.Supports(protocol.DecodeRequest) || (!ingress.Supports(protocol.EncodeResponse) && !ingress.Supports(protocol.EncodeEvent)) {
 				continue
 			}
 			seen := map[string]bool{}
@@ -134,7 +135,7 @@ bindingLoop:
 					layers = slices.DeleteFunc(slices.Clone(bindings), func(v storage.ProtocolBinding) bool { return v.Kind == "model" })
 				}
 				for operationName, operation := range upstream.Operations() {
-					if operation.Kind != "generate" || !slices.Contains(b.Binding.Transports, operation.Transport) || (b.Binding.Operation != "" && b.Binding.Operation != operationName) {
+					if (operation.Kind != "generate" && operation.Kind != "submit" && operation.Kind != "session") || !slices.Contains(b.Binding.Transports, operation.Transport) || (b.Binding.Operation != "" && b.Binding.Operation != operationName) {
 						continue
 					}
 					conversion, err := resolveGatewayConversion(policies, layers, ingress, upstream, model, operationName, operation.Transport)
@@ -162,7 +163,7 @@ bindingLoop:
 				}
 			}
 		}
-		if !hasPassingGatewayCombination(b.Combinations) && (len(isolate) == 0 || !isolate[0]) {
+		if !hasPassingGatewayCombination(b.Combinations) && !scope.isolate {
 			return nil, fmt.Errorf("conversion policy leaves binding %s/%s without a verified route", b.SourceID, b.ModelID)
 		}
 	}
@@ -186,4 +187,19 @@ func (d conversionDefinitions) IDs() []string {
 func (d conversionDefinitions) Pin(id string) (*protocol.Compiled, bool) {
 	v, ok := d[id]
 	return v, ok
+}
+
+func (s *Server) bindingModelReferences(binding storage.ProtocolBinding, models []storage.Model, sourceKeys map[string]sourceKeyMeta) []config.ModelRef {
+	references := []config.ModelRef{}
+	for _, model := range models {
+		if model.SourceID == binding.SourceID && (binding.Kind == "source" || model.ID == binding.ModelID) {
+			if ref, ok := s.resolveModelSource(model, sourceKeys); ok {
+				references = append(references, ref)
+			}
+		}
+	}
+	if len(references) == 0 {
+		references = append(references, config.ModelRef{ID: binding.ModelID, SourceID: binding.SourceID, Name: binding.ModelID})
+	}
+	return references
 }
