@@ -78,6 +78,7 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
   const creationBucketOmitted = (detail?.conversionIssues ?? []).some(
     (issue) => issue.reason?.includes('cache creation bucket omitted'),
   )
+  const conversionIssues = detail?.conversionIssues ?? []
   const outputRate =
     detail && output > 0 && detail.durationMs > 0 ? (output / (detail.durationMs / 1000)).toFixed(1) : null
 
@@ -209,26 +210,6 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                 )}
               </section>
 
-              {!!detail.conversionIssues?.length && (
-                <section className="mb-5" aria-label="转换诊断">
-                  <SheetSectionTitle>转换诊断</SheetSectionTitle>
-                  <ul className="space-y-3 text-xs">
-                    {detail.conversionIssues.map((issue, index) => (
-                      <li key={index} className="break-all rounded-md border p-3">
-                        <p className={`flex items-center gap-1.5 ${issue.severity === 'error' ? 'text-destructive' : issue.severity === 'warning' ? 'text-amber' : 'text-muted-foreground'}`}>
-                          {issue.severity === 'info' ? <Info className="h-3 w-3 shrink-0" aria-hidden /> : <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />}
-                          {issue.severity === 'info' ? '信息' : issue.severity === 'error' ? '错误' : '警告'} · {issue.code} · {issue.path}
-                        </p>
-                        <p className="mt-1">{issue.reason}</p>
-                        <p className="mt-1 text-muted-foreground">阶段：{issue.stage ?? '—'} · 规则：{issue.ruleId ?? '—'} · 结果：{issue.fidelity ?? '—'}</p>
-                        {issue.protocol?.definitionId && <p className="mt-1 text-muted-foreground">协议：{issue.protocol.definitionId} · 修订：{issue.protocol.revision}</p>}
-                        {issue.policyHash && <p className="mt-1 text-muted-foreground">策略：{issue.policyHash}</p>}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-
               {detail.retryCount > 0 && !!detail.retryEvents?.length && (
                 <section className="mb-5">
                   <SheetSectionTitle>重试事件</SheetSectionTitle>
@@ -261,6 +242,41 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                   请求 / 响应体可能被截断，并非完整内容
                 </p>
               </section>
+
+              {conversionIssues.length > 0 && (
+                <details className="mb-5 rounded-md border p-3 text-xs" aria-label="转换诊断">
+                  <summary className="cursor-pointer">
+                    转换诊断 · {conversionIssues.length} 条
+                    <span className="ml-2 text-muted-foreground">
+                      {([
+                        ['error', '错误', 'text-destructive'],
+                        ['warning', '警告', 'text-amber'],
+                        ['info', '信息', ''],
+                      ] as const)
+                        .filter(([level]) => conversionIssues.some((issue) => issue.severity === level))
+                        .map(([level, label, tone]) => (
+                          <span key={level} className={`ml-1.5 ${tone}`}>
+                            {conversionIssues.filter((issue) => issue.severity === level).length} {label}
+                          </span>
+                        ))}
+                    </span>
+                  </summary>
+                  <ul className="mt-3 space-y-3">
+                    {conversionIssues.map((issue, index) => (
+                      <li key={index} className="break-all rounded-md border p-3">
+                        <p className={`flex items-center gap-1.5 ${issue.severity === 'error' ? 'text-destructive' : issue.severity === 'warning' ? 'text-amber' : 'text-muted-foreground'}`}>
+                          {issue.severity === 'info' ? <Info className="h-3 w-3 shrink-0" aria-hidden /> : <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />}
+                          {issue.severity === 'info' ? '信息' : issue.severity === 'error' ? '错误' : '警告'} · {issue.code} · {issue.path}
+                        </p>
+                        <p className="mt-1">{issue.reason}</p>
+                        <p className="mt-1 text-muted-foreground">阶段：{issue.stage ?? '—'} · 规则：{issue.ruleId ?? '—'} · 结果：{issue.fidelity ?? '—'}</p>
+                        {issue.protocol?.definitionId && <p className="mt-1 text-muted-foreground">协议：{issue.protocol.definitionId} · 修订：{issue.protocol.revision}</p>}
+                        {issue.policyHash && <p className="mt-1 text-muted-foreground">策略：{issue.policyHash}</p>}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
 
               <div className="flex justify-end gap-2.5 border-t border-border pt-4">
                 <Button variant="outline" onClick={onClose}>
