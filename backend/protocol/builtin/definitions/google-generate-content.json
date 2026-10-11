@@ -4405,54 +4405,53 @@
             }
           },
           {
-            "op": "if",
-            "when": {
-              "op": "read",
-              "path": "/thinkingEnabled",
-              "required": true
-            },
-            "then": {
-              "op": "object",
-              "fields": {
-                "gemini_thinking": {
+            "op": "object",
+            "fields": {
+              "reasoning": {
+                "op": "if",
+                "when": {
+                  "op": "read",
+                  "path": "/thinkingEnabled",
+                  "required": true
+                },
+                "then": {
                   "op": "object",
                   "fields": {
-                    "includeThoughts": {
+                    "mode": {
                       "op": "literal",
-                      "value": true
+                      "value": "enabled"
                     },
-                    "thinkingLevel": {
-                      "op": "if",
-                      "when": {
-                        "op": "not",
-                        "source": {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "path": "/thinkingEffort",
-                              "required": true
-                            },
-                            {
-                              "op": "literal",
-                              "value": ""
-                            }
-                          ]
-                        }
-                      },
-                      "then": {
+                    "effort": {
+                      "op": "enum",
+                      "source": {
                         "op": "read",
                         "path": "/thinkingEffort",
                         "required": true
+                      },
+                      "values": {
+                        "": "medium",
+                        "low": "low",
+                        "medium": "medium",
+                        "high": "high"
                       }
+                    },
+                    "effortScope": {
+                      "op": "literal",
+                      "value": "reasoning"
+                    },
+                    "summary": {
+                      "op": "literal",
+                      "value": "auto"
                     }
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": {
+                    "mode": "disabled"
                   }
                 }
               }
-            },
-            "otherwise": {
-              "op": "object",
-              "fields": {}
             }
           }
         ]
@@ -4468,8 +4467,12 @@
           "stream": false
         },
         "expected": {
-          "max_output_tokens": 8192
-        }
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "disabled"
+          }
+        },
+        "model": "gemini-2.5-flash"
       },
       {
         "id": "agent-thinking-disabled-stream",
@@ -4480,8 +4483,12 @@
           "stream": true
         },
         "expected": {
-          "max_output_tokens": 8192
-        }
+          "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "disabled"
+          }
+        },
+        "model": "gemini-2.5-flash"
       },
       {
         "id": "agent-effort-default",
@@ -4493,10 +4500,14 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "gemini_thinking": {
-            "includeThoughts": true
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "auto"
           }
-        }
+        },
+        "model": "gemini-3.5-flash-lite"
       },
       {
         "id": "agent-effort-default-stream",
@@ -4508,10 +4519,14 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "gemini_thinking": {
-            "includeThoughts": true
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "auto"
           }
-        }
+        },
+        "model": "gemini-3.5-flash-lite"
       },
       {
         "id": "agent-effort-low",
@@ -4523,11 +4538,14 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "gemini_thinking": {
-            "includeThoughts": true,
-            "thinkingLevel": "low"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "low",
+            "effortScope": "reasoning",
+            "summary": "auto"
           }
-        }
+        },
+        "model": "gemini-3.5-flash-lite"
       },
       {
         "id": "agent-effort-low-stream",
@@ -4539,11 +4557,14 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "gemini_thinking": {
-            "includeThoughts": true,
-            "thinkingLevel": "low"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "low",
+            "effortScope": "reasoning",
+            "summary": "auto"
           }
-        }
+        },
+        "model": "gemini-3.5-flash-lite"
       },
       {
         "id": "agent-effort-medium",
@@ -4555,11 +4576,14 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "gemini_thinking": {
-            "includeThoughts": true,
-            "thinkingLevel": "medium"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "auto"
           }
-        }
+        },
+        "model": "gemini-3.5-flash-lite"
       },
       {
         "id": "agent-effort-medium-stream",
@@ -4571,11 +4595,14 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "gemini_thinking": {
-            "includeThoughts": true,
-            "thinkingLevel": "medium"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "auto"
           }
-        }
+        },
+        "model": "gemini-3.5-flash-lite"
       },
       {
         "id": "agent-effort-high",
@@ -4587,11 +4614,14 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "gemini_thinking": {
-            "includeThoughts": true,
-            "thinkingLevel": "high"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "high",
+            "effortScope": "reasoning",
+            "summary": "auto"
           }
-        }
+        },
+        "model": "gemini-3.5-flash-lite"
       },
       {
         "id": "agent-effort-high-stream",
@@ -4603,13 +4633,19 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "gemini_thinking": {
-            "includeThoughts": true,
-            "thinkingLevel": "high"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "high",
+            "effortScope": "reasoning",
+            "summary": "auto"
           }
-        }
+        },
+        "model": "gemini-3.5-flash-lite"
       }
     ],
     "toolResults": "json"
-  }
+  },
+  "requires": [
+    "conversion.reasoning.v1"
+  ]
 }

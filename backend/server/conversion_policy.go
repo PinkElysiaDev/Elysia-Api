@@ -152,7 +152,7 @@ bindingLoop:
 						return nil, err
 					}
 					if conversion.ContextDependent() {
-						conversion = conversion.WithVerificationContext(protocol.ConversionContext{Source: ingress.Identity(), Target: upstream.Identity(), Model: model.Identifier(), Operation: operationName, Transport: operation.Transport})
+						conversion = conversion.WithVerificationContext(protocol.ConversionContext{Source: ingress.Identity(), Target: upstream.Identity(), Model: model.Identifier(), Operation: operationName, Transport: operation.Transport, Reasoning: b.Binding.Reasoning, InterleavedThinking: protocol.OperationInterleavedThinking(operation)})
 					}
 					key := conversion.Hash + conversion.ContextHash()
 					if seen[key] {

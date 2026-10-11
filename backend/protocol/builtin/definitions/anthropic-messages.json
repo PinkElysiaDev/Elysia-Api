@@ -5250,82 +5250,55 @@
             }
           },
           {
-            "op": "if",
-            "when": {
-              "op": "read",
-              "path": "/thinkingEnabled",
-              "required": true
-            },
-            "then": {
-              "op": "object",
-              "fields": {
-                "anthropic_thinking": {
-                  "op": "literal",
-                  "value": {
-                    "type": "adaptive"
-                  }
+            "op": "object",
+            "fields": {
+              "reasoning": {
+                "op": "if",
+                "when": {
+                  "op": "read",
+                  "path": "/thinkingEnabled",
+                  "required": true
                 },
-                "temperature": {
-                  "op": "literal",
-                  "value": 1
-                },
-                "anthropic_output_config": {
-                  "op": "if",
-                  "when": {
-                    "op": "all",
-                    "items": [
-                      {
-                        "op": "not",
-                        "source": {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "path": "/thinkingEffort",
-                              "required": true
-                            },
-                            {
-                              "op": "literal",
-                              "value": ""
-                            }
-                          ]
-                        }
-                      },
-                      {
-                        "op": "not",
-                        "source": {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "path": "/thinkingEffort",
-                              "required": true
-                            },
-                            {
-                              "op": "literal",
-                              "value": "adaptive"
-                            }
-                          ]
-                        }
-                      }
-                    ]
-                  },
-                  "then": {
-                    "op": "object",
-                    "fields": {
-                      "effort": {
+                "then": {
+                  "op": "object",
+                  "fields": {
+                    "mode": {
+                      "op": "literal",
+                      "value": "enabled"
+                    },
+                    "effort": {
+                      "op": "enum",
+                      "source": {
                         "op": "read",
                         "path": "/thinkingEffort",
                         "required": true
+                      },
+                      "values": {
+                        "": "medium",
+                        "low": "low",
+                        "medium": "medium",
+                        "high": "high",
+                        "max": "max",
+                        "adaptive": "medium"
                       }
+                    },
+                    "effortScope": {
+                      "op": "literal",
+                      "value": "reasoning"
+                    },
+                    "summary": {
+                      "op": "literal",
+                      "value": "summarized"
                     }
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": {
+                    "mode": "disabled"
                   }
                 }
               }
-            },
-            "otherwise": {
-              "op": "object",
-              "fields": {}
             }
           }
         ]
@@ -5342,8 +5315,12 @@
         },
         "expected": {
           "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "disabled"
+          },
           "stream": false
-        }
+        },
+        "model": "claude-opus-4-6"
       },
       {
         "id": "agent-thinking-disabled-stream",
@@ -5355,8 +5332,12 @@
         },
         "expected": {
           "max_output_tokens": 8192,
+          "reasoning": {
+            "mode": "disabled"
+          },
           "stream": true
-        }
+        },
+        "model": "claude-opus-4-6"
       },
       {
         "id": "agent-effort-default",
@@ -5368,12 +5349,15 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "anthropic_thinking": {
-            "type": "adaptive"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "summarized"
           },
-          "temperature": 1,
           "stream": false
-        }
+        },
+        "model": "claude-opus-4-6"
       },
       {
         "id": "agent-effort-default-stream",
@@ -5385,12 +5369,15 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "anthropic_thinking": {
-            "type": "adaptive"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "summarized"
           },
-          "temperature": 1,
           "stream": true
-        }
+        },
+        "model": "claude-opus-4-6"
       },
       {
         "id": "agent-effort-low",
@@ -5402,15 +5389,15 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "anthropic_thinking": {
-            "type": "adaptive"
-          },
-          "temperature": 1,
-          "anthropic_output_config": {
-            "effort": "low"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "low",
+            "effortScope": "reasoning",
+            "summary": "summarized"
           },
           "stream": false
-        }
+        },
+        "model": "claude-opus-4-6"
       },
       {
         "id": "agent-effort-low-stream",
@@ -5422,15 +5409,15 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "anthropic_thinking": {
-            "type": "adaptive"
-          },
-          "temperature": 1,
-          "anthropic_output_config": {
-            "effort": "low"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "low",
+            "effortScope": "reasoning",
+            "summary": "summarized"
           },
           "stream": true
-        }
+        },
+        "model": "claude-opus-4-6"
       },
       {
         "id": "agent-effort-medium",
@@ -5442,15 +5429,15 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "anthropic_thinking": {
-            "type": "adaptive"
-          },
-          "temperature": 1,
-          "anthropic_output_config": {
-            "effort": "medium"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "summarized"
           },
           "stream": false
-        }
+        },
+        "model": "claude-opus-4-6"
       },
       {
         "id": "agent-effort-medium-stream",
@@ -5462,15 +5449,15 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "anthropic_thinking": {
-            "type": "adaptive"
-          },
-          "temperature": 1,
-          "anthropic_output_config": {
-            "effort": "medium"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "summarized"
           },
           "stream": true
-        }
+        },
+        "model": "claude-opus-4-6"
       },
       {
         "id": "agent-effort-high",
@@ -5482,15 +5469,15 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "anthropic_thinking": {
-            "type": "adaptive"
-          },
-          "temperature": 1,
-          "anthropic_output_config": {
-            "effort": "high"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "high",
+            "effortScope": "reasoning",
+            "summary": "summarized"
           },
           "stream": false
-        }
+        },
+        "model": "claude-opus-4-6"
       },
       {
         "id": "agent-effort-high-stream",
@@ -5502,15 +5489,15 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "anthropic_thinking": {
-            "type": "adaptive"
-          },
-          "temperature": 1,
-          "anthropic_output_config": {
-            "effort": "high"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "high",
+            "effortScope": "reasoning",
+            "summary": "summarized"
           },
           "stream": true
-        }
+        },
+        "model": "claude-opus-4-6"
       },
       {
         "id": "agent-effort-max",
@@ -5522,15 +5509,15 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "anthropic_thinking": {
-            "type": "adaptive"
-          },
-          "temperature": 1,
-          "anthropic_output_config": {
-            "effort": "max"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "max",
+            "effortScope": "reasoning",
+            "summary": "summarized"
           },
           "stream": false
-        }
+        },
+        "model": "claude-opus-4-6"
       },
       {
         "id": "agent-effort-max-stream",
@@ -5542,15 +5529,15 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "anthropic_thinking": {
-            "type": "adaptive"
-          },
-          "temperature": 1,
-          "anthropic_output_config": {
-            "effort": "max"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "max",
+            "effortScope": "reasoning",
+            "summary": "summarized"
           },
           "stream": true
-        }
+        },
+        "model": "claude-opus-4-6"
       },
       {
         "id": "agent-effort-adaptive",
@@ -5562,12 +5549,15 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "anthropic_thinking": {
-            "type": "adaptive"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "summarized"
           },
-          "temperature": 1,
           "stream": false
-        }
+        },
+        "model": "claude-opus-4-6"
       },
       {
         "id": "agent-effort-adaptive-stream",
@@ -5579,14 +5569,20 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "anthropic_thinking": {
-            "type": "adaptive"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "summarized"
           },
-          "temperature": 1,
           "stream": true
-        }
+        },
+        "model": "claude-opus-4-6"
       }
     ],
     "toolResults": "text"
-  }
+  },
+  "requires": [
+    "conversion.reasoning.v1"
+  ]
 }

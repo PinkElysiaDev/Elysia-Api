@@ -55,7 +55,7 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 	if err != nil {
 		return nil, err
 	}
-	options := protocol.EvaluationContext{Values: protocol.Object{"path": protocol.StringValue(path)}}
+	options := protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(protocol.Operation{Headers: map[string]string{"anthropic-beta": c.GetHeader("anthropic-beta")}}), Values: protocol.Object{"path": protocol.StringValue(path)}}
 	for _, operation := range ingress.Operations() {
 		if parameters, matches := protocol.MatchOperationPath(operation.Path, path); matches {
 			for name, value := range parameters {
@@ -136,7 +136,7 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		}
 		probe := candidate.prepared.Clone()
 		probe.Model = protocol.StringValue(candidate.model.Identifier())
-		probeOptions := protocol.EvaluationContext{Scope: candidate.scope}
+		probeOptions := protocol.EvaluationContext{Scope: candidate.scope, InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation)}
 		body, encodeErr := candidate.compiled.EncodeRequest(c.Request.Context(), probe, probeOptions)
 		if encodeErr == nil {
 			encodeErr = candidate.compiled.CheckOperationInput(candidate.operation, body)
@@ -328,7 +328,7 @@ func (candidate gatewayCandidate) conversionContext(ingress *protocol.Compiled, 
 			}
 		}
 	}
-	return protocol.ConversionContext{Scope: candidate.scope, Recoverable: recoverable, Source: source, Target: target, Model: candidate.model.Identifier(), Operation: candidate.operationName, Transport: candidate.operation.Transport}
+	return protocol.ConversionContext{Reasoning: candidate.binding.Reasoning, InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Recoverable: recoverable, Source: source, Target: target, Model: candidate.model.Identifier(), Operation: candidate.operationName, Transport: candidate.operation.Transport}
 }
 
 func modelProtocolScope(model config.ModelRef) protocol.Scope {

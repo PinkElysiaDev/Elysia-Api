@@ -90,7 +90,7 @@ func TestGeminiSystemInstructionRoleValidationAndExtensions(t *testing.T) {
 
 func TestGeminiSystemInstructionOldCustomCombination(t *testing.T) {
 	d := shippedProjectionProtocol(t, Gemini).Definition()
-	d.ID, d.Requires = "old-gemini-system-copy", nil
+	d.ID, d.Requires = "old-gemini-system-copy", []string{p.ReasoningControlsFeature}
 	mapping := d.Directions[p.DecodeRequest]
 	mapping.After = &p.Expression{Op: "read", Path: ""}
 	d.Directions[p.DecodeRequest] = mapping

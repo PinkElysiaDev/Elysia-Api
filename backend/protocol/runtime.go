@@ -4,12 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 )
 
 // DecodeRequest executes this revision's request decoder, stamps its source
 // identity and validates actual requested capabilities before routing.
-func (compiled *Compiled) DecodeRequest(ctx context.Context, body []byte, options EvaluationContext) (result *Request, err error) {
+func (compiled *Compiled) DecodeRequest(ctx context.Context, body []byte, options EvaluationContext) (*Request, error) {
+	return compiled.decodeRequest(ctx, body, options, nil)
+}
+
+func (compiled *Compiled) decodeRequest(ctx context.Context, body []byte, options EvaluationContext, boundScope *Scope) (result *Request, err error) {
 	defer func() { err = compiled.runtimeError(DecodeRequest, err) }()
+	sourceContext := &NativeRequestContext{Scope: options.Scope, Values: maps.Clone(options.Values), InterleavedThinking: options.InterleavedThinking}
 	input, err := ParseValue(body)
 	if err != nil {
 		return nil, err
@@ -22,10 +28,26 @@ func (compiled *Compiled) DecodeRequest(ctx context.Context, body []byte, option
 	}
 	request.SchemaVersion = SemanticSchemaVersion
 	request.Source = compiled.identity
+	if codec := compiled.Codec(DecodeRequest); knownConversionCodec(codec) {
+		validation := request.Clone()
+		if err := NormalizeReasoningParameters(validation, codec, options.InterleavedThinking); err != nil {
+			return nil, err
+		}
+		if err := validateSourceReasoning(codec, validation.Reasoning); err != nil {
+			return nil, err
+		}
+		if codec == "openai-chat" {
+			if _, err := ParseResponsesStore(request.Parameters["store"]); err != nil {
+				return nil, err
+			}
+		}
+	}
 	if err := compiled.checkDecodedResponsesContext(request); err != nil {
 		return nil, err
 	}
-	if options.ResolveRequestScope != nil {
+	if boundScope != nil {
+		options.Scope = *boundScope
+	} else if options.ResolveRequestScope != nil {
 		scope, err := options.ResolveRequestScope(request)
 		if err != nil {
 			return nil, err
@@ -34,7 +56,7 @@ func (compiled *Compiled) DecodeRequest(ctx context.Context, body []byte, option
 	}
 	request.Native = nil
 	if compiled.native.Preserve {
-		request.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: DecodeRequest, Scope: options.Scope}, Value: input}
+		request.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: DecodeRequest, Scope: options.Scope}, Value: input, RequestContext: sourceContext}
 	}
 	if err := stampResourceScopes(request, options.Scope); err != nil {
 		return nil, err
@@ -276,7 +298,7 @@ func (compiled *Compiled) runtimeError(direction Direction, err error) error {
 				issues[index].Direction = direction
 			}
 		}
-		return &ConversionError{cause: err, Issues: issues}
+		return &ConversionError{cause: err, Issues: issues, CandidateOnly: conversion.CandidateOnly}
 	}
 	code := InvalidInput
 	if direction == DecodeResponse || direction == DecodeEvent {
@@ -364,10 +386,14 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 	var baseline any
 	switch direction {
 	case EncodeRequest:
-		request, err := compiled.DecodeRequest(ctx, original.Bytes(), options)
+		if source := native.RequestContext; source != nil {
+			options.Scope, options.Values, options.InterleavedThinking = source.Scope, maps.Clone(source.Values), source.InterleavedThinking
+		}
+		request, err := compiled.decodeRequest(ctx, original.Bytes(), options, &native.Source.Scope)
 		if err != nil {
 			return Value{}, err
 		}
+		options.Scope = native.Source.Scope
 		baseline = request
 	case EncodeResponse:
 		response, err := compiled.DecodeResponse(ctx, original.Bytes(), options)

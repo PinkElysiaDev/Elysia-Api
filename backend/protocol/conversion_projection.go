@@ -56,6 +56,8 @@ func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 			ConversionRule{ID: "responses-context", Order: 185, Enabled: true, Phase: ConversionRequest, Action: "responses_context", Value: StringValue(codec)},
 			ConversionRule{ID: "request-signatures", Order: 200, Enabled: true, Phase: ConversionRequest, Action: "signatures"})
 		if source := ingress.Codec(DecodeRequest); knownConversionCodec(source) {
+			reasoning, _ := EncodeValue(reasoningOptions{SourceCodec: source, TargetCodec: codec})
+			p.Rules = append(p.Rules, ConversionRule{ID: "reasoning-controls", Order: 175, Enabled: true, Phase: ConversionRequest, Action: "reasoning_controls", Value: reasoning})
 			settings, _ := EncodeValue(responsesStorageOptions{SourceCodec: source, TargetCodec: codec, OnUnsupported: "degrade"})
 			p.Rules = append(p.Rules, ConversionRule{ID: "responses-storage", Order: 190, Enabled: true, Phase: ConversionRequest, Action: "responses_storage", Value: settings})
 		}

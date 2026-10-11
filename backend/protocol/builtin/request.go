@@ -224,6 +224,11 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 	if err := checkRequestChoices(request); err != nil {
 		return nil, err
 	}
+	if options.DefinitionRequires(p.ReasoningControlsFeature) {
+		if err := p.NormalizeReasoningParameters(request, adapter.name, options.InterleavedThinking); err != nil {
+			return nil, err
+		}
+	}
 	return request, nil
 }
 
@@ -263,7 +268,11 @@ func (adapter module) encodeRequest(request *p.Request, options p.EvaluationCont
 	if adapter.name == Gemini {
 		delete(fields, "model")
 	}
-	if err := adapter.encodeParameters(fields, request.Parameters); err != nil {
+	parameters, err := p.ReasoningParameters(request, adapter.name)
+	if err != nil {
+		return p.Value{}, err
+	}
+	if err := adapter.encodeParameters(fields, parameters); err != nil {
 		return p.Value{}, err
 	}
 	if adapter.name == Chat && request.ClientOutput != nil {

@@ -76,6 +76,7 @@ func equivalentRequest(request *Request) *Request {
 	copy.Content = comparableConversation(request.Content)
 	// Client delivery preferences and upstream accounting controls are hop-local.
 	copy.ClientOutput = nil
+	copy.OutputLimitDefault = false
 	return &copy
 }
 

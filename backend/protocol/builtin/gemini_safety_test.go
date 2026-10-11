@@ -131,7 +131,7 @@ func TestGeminiSafetySettingsRejectConstraintsAndInvalidTypes(t *testing.T) {
 
 func TestGeminiSafetySettingsCustomPreviewAndCombination(t *testing.T) {
 	d := shippedProjectionProtocol(t, Gemini).Definition()
-	d.ID, d.Requires = "old-gemini-safety-copy", nil
+	d.ID, d.Requires = "old-gemini-safety-copy", []string{p.ReasoningControlsFeature}
 	mapping := d.Directions[p.DecodeRequest]
 	mapping.After = &p.Expression{Op: "read", Path: ""}
 	d.Directions[p.DecodeRequest] = mapping

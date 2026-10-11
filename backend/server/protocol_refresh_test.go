@@ -204,7 +204,7 @@ func TestRuntimeProjectionUpgradeTenRestartsPreserveCustomAndFailedEvidence(t *t
 	for _, id := range []string{"old-copy", "broken-copy"} {
 		d := presetDefinition(t, protocol.PresetResponsesID)
 		d.ID = id
-		d.Requires = nil
+		d.Requires = []string{protocol.ReasoningControlsFeature}
 		if id == "broken-copy" {
 			d.Samples[0].Expected = mustProtocolValue(t, `{"schemaVersion":1,"content":[]}`)
 		}

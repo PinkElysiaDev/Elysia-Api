@@ -8,12 +8,13 @@ import (
 // Binding constrains a model independently of its wire adapter's capabilities.
 // RevisionHash prevents a later activation from silently changing this contract.
 type Binding struct {
-	ProtocolID   string        `json:"protocolId"`
-	RevisionHash string        `json:"revisionHash"`
-	Capabilities CapabilitySet `json:"capabilities"`
-	Transports   []Transport   `json:"transports"`
-	Operation    string        `json:"operation,omitempty"`
-	Wait         *JobWait      `json:"wait,omitempty"`
+	ProtocolID   string                 `json:"protocolId"`
+	RevisionHash string                 `json:"revisionHash"`
+	Capabilities CapabilitySet          `json:"capabilities"`
+	Transports   []Transport            `json:"transports"`
+	Operation    string                 `json:"operation,omitempty"`
+	Reasoning    *ReasoningCapabilities `json:"reasoning,omitempty"`
+	Wait         *JobWait               `json:"wait,omitempty"`
 }
 
 // JobWait explicitly opts a synchronous ingress into bounded async waiting.
@@ -53,6 +54,13 @@ func checkBinding(binding Binding, compiled *Compiled, requestDirection, respons
 		return []ConversionIssue{issue}
 	}
 	var issues []ConversionIssue
+	if binding.Reasoning != nil {
+		if err := binding.Reasoning.Validate(); err != nil {
+			entry := issue
+			entry.Path, entry.Reason = "/binding/reasoning", err.Error()
+			issues = append(issues, entry)
+		}
+	}
 	for _, capability := range sortedKeys(binding.Capabilities) {
 		if !slices.Contains(CapabilityCatalog(), Capability(capability)) {
 			entry := issue

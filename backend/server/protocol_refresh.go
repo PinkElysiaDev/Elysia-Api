@@ -300,7 +300,7 @@ func (s *Server) prepareProtocolRefresh(ctx context.Context, service *protocol.S
 						if !conversion.ContextDependent() {
 							continue
 						}
-						route := protocol.ConversionContext{Source: ingress.Identity(), Target: c.Identity(), Model: model.Identifier(), Operation: name, Transport: operation.Transport}
+						route := protocol.ConversionContext{Source: ingress.Identity(), Target: c.Identity(), Model: model.Identifier(), Operation: name, Transport: operation.Transport, Reasoning: b.Binding.Reasoning, InterleavedThinking: protocol.OperationInterleavedThinking(operation)}
 						needsRefresh = needsRefresh || !reports[conversion.WithVerificationContext(route).ContextHash()]
 					}
 				}

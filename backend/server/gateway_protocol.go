@@ -161,7 +161,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	}
 	// 上行模型串用 API id；Name 是显示名（Gemini displayName 直接拼路径会 404）。
 	request.Model = protocol.StringValue(candidate.model.Identifier())
-	options := protocol.EvaluationContext{Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}, ClientOutput: request.ClientOutput}
+	options := protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}, ClientOutput: request.ClientOutput}
 	if candidate.continuation != nil {
 		candidate.continuation.sink = options.Diagnostics
 	}

@@ -22,6 +22,12 @@ func validateRequestContext(request *Request) error {
 	if request == nil {
 		return nil // CheckRequest reports the missing semantic document.
 	}
+	if request.Reasoning != nil && request.Reasoning.Interleaved && len(request.Tools) == 0 {
+		return streamIssue(InvalidInput, "/reasoning/interleaved", "interleaved thinking requires tools")
+	}
+	if err := ValidateReasoningIntent(request.Reasoning); err != nil {
+		return err
+	}
 	if _, err := ParseGeminiSafetySettings(request.Parameters["gemini_safety_settings"]); err != nil {
 		return err
 	}
@@ -32,18 +38,11 @@ func validateContextValue(phase ConversionPhase, value Value) error {
 	if phase != ConversionIngress && phase != ConversionRequest {
 		return nil
 	}
-	fields, err := value.ReadObject()
-	if err != nil || fields["parameters"].IsZero() || fields["parameters"].IsNull() {
+	var req Request
+	if err := value.Decode(&req); err != nil {
 		return err
 	}
-	parameters, err := fields["parameters"].ReadObject()
-	if err != nil {
-		return err
-	}
-	if _, err := ParseGeminiSafetySettings(parameters["gemini_safety_settings"]); err != nil {
-		return err
-	}
-	return ValidateResponsesContext(parameters["responses_truncation"], parameters["responses_previous_response_id"])
+	return validateRequestContext(&req)
 }
 
 // Validate before routing so an unsupported native reference is not reported as
