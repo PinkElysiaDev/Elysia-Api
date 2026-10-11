@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "openai-responses",
   "name": "Openai Responses",
-  "version": "2.2.6",
+  "version": "2.2.8",
   "family": "openai_responses",
   "wireVersion": "v2",
   "capabilities": {

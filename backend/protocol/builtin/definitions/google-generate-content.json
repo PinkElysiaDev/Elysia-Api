@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "google-generate-content",
   "name": "Google Generate-content",
-  "version": "2.1.5",
+  "version": "2.1.6",
   "family": "gemini",
   "wireVersion": "v2",
   "capabilities": {

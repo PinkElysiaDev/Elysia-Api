@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "openai-chat-completions",
   "name": "Openai Chat Completions",
-  "version": "2.2.6",
+  "version": "2.2.7",
   "family": "openai_chat",
   "wireVersion": "v2",
   "requires": [
