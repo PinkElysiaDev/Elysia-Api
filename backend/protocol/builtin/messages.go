@@ -122,6 +122,11 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 				node.Children = append(node.Children, p.Node{Kind: p.RefusalNode, Payload: refusal})
 			}
 		}
+		node.Cache, err = decodeCache(fields, "message")
+		if err != nil {
+			return nil, err
+		}
+		known = append(known, "cache_control")
 		node.Metadata, err = adapter.extractMetadata(fields, "message", location)
 		if err != nil {
 			return nil, err
@@ -315,14 +320,13 @@ func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, opti
 	if err := adapter.writeMetadata(fields, adapter.contentMetadata([]p.Node{node}), "message"); err != nil {
 		return nil, err
 	}
-	attributes := node.Attributes
-	if foreign := foreignWireKeys(attributes, adapter.family); len(foreign) > 0 {
-		// 消息级源族扩展（如 Anthropic 的消息级 cache_control）在 Chat 目标
-		// 没有等价字段：剥离并显式 warning，不再拒绝整个请求。
-		warnDropped(options, p.EncodeRequest, "/content/extensions", "message-level wire extensions dropped: "+strings.Join(foreign, ", ")+" has no Chat equivalent", "Same-family forwarding preserves them through native replay.")
-		attributes = sameFamilyExtensions(attributes, adapter.family)
+	if len(node.Resources) > 0 {
+		return nil, unsupported("/content/resources", "message resources require explicit mapping")
 	}
-	if err := adapter.preserveExtensions(fields, attributes); err != nil {
+	if err := adapter.encodeCache(fields, node.Cache); err != nil {
+		return nil, err
+	}
+	if err := adapter.preserveExtensions(fields, node.Attributes); err != nil {
 		return nil, err
 	}
 	var content, calls, results []p.Value

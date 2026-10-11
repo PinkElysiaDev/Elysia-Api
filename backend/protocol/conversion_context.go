@@ -22,6 +22,9 @@ func validateRequestContext(request *Request) error {
 	if request == nil {
 		return nil // CheckRequest reports the missing semantic document.
 	}
+	if err := validateRequestHints(request); err != nil {
+		return err
+	}
 	if request.Reasoning != nil && request.Reasoning.Interleaved && len(request.Tools) == 0 {
 		return streamIssue(InvalidInput, "/reasoning/interleaved", "interleaved thinking requires tools")
 	}

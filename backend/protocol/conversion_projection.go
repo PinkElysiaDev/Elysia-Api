@@ -41,16 +41,22 @@ func (s *Service) ResolvePreviewConversion(route ConversionContext, phase Conver
 	return c, route, err
 }
 
-// DefaultConversionPolicy applies equally to old custom and shipped definitions.
+// DefaultConversionPolicy follows installed codecs in custom and shipped definitions.
 // Explicitly authored encoders receive no guessed wire projections.
 func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 	p := ConversionPolicy{SchemaVersion: 1, ID: "engine-default", Name: "引擎默认", Mode: "compatible", Rules: []ConversionRule{},
 		Continuation: &ContinuationSettings{ClientCarrier: true, Persist: true, RetentionSeconds: 7 * 24 * 3600, TurnsPerSession: 64, MaxBytes: 512 << 20, RecordBytes: 8 << 20}}
 	if codec := upstream.Codec(EncodeRequest); knownConversionCodec(codec) {
 		p.Usage = &ConversionUsageSettings{CollectUpstreamUsage: true}
+		sourceCodec := ingress.Codec(DecodeRequest)
+		if !knownConversionCodec(sourceCodec) {
+			sourceCodec = ""
+		}
+		projection, _ := EncodeValue(requestProjectionOptions{SourceCodec: sourceCodec, TargetCodec: codec})
 		p.Rules = append(p.Rules,
 			ConversionRule{ID: "history-response-metadata", Order: 160, Enabled: true, Phase: ConversionRequest, Action: "response_metadata", Value: StringValue(codec)},
-			ConversionRule{ID: "client-stream-options", Order: 100, Enabled: true, Phase: ConversionRequest, Action: "stream_options"},
+			ConversionRule{ID: "request-projection", Order: 130, Enabled: true, Phase: ConversionRequest, Action: "request_projection", Value: projection},
+			ConversionRule{ID: "client-stream-options", Order: 100, Enabled: true, Phase: ConversionRequest, Action: "stream_options", Value: StringValue(codec)},
 			ConversionRule{ID: "gemini-safety-settings", Order: 170, Enabled: true, Phase: ConversionRequest, Action: "gemini_safety_settings", Value: StringValue(codec)},
 			ConversionRule{ID: "responses-include", Order: 180, Enabled: true, Phase: ConversionRequest, Action: "responses_include", Value: StringValue(codec)},
 			ConversionRule{ID: "responses-context", Order: 185, Enabled: true, Phase: ConversionRequest, Action: "responses_context", Value: StringValue(codec)},

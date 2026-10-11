@@ -19,12 +19,13 @@ func TestGatewayGeminiClientStreamUsagePreferences(t *testing.T) {
 	for _, test := range []struct {
 		name, option string
 		want         bool
+		reject       bool
 	}{
-		{"true", `,"stream_options":{"include_usage":true}`, true},
-		{"false", `,"stream_options":{"include_usage":false}`, false},
-		{"missing", "", false},
-		{"null", `,"stream_options":null`, false},
-		{"unknown", `,"stream_options":{"include_usage":true,"future_flag":true}`, true},
+		{"true", `,"stream_options":{"include_usage":true}`, true, false},
+		{"false", `,"stream_options":{"include_usage":false}`, false, false},
+		{"missing", "", false, false},
+		{"null", `,"stream_options":null`, false, false},
+		{"unknown", `,"stream_options":{"include_usage":true,"future_flag":true}`, false, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			s, _ := newProtocolAdminTestServer(t)
@@ -48,6 +49,12 @@ func TestGatewayGeminiClientStreamUsagePreferences(t *testing.T) {
 			req.Header.Set("Authorization", "Bearer gateway-test-token")
 			rec := httptest.NewRecorder()
 			s.engine.ServeHTTP(rec, req)
+			if test.reject {
+				if rec.Code != 400 || calls != 0 || !strings.Contains(rec.Body.String(), "/stream_options/future_flag") {
+					t.Fatal("unknown stream option reached upstream", rec.Code, calls, rec.Body)
+				}
+				return
+			}
 			if rec.Code != 200 || calls != 1 || !strings.Contains(rec.Body.String(), "hello") || strings.Contains(rec.Body.String(), "conversion_rejected") {
 				t.Fatal(rec.Code, calls, rec.Body)
 			}

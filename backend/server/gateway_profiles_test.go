@@ -38,8 +38,8 @@ func TestGatewayProfilesRejectUnsupportedInputAndUnexpectedOutput(t *testing.T) 
 	if response := request(input); response.Code != http.StatusOK || calls != 1 || !strings.Contains(response.Body.String(), "hello") {
 		t.Fatal(response.Code, calls, response.Body)
 	}
-	if response := request(strings.TrimSuffix(input, "}") + `,"prompt_cache_key":"cache"}`); response.Code == http.StatusOK || calls != 1 {
-		t.Fatal("unsupported cache sent to provider", response.Code, calls, response.Body)
+	if response := request(strings.TrimSuffix(input, "}") + `,"prompt_cache_options":{"mode":"explicit"}}`); response.Code == http.StatusOK || calls != 1 {
+		t.Fatal("unsupported cache mode sent to provider", response.Code, calls, response.Body)
 	}
 	shouldReturnReasoning = true
 	if response := request(input); response.Code != http.StatusOK || calls != 2 || !strings.Contains(response.Body.String(), "elysia_continuation") {

@@ -89,7 +89,14 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 	if adapter.name == Anthropic {
 		known = append(known, "messages", "system")
 	}
-	for key, value := range adapter.extensions(fields, known) {
+	extensions := adapter.extensions(fields, known)
+	if fields["prompt_cache_options"].IsObject() {
+		extensions, err = adapter.nestedExtensions(fields, known, map[string][]string{"prompt_cache_options": {"mode", "ttl"}})
+		if err != nil {
+			return nil, err
+		}
+	}
+	for key, value := range extensions {
 		request.Parameters[key] = value
 	}
 	if adapter.name == Gemini {
@@ -489,6 +496,15 @@ func (adapter module) encodeParameters(fields p.Object, parameters p.Object) err
 			isMapped = true
 		}
 		if semantic == "anthropic_metadata" && (adapter.name == Chat || adapter.name == Responses) {
+			meta, _ := value.ReadObject()
+			for key := range meta {
+				if key != "user_id" {
+					return unsupported("/parameters/anthropic_metadata/"+key, "unknown metadata requires explicit mapping")
+				}
+			}
+			if user := parameters["user"]; !user.IsZero() && !meta["user_id"].IsZero() && user != meta["user_id"] {
+				return unsupported("/parameters/user", "conflicting user identities")
+			}
 			isMapped = true
 		}
 		if !isMapped {

@@ -1,8 +1,16 @@
 # 缓存用量契约与定向验证
 
-[English](cache-usage-contracts.en.md) · [本轮实测报告](cache-validation-2026-10-04.md)
+[English](cache-usage-contracts.en.md) · [验证方法](protocol-release-readiness.md)
 
 缓存是否被使用、上游是否报告计数、网关是否正确转发计数，是三个独立问题。缺失值不能当零；上游接受缓存字段不证明发生命中，更不证明某个 TTL 的时间行为。
+
+## 缓存意图与断点合成
+
+断点、key、retention、最短 TTL、预热和显式资源是不同意图，不能互相替代。默认 `request_projection`（请求阶段，顺序 130）保留可映射的 key、retention 和标准 `cache_control` 断点及 TTL。目标无对应字段时，`compatible` 只省略提示并记录信息级 `conversion_degraded` / `lossy_compatible`；`strict` 在调用上游前拒绝实际损失。覆盖请求、工具、system、消息和内容块，不修改正文、工具参数或任意用户 JSON。
+
+省略前检查类型与结构。空值按无效果规范化；未知缓存策略、附加属性或 TTL 不套用标准断点规则。同协议未知扩展保留，跨协议要求明确映射。显式资源、预热、缓存模式和最低存活期继续执行能力及作用域检查，不转换成其他缓存意图。字段被接受不证明已经创建或命中缓存，被省略的提示不保证在上游生效。
+
+模型源的 `cacheSynthesis` 默认关闭。启用后，仅当目标声明 `cache.breakpoints` 且现有断点未满四个时，按最后一个工具、系统内容和消息内容的结构补充断点。保留调用方已有标记，不重排 TTL，不为思考块增加标记；超过上限不自动删减。默认补充策略为 `type:ephemeral`，TTL 由原标记和供应商默认决定。
 
 ## 标准计数
 
@@ -15,27 +23,28 @@
 
 Chat/Responses 继续接受旧顶层 `cache_creation_input_tokens`。与嵌套创建字段同时出现且数值不同会报契约错误；负数、非整数类型、null 与溢出也会被拒绝。创建值缺失保持缺失，零保持零。跨协议生成的新 usage 使用标准嵌套字段，同源未修改的原生响应保留原形。修改或删除语义计数时，已知旧别名同步协调，不允许旧 Raw 恢复已删除的计数。
 
-自编译器 `2.0.0-dev.23` 起，Anthropic 客户端必填计数由 `anthropic_usage_envelope` 管理：同帧有值时优先使用，兼容模式缺失时只在客户端副本补 0，严格模式拒绝。占位来源为 `placeholder`，真实零值仍为 `observed`；供应商契约禁止把占位数当原始观测。内部 `ProtocolUsage`、持久记录及计费始终只接收上游事件。尾部真实计数按快照替换占位，不求和；部分旧客户端仍可能显示首帧的 0。详细限制见 [转换行为](conversion-implementation.md)。
+Anthropic 客户端必填计数由 `anthropic_usage_envelope` 管理：同帧有值时优先使用，兼容模式缺失时只在客户端副本补 0，严格模式拒绝。占位来源为 `placeholder`，真实零值仍为 `observed`；供应商契约禁止把占位数当原始观测。内部 `ProtocolUsage`、持久记录及计费始终只接收上游事件。尾部真实计数按快照替换占位，不求和；部分旧客户端仍可能显示首帧的 0。详细限制见 [转换行为](conversion-implementation.md)。
 
 Gemini 资源创建响应中的 token 数表示资源容量，不能充当一次生成的 `CacheCreation`。目标没有可表达的创建计数或明细字段时，转换器给出诊断并省略该细节，既不隐藏、也不为让转换通过而改动计数——见下节。
 
 ## 跨协议缓存创建分桶投影
 
+
 Anthropic 上游在每次写出缓存的响应里都附带 `cache_creation.ephemeral_5m_input_tokens` 与 `ephemeral_1h_input_tokens` 两个 TTL 分桶。这是上游的记账明细，不是调用方请求的能力，而目标协议（Chat、Responses、Gemini）没有对应字段。
 
 - **具名兼容投影**：默认兼容策略通过 `usage_projection` 省略目标无法表达的分桶，**创建总量仍映射到 `cache_write_tokens`**（Chat/Responses）。严格模式拒绝信息损失；禁用规则后编码器也会拒绝未经投影的字段。
 - **可见省略**：省略在 `/usage/details/ephemeral_5m_input_tokens`（或 `ephemeral_1h_input_tokens`）上产一条 `SeverityWarning` 诊断，随成功响应一并进入该次记录的 ConversionIssues，故是「显式省略」而非静默丢弃。
-- **确定性**：明细按键名排序遍历，同一输入每次都报告同一条路径；此前被拒绝的键取决于 map 遍历序，同输入在不同运行间会报 `ephemeral_5m` 或 `ephemeral_1h`。
+- **确定性**：明细按键名排序遍历，同一输入每次都报告同一条路径。
 - **同协议保留**：Anthropic→Anthropic 的未修改往返完整保留两个分桶，工具、system 与消息位置都不重排。
 - **Gemini 创建总量**：Gemini 响应只报告读取，没有创建计数字段；创建总量同样被省略并产 warning（路径 `/usage/cacheCreation`），读取仍走 `cachedContentTokenCount` 正常跨过。
 
-自 `dev.22` 起，组合验证比较具名规则执行后的语义，不再按协议家族跳过计数比较。Gemini 创建计数省略前先检查原始算术关系，同时从客户端副本移除依赖创建计数的未缓存子计数。`ProtocolUsage` 始终保留完整原始计数，流式客户端投影不会回写计量。
+组合验证比较具名规则执行后的语义，不再按协议家族跳过计数比较。Gemini 创建计数省略前先检查原始算术关系，同时从客户端副本移除依赖创建计数的未缓存子计数。`ProtocolUsage` 始终保留完整原始计数，流式客户端投影不会回写计量。
 
-**开放验证缺口**：跨协议线上非零缓存读取尚未在真实站点取得，本地测试不能替代该项，详见[本轮实测报告](cache-validation-2026-10-04.md)。
+真实非零缓存读取、创建及 TTL 行为需要按账号、模型和端点独立验证；字段转发成功和本地测试不能证明线上命中。
 
 ## 声明站点别名
 
-[映射补丁](examples/cache-usage-alias.mapping.json) 和 [离线样例](examples/cache-usage-alias.sample.json) 演示人工约定的 `usage.provider_metrics.write_tokens`。它们不是完整协议，也不是对 moyuu 私有计费字段的解释；只有供应商契约及实际证据确认其含义后，才应替换路径使用。
+[映射补丁](examples/cache-usage-alias.mapping.json) 和 [离线样例](examples/cache-usage-alias.sample.json) 演示人工约定的 `usage.provider_metrics.write_tokens`。它们不是完整协议，也不是对任何供应商私有计费字段的解释；只有供应商契约及实际证据确认其含义后，才应替换路径使用。
 
 1. 在编辑器复制 Chat 定义，使用新 ID；保留能力、四方向、操作、原有样例和扩展。
 2. 将补丁对应的 `decode_response.after`、`decode_event.after` 合入定义。如果已有 `after`，应显式组合变换并增加样例，不能覆盖原变换。
@@ -52,7 +61,7 @@ Agent 使用同一服务层：`elysia protocol draft`、`validate`、`verify`、
 
 ## 有限额的线上实验
 
-测试入口：`node scripts/verify-protocol.mjs live --suite=cache-gaps`。按目标设置模型及凭据环境变量名；秘密值只传给子进程，避免粘贴到命令参数或文件。新账本最多 96 次、预留 4 次清理、两小时窗口，不修改旧 256 次账本。失败调用、预检和资源操作也计数。
+测试入口：`node scripts/verify-protocol.mjs live --suite=cache-gaps`。按目标设置模型及凭据环境变量名；秘密值只传给子进程，避免粘贴到命令参数或文件。实验账本最多 96 次、预留 4 次清理，观察窗口为两小时。失败调用、预检和资源操作也计数。
 
 恢复入口：`live --suite=cache-gaps --resume=<证据目录>`。检查点绑定模型、编译器和协议修订。已开始但结果不确定的付费请求不重放；已预热的 TTL 组继续按原计划时间观察。最终版本补验用 `live --suite=cache-followup --parent=<目录>`，等待父实验退出，共用原账本且最多消费一次 20 次预留额度。
 

@@ -59,6 +59,10 @@ func TestLegacyCustomChatClientOutputCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := conversion.Request(t.Context(), request, p.ConversionContext{Source: compiled.Identity(), Target: p.Identity{Family: "gemini", WireVersion: "v2"}}, nil); err == nil {
+		t.Fatal("unknown stream extension was discarded")
+	}
+	request.Parameters["stream_options"] = testValue(t, `{"include_usage":false}`)
 	converted, err := conversion.Request(t.Context(), request, p.ConversionContext{Source: compiled.Identity(), Target: p.Identity{Family: "gemini", WireVersion: "v2"}}, &p.DiagnosticSink{})
 	if err != nil {
 		t.Fatal(err)

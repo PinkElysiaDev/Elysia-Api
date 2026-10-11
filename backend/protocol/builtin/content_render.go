@@ -17,7 +17,19 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 		return p.Value{}, unsupported("/reasoningForm", "structured reasoning requires an explicit projection to visible thinking")
 	}
 	if node.Kind == p.OpaqueNode {
-		return adapter.replay(node.Native, direction, options)
+		value, err := adapter.replay(node.Native, direction, options)
+		if err != nil {
+			return p.Value{}, err
+		}
+		fields, err := value.ReadObject()
+		if err != nil {
+			return p.Value{}, err
+		}
+		delete(fields, "cache_control")
+		if err := adapter.encodeCache(fields, node.Cache); err != nil {
+			return p.Value{}, err
+		}
+		return object(fields), nil
 	}
 	fields := p.Object{}
 	if adapter.name == Gemini {

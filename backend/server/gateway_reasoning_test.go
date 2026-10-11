@@ -389,7 +389,7 @@ func TestGatewayLateOutputLimitNeverCallsUpstream(t *testing.T) {
 		}
 	}
 	s.invalidateRouteCache()
-	c, rec := chatRequestContext(`{"model":"grp","store":false,"max_completion_tokens":8192,"metadata":{"late_limit":true},"messages":[{"role":"user","content":"hi"}]}`)
+	c, rec := chatRequestContext(`{"model":"grp","store":false,"max_completion_tokens":8192,"metadata":{"late_limit":"true"},"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(c)
 	if rec.Code != 400 || upstream.requestCount() != 0 || !strings.Contains(rec.Body.String(), "exceeds confirmed hard limit") {
 		t.Fatal(rec.Code, rec.Body, upstream.requestCount())
