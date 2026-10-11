@@ -158,6 +158,59 @@ func TestSourceSaveKeepsIndependentModelProtocolOverride(t *testing.T) {
 	}
 }
 
+func TestSourceSaveIsolatesUnrelatedInvalidBindings(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	activateDiscoveryPresets(t, s)
+	quarantined := storage.ProtocolBinding{Kind: "source", SourceID: "quarantined", Binding: protocol.Binding{ProtocolID: "inactive-custom"}, Combinations: []protocol.CombinationReport{{Fidelity: "rejected"}}}
+	if err := s.store.SaveProtocolBinding(t.Context(), quarantined); err != nil {
+		t.Fatal(err)
+	}
+	source := storage.ModelSource{ID: "healthy", Name: "Healthy", Platform: "openai", BaseURL: "https://example.invalid", Enabled: true}
+	if err := s.saveSource(t.Context(), source); err != nil {
+		t.Fatal("unrelated quarantined binding blocked source creation", err)
+	}
+	source.Name = "Updated healthy source"
+	if err := s.saveSource(t.Context(), source); err != nil {
+		t.Fatal("unrelated quarantined binding blocked metadata update", err)
+	}
+	bindings, err := s.store.ListProtocolBindings(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, binding := range bindings {
+		if binding.SourceID == source.ID {
+			service, err := s.protocolService()
+			if err != nil {
+				t.Fatal(err)
+			}
+			reports, err := s.verifyGatewayBinding(t.Context(), service.View(), binding)
+			if err != nil || !hasPassingGatewayCombination(reports) {
+				t.Fatal("unrelated binding blocked targeted gateway verification", err)
+			}
+		}
+		if binding.SourceID == quarantined.SourceID {
+			before, _ := json.Marshal(quarantined)
+			after, _ := json.Marshal(binding)
+			if string(before) != string(after) {
+				t.Fatal("unrelated quarantine evidence changed", string(after))
+			}
+		}
+	}
+	dependent := quarantined
+	dependent.Kind, dependent.SourceID, dependent.ModelID = "model", source.ID, "affected-model"
+	if err := s.store.SaveProtocolBinding(t.Context(), dependent); err != nil {
+		t.Fatal(err)
+	}
+	source.Name = "Must not save"
+	if err := s.saveSource(t.Context(), source); err == nil {
+		t.Fatal("affected invalid model binding was ignored")
+	}
+	sources, err := s.store.ListSources(t.Context())
+	if err != nil || len(sources) != 1 || sources[0].Name != "Updated healthy source" {
+		t.Fatal("failed save changed source metadata", sources, err)
+	}
+}
+
 func TestCustomModelDiscoveryPaginationAndFetchBase(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
 	activateCustomDiscovery(t, s)

@@ -10,7 +10,7 @@ import (
 
 func TestChatNullRefusalHistoryProjectsWithoutInventingRefusal(t *testing.T) {
 	chat := shippedProjectionProtocol(t, Chat)
-	const raw = `{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"OK","refusal":null}]}`
+	const raw = `{"model":"m","store":false,"max_tokens":64,"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"OK","refusal":null}]}`
 	request, err := chat.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
 	if err != nil {
 		t.Fatal(err)

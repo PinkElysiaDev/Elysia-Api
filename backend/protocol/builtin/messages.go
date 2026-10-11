@@ -2,7 +2,6 @@ package builtin
 
 import (
 	"fmt"
-	"strings"
 
 	p "github.com/elysia-api/backend/protocol"
 )
@@ -45,7 +44,7 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 			return nil, err
 		}
 		content := fields["content"]
-		known := []string{"type", "role", "content", "id", "status"}
+		known := []string{"type", "role", "content"}
 		if adapter.name == Gemini {
 			content = fields["parts"]
 			known = []string{"role", "parts"}
@@ -53,7 +52,11 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 				role = "assistant"
 			}
 		}
-		node := p.Node{Kind: p.MessageNode, Role: p.StringValue(role), ID: fields["id"], Status: fields["status"], Native: adapter.native(item, location, direction, options)}
+		node := p.Node{Kind: p.MessageNode, Role: p.StringValue(role), Native: adapter.native(item, location, direction, options)}
+		if adapter.name == Responses {
+			node.ID, node.Status = fields["id"], fields["status"]
+			known = append(known, "id", "status")
+		}
 		if adapter.name == Chat && role == "tool" {
 			node.Kind, node.Role, node.CallID, node.Name, node.Payload = p.ToolResultNode, p.Value{}, fields["tool_call_id"], fields["name"], content
 			known = append(known, "tool_call_id", "name")
@@ -122,6 +125,11 @@ func (adapter module) decodeMessages(value p.Value, path string, direction p.Dir
 				node.Children = append(node.Children, p.Node{Kind: p.RefusalNode, Payload: refusal})
 			}
 		}
+		node.Cache, err = decodeCache(fields, "message")
+		if err != nil {
+			return nil, err
+		}
+		known = append(known, "cache_control")
 		node.Metadata, err = adapter.extractMetadata(fields, "message", location)
 		if err != nil {
 			return nil, err
@@ -211,12 +219,7 @@ func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, opti
 		}
 		hasConversation = true
 		if (adapter.name == Anthropic || adapter.name == Gemini || adapter.name == Chat) && (!node.ID.IsZero() || !node.Status.IsZero()) {
-			// Responses 消息 item 的 id/status 是传输记账而非会话语义：跨族
-			// 目标没有等价字段，同族经原生回放保留；这里丢弃并给出显式
-			// warning（原为硬拒，Codex 等客户端的每条消息都携带 id）。
-			warnDropped(options, p.EncodeRequest, fmt.Sprintf("/content/%d", index),
-				"message item identity or status dropped: target has no per-message item id",
-				"Same-family forwarding preserves item ids through native replay.")
+			return p.Value{}, p.Value{}, unsupported(fmt.Sprintf("/content/%d", index), "message item identity/status requires explicit history projection")
 		}
 		if adapter.name == Chat {
 			entries, err := adapter.encodeChatMessage(node, direction, options)
@@ -227,6 +230,12 @@ func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, opti
 			continue
 		}
 		fields := p.Object{"role": node.Role, "id": node.ID, "status": node.Status}
+		if len(node.Resources) > 0 {
+			return p.Value{}, p.Value{}, unsupported("/content/resources", "message resources require explicit mapping")
+		}
+		if err := adapter.encodeCache(fields, node.Cache); err != nil {
+			return p.Value{}, p.Value{}, err
+		}
 		if err := adapter.writeMetadata(fields, adapter.contentMetadata([]p.Node{node}), "message"); err != nil {
 			return p.Value{}, p.Value{}, err
 		}
@@ -315,14 +324,13 @@ func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, opti
 	if err := adapter.writeMetadata(fields, adapter.contentMetadata([]p.Node{node}), "message"); err != nil {
 		return nil, err
 	}
-	attributes := node.Attributes
-	if foreign := foreignWireKeys(attributes, adapter.family); len(foreign) > 0 {
-		// 消息级源族扩展（如 Anthropic 的消息级 cache_control）在 Chat 目标
-		// 没有等价字段：剥离并显式 warning，不再拒绝整个请求。
-		warnDropped(options, p.EncodeRequest, "/content/extensions", "message-level wire extensions dropped: "+strings.Join(foreign, ", ")+" has no Chat equivalent", "Same-family forwarding preserves them through native replay.")
-		attributes = sameFamilyExtensions(attributes, adapter.family)
+	if len(node.Resources) > 0 {
+		return nil, unsupported("/content/resources", "message resources require explicit mapping")
 	}
-	if err := adapter.preserveExtensions(fields, attributes); err != nil {
+	if err := adapter.encodeCache(fields, node.Cache); err != nil {
+		return nil, err
+	}
+	if err := adapter.preserveExtensions(fields, node.Attributes); err != nil {
 		return nil, err
 	}
 	var content, calls, results []p.Value
@@ -342,7 +350,7 @@ func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, opti
 				return nil, unsupported("/content/input", "Chat requires JSON function arguments")
 			}
 			if hasItemMetadata(child) {
-				warnDropped(options, p.EncodeRequest, "/content/call", "function call item metadata, cache markers or resources dropped for the Chat target", "Same-family forwarding preserves them through native replay.")
+				return nil, unsupported("/content/call", "function call metadata or resources require explicit projection")
 			}
 			call := p.Object{"id": child.CallID, "type": p.StringValue("function"), "function": object(p.Object{"name": child.Name, "arguments": encodeJSONArguments(child.Input.Value)})}
 			if err := adapter.preserveExtensions(call, child.Attributes); err != nil {
@@ -353,13 +361,11 @@ func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, opti
 			if child.ReasoningForm != "" || child.ReasoningContent != nil {
 				return nil, unsupported("/reasoningForm", "structured reasoning requires an explicit projection to Chat visible thinking")
 			}
-			// Chat 只有单一 reasoning_content 字符串：多块拼接；签名/缓存等
-			// 跨族不可表达的元数据丢弃并给显式 warning（原为硬拒）。
 			if len(child.Children) > 0 {
 				return nil, unsupported("/reasoning", "Chat cannot express nested reasoning blocks")
 			}
 			if len(child.Resources) > 0 || len(child.Attributes) > 0 || len(child.Cache) > 0 || !child.ID.IsZero() || !child.Status.IsZero() {
-				warnDropped(options, p.EncodeRequest, "/reasoning", "reasoning signatures or metadata dropped: Chat has no signed reasoning channel", "Same-family forwarding preserves signed reasoning through native replay.")
+				return nil, unsupported("/reasoning", "reasoning metadata or resources require explicit projection")
 			}
 			if !fields["reasoning_content"].IsZero() {
 				previous, err := stringValue(fields["reasoning_content"])
@@ -388,6 +394,9 @@ func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, opti
 		}
 	}
 	if len(results) > 0 {
+		if len(results) != len(node.Children) {
+			return nil, unsupported("/content", "mixed tool results require explicit ordered history projection")
+		}
 		return results, nil
 	}
 	if len(content) == 1 && direction == p.EncodeResponse {
@@ -408,65 +417,10 @@ func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, opti
 	return []p.Value{object(fields)}, nil
 }
 
-// isErrorResult 读取 tool_result 的 Status.isError 标记（Anthropic is_error
-// 的语义落点）。仅布尔真值视为错误结果。
-func isErrorResult(status p.Value) bool {
-	if status.IsZero() {
-		return false
-	}
-	object, err := status.ReadObject()
-	if err != nil {
-		return false
-	}
-	flag, exists := object["isError"]
-	if !exists || flag.IsZero() {
-		return false
-	}
-	var value bool
-	return flag.Decode(&value) == nil && value
-}
-
-// foreignWireKeys 列出与目标族不匹配的 wire:* 扩展键。
-func foreignWireKeys(attributes p.Object, family string) []string {
-	var foreign []string
-	for key := range attributes {
-		if prefix, ok := strings.CutPrefix(key, wireExtensionPrefix); ok && prefix != family {
-			foreign = append(foreign, key)
-		}
-	}
-	return foreign
-}
-
-// sameFamilyExtensions 返回仅含目标族 wire:* 扩展的浅拷贝。
-func sameFamilyExtensions(attributes p.Object, family string) p.Object {
-	remaining := p.Object{}
-	for key, value := range attributes {
-		if prefix, ok := strings.CutPrefix(key, wireExtensionPrefix); ok && prefix != family {
-			continue
-		}
-		remaining[key] = value
-	}
-	return remaining
-}
-
-// warnDropped 记录一次「跨族不可表达 → 显式剥离/丢弃」的 warning 诊断：
-// 本轮点对点保证中所有降级适配共用这一构造。
-func warnDropped(options p.EvaluationContext, direction p.Direction, path, reason, suggestion string) {
-	options.Diagnostics.Add(p.ConversionIssue{
-		Code: p.UnsupportedCapability, Severity: p.SeverityWarning, Protocol: options.Identity(),
-		Direction: direction, Stage: "wire", Path: path,
-		Reason: reason, Suggestion: suggestion,
-	})
-}
-
-// hasItemMetadata 判定节点是否携带项目级元数据（id/status/cache/resources）。
 func hasItemMetadata(node p.Node) bool {
 	return !node.ID.IsZero() || !node.Status.IsZero() || len(node.Cache) > 0 || len(node.Resources) > 0
 }
 
-// encodeChatToolResult 把一个工具结果节点转为一条 Chat tool 角色消息：
-// 对象载荷 JSON 序列化、结构化块拼接为文本、is_error 加文本标记，节点级
-// 元数据剥离并给 warning。
 func (adapter module) encodeChatToolResult(child p.Node, options p.EvaluationContext) (p.Value, error) {
 	payload := child.Payload
 	if payload.IsObject() {
@@ -475,7 +429,7 @@ func (adapter module) encodeChatToolResult(child p.Node, options p.EvaluationCon
 	if len(child.Children) > 0 {
 		var text []byte
 		for _, block := range child.Children {
-			if block.Kind != p.TextNode {
+			if block.Kind != p.TextNode || hasItemMetadata(block) || len(block.Attributes) > 0 || len(block.Metadata) > 0 {
 				return p.Value{}, unsupported("/content/result", "Chat tool result blocks must be text")
 			}
 			value, err := stringValue(block.Payload)
@@ -486,15 +440,8 @@ func (adapter module) encodeChatToolResult(child p.Node, options p.EvaluationCon
 		}
 		payload = p.StringValue(string(text))
 	}
-	if hasItemMetadata(child) {
-		warnDropped(options, p.EncodeRequest, "/content/result",
-			"tool result item metadata, cache markers or resources dropped for the Chat target",
-			"Same-family forwarding preserves them through native replay.")
-	}
-	if isErrorResult(child.Status) {
-		if text, err := stringValue(payload); err == nil {
-			payload = p.StringValue("[Tool error] " + text)
-		}
+	if !child.ID.IsZero() || len(child.Cache) > 0 || len(child.Resources) > 0 || !child.Status.IsZero() {
+		return p.Value{}, unsupported("/content/result", "tool result metadata or resources require explicit projection")
 	}
 	result := p.Object{"role": p.StringValue("tool"), "tool_call_id": child.CallID, "name": child.Name, "content": payload}
 	if err := adapter.preserveExtensions(result, child.Attributes); err != nil {

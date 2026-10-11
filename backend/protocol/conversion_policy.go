@@ -82,14 +82,16 @@ type ConversionSelection struct {
 }
 
 type ConversionContext struct {
-	Delivery    *DeliveryState  `json:"-"`
-	Scope       Scope           `json:"-"`
-	Recoverable map[string]bool `json:"-"`
-	Source      Identity        `json:"source"`
-	Target      Identity        `json:"target"`
-	Model       string          `json:"model"`
-	Operation   string          `json:"operation"`
-	Transport   Transport       `json:"transport"`
+	InterleavedThinking bool                   `json:"interleavedThinking,omitempty"`
+	Delivery            *DeliveryState         `json:"-"`
+	Scope               Scope                  `json:"-"`
+	Recoverable         map[string]bool        `json:"-"`
+	Source              Identity               `json:"source"`
+	Target              Identity               `json:"target"`
+	Model               string                 `json:"model"`
+	Operation           string                 `json:"operation"`
+	Transport           Transport              `json:"transport"`
+	Reasoning           *ReasoningCapabilities `json:"reasoning,omitempty"`
 }
 
 type CompiledConversion struct {
@@ -204,21 +206,33 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if r.Enabled {
 			orders[key] = r.ID
 		}
-		if !slices.Contains([]string{"set", "remove", "transform", "warn", "reject", "signatures", "stream_options", "tool_result_object", "tool_result_text", "system_instruction_hoist", "chat_history", "assistant_history", "buffer_node", "provider_signature", "responses_include", "responses_context", "gemini_safety_settings", "usage_projection", "response_metadata", "response_shape", "response_envelope", "responses_storage", "anthropic_usage_envelope"}, r.Action) {
+		if !slices.Contains([]string{"set", "remove", "transform", "warn", "reject", "signatures", "stream_options", "request_projection", "tool_result_object", "tool_result_text", "system_instruction_hoist", "chat_history", "assistant_history", "buffer_node", "provider_signature", "responses_include", "responses_context", "gemini_safety_settings", "usage_projection", "response_metadata", "response_shape", "response_envelope", "responses_storage", "reasoning_controls", "anthropic_usage_envelope"}, r.Action) {
 			return nil, fmt.Errorf("unknown conversion action %q", r.Action)
 		}
 		if (r.Action == "response_metadata" || r.Action == "response_shape" || r.Action == "response_envelope" || r.Action == "usage_projection" || r.Action == "anthropic_usage_envelope") && r.Phase != ConversionResponse && r.Phase != ConversionEvent && !(r.Action == "response_metadata" && r.Phase == ConversionRequest) {
 			return nil, fmt.Errorf("%s requires response or event phase", r.Action)
 		}
-		if r.Action == "response_metadata" || r.Action == "response_shape" || r.Action == "response_envelope" || r.Action == "usage_projection" || r.Action == "responses_include" || r.Action == "responses_context" || r.Action == "gemini_safety_settings" {
+		if r.Action == "response_metadata" || r.Action == "response_shape" || r.Action == "response_envelope" || r.Action == "usage_projection" || r.Action == "responses_include" || r.Action == "responses_context" || r.Action == "gemini_safety_settings" || (r.Action == "stream_options" || r.Action == "tool_result_text") && !r.Value.IsZero() {
 			var codec string
 			if r.Value.Decode(&codec) != nil || !knownConversionCodec(codec) {
 				return nil, fmt.Errorf("%s requires a known target codec in value", r.Action)
 			}
 		}
+		if r.Action == "request_projection" {
+			var opts requestProjectionOptions
+			if r.Value.Decode(&opts) != nil || !knownConversionCodec(opts.TargetCodec) || (opts.SourceCodec != "" && !knownConversionCodec(opts.SourceCodec)) {
+				return nil, fmt.Errorf("request_projection requires targetCodec and an optional known sourceCodec")
+			}
+		}
+		if r.Action == "reasoning_controls" {
+			var opts reasoningOptions
+			if r.Value.Decode(&opts) != nil || !knownConversionCodec(opts.SourceCodec) || !knownConversionCodec(opts.TargetCodec) {
+				return nil, fmt.Errorf("reasoning_controls requires sourceCodec and targetCodec")
+			}
+		}
 		if r.Action == "responses_storage" {
 			var opts responsesStorageOptions
-			if r.Value.Decode(&opts) != nil || !knownConversionCodec(opts.TargetCodec) || (opts.OnUnsupported != "degrade" && opts.OnUnsupported != "reject") {
+			if r.Value.Decode(&opts) != nil || !knownConversionCodec(opts.TargetCodec) || (opts.SourceCodec != "" && !knownConversionCodec(opts.SourceCodec)) || (opts.OnUnsupported != "degrade" && opts.OnUnsupported != "reject") {
 				return nil, fmt.Errorf("responses_storage requires targetCodec and onUnsupported: degrade or reject")
 			}
 		}
@@ -239,10 +253,10 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if r.Action == "buffer_node" && r.Phase != ConversionEvent {
 			return nil, fmt.Errorf("buffer_node requires event phase")
 		}
-		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "responses_context" || r.Action == "gemini_safety_settings" || r.Action == "responses_storage") && r.Phase != ConversionRequest {
+		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "responses_context" || r.Action == "request_projection" || r.Action == "gemini_safety_settings" || r.Action == "responses_storage" || r.Action == "reasoning_controls") && r.Phase != ConversionRequest {
 			return nil, fmt.Errorf("%s requires request phase", r.Action)
 		}
-		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "responses_context" || r.Action == "gemini_safety_settings" || r.Action == "usage_projection" || r.Action == "responses_storage" || r.Action == "anthropic_usage_envelope") && r.Match.NodeKind != "" {
+		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "responses_context" || r.Action == "request_projection" || r.Action == "gemini_safety_settings" || r.Action == "usage_projection" || r.Action == "responses_storage" || r.Action == "reasoning_controls" || r.Action == "anthropic_usage_envelope") && r.Match.NodeKind != "" {
 			return nil, fmt.Errorf("%s matches the complete semantic value, not an individual node", r.Action)
 		}
 		if r.Match.NodeKind != "" {
@@ -332,7 +346,10 @@ func (c *CompiledConversion) SignatureProjectionEnabled(phase ConversionPhase, r
 }
 
 func (c *CompiledConversion) issue(rule ConversionRule, phase ConversionPhase, ctx ConversionContext, at, reason string, sink *DiagnosticSink, lossy bool) error {
-	severity := SeverityWarning
+	return c.issueSeverity(rule, phase, ctx, at, reason, sink, lossy, SeverityWarning)
+}
+
+func (c *CompiledConversion) issueSeverity(rule ConversionRule, phase ConversionPhase, ctx ConversionContext, at, reason string, sink *DiagnosticSink, lossy bool, severity Severity) error {
 	if rule.Action == "reject" || (lossy && c.Policy.Mode == "strict") {
 		severity = SeverityError
 	}
@@ -346,7 +363,11 @@ func (c *CompiledConversion) issue(rule ConversionRule, phase ConversionPhase, c
 	if severity == SeverityError {
 		issue.Code = ConversionRejected
 		issue.Fidelity = "rejected"
-		return IssuesError([]ConversionIssue{issue})
+		failure := IssuesError([]ConversionIssue{issue})
+		if rule.Action != "reject" && phase == ConversionRequest {
+			return candidateFailure(failure)
+		}
+		return failure
 	}
 	sink.Add(issue)
 	return nil
@@ -369,13 +390,14 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 		return Value{}, err
 	}
 	value := input
+	var reasoningTarget string
 	for _, rule := range c.Policy.Rules {
 		if !rule.Enabled || rule.Phase != phase {
 			continue
 		}
 		var err error
 		switch {
-		case rule.Action == "system_instruction_hoist" || rule.Action == "chat_history" || rule.Action == "assistant_history" || rule.Action == "stream_options" || rule.Action == "responses_include" || rule.Action == "responses_context" || rule.Action == "responses_storage" || rule.Action == "gemini_safety_settings":
+		case rule.Action == "system_instruction_hoist" || rule.Action == "chat_history" || rule.Action == "assistant_history" || rule.Action == "stream_options" || rule.Action == "request_projection" || rule.Action == "responses_include" || rule.Action == "responses_context" || rule.Action == "responses_storage" || rule.Action == "gemini_safety_settings" || rule.Action == "reasoning_controls":
 			if !rule.Match.matches(route, value) {
 				continue
 			}
@@ -385,12 +407,21 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 					err = c.hoistSystem(&req, route, rule, sink)
 				} else if rule.Action == "chat_history" || rule.Action == "assistant_history" {
 					err = c.assistantHistory(&req, route, rule, sink)
+				} else if rule.Action == "reasoning_controls" {
+					err = c.reasoningControls(&req, route, rule, sink)
+					var options reasoningOptions
+					if err == nil {
+						err = rule.Value.Decode(&options)
+						reasoningTarget = options.TargetCodec
+					}
 				} else if rule.Action == "responses_storage" {
 					err = c.responsesStorage(&req, route, rule, sink)
 				} else if rule.Action == "responses_include" {
 					err = c.responsesInclude(&req, route, rule, sink)
 				} else if rule.Action == "gemini_safety_settings" {
 					err = c.geminiSafetySettings(&req, route, rule, sink)
+				} else if rule.Action == "request_projection" {
+					err = c.requestProjection(&req, route, rule, sink)
 				} else if rule.Action == "responses_context" {
 					err = c.responsesContext(&req, route, rule, sink)
 				} else {
@@ -431,7 +462,30 @@ func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPha
 		}
 	}
 	if err := validateContextValue(phase, value); err != nil {
-		return Value{}, err
+		return Value{}, candidateFailure(err)
+	}
+	// Later authored rules must not invalidate the resolved target controls.
+	if reasoningTarget != "" {
+		var req Request
+		if err := value.Decode(&req); err != nil {
+			return Value{}, err
+		}
+		cap := ResolveReasoningCapabilities(reasoningTarget, route.Model)
+		if route.Reasoning != nil {
+			cap = *route.Reasoning
+		}
+		if req.Reasoning != nil && req.Reasoning.Interleaved && !route.InterleavedThinking {
+			return Value{}, candidateFailure(streamIssue(InvalidInput, "/reasoning/interleaved", "target operation lacks the interleaved thinking beta"))
+		}
+		if err := validateReasoningOutputLimit(&req, cap, reasoningTarget); err != nil {
+			return Value{}, candidateFailure(err)
+		}
+		if err := validateReasoningModel(&req, reasoningTarget, req.Reasoning, cap); err != nil {
+			return Value{}, candidateFailure(err)
+		}
+		if _, err := ReasoningParameters(&req, reasoningTarget); err != nil {
+			return Value{}, candidateFailure(err)
+		}
 	}
 	return value, nil
 }
@@ -517,28 +571,10 @@ func (c *CompiledConversion) applyNodeRule(ctx context.Context, phase Conversion
 					n.Resources = append(n.Resources, Resource{Kind: "signature", ID: signature, Scope: route.Scope})
 					n.Source = &Provenance{Protocol: route.Target, Direction: DecodeResponse, Scope: route.Scope}
 					n.Native = nil
-				} else if rule.Action == "tool_result_text" {
-					if n.Payload.IsObject() {
-						if err := c.issue(rule, phase, route, at+"/payload", "object tool result serialized as JSON text; payload type changes", sink, true); err != nil {
-							return err
-						}
-						n.Payload = StringValue(string(n.Payload.Bytes()))
-					}
-				} else if rule.Action == "tool_result_object" && !n.Payload.IsObject() {
-					var text string
-					if err := n.Payload.Decode(&text); err != nil {
-						return fmt.Errorf("tool_result_object requires text or an object at %s/payload", at)
-					}
-					key := "result"
-					if !rule.Value.IsZero() {
-						if err := rule.Value.Decode(&key); err != nil || key == "" {
-							return fmt.Errorf("tool_result_object requires a nonempty field name")
-						}
-					}
-					if err := c.issue(rule, phase, route, at+"/payload", "text tool result wrapped in the configured object field", sink, true); err != nil {
+				} else if rule.Action == "tool_result_text" || rule.Action == "tool_result_object" {
+					if err := c.toolResult(n, route, rule, at, sink); err != nil {
 						return err
 					}
-					n.Payload, _ = EncodeValue(Object{key: StringValue(text)})
 				} else {
 					out, err := c.applyRule(ctx, phase, v, route, sink, rule)
 					if err != nil {
@@ -710,6 +746,30 @@ func (c *CompiledConversion) Event(ctx context.Context, event Event, route Conve
 }
 
 func (c *CompiledConversion) streamOptions(request *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
+	stream := false
+	_ = request.Parameters["stream"].Decode(&stream)
+	var codec string
+	_ = rule.Value.Decode(&codec)
+	for i := range request.Tools {
+		tool := &request.Tools[i]
+		value := tool.Options["eager_input_streaming"]
+		if value.IsZero() {
+			continue
+		}
+		at := fmt.Sprintf("/tools/%d/options/eager_input_streaming", i)
+		if err := ValidateToolStreamOption(value, at); err != nil {
+			return err
+		}
+		if stream && (codec == "" || codec == "anthropic") {
+			continue
+		}
+		if !stream || value.IsNull() {
+			c.normalized(rule, route, at, "tool input streaming preference has no effect on this request", sink)
+		} else if err := c.issueSeverity(rule, ConversionRequest, route, at, "target cannot express per-tool input streaming timing; tool input and schema remain intact", sink, true, SeverityInfo); err != nil {
+			return err
+		}
+		delete(tool.Options, "eager_input_streaming")
+	}
 	if raw, exists := request.Parameters["stream_options"]; exists && !raw.IsZero() {
 		legacy, err := ParseClientOutput(raw)
 		if err != nil {
@@ -740,26 +800,28 @@ func (c *CompiledConversion) streamOptions(request *Request, route ConversionCon
 	if output.RawStreamOptions.IsZero() {
 		return nil
 	}
-	stream := false
-	_ = request.Parameters["stream"].Decode(&stream)
-	if !stream {
-		if err := c.issue(rule, ConversionRequest, route, "/stream_options", "stream options ignored for non-streaming request", sink, true); err != nil {
-			return err
-		}
-		output.RawStreamOptions = Value{}
-		return nil
+	if _, err := ParseClientOutput(output.RawStreamOptions); err != nil {
+		return err
 	}
-	if route.Source.Family != route.Target.Family || route.Source.WireVersion != route.Target.WireVersion {
-		if output.RawStreamOptions.IsObject() {
-			fields, _ := output.RawStreamOptions.ReadObject()
-			for _, key := range sortedKeys(fields) {
-				if key != "include_usage" {
-					if err := c.issue(rule, ConversionRequest, route, "/stream_options/"+escapePointer(key), "client stream extension has no configured target equivalent", sink, true); err != nil {
-						return err
-					}
-				}
-			}
+	foreign := route.Source.Family != route.Target.Family || route.Source.WireVersion != route.Target.WireVersion
+	fields, _ := output.RawStreamOptions.ReadObject()
+	for _, key := range sortedKeys(fields) {
+		if key != "include_usage" && foreign {
+			reject := rule
+			reject.Action = "reject"
+			return candidateFailure(c.issue(reject, ConversionRequest, route, "/stream_options/"+escapePointer(key), "client stream extension requires an explicit target mapping", sink, false))
 		}
+	}
+	if !stream {
+		if _, exists := fields["include_usage"]; exists || output.RawStreamOptions.IsNull() || len(fields) == 0 {
+			delete(fields, "include_usage")
+			output.RawStreamOptions = Value{}
+			if len(fields) > 0 {
+				output.RawStreamOptions, _ = EncodeValue(fields)
+			}
+			c.normalized(rule, route, "/stream_options", "known stream options have no effect on a non-streaming request", sink)
+		}
+	} else if foreign {
 		output.RawStreamOptions = Value{}
 	}
 	return nil
@@ -797,6 +859,13 @@ func (c *CompiledConversion) Wire(ctx context.Context, body []byte, route Conver
 }
 
 func (c *CompiledConversion) WithVerificationContext(route ConversionContext) *CompiledConversion {
+	if route.Reasoning != nil {
+		capability := *route.Reasoning
+		capability.Levels = slices.Clone(capability.Levels)
+		capability.DisabledLevels = slices.Clone(capability.DisabledLevels)
+		capability.BetweenToolsLevels = slices.Clone(capability.BetweenToolsLevels)
+		route.Reasoning = &capability
+	}
 	copy := *c
 	copy.VerificationContext = &route
 	return &copy
@@ -812,6 +881,8 @@ func (c *CompiledConversion) VerificationRoute(source, target Identity, transpor
 	created, _ := EncodeValue(1)
 	route := ConversionContext{Source: source, Target: target, Transport: transport, Delivery: &DeliveryState{ID: StringValue("response_verification"), Created: created}}
 	if c != nil && c.VerificationContext != nil {
+		route.Reasoning = c.VerificationContext.Reasoning
+		route.InterleavedThinking = c.VerificationContext.InterleavedThinking
 		route.Model = c.VerificationContext.Model
 		route.Operation = c.VerificationContext.Operation
 		route.Transport = c.VerificationContext.Transport
@@ -820,7 +891,7 @@ func (c *CompiledConversion) VerificationRoute(source, target Identity, transpor
 }
 func (c *CompiledConversion) ContextDependent() bool {
 	for _, r := range c.Policy.Rules {
-		if r.Enabled && (r.Action == "provider_signature" || r.Match.Model != "" || r.Match.Operation != "" || r.Match.Transport != "") {
+		if r.Enabled && (r.Action == "reasoning_controls" || r.Action == "provider_signature" || r.Match.Model != "" || r.Match.Operation != "" || r.Match.Transport != "") {
 			return true
 		}
 	}

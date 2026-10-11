@@ -10,8 +10,8 @@ import { Button } from '@/components/ui/button'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetSectionTitle, SheetTitle } from '@/components/ui/sheet'
 import { useToast } from '@/components/ui/use-toast'
 import { api } from '@/lib/api'
-import { useSources } from '@/lib/hooks'
-import { protocolLabel } from '@/lib/protocol'
+import { useEnabledProtocols, useSources } from '@/lib/hooks'
+import { protocolID } from '@/lib/protocol'
 import type { UsageLogDetail } from '@/lib/types'
 import { downloadJSON, formatCacheCreationTokens, formatDateTime, formatDuration, formatNumber } from '@/lib/utils'
 import { ChainBodies } from './log-detail/body-sections'
@@ -20,6 +20,7 @@ import { buildExportPayload, errorKindLabel } from './log-detail/body-helpers'
 export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: () => void }) {
   const toast = useToast()
   const { data: sources } = useSources()
+  const { data: registeredProtocols = [] } = useEnabledProtocols(!!id)
   const [detail, setDetail] = useState<UsageLogDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -57,9 +58,9 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
   }
 
   const internal = detail?.relayMode === 'agent-assist'
-  const targetProtocol = protocolLabel(detail?.targetFormat || detail?.platform || '', 'long')
+  const targetProtocol = protocolID(detail?.targetFormat || detail?.platform || '', registeredProtocols)
   const protocols = [...new Set([
-    internal ? '' : protocolLabel(detail?.sourceFormat || detail?.inputFormat || '', 'long'),
+    internal ? '' : protocolID(detail?.sourceFormat || detail?.inputFormat || '', registeredProtocols),
     targetProtocol,
   ].filter(Boolean))]
   const sourceName = sources?.find((source) => source.id === detail?.sourceId)?.name || detail?.sourceId
@@ -117,7 +118,7 @@ export function LogDetailSheet({ id, onClose }: { id: string | null; onClose: ()
                   {protocols.map((protocol, index) => (
                     <Fragment key={protocol}>
                       {index > 0 && <MoveRight className="h-3 w-3 text-muted-foreground" aria-hidden />}
-                      <span className="max-w-full break-all rounded-full border border-input bg-card px-2.5 py-[3px] font-mono text-2xs text-muted-foreground">
+                      <span title={protocol} className="max-w-full break-all rounded-full border border-input bg-card px-2.5 py-[3px] font-mono text-2xs text-muted-foreground">
                         {protocol}
                       </span>
                     </Fragment>

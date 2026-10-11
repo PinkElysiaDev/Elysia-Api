@@ -59,6 +59,9 @@ func (s *Server) refreshSourceByID(ctx context.Context, sourceID string) (refres
 		// 手动集即权威:用户在源编辑里删除的手动模型随之从表中删除(空集
 		// 合法——清空全部手动模型也必须落库生效,不再提前返回)。
 		result, err := s.store.SyncManualSourceModels(ctx, source, models)
+		if err == nil {
+			err = s.refreshModelProtocolEvidence(ctx)
+		}
 		return refreshSummary{Count: len(models), Added: result.Added, Removed: result.Removed}, err
 	}
 
@@ -72,6 +75,9 @@ func (s *Server) refreshSourceByID(ctx context.Context, sourceID string) (refres
 	}
 	result, err := s.store.CommitSourceRefresh(ctx, source, fetched.models, fetched.keyModels)
 	if err != nil {
+		return summary, err
+	}
+	if err := s.refreshModelProtocolEvidence(ctx); err != nil {
 		return summary, err
 	}
 	summary.Count, summary.Added, summary.Removed = len(fetched.models), result.Added, result.Removed
@@ -191,4 +197,12 @@ func inferModelType(modelID string) string {
 		return "reranker"
 	}
 	return "llm"
+}
+
+func (s *Server) refreshModelProtocolEvidence(ctx context.Context) error {
+	service, err := s.protocolService()
+	if err != nil {
+		return err
+	}
+	return s.refreshProtocolRuntime(ctx, service)
 }

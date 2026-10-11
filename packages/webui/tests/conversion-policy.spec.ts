@@ -20,16 +20,21 @@ test('real backend include and usage projections share preview and strict bounda
   expect(result.issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'conversion_normalized', severity: 'info', fidelity: 'preserved', path: '/include', ruleId: 'responses-include', stage: 'conversion.request' })]))
   const policy = { schemaVersion: 1, id: 'strict-preview', mode: 'strict', rules: [] }
   const context = { source: { definitionId: 'google-generate-content' }, target: { definitionId: 'anthropic-messages' } }
-  const input = { schemaVersion: 1, source: {}, content: [], usage: { output: { count: 5, origin: 'observed' }, details: { 'output.reasoning_tokens': { count: 3, origin: 'observed' } } } }
-  const strict = await request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: { policy, context, input, phase: 'response' } })
+  const input = { schemaVersion: 1, source: {}, content: [], usage: { input: { count: 4, origin: 'observed' }, output: { count: 5, origin: 'observed' }, details: { 'output.reasoning_tokens': { count: 3, origin: 'observed' } } } }
+  const preserved = await request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: { policy, context, input, phase: 'response' } })
+  expect(preserved.ok()).toBeTruthy()
+  expect((await preserved.json()).data.output.usage.details['output.reasoning_tokens']).toEqual(input.usage.details['output.reasoning_tokens'])
+  const lossyInput = { ...input, usage: { ...input.usage, details: { ...input.usage.details, toolUsePromptTokenCount: { count: 1, origin: 'observed' } } } }
+  const strict = await request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: { policy, context, input: lossyInput, phase: 'response' } })
   expect(strict.status()).toBe(400)
-  expect(await strict.text()).toContain('output.reasoning_tokens')
-  const compatible = await request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: { policy: { ...policy, mode: 'compatible' }, context, input, phase: 'response' } })
+  expect((await strict.json()).error.issues).toEqual(expect.arrayContaining([expect.objectContaining({ ruleId: 'response-usage-projection', path: '/usage/details/toolUsePromptTokenCount', fidelity: 'rejected' })]))
+  const compatible = await request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: { policy: { ...policy, mode: 'compatible' }, context, input: lossyInput, phase: 'response' } })
   expect(compatible.ok()).toBeTruthy()
   const converted = (await compatible.json()).data
   expect(converted.output.usage.output.count).toBe(5)
-  expect(converted.output.usage.details?.['output.reasoning_tokens']).toBeUndefined()
-  expect(converted.issues[0].ruleId).toBe('response-usage-projection')
+  expect(converted.output.usage.details['output.reasoning_tokens']).toEqual(input.usage.details['output.reasoning_tokens'])
+  expect(converted.output.usage.details.toolUsePromptTokenCount).toBeUndefined()
+  expect(converted.issues).toEqual(expect.arrayContaining([expect.objectContaining({ ruleId: 'response-usage-projection', path: '/usage/details/toolUsePromptTokenCount', fidelity: 'lossy_compatible' })]))
   await page.getByRole('button', { name: '添加规则' }).click()
   await page.getByRole('combobox', { name: /^动作/ }).selectOption('usage_projection')
   await expect(page.getByLabel('规则 1 目标编码器')).toBeVisible()
@@ -170,4 +175,35 @@ test('dev25 metadata and conversation projections are configurable in the existi
  expect(data.issues).toEqual(expect.arrayContaining([expect.objectContaining({ruleId:'response-metadata',path:'/system_fingerprint',fidelity:'lossy_compatible'})]))
  expect(data.persistentWrites).toBe(false)
  expect((await preview('strict')).status()).toBe(400)
+})
+
+test('request hint projection exposes info losses and strict rejection in the shared editor', async ({ page, request }) => {
+  test.skip(!process.env.PROTOCOL_E2E_URL, 'requires isolated real backend')
+  const base = process.env.PROTOCOL_E2E_URL!
+  const token = process.env.PROTOCOL_E2E_TOKEN!
+  const headers = { Authorization: `Bearer ${token}` }
+  await page.addInitScript(value => localStorage.setItem('elysia-webui.panel-token', value), token)
+  await page.goto(`${process.env.PROTOCOL_UI_PATH ?? '/'}#/protocols/conversions`)
+  await page.getByRole('button', { name: '添加规则', exact: true }).click()
+  await page.getByRole('combobox', { name: /^动作/ }).selectOption('request_projection')
+  await page.getByLabel('规则 1 来源编码器').selectOption('responses')
+  await page.getByLabel('规则 1 目标编码器').selectOption('gemini')
+  const input = { schemaVersion: 1, source: {}, content: [], cache: [{ kind: 'key', location: 'request', value: 'anonymous-session' }], parameters: { store: false, metadata: { trace: 'opaque' }, user: 'anonymous' } }
+  const preview = (mode: string) => request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: {
+    policy: { schemaVersion: 1, id: 'request-hints', mode, rules: [] }, phase: 'request', input,
+    context: { source: { definitionId: 'openai-responses' }, target: { definitionId: 'google-generate-content' } },
+  } })
+  const compatible = await preview('compatible')
+  expect(compatible.ok()).toBeTruthy()
+  const result = (await compatible.json()).data
+  expect(result.persistentWrites).toBe(false)
+  expect(result.output.cache).toBeUndefined()
+  expect(result.output.parameters?.metadata).toBeUndefined()
+  expect(result.output.parameters?.user).toBeUndefined()
+  const omissions = result.issues.filter((issue: { ruleId: string }) => issue.ruleId === 'request-projection')
+  expect(omissions).toHaveLength(3)
+  for (const issue of omissions) expect(issue).toMatchObject({ code: 'conversion_degraded', severity: 'info', fidelity: 'lossy_compatible' })
+  const strict = await preview('strict')
+  expect(strict.status()).toBe(400)
+  expect((await strict.json()).error.issues).toEqual(expect.arrayContaining([expect.objectContaining({ ruleId: 'request-projection', fidelity: 'rejected' })]))
 })

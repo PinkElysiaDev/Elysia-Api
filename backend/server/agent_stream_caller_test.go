@@ -73,6 +73,52 @@ func (u *capturingUpstream) last() capturedUpstreamRequest {
 	return u.calls[len(u.calls)-1]
 }
 
+func TestAgentNonReasoningDefault(t *testing.T) {
+	for _, fixture := range cacheWireFixtures() {
+		if fixture.platform != "openai" && fixture.platform != "responses" {
+			continue
+		}
+		t.Run(fixture.platform, func(t *testing.T) {
+			s := newAgentIntegrationServer(t)
+			upstream := newCapturingUpstream(t, func(w http.ResponseWriter, body string, _ int) {
+				var request map[string]any
+				if err := json.Unmarshal([]byte(body), &request); err != nil {
+					t.Error(err)
+				}
+				if request["reasoning"] != nil || request["reasoning_effort"] != nil {
+					t.Error("non-reasoning model received unsupported controls", body)
+				}
+				w.Header().Set("Content-Type", "text/event-stream")
+				io.WriteString(w, fixture.stream)
+			})
+			source := storage.ModelSource{ID: "cs1", Name: "caller-src", BaseURL: upstream.URL, APIKey: "sk-caller-key", Platform: "custom:" + fixture.id, Enabled: true}
+			if err := s.saveSource(t.Context(), source); err != nil {
+				t.Fatal(err)
+			}
+			var models []storage.Model
+			for _, id := range []string{"gpt-4o", "gpt-4.1", "private-alias"} {
+				models = append(models, storage.Model{ID: id, SourceID: source.ID, Name: id, BaseURL: upstream.URL, Platform: source.Platform, Type: "llm", Enabled: true, Available: true, ToolsCapable: true})
+			}
+			if err := s.store.ReplaceSourceModels(t.Context(), source, models); err != nil {
+				t.Fatal(err)
+			}
+			for _, model := range models {
+				request := callerRequest()
+				request.Model = model.ID
+				before := upstream.requestCount()
+				result, err := newAgentStreamCaller(s).Call(t.Context(), request, agent.StreamCallbacks{})
+				if model.ID == "private-alias" {
+					if err == nil || !strings.Contains(err.Error(), "cannot disable thinking") || upstream.requestCount() != before {
+						t.Fatal("unknown Agent alias must require explicit capabilities", result, err)
+					}
+				} else if err != nil || result.Text != "ok" || upstream.requestCount() != before+1 {
+					t.Fatalf("model=%s calls=%d result=%+v err=%v", model.ID, upstream.requestCount(), result, err)
+				}
+			}
+		})
+	}
+}
+
 // seedCallerModel 建一个带密钥的源 + 单模型（平台可指定）。
 func seedCallerModel(t *testing.T, s *Server, baseURL, platform string) {
 	t.Helper()
@@ -87,6 +133,31 @@ func seedCallerModel(t *testing.T, s *Server, baseURL, platform string) {
 	if err := s.store.ReplaceSourceModels(t.Context(), source, models); err != nil {
 		t.Fatalf("ReplaceSourceModels: %v", err)
 	}
+	seedAgentAliasReasoning(t, s, source.ID)
+}
+
+// Synthetic aliases need explicit capabilities just like private provider aliases.
+func seedAgentAliasReasoning(t *testing.T, s *Server, sourceID string) {
+	t.Helper()
+	bindings, err := s.store.ListProtocolBindings(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, binding := range bindings {
+		if binding.Kind != "source" || binding.SourceID != sourceID {
+			continue
+		}
+		cap := protocol.ReasoningCapabilities{Kind: "level", Disable: true, Levels: []string{"low", "medium", "high", "xhigh"}, DefaultEffort: "medium"}
+		if binding.Binding.ProtocolID == protocol.PresetAnthropicID {
+			cap = protocol.ReasoningCapabilities{Kind: "budget", Manual: true, Disable: true, MinBudget: 1024}
+		}
+		binding.Binding.Reasoning = &cap
+		if err := s.store.SaveProtocolBinding(t.Context(), binding); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	t.Fatal("missing source binding for Agent fixture")
 }
 
 func callerRequest() agent.CallRequest {
@@ -575,6 +646,104 @@ func TestAgentCallerAnthropicPresetToolRound(t *testing.T) {
 	}
 }
 
+func TestAgentCallerResponsesStatelessToolContinuation(t *testing.T) {
+	for _, transport := range []protocol.Transport{protocol.HTTPJSON, protocol.SSE} {
+		t.Run(string(transport), func(t *testing.T) {
+			s := newAgentIntegrationServer(t)
+			upstream := newCapturingUpstream(t, func(w http.ResponseWriter, body string, call int) {
+				var request struct {
+					Store   *bool           `json:"store"`
+					Include []string        `json:"include"`
+					Input   json.RawMessage `json:"input"`
+				}
+				if err := json.Unmarshal([]byte(body), &request); err != nil {
+					t.Error(err)
+				}
+				if request.Store == nil || *request.Store || len(request.Include) != 1 || request.Include[0] != "reasoning.encrypted_content" {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusBadRequest)
+					io.WriteString(w, `{"error":{"type":"invalid_request_error","message":"stateless Agent must request encrypted reasoning"}}`)
+					return
+				}
+				if call > 1 {
+					for _, want := range []string{`"encrypted_content":"agent-encrypted-state"`, `"type":"function_call"`, `"type":"function_call_output"`, `"call_id":"call-agent"`} {
+						if !strings.Contains(string(request.Input), want) {
+							t.Error("missing continuation history", want, string(request.Input))
+						}
+					}
+				}
+				const reasoning = `{"type":"reasoning","id":"thought","status":"completed","summary":[],"encrypted_content":"agent-encrypted-state"}`
+				const tool = `{"type":"function_call","id":"tool","call_id":"call-agent","name":"elysia_cli","arguments":"{\"command\":\"elysia group ls\"}","status":"completed"}`
+				if call > 1 {
+					for _, fixture := range cacheWireFixtures() {
+						if fixture.platform == "responses" {
+							if transport == protocol.SSE {
+								w.Header().Set("Content-Type", "text/event-stream")
+								io.WriteString(w, fixture.stream)
+							} else {
+								w.Header().Set("Content-Type", "application/json")
+								io.WriteString(w, fixture.response)
+							}
+						}
+					}
+					return
+				}
+				complete := `{"id":"r","object":"response","created_at":1,"model":"fake-model","status":"completed","output":[` + reasoning + `,` + tool + `],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}`
+				if transport == protocol.HTTPJSON {
+					w.Header().Set("Content-Type", "application/json")
+					io.WriteString(w, complete)
+					return
+				}
+				w.Header().Set("Content-Type", "text/event-stream")
+				frames := []string{
+					`{"type":"response.created","response":{"id":"r","object":"response","created_at":1,"model":"fake-model","status":"in_progress","output":[]}}`,
+					`{"type":"response.output_item.added","output_index":0,"item":{"type":"reasoning","id":"thought","status":"in_progress","summary":[]}}`,
+					`{"type":"response.output_item.done","output_index":0,"item":` + reasoning + `}`,
+					`{"type":"response.output_item.added","output_index":1,"item":{"type":"function_call","id":"tool","call_id":"call-agent","name":"elysia_cli","arguments":"","status":"in_progress"}}`,
+					`{"type":"response.function_call_arguments.delta","output_index":1,"item_id":"tool","delta":"{\"command\":\"elysia group ls\"}"}`,
+					`{"type":"response.output_item.done","output_index":1,"item":` + tool + `}`,
+					`{"type":"response.completed","response":` + complete + `}`,
+				}
+				for i, frame := range frames {
+					fmt.Fprintf(w, "data: %s,\"sequence_number\":%d}\n\n", strings.TrimSuffix(frame, "}"), i)
+				}
+			})
+			seedCallerModel(t, s, upstream.URL, "responses")
+			bindings, err := s.store.ListProtocolBindings(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, binding := range bindings {
+				binding.Binding.Transports = []protocol.Transport{transport}
+				if err := s.store.SaveProtocolBinding(t.Context(), binding); err != nil {
+					t.Fatal(err)
+				}
+			}
+			session, err := s.store.CreateAgentSession(t.Context(), storage.AgentSessionUpsert{Mode: "create", Settings: agent.Settings{ModelSourceID: "cs1", ModelName: "fake-model", ThinkingEnabled: true, ThinkingEffort: "high"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			registry, err := agent.NewRegistry(&elysiaCLITool{server: s})
+			if err != nil {
+				t.Fatal(err)
+			}
+			engine := agent.NewEngine(newAgentStreamCaller(s), s.store, registry, newAgentUserContentRenderer(s), nil, agent.Options{})
+			events, err := engine.RunTurn(t.Context(), session.ID, &agent.UserContent{Text: "inspect groups"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for event := range events {
+				if event.Type == agent.EventError {
+					t.Fatal(event.Text)
+				}
+			}
+			if upstream.requestCount() != 2 {
+				t.Fatal("tool round did not complete", upstream.requestCount())
+			}
+		})
+	}
+}
+
 // D4-2：anthropic 预置两轮思考签名回传——第一轮流带 signature_delta，
 // 第二轮请求体必须携带签名 thinking 块（shape=anthropic 用 part.Signature
 // 回放），否则真实上游会拒绝跨轮思考。
@@ -708,6 +877,7 @@ func TestAgentCallerPicksPermittedKey(t *testing.T) {
 	}}); err != nil {
 		t.Fatalf("ReplaceSourceModels: %v", err)
 	}
+	seedAgentAliasReasoning(t, s, source.ID)
 
 	result, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
 	if err != nil {

@@ -1,6 +1,6 @@
 # Protocol editor
 
-The protocol designer now opens the versioned protocol service. New definitions
+The protocol designer opens the versioned protocol service. New definitions
 are drafts. Saving does not activate them. Define the supported directions,
 operations and capabilities; add expected request/response/event examples; save;
 run offline verification; then activate the exact verified revision.
@@ -36,7 +36,7 @@ The legacy editor has been removed. Imported definitions must be repaired and
 verified through this editor before activation. Use
 `node scripts/test-protocol-e2e.mjs` for an isolated backend/browser test.
 
-Validation: TypeScript type check, scoped ESLint, full backend tests and vet.
+Validation includes TypeScript checks, scoped ESLint and relevant backend tests.
 Chromium against an isolated real Go server/SQLite store creates a standalone
 protocol, preserves long integers through form/JSON/save, retains invalid edits,
 previews, verifies, blocks unsupported tool declarations, activates, compares

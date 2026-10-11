@@ -58,12 +58,7 @@ Usage/log writes do not. Identical repeated apply requests return the original
 receipt, including after a reload failure. A changed apply request after a
 completed migration conflicts; subsequent edits use revisions and activation.
 
-Unedited presets are recognized by registered historical content hashes or
-their current shipped content, not by ID alone. Edited presets and custom
-legacy definitions remain intact. The conservative importer supplies a repair
-draft and diagnostics; an operator/Agent must provide an explicit v2
-replacement where equivalence cannot be established. A work-in-progress draft
-does not replace an active revision and is not silently enabled by migration.
+Shipped presets are read-only and follow the definitions bundled with the program. Preserve customization by copying to a new ID. Custom legacy definitions use the conservative importer, which supplies a repair draft and diagnostics; an operator/Agent must provide an explicit v2 replacement where equivalence cannot be established. A work-in-progress draft does not replace an active revision or become enabled automatically.
 
 Disabled sources and their models are included. Standalone historical models
 retain their empty source ID. Model/group tools and media constraints apply to
@@ -94,28 +89,6 @@ configuration, database and matching key as a consistent set. Keep the current
 database separately if post-upgrade changes are needed. A Git revert is not a
 database downgrade and does not restore usage written after migration.
 
-## Evidence and staged boundary
+## Validation
 
-`TestProtocolUpgradeStartupAndRestart` uses the production constructor and
-checks insert-only startup without legacy preset seeding or a backup.
-`TestProductionStartupIgnoresHistoricalBackups` reproduces a zero-preset database
-with an old fingerprint and a backup missing `protocol_history`, then checks
-ten unchanged restarts. Service/API tests cover edited
-legacy definitions, explicit repair, forged reports, source-less models,
-disabled sources, capability conflicts, repeated application and readiness.
-Storage tests use real SQLite backup/reopen, stale fingerprints, failed
-verification and a transaction-aborting trigger.
-
-The four shipped definitions use direct ordered-model modules in
-`backend/protocol/builtin`, including stateful event modules. Regression tests
-independently inspect Responses tool frames and item identities, media/tool
-extensions, reasoning summary/encryption, late cache/TTL/reasoning usage and
-compound native session frames. No Maheshvara projection is used by these
-modules.
-
-C16 removed the historical handlers, Agent boundary, legacy editor and template
-executor. Binding verification may publish explicitly restricted capability
-profiles, each with independent evidence; actual requests must match a verified
-profile. Failed combinations are retained as diagnostics, never ignored.
-Compiler upgrades reverify edited active definitions and only replace known
-preset fingerprints. See [cutover](protocol-cutover-v2.md).
+`TestProtocolUpgradeStartupAndRestart` and `TestProductionStartupIgnoresHistoricalBackups` cover production startup, missing presets and repeated restarts. Storage/API tests cover forged reports, stale baselines, explicit repair, capability conflicts and transaction rollback. Verify custom drafts and unbound states on a copy of the actual database before upgrading; see [release checks](protocol-release-readiness.en.md).

@@ -28,7 +28,7 @@ func TestChatHistoryJoinsOnlyAdjacentPlainVisibleThinking(t *testing.T) {
 					}
 				}
 			case "scoped":
-				input.Content[1].Children[1].ID = p.StringValue("independent-item")
+				input.Content[1].Children[1].Attributes = p.Object{"unmapped": p.StringValue("independent-item")}
 			case "interleaved":
 				a := input.Content[1].Children
 				a[1], a[2] = a[2], a[1]

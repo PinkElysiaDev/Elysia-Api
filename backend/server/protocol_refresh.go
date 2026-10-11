@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"sort"
 	"time"
 
@@ -67,7 +68,7 @@ func (s *Server) refreshProtocolRuntimeScope(ctx context.Context, service *proto
 				bindings[i].Binding.RevisionHash = definitions[b.Binding.ProtocolID].Hash()
 			}
 		}
-		verified, err := s.verifyConversionBindings(ctx, conversionDefinitions(definitions), policies, bindings, true)
+		verified, err := s.verifyConversionBindings(ctx, conversionDefinitions(definitions), policies, bindings, conversionBindingScope{isolate: true})
 		if err != nil {
 			return err
 		}
@@ -255,12 +256,57 @@ func (s *Server) prepareProtocolRefresh(ctx context.Context, service *protocol.S
 	if err != nil {
 		return fail(err)
 	}
+	policies, _, _, err := s.store.ConversionSnapshot(ctx)
+	if err != nil {
+		return fail(err)
+	}
+	models, err := s.store.ListModelsFiltered(ctx, storage.ModelListFilter{ShouldIncludeDisabledSources: true})
+	if err != nil {
+		return fail(err)
+	}
+	sources, err := s.store.ListSources(ctx)
+	if err != nil {
+		return fail(err)
+	}
+	sourceKeys := collectSourceKeys(sources)
 	for _, b := range bindings {
 		c := definitions[b.Binding.ProtocolID]
 		if b.Unbound || c == nil {
 			continue
 		}
-		if !bindingNeedsProtocolRefresh(b, definitions) {
+		needsRefresh := bindingNeedsProtocolRefresh(b, definitions)
+		if !needsRefresh && b.Kind != "group" {
+			reports := map[string]bool{}
+			for _, report := range b.Combinations {
+				reports[report.ContextHash] = true
+			}
+			layers := bindings
+			if b.Kind == "source" {
+				layers = slices.DeleteFunc(slices.Clone(bindings), func(v storage.ProtocolBinding) bool { return v.Kind == "model" })
+			}
+			for _, model := range s.bindingModelReferences(b, models, sourceKeys) {
+				for name, operation := range c.Operations() {
+					if (operation.Kind != "generate" && operation.Kind != "submit" && operation.Kind != "session") || !slices.Contains(b.Binding.Transports, operation.Transport) || (b.Binding.Operation != "" && b.Binding.Operation != name) {
+						continue
+					}
+					for _, ingress := range definitions {
+						if !ingress.Supports(protocol.DecodeRequest) || (!ingress.Supports(protocol.EncodeResponse) && !ingress.Supports(protocol.EncodeEvent)) {
+							continue
+						}
+						conversion, e := resolveGatewayConversion(policies, layers, ingress, c, model, name, operation.Transport)
+						if e != nil {
+							return fail(e)
+						}
+						if !conversion.ContextDependent() {
+							continue
+						}
+						route := protocol.ConversionContext{Source: ingress.Identity(), Target: c.Identity(), Model: model.Identifier(), Operation: name, Transport: operation.Transport, Reasoning: b.Binding.Reasoning, InterleavedThinking: protocol.OperationInterleavedThinking(operation)}
+						needsRefresh = needsRefresh || !reports[conversion.WithVerificationContext(route).ContextHash()]
+					}
+				}
+			}
+		}
+		if !needsRefresh {
 			continue
 		}
 		changed = true

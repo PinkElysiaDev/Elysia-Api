@@ -182,7 +182,11 @@ func (s *Server) adminVerifyAgentTools(c *gin.Context) {
 		respondProtocolError(c, err)
 		return
 	}
-	entry.Combinations = verifyGatewayBinding(ctx, view, compiled, entry.Binding.Capabilities)
+	entry.Combinations, err = s.verifyGatewayBinding(ctx, view, entry)
+	if err != nil {
+		respondProtocolError(c, err)
+		return
+	}
 	if !hasPassingGatewayCombination(entry.Combinations) {
 		respondFail(c, http.StatusBadRequest, "incompatible_binding", "工具能力与当前入口协议未通过兼容性验证")
 		return

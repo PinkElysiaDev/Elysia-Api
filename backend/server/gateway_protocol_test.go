@@ -122,7 +122,10 @@ func setupGatewayModel(t *testing.T, server *Server, upstream *protocol.Compiled
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding.Combinations = verifyGatewayBinding(t.Context(), service.View(), upstream, binding.Binding.Capabilities)
+	binding.Combinations, err = server.verifyGatewayBinding(t.Context(), service.View(), binding)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := server.store.SaveProtocolBinding(t.Context(), binding); err != nil {
 		t.Fatal(err)
 	}

@@ -586,6 +586,7 @@ func seedAgentModel(t *testing.T, s *Server, baseURL string) {
 	if err := s.store.ReplaceSourceModels(t.Context(), source, models); err != nil {
 		t.Fatalf("ReplaceSourceModels: %v", err)
 	}
+	seedAgentAliasReasoning(t, s, source.ID)
 }
 
 // stateUpdateWithDraft 构造带草稿的状态更新（测试辅助）。

@@ -42,13 +42,14 @@ func (s *Server) submitGatewayJob(c *gin.Context, record *usageRecord, plan *gat
 		s.failGateway(c, record, 503, err)
 		return false
 	}
-	release, err := s.acquireRateLimit(plan.group, s.estimateProtocolTokens(plan.request))
+	release, err := s.acquireRateLimit(plan.group, s.estimateProtocolTokens(candidate.prepared))
 	if err != nil {
 		s.failGateway(c, record, 429, err)
 		return false
 	}
 	defer release()
-	job, _, err = coordinator.Submit(c.Request.Context(), job, plan.request)
+	s.estimateGatewayAttempt(record, candidate.prepared)
+	job, _, err = coordinator.Submit(c.Request.Context(), job, candidate.prepared)
 	if errors.Is(err, protocol.ErrIdempotencyConflict) {
 		s.failGateway(c, record, 409, err)
 		return false

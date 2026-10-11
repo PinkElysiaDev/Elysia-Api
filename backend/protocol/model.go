@@ -66,8 +66,16 @@ type Provenance struct {
 
 // Native contains an immutable source snapshot, not a second semantic model.
 type Native struct {
-	Source Provenance `json:"source"`
-	Value  Value      `json:"value"`
+	Source         Provenance            `json:"source"`
+	Value          Value                 `json:"value"`
+	RequestContext *NativeRequestContext `json:"requestContext,omitempty"`
+}
+
+// NativeRequestContext preserves decoder inputs that are absent from the wire body.
+type NativeRequestContext struct {
+	Scope               Scope  `json:"scope,omitzero"`
+	Values              Object `json:"values,omitempty"`
+	InterleavedThinking bool   `json:"interleavedThinking,omitempty"`
 }
 
 // NodeKind identifies a semantic item independently of its native type name.
@@ -183,17 +191,19 @@ type Tool struct {
 // Request has one ordered content history. Parameters are named semantic
 // fields, not an automatic pass-through container for unknown wire extensions.
 type Request struct {
-	SchemaVersion int           `json:"schemaVersion"`
-	Source        Identity      `json:"source"`
-	Model         Value         `json:"model,omitzero"`
-	Content       []Node        `json:"content"`
-	Tools         []Tool        `json:"tools,omitempty"`
-	ToolChoice    Value         `json:"toolChoice,omitzero"`
-	Parameters    Object        `json:"parameters,omitempty"`
-	Cache         []CacheIntent `json:"cache,omitempty"`
-	Resources     []Resource    `json:"resources,omitempty"`
-	Native        *Native       `json:"native,omitempty"`
-	ClientOutput  *ClientOutput `json:"clientOutput,omitempty"`
+	SchemaVersion      int              `json:"schemaVersion"`
+	Source             Identity         `json:"source"`
+	Model              Value            `json:"model,omitzero"`
+	Content            []Node           `json:"content"`
+	Tools              []Tool           `json:"tools,omitempty"`
+	ToolChoice         Value            `json:"toolChoice,omitzero"`
+	Parameters         Object           `json:"parameters,omitempty"`
+	OutputLimitDefault bool             `json:"outputLimitDefault,omitempty"`
+	Reasoning          *ReasoningIntent `json:"reasoning,omitempty"`
+	Cache              []CacheIntent    `json:"cache,omitempty"`
+	Resources          []Resource       `json:"resources,omitempty"`
+	Native             *Native          `json:"native,omitempty"`
+	ClientOutput       *ClientOutput    `json:"clientOutput,omitempty"`
 }
 
 // ClientOutput describes delivery to the caller, independently of generation.
@@ -209,9 +219,12 @@ type ClientOutput struct {
 // ResponsesStorageIntent describes API response retrieval, independently of
 // usage logs and authenticated continuation fragments.
 type ResponsesStorageIntent struct {
-	Raw       Value `json:"raw,omitzero"`
-	Requested bool  `json:"requested"`
-	Effective bool  `json:"effective"`
+	SourceCodec      string `json:"sourceCodec,omitempty"`
+	RequestedUnknown bool   `json:"requestedUnknown,omitempty"`
+	EffectiveUnknown bool   `json:"effectiveUnknown,omitempty"`
+	Raw              Value  `json:"raw,omitzero"`
+	Requested        bool   `json:"requested"`
+	Effective        bool   `json:"effective"`
 }
 
 // CounterOrigin distinguishes observed counts from estimates.

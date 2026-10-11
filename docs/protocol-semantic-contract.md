@@ -1,8 +1,7 @@
 # Semantic contract, version 1
 
 The Go contract lives in `backend/protocol`. Its `schemaVersion` is independent
-of a protocol definition's schema or user-selected revision. C03 introduces
-this contract; it does not yet switch production forwarding to the new engine.
+of a protocol definition's schema or user-selected revision. Gateway forwarding, previews and verification share this contract.
 
 `Request.content` is the sole ordered history. A message contains ordered
 children, including tool calls and results where they originally appeared.
@@ -29,7 +28,7 @@ uses `json.Number`.
 Native is an original snapshot, not an alternative editable semantic history.
 Unknown extensions belong there until an explicit mapping gives them semantic
 meaning. Named Parameters/Attributes are not authorization to copy unknown
-fields to a different vendor. Preservation and modification rules are C04.
+fields to a different vendor. Preservation and modification rules are described below.
 
 Production adapters now parse original wire JSON directly. The transitional
 snapshot/projection helpers and old conversion runtime have been removed.
@@ -40,7 +39,7 @@ remains null. See [cutover](protocol-cutover-v2.md).
 The versioned decoder rejects unknown contract keys and extra JSON documents.
 Semantic capability and association validation is separate from JSON decoding.
 
-## Preservation and diagnostics (C04)
+## Preservation and diagnostics
 
 `PreserveNative` requires matching nonempty family/wire version and compatible
 decode/encode directions. Definition IDs and revisions may differ when the wire
@@ -60,10 +59,7 @@ engine limits.
 input kinds and call/result association. A text-only target rejects tool data;
 it does not strip it. Account resources require provider/account provenance.
 These checks now have structured `ConversionIssue` results with stable code,
-direction, stage, capability and semantic field path. The C02 native tool path
-already consumes this shared preservation implementation; other relay paths
-move to it in C05.
+direction, stage, capability and semantic field path. Gateway and authoring paths use these shared checks.
 
 Verification reports carry separate offline/upstream kind and bind definition,
-compiler and sample hashes. This is the report contract, not the C08 verifier or
-C09 activation gate; those remain tracked as pending in the implementation log.
+compiler and sample hashes. See [verification](protocol-verification-v2.md) and [activation](protocol-revisions-v2.md).

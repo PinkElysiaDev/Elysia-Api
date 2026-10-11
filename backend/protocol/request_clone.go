@@ -16,6 +16,10 @@ func (request *Request) Clone() *Request {
 	}
 	copy := *request
 	copy.Parameters = maps.Clone(request.Parameters)
+	if request.Reasoning != nil {
+		value := *request.Reasoning
+		copy.Reasoning = &value
+	}
 	if request.ClientOutput != nil {
 		output := *request.ClientOutput
 		if output.IncludeUsage != nil {

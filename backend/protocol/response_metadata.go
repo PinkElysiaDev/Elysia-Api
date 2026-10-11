@@ -120,6 +120,9 @@ func MetadataFieldType(codec, location, name string) string {
 			return "object"
 		}
 	}
+	if location == "usage" && codec == "gemini" && name == "serviceTier" {
+		return "string"
+	}
 	return ""
 }
 

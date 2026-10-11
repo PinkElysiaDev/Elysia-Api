@@ -8,7 +8,78 @@ import (
 // assistantHistory projects one contiguous assistant turn before encoding. Tool
 // results and other roles end the turn; unfinished history is never discarded.
 func (c *CompiledConversion) assistantHistory(request *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
+	var project func([]Node, string) error
+	project = func(nodes []Node, at string) error {
+		for i := range nodes {
+			n := &nodes[i]
+			path := fmt.Sprintf("%s/%d", at, i)
+			if n.Kind == MessageNode || n.Kind == ToolCallNode || n.Kind == ToolResultNode || n.Kind == ReasoningNode {
+				status := n.Status
+				// Tool errors are semantic state, not history item bookkeeping.
+				if n.Kind == ToolResultNode && status.IsObject() {
+					status = Value{}
+				}
+				if !n.ID.IsZero() || !status.IsZero() {
+					var id, state string
+					if (!n.ID.IsZero() && !n.ID.IsNull() && n.ID.Decode(&id) != nil) || (!status.IsZero() && !status.IsNull() && (status.Decode(&state) != nil || (state != "completed" && state != "in_progress" && state != "incomplete"))) {
+						return candidateFailure(streamIssue(UnsupportedCapability, path, "unknown history identity/status requires explicit mapping"))
+					}
+					if err := c.issue(rule, ConversionRequest, route, path, "target cannot express history item identity/status; tool call IDs and error state are retained", sink, true); err != nil {
+						return err
+					}
+					n.ID = Value{}
+					if !status.IsZero() {
+						n.Status = Value{}
+					}
+					n.Native, request.Native = nil, nil
+				}
+			}
+			if err := project(n.Children, path+"/children"); err != nil {
+				return err
+			}
+			if err := project(n.ReasoningContent, path+"/reasoningContent"); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := project(request.Content, "/content"); err != nil {
+		return err
+	}
+
 	chat := rule.Action == "chat_history"
+	if chat {
+		var content []Node
+		for i, n := range request.Content {
+			results := 0
+			for _, child := range n.Children {
+				if child.Kind == ToolResultNode {
+					results++
+				}
+			}
+			if n.Kind != MessageNode || results == 0 || results == len(n.Children) {
+				content = append(content, n)
+				continue
+			}
+			if len(n.Cache) > 0 || len(n.Resources) > 0 || len(n.Attributes) > 0 || len(n.Metadata) > 0 {
+				return candidateFailure(streamIssue(UnsupportedCapability, fmt.Sprintf("/content/%d", i), "mixed tool-result message metadata requires explicit mapping"))
+			}
+			if err := c.issue(rule, ConversionRequest, route, fmt.Sprintf("/content/%d", i), "Chat splits tool results and surrounding content into ordered messages", sink, true); err != nil {
+				return err
+			}
+			for _, child := range n.Children {
+				if child.Kind == ToolResultNode {
+					content = append(content, child)
+				} else {
+					part := n
+					part.Children, part.Native = []Node{child}, nil
+					content = append(content, part)
+				}
+			}
+			request.Native = nil
+		}
+		request.Content = content
+	}
 	var result, pending []Node
 	start, bare := 0, false
 	changed := false
@@ -45,14 +116,8 @@ func (c *CompiledConversion) assistantHistory(request *Request, route Conversion
 			if item.Kind == MessageNode {
 				messages++
 				if len(item.Cache) > 0 || len(item.Resources) > 0 || len(item.Attributes) > 0 || len(item.Metadata) > 0 || !item.Payload.IsZero() || !item.Name.IsZero() || !item.CallID.IsZero() || item.Input != nil {
-					return streamIssue(UnsupportedCapability, path, "assistant item grouping cannot move message metadata across thinking, text or tools")
+					return candidateFailure(streamIssue(UnsupportedCapability, path, "assistant item grouping cannot move message metadata across thinking, text or tools"))
 				}
-			}
-			if !item.ID.IsZero() || !item.Status.IsZero() {
-				if err := c.issue(rule, ConversionRequest, route, path, "target cannot express separate history item identity/status; tool call IDs are retained", sink, true); err != nil {
-					return err
-				}
-				item.ID, item.Status, item.Native = Value{}, Value{}, nil
 			}
 			if item.Kind == MessageNode {
 				n.Children = append(n.Children, item.Children...)
@@ -77,7 +142,7 @@ func (c *CompiledConversion) assistantHistory(request *Request, route Conversion
 			hasReply = hasReply || child.Kind == TextNode || child.Kind == ToolCallNode || child.Kind == RefusalNode
 		}
 		if chat && !hasReply {
-			return streamIssue(UnsupportedCapability, at, "Chat thinking history requires associated assistant content or tool calls before the next turn")
+			return candidateFailure(streamIssue(UnsupportedCapability, at, "Chat thinking history requires associated assistant content or tool calls before the next turn"))
 		}
 		result = append(result, n)
 		changed = true

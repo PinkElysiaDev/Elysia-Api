@@ -55,7 +55,7 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 	if err != nil {
 		return nil, err
 	}
-	options := protocol.EvaluationContext{Values: protocol.Object{"path": protocol.StringValue(path)}}
+	options := protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(protocol.Operation{Headers: map[string]string{"anthropic-beta": c.GetHeader("anthropic-beta")}}), Values: protocol.Object{"path": protocol.StringValue(path)}}
 	for _, operation := range ingress.Operations() {
 		if parameters, matches := protocol.MatchOperationPath(operation.Path, path); matches {
 			for name, value := range parameters {
@@ -120,11 +120,37 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		}
 		record.appendConversionIssues(sink.Issues())
 		if err != nil {
+			var failure *protocol.ConversionError
+			if errors.As(err, &failure) && failure.CandidateOnly {
+				issues = append(issues, failure.Issues...)
+				record.appendConversionIssues(failure.Issues)
+				continue
+			}
 			return nil, err
 		}
 		matched, candidateIssues := matchGatewayCombination(ingress, candidate, candidate.prepared, constrained)
 		if len(candidateIssues) > 0 {
 			issues = append(issues, candidateIssues...)
+			record.appendConversionIssues(candidateIssues)
+			continue
+		}
+		probe := candidate.prepared.Clone()
+		probe.Model = protocol.StringValue(candidate.model.Identifier())
+		probeOptions := protocol.EvaluationContext{Scope: candidate.scope, InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation)}
+		body, encodeErr := candidate.compiled.EncodeRequest(c.Request.Context(), probe, probeOptions)
+		if encodeErr == nil {
+			encodeErr = candidate.compiled.CheckOperationInput(candidate.operation, body)
+		}
+		if encodeErr != nil {
+			if c.Request.Context().Err() != nil {
+				return nil, c.Request.Context().Err()
+			}
+			var failure *protocol.ConversionError
+			if !errors.As(encodeErr, &failure) {
+				return nil, encodeErr
+			}
+			issues = append(issues, failure.Issues...)
+			record.appendConversionIssues(failure.Issues)
 			continue
 		}
 		candidate.binding = constrained
@@ -176,18 +202,42 @@ func makeGatewayCandidate(view protocol.RegistryView, bindings []storage.Protoco
 	return candidate, nil
 }
 
-func verifyGatewayBinding(ctx context.Context, view protocol.RegistryView, upstream *protocol.Compiled, capabilities protocol.CapabilitySet, excludedIDs ...string) []protocol.CombinationReport {
-	reports := []protocol.CombinationReport{}
-	for _, id := range view.IDs() {
-		if slices.Contains(excludedIDs, id) {
-			continue
-		}
-		ingress, _ := view.Pin(id)
-		if ingress.Supports(protocol.DecodeRequest) && (ingress.Supports(protocol.EncodeResponse) || ingress.Supports(protocol.EncodeEvent)) {
-			reports = append(reports, protocol.VerifyBindingProfiles(ctx, ingress, upstream, capabilities)...)
+func (s *Server) verifyGatewayBinding(ctx context.Context, view protocol.RegistryView, binding storage.ProtocolBinding, excludedIDs ...string) ([]protocol.CombinationReport, error) {
+	policies, bindings, _, err := s.store.ConversionSnapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	replaced := false
+	for i, old := range bindings {
+		if upgradeBindingIdentity(old) == upgradeBindingIdentity(binding) {
+			bindings[i], replaced = binding, true
 		}
 	}
-	return reports
+	if !replaced {
+		bindings = append(bindings, binding)
+	}
+	definitions := conversionDefinitions{}
+	for _, id := range view.IDs() {
+		definitions[id], _ = view.Pin(id)
+	}
+	verified, err := s.verifyConversionBindings(ctx, definitions, policies, bindings, conversionBindingScope{changed: &binding})
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range verified {
+		if upgradeBindingIdentity(item) == upgradeBindingIdentity(binding) {
+			reports := slices.DeleteFunc(slices.Clone(item.Combinations), func(report protocol.CombinationReport) bool {
+				for _, id := range excludedIDs {
+					if source := definitions[id]; source != nil && source.Hash() == report.SourceHash {
+						return true
+					}
+				}
+				return false
+			})
+			return reports, nil
+		}
+	}
+	return nil, fmt.Errorf("binding disappeared during verification")
 }
 
 func hasPassingGatewayCombination(reports []protocol.CombinationReport) bool {
@@ -278,7 +328,7 @@ func (candidate gatewayCandidate) conversionContext(ingress *protocol.Compiled, 
 			}
 		}
 	}
-	return protocol.ConversionContext{Scope: candidate.scope, Recoverable: recoverable, Source: source, Target: target, Model: candidate.model.Identifier(), Operation: candidate.operationName, Transport: candidate.operation.Transport}
+	return protocol.ConversionContext{Reasoning: candidate.binding.Reasoning, InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Recoverable: recoverable, Source: source, Target: target, Model: candidate.model.Identifier(), Operation: candidate.operationName, Transport: candidate.operation.Transport}
 }
 
 func modelProtocolScope(model config.ModelRef) protocol.Scope {

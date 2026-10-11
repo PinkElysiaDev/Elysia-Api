@@ -91,7 +91,7 @@ func (s *Server) adminSaveProtocolBinding(c *gin.Context) {
 		return
 	}
 	if binding.Kind != "group" {
-		verified, err := s.verifyConversionBindings(c.Request.Context(), service.View(), policies, bindings)
+		verified, err := s.verifyConversionBindings(c.Request.Context(), service.View(), policies, bindings, conversionBindingScope{changed: &binding})
 		if err != nil {
 			respondFail(c, http.StatusBadRequest, "incompatible_binding", err.Error())
 			return

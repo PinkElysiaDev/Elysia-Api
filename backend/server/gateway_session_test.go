@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -108,6 +109,11 @@ func TestGatewayWebSocketIndependentProtocolsAndUsage(t *testing.T) {
 	}))
 	defer provider.Close()
 	setupSessionModel(t, server, upstream, provider.URL)
+	displayName := "Session model display name"
+	if _, err := server.store.UpdateModel(t.Context(), "upstream-model", "gateway-source", storage.ModelPatch{Name: &displayName}); err != nil {
+		t.Fatal(err)
+	}
+	server.invalidateRouteCache()
 	gateway := httptest.NewServer(server.engine)
 	defer gateway.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
@@ -174,6 +180,11 @@ func TestGatewayWebSocketIndependentProtocolsAndUsage(t *testing.T) {
 		}
 		if record.IngressRevision != ingress.Hash() || record.UpstreamRevision != upstream.Hash() || record.StatusCode != 200 {
 			t.Fatalf("settlement identity: %s", body)
+		}
+		sticky := server.affinity.get(record.KeyHash, "gateway-group", time.Now())
+		candidates := []config.ModelRef{{ID: "other-model", Name: "Other model"}, {ID: "upstream-model", Name: displayName}}
+		if record.KeyHash == "" || applyAffinity(candidates, sticky)[0].Identifier() != "upstream-model" {
+			t.Fatalf("completed session did not preserve model affinity: key=%q sticky=%q", record.KeyHash, sticky)
 		}
 		if record.ProtocolResponseID == "r" && record.ProtocolUsage != nil {
 			t.Fatalf("missing usage became zero: %s", body)

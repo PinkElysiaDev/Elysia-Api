@@ -51,10 +51,25 @@ func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input ag
 	if err != nil {
 		return nil, err
 	}
+	policies, _, _, err := caller.server.store.ConversionSnapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	candidate.conversion, err = resolveGatewayConversion(policies, bindings, compiled, compiled, ref, candidate.operationName, transport)
+	if err != nil {
+		return nil, err
+	}
+	sink := &protocol.DiagnosticSink{}
+	request.OutputLimitDefault = true
+	request, err = candidate.conversion.Request(ctx, request, candidate.conversionContext(compiled, false), sink)
+	if err != nil {
+		return nil, err
+	}
 	isStream := transport != protocol.HTTPJSON
 	started := time.Now()
 	logConfig := caller.server.usageLogConfig()
 	record := &usageRecord{RequestID: usageRequestID(started), StartedAt: started, KeyName: AgentUsageKeyName, RequestedModelGroup: input.Model, ModelName: model.Name, SourceID: model.SourceID, Platform: model.Platform, TargetFormat: entry.Binding.ProtocolID, UpstreamRevision: compiled.Hash(), RelayMode: agentRelayMode, Stream: isStream, StatusCode: http.StatusOK, bodyOpts: usageBodyOptions{maxBytes: logConfig.BodyMaxBytes, externalize: logConfig.ExternalizeMedia}}
+	record.appendConversionIssues(sink.Issues())
 	record.assets = newAssetSink(record.RequestID)
 	if record.bodyOpts.maxBytes > 0 {
 		body, err := json.Marshal(input)

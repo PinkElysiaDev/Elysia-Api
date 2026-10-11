@@ -1,6 +1,6 @@
 # Protocol revisions and atomic activation
 
-C09 separates editable drafts, immutable definitions, verification evidence and
+The revision service separates editable drafts, immutable definitions, verification evidence and
 active pointers. SQLite stores these in `protocol_drafts`, `protocol_revisions`,
 `protocol_verification_reports` and `protocol_activations`. It retains previous
 definitions and reports instead of rewriting them during rollback.
@@ -55,22 +55,8 @@ verification return structured diagnostics; missing revisions return 404.
 
 The old custom-protocol PUT endpoint recognizes versioned definitions and
 saves them through this service as drafts. It cannot install a v2 definition
-in the legacy registry or overwrite its draft with a v1 payload. The legacy
-v1 execution path remains temporarily available until C15/C16; C10 connects
-the new pinned registry to custom gateway ingress and upstream routing.
+in the legacy registry or overwrite its draft with a v1 payload. Public and custom gateway paths use the pinned versioned registry; legacy definitions require import and verification.
 
-## Evidence
+## Validation
 
-SQLite/service tests cover save-versus-activation separation, optimistic edit
-conflicts, in-flight revision stability, failed activation, reload failure,
-corrupt stored content, restart restoration, rollback, stale compiler reports
-and re-verification. Concurrent readers decode/encode while activations and
-reloads replace snapshots. Management tests exercise save → verify → activate,
-preview provenance, listing/history, legacy endpoint gating and forged-report
-rejection. Backend full tests and vet pass; local race execution remains
-pending the C17 Linux environment.
-
-Two complete HTTP JSON examples, with independent field layouts and no built-in
-modules, are available in `backend/protocol/testdata/text-alpha.json` and
-`text-beta.json`. Their declared scope is text only. They are offline fixtures,
-not evidence of compatibility with a real hosted service.
+Test save/activation separation, conflicting edits, pinned in-flight revisions, rollback, corrupt storage, stale reports and concurrent reloads. Complete offline examples are `backend/protocol/testdata/text-alpha.json` and `text-beta.json`; they do not establish compatibility with a real hosted service. See [validation](protocol-release-readiness.en.md).

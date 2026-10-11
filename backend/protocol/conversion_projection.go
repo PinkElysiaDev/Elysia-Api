@@ -41,22 +41,30 @@ func (s *Service) ResolvePreviewConversion(route ConversionContext, phase Conver
 	return c, route, err
 }
 
-// DefaultConversionPolicy applies equally to old custom and shipped definitions.
+// DefaultConversionPolicy follows installed codecs in custom and shipped definitions.
 // Explicitly authored encoders receive no guessed wire projections.
 func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 	p := ConversionPolicy{SchemaVersion: 1, ID: "engine-default", Name: "引擎默认", Mode: "compatible", Rules: []ConversionRule{},
 		Continuation: &ContinuationSettings{ClientCarrier: true, Persist: true, RetentionSeconds: 7 * 24 * 3600, TurnsPerSession: 64, MaxBytes: 512 << 20, RecordBytes: 8 << 20}}
 	if codec := upstream.Codec(EncodeRequest); knownConversionCodec(codec) {
 		p.Usage = &ConversionUsageSettings{CollectUpstreamUsage: true}
+		sourceCodec := ingress.Codec(DecodeRequest)
+		if !knownConversionCodec(sourceCodec) {
+			sourceCodec = ""
+		}
+		projection, _ := EncodeValue(requestProjectionOptions{SourceCodec: sourceCodec, TargetCodec: codec})
 		p.Rules = append(p.Rules,
 			ConversionRule{ID: "history-response-metadata", Order: 160, Enabled: true, Phase: ConversionRequest, Action: "response_metadata", Value: StringValue(codec)},
-			ConversionRule{ID: "client-stream-options", Order: 100, Enabled: true, Phase: ConversionRequest, Action: "stream_options"},
+			ConversionRule{ID: "request-projection", Order: 130, Enabled: true, Phase: ConversionRequest, Action: "request_projection", Value: projection},
+			ConversionRule{ID: "client-stream-options", Order: 100, Enabled: true, Phase: ConversionRequest, Action: "stream_options", Value: StringValue(codec)},
 			ConversionRule{ID: "gemini-safety-settings", Order: 170, Enabled: true, Phase: ConversionRequest, Action: "gemini_safety_settings", Value: StringValue(codec)},
 			ConversionRule{ID: "responses-include", Order: 180, Enabled: true, Phase: ConversionRequest, Action: "responses_include", Value: StringValue(codec)},
 			ConversionRule{ID: "responses-context", Order: 185, Enabled: true, Phase: ConversionRequest, Action: "responses_context", Value: StringValue(codec)},
 			ConversionRule{ID: "request-signatures", Order: 200, Enabled: true, Phase: ConversionRequest, Action: "signatures"})
-		if ingress.Codec(DecodeRequest) == "responses" {
-			settings, _ := EncodeValue(responsesStorageOptions{TargetCodec: codec, OnUnsupported: "degrade"})
+		if source := ingress.Codec(DecodeRequest); knownConversionCodec(source) {
+			reasoning, _ := EncodeValue(reasoningOptions{SourceCodec: source, TargetCodec: codec})
+			p.Rules = append(p.Rules, ConversionRule{ID: "reasoning-controls", Order: 175, Enabled: true, Phase: ConversionRequest, Action: "reasoning_controls", Value: reasoning})
+			settings, _ := EncodeValue(responsesStorageOptions{SourceCodec: source, TargetCodec: codec, OnUnsupported: "degrade"})
 			p.Rules = append(p.Rules, ConversionRule{ID: "responses-storage", Order: 190, Enabled: true, Phase: ConversionRequest, Action: "responses_storage", Value: settings})
 		}
 		if codec == "anthropic" || codec == "gemini" {
@@ -69,7 +77,7 @@ func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 			p.Rules = append(p.Rules, ConversionRule{ID: "block-assistant-history", Order: 210, Enabled: true, Phase: ConversionRequest, Action: "assistant_history"})
 		}
 		if codec != "gemini" {
-			p.Rules = append(p.Rules, ConversionRule{ID: "text-tool-results", Order: 150, Enabled: true, Phase: ConversionRequest, Match: ConversionMatch{NodeKind: ToolResultNode}, Action: "tool_result_text"})
+			p.Rules = append(p.Rules, ConversionRule{ID: "text-tool-results", Order: 150, Enabled: true, Phase: ConversionRequest, Match: ConversionMatch{NodeKind: ToolResultNode}, Action: "tool_result_text", Value: StringValue(codec)})
 		}
 		if codec == "gemini" {
 			p.Rules = append(p.Rules, ConversionRule{ID: "gemini-tool-results", Order: 150, Enabled: true, Phase: ConversionRequest, Match: ConversionMatch{NodeKind: ToolResultNode}, Action: "tool_result_object", Value: StringValue("result")})
@@ -168,7 +176,7 @@ func (c *CompiledConversion) responsesInclude(req *Request, route ConversionCont
 	if codec != "responses" {
 		for i, selector := range selectors {
 			if selector != "reasoning.encrypted_content" {
-				return c.issue(ConversionRule{ID: rule.ID, Action: "reject"}, ConversionRequest, route, fmt.Sprintf("/include/%d", i), "target has no equivalent include selector", sink, false)
+				return candidateFailure(c.issue(ConversionRule{ID: rule.ID, Action: "reject"}, ConversionRequest, route, fmt.Sprintf("/include/%d", i), "target has no equivalent include selector", sink, false))
 			}
 		}
 		delete(req.Parameters, "responses_include")
@@ -191,6 +199,9 @@ func (c *CompiledConversion) responsesInclude(req *Request, route ConversionCont
 func ValidateUsageArithmetic(usage *Usage) error {
 	if usage == nil {
 		return nil
+	}
+	if err := validateModalityUsage(usage); err != nil {
+		return err
 	}
 	if !usage.Attribution.IsZero() {
 		known, err := ParseUsageAttribution(usage.Attribution)
@@ -258,9 +269,11 @@ func (c *CompiledConversion) projectUsage(usage *Usage, phase ConversionPhase, r
 		usage.CacheBilling = Value{}
 	}
 	for _, name := range sortedKeys(usage.Details) {
+		bucket, modality := ModalityUsageDetail(name)
 		drop := name == "toolUsePromptTokenCount" && codec != "gemini" ||
 			(name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens") && codec != "anthropic" ||
-			IsResponsesToolUsageDetail(name) && codec != "responses"
+			IsResponsesToolUsageDetail(name) && codec != "responses" ||
+			bucket != "" && !SupportsModalityUsage(codec, bucket, modality)
 		if !drop {
 			continue
 		}

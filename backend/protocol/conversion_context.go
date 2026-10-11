@@ -22,6 +22,18 @@ func validateRequestContext(request *Request) error {
 	if request == nil {
 		return nil // CheckRequest reports the missing semantic document.
 	}
+	if err := validateRequestHints(request); err != nil {
+		return err
+	}
+	if err := validateToolResultErrors(request.Content, "/content"); err != nil {
+		return err
+	}
+	if request.Reasoning != nil && request.Reasoning.Interleaved && len(request.Tools) == 0 {
+		return streamIssue(InvalidInput, "/reasoning/interleaved", "interleaved thinking requires tools")
+	}
+	if err := ValidateReasoningIntent(request.Reasoning); err != nil {
+		return err
+	}
 	if _, err := ParseGeminiSafetySettings(request.Parameters["gemini_safety_settings"]); err != nil {
 		return err
 	}
@@ -32,18 +44,11 @@ func validateContextValue(phase ConversionPhase, value Value) error {
 	if phase != ConversionIngress && phase != ConversionRequest {
 		return nil
 	}
-	fields, err := value.ReadObject()
-	if err != nil || fields["parameters"].IsZero() || fields["parameters"].IsNull() {
+	var req Request
+	if err := value.Decode(&req); err != nil {
 		return err
 	}
-	parameters, err := fields["parameters"].ReadObject()
-	if err != nil {
-		return err
-	}
-	if _, err := ParseGeminiSafetySettings(parameters["gemini_safety_settings"]); err != nil {
-		return err
-	}
-	return ValidateResponsesContext(parameters["responses_truncation"], parameters["responses_previous_response_id"])
+	return validateRequestContext(&req)
 }
 
 // Validate before routing so an unsupported native reference is not reported as
@@ -92,14 +97,14 @@ func (c *CompiledConversion) responsesContext(request *Request, route Conversion
 	previous := request.Parameters["responses_previous_response_id"]
 	for _, resource := range request.Resources {
 		if resource.Kind == "session" {
-			return c.issue(reject, ConversionRequest, route, "/previous_response_id", "target cannot resolve a previous response; complete history restoration is required before conversion", sink, false)
+			return candidateFailure(c.issue(reject, ConversionRequest, route, "/previous_response_id", "target cannot resolve a previous response; complete history restoration is required before conversion", sink, false))
 		}
 	}
 	if !previous.IsZero() && !previous.IsNull() {
-		return c.issue(reject, ConversionRequest, route, "/previous_response_id", "target cannot resolve a previous response; complete history restoration is required before conversion", sink, false)
+		return candidateFailure(c.issue(reject, ConversionRequest, route, "/previous_response_id", "target cannot resolve a previous response; complete history restoration is required before conversion", sink, false))
 	}
 	if !request.Parameters["responses_truncation"].IsZero() {
-		return c.issue(reject, ConversionRequest, route, "/truncation", "target has no verified equivalent context truncation behavior; this constraint cannot be omitted", sink, false)
+		return candidateFailure(c.issue(reject, ConversionRequest, route, "/truncation", "target has no verified equivalent context truncation behavior; this constraint cannot be omitted", sink, false))
 	}
 	if previous.IsNull() {
 		delete(request.Parameters, "responses_previous_response_id")

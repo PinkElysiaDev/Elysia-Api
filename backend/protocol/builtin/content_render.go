@@ -17,10 +17,28 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 		return p.Value{}, unsupported("/reasoningForm", "structured reasoning requires an explicit projection to visible thinking")
 	}
 	if node.Kind == p.OpaqueNode {
-		return adapter.replay(node.Native, direction, options)
+		value, err := adapter.replay(node.Native, direction, options)
+		if err != nil {
+			return p.Value{}, err
+		}
+		fields, err := value.ReadObject()
+		if err != nil {
+			return p.Value{}, err
+		}
+		delete(fields, "cache_control")
+		if err := adapter.encodeCache(fields, node.Cache); err != nil {
+			return p.Value{}, err
+		}
+		return object(fields), nil
 	}
 	fields := p.Object{}
+	if adapter.name != Responses && (!node.ID.IsZero() || (!node.Status.IsZero() && node.Kind != p.ToolResultNode)) {
+		return p.Value{}, unsupported("/content", "item identity/status requires explicit projection")
+	}
 	if adapter.name == Gemini {
+		if !node.Status.IsZero() {
+			return p.Value{}, unsupported("/status", "tool result error state requires explicit mapping")
+		}
 		return adapter.encodeGeminiPart(node, fields)
 	}
 	switch node.Kind {
@@ -85,8 +103,9 @@ func (adapter module) encodeBlock(node p.Node, direction p.Direction, options p.
 			fields["type"], fields["tool_use_id"], fields["content"] = p.StringValue("tool_result"), node.CallID, payload
 			if !node.Status.IsZero() {
 				status, err := node.Status.ReadObject()
-				if err != nil {
-					return p.Value{}, err
+				var isError bool
+				if err != nil || len(status) != 1 || status["isError"].IsZero() || status["isError"].IsNull() || status["isError"].Decode(&isError) != nil {
+					return p.Value{}, unsupported("/status", "tool result status requires one boolean error flag")
 				}
 				fields["is_error"] = status["isError"]
 			}

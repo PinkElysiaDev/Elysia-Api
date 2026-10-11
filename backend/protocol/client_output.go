@@ -1,5 +1,16 @@
 package protocol
 
+func ValidateToolStreamOption(value Value, path string) error {
+	if value.IsZero() || value.IsNull() {
+		return nil
+	}
+	var enabled bool
+	if value.Decode(&enabled) != nil {
+		return streamIssue(InvalidInput, path, "tool input streaming preference must be a boolean or null")
+	}
+	return nil
+}
+
 // ParseClientOutput separates client presentation preferences from generation
 // parameters. Legacy definitions opt in through the stream_options rule.
 func ParseClientOutput(raw Value) (*ClientOutput, error) {

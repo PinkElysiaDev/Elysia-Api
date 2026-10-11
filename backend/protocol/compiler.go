@@ -19,10 +19,11 @@ var definitionIdentifier = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}
 // EvaluationContext contains gateway-owned metadata. Scope is supplied by the
 // selected model/account binding and cannot be changed by a mapping expression.
 type EvaluationContext struct {
-	ClientOutput *ClientOutput
-	Scope        Scope
-	Values       Object
-	State        *EvaluationState
+	InterleavedThinking bool
+	ClientOutput        *ClientOutput
+	Scope               Scope
+	Values              Object
+	State               *EvaluationState
 	// Diagnostics collects non-blocking conversion issues for this request.
 	// It is gateway-owned; mappings can report through it but cannot read it.
 	Diagnostics   *DiagnosticSink
@@ -76,6 +77,7 @@ var operationMethodWhitelist = []string{http.MethodGet, http.MethodPost, http.Me
 
 var defaultFeatures = map[string]bool{
 	"conversion.client_output.v1": true,
+	ReasoningControlsFeature:      true,
 	"conversion.policies.v1":      true,
 	"conversion.continuation.v1":  true,
 	"mapping.v2":                  true,

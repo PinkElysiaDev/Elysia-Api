@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "openai-responses",
   "name": "Openai Responses",
-  "version": "2.2.6",
+  "version": "2.2.8",
   "family": "openai_responses",
   "wireVersion": "v2",
   "capabilities": {
@@ -6125,22 +6125,36 @@
                 "op": "read",
                 "path": "/stream",
                 "required": true
+              },
+              "store": {
+                "op": "literal",
+                "value": false
+              },
+              "responses_include": {
+                "op": "literal",
+                "value": [
+                  "reasoning.encrypted_content"
+                ]
               }
             }
           },
           {
-            "op": "if",
-            "when": {
-              "op": "read",
-              "path": "/thinkingEnabled",
-              "required": true
-            },
-            "then": {
-              "op": "object",
-              "fields": {
-                "responses_reasoning": {
+            "op": "object",
+            "fields": {
+              "reasoning": {
+                "op": "if",
+                "when": {
+                  "op": "read",
+                  "path": "/thinkingEnabled",
+                  "required": true
+                },
+                "then": {
                   "op": "object",
                   "fields": {
+                    "mode": {
+                      "op": "literal",
+                      "value": "enabled"
+                    },
                     "effort": {
                       "op": "enum",
                       "source": {
@@ -6155,14 +6169,24 @@
                         "high": "high",
                         "xhigh": "xhigh"
                       }
+                    },
+                    "effortScope": {
+                      "op": "literal",
+                      "value": "reasoning"
+                    },
+                    "summary": {
+                      "op": "literal",
+                      "value": "auto"
                     }
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": {
+                    "mode": "disabled"
                   }
                 }
               }
-            },
-            "otherwise": {
-              "op": "object",
-              "fields": {}
             }
           }
         ]
@@ -6179,8 +6203,16 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "stream": false
-        }
+          "reasoning": {
+            "mode": "disabled"
+          },
+          "stream": false,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
       },
       {
         "id": "agent-thinking-disabled-stream",
@@ -6192,8 +6224,16 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "stream": true
-        }
+          "reasoning": {
+            "mode": "disabled"
+          },
+          "stream": true,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
       },
       {
         "id": "agent-effort-default",
@@ -6205,11 +6245,19 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "responses_reasoning": {
-            "effort": "medium"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "auto"
           },
-          "stream": false
-        }
+          "stream": false,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
       },
       {
         "id": "agent-effort-default-stream",
@@ -6221,11 +6269,19 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "responses_reasoning": {
-            "effort": "medium"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "auto"
           },
-          "stream": true
-        }
+          "stream": true,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
       },
       {
         "id": "agent-effort-low",
@@ -6237,11 +6293,19 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "responses_reasoning": {
-            "effort": "low"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "low",
+            "effortScope": "reasoning",
+            "summary": "auto"
           },
-          "stream": false
-        }
+          "stream": false,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
       },
       {
         "id": "agent-effort-low-stream",
@@ -6253,11 +6317,19 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "responses_reasoning": {
-            "effort": "low"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "low",
+            "effortScope": "reasoning",
+            "summary": "auto"
           },
-          "stream": true
-        }
+          "stream": true,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
       },
       {
         "id": "agent-effort-medium",
@@ -6269,11 +6341,19 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "responses_reasoning": {
-            "effort": "medium"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "auto"
           },
-          "stream": false
-        }
+          "stream": false,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
       },
       {
         "id": "agent-effort-medium-stream",
@@ -6285,11 +6365,19 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "responses_reasoning": {
-            "effort": "medium"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "medium",
+            "effortScope": "reasoning",
+            "summary": "auto"
           },
-          "stream": true
-        }
+          "stream": true,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
       },
       {
         "id": "agent-effort-high",
@@ -6301,11 +6389,19 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "responses_reasoning": {
-            "effort": "high"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "high",
+            "effortScope": "reasoning",
+            "summary": "auto"
           },
-          "stream": false
-        }
+          "stream": false,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
       },
       {
         "id": "agent-effort-high-stream",
@@ -6317,11 +6413,19 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "responses_reasoning": {
-            "effort": "high"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "high",
+            "effortScope": "reasoning",
+            "summary": "auto"
           },
-          "stream": true
-        }
+          "stream": true,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
       },
       {
         "id": "agent-effort-xhigh",
@@ -6333,11 +6437,19 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "responses_reasoning": {
-            "effort": "xhigh"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "xhigh",
+            "effortScope": "reasoning",
+            "summary": "auto"
           },
-          "stream": false
-        }
+          "stream": false,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
       },
       {
         "id": "agent-effort-xhigh-stream",
@@ -6349,13 +6461,24 @@
         },
         "expected": {
           "max_output_tokens": 8192,
-          "responses_reasoning": {
-            "effort": "xhigh"
+          "reasoning": {
+            "mode": "enabled",
+            "effort": "xhigh",
+            "effortScope": "reasoning",
+            "summary": "auto"
           },
-          "stream": true
-        }
+          "stream": true,
+          "store": false,
+          "responses_include": [
+            "reasoning.encrypted_content"
+          ]
+        },
+        "model": "gpt-5.4"
       }
     ],
     "toolResults": "text"
-  }
+  },
+  "requires": [
+    "conversion.reasoning.v1"
+  ]
 }

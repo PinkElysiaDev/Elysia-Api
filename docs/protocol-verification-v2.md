@@ -1,7 +1,6 @@
 # Protocol v2 verification
 
-C08 adds offline verification over the C07 compiler and typed runtime. It does
-not activate a registry entry or send network traffic. C09 attaches these
+Offline verification uses the shared compiler and typed runtime. It does not activate a registry entry or send network traffic. The revision service attaches these
 results to persisted revisions and the activation service.
 
 ## Evidence and activation
@@ -36,7 +35,7 @@ Reports include normalized definition hash, sample-set hash, compiler version,
 verification kind, per-sample checks, observed capabilities and located issues.
 Changes to configuration, samples or compiler semantics invalidate prior
 evidence. `CanActivate` accepts only a current passing **offline** report; a
-real-provider report cannot replace this prerequisite. C09 must create reports
+real-provider report cannot replace this prerequisite. The revision service creates reports
 through the shared service, rather than trusting a client-supplied `passed`
 field.
 
@@ -56,26 +55,6 @@ Runtime schemas, capability checks and event state validation remain required.
 Registry and route binding must not treat a compiled definition alone as
 verified, or infer successful online behavior from an HTTP 200 status.
 
-## Tests and remaining integration
+## Regression checks
 
-Tests cover a valid text-only protocol, unsupported capability declarations,
-claims with no semantic witness, full function histories, intentional semantic
-deletion disguised by a matching expected fixture, negative-only suites,
-native extension probes, direction restrictions and stale-report activation.
-Two independently named/mapped protocols pass request, response and event
-combination verification. A function-capable ingress paired with a text-only
-upstream produces an unsupported-capability diagnosis.
-
-Replay tests cover split long-integer tool arguments, late call identity,
-invalid/missing JSON input, sequence conflicts, repeated terminal events,
-cumulative rewrites, EOF, cancellation, bounded argument release, usage tails
-and explicit zero. Fixtures have bounded aggregate replay buffers.
-
-Backend full tests, `go vet ./...`, formatting and diff checks passed on the
-current Windows host. No frontend files changed in this batch. Race validation
-still requires the later Linux CI run documented in the C06 audit.
-
-No provider credentials were used and no online verification is claimed.
-Editor/Agent access, persisted activation, full legacy import, WebSocket and
-async operation verification remain tracked in their later batches. Existing
-legacy relay execution has not yet been removed; the final cutover is C15/C16.
+Test declared capability coverage, full tool histories, semantic deletion, negative-only suites, native preservation and stale-report activation. Replay checks include split arguments, late identities, missing terminals, cumulative rewrites, cancellation, bounded buffers and usage tails. Editor, Agent, sessions and jobs use the same verification service with their own lifecycle fixtures. Commands and evidence boundaries are in [validation](protocol-release-readiness.en.md).

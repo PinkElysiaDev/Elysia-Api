@@ -21,7 +21,8 @@ Python 与视觉依赖仅用于重做登录素材，常规前端和发行构建�
 backend/
   agent/       # Agent engine
   config/      # Bootstrap and runtime policies
-  relay/       # Protocols and upstream adapters
+  protocol/    # Protocol definitions, semantics, conversion and validation
+  relay/       # Outbound HTTP/WebSocket and legacy definition import
   server/      # HTTP routes, auth, CLI, orchestration
   storage/     # SQLite
   webui/       # Embedded frontend assets
@@ -114,6 +115,7 @@ npm run build:macos-app
 - 统一使用“模型源 / model source”“模型组 / model group”“面板令牌 / panel token”“推理令牌 / relay token”。字段名、端点和 CLI 标识不翻译。
 - 说明性片段用 `jsonc`、`text` 或明确说明；`json` 代码块应可解析。凭证使用占位符，不提交真实配置、日志或令牌。
 - 保留现行文档路径和被引用的标题锚点；英文页面优先链接英文专题。阶段性设计、审查与验收记录中的有效内容并入现行指南后，删除旧文件并更新引用；历史细节通过 Git 历史追溯。
+- `docs/` 保留当前行为、操作方法、设计取舍和明确限制。任务交接、Review 流水账、每轮测试结果及临时日志留在 PR、CI 或已忽略的 `.tmp-dev/`，不逐轮新增过程文档。
 
 CLI 中文手册来自命令表及帮助渲染器。不要直接编辑生成结果，在 `backend/` 执行：
 
@@ -124,5 +126,7 @@ UPDATE_AGENT_CLI_DOCS=1 go test ./server -run '^TestCLIReferenceUpToDate$' -coun
 文档开头、导航和章节格式由 `agent_cli_contract_test.go` 中的生成模板控制。英文手册是完整人工译本；命令变更时同步检查参数、示例和权限说明，运行不带更新变量的同一测试确认中文未过期。
 
 ## 提交检查
+
+每个提交完成一项明确职责，并包含所需调用方、测试及说明。未发布分支中的补漏、修正和反复调整应合回对应提交；提交信息描述最终问题与行为，不记录内部工作轮次。已共享的历史不随意重写。
 
 提交前检查 diff、链接、代码块和双语对应。只运行与变更相关的检查并说明实际结果；不要把历史测试记录写成当前验证结果。修改业务行为时同时更新相关文档。

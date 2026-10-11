@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 )
 
@@ -27,6 +28,7 @@ type AgentConfig struct {
 // AgentSample asserts a settings-to-parameters policy and its wire preservation.
 type AgentSample struct {
 	ID          string           `json:"id"`
+	Model       string           `json:"model,omitempty"`
 	Preferences AgentPreferences `json:"preferences"`
 	Expected    Value            `json:"expected"`
 }
@@ -91,6 +93,9 @@ func (compiled *Compiled) BuildAgentRequest(ctx context.Context, request Request
 		return nil, err
 	}
 	request.Parameters = parameters
+	if err := compiled.normalizeAgentReasoning(&request); err != nil {
+		return nil, err
+	}
 	request.ClientOutput = &ClientOutput{CollectUsage: preferences.Stream}
 	resultKind := compiled.Definition().Agent.ToolResults
 	var prepare func([]Node) ([]Node, error)
@@ -169,7 +174,7 @@ func verifyAgentSamples(ctx context.Context, compiled *Compiled, report *Verific
 			}
 		}
 		if err == nil {
-			err = verifyAgentParameterWire(ctx, compiled, parameters)
+			err = verifyAgentParameterWire(ctx, compiled, parameters, sample.Model)
 		}
 		report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Direction: EncodeRequest, Passed: err == nil})
 		if err != nil {
@@ -199,7 +204,7 @@ func verifyAgentSamples(ctx context.Context, compiled *Compiled, report *Verific
 	}
 }
 
-func verifyAgentParameterWire(ctx context.Context, compiled *Compiled, parameters Object) error {
+func verifyAgentParameterWire(ctx context.Context, compiled *Compiled, parameters Object, model string) error {
 	for _, sample := range compiled.Definition().Samples {
 		if sample.Direction != DecodeRequest || sample.ExpectedIssue != "" {
 			continue
@@ -209,7 +214,25 @@ func verifyAgentParameterWire(ctx context.Context, compiled *Compiled, parameter
 		if err != nil {
 			return err
 		}
-		request.Native, request.Parameters = nil, parameters
+		request.Native, request.Reasoning, request.Parameters = nil, nil, parameters
+		if model != "" {
+			request.Model = StringValue(model)
+			options.Scope.Model = model
+			options.Values = Object{"model": StringValue(model)}
+		}
+		if err := compiled.normalizeAgentReasoning(request); err != nil {
+			return err
+		}
+		if slices.Contains(compiled.Definition().Requires, ReasoningControlsFeature) {
+			conversion, err := ResolveConversion(DefaultConversionPolicy(compiled, compiled))
+			if err != nil {
+				return err
+			}
+			request, err = conversion.Request(ctx, request, ConversionContext{Model: model, Source: compiled.Identity(), Target: compiled.Identity()}, nil)
+			if err != nil {
+				return err
+			}
+		}
 		encoded, err := compiled.EncodeRequest(ctx, request, options)
 		if err != nil {
 			return err
@@ -218,12 +241,20 @@ func verifyAgentParameterWire(ctx context.Context, compiled *Compiled, parameter
 		if err != nil {
 			return err
 		}
-		before, _ := EncodeValue(parameters)
-		after, _ := EncodeValue(decoded.Parameters)
+		beforeParams, err := ReasoningParameters(request, compiled.Codec(EncodeRequest))
+		if err != nil {
+			return err
+		}
+		afterParams, err := ReasoningParameters(decoded, compiled.Codec(DecodeRequest))
+		if err != nil {
+			return err
+		}
+		before, _ := EncodeValue(beforeParams)
+		after, _ := EncodeValue(afterParams)
 		if !equalValues(before, after) {
 			return fmt.Errorf("Agent parameters are lost or changed by the wire adapter")
 		}
-		return verifyAgentToolResult(ctx, compiled, decoded.Model, parameters, options)
+		return verifyAgentToolResult(ctx, compiled, decoded.Model, beforeParams, options)
 	}
 	return fmt.Errorf("Agent policy requires a positive request fixture")
 }
@@ -268,4 +299,22 @@ func verifyAgentToolResult(ctx context.Context, compiled *Compiled, model Value,
 		return fmt.Errorf("Agent tool history loses its arguments, result payload or call association")
 	}
 	return nil
+}
+
+func (compiled *Compiled) normalizeAgentReasoning(request *Request) error {
+	value := request.Parameters["reasoning"]
+	if value.IsZero() {
+		return nil
+	}
+	if !slices.Contains(compiled.Definition().Requires, ReasoningControlsFeature) {
+		return streamIssue(InvalidInput, "/agent/parameters/reasoning", "canonical Agent reasoning requires conversion.reasoning.v1")
+	}
+	var reasoning ReasoningIntent
+	if err := decodeContract(value.Bytes(), &reasoning); err != nil {
+		return err
+	}
+	request.Parameters = maps.Clone(request.Parameters)
+	delete(request.Parameters, "reasoning")
+	request.Reasoning = &reasoning
+	return NormalizeReasoningParameters(request, compiled.Codec(EncodeRequest), false)
 }

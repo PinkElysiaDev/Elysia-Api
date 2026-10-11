@@ -1,8 +1,18 @@
 # Cache usage contracts and focused verification
 
-[中文](cache-usage-contracts.md) · [Live report](cache-validation-2026-10-04.en.md)
+[中文](cache-usage-contracts.md) · [Validation](protocol-release-readiness.en.md)
 
 A cache hit, an observable counter, and faithful forwarding are separate claims. Missing is not zero. Accepted fields do not prove a hit or a TTL's time behavior.
+
+## Cache intent and breakpoint synthesis
+
+Breakpoints, keys, retention, minimum TTL, prewarm and explicit resources are distinct intents. They are not interchangeable. The default `request_projection` action (request phase, order 130) retains mapped keys, retention, and standard `cache_control` breakpoints with TTL at request, tool, system, message and content locations. When no target representation exists, `compatible` omits only the hint and records `conversion_degraded` at info severity with `lossy_compatible` fidelity. `strict` rejects actual loss before calling upstream. Content, tool arguments and arbitrary user JSON remain intact.
+
+Types and structure are checked before omission. Empty values normalize without an effect; unknown policies, extra attributes and unknown TTL values do not qualify as standard breakpoints. Unknown extensions remain on native routes and require explicit mapping across protocols. Resources, prewarm, cache modes and minimum lifetime retain their capability and scope checks. Accepted fields do not prove cache creation or hits; omitted hints have no guaranteed upstream effect.
+
+Source-level `cacheSynthesis` is disabled by default. When enabled, it adds structural markers only if the target declares `cache.breakpoints` and fewer than four markers already exist. Anchors are the last tool, system content and message content. Caller markers are preserved, TTLs are not reordered, and reasoning blocks are skipped. Excess caller markers are not trimmed. Added markers use `type:ephemeral`, leaving TTL to existing markers and provider defaults.
+
+## Standard counters
 
 | Protocol | Read counter | Creation counter | Total input |
 | --- | --- | --- | --- |
@@ -15,28 +25,30 @@ Chat/Responses retain legacy top-level `cache_creation_input_tokens` input suppo
 
 ## Cross-protocol cache-creation bucket projection
 
+Gemini modality breakdowns (`promptTokensDetails`, `candidatesTokensDetails`, `cacheTokensDetails`, and `toolUsePromptTokensDetails`) decode into usage details without adding to token totals. Text, image and audio input/output details map to Chat and Responses; Gemini also retains video, document, cache and tool-input breakdowns. Unsupported known details follow `usage_projection`: compatible mode records a lossy warning and omits only the detail, while strict mode rejects the loss. Counts must be nonnegative integers, modalities must be unique, and known breakdowns cannot exceed an available total, including totals retained from earlier stream frames. Unknown modalities or additional properties remain native extensions and require explicit mapping across protocols. `usageMetadata.serviceTier` follows the existing response metadata policy; its provider-specific value is not assumed equivalent to another protocol's service tier.
+
 Every Anthropic response that wrote cache carries `cache_creation.ephemeral_5m_input_tokens` and `ephemeral_1h_input_tokens`, a provider TTL breakdown that is bookkeeping rather than a requested capability. No non-Anthropic target has a field for it.
 
 - **Named compatibility projection**: the default compatible policy uses `usage_projection` to omit unrepresentable buckets while the **creation total still reaches `cache_write_tokens`** (Chat/Responses). Strict mode rejects the loss. With the rule disabled, the encoder rejects unprojected fields.
 - **Visible omission**: the omission raises a `SeverityWarning` at `/usage/details/ephemeral_5m_input_tokens` (or `ephemeral_1h_input_tokens`) that is drained into the record's ConversionIssues beside a successful response, so it is an explicit omission rather than a silent drop.
-- **Deterministic**: details are traversed in sorted key order, so the same input reports the same path every run; previously the rejected key depended on map iteration order and could differ between runs.
+- **Deterministic**: details are traversed in sorted key order, so the same input reports the same path every run.
 - **Same-protocol preservation**: an unmodified Anthropic→Anthropic roundtrip retains both buckets fully, with tools, system and message positions unmodified.
 - **Gemini creation total**: Gemini reports cache reads only and has no creation counter; the creation total is likewise omitted with a warning at `/usage/cacheCreation`, while reads cross normally as `cachedContentTokenCount`.
 
-Since `dev.22`, combination verification compares the projected semantics, without family-based omissions in the comparator. Dropping cache creation for Gemini first validates the original arithmetic and removes its dependent uncached subtotal from the client copy. `ProtocolUsage` retains the original counters; target stream replay cannot overwrite accounting.
+Combination verification compares the projected semantics, without family-based omissions in the comparator. Dropping cache creation for Gemini first validates the original arithmetic and removes its dependent uncached subtotal from the client copy. `ProtocolUsage` retains the original counters; target stream replay cannot overwrite accounting.
 
-**Open verification gap**: a nonzero cross-protocol cache read has not yet been obtained on the live site; local tests cannot substitute for it — see the [live report](cache-validation-2026-10-04.en.md).
+Nonzero cache reads, creation and TTL behavior require independent checks for each account, model and endpoint; accepted fields and local tests do not establish live cache hits.
 
 ## Declaring a provider alias
 
-The [mapping patch](examples/cache-usage-alias.mapping.json) and [sample](examples/cache-usage-alias.sample.json) illustrate a **synthetic** contract, `usage.provider_metrics.write_tokens`. They are not complete definitions or an interpretation of moyuu billing fields. Use a real alias only after establishing its contract and observing evidence.
+The [mapping patch](examples/cache-usage-alias.mapping.json) and [sample](examples/cache-usage-alias.sample.json) illustrate a **synthetic** contract, `usage.provider_metrics.write_tokens`. They are not complete definitions or an interpretation of any provider’s private billing fields. Use a real alias only after establishing its contract and observing evidence.
 
 1. Copy the Chat definition under a new ID, retaining capabilities, operations, samples, directions and extensions.
 2. Merge the patch's `decode_response.after` and `decode_event.after`. If an `after` already exists, explicitly compose transformations and test them instead of overwriting it.
 3. Append the sample and add actual JSON, stream, zero, missing and conflicting-field cases. The example gives standard semantic counters priority, including explicit zero, and reads the alias only when standard creation is absent.
 4. Verify, preview, save the draft, activate the exact revision, then check binding and forwarding.
 
-Agent uses the same service: `elysia protocol draft`, `validate`, `verify`, `preview --direction decode_response --sample ...`, `save`, and `activate --id ... --hash ...`. Definition edits invalidate old reports. Compiler changes use existing startup reverification, without overwriting user edits with presets.
+Agent uses the same service: `elysia protocol draft`, `validate`, `verify`, `preview --direction decode_response --sample ...`, `save`, and `activate --id ... --hash ...`. Definition edits invalidate old reports. Compiler changes trigger startup reverification. Shipped presets are read-only and follow the program version; keep customization under a separate ID.
 
 If an old sample expected `cache_write_tokens` as an unknown extension, update that field's assertion to `expected.usage.cacheCreation={"count":originalValue,"origin":"observed"}`, including zero. Keep the original inclusive input total. Adjust only the consumed field's old extension path, retaining unrelated extensions and every sample. Preview the complete semantic diff and reverify; do not remove failing samples to bypass version validation.
 
@@ -46,7 +58,7 @@ If an old sample expected `cache_write_tokens` as an unknown extension, update t
 
 ## Bounded live experiments
 
-Run `node scripts/verify-protocol.mjs live --suite=cache-gaps`. Configure models and credential environment-variable **names** per target; pass secret values only to the child process, never command arguments or files. The new ledger permits 96 calls in two hours, reserves four cleanup calls, and does not reset the old 256-call ledger. Failures, probes and resource operations count too.
+Run `node scripts/verify-protocol.mjs live --suite=cache-gaps`. Configure models and credential environment-variable **names** per target; pass secret values only to the child process, never command arguments or files. The experiment ledger permits 96 calls in two hours and reserves four cleanup calls. Failures, probes and resource operations count too.
 
 `live --suite=cache-gaps --resume=<evidence directory>` resumes checkpoints bound to model, compiler and revision. Uncertain paid attempts are not replayed; warmed TTL groups retain their original schedule. `live --suite=cache-followup --parent=<directory>` waits for the parent, shares its deadline/ledger, and permits a single allowance of at most twenty reserved follow-up calls.
 

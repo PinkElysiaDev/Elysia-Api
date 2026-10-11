@@ -175,7 +175,11 @@ func (adapter module) decodeResponse(input p.Value, options p.EvaluationContext)
 		if e != nil {
 			return nil, e
 		}
-		metadata, e := adapter.extractMetadata(u, "usage", "/usage")
+		usagePath := "/usage"
+		if adapter.name == Gemini {
+			usagePath = "/usageMetadata"
+		}
+		metadata, e := adapter.extractMetadata(u, "usage", usagePath)
 		if e != nil {
 			return nil, e
 		}
@@ -592,7 +596,7 @@ func groupResponsesContent(nodes []p.Node) []p.Node {
 }
 
 func responsesStorageValue(options p.EvaluationContext) p.Value {
-	if options.ClientOutput == nil || options.ClientOutput.ResponsesStorage == nil {
+	if options.ClientOutput == nil || options.ClientOutput.ResponsesStorage == nil || options.ClientOutput.ResponsesStorage.EffectiveUnknown {
 		return p.Value{}
 	}
 	value, _ := p.EncodeValue(options.ClientOutput.ResponsesStorage.Effective)

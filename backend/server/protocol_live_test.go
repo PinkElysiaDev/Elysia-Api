@@ -89,7 +89,10 @@ func (gateway *liveGateway) bind(t *testing.T, capabilities protocol.CapabilityS
 	}
 	for _, binding := range bindings {
 		binding.Binding.Capabilities = capabilities
-		binding.Combinations = verifyGatewayBinding(t.Context(), service.View(), gateway.target, capabilities)
+		binding.Combinations, err = gateway.server.verifyGatewayBinding(t.Context(), service.View(), binding)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if err := gateway.server.store.SaveProtocolBinding(t.Context(), binding); err != nil {
 			t.Fatal(err)
 		}

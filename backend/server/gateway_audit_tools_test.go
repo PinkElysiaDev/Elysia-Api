@@ -138,6 +138,11 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel bool) {
 						streaming, second = stream, false
 						ingress, _ := service.Pin(id)
 						request := &protocol.Request{SchemaVersion: 1, Model: protocol.StringValue("group"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("lookup")}}}}, Tools: []protocol.Tool{{Kind: protocol.FunctionTool, Name: protocol.StringValue("lookup"), InputSchema: mustProtocolValue(t, `{"type":"object","properties":{"n":{"type":"integer"}}}`)}}, Parameters: protocol.Object{"max_output_tokens": mustProtocolValue(t, "32"), "stream": mustProtocolValue(t, fmt.Sprint(stream))}}
+						if id == protocol.PresetResponsesID || id == protocol.PresetChatCompletionsID {
+							request.Cache = []protocol.CacheIntent{{Kind: "key", Location: "request", Value: protocol.StringValue("anonymous-session")}}
+						} else if id == protocol.PresetAnthropicID {
+							request.Tools[0].Cache = []protocol.CacheIntent{{Kind: "breakpoint", Location: "tool", Value: mustProtocolValue(t, `{"type":"ephemeral"}`)}}
+						}
 						if id == protocol.PresetResponsesID {
 							request.Parameters["store"] = mustProtocolValue(t, "false")
 						}

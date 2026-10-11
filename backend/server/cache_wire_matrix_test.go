@@ -206,8 +206,7 @@ func TestCacheWireMatrix(t *testing.T) {
 						} else {
 							s.chatCompletions(c)
 						}
-						isOpenAI := func(platform string) bool { return platform == "openai" || platform == "responses" }
-						isCompatible := source.platform == target.platform || (isOpenAI(source.platform) && isOpenAI(target.platform))
+						isCompatible := source.platform != "gemini" || target.platform == "gemini"
 						if !isCompatible {
 							if rec.Code < 400 || rec.Code >= 500 {
 								t.Fatalf("incompatible cache contract not rejected: %d %s", rec.Code, rec.Body)
@@ -246,7 +245,7 @@ func TestCacheWireMatrix(t *testing.T) {
 								t.Fatalf("foreign cache control leaked: %s", outbound)
 							}
 						}
-						if target.platform == "anthropic" && (source.platform == "openai" || source.platform == "anthropic") {
+						if target.platform == "anthropic" && source.platform == "anthropic" {
 							blocks, ok := sent["system"].([]any)
 							if !ok || len(blocks) == 0 || blocks[0].(map[string]any)["cache_control"] == nil {
 								t.Fatalf("system cache breakpoint lost: %s", outbound)

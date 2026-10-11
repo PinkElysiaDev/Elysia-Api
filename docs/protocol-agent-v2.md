@@ -53,17 +53,6 @@ target probes retain the live-test gate. Plan mode, approval and remote access
 policies remain in force. Edit sessions preserve the protocol ID. Exact draft
 JSON is carried as a string to the editor so large numbers are not rounded.
 
-## C14 evidence and remaining migration work
+## Validation
 
-Tests cover authoring/revisions/CAS, shared diagnostics, HTTP 200 with invalid
-response shape, separate target evidence, real local custom-protocol model calls,
-tool capability rejection before sending, and a simulated Agent that diagnoses
-an incorrect path, repairs it and enables the definition. Chromium uses a real
-isolated Go/SQLite server to open an Agent draft in the editor without rounding
-numbers and to verify the editor's creation/activation/rollback workflow.
-
-No credentialed provider validation was run. C15/C16 have completed the
-migration and removed the old Agent conversion and authoring paths. The native
-Agent consumes the ordered protocol contract and a declared Agent parameter
-policy. Current evidence and limitations are in
-[system validation](protocol-system-validation.md).
+Authoring, conditional saves, target evidence, Agent model calls and editor handoff use the shared service. Test with isolated protocol fixtures and a local Go/SQLite backend. Real provider acceptance is a separate check; see [validation](protocol-release-readiness.en.md).

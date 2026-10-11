@@ -89,7 +89,14 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 	if adapter.name == Anthropic {
 		known = append(known, "messages", "system")
 	}
-	for key, value := range adapter.extensions(fields, known) {
+	extensions := adapter.extensions(fields, known)
+	if fields["prompt_cache_options"].IsObject() {
+		extensions, err = adapter.nestedExtensions(fields, known, map[string][]string{"prompt_cache_options": {"mode", "ttl"}})
+		if err != nil {
+			return nil, err
+		}
+	}
+	for key, value := range extensions {
 		request.Parameters[key] = value
 	}
 	if adapter.name == Gemini {
@@ -224,6 +231,11 @@ func (adapter module) decodeRequest(input p.Value, options p.EvaluationContext) 
 	if err := checkRequestChoices(request); err != nil {
 		return nil, err
 	}
+	if options.DefinitionRequires(p.ReasoningControlsFeature) {
+		if err := p.NormalizeReasoningParameters(request, adapter.name, options.InterleavedThinking); err != nil {
+			return nil, err
+		}
+	}
 	return request, nil
 }
 
@@ -263,7 +275,11 @@ func (adapter module) encodeRequest(request *p.Request, options p.EvaluationCont
 	if adapter.name == Gemini {
 		delete(fields, "model")
 	}
-	if err := adapter.encodeParameters(fields, request.Parameters); err != nil {
+	parameters, err := p.ReasoningParameters(request, adapter.name)
+	if err != nil {
+		return p.Value{}, err
+	}
+	if err := adapter.encodeParameters(fields, parameters); err != nil {
 		return p.Value{}, err
 	}
 	if adapter.name == Chat && request.ClientOutput != nil {
@@ -480,6 +496,15 @@ func (adapter module) encodeParameters(fields p.Object, parameters p.Object) err
 			isMapped = true
 		}
 		if semantic == "anthropic_metadata" && (adapter.name == Chat || adapter.name == Responses) {
+			meta, _ := value.ReadObject()
+			for key := range meta {
+				if key != "user_id" {
+					return unsupported("/parameters/anthropic_metadata/"+key, "unknown metadata requires explicit mapping")
+				}
+			}
+			if user := parameters["user"]; !user.IsZero() && !meta["user_id"].IsZero() && user != meta["user_id"] {
+				return unsupported("/parameters/user", "conflicting user identities")
+			}
 			isMapped = true
 		}
 		if !isMapped {

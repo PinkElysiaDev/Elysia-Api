@@ -2,7 +2,6 @@ package builtin
 
 import (
 	"fmt"
-	"strings"
 
 	p "github.com/elysia-api/backend/protocol"
 )
@@ -59,7 +58,22 @@ func (adapter module) decodeTools(value p.Value, options p.EvaluationContext) ([
 		}
 		if adapter.name == Anthropic && (kind == "" || kind == "custom") {
 			tool.Name, tool.Description, tool.InputSchema = definition["name"], definition["description"], definition["input_schema"]
-			tool.Options = adapter.extensions(definition, []string{"type", "name", "description", "input_schema", "cache_control"})
+			tool.Options = adapter.extensions(definition, []string{"type", "name", "description", "input_schema", "cache_control", "eager_input_streaming", "strict"})
+			if strict := definition["strict"]; !strict.IsZero() {
+				if tool.Options == nil {
+					tool.Options = p.Object{}
+				}
+				tool.Options["strict"] = strict
+			}
+			if value := definition["eager_input_streaming"]; !value.IsZero() {
+				if err := p.ValidateToolStreamOption(value, path+"/eager_input_streaming"); err != nil {
+					return nil, err
+				}
+				if tool.Options == nil {
+					tool.Options = p.Object{}
+				}
+				tool.Options["eager_input_streaming"] = value
+			}
 		} else if kind == "function" {
 			tool.Name, tool.Description, tool.InputSchema = definition["name"], definition["description"], definition["parameters"]
 			tool.Options = adapter.extensions(definition, []string{"type", "name", "description", "parameters", "strict", "cache_control"})
@@ -104,6 +118,12 @@ func (adapter module) encodeTools(tools []p.Tool, options p.EvaluationContext) (
 			if err != nil {
 				return p.Value{}, err
 			}
+			if adapter.name != Gemini {
+				delete(fields, "cache_control")
+				if err := adapter.encodeCache(fields, tool.Cache); err != nil {
+					return p.Value{}, err
+				}
+			}
 			if tool.Name.IsZero() {
 				delete(fields, "name")
 			} else {
@@ -113,19 +133,20 @@ func (adapter module) encodeTools(tools []p.Tool, options p.EvaluationContext) (
 			continue
 		}
 		toolOptions := tool.Options
-		if foreign := foreignWireKeys(toolOptions, adapter.family); len(foreign) > 0 {
-			// 工具级源族扩展（如 Anthropic 工具上的 cache_control）在异族目标
-			// 无等价字段：剥离并显式 warning，不再拒绝整个请求。
-			warnDropped(options, p.EncodeRequest, "/tools/extensions", "tool-level wire extensions dropped: " + strings.Join(foreign, ", ") + " has no target equivalent", "Same-family forwarding preserves them through native replay.")
-			toolOptions = sameFamilyExtensions(toolOptions, adapter.family)
-		}
+
 		fields := p.Object{"name": tool.Name, "description": tool.Description}
+		if value := toolOptions["eager_input_streaming"]; !value.IsZero() {
+			if err := p.ValidateToolStreamOption(value, "/tools/eager_input_streaming"); err != nil {
+				return p.Value{}, err
+			}
+			if adapter.name != Anthropic || tool.Kind != p.FunctionTool {
+				return p.Value{}, unsupported("/tools/eager_input_streaming", "tool input streaming preference requires stream_options projection for this target")
+			}
+			fields["eager_input_streaming"] = value
+		}
 		if strict := toolOptions["strict"]; !strict.IsZero() {
-			if adapter.name != Chat && adapter.name != Responses {
-				// strict 是 OpenAI 系的校验提示，其他目标无等价字段：剥离并
-				// 显式 warning（原为硬拒，Claude Code→Anthropic 的工具声明
-				// 常带 strict）。
-				warnDropped(options, p.EncodeRequest, "/tools/strict", "strict tool-schema policy dropped: target has no equivalent", "Target schemas stay permissive; validate arguments at the call site.")
+			if adapter.name != Chat && adapter.name != Responses && adapter.name != Anthropic {
+				return p.Value{}, unsupported("/tools/strict", "tool strict requires explicit request projection for this target")
 			} else {
 				fields["strict"] = strict
 			}
@@ -164,4 +185,3 @@ func (adapter module) encodeTools(tools []p.Tool, options p.EvaluationContext) (
 	}
 	return array(items), nil
 }
-

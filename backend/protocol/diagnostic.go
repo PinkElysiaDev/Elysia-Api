@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"errors"
 	"fmt"
 	"time"
 )
@@ -92,8 +93,19 @@ func (sink *DiagnosticSink) Issues() []ConversionIssue {
 
 // ConversionError carries machine-readable diagnostics through Go error APIs.
 type ConversionError struct {
-	Issues []ConversionIssue `json:"issues"`
-	cause  error
+	CandidateOnly bool              `json:"candidateOnly,omitempty"`
+	Issues        []ConversionIssue `json:"issues"`
+	cause         error
+}
+
+// candidateFailure only marks deliberate target-specific conversion failures.
+// Authored reject rules and unclassified failures remain request-wide.
+func candidateFailure(err error) error {
+	var failure *ConversionError
+	if errors.As(err, &failure) {
+		failure.CandidateOnly = true
+	}
+	return err
 }
 
 // Unwrap retains transport/authorization/cancellation causes without exposing

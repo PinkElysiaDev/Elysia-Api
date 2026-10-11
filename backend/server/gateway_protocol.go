@@ -93,7 +93,7 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 		return
 	}
 	record.Stream = plan.operation.Transport != protocol.HTTPJSON
-	estimate := s.estimateProtocolTokens(plan.request)
+	estimate := s.estimateGatewayReservation(plan)
 	if *s.config.GetUsageConfig().EstimateWhenMissing {
 		record.Usage.Estimated, record.Usage.EstimatedTokens, record.UsageSource = true, estimate, "protocol_estimate"
 	}
@@ -161,7 +161,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	}
 	// 上行模型串用 API id；Name 是显示名（Gemini displayName 直接拼路径会 404）。
 	request.Model = protocol.StringValue(candidate.model.Identifier())
-	options := protocol.EvaluationContext{Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}, ClientOutput: request.ClientOutput}
+	options := protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}, ClientOutput: request.ClientOutput}
 	if candidate.continuation != nil {
 		candidate.continuation.sink = options.Diagnostics
 	}
@@ -169,6 +169,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	if candidate.model.CacheSynthesis {
 		protocol.SynthesizeCacheBreakpoints(request, candidate.compiled.Capabilities(protocol.EncodeRequest), options)
 	}
+	s.estimateGatewayAttempt(record, request)
 	record.SystemStructure.After = systemStructure(request)
 	body, err := candidate.compiled.EncodeRequest(c.Request.Context(), request, options)
 	if err != nil {

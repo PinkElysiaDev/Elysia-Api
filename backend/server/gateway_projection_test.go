@@ -27,7 +27,7 @@ func TestGatewayGeminiIncludeAndReasoningProjection(t *testing.T) {
 				if clientKind != client {
 					definition := upstream.Definition()
 					definition.ID = "legacy-gemini"
-					definition.Requires = nil
+					definition.Requires = []string{protocol.ReasoningControlsFeature}
 					upstream = persistPreviousRevision(t, s, mustEncodedProtocolValue(t, definition))
 					id := protocol.PresetResponsesID
 					if clientKind == "messages" {
@@ -36,7 +36,7 @@ func TestGatewayGeminiIncludeAndReasoningProjection(t *testing.T) {
 					original, _ := service.Pin(id)
 					definition = original.Definition()
 					definition.ID = "legacy-" + clientKind
-					definition.Requires = nil
+					definition.Requires = []string{protocol.ReasoningControlsFeature}
 					customIngress = definition.ID
 					persistPreviousRevision(t, s, mustEncodedProtocolValue(t, definition))
 					if err := s.reloadProtocolRuntime(t.Context()); err != nil {

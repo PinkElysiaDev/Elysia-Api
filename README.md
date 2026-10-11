@@ -146,7 +146,7 @@ docker run -d --name elysia-api \
 
 - [自定义协议开发](docs/protocol-definition-reference.md)
 - [协议架构、支持矩阵与迁移](docs/protocol-guide.md)
-- [验收证据与发布边界](docs/protocol-release-readiness.md)
+- [协议验证与发布检查](docs/protocol-release-readiness.md)
 - [AI Agent 远程接入](docs/remote-agent-api.md)
 - [运维与接口参考](docs/webui-api.md)
 - [CLI 命令手册](docs/agent-cli.md)

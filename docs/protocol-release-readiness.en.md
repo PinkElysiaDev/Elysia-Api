@@ -1,107 +1,74 @@
-# Protocol upgrade delivery and release readiness
+# Protocol validation and release checks
 
-[简体中文](protocol-release-readiness.md) · [User guide](protocol-guide.en.md) · [System evidence](protocol-system-validation.md)
+[Documentation index](README.en.md) · [简体中文](protocol-release-readiness.md) · [Protocol guide](protocol-guide.en.md)
 
-For subsequent C19?C23 live, race and performance evidence, see [release validation](protocol-release-validation.en.md). The tables and six-platform artifacts below describe the C18 delivery, not execution evidence for the later optimized version.
+This page explains how to validate the checked-out code and prepare a release. Results belong to a specific commit, configuration and environment. Keep run logs, test counts and temporary work notes in CI, PRs or local working directories rather than maintained feature documentation.
 
-Date: 2026-10-03. Branch: `feat/protocol-v2-gateway`. All commits and artifacts are local. Nothing was pushed, published or deployed.
+## Validation layers
 
-## Delivered scope
+| Layer | Establishes | Does not replace |
+| --- | --- | --- |
+| Protocol fixtures and combinations | Declared capabilities, conversion rules, field presence and event associations obey the contract | Real provider acceptance |
+| Local HTTP, WebSocket, task and SQLite integration | Routing, permissions, cancellation, persistence, restart and settlement behavior | Provider availability or production capacity |
+| SDK and client tests | A fixed client consumes complete output and finishes tool rounds | Other versions, plugins or history compression |
+| Real upstream probes | Observed behavior for the selected account, model, revision and configuration | Compatibility with all models and channels |
+| Cache and timing experiments | Observed nonzero counters, resource lifecycle and the measured time window | Inferring cache hits from accepted fields or HTTP 200 |
+| Race, fuzz, benchmarks and load tests | Concurrency, input boundaries and resource cost on tested paths | Capacity or latency promises in untested environments |
 
-The four presets, custom ingress/upstream protocols, editor, Agent, previews and verification share `backend/protocol`. The legacy execution kernel is removed. New protocols within the engine's supported semantics/transports declare directions, capabilities, mappings, operations and fixtures without Go changes. Unrepresentable capabilities produce diagnostics rather than silent deletion.
+Record skips, expected rejections, rate limits and unfinished experiments separately from passes. Distinguish provider usage from gateway estimates; client placeholder counters are not observations.
 
-HTTP JSON, SSE, NDJSON, declarative WebSocket sessions and durable async jobs have local integration evidence. Editor and Agent share revisions, verification and activation; saving does not activate and old evidence does not validate changed content. The Agent does not execute client business tools.
+## Local checks
 
-This does not claim support for every new mechanism of every API. Both endpoints must express the required semantics equivalently. Identical model output, provider caching policy and cross-account reuse of resources/signatures are outside the conversion guarantee.
+Run relevant checks from the repository root:
 
-## Verification status
+```bash
+go -C backend test ./... -count=1 -timeout=15m
+go -C backend vet ./...
+go -C backend test -race ./protocol/... ./storage ./relay ./server -count=1 -timeout=20m
+node scripts/test-protocol-e2e.mjs
+```
 
-| Gate | Actual result |
+Race checks need a supported Go platform and C toolchain. Browser integration uses an isolated backend and database; see [development](development.en.md). Slow tests or unavailable environments must remain explicitly unverified.
+
+| Change | Focused regression coverage |
 | --- | --- |
-| C17 complete backend tests, vet, WebUI type check | Passed; server tests 189.737 s |
-| Editor/Agent browser tests | 3 passed; Chromium against isolated Go/SQLite |
-| Reload/job recovery/cancellation/long-stream stress | 20 repetitions passed; forwarded 16 MiB text does not accumulate retained payload |
-| Five fixed-duration fuzz targets | 20 s each, 2,752,020 total executions, passed |
-| Published standalone cache protocol | Compilation/offline verification passed; independent `promptPolicy` and `meter` paths |
-| C18 complete backend/help/snapshot checks | Passed; server 189.669 s, published examples, CLI consistency and embedded source reads passed; vet/type/diff checks passed |
-| Six-platform builds and host smoke | All built; Windows amd64 isolated database/four presets/schema/UI/JS checks passed; five other targets not run |
-| Race | No successful execution: Windows lacks a usable GCC/CGO toolchain; downloads failed |
-| Remote Linux CI | Gates configured, not pushed or executed; not a passing result |
-| Real providers/models and live cache hits | Not verified; no substitution of mock results |
+| Parameters, model capabilities and conversion rules | Four-protocol JSON/SSE, strict/compatible policies, candidate isolation, native preservation and output limits |
+| Tools, reasoning and signatures | Multiple call identities, complete second-turn history, encrypted reasoning, resource scope and tamper rejection |
+| Streaming | Start/end order, usage tails, late errors, slow reads, cancellation and no replay |
+| Bindings, revisions and upgrades | Evidence invalidation, concurrent edits, failure isolation, retained drafts and repeated restarts |
+| Sessions and jobs | Bidirectional events, backpressure, uncertain submission, restart recovery and once-only settlement |
+| Editor and Agent | Save/verify/activate, conflicting edits, exact JSON and permissions |
 
-See [system evidence](protocol-system-validation.md) for coverage, negative cases and reproduction. Local logs are in the repository parent's `.cache/c18-backend-full.json`, `c18-vet.txt`, `c18-build.txt` and `c18-smoke.txt`; logs are not committed. The runner prints its independent evidence directory. The post-commit rebuild and smoke use `c18-build-final.txt` and `c18-smoke-final.txt`.
+Negative tests must continue rejecting invalid types, unknown mechanisms, out-of-scope resources, mismatched tools and stale evidence. Do not remove assertions or narrow capability claims to hide failures.
 
-## Performance
+## Real channels and caching
 
-On the same Ryzen 5 7600X, Chat cache request → Anthropic measured 29.2–30.8 µs / 18.0 KB / 322 allocations at C01 and 90.8–96.3 µs / 53.8 KB / 752 allocations at C17. Profiling removed repeated semantic serialization, container decoding and allocating limit scans. Request CPU remains roughly three times the old boundary; this is not zero regression.
+See the [protocol audit tool](../scripts/protocol-audit/README.md) for commands, configuration templates and result formats. Select accounts and models explicitly, set request budgets and timeouts, and use synthetic content with isolated instances.
 
-The 64 KiB stream decode improved from historical 3.58–4.56 ms / 9.98 MB to 3.04–3.34 ms / 2.41 MB. The new request boundary also checks provenance, native preservation, capabilities and resource limits. Those checks were retained. Deployment throughput/latency still require target-hardware and concurrency measurement.
+Establish direct-call baselines before comparing gateway JSON/SSE and tool rounds. Check semantic content, completion, hidden error events and usage even after HTTP success. Separate provider restrictions, client failures and conversion defects.
 
-## Builds and host smoke
+For caching, fix the account, model and a sufficiently long stable prefix. Independently check nonzero reads/creation, streaming usage, and agreement between client output and SQLite. TTL, read refresh and explicit resource expiration need real elapsed time; not observing expiration does not prove unlimited retention. See [cache contracts](cache-usage-contracts.en.md).
 
-```sh
-node scripts/build-standalone.mjs
-node scripts/smoke-standalone.mjs
+Unknown native extensions, cross-protocol resource references, signature recovery after client compression and provider-specific fields each need their own fixtures and endpoint checks. Success on one channel does not broaden a protocol's support claim.
+
+## Performance and builds
+
+Compare identical inputs and concurrency on the same host. Record CPU, memory, allocations, latency and versions. For example:
+
+```bash
+go -C backend test ./protocol/builtin -run '^$' -bench 'BenchmarkCacheConversion|BenchmarkStreamTextDecode' -benchmem -count=3
 ```
 
-The build runs WebUI build/typecheck and embeds current Go, frontend, presets, protocol guides, CLI references and examples. Generated directories are confined to the repository. Local configuration, databases, keys, debug reports and test logs are not distribution content.
+Measure capacity targets on intended hardware and workloads. A historical benchmark is not a result for the current version.
 
-| Target | Artifact relative to repository root | Execution boundary |
-| --- | --- | --- |
-| Windows amd64 | `dist/standalone/elysia-api-windows-amd64.exe` | Executable on the current host |
-| Windows arm64 | `dist/standalone/elysia-api-windows-arm64.exe` | Cross-build only |
-| Linux amd64 | `dist/standalone/elysia-api-linux-amd64` | Cross-build only |
-| Linux arm64 | `dist/standalone/elysia-api-linux-arm64` | Cross-build only |
-| macOS amd64 | `dist/standalone/elysia-api-darwin-amd64` | Cross-build only |
-| macOS arm64 | `dist/standalone/elysia-api-darwin-arm64` | Cross-build only |
-
-The smoke runner creates a fresh temporary directory/database, random admin token and local port, with model catalog network synchronization disabled. It checks `/health` database status and commit, the schema compiler version, all four active presets, and embedded UI/JS assets. It closes only its own child process. The printed directory retains `evidence.json`, logs and the database; evidence contains the binary SHA-256, not the token. Other platforms have no execution evidence.
-
-Rebuild after committing so `/health.commit` identifies C18; artifacts are not checked in. This report does not embed its own commit hash and trigger a self-referential update cycle. Inspect the local history with:
-
-```sh
-git log --oneline --reverse 8a0b23f..HEAD
-git log -1 --format='%h %s'
-```
-
-On Windows, `Get-FileHash dist/standalone/* -Algorithm SHA256` produces a complete artifact checksum list.
-
-## Local commit index
-
-| Stage | Commit | Change |
-| --- | --- | --- |
-| C01 | `d77aac7` | Cache semantics, upgrade and audit |
-| C02 | `287568a` | Tool definitions and lifecycle |
-| C03 | `3c312e3` | Ordered semantics, presence and provenance |
-| C04 | `68955d5` | Native preservation, edits and diagnostics |
-| C05 | `f745143` | Shared built-in/custom adapter contract |
-| C06 | `a0b44e4` | Shared events and accounting |
-| C07 | `acdc236` | Bidirectional declarative compiler |
-| C08 | `24c4257` | Capability-driven verification |
-| C09 | `f8b4bf1` | Immutable revisions and atomic activation |
-| C10 | `572f82e` | Custom ingress and capability routing |
-| C11 | `ce5d550` | Declarative WebSocket sessions |
-| C12 | `5a7d686` | Durable async jobs |
-| C13 | `5f43e87` | Protocol editor |
-| C14 | `1f95bc0` | Agent authoring and shared verification |
-| C15 | `0fc3613` | Graph migration, backup and cutover |
-| C16 | `8303ea7` | Legacy removal, canonical cache TTL and quality review |
-| C17 | `9dde72e` | System/fuzz/stress verification and performance work |
-| C18 | Commit containing this report | Bilingual docs, CLI, source snapshots, builds and evidence |
-
-See the [implementation ledger](protocol-v2-implementation.md). Pre-existing unrelated `.tmp-c10-tests.log` and `docs/debug-report-2026-09-18.md` remain outside commits and distribution.
+See [development](development.en.md#release-builds) for builds. Cross-compilation establishes build success only; startup, database upgrades, UI and networking need separate checks on each target system. See [macOS validation](macos-testing.en.md) for the native App.
 
 ## Upgrade and rollback
 
-1. Retain the old executable and a matching configuration/database/master-key set. Copy after stopping the old process, or use a consistent SQLite backup; copying a live main database without its WAL is insufficient.
-2. Preview migration on a copy and repair edited presets, custom definitions and binding diagnostics. After verification, apply the same intent transactionally. The server revalidates; failure leaves management available for repair.
-3. Only complete known fingerprints authorize preset replacement. User edits remain. Record backup locations and old/new executable identities.
-4. Protocol rollback activates a prior revision verified by the current engine. Executable/database rollback requires stopping the new process and restoring the matching old executable/database/configuration/key set, then checking health and bindings. Restoring an old database loses subsequent records; first retain the current database for audit.
+1. Retain the old executable and matching configuration, database and master key. Stop writes before copying or use a consistent SQLite backup; include committed WAL data.
+2. Preview migration on a copy and resolve custom-definition and binding diagnostics. The server reverifies before committing atomically; failure leaves management available for repair.
+3. Shipped presets follow the program version. Keep customization under separate protocol IDs. Check custom revisions, drafts, explicit unbound states and repeated restarts.
+4. Check `runtimeReady`, effective bindings and actual requests. A successful `/health` response alone does not establish protocol readiness.
+5. Revision rollback requires current-engine verification. Program/database rollback restores a matching executable, database, configuration and key; retain the current database first to preserve later records.
 
-`git revert` alone does not undo database migration. See [migration](protocol-migration-v2.md) and [cutover](protocol-cutover-v2.md).
-
-## Outstanding release conditions
-
-Obtain an actual passing race run in a supported environment and real request/stream/tool-lifecycle evidence for intended provider/model/account combinations. Live caching needs a fixed account/model, a sufficiently long stable prefix repeated within TTL, and inspection of read/creation/total input counters.
-
-Remaining request cost and cross-platform execution boundaries are disclosed. Local evidence supports the listed engineering behavior; it does not mean every release gate has passed.
+`git revert` does not reverse database migration. See [migration](protocol-migration-v2.md) and [preset recovery (Chinese)](protocol-preset-recovery.md).

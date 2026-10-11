@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR, { mutate as globalMutate, type SWRConfiguration } from 'swr'
 import { api } from './api'
+import { protocolAPI } from './protocol-v2'
 
 /** Agent 用量在统计页的 key_name 标签（与后端常量一致）。 */
 const AGENT_USAGE_KEY_NAME = 'AI 助手'
@@ -72,6 +73,10 @@ export function useRuntimeConfig() {
 /** 模型源列表（可选轮询间隔毫秒）。 */
 export function useSources(refreshInterval = 0) {
   return useSWR('model-sources', () => api.listSources(), { ...defaultConfig, refreshInterval })
+}
+
+export function useEnabledProtocols(enabled = true) {
+  return useSWR(enabled ? 'enabled-protocols' : null, protocolAPI.enabled, defaultConfig)
 }
 
 /** 能力目录（models.dev）状态：未加载或加载失败时模型能力不会被自动回填，

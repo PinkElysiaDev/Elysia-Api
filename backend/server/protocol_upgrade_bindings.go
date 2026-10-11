@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 
@@ -95,7 +94,6 @@ func (s *Server) prepareProtocolUpgradeBindings(ctx context.Context, input proto
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	verifiedCombinations := map[string][]protocol.CombinationReport{}
 	for key, binding := range bindings {
 		if !validTargets[key] {
 			preview.Issues = append(preview.Issues, migrationIssue(binding.Binding.ProtocolID, "/bindings", "binding target does not exist or has conflicting identity fields"))
@@ -120,40 +118,26 @@ func (s *Server) prepareProtocolUpgradeBindings(ctx context.Context, input proto
 		}
 		preview.Issues = append(preview.Issues, issues...)
 		binding.Combinations = nil
-		if target != nil && len(issues) == 0 && binding.Kind != "group" {
-			encoded, err := json.Marshal(binding.Binding.Capabilities)
-			if err != nil {
-				return err
-			}
-			key := target.Hash() + string(encoded)
-			binding.Combinations = verifiedCombinations[key]
-			if binding.Combinations == nil {
-				binding.Combinations = verifyUpgradeCombinations(ctx, definitions, ids, target, binding.Binding.Capabilities)
-				verifiedCombinations[key] = binding.Combinations
-			}
-			if !hasPassingGatewayCombination(binding.Combinations) {
-				preview.Issues = append(preview.Issues, migrationIssue(binding.Binding.ProtocolID, "/bindings", "no ingress verifies the complete binding capability contract"))
-			}
-		}
+
 		preview.Bindings = append(preview.Bindings, binding)
 	}
 	sort.Slice(preview.Bindings, func(i, j int) bool {
 		left, right := upgradeBindingIdentity(preview.Bindings[i]), upgradeBindingIdentity(preview.Bindings[j])
 		return fmt.Sprint(left) < fmt.Sprint(right)
 	})
+	if protocol.IssuesError(preview.Issues) == nil {
+		policies, _, _, err := s.store.ConversionSnapshot(ctx)
+		if err != nil {
+			return err
+		}
+		verified, err := s.verifyConversionBindings(ctx, conversionDefinitions(definitions), policies, preview.Bindings)
+		if err != nil {
+			return err
+		}
+		preview.Bindings = verified
+	}
 	preview.plan.Bindings = preview.Bindings
 	return nil
-}
-
-func verifyUpgradeCombinations(ctx context.Context, definitions map[string]*protocol.Compiled, ids []string, target *protocol.Compiled, capabilities protocol.CapabilitySet) []protocol.CombinationReport {
-	var reports []protocol.CombinationReport
-	for _, id := range ids {
-		ingress := definitions[id]
-		if ingress.Supports(protocol.DecodeRequest) && (ingress.Supports(protocol.EncodeResponse) || ingress.Supports(protocol.EncodeEvent)) {
-			reports = append(reports, protocol.VerifyBindingProfiles(ctx, ingress, target, capabilities)...)
-		}
-	}
-	return reports
 }
 
 func makeUpgradeBinding(key upgradeBindingKey, platform string, definitions map[string]*protocol.Compiled) (storage.ProtocolBinding, *protocol.ConversionIssue) {

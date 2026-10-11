@@ -112,6 +112,10 @@ func (adapter module) decodeBlock(value p.Value, path string, direction p.Direct
 			known = append(known, "call_id", "output", "id")
 		}
 		if kind == "tool_result" && !fields["is_error"].IsZero() {
+			var isError bool
+			if fields["is_error"].IsNull() || fields["is_error"].Decode(&isError) != nil {
+				return p.Node{}, fmt.Errorf("%s/is_error: tool error flag must be a boolean", path)
+			}
 			node.Status = object(p.Object{"isError": fields["is_error"]})
 		}
 		if kind == "tool_result" && !node.Payload.IsNull() && strings.HasPrefix(strings.TrimSpace(string(node.Payload.Bytes())), "[") {
