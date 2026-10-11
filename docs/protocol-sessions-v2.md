@@ -100,9 +100,7 @@ Protocol combinations replay traces from both endpoints through the other
 endpoint's implemented encoders. A binding limited to HTTP text does not inherit
 session/tool obligations merely because its protocol also implements them.
 Combination evidence records observed semantic capabilities, not unproven
-fixture labels. Reports now use compiler version `2.0.0-dev.4`, and the sample
-hash includes both ordinary samples and session traces; older evidence must be
-reverified.
+fixture labels. Reports bind the current compiler version, and the sample hash includes ordinary samples and session traces. Changed versions or samples require fresh verification.
 
 ## Bounded execution and accounting
 
@@ -143,7 +141,7 @@ ended. Cancellation immediately closes both sockets and joins workers. JSON
 mapping failures send a declared error event when the encoder supports it;
 an unencodable failure still closes with an error, never a success terminal.
 
-## Validation evidence
+## Validation
 
 Core regression coverage is in `session_test.go`,
 `verification_session_test.go` and `session_transport_test.go`. It covers
@@ -161,7 +159,4 @@ tails, per-response SQLite records, authentication/group/origin rejection before
 upstream access, and a late unsupported event with no generation replay.
 The standalone definitions are in `backend/protocol/testdata/session-*.json`.
 
-Full backend tests, vet and diff checks are required for this commit. No real
-provider or successful local race run is claimed; the Windows C toolchain still
-prevents race builds. Media format conversion and session resumption remain
-explicitly unsupported.
+Media format conversion and undeclared session resumption remain unsupported. Run the relevant checks in [validation](protocol-release-readiness.en.md); socket fixtures do not establish provider compatibility.

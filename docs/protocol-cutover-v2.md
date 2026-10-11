@@ -1,4 +1,6 @@
-# C16 runtime cutover contract
+# Protocol runtime contract
+
+[Documentation index](README.en.md) · [Protocol guide](protocol-guide.en.md)
 
 The gateway, native Agent, health checks, model discovery, CLI, MCP and editor
 now consume pinned v2 definitions. `backend/relay` retains HTTP/WebSocket
@@ -80,27 +82,12 @@ remain absent. See the definition expression catalog for typed construction.
 
 ## Upgrade and rollback
 
-Compiler `2.0.0-dev.8` and preset author version `2.1.0` require fresh evidence.
-Known unedited prior presets are identified by complete content fingerprints,
-not IDs. Edited active definitions are reverified as authored; edited drafts
-and intentionally disabled definitions remain untouched. All reports and model
-combinations must pass before a backup and atomic graph update. Concurrent
-configuration changes invalidate the prepared baseline. The new receipt is
-stored as `protocol_runtime_refresh`; the original migration receipt remains.
+Compiler changes require current verification evidence. Shipped presets are read-only and refreshed to the definitions bundled with the program; customization belongs under a separate ID. Custom revisions are reverified without overwriting their content or drafts. Explicit unbound states remain intact. Failed custom bindings are isolated with diagnostics, and concurrent configuration changes invalidate a prepared refresh baseline. See [migration](protocol-migration-v2.md) and [preset recovery (Chinese)](protocol-preset-recovery.md).
 
 Back up the database, encryption key and configuration and retain the old
 executable. Restore that matching set to roll back a runtime/database upgrade;
 `git revert` alone does not reverse persisted revisions or migrations.
 
-## Evidence
+## Validation
 
-C16 regression suites cover the 96-case cache HTTP matrix, arbitrary-ID and
-standalone custom protocols, tool histories, usage tails, exact JSON presence,
-runtime refresh, TTL edits at five scopes, failure mapping/retry boundaries,
-model discovery, Agent calls and health probes. Chromium tests exercise the
-real isolated Go/SQLite service for authoring, verification, activation, rollback
-and exact-JSON Agent/editor handoff. Final commands and performance/stress results
-are recorded in the implementation ledger and C17/C18 acceptance report.
-
-These are local protocol tests. They do not establish provider-side cache hits,
-model equivalence, or compatibility with mechanisms outside the declared engine.
+Use regression tests for native edits, error/retry boundaries, cache TTL, model discovery, Agent calls and health probes. Commands and evidence boundaries are in [validation](protocol-release-readiness.en.md).

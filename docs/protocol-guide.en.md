@@ -1,6 +1,6 @@
 # Protocol engine, editor and native Agent
 
-[简体中文](protocol-guide.md) · [Definition reference](protocol-definition-reference.en.md) · [Evidence and boundaries](protocol-release-readiness.en.md)
+[Documentation index](README.en.md) · [简体中文](protocol-guide.md) · [Definition reference](protocol-definition-reference.en.md) · [Validation](protocol-release-readiness.en.md)
 
 One `backend/protocol` engine serves built-in and custom protocols. The editor,
 Agent, previews, offline verification and live forwarding share its compiler,
@@ -100,8 +100,7 @@ resources are separate capabilities.
 Declare custom paths by mapping to request/node `cache` or `usage`. Absent
 counters remain distinct from zero. Select aliases with `exists`, so an explicit
 zero overrides earlier counters. `cache_custom_v2_test.go` exercises actual
-local HTTP forwarding; `usage_alias_test.go` demonstrates precedence. Requests
-without cache intent do not acquire a policy.
+local HTTP forwarding; `usage_alias_test.go` demonstrates precedence. Requests without cache intent acquire no policy by default. Explicit source-level `cacheSynthesis` can add structural markers for targets declaring `cache.breakpoints`; see [cache contracts](cache-usage-contracts.en.md#cache-intent-and-breakpoint-synthesis).
 
 ## Migration and recovery
 
@@ -114,8 +113,7 @@ Pure additions commit directly; overwrites require a current consistent snapshot
 and a transaction. Failure leaves management available for repair. Check the
 protocol listing's `runtimeReady` and loaded revisions to confirm readiness.
 
-Only complete known preset fingerprints authorize replacement. Edited active
-definitions are reverified, edited drafts and inactive states retained. Custom
+The four shipped presets are read-only and follow the program version; copy to a new ID for customization. Compiler upgrades reverify custom revisions and bindings while preserving custom content, drafts and explicit unbound states. Custom
 semantic fixtures with `value.ttl` must move it to the sibling `ttl` before
 verification. See [migration](protocol-migration-v2.md) and
 [cutover](protocol-cutover-v2.md).
@@ -131,5 +129,15 @@ evidence separately identifies target/model/configuration. HTTP 200 does not
 prove fidelity, and mocks do not prove cache hits. Test caching with a fixed
 account/model and sufficiently long stable prefix, repeated within TTL, and
 inspect returned provider usage. See the [release checklist](protocol-release-readiness.en.md)
-for actual tests, remaining performance cost, pending race validation, builds
-and host smoke. Work remains local: no push, publication or deployment.
+for commands, evidence levels, performance methods, builds and upgrade checks. Record run results against their exact commit.
+
+## Implementation references
+
+| Topic | Contents |
+| --- | --- |
+| [Semantic model](protocol-semantic-contract.md) · [Definition execution](protocol-definition-v2.md) | Field presence, codecs, native preservation and resource scope |
+| [Conversion rules (Chinese)](conversion-implementation.md) · [Boundaries (Chinese)](protocol-pair-guarantees.md) | Mappings, approximation, signature recovery and rejection |
+| [Reasoning and storage (Chinese)](protocol-reasoning.md) · [Cache contracts](cache-usage-contracts.en.md) | Model controls, store, cache intent and accounting |
+| [Bindings](protocol-gateway-v2.md) · [Revisions](protocol-revisions-v2.md) · [Verification](protocol-verification-v2.md) | Routing contracts, immutable versions and evidence |
+| [Editor](protocol-editor-v2.md) · [Agent authoring](protocol-agent-v2.md) | Drafts, preview, verification and activation |
+| [WebSocket](protocol-sessions-v2.md) · [Jobs](protocol-jobs-v2.md) | Events, backpressure, recovery and settlement |

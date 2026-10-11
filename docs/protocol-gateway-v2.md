@@ -1,4 +1,6 @@
-# Protocol v2 gateway integration (C10)
+# Protocol gateway bindings
+
+[Documentation index](README.en.md) · [Protocol guide](protocol-guide.en.md)
 
 The versioned registry now serves `ANY /gateway/:protocolId/*path`. Authentication,
 model-group authorization, request limits, affinity, cancellation, configured HTTP
@@ -91,21 +93,8 @@ other when both revisions declare the necessary event directions.
 - Request records include ingress/upstream hashes, conversion diagnostics and
   canonical usage presence/origin. Body capture still follows the existing logging
   policy. Missing usage stays missing through all 16 built-in response combinations;
-  observed zero and absent cache counters remain distinct. This fixes an additional
-  typed-response integration defect; its historical-version attribution has not
-  been independently tested.
+  observed zero and absent cache counters remain distinct.
 
-## Validation and staged boundaries
+## Validation
 
-C10 tests exercise alpha/beta HTTP in both directions, SSE/NDJSON in both
-directions, usage tails and persisted creation/read/zero counters, authentication,
-group authorization, cancellation, stale bindings, in-flight activation, four
-public ingress dispatches, report generation, frame limits, path/credential
-placement, nested provenance and model capability checks. HTTP tests use local
-simulated upstreams, not real provider validation.
-
-The four public paths and custom namespace now use active verified v2
-revisions. C15/C16 removed the old runtime. Built-in adapters implement stateful
-events; WebSocket and durable task transport are installed. See the
-[guide](protocol-guide.en.md) and [system evidence](protocol-system-validation.md)
-for current compiler, coverage, performance and unverified release gates.
+Local gateway tests cover independent HTTP mappings, SSE/NDJSON, usage tails, authorization, cancellation, stale bindings, pinned revisions, frame limits and resource scope. WebSocket and task workflows have their own fixtures. These tests use simulated upstreams; see [validation](protocol-release-readiness.en.md) for provider and release checks.

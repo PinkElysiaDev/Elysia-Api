@@ -16,8 +16,11 @@ Deployment, protocols, APIs, and development for Elysia API. Start with [quick s
 | --- | --- |
 | [Protocol v2](protocol-guide.en.md) | Unified engine, editor, Agent, support matrix and migration |
 | [Custom protocols](protocol-definition-reference.en.md) | JSON definitions, field mappings, conditions, stream frames, and model discovery |
-| [Cache fidelity audit (Chinese)](cache-fidelity-audit-2026-10-01.md) | Four-protocol historical comparison, shared fixes, verification, and custom protocol migration |
-| [Cache hit-rate audit (Chinese)](cache-hit-rate-audit.md) | Request-side capability gap, cross-protocol bucket projection, five-round review and industry synthesis comparison |
+| [Configurable conversion (Chinese)](conversion-implementation.md) | Rule inheritance, diagnostics, client output and signature recovery |
+| [Conversion boundaries (Chinese)](protocol-pair-guarantees.md) | Four-protocol capabilities, lossy mappings and rejection conditions |
+| [Reasoning and storage intent (Chinese)](protocol-reasoning.md) | Model capabilities, budgets, output limits, candidate isolation and store |
+| [Cache contracts](cache-usage-contracts.en.md) | Cache intent, breakpoint synthesis, usage fields and validation |
+| [Preset recovery (Chinese)](protocol-preset-recovery.md) | Startup recovery, retained custom data and diagnostics |
 
 ## Management APIs
 
@@ -33,6 +36,9 @@ Deployment, protocols, APIs, and development for Elysia API. Start with [quick s
 
 | Document | Contents |
 | --- | --- |
+| [Architecture (Chinese)](architecture.md) | Module responsibilities, request flow, Agent, sessions and jobs |
+| [Database reference (Chinese)](storage-schema.md) | Tables, encryption, migrations and accounting constraints |
+| [Protocol validation and release](protocol-release-readiness.en.md) | Test layers, commands, provider checks, performance and upgrades |
 | [Development](development.en.md) | Environment, local development, tests, cross-compilation, and release artifacts |
 | [WebUI development](../packages/webui/README.en.md) | Frontend commands, proxies, builds, and interaction conventions |
 | [macOS validation](macos-testing.en.md) | Native toolchain, automated checks, and device acceptance |

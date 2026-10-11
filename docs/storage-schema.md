@@ -1,22 +1,22 @@
-# Elysia-API 数据库表结构分析（2026-10-09）
+# 数据库存储参考
 
-> 一句话定位：**SQLite 单库 32 张表，分五组承载这座网关的全部持久化状态——「谁在调用」（核心业务）、「协议是什么」（协议体系）、「跨协议怎么转」（转换策略）、「账怎么算」（用量聚合）、「迁移到哪了」（元）。** 表结构本身编码了项目的核心不变量：内容寻址的不可变修订、CAS 乐观锁、密文载荷、触发器维护的单行计数器、以及「未上报 ≠ 上报为零」的统计口径。
+[文档索引](README.md) · [数据模型](webui-data-model.md) · [部署与备份](deployment.md)
 
-基线：分支 `deploy`，基于 2026-10-09 工作树。真实表数 **32**（CREATE TABLE 语句 33 条，其中 `usage_asset_refs` 有初始建表与生命周期迁移重建两条；另有瞬态表 `log_migration_refs` 由 RENAME 产生、事务内 DROP，不计入）。分组：核心业务 11 + 协议体系 8 + 转换策略 8 + 用量聚合 4 + 元 1。全部 DDL 位于 `backend/storage`（下文 file:line 均相对该目录，跨包引用给全路径）。
+SQLite 持久化模型源、令牌、协议修订、转换策略、任务、Agent 会话与用量。本文说明表结构及其约束；建表和迁移的定义以 `backend/storage` 源码为准。
 
-## 0. 全局机制
+## 全局机制
 
-**库与连接**：modernc.org/sqlite（纯 Go，无 CGO）；`SetMaxOpenConns(1)` 单连接（store.go:35）；PRAGMA 组合——WAL、busy_timeout=5000、**foreign_keys=ON**（所有 FK 实际生效，store.go:74）、synchronous=NORMAL、temp_store=MEMORY、cache_size=-65536（store.go:70-87）。
+**库与连接**：modernc.org/sqlite（纯 Go，无 CGO）；`SetMaxOpenConns(1)` 单连接（store.go）；PRAGMA 组合——WAL、busy_timeout=5000、**foreign_keys=ON**（所有 FK 实际生效，store.go）、synchronous=NORMAL、temp_store=MEMORY、cache_size=-65536（store.go）。
 
-**加密（secretCodec）**：AES-256-GCM，密文格式 `enc:v1:` + base64(nonce‖ciphertext)，密钥由主密钥 SHA256 派生（crypto.go:37-105）。幂等：已有前缀不二次加密；历史明文行读到原样返回；主密钥为空退化明文模式。行级解密失败**清空留行并告警**（decryptOrClear，crypto.go:138-145），不让一行坏密文拖垮整表扫描。启动时 `SecretIntegrityProbe` 试解一行密文探测密钥匹配（crypto.go:112-133）。
+**加密（secretCodec）**：AES-256-GCM，密文格式 `enc:v1:` + base64(nonce‖ciphertext)，密钥由主密钥 SHA256 派生（crypto.go）。幂等：已有前缀不二次加密；历史明文行读到原样返回；主密钥为空退化明文模式。行级解密失败**清空留行并告警**（decryptOrClear，crypto.go），不让一行坏密文拖垮整表扫描。启动时 `SecretIntegrityProbe` 试解一行密文探测密钥匹配（crypto.go）。
 
-**时间戳双轨制**：展示用 RFC3339Nano 字符串（`nowString`，store.go:119），排序/过滤用 Unix 毫秒整型列（`started_ms`/`created_ms`）。原因：RFC3339Nano 字符串字典序在整秒与毫秒精度混合时不可靠（migrate.go:158-162）。存量行有一次性分批回填（migrate.go:253-340，每事务 2000 行）。
+**时间戳双轨制**：展示用 RFC3339Nano 字符串（`nowString`，store.go），排序/过滤用 Unix 毫秒整型列（`started_ms`/`created_ms`）。原因：RFC3339Nano 字符串字典序在整秒与毫秒精度混合时不可靠（migrate.go）。存量行有一次性分批回填（migrate.go，每事务 2000 行）。
 
-**迁移三层**（store.go:88-97 执行顺序：`migrate()` → `migrateGenerationJobs()` → `migrateConversion()`（内含 evidence）→ `migrateLogLifecycle()`）：
+**迁移三层**（store.go 执行顺序：`migrate()` → `migrateGenerationJobs()` → `migrateConversion()`（内含 evidence）→ `migrateLogLifecycle()`）：
 
 | 层 | 机制 | 适用 |
 | --- | --- | --- |
-| 全量建表 | `CREATE TABLE IF NOT EXISTS` + 幂等 `ALTER TABLE ADD COLUMN`（addColumnIgnoreDup，store.go:100-108） | 结构补齐，每次启动重放 |
+| 全量建表 | `CREATE TABLE IF NOT EXISTS` + 幂等 `ALTER TABLE ADD COLUMN`（addColumnIgnoreDup，store.go） | 结构补齐，每次启动重放 |
 | 版本化标签 | `schema_migrations` 行门控，昂贵/一次性步骤 | 5 个版本行（见 §5） |
 | 一次性回填 | 分批事务 + 进度记录 | token_hash、started_ms、rollup 建表 |
 
@@ -30,8 +30,8 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, 
 
 | 字段 | 类型 | 约束 | 含义与读写 |
 | --- | --- | --- | --- |
-| key | TEXT | PK | 设置键；当前全库仅 `legacyConfigImported` 一键（旧 config 单次导入标记，server/store_bridge.go:11-70） |
-| value | TEXT | NOT NULL | `json.Marshal` 后的任意 JSON 值；写 `SetSetting`（UPSERT，store.go:131）/ 读 `GetSetting`（store.go:140） |
+| key | TEXT | PK | 设置键；当前全库仅 `legacyConfigImported` 一键（旧 config 单次导入标记，server/store_bridge.go） |
+| value | TEXT | NOT NULL | `json.Marshal` 后的任意 JSON 值；写 `SetSetting`（UPSERT，store.go）/ 读 `GetSetting`（store.go） |
 | updated_at | TEXT | NOT NULL | RFC3339Nano |
 
 无加密、无清理，永久保留。
@@ -48,15 +48,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash) 
 
 | 字段 | 类型 | 约束 | 含义与读写 |
 | --- | --- | --- | --- |
-| name | TEXT | PK | 令牌名；改名 = 主键 UPDATE（store.go:249） |
-| token | TEXT | NOT NULL | **enc:v1: 密文**；读 scanAPIToken（store.go:154-168） |
-| token_hash | TEXT | NOT NULL DEFAULT ''，部分唯一索引 | 明文 SHA256 全量 hex，同值去重（store.go:205-208；存量回填 migrate.go:120-157） |
-| enabled | INTEGER | DEFAULT 1 | 启停；组删除致授权清空时自动置 0 防扩权（models_groups.go:447-461） |
-| allowed_groups_json | TEXT（JSON） | DEFAULT '[]' | 允许访问的模型组名数组；空=不限（store.go:229-238；组改名/删除同步 models_groups.go:274/447） |
-| scopes | TEXT（JSON） | DEFAULT '[]' | 端点作用域；值域 ⊆ {`agent`}（types.go:166-182）；带 agent 时组强制 `["agent"]`（store.go:224-228）；与组授权正交——空 = 仅推理面 |
+| name | TEXT | PK | 令牌名；改名 = 主键 UPDATE（store.go） |
+| token | TEXT | NOT NULL | **enc:v1: 密文**；读 scanAPIToken（store.go） |
+| token_hash | TEXT | NOT NULL DEFAULT ''，部分唯一索引 | 明文 SHA256 全量 hex，同值去重（store.go；存量回填 migrate.go） |
+| enabled | INTEGER | DEFAULT 1 | 启停；组删除致授权清空时自动置 0 防扩权（models_groups.go） |
+| allowed_groups_json | TEXT（JSON） | DEFAULT '[]' | 允许访问的模型组名数组；空=不限（store.go；组改名/删除同步 models_groups.go/447） |
+| scopes | TEXT（JSON） | DEFAULT '[]' | 端点作用域；值域 ⊆ {`agent`}（types.go）；带 agent 时组强制 `["agent"]`（store.go）；与组授权正交——空 = 仅推理面 |
 | created_at / updated_at | TEXT | NOT NULL | RFC3339Nano |
 
-热路径读方：`loadTokensFromStore`（server/route_cache.go:197-212）构建鉴权缓存。无 TTL；物理删除仅 `DeleteAPIToken`（store.go:242）。
+热路径读方：`loadTokensFromStore`（server/route_cache.go）构建鉴权缓存。无 TTL；物理删除仅 `DeleteAPIToken`（store.go）。
 
 ### 1.3 model_sources — 模型源（多 Key 所在地）
 
@@ -71,19 +71,19 @@ ALTER TABLE model_sources ADD COLUMN cache_synthesis INTEGER NOT NULL DEFAULT 0
 
 | 字段 | 类型 | 约束 | 含义与读写 |
 | --- | --- | --- | --- |
-| id | TEXT | PK | 源 ID；写 upsertSource（sources.go:74-112） |
-| base_url | TEXT | NOT NULL | 请求端点 base；预置路径语义切换时批量重写（AppendSourceBaseURLSuffix，sources.go:534-580） |
+| id | TEXT | PK | 源 ID；写 upsertSource（sources.go） |
+| base_url | TEXT | NOT NULL | 请求端点 base；预置路径语义切换时批量重写（AppendSourceBaseURLSuffix，sources.go） |
 | api_key | TEXT | NOT NULL DEFAULT '' | 单 key 模式密文（enc:v1:） |
-| api_keys | TEXT | NOT NULL DEFAULT '' | **多 key 配置**：`[]SourceAPIKey{value/note/disabled/fetchedModels/allowedModels}`（types.go:73-81）JSON **整体加密**；空串 = 单 key 模式；刷新回写带 `updated_at` 乐观锁（CommitSourceRefresh，sources.go:413-461） |
-| platform | TEXT | NOT NULL | `openai`/`gemini`/`anthropic`/…或 `custom:<protocol_id>` 协议绑定引用；协议改名/归档同步重写（custom_protocol.go:101、protocol_history.go:135/148） |
-| auto_fetch_models | INTEGER | DEFAULT 1 | 自动拉取模型；决定 key 的 FetchedModels（自动发现集）与 AllowedModels（手动分配集）哪个生效，二者互斥清空（sources.go:78-85） |
+| api_keys | TEXT | NOT NULL DEFAULT '' | **多 key 配置**：`[]SourceAPIKey{value/note/disabled/fetchedModels/allowedModels}`（types.go）JSON **整体加密**；空串 = 单 key 模式；刷新回写带 `updated_at` 乐观锁（CommitSourceRefresh，sources.go） |
+| platform | TEXT | NOT NULL | `openai`/`gemini`/`anthropic`/…或 `custom:<protocol_id>` 协议绑定引用；协议改名/归档同步重写（custom_protocol.go、protocol_history.go/148） |
+| auto_fetch_models | INTEGER | DEFAULT 1 | 自动拉取模型；决定 key 的 FetchedModels（自动发现集）与 AllowedModels（手动分配集）哪个生效，二者互斥清空（sources.go） |
 | manual_models_json | TEXT（JSON） | DEFAULT '[]' | `[]Model` 手动模型权威集（明文 JSON） |
 | fetch_base_url | TEXT | DEFAULT '' | 模型列表拉取专用地址；空 = 与 base_url 一致 |
-| key_strategy | TEXT | DEFAULT 'single' | 枚举：`single`/`round-robin`/`random`/`priority`（types.go:92-99）；请求期展开候选（server/relay_retry.go:111-168） |
-| cache_synthesis | INTEGER | DEFAULT 0 | 为声明 cache.breakpoints 的上游补结构断点的运维开关（migrate.go:223-225） |
+| key_strategy | TEXT | DEFAULT 'single' | 枚举：`single`/`round-robin`/`random`/`priority`（types.go）；请求期展开候选（server/relay_retry.go） |
+| cache_synthesis | INTEGER | DEFAULT 0 | 为声明 cache.breakpoints 的上游补结构断点的运维开关（migrate.go） |
 | enabled / created_at / updated_at | — | — | 常规 |
 
-删除 = 应用层手级联事务（删源 + models + 组引用 + 相关 protocol_bindings，sources.go:143-165；models 表无 FK）。
+删除 = 应用层手级联事务（删源 + models + 组引用 + 相关 protocol_bindings，sources.go；models 表无 FK）。
 
 ### 1.4 models — 模型行（合并语义）
 
@@ -100,17 +100,17 @@ CREATE TABLE IF NOT EXISTS models (id TEXT NOT NULL, source_id TEXT NOT NULL DEF
 | 字段 | 类型 | 约束 | 含义与读写 |
 | --- | --- | --- | --- |
 | (id, source_id) | TEXT | 复合 PK | 模型身份；source_id='' 为 legacy 无源行 |
-| api_key | TEXT | DEFAULT '' | 源首个有效 key 的密文**冗余快照**，仅供健康检测等遗留方回退；热路径用源级 key 集（sources.go:186-190 注释） |
+| api_key | TEXT | DEFAULT '' | 源首个有效 key 的密文**冗余快照**，仅供健康检测等遗留方回退；热路径用源级 key 集（sources.go 注释） |
 | type | TEXT | DEFAULT 'llm' | 枚举：`llm`/`embedding` |
-| vision_capable / tools_capable / structured_output | INTEGER | DEFAULT 0 | 能力位；tools_capable 可经 Agent nonce 探针实证置位（EnableModelFunctionTools，protocol_history.go:320-331） |
-| thinking_mode | TEXT | DEFAULT 'both' | 已见值 `both`/`non-thinking-only`（目录回填 model_catalog.go:666-668） |
-| available | INTEGER | DEFAULT 1 | **健康位**（健康检测自动翻转，models_groups.go:486-492）；可调度 = enabled && available（types.go:116-118） |
+| vision_capable / tools_capable / structured_output | INTEGER | DEFAULT 0 | 能力位；tools_capable 可经 Agent nonce 探针实证置位（EnableModelFunctionTools，protocol_history.go） |
+| thinking_mode | TEXT | DEFAULT 'both' | 已见值 `both`/`non-thinking-only`（目录回填 model_catalog.go） |
+| available | INTEGER | DEFAULT 1 | **健康位**（健康检测自动翻转，models_groups.go）；可调度 = enabled && available（types.go） |
 | enabled | INTEGER | DEFAULT 1 | 用户手动启停 |
-| origin | TEXT | DEFAULT 'fetched' | 枚举：`fetched`（刷新合并替换）/ `manual`（刷新永不触碰、上游消失不删，sources.go:242-252） |
-| capability_source | TEXT | DEFAULT '' | 枚举：`''` 未知 / `catalog` 目录回填可覆盖 / `manual` 用户手改刷新保留（migrate.go:226-229） |
+| origin | TEXT | DEFAULT 'fetched' | 枚举：`fetched`（刷新合并替换）/ `manual`（刷新永不触碰、上游消失不删，sources.go） |
+| capability_source | TEXT | DEFAULT '' | 枚举：`''` 未知 / `catalog` 目录回填可覆盖 / `manual` 用户手改刷新保留（migrate.go） |
 | last_checked_at | TEXT | NOT NULL | 最近刷新/健康检查时刻 |
 
-写入核心是**合并非替换**：`MergeSourceModels`（fetch 路径保留 manual 行）与 `SyncManualSourceModels`（manual 权威集）；上游消失的 fetched 行由 sweepMissing 删除并同步清组内引用（sources.go:375-392）。历史遗留：Gemini 模型 ID 的 `models/` 前缀一次性剥离迁移（models_groups.go:675-744）。
+写入核心是**合并非替换**：`MergeSourceModels`（fetch 路径保留 manual 行）与 `SyncManualSourceModels`（manual 权威集）；上游消失的 fetched 行由 sweepMissing 删除并同步清组内引用（sources.go）。历史遗留：Gemini 模型 ID 的 `models/` 前缀一次性剥离迁移（models_groups.go）。
 
 ### 1.5 model_groups — 模型组（调度策略载体）
 
@@ -126,13 +126,13 @@ CREATE TABLE IF NOT EXISTS model_groups (id TEXT PRIMARY KEY, name TEXT NOT NULL
 | 字段 | 类型 | 约束 | 含义 |
 | --- | --- | --- | --- |
 | name | TEXT | **UNIQUE** | 组名（token 的 allowed_groups 按名引用；同名会令按名查找恒命中首个，故唯一） |
-| strategy | TEXT | DEFAULT 'round-robin' | 枚举：`round-robin`（游标轮询）/ `random`（随机起点环绕）/ `sequential`（失败按序回退）（server/relay_retry.go:47-70） |
+| strategy | TEXT | DEFAULT 'round-robin' | 枚举：`round-robin`（游标轮询）/ `random`（随机起点环绕）/ `sequential`（失败按序回退）（server/relay_retry.go） |
 | max_retries / retry_interval | INTEGER | 3 / 1000 | 组内重试次数与间隔（ms） |
-| max_concurrency | INTEGER | DEFAULT 0 | 并发上限；0=不限（执行 server.go:727-772） |
+| max_concurrency | INTEGER | DEFAULT 0 | 并发上限；0=不限（执行 server.go） |
 | daily_limit_max_requests / daily_limit_max_tokens | INTEGER | DEFAULT 0 | 每日请求/token 限额；0=不限 |
 | type / max_tokens / vision_capable / tools_capable | — | — | 组级类型与能力默认值 |
 
-删除组时级联清理 token 组授权，授权被清空的 token 自动禁用（models_groups.go:413-439 + 447-461）。
+删除组时级联清理 token 组授权，授权被清空的 token 自动禁用（models_groups.go + 447-461）。
 
 ### 1.6 model_group_models — 组成员引用
 
@@ -144,14 +144,14 @@ CREATE TABLE IF NOT EXISTS model_group_models (group_id TEXT NOT NULL, model_id 
 
 | 字段 | 类型 | 约束 | 含义 |
 | --- | --- | --- | --- |
-| (group_id, model_id, source_id) | TEXT | 三列复合 PK | 成员身份；source_id 与模型复合键对齐（'' 为旧数据裸 id，装配端按 id 回退，models_groups.go:143-148） |
-| position | INTEGER | DEFAULT 0 | 组内顺序 = 调度优先级；新成员排 MAX(position)+1 之后（models_groups.go:329-347） |
+| (group_id, model_id, source_id) | TEXT | 三列复合 PK | 成员身份；source_id 与模型复合键对齐（'' 为旧数据裸 id，装配端按 id 回退，models_groups.go） |
+| position | INTEGER | DEFAULT 0 | 组内顺序 = 调度优先级；新成员排 MAX(position)+1 之后（models_groups.go） |
 
-DB 级联仅 group_id；models 侧删除靠应用层事务同步（sources.go:158、models_groups.go:605）。UpsertGroup 成员写入为「先 DELETE 全组再按 position 重插」。
+DB 级联仅 group_id；models 侧删除靠应用层事务同步（sources.go、models_groups.go）。UpsertGroup 成员写入为「先 DELETE 全组再按 position 重插」。
 
 ### 1.7 usage_records — 用量/请求日志主表（胖行）
 
-最终形态 = 建表（migrate.go:26）+ 六次增量列（cache_hit_tokens / cache_creation_tokens / usage_report_mask / started_ms / source_id / content_bytes）：
+最终形态 = 建表（migrate.go）+ 六次增量列（cache_hit_tokens / cache_creation_tokens / usage_report_mask / started_ms / source_id / content_bytes）：
 
 ```sql
 CREATE TABLE IF NOT EXISTS usage_records (request_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, ended_at TEXT NOT NULL,
@@ -171,20 +171,20 @@ CREATE INDEX IF NOT EXISTS idx_usage_agg_cover ON usage_records(started_ms, mode
 
 | 字段 | 含义 |
 | --- | --- |
-| request_id | 请求 ID；异步任务结算行为 SettlementID；`ON CONFLICT DO NOTHING` 禁止重复落库覆盖（rollup 一致性，usage_logs.go:34-37） |
+| request_id | 请求 ID；异步任务结算行为 SettlementID；`ON CONFLICT DO NOTHING` 禁止重复落库覆盖（rollup 一致性，usage_logs.go） |
 | started_ms | Unix 毫秒排序/过滤专用（字符串序不可靠）；存量已回填 |
-| key_hash | 令牌**短哈希**（SHA256 前 8 hex，server/usage.go:141-144）——与 api_tokens.token_hash 全量哈希是两个口径 |
+| key_hash | 令牌**短哈希**（SHA256 前 8 hex，server/usage.go）——与 api_tokens.token_hash 全量哈希是两个口径 |
 | group_id / model_id | **遗留列**：当前 INSERT 列清单不含，恒为默认 '' |
 | source_format / target_format | 协议转换入/出格式（ingress/definition ID） |
 | relay_mode | 枚举：`protocol_v2` / `protocol_v2_websocket` / `protocol_v2_async` / `agent-assist` |
-| usage_source | 枚举：`protocol_estimate`（估算）/ `protocol_observed`（观测）/ `maheshvara_estimate`（历史改写产物，migrate.go:411-449） |
-| status_code | HTTP 状态码；**499 = 客户端提前断开哨兵**（server/constants.go:16）；2xx-3xx 为成功谓词（queries.go:15-16） |
+| usage_source | 枚举：`protocol_estimate`（估算）/ `protocol_observed`（观测）/ `maheshvara_estimate`（历史改写产物，migrate.go） |
+| status_code | HTTP 状态码；**499 = 客户端提前断开哨兵**（server/constants.go）；2xx-3xx 为成功谓词（queries.go） |
 | cache_creation_tokens | 仅当 usage_report_mask 置 bit2 时为上游上报值；历史行 0 |
-| usage_report_mask | 位掩码 bit0=input / bit1=cache_hit / bit2=cache_creation 上报位；**缺位 = 上游未报告，不得当零**（types.go:277-281） |
-| record_json | **胖列**：完整 usageRecord JSON（四段 body、usage 明细、warnings、conversionIssues）；BodyOnErrorOnly 时成功请求四段 body 清空（server/usage_sqlite.go:23-28） |
+| usage_report_mask | 位掩码 bit0=input / bit1=cache_hit / bit2=cache_creation 上报位；**缺位 = 上游未报告，不得当零**（types.go） |
+| record_json | **胖列**：完整 usageRecord JSON（四段 body、usage 明细、warnings、conversionIssues）；BodyOnErrorOnly 时成功请求四段 body 清空（server/usage_sqlite.go） |
 | content_bytes | 内容记账字节 = len(record_json)，驱动配额修剪与页面回收 |
 
-覆盖索引 `idx_usage_agg_cover` 服务 KPI/按模型/按日聚合的 index-only 扫描；写入口 `SaveUsageRecordJSON`（与 rollup 同事务 UPSERT）。**保留策略**：后台 worker 按 retentionDays / maxRecords / maxContentMB 三策略分批修剪（每事务 ≤500 最旧行，server/usage_retention.go:151-268；PruneLogBatch log_maintenance.go:125-198），修剪后 incremental_vacuum 回收空闲页；**rollup 不随修剪删除**——logs 分页用 raw 口径、stats 聚合用 rollup 口径（usage_logs.go:46-50 注释）。
+覆盖索引 `idx_usage_agg_cover` 服务 KPI/按模型/按日聚合的 index-only 扫描；写入口 `SaveUsageRecordJSON`（与 rollup 同事务 UPSERT）。**保留策略**：后台 worker 按 retentionDays / maxRecords / maxContentMB 三策略分批修剪（每事务 ≤500 最旧行，server/usage_retention.go；PruneLogBatch log_maintenance.go），修剪后 incremental_vacuum 回收空闲页；**rollup 不随修剪删除**——logs 分页用 raw 口径、stats 聚合用 rollup 口径（usage_logs.go 注释）。
 
 ### 1.8 system_logs — 系统日志
 
@@ -213,9 +213,9 @@ CREATE TABLE IF NOT EXISTS custom_protocols (id TEXT PRIMARY KEY, name TEXT NOT 
 | 字段 | 含义 |
 | --- | --- |
 | id | 协议 ID（COLLATE NOCASE 处理改名/对账）；**必须与 config JSON 内部 "id" 一致**——启动对账 `ReconcileCustomProtocolConfigIDs` 以行 id 为准修历史库 |
-| config | 用户提交的完整协议定义**原始 JSON**，未知字段不丢（custom_protocol.go:14-16 注释）；改名时内部 id 字段被 map 形态改写 |
+| config | 用户提交的完整协议定义**原始 JSON**，未知字段不丢（custom_protocol.go 注释）；改名时内部 id 字段被 map 形态改写 |
 
-与 platform 列的耦合：`custom:<protocol_id>` 被 model_sources/models.platform 引用；改名与归档都会同步重写引用及 v2 注册表七张表 + agent_sessions.protocol_id（protocol_history.go:138-223）。归档 = 拷入 protocol_history（reason='custom_deleted'）后物理删除本表行；预置行只读不可归档。
+与 platform 列的耦合：`custom:<protocol_id>` 被 model_sources/models.platform 引用；改名与归档都会同步重写引用及 v2 注册表七张表 + agent_sessions.protocol_id（protocol_history.go）。归档 = 拷入 protocol_history（reason='custom_deleted'）后物理删除本表行；预置行只读不可归档。
 
 ### 1.10 agent_sessions — AI 助手会话
 
@@ -234,12 +234,12 @@ CREATE TABLE IF NOT EXISTS agent_sessions (id TEXT PRIMARY KEY, title TEXT NOT N
 | --- | --- |
 | id | `as_<UnixNano>_<12hex>` |
 | mode | 枚举：`create` / `edit` |
-| seed_config / draft_config / draft_restore | 三个 JSON：编辑模式初始配置 / 最新草稿 / **单槽还原点**（最近一轮修改前副本，SessionStateUpdate.DraftRestore 非 nil 即覆盖，agent/store.go:120） |
-| test_api_key | **enc:v1: 密文**；管理面永不回传明文，只给 TestAPIKeySet 布尔（agent_session.go:16-19 文件头注释） |
+| seed_config / draft_config / draft_restore | 三个 JSON：编辑模式初始配置 / 最新草稿 / **单槽还原点**（最近一轮修改前副本，SessionStateUpdate.DraftRestore 非 nil 即覆盖，agent/store.go） |
+| test_api_key | **enc:v1: 密文**；管理面永不回传明文，只给 TestAPIKeySet 布尔（agent_session.go 文件头注释） |
 | thinking_effort | 枚举：''/low/medium/high/xhigh/max/adaptive |
-| allow_live_test / allow_save / allow_delete | 权限三列，枚举：`ask` / `always` / `never`（写入前归一化，agent/store.go:172-179） |
+| allow_live_test / allow_save / allow_delete | 权限三列，枚举：`ask` / `always` / `never`（写入前归一化，agent/store.go） |
 | max_model_calls | 单轮工具循环上限；0=默认，1..100 钳制 |
-| status | 状态机：`idle` / `running` / `waiting_approval`；**启动对账 running→idle，waiting_approval 保留**（ResetRunningSessions，agent_session.go:499-504） |
+| status | 状态机：`idle` / `running` / `waiting_approval`；**启动对账 running→idle，waiting_approval 保留**（ResetRunningSessions，agent_session.go） |
 | pending_action | **唯一可空列**（显式 NULL = 无待批）：PendingAction JSON{Kind: approval/question/plan, 剩余 Calls, Question, Plan…} |
 | plan_json / plan_summary | 工作方案清单 `[]PlanStep{title,status}` 与分析摘要 |
 
@@ -258,13 +258,13 @@ CREATE TABLE IF NOT EXISTS agent_messages (id INTEGER PRIMARY KEY AUTOINCREMENT,
 | (session_id, seq) | 逻辑身份；seq 事务内 MAX+1 分配、单调，按序回放完整轮次 |
 | role | 枚举：`user` / `assistant` / `tool_result` / `approval` / `system` |
 | content | **多态 JSON**：按 role 不同结构（UserContent{Text,Documents} / AssistantContent{Content,Text,Reasoning,ToolCalls} / ToolResultInfo / ApprovalContent{Decision,Names,Note} / SystemContent{Text,Kind:error\|info\|summary,BoundarySeq}） |
-| usage_json | assistant 消息用量；**空串 = 非 assistant 落库值**——聚合必须先判空防 json_extract malformed（agent_session.go:96-103，见测试踩坑） |
+| usage_json | assistant 消息用量；**空串 = 非 assistant 落库值**——聚合必须先判空防 json_extract malformed（agent_session.go，见测试踩坑） |
 
-上下文压缩不删历史行——摘要作为 SystemContent{Kind:"summary",BoundarySeq} 边界消息**追加**（agent/context.go:59）。截断 = 删除 seq > afterSeq 并复位会话状态。
+上下文压缩不删历史行——摘要作为 SystemContent{Kind:"summary",BoundarySeq} 边界消息**追加**（agent/context.go）。截断 = 删除 seq > afterSeq 并复位会话状态。
 
 ## 2. 协议体系（8 表）
 
-生命周期主线：**草稿（CAS）→ 验证（写不可变修订 + 报告）→ 激活（指针 CAS + generation+1）→ 归档（入 history）**。管理路由见 server/protocol_revision_admin.go:77-84。
+生命周期主线：**草稿（CAS）→ 验证（写不可变修订 + 报告）→ 激活（指针 CAS + generation+1）→ 归档（入 history）**。管理路由见 server/protocol_revision_admin.go。
 
 ### 2.1 protocol_revisions — 内容寻址不可变修订库
 
@@ -275,7 +275,7 @@ CREATE TABLE IF NOT EXISTS protocol_revisions (protocol_id TEXT NOT NULL, conten
 
 | 字段 | 含义 |
 | --- | --- |
-| (protocol_id, content_hash) | 复合 PK 即**内容寻址**：编译产物规范化 JSON 的哈希；唯一写入路径 `INSERT … ON CONFLICT DO NOTHING`（protocol_revision.go:144-146）——既有哈希永不编辑，任何"修改"都产生新行 |
+| (protocol_id, content_hash) | 复合 PK 即**内容寻址**：编译产物规范化 JSON 的哈希；唯一写入路径 `INSERT … ON CONFLICT DO NOTHING`（protocol_revision.go）——既有哈希永不编辑，任何"修改"都产生新行 |
 | definition | 完整协议定义 JSON |
 | created_at | 列表按 created_at DESC, content_hash 排序 |
 
@@ -288,7 +288,7 @@ CREATE TABLE IF NOT EXISTS protocol_drafts (protocol_id TEXT PRIMARY KEY, conten
   definition TEXT NOT NULL, updated_at TEXT NOT NULL)
 ```
 
-每协议至多一份草稿；允许保存编译失败的不完整内容。**CAS 语义**：expected=="" 时 INSERT ON CONFLICT DO NOTHING（已存在即 ErrRevisionConflict）；否则 UPDATE WHERE protocol_id=? AND content_hash=?，影响行数≠1 即冲突（protocol_revision.go:81-97）。content_hash 为服务端规范化重算值，客户端不能自带。预置 ID 一律拒写（registry.go:73-75）。
+每协议至多一份草稿；允许保存编译失败的不完整内容。**CAS 语义**：expected=="" 时 INSERT ON CONFLICT DO NOTHING（已存在即 ErrRevisionConflict）；否则 UPDATE WHERE protocol_id=? AND content_hash=?，影响行数≠1 即冲突（protocol_revision.go）。content_hash 为服务端规范化重算值，客户端不能自带。预置 ID 一律拒写（registry.go）。
 
 ### 2.3 protocol_activations — 激活指针
 
@@ -301,9 +301,9 @@ CREATE TABLE IF NOT EXISTS protocol_activations (protocol_id TEXT PRIMARY KEY, r
 | 字段 | 含义 |
 | --- | --- |
 | revision_hash | 当前激活的不可变修订；FK 保证指向存在的修订 |
-| generation | 单调激活代数，每次激活 +1（SetProtocolActivation，protocol_revision.go:257-259）；激活前事务内 SELECT 比对 expected，不匹配即 ErrRevisionConflict |
+| generation | 单调激活代数，每次激活 +1（SetProtocolActivation，protocol_revision.go）；激活前事务内 SELECT 比对 expected，不匹配即 ErrRevisionConflict |
 
-激活门槛在 Service 层：`loadVerifiedRevision` 重编译、要求当前引擎下 kind=offline 的通过报告（registry.go:250-273）。回滚 = 同一函数（Rollback）。
+激活门槛在 Service 层：`loadVerifiedRevision` 重编译、要求当前引擎下 kind=offline 的通过报告（registry.go）。回滚 = 同一函数（Rollback）。
 
 ### 2.4 protocol_verification_reports — 验证报告（append-only）
 
@@ -317,11 +317,11 @@ CREATE INDEX idx_protocol_reports_revision ON protocol_verification_reports(prot
 
 | 字段 | 含义 |
 | --- | --- |
-| compiler_version / samples_hash | 三重哈希之二、之三（definitionHash 在 report JSON 内）；`IsCurrent` 三元组比对，引擎或样例集变化即报告过期（diagnostic.go:151-155） |
+| compiler_version / samples_hash | 三重哈希之二、之三（definitionHash 在 report JSON 内）；`IsCurrent` 三元组比对，引擎或样例集变化即报告过期（diagnostic.go） |
 | kind | `offline`（可授权激活）/ `upstream`（真实上游在线探针，只追加不回写） |
 | report | VerificationReport 整体 JSON（checks、issues） |
 
-索引恰好覆盖「取某修订某引擎某 kind 最新一份」与 upstream 历史 LIMIT 20 两类查询。写入前强制 hash == report.DefinitionHash（protocol_revision.go:192-194）。
+索引恰好覆盖「取某修订某引擎某 kind 最新一份」与 upstream 历史 LIMIT 20 两类查询。写入前强制 hash == report.DefinitionHash（protocol_revision.go）。
 
 ### 2.5 protocol_bindings — 能力合同 JSON 载体
 
@@ -331,10 +331,10 @@ CREATE TABLE IF NOT EXISTS protocol_bindings (binding_key TEXT PRIMARY KEY, bind
 
 | 字段 | 含义 |
 | --- | --- |
-| binding_key | `json.Marshal([kind,sourceId,modelId,groupId])`；kind ∈ source/model/group，各自字段组合受校验（protocol_binding.go:25-46） |
+| binding_key | `json.Marshal([kind,sourceId,modelId,groupId])`；kind ∈ source/model/group，各自字段组合受校验（protocol_binding.go） |
 | binding | ProtocolBinding JSON：`conversion`（钉住的转换策略修订）、`unbound`（显式解绑标志）、`binding`（protocolId/revisionHash/capabilities/transports）、`combinations`（组合验证证据） |
 
-设计意图：与模型目录元数据分离，**目录刷新不覆盖操作员合同**（protocol_binding.go:11-12 注释）。写入口四类：手工保存、托管保存（同事务联动改 platform 列 + conversion_generation CAS）、转换策略激活派生写入、Agent 实证启用工具能力。源删除时按 json_extract(sourceId) 级联删（sources.go:161）。
+设计意图：与模型目录元数据分离，**目录刷新不覆盖操作员合同**（protocol_binding.go 注释）。写入口四类：手工保存、托管保存（同事务联动改 platform 列 + conversion_generation CAS）、转换策略激活派生写入、Agent 实证启用工具能力。源删除时按 json_extract(sourceId) 级联删（sources.go）。
 
 ### 2.6 protocol_history — 归档簿记
 
@@ -351,7 +351,7 @@ CREATE INDEX idx_protocol_history_time ON protocol_history(archived_at DESC,id)
 | reason | `preset_replaced`（引擎升级换版归档）/ `custom_deleted`（用户删除自定义协议） |
 | is_draft | 1 = 该行来自草稿归档 |
 
-**三层只读守卫**：删除历史时预置协议一律拒绝（「preset_replaced 历史行随引擎更新保留」）；五类活引用（激活/草稿/绑定/任务/Agent 会话）非空拒绝；否则删 reports → revisions → history 行（protocol_history.go:272-305）。**坏库降级**：表缺失（拷库丢 WAL）时归档降级跳过并告警，不阻塞预置升级（:34-39；回归测试 baseline_missing_table_test.go）。
+**三层只读守卫**：删除历史时预置协议一律拒绝（「preset_replaced 历史行随引擎更新保留」）；五类活引用（激活/草稿/绑定/任务/Agent 会话）非空拒绝；否则删 reports → revisions → history 行（protocol_history.go）。**坏库降级**：表缺失（拷库丢 WAL）时归档降级跳过并告警，不阻塞预置升级（:34-39；回归测试 baseline_missing_table_test.go）。
 
 ### 2.7 generation_jobs — 异步生成任务（双密文载荷 + 租约）
 
@@ -364,11 +364,11 @@ CREATE INDEX idx_generation_jobs_due ON generation_jobs(phase,next_attempt,lease
 
 | 字段 | 含义 |
 | --- | --- |
-| (owner_hash, deduplication_hash) | 幂等预留键：owner = API key 哈希（Read 时属主鉴权）；dedup = sha256(owner‖ingress‖idempotencyKey)；`ON CONFLICT DO NOTHING` + RequestHash 不一致 → ErrIdempotencyConflict（job_coordinator.go:59-63） |
+| (owner_hash, deduplication_hash) | 幂等预留键：owner = API key 哈希（Read 时属主鉴权）；dedup = sha256(owner‖ingress‖idempotencyKey)；`ON CONFLICT DO NOTHING` + RequestHash 不一致 → ErrIdempotencyConflict（job_coordinator.go） |
 | phase | 状态机：`submitting`/`uncertain`/`polling`/`fetching_result`/`terminal`；迁移守卫 CheckJobTransition |
 | revision | 乐观锁版本，每次写 +1（WHERE id=? AND revision=? CAS） |
-| next_attempt / lease_until | Unix 毫秒；认领条件 `lease_until<=now`（提交期租约到期被认领 → 直接转 uncertain，**绝不自动重放提交**，job_coordinator.go:169-173）；认领后续约 40s |
-| job / result | **两段独立加密**：result 单独 marshal+encrypt 后置 nil，再整体 marshal+encrypt（protocol_job.go:35-54）；任务从不持久化凭证或提示词（job.go:35-37 注释） |
+| next_attempt / lease_until | Unix 毫秒；认领条件 `lease_until<=now`（提交期租约到期被认领 → 直接转 uncertain，**绝不自动重放提交**，job_coordinator.go）；认领后续约 40s |
+| job / result | **两段独立加密**：result 单独 marshal+encrypt 后置 nil，再整体 marshal+encrypt（protocol_job.go）；任务从不持久化凭证或提示词（job.go 注释） |
 
 **无删除路径**——终态任务（含结果）永久保留供结果 API 与审计。先预留后 I/O：Submit 先落库拿 ID 再发上游。
 
@@ -384,11 +384,11 @@ CREATE TABLE IF NOT EXISTS generation_job_settlements (job_id TEXT PRIMARY KEY, 
 | settlement_id | 结算幂等键（= 请求 ID）；usage 写入按它幂等（重复投递兜底） |
 | is_delivered | 投递确认位，usage 落库成功后置 1 |
 
-动机（protocol_job.go:134-136 注释）：「Delivery uses an outbox because providers cannot join SQLite's tx」——终态记账与任务更新**同事务入队**，投递独立重试；崩溃可能重复投递但幂等键兜底。父行永不删除故无孤儿。
+动机（protocol_job.go 注释）：「Delivery uses an outbox because providers cannot join SQLite's tx」——终态记账与任务更新**同事务入队**，投递独立重试；崩溃可能重复投递但幂等键兜底。父行永不删除故无孤儿。
 
 ## 3. 转换策略（8 表）
 
-迁移门控版本 `2026100801`（+ 完成标记与 6 表存在性校验，坏库重入防御，conversion.go:23-35）；evidence 两表独立版本 `2026100802`。
+迁移门控版本 `2026100801`（+ 完成标记与 6 表存在性校验，坏库重入防御，conversion.go）；evidence 两表独立版本 `2026100802`。
 
 ### 3.1 conversion_policy_drafts / 3.2 revisions / 3.3 activations — 策略三件套
 
@@ -406,7 +406,7 @@ CREATE TABLE conversion_policy_activations (id TEXT PRIMARY KEY, hash TEXT NOT N
 | revisions | 内容寻址 (id,hash)；UPSERT 冲突时**只更新 reports/compiler_version，不改 document**（不可变部分）；激活时 compiler_version 必须等于当前引擎否则 "policy verification is stale" |
 | activations | 策略自身激活代数（每次 +1，区别于全局 conversion_generation）；selector = ConversionMatch JSON，服务端白名单只放行协议对字段（sourceId/targetId/family/wire），model/operation/path 等被拒 |
 
-激活是重事务：generation CAS + 激活 CAS + 绑定读集全量比对 + 派生绑定写入（conversion.go:208-261）。
+激活是重事务：generation CAS + 激活 CAS + 绑定读集全量比对 + 派生绑定写入（conversion.go）。
 
 ### 3.4 conversion_provider_evidence — 上游签名探针证据（30 天时效）
 
@@ -424,7 +424,7 @@ CREATE TABLE conversion_provider_evidence (policy_hash TEXT NOT NULL, rule_id TE
 | compiler | 引擎版本；升级即全部失效 |
 | expires_at | Unix 秒，写入 now+30 天，读取过滤 expires_at>now；UPSERT 续期 |
 
-探针是显式管理动作：合成请求、**绝不执行 provider 返回的工具**（server/conversion_probe.go:40-42 注释）。
+探针是显式管理动作：合成请求、**绝不执行 provider 返回的工具**（server/conversion_probe.go 注释）。
 
 ### 3.5 conversion_policy_evidence — 策略验证审计流水（append-only）
 
@@ -454,7 +454,7 @@ CREATE INDEX idx_continuation_session  ON protocol_continuations(owner,session,s
 | session | 客户端会话 ID（header/body，≤512 字符）；空串 = 仅客户端载体不入库 |
 | scope_key | 上游 scope（账号+模型+协议）的 HMAC 摘要 |
 | parent | 本轮之前历史的键控摘要；轮次裁剪按 parent 分组 |
-| ordinal + digest | 轮内节点序号 + 节点内容 HMAC 摘要；**tool_call 按内容摘要匹配、跳过 ordinal**（conversion.go:330-333） |
+| ordinal + digest | 轮内节点序号 + 节点内容 HMAC 摘要；**tool_call 按内容摘要匹配、跳过 ordinal**（conversion.go） |
 | ciphertext | `elysia-continuation.v1.` + base64(nonce‖AES-GCM(record))；写入强制前缀与长度上限且必须启用加密 |
 | created_at | **UnixNano**——驱逐 LRU 键与轮次排序用 |
 | expires_at | Unix 秒（来自密文内记录） |
@@ -469,7 +469,7 @@ CREATE TABLE conversion_generation (id INTEGER PRIMARY KEY CHECK(id=1), generati
 -- models、model_sources、model_groups 五张表上，每次变更 bump generation+1
 ```
 
-业务代码**从不直接 UPDATE**，只由触发器维护。用途：管理端读快照拿 generation → 编辑 → 提交时 `expectedGeneration != actual` → ErrRevisionConflict，拒绝基于过期派生证据的并发写（conversion_snapshot.go:102-114）。
+业务代码**从不直接 UPDATE**，只由触发器维护。用途：管理端读快照拿 generation → 编辑 → 提交时 `expectedGeneration != actual` → ErrRevisionConflict，拒绝基于过期派生证据的并发写（conversion_snapshot.go）。
 
 ### 3.8 continuation_totals — 续传统计（单行触发器表）
 
@@ -495,9 +495,9 @@ CREATE TABLE IF NOT EXISTS usage_rollup_hour (hour_ms INTEGER NOT NULL, model_na
   PRIMARY KEY (hour_ms, model_name, group_name, key_name, status_code)) WITHOUT ROWID
 ```
 
-- **桶粒度**：hour × model × group × key × status 五维；不含 key_hash/source_id——带这些筛选的查询整体回退 raw 路径（rollup_query.go:24-27）。
+- **桶粒度**：hour × model × group × key × status 五维；不含 key_hash/source_id——带这些筛选的查询整体回退 raw 路径（rollup_query.go）。
 - **UPSERT 累计**：与原始行写入同事务；cnt/in/out/total/cache/cc tokens 累加，min/max 用 SQL MIN/MAX 合并；fb_ms_sum 只收 first_byte_ms>0 的记录。
-- **cc_rows**：桶内「真正上报了创建计数」的行数（usage_report_mask & 4 才 +1）——把「全桶未上报」与「上报为零」分开，聚合侧用 creationCoverage（usage_aggregates.go:505-507）。
+- **cc_rows**：桶内「真正上报了创建计数」的行数（usage_report_mask & 4 才 +1）——把「全桶未上报」与「上报为零」分开，聚合侧用 creationCoverage（usage_aggregates.go）。
 - **WITHOUT ROWID**：PK 即表结构，范围扫描与 UPSERT 都走主键。
 - **回填/重建/审计**：raw 是唯一事实来源——6 小时分块重建可重放；就绪后按小时对账，只修「rollup < raw」的漏计方向，反方向（retention 删过 raw）保留 rollup 计数。**retention 修剪不动本表**。
 
@@ -583,4 +583,4 @@ CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, appli
 - **conversion_policy_evidence 只写不读**：纯审计流水；若需回溯展示需补读取路径。
 - **generation_jobs 永不删除**：审计与结果 API 依赖；长期运行库需关注体积（无 TTL 设计）。
 - **rollup 与 raw 双口径**：retention 删 raw 不删 rollup——logs 分页与 stats 聚合数字可能不一致，属有意设计（聚合保全历史）。
-- **坏库容忍集中在启动路径**：历史/簿记类可选表的读写都容忍 no such table（真实案例：拷库丢 WAL）。
+- **坏库容忍集中在启动路径**：历史/簿记类可选表的读写都容忍 no such table。

@@ -1,6 +1,6 @@
 # 协议引擎、编辑器与原生 Agent
 
-[English](protocol-guide.en.md) · [定义参考](protocol-definition-reference.md) · [验收与边界](protocol-release-readiness.md)
+[文档索引](README.md) · [English](protocol-guide.en.md) · [定义参考](protocol-definition-reference.md) · [验证方法](protocol-release-readiness.md)
 
 网关通过一套 `backend/protocol` 引擎运行内置协议和自定义协议。编辑器、Agent、预览、离线验证和真实转发共用编译器、语义模型与不可变修订；relay 负责传输和路由装配。旧 Maheshvara 转换器与模板执行器已删除，旧配置只可导入迁移。
 
@@ -67,13 +67,13 @@ flowchart LR
 
 修改 `ttl` 会修改目标字段；省略表示删除，显式 null 保持 null。不要在 `value.ttl` 再保存一份。Chat 自定义副本携带块断点时须声明并用样例证明 `cache.breakpoints`，内置 Chat 默认不替请求开启此能力。缓存 key/retention 与 Gemini 资源引用不能当作同一种缓存对象。
 
-新自定义字段路径用声明式读取/构造映射到 `cache`、节点 `cache` 或 `usage`。统计缺失与明确零值分开；自定义别名用 `exists` 判断存在性，不用真假值选择，确保 0 覆盖旧计数。完整 HTTP 验收见 `cache_custom_v2_test.go`，别名覆盖见 `usage_alias_test.go`。无缓存标记请求不会被补标记。
+新自定义字段路径用声明式读取/构造映射到 `cache`、节点 `cache` 或 `usage`。统计缺失与明确零值分开；自定义别名用 `exists` 判断存在性，不用真假值选择，确保 0 覆盖旧计数。完整 HTTP 验收见 `cache_custom_v2_test.go`，别名覆盖见 `usage_alias_test.go`。默认不为无缓存标记请求补标记；模型源显式启用 `cacheSynthesis` 后，可向声明 `cache.breakpoints` 的目标补充结构断点，详见[缓存契约](cache-usage-contracts.md#缓存意图与断点合成)。
 
 ## 迁移、升级与恢复
 
 升级前保留旧程序，以及配置、数据库和匹配主密钥的备份。启动先检查并恢复四个预置，历史备份异常不阻断补建。若必要迁移失败，用管理 API 的 `/protocols/migration/preview` 检查整个图，按诊断修复，再用相同意图提交 `/migration/apply`。服务端重新计算验证，不接受客户端伪造报告。纯新增直接事务提交；覆盖已有数据前创建或复用当前一致性快照，失败进入可修复的管理状态。以协议接口的 `runtimeReady` 和实际加载状态确认就绪。
 
-未编辑预置按完整历史内容指纹升级；用户修改内容不覆盖。引擎升级会重验已启用修订和绑定，保留用户草稿与停用状态。旧语义样例含 `value.ttl` 的自定义协议需将 TTL 移到相邻字段再验证。详见[迁移机制](protocol-migration-v2.md)及 [C16 契约](protocol-cutover-v2.md)。
+四份内置预置只读并随程序更新；需要定制时复制为新 ID。引擎升级会重验自定义修订与绑定，保留自定义原文、草稿及显式未绑定状态。旧语义样例含 `value.ttl` 的自定义协议需将 TTL 移到相邻字段再验证。详见[迁移机制](protocol-migration-v2.md)及 [运行时契约](protocol-cutover-v2.md)。
 
 协议修订回滚与程序/数据库回滚是不同操作。后者恢复旧程序、数据库、配置和主密钥的一致集合；一次 `git revert` 不会撤销数据库升级。
 
@@ -81,4 +81,15 @@ flowchart LR
 
 离线报告绑定定义哈希、编译器版本和样例集合。真实验证单独绑定上游、模型与配置。HTTP 200 不代表保真成功，测试通过也不代表线上缓存命中。缓存实测必须固定账号、模型和足够长的稳定前缀，在 TTL 内重复请求，并检查上游返回计数。
 
-当前测试、性能代价、race 未验证状态、构建与主机冒烟见[发布清单](protocol-release-readiness.md)。所有工作只在本地；没有推送、发布或部署。
+测试命令、证据层次、性能方法、构建和升级检查见[验证与发布检查](protocol-release-readiness.md)。具体运行结果随对应提交记录。
+
+## 实现参考
+
+| 专题 | 内容 |
+| --- | --- |
+| [语义模型](protocol-semantic-contract.md) · [定义执行](protocol-definition-v2.md) | 字段存在性、编解码、原生保留与资源归属 |
+| [转换规则](conversion-implementation.md) · [能力边界](protocol-pair-guarantees.md) | 映射、近似、签名恢复与显式拒绝 |
+| [思考与存储意图](protocol-reasoning.md) · [缓存契约](cache-usage-contracts.md) | 模型控制、store、缓存意图和计量 |
+| [绑定](protocol-gateway-v2.md) · [修订](protocol-revisions-v2.md) · [验证](protocol-verification-v2.md) | 路由合同、不可变版本与证据 |
+| [编辑器](protocol-editor-v2.md) · [Agent 编写](protocol-agent-v2.md) | 草稿、预览、验证和启用 |
+| [WebSocket](protocol-sessions-v2.md) · [异步任务](protocol-jobs-v2.md) | 事件、背压、恢复和结算 |

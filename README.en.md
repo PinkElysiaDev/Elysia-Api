@@ -149,7 +149,7 @@ See [deployment](docs/deployment.en.md) for configuration fields, environment va
 
 - [Custom protocols](docs/protocol-definition-reference.en.md)
 - [Protocol architecture, capabilities and migration](docs/protocol-guide.en.md)
-- [Validation evidence and release boundaries](docs/protocol-release-readiness.en.md)
+- [Protocol validation and release checks](docs/protocol-release-readiness.en.md)
 - [Remote AI agent access](docs/remote-agent-api.en.md)
 - [Management API](docs/webui-api.en.md)
 - [CLI reference](docs/agent-cli.en.md)

@@ -17,8 +17,11 @@ Elysia API 的部署、协议、接口和开发参考。首次使用从[快速�
 | [Protocol v2](protocol-guide.md) | 统一引擎、编辑器、Agent、支持矩阵与迁移 |
 | [协议历史与诊断](protocol-history-and-diagnostics.md) | 归档恢复、引用替换、取消绑定、Claude Code 和 Agent 工具能力诊断 |
 | [自定义协议](protocol-definition-reference.md) | JSON 定义、字段映射、条件、流式帧和模型发现 |
-| [缓存语义审计](cache-fidelity-audit-2026-10-01.md) | 四协议历史对照、通用修复、验证证据与自定义协议迁移 |
-| [缓存命中率审计](cache-hit-rate-audit.md) | 请求侧能力缺口、跨协议分桶投影、五轮审验对照与业界合成对比 |
+| [可配置转换](conversion-implementation.md) | 规则继承、诊断、客户端输出与签名恢复 |
+| [转换能力与边界](protocol-pair-guarantees.md) | 四协议主要能力、已知降级与拒绝条件 |
+| [思考与存储意图](protocol-reasoning.md) | 模型能力、预算、输出上限、候选隔离与 store 决策 |
+| [缓存契约](cache-usage-contracts.md) | 缓存意图、断点合成、用量字段及验证方法 |
+| [预置恢复](protocol-preset-recovery.md) | 启动恢复、自定义数据保留与故障诊断 |
 
 ## 管理接口
 
@@ -34,6 +37,9 @@ Elysia API 的部署、协议、接口和开发参考。首次使用从[快速�
 
 | 文档 | 内容 |
 | --- | --- |
+| [项目架构](architecture.md) | 模块职责、转发路径、Agent、会话和任务 |
+| [数据库参考](storage-schema.md) | 表结构、加密、迁移与统计约束 |
+| [协议验证与发布](protocol-release-readiness.md) | 测试层次、命令、真实渠道、性能与升级检查 |
 | [开发指南](development.md) | 环境、本地开发、测试、交叉编译与发布产物 |
 | [WebUI 开发](../packages/webui/README.md) | 前端命令、代理、构建与交互约定 |
 | [macOS 验证](macos-testing.md) | 原生工具链、自动检查与真机验收 |

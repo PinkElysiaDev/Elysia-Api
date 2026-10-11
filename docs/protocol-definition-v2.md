@@ -1,9 +1,8 @@
 # Protocol definition v2 — implementation reference
 
-Status: the v2 runtime serves public/custom ingress, upstreams, the editor,
-Agent, previews and probes. C16 removes the legacy execution kernel. See
-[cutover contract](protocol-cutover-v2.md) and the implementation ledger for
-validation status; provider validation is independent of offline tests.
+[Documentation index](README.en.md) · [Authoring reference](protocol-definition-reference.en.md)
+
+The runtime serves public/custom ingress, upstreams, the editor, Agent, previews and probes. This reference describes executable definitions; see the [runtime contract](protocol-cutover-v2.md) for shared limits.
 
 ## Definition and execution
 
@@ -122,7 +121,7 @@ including nested content, tools and cache references. Ordinary expressions
 cannot replace their declared scope. Same-wire opaque resources still require
 compatible scope when replayed.
 
-## Legacy import and staged boundaries
+## Legacy import
 
 `relay.ImportLegacyProtocol` returns a draft plus located blocking issues.
 It imports a proven subset of annotated request bodies and response modules,
@@ -132,8 +131,7 @@ and stream rules remain explicit migration issues. The original configuration
 is retained in inert `extensions.legacyImport` for repair.
 
 Import is not activation. It neither executes an old template inside v2 nor
-substitutes a simpler protocol to make migration appear successful. C15
-implements graph preview, repair, backup and transactional cutover. The old
+substitutes a simpler protocol to make migration appear successful. The migration service provides graph preview, repair, backup and transactional cutover. The old
 execution runtime has been removed; import types only preserve old definitions.
 
 WebSocket and asynchronous task operations are installed in the gateway
@@ -141,27 +139,6 @@ compiler. Declaring an engine feature or capability is not verification.
 Activation requires hash-bound offline evidence; real-provider evidence is
 recorded independently.
 
-## C07 evidence
+## Validation
 
-- Two independent definitions, without built-in shapes, convert ordered
-  messages, JSON tool calls/results, responses and events in both directions.
-- Four built-in HTTP modules pass 16 request and 16 response combinations,
-  including tools, exact long integers and nonzero cache reads.
-- Native preservation tests cover unknown extensions, renames, deletions,
-  explicit zero/null, scoped resources, event edits and keyed array reorder.
-- Module request tests reproduce the Responses custom-tool history case using
-  an arbitrary definition ID and retain ordinary messages around tool items.
-- Negative tests cover unknown keys, impossible branches, invalid types,
-  recursion, unsupported transports/modules, invalid events, cancellation and
-  unsafe import. Diagnostics locate the innermost failed expression.
-- Backend full tests and `go vet` pass. No frontend files changed in C07.
-
-New matrix failures identified a legacy floating-point conversion in
-Anthropic/Gemini request tool arguments and Gemini response arguments:
-`9007199254740993` became `9007199254740992`. The shared wire JSON decoder now
-retains `json.Number` at those boundaries. The corresponding matrix assertions
-failed before these changes and pass afterward. This finding has not been
-independently reproduced against v1.4.0; no historical attribution is claimed.
-
-These are local offline tests. They do not establish actual provider support,
-online cache hit rates, completed editor/Agent integration, or final migration.
+Fixtures must cover declared capabilities, native extensions, field presence, exact numbers, edits and negative inputs. Two independent mapping examples are `backend/protocol/testdata/text-alpha.json` and `text-beta.json`. Offline success does not establish provider acceptance; see [validation](protocol-release-readiness.en.md).

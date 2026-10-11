@@ -21,7 +21,8 @@ Python and vision dependencies are required only to regenerate login assets, not
 backend/
   agent/       # Agent engine
   config/      # Bootstrap and runtime policies
-  relay/       # Protocols and upstream adapters
+  protocol/    # Protocol definitions, semantics, conversion and validation
+  relay/       # Outbound HTTP/WebSocket and legacy definition import
   server/      # HTTP routes, auth, CLI, orchestration
   storage/     # SQLite
   webui/       # Embedded frontend assets
@@ -114,6 +115,7 @@ The backend build resolves the latest Git tag and injects it into `/health` thro
 - Use “model source,” “model group,” “panel token,” and “relay token” consistently. Do not translate field names, endpoint paths, or CLI identifiers.
 - Label illustrative fragments with `jsonc`, `text`, or an explicit note. `json` blocks must parse. Use credential placeholders and do not commit real configuration, logs, or tokens.
 - Preserve current documentation paths and referenced heading anchors. English pages link to English topic pages. Merge useful material from phase-specific design, review and acceptance records into maintained guides, then remove the old files and update references. Use Git history for historical details.
+- Keep current behavior, procedures, design decisions and explicit limits in `docs/`. Keep handoffs, review notes, per-run results and temporary logs in PRs, CI or ignored `.tmp-dev/`; do not add a document for each work iteration.
 
 The Chinese CLI reference is generated from command definitions and help renderers. Do not edit the generated output directly. Run from `backend/`:
 
@@ -124,5 +126,7 @@ UPDATE_AGENT_CLI_DOCS=1 go test ./server -run '^TestCLIReferenceUpToDate$' -coun
 The generation template in `agent_cli_contract_test.go` controls the introduction, navigation, and section formatting. The English reference is a complete maintained translation. When commands change, update arguments, examples, and permission descriptions in both languages; run the same test without the update variable to check freshness.
 
 ## Contribution checks
+
+Each commit should complete one responsibility with its callers, tests and documentation. Fold corrections and intermediate revisions on unpublished branches into the relevant commit. Describe the final problem and behavior, not internal work rounds. Do not casually rewrite shared history.
 
 Review the diff, links, code blocks, and language parity. Run checks relevant to the change and report actual results; historical test records are not current validation. Update affected documentation with behavior changes.

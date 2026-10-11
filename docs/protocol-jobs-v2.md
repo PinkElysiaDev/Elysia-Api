@@ -32,7 +32,7 @@ Complete standalone examples with different receipt field names are
 flow contract requires request and result mappings in both directions.
 `taskSamples` asserts decode/encode/control outputs and receipt roundtrips.
 Missing state, operation or usage evidence prevents activation. Reports use
-compiler `2.0.0-dev.5`; earlier revisions must be reverified for this compiler.
+the current compiler; changed definitions or compiler semantics require new verification.
 
 ## Client workflow
 
@@ -85,14 +85,6 @@ There is no provider-side job discovery, automatic retry of uncertain submits,
 or implicit synchronous/asynchronous bridging. Provider validation remains
 separate from the local evidence below.
 
-## Local evidence
+## Validation
 
-Protocol tests verify two independent shapes, paired receipt conversion,
-unknown/invalid states, missing coverage and changed identities. Real SQLite
-tests cover restart, owner boundaries, deduplication conflicts, uncertain and
-abandoned reservations, cancellation/poll races, immutable identities, cache
-counters and crash-after-write-before-acknowledgement. Local HTTP gateway tests
-cover model/ID mapping, immutable revisions after activation, repeat result
-reads, one-time persisted usage, uncertain responses without replay, and both
-explicit waiting policies. Full backend tests and vet pass. These fixtures do
-not establish compatibility with any live provider.
+Test restart, uncertain and abandoned reservations, cancellation/poll races, immutable identity, deduplication conflicts and crash-after-write-before-acknowledgement with real isolated SQLite. Local gateway tests must check repeated result reads and once-only settlement. See [validation](protocol-release-readiness.en.md); local fixtures do not establish live provider compatibility.
