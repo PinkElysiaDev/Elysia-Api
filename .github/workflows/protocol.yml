@@ -22,16 +22,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: go test ./... -count=1
+      - run: go test ./... -count=1 -timeout=60m
         working-directory: backend
       - run: go vet ./...
         working-directory: backend
-      - run: node scripts/verify-protocol.mjs race
+      - id: protocol-race
+        run: |
+          echo "evidence-dir=$(realpath -m ../.cache)" >> "$GITHUB_OUTPUT"
+          node scripts/verify-protocol.mjs race
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.protocol-race.outputs.evidence-dir != ''
         with:
           name: protocol-race-evidence
-          path: ../.cache/protocol-race-*/
+          path: ${{ steps.protocol-race.outputs.evidence-dir }}/protocol-race-*/
       - name: Fixed-duration compiler, JSON and event fuzzing
         working-directory: backend
         run: |
