@@ -45,7 +45,7 @@ func (c *CompiledConversion) assistantHistory(request *Request, route Conversion
 			if item.Kind == MessageNode {
 				messages++
 				if len(item.Cache) > 0 || len(item.Resources) > 0 || len(item.Attributes) > 0 || len(item.Metadata) > 0 || !item.Payload.IsZero() || !item.Name.IsZero() || !item.CallID.IsZero() || item.Input != nil {
-					return streamIssue(UnsupportedCapability, path, "assistant item grouping cannot move message metadata across thinking, text or tools")
+					return candidateFailure(streamIssue(UnsupportedCapability, path, "assistant item grouping cannot move message metadata across thinking, text or tools"))
 				}
 			}
 			if !item.ID.IsZero() || !item.Status.IsZero() {
@@ -77,7 +77,7 @@ func (c *CompiledConversion) assistantHistory(request *Request, route Conversion
 			hasReply = hasReply || child.Kind == TextNode || child.Kind == ToolCallNode || child.Kind == RefusalNode
 		}
 		if chat && !hasReply {
-			return streamIssue(UnsupportedCapability, at, "Chat thinking history requires associated assistant content or tool calls before the next turn")
+			return candidateFailure(streamIssue(UnsupportedCapability, at, "Chat thinking history requires associated assistant content or tool calls before the next turn"))
 		}
 		result = append(result, n)
 		changed = true

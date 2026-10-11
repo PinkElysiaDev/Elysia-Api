@@ -346,7 +346,11 @@ func (c *CompiledConversion) issue(rule ConversionRule, phase ConversionPhase, c
 	if severity == SeverityError {
 		issue.Code = ConversionRejected
 		issue.Fidelity = "rejected"
-		return IssuesError([]ConversionIssue{issue})
+		failure := IssuesError([]ConversionIssue{issue})
+		if rule.Action != "reject" && phase == ConversionRequest {
+			return candidateFailure(failure)
+		}
+		return failure
 	}
 	sink.Add(issue)
 	return nil

@@ -16,7 +16,7 @@ func (c *CompiledConversion) hoistSystem(request *Request, route ConversionConte
 		}
 		at := fmt.Sprintf("/content/%d", i)
 		if !node.ID.IsZero() || !node.Status.IsZero() || len(node.Resources) > 0 || len(node.Attributes) > 0 || len(node.Cache) > 0 {
-			return streamIssue(UnsupportedCapability, at, "system instruction metadata requires an explicit block-level mapping before hoisting")
+			return candidateFailure(streamIssue(UnsupportedCapability, at, "system instruction metadata requires an explicit block-level mapping before hoisting"))
 		}
 		if seenConversation || node.Role == StringValue("developer") {
 			if err := c.issue(rule, ConversionRequest, route, at, "system/developer instruction moved to top-level system; its scope or role precedence changes", sink, true); err != nil {

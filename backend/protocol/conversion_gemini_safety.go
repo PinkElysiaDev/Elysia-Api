@@ -64,17 +64,17 @@ func (c *CompiledConversion) geminiSafetySettings(req *Request, route Conversion
 		sort.Strings(keys)
 		for _, key := range keys {
 			if key != "category" && key != "threshold" {
-				return c.issue(reject, ConversionRequest, route, at+"/"+escapePointer(key), "additional safety setting fields have no equivalent mapping", sink, false)
+				return candidateFailure(c.issue(reject, ConversionRequest, route, at+"/"+escapePointer(key), "additional safety setting fields have no equivalent mapping", sink, false))
 			}
 		}
 		var category, threshold string
 		_ = setting["category"].Decode(&category)
 		_ = setting["threshold"].Decode(&threshold)
 		if !slices.Contains([]string{"HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_DANGEROUS_CONTENT", "HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_CIVIC_INTEGRITY"}, category) {
-			return c.issue(reject, ConversionRequest, route, at+"/category", "unrecognized Gemini safety category has no equivalent target mapping", sink, false)
+			return candidateFailure(c.issue(reject, ConversionRequest, route, at+"/category", "unrecognized Gemini safety category has no equivalent target mapping", sink, false))
 		}
 		if threshold != "BLOCK_NONE" && threshold != "OFF" {
-			return c.issue(reject, ConversionRequest, route, at+"/threshold", "target cannot enforce this Gemini category threshold; blocking constraints cannot be omitted", sink, false)
+			return candidateFailure(c.issue(reject, ConversionRequest, route, at+"/threshold", "target cannot enforce this Gemini category threshold; blocking constraints cannot be omitted", sink, false))
 		}
 	}
 	if len(settings) > 0 {

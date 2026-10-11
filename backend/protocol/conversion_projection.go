@@ -168,7 +168,7 @@ func (c *CompiledConversion) responsesInclude(req *Request, route ConversionCont
 	if codec != "responses" {
 		for i, selector := range selectors {
 			if selector != "reasoning.encrypted_content" {
-				return c.issue(ConversionRule{ID: rule.ID, Action: "reject"}, ConversionRequest, route, fmt.Sprintf("/include/%d", i), "target has no equivalent include selector", sink, false)
+				return candidateFailure(c.issue(ConversionRule{ID: rule.ID, Action: "reject"}, ConversionRequest, route, fmt.Sprintf("/include/%d", i), "target has no equivalent include selector", sink, false))
 			}
 		}
 		delete(req.Parameters, "responses_include")

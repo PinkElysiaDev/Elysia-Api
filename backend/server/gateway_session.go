@@ -96,20 +96,21 @@ func (s *Server) serveGatewaySession(c *gin.Context, view protocol.RegistryView,
 		s.failGateway(c, record, http.StatusForbidden, err)
 		return
 	}
-	request := plan.request.Clone()
-	request.Model = protocol.StringValue(candidate.model.Name)
+	request := candidate.prepared.Clone()
+	request.Model = protocol.StringValue(candidate.model.Identifier())
 	sessionOptions := protocol.EvaluationContext{Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}}
 	defer func() { record.appendConversionIssues(sessionOptions.Diagnostics.Issues()) }()
 	if candidate.model.CacheSynthesis {
 		protocol.SynthesizeCacheBreakpoints(request, candidate.compiled.Capabilities(protocol.EncodeRequest), sessionOptions)
 	}
+	s.estimateGatewayAttempt(record, request)
 	record.SystemStructure.After = systemStructure(request)
 	body, err := candidate.compiled.EncodeRequest(c.Request.Context(), request, sessionOptions)
 	if err != nil {
 		s.failGateway(c, record, http.StatusBadRequest, err)
 		return
 	}
-	upstreamRequest, err := protocol.BuildSessionHandshake(c.Request.Context(), candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Name})
+	upstreamRequest, err := protocol.BuildSessionHandshake(c.Request.Context(), candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Identifier()})
 	if err != nil {
 		s.failGateway(c, record, http.StatusBadRequest, err)
 		return
@@ -122,7 +123,7 @@ func (s *Server) serveGatewaySession(c *gin.Context, view protocol.RegistryView,
 	setRecordModel(record, candidate.model, builtin.Platform("custom:"+candidate.binding.ProtocolID))
 	record.UpstreamRevision, record.TargetEndpoint, record.TargetFormat = candidate.compiled.Hash(), candidate.operation.Path, candidate.binding.ProtocolID
 	record.OutgoingBody = record.sanitizeBody(body)
-	release, err := s.acquireRateLimit(plan.group, s.estimateProtocolTokens(plan.request))
+	release, err := s.acquireRateLimit(plan.group, s.estimateProtocolTokens(candidate.prepared))
 	if err != nil {
 		s.failGateway(c, record, http.StatusTooManyRequests, err)
 		return

@@ -52,6 +52,9 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	if err := s.validateOutbound(candidate.model.BaseURL); err != nil {
 		return nil, err
 	}
+	if record != nil {
+		s.estimateGatewayAttempt(record, request)
+	}
 	options := protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState(), Diagnostics: &protocol.DiagnosticSink{}}
 	body, err := candidate.compiled.EncodeRequest(ctx, request, options)
 	if err != nil {

@@ -158,3 +158,21 @@ func observeHostedTools(record *usageRecord, compiled *protocol.Compiled, body [
 	}
 	return nil
 }
+
+func (s *Server) estimateGatewayReservation(plan *gatewayPlan) int {
+	estimate := 0
+	for _, candidate := range plan.candidates[:maxAttempts(plan.group.MaxRetries, len(plan.candidates))] {
+		request := candidate.prepared
+		if request == nil {
+			request = plan.request
+		}
+		estimate = max(estimate, s.estimateProtocolTokens(request))
+	}
+	return estimate
+}
+
+func (s *Server) estimateGatewayAttempt(record *usageRecord, request *protocol.Request) {
+	if *s.config.GetUsageConfig().EstimateWhenMissing {
+		record.Usage.Estimated, record.Usage.EstimatedTokens, record.UsageSource = true, s.estimateProtocolTokens(request), "protocol_estimate"
+	}
+}

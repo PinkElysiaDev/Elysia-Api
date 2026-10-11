@@ -93,7 +93,7 @@ func (s *Server) serveProtocolRequest(c *gin.Context, view protocol.RegistryView
 		return
 	}
 	record.Stream = plan.operation.Transport != protocol.HTTPJSON
-	estimate := s.estimateProtocolTokens(plan.request)
+	estimate := s.estimateGatewayReservation(plan)
 	if *s.config.GetUsageConfig().EstimateWhenMissing {
 		record.Usage.Estimated, record.Usage.EstimatedTokens, record.UsageSource = true, estimate, "protocol_estimate"
 	}
@@ -169,6 +169,7 @@ func (s *Server) forwardGateway(c *gin.Context, record *usageRecord, plan *gatew
 	if candidate.model.CacheSynthesis {
 		protocol.SynthesizeCacheBreakpoints(request, candidate.compiled.Capabilities(protocol.EncodeRequest), options)
 	}
+	s.estimateGatewayAttempt(record, request)
 	record.SystemStructure.After = systemStructure(request)
 	body, err := candidate.compiled.EncodeRequest(c.Request.Context(), request, options)
 	if err != nil {

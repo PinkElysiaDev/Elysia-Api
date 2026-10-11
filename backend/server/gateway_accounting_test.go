@@ -131,3 +131,18 @@ func TestRejectedRequestIDIdentifiesPersistedCall(t *testing.T) {
 		t.Fatalf("rejected call cannot be correlated: header=%q records=%+v", recorder.Header().Get("X-Elysia-Request-Id"), items)
 	}
 }
+
+func TestGatewayReservationUsesExecutableRetryWindow(t *testing.T) {
+	s := &Server{config: &config.Config{Usage: config.UsageConfig{CharsPerToken: 1, DefaultOutputTokenEstimate: 10}}}
+	request := func(limit string) *protocol.Request {
+		return &protocol.Request{Parameters: protocol.Object{"max_output_tokens": mustProtocolValue(t, limit)}}
+	}
+	plan := &gatewayPlan{group: &config.ModelGroupConfig{MaxRetries: 1}, request: request("1"), candidates: []gatewayCandidate{{prepared: request("100")}, {prepared: request("200")}, {prepared: request("9000")}}}
+	if got := s.estimateGatewayReservation(plan); got != 200 {
+		t.Fatal(got)
+	}
+	plan.group.MaxRetries = 0
+	if got := s.estimateGatewayReservation(plan); got != 100 {
+		t.Fatal(got)
+	}
+}

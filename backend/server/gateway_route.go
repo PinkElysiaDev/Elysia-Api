@@ -120,11 +120,37 @@ func (s *Server) prepareGatewayPlan(c *gin.Context, view protocol.RegistryView, 
 		}
 		record.appendConversionIssues(sink.Issues())
 		if err != nil {
+			var failure *protocol.ConversionError
+			if errors.As(err, &failure) && failure.CandidateOnly {
+				issues = append(issues, failure.Issues...)
+				record.appendConversionIssues(failure.Issues)
+				continue
+			}
 			return nil, err
 		}
 		matched, candidateIssues := matchGatewayCombination(ingress, candidate, candidate.prepared, constrained)
 		if len(candidateIssues) > 0 {
 			issues = append(issues, candidateIssues...)
+			record.appendConversionIssues(candidateIssues)
+			continue
+		}
+		probe := candidate.prepared.Clone()
+		probe.Model = protocol.StringValue(candidate.model.Identifier())
+		probeOptions := protocol.EvaluationContext{Scope: candidate.scope}
+		body, encodeErr := candidate.compiled.EncodeRequest(c.Request.Context(), probe, probeOptions)
+		if encodeErr == nil {
+			encodeErr = candidate.compiled.CheckOperationInput(candidate.operation, body)
+		}
+		if encodeErr != nil {
+			if c.Request.Context().Err() != nil {
+				return nil, c.Request.Context().Err()
+			}
+			var failure *protocol.ConversionError
+			if !errors.As(encodeErr, &failure) {
+				return nil, encodeErr
+			}
+			issues = append(issues, failure.Issues...)
+			record.appendConversionIssues(failure.Issues)
 			continue
 		}
 		candidate.binding = constrained

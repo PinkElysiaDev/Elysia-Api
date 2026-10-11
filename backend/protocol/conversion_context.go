@@ -92,14 +92,14 @@ func (c *CompiledConversion) responsesContext(request *Request, route Conversion
 	previous := request.Parameters["responses_previous_response_id"]
 	for _, resource := range request.Resources {
 		if resource.Kind == "session" {
-			return c.issue(reject, ConversionRequest, route, "/previous_response_id", "target cannot resolve a previous response; complete history restoration is required before conversion", sink, false)
+			return candidateFailure(c.issue(reject, ConversionRequest, route, "/previous_response_id", "target cannot resolve a previous response; complete history restoration is required before conversion", sink, false))
 		}
 	}
 	if !previous.IsZero() && !previous.IsNull() {
-		return c.issue(reject, ConversionRequest, route, "/previous_response_id", "target cannot resolve a previous response; complete history restoration is required before conversion", sink, false)
+		return candidateFailure(c.issue(reject, ConversionRequest, route, "/previous_response_id", "target cannot resolve a previous response; complete history restoration is required before conversion", sink, false))
 	}
 	if !request.Parameters["responses_truncation"].IsZero() {
-		return c.issue(reject, ConversionRequest, route, "/truncation", "target has no verified equivalent context truncation behavior; this constraint cannot be omitted", sink, false)
+		return candidateFailure(c.issue(reject, ConversionRequest, route, "/truncation", "target has no verified equivalent context truncation behavior; this constraint cannot be omitted", sink, false))
 	}
 	if previous.IsNull() {
 		delete(request.Parameters, "responses_previous_response_id")
