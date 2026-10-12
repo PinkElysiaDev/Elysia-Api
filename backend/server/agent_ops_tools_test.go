@@ -513,8 +513,8 @@ func TestOpsRenameGroupViaUpdate(t *testing.T) {
 	if !renamed.OK {
 		t.Fatalf("rename failed: %+v", renamed)
 	}
-	group, ok := agentFindGroup(ctx, s.store, "新名")
-	if !ok || group.ID != "g1" {
+	group, ok, err := findCLIGroup(ctx, s.store, "新名")
+	if err != nil || !ok || group.ID != "g1" {
 		t.Fatalf("rename not landed: %+v", group)
 	}
 

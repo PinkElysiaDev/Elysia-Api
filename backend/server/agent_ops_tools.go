@@ -62,7 +62,10 @@ func decodeCLIArgs(args json.RawMessage, target any) (CLIResult, bool) {
 
 // requireSource 按 id/名称查找模型源;未找到时返回统一的 not_found 失败结果。
 func requireSource(ctx context.Context, store *storage.Store, ref string) (storage.ModelSource, CLIResult) {
-	source, ok := agentFindSource(ctx, store, ref)
+	source, ok, err := findCLISource(ctx, store, ref)
+	if err != nil {
+		return storage.ModelSource{}, CLIError(err.Error(), "read_failed")
+	}
 	if !ok {
 		return storage.ModelSource{}, CLIError(fmt.Sprintf("模型源 %q 不存在", ref), "not_found")
 	}
@@ -71,7 +74,10 @@ func requireSource(ctx context.Context, store *storage.Store, ref string) (stora
 
 // requireGroup 按 id/名称查找模型组;未找到时返回统一的 not_found 失败结果。
 func requireGroup(ctx context.Context, store *storage.Store, ref string) (storage.ModelGroup, CLIResult) {
-	group, ok := agentFindGroup(ctx, store, ref)
+	group, ok, err := findCLIGroup(ctx, store, ref)
+	if err != nil {
+		return storage.ModelGroup{}, CLIError(err.Error(), "read_failed")
+	}
 	if !ok {
 		return storage.ModelGroup{}, CLIError(fmt.Sprintf("模型组 %q 不存在", ref), "not_found")
 	}
@@ -180,44 +186,44 @@ func agentLocalUTCOffset() int {
 	return clampInt(seconds/60, -maxUTCOffsetMinutes, maxUTCOffsetMinutes)
 }
 
-// agentFindSource 按 id 或名称查找模型源。
-func agentFindSource(ctx context.Context, store *storage.Store, ref string) (storage.ModelSource, bool) {
+// findCLISource 按 id 或名称查找模型源。
+func findCLISource(ctx context.Context, store *storage.Store, ref string) (storage.ModelSource, bool, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
-		return storage.ModelSource{}, false
+		return storage.ModelSource{}, false, nil
 	}
 	sources, err := store.ListSources(ctx)
 	if err != nil {
-		return storage.ModelSource{}, false
+		return storage.ModelSource{}, false, err
 	}
 	for _, source := range sources {
 		if source.ID == ref {
-			return source, true
+			return source, true, nil
 		}
 	}
 	for _, source := range sources {
 		if strings.EqualFold(source.Name, ref) {
-			return source, true
+			return source, true, nil
 		}
 	}
-	return storage.ModelSource{}, false
+	return storage.ModelSource{}, false, nil
 }
 
-func agentFindGroup(ctx context.Context, store *storage.Store, ref string) (storage.ModelGroup, bool) {
+func findCLIGroup(ctx context.Context, store *storage.Store, ref string) (storage.ModelGroup, bool, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
-		return storage.ModelGroup{}, false
+		return storage.ModelGroup{}, false, nil
 	}
 	groups, err := store.ListGroups(ctx)
 	if err != nil {
-		return storage.ModelGroup{}, false
+		return storage.ModelGroup{}, false, err
 	}
 	for _, group := range groups {
 		if group.ID == ref || strings.EqualFold(group.Name, ref) {
-			return group, true
+			return group, true, nil
 		}
 	}
-	return storage.ModelGroup{}, false
+	return storage.ModelGroup{}, false, nil
 }
 
 // agentManualModels 把模型名列表组装为手动模型行（与手动源存储形态一致）。
@@ -250,16 +256,16 @@ func agentSourceView(source storage.ModelSource, modelCount int) map[string]any 
 	}
 }
 
-func agentSourceModelCounts(ctx context.Context, store *storage.Store) map[string]int {
+func countSourceModels(ctx context.Context, store *storage.Store) (map[string]int, error) {
 	models, err := store.ListModels(ctx)
 	if err != nil {
-		return map[string]int{}
+		return nil, err
 	}
 	counts := make(map[string]int, len(models))
 	for _, model := range models {
 		counts[model.SourceID]++
 	}
-	return counts
+	return counts, nil
 }
 
 // ---- list_sources ----
@@ -282,7 +288,10 @@ func (t *listSourcesTool) Execute(ctx context.Context, tctx CLIContext, args jso
 	if err != nil {
 		return CLIError("读取失败: "+err.Error(), "read_failed")
 	}
-	counts := agentSourceModelCounts(ctx, store)
+	counts, err := countSourceModels(ctx, store)
+	if err != nil {
+		return CLIError(err.Error(), "read_failed")
+	}
 	items := make([]map[string]any, 0, len(sources))
 	for _, source := range sources {
 		view := agentSourceView(source, counts[source.ID])
@@ -569,7 +578,9 @@ func (t *createSourceTool) Execute(ctx context.Context, tctx CLIContext, args js
 	}
 	// slugID 撞 id 即静默覆盖既有源（UpsertSource 是纯 upsert，连 API key 一起
 	// 换掉）——「创建」审批卡实际产生破坏性修改。重名直接拒绝，改走 update。
-	if existing, found := agentFindSource(ctx, store, item.ID); found {
+	if existing, found, err := findCLISource(ctx, store, item.ID); err != nil {
+		return CLIError(err.Error(), "read_failed")
+	} else if found {
 		return CLIResult{OK: false,
 			Summary: fmt.Sprintf("已存在同名模型源 %q（id=%s），如需修改请用 elysia source update", existing.Name, existing.ID),
 			Data:    map[string]any{"error": "duplicate_source", "id": existing.ID}}
@@ -590,7 +601,10 @@ func (t *createSourceTool) Execute(ctx context.Context, tctx CLIContext, args js
 		}
 		return CLIError("保存失败: "+err.Error(), "persist_failed")
 	}
-	created, _ := agentFindSource(ctx, store, item.ID)
+	created, failedRead := requireSource(ctx, store, item.ID)
+	if created.ID == "" {
+		return failedRead
+	}
 	if len(params.ManualModels) > 0 {
 		err := t.server.refreshModelProtocolEvidence(ctx)
 		if err != nil {
@@ -598,7 +612,10 @@ func (t *createSourceTool) Execute(ctx context.Context, tctx CLIContext, args js
 		}
 	}
 	t.server.invalidateRouteCache()
-	counts := agentSourceModelCounts(ctx, store)
+	counts, err := countSourceModels(ctx, store)
+	if err != nil {
+		return CLIError(err.Error(), "read_failed")
+	}
 	return CLIResult{OK: true,
 		Summary: fmt.Sprintf("模型源 %q 已创建（id=%s）", item.Name, item.ID),
 		Data:    agentSourceView(created, counts[item.ID])}
@@ -673,8 +690,14 @@ func (t *updateSourceTool) Execute(ctx context.Context, tctx CLIContext, args js
 		}
 	}
 	t.server.invalidateRouteCache()
-	updated, _ := agentFindSource(ctx, store, item.ID)
-	counts := agentSourceModelCounts(ctx, store)
+	updated, failedRead := requireSource(ctx, store, item.ID)
+	if updated.ID == "" {
+		return failedRead
+	}
+	counts, err := countSourceModels(ctx, store)
+	if err != nil {
+		return CLIError(err.Error(), "read_failed")
+	}
 	return CLIResult{OK: true, Summary: fmt.Sprintf("模型源 %q 已更新", updated.Name), Data: agentSourceView(updated, counts[updated.ID])}
 }
 
@@ -922,16 +945,20 @@ func (t *updateGroupTool) Execute(ctx context.Context, tctx CLIContext, args jso
 	}
 	if applyGroupPatch(&group, params) {
 		// 成员以当前库内状态为准，避免用陈旧引用整体覆盖。
-		fresh, ok := agentFindGroup(ctx, store, group.ID)
-		if ok {
-			group.Models = fresh.Models
+		fresh, failedRead := requireGroup(ctx, store, group.ID)
+		if fresh.ID == "" {
+			return failedRead
 		}
+		group.Models = fresh.Models
 		if err := store.UpsertGroup(ctx, group); err != nil {
 			return CLIError("保存失败: "+err.Error(), "persist_failed")
 		}
 	}
 	t.server.invalidateRouteCache()
-	updated, _ := agentFindGroup(ctx, store, group.ID)
+	updated, failedRead := requireGroup(ctx, store, group.ID)
+	if updated.ID == "" {
+		return failedRead
+	}
 	return CLIResult{OK: true, Summary: fmt.Sprintf("模型组 %q 已更新（%d 个成员）", updated.Name, len(updated.Models)), Data: updated}
 }
 
@@ -1051,9 +1078,9 @@ func (t *listModelsTool) Execute(ctx context.Context, tctx CLIContext, args json
 	}
 	filter := storage.ModelListFilter{Search: strings.TrimSpace(params.Search)}
 	if strings.TrimSpace(params.Source) != "" {
-		source, found := agentFindSource(ctx, store, params.Source)
-		if !found {
-			return CLIError(fmt.Sprintf("模型源 %q 不存在", params.Source), "not_found")
+		source, failedRead := requireSource(ctx, store, params.Source)
+		if source.ID == "" {
+			return failedRead
 		}
 		filter.SourceID = source.ID
 	}
