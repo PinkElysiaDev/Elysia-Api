@@ -1,6 +1,9 @@
 package protocol
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // hoistSystem operates on the candidate copy, before both encoding and the
 // round-trip check. It never grants a role or removes resource/cache evidence.
@@ -15,8 +18,11 @@ func (c *CompiledConversion) hoistSystem(request *Request, route ConversionConte
 			continue
 		}
 		at := fmt.Sprintf("/content/%d", i)
-		if !node.ID.IsZero() || !node.Status.IsZero() || len(node.Resources) > 0 || len(node.Attributes) > 0 || len(node.Cache) > 0 {
-			return candidateFailure(streamIssue(UnsupportedCapability, at, "system instruction metadata requires an explicit block-level mapping before hoisting"))
+		if node.Source != nil && node.Source.Path != "" {
+			at = node.Source.Path
+		}
+		if field := systemInstructionMetadataField(node); field != "" {
+			return c.rejectSystemHoist(rule, route, at+field)
 		}
 		if seenConversation || node.Role == StringValue("developer") {
 			if err := c.issue(rule, ConversionRequest, route, at, "system/developer instruction moved to top-level system; its scope or role precedence changes", sink, true); err != nil {
@@ -47,4 +53,36 @@ func (c *CompiledConversion) hoistSystem(request *Request, route ConversionConte
 		}
 	}
 	return nil
+}
+
+func systemInstructionMetadataField(node Node) string {
+	switch {
+	case !node.ID.IsZero():
+		return "/id"
+	case !node.Status.IsZero():
+		return "/status"
+	case len(node.Resources) > 0:
+		return "/resources"
+	case len(node.Cache) > 0:
+		return "/cache_control"
+	}
+	keys := sortedKeys(node.Attributes)
+	if len(keys) == 0 {
+		return ""
+	}
+	key := keys[0]
+	if fields, err := node.Attributes[key].ReadObject(); err == nil && len(fields) > 0 && strings.HasPrefix(key, "wire:") {
+		return "/" + escapePointer(sortedKeys(fields)[0])
+	}
+	return "/attributes/" + escapePointer(key)
+}
+
+func (c *CompiledConversion) rejectSystemHoist(rule ConversionRule, route ConversionContext, at string) error {
+	return candidateFailure(IssuesError([]ConversionIssue{{
+		Code: UnsupportedCapability, Severity: SeverityError, Fidelity: "rejected",
+		Protocol: route.Target, Direction: EncodeRequest, Stage: "conversion.request",
+		Path: at, Reason: "system instruction metadata requires an explicit block-level mapping before hoisting",
+		RuleID: rule.ID, PolicyHash: c.Hash, PolicyRevision: c.RuleRevisions[rule.ID], Evidence: c.Origins[rule.ID],
+		Suggestion: "Provide an explicit request mapping that preserves this field's scope before hoisting.",
+	}}))
 }

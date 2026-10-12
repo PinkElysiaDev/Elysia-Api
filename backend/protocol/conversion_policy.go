@@ -315,6 +315,9 @@ func (c *CompiledConversion) issueSeverity(rule ConversionRule, phase Conversion
 		fidelity = "recoverable_wrapped"
 	}
 	issue := ConversionIssue{Fidelity: fidelity, Code: ConversionDegraded, Severity: severity, Protocol: ctx.Target, Stage: "conversion." + string(phase), Path: at, Reason: reason, RuleID: rule.ID, PolicyHash: c.Hash, PolicyRevision: c.RuleRevisions[rule.ID], Evidence: c.Origins[rule.ID]}
+	if phase == ConversionRequest {
+		issue.Direction = EncodeRequest
+	}
 	if severity == SeverityError {
 		issue.Code = ConversionRejected
 		issue.Fidelity = "rejected"

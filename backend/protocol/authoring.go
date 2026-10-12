@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -46,7 +47,12 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 		}
 		issues := sink.Issues()
 		if err != nil {
-			issues = append(issues, ConversionIssue{Code: ConversionRejected, Severity: SeverityError, Stage: "preview", Path: "/conversionPolicy", Reason: err.Error()})
+			var failure *ConversionError
+			if errors.As(err, &failure) {
+				issues = AppendDiagnostics(issues, failure.Issues...)
+			} else {
+				issues = AppendDiagnostics(issues, ConversionIssue{Code: ConversionRejected, Severity: SeverityError, Stage: "preview", Path: "/conversionPolicy", Reason: err.Error()})
+			}
 		}
 		return PreviewResult{Output: output, Issues: issues, Effective: conversion}
 	}

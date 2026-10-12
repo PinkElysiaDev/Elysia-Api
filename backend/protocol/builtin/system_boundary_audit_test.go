@@ -72,7 +72,7 @@ func TestActualPresetsKeepSystemAndReminderBoundaries(t *testing.T) {
 						}
 						continue
 					}
-					if !strings.Contains(string(wire), "middle") || !strings.Contains(string(wire), "system-reminder") || !sinkHas(sink, "/content/1") {
+					if !strings.Contains(string(wire), "middle") || !strings.Contains(string(wire), "system-reminder") || !sinkHas(sink, "/messages/1") {
 						t.Fatal("scope change or ordinary text lost", string(wire), sink.Issues())
 					}
 				}

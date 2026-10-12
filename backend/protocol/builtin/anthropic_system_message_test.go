@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -48,6 +49,41 @@ func TestAnthropicSystemMessageClientRequest(t *testing.T) {
 				t.Fatal(err)
 			}
 			sameJSON(t, wire, strings.Replace(string(raw), `"model": "claude-haiku-5-5"`, `"model": "claude-haiku-5-5-routed"`, 1))
+		})
+	}
+}
+
+func TestSystemHoistRequestDiagnostics(t *testing.T) {
+	from, to := shippedProjectionProtocol(t, Anthropic), shippedProjectionProtocol(t, Gemini)
+	for _, test := range []struct {
+		name, extra, path, mode string
+		code                    p.IssueCode
+	}{
+		{"attributes", `,"output_config":{"effort":"medium"}`, "/messages/1/output_config", "compatible", p.UnsupportedCapability},
+		{"strict-scope", "", "/messages/1", "strict", p.ConversionRejected},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := `{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"question"},{"role":"system","content":"private instruction"` + test.extra + `}]}`
+			request, err := from.DecodeRequest(t.Context(), []byte(body), p.EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			policy := p.DefaultConversionPolicy(from, to)
+			policy.Mode = test.mode
+			conversion, _ := p.ResolveConversion(policy)
+			_, err = conversion.Request(t.Context(), request, p.ConversionContext{Source: from.Identity(), Target: to.Identity()}, nil)
+			var failure *p.ConversionError
+			if !errors.As(err, &failure) || len(failure.Issues) != 1 {
+				t.Fatal(err)
+			}
+			issue := failure.Issues[0]
+			if issue.Code != test.code || issue.Path != test.path || issue.Direction != p.EncodeRequest || issue.Stage != "conversion.request" || issue.Protocol != to.Identity() || issue.RuleID != "system-instruction-hoist" || issue.PolicyHash != conversion.Hash || issue.PolicyRevision == "" || issue.Evidence != "engine-default" || issue.Fidelity != "rejected" {
+				t.Fatal("request diagnostic misclassified", issue)
+			}
+			value, _ := p.EncodeValue(issue)
+			if strings.Contains(string(value.Bytes()), "private instruction") || strings.Contains(issue.Suggestion, "upstream stream") {
+				t.Fatal("request diagnosis leaked payload or suggested a stream repair")
+			}
 		})
 	}
 }

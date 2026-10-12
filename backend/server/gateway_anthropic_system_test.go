@@ -9,6 +9,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/elysia-api/backend/protocol"
@@ -147,5 +148,57 @@ func TestGatewayAnthropicSystemMessageClientHistory(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestGatewaySystemHoistFailureRetainsRequestEvidence(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	activateDiscoveryPresets(t, s)
+	service, _ := s.protocolService()
+	ingress, _ := service.Pin(protocol.PresetAnthropicID)
+	upstream, _ := service.Pin(protocol.PresetGeminiID)
+	var calls atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(500)
+	}))
+	defer provider.Close()
+	setupGatewayModel(t, s, upstream, provider.URL)
+	body := `{"model":"group","max_tokens":64,"system":[{"type":"text","text":"private prefix","cache_control":{"type":"ephemeral"}}],"messages":[{"role":"user","content":"hi"},{"role":"system","content":[{"type":"text","text":"private instruction"}],"output_config":{"effort":"medium"}}]}`
+	semantic, err := ingress.DecodeRequest(t.Context(), []byte(body), protocol.EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, _ := protocol.EncodeValue(semantic)
+	preview := service.PreviewWorkflow(t.Context(), protocol.PreviewInput{Mode: "conversion", ConversionPhase: protocol.ConversionRequest, Input: input, ConversionContext: protocol.ConversionContext{Source: ingress.Identity(), Target: upstream.Identity(), Model: "upstream-model"}})
+	if len(preview.Issues) != 2 || preview.Issues[1].Path != "/messages/1/output_config" {
+		t.Fatal("preview lost request diagnostic", preview.Issues)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/gateway/anthropic-messages/v1/messages", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer gateway-test-token")
+	rec := httptest.NewRecorder()
+	s.engine.ServeHTTP(rec, req)
+	if rec.Code != 400 || calls.Load() != 0 || !strings.Contains(rec.Body.String(), "/messages/1/output_config") {
+		t.Fatalf("status=%d calls=%d body=%s", rec.Code, calls.Load(), rec.Body)
+	}
+	logs := latestUsageRecords(t, s)
+	stored, _, err := s.store.GetUsageRecordJSON(t.Context(), logs[0].RequestID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record usageRecord
+	if err := json.Unmarshal(stored, &record); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(record.ConversionIssues, preview.Issues) {
+		t.Fatal("gateway/preview diagnostic mismatch", record.ConversionIssues, preview.Issues)
+	}
+	issue := record.ConversionIssues[1]
+	if issue.Stage != "conversion.request" || issue.Direction != protocol.EncodeRequest || issue.Protocol != upstream.Identity() || issue.RuleID != "system-instruction-hoist" || issue.PolicyHash == "" || issue.PolicyRevision == "" {
+		t.Fatal("request evidence incomplete", issue)
+	}
+	diagnostics, _ := json.Marshal(record.ConversionIssues)
+	if strings.Contains(string(diagnostics), "private") {
+		t.Fatal("diagnostics included request text")
 	}
 }
