@@ -2,6 +2,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync,
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { copySnapshotPlan, readSnapshotPlan } from './source-snapshot.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -99,33 +100,10 @@ writeFileSync(join(embeddedWebuiDist, '.gitkeep'), '')
 log('Syncing source snapshot for elysia code')
 const snapshotRoot = join(repoRoot, 'backend', 'server', '_snapshot')
 const snapshotKeep = join(snapshotRoot, 'README.md')
-const snapshotSkip = new Set([join(repoRoot, 'backend', 'server', '_snapshot'), join(repoRoot, 'backend', 'webui')])
 const snapshotKeepContent = readFileSync(snapshotKeep, 'utf8')
+const snapshotPlan = readSnapshotPlan(repoRoot)
 resetBuildDirectory(snapshotRoot)
-function copyTreeIntoSnapshot(absDir, relDir) {
-  if (snapshotSkip.has(absDir)) return
-  for (const entry of readdirSync(absDir, { withFileTypes: true })) {
-    const abs = join(absDir, entry.name)
-    if (snapshotSkip.has(abs)) continue
-    const rel = `${relDir}/${entry.name}`
-    if (entry.isDirectory()) {
-      copyTreeIntoSnapshot(abs, rel)
-      continue
-    }
-    if (!/\.(go|json|ts|tsx|css)$/.test(entry.name)) continue
-    mkdirSync(dirname(join(snapshotRoot, rel)), { recursive: true })
-    cpSync(abs, join(snapshotRoot, rel))
-  }
-}
-copyTreeIntoSnapshot(join(repoRoot, 'backend'), 'backend')
-copyTreeIntoSnapshot(join(repoRoot, 'packages', 'webui', 'src'), 'packages/webui/src')
-mkdirSync(join(snapshotRoot, 'docs'), { recursive: true })
-for (const name of readdirSync(join(repoRoot, 'docs'))) {
-  if (/^((?:protocol|conversion)-.*|(?:agent-cli|webui-api|webui-data-model|deployment)(?:\.en)?)\.md$/.test(name)) {
-    cpSync(join(repoRoot, 'docs', name), join(snapshotRoot, 'docs', name))
-  }
-}
-cpSync(join(repoRoot, 'docs', 'examples'), join(snapshotRoot, 'docs', 'examples'), { recursive: true })
+copySnapshotPlan(snapshotPlan, snapshotRoot)
 writeFileSync(snapshotKeep, snapshotKeepContent)
 
 log('Preparing standalone release directory')
