@@ -14,6 +14,28 @@ import (
 
 const gatewayStreamErrorTrailer = "X-Elysia-Stream-Error"
 
+// gatewayStream owns the state for one upstream response. It never resubmits
+// generation; source accounting and client projection have distinct replays.
+type gatewayStream struct {
+	server             *Server
+	context            *gin.Context
+	record             *usageRecord
+	plan               *gatewayPlan
+	candidate          gatewayCandidate
+	limits             protocol.Limits
+	options            protocol.EvaluationContext
+	route              protocol.ConversionContext
+	eventState         *protocol.ConversionEventState
+	carriers           *builtin.ContinuationStream
+	collector          *protocol.ResponseCollector
+	sourceReplay       *protocol.EventReplay
+	replay             *protocol.EventReplay
+	wireValidation     protocol.EvaluationContext
+	finalValidation    *protocol.WireStreamValidation
+	terminalFailure    error
+	isFailureDelivered bool
+}
+
 func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan *gatewayPlan, candidate gatewayCandidate, response *http.Response) error {
 	limits := plan.ingress.ResourceLimits()
 	options := protocol.EvaluationContext{Scope: candidate.scope, State: protocol.NewEvaluationState(), Diagnostics: &protocol.DiagnosticSink{}}
@@ -51,198 +73,207 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 	if err != nil {
 		return err
 	}
-	var terminalFailure error
-	failureDelivered := false
-	emit := func(value protocol.Value) error {
-		if record.FirstByteMs == 0 {
-			record.FirstByteMs = time.Since(record.StartedAt).Milliseconds()
-		}
-		if candidate.conversion.HasPhase(protocol.ConversionWire) {
-			converted, e := candidate.conversion.ApplyValue(c.Request.Context(), protocol.ConversionWire, value, route, options.Diagnostics)
-			if e != nil {
-				return e
-			}
-			if _, e = plan.ingress.DecodeFrame(c.Request.Context(), converted, wireValidation); e != nil {
-				return e
-			}
-			value = converted
-		}
-		frames := []protocol.Value{value}
-		if candidate.continuation != nil {
-			carriers.Tokens = candidate.continuation.tokens
-			var err error
-			frames, err = carriers.Frames(value)
-			if err != nil {
-				return err
-			}
-		}
-		for _, frame := range frames {
-			if err := finalValidation.Consume(c.Request.Context(), frame); err != nil {
-				return err
-			}
-			if len(frame.Bytes()) > limits.BufferBytes {
-				return protocol.IssuesError([]protocol.ConversionIssue{{Code: protocol.LimitExceeded, Severity: protocol.SeverityError, Stage: "continuation", Path: "/frame", Reason: "frame including continuation carriers exceeds target buffer limit"}})
-			}
-			if err := protocol.WriteFrame(c.Writer, plan.operation, frame); err != nil {
-				return err
-			}
-		}
-		c.Writer.Flush()
-		return nil
+	stream := &gatewayStream{server: s, context: c, record: record, plan: plan, candidate: candidate,
+		limits: limits, options: options, route: route, eventState: eventState, carriers: carriers,
+		collector: collector, sourceReplay: sourceReplay, replay: replay,
+		wireValidation: wireValidation, finalValidation: finalValidation}
+	err = protocol.ReadFrames(c.Request.Context(), response.Body, candidate.operation, candidate.compiled.ResourceLimits().BufferBytes, stream.consumeFrame)
+	return stream.finish(err)
+}
+
+func (stream *gatewayStream) emit(value protocol.Value) error {
+	if stream.record.FirstByteMs == 0 {
+		stream.record.FirstByteMs = time.Since(stream.record.StartedAt).Milliseconds()
 	}
-	err = protocol.ReadFrames(c.Request.Context(), response.Body, candidate.operation, candidate.compiled.ResourceLimits().BufferBytes, func(frame protocol.Value, metadata protocol.Object) error {
-		record.appendStreamEvent(string(frame.Bytes()))
-		options.Values = metadata
-		decoded, err := candidate.compiled.DecodeFrame(c.Request.Context(), frame, options)
+	if stream.candidate.conversion.HasPhase(protocol.ConversionWire) {
+		converted, e := stream.candidate.conversion.ApplyValue(stream.context.Request.Context(), protocol.ConversionWire, value, stream.route, stream.options.Diagnostics)
+		if e != nil {
+			return e
+		}
+		if _, e = stream.plan.ingress.DecodeFrame(stream.context.Request.Context(), converted, stream.wireValidation); e != nil {
+			return e
+		}
+		value = converted
+	}
+	frames := []protocol.Value{value}
+	if stream.candidate.continuation != nil {
+		stream.carriers.Tokens = stream.candidate.continuation.tokens
+		var err error
+		frames, err = stream.carriers.Frames(value)
 		if err != nil {
 			return err
 		}
-		if err := observeHostedTools(record, candidate.compiled, frame.Bytes()); err != nil {
+	}
+	for _, frame := range frames {
+		if err := stream.finalValidation.Consume(stream.context.Request.Context(), frame); err != nil {
 			return err
 		}
-		// Validate the whole provider frame before using same-frame usage in a client start.
-		for _, event := range decoded.Events {
-			if event.Response != nil {
-				// Two layers, different consumers: CheckGenerationOutcome rejects a
-				// terminal response whose status/error disagree (the streaming
-				// equivalent of an HTTP failure); CheckModelEvent below applies the
-				// declared model contract and upstream capabilities to every event.
-				if err := protocol.CheckGenerationOutcome(event.Response); err != nil {
+		if len(frame.Bytes()) > stream.limits.BufferBytes {
+			return protocol.IssuesError([]protocol.ConversionIssue{{Code: protocol.LimitExceeded, Severity: protocol.SeverityError, Stage: "continuation", Path: "/frame", Reason: "frame including continuation carriers exceeds target buffer limit"}})
+		}
+		if err := protocol.WriteFrame(stream.context.Writer, stream.plan.operation, frame); err != nil {
+			return err
+		}
+	}
+	stream.context.Writer.Flush()
+	return nil
+}
+
+func (stream *gatewayStream) consumeFrame(frame protocol.Value, metadata protocol.Object) error {
+	stream.record.appendStreamEvent(string(frame.Bytes()))
+	stream.options.Values = metadata
+	decoded, err := stream.candidate.compiled.DecodeFrame(stream.context.Request.Context(), frame, stream.options)
+	if err != nil {
+		return err
+	}
+	if err := observeHostedTools(stream.record, stream.candidate.compiled, frame.Bytes()); err != nil {
+		return err
+	}
+	// Validate the whole provider frame before using same-frame usage in a client start.
+	for _, event := range decoded.Events {
+		if event.Response != nil {
+			// Two layers, different consumers: CheckGenerationOutcome rejects a
+			// terminal response whose status/error disagree (the streaming
+			// equivalent of an HTTP failure); CheckModelEvent below applies the
+			// declared model contract and upstream capabilities to every event.
+			if err := protocol.CheckGenerationOutcome(event.Response); err != nil {
+				return err
+			}
+		}
+		if err := protocol.IssuesError(protocol.CheckModelEvent(event, stream.candidate.compiled, stream.candidate.binding, stream.candidate.scope)); err != nil {
+			return err
+		}
+	}
+	originalEvents, _ := protocol.EncodeValue(decoded.Events)
+	acceptedEvents := []protocol.Event{}
+	deliveryEvents := decoded.Events
+	if stream.candidate.conversion.HasAnthropicEnvelope(protocol.ConversionEvent, stream.route) {
+		deliveryEvents = protocol.DeliveryFrameEvents(decoded.Events)
+	}
+	for eventIndex, event := range decoded.Events {
+		if _, err := stream.sourceReplay.Consume(event); err != nil {
+			return err
+		}
+		if event.Type == protocol.OperationFailed || event.Type == protocol.OperationCancelled {
+			status := "failed"
+			if event.Type == protocol.OperationCancelled {
+				status = "cancelled"
+			}
+			stream.terminalFailure = &protocol.GenerationFailure{Payload: event.Error, Status: protocol.StringValue(status)}
+		}
+		updateRecordProtocolUsage(stream.record, stream.sourceReplay.Usage())
+		if stream.collector != nil {
+			if _, _, captureErr := stream.collector.Consume(event); captureErr != nil {
+				if err := stream.candidate.continuation.warning("continuation stream collection unavailable: " + captureErr.Error()); err != nil {
+					return err
+				}
+				stream.collector = nil
+			} else {
+				if node, ordinal, ok := stream.collector.CompletedNode(event); ok {
+					if err := stream.server.captureContinuationNode(stream.context, stream.candidate.continuation, node, ordinal); err != nil {
+						return err
+					}
+				}
+				if event.Type == protocol.ResponseFinished {
+					collected, e := stream.collector.Finish()
+					if e != nil {
+						return e
+					}
+					if e = stream.server.captureContinuationResponse(stream.context, stream.candidate.continuation, collected); e != nil {
+						return e
+					}
+				}
+			}
+		}
+		queued, e := stream.eventState.Push(deliveryEvents[eventIndex])
+		if e != nil {
+			return e
+		}
+		for _, next := range queued {
+			if stream.candidate.conversion != nil {
+				stream.route.Recoverable = stream.candidate.conversionContext(stream.plan.ingress, true).Recoverable
+				next, err = stream.candidate.conversion.Event(stream.context.Request.Context(), next, stream.route, stream.options.Diagnostics)
+				if err != nil {
 					return err
 				}
 			}
-			if err := protocol.IssuesError(protocol.CheckModelEvent(event, candidate.compiled, candidate.binding, candidate.scope)); err != nil {
-				return err
-			}
-		}
-		originalEvents, _ := protocol.EncodeValue(decoded.Events)
-		acceptedEvents := []protocol.Event{}
-		deliveryEvents := decoded.Events
-		if candidate.conversion.HasAnthropicEnvelope(protocol.ConversionEvent, route) {
-			deliveryEvents = protocol.DeliveryFrameEvents(decoded.Events)
-		}
-		for eventIndex, event := range decoded.Events {
-			if _, err := sourceReplay.Consume(event); err != nil {
-				return err
-			}
-			if event.Type == protocol.OperationFailed || event.Type == protocol.OperationCancelled {
-				status := "failed"
-				if event.Type == protocol.OperationCancelled {
-					status = "cancelled"
-				}
-				terminalFailure = &protocol.GenerationFailure{Payload: event.Error, Status: protocol.StringValue(status)}
-			}
-			updateRecordProtocolUsage(record, sourceReplay.Usage())
-			if collector != nil {
-				if _, _, captureErr := collector.Consume(event); captureErr != nil {
-					if err := candidate.continuation.warning("continuation stream collection unavailable: " + captureErr.Error()); err != nil {
-						return err
-					}
-					collector = nil
-				} else {
-					if node, ordinal, ok := collector.CompletedNode(event); ok {
-						if err := s.captureContinuationNode(c, candidate.continuation, node, ordinal); err != nil {
-							return err
-						}
-					}
-					if event.Type == protocol.ResponseFinished {
-						collected, e := collector.Finish()
-						if e != nil {
-							return e
-						}
-						if e = s.captureContinuationResponse(c, candidate.continuation, collected); e != nil {
-							return e
-						}
-					}
-				}
-			}
-			queued, e := eventState.Push(deliveryEvents[eventIndex])
+			accepted, e := stream.replay.Consume(next)
 			if e != nil {
 				return e
 			}
-			for _, next := range queued {
-				if candidate.conversion != nil {
-					route.Recoverable = candidate.conversionContext(plan.ingress, true).Recoverable
-					next, err = candidate.conversion.Event(c.Request.Context(), next, route, options.Diagnostics)
-					if err != nil {
-						return err
-					}
-				}
-				accepted, e := replay.Consume(next)
-				if e != nil {
-					return e
-				}
-				if accepted {
-					acceptedEvents = append(acceptedEvents, next)
-				}
+			if accepted {
+				acceptedEvents = append(acceptedEvents, next)
 			}
 		}
-		if len(decoded.Events) > 0 && len(acceptedEvents) == 0 {
-			return nil
-		}
-		updatedEvents, _ := protocol.EncodeValue(acceptedEvents)
-		if eventState.Buffered || !bytes.Equal(originalEvents.Bytes(), updatedEvents.Bytes()) {
-			decoded = &protocol.EventFrame{Events: acceptedEvents}
-		} else {
-			decoded.Events = acceptedEvents
-		}
-		frames, err := plan.ingress.EncodeFrame(c.Request.Context(), decoded, options)
-		if err != nil {
+	}
+	if len(decoded.Events) > 0 && len(acceptedEvents) == 0 {
+		return nil
+	}
+	updatedEvents, _ := protocol.EncodeValue(acceptedEvents)
+	if stream.eventState.Buffered || !bytes.Equal(originalEvents.Bytes(), updatedEvents.Bytes()) {
+		decoded = &protocol.EventFrame{Events: acceptedEvents}
+	} else {
+		decoded.Events = acceptedEvents
+	}
+	frames, err := stream.plan.ingress.EncodeFrame(stream.context.Request.Context(), decoded, stream.options)
+	if err != nil {
+		return err
+	}
+	for _, wire := range frames {
+		if err := stream.emit(wire); err != nil {
 			return err
 		}
-		for _, wire := range frames {
-			if err := emit(wire); err != nil {
-				return err
+	}
+	if len(frames) > 0 {
+		for _, event := range acceptedEvents {
+			if event.Type == protocol.OperationFailed || event.Type == protocol.OperationCancelled {
+				stream.isFailureDelivered = true
 			}
 		}
-		if len(frames) > 0 {
-			for _, event := range acceptedEvents {
-				if event.Type == protocol.OperationFailed || event.Type == protocol.OperationCancelled {
-					failureDelivered = true
-				}
-			}
-		}
-		return nil
-	})
+	}
+	return nil
+}
+
+func (stream *gatewayStream) finish(err error) error {
 	if err == nil {
 		var tail []protocol.Event
-		tail, err = eventState.Drain()
+		tail, err = stream.eventState.Drain()
 		for _, event := range tail {
 			if err != nil {
 				break
 			}
-			route.Recoverable = candidate.conversionContext(plan.ingress, true).Recoverable
-			event, err = candidate.conversion.Event(c.Request.Context(), event, route, options.Diagnostics)
+			stream.route.Recoverable = stream.candidate.conversionContext(stream.plan.ingress, true).Recoverable
+			event, err = stream.candidate.conversion.Event(stream.context.Request.Context(), event, stream.route, stream.options.Diagnostics)
 			if err != nil {
 				break
 			}
-			if _, err = replay.Consume(event); err != nil {
+			if _, err = stream.replay.Consume(event); err != nil {
 				break
 			}
 			var frames []protocol.Value
-			frames, err = plan.ingress.EncodeFrame(c.Request.Context(), &protocol.EventFrame{Events: []protocol.Event{event}}, options)
+			frames, err = stream.plan.ingress.EncodeFrame(stream.context.Request.Context(), &protocol.EventFrame{Events: []protocol.Event{event}}, stream.options)
 			if err != nil {
 				break
 			}
 			for _, frame := range frames {
-				if err = emit(frame); err != nil {
+				if err = stream.emit(frame); err != nil {
 					break
 				}
 			}
 		}
 		if err == nil {
-			err = sourceReplay.Finish()
+			err = stream.sourceReplay.Finish()
 		}
 		if err == nil {
-			err = replay.Finish()
+			err = stream.replay.Finish()
 		}
 	}
 	if err == nil {
 		var frames []protocol.Value
-		frames, err = plan.ingress.FinishEvents(c.Request.Context(), options)
+		frames, err = stream.plan.ingress.FinishEvents(stream.context.Request.Context(), stream.options)
 		if err == nil {
 			for _, frame := range frames {
-				if writeErr := emit(frame); writeErr != nil {
+				if writeErr := stream.emit(frame); writeErr != nil {
 					err = writeErr
 					break
 				}
@@ -250,40 +281,40 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 		}
 	}
 	if err == nil {
-		err = finalValidation.Finish()
+		err = stream.finalValidation.Finish()
 	}
 	if err != nil {
-		if failureDelivered {
+		if stream.isFailureDelivered {
 			// A provider failure already ended the client's event lifecycle.
 			// Reject an invalid tail without replacing the original cause or
 			// attempting a second terminal. Both errors remain inspectable.
-			c.Header(gatewayStreamErrorTrailer, "protocol_stream_error")
-			return errors.Join(terminalFailure, err)
+			stream.context.Header(gatewayStreamErrorTrailer, "protocol_stream_error")
+			return errors.Join(stream.terminalFailure, err)
 		}
-		if writeErr := emitFailureEvent(c, plan, options, emit, err); writeErr != nil {
+		if writeErr := emitFailureEvent(stream.context, stream.plan, stream.options, stream.emit, err); writeErr != nil {
 			return writeErr
 		}
 		return err
 	}
-	if terminalFailure != nil {
+	if stream.terminalFailure != nil {
 		// The provider's error has already been delivered and validated. Keep
 		// usage tails, record a failed call, and never append a second error or
 		// a synthetic success marker to that native/projected terminal.
-		c.Header(gatewayStreamErrorTrailer, "protocol_stream_error")
-		return terminalFailure
+		stream.context.Header(gatewayStreamErrorTrailer, "protocol_stream_error")
+		return stream.terminalFailure
 	}
-	if plan.operation.Framing != nil && len(plan.operation.Framing.Done) > 0 {
+	if stream.plan.operation.Framing != nil && len(stream.plan.operation.Framing.Done) > 0 {
 		// Done lists accepted alternatives; output uses the first canonical marker.
-		marker := plan.operation.Framing.Done[0]
-		if plan.operation.Transport == protocol.SSE {
-			if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", marker); err != nil {
+		marker := stream.plan.operation.Framing.Done[0]
+		if stream.plan.operation.Transport == protocol.SSE {
+			if _, err := fmt.Fprintf(stream.context.Writer, "data: %s\n\n", marker); err != nil {
 				return err
 			}
-		} else if _, err := fmt.Fprintln(c.Writer, marker); err != nil {
+		} else if _, err := fmt.Fprintln(stream.context.Writer, marker); err != nil {
 			return err
 		}
 	}
-	c.Writer.Flush()
+	stream.context.Writer.Flush()
 	return nil
 }
 
