@@ -163,7 +163,7 @@ type runtimeConfigPayload struct {
 		SyncIntervalMinutes *int `json:"syncIntervalMinutes"`
 	} `json:"modelCatalog"`
 	AgentRemote *agentRemoteConfigPayload `json:"agentRemote"`
-	Agent       *agentDefaultsPayload      `json:"agent"`
+	Agent       *agentDefaultsPayload     `json:"agent"`
 }
 
 // agentDefaultsPayload 是 AI 助手全局默认的增量更新体。
@@ -191,110 +191,17 @@ func (s *Server) adminUpdateRuntimeConfig(c *gin.Context) {
 		respondFail(c, 400, "invalid_json", err.Error())
 		return
 	}
-	// 两阶段：先整体校验（validateRuntimeConfigPayload），全部通过后再应用
-	//——避免「后段字段非法/保存失败但前段已生效」的内存与磁盘状态分叉。
-	if verr := validateRuntimeConfigPayload(&payload); verr != nil {
-		respondFail(c, verr.status, verr.code, verr.message)
+	hasRestartChange, err := s.updateRuntimeConfig(payload)
+	if err != nil {
+		var invalid *runtimeConfigError
+		if errors.As(err, &invalid) {
+			respondFail(c, invalid.status, invalid.code, invalid.message)
+		} else {
+			respondFail(c, 500, "save_config_failed", err.Error())
+		}
 		return
 	}
-	server := s.config.GetServer()
-	requestsRestart := (payload.Host != "" && payload.Host != server.Host) || (payload.Port != 0 && payload.Port != server.Port)
-
-	if payload.LogLevel != "" {
-		s.config.SetLogLevel(payload.LogLevel)
-	}
-	if payload.HTTPTimeout != nil {
-		seconds := *payload.HTTPTimeout
-		s.config.SetHTTPTimeout(seconds)
-		// 更新共用传输层；在途流仍由各自的请求上下文控制。
-		timeout := time.Duration(seconds) * time.Second
-		s.protocolTransport.SetTimeout(timeout)
-	}
-	if payload.PanelAccessToken != nil {
-		s.config.SetPanelAccessToken(*payload.PanelAccessToken)
-	}
-	if payload.DatabasePath != nil {
-		old := s.config.GetDatabasePath()
-		s.config.SetDatabasePath(*payload.DatabasePath)
-		if s.config.GetDatabasePath() != old {
-			requestsRestart = true
-		}
-	}
-	if payload.EnablePprof != nil {
-		s.config.SetEnablePprof(*payload.EnablePprof)
-		// pprof 路由在进程启动时挂载，运行时修改只有重启后生效。
-		requestsRestart = true
-	}
-	var outboundRollback func()
-	if payload.Outbound != nil {
-		// 整体替换禁止段列表，即时下发（连接时校验+预校验），无需重启；
-		// Save 失败时回滚，防内存/磁盘分叉（热重载会按磁盘恢复）。
-		outboundRollback, _ = s.applyOutboundDeniedRanges(payload.Outbound.DeniedIPRanges)
-	}
-	retentionTightened := false
-	if payload.UsageLog != nil {
-		// 局部更新：仅覆盖显式提供的字段。BodyMaxKB/开关对后续请求即时生效。
-		before := s.config.GetUsageLogConfig()
-		s.config.SetUsageLogConfig(*payload.UsageLog)
-		after := s.config.GetUsageLogConfig()
-		// 清理参数收紧后立即唤醒巡检，免去最长一个 CleanupInterval 的空窗；
-		// 放宽则无需动作（下一 tick 自然按新阈值执行）。
-		retentionTightened = after.RetentionDays < before.RetentionDays || after.MaxContentBytes < before.MaxContentBytes || after.MaxRecords < before.MaxRecords
-	}
-	if payload.SystemLog != nil {
-		before := s.config.GetSystemLogConfig()
-		s.config.SetSystemLogConfig(*payload.SystemLog)
-		after := s.config.GetSystemLogConfig()
-		retentionTightened = retentionTightened || after.RetentionDays < before.RetentionDays || after.MaxRecords < before.MaxRecords || after.MaxContentMB < before.MaxContentMB
-	}
-	if retentionTightened {
-		s.usageRetention.triggerAsync()
-	}
-	if payload.ModelCatalog != nil && payload.ModelCatalog.SyncIntervalMinutes != nil {
-		// 周期检查是动态的，写入配置即生效（0 = 默认 24h），无需重启。
-		s.config.SetModelCatalogSyncInterval(*payload.ModelCatalog.SyncIntervalMinutes)
-	}
-	if payload.Agent != nil && payload.Agent.ToolLoopLimit != nil {
-		limit := *payload.Agent.ToolLoopLimit
-		if limit < 0 || limit > 100 {
-			respondFail(c, 400, "invalid_tool_loop_limit", "toolLoopLimit 取值 0-100（0=默认 30）")
-			return
-		}
-		// 引擎每轮动态读取，写入即热生效。
-		s.config.SetAgentToolLoopLimit(limit)
-	}
-	if payload.AgentRemote != nil {
-		// 远程面鉴权链每请求读内存配置，写入即热生效（无需重启）。
-		remote := s.config.GetAgentRemote()
-		if payload.AgentRemote.Enabled != nil {
-			value := *payload.AgentRemote.Enabled
-			remote.Enabled = &value
-		}
-		if payload.AgentRemote.PublicURL != nil {
-			remote.PublicURL = strings.TrimSpace(*payload.AgentRemote.PublicURL)
-		}
-		s.config.SetAgentRemote(remote)
-	}
-	// host/port：此前只用于计算 restartRequired 而从未应用——设置页保存后
-	// 表单闪回旧值、重启后监听也没变。现在即时应用到配置并随 Save() 落盘；
-	// 监听套接字仍需重启切换（restartRequired 语义不变）。
-	if payload.Host != "" && payload.Host != server.Host {
-		s.config.SetHost(payload.Host)
-	}
-	if payload.Port != 0 && payload.Port != server.Port {
-		s.config.SetPort(payload.Port)
-	}
-	if requestsRestart {
-		s.markRestartRequired()
-	}
-	if err := s.config.Save(); err != nil {
-		if outboundRollback != nil {
-			outboundRollback()
-		}
-		respondFail(c, 500, "save_config_failed", err.Error())
-		return
-	}
-	respondOK(c, gin.H{"updated": true, "restartRequired": requestsRestart})
+	respondOK(c, gin.H{"updated": true, "restartRequired": hasRestartChange})
 }
 
 // runtimeConfigError 携带校验失败的 HTTP 语义（状态码 + 错误码 + 消息）。
@@ -310,6 +217,10 @@ func (e runtimeConfigError) Error() string { return e.message }
 // 任一非法即返回错误，保证第二阶段（应用 + Save）不会落在部分生效的
 // 状态上。数值字段 0 是合法的「关闭/不保存」语义，只拒绝负数。
 func validateRuntimeConfigPayload(p *runtimeConfigPayload) *runtimeConfigError {
+	if p.Agent != nil && p.Agent.ToolLoopLimit != nil && (*p.Agent.ToolLoopLimit < 0 || *p.Agent.ToolLoopLimit > 100) {
+		return &runtimeConfigError{400, "invalid_tool_loop_limit", "toolLoopLimit must be between 0 and 100 (0 uses the default)"}
+	}
+
 	if p.HTTPTimeout != nil && *p.HTTPTimeout < 0 {
 		return &runtimeConfigError{400, "invalid_http_timeout", "httpTimeout must not be negative"}
 	}

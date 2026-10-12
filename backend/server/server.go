@@ -134,6 +134,8 @@ type Server struct {
 	// 由 adminUpdateRuntimeConfig 置位，restart-required/check 查询；进程重启自然清零。
 	restartMu       sync.Mutex
 	restartRequired bool
+	// Serializes persistence with transport publication and administrative reload.
+	configUpdateMu sync.Mutex
 
 	// skipOutboundValidation 仅供测试使用：跳过 SSRF 出站校验，
 	// 以便用 httptest 的 127.0.0.1 上游做端到端转发/故障转移测试。
@@ -230,25 +232,6 @@ func New(cfg *config.Config) *Server {
 		})
 	}
 	return server
-}
-
-// applyOutboundDeniedRanges 校验并整体替换出站禁止段，返回回滚函数：
-// 调用方在配置落盘失败时调用回滚，恢复内存与 relay 下发，防内存/磁盘分叉。
-// admin PUT 与 agent update_outbound_policy 工具共用同一条语义。
-func (s *Server) applyOutboundDeniedRanges(candidates []string) (rollback func(), err error) {
-	previous := append([]string(nil), s.config.GetOutboundConfig().DeniedIPRanges...)
-	cleaned := make([]string, 0, len(candidates))
-	for _, entry := range candidates {
-		if trimmed := strings.TrimSpace(entry); trimmed != "" {
-			cleaned = append(cleaned, trimmed)
-		}
-	}
-	s.config.SetOutboundDeniedIPRanges(cleaned)
-	s.syncOutboundPolicy()
-	return func() {
-		s.config.SetOutboundDeniedIPRanges(previous)
-		s.syncOutboundPolicy()
-	}, nil
 }
 
 // syncOutboundPolicy 把出站禁止 IP 段列表下发给 relay 包（连接时校验与预校验
@@ -553,6 +536,8 @@ func (s *Server) logSystemEvent(level, message string, fields map[string]any) {
 }
 
 func (s *Server) reloadConfig(c *gin.Context) {
+	s.configUpdateMu.Lock()
+	defer s.configUpdateMu.Unlock()
 	oldServer := s.config.GetServer()
 	oldHost := oldServer.Host
 	oldPort := oldServer.Port

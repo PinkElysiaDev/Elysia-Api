@@ -349,67 +349,59 @@ func (c *Config) saveLocked() error {
 	if err != nil {
 		return err
 	}
-
-	var raw map[string]interface{}
+	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-
-	raw["host"] = c.Host
-	raw["port"] = c.Port
-	// openBrowserOnStart：显式配置过才落盘（nil 删键），热重载保存不丢失。
+	if raw == nil {
+		return fmt.Errorf("configuration must be a JSON object")
+	}
+	fields := map[string]any{
+		"host": c.Host, "port": c.Port, "panelAccessToken": c.PanelAccessToken,
+		"databasePath": c.DatabasePath, "logLevel": c.LogLevel,
+		"enablePprof": c.EnablePprof, "httpTimeout": c.HTTPTimeout,
+	}
+	for key, value := range fields {
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		raw[key] = encoded
+	}
 	if c.OpenBrowserOnStart != nil {
-		raw["openBrowserOnStart"] = *c.OpenBrowserOnStart
+		raw["openBrowserOnStart"], _ = json.Marshal(*c.OpenBrowserOnStart)
 	} else {
 		delete(raw, "openBrowserOnStart")
 	}
-	raw["panelAccessToken"] = c.PanelAccessToken
-	raw["databasePath"] = c.DatabasePath
-	raw["logLevel"] = c.LogLevel
-	raw["enablePprof"] = c.EnablePprof
-	raw["httpTimeout"] = c.HTTPTimeout
-	// outbound 块：列表非 nil 即写入（显式空列表 = 全放行，必须落成 [] 而非
-	// 被省略，否则重启后会被当作未配置重新套默认）；未配置（nil）删除键。
-	// 旧布尔键 allowFakeIPOutbound 已废弃，落盘时顺带清除。
 	delete(raw, "allowFakeIPOutbound")
 	if c.Outbound.DeniedIPRanges != nil {
-		raw["outbound"] = map[string]interface{}{"deniedIpRanges": c.Outbound.DeniedIPRanges}
+		raw["outbound"], _ = json.Marshal(map[string][]string{"deniedIpRanges": c.Outbound.DeniedIPRanges})
 	} else {
 		delete(raw, "outbound")
 	}
-	// usageLog 块：全默认（所有指针字段为 nil，序列化为 {}）时删除键保持文件
-	// 干净；任一字段显式配置过才写入。
-	if encoded, err := json.Marshal(c.UsageLog); err == nil && string(encoded) != "{}" {
-		raw["usageLog"] = c.UsageLog
-	} else {
-		delete(raw, "usageLog")
+	for key, value := range map[string]any{
+		"usageLog": c.UsageLog, "systemLog": c.SystemLog, "modelCatalog": c.ModelCatalog,
+		"agentRemote": c.AgentRemote, "agent": c.Agent,
+	} {
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		if string(encoded) == "{}" {
+			delete(raw, key)
+		} else {
+			raw[key] = encoded
+		}
 	}
-	if encoded, err := json.Marshal(c.SystemLog); err == nil && string(encoded) != "{}" {
-		raw["systemLog"] = c.SystemLog
-	} else {
-		delete(raw, "systemLog")
-	}
-	// modelCatalog 块：管理页可改 syncIntervalMinutes（url/proxy/enabled 走
-	// 手编 config.json），必须随 Save 落盘，否则重启后静默回退默认值。
-	if encoded, err := json.Marshal(c.ModelCatalog); err == nil && string(encoded) != "{}" {
-		raw["modelCatalog"] = c.ModelCatalog
-	} else {
-		delete(raw, "modelCatalog")
-	}
-	// agentRemote 块：管理页运行时可改（enabled/publicUrl），显式配置过才
-	// 写入——全默认（enabled nil + 空 url 序列化为 {}）删除键保持文件干净。
-	if encoded, err := json.Marshal(c.AgentRemote); err == nil && string(encoded) != "{}" {
-		raw["agentRemote"] = c.AgentRemote
-	} else {
-		delete(raw, "agentRemote")
-	}
-
 	out, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		return err
 	}
-	// 原子替换：直接覆盖在写入中途崩溃会留下半截 config.json（含面板令牌），不可恢复。
-	return WriteFileAtomic(c.path, out, 0o644)
+	info, err := os.Stat(c.path)
+	if err != nil {
+		return err
+	}
+	return WriteFileAtomic(c.path, out, info.Mode().Perm())
 }
 
 // WriteFileAtomic 以"写临时文件 + fsync + 原子重命名"落盘：进程在写入中途
@@ -595,36 +587,7 @@ func (c *Config) Reload() error {
 	// 部署静默失效，且随后的 Save 会把文件值固化覆盖部署配置。
 	newCfg.applyEnvironmentOverrides()
 
-	c.Host = newCfg.Host
-	c.Port = newCfg.Port
-	c.PanelAccessToken = newCfg.PanelAccessToken
-	c.DatabasePath = newCfg.DatabasePath
-	c.LogLevel = newCfg.LogLevel
-	c.SecretKeyPath = newCfg.SecretKeyPath
-	c.WebUIDir = newCfg.WebUIDir
-	c.EnablePprof = newCfg.EnablePprof
-	c.MaxBodyBytes = newCfg.MaxBodyBytes
-	c.Server = newCfg.Server
-	// 注意：Tokens/Groups 是 json:"-" 运行时字段，不从 config.json 读取，
-	// 因此热重载不覆盖它们（模型组/token 的变更走 SQLite + 路由缓存失效）。
-	c.Responses = newCfg.Responses
-	c.Usage = newCfg.Usage
-	c.UsageLog = newCfg.UsageLog
-	c.SystemLog = newCfg.SystemLog
-	// ModelCatalog 必须随热重载更新：目录子系统按「周期动态读取配置」设计
-	//（runPeriodic 每轮重读 getter），漏拷会让 url/proxy/enabled/周期在
-	// 重载后维持旧值直到进程重启。
-	c.ModelCatalog = newCfg.ModelCatalog
-	c.HTTPTimeout = newCfg.HTTPTimeout
-	c.DebugMode = newCfg.DebugMode
-	c.VerboseLog = newCfg.VerboseLog
-	c.HealthCheck = newCfg.HealthCheck
-	c.Outbound = newCfg.Outbound
-	c.AgentRemote = newCfg.AgentRemote
-	// openBrowserOnStart 也走 bootstrap 键：reload 后 Save 才不会把用户
-	// 手写的值当 nil 删掉（saveLocked 对 nil 是删键语义）。
-	c.OpenBrowserOnStart = newCfg.OpenBrowserOnStart
-
+	c.publishSettingsLocked(&newCfg)
 	return nil
 }
 
@@ -1057,4 +1020,31 @@ func init() {
 
 	GlobalConfig = cfg
 	log.Println("Config loaded successfully")
+}
+
+// publishSettingsLocked replaces persisted settings while preserving runtime tokens and groups.
+func (c *Config) publishSettingsLocked(newCfg *Config) {
+	c.Host = newCfg.Host
+	c.Port = newCfg.Port
+	c.PanelAccessToken = newCfg.PanelAccessToken
+	c.DatabasePath = newCfg.DatabasePath
+	c.LogLevel = newCfg.LogLevel
+	c.SecretKeyPath = newCfg.SecretKeyPath
+	c.WebUIDir = newCfg.WebUIDir
+	c.EnablePprof = newCfg.EnablePprof
+	c.MaxBodyBytes = newCfg.MaxBodyBytes
+	c.Server = newCfg.Server
+	c.Responses = newCfg.Responses
+	c.Usage = newCfg.Usage
+	c.UsageLog = newCfg.UsageLog
+	c.SystemLog = newCfg.SystemLog
+	c.ModelCatalog = newCfg.ModelCatalog
+	c.HTTPTimeout = newCfg.HTTPTimeout
+	c.DebugMode = newCfg.DebugMode
+	c.VerboseLog = newCfg.VerboseLog
+	c.HealthCheck = newCfg.HealthCheck
+	c.Outbound = newCfg.Outbound
+	c.AgentRemote = newCfg.AgentRemote
+	c.OpenBrowserOnStart = newCfg.OpenBrowserOnStart
+	c.Agent = newCfg.Agent
 }

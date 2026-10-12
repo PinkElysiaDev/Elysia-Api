@@ -1223,7 +1223,7 @@ func (t *outboundPolicyTool) Execute(ctx context.Context, tctx CLIContext, args 
 		return badRequest
 	}
 
-	var rollback func()
+	var ranges []string
 	view := func(summary string) CLIResult {
 		return CLIResult{OK: true, Summary: summary, Data: map[string]any{
 			"deniedIpRanges":        t.server.config.GetOutboundConfig().DeniedIPRanges,
@@ -1232,7 +1232,7 @@ func (t *outboundPolicyTool) Execute(ctx context.Context, tctx CLIContext, args 
 	}
 
 	if params.ResetDefault {
-		rollback, _ = t.server.applyOutboundDeniedRanges(append([]string(nil), relay.DefaultDeniedIPRanges...))
+		ranges = append([]string(nil), relay.DefaultDeniedIPRanges...)
 	} else if params.Ranges == nil {
 		// 只读查询，不落盘。
 		return view("当前出站禁止段如下（未修改）")
@@ -1248,16 +1248,12 @@ func (t *outboundPolicyTool) Execute(ctx context.Context, tctx CLIContext, args 
 			}
 			cleaned = append(cleaned, trimmed)
 		}
-		rollback, _ = t.server.applyOutboundDeniedRanges(cleaned)
+		ranges = cleaned
 	}
-	if err := t.server.config.Save(); err != nil {
-		// 落盘失败回滚内存与 relay 下发：否则热重载会静默恢复旧策略，
-		// 而运行时行为已按新策略放行/拦截（内存与磁盘分叉）。
-		if rollback != nil {
-			rollback()
-		}
-		return CLIError("策略修改已回滚（落盘失败）: "+err.Error(), "persist_failed")
+	if _, err := t.server.updateRuntimeConfig(runtimeConfigPayload{Outbound: &outboundConfigPayload{DeniedIPRanges: ranges}}); err != nil {
+		return CLIError("Could not persist outbound policy: "+err.Error(), "persist_failed")
 	}
+
 	if params.ResetDefault {
 		return view("出站禁止段已恢复预置默认")
 	}
