@@ -13,6 +13,7 @@ export function parseConversionDocument(source: string): ConversionParseResult {
     if (!isObject(policy)) throw new Error('/：策略必须是对象')
     if (typeof policy.id !== 'string') throw new Error('/id：必须是字符串')
     if (policy.name !== undefined && typeof policy.name !== 'string') throw new Error('/name：必须是字符串')
+    if (policy.mode !== undefined && policy.mode !== 'compatible' && policy.mode !== 'strict') throw new Error('/mode：必须是 compatible 或 strict')
     if (!Array.isArray(policy.rules)) throw new Error('/rules：必须是数组')
     for (const [index, rule] of policy.rules.entries()) {
       const path = `/rules/${index}`
@@ -26,11 +27,24 @@ export function parseConversionDocument(source: string): ConversionParseResult {
         if (!isObject(rule.match)) throw new Error(`${path}/match：必须是对象`)
         for (const [key, value] of Object.entries(rule.match)) {
           if (key !== 'present' && typeof value !== 'string') throw new Error(`${path}/match/${key}：必须是字符串`)
+          if (key === 'present' && typeof value !== 'boolean') throw new Error(`${path}/match/present：必须是布尔值`)
         }
       }
     }
     for (const key of ['continuation', 'usage']) {
       if (policy[key] !== undefined && !isObject(policy[key])) throw new Error(`/${key}：必须是对象`)
+    }
+    const continuation = policy.continuation as Record<string, unknown> | undefined
+    for (const key of ['clientCarrier', 'persist']) {
+      if (continuation?.[key] !== undefined && typeof continuation[key] !== 'boolean') throw new Error(`/continuation/${key}：必须是布尔值`)
+    }
+    for (const key of ['retentionSeconds', 'turnsPerSession', 'maxBytes', 'recordBytes']) {
+      const value = continuation?.[key]
+      if (value !== undefined && (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0)) throw new Error(`/continuation/${key}：必须是非负安全整数`)
+    }
+    const usage = policy.usage as Record<string, unknown> | undefined
+    for (const key of ['defaultIncludeUsage', 'collectUpstreamUsage']) {
+      if (usage?.[key] !== undefined && typeof usage[key] !== 'boolean') throw new Error(`/usage/${key}：必须是布尔值`)
     }
     return { ok: true, document, policy: policy as unknown as ConversionPolicy }
   } catch (error) {

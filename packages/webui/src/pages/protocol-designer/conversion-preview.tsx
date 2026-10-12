@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { conversionAPI, type ConversionPhase, type ConversionRegistry } from '@/lib/conversion-policy'
 import { field, phases } from './conversion-fields'
@@ -20,7 +20,24 @@ export function ConversionPreview({ policyJSON, isValid, busy, registry, action 
   const [context, setContext] = useState(
     '{"source":{"definitionId":"openai-chat-completions","family":"openai_chat","wireVersion":"v2"},"target":{"definitionId":"google-generate-content","family":"gemini","wireVersion":"v2"},"model":"example","operation":"generate","transport":"http_json"}',
   )
-  const [preview, setPreview] = useState<Awaited<ReturnType<typeof conversionAPI.preview>>>()
+  const inputKey = JSON.stringify([policyJSON, phase, context, input])
+  const currentInput = useRef(inputKey)
+  currentInput.current = inputKey
+  const isMounted = useRef(true)
+  useEffect(() => {
+    isMounted.current = true
+    return () => { isMounted.current = false }
+  }, [])
+  const [result, setResult] = useState<{ inputKey: string; output: Awaited<ReturnType<typeof conversionAPI.preview>> }>()
+  const preview = result?.inputKey === inputKey ? result.output : undefined
+  const loadPreview = async () => {
+    try {
+      const output = await conversionAPI.preview(policyJSON, phase, context, input)
+      if (isMounted.current && currentInput.current === inputKey) setResult({ inputKey, output })
+    } catch (error) {
+      if (isMounted.current && currentInput.current === inputKey) throw error
+    }
+  }
   return (
     <section className="space-y-3 rounded-lg border p-4" aria-label="转换行为预览">
       <h2>逐阶段预览</h2>
@@ -56,9 +73,7 @@ export function ConversionPreview({ policyJSON, isValid, busy, registry, action 
       </label>
       <Button
         disabled={busy || !isValid}
-        onClick={() =>
-          void action(async () => setPreview(await conversionAPI.preview(policyJSON, phase, context, input)))
-        }
+        onClick={() => void action(loadPreview)}
       >
         预览行为
       </Button>

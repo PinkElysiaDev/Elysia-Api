@@ -31,6 +31,15 @@ test('invalid structures produce a parse failure with no renderable policy', () 
   for (const raw of ['null', '[]', '{', '{"id":"x","id":"y","rules":[]}']) {
     expect(parseConversionDocument(raw).ok).toBe(false)
   }
+  for (const fields of [
+    '"mode":{}', '"continuation":{"persist":"false"}',
+    '"continuation":{"maxBytes":9007199254740993}',
+    '"continuation":{"retentionSeconds":{}}', '"usage":{"collectUpstreamUsage":[]}',
+    '"rules":[{"match":{"present":"false"}}]',
+  ]) {
+    const parsed = parseConversionDocument(`{"id":"invalid",${fields.startsWith('"rules"') ? '' : '"rules":[],'}${fields}}`)
+    expect(parsed.ok).toBe(false)
+  }
 })
 
 test('real backend policy editing and preview preserve large integers and recover from invalid JSON', async ({ page, request }) => {
@@ -64,4 +73,29 @@ test('real backend policy editing and preview preserve large integers and recove
   await page.getByRole('button', { name: '预览行为', exact: true }).click()
   await expect(page.getByLabel('行为预览结果')).toContainText(`"audit_integer":${largeInteger}`)
   expect(errors).toEqual([])
+})
+
+test('preview completion belongs to the exact current input', async ({ page }) => {
+  test.skip(!process.env.PROTOCOL_E2E_URL, 'requires isolated real backend')
+  await page.addInitScript((token) => localStorage.setItem('elysia-webui.panel-token', token), process.env.PROTOCOL_E2E_TOKEN!)
+  await page.goto('/#/protocols/conversions')
+  await expect(page.getByRole('button', { name: '新建策略' })).toBeEnabled()
+  let release!: () => void
+  let started!: () => void
+  const pending = new Promise<void>((resolve) => { release = resolve })
+  const received = new Promise<void>((resolve) => { started = resolve })
+  await page.route('**/api/admin/protocols/conversion-policies/preview', async (route) => {
+    const response = await route.fetch()
+    started()
+    await pending
+    await route.fulfill({ response })
+  }, { times: 1 })
+  await page.getByRole('button', { name: '预览行为', exact: true }).click()
+  await received
+  await page.getByLabel('行为预览输入').fill('{"schemaVersion":1,"source":{},"model":"new-input","content":[],"parameters":{"stream":false}}')
+  release()
+  await expect(page.getByRole('button', { name: '预览行为', exact: true })).toBeEnabled()
+  await expect(page.getByLabel('行为预览结果')).toHaveCount(0)
+  await page.getByRole('button', { name: '预览行为', exact: true }).click()
+  await expect(page.getByLabel('行为预览结果')).toContainText('new-input')
 })
