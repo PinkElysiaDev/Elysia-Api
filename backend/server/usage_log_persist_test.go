@@ -151,6 +151,7 @@ func TestConversionFailureIsRecorded(t *testing.T) {
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{invalid json`))
 	start := time.Now()
 	record := s.initUsageRecord(c, start, []byte(`{invalid json`), "openai")
+	record.appendConversionIssues([]protocol.ConversionIssue{{Code: protocol.ConversionNormalized, Stage: "request", Path: "/include", Severity: protocol.SeverityInfo}})
 
 	// 与 chatCompletions 内一致的失败路径。
 	s.failGateway(c, record, http.StatusBadRequest, gatewayIssue(protocol.Identity{}, protocol.InvalidInput, "/", "bad json"))
@@ -165,6 +166,9 @@ func TestConversionFailureIsRecorded(t *testing.T) {
 		if err == nil && found {
 			if !strings.Contains(string(payload), `"errorKind":"invalid_input"`) {
 				t.Fatalf("errorKind=conversion must be persisted: %s", payload)
+			}
+			if !strings.Contains(string(payload), `"code":"conversion_normalized"`) || !strings.Contains(string(payload), `"code":"invalid_input"`) {
+				t.Fatalf("request diagnostics were lost when persisting the failure: %s", payload)
 			}
 			return
 		}

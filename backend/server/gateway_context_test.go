@@ -111,3 +111,15 @@ func TestUsageRecordDiagnosticDeduplication(t *testing.T) {
 		t.Fatal(record.ConversionIssues, sink.Issues())
 	}
 }
+
+func TestGatewayFailureKeepsEarlierDiagnostics(t *testing.T) {
+	earlier := protocol.ConversionIssue{Code: protocol.ConversionNormalized, Stage: "request", Path: "/include", Severity: protocol.SeverityInfo}
+	late := protocol.ConversionIssue{Code: protocol.ConversionRejected, Stage: "response", Path: "/usage", Severity: protocol.SeverityError}
+	c, _ := adminProtocolContext(http.MethodPost, "/gateway/test/generate", "{}")
+	record := &usageRecord{ConversionIssues: []protocol.ConversionIssue{earlier}}
+	s := &Server{}
+	s.failGateway(c, record, 502, &protocol.ConversionError{Issues: []protocol.ConversionIssue{late}})
+	if len(record.ConversionIssues) != 2 {
+		t.Fatalf("diagnostics=%+v, lost previous stage", record.ConversionIssues)
+	}
+}

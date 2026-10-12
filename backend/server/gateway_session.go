@@ -162,7 +162,7 @@ func (s *Server) serveGatewaySession(c *gin.Context, view protocol.RegistryView,
 		}
 		var conversion *protocol.ConversionError
 		if errors.As(err, &conversion) {
-			record.ConversionIssues = conversion.Issues
+			record.appendConversionIssues(conversion.Issues)
 		}
 	} else if adapter.HasFailed() {
 		record.StatusCode, record.Error = http.StatusBadGateway, "upstream session failed"

@@ -71,18 +71,7 @@ func estimateValueChars(value protocol.Value) int {
 // appendConversionIssues merges request diagnostics into the record, keeping
 // exact repeats quiet without hiding distinct stages, rules or failures.
 func (record *usageRecord) appendConversionIssues(issues []protocol.ConversionIssue) {
-	for _, issue := range issues {
-		exists := false
-		for _, existing := range record.ConversionIssues {
-			if protocol.SameDiagnostic(existing, issue) {
-				exists = true
-				break
-			}
-		}
-		if !exists {
-			record.ConversionIssues = append(record.ConversionIssues, issue)
-		}
-	}
+	record.ConversionIssues = protocol.AppendDiagnostics(record.ConversionIssues, issues...)
 }
 
 func updateRecordProtocolUsage(record *usageRecord, usage *protocol.Usage) {

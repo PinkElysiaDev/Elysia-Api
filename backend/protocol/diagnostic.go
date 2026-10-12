@@ -3,6 +3,7 @@ package protocol
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -63,10 +64,15 @@ type DiagnosticSink struct {
 	issues []ConversionIssue
 }
 
-// SameDiagnostic identifies repeated observations without merging different
-// stages, revisions or outcomes at the same field.
-func SameDiagnostic(a, b ConversionIssue) bool {
-	return a == b
+// AppendDiagnostics retains emission order and distinct stages, revisions and
+// outcomes while folding repeated observations from stream frames.
+func AppendDiagnostics(existing []ConversionIssue, incoming ...ConversionIssue) []ConversionIssue {
+	for _, issue := range incoming {
+		if !slices.Contains(existing, issue) {
+			existing = append(existing, issue)
+		}
+	}
+	return existing
 }
 
 // Add records one issue, collapsing an exact repeat. A stream renders usage
@@ -75,12 +81,7 @@ func (sink *DiagnosticSink) Add(issue ConversionIssue) {
 	if sink == nil {
 		return
 	}
-	for _, existing := range sink.issues {
-		if SameDiagnostic(existing, issue) {
-			return
-		}
-	}
-	sink.issues = append(sink.issues, issue)
+	sink.issues = AppendDiagnostics(sink.issues, issue)
 }
 
 // Issues returns the accumulated diagnostics in emission order.

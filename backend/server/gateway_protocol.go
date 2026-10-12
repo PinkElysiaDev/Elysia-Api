@@ -296,7 +296,7 @@ func (s *Server) failGateway(c *gin.Context, record *usageRecord, status int, er
 	record.StatusCode, record.Error, record.ErrorKind = status, err.Error(), ErrorKindUpstream
 	var conversion *protocol.ConversionError
 	if errors.As(err, &conversion) {
-		record.ConversionIssues = conversion.Issues
+		record.appendConversionIssues(conversion.Issues)
 		if len(conversion.Issues) > 0 {
 			record.ErrorKind = string(conversion.Issues[0].Code)
 		}
