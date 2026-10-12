@@ -68,6 +68,7 @@ type BoundSourceUpdate struct {
 	IsCreate         bool
 }
 
+// ErrSourceExists reports an insert-only creation that conflicts with an existing source.
 var ErrSourceExists = errors.New("model source already exists")
 
 // SaveBoundSource commits a prepared source update against its verified generation.

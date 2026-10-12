@@ -179,8 +179,8 @@ func (plan *protocolRefreshPlan) ensureProtocol(id string, value protocol.Value,
 	if err != nil && !isPreset && !errors.Is(err, protocol.ErrNotFound) {
 		return err
 	}
-	// Preserve unrelated operator drafts. A corrupt isPreset draft or a draft
-	// still following the replaced isPreset is archived before replacement.
+	// Preserve unrelated operator drafts. A corrupt preset draft or a draft
+	// still following the replaced preset is archived before replacement.
 	damagedDraft := false
 	if err == nil && isPreset && draft.Hash == compiled.Hash() && !storage.EquivalentProtocolDefinition(draft.Definition, value) {
 		// Omitted defaults and explicitly encoded defaults are both valid.

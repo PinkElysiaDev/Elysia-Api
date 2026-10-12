@@ -43,6 +43,7 @@ Elysia API 的部署、协议、接口和开发参考。首次使用从[快速�
 | [开发指南](development.md) | 环境、本地开发、测试、交叉编译与发布产物 |
 | [WebUI 开发](../packages/webui/README.md) | 前端命令、代理、构建与交互约定 |
 | [macOS 验证](macos-testing.md) | 原生工具链、自动检查与真机验收 |
+| [发布后优化记录](post-release-review-2026-10-12.md) | 本轮正确性修复、兜底审查、测试证据和未完成的验收边界 |
 | [登录素材制作](../scripts/login-trace/README.md) | 提取、审图、资产校验与性能复现 |
 
 各发布版本的变更见[更新日志](../CHANGELOG.md)。
