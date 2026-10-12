@@ -209,6 +209,7 @@ export function useAgentStream(
   const activeSessionRef = useRef<string | undefined>(sessionId);
   const optionsRef = useRef(options);
   optionsRef.current = options;
+  activeSessionRef.current = sessionId;
 
   useEffect(() => {
     // 会话切换重置现场。
@@ -228,15 +229,17 @@ export function useAgentStream(
         running: true,
         turnUsage: state.turnUsage,
       }));
+      abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
+      const isCurrent = () => activeSessionRef.current === sessionId && abortRef.current === controller;
       streamAgentEvents(
         `/api/admin/agent/sessions/${sessionId}${path}`,
         body,
         (event) => {
           // 会话归属守卫：abort 只断流，已解析入队的事件还会派发一次——
           // 快速 A→B 切换的毫秒窗口内，A 的尾部事件不得混进 B 的现场/消息列表。
-          if (activeSessionRef.current !== sessionId) return;
+          if (!isCurrent()) return;
           // tool_result 事件直接携带落库消息，并不会再发送单独的 message
           // 事件。所有带消息的事件都即时并入时间线，不能等 turn_done 刷新。
           if (event.message) optionsRef.current.onMessage?.(event);
@@ -248,6 +251,7 @@ export function useAgentStream(
             optionsRef.current.onSessionDirty?.();
           }
           setLive((state) => {
+            if (!isCurrent()) return state;
             const next = reduce(state, event);
             // 落库与清理现场使用同一套逻辑，保留不带消息的旧事件兼容性。
             return event.message && event.type !== "message"
@@ -257,9 +261,10 @@ export function useAgentStream(
         },
         controller.signal,
       ).catch((err: unknown) => {
+        if (!isCurrent()) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
         setLive((state) =>
-          state.running
+          isCurrent() && state.running
             ? {
                 ...state,
                 running: false,
@@ -273,10 +278,11 @@ export function useAgentStream(
         );
         optionsRef.current.onSessionDirty?.();
       }).then(() => {
+        if (!isCurrent()) return;
         // 兜底：流结束（reader done / 连接断）但没收到 turn_done/error 终态
         // 时也必须退出 running，否则界面永卡「进行中」。
         setLive((state) =>
-          state.running
+          isCurrent() && state.running
             ? { ...state, running: false, statusText: "", toolCards: [] }
             : state,
         );
@@ -308,24 +314,28 @@ export function useAgentStream(
 
   const stop = useCallback(async () => {
     if (!sessionId) return;
+    const controller = abortRef.current;
+    const isCurrent = () => activeSessionRef.current === sessionId && abortRef.current === controller;
     try {
       // 先等后端 Stop 同步收尾（期间 error/turn_done 终态事件可经 SSE 到达
       // 并正常 reduce），再断开连接——反过来（先 abort）终态永远到不了，
       // live.running 挂死、界面卡「进行中」。
       const { stopAgentTurn } = await import("./api");
+      if (!isCurrent()) return;
       await stopAgentTurn(sessionId);
     } catch {
       /* 停止请求失败也要复位本地状态（onSessionDirty 会拉回真实状态） */
     } finally {
-      abortRef.current?.abort();
-      abortRef.current = null;
-      // 兜底复位：流可能已断（终态事件没到），不主动清 running 会永挂。
-      setLive((state) =>
-        state.running
-          ? { ...state, running: false, statusText: "", toolCards: [] }
-          : state,
-      );
-      optionsRef.current.onSessionDirty?.();
+      if (isCurrent()) {
+        controller?.abort();
+        // 兜底复位：流可能已断（终态事件没到），不主动清 running 会永挂。
+        setLive((state) =>
+          isCurrent() && state.running
+            ? { ...state, running: false, statusText: "", toolCards: [] }
+            : state,
+        );
+        optionsRef.current.onSessionDirty?.();
+      }
     }
   }, [sessionId]);
 

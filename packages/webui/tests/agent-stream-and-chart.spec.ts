@@ -4,6 +4,7 @@ import { cliCommandOf, type AgentMessage, type AgentStreamEvent } from '../src/l
 type StreamWindow = Window & {
   pushAgentEvent: (event: AgentStreamEvent) => void
   finishAgentStream: () => void
+  agentTestStreams: { push: (event: AgentStreamEvent) => void; finish: () => void; fail: () => void; signal?: AbortSignal | null }[]
 }
 
 const chart = '```chart\n' + JSON.stringify({
@@ -34,6 +35,8 @@ async function openAgent(page: Page, messages: AgentMessage[] = []) {
               `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
             ))
             streamWindow.finishAgentStream = () => controller.close()
+            streamWindow.agentTestStreams ??= []
+            streamWindow.agentTestStreams.push({ push: streamWindow.pushAgentEvent, finish: streamWindow.finishAgentStream, fail: () => controller.error(new Error('late old stream error')), signal: init?.signal })
           },
         }), { headers: { 'Content-Type': 'text/event-stream' } }))
       }
@@ -54,6 +57,53 @@ async function openAgent(page: Page, messages: AgentMessage[] = []) {
   await page.locator('[role="button"]').filter({ has: page.getByText(session.title, { exact: true }) }).press('Enter')
   await expect(page.getByPlaceholder('请描述你的任务')).toBeVisible()
 }
+
+for (const ending of ['finish', 'fail'] as const) {
+  test(`an old stream ${ending} cannot end a newer turn in the same session`, async ({ page }) => {
+    await openAgent(page)
+    const composer = page.getByPlaceholder('请描述你的任务')
+    await composer.fill('first')
+    await composer.press('Enter')
+    await page.waitForFunction(() => (window as StreamWindow).agentTestStreams?.length === 1)
+    await push(page, { type: 'turn_done' })
+    await expect(page.getByTitle('停止本轮')).not.toBeVisible()
+    await composer.fill('second')
+    await composer.press('Enter')
+    await page.waitForFunction(() => (window as StreamWindow).agentTestStreams?.length === 2)
+    await page.evaluate((ending) => (window as StreamWindow).agentTestStreams[0][ending](), ending)
+    await push(page, { type: 'text_delta', delta: 'new turn remains active' })
+    await expect(page.getByText('new turn remains active', { exact: true })).toBeVisible()
+    await expect(page.getByTitle('停止本轮')).toBeVisible()
+    await expect(page.getByText('late old stream error', { exact: true })).not.toBeVisible()
+  })
+}
+
+test('a delayed stop response cannot abort the next turn', async ({ page }) => {
+  await openAgent(page)
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => { release = resolve })
+  let didStop = false
+  await page.route('**/api/admin/agent/sessions/regression/stop', async (route) => {
+    didStop = true
+    await pending
+    await route.fulfill({ json: { ok: true, data: {} } })
+  })
+  const composer = page.getByPlaceholder('请描述你的任务')
+  await composer.fill('first')
+  await composer.press('Enter')
+  await page.getByTitle('停止本轮').click()
+  await expect.poll(() => didStop).toBe(true)
+  await push(page, { type: 'turn_done' })
+  await expect(page.getByTitle('停止本轮')).not.toBeVisible()
+  await composer.fill('next')
+  await composer.press('Enter')
+  await page.waitForFunction(() => (window as StreamWindow).agentTestStreams?.length === 2)
+  release()
+  await push(page, { type: 'text_delta', delta: 'next turn' })
+  await expect(page.getByText('next turn', { exact: true })).toBeVisible()
+  await expect(page.getByTitle('停止本轮')).toBeVisible()
+  expect(await page.evaluate(() => (window as StreamWindow).agentTestStreams[1].signal?.aborted)).toBe(false)
+})
 
 async function push(page: Page, ...events: AgentStreamEvent[]) {
   await page.evaluate((events) => events.forEach((event) => (window as StreamWindow).pushAgentEvent(event)), events)
