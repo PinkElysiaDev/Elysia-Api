@@ -32,7 +32,12 @@ func (s *Server) validateSourceProtocol(source *storage.ModelSource) error {
 
 // saveSource installs a verified source contract once. Subsequent metadata
 // edits preserve the operator's capabilities, operation and waiting policy.
-func (s *Server) saveSource(ctx context.Context, source storage.ModelSource) (err error) {
+func (s *Server) saveSource(ctx context.Context, source storage.ModelSource) error {
+	return s.saveSourceChanges(ctx, storage.BoundSourceUpdate{Source: source})
+}
+
+func (s *Server) saveSourceChanges(ctx context.Context, update storage.BoundSourceUpdate) (err error) {
+	source := update.Source
 	defer func() {
 		if err == nil {
 			s.noteSourceSaved(source.ID, source.AutoFetchModels && source.Platform != "")
@@ -69,5 +74,6 @@ func (s *Server) saveSource(ctx context.Context, source storage.ModelSource) (er
 	if err != nil {
 		return err
 	}
-	return s.store.SaveBoundSource(ctx, source, updates, generation)
+	update.Source, update.Bindings = source, updates
+	return s.store.SaveBoundSource(ctx, update, generation)
 }

@@ -18,7 +18,7 @@ func TestBindingUpdateTransaction(t *testing.T) {
 	source := ModelSource{ID: "source", Name: "original"}
 	parent := ProtocolBinding{Kind: "source", SourceID: source.ID, Unbound: true}
 	child := ProtocolBinding{Kind: "model", SourceID: source.ID, ModelID: "child", Unbound: true}
-	if err := store.SaveBoundSource(t.Context(), source, []ProtocolBinding{parent, child}); err != nil {
+	if err := store.SaveBoundSource(t.Context(), BoundSourceUpdate{Source: source, Bindings: []ProtocolBinding{parent, child}}); err != nil {
 		t.Fatal(err)
 	}
 	_, before, generation, err := store.ConversionSnapshot(t.Context())
@@ -51,7 +51,7 @@ func TestBindingUpdateTransaction(t *testing.T) {
 	}
 	assertUnchanged()
 	source.Name = "rejected"
-	if err := store.SaveBoundSource(t.Context(), source, []ProtocolBinding{parent, child}, generation); err == nil {
+	if err := store.SaveBoundSource(t.Context(), BoundSourceUpdate{Source: source, Bindings: []ProtocolBinding{parent, child}}, generation); err == nil {
 		t.Fatal("source commit ignored child failure")
 	}
 	assertUnchanged()

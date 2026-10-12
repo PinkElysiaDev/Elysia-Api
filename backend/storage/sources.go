@@ -59,9 +59,20 @@ func (s *Store) UpsertSource(ctx context.Context, item ModelSource) error {
 	return s.upsertSource(ctx, s.db, item)
 }
 
-// SaveBoundSource commits a source and its verified routing contract together.
-// Catalog refreshes may then inherit the contract without rewriting it.
-func (s *Store) SaveBoundSource(ctx context.Context, item ModelSource, bindings []ProtocolBinding, expectedGeneration ...int64) error {
+// BoundSourceUpdate keeps source settings, the authoritative manual catalog,
+// and verified binding evidence in the same write transaction.
+type BoundSourceUpdate struct {
+	Source           ModelSource
+	Bindings         []ProtocolBinding
+	SyncManualModels bool
+	IsCreate         bool
+}
+
+var ErrSourceExists = errors.New("model source already exists")
+
+// SaveBoundSource commits a prepared source update against its verified generation.
+func (s *Store) SaveBoundSource(ctx context.Context, update BoundSourceUpdate, expectedGeneration ...int64) error {
+	item := update.Source
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -70,16 +81,33 @@ func (s *Store) SaveBoundSource(ctx context.Context, item ModelSource, bindings 
 	if err := checkConversionGeneration(ctx, tx, expectedGeneration); err != nil {
 		return err
 	}
-	if err := s.upsertSource(ctx, tx, item); err != nil {
+	if update.IsCreate {
+		var exists int
+		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM model_sources WHERE id=?`, item.ID).Scan(&exists); err == nil {
+			return ErrSourceExists
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+	}
+	if err := s.saveSourceRecord(ctx, tx, item, update.IsCreate); err != nil {
 		return err
 	}
-	if _, err := saveBindingUpdates(ctx, tx, BindingKey{Kind: "source", SourceID: item.ID}, bindings); err != nil {
+	if _, err := saveBindingUpdates(ctx, tx, BindingKey{Kind: "source", SourceID: item.ID}, update.Bindings); err != nil {
 		return err
+	}
+	if update.SyncManualModels {
+		if _, err := s.mergeSourceModelsTx(ctx, tx, item, item.ManualModels, true); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
 
 func (s *Store) upsertSource(ctx context.Context, executor protocolSQLExecutor, item ModelSource) error {
+	return s.saveSourceRecord(ctx, executor, item, false)
+}
+
+func (s *Store) saveSourceRecord(ctx context.Context, executor protocolSQLExecutor, item ModelSource, isCreate bool) error {
 	if strings.TrimSpace(item.ID) == "" {
 		return errors.New("source id is required")
 	}
@@ -115,7 +143,11 @@ func (s *Store) upsertSource(ctx context.Context, executor protocolSQLExecutor, 
 		strategy = string(KeyStrategySingle)
 	}
 	now := nowString()
-	_, err = executor.ExecContext(ctx, `INSERT INTO model_sources(id, name, base_url, api_key, platform, enabled, auto_fetch_models, manual_models_json, fetch_base_url, api_keys, key_strategy, cache_synthesis, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, base_url=excluded.base_url, api_key=excluded.api_key, platform=excluded.platform, enabled=excluded.enabled, auto_fetch_models=excluded.auto_fetch_models, manual_models_json=excluded.manual_models_json, fetch_base_url=excluded.fetch_base_url, api_keys=excluded.api_keys, key_strategy=excluded.key_strategy, cache_synthesis=excluded.cache_synthesis, updated_at=excluded.updated_at`, item.ID, item.Name, item.BaseURL, storedKey, item.Platform, sqlBoolToInt(item.Enabled), sqlBoolToInt(item.AutoFetchModels), string(manual), item.FetchBaseURL, storedKeys, strategy, sqlBoolToInt(item.CacheSynthesis), now, now)
+	query := `INSERT INTO model_sources(id, name, base_url, api_key, platform, enabled, auto_fetch_models, manual_models_json, fetch_base_url, api_keys, key_strategy, cache_synthesis, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	if !isCreate {
+		query += ` ON CONFLICT(id) DO UPDATE SET name=excluded.name, base_url=excluded.base_url, api_key=excluded.api_key, platform=excluded.platform, enabled=excluded.enabled, auto_fetch_models=excluded.auto_fetch_models, manual_models_json=excluded.manual_models_json, fetch_base_url=excluded.fetch_base_url, api_keys=excluded.api_keys, key_strategy=excluded.key_strategy, cache_synthesis=excluded.cache_synthesis, updated_at=excluded.updated_at`
+	}
+	_, err = executor.ExecContext(ctx, query, item.ID, item.Name, item.BaseURL, storedKey, item.Platform, sqlBoolToInt(item.Enabled), sqlBoolToInt(item.AutoFetchModels), string(manual), item.FetchBaseURL, storedKeys, strategy, sqlBoolToInt(item.CacheSynthesis), now, now)
 	return err
 }
 

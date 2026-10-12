@@ -583,16 +583,16 @@ func (t *createSourceTool) Execute(ctx context.Context, tctx CLIContext, args js
 	if err := t.server.validateAgentSource(ctx, &item, nil); err != nil {
 		return CLIError("校验失败: "+err.Error(), "validation_failed")
 	}
-	if err := t.server.saveSource(ctx, item); err != nil {
+	item.ManualModels = agentManualModels(item, params.ManualModels)
+	if err := t.server.saveSourceChanges(ctx, storage.BoundSourceUpdate{Source: item, IsCreate: true, SyncManualModels: params.ManualModels != nil}); err != nil {
+		if errors.Is(err, storage.ErrSourceExists) {
+			return CLIError(err.Error(), "duplicate_source")
+		}
 		return CLIError("保存失败: "+err.Error(), "persist_failed")
 	}
 	created, _ := agentFindSource(ctx, store, item.ID)
 	if len(params.ManualModels) > 0 {
-		models := agentManualModels(created, params.ManualModels)
-		_, err := store.SyncManualSourceModels(ctx, created, models)
-		if err == nil {
-			err = t.server.refreshModelProtocolEvidence(ctx)
-		}
+		err := t.server.refreshModelProtocolEvidence(ctx)
 		if err != nil {
 			return CLIResult{OK: true, Summary: "源已创建，但手动模型写入或协议验证失败: " + err.Error(), Data: map[string]any{"id": item.ID, "warning": err.Error()}}
 		}
@@ -660,16 +660,14 @@ func (t *updateSourceTool) Execute(ctx context.Context, tctx CLIContext, args js
 	if err := t.server.validateAgentSource(ctx, &item, &existing); err != nil {
 		return CLIError("校验失败: "+err.Error(), "validation_failed")
 	}
-	if err := t.server.saveSource(ctx, item); err != nil {
+	if params.ManualModels != nil {
+		item.ManualModels = agentManualModels(item, params.ManualModels)
+	}
+	if err := t.server.saveSourceChanges(ctx, storage.BoundSourceUpdate{Source: item, SyncManualModels: params.ManualModels != nil}); err != nil {
 		return CLIError("保存失败: "+err.Error(), "persist_failed")
 	}
 	if params.ManualModels != nil {
-		updated, _ := agentFindSource(ctx, store, item.ID)
-		models := agentManualModels(updated, params.ManualModels)
-		_, err := store.SyncManualSourceModels(ctx, updated, models)
-		if err == nil {
-			err = t.server.refreshModelProtocolEvidence(ctx)
-		}
+		err := t.server.refreshModelProtocolEvidence(ctx)
 		if err != nil {
 			return CLIResult{OK: true, Summary: "源已更新，但手动模型写入或协议验证失败: " + err.Error(), Data: map[string]any{"warning": err.Error()}}
 		}
