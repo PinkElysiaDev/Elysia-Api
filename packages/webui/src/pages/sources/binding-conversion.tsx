@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { protocolAPI, type ProtocolBindingEntry, type ReasoningCapabilities } from '@/lib/protocol-v2'
-import { conversionAPI, type ConversionPolicy, type ConversionRecord } from '@/lib/conversion-policy'
+import { conversionAPI, type ConversionRecord } from '@/lib/conversion-policy'
 
 /** Conversion overrides are saved with the existing contract, never inferred
  * from the model name or used to expand its manually declared capabilities. */
@@ -21,7 +21,7 @@ export function BindingConversionEditor({ sourceId, modelId, disabled, onSaved, 
     void Promise.all([protocolAPI.bindings(), conversionAPI.list()]).then(async ([bindings, items]) => {
       const own = bindings.find((b) => b.sourceId === sourceId && b.kind === (modelId ? 'model' : 'source') && (!modelId || b.modelId === modelId))
       if (!current) return
-      setEntry(own); setReasoning(own?.binding.reasoning ? JSON.stringify(own.binding.reasoning, null, 2) : ''); setPolicies(items); setSelected(own?.conversion?.policyId ?? ''); setRevision(own?.conversion?.revisionHash ?? ''); setOverride(own?.conversion?.overrides ? JSON.stringify(own.conversion.overrides, null, 2) : '')
+      setEntry(own); setReasoning(own?.binding.reasoning ? JSON.stringify(own.binding.reasoning, null, 2) : ''); setPolicies(items); setSelected(own?.conversion?.policyId ?? ''); setRevision(own?.conversion?.revisionHash ?? ''); setOverride(own?.conversion?.overridesJSON ?? '')
       if (own?.conversion?.policyId) { const rs = await conversionAPI.revisions(own.conversion.policyId); if (current) setRevisions(rs) }
     }).catch((e: unknown) => { if (current) setError(String(e)) })
     return () => { current = false }
@@ -30,9 +30,9 @@ export function BindingConversionEditor({ sourceId, modelId, disabled, onSaved, 
     if (!entry || disabled || busy) return
     setBusy(true); onBusyChange?.(true); setError(''); setNotice('')
     try {
-      const overrides = override.trim() ? JSON.parse(override) as ConversionPolicy : undefined
+      const overridesJSON = override.trim() || undefined
       if (selected && !revision) throw new Error('请选择一个已经验证的修订')
-      const result = await protocolAPI.saveBinding({ ...entry, binding: { ...entry.binding, reasoning: reasoning.trim() ? JSON.parse(reasoning) as ReasoningCapabilities : undefined }, conversion: selected || overrides ? { policyId: selected, revisionHash: revision, overrides } : undefined })
+      const result = await protocolAPI.saveBinding({ ...entry, binding: { ...entry.binding, reasoning: reasoning.trim() ? JSON.parse(reasoning) as ReasoningCapabilities : undefined }, conversion: selected || overridesJSON ? { policyId: selected, revisionHash: revision, overridesJSON } : undefined })
       setEntry(result); onSaved?.(result); setNotice('转换覆盖已验证并保存')
     } catch (e) { setError(String(e)) } finally { setBusy(false); onBusyChange?.(false) }
   }

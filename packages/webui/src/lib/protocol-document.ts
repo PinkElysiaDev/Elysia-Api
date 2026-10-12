@@ -85,4 +85,16 @@ export class ProtocolDocument {
     const addition = `${parent.children.size ? ',' : ''}\n${JSON.stringify(key)}: ${value}\n`
     return this.source.slice(0, parent.end - 1) + addition + this.source.slice(parent.end - 1)
   }
+
+  /** Remove one object member or array item without rebuilding sibling values. */
+  remove(pointer: string): string {
+    const separator = pointer.lastIndexOf('/')
+    const parent = this.locate(pointer.slice(0, separator))
+    const key = pointer.slice(separator + 1).replace(/~1/g, '/').replace(/~0/g, '~')
+    if (!parent || !parent.children.has(key)) return this.source
+    const children = [...parent.children].filter(([name]) => name !== key)
+    const content = children.map(([name, node]) => `${parent.kind === 'object' ? JSON.stringify(name) + ':' : ''}${this.source.slice(node.start, node.end)}`).join(',')
+    const replacement = parent.kind === 'object' ? `{${content}}` : `[${content}]`
+    return this.source.slice(0, parent.start) + replacement + this.source.slice(parent.end)
+  }
 }

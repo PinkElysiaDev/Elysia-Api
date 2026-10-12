@@ -9,6 +9,7 @@ async function mockBindings(page: Page, initial = true) {
     kind: 'model', sourceId: 'binding-source', modelId: 'private-model',
     binding: { protocolId: 'chat', revisionHash: 'chat-rev', reasoning: original },
   } : undefined
+  let bindingJSON = binding ? JSON.stringify(binding) : undefined
   let failNext = false
   let pending: Promise<void> | undefined
   let attempts = 0
@@ -28,8 +29,10 @@ async function mockBindings(page: Page, initial = true) {
           return
         }
         binding = route.request().postDataJSON()
-        data = binding
-      } else data = binding ? [binding] : []
+        bindingJSON = route.request().postData()!
+        await route.fulfill({ contentType: 'application/json', body: `{"ok":true,"data":${bindingJSON}}` })
+      } else await route.fulfill({ contentType: 'application/json', body: `{"ok":true,"data":${bindingJSON ? `[${bindingJSON}]` : '[]'}}` })
+      return
     } else if (path.endsWith('/protocols/enabled')) {
       data = { items: ['chat', 'responses'].map((id) => ({ id, name: id, revision: `${id}-rev`, canGenerate: true, capabilities: { 'tools.function': true } })) }
     } else if (path.endsWith('/revisions')) {
@@ -51,6 +54,7 @@ async function mockBindings(page: Page, initial = true) {
   return {
     dialog,
     saved: () => binding,
+    savedJSON: () => bindingJSON,
     attempts: () => attempts,
     failNext: () => { failNext = true },
     holdNext: () => {
@@ -66,6 +70,22 @@ async function mockBindings(page: Page, initial = true) {
     },
   }
 }
+
+test('binding overrides keep exact values through child save, reopen and parent save', async ({ page }) => {
+  const state = await mockBindings(page)
+  const field = state.dialog.getByLabel('绑定转换覆盖 JSON')
+  const overrides = '{"schemaVersion":1,"id":"precise","rules":[{"id":"large","value":9007199254740993}]}'
+  await field.fill(overrides)
+  await state.dialog.getByRole('button', { name: '验证并保存转换覆盖', exact: true }).click()
+  await expect(state.dialog.getByText('转换覆盖已验证并保存', { exact: true })).toBeVisible()
+  expect(state.savedJSON()).toContain('9007199254740993')
+  expect(state.savedJSON()).not.toContain('overridesJSON')
+  await state.reopen()
+  await expect(field).toHaveValue(overrides)
+  await state.dialog.getByRole('button', { name: '验证并保存模型绑定', exact: true }).click()
+  await expect(state.dialog.getByText('模型级绑定已验证并保存', { exact: true })).toBeVisible()
+  expect(state.savedJSON()).toContain('9007199254740993')
+})
 
 for (const reasoning of [updated, undefined]) {
   test(`model binding retains ${reasoning ? 'saved' : 'cleared'} reasoning after parent save and reopen`, async ({ page }) => {

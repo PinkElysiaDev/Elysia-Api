@@ -23,6 +23,9 @@ const identifier = (id: string) => encodeURIComponent(id)
 
 function responseData(text: string) { const document = new ProtocolDocument(text); return { document, data: JSON.parse(document.read('/data') ?? 'null') } }
 function preserveDefinition<T extends { definition: string }>(item: T, document: ProtocolDocument, pointer: string): T { return { ...item, definition: document.read(pointer) ?? '{}' } }
+function preserveBindingOverrides(entry: ProtocolBindingEntry, document: ProtocolDocument, pointer: string): ProtocolBindingEntry {
+  return { ...entry, conversion: entry.conversion && { ...entry.conversion, overridesJSON: document.read(`${pointer}/conversion/overrides`) } }
+}
 async function previewRequest(rawBody: string): Promise<Preview> {
   const { document, data } = responseData(await request<string>(`${base}/preview`, { method: 'POST', rawBody, rawResponse: true }))
   return { exactJSON: document.read('/data') ?? '{}', issues: data.issues ?? [] }
@@ -30,8 +33,18 @@ async function previewRequest(rawBody: string): Promise<Preview> {
 
 /** Protocol authoring shares server compilation and verification with forwarding. */
 export const protocolAPI = {
-  bindings: () => request<ProtocolBindingEntry[]>(`${base}/bindings`),
-  saveBinding: (entry: ProtocolBindingEntry) => request<ProtocolBindingEntry>(`${base}/bindings`, { method: 'PUT', body: entry }),
+  async bindings(): Promise<ProtocolBindingEntry[]> {
+    const { document, data } = responseData(await request<string>(`${base}/bindings`, { rawResponse: true }))
+    return data.map((entry: ProtocolBindingEntry, index: number) => preserveBindingOverrides(entry, document, `/data/${index}`))
+  },
+  async saveBinding(entry: ProtocolBindingEntry): Promise<ProtocolBindingEntry> {
+    const { conversion, ...contract } = entry
+    const { overridesJSON, ...selection } = conversion ?? {}
+    let document = new ProtocolDocument(JSON.stringify({ ...contract, ...(conversion ? { conversion: selection } : {}) }))
+    if (overridesJSON !== undefined) document = new ProtocolDocument(document.set('/conversion/overrides', overridesJSON))
+    const response = responseData(await request<string>(`${base}/bindings`, { method: 'PUT', rawBody: document.source, rawResponse: true }))
+    return preserveBindingOverrides(response.data, response.document, '/data')
+  },
   history: () => request<{ items: ProtocolHistoryItem[] }>(`${base}/history`).then((result) => result.items),
   async historyDetail(id: string): Promise<ProtocolHistoryDetail> {
     const { document, data } = responseData(await request<string>(`${base}/history/${identifier(id)}`, { rawResponse: true }))
