@@ -271,3 +271,9 @@ extension AppDelegate {
     }
 
 }
+
+#if NATIVE_TESTS
+extension AppDelegate {
+    static func releaseForTests(_ data: Data) -> ReleaseInfo? { parseRelease(data) }
+}
+#endif

@@ -1612,7 +1612,6 @@ extension AppDelegate {
         handoffStagedUpdate(URL(fileURLWithPath: path))
         return true
     }
-    static func releaseForTests(_ data: Data) -> ReleaseInfo? { parseRelease(data) }
 }
 if ProcessInfo.processInfo.environment["ELYSIA_NATIVE_APP_TEST"] == "1" {
     let app = NSApplication.shared
