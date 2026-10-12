@@ -66,6 +66,8 @@ Native 重放使用源请求的解码上下文，并沿用首次授权得到的�
 
 摘要展示与工具续传签名分别处理。`display:omitted` / `includeThoughts:false` 不删除工具续传需要的签名；被转换或移除的参数不能由 Native 快照恢复。
 
+Anthropic `thinking.display` 接受 `summarized`、`omitted`、Beta SDK 声明的 `updates` 及 null。同协议保留显示偏好；跨协议的近似或省略仍由 `reasoning-controls` 诊断，严格模式拒绝实际损失。支持该枚举不代表每个渠道都实现了 Beta 行为；操作的 Beta 头仍按已配置的出站操作处理。本次真实客户端及渠道证据见 [Claude Code 验收](protocol-anthropic-system-2026-10-12.md)。
+
 ## store 决策
 
 `store` 是供应商 API 对象的保存/检索意图，不是提示缓存开关，也不控制网关日志或签名续传副本。

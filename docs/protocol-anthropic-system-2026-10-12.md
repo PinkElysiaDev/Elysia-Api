@@ -74,3 +74,46 @@
 - `scripts/protocol-audit/results/anthropic-system-live-2026-10-12-capability/`：能力覆盖对照，包含相同类型的证据。
 
 最终状态：**本地回归通过；原渠道的 system 专项通过；默认完整请求仍存在已记录的思考参数适配；原 Claude Code 客户端未复测。** 配置模型为 `claude-haiku-4-5`，原日志模型为 `claude-haiku-5-5`，不能把本轮结果写成原客户端与原模型故障已完全关闭。
+
+## 2026-10-12 实际 VS Code 插件验收及新增缺陷
+
+北京时间 19:12–19:38，使用已更新的 VS Code `1.141.0`（`2a59476c9bfcb90b3ddc372c36762471b7dfad1c`）和实际加载的 Claude Code 插件 `2.1.296`。出站 User-Agent 为 `claude-cli/2.1.296 (external, claude-vscode, agent-sdk/0.3.296)`。两轮使用独立配置、工作区、扩展目录和临时网关，目标为 `moyuu.cc / claude-haiku-4-5`，单次输出上限 32768，网关自动重试关闭。用户依次触发回复 OK、读取合成 `audit-note.txt`、沿用结果回复 marker；没有修改日常 VS Code 或正式模型配置。
+
+首次测试（`a13e567`、dev.65）表面完成三步，但捕获到 7 个插件请求中的首个 HTTP 400：`thinking:{type:"adaptive",display:"updates"}` 被网关按稳定版枚举拒绝，日志还误标为 `decode_event / stream`。客户端随后移除 display 再发起请求，其余 6 个请求成功。因此这一轮记录为失败，不能用最终 UI 成功覆盖首次错误。
+
+本地固定依赖 `@anthropic-ai/sdk 0.132.1` 的 `resources/beta/messages/messages.d.ts` 已声明 `BetaThinkingConfigAdaptive` 和 `BetaThinkingConfigEnabled` 的 `display` 包含 `updates`；Beta 名称为 `thinking-display-updates-2026-08-18`，稳定版类型尚不含此值。合成对照中，带相同字段的直连 JSON/SSE 均成功，网关均在调用上游前返回 400，确认是入口枚举缺项。
+
+修复提交：
+
+- `b9a319b`：识别 `updates`，同协议保留；跨协议沿用有诊断的投影，严格模式拒绝实际损失。编译器提升为 `2.0.0-dev.66`，通过已有机制重验；未知枚举和错误类型仍拒绝。
+- `a624d37`：共享 display 校验，错误归属 `request.validation / decode_request`，保留 `/thinking/display` 及协议身份，增加零上游调用和 SQLite 诊断回归。此修复限定 display 校验，不宣称所有旧参数诊断已经整改。
+- `5933722`：固定版本官方 Beta SDK 的 JSON/SSE 序列化和完整消费回归。
+
+修复版临时网关基于 `a624d37`，未覆盖模型推理能力。实际插件第二轮捕获 **6 个请求全部 HTTP 200**（5 个用户对话/工具请求、1 个标题生成请求），每个网关重试计数为 0。首次及后续思考请求均保留 `display:"updates"`，没有发生先 400 再删字段的客户端回退。
+
+该轮临时源 `plugin-audit` 绑定实际 `anthropic-messages` 预置，入口和上游修订为 `feb70689b8723b8fa87ee43a8154871ec396ca0cee19475055124b6401c0f2b5`，有效策略哈希为 `5da8e43fbc14be0819c10ddcaf291b71c045e251efe014249ec1316a063cd8a0`。首个成功插件请求为 `req_1791804891496005400_b18802b8`；完整绑定及组合证据随本地报告保存。修订和策略文本未改变，编译器 dev.66 的新语义通过证据版本区分。
+
+| 检查 | 实际结果 |
+| --- | --- |
+| 用户界面 | OK、Glob/Read 成功、两次正确返回 `PLUGIN_AUDIT_7`，已核对实际窗口画面 |
+| 消息容器 | 所有出站 `messages` 与顶层 `system` 均和入口一致，包括消息内 system、消息级 output_config、缓存块及工具历史 |
+| 流契约 | 6 条插件流全部完整消费，首尾 usage、内容块生命周期、message_stop 合法，无 error 事件或落库失败 |
+| 工具关联 | Glob、Read 的真实 tool_use ID 与下一轮 tool_result ID 对应，未按名称猜测关联 |
+| 思考续传 | 工具和后续轮次带供应商实际返回的 thinking/signature，真实历史经原客户端回传且渠道成功响应；落盘签名脱敏，未用脱敏签名重新请求 |
+| 模型能力 | 仍有已有预算/effort 适配诊断；同协议消息与 display 保留不等于默认所有顶层参数完全不变 |
+| 真实合成对照 | 修复后 `summarized/updates × JSON/SSE × 直连/网关` 8 项通过，另有官方 Beta SDK JSON/SSE 2 项通过，SDK 自动重试关闭 |
+
+签名结果只证明当前渠道接受本轮真实历史，不推断中转渠道内部一定执行了与原厂完全相同的签名验证。插件读取文件后曾用日语返回 marker；marker 内容正确，这属于生成内容表现，未计为协议转换失败。
+
+本轮共记录 31 次入口生成请求：首次插件 7 次、修复前合成对照 8 次、修复后插件 6 次、修复后合成对照 8 次、修复后 Beta SDK 2 次。其中 3 次在网关本地拒绝，实际发起渠道生成 28 次；不包含前一节的 34 次 API 专项。所有临时网关在证据导出后停止，临时数据库已清理，隔离窗口保留供查看。52 份顶层 JSON 证据已扫描，配置中的供应商密钥匹配为零；本地配置、原始客户端资料和结果目录不提交 Git。
+
+脱敏证据目录（Git 忽略）：
+
+- `scripts/protocol-audit/results/claude-plugin-live-2026-10-12/`：首轮实际插件及修复前网关对照，保留失败报告。
+- `scripts/protocol-audit/results/claude-display-live-2026-10-12/`：修复前直连/网关对照与本地验证日志。
+- `scripts/protocol-audit/results/claude-plugin-fixed-2026-10-12/`：修复版实际插件、网关对照及 SDK 调用，含 `verified-summary.json` 和 `accepted-window.png`。
+- `scripts/protocol-audit/results/claude-display-fixed-2026-10-12/`：修复后直连/网关、Beta SDK 报告及合成复现脚本。
+
+本轮本地检查：Go `1.26.5` 下 `go test -json ./... -timeout 60m` **2740 项（含子测试）通过、6 项条件跳过、0 失败**，服务端包耗时 1779.463 秒。跳过范围与前一轮一致，不计为通过；本轮实际 VS Code 验收另行执行。协议包全量测试、关键网关回归、`go vet ./...`、固定版本 staticcheck 通过；相关 Windows race 通过；审计自测 **140 通过、0 跳过**。前端类型检查/构建和六平台产物构建完成，Vite 提示既有静态/动态导入共用模块的分包警告。Windows amd64 产物启动冒烟通过，四预置实际加载、运行时就绪，内嵌提交 `5933722`、编译器 dev.66，SHA-256 为 `10ad65abba74650e84602a08660ea184aebf33f0fca3d8c90a6681d3bc47ba4a`。其他平台只做交叉编译。
+
+当前结论：**实际 Claude Code 的本次三步操作及新发现的 display 误拒已在配置渠道验证通过。** 验收模型仍为 `claude-haiku-4-5`，没有将原日志 `claude-haiku-5-5` 或未测试的全部 Beta 特性计为通过。
