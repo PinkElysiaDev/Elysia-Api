@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"slices"
 	"sort"
 	"time"
 
@@ -49,26 +48,25 @@ func (s *Server) refreshProtocolRuntimeScope(ctx context.Context, service *proto
 		}
 		// Verification needs the entire inheritance chain, even when only one
 		// binding is being refreshed. Persist only the affected bindings.
-		selected := map[string]bool{}
-		before := map[string]string{}
-		key := func(b storage.ProtocolBinding) string {
-			raw, _ := json.Marshal([]string{b.Kind, b.SourceID, b.ModelID, b.GroupID})
-			return string(raw)
+		selected := map[storage.BindingKey]bool{}
+		before := map[storage.BindingKey]string{}
+		for _, binding := range plan.Bindings {
+			selected[binding.Key()] = true
 		}
-		for _, b := range plan.Bindings {
-			selected[key(b)] = true
-		}
+		scope := conversionBindingScope{keys: selected, isolate: true}
 		for i, b := range bindings {
 			raw, err := json.Marshal(b)
 			if err != nil {
 				return err
 			}
-			before[key(b)] = string(raw)
-			if selected[key(b)] {
-				bindings[i].Binding.RevisionHash = definitions[b.Binding.ProtocolID].Hash()
+			before[b.Key()] = string(raw)
+			if scope.includes(b.Key()) {
+				if compiled := definitions[b.Binding.ProtocolID]; compiled != nil && !b.Unbound {
+					bindings[i].Binding.RevisionHash = compiled.Hash()
+				}
 			}
 		}
-		verified, err := s.verifyConversionBindings(ctx, conversionDefinitions(definitions), policies, bindings, conversionBindingScope{isolate: true})
+		verified, err := s.verifyConversionBindings(ctx, conversionDefinitions(definitions), policies, bindings, scope)
 		if err != nil {
 			return err
 		}
@@ -78,7 +76,7 @@ func (s *Server) refreshProtocolRuntimeScope(ctx context.Context, service *proto
 			if err != nil {
 				return err
 			}
-			if selected[key(b)] && before[key(b)] != string(raw) {
+			if scope.includes(b.Key()) && before[b.Key()] != string(raw) {
 				plan.Bindings = append(plan.Bindings, b)
 			}
 		}
@@ -252,11 +250,7 @@ func (s *Server) prepareProtocolRefresh(ctx context.Context, service *protocol.S
 	if presetsOnly {
 		return plan, definitions, changed, nil
 	}
-	bindings, err := s.store.ListProtocolBindings(ctx)
-	if err != nil {
-		return fail(err)
-	}
-	policies, _, _, err := s.store.ConversionSnapshot(ctx)
+	policies, bindings, _, err := s.store.ConversionSnapshot(ctx)
 	if err != nil {
 		return fail(err)
 	}
@@ -276,34 +270,15 @@ func (s *Server) prepareProtocolRefresh(ctx context.Context, service *protocol.S
 		}
 		needsRefresh := bindingNeedsProtocolRefresh(b, definitions)
 		if !needsRefresh && b.Kind != "group" {
-			reports := map[string]bool{}
-			for _, report := range b.Combinations {
-				reports[report.ContextHash] = true
-			}
-			layers := bindings
-			if b.Kind == "source" {
-				layers = slices.DeleteFunc(slices.Clone(bindings), func(v storage.ProtocolBinding) bool { return v.Kind == "model" })
-			}
-			for _, model := range s.bindingModelReferences(b, models, sourceKeys) {
-				for name, operation := range c.Operations() {
-					if (operation.Kind != "generate" && operation.Kind != "submit" && operation.Kind != "session") || !slices.Contains(b.Binding.Transports, operation.Transport) || (b.Binding.Operation != "" && b.Binding.Operation != name) {
-						continue
-					}
-					for _, ingress := range definitions {
-						if !ingress.Supports(protocol.DecodeRequest) || (!ingress.Supports(protocol.EncodeResponse) && !ingress.Supports(protocol.EncodeEvent)) {
-							continue
-						}
-						conversion, e := resolveGatewayConversion(policies, layers, ingress, c, model, name, operation.Transport)
-						if e != nil {
-							return fail(e)
-						}
-						if !conversion.ContextDependent() {
-							continue
-						}
-						route := protocol.ConversionContext{Source: ingress.Identity(), Target: c.Identity(), Model: model.Identifier(), Operation: name, Transport: operation.Transport, Reasoning: b.Binding.Reasoning, InterleavedThinking: protocol.OperationInterleavedThinking(operation)}
-						needsRefresh = needsRefresh || !reports[conversion.WithVerificationContext(route).ContextHash()]
-					}
+			checks, err := s.resolveBindingConversions(ctx, conversionDefinitions(definitions), policies, bindings, b, s.bindingModelReferences(b, models, sourceKeys))
+			if err != nil {
+				if ctx.Err() != nil {
+					return fail(ctx.Err())
 				}
+				// Reuse an identical current rejection, but retry when its cause changes.
+				needsRefresh = !hasCurrentBindingRejection(b, err)
+			} else {
+				needsRefresh = !hasBindingConversionEvidence(b, checks)
 			}
 		}
 		if !needsRefresh {

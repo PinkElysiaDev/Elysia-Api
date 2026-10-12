@@ -139,7 +139,7 @@ func TestSourceSaveKeepsIndependentModelProtocolOverride(t *testing.T) {
 	if err := s.saveSource(t.Context(), source); err != nil {
 		t.Fatal(err)
 	}
-	override := makeProtocolBinding(upgradeBindingKey{kind: "model", source: source.ID, model: "independent"}, beta)
+	override := makeProtocolBinding(storage.BindingKey{Kind: "model", SourceID: source.ID, ModelID: "independent"}, beta)
 	if err := s.store.SaveProtocolBinding(t.Context(), override); err != nil {
 		t.Fatal(err)
 	}

@@ -209,7 +209,7 @@ func (s *Server) verifyGatewayBinding(ctx context.Context, view protocol.Registr
 	}
 	replaced := false
 	for i, old := range bindings {
-		if upgradeBindingIdentity(old) == upgradeBindingIdentity(binding) {
+		if old.Key() == binding.Key() {
 			bindings[i], replaced = binding, true
 		}
 	}
@@ -225,7 +225,7 @@ func (s *Server) verifyGatewayBinding(ctx context.Context, view protocol.Registr
 		return nil, err
 	}
 	for _, item := range verified {
-		if upgradeBindingIdentity(item) == upgradeBindingIdentity(binding) {
+		if item.Key() == binding.Key() {
 			reports := slices.DeleteFunc(slices.Clone(item.Combinations), func(report protocol.CombinationReport) bool {
 				for _, id := range excludedIDs {
 					if source := definitions[id]; source != nil && source.Hash() == report.SourceHash {

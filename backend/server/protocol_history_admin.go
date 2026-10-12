@@ -336,7 +336,7 @@ func (s *Server) adminArchiveProtocol(c *gin.Context) {
 			entry.Combinations = nil
 		} else if target != nil {
 			if !found {
-				entry = makeProtocolBinding(upgradeBindingIdentity(entry), target)
+				entry = makeProtocolBinding(entry.Key(), target)
 				if entry.Kind == "model" {
 					for _, model := range snapshot.models {
 						if model.SourceID == entry.SourceID && model.ID == entry.ModelID {

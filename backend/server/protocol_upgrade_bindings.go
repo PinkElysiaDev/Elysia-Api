@@ -9,24 +9,18 @@ import (
 	"github.com/elysia-api/backend/storage"
 )
 
-type upgradeBindingKey struct{ kind, source, model, group string }
-
-func upgradeBindingIdentity(binding storage.ProtocolBinding) upgradeBindingKey {
-	return upgradeBindingKey{binding.Kind, binding.SourceID, binding.ModelID, binding.GroupID}
-}
-
 func (s *Server) prepareProtocolUpgradeBindings(ctx context.Context, input protocolUpgradeInput, preview *protocolUpgradePreview, definitions map[string]*protocol.Compiled) error {
 	existing, err := s.store.ListProtocolBindings(ctx)
 	if err != nil {
 		return err
 	}
-	bindings := map[upgradeBindingKey]storage.ProtocolBinding{}
+	bindings := map[storage.BindingKey]storage.ProtocolBinding{}
 	for _, binding := range existing {
-		bindings[upgradeBindingIdentity(binding)] = binding
+		bindings[binding.Key()] = binding
 	}
-	hasOverride := map[upgradeBindingKey]bool{}
+	hasOverride := map[storage.BindingKey]bool{}
 	for _, binding := range input.Bindings {
-		key := upgradeBindingIdentity(binding)
+		key := binding.Key()
 		if hasOverride[key] {
 			return fmt.Errorf("duplicate migration binding")
 		}
@@ -44,10 +38,10 @@ func (s *Server) prepareProtocolUpgradeBindings(ctx context.Context, input proto
 	if err != nil {
 		return err
 	}
-	validTargets := map[upgradeBindingKey]bool{}
-	targetCapabilities := map[upgradeBindingKey]struct{ tools, media bool }{}
+	validTargets := map[storage.BindingKey]bool{}
+	targetCapabilities := map[storage.BindingKey]struct{ tools, media bool }{}
 	for _, source := range sources {
-		key := upgradeBindingKey{kind: "source", source: source.ID}
+		key := storage.BindingKey{Kind: "source", SourceID: source.ID}
 		validTargets[key] = true
 		if _, exists := bindings[key]; !exists {
 			binding, issue := makeUpgradeBinding(key, source.Platform, definitions)
@@ -59,11 +53,11 @@ func (s *Server) prepareProtocolUpgradeBindings(ctx context.Context, input proto
 		}
 	}
 	for _, model := range models {
-		key := upgradeBindingKey{kind: "model", source: model.SourceID, model: model.ID}
+		key := storage.BindingKey{Kind: "model", SourceID: model.SourceID, ModelID: model.ID}
 		validTargets[key] = true
 		targetCapabilities[key] = struct{ tools, media bool }{model.ToolsCapable, model.VisionCapable}
 		if _, exists := bindings[key]; !exists {
-			if parent, ok := bindings[upgradeBindingKey{kind: "source", source: model.SourceID}]; ok && parent.Unbound {
+			if parent, ok := bindings[storage.BindingKey{Kind: "source", SourceID: model.SourceID}]; ok && parent.Unbound {
 				bindings[key] = storage.ProtocolBinding{Kind: "model", SourceID: model.SourceID, ModelID: model.ID, Unbound: true}
 				continue
 			}
@@ -83,7 +77,7 @@ func (s *Server) prepareProtocolUpgradeBindings(ctx context.Context, input proto
 		}
 	}
 	for _, group := range groups {
-		key := upgradeBindingKey{kind: "group", group: group.ID}
+		key := storage.BindingKey{Kind: "group", GroupID: group.ID}
 		validTargets[key] = true
 		targetCapabilities[key] = struct{ tools, media bool }{group.ToolsCapable, group.VisionCapable}
 		// Existing group booleans remain the route constraint for unbound groups.
@@ -122,7 +116,7 @@ func (s *Server) prepareProtocolUpgradeBindings(ctx context.Context, input proto
 		preview.Bindings = append(preview.Bindings, binding)
 	}
 	sort.Slice(preview.Bindings, func(i, j int) bool {
-		left, right := upgradeBindingIdentity(preview.Bindings[i]), upgradeBindingIdentity(preview.Bindings[j])
+		left, right := preview.Bindings[i].Key(), preview.Bindings[j].Key()
 		return fmt.Sprint(left) < fmt.Sprint(right)
 	})
 	if protocol.IssuesError(preview.Issues) == nil {
@@ -140,7 +134,7 @@ func (s *Server) prepareProtocolUpgradeBindings(ctx context.Context, input proto
 	return nil
 }
 
-func makeUpgradeBinding(key upgradeBindingKey, platform string, definitions map[string]*protocol.Compiled) (storage.ProtocolBinding, *protocol.ConversionIssue) {
+func makeUpgradeBinding(key storage.BindingKey, platform string, definitions map[string]*protocol.Compiled) (storage.ProtocolBinding, *protocol.ConversionIssue) {
 	id, err := protocolIDForPlatform(platform)
 	if err != nil {
 		issue := migrationIssue("", "/bindings", err.Error())
@@ -154,7 +148,7 @@ func makeUpgradeBinding(key upgradeBindingKey, platform string, definitions map[
 	return makeProtocolBinding(key, compiled), nil
 }
 
-func makeProtocolBinding(key upgradeBindingKey, compiled *protocol.Compiled) storage.ProtocolBinding {
+func makeProtocolBinding(key storage.BindingKey, compiled *protocol.Compiled) storage.ProtocolBinding {
 	capabilities := compiled.Definition().Capabilities
 	transports := []protocol.Transport{}
 	hasTransport := map[protocol.Transport]bool{}
@@ -166,5 +160,5 @@ func makeProtocolBinding(key upgradeBindingKey, compiled *protocol.Compiled) sto
 		transports = append(transports, operation.Transport)
 	}
 	sort.Slice(transports, func(i, j int) bool { return transports[i] < transports[j] })
-	return storage.ProtocolBinding{Kind: key.kind, SourceID: key.source, ModelID: key.model, GroupID: key.group, Binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: capabilities, Transports: transports}}
+	return storage.ProtocolBinding{Kind: key.Kind, SourceID: key.SourceID, ModelID: key.ModelID, GroupID: key.GroupID, Binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: capabilities, Transports: transports}}
 }

@@ -22,6 +22,21 @@ type ProtocolBinding struct {
 	Combinations []protocol.CombinationReport `json:"combinations,omitempty"`
 }
 
+// BindingKey identifies a contract independently of its protocol and evidence.
+type BindingKey struct {
+	Kind, SourceID, ModelID, GroupID string
+}
+
+// Key returns the same identity used for persistence and inheritance.
+func (binding ProtocolBinding) Key() BindingKey {
+	return BindingKey{binding.Kind, binding.SourceID, binding.ModelID, binding.GroupID}
+}
+
+// Affects includes model contracts which inherit a changed source policy.
+func (key BindingKey) Affects(other BindingKey) bool {
+	return key == other || (key.Kind == "source" && other.Kind == "model" && key.SourceID == other.SourceID)
+}
+
 func (binding ProtocolBinding) key() (string, error) {
 	switch binding.Kind {
 	case "source":
@@ -50,9 +65,9 @@ func (store *Store) SaveProtocolBinding(ctx context.Context, binding ProtocolBin
 	return saveProtocolBinding(ctx, store.db, binding)
 }
 
-// SaveManagedProtocolBinding keeps the displayed protocol and explicit contract
-// consistent when an operator binds or clears an individual source/model.
-func (store *Store) SaveManagedProtocolBinding(ctx context.Context, binding ProtocolBinding, expectedGeneration ...int64) error {
+// SaveManagedProtocolBindings commits a changed contract, all affected evidence,
+// and its displayed protocol under the same generation check.
+func (store *Store) SaveManagedProtocolBindings(ctx context.Context, changed BindingKey, bindings []ProtocolBinding, expectedGeneration ...int64) error {
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -61,7 +76,8 @@ func (store *Store) SaveManagedProtocolBinding(ctx context.Context, binding Prot
 	if err := checkConversionGeneration(ctx, tx, expectedGeneration); err != nil {
 		return err
 	}
-	if err := saveProtocolBinding(ctx, tx, binding); err != nil {
+	binding, err := saveBindingUpdates(ctx, tx, changed, bindings)
+	if err != nil {
 		return err
 	}
 	platform := ""
@@ -77,6 +93,28 @@ func (store *Store) SaveManagedProtocolBinding(ctx context.Context, binding Prot
 		return err
 	}
 	return tx.Commit()
+}
+
+func saveBindingUpdates(ctx context.Context, executor protocolSQLExecutor, changed BindingKey, bindings []ProtocolBinding) (ProtocolBinding, error) {
+	var primary ProtocolBinding
+	seen := make(map[BindingKey]bool, len(bindings))
+	for _, binding := range bindings {
+		key := binding.Key()
+		if !changed.Affects(key) || seen[key] {
+			return primary, fmt.Errorf("unrelated or duplicate binding in update")
+		}
+		seen[key] = true
+		if key == changed {
+			primary = binding
+		}
+		if err := saveProtocolBinding(ctx, executor, binding); err != nil {
+			return primary, err
+		}
+	}
+	if !seen[changed] {
+		return primary, fmt.Errorf("changed binding is missing from update")
+	}
+	return primary, nil
 }
 
 func saveProtocolBinding(ctx context.Context, executor protocolSQLExecutor, binding ProtocolBinding) error {

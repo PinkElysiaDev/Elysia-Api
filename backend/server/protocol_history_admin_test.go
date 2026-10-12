@@ -23,7 +23,7 @@ func TestProtocolHistoryAdminArchiveRestoreAndDelete(t *testing.T) {
 	if err := s.store.ReplaceSourceModels(t.Context(), source, []storage.Model{{ID: "m", Name: "m", Enabled: true}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.store.SaveProtocolBinding(t.Context(), makeProtocolBinding(upgradeBindingKey{kind: "source", source: source.ID}, compiled)); err != nil {
+	if err := s.store.SaveProtocolBinding(t.Context(), makeProtocolBinding(storage.BindingKey{Kind: "source", SourceID: source.ID}, compiled)); err != nil {
 		t.Fatal(err)
 	}
 	refs := revisionAdminRequest(t, s.engine, "GET", "/api/admin/protocols/text-alpha/references", nil, "")
@@ -141,7 +141,7 @@ func TestProtocolHistoryReplacementFailureRollsBackAllReferences(t *testing.T) {
 		if err := s.store.UpsertSource(t.Context(), storage.ModelSource{ID: id, Name: id, Platform: "custom:tools-custom", Enabled: true}); err != nil {
 			t.Fatal(err)
 		}
-		binding := makeProtocolBinding(upgradeBindingKey{kind: "source", source: id}, old)
+		binding := makeProtocolBinding(storage.BindingKey{Kind: "source", SourceID: id}, old)
 		if err := s.store.SaveProtocolBinding(t.Context(), binding); err != nil {
 			t.Fatal(err)
 		}
@@ -172,7 +172,7 @@ func TestProtocolHistoryReplacementPreservesReferences(t *testing.T) {
 	if err := s.store.UpsertSource(t.Context(), source); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.store.SaveProtocolBinding(t.Context(), makeProtocolBinding(upgradeBindingKey{kind: "source", source: "s"}, old)); err != nil {
+	if err := s.store.SaveProtocolBinding(t.Context(), makeProtocolBinding(storage.BindingKey{Kind: "source", SourceID: "s"}, old)); err != nil {
 		t.Fatal(err)
 	}
 	baseline, _ := s.store.ProtocolUpgradeBaseline(t.Context())
@@ -202,7 +202,7 @@ func TestProtocolHistoryModelUnbindAndExplicitRebind(t *testing.T) {
 	if err := s.store.ReplaceSourceModels(t.Context(), source, []storage.Model{{ID: "m", Name: "m", Enabled: true}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.store.SaveProtocolBinding(t.Context(), makeProtocolBinding(upgradeBindingKey{kind: "source", source: "s"}, compiled)); err != nil {
+	if err := s.store.SaveProtocolBinding(t.Context(), makeProtocolBinding(storage.BindingKey{Kind: "source", SourceID: "s"}, compiled)); err != nil {
 		t.Fatal(err)
 	}
 	save := func(entry storage.ProtocolBinding) {
@@ -222,7 +222,7 @@ func TestProtocolHistoryModelUnbindAndExplicitRebind(t *testing.T) {
 	if _, failure := makeGatewayCandidate(s.protocolServiceInst.View(), bindings, modelReference(models[0]), protocol.HTTPJSON, "generate"); failure == nil {
 		t.Fatal("model fell back to source")
 	}
-	save(makeProtocolBinding(upgradeBindingKey{kind: "model", source: "s", model: "m"}, compiled))
+	save(makeProtocolBinding(storage.BindingKey{Kind: "model", SourceID: "s", ModelID: "m"}, compiled))
 	bindings, _ = s.store.ListProtocolBindings(t.Context())
 	models, _ = s.store.ListModelsFiltered(t.Context(), storage.ModelListFilter{})
 	if models[0].Platform != "custom:text-alpha" {

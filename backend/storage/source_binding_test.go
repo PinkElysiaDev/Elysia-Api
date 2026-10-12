@@ -50,13 +50,13 @@ func TestBoundSourceTransactionAndDeletion(t *testing.T) {
 	defer store.Close()
 	source := ModelSource{ID: "s", Name: "Original", Platform: "custom:catalog", BaseURL: "https://example.invalid"}
 	binding := ProtocolBinding{Kind: "source", SourceID: "s", Binding: protocol.Binding{ProtocolID: "catalog", RevisionHash: "hash"}}
-	if err := store.SaveBoundSource(t.Context(), source, binding); err != nil {
+	if err := store.SaveBoundSource(t.Context(), source, []ProtocolBinding{binding}); err != nil {
 		t.Fatal(err)
 	}
 	source.Name = "Rejected update"
 	invalid := binding
 	invalid.ModelID = "not-allowed-for-source"
-	if err := store.SaveBoundSource(t.Context(), source, invalid); err == nil {
+	if err := store.SaveBoundSource(t.Context(), source, []ProtocolBinding{invalid}); err == nil {
 		t.Fatal("invalid binding accepted")
 	}
 	sources, err := store.ListSources(t.Context())

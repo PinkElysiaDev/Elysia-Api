@@ -61,10 +61,7 @@ func (s *Store) UpsertSource(ctx context.Context, item ModelSource) error {
 
 // SaveBoundSource commits a source and its verified routing contract together.
 // Catalog refreshes may then inherit the contract without rewriting it.
-func (s *Store) SaveBoundSource(ctx context.Context, item ModelSource, binding ProtocolBinding, expectedGeneration ...int64) error {
-	if binding.Kind != "source" || binding.SourceID != item.ID {
-		return errors.New("source and binding identities differ")
-	}
+func (s *Store) SaveBoundSource(ctx context.Context, item ModelSource, bindings []ProtocolBinding, expectedGeneration ...int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -76,7 +73,7 @@ func (s *Store) SaveBoundSource(ctx context.Context, item ModelSource, binding P
 	if err := s.upsertSource(ctx, tx, item); err != nil {
 		return err
 	}
-	if err := saveProtocolBinding(ctx, tx, binding); err != nil {
+	if _, err := saveBindingUpdates(ctx, tx, BindingKey{Kind: "source", SourceID: item.ID}, bindings); err != nil {
 		return err
 	}
 	return tx.Commit()

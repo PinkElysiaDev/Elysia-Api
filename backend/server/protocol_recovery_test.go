@@ -277,7 +277,7 @@ func TestRecoveredPresetsDiscoverModelsWithoutBindingUnboundSources(t *testing.T
 			if err != nil || len(models) != 1 || models[0].ID != "test-model" || calls.Load() != 1 {
 				t.Fatal("discovery failed", models, err, calls.Load())
 			}
-			if err := s.store.SaveManagedProtocolBinding(t.Context(), storage.ProtocolBinding{Kind: "source", SourceID: id, Unbound: true}); err != nil {
+			if err := s.store.SaveManagedProtocolBindings(t.Context(), storage.BindingKey{Kind: "source", SourceID: id}, []storage.ProtocolBinding{{Kind: "source", SourceID: id, Unbound: true}}); err != nil {
 				t.Fatal(err)
 			}
 			if err := s.initializeProtocolRuntime(t.Context()); err != nil {

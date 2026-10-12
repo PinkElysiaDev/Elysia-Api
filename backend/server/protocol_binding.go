@@ -52,63 +52,38 @@ func (s *Server) adminSaveProtocolBinding(c *gin.Context) {
 			}
 		}
 	}
-	replaced := false
-	for i, b := range bindings {
-		if b.Kind == binding.Kind && b.SourceID == binding.SourceID && b.ModelID == binding.ModelID && b.GroupID == binding.GroupID {
-			bindings[i] = binding
-			replaced = true
-		}
-	}
-	if !replaced {
-		bindings = append(bindings, binding)
-	}
 	if binding.Unbound {
 		binding.Binding = protocol.Binding{}
 		binding.Combinations = nil
-		if err := s.checkProtocolBindingTarget(c.Request.Context(), binding); err != nil {
-			respondFail(c, http.StatusBadRequest, "invalid_binding", err.Error())
-			return
+	} else {
+		compiled, _ := service.Pin(binding.Binding.ProtocolID)
+		issues := protocol.CheckBinding(binding.Binding, compiled)
+		if binding.Kind == "group" {
+			issues = protocol.CheckIngressBinding(binding.Binding, compiled)
 		}
-		if err := s.store.SaveManagedProtocolBinding(c.Request.Context(), binding, generation); err != nil {
+		if err := protocol.IssuesError(issues); err != nil {
 			respondProtocolError(c, err)
 			return
 		}
-		s.invalidateRouteCache()
-		respondOK(c, binding)
-		return
-	}
-	compiled, _ := service.Pin(binding.Binding.ProtocolID)
-	issues := protocol.CheckBinding(binding.Binding, compiled)
-	if binding.Kind == "group" {
-		issues = protocol.CheckIngressBinding(binding.Binding, compiled)
-	}
-	if err := protocol.IssuesError(issues); err != nil {
-		respondProtocolError(c, err)
-		return
 	}
 	if err := s.checkProtocolBindingTarget(c.Request.Context(), binding); err != nil {
 		respondFail(c, http.StatusBadRequest, "invalid_binding", err.Error())
 		return
 	}
-	if binding.Kind != "group" {
-		verified, err := s.verifyConversionBindings(c.Request.Context(), service.View(), policies, bindings, conversionBindingScope{changed: &binding})
-		if err != nil {
-			respondFail(c, http.StatusBadRequest, "incompatible_binding", err.Error())
-			return
-		}
-		for _, b := range verified {
-			if b.Kind == binding.Kind && b.SourceID == binding.SourceID && b.ModelID == binding.ModelID {
-				binding.Combinations = b.Combinations
-			}
-		}
-		if !hasPassingGatewayCombination(binding.Combinations) {
-			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": gin.H{"code": "incompatible_binding", "message": "no active ingress has verified compatibility with this model contract", "combinations": binding.Combinations}})
-			return
-		}
+	updates, err := s.prepareBindingUpdate(c.Request.Context(), service.View(), policies, bindings, binding)
+	if err != nil {
+		respondFail(c, http.StatusBadRequest, "incompatible_binding", err.Error())
+		return
 	}
-	if err := s.store.SaveManagedProtocolBinding(c.Request.Context(), binding, generation); err != nil {
+	if err := s.store.SaveManagedProtocolBindings(c.Request.Context(), binding.Key(), updates, generation); err != nil {
 		respondProtocolError(c, err)
 		return
+	}
+	for _, updated := range updates {
+		if updated.Key() == binding.Key() {
+			binding = updated
+			break
+		}
 	}
 	s.invalidateRouteCache()
 	respondOK(c, binding)

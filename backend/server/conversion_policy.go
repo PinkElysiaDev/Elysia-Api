@@ -64,7 +64,34 @@ func resolveGatewayConversion(policies []storage.ConversionPolicyRecord, binding
 
 type conversionBindingScope struct {
 	changed *storage.ProtocolBinding
+	keys    map[storage.BindingKey]bool
 	isolate bool
+}
+
+func (scope conversionBindingScope) includes(key storage.BindingKey) bool {
+	if scope.changed != nil {
+		return scope.changed.Key().Affects(key)
+	}
+	if scope.keys == nil {
+		return true
+	}
+	for changed := range scope.keys {
+		if changed.Affects(key) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) prepareBindingUpdate(ctx context.Context, view conversionRegistry, policies []storage.ConversionPolicyRecord, bindings []storage.ProtocolBinding, changed storage.ProtocolBinding) ([]storage.ProtocolBinding, error) {
+	next := slices.DeleteFunc(slices.Clone(bindings), func(binding storage.ProtocolBinding) bool { return binding.Key() == changed.Key() })
+	next = append(next, changed)
+	scope := conversionBindingScope{changed: &changed}
+	verified, err := s.verifyConversionBindings(ctx, view, policies, next, scope)
+	if err != nil {
+		return nil, err
+	}
+	return slices.DeleteFunc(verified, func(binding storage.ProtocolBinding) bool { return !scope.includes(binding.Key()) }), nil
 }
 
 func (s *Server) verifyConversionBindings(ctx context.Context, view conversionRegistry, policies []storage.ConversionPolicyRecord, bindings []storage.ProtocolBinding, scopes ...conversionBindingScope) ([]storage.ProtocolBinding, error) {
@@ -82,10 +109,9 @@ func (s *Server) verifyConversionBindings(ctx context.Context, view conversionRe
 		return nil, err
 	}
 	sourceKeys := collectSourceKeys(sources)
-bindingLoop:
 	for i := range updated {
 		b := &updated[i]
-		if changed := scope.changed; changed != nil && upgradeBindingIdentity(*b) != upgradeBindingIdentity(*changed) && !(changed.Kind == "source" && b.Kind == "model" && b.SourceID == changed.SourceID) {
+		if !scope.includes(b.Key()) {
 			continue
 		}
 		if b.Unbound {
@@ -119,49 +145,16 @@ bindingLoop:
 		if b.Kind == "group" {
 			continue
 		}
-		references := s.bindingModelReferences(*b, models, sourceKeys)
-		b.Combinations = nil
-		for _, id := range view.IDs() {
-			ingress, _ := view.Pin(id)
-			if !ingress.Supports(protocol.DecodeRequest) || (!ingress.Supports(protocol.EncodeResponse) && !ingress.Supports(protocol.EncodeEvent)) {
+		checks, err := s.resolveBindingConversions(ctx, view, policies, bindings, *b, s.bindingModelReferences(*b, models, sourceKeys))
+		if err != nil {
+			if reject(err) {
 				continue
 			}
-			seen := map[string]bool{}
-			for _, model := range references {
-				// A source report excludes model overrides; model-level evidence
-				// is computed with that model's complete inheritance instead.
-				layers := bindings
-				if b.Kind == "source" {
-					layers = slices.DeleteFunc(slices.Clone(bindings), func(v storage.ProtocolBinding) bool { return v.Kind == "model" })
-				}
-				for operationName, operation := range upstream.Operations() {
-					if (operation.Kind != "generate" && operation.Kind != "submit" && operation.Kind != "session") || !slices.Contains(b.Binding.Transports, operation.Transport) || (b.Binding.Operation != "" && b.Binding.Operation != operationName) {
-						continue
-					}
-					conversion, err := resolveGatewayConversion(policies, layers, ingress, upstream, model, operationName, operation.Transport)
-					if err != nil {
-						if reject(err) {
-							continue bindingLoop
-						}
-						return nil, err
-					}
-					if err := s.loadProviderConversionEvidence(ctx, conversion, model, upstream); err != nil {
-						if reject(err) {
-							continue bindingLoop
-						}
-						return nil, err
-					}
-					if conversion.ContextDependent() {
-						conversion = conversion.WithVerificationContext(protocol.ConversionContext{Source: ingress.Identity(), Target: upstream.Identity(), Model: model.Identifier(), Operation: operationName, Transport: operation.Transport, Reasoning: b.Binding.Reasoning, InterleavedThinking: protocol.OperationInterleavedThinking(operation)})
-					}
-					key := conversion.Hash + conversion.ContextHash()
-					if seen[key] {
-						continue
-					}
-					seen[key] = true
-					b.Combinations = append(b.Combinations, protocol.VerifyBindingProfiles(ctx, ingress, upstream, b.Binding.Capabilities, conversion)...)
-				}
-			}
+			return nil, err
+		}
+		b.Combinations = nil
+		for _, check := range checks {
+			b.Combinations = append(b.Combinations, protocol.VerifyBindingProfiles(ctx, check.ingress, upstream, b.Binding.Capabilities, check.conversion)...)
 		}
 		if !hasPassingGatewayCombination(b.Combinations) && !scope.isolate {
 			return nil, fmt.Errorf("conversion policy leaves binding %s/%s without a verified route", b.SourceID, b.ModelID)

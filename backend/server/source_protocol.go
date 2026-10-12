@@ -38,53 +38,36 @@ func (s *Server) saveSource(ctx context.Context, source storage.ModelSource) (er
 			s.noteSourceSaved(source.ID, source.AutoFetchModels && source.Platform != "")
 		}
 	}()
-	if source.Platform == "" {
-		source.AutoFetchModels = false
-		return s.store.SaveBoundSource(ctx, source, storage.ProtocolBinding{Kind: "source", SourceID: source.ID, Unbound: true})
-	}
-	compiled, err := s.sourceProtocol(source)
-	if err != nil {
-		return err
-	}
 	policies, bindings, generation, err := s.store.ConversionSnapshot(ctx)
 	if err != nil {
 		return err
 	}
-	binding := makeProtocolBinding(upgradeBindingKey{kind: "source", source: source.ID}, compiled)
-	for _, current := range bindings {
-		if current.SourceID != source.ID {
-			continue
+	binding := storage.ProtocolBinding{Kind: "source", SourceID: source.ID, Unbound: true}
+	if source.Platform == "" {
+		source.AutoFetchModels = false
+	} else {
+		compiled, err := s.sourceProtocol(source)
+		if err != nil {
+			return err
 		}
-		if current.Kind == "source" && current.Binding.ProtocolID == compiled.Identity().DefinitionID {
-			binding = current
+		binding = makeProtocolBinding(binding.Key(), compiled)
+		for _, current := range bindings {
+			if current.Key() == binding.Key() && !current.Unbound && current.Binding.ProtocolID == compiled.Identity().DefinitionID {
+				binding = current
+				break
+			}
 		}
-	}
-	if err := protocol.IssuesError(protocol.CheckBinding(binding.Binding, compiled)); err != nil {
-		return err
+		if err := protocol.IssuesError(protocol.CheckBinding(binding.Binding, compiled)); err != nil {
+			return err
+		}
 	}
 	service, err := s.protocolService()
 	if err != nil {
 		return err
 	}
-	next := []storage.ProtocolBinding{}
-	for _, b := range bindings {
-		if b.Kind != "source" || b.SourceID != source.ID {
-			next = append(next, b)
-		}
+	updates, err := s.prepareBindingUpdate(ctx, service.View(), policies, bindings, binding)
+	if err != nil {
+		return err
 	}
-	next = append(next, binding)
-	verified, e := s.verifyConversionBindings(ctx, service.View(), policies, next, conversionBindingScope{changed: &binding})
-	if e != nil {
-		return e
-	}
-	for _, b := range verified {
-		if b.Kind == "source" && b.SourceID == source.ID {
-			binding = b
-		}
-	}
-
-	if !hasPassingGatewayCombination(binding.Combinations) {
-		return gatewayIssue(compiled.Identity(), protocol.VerificationRequired, "/binding/combinations", "source requires a verified ingress conversion contract")
-	}
-	return s.store.SaveBoundSource(ctx, source, binding, generation)
+	return s.store.SaveBoundSource(ctx, source, updates, generation)
 }

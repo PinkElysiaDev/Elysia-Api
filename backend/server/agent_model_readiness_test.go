@@ -18,7 +18,7 @@ func TestAgentReadinessDistinguishesModelBindingAndRevision(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	compiled := activateGatewayDefinition(t, s, agentEnvelopeDefinition(t))
 	model := storage.Model{ID: "grok-4.7", SourceID: "s", Name: "grok-4.7", Enabled: true, CapabilitySource: "catalog"}
-	binding := makeProtocolBinding(upgradeBindingKey{kind: "source", source: "s"}, compiled)
+	binding := makeProtocolBinding(storage.BindingKey{Kind: "source", SourceID: "s"}, compiled)
 	check := func(want string) {
 		t.Helper()
 		got := checkAgentModel(s.protocolServiceInst.View(), []storage.ProtocolBinding{binding}, model)
