@@ -62,6 +62,8 @@ async function prepareCharacterTrace() {
       ready.add(index)
     })()
     requests.set(index, request)
+    // A transient failure must not poison later playback or seeking requests.
+    void request.catch(() => { if (requests.get(index) === request) requests.delete(index) })
     return request
   }
   const trace = new CharacterTrace(manifest, payload, targetImage, (frame) => ready.has(chunkForFrame(frame)))
