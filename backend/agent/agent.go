@@ -1,10 +1,10 @@
 package agent
 
 import (
-	"errors"
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"runtime/debug"
@@ -40,11 +40,11 @@ type Engine struct {
 
 // Options 引擎行为参数（零值字段取默认）。
 type Options struct {
-	MaxModelCalls int           // 单轮最大模型调用次数（工具循环上限）
+	MaxModelCalls int // 单轮最大模型调用次数（工具循环上限）
 	// ModelCallLimit 为运行时动态上限（热重载）；非 nil 且返回 >0 时优先生效。
 	ModelCallLimit func() int
-	TurnTimeout   time.Duration // 单轮总超时
-	EventBuffer   int           // 事件 channel 缓冲
+	TurnTimeout    time.Duration // 单轮总超时
+	EventBuffer    int           // 事件 channel 缓冲
 	// ToolResultModelLimit 回传模型的工具结果字节上限（超出截断）。
 	ToolResultModelLimit int
 	// ToolResultStoreLimit 持久化的工具结果字节上限（超出截断）。
@@ -787,7 +787,7 @@ func appendToolOutput(conversation *[]conversationTurn, info ToolResultInfo, lim
 // appendToolResult 落库一条工具结果（脱敏 + 事件）并追加进对话——
 // resume/deny 路径自己合成的结果走这里；runOneTool 已落库的结果只追加。
 func (e *Engine) appendToolResult(ctx context.Context, sessionID string, conversation []conversationTurn, info ToolResultInfo, limit int, events chan Event) []conversationTurn {
-	e.persistToolResult(ctx, sessionID, info, events)
+	info = e.persistToolResult(ctx, sessionID, info, events)
 	return append(conversation, toolResultTurn(info, limit))
 }
 
@@ -1065,20 +1065,23 @@ func (e *Engine) runOneTool(ctx context.Context, sessionID string, session *Sess
 		result = tool.Execute(execCtx, tctx, call.Arguments)
 	}()
 
-	direction := clampDirection(MetaOf(tool).PreviewDirection)
+	encoded, encodeErr := result.MarshalData()
 	info = ToolResultInfo{
 		CallID:       call.ID,
 		Name:         call.Name,
 		Input:        call.Arguments,
 		OK:           result.OK,
-		Summary:      clampSummary(result.Summary, summaryModelLimit),
-		Data:         clampJSON(result.MarshalData(), e.opts.ToolResultStoreLimit, direction),
+		Summary:      result.Summary,
+		Data:         encoded,
 		DurationMs:   time.Since(started).Milliseconds(),
 		SecretValues: result.SecretValues,
 	}
+	if encodeErr != nil {
+		info = rejectToolResult(info)
+	}
 	// 调用取消后仍记录实际结果，避免会话回放只剩一条未结束的工具调用。
 	recordCtx, stopRecord := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-	e.persistToolResult(recordCtx, sessionID, info, events)
+	info = e.persistToolResult(recordCtx, sessionID, info, events)
 	stopRecord()
 
 	if len(session.DraftConfig) > 0 && !bytes.Equal(draftBefore, session.DraftConfig) {
@@ -1147,50 +1150,23 @@ func (e *Engine) watchToolProgress(ctx context.Context, call FunctionCall, meta 
 	}
 }
 
-func (e *Engine) persistToolResult(ctx context.Context, sessionID string, info ToolResultInfo, events chan Event) {
-	// 落库副本脱敏调用参数里的密钥类字段（apiKey/api_key/token/secret）：
-	// test_upstream 等工具的 key 以参数传入，原样入库与「凭证加密存储」的
-	// 承诺矛盾。现场事件与审批恢复路径（PendingAction.Calls）保留原值——
-	// 恢复执行需要真实参数。
-	//
-	// 结果侧的明文密钥（SecretValues，key create 等创建类工具声明）同理：
-	// 现场事件保留原值完成「明文仅此一次」交付，落库与回放按值精确打码，
-	// 防止明文永久进入会话历史并逐轮回传模型。
-	stored := info
-	stored.Input = MaskSecretInputs(info.Input)
-	if len(info.SecretValues) > 0 {
-		stored.Summary = MaskSecretText(info.Summary, info.SecretValues)
-		stored.Data = MaskSecretData(info.Data, info.SecretValues)
-		stored.SecretValues = nil
-	}
+// persistToolResult publishes the one-time client copy and returns only the
+// redacted copy, including when storage fails. Callers use it for model history.
+func (e *Engine) persistToolResult(ctx context.Context, sessionID string, info ToolResultInfo, events chan Event) ToolResultInfo {
+	info = validateToolResult(info)
+	direction := MetaOf(e.tools.Get(info.Name)).PreviewDirection
+	stored := limitToolResult(redactToolResult(info), e.opts.ToolResultStoreLimit, direction)
+	live := limitToolResult(info, e.opts.ToolResultStoreLimit, direction)
+	live.Input = stored.Input
+	live.SecretValues = nil
 	seq, err := e.store.AppendMessage(ctx, sessionID, RoleToolResult, stored, "", nil)
 	if err != nil {
 		emitEvent(events, Event{Type: EventStatus, Text: fmt.Sprintf("工具结果落库失败: %v", err)})
-		return
+		return stored
 	}
-	live := info
-	live.Input = MaskSecretInputs(info.Input)
-	live.SecretValues = nil
 	encoded, _ := json.Marshal(stored)
-	result := live
-	emitEvent(events, Event{Type: EventToolResult, CallID: info.CallID, Name: info.Name, Result: &result, Message: &Message{Seq: seq, Role: RoleToolResult, Content: encoded, CreatedAt: time.Now()}})
-}
-
-// MaskSecretInputs 把输入 JSON 中密钥类字符串字段替换为 ***（递归遍历；
-// 解析失败则原样返回——脱敏尽力而为，不阻断落库）。elysia_cli 的 command 字段
-// 走命令行感知的 flag 级打码（见 masking.go）。
-func MaskSecretInputs(raw json.RawMessage) json.RawMessage {
-	if len(raw) == 0 {
-		return raw
-	}
-	var value any
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return raw
-	}
-	if encoded, err := json.Marshal(maskSecretValue(value)); err == nil {
-		return encoded
-	}
-	return raw
+	emitEvent(events, Event{Type: EventToolResult, CallID: info.CallID, Name: info.Name, Result: &live, Message: &Message{Seq: seq, Role: RoleToolResult, Content: encoded, CreatedAt: time.Now()}})
+	return stored
 }
 
 func (e *Engine) persistAssistant(ctx context.Context, sessionID string, session *Session, content AssistantContent, usage *protocol.Usage, events chan Event) {

@@ -25,7 +25,7 @@ func TestModelDiscoveryEditorAgentAndForwardingShareDefinition(t *testing.T) {
 	tctx := &protocolAuthorContext{draft: definition.Bytes()}
 	cliPreview := s.runCLIWithOptions(t.Context(), tctx, "elysia protocol preview --mode models --operation models --sample '"+string(input.Bytes())+"'", true)
 	if !cliPreview.OK {
-		t.Fatal(cliPreview.Summary, string(cliPreview.MarshalData()))
+		t.Fatal(cliPreview.Summary, string(mustCLIData(t, cliPreview)))
 	}
 	var actual protocol.PreviewResult
 	decodeDiscoveryCLIResult(t, cliPreview, &actual)
@@ -48,7 +48,7 @@ func TestModelDiscoveryEditorAgentAndForwardingShareDefinition(t *testing.T) {
 		shouldFail = isFailure
 		result := s.runCLIWithOptions(t.Context(), tctx, "elysia protocol models --base-url "+provider.URL, true)
 		if result.OK == isFailure {
-			t.Fatal(result.Summary, string(result.MarshalData()))
+			t.Fatal(result.Summary, string(mustCLIData(t, result)))
 		}
 		var probe protocolProbeResult
 		decodeDiscoveryCLIResult(t, result, &probe)
@@ -70,7 +70,7 @@ func decodeDiscoveryCLIResult(t *testing.T, result CLIResult, target any) {
 	var envelope struct {
 		Output string `json:"output"`
 	}
-	if err := json.Unmarshal(result.MarshalData(), &envelope); err != nil {
+	if err := json.Unmarshal(mustCLIData(t, result), &envelope); err != nil {
 		t.Fatal(err)
 	}
 	for _, line := range strings.Split(envelope.Output, "\n") {

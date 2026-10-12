@@ -722,12 +722,12 @@ func TestRunTurn_EmptyContinueRegenerates(t *testing.T) {
 
 func TestToolResultMarshal(t *testing.T) {
 	result := ToolResult{OK: true, Data: map[string]any{"a": 1}}
-	if string(result.MarshalData()) != `{"a":1}` {
-		t.Fatalf("data = %s", result.MarshalData())
+	if string(mustToolData(t, result)) != `{"a":1}` {
+		t.Fatalf("data = %s", mustToolData(t, result))
 	}
 	str := ToolResult{OK: true, Data: "纯文本"}
-	if string(str.MarshalData()) != `"纯文本"` {
-		t.Fatalf("string data = %s", str.MarshalData())
+	if string(mustToolData(t, str)) != `"纯文本"` {
+		t.Fatalf("string data = %s", mustToolData(t, str))
 	}
 }
 
@@ -997,7 +997,7 @@ func TestResumeApproval_PlanModeEnabledAfterPauseStillDenies(t *testing.T) {
 func (f *fakeStore) ResetRunningSessions(ctx context.Context) error { return nil }
 
 // 回归（W2-20）：工具入参中的密钥字段落库前脱敏（apiKey/token/secret 等），
-// 非密钥字段与嵌套结构不受影响；非法 JSON 原样返回不阻断。
+// 非密钥字段与嵌套结构不受影响；非法 JSON 不进入展示或持久化。
 func TestMaskSecretInputs(t *testing.T) {
 	masked := MaskSecretInputs(json.RawMessage(`{"baseUrl":"http://x","apiKey":"sk-live-123","nested":{"api_key":"k2","name":"ok"},"token":"t1","note":"keep"}`))
 	var decoded map[string]any
@@ -1015,8 +1015,8 @@ func TestMaskSecretInputs(t *testing.T) {
 		t.Fatalf("unexpected collateral masking: %s", masked)
 	}
 	broken := MaskSecretInputs(json.RawMessage(`{oops`))
-	if string(broken) != `{oops` {
-		t.Fatalf("invalid JSON should pass through, got %s", broken)
+	if !json.Valid(broken) || strings.Contains(string(broken), "oops") {
+		t.Fatalf("invalid JSON must be replaced, got %s", broken)
 	}
 }
 
@@ -1410,4 +1410,13 @@ func hasTestToolCall(nodes []protocol.Node) bool {
 		}
 	}
 	return false
+}
+
+func mustToolData(t *testing.T, result ToolResult) json.RawMessage {
+	t.Helper()
+	data, err := result.MarshalData()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }

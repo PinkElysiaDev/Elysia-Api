@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/json"
 	"regexp"
 	"strings"
@@ -108,21 +109,34 @@ func MaskSecretText(text string, secrets []string) string {
 	return text
 }
 
-// MaskSecretData 对 JSON 数据做同样的按值打码：解析后递归替换字符串里的
-// 明文密钥再序列化；解析/序列化失败原样返回（打码尽力而为，不阻断落库）。
+// MaskSecretData masks declared secrets without rounding JSON numbers. Invalid
+// JSON is replaced with an error envelope, never returned as unredacted text.
 func MaskSecretData(raw []byte, secrets []string) []byte {
-	if len(raw) == 0 || len(secrets) == 0 {
+	return maskJSON(raw, func(value any) any { return maskSecretTextInValue(value, secrets) })
+}
+
+// MaskSecretInputs removes credentials from display and persisted arguments.
+// Execution retains the separate original arguments for approval and tools.
+func MaskSecretInputs(raw json.RawMessage) json.RawMessage {
+	return maskJSON(raw, maskSecretValue)
+}
+
+func maskJSON(raw json.RawMessage, mask func(any) any) json.RawMessage {
+	if len(raw) == 0 {
 		return raw
 	}
+	if !json.Valid(raw) {
+		return json.RawMessage(`{"error":"invalid_tool_json"}`)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
 	var value any
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return raw
+	if err := decoder.Decode(&value); err != nil {
+		return json.RawMessage(`{"error":"invalid_tool_json"}`)
 	}
-	masked, err := json.Marshal(maskSecretTextInValue(value, secrets))
-	if err != nil {
-		return raw
-	}
-	return masked
+	// The decoder produces only JSON values; masking changes strings alone.
+	encoded, _ := json.Marshal(mask(value))
+	return encoded
 }
 
 func maskSecretTextInValue(value any, secrets []string) any {

@@ -108,7 +108,7 @@ func TestAgentProtocolV2AuthoringAndActivation(t *testing.T) {
 		t.Helper()
 		result := s.runCLIWithOptions(t.Context(), tctx, command, true)
 		if !result.OK {
-			t.Fatalf("%s: %s %s", command, result.Summary, result.MarshalData())
+			t.Fatalf("%s: %s %s", command, result.Summary, mustCLIData(t, result))
 		}
 		return result
 	}
@@ -187,7 +187,7 @@ func TestAgentProtocolV2DiagnosticsAndProbe(t *testing.T) {
 		result := (&protocolV2Tool{server: s, action: "test"}).Execute(t.Context(), tctx, input)
 		provider.Close()
 		if result.OK != valid {
-			t.Fatalf("valid=%t: %s %s", valid, result.Summary, result.MarshalData())
+			t.Fatalf("valid=%t: %s %s", valid, result.Summary, mustCLIData(t, result))
 		}
 		if _, err := s.store.ReadProtocolReport(t.Context(), definition.ID, compiled.Hash()); err == nil {
 			t.Fatal("upstream probe replaced offline proof")

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -45,7 +46,15 @@ func (s *Server) runMCPCLI(ctx context.Context, args json.RawMessage, progress f
 	result := s.runCLI(execCtx, &mcpCLIContext{progress: progress}, params.Command)
 	executionErr := execCtx.Err()
 	view := map[string]any{}
-	_ = json.Unmarshal(result.MarshalData(), &view)
+	encoded, err := result.MarshalData()
+	if err != nil {
+		return nil, fmt.Errorf("invalid CLI result: %w", err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	if err := decoder.Decode(&view); err != nil {
+		return nil, fmt.Errorf("invalid CLI result object: %w", err)
+	}
 	view["ok"], view["summary"] = result.OK, result.Summary
 	if executionErr != nil {
 		view["ok"], view["exitCode"] = false, 1

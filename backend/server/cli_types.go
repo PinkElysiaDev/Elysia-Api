@@ -33,18 +33,24 @@ func CLIError(summary, code string) CLIResult {
 	return CLIResult{OK: false, Summary: summary, Data: map[string]any{"error": code}}
 }
 
-func (r CLIResult) MarshalData() json.RawMessage {
+// MarshalData rejects invalid tool data without inventing an empty success.
+func (r CLIResult) MarshalData() (json.RawMessage, error) {
 	if r.Data == nil {
-		return json.RawMessage(`{}`)
+		return json.RawMessage(`{}`), nil
 	}
-	if raw, ok := r.Data.(json.RawMessage); ok {
-		return raw
+	return json.Marshal(r.Data)
+}
+
+func normalizeCLIResult(result CLIResult) CLIResult {
+	if result.Data == nil {
+		return result
 	}
-	encoded, err := json.Marshal(r.Data)
+	encoded, err := result.MarshalData()
 	if err != nil {
-		return json.RawMessage(`{}`)
+		return CLIResult{OK: false, Summary: "工具返回的数据不是合法 JSON，未重试已执行的命令", Data: json.RawMessage(`{"error":"invalid_tool_result"}`)}
 	}
-	return encoded
+	result.Data = encoded
+	return result
 }
 
 // CLIHandler 是命令业务实现的唯一执行契约。它不暴露模型工具、审批或

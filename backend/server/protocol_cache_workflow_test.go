@@ -24,7 +24,7 @@ func TestCacheAliasEditorAgentAndForwardingShareContract(t *testing.T) {
 	for _, action := range []string{"verify", "save"} {
 		result := (&protocolV2Tool{server: s, action: action}).Execute(t.Context(), author, nil)
 		if !result.OK {
-			t.Fatal(action, result.Summary, result.MarshalData())
+			t.Fatal(action, result.Summary, mustCLIData(t, result))
 		}
 	}
 	service, err := s.protocolService()
@@ -38,7 +38,7 @@ func TestCacheAliasEditorAgentAndForwardingShareContract(t *testing.T) {
 	activation, _ := json.Marshal(map[string]string{"id": definition.ID, "hash": compiled.Hash()})
 	result := (&protocolV2Tool{server: s, action: "activate"}).Execute(t.Context(), author, activation)
 	if !result.OK {
-		t.Fatal(result.Summary, result.MarshalData())
+		t.Fatal(result.Summary, mustCLIData(t, result))
 	}
 	if active, exists := service.Pin(definition.ID); !exists || active.Hash() != compiled.Hash() {
 		t.Fatal("Agent activation lost the verified cache mapping")
@@ -63,7 +63,7 @@ func TestCacheAliasEditorAgentAndForwardingShareContract(t *testing.T) {
 	command, _ := json.Marshal(protocolCommandInput{Direction: protocol.DecodeResponse, SampleRequest: input})
 	agent := (&protocolV2Tool{server: s, action: "preview"}).Execute(t.Context(), author, command)
 	if !agent.OK || string(agent.Data.(protocol.PreviewResult).Semantic.Bytes()) != string(editor.Data.Semantic.Bytes()) {
-		t.Fatal("editor and Agent cache previews differ", agent.MarshalData())
+		t.Fatal("editor and Agent cache previews differ", mustCLIData(t, agent))
 	}
 	var semantic protocol.Response
 	if err := editor.Data.Semantic.Decode(&semantic); err != nil || semantic.Usage.CacheCreation.Count != 20 {

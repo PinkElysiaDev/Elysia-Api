@@ -55,6 +55,7 @@ func importAssistantContent(content *AssistantContent) error {
 }
 
 func toolResultTurn(info ToolResultInfo, limit int) conversationTurn {
+	info = redactToolResult(validateToolResult(info))
 	// The Agent owns this result envelope. Target protocols declare whether its
 	// JSON value is submitted as an object or serialized text.
 	fields := map[string]any{"ok": info.OK, "summary": info.Summary}

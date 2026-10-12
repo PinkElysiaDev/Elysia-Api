@@ -1171,7 +1171,7 @@ func (s *Server) runOneCLIStatement(ctx context.Context, tctx CLIContext, raw st
 	}
 	if allowInternal && len(statement.args) >= 3 && statement.args[0] == "session" && statement.args[1] == "title" && len(statement.pipes) == 0 {
 		encoded, _ := json.Marshal(map[string]any{"title": strings.Join(statement.args[2:], " ")})
-		result := (&updateTitleTool{}).Execute(ctx, tctx, encoded)
+		result := normalizeCLIResult((&updateTitleTool{}).Execute(ctx, tctx, encoded))
 		out.WriteString(renderCLIResult(result, statement) + "\n\n")
 		return out.String(), result.OK, nil
 	}
@@ -1199,7 +1199,7 @@ func (s *Server) runOneCLIStatement(ctx context.Context, tctx CLIContext, raw st
 		execCtx, cancel = context.WithTimeout(ctx, toolTimeout)
 		defer cancel()
 	}
-	result := handler.Execute(execCtx, tctx, encoded)
+	result := normalizeCLIResult(handler.Execute(execCtx, tctx, encoded))
 	text := renderCLIResult(result, statement)
 	out.WriteString(text + "\n\n")
 	return out.String(), result.OK, result.SecretValues
@@ -1214,11 +1214,7 @@ func renderCLIResult(result CLIResult, statement cliStatement) string {
 		text = "失败: " + result.Summary
 	}
 	if result.Data != nil {
-		// Data 仅在 chan/func/NaN 等极端类型时无法编码；CLI 命令的
-		// 返回值都是普通 JSON 形状，静默省略 Data 分支是有意的降级。
-		if encoded, err := json.Marshal(result.Data); err == nil {
-			text += "\n" + string(encoded)
-		}
+		text += "\n" + string(result.Data.(json.RawMessage))
 	}
 	return applyCLIPipes(text, statement)
 }

@@ -128,27 +128,12 @@ type ToolResult struct {
 	SecretValues []string
 }
 
-// ToolResultJSON 把 Data 序列化为回传模型的原始 JSON（引擎在截断前调用）。
-func (r ToolResult) MarshalData() json.RawMessage {
+// MarshalData validates tool-owned JSON before any delivery or persistence.
+func (r ToolResult) MarshalData() (json.RawMessage, error) {
 	if r.Data == nil {
-		return json.RawMessage(`{}`)
+		return json.RawMessage(`{}`), nil
 	}
-	switch value := r.Data.(type) {
-	case string:
-		encoded, err := json.Marshal(value)
-		if err != nil {
-			return json.RawMessage(`{}`)
-		}
-		return encoded
-	case json.RawMessage:
-		return value
-	default:
-		encoded, err := json.Marshal(value)
-		if err != nil {
-			return json.RawMessage(`{}`)
-		}
-		return encoded
-	}
+	return json.Marshal(r.Data)
 }
 
 // Registry 是工具注册表。新增能力 = 实现 Tool + 注册一行，引擎零改动。

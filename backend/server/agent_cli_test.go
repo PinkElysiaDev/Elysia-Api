@@ -465,8 +465,8 @@ func TestCLIRunEquivalence(t *testing.T) {
 		draft, _ := json.Marshal(draftArgs["config"])
 		tctx := &sessionToolContext{session: &agent.Session{Mode: agent.ModeEdit, ProtocolID: "original", DraftConfig: draft}}
 		result := s.runCLI(ctx, tctx, "elysia protocol save")
-		if result.OK || !strings.Contains(string(result.MarshalData()), "id_mismatch") {
-			t.Fatalf("explicit update bypassed edit target: %s", result.MarshalData())
+		if result.OK || !strings.Contains(string(mustCLIData(t, result)), "id_mismatch") {
+			t.Fatalf("explicit update bypassed edit target: %s", mustCLIData(t, result))
 		}
 	})
 
@@ -559,4 +559,13 @@ func TestCLICodeSnapshotCommands(t *testing.T) {
 	if !snapshotAvailable() && !strings.Contains(result.Summary, "未打包源码快照") {
 		t.Fatalf("placeholder notice expected: %+v", result)
 	}
+}
+
+func mustCLIData(t *testing.T, result CLIResult) json.RawMessage {
+	t.Helper()
+	data, err := result.MarshalData()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }
