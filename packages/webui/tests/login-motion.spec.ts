@@ -187,6 +187,11 @@ test('pause freezes video, camera, aurora and form; the choice survives reload',
   await expect.poll(() => page.locator('.garden').evaluate((root) => Number(root.style.getPropertyValue('--par-x')))).toBeLessThan(-0.05)
   await page.getByRole('button', { name: '暂停动态效果' }).click()
   await expect.poll(() => page.locator('video').evaluate((video) => video.paused)).toBe(true)
+  await expect(page.locator('.garden')).toHaveAttribute('data-motion', 'paused')
+  // CSS pause is committed on the animation timeline; video.pause() alone does not await it.
+  await page.locator('.garden').evaluate(async (root) => {
+    await Promise.all(root.getAnimations({ subtree: true }).filter((animation) => animation.playState === 'paused').map((animation) => animation.ready))
+  })
   const snapshot = () => page.locator('.garden').evaluate((root) => ({
     horizontal: root.style.getPropertyValue('--par-x'), vertical: root.style.getPropertyValue('--par-y'),
     time: root.querySelector('video')!.currentTime,
@@ -281,6 +286,7 @@ test('pausing during the cinematic immediately finishes authentication without a
   await page.getByLabel(/Panel Access Token/).fill('paused-during-test-token')
   await page.getByRole('button', { name: '立即登录' }).click()
   await expect(page.locator('.garden')).toHaveAttribute('data-cinematic', 'ready')
+  await expect(page.getByRole('button', { name: '暂停动态效果' })).toHaveCSS('pointer-events', 'auto')
   await page.getByRole('button', { name: '暂停动态效果' }).click()
   await expect(page.getByRole('button', { name: '退出登录', exact: true })).toBeVisible()
   await expect(page.locator('.arrival-echo, .elysia-arrive, .app-fade')).toHaveCount(0)

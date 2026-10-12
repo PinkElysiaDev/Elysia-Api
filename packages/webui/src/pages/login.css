@@ -326,8 +326,9 @@
   translate: calc(var(--par-x) * -6px) calc(var(--par-y) * -4px);
 }
 .garden-brand, .garden-actions, .garden-footer { transition: opacity 0.4s ease; }
+/* Keep the motion control reachable so an authenticated user can skip the interlude. */
 .garden[data-phase='entering'] .garden-brand,
-.garden[data-phase='entering'] .garden-actions,
+.garden[data-phase='entering'] .garden-actions .theme-toggle,
 .garden[data-phase='entering'] .garden-footer { opacity: 0; pointer-events: none; }
 .garden[data-phase='entering'] .garden-login { opacity: 0; transform: translateY(-8px); pointer-events: none; }
 .garden[data-cinematic='ready'] .garden-scene { visibility: hidden; }
