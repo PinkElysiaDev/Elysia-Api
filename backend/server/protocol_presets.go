@@ -42,10 +42,6 @@ func PresetProtocolConfigs() ([]relay.CustomProtocolConfig, error) {
 	return configs, nil
 }
 
-// presetProtocolAnthropicAPIID 标记 AI 助手 few-shot 范例所用预置;
-// 改名/删除该预设时此常量是唯一需要同步的位置。
-const presetProtocolAnthropicAPIID = "anthropic-messages"
-
 // cachedPresetConfigs 内嵌定义不可变:解析+整体校验只做一次,助手每请求
 // 复用(此前每次调用重读 embed 并校验四份)。
 var cachedPresetConfigs = sync.OnceValue(func() []relay.CustomProtocolConfig {
@@ -223,18 +219,6 @@ func (s *Server) migratePresetProtocolRenames() {
 	}
 	if _, err := s.store.MigratePresetProtocolRenames(context.Background(), presetProtocolRenames); err != nil {
 		log.Printf("custom protocol preset rename migration failed: %v", err)
-	}
-}
-
-// stripGeminiModelIDPrefixes 一次性剥离历史拉取入库的 Gemini 系模型 ID 的
-// "models/" 集合前缀（内置 gemini 与 gemini-api 预置的旧拉取 bug 存量修复），
-// 须在 syncCustomProtocols 之前调用；幂等。
-func (s *Server) stripGeminiModelIDPrefixes() {
-	if s.store == nil {
-		return
-	}
-	if _, err := s.store.StripGeminiModelIDPrefixes(context.Background()); err != nil {
-		log.Printf("gemini model id prefix migration failed: %v", err)
 	}
 }
 

@@ -501,7 +501,7 @@ func (suite *liveSuite) observer(compiled *protocol.Compiled) (*httptest.Server,
 		isStream := flags.Stream || strings.Contains(request.URL.Path, ":streamGenerateContent")
 		wire := suite.exchange(request.Context(), compiled, body, isStream, writer)
 		if wire.Status == 0 {
-			http.Error(writer, "verification request unavailable", 503)
+			http.Error(writer, "verification request unavailable", http.StatusServiceUnavailable)
 		}
 		completed <- wire
 	}))

@@ -168,9 +168,7 @@ func (s *Server) initUsageRecord(c *gin.Context, start time.Time, body []byte, i
 // （Windows 时钟粒度下概率可观），裸纳秒时间戳会与 INSERT OR REPLACE 相互覆盖。
 func usageRequestID(start time.Time) string {
 	suffix := make([]byte, 4)
-	if _, err := rand.Read(suffix); err != nil {
-		return fmt.Sprintf("req_%d", start.UnixNano())
-	}
+	_, _ = rand.Read(suffix)
 	return fmt.Sprintf("req_%d_%x", start.UnixNano(), suffix)
 }
 

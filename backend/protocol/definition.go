@@ -17,13 +17,6 @@ const (
 	PresetGeminiID          = "google-generate-content"
 )
 
-// legacyPresetIDs are historical identifiers kept for display compatibility and
-// the startup rename migration (usage records and old databases still carry
-// them). IsPresetProtocolID deliberately does not match them: a database row
-// under a legacy ID is renamed to the current preset ID before the registry
-// loads.
-var legacyPresetIDs = [4]string{"chat-completions-api", "responses-api", "anthropic-api", "gemini-api"}
-
 // IsPresetProtocolID reports whether the identifier belongs to a built-in
 // preset and is therefore exempt from user authoring.
 func IsPresetProtocolID(id string) bool {

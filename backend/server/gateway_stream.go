@@ -272,17 +272,15 @@ func (s *Server) forwardGatewayStream(c *gin.Context, record *usageRecord, plan 
 		c.Header(gatewayStreamErrorTrailer, "protocol_stream_error")
 		return terminalFailure
 	}
-	if plan.operation.Framing != nil {
-		for _, marker := range plan.operation.Framing.Done {
-			if plan.operation.Transport == protocol.SSE {
-				if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", marker); err != nil {
-					return err
-				}
-			} else if _, err := fmt.Fprintln(c.Writer, marker); err != nil {
+	if plan.operation.Framing != nil && len(plan.operation.Framing.Done) > 0 {
+		// Done lists accepted alternatives; output uses the first canonical marker.
+		marker := plan.operation.Framing.Done[0]
+		if plan.operation.Transport == protocol.SSE {
+			if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", marker); err != nil {
 				return err
 			}
-			// Done lists accepted alternatives; output uses the first canonical marker.
-			break
+		} else if _, err := fmt.Fprintln(c.Writer, marker); err != nil {
+			return err
 		}
 	}
 	c.Writer.Flush()

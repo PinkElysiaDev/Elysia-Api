@@ -72,9 +72,7 @@ func (c *secretCodec) encrypt(plain string) (string, error) {
 		return plain, nil
 	}
 	nonce := make([]byte, c.gcm.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return "", err
-	}
+	_, _ = rand.Read(nonce)
 	sealed := c.gcm.Seal(nil, nonce, []byte(plain), nil)
 	combined := append(nonce, sealed...)
 	return secretPrefix + base64.StdEncoding.EncodeToString(combined), nil

@@ -177,13 +177,6 @@ func TestStreamToolStableSlotIndices(t *testing.T) {
 	}
 }
 
-func eventNameOf(frame string) string {
-	var parsed map[string]any
-	_ = json.Unmarshal([]byte(frame), &parsed)
-	name, _ := parsed["type"].(string)
-	return name
-}
-
 // DBG-007 回归:复合帧(正文+结束+usage 同帧)不得因 first-match 只映射一类
 // 字段而丢失其余——预设每帧全量映射。
 func TestPresetCombinedFramesEndToEnd(t *testing.T) {

@@ -38,7 +38,7 @@ func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input ag
 		return nil, failure
 	}
 	if candidate.operation.Kind != "generate" {
-		return nil, fmt.Errorf("Agent requires a synchronous generation operation")
+		return nil, fmt.Errorf("agent requires a synchronous generation operation")
 	}
 	content := append([]protocol.Node(nil), input.Content...)
 	if input.Instructions != "" {
@@ -152,7 +152,7 @@ func agentResultFromProtocol(response *protocol.Response) (*agent.CallResult, er
 					for _, child := range node.Children {
 						var summary string
 						if child.Kind != protocol.TextNode {
-							return fmt.Errorf("Agent reasoning summary requires text children")
+							return fmt.Errorf("agent reasoning summary requires text children")
 						}
 						if err := child.Payload.Decode(&summary); err != nil {
 							return err
@@ -175,7 +175,7 @@ func agentResultFromProtocol(response *protocol.Response) (*agent.CallResult, er
 					continue
 				}
 				if node.Input == nil || node.Input.Kind != protocol.JSONInput || !node.Input.Value.IsObject() {
-					return fmt.Errorf("Agent tools require JSON function arguments")
+					return fmt.Errorf("agent tools require JSON function arguments")
 				}
 				var call agent.FunctionCall
 				if err := node.CallID.Decode(&call.ID); err != nil {
@@ -187,7 +187,7 @@ func agentResultFromProtocol(response *protocol.Response) (*agent.CallResult, er
 				call.Type, call.Arguments = "function", json.RawMessage(node.Input.Value.Bytes())
 				result.ToolCalls = append(result.ToolCalls, call)
 			default:
-				return fmt.Errorf("Agent cannot consume response content kind %q", node.Kind)
+				return fmt.Errorf("agent cannot consume response content kind %q", node.Kind)
 			}
 		}
 		return nil

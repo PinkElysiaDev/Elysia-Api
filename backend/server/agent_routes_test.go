@@ -152,14 +152,6 @@ type agentSSEEvent struct {
 	Data json.RawMessage
 }
 
-func (e agentSSEEvent) field(path string) any {
-	var value map[string]any
-	if err := json.Unmarshal(e.Data, &value); err != nil {
-		return nil
-	}
-	return value[path]
-}
-
 func errorText(events []agentSSEEvent) string {
 	for _, event := range events {
 		if event.Type == "error" {
@@ -222,11 +214,8 @@ func TestAgentFullTurnWithDraftTool(t *testing.T) {
 			for _, event := range events {
 				types = append(types, event.Type+" "+truncateForDisplay(string(event.Data), 400))
 			}
-			var summaries []string
-			for _, event := range events {
-				summaries = append(summaries, event.Type)
-			}
-			t.Fatalf("missing %s event; types=%v first-error=%v", want, summaries, errorText(events))
+
+			t.Fatalf("missing %s event; types=%v first-error=%v", want, types, errorText(events))
 		}
 	}
 	// 用量入账：两次模型调用各一条，key_name = AI 助手

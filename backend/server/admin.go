@@ -1188,15 +1188,6 @@ func (s *Server) adminUsageCleanup(c *gin.Context) {
 	respondOK(c, gin.H{"accepted": accepted})
 }
 
-func firstErrMsg(errs ...error) string {
-	for _, err := range errs {
-		if err != nil {
-			return err.Error()
-		}
-	}
-	return "unknown error"
-}
-
 func (s *Server) adminSystemLogs(c *gin.Context) {
 	store, okStore := s.requireStore(c)
 	if !okStore {

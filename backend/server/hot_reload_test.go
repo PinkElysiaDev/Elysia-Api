@@ -10,10 +10,6 @@ import (
 	"github.com/elysia-api/backend/config"
 )
 
-func contextWithCancel() (context.Context, context.CancelFunc) {
-	return context.WithCancel(context.Background())
-}
-
 func osWriteFile(path string, data []byte, perm os.FileMode) error {
 	return os.WriteFile(path, data, perm)
 }

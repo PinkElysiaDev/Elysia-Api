@@ -9,11 +9,6 @@ import (
 // Historical configuration types exist only for lossless import and preset hashes.
 // No registry, template compiler or conversion executor uses these types.
 
-const (
-	customProtocolMaxTemplateBytes = 4 << 20
-	customProtocolMaxDepth         = 64
-	customProtocolMaxPlaceholders  = 2048
-)
 const DefaultAuthHeaderName = "x-api-key"
 
 type CustomProtocolConfig struct {

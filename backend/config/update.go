@@ -20,7 +20,7 @@ func (c *Config) Update(prepare func(candidate *Config) error) error {
 		return err
 	}
 	candidate.path = c.path
-	// JSON omitempty cannot preserve an explicitly empty outbound allowlist.
+	// JSON omitempty cannot preserve an explicitly empty outbound denylist.
 	candidate.Outbound.DeniedIPRanges = slices.Clone(c.Outbound.DeniedIPRanges)
 	if err := prepare(&candidate); err != nil {
 		return err

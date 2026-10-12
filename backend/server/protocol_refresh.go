@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"sort"
 	"time"
 
 	"github.com/elysia-api/backend/protocol"
@@ -322,13 +321,4 @@ func bindingNeedsProtocolRefresh(b storage.ProtocolBinding, definitions map[stri
 		}
 	}
 	return false
-}
-
-func sortedDefinitionIDs(definitions map[string]protocol.Value) []string {
-	ids := make([]string, 0, len(definitions))
-	for id := range definitions {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	return ids
 }

@@ -121,20 +121,6 @@ func openStoreAt(t *testing.T, path string) *storage.Store {
 	return store
 }
 
-// dropProtocolHistory 直连 SQLite 把 protocol_history 表移除，模拟拷库丢
-// WAL 后的坏库现场（storage.Open 的迁移会重建它，所以用裸连接事后删除）。
-func dropProtocolHistory(t *testing.T, path string) {
-	t.Helper()
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatalf("raw open: %v", err)
-	}
-	defer db.Close()
-	if _, err := db.Exec(`DROP TABLE IF EXISTS protocol_history`); err != nil {
-		t.Fatalf("drop: %v", err)
-	}
-}
-
 // seedUpgradeReceipt 写入上一代成功迁移的回执（键与结构与存储层一致），
 // 模拟「已完成过 v2 升级」的存量库。
 func seedUpgradeReceipt(t *testing.T, path string) {

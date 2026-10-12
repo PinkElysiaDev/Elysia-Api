@@ -70,9 +70,7 @@ func (c *ContinuationCodec) Seal(record ContinuationRecord, limit int) (string, 
 		return "", fmt.Errorf("continuation record exceeds byte limit")
 	}
 	nonce := make([]byte, c.aead.NonceSize())
-	if _, err = rand.Read(nonce); err != nil {
-		return "", err
-	}
+	_, _ = rand.Read(nonce)
 	sealed := c.aead.Seal(nonce, nonce, raw, []byte(ContinuationPrefix))
 	return ContinuationPrefix + base64.RawURLEncoding.EncodeToString(sealed), nil
 }
@@ -104,9 +102,7 @@ func (c *ContinuationCodec) Open(token string, limit int) (ContinuationRecord, e
 
 func NewContinuationID() (string, error) {
 	var raw [24]byte
-	if _, err := rand.Read(raw[:]); err != nil {
-		return "", err
-	}
+	_, _ = rand.Read(raw[:])
 	return hex.EncodeToString(raw[:]), nil
 }
 

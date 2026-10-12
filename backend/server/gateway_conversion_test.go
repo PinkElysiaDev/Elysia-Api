@@ -58,9 +58,8 @@ func TestGatewayGeminiClientStreamUsagePreferences(t *testing.T) {
 			if rec.Code != 200 || calls != 1 || !strings.Contains(rec.Body.String(), "hello") || strings.Contains(rec.Body.String(), "conversion_rejected") {
 				t.Fatal(rec.Code, calls, rec.Body)
 			}
-			hasUsage := strings.Contains(rec.Body.String(), `"choices":[],"usage"`)
 			// JSON fields are sorted: inspect frames rather than depend on order.
-			hasUsage = false
+			hasUsage := false
 			for _, line := range strings.Split(rec.Body.String(), "\n") {
 				if !strings.HasPrefix(line, "data: {") {
 					continue

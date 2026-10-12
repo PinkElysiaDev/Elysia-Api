@@ -57,13 +57,6 @@ func protocolCLIError(err error) CLIResult {
 	return CLIError(err.Error(), "protocol_service_error")
 }
 
-func isVersionedDefinition(raw []byte) bool {
-	var identity struct {
-		SchemaVersion json.RawMessage `json:"schemaVersion"`
-	}
-	return json.Unmarshal(raw, &identity) == nil && len(identity.SchemaVersion) > 0
-}
-
 func (tool *protocolV2Tool) Execute(ctx context.Context, tctx CLIContext, raw json.RawMessage) CLIResult {
 	var input protocolCommandInput
 	if len(raw) > 0 {

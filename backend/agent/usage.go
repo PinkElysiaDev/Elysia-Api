@@ -48,7 +48,7 @@ func addCounter(left, right *protocol.Counter) (*protocol.Counter, error) {
 		return nil, nil
 	}
 	if left.Count > math.MaxInt64-right.Count {
-		return nil, fmt.Errorf("Agent turn usage exceeds supported integer range")
+		return nil, fmt.Errorf("agent turn usage exceeds supported integer range")
 	}
 	origin := protocol.ObservedCount
 	if left.Origin == protocol.InferredCount || right.Origin == protocol.InferredCount {

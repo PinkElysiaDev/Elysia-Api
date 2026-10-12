@@ -276,7 +276,7 @@ func rewriteProtocolConfigID(config, wantID string) (rewritten string, changed b
 	if raw, ok := obj["id"]; ok {
 		_ = json.Unmarshal(raw, &current)
 	}
-	if strings.ToLower(strings.TrimSpace(current)) == strings.ToLower(strings.TrimSpace(wantID)) {
+	if strings.EqualFold(strings.TrimSpace(current), strings.TrimSpace(wantID)) {
 		return config, false, nil
 	}
 	encoded, err := json.Marshal(wantID)

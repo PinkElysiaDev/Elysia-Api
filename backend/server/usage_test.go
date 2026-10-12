@@ -50,7 +50,8 @@ func TestRequestEstimateDoesNotBecomeActualUsage(t *testing.T) {
 
 func TestUsageRequestIDUniqueForSameNanosecond(t *testing.T) {
 	now := time.Now()
-	if usageRequestID(now) == usageRequestID(now) {
+	firstID, secondID := usageRequestID(now), usageRequestID(now)
+	if firstID == secondID {
 		t.Fatal("usage IDs must carry a random suffix")
 	}
 }

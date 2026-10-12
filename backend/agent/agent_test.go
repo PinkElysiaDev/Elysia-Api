@@ -1305,7 +1305,7 @@ func TestTurnStartSummary_RecordsBoundaryAndReplaysKeptHalf(t *testing.T) {
 	var sawKept, sawSummary, sawDropped bool
 	for _, message := range last.Content {
 		for _, part := range testContentNodes([]protocol.Node{message}) {
-			if strings.Contains(string(part.Payload.Bytes()), "marker-second") || strings.Contains(string(part.Payload.Bytes()), "marker-second") {
+			if strings.Contains(string(part.Payload.Bytes()), "marker-second") {
 				sawKept = true
 			}
 			if strings.Contains(string(part.Payload.Bytes()), "marker-summary") {

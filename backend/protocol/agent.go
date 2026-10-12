@@ -44,21 +44,21 @@ func (compiler *Compiler) compileAgentMapping(compiled *Compiled, definition Def
 		return nil
 	}
 	if configuration.ToolResults != JSONInput && configuration.ToolResults != TextInput {
-		return fmt.Errorf("Agent toolResults must declare json or text serialization")
+		return fmt.Errorf("agent toolResults must declare json or text serialization")
 	}
 	if !definition.Capabilities[FunctionToolsCapability] || !hasDefinitionDirections(definition, EncodeRequest, DecodeRequest) {
-		return fmt.Errorf("Agent configuration requires function tools and request encoding/decoding for offline validation")
+		return fmt.Errorf("agent configuration requires function tools and request encoding/decoding for offline validation")
 	}
 	hasGeneration := false
 	for _, operation := range definition.Operations {
 		hasGeneration = hasGeneration || (operation.Kind == "generate" && operation.Transport != WebSocket)
 	}
 	if !hasGeneration {
-		return fmt.Errorf("Agent requires a synchronous HTTP generation operation")
+		return fmt.Errorf("agent requires a synchronous HTTP generation operation")
 	}
 	mapping := configuration.Parameters
 	if mapping.Transform == nil || mapping.Module != "" || len(mapping.Rules) > 0 || mapping.After != nil || mapping.FrameBatch || mapping.UnknownEvent != "" || mapping.Capabilities != nil {
-		return fmt.Errorf("Agent parameters require an independent declarative transform")
+		return fmt.Errorf("agent parameters require an independent declarative transform")
 	}
 	entry, err := compiler.compileMapping(mapping, "/agent/parameters", EncodeRequest, expressions)
 	if err != nil {
@@ -67,14 +67,14 @@ func (compiler *Compiler) compileAgentMapping(compiled *Compiled, definition Def
 	seen := map[string]bool{}
 	for _, effort := range configuration.ThinkingEfforts {
 		if seen[effort] {
-			return fmt.Errorf("Agent thinking efforts must be unique")
+			return fmt.Errorf("agent thinking efforts must be unique")
 		}
 		seen[effort] = true
 	}
 	seen = map[string]bool{}
 	for _, sample := range configuration.Samples {
 		if sample.ID == "" || seen[sample.ID] || sample.Expected.IsZero() {
-			return fmt.Errorf("Agent samples require unique identities and expected parameters")
+			return fmt.Errorf("agent samples require unique identities and expected parameters")
 		}
 		seen[sample.ID] = true
 	}
@@ -170,7 +170,7 @@ func verifyAgentSamples(ctx context.Context, compiled *Compiled, report *Verific
 			actual, encodeErr := EncodeValue(parameters)
 			err = encodeErr
 			if err == nil && !equalValues(actual, sample.Expected) {
-				err = fmt.Errorf("Agent parameters differ from the declared expectation")
+				err = fmt.Errorf("agent parameters differ from the declared expectation")
 			}
 		}
 		if err == nil {
@@ -252,11 +252,11 @@ func verifyAgentParameterWire(ctx context.Context, compiled *Compiled, parameter
 		before, _ := EncodeValue(beforeParams)
 		after, _ := EncodeValue(afterParams)
 		if !equalValues(before, after) {
-			return fmt.Errorf("Agent parameters are lost or changed by the wire adapter")
+			return fmt.Errorf("agent parameters are lost or changed by the wire adapter")
 		}
 		return verifyAgentToolResult(ctx, compiled, decoded.Model, beforeParams, options)
 	}
-	return fmt.Errorf("Agent policy requires a positive request fixture")
+	return fmt.Errorf("agent policy requires a positive request fixture")
 }
 
 func verifyAgentToolResult(ctx context.Context, compiled *Compiled, model Value, parameters Object, options EvaluationContext) error {
@@ -296,7 +296,7 @@ func verifyAgentToolResult(ctx context.Context, compiled *Compiled, model Value,
 	}
 	visit(decoded.Content)
 	if len(calls) != 1 || len(results) != 1 || calls[0].CallID != StringValue("agent_verify_call") || results[0].CallID != calls[0].CallID || calls[0].Name != StringValue("agent_verify") || calls[0].Input == nil || !equalValues(calls[0].Input.Value, arguments) || !equalValues(results[0].Payload, payload) {
-		return fmt.Errorf("Agent tool history loses its arguments, result payload or call association")
+		return fmt.Errorf("agent tool history loses its arguments, result payload or call association")
 	}
 	return nil
 }

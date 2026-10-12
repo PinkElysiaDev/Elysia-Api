@@ -190,7 +190,7 @@ func inferredModel(source storage.ModelSource, id, name string) storage.Model {
 
 func inferModelType(modelID string) string {
 	id := strings.ToLower(modelID)
-	if strings.Contains(id, "embed") || strings.Contains(id, "text-embedding") {
+	if strings.Contains(id, "embed") {
 		return "embedding"
 	}
 	if strings.Contains(id, "rerank") {

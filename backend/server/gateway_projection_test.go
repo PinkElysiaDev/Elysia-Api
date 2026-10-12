@@ -28,7 +28,7 @@ func TestGatewayGeminiIncludeAndReasoningProjection(t *testing.T) {
 					definition := upstream.Definition()
 					definition.ID = "legacy-gemini"
 					definition.Requires = []string{protocol.ReasoningControlsFeature}
-					upstream = persistPreviousRevision(t, s, mustEncodedProtocolValue(t, definition))
+					persistPreviousRevision(t, s, mustEncodedProtocolValue(t, definition))
 					id := protocol.PresetResponsesID
 					if clientKind == "messages" {
 						id = protocol.PresetAnthropicID

@@ -122,9 +122,6 @@ func parseTime(raw string) time.Time {
 	if t, err := time.Parse(time.RFC3339Nano, raw); err == nil {
 		return t
 	}
-	if t, err := time.Parse(time.RFC3339, raw); err == nil {
-		return t
-	}
 	return time.Time{}
 }
 

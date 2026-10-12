@@ -43,9 +43,7 @@ func EnsureConfig(path string) (*Config, bool, error) {
 // unguessable first-run credential that the operator should rotate later.
 func generateRandomToken() (string, error) {
 	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		return "", err
-	}
+	_, _ = rand.Read(raw)
 	return "elysia-" + base64.RawURLEncoding.EncodeToString(raw), nil
 }
 

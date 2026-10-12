@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -244,32 +243,11 @@ func (s *Server) syncOutboundPolicy() {
 	relay.SetDeniedIPRanges(ranges)
 }
 
-// logDebug 仅在调试模式或 LogLevel=debug 时输出基本信息（模型组、选中模型、耗时）
-func (s *Server) logDebug(format string, args ...interface{}) {
-	if s.config.IsDebugMode() || s.currentLogThreshold() <= logLevelPriority["debug"] {
-		log.Printf("[debug] "+format, args...)
-	}
-}
-
 // logVerbose 仅在详细日志模式下输出完整请求/响应结构
 func (s *Server) logVerbose(format string, args ...interface{}) {
 	if s.config.IsVerboseLog() {
 		log.Printf(format, args...)
 	}
-}
-
-func compactLogJSON(data []byte) string {
-	var obj interface{}
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return string(data)
-	}
-
-	compacted, err := json.Marshal(obj)
-	if err != nil {
-		return string(data)
-	}
-
-	return string(compacted)
 }
 
 func (s *Server) setupRoutes() {
@@ -602,15 +580,6 @@ func isLoopbackRequest(r *http.Request) bool {
 
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
-}
-
-func geminiModelFromAction(action string) string {
-	modelPart := strings.TrimPrefix(strings.TrimSpace(action), "/")
-	modelPart = strings.TrimPrefix(modelPart, "models/")
-	if idx := strings.LastIndex(modelPart, ":"); idx != -1 {
-		modelPart = modelPart[:idx]
-	}
-	return strings.TrimSpace(modelPart)
 }
 
 func (s *Server) chatCompletions(c *gin.Context) { s.serveVersionedPublicIngress(c) }
@@ -1107,8 +1076,10 @@ func (s *Server) doShutdown() {
 			}
 			stopHTTP()
 		}
-		// Cancellation rejects new refresh tasks before waiting on both owners.
+		// Cancellation rejects new refresh tasks. The lock waits for any task
+		// that already passed that check to register its WaitGroup ownership.
 		s.sourceRefreshMu.Lock()
+		//lint:ignore SA2001 Synchronize task registration before Wait, not shared data access.
 		s.sourceRefreshMu.Unlock()
 		requestsDone := make(chan struct{})
 		go func() { s.requestWG.Wait(); s.sourceRefreshWG.Wait(); close(requestsDone) }()

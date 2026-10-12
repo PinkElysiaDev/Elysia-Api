@@ -35,9 +35,7 @@ func agentTokenView(item storage.APIToken) map[string]any {
 // generateAPIKeySecret 生成新令牌明文（32 字节 URL-safe base64）。
 func generateAPIKeySecret() (string, error) {
 	buf := make([]byte, agentKeySecretBytes)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
+	_, _ = rand.Read(buf)
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 

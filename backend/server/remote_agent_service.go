@@ -174,18 +174,6 @@ func (s *Server) updateRemoteAgentSession(ctx context.Context, id string, title 
 	return s.store.UpdateAgentSessionSettings(ctx, strings.TrimSpace(id), title, settings, nil, false)
 }
 
-// deleteRemoteAgentSession 删除会话（先停轮次）。返回是否存在。
-func (s *Server) deleteRemoteAgentSession(ctx context.Context, id string) (bool, error) {
-	if s.store == nil {
-		return false, errors.New("storage unavailable")
-	}
-	id = strings.TrimSpace(id)
-	if engine := s.protocolAgentEngine(); engine != nil {
-		engine.Stop(id)
-	}
-	return s.store.DeleteAgentSession(ctx, id)
-}
-
 // startRemoteTurn 发送用户消息并启动轮次，返回事件流（消费至关闭即轮次终态）。
 func (s *Server) startRemoteTurn(ctx context.Context, sessionID, text string, documents []agent.Document) (<-chan agent.Event, error) {
 	engine := s.protocolAgentEngine()

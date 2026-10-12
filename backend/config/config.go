@@ -797,11 +797,7 @@ func (c *Config) GetDBEncryptionKey() []byte {
 
 	// 自动生成并持久化一个随机密钥（base64，约 43 字符）。
 	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		// 修复 S4：rand 失败原本静默返回 nil（无日志）→ 明文存储且无人知晓。
-		log.Printf("warning: failed to generate db encryption key: %v (secrets will be stored UNENCRYPTED)", err)
-		return nil
-	}
+	_, _ = rand.Read(raw)
 	key := base64.StdEncoding.EncodeToString(raw)
 	if err := os.WriteFile(target, []byte(key), 0o600); err != nil {
 		log.Printf("warning: failed to persist db encryption key to %s: %v (secrets will be at risk if key is lost)", target, err)

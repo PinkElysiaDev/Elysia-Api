@@ -483,9 +483,7 @@ func (s *Store) DeleteAgentSession(ctx context.Context, id string) (bool, error)
 
 func newAgentSessionID() (string, error) {
 	raw := make([]byte, 6)
-	if _, err := rand.Read(raw); err != nil {
-		return "", err
-	}
+	_, _ = rand.Read(raw)
 	return "as_" + fmt.Sprintf("%d", time.Now().UnixNano()) + "_" + hex.EncodeToString(raw), nil
 }
 

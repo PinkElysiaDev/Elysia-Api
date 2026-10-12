@@ -81,8 +81,6 @@ func (c *CompiledConversion) PreviewRecovery(phase ConversionPhase, input Value,
 
 func randBytesForPreview() []byte {
 	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		return nil
-	}
+	_, _ = rand.Read(key)
 	return key
 }

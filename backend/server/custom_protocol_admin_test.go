@@ -77,23 +77,6 @@ func decodeAdminData(t *testing.T, rec *httptest.ResponseRecorder) map[string]an
 	return envelope.Data
 }
 
-func decodeAdminError(t *testing.T, rec *httptest.ResponseRecorder) string {
-	t.Helper()
-	var envelope struct {
-		OK    bool `json:"ok"`
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
-		t.Fatalf("decode response %q: %v", rec.Body.String(), err)
-	}
-	if envelope.OK || envelope.Error == nil {
-		t.Fatalf("expected error response, got %q (status %d)", rec.Body.String(), rec.Code)
-	}
-	return envelope.Error.Message
-}
-
 const vendorProtocolJSON = `{
   "id": "vendor-json",
   "name": "Vendor JSON API",
@@ -110,25 +93,6 @@ const vendorProtocolJSON = `{
     "finishReasonPath": "finish"
   }
 }`
-
-func seedProtocolTestModel(t *testing.T, s *Server, upstreamURL string) {
-	t.Helper()
-	source := storage.ModelSource{
-		ID: "s1", Name: "vendor", BaseURL: upstreamURL, APIKey: "secret-key",
-		Platform: "openai", Enabled: true,
-	}
-	if err := s.store.UpsertSource(t.Context(), source); err != nil {
-		t.Fatalf("UpsertSource: %v", err)
-	}
-	models := []storage.Model{{
-		ID: "m1", Name: "vendor-model", SourceID: "s1",
-		BaseURL: upstreamURL, APIKey: "secret-key", Platform: "openai",
-		Type: "llm", Enabled: true, Available: true,
-	}}
-	if err := s.store.ReplaceSourceModels(t.Context(), source, models); err != nil {
-		t.Fatalf("ReplaceSourceModels: %v", err)
-	}
-}
 
 func TestMigrateLegacyCustomProtocolsFromConfig(t *testing.T) {
 	s, cfgPath := newProtocolAdminTestServer(t)
