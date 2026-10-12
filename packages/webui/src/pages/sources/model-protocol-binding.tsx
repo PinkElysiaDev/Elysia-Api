@@ -1,12 +1,16 @@
 import { BindingConversionEditor } from './binding-conversion'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSWRConfig } from 'swr'
 import { Button } from '@/components/ui/button'
 import { protocolAPI, type EnabledProtocol, type ProtocolBindingEntry } from '@/lib/protocol-v2'
 import type { Model } from '@/lib/types'
 
 /** Explicit model binding remains independent of source selection and catalog refresh. */
-export function ModelProtocolBinding({ model, disabled }: { model: Model; disabled: boolean }) {
+export function ModelProtocolBinding(props: { model: Model; disabled: boolean }) {
+  return <ModelBindingForm key={JSON.stringify([props.model.sourceId, props.model.id])} {...props} />
+}
+
+function ModelBindingForm({ model, disabled }: { model: Model; disabled: boolean }) {
   const [protocols, setProtocols] = useState<EnabledProtocol[]>([])
   const [current, setCurrent] = useState<ProtocolBindingEntry>()
   const [selected, setSelected] = useState('')
@@ -17,19 +21,21 @@ export function ModelProtocolBinding({ model, disabled }: { model: Model; disabl
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const { mutate } = useSWRConfig()
+  const generation = useRef(0)
   useEffect(() => {
-    let active = true
+    const requestId = ++generation.current
     void Promise.all([protocolAPI.enabled(), protocolAPI.bindings()]).then(([items, bindings]) => {
-      if (!active) return
+      if (generation.current !== requestId) return
       const entry = bindings.find((entry) => entry.kind === 'model' && entry.sourceId === (model.sourceId ?? '') && entry.modelId === model.id)
         ?? bindings.find((entry) => entry.kind === 'source' && entry.sourceId === (model.sourceId ?? ''))
       setProtocols(items.filter((item) => item.canGenerate)); setCurrent(entry)
       setSelected(entry?.unbound ? '' : entry?.binding.protocolId ?? ''); setLoaded(true)
-    }).catch((err: unknown) => { if (active) setError(String(err)) })
-    return () => { active = false }
+    }).catch((err: unknown) => { if (generation.current === requestId) setError(String(err)) })
+    return () => { generation.current = requestId + 1 }
   }, [model.id, model.sourceId])
   const save = async () => {
     if (!loaded || disabled || busy || conversionBusy) return
+    const requestId = generation.current
     setBusy(true); setError(''); setNotice('')
     try {
       const entry: ProtocolBindingEntry = { kind: 'model', sourceId: model.sourceId ?? '', modelId: model.id, unbound: !selected, binding: {}, conversion: current?.kind === 'model' ? current.conversion : undefined }
@@ -42,11 +48,14 @@ export function ModelProtocolBinding({ model, disabled }: { model: Model; disabl
         const capabilities = Object.fromEntries(Object.entries(target.capabilities).filter(([key, supported]) => supported && (model.toolsCapable || !key.startsWith('tools.')) && (model.visionCapable || !['images', 'audio', 'video'].includes(key))))
         entry.binding = { reasoning: current?.binding.protocolId === target.id ? current.binding.reasoning : undefined, protocolId: target.id, revisionHash: target.revision, capabilities, transports: [...new Set(Object.values(definition.operations).filter((operation) => operation.kind === 'generate').map((operation) => operation.transport))] }
       }
-      setCurrent(await protocolAPI.saveBinding(entry))
+      if (generation.current !== requestId) return
+      const saved = await protocolAPI.saveBinding(entry)
+      if (generation.current !== requestId) return
+      setCurrent(saved)
       setConversionKey((key) => key + 1)
       setNotice(selected ? '模型级绑定已验证并保存' : '已明确取消绑定，不会回退到模型源协议')
       await mutate((key) => typeof key === 'string' && (key.includes('models') || key === 'agent-model-readiness'))
-    } catch (err) { setError(String(err)) } finally { setBusy(false) }
+    } catch (err) { if (generation.current === requestId) setError(String(err)) } finally { if (generation.current === requestId) setBusy(false) }
   }
   return <section className="space-y-2 rounded-md border p-3">
     <p className="text-sm font-medium">协议绑定</p>

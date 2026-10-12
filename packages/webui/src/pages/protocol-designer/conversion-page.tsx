@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ProtocolDocument } from '@/lib/protocol-document'
 import { appendConversionRule, moveConversionRule, parseConversionDocument, patchConversionFields, RULE_ORDER_STEP } from '@/lib/conversion-document'
@@ -14,6 +14,8 @@ const phases: Record<ConversionPhase, string> = { ingress: '入口规范化', re
 
 export function ConversionPolicyPage() {
   const navigate = useNavigate()
+  const selectionGeneration = useRef(0)
+  useEffect(() => () => { selectionGeneration.current++ }, [])
   const [items, setItems] = useState<ConversionRecord[]>([])
   const [registry, setRegistry] = useState<ConversionRegistry>()
   const [protocols, setProtocols] = useState<EnabledProtocol[]>([])
@@ -45,7 +47,12 @@ export function ConversionPolicyPage() {
   const refresh = async () => { setItems(await conversionAPI.list()); setStats(await conversionAPI.stats()) }
   const action = async (fn: () => Promise<void>) => { setBusy(true); setError(''); setNotice(''); try { await fn() } catch (e) { setError(String(e)) } finally { setBusy(false) } }
   useEffect(() => { void action(async () => { const [s, p] = await Promise.all([protocolAPI.schema(), protocolAPI.enabled()]); setRegistry(s.conversion); setProtocols(p); await refresh() }) }, [])
-  const open = async (item: ConversionRecord) => { setSaved(item); setText(item.policyJSON); setSelector(item.selector); setRevision(item.activeHash); setRevisions(await conversionAPI.revisions(item.id)); setPreview(undefined) }
+  const open = async (item: ConversionRecord) => {
+    const requestId = ++selectionGeneration.current
+    setSaved(item); setText(item.policyJSON); setSelector(item.selector); setRevision(item.activeHash); setRevisions([]); setPreview(undefined)
+    const items = await conversionAPI.revisions(item.id)
+    if (selectionGeneration.current === requestId) setRevisions(items)
+  }
   const matches = !!policy && !!saved && text === saved.policyJSON
   const move = (index: number, offset: number) => { if (policy) setText(moveConversionRule(text, index, offset)) }
   const protocolSelect = (label: string, key: 'sourceId' | 'targetId') => <label className="space-y-1 text-sm">{label}<select aria-label={label} className={field} value={selector[key] ?? ''} onChange={(e) => setSelector({ ...selector, [key]: e.target.value })}><option value="">全部协议</option>{protocols.map((p) => <option key={p.id} value={p.id}>{p.name || p.id}</option>)}</select></label>
@@ -53,7 +60,7 @@ export function ConversionPolicyPage() {
     <PageHeader title="转换行为" actions={<Button onClick={() => navigate('/protocols')}>返回协议</Button>} />
     <p className="text-sm text-muted-foreground">配置顺序：引擎默认 → 协议对 → 模型源 → 模型。同 ID 规则覆盖；严格模式拒绝无法保留的信息。预置与使用相同模块的自定义协议自动继承引擎规则。用量投影保留内部原始计量。预览不会保存会话副本。</p>
     {error && <p role="alert" className="text-destructive">{error}</p>}{notice && <p role="status">{notice}</p>}
-    <div className="flex flex-wrap gap-2"><select aria-label="转换策略" className={field + ' max-w-sm'} value={saved?.id ?? ''} disabled={busy} onChange={(e) => { const item = items.find((x) => x.id === e.target.value); if (item) void action(() => open(item)) }}><option value="">新策略</option>{items.map((i) => <option key={i.id} value={i.id}>{i.policy.name || i.id} · {i.activeHash ? '已启用' : '草稿'}</option>)}</select><Button disabled={busy} onClick={() => { setSaved(undefined); setRevisions([]); setRevision(''); setSelector({}); setText(pretty(newConversionPolicy())) }}>新建策略</Button></div>
+    <div className="flex flex-wrap gap-2"><select aria-label="转换策略" className={field + ' max-w-sm'} value={saved?.id ?? ''} disabled={busy} onChange={(e) => { const item = items.find((x) => x.id === e.target.value); if (item) void action(() => open(item)) }}><option value="">新策略</option>{items.map((i) => <option key={i.id} value={i.id}>{i.policy.name || i.id} · {i.activeHash ? '已启用' : '草稿'}</option>)}</select><Button disabled={busy} onClick={() => { selectionGeneration.current++; setSaved(undefined); setRevisions([]); setRevision(''); setSelector({}); setText(pretty(newConversionPolicy())) }}>新建策略</Button></div>
     <fieldset disabled={busy} className="space-y-4 rounded-lg border p-4">
       <div className="grid gap-3 md:grid-cols-3"><label>策略 ID<input aria-label="策略 ID" className={field} disabled={!!saved} value={policy?.id ?? ''} onChange={(e) => update({ id: e.target.value })} /></label><label>名称<input aria-label="策略名称" className={field} value={policy?.name ?? ''} onChange={(e) => update({ name: e.target.value })} /></label><label>转换模式<select aria-label="转换模式" className={field} value={policy?.mode ?? 'compatible'} onChange={(e) => update({ mode: e.target.value as ConversionPolicy['mode'] })}><option value="compatible">兼容：明确降级并记录</option><option value="strict">严格：不可保留则拒绝</option></select></label></div>
       <details open><summary className="cursor-pointer">有序规则</summary><div className="space-y-3 pt-3">{policy?.rules.map((r, i) => <section key={i} className="space-y-2 rounded-md border p-3" aria-label={`规则 ${r.id}`}>

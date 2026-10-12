@@ -4,7 +4,7 @@ import type { ProtocolBindingEntry, ReasoningCapabilities } from '../src/lib/pro
 const original: ReasoningCapabilities = { kind: 'level', disable: true, levels: ['low', 'high'] }
 const updated: ReasoningCapabilities = { kind: 'budget', disable: true, minBudget: 1024, maxBudget: 8192 }
 
-async function mockBindings(page: Page, initial = true) {
+async function mockBindings(page: Page, initial = true, hasPolicies = false) {
   let binding: ProtocolBindingEntry | undefined = initial ? {
     kind: 'model', sourceId: 'binding-source', modelId: 'private-model',
     binding: { protocolId: 'chat', revisionHash: 'chat-rev', reasoning: original },
@@ -33,6 +33,8 @@ async function mockBindings(page: Page, initial = true) {
         await route.fulfill({ contentType: 'application/json', body: `{"ok":true,"data":${bindingJSON}}` })
       } else await route.fulfill({ contentType: 'application/json', body: `{"ok":true,"data":${bindingJSON ? `[${bindingJSON}]` : '[]'}}` })
       return
+    } else if (path.endsWith('/conversion-policies') && hasPolicies) {
+      data = { items: ['policy-a', 'policy-b'].map((id) => ({ id, policy: { id, name: id, rules: [] } })) }
     } else if (path.endsWith('/protocols/enabled')) {
       data = { items: ['chat', 'responses'].map((id) => ({ id, name: id, revision: `${id}-rev`, canGenerate: true, capabilities: { 'tools.function': true } })) }
     } else if (path.endsWith('/revisions')) {
@@ -70,6 +72,28 @@ async function mockBindings(page: Page, initial = true) {
     },
   }
 }
+
+test('late policy revisions do not replace a newer binding selection', async ({ page }) => {
+  const state = await mockBindings(page, true, true)
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => { release = resolve })
+  await page.route('**/conversion-policies/*/revisions', async (route) => {
+    const id = new URL(route.request().url()).pathname.split('/').at(-2)!
+    if (id === 'policy-a') await pending
+    await route.fulfill({ json: { ok: true, data: { items: [{ id, hash: `${id}-revision`, policy: { id, rules: [] } }] } } })
+  })
+  const policies = state.dialog.getByLabel('绑定转换策略', { exact: true })
+  await policies.selectOption('policy-a')
+  await policies.selectOption('policy-b')
+  const revisions = state.dialog.getByLabel('绑定策略修订', { exact: true })
+  await expect(revisions.locator('option')).toContainText(['选择不可变修订', 'policy-b-rev'])
+  release()
+  await expect(revisions.locator('option')).toHaveCount(2)
+  await revisions.selectOption('policy-b-revision')
+  await state.dialog.getByRole('button', { name: '验证并保存转换覆盖', exact: true }).click()
+  await expect(state.dialog.getByText('转换覆盖已验证并保存', { exact: true })).toBeVisible()
+  expect(state.saved()?.conversion).toMatchObject({ policyId: 'policy-b', revisionHash: 'policy-b-revision' })
+})
 
 test('binding overrides keep exact values through child save, reopen and parent save', async ({ page }) => {
   const state = await mockBindings(page)
