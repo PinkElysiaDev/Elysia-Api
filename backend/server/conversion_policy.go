@@ -19,6 +19,10 @@ func conversionPolicyRank(selector protocol.ConversionMatch) int {
 
 func resolveGatewayConversion(policies []storage.ConversionPolicyRecord, bindings []storage.ProtocolBinding, ingress, upstream *protocol.Compiled, model config.ModelRef, operation string, transport protocol.Transport) (*protocol.CompiledConversion, error) {
 	layers := []protocol.ConversionPolicy{protocol.DefaultConversionPolicy(ingress, upstream)}
+	revisions := make(map[storage.ConversionRevisionKey]protocol.ConversionPolicy, len(policies))
+	for _, record := range policies {
+		revisions[record.Key()] = record.Policy
+	}
 	route := protocol.ConversionContext{Source: ingress.Identity(), Target: upstream.Identity(), Model: model.Identifier(), Operation: operation, Transport: transport}
 	for rank := 0; rank <= 1; rank++ {
 		matched := false
@@ -40,17 +44,11 @@ func resolveGatewayConversion(policies []storage.ConversionPolicyRecord, binding
 			}
 			selection := b.Conversion
 			if selection.PolicyID != "" {
-				found := false
-				for _, p := range policies {
-					if p.ID == selection.PolicyID && p.Hash == selection.RevisionHash {
-						layers = append(layers, p.Policy)
-						found = true
-						break
-					}
-				}
-				if !found {
+				policy, exists := revisions[storage.ConversionRevisionKey{ID: selection.PolicyID, Hash: selection.RevisionHash}]
+				if !exists {
 					return nil, fmt.Errorf("conversion policy revision is unavailable: %s", selection.PolicyID)
 				}
+				layers = append(layers, policy)
 			}
 			if selection.Overrides != nil {
 				layer := *selection.Overrides

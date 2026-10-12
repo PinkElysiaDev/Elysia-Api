@@ -9,6 +9,17 @@ import (
 	"github.com/elysia-api/backend/protocol"
 )
 
+// ConversionRevisionKey keeps immutable revisions separate from the active
+// selection of a policy ID. Bindings may continue to pin any verified revision.
+type ConversionRevisionKey struct {
+	ID, Hash string
+}
+
+// Key identifies a policy revision without its mutable activation metadata.
+func (record ConversionPolicyRecord) Key() ConversionRevisionKey {
+	return ConversionRevisionKey{record.ID, record.Hash}
+}
+
 // ConversionSnapshot reads policies and their derived binding evidence in one
 // SQLite snapshot. Already running requests retain their own immutable values.
 func (s *Store) ConversionSnapshot(ctx context.Context) ([]ConversionPolicyRecord, []ProtocolBinding, int64, error) {
@@ -48,6 +59,7 @@ func (s *Store) ConversionSnapshot(ctx context.Context) ([]ConversionPolicyRecor
 		return nil, nil, 0, err
 	}
 	policies := []ConversionPolicyRecord{}
+	loaded := map[ConversionRevisionKey]bool{}
 	for rows.Next() {
 		var r ConversionPolicyRecord
 		var raw, selector string
@@ -62,6 +74,7 @@ func (s *Store) ConversionSnapshot(ctx context.Context) ([]ConversionPolicyRecor
 			return nil, nil, 0, err
 		}
 		policies = append(policies, r)
+		loaded[r.Key()] = true
 	}
 	err = rows.Err()
 	rows.Close()
@@ -75,11 +88,7 @@ func (s *Store) ConversionSnapshot(ctx context.Context) ([]ConversionPolicyRecor
 			continue
 		}
 		selection := b.Conversion
-		found := false
-		for _, p := range policies {
-			found = found || p.ID == selection.PolicyID && p.Hash == selection.RevisionHash
-		}
-		if found {
+		if loaded[ConversionRevisionKey{selection.PolicyID, selection.RevisionHash}] {
 			continue
 		}
 		var r ConversionPolicyRecord
@@ -92,6 +101,7 @@ func (s *Store) ConversionSnapshot(ctx context.Context) ([]ConversionPolicyRecor
 			return nil, nil, 0, err
 		}
 		policies = append(policies, r)
+		loaded[r.Key()] = true
 	}
 	if err = tx.Commit(); err != nil {
 		return nil, nil, 0, err

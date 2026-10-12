@@ -176,9 +176,15 @@ func (s *Server) adminConversionActivate(c *gin.Context) {
 	}
 	next := []storage.ConversionPolicyRecord{}
 	for _, p := range policies {
-		if p.ID != selected.ID {
-			next = append(next, p)
+		if p.ID == selected.ID {
+			if p.Hash == selected.Hash {
+				continue
+			}
+			// Activation changes the default selection, not the immutable revision
+			// directory used by bindings pinned to an older revision.
+			p.ActiveHash = ""
 		}
+		next = append(next, p)
 	}
 	next = append(next, *selected)
 	view := service.View()
