@@ -12,7 +12,7 @@ import { protocols, requestBody, followupBody, endpoint, inspectReply } from './
 import { localInstance } from './local.mjs'
 import { mapConcurrent, serialize } from './concurrency.mjs'
 import { eventSequence, failureCategory, persistedCall, requestSelection } from './evidence.mjs'
-import { regressionCases } from './regressions.mjs'
+import { regressionCases, assertNativeSystemRequest } from './regressions.mjs'
 import { atomicFile } from './report-file.mjs'
 
 export const groups = ['daily', 'protocol', 'sdk', 'errors', 'persistence', 'code']
@@ -281,7 +281,7 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
             assert.ok(outgoing, 'Outgoing request body unavailable')
             for (const field of spec.absentUpstream || []) assert.equal(outgoing[field], undefined, `${field} leaked upstream`)
             if (spec.diagnostic) assert.ok(record.conversionIssues?.some(i => i.ruleId === spec.diagnostic && i.policyHash), `Missing ${spec.diagnostic} diagnostic`)
-            if (spec.preserveSystem) assert.deepEqual(outgoing.system, spec.body.system)
+            if (spec.preserveSystem || spec.preserveMessages) assertNativeSystemRequest(spec, outgoing, record.conversionIssues)
             if (spec.thinkingFragments) {
               assert.equal(outgoing.messages[1].reasoning_content, 'visible thinking')
               assert.ok(JSON.stringify(outgoing.messages[1].content).includes('Hello.'))

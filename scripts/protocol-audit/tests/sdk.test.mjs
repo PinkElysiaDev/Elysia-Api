@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { replyWire } from './fixtures.mjs'
 import { mapConcurrent } from '../src/concurrency.mjs'
-import { geminiDisabledSafetySettings } from '../src/regressions.mjs'
+import { geminiDisabledSafetySettings, regressionCases, assertNativeSystemRequest } from '../src/regressions.mjs'
 let consume
 try { consume = (await import('../src/sdk.mjs')).consume } catch (error) { if (error.code !== 'ERR_MODULE_NOT_FOUND') throw error }
 
@@ -14,6 +14,34 @@ async function endpoint(t, body, stream, status = 200, stall = false) {
   const captured = []
   return { captured, options: { baseUrl: `http://127.0.0.1:${server.address().port}`, apiKey: 'synthetic-sdk-key', model: 'test', onExchange: detail => { captured.push(detail) } } }
 }
+
+for (const stream of [false, true]) test(`Anthropic SDK preserves in-place system metadata (${stream ? 'SSE' : 'JSON'})`, { skip: !consume && 'SDK dependencies unavailable' }, async t => {
+  const { default: Anthropic } = await import('@anthropic-ai/sdk')
+  const spec = regressionCases({ protocol: 'anthropic' }, 'model', 32768)
+    .find(candidate => candidate.name === `in-place-system-output-config-${stream ? 'sse' : 'json'}`)
+  const local = await endpoint(t, replyWire('anthropic', 'OK', false, stream), stream)
+  const requests = []
+  const client = new Anthropic({
+    baseURL: local.options.baseUrl, apiKey: local.options.apiKey, maxRetries: 0, timeout: 2000,
+    fetch: async (input, init) => {
+      const request = new Request(input, init)
+      requests.push(await request.clone().json())
+      return fetch(request)
+    },
+  })
+  const response = await client.messages.create(spec.body)
+  if (stream) {
+    const events = []
+    for await (const event of response) events.push(event)
+    assert.ok(events.every(event => event.type !== 'error'))
+    assert.equal(events.at(-1).type, 'message_stop')
+    assert.equal(events.filter(event => event.delta?.type === 'text_delta').map(event => event.delta.text).join(''), 'OK')
+  } else {
+    assert.equal(response.content[0].text, 'OK')
+  }
+  assert.equal(requests.length, 1)
+  assertNativeSystemRequest(spec, requests[0])
+})
 
 for (const stream of [false, true]) test(`Google SDK serializes reported safety controls (${stream ? 'SSE' : 'JSON'})`, { skip: !consume && 'SDK dependencies unavailable' }, async t => {
   const f = await endpoint(t, replyWire('gemini', 'OK', false, stream), stream)

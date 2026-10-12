@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { regressionCases, geminiDisabledSafetySettings } from '../src/regressions.mjs'
+import { regressionCases, geminiDisabledSafetySettings, assertNativeSystemRequest } from '../src/regressions.mjs'
 
 test('reported Gemini safety controls are diagnosed while blocking requirements reject locally', () => {
   for (const protocol of ['chat', 'responses', 'anthropic']) {
@@ -66,8 +66,9 @@ test('reminders remain user text while mid-system cases deliberately exercise ro
 
 test('cached system scope and original include/store faults have distinct expected outcomes', () => {
   const native = regressionCases({ protocol: 'anthropic' }, 'model', 32768)
-  assert.equal(native.filter(c => c.preserveSystem).length, 2)
-  assert.equal(native.filter(c => c.name.startsWith('nonstandard-message-cache-') && c.rejectPath && c.noUpstream).length, 2)
+  assert.equal(native.filter(c => c.preserveSystem).length, 6)
+  assert.equal(native.filter(c => c.preserveMessages).length, 4)
+  assert.ok(native.filter(c => c.preserveSystem).every(c => !c.rejectPath && !c.noUpstream))
   const gemini = regressionCases({ protocol: 'gemini' }, 'model', 32768)
   assert.equal(gemini.filter(c => c.originalUsage).length, 2)
   for (const stream of [false, true]) {
@@ -82,5 +83,27 @@ test('cached system scope and original include/store faults have distinct expect
     assert.equal(cases.filter(c => c.name.startsWith('original-store-')).length, 3)
     assert.equal(cases.filter(c => c.rejectPath && c.noUpstream).length, 3)
     assert.ok(cases.every(c => (c.body.max_tokens ?? c.body.max_output_tokens ?? c.body.max_completion_tokens) === 32768))
+  }
+})
+
+test('native Anthropic regressions require positions, block cache and message output_config to survive', () => {
+  const cases = regressionCases({ protocol: 'anthropic' }, 'model', 32768).filter(c => c.preserveMessages)
+  for (const spec of cases) {
+    assert.deepEqual(spec.body.messages.map(message => message.role), ['user', 'assistant', 'system', 'user'])
+    assertNativeSystemRequest(spec, structuredClone(spec.body))
+    const moved = structuredClone(spec.body)
+    moved.messages.splice(2, 1)
+    assert.throws(() => assertNativeSystemRequest(spec, moved), /Native message order or metadata changed/)
+    assert.throws(() => assertNativeSystemRequest(spec, spec.body, [{ ruleId: 'system-instruction-hoist' }]), /were hoisted/)
+    if (!spec.name.includes('output-config')) continue
+    const system = spec.body.messages[2]
+    assert.equal(system.output_config.effort, 'medium')
+    assert.deepEqual(system.content[0].cache_control, { type: 'ephemeral' })
+    const lostConfig = structuredClone(spec.body)
+    delete lostConfig.messages[2].output_config
+    assert.throws(() => assertNativeSystemRequest(spec, lostConfig), /Native message order or metadata changed/)
+    const lostCache = structuredClone(spec.body)
+    delete lostCache.messages[2].content[0].cache_control
+    assert.throws(() => assertNativeSystemRequest(spec, lostCache), /Native message order or metadata changed/)
   }
 })

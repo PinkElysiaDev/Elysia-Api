@@ -1,4 +1,12 @@
+import assert from 'node:assert/strict'
 import { requestBody } from './protocols.mjs'
+
+/** Check the persisted upstream request for native system containers and scope. */
+export function assertNativeSystemRequest(spec, outgoing, issues = []) {
+  if (spec.preserveSystem) assert.deepEqual(outgoing.system, spec.body.system, 'Top-level system structure changed')
+  if (spec.preserveMessages) assert.deepEqual(outgoing.messages, spec.body.messages, 'Native message order or metadata changed')
+  assert.ok(!issues.some(issue => issue.ruleId === 'system-instruction-hoist'), 'Native system instructions were hoisted')
+}
 
 // The reported request used these five explicit nonblocking category controls.
 // Cross-protocol success must record that the target's own controls still apply.
@@ -59,9 +67,15 @@ export function regressionCases(target, model, maxOutputTokens) {
       const body = requestBody('anthropic', model, stream, 'text', '', maxOutputTokens)
       body.system = [{ type: 'text', text: 'Reply exactly OK.', cache_control: { type: 'ephemeral' } }]
       add(`top-system-cache-${suffix}`, 'anthropic', stream, body, { preserveSystem: true })
-      const invalid = structuredClone(body)
-      invalid.messages.unshift({ role: 'user', content: 'Hello' }, { role: 'system', content: 'Synthetic nonstandard role', cache_control: { type: 'ephemeral' } })
-      add(`nonstandard-message-cache-${suffix}`, 'anthropic', stream, invalid, { rejectPath: '/content/', noUpstream: true })
+      const inPlace = structuredClone(body)
+      inPlace.messages.unshift({ role: 'user', content: 'Hello' }, { role: 'assistant', content: 'Hello.' }, { role: 'system', content: 'From now on reply exactly OK.' })
+      add(`in-place-system-${suffix}`, 'anthropic', stream, inPlace, { preserveSystem: true, preserveMessages: true })
+      const configured = structuredClone(inPlace)
+      configured.messages[2] = {
+        role: 'system', output_config: { effort: 'medium' },
+        content: [{ type: 'text', text: 'From now on reply exactly OK.', cache_control: { type: 'ephemeral' } }],
+      }
+      add(`in-place-system-output-config-${suffix}`, 'anthropic', stream, configured, { preserveSystem: true, preserveMessages: true })
     }
     if (target.protocol === 'gemini') {
       add(`original-anthropic-usage-${suffix}`, 'anthropic', stream, requestBody('anthropic', model, stream, 'text', '', maxOutputTokens), { originalUsage: true })
