@@ -157,22 +157,24 @@ func (s *Store) ListGroups(ctx context.Context) ([]ModelGroup, error) {
 	return items, nil
 }
 
+// ErrGroupExists distinguishes a create conflict from a storage failure.
+var ErrGroupExists = errors.New("model group already exists")
+
+// CreateGroup inserts a group without replacing an existing ID or name.
+func (s *Store) CreateGroup(ctx context.Context, item ModelGroup) error {
+	return s.saveGroup(ctx, item, true)
+}
+
 func (s *Store) UpsertGroup(ctx context.Context, item ModelGroup) error {
+	return s.saveGroup(ctx, item, false)
+}
+
+func (s *Store) saveGroup(ctx context.Context, item ModelGroup, isCreate bool) error {
 	if strings.TrimSpace(item.ID) == "" {
 		return errors.New("group id is required")
 	}
 	if strings.TrimSpace(item.Name) == "" {
 		return errors.New("group name is required")
-	}
-	// 组名唯一:findGroupByName 按名路由永远命中首个,同名第二组的配置
-	// (限流/候选)全部静默失效。
-	var conflictingID string
-	err := s.db.QueryRowContext(ctx, `SELECT id FROM model_groups WHERE name = ? AND id <> ? LIMIT 1`, item.Name, item.ID).Scan(&conflictingID)
-	if err == nil {
-		return fmt.Errorf("group name %q already used by group %q", item.Name, conflictingID)
-	}
-	if err != sql.ErrNoRows {
-		return err
 	}
 	if item.Strategy == "" {
 		item.Strategy = "round-robin"
@@ -186,6 +188,17 @@ func (s *Store) UpsertGroup(ctx context.Context, item ModelGroup) error {
 	}
 	defer tx.Rollback()
 
+	var conflictingID string
+	query := `SELECT id FROM model_groups WHERE name = ? AND id <> ? LIMIT 1`
+	if isCreate {
+		query = `SELECT id FROM model_groups WHERE name = ? OR id = ? LIMIT 1`
+	}
+	if err := tx.QueryRowContext(ctx, query, item.Name, item.ID).Scan(&conflictingID); err == nil {
+		return fmt.Errorf("%w: %q", ErrGroupExists, conflictingID)
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+
 	// 取改名前的旧组名：token 用组名（而非 id）引用可访问组，改名后需把所有
 	// token 的 allowed_groups_json 里的旧名同步成新名，否则旧名会残留成悬空引用。
 	var oldName string
@@ -194,7 +207,11 @@ func (s *Store) UpsertGroup(ctx context.Context, item ModelGroup) error {
 	}
 
 	now := nowString()
-	_, err = tx.ExecContext(ctx, `INSERT INTO model_groups(id, name, enabled, strategy, max_retries, retry_interval, max_concurrency, daily_limit_max_requests, daily_limit_max_tokens, type, max_tokens, vision_capable, tools_capable, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, enabled=excluded.enabled, strategy=excluded.strategy, max_retries=excluded.max_retries, retry_interval=excluded.retry_interval, max_concurrency=excluded.max_concurrency, daily_limit_max_requests=excluded.daily_limit_max_requests, daily_limit_max_tokens=excluded.daily_limit_max_tokens, type=excluded.type, max_tokens=excluded.max_tokens, vision_capable=excluded.vision_capable, tools_capable=excluded.tools_capable, updated_at=excluded.updated_at`, item.ID, item.Name, sqlBoolToInt(item.Enabled), item.Strategy, item.MaxRetries, item.RetryInterval, item.MaxConcurrency, item.DailyLimitMaxRequests, item.DailyLimitMaxTokens, item.Type, item.MaxTokens, sqlBoolToInt(item.VisionCapable), sqlBoolToInt(item.ToolsCapable), now, now)
+	query = `INSERT INTO model_groups(id, name, enabled, strategy, max_retries, retry_interval, max_concurrency, daily_limit_max_requests, daily_limit_max_tokens, type, max_tokens, vision_capable, tools_capable, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	if !isCreate {
+		query += ` ON CONFLICT(id) DO UPDATE SET name=excluded.name, enabled=excluded.enabled, strategy=excluded.strategy, max_retries=excluded.max_retries, retry_interval=excluded.retry_interval, max_concurrency=excluded.max_concurrency, daily_limit_max_requests=excluded.daily_limit_max_requests, daily_limit_max_tokens=excluded.daily_limit_max_tokens, type=excluded.type, max_tokens=excluded.max_tokens, vision_capable=excluded.vision_capable, tools_capable=excluded.tools_capable, updated_at=excluded.updated_at`
+	}
+	_, err = tx.ExecContext(ctx, query, item.ID, item.Name, sqlBoolToInt(item.Enabled), item.Strategy, item.MaxRetries, item.RetryInterval, item.MaxConcurrency, item.DailyLimitMaxRequests, item.DailyLimitMaxTokens, item.Type, item.MaxTokens, sqlBoolToInt(item.VisionCapable), sqlBoolToInt(item.ToolsCapable), now, now)
 	if err != nil {
 		return err
 	}

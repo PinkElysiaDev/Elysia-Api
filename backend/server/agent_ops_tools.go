@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -861,7 +862,10 @@ func (t *createGroupTool) Execute(ctx context.Context, tctx CLIContext, args jso
 	if params.Enabled != nil {
 		group.Enabled = *params.Enabled
 	}
-	if err := store.UpsertGroup(ctx, group); err != nil {
+	if err := store.CreateGroup(ctx, group); err != nil {
+		if errors.Is(err, storage.ErrGroupExists) {
+			return CLIError(err.Error(), "duplicate_group")
+		}
 		return CLIError("创建失败: "+err.Error(), "persist_failed")
 	}
 	t.server.invalidateRouteCache()
