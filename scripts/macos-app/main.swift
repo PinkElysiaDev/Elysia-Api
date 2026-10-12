@@ -369,23 +369,30 @@ final class PulseMenuView: NSView {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKDownloadDelegate, WKScriptMessageHandler, NSWindowDelegate, WKUIDelegate, NSMenuDelegate, NSMenuItemValidation {
+    var panelDownloads: [ObjectIdentifier: PanelDownload] = [:]
+    var cancellingPanelDownloads: [ObjectIdentifier: PanelDownload] = [:]
+    var panelDownloadMessage = ""
+    #if NATIVE_TESTS
+    var panelDestinationReplies = 0
+    #endif
+
     // The tray supervisor never constructs WebKit. Closing the panel exits its process.
     let isPanelProcess = CommandLine.arguments.contains("--webui-process")
-    private var usesPanelProcess: Bool {
+    var usesPanelProcess: Bool {
         #if NATIVE_TESTS
         return !isPanelProcess && NSApp.delegate === self
         #else
         return !isPanelProcess
         #endif
     }
-    private var panelProcess: Process?
-    private var panelBridge: PanelBridge?
-    private var panelStopDeadline: DispatchWorkItem?
-    private var panelClosing = false
-    private var reopenPanelAfterExit = false
-    private var panelReady = false
-    private var panelBackendGeneration = ""
-    private var panelUpdateEnabled = false
+    var panelProcess: Process?
+    var panelBridge: PanelBridge?
+    var panelStopDeadline: DispatchWorkItem?
+    var panelClosing = false
+    var reopenPanelAfterExit = false
+    var panelReady = false
+    var panelBackendGeneration = ""
+    var panelUpdateEnabled = false
     private var instanceLock: Int32 = -1
     private var healthTimer: Timer?
     var window: NSWindow!
@@ -459,7 +466,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var updateTask: URLSessionDownloadTask?
     var updateSession: URLSession?
     var updateDownloadDelegate: UpdateDownloadDelegate?
-    private var updateDownloadGeneration = UUID()
+    var updateDownloadGeneration = UUID()
     var stagedUpdate: URL?
     var relaunchHelper: Process?
     var signalSources: [DispatchSourceSignal] = []
@@ -582,7 +589,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             && updateTask == nil && updateDownloadDelegate == nil && updateSession == nil
     }
 
-    private func finishTerminationIfReady() {
+    func finishTerminationIfReady() {
         guard terminating, terminationReplyPending, terminationResourcesReleased else { return }
         replyToTermination()
     }
@@ -630,7 +637,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
     }
 
-    private func requestTermination() {
+    func requestTermination() {
         // terminateLater runs a nested AppKit loop. Enter it from the run loop,
         // so main-queue process/download completions can still finish cleanup.
         RunLoop.main.perform(inModes: [.common]) { [weak self] in
@@ -644,7 +651,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         else { requestTermination() }
     }
     @objc private func wakeFromSleep() { pollHealth() }
-    @objc private func screenLayoutChanged() { ensureWindowVisible() }
+    @objc func screenLayoutChanged() { ensureWindowVisible() }
 
     // MARK: 单实例
 
@@ -669,222 +676,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         return true
     }
 
-    // MARK: Disposable panel process
-
-    private func installSignalHandlers() {
-        for number in [SIGTERM, SIGINT] {
-            signal(number, SIG_IGN)
-            let source = DispatchSource.makeSignalSource(signal: number, queue: .main)
-            source.setEventHandler { [weak self] in self?.requestTermination() }
-            source.resume()
-            signalSources.append(source)
-        }
-    }
-
-    private func launchPanelProcess() {
-        config = loadOrCreateConfig() ?? PanelConfig()
-        NSApp.setActivationPolicy(.regular)
-        buildMainMenu()
-        panelBridge = PanelBridge(input: .standardInput, output: .standardOutput,
-            onMessage: { [weak self] message in self?.receivePanelState(message) },
-            onClose: { [weak self] in self?.requestTermination() })
-        panelBridge?.start()
-        buildWindow()
-        installSignalHandlers()
-        NotificationCenter.default.addObserver(self, selector: #selector(screenLayoutChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
-        let readiness = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in self?.reportPanelReadiness() }
-        timers = [readiness]
-        RunLoop.main.add(readiness, forMode: .common)
-        panelBridge?.send(PanelMessage(type: "hello"))
-    }
-
-    private func showPanelProcess() {
-        guard !terminating else { return }
-        if panelClosing { reopenPanelAfterExit = true; return }
-        if panelProcess != nil {
-            panelBridge?.send(PanelMessage(type: "show"))
-            pollHealth()
-            return
-        }
-        do {
-            let process = Process()
-            process.executableURL = Bundle.main.executableURL
-            process.arguments = ["--webui-process"]
-            let input = Pipe(), output = Pipe()
-            process.standardInput = input
-            process.standardOutput = output
-            process.standardError = FileHandle.standardError
-            process.terminationHandler = { [weak self] process in
-                DispatchQueue.main.async { self?.panelDidExit(process) }
-            }
-            try process.run()
-            try? input.fileHandleForReading.close()
-            try? output.fileHandleForWriting.close()
-            panelProcess = process
-            panelReady = false
-            panelBridge = PanelBridge(input: output.fileHandleForReading, output: input.fileHandleForWriting,
-                onMessage: { [weak self, weak process] message in
-                    guard let self, let process, self.panelProcess === process else { return }
-                    self.receivePanelEvent(message)
-                }, onClose: { [weak self, weak process] in
-                    guard let self, let process, self.panelProcess === process else { return }
-                    self.stopPanelProcess()
-                })
-            panelBridge?.start()
-            sendPanelState()
-            rescheduleHealthTimer()
-            pollHealth()
-            #if NATIVE_TESTS
-            try? String(process.processIdentifier).write(toFile: dataDirPath + "/tray-ui.pid", atomically: true, encoding: .utf8)
-            #endif
-        } catch { alert("无法打开面板：\n\(error.localizedDescription)") }
-    }
-
-    private func stopPanelProcess() {
-        guard let process = panelProcess, !panelClosing else { return }
-        panelClosing = true
-        panelReady = false
-        panelBridge?.send(PanelMessage(type: "close"))
-        // Also handle a blocked/crashed UI. Only signal the child owned by this supervisor.
-        let deadline = DispatchWorkItem { [weak self, weak process] in
-            guard let self, let process, self.panelProcess === process, process.isRunning else { return }
-            kill(process.processIdentifier, SIGKILL)
-        }
-        panelStopDeadline = deadline
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: deadline)
-    }
-
-    private func panelDidExit(_ process: Process) {
-        guard panelProcess === process else { return }
-        panelProcess = nil
-        panelBridge?.close()
-        panelBridge = nil
-        panelStopDeadline?.cancel()
-        panelStopDeadline = nil
-        panelClosing = false
-        panelReady = false
-        rescheduleHealthTimer()
-        finishTerminationIfReady()
-        if reopenPanelAfterExit && !terminating {
-            reopenPanelAfterExit = false
-            showPanelProcess()
-        }
-    }
-
-    private func sendPanelState() {
-        guard usesPanelProcess, panelProcess != nil else { return }
-        var message = PanelMessage(type: "state")
-        message.config = config
-        message.backendState = backendState.rawValue
-        message.generation = backendGeneration.uuidString
-        message.updateEnabled = updateActionMenuIsEnabled()
-        message.host = backendHost
-        message.port = backendPort
-        message.restartCount = restartCount
-        message.error = lastBackendError
-        message.updatePhase = updatePhase.rawValue
-        message.updateMessage = updateMessage
-        message.updateDetail = updateDetail
-        message.updateFraction = updateFraction
-        message.capsuleVisible = updateCapsuleVisible
-        panelBridge?.send(message)
-    }
-
-    private func receivePanelEvent(_ message: PanelMessage) {
-        guard !terminating || message.type == "closing" else { return }
-        switch message.type {
-        case "hello": sendPanelState()
-        case "closing": stopPanelProcess()
-        case "htmlLoaded":
-            #if NATIVE_TESTS
-            if CommandLine.arguments.contains("--update-ack") {
-                try? String(ProcessInfo.processInfo.processIdentifier).write(toFile: dataDirPath + "/new-html-loaded.pid", atomically: true, encoding: .utf8)
-            }
-            #endif
-        case "ready":
-            guard message.port == backendPort, message.host == backendHost, message.generation == backendGeneration.uuidString, backendState == .running, !panelClosing else { return }
-            panelReady = true
-            #if NATIVE_TESTS
-            if let process = panelProcess {
-                try? String(process.processIdentifier).write(toFile: dataDirPath + "/tray-ui-ready.pid", atomically: true, encoding: .utf8)
-            }
-            #endif
-            acknowledgeUpdateLaunch()
-        case "action":
-            switch message.action {
-            case "restart": restartBackend()
-            case "retry": retryStartup()
-            case "update": performUpdateAction()
-            case "cancelUpdate": cancelUpdate()
-            case "checkUpdate": checkForUpdates(silent: false)
-            case "dismissUpdate": dismissUpdatePrompt()
-            case "preferences": showPreferences()
-            case "quit": requestTermination()
-            default: break
-            }
-        default: break
-        }
-    }
-
-    private func receivePanelState(_ message: PanelMessage) {
-        switch message.type {
-        case "show": showMainWindow()
-        case "close": window?.performClose(nil)
-        case "state":
-            guard let fresh = message.config, let state = message.backendState.flatMap(BackendState.init(rawValue:)),
-                  let phase = message.updatePhase.flatMap(UpdatePhase.init(rawValue:)) else { return }
-            let originChanged = backendPort != message.port || backendHost != message.host || panelBackendGeneration != message.generation
-            panelBackendGeneration = message.generation ?? ""
-            panelUpdateEnabled = message.updateEnabled ?? false
-            config = fresh
-            backendHost = message.host
-            backendPort = message.port ?? 0
-            backendState = state
-            restartCount = message.restartCount ?? 0
-            lastBackendError = message.error
-            if phase == .installing && updatePhase != .installing {
-                cancelPanelDownloads(reason: "应用正在安装更新，未完成的导出已取消。")
-            }
-            updatePhase = phase
-            checkingUpdates = phase == .checking
-            updateMessage = message.updateMessage ?? ""
-            updateDetail = message.updateDetail ?? ""
-            updateFraction = message.updateFraction
-            updateCapsuleVisible = message.capsuleVisible ?? false
-            if originChanged || state != .running { panelLoaded = false; panelReady = false }
-            renderBackendState()
-            refreshUpdateUI()
-            loadPanelWhenHealthy()
-        default: break
-        }
-    }
-
-    private func reportPanelReadiness() {
-        guard isPanelProcess, !panelReady, !panelReadinessInFlight, backendState == .running,
-              let webView, !webView.isLoading, let url = webView.url, isPanelOrigin(url) else { return }
-        panelReadinessInFlight = true
-        let port = backendPort, host = backendHost, generation = panelBackendGeneration
-        webView.evaluateJavaScript("Boolean(document.querySelector('#token')?.closest('form') || document.querySelector('main h1'))") { [weak self, weak webView] result, _ in
-            guard let self else { return }
-            self.panelReadinessInFlight = false
-            guard let webView, webView === self.webView, port == self.backendPort, host == self.backendHost,
-                  self.backendState == .running, generation == self.panelBackendGeneration, !self.terminating, result as? Bool == true else { return }
-            self.panelReady = true
-            var message = PanelMessage(type: "ready")
-            message.port = port
-            message.host = host
-            message.generation = generation
-            self.panelBridge?.send(message)
-        }
-    }
-
     // MARK: 主窗口与界面
 
     private static let titleBarHeight: CGFloat = 28
 
     /// 最小主菜单:编辑菜单项是 WKWebView 复制/粘贴/全选等快捷键的依赖
     /// (标准 selector 不设 target,交由响应链分发到当前第一响应者)
-    private func buildMainMenu() {
+    func buildMainMenu() {
         let mainMenu = NSMenu()
 
         let appMenuItem = NSMenuItem()
@@ -943,7 +741,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         NSApp.mainMenu = mainMenu
     }
 
-    private func configureWebScripts() {
+    func configureWebScripts() {
         guard let webView else { return }
         let content = webView.configuration.userContentController
         content.removeAllUserScripts()
@@ -966,12 +764,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         if frame != window.frame { window.setFrame(frame, display: true) }
     }
 
-    private func saveWindowState() {
+    func saveWindowState() {
         guard let window else { return }
         if !window.styleMask.contains(.fullScreen) { window.saveFrame(usingName: "ElysiaApiPanel") }
     }
 
-    private func buildWindow() {
+    func buildWindow() {
         let rect = initialWindowRect()
         window = NSWindow(contentRect: rect,
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -1134,7 +932,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
     }
 
-    private func showOverlay(text: String, spinning: Bool, retry: Bool = false) {
+    func showOverlay(text: String, spinning: Bool, retry: Bool = false) {
         guard window != nil else { return }
         overlayLabel.stringValue = text
         overlaySpinner.isHidden = !spinning
@@ -1149,7 +947,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         overlay.isHidden = true
     }
 
-    @objc private func retryStartup() {
+    @objc func retryStartup() {
         if isPanelProcess {
             panelLoaded = false
             panelBridge?.send(PanelMessage(type: "action", action: "retry"))
@@ -1187,7 +985,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     /// 同步更新胶囊与菜单状态。
-    private func refreshUpdateUI(animated: Bool = false) {
+    func refreshUpdateUI(animated: Bool = false) {
         refreshStatusUI()
 
         // 显隐：phase 决定常态可见性，用户手动关 × 在特定 phase 中遮蔽
@@ -1297,7 +1095,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
     }
 
-    private func refreshStatusUI() {
+    func refreshStatusUI() {
         sendPanelState()
         guard statusItem != nil else { return }
         // 图标旁永不显示文字：状态经 tooltip 与菜单头部传达。
@@ -1330,7 +1128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
     }
 
-    private func updateActionMenuIsEnabled() -> Bool {
+    func updateActionMenuIsEnabled() -> Bool {
         if isPanelProcess { return panelUpdateEnabled && !terminating }
         if cancellingUpdate || terminating { return false }
         switch updatePhase {
@@ -1348,7 +1146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     /// 更新菜单项动作统一入口：.phase 决定下一步是检查、安装、取消还是重启。
-    @objc private func performUpdateAction() {
+    @objc func performUpdateAction() {
         if isPanelProcess { panelBridge?.send(PanelMessage(type: "action", action: "update")); return }
         switch updatePhase {
         case .idle: checkForUpdates(silent: false)
@@ -1374,7 +1172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         (backend != nil || (isPanelProcess && backendPort != 0)) ? "重启服务" : (backendState == .failed ? "重试启动服务" : "启动服务")
     }
 
-    private var canRestartBackend: Bool { !terminating && !recoveryTerminating && updatePhase != .installing && updatePhase != .readyToRelaunch && [.running, .stopped, .failed].contains(backendState) }
+    var canRestartBackend: Bool { !terminating && !recoveryTerminating && updatePhase != .installing && updatePhase != .readyToRelaunch && [.running, .stopped, .failed].contains(backendState) }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if terminating { return false }
@@ -1441,206 +1239,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     @objc private func openLoginSettings() { launchAtLogin.openSystemSettings() }
     @objc private func openNotificationSettings() { notifications.openSystemSettings() }
 
-    // MARK: 后端进程管理
-
-    private func setBackendState(_ state: BackendState, error: String? = nil) {
-        guard state != backendState || (error != nil && error != lastBackendError) else { return }
-        if state != .running { panelReady = false }
-        rescheduleHealthTimer(for: state)
-        if state != backendState || (error != nil && error != lastBackendError) {
-            appLogger.info("Backend state: \(state.rawValue, privacy: .public); \(error ?? "", privacy: .public)")
-        }
-        backendState = state
-        if let error { lastBackendError = error }
-        refreshStatusUI()
-        renderBackendState()
-    }
-
-    private func renderBackendState() {
-        guard window != nil else { return }
-        switch backendState {
-        case .starting: showOverlay(text: "正在启动本地后端…", spinning: true)
-        case .restarting: showOverlay(text: "服务意外停止，正在重启（\(restartCount)/3）…", spinning: true)
-        case .stopping: showOverlay(text: "正在停止服务并保存用量记录…", spinning: true)
-        case .stopped:
-            showOverlay(text: "服务已停止。点击启动服务继续使用面板。", spinning: false, retry: true)
-            overlayButton.title = "启动服务"
-        case .failed:
-            showOverlay(text: lastBackendError ?? "服务不可用，请重试或查看运行日志。", spinning: false, retry: true)
-            overlayButton.title = "重试"
-        case .running: break // 仅页面成功加载后收起遮罩。
-        }
-    }
-
-    func startBackend() {
-        guard backend == nil, !terminating, updatePhase != .installing, updatePhase != .readyToRelaunch else { return }
-        restartWork?.cancel()
-        guard let fresh = loadOrCreateConfig() else {
-            setBackendState(.failed, error: "无法读取配置，请修正后重试：\n\(configPath)")
-            notifications.requestAndSend(title: "Elysia API 配置错误", body: "请打开数据文件夹检查 config.json；原文件已保留。", identifier: "config-error")
-            return
-        }
-        config = fresh
-        setBackendState(restartCount > 0 ? .restarting : .starting)
-        do {
-            // 修改 port 时保留所有未知配置键，后端始终读取同一份配置文件。
-            let host = ProcessInfo.processInfo.environment["ELYSIA_API_HOST"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let listenHost = (host?.isEmpty == false ? host : nil) ?? config.host
-            if !portIsFree(config.port, host: listenHost) {
-                guard let port = (8799...8899).first(where: { portIsFree($0, host: listenHost) }) else {
-                    throw UpdateError(message: "没有可用端口，请释放配置端口后重试。")
-                }
-                let original = config.port
-                try persistPort(port, at: URL(fileURLWithPath: configPath))
-                config.port = port
-                notifications.requestAndSend(title: "Elysia API 端口已调整", body: "端口 \(original) 被占用，已改用 \(port)。可从菜单栏复制新地址。", identifier: "port-changed")
-                appLogger.info("Port changed from \(original) to \(port)")
-            }
-            let fm = FileManager.default
-            if !fm.fileExists(atPath: logPath) { fm.createFile(atPath: logPath, contents: nil) }
-            let handle = try FileHandle(forWritingTo: URL(fileURLWithPath: logPath))
-            try handle.seekToEnd()
-            backendLogHandle = handle
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: backendPath)
-            process.arguments = ["--config", configPath]
-            process.environment = ProcessInfo.processInfo.environment.merging(["ELYSIA_API_OPEN_BROWSER": "false", "ELYSIA_PARENT_STDIN": "1"]) { _, value in value }
-            let input = Pipe()
-            process.standardInput = input
-            backendInputPipe = input
-            process.currentDirectoryURL = URL(fileURLWithPath: dataDirPath)
-            process.standardOutput = handle
-            process.standardError = handle
-            process.terminationHandler = { [weak self] process in
-                DispatchQueue.main.async { self?.backendDidExit(process) }
-            }
-            backendGeneration = UUID()
-            backendHost = listenHost
-            backendPort = config.port
-            startupTime = Date()
-            healthySince = nil
-            healthFailedSince = nil
-            recoveryTerminating = false
-            healthInFlight = false
-            panelLoaded = false
-            userStopping = false
-            try process.run()
-            // Only the child keeps the read end; parent death closes the writer and triggers graceful shutdown.
-            try? input.fileHandleForReading.close()
-            backend = process
-            #if NATIVE_TESTS
-            try String(process.processIdentifier).write(toFile: dataDirPath + "/owned-backend.pid", atomically: true, encoding: .utf8)
-            if CommandLine.arguments.contains("--update-ack") {
-                try? String(process.processIdentifier).write(toFile: dataDirPath + "/new-backend.pid", atomically: true, encoding: .utf8)
-            }
-            #endif
-            configureWebScripts()
-            appLogger.info("Backend started, pid \(process.processIdentifier), port \(self.backendPort)")
-            refreshStatusUI()
-            pollHealth()
-        } catch {
-            try? backendLogHandle?.close()
-            backendLogHandle = nil
-            try? backendInputPipe?.fileHandleForWriting.close()
-            try? backendInputPipe?.fileHandleForReading.close()
-            backendInputPipe = nil
-            backendPort = 0
-            backendHost = nil
-            setBackendState(.failed, error: "后端启动失败：\n\(error.localizedDescription)")
-            scheduleRecovery("后端启动失败：\(error.localizedDescription)")
-        }
-    }
-
-    /// 所有停止路径直接终止拥有的子进程；信号与后端 HTTP 关闭共用排空/刷盘序列。
-    private func requestBackendExit(_ process: Process) {
-        guard backend === process, backendStopDeadline == nil else { return }
-        if process.isRunning { process.terminate() }
-        let deadline = DispatchWorkItem { [weak self, weak process] in
-            guard let self, let process, self.backend === process, process.isRunning else { return }
-            appLogger.error("Backend did not finish shutdown within 15 seconds; forcing owned pid \(process.processIdentifier) to exit")
-            kill(process.processIdentifier, SIGKILL)
-        }
-        backendStopDeadline = deadline
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: deadline)
-    }
-
-    func stopBackend() {
-        restartWork?.cancel()
-        guard let process = backend else { setBackendState(.stopped); return }
-        userStopping = true
-        setBackendState(.stopping)
-        if process.isRunning { requestBackendExit(process) }
-    }
-
-    private func backendDidExit(_ process: Process) {
-        guard backend === process else { return }
-        appLogger.info("Backend exited, status \(process.terminationStatus)")
-        backend = nil
-        backendStopDeadline?.cancel()
-        backendStopDeadline = nil
-        try? backendInputPipe?.fileHandleForWriting.close()
-        backendInputPipe = nil
-        backendGeneration = UUID()
-        backendHost = nil
-        backendPort = 0
-        healthInFlight = false
-        healthySince = nil
-        panelLoaded = false
-        try? backendLogHandle?.close()
-        backendLogHandle = nil
-        if terminating { finishTerminationIfReady(); return }
-        if updatePhase == .readyToRelaunch {
-            userStopping = false
-            pendingBackendRestart = false
-            setBackendState(.stopped)
-            relaunchAfterUpdate()
-            return
-        }
-        if userStopping {
-            userStopping = false
-            if pendingBackendRestart {
-                pendingBackendRestart = false
-                // 重启语义：停止完成后立即接力启动，不落入 .stopped 等待人工。
-                retryStartup()
-                return
-            }
-            setBackendState(.stopped)
-            return
-        }
-        // 接力标志只服务本次 stop→start；其它退出路径一律清除，避免滞留误启动。
-        pendingBackendRestart = false
-        recoveryTerminating = false
-        scheduleRecovery("后端意外退出（状态 \(process.terminationStatus)）")
-    }
-
-    private func scheduleRecovery(_ message: String) {
-        guard !terminating, updatePhase != .installing, updatePhase != .readyToRelaunch else { return }
-        if restartCount < 3 {
-            restartCount += 1
-            setBackendState(.restarting, error: message + "，正在尝试恢复。")
-            notifications.requestAndSend(title: "Elysia API 正在恢复", body: "服务意外停止，正在自动重启（\(restartCount)/3）。", identifier: "backend-restarting")
-            let generation = backendGeneration
-            let work = DispatchWorkItem { [weak self] in
-                guard let self, self.backendGeneration == generation, self.backendState == .restarting, !self.terminating else { return }
-                self.startBackend()
-            }
-            restartWork = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
-        } else {
-            setBackendState(.failed, error: "后端连续异常退出，已停止自动重启。请查看运行日志后重试。")
-            notifications.requestAndSend(title: "Elysia API 已停止", body: "三次自动重启均失败，请打开面板重试或查看运行日志。", identifier: "backend-stopped")
-        }
-    }
-
-    /// 服务运行时先排空旧进程再启动；已停止时直接启动。
-    @objc private func restartBackend() {
-        if isPanelProcess { panelBridge?.send(PanelMessage(type: "action", action: "restart")); return }
-        guard canRestartBackend else { return }
-        guard backend != nil else { retryStartup(); return }
-        pendingBackendRestart = true
-        stopBackend()
-    }
-
     @objc private func reloadPanel() {
         guard let webView, backendState == .running else { return }
         webView.reload()
@@ -1667,7 +1265,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
     }
 
-    @objc private func showPreferences() {
+    @objc func showPreferences() {
         if isPanelProcess { panelBridge?.send(PanelMessage(type: "action", action: "preferences")); return }
         let alert = NSAlert()
         alert.messageText = "Elysia API 偏好设置"
@@ -1743,7 +1341,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         #endif
     }
 
-    private func rescheduleHealthTimer(for state: BackendState? = nil) {
+    func rescheduleHealthTimer(for state: BackendState? = nil) {
         guard !isPanelProcess, !terminating else { return }
         let current = state ?? backendState
         if backend == nil && (current == .stopped || current == .failed) {
@@ -1760,7 +1358,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         RunLoop.main.add(health, forMode: .common)
     }
 
-    private func loadPanelWhenHealthy() {
+    func loadPanelWhenHealthy() {
         guard backendState == .running, let webView else { return }
         if !panelLoaded || loadedPort != backendPort {
             if let url = URL(string: "\(apiBaseURL)/ui/#/overview") {
@@ -1774,7 +1372,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         } else if !webView.isLoading { hideOverlay() }
     }
 
-    private func pollHealth() {
+    func pollHealth() {
         if isPanelProcess { panelBridge?.send(PanelMessage(type: "hello")); return }
         guard let process = backend, process.isRunning, !healthInFlight, !userStopping, !terminating, !recoveryTerminating,
               updatePhase != .installing, updatePhase != .readyToRelaunch,
@@ -1822,7 +1420,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     // MARK: - WKNavigationDelegate
 
-    private func isPanelOrigin(_ url: URL) -> Bool {
+    func isPanelOrigin(_ url: URL) -> Bool {
         guard let base = URL(string: apiBaseURL) else { return false }
         return url.scheme == base.scheme && url.host == base.host && url.port == base.port
     }
@@ -1901,195 +1499,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         handlePanelLoadFailure(error)
     }
 
-    // MARK: - 下载(WKDownloadDelegate)
-
-    /// 保存面板和实际下载属于同一个窗口操作；路径回调必须终结一次才能释放 WebKit。
-    private final class PanelDownload {
-        let download: WKDownload
-        var panel: NSSavePanel?
-        var destination: URL?
-        var temporaryURL: URL?
-        var destinationIdentity: URLResourceValues?
-        var reply: ((URL?) -> Void)?
-
-        init(_ download: WKDownload) { self.download = download }
-
-        @discardableResult
-        func resolveDestination(_ url: URL?) throws -> Bool {
-            guard let reply else { return false }
-            if let url, FileManager.default.fileExists(atPath: url.path) {
-                destinationIdentity = try Self.identity(at: url)
-            }
-            self.reply = nil
-            destination = url
-            temporaryURL = url.map {
-                $0.deletingLastPathComponent().appendingPathComponent(".elysia-export-\(UUID().uuidString).partial")
-            }
-            reply(temporaryURL)
-            return true
-        }
-
-        private static func identity(at url: URL) throws -> URLResourceValues {
-            var fresh = URL(fileURLWithPath: url.path)
-            fresh.removeAllCachedResourceValues()
-            return try fresh.resourceValues(forKeys: [.fileResourceIdentifierKey, .contentModificationDateKey, .fileSizeKey])
-        }
-
-        func destinationIsUnchanged() throws -> Bool {
-            guard let destination else { return false }
-            let exists = FileManager.default.fileExists(atPath: destination.path)
-            guard let original = destinationIdentity else { return !exists }
-            guard exists else { return false }
-            let current = try Self.identity(at: destination)
-            if let originalID = original.fileResourceIdentifier as? NSObject,
-               let currentID = current.fileResourceIdentifier as? NSObject,
-               !originalID.isEqual(currentID) { return false }
-            return original.contentModificationDate == current.contentModificationDate && original.fileSize == current.fileSize
-        }
-
-        func removeTemporaryFile() {
-            if let temporaryURL { try? FileManager.default.removeItem(at: temporaryURL) }
-        }
-
-        func dismissPanel() {
-            guard let panel else { return }
-            self.panel = nil
-            if let parent = panel.sheetParent { parent.endSheet(panel, returnCode: .cancel) }
-            else { panel.cancel(nil) }
-            panel.orderOut(nil)
-        }
-    }
-
-    private var panelDownloads: [ObjectIdentifier: PanelDownload] = [:]
-    private var cancellingPanelDownloads: [ObjectIdentifier: PanelDownload] = [:]
-    private var panelDownloadMessage = ""
-    #if NATIVE_TESTS
-    private var panelDestinationReplies = 0
-    var panelDownloadCountForTests: Int { panelDownloads.count + cancellingPanelDownloads.count }
-    var panelTemporaryDestinationForTests: URL? { panelDownloads.values.first?.temporaryURL }
-    var pendingSavePanelForTests: NSSavePanel? { panelDownloads.values.first(where: { $0.reply != nil })?.panel }
-    var panelDestinationRepliesForTests: Int { panelDestinationReplies }
-    var panelDownloadMessageForTests: String { panelDownloadMessage }
-    func resolvePanelDestinationForTests(_ url: URL?) {
-        guard let pending = panelDownloads.values.first(where: { $0.reply != nil }) else { return }
-        completePanelDestination(pending, url: url)
-    }
-    #endif
-
-    private func trackPanelDownload(_ download: WKDownload, from source: WKWebView) {
-        guard source === webView, window != nil, !terminating,
-              updatePhase != .installing, updatePhase != .readyToRelaunch else {
-            download.cancel { _ in }
-            return
-        }
-        panelDownloads[ObjectIdentifier(download)] = PanelDownload(download)
-        download.delegate = self
-    }
-
-    /// 关窗、退出和安装更新共享清理；先移除所有权，迟到的 delegate 回调不会再次提示。
-    func cancelPanelDownloads(reason: String) {
-        let downloads = Array(panelDownloads.values)
-        panelDownloads.removeAll()
-        for pending in downloads {
-            completePanelDestination(pending, url: nil)
-            pending.download.delegate = nil
-            let identifier = ObjectIdentifier(pending.download)
-            cancellingPanelDownloads[identifier] = pending
-            pending.download.cancel { [weak self] _ in
-                pending.removeTemporaryFile()
-                self?.cancellingPanelDownloads[identifier] = nil
-                self?.finishTerminationIfReady()
-            }
-        }
-        if !downloads.isEmpty { reportPanelDownload("导出已取消", detail: reason) }
-    }
-
-    private func completePanelDestination(_ pending: PanelDownload, url: URL?) {
-        var selected = url
-        let resolved: Bool
-        do { resolved = try pending.resolveDestination(url) }
-        catch {
-            selected = nil
-            resolved = (try? pending.resolveDestination(nil)) ?? false
-            reportPanelDownload("导出失败", detail: "无法检查保存目标：\(error.localizedDescription)")
-        }
-        if resolved {
-            #if NATIVE_TESTS
-            panelDestinationReplies += 1
-            #endif
-        }
-        pending.dismissPanel()
-        if selected == nil {
-            panelDownloads[ObjectIdentifier(pending.download)] = nil
-            pending.download.delegate = nil
-        }
-    }
-
-    private func reportPanelDownload(_ title: String, detail: String) {
-        panelDownloadMessage = "\(title)：\(detail)"
-        appLogger.info("\(self.panelDownloadMessage, privacy: .public)")
-        if !terminating {
-            notifications.requestAndSend(title: title, body: detail, identifier: "panel-download")
-        }
-    }
-
-    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
-        trackPanelDownload(download, from: webView)
-    }
-
-    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
-        trackPanelDownload(download, from: webView)
-    }
-
-    /// 弹系统保存对话框决定落盘位置;用户取消时回调 nil,WebKit 会取消该下载。
-    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
-                  suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
-        guard let pending = panelDownloads[ObjectIdentifier(download)], let window,
-              !terminating, updatePhase != .installing, updatePhase != .readyToRelaunch else {
-            panelDownloads[ObjectIdentifier(download)] = nil
-            download.delegate = nil
-            completionHandler(nil)
-            return
-        }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = suggestedFilename
-        panel.canCreateDirectories = true
-        pending.panel = panel
-        pending.reply = completionHandler
-        panel.beginSheetModal(for: window) { [weak self, weak pending] response in
-            guard let self, let pending, pending.reply != nil else { return }
-            let destination = response == .OK ? pending.panel?.url : nil
-            self.completePanelDestination(pending, url: destination)
-            if destination == nil { self.reportPanelDownload("导出已取消", detail: "未选择保存位置。") }
-        }
-    }
-
-    func downloadDidFinish(_ download: WKDownload) {
-        guard let pending = panelDownloads.removeValue(forKey: ObjectIdentifier(download)) else { return }
-        download.delegate = nil
-        defer { pending.removeTemporaryFile() }
-        guard let url = pending.destination, let temporary = pending.temporaryURL else { return }
-        do {
-            guard try pending.destinationIsUnchanged() else {
-                throw UpdateError(message: "保存目标在下载期间发生变化，已保留该文件。请重新导出。")
-            }
-            if pending.destinationIdentity != nil {
-                _ = try FileManager.default.replaceItemAt(url, withItemAt: temporary)
-            } else {
-                try FileManager.default.moveItem(at: temporary, to: url)
-            }
-            reportPanelDownload("导出已完成", detail: "已保存到：\(url.path)")
-        } catch { reportPanelDownload("导出失败", detail: error.localizedDescription) }
-    }
-
-    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
-        guard let pending = panelDownloads.removeValue(forKey: ObjectIdentifier(download)) else { return }
-        completePanelDestination(pending, url: nil)
-        pending.removeTemporaryFile()
-        download.delegate = nil
-        reportPanelDownload("导出失败", detail: error.localizedDescription)
-    }
-
     // MARK: - 主题同步(WKScriptMessageHandler)
 
     func userContentController(_ userContentController: WKUserContentController,
@@ -2115,271 +1524,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // 胶囊自己监听 appearance 并在 updateLayer 里取 window.backgroundColor——无需显式赋值。
         updateCapsule?.needsDisplay = true
         webView.underPageBackgroundColor = background
-    }
-
-    // MARK: 更新
-
-    @objc private func checkForUpdatesFromMenu() {
-        if isPanelProcess { panelBridge?.send(PanelMessage(type: "action", action: "checkUpdate")); return }
-        checkForUpdates(silent: false)
-    }
-
-    private func checkForUpdates(silent: Bool) {
-        guard !checkingUpdates, !updatePhase.busy, updatePhase != .readyToRelaunch, !terminating,
-              let url = URL(string: releasesAPI) else { return }
-        checkingUpdates = true
-        updatePhase = .checking
-        updateMessage = "正在检查更新…"
-        updateDetail = "与 GitHub 发布同步"
-        // 静默检查不弹胶囊；手动查不闪胶囊（idle 穿梭时胶囊隐藏）
-        refreshUpdateUI()
-        var request = URLRequest(url: url)
-        request.setValue("ElysiaApi/\(currentVersion)", forHTTPHeaderField: "User-Agent")
-        apiSession.dataTask(with: request) { [weak self] data, response, error in
-            DispatchQueue.main.async {
-                guard let self, !self.terminating else { return }
-                self.checkingUpdates = false
-                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                guard status == 200, let data, error == nil, let info = Self.parseRelease(data) else {
-                    self.updatePhase = self.latestRelease == nil ? .idle : .available
-                    self.updateMessage = "检查更新失败"
-                    self.updateDetail = Self.updateCheckFailure(error: error, status: status)
-                    appLogger.error("\(self.updateDetail, privacy: .public)")
-                    self.refreshUpdateUI()
-                    if !silent { self.alert(self.updateDetail) }
-                    return
-                }
-                guard isNewer(info.tag, than: self.currentVersion) else {
-                    self.latestRelease = nil
-                    self.updatePhase = .idle
-                    self.updateMessage = "版本 \(self.currentVersion)"
-                    self.updateDetail = "已是最新版本"
-                    self.refreshUpdateUI()
-                    if !silent { self.alert("已是最新版本\n\(self.currentVersion)") }
-                    return
-                }
-                let isNewRelease = self.latestRelease?.tag != info.tag
-                self.latestRelease = info
-                self.updatePhase = .available
-                self.updateMessage = "发现新版本 \(info.tag)"
-                self.updateDetail = "\(self.currentVersion) → \(info.tag) · 安装需要重启"
-                // 新可用版本切换到提示态：弹出胶囊
-                self.updateCapsuleVisible = true
-                self.refreshUpdateUI(animated: true)
-                appLogger.info("Update available: \(info.tag, privacy: .public)")
-                if isNewRelease {
-                    self.notifications.requestAndSend(title: "Elysia API 有新版本", body: "\(info.tag) 已发布，点击打开应用更新。", identifier: "update-available")
-                }
-                // 手动检查发现新版本时，把窗口带出来像旧版「开始下载」可见一样显式
-                if !silent { self.showMainWindow() }
-            }
-        }.resume()
-    }
-
-    private static func updateCheckFailure(error: Error?, status: Int) -> String {
-        if let error { return "检查更新失败：无法连接 GitHub（\(error.localizedDescription)）" }
-        if status == 404 { return "尚未发布可用版本。" }
-        if status == 200 { return "最新版本未包含有效的 macOS DMG 文件。" }
-        return "检查更新失败：GitHub 返回 HTTP \(status)。"
-    }
-
-    private static func parseRelease(_ data: Data) -> ReleaseInfo? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let tag = json["tag_name"] as? String,
-              let assets = json["assets"] as? [[String: Any]] else { return nil }
-        for entry in assets where entry["name"] as? String == "elysia-api-macos.dmg" {
-            if let url = entry["browser_download_url"] as? String, URL(string: url)?.scheme == "https" {
-                return ReleaseInfo(tag: tag, dmgURL: url, dmgDigest: entry["digest"] as? String ?? "")
-            }
-        }
-        return nil
-    }
-
-    @objc private func runUpdate() {
-        if isPanelProcess { panelBridge?.send(PanelMessage(type: "action", action: "update")); return }
-        if updatePhase == .readyToRelaunch { relaunchAfterUpdate(); return }
-        guard let release = latestRelease, !checkingUpdates, !updatePhase.busy, !terminating else { return }
-        do { _ = try UpdateInstaller.validateDigest(release.dmgDigest) }
-        catch { updateFailed(error.localizedDescription); return }
-        guard let remote = URL(string: release.dmgURL), remote.scheme == "https" else { return }
-        beginUpdateDownload(from: remote, release: release)
-    }
-
-    private func beginUpdateDownload(from remote: URL, release: ReleaseInfo) {
-        let generation = UUID()
-        updateDownloadGeneration = generation
-        updatePhase = .downloading
-        updateMessage = "下载 \(release.tag)"
-        updateDetail = "准备下载"
-        updateFraction = nil
-        cancellingUpdate = false
-        // 主动/自动进入下载时也走上提示态（胶囊装呈现进度）
-        updateCapsuleVisible = true
-        refreshUpdateUI(animated: true)
-        appLogger.info("Downloading update \(release.tag, privacy: .public)")
-        let delegate = UpdateDownloadDelegate(onProgress: { [weak self] written, expected in
-            guard let self, self.updateDownloadGeneration == generation, !self.terminating,
-                  self.updatePhase == .downloading, !self.cancellingUpdate else { return }
-            self.updateFraction = expected > 0 ? Double(written) / Double(expected) : nil
-            let size = ByteCountFormatter.string(fromByteCount: written, countStyle: .file)
-            let percent = expected > 0 ? " · \(Int(100 * Double(written) / Double(expected)))%" : ""
-            self.updateMessage = "下载 \(release.tag)"
-            self.updateDetail = "已接收 \(size)\(percent)"
-            self.refreshUpdateUI()
-        }, onFinished: { [weak self] localURL, error in
-            guard let self, self.updateDownloadGeneration == generation else {
-                if let localURL { try? FileManager.default.removeItem(at: localURL) }
-                return
-            }
-            self.updateSession?.finishTasksAndInvalidate()
-            self.updateSession = nil
-            self.updateDownloadDelegate = nil
-            self.updateTask = nil
-            self.cancellingUpdate = false
-            if self.terminating || (error as NSError?)?.code == NSURLErrorCancelled {
-                if let localURL { try? FileManager.default.removeItem(at: localURL) }
-                if self.terminating { self.finishTerminationIfReady(); return }
-                self.updatePhase = .available
-                self.updateMessage = "发现新版本 \(release.tag)"
-                self.updateDetail = "下载已取消"
-                self.refreshUpdateUI()
-                return
-            }
-            guard let localURL, error == nil else {
-                if let localURL { try? FileManager.default.removeItem(at: localURL) }
-                self.updateFailed(error?.localizedDescription ?? "下载文件不存在")
-                return
-            }
-            self.updatePhase = .installing
-            self.updateMessage = "安装 \(release.tag)"
-            self.updateDetail = "正在校验并暂存应用，完成后自动重启…"
-            self.resumeBackendAfterUpdateFailure = !self.userStopping && (self.backend != nil || self.backendState == .restarting || self.backendState == .starting)
-            self.restartWork?.cancel()
-            self.pendingBackendRestart = false
-            self.cancelPanelDownloads(reason: "应用正在安装更新，未完成的导出已取消。")
-            self.refreshUpdateUI()
-            let current = Bundle.main.bundleURL
-            DispatchQueue.global(qos: .userInitiated).async {
-                defer { try? FileManager.default.removeItem(at: localURL) }
-                do {
-                    try UpdateInstaller.verify(localURL, digest: release.dmgDigest)
-                    let staged = try UpdateInstaller.extractApp(fromDMG: localURL, beside: current)
-                    DispatchQueue.main.async {
-                        self.handoffStagedUpdate(staged)
-                    }
-                } catch {
-                    DispatchQueue.main.async { self.updateFailed(error.localizedDescription) }
-                }
-            }
-        })
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 15 * 60
-        updateDownloadDelegate = delegate
-        let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: .main)
-        updateSession = session
-        updateTask = session.downloadTask(with: remote)
-        updateTask?.resume()
-    }
-
-    @objc private func cancelUpdate() {
-        if isPanelProcess { panelBridge?.send(PanelMessage(type: "action", action: "cancelUpdate")); return }
-        guard updatePhase == .downloading else { return }
-        cancellingUpdate = true
-        updateMessage = "正在取消下载…"
-        refreshUpdateUI()
-        updateTask?.cancel()
-    }
-
-    private func relaunchAfterUpdate() {
-        guard !terminating, relaunchHelper == nil, let stagedUpdate else { return }
-        saveWindowState()
-        if let process = backend {
-            userStopping = true
-            setBackendState(.stopping)
-            requestBackendExit(process)
-            return
-        }
-        do {
-            relaunchHelper = try UpdateInstaller.startHelper(staged: stagedUpdate, current: Bundle.main.bundleURL,
-                                                            parentPID: ProcessInfo.processInfo.processIdentifier,
-                                                            background: usesPanelProcess ? panelProcess == nil : window == nil)
-            #if NATIVE_TESTS
-            try? String(relaunchHelper!.processIdentifier).write(toFile: dataDirPath + "/owned-helper.pid", atomically: true, encoding: .utf8)
-            #endif
-            // From this point the independent helper owns staging, replacement and rollback.
-            self.stagedUpdate = nil
-            requestTermination()
-        }
-        catch {
-            try? FileManager.default.removeItem(at: stagedUpdate.deletingLastPathComponent())
-            self.stagedUpdate = nil
-            appLogger.error("Relaunch failed: \(error.localizedDescription, privacy: .public)")
-            updateFailed("无法启动更新辅助程序，当前版本已保留：\(error.localizedDescription)")
-        }
-    }
-
-    private func acknowledgeUpdateLaunch() {
-        guard !updateLaunchAcknowledged, backendState == .running,
-              let url = UpdateInstaller.acknowledgementURL(arguments: CommandLine.arguments) else { return }
-        if launchedAtLogin { writeUpdateAcknowledgement(url); return }
-        if usesPanelProcess {
-            if panelReady && panelProcess != nil && !panelClosing { writeUpdateAcknowledgement(url) }
-            return
-        }
-        guard window != nil else { return }
-        guard !panelReadinessInFlight, let webView, !webView.isLoading,
-              let panelURL = webView.url, isPanelOrigin(panelURL) else { return }
-        panelReadinessInFlight = true
-        let generation = backendGeneration
-        // Navigation completion only proves HTML loaded; lazy React chunks may still fail.
-        webView.evaluateJavaScript("Boolean(document.querySelector('#token')?.closest('form') || document.querySelector('main h1'))") { [weak self, weak webView] result, _ in
-            guard let self else { return }
-            self.panelReadinessInFlight = false
-            guard let webView, webView === self.webView, generation == self.backendGeneration,
-                  self.backendState == .running, !self.terminating, result as? Bool == true else { return }
-            self.writeUpdateAcknowledgement(url)
-        }
-    }
-
-    private func writeUpdateAcknowledgement(_ url: URL) {
-        do {
-            try UpdateInstaller.acknowledgeLaunch(at: url)
-            updateLaunchAcknowledged = true
-            #if NATIVE_TESTS
-            try String(ProcessInfo.processInfo.processIdentifier).write(toFile: dataDirPath + "/native-ready.pid", atomically: true, encoding: .utf8)
-            #endif
-        } catch {
-            appLogger.error("Could not acknowledge update startup: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
-    private func handoffStagedUpdate(_ staged: URL) {
-        resumeBackendAfterUpdateFailure = resumeBackendAfterUpdateFailure || (!userStopping && backend != nil)
-        stagedUpdate = staged
-        updatePhase = .readyToRelaunch
-        updateMessage = "更新已校验"
-        updateDetail = "正在保存记录，随后安装并重启…"
-        refreshUpdateUI()
-        relaunchAfterUpdate()
-    }
-
-    private func updateFailed(_ message: String) {
-        updatePhase = .failed
-        updateMessage = "更新失败"
-        var detail = message
-        if updateDetail.hasPrefix("已接收") || updateDetail.hasPrefix("正在校验") {
-            detail = "\(message)"
-        }
-        updateDetail = detail
-        // 失败值得重新唤起胶囊（用户之前手关过 ×，也要再看到失败事实）
-        updateCapsuleVisible = true
-        appLogger.error("更新失败：\(message, privacy: .public)")
-        refreshUpdateUI(animated: true)
-        notifications.requestAndSend(title: "Elysia API 更新失败", body: "\(message) 点击打开应用重试。", identifier: "update-failed")
-        if resumeBackendAfterUpdateFailure && backend == nil { startBackend() }
-        resumeBackendAfterUpdateFailure = false
-        pollHealth()
     }
 
     // MARK: 菜单动作
@@ -2411,7 +1555,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         alert("ElysiaApi for macOS\n当前版本 \(currentVersion)\n后端与面板来自 Elysia-Api 项目。")
     }
 
-    private func alert(_ text: String) {
+    func alert(_ text: String) {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = text

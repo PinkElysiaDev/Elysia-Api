@@ -1,3 +1,4 @@
+import { nativeAppSources } from './macos-app/sources.mjs'
 // Isolated native integration tests: no production data, login registrations or notifications.
 import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -41,7 +42,7 @@ try {
   cpSync(previewOnly ? join(repo, 'dist', 'standalone', 'ElysiaApi.app', 'Contents', 'MacOS', 'elysia-api') : join(source, 'BackendFixture.py'), join(macos, 'elysia-api'))
   chmodSync(join(macos, 'elysia-api'), 0o755)
   run('xcrun', ['--sdk', 'macosx', 'swiftc', '-D', 'NATIVE_TESTS', '-target', `${process.arch === 'arm64' ? 'arm64' : 'x86_64'}-apple-macos12.0`,
-    '-o', join(macos, 'ElysiaApi'), join(source, 'MacSupport.swift'), join(source, 'PanelBridge.swift'), join(source, 'UpdateCapsuleView.swift'), join(source, 'NativeTests.swift'), join(source, 'UpdateTests.swift'), join(source, 'ResourceTests.swift'), join(source, 'LifecycleTests.swift'), join(source, 'main.swift')])
+    '-o', join(macos, 'ElysiaApi'), join(source, 'NativeTests.swift'), join(source, 'UpdateTests.swift'), join(source, 'ResourceTests.swift'), join(source, 'LifecycleTests.swift'), ...nativeAppSources(source)])
   run('codesign', ['--force', '--sign', '-', '--deep', app])
   if (!process.argv.includes('--flows')) run(join(macos, 'ElysiaApi'), previewOnly ? ['--panel'] : [], { timeout: 120000, env: { ...process.env, ELYSIA_NATIVE_TEST_DATA: data, ELYSIA_NATIVE_SCREENSHOT: join(repo, 'dist', 'macos-panel-preview.png') } })
   await runNativeTrayFlow({ app, temp, bundleID, previewOnly })
