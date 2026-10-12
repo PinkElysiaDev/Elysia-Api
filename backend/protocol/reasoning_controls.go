@@ -24,6 +24,19 @@ func controlText(v Value) string  { var s string; _ = v.Decode(&s); return s }
 func controlInt(v Value) int64    { var n int64; _ = v.Decode(&n); return n }
 func controlValue(v any) Value    { result, _ := EncodeValue(v); return result }
 
+func validateAnthropicDisplay(mode string, display Value) error {
+	if !controlPresent(display) || (mode != "" && slices.Contains([]string{"summarized", "omitted", "updates"}, controlText(display))) {
+		return nil
+	}
+	// Decoding and post-mapping validation supply their own direction. This is
+	// a request constraint, even when the caller requested a streaming response.
+	return IssuesError([]ConversionIssue{{
+		Code: InvalidInput, Severity: SeverityError, Stage: "request.validation", Path: "/thinking/display",
+		Reason:     "display requires a thinking mode and must be summarized, omitted or updates",
+		Suggestion: "correct the request thinking.display or its declared mapping",
+	}})
+}
+
 func ValidateReasoningIntent(r *ReasoningIntent) error {
 	if r == nil {
 		return nil
@@ -142,8 +155,8 @@ func NormalizeReasoningParameters(req *Request, codec string, interleaved bool) 
 			if r.Mode != "enabled" && !r.Budget.IsZero() {
 				return streamIssue(InvalidInput, "/thinking/budget_tokens", "this thinking mode does not accept a budget")
 			}
-			if controlPresent(r.Summary) && !slices.Contains([]string{"summarized", "omitted", "updates"}, controlText(r.Summary)) {
-				return streamIssue(InvalidInput, "/thinking/display", "display must be summarized, omitted or updates")
+			if err := validateAnthropicDisplay(r.Mode, r.Summary); err != nil {
+				return err
 			}
 		}
 		output, err := take("anthropic_output_config", "effort")
@@ -225,8 +238,8 @@ func validateSourceReasoning(codec string, r *ReasoningIntent) error {
 		if r.Mode != "enabled" && controlPresent(r.Budget) {
 			return streamIssue(InvalidInput, "/thinking/budget_tokens", "this thinking mode does not accept a budget")
 		}
-		if controlPresent(r.Summary) && (r.Mode == "" || !slices.Contains([]string{"summarized", "omitted", "updates"}, controlText(r.Summary))) {
-			return streamIssue(InvalidInput, "/thinking/display", "display requires a thinking mode and a supported preference")
+		if err := validateAnthropicDisplay(r.Mode, r.Summary); err != nil {
+			return err
 		}
 	}
 	if codec == "anthropic" && r.Mode == "enabled" {

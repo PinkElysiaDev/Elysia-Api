@@ -203,3 +203,43 @@ func TestGatewaySystemHoistFailureRetainsRequestEvidence(t *testing.T) {
 		t.Fatal("diagnostics included request text")
 	}
 }
+
+func TestGatewayInvalidThinkingDisplayRequestEvidence(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	activateDiscoveryPresets(t, s)
+	service, _ := s.protocolService()
+	upstream, _ := service.Pin(protocol.PresetAnthropicID)
+	var calls atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(500)
+	}))
+	defer provider.Close()
+	setupGatewayModel(t, s, upstream, provider.URL)
+	for _, stream := range []bool{false, true} {
+		body := fmt.Sprintf(`{"model":"group","max_tokens":8192,"stream":%v,"thinking":{"type":"adaptive","display":"future"},"messages":[{"role":"user","content":"hi"}]}`, stream)
+		req := httptest.NewRequest(http.MethodPost, "/gateway/anthropic-messages/v1/messages", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer gateway-test-token")
+		rec := httptest.NewRecorder()
+		s.engine.ServeHTTP(rec, req)
+		if rec.Code != 400 || calls.Load() != 0 {
+			t.Fatalf("status=%d upstream calls=%d", rec.Code, calls.Load())
+		}
+		logs := latestUsageRecords(t, s)
+		stored, found, err := s.store.GetUsageRecordJSON(t.Context(), logs[0].RequestID)
+		if err != nil || !found {
+			t.Fatal("missing persisted request evidence", found, err)
+		}
+		var record usageRecord
+		if err := json.Unmarshal(stored, &record); err != nil {
+			t.Fatal(err)
+		}
+		if len(record.ConversionIssues) != 1 {
+			t.Fatal(record.ConversionIssues)
+		}
+		issue := record.ConversionIssues[0]
+		if issue.Direction != protocol.DecodeRequest || issue.Stage != "request.validation" || issue.Protocol != upstream.Identity() || issue.Path != "/thinking/display" {
+			t.Fatal("invalid display logged as an upstream stream failure", issue)
+		}
+	}
+}

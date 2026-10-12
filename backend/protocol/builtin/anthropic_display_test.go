@@ -64,6 +64,10 @@ func TestAnthropicThinkingDisplayInvalidInput(t *testing.T) {
 			if !errors.As(err, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Path != "/thinking/display" || failure.Issues[0].Code != p.InvalidInput {
 				t.Fatal("missing field-level display validation", err)
 			}
+			issue := failure.Issues[0]
+			if issue.Direction != p.DecodeRequest || issue.Stage != "request.validation" || issue.Protocol != compiled.Identity() || strings.Contains(issue.Suggestion, "upstream stream") {
+				t.Fatal("request error misclassified", issue)
+			}
 		})
 	}
 }
