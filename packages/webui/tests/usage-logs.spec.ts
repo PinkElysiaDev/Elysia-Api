@@ -27,6 +27,33 @@ details.push(
   { ...base, requestId: 'gemini', requestedModelGroup: 'chat', modelName: 'gemini-flash', platform: 'gemini', sourceFormat: 'openai', relayMode: 'transform' },
 )
 
+test('normalized cache creation is an input component and absent counters stay unknown', async ({ page }) => {
+  const scenarios = [
+    { usage: { inputTokens: 180, cacheHitTokens: 30, cacheCreationTokens: 50, outputTokens: 200 }, total: '380', remainder: '未命中输入 100', creation: '缓存创建 50' },
+    { usage: { inputTokens: 0, cacheHitTokens: 0, cacheCreationTokens: 0, outputTokens: 0 }, total: '0', remainder: '未命中输入 0', creation: '缓存创建 0' },
+    { usage: { inputTokens: 100, outputTokens: 200 }, total: '300', remainder: '其余输入 100', creation: '缓存创建 —' },
+    { usage: { outputTokens: 200 }, total: '—', remainder: '其余输入 —', creation: '缓存创建 —' },
+  ]
+  for (const scenario of scenarios) {
+    await page.route('**/api/admin/usage/logs/gemini', (route) => route.fulfill({ json: { ok: true, data: { ...details[5], usage: scenario.usage } } }))
+    await page.getByRole('button', { name: '查看请求 gemini 详情', exact: true }).click()
+    const usage = page.getByLabel('Token 用量', { exact: true })
+    await expect(usage).toContainText(`合计 ${scenario.total}`)
+    await expect(usage).toContainText(scenario.remainder)
+    await expect(usage).toContainText(scenario.creation)
+    await page.getByRole('dialog', { name: '调用详情' }).getByRole('button', { name: '关闭', exact: true }).last().click()
+  }
+})
+
+test('TTL omission hint uses diagnostic identity instead of its translated explanation', async ({ page }) => {
+  await page.route('**/api/admin/usage/logs/gemini', (route) => route.fulfill({ json: { ok: true, data: {
+    ...details[5], usage: { inputTokens: 180, outputTokens: 200, cacheCreationTokens: 50 },
+    conversionIssues: [{ code: 'conversion_degraded', fidelity: 'lossy_compatible', ruleId: 'event-usage-projection', severity: 'warning', path: '/response/usage/details/ephemeral_5m_input_tokens', reason: 'A localized explanation', suggestion: '' }],
+  } } }))
+  await page.getByRole('button', { name: '查看请求 gemini 详情', exact: true }).click()
+  await expect(page.getByText('上游按 TTL 分桶上报的缓存创建明细已省略', { exact: false })).toBeVisible()
+})
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('elysia-webui.panel-token', 'test-only')
