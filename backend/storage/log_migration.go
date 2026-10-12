@@ -12,7 +12,11 @@ import (
 	"time"
 )
 
-const logLifecycleVersion = 2026092901
+const (
+	logLifecycleVersion        = 2026092901
+	logContentBatchSize        = 32
+	logAssetReferenceBatchSize = 500
+)
 
 // migrationProgressInterval 是迁移进度日志的最小间隔(时间驱动,比行数
 // 驱动在大正文行与快段之间输出更均匀)。
@@ -127,180 +131,23 @@ func (s *Store) migrateLogLifecycle(ctx context.Context) error {
 	// 反复中断(每次回滚本身也要付出同等代价)。
 	log.Printf("[migration] rebuilding content accounting and asset references in one transaction (full table scan; may take a long while on large databases — stopping midway rolls everything back and restarts from scratch next boot)")
 	err = s.withTx(ctx, func(tx *sql.Tx) error {
-		for _, col := range []struct{ table, name, definition string }{
-			{"usage_records", "content_bytes", "INTEGER NOT NULL DEFAULT 0"},
-			{"system_logs", "content_bytes", "INTEGER NOT NULL DEFAULT 0"},
-			{"system_logs", "created_ms", "INTEGER NOT NULL DEFAULT 0"},
-		} {
-			var exists int
-			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info(?) WHERE name=?`, col.table, col.name).Scan(&exists); err != nil {
-				return err
-			}
-			if exists == 0 {
-				if _, err := tx.ExecContext(ctx, `ALTER TABLE `+col.table+` ADD COLUMN `+col.name+` `+col.definition); err != nil {
-					return err
-				}
-			}
-		}
-		// usage_records 的 content_bytes 回填挪进下方 keyset 扫描逐批执行——
-		// 单条全表 UPDATE 在大库上以小时计且无行级进度;system_logs 通常很小,
-		// 保留单条语句。
-		for _, stmt := range []string{
-			`UPDATE system_logs SET content_bytes=length(CAST(created_at||level||message||fields_json AS BLOB)), created_ms=CAST(round((julianday(created_at)-2440587.5)*86400000) AS INTEGER)`,
-			`CREATE INDEX IF NOT EXISTS idx_usage_content ON usage_records(content_bytes)`,
-			`CREATE INDEX IF NOT EXISTS idx_system_content ON system_logs(content_bytes)`,
-			`CREATE INDEX IF NOT EXISTS idx_system_time ON system_logs(created_ms, id)`,
-			`CREATE TABLE IF NOT EXISTS usage_assets (asset_file TEXT PRIMARY KEY, size_bytes INTEGER NOT NULL CHECK(size_bytes>=0))`,
-			`DROP INDEX IF EXISTS idx_usage_asset_refs_request`,
-			`ALTER TABLE usage_asset_refs RENAME TO log_migration_refs`,
-			`CREATE TABLE usage_asset_refs (asset_file TEXT NOT NULL REFERENCES usage_assets(asset_file), request_id TEXT NOT NULL REFERENCES usage_records(request_id) ON DELETE CASCADE, PRIMARY KEY(asset_file, request_id))`,
-			`CREATE INDEX idx_usage_asset_refs_request ON usage_asset_refs(request_id)`,
-		} {
-			if _, err := tx.ExecContext(ctx, stmt); err != nil {
-				return err
-			}
-		}
-		// Keyset batches bound migration memory even with multi-megabyte bodies.
-		// 批大小 32:查询往返比 16 减半;批内存上限 = 32 行正文之和(极端多兆
-		// 正文时峰值约百余 MB,常规 KB 级记录远低于此)。
-		var totalRecords int
-		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM usage_records`).Scan(&totalRecords); err != nil {
+		if err := prepareLogContentSchema(ctx, tx); err != nil {
 			return err
 		}
-		log.Printf("[migration] content accounting: %d record(s) to scan", totalRecords)
-		var last int64
-		scanned := 0
-		lastProgressAt := time.Time{}
-		for {
-			rows, err := tx.QueryContext(ctx, `SELECT rowid, request_id, record_json FROM usage_records WHERE rowid>? ORDER BY rowid LIMIT 32`, last)
-			if err != nil {
-				return err
-			}
-			type ref struct{ id, file string }
-			var refs []ref
-			first, batchEnd := int64(0), last
-			n := 0
-			for rows.Next() {
-				var id, body string
-				if err := rows.Scan(&last, &id, &body); err != nil {
-					rows.Close()
-					return err
-				}
-				if n == 0 {
-					first = last
-				}
-				batchEnd = last
-				n++
-				for _, match := range assetRefPattern.FindAllStringSubmatch(body, -1) {
-					refs = append(refs, ref{id, match[1]})
-				}
-			}
-			err = rows.Err()
-			rows.Close()
-			if err != nil {
-				return err
-			}
-			if n == 0 {
-				break
-			}
-			// 批内回填 content_bytes(原单条全表 UPDATE 的分批等价物)。
-			if _, err := tx.ExecContext(ctx, `UPDATE usage_records SET content_bytes=length(CAST(record_json AS BLOB)) WHERE rowid>=? AND rowid<=?`, first, batchEnd); err != nil {
-				return err
-			}
-			scanned += n
-			if time.Since(lastProgressAt) >= migrationProgressInterval {
-				log.Printf("[migration] content accounting: %d/%d (%.1f%%)", scanned, totalRecords, float64(scanned)/float64(totalRecords)*100)
-				lastProgressAt = time.Now()
-			}
-			for _, ref := range refs {
-				if err := migrateAssetRef(ctx, tx, root, ref.id, ref.file); err != nil {
-					return err
-				}
-			}
-		}
-		log.Printf("[migration] content accounting finished (%d record(s))", scanned)
-		last = 0
-		migratedRefs := 0
-		var totalRefs int
-		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM log_migration_refs`).Scan(&totalRefs); err != nil {
+		if err := backfillLogContent(ctx, tx, root); err != nil {
 			return err
 		}
-		if totalRefs > 0 {
-			log.Printf("[migration] asset reference rebuild: %d reference(s) to process", totalRefs)
-		}
-		lastProgressAt = time.Time{}
-		for {
-			rows, err := tx.QueryContext(ctx, `SELECT r.rowid,r.request_id,r.asset_file FROM log_migration_refs r JOIN usage_records u ON u.request_id=r.request_id WHERE r.rowid>? ORDER BY r.rowid LIMIT 500`, last)
-			if err != nil {
-				return err
-			}
-			type ref struct{ id, file string }
-			var refs []ref
-			for rows.Next() {
-				var v ref
-				if err := rows.Scan(&last, &v.id, &v.file); err != nil {
-					rows.Close()
-					return err
-				}
-				refs = append(refs, v)
-			}
-			err = rows.Err()
-			rows.Close()
-			if err != nil {
-				return err
-			}
-			if len(refs) == 0 {
-				break
-			}
-			migratedRefs += len(refs)
-			if time.Since(lastProgressAt) >= migrationProgressInterval {
-				log.Printf("[migration] asset reference rebuild: %d/%d", migratedRefs, totalRefs)
-				lastProgressAt = time.Now()
-			}
-			for _, v := range refs {
-				if err := migrateAssetRef(ctx, tx, root, v.id, v.file); err != nil {
-					return err
-				}
-			}
-		}
-		log.Printf("[migration] asset reference rebuild finished (%d reference(s))", migratedRefs)
-		if _, err := tx.ExecContext(ctx, `DROP TABLE log_migration_refs`); err != nil {
+		if err := rebuildLogAssetReferences(ctx, tx, root); err != nil {
 			return err
 		}
-
-		return nil
+		_, err := tx.ExecContext(ctx, `DROP TABLE log_migration_refs`)
+		return err
 	})
 	if err != nil {
 		return fmt.Errorf("migrate log content: %w", err)
 	}
-	var mode int
-	if err := s.db.QueryRowContext(ctx, `PRAGMA auto_vacuum`).Scan(&mode); err != nil {
+	if err := s.enableLogReclamation(ctx); err != nil {
 		return err
-	}
-	if mode != 2 {
-		log.Printf("[migration] enabling incremental database reclamation (one-time VACUUM, duration scales with database size)")
-		if _, err := s.db.ExecContext(ctx, `PRAGMA auto_vacuum=INCREMENTAL`); err != nil {
-			return err
-		}
-		if err := s.runWithHeartbeat(ctx, "database vacuum", func() error {
-			_, err := s.db.ExecContext(ctx, `VACUUM`)
-			return err
-		}); err != nil {
-			return err
-		}
-	}
-	if err := s.db.QueryRowContext(ctx, `PRAGMA auto_vacuum`).Scan(&mode); err != nil {
-		return err
-	}
-	if mode != 2 {
-		return fmt.Errorf("incremental reclamation unavailable: auto_vacuum=%d", mode)
-	}
-	cp, err := s.Checkpoint(ctx, true)
-	if err != nil {
-		return err
-	}
-	if cp.Busy {
-		return fmt.Errorf("log migration checkpoint blocked by another database user")
 	}
 	_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(?,?)`, logLifecycleVersion, nowString())
 	if err == nil {
@@ -393,4 +240,186 @@ func migrateAssetRef(ctx context.Context, tx *sql.Tx, root, id, file string) err
 		return fmt.Errorf("attachment is not a regular file: %s", file)
 	}
 	return saveUsageAssetTx(ctx, tx, id, UsageAsset{File: file, SizeBytes: info.Size()})
+}
+
+func prepareLogContentSchema(ctx context.Context, tx *sql.Tx) error {
+	for _, col := range []struct{ table, name, definition string }{
+		{"usage_records", "content_bytes", "INTEGER NOT NULL DEFAULT 0"},
+		{"system_logs", "content_bytes", "INTEGER NOT NULL DEFAULT 0"},
+		{"system_logs", "created_ms", "INTEGER NOT NULL DEFAULT 0"},
+	} {
+		var exists int
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info(?) WHERE name=?`, col.table, col.name).Scan(&exists); err != nil {
+			return err
+		}
+		if exists == 0 {
+			if _, err := tx.ExecContext(ctx, `ALTER TABLE `+col.table+` ADD COLUMN `+col.name+` `+col.definition); err != nil {
+				return err
+			}
+		}
+	}
+	// usage_records 的 content_bytes 回填挪进下方 keyset 扫描逐批执行——
+	// 单条全表 UPDATE 在大库上以小时计且无行级进度;system_logs 通常很小,
+	// 保留单条语句。
+	for _, stmt := range []string{
+		`UPDATE system_logs SET content_bytes=length(CAST(created_at||level||message||fields_json AS BLOB)), created_ms=CAST(round((julianday(created_at)-2440587.5)*86400000) AS INTEGER)`,
+		`CREATE INDEX IF NOT EXISTS idx_usage_content ON usage_records(content_bytes)`,
+		`CREATE INDEX IF NOT EXISTS idx_system_content ON system_logs(content_bytes)`,
+		`CREATE INDEX IF NOT EXISTS idx_system_time ON system_logs(created_ms, id)`,
+		`CREATE TABLE IF NOT EXISTS usage_assets (asset_file TEXT PRIMARY KEY, size_bytes INTEGER NOT NULL CHECK(size_bytes>=0))`,
+		`DROP INDEX IF EXISTS idx_usage_asset_refs_request`,
+		`ALTER TABLE usage_asset_refs RENAME TO log_migration_refs`,
+		`CREATE TABLE usage_asset_refs (asset_file TEXT NOT NULL REFERENCES usage_assets(asset_file), request_id TEXT NOT NULL REFERENCES usage_records(request_id) ON DELETE CASCADE, PRIMARY KEY(asset_file, request_id))`,
+		`CREATE INDEX idx_usage_asset_refs_request ON usage_asset_refs(request_id)`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func backfillLogContent(ctx context.Context, tx *sql.Tx, root string) error {
+	// Keyset batches bound migration memory even with multi-megabyte bodies.
+	// 批大小 32:查询往返比 16 减半;批内存上限 = 32 行正文之和(极端多兆
+	// 正文时峰值约百余 MB,常规 KB 级记录远低于此)。
+	var totalRecords int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM usage_records`).Scan(&totalRecords); err != nil {
+		return err
+	}
+	log.Printf("[migration] content accounting: %d record(s) to scan", totalRecords)
+	var last int64
+	scanned := 0
+	lastProgressAt := time.Time{}
+	for {
+		rows, err := tx.QueryContext(ctx, `SELECT rowid, request_id, record_json FROM usage_records WHERE rowid>? ORDER BY rowid LIMIT ?`, last, logContentBatchSize)
+		if err != nil {
+			return err
+		}
+		type ref struct{ id, file string }
+		var refs []ref
+		first, batchEnd := int64(0), last
+		n := 0
+		for rows.Next() {
+			var id, body string
+			if err := rows.Scan(&last, &id, &body); err != nil {
+				rows.Close()
+				return err
+			}
+			if n == 0 {
+				first = last
+			}
+			batchEnd = last
+			n++
+			for _, match := range assetRefPattern.FindAllStringSubmatch(body, -1) {
+				refs = append(refs, ref{id, match[1]})
+			}
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			break
+		}
+		// 批内回填 content_bytes(原单条全表 UPDATE 的分批等价物)。
+		if _, err := tx.ExecContext(ctx, `UPDATE usage_records SET content_bytes=length(CAST(record_json AS BLOB)) WHERE rowid>=? AND rowid<=?`, first, batchEnd); err != nil {
+			return err
+		}
+		scanned += n
+		if time.Since(lastProgressAt) >= migrationProgressInterval {
+			log.Printf("[migration] content accounting: %d/%d (%.1f%%)", scanned, totalRecords, float64(scanned)/float64(totalRecords)*100)
+			lastProgressAt = time.Now()
+		}
+		for _, ref := range refs {
+			if err := migrateAssetRef(ctx, tx, root, ref.id, ref.file); err != nil {
+				return err
+			}
+		}
+	}
+	log.Printf("[migration] content accounting finished (%d record(s))", scanned)
+	return nil
+}
+
+func rebuildLogAssetReferences(ctx context.Context, tx *sql.Tx, root string) error {
+	var last int64
+	migratedRefs := 0
+	var totalRefs int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM log_migration_refs`).Scan(&totalRefs); err != nil {
+		return err
+	}
+	if totalRefs > 0 {
+		log.Printf("[migration] asset reference rebuild: %d reference(s) to process", totalRefs)
+	}
+	lastProgressAt := time.Time{}
+	for {
+		rows, err := tx.QueryContext(ctx, `SELECT r.rowid,r.request_id,r.asset_file FROM log_migration_refs r JOIN usage_records u ON u.request_id=r.request_id WHERE r.rowid>? ORDER BY r.rowid LIMIT ?`, last, logAssetReferenceBatchSize)
+		if err != nil {
+			return err
+		}
+		type ref struct{ id, file string }
+		var refs []ref
+		for rows.Next() {
+			var v ref
+			if err := rows.Scan(&last, &v.id, &v.file); err != nil {
+				rows.Close()
+				return err
+			}
+			refs = append(refs, v)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		if len(refs) == 0 {
+			break
+		}
+		migratedRefs += len(refs)
+		if time.Since(lastProgressAt) >= migrationProgressInterval {
+			log.Printf("[migration] asset reference rebuild: %d/%d", migratedRefs, totalRefs)
+			lastProgressAt = time.Now()
+		}
+		for _, v := range refs {
+			if err := migrateAssetRef(ctx, tx, root, v.id, v.file); err != nil {
+				return err
+			}
+		}
+	}
+	log.Printf("[migration] asset reference rebuild finished (%d reference(s))", migratedRefs)
+	return nil
+}
+
+func (s *Store) enableLogReclamation(ctx context.Context) error {
+	var mode int
+	if err := s.db.QueryRowContext(ctx, `PRAGMA auto_vacuum`).Scan(&mode); err != nil {
+		return err
+	}
+	if mode != 2 {
+		log.Printf("[migration] enabling incremental database reclamation (one-time VACUUM, duration scales with database size)")
+		if _, err := s.db.ExecContext(ctx, `PRAGMA auto_vacuum=INCREMENTAL`); err != nil {
+			return err
+		}
+		if err := s.runWithHeartbeat(ctx, "database vacuum", func() error {
+			_, err := s.db.ExecContext(ctx, `VACUUM`)
+			return err
+		}); err != nil {
+			return err
+		}
+	}
+	if err := s.db.QueryRowContext(ctx, `PRAGMA auto_vacuum`).Scan(&mode); err != nil {
+		return err
+	}
+	if mode != 2 {
+		return fmt.Errorf("incremental reclamation unavailable: auto_vacuum=%d", mode)
+	}
+	cp, err := s.Checkpoint(ctx, true)
+	if err != nil {
+		return err
+	}
+	if cp.Busy {
+		return fmt.Errorf("log migration checkpoint blocked by another database user")
+	}
+	return nil
 }

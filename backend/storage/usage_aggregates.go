@@ -130,16 +130,7 @@ func scanUsageDailyRows(ctx context.Context, qe sqlQueryer, q UsageQuery, offset
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []usageDayRow{}
-	for rows.Next() {
-		var r usageDayRow
-		if err := rows.Scan(&r.dayKey, &r.model, &r.requests, &r.success, &r.inputTokens, &r.outputTokens, &r.cacheHitTokens, &r.cacheCreationTokens, &r.totalTokens); err != nil {
-			return nil, err
-		}
-		out = append(out, r)
-	}
-	return out, rows.Err()
+	return decodeUsageDayRows(rows)
 }
 
 // usageDayKeyDate 把整数日桶格式化为 YYYY-MM-DD，与 SQLite date(...,'unixepoch') 输出一致。

@@ -181,16 +181,7 @@ func scanUsageDailyRollupRows(ctx context.Context, qe sqlQueryer, q UsageQuery, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []usageDayRow{}
-	for rows.Next() {
-		var r usageDayRow
-		if err := rows.Scan(&r.dayKey, &r.model, &r.requests, &r.success, &r.inputTokens, &r.outputTokens, &r.cacheHitTokens, &r.cacheCreationTokens, &r.totalTokens); err != nil {
-			return nil, err
-		}
-		out = append(out, r)
-	}
-	return out, rows.Err()
+	return decodeUsageDayRows(rows)
 }
 
 // ---------- UsageByModel ----------
@@ -213,16 +204,7 @@ func scanUsageByModelRawRows(ctx context.Context, qe sqlQueryer, q UsageQuery) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []usageModelRow{}
-	for rows.Next() {
-		var r usageModelRow
-		if err := rows.Scan(&r.model, &r.requests, &r.failed, &r.tokens); err != nil {
-			return nil, err
-		}
-		out = append(out, r)
-	}
-	return out, rows.Err()
+	return decodeUsageModelRows(rows)
 }
 
 // scanUsageByModelRollupRows 对 rollup 表按模型聚合。
@@ -236,16 +218,7 @@ func scanUsageByModelRollupRows(ctx context.Context, qe sqlQueryer, q UsageQuery
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []usageModelRow{}
-	for rows.Next() {
-		var r usageModelRow
-		if err := rows.Scan(&r.model, &r.requests, &r.failed, &r.tokens); err != nil {
-			return nil, err
-		}
-		out = append(out, r)
-	}
-	return out, rows.Err()
+	return decodeUsageModelRows(rows)
 }
 
 // ---------- 计数（logs 分页 total） ----------
