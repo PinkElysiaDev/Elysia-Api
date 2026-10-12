@@ -4,9 +4,11 @@
 
 编码前，调用记录会保存候选模型、模型源、目标协议、上游修订、目标路径和 `cacheSynthesis` 开关。`systemStructure.before/after` 记录缓存合成前后的 system/developer 节点路径、类型、元数据字段名和缓存数量，最多 64 个节点；不记录提示词、字段值、资源 ID 或凭据。该诊断不依赖正文采集开关，可在调用详情展开，并随完整日志导出。
 
-不合法的 system 消息容器元数据会报出 `/content/<index>/<field>`，错误的 `protocol` 信息标识实际目标协议；合法的缓存仍位于内容块上，TTL 与扩展字段保留。不能清空元数据或关闭校验来绕过此错误。
+Anthropic 请求允许 `messages[].role="system"`。请求解码和编码均使用 Anthropic 模块时，默认保留这些消息的原位置、消息级 `output_config` 和内容块缓存；顶层 `system` 仍在顶层。模型名路由改写不会移动系统消息。该行为同样适用于使用相同模块的自定义协议，响应角色仍要求 `assistant`。
 
-原远端故障尚未确认修复。部署包含诊断的版本后，应使用原 Claude Code 请求与原模型源配置重试，检查 `targetFormat`、`upstreamRevision`、`cacheSynthesis`、`systemStructure` 和 `conversionIssues`。保留具体触发字段的脱敏结构，补成回归用例，再针对其产生位置修复。当前模拟上游用例通过，不代表原远端问题已消失。
+跨协议转换或管理员显式启用 `system_instruction_hoist` 时，仍需检查作用域及元数据能否迁移。不能通过清空元数据绕过检查。拒绝诊断使用 `conversion.request / encode_request`，优先指向原始字段（例如 `/messages/1/output_config`），并标识实际目标协议、规则及策略；没有来源路径时才使用 `/content/<index>`。调用记录与预览保留此前已经产生的诊断。
+
+本次日志的结构已提取成合成脱敏夹具并通过模拟上游回归，原 Claude Code 与原模型源尚待复测。部署后检查 `targetFormat`、`upstreamRevision`、`cacheSynthesis`、`systemStructure` 和 `conversionIssues`；本地通过不能替代原渠道验收。官方 SDK 类型依据和验收范围见 [Anthropic system 消息修复记录](protocol-anthropic-system-2026-10-12.md)。
 
 ## Agent 模型能力
 
