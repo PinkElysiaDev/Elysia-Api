@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -374,18 +375,13 @@ func (c *Config) saveLocked() error {
 		delete(raw, "openBrowserOnStart")
 	}
 	delete(raw, "allowFakeIPOutbound")
-	if c.Outbound.DeniedIPRanges != nil {
-		raw["outbound"], _ = json.Marshal(map[string][]string{"deniedIpRanges": c.Outbound.DeniedIPRanges})
-	} else {
-		delete(raw, "outbound")
-	}
 	for key, value := range map[string]any{
 		"usageLog": c.UsageLog, "systemLog": c.SystemLog, "modelCatalog": c.ModelCatalog,
-		"agentRemote": c.AgentRemote, "agent": c.Agent,
+		"agentRemote": c.AgentRemote, "agent": c.Agent, "outbound": c.Outbound,
 	} {
-		encoded, err := json.Marshal(value)
+		encoded, err := mergeConfigSection(raw[key], value)
 		if err != nil {
-			return err
+			return fmt.Errorf("save configuration section %s: %w", key, err)
 		}
 		if string(encoded) == "{}" {
 			delete(raw, key)
@@ -402,6 +398,45 @@ func (c *Config) saveLocked() error {
 		return err
 	}
 	return WriteFileAtomic(c.path, out, info.Mode().Perm())
+}
+
+// mergeConfigSection accepts the flat, JSON-tagged settings structs saved above.
+// It replaces fields owned by the current section type while
+// retaining unknown fields as raw JSON. Omitted known fields must also be removed
+// so resetting a setting cannot resurrect its previous value on Reload.
+func mergeConfigSection(original json.RawMessage, section any) ([]byte, error) {
+	fields := make(map[string]json.RawMessage)
+	if len(original) > 0 {
+		if err := json.Unmarshal(original, &fields); err != nil {
+			return nil, err
+		}
+		if fields == nil {
+			fields = make(map[string]json.RawMessage)
+		}
+	}
+	sectionType := reflect.TypeOf(section)
+	for index := range sectionType.NumField() {
+		name, _, _ := strings.Cut(sectionType.Field(index).Tag.Get("json"), ",")
+		for key := range fields {
+			// encoding/json accepts case-insensitive names for these fields.
+			if strings.EqualFold(key, name) {
+				delete(fields, key)
+			}
+		}
+	}
+	encoded, err := json.Marshal(section)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		return nil, err
+	}
+	// An explicit empty denylist allows all addresses; omitting it restores the
+	// default denylist. Keep this distinction when the struct's omitempty applies.
+	if outbound, isOutbound := section.(OutboundConfig); isOutbound && outbound.DeniedIPRanges != nil {
+		fields["deniedIpRanges"], _ = json.Marshal(outbound.DeniedIPRanges)
+	}
+	return json.Marshal(fields)
 }
 
 // WriteFileAtomic 以"写临时文件 + fsync + 原子重命名"落盘：进程在写入中途
