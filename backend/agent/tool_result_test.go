@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -10,6 +11,43 @@ import (
 type secretResultTool struct {
 	*fakeTool
 	isParallel bool
+}
+
+type failingToolResultStore struct {
+	*fakeStore
+	attempted json.RawMessage
+}
+
+func (store *failingToolResultStore) AppendMessage(ctx context.Context, sessionID, role string, content any, model string, usage json.RawMessage) (int, error) {
+	if role == RoleToolResult {
+		store.attempted, _ = json.Marshal(content)
+		return 0, errors.New("injected tool result write failure")
+	}
+	return store.fakeStore.AppendMessage(ctx, sessionID, role, content, model, usage)
+}
+
+func TestToolResultWriteFailureKeepsModelCopyRedacted(t *testing.T) {
+	const secret = "private-marker-generated-secret"
+	store := newFakeStore().seed(&Session{ID: "write-failure", Status: StatusIdle, Settings: Settings{ModelName: "test"}})
+	failing := &failingToolResultStore{fakeStore: store}
+	tool := &fakeTool{name: "secret", result: ToolResult{OK: true, Summary: secret, Data: json.RawMessage(`{"key":"` + secret + `","count":9007199254740993}`), SecretValues: []string{secret}}}
+	caller := &fakeCaller{responses: []scriptedResponse{{result: &CallResult{ToolCalls: []FunctionCall{toolCall("one", "secret", `{}`)}}}, {result: &CallResult{Text: "done"}}}}
+	engine := newTestEngine(caller, store, tool)
+	engine.store = failing
+	events, err := engine.RunTurn(t.Context(), "write-failure", &UserContent{Text: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	collectEvents(t, events)
+	if tool.executions != 1 || caller.requestCount() != 2 {
+		t.Fatalf("executions=%d, model calls=%d", tool.executions, caller.requestCount())
+	}
+	request, _ := json.Marshal(caller.lastRequest())
+	for _, raw := range [][]byte{request, failing.attempted} {
+		if strings.Contains(string(raw), secret) || !strings.Contains(string(raw), "9007199254740993") {
+			t.Fatalf("unsafe result after storage failure: %s", raw)
+		}
+	}
 }
 
 func (tool *secretResultTool) Meta() ToolMeta { return ToolMeta{ConcurrentSafe: tool.isParallel} }
