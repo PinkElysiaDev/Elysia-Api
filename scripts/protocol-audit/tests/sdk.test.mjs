@@ -53,6 +53,30 @@ for (const stream of [false, true]) test(`Google SDK serializes reported safety 
   assert.deepEqual(body.systemInstruction, { role: 'user', parts: [{ text: 'Follow the user instructions.' }] })
 })
 
+for (const stream of [false, true]) test(`Anthropic Beta SDK preserves thinking display updates (${stream ? 'SSE' : 'JSON'})`, { skip: !consume && 'SDK dependencies unavailable' }, async t => {
+  const { default: Anthropic } = await import('@anthropic-ai/sdk')
+  const local = await endpoint(t, replyWire('anthropic', 'OK', false, stream), stream)
+  const requests = []
+  const beta = 'thinking-display-updates-2026-08-18'
+  const body = { model: 'test', max_tokens: 32768, stream, thinking: { type: 'adaptive', display: 'updates' }, messages: [{ role: 'user', content: 'Reply OK.' }, { role: 'system', content: 'Be concise.', output_config: { effort: 'high' } }] }
+  const client = new Anthropic({
+    baseURL: local.options.baseUrl, apiKey: local.options.apiKey, maxRetries: 0, timeout: 2000,
+    fetch: async (input, init) => {
+      const request = new Request(input, init)
+      requests.push({ body: await request.clone().json(), beta: request.headers.get('anthropic-beta') })
+      return fetch(request)
+    },
+  })
+  const response = await client.beta.messages.create({ ...body, betas: [beta] })
+  if (stream) {
+    const events = []
+    for await (const event of response) events.push(event)
+    assert.ok(events.every(event => event.type !== 'error'))
+    assert.equal(events.at(-1).type, 'message_stop')
+  } else assert.equal(response.content[0].text, 'OK')
+  assert.deepEqual(requests, [{ body, beta }])
+})
+
 for (const protocol of ['chat', 'responses', 'anthropic', 'gemini']) for (const stream of [false, true]) {
   test(`${protocol} ${stream ? 'SSE' : 'JSON'} SDK sends HTTP and records request, response and versions`, { skip: !consume && 'Run npm install in the script directory for SDK self-tests' }, async t => {
     const wire = replyWire(protocol, 'OK', false, stream), f = await endpoint(t, wire, stream)
