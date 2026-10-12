@@ -8,7 +8,7 @@ Anthropic 请求允许 `messages[].role="system"`。请求解码和编码均使�
 
 跨协议转换或管理员显式启用 `system_instruction_hoist` 时，仍需检查作用域及元数据能否迁移。不能通过清空元数据绕过检查。拒绝诊断使用 `conversion.request / encode_request`，优先指向原始字段（例如 `/messages/1/output_config`），并标识实际目标协议、规则及策略；没有来源路径时才使用 `/content/<index>`。调用记录与预览保留此前已经产生的诊断。
 
-本次日志的结构已提取成合成脱敏夹具并通过模拟上游回归，原 Claude Code 与原模型源尚待复测。部署后检查 `targetFormat`、`upstreamRevision`、`cacheSynthesis`、`systemStructure` 和 `conversionIssues`；本地通过不能替代原渠道验收。官方 SDK 类型依据和验收范围见 [Anthropic system 消息修复记录](protocol-anthropic-system-2026-10-12.md)。
+本次日志的结构已提取成合成脱敏夹具，并完成本地回归及 moyuu.cc 当前配置模型的真实 system 专项。原 Claude Code 客户端尚待复测；默认模型能力规则对顶层思考参数仍有已记录的适配，不能宣称所有字段完全保真。部署后检查 `targetFormat`、`upstreamRevision`、`cacheSynthesis`、`systemStructure` 和 `conversionIssues`。官方 SDK 类型依据、真实结果与覆盖边界见 [Anthropic system 消息修复记录](protocol-anthropic-system-2026-10-12.md)。
 
 ## Agent 模型能力
 

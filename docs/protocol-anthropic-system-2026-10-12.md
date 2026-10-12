@@ -46,8 +46,31 @@
 - `node scripts/build-standalone.mjs` 通过：Windows、Linux、macOS 的 amd64/arm64 六目标；构建包含前端 TypeScript 检查及生产构建。macOS/Linux 仅为交叉编译，不代表原生运行验收。
 - `node scripts/smoke-standalone.mjs` 通过：Windows amd64 产物在隔离新库启动，内嵌提交 `6c6215e`、编译器 `dev.65`，四个预置实际加载且运行时就绪，内嵌控制台可访问。该产物 SHA-256 为 `5dc2079644faed5193fa77893d4aef73e398791ac28ec07e5955d585f6efbf19`。
 
-本地状态：**本地修复已验证，原环境待确认**。构建产物对应上述代码与测试提交；本文件及源码清单作为后续文档提交保存，不改变协议执行代码。
+初次交付状态：**本地修复已验证，原环境待确认**。构建产物对应上述代码与测试提交；本文件及源码清单作为后续文档提交保存，不改变协议执行代码。
 
-## 原环境验收状态
+## 2026-10-12 真实渠道补验
 
-未执行真实供应商请求，未将完整用户请求发送至远端，也未确认原 Claude Code 与原渠道成功消费。模拟上游和本地 SDK 只证明网关结构处理与客户端消费行为。原环境复测成功前，不关闭原故障；部署时应核对提交和编译器版本，再记录原渠道请求、修订、绑定、策略与客户端结果。
+用户追加授权后，于北京时间 17:58–18:02 使用 `config.local.json` 中的 `moyuu.cc / claude-haiku-4-5` 真实渠道执行专项。测试源码提交 `358ff82`、编译器 `dev.65`，使用隔离临时网关与数据库，关闭自动重试，沿用并发上限 32、单次最大输出 32768 tokens。仅发送合成内容；未发送用户原日志正文，未修改正式模型源、日常客户端或凭据配置。
+
+本轮为 Anthropic 同协议专项，并未重跑四协议全部六组。共 34 次生成 HTTP 请求；返回历史在内存中原样用于续聊，落盘签名脱敏。工具第一轮未返回 thinking 块，因此这些用例不能证明真实思考签名在工具续传时被供应商接受。临时数据库在证据导出后删除。
+
+| 测试 | 结果 |
+| --- | --- |
+| 默认绑定的 28 个用例 | 26 通过、2 个完整请求保真断言失败；两项失败也收到 HTTP 200，不能据此算保真成功 |
+| 原 system 误拒结构 | 直连和网关 JSON/SSE 均通过；消息位置、消息级 `output_config`、内容块缓存均保留，无上提诊断 |
+| 工具两轮 | 直连和网关 JSON/SSE 均完成实际工具调用与后续响应，保留真实返回历史；只回填合成工具结果，不执行任意模型指令 |
+| 客户端 | `@anthropic-ai/sdk 0.132.1`、`@ai-sdk/anthropic 4.0.78` 标准 JSON/SSE 真实消费通过，流完整读取且无隐藏错误；另有官方 SDK 携带消息内 system 的请求通过 |
+| 临时渠道能力覆盖对照 | 完整夹具 JSON/SSE 及官方 SDK 共 4 项通过，出站请求除模型名路由改写外完全一致 |
+
+默认路径两项差异来自已有 `reasoning-controls`：内置能力将 `claude-haiku-4-5` 归为手动预算模型，将顶层 `thinking:{type:"adaptive"}` 投影为 `thinking:{type:"enabled",budget_tokens:16384}`，省略顶层 `output_config:{effort:"medium"}`。调用记录包含 `/reasoning/budget`、`/reasoning/effort` 的有损诊断；消息级 `output_config` 没有被删除。直连当前渠道接受原请求并返回 thinking/text，但这不证明供应商对 effort 的实际实现或所有同名模型都具有相同能力。
+
+对照仅在另一临时实例中使用既有绑定 `reasoning` 覆盖：`kind:adaptive`、`levels:[medium]`、`defaultMode:auto`、`defaultEffort:medium`。它验证声明匹配时可以完整转发，不修改集中模型能力表，也不将原来的两项失败改记为通过。生产是否采用覆盖，仍应根据实际渠道能力决定；本次未变更协议执行代码。
+
+两轮入口/上游修订均为 `feb70689b8723b8fa87ee43a8154871ec396ca0cee19475055124b6401c0f2b5`，有效策略哈希均为 `5da8e43fbc14be0819c10ddcaf291b71c045e251efe014249ec1316a063cd8a0`。第二轮另外记录完整能力覆盖及重新生成的绑定组合证据；策略哈希不包含该能力覆盖，不能单凭它判断两轮上下文相同。
+
+本地脱敏报告及复现脚本位于以下被 Git 忽略的目录：
+
+- `scripts/protocol-audit/results/anthropic-system-live-2026-10-12/`：默认绑定，`report.json`、HTTP、调用记录、事件顺序及运行时证据。
+- `scripts/protocol-audit/results/anthropic-system-live-2026-10-12-capability/`：能力覆盖对照，包含相同类型的证据。
+
+最终状态：**本地回归通过；原渠道的 system 专项通过；默认完整请求仍存在已记录的思考参数适配；原 Claude Code 客户端未复测。** 配置模型为 `claude-haiku-4-5`，原日志模型为 `claude-haiku-5-5`，不能把本轮结果写成原客户端与原模型故障已完全关闭。
