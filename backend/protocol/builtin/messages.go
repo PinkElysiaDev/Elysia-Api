@@ -2,6 +2,8 @@ package builtin
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	p "github.com/elysia-api/backend/protocol"
 )
@@ -203,7 +205,8 @@ func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, opti
 		if err != nil {
 			return p.Value{}, p.Value{}, err
 		}
-		if (role == "system" || role == "developer") && (adapter.name == Anthropic || adapter.name == Gemini) {
+		isNativeSystemMessage := adapter.name == Anthropic && direction == p.EncodeRequest && role == "system" && hasNativeSystemMessage(node, options)
+		if !isNativeSystemMessage && (role == "system" || role == "developer") && (adapter.name == Anthropic || adapter.name == Gemini) {
 			annotated := !node.ID.IsZero() || !node.Status.IsZero() || len(node.Attributes) > 0 || len(node.Cache) > 0 || len(node.Resources) > 0
 			if hasConversation || annotated || role == "developer" {
 				return p.Value{}, p.Value{}, unsupported(fmt.Sprintf("/content/%d", index), "target requires top-level system instructions; enable system_instruction_hoist or provide an explicit mapping")
@@ -299,6 +302,25 @@ func (adapter module) encodeMessages(nodes []p.Node, direction p.Direction, opti
 		}
 	}
 	return array(messages), systemValue, nil
+}
+
+// A system message and a top-level system envelope have different scope. Only
+// an original message from the matching wire can retain its inline placement;
+// foreign or newly authored instructions still need the semantic hoist rule.
+func hasNativeSystemMessage(node p.Node, options p.EvaluationContext) bool {
+	if node.Native == nil || !p.CanPreserveNative(node.Native.Source, p.Target{Protocol: options.Identity(), Direction: p.EncodeRequest}) {
+		return false
+	}
+	index, hasMessagePath := strings.CutPrefix(node.Native.Source.Path, "/messages/")
+	if !hasMessagePath {
+		return false
+	}
+	position, err := strconv.Atoi(index)
+	if err != nil || position < 0 {
+		return false
+	}
+	fields, err := node.Native.Value.ReadObject()
+	return err == nil && fields["role"] == p.StringValue("system")
 }
 
 func (adapter module) encodeChatMessage(node p.Node, direction p.Direction, options p.EvaluationContext) ([]p.Value, error) {

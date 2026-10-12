@@ -67,7 +67,7 @@ func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 			settings, _ := EncodeValue(responsesStorageOptions{SourceCodec: source, TargetCodec: codec, OnUnsupported: "degrade"})
 			p.Rules = append(p.Rules, ConversionRule{ID: "responses-storage", Order: 190, Enabled: true, Phase: ConversionRequest, Action: "responses_storage", Value: settings})
 		}
-		if codec == "anthropic" || codec == "gemini" {
+		if codec == "gemini" || (codec == "anthropic" && sourceCodec != "anthropic") {
 			p.Rules = append(p.Rules, ConversionRule{ID: "system-instruction-hoist", Order: 140, Enabled: true, Phase: ConversionRequest, Action: "system_instruction_hoist"})
 		}
 		if codec == "openai-chat" {

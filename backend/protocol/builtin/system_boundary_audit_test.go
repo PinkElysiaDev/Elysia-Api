@@ -59,11 +59,19 @@ func TestActualPresetsKeepSystemAndReminderBoundaries(t *testing.T) {
 				if err == nil {
 					wire, err = to.EncodeRequest(t.Context(), projected, p.EvaluationContext{})
 				}
-				wantOK := mode == "compatible"
+				isNativeAnthropic := source == Anthropic && target == Anthropic
+				wantOK := mode == "compatible" || isNativeAnthropic
 				if (err == nil) != wantOK {
 					t.Fatal(source, target, mode, err)
 				}
 				if wantOK {
+					if isNativeAnthropic {
+						sameJSON(t, wire, body)
+						if len(sink.Issues()) != 0 {
+							t.Fatal("native system message falsely degraded", sink.Issues())
+						}
+						continue
+					}
 					if !strings.Contains(string(wire), "middle") || !strings.Contains(string(wire), "system-reminder") || !sinkHas(sink, "/content/1") {
 						t.Fatal("scope change or ordinary text lost", string(wire), sink.Issues())
 					}

@@ -7,7 +7,7 @@ import (
 	p "github.com/elysia-api/backend/protocol"
 )
 
-// 人工协议边界样例，包含非标准中段 system 消息。
+// 人工协议边界样例，包含中段 system 消息及消息级缓存标记。
 // 另覆盖 Responses 消息 item id、Gemini 对象工具结果和 Chat strict 工具，锁定四协议
 // 点对点的保证行为——正确转换或显式诊断。
 
@@ -26,17 +26,19 @@ const syntheticAnthropicHistory = `{
 	"metadata":{"user_id":"user_acct"}
 }`
 
-// In-message system is not an Anthropic wire role. The semantic hoist action
-// must resolve scope and cache boundaries before this encoder can accept it.
-func TestAnthropicRejectsUnprojectedInPlaceSystem(t *testing.T) {
+// The current Anthropic SDK includes system in MessageParam.role. Native
+// encoding must retain its position and message-level cache boundary.
+func TestAnthropicPreservesInPlaceSystem(t *testing.T) {
 	compiled := testCompiled(t, Anthropic)
 	request, err := compiled.DecodeRequest(t.Context(), testValue(t, syntheticAnthropicHistory).Bytes(), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = compiled.EncodeRequest(t.Context(), request, p.EvaluationContext{Scope: p.Scope{Model: "m"}}); !isUnsupported(err) {
-		t.Fatalf("unprojected in-message system must fail: %v", err)
+	wire, err := compiled.EncodeRequest(t.Context(), request, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+	if err != nil {
+		t.Fatal(err)
 	}
+	sameJSON(t, wire, syntheticAnthropicHistory)
 }
 
 // 人工 Anthropic → Chat：并行 tool_result 拆为多条 tool 消息、is_error 文本标记、

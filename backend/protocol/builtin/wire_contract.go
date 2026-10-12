@@ -152,8 +152,8 @@ func (adapter module) validateRequestWireContract(value p.Value, fields p.Object
 			if e != nil {
 				return e
 			}
-			if m["role"] != p.StringValue("user") && m["role"] != p.StringValue("assistant") {
-				return wireContractError(fmt.Sprintf("/messages/%d/role", i), "Anthropic messages only accept user or assistant; system belongs at top level")
+			if m["role"] != p.StringValue("user") && m["role"] != p.StringValue("assistant") && m["role"] != p.StringValue("system") {
+				return wireContractError(fmt.Sprintf("/messages/%d/role", i), "Anthropic messages require a user, assistant or system role")
 			}
 		}
 	}

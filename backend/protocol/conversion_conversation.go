@@ -34,6 +34,9 @@ func (c *CompiledConversion) hoistSystem(request *Request, route ConversionConte
 		for _, node := range system[1:] {
 			combined.Children = append(combined.Children, node.Children...)
 		}
+		// The projected envelope no longer represents the original inline
+		// message. Keep its source evidence, but do not replay that container.
+		combined.Native = nil
 		request.Content = append([]Node{combined}, conversation...)
 		if changed || len(system) > 1 {
 			// The old message array cannot be replayed after this explicit
