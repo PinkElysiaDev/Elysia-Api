@@ -60,7 +60,7 @@ func ValidateReasoningIntent(r *ReasoningIntent) error {
 	}
 	if controlPresent(r.Summary) {
 		var summary string
-		if r.Summary.Decode(&summary) != nil || !slices.Contains([]string{"auto", "concise", "detailed", "summarized", "omitted"}, summary) {
+		if r.Summary.Decode(&summary) != nil || !slices.Contains([]string{"auto", "concise", "detailed", "summarized", "omitted", "updates"}, summary) {
 			return streamIssue(InvalidInput, "/reasoning/summary", "unknown or non-string summary preference")
 		}
 	}
@@ -142,8 +142,8 @@ func NormalizeReasoningParameters(req *Request, codec string, interleaved bool) 
 			if r.Mode != "enabled" && !r.Budget.IsZero() {
 				return streamIssue(InvalidInput, "/thinking/budget_tokens", "this thinking mode does not accept a budget")
 			}
-			if controlPresent(r.Summary) && !slices.Contains([]string{"summarized", "omitted"}, controlText(r.Summary)) {
-				return streamIssue(InvalidInput, "/thinking/display", "display must be summarized or omitted")
+			if controlPresent(r.Summary) && !slices.Contains([]string{"summarized", "omitted", "updates"}, controlText(r.Summary)) {
+				return streamIssue(InvalidInput, "/thinking/display", "display must be summarized, omitted or updates")
 			}
 		}
 		output, err := take("anthropic_output_config", "effort")
@@ -225,7 +225,7 @@ func validateSourceReasoning(codec string, r *ReasoningIntent) error {
 		if r.Mode != "enabled" && controlPresent(r.Budget) {
 			return streamIssue(InvalidInput, "/thinking/budget_tokens", "this thinking mode does not accept a budget")
 		}
-		if controlPresent(r.Summary) && (r.Mode == "" || !slices.Contains([]string{"summarized", "omitted"}, controlText(r.Summary))) {
+		if controlPresent(r.Summary) && (r.Mode == "" || !slices.Contains([]string{"summarized", "omitted", "updates"}, controlText(r.Summary))) {
 			return streamIssue(InvalidInput, "/thinking/display", "display requires a thinking mode and a supported preference")
 		}
 	}

@@ -31,6 +31,7 @@
     "backend/protocol/builtin/access_programs_test.go",
     "backend/protocol/builtin/agent_test.go",
     "backend/protocol/builtin/anthropic_caller_test.go",
+    "backend/protocol/builtin/anthropic_display_test.go",
     "backend/protocol/builtin/anthropic_system_message_test.go",
     "backend/protocol/builtin/anthropic_thinking_envelope_test.go",
     "backend/protocol/builtin/anthropic_thinking_usage_test.go",

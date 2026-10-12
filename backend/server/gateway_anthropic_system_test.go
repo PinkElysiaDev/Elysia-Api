@@ -26,6 +26,7 @@ func TestGatewayAnthropicSystemMessageClientHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	request["model"] = protocol.StringValue("group")
+	request["thinking"] = mustProtocolValue(t, `{"type":"adaptive","display":"updates"}`)
 	s, _ := newProtocolAdminTestServer(t)
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()
