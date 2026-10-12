@@ -11,10 +11,52 @@ v1.1.0 及更早版本的说明先于本文件存在，未收录于此；自 v1.
 
 ## 未发布
 
-- 按实际目标模型转换推理与存储意图，提供绑定能力编辑，模型或操作变化后自动刷新验证证据。
-- 在调用上游前筛选可执行候选，并按转换后的有效请求计量；单个候选无法表示媒体工具结果时继续检查其他候选。
-- 完善跨协议请求提示、工具严格性、工具结果与对话历史转换，保留支持协议的工具 `strict` 并诊断默认行为差异。
-- 补全 Gemini 模态用量记录，统一协议名称显示，整理维护文档和 CI 检查。
+跨协议转换成为可管理、可验证、可恢复的能力：新增转换策略引擎与管理页、认证续传载体、线格式强校验与组合验证证据；修复两条实测转换故障与零预置旧库启动卡死；并按真实渠道审计（Claude Code / OpenAI / Anthropic / Gemini SDK）贯通了推理、消息相位、流失败契约与工具历史的跨协议保真。
+
+### 修复
+
+- **Responses `include` 跨协议不再 400**：`include` 在语义转换阶段处理——类型错误在网关入口以精确的 `/include` 路径拒绝（不调用上游），未知选择项逐项显式拒绝；`reasoning.encrypted_content` 接入 Elysia 认证续传载体，跨协议工具多轮的加密推理经主密钥加密回传、下轮恢复，绝不降级明文。
+- **转出 Anthropic 不再因用量缺外壳 502**：目标协议要求必填用量字段而上游未返回时，兼容模式合成客户端专用零占位外壳并诊断（严格模式拒绝）；占位值不进入计量、计费与持久记录。
+- **零预置旧库升级不再卡启动**：旧库（无预置/旧备份摘要）升级后启动在预置恢复前误报 `revision_conflict`——启动顺序重构为「备份 → 预置恢复 → 旧迁移 → 加载」，空库直接校验内置定义。
+- **预置协议自恢复**：启动与刷新对四份预置做缺陷分类与最小修复（缺激活仅补激活、损坏修订按内置定义重建并验证、缺证据补齐、损坏草稿先归档再替换），协议列表展示未就绪原因；单个损坏的自定义协议被隔离而非拖垮整体加载。
+- **预置激活自愈与模型目录一致性**（PR #37）：混合状态旧库刷新时为每份预置补激活计划，修复 `/platform` 取模型报 `verification_required`；刷新期间目录不丢、完成结果始终可见。
+- **真实渠道审计修复批**（约 109 个提交，按主题归组）：
+  - **推理 / thinking 贯通**：可见思考编码为 Responses reasoning 内容、相邻无状态片段合并、签名思考保留在所属历史轮、Gemini/Anthropic 两侧空思考以合法占位表达。
+  - **Responses 消息相位**：流重建保留消息容器与 item 相位、终止帧缺已发消息则显式拒绝、助手历史编码为 output text、annotations 作用域保留。
+  - **流失败契约**：Responses 流错误信封显式解码、失败转换被拒时保留供应商原始错误、无效尾帧不吞掉上游失败、无载荷 keepalive 识别。
+  - **工具历史**：混合正文/工具历史归并投影、工具索引独立分配、空增量不入历史、流式工具身份每次调用只发一次。
+  - **缓存计数不双计**：DeepSeek prompt cache 计数规范化、Chat 晚到缓存别名先合并再投影、Anthropic thinking token 明细不重复计数、披露的厂商缓存计费单独保留。
+  - **Gemini 特定**：安全设置带诊断非阻断投影、系统指令信封（Google SDK roles）解码、终止空 text 占位忽略、纯思考用量推断输出计数。
+
+### 新增与改进
+
+- **跨协议转换策略**：五阶段（ingress/request/response/event/wire）× 25 种动作的具名规则引擎，17 项默认规则按方向实际模块自动生效（预置与旧自定义协议同等继承）；`/protocols/conversions` 策略页支持草稿保存（乐观锁）、验证、激活、回滚、只读预览（规则来源追溯）与签名探针；模型源/模型绑定级可覆盖转换行为并钉住修订。
+- **Responses `store` 跨族语义**：向不支持响应保存的目标转换时降级为无状态调用、响应回填 `store:false` 并诊断；`previous_response_id` 与截断约束保持显式拒绝边界。
+- **线格式强校验**：编码后校验目标线格式信封（消息外壳、帧分类、用量字段），缺外壳不再被计为成功转换；预览、单协议/组合验证与网关两条路径同口径，流式逐帧校验。
+- **续传载体管理**：`/api/admin/protocols/continuations` 提供数量/字节/命中/未命中/过期/淘汰统计与按会话清理。
+- **调用日志转换诊断**：用量日志详情展示该次调用的转换诊断（严重度/规则/阶段/保真度/策略哈希），默认折叠为带分级计数的摘要块，展开不打断请求/响应正文浏览。
+- **推理意图按目标模型解析**（PR #38）：思考模式/等级/预算/摘要/输出上限按实际目标模型与绑定解析，约束不满足时拒绝当前候选；绑定能力可编辑，模型或操作变化后自动刷新验证证据。
+- **可执行候选筛选与计量**（PR #38）：调用上游前筛选可执行候选并按转换后的有效请求计量；单个候选无法表示媒体工具结果时继续检查其他候选。
+- **跨协议工具与历史完善**（PR #38）：请求提示、工具 `strict`（支持协议保留并诊断默认行为差异）、对象/文本工具结果双向投影、有序对话历史。
+- **预置协议改名与显示名**：四份预置改为厂商 kebab-case ID（`anthropic-messages` 等）并配人类可读显示名，旧 ID 别名直指新 ID，UI 名称统一经注册表解析。
+- **Agent 体验**：Agent 设置区块、全局工具循环上限（运行时配置）、Markdown 渲染升级、模型就绪原因码直接透出。
+- **模型发现与调用修正**：Gemini 发现容忍 null 限制与缺前缀；上游收到模型 API id 而非显示名；补全 Gemini 模态用量记录。
+- **兼容性实测**：Claude Code 2.1.295、OpenAI SDK 7.30.1、Anthropic SDK 2.0.33 与 4.0.78 全部经真实网关回放验证（流式逐事件、工具第二轮、缺用量/晚到用量场景）。
+
+<!-- release-details -->
+
+### 技术细节
+
+- **编译器与证据版本化**：协议编译器 `2.0.0-dev.18` → `2.0.0-dev.64`；每个语义变更递增版本，组合验证证据绑定编译器版本 + 策略哈希 + 样例指纹，行为变化即证据失效重验。预置定义版本：`anthropic-messages` 2.1.7、`google-generate-content` 2.1.6、`openai-chat-completions` 2.2.7、`openai-responses` 2.2.8。
+- **转换策略引擎**（`d2b0a1b` 起多轮）：`backend/protocol/conversion_policy.go`（编译期校验：动作/阶段/编码器组合、同阶段顺序歧义、引擎限额）+ `conversion_projection.go`（按 `Compiled.Codec()` 判定实际编解码器注入默认规则，手写编码器不猜测）。降级只发生在语义转换相位，模式感知（compatible=诊断降级 / strict=拒绝），fidelity 四级（preserved / lossy_compatible / recoverable_wrapped / rejected）。
+- **两条实测故障的修复机制**（`0b80a01` 投影轮）：`include` 六态规范化（缺失/null/空/已知/未知/类型错误，`ParseResponsesInclude`）；用量明细逐项投影 + `ValidateUsageArithmetic` 前置守卫（reasoning ≤ output 总量），编码器末端不再有隐式省略。`responses_include` 跨协议删除补 `conversion_normalized` 诊断。
+- **Anthropic 用量外壳与占位计量隔离**（`9951d4c`）：`PlaceholderCount` 三层隔离——merge 不覆盖观测值、`providerUsageIssues` 上游契约拒绝占位冒充观测、落库断言。`DeliveryState` 统一响应 ID/created，流式终止事件经 `Drain()` 在供应商尾帧后快照输出。
+- **线格式校验闭环**：`WireOutputValidator`（非流式信封）+ `WireStreamValidation`（流式逐帧：安装的目标模块解码 + EventReplay 关联校验），挂载于编码预览、单协议/组合验证、网关普通与流式路径；`CheckToolAssociations` 复核工具关联。
+- **续传载体**（`063fdbf`）：主密钥经域分离 HMAC 派生 AES-256-GCM 密钥，载体前缀 `elysia-continuation.v1.`；owner/会话/作用域/内容摘要四重归属校验；默认保留 7 天、每会话 64 轮、全局 512 MiB、单记录 8 MiB。
+- **存储与启动可靠性**：迁移 `2026100801/02`（策略三表 + continuations + generation 触发器 + 证据两表）；协议提交分类（纯 INSERT 免快照 / 覆盖前一致性快照 `VACUUM INTO` + quick_check）；`ReloadAvailable(requiredIDs...)` 缺必需预置整体失败；`/api/admin/protocols` 新增 `runtimeReady`/`startupFailure{stage,code,message}`；转换策略管理端点全套（draft CAS 409 / verify / activate / preview persistentWrites:false / probe-signature 30 天证据）。
+- **真实渠道审计**（dev.26→dev.54，`08587bd` 起约 109 提交）：`scripts/protocol-audit` 工具链（固定版本 SDK 回放、网络守卫、脱敏不改写字节、捕获重放），DeepSeek/中转真实渠道 437 通过/35 失败保留原始分类；修复覆盖 reasoning 贯通（`aa1dc47` 等）、Responses 消息相位（`6d1d683`/`4a5a004`）、流失败契约（`51597d4`/`358b978`）、工具历史（`a864cfa`/`189dc34`）、缓存别名（`2557422`/`f0bd751`/`eb61403`）、Gemini 特定（`e4cfb6e` 等）。
+- **PR #38（`be2eaf2`）**：推理意图按目标模型与绑定解析（`56211ef`）、绑定证据随模型/操作变化刷新（`a6a8a7d`）、可执行候选筛选与计量（`dcf5383`）、请求提示与工具 strict 投影（`081da21`）、工具结果与有序历史（`595a1de`）、Gemini 模态用量（`95f5982`）、注册表显示名（`534871e`）。
+- **调用日志诊断 UI**（`1be792f`/`b7fef11`）：诊断结构体级去重（不同阶段/策略/修订不互相覆盖），详情抽屉折叠块带分级计数。
 
 ## v1.6.0 - 2026-10-05
 
