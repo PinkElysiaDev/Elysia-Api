@@ -5,6 +5,14 @@ import (
 	"slices"
 )
 
+const (
+	geminiLowReasoningBudget    int64 = 1024
+	geminiMediumReasoningBudget int64 = 8192
+	geminiHighReasoningBudget   int64 = 24576
+	anthropicMinReasoningBudget int64 = 1024
+	anthropicDefaultOutputLimit int64 = 8192
+)
+
 type reasoningOptions struct {
 	SourceCodec string `json:"sourceCodec"`
 	TargetCodec string `json:"targetCodec"`
@@ -98,187 +106,23 @@ func (c *CompiledConversion) reasoningControls(req *Request, route ConversionCon
 		}
 		r.Mode = "auto"
 	}
-	manual := opts.TargetCodec == "anthropic" && (cap.Kind == "budget" || (cap.Manual && controlPresent(r.Budget) && controlInt(r.Budget) > 0)) && r.Mode != "disabled" && r.Mode != ""
+	isManual := opts.TargetCodec == "anthropic" && (cap.Kind == "budget" || (cap.Manual && controlPresent(r.Budget) && controlInt(r.Budget) > 0)) && r.Mode != "disabled" && r.Mode != ""
 	if opts.TargetCodec == "gemini" && cap.Kind == "budget" {
-		if controlPresent(r.Budget) && controlPresent(r.Effort) {
-			if err := loss("/reasoning/effort", "target cannot preserve generation effort alongside the thinking budget"); err != nil {
-				return err
-			}
-			r.Effort = Value{}
+		if err := projectGeminiReasoningBudget(r, cap, loss); err != nil {
+			return err
 		}
-		if r.Mode == "disabled" {
-			r.Budget, r.Effort = controlValue(int64(0)), Value{}
-		} else if r.Mode == "auto" {
-			if controlPresent(r.Effort) {
-				if err := loss("/reasoning/effort", "target cannot preserve generation effort alongside automatic thinking"); err != nil {
-					return err
-				}
-			}
-			r.Budget, r.Effort = controlValue(int64(-1)), Value{}
-		} else if !controlPresent(r.Budget) && controlPresent(r.Effort) {
-			effort := controlText(r.Effort)
-			budget := int64(24576)
-			if effort == "minimal" || effort == "low" {
-				budget = 1024
-			}
-			if effort == "medium" {
-				budget = 8192
-			}
-			if err := loss("/reasoning/budget", fmt.Sprintf("effort %s approximated by budget %d", effort, budget)); err != nil {
-				return err
-			}
-			r.Budget, r.Effort = controlValue(budget), Value{}
-		}
-		if r.Mode == "enabled" && !controlPresent(r.Budget) && !controlPresent(r.Effort) {
-			if err := loss("/reasoning/mode", "enabled thinking resolved to automatic target budget"); err != nil {
-				return err
-			}
-			r.Mode, r.Budget = "auto", controlValue(int64(-1))
-		}
-		if controlPresent(r.Budget) && controlInt(r.Budget) > 0 {
-			before := controlInt(r.Budget)
-			after := max(before, cap.MinBudget)
-			if cap.MaxBudget > 0 {
-				after = min(after, cap.MaxBudget)
-			}
-			if before != after {
-				if err := loss("/reasoning/budget", fmt.Sprintf("budget adjusted from %d to %d", before, after)); err != nil {
-					return err
-				}
-				r.Budget = controlValue(after)
-			}
-		}
-	} else if manual {
+	} else if isManual {
 		if err := c.manualReasoningBudget(req, cap, route, rule, sink); err != nil {
 			return err
 		}
-		if req.Reasoning == nil {
-			return nil
-		}
-		r = req.Reasoning
-	} else {
-		if controlPresent(r.Budget) && controlInt(r.Budget) > 0 {
-			effort := budgetEffort(controlInt(r.Budget))
-			if controlPresent(r.Effort) { // A numeric thinking budget takes precedence only where both cannot be expressed.
-				if err := loss("/reasoning/effort", "target cannot preserve both effort and numeric budget; budget determines the effective effort"); err != nil {
-					return err
-				}
-			}
-			if err := loss("/reasoning/budget", fmt.Sprintf("budget %d approximated by effort %s", controlInt(r.Budget), effort)); err != nil {
-				return err
-			}
-			r.Effort = StringValue(effort)
-		}
-		r.Budget = Value{}
-		if r.Mode == "disabled" {
-			if opts.TargetCodec != "anthropic" {
-				if controlPresent(r.Effort) && controlText(r.Effort) != "none" {
-					if err := loss("/reasoning/effort", "target cannot preserve generation effort with disabled reasoning"); err != nil {
-						return err
-					}
-				}
-				r.Effort = StringValue("none")
-			}
-		} else if r.Mode == "auto" && opts.TargetCodec != "anthropic" {
-			if controlPresent(r.Effort) {
-				if err := loss("/reasoning/mode", "target cannot separately preserve automatic thinking and generation effort; retaining effort"); err != nil {
-					return err
-				}
-			}
-			if !controlPresent(r.Effort) && cap.DefaultMode == "disabled" {
-				if err := loss("/reasoning/mode", "target uses its default effort in place of automatic budget selection"); err != nil {
-					return err
-				}
-				r.Effort = StringValue(cap.DefaultEffort)
-			}
-		} else if opts.TargetCodec == "anthropic" && cap.Kind == "adaptive" && r.Mode == "enabled" {
-			r.Mode = "auto"
-		}
+	} else if err := projectReasoningMode(r, cap, opts, loss); err != nil {
+		return err
 	}
-	if req.Reasoning == nil {
-		return nil
+	if err := projectReasoningLevel(r, cap, opts, route.Model, loss); err != nil {
+		return err
 	}
-	if controlPresent(r.Effort) && controlText(r.Effort) != "none" {
-		before := controlText(r.Effort)
-		levels := cap.Levels
-		if r.Mode == "disabled" && len(cap.DisabledLevels) > 0 {
-			levels = cap.DisabledLevels
-		}
-		if r.Mode == "between_tools" {
-			levels = cap.BetweenToolsLevels
-		}
-		after := closestReasoningLevel(before, levels)
-		if after != before {
-			if err := loss("/reasoning/effort", fmt.Sprintf("effort %s adjusted to %q for model %s", before, after, route.Model)); err != nil {
-				return err
-			}
-			if after == "" {
-				r.Effort = Value{}
-			} else {
-				r.Effort = StringValue(after)
-			}
-		}
-	}
-	if opts.TargetCodec != "anthropic" && cap.Kind == "level" {
-		if r.Mode == "enabled" && !controlPresent(r.Effort) && cap.DefaultMode == "disabled" {
-			r.Effort = StringValue(cap.DefaultEffort)
-		}
-		if controlPresent(r.Effort) {
-			r.Mode = "enabled"
-			if controlText(r.Effort) == "none" {
-				r.Mode = "disabled"
-			}
-		} else if r.Mode == "auto" {
-			if err := loss("/reasoning/mode", "target uses its default effort in place of automatic budget selection"); err != nil {
-				return err
-			}
-			r.Mode = ""
-		}
-	}
-	if !controlPresent(r.Effort) {
-		r.EffortScope = ""
-	} else {
-		r.EffortScope = "reasoning"
-		if opts.TargetCodec == "anthropic" {
-			r.EffortScope = "generation"
-		}
-	}
-	if controlPresent(r.Summary) && opts.SourceCodec != opts.TargetCodec {
-		before, after := controlText(r.Summary), controlText(r.Summary)
-		switch opts.TargetCodec {
-		case "openai-chat":
-			after = ""
-		case "responses":
-			if before == "omitted" {
-				after = ""
-			} else {
-				after = "auto"
-			}
-		case "anthropic":
-			if before != "omitted" {
-				after = "summarized"
-			}
-		case "gemini":
-			if before != "omitted" {
-				after = "auto"
-			}
-		}
-		if before != after && (before != "auto" || after != "summarized") {
-			if err := loss("/reasoning/summary", fmt.Sprintf("summary preference %q mapped to %q", before, after)); err != nil {
-				return err
-			}
-		}
-		if after == "" {
-			r.Summary = Value{}
-		} else {
-			r.Summary = StringValue(after)
-		}
-	}
-	if opts.TargetCodec == "anthropic" && r.Mode == "" && controlPresent(r.Summary) {
-		if err := loss("/reasoning/summary", "target requires a thinking mode for display controls; display preference omitted without enabling thinking"); err != nil {
-			return err
-		}
-		r.Summary = Value{}
+	if err := projectReasoningSummary(r, opts, loss); err != nil {
+		return err
 	}
 	if r.Mode == "" && r.Effort.IsZero() && r.Budget.IsZero() && r.Summary.IsZero() {
 		req.Reasoning = nil
@@ -300,11 +144,11 @@ func (c *CompiledConversion) manualReasoningBudget(req *Request, cap ReasoningCa
 	}
 	limit := req.Parameters["max_output_tokens"]
 	// reasoningOutputLimit has already validated and filled the required limit.
-	explicit := !req.OutputLimitDefault
+	isExplicit := !req.OutputLimitDefault
 	maxOutput := controlInt(limit)
-	minimum := max(int64(1024), cap.MinBudget)
+	minimum := max(anthropicMinReasoningBudget, cap.MinBudget)
 	if !r.Interleaved && maxOutput <= minimum {
-		if explicit || cap.MaxOutputTokens <= minimum {
+		if isExplicit || cap.MaxOutputTokens <= minimum {
 			rule.Action = "reject"
 			return candidateFailure(c.issue(rule, ConversionRequest, route, "/parameters/max_output_tokens", fmt.Sprintf("manual thinking cannot fit output limit %d with minimum budget %d; explicit limits are preserved and system defaults require a confirmed expansion bound", maxOutput, minimum), sink, true))
 		}
@@ -328,7 +172,7 @@ func (c *CompiledConversion) manualReasoningBudget(req *Request, cap ReasoningCa
 			return err
 		}
 	}
-	if !explicit && !r.Interleaved && budget >= maxOutput && cap.MaxOutputTokens > budget {
+	if !isExplicit && !r.Interleaved && budget >= maxOutput && cap.MaxOutputTokens > budget {
 		maxOutput = budget + 1
 	}
 	after := max(budget, minimum)
@@ -344,11 +188,8 @@ func (c *CompiledConversion) manualReasoningBudget(req *Request, cap ReasoningCa
 		}
 	}
 	r.Mode, r.Budget = "enabled", controlValue(after)
-	if req.Parameters == nil {
-		req.Parameters = Object{}
-	}
 	req.Parameters["max_output_tokens"] = controlValue(maxOutput)
-	if !explicit {
+	if !isExplicit {
 		req.OutputLimitDefault = true
 		c.normalized(rule, route, "/parameters/max_output_tokens", fmt.Sprintf("system output default resolved to %d", maxOutput), sink)
 	}
@@ -356,10 +197,10 @@ func (c *CompiledConversion) manualReasoningBudget(req *Request, cap ReasoningCa
 }
 
 func budgetEffort(budget int64) string {
-	if budget <= 1024 {
+	if budget <= geminiLowReasoningBudget {
 		return "low"
 	}
-	if budget <= 8192 {
+	if budget <= geminiMediumReasoningBudget {
 		return "medium"
 	}
 	return "high"
@@ -397,7 +238,7 @@ func (c *CompiledConversion) reasoningOutputLimit(req *Request, cap ReasoningCap
 	}
 	n := controlInt(raw)
 	if !controlPresent(raw) {
-		n = 8192
+		n = anthropicDefaultOutputLimit
 		req.OutputLimitDefault = true
 	}
 	if cap.MaxOutputTokens > 0 && n > cap.MaxOutputTokens {
@@ -431,6 +272,189 @@ func validateReasoningOutputLimit(req *Request, cap ReasoningCapabilities, codec
 	}
 	if cap.MaxOutputTokens > 0 && n > cap.MaxOutputTokens {
 		return streamIssue(InvalidInput, "/parameters/max_output_tokens", fmt.Sprintf("output limit %d exceeds confirmed hard limit %d", n, cap.MaxOutputTokens))
+	}
+	return nil
+}
+
+func projectGeminiReasoningBudget(r *ReasoningIntent, cap ReasoningCapabilities, loss func(string, string) error) error {
+	if controlPresent(r.Budget) && controlPresent(r.Effort) {
+		if err := loss("/reasoning/effort", "target cannot preserve generation effort alongside the thinking budget"); err != nil {
+			return err
+		}
+		r.Effort = Value{}
+	}
+	if r.Mode == "disabled" {
+		r.Budget, r.Effort = controlValue(int64(0)), Value{}
+	} else if r.Mode == "auto" {
+		if controlPresent(r.Effort) {
+			if err := loss("/reasoning/effort", "target cannot preserve generation effort alongside automatic thinking"); err != nil {
+				return err
+			}
+		}
+		r.Budget, r.Effort = controlValue(int64(-1)), Value{}
+	} else if !controlPresent(r.Budget) && controlPresent(r.Effort) {
+		effort := controlText(r.Effort)
+		budget := geminiHighReasoningBudget
+		if effort == "minimal" || effort == "low" {
+			budget = geminiLowReasoningBudget
+		}
+		if effort == "medium" {
+			budget = geminiMediumReasoningBudget
+		}
+		if err := loss("/reasoning/budget", fmt.Sprintf("effort %s approximated by budget %d", effort, budget)); err != nil {
+			return err
+		}
+		r.Budget, r.Effort = controlValue(budget), Value{}
+	}
+	if r.Mode == "enabled" && !controlPresent(r.Budget) && !controlPresent(r.Effort) {
+		if err := loss("/reasoning/mode", "enabled thinking resolved to automatic target budget"); err != nil {
+			return err
+		}
+		r.Mode, r.Budget = "auto", controlValue(int64(-1))
+	}
+	if controlPresent(r.Budget) && controlInt(r.Budget) > 0 {
+		before := controlInt(r.Budget)
+		after := max(before, cap.MinBudget)
+		if cap.MaxBudget > 0 {
+			after = min(after, cap.MaxBudget)
+		}
+		if before != after {
+			if err := loss("/reasoning/budget", fmt.Sprintf("budget adjusted from %d to %d", before, after)); err != nil {
+				return err
+			}
+			r.Budget = controlValue(after)
+		}
+	}
+	return nil
+}
+
+func projectReasoningMode(r *ReasoningIntent, cap ReasoningCapabilities, opts reasoningOptions, loss func(string, string) error) error {
+	if controlPresent(r.Budget) && controlInt(r.Budget) > 0 {
+		effort := budgetEffort(controlInt(r.Budget))
+		if controlPresent(r.Effort) { // A numeric thinking budget takes precedence only where both cannot be expressed.
+			if err := loss("/reasoning/effort", "target cannot preserve both effort and numeric budget; budget determines the effective effort"); err != nil {
+				return err
+			}
+		}
+		if err := loss("/reasoning/budget", fmt.Sprintf("budget %d approximated by effort %s", controlInt(r.Budget), effort)); err != nil {
+			return err
+		}
+		r.Effort = StringValue(effort)
+	}
+	r.Budget = Value{}
+	if r.Mode == "disabled" {
+		if opts.TargetCodec != "anthropic" {
+			if controlPresent(r.Effort) && controlText(r.Effort) != "none" {
+				if err := loss("/reasoning/effort", "target cannot preserve generation effort with disabled reasoning"); err != nil {
+					return err
+				}
+			}
+			r.Effort = StringValue("none")
+		}
+	} else if r.Mode == "auto" && opts.TargetCodec != "anthropic" {
+		if controlPresent(r.Effort) {
+			if err := loss("/reasoning/mode", "target cannot separately preserve automatic thinking and generation effort; retaining effort"); err != nil {
+				return err
+			}
+		}
+		if !controlPresent(r.Effort) && cap.DefaultMode == "disabled" {
+			if err := loss("/reasoning/mode", "target uses its default effort in place of automatic budget selection"); err != nil {
+				return err
+			}
+			r.Effort = StringValue(cap.DefaultEffort)
+		}
+	} else if opts.TargetCodec == "anthropic" && cap.Kind == "adaptive" && r.Mode == "enabled" {
+		r.Mode = "auto"
+	}
+	return nil
+}
+
+func projectReasoningLevel(r *ReasoningIntent, cap ReasoningCapabilities, opts reasoningOptions, model string, loss func(string, string) error) error {
+	if controlPresent(r.Effort) && controlText(r.Effort) != "none" {
+		before := controlText(r.Effort)
+		levels := cap.Levels
+		if r.Mode == "disabled" && len(cap.DisabledLevels) > 0 {
+			levels = cap.DisabledLevels
+		}
+		if r.Mode == "between_tools" {
+			levels = cap.BetweenToolsLevels
+		}
+		after := closestReasoningLevel(before, levels)
+		if after != before {
+			if err := loss("/reasoning/effort", fmt.Sprintf("effort %s adjusted to %q for model %s", before, after, model)); err != nil {
+				return err
+			}
+			if after == "" {
+				r.Effort = Value{}
+			} else {
+				r.Effort = StringValue(after)
+			}
+		}
+	}
+	if opts.TargetCodec != "anthropic" && cap.Kind == "level" {
+		if r.Mode == "enabled" && !controlPresent(r.Effort) && cap.DefaultMode == "disabled" {
+			r.Effort = StringValue(cap.DefaultEffort)
+		}
+		if controlPresent(r.Effort) {
+			r.Mode = "enabled"
+			if controlText(r.Effort) == "none" {
+				r.Mode = "disabled"
+			}
+		} else if r.Mode == "auto" {
+			if err := loss("/reasoning/mode", "target uses its default effort in place of automatic budget selection"); err != nil {
+				return err
+			}
+			r.Mode = ""
+		}
+	}
+	if !controlPresent(r.Effort) {
+		r.EffortScope = ""
+	} else {
+		r.EffortScope = "reasoning"
+		if opts.TargetCodec == "anthropic" {
+			r.EffortScope = "generation"
+		}
+	}
+	return nil
+}
+
+func projectReasoningSummary(r *ReasoningIntent, opts reasoningOptions, loss func(string, string) error) error {
+	if controlPresent(r.Summary) && opts.SourceCodec != opts.TargetCodec {
+		before, after := controlText(r.Summary), controlText(r.Summary)
+		switch opts.TargetCodec {
+		case "openai-chat":
+			after = ""
+		case "responses":
+			if before == "omitted" {
+				after = ""
+			} else {
+				after = "auto"
+			}
+		case "anthropic":
+			if before != "omitted" {
+				after = "summarized"
+			}
+		case "gemini":
+			if before != "omitted" {
+				after = "auto"
+			}
+		}
+		if before != after && (before != "auto" || after != "summarized") {
+			if err := loss("/reasoning/summary", fmt.Sprintf("summary preference %q mapped to %q", before, after)); err != nil {
+				return err
+			}
+		}
+		if after == "" {
+			r.Summary = Value{}
+		} else {
+			r.Summary = StringValue(after)
+		}
+	}
+	if opts.TargetCodec == "anthropic" && r.Mode == "" && controlPresent(r.Summary) {
+		if err := loss("/reasoning/summary", "target requires a thinking mode for display controls; display preference omitted without enabling thinking"); err != nil {
+			return err
+		}
+		r.Summary = Value{}
 	}
 	return nil
 }
