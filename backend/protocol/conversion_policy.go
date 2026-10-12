@@ -190,13 +190,17 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 	}
 	c := &CompiledConversion{Policy: p, limits: limits, expressions: map[string]*compiledExpression{}, Origins: map[string]string{}}
 	compiler := &expressionCompiler{limits: limits, references: map[string]Expression{}, resolving: map[string]bool{}, used: map[string]bool{}}
+	actions := map[string]conversionAction{}
+	for _, action := range conversionActionCatalog() {
+		actions[action.name] = action
+	}
 	seen, orders := map[string]bool{}, map[string]string{}
 	for _, r := range p.Rules {
 		if !definitionIdentifier.MatchString(r.ID) || seen[r.ID] {
 			return nil, fmt.Errorf("invalid or duplicate rule id %q", r.ID)
 		}
 		seen[r.ID] = true
-		if !slices.Contains([]ConversionPhase{ConversionIngress, ConversionRequest, ConversionResponse, ConversionEvent, ConversionWire}, r.Phase) {
+		if !slices.Contains(conversionPhases(), r.Phase) {
 			return nil, fmt.Errorf("unknown conversion phase %q", r.Phase)
 		}
 		key := fmt.Sprintf("%s:%d", r.Phase, r.Order)
@@ -206,58 +210,12 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if r.Enabled {
 			orders[key] = r.ID
 		}
-		if !slices.Contains([]string{"set", "remove", "transform", "warn", "reject", "signatures", "stream_options", "request_projection", "tool_result_object", "tool_result_text", "system_instruction_hoist", "chat_history", "assistant_history", "buffer_node", "provider_signature", "responses_include", "responses_context", "gemini_safety_settings", "usage_projection", "response_metadata", "response_shape", "response_envelope", "responses_storage", "reasoning_controls", "anthropic_usage_envelope"}, r.Action) {
+		action, exists := actions[r.Action]
+		if !exists {
 			return nil, fmt.Errorf("unknown conversion action %q", r.Action)
 		}
-		if (r.Action == "response_metadata" || r.Action == "response_shape" || r.Action == "response_envelope" || r.Action == "usage_projection" || r.Action == "anthropic_usage_envelope") && r.Phase != ConversionResponse && r.Phase != ConversionEvent && !(r.Action == "response_metadata" && r.Phase == ConversionRequest) {
-			return nil, fmt.Errorf("%s requires response or event phase", r.Action)
-		}
-		if r.Action == "response_metadata" || r.Action == "response_shape" || r.Action == "response_envelope" || r.Action == "usage_projection" || r.Action == "responses_include" || r.Action == "responses_context" || r.Action == "gemini_safety_settings" || (r.Action == "stream_options" || r.Action == "tool_result_text") && !r.Value.IsZero() {
-			var codec string
-			if r.Value.Decode(&codec) != nil || !knownConversionCodec(codec) {
-				return nil, fmt.Errorf("%s requires a known target codec in value", r.Action)
-			}
-		}
-		if r.Action == "request_projection" {
-			var opts requestProjectionOptions
-			if r.Value.Decode(&opts) != nil || !knownConversionCodec(opts.TargetCodec) || (opts.SourceCodec != "" && !knownConversionCodec(opts.SourceCodec)) {
-				return nil, fmt.Errorf("request_projection requires targetCodec and an optional known sourceCodec")
-			}
-		}
-		if r.Action == "reasoning_controls" {
-			var opts reasoningOptions
-			if r.Value.Decode(&opts) != nil || !knownConversionCodec(opts.SourceCodec) || !knownConversionCodec(opts.TargetCodec) {
-				return nil, fmt.Errorf("reasoning_controls requires sourceCodec and targetCodec")
-			}
-		}
-		if r.Action == "responses_storage" {
-			var opts responsesStorageOptions
-			if r.Value.Decode(&opts) != nil || !knownConversionCodec(opts.TargetCodec) || (opts.SourceCodec != "" && !knownConversionCodec(opts.SourceCodec)) || (opts.OnUnsupported != "degrade" && opts.OnUnsupported != "reject") {
-				return nil, fmt.Errorf("responses_storage requires targetCodec and onUnsupported: degrade or reject")
-			}
-		}
-		if (r.Action == "system_instruction_hoist" || r.Action == "chat_history" || r.Action == "assistant_history") && r.Phase != ConversionRequest {
-			return nil, fmt.Errorf("%s requires request phase", r.Action)
-		}
-		if r.Action == "provider_signature" {
-			if r.Phase != ConversionRequest || r.Match.NodeKind != ToolCallNode || r.Match.TargetFamily == "" {
-				return nil, fmt.Errorf("provider_signature requires a request tool_call rule with an explicit target family")
-			}
-			if _, err := ProviderSignatureValue(r.Value); err != nil {
-				return nil, err
-			}
-		}
-		if (r.Action == "tool_result_object" || r.Action == "tool_result_text") && (r.Phase != ConversionRequest || r.Match.NodeKind != ToolResultNode) {
-			return nil, fmt.Errorf("tool_result_object requires request tool_result nodes")
-		}
-		if r.Action == "buffer_node" && r.Phase != ConversionEvent {
-			return nil, fmt.Errorf("buffer_node requires event phase")
-		}
-		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "responses_context" || r.Action == "request_projection" || r.Action == "gemini_safety_settings" || r.Action == "responses_storage" || r.Action == "reasoning_controls") && r.Phase != ConversionRequest {
-			return nil, fmt.Errorf("%s requires request phase", r.Action)
-		}
-		if (r.Action == "stream_options" || r.Action == "responses_include" || r.Action == "responses_context" || r.Action == "request_projection" || r.Action == "gemini_safety_settings" || r.Action == "usage_projection" || r.Action == "responses_storage" || r.Action == "reasoning_controls" || r.Action == "anthropic_usage_envelope") && r.Match.NodeKind != "" {
-			return nil, fmt.Errorf("%s matches the complete semantic value, not an individual node", r.Action)
+		if err := action.validate(r); err != nil {
+			return nil, err
 		}
 		if r.Match.NodeKind != "" {
 			if r.Phase == ConversionWire {
@@ -269,9 +227,6 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		}
 		if r.Match.Transport != "" && !slices.Contains(TransportCatalog(), r.Match.Transport) {
 			return nil, fmt.Errorf("unknown conversion transport %q", r.Match.Transport)
-		}
-		if r.Action == "signatures" && !slices.Contains([]ConversionPhase{ConversionRequest, ConversionResponse, ConversionEvent}, r.Phase) {
-			return nil, fmt.Errorf("signatures requires semantic phase")
 		}
 		for _, ptr := range []string{r.Path, r.Match.Path} {
 			if _, err := parsePointer(ptr); err != nil {
@@ -377,7 +332,7 @@ func (c *CompiledConversion) issueSeverity(rule ConversionRule, phase Conversion
 // minted through expressions; the separately authenticated continuation module
 // is the only restoration authority.
 func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPhase, input Value, route ConversionContext, sink *DiagnosticSink) (Value, error) {
-	if !slices.Contains([]ConversionPhase{ConversionIngress, ConversionRequest, ConversionResponse, ConversionEvent, ConversionWire}, phase) {
+	if !slices.Contains(conversionPhases(), phase) {
 		return Value{}, streamIssue(InvalidInput, "/phase", "unknown conversion phase")
 	}
 	if c == nil {
