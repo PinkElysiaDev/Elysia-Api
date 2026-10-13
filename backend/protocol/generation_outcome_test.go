@@ -33,3 +33,11 @@ func TestDeclaredFailureCannotBecomeSuccessfulGeneration(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestGenerationFailureExcludesOpaquePayloadFromMessage(t *testing.T) {
+	payload, _ := ParseValue([]byte(`{"category":"rate_limit","message":"synthetic limit","code":"gateway_concurrency_limit","details":{"private":"must-not-leak"},"wire:vendor":{"token":"also-private"}}`))
+	err := &GenerationFailure{Payload: payload}
+	if !strings.Contains(err.Error(), "gateway_concurrency_limit") || strings.Contains(err.Error(), "must-not-leak") || strings.Contains(err.Error(), "also-private") {
+		t.Fatal(err)
+	}
+}

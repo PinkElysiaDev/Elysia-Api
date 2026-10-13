@@ -11,7 +11,21 @@ type GenerationFailure struct {
 
 func (failure *GenerationFailure) Error() string {
 	if !failure.Payload.IsZero() && !failure.Payload.IsNull() {
-		return "upstream generation failed: " + string(failure.Payload.Bytes())
+		var message string
+		if failure.Payload.Decode(&message) == nil {
+			return "upstream generation failed: " + message
+		}
+		fields, err := failure.Payload.ReadObject()
+		if err == nil {
+			public := Object{}
+			for _, key := range []string{"category", "message", "code", "param"} {
+				if !fields[key].IsNull() && fields[key].Decode(&message) == nil {
+					public[key] = fields[key]
+				}
+			}
+			value, _ := EncodeValue(public)
+			return "upstream generation failed: " + string(value.Bytes())
+		}
 	}
 	return fmt.Sprintf("upstream generation ended with status %s", failure.Status.Bytes())
 }

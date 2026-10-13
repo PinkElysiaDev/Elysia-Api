@@ -294,10 +294,17 @@ func (s *Server) failGateway(c *gin.Context, record *usageRecord, status int, er
 		status = statusClientClosedRequest
 	}
 	record.StatusCode, record.Error, record.ErrorKind = status, err.Error(), ErrorKindUpstream
+	class := generationFailureClass(err)
+	if class != "" {
+		record.ErrorKind = string(class)
+		if failure == nil && status != statusClientClosedRequest {
+			status, record.StatusCode = class.HTTPStatus(), class.HTTPStatus()
+		}
+	}
 	var conversion *protocol.ConversionError
 	if errors.As(err, &conversion) {
 		record.appendConversionIssues(conversion.Issues)
-		if len(conversion.Issues) > 0 {
+		if len(conversion.Issues) > 0 && class == "" {
 			record.ErrorKind = string(conversion.Issues[0].Code)
 		}
 	}
@@ -316,6 +323,9 @@ func (s *Server) failGateway(c *gin.Context, record *usageRecord, status int, er
 		var wireError *builtin.GatewayError
 		if !errors.As(err, &wireError) {
 			wireError = &builtin.GatewayError{Class: builtin.ClassFromStatus(status), Status: status, Message: err.Error()}
+			if class != "" {
+				wireError.Class = class
+			}
 		}
 		writeProtocolError(c, inputFormatFromPath(c.Request.URL.Path), wireError)
 		return

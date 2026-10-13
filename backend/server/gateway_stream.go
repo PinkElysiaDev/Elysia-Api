@@ -131,6 +131,13 @@ func (stream *gatewayStream) consumeFrame(frame protocol.Value, metadata protoco
 	}
 	// Validate the whole provider frame before using same-frame usage in a client start.
 	for _, event := range decoded.Events {
+		if event.Type == protocol.OperationFailed || event.Type == protocol.OperationCancelled {
+			status := "failed"
+			if event.Type == protocol.OperationCancelled {
+				status = "cancelled"
+			}
+			stream.terminalFailure = &protocol.GenerationFailure{Payload: event.Error, Status: protocol.StringValue(status)}
+		}
 		if event.Response != nil {
 			// Two layers, different consumers: CheckGenerationOutcome rejects a
 			// terminal response whose status/error disagree (the streaming
@@ -152,14 +159,7 @@ func (stream *gatewayStream) consumeFrame(frame protocol.Value, metadata protoco
 	}
 	for eventIndex, event := range decoded.Events {
 		if _, err := stream.sourceReplay.Consume(event); err != nil {
-			return err
-		}
-		if event.Type == protocol.OperationFailed || event.Type == protocol.OperationCancelled {
-			status := "failed"
-			if event.Type == protocol.OperationCancelled {
-				status = "cancelled"
-			}
-			stream.terminalFailure = &protocol.GenerationFailure{Payload: event.Error, Status: protocol.StringValue(status)}
+			return stream.candidate.compiled.AnnotateSourceEventError(err)
 		}
 		updateRecordProtocolUsage(stream.record, stream.sourceReplay.Usage())
 		if stream.collector != nil {
@@ -262,7 +262,7 @@ func (stream *gatewayStream) finish(err error) error {
 			}
 		}
 		if err == nil {
-			err = stream.sourceReplay.Finish()
+			err = stream.candidate.compiled.AnnotateSourceEventError(stream.sourceReplay.Finish())
 		}
 		if err == nil {
 			err = stream.replay.Finish()
@@ -284,12 +284,13 @@ func (stream *gatewayStream) finish(err error) error {
 		err = stream.finalValidation.Finish()
 	}
 	if err != nil {
+		err = errors.Join(stream.terminalFailure, err)
 		if stream.isFailureDelivered {
 			// A provider failure already ended the client's event lifecycle.
 			// Reject an invalid tail without replacing the original cause or
 			// attempting a second terminal. Both errors remain inspectable.
 			stream.context.Header(gatewayStreamErrorTrailer, "protocol_stream_error")
-			return errors.Join(stream.terminalFailure, err)
+			return err
 		}
 		if writeErr := emitFailureEvent(stream.context, stream.plan, stream.options, stream.emit, err); writeErr != nil {
 			return writeErr

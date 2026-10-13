@@ -155,6 +155,9 @@ func (stream *streamModule) decodeResponsesFrame(fields p.Object, options p.Eval
 		}
 		return stream.decodeFailureEvent(payload, options)
 	default:
+		if err := stream.rejectUnknownFailedEvent(fields, options); err != nil {
+			return nil, err
+		}
 		return []p.Event{{Type: p.NativeEvent}}, nil
 	}
 }

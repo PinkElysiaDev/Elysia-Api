@@ -6,11 +6,33 @@ import (
 	"fmt"
 
 	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/protocol/builtin"
 )
 
 // upstreamHTTPFailure distinguishes an observed HTTP rejection from a 502
 // generated while translating a successful HTTP response. Only the former may retry.
 type upstreamHTTPFailure struct{ *gatewayFailure }
+
+func generationFailureClass(err error) builtin.ErrorClass {
+	var failure *protocol.GenerationFailure
+	if !errors.As(err, &failure) {
+		return ""
+	}
+	fields, parseErr := failure.Payload.ReadObject()
+	if parseErr != nil {
+		return ""
+	}
+	var class builtin.ErrorClass
+	if fields["category"].Decode(&class) != nil {
+		return ""
+	}
+	switch class {
+	case builtin.ErrorClassInvalidRequest, builtin.ErrorClassAuthentication, builtin.ErrorClassPermission, builtin.ErrorClassModelNotFound, builtin.ErrorClassRateLimit, builtin.ErrorClassOverloaded, builtin.ErrorClassUpstream, builtin.ErrorClassServer:
+		return class
+	default:
+		return ""
+	}
+}
 
 func (failure *upstreamHTTPFailure) Unwrap() error { return failure.gatewayFailure }
 

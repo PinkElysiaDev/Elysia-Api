@@ -301,13 +301,24 @@ func (compiled *Compiled) runtimeError(direction Direction, err error) error {
 				issues[index].Direction = direction
 			}
 		}
-		return &ConversionError{cause: err, Issues: issues, CandidateOnly: conversion.CandidateOnly}
+		annotated := &ConversionError{cause: err, Issues: issues, CandidateOnly: conversion.CandidateOnly}
+		var failure *GenerationFailure
+		if errors.As(err, &failure) {
+			return errors.Join(failure, annotated)
+		}
+		return annotated
 	}
 	code := InvalidInput
 	if direction == DecodeResponse || direction == DecodeEvent {
 		code = UpstreamContractViolation
 	}
 	return &ConversionError{cause: err, Issues: []ConversionIssue{{Code: code, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "runtime", Path: "/", Reason: err.Error(), Suggestion: "Correct the wire input or semantic mapping and verify the revision again."}}}
+}
+
+// AnnotateSourceEventError attaches the pinned source to replay errors raised
+// outside the decoder, so EOF failures retain the same diagnostic provenance.
+func (compiled *Compiled) AnnotateSourceEventError(err error) error {
+	return compiled.runtimeError(DecodeEvent, err)
 }
 
 func stampResourceScopes(request *Request, scope Scope) error {

@@ -35,8 +35,10 @@ type streamItem struct {
 }
 
 type streamModule struct {
-	metadata []p.ResponseMetadata
-	wire     wireStreamContract
+	metadata          []p.ResponseMetadata
+	wire              wireStreamContract
+	sourceIdentity    wireStreamContract
+	sourceFrameNumber int
 	module
 	limits           p.Limits
 	isStarted        bool
@@ -99,6 +101,7 @@ func (stream *streamModule) Convert(ctx context.Context, direction p.Direction, 
 }
 
 func (stream *streamModule) DecodeEvents(ctx context.Context, input p.Value, options p.EvaluationContext) ([]p.Event, error) {
+	stream.sourceFrameNumber++
 	fields, err := input.ReadObject()
 	if err != nil {
 		return nil, err
@@ -108,6 +111,9 @@ func (stream *streamModule) DecodeEvents(ctx context.Context, input p.Value, opt
 		if err != nil || isHeartbeat {
 			return []p.Event{}, err
 		}
+	}
+	if err := stream.validateSourceIdentity(fields); err != nil {
+		return nil, err
 	}
 	var events []p.Event
 	switch stream.name {

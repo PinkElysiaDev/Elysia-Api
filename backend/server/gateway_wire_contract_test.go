@@ -74,6 +74,9 @@ func TestGatewayChatWireContractFailure(t *testing.T) {
 			if len(records) != 1 || records[0].StatusCode < 400 || !strings.Contains(records[0].Error, tc.path) {
 				t.Fatal("failed client output recorded as success", records)
 			}
+			if tc.name != "missing-role" && !strings.Contains(records[0].Error, string(protocol.UpstreamContractViolation)) {
+				t.Fatal("source identity attributed to target encoding", records[0].Error)
+			}
 			if directory := os.Getenv("ELYSIA_AUDIT_CAPTURE"); directory != "" {
 				if err := os.MkdirAll(directory, 0700); err != nil {
 					t.Fatal(err)
